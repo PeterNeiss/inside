@@ -59,7 +59,7 @@ int main() {
     const quantity<isq::altitude[km], inside<{100, 1000}>> altitude{185};
     const quantity<isq::radius[km], inside<{6300, 6400}>>  earth{6371};
     const auto                                             r = altitude + earth;
-    static_assert(decltype(r)::reference.Spec == &isq_defs::length);
+    static_assert(decltype(r)::reference.Spec->Name == "length");
     constexpr auto mu     = just<rational{3'986'004'418, 10'000}> * (cubic(km) / square(si::second));
     const auto     v_park = units::sqrt_into<fine<1'000'000>>(mu / r);
     std::cout << "v parking = " << v_park << '\n';

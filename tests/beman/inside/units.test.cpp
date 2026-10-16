@@ -15,9 +15,12 @@ namespace {
 constexpr auto km = si::kilo(si::metre);
 constexpr auto mm = si::milli(si::metre);
 
+// A function, not a variable template: clang 18 rejects a consteval call in
+// a variable template's initializer.
 template <class A, class B>
-constexpr bool addable =
-    units::detail::common_spec(std::remove_cvref_t<A>::reference, std::remove_cvref_t<B>::reference).Ok;
+consteval bool addable() {
+    return units::detail::common_spec(std::remove_cvref_t<A>::reference, std::remove_cvref_t<B>::reference).Ok;
+}
 } // namespace
 
 TEST(UnitsTest, dimensions_and_magnitudes) {
@@ -156,7 +159,7 @@ TEST(UnitsTest, kinds_convert_up_implicitly_and_down_explicitly) {
     static_assert(std::is_convertible_v<height_m, quantity<si::metre, inside<{0, 100}>>>);
     // width + height: their common ancestor, length.
     const auto s = width_m{1} + h;
-    static_assert(std::remove_cvref_t<decltype(s)>::reference.Spec == &isq_defs::length);
+    static_assert(std::remove_cvref_t<decltype(s)>::reference.Spec->Name == "length");
 }
 
 TEST(UnitsTest, derived_kinds_follow_their_recipes) {
@@ -184,13 +187,13 @@ TEST(UnitsTest, separate_kinds_do_not_mix) {
     const auto bq   = just<1> * si::becquerel;
     const auto rad  = just<1> * si::radian;
     const auto one_ = just<1> * (si::metre / si::metre);
-    static_assert(!addable<decltype(hz), decltype(bq)>);
-    static_assert(!addable<decltype(rad), decltype(one_)>);
-    static_assert(addable<decltype(hz), decltype(just<1> / si::second)>);
+    static_assert(!addable<decltype(hz), decltype(bq)>());
+    static_assert(!addable<decltype(rad), decltype(one_)>());
+    static_assert(addable<decltype(hz), decltype(just<1> / si::second)>());
     static_assert(
         !std::is_convertible_v<quantity<si::hertz, inside<{0, 10}>>, quantity<si::becquerel, inside<{0, 10}>>>);
     // Gy and Sv: both J/kg, different kinds.
-    static_assert(!addable<decltype(just<1> * si::gray), decltype(just<1> * si::sievert)>);
+    static_assert(!addable<decltype(just<1> * si::gray), decltype(just<1> * si::sievert)>());
     static_assert(!units::detail::spec_casts(std::remove_cvref_t<decltype(rad)>::reference, &isq_defs::dimensionless));
 }
 
@@ -231,7 +234,7 @@ TEST(UnitsTest, big_grid_prefixes_and_units) {
 
 TEST(UnitsTest, points_shift_their_grid_between_origins) {
     const auto t = point<si::degree_Celsius>(inside<{-40, 60}>{20});
-    static_assert(std::remove_cvref_t<decltype(t)>::origin == &si_defs::ice_point);
+    static_assert(std::remove_cvref_t<decltype(t)>::origin->Name == "ice_point");
     EXPECT_EQ(to_string(t), "20 ℃");
     // From absolute zero, still in ℃: 293.15, on a shifted grid.
     const auto q = t.quantity_from(si::absolute_zero);
@@ -265,7 +268,7 @@ TEST(UnitsTest, point_arithmetic) {
     EXPECT_TRUE(z > t);
     // A unit without an origin counts from the implicit zero.
     const auto x = point<si::metre>(inside<{0, 10}>{3});
-    static_assert(std::remove_cvref_t<decltype(x)>::origin == nullptr);
+    static_assert(!std::remove_cvref_t<decltype(x)>::origin);
     EXPECT_EQ((x - point<si::metre>(just<1>)).numerical_value(), 2);
 }
 
@@ -284,7 +287,7 @@ TEST(UnitsTest, std_format) {
 TEST(UnitsTest, point_in_and_value_cast_on_points) {
     const auto oven = point<international::degree_Fahrenheit>(inside<{0, 600}>{350});
     const auto c    = oven.point_in(si::degree_Celsius); // (350 − 32)·5/9
-    static_assert(std::remove_cvref_t<decltype(c)>::origin == &si_defs::ice_point);
+    static_assert(std::remove_cvref_t<decltype(c)>::origin->Name == "ice_point");
     EXPECT_EQ(rational{c.quantity_from_origin().numerical_value()}, rational(530, 3));
     EXPECT_EQ(to_string(c.point_in(si::kelvin)), "26989/60 K"); // 449.8166…: exact, so N/D
     const auto r = value_cast<inside<{0, 300}, round_nearest>>(c);

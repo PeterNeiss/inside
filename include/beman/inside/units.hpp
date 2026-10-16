@@ -158,10 +158,29 @@ consteval auto operator/(mag_t<A>, mag_t<B>) {
 //---------------------------------------------------------------------------
 struct quantity_spec;
 
+// An optional reference to a static object (a parent spec, a unit's kind, an
+// origin). It is tested by its flag, never against nullptr, and compared by
+// content, never by address: under GCC's -fsanitize=undefined `&obj ==
+// nullptr`, and under -fsanitize=pointer-compare `&a == &b`, is no constant
+// expression.
+template <class T>
+struct ref_or_none {
+    const T* P{};
+    bool     Set{false};
+
+    constexpr ref_or_none() = default;
+    constexpr ref_or_none(std::nullptr_t) {}
+    constexpr ref_or_none(const T* p) : P{p}, Set{true} {} // p is not null
+    constexpr explicit operator bool() const { return Set; }
+    constexpr const T* operator->() const { return P; }
+};
+
+using spec_ref = ref_or_none<quantity_spec>;
+
 struct spec_factor {
     const quantity_spec*  Spec{};
     std::int8_t           Exp{};
-    friend constexpr bool operator==(const spec_factor&, const spec_factor&) = default;
+    friend constexpr bool operator==(const spec_factor& a, const spec_factor& b);
 };
 
 inline constexpr std::size_t max_spec_factors = 6;
@@ -170,7 +189,14 @@ inline constexpr std::size_t max_spec_factors = 6;
 struct recipe {
     spec_factor           F[max_spec_factors]{};
     std::int8_t           Size{0};
-    friend constexpr bool operator==(const recipe&, const recipe&) = default;
+    friend constexpr bool operator==(const recipe& a, const recipe& b) {
+        if (a.Size != b.Size)
+            return false;
+        for (std::int8_t i = 0; i < a.Size; ++i)
+            if (!(a.F[i] == b.F[i]))
+                return false;
+        return true;
+    }
 };
 
 // An anonymous spec expression: what length / time is, before it is named.
@@ -188,11 +214,11 @@ template <const quantity_spec* S>
 struct spec_t;
 
 struct quantity_spec {
-    std::string_view     Name;
-    dimension            Dim{};
-    const quantity_spec* Parent{};
-    recipe               Recipe{};
-    bool                 IsKind{false};
+    std::string_view Name;
+    dimension        Dim{};
+    spec_ref         Parent{};
+    recipe           Recipe{};
+    bool             IsKind{false};
 
     // A base quantity: a dimension of its own.
     constexpr quantity_spec(std::string_view name, dimension d) : Name{name}, Dim{d} {}
@@ -221,26 +247,45 @@ struct quantity_spec {
 };
 
 namespace detail {
+// Identity of the static objects a value points to (specs, units, origins)
+// is by content, never by address: GCC with -fsanitize=pointer-compare
+// rejects comparing the addresses of two distinct objects in a constant
+// expression. A null pointer test stays a pointer test.
+constexpr bool same(const quantity_spec* a, const quantity_spec* b) { // both set
+    return a->Name == b->Name && a->Dim == b->Dim && a->IsKind == b->IsKind;
+}
+constexpr bool same(const spec_ref& a, const spec_ref& b) {
+    if (!a || !b)
+        return !a && !b;
+    return same(a.P, b.P);
+}
+} // namespace detail
+
+constexpr bool operator==(const spec_factor& a, const spec_factor& b) {
+    return detail::same(a.Spec, b.Spec) && a.Exp == b.Exp;
+}
+
+namespace detail {
 // The spec's tree root, and its kind root: the first IsKind spec on the way
 // up, else the tree root.
 consteval const quantity_spec* tree_root(const quantity_spec* s) {
     while (s->Parent)
-        s = s->Parent;
+        s = s->Parent.P;
     return s;
 }
 consteval const quantity_spec* kind_root(const quantity_spec* s) {
     while (!s->IsKind && s->Parent)
-        s = s->Parent;
+        s = s->Parent.P;
     return s;
 }
 // a is s or an ancestor of s within s's kind (not above an IsKind boundary).
 consteval bool is_within_kind_ancestor(const quantity_spec* s, const quantity_spec* a) {
     for (;;) {
-        if (s == a)
+        if (same(s, a))
             return true;
         if (s->IsKind || !s->Parent)
             return false;
-        s = s->Parent;
+        s = s->Parent.P;
     }
 }
 
@@ -250,7 +295,7 @@ consteval bool name_before(const quantity_spec* a, const quantity_spec* b) { ret
 // Returns false when the recipe is full.
 consteval bool recipe_add(recipe& r, const quantity_spec* f, int e) {
     for (std::int8_t i = 0; i < r.Size; ++i)
-        if (r.F[i].Spec == f) {
+        if (same(r.F[i].Spec, f)) {
             r.F[i].Exp = static_cast<std::int8_t>(r.F[i].Exp + e);
             if (r.F[i].Exp == 0) {
                 for (std::int8_t j = i; j + 1 < r.Size; ++j)
@@ -387,20 +432,28 @@ struct named_unit;
 // SI unit of the dimension (the ice point: absolute zero + 273.15 K).
 //---------------------------------------------------------------------------
 struct point_origin {
-    std::string_view    Name;
-    dimension           Dim{};
-    const point_origin* Absolute{}; // null for an absolute origin
-    grid_rational       Offset{0};  // from Absolute, in the coherent unit
+    std::string_view          Name;
+    dimension                 Dim{};
+    ref_or_none<point_origin> Absolute{}; // none for an absolute origin
+    grid_rational             Offset{0};  // from Absolute, in the coherent unit
 };
 
-template <const point_origin* O>
+using origin_ref = ref_or_none<point_origin>; // none: the implicit zero of a dimension
+
+template <origin_ref O>
 struct origin_t {
-    static constexpr const point_origin* value = O;
+    static constexpr origin_ref value = O;
 };
 
 namespace detail {
-consteval const point_origin* absolute_of(const point_origin* o) { return o && o->Absolute ? o->Absolute : o; }
-consteval grid_rational offset_of(const point_origin* o) { return o && o->Absolute ? o->Offset : grid_rational{0}; }
+consteval origin_ref absolute_of(origin_ref o) { return o && o->Absolute ? o->Absolute : o; }
+// By content, as same() for specs and units (see there).
+constexpr bool same(const origin_ref& a, const origin_ref& b) {
+    if (!a || !b)
+        return !a && !b;
+    return a->Name == b->Name && a->Dim == b->Dim && a->Offset == b->Offset && same(a->Absolute, b->Absolute);
+}
+consteval grid_rational offset_of(origin_ref o) { return o && o->Absolute ? o->Offset : grid_rational{0}; }
 } // namespace detail
 
 struct no_space_before_t {
@@ -412,7 +465,7 @@ struct unit_atom {
     const named_unit*     U{};
     std::int8_t           Prefix{0}; // power of ten
     std::int8_t           Exp{0};
-    friend constexpr bool operator==(const unit_atom&, const unit_atom&) = default;
+    friend constexpr bool operator==(const unit_atom& a, const unit_atom& b);
 };
 
 inline constexpr std::size_t max_unit_atoms = 6;
@@ -425,7 +478,14 @@ struct unit {
     constexpr unit() = default;
     constexpr unit(const named_unit& u) : Atoms{{&u, 0, 1}}, Size{1} {}
 
-    friend constexpr bool operator==(const unit&, const unit&) = default;
+    friend constexpr bool operator==(const unit& a, const unit& b) {
+        if (a.Size != b.Size || !(a.Scale == b.Scale))
+            return false;
+        for (std::int8_t i = 0; i < a.Size; ++i)
+            if (!(a.Atoms[i] == b.Atoms[i]))
+                return false;
+        return true;
+    }
 };
 
 template <unit U>
@@ -434,13 +494,13 @@ struct unit_t {
 };
 
 struct named_unit {
-    std::string_view     Utf8;
-    std::string_view     Ascii;
-    dimension            Dim{};
-    magnitude            Mag{};
-    const quantity_spec* Kind{};
-    bool                 SpaceBefore{true};
-    const point_origin*  Origin{}; // the default origin of its points (K: absolute zero)
+    std::string_view Utf8;
+    std::string_view Ascii;
+    dimension        Dim{};
+    magnitude        Mag{};
+    spec_ref         Kind{};
+    bool             SpaceBefore{true};
+    origin_ref       Origin{}; // the default origin of its points (K: absolute zero)
 
     // A base unit of a kind: the coherent unit of its dimension.
     template <const quantity_spec* K>
@@ -461,11 +521,11 @@ struct named_unit {
     template <unit U, const quantity_spec* K>
     constexpr named_unit(std::string_view utf8, std::string_view ascii, unit_t<U>, spec_t<K>);
     // A unit with a default point origin (K: absolute zero, ℃: the ice point).
-    template <const quantity_spec* K, const point_origin* O>
+    template <const quantity_spec* K, origin_ref O>
     constexpr named_unit(std::string_view sym, spec_t<K>, origin_t<O>) : named_unit{sym, spec_t<K>{}} {
         Origin = O;
     }
-    template <unit U, const point_origin* O>
+    template <unit U, origin_ref O>
     constexpr named_unit(std::string_view utf8, std::string_view ascii, unit_t<U>, origin_t<O>)
         : named_unit{utf8, ascii, unit_t<U>{}} {
         Origin = O;
@@ -479,6 +539,16 @@ struct named_unit {
 };
 
 namespace detail {
+constexpr bool same(const named_unit* a, const named_unit* b) { // both set
+    return a->Utf8 == b->Utf8 && a->Ascii == b->Ascii && a->Dim == b->Dim && a->Mag == b->Mag;
+}
+} // namespace detail
+
+constexpr bool operator==(const unit_atom& a, const unit_atom& b) {
+    return detail::same(a.U, b.U) && a.Prefix == b.Prefix && a.Exp == b.Exp;
+}
+
+namespace detail {
 consteval bool atom_before(const unit_atom& a, const unit_atom& b) {
     if (a.U->Utf8 != b.U->Utf8)
         return a.U->Utf8 < b.U->Utf8;
@@ -487,7 +557,7 @@ consteval bool atom_before(const unit_atom& a, const unit_atom& b) {
 
 consteval void unit_add(unit& u, unit_atom a) {
     for (std::int8_t i = 0; i < u.Size; ++i)
-        if (u.Atoms[i].U == a.U && u.Atoms[i].Prefix == a.Prefix) {
+        if (same(u.Atoms[i].U, a.U) && u.Atoms[i].Prefix == a.Prefix) {
             u.Atoms[i].Exp = static_cast<std::int8_t>(u.Atoms[i].Exp + a.Exp);
             if (u.Atoms[i].Exp == 0) {
                 for (std::int8_t j = i; j + 1 < u.Size; ++j)
@@ -556,14 +626,14 @@ consteval magnitude magnitude_of(const unit& u) {
     return m;
 }
 // The kind a unit measures: a named unit's (with a prefix too), else none.
-consteval const quantity_spec* kind_of_unit(const unit& u) {
-    return u.Size == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one() ? u.Atoms[0].U->Kind : nullptr;
+consteval spec_ref kind_of_unit(const unit& u) {
+    return u.Size == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one() ? u.Atoms[0].U->Kind : spec_ref{};
 }
 
 namespace detail {
 // The kind a unit defined by U inherits: its one factor's (min: 60 s).
-consteval const quantity_spec* inherited_kind(const unit& u) {
-    return u.Size == 1 && u.Atoms[0].Exp == 1 ? u.Atoms[0].U->Kind : nullptr;
+consteval spec_ref inherited_kind(const unit& u) {
+    return u.Size == 1 && u.Atoms[0].Exp == 1 ? u.Atoms[0].U->Kind : spec_ref{};
 }
 } // namespace detail
 
@@ -649,24 +719,26 @@ struct prefix_t {
 //   Spec null, Derived empty   any quantity of the unit's dimension (m/s)
 //---------------------------------------------------------------------------
 struct reference {
-    const quantity_spec* Spec{};
-    bool                 KindOf{false};
-    recipe               Derived{};
-    unit                 U{};
+    spec_ref Spec{};
+    bool     KindOf{false};
+    recipe   Derived{};
+    unit     U{};
 
     constexpr reference() = default;
-    constexpr reference(const quantity_spec* s, bool kind_of, recipe derived, unit u)
+    constexpr reference(spec_ref s, bool kind_of, recipe derived, unit u)
         : Spec{s}, KindOf{kind_of}, Derived{derived}, U{u} {}
     // A unit tag as a reference: quantity<si::metre, …>.
     template <unit V>
-    constexpr reference(unit_t<V>) : Spec{kind_of_unit(V)}, KindOf{kind_of_unit(V) != nullptr}, U{V} {}
+    constexpr reference(unit_t<V>) : Spec{kind_of_unit(V)}, KindOf{static_cast<bool>(kind_of_unit(V))}, U{V} {}
 
-    friend constexpr bool operator==(const reference&, const reference&) = default;
+    friend constexpr bool operator==(const reference& a, const reference& b) {
+        return detail::same(a.Spec, b.Spec) && a.KindOf == b.KindOf && a.Derived == b.Derived && a.U == b.U;
+    }
 };
 
 consteval reference reference_of(const unit& u) {
-    const quantity_spec* k = kind_of_unit(u);
-    return reference{k, k != nullptr, recipe{}, u};
+    const spec_ref k = kind_of_unit(u);
+    return reference{k, static_cast<bool>(k), recipe{}, u};
 }
 
 template <reference R>
@@ -703,15 +775,15 @@ consteval auto spec_t<S>::operator[](U) const {
     static_assert(is_reference_tag_v<U> && requires { U::value.Size; }, "units: spec[unit] takes a unit");
     constexpr unit u = U::value;
     static_assert(dimension_of(u) == S->Dim, "units: spec[unit] - the unit has another dimension than the spec");
-    constexpr const quantity_spec* k = kind_of_unit(u);
-    static_assert(k == nullptr || detail::kind_root(k) == detail::kind_root(S),
+    constexpr spec_ref k = kind_of_unit(u);
+    static_assert(!k || detail::same(detail::kind_root(k.P), detail::kind_root(S)),
                   "units: spec[unit] - the unit measures another kind of quantity (Hz for activity?)");
     return reference_t<reference{S, false, recipe{}, u}>{};
 }
 
 namespace detail {
 // Which spec facts a reference carries.
-consteval bool is_generic(const reference& r) { return r.Spec == nullptr && r.Derived.Size == 0; }
+consteval bool is_generic(const reference& r) { return !r.Spec && r.Derived.Size == 0; }
 
 // Whether a reference's quantity may convert implicitly to a named spec `to`.
 consteval bool derived_converts_to(const reference& from, const quantity_spec* to) {
@@ -729,30 +801,30 @@ consteval bool derived_converts_to(const reference& from, const quantity_spec* t
 // Implicit conversion between the specs of two references of one dimension.
 consteval bool spec_converts(const reference& from, const reference& to) {
     if (is_generic(to)) // a dimension's quantity takes any of its kinds but an IsKind one
-        return from.Spec == nullptr || !kind_root(from.Spec)->IsKind;
+        return !from.Spec || !kind_root(from.Spec.P)->IsKind;
     if (is_generic(from))
-        return to.Spec == nullptr || !kind_root(to.Spec)->IsKind;
-    if (to.Spec == nullptr) { // a derived target: the source's recipe, by kind
-        const recipe have = from.Spec ? recipe_of(from.Spec) : from.Derived;
+        return !to.Spec || !kind_root(to.Spec.P)->IsKind;
+    if (!to.Spec) { // a derived target: the source's recipe, by kind
+        const recipe have = from.Spec ? recipe_of(from.Spec.P) : from.Derived;
         return recipe_by_kind(have) == recipe_by_kind(to.Derived);
     }
-    if (from.Spec == nullptr)
-        return derived_converts_to(from, to.KindOf ? kind_root(to.Spec) : to.Spec);
+    if (!from.Spec)
+        return derived_converts_to(from, to.KindOf ? kind_root(to.Spec.P) : to.Spec.P);
     if (to.KindOf || from.KindOf) // a unit's kind takes and gives any spec of that kind
-        return kind_root(from.Spec) == kind_root(to.Spec);
-    return is_within_kind_ancestor(from.Spec, to.Spec);
+        return same(kind_root(from.Spec.P), kind_root(to.Spec.P));
+    return is_within_kind_ancestor(from.Spec.P, to.Spec.P);
 }
 
 // Explicit conversion (quantity_cast): any spec of the same dimension, but
 // not across IsKind kinds.
 consteval bool spec_casts(const reference& from, const quantity_spec* to) {
-    const quantity_spec* fk = from.Spec ? kind_root(from.Spec) : nullptr;
+    const spec_ref       fk = from.Spec ? spec_ref{kind_root(from.Spec.P)} : spec_ref{};
     const quantity_spec* tk = kind_root(to);
-    if (fk == tk)
+    if (same(fk, spec_ref{tk}))
         return true;
     if (fk && fk->IsKind)
         return false;
-    return !tk->IsKind || from.Spec == nullptr;
+    return !tk->IsKind || !from.Spec;
 }
 
 // The spec part of a sum's reference; ok = false when the two cannot add.
@@ -762,20 +834,20 @@ struct spec_result {
 };
 
 consteval spec_result common_spec(const reference& a, const reference& b) {
-    if (a.Spec == b.Spec && a.KindOf == b.KindOf && a.Derived == b.Derived)
+    if (same(a.Spec, b.Spec) && a.KindOf == b.KindOf && a.Derived == b.Derived)
         return {true, a};
     if (spec_converts(a, b) && !spec_converts(b, a))
         return {true, b};
     if (spec_converts(b, a) && !spec_converts(a, b))
         return {true, a};
     if (a.Spec && b.Spec) {
-        if (a.KindOf && b.KindOf && kind_root(a.Spec) == kind_root(b.Spec))
-            return {true, reference{kind_root(a.Spec), true, {}, a.U}};
-        if (a.KindOf != b.KindOf && kind_root(a.Spec) == kind_root(b.Spec)) // kind_of + a named spec of it
+        if (a.KindOf && b.KindOf && same(kind_root(a.Spec.P), kind_root(b.Spec.P)))
+            return {true, reference{kind_root(a.Spec.P), true, {}, a.U}};
+        if (a.KindOf != b.KindOf && same(kind_root(a.Spec.P), kind_root(b.Spec.P))) // kind_of + a named spec of it
             return {true, a.KindOf ? b : a};
         // The nearest common ancestor within one kind.
-        for (const quantity_spec* s = a.Spec;; s = s->Parent) {
-            if (is_within_kind_ancestor(b.Spec, s))
+        for (const quantity_spec* s = a.Spec.P;; s = s->Parent.P) {
+            if (is_within_kind_ancestor(b.Spec.P, s))
                 return {true, reference{s, false, {}, a.U}};
             if (s->IsKind || !s->Parent)
                 break;
@@ -790,14 +862,14 @@ consteval spec_result common_spec(const reference& a, const reference& b) {
 // The spec part of a product: named factors multiply into a recipe.
 // (Spec null, KindOf, no recipe) is the empty product: 1 / x starts there.
 consteval reference spec_product(const reference& a, const reference& b, int sign, const unit& u) {
-    const auto empty = [](const reference& r) { return r.Spec == nullptr && r.KindOf && r.Derived.Size == 0; };
+    const auto empty = [](const reference& r) { return !r.Spec && r.KindOf && r.Derived.Size == 0; };
     if ((is_generic(a) && !empty(a)) || (is_generic(b) && !empty(b)))
         return reference{nullptr, false, {}, u};
     const auto factors = [](const reference& r) {
-        if (r.Spec == nullptr)
+        if (!r.Spec)
             return r.Derived;
         recipe f{};
-        recipe_add(f, r.KindOf ? kind_root(r.Spec) : r.Spec, 1);
+        recipe_add(f, r.KindOf ? kind_root(r.Spec.P) : r.Spec.P, 1);
         return f;
     };
     recipe f = factors(a);
@@ -899,7 +971,7 @@ inline constexpr bool implicit_v = dimension_of(From.U) == dimension_of(To.U) &&
 // angle), and an exact factor to unit one.
 template <reference R>
 inline constexpr bool number_like_v = dimension_of(R.U) == dim_one && exact_factor_v<conversion_factor<R.U, unit{}>> &&
-                                      (R.Spec == nullptr || !kind_root(R.Spec)->IsKind);
+                                      (!R.Spec || !kind_root(R.Spec.P)->IsKind);
 
 // Its number's type; void for any other quantity (never forming the
 // rescale, whose pi check would fire for an angle in degrees).
@@ -1242,20 +1314,20 @@ template <insidable Rep2, policy_flag F = none, reference R, class V>
 //   t.quantity_from(si::absolute_zero)                         // 293.15 K… in ℃
 //   t.point_for(si::absolute_zero).in(si::kelvin)              // the point 293.15 K
 //---------------------------------------------------------------------------
-template <reference R, const point_origin* O, insidable Rep>
+template <reference R, origin_ref O, insidable Rep>
 class quantity_point;
 
 template <class T>
 inline constexpr bool is_quantity_point_v = false;
-template <reference R, const point_origin* O, class Rep>
+template <reference R, origin_ref O, class Rep>
 inline constexpr bool is_quantity_point_v<quantity_point<R, O, Rep>> = true;
 
 namespace detail {
 // The number, in unit U, that takes a quantity from origin From to origin To:
 // (offset(From) − offset(To)) / mag(U).
-template <const point_origin* From, const point_origin* To, unit U>
+template <origin_ref From, origin_ref To, unit U>
 consteval grid_rational origin_shift() {
-    static_assert(absolute_of(From) == absolute_of(To), "units: points of different absolute origins");
+    static_assert(same(absolute_of(From), absolute_of(To)), "units: points of different absolute origins");
     constexpr magnitude m = magnitude_of(U);
     static_assert(m.Pi == 0, "units: an origin shift in a unit with a pi magnitude has no exact grid");
     return beman::inside::detail::grid_div_of(beman::inside::detail::grid_sub(offset_of(From), offset_of(To)),
@@ -1271,11 +1343,11 @@ constexpr auto shift(const V& v) {
 }
 
 // The default origin of a unit's points: its named unit's (K, ℃, ℉).
-consteval const point_origin* origin_of_unit(const unit& u) {
-    return u.Size == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one() ? u.Atoms[0].U->Origin : nullptr;
+consteval origin_ref origin_of_unit(const unit& u) {
+    return u.Size == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one() ? u.Atoms[0].U->Origin : origin_ref{};
 }
 
-template <const point_origin* O, class Q>
+template <origin_ref O, class Q>
 constexpr auto make_point(Q&& q) {
     using T = std::remove_cvref_t<Q>;
     if constexpr (is_expected_v<T>) {
@@ -1288,23 +1360,23 @@ constexpr auto make_point(Q&& q) {
 }
 } // namespace detail
 
-template <reference R, const point_origin* O, insidable Rep>
+template <reference R, origin_ref O, insidable Rep>
 class quantity_point {
     quantity<R, Rep> Q;
 
   public:
-    using quantity_type                            = quantity<R, Rep>;
-    using rep                                      = Rep;
-    static constexpr units::reference    reference = R;
-    static constexpr const point_origin* origin    = O;
+    using quantity_type                         = quantity<R, Rep>;
+    using rep                                   = Rep;
+    static constexpr units::reference reference = R;
+    static constexpr origin_ref       origin    = O;
 
     constexpr quantity_point() = default;
     constexpr explicit quantity_point(const quantity<R, Rep>& q) : Q{q} {}
 
     // From a point of another origin (of the same absolute one) or unit:
     // shifted, then rescaled, exactly; implicit as the quantities are.
-    template <units::reference R2, const point_origin* O2, class V2>
-        requires(detail::absolute_of(O2) == detail::absolute_of(O)) && detail::implicit_v<R2, R> &&
+    template <units::reference R2, origin_ref O2, class V2>
+        requires(detail::same(detail::absolute_of(O2), detail::absolute_of(O))) && detail::implicit_v<R2, R> &&
                 std::constructible_from<
                     quantity<R, Rep>,
                     decltype(std::declval<const quantity_point<R2, O2, V2>&>().quantity_from(origin_t<O>{}))>
@@ -1315,14 +1387,14 @@ class quantity_point {
 
     // The quantity from this point's origin, or from another one.
     [[nodiscard]] constexpr const quantity<R, Rep>& quantity_from_origin() const noexcept { return Q; }
-    template <const point_origin* O2>
+    template <origin_ref O2>
     [[nodiscard]] constexpr auto quantity_from(origin_t<O2>) const {
         constexpr grid_rational c = detail::origin_shift<O, O2, R.U>();
         return quantity<R, std::remove_cvref_t<decltype(detail::shift<c>(Q.numerical_value()))>>{
             detail::shift<c>(Q.numerical_value())};
     }
     // The same point counted from another origin.
-    template <const point_origin* O2>
+    template <origin_ref O2>
     [[nodiscard]] constexpr auto point_for(origin_t<O2> o) const {
         return detail::make_point<O2>(quantity_from(o));
     }
@@ -1352,11 +1424,11 @@ class quantity_point {
 };
 
 // value_cast on a point: its quantity from the origin cast, the origin kept.
-template <insidable Rep2, reference R, const point_origin* O, class V>
+template <insidable Rep2, reference R, origin_ref O, class V>
 [[nodiscard]] constexpr quantity_point<R, O, Rep2> value_cast(const quantity_point<R, O, V>& p) {
     return quantity_point<R, O, Rep2>{value_cast<Rep2>(p.quantity_from_origin())};
 }
-template <auto U, insidable Rep2, reference R, const point_origin* O, class V>
+template <auto U, insidable Rep2, reference R, origin_ref O, class V>
     requires is_unit_tag_v<decltype(U)> && detail::exact_factor_v<detail::conversion_factor<R.U, decltype(U)::value>>
 [[nodiscard]] constexpr auto value_cast(const quantity_point<R, O, V>& p) {
     const auto q = value_cast<U, Rep2>(p.quantity_from_origin());
@@ -1377,38 +1449,38 @@ template <auto U, insidable V>
 }
 
 // origin + quantity: si::absolute_zero + just<300> * si::kelvin.
-template <const point_origin* O, reference R, class V>
+template <origin_ref O, reference R, class V>
 [[nodiscard]] constexpr auto operator+(origin_t<O>, const quantity<R, V>& q) {
     return quantity_point<R, O, V>{q};
 }
-template <reference R, class V, const point_origin* O>
+template <reference R, class V, origin_ref O>
 [[nodiscard]] constexpr auto operator+(const quantity<R, V>& q, origin_t<O>) {
     return quantity_point<R, O, V>{q};
 }
 
 // point ± quantity: a point at the same origin; point − point: a quantity
 // (the second counted from the first's origin).
-template <reference R, const point_origin* O, class V, reference R2, class V2>
+template <reference R, origin_ref O, class V, reference R2, class V2>
 [[nodiscard]] constexpr auto operator+(const quantity_point<R, O, V>& p, const quantity<R2, V2>& q) {
     return detail::make_point<O>(p.quantity_from_origin() + q);
 }
-template <reference R2, class V2, reference R, const point_origin* O, class V>
+template <reference R2, class V2, reference R, origin_ref O, class V>
 [[nodiscard]] constexpr auto operator+(const quantity<R2, V2>& q, const quantity_point<R, O, V>& p) {
     return detail::make_point<O>(q + p.quantity_from_origin());
 }
-template <reference R, const point_origin* O, class V, reference R2, class V2>
+template <reference R, origin_ref O, class V, reference R2, class V2>
 [[nodiscard]] constexpr auto operator-(const quantity_point<R, O, V>& p, const quantity<R2, V2>& q) {
     return detail::make_point<O>(p.quantity_from_origin() - q);
 }
-template <reference R, const point_origin* O, class V, reference R2, const point_origin* O2, class V2>
+template <reference R, origin_ref O, class V, reference R2, origin_ref O2, class V2>
 [[nodiscard]] constexpr auto operator-(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
     return a.quantity_from_origin() - b.quantity_from(origin_t<O>{});
 }
-template <reference R, const point_origin* O, class V, reference R2, const point_origin* O2, class V2>
+template <reference R, origin_ref O, class V, reference R2, origin_ref O2, class V2>
 [[nodiscard]] constexpr bool operator==(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
     return a.quantity_from_origin() == b.quantity_from(origin_t<O>{});
 }
-template <reference R, const point_origin* O, class V, reference R2, const point_origin* O2, class V2>
+template <reference R, origin_ref O, class V, reference R2, origin_ref O2, class V2>
 [[nodiscard]] constexpr auto operator<=>(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
     return a.quantity_from_origin() <=> b.quantity_from(origin_t<O>{});
 }
@@ -1565,11 +1637,11 @@ std::ostream& operator<<(std::ostream& os, const quantity<R, V>& q) {
 }
 
 // A point as its quantity from its origin: "20 ℃".
-template <reference R, const point_origin* O, class V>
+template <reference R, origin_ref O, class V>
 std::string to_string(const quantity_point<R, O, V>& p, text_encoding enc = text_encoding::utf8) {
     return units::to_string(p.quantity_from_origin(), enc);
 }
-template <reference R, const point_origin* O, class V>
+template <reference R, origin_ref O, class V>
 std::ostream& operator<<(std::ostream& os, const quantity_point<R, O, V>& p) {
     return os << units::to_string(p);
 }
@@ -1599,7 +1671,7 @@ struct std::formatter<beman::inside::units::quantity<R, V>> : std::formatter<V> 
     }
 };
 
-template <beman::inside::units::reference R, const beman::inside::units::point_origin* O, class V>
+template <beman::inside::units::reference R, beman::inside::units::origin_ref O, class V>
 struct std::formatter<beman::inside::units::quantity_point<R, O, V>>
     : std::formatter<beman::inside::units::quantity<R, V>> {
     template <typename Ctx>

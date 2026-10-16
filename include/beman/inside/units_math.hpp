@@ -79,7 +79,7 @@ consteval unit unit_root(const unit& u, int n) {
 consteval reference spec_root(const reference& a, int n, const unit& u) {
     if (is_generic(a))
         return reference{nullptr, false, {}, u};
-    const recipe f = a.Spec ? recipe_of(a.KindOf ? kind_root(a.Spec) : a.Spec) : a.Derived;
+    const recipe f = a.Spec ? recipe_of(a.KindOf ? kind_root(a.Spec.P) : a.Spec.P) : a.Derived;
     recipe       r{};
     for (std::int8_t i = 0; i < f.Size; ++i) {
         if (f.F[i].Exp % n != 0)

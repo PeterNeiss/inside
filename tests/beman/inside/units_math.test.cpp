@@ -36,7 +36,7 @@ TEST(UnitsMathTest, roots_take_the_units_root) {
     using area_t = quantity<isq::area[square(si::metre)], inside<{{0, 100}, per<1000>}, round_nearest>>;
     const auto s = units::sqrt(area_t{2});
     static_assert(std::remove_cvref_t<decltype(s)>::unit == si::metre.value);
-    static_assert(std::remove_cvref_t<decltype(s)>::reference.Spec == &isq_defs::length);
+    static_assert(std::remove_cvref_t<decltype(s)>::reference.Spec->Name == "length");
     EXPECT_EQ(rational{s.numerical_value()}, rational(1414, 1000));
     const auto c = units::cbrt(quantity<cubic(si::metre), inside<{{0, 1000}, per<100>}, round_nearest>>{27});
     EXPECT_EQ(c.numerical_value(), 3);
