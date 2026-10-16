@@ -18,6 +18,24 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   lattice scaled by `1/|c|` (it was continuous), and every continuous
   quotient carries a denominator bound. Code that names those types, or
   unwraps a result that is now plain, needs updating.
+- `frac<N, D>` is gone: an exact ratio is the point `just<N>.per<D>`
+  (`just<frac<1, 2>>` is `just<1>.per<2>`; as a grid limit or step,
+  `{{just<-6>.per<5>, just<3>.per<5>}, per<40>}`).
+- Renamed:
+
+  | Before | After |
+  |---|---|
+  | `clamp_floor<B>(v)` / `clamp_ceil<B>(v)` / `clamp_round<B>(v)` | `clamp_cast<B, round_floor>(v)` / `round_ceil` / `round_nearest` |
+  | `byte` `word` `dword` `qword` | `uint8` `uint16` `uint32` `uint64` |
+  | `sbyte` `sword` `sdword` `sqword` | `int8` `int16` `int32` `int64` |
+  | `counter<Max>` / `ring_counter<Max>` | `clamp_counter<Max>` / `wrap_counter<Max>` |
+  | `from_chars<B>` / `from_chars_exact<B>` | `parse<B>` / `parse_exact<B>` |
+  | `policy_of<B>` | `flags_of<B>` (also takes a `policy<F, E>`) |
+  | `inside<G, P>::negative` | `inside<G, P>::negated_type` |
+  | `math::amp<K>` | `math::unit_amplitude<K>` |
+  | `why_assignable` | `explain_assignable` |
+  | `conversion_is_lossy` | `conversion_loses` |
+  | `<beman/inside/math.hpp>` | `<beman/inside/numbers.hpp>` |
 
 ### Added
 
