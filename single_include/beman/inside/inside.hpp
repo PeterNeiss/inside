@@ -18889,6 +18889,28 @@ consteval spec_expr inverse(A a) {
 //---------------------------------------------------------------------------
 struct named_unit;
 
+//---------------------------------------------------------------------------
+// point_origin — where a quantity_point's number counts from. An absolute
+// origin (absolute zero) or one at an exact offset from one, in the coherent
+// SI unit of the dimension (the ice point: absolute zero + 273.15 K).
+//---------------------------------------------------------------------------
+struct point_origin {
+    std::string_view    Name;
+    dimension           Dim{};
+    const point_origin* Absolute{}; // null for an absolute origin
+    grid_rational       Offset{0};  // from Absolute, in the coherent unit
+};
+
+template <const point_origin* O>
+struct origin_t {
+    static constexpr const point_origin* value = O;
+};
+
+namespace detail {
+consteval const point_origin* absolute_of(const point_origin* o) { return o && o->Absolute ? o->Absolute : o; }
+consteval grid_rational offset_of(const point_origin* o) { return o && o->Absolute ? o->Offset : grid_rational{0}; }
+} // namespace detail
+
 struct no_space_before_t {
     explicit no_space_before_t() = default;
 };
@@ -18926,6 +18948,7 @@ struct named_unit {
     magnitude            Mag{};
     const quantity_spec* Kind{};
     bool                 SpaceBefore{true};
+    const point_origin*  Origin{}; // the default origin of its points (K: absolute zero)
 
     // A base unit of a kind: the coherent unit of its dimension.
     template <const quantity_spec* K>
@@ -18945,6 +18968,16 @@ struct named_unit {
     constexpr named_unit(std::string_view sym, unit_t<U>, spec_t<K>);
     template <unit U, const quantity_spec* K>
     constexpr named_unit(std::string_view utf8, std::string_view ascii, unit_t<U>, spec_t<K>);
+    // A unit with a default point origin (K: absolute zero, ℃: the ice point).
+    template <const quantity_spec* K, const point_origin* O>
+    constexpr named_unit(std::string_view sym, spec_t<K>, origin_t<O>) : named_unit{sym, spec_t<K>{}} {
+        Origin = O;
+    }
+    template <unit U, const point_origin* O>
+    constexpr named_unit(std::string_view utf8, std::string_view ascii, unit_t<U>, origin_t<O>)
+        : named_unit{utf8, ascii, unit_t<U>{}} {
+        Origin = O;
+    }
     // A symbol written without a space after the number (90°).
     template <unit U>
     constexpr named_unit(std::string_view utf8, std::string_view ascii, unit_t<U>, no_space_before_t)
@@ -19616,6 +19649,168 @@ template <insidable Rep2, policy_flag F = none, reference R, class V>
 }
 
 //---------------------------------------------------------------------------
+// quantity_point<R, O, Rep> — a point: a quantity of R counted from origin O
+// (null: the implicit zero of the dimension). A change of origin shifts the
+// grid by the exact offset, a change of unit rescales it.
+//   auto t = point<si::degree_Celsius>(inside<{-40, 60}>{20});   // 20 ℃
+//   t.quantity_from(si::absolute_zero)                         // 293.15 K… in ℃
+//   t.point_for(si::absolute_zero).in(si::kelvin)              // the point 293.15 K
+//---------------------------------------------------------------------------
+template <reference R, const point_origin* O, insidable Rep>
+class quantity_point;
+
+template <class T>
+inline constexpr bool is_quantity_point_v = false;
+template <reference R, const point_origin* O, class Rep>
+inline constexpr bool is_quantity_point_v<quantity_point<R, O, Rep>> = true;
+
+namespace detail {
+// The number, in unit U, that takes a quantity from origin From to origin To:
+// (offset(From) − offset(To)) / mag(U).
+template <const point_origin* From, const point_origin* To, unit U>
+consteval grid_rational origin_shift() {
+    static_assert(absolute_of(From) == absolute_of(To), "units: points of different absolute origins");
+    constexpr magnitude m = magnitude_of(U);
+    static_assert(m.Pi == 0, "units: an origin shift in a unit with a pi magnitude has no exact grid");
+    return beman::inside::detail::grid_div_of(beman::inside::detail::grid_sub(offset_of(From), offset_of(To)),
+                                              m.Ratio);
+}
+
+template <grid_rational C, insidable V>
+constexpr auto shift(const V& v) {
+    if constexpr (C == grid_rational{0})
+        return v;
+    else
+        return v + just<C>;
+}
+
+// The default origin of a unit's points: its named unit's (K, ℃, ℉).
+consteval const point_origin* origin_of_unit(const unit& u) {
+    return u.Size == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one() ? u.Atoms[0].U->Origin : nullptr;
+}
+
+template <const point_origin* O, class Q>
+constexpr auto make_point(Q&& q) {
+    using T = std::remove_cvref_t<Q>;
+    if constexpr (is_expected_v<T>) {
+        using P = quantity_point<T::value_type::reference, O, typename T::value_type::rep>;
+        if (!q)
+            return std::expected<P, errc>{std::unexpect, q.error()};
+        return std::expected<P, errc>{P{*std::forward<Q>(q)}};
+    } else
+        return quantity_point<T::reference, O, typename T::rep>{std::forward<Q>(q)};
+}
+} // namespace detail
+
+template <reference R, const point_origin* O, insidable Rep>
+class quantity_point {
+    quantity<R, Rep> Q;
+
+  public:
+    using quantity_type                            = quantity<R, Rep>;
+    using rep                                      = Rep;
+    static constexpr units::reference    reference = R;
+    static constexpr const point_origin* origin    = O;
+
+    constexpr quantity_point() = default;
+    constexpr explicit quantity_point(const quantity<R, Rep>& q) : Q{q} {}
+
+    // From a point of another origin (of the same absolute one) or unit:
+    // shifted, then rescaled, exactly; implicit as the quantities are.
+    template <units::reference R2, const point_origin* O2, class V2>
+        requires(detail::absolute_of(O2) == detail::absolute_of(O)) && detail::implicit_v<R2, R> &&
+                std::constructible_from<
+                    quantity<R, Rep>,
+                    decltype(std::declval<const quantity_point<R2, O2, V2>&>().quantity_from(origin_t<O>{}))>
+    constexpr explicit(
+        !std::convertible_to<decltype(std::declval<const quantity_point<R2, O2, V2>&>().quantity_from(origin_t<O>{})),
+                             quantity<R, Rep>>) quantity_point(const quantity_point<R2, O2, V2>& p)
+        : Q(p.quantity_from(origin_t<O>{})) {}
+
+    // The quantity from this point's origin, or from another one.
+    [[nodiscard]] constexpr const quantity<R, Rep>& quantity_from_origin() const noexcept { return Q; }
+    template <const point_origin* O2>
+    [[nodiscard]] constexpr auto quantity_from(origin_t<O2>) const {
+        constexpr grid_rational c = detail::origin_shift<O, O2, R.U>();
+        return quantity<R, std::remove_cvref_t<decltype(detail::shift<c>(Q.numerical_value()))>>{
+            detail::shift<c>(Q.numerical_value())};
+    }
+    // The same point counted from another origin.
+    template <const point_origin* O2>
+    [[nodiscard]] constexpr auto point_for(origin_t<O2> o) const {
+        return detail::make_point<O2>(quantity_from(o));
+    }
+    // The same point in another unit.
+    template <units::unit U>
+    [[nodiscard]] constexpr auto in(unit_t<U> u) const {
+        return detail::make_point<O>(Q.in(u));
+    }
+
+    template <units::reference R2, class V2>
+        requires detail::implicit_v<R2, R>
+    constexpr quantity_point& operator+=(const quantity<R2, V2>& q) {
+        Q += q;
+        return *this;
+    }
+    template <units::reference R2, class V2>
+        requires detail::implicit_v<R2, R>
+    constexpr quantity_point& operator-=(const quantity<R2, V2>& q) {
+        Q -= q;
+        return *this;
+    }
+};
+
+// point<si::degree_Celsius>(v) — a point at the unit's default origin (the
+// implicit zero for a unit without one).
+template <auto U, insidable V>
+[[nodiscard]] constexpr auto point(const V& v) {
+    return quantity_point<reference_of(U), detail::origin_of_unit(decltype(U)::value), V>{
+        quantity<reference_of(U), V>{v}};
+}
+// delta<si::degree_Celsius>(v) — a difference: a plain quantity.
+template <auto U, insidable V>
+[[nodiscard]] constexpr auto delta(const V& v) {
+    return v * U;
+}
+
+// origin + quantity: si::absolute_zero + just<300> * si::kelvin.
+template <const point_origin* O, reference R, class V>
+[[nodiscard]] constexpr auto operator+(origin_t<O>, const quantity<R, V>& q) {
+    return quantity_point<R, O, V>{q};
+}
+template <reference R, class V, const point_origin* O>
+[[nodiscard]] constexpr auto operator+(const quantity<R, V>& q, origin_t<O>) {
+    return quantity_point<R, O, V>{q};
+}
+
+// point ± quantity: a point at the same origin; point − point: a quantity
+// (the second counted from the first's origin).
+template <reference R, const point_origin* O, class V, reference R2, class V2>
+[[nodiscard]] constexpr auto operator+(const quantity_point<R, O, V>& p, const quantity<R2, V2>& q) {
+    return detail::make_point<O>(p.quantity_from_origin() + q);
+}
+template <reference R2, class V2, reference R, const point_origin* O, class V>
+[[nodiscard]] constexpr auto operator+(const quantity<R2, V2>& q, const quantity_point<R, O, V>& p) {
+    return detail::make_point<O>(q + p.quantity_from_origin());
+}
+template <reference R, const point_origin* O, class V, reference R2, class V2>
+[[nodiscard]] constexpr auto operator-(const quantity_point<R, O, V>& p, const quantity<R2, V2>& q) {
+    return detail::make_point<O>(p.quantity_from_origin() - q);
+}
+template <reference R, const point_origin* O, class V, reference R2, const point_origin* O2, class V2>
+[[nodiscard]] constexpr auto operator-(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
+    return a.quantity_from_origin() - b.quantity_from(origin_t<O>{});
+}
+template <reference R, const point_origin* O, class V, reference R2, const point_origin* O2, class V2>
+[[nodiscard]] constexpr bool operator==(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
+    return a.quantity_from_origin() == b.quantity_from(origin_t<O>{});
+}
+template <reference R, const point_origin* O, class V, reference R2, const point_origin* O2, class V2>
+[[nodiscard]] constexpr auto operator<=>(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
+    return a.quantity_from_origin() <=> b.quantity_from(origin_t<O>{});
+}
+
+//---------------------------------------------------------------------------
 // Text: a unit's symbol (kg m²/s², km/h, 1/s), a quantity as "5 km".
 //---------------------------------------------------------------------------
 enum class text_encoding : unsigned char { utf8, ascii };
@@ -19764,6 +19959,16 @@ std::ostream& operator<<(std::ostream& os, const quantity<R, V>& q) {
     return os << units::to_string(q);
 }
 
+// A point as its quantity from its origin: "20 ℃".
+template <reference R, const point_origin* O, class V>
+std::string to_string(const quantity_point<R, O, V>& p, text_encoding enc = text_encoding::utf8) {
+    return units::to_string(p.quantity_from_origin(), enc);
+}
+template <reference R, const point_origin* O, class V>
+std::ostream& operator<<(std::ostream& os, const quantity_point<R, O, V>& p) {
+    return os << units::to_string(p);
+}
+
 //---------------------------------------------------------------------------
 // The catalog: ISQ quantity specs, SI units and prefixes, international units.
 // Each name is a tag object; its definition is a static object in *_defs.
@@ -19774,6 +19979,13 @@ std::ostream& operator<<(std::ostream& os, const quantity<R, V>& q) {
     }                                                        \
     namespace isq {                                          \
     inline constexpr spec_t<&isq_defs::name> name{};         \
+    }
+#define BEMAN_INSIDE_ORIGIN(ns, name, ...)                      \
+    namespace ns##_defs {                                       \
+        inline constexpr point_origin name{#name, __VA_ARGS__}; \
+    }                                                           \
+    namespace ns {                                              \
+    inline constexpr origin_t<&ns##_defs::name> name{};         \
     }
 #define BEMAN_INSIDE_UNIT(ns, name, ...)                  \
     namespace ns##_defs {                                 \
@@ -19926,7 +20138,9 @@ namespace si {
 inline constexpr auto kilogram = kilo(gram);
 }
 BEMAN_INSIDE_UNIT(si, ampere, "A", isq::electric_current)
-BEMAN_INSIDE_UNIT(si, kelvin, "K", isq::thermodynamic_temperature)
+BEMAN_INSIDE_ORIGIN(si, absolute_zero, dim_thermodynamic_temperature)
+BEMAN_INSIDE_ORIGIN(si, ice_point, dim_thermodynamic_temperature, &si_defs::absolute_zero, rational{27315, 100})
+BEMAN_INSIDE_UNIT(si, kelvin, "K", isq::thermodynamic_temperature, si::absolute_zero)
 BEMAN_INSIDE_UNIT(si, mole, "mol", isq::amount_of_substance)
 BEMAN_INSIDE_UNIT(si, candela, "cd", isq::luminous_intensity)
 
@@ -19946,7 +20160,7 @@ BEMAN_INSIDE_UNIT(si, siemens, "S", one / si::ohm, isq::admittance)
 BEMAN_INSIDE_UNIT(si, weber, "Wb", si::volt* si::second)
 BEMAN_INSIDE_UNIT(si, tesla, "T", si::weber / square(si::metre), isq::magnetic_flux_density)
 BEMAN_INSIDE_UNIT(si, henry, "H", si::weber / si::ampere)
-BEMAN_INSIDE_UNIT(si, degree_Celsius, "℃", "`C", si::kelvin)
+BEMAN_INSIDE_UNIT(si, degree_Celsius, "℃", "`C", si::kelvin, si::ice_point)
 BEMAN_INSIDE_UNIT(si, lumen, "lm", si::candela* si::steradian, isq::luminous_flux)
 BEMAN_INSIDE_UNIT(si, lux, "lx", si::lumen / square(si::metre), isq::illuminance)
 BEMAN_INSIDE_UNIT(si, becquerel, "Bq", one / si::second, isq::activity)
@@ -19986,9 +20200,20 @@ BEMAN_INSIDE_UNIT(international,
                   "lbf",
                   mag<rational{980665, 100000}>* international::pound* si::metre / square(si::second))
 BEMAN_INSIDE_UNIT(international, knot, "kn", international::nautical_mile / si::hour)
-BEMAN_INSIDE_UNIT(international, degree_Fahrenheit, "℉", "`F", mag<rational{5, 9}>* si::kelvin)
+BEMAN_INSIDE_ORIGIN(international,
+                    zeroth_degree_Fahrenheit,
+                    dim_thermodynamic_temperature,
+                    &si_defs::absolute_zero,
+                    rational{45967, 180})
+BEMAN_INSIDE_UNIT(international,
+                  degree_Fahrenheit,
+                  "℉",
+                  "`F",
+                  mag<rational{5, 9}>* si::kelvin,
+                  international::zeroth_degree_Fahrenheit)
 
 #undef BEMAN_INSIDE_UNIT
+#undef BEMAN_INSIDE_ORIGIN
 #undef BEMAN_INSIDE_SPEC
 
 } // namespace beman::inside::units

@@ -184,3 +184,43 @@ TEST(UnitsTest, big_grid_prefixes_and_units) {
     EXPECT_EQ(to_string(e), "0.0000000000000000001602176634 J");
 }
 #endif
+
+TEST(UnitsTest, points_shift_their_grid_between_origins) {
+    const auto t = point<si::degree_Celsius>(inside<{-40, 60}>{20});
+    static_assert(std::remove_cvref_t<decltype(t)>::origin == &si_defs::ice_point);
+    EXPECT_EQ(to_string(t), "20 ℃");
+    // From absolute zero, still in ℃: 293.15, on a shifted grid.
+    const auto q = t.quantity_from(si::absolute_zero);
+    using Q      = std::remove_cvref_t<decltype(q.numerical_value())>;
+    static_assert(lower_of<Q> == rational(23315, 100) && upper_of<Q> == rational(33315, 100));
+    EXPECT_EQ(rational{q.numerical_value()}, rational(29315, 100));
+    // As a kelvin point.
+    const auto k = t.point_for(si::absolute_zero).in(si::kelvin);
+    EXPECT_EQ(to_string(k), "293.15 K");
+    EXPECT_TRUE(k == t);
+    // 68 ℉ is 20 ℃.
+    const auto f = point<international::degree_Fahrenheit>(inside<{0, 100}>{68});
+    EXPECT_TRUE(f == t);
+    EXPECT_EQ(rational{f.point_for(si::ice_point).in(si::degree_Celsius).quantity_from_origin().numerical_value()},
+              rational(20));
+    // Implicit conversion to a kelvin point type.
+    using kelvin_point    = quantity_point<si::kelvin, &si_defs::absolute_zero, inside<{{0, 400}, per<100>}>>;
+    const kelvin_point kp = t;
+    EXPECT_EQ(rational{kp.quantity_from_origin().numerical_value()}, rational(29315, 100));
+}
+
+TEST(UnitsTest, point_arithmetic) {
+    auto       t  = point<si::degree_Celsius>(inside<{-40, 60}>{20});
+    const auto t2 = t + delta<si::kelvin>(just<5>);
+    EXPECT_EQ(to_string(t2), "25 ℃");
+    const auto d = t2 - point<si::kelvin>(inside<{250, 300}>{273}); // 25 ℃ − 273 K = 25.15 K
+    EXPECT_EQ(rational{d.numerical_value()}, rational(2515, 100));
+    t += delta<si::degree_Celsius>(just<1>);
+    EXPECT_EQ(to_string(t), "21 ℃");
+    const auto z = si::absolute_zero + just<300> * si::kelvin;
+    EXPECT_TRUE(z > t);
+    // A unit without an origin counts from the implicit zero.
+    const auto x = point<si::metre>(inside<{0, 10}>{3});
+    static_assert(std::remove_cvref_t<decltype(x)>::origin == nullptr);
+    EXPECT_EQ((x - point<si::metre>(just<1>)).numerical_value(), 2);
+}
