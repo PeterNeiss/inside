@@ -102,7 +102,7 @@ reports)
 
 [`examples/`](examples/) holds 32 self-contained programs — start with
 [`basics.cpp`](examples/basics.cpp) (clamp, wrap, bounded loops); then e.g.
-[`clock.cpp`](examples/clock.cpp) (wrap with carry),
+[`clock.cpp`](examples/clock.cpp) (wrap with carry, `std::chrono`),
 [`money.cpp`](examples/money.cpp) (cents-exact currency),
 [`expected_pipeline.cpp`](examples/expected_pipeline.cpp) (errors with their cause),
 [`json_io.cpp`](examples/json_io.cpp) (exact JSON numbers),

@@ -7,6 +7,7 @@ target_sources(
             FILES
                 arithmetic.hpp
                 casts.hpp
+                chrono.hpp
                 cmath.hpp
                 core.hpp
                 cursor.hpp

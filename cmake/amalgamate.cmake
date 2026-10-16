@@ -211,12 +211,16 @@ list(INSERT roots 0 "beman/inside/inside.hpp")
 # beman/inside/random.hpp needs <random> — hosted-only, and it pulls <cmath> — so
 # it sits inside a guard the same way: a freestanding or FP-free
 # (BEMAN_INSIDE_MATH_NO_FP, resolved earlier in the header) build drops it.
+# beman/inside/chrono.hpp needs <chrono>, hosted-only: a freestanding build drops it.
 foreach(r IN LISTS roots)
     set(_guard_open "")
     set(_guard_close "")
     if(r STREQUAL "beman/inside/io.hpp")
         set(_guard_open "#ifndef BEMAN_INSIDE_NO_STRING")
         set(_guard_close "#endif // BEMAN_INSIDE_NO_STRING")
+    elseif(r STREQUAL "beman/inside/chrono.hpp")
+        set(_guard_open "#if __STDC_HOSTED__")
+        set(_guard_close "#endif // __STDC_HOSTED__")
     elseif(r STREQUAL "beman/inside/random.hpp")
         set(_guard_open
             "#if __STDC_HOSTED__ && !defined(BEMAN_INSIDE_MATH_NO_FP)"

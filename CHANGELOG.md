@@ -39,6 +39,11 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Added
 
+- `<beman/inside/chrono.hpp>`: `from_duration<B, F>(d)` and
+  `to_duration<D, F>(x)` convert between `std::chrono::duration` and insides
+  exactly (a value in seconds, a period as a notch, `period_notch<P>`);
+  `to_duration` returns a plain duration when the grid proves the count
+  exists. `examples/clock.cpp` uses them and checks against `hh_mm_ss`.
 - Open grid limits as a spelling: `inside<{0, 360, bounds::half_open}, wrap>`
   is `inside<{0, 359}, wrap>` (period 360), and `{{0, 64}, per<16>,
   bounds::half_open}` is `{{0, 63.9375}, per<16>}`. `bounds::open` moves both
