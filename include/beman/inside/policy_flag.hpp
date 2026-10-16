@@ -39,7 +39,7 @@ using policy_flag = unsigned long long;
 
 // Check model: compile-time checks always run. When success can't be proven
 // statically, compilation fails unless the matching ignore flag is set; else a
-// runtime check is inserted that throws (or reports via an error_code param).
+// runtime check is inserted that throws (or reports through an errc& parameter).
 // Binary operations OR the flags of both operands.
 inline constexpr policy_flag none{0ull};
 inline constexpr policy_flag ignore_zero{1ull << 1};
@@ -72,7 +72,7 @@ inline constexpr policy_flag wrap{1ull << 33};  // modular arithmetic
 // check). Includes `snap` so notch-incompatible assigns compile.
 namespace detail {
 inline constexpr policy_flag unsafe_marker{1ull << 36};
-// Marks a cursor (`T::cursor<Step>`): default construction starts at Lower,
+// Marks a cursor (`cursor<T, Step>`): default construction starts at Lower,
 // and `end(t)` names its past-the-end value. Results never carry it.
 inline constexpr policy_flag cursor_marker{1ull << 50};
 } // namespace detail

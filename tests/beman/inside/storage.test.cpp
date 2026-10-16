@@ -138,7 +138,7 @@ TEST(StorageTest, per_operation_policies_work_on_dyadic_bounds) {
     c.policy<snap>() = 2.5;
     ASSERT_TRUE(static_cast<double>(rational{c}) == 2.5);
 
-    // error_code mode: out-of-range reports, value unchanged.
+    // errc mode: out-of-range reports, value unchanged.
     beman::inside::errc ec{};
     R                   d{2.0};
     d.policy<checked>(ec) = 9.5;

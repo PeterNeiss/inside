@@ -114,14 +114,14 @@ TEST(CrossGridTest, cross_grid_compare_arith_asymmetric_offsets_same_notch) {
 }
 
 // Explicit regression for the fractional-operand truncation bug: adding a
-// fractional notch-offset inside to a direct-storage (integer) inside used to
+// fractional notch-offset inside to a value-storage (integer) inside used to
 // drop the fractional part (-7.75 + (-3) silently became -10, not -10.75)
 // because the dispatch chose the integer `to_value` path. The integer path is
 // now gated on integer_lattice of BOTH operands (matching multiplication).
-// regression: fractional + integer-direct keeps the fraction
+// regression: fractional + integer value-storage keeps the fraction
 TEST(CrossGridTest, regression_fractional_plus_integer_direct_keeps_the_fraction) {
     using Frac = inside<{{-8, 8}, per<4>}>; // fractional, notch-offset storage
-    using Int  = inside<{-3, 7}>;           // integer, direct storage
+    using Int  = inside<{-3, 7}>;           // integer, value storage
 
     ASSERT_TRUE((static_cast<rational>(Frac{-7.75} + Int{-3}) == rational{43, -4})); // -10.75
     ASSERT_TRUE((static_cast<rational>(Frac{0.25} + Int{2}) == rational{9u, 4}));    //   2.25

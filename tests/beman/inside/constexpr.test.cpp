@@ -184,7 +184,7 @@ TEST(ConstexprTest, constexpr_storage_min_picks_the_smallest_fitting_raw) {
     static_assert(std::is_same_v<raw_t<inside<{0, 65535}>>, std::uint16_t>);
     static_assert(std::is_same_v<raw_t<inside<{0, 65536}>>, std::uint32_t>);
 
-    // signed-direct: lower < 0 + notch 1 → signed int that fits the range,
+    // signed value-storage: lower < 0 + notch 1 → signed int that fits the range,
     // including the type's minimum.
     static_assert(std::is_same_v<raw_t<inside<{-40, 85}>>, std::int8_t>);
     static_assert(std::is_same_v<raw_t<inside<{-128, 127}>>, std::int8_t>);
@@ -216,7 +216,7 @@ TEST(ConstexprTest, constexpr_storage_kind_classification) {
 //---------------------------------------------------------------------------
 // inside arithmetic
 //---------------------------------------------------------------------------
-// constexpr: inside +/-/* on signed-direct grids
+// constexpr: inside +/-/* on signed value-storage grids
 TEST(ConstexprTest, constexpr_inside_plus_on_signed_direct_grids) {
     using s = inside<{-100, 100}>;
     constexpr s a{30}, b{20};

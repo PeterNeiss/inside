@@ -120,19 +120,16 @@ TEST(ConsistencyTest, inside_source_wrap_rounds_first) {
     EXPECT_EQ(rational{a}, q(2)); // 12.5 → 13 ≡ 2
 }
 
-// unchecked_cast keeps the target's storage layout (representation flags).
-TEST(ConsistencyTest, unchecked_cast_respects_storage_flags) {
+// unchecked_cast keeps the target's storage layout.
+TEST(ConsistencyTest, unchecked_cast_keeps_the_storage_layout) {
     using D = inside<{5, 100}>;
     EXPECT_EQ(rational{unchecked_cast<D>(7)}, q(7));
-    using W = inside<{5, 100}>;
-    EXPECT_EQ(rational{unchecked_cast<W>(7)}, q(7));
     using F = inside<{{0, 4}, per<2>}>;
     EXPECT_EQ(rational{unchecked_cast<F>(1.5)}, rational{1.5});
 }
 
-// Representation flags carried into a result are dropped when the result grid
-// cannot hold them, instead of tripping inside's static_asserts.
-TEST(ConsistencyTest, result_drops_invalid_direct_and_indexed) {
+// Products and quotients deduce their own storage from the result grid.
+TEST(ConsistencyTest, results_deduce_their_storage) {
     using D  = inside<{0, 10}>;
     using H  = inside<{{0, 1}, per<2>}>;
     using IX = inside<{1, 10}>;

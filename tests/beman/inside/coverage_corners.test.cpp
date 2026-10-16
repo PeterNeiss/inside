@@ -25,7 +25,7 @@ using namespace beman::inside;
 using namespace beman::inside::detail;
 
 //---------------------------------------------------------------------------
-// casts.hpp:66 — checked_cast success return (was static_assert only)
+// checked_cast (casts.hpp) — the success return (was static_assert only)
 //---------------------------------------------------------------------------
 // checked_cast returns the value on the in-range happy path (runtime)
 TEST(CoverageCornersTest, checked_cast_returns_the_value_on_the_in_range_happy_path_runtime) {
@@ -38,10 +38,10 @@ TEST(CoverageCornersTest, checked_cast_returns_the_value_on_the_in_range_happy_p
 }
 
 //---------------------------------------------------------------------------
-// predicates.hpp:39 — conversion_rounds returns false out of range
+// conversion_rounds (predicates.hpp) — false out of range
 //---------------------------------------------------------------------------
 // conversion_rounds is false for out-of-range values (runtime)
-TEST(CoverageCornersTest, will_conversion_trunc_is_false_for_out_of_range_values_runtime) {
+TEST(CoverageCornersTest, conversion_rounds_is_false_for_out_of_range_values_runtime) {
     using coarse = inside<{{0, 10}, 2}>;
     // Out of range is overflow, not truncation: the predicate is false.
     ASSERT_FALSE(conversion_rounds<coarse>(11));
@@ -88,8 +88,8 @@ TEST(CoverageCornersTest, dbl_cbrt_of_negatives_and_atan2_on_the_axes) {
 #endif // !BEMAN_INSIDE_MATH_NO_FP
 
 //---------------------------------------------------------------------------
-// lift.hpp:116 — binary expected-lift short-circuits on a RIGHT-side error
-// (the left-error short-circuit at :114 was already covered).
+// lift (lift.hpp) — the binary expected-lift short-circuits on a RIGHT-side
+// error (the left-error short-circuit was already covered).
 //---------------------------------------------------------------------------
 // expected-lift propagates a right-hand-side error
 TEST(CoverageCornersTest, expected_lift_propagates_a_right_hand_side_error) {
@@ -103,9 +103,9 @@ TEST(CoverageCornersTest, expected_lift_propagates_a_right_hand_side_error) {
 }
 
 //---------------------------------------------------------------------------
-// rational.hpp:846-866 — operator<=> cross-multiply path at runtime
-// (the existing ordering tests are static_assert; the runtime path, and the
-//  lhs_neg branch at :863-864, were uncovered.)
+// rational's operator<=> (rational.hpp) — the cross-multiply path at runtime
+// (the existing ordering tests are static_assert; the runtime path, and its
+//  negative-lhs branch, were uncovered.)
 //---------------------------------------------------------------------------
 // rational spaceship cross-multiply, positive and negative
 TEST(CoverageCornersTest, rational_spaceship_cross_multiply_positive_and_negative) {
@@ -122,9 +122,9 @@ TEST(CoverageCornersTest, rational_spaceship_cross_multiply_positive_and_negativ
 }
 
 //---------------------------------------------------------------------------
-// rational.hpp:305-306 — gcd()/lcm cofactor multiply overflows umax -> overflow
-// (distinct from the imax-cap overflow at :307-308 exercised elsewhere: here
-//  the product exceeds 2^64, not merely imax_max.)
+// gcd(rational, rational) (rational.hpp) — the lcm cofactor multiply overflows
+// umax -> overflow (distinct from the imax-cap overflow exercised elsewhere:
+//  here the product exceeds 2^64, not merely imax_max.)
 //---------------------------------------------------------------------------
 // rational gcd: lcm that overflows umax returns overflow
 TEST(CoverageCornersTest, rational_gcd_lcm_that_overflows_umax_returns_overflow) {
@@ -137,10 +137,10 @@ TEST(CoverageCornersTest, rational_gcd_lcm_that_overflows_umax_returns_overflow)
 }
 
 //---------------------------------------------------------------------------
-// rational.hpp:610-613 — checked add, numerator SUM overflows after the
-// (non-overflowing) cross-multiply on UNEQUAL denominators. The equal-
-// denominator overflow (:547-550) and the cross-multiply overflow (:589-595)
-// were already covered; this is the third, post-cross-multiply overflow.
+// rational's checked add (rational.hpp) — the numerator SUM overflows after
+// the (non-overflowing) cross-multiply on UNEQUAL denominators. The equal-
+// denominator overflow and the cross-multiply overflow were already
+// covered; this is the third, post-cross-multiply overflow.
 //---------------------------------------------------------------------------
 // rational add: numerator sum overflow on unequal denominators
 TEST(CoverageCornersTest, rational_add_numerator_sum_overflow_on_unequal_denominators) {
@@ -155,7 +155,7 @@ TEST(CoverageCornersTest, rational_add_numerator_sum_overflow_on_unequal_denomin
 }
 
 //---------------------------------------------------------------------------
-// format.hpp:56-58 — decimal fraction needs leading-zero padding.
+// to_string(rational) (io.hpp) — a decimal fraction needs leading-zero padding.
 //---------------------------------------------------------------------------
 // rational to_string zero-pads short decimal fractions
 TEST(CoverageCornersTest, rational_to_string_zero_pads_short_decimal_fractions) {
@@ -199,7 +199,7 @@ TEST(CoverageCornersTest, rational_from_subnormal_and_very_small_doubles) {
 }
 
 //---------------------------------------------------------------------------
-// inside.hpp:733-734 — operator/=(integral)   inside.hpp:744-745 — operator%=
+// inside::operator/= and operator%= (core.hpp) with an inside rhs
 //---------------------------------------------------------------------------
 // compound /= and %= with a snap inside rhs (runtime)
 TEST(CoverageCornersTest, compound_and_with_a_snap_inside_rhs_runtime) {
@@ -238,7 +238,8 @@ TEST(CoverageCornersTest, checked_plus_insidable_overflow_reports_throws) {
 }
 
 //---------------------------------------------------------------------------
-// assignment.hpp:500-505 — error_action on an out-of-interval *fractional* rhs.
+// assignment<L, double> (assignment.hpp) — an error_action on an
+// out-of-interval *fractional* rhs.
 // The existing on_error test assigns an integer (a different assign overload);
 // this drives the fractional (double) overload.
 //---------------------------------------------------------------------------
@@ -270,8 +271,8 @@ TEST(CoverageCornersTest, on_overflow_compound_subtract_that_does_not_overflow) 
 }
 
 //---------------------------------------------------------------------------
-// inside.hpp:161-163 — store_real out-of-range with a reporting policy
-// (the clamp/wrap arms are covered elsewhere; the range_fail arm was not).
+// a double store out of range under a reporting policy (the clamp/wrap arms
+// are covered elsewhere; the range_fail arm was not).
 //---------------------------------------------------------------------------
 // double store out of range: checked policy
 TEST(CoverageCornersTest, double_store_out_of_range_checked_policy) {
@@ -297,11 +298,9 @@ TEST(CoverageCornersTest, inside_to_dyadic_conversion_lands_on_the_grid) {
 }
 
 //---------------------------------------------------------------------------
-// assignment.hpp:475-476 — off-notch fractional store on a policy with no
-// rounding-mode flag and round_check()==false. `snap` would route
-// through the has_round_flag arm (it is counted as a round flag); a plain
-// `clamp` policy (not checked, not snap) takes the :476 else-branch
-// and truncates an in-range off-notch value silently.
+// an off-notch fractional store (assignment.hpp) on a policy with `clamp`:
+// clamp handles only the range, so without `snap` the value is a rounding
+// error; `clamp | snap` truncates an in-range off-notch value.
 //---------------------------------------------------------------------------
 // clamp | snap truncates an in-range off-notch fractional assignment; clamp
 // alone handles only the range, so the off-notch value is a rounding error.
@@ -319,9 +318,8 @@ TEST(CoverageCornersTest, clamp_policy_truncates_an_in_range_off_notch_fractiona
 }
 
 //---------------------------------------------------------------------------
-// generic.hpp:355-361 — raw_from_offset(imax) overload, reached from the
-// integer fast path of math::fmod (cmath.hpp:1012, fmod_int_fast) with a
-// signed offset. Needs non-rational integer grids and a divisor
+// raw_from_offset (detail/storage.hpp) with a signed offset, reached from the
+// integer fast path of math::fmod (fmod_int_fast, cmath.hpp). Needs non-rational integer grids and a divisor
 // that excludes zero. math::fmod was otherwise only static_assert-tested.
 //---------------------------------------------------------------------------
 // math::fmod integer fast path (raw_from_offset imax)
@@ -336,8 +334,8 @@ TEST(CoverageCornersTest, math_fmod_integer_fast_path_raw_from_offset_imax) {
 }
 
 //---------------------------------------------------------------------------
-// assignment.hpp:631-634 + generic.hpp:355-361 — inside -> inside store on the
-// rational (non-integer-mapping) path where the target offset is NEGATIVE, so
+// an inside -> inside store (assignment.hpp) on the rational
+// (non-integer-mapping) path where the target offset is NEGATIVE, so
 // raw_from_offset() is reached through the negated branch.
 //---------------------------------------------------------------------------
 // cross-grid conversion of a negative off-notch value

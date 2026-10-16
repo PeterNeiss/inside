@@ -561,7 +561,7 @@ void prop_compound_div_mod_zero(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_compound_inside_overshoot(fuzz_state& s, long iters) {
-    // Targets inside.hpp:228-9 — the fast-path += else branch where the result
+    // Targets inside::operator+= (core.hpp): the fast path's branch where the result
     // overshoots and the policy lacks clamp/wrap. The catalogue's
     // grids already use the default `checked` policy, so the report path throws
     // overflow. Pick start values where adding `delta` lands outside the
@@ -593,9 +593,9 @@ void prop_compound_inside_overshoot(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_non_notch_assign(fuzz_state& s, long iters) {
-    // Targets assignment.hpp:289 (round_nearest), 291 (snap silent floor),
-    // 296 (checked rounding_error report → throws), and 299 (silent floor for
-    // unchecked policy). Only meaningful for fixed-point grids (notch != 1).
+    // Targets the off-notch store in assignment.hpp: round_nearest, snap's
+    // silent floor, the checked rounding_error report (throws), and the silent
+    // floor under unsafe. Only meaningful for fixed-point grids (notch != 1).
     if constexpr (!integer_lattice<B> && !rational_storage<B>) {
         s.current_prop = "non_notch_assign";
         // The catalogue's B already uses the default `checked` policy, so a non-
@@ -706,7 +706,7 @@ void prop_subnormal_construct(fuzz_state& s, long iters) {
 }
 
 void prop_interval_eq(fuzz_state& s) {
-    // Targets interval.hpp:149 — equivalent return of operator<=>.
+    // Targets interval's operator<=> (interval.hpp): the equivalent return.
     s.current_prop = "interval_eq";
     s.iter         = 0;
     std::uniform_int_distribution<imax> dist(-1000, 1000);
@@ -755,7 +755,7 @@ void prop_expected_throws(fuzz_state& s) {
 
 template <insidable B>
 void prop_compound_add_same_inside(fuzz_state& s, long iters) {
-    // Targets inside.hpp:243 — the fallback path of operator+=(insidable R)
+    // Targets the fallback path of inside::operator+=(insidable R) (core.hpp)
     // when the fast path's encoding constraints don't hold (typically fractional
     // grids whose Lower != 0 on at least one side, or notches that mismatch).
     // For grids whose value ranges allow it, b += b should still produce 2*b
@@ -782,8 +782,8 @@ void prop_compound_add_same_inside(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_raw_rational_arith(fuzz_state& s, long iters) {
-    // Targets addition.hpp:48-63 (the rational_storage<result> branches) and
-    // multiplication.hpp:44-63 (same for mul). For raw-rational grids (notch=0)
+    // Targets the rational_storage<result> branches of addition<L, R>::add
+    // (addition.hpp) and multiplication<L, R>::mul (multiplication.hpp). For raw-rational grids (notch=0)
     // arithmetic goes through the rational-add/mul paths directly. Most random
     // small-integer values won't overflow the rational machinery, so we mostly
     // exercise the success branches; occasional out-of-range results land in
