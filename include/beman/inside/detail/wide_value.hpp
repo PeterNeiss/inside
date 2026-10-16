@@ -314,6 +314,57 @@ constexpr exact_frac<36> exact_of_long_double(T v) noexcept {
     return reduced(exact_frac<36>{num, I{1} << shift});
 }
 
+// The nearest T to an exact value (ties to even), rounded once from the
+// exact quotient: its top digits + 2 bits and a sticky bit, then scaled by
+// exact powers of two. For a T wider than double (long double), whose
+// digits a double would drop. Past T's range ±infinity, below half its least
+// subnormal ±0.
+template <std::floating_point T, std::size_t K>
+constexpr T nearest_float(const exact_frac<K>& f) noexcept {
+    using U           = wide_uint<2 * K + 2>; // n·2^s with s up to digits + 2 + the denominator's bits
+    using lim         = std::numeric_limits<T>;
+    constexpr int p   = lim::digits;
+    const bool    neg = f.Num.negative() != f.Den.negative();
+    const U       n{static_cast<wide_uint<K>>(f.Num.negative() ? -f.Num : f.Num)};
+    const U       d{static_cast<wide_uint<K>>(f.Den.negative() ? -f.Den : f.Den)};
+    if (n.is_zero())
+        return neg ? -T{0} : T{0};
+    // q = ⌊n·2^s / d⌋ has p + 2 or p + 3 bits: |v| = (q + sticky)·2^-s.
+    const int  s  = p + 2 - (bit_width_of(n) - bit_width_of(d));
+    const U    nn = s >= 0 ? n << s : n, dd = s >= 0 ? d : d << -s;
+    const U    q      = nn / dd;
+    const bool sticky = !(nn - q * dd).is_zero();
+    const int  bw     = bit_width_of(q);
+    const int  e      = bw - 1 - s; // |v| in [2^e, 2^(e+1))
+    if (e > lim::max_exponent - 1)
+        return neg ? -lim::infinity() : lim::infinity();
+    // Below the normal range a subnormal keeps fewer digits.
+    const int keep = e >= lim::min_exponent - 1 ? p : p - (lim::min_exponent - 1 - e);
+    if (keep < 0)
+        return neg ? -T{0} : T{0};
+    const int drop = bw - keep; // ≥ 2
+    U         m    = q >> drop;
+    const U   low = q - (m << drop), half = U{1} << (drop - 1);
+    if (half < low || (low == half && (sticky || static_cast<umax>(m) % 2 != 0)))
+        m += U{1};
+    if (bit_width_of(m) - 1 - s + drop > lim::max_exponent - 1) // rounded up past the largest finite
+        return neg ? -lim::infinity() : lim::infinity();
+    // m ≤ 2^p is exact in T, limb by limb; the scaling by 2^(drop − s) in
+    // steps of 2^±64 stays exact (every step lies between m and the result).
+    T x = 0;
+    for (int i = U::bits / 64 - 1; i >= 0; --i)
+        x = x * static_cast<T>(0x1p64) + static_cast<T>(m.Word[i]);
+    for (int k = drop - s; k != 0;) {
+        const int step = k > 64 ? 64 : k < -64 ? -64 : k;
+        T         t    = 1;
+        for (int j = 0; j < (step < 0 ? -step : step); ++j)
+            t *= step < 0 ? static_cast<T>(0.5) : static_cast<T>(2);
+        x *= t;
+        k -= step;
+    }
+    return neg ? -x : x;
+}
+
 // Truncation toward zero, as an integer.
 template <std::size_t K>
 constexpr wide_sint<K> trunc(const exact_frac<K>& f) noexcept {

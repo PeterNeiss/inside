@@ -323,9 +323,14 @@ struct inside {
         }
     }
 
+    // A floating point wider than double (long double) gets the value rounded
+    // once to its own digits, not through a double.
     template <std::floating_point T>
     [[nodiscard]] constexpr std::expected<T, errc> to() const {
-        return static_cast<T>(detail::as_double(*this));
+        if constexpr (sizeof(T) > sizeof(double))
+            return detail::nearest_float<T>(detail::exact_of(*this));
+        else
+            return static_cast<T>(detail::as_double(*this));
     }
 
     // as<T>() — non-expected sibling of to<T>(): returns T directly, letting any

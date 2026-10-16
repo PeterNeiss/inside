@@ -141,3 +141,21 @@ TEST(BugHuntRound8, on_error_does_not_preempt_clamp_or_wrap) {
     EXPECT_EQ(code, errc::overflow);
     EXPECT_EQ(u, 7);
 }
+
+// to<long double>() went through a double: 1 + 2^-60 came back as 1. It is
+// now the long double nearest the exact value, rounded once.
+TEST(BugHuntRound8, to_long_double_is_rounded_once) {
+    if constexpr (wide_long_double) {
+        using F = inside<{{-2, 2}, per<(I64{1} << 62)>}>;
+        using T = inside<{{-1, 1}, per<3>}>;
+        static_assert(F{rational{1} + rational{1, I64{1} << 60}}.to<long double>().value() == 1.0L + 0x1p-60L);
+        static_assert(T{rational{1, 3}}.to<long double>().value() == 1.0L / 3);
+        const F f{rational{-1} - rational{1, I64{1} << 62}};
+        EXPECT_EQ(f.to<long double>().value(), -1.0L - 0x1p-62L);
+        using Q = inside<{{-1000000, 1000000}, per<1000000007>}>;
+        const Q q{rational{1, 1000000007}};
+        EXPECT_EQ(q.to<long double>().value(), 1.0L / 1000000007);
+        using S = inside<{{-9223372036854775807, 9223372036854775807}, 1}>;
+        EXPECT_EQ(S{launder(I64{9223372036854775807})}.to<long double>().value(), 9223372036854775807.0L);
+    }
+}

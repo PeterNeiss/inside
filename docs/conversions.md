@@ -102,6 +102,10 @@ hp.denominator();  //  1
 For an *approximate* scalar, `to<double>()` / `as<double>()` (when the grid
 carries a rounding policy) and the rounded `to<intN>()` are the right tools;
 `numerator()`/`denominator()` are the only **exact** read-out.
+`to<long double>()` rounds the exact value once to the long double's own
+digits (nearest, ties to even), never through a `double`: a 2⁻⁶² grid keeps
+its low bits on x87 and IEEE quad. Taking a `long double` in — stores,
+comparisons, `includes`, `grid::representable` — is exact as well.
 
 ## Free-function casts
 

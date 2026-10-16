@@ -84,7 +84,9 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 - A `long double` with bits past the double's is exact everywhere, not only
   in stores: `rational{long double}`, comparisons of a `rational` or an
   inside with it, `includes(interval, …)` and `grid::representable(…)` read
-  it as a double (`rational{0} == 1e-30L` was true).
+  it as a double (`rational{0} == 1e-30L` was true). `to<long double>()`
+  rounds the exact value once to the long double's digits instead of going
+  through a double (1 + 2^-60 came back as 1).
 - `rational` compares with a double of magnitude 2^64 or more by its sign
   (it threw).
 - An `on_error` action no longer overrides the type's `clamp` or `wrap`: the
