@@ -21,8 +21,8 @@ using usd   = inside<{{0, 1'000'000'000'000'000}, per<100>}>; // dollars to the 
 
 TEST(IntoTest, mul_into_rounds_the_exact_product_once) {
     // eth × price has a 10^-20 notch: past the 64-bit grid numbers under C++23.
-    const eth   balance = *from_chars<eth>("123456789.123456789123456789");
-    const price p       = *from_chars<price>("3141.59");
+    const eth   balance = *parse<eth>("123456789.123456789123456789");
+    const price p       = *parse<price>("3141.59");
     using usd_nearest   = inside<grid_of<usd>, round_nearest>;
     EXPECT_EQ(to_string(mul_into<usd_nearest>(balance, p)), "387850614142.36");
     EXPECT_EQ(to_string(mul_into<usd, round_floor>(balance, p)), "387850614142.36");
@@ -64,6 +64,6 @@ TEST(IntoTest, div_into) {
     EXPECT_EQ(div_into<ten>(any{7}, any{2}).error(), errc::rounding_error);
     // A quotient with no 64-bit fraction, straight onto a grid.
     using fine  = inside<{{0, 2}, per<(umax{1} << 62)>}, round_nearest>;
-    const eth a = *from_chars<eth>("1.000000000000000001"), b = *from_chars<eth>("0.999999999999999999");
+    const eth a = *parse<eth>("1.000000000000000001"), b = *parse<eth>("0.999999999999999999");
     EXPECT_EQ(div_into<fine>(a, b).value(), fine::from_raw((umax{1} << 62) + 9));
 }

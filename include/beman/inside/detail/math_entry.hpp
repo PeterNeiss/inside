@@ -49,15 +49,15 @@ inline constexpr bool fp_exact_input = [] {
     if constexpr (wide_valued<In> || !notched<In>)
         return false;
     else {
-        const grid_wide q = wide_denominator(notch_of<In>), p = wide_numerator(notch_of<In>);
-        const bool      dyadic = (grid_wide{1} << (grid_bits(q) - 1)) == q;
+        const grid_int q = wide_denominator(notch_of<In>), p = wide_numerator(notch_of<In>);
+        const bool     dyadic = (grid_int{1} << (grid_bits(q) - 1)) == q;
         return dyadic && grid_magnitude_bits<In> + grid_bits(q) + grid_bits(p) <= 53;
     }
 }();
 
 // Outputs the double tier decides nearly always (up to 2^-14 of results go
 // further): below them no other fast tier runs.
-inline constexpr int kFpOnlyBits = 36;
+inline constexpr int fp_only_bits = 36;
 
 // Bits of Out's value indices: every |index| < 2^index_bits.
 template <insidable Out>
@@ -65,8 +65,8 @@ inline constexpr int index_bits = [] {
     if constexpr (!notched<Out> || wide_valued<Out>)
         return 1024;
     else {
-        const grid_wide lo = slot_base<Out>, hi = slot_base<Out> + grid_of<Out>.slot_count();
-        const grid_wide m = (-lo < hi) ? hi : -lo;
+        const grid_int lo = slot_base<Out>, hi = slot_base<Out> + grid_of<Out>.slot_count();
+        const grid_int m = (-lo < hi) ? hi : -lo;
         return bit_width_of(m);
     }
 }();
@@ -97,8 +97,8 @@ template <insidable Out>
 inline constexpr double notch_q = grid_double(wide_denominator(notch_of<Out>));
 template <insidable Out>
 inline constexpr bool dyadic_notch = [] {
-    const grid_wide p = wide_numerator(notch_of<Out>), q = wide_denominator(notch_of<Out>);
-    return (grid_wide{1} << (grid_bits(p) - 1)) == p && (grid_wide{1} << (grid_bits(q) - 1)) == q;
+    const grid_int p = wide_numerator(notch_of<Out>), q = wide_denominator(notch_of<Out>);
+    return (grid_int{1} << (grid_bits(p) - 1)) == p && (grid_int{1} << (grid_bits(q) - 1)) == q;
 }();
 
 // Value indices of In below 2^53: exact as doubles.
@@ -180,7 +180,7 @@ inline bool fp_decide(double v, double bound, Out& out) noexcept {
     if (!(j >= lo && j <= hi)) {
         // Decided past an end: a clamp Out takes the end here; any other
         // policy reports or wraps on the integer path.
-        if constexpr (has_flag(policy_of<Out>, clamp)) {
+        if constexpr (has_flag(flags_of<Out>, clamp)) {
             if (j < lo) {
                 store_slot(0, out);
                 return true;
@@ -214,10 +214,10 @@ namespace fpk = ::beman::inside::math::detail::fp;
 //---------------------------------------------------------------------------
 namespace ddk = ::beman::inside::math::detail::dd;
 
-inline constexpr double kDDRel = 0x1p-88, kDDAbs = 0x1p-92;
+inline constexpr double dd_rel = 0x1p-88, dd_abs = 0x1p-92;
 
 constexpr double dd_eval_bound(double x, double v) noexcept {
-    return kDDRel * fabs_d(v) + kDDAbs * (fabs_d(x) > 1 ? fabs_d(x) : 1.0);
+    return dd_rel * fabs_d(v) + dd_abs * (fabs_d(x) > 1 ? fabs_d(x) : 1.0);
 }
 
 inline constexpr double two53 = 0x1p53;
@@ -226,13 +226,13 @@ inline constexpr double two53 = 0x1p53;
 // are doubles exactly.
 template <insidable Out>
 inline constexpr bool dd_output = [] {
-    if constexpr (!notched<Out> || wide_valued<Out> || out_bits<Out> + mag_bits<Out> <= kFpOnlyBits)
+    if constexpr (!notched<Out> || wide_valued<Out> || out_bits<Out> + mag_bits<Out> <= fp_only_bits)
         return false;
     else {
         if (!(notch_p<Out> < two53 && notch_q<Out> < two53))
             return false;
-        const grid_wide lim = grid_wide{1} << 62;
-        const grid_wide lo = slot_base<Out>, hi = slot_base<Out> + grid_of<Out>.slot_count();
+        const grid_int lim = grid_int{1} << 62;
+        const grid_int lo = slot_base<Out>, hi = slot_base<Out> + grid_of<Out>.slot_count();
         return !(lo < -lim) && !(lim < hi);
     }
 }();
@@ -310,7 +310,7 @@ inline bool dd_decide(ddk::dd v, double bound, Out& out) noexcept {
             j += 1;
     }
     if (j < first || j > last) {
-        if constexpr (has_flag(policy_of<Out>, clamp)) { // as fp_decide
+        if constexpr (has_flag(flags_of<Out>, clamp)) { // as fp_decide
             store_slot(j < first ? umax{0} : static_cast<umax>(last) - static_cast<umax>(first), out);
             return true;
         }
@@ -339,12 +339,12 @@ consteval int fp_limit(double e) {
 // moves at most 2^-9 of a notch.
 template <insidable Out, typename K>
 inline constexpr int fp_target =
-    fp_bits<Out, K::Mag> + 10 < fpk::kFullBits ? fp_bits<Out, K::Mag> + 10 : fpk::kFullBits;
+    fp_bits<Out, K::Mag> + 10 < fpk::full_bits ? fp_bits<Out, K::Mag> + 10 : fpk::full_bits;
 
 // One kernel per function: its value and proved bound at a target T, the
 // bits of its values (Mag, 1024 for unbounded), its limit, and its slope
 // |f′(x)| (for the input's rounding).
-inline constexpr int kUnbounded = 1024;
+inline constexpr int unbounded = 1024;
 struct fp_plain {
     static double dd_eval(double x, double v) { return dd_eval_bound(x, v); }
 };
@@ -363,16 +363,16 @@ struct fp_plain {
             static double slope([[maybe_unused]] double x, [[maybe_unused]] double v) { return slope_expr; } \
         };
     #define BEMAN_INSIDE_AX_KERNEL(...) BEMAN_INSIDE_AX_KERNEL_ON(fp_plain, __VA_ARGS__)
-using fp_full_trig = fpk::trig_k<fpk::kFullBits>;
-using fp_full_exp  = fpk::exp_k<fpk::kFullBits>;
-using fp_full_log  = fpk::log_k<fpk::kFullBits>;
-using fp_full_atan = fpk::atan_k<fpk::kFullBits>;
+using fp_full_trig = fpk::trig_k<fpk::full_bits>;
+using fp_full_exp  = fpk::exp_k<fpk::full_bits>;
+using fp_full_log  = fpk::log_k<fpk::full_bits>;
+using fp_full_atan = fpk::atan_k<fpk::full_bits>;
 BEMAN_INSIDE_AX_KERNEL(sin, trig_k, sin, 1, fp_limit(fp_full_trig::Rel), 1.0)
 BEMAN_INSIDE_AX_KERNEL(cos, trig_k, cos, 1, fp_limit(fp_full_trig::Rel), 1.0)
-BEMAN_INSIDE_AX_KERNEL(exp, exp_k, exp, kUnbounded, fp_limit(fp_full_exp::Rel), fabs_d(v))
-BEMAN_INSIDE_AX_KERNEL(exp2, exp_k, exp2, kUnbounded, fp_limit(fp_full_exp::Rel2), fabs_d(v))
-BEMAN_INSIDE_AX_KERNEL(sinh, exp_k, sinh, kUnbounded, fp_limit(fp_full_exp::SinhRel), fabs_d(v) + 1)
-BEMAN_INSIDE_AX_KERNEL(cosh, exp_k, cosh, kUnbounded, fp_limit(fp_full_exp::CoshRel), fabs_d(v) + 1)
+BEMAN_INSIDE_AX_KERNEL(exp, exp_k, exp, unbounded, fp_limit(fp_full_exp::Rel), fabs_d(v))
+BEMAN_INSIDE_AX_KERNEL(exp2, exp_k, exp2, unbounded, fp_limit(fp_full_exp::Rel2), fabs_d(v))
+BEMAN_INSIDE_AX_KERNEL(sinh, exp_k, sinh, unbounded, fp_limit(fp_full_exp::SinhRel), fabs_d(v) + 1)
+BEMAN_INSIDE_AX_KERNEL(cosh, exp_k, cosh, unbounded, fp_limit(fp_full_exp::CoshRel), fabs_d(v) + 1)
 BEMAN_INSIDE_AX_KERNEL(tanh, exp_k, tanh, 1, fp_limit(fp_full_exp::TanhRel + fp_full_exp::TanhAbs), 1.0)
 BEMAN_INSIDE_AX_KERNEL(atan, atan_k, atan, 1, fp_limit(fp_full_atan::Rel + fp_full_atan::Abs), 1.0)
 BEMAN_INSIDE_AX_KERNEL(asin,
@@ -387,31 +387,31 @@ BEMAN_INSIDE_AX_KERNEL(acos,
                        2,
                        fp_limit(4 * fp_full_atan::AcosRel + fp_full_atan::AcosAbs),
                        1.0 / fpk::fp_sqrt((1.0 - x) * (1.0 + x)))
-BEMAN_INSIDE_AX_KERNEL(log, log_k, log, kUnbounded, fp_limit(fp_full_log::Rel), 1.0 / fabs_d(x))
-BEMAN_INSIDE_AX_KERNEL(log2, log_k, log2, kUnbounded, fp_limit(fp_full_log::Rel2), 1.5 / fabs_d(x))
-BEMAN_INSIDE_AX_KERNEL(log10, log_k, log10, kUnbounded, fp_limit(fp_full_log::Rel10), 1.0 / fabs_d(x))
-BEMAN_INSIDE_AX_KERNEL(asinh, log_k, asinh, kUnbounded, fp_limit(fp_full_log::AsinhRel), 1.0)
+BEMAN_INSIDE_AX_KERNEL(log, log_k, log, unbounded, fp_limit(fp_full_log::Rel), 1.0 / fabs_d(x))
+BEMAN_INSIDE_AX_KERNEL(log2, log_k, log2, unbounded, fp_limit(fp_full_log::Rel2), 1.5 / fabs_d(x))
+BEMAN_INSIDE_AX_KERNEL(log10, log_k, log10, unbounded, fp_limit(fp_full_log::Rel10), 1.0 / fabs_d(x))
+BEMAN_INSIDE_AX_KERNEL(asinh, log_k, asinh, unbounded, fp_limit(fp_full_log::AsinhRel), 1.0)
 BEMAN_INSIDE_AX_KERNEL(
-    atanh, log_k, atanh, kUnbounded, fp_limit(fp_full_log::Rel + fp_full_log::AtanhAbs), 1.0 / ((1.0 - x) * (1.0 + x)))
+    atanh, log_k, atanh, unbounded, fp_limit(fp_full_log::Rel + fp_full_log::AtanhAbs), 1.0 / ((1.0 - x) * (1.0 + x)))
 // cbrt = e^(ln|x|/3): the log's error grows with |ln|x||, up to 2^4.
 BEMAN_INSIDE_AX_KERNEL(cbrt,
                        pow_k,
                        cbrt,
-                       kUnbounded,
-                       fp_limit(fp_full_exp::Rel + 16 * fpk::pow_k<fpk::kFullBits>::YRel),
+                       unbounded,
+                       fp_limit(fp_full_exp::Rel + 16 * fpk::pow_k<fpk::full_bits>::YRel),
                        x == 0 ? 0.0 : fabs_d(v / x))
 
 // acosh: the dd kernel's bound grows near 1 as 2^-92/√(1 − 1/x²).
 struct fp_acosh_eval {
     static double dd_eval(double x, double v) {
-        return kDDAbs / fpk::fp_sqrt(1.0 - 1.0 / (x * x)) + dd_eval_bound(x, v);
+        return dd_abs / fpk::fp_sqrt(1.0 - 1.0 / (x * x)) + dd_eval_bound(x, v);
     }
 };
 BEMAN_INSIDE_AX_KERNEL_ON(fp_acosh_eval,
                           acosh,
                           log_k,
                           acosh,
-                          kUnbounded,
+                          unbounded,
                           fp_limit(fp_full_log::AcoshRel),
                           1.0 / fpk::fp_sqrt((x - 1.0) * (x + 1.0)))
     #undef BEMAN_INSIDE_AX_KERNEL_ON
@@ -419,12 +419,12 @@ BEMAN_INSIDE_AX_KERNEL_ON(fp_acosh_eval,
 
 // sqrt: correctly rounded.
 struct fp_sqrt : fp_plain {
-    static constexpr int Mag   = kUnbounded;
-    static constexpr int Limit = fp_limit(fpk::kSqrtRel);
+    static constexpr int Mag   = unbounded;
+    static constexpr int Limit = fp_limit(fpk::sqrt_rel);
     template <int T>
     static double value(double x, double& bound) {
         const double v = fpk::fp_sqrt(x);
-        bound          = fpk::kSqrtRel * v;
+        bound          = fpk::sqrt_rel * v;
         return v;
     }
     template <typename D>
@@ -437,7 +437,7 @@ struct fp_sqrt : fp_plain {
 // The kernels of the two-input functions and of tan, pow and Base^x: their
 // bits and limits.
 struct fp_tan {
-    static constexpr int Mag   = kUnbounded;
+    static constexpr int Mag   = unbounded;
     static constexpr int Limit = fp_limit(fp_full_trig::TanRel);
 };
 struct fp_atan2 {
@@ -445,16 +445,16 @@ struct fp_atan2 {
     static constexpr int Limit = fp_limit(4 * fp_full_atan::Atan2Rel + fp_full_atan::Atan2Abs);
 };
 struct fp_hypot {
-    static constexpr int Mag   = kUnbounded;
-    static constexpr int Limit = fp_limit(fpk::kHypotRel);
+    static constexpr int Mag   = unbounded;
+    static constexpr int Limit = fp_limit(fpk::hypot_rel);
 };
 // pow's bound grows with |e·ln b|: the limit holds up to 2^4.
 struct fp_pow {
-    static constexpr int Mag   = kUnbounded;
-    static constexpr int Limit = fp_limit(fp_full_exp::Rel + 16 * fpk::pow_k<fpk::kFullBits>::YRel);
+    static constexpr int Mag   = unbounded;
+    static constexpr int Limit = fp_limit(fp_full_exp::Rel + 16 * fpk::pow_k<fpk::full_bits>::YRel);
 };
 struct fp_pow_base {
-    static constexpr int Mag   = kUnbounded;
+    static constexpr int Mag   = unbounded;
     static constexpr int Limit = fp_limit(fp_full_exp::RelLo);
 };
 
@@ -484,7 +484,7 @@ template <insidable Out, insidable InX, insidable InY>
 inline bool fp_attempt_hypot(const InX& xi, const InY& yi, Out& out) {
     const double x = input_double(xi), y = input_double(yi);
     const double v     = fpk::fp_hypot(x, y);
-    const double bound = fpk::kHypotRel * v + fpk::kTiny + input_rel<InX> * fabs_d(x) + input_rel<InY> * fabs_d(y);
+    const double bound = fpk::hypot_rel * v + fpk::tiny + input_rel<InX> * fabs_d(x) + input_rel<InY> * fabs_d(y);
     return fp_decide(v, bound * 1.5, out);
 }
 
@@ -517,8 +517,8 @@ inline bool fp_attempt_pow(const InB& bi, const InE& ei, Out& out) {
 // ln Base at compile time, from the integer log, as a double-double.
 template <imax Base>
 inline constexpr ddk::dd ln_base = [] {
-    const ddk::fixed a = ddk::fixed{Base} << ddk::kS;
-    return ddk::of_fixed(log_fixed<ddk::kS>(a, 0).Value, ddk::kS);
+    const ddk::fixed a = ddk::fixed{Base} << ddk::scale_bits;
+    return ddk::of_fixed(log_fixed<ddk::scale_bits>(a, 0).Value, ddk::scale_bits);
 }();
 
 // Base^x = e^(x·ln Base).
@@ -647,14 +647,14 @@ inline bool dd_attempt_tan(const In& in, Out& out) {
         [&] {
             const ddk::dd t    = ddk::tan(x);
             const double  sec2 = 1 + t.Hi * t.Hi, mx = fabs_d(x.Hi) > 1 ? fabs_d(x.Hi) : 1.0;
-            return dd_decide(t, (kDDRel * sec2 * mx + kDDAbs * mx + input(t.Hi)) * 1.5, out);
+            return dd_decide(t, (dd_rel * sec2 * mx + dd_abs * mx + input(t.Hi)) * 1.5, out);
         },
         out);
 }
 
 // pow = e^(e·ln b), as in the double tier; e·ln b within the exp range.
 // The lean form: ln b within the lean log's bound Bl moves y = e·ln b by
-// |e|·Bl, the product rounds within 4kU² of |y|, and e^y adds its own Rel,
+// |e|·Bl, the product rounds within 4U² of |y|, and e^y adds its own Rel,
 // all relative to v. The inputs' roundings add |e|·rel(b) and |y|·rel(e).
 template <insidable Out, insidable InB, insidable InE>
 inline bool dd_attempt_pow(const InB& bi, const InE& ei, Out& out) {
@@ -672,8 +672,8 @@ inline bool dd_attempt_pow(const InB& bi, const InE& ei, Out& out) {
             }
             const ddk::dd v = ddk::exp_lean_value(y);
             bound           = fabs_d(v.Hi) * (ddk::lean_exp::Rel + fabs_d(e.Hi) * bound * (1 + 0x1p-40) +
-                                              4 * fpk::kU * fpk::kU * L + input(L)) +
-                              fpk::kTiny;
+                                              4 * fpk::unit_roundoff * fpk::unit_roundoff * L + input(L)) +
+                              fpk::tiny;
             return v;
         },
         [&] {
@@ -682,12 +682,12 @@ inline bool dd_attempt_pow(const InB& bi, const InE& ei, Out& out) {
             if (!(L <= 700))
                 return false;
             const ddk::dd v = ddk::exp(y);
-            return dd_decide(v, (fabs_d(v.Hi) * (kDDRel * (1 + L) + input(L)) + kDDAbs) * 1.5, out);
+            return dd_decide(v, (fabs_d(v.Hi) * (dd_rel * (1 + L) + input(L)) + dd_abs) * 1.5, out);
         },
         out);
 }
 
-// Base^x = e^(x·ln Base): ln Base within 2^-104 and the product's 4kU².
+// Base^x = e^(x·ln Base): ln Base within 2^-104 and the product's 4U².
 // x·ln Base within the exp range (else the integer path decides).
 template <insidable Out, imax Base, insidable In>
 inline bool dd_attempt_pow_base(const In& xi, Out& out) {
@@ -699,14 +699,14 @@ inline bool dd_attempt_pow_base(const In& xi, Out& out) {
     return dd_lean_first(
         [&](double& bound) {
             const ddk::dd v = ddk::exp_lean_value(y);
-            bound =
-                fabs_d(v.Hi) * (ddk::lean_exp::Rel + (4 * fpk::kU * fpk::kU + ddk::kTableErr + dd_input_rel<In>)*L) +
-                fpk::kTiny;
+            bound           = fabs_d(v.Hi) * (ddk::lean_exp::Rel + (4 * fpk::unit_roundoff * fpk::unit_roundoff +
+                                                                    ddk::table_err + dd_input_rel<In>)*L) +
+                              fpk::tiny;
             return v;
         },
         [&] {
             const ddk::dd v = ddk::exp(y);
-            return dd_decide(v, (fabs_d(v.Hi) * (kDDRel * (1 + L) + dd_input_rel<In> * L) + kDDAbs) * 1.5, out);
+            return dd_decide(v, (fabs_d(v.Hi) * (dd_rel * (1 + L) + dd_input_rel<In> * L) + dd_abs) * 1.5, out);
         },
         out);
 }
@@ -743,7 +743,7 @@ constexpr auto anchored_input(const In& x) {
         return x;
     else
         return inside<grid{grid_of<In>.Interval, grid_of<In>.value_unit()},
-                      policy_of<In> & ~::beman::inside::detail::cursor_marker>{x};
+                      flags_of<In> & ~::beman::inside::detail::cursor_marker>{x};
 }
 
 template <insidable Out>
@@ -754,7 +754,7 @@ template <insidable Out, policy_flag R, grid_rational Unit = half_unit<Out>>
 using bracket_t = inside<grid{{::beman::inside::detail::grid_sub(lower_of<Out>, notch_of<Out>),
                                ::beman::inside::detail::grid_add(upper_of<Out>, notch_of<Out>)},
                               Unit},
-                         R | (policy_of<Out> & clamp)>;
+                         R | (flags_of<Out> & clamp)>;
 
 // The integer form: a bracket 1024 times finer than half_unit, counted in
 // imax. Rounded down there, the value lies in [y, y + F); only when y is
@@ -788,7 +788,7 @@ constexpr std::optional<imax> bracket_slot(imax num, bool negative) noexcept {
                                            negative,
                                            classify_remainder(m, static_cast<umax>(r), static_cast<umax>(den)),
                                            ((q & 1) != 0) != lower_index_odd<Out>);
-    if (k < 0 || static_cast<umax>(k) > max_index_v<Out>)
+    if (k < 0 || static_cast<umax>(k) > max_index_of<Out>)
         return std::nullopt;
     return k;
 }
@@ -796,7 +796,7 @@ constexpr std::optional<imax> bracket_slot(imax num, bool negative) noexcept {
 // fn.operator()<O>(xs...) for an anchored O: Out's result, or its error.
 template <insidable Out, typename Fn, insidable... Ins>
 constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
-    static_assert(anchored<Out> || !has_flag(policy_of<Out>, wrap),
+    static_assert(anchored<Out> || !has_flag(flags_of<Out>, wrap),
                   "beman::inside::math: wrap onto a grid that does not pass through 0 is not supported - "
                   "use clamp, or an anchored output grid");
     using ::beman::inside::detail::expected_like;
@@ -841,14 +841,14 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
         // Past Out's range: the bracket value through Out's policy (it rounds
         // as the value does, and lies on the same side of the range).
         const auto v = exact_of(unwrap(lo)) +
-                       exact_frac<exact_min_limbs>{wide_sint<exact_min_limbs>{1}, wide_sint<exact_min_limbs>{2}} *
+                       wide_rational<exact_min_limbs>{wide_sint<exact_min_limbs>{1}, wide_sint<exact_min_limbs>{2}} *
                            exact_of_grid<exact_min_limbs>(F);
         if constexpr (checked) {
             errc      ec{};
-            const Out out = ax::store_exact<Out>(v, make_policy<policy_of<Out>>(ec));
+            const Out out = ax::store_exact<Out>(v, make_policy<flags_of<Out>>(ec));
             return ec == errc{} ? Res{out} : Res{std::unexpected{ec}};
         } else
-            return ax::store_exact<Out>(v, make_policy<policy_of<Out>>());
+            return ax::store_exact<Out>(v, make_policy<flags_of<Out>>());
     } else {
         const auto lo                   = fn.template operator()<bracket_t<Out, round_floor>>(anchored_input(xs)...);
         const auto hi                   = fn.template operator()<bracket_t<Out, round_ceil>>(anchored_input(xs)...);
@@ -864,10 +864,10 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
             if (!hi)
                 return R{std::unexpected{hi.error()}};
             errc      ec{};
-            const Out out = ax::store_exact<Out>(mid(*lo, *hi), make_policy<policy_of<Out>>(ec));
+            const Out out = ax::store_exact<Out>(mid(*lo, *hi), make_policy<flags_of<Out>>(ec));
             return ec == errc{} ? R{out} : R{std::unexpected{ec}};
         } else
-            return ax::store_exact<Out>(mid(lo, hi), make_policy<policy_of<Out>>());
+            return ax::store_exact<Out>(mid(lo, hi), make_policy<flags_of<Out>>());
     }
 }
 
@@ -944,7 +944,7 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
 // rounding mode, like any assignment that may round.
 template <insidable Out>
 consteval void require_rounding() noexcept {
-    static_assert(has_flag(policy_of<Out>, snap) || !ax::notched<Out>,
+    static_assert(has_flag(flags_of<Out>, snap) || !ax::notched<Out>,
                   "beman::inside::math: the result is rounded onto Out's grid - Out must permit rounding "
                   "(declare it with round_nearest, round_floor, ...)");
 }
@@ -1074,7 +1074,7 @@ inline constexpr bool tan_domain = true;
 template <insidable Out, insidable In>
 [[nodiscard]] constexpr std::expected<Out, errc> tan_into(In x) {
     require_rounding<Out>();
-    static_assert(!has_flag(policy_of<Out>, wrap),
+    static_assert(!has_flag(flags_of<Out>, wrap),
                   "beman::inside::math::tan: wrap is not supported - tan has no bound near its poles, so "
                   "the folded value cannot be computed; take an Out with clamp or the default policy");
     if constexpr (anchoring::unanchored_call<Out, In>)
@@ -1098,7 +1098,7 @@ template <insidable Out, insidable InY, insidable InX>
     else {
         constexpr std::size_t E =
             ax::input_limbs<InY> > ax::input_limbs<InX> ? ax::input_limbs<InY> : ax::input_limbs<InX>;
-        using F = ::beman::inside::detail::exact_frac<E>;
+        using F = ::beman::inside::detail::wide_rational<E>;
         BEMAN_INSIDE_AX_TIERS(
             Out,
             (ax::fp_tier<Out, ax::fp_atan2, InY, InX> && ax::in_max<InY> <= 0x1p500 && ax::in_max<InX> <= 0x1p500),
@@ -1117,7 +1117,7 @@ template <insidable Out, insidable InX, insidable InY>
     else {
         constexpr int         Bits = ax::hypot_bits<InX, InY>;
         constexpr std::size_t E    = ::beman::inside::detail::limbs_for_bits(Bits);
-        using F                    = ::beman::inside::detail::exact_frac<E>;
+        using F                    = ::beman::inside::detail::wide_rational<E>;
         BEMAN_INSIDE_AX_TIERS(
             Out,
             (ax::fp_tier<Out, ax::fp_hypot, InX, InY> && ax::in_max<InX> <= 0x1p500 && ax::in_max<InY> <= 0x1p500),
@@ -1197,7 +1197,7 @@ template <insidable Out, imax Base, insidable In>
 //---------------------------------------------------------------------------
 template <insidable In>
 consteval bool deducible() noexcept {
-    static_assert(has_flag(policy_of<In>, snap),
+    static_assert(has_flag(flags_of<In>, snap),
                   "beman::inside::math: a deduced result is rounded onto the input's grid - its operand "
                   "must permit rounding (declare it with round_nearest, round_floor, ...)");
     static_assert(::beman::inside::detail::notched<In>,
@@ -1205,7 +1205,7 @@ consteval bool deducible() noexcept {
     return true;
 }
 
-namespace auto_t {
+namespace results {
 template <insidable In>
 using exp = ax::increasing_t<In, ax::exp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::exp_kmax<In>>>;
 template <insidable In>
@@ -1240,11 +1240,11 @@ template <insidable In>
 using atanh =
     ax::increasing_t<In, ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::atanh, ax::input_bits<In>>>;
 template <insidable In>
-using sin = inside<{{-1, 1}, notch_of<In>}, ax::auto_policy<In>>;
+using sin = inside<{{-1, 1}, notch_of<In>}, ax::result_policy<In>>;
 template <insidable In>
 using cos = sin<In>;
 template <insidable In>
-using tan = inside<{{-1024, 1024}, notch_of<In>}, ax::auto_policy<In>>;
+using tan = inside<{{-1024, 1024}, notch_of<In>}, ax::result_policy<In>>;
 
 // cosh is even: its least value is 1 when In spans 0, else at the end
 // nearer 0.
@@ -1260,22 +1260,22 @@ inline constexpr grid_rational cosh_hi =
         ? ax::bound_at<In, cosh_core<In>, false, true>
         : ax::bound_at<In, cosh_core<In>, true, true>;
 template <insidable In>
-using cosh = ax::auto_grid_t<In, cosh_lo<In>, cosh_hi<In>>;
+using cosh = ax::result_grid_t<In, cosh_lo<In>, cosh_hi<In>>;
 
 // sqrt of a mixed-sign input: [0, √max(|Lower|, |Upper|)].
 template <insidable In>
 inline constexpr grid_rational max_abs = (-lower_of<In> > upper_of<In>) ? -lower_of<In> : upper_of<In>;
 template <insidable In>
 using sqrt_signed =
-    ax::auto_grid_t<In,
-                    grid_rational{0},
-                    ax::lattice_bound<notch_of<In>, true>(
-                        ax::sqrt_core<ax::input_limbs<In>, ax::input_bits<In>>{ax::grid_input<In>(max_abs<In>)})>;
+    ax::result_grid_t<In,
+                      grid_rational{0},
+                      ax::lattice_bound<notch_of<In>, true>(
+                          ax::sqrt_core<ax::input_limbs<In>, ax::input_bits<In>>{ax::grid_input<In>(max_abs<In>)})>;
 
 // pow_base: pow_core with the base bound.
 template <imax Base, std::size_t E, int Mag, int KMax>
 struct pow_base_core : ax::pow_core<2, E, Mag, KMax> {
-    constexpr pow_base_core(::beman::inside::detail::exact_frac<E> x)
+    constexpr pow_base_core(::beman::inside::detail::wide_rational<E> x)
         : ax::pow_core<2, E, Mag, KMax>{ax::exact_int<2>(Base), x} {}
 };
 template <imax Base, insidable In>
@@ -1291,21 +1291,21 @@ template <insidable A, insidable B>
 inline constexpr grid_rational pi_up =
     ax::lattice_bound<ax::gcd_notch<A, B>, true>(ax::atan2_core<1>{ax::exact_int<1>(0), ax::exact_int<1>(-1)});
 template <insidable InY, insidable InX>
-using atan2 = inside<{{-pi_up<InY, InX>, pi_up<InY, InX>}, ax::gcd_notch<InY, InX>}, ax::auto_policy<InY>>;
+using atan2 = inside<{{-pi_up<InY, InX>, pi_up<InY, InX>}, ax::gcd_notch<InY, InX>}, ax::result_policy<InY>>;
 
 // hypot: [0, hypot of the largest magnitudes] on the gcd notch.
 template <insidable InX, insidable InY>
 inline constexpr std::size_t hypot_limbs = ::beman::inside::detail::limbs_for_bits(ax::hypot_bits<InX, InY>);
 template <insidable InX, insidable InY>
 inline constexpr grid_rational hypot_hi = [] {
-    using F   = ::beman::inside::detail::exact_frac<hypot_limbs<InX, InY>>;
+    using F   = ::beman::inside::detail::wide_rational<hypot_limbs<InX, InY>>;
     const F a = ::beman::inside::detail::exact_of_grid<hypot_limbs<InX, InY>>(max_abs<InX>);
     const F b = ::beman::inside::detail::exact_of_grid<hypot_limbs<InX, InY>>(max_abs<InY>);
     return ax::lattice_bound<ax::gcd_notch<InX, InY>, true>(
         ax::sqrt_core<hypot_limbs<InX, InY>, ax::hypot_bits<InX, InY>>{a * a + b * b});
 }();
 template <insidable InX, insidable InY>
-using hypot = inside<{{0, hypot_hi<InX, InY>}, ax::gcd_notch<InX, InY>}, ax::auto_policy<InX>>;
+using hypot = inside<{{0, hypot_hi<InX, InY>}, ax::gcd_notch<InX, InY>}, ax::result_policy<InX>>;
 
 // pow: b^e is monotone in each argument for b > 0, so the extremes are at
 // the corners of the input rectangle. Notch of the base.
@@ -1332,15 +1332,16 @@ inline constexpr grid_rational pow_extreme = [] {
     return m;
 }();
 template <insidable InB, insidable InE>
-using pow = inside<{{pow_extreme<InB, InE, false>, pow_extreme<InB, InE, true>}, notch_of<InB>}, ax::auto_policy<InB>>;
-} // namespace auto_t
+using pow =
+    inside<{{pow_extreme<InB, InE, false>, pow_extreme<InB, InE, true>}, notch_of<InB>}, ax::result_policy<InB>>;
+} // namespace results
 
 #define BEMAN_INSIDE_AX_AUTO(fn)                                                               \
     template <insidable In>                                                                    \
     [[nodiscard]] constexpr auto fn(In x) {                                                    \
         static_assert(deducible<In>());                                                        \
         if constexpr (fn##_domain<In>)                                                         \
-            return fn##_into<auto_t::fn<In>>(x);                                               \
+            return fn##_into<results::fn<In>>(x);                                              \
         else                                                                                   \
             return fn##_into<inside<{0, 1}, round_nearest>>(x); /* the _into domain message */ \
     }
@@ -1369,42 +1370,42 @@ template <insidable In>
     requires(lower_of<In> >= 0)
 [[nodiscard]] constexpr auto sqrt(In x) {
     static_assert(deducible<In>());
-    return sqrt_into<auto_t::sqrt<In>>(x);
+    return sqrt_into<results::sqrt<In>>(x);
 }
 
 template <insidable In>
     requires(lower_of<In> < 0)
 [[nodiscard]] constexpr auto sqrt(In x) {
     static_assert(deducible<In>());
-    return sqrt_into<auto_t::sqrt_signed<In>>(x);
+    return sqrt_into<results::sqrt_signed<In>>(x);
 }
 
 template <imax Base, insidable In>
 [[nodiscard]] constexpr auto pow_base(In x) {
     static_assert(deducible<In>());
     static_assert(Base >= 2, "beman::inside::math::pow_base: Base must be at least 2");
-    return pow_base_into<auto_t::pow_base_t<Base, In>, Base>(x);
+    return pow_base_into<results::pow_base_t<Base, In>, Base>(x);
 }
 
 template <insidable InY, insidable InX>
     requires ax::gcd_notch_fits<InY, InX>
 [[nodiscard]] constexpr auto atan2(InY y, InX x) {
     static_assert(deducible<InY>() && deducible<InX>());
-    return atan2_into<auto_t::atan2<InY, InX>>(y, x);
+    return atan2_into<results::atan2<InY, InX>>(y, x);
 }
 
 template <insidable InX, insidable InY>
     requires ax::gcd_notch_fits<InX, InY>
 [[nodiscard]] constexpr auto hypot(InX x, InY y) {
     static_assert(deducible<InX>() && deducible<InY>());
-    return hypot_into<auto_t::hypot<InX, InY>>(x, y);
+    return hypot_into<results::hypot<InX, InY>>(x, y);
 }
 
 template <insidable InB, insidable InE>
     requires(lower_of<InB> > 0)
 [[nodiscard]] constexpr auto pow(InB base, InE exp) {
     static_assert(deducible<InB>() && deducible<InE>());
-    return pow_into<auto_t::pow<InB, InE>>(base, exp);
+    return pow_into<results::pow<InB, InE>>(base, exp);
 }
 } // namespace beman::inside::math::adaptive
 

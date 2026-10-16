@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Text input: from_chars<B> (exact, through B::try_make) and operator>>.
+// Text input: parse<B> (exact, through B::try_make) and operator>>.
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
 
@@ -13,19 +13,19 @@ using namespace beman::inside;
 namespace {
 template <class B>
 rational value_of(std::string_view s) {
-    auto r = from_chars<B>(s);
+    auto r = parse<B>(s);
     EXPECT_TRUE(r.has_value()) << s;
     return r ? rational{*r} : rational{};
 }
 template <class B>
 errc error_of(std::string_view s) {
-    auto r = from_chars<B>(s);
+    auto r = parse<B>(s);
     EXPECT_FALSE(r.has_value()) << s;
     return r ? errc{} : r.error();
 }
 } // namespace
 
-TEST(FromCharsTest, accepts_the_literal_grammar_signs_and_fractions) {
+TEST(ParseTest, accepts_the_literal_grammar_signs_and_fractions) {
     using wide = inside<{{-100000, 100000}, per<1024>}, round_nearest>;
     EXPECT_EQ(value_of<wide>("42"), rational{42});
     EXPECT_EQ(value_of<wide>("-1.25"), (rational{-5, 4}));
@@ -44,7 +44,7 @@ TEST(FromCharsTest, accepts_the_literal_grammar_signs_and_fractions) {
     EXPECT_EQ(value_of<tenth>("0.1"), (rational{1, 10})); // exact, unlike the double 0.1
 }
 
-TEST(FromCharsTest, reports_malformed_text_range_and_notch_errors) {
+TEST(ParseTest, reports_malformed_text_range_and_notch_errors) {
     using pct = inside<{0, 100}>;
     for (std::string_view bad : {"", "-", "abc", "1.2.3", "12x", "1e", "0x", " 5", "5 ", "0b102", "1/"})
         EXPECT_EQ(error_of<pct>(bad), errc::invalid_format) << bad;
@@ -60,7 +60,7 @@ TEST(FromCharsTest, reports_malformed_text_range_and_notch_errors) {
     EXPECT_EQ(value_of<rpct>("150"), rational{100});
 }
 
-TEST(FromCharsTest, stream_extraction_round_trips_to_string) {
+TEST(ParseTest, stream_extraction_round_trips_to_string) {
     using q = inside<{{-10, 10}, per<12>}>;
     for (auto v : {rational{-5, 4}, rational{0}, rational{7, 3}, rational{1, 12}, rational{-10}}) {
         const q           x{v};
@@ -81,17 +81,17 @@ TEST(FromCharsTest, stream_extraction_round_trips_to_string) {
     EXPECT_EQ(b, 5); // unchanged on error
 }
 
-TEST(FromCharsTest, from_chars_is_constexpr) {
+TEST(ParseTest, from_chars_is_constexpr) {
     constexpr const char text[] = "0.75";
-    constexpr auto       r      = from_chars<inside<{{0, 1}, per<4>}>>(text, text + 4);
+    constexpr auto       r      = parse<inside<{{0, 1}, per<4>}>>(text, text + 4);
     static_assert(r.has_value() && rational{*r} == rational{3, 4});
     constexpr const char bad[] = "1.5";
-    static_assert(from_chars<inside<{{0, 1}, per<4>}>>(bad, bad + 3).error() == errc::overflow);
+    static_assert(parse<inside<{{0, 1}, per<4>}>>(bad, bad + 3).error() == errc::overflow);
 }
 
 // Fractional trailing zeros and the exponent of zero carry no value: they must
 // not overflow the 64-bit numerator / denominator.
-TEST(FromCharsTest, trailing_zeros_and_zero_exponent) {
+TEST(ParseTest, trailing_zeros_and_zero_exponent) {
     using B = inside<{{0, 10}, per<100>}>;
     EXPECT_EQ(value_of<B>("1.000000000000000000000"), 1);
     EXPECT_EQ(value_of<B>("1.0500000000000000000000000"), (rational{105, 100}));
@@ -107,28 +107,28 @@ TEST(FromCharsTest, trailing_zeros_and_zero_exponent) {
     static_assert(1.250000000000000000000_r == rational{5, 4});
 }
 
-TEST(FromCharsTest, per_call_flags) {
+TEST(ParseTest, per_call_flags) {
     using cents = inside<{{0, 100}, per<100>}>; // checked: off-grid is an error
-    EXPECT_EQ(from_chars<cents>("1.005").error(), errc::rounding_error);
-    EXPECT_EQ((rational{*from_chars<cents, round_nearest>("1.005")}), (rational{101, 100}));
-    EXPECT_EQ((rational{*from_chars<cents, round_floor>("1.009")}), (rational{1}));
-    EXPECT_EQ((rational{*from_chars<cents, clamp>("150")}), rational{100});
+    EXPECT_EQ(parse<cents>("1.005").error(), errc::rounding_error);
+    EXPECT_EQ((rational{*parse<cents, round_nearest>("1.005")}), (rational{101, 100}));
+    EXPECT_EQ((rational{*parse<cents, round_floor>("1.009")}), (rational{1}));
+    EXPECT_EQ((rational{*parse<cents, clamp>("150")}), rational{100});
     // Long decimals take the exact parse, with the same flags.
-    EXPECT_EQ((rational{*from_chars<cents, round_nearest>("1.004999999999999999999999")}), rational{1});
+    EXPECT_EQ((rational{*parse<cents, round_nearest>("1.004999999999999999999999")}), rational{1});
 }
 
-TEST(FromCharsTest, exact_rejects_what_the_policy_would_round_or_clamp) {
+TEST(ParseTest, exact_rejects_what_the_policy_would_round_or_clamp) {
     using price = inside<{{0, 100}, per<100>}, round_nearest | clamp>;
-    EXPECT_EQ(rational{*from_chars<price>("1.005")}, (rational{101, 100})); // rounded
-    EXPECT_EQ(from_chars_exact<price>("1.005").error(), errc::rounding_error);
-    EXPECT_EQ(from_chars_exact<price>("150").error(), errc::overflow);
-    EXPECT_EQ(from_chars_exact<price>("1.0x").error(), errc::invalid_format);
-    EXPECT_EQ(rational{*from_chars_exact<price>("12.34")}, (rational{1234, 100}));
-    static_assert(std::is_same_v<decltype(from_chars_exact<price>("1"))::value_type, price>);
-    EXPECT_EQ(from_chars_exact<price>("1.004999999999999999999999").error(), errc::rounding_error);
+    EXPECT_EQ(rational{*parse<price>("1.005")}, (rational{101, 100})); // rounded
+    EXPECT_EQ(parse_exact<price>("1.005").error(), errc::rounding_error);
+    EXPECT_EQ(parse_exact<price>("150").error(), errc::overflow);
+    EXPECT_EQ(parse_exact<price>("1.0x").error(), errc::invalid_format);
+    EXPECT_EQ(rational{*parse_exact<price>("12.34")}, (rational{1234, 100}));
+    static_assert(std::is_same_v<decltype(parse_exact<price>("1"))::value_type, price>);
+    EXPECT_EQ(parse_exact<price>("1.004999999999999999999999").error(), errc::rounding_error);
 }
 
-TEST(FromCharsTest, try_make_takes_an_expected) {
+TEST(ParseTest, try_make_takes_an_expected) {
     using volts = inside<{{-1, 1}, per<1000>}, round_nearest>;
     using any   = inside<{0, 100}>;
     EXPECT_EQ(rational{*volts::try_make(any{1} / any{3})}, (rational{333, 1000}));

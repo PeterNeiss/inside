@@ -113,7 +113,7 @@ TEST(BugHuntRound8, point_into_a_fine_or_full_width_grid) {
     using F = inside<{{-1, 1}, per<(I64{1} << 62)>}, round_ceil>;
     const F f{just<rational{1, 2}>};
     EXPECT_EQ(f, rational(1, 2));
-    const qword q{5_ins};
+    const uint64 q{5_ins};
     EXPECT_EQ(q.to<std::uint64_t>(), 5u);
 }
 

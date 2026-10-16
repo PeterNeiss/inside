@@ -33,7 +33,7 @@ template <insidable B, std::uniform_random_bit_generator G>
                 return B::from_raw(k);
         }
     } else {
-        std::uniform_int_distribution<umax> pick(0, detail::max_index_v<B>);
+        std::uniform_int_distribution<umax> pick(0, detail::max_index_of<B>);
         const umax                          k = pick(g);
         return B::from_raw(detail::raw_from_offset<B>(k)); // index or value storage
     }

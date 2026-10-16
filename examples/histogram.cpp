@@ -5,7 +5,7 @@
 //   - `values<T>` for iterating over bin indices
 //   - `div_into` to round the bin quotient once by the index type's policy
 //   - `conversion_overflows` to gate out-of-range samples before insert
-//   - `conversion_is_lossy` to count samples that don't land on a notch
+//   - `conversion_loses` to count samples that don't land on a notch
 //   - Fixed-point bin boundaries (latency in ms with 0.1 resolution)
 
 #include <iostream>
@@ -24,7 +24,7 @@ using namespace beman::inside;
 using latency_t = inside<{{0, 100}, per<10>}, round_nearest>;
 
 // 10 bins: 0-9.9, 10-19.9, ..., 90-100 ms.
-using bin_id_t  = counter<9>;                          // saturating per-bin count (caps at bar height 9)
+using bin_id_t  = clamp_counter<9>;                    // saturating per-bin count (caps at bar height 9)
 using bin_idx_t = inside<{0, 9}, clamp | round_floor>; // bin index: floor; 100 ms → last bin
 
 int main() {
@@ -49,15 +49,15 @@ int main() {
         3.05, // sub-notch (1/10 grid doesn't include 3.05) → counts as lossy
     };
 
-    counter<1'000'000> rejected{0};
-    counter<1'000'000> lossy{0};
+    clamp_counter<1'000'000> rejected{0};
+    clamp_counter<1'000'000> lossy{0};
 
     for (double s : samples) {
         if (conversion_overflows<latency_t>(s)) {
             ++rejected;
             continue;
         }
-        if (conversion_is_lossy<latency_t>(s))
+        if (conversion_loses<latency_t>(s))
             ++lossy; // accept but flag
 
         latency_t lat{s};
@@ -65,7 +65,7 @@ int main() {
         // `round_floor` (9.55 floors to 9 before the range check); `clamp` folds
         // 100 ms, whose quotient 10 floors to 10, into the last bin.
         const auto bin = div_into<bin_idx_t>(lat, just<10>);
-        // `counter` saturates on `++`, so the bar caps at 9 — no manual guard.
+        // `clamp_counter` saturates on `++`, so the bar caps at 9 — no manual guard.
         ++bins[bin];
     }
 

@@ -44,19 +44,19 @@ class magazine {
 
 class rifle {
   public:
-    magazine           mag;
-    counter<1'000'000> pulled_trigger{0}; // saturating event tallies
-    counter<1'000'000> missed_shots{0};
-    counter<1'000'000> reloads{0};
-    counter<1'000'000> rounds_dropped{0}; // accumulates count_t values
+    magazine                 mag;
+    clamp_counter<1'000'000> pulled_trigger{0}; // saturating event tallies
+    clamp_counter<1'000'000> missed_shots{0};
+    clamp_counter<1'000'000> reloads{0};
+    clamp_counter<1'000'000> rounds_dropped{0}; // accumulates count_t values
 };
 
 class player {
   public:
     using reserve_t = inside<{0, 200}, clamp>;
-    reserve_t          reserve{60}; // two spare mags' worth
-    rifle              weapon;
-    counter<1'000'000> dry_clicks{0}; // mag empty AND reserve empty
+    reserve_t                reserve{60}; // two spare mags' worth
+    rifle                    weapon;
+    clamp_counter<1'000'000> dry_clicks{0}; // mag empty AND reserve empty
 
     // Pull the trigger once. Four outcomes:
     //   (a) mag empty AND reserve empty  -> dry click, no decrement.
@@ -95,7 +95,7 @@ void player::pull_trigger() {
 
 void player::combat_reload() {
     // The partial mag is dropped; accumulate its round count. `rounds_dropped` is a
-    // saturating `counter`, so this stays inside += inside (the count_t magazine value).
+    // saturating `clamp_counter`, so this stays inside += inside (the count_t magazine value).
     weapon.rounds_dropped += weapon.mag.rounds;
 
     magazine::count_t shortfall = 0;

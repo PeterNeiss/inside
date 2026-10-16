@@ -17,7 +17,7 @@
 //
 // On an anchored grid Lower/Notch is an integer m (slot_base), so a value is
 // its value index J = m + raw times Notch, exactly; an unanchored grid counts
-// in its value unit gcd(Notch, Lower) instead. exact_frac<K> carries a value
+// in its value unit gcd(Notch, Lower) instead. wide_rational<K> carries a value
 // as an unreduced fraction of K-limb integers; comparisons cross-multiply, and
 // a store divides by the target notch and rounds by the policy's mode.
 //
@@ -31,84 +31,84 @@ template <std::size_t A, std::size_t B>
 inline constexpr std::size_t exact_max = A > B ? A : B;
 
 template <std::size_t A, std::size_t B>
-constexpr std::strong_ordering operator<=>(const exact_frac<A>& a, const exact_frac<B>& b) noexcept {
-    using F = exact_frac<exact_max<A, B>>;
+constexpr std::strong_ordering operator<=>(const wide_rational<A>& a, const wide_rational<B>& b) noexcept {
+    using F = wide_rational<exact_max<A, B>>;
     const F x{a}, y{b};
     return x.Num * y.Den <=> y.Num * x.Den;
 }
 template <std::size_t A, std::size_t B>
-constexpr bool operator==(const exact_frac<A>& a, const exact_frac<B>& b) noexcept {
+constexpr bool operator==(const wide_rational<A>& a, const wide_rational<B>& b) noexcept {
     return (a <=> b) == 0;
 }
 template <std::size_t A, std::size_t B>
-constexpr auto operator+(const exact_frac<A>& a, const exact_frac<B>& b) noexcept {
-    using F = exact_frac<exact_max<A, B>>;
+constexpr auto operator+(const wide_rational<A>& a, const wide_rational<B>& b) noexcept {
+    using F = wide_rational<exact_max<A, B>>;
     const F x{a}, y{b};
     return F{x.Num * y.Den + y.Num * x.Den, x.Den * y.Den};
 }
 template <std::size_t A, std::size_t B>
-constexpr auto operator*(const exact_frac<A>& a, const exact_frac<B>& b) noexcept {
-    using F = exact_frac<exact_max<A, B>>;
+constexpr auto operator*(const wide_rational<A>& a, const wide_rational<B>& b) noexcept {
+    using F = wide_rational<exact_max<A, B>>;
     const F x{a}, y{b};
     return F{x.Num * y.Num, x.Den * y.Den};
 }
 // Pre: b != 0.
 template <std::size_t A, std::size_t B>
-constexpr auto operator/(const exact_frac<A>& a, const exact_frac<B>& b) noexcept {
-    using F = exact_frac<exact_max<A, B>>;
+constexpr auto operator/(const wide_rational<A>& a, const wide_rational<B>& b) noexcept {
+    using F = wide_rational<exact_max<A, B>>;
     const F x{a}, y{b};
     const F q{x.Num * y.Den, x.Den * y.Num};
     return q.Den.negative() ? F{-q.Num, -q.Den} : q;
 }
 template <std::size_t K>
-constexpr exact_frac<K> operator-(const exact_frac<K>& a) noexcept {
+constexpr wide_rational<K> operator-(const wide_rational<K>& a) noexcept {
     return {-a.Num, a.Den};
 }
 
 template <std::size_t K = exact_min_limbs>
-constexpr exact_frac<K> exact_of(const rational& r) noexcept {
+constexpr wide_rational<K> exact_of(const rational& r) noexcept {
     return {static_cast<wide_sint<K>>(wide_numerator(r)), static_cast<wide_sint<K>>(wide_denominator(r))};
 }
 
 template <std::size_t K = exact_min_limbs, std::integral T>
-constexpr exact_frac<K> exact_of(T v) noexcept {
+constexpr wide_rational<K> exact_of(T v) noexcept {
     return {wide_sint<K>{v}, wide_sint<K>{1}};
 }
 
 // A grid number (a limit or notch, of any size) as an exact value.
 template <std::size_t K>
-constexpr exact_frac<K> exact_of_grid(const grid_rational& r) noexcept {
+constexpr wide_rational<K> exact_of_grid(const grid_rational& r) noexcept {
     return {static_cast<wide_sint<K>>(wide_numerator(r)), static_cast<wide_sint<K>>(wide_denominator(r))};
 }
 
 // m = Lower/Notch, the value index of slot 0 (0 for a continuous grid). An
 // integer only on an anchored grid: the paths that use it require one.
 template <insidable B>
-inline constexpr grid_wide slot_base = [] {
+inline constexpr grid_int slot_base = [] {
     if constexpr (!notched<B>)
-        return grid_wide{0};
+        return grid_int{0};
     else
         return wide_numerator(lower_of<B>) * wide_denominator(notch_of<B>) /
                (wide_denominator(lower_of<B>) * wide_numerator(notch_of<B>));
 }();
 
 // ⌊a / b⌋ for grid numbers (b > 0).
-constexpr grid_wide floor_quotient(const grid_rational& a, const grid_rational& b) noexcept {
-    const grid_wide n = wide_numerator(a) * wide_denominator(b), d = wide_denominator(a) * wide_numerator(b);
-    const grid_wide q = n / d;
-    return (n % d != grid_wide{0} && n.negative()) ? q - grid_wide{1} : q;
+constexpr grid_int floor_quotient(const grid_rational& a, const grid_rational& b) noexcept {
+    const grid_int n = wide_numerator(a) * wide_denominator(b), d = wide_denominator(a) * wide_numerator(b);
+    const grid_int q = n / d;
+    return (n % d != grid_int{0} && n.negative()) ? q - grid_int{1} : q;
 }
 
 // The lattice index of Lower, ⌊Lower/Notch⌋ — slot_base on an anchored grid.
 // Its parity plus an offset's says which lattice points are even.
 template <insidable B>
-inline constexpr grid_wide lower_index_wide = notched<B> ? floor_quotient(lower_of<B>, notch_of<B>) : grid_wide{0};
+inline constexpr grid_int lower_index_wide = notched<B> ? floor_quotient(lower_of<B>, notch_of<B>) : grid_int{0};
 
 // Bits that bound every value of B's grid: |value| < 2^grid_magnitude_bits.
 template <insidable B>
 inline constexpr int grid_magnitude_bits = [] {
     auto bits = [](const grid_rational& r) {
-        const grid_wide n = wide_numerator(r);
+        const grid_int n = wide_numerator(r);
         return bit_width_of(abs(n)) - (bit_width_of(wide_denominator(r)) - 1) + 1;
     };
     const int a = bits(lower_of<B>), b = bits(upper_of<B>);
@@ -119,14 +119,14 @@ inline constexpr int grid_magnitude_bits = [] {
 template <insidable B>
 inline constexpr int exact_value_bits = [] {
     if constexpr (point_storage<B>) {
-        auto bits = [](const grid_wide& v) { return bit_width_of(abs(v)); };
+        auto bits = [](const grid_int& v) { return bit_width_of(abs(v)); };
         return bits(wide_numerator(lower_of<B>)) + bits(wide_denominator(lower_of<B>));
     } else if constexpr (fraction_storage<B>)
         return 2 * decltype(raw_t<B>::Num)::bits;
     else if constexpr (!wide_valued<B>)
         return 128; // a 64-bit rational
     else {
-        auto bits = [](const grid_wide& v) { return bit_width_of(abs(v)); };
+        auto bits = [](const grid_int& v) { return bit_width_of(abs(v)); };
         return grid_magnitude_bits<B> + bits(wide_denominator(notch_of<B>)) + bits(wide_numerator(notch_of<B>));
     }
 }();
@@ -152,19 +152,19 @@ constexpr auto exact_of(const B& b) {
     else if constexpr (rational_storage<B>)
         return exact_of<K>(b.raw());
     else if constexpr (fraction_storage<B>)
-        return exact_frac<K>{b.raw()};
+        return wide_rational<K>{b.raw()};
     else if constexpr (anchored<B>) // an integer raw: its value index J times the notch
-        return exact_frac<K>{value_index<I>(b) * static_cast<I>(wide_numerator(notch_of<B>)),
-                             static_cast<I>(wide_denominator(notch_of<B>))};
+        return wide_rational<K>{value_index<I>(b) * static_cast<I>(wide_numerator(notch_of<B>)),
+                                static_cast<I>(wide_denominator(notch_of<B>))};
     else // an unanchored index raw: Lower + raw·Notch over their common denominator
         return exact_of_grid<K>(lower_of<B>) +
-               exact_frac<K>{static_cast<I>(b.raw()) * static_cast<I>(wide_numerator(notch_of<B>)),
-                             static_cast<I>(wide_denominator(notch_of<B>))};
+               wide_rational<K>{static_cast<I>(b.raw()) * static_cast<I>(wide_numerator(notch_of<B>)),
+                                static_cast<I>(wide_denominator(notch_of<B>))};
 }
 
 // f in lowest terms.
 template <std::size_t K>
-constexpr exact_frac<K> reduced(const exact_frac<K>& f) noexcept {
+constexpr wide_rational<K> reduced(const wide_rational<K>& f) noexcept {
     using I = wide_sint<K>;
     I a = abs(f.Num), b = f.Den;
     if (bit_width_of(a) <= 64 && bit_width_of(b) <= 64) { // the common case: one-limb Euclid
@@ -191,7 +191,7 @@ constexpr exact_frac<K> reduced(const exact_frac<K>& f) noexcept {
 // zero; half_even the closer one, a tie to the even numerator (else the
 // smaller denominator). Products are exact in twice x's width.
 template <round_mode M, std::size_t K>
-constexpr exact_frac<K> round_to_denominator(const exact_frac<K>& x, const wide_sint<K>& D) noexcept {
+constexpr wide_rational<K> round_to_denominator(const wide_rational<K>& x, const wide_sint<K>& D) noexcept {
     using I        = wide_sint<2 * K + 2>;
     const bool neg = x.Num.negative();
     const I    n{neg ? -x.Num : x.Num}, d{x.Den}, dmax{D};
@@ -243,7 +243,7 @@ constexpr exact_frac<K> round_to_denominator(const exact_frac<K>& x, const wide_
 // v in lowest terms as the fraction raw F, or nothing when it needs more
 // limbs than F has.
 template <typename F, std::size_t K>
-constexpr std::optional<F> frac_raw_of(const exact_frac<K>& v) noexcept {
+constexpr std::optional<F> continuous_raw_of(const wide_rational<K>& v) noexcept {
     const auto r      = reduced(v);
     using I           = decltype(F::Num);
     constexpr int cap = I::bits - 1; // magnitude bits
@@ -257,14 +257,14 @@ template <insidable B>
 constexpr auto reduced_exact(const B& b) {
     constexpr std::size_t K = limbs_for_bits(exact_value_bits<B> + 1);
     const auto            r = reduced(exact_of(b));
-    return exact_frac<K>{static_cast<wide_sint<K>>(r.Num), static_cast<wide_sint<K>>(r.Den)};
+    return wide_rational<K>{static_cast<wide_sint<K>>(r.Num), static_cast<wide_sint<K>>(r.Den)};
 }
 
 // A double whose magnitude is at least 2^64 (so an integer), as an exact
 // value for a store into L. Past L's magnitude only its side matters, so a
 // value just beyond the grid stands in.
 template <insidable L>
-constexpr exact_frac<exact_limbs<L>> exact_of_large(double d) noexcept {
+constexpr wide_rational<exact_limbs<L>> exact_of_large(double d) noexcept {
     using I           = wide_sint<exact_limbs<L>>;
     constexpr int k   = grid_magnitude_bits<L> > 64 ? grid_magnitude_bits<L> : 64;
     const bool    neg = d < 0;
@@ -278,7 +278,7 @@ constexpr exact_frac<exact_limbs<L>> exact_of_large(double d) noexcept {
 }
 
 // A finite double's exact value: m·2^e, with 2^1024 and 2^-1074 in reach.
-constexpr exact_frac<18> exact_of_double(double d) noexcept {
+constexpr wide_rational<18> exact_of_double(double d) noexcept {
     using I              = wide_sint<18>;
     const auto [mant, e] = double_parts(d);
     const I n            = e >= 0 ? I{mant} << e : I{mant};
@@ -291,7 +291,7 @@ constexpr exact_frac<18> exact_of_double(double d) noexcept {
 // range a stand-in: ±2^1100 beyond every limit, or ±2^-1130 for a part below
 // the subnormals (below every notch, so it only rounds).
 template <std::floating_point T>
-constexpr exact_frac<36> exact_of_long_double(T v) noexcept {
+constexpr wide_rational<36> exact_of_long_double(T v) noexcept {
     using I             = wide_sint<36>;
     constexpr int shift = 1130;
     I             num{0};
@@ -308,7 +308,7 @@ constexpr exact_frac<36> exact_of_long_double(T v) noexcept {
         return {rem < 0 ? -(I{1} << 1100) : I{1} << 1100, I{1}};
     if (rem != 0)
         num += rem < 0 ? I{-1} : I{1};
-    return reduced(exact_frac<36>{num, I{1} << shift});
+    return reduced(wide_rational<36>{num, I{1} << shift});
 }
 
 // The nearest T to an exact value (ties to even), rounded once from the
@@ -317,7 +317,7 @@ constexpr exact_frac<36> exact_of_long_double(T v) noexcept {
 // digits a double would drop. Past T's range ±infinity, below half its least
 // subnormal ±0.
 template <std::floating_point T, std::size_t K>
-constexpr T nearest_float(const exact_frac<K>& f) noexcept {
+constexpr T nearest_float(const wide_rational<K>& f) noexcept {
     using U           = wide_uint<2 * K + 2>; // n·2^s with s up to digits + 2 + the denominator's bits
     using lim         = std::numeric_limits<T>;
     constexpr int p   = lim::digits;
@@ -364,13 +364,13 @@ constexpr T nearest_float(const exact_frac<K>& f) noexcept {
 
 // Truncation toward zero, as an integer.
 template <std::size_t K>
-constexpr wide_sint<K> trunc(const exact_frac<K>& f) noexcept {
+constexpr wide_sint<K> trunc(const wide_rational<K>& f) noexcept {
     return f.Num / f.Den;
 }
 
 // The reduced value as a 64-bit rational, or overflow when it does not fit.
 template <std::size_t K>
-constexpr std::expected<rational, errc> try_rational(const exact_frac<K>& f) noexcept {
+constexpr std::expected<rational, errc> try_rational(const wide_rational<K>& f) noexcept {
     using I        = wide_sint<K>;
     const auto r   = reduced(f);
     const bool neg = r.Num.negative();
@@ -382,11 +382,11 @@ constexpr std::expected<rational, errc> try_rational(const exact_frac<K>& f) noe
 }
 
 // Text → exact value, for values that outgrow the 64-bit rational parse
-// (from_chars falls back here on errc::overflow): the grammar of parse_text
+// (parse falls back here on errc::overflow): the grammar of parse_text
 // (scan_number: radix prefixes, ' separators, '.', e / p exponents, N/D),
 // built in K limbs. Anything K limbs cannot hold reports overflow.
 template <std::size_t K>
-constexpr std::expected<exact_frac<K>, errc> parse_exact(const char* first, const char* last) noexcept {
+constexpr std::expected<wide_rational<K>, errc> parse_exact(const char* first, const char* last) noexcept {
     using I           = wide_sint<K>;
     constexpr I limit = std::numeric_limits<I>::max() / I{32}; // room for ·16 + a digit
     const auto  big   = [&](const I& x) { return limit < x; };
@@ -395,7 +395,7 @@ constexpr std::expected<exact_frac<K>, errc> parse_exact(const char* first, cons
         neg = (*first == '-');
         ++first;
     }
-    auto one = [&](const char* f, const char* l) -> std::expected<exact_frac<K>, errc> {
+    auto one = [&](const char* f, const char* l) -> std::expected<wide_rational<K>, errc> {
         I                    num{0}, den{1};
         int                  frac_zeros = 0; // deferred, as in parse_number: trailing zeros cost nothing
         const scanned_number sc         = scan_number(f, l, [&](int d, bool in_frac, int b) {
@@ -422,7 +422,7 @@ constexpr std::expected<exact_frac<K>, errc> parse_exact(const char* first, cons
         if (sc.Stopped)
             return std::unexpected{errc::overflow};
         if (num.is_zero())
-            return exact_frac<K>{I{0}, I{1}};
+            return wide_rational<K>{I{0}, I{1}};
         if (sc.HasP) { // ·2^±Exp
             I& t = sc.ExpNeg ? den : num;
             if (bit_width_of(t) + sc.Exp > I::bits - 2)
@@ -435,7 +435,7 @@ constexpr std::expected<exact_frac<K>, errc> parse_exact(const char* first, cons
                     return std::unexpected{errc::overflow};
                 t = t * I{10};
             }
-        return exact_frac<K>{num, den};
+        return wide_rational<K>{num, den};
     };
     const char* slash = first;
     while (slash != last && *slash != '/')
@@ -463,8 +463,8 @@ inline constexpr std::size_t parse_limbs = 64;
 // continuous grid is bounded by its storage.
 template <insidable B>
 inline constexpr int finest_den_bits = [] {
-    const grid_wide d = den_bound(grid_of<B>);
-    return d == grid_wide{0} ? 64 * static_cast<int>(exact_limbs<B>) : bit_width_of(d);
+    const grid_int d = den_bound(grid_of<B>);
+    return d == grid_int{0} ? 64 * static_cast<int>(exact_limbs<B>) : bit_width_of(d);
 }();
 
 // Bounds on log2|v| of one number in the literal grammar (lo ≤ log2|v| < hi),
@@ -507,7 +507,7 @@ constexpr std::optional<log2_bounds> number_log2_bounds(const char* first, const
 // whose fold needs the exact value. Empty unless the text's magnitude,
 // bounded from its digits and exponents, is that small or that large.
 template <insidable B, std::size_t K, bool Wrap = false>
-constexpr std::optional<exact_frac<K>> stand_in(const char* first, const char* last) noexcept {
+constexpr std::optional<wide_rational<K>> stand_in(const char* first, const char* last) noexcept {
     constexpr int G   = finest_den_bits<B> + 2;
     constexpr int H   = exact_value_bits<B> + 2;
     bool          neg = false;
@@ -530,10 +530,10 @@ constexpr std::optional<exact_frac<K>> stand_in(const char* first, const char* l
     using I = wide_sint<K>;
     if constexpr (G < 64 * static_cast<int>(K) - 2)
         if (b->Hi <= -G)
-            return exact_frac<K>{neg ? I{-1} : I{1}, I{1} << G};
+            return wide_rational<K>{neg ? I{-1} : I{1}, I{1} << G};
     if constexpr (!Wrap && H < 64 * static_cast<int>(K) - 2)
         if (b->Lo >= H)
-            return exact_frac<K>{neg ? -(I{1} << H) : I{1} << H, I{1}};
+            return wide_rational<K>{neg ? -(I{1} << H) : I{1} << H, I{1}};
     return std::nullopt;
 }
 
@@ -568,10 +568,10 @@ struct exact_index_result {
 };
 
 template <insidable L, round_mode M, std::size_t K>
-constexpr auto exact_index(const exact_frac<K>& f) noexcept {
+constexpr auto exact_index(const wide_rational<K>& f) noexcept {
     constexpr std::size_t KK = exact_max<K, exact_limbs<L>>;
     using I                  = wide_sint<KK>;
-    const exact_frac<KK> g{f};
+    const wide_rational<KK> g{f};
     if constexpr (anchored<L>) {
         const I    n = g.Num * static_cast<I>(wide_denominator(notch_of<L>));
         const I    d = g.Den * static_cast<I>(wide_numerator(notch_of<L>)); // > 0
@@ -579,14 +579,14 @@ constexpr auto exact_index(const exact_frac<K>& f) noexcept {
         return exact_index_result<KK>{q.Quot - static_cast<I>(slot_base<L>), q.Exact};
     } else {
         // The offset (f − Lower)/Notch rounded in value space (rounds_up).
-        const exact_frac<KK> o = g + -exact_of_grid<KK>(lower_of<L>);
-        const I              n = o.Num * static_cast<I>(wide_denominator(notch_of<L>));
-        const I              d = o.Den * static_cast<I>(wide_numerator(notch_of<L>)); // > 0 (Den > 0)
-        const auto [q, r]      = floor_divmod(n, d);
-        const bool up          = rounds_up(M,
-                                           g.Num.negative(),
-                                           classify_remainder(M, r, d),
-                                           ((q + static_cast<I>(lower_index_wide<L>)).Word[0] & 1u) != 0);
+        const wide_rational<KK> o = g + -exact_of_grid<KK>(lower_of<L>);
+        const I                 n = o.Num * static_cast<I>(wide_denominator(notch_of<L>));
+        const I                 d = o.Den * static_cast<I>(wide_numerator(notch_of<L>)); // > 0 (Den > 0)
+        const auto [q, r]         = floor_divmod(n, d);
+        const bool up             = rounds_up(M,
+                                              g.Num.negative(),
+                                              classify_remainder(M, r, d),
+                                              ((q + static_cast<I>(lower_index_wide<L>)).Word[0] & 1u) != 0);
         return exact_index_result<KK>{up ? q + I{1} : q, r.is_zero()};
     }
 }
@@ -594,7 +594,7 @@ constexpr auto exact_index(const exact_frac<K>& f) noexcept {
 // x rounded by P's rounding to a fraction of L's bound (a bounded continuous
 // grid: denominators ≤ MaxDenominator), limits aside.
 template <insidable L, typename P, std::size_t K>
-constexpr exact_frac<K> round_to_bound(const exact_frac<K>& x) {
+constexpr wide_rational<K> round_to_bound(const wide_rational<K>& x) {
     return round_to_denominator<rounding_for<L, P>>(
         x, static_cast<wide_sint<K>>(wide_numerator(grid_of<L>.MaxDenominator)));
 }
@@ -611,7 +611,7 @@ constexpr bool exact_rounds_into_range(const rational& v, rational& out) {
     } else {
         const auto j = exact_index<L, rounding_for<L, P>>(exact_of(v)).Index; // L's slot offset
         using I      = std::remove_cvref_t<decltype(j)>;
-        if (j.negative() || I{max_index_v<L>} < j)
+        if (j.negative() || I{max_index_of<L>} < j)
             return false;
         out =
             (detail::lower64<L> + (rational{static_cast<umax>(j)} * detail::notch64<L>).value()).value(); // L's point
@@ -648,9 +648,9 @@ using wrap_work_t = std::conditional_t<wide_index_storage<Result>, raw_t<Result>
 
 // An operand's value-index range in `Unit`s: Lower/Unit .. Upper/Unit.
 template <insidable X, grid_rational Unit>
-inline constexpr grid_wide units_lo = exact_quotient(lower_of<X>, Unit);
+inline constexpr grid_int units_lo = exact_quotient(lower_of<X>, Unit);
 template <insidable X, grid_rational Unit>
-inline constexpr grid_wide units_hi = exact_quotient(upper_of<X>, Unit);
+inline constexpr grid_int units_hi = exact_quotient(upper_of<X>, Unit);
 
 // Whether from_value_in_units<Result, Unit> divides: the result is counted
 // in a unit finer than its notch (or off its lattice's multiples).
@@ -693,7 +693,7 @@ using index_work_t = std::conditional_t<(index_work_bits<Result, L, UL, R, UR, U
                                                            wrap_work_t<Result>>>;
 
 // a / b for grid numbers, known at compile time to be an integer.
-constexpr grid_wide exact_quotient(const grid_rational& a, const grid_rational& b) noexcept {
+constexpr grid_int exact_quotient(const grid_rational& a, const grid_rational& b) noexcept {
     return wide_numerator(a) * wide_denominator(b) / (wide_denominator(a) * wide_numerator(b));
 }
 
@@ -736,14 +736,14 @@ template <typename W, grid_rational Unit, insidable X>
 constexpr W value_in_units(const X& x) noexcept {
     // A point (Lower == Upper) holds its value in the type.
     if constexpr (point_grid<X>) {
-        constexpr grid_wide q = exact_quotient(lower_of<X>, Unit);
+        constexpr grid_int q = exact_quotient(lower_of<X>, Unit);
         return static_cast<W>(q);
     } else if constexpr (!anchored<X>) {
         // An index raw (integer value storage has integer values): Lower in
         // units, plus raw notches of `scale` units each.
         // raw·scale, the offset from Lower, can pass W while the value fits:
         // an integral W computes in its unsigned twin, as value_index does.
-        constexpr grid_wide base = exact_quotient(lower_of<X>, Unit), scale = exact_quotient(notch_of<X>, Unit);
+        constexpr grid_int base = exact_quotient(lower_of<X>, Unit), scale = exact_quotient(notch_of<X>, Unit);
         if constexpr (std::is_integral_v<W>) {
             using U = std::make_unsigned_t<W>;
             return static_cast<W>(static_cast<U>(static_cast<W>(base)) +
@@ -751,8 +751,8 @@ constexpr W value_in_units(const X& x) noexcept {
         } else
             return static_cast<W>(base) + static_cast<W>(x.raw()) * static_cast<W>(scale);
     } else {
-        constexpr grid_wide scale = exact_quotient(notch_of<X>, Unit);
-        if constexpr (scale == grid_wide{1})
+        constexpr grid_int scale = exact_quotient(notch_of<X>, Unit);
+        if constexpr (scale == grid_int{1})
             return value_index<W>(x);
         else
             return value_index<W>(x) * static_cast<W>(scale);
@@ -777,8 +777,8 @@ constexpr Result from_value_in_units(const W& j) noexcept {
     if constexpr (!divides_units<Result, Unit>)
         return from_value_index<Result>(j);
     else if constexpr (index_storage<Result>) {
-        constexpr grid_wide base  = exact_quotient(lower_of<Result>, Unit),
-                            scale = exact_quotient(notch_of<Result>, Unit);
+        constexpr grid_int base  = exact_quotient(lower_of<Result>, Unit),
+                           scale = exact_quotient(notch_of<Result>, Unit);
         return Result::from_raw(static_cast<raw_t<Result>>((j - static_cast<W>(base)) / static_cast<W>(scale)));
     } else // integer values counted in Unit = 1/k
         return Result::from_raw(
@@ -788,7 +788,7 @@ constexpr Result from_value_in_units(const W& j) noexcept {
 // Exact result of grid arithmetic: the value is on the result lattice and
 // inside its interval by construction, so it maps straight to a raw.
 template <insidable Result, std::size_t K>
-constexpr Result exact_result(const exact_frac<K>& v) noexcept {
+constexpr Result exact_result(const wide_rational<K>& v) noexcept {
     return Result::from_raw(raw_of_slot<Result>(exact_index<Result, round_mode::trunc>(v).Index));
 }
 } // namespace beman::inside::detail

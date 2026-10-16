@@ -37,7 +37,7 @@ namespace
   using unit4 = inside<{{0, 4}, per<65536>}, round_nearest>;
 
   // Outputs as fine as a double: every one has close to 2^53 slots.
-  using sin_fine  = math::amp<(std::uint64_t{1} << 52)>;                                      // 2^-52
+  using sin_fine  = math::unit_amplitude<(std::uint64_t{1} << 52)>;                                      // 2^-52
   using exp_fine  = inside<{{0, 4096}, per<(std::uint64_t{1} << 40)>}, round_nearest>;  // 2^-40
   using log_fine  = inside<{{-8, 8}, per<(std::uint64_t{1} << 48)>}, round_nearest>;    // 2^-48
   using sqrt_fine = inside<{{0, 2}, per<(std::uint64_t{1} << 51)>}, round_nearest>;     // 2^-51

@@ -86,7 +86,7 @@ TEST(ConstantTest, beman_inside_zero_beman_inside_one_assign_across_storage_kind
     static_assert([] {
         inside<{-40, 60}> b = zero;
         return b == 0;
-    }()); // signed direct
+    }()); // signed value storage
     static_assert([] {
         inside<{-40, 60}> b = one;
         return b == 1;

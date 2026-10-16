@@ -17,7 +17,7 @@
 
 //---------------------------------------------------------------------------
 // Attribute shims. Error/throw paths are marked cold + non-inline so the
-// optimiser keeps them out of the hot path (and out of the inlined body of
+// optimizer keeps them out of the hot path (and out of the inlined body of
 // otherwise-trivial assignment/arithmetic). Standard [[noreturn]] / [[unlikely]]
 // are used directly at the throw sites and branches.
 //---------------------------------------------------------------------------
@@ -56,7 +56,7 @@ enum class errc {
                       // interval, a native type, a rational's 64-bit fields)
     rounding_error,   // value is not on the grid (between notches)
     not_finite,       // non-finite double input (NaN/Inf)
-    invalid_format,   // text that is not a number (from_chars, operator>>)
+    invalid_format,   // text that is not a number (parse, operator>>)
 };
 
 // Static, allocation-free message per code. The single source of truth for
@@ -84,8 +84,7 @@ constexpr const char* errc_message(errc e) noexcept {
 //---------------------------------------------------------------------------
 // inside_error — the exception thrown by the default handler. Derives from
 // std::runtime_error (the library's only <stdexcept> use) and carries the
-// originating `errc` so `catch (inside_error& e) { e.Code; }` replaces the old
-// `e.code() == make_error_code(...)` idiom.
+// originating `errc`: `catch (inside_error& e) { e.Code; }`.
 //---------------------------------------------------------------------------
 struct inside_error : std::runtime_error {
     errc Code;
@@ -132,7 +131,7 @@ namespace detail {
 // Outlined failure funnel. Cold + non-inline so the (rare) machinery is
 // emitted once, off the hot path. Not constexpr: calling it during constant
 // evaluation is ill-formed, which is exactly how the checked compile-time
-// paths hard-fail the build (the old `throw` did the same).
+// paths hard-fail the build.
 //-----------------------------------------------------------------------
 [[noreturn]] BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE inline void raise(errc code, const char* what = nullptr) {
     g_error_handler(code, what ? what : errc_message(code));

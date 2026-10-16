@@ -5,7 +5,7 @@
 // a bare `B{v}` constructor would obscure what happens at the boundary.
 //
 // Demonstrates:
-//   - `clamp_floor` / `clamp_ceil` / `clamp_round` — saturate + a rounding
+//   - `clamp_cast<B, round_floor>` (and round_ceil / round_nearest) — saturate + a rounding
 //     direction, applied across a buffer with std::ranges::transform
 //   - `wrap_cast`   — modular reduction into the target interval
 //   - `clamp_cast`  — saturate to [Lower, Upper]
@@ -33,12 +33,12 @@ int main() {
     std::vector<double> raw = {-1.0, 2.4, 3.5, 7.9, 12.0};
     std::vector<level>  down(raw.size()), up(raw.size()), nearest(raw.size());
 
-    // Same inputs, three rounding directions — the clamp_* family in transform.
-    std::ranges::transform(raw, down.begin(), [](double v) { return clamp_floor<level>(v); });
-    std::ranges::transform(raw, up.begin(), [](double v) { return clamp_ceil<level>(v); });
-    std::ranges::transform(raw, nearest.begin(), [](double v) { return clamp_round<level>(v); });
+    // Same inputs, three rounding directions — clamp_cast with a rounding mode in transform.
+    std::ranges::transform(raw, down.begin(), [](double v) { return clamp_cast<level, round_floor>(v); });
+    std::ranges::transform(raw, up.begin(), [](double v) { return clamp_cast<level, round_ceil>(v); });
+    std::ranges::transform(raw, nearest.begin(), [](double v) { return clamp_cast<level, round_nearest>(v); });
 
-    std::cout << "clamp_* into inside<{{0,10},2}> (out-of-range saturates):\n";
+    std::cout << "clamp_cast<B, round_*> into inside<{{0,10},2}> (out-of-range saturates):\n";
     std::cout << "   raw     floor   ceil    round\n";
     for (std::size_t i = 0; i < raw.size(); ++i)
         std::cout << "  " << raw[i] << "\t " << down[i] << "\t " << up[i] << "\t " << nearest[i] << "\n";

@@ -20,10 +20,10 @@ namespace beman::inside::math::detail::ax {
 //---------------------------------------------------------------------------
 // Inputs as exact values, in as few limbs as their grid needs.
 //---------------------------------------------------------------------------
-constexpr int grid_bits(const grid_wide& v) { return bit_width_of(abs(v)); }
+constexpr int grid_bits(const grid_int& v) { return bit_width_of(abs(v)); }
 
 // A grid integer as a double (a notch's p or q, which may pass imax).
-constexpr double grid_double(const grid_wide& v) {
+constexpr double grid_double(const grid_int& v) {
 #if BEMAN_INSIDE_BIG_GRIDS
     return static_cast<double>(big_rational{v, big_int{1}});
 #else
@@ -48,7 +48,7 @@ template <insidable In>
 inline constexpr std::size_t input_limbs = limbs_for_bits(input_bits<In>);
 
 template <insidable In>
-constexpr exact_frac<input_limbs<In>> exact_input(const In& x) {
+constexpr wide_rational<input_limbs<In>> exact_input(const In& x) {
     using I = wide_sint<input_limbs<In>>;
     if constexpr (wide_valued<In>) {
         const auto v = exact_of(x);
@@ -65,7 +65,7 @@ inline constexpr int in_mag = grid_magnitude_bits<In> > 1 ? grid_magnitude_bits<
 
 // Bits of an exact input's numerator or denominator.
 template <std::size_t E>
-inline constexpr int frac_bits = 64 * static_cast<int>(E);
+inline constexpr int fraction_bits = 64 * static_cast<int>(E);
 
 // Result magnitude bound: values of Out lie below 2^out_kmax.
 template <insidable Out>
@@ -76,11 +76,11 @@ template <insidable Out>
 inline constexpr int start_bits = out_bits<Out> + 8 > 16 ? out_bits<Out> + 8 : 16;
 
 template <std::size_t K>
-constexpr exact_frac<K> exact_one() noexcept {
+constexpr wide_rational<K> exact_one() noexcept {
     return {wide_sint<K>{1}, wide_sint<K>{1}};
 }
 template <std::size_t K>
-constexpr exact_frac<K> exact_int(imax v) noexcept {
+constexpr wide_rational<K> exact_int(imax v) noexcept {
     return {wide_sint<K>{v}, wide_sint<K>{1}};
 }
 
@@ -90,7 +90,7 @@ constexpr exact_frac<K> exact_int(imax v) noexcept {
 // ⌊√f·2^S⌋ for f ≥ 0 (within 1 unit).
 // Bits bounds the numerator's and denominator's bit widths.
 template <int S, std::size_t K, int Bits, std::size_t E>
-constexpr wide_sint<K> sqrt_exact_q(const exact_frac<E>& f) noexcept {
+constexpr wide_sint<K> sqrt_exact_q(const wide_rational<E>& f) noexcept {
     using I   = wide_sint<limbs_for_bits(2 * Bits + 2 * S + 2)>;
     const I n = (I{f.Num} * I{f.Den}) << (2 * S);
     return static_cast<wide_sint<K>>(isqrt(n) / I{f.Den});
@@ -99,7 +99,7 @@ constexpr wide_sint<K> sqrt_exact_q(const exact_frac<E>& f) noexcept {
 // log x for x > 0 at scale S: x = m·2^e exactly, m in [0.7, 1.42] rounded to
 // scale S, log x = log m + e·ln 2.
 template <int S, std::size_t K, int Bits, std::size_t E>
-constexpr fx<K> log_exact(const exact_frac<E>& x) noexcept {
+constexpr fx<K> log_exact(const wide_rational<E>& x) noexcept {
     using I                  = wide_sint<K>;
     constexpr std::size_t KI = limbs_for_bits(2 * Bits + S + 2);
     int                   e  = floor_log2(x);
@@ -125,7 +125,7 @@ constexpr fx<K> rescale(const approx<K>& a, int A) noexcept {
 // asin x for |x| ≤ 1/2 (exact): atan(x/√(1−x²)), the square root as
 // x·(1/√(1−x²)) with 1 − x² ≥ 3/4 in fixed point.
 template <int S, std::size_t K, int Bits, std::size_t E>
-constexpr fx<K> asin_small(const exact_frac<E>& x) noexcept {
+constexpr fx<K> asin_small(const wide_rational<E>& x) noexcept {
     using I    = wide_sint<K>;
     const I xq = to_q<S, K>(x);                  // within ½
     const I c  = one_q<K>(S) - mul_q(xq, xq, S); // within 1.5, ≥ 3/4
@@ -136,7 +136,7 @@ constexpr fx<K> asin_small(const exact_frac<E>& x) noexcept {
 // asin √y for 0 ≤ y ≤ 1/4 (exact): u = √y exactly rounded (within 1), then
 // atan(u·(1/√(1−u²))) with 1 − u² ≥ 3/4.
 template <int S, std::size_t K, int Bits, std::size_t E>
-constexpr fx<K> asin_sqrt(const exact_frac<E>& y) noexcept {
+constexpr fx<K> asin_sqrt(const wide_rational<E>& y) noexcept {
     using I   = wide_sint<K>;
     const I u = sqrt_exact_q<S, K, Bits + 2>(y);
     const I w = one_q<K>(S) - mul_q(u, u, S); // within 2, ≥ 3/4
@@ -151,7 +151,7 @@ constexpr fx<K> asin_sqrt(const exact_frac<E>& y) noexcept {
 // can hold.
 //---------------------------------------------------------------------------
 template <std::size_t E>
-using maybe_exact = std::optional<exact_frac<E>>;
+using maybe_exact = std::optional<wide_rational<E>>;
 
 // deep_extra helpers (bits, saturating at the driver's deep_limit): ⌈2^Mag ·
 // milli / 1000⌉ bits for a result that nears a grid point like 2^(−c·|x|),
@@ -164,9 +164,9 @@ constexpr int deep_max(int a, int b) noexcept { return a > b ? a : b; }
 // exp x. Exact only at 0.
 template <std::size_t E, int Mag, int KMax>
 struct exp_core {
-    exact_frac<E> X;
+    wide_rational<E> X;
     // e^−|x| near 0 (1.443·|x| bits), e^x = 1 + x + x²/2 near 1 + x.
-    static constexpr int     deep_extra = deep_max(deep_scaled(Mag, 1443), 2 * frac_bits<E>);
+    static constexpr int     deep_extra = deep_max(deep_scaled(Mag, 1443), 2 * fraction_bits<E>);
     constexpr maybe_exact<E> exact() const { return is_zero(X) ? maybe_exact<E>{exact_one<E>()} : std::nullopt; }
     template <int W>
     constexpr auto run() const {
@@ -180,9 +180,9 @@ struct exp_core {
 // 2^x = 2^k·e^(f·ln 2), x = k + f. Exact at integers.
 template <std::size_t E, int Mag, int KMax>
 struct exp2_core {
-    exact_frac<E> X;
+    wide_rational<E> X;
     // 2^−|x| near 0 (|x| bits), 2^x near 1 for a small x.
-    static constexpr int deep_extra = deep_max(deep_scaled(Mag, 1000), 2 * frac_bits<E>);
+    static constexpr int deep_extra = deep_max(deep_scaled(Mag, 1000), 2 * fraction_bits<E>);
     template <int W>
     constexpr auto run() const {
         constexpr int S         = W + 8 + KMax;
@@ -194,8 +194,8 @@ struct exp2_core {
             return approx<K>{I{1}, -(KMax + 2), 0};
         if (k < J{-(S + 2)})
             return approx<K>{I{1}, S + 2, 1};
-        int                 kk = static_cast<int>(static_cast<imax>(k));
-        const exact_frac<E> f{X.Num - k * X.Den, X.Den}; // in [0, 1)
+        int                    kk = static_cast<int>(static_cast<imax>(k));
+        const wide_rational<E> f{X.Num - k * X.Den, X.Den}; // in [0, 1)
         if (is_zero(f))
             return approx<K>{I{1}, -kk, 0};
         const I ln2 = static_cast<I>(ln2_q<S>);
@@ -210,11 +210,11 @@ struct exp2_core {
 };
 
 // log x, x > 0. Exact at 1.
-template <std::size_t E, int Bits = frac_bits<E>>
+template <std::size_t E, int Bits = fraction_bits<E>>
 struct log_core {
-    exact_frac<E>            X;
+    wide_rational<E>         X;
     constexpr maybe_exact<E> exact() const {
-        return is_one(X) ? maybe_exact<E>{exact_frac<E>{wide_sint<E>{0}, wide_sint<E>{1}}} : std::nullopt;
+        return is_one(X) ? maybe_exact<E>{wide_rational<E>{wide_sint<E>{0}, wide_sint<E>{1}}} : std::nullopt;
     }
     template <int W>
     constexpr auto run() const {
@@ -230,7 +230,7 @@ struct log_core {
 // with the factors 2 (and 5) of n and d stripped, n/d = 2^a·5^c·n'/d' is a
 // power of B exactly when n' = d' and a (= c, for 10) is that power.
 template <std::size_t E>
-constexpr std::optional<imax> exact_log(const exact_frac<E>& x, int B) noexcept {
+constexpr std::optional<imax> exact_log(const wide_rational<E>& x, int B) noexcept {
     using I = wide_sint<E>;
     if (x.Num.negative() || x.Num.is_zero())
         return std::nullopt;
@@ -264,9 +264,9 @@ constexpr std::optional<imax> exact_log(const exact_frac<E>& x, int B) noexcept 
 }
 
 // log2 x and log10 x: log x / ln B. Exact at powers of B.
-template <std::size_t E, int B, int Bits = frac_bits<E>>
+template <std::size_t E, int B, int Bits = fraction_bits<E>>
 struct logb_core {
-    exact_frac<E>            X;
+    wide_rational<E>         X;
     constexpr maybe_exact<E> exact() const {
         if (const auto k = exact_log(X, B))
             return exact_int<E>(*k);
@@ -293,9 +293,9 @@ inline constexpr umax square_mod64 = [] {
 }();
 
 // √x, x ≥ 0: ⌊√x·2^P⌋ exactly. Exact when x is a square of a rational.
-template <std::size_t E, int Bits = frac_bits<E>>
+template <std::size_t E, int Bits = fraction_bits<E>>
 struct sqrt_core {
-    exact_frac<E> X;
+    wide_rational<E> X;
     // n/d is the square of a rational exactly when n·d is a perfect square,
     // and then √(n/d) = √(n·d)/d. Most non-squares fail the test mod 64.
     constexpr maybe_exact<E> exact() const {
@@ -306,7 +306,7 @@ struct sqrt_core {
         const J s = isqrt(m);
         if (!(s * s == m))
             return std::nullopt;
-        return exact_frac<E>{static_cast<wide_sint<E>>(s), X.Den};
+        return wide_rational<E>{static_cast<wide_sint<E>>(s), X.Den};
     }
     template <int W>
     constexpr auto run() const {
@@ -326,9 +326,9 @@ inline constexpr umax cube_mod63 = [] {
 }();
 
 // ∛x: ⌊∛(n·d²·2^(3P))⌋/d exactly. Exact when x is a cube of a rational.
-template <std::size_t E, int Bits = frac_bits<E>>
+template <std::size_t E, int Bits = fraction_bits<E>>
 struct cbrt_core {
-    exact_frac<E> X;
+    wide_rational<E> X;
     // |n|/d is the cube of a rational exactly when |n|·d² is a perfect cube,
     // and then ∛(|n|/d) = ∛(|n|·d²)/d. Most non-cubes fail the test mod 63.
     constexpr maybe_exact<E> exact() const {
@@ -340,17 +340,17 @@ struct cbrt_core {
         if (!(c * c * c == m))
             return std::nullopt;
         const wide_sint<E> r = static_cast<wide_sint<E>>(c);
-        return exact_frac<E>{X.Num.negative() ? -r : r, X.Den};
+        return wide_rational<E>{X.Num.negative() ? -r : r, X.Den};
     }
     template <int W>
     constexpr auto run() const {
-        constexpr int P         = W + 2;
-        using I                 = fixed_t<Bits + P + 4>;
-        constexpr std::size_t K = limbs_of<I>;
-        using J                 = wide_sint<limbs_for_bits(3 * Bits + 3 * P + 4)>;
-        const exact_frac<E> a   = abs(X);
-        const J             n   = (J{a.Num} * J{a.Den} * J{a.Den}) << (3 * P);
-        const I             y   = static_cast<I>(icbrt(n) / J{a.Den});
+        constexpr int P          = W + 2;
+        using I                  = fixed_t<Bits + P + 4>;
+        constexpr std::size_t K  = limbs_of<I>;
+        using J                  = wide_sint<limbs_for_bits(3 * Bits + 3 * P + 4)>;
+        const wide_rational<E> a = abs(X);
+        const J                n = (J{a.Num} * J{a.Den} * J{a.Den}) << (3 * P);
+        const I                y = static_cast<I>(icbrt(n) / J{a.Den});
         return approx<K>{X.Num.negative() ? -y : y, P, 1};
     }
 };
@@ -361,13 +361,15 @@ enum class trig { sin, cos, tan };
 
 template <std::size_t E, int Mag, trig Fn, int KMax>
 struct trig_core {
-    exact_frac<E> X;
+    wide_rational<E> X;
     // sin x = x − x³/6 near x, cos x = 1 − x²/2 near 1 (tan: none).
-    static constexpr int     deep_extra = Fn == trig::sin ? 3 * frac_bits<E> : Fn == trig::cos ? 2 * frac_bits<E> : 0;
+    static constexpr int     deep_extra = Fn == trig::sin   ? 3 * fraction_bits<E>
+                                          : Fn == trig::cos ? 2 * fraction_bits<E>
+                                                            : 0;
     constexpr maybe_exact<E> exact() const {
         if (!is_zero(X))
             return std::nullopt;
-        return Fn == trig::cos ? exact_one<E>() : exact_frac<E>{wide_sint<E>{0}, wide_sint<E>{1}};
+        return Fn == trig::cos ? exact_one<E>() : wide_rational<E>{wide_sint<E>{0}, wide_sint<E>{1}};
     }
     template <int W>
     constexpr auto run() const {
@@ -425,7 +427,7 @@ struct trig_core {
 
 // atan x: |x| ≤ 1 directly, else ±π/2 − atan(1/x). Exact at 0.
 template <int S, std::size_t K, std::size_t E>
-constexpr fx<K> atan_exact(const exact_frac<E>& x) noexcept {
+constexpr fx<K> atan_exact(const wide_rational<E>& x) noexcept {
     using I = wide_sint<K>;
     if (!(exact_one<E>() < abs(x)))
         return atan_fixed<S>(to_q<S, K>(x), 1);
@@ -436,7 +438,7 @@ constexpr fx<K> atan_exact(const exact_frac<E>& x) noexcept {
 
 template <std::size_t E>
 struct atan_core {
-    exact_frac<E>            X;
+    wide_rational<E>         X;
     constexpr maybe_exact<E> exact() const { return is_zero(X) ? maybe_exact<E>{X} : std::nullopt; }
     template <int W>
     constexpr auto run() const {
@@ -451,10 +453,10 @@ struct atan_core {
 // atan2(y, x) in [−π, π]; 0 for y = 0, x ≥ 0 (and the (0, 0) convention).
 template <std::size_t E>
 struct atan2_core {
-    exact_frac<E>            Y, X;
+    wide_rational<E>         Y, X;
     constexpr maybe_exact<E> exact() const {
         if (is_zero(Y) && !X.Num.negative())
-            return exact_frac<E>{wide_sint<E>{0}, wide_sint<E>{1}};
+            return wide_rational<E>{wide_sint<E>{0}, wide_sint<E>{1}};
         return std::nullopt;
     }
     template <int W>
@@ -462,7 +464,7 @@ struct atan2_core {
         constexpr int S         = W + 10;
         using I                 = fixed_t<S + 8>;
         constexpr std::size_t K = limbs_of<I>;
-        using F                 = exact_frac<2 * E + 1>;
+        using F                 = wide_rational<2 * E + 1>;
         const F y{Y}, x{X};
         const I pi = static_cast<I>(pi_q<S>);
         if (!(abs(x) < abs(y))) {
@@ -479,21 +481,21 @@ struct atan2_core {
 
 // asin x, |x| ≤ 1: small arguments directly; past 1/2, the half-angle form
 // ±(π/2 − 2·asin √((1−|x|)/2)), which stays accurate up to ±1.
-template <std::size_t E, int Bits = frac_bits<E>>
+template <std::size_t E, int Bits = fraction_bits<E>>
 struct asin_core {
-    exact_frac<E>            X;
+    wide_rational<E>         X;
     constexpr maybe_exact<E> exact() const { return is_zero(X) ? maybe_exact<E>{X} : std::nullopt; }
     template <int W>
     constexpr auto run() const {
-        constexpr int S         = W + 12;
-        using I                 = fixed_t<S + 8>;
-        constexpr std::size_t K = limbs_of<I>;
-        const exact_frac<E>   half{wide_sint<E>{1}, wide_sint<E>{2}};
+        constexpr int S          = W + 12;
+        using I                  = fixed_t<S + 8>;
+        constexpr std::size_t  K = limbs_of<I>;
+        const wide_rational<E> half{wide_sint<E>{1}, wide_sint<E>{2}};
         if (!(half < abs(X))) {
             const fx<K> a = asin_small<S, K, Bits>(X);
             return approx<K>{a.Value, S, a.Error};
         }
-        using F         = exact_frac<E + 1>;
+        using F         = wide_rational<E + 1>;
         const F     one = exact_one<E + 1>();
         const F     y   = (one + F{-abs(X)}) * F{half}; // (1 − |x|)/2
         const fx<K> a   = asin_sqrt<S, K, Bits + 1>(y);
@@ -504,23 +506,23 @@ struct asin_core {
 
 // acos x = π/2 − asin x for |x| ≤ 1/2; 2·asin √((1−x)/2) above;
 // π − 2·asin √((1+x)/2) below. Exact at 1.
-template <std::size_t E, int Bits = frac_bits<E>>
+template <std::size_t E, int Bits = fraction_bits<E>>
 struct acos_core {
-    exact_frac<E>            X;
+    wide_rational<E>         X;
     constexpr maybe_exact<E> exact() const {
-        return is_one(X) ? maybe_exact<E>{exact_frac<E>{wide_sint<E>{0}, wide_sint<E>{1}}} : std::nullopt;
+        return is_one(X) ? maybe_exact<E>{wide_rational<E>{wide_sint<E>{0}, wide_sint<E>{1}}} : std::nullopt;
     }
     template <int W>
     constexpr auto run() const {
-        constexpr int S         = W + 12;
-        using I                 = fixed_t<S + 8>;
-        constexpr std::size_t K = limbs_of<I>;
-        const exact_frac<E>   half{wide_sint<E>{1}, wide_sint<E>{2}};
+        constexpr int S          = W + 12;
+        using I                  = fixed_t<S + 8>;
+        constexpr std::size_t  K = limbs_of<I>;
+        const wide_rational<E> half{wide_sint<E>{1}, wide_sint<E>{2}};
         if (!(half < abs(X))) {
             const fx<K> a = asin_small<S, K, Bits>(X);
             return approx<K>{static_cast<I>(pi_q<S - 1>) - a.Value, S, a.Error + 1};
         }
-        using F         = exact_frac<E + 1>;
+        using F         = wide_rational<E + 1>;
         const F     one = exact_one<E + 1>();
         const F     x{X};
         const bool  neg = X.Num.negative();
@@ -538,12 +540,12 @@ enum class hyp { sinh, cosh, tanh };
 
 template <std::size_t E, int Mag, hyp Fn, int KMax>
 struct hyp_core {
-    exact_frac<E> X;
+    wide_rational<E> X;
     // tanh |x| = 1 − 2e^−2|x| near 1 (2.886·|x| bits) and x − x³/3 near x;
     // sinh near x by x³/6, cosh near 1 by x²/2.
-    static constexpr int     deep_extra = Fn == hyp::tanh   ? deep_max(deep_scaled(Mag, 2886), 3 * frac_bits<E>)
-                                          : Fn == hyp::sinh ? 3 * frac_bits<E>
-                                                            : 2 * frac_bits<E>;
+    static constexpr int     deep_extra = Fn == hyp::tanh   ? deep_max(deep_scaled(Mag, 2886), 3 * fraction_bits<E>)
+                                          : Fn == hyp::sinh ? 3 * fraction_bits<E>
+                                                            : 2 * fraction_bits<E>;
     constexpr maybe_exact<E> exact() const {
         if (!is_zero(X))
             return std::nullopt;
@@ -593,12 +595,12 @@ struct hyp_core {
 // atanh x = ±½·log((1+|x|)/(1−|x|)), |x| < 1.
 enum class ahyp { asinh, acosh, atanh };
 
-template <std::size_t E, int Mag, ahyp Fn, int Bits = frac_bits<E>>
+template <std::size_t E, int Mag, ahyp Fn, int Bits = fraction_bits<E>>
 struct ahyp_core {
-    exact_frac<E>            X;
+    wide_rational<E>         X;
     constexpr maybe_exact<E> exact() const {
         if (Fn == ahyp::acosh)
-            return is_one(X) ? maybe_exact<E>{exact_frac<E>{wide_sint<E>{0}, wide_sint<E>{1}}} : std::nullopt;
+            return is_one(X) ? maybe_exact<E>{wide_rational<E>{wide_sint<E>{0}, wide_sint<E>{1}}} : std::nullopt;
         return is_zero(X) ? maybe_exact<E>{X} : std::nullopt;
     }
     template <int W>
@@ -607,7 +609,7 @@ struct ahyp_core {
         // asinh forms x² + 1 in the word: twice the magnitude bits.
         using I                 = fixed_t<S + (Fn == ahyp::asinh ? 2 * Mag : Mag) + 8>;
         constexpr std::size_t K = limbs_of<I>;
-        using F                 = exact_frac<2 * E + 1>;
+        using F                 = wide_rational<2 * E + 1>;
         const bool neg          = X.Num.negative();
         const F    a            = abs(F{X});
         if constexpr (Fn == ahyp::atanh) {
@@ -667,17 +669,18 @@ constexpr std::optional<wide_sint<pow_limbs>> exact_root(const wide_sint<pow_lim
 }
 
 template <std::size_t EB, std::size_t EE>
-constexpr std::optional<exact_frac<pow_limbs>> exact_pow(const exact_frac<EB>& b, const exact_frac<EE>& e) noexcept {
+constexpr std::optional<wide_rational<pow_limbs>> exact_pow(const wide_rational<EB>& b,
+                                                            const wide_rational<EE>& e) noexcept {
     using P = wide_sint<pow_limbs>;
     if (is_zero(e) || is_one(b))
-        return exact_frac<pow_limbs>{P{1}, P{1}};
-    const exact_frac<EE> re = reduced(e); // p/q, q > 0
+        return wide_rational<pow_limbs>{P{1}, P{1}};
+    const wide_rational<EE> re = reduced(e); // p/q, q > 0
     if (bit_width_of(re.Den) > 7 || 64 < static_cast<imax>(re.Den))
         return std::nullopt;
-    const int            q  = static_cast<int>(static_cast<imax>(re.Den));
-    const auto           k  = re.Num;
-    const auto           ak = abs(k);
-    const exact_frac<EB> r  = reduced(b);
+    const int               q  = static_cast<int>(static_cast<imax>(re.Den));
+    const auto              k  = re.Num;
+    const auto              ak = abs(k);
+    const wide_rational<EB> r  = reduced(b);
     // b^(1/q) first: both parts perfect q-th powers, else irrational.
     const auto rn = exact_root(P{r.Num}, q), rd = exact_root(P{r.Den}, q);
     if (!rn || !rd)
@@ -690,7 +693,7 @@ constexpr std::optional<exact_frac<pow_limbs>> exact_pow(const exact_frac<EB>& b
         n = n * *rn;
         d = d * *rd;
     }
-    return k.negative() ? inverse(exact_frac<pow_limbs>{n, d}) : exact_frac<pow_limbs>{n, d};
+    return k.negative() ? inverse(wide_rational<pow_limbs>{n, d}) : wide_rational<pow_limbs>{n, d};
 }
 
 // ConstBase, when nonzero, is the base known at compile time (pow_base): its
@@ -699,13 +702,13 @@ template <std::size_t EB,
           std::size_t EE,
           int         MagE,
           int         KMax,
-          int         BitsB     = frac_bits<EB>,
-          int         BitsE     = frac_bits<EE>,
+          int         BitsB     = fraction_bits<EB>,
+          int         BitsE     = fraction_bits<EE>,
           imax        ConstBase = 0>
 struct pow_core {
-    exact_frac<EB>                                 B;
-    exact_frac<EE>                                 Exp;
-    constexpr std::optional<exact_frac<pow_limbs>> exact() const { return exact_pow(B, Exp); }
+    wide_rational<EB>                                 B;
+    wide_rational<EE>                                 Exp;
+    constexpr std::optional<wide_rational<pow_limbs>> exact() const { return exact_pow(B, Exp); }
     template <int W>
     constexpr auto run() const {
         // log b at MagE more bits, so e·log b (|e| < 2^MagE) is within 2 units
@@ -799,18 +802,18 @@ constexpr grid_rational lattice_bound(const Core& core) {
 
 // An In endpoint as an exact input.
 template <insidable In>
-constexpr exact_frac<input_limbs<In>> grid_input(const grid_rational& r) {
+constexpr wide_rational<input_limbs<In>> grid_input(const grid_rational& r) {
     return exact_of_grid<input_limbs<In>>(r);
 }
 
 // ⌈|r|⌉ as an int (deduction bounds), saturated at imax: a grid reaching
 // 2^63 must fail every range gate, not wrap past them.
 constexpr imax ceil_abs(const grid_rational& r) {
-    const grid_wide n = wide_numerator(r), d = wide_denominator(r);
-    const grid_wide a = abs(n);
-    const grid_wide c = (a + d - grid_wide{1}) / d;
-    constexpr imax  M = std::numeric_limits<imax>::max();
-    return grid_wide{M} < c ? M : static_cast<imax>(c);
+    const grid_int n = wide_numerator(r), d = wide_denominator(r);
+    const grid_int a = abs(n);
+    const grid_int c = (a + d - grid_int{1}) / d;
+    constexpr imax M = std::numeric_limits<imax>::max();
+    return grid_int{M} < c ? M : static_cast<imax>(c);
 }
 
 template <insidable In>
@@ -819,10 +822,10 @@ inline constexpr imax max_abs_int = ceil_abs(lower_of<In>) > ceil_abs(upper_of<I
 
 // Policy of a deduced output: the input's (no cursor), rounding to nearest.
 template <insidable In>
-inline constexpr policy_flag auto_policy = (policy_of<In> & ~cursor_marker) | round_nearest;
+inline constexpr policy_flag result_policy = (flags_of<In> & ~cursor_marker) | round_nearest;
 
 template <insidable In, grid_rational Lo, grid_rational Hi>
-using auto_grid_t = inside<{{Lo, Hi}, notch_of<In>}, auto_policy<In>>;
+using result_grid_t = inside<{{Lo, Hi}, notch_of<In>}, result_policy<In>>;
 
 // The bound of Core's result at In's lower or upper end.
 template <insidable In, typename Core, bool AtUpper, bool Up>
@@ -830,9 +833,9 @@ inline constexpr grid_rational bound_at =
     lattice_bound<notch_of<In>, Up>(Core{grid_input<In>(AtUpper ? upper_of<In> : lower_of<In>)});
 
 template <insidable In, typename Core>
-using increasing_t = auto_grid_t<In, bound_at<In, Core, false, false>, bound_at<In, Core, true, true>>;
+using increasing_t = result_grid_t<In, bound_at<In, Core, false, false>, bound_at<In, Core, true, true>>;
 template <insidable In, typename Core>
-using decreasing_t = auto_grid_t<In, bound_at<In, Core, true, false>, bound_at<In, Core, false, true>>;
+using decreasing_t = result_grid_t<In, bound_at<In, Core, true, false>, bound_at<In, Core, false, true>>;
 
 // Growth bounds for the deduction: |result| < 2^kmax over In.
 template <insidable In>
@@ -867,7 +870,7 @@ inline constexpr int pow_kmax = [] {
 // inputs that other outputs take, such as a base reaching 0).
 template <insidable Out, typename Grow>
 inline constexpr int grow_kmax = [] {
-    if constexpr (has_flag(policy_of<Out>, wrap)) {
+    if constexpr (has_flag(flags_of<Out>, wrap)) {
         constexpr int g = Grow::bits;
         return g > out_kmax<Out> ? g : out_kmax<Out>;
     } else

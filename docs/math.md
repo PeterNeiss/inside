@@ -98,14 +98,14 @@ kernels.
 
 ## Conventions
 
-- **Angles are radians**, as in `<cmath>`. `math::amp<K>` (`[-1, 1]` at
-  resolution `1/K`) is a ready-made output grid: `math::sin_into<math::amp<32768>>(x)`.
+- **Angles are radians**, as in `<cmath>`. `math::unit_amplitude<K>` (`[-1, 1]` at
+  resolution `1/K`) is a ready-made output grid: `math::sin_into<math::unit_amplitude<32768>>(x)`.
 - **Rounding needs permission.** A transcendental result is rounded onto a grid,
   so the operand of a deduced form (or the `Out` of an explicit one) must permit
   rounding: `round_nearest`, `round_floor`, `round_ceil`, `round_half_even`
   or `snap`. Omitting it is a compile error.
 - **Deduced outputs: `fn(x)`.** The output takes the input's notch and policy
-  (minus any fixed storage width, plus `round_nearest`). Its interval is the
+  (plus `round_nearest`; a cursor input gives a plain inside). Its interval is the
   function's range over the input, computed at compile time by the same engine
   and rounded outward to the notch. Exceptions: `sin`/`cos` give `[-1, 1]`,
   `tan` gives `[-1024, 1024]`, `atan2` gives `[-π, π]` and `hypot` `[0, …]` on
@@ -113,7 +113,7 @@ kernels.
   roundings (`floor`, …) use notch 1. A fine input notch gives a fine (and
   slower) output; name a coarser output with `fn_into` when you need less.
 - **Explicit output: `fn_into<Out>(x)`.** Every function has an `_into` form
-  taking the output type — `math::sin_into<amp_t>(a)`, `math::pow_into<Out>(b, e)`,
+  taking the output type — `math::sin_into<math::unit_amplitude<16384>>(a)`, `math::pow_into<Out>(b, e)`,
   `math::pow_base_into<Out, 10>(x)`. The result is correctly rounded under
   `Out`'s rounding mode; a result past `Out`'s range goes through `Out`'s policy
   (`clamp` saturates, `wrap` wraps the true value, the default reports).
@@ -223,7 +223,7 @@ using angle_t = inside<{{0, 8}, per<16384>}, round_nearest>;
 
 turn_t phase{0};
 phase += turn_t{0.25};                                   // a quarter turn, exactly
-auto s = math::sin_into<math::amp<16384>>(angle_t{phase * math::two_pi});
+auto s = math::sin_into<math::unit_amplitude<16384>>(angle_t{phase * math::two_pi});
 ```
 
 ## Using `expected` results

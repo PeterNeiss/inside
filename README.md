@@ -100,7 +100,7 @@ reports)
 
 ### Examples
 
-[`examples/`](examples/) holds 30 self-contained programs — start with
+[`examples/`](examples/) holds 32 self-contained programs — start with
 [`basics.cpp`](examples/basics.cpp) (clamp, wrap, bounded loops); then e.g.
 [`clock.cpp`](examples/clock.cpp) (wrap with carry),
 [`money.cpp`](examples/money.cpp) (cents-exact currency),

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-#ifndef BEMAN_INSIDE_MATH_HPP
-#define BEMAN_INSIDE_MATH_HPP
+#ifndef BEMAN_INSIDE_NUMBERS_HPP
+#define BEMAN_INSIDE_NUMBERS_HPP
 
 #include <cstdint>
 #include <utility>
@@ -10,8 +10,8 @@
 #include <limits>
 
 //---------------------------------------------------------------------------
-// math — primitive numeric utilities: umax/imax, smallest_uint_for /
-// smallest_int_for (grid storage selection), the arithmetic/fractional
+// numbers — primitive numeric utilities: umax/imax, smallest_uint_for_t /
+// smallest_int_for_t (grid storage selection), the plain_number/fractional
 // concepts and safe_abs. The floating-point bit helpers are in
 // detail/float_bits.hpp.
 //---------------------------------------------------------------------------
@@ -27,7 +27,7 @@ namespace detail {
 // A plain number a grid-less value can be: integral, floating point, or the
 // library's exact rational. Internal; the public operand concept is `numeric`.
 template <typename T>
-concept arithmetic = std::integral<T> || std::floating_point<T> || std::same_as<rational, T>;
+concept plain_number = std::integral<T> || std::floating_point<T> || std::same_as<rational, T>;
 } // namespace detail
 
 namespace detail {
@@ -52,7 +52,7 @@ using smallest_int_for_t = std::conditional_t<
                        std::int16_t,
                        std::conditional_t<(Low >= INT32_MIN && High <= INT32_MAX), std::int32_t, std::int64_t>>>;
 
-// (type_name_v<T> — used only by the debug stringifier — lives in
+// (type_name_of<T> — used only by the debug stringifier — lives in
 // "beman/inside/io.hpp" so the core stays free of <string_view>.)
 
 // Subset of arithmetic excluding integrals — the rhs types that need the
@@ -67,4 +67,4 @@ template <std::signed_integral V>
 } // namespace detail
 } // namespace beman::inside
 
-#endif // BEMAN_INSIDE_MATH_HPP
+#endif // BEMAN_INSIDE_NUMBERS_HPP

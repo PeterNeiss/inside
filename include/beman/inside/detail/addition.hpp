@@ -43,7 +43,7 @@ struct addition {
     static constexpr auto add(L lhs, R rhs, policy<F, E> policy = {}, A&& action = {}) -> return_t<F, A> {
         result res;
         if constexpr (fraction_storage<result>) {
-            const auto sum = frac_raw_of<raw_t<result>>(exact_of(lhs) + exact_of(rhs));
+            const auto sum = continuous_raw_of<raw_t<result>>(exact_of(lhs) + exact_of(rhs));
             if constexpr (needs_overflow_check<F>)
                 if (!sum) [[unlikely]]
                     return report_or_unexpected<result>(action, policy, errc::overflow, "fraction overflow in add");
@@ -85,9 +85,10 @@ struct addition {
 // Whether `l + r` has a result, as a constraint of add / + / += (so a
 // requires-expression or `if constexpr` probe gets the answer instead of a
 // hard error): the sum grid within the 64-bit grid numbers (C++26 big grids
-// lift that), and no wide-index operand with a continuous result.
-template <insidable L, insidable R>
-inline constexpr bool sum_grid_fits_64_bit_grid_numbers = [] {
+// lift that), and no wide-index operand with a continuous result. (F, the
+// call's flags, is taken for symmetry with div_defined; a sum ignores it.)
+template <insidable L, insidable R, policy_flag = none>
+inline constexpr bool add_defined = [] {
     if constexpr (!grid_sum_fits(grid_of<L>, grid_of<R>))
         return false;
     else
@@ -95,9 +96,8 @@ inline constexpr bool sum_grid_fits_64_bit_grid_numbers = [] {
 }();
 
 // The same for `l - r` (l + (−r)).
-template <insidable L, insidable R>
-inline constexpr bool difference_grid_fits_64_bit_grid_numbers =
-    sum_grid_fits_64_bit_grid_numbers<L, decltype(-std::declval<const R&>())>;
+template <insidable L, insidable R, policy_flag = none>
+inline constexpr bool sub_defined = add_defined<L, decltype(-std::declval<const R&>())>;
 } // namespace beman::inside::detail
 
 #endif // BEMAN_INSIDE_DETAIL_ADDITION_HPP

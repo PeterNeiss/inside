@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // JSON numbers in and out, exactly. A JSON reader that parses numbers as
 // double cannot hold an ID past 2^53 or the cents of a price; here each number
-// goes from its text straight into its field's grid with from_chars_exact — no
+// goes from its text straight into its field's grid with parse_exact — no
 // double in between, and nothing rounded or clamped whatever the field's
 // policy — so a bad field is reported by name and cause. to_string writes the
 // values back as the same decimal text, so the document round-trips byte for
@@ -25,7 +25,7 @@ using ratio_t    = inside<{{0, 1}, per<100>}>;                            // a d
 using total_t    = inside<{{0, 1'000'000'000}, per<100>}, round_nearest>; // rounded once, to the cent
 
 // A flat JSON object of numbers: key → the number's text. Minimal on purpose
-// (no nesting, strings or escapes) — just enough to feed from_chars.
+// (no nesting, strings or escapes) — just enough to feed parse.
 std::map<std::string, std::string_view> scan(std::string_view json) {
     std::map<std::string, std::string_view> fields;
     std::size_t                             i = 0;
@@ -54,7 +54,7 @@ std::expected<order, std::vector<std::pair<std::string, errc>>> read_order(std::
     auto                                      get = [&]<typename B>(const char* key, B& out) {
         const auto it = fields.find(key);
         const auto v  = it == fields.end() ? std::expected<B, errc>{std::unexpected(errc::invalid_format)}
-                                           : from_chars_exact<B>(it->second);
+                                           : parse_exact<B>(it->second);
         if (v)
             out = *v;
         else

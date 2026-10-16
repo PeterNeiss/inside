@@ -67,7 +67,7 @@ void guarded(fuzz_state& s, Fn&& fn) {
 // Helpers
 //---------------------------------------------------------------------------
 // Random in-range raw value. Direct storage uses [Lower, Upper];
-// notch storage uses [0, max_index_v].
+// notch storage uses [0, max_index_of].
 template <insidable B>
 typename B::raw_type random_in_range_raw(std::mt19937_64& rng) {
     using raw = typename B::raw_type;
@@ -77,7 +77,7 @@ typename B::raw_type random_in_range_raw(std::mt19937_64& rng) {
         std::uniform_int_distribution<imax> dist(lo, hi);
         return static_cast<raw>(dist(rng));
     } else {
-        std::uniform_int_distribution<umax> dist(0, max_index_v<B>);
+        std::uniform_int_distribution<umax> dist(0, max_index_of<B>);
         return static_cast<raw>(dist(rng));
     }
 }
@@ -561,7 +561,7 @@ void prop_compound_div_mod_zero(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_compound_inside_overshoot(fuzz_state& s, long iters) {
-    // Targets inside.hpp:228-9 — the fast-path += else branch where the result
+    // Targets inside::operator+= (core.hpp): the fast path's branch where the result
     // overshoots and the policy lacks clamp/wrap. The catalogue's
     // grids already use the default `checked` policy, so the report path throws
     // overflow. Pick start values where adding `delta` lands outside the
@@ -593,9 +593,9 @@ void prop_compound_inside_overshoot(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_non_notch_assign(fuzz_state& s, long iters) {
-    // Targets assignment.hpp:289 (round_nearest), 291 (snap silent floor),
-    // 296 (checked rounding_error report → throws), and 299 (silent floor for
-    // unchecked policy). Only meaningful for fixed-point grids (notch != 1).
+    // Targets the off-notch store in assignment.hpp: round_nearest, snap's
+    // silent floor, the checked rounding_error report (throws), and the silent
+    // floor under unsafe. Only meaningful for fixed-point grids (notch != 1).
     if constexpr (!integer_lattice<B> && !rational_storage<B>) {
         s.current_prop = "non_notch_assign";
         // The catalogue's B already uses the default `checked` policy, so a non-
@@ -612,7 +612,7 @@ void prop_non_notch_assign(fuzz_state& s, long iters) {
             s.iter = i;
             // pick a notch-aligned in-range value, then add half-notch to land
             // strictly between two notches.
-            std::uniform_int_distribution<umax> dist(0, max_index_v<B> - 1);
+            std::uniform_int_distribution<umax> dist(0, max_index_of<B> - 1);
             umax                                k          = dist(s.rng);
             rational                            on_notch   = (lo + rational{k} * notch).value();
             rational                            mid        = (on_notch + half).value();
@@ -622,7 +622,7 @@ void prop_non_notch_assign(fuzz_state& s, long iters) {
                 continue;
 
             // `mid` is an exact half between on_notch (lower) and next_notch (higher).
-            // The library rounds in VALUE space (generic.hpp round_quotient): snap
+            // The library rounds in VALUE space (storage.hpp round_quotient): snap
             // and `none` truncate TOWARD ZERO (not floor — that's round_floor), and
             // round_nearest rounds HALF AWAY FROM ZERO. So the expected notch is the
             // smaller-|·| candidate for snap/none and the larger-|·| candidate for
@@ -673,7 +673,7 @@ void prop_non_notch_assign(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_subnormal_construct(fuzz_state& s, long iters) {
-    // Targets math.hpp:179-180 — abs_fraction shift cap for very small doubles.
+    // Targets float_bits.hpp — abs_fraction shift cap for very small doubles.
     // The path is taken when the input double has a negative exponent so large
     // that bits-exponent > 62. Any double in (0, 2^-62) qualifies.
     if constexpr (!integer_lattice<B> && !rational_storage<B>) {
@@ -706,7 +706,7 @@ void prop_subnormal_construct(fuzz_state& s, long iters) {
 }
 
 void prop_interval_eq(fuzz_state& s) {
-    // Targets interval.hpp:149 — equivalent return of operator<=>.
+    // Targets interval's operator<=> (interval.hpp): the equivalent return.
     s.current_prop = "interval_eq";
     s.iter         = 0;
     std::uniform_int_distribution<imax> dist(-1000, 1000);
@@ -755,7 +755,7 @@ void prop_expected_throws(fuzz_state& s) {
 
 template <insidable B>
 void prop_compound_add_same_inside(fuzz_state& s, long iters) {
-    // Targets inside.hpp:243 — the fallback path of operator+=(insidable R)
+    // Targets the fallback path of inside::operator+=(insidable R) (core.hpp)
     // when the fast path's encoding constraints don't hold (typically fractional
     // grids whose Lower != 0 on at least one side, or notches that mismatch).
     // For grids whose value ranges allow it, b += b should still produce 2*b
@@ -782,8 +782,8 @@ void prop_compound_add_same_inside(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_raw_rational_arith(fuzz_state& s, long iters) {
-    // Targets addition.hpp:48-63 (the rational_storage<result> branches) and
-    // multiplication.hpp:44-63 (same for mul). For raw-rational grids (notch=0)
+    // Targets the rational_storage<result> branches of addition<L, R>::add
+    // (addition.hpp) and multiplication<L, R>::mul (multiplication.hpp). For raw-rational grids (notch=0)
     // arithmetic goes through the rational-add/mul paths directly. Most random
     // small-integer values won't overflow the rational machinery, so we mostly
     // exercise the success branches; occasional out-of-range results land in
@@ -863,9 +863,9 @@ void prop_casts(fuzz_state& s, long iters) {
             imax wexpect = ((v - lo) % range + range) % range + lo;
             FUZZ_REQUIRE(s, wrap_cast<B>(v) == wexpect);
             // notch == 1, so floor/ceil/round are no-ops after the clamp.
-            FUZZ_REQUIRE(s, clamp_floor<B>(v) == cl);
-            FUZZ_REQUIRE(s, clamp_ceil<B>(v) == cl);
-            FUZZ_REQUIRE(s, clamp_round<B>(v) == cl);
+            FUZZ_REQUIRE(s, clamp_cast<B, round_floor>(v) == cl);
+            FUZZ_REQUIRE(s, clamp_cast<B, round_ceil>(v) == cl);
+            FUZZ_REQUIRE(s, clamp_cast<B, round_nearest>(v) == cl);
             if (v >= lo && v <= hi) {
                 FUZZ_REQUIRE(s, checked_cast<B>(v) == v);
                 FUZZ_REQUIRE(s, unchecked_cast<B>(v) == v);
@@ -877,7 +877,7 @@ void prop_casts(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_casts_fixed(fuzz_state& s, long iters) {
-    // clamp_floor / clamp_ceil on dyadic fixed-point grids: a half-notch
+    // clamp_cast<B, round_floor / round_ceil> on dyadic fixed-point grids: a half-notch
     // midpoint floors to the notch below and ceils to the notch above.
     if constexpr (DyadicNotch<B>) {
         s.current_prop = "casts_fixed";
@@ -886,20 +886,20 @@ void prop_casts_fixed(fuzz_state& s, long iters) {
         rational half  = (notch / 2_r).value();
         for (long i = 0; i < iters; ++i) {
             s.iter = i;
-            std::uniform_int_distribution<umax> dist(0, max_index_v<B> - 1);
+            std::uniform_int_distribution<umax> dist(0, max_index_of<B> - 1);
             umax                                k        = dist(s.rng);
             rational                            on_notch = (lo + (rational{k} * notch).value()).value();
             rational                            next     = (on_notch + notch).value();
             double                              mid      = static_cast<double>((on_notch + half).value());
-            FUZZ_REQUIRE(s, to_rational(clamp_floor<B>(mid)) == on_notch);
-            FUZZ_REQUIRE(s, to_rational(clamp_ceil<B>(mid)) == next);
+            FUZZ_REQUIRE(s, to_rational(clamp_cast<B, round_floor>(mid)) == on_notch);
+            FUZZ_REQUIRE(s, to_rational(clamp_cast<B, round_ceil>(mid)) == next);
         }
     }
 }
 
 template <insidable B>
 void prop_predicates(fuzz_state& s, long iters) {
-    // conversion_overflows / conversion_rounds / conversion_is_lossy must agree with the actual
+    // conversion_overflows / conversion_rounds / conversion_loses must agree with the actual
     // checked conversion outcome.
     if constexpr (integer_lattice<B> && !rational_storage<B>) {
         s.current_prop = "predicates";
@@ -912,7 +912,7 @@ void prop_predicates(fuzz_state& s, long iters) {
             bool in_range = (v >= lo && v <= hi);
             FUZZ_REQUIRE(s, conversion_overflows<B>(v) == !in_range);
             FUZZ_REQUIRE(s, !conversion_rounds<B>(v)); // integer grid never truncates
-            bool lossy = conversion_is_lossy<B>(v);
+            bool lossy = conversion_loses<B>(v);
             bool threw = throws_with_any({errc::overflow, errc::rounding_error}, [&] { (void)checked_cast<B>(v); });
             FUZZ_REQUIRE(s, lossy == threw);
         }
@@ -924,25 +924,25 @@ void prop_predicates(fuzz_state& s, long iters) {
         rational half  = (notch / 2_r).value();
         for (long i = 0; i < iters; ++i) {
             s.iter = i;
-            std::uniform_int_distribution<umax> dist(0, max_index_v<B>);
+            std::uniform_int_distribution<umax> dist(0, max_index_of<B>);
             umax                                k = dist(s.rng);
             double on_notch                       = static_cast<double>((lo + (rational{k} * notch).value()).value());
             // On-notch, in range: nothing lost.
             FUZZ_REQUIRE(s, !conversion_overflows<B>(on_notch));
             FUZZ_REQUIRE(s, !conversion_rounds<B>(on_notch));
-            FUZZ_REQUIRE(s, !conversion_is_lossy<B>(on_notch));
+            FUZZ_REQUIRE(s, !conversion_loses<B>(on_notch));
             // Half-notch midpoint, in range: truncates (lossy) but does not overflow.
-            if (k < max_index_v<B>) {
+            if (k < max_index_of<B>) {
                 double mid = on_notch + static_cast<double>(half);
                 FUZZ_REQUIRE(s, !conversion_overflows<B>(mid));
                 FUZZ_REQUIRE(s, conversion_rounds<B>(mid));
-                FUZZ_REQUIRE(s, conversion_is_lossy<B>(mid));
+                FUZZ_REQUIRE(s, conversion_loses<B>(mid));
                 FUZZ_REQUIRE(s, throws_with(errc::rounding_error, [&] { (void)checked_cast<B>(mid); }));
             }
             // Above the top notch: overflow (lossy).
             double over = static_cast<double>((hi + notch).value());
             FUZZ_REQUIRE(s, conversion_overflows<B>(over));
-            FUZZ_REQUIRE(s, conversion_is_lossy<B>(over));
+            FUZZ_REQUIRE(s, conversion_loses<B>(over));
         }
     }
 }
@@ -952,7 +952,7 @@ void prop_range(fuzz_state& s, long iters) {
     // inside_range walks every notch slot exactly once; a mid-range start rotates
     // the sequence. Capped so the billion-wide catalogue grids stay fast.
     if constexpr (!rational_storage<B>) {
-        constexpr umax N = max_index_v<B> + 1;
+        constexpr umax N = max_index_of<B> + 1;
         if constexpr (N <= 100000) {
             s.current_prop                         = "range";
             using R                                = inside_range<grid_of<B>>;

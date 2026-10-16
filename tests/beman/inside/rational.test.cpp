@@ -13,7 +13,7 @@ namespace {
 constexpr umax M = std::numeric_limits<umax>::max();
 }
 
-// rational construction normalises
+// rational construction normalizes
 TEST(RationalTest, rational_construction_normalises) {
     {
         SCOPED_TRACE("zero numerator collapses denominator");

@@ -38,21 +38,21 @@ struct multiplication {
         conditional_t<overflow_action<plain_t<A>> || !needs_overflow_check<F>, result, std::expected<result, errc>>;
 
     template <typename P, typename A = no_action>
-    static constexpr auto mul(L lhs, R rhs, P&& policy, A&& action = {}) -> return_t<policy_flags_of<plain_t<P>>, A> {
+    static constexpr auto mul(L lhs, R rhs, P&& policy, A&& action = {}) -> return_t<flags_of<P>, A> {
         if constexpr (point_scale<R, L, result>) // x * just<c>: x's offset (see rep.hpp)
             return scale_by_point<result, (lower_of<R> < 0)>(lhs);
         else if constexpr (point_scale<L, R, result>)
             return scale_by_point<result, (lower_of<L> < 0)>(rhs);
         else if constexpr (fraction_storage<result>) {
-            const auto prod = frac_raw_of<raw_t<result>>(exact_of(lhs) * exact_of(rhs));
-            if constexpr (needs_overflow_check<policy_flags_of<plain_t<P>>>)
+            const auto prod = continuous_raw_of<raw_t<result>>(exact_of(lhs) * exact_of(rhs));
+            if constexpr (needs_overflow_check<flags_of<P>>)
                 if (!prod) [[unlikely]]
                     return report_or_unexpected<result>(action, policy, errc::overflow, "fraction overflow in mul");
             return result::from_raw(*prod);
         } else if constexpr (rational_storage<result>) {
             static_assert(!wide_valued<L> && !wide_valued<R>,
                           "multiplication: a wide-index operand with a continuous result is not supported yet");
-            if constexpr (needs_overflow_check<policy_flags_of<plain_t<P>>>) {
+            if constexpr (needs_overflow_check<flags_of<P>>) {
                 auto prod = as_rational(lhs) * as_rational(rhs);
                 if (!prod) [[unlikely]]
                     return report_or_unexpected<result>(action, policy, errc::overflow, "rational overflow in mul");
@@ -79,8 +79,8 @@ struct multiplication {
 // Whether `l * r` has a result, as a constraint of mul / * / *=: the
 // product grid within the 64-bit grid numbers (C++26 big grids lift that),
 // and no wide-index operand with a continuous result.
-template <insidable L, insidable R>
-inline constexpr bool product_grid_fits_64_bit_grid_numbers = [] {
+template <insidable L, insidable R, policy_flag = none>
+inline constexpr bool mul_defined = [] {
     if constexpr (!grid_product_fits(grid_of<L>, grid_of<R>))
         return false;
     else {

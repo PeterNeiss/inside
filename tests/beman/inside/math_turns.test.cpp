@@ -30,7 +30,7 @@ TEST(MathTurnsTest, a_turn_phase_wraps_exactly_and_converts_at_the_call) {
     EXPECT_EQ(rational{phase}, 0); // no drift
 
     turn_t     q{0.25};
-    const auto s = math::sin_into<math::amp<16384>>(angle_t{q * math::two_pi});
+    const auto s = math::sin_into<math::unit_amplitude<16384>>(angle_t{q * math::two_pi});
     EXPECT_EQ(rational{s}, 1); // sin(π/2), on the 1/16384 grid
 }
 

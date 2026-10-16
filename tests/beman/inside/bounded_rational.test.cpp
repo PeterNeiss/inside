@@ -96,7 +96,7 @@ TEST(BoundedRationalTest, store_past_the_bound_reports_rounding_error) {
     using thousandths = inside<{interval{0, 1}, max_denominator{1000}}>;
     EXPECT_TRUE(thousandths::try_make(rational{7, 1000}).has_value());
     EXPECT_EQ(thousandths::try_make(rational{1, 1001}).error(), errc::rounding_error);
-    EXPECT_EQ(from_chars<thousandths>("0.0001").error(), errc::rounding_error);
+    EXPECT_EQ(parse<thousandths>("0.0001").error(), errc::rounding_error);
     EXPECT_THROW((thousandths{rational{1, 1001}}), inside_error);
     static_assert(!thousandths::try_make(rational{1, 1001}).has_value()); // also at compile time
 
@@ -123,12 +123,12 @@ TEST(BoundedRationalTest, wide_bounded_store_checks_the_bound) {
     constexpr grid e18{interval{0, 1}, max_denominator{1'000'000'000'000'000'000}};
     using wide = inside<*(e18 * e18)>; // denominators ≤ 10^36
     static_assert(fraction_storage<wide>);
-    const auto ok = from_chars<wide>("0.000000000000000000000000000000000001"); // 10^-36
+    const auto ok = parse<wide>("0.000000000000000000000000000000000001"); // 10^-36
     ASSERT_TRUE(ok.has_value());
-    EXPECT_EQ(from_chars<wide>("0.0000000000000000000000000000000000001").error(), errc::rounding_error); // 10^-37
+    EXPECT_EQ(parse<wide>("0.0000000000000000000000000000000000001").error(), errc::rounding_error); // 10^-37
     // A rounding policy rounds onto the bound instead: 10^-37 floors to 0, ceils to 10^-36.
-    EXPECT_TRUE((from_chars<wide, round_floor>("0.0000000000000000000000000000000000001").value() == 0));
-    EXPECT_TRUE((from_chars<wide, round_ceil>("0.0000000000000000000000000000000000001").value() == *ok));
+    EXPECT_TRUE((parse<wide, round_floor>("0.0000000000000000000000000000000000001").value() == 0));
+    EXPECT_TRUE((parse<wide, round_ceil>("0.0000000000000000000000000000000000001").value() == *ok));
 }
 #endif
 

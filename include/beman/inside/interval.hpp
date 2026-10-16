@@ -23,7 +23,8 @@ struct interval {
     interval() = default;
 
     constexpr interval(detail::grid_rational lower, detail::grid_rational upper) : Lower{lower}, Upper{upper} {}
-    constexpr interval(detail::arithmetic auto lower, detail::arithmetic auto upper) : Lower{lower}, Upper{upper} {}
+    constexpr interval(detail::plain_number auto lower, detail::plain_number auto upper)
+        : Lower{lower}, Upper{upper} {}
 
     template <auto I>
     static constexpr bool validate() {
@@ -77,7 +78,7 @@ struct interval {
 // A floating-point value is compared exactly: against 64-bit limits through
 // the rational comparison, against big limits as a transient fraction (a big
 // grid number past 64 bits is never formed at runtime).
-template <detail::arithmetic A>
+template <detail::plain_number A>
 [[nodiscard]] constexpr bool includes(const interval& iv, A a) noexcept {
     if constexpr (std::floating_point<A>) {
         if (!detail::is_finite(static_cast<double>(a)))
@@ -88,9 +89,9 @@ template <detail::arithmetic A>
             return detail::to_rational(iv.Lower) <= a && a <= detail::to_rational(iv.Upper);
         }
 #if BEMAN_INSIDE_BIG_GRIDS
-        const auto f = detail::big::frac_of_float(a);
-        return detail::big::compare(detail::frac_of(iv.Lower), f) <= 0 &&
-               detail::big::compare(f, detail::frac_of(iv.Upper)) <= 0;
+        const auto f = detail::big::fraction_of_float(a);
+        return detail::big::compare(detail::fraction_of(iv.Lower), f) <= 0 &&
+               detail::big::compare(f, detail::fraction_of(iv.Upper)) <= 0;
 #else
         return false; // (unreachable: 64-bit limits always fit)
 #endif

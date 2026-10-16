@@ -66,12 +66,12 @@ TEST(SignedTest, signed_storage_uses_full_range_including_minimum) {
     ASSERT_EQ(-min_val, 128); // negation widens the grid
 }
 
-// Regression: signed-direct storage previously recorded the *offset*
+// Regression: signed value-storage storage previously recorded the *offset*
 // (rhs - Lower) instead of the value when constructed from fractional
 // rhs (rational/double) or from another inside via the inside-to-inside
 // store path. Both paths now route through `raw_from_offset<L>`, which
-// adds lower_of<L> back for direct-storage targets.
-// signed-direct ctor from rational/double preserves value
+// adds lower_of<L> back for value-storage targets.
+// signed value-storage ctor from rational/double preserves value
 TEST(SignedTest, signed_direct_ctor_from_rational_double_preserves_value) {
     using temp = inside<{-40, 60}>;
 
@@ -81,14 +81,14 @@ TEST(SignedTest, signed_direct_ctor_from_rational_double_preserves_value) {
     ASSERT_EQ(temp{-40.0}, -40);
     ASSERT_EQ(temp{42.0}, 42);
 
-    // Raw must match value for direct storage.
+    // Raw must match value for value storage.
     ASSERT_EQ(temp{-40_r}.raw(), -40);
     ASSERT_EQ(temp{rational{42}}.raw(), 42);
 }
 
-// inside-to-inside assignment preserves value across direct storages
+// inside-to-inside assignment preserves value across value storages
 TEST(SignedTest, inside_to_inside_assignment_preserves_value_across_direct_storages) {
-    // unsigned-direct → signed-direct
+    // unsigned value-storage → signed value-storage
     using upos = inside<{0, 30}>;
     using s40  = inside<{-40, 50}>;
     upos u{25};
@@ -96,7 +96,7 @@ TEST(SignedTest, inside_to_inside_assignment_preserves_value_across_direct_stora
     ASSERT_EQ(s, 25);
     ASSERT_EQ(s.raw(), 25);
 
-    // signed-direct → signed-direct (different grids)
+    // signed value-storage → signed value-storage (different grids)
     using s2 = inside<{-20, 30}>;
     s2  s2v{15};
     s40 s40v{s2v};

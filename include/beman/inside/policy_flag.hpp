@@ -39,7 +39,7 @@ using policy_flag = unsigned long long;
 
 // Check model: compile-time checks always run. When success can't be proven
 // statically, compilation fails unless the matching ignore flag is set; else a
-// runtime check is inserted that throws (or reports via an error_code param).
+// runtime check is inserted that throws (or reports through an errc& parameter).
 // Binary operations OR the flags of both operands.
 inline constexpr policy_flag none{0ull};
 inline constexpr policy_flag ignore_zero{1ull << 1};
@@ -50,7 +50,7 @@ inline constexpr policy_flag ignore_range{1ull << 2};
 inline constexpr policy_flag snap{1ull << 4};
 inline constexpr policy_flag round_nearest{(1ull << 5) | snap};
 // Rounding modes each pick a unique bit and OR in `snap`. Conceptually
-// exclusive; combining two is allowed but dispatch (assignment.hpp) picks the
+// exclusive; combining two is allowed but dispatch (storage.hpp) picks the
 // first match: floor → ceil → half_even → nearest → trunc (rounding_for).
 inline constexpr policy_flag round_floor{(1ull << 6) | snap};
 inline constexpr policy_flag round_ceil{(1ull << 7) | snap};
@@ -65,14 +65,14 @@ inline constexpr policy_flag clamp{1ull << 32}; // saturate to boundary
 inline constexpr policy_flag wrap{1ull << 33};  // modular arithmetic
 
 // No flag picks the raw: storage follows the grid alone (grid.hpp
-// storage_min, docs/storage.md).
+// raw_for, docs/storage.md).
 
 // opt-out of `checked`: no domain/round/overflow/div-by-zero checks (reading
 // out-of-range or dividing by zero is UB; `/= 0` no-ops, `a / 0` skips the
 // check). Includes `snap` so notch-incompatible assigns compile.
 namespace detail {
 inline constexpr policy_flag unsafe_marker{1ull << 36};
-// Marks a cursor (`T::cursor<Step>`): default construction starts at Lower,
+// Marks a cursor (`cursor<T, Step>`): default construction starts at Lower,
 // and `end(t)` names its past-the-end value. Results never carry it.
 inline constexpr policy_flag cursor_marker{1ull << 50};
 } // namespace detail
@@ -172,7 +172,7 @@ template <typename F>
 }
 
 namespace detail {
-// Action detection: the `*Pred` struct is the primary detector; the concept
+// Action detection: the `is_*_action` trait is the primary detector; the concept
 // derives from it and strips cvref so the ref form matches the value form.
 template <typename T>
 struct is_clamp_action : std::false_type {};
@@ -217,8 +217,8 @@ inline constexpr policy_flag implied_flags<on_overflow_t<F>> = checked;
 
 //---------------------------------------------------------------------------
 // Pack helpers — let policy_ref/assignment/arithmetic accept Actions... packs.
-// The `*Pred` structs are reused as template-template parameters (concepts
-// can't be passed as such in C++23).
+// The `is_*_action` traits are passed as template-template parameters
+// (concepts can't be in C++23).
 //---------------------------------------------------------------------------
 
 // True if any element of the pack matches the trait.

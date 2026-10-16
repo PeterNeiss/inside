@@ -88,9 +88,9 @@ TEST(BigGridTest, arithmetic_past_64_bits) {
     EXPECT_TRUE(p == 35);
     auto n = -a;
     EXPECT_TRUE(n == -7);
-    // qword + qword: its upper bound 2^65 − 2 needs big grid numbers.
+    // uint64 + uint64: its upper bound 2^65 − 2 needs big grid numbers.
     constexpr umax kUM = ~umax{0};
-    auto           q   = qword{kUM} + qword{kUM};
+    auto           q   = uint64{kUM} + uint64{kUM};
     EXPECT_TRUE(q == huge::from_raw(raw_2_65_2));
 }
 
@@ -99,7 +99,7 @@ TEST(BigGridTest, conversions_and_io) {
     EXPECT_EQ(to_string(f), "1267650600228229401496703205379");
     EXPECT_EQ(f.to<int>().error(), errc::overflow);
     EXPECT_DOUBLE_EQ(f.to<double>().value(), 0x1p100);
-    EXPECT_TRUE(from_chars<huge>("1267650600228229401496703205376").value() == huge::from_raw(raw_2_100));
+    EXPECT_TRUE(parse<huge>("1267650600228229401496703205376").value() == huge::from_raw(raw_2_100));
     fine x = 0.25;
     EXPECT_EQ(to_string(x), to_string(rational{1, 4}));
     // Exact decimals of any length, for values and grid numbers.
@@ -208,8 +208,8 @@ TEST(BigGridTest, continuous_past_64_bits) {
     // A quotient of big-grid values holds its exact value: a wide fraction raw,
     // sized from the quotient's denominator bound — so a plain value.
     using length          = inside<{{1e-41_g, 1e27_g}, 1e-41_g}, round_nearest>;
-    const length planck   = *from_chars<length>("1.616255e-35");
-    const length universe = *from_chars<length>("8.8e26");
+    const length planck   = *parse<length>("1.616255e-35");
+    const length universe = *parse<length>("8.8e26");
     const auto   ratio    = universe / planck;
     static_assert(detail::fraction_storage<std::remove_cvref_t<decltype(ratio)>>);
     EXPECT_EQ(to_string(ratio), "17600000000000000000000000000000000000000000000000000000000000000000/323251");
@@ -228,7 +228,7 @@ TEST(BigGridTest, continuous_past_64_bits) {
     static_assert(detail::fraction_storage<big_real>);
     big_real b = rational{1, 3};
     EXPECT_EQ(to_string(b), "1/3");
-    b = *from_chars<big_real>("123456789012345678901234567890/11");
+    b = *parse<big_real>("123456789012345678901234567890/11");
     EXPECT_EQ(to_string(b), "123456789012345678901234567890/11");
     EXPECT_THROW(b = -1, inside_error);
     inside<{{0, 1e30_g}, 0}, clamp> c = 0;
@@ -246,7 +246,7 @@ TEST(BigGridTest, continuous_past_64_bits) {
     EXPECT_EQ(to_string(*p), "61728394506172839450617283945/11");
     // 1/(2^250 + 1) fits big_real's raw; its square does not fit the product's.
     const big_real x =
-        *from_chars<big_real>("1/1809251394333065553493296640760748560207343510400633813116524750123642650625");
+        *parse<big_real>("1/1809251394333065553493296640760748560207343510400633813116524750123642650625");
     EXPECT_EQ((x * x).error(), errc::overflow);
 }
 

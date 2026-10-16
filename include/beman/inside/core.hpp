@@ -63,8 +63,9 @@ constexpr auto abs(In x);
 // inside — defines `inside<G, P>` and its member operators. Free-function
 // arithmetic (arithmetic.hpp), casts (casts.hpp) and `inside_range` (range.hpp)
 // follow in the umbrella. Heavy lifting is delegated to addition/multiplication/division.hpp
-// (per-operator code), assignment.hpp (narrowing/clamp/wrap), and
-// generic.hpp (introspection, storage, inside_assignable) and policy.hpp.
+// (per-operator code), assignment.hpp (narrowing/clamp/wrap), generic.hpp
+// (inside_assignable, over detail/introspection.hpp and detail/storage.hpp)
+// and policy.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 namespace detail {
@@ -83,8 +84,8 @@ struct inside {
     static_assert(grid::validate<G>());
     static_assert(!(P & clamp) || !(P & wrap), "clamp and wrap are mutually exclusive");
 
-    using negative = inside<-G, P & ~detail::cursor_marker>; // −cursor is no cursor
-    using raw_type = detail::storage_min_t<G>;
+    using negated_type = inside<-G, P & ~detail::cursor_marker>; // −cursor is no cursor
+    using raw_type     = detail::raw_for_t<G>;
 
   private:
     [[no_unique_address]] raw_type Raw; // empty for a point grid
@@ -140,10 +141,10 @@ struct inside {
     }
 
     // One-shot policy: `pol`'s flags widen the assignable check (a clamp/round
-    // relaxes the interval/notch clause, e.g. clamp_round<B>(some_inside)) and
+    // relaxes the interval/notch clause, e.g. clamp_cast<B, round_nearest>(some_inside)) and
     // apply to this store. If it reports an error (ec mode), Raw is ill-defined.
     template <numeric A, typename Pol>
-        requires inside_assignable<inside, A, P | detail::policy_flags_of<std::remove_cvref_t<Pol>>>
+        requires inside_assignable<inside, A, P | flags_of<Pol>>
     constexpr inside(A value, Pol&& pol) : Raw{} {
         store_value(value, pol);
     }
@@ -235,6 +236,14 @@ struct inside {
         return b;
     }
 
+    // just<N>.per<D> — the point N/D (D >= 1), the exact ratio no literal
+    // spells: just<1>.per<3>, just<-6>.per<5> for -1.2. Only on an integer
+    // point that fits imax. (In dependent code: `just<N>.template per<D>`.)
+    template <umax D>
+        requires(G.Interval.Lower == G.Interval.Upper && detail::fits_imax(G.Interval) &&
+                 detail::wide_denominator(G.Interval.Lower) == detail::grid_int{1})
+    static constexpr inside<grid{rational{detail::to_rational(G.Interval.Lower) * ::beman::inside::per<D>}}> per{};
+
     // Conversion summary:
     //   operator imax     — implicit, when the values are integers or the policy
     //                       may round (then rounded by its mode), and the interval
@@ -277,8 +286,8 @@ struct inside {
         else if constexpr (detail::value_storage<inside>)
             return Raw;
         // Q-format-with-integer-Lower fast path skips the generic path's three
-        // rational ops. Falls through to the rational path when the raw is too wide
-        // to widen safely (e.g. uint64 from a Q16.16 × Q16.16 result type).
+        // rational ops. Falls through to the rational path when a value times
+        // the notch's denominator could pass imax (e.g. a Q16.16 × Q16.16 result).
         else if constexpr (detail::qformat_codec_fits<inside>)
             return detail::q_format_decode(*this);
         else {
@@ -389,22 +398,22 @@ struct inside {
     // or `beman::inside::math::floor_into<Out>(b)` for an explicit output grid. There is
     // deliberately no member-syntax alias: one spelling, in `<beman/inside/cmath.hpp>`.
 
-    [[nodiscard]] constexpr negative operator-() const {
-        negative neg;
+    [[nodiscard]] constexpr negated_type operator-() const {
+        negated_type neg;
         if constexpr (detail::point_storage<inside>)
-            neg = negative::from_raw({});            // −point is a point: no raw
+            neg = negated_type::from_raw({});        // −point is a point: no raw
         else if constexpr (!detail::notched<inside>) // continuous: the raw is the value
-            neg = negative::from_raw(-(Raw));
+            neg = negated_type::from_raw(-(Raw));
         else {
             // Integer raws: the negated value index is −J (wide_value.hpp), in imax
             // when the bounds allow, else by wrapping. Index storage on both sides
             // counts the slot from the opposite end instead.
-            using W = detail::index_work_t<negative, inside, G.Notch, inside, G.Notch>;
-            if constexpr (detail::index_storage<inside> && detail::index_storage<negative>) {
+            using W = detail::index_work_t<negated_type, inside, G.Notch, inside, G.Notch>;
+            if constexpr (detail::index_storage<inside> && detail::index_storage<negated_type>) {
                 constexpr W count = static_cast<W>(G.slot_count());
-                neg = negative::from_raw(static_cast<detail::raw_t<negative>>(count - static_cast<W>(Raw)));
+                neg = negated_type::from_raw(static_cast<detail::raw_t<negated_type>>(count - static_cast<W>(Raw)));
             } else
-                neg = detail::from_value_index<negative>(W{0} - detail::value_index<W>(*this));
+                neg = detail::from_value_index<negated_type>(W{0} - detail::value_index<W>(*this));
         }
         return neg;
     }
@@ -505,7 +514,7 @@ struct inside {
         detail::notched<inside> && detail::point_grid<R> &&
         (detail::wide_numerator(lower_of<R>) * detail::wide_denominator(notch_of<inside>)) %
                 (detail::wide_denominator(lower_of<R>) * detail::wide_numerator(notch_of<inside>)) ==
-            detail::grid_wide{0};
+            detail::grid_int{0};
 
     // (R anchored: its Lower is a whole number of notches, the bias.)
     template <insidable R>
@@ -513,13 +522,13 @@ struct inside {
                                        !detail::point_storage<R> && detail::anchored<R>; // ⇒ integer raws
 
     template <insidable R>
-    static constexpr detail::grid_wide point_delta = detail::exact_quotient(lower_of<R>, notch_of<inside>);
+    static constexpr detail::grid_int point_delta = detail::exact_quotient(lower_of<R>, notch_of<inside>);
     template <insidable R>
-    static constexpr detail::grid_wide add_bias = [] {
+    static constexpr detail::grid_int add_bias = [] {
         if constexpr (detail::index_storage<R>)
             return detail::slot_base<R>;
         else
-            return detail::grid_wide{0};
+            return detail::grid_int{0};
     }();
 
     // Work type of a raw-space add whose delta lies in [Dlo, Dhi]: it holds
@@ -529,13 +538,13 @@ struct inside {
     // for every grid within int64.
     // (A variable template, not a function: Clang would instantiate a plain
     // member function's body while the class is still incomplete.)
-    template <detail::grid_wide Dlo, detail::grid_wide Dhi>
+    template <detail::grid_int Dlo, detail::grid_int Dhi>
     static constexpr int raw_work_bits = [] {
-        using W        = detail::grid_wide;
+        using W        = detail::grid_int;
         constexpr W lo = detail::raw_lo_exact<inside>, hi = detail::raw_hi_exact<inside>;
         return detail::signed_value_bits_of({lo, hi, Dlo, Dhi, lo + Dlo, hi + Dhi, hi - lo + W{1}, hi - lo + Dhi});
     }();
-    template <detail::grid_wide Dlo, detail::grid_wide Dhi>
+    template <detail::grid_int Dlo, detail::grid_int Dhi>
     using raw_work_t = detail::work_int_t<raw_work_bits<Dlo, Dhi>>;
 
     // Work type of the raw delta ±(rhs.raw() + bias) itself: it holds R's raws,
@@ -635,7 +644,7 @@ struct inside {
     // as it does for div/mod.
     template <insidable R>
     constexpr inside& report_div_by_zero() {
-        if constexpr (!has_flag(P | policy_of<R>, ignore_zero))
+        if constexpr (!has_flag(P | flags_of<R>, ignore_zero))
             make_policy<P>().report(errc::division_by_zero);
         return *this;
     }
@@ -650,7 +659,7 @@ struct inside {
     // The largest count it takes: store_raw forms Raw ± n and, to wrap, its
     // offset from raw_lo, so n leaves room for the raws and their span in imax.
     static constexpr umax max_notch_delta = [] {
-        using W        = detail::grid_wide;
+        using W        = detail::grid_int;
         constexpr W lo = detail::raw_lo_exact<inside>, hi = detail::raw_hi_exact<inside>;
         const W     mag  = lo.negative() && hi < -lo ? -lo : hi;
         const W     room = W{std::numeric_limits<imax>::max()} - (hi - lo + W{1}) - mag;
@@ -775,9 +784,9 @@ struct inside {
     // after the class, so spell the point inside directly.
     constexpr inside& operator++() {
         static_assert(G.Notch != 0, "inside: ++ steps one notch - a grid without a notch has none to step");
-        // constexpr local: the point inside is materialised at compile time.
-        constexpr auto kStep = inside<grid{G.Notch}>::from_raw({});
-        return *this += kStep;
+        // constexpr local: the point inside is materialized at compile time.
+        constexpr auto notch_step = inside<grid{G.Notch}>::from_raw({});
+        return *this += notch_step;
     }
     constexpr inside operator++(int) {
         inside t = *this;
@@ -786,8 +795,8 @@ struct inside {
     }
     constexpr inside& operator--() {
         static_assert(G.Notch != 0, "inside: -- steps one notch - a grid without a notch has none to step");
-        constexpr auto kStep = inside<grid{-G.Notch}>::from_raw({});
-        return *this += kStep;
+        constexpr auto notch_step = inside<grid{-G.Notch}>::from_raw({});
+        return *this += notch_step;
     }
     constexpr inside operator--(int) {
         inside t = *this;
@@ -844,32 +853,32 @@ template <typename T, insidable B>
 }
 
 //---------------------------------------------------------------------------
-// from_chars<B, F>(first, last) — text → B, exactly (no double round-trip). The
+// parse<B, F>(first, last) — text → B, exactly (no double round-trip). The
 // whole range must be one number: an optional sign, then the literal grammar
 // (1'000, 1.25, 1.5e2, 0xff, 0b1010, 0x1.8p3) or a fraction N/D. Malformed text
 // is errc::invalid_format; the value then goes through B::try_make<F>, so B's
 // policy plus the flags F round, clamp or wrap it and report overflow /
-// rounding_error. from_chars_exact<B> accepts only a value B holds exactly:
+// rounding_error. parse_exact<B> accepts only a value B holds exactly:
 // off the grid is rounding_error and out of range overflow, whatever B's
 // policy. (io.hpp adds std::string_view overloads and operator>>.)
 //---------------------------------------------------------------------------
 namespace detail {
-// from_chars past the 64-bit rational (a long decimal, a wide grid's value,
+// parse past the 64-bit rational (a long decimal, a wide grid's value,
 // 1e-200): the text parsed exactly, or past that width as a tiny or huge
 // value's stand-in. Out of line: the common parse stays small.
 template <insidable B, policy_flag F>
-BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::expected<B, errc> from_chars_wide(const char* first,
-                                                                                         const char* last) {
+BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::expected<B, errc> parse_wide(const char* first,
+                                                                                    const char* last) {
     constexpr std::size_t K = exact_max<exact_limbs<B>, parse_limbs>;
     auto                  w = parse_exact<K>(first, last);
     if (!w && w.error() == errc::overflow)
-        if (const auto t = stand_in<B, K, static_cast<bool>((policy_of<B> | F) & wrap)>(first, last))
+        if (const auto t = stand_in<B, K, static_cast<bool>((flags_of<B> | F) & wrap)>(first, last))
             w = *t;
     if (!w)
         return std::unexpected{w.error()};
     errc ec{};
     B    b{};
-    assign_exact<rational>(b, *w, make_policy<policy_of<B> | F>(ec), no_action{});
+    assign_exact<rational>(b, *w, make_policy<flags_of<B> | F>(ec), no_action{});
     if (ec != errc{})
         return std::unexpected{ec};
     return b;
@@ -877,17 +886,17 @@ BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::expected<B, errc> from_ch
 } // namespace detail
 
 template <insidable B, policy_flag F = none>
-[[nodiscard]] constexpr std::expected<B, errc> from_chars(const char* first, const char* last) {
+[[nodiscard]] constexpr std::expected<B, errc> parse(const char* first, const char* last) {
     const auto v = detail::parse_text(first, last);
     if (!v && v.error() == errc::overflow) [[unlikely]]
-        return detail::from_chars_wide<B, F>(first, last);
+        return detail::parse_wide<B, F>(first, last);
     if (!v)
         return std::unexpected{v.error()};
     return B::template try_make<F>(*v);
 }
 
 template <insidable B>
-[[nodiscard]] constexpr std::expected<B, errc> from_chars_exact(const char* first, const char* last) {
+[[nodiscard]] constexpr std::expected<B, errc> parse_exact(const char* first, const char* last) {
     const auto v = detail::parse_text(first, last);
     if (v) {
         if (conversion_overflows<B>(*v))
@@ -918,7 +927,7 @@ template <insidable B>
     }
     errc ec{};
     B    b{};
-    detail::assign_exact<detail::rational>(b, *w, make_policy<policy_of<B>>(ec), no_action{});
+    detail::assign_exact<detail::rational>(b, *w, make_policy<flags_of<B>>(ec), no_action{});
     if (ec != errc{})
         return std::unexpected{ec};
     return b;
@@ -953,7 +962,7 @@ inline constexpr auto one  = just<1>;
 //   1'000_ins       // inside<{1000}>            digit separator
 //
 // Parse is exact (no double round-trip); same parser backs `_r` in
-// rational.hpp. `-1.5_ins` parses as `-(1.5_ins)`.
+// detail/number_text.hpp. `-1.5_ins` parses as `-(1.5_ins)`.
 //---------------------------------------------------------------------------
 template <char... Chars>
 constexpr auto operator""_ins() {

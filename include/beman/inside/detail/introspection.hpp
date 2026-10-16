@@ -13,7 +13,7 @@
 
 //---------------------------------------------------------------------------
 // introspection — an inside's template parameters as values (grid_of<B>,
-// policy_of<B>, lower_of<B>, notch_of<B>, … and their 64-bit forms), the
+// flags_of<B>, lower_of<B>, notch_of<B>, … and their 64-bit forms), the
 // insidable / numeric concepts, and the basic plumbing every layer uses
 // (plain_t, dependent_false, as_rational, raw_t). The storage shapes build
 // on it in detail/storage.hpp.
@@ -48,8 +48,17 @@ struct inside_params<inside<G, P>> {
 template <insidable B>
 inline constexpr grid grid_of = detail::inside_params<std::remove_cvref_t<B>>::grid_v;
 
-template <insidable B>
-inline constexpr policy_flag policy_of = detail::inside_params<std::remove_cvref_t<B>>::policy_v;
+namespace detail {
+template <typename T>
+inline constexpr policy_flag flags_of_impl = none;
+template <grid G, policy_flag P>
+inline constexpr policy_flag flags_of_impl<inside<G, P>> = P;
+} // namespace detail
+
+// flags_of<X> — the policy flags of an inside, or of a one-shot `policy<F, E>`
+// (policy.hpp); `none` for anything else, such as an action.
+template <typename X>
+inline constexpr policy_flag flags_of = detail::flags_of_impl<std::remove_cvref_t<X>>;
 
 template <typename T>
 inline constexpr interval interval_of = {0, 0};
@@ -80,7 +89,7 @@ inline constexpr rational notch64 = to_rational(grid_of<B>.Notch);
 } // namespace detail
 
 template <typename N>
-concept numeric = insidable<N> or detail::arithmetic<N>;
+concept numeric = insidable<N> or detail::plain_number<N>;
 
 //---------------------------------------------------------------------------
 // Internal plumbing — storage shape, raw/value conversion, dispatch.
@@ -114,7 +123,7 @@ inline constexpr bool dependent_false = false;
 // Uniform rational view of a scalar or inside (rational{v} / operator rational()).
 template <numeric N>
 [[nodiscard]] constexpr rational as_rational(N v) {
-    if constexpr (arithmetic<N>)
+    if constexpr (plain_number<N>)
         return rational{v};
     else
         return v;

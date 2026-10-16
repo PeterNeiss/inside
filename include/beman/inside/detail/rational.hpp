@@ -2,7 +2,7 @@
 #ifndef BEMAN_INSIDE_DETAIL_RATIONAL_HPP
 #define BEMAN_INSIDE_DETAIL_RATIONAL_HPP
 
-#include <beman/inside/math.hpp>              // umax/imax, arithmetic, rational fwd
+#include <beman/inside/numbers.hpp>           // umax/imax, arithmetic, rational fwd
 #include <beman/inside/detail/float_bits.hpp> // frexp/ldexp, abs_fraction, is_double_value
 #include <beman/inside/lift.hpp>              // lift, expected_like, unwrap_t
 #include <beman/inside/detail/overflow.hpp>   // add/sub/mul_overflow
@@ -116,7 +116,7 @@ struct rational {
     [[nodiscard]] constexpr bool operator==(const rational&) const = default;
     // Exact against a double too (rational{value} truncates one finer than
     // 2^-62): defined after compare_double.
-    template <arithmetic T>
+    template <plain_number T>
     [[nodiscard]] constexpr bool operator==(T value) const;
 
     [[nodiscard]] constexpr rational operator-() const;
@@ -426,7 +426,7 @@ constexpr std::expected<T, errc> rational::to() const {
     return static_cast<T>(q);
 }
 
-// per<D> and frac<N, D> are defined publicly in `namespace beman::inside` (see the
+// per<D> is defined publicly in `namespace beman::inside` (see the
 // re-export block at the end of this header) so consumers spell grid values
 // without naming the internal representation type.
 
@@ -755,12 +755,12 @@ inline constexpr std::expected<rational, errc> rational::inv(rational a) { retur
                    : limb::mul_compare(lhs.Numerator, rhs_ad, rhs.Numerator, lhs_ad);
 }
 
-template <arithmetic T>
+template <plain_number T>
 [[nodiscard]] inline constexpr auto operator<=>(const std::expected<T, errc>& lhs, const rational& rhs) {
     return rational{lhs.value()} <=> rhs;
 }
 
-template <arithmetic T>
+template <plain_number T>
 [[nodiscard]] inline constexpr auto operator<=>(const rational& lhs, const std::expected<T, errc>& rhs) {
     return lhs <=> rational{rhs.value()};
 }
@@ -824,7 +824,7 @@ template <std::floating_point T>
     return compare_double(lhs, static_cast<double>(rhs));
 }
 
-template <arithmetic T>
+template <plain_number T>
 [[nodiscard]] constexpr bool rational::operator==(T value) const {
     if constexpr (std::floating_point<T>)
         return compare_float(*this, value) == 0;
@@ -832,7 +832,7 @@ template <arithmetic T>
         return operator==(rational{value});
 }
 
-template <arithmetic T>
+template <plain_number T>
 [[nodiscard]] inline constexpr auto operator<=>(T lhs, const rational& rhs) {
     if constexpr (std::floating_point<T>)
         return 0 <=> compare_float(rhs, lhs);
@@ -840,7 +840,7 @@ template <arithmetic T>
         return rational{lhs} <=> rhs;
 }
 
-template <arithmetic T>
+template <plain_number T>
 [[nodiscard]] inline constexpr auto operator<=>(const rational& lhs, T rhs) {
     if constexpr (std::floating_point<T>)
         return compare_float(lhs, rhs);
@@ -851,13 +851,13 @@ template <arithmetic T>
 //---------------------------------------------------------------------------
 // Expected-lifting operators — one generic overload per arithmetic operator
 // that engages when an operand is a std::expected, both unwrap to arithmetic,
-// and at least one to rational. Gating on `arithmetic` (not `insidable`, which
+// and at least one to rational. Gating on `plain_number` (not `insidable`, which
 // isn't visible this low) excludes inside operands, so inside-involving expected
 // expressions partition cleanly to arithmetic.hpp's generic instead.
 //---------------------------------------------------------------------------
 template <class L, class R>
 concept rational_lift_operands =
-    (expected_like<L> || expected_like<R>) && arithmetic<unwrap_t<L>> && arithmetic<unwrap_t<R>> &&
+    (expected_like<L> || expected_like<R>) && plain_number<unwrap_t<L>> && plain_number<unwrap_t<R>> &&
     (std::same_as<unwrap_t<L>, rational> || std::same_as<unwrap_t<R>, rational>);
 
 //---------------------------------------------------------------------------
@@ -912,11 +912,11 @@ concept rational_lift_operands =
 }
 
 #define BEMAN_INSIDE_RATIONAL_OP(op)                                                                        \
-    template <arithmetic T>                                                                                 \
+    template <plain_number T>                                                                               \
     [[nodiscard]] inline constexpr auto operator op(T lhs, rational const& rhs) {                           \
         return rational{lhs} op rhs;                                                                        \
     }                                                                                                       \
-    template <arithmetic T>                                                                                 \
+    template <plain_number T>                                                                               \
     [[nodiscard]] inline constexpr auto operator op(rational const& lhs, T rhs) {                           \
         return lhs op rational{rhs};                                                                        \
     }                                                                                                       \
@@ -929,7 +929,7 @@ concept rational_lift_operands =
         *this = (*this op rhs).value();                                                                     \
         return *this;                                                                                       \
     }                                                                                                       \
-    template <arithmetic T>                                                                                 \
+    template <plain_number T>                                                                               \
     inline constexpr rational& operator op## = (rational & lhs, T rhs) {                                    \
         return lhs op## = rational{rhs};                                                                    \
     }                                                                                                       \
@@ -964,21 +964,13 @@ BEMAN_INSIDE_RATIONAL_OP(/)
 } // namespace beman::inside::detail
 
 namespace beman::inside::detail {
-// Checked builders for the public helpers below: a static_assert here fires at
-// the user's spelling. Denominators are unsigned, so a sign can only sit in
-// frac's numerator.
+// Checked builder for per<D> below: a static_assert here fires at the user's
+// spelling (also through just<N>.per<D>, which is N · per<D>).
 template <umax D>
 consteval rational make_per() {
     static_assert(D >= 1, "per<D> is the positive step 1/D; a continuous grid is spelled 0");
     static_assert(D <= static_cast<umax>(std::numeric_limits<imax>::max()), "per<D>: denominator too large");
     return rational{umax{1}, D};
-}
-
-template <imax N, umax D>
-consteval rational make_frac() {
-    static_assert(D >= 1, "frac<N, D>: the denominator must be at least 1");
-    static_assert(D <= static_cast<umax>(std::numeric_limits<imax>::max()), "frac<N, D>: denominator too large");
-    return rational{N, static_cast<imax>(D)};
 }
 } // namespace beman::inside::detail
 
@@ -989,17 +981,14 @@ using detail::rational;
 
 // The grid-building helpers:
 //   per<D>       the step 1/D — the common notch (per<256> is Q·8);
-//   frac<N, D>   any exact ratio (signed numerator): a limit like frac<-6, 5>
-//                for -1.2, or another step like frac<360, 4096>;
+// any other exact ratio is the point just<N>.per<D> (core.hpp): a limit like
+// just<-6>.per<5> for -1.2, or another step like just<360>.per<4096>
 // (the _r literal, an exact decimal / hex value — 0.1_r is exactly 1/10 —
 // is in detail/number_text.hpp.)
 // Integer steps are plain integers ({{0, 100}, 5}); grid::validate rejects a
 // negative notch however it is spelled.
 template <umax D>
 inline constexpr detail::rational per = detail::make_per<D>();
-
-template <imax N, umax D = 1>
-inline constexpr detail::rational frac = detail::make_frac<N, D>();
 
 } // namespace beman::inside
 

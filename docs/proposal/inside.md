@@ -296,7 +296,7 @@ namespace std {
 
   // observers
   template<class B> constexpr grid grid_of;
-  template<class B> constexpr policy_flag policy_of;
+  template<class B> constexpr policy_flag flags_of;
   template<class B> constexpr @*grid-number*@ lower_of, upper_of, notch_of;
 
   // constants
@@ -347,7 +347,7 @@ in v0.2.0, and each is a candidate for a later paper:
    `on_overflow`). With them a clock's seconds carry into minutes.
 3. **Conversions**: `clamp_cast`, `wrap_cast`, `checked_cast`, `as<T>()`, and
    the predicates `conversion_overflows`, `conversion_rounds`.
-4. **Text**: `to_string`, `from_chars`, `from_chars_exact`, `std::formatter`
+4. **Text**: `to_string`, `parse`, `parse_exact`, `std::formatter`
    and stream operators, printing the exact value.
 5. **Algorithms and generic code**: `sum<Target>` with one deferred check,
    `mul_into<Out>` / `div_into<Out>` (one rounding, no intermediate grid),
@@ -359,7 +359,7 @@ in v0.2.0, and each is a candidate for a later paper:
 
 The reference implementation is header-only C++23 (GCC 14+, Clang 19+, Clang 18
 with libc++). It ships a single-header amalgamation, a CMake package and a
-vcpkg port, and follows the Beman Standard. Its test suite (615 tests, 628 with
+vcpkg port, and follows the Beman Standard. Its test suite (738 tests, 748 with
 C++26 reflection) runs in CI on 53 compiler, library and sanitizer
 configurations, including a check that the integer fast paths compile to
 call-free, vectorising code.

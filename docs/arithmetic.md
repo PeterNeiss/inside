@@ -12,7 +12,7 @@ auto prod = a * b;   // inside<{0, 65025}>
 auto quot = a / b;   // std::expected<inside<{rational}>, errc>
 ```
 
-Division is rich enough to warrant its [own section](#division) below — `inside / inside` picks between three code paths at compile time, and its `std::expected` result has two distinct failure causes.
+Division is rich enough to warrant its [own section](#division) below — `inside / inside` picks between four code paths at compile time, and its `std::expected` result has two distinct failure causes.
 
 The free functions `add`, `sub`, `mul`, `div`, `mod` and `divmod` take one of three
 trailing forms:
@@ -36,7 +36,7 @@ auto q = div(x, y, on_overflow([&](auto& res, errc) {
 
 ## Division
 
-`inside / inside` takes one of **three code paths**, chosen at compile time from
+`inside / inside` takes one of **four code paths**, chosen at compile time from
 the operand grids and whether `snap` is in effect. It returns a plain `inside`
 when the divisor's grid excludes zero and the quotient provably fits, otherwise
 `std::expected` ([below](#when-the-result-is-stdexpected-and-when-it-isnt)).
@@ -188,7 +188,7 @@ the results.
   side: exact quotients, per-call and type-level `snap`, rounding modes, the
   `errc::division_by_zero` case and a zero-free divisor's plain result.
 - [examples/expected_pipeline.cpp](../examples/expected_pipeline.cpp) —
-  chaining fallible steps (`from_chars`, `div_into`) with
+  chaining fallible steps (`parse`, `div_into`) with
   `and_then` / `or_else`, and the first error's cause at the end.
 - [tests/beman/inside/inside_arithmetic.test.cpp](../tests/beman/inside/inside_arithmetic.test.cpp) — the
   `"inside div: rational vs integer paths"` case covers paths B and C across
@@ -261,13 +261,13 @@ exact non-dyadic factor, wrap the factor in a point-inside and multiply
 inside-by-inside; the result stays an inside (which a rounding target snaps):
 
 ```cpp
-money tax{ sub * just<frac<8, 100>> };   // inside × point-inside → inside → money
-auto    half = sub * just<frac<1, 2>>;   // exact ×½, stays an inside
+money tax{ sub * just<8>.per<100> };   // inside × point-inside → inside → money
+auto    half = sub * just<1>.per<2>;   // exact ×½, stays an inside
 ```
 
-`just<frac<N, D>>` is the exact-fraction point-inside; `0.5_ins` / `2_ins` cover
+`just<N>.per<D>` is the exact-fraction point-inside; `0.5_ins` / `2_ins` cover
 dyadic factors. Multiplying by a point `c` scales the lattice: the result's notch
-is `N·|c|`, so it keeps integer storage (`sub * just<frac<1, 2>>` has notch 1/200)
+is `N·|c|`, so it keeps integer storage (`sub * just<1>.per<2>` has notch 1/200)
 and costs about a native multiply — the raw value is reused, mirrored for
 negative `c`. Dividing by a point does the same with `N/|c|`: `x / 5_ins` on an
 integer grid has notch 1/5, so it is exact, plain, and its sums and products
@@ -341,7 +341,7 @@ coarse half(fine x) { return x.with_snap(); }    // round at the return boundary
 The target's own policy still applies through the conversion: returning into a
 `inside<…, clamp>` clamps the range while `with_snap` handles the notch. For the
 same fine→coarse conversion as a free function (including an inside source), use
-`clamp_round<B>(v)` — see [conversions](conversions.md).
+`clamp_cast<B, round_nearest>(v)` — see [conversions](conversions.md).
 
 `.with_snap()` adapts to its receiver: on a named inside it yields a lightweight
 reference proxy, but on a **temporary** — `(a * a).with_snap()` — it returns a
@@ -458,7 +458,7 @@ zero check used by `inside / inside`; see
 ```cpp
 using rn = inside<{{0, 100}, per<100>}, round_nearest>;
 rn a{0.5};
-a += just<frac<1, 4>>;  // 0.75 — exact inside-space accumulation, snaps to 1/100
+a += just<1>.per<4>;  // 0.75 — exact inside-space accumulation, snaps to 1/100
 a *= 0.5_ins;           // 0.375, rounded to 0.38 on assign
 ```
 
@@ -475,6 +475,7 @@ value one past the last:
 
 ```cpp
 using time_t = inside<{{-4, 4}, per<1024>}, round_nearest>;
+using amp_t  = inside<{{0, 100}, per<16384>}, round_nearest>;
 for (cursor<time_t, per<4>> t; t != end(t); ++t)         // −4, −3.75, …, 4
     std::cout << t << " " << math::exp_into<amp_t>(t) << "\n";
 for (cursor<time_t, 0.25_r> t = -2_ins; t <= 2_ins; ++t) // any start, the classic test

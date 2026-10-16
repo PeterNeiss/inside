@@ -12,7 +12,7 @@
 // before a construction that might throw or report an error:
 //   conversion_overflows<B>(v) — v falls outside B's interval.
 //   conversion_rounds<B>(v)    — v is in-range but off-notch (would round).
-//   conversion_is_lossy<B>(v)  — either of the two.
+//   conversion_loses<B>(v)     — either of the two.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 namespace detail {
@@ -34,10 +34,10 @@ struct lossy_result {
     bool Rounds;
 };
 template <insidable B, std::size_t K>
-constexpr lossy_result exact_lossy(const exact_frac<K>& x) noexcept {
-    constexpr std::size_t KK = exact_max<K, exact_limbs<B>>;
-    const exact_frac<KK>  v{x};
-    const bool            in = !(v < exact_of_grid<KK>(lower_of<B>)) && !(exact_of_grid<KK>(upper_of<B>) < v);
+constexpr lossy_result exact_lossy(const wide_rational<K>& x) noexcept {
+    constexpr std::size_t   KK = exact_max<K, exact_limbs<B>>;
+    const wide_rational<KK> v{x};
+    const bool              in = !(v < exact_of_grid<KK>(lower_of<B>)) && !(exact_of_grid<KK>(upper_of<B>) < v);
     if constexpr (notched<B>) {
         const auto j = exact_index<B, rounding_for<B, policy<>>>(v);
         if (in)
@@ -62,8 +62,8 @@ constexpr lossy_result exact_lossy(const exact_frac<K>& x) noexcept {
         if constexpr (!rounds_before_range_check<B, policy<>>)
             return {true, false};
         else {
-            const exact_frac<KK> r    = round_to_bound<B, policy<>>(v);
-            const bool           fits = !(r < exact_of_grid<KK>(lower_of<B>)) && !(exact_of_grid<KK>(upper_of<B>) < r);
+            const wide_rational<KK> r = round_to_bound<B, policy<>>(v);
+            const bool fits           = !(r < exact_of_grid<KK>(lower_of<B>)) && !(exact_of_grid<KK>(upper_of<B>) < r);
             return {!fits, fits};
         }
     }
@@ -162,7 +162,7 @@ template <insidable B, numeric A>
 }
 
 template <insidable B, numeric A>
-[[nodiscard]] constexpr bool conversion_is_lossy(A value) noexcept {
+[[nodiscard]] constexpr bool conversion_loses(A value) noexcept {
     return conversion_overflows<B>(value) || conversion_rounds<B>(value);
 }
 } // namespace beman::inside

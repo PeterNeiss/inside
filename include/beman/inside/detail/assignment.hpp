@@ -12,7 +12,7 @@
 namespace beman::inside::detail {
 //---------------------------------------------------------------------------
 // assignment — narrowing/coercion between bounded and arithmetic types. Three
-// specialisations dispatch on the source (integral / fractional / insidable),
+// specializations dispatch on the source (integral / fractional / insidable),
 // each routing through `store` (in-range) and `handle_out_of_range` /
 // `apply_clamp` / `apply_wrap` (policy). The insidable path also exposes
 // `is_integer_mapping` / `map_raw` — a pure-integer formula in the hot path.
@@ -310,7 +310,7 @@ struct assignment<L, R> {
     // fold in wide integers, and a point no period: still overflow.
     template <typename P, typename A, std::size_t K>
     [[gnu::cold, gnu::noinline]] static constexpr void
-    wrap_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action) {
+    wrap_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& action) {
         if constexpr (integer_storage<L> && !point_storage<L>)
             assign_exact<R>(lhs, v, policy, action);
         else
@@ -437,7 +437,7 @@ struct assignment<L, R> {
                             return report_failure(lhs, policy, action, errc::rounding_error);
                         lhs = L::from_raw(*r);
                         return;
-                    } else if (std::is_constant_evaluated() || is_checked(policy_of<L> | plain_t<P>::Flags))
+                    } else if (std::is_constant_evaluated() || is_checked(flags_of<L> | plain_t<P>::Flags))
                         return report_failure(lhs, policy, action, errc::rounding_error);
                 }
             lhs = L::from_raw(rv);
@@ -478,34 +478,34 @@ struct assignment<L, R> {
             // (num − Lo·aden)·K / aden — integer ops instead of two rational ops.
             // round_quotient is invariant under reduction, so the slot is
             // bit-identical to the rational path. Oversized denominators
-            // fall through (the kMaxDen guard keeps every product inside imax).
+            // fall through (the max_den guard keeps every product inside imax).
             if constexpr (qformat_codec_fits<L> && detail::notched<L>) {
-                constexpr imax K   = abs_den(detail::notch64<L>.Denominator);
-                constexpr imax Lo  = lower_imax<L>;
-                constexpr umax kKM = [] {
+                constexpr imax K      = abs_den(detail::notch64<L>.Denominator);
+                constexpr imax Lo     = lower_imax<L>;
+                constexpr umax two_km = [] {
                     // 2 · K · M with saturation (M bounds |value| and the offset span)
                     // ceil in umax: a bound's magnitude may reach 2^63 (past imax)
-                    constexpr umax kMax = std::numeric_limits<umax>::max();
-                    const rational a    = detail::abs(detail::lower64<L>) > detail::abs(detail::upper64<L>)
-                                              ? detail::abs(detail::lower64<L>)
-                                              : detail::abs(detail::upper64<L>);
-                    const umax     d    = abs_den(a.Denominator);
-                    const umax     c    = a.Numerator / d + (a.Numerator % d != 0 ? 1 : 0);
-                    if (c > (kMax - 2) / 2)
-                        return kMax;
+                    constexpr umax umax_hi = std::numeric_limits<umax>::max();
+                    const rational a       = detail::abs(detail::lower64<L>) > detail::abs(detail::upper64<L>)
+                                                 ? detail::abs(detail::lower64<L>)
+                                                 : detail::abs(detail::upper64<L>);
+                    const umax     d       = abs_den(a.Denominator);
+                    const umax     c       = a.Numerator / d + (a.Numerator % d != 0 ? 1 : 0);
+                    if (c > (umax_hi - 2) / 2)
+                        return umax_hi;
                     umax k = static_cast<umax>(K);
                     umax m = c * 2 + 2;
-                    if (k > kMax / m)
-                        return kMax;
+                    if (k > umax_hi / m)
+                        return umax_hi;
                     umax km = k * m;
-                    return km > kMax / 2 ? kMax : km * 2;
+                    return km > umax_hi / 2 ? umax_hi : km * 2;
                 }();
-                constexpr umax kMaxDen = static_cast<umax>(std::numeric_limits<imax>::max()) / kKM;
+                constexpr umax max_den = static_cast<umax>(std::numeric_limits<imax>::max()) / two_km;
 
                 const umax aden = abs_den(rv.Denominator);
-                if (kMaxDen != 0 && aden <= kMaxDen) {
+                if (max_den != 0 && aden <= max_den) {
                     // The offset (num − Lo·aden)·K / aden, unreduced: round_quotient
-                    // rounds it as the reduced fraction would, and kMaxDen keeps the
+                    // rounds it as the reduced fraction would, and max_den keeps the
                     // product in imax.
                     const imax num  = signed_numerator(rv);
                     const umax onum = // ≥ 0: rhs ≥ Lower (in range)
@@ -787,7 +787,7 @@ struct assignment<L, R> {
         else {
             const rational base = index_storage<L> ? rational{0} : detail::lower64<L>;
             const auto     lo   = Offset + base;
-            const auto     span = Factor * rational{max_index_v<R>};
+            const auto     span = Factor * rational{max_index_of<R>};
             if (!lo || !span)
                 return false;
             const auto hi = *lo + *span;
@@ -826,9 +826,9 @@ struct assignment<L, R> {
             if (mul_overflow(f_n, o_d, &m.Mul) || mul_overflow(o_s, f_d, &m.Add) || mul_overflow(o_d, f_d, &m.Den))
                 return no;
             // worst-case |numerator| over R's offset range [0, max_index]
-            if (max_index_v<R> > cap)
+            if (max_index_of<R> > cap)
                 return no;
-            const imax rmax = static_cast<imax>(max_index_v<R>);
+            const imax rmax = static_cast<imax>(max_index_of<R>);
             imax       term, num;
             if (mul_overflow(rmax, m.Mul, &term) || add_overflow(term, m.Add < 0 ? -m.Add : m.Add, &num))
                 return no;

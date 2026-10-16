@@ -143,7 +143,7 @@ TEST(WideGridTest, arithmetic) {
 
 TEST(WideGridTest, uint64_difference_widens) {
     constexpr umax kUM = ~umax{0};
-    qword          x{kUM}, y{3};
+    uint64         x{kUM}, y{3};
     auto           d = x - y; // spans 2^65 values
     static_assert(detail::wide_index_storage<decltype(d)>);
     EXPECT_TRUE(d == kUM - 3);
@@ -220,21 +220,21 @@ TEST(WideGridTest, to_string) {
     // 2^33 + 2^-32 = (2^65 + 1) / 2^32: the numerator passes 64 bits.
     const fine odd = fine::from_raw((detail::wide_uint<2>{1} << 65) + detail::wide_uint<2>{1});
     EXPECT_EQ(to_string(odd), "8589934592.00000000023283064365386962890625");
-    EXPECT_EQ(from_chars<fine>(to_string(odd)), odd);
+    EXPECT_EQ(parse<fine>(to_string(odd)), odd);
     EXPECT_EQ(to_string(detail::wide_uint<2>{1} << 100), "1267650600228229401496703205376");
     EXPECT_NE(to_string_debug(odd).find("wide_uint<2>"), std::string::npos);
 }
 
-TEST(WideGridTest, from_chars) {
-    EXPECT_TRUE(from_chars<fine>("1.5").value() == 1.5);
+TEST(WideGridTest, parse) {
+    EXPECT_TRUE(parse<fine>("1.5").value() == 1.5);
     // 2^33 + 2^-32 needs a 66-bit numerator: the exact fallback parses it.
     const fine odd = fine::from_raw((detail::wide_uint<2>{1} << 65) + detail::wide_uint<2>{1});
-    EXPECT_TRUE(from_chars<fine>("36893488147419103233/4294967296").value() == odd);
-    EXPECT_TRUE(from_chars<fine>("8589934592.00000000023283064365386962890625").value() == odd);
-    EXPECT_EQ(from_chars<fine>("1e40").error(), errc::overflow); // out of range
-    EXPECT_EQ(from_chars<fine>("12x").error(), errc::invalid_format);
+    EXPECT_TRUE(parse<fine>("36893488147419103233/4294967296").value() == odd);
+    EXPECT_TRUE(parse<fine>("8589934592.00000000023283064365386962890625").value() == odd);
+    EXPECT_EQ(parse<fine>("1e40").error(), errc::overflow); // out of range
+    EXPECT_EQ(parse<fine>("12x").error(), errc::invalid_format);
     // Round trip through to_string.
-    EXPECT_TRUE(from_chars<fine>(to_string(odd)).value() == odd);
+    EXPECT_TRUE(parse<fine>(to_string(odd)).value() == odd);
 }
 
 TEST(WideGridTest, hashing) {
@@ -276,16 +276,16 @@ TEST(WideGridTest, division) {
 }
 
 TEST(WideGridTest, modulo) {
-    // qword differences span 2^65 values: integers past imax.
+    // uint64 differences span 2^65 values: integers past imax.
     constexpr umax kUM = ~umax{0};
-    auto           d   = qword{kUM} - qword{0};
+    auto           d   = uint64{kUM} - uint64{0};
     static_assert(detail::wide_index_storage<decltype(d)>);
     auto m = mod(d, inside<{1, 1000}>{7}, policy<snap>{});
     EXPECT_TRUE(m == (kUM % 7));
     auto n = mod(-d, inside<{1, 1000}>{7}, policy<snap>{}); // takes the dividend's sign
     EXPECT_TRUE(n == -static_cast<imax>(kUM % 7));
-    // qword itself (a uint64 value raw past imax) now has a modulo too.
-    EXPECT_TRUE((mod(qword{kUM}, inside<{1, 1000}>{10}, policy<snap>{}) == 5));
+    // uint64 itself (a uint64 value raw past imax) now has a modulo too.
+    EXPECT_TRUE((mod(uint64{kUM}, inside<{1, 1000}>{10}, policy<snap>{}) == 5));
 }
 
 TEST(WideGridTest, clamp_and_wrap_actions) {
@@ -336,11 +336,11 @@ TEST(WideGridTest, limb_edges) {
 
     // += across the 64-bit index boundary, by a point delta and by a raw.
     over64 c = rational{kUM, 4}; // index 2^64 − 1
-    c += just<frac<1, 4>>;       // index 2^64
+    c += just<1>.per<4>;         // index 2^64
     EXPECT_TRUE(c.raw() == (detail::wide_uint<2>{1} << 64));
-    EXPECT_THROW((c += just<frac<1, 4>>), inside_error); // past the top
+    EXPECT_THROW((c += just<1>.per<4>), inside_error); // past the top
     inside<{{rational{0}, rational{umax{1} << 62}}, per<4>}, wrap> w = rational{umax{1} << 62};
-    w += just<frac<1, 4>>; // wraps to 0
+    w += just<1>.per<4>; // wraps to 0
     EXPECT_TRUE(w == 0);
 
     // Sums and differences across the boundary, both ends.

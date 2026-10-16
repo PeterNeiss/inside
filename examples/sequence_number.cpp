@@ -19,7 +19,7 @@ using namespace beman::inside;
 using seq_t = inside<{0, 65535}, wrap>;
 
 // Epoch counter — how many times the SEQ space has wrapped (saturating tally).
-using epoch_t = counter<1000>;
+using epoch_t = clamp_counter<1000>;
 
 int main() {
     seq_t   seq{65500};

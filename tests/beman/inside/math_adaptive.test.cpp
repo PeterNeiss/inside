@@ -9,7 +9,7 @@
 using namespace beman::inside;
 namespace ax = beman::inside::math::detail::ax;
 using beman::inside::umax;
-using detail::exact_frac;
+using detail::wide_rational;
 using detail::wide_sint;
 
 namespace {
@@ -118,7 +118,7 @@ struct near_tie {
     template <int W>
     constexpr ax::approx<8> run() const {
         ++Runs;
-        const auto v = detail::exact_of<8>(rational{1, 16}) + exact_frac<8>{wide_sint<8>{1}, wide_sint<8>{1} << 40};
+        const auto v = detail::exact_of<8>(rational{1, 16}) + wide_rational<8>{wide_sint<8>{1}, wide_sint<8>{1} << 40};
         return {ax::to_q<W, 8>(v), W, 4};
     }
 };
@@ -156,7 +156,7 @@ ld notch_ld() {
 template <typename Out, typename In, typename Fn, typename Ref>
 int check_rounding(Fn fn, Ref ref, int stride = 1) {
     const ld       n          = notch_ld<Out>();
-    constexpr bool floor_mode = detail::rounding_of(policy_of<Out>) == detail::round_mode::floor;
+    constexpr bool floor_mode = detail::rounding_of(flags_of<Out>) == detail::round_mode::floor;
     int            bad        = 0;
     const auto     count      = static_cast<long long>(grid_of<In>.slot_count());
     for (long long i = 0; i <= count; i += stride) {
@@ -756,7 +756,7 @@ TEST(MathAdaptiveTest, double_tier_agrees_on_decimal_inputs_and_checked_forms) {
                 ax::atan2_core<ax::input_limbs<symd>>{ax::exact_input(y), ax::exact_input(x)});
             if (a.raw() != a2.raw())
                 ++bad;
-            using F = detail::exact_frac<2 * ax::input_limbs<symd> + 1>;
+            using F = detail::wide_rational<2 * ax::input_limbs<symd> + 1>;
             const F    fx{ax::exact_input(x)}, fy{ax::exact_input(y)};
             const auto h2 = ax::evaluate<out20, ax::start_bits<out20>>(
                 ax::sqrt_core<2 * ax::input_limbs<symd> + 1>{fx * fx + fy * fy});
@@ -889,7 +889,7 @@ TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
                 ax::atan2_core<ax::input_limbs<symm4>>{ax::exact_input(y), ax::exact_input(x)});
             if (am::atan2_into<out52>(y, x).raw() != a2.raw())
                 ++bad;
-            using F = detail::exact_frac<2 * ax::input_limbs<symm4> + 1>;
+            using F = detail::wide_rational<2 * ax::input_limbs<symm4> + 1>;
             const F    fx{ax::exact_input(x)}, fy{ax::exact_input(y)};
             const auto h2 = ax::evaluate<out46e, ax::start_bits<out46e>>(
                 ax::sqrt_core<2 * ax::input_limbs<symm4> + 1>{fx * fx + fy * fy});
@@ -1118,7 +1118,7 @@ double fp_worst_ratio(F kernel) {
         EXPECT_LE((fp_worst_ratio<In, __VA_ARGS__>([](double x, double& b) { return fpk::K<36>::call(x, b); })), 1.0) \
             << #call " 36";                                                                                           \
         EXPECT_LE((fp_worst_ratio<In, __VA_ARGS__>(                                                                   \
-                      [](double x, double& b) { return fpk::K<fpk::kFullBits>::call(x, b); })),                       \
+                      [](double x, double& b) { return fpk::K<fpk::full_bits>::call(x, b); })),                       \
                   1.0)                                                                                                \
             << #call " full"
 
@@ -1182,13 +1182,13 @@ TEST(MathAdaptiveTest, double_kernels_stay_within_their_proved_bounds) {
     };
     EXPECT_LE(pow_worst.template operator()<20>(), 1.0) << "pow 20";
     EXPECT_LE(pow_worst.template operator()<52>(), 1.0) << "pow 52";
-    EXPECT_LE(pow_worst.template operator()<fpk::kFullBits>(), 1.0) << "pow full";
+    EXPECT_LE(pow_worst.template operator()<fpk::full_bits>(), 1.0) << "pow full";
 
     // Coarse outputs get smaller kernels.
-    static_assert(fpk::trig_k<ax::fp_target<out8, ax::fp_sin>>::NS < fpk::trig_k<fpk::kFullBits>::NS);
-    static_assert(fpk::exp_k<ax::fp_target<outdec, ax::fp_exp>>::N < fpk::exp_k<fpk::kFullBits>::N);
-    static_assert(fpk::log_k<ax::fp_target<out20, ax::fp_log>>::N < fpk::log_k<fpk::kFullBits>::N);
-    static_assert(fpk::atan_k<ax::fp_target<out20, ax::fp_atan>>::N < fpk::atan_k<fpk::kFullBits>::N);
+    static_assert(fpk::trig_k<ax::fp_target<out8, ax::fp_sin>>::NS < fpk::trig_k<fpk::full_bits>::NS);
+    static_assert(fpk::exp_k<ax::fp_target<outdec, ax::fp_exp>>::N < fpk::exp_k<fpk::full_bits>::N);
+    static_assert(fpk::log_k<ax::fp_target<out20, ax::fp_log>>::N < fpk::log_k<fpk::full_bits>::N);
+    static_assert(fpk::atan_k<ax::fp_target<out20, ax::fp_atan>>::N < fpk::atan_k<fpk::full_bits>::N);
 }
     #undef FP_BOUND
 #endif

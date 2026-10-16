@@ -134,13 +134,13 @@ constexpr mag shl(const mag& m, int k) {
 
 // A fraction of transient magnitudes, unreduced: nothing is interned, so it
 // computes at runtime too (a big grid's predicates against a runtime value).
-struct frac {
+struct fraction {
     mag  Num;          // |numerator|
     mag  Den{umax{1}}; // > 0
     bool Negative = false;
 };
 
-constexpr std::strong_ordering compare(const frac& a, const frac& b) {
+constexpr std::strong_ordering compare(const fraction& a, const fraction& b) {
     const int sa = a.Num.empty() ? 0 : a.Negative ? -1 : 1, sb = b.Num.empty() ? 0 : b.Negative ? -1 : 1;
     if (sa != sb)
         return sa <=> sb;
@@ -148,9 +148,9 @@ constexpr std::strong_ordering compare(const frac& a, const frac& b) {
     return sa < 0 ? 0 <=> m : m;
 }
 
-constexpr frac operator+(const frac& a, const frac& b) {
+constexpr fraction operator+(const fraction& a, const fraction& b) {
     const mag x = mul(a.Num, b.Den), y = mul(b.Num, a.Den);
-    frac      r;
+    fraction  r;
     r.Den = mul(a.Den, b.Den);
     if (a.Negative == b.Negative) {
         r.Num      = add(x, y);
@@ -167,21 +167,21 @@ constexpr frac operator+(const frac& a, const frac& b) {
 }
 
 // (a − b) / n is an integer (n ≠ 0).
-constexpr bool same_lattice(const frac& a, frac b, const frac& n) {
-    b.Negative   = !b.Negative && !b.Num.empty();
-    const frac d = a + b;
+constexpr bool same_lattice(const fraction& a, fraction b, const fraction& n) {
+    b.Negative       = !b.Negative && !b.Num.empty();
+    const fraction d = a + b;
     return divmod(mul(d.Num, n.Den), mul(d.Den, n.Num)).Remainder.empty();
 }
 
 // A floating-point value within the double range exactly, in lowest terms:
 // a wider one (long double) as the sum of the doubles it splits into.
 template <std::floating_point T>
-constexpr frac frac_of_float(T v) {
+constexpr fraction fraction_of_float(T v) {
     if constexpr (wide_float<T>) {
         if (static_cast<T>(static_cast<double>(v)) != v) {
-            frac s;
+            fraction s;
             for_each_double_part(v, [&](double p) {
-                s = s + frac_of_float(p);
+                s = s + fraction_of_float(p);
                 return true;
             });
             const mag g = gcd(s.Num, s.Den);
@@ -194,7 +194,8 @@ constexpr frac frac_of_float(T v) {
     auto [mant, e] = double_parts(d);
     for (; mant % 2 == 0 && e < 0; ++e)
         mant /= 2;
-    return e >= 0 ? frac{shl(mag{mant}, e), mag{umax{1}}, d < 0} : frac{mag{mant}, shl(mag{umax{1}}, -e), d < 0};
+    return e >= 0 ? fraction{shl(mag{mant}, e), mag{umax{1}}, d < 0}
+                  : fraction{mag{mant}, shl(mag{umax{1}}, -e), d < 0};
 }
 } // namespace big
 
@@ -434,6 +435,11 @@ struct big_rational {
         if (r.Denominator < 0)
             Num = -Num;
     }
+    // Anything else that converts to `rational` (an inside: just<-6>.per<5>)
+    // takes that one conversion, so it can be a grid limit or notch.
+    template <class T>
+        requires(std::is_class_v<T> && !std::same_as<T, rational> && std::convertible_to<const T&, rational>)
+    constexpr big_rational(const T& v) : big_rational(rational(v)) {}
     constexpr big_rational(std::floating_point auto d) // exact binary value
     {
         if (d != d || d - d != 0) {
@@ -526,8 +532,8 @@ struct big_rational {
             const std::strong_ordering m = limb::mul_compare(a.Num.Small, b.Den.Small, b.Num.Small, a.Den.Small);
             return a.Num.negative() ? 0 <=> m : m;
         }
-        return big::compare(big::frac{a.Num.magnitude(), a.Den.magnitude(), a.Num.negative()},
-                            big::frac{b.Num.magnitude(), b.Den.magnitude(), b.Num.negative()});
+        return big::compare(big::fraction{a.Num.magnitude(), a.Den.magnitude(), a.Num.negative()},
+                            big::fraction{b.Num.magnitude(), b.Den.magnitude(), b.Num.negative()});
     }
 
     friend constexpr big_rational operator-(big_rational a) {

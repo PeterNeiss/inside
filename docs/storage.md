@@ -49,13 +49,13 @@ exactly with `numerator()` / `denominator()` (wide integers), or
 approximately with `to<T>()`. A quotient `a / b` is an exact fraction and reports
 `errc::overflow` when it does not fit one (a same-notch Q-format quotient
 under `snap` stays on the Q-format grid, computed in a wide work type when
-`raw·N` passes 64 bits). `from_chars` reads values past the
+`raw·N` passes 64 bits). `parse` reads values past the
 64-bit fraction in decimal (`digits[.digits][e±n]`, or `n/d`).
 
 A grid written with two limits derives its notch (the coarsest `1/k` keeping
 integers and both limits on the grid), and storage follows from that:
 `inside<{0.5, 10}>` has notch 1/2 and 20 values in a `uint8_t`;
-`inside<{frac<3, 10>, frac<13, 16>}>` has notch 1/80 and 42 values.
+`inside<{just<3>.per<10>, just<13>.per<16>}>` has notch 1/80 and 42 values.
 
 **Signed integer storage** — when `Lower < 0` and `Notch == 1`, `Raw` is the
 smallest `int8_t`…`int64_t` that fits the interval. `Raw` stores the value
@@ -81,7 +81,7 @@ offset encoding, even with notch 1, because its values are not integers:
 
 ```cpp
 using centres = inside<{{0.5, 255.5}, 1}>;     // Raw: uint8_t, 0.5 … 255.5 (bin centres)
-using tenths  = inside<{{-1.1, 0.9}, 0.2}>;    // −1.1, −0.9, …, 0.9 (decimal steps)
+using tenths  = inside<{{-1.1_r, 0.9_r}, 0.2_r}>; // −1.1, −0.9, …, 0.9 (decimal steps)
 centres c = 3.5;                               // 3 or 4 would be rounding_error
 auto    s = c + c;                             // inside<{{1, 511}, 1}>: on the integers
 ```
@@ -142,7 +142,7 @@ using sq   = inside<(grid_of<huge> * grid_of<huge>).value()>;   // {0, 2²⁰⁰
 
 huge h = 1e30;          // 1000000000000000019884624838656: a double is exact
 auto p = h * h;         // the result grid reaches 2²⁰⁰; exact, no expected
-auto q = qword{~0ull} + qword{~0ull};     // 2⁶⁵ − 2 needs a big upper bound
+auto q = uint64{~0ull} + uint64{~0ull};     // 2⁶⁵ − 2 needs a big upper bound
 ```
 
 The `_g` literal spells a grid number exactly, from decimal digits, a point
@@ -150,7 +150,7 @@ and an `e±n` exponent: `inside<{0, 1267650600228229401496703205376_g}>` is the
 same type as `inside<{0, 0x1p100}>`, and `inside<{{0, 1}, 1e-30_g}>` has an
 exact decimal notch of 10⁻³⁰. A floating-point limit or notch is taken as its
 exact binary value, and grid arithmetic builds the rest. (`per<D>`,
-`frac<N, D>` and the `_r` / `_ins` literals stay 64-bit; under C++23 `_g` is
+`just<N>.per<D>` and the `_r` / `_ins` literals stay 64-bit; under C++23 `_g` is
 64-bit too and rejects larger values at compile time.)
 
 Grid helpers such as `grid_of<B>.slot_count()` form big values; call them in a
@@ -217,24 +217,24 @@ and [`examples/solar_system.cpp`](../examples/solar_system.cpp) use wide raws.
 ## Predefined hardware formats
 
 `#include <beman/inside/formats.hpp>` for a curated set of `beman::inside::` aliases that map to
-native byte widths — so you can write `beman::inside::byte` / `beman::inside::unorm16` / `beman::inside::q8_8`
+native byte widths — so you can write `beman::inside::uint8` / `beman::inside::unorm16` / `beman::inside::q8_8`
 instead of spelling the grid and policy by hand.
 
 | Type | Range / notch | Storage |
 |---|---|---|
-| `byte` `word` `dword` `qword` | `[0, 255]` … `[0, 2⁶⁴−1]` | uint8 / uint16 / uint32 / uint64 |
-| `sbyte` `sword` `sdword` | `[−128, 127]` … `[−2³¹, 2³¹−1]` | int8 / int16 / int32 |
-| `sqword` | `[−(2⁶³−1), 2⁶³−1]` | int64 |
+| `uint8` `uint16` `uint32` `uint64` | `[0, 255]` … `[0, 2⁶⁴−1]` | uint8 / uint16 / uint32 / uint64 |
+| `int8` `int16` `int32` | `[−128, 127]` … `[−2³¹, 2³¹−1]` | int8 / int16 / int32 |
+| `int64` | `[−(2⁶³−1), 2⁶³−1]` | int64 |
 | `unorm8` `unorm16` `unorm32` | `[0,1]`, notch 1/255, 1/65535, 1/(2³²−1) | uint8 / uint16 / uint32 |
 | `q4_4` `q8_8` `q16_16` | `[0, 16 − 1/16]`/`[0, 256 − 1/256]`/`[0, 65536 − 1/65536]` (every bit pattern), notch 1/16, 1/256, 1/65536 | uint8 / uint16 / uint32 |
 
-Every alias fills its native type's range: `byte` is `[0, 255]` and `unorm8`
-uses notch 1/255 (reaching 1.0 exactly). `sqword` stays symmetric because the
+Every alias fills its native type's range: `uint8` is `[0, 255]` and `unorm8`
+uses notch 1/255 (reaching 1.0 exactly). `int64` stays symmetric because the
 internal value path is `imax` and −2⁶³ has no negation in int64. Q-formats keep
 their full natural range and power-of-two notches.
 
-`qword` reaches past int64, so it has no implicit `operator imax`: read it with
-`to<std::uint64_t>()`. A difference of two qwords spans 2⁶⁵ values and gets a
+`uint64` reaches past int64, so it has no implicit `operator imax`: read it with
+`to<std::uint64_t>()`. A difference of two `uint64`s spans 2⁶⁵ values and gets a
 wide integer index; a sum's upper bound passes the 64-bit grid numbers, so it
 needs [C++26 big grids](#grids-past-64-bits-c26).
 
@@ -253,11 +253,11 @@ direct storage (native-speed). Behavior is composable: these default to
 
 | Type | Definition | At the ceiling |
 |---|---|---|
-| `counter<Max>` | `inside<{0, Max}, clamp>` | `++` stays at `Max`, `--` stays at 0 (a saturating tally) |
-| `ring_counter<Max>` | `inside<{0, Max}, wrap>` | `++` wraps `Max` → 0 (sequence numbers, epochs) |
+| `clamp_counter<Max>` | `inside<{0, Max}, clamp>` | `++` stays at `Max`, `--` stays at 0 (a saturating tally) |
+| `wrap_counter<Max>` | `inside<{0, Max}, wrap>` | `++` wraps `Max` → 0 (sequence numbers, epochs) |
 
 ```cpp
-beman::inside::ring_counter<255> seq{255};
+beman::inside::wrap_counter<255> seq{255};
 ++seq;                                  // seq == 0
 ```
 

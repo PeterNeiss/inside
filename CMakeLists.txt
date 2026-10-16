@@ -36,9 +36,9 @@ option(
     OFF
 )
 
-# BEMAN_INSIDE_MATH_NO_FP=ON builds with no hardware floating point: f64/f32
-# storage falls back to integers and the math engine's double tier compiles
-# out (its integer path computes every result; results do not change).
+# BEMAN_INSIDE_MATH_NO_FP=ON builds with no hardware floating point: the math
+# engine's double and dd tiers compile out (its integer path computes every
+# result; results do not change).
 # Auto-enabled on freestanding targets.
 option(
     BEMAN_INSIDE_MATH_NO_FP
@@ -52,7 +52,7 @@ option(
 # convertible from incompatible types (the error surfaces on use, not on the
 # trait). BEMAN_INSIDE_STRICT_SFINAE=ON drops the diagnostic overloads so those
 # traits stay honest — for code that embeds `inside` in variant/optional or
-# otherwise probes convertibility. The free `beman::inside::why_assignable`
+# otherwise probes convertibility. The free `beman::inside::explain_assignable`
 # probe still works in strict builds.
 option(
     BEMAN_INSIDE_STRICT_SFINAE

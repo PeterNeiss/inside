@@ -27,7 +27,7 @@ using gain_t = inside<{{0, 4}, per<256>}, round_nearest>;
 
 // Actuator command in [-100, 100] integer steps. `clamp | round_nearest`
 // lets `output_t{raw}` saturate AND round the wider rational/inside input
-// in one step — no explicit `clamp_round<output_t>(...)` cast needed.
+// in one step — no explicit `clamp_cast<output_t, round_nearest>(...)` cast needed.
 using output_t = inside<{-100, 100}, clamp | round_nearest>;
 
 struct pid {
@@ -35,9 +35,9 @@ struct pid {
     gain_t ki{0.125};
     gain_t kd{0.5};
 
-    integ_t            integral{0};
-    err_t              previous{0};
-    counter<1'000'000> windup_events{0};
+    integ_t                  integral{0};
+    err_t                    previous{0};
+    clamp_counter<1'000'000> windup_events{0};
 
     output_t step(err_t err) {
         // on_clamp fires when the integrator hits its saturation boundary —

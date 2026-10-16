@@ -46,7 +46,7 @@ int main() {
         const auto c   = math::cosh(x);
         const auto one = c * c - s * s; // within a few notches of 1
         std::cout << "cosh^2 - sinh^2 at " << x << " = " << one << "\n";
-        if (math::abs(one - just<1>) > just<frac<1, 64>>)
+        if (math::abs(one - just<1>) > just<1>.per<64>)
             return 1;
     }
 

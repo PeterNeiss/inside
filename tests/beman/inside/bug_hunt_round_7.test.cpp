@@ -22,24 +22,15 @@ namespace {
 using I64             = std::int64_t;
 constexpr I64 I64_MAX = std::numeric_limits<I64>::max();
 constexpr I64 I64_MIN = std::numeric_limits<I64>::min();
-
-template <insidable B>
-std::expected<B, errc> parse(std::string_view s) {
-    return from_chars<B>(s.data(), s.data() + s.size());
-}
-template <insidable B>
-std::expected<B, errc> parse_exact(std::string_view s) {
-    return from_chars_exact<B>(s.data(), s.data() + s.size());
-}
 } // namespace
 
-// A double into qword (and any grid whose upper limit rounds to 2^64 as a
+// A double into uint64 (and any grid whose upper limit rounds to 2^64 as a
 // double) did not compile: the range test built a rational of 2^64.
 TEST(BugHuntRound7, double_into_a_grid_reaching_2_pow_64) {
-    EXPECT_EQ(qword{3.0}, 3);
-    EXPECT_EQ(qword::try_make(1e19)->to<std::uint64_t>(), 10000000000000000000u);
-    EXPECT_EQ(qword::try_make(0x1p64).error(), errc::overflow);
-    EXPECT_EQ(qword::try_make(-1.0).error(), errc::overflow);
+    EXPECT_EQ(uint64{3.0}, 3);
+    EXPECT_EQ(uint64::try_make(1e19)->to<std::uint64_t>(), 10000000000000000000u);
+    EXPECT_EQ(uint64::try_make(0x1p64).error(), errc::overflow);
+    EXPECT_EQ(uint64::try_make(-1.0).error(), errc::overflow);
     const inside<{0, UINT64_MAX}, clamp> c{1e30};
     EXPECT_EQ(c.to<std::uint64_t>(), UINT64_MAX);
 }
@@ -51,7 +42,7 @@ TEST(BugHuntRound7, continuous_predicates_see_the_rational_store) {
     const double d = 0x1.644cb4ec9ec46p-20;
     EXPECT_EQ(C::try_make(d).error(), errc::overflow);
     EXPECT_TRUE(conversion_overflows<C>(d));
-    EXPECT_TRUE(conversion_is_lossy<C>(d));
+    EXPECT_TRUE(conversion_loses<C>(d));
     EXPECT_FALSE(conversion_overflows<C>(0.25));
 }
 
@@ -91,7 +82,7 @@ TEST(BugHuntRound7, from_chars_stand_ins_for_huge_and_fraction_text) {
     EXPECT_EQ(parse_exact<price>("1e1300").error(), errc::overflow);
 }
 
-// from_chars_exact rounded off-grid wide text onto a bounded continuous
+// parse_exact rounded off-grid wide text onto a bounded continuous
 // grid under a rounding policy instead of reporting rounding_error.
 TEST(BugHuntRound7, from_chars_exact_bounded_continuous) {
     using B = inside<grid{{0, 1}, max_denominator{5}}, round_nearest>;
@@ -193,10 +184,10 @@ TEST(BugHuntRound7, unanchored_cross_grid_comparison) {
 // The one-shot casts OR-ed their flags with the type's, so the type's
 // rounding mode or clamp won.
 TEST(BugHuntRound7, casts_override_the_declared_policy) {
-    EXPECT_EQ((clamp_round<inside<{0, 100}, round_floor>>(2.5)), 3);
-    EXPECT_EQ((clamp_round<inside<{0, 100}, round_half_even>>(2.5)), 3);
-    EXPECT_EQ((clamp_ceil<inside<{0, 100}, round_floor>>(2.5)), 3);
-    EXPECT_EQ((clamp_round<inside<{0, 100}, round_ceil>>(2.2)), 2);
+    EXPECT_EQ((clamp_cast<inside<{0, 100}, round_floor>, round_nearest>(2.5)), 3);
+    EXPECT_EQ((clamp_cast<inside<{0, 100}, round_half_even>, round_nearest>(2.5)), 3);
+    EXPECT_EQ((clamp_cast<inside<{0, 100}, round_floor>, round_ceil>(2.5)), 3);
+    EXPECT_EQ((clamp_cast<inside<{0, 100}, round_ceil>, round_nearest>(2.2)), 2);
     EXPECT_EQ((wrap_cast<inside<{0, 100}, clamp>>(150)), 49);
     EXPECT_EQ((clamp_cast<inside<{0, 100}, wrap>>(150)), 100);
     EXPECT_EQ((clamp_cast<inside<{0, 100}, round_floor>>(7.9)), 7); // the type's rounding stays
@@ -235,18 +226,18 @@ TEST(BugHuntRound7, on_clamp_hears_of_infinities) {
 TEST(BugHuntRound7, integer_division_past_int64_rounds) {
     using u64 = inside<{0, UINT64_MAX}, snap>;
     EXPECT_EQ(u64{7u} / u64{2u}, 3);
-    EXPECT_EQ(div(qword{7u}, qword{2u}, rounded_floor), 3);
-    EXPECT_EQ(div(qword{UINT64_MAX}, inside<{-3, -1}>{-2}, rounded_ceil), rational(-I64_MAX));
+    EXPECT_EQ(div(uint64{7u}, uint64{2u}, rounded_floor), 3);
+    EXPECT_EQ(div(uint64{UINT64_MAX}, inside<{-3, -1}>{-2}, rounded_ceil), rational(-I64_MAX));
     using i64     = inside<{I64_MIN, I64_MAX}, snap>;
     const auto q1 = i64{-7} / i64{-1};
     using small   = inside<{1, 10}, snap>;
     EXPECT_EQ(q1.value() / small{2}, 3);
-    const auto d = qword{0} - qword{UINT64_MAX};
+    const auto d = uint64{0} - uint64{UINT64_MAX};
     EXPECT_EQ(div(d, inside<{1, 1000}>{7}, rounded_floor), rational(-2635249153387078803));
     using around_zero = inside<{-2, 3}, snap>;
     EXPECT_EQ((u64{5u} / around_zero{0}).error(), errc::division_by_zero);
     // (a / b)·b + a % b == a, as for the native widths.
-    const qword                   a{18446744073709551557u};
+    const uint64                  a{18446744073709551557u};
     const inside<{1, 1000}, snap> b{1000};
     const auto                    quot = div(a, b, rounded_floor);
     EXPECT_EQ(rational(quot) * 1000 + rational(a % b), rational(a));

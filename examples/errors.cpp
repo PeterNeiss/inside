@@ -19,7 +19,7 @@ using coarse      = inside<{{0, 10}, 2}>; // notch 2: rounding_error demo
 int main() {
     // === Section 1: Reporting strategies for an out-of-range value ===
     // Same logical event (200 outside [0,100]), two different reports.
-    // The free-function `error_code&` overload is shown in Section 4.
+    // The free-function `errc&` overload is shown in Section 4.
 
     try {
         checked_100 x = 200;
@@ -70,7 +70,7 @@ int main() {
                  }));
     std::cout << "          (q=" << q << ")" << "\n";
 
-    // === Section 4: Free-function error_code overload ===
+    // === Section 4: Free-function errc& overload ===
     // add / sub / mul / div / mod accept a beman::inside::errc& directly; ec is
     // set on overflow or division-by-zero, the result holds the error on failure.
 

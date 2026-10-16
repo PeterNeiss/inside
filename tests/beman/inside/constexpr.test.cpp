@@ -174,7 +174,7 @@ TEST(ConstexprTest, constexpr_grid_notch_alignment_via_gcd) {
 //---------------------------------------------------------------------------
 // storage selection
 //---------------------------------------------------------------------------
-// constexpr: storage_min picks the smallest fitting raw
+// constexpr: raw_for picks the smallest fitting raw
 TEST(ConstexprTest, constexpr_storage_min_picks_the_smallest_fitting_raw) {
     // smallest_uint_for uses the type's full range: a grid hitting UINT8_MAX
     // exactly still fits uint8_t; one past it promotes to uint16_t.
@@ -184,7 +184,7 @@ TEST(ConstexprTest, constexpr_storage_min_picks_the_smallest_fitting_raw) {
     static_assert(std::is_same_v<raw_t<inside<{0, 65535}>>, std::uint16_t>);
     static_assert(std::is_same_v<raw_t<inside<{0, 65536}>>, std::uint32_t>);
 
-    // signed-direct: lower < 0 + notch 1 → signed int that fits the range,
+    // signed value-storage: lower < 0 + notch 1 → signed int that fits the range,
     // including the type's minimum.
     static_assert(std::is_same_v<raw_t<inside<{-40, 85}>>, std::int8_t>);
     static_assert(std::is_same_v<raw_t<inside<{-128, 127}>>, std::int8_t>);
@@ -216,7 +216,7 @@ TEST(ConstexprTest, constexpr_storage_kind_classification) {
 //---------------------------------------------------------------------------
 // inside arithmetic
 //---------------------------------------------------------------------------
-// constexpr: inside +/-/* on signed-direct grids
+// constexpr: inside +/-/* on signed value-storage grids
 TEST(ConstexprTest, constexpr_inside_plus_on_signed_direct_grids) {
     using s = inside<{-100, 100}>;
     constexpr s a{30}, b{20};
@@ -333,16 +333,16 @@ TEST(ConstexprTest, constexpr_fold_clipped_to_target_grid) {
     static_assert(clamp_cast<small>(mul_all(v{6}, v{10})) == 50); // 60 clamped
 }
 
-// constexpr: clamp_floor / clamp_ceil / clamp_round
-TEST(ConstexprTest, constexpr_clamp_floor_clamp_ceil_clamp_round) {
+// constexpr: clamp_cast with a rounding mode
+TEST(ConstexprTest, constexpr_clamp_cast_with_rounding) {
     using coarse = inside<{{0, 10}, 2}>;
-    static_assert(clamp_floor<coarse>(3.0) == 2);
-    static_assert(clamp_ceil<coarse>(3.0) == 4);
-    static_assert(clamp_round<coarse>(3.0) == 4);
+    static_assert(clamp_cast<coarse, round_floor>(3.0) == 2);
+    static_assert(clamp_cast<coarse, round_ceil>(3.0) == 4);
+    static_assert(clamp_cast<coarse, round_nearest>(3.0) == 4);
 
     // out of range clamps to boundary
-    static_assert(clamp_floor<coarse>(15.0) == 10);
-    static_assert(clamp_floor<coarse>(-3.0) == 0);
+    static_assert(clamp_cast<coarse, round_floor>(15.0) == 10);
+    static_assert(clamp_cast<coarse, round_floor>(-3.0) == 0);
 }
 
 // constexpr: conversion predicates
@@ -358,9 +358,9 @@ TEST(ConstexprTest, constexpr_conversion_predicates) {
     static_assert(conversion_rounds<coarse>(3));
     static_assert(!(conversion_rounds<coarse>(11)));
 
-    static_assert(!(conversion_is_lossy<coarse>(4)));
-    static_assert(conversion_is_lossy<coarse>(3));
-    static_assert(conversion_is_lossy<coarse>(20));
+    static_assert(!(conversion_loses<coarse>(4)));
+    static_assert(conversion_loses<coarse>(3));
+    static_assert(conversion_loses<coarse>(20));
 }
 
 //---------------------------------------------------------------------------
@@ -457,11 +457,11 @@ TEST(ConstexprTest, constexpr_implied_flags_merged_implied_flags) {
     static_assert(merged_implied_flags<clamp_tag, overflow_tag> == (clamp | checked));
 }
 
-// constexpr: is_policy / uses_error_ref
+// constexpr: is_policy_v / uses_error_ref
 TEST(ConstexprTest, constexpr_ispolicy_useserrorref) {
-    static_assert(is_policy<policy<checked>>);
-    static_assert(is_policy<policy<none, error_ref>>);
-    static_assert(!(is_policy<int>));
+    static_assert(is_policy_v<policy<checked>>);
+    static_assert(is_policy_v<policy<none, error_ref>>);
+    static_assert(!(is_policy_v<int>));
 
     static_assert(!(uses_error_ref<policy<checked>>));
     static_assert(uses_error_ref<policy<checked, error_ref>>);

@@ -18,41 +18,41 @@ using namespace beman::inside;
 using namespace beman::inside::detail;
 
 //---------------------------------------------------------------------------
-// Bug A — addition.hpp:90
+// Bug A — addition<L, R>::add (addition.hpp)
 //
 // The rational-mixed `add` branch stores `((sum - lower_of<result>) / notch_of<result>)`
 // directly into `res.Raw`. That's the L-offset, but when the result type is
 // value_storage<result> the Raw must hold the *value*. Same encoding-
 // mismatch class as the previously-fixed assignment paths.
 //---------------------------------------------------------------------------
-// Bug A: rational-mixed add into direct-storage result
+// Bug A: rational-mixed add into value-storage result
 TEST(StorageBugsTest, bug_a_rational_mixed_add_into_direct_storage_result) {
-    using L = inside<{-5, 5}>;          // signed-direct
+    using L = inside<{-5, 5}>;          // signed value-storage
     using R = inside<{{-10, 10}, 0_r}>; // rational raw
 
     constexpr L l{2};
     constexpr R r{1_r};
-    // Result grid: {-15, 15}, notch 1 → signed-direct.
+    // Result grid: {-15, 15}, notch 1 → signed value-storage.
     static_assert(l + r == 3);
 }
 
 //---------------------------------------------------------------------------
-// Bug B — multiplication.hpp:117
+// Bug B — multiplication<L, R>::mul (multiplication.hpp)
 //
 // The third-quadrant case (lower_of<result> == upper_of<L> * lower_of<R>) computes
-// `negRaw = max_index_v<L> - lhs.Raw`. That formula treats lhs.Raw as a
+// `negRaw = max_index_of<L> - lhs.Raw`. That formula treats lhs.Raw as a
 // notch-offset, which is correct for offset-encoded raws but wrong for
-// direct-storage signed raws (where Raw is the value).
+// value-storage signed raws (where Raw is the value).
 //
-// The integer_lattice fast path (multiplication.hpp:70-87) catches the
+// The integer_lattice fast path of multiplication<L, R>::mul catches the
 // all-integer case, so the bug only surfaces when one operand has a
 // fractional notch (which forces the result to be non-integer-aligned and
-// skips the fast path). L stays direct (Notch_L = 1, signed lower).
+// skips the fast path). L keeps value storage (Notch_L = 1, signed lower).
 //---------------------------------------------------------------------------
-// Bug B: signed-direct multiplication third quadrant
+// Bug B: signed value-storage multiplication third quadrant
 TEST(StorageBugsTest, bug_b_signed_direct_multiplication_third_quadrant) {
-    using L = inside<{-5, 5}>;                      // signed-direct, integer-aligned
-    using R = inside<{{-10, 10}, rational{1u, 2}}>; // notch 1/2, not direct, not integer-aligned
+    using L = inside<{-5, 5}>;                      // signed value-storage, integer-aligned
+    using R = inside<{{-10, 10}, rational{1u, 2}}>; // notch 1/2, not value storage, not integer-aligned
 
     // lower_of<result> = upper_of<L> * lower_of<R> = 5 * -10 = -50 → third quadrant.
     // Without the fix, L{2} * R{1} produces value -3 instead of 2.
@@ -62,7 +62,7 @@ TEST(StorageBugsTest, bug_b_signed_direct_multiplication_third_quadrant) {
 }
 
 //---------------------------------------------------------------------------
-// Bug C — assignment.hpp:428
+// Bug C — assignment<L, double> (assignment.hpp)
 //
 // `assign(insidable, double R)` checked for `has_policy<L, P, clamp>` but not
 // for `has_policy<L, P, wrap>`. An `inside<{...}, wrap>` constructed from a
@@ -90,7 +90,7 @@ TEST(StorageBugsTest, bug_c_wrap_policy_fires_for_double_rhs) {
 }
 
 //---------------------------------------------------------------------------
-// Bug D — rational.hpp:260
+// Bug D — gcd(rational, rational) (rational.hpp)
 //
 // `gcd(rational, rational)` calls `std::lcm` on |Denominator|s without an
 // overflow check and casts the result to imax via static_cast. Large
@@ -219,7 +219,7 @@ using Int10     = beman::inside::inside<{0, 10}>;
 TEST(StorageBugsTest, dyadic_source_into_integer_grid_reads_the_value) {
     using namespace beman::inside;
     const RealWide half = RealWide{2.5};
-    EXPECT_EQ(detail::to_value(clamp_round<Int10>(half)), 3);
+    EXPECT_EQ(detail::to_value(clamp_cast<Int10, round_nearest>(half)), 3);
     Int10 i{0};
     i.with_snap<round_nearest>() = half;
     EXPECT_EQ(detail::to_value(i), 3);
@@ -281,8 +281,8 @@ TEST(StorageBugsTest, predicates_handle_non_finite_input) {
     EXPECT_TRUE(conversion_overflows<B>(nan));
     EXPECT_TRUE(conversion_overflows<B>(-inf));
     EXPECT_FALSE(conversion_rounds<B>(nan));
-    EXPECT_TRUE(conversion_is_lossy<B>(inf));
-    EXPECT_FALSE(conversion_is_lossy<B>(3.0));
+    EXPECT_TRUE(conversion_loses<B>(inf));
+    EXPECT_FALSE(conversion_loses<B>(3.0));
     EXPECT_TRUE(conversion_rounds<B>(3.5));
 }
 
@@ -478,7 +478,7 @@ TEST(StorageBugsTest, grid_past_int64_increments_and_negates) {
     }();
     static_assert(wrap_up && wrap_down && wrap_sub && wrap_neg);
 
-    using N = U64::negative;                 // {−(2^64−1), 0}
+    using N = U64::negated_type;             // {−(2^64−1), 0}
     static_assert(sizeof(N::raw_type) == 8); // was int8: trunc(Lower) wrapped
     static_assert(-U64{5} == -5 && -U64{kUM} == -rational{kUM});
     static_assert(-(-U64{kUM}) == U64{kUM});

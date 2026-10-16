@@ -69,7 +69,7 @@ TEST(InsideArithmeticTest, inside_mul) {
     auto f = d * e;
     ASSERT_EQ(f, *(39_r / 4));
 
-    using n4 = u4::negative;
+    using n4 = u4::negated_type;
     n4   g{-2};
     n4   h{-2.25};
     auto i = g * h;
@@ -197,7 +197,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
 #else
         static_assert(is_expected_v<decltype(fine{0.5} / fpos{1.5})>);
 #endif
-        EXPECT_TRUE(lift_unwrap(fine{0.5} / fpos{1.5}) == (just<frac<1, 3>>));
+        EXPECT_TRUE(lift_unwrap(fine{0.5} / fpos{1.5}) == (just<1>.per<3>));
     }
 }
 

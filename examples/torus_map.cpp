@@ -27,9 +27,9 @@ using pos_delta_t = inside<{{-64, 64}, per<16>}, round_nearest>;
 using cell_t = inside<{0, 63}>;
 
 struct sprite {
-    pos_t              x{0}, y{0};
-    counter<1'000'000> edge_x_crossings{0};
-    counter<1'000'000> edge_y_crossings{0};
+    pos_t                    x{0}, y{0};
+    clamp_counter<1'000'000> edge_x_crossings{0};
+    clamp_counter<1'000'000> edge_y_crossings{0};
 
     void step(pos_delta_t dx, pos_delta_t dy) {
         // The move delta is an inside (same notch family as the position), so the

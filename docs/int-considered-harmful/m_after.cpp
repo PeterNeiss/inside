@@ -26,7 +26,7 @@ int main()
 
   // A third of the subtotal is not representable in cents. It stays exact
   // until it is stored, and then rounds by the stated rule.
-  auto  disc_exact = subtotal * frac<1, 3>;
+  auto  disc_exact = subtotal * just<1>.per<3>;
   money discount   = disc_exact;
 
   money total = subtotal + tax - discount;
