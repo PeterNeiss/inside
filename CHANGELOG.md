@@ -4,7 +4,7 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-## Unreleased
+## 0.3.0 — 2026-10-16
 
 ### Upgrading from 0.2.0
 

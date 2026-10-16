@@ -32,9 +32,9 @@ conversion and the convenience functions of the reference implementation are
 left to later papers ([Future work](#future-work)).
 
 The reference implementation is [beman.inside
-v0.2.0](https://github.com/PeterNeiss/inside/tree/v0.2.0). A long-form
+v0.3.0](https://github.com/PeterNeiss/inside/tree/v0.3.0). A long-form
 motivation with compiled exhibits is [*int considered
-harmful*](https://github.com/PeterNeiss/inside/blob/v0.2.0/docs/int-considered-harmful.pdf)
+harmful*](https://github.com/PeterNeiss/inside/blob/v0.3.0/docs/int-considered-harmful.pdf)
 (the *paper* below).
 
 # Motivation
@@ -333,7 +333,7 @@ namespace std {
 # Future work
 
 The reference implementation provides more than this kernel. Each item below is
-in v0.2.0, and each is a candidate for a later paper:
+in v0.3.0, and each is a candidate for a later paper:
 
 1. **Correctly rounded math**: `math::sin_into<Out>(x)` and its siblings
    (`exp`, `log`, `pow`, the trigonometric and hyperbolic functions and their

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //---------------------------------------------------------------------------
-// beman.inside 0.2.0 — single-header amalgamation
+// beman.inside 0.3.0 — single-header amalgamation
 //
 //   *** GENERATED FILE — DO NOT EDIT BY HAND ***
 //
