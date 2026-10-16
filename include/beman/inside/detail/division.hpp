@@ -43,12 +43,23 @@ inline constexpr bool integer_native_ops = integer_ops<L, R, F> && values_fit_im
 // constraints of div / mod / divmod and their operators: the quotient grid
 // exists (not a zero divisor grid; with 64-bit grid numbers, its corners
 // fit), and the remainder needs integer-valued grids (divmod: within imax).
+// ...or past imax but with 64-bit limits (a uint64 grid, the 2^63 of
+// INT64_MIN / -1): the rounded quotient in exact wide integers, on a grid of
+// the corner quotients rounded the same way.
 template <insidable L, insidable R, policy_flag F>
-inline constexpr bool quotient_grid_representable =
-    integer_native_ops<L, R, F> ? lower_of<R> != 0 || upper_of<R> != 0 : grid_quotient_fits(grid_of<L>, grid_of<R>);
+inline constexpr bool integer_wide_ops =
+    integer_ops<L, R, F> && !integer_native_ops<L, R, F> && fits_rational(lower_of<L>) && fits_rational(upper_of<L>) &&
+    fits_rational(lower_of<R>) && fits_rational(upper_of<R>);
 
 template <insidable L, insidable R, policy_flag F>
-inline constexpr bool modulo_operands_integer_valued = integer_ops<L, R, F | snap>;
+inline constexpr bool quotient_grid_representable =
+    (integer_native_ops<L, R, F> || integer_wide_ops<L, R, F>) ? lower_of<R> != 0 || upper_of<R> != 0
+                                                               : grid_quotient_fits(grid_of<L>, grid_of<R>);
+
+// (A zero divisor grid has no remainder grid: |r| < |b| holds no value.)
+template <insidable L, insidable R, policy_flag F>
+inline constexpr bool modulo_operands_integer_valued =
+    integer_ops<L, R, F | snap> && (lower_of<R> != 0 || upper_of<R> != 0);
 
 template <insidable L, insidable R, policy_flag F>
 inline constexpr bool divmod_operands_integer_valued_within_imax =
@@ -199,7 +210,9 @@ struct division {
             return ((F | policy_of<L> | policy_of<R>)&snap) != 0;
     }();
 
-    static constexpr bool native_div = native_div_integer || native_div_fixed;
+    static constexpr bool wide_div_integer = integer_wide_ops<L, R, F>;
+
+    static constexpr bool native_div = native_div_integer || native_div_fixed || wide_div_integer;
 
     // The rounding mode for the native paths (shared by the grid and runtime).
     static constexpr round_mode rmode = rounding_of(F | policy_of<L> | policy_of<R>);
@@ -257,12 +270,66 @@ struct division {
         return q;
     }
 
+    // integer_quotient_range for limits past imax (64-bit magnitudes): the
+    // corner quotients rounded in umax, sign apart. |a / b| ≤ |a| for an
+    // integer |b| ≥ 1, so every rounded quotient fits.
+    static constexpr interval wide_integer_quotient_range() {
+        const round_mode lo_mode = rmode == round_mode::half_even ? round_mode::floor : rmode;
+        const round_mode hi_mode = rmode == round_mode::half_even ? round_mode::ceil : rmode;
+        struct signed_mag {
+            umax Mag;
+            bool Neg;
+        };
+        auto of = [](const rational& r) { return signed_mag{r.Numerator, r.Denominator < 0 && r.Numerator != 0}; };
+        auto quotient = [](signed_mag a, signed_mag b, round_mode m) {
+            const umax q = a.Mag / b.Mag, r = a.Mag % b.Mag;
+            const bool neg = a.Neg != b.Neg && a.Mag != 0;
+            const umax mag = rounds_away(m, neg, classify_remainder(m, r, b.Mag), (q & 1) != 0) ? q + 1 : q;
+            return neg ? -rational{mag} : rational{mag};
+        };
+        const signed_mag lo = of(lower64<R>), hi = of(upper64<R>);
+        const umax       step = to_rational(grid_of<R>.value_unit()).Numerator;
+        signed_mag       divisors[4];
+        int              n = 0;
+        if (!lo.Neg && lo.Mag != 0) {
+            divisors[n++] = lo;
+            divisors[n++] = hi;
+        } else if (hi.Neg) {
+            divisors[n++] = lo;
+            divisors[n++] = hi;
+        } else {
+            if (hi.Mag != 0) {
+                divisors[n++] = signed_mag{step, false};
+                divisors[n++] = hi;
+            }
+            if (lo.Neg) {
+                divisors[n++] = lo;
+                divisors[n++] = signed_mag{step, true};
+            }
+        }
+        if (n == 0) // a zero divisor grid (the static_assert above)
+            return interval{0, 0};
+        const signed_mag a0 = of(lower64<L>);
+        interval         q{quotient(a0, divisors[0], lo_mode), quotient(a0, divisors[0], hi_mode)};
+        for (const signed_mag a : {of(lower64<L>), of(upper64<L>)})
+            for (int i = 0; i < n; ++i) {
+                const rational l = quotient(a, divisors[i], lo_mode), h = quotient(a, divisors[i], hi_mode);
+                if (l < q.Lower)
+                    q.Lower = l;
+                if (q.Upper < h)
+                    q.Upper = h;
+            }
+        return q;
+    }
+
     // The native paths' endpoints rounded with the same mode as the runtime
     // quotient, so e.g. round_ceil can't escape the grid: onto the integers,
     // or onto the operands' notch 1/K.
     static constexpr grid result_grid = [] {
         if constexpr (native_div_integer)
             return grid{integer_quotient_range(), rational{1}};
+        else if constexpr (wide_div_integer)
+            return grid{wide_integer_quotient_range(), rational{1}};
         else if constexpr (native_div_fixed) {
             constexpr interval q = (*(grid_of<L> / grid_of<R>)).Interval;
             // An endpoint on the notch stays; one off it rounds onto it.
@@ -390,6 +457,17 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
                 return fail(errc::division_by_zero, "division by zero in div");
         const T lhs_val = static_cast<T>(to_value(lhs));
         return native_quotient<result>(lhs_val, rhs_val, div_rounded(lhs_val, rhs_val, rmode));
+    } else if constexpr (wide_div_integer) {
+        // Integer values past imax: the rounded quotient in exact wide
+        // integers, as modulo's remainder.
+        constexpr std::size_t K = exact_limbs<L, R, result>;
+        using I                 = wide_sint<K>;
+        const I b               = value_in_units<I, grid_rational{1}>(rhs); // integer values: no division
+        if constexpr (!zero_unchecked)
+            if (b.is_zero())
+                return fail(errc::division_by_zero, "division by zero in div");
+        const I a = value_in_units<I, grid_rational{1}>(lhs);
+        return exact_result<result>(exact_frac<K>{rounded_div<rmode>(a, b), I{1}});
     } else if constexpr (point_divisor) {
         if constexpr (point_scale<R, L, result>)
             return scale_by_point<result, (lower_of<R> < 0)>(lhs);

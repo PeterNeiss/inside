@@ -616,8 +616,9 @@ struct ahyp_core {
     }
     template <int W>
     constexpr auto run() const {
-        constexpr int S         = W + 12 + std::bit_width(static_cast<unsigned>(2 * Bits + Mag));
-        using I                 = fixed_t<S + Mag + 8>;
+        constexpr int S = W + 12 + std::bit_width(static_cast<unsigned>(2 * Bits + Mag));
+        // asinh forms x² + 1 in the word: twice the magnitude bits.
+        using I                 = fixed_t<S + (Fn == ahyp::asinh ? 2 * Mag : Mag) + 8>;
         constexpr std::size_t K = limbs_of<I>;
         using F                 = exact_frac<2 * E + 1>;
         const bool neg          = X.Num.negative();
@@ -782,10 +783,16 @@ constexpr grid_rational lattice_bound_from(const Core& core) {
     const auto            a = core.template run<W>();
     constexpr std::size_t K = limbs_of<decltype(a.Value)> + 1;
     using I                 = wide_sint<K>;
-    const I    one{1};
-    const I    d  = a.Scale >= 0 ? one << a.Scale : one;
-    auto       at = [&](const I& y) { return lattice_index<Notch, Up>(a.Scale >= 0 ? y : y << (-a.Scale), d); };
-    const I    y{a.Value}, e{a.Error};
+    const I y{a.Value}, e{a.Error};
+    // ⌊v/Notch⌋ of v = y/2^Scale through a shift: a tiny value (exp(−58)
+    // ≈ 2^−84) has a 2^Scale past I, and a nested floor (ceil) by positive
+    // divisors is the floor (ceil) of the whole quotient.
+    auto at = [&](const I& v) {
+        if (a.Scale < 0)
+            return lattice_index<Notch, Up>(v << (-a.Scale), I{1});
+        const auto j = lattice_index<Notch, Up>(v, I{1});
+        return Up ? -(-j >> a.Scale) : j >> a.Scale;
+    };
     const auto lo = at(y - e), hi = at(y + e);
     if constexpr (2 * W <= Cap)
         if (!(lo == hi))

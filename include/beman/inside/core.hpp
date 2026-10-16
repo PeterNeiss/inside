@@ -346,13 +346,13 @@ struct inside {
     // imax when every value fits it, else a wide integer that holds every value
     // (a wide grid, a grid past int64).
     [[nodiscard]] constexpr auto numerator() const {
-        if constexpr (detail::values_fit_imax<inside>)
+        if constexpr (detail::fraction_fits_imax<inside>)
             return fraction().first;
         else
             return detail::reduced_exact(*this).Num;
     }
     [[nodiscard]] constexpr auto denominator() const {
-        if constexpr (detail::values_fit_imax<inside>)
+        if constexpr (detail::fraction_fits_imax<inside>)
             return fraction().second;
         else
             return detail::reduced_exact(*this).Den;
@@ -532,6 +532,21 @@ struct inside {
     template <detail::grid_wide Dlo, detail::grid_wide Dhi>
     using raw_work_t = detail::work_int_t<raw_work_bits<Dlo, Dhi>>;
 
+    // Work type of the raw delta ±(rhs.raw() + bias) itself: it holds R's raws,
+    // their negations and the bias, so neither step overflows before the delta
+    // (in raw_work_t's range) is formed.
+    template <insidable R>
+    using delta_work_t = detail::work_int_t<detail::signed_value_bits_of({detail::raw_lo_exact<R>,
+                                                                          detail::raw_hi_exact<R>,
+                                                                          -detail::raw_lo_exact<R>,
+                                                                          -detail::raw_hi_exact<R>,
+                                                                          add_bias<R>,
+                                                                          -add_bias<R>,
+                                                                          detail::raw_lo_exact<R> + add_bias<R>,
+                                                                          detail::raw_hi_exact<R> + add_bias<R>,
+                                                                          -detail::raw_lo_exact<R> - add_bias<R>,
+                                                                          -detail::raw_hi_exact<R> - add_bias<R>})>;
+
     // A compound op's constraint: its binary op's result (an expected's
     // value) assigns to this type, so `requires { x op= y; }` is honest.
     template <typename T>
@@ -560,8 +575,9 @@ struct inside {
             return store_raw<W>(static_cast<W>(Raw) + delta);
         } else if constexpr (raw_add_ok<R>) {
             using W = raw_work_t<detail::raw_lo_exact<R> + add_bias<R>, detail::raw_hi_exact<R> + add_bias<R>>;
-            constexpr W bias = static_cast<W>(add_bias<R>);
-            return store_raw<W>(static_cast<W>(Raw) + static_cast<W>(rhs.raw()) + bias);
+            using D = delta_work_t<R>;
+            constexpr D bias = static_cast<D>(add_bias<R>);
+            return store_raw<W>(static_cast<W>(Raw) + static_cast<W>(static_cast<D>(rhs.raw()) + bias));
         } else
             return assign_op_result(*this + rhs);
     }
@@ -658,8 +674,9 @@ struct inside {
         // Raw-space fast path, the subtraction mirror of +='s.
         if constexpr (raw_add_ok<R>) {
             using W = raw_work_t<-detail::raw_hi_exact<R> - add_bias<R>, -detail::raw_lo_exact<R> - add_bias<R>>;
-            constexpr W bias = static_cast<W>(add_bias<R>);
-            return store_raw<W>(static_cast<W>(Raw) - static_cast<W>(rhs.raw()) - bias);
+            using D = delta_work_t<R>;
+            constexpr D bias = static_cast<D>(add_bias<R>);
+            return store_raw<W>(static_cast<W>(Raw) + static_cast<W>(-static_cast<D>(rhs.raw()) - bias));
         } else
             return *this += (-rhs);
     }
@@ -832,15 +849,15 @@ template <typename T, insidable B>
 //---------------------------------------------------------------------------
 namespace detail {
 // from_chars past the 64-bit rational (a long decimal, a wide grid's value,
-// 1e-200): the text parsed exactly, or past that width as a tiny value's
-// stand-in. Out of line: the common parse stays small.
+// 1e-200): the text parsed exactly, or past that width as a tiny or huge
+// value's stand-in. Out of line: the common parse stays small.
 template <insidable B, policy_flag F>
 BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::expected<B, errc> from_chars_wide(const char* first,
                                                                                          const char* last) {
     constexpr std::size_t K = exact_max<exact_limbs<B>, parse_limbs>;
     auto                  w = parse_exact<K>(first, last);
     if (!w && w.error() == errc::overflow)
-        if (const auto t = tiny_stand_in<B, K>(first, last))
+        if (const auto t = stand_in<B, K, static_cast<bool>((policy_of<B> | F) & wrap)>(first, last))
             w = *t;
     if (!w)
         return std::unexpected{w.error()};
@@ -878,15 +895,21 @@ template <insidable B>
     constexpr std::size_t K = detail::exact_max<detail::exact_limbs<B>, detail::parse_limbs>;
     auto                  w = detail::parse_exact<K>(first, last);
     if (!w && w.error() == errc::overflow)
-        if (const auto t = detail::tiny_stand_in<B, K>(first, last))
+        if (const auto t = detail::stand_in<B, K>(first, last))
             w = *t; // never on the grid: rounding_error, or overflow outside it
     if (!w)
         return std::unexpected{w.error()};
     if (*w < detail::exact_of_grid<K>(lower_of<B>) || detail::exact_of_grid<K>(upper_of<B>) < *w)
         return std::unexpected{errc::overflow};
-    if constexpr (detail::notched<B>)
+    if constexpr (detail::notched<B>) {
         if (!detail::exact_index<B, detail::round_mode::trunc>(*w).Exact)
             return std::unexpected{errc::rounding_error};
+    } else if constexpr (grid_of<B>.MaxDenominator != 0) {
+        // A bounded continuous grid holds denominators up to its bound only.
+        if (static_cast<detail::wide_sint<K>>(detail::wide_numerator(grid_of<B>.MaxDenominator)) <
+            detail::reduced(*w).Den)
+            return std::unexpected{errc::rounding_error};
+    }
     errc ec{};
     B    b{};
     detail::assign_exact<detail::rational>(b, *w, make_policy<policy_of<B>>(ec), no_action{});

@@ -12,8 +12,22 @@
 // store (an errc& one) is named here and completed there.
 namespace beman::inside {
 namespace detail {
+// An on_clamp's overshoot from an inside source is an inside on
+// grid_of<R> − grid_of<L>: that grid must exist (with 64-bit grid numbers its
+// limits must fit them).
+template <typename L, typename R>
+inline constexpr bool overshoot_grid_ok = [] {
+#if BEMAN_INSIDE_BIG_GRIDS
+    return true;
+#else
+    // (The grid difference itself stops the build past them.)
+    return try_sub(grid_of<R>.Interval.Lower, grid_of<L>.Interval.Upper).has_value() &&
+           try_sub(grid_of<R>.Interval.Upper, grid_of<L>.Interval.Lower).has_value();
+#endif
+}();
+
 struct error_ref;
-}
+} // namespace detail
 template <policy_flag W, typename E>
 struct policy;
 } // namespace beman::inside
@@ -340,10 +354,13 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
                             // The overshoot rhs − bound, shaped like the builtin paths'.
                             const auto over =
                                 v + exact_frac<KK>{I{-1}, I{1}} * exact_of_grid<KK>(low ? lower_of<L> : upper_of<L>);
-                            if constexpr (insidable<R>)
+                            if constexpr (insidable<R>) {
+                                static_assert(overshoot_grid_ok<L, R>,
+                                              "on_clamp: the overshoot grid (source minus target) passes the 64-bit "
+                                              "grid numbers");
                                 action.Fn(
                                     lhs, exact_result<beman::inside::inside<(grid_of<R> - grid_of<L>).value()>>(over));
-                            else if constexpr (std::integral<R>)
+                            } else if constexpr (std::integral<R>)
                                 action.Fn(lhs, saturate(trunc(over)));
                             else if constexpr (std::floating_point<R>)
                                 action.Fn(lhs, static_cast<R>(static_cast<double>(over)));
@@ -630,7 +647,14 @@ struct assignment<L, R> {
             if (!(rhs < 0x1p63 && rhs > -0x1p63)) [[unlikely]]
                 return wrap_exact(lhs, exact_of_double(static_cast<double>(rhs)), policy, action);
         rational rhs_r{rhs};
-        if constexpr (has_policy<L, P, snap>) {
+        if constexpr (!notched<L> && grid_of<L>.MaxDenominator != 0 && has_policy<L, P, snap>) {
+            // A bounded continuous grid rounds onto its bound first, too: a
+            // fold keeps the denominator, so the folded value stays on it.
+            const auto r = try_rational(round_to_bound<L, plain_t<P>>(exact_of(rhs_r)));
+            if (!r) [[unlikely]]
+                return wrap_exact(lhs, exact_of(rhs_r), policy, action);
+            rhs_r = *r;
+        } else if constexpr (has_policy<L, P, snap>) {
             const auto r = try_round_to_lattice<L, P>(rhs_r);
             if (!r) [[unlikely]]
                 return wrap_exact(lhs, exact_of(rhs_r), policy, action);
@@ -952,9 +976,14 @@ struct assignment<L, R> {
     // Range test for the source value. A floating source compares in double when
     // both endpoints are exact doubles (then the comparison is exact), instead of
     // converting the value to a rational first.
+    // (A limit near 2^64 rounds to a double of 2^64, which no rational holds:
+    // it is no exact double.)
+    static constexpr bool exact_double(const rational& r) {
+        const double d = static_cast<double>(r);
+        return d < 0x1p64 && d > -0x1p64 && rational{d} == r;
+    }
     static constexpr bool double_bounds_exact =
-        std::floating_point<R> && rational{static_cast<double>(detail::lower64<L>)} == detail::lower64<L> &&
-        rational{static_cast<double>(detail::upper64<L>)} == detail::upper64<L>;
+        std::floating_point<R> && exact_double(detail::lower64<L>) && exact_double(detail::upper64<L>);
 
     // A rational source on integer endpoints compares by multiplying the
     // endpoint by the denominator (n/d ≤ m ⇔ n ≤ m·d; an overflowing m·d
@@ -1022,7 +1051,22 @@ struct assignment<L, R> {
   public:
     template <typename P, typename A = no_action>
     static constexpr L& assign(L& lhs, const R& rhs, P&& policy, A&& action = {}) {
-        if constexpr (wide_valued<L>) {
+        // A long double that is a double stores as that double; one with bits
+        // past it stores exactly (the double paths would drop them).
+        if constexpr (std::floating_point<R> && sizeof(R) > sizeof(double)) {
+            const double d = static_cast<double>(rhs);
+            if (rhs - rhs == 0 && static_cast<R>(d) != rhs) [[unlikely]] {
+                // Past the double range: a stand-in past every limit, which
+                // clamps or overflows, but a fold needs the exact value.
+                if constexpr (has_policy<L, P, wrap>)
+                    if (!is_finite(d)) {
+                        report_failure(lhs, policy, action, errc::overflow);
+                        return lhs;
+                    }
+                return assign_exact<R>(lhs, exact_of_long_double(rhs), policy, std::forward<A>(action));
+            }
+            return assignment<L, double>::assign(lhs, d, policy, std::forward<A>(action));
+        } else if constexpr (wide_valued<L>) {
             // NaN / ±inf first, as below; a finite |rhs| ≥ 2^64 is an integer,
             // taken exactly (or by its side, past the grid: exact_of_large).
             if constexpr (std::floating_point<R>)
@@ -1055,9 +1099,12 @@ struct assignment<L, R> {
         if constexpr (std::floating_point<R>)
             if (!(rhs - rhs == 0)) [[unlikely]] {
                 if constexpr (has_policy<L, P, clamp>)
-                    if (rhs == rhs)
-                        return assignment<L, rational>::assign(
-                            lhs, rhs > 0 ? detail::upper64<L> : detail::lower64<L>, policy);
+                    if (rhs == rhs) {
+                        // Saturated like any value past a limit: an on_clamp
+                        // hears of it, with an overshoot of ±inf.
+                        apply_clamp(lhs, rhs, policy, action);
+                        return lhs;
+                    }
                 report_failure(lhs, policy, action, errc::not_finite);
                 return lhs;
             }
@@ -1223,7 +1270,10 @@ struct assignment<L, R> {
         // Overshoot (rhs − clamped) as an inside, via the result-grid inference of normal
         // inside arithmetic: both operands are insides, so the overshoot is too. It is always
         // in-grid and on-notch for grid_of<R> − grid_of<L>, so the construction is exact.
-        if constexpr (clamp_action<plain_t<A>>) {
+        if constexpr (clamp_action<plain_t<A>> && !overshoot_grid_ok<L, R>)
+            static_assert(dependent_false<A>,
+                          "on_clamp: the overshoot grid (source minus target) passes the 64-bit grid numbers");
+        else if constexpr (clamp_action<plain_t<A>>) {
             constexpr grid            OG = (grid_of<R> - grid_of<L>).value();
             beman::inside::inside<OG> overshoot{(as_rational(rhs) - as_rational(lhs)).value()};
             action.Fn(lhs, overshoot);

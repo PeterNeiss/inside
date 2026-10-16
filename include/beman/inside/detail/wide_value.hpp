@@ -286,6 +286,34 @@ constexpr exact_frac<18> exact_of_double(double d) noexcept {
     return {d < 0 ? -n : n, e >= 0 ? I{1} : I{1} << -e};
 }
 
+// A wider floating point's exact value (long double): the sum of the doubles
+// it splits into, each the rounding error of the last, over 2^1130 (below
+// the least subnormal's 2^-1074 · 2^-53 mantissa scale). Past the double
+// range a stand-in: ±2^1100 beyond every limit, or ±2^-1130 for a part below
+// the subnormals (below every notch, so it only rounds).
+template <std::floating_point T>
+constexpr exact_frac<36> exact_of_long_double(T v) noexcept {
+    using I             = wide_sint<36>;
+    constexpr int shift = 1130;
+    I             num{0};
+    T             rem = v;
+    for (int i = 0; i < 8 && rem != 0; ++i) {
+        const double d = static_cast<double>(rem);
+        if (!is_finite(d))
+            return {rem < 0 ? -(I{1} << 1100) : I{1} << 1100, I{1}};
+        if (d == 0)
+            break;
+        int        e    = 0;
+        const umax mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53)); // |d| = mant·2^(e−53)
+        const I    m    = I{mant} << (e - 53 + shift);
+        num += d < 0 ? -m : m;
+        rem -= static_cast<T>(d);
+    }
+    if (rem != 0)
+        num += rem < 0 ? I{-1} : I{1};
+    return reduced(exact_frac<36>{num, I{1} << shift});
+}
+
 // Truncation toward zero, as an integer.
 template <std::size_t K>
 constexpr wide_sint<K> trunc(const exact_frac<K>& f) noexcept {
@@ -391,47 +419,74 @@ inline constexpr int finest_den_bits = [] {
     return d == grid_wide{0} ? 64 * static_cast<int>(exact_limbs<B>) : bit_width_of(d);
 }();
 
-// A number too fine for the wide parse (1e-5000) still has a store: a value
-// nearer 0 than every value and midpoint of B rounds and range-checks like
-// any other such value of its sign, so ±2^−(finest_den_bits + 2) stands in.
-// Empty unless the text is one number whose magnitude, bounded from its
-// digits and exponent, is that small.
-template <insidable B, std::size_t K>
-constexpr std::optional<exact_frac<K>> tiny_stand_in(const char* first, const char* last) noexcept {
-    constexpr int G = finest_den_bits<B> + 2;
-    if constexpr (G >= 64 * static_cast<int>(K) - 2)
+// Bounds on log2|v| of one number in the literal grammar (lo ≤ log2|v| < hi),
+// from its digits and exponent alone; empty for malformed text or zero.
+struct log2_bounds {
+    long Lo, Hi;
+};
+constexpr std::optional<log2_bounds> number_log2_bounds(const char* first, const char* last) noexcept {
+    long                 sig = 0, frac = 0; // significant digits, digits after the point
+    const scanned_number sc = scan_number(first, last, [&](int d, bool in_frac, int) {
+        if (sig > 0 || d != 0)
+            ++sig;
+        if (in_frac)
+            ++frac;
+        return true;
+    });
+    if (sc.Fail != parse_fail::none || sig == 0)
         return std::nullopt;
-    else {
-        bool neg = false;
-        if (first != last && (*first == '+' || *first == '-')) {
-            neg = (*first == '-');
-            ++first;
-        }
-        long                 sig = 0, frac = 0; // significant digits, digits after the point
-        const scanned_number sc = scan_number(first, last, [&](int d, bool in_frac, int) {
-            if (sig > 0 || d != 0)
-                ++sig;
-            if (in_frac)
-                ++frac;
-            return true;
-        });
-        if (sc.Fail != parse_fail::none)
-            return std::nullopt;
-        if (sig == 0)
-            return std::nullopt; // zero: no stand-in needed
-        // log2|v| < sig·log2(base) − frac·log2(base) ± Exp·log2(10 or 2), bounded up.
-        auto up    = [&](long n) { return sc.Base == 10 ? (n * 3322 + 999) / 1000 : sc.Base == 16 ? 4 * n : n; };
-        auto dn    = [&](long n) { return sc.Base == 10 ? n * 3321 / 1000 : sc.Base == 16 ? 4 * n : n; };
-        long bound = up(sig) - dn(frac);
-        if (sc.HasP)
-            bound += sc.ExpNeg ? -long{sc.Exp} : long{sc.Exp};
-        else if (sc.HasE)
-            bound += sc.ExpNeg ? -(long{sc.Exp} * 3321 / 1000) : (long{sc.Exp} * 3322 + 999) / 1000;
-        if (bound > -G)
-            return std::nullopt;
-        using I = wide_sint<K>;
-        return exact_frac<K>{neg ? I{-1} : I{1}, I{1} << G};
+    // |v| = M·base^−frac·(10 or 2)^±Exp, base^(sig−1) ≤ M < base^sig.
+    auto up = [&](long n) { return sc.Base == 10 ? (n * 3322 + 999) / 1000 : sc.Base == 16 ? 4 * n : n; };
+    auto dn = [&](long n) { return sc.Base == 10 ? n * 3321 / 1000 : sc.Base == 16 ? 4 * n : n; };
+    long lo = dn(sig - 1) - up(frac), hi = up(sig) - dn(frac);
+    if (sc.HasP) {
+        const long e = sc.ExpNeg ? -long{sc.Exp} : long{sc.Exp};
+        lo += e;
+        hi += e;
+    } else if (sc.HasE) {
+        const long e = long{sc.Exp};
+        lo += sc.ExpNeg ? -(e * 3322 + 999) / 1000 : e * 3321 / 1000;
+        hi += sc.ExpNeg ? -(e * 3321 / 1000) : (e * 3322 + 999) / 1000;
     }
+    return log2_bounds{lo, hi};
+}
+
+// A number past the wide parse (1e-5000, 1e5000, either as N/D) still has
+// a store. One nearer 0 than every value and midpoint of B rounds and
+// range-checks like any other such value of its sign: ±2^−(finest_den_bits
+// + 2) stands in. One past every limit of B overflows, or clamps onto the
+// bound, like any other: ±2^(exact_value_bits + 2) stands in — unless Wrap,
+// whose fold needs the exact value. Empty unless the text's magnitude,
+// bounded from its digits and exponents, is that small or that large.
+template <insidable B, std::size_t K, bool Wrap = false>
+constexpr std::optional<exact_frac<K>> stand_in(const char* first, const char* last) noexcept {
+    constexpr int G   = finest_den_bits<B> + 2;
+    constexpr int H   = exact_value_bits<B> + 2;
+    bool          neg = false;
+    if (first != last && (*first == '+' || *first == '-')) {
+        neg = (*first == '-');
+        ++first;
+    }
+    const char* slash = first;
+    while (slash != last && *slash != '/')
+        ++slash;
+    auto b = number_log2_bounds(first, slash);
+    if (!b)
+        return std::nullopt;
+    if (slash != last) {
+        const auto d = number_log2_bounds(slash + 1, last);
+        if (!d)
+            return std::nullopt; // malformed, or N/0: the parse reports it
+        b = log2_bounds{b->Lo - d->Hi, b->Hi - d->Lo};
+    }
+    using I = wide_sint<K>;
+    if constexpr (G < 64 * static_cast<int>(K) - 2)
+        if (b->Hi <= -G)
+            return exact_frac<K>{neg ? I{-1} : I{1}, I{1} << G};
+    if constexpr (!Wrap && H < 64 * static_cast<int>(K) - 2)
+        if (b->Lo >= H)
+            return exact_frac<K>{neg ? -(I{1} << H) : I{1} << H, I{1}};
+    return std::nullopt;
 }
 
 // n / d (d != 0) rounded to an integer by M; the sign rules of div_rounded.
@@ -638,8 +693,15 @@ constexpr W value_in_units(const X& x) noexcept {
     } else if constexpr (!anchored<X>) {
         // An index raw (integer value storage has integer values): Lower in
         // units, plus raw notches of `scale` units each.
+        // raw·scale, the offset from Lower, can pass W while the value fits:
+        // an integral W computes in its unsigned twin, as value_index does.
         constexpr grid_wide base = exact_quotient(lower_of<X>, Unit), scale = exact_quotient(notch_of<X>, Unit);
-        return static_cast<W>(base) + static_cast<W>(x.raw()) * static_cast<W>(scale);
+        if constexpr (std::is_integral_v<W>) {
+            using U = std::make_unsigned_t<W>;
+            return static_cast<W>(static_cast<U>(static_cast<W>(base)) +
+                                  static_cast<U>(x.raw()) * static_cast<U>(static_cast<W>(scale)));
+        } else
+            return static_cast<W>(base) + static_cast<W>(x.raw()) * static_cast<W>(scale);
     } else {
         constexpr grid_wide scale = exact_quotient(notch_of<X>, Unit);
         if constexpr (scale == grid_wide{1})

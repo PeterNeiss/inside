@@ -74,8 +74,22 @@ struct interval {
 }
 #endif
 
-[[nodiscard]] constexpr bool includes(const interval& iv, detail::arithmetic auto a) noexcept {
-    return includes(iv, detail::grid_rational{a});
+// A double is compared exactly: rational{d} drops the bits past 2^-62 and
+// raises at |d| ≥ 2^64 (no 64-bit limit reaches that far), and a big grid
+// number past 64 bits exists only at compile time.
+template <detail::arithmetic A>
+[[nodiscard]] constexpr bool includes(const interval& iv, A a) noexcept {
+    if constexpr (std::floating_point<A>) {
+        if (!detail::is_finite(static_cast<double>(a)))
+            return false;
+        if (detail::fits_rational(iv.Lower) && detail::fits_rational(iv.Upper)) {
+            if (!(a < 0x1p64 && a > -0x1p64))
+                return false;
+            return detail::to_rational(iv.Lower) <= a && a <= detail::to_rational(iv.Upper);
+        }
+        return includes(iv, detail::grid_rational{a}); // big limits: compile time only
+    } else
+        return includes(iv, detail::grid_rational{a});
 }
 
 // `excludes` means *strictly disjoint* — the intervals share no value.

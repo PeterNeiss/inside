@@ -415,7 +415,7 @@ struct parsed_number {
 // one pass: the radix and the exponent come back, and each mantissa digit
 // goes to on_digit(d, in_frac, base) (false stops the scan: the builder's
 // overflow). parse_number (64-bit), parse_exact (wide, wide_value.hpp) and
-// tiny_stand_in build from it, so all read one grammar.
+// stand_in build from it, so all read one grammar.
 struct scanned_number {
     int        Base    = 10;
     int        Exp     = 0; // capped at 100000: past it any value overflows
@@ -594,11 +594,27 @@ constexpr parsed_number parse_number(const char* first, const char* last) {
     return parsed_number{rational{num, den}, parse_fail::none};
 }
 
+// Whether a numeric literal's characters are an octal integer to C++: a
+// leading 0, then only digits (and ' separators). The literal grammar reads
+// decimal, so 010 would silently be ten, not eight: such literals are refused.
+template <char... Chars>
+consteval bool octal_literal() {
+    constexpr char text[] = {Chars..., '\0'};
+    if (sizeof...(Chars) < 2 || text[0] != '0')
+        return false;
+    for (std::size_t i = 1; i < sizeof...(Chars); ++i)
+        if (text[i] != '\'' && (text[i] < '0' || text[i] > '9'))
+            return false;
+    return true;
+}
+
 template <char... Chars>
 consteval rational parse_ins_literal() {
     constexpr char          src[] = {Chars..., '\0'};
     constexpr parsed_number r     = parse_number(src, src + sizeof...(Chars));
-    if constexpr (r.Fail == parse_fail::invalid_exponent)
+    if constexpr (octal_literal<Chars...>())
+        constexpr_error<"_ins/_r literal: a leading 0 makes an octal literal; write the number without it">();
+    else if constexpr (r.Fail == parse_fail::invalid_exponent)
         constexpr_error<"_ins/_r literal: invalid char in exponent">();
     else if constexpr (r.Fail == parse_fail::multiple_dots)
         constexpr_error<"_ins/_r literal: multiple '.'">();

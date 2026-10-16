@@ -181,6 +181,8 @@ constexpr bool grid_gcd_fits([[maybe_unused]] const grid_rational& a, [[maybe_un
 //---------------------------------------------------------------------------
 template <char... Chars>
 consteval grid_rational parse_grid_literal() {
+    if constexpr (octal_literal<Chars...>())
+        constexpr_error<"_g literal: a leading 0 makes an octal literal; write the number without it">();
     constexpr char  text[] = {Chars...};
     const grid_wide ten{10};
     // Times ten. 64-bit grid numbers compute in a 256-bit grid_wide, which

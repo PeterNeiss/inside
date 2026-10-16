@@ -83,9 +83,11 @@ imax oracle(B a, B b) { return as<imax>(a) % as<imax>(b); }
 Every inside holds an exact value. To read it back out exactly — without
 naming the internal representation — use the integer-pair accessors: the value
 in lowest terms, the numerator carrying the sign, the denominator positive (1
-on an integer notch). They return `imax` when every value of the grid fits it,
-and otherwise a wide integer that holds every value (a wide grid, a grid
-reaching past `int64`).
+on an integer notch). They return `imax` when every value's numerator and
+denominator in lowest terms fit it, and otherwise a wide integer that holds
+every value (a wide grid, a grid reaching past `int64`, a fine grid whose
+numerators pass it — `(2^63 + 1)/2` — or an unbounded continuous grid with a
+limit past ±1).
 
 ```cpp
 inside<{{-4, 4}, per<16>}, round_nearest> g{0.1875};
@@ -202,7 +204,7 @@ names the internal representation.
 | Shape | When to use |
 |---|---|
 | Bare literal (`0`, `0.5`, `100`) | Constructing or assigning an inside (`pct{42}`, `gain{0.5}`, `b = 7`) and comparisons (`b == 5`, `b < 50`). Not arithmetic or compound assignment — `b + 1` and `b += 1` are ill-formed. Dyadic decimals (`0.5`, `0.25`, `0x1p-8`) are binary-exact and fine as grid endpoints. |
-| `_ins` literal (`1_ins`, `0.5_ins`, `0xff_ins`) | An inside operand for arithmetic and compound assignment — `a + 1_ins`, `a * 2_ins`, `b += 1_ins`, `b > 0.5_ins`. Gives a scalar a grid so it joins inside arithmetic; the result stays an inside. The parse is exact (no double round-trip). |
+| `_ins` literal (`1_ins`, `0.5_ins`, `0xff_ins`) | An inside operand for arithmetic and compound assignment — `a + 1_ins`, `a * 2_ins`, `b += 1_ins`, `b > 0.5_ins`. Gives a scalar a grid so it joins inside arithmetic; the result stays an inside. The parse is exact (no double round-trip). An octal-looking integer (`010_ins`) is rejected: the grammar is decimal, so it would not mean what C++ reads. |
 | `just<V>` | A compile-time point-inside from any structural NTTP value — `just<2>`, `just<math::pi>`. Same role as `_ins` for non-literal constants. |
 | `zero` / `one` | Built-in point insides for 0 / 1. Assign into any grid that can exactly represent the value (compile-time checked — out of range or off-notch is an error); also stand in for the value in comparison/arithmetic — `b == zero`, `b + one`. |
 | `per<D>` | The grid **step** 1/D: `per<16384>`. Other steps are `frac<N, D>` (`frac<360, 4096>`) or a plain integer (`{{0, 100}, 5}`). A step is always positive (`per<0>` and negative steps are errors; a continuous grid is spelled `0`). Optional with two limits: `{0.5, 10}` derives the step 1/2. |
