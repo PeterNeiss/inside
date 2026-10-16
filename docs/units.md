@@ -84,6 +84,22 @@ x·π/180 with π to as many bits as Out needs, and rounds it once onto Out's
 grid. That is the same correctly rounded engine the math functions use, and
 Out needs a rounding mode. Only factors of π^±1 are supported.
 
+π can also scale a quantity: `mag_pi * q` (and `mag<r> * q`, `q / mag_pi`)
+multiplies the **unit**, not the number. `mag_pi * just<2> * si::second`
+is the number 2 in the unit `[π s]`, so π is never approximated. A later
+`value_cast<si::hour, Out>(…)` rounds it once, with the true π. This is how
+to write π·a·√(a/μ) or 1/(2πRC): `math::pi` is a rational within 2^-58 and
+would make the grid numbers grow with every product.
+
+### Dimensionless quantities are numbers
+
+A quantity of dimension one converts to an inside: implicitly when its
+number does, and explicitly when the target must round. The number is its
+value in unit one, so (21 kg) / (6 kg) is 3.5, and (3 km) / (2 m) is 1500.
+An angle is the exception. Radians and steradians are `is_kind` quantities,
+so they stay quantities, as are π-scaled ratios; read their number with
+`numerical_value()`.
+
 ## Sums run in the common unit
 
 `+`, `-`, `%` and the comparisons convert both sides to the **common
@@ -156,6 +172,14 @@ point − point gives a quantity. `si::absolute_zero + q` makes a point.
 
 Each one rounds the way its inside function does. The deduced forms take
 the input's grid, which needs a rounding mode.
+
+Each also has an `_into<Out>` form (`sqrt_into<Out>(q)`,
+`atan2_into<Out>(y, x)`, …) that names the result's number. There `Out`
+rounds and the input needs no rounding mode. An arithmetic result is
+`checked` (no rounding mode), so it goes straight in: `sqrt_into<Out>(mu / r)`.
+As with inside, a grid that reaches below 0 makes `sqrt_into` return an
+expected (`domain_error` on a negative value). `asin_into`, `acos_into` and
+`atan_into` also take a dimensionless quantity.
 
 ## Text
 

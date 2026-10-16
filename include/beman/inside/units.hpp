@@ -42,6 +42,20 @@
 #include <type_traits>
 #include <utility>
 
+// `= delete("reason")` (C++26; an extension from GCC 15 and Clang 19), as
+// arithmetic.hpp spells it.
+#if defined(__cpp_deleted_function) || (defined(__clang__) && __clang_major__ >= 19) || \
+    (defined(__GNUC__) && !defined(__clang__) && __GNUC__ >= 15)
+    #define BEMAN_INSIDE_UNITS_DELETE(reason) delete (reason)
+    #define BEMAN_INSIDE_UNITS_DELETE_BEGIN \
+        _Pragma("GCC diagnostic push") _Pragma("GCC diagnostic ignored \"-Wc++26-extensions\"")
+    #define BEMAN_INSIDE_UNITS_DELETE_END _Pragma("GCC diagnostic pop")
+#else
+    #define BEMAN_INSIDE_UNITS_DELETE(reason) delete
+    #define BEMAN_INSIDE_UNITS_DELETE_BEGIN
+    #define BEMAN_INSIDE_UNITS_DELETE_END
+#endif
+
 namespace beman::inside::units {
 using beman::inside::detail::grid_rational;
 
@@ -881,6 +895,25 @@ template <reference From, reference To>
 inline constexpr bool implicit_v = dimension_of(From.U) == dimension_of(To.U) && spec_converts(From, To) &&
                                    exact_factor_v<conversion_factor<From.U, To.U>>;
 
+// A dimensionless quantity that is a plain number: no is_kind spec (an
+// angle), and an exact factor to unit one.
+template <reference R>
+inline constexpr bool number_like_v = dimension_of(R.U) == dim_one && exact_factor_v<conversion_factor<R.U, unit{}>> &&
+                                      (R.Spec == nullptr || !kind_root(R.Spec)->IsKind);
+
+// Its number's type; void for any other quantity (never forming the
+// rescale, whose pi check would fire for an angle in degrees).
+template <reference R, class V, bool = number_like_v<R>>
+struct number_type {
+    using type = void;
+};
+template <reference R, class V>
+struct number_type<R, V, true> {
+    using type = decltype(rescale<conversion_factor<R.U, unit{}>>(std::declval<const V&>()));
+};
+template <reference R, class V>
+using number_t = typename number_type<R, V>::type;
+
 template <reference From, reference To, insidable V>
 using rescaled_t = decltype(rescale<conversion_factor<From.U, To.U>>(std::declval<const V&>()));
 
@@ -947,12 +980,22 @@ class quantity {
         return in<U>().numerical_value();
     }
 
-    // A dimensionless quantity of unit one is its number.
-    constexpr operator Rep() const
-        requires(R.U == units::unit{} && R.Spec == nullptr)
-    {
-        return Num;
+    // A dimensionless quantity is a number: its value in unit one (km/m is
+    // ×1000, % is ×1/100), into any inside that takes it — implicitly when
+    // that number converts implicitly. An angle (an is_kind spec) stays a
+    // quantity; numerical_value() reads its number.
+    template <insidable T>
+        requires detail::number_like_v<R> && std::constructible_from<T, detail::number_t<R, Rep>>
+    constexpr explicit(!std::convertible_to<detail::number_t<R, Rep>, T>) operator T() const {
+        return T(detail::rescale<detail::conversion_factor<R.U, units::unit{}>>(Num));
     }
+    BEMAN_INSIDE_UNITS_DELETE_BEGIN
+    template <insidable T>
+        requires(dimension_of(R.U) == dim_one && !detail::number_like_v<R>)
+    operator T() const =
+        BEMAN_INSIDE_UNITS_DELETE("units: an angle (an is_kind quantity) or a pi-scaled ratio is no plain "
+                                  "number - read numerical_value(), or value_cast it first");
+    BEMAN_INSIDE_UNITS_DELETE_END
 
     [[nodiscard]] constexpr auto operator+() const { return detail::make_quantity<R>(+Num); }
     [[nodiscard]] constexpr auto operator-() const { return detail::make_quantity<R>(-Num); }
@@ -1001,6 +1044,28 @@ constexpr auto operator*(N, Tag) {
 template <insidable V, unit U>
 [[nodiscard]] constexpr auto operator/(const V& v, unit_t<U>) {
     return quantity<reference_of(detail::unit_pow(U, -1)), V>{v};
+}
+
+// A magnitude scales a quantity's unit, not its number: mag_pi * q is q
+// in [π·unit], exact and free (π is never rounded; value_cast to a plain
+// unit rounds it once, units_math.hpp). mag<2> * q, q / mag_pi likewise.
+namespace detail {
+consteval reference scaled_reference(reference r, const magnitude& m) {
+    r.U = unit_scaled(r.U, m);
+    return r;
+}
+} // namespace detail
+template <magnitude M, reference R, class V>
+[[nodiscard]] constexpr auto operator*(mag_t<M>, const quantity<R, V>& q) {
+    return quantity<detail::scaled_reference(R, M), V>{q.numerical_value()};
+}
+template <reference R, class V, magnitude M>
+[[nodiscard]] constexpr auto operator*(const quantity<R, V>& q, mag_t<M>) {
+    return quantity<detail::scaled_reference(R, M), V>{q.numerical_value()};
+}
+template <reference R, class V, magnitude M>
+[[nodiscard]] constexpr auto operator/(const quantity<R, V>& q, mag_t<M>) {
+    return quantity<detail::scaled_reference(R, magnitude{} / M), V>{q.numerical_value()};
 }
 
 //---------------------------------------------------------------------------
@@ -1447,9 +1512,11 @@ inline std::string unit_symbol(const unit& u, text_encoding enc = text_encoding:
             s += ')';
     }
     if (!u.Scale.is_one()) {
-        std::string scale = beman::inside::to_string(u.Scale.Ratio);
+        // "1/1250", "π", "2π", "π⁻¹" (ASCII "pi^-1").
+        std::string scale =
+            u.Scale.Pi != 0 && u.Scale.Ratio == grid_rational{1} ? "" : beman::inside::to_string(u.Scale.Ratio);
         if (u.Scale.Pi != 0) {
-            scale += enc == text_encoding::utf8 ? " π" : " pi";
+            scale += enc == text_encoding::utf8 ? "π" : (scale.empty() ? "pi" : "*pi");
             detail::append_exponent(scale, u.Scale.Pi, enc);
         }
         s = "[" + scale + (s.empty() ? "" : " " + s) + "]";
@@ -1787,6 +1854,9 @@ BEMAN_INSIDE_UNIT(international,
 #undef BEMAN_INSIDE_UNIT
 #undef BEMAN_INSIDE_ORIGIN
 #undef BEMAN_INSIDE_SPEC
+#undef BEMAN_INSIDE_UNITS_DELETE
+#undef BEMAN_INSIDE_UNITS_DELETE_BEGIN
+#undef BEMAN_INSIDE_UNITS_DELETE_END
 
 } // namespace beman::inside::units
 

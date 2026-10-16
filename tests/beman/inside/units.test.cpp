@@ -96,6 +96,38 @@ TEST(UnitsTest, products_and_quotients) {
     EXPECT_EQ(to_string(just<2> / si::second), "2 1/s");
 }
 
+TEST(UnitsTest, dimensionless_quantities_are_numbers) {
+    const quantity<si::kilogram, inside<{1, 100}>> a{21};
+    const quantity<si::kilogram, inside<{1, 100}>> b{6};
+    const inside<{{0, 100}, per<2>}>               r = a / b; // 7/2, implicitly
+    EXPECT_EQ(rational{r}, rational(7, 2));
+    // km/m does not cancel to unit one: its number is ×1000.
+    const auto           ratio = (just<3> * km) / (just<2> * si::metre);
+    const inside<{1500}> n     = ratio;
+    EXPECT_EQ(n, 1500);
+    // Into a grid that must round: explicit, through that inside's constructor.
+    const auto x = inside<{{0, 10}, per<10>}, round_nearest>(a / b * just<1>.per<3>);
+    EXPECT_EQ(rational{x}, rational(12, 10));
+    // An angle is a quantity, not a number.
+    static_assert(!std::is_convertible_v<quantity<si::radian, inside<{0, 7}>>, inside<{0, 7}>>);
+    static_assert(!std::is_constructible_v<inside<{0, 7}>, quantity<si::radian, inside<{0, 7}>>>);
+    static_assert(!std::is_convertible_v<quantity<si::metre, inside<{0, 7}>>, inside<{0, 7}>>);
+}
+
+TEST(UnitsTest, magnitudes_scale_the_unit_not_the_number) {
+    const quantity<si::second, inside<{0, 10}>> t{3};
+    const auto                                  p = mag_pi * t;
+    static_assert(magnitude_of(std::remove_cvref_t<decltype(p)>::unit).Pi == 1);
+    EXPECT_EQ(p.numerical_value(), 3); // the number is untouched
+    EXPECT_EQ(to_string(p), "3 [π s]");
+    EXPECT_EQ(unit_symbol(std::remove_cvref_t<decltype(p)>::unit, text_encoding::ascii), "[pi s]");
+    EXPECT_EQ(to_string(t * mag<2>), "3 [2 s]");
+    EXPECT_EQ((t * mag<2>).in(si::second).numerical_value(), 6);
+    EXPECT_EQ(unit_symbol(std::remove_cvref_t<decltype(t / mag_pi)>::unit), "[π⁻¹ s]");
+    // π · π⁻¹ cancels: back to seconds, exactly.
+    EXPECT_EQ((mag_pi * t / mag_pi).in(si::second).numerical_value(), 3);
+}
+
 TEST(UnitsTest, compound_assignment_and_casts) {
     quantity<si::metre, inside<{0, 10000}>> d{100};
     d += just<1> * km;

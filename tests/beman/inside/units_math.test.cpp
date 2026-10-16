@@ -63,3 +63,41 @@ TEST(UnitsMathTest, number_functions_keep_the_unit) {
     EXPECT_EQ(units::trunc(d).numerical_value(), -2);
     EXPECT_EQ(to_string(units::pow<2>(d)), "7.5625 m²");
 }
+
+TEST(UnitsMathTest, pi_magnitudes_round_once_in_value_cast) {
+    // π · 2 s → 6.283185 s: π is part of the unit until the one rounding.
+    const quantity<si::second, inside<{0, 10}>> t{2};
+    const auto s = value_cast<si::second, inside<{{0, 100}, per<1'000'000>}, round_nearest>>(mag_pi * t);
+    EXPECT_EQ(rational{s.numerical_value()}, rational(6283185, 1'000'000));
+    const auto h = value_cast<si::hour, inside<{{0, 1}, per<1'000'000'000>}, round_nearest>>(mag_pi * t);
+    EXPECT_EQ(rational{h.numerical_value()}, rational(1745329, 1'000'000'000)); // 2π/3600 = 0.00174532925…
+}
+
+TEST(UnitsMathTest, into_forms_take_checked_inputs) {
+    using out_t = inside<{{0, 100}, per<1000>}, round_nearest>;
+    // An arithmetic result is checked: the deduced sqrt refuses it, sqrt_into rounds onto Out.
+    const quantity<square(si::metre), inside<{0, 50}>> a{2};
+    const auto                                         s = units::sqrt_into<out_t>(a + a);
+    static_assert(std::remove_cvref_t<decltype(s)>::unit == si::metre.value);
+    EXPECT_EQ(to_string(s), "2.000 m");
+    EXPECT_EQ(units::cbrt_into<out_t>(quantity<cubic(si::metre), inside<{0, 100}>>{27}).numerical_value(), 3);
+    // A grid that reaches below 0: an expected, domain_error on a negative value.
+    const quantity<square(si::metre), inside<{-10, 10}>> neg{-4};
+    const auto                                           e = units::sqrt_into<out_t>(neg);
+    EXPECT_EQ(e.error(), errc::domain_error);
+    EXPECT_EQ(units::sqrt_into<out_t>(quantity<square(si::metre), inside<{-10, 10}>>{9})->numerical_value(), 3);
+
+    using unit_t = inside<{{-1, 1}, per<1'000'000>}, round_nearest>;
+    const quantity<si::radian, inside<{0, 3}>> one_rad{1};
+    EXPECT_EQ(rational{units::sin_into<unit_t>(one_rad)}, rational(841471, 1'000'000));
+    EXPECT_EQ(rational{units::cos_into<unit_t>(one_rad)}, rational(540302, 1'000'000));
+    using rad_out = inside<{{-4, 4}, per<1000>}, round_nearest>;
+    EXPECT_EQ(to_string(units::atan_into<rad_out>(inside<{0, 2}>{1})), "0.785 rad");
+    // A dimensionless quantity is a number too: asin of 1/2 = π/6.
+    const auto half = quantity<si::metre, inside<{0, 5}>>{3} / quantity<si::metre, inside<{5, 10}>>{6}; // in [0, 1]
+    EXPECT_EQ(to_string(units::asin_into<rad_out>(half)), "0.524 rad");
+    const auto y = quantity<si::metre, inside<{0, 10}>>{3};
+    const auto x = quantity<si::metre, inside<{0, 10}>>{4};
+    EXPECT_EQ(to_string(units::hypot_into<out_t>(x, y)), "5.000 m");
+    EXPECT_EQ(to_string(units::atan2_into<rad_out>(y, x)), "0.644 rad");
+}
