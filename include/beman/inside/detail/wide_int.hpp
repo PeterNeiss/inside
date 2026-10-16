@@ -2,8 +2,9 @@
 #ifndef BEMAN_INSIDE_DETAIL_WIDE_INT_HPP
 #define BEMAN_INSIDE_DETAIL_WIDE_INT_HPP
 
-#include <beman/inside/math.hpp>         // umax, constexpr ldexp
-#include <beman/inside/detail/debug.hpp> // errc, raise, constexpr_error
+#include <beman/inside/math.hpp>              // umax
+#include <beman/inside/detail/float_bits.hpp> // constexpr ldexp
+#include <beman/inside/detail/debug.hpp>      // errc, raise, constexpr_error
 
 #include <bit>
 #include <compare>

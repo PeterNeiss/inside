@@ -15,6 +15,7 @@ target_sources(
                 detail/big_rational.hpp
                 detail/debug.hpp
                 detail/division.hpp
+                detail/float_bits.hpp
                 detail/grid_rational.hpp
                 detail/int_for_bits.hpp
                 detail/math_adaptive.hpp

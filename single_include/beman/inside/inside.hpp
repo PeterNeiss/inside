@@ -328,12 +328,11 @@ template <class Op, class... Args>
 // ======================================================================
 
 
-
 //---------------------------------------------------------------------------
 // math — primitive numeric utilities: umax/imax, smallest_uint_for /
-// smallest_int_for (grid storage selection), the arithmetic/fractional concepts,
-// safe_abs, constexpr frexp/ldexp, and abs_fraction (the double → rational
-// engine behind rational(double)).
+// smallest_int_for (grid storage selection), the arithmetic/fractional
+// concepts and safe_abs. The floating-point bit helpers are in
+// detail/float_bits.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 using umax = std::uint64_t;
@@ -384,7 +383,22 @@ template <std::signed_integral V>
 [[nodiscard]] constexpr umax safe_abs(V value) noexcept {
     return (value >= 0) ? static_cast<umax>(value) : umax{0} - static_cast<umax>(value);
 }
+} // namespace detail
+} // namespace beman::inside
 
+
+// ======================================================================
+//  beman/inside/detail/float_bits.hpp
+// ======================================================================
+
+
+
+//---------------------------------------------------------------------------
+// float_bits — floating-point values read and built from their IEEE-754
+// bits, with no <cmath>: constexpr frexp/ldexp, finiteness, and abs_fraction
+// (the double → rational engine behind rational(double)).
+//---------------------------------------------------------------------------
+namespace beman::inside::detail {
 inline constexpr double frexp(double value, int* exp) noexcept {
     if (value == 0.0) {
         *exp = 0;
@@ -567,8 +581,13 @@ constexpr std::pair<umax, umax> abs_fraction(double value) {
     return abs_fraction(value, exact);
 }
 
-} // namespace detail
-} // namespace beman::inside
+// A floating point wider than double (long double) whose value is a double.
+template <std::floating_point T>
+[[nodiscard]] constexpr bool is_double_value(T v) noexcept {
+    return static_cast<T>(static_cast<double>(v)) == v; // NaN: false
+}
+
+} // namespace beman::inside::detail
 
 
 // ======================================================================
@@ -1534,10 +1553,6 @@ struct rounded_integer {
 // Floating points wider than double (long double), exactly: the sum of the
 // doubles they split into, each the rounding error of the last.
 //---------------------------------------------------------------------------
-template <std::floating_point T>
-[[nodiscard]] constexpr bool is_double_value(T v) noexcept {
-    return static_cast<T>(static_cast<double>(v)) == v; // NaN: false
-}
 
 // |v|·2^wide_float_shift for a finite 2^-64 ≤ |v| < 2^64, truncated to an
 // integer (< 2^244), and the sign of what the truncation dropped (0: exact,

@@ -15,8 +15,8 @@
 #ifndef BEMAN_INSIDE_DETAIL_MATH_FP_HPP
 #define BEMAN_INSIDE_DETAIL_MATH_FP_HPP
 
-#include <beman/inside/math.hpp>   // beman::inside::detail::ldexp (constexpr, reproducible)
-#include <beman/inside/inside.hpp> // complete inside/rational + has_flag/policy_of (store<>)
+#include <beman/inside/detail/float_bits.hpp> // beman::inside::detail::ldexp (constexpr, reproducible)
+#include <beman/inside/inside.hpp>            // complete inside/rational + has_flag/policy_of (store<>)
 
 // BEMAN_INSIDE_MATH_NO_FP is resolved in policy_flag.hpp (included via inside.hpp).
 

@@ -2,12 +2,13 @@
 #ifndef BEMAN_INSIDE_DETAIL_RATIONAL_HPP
 #define BEMAN_INSIDE_DETAIL_RATIONAL_HPP
 
-#include <beman/inside/math.hpp>            // umax/imax, arithmetic, rational fwd
-#include <beman/inside/lift.hpp>            // lift, is_expected_v, unwrap_t
-#include <beman/inside/detail/overflow.hpp> // add/sub/mul_overflow
-#include <beman/inside/detail/debug.hpp>    // errc, detail::raise, detail::constexpr_error
-#include <beman/inside/detail/wide_int.hpp> // limb kernels for exact 128-bit cross products
-#include <beman/inside/detail/rounding.hpp> // round_mode, rounds_away
+#include <beman/inside/math.hpp>              // umax/imax, arithmetic, rational fwd
+#include <beman/inside/detail/float_bits.hpp> // frexp/ldexp, abs_fraction, is_double_value
+#include <beman/inside/lift.hpp>              // lift, is_expected_v, unwrap_t
+#include <beman/inside/detail/overflow.hpp>   // add/sub/mul_overflow
+#include <beman/inside/detail/debug.hpp>      // errc, detail::raise, detail::constexpr_error
+#include <beman/inside/detail/wide_int.hpp>   // limb kernels for exact 128-bit cross products
+#include <beman/inside/detail/rounding.hpp>   // round_mode, rounds_away
 
 #include <bit>
 #include <expected> // std::expected, std::unexpected
@@ -314,10 +315,6 @@ struct rounded_integer {
 // Floating points wider than double (long double), exactly: the sum of the
 // doubles they split into, each the rounding error of the last.
 //---------------------------------------------------------------------------
-template <std::floating_point T>
-[[nodiscard]] constexpr bool is_double_value(T v) noexcept {
-    return static_cast<T>(static_cast<double>(v)) == v; // NaN: false
-}
 
 // |v|·2^wide_float_shift for a finite 2^-64 ≤ |v| < 2^64, truncated to an
 // integer (< 2^244), and the sign of what the truncation dropped (0: exact,
