@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #include <beman/inside/inside.hpp>
-#include <beman/inside/math.hpp>
+#include <beman/inside/numbers.hpp>
 
 #include <gtest/gtest.h>
 
@@ -11,7 +11,7 @@ using namespace beman::inside;
 using namespace beman::inside::detail;
 
 // safe_abs handles INT_MIN without UB
-TEST(MathTest, safe_abs_handles_int_min_without_ub) {
+TEST(NumbersTest, safe_abs_handles_int_min_without_ub) {
     static_assert(safe_abs(imax{0}) == 0u);
     static_assert(safe_abs(imax{42}) == 42u);
     static_assert(safe_abs(imax{-42}) == 42u);
@@ -22,7 +22,7 @@ TEST(MathTest, safe_abs_handles_int_min_without_ub) {
 }
 
 // frexp handles zero
-TEST(MathTest, frexp_handles_zero) {
+TEST(NumbersTest, frexp_handles_zero) {
     int    e = 99;
     double r = beman::inside::detail::frexp(0.0, &e);
     ASSERT_EQ(r, 0.0);
@@ -36,7 +36,7 @@ TEST(MathTest, frexp_handles_zero) {
 }
 
 // frexp handles infinity and NaN
-TEST(MathTest, frexp_handles_infinity_and_nan) {
+TEST(NumbersTest, frexp_handles_infinity_and_nan) {
     int    e   = 99;
     double inf = std::numeric_limits<double>::infinity();
     double r   = beman::inside::detail::frexp(inf, &e);
@@ -51,7 +51,7 @@ TEST(MathTest, frexp_handles_infinity_and_nan) {
 }
 
 // frexp matches std::frexp on normals
-TEST(MathTest, frexp_matches_std_frexp_on_normals) {
+TEST(NumbersTest, frexp_matches_std_frexp_on_normals) {
     for (double v : {1.0, 0.5, 0.25, 1.5, 1024.0, 0.001, -7.25}) {
         int    be = 0, se = 0;
         double br = beman::inside::detail::frexp(v, &be);
@@ -62,7 +62,7 @@ TEST(MathTest, frexp_matches_std_frexp_on_normals) {
 }
 
 // frexp on subnormal scales up via recursion
-TEST(MathTest, frexp_on_subnormal_scales_up_via_recursion) {
+TEST(NumbersTest, frexp_on_subnormal_scales_up_via_recursion) {
     // smallest positive subnormal — exercises the e==0 branch
     double sub = std::numeric_limits<double>::denorm_min();
     ASSERT_TRUE(sub > 0.0);
@@ -74,13 +74,13 @@ TEST(MathTest, frexp_on_subnormal_scales_up_via_recursion) {
 }
 
 // ldexp identity cases
-TEST(MathTest, ldexp_identity_cases) {
+TEST(NumbersTest, ldexp_identity_cases) {
     static_assert(beman::inside::detail::ldexp(0.0, 5) == 0.0);
     static_assert(beman::inside::detail::ldexp(1.5, 0) == 1.5);
 }
 
 // ldexp inf/NaN passthrough
-TEST(MathTest, ldexp_inf_nan_passthrough) {
+TEST(NumbersTest, ldexp_inf_nan_passthrough) {
     double inf = std::numeric_limits<double>::infinity();
     ASSERT_TRUE((std::isinf(beman::inside::detail::ldexp(inf, 3))));
 
@@ -89,7 +89,7 @@ TEST(MathTest, ldexp_inf_nan_passthrough) {
 }
 
 // ldexp overflow goes to infinity
-TEST(MathTest, ldexp_overflow_goes_to_infinity) {
+TEST(NumbersTest, ldexp_overflow_goes_to_infinity) {
     // Use volatile inputs so the compiler can't fold the call at compile time.
     volatile double v_pos = 1.0;
     volatile double v_neg = -1.0;
@@ -105,7 +105,7 @@ TEST(MathTest, ldexp_overflow_goes_to_infinity) {
 }
 
 // ldexp underflow produces subnormal or zero
-TEST(MathTest, ldexp_underflow_produces_subnormal_or_zero) {
+TEST(NumbersTest, ldexp_underflow_produces_subnormal_or_zero) {
     volatile double v   = 1.0;
     volatile int    big = -1100;
     volatile int    mid = -1050;
@@ -119,7 +119,7 @@ TEST(MathTest, ldexp_underflow_produces_subnormal_or_zero) {
 }
 
 // ldexp matches std::ldexp on normal exponents
-TEST(MathTest, ldexp_matches_std_ldexp_on_normal_exponents) {
+TEST(NumbersTest, ldexp_matches_std_ldexp_on_normal_exponents) {
     for (double v : {1.0, 0.5, 1.5, -3.25, 1024.0}) {
         for (int e : {0, 1, -1, 10, -10, 50, -50}) {
             double a = beman::inside::detail::ldexp(v, e);
@@ -130,7 +130,7 @@ TEST(MathTest, ldexp_matches_std_ldexp_on_normal_exponents) {
 }
 
 // ldexp subnormal input is normalised first
-TEST(MathTest, ldexp_subnormal_input_is_normalised_first) {
+TEST(NumbersTest, ldexp_subnormal_input_is_normalised_first) {
     // Scaling a subnormal up should match std::ldexp
     double sub = std::numeric_limits<double>::denorm_min();
     double a   = beman::inside::detail::ldexp(sub, 100);
@@ -139,7 +139,7 @@ TEST(MathTest, ldexp_subnormal_input_is_normalised_first) {
 }
 
 // abs_fraction handles values >= 2^53
-TEST(MathTest, abs_fraction_handles_values_ge_2_53) {
+TEST(NumbersTest, abs_fraction_handles_values_ge_2_53) {
     // exponent >= 53 path: num <<= (exponent - bits); den = 1
     // Volatile so the compiler can't fold the constexpr call at compile time.
     volatile double v53 = static_cast<double>(1ull << 53);
@@ -155,14 +155,14 @@ TEST(MathTest, abs_fraction_handles_values_ge_2_53) {
 }
 
 // abs_fraction throws on non-finite
-TEST(MathTest, abs_fraction_throws_on_non_finite) {
+TEST(NumbersTest, abs_fraction_throws_on_non_finite) {
     ASSERT_THROW((void)(abs_fraction(std::numeric_limits<double>::infinity())), beman::inside::inside_error);
     ASSERT_THROW((void)(abs_fraction(-std::numeric_limits<double>::infinity())), beman::inside::inside_error);
     ASSERT_THROW((void)(abs_fraction(std::numeric_limits<double>::quiet_NaN())), beman::inside::inside_error);
 }
 
 // rational from large doubles
-TEST(MathTest, rational_from_large_doubles) {
+TEST(NumbersTest, rational_from_large_doubles) {
     // Through rational ctor — exercises the exponent>=53 branch in abs_fraction
     rational r1{static_cast<double>(1ull << 53)};
     ASSERT_EQ(r1.Numerator, (1ull << 53));
@@ -174,7 +174,7 @@ TEST(MathTest, rational_from_large_doubles) {
 }
 
 // rational rejects non-finite double
-TEST(MathTest, rational_rejects_non_finite_double) {
+TEST(NumbersTest, rational_rejects_non_finite_double) {
     ASSERT_THROW((void)(rational{std::numeric_limits<double>::infinity()}), beman::inside::inside_error);
     ASSERT_THROW((void)(rational{std::numeric_limits<double>::quiet_NaN()}), beman::inside::inside_error);
 }

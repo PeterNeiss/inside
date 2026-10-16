@@ -37,7 +37,7 @@ namespace beman::inside::detail {
 //---------------------------------------------------------------------------
 // The exact store (assign_exact) and what every assignment path shares: the
 // out-of-range cascade, failure reporting, the on_wrap carry grid and the
-// same-notch wide raw mapping. The source-type specialisations are in
+// same-notch wide raw mapping. The source-type specializations are in
 // assignment.hpp.
 //---------------------------------------------------------------------------
 // needs_runtime_range_check<L, P, A>: true iff any out-of-range handler would
@@ -48,7 +48,7 @@ namespace beman::inside::detail {
 template <insidable L, typename P, typename A>
 inline constexpr bool needs_runtime_range_check =
     clamp_action<plain_t<A>> || wrap_action<plain_t<A>> || error_action<plain_t<A>> ||
-    range_handled(policy_of<L> | plain_t<P>::Flags);
+    range_handled(flags_of<L> | plain_t<P>::Flags);
 
 // Shared out-of-range policy cascade. Order: clamp/wrap *actions*, then
 // clamp/wrap *policy* bits, then an on_error action, then `range_fail`. The
@@ -251,7 +251,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
                         else
                             fail(errc::overflow);
                         return;
-                    } else if (std::is_constant_evaluated() || is_checked(policy_of<L> | plain_t<P>::Flags))
+                    } else if (std::is_constant_evaluated() || is_checked(flags_of<L> | plain_t<P>::Flags))
                         return fail(errc::rounding_error);
                 }
             }

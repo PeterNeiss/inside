@@ -23,7 +23,8 @@ struct interval {
     interval() = default;
 
     constexpr interval(detail::grid_rational lower, detail::grid_rational upper) : Lower{lower}, Upper{upper} {}
-    constexpr interval(detail::arithmetic auto lower, detail::arithmetic auto upper) : Lower{lower}, Upper{upper} {}
+    constexpr interval(detail::plain_number auto lower, detail::plain_number auto upper)
+        : Lower{lower}, Upper{upper} {}
 
     template <auto I>
     static constexpr bool validate() {
@@ -77,7 +78,7 @@ struct interval {
 // A floating-point value is compared exactly: against 64-bit limits through
 // the rational comparison, against big limits as a transient fraction (a big
 // grid number past 64 bits is never formed at runtime).
-template <detail::arithmetic A>
+template <detail::plain_number A>
 [[nodiscard]] constexpr bool includes(const interval& iv, A a) noexcept {
     if constexpr (std::floating_point<A>) {
         if (!detail::is_finite(static_cast<double>(a)))

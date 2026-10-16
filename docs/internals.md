@@ -21,7 +21,7 @@ enforced at type-instantiation time by `grid::validate` (`include/beman/inside/g
 - **`Lower ≤ Upper`** (rational comparison).
 - **`Interval.divides_evenly(Notch)`** — there must be an integer number of
   notches between Lower and Upper. The notch count is exposed as
-  `max_index_v<B>` (`include/beman/inside/detail/storage.hpp`).
+  `max_index_of<B>` (`include/beman/inside/detail/storage.hpp`).
 - **`Notch == 0` is legal** and means "any rational in the interval". The
   storage shape changes accordingly (see §2).
 - **Lower need not be a multiple of the notch.** The values are `Lower,
@@ -94,7 +94,7 @@ anchored code unchanged.
 
 ## 2. Storage encoding
 
-Storage is a function of the grid alone: `storage_min_t<G>`
+Storage is a function of the grid alone: `raw_for_t<G>`
 (`include/beman/inside/grid.hpp`). No policy flag changes it, so two insides
 on one grid always share their encoding:
 
@@ -112,7 +112,7 @@ on one grid always share their encoding:
   otherwise                         ───▶  unsigned raw   (raw = 0-based notch index)
 ```
 
-`storage_min_t<G>` picks the smallest integer type that can hold every
+`raw_for_t<G>` picks the smallest integer type that can hold every
 reachable index, using the type's full range (see [storage.md](storage.md)).
 
 Storage **concepts** in `include/beman/inside/detail/storage.hpp` partition every
@@ -216,7 +216,7 @@ abs_den(lower_of<B>.Denominator) == 1
 && notch_of<B>.Numerator == 1
 && !rational_storage<B>
 && (std::signed_integral<raw_t<B>>          // raw fits imax
-    || max_index_v<B> <= imax_max)
+    || max_index_of<B> <= imax_max)
 ```
 
 Two helpers, used at three call sites:
@@ -228,7 +228,7 @@ Two helpers, used at three call sites:
 
 The raw-fits-in-`imax` clause exists because the Q-format result type of a
 multiplication can land on `uint64_t` raw (e.g. `Q16.16 × Q16.16` produces
-`max_index_v ≈ 2^64`); widening that to `imax` via `raw_imax` would wrap.
+`max_index_of ≈ 2^64`); widening that to `imax` via `raw_imax` would wrap.
 When the gate is false, control falls through to the slow but correct
 rational path — `(*(Raw * Notch) + Lower).value()` for decode,
 `((rhs - Lower) / Notch).value().Numerator` for encode.
@@ -375,15 +375,15 @@ is what keeps the core free of `<string>`/`<ostream>`/`<format>`/`<cmath>`:
 | `beman/inside/policy.hpp`       | `policy<F, E>` (report / error-code mode), `make_policy`, the named policies (`snapped`, `rounded_*`, `clamped`, `wrapped`), `policy_ref` |
 | `beman/inside/predicates.hpp`   | `conversion_overflows` / `conversion_rounds` / `conversion_loses` |
 | `beman/inside/interval.hpp`     | `interval` and its operators, `includes` / `excludes` / `overlaps` |
-| `beman/inside/math.hpp`         | `umax` / `imax`, `smallest_uint_for` / `smallest_int_for`, the `arithmetic` / `fractional` concepts, `safe_abs` |
+| `beman/inside/numbers.hpp`         | `umax` / `imax`, `smallest_uint_for` / `smallest_int_for`, the `plain_number` / `fractional` concepts, `safe_abs` |
 | `beman/inside/detail/float_bits.hpp` | Floating points from their IEEE-754 bits: constexpr `frexp` / `ldexp`, `is_finite`, `abs_fraction`, `is_double_value` |
 | `beman/inside/detail/rep.hpp`   | `lattice_op_checked` — whether `+` or `×` into a result runs its overflow check |
 | `beman/inside/casts.hpp`       | `clamp_cast` (optionally with a rounding mode: `clamp_cast<B, round_floor>`), `wrap_cast`, `checked_cast`, `unchecked_cast` |
 | `beman/inside/arithmetic.hpp`  | Free `add` / `sub` / `mul` / `div` / `mod` / `divmod` (one variadic overload each; `detail::arith` maps the three call forms — policy, actions, `errc&` — onto the op's core), variadic folds `add_all` / `mul_all`, `sum<Target>`, `common_inside_t` and its `std::common_type` specialisation, `min` / `max` / `midpoint`, `dot` / `cross` / `lerp`, `operator+` / `-` / `*` / `/` / `%`, expected-lift overloads |
 | `beman/inside/range.hpp`       | `inside_range<G, P>` iterator helper |
 | `beman/inside/generic.hpp`     | The `inside_assignable` concept, `inside_assignable_why` / `explain_assignable`; includes the two layers below |
-| `beman/inside/detail/introspection.hpp` | Public grid/policy introspection (`grid_of` / `policy_of` / `interval_of` / `lower_of` / `upper_of` / `notch_of`, the 64-bit forms), the `insidable` / `numeric` concepts, `raw_t`, `detail::as_rational` |
-| `beman/inside/detail/storage.hpp` | Storage/raw/dispatch plumbing (the `rational_storage` / `integer_value_storage` / `index_storage` predicates, `as_double`, `to_value` / `from_value`, `raw_cast` / `raw_imax`, `q_format_encode/decode`, `max_index_v`, `raw_lo` / `raw_hi`, `round_quotient`, …) in `beman::inside::detail` |
+| `beman/inside/detail/introspection.hpp` | Public grid/policy introspection (`grid_of` / `flags_of` / `interval_of` / `lower_of` / `upper_of` / `notch_of`, the 64-bit forms), the `insidable` / `numeric` concepts, `raw_t`, `detail::as_rational` |
+| `beman/inside/detail/storage.hpp` | Storage/raw/dispatch plumbing (the `rational_storage` / `integer_value_storage` / `index_storage` predicates, `as_double`, `to_value` / `from_value`, `raw_cast` / `raw_imax`, `q_format_encode/decode`, `max_index_of`, `raw_lo` / `raw_hi`, `round_quotient`, …) in `beman::inside::detail` |
 | `beman/inside/detail/assignment.hpp`  | `beman::inside::detail::assignment<L, R>` specialisations for integral / fractional / insidable rhs (incl. the Q-format integer shortcut for fractional rhs) |
 | `beman/inside/detail/assign_exact.hpp` | `assign_exact` (the exact / wide store), the out-of-range cascade (`dispatch_out_of_range`, `report_failure`), the `on_wrap` carry grid, the same-notch wide mapping |
 | `beman/inside/cmath.hpp`       | `beman::inside::math` — the `<cmath>`-shaped public API: the constants, the grid operations (abs, sign, copysign, floor, ceil, round, trunc, fmod, pown, `unit_amplitude<K>`) and the transcendentals of `detail/math_entry.hpp`. See [math.md](math.md) |
@@ -401,7 +401,7 @@ is what keeps the core free of `<string>`/`<ostream>`/`<format>`/`<cmath>`:
 | `beman/inside/detail/wide_int.hpp`    | `wide_int<N, Signed>` and the limb kernels (the only `__int128` site) |
 | `beman/inside/detail/int_for_bits.hpp` | `int_for_bits_t`, the `raw_integer` concept |
 | `beman/inside/detail/wide_value.hpp`  | Exact values of exact-valued insides, `wide_rational<K>`, the wrapping value-index arithmetic of `+` / `×` |
-| `beman/inside/grid.hpp`        | `grid`, `storage_min`, grid operators |
+| `beman/inside/grid.hpp`        | `grid`, `raw_for`, grid operators |
 | `beman/inside/numeric_limits.hpp` | `std::numeric_limits<inside>` and `std::hash<inside>` specialisations (opt-in; `std::common_type` is in arithmetic.hpp, always on) |
 | `beman/inside/io.hpp`          | **All** string/stream/`std::format` support — `to_string`, `to_string_debug`, `operator<<`, `operator>>`, `parse(std::string_view)`, `std::formatter`, `type_name`. Opt-in and the *only* place `<string>`/`<ostream>`/`<format>` enter; gated by `BEMAN_INSIDE_NO_STRING` in the single header (see [freestanding.md](freestanding.md)) |
 | `beman/inside/random.hpp`      | `uniform<B>(rng)` — uniform sampling over a grid's slots; opt-in (`<random>`), dropped from the single header when freestanding or FP-free |

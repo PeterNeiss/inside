@@ -611,7 +611,7 @@ constexpr bool exact_rounds_into_range(const rational& v, rational& out) {
     } else {
         const auto j = exact_index<L, rounding_for<L, P>>(exact_of(v)).Index; // L's slot offset
         using I      = std::remove_cvref_t<decltype(j)>;
-        if (j.negative() || I{max_index_v<L>} < j)
+        if (j.negative() || I{max_index_of<L>} < j)
             return false;
         out =
             (detail::lower64<L> + (rational{static_cast<umax>(j)} * detail::notch64<L>).value()).value(); // L's point

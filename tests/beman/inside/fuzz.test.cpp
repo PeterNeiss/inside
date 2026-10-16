@@ -67,7 +67,7 @@ void guarded(fuzz_state& s, Fn&& fn) {
 // Helpers
 //---------------------------------------------------------------------------
 // Random in-range raw value. Direct storage uses [Lower, Upper];
-// notch storage uses [0, max_index_v].
+// notch storage uses [0, max_index_of].
 template <insidable B>
 typename B::raw_type random_in_range_raw(std::mt19937_64& rng) {
     using raw = typename B::raw_type;
@@ -77,7 +77,7 @@ typename B::raw_type random_in_range_raw(std::mt19937_64& rng) {
         std::uniform_int_distribution<imax> dist(lo, hi);
         return static_cast<raw>(dist(rng));
     } else {
-        std::uniform_int_distribution<umax> dist(0, max_index_v<B>);
+        std::uniform_int_distribution<umax> dist(0, max_index_of<B>);
         return static_cast<raw>(dist(rng));
     }
 }
@@ -612,7 +612,7 @@ void prop_non_notch_assign(fuzz_state& s, long iters) {
             s.iter = i;
             // pick a notch-aligned in-range value, then add half-notch to land
             // strictly between two notches.
-            std::uniform_int_distribution<umax> dist(0, max_index_v<B> - 1);
+            std::uniform_int_distribution<umax> dist(0, max_index_of<B> - 1);
             umax                                k          = dist(s.rng);
             rational                            on_notch   = (lo + rational{k} * notch).value();
             rational                            mid        = (on_notch + half).value();
@@ -673,7 +673,7 @@ void prop_non_notch_assign(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_subnormal_construct(fuzz_state& s, long iters) {
-    // Targets math.hpp:179-180 — abs_fraction shift cap for very small doubles.
+    // Targets float_bits.hpp — abs_fraction shift cap for very small doubles.
     // The path is taken when the input double has a negative exponent so large
     // that bits-exponent > 62. Any double in (0, 2^-62) qualifies.
     if constexpr (!integer_lattice<B> && !rational_storage<B>) {
@@ -886,7 +886,7 @@ void prop_casts_fixed(fuzz_state& s, long iters) {
         rational half  = (notch / 2_r).value();
         for (long i = 0; i < iters; ++i) {
             s.iter = i;
-            std::uniform_int_distribution<umax> dist(0, max_index_v<B> - 1);
+            std::uniform_int_distribution<umax> dist(0, max_index_of<B> - 1);
             umax                                k        = dist(s.rng);
             rational                            on_notch = (lo + (rational{k} * notch).value()).value();
             rational                            next     = (on_notch + notch).value();
@@ -924,7 +924,7 @@ void prop_predicates(fuzz_state& s, long iters) {
         rational half  = (notch / 2_r).value();
         for (long i = 0; i < iters; ++i) {
             s.iter = i;
-            std::uniform_int_distribution<umax> dist(0, max_index_v<B>);
+            std::uniform_int_distribution<umax> dist(0, max_index_of<B>);
             umax                                k = dist(s.rng);
             double on_notch                       = static_cast<double>((lo + (rational{k} * notch).value()).value());
             // On-notch, in range: nothing lost.
@@ -932,7 +932,7 @@ void prop_predicates(fuzz_state& s, long iters) {
             FUZZ_REQUIRE(s, !conversion_rounds<B>(on_notch));
             FUZZ_REQUIRE(s, !conversion_loses<B>(on_notch));
             // Half-notch midpoint, in range: truncates (lossy) but does not overflow.
-            if (k < max_index_v<B>) {
+            if (k < max_index_of<B>) {
                 double mid = on_notch + static_cast<double>(half);
                 FUZZ_REQUIRE(s, !conversion_overflows<B>(mid));
                 FUZZ_REQUIRE(s, conversion_rounds<B>(mid));
@@ -952,7 +952,7 @@ void prop_range(fuzz_state& s, long iters) {
     // inside_range walks every notch slot exactly once; a mid-range start rotates
     // the sequence. Capped so the billion-wide catalogue grids stay fast.
     if constexpr (!rational_storage<B>) {
-        constexpr umax N = max_index_v<B> + 1;
+        constexpr umax N = max_index_of<B> + 1;
         if constexpr (N <= 100000) {
             s.current_prop                         = "range";
             using R                                = inside_range<grid_of<B>>;

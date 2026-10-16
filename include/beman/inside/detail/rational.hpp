@@ -2,7 +2,7 @@
 #ifndef BEMAN_INSIDE_DETAIL_RATIONAL_HPP
 #define BEMAN_INSIDE_DETAIL_RATIONAL_HPP
 
-#include <beman/inside/math.hpp>              // umax/imax, arithmetic, rational fwd
+#include <beman/inside/numbers.hpp>           // umax/imax, arithmetic, rational fwd
 #include <beman/inside/detail/float_bits.hpp> // frexp/ldexp, abs_fraction, is_double_value
 #include <beman/inside/lift.hpp>              // lift, expected_like, unwrap_t
 #include <beman/inside/detail/overflow.hpp>   // add/sub/mul_overflow
@@ -116,7 +116,7 @@ struct rational {
     [[nodiscard]] constexpr bool operator==(const rational&) const = default;
     // Exact against a double too (rational{value} truncates one finer than
     // 2^-62): defined after compare_double.
-    template <arithmetic T>
+    template <plain_number T>
     [[nodiscard]] constexpr bool operator==(T value) const;
 
     [[nodiscard]] constexpr rational operator-() const;
@@ -755,12 +755,12 @@ inline constexpr std::expected<rational, errc> rational::inv(rational a) { retur
                    : limb::mul_compare(lhs.Numerator, rhs_ad, rhs.Numerator, lhs_ad);
 }
 
-template <arithmetic T>
+template <plain_number T>
 [[nodiscard]] inline constexpr auto operator<=>(const std::expected<T, errc>& lhs, const rational& rhs) {
     return rational{lhs.value()} <=> rhs;
 }
 
-template <arithmetic T>
+template <plain_number T>
 [[nodiscard]] inline constexpr auto operator<=>(const rational& lhs, const std::expected<T, errc>& rhs) {
     return lhs <=> rational{rhs.value()};
 }
@@ -824,7 +824,7 @@ template <std::floating_point T>
     return compare_double(lhs, static_cast<double>(rhs));
 }
 
-template <arithmetic T>
+template <plain_number T>
 [[nodiscard]] constexpr bool rational::operator==(T value) const {
     if constexpr (std::floating_point<T>)
         return compare_float(*this, value) == 0;
@@ -832,7 +832,7 @@ template <arithmetic T>
         return operator==(rational{value});
 }
 
-template <arithmetic T>
+template <plain_number T>
 [[nodiscard]] inline constexpr auto operator<=>(T lhs, const rational& rhs) {
     if constexpr (std::floating_point<T>)
         return 0 <=> compare_float(rhs, lhs);
@@ -840,7 +840,7 @@ template <arithmetic T>
         return rational{lhs} <=> rhs;
 }
 
-template <arithmetic T>
+template <plain_number T>
 [[nodiscard]] inline constexpr auto operator<=>(const rational& lhs, T rhs) {
     if constexpr (std::floating_point<T>)
         return compare_float(lhs, rhs);
@@ -857,7 +857,7 @@ template <arithmetic T>
 //---------------------------------------------------------------------------
 template <class L, class R>
 concept rational_lift_operands =
-    (expected_like<L> || expected_like<R>) && arithmetic<unwrap_t<L>> && arithmetic<unwrap_t<R>> &&
+    (expected_like<L> || expected_like<R>) && plain_number<unwrap_t<L>> && plain_number<unwrap_t<R>> &&
     (std::same_as<unwrap_t<L>, rational> || std::same_as<unwrap_t<R>, rational>);
 
 //---------------------------------------------------------------------------
@@ -912,11 +912,11 @@ concept rational_lift_operands =
 }
 
 #define BEMAN_INSIDE_RATIONAL_OP(op)                                                                        \
-    template <arithmetic T>                                                                                 \
+    template <plain_number T>                                                                               \
     [[nodiscard]] inline constexpr auto operator op(T lhs, rational const& rhs) {                           \
         return rational{lhs} op rhs;                                                                        \
     }                                                                                                       \
-    template <arithmetic T>                                                                                 \
+    template <plain_number T>                                                                               \
     [[nodiscard]] inline constexpr auto operator op(rational const& lhs, T rhs) {                           \
         return lhs op rational{rhs};                                                                        \
     }                                                                                                       \
@@ -929,7 +929,7 @@ concept rational_lift_operands =
         *this = (*this op rhs).value();                                                                     \
         return *this;                                                                                       \
     }                                                                                                       \
-    template <arithmetic T>                                                                                 \
+    template <plain_number T>                                                                               \
     inline constexpr rational& operator op## = (rational & lhs, T rhs) {                                    \
         return lhs op## = rational{rhs};                                                                    \
     }                                                                                                       \

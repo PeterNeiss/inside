@@ -39,25 +39,25 @@ TEST(GridTest, just_inside_values_work_as_grid_corners) {
     static_assert(grid_of<inside<{0, just<30>}, wrap>> == grid_of<inside<{0, 30}, wrap>>);
 }
 
-// grid storage_min selection
+// grid raw_for selection
 TEST(GridTest, grid_storage_min_selection) {
     // Notch 0 -> rational
-    static_assert(std::is_same_v<storage_min_t<grid{{0, 10}, 0}>, rational>);
+    static_assert(std::is_same_v<raw_for_t<grid{{0, 10}, 0}>, rational>);
 
     // Notch 1, lower 0 -> smallest unsigned that fits Upper
-    static_assert(std::is_same_v<storage_min_t<grid{0, 100, 1}>, std::uint8_t>);
-    static_assert(std::is_same_v<storage_min_t<grid{0, 1000, 1}>, std::uint16_t>);
-    static_assert(std::is_same_v<storage_min_t<grid{0, 100000, 1}>, std::uint32_t>);
+    static_assert(std::is_same_v<raw_for_t<grid{0, 100, 1}>, std::uint8_t>);
+    static_assert(std::is_same_v<raw_for_t<grid{0, 1000, 1}>, std::uint16_t>);
+    static_assert(std::is_same_v<raw_for_t<grid{0, 100000, 1}>, std::uint32_t>);
 
     // Signed integer case (notch 1, negative lower)
-    static_assert(std::is_same_v<storage_min_t<grid{-127, 127, 1}>, std::int8_t>);
-    static_assert(std::is_same_v<storage_min_t<grid{-32000, 32000, 1}>, std::int16_t>);
+    static_assert(std::is_same_v<raw_for_t<grid{-127, 127, 1}>, std::int8_t>);
+    static_assert(std::is_same_v<raw_for_t<grid{-32000, 32000, 1}>, std::int16_t>);
 
     // Lower above 0: the value when it is no wider than the index, else the index
-    static_assert(deduces_value<grid{5, 100, 1}> && std::is_same_v<storage_min_t<grid{5, 100, 1}>, std::uint8_t>);
+    static_assert(deduces_value<grid{5, 100, 1}> && std::is_same_v<raw_for_t<grid{5, 100, 1}>, std::uint8_t>);
     static_assert(deduces_value<grid{1024, 65535, 1}>);
-    static_assert(std::is_same_v<storage_min_t<grid{1024, 65535, 1}>, std::uint16_t>);
-    static_assert(!deduces_value<grid{200, 300, 1}> && std::is_same_v<storage_min_t<grid{200, 300, 1}>, std::uint8_t>);
+    static_assert(std::is_same_v<raw_for_t<grid{1024, 65535, 1}>, std::uint16_t>);
+    static_assert(!deduces_value<grid{200, 300, 1}> && std::is_same_v<raw_for_t<grid{200, 300, 1}>, std::uint8_t>);
     // a notched or offset lattice keeps the index
     static_assert(!deduces_value<grid{{0, 1}, rational{1, 256}}>);
     static_assert(!deduces_value<grid{{0.5_r, 10.5_r}, 1}>);
@@ -186,7 +186,7 @@ TEST(GridTest, two_limit_ctor_derives_the_notch) {
 
     using half = inside<{0.5, 10}>;
     static_assert(std::is_same_v<half::raw_type, std::uint8_t>);
-    static_assert(max_index_v<half> == 19);
+    static_assert(max_index_of<half> == 19);
     EXPECT_EQ(rational{half{2.5}}, (rational{5, 2}));
 }
 
@@ -375,12 +375,12 @@ TEST(GridTest, bounds_past_their_storage_are_dropped) {
 
 TEST(GridTest, bounded_storage_holds_every_value) {
     // Within the 64-bit rational a bounded grid stores a rational, as before.
-    static_assert(std::same_as<storage_min_t<kThousandths>, rational>);
-    static_assert(std::same_as<storage_min_t<*(kHundred / kOneToSeven)>, rational>);
+    static_assert(std::same_as<raw_for_t<kThousandths>, rational>);
+    static_assert(std::same_as<raw_for_t<*(kHundred / kOneToSeven)>, rational>);
 #if BEMAN_INSIDE_BIG_GRIDS
     // C++26: past it, a fraction sized from the bounds — here 10^36 needs 120 bits.
     constexpr grid billionths{interval{0, 1}, max_denominator{1'000'000'000}};
     constexpr grid b2 = *(billionths * billionths), b4 = *(b2 * b2);
-    static_assert(std::same_as<storage_min_t<b4>, wide_rational<2>>);
+    static_assert(std::same_as<raw_for_t<b4>, wide_rational<2>>);
 #endif
 }

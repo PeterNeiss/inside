@@ -75,28 +75,26 @@ struct policy : E {
 policy(errc&) -> policy<none, detail::error_ref>;
 
 //---------------------------------------------------------------------------
-// is_policy — true for policy<F,E> specializations, false otherwise.
+// is_policy_v — true for policy<F,E> specializations, false otherwise.
 // Used to gate free-fn overloads so they don't accidentally bind P = action tag.
 //---------------------------------------------------------------------------
 namespace detail {
 template <typename T>
-inline constexpr bool is_policy = false;
+inline constexpr bool is_policy_v = false;
 template <policy_flag F, typename E>
-inline constexpr bool is_policy<policy<F, E>> = true;
+inline constexpr bool is_policy_v<policy<F, E>> = true;
 
-// Concept form of is_policy — pulls cvref off so the constraint matches
+// Concept form of is_policy_v — pulls cvref off so the constraint matches
 // forwarded `policy<F,E>` references in template parameters.
 template <typename T>
-concept policy_like = is_policy<std::remove_cvref_t<T>>;
+concept policy_like = is_policy_v<std::remove_cvref_t<T>>;
 
-// policy_flags_of<T> — the flag-set a one-shot `policy<F,E>` carries (else
-// `none`). Lets the value+policy constructor and policy_ref's conversion fold
-// the per-call flags into their `inside_assignable` check, so a one-shot
-// clamp/round actually relaxes the constraint it enables.
-template <typename T>
-inline constexpr policy_flag policy_flags_of = none;
+// flags_of<policy<F, E>> is F. Lets the value+policy constructor and
+// policy_ref's conversion fold the per-call flags into their
+// `inside_assignable` check, so a one-shot clamp/round actually relaxes the
+// constraint it enables.
 template <policy_flag F, typename E>
-inline constexpr policy_flag policy_flags_of<policy<F, E>> = F;
+inline constexpr policy_flag flags_of_impl<policy<F, E>> = F;
 
 // True for policy specializations that carry a beman::inside::errc& reference.
 // Free-fn arithmetic uses this to decide whether to call policy.report on
@@ -200,7 +198,7 @@ struct policy_buffer {
     [[no_unique_address]] std::tuple<As...> Actions;
 
     template <insidable Target>
-        requires inside_assignable<Target, B, policy_of<Target> | policy_flags_of<P>>
+        requires inside_assignable<Target, B, flags_of<Target> | flags_of<P>>
     constexpr operator Target() {
         Target r{}; // a failed store (errc&, on_error) leaves it, not garbage
         dispatch_assign(r, Owned, Policy, Actions);
@@ -249,7 +247,7 @@ struct policy_ref {
     // `Target t = (a * b).with_snap();` / `return (a * b).with_snap();` compile.
     // Constrained so the proxy stays SFINAE-friendly (no over-broad convertibility).
     template <insidable Target>
-        requires inside_assignable<Target, B, policy_of<Target> | policy_flags_of<P>>
+        requires inside_assignable<Target, B, flags_of<Target> | flags_of<P>>
     constexpr operator Target() {
         Target r{}; // a failed store (errc&, on_error) leaves it, not garbage
         dispatch_assign(r, Ref, Policy, Actions);
@@ -262,7 +260,7 @@ struct policy_ref {
     // errc& sink), as an arithmetic result's does.
     template <numeric C>
     constexpr B& operator=(const std::expected<C, errc>& other) {
-        return finalise_arith(other, "policy_ref::operator= of an expected without a value");
+        return finalize_arith(other, "policy_ref::operator= of an expected without a value");
     }
 
   private:
@@ -283,7 +281,7 @@ struct policy_ref {
     //-------------------------------------------------------------------------
   private:
     template <typename R>
-    constexpr B& finalise_arith(R&& result, [[maybe_unused]] const char* msg) {
+    constexpr B& finalize_arith(R&& result, [[maybe_unused]] const char* msg) {
         if constexpr (expected_like<R>) {
             if (!result.has_value()) [[unlikely]] {
                 if (result.error() == errc::division_by_zero)
@@ -300,10 +298,10 @@ struct policy_ref {
     }
 
     // Shared body for the rational `+=`/`-=`/`*=`/`/=` operators: lift Ref to
-    // rational and route the checked result through `finalise_arith`.
+    // rational and route the checked result through `finalize_arith`.
     template <std::invocable<rational, rational> RatOp>
     constexpr B& rational_assign(const rational& rhs, RatOp rat_op, const char* msg) {
-        return finalise_arith(rat_op(rational{Ref}, rhs), msg);
+        return finalize_arith(rat_op(rational{Ref}, rhs), msg);
     }
 
     // The value an op's result holds (an expected's value type).
@@ -317,7 +315,7 @@ struct policy_ref {
     };
     template <typename R>
     static constexpr bool stores_back =
-        inside_assignable<B, typename result_value<std::remove_cvref_t<R>>::type, policy_of<B> | policy_flags_of<P>>;
+        inside_assignable<B, typename result_value<std::remove_cvref_t<R>>::type, flags_of<B> | flags_of<P>>;
 
   public:
     // Constrained on the free op they call and on storing its result back
@@ -329,21 +327,21 @@ struct policy_ref {
         requires requires(const B& b, const C& c, P& p) { add(b, c, p); } &&
                  stores_back<decltype(add(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator+=(const C& rhs) {
-        return finalise_arith(add(Ref, rhs, Policy), "policy_ref::operator+= overflow");
+        return finalize_arith(add(Ref, rhs, Policy), "policy_ref::operator+= overflow");
     }
 
     template <insidable C>
         requires requires(const B& b, const C& c, P& p) { sub(b, c, p); } &&
                  stores_back<decltype(sub(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator-=(const C& rhs) {
-        return finalise_arith(sub(Ref, rhs, Policy), "policy_ref::operator-= overflow");
+        return finalize_arith(sub(Ref, rhs, Policy), "policy_ref::operator-= overflow");
     }
 
     template <insidable C>
         requires requires(const B& b, const C& c, P& p) { mul(b, c, p); } &&
                  stores_back<decltype(mul(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator*=(const C& rhs) {
-        return finalise_arith(mul(Ref, rhs, Policy), "policy_ref::operator*= overflow");
+        return finalize_arith(mul(Ref, rhs, Policy), "policy_ref::operator*= overflow");
     }
 
     // A zero divisor is reported (on_error / ignore_zero) and leaves Ref
@@ -354,11 +352,11 @@ struct policy_ref {
                  stores_back<decltype(div(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator/=(const C& rhs) {
         if (rhs == 0) {
-            if constexpr (!has_flag(policy_of<C>, ignore_zero)) // either operand silences it
+            if constexpr (!has_flag(flags_of<C>, ignore_zero)) // either operand silences it
                 report_zero(errc::division_by_zero, "policy_ref::operator/= division by zero");
             return Ref;
         }
-        return finalise_arith(div(Ref, rhs, Policy), "policy_ref::operator/= division/overflow");
+        return finalize_arith(div(Ref, rhs, Policy), "policy_ref::operator/= division/overflow");
     }
 
     template <insidable C>
@@ -366,18 +364,18 @@ struct policy_ref {
                  stores_back<decltype(mod(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator%=(const C& rhs) {
         if (rhs == 0) {
-            if constexpr (!has_flag(policy_of<C>, ignore_zero)) // either operand silences it
+            if constexpr (!has_flag(flags_of<C>, ignore_zero)) // either operand silences it
                 report_zero(errc::division_by_zero, "policy_ref::operator%= division by zero");
             return Ref;
         }
-        return finalise_arith(mod(Ref, rhs, Policy), "policy_ref::operator%= division/overflow");
+        return finalize_arith(mod(Ref, rhs, Policy), "policy_ref::operator%= division/overflow");
     }
 
     //-------------------------------------------------------------------------
     // rational RHS overloads — the only non-inside operand a compound assign
     // accepts. Lets callers write `b += rational{1,3}`. Raw int/float/double are
     // ill-formed: give the scalar a grid (`1_ins` / `just<1>` / `inside<{lo,hi}>{n}`).
-    // Lift Ref to rational, checked op, finalise_arith.
+    // Lift Ref to rational, checked op, finalize_arith.
     //-------------------------------------------------------------------------
     template <std::same_as<rational> C>
     constexpr B& operator+=(const C& rhs) {

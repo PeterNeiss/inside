@@ -45,7 +45,7 @@ template <exact_op Op, insidable Result, insidable L, insidable R, policy_flag F
 inline constexpr bool lattice_op_checked =
     !exact_fits<Op, Result, L, R> &&
     (fraction_storage<Result> ||
-     (rational_storage<Result> && (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>))));
+     (rational_storage<Result> && (has_any_flag(F, checked) || is_checked(flags_of<L>) || is_checked(flags_of<R>))));
 
 // `x * just<c>` and `x / just<c>` (c != 0): the result lattice is x's lattice
 // scaled by c or 1/c (grid operator* / operator/), so the result offset IS x's
@@ -57,13 +57,13 @@ inline constexpr bool point_scale =
 
 template <insidable Result, bool Negate, insidable X>
 constexpr Result scale_by_point(const X& x) noexcept {
-    static_assert(max_index_v<Result> == max_index_v<X>);
+    static_assert(max_index_of<Result> == max_index_of<X>);
     umax off;
     if constexpr (index_storage<X>)
         off = static_cast<umax>(x.raw());
     else
         off = static_cast<umax>(x.raw()) - static_cast<umax>(raw_lo<X>);
-    return Result::from_raw(raw_from_offset<Result>(Negate ? max_index_v<X> - off : off));
+    return Result::from_raw(raw_from_offset<Result>(Negate ? max_index_of<X> - off : off));
 }
 } // namespace beman::inside::detail
 #endif

@@ -12,7 +12,7 @@
 namespace beman::inside::detail {
 //---------------------------------------------------------------------------
 // assignment — narrowing/coercion between bounded and arithmetic types. Three
-// specialisations dispatch on the source (integral / fractional / insidable),
+// specializations dispatch on the source (integral / fractional / insidable),
 // each routing through `store` (in-range) and `handle_out_of_range` /
 // `apply_clamp` / `apply_wrap` (policy). The insidable path also exposes
 // `is_integer_mapping` / `map_raw` — a pure-integer formula in the hot path.
@@ -437,7 +437,7 @@ struct assignment<L, R> {
                             return report_failure(lhs, policy, action, errc::rounding_error);
                         lhs = L::from_raw(*r);
                         return;
-                    } else if (std::is_constant_evaluated() || is_checked(policy_of<L> | plain_t<P>::Flags))
+                    } else if (std::is_constant_evaluated() || is_checked(flags_of<L> | plain_t<P>::Flags))
                         return report_failure(lhs, policy, action, errc::rounding_error);
                 }
             lhs = L::from_raw(rv);
@@ -787,7 +787,7 @@ struct assignment<L, R> {
         else {
             const rational base = index_storage<L> ? rational{0} : detail::lower64<L>;
             const auto     lo   = Offset + base;
-            const auto     span = Factor * rational{max_index_v<R>};
+            const auto     span = Factor * rational{max_index_of<R>};
             if (!lo || !span)
                 return false;
             const auto hi = *lo + *span;
@@ -826,9 +826,9 @@ struct assignment<L, R> {
             if (mul_overflow(f_n, o_d, &m.Mul) || mul_overflow(o_s, f_d, &m.Add) || mul_overflow(o_d, f_d, &m.Den))
                 return no;
             // worst-case |numerator| over R's offset range [0, max_index]
-            if (max_index_v<R> > cap)
+            if (max_index_of<R> > cap)
                 return no;
-            const imax rmax = static_cast<imax>(max_index_v<R>);
+            const imax rmax = static_cast<imax>(max_index_of<R>);
             imax       term, num;
             if (mul_overflow(rmax, m.Mul, &term) || add_overflow(term, m.Add < 0 ? -m.Add : m.Add, &num))
                 return no;

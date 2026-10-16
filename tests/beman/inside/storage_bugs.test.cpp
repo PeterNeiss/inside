@@ -40,7 +40,7 @@ TEST(StorageBugsTest, bug_a_rational_mixed_add_into_direct_storage_result) {
 // Bug B — multiplication.hpp:117
 //
 // The third-quadrant case (lower_of<result> == upper_of<L> * lower_of<R>) computes
-// `negRaw = max_index_v<L> - lhs.Raw`. That formula treats lhs.Raw as a
+// `negRaw = max_index_of<L> - lhs.Raw`. That formula treats lhs.Raw as a
 // notch-offset, which is correct for offset-encoded raws but wrong for
 // direct-storage signed raws (where Raw is the value).
 //

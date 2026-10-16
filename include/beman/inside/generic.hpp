@@ -2,7 +2,7 @@
 #ifndef BEMAN_INSIDE_GENERIC_HPP
 #define BEMAN_INSIDE_GENERIC_HPP
 
-#include <beman/inside/detail/introspection.hpp> // grid_of, policy_of, insidable, numeric
+#include <beman/inside/detail/introspection.hpp> // grid_of, flags_of, insidable, numeric
 #include <beman/inside/detail/storage.hpp>       // storage concepts, raw/value plumbing
 
 #include <type_traits>
@@ -24,10 +24,10 @@ concept assign_intervals_ok =
     (!insidable<R> && !std::integral<R>)
     // wrap/clamp bring any value into range, so a disjoint rhs interval is fine
     // for them (the integral-rhs path already allows it — int's interval is unbounded).
-    || ((policy_of<L> | P) & (wrap | clamp)) != 0 || not excludes(interval_of<L>, interval_of<R>);
+    || ((flags_of<L> | P) & (wrap | clamp)) != 0 || not excludes(interval_of<L>, interval_of<R>);
 
 template <typename L, typename R, policy_flag P>
-concept assign_notch_ok = !insidable<R> || ((policy_of<L> | P) & snap) != 0 || notches_compatible<L, R>;
+concept assign_notch_ok = !insidable<R> || ((flags_of<L> | P) & snap) != 0 || notches_compatible<L, R>;
 } // namespace detail
 
 // Compile-time prerequisites for L = R, gating three failure modes at the call
@@ -65,7 +65,7 @@ struct inside_assignable_why {
 // Public manual probe: `static_assert(beman::inside::explain_assignable<DstInside, decltype(src)>);`
 // emits the named per-clause reasons in any build — including a strict
 // (`BEMAN_INSIDE_STRICT_SFINAE`) build where the automatic in-`inside` fallbacks are absent.
-template <typename Dst, typename Src, policy_flag P = policy_of<Dst>>
+template <typename Dst, typename Src, policy_flag P = flags_of<Dst>>
 inline constexpr bool explain_assignable = inside_assignable_why<Dst, std::remove_cvref_t<Src>, P>::value;
 } // namespace beman::inside
 

@@ -160,38 +160,38 @@ template <typename V>
 }
 
 //-------------------------------------------------------------------------
-// type_name_v<T> — short raw-type label for to_string_debug. Lives here (not
+// type_name_of<T> — short raw-type label for to_string_debug. Lives here (not
 // in the core math header) so the core never pulls <string_view>.
 //-------------------------------------------------------------------------
 namespace detail {
 template <typename T>
-inline constexpr std::string_view type_name_v = wide_integer<T>         ? "wide_int"
-                                                : wide_rational_like<T> ? "wide_rational"
-                                                                        : "unknown";
+inline constexpr std::string_view type_name_of = wide_integer<T>         ? "wide_int"
+                                                 : wide_rational_like<T> ? "wide_rational"
+                                                                         : "unknown";
 template <>
-inline constexpr std::string_view type_name_v<std::uint8_t> = "uint8_t";
+inline constexpr std::string_view type_name_of<std::uint8_t> = "uint8_t";
 template <>
-inline constexpr std::string_view type_name_v<std::uint16_t> = "uint16_t";
+inline constexpr std::string_view type_name_of<std::uint16_t> = "uint16_t";
 template <>
-inline constexpr std::string_view type_name_v<std::uint32_t> = "uint32_t";
+inline constexpr std::string_view type_name_of<std::uint32_t> = "uint32_t";
 template <>
-inline constexpr std::string_view type_name_v<std::uint64_t> = "uint64_t";
+inline constexpr std::string_view type_name_of<std::uint64_t> = "uint64_t";
 template <>
-inline constexpr std::string_view type_name_v<std::int8_t> = "int8_t";
+inline constexpr std::string_view type_name_of<std::int8_t> = "int8_t";
 template <>
-inline constexpr std::string_view type_name_v<std::int16_t> = "int16_t";
+inline constexpr std::string_view type_name_of<std::int16_t> = "int16_t";
 template <>
-inline constexpr std::string_view type_name_v<std::int32_t> = "int32_t";
+inline constexpr std::string_view type_name_of<std::int32_t> = "int32_t";
 template <>
-inline constexpr std::string_view type_name_v<std::int64_t> = "int64_t";
+inline constexpr std::string_view type_name_of<std::int64_t> = "int64_t";
 template <>
-inline constexpr std::string_view type_name_v<rational> = "rational";
+inline constexpr std::string_view type_name_of<rational> = "rational";
 template <>
-inline constexpr std::string_view type_name_v<point_slot> = "point";
+inline constexpr std::string_view type_name_of<point_slot> = "point";
 template <>
-inline constexpr std::string_view type_name_v<wide_uint<2>> = "wide_uint<2>";
+inline constexpr std::string_view type_name_of<wide_uint<2>> = "wide_uint<2>";
 template <>
-inline constexpr std::string_view type_name_v<wide_uint<3>> = "wide_uint<3>";
+inline constexpr std::string_view type_name_of<wide_uint<3>> = "wide_uint<3>";
 } // namespace detail
 
 //-------------------------------------------------------------------------
@@ -279,7 +279,7 @@ template <insidable B>
         str += detail::exact_to_string(b.raw());
     else
         str += beman::inside::to_string(+b.raw());
-    str += "[" + std::string(detail::type_name_v<detail::raw_t<B>>);
+    str += "[" + std::string(detail::type_name_of<detail::raw_t<B>>);
     constexpr auto slots = grid_of<B>.slot_count();
     str += " Max:" + beman::inside::to_string(slots) + "] ";
     str += beman::inside::to_string(grid_of<B>);
@@ -581,8 +581,8 @@ namespace beman::inside::detail {
 // names one (as storing at that precision would round), else ties to even.
 template <insidable B>
 inline constexpr round_mode display_rounding =
-    has_any_flag(policy_of<B>, round_floor | round_ceil | round_nearest | round_half_even | snap)
-        ? rounding_of(policy_of<B>)
+    has_any_flag(flags_of<B>, round_floor | round_ceil | round_nearest | round_half_even | snap)
+        ? rounding_of(flags_of<B>)
         : round_mode::half_even;
 
 // x's exact value as a sign and a magnitude fraction, for the exact specs.

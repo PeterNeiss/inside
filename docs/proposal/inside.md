@@ -296,7 +296,7 @@ namespace std {
 
   // observers
   template<class B> constexpr grid grid_of;
-  template<class B> constexpr policy_flag policy_of;
+  template<class B> constexpr policy_flag flags_of;
   template<class B> constexpr @*grid-number*@ lower_of, upper_of, notch_of;
 
   // constants

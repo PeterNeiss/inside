@@ -24,18 +24,18 @@ namespace beman::inside {
 //   op(l, r [, policy [, action]])   explicit per-call policy (+ action)
 //   op(l, r, on_overflow(λ), ...)    tagged actions (policy = their implied flags)
 //   op(l, r, ec [, action])          error-code form (checked, reports into ec)
-// detail::arith normalises the form to (policy, action) for the op's core.
+// detail::arith normalizes the form to (policy, action) for the op's core.
 //---------------------------------------------------------------------------
 namespace detail {
 // Arithmetic fires only on_overflow; any other action would be silently
 // ignored, so it is rejected.
 template <class A>
-inline constexpr bool arith_action =
+inline constexpr bool arith_accepts_action =
     std::same_as<std::remove_cvref_t<A>, no_action> || overflow_action<std::remove_cvref_t<A>>;
 
 template <class Op, class L, class R, policy_like P = policy<>, class A = no_action>
 constexpr auto arith(Op op, const L& l, const R& r, P&& pol = {}, A&& act = {}) {
-    static_assert(arith_action<A>,
+    static_assert(arith_accepts_action<A>,
                   "add/sub/mul/div/mod fire only on_overflow; on_clamp / on_wrap / on_error "
                   "apply to assignment — use them with b.with(...) or a cast");
     return op(l, r, std::forward<P>(pol), std::forward<A>(act));
@@ -44,11 +44,11 @@ constexpr auto arith(Op op, const L& l, const R& r, P&& pol = {}, A&& act = {}) 
 // Action-first form: on_overflow actions (the only kind arithmetic fires;
 // any other tag is rejected below with a message, not a bare mismatch).
 template <class A>
-inline constexpr bool is_action_tag =
+inline constexpr bool is_action_tag_v =
     is_overflow_action<A>::value || is_clamp_action<A>::value || is_wrap_action<A>::value || is_error_action<A>::value;
 
 template <class Op, class L, class R, class... Actions>
-    requires(sizeof...(Actions) >= 1) && (is_action_tag<std::remove_cvref_t<Actions>> && ...)
+    requires(sizeof...(Actions) >= 1) && (is_action_tag_v<std::remove_cvref_t<Actions>> && ...)
 constexpr auto arith(Op op, const L& l, const R& r, Actions&&... acts) {
     static_assert((overflow_action<std::remove_cvref_t<Actions>> && ...),
                   "add/sub/mul/div/mod fire only on_overflow; on_clamp / on_wrap / on_error "
@@ -58,14 +58,11 @@ constexpr auto arith(Op op, const L& l, const R& r, Actions&&... acts) {
 
 template <class Op, class L, class R, class A = no_action>
 constexpr auto arith(Op op, const L& l, const R& r, errc& ec, A&& act = {}) {
-    static_assert(arith_action<A>,
+    static_assert(arith_accepts_action<A>,
                   "add/sub/mul/div/mod fire only on_overflow; on_clamp / on_wrap / on_error "
                   "apply to assignment — use them with b.with(...) or a cast");
     return op(l, r, make_policy<checked>(ec), std::forward<A>(act));
 }
-
-template <class P>
-inline constexpr policy_flag flags_of = policy_flags_of<std::remove_cvref_t<P>>;
 
 struct add_op {
     template <class L, class R, class P, class A>
@@ -138,7 +135,7 @@ struct divmod_op {
 #define BEMAN_INSIDE_WHY_divmod "divmod requires integer-valued grids within imax"
 
 namespace detail {
-// The policy flags a call's trailing arguments select, as arith normalises
+// The policy flags a call's trailing arguments select, as arith normalizes
 // them: a policy's own, checked for an errc&, an action's implied flags.
 template <class... Args>
 inline constexpr policy_flag call_flags = merged_implied_flags<Args...>;
@@ -150,21 +147,10 @@ inline constexpr policy_flag call_flags<First, Rest...> = flags_of<First>;
 template <class... Rest>
 inline constexpr policy_flag call_flags<errc&, Rest...> = checked;
 
-// Each op's well-formedness under flags F (detail/addition.hpp & co.): the
-// first constraint of its function and operator, so a requires-expression
-// or `if constexpr` probe is false where the op cannot compile.
-template <class L, class R, policy_flag F>
-inline constexpr bool add_defined = sum_grid_fits_64_bit_grid_numbers<L, R>;
-template <class L, class R, policy_flag F>
-inline constexpr bool sub_defined = difference_grid_fits_64_bit_grid_numbers<L, R>;
-template <class L, class R, policy_flag F>
-inline constexpr bool mul_defined = product_grid_fits_64_bit_grid_numbers<L, R>;
-template <class L, class R, policy_flag F>
-inline constexpr bool div_defined = quotient_grid_representable<L, R, F>;
-template <class L, class R, policy_flag F>
-inline constexpr bool mod_defined = modulo_operands_integer_valued<L, R, F>;
-template <class L, class R, policy_flag F>
-inline constexpr bool divmod_defined = divmod_operands_integer_valued_within_imax<L, R, F>;
+// Each op's well-formedness under flags F is detail::add_defined & co.
+// (detail/addition.hpp, multiplication.hpp, division.hpp): the first
+// constraint of its function and operator, so a requires-expression or
+// `if constexpr` probe is false where the op cannot compile.
 } // namespace detail
 
 #define BEMAN_INSIDE_ARITH_FN(name, op)                                                      \
@@ -214,7 +200,7 @@ template <insidable Out, policy_flag F = none, insidable A, insidable B>
 [[nodiscard]] constexpr Out mul_into(const A& a, const B& b) {
     using E = detail::wide_rational<detail::exact_limbs<A, B, Out>>;
     return detail::store_exact_into<Out>(E{detail::exact_of(a)} * E{detail::exact_of(b)},
-                                         make_policy<policy_of<Out> | F>());
+                                         make_policy<flags_of<Out> | F>());
 }
 
 template <insidable Out, policy_flag F = none, insidable A, insidable B>
@@ -223,12 +209,12 @@ template <insidable Out, policy_flag F = none, insidable A, insidable B>
     using E     = detail::wide_rational<detail::exact_limbs<A, B, Out>>;
     const E num = E{detail::exact_of(a)}, den = E{detail::exact_of(b)};
     if constexpr (detail::divisor_excludes_zero<B>)
-        return detail::store_exact_into<Out>(num / den, make_policy<policy_of<Out> | F>());
+        return detail::store_exact_into<Out>(num / den, make_policy<flags_of<Out> | F>());
     else {
         if (den.Num.is_zero())
             return std::unexpected{errc::division_by_zero};
         errc      ec{};
-        const Out out = detail::store_exact_into<Out>(num / den, make_policy<policy_of<Out> | F>(ec));
+        const Out out = detail::store_exact_into<Out>(num / den, make_policy<flags_of<Out> | F>(ec));
         if (ec != errc{})
             return std::unexpected{ec};
         return out;
@@ -239,57 +225,57 @@ template <insidable Out, policy_flag F = none, insidable A, insidable B>
 // operands' own policies (snap/rounding select the native integer paths).
 // Each is constrained on its op's well-formedness, like the named forms.
 template <insidable L, insidable R>
-    requires detail::sum_grid_fits_64_bit_grid_numbers<L, R>
+    requires detail::add_defined<L, R>
 [[nodiscard]] constexpr auto operator+(L lhs, R rhs) {
     return beman::inside::add(lhs, rhs);
 }
 BEMAN_INSIDE_DELETE_BEGIN
 template <insidable L, insidable R>
-    requires(!detail::sum_grid_fits_64_bit_grid_numbers<L, R>)
+    requires(!detail::add_defined<L, R>)
 auto operator+(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_add);
 BEMAN_INSIDE_DELETE_END
 
 template <insidable L, insidable R>
-    requires detail::difference_grid_fits_64_bit_grid_numbers<L, R>
+    requires detail::sub_defined<L, R>
 [[nodiscard]] constexpr auto operator-(L lhs, R rhs) {
     return beman::inside::sub(lhs, rhs);
 }
 BEMAN_INSIDE_DELETE_BEGIN
 template <insidable L, insidable R>
-    requires(!detail::difference_grid_fits_64_bit_grid_numbers<L, R>)
+    requires(!detail::sub_defined<L, R>)
 auto operator-(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_sub);
 BEMAN_INSIDE_DELETE_END
 
 template <insidable L, insidable R>
-    requires detail::product_grid_fits_64_bit_grid_numbers<L, R>
+    requires detail::mul_defined<L, R>
 [[nodiscard]] constexpr auto operator*(L lhs, R rhs) {
     return beman::inside::mul(lhs, rhs);
 }
 BEMAN_INSIDE_DELETE_BEGIN
 template <insidable L, insidable R>
-    requires(!detail::product_grid_fits_64_bit_grid_numbers<L, R>)
+    requires(!detail::mul_defined<L, R>)
 auto operator*(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_mul);
 BEMAN_INSIDE_DELETE_END
 
 template <insidable L, insidable R>
-    requires detail::quotient_grid_representable<L, R, policy_of<L> | policy_of<R>>
+    requires detail::div_defined<L, R, flags_of<L> | flags_of<R>>
 [[nodiscard]] constexpr auto operator/(L lhs, R rhs) {
-    return beman::inside::div(lhs, rhs, make_policy<policy_of<L> | policy_of<R>>());
+    return beman::inside::div(lhs, rhs, make_policy<flags_of<L> | flags_of<R>>());
 }
 BEMAN_INSIDE_DELETE_BEGIN
 template <insidable L, insidable R>
-    requires(!detail::quotient_grid_representable<L, R, policy_of<L> | policy_of<R>>)
+    requires(!detail::div_defined<L, R, flags_of<L> | flags_of<R>>)
 auto operator/(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_div);
 BEMAN_INSIDE_DELETE_END
 
 template <insidable L, insidable R>
-    requires detail::modulo_operands_integer_valued<L, R, policy_of<L> | policy_of<R>>
+    requires detail::mod_defined<L, R, flags_of<L> | flags_of<R>>
 [[nodiscard]] constexpr auto operator%(L lhs, R rhs) {
-    return beman::inside::mod(lhs, rhs, make_policy<policy_of<L> | policy_of<R>>());
+    return beman::inside::mod(lhs, rhs, make_policy<flags_of<L> | flags_of<R>>());
 }
 BEMAN_INSIDE_DELETE_BEGIN
 template <insidable L, insidable R>
-    requires(!detail::modulo_operands_integer_valued<L, R, policy_of<L> | policy_of<R>>)
+    requires(!detail::mod_defined<L, R, flags_of<L> | flags_of<R>>)
 auto operator%(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_mod);
 BEMAN_INSIDE_DELETE_END
 #undef BEMAN_INSIDE_DELETE
@@ -332,7 +318,7 @@ template <insidable Target, std::ranges::input_range Rng>
 [[nodiscard]] constexpr Target sum(Rng&& r) {
     using B = std::remove_cvref_t<std::ranges::range_reference_t<Rng>>;
     Target out{};
-    auto   policy = make_policy<policy_of<Target>>();
+    auto   policy = make_policy<flags_of<Target>>();
 
     if constexpr (detail::integer_storage<B> && !detail::point_storage<B> && detail::notched<B>) {
         // The total in units of U, the value unit: the notch on an anchored
@@ -425,7 +411,7 @@ template <insidable Target, std::ranges::input_range Rng>
 // common_inside — the "hull" type able to hold every value of L and R exactly:
 // interval hull + notch gcd (grid `hull`), checked like arithmetic results.
 // Backs the
-// std::common_type specialisation (numeric_limits.hpp) and mixed-grid
+// std::common_type specialization (numeric_limits.hpp) and mixed-grid
 // min/max below. The primary has no `type` when the hull grid is
 // unrepresentable, so common_type_t SFINAEs away instead of erroring.
 //---------------------------------------------------------------------------
@@ -521,22 +507,22 @@ BEMAN_INSIDE_LIFT_OP(%)
 // on a call.
 //---------------------------------------------------------------------------
 template <typename A>
-concept raw_scalar = std::integral<A> || std::floating_point<A>;
+concept builtin_arithmetic = std::integral<A> || std::floating_point<A>;
 
 #define BEMAN_INSIDE_SCALAR_MSG                                                      \
     "an inside cannot be combined with a raw scalar: give the scalar a grid — "      \
     "`1_ins`, `just<1>`, `one`, or `inside<{lo,hi}>{n}` for a runtime value with a " \
     "known range"
 #define BEMAN_INSIDE_NO_SCALAR(op)                                          \
-    template <insidable B, raw_scalar A>                                    \
+    template <insidable B, builtin_arithmetic A>                            \
     B operator op(B const&, A) {                                            \
         static_assert(detail::dependent_false<B>, BEMAN_INSIDE_SCALAR_MSG); \
     }                                                                       \
-    template <raw_scalar A, insidable B>                                    \
+    template <builtin_arithmetic A, insidable B>                            \
     B operator op(A, B const&) {                                            \
         static_assert(detail::dependent_false<B>, BEMAN_INSIDE_SCALAR_MSG); \
     }                                                                       \
-    template <insidable B, raw_scalar A>                                    \
+    template <insidable B, builtin_arithmetic A>                            \
     B& operator op## = (B&, A) {                                            \
         static_assert(detail::dependent_false<B>, BEMAN_INSIDE_SCALAR_MSG); \
     }

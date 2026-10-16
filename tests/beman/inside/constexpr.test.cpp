@@ -174,7 +174,7 @@ TEST(ConstexprTest, constexpr_grid_notch_alignment_via_gcd) {
 //---------------------------------------------------------------------------
 // storage selection
 //---------------------------------------------------------------------------
-// constexpr: storage_min picks the smallest fitting raw
+// constexpr: raw_for picks the smallest fitting raw
 TEST(ConstexprTest, constexpr_storage_min_picks_the_smallest_fitting_raw) {
     // smallest_uint_for uses the type's full range: a grid hitting UINT8_MAX
     // exactly still fits uint8_t; one past it promotes to uint16_t.
@@ -457,11 +457,11 @@ TEST(ConstexprTest, constexpr_implied_flags_merged_implied_flags) {
     static_assert(merged_implied_flags<clamp_tag, overflow_tag> == (clamp | checked));
 }
 
-// constexpr: is_policy / uses_error_ref
+// constexpr: is_policy_v / uses_error_ref
 TEST(ConstexprTest, constexpr_ispolicy_useserrorref) {
-    static_assert(is_policy<policy<checked>>);
-    static_assert(is_policy<policy<none, error_ref>>);
-    static_assert(!(is_policy<int>));
+    static_assert(is_policy_v<policy<checked>>);
+    static_assert(is_policy_v<policy<none, error_ref>>);
+    static_assert(!(is_policy_v<int>));
 
     static_assert(!(uses_error_ref<policy<checked>>));
     static_assert(uses_error_ref<policy<checked, error_ref>>);

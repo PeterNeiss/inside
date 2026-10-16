@@ -8,7 +8,7 @@
 #include <functional>
 
 //---------------------------------------------------------------------------
-// numeric_limits / hash — std:: specialisations for inside<G, P>.
+// numeric_limits / hash — std:: specializations for inside<G, P>.
 // numeric_limits reports the *grid* bounds (Lower/Upper), not the raw type's
 // limits. std::hash hashes the Raw member (rational raw: Numerator+Denominator,
 // boost-style combine). (std::common_type lives in arithmetic.hpp, always on.)

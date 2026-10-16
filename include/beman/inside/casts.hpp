@@ -19,7 +19,7 @@ inline constexpr policy_flag range_flags    = clamp | wrap;
 // let the type's rounding mode outrank the cast's, or its clamp the cast's
 // wrap). Same grid, so the raw carries over.
 template <insidable B, policy_flag Cast, policy_flag Replaced>
-using cast_twin = inside<grid_of<B>, (policy_of<B> & ~Replaced) | Cast>;
+using cast_twin = inside<grid_of<B>, (flags_of<B> & ~Replaced) | Cast>;
 } // namespace detail
 
 // Each cast constructs through B's grid with a one-shot policy that
@@ -41,7 +41,7 @@ concept cast_rounding =
 
 template <insidable B, policy_flag Round = none, numeric N>
     requires detail::cast_rounding<Round> &&
-             inside_assignable<detail::clamp_twin<B, Round>, N, policy_of<detail::clamp_twin<B, Round>>>
+             inside_assignable<detail::clamp_twin<B, Round>, N, flags_of<detail::clamp_twin<B, Round>>>
 [[nodiscard]] constexpr B clamp_cast(N value) {
     return B::from_raw(detail::clamp_twin<B, Round>{value}.raw());
 }
@@ -51,7 +51,7 @@ template <insidable B, policy_flag Round = none, numeric N>
 template <insidable B, numeric N>
     requires inside_assignable<detail::cast_twin<B, wrap, detail::range_flags>,
                                N,
-                               policy_of<detail::cast_twin<B, wrap, detail::range_flags>>>
+                               flags_of<detail::cast_twin<B, wrap, detail::range_flags>>>
 [[nodiscard]] constexpr B wrap_cast(N value) {
     return B::from_raw(detail::cast_twin<B, wrap, detail::range_flags>{value}.raw());
 }
@@ -61,7 +61,7 @@ template <insidable B, numeric N>
 // name it), errc::rounding_error off the notch. Any numeric source, insides
 // included; once both checks pass the store is exact.
 template <insidable B, numeric A>
-    requires inside_assignable<B, A, policy_of<B> | snap>
+    requires inside_assignable<B, A, flags_of<B> | snap>
 [[nodiscard]] constexpr B checked_cast(A value) {
     if (conversion_overflows<B>(value))
         detail::raise(errc::overflow, "checked_cast: value out of inside interval");

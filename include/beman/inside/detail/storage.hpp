@@ -16,7 +16,7 @@
 namespace beman::inside::detail {
 //-------------------------------------------------------------------------
 // Storage — how an inside's value lives in its raw, a function of the grid
-// alone (grid.hpp storage_min). The leaves partition every
+// alone (grid.hpp raw_for). The leaves partition every
 // inside; each names the raw type and what it means:
 //
 //   value_storage — the raw IS the value
@@ -187,7 +187,7 @@ inline constexpr imax upper_imax = trunc(detail::upper64<B>);
 // Slot count via grid::max_index (overflow-safe: 0 when it doesn't fit umax,
 // for grids with a wide index, which take the exact wide paths).
 template <insidable B>
-inline constexpr umax max_index_v = grid_of<B>.max_index();
+inline constexpr umax max_index_of = grid_of<B>.max_index();
 
 // Every value — and, for index storage, every slot — fits imax. Gates the
 // integer fast paths that work in imax (raw_imax / to_value / raw_lo /
@@ -196,7 +196,7 @@ inline constexpr umax max_index_v = grid_of<B>.max_index();
 template <insidable B>
 inline constexpr bool values_fit_imax =
     !wide_valued<B> && fits_imax(interval_of<B>) &&
-    (value_storage<B> || max_index_v<B> <= static_cast<umax>(std::numeric_limits<imax>::max()));
+    (value_storage<B> || max_index_of<B> <= static_cast<umax>(std::numeric_limits<imax>::max()));
 
 // Every value's reduced numerator and denominator fit imax too: a value
 // within int64 can still have a numerator past it ((2^63 + 1)/2). An
@@ -335,7 +335,7 @@ template <insidable B>
 inline constexpr imax raw_lo = integer_value_storage<B> ? lower_imax<B> : 0;
 
 template <insidable B>
-inline constexpr imax raw_hi = integer_value_storage<B> ? upper_imax<B> : static_cast<imax>(max_index_v<B>);
+inline constexpr imax raw_hi = integer_value_storage<B> ? upper_imax<B> : static_cast<imax>(max_index_of<B>);
 
 // The exact raw range: 0 .. slot count for index storage, Lower .. Upper
 // for value storage (integers there). Sizes the work types below.
@@ -399,13 +399,13 @@ constexpr raw_t<L> raw_from_offset(W offset) noexcept {
 }
 
 // The raw of L's Lower (low) or Upper endpoint: the exact constant for a
-// rational raw, slot 0 or max_index_v for an integer one.
+// rational raw, slot 0 or max_index_of for an integer one.
 template <insidable L>
 constexpr raw_t<L> endpoint_raw(bool low) noexcept {
     if constexpr (rational_storage<L>)
         return low ? detail::lower64<L> : detail::upper64<L>;
     else
-        return raw_from_offset<L>(low ? umax{0} : max_index_v<L>);
+        return raw_from_offset<L>(low ? umax{0} : max_index_of<L>);
 }
 
 // The raw of a value v on L's lattice within [Lower, Upper], through its
@@ -435,7 +435,7 @@ inline constexpr bool integer_lattice =
 // Composite flags (e.g. round_nearest = bit5 | snap) require all
 // their bits set — having a subset like just `snap` does NOT match.
 template <insidable B, typename P, policy_flag F>
-inline constexpr bool has_policy = has_flag(policy_of<B>, F) || plain_t<P>::test(F);
+inline constexpr bool has_policy = has_flag(flags_of<B>, F) || plain_t<P>::test(F);
 
 // rounding_of (policy_flag.hpp) over L's type policy and the call's policy P.
 template <insidable L, typename P>

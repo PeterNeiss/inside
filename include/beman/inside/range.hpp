@@ -27,9 +27,9 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P>> {
     using value_type = inside<G, P>;
     // The iterator's difference is an imax: end() − begin() must be the count.
     static_assert(G.max_index_representable() &&
-                      detail::max_index_v<value_type> < static_cast<umax>(std::numeric_limits<imax>::max()),
+                      detail::max_index_of<value_type> < static_cast<umax>(std::numeric_limits<imax>::max()),
                   "inside_range: the grid has more points than an iterator difference (int64) can count");
-    static constexpr umax slot_count = detail::max_index_v<value_type> + 1;
+    static constexpr umax slot_count = detail::max_index_of<value_type> + 1;
 
     struct iterator {
         using iterator_concept  = std::random_access_iterator_tag;
@@ -119,8 +119,8 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P>> {
 // values<T>: every value of T, Lower to Upper, as a random-access sized range.
 // A cursor has none: its grid ends past T's Upper.
 template <insidable T>
-    requires(notch_of<T> != 0 && !has_flag(policy_of<T>, detail::cursor_marker))
-inline constexpr inside_range<grid_of<T>, policy_of<T>> values{};
+    requires(notch_of<T> != 0 && !has_flag(flags_of<T>, detail::cursor_marker))
+inline constexpr inside_range<grid_of<T>, flags_of<T>> values{};
 
 } // namespace beman::inside
 

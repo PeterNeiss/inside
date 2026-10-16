@@ -2,7 +2,7 @@
 #ifndef BEMAN_INSIDE_DETAIL_FLOAT_BITS_HPP
 #define BEMAN_INSIDE_DETAIL_FLOAT_BITS_HPP
 
-#include <beman/inside/math.hpp>         // umax, imax
+#include <beman/inside/numbers.hpp>      // umax, imax
 #include <beman/inside/detail/debug.hpp> // errc, detail::raise
 
 #include <bit>
@@ -176,7 +176,7 @@ constexpr std::pair<umax, umax> abs_fraction(double value, bool& exact) {
     // exp2 < 0 → den = 2^(-exp2), capped at 2^62 (den is stored signed). Beyond
     // the cap the value is too small to keep: drop the significand's low bits
     // (shift ≥ 64 folds to zero). Reachable for every subnormal and normals
-    // below ~2^-62, where the significand collapses to 0 (0/d canonicalises to 0/1).
+    // below ~2^-62, where the significand collapses to 0 (0/d canonicalizes to 0/1).
     int           den_pow = -exp2;
     constexpr int max_pow = 62;
     if (den_pow > max_pow) {

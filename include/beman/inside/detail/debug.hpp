@@ -17,7 +17,7 @@
 
 //---------------------------------------------------------------------------
 // Attribute shims. Error/throw paths are marked cold + non-inline so the
-// optimiser keeps them out of the hot path (and out of the inlined body of
+// optimizer keeps them out of the hot path (and out of the inlined body of
 // otherwise-trivial assignment/arithmetic). Standard [[noreturn]] / [[unlikely]]
 // are used directly at the throw sites and branches.
 //---------------------------------------------------------------------------

@@ -822,10 +822,10 @@ inline constexpr imax max_abs_int = ceil_abs(lower_of<In>) > ceil_abs(upper_of<I
 
 // Policy of a deduced output: the input's (no cursor), rounding to nearest.
 template <insidable In>
-inline constexpr policy_flag auto_policy = (policy_of<In> & ~cursor_marker) | round_nearest;
+inline constexpr policy_flag result_policy = (flags_of<In> & ~cursor_marker) | round_nearest;
 
 template <insidable In, grid_rational Lo, grid_rational Hi>
-using auto_grid_t = inside<{{Lo, Hi}, notch_of<In>}, auto_policy<In>>;
+using result_grid_t = inside<{{Lo, Hi}, notch_of<In>}, result_policy<In>>;
 
 // The bound of Core's result at In's lower or upper end.
 template <insidable In, typename Core, bool AtUpper, bool Up>
@@ -833,9 +833,9 @@ inline constexpr grid_rational bound_at =
     lattice_bound<notch_of<In>, Up>(Core{grid_input<In>(AtUpper ? upper_of<In> : lower_of<In>)});
 
 template <insidable In, typename Core>
-using increasing_t = auto_grid_t<In, bound_at<In, Core, false, false>, bound_at<In, Core, true, true>>;
+using increasing_t = result_grid_t<In, bound_at<In, Core, false, false>, bound_at<In, Core, true, true>>;
 template <insidable In, typename Core>
-using decreasing_t = auto_grid_t<In, bound_at<In, Core, true, false>, bound_at<In, Core, false, true>>;
+using decreasing_t = result_grid_t<In, bound_at<In, Core, true, false>, bound_at<In, Core, false, true>>;
 
 // Growth bounds for the deduction: |result| < 2^kmax over In.
 template <insidable In>
@@ -870,7 +870,7 @@ inline constexpr int pow_kmax = [] {
 // inputs that other outputs take, such as a base reaching 0).
 template <insidable Out, typename Grow>
 inline constexpr int grow_kmax = [] {
-    if constexpr (has_flag(policy_of<Out>, wrap)) {
+    if constexpr (has_flag(flags_of<Out>, wrap)) {
         constexpr int g = Grow::bits;
         return g > out_kmax<Out> ? g : out_kmax<Out>;
     } else

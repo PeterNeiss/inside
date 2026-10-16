@@ -34,8 +34,8 @@ std::vector<rational> quarter_steps() {
 
 TEST(Cursor, type) {
     static_assert(grid_of<cur> == grid{{-4, 4.25_r}, 0.25_r});
-    static_assert(has_flag(policy_of<cur>, round_nearest));
-    static_assert(has_flag(policy_of<cur>, cursor_marker));
+    static_assert(has_flag(flags_of<cur>, round_nearest));
+    static_assert(has_flag(flags_of<cur>, cursor_marker));
     static_assert(index_storage<cur>);
     static_assert(std::is_same_v<raw_t<cur>, std::uint8_t>);
     // a whole-number cursor stores its value, and still starts at Lower
@@ -111,11 +111,11 @@ TEST(Cursor, steps_and_ends) {
 
 TEST(Cursor, marker_does_not_leak) {
     cur t = 1_ins;
-    static_assert(!has_flag(policy_of<decltype(t + t)>, cursor_marker));
-    static_assert(!has_flag(policy_of<decltype(t * t)>, cursor_marker));
-    static_assert(!has_flag(policy_of<decltype(-t)>, cursor_marker));
-    static_assert(!has_flag(policy_of<decltype(math::exp(t))>, cursor_marker));
-    static_assert(!has_flag(policy_of<decltype(math::abs(t))>, cursor_marker));
+    static_assert(!has_flag(flags_of<decltype(t + t)>, cursor_marker));
+    static_assert(!has_flag(flags_of<decltype(t * t)>, cursor_marker));
+    static_assert(!has_flag(flags_of<decltype(-t)>, cursor_marker));
+    static_assert(!has_flag(flags_of<decltype(math::exp(t))>, cursor_marker));
+    static_assert(!has_flag(flags_of<decltype(math::abs(t))>, cursor_marker));
     static_assert(!has_end<time_t_>); // only a cursor has an end
     static_assert(has_end<cur>);
 }

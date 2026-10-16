@@ -234,7 +234,7 @@ TEST(PerfPathsTest, fraction_and_to_value_fast_paths_match_rational) {
 //---------------------------------------------------------------------------
 template <typename X>
 void expect_algebraic_matches_rational() {
-    for (const X x : inside_range<grid_of<X>, policy_of<X>>{}) {
+    for (const X x : inside_range<grid_of<X>, flags_of<X>>{}) {
         const rational r{x};
         EXPECT_EQ(rational{math::abs(x)}, abs(r));
         EXPECT_EQ(rational{math::floor(x)}, rational{floor(r)});
@@ -247,8 +247,8 @@ void expect_algebraic_matches_rational() {
 // copysign and fmod onto their deduced outputs match the exact results.
 template <typename X, typename Y>
 void expect_copysign_fmod_match_rational() {
-    for (const X x : inside_range<grid_of<X>, policy_of<X>>{})
-        for (const Y y : inside_range<grid_of<Y>, policy_of<Y>>{}) {
+    for (const X x : inside_range<grid_of<X>, flags_of<X>>{})
+        for (const Y y : inside_range<grid_of<Y>, flags_of<Y>>{}) {
             const rational rx{x}, ry{y};
             EXPECT_EQ(rational{math::copysign(x, y)}, ry < 0 ? -abs(rx) : abs(rx));
             if (ry != 0) {

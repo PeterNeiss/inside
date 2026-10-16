@@ -148,7 +148,7 @@ namespace detail {
 // inside ⋈ arithmetic scalar. Integer storage compares as integers when the
 // scalar's type fits imax, and in double when it is floating point and the
 // grid's values are exact in double; everything else goes through rational.
-template <insidable B, arithmetic A, class Cmp>
+template <insidable B, plain_number A, class Cmp>
 constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
     constexpr bool imax_scalar = std::signed_integral<A> || (std::unsigned_integral<A> && sizeof(A) < sizeof(imax));
     constexpr bool double_exact_values =
@@ -192,7 +192,7 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
 }
 } // namespace detail
 
-template <insidable B, detail::arithmetic A>
+template <insidable B, detail::plain_number A>
 [[nodiscard]] constexpr auto operator<=>(const B& lhs, A rhs) {
     if constexpr (std::floating_point<A>)
         return detail::compare_scalar(lhs, rhs, detail::three_way_partial);
@@ -200,7 +200,7 @@ template <insidable B, detail::arithmetic A>
         return detail::compare_scalar(lhs, rhs, detail::three_way);
 }
 
-template <insidable B, detail::arithmetic A>
+template <insidable B, detail::plain_number A>
 [[nodiscard]] constexpr bool operator==(const B& lhs, A rhs) {
     return detail::compare_scalar(lhs, rhs, detail::equal_to);
 }

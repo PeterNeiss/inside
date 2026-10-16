@@ -190,7 +190,7 @@ TEST(ConsistencyTest, continuous_arithmetic_is_overflow_checked) {
     using E = inside<{{0, 1}, rational{0}}>;
     static_assert(detail::is_expected_v<decltype(E{q(1, 3)} + E{q(1, 7)})>);
     using D = inside<{0, 10}, checked>;
-    static_assert(has_flag(policy_of<decltype(D{1} + D{2})>, checked));
+    static_assert(has_flag(flags_of<decltype(D{1} + D{2})>, checked));
 }
 
 //---------------------------------------------------------------------------

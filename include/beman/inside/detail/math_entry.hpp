@@ -180,7 +180,7 @@ inline bool fp_decide(double v, double bound, Out& out) noexcept {
     if (!(j >= lo && j <= hi)) {
         // Decided past an end: a clamp Out takes the end here; any other
         // policy reports or wraps on the integer path.
-        if constexpr (has_flag(policy_of<Out>, clamp)) {
+        if constexpr (has_flag(flags_of<Out>, clamp)) {
             if (j < lo) {
                 store_slot(0, out);
                 return true;
@@ -310,7 +310,7 @@ inline bool dd_decide(ddk::dd v, double bound, Out& out) noexcept {
             j += 1;
     }
     if (j < first || j > last) {
-        if constexpr (has_flag(policy_of<Out>, clamp)) { // as fp_decide
+        if constexpr (has_flag(flags_of<Out>, clamp)) { // as fp_decide
             store_slot(j < first ? umax{0} : static_cast<umax>(last) - static_cast<umax>(first), out);
             return true;
         }
@@ -743,7 +743,7 @@ constexpr auto anchored_input(const In& x) {
         return x;
     else
         return inside<grid{grid_of<In>.Interval, grid_of<In>.value_unit()},
-                      policy_of<In> & ~::beman::inside::detail::cursor_marker>{x};
+                      flags_of<In> & ~::beman::inside::detail::cursor_marker>{x};
 }
 
 template <insidable Out>
@@ -754,7 +754,7 @@ template <insidable Out, policy_flag R, grid_rational Unit = half_unit<Out>>
 using bracket_t = inside<grid{{::beman::inside::detail::grid_sub(lower_of<Out>, notch_of<Out>),
                                ::beman::inside::detail::grid_add(upper_of<Out>, notch_of<Out>)},
                               Unit},
-                         R | (policy_of<Out> & clamp)>;
+                         R | (flags_of<Out> & clamp)>;
 
 // The integer form: a bracket 1024 times finer than half_unit, counted in
 // imax. Rounded down there, the value lies in [y, y + F); only when y is
@@ -788,7 +788,7 @@ constexpr std::optional<imax> bracket_slot(imax num, bool negative) noexcept {
                                            negative,
                                            classify_remainder(m, static_cast<umax>(r), static_cast<umax>(den)),
                                            ((q & 1) != 0) != lower_index_odd<Out>);
-    if (k < 0 || static_cast<umax>(k) > max_index_v<Out>)
+    if (k < 0 || static_cast<umax>(k) > max_index_of<Out>)
         return std::nullopt;
     return k;
 }
@@ -796,7 +796,7 @@ constexpr std::optional<imax> bracket_slot(imax num, bool negative) noexcept {
 // fn.operator()<O>(xs...) for an anchored O: Out's result, or its error.
 template <insidable Out, typename Fn, insidable... Ins>
 constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
-    static_assert(anchored<Out> || !has_flag(policy_of<Out>, wrap),
+    static_assert(anchored<Out> || !has_flag(flags_of<Out>, wrap),
                   "beman::inside::math: wrap onto a grid that does not pass through 0 is not supported - "
                   "use clamp, or an anchored output grid");
     using ::beman::inside::detail::expected_like;
@@ -845,10 +845,10 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
                            exact_of_grid<exact_min_limbs>(F);
         if constexpr (checked) {
             errc      ec{};
-            const Out out = ax::store_exact<Out>(v, make_policy<policy_of<Out>>(ec));
+            const Out out = ax::store_exact<Out>(v, make_policy<flags_of<Out>>(ec));
             return ec == errc{} ? Res{out} : Res{std::unexpected{ec}};
         } else
-            return ax::store_exact<Out>(v, make_policy<policy_of<Out>>());
+            return ax::store_exact<Out>(v, make_policy<flags_of<Out>>());
     } else {
         const auto lo                   = fn.template operator()<bracket_t<Out, round_floor>>(anchored_input(xs)...);
         const auto hi                   = fn.template operator()<bracket_t<Out, round_ceil>>(anchored_input(xs)...);
@@ -864,10 +864,10 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
             if (!hi)
                 return R{std::unexpected{hi.error()}};
             errc      ec{};
-            const Out out = ax::store_exact<Out>(mid(*lo, *hi), make_policy<policy_of<Out>>(ec));
+            const Out out = ax::store_exact<Out>(mid(*lo, *hi), make_policy<flags_of<Out>>(ec));
             return ec == errc{} ? R{out} : R{std::unexpected{ec}};
         } else
-            return ax::store_exact<Out>(mid(lo, hi), make_policy<policy_of<Out>>());
+            return ax::store_exact<Out>(mid(lo, hi), make_policy<flags_of<Out>>());
     }
 }
 
@@ -944,7 +944,7 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
 // rounding mode, like any assignment that may round.
 template <insidable Out>
 consteval void require_rounding() noexcept {
-    static_assert(has_flag(policy_of<Out>, snap) || !ax::notched<Out>,
+    static_assert(has_flag(flags_of<Out>, snap) || !ax::notched<Out>,
                   "beman::inside::math: the result is rounded onto Out's grid - Out must permit rounding "
                   "(declare it with round_nearest, round_floor, ...)");
 }
@@ -1074,7 +1074,7 @@ inline constexpr bool tan_domain = true;
 template <insidable Out, insidable In>
 [[nodiscard]] constexpr std::expected<Out, errc> tan_into(In x) {
     require_rounding<Out>();
-    static_assert(!has_flag(policy_of<Out>, wrap),
+    static_assert(!has_flag(flags_of<Out>, wrap),
                   "beman::inside::math::tan: wrap is not supported - tan has no bound near its poles, so "
                   "the folded value cannot be computed; take an Out with clamp or the default policy");
     if constexpr (anchoring::unanchored_call<Out, In>)
@@ -1197,7 +1197,7 @@ template <insidable Out, imax Base, insidable In>
 //---------------------------------------------------------------------------
 template <insidable In>
 consteval bool deducible() noexcept {
-    static_assert(has_flag(policy_of<In>, snap),
+    static_assert(has_flag(flags_of<In>, snap),
                   "beman::inside::math: a deduced result is rounded onto the input's grid - its operand "
                   "must permit rounding (declare it with round_nearest, round_floor, ...)");
     static_assert(::beman::inside::detail::notched<In>,
@@ -1205,7 +1205,7 @@ consteval bool deducible() noexcept {
     return true;
 }
 
-namespace auto_t {
+namespace results {
 template <insidable In>
 using exp = ax::increasing_t<In, ax::exp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::exp_kmax<In>>>;
 template <insidable In>
@@ -1240,11 +1240,11 @@ template <insidable In>
 using atanh =
     ax::increasing_t<In, ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::atanh, ax::input_bits<In>>>;
 template <insidable In>
-using sin = inside<{{-1, 1}, notch_of<In>}, ax::auto_policy<In>>;
+using sin = inside<{{-1, 1}, notch_of<In>}, ax::result_policy<In>>;
 template <insidable In>
 using cos = sin<In>;
 template <insidable In>
-using tan = inside<{{-1024, 1024}, notch_of<In>}, ax::auto_policy<In>>;
+using tan = inside<{{-1024, 1024}, notch_of<In>}, ax::result_policy<In>>;
 
 // cosh is even: its least value is 1 when In spans 0, else at the end
 // nearer 0.
@@ -1260,17 +1260,17 @@ inline constexpr grid_rational cosh_hi =
         ? ax::bound_at<In, cosh_core<In>, false, true>
         : ax::bound_at<In, cosh_core<In>, true, true>;
 template <insidable In>
-using cosh = ax::auto_grid_t<In, cosh_lo<In>, cosh_hi<In>>;
+using cosh = ax::result_grid_t<In, cosh_lo<In>, cosh_hi<In>>;
 
 // sqrt of a mixed-sign input: [0, √max(|Lower|, |Upper|)].
 template <insidable In>
 inline constexpr grid_rational max_abs = (-lower_of<In> > upper_of<In>) ? -lower_of<In> : upper_of<In>;
 template <insidable In>
 using sqrt_signed =
-    ax::auto_grid_t<In,
-                    grid_rational{0},
-                    ax::lattice_bound<notch_of<In>, true>(
-                        ax::sqrt_core<ax::input_limbs<In>, ax::input_bits<In>>{ax::grid_input<In>(max_abs<In>)})>;
+    ax::result_grid_t<In,
+                      grid_rational{0},
+                      ax::lattice_bound<notch_of<In>, true>(
+                          ax::sqrt_core<ax::input_limbs<In>, ax::input_bits<In>>{ax::grid_input<In>(max_abs<In>)})>;
 
 // pow_base: pow_core with the base bound.
 template <imax Base, std::size_t E, int Mag, int KMax>
@@ -1291,7 +1291,7 @@ template <insidable A, insidable B>
 inline constexpr grid_rational pi_up =
     ax::lattice_bound<ax::gcd_notch<A, B>, true>(ax::atan2_core<1>{ax::exact_int<1>(0), ax::exact_int<1>(-1)});
 template <insidable InY, insidable InX>
-using atan2 = inside<{{-pi_up<InY, InX>, pi_up<InY, InX>}, ax::gcd_notch<InY, InX>}, ax::auto_policy<InY>>;
+using atan2 = inside<{{-pi_up<InY, InX>, pi_up<InY, InX>}, ax::gcd_notch<InY, InX>}, ax::result_policy<InY>>;
 
 // hypot: [0, hypot of the largest magnitudes] on the gcd notch.
 template <insidable InX, insidable InY>
@@ -1305,7 +1305,7 @@ inline constexpr grid_rational hypot_hi = [] {
         ax::sqrt_core<hypot_limbs<InX, InY>, ax::hypot_bits<InX, InY>>{a * a + b * b});
 }();
 template <insidable InX, insidable InY>
-using hypot = inside<{{0, hypot_hi<InX, InY>}, ax::gcd_notch<InX, InY>}, ax::auto_policy<InX>>;
+using hypot = inside<{{0, hypot_hi<InX, InY>}, ax::gcd_notch<InX, InY>}, ax::result_policy<InX>>;
 
 // pow: b^e is monotone in each argument for b > 0, so the extremes are at
 // the corners of the input rectangle. Notch of the base.
@@ -1332,15 +1332,16 @@ inline constexpr grid_rational pow_extreme = [] {
     return m;
 }();
 template <insidable InB, insidable InE>
-using pow = inside<{{pow_extreme<InB, InE, false>, pow_extreme<InB, InE, true>}, notch_of<InB>}, ax::auto_policy<InB>>;
-} // namespace auto_t
+using pow =
+    inside<{{pow_extreme<InB, InE, false>, pow_extreme<InB, InE, true>}, notch_of<InB>}, ax::result_policy<InB>>;
+} // namespace results
 
 #define BEMAN_INSIDE_AX_AUTO(fn)                                                               \
     template <insidable In>                                                                    \
     [[nodiscard]] constexpr auto fn(In x) {                                                    \
         static_assert(deducible<In>());                                                        \
         if constexpr (fn##_domain<In>)                                                         \
-            return fn##_into<auto_t::fn<In>>(x);                                               \
+            return fn##_into<results::fn<In>>(x);                                              \
         else                                                                                   \
             return fn##_into<inside<{0, 1}, round_nearest>>(x); /* the _into domain message */ \
     }
@@ -1369,42 +1370,42 @@ template <insidable In>
     requires(lower_of<In> >= 0)
 [[nodiscard]] constexpr auto sqrt(In x) {
     static_assert(deducible<In>());
-    return sqrt_into<auto_t::sqrt<In>>(x);
+    return sqrt_into<results::sqrt<In>>(x);
 }
 
 template <insidable In>
     requires(lower_of<In> < 0)
 [[nodiscard]] constexpr auto sqrt(In x) {
     static_assert(deducible<In>());
-    return sqrt_into<auto_t::sqrt_signed<In>>(x);
+    return sqrt_into<results::sqrt_signed<In>>(x);
 }
 
 template <imax Base, insidable In>
 [[nodiscard]] constexpr auto pow_base(In x) {
     static_assert(deducible<In>());
     static_assert(Base >= 2, "beman::inside::math::pow_base: Base must be at least 2");
-    return pow_base_into<auto_t::pow_base_t<Base, In>, Base>(x);
+    return pow_base_into<results::pow_base_t<Base, In>, Base>(x);
 }
 
 template <insidable InY, insidable InX>
     requires ax::gcd_notch_fits<InY, InX>
 [[nodiscard]] constexpr auto atan2(InY y, InX x) {
     static_assert(deducible<InY>() && deducible<InX>());
-    return atan2_into<auto_t::atan2<InY, InX>>(y, x);
+    return atan2_into<results::atan2<InY, InX>>(y, x);
 }
 
 template <insidable InX, insidable InY>
     requires ax::gcd_notch_fits<InX, InY>
 [[nodiscard]] constexpr auto hypot(InX x, InY y) {
     static_assert(deducible<InX>() && deducible<InY>());
-    return hypot_into<auto_t::hypot<InX, InY>>(x, y);
+    return hypot_into<results::hypot<InX, InY>>(x, y);
 }
 
 template <insidable InB, insidable InE>
     requires(lower_of<InB> > 0)
 [[nodiscard]] constexpr auto pow(InB base, InE exp) {
     static_assert(deducible<InB>() && deducible<InE>());
-    return pow_into<auto_t::pow<InB, InE>>(base, exp);
+    return pow_into<results::pow<InB, InE>>(base, exp);
 }
 } // namespace beman::inside::math::adaptive
 

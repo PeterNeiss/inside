@@ -520,7 +520,7 @@ using continuous_raw_t = detail::rational;
 #endif
 
 template <grid G>
-constexpr auto storage_min() {
+constexpr auto raw_for() {
     if constexpr (G.Interval.Lower == G.Interval.Upper)
         return point_slot{};
     else if constexpr (G.Notch == 0)
@@ -537,7 +537,7 @@ constexpr auto storage_min() {
 
 // The raw type of inside<G, P> (the policy plays no part).
 template <grid G>
-using storage_min_t = decltype(storage_min<G>());
+using raw_for_t = decltype(raw_for<G>());
 
 // Dyadic grid: power-of-2 notch denominator and Lower denominator, so every
 // on-grid value is a binary fraction (a double when it fits double_exact).

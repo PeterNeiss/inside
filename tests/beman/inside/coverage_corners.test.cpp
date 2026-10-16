@@ -13,7 +13,7 @@
 #include <beman/inside/casts.hpp>
 #include <beman/inside/predicates.hpp>
 #include <beman/inside/io.hpp>
-#include <beman/inside/math.hpp>
+#include <beman/inside/numbers.hpp>
 #include <beman/inside/detail/rational.hpp>
 
 #include <gtest/gtest.h>
@@ -165,7 +165,7 @@ TEST(CoverageCornersTest, rational_to_string_zero_pads_short_decimal_fractions) 
 }
 
 //---------------------------------------------------------------------------
-// math.hpp:158-166 — constexpr ldexp into the subnormal range, including the
+// float_bits.hpp — constexpr ldexp into the subnormal range, including the
 // round-to-nearest-even ++mantissa at :165-166. Validated against std::ldexp.
 //---------------------------------------------------------------------------
 // ldexp into subnormal range matches std::ldexp (with rounding)
@@ -182,8 +182,8 @@ TEST(CoverageCornersTest, ldexp_into_subnormal_range_matches_std_ldexp_with_roun
 }
 
 //---------------------------------------------------------------------------
-// math.hpp:193-194 — abs_fraction on a subnormal (no implicit leading 1)
-// math.hpp:215-219 — magnitudes below ~2^-62: significand-drop / flush-to-zero
+// float_bits.hpp — abs_fraction on a subnormal (no implicit leading 1)
+// float_bits.hpp — magnitudes below ~2^-62: significand-drop / flush-to-zero
 //---------------------------------------------------------------------------
 // rational from subnormal and very small doubles
 TEST(CoverageCornersTest, rational_from_subnormal_and_very_small_doubles) {

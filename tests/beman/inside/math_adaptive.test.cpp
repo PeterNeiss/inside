@@ -156,7 +156,7 @@ ld notch_ld() {
 template <typename Out, typename In, typename Fn, typename Ref>
 int check_rounding(Fn fn, Ref ref, int stride = 1) {
     const ld       n          = notch_ld<Out>();
-    constexpr bool floor_mode = detail::rounding_of(policy_of<Out>) == detail::round_mode::floor;
+    constexpr bool floor_mode = detail::rounding_of(flags_of<Out>) == detail::round_mode::floor;
     int            bad        = 0;
     const auto     count      = static_cast<long long>(grid_of<In>.slot_count());
     for (long long i = 0; i <= count; i += stride) {

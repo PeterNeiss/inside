@@ -34,12 +34,12 @@ consteval policy_flag cursor_policy(policy_flag p) { return p | cursor_marker; }
 } // namespace detail
 
 template <insidable T, auto Step = notch_of<T>>
-using cursor = inside<detail::cursor_grid<T>(Step), detail::cursor_policy(policy_of<T>)>;
+using cursor = inside<detail::cursor_grid<T>(Step), detail::cursor_policy(flags_of<T>)>;
 
 // end(t): a cursor's past-the-end value, one step past T's Upper. Only a
 // cursor has one — on any other inside its Upper is a value, not an end.
 template <insidable B>
-    requires(has_flag(policy_of<B>, detail::cursor_marker))
+    requires(has_flag(flags_of<B>, detail::cursor_marker))
 [[nodiscard]] constexpr auto end(const B&) noexcept {
     return just<upper_of<B>>;
 }

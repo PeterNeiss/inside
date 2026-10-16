@@ -234,7 +234,7 @@ struct approx {
 // mode, when both ends of its error interval round to the same slot.
 //---------------------------------------------------------------------------
 template <insidable Out>
-inline constexpr round_mode out_rounding = rounding_of(policy_of<Out>);
+inline constexpr round_mode out_rounding = rounding_of(flags_of<Out>);
 
 // Limbs for the exact value Y/2^W of a K-limb approx, with room for the
 // product with Out's notch in exact_index.
@@ -491,7 +491,7 @@ constexpr decision<Out, K> decide(const approx<K>& a) noexcept {
     // Both ends past the same end of Out's range also decide: the policy
     // (clamp, or an overflow report) sees the same thing for every value there.
     // Not under wrap: it folds each value there to a different point.
-    if constexpr (has_flag(policy_of<Out>, wrap))
+    if constexpr (has_flag(flags_of<Out>, wrap))
         return {lo == hi, lo};
     constexpr I count = static_cast<I>(grid_of<Out>.slot_count());
     const bool  below = lo.negative() && hi.negative();
@@ -544,7 +544,7 @@ constexpr Out store(const wide_sint<K>& index, P&& policy) {
 
 template <insidable Out, std::size_t K>
 constexpr Out store(const wide_sint<K>& index) {
-    return store<Out>(index, make_policy<policy_of<Out>>());
+    return store<Out>(index, make_policy<flags_of<Out>>());
 }
 
 // An exact value through Out's policy (an output without slots, or an exact
@@ -729,7 +729,7 @@ struct result_table {
 
 template <insidable Out, int W0, typename Core>
 constexpr Out evaluate(const Core& core) {
-    return evaluate<Out, W0>(core, make_policy<policy_of<Out>>());
+    return evaluate<Out, W0>(core, make_policy<flags_of<Out>>());
 }
 
 // The checked form: a result Out's policy reports (out of range without
@@ -737,7 +737,7 @@ constexpr Out evaluate(const Core& core) {
 template <insidable Out, int W0, typename Core>
 constexpr std::expected<Out, errc> evaluate_checked(const Core& core) {
     errc      ec{};
-    const Out out = evaluate<Out, W0>(core, make_policy<policy_of<Out>>(ec));
+    const Out out = evaluate<Out, W0>(core, make_policy<flags_of<Out>>(ec));
     if (ec != errc{})
         return std::unexpected{ec};
     return out;

@@ -84,7 +84,7 @@ struct inside {
     static_assert(!(P & clamp) || !(P & wrap), "clamp and wrap are mutually exclusive");
 
     using negated_type = inside<-G, P & ~detail::cursor_marker>; // −cursor is no cursor
-    using raw_type     = detail::storage_min_t<G>;
+    using raw_type     = detail::raw_for_t<G>;
 
   private:
     [[no_unique_address]] raw_type Raw; // empty for a point grid
@@ -143,7 +143,7 @@ struct inside {
     // relaxes the interval/notch clause, e.g. clamp_cast<B, round_nearest>(some_inside)) and
     // apply to this store. If it reports an error (ec mode), Raw is ill-defined.
     template <numeric A, typename Pol>
-        requires inside_assignable<inside, A, P | detail::policy_flags_of<std::remove_cvref_t<Pol>>>
+        requires inside_assignable<inside, A, P | flags_of<Pol>>
     constexpr inside(A value, Pol&& pol) : Raw{} {
         store_value(value, pol);
     }
@@ -643,7 +643,7 @@ struct inside {
     // as it does for div/mod.
     template <insidable R>
     constexpr inside& report_div_by_zero() {
-        if constexpr (!has_flag(P | policy_of<R>, ignore_zero))
+        if constexpr (!has_flag(P | flags_of<R>, ignore_zero))
             make_policy<P>().report(errc::division_by_zero);
         return *this;
     }
@@ -783,7 +783,7 @@ struct inside {
     // after the class, so spell the point inside directly.
     constexpr inside& operator++() {
         static_assert(G.Notch != 0, "inside: ++ steps one notch - a grid without a notch has none to step");
-        // constexpr local: the point inside is materialised at compile time.
+        // constexpr local: the point inside is materialized at compile time.
         constexpr auto kStep = inside<grid{G.Notch}>::from_raw({});
         return *this += kStep;
     }
@@ -871,13 +871,13 @@ BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::expected<B, errc> parse_w
     constexpr std::size_t K = exact_max<exact_limbs<B>, parse_limbs>;
     auto                  w = parse_exact<K>(first, last);
     if (!w && w.error() == errc::overflow)
-        if (const auto t = stand_in<B, K, static_cast<bool>((policy_of<B> | F) & wrap)>(first, last))
+        if (const auto t = stand_in<B, K, static_cast<bool>((flags_of<B> | F) & wrap)>(first, last))
             w = *t;
     if (!w)
         return std::unexpected{w.error()};
     errc ec{};
     B    b{};
-    assign_exact<rational>(b, *w, make_policy<policy_of<B> | F>(ec), no_action{});
+    assign_exact<rational>(b, *w, make_policy<flags_of<B> | F>(ec), no_action{});
     if (ec != errc{})
         return std::unexpected{ec};
     return b;
@@ -926,7 +926,7 @@ template <insidable B>
     }
     errc ec{};
     B    b{};
-    detail::assign_exact<detail::rational>(b, *w, make_policy<policy_of<B>>(ec), no_action{});
+    detail::assign_exact<detail::rational>(b, *w, make_policy<flags_of<B>>(ec), no_action{});
     if (ec != errc{})
         return std::unexpected{ec};
     return b;

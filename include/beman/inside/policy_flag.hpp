@@ -65,7 +65,7 @@ inline constexpr policy_flag clamp{1ull << 32}; // saturate to boundary
 inline constexpr policy_flag wrap{1ull << 33};  // modular arithmetic
 
 // No flag picks the raw: storage follows the grid alone (grid.hpp
-// storage_min, docs/storage.md).
+// raw_for, docs/storage.md).
 
 // opt-out of `checked`: no domain/round/overflow/div-by-zero checks (reading
 // out-of-range or dividing by zero is UB; `/= 0` no-ops, `a / 0` skips the
