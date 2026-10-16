@@ -595,6 +595,10 @@ template <magnitude M, unit B>
 consteval auto operator*(mag_t<M>, unit_t<B>) {
     return unit_t<detail::unit_scaled(B, M)>{};
 }
+template <magnitude M, unit B>
+consteval auto operator/(mag_t<M>, unit_t<B>) {
+    return unit_t<detail::unit_scaled(detail::unit_pow(B, -1), M)>{};
+}
 template <int N, unit A>
 consteval auto pow(unit_t<A>) {
     return unit_t<detail::unit_pow(A, N)>{};
@@ -1735,6 +1739,21 @@ inline constexpr auto hectare = hecto(are);
 #if BEMAN_INSIDE_BIG_GRIDS
 BEMAN_INSIDE_UNIT(si, dalton, "Da", mag<1.66053906660e-27_g>* si::kilogram)
 BEMAN_INSIDE_UNIT(si, electronvolt, "eV", mag<1.602176634e-19_g>* si::joule)
+#endif
+
+// The defining constants of the SI (2019) and standard gravity, as units:
+// just<1> * si2019::speed_of_light_in_vacuum is c, exactly, and .in(m/s)
+// gives its number. h, e, k and N_A need grid numbers past 64 bits.
+BEMAN_INSIDE_UNIT(
+    si2019, hyperfine_structure_transition_frequency_of_cs, "Δν_Cs", "dv_Cs", mag<9'192'631'770>* si::hertz)
+BEMAN_INSIDE_UNIT(si2019, speed_of_light_in_vacuum, "c", mag<299'792'458>* si::metre / si::second)
+BEMAN_INSIDE_UNIT(si2019, luminous_efficacy, "K_cd", mag<683>* si::lumen / si::watt)
+BEMAN_INSIDE_UNIT(si2019, standard_gravity, "g₀", "g_0", mag<rational{980665, 100000}>* si::metre / square(si::second))
+#if BEMAN_INSIDE_BIG_GRIDS
+BEMAN_INSIDE_UNIT(si2019, planck_constant, "h", mag<6.62607015e-34_g>* si::joule* si::second)
+BEMAN_INSIDE_UNIT(si2019, elementary_charge, "e", mag<1.602176634e-19_g>* si::coulomb)
+BEMAN_INSIDE_UNIT(si2019, boltzmann_constant, "k", mag<1.380649e-23_g>* si::joule / si::kelvin)
+BEMAN_INSIDE_UNIT(si2019, avogadro_constant, "N_A", mag<6.02214076e23_g> / si::mole)
 #endif
 
 // International (yard and pound agreement, 1959) and nautical units.

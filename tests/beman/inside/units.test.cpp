@@ -177,11 +177,23 @@ TEST(UnitsTest, text) {
     EXPECT_EQ(os.str(), "5 N");
 }
 
+TEST(UnitsTest, constants_are_units) {
+    const auto c = (just<1> * si2019::speed_of_light_in_vacuum).in(si::metre / si::second);
+    EXPECT_EQ(c.numerical_value(), 299'792'458);
+    EXPECT_EQ(to_string(just<2> * si2019::speed_of_light_in_vacuum), "2 c");
+    const auto g = (just<1> * si2019::standard_gravity).in(si::metre / square(si::second));
+    EXPECT_EQ(to_string(g), "9.80665 m/s²");
+}
+
 #if BEMAN_INSIDE_BIG_GRIDS
 TEST(UnitsTest, big_grid_prefixes_and_units) {
     static_assert(magnitude_of(si::yocto(si::gram).value) == magnitude{1e-27_g});
     const auto e = (just<1> * si::electronvolt).in(si::joule);
     EXPECT_EQ(to_string(e), "0.0000000000000000001602176634 J");
+    // E = h·ν, exactly: one photon of the caesium frequency.
+    const auto en =
+        (just<1> * si2019::planck_constant) * (just<1> * si2019::hyperfine_structure_transition_frequency_of_cs);
+    EXPECT_EQ(to_string(en.in(si::joule)), "0.00000000000000000000000609110229711386655 J");
 }
 #endif
 
