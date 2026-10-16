@@ -21,7 +21,7 @@ namespace beman::inside::detail {
 //
 //   value_storage — the raw IS the value
 //     rational_storage                         a 64-bit rational
-//     fraction_storage                         an wide_rational (continuous, limits past 64 bits)
+//     fraction_storage                         a wide_rational (continuous, limits past 64 bits)
 //     integer_value_storage                    a builtin integer
 //   index_storage — the raw is a 0-based slot index; value = Lower + raw·Notch
 //     point_storage                            empty (point_slot): one slot, the value is the type
@@ -247,7 +247,8 @@ constexpr imax raw_imax(B b) noexcept {
 
 //-------------------------------------------------------------------------
 // Q-format integer fast path: for grids with integer Lower, unit-numerator
-// Notch, and raw fitting imax, value↔raw is pure integer arithmetic. Shared
+// Notch 1/nd, and every value·nd within imax, value↔raw is pure integer
+// arithmetic. Shared
 // by operator rational(), from_value, and assignment::store.
 //-------------------------------------------------------------------------
 template <insidable B>

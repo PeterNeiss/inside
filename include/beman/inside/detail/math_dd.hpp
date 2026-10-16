@@ -572,7 +572,7 @@ inline D hypot(D x, D y) noexcept {
 }
 
 //---------------------------------------------------------------------------
-// The lean kernels: the dd tier's first attempt for sin, cos, exp and exp2.
+// The lean kernels: the dd tier's first attempt for sin, cos, exp, exp2 and log.
 // The tier serves outputs whose value indices stay below 2^62, which about
 // 2^-70 decides nearly always, so these carry in double-double only the
 // terms that need it — the table values, the reduced argument and its

@@ -84,8 +84,7 @@ constexpr const char* errc_message(errc e) noexcept {
 //---------------------------------------------------------------------------
 // inside_error — the exception thrown by the default handler. Derives from
 // std::runtime_error (the library's only <stdexcept> use) and carries the
-// originating `errc` so `catch (inside_error& e) { e.Code; }` replaces the old
-// `e.code() == make_error_code(...)` idiom.
+// originating `errc`: `catch (inside_error& e) { e.Code; }`.
 //---------------------------------------------------------------------------
 struct inside_error : std::runtime_error {
     errc Code;
@@ -132,7 +131,7 @@ namespace detail {
 // Outlined failure funnel. Cold + non-inline so the (rare) machinery is
 // emitted once, off the hot path. Not constexpr: calling it during constant
 // evaluation is ill-formed, which is exactly how the checked compile-time
-// paths hard-fail the build (the old `throw` did the same).
+// paths hard-fail the build.
 //-----------------------------------------------------------------------
 [[noreturn]] BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE inline void raise(errc code, const char* what = nullptr) {
     g_error_handler(code, what ? what : errc_message(code));

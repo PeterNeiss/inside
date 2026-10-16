@@ -146,8 +146,7 @@ constexpr const char* errc_message(errc e) noexcept {
 //---------------------------------------------------------------------------
 // inside_error — the exception thrown by the default handler. Derives from
 // std::runtime_error (the library's only <stdexcept> use) and carries the
-// originating `errc` so `catch (inside_error& e) { e.Code; }` replaces the old
-// `e.code() == make_error_code(...)` idiom.
+// originating `errc`: `catch (inside_error& e) { e.Code; }`.
 //---------------------------------------------------------------------------
 struct inside_error : std::runtime_error {
     errc Code;
@@ -194,7 +193,7 @@ namespace detail {
 // Outlined failure funnel. Cold + non-inline so the (rare) machinery is
 // emitted once, off the hot path. Not constexpr: calling it during constant
 // evaluation is ill-formed, which is exactly how the checked compile-time
-// paths hard-fail the build (the old `throw` did the same).
+// paths hard-fail the build.
 //-----------------------------------------------------------------------
 [[noreturn]] BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE inline void raise(errc code, const char* what = nullptr) {
     g_error_handler(code, what ? what : errc_message(code));
@@ -335,8 +334,8 @@ template <class Op, class... Args>
 
 
 //---------------------------------------------------------------------------
-// math — primitive numeric utilities: umax/imax, smallest_uint_for /
-// smallest_int_for (grid storage selection), the arithmetic/fractional
+// numbers — primitive numeric utilities: umax/imax, smallest_uint_for_t /
+// smallest_int_for_t (grid storage selection), the plain_number/fractional
 // concepts and safe_abs. The floating-point bit helpers are in
 // detail/float_bits.hpp.
 //---------------------------------------------------------------------------
@@ -2152,7 +2151,7 @@ template <plain_number T>
 //---------------------------------------------------------------------------
 // Expected-lifting operators — one generic overload per arithmetic operator
 // that engages when an operand is a std::expected, both unwrap to arithmetic,
-// and at least one to rational. Gating on `arithmetic` (not `insidable`, which
+// and at least one to rational. Gating on `plain_number` (not `insidable`, which
 // isn't visible this low) excludes inside operands, so inside-involving expected
 // expressions partition cleanly to arithmetic.hpp's generic instead.
 //---------------------------------------------------------------------------
@@ -2655,7 +2654,7 @@ using detail::operator""_r;
 // (std::define_static_array) a grid number has no size limit: its limbs are
 // interned in static storage, so equal values stay the same template argument.
 // Without reflection (C++23, older compilers) it is the 64-bit runtime
-// `rational`, and grids keep today's limits. Define the macro to 0 to force the
+// `rational`, and grids keep 64-bit limits. Define the macro to 0 to force the
 // 64-bit grids on a C++26 compiler.
 //
 // The two modes give `grid` and `interval` different layouts, so each mode
@@ -3787,7 +3786,7 @@ inline constexpr policy_flag ignore_range{1ull << 2};
 inline constexpr policy_flag snap{1ull << 4};
 inline constexpr policy_flag round_nearest{(1ull << 5) | snap};
 // Rounding modes each pick a unique bit and OR in `snap`. Conceptually
-// exclusive; combining two is allowed but dispatch (assignment.hpp) picks the
+// exclusive; combining two is allowed but dispatch (storage.hpp) picks the
 // first match: floor → ceil → half_even → nearest → trunc (rounding_for).
 inline constexpr policy_flag round_floor{(1ull << 6) | snap};
 inline constexpr policy_flag round_ceil{(1ull << 7) | snap};
@@ -3909,7 +3908,7 @@ template <typename F>
 }
 
 namespace detail {
-// Action detection: the `*Pred` struct is the primary detector; the concept
+// Action detection: the `is_*_action` trait is the primary detector; the concept
 // derives from it and strips cvref so the ref form matches the value form.
 template <typename T>
 struct is_clamp_action : std::false_type {};
@@ -3954,8 +3953,8 @@ inline constexpr policy_flag implied_flags<on_overflow_t<F>> = checked;
 
 //---------------------------------------------------------------------------
 // Pack helpers — let policy_ref/assignment/arithmetic accept Actions... packs.
-// The `*Pred` structs are reused as template-template parameters (concepts
-// can't be passed as such in C++23).
+// The `is_*_action` traits are passed as template-template parameters
+// (concepts can't be in C++23).
 //---------------------------------------------------------------------------
 
 // True if any element of the pack matches the trait.
@@ -5019,7 +5018,7 @@ namespace beman::inside::detail {
 //
 //   value_storage — the raw IS the value
 //     rational_storage                         a 64-bit rational
-//     fraction_storage                         an wide_rational (continuous, limits past 64 bits)
+//     fraction_storage                         a wide_rational (continuous, limits past 64 bits)
 //     integer_value_storage                    a builtin integer
 //   index_storage — the raw is a 0-based slot index; value = Lower + raw·Notch
 //     point_storage                            empty (point_slot): one slot, the value is the type
@@ -5245,7 +5244,8 @@ constexpr imax raw_imax(B b) noexcept {
 
 //-------------------------------------------------------------------------
 // Q-format integer fast path: for grids with integer Lower, unit-numerator
-// Notch, and raw fitting imax, value↔raw is pure integer arithmetic. Shared
+// Notch 1/nd, and every value·nd within imax, value↔raw is pure integer
+// arithmetic. Shared
 // by operator rational(), from_value, and assignment::store.
 //-------------------------------------------------------------------------
 template <insidable B>
@@ -8675,11 +8675,13 @@ inline constexpr bool mul_defined = [] {
 
 
 //---------------------------------------------------------------------------
-// division / modulo. `division::div` returns expected<result, errc> (division by zero
-// is always runtime-possible). Two paths: native (integer-aligned grids +
-// snap → native integer division) and rational (exact, can overflow under
-// checked). `modulo::mod` is integer-only — non-integer remainders aren't
-// well-defined on fractional notches.
+// division / modulo. `division::div` returns expected<result, errc> unless the
+// divisor's grid excludes zero and the quotient provably fits (then a plain
+// result). Four paths: Q-format (same notch + snap), native integer
+// (integer-aligned grids + snap), point scale (a nonzero point divisor keeps
+// the dividend's lattice) and exact rational (can overflow under checked).
+// `modulo::mod` is integer-only — non-integer remainders aren't well-defined
+// on fractional notches.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 // divmod's result: the rounded quotient and its remainder, for
@@ -9309,7 +9311,7 @@ struct quotient_remainder {
 // before a construction that might throw or report an error:
 //   conversion_overflows<B>(v) — v falls outside B's interval.
 //   conversion_rounds<B>(v)    — v is in-range but off-notch (would round).
-//   conversion_loses<B>(v)  — either of the two.
+//   conversion_loses<B>(v)     — either of the two.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 namespace detail {
@@ -9507,8 +9509,9 @@ constexpr auto abs(In x);
 // inside — defines `inside<G, P>` and its member operators. Free-function
 // arithmetic (arithmetic.hpp), casts (casts.hpp) and `inside_range` (range.hpp)
 // follow in the umbrella. Heavy lifting is delegated to addition/multiplication/division.hpp
-// (per-operator code), assignment.hpp (narrowing/clamp/wrap), and
-// generic.hpp (introspection, storage, inside_assignable) and policy.hpp.
+// (per-operator code), assignment.hpp (narrowing/clamp/wrap), generic.hpp
+// (inside_assignable, over detail/introspection.hpp and detail/storage.hpp)
+// and policy.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 namespace detail {
@@ -9729,8 +9732,8 @@ struct inside {
         else if constexpr (detail::value_storage<inside>)
             return Raw;
         // Q-format-with-integer-Lower fast path skips the generic path's three
-        // rational ops. Falls through to the rational path when the raw is too wide
-        // to widen safely (e.g. uint64 from a Q16.16 × Q16.16 result type).
+        // rational ops. Falls through to the rational path when a value times
+        // the notch's denominator could pass imax (e.g. a Q16.16 × Q16.16 result).
         else if constexpr (detail::qformat_codec_fits<inside>)
             return detail::q_format_decode(*this);
         else {
@@ -10405,7 +10408,7 @@ inline constexpr auto one  = just<1>;
 //   1'000_ins       // inside<{1000}>            digit separator
 //
 // Parse is exact (no double round-trip); same parser backs `_r` in
-// rational.hpp. `-1.5_ins` parses as `-(1.5_ins)`.
+// detail/number_text.hpp. `-1.5_ins` parses as `-(1.5_ins)`.
 //---------------------------------------------------------------------------
 template <char... Chars>
 constexpr auto operator""_ins() {
@@ -11126,8 +11129,7 @@ template <insidable Target, std::ranges::input_range Rng>
 // common_inside — the "hull" type able to hold every value of L and R exactly:
 // interval hull + notch gcd (grid `hull`), checked like arithmetic results.
 // Backs the
-// std::common_type specialization (numeric_limits.hpp) and mixed-grid
-// min/max below. The primary has no `type` when the hull grid is
+// std::common_type specialization and mixed-grid min/max below. The primary has no `type` when the hull grid is
 // unrepresentable, so common_type_t SFINAEs away instead of erroring.
 //---------------------------------------------------------------------------
 namespace detail {
@@ -15064,7 +15066,7 @@ inline D hypot(D x, D y) noexcept {
 }
 
 //---------------------------------------------------------------------------
-// The lean kernels: the dd tier's first attempt for sin, cos, exp and exp2.
+// The lean kernels: the dd tier's first attempt for sin, cos, exp, exp2 and log.
 // The tier serves outputs whose value indices stay below 2^62, which about
 // 2^-70 decides nearly always, so these carry in double-double only the
 // terms that need it — the table values, the reduced argument and its
@@ -17690,7 +17692,7 @@ template <typename V>
 
 //-------------------------------------------------------------------------
 // type_name_of<T> — short raw-type label for to_string_debug. Lives here (not
-// in the core math header) so the core never pulls <string_view>.
+// in numbers.hpp) so the core never pulls <string_view>.
 //-------------------------------------------------------------------------
 namespace detail {
 template <typename T>

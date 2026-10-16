@@ -851,7 +851,7 @@ template <plain_number T>
 //---------------------------------------------------------------------------
 // Expected-lifting operators — one generic overload per arithmetic operator
 // that engages when an operand is a std::expected, both unwrap to arithmetic,
-// and at least one to rational. Gating on `arithmetic` (not `insidable`, which
+// and at least one to rational. Gating on `plain_number` (not `insidable`, which
 // isn't visible this low) excludes inside operands, so inside-involving expected
 // expressions partition cleanly to arithmetic.hpp's generic instead.
 //---------------------------------------------------------------------------

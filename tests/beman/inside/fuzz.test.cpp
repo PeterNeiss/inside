@@ -622,7 +622,7 @@ void prop_non_notch_assign(fuzz_state& s, long iters) {
                 continue;
 
             // `mid` is an exact half between on_notch (lower) and next_notch (higher).
-            // The library rounds in VALUE space (generic.hpp round_quotient): snap
+            // The library rounds in VALUE space (storage.hpp round_quotient): snap
             // and `none` truncate TOWARD ZERO (not floor — that's round_floor), and
             // round_nearest rounds HALF AWAY FROM ZERO. So the expected notch is the
             // smaller-|·| candidate for snap/none and the larger-|·| candidate for

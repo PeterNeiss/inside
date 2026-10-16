@@ -63,8 +63,9 @@ constexpr auto abs(In x);
 // inside — defines `inside<G, P>` and its member operators. Free-function
 // arithmetic (arithmetic.hpp), casts (casts.hpp) and `inside_range` (range.hpp)
 // follow in the umbrella. Heavy lifting is delegated to addition/multiplication/division.hpp
-// (per-operator code), assignment.hpp (narrowing/clamp/wrap), and
-// generic.hpp (introspection, storage, inside_assignable) and policy.hpp.
+// (per-operator code), assignment.hpp (narrowing/clamp/wrap), generic.hpp
+// (inside_assignable, over detail/introspection.hpp and detail/storage.hpp)
+// and policy.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 namespace detail {
@@ -285,8 +286,8 @@ struct inside {
         else if constexpr (detail::value_storage<inside>)
             return Raw;
         // Q-format-with-integer-Lower fast path skips the generic path's three
-        // rational ops. Falls through to the rational path when the raw is too wide
-        // to widen safely (e.g. uint64 from a Q16.16 × Q16.16 result type).
+        // rational ops. Falls through to the rational path when a value times
+        // the notch's denominator could pass imax (e.g. a Q16.16 × Q16.16 result).
         else if constexpr (detail::qformat_codec_fits<inside>)
             return detail::q_format_decode(*this);
         else {
@@ -961,7 +962,7 @@ inline constexpr auto one  = just<1>;
 //   1'000_ins       // inside<{1000}>            digit separator
 //
 // Parse is exact (no double round-trip); same parser backs `_r` in
-// rational.hpp. `-1.5_ins` parses as `-(1.5_ins)`.
+// detail/number_text.hpp. `-1.5_ins` parses as `-(1.5_ins)`.
 //---------------------------------------------------------------------------
 template <char... Chars>
 constexpr auto operator""_ins() {

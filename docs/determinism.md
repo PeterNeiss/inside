@@ -34,7 +34,7 @@ these paths, so there is nothing for the platform to round differently:
   rather than a platform-dependent wrap.
 - `rational(double)` decomposes the value straight from its IEEE-754 bits — a
   finite `double` is exactly `significand · 2^exp2` — with "no `<cmath>`, no FPU
-  rounding, bit-identical across platforms" (`detail/float_bits.hpp`, `abs_fraction_exact`).
+  rounding, bit-identical across platforms" (`detail/float_bits.hpp`, `abs_fraction`).
 
 Two builds on two architectures that take an integer/rational path produce the
 same bits, period.

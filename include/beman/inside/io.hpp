@@ -161,7 +161,7 @@ template <typename V>
 
 //-------------------------------------------------------------------------
 // type_name_of<T> — short raw-type label for to_string_debug. Lives here (not
-// in the core math header) so the core never pulls <string_view>.
+// in numbers.hpp) so the core never pulls <string_view>.
 //-------------------------------------------------------------------------
 namespace detail {
 template <typename T>

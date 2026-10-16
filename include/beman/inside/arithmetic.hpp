@@ -411,8 +411,7 @@ template <insidable Target, std::ranges::input_range Rng>
 // common_inside — the "hull" type able to hold every value of L and R exactly:
 // interval hull + notch gcd (grid `hull`), checked like arithmetic results.
 // Backs the
-// std::common_type specialization (numeric_limits.hpp) and mixed-grid
-// min/max below. The primary has no `type` when the hull grid is
+// std::common_type specialization and mixed-grid min/max below. The primary has no `type` when the hull grid is
 // unrepresentable, so common_type_t SFINAEs away instead of erroring.
 //---------------------------------------------------------------------------
 namespace detail {

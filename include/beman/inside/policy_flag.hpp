@@ -50,7 +50,7 @@ inline constexpr policy_flag ignore_range{1ull << 2};
 inline constexpr policy_flag snap{1ull << 4};
 inline constexpr policy_flag round_nearest{(1ull << 5) | snap};
 // Rounding modes each pick a unique bit and OR in `snap`. Conceptually
-// exclusive; combining two is allowed but dispatch (assignment.hpp) picks the
+// exclusive; combining two is allowed but dispatch (storage.hpp) picks the
 // first match: floor → ceil → half_even → nearest → trunc (rounding_for).
 inline constexpr policy_flag round_floor{(1ull << 6) | snap};
 inline constexpr policy_flag round_ceil{(1ull << 7) | snap};
@@ -172,7 +172,7 @@ template <typename F>
 }
 
 namespace detail {
-// Action detection: the `*Pred` struct is the primary detector; the concept
+// Action detection: the `is_*_action` trait is the primary detector; the concept
 // derives from it and strips cvref so the ref form matches the value form.
 template <typename T>
 struct is_clamp_action : std::false_type {};
@@ -217,8 +217,8 @@ inline constexpr policy_flag implied_flags<on_overflow_t<F>> = checked;
 
 //---------------------------------------------------------------------------
 // Pack helpers — let policy_ref/assignment/arithmetic accept Actions... packs.
-// The `*Pred` structs are reused as template-template parameters (concepts
-// can't be passed as such in C++23).
+// The `is_*_action` traits are passed as template-template parameters
+// (concepts can't be in C++23).
 //---------------------------------------------------------------------------
 
 // True if any element of the pack matches the trait.

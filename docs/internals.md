@@ -375,7 +375,7 @@ is what keeps the core free of `<string>`/`<ostream>`/`<format>`/`<cmath>`:
 | `beman/inside/predicates.hpp`   | `conversion_overflows` / `conversion_rounds` / `conversion_loses` |
 | `beman/inside/interval.hpp`     | `interval` and its operators, `includes` / `excludes` / `overlaps` |
 | `beman/inside/numbers.hpp`         | `umax` / `imax`, `smallest_uint_for_t` / `smallest_int_for_t`, the `plain_number` / `fractional` concepts, `safe_abs` |
-| `beman/inside/detail/float_bits.hpp` | Floating points from their IEEE-754 bits: constexpr `frexp` / `ldexp`, `is_finite`, `abs_fraction_exact`, `is_double_value` |
+| `beman/inside/detail/float_bits.hpp` | Floating points from their IEEE-754 bits: constexpr `frexp` / `ldexp`, `is_finite`, `abs_fraction`, `is_double_value` |
 | `beman/inside/detail/rep.hpp`   | `lattice_op_checked` — whether `+` or `×` into a result runs its overflow check |
 | `beman/inside/detail/rounding.hpp` | `classify_remainder` / `rounds_up` / `rounds_away` — the one rounding decision every integer path shares |
 | `beman/inside/casts.hpp`       | `clamp_cast` (optionally with a rounding mode: `clamp_cast<B, round_floor>`), `wrap_cast`, `checked_cast`, `unchecked_cast` |

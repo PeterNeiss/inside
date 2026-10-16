@@ -12,7 +12,7 @@
 // before a construction that might throw or report an error:
 //   conversion_overflows<B>(v) — v falls outside B's interval.
 //   conversion_rounds<B>(v)    — v is in-range but off-notch (would round).
-//   conversion_loses<B>(v)  — either of the two.
+//   conversion_loses<B>(v)     — either of the two.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 namespace detail {

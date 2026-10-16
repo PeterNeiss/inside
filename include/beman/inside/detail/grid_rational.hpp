@@ -14,7 +14,7 @@
 // (std::define_static_array) a grid number has no size limit: its limbs are
 // interned in static storage, so equal values stay the same template argument.
 // Without reflection (C++23, older compilers) it is the 64-bit runtime
-// `rational`, and grids keep today's limits. Define the macro to 0 to force the
+// `rational`, and grids keep 64-bit limits. Define the macro to 0 to force the
 // 64-bit grids on a C++26 compiler.
 //
 // The two modes give `grid` and `interval` different layouts, so each mode

@@ -12,11 +12,13 @@
 #include <numeric>
 
 //---------------------------------------------------------------------------
-// division / modulo. `division::div` returns expected<result, errc> (division by zero
-// is always runtime-possible). Two paths: native (integer-aligned grids +
-// snap → native integer division) and rational (exact, can overflow under
-// checked). `modulo::mod` is integer-only — non-integer remainders aren't
-// well-defined on fractional notches.
+// division / modulo. `division::div` returns expected<result, errc> unless the
+// divisor's grid excludes zero and the quotient provably fits (then a plain
+// result). Four paths: Q-format (same notch + snap), native integer
+// (integer-aligned grids + snap), point scale (a nonzero point divisor keeps
+// the dividend's lattice) and exact rational (can overflow under checked).
+// `modulo::mod` is integer-only — non-integer remainders aren't well-defined
+// on fractional notches.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 // divmod's result: the rounded quotient and its remainder, for

@@ -10,8 +10,8 @@
 #include <limits>
 
 //---------------------------------------------------------------------------
-// math — primitive numeric utilities: umax/imax, smallest_uint_for /
-// smallest_int_for (grid storage selection), the arithmetic/fractional
+// numbers — primitive numeric utilities: umax/imax, smallest_uint_for_t /
+// smallest_int_for_t (grid storage selection), the plain_number/fractional
 // concepts and safe_abs. The floating-point bit helpers are in
 // detail/float_bits.hpp.
 //---------------------------------------------------------------------------
