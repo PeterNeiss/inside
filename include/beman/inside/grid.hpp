@@ -118,7 +118,7 @@ struct grid {
         return iv;
     }
 
-    template <typename T>
+    template <grid_number_like T>
     static constexpr detail::grid_rational to_number(const T& v) {
         if constexpr (std::convertible_to<T, detail::grid_rational>)
             return detail::grid_rational{v};
@@ -128,7 +128,7 @@ struct grid {
 
     // With 64-bit grid numbers a combined denominator past imax has no
     // rational notch: fall back to a continuous grid (notch 0), always valid.
-    static constexpr detail::grid_rational derive_notch(auto lower, auto upper) {
+    static constexpr detail::grid_rational derive_notch(grid_number_like auto lower, grid_number_like auto upper) {
         check_short_binary(lower);
         check_short_binary(upper);
         const detail::grid_rational lo = to_number(lower), hi = to_number(upper);
@@ -145,7 +145,7 @@ struct grid {
     // A floating-point limit is taken as its exact binary value, so 0.1 would
     // derive a 2^-55 notch. Past 1/1024 the literal almost surely meant a
     // decimal: reject it at compile time and point to the exact spellings.
-    template <typename T>
+    template <grid_number_like T>
     static constexpr void check_short_binary([[maybe_unused]] T v) {
         if constexpr (std::floating_point<T>)
             if (std::is_constant_evaluated() &&

@@ -275,7 +275,7 @@ using unwrap_t = typename unwrap<std::remove_cvref_t<T>>::type;
 
 template <class T>
 constexpr decltype(auto) lift_unwrap(T&& v) {
-    if constexpr (is_expected_v<T>)
+    if constexpr (expected_like<T>)
         return *std::forward<T>(v);
     else
         return std::forward<T>(v);
@@ -284,7 +284,7 @@ constexpr decltype(auto) lift_unwrap(T&& v) {
 // Copy an arg's error into `e`; true if the arg holds one.
 template <class T>
 constexpr bool lift_take_error([[maybe_unused]] const T& v, [[maybe_unused]] errc& e) {
-    if constexpr (is_expected_v<T>)
+    if constexpr (expected_like<T>)
         if (!v.has_value()) {
             e = v.error();
             return true;
@@ -309,7 +309,7 @@ template <class Op, class... Args>
     if ((detail::lift_take_error(args, e) || ...))
         return Ret{std::unexpected{e}};
 
-    if constexpr (detail::is_expected_v<R>)
+    if constexpr (detail::expected_like<R>)
         return op(detail::lift_unwrap(std::forward<Args>(args))...);
     else
         return Ret{op(detail::lift_unwrap(std::forward<Args>(args))...)};
@@ -1175,6 +1175,15 @@ inline constexpr bool is_wide_int_v = false;
 template <std::size_t N, bool S, std::unsigned_integral L>
 inline constexpr bool is_wide_int_v<wide_int<N, S, L>> = true;
 
+// A wide_int of any width and signedness.
+template <typename T>
+concept wide_integer = is_wide_int_v<std::remove_cvref_t<T>>;
+
+// An integer the library may hold in a raw or intermediate: a builtin
+// integer or a wide_int. (std::integral cannot be extended to wide_int.)
+template <typename T>
+concept raw_integer = std::integral<T> || wide_integer<T>;
+
 //---------------------------------------------------------------------------
 // exact_frac — an exact value as a fraction of K-limb integers: the exact
 // paths' intermediate (wide_value.hpp), and, reduced, the raw of a continuous
@@ -1200,6 +1209,10 @@ template <typename T>
 inline constexpr bool is_exact_frac_v = false;
 template <std::size_t K>
 inline constexpr bool is_exact_frac_v<exact_frac<K>> = true;
+
+// An exact_frac of any width.
+template <typename T>
+concept exact_fraction = is_exact_frac_v<std::remove_cvref_t<T>>;
 } // namespace beman::inside::detail
 
 template <std::size_t N, bool Signed, std::unsigned_integral L>
@@ -2043,12 +2056,12 @@ inline constexpr std::expected<rational, errc> rational::inv(rational a) { retur
                    : limb::mul_compare(lhs.Numerator, rhs_ad, rhs.Numerator, lhs_ad);
 }
 
-template <typename T>
+template <arithmetic T>
 [[nodiscard]] inline constexpr auto operator<=>(const std::expected<T, errc>& lhs, const rational& rhs) {
     return rational{lhs.value()} <=> rhs;
 }
 
-template <typename T>
+template <arithmetic T>
 [[nodiscard]] inline constexpr auto operator<=>(const rational& lhs, const std::expected<T, errc>& rhs) {
     return lhs <=> rational{rhs.value()};
 }
@@ -2145,7 +2158,7 @@ template <arithmetic T>
 //---------------------------------------------------------------------------
 template <class L, class R>
 concept rational_lift_operands =
-    (is_expected_v<L> || is_expected_v<R>) && arithmetic<unwrap_t<L>> && arithmetic<unwrap_t<R>> &&
+    (expected_like<L> || expected_like<R>) && arithmetic<unwrap_t<L>> && arithmetic<unwrap_t<R>> &&
     (std::same_as<unwrap_t<L>, rational> || std::same_as<unwrap_t<R>, rational>);
 
 //---------------------------------------------------------------------------
@@ -2946,7 +2959,7 @@ struct big_int {
 
     // Truncating conversion to a builtin integer or wide_int (two's complement).
     template <typename T>
-        requires(std::integral<T> || is_wide_int_v<T>)
+        requires raw_integer<T>
     constexpr explicit operator T() const {
         if constexpr (std::integral<T>) {
             const umax low = Size != 0 ? Limbs[0] : Small;
@@ -4031,11 +4044,6 @@ struct int_for_bits {
 template <int Bits, bool Signed>
 using int_for_bits_t = typename int_for_bits<Bits, Signed>::type;
 
-// An integer the library may hold in a raw or intermediate: a builtin
-// integer or a wide_int. (std::integral cannot be extended to wide_int.)
-template <typename T>
-concept raw_integer = std::integral<T> || is_wide_int_v<T>;
-
 // Signedness of a raw_integer (std::is_signed_v is false for class types).
 template <raw_integer T>
 inline constexpr bool raw_signed = std::numeric_limits<T>::is_signed;
@@ -4148,7 +4156,7 @@ struct grid {
         return iv;
     }
 
-    template <typename T>
+    template <grid_number_like T>
     static constexpr detail::grid_rational to_number(const T& v) {
         if constexpr (std::convertible_to<T, detail::grid_rational>)
             return detail::grid_rational{v};
@@ -4158,7 +4166,7 @@ struct grid {
 
     // With 64-bit grid numbers a combined denominator past imax has no
     // rational notch: fall back to a continuous grid (notch 0), always valid.
-    static constexpr detail::grid_rational derive_notch(auto lower, auto upper) {
+    static constexpr detail::grid_rational derive_notch(grid_number_like auto lower, grid_number_like auto upper) {
         check_short_binary(lower);
         check_short_binary(upper);
         const detail::grid_rational lo = to_number(lower), hi = to_number(upper);
@@ -4175,7 +4183,7 @@ struct grid {
     // A floating-point limit is taken as its exact binary value, so 0.1 would
     // derive a 2^-55 notch. Past 1/1024 the literal almost surely meant a
     // decimal: reject it at compile time and point to the exact spellings.
-    template <typename T>
+    template <grid_number_like T>
     static constexpr void check_short_binary([[maybe_unused]] T v) {
         if constexpr (std::floating_point<T>)
             if (std::is_constant_evaluated() &&
@@ -5022,7 +5030,7 @@ concept rational_storage = insidable<B> && std::same_as<raw_t<B>, rational>;
 // A continuous grid whose limits pass 64 bits (C++26): a reduced exact
 // fraction of as many limbs as the limits need.
 template <typename B>
-concept fraction_storage = insidable<B> && is_exact_frac_v<raw_t<B>>;
+concept fraction_storage = insidable<B> && exact_fraction<raw_t<B>>;
 
 // Whether an integer raw holds the value itself (else a slot index): the
 // whole-number grids where that is free (grid.hpp deduces_value).
@@ -5042,7 +5050,7 @@ concept point_storage = insidable<B> && std::same_as<raw_t<B>, point_slot>;
 // Its values need the exact wide paths (detail/wide_value.hpp): a 64-bit
 // rational or imax cannot hold them.
 template <typename B>
-concept wide_index_storage = insidable<B> && is_wide_int_v<raw_t<B>>;
+concept wide_index_storage = insidable<B> && wide_integer<raw_t<B>>;
 
 template <typename B>
 concept value_storage = rational_storage<B> || fraction_storage<B> || integer_value_storage<B>;
@@ -5360,10 +5368,10 @@ template <typename W>
 struct floored {
     W Quot, Rem;
 };
-template <typename W>
+template <raw_integer W>
 [[nodiscard]] constexpr floored<W> floor_divmod(const W& t, const W& m) noexcept {
     floored<W> f;
-    if constexpr (is_wide_int_v<W>) {
+    if constexpr (wide_integer<W>) {
         auto [q, r] = W::divmod(t, m);
         f           = {q, r};
     } else
@@ -8280,7 +8288,7 @@ struct policy_ref {
   private:
     template <typename R>
     constexpr B& finalise_arith(R&& result, [[maybe_unused]] const char* msg) {
-        if constexpr (is_expected_v<R>) {
+        if constexpr (expected_like<R>) {
             if (!result.has_value()) [[unlikely]] {
                 if (result.error() == errc::division_by_zero)
                     report_zero(errc::division_by_zero, msg); // on_error / ignore_zero, like rational /=
@@ -8297,7 +8305,7 @@ struct policy_ref {
 
     // Shared body for the rational `+=`/`-=`/`*=`/`/=` operators: lift Ref to
     // rational and route the checked result through `finalise_arith`.
-    template <typename RatOp>
+    template <std::invocable<rational, rational> RatOp>
     constexpr B& rational_assign(const rational& rhs, RatOp rat_op, const char* msg) {
         return finalise_arith(rat_op(rational{Ref}, rhs), msg);
     }
@@ -9775,7 +9783,8 @@ struct inside {
     // double's policy gate, so a strict inside rejects `b.as<double>()` too.
     template <typename T>
     [[nodiscard]] constexpr T as() const
-        requires(!std::floating_point<T> ||
+        requires(std::integral<T> || std::floating_point<T>) &&
+                (!std::floating_point<T> ||
                  (P & (round_floor | round_ceil | round_nearest | round_half_even | snap)) != 0)
     {
         return to<T>().value();
@@ -10027,7 +10036,7 @@ struct inside {
     // Store a raw computed by the raw-space fast paths of += and -=, in their
     // work type W. Under clamp/wrap/checked an out-of-range raw is clamped,
     // wrapped or reported.
-    template <typename W>
+    template <detail::raw_integer W>
     constexpr inside& store_raw(W new_raw) {
         constexpr W lo = static_cast<W>(detail::raw_lo_exact<inside>);
         constexpr W hi = static_cast<W>(detail::raw_hi_exact<inside>);
@@ -10054,7 +10063,7 @@ struct inside {
   private:
     template <typename Result>
     constexpr inside& assign_op_result(const Result& r) {
-        if constexpr (detail::is_expected_v<Result>) {
+        if constexpr (detail::expected_like<Result>) {
             // A failed op is reported through this type's policy (throw / handler);
             // *this stays unchanged. `*r` (not value()): no bad_expected_access.
             if (r.has_value())
@@ -10068,7 +10077,7 @@ struct inside {
 
     // A zero divisor in /= or %=; ignore_zero on either operand silences it,
     // as it does for div/mod.
-    template <typename R>
+    template <insidable R>
     constexpr inside& report_div_by_zero() {
         if constexpr (!has_flag(P | policy_of<R>, ignore_zero))
             make_policy<P>().report(errc::division_by_zero);
@@ -11214,7 +11223,7 @@ template <insidable Lhs, insidable Rhs>
 namespace detail {
 template <class L, class R>
 concept expected_operands =
-    (is_expected_v<L> || is_expected_v<R>) && (insidable<unwrap_t<L>> || insidable<unwrap_t<R>>);
+    (expected_like<L> || expected_like<R>) && (insidable<unwrap_t<L>> || insidable<unwrap_t<R>>);
 }
 
 #define BEMAN_INSIDE_LIFT_OP(op)                                                            \
@@ -13881,7 +13890,7 @@ consteval horner_bound horner_error(const poly<N>& p, double Z, double Dz) {
 }
 
 // The fewest terms n ≤ Max whose truncation trunc(n) is at most 2^-T.
-template <typename F>
+template <std::invocable<int> F>
 consteval int terms_for(int T, int Max, F trunc) {
     double target = 1;
     for (int i = 0; i < T; ++i)
@@ -16060,7 +16069,7 @@ inline bool dd_full_attempt(const ddk::dd& x, Out& out) {
 }
 
 // What follows a lean kernel: rarely taken, so out of line.
-template <typename F>
+template <std::invocable<> F>
 [[gnu::cold, gnu::noinline]] bool dd_cold(const F& f) {
     return f();
 }
@@ -16285,7 +16294,7 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
     static_assert(anchored<Out> || !has_flag(policy_of<Out>, wrap),
                   "beman::inside::math: wrap onto a grid that does not pass through 0 is not supported - "
                   "use clamp, or an anchored output grid");
-    using ::beman::inside::detail::is_expected_v;
+    using ::beman::inside::detail::expected_like;
     if constexpr (anchored<Out>)
         return fn.template operator()<Out>(anchored_input(xs)...);
     else if constexpr (integer_bracket<Out>) {
@@ -16296,7 +16305,7 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
         using Lo                        = bracket_t<Out, round_floor, F>;
         using Hi                        = bracket_t<Out, round_ceil, F>;
         using R                         = decltype(fn.template operator()<Lo>(anchored_input(xs)...));
-        constexpr bool checked          = is_expected_v<R>;
+        constexpr bool checked          = expected_like<R>;
         using Res                       = std::conditional_t<checked, std::expected<Out, errc>, Out>;
         const R lo                      = fn.template operator()<Lo>(anchored_input(xs)...);
         const auto               unwrap = [](const auto& r) -> const auto& {
@@ -16343,7 +16352,7 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
             const auto s = exact_of(a) + exact_of(b);
             return decltype(s){s.Num, s.Den + s.Den};
         };
-        if constexpr (is_expected_v<decltype(lo)>) {
+        if constexpr (expected_like<decltype(lo)>) {
             using R = std::expected<Out, errc>;
             if (!lo)
                 return R{std::unexpected{lo.error()}};
@@ -16364,7 +16373,7 @@ inline constexpr bool unanchored_call = !anchored<Out> || (!anchored<Ins> || ...
 
 // What follows a fast tier: rarely taken, so out of line, which keeps its
 // frame off the tier's fast path.
-template <typename F>
+template <std::invocable<> F>
 [[gnu::cold, gnu::noinline]] constexpr auto cold_call(const F& f) {
     return f();
 }
@@ -17686,6 +17695,7 @@ inline constexpr int fixed_decimals = [] {
 
 // delegate to std::to_string
 template <typename V>
+    requires(std::integral<V> || std::floating_point<V>)
 [[nodiscard]] auto to_string(V value) {
     return std::to_string(value);
 }
@@ -17696,9 +17706,9 @@ template <typename V>
 //-------------------------------------------------------------------------
 namespace detail {
 template <typename T>
-inline constexpr std::string_view type_name_v = is_wide_int_v<T>     ? "wide_int"
-                                                : is_exact_frac_v<T> ? "exact_frac"
-                                                                     : "unknown";
+inline constexpr std::string_view type_name_v = wide_integer<T>     ? "wide_int"
+                                                : exact_fraction<T> ? "exact_frac"
+                                                                    : "unknown";
 template <>
 inline constexpr std::string_view type_name_v<std::uint8_t> = "uint8_t";
 template <>

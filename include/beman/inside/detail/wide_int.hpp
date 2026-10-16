@@ -516,6 +516,15 @@ inline constexpr bool is_wide_int_v = false;
 template <std::size_t N, bool S, std::unsigned_integral L>
 inline constexpr bool is_wide_int_v<wide_int<N, S, L>> = true;
 
+// A wide_int of any width and signedness.
+template <typename T>
+concept wide_integer = is_wide_int_v<std::remove_cvref_t<T>>;
+
+// An integer the library may hold in a raw or intermediate: a builtin
+// integer or a wide_int. (std::integral cannot be extended to wide_int.)
+template <typename T>
+concept raw_integer = std::integral<T> || wide_integer<T>;
+
 //---------------------------------------------------------------------------
 // exact_frac — an exact value as a fraction of K-limb integers: the exact
 // paths' intermediate (wide_value.hpp), and, reduced, the raw of a continuous
@@ -541,6 +550,10 @@ template <typename T>
 inline constexpr bool is_exact_frac_v = false;
 template <std::size_t K>
 inline constexpr bool is_exact_frac_v<exact_frac<K>> = true;
+
+// An exact_frac of any width.
+template <typename T>
+concept exact_fraction = is_exact_frac_v<std::remove_cvref_t<T>>;
 } // namespace beman::inside::detail
 
 template <std::size_t N, bool Signed, std::unsigned_integral L>

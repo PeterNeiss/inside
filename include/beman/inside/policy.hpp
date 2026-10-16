@@ -284,7 +284,7 @@ struct policy_ref {
   private:
     template <typename R>
     constexpr B& finalise_arith(R&& result, [[maybe_unused]] const char* msg) {
-        if constexpr (is_expected_v<R>) {
+        if constexpr (expected_like<R>) {
             if (!result.has_value()) [[unlikely]] {
                 if (result.error() == errc::division_by_zero)
                     report_zero(errc::division_by_zero, msg); // on_error / ignore_zero, like rational /=
@@ -301,7 +301,7 @@ struct policy_ref {
 
     // Shared body for the rational `+=`/`-=`/`*=`/`/=` operators: lift Ref to
     // rational and route the checked result through `finalise_arith`.
-    template <typename RatOp>
+    template <std::invocable<rational, rational> RatOp>
     constexpr B& rational_assign(const rational& rhs, RatOp rat_op, const char* msg) {
         return finalise_arith(rat_op(rational{Ref}, rhs), msg);
     }

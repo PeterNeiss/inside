@@ -206,7 +206,7 @@ consteval horner_bound horner_error(const poly<N>& p, double Z, double Dz) {
 }
 
 // The fewest terms n ≤ Max whose truncation trunc(n) is at most 2^-T.
-template <typename F>
+template <std::invocable<int> F>
 consteval int terms_for(int T, int Max, F trunc) {
     double target = 1;
     for (int i = 0; i < T; ++i)

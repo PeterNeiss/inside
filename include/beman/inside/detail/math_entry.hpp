@@ -574,7 +574,7 @@ inline bool dd_full_attempt(const ddk::dd& x, Out& out) {
 }
 
 // What follows a lean kernel: rarely taken, so out of line.
-template <typename F>
+template <std::invocable<> F>
 [[gnu::cold, gnu::noinline]] bool dd_cold(const F& f) {
     return f();
 }
@@ -799,7 +799,7 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
     static_assert(anchored<Out> || !has_flag(policy_of<Out>, wrap),
                   "beman::inside::math: wrap onto a grid that does not pass through 0 is not supported - "
                   "use clamp, or an anchored output grid");
-    using ::beman::inside::detail::is_expected_v;
+    using ::beman::inside::detail::expected_like;
     if constexpr (anchored<Out>)
         return fn.template operator()<Out>(anchored_input(xs)...);
     else if constexpr (integer_bracket<Out>) {
@@ -810,7 +810,7 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
         using Lo                        = bracket_t<Out, round_floor, F>;
         using Hi                        = bracket_t<Out, round_ceil, F>;
         using R                         = decltype(fn.template operator()<Lo>(anchored_input(xs)...));
-        constexpr bool checked          = is_expected_v<R>;
+        constexpr bool checked          = expected_like<R>;
         using Res                       = std::conditional_t<checked, std::expected<Out, errc>, Out>;
         const R lo                      = fn.template operator()<Lo>(anchored_input(xs)...);
         const auto               unwrap = [](const auto& r) -> const auto& {
@@ -857,7 +857,7 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
             const auto s = exact_of(a) + exact_of(b);
             return decltype(s){s.Num, s.Den + s.Den};
         };
-        if constexpr (is_expected_v<decltype(lo)>) {
+        if constexpr (expected_like<decltype(lo)>) {
             using R = std::expected<Out, errc>;
             if (!lo)
                 return R{std::unexpected{lo.error()}};
@@ -878,7 +878,7 @@ inline constexpr bool unanchored_call = !anchored<Out> || (!anchored<Ins> || ...
 
 // What follows a fast tier: rarely taken, so out of line, which keeps its
 // frame off the tier's fast path.
-template <typename F>
+template <std::invocable<> F>
 [[gnu::cold, gnu::noinline]] constexpr auto cold_call(const F& f) {
     return f();
 }

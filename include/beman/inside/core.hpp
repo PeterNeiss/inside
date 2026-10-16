@@ -339,7 +339,8 @@ struct inside {
     // double's policy gate, so a strict inside rejects `b.as<double>()` too.
     template <typename T>
     [[nodiscard]] constexpr T as() const
-        requires(!std::floating_point<T> ||
+        requires(std::integral<T> || std::floating_point<T>) &&
+                (!std::floating_point<T> ||
                  (P & (round_floor | round_ceil | round_nearest | round_half_even | snap)) != 0)
     {
         return to<T>().value();
@@ -591,7 +592,7 @@ struct inside {
     // Store a raw computed by the raw-space fast paths of += and -=, in their
     // work type W. Under clamp/wrap/checked an out-of-range raw is clamped,
     // wrapped or reported.
-    template <typename W>
+    template <detail::raw_integer W>
     constexpr inside& store_raw(W new_raw) {
         constexpr W lo = static_cast<W>(detail::raw_lo_exact<inside>);
         constexpr W hi = static_cast<W>(detail::raw_hi_exact<inside>);
@@ -618,7 +619,7 @@ struct inside {
   private:
     template <typename Result>
     constexpr inside& assign_op_result(const Result& r) {
-        if constexpr (detail::is_expected_v<Result>) {
+        if constexpr (detail::expected_like<Result>) {
             // A failed op is reported through this type's policy (throw / handler);
             // *this stays unchanged. `*r` (not value()): no bad_expected_access.
             if (r.has_value())
@@ -632,7 +633,7 @@ struct inside {
 
     // A zero divisor in /= or %=; ignore_zero on either operand silences it,
     // as it does for div/mod.
-    template <typename R>
+    template <insidable R>
     constexpr inside& report_div_by_zero() {
         if constexpr (!has_flag(P | policy_of<R>, ignore_zero))
             make_policy<P>().report(errc::division_by_zero);

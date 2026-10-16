@@ -281,7 +281,7 @@ struct big_int {
 
     // Truncating conversion to a builtin integer or wide_int (two's complement).
     template <typename T>
-        requires(std::integral<T> || is_wide_int_v<T>)
+        requires raw_integer<T>
     constexpr explicit operator T() const {
         if constexpr (std::integral<T>) {
             const umax low = Size != 0 ? Limbs[0] : Small;

@@ -37,7 +37,7 @@ concept rational_storage = insidable<B> && std::same_as<raw_t<B>, rational>;
 // A continuous grid whose limits pass 64 bits (C++26): a reduced exact
 // fraction of as many limbs as the limits need.
 template <typename B>
-concept fraction_storage = insidable<B> && is_exact_frac_v<raw_t<B>>;
+concept fraction_storage = insidable<B> && exact_fraction<raw_t<B>>;
 
 // Whether an integer raw holds the value itself (else a slot index): the
 // whole-number grids where that is free (grid.hpp deduces_value).
@@ -57,7 +57,7 @@ concept point_storage = insidable<B> && std::same_as<raw_t<B>, point_slot>;
 // Its values need the exact wide paths (detail/wide_value.hpp): a 64-bit
 // rational or imax cannot hold them.
 template <typename B>
-concept wide_index_storage = insidable<B> && is_wide_int_v<raw_t<B>>;
+concept wide_index_storage = insidable<B> && wide_integer<raw_t<B>>;
 
 template <typename B>
 concept value_storage = rational_storage<B> || fraction_storage<B> || integer_value_storage<B>;
@@ -375,10 +375,10 @@ template <typename W>
 struct floored {
     W Quot, Rem;
 };
-template <typename W>
+template <raw_integer W>
 [[nodiscard]] constexpr floored<W> floor_divmod(const W& t, const W& m) noexcept {
     floored<W> f;
-    if constexpr (is_wide_int_v<W>) {
+    if constexpr (wide_integer<W>) {
         auto [q, r] = W::divmod(t, m);
         f           = {q, r};
     } else

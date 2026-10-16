@@ -47,7 +47,7 @@ using unwrap_t = typename unwrap<std::remove_cvref_t<T>>::type;
 
 template <class T>
 constexpr decltype(auto) lift_unwrap(T&& v) {
-    if constexpr (is_expected_v<T>)
+    if constexpr (expected_like<T>)
         return *std::forward<T>(v);
     else
         return std::forward<T>(v);
@@ -56,7 +56,7 @@ constexpr decltype(auto) lift_unwrap(T&& v) {
 // Copy an arg's error into `e`; true if the arg holds one.
 template <class T>
 constexpr bool lift_take_error([[maybe_unused]] const T& v, [[maybe_unused]] errc& e) {
-    if constexpr (is_expected_v<T>)
+    if constexpr (expected_like<T>)
         if (!v.has_value()) {
             e = v.error();
             return true;
@@ -81,7 +81,7 @@ template <class Op, class... Args>
     if ((detail::lift_take_error(args, e) || ...))
         return Ret{std::unexpected{e}};
 
-    if constexpr (detail::is_expected_v<R>)
+    if constexpr (detail::expected_like<R>)
         return op(detail::lift_unwrap(std::forward<Args>(args))...);
     else
         return Ret{op(detail::lift_unwrap(std::forward<Args>(args))...)};
