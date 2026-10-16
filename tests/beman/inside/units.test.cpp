@@ -280,3 +280,15 @@ TEST(UnitsTest, std_format) {
     EXPECT_EQ(std::format("{}", just<3> * units::one), "3");
 }
 #endif
+
+TEST(UnitsTest, point_in_and_value_cast_on_points) {
+    const auto oven = point<international::degree_Fahrenheit>(inside<{0, 600}>{350});
+    const auto c    = oven.point_in(si::degree_Celsius); // (350 − 32)·5/9
+    static_assert(std::remove_cvref_t<decltype(c)>::origin == &si_defs::ice_point);
+    EXPECT_EQ(rational{c.quantity_from_origin().numerical_value()}, rational(530, 3));
+    EXPECT_EQ(to_string(c.point_in(si::kelvin)), "26989/60 K"); // 449.8166…: exact, so N/D
+    const auto r = value_cast<inside<{0, 300}, round_nearest>>(c);
+    EXPECT_EQ(to_string(r), "177 ℃");
+    const auto k = value_cast<si::kelvin, inside<{{0, 1000}, per<10>}, round_nearest>>(c.point_for(si::absolute_zero));
+    EXPECT_EQ(to_string(k), "449.8 K");
+}

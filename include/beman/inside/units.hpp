@@ -1331,6 +1331,11 @@ class quantity_point {
     [[nodiscard]] constexpr auto in(unit_t<U> u) const {
         return detail::make_point<O>(Q.in(u));
     }
+    // The same point in unit U, counted from U's own origin: 350 ℉ → 530/3 ℃.
+    template <units::unit U>
+    [[nodiscard]] constexpr auto point_in(unit_t<U> u) const {
+        return point_for(origin_t<detail::origin_of_unit(U)>{}).in(u);
+    }
 
     template <units::reference R2, class V2>
         requires detail::implicit_v<R2, R>
@@ -1345,6 +1350,18 @@ class quantity_point {
         return *this;
     }
 };
+
+// value_cast on a point: its quantity from the origin cast, the origin kept.
+template <insidable Rep2, reference R, const point_origin* O, class V>
+[[nodiscard]] constexpr quantity_point<R, O, Rep2> value_cast(const quantity_point<R, O, V>& p) {
+    return quantity_point<R, O, Rep2>{value_cast<Rep2>(p.quantity_from_origin())};
+}
+template <auto U, insidable Rep2, reference R, const point_origin* O, class V>
+    requires is_unit_tag_v<decltype(U)> && detail::exact_factor_v<detail::conversion_factor<R.U, decltype(U)::value>>
+[[nodiscard]] constexpr auto value_cast(const quantity_point<R, O, V>& p) {
+    const auto q = value_cast<U, Rep2>(p.quantity_from_origin());
+    return quantity_point<std::remove_cvref_t<decltype(q)>::reference, O, Rep2>{q};
+}
 
 // point<si::degree_Celsius>(v) — a point at the unit's default origin (the
 // implicit zero for a unit without one).

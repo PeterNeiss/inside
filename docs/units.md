@@ -157,7 +157,11 @@ k == room;                                                      // true: one abs
 ```
 
 `point<U>(v)` uses the unit's origin (K, ℃ and ℉ have one), and falls back
-to the implicit zero of the dimension. Point ± quantity gives a point, and
+to the implicit zero of the dimension. `p.point_in(u)` is the same point in unit `u`,
+counted from `u`'s own origin (350 ℉ → 530/3 ℃). `p.in(u)` keeps the
+origin. `value_cast<Rep2>(p)` and `value_cast<u, Rep2>(p)` cast a point's
+quantity and keep its origin, which rounds an oven temperature onto whole
+degrees. Point ± quantity gives a point, and
 point − point gives a quantity. `si::absolute_zero + q` makes a point.
 
 ## Math (units_math.hpp)
