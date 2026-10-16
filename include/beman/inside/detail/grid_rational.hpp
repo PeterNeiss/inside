@@ -3,6 +3,7 @@
 #define BEMAN_INSIDE_DETAIL_GRID_RATIONAL_HPP
 
 #include <beman/inside/detail/rational.hpp>
+#include <beman/inside/detail/number_text.hpp> // the literal grammar (_g)
 #include <beman/inside/detail/wide_int.hpp>
 
 //---------------------------------------------------------------------------

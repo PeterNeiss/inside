@@ -3,6 +3,7 @@
 #define BEMAN_INSIDE_DETAIL_WIDE_VALUE_HPP
 
 #include <beman/inside/generic.hpp>
+#include <beman/inside/detail/number_text.hpp> // scan_number
 #include <beman/inside/detail/wide_int.hpp>
 
 #include <compare>

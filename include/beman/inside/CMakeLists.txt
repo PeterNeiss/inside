@@ -24,6 +24,7 @@ target_sources(
                 detail/wide_int.hpp
                 detail/wide_value.hpp
                 detail/multiplication.hpp
+                detail/number_text.hpp
                 detail/overflow.hpp
                 detail/rational.hpp
                 detail/rep.hpp
