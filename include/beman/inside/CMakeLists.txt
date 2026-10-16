@@ -12,6 +12,7 @@ target_sources(
                 core.hpp
                 cursor.hpp
                 detail/addition.hpp
+                detail/assign_exact.hpp
                 detail/assignment.hpp
                 detail/big_rational.hpp
                 detail/compare.hpp

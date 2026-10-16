@@ -6485,6 +6485,11 @@ constexpr Result exact_result(const exact_frac<K>& v) noexcept {
 // ======================================================================
 
 
+// ======================================================================
+//  beman/inside/detail/assign_exact.hpp
+// ======================================================================
+
+
 
 // policy.hpp includes this header: the recording policy of the fine-double
 // store (an errc& one) is named here and completed there.
@@ -6512,11 +6517,10 @@ struct policy;
 
 namespace beman::inside::detail {
 //---------------------------------------------------------------------------
-// assignment — narrowing/coercion between bounded and arithmetic types. Three
-// specialisations dispatch on the source (integral / fractional / insidable),
-// each routing through `store` (in-range) and `handle_out_of_range` /
-// `apply_clamp` / `apply_wrap` (policy). The insidable path also exposes
-// `is_integer_mapping` / `map_raw` — a pure-integer formula in the hot path.
+// The exact store (assign_exact) and what every assignment path shares: the
+// out-of-range cascade, failure reporting, the on_wrap carry grid and the
+// same-notch wide raw mapping. The source-type specialisations are in
+// assignment.hpp.
 //---------------------------------------------------------------------------
 // needs_runtime_range_check<L, P, A>: true iff any out-of-range handler would
 // fire (an action, a clamp/wrap bit, or default-throw under checked).
@@ -6892,6 +6896,18 @@ inline constexpr int same_notch_bits = signed_value_bits_of({raw_lo_exact<R>,
                                                              raw_hi_exact<R> + same_notch_shift<L, R>,
                                                              raw_lo_exact<L>,
                                                              raw_hi_exact<L>});
+} // namespace beman::inside::detail
+
+
+
+namespace beman::inside::detail {
+//---------------------------------------------------------------------------
+// assignment — narrowing/coercion between bounded and arithmetic types. Three
+// specialisations dispatch on the source (integral / fractional / insidable),
+// each routing through `store` (in-range) and `handle_out_of_range` /
+// `apply_clamp` / `apply_wrap` (policy). The insidable path also exposes
+// `is_integer_mapping` / `map_raw` — a pure-integer formula in the hot path.
+//---------------------------------------------------------------------------
 
 //---------------------------------------------------------------------------
 // assign(insidable, integral)
