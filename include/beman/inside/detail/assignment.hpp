@@ -478,34 +478,34 @@ struct assignment<L, R> {
             // (num − Lo·aden)·K / aden — integer ops instead of two rational ops.
             // round_quotient is invariant under reduction, so the slot is
             // bit-identical to the rational path. Oversized denominators
-            // fall through (the kMaxDen guard keeps every product inside imax).
+            // fall through (the max_den guard keeps every product inside imax).
             if constexpr (qformat_codec_fits<L> && detail::notched<L>) {
-                constexpr imax K   = abs_den(detail::notch64<L>.Denominator);
-                constexpr imax Lo  = lower_imax<L>;
-                constexpr umax kKM = [] {
+                constexpr imax K      = abs_den(detail::notch64<L>.Denominator);
+                constexpr imax Lo     = lower_imax<L>;
+                constexpr umax two_km = [] {
                     // 2 · K · M with saturation (M bounds |value| and the offset span)
                     // ceil in umax: a bound's magnitude may reach 2^63 (past imax)
-                    constexpr umax kMax = std::numeric_limits<umax>::max();
-                    const rational a    = detail::abs(detail::lower64<L>) > detail::abs(detail::upper64<L>)
-                                              ? detail::abs(detail::lower64<L>)
-                                              : detail::abs(detail::upper64<L>);
-                    const umax     d    = abs_den(a.Denominator);
-                    const umax     c    = a.Numerator / d + (a.Numerator % d != 0 ? 1 : 0);
-                    if (c > (kMax - 2) / 2)
-                        return kMax;
+                    constexpr umax umax_hi = std::numeric_limits<umax>::max();
+                    const rational a       = detail::abs(detail::lower64<L>) > detail::abs(detail::upper64<L>)
+                                                 ? detail::abs(detail::lower64<L>)
+                                                 : detail::abs(detail::upper64<L>);
+                    const umax     d       = abs_den(a.Denominator);
+                    const umax     c       = a.Numerator / d + (a.Numerator % d != 0 ? 1 : 0);
+                    if (c > (umax_hi - 2) / 2)
+                        return umax_hi;
                     umax k = static_cast<umax>(K);
                     umax m = c * 2 + 2;
-                    if (k > kMax / m)
-                        return kMax;
+                    if (k > umax_hi / m)
+                        return umax_hi;
                     umax km = k * m;
-                    return km > kMax / 2 ? kMax : km * 2;
+                    return km > umax_hi / 2 ? umax_hi : km * 2;
                 }();
-                constexpr umax kMaxDen = static_cast<umax>(std::numeric_limits<imax>::max()) / kKM;
+                constexpr umax max_den = static_cast<umax>(std::numeric_limits<imax>::max()) / two_km;
 
                 const umax aden = abs_den(rv.Denominator);
-                if (kMaxDen != 0 && aden <= kMaxDen) {
+                if (max_den != 0 && aden <= max_den) {
                     // The offset (num − Lo·aden)·K / aden, unreduced: round_quotient
-                    // rounds it as the reduced fraction would, and kMaxDen keeps the
+                    // rounds it as the reduced fraction would, and max_den keeps the
                     // product in imax.
                     const imax num  = signed_numerator(rv);
                     const umax onum = // ≥ 0: rhs ≥ Lower (in range)

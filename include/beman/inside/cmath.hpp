@@ -31,8 +31,8 @@ namespace detail {
 using namespace beman::inside::detail;
 
 // π as a rational, within 2^-58 (3.1e-18), for the constants below.
-inline constexpr rational kPiRat{1068966896, 340262731};
-inline constexpr rational kTwoPiRat = 2 * kPiRat;
+inline constexpr rational pi_rat{1068966896, 340262731};
+inline constexpr rational two_pi_rat = 2 * pi_rat;
 
 // Policy of an auto-deduced output: the input's (a cursor's output is no
 // cursor).
@@ -48,8 +48,8 @@ constexpr Out store_value(const V& v) {
 
 // Public irrational constants as point insides, so they compose directly in
 // inside-space (`angle * math::pi`) with no rational on the surface.
-inline constexpr auto pi     = just<detail::kPiRat>;
-inline constexpr auto two_pi = just<detail::kTwoPiRat>;
+inline constexpr auto pi     = just<detail::pi_rat>;
+inline constexpr auto two_pi = just<detail::two_pi_rat>;
 
 namespace detail {
 // Grid-number helpers for the algebraic tier's deduced outputs: exact for

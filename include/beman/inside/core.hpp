@@ -784,8 +784,8 @@ struct inside {
     constexpr inside& operator++() {
         static_assert(G.Notch != 0, "inside: ++ steps one notch - a grid without a notch has none to step");
         // constexpr local: the point inside is materialized at compile time.
-        constexpr auto kStep = inside<grid{G.Notch}>::from_raw({});
-        return *this += kStep;
+        constexpr auto notch_step = inside<grid{G.Notch}>::from_raw({});
+        return *this += notch_step;
     }
     constexpr inside operator++(int) {
         inside t = *this;
@@ -794,8 +794,8 @@ struct inside {
     }
     constexpr inside& operator--() {
         static_assert(G.Notch != 0, "inside: -- steps one notch - a grid without a notch has none to step");
-        constexpr auto kStep = inside<grid{-G.Notch}>::from_raw({});
-        return *this += kStep;
+        constexpr auto notch_step = inside<grid{-G.Notch}>::from_raw({});
+        return *this += notch_step;
     }
     constexpr inside operator--(int) {
         inside t = *this;

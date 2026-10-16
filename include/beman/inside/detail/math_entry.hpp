@@ -57,7 +57,7 @@ inline constexpr bool fp_exact_input = [] {
 
 // Outputs the double tier decides nearly always (up to 2^-14 of results go
 // further): below them no other fast tier runs.
-inline constexpr int kFpOnlyBits = 36;
+inline constexpr int fp_only_bits = 36;
 
 // Bits of Out's value indices: every |index| < 2^index_bits.
 template <insidable Out>
@@ -214,10 +214,10 @@ namespace fpk = ::beman::inside::math::detail::fp;
 //---------------------------------------------------------------------------
 namespace ddk = ::beman::inside::math::detail::dd;
 
-inline constexpr double kDDRel = 0x1p-88, kDDAbs = 0x1p-92;
+inline constexpr double dd_rel = 0x1p-88, dd_abs = 0x1p-92;
 
 constexpr double dd_eval_bound(double x, double v) noexcept {
-    return kDDRel * fabs_d(v) + kDDAbs * (fabs_d(x) > 1 ? fabs_d(x) : 1.0);
+    return dd_rel * fabs_d(v) + dd_abs * (fabs_d(x) > 1 ? fabs_d(x) : 1.0);
 }
 
 inline constexpr double two53 = 0x1p53;
@@ -226,7 +226,7 @@ inline constexpr double two53 = 0x1p53;
 // are doubles exactly.
 template <insidable Out>
 inline constexpr bool dd_output = [] {
-    if constexpr (!notched<Out> || wide_valued<Out> || out_bits<Out> + mag_bits<Out> <= kFpOnlyBits)
+    if constexpr (!notched<Out> || wide_valued<Out> || out_bits<Out> + mag_bits<Out> <= fp_only_bits)
         return false;
     else {
         if (!(notch_p<Out> < two53 && notch_q<Out> < two53))
@@ -339,12 +339,12 @@ consteval int fp_limit(double e) {
 // moves at most 2^-9 of a notch.
 template <insidable Out, typename K>
 inline constexpr int fp_target =
-    fp_bits<Out, K::Mag> + 10 < fpk::kFullBits ? fp_bits<Out, K::Mag> + 10 : fpk::kFullBits;
+    fp_bits<Out, K::Mag> + 10 < fpk::full_bits ? fp_bits<Out, K::Mag> + 10 : fpk::full_bits;
 
 // One kernel per function: its value and proved bound at a target T, the
 // bits of its values (Mag, 1024 for unbounded), its limit, and its slope
 // |f′(x)| (for the input's rounding).
-inline constexpr int kUnbounded = 1024;
+inline constexpr int unbounded = 1024;
 struct fp_plain {
     static double dd_eval(double x, double v) { return dd_eval_bound(x, v); }
 };
@@ -363,16 +363,16 @@ struct fp_plain {
             static double slope([[maybe_unused]] double x, [[maybe_unused]] double v) { return slope_expr; } \
         };
     #define BEMAN_INSIDE_AX_KERNEL(...) BEMAN_INSIDE_AX_KERNEL_ON(fp_plain, __VA_ARGS__)
-using fp_full_trig = fpk::trig_k<fpk::kFullBits>;
-using fp_full_exp  = fpk::exp_k<fpk::kFullBits>;
-using fp_full_log  = fpk::log_k<fpk::kFullBits>;
-using fp_full_atan = fpk::atan_k<fpk::kFullBits>;
+using fp_full_trig = fpk::trig_k<fpk::full_bits>;
+using fp_full_exp  = fpk::exp_k<fpk::full_bits>;
+using fp_full_log  = fpk::log_k<fpk::full_bits>;
+using fp_full_atan = fpk::atan_k<fpk::full_bits>;
 BEMAN_INSIDE_AX_KERNEL(sin, trig_k, sin, 1, fp_limit(fp_full_trig::Rel), 1.0)
 BEMAN_INSIDE_AX_KERNEL(cos, trig_k, cos, 1, fp_limit(fp_full_trig::Rel), 1.0)
-BEMAN_INSIDE_AX_KERNEL(exp, exp_k, exp, kUnbounded, fp_limit(fp_full_exp::Rel), fabs_d(v))
-BEMAN_INSIDE_AX_KERNEL(exp2, exp_k, exp2, kUnbounded, fp_limit(fp_full_exp::Rel2), fabs_d(v))
-BEMAN_INSIDE_AX_KERNEL(sinh, exp_k, sinh, kUnbounded, fp_limit(fp_full_exp::SinhRel), fabs_d(v) + 1)
-BEMAN_INSIDE_AX_KERNEL(cosh, exp_k, cosh, kUnbounded, fp_limit(fp_full_exp::CoshRel), fabs_d(v) + 1)
+BEMAN_INSIDE_AX_KERNEL(exp, exp_k, exp, unbounded, fp_limit(fp_full_exp::Rel), fabs_d(v))
+BEMAN_INSIDE_AX_KERNEL(exp2, exp_k, exp2, unbounded, fp_limit(fp_full_exp::Rel2), fabs_d(v))
+BEMAN_INSIDE_AX_KERNEL(sinh, exp_k, sinh, unbounded, fp_limit(fp_full_exp::SinhRel), fabs_d(v) + 1)
+BEMAN_INSIDE_AX_KERNEL(cosh, exp_k, cosh, unbounded, fp_limit(fp_full_exp::CoshRel), fabs_d(v) + 1)
 BEMAN_INSIDE_AX_KERNEL(tanh, exp_k, tanh, 1, fp_limit(fp_full_exp::TanhRel + fp_full_exp::TanhAbs), 1.0)
 BEMAN_INSIDE_AX_KERNEL(atan, atan_k, atan, 1, fp_limit(fp_full_atan::Rel + fp_full_atan::Abs), 1.0)
 BEMAN_INSIDE_AX_KERNEL(asin,
@@ -387,31 +387,31 @@ BEMAN_INSIDE_AX_KERNEL(acos,
                        2,
                        fp_limit(4 * fp_full_atan::AcosRel + fp_full_atan::AcosAbs),
                        1.0 / fpk::fp_sqrt((1.0 - x) * (1.0 + x)))
-BEMAN_INSIDE_AX_KERNEL(log, log_k, log, kUnbounded, fp_limit(fp_full_log::Rel), 1.0 / fabs_d(x))
-BEMAN_INSIDE_AX_KERNEL(log2, log_k, log2, kUnbounded, fp_limit(fp_full_log::Rel2), 1.5 / fabs_d(x))
-BEMAN_INSIDE_AX_KERNEL(log10, log_k, log10, kUnbounded, fp_limit(fp_full_log::Rel10), 1.0 / fabs_d(x))
-BEMAN_INSIDE_AX_KERNEL(asinh, log_k, asinh, kUnbounded, fp_limit(fp_full_log::AsinhRel), 1.0)
+BEMAN_INSIDE_AX_KERNEL(log, log_k, log, unbounded, fp_limit(fp_full_log::Rel), 1.0 / fabs_d(x))
+BEMAN_INSIDE_AX_KERNEL(log2, log_k, log2, unbounded, fp_limit(fp_full_log::Rel2), 1.5 / fabs_d(x))
+BEMAN_INSIDE_AX_KERNEL(log10, log_k, log10, unbounded, fp_limit(fp_full_log::Rel10), 1.0 / fabs_d(x))
+BEMAN_INSIDE_AX_KERNEL(asinh, log_k, asinh, unbounded, fp_limit(fp_full_log::AsinhRel), 1.0)
 BEMAN_INSIDE_AX_KERNEL(
-    atanh, log_k, atanh, kUnbounded, fp_limit(fp_full_log::Rel + fp_full_log::AtanhAbs), 1.0 / ((1.0 - x) * (1.0 + x)))
+    atanh, log_k, atanh, unbounded, fp_limit(fp_full_log::Rel + fp_full_log::AtanhAbs), 1.0 / ((1.0 - x) * (1.0 + x)))
 // cbrt = e^(ln|x|/3): the log's error grows with |ln|x||, up to 2^4.
 BEMAN_INSIDE_AX_KERNEL(cbrt,
                        pow_k,
                        cbrt,
-                       kUnbounded,
-                       fp_limit(fp_full_exp::Rel + 16 * fpk::pow_k<fpk::kFullBits>::YRel),
+                       unbounded,
+                       fp_limit(fp_full_exp::Rel + 16 * fpk::pow_k<fpk::full_bits>::YRel),
                        x == 0 ? 0.0 : fabs_d(v / x))
 
 // acosh: the dd kernel's bound grows near 1 as 2^-92/√(1 − 1/x²).
 struct fp_acosh_eval {
     static double dd_eval(double x, double v) {
-        return kDDAbs / fpk::fp_sqrt(1.0 - 1.0 / (x * x)) + dd_eval_bound(x, v);
+        return dd_abs / fpk::fp_sqrt(1.0 - 1.0 / (x * x)) + dd_eval_bound(x, v);
     }
 };
 BEMAN_INSIDE_AX_KERNEL_ON(fp_acosh_eval,
                           acosh,
                           log_k,
                           acosh,
-                          kUnbounded,
+                          unbounded,
                           fp_limit(fp_full_log::AcoshRel),
                           1.0 / fpk::fp_sqrt((x - 1.0) * (x + 1.0)))
     #undef BEMAN_INSIDE_AX_KERNEL_ON
@@ -419,12 +419,12 @@ BEMAN_INSIDE_AX_KERNEL_ON(fp_acosh_eval,
 
 // sqrt: correctly rounded.
 struct fp_sqrt : fp_plain {
-    static constexpr int Mag   = kUnbounded;
-    static constexpr int Limit = fp_limit(fpk::kSqrtRel);
+    static constexpr int Mag   = unbounded;
+    static constexpr int Limit = fp_limit(fpk::sqrt_rel);
     template <int T>
     static double value(double x, double& bound) {
         const double v = fpk::fp_sqrt(x);
-        bound          = fpk::kSqrtRel * v;
+        bound          = fpk::sqrt_rel * v;
         return v;
     }
     template <typename D>
@@ -437,7 +437,7 @@ struct fp_sqrt : fp_plain {
 // The kernels of the two-input functions and of tan, pow and Base^x: their
 // bits and limits.
 struct fp_tan {
-    static constexpr int Mag   = kUnbounded;
+    static constexpr int Mag   = unbounded;
     static constexpr int Limit = fp_limit(fp_full_trig::TanRel);
 };
 struct fp_atan2 {
@@ -445,16 +445,16 @@ struct fp_atan2 {
     static constexpr int Limit = fp_limit(4 * fp_full_atan::Atan2Rel + fp_full_atan::Atan2Abs);
 };
 struct fp_hypot {
-    static constexpr int Mag   = kUnbounded;
-    static constexpr int Limit = fp_limit(fpk::kHypotRel);
+    static constexpr int Mag   = unbounded;
+    static constexpr int Limit = fp_limit(fpk::hypot_rel);
 };
 // pow's bound grows with |e·ln b|: the limit holds up to 2^4.
 struct fp_pow {
-    static constexpr int Mag   = kUnbounded;
-    static constexpr int Limit = fp_limit(fp_full_exp::Rel + 16 * fpk::pow_k<fpk::kFullBits>::YRel);
+    static constexpr int Mag   = unbounded;
+    static constexpr int Limit = fp_limit(fp_full_exp::Rel + 16 * fpk::pow_k<fpk::full_bits>::YRel);
 };
 struct fp_pow_base {
-    static constexpr int Mag   = kUnbounded;
+    static constexpr int Mag   = unbounded;
     static constexpr int Limit = fp_limit(fp_full_exp::RelLo);
 };
 
@@ -484,7 +484,7 @@ template <insidable Out, insidable InX, insidable InY>
 inline bool fp_attempt_hypot(const InX& xi, const InY& yi, Out& out) {
     const double x = input_double(xi), y = input_double(yi);
     const double v     = fpk::fp_hypot(x, y);
-    const double bound = fpk::kHypotRel * v + fpk::kTiny + input_rel<InX> * fabs_d(x) + input_rel<InY> * fabs_d(y);
+    const double bound = fpk::hypot_rel * v + fpk::tiny + input_rel<InX> * fabs_d(x) + input_rel<InY> * fabs_d(y);
     return fp_decide(v, bound * 1.5, out);
 }
 
@@ -517,8 +517,8 @@ inline bool fp_attempt_pow(const InB& bi, const InE& ei, Out& out) {
 // ln Base at compile time, from the integer log, as a double-double.
 template <imax Base>
 inline constexpr ddk::dd ln_base = [] {
-    const ddk::fixed a = ddk::fixed{Base} << ddk::kS;
-    return ddk::of_fixed(log_fixed<ddk::kS>(a, 0).Value, ddk::kS);
+    const ddk::fixed a = ddk::fixed{Base} << ddk::scale_bits;
+    return ddk::of_fixed(log_fixed<ddk::scale_bits>(a, 0).Value, ddk::scale_bits);
 }();
 
 // Base^x = e^(x·ln Base).
@@ -647,14 +647,14 @@ inline bool dd_attempt_tan(const In& in, Out& out) {
         [&] {
             const ddk::dd t    = ddk::tan(x);
             const double  sec2 = 1 + t.Hi * t.Hi, mx = fabs_d(x.Hi) > 1 ? fabs_d(x.Hi) : 1.0;
-            return dd_decide(t, (kDDRel * sec2 * mx + kDDAbs * mx + input(t.Hi)) * 1.5, out);
+            return dd_decide(t, (dd_rel * sec2 * mx + dd_abs * mx + input(t.Hi)) * 1.5, out);
         },
         out);
 }
 
 // pow = e^(e·ln b), as in the double tier; e·ln b within the exp range.
 // The lean form: ln b within the lean log's bound Bl moves y = e·ln b by
-// |e|·Bl, the product rounds within 4kU² of |y|, and e^y adds its own Rel,
+// |e|·Bl, the product rounds within 4U² of |y|, and e^y adds its own Rel,
 // all relative to v. The inputs' roundings add |e|·rel(b) and |y|·rel(e).
 template <insidable Out, insidable InB, insidable InE>
 inline bool dd_attempt_pow(const InB& bi, const InE& ei, Out& out) {
@@ -672,8 +672,8 @@ inline bool dd_attempt_pow(const InB& bi, const InE& ei, Out& out) {
             }
             const ddk::dd v = ddk::exp_lean_value(y);
             bound           = fabs_d(v.Hi) * (ddk::lean_exp::Rel + fabs_d(e.Hi) * bound * (1 + 0x1p-40) +
-                                              4 * fpk::kU * fpk::kU * L + input(L)) +
-                              fpk::kTiny;
+                                              4 * fpk::unit_roundoff * fpk::unit_roundoff * L + input(L)) +
+                              fpk::tiny;
             return v;
         },
         [&] {
@@ -682,12 +682,12 @@ inline bool dd_attempt_pow(const InB& bi, const InE& ei, Out& out) {
             if (!(L <= 700))
                 return false;
             const ddk::dd v = ddk::exp(y);
-            return dd_decide(v, (fabs_d(v.Hi) * (kDDRel * (1 + L) + input(L)) + kDDAbs) * 1.5, out);
+            return dd_decide(v, (fabs_d(v.Hi) * (dd_rel * (1 + L) + input(L)) + dd_abs) * 1.5, out);
         },
         out);
 }
 
-// Base^x = e^(x·ln Base): ln Base within 2^-104 and the product's 4kU².
+// Base^x = e^(x·ln Base): ln Base within 2^-104 and the product's 4U².
 // x·ln Base within the exp range (else the integer path decides).
 template <insidable Out, imax Base, insidable In>
 inline bool dd_attempt_pow_base(const In& xi, Out& out) {
@@ -699,14 +699,14 @@ inline bool dd_attempt_pow_base(const In& xi, Out& out) {
     return dd_lean_first(
         [&](double& bound) {
             const ddk::dd v = ddk::exp_lean_value(y);
-            bound =
-                fabs_d(v.Hi) * (ddk::lean_exp::Rel + (4 * fpk::kU * fpk::kU + ddk::kTableErr + dd_input_rel<In>)*L) +
-                fpk::kTiny;
+            bound           = fabs_d(v.Hi) * (ddk::lean_exp::Rel + (4 * fpk::unit_roundoff * fpk::unit_roundoff +
+                                                                    ddk::table_err + dd_input_rel<In>)*L) +
+                              fpk::tiny;
             return v;
         },
         [&] {
             const ddk::dd v = ddk::exp(y);
-            return dd_decide(v, (fabs_d(v.Hi) * (kDDRel * (1 + L) + dd_input_rel<In> * L) + kDDAbs) * 1.5, out);
+            return dd_decide(v, (fabs_d(v.Hi) * (dd_rel * (1 + L) + dd_input_rel<In> * L) + dd_abs) * 1.5, out);
         },
         out);
 }

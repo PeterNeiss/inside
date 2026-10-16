@@ -1118,7 +1118,7 @@ double fp_worst_ratio(F kernel) {
         EXPECT_LE((fp_worst_ratio<In, __VA_ARGS__>([](double x, double& b) { return fpk::K<36>::call(x, b); })), 1.0) \
             << #call " 36";                                                                                           \
         EXPECT_LE((fp_worst_ratio<In, __VA_ARGS__>(                                                                   \
-                      [](double x, double& b) { return fpk::K<fpk::kFullBits>::call(x, b); })),                       \
+                      [](double x, double& b) { return fpk::K<fpk::full_bits>::call(x, b); })),                       \
                   1.0)                                                                                                \
             << #call " full"
 
@@ -1182,13 +1182,13 @@ TEST(MathAdaptiveTest, double_kernels_stay_within_their_proved_bounds) {
     };
     EXPECT_LE(pow_worst.template operator()<20>(), 1.0) << "pow 20";
     EXPECT_LE(pow_worst.template operator()<52>(), 1.0) << "pow 52";
-    EXPECT_LE(pow_worst.template operator()<fpk::kFullBits>(), 1.0) << "pow full";
+    EXPECT_LE(pow_worst.template operator()<fpk::full_bits>(), 1.0) << "pow full";
 
     // Coarse outputs get smaller kernels.
-    static_assert(fpk::trig_k<ax::fp_target<out8, ax::fp_sin>>::NS < fpk::trig_k<fpk::kFullBits>::NS);
-    static_assert(fpk::exp_k<ax::fp_target<outdec, ax::fp_exp>>::N < fpk::exp_k<fpk::kFullBits>::N);
-    static_assert(fpk::log_k<ax::fp_target<out20, ax::fp_log>>::N < fpk::log_k<fpk::kFullBits>::N);
-    static_assert(fpk::atan_k<ax::fp_target<out20, ax::fp_atan>>::N < fpk::atan_k<fpk::kFullBits>::N);
+    static_assert(fpk::trig_k<ax::fp_target<out8, ax::fp_sin>>::NS < fpk::trig_k<fpk::full_bits>::NS);
+    static_assert(fpk::exp_k<ax::fp_target<outdec, ax::fp_exp>>::N < fpk::exp_k<fpk::full_bits>::N);
+    static_assert(fpk::log_k<ax::fp_target<out20, ax::fp_log>>::N < fpk::log_k<fpk::full_bits>::N);
+    static_assert(fpk::atan_k<ax::fp_target<out20, ax::fp_atan>>::N < fpk::atan_k<fpk::full_bits>::N);
 }
     #undef FP_BOUND
 #endif

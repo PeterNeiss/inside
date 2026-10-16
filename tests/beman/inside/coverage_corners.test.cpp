@@ -56,11 +56,11 @@ namespace d {
 // The full kernels' values.
 double fp_cbrt(double x) {
     double b;
-    return fpk::pow_k<fpk::kFullBits>::cbrt(x, b);
+    return fpk::pow_k<fpk::full_bits>::cbrt(x, b);
 }
 double fp_atan2(double y, double x) {
     double b;
-    return fpk::atan_k<fpk::kFullBits>::atan2(y, x, b);
+    return fpk::atan_k<fpk::full_bits>::atan2(y, x, b);
 }
 } // namespace d
 

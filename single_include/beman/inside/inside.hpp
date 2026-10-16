@@ -6651,13 +6651,13 @@ constexpr void report_failure(L& lhs, P& policy, A& action, errc code) {
 //---------------------------------------------------------------------------
 template <insidable L, typename R>
 constexpr grid wrap_carry_grid() {
-    constexpr imax kMin = std::numeric_limits<imax>::min();
-    constexpr imax kMax = std::numeric_limits<imax>::max();
+    constexpr imax imax_lo = std::numeric_limits<imax>::min();
+    constexpr imax imax_hi = std::numeric_limits<imax>::max();
     // A range past the rational range (a grid spanning 2^64 or more) has
     // carries in {−1, 0, 1} at most: the full imax grid holds them.
     constexpr auto span_r = try_sub(detail::upper64<L>, detail::lower64<L>);
     if constexpr (!span_r || !try_add(*span_r, detail::notch64<L>))
-        return grid{kMin, kMax};
+        return grid{imax_lo, imax_hi};
     else if constexpr (std::integral<R> || insidable<R>) {
         // An integral source spans its type's limits, an inside its interval.
         constexpr rational src_lo = [] {
@@ -6678,13 +6678,13 @@ constexpr grid wrap_carry_grid() {
             if (!off)
                 return fallback;
             const auto q = try_div(*off, range);
-            if (!q || *q < rational{kMin} || *q > rational{kMax})
+            if (!q || *q < rational{imax_lo} || *q > rational{imax_hi})
                 return fallback;
             return floor(*q);
         };
-        return grid{carry_of(src_lo, kMin), carry_of(src_hi, kMax)};
+        return grid{carry_of(src_lo, imax_lo), carry_of(src_hi, imax_hi)};
     } else
-        return grid{kMin, kMax};
+        return grid{imax_lo, imax_hi};
 }
 
 template <insidable L, typename R>
@@ -6713,9 +6713,9 @@ struct unit_fold {
 
     // d saturated to imax (a clamp overshoot or a wrap carry).
     static constexpr imax saturate(const W& d) noexcept {
-        constexpr W kMin = static_cast<W>(std::numeric_limits<imax>::min());
-        constexpr W kMax = static_cast<W>(std::numeric_limits<imax>::max());
-        return static_cast<imax>(d < kMin ? kMin : kMax < d ? kMax : d);
+        constexpr W imax_lo = static_cast<W>(std::numeric_limits<imax>::min());
+        constexpr W imax_hi = static_cast<W>(std::numeric_limits<imax>::max());
+        return static_cast<imax>(d < imax_lo ? imax_lo : imax_hi < d ? imax_hi : d);
     }
 
     // v = Lower + carry·(span + 1) + offset with 0 ≤ offset ≤ span.
@@ -6897,8 +6897,8 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
             }
         if (out) [[unlikely]] {
             auto saturate = [](const I& d) -> imax {
-                constexpr imax kMin = std::numeric_limits<imax>::min(), kMax = std::numeric_limits<imax>::max();
-                return d < I{kMin} ? kMin : I{kMax} < d ? kMax : static_cast<imax>(d);
+                constexpr imax imax_lo = std::numeric_limits<imax>::min(), imax_hi = std::numeric_limits<imax>::max();
+                return d < I{imax_lo} ? imax_lo : I{imax_hi} < d ? imax_hi : static_cast<imax>(d);
             };
             if (dispatch_out_of_range<true>(
                     lhs,
@@ -7442,34 +7442,34 @@ struct assignment<L, R> {
             // (num − Lo·aden)·K / aden — integer ops instead of two rational ops.
             // round_quotient is invariant under reduction, so the slot is
             // bit-identical to the rational path. Oversized denominators
-            // fall through (the kMaxDen guard keeps every product inside imax).
+            // fall through (the max_den guard keeps every product inside imax).
             if constexpr (qformat_codec_fits<L> && detail::notched<L>) {
-                constexpr imax K   = abs_den(detail::notch64<L>.Denominator);
-                constexpr imax Lo  = lower_imax<L>;
-                constexpr umax kKM = [] {
+                constexpr imax K      = abs_den(detail::notch64<L>.Denominator);
+                constexpr imax Lo     = lower_imax<L>;
+                constexpr umax two_km = [] {
                     // 2 · K · M with saturation (M bounds |value| and the offset span)
                     // ceil in umax: a bound's magnitude may reach 2^63 (past imax)
-                    constexpr umax kMax = std::numeric_limits<umax>::max();
-                    const rational a    = detail::abs(detail::lower64<L>) > detail::abs(detail::upper64<L>)
-                                              ? detail::abs(detail::lower64<L>)
-                                              : detail::abs(detail::upper64<L>);
-                    const umax     d    = abs_den(a.Denominator);
-                    const umax     c    = a.Numerator / d + (a.Numerator % d != 0 ? 1 : 0);
-                    if (c > (kMax - 2) / 2)
-                        return kMax;
+                    constexpr umax umax_hi = std::numeric_limits<umax>::max();
+                    const rational a       = detail::abs(detail::lower64<L>) > detail::abs(detail::upper64<L>)
+                                                 ? detail::abs(detail::lower64<L>)
+                                                 : detail::abs(detail::upper64<L>);
+                    const umax     d       = abs_den(a.Denominator);
+                    const umax     c       = a.Numerator / d + (a.Numerator % d != 0 ? 1 : 0);
+                    if (c > (umax_hi - 2) / 2)
+                        return umax_hi;
                     umax k = static_cast<umax>(K);
                     umax m = c * 2 + 2;
-                    if (k > kMax / m)
-                        return kMax;
+                    if (k > umax_hi / m)
+                        return umax_hi;
                     umax km = k * m;
-                    return km > kMax / 2 ? kMax : km * 2;
+                    return km > umax_hi / 2 ? umax_hi : km * 2;
                 }();
-                constexpr umax kMaxDen = static_cast<umax>(std::numeric_limits<imax>::max()) / kKM;
+                constexpr umax max_den = static_cast<umax>(std::numeric_limits<imax>::max()) / two_km;
 
                 const umax aden = abs_den(rv.Denominator);
-                if (kMaxDen != 0 && aden <= kMaxDen) {
+                if (max_den != 0 && aden <= max_den) {
                     // The offset (num − Lo·aden)·K / aden, unreduced: round_quotient
-                    // rounds it as the reduced fraction would, and kMaxDen keeps the
+                    // rounds it as the reduced fraction would, and max_den keeps the
                     // product in imax.
                     const imax num  = signed_numerator(rv);
                     const umax onum = // ≥ 0: rhs ≥ Lower (in range)
@@ -10228,8 +10228,8 @@ struct inside {
     constexpr inside& operator++() {
         static_assert(G.Notch != 0, "inside: ++ steps one notch - a grid without a notch has none to step");
         // constexpr local: the point inside is materialized at compile time.
-        constexpr auto kStep = inside<grid{G.Notch}>::from_raw({});
-        return *this += kStep;
+        constexpr auto notch_step = inside<grid{G.Notch}>::from_raw({});
+        return *this += notch_step;
     }
     constexpr inside operator++(int) {
         inside t = *this;
@@ -10238,8 +10238,8 @@ struct inside {
     }
     constexpr inside& operator--() {
         static_assert(G.Notch != 0, "inside: -- steps one notch - a grid without a notch has none to step");
-        constexpr auto kStep = inside<grid{-G.Notch}>::from_raw({});
-        return *this += kStep;
+        constexpr auto notch_step = inside<grid{-G.Notch}>::from_raw({});
+        return *this += notch_step;
     }
     constexpr inside operator--(int) {
         inside t = *this;
@@ -13668,7 +13668,7 @@ inline constexpr grid_rational gcd_notch =
 // size is proved at compile time from the coefficients and argument range —
 // the first omitted term, each Horner step's rounding, the constants' and the
 // reduction's roundings. These are first-order bounds of IEEE round-to-nearest
-// (each operation within kU = 2^-53, relatively); up() widens each by 2^-30 of
+// (each operation within U = unit_roundoff = 2^-53, relatively); up() widens each by 2^-30 of
 // itself for the second-order terms and the bound arithmetic's roundings.
 //---------------------------------------------------------------------------
 
@@ -13704,22 +13704,22 @@ template <std::size_t N>
     }(std::make_index_sequence<N - 1>{});
 }
 
-inline constexpr double kHalfPiHi  = 0x1.921fb54442d18p+0;  // π/2  high
-inline constexpr double kHalfPiLo  = 0x1.1a62633145c07p-54; // π/2  low
-inline constexpr double kTwoOverPi = 0x1.45f306dc9c883p-1;  // 2/π
-inline constexpr double kLn2Hi     = 0x1.62e42fee00000p-1;  // ln2  high (33 bits)
-inline constexpr double kLn2Lo     = 0x1.a39ef35793c76p-33; // ln2  low
-inline constexpr double kLog2e     = 0x1.71547652b82fep+0;  // 1/ln2
-inline constexpr double kLn2Full   = 0x1.62e42fefa39efp-1;  // ln2
-inline constexpr double kLog10e    = 0x1.bcb7b1526e50ep-2;  // 1/ln10
-inline constexpr double kSqrtHalf  = 0x1.6a09e667f3bcdp-1;  // √½
-inline constexpr double kPi        = 0x1.921fb54442d18p+1;  // π
-inline constexpr double kPiHalf    = 0x1.921fb54442d18p+0;  // π/2
-inline constexpr double kPiSixth   = 0x1.0c152382d7366p-1;  // π/6
-inline constexpr double kInvSqrt3  = 0x1.279a74590331cp-1;  // 1/√3 = tan(π/6)
-inline constexpr double kTanPi12   = 0x1.126145e9ecd56p-2;  // tan(π/12) ≈ 0.2679
-inline constexpr double kThird     = 1.0 / 3.0;
-inline constexpr double kThirdLo   = 0x1.5555555555555p-56; // 1/3 − kThird = 2^-54/3
+inline constexpr double half_pi_hi  = 0x1.921fb54442d18p+0;  // π/2  high
+inline constexpr double half_pi_lo  = 0x1.1a62633145c07p-54; // π/2  low
+inline constexpr double two_over_pi = 0x1.45f306dc9c883p-1;  // 2/π
+inline constexpr double ln2_hi      = 0x1.62e42fee00000p-1;  // ln2  high (33 bits)
+inline constexpr double ln2_lo      = 0x1.a39ef35793c76p-33; // ln2  low
+inline constexpr double log2e       = 0x1.71547652b82fep+0;  // 1/ln2
+inline constexpr double ln2_full    = 0x1.62e42fefa39efp-1;  // ln2
+inline constexpr double log10e      = 0x1.bcb7b1526e50ep-2;  // 1/ln10
+inline constexpr double sqrt_half   = 0x1.6a09e667f3bcdp-1;  // √½
+inline constexpr double pi_double   = 0x1.921fb54442d18p+1;  // π
+inline constexpr double pi_half     = 0x1.921fb54442d18p+0;  // π/2
+inline constexpr double pi_sixth    = 0x1.0c152382d7366p-1;  // π/6
+inline constexpr double inv_sqrt3   = 0x1.279a74590331cp-1;  // 1/√3 = tan(π/6)
+inline constexpr double tan_pi12    = 0x1.126145e9ecd56p-2;  // tan(π/12) ≈ 0.2679
+inline constexpr double third       = 1.0 / 3.0;
+inline constexpr double third_lo    = 0x1.5555555555555p-56; // 1/3 − third = 2^-54/3
 
 // Under -ffp-contract=fast (GCC's default; Clang contracts only within one
 // expression) a product feeding a later sum may be fused into an fma, which
@@ -13776,23 +13776,23 @@ constexpr hilo fast_two_sum(double a, double b) noexcept {
 //---------------------------------------------------------------------------
 // The bound arithmetic.
 //---------------------------------------------------------------------------
-inline constexpr double kU = 0x1p-53; // unit roundoff
+inline constexpr double unit_roundoff = 0x1p-53; // U in the comments
 // Absolute slack for results near the bottom of the double range (a
 // subnormal or underflowing ldexp, a square below 2^-1022): far below
 // every grid the tier serves.
-inline constexpr double kTiny = 0x1p-500;
+inline constexpr double tiny = 0x1p-500;
 
 // How far each constant is from its value (computed offline at 300 bits,
 // rounded up).
-inline constexpr double kHalfPiRes   = 0x1p-109;       // |π/2 − Hi − Lo|      (2^-109.04)
-inline constexpr double kLn2Res      = 0x1p-86;        // |ln2 − Hi − Lo|      (2^-86.15)
-inline constexpr double kLn2FullErr  = 1.25 * 0x1p-55; // relative          (2^-54.73)
-inline constexpr double kLog2eErr    = 1.02 * 0x1p-56; // relative          (2^-55.98)
-inline constexpr double kLog10eErr   = 1.0 * 0x1p-55;  // relative          (2^-55.13)
-inline constexpr double kPiErr       = 1.11 * 0x1p-53; // absolute          (2^-52.86)
-inline constexpr double kPiHalfErr   = 1.11 * 0x1p-54; // absolute          (2^-53.86)
-inline constexpr double kPiSixthErr  = 1.0 * 0x1p-54;  // absolute          (2^-54.05)
-inline constexpr double kInvSqrt3Err = 1.21 * 0x1p-55; // absolute          (2^-54.73)
+inline constexpr double half_pi_res   = 0x1p-109;       // |π/2 − Hi − Lo|      (2^-109.04)
+inline constexpr double ln2_res       = 0x1p-86;        // |ln2 − Hi − Lo|      (2^-86.15)
+inline constexpr double ln2_full_err  = 1.25 * 0x1p-55; // relative          (2^-54.73)
+inline constexpr double log2e_err     = 1.02 * 0x1p-56; // relative          (2^-55.98)
+inline constexpr double log10e_err    = 1.0 * 0x1p-55;  // relative          (2^-55.13)
+inline constexpr double pi_err        = 1.11 * 0x1p-53; // absolute          (2^-52.86)
+inline constexpr double pi_half_err   = 1.11 * 0x1p-54; // absolute          (2^-53.86)
+inline constexpr double pi_sixth_err  = 1.0 * 0x1p-54;  // absolute          (2^-54.05)
+inline constexpr double inv_sqrt3_err = 1.21 * 0x1p-55; // absolute          (2^-54.73)
 
 constexpr double up(double b) { return b * (1 + 0x1p-30); }
 constexpr double pow_n(double x, int n) {
@@ -13818,7 +13818,7 @@ struct poly {
 };
 
 // Σ_{k<N} sign(k)/den(k)·z^k: each coefficient one correctly rounded
-// division of integers below 2^53, so within kU of its value (exact when
+// division of integers below 2^53, so within U of its value (exact when
 // den is a power of two).
 template <std::size_t N, typename F>
 consteval poly<N> series(F term) {
@@ -13830,7 +13830,7 @@ consteval poly<N> series(F term) {
         int        e     = 0;
         const bool pow2  = ::beman::inside::detail::frexp(den, &e) == 0.5;
         p.C[N - 1 - k]   = sign / den;
-        p.Err[N - 1 - k] = pow2 ? 0.0 : kU;
+        p.Err[N - 1 - k] = pow2 ? 0.0 : unit_roundoff;
     }
     return p;
 }
@@ -13843,7 +13843,7 @@ struct term {
 // is given lies within relative Dz of the exact argument: Mag bounds |p|
 // and Err the distance of the computed value from p at the exact argument.
 // Step k's value lies within Err of p_k = p_(k−1)·z + c_k; the fma's
-// rounding adds kU of it.
+// rounding adds U of it.
 struct horner_bound {
     double Mag, Err;
 };
@@ -13855,7 +13855,7 @@ consteval horner_bound horner_error(const poly<N>& p, double Z, double Dz) {
     for (std::size_t k = 1; k < N; ++k) {
         E = E * Z * (1 + Dz) + P * Z * Dz + abs(p.C[k]) * p.Err[k];
         P = P * Z + abs(p.C[k]);
-        E += kU * (P + E);
+        E += unit_roundoff * (P + E);
     }
     return {P, E};
 }
@@ -13874,27 +13874,27 @@ consteval int terms_for(int T, int Max, F trunc) {
 
 // The target of the full kernels: truncation below 2^-58, a thirty-second
 // of their rounding error.
-inline constexpr int kFullBits = 58;
+inline constexpr int full_bits = 58;
 
 // sinh, asinh and acosh have a sharp form, which reaches 47 bits but costs
-// 15–40% more, and a plain one, which reaches 46: targets up to kPlainBits
+// 15–40% more, and a plain one, which reaches 46: targets up to plain_bits
 // (fp_target = bits + 10) take the plain one.
-inline constexpr int kPlainBits = 56;
+inline constexpr int plain_bits = 56;
 
 //---------------------------------------------------------------------------
-// sin and cos on the reduced argument r, |r| ≤ kRTrig. The reduction of
+// sin and cos on the reduced argument r, |r| ≤ r_trig. The reduction of
 // |x| ≤ 2^20 leaves |r| ≤ π/4 + 2^-32 (x·2/π is within 2^-32.6 of exact).
 //---------------------------------------------------------------------------
-inline constexpr double kRTrig  = 0x1.9220p-1; // 0.78540039 ≥ π/4 + 2^-30
-inline constexpr double kZTrig  = kRTrig * kRTrig;
-inline constexpr double kSinMin = 1 - kZTrig / 6; // ≤ sin r / r
-inline constexpr double kCosMin = 1 - kZTrig / 2 + kZTrig * kZTrig / 24 - kZTrig * kZTrig * kZTrig / 720; // ≤ cos r
+inline constexpr double r_trig  = 0x1.9220p-1; // 0.78540039 ≥ π/4 + 2^-30
+inline constexpr double z_trig  = r_trig * r_trig;
+inline constexpr double sin_min = 1 - z_trig / 6; // ≤ sin r / r
+inline constexpr double cos_min = 1 - z_trig / 2 + z_trig * z_trig / 24 - z_trig * z_trig * z_trig / 720; // ≤ cos r
 
 // sin r = r·Σ (−1)^k z^k/(2k+1)!; cos r = Σ (−1)^k z^k/(2k)!, z = r². Both
 // series alternate with falling terms, so the first omitted term bounds
 // the tail.
-constexpr double sin_trunc(int n) { return pow_n(kZTrig, n) / factorial(2 * n + 1) / kSinMin; }
-constexpr double cos_trunc(int n) { return pow_n(kZTrig, n) / factorial(2 * n) / kCosMin; }
+constexpr double sin_trunc(int n) { return pow_n(z_trig, n) / factorial(2 * n + 1) / sin_min; }
+constexpr double cos_trunc(int n) { return pow_n(z_trig, n) / factorial(2 * n) / cos_min; }
 template <int T>
 inline constexpr int sin_terms = terms_for(T, 9, sin_trunc);
 template <int T>
@@ -13910,13 +13910,13 @@ inline constexpr poly<N> cos_c = series<N>([](int k) { return term{k % 2 ? -1.0 
 // and for sin the final product's rounding.
 template <int N>
 inline constexpr double sin_poly_rel = [] {
-    const horner_bound h = horner_error(sin_c<N>, kZTrig, kU);
-    return up((h.Err + sin_trunc(N) * kSinMin) / kSinMin + kU);
+    const horner_bound h = horner_error(sin_c<N>, z_trig, unit_roundoff);
+    return up((h.Err + sin_trunc(N) * sin_min) / sin_min + unit_roundoff);
 }();
 template <int N>
 inline constexpr double cos_poly_rel = [] {
-    const horner_bound h = horner_error(cos_c<N>, kZTrig, kU);
-    return up((h.Err + cos_trunc(N) * kCosMin) / kCosMin);
+    const horner_bound h = horner_error(cos_c<N>, z_trig, unit_roundoff);
+    return up((h.Err + cos_trunc(N) * cos_min) / cos_min);
 }();
 
 template <int N>
@@ -13933,28 +13933,29 @@ template <int N>
 // Quadrant reduction: x → r = x − k·π/2 and q = k mod 4. r1 = x − k·Hi is
 // exact: k ≠ 0 needs |x| > ½, so both terms are multiples of 2^-53, and
 // |r1| < 1. The second fma rounds once, and Hi + Lo misses π/2 by
-// kHalfPiRes: r is within kU·|r| + |k|·kHalfPiRes of x − k·π/2.
+// half_pi_res: r is within U·|r| + |k|·half_pi_res of x − k·π/2.
 inline double reduce_quadrant(double x, long& q, double& k) {
-    k        = std::nearbyint(x * kTwoOverPi);
-    double r = fma(-k, kHalfPiHi, x);
-    r        = fma(-k, kHalfPiLo, r);
+    k        = std::nearbyint(x * two_over_pi);
+    double r = fma(-k, half_pi_hi, x);
+    r        = fma(-k, half_pi_lo, r);
     q        = static_cast<long>(k) & 3;
     return r;
 }
 
-// sin, cos and tan of |x| ≤ 2^20, sized to T bits. The reduction's kU·|r|
-// moves sin r by kU·|r| ≤ kU·|sin r|/kSinMin and cos r by kU·r² ≤
-// kU·kZTrig/cos r, relatively; its |k|·kHalfPiRes is absolute, with
+// sin, cos and tan of |x| ≤ 2^20, sized to T bits. The reduction's U·|r|
+// moves sin r by U·|r| ≤ U·|sin r|/sin_min and cos r by U·r² ≤
+// U·z_trig/cos r, relatively; its |k|·half_pi_res is absolute, with
 // |k| ≤ 1.2·max(1, |x|). So each value is within Rel·|v| + AbsX·max(1, |x|).
 template <int T>
 struct trig_k {
     static constexpr int    NS = sin_terms<T>, NC = cos_terms<T>;
-    static constexpr double Rel = up(max_d(sin_poly_rel<NS> + kU / kSinMin, cos_poly_rel<NC> + kU * kZTrig / kCosMin));
-    static constexpr double AbsX = up(1.2 * kHalfPiRes);
+    static constexpr double Rel =
+        up(max_d(sin_poly_rel<NS> + unit_roundoff / sin_min, cos_poly_rel<NC> + unit_roundoff * z_trig / cos_min));
+    static constexpr double AbsX = up(1.2 * half_pi_res);
     // tan = s/c or −c/s: both relative errors and the division's; the
-    // reduction's kU·|r| moves tan r by 2kU·|r|/|sin 2r| ≤ 1.571kU of it,
-    // and |k|·kHalfPiRes by sec² = 1 + t² times itself.
-    static constexpr double TanRel = up(sin_poly_rel<NS> + cos_poly_rel<NC> + kU + 1.5710 * kU);
+    // reduction's U·|r| moves tan r by 2U·|r|/|sin 2r| ≤ 1.571U of it,
+    // and |k|·half_pi_res by sec² = 1 + t² times itself.
+    static constexpr double TanRel = up(sin_poly_rel<NS> + cos_poly_rel<NC> + unit_roundoff + 1.5710 * unit_roundoff);
 
     // sin x is sin, cos, −sin, −cos of r in quadrants 0…3; cos x is sin x one
     // quadrant on.
@@ -13965,7 +13966,7 @@ struct trig_k {
         q              = (q + shift) & 3;
         const double p = q & 1 ? cos_poly<NC>(r) : sin_poly<NS>(r);
         const double v = q & 2 ? -p : p;
-        bound          = Rel * __builtin_fabs(v) + AbsX * (__builtin_fabs(x) > 1 ? __builtin_fabs(x) : 1.0) + kTiny;
+        bound          = Rel * __builtin_fabs(v) + AbsX * (__builtin_fabs(x) > 1 ? __builtin_fabs(x) : 1.0) + tiny;
         return v;
     }
     static double sin(double x, double& bound) { return quadrant(x, 0, bound); }
@@ -13984,28 +13985,28 @@ struct trig_k {
         } else
             t = s / c;
         const double mx = __builtin_fabs(x) > 1 ? __builtin_fabs(x) : 1.0;
-        bound           = TanRel * __builtin_fabs(t) + (1 + t * t) * AbsX * mx + kTiny;
+        bound           = TanRel * __builtin_fabs(t) + (1 + t * t) * AbsX * mx + tiny;
         return true;
     }
 };
 
 //---------------------------------------------------------------------------
-// e^r on |r| ≤ kRExp: Σ r^k/k!, whose tail is at most r^n/n!·e^|r|.
+// e^r on |r| ≤ r_exp: Σ r^k/k!, whose tail is at most r^n/n!·e^|r|.
 //---------------------------------------------------------------------------
-inline constexpr double kRExp   = 0x1.63p-2; // 0.34668 ≥ ln2/2 + 2^-40
-inline constexpr double kExpMax = 1.4144;    // ≥ e^kRExp
-constexpr double        exp_trunc(int n) { return pow_n(kRExp, n) / factorial(n) * kExpMax * kExpMax; }
+inline constexpr double r_exp   = 0x1.63p-2; // 0.34668 ≥ ln2/2 + 2^-40
+inline constexpr double exp_max = 1.4144;    // ≥ e^r_exp
+constexpr double        exp_trunc(int n) { return pow_n(r_exp, n) / factorial(n) * exp_max * exp_max; }
 template <int T>
 inline constexpr int exp_terms = terms_for(T, 15, exp_trunc);
 
 template <int N>
 inline constexpr poly<N> exp_c = series<N>([](int k) { return term{1.0, factorial(k)}; });
 
-// Relative error of exp_poly at the r it is given (e^r ≥ 1/kExpMax).
+// Relative error of exp_poly at the r it is given (e^r ≥ 1/exp_max).
 template <int N>
 inline constexpr double exp_poly_rel = [] {
-    const horner_bound h = horner_error(exp_c<N>, kRExp, 0);
-    return up(h.Err * kExpMax + exp_trunc(N));
+    const horner_bound h = horner_error(exp_c<N>, r_exp, 0);
+    return up(h.Err * exp_max + exp_trunc(N));
 }();
 
 template <int N>
@@ -14013,12 +14014,12 @@ template <int N>
     return horner(r, exp_c<N>.C);
 }
 
-// sinh a = a + a·z·P(z) for 0 ≤ a < ln 2, z = a² ≤ kZSinh, P = Σ z^k/(2k+3)!.
+// sinh a = a + a·z·P(z) for 0 ≤ a < ln 2, z = a² ≤ z_sinh, P = Σ z^k/(2k+3)!.
 // Relative to sinh a ≥ a: z·P's truncation (the first omitted term,
-// widened by 1% for the rest), z and a·z rounding (2kU of z·P), P's
+// widened by 1% for the rest), z and a·z rounding (2U of z·P), P's
 // Horner error at z, and the fma's rounding.
-inline constexpr double kZSinh = 0.4805; // ≥ (ln 2)² = 0.480453
-constexpr double        sinh_trunc(int n) { return pow_n(kZSinh, n + 1) / factorial(2 * n + 3) * 1.01; }
+inline constexpr double z_sinh = 0.4805; // ≥ (ln 2)² = 0.480453
+constexpr double        sinh_trunc(int n) { return pow_n(z_sinh, n + 1) / factorial(2 * n + 3) * 1.01; }
 template <int T>
 inline constexpr int sinh_terms = terms_for(T, 9, sinh_trunc);
 
@@ -14027,156 +14028,156 @@ inline constexpr poly<N> sinh_c = series<N>([](int k) { return term{1.0, factori
 
 template <int N>
 inline constexpr double sinh_poly_rel = [] {
-    const horner_bound h = horner_error(sinh_c<N>, kZSinh, kU);
-    return up(kZSinh * (2 * kU * h.Mag + h.Err) + sinh_trunc(N) + kU);
+    const horner_bound h = horner_error(sinh_c<N>, z_sinh, unit_roundoff);
+    return up(z_sinh * (2 * unit_roundoff * h.Mag + h.Err) + sinh_trunc(N) + unit_roundoff);
 }();
 
 // e^x = 2^k·e^r, x = k·ln2 + r, for |x| ≤ 745 (|k| ≤ 1100) — larger |x|
-// overflow to infinity or underflow to 0, both within the bound's kTiny
+// overflow to infinity or underflow to 0, both within the bound's tiny
 // or failing every test downstream. r1 = x − k·Hi is exact (Hi has 33
 // bits, k at most 11, and x − k·Hi is a multiple of 2^-54 below ½); the
-// second fma rounds once (kU·|r|, moving e^r by kU·kRExp relatively) and
-// Hi + Lo misses ln 2 by kLn2Res (|k|·kLn2Res). An optional low part of x
+// second fma rounds once (U·|r|, moving e^r by U·r_exp relatively) and
+// Hi + Lo misses ln 2 by ln2_res (|k|·ln2_res). An optional low part of x
 // adds one more rounding of r.
 template <int T>
 struct exp_k {
     static constexpr int    N     = exp_terms<T>;
-    static constexpr double Rel   = up(exp_poly_rel<N> + kU * kRExp + 1100 * kLn2Res);
-    static constexpr double RelLo = up(Rel + kU * kRExp);
+    static constexpr double Rel   = up(exp_poly_rel<N> + unit_roundoff * r_exp + 1100 * ln2_res);
+    static constexpr double RelLo = up(Rel + unit_roundoff * r_exp);
 
     [[gnu::always_inline]] static double value(double x) {
-        const double k = std::nearbyint(x * kLog2e);
-        double       r = fma(-k, kLn2Hi, x);
-        r              = fma(-k, kLn2Lo, r);
+        const double k = std::nearbyint(x * log2e);
+        double       r = fma(-k, ln2_hi, x);
+        r              = fma(-k, ln2_lo, r);
         return ::beman::inside::detail::ldexp_small(exp_poly<N>(r), static_cast<int>(k));
     }
     [[gnu::always_inline]] static double value(double x, double lo) {
-        const double k = std::nearbyint(x * kLog2e);
-        double       r = fma(-k, kLn2Hi, x);
-        r              = fma(-k, kLn2Lo, r) + lo;
+        const double k = std::nearbyint(x * log2e);
+        double       r = fma(-k, ln2_hi, x);
+        r              = fma(-k, ln2_lo, r) + lo;
         return ::beman::inside::detail::ldexp_small(exp_poly<N>(r), static_cast<int>(k));
     }
     static double exp(double x, double& bound) {
         const double v = value(x);
-        bound          = Rel * v + kTiny;
+        bound          = Rel * v + tiny;
         return v;
     }
 
     // 2^x = 2^k·e^((x − k)·ln 2): x − k is exact (|x| < 2^52), and its
     // product with ln 2 rounds once on top of the constant's 2^-54.5.
-    static constexpr double Rel2 = up(exp_poly_rel<N> + (kU + kLn2FullErr) * kRExp);
+    static constexpr double Rel2 = up(exp_poly_rel<N> + (unit_roundoff + ln2_full_err) * r_exp);
     static double           exp2(double x, double& bound) {
         const double k = std::nearbyint(x);
-        const double r = (x - k) * kLn2Full;
+        const double r = (x - k) * ln2_full;
         const double v = ::beman::inside::detail::ldexp_small(exp_poly<N>(r), static_cast<int>(k));
-        bound          = Rel2 * v + kTiny;
+        bound          = Rel2 * v + tiny;
         return v;
     }
 
     // The hyperbolics from e = e^x within Rel: cosh's two positive terms
     // keep it relative (1/e adds one rounding, the sum another);
-    // tanh = (e^2x − 1)/(e^2x + 1) is within Rel + |t|·(Rel + 3kU). sinh of
-    // a = |x| ≥ ln 2 (kLn2Full is above it) takes (e − 1/e)/2 with e ≥ 2:
-    // e's Rel and 1/e's Rel + kU over the difference are at most
-    // Rel·coth a + kU/(e² − 1) ≤ Rel·5/3 + kU/3, and the difference rounds
+    // tanh = (e^2x − 1)/(e^2x + 1) is within Rel + |t|·(Rel + 3U). sinh of
+    // a = |x| ≥ ln 2 (ln2_full is above it) takes (e − 1/e)/2 with e ≥ 2:
+    // e's Rel and 1/e's Rel + U over the difference are at most
+    // Rel·coth a + U/(e² − 1) ≤ Rel·5/3 + U/3, and the difference rounds
     // once; below ln 2 the odd series, relative (sinh_poly_rel). The
-    // plain form takes the difference throughout: within (Rel + kU)·cosh x
-    // + kU·|sinh x|, and cosh ≤ |sinh| + 1.
-    static constexpr int    NSh          = sinh_terms<T>;
-    static constexpr double SinhRel      = up(max_d(sinh_poly_rel<NSh>, Rel * 5 / 3 + kU / 3 + kU));
-    static constexpr double SinhPlainRel = up(Rel + 2 * kU), SinhPlainAbs = up(Rel + kU);
-    static constexpr double CoshRel = up(Rel + 2 * kU);
-    static constexpr double TanhRel = up(Rel + 3 * kU), TanhAbs = up(Rel);
+    // plain form takes the difference throughout: within (Rel + U)·cosh x
+    // + U·|sinh x|, and cosh ≤ |sinh| + 1.
+    static constexpr int    NSh     = sinh_terms<T>;
+    static constexpr double SinhRel = up(max_d(sinh_poly_rel<NSh>, Rel * 5 / 3 + unit_roundoff / 3 + unit_roundoff));
+    static constexpr double SinhPlainRel = up(Rel + 2 * unit_roundoff), SinhPlainAbs = up(Rel + unit_roundoff);
+    static constexpr double CoshRel = up(Rel + 2 * unit_roundoff);
+    static constexpr double TanhRel = up(Rel + 3 * unit_roundoff), TanhAbs = up(Rel);
 
     static double sinh(double x, double& bound) {
-        if constexpr (T <= kPlainBits) {
+        if constexpr (T <= plain_bits) {
             const double e = value(x);
             const double v = (e - 1.0 / e) * 0.5;
-            bound          = SinhPlainRel * __builtin_fabs(v) + SinhPlainAbs + kTiny;
+            bound          = SinhPlainRel * __builtin_fabs(v) + SinhPlainAbs + tiny;
             return v;
         }
         const double a = x < 0 ? -x : x;
         double       m;
-        if (a < kLn2Full) {
+        if (a < ln2_full) {
             const double z = a * a;
             m              = fma(a * z, horner(z, sinh_c<NSh>.C), a);
         } else {
             const double e = value(a);
             m              = (e - 1.0 / e) * 0.5;
         }
-        bound = SinhRel * m + kTiny;
+        bound = SinhRel * m + tiny;
         return x < 0 ? -m : m;
     }
     static double cosh(double x, double& bound) {
         const double e = value(x);
         const double v = (e + 1.0 / e) * 0.5;
-        bound          = CoshRel * v + kTiny;
+        bound          = CoshRel * v + tiny;
         return v;
     }
     static double tanh(double x, double& bound) {
         const double e = value(x + x);
         const double v = (e - 1.0) / (e + 1.0);
-        bound          = TanhRel * __builtin_fabs(v) + TanhAbs + kTiny;
+        bound          = TanhRel * __builtin_fabs(v) + TanhAbs + tiny;
         return v;
     }
 };
 
 //---------------------------------------------------------------------------
 // ln x for x > 0: frexp to m ∈ [√½, √2), ln x = e·ln2 + 2·atanh f with
-// f = (m − 1)/(m + 1), |f| ≤ kFMax, and 2·atanh f = 2f·Σ f^2k/(2k+1),
+// f = (m − 1)/(m + 1), |f| ≤ f_max, and 2·atanh f = 2f·Σ f^2k/(2k+1),
 // whose tail is at most f^2n/((2n+1)(1 − f²)) of the sum (which is ≥ 1).
 //---------------------------------------------------------------------------
-inline constexpr double kFMax = 0.1716; // ≥ (√2 − 1)/(√2 + 1) = 0.171573
-inline constexpr double kZLog = kFMax * kFMax;
-constexpr double        log_trunc(int n) { return pow_n(kZLog, n) / ((2 * n + 1) * (1 - kZLog)); }
+inline constexpr double f_max = 0.1716; // ≥ (√2 − 1)/(√2 + 1) = 0.171573
+inline constexpr double z_log = f_max * f_max;
+constexpr double        log_trunc(int n) { return pow_n(z_log, n) / ((2 * n + 1) * (1 - z_log)); }
 template <int T>
 inline constexpr int log_terms = terms_for(T, 11, log_trunc);
 
 template <int N>
 inline constexpr poly<N> log_c = series<N>([](int k) { return term{1.0, 2.0 * k + 1}; });
 
-// m − 1 is exact (Sterbenz), m + 1 and the quotient round: f within 2kU,
-// which moves atanh f by 2kU/(1 − f²) of itself. The Horner error and
+// m − 1 is exact (Sterbenz), m + 1 and the quotient round: f within 2U,
+// which moves atanh f by 2U/(1 − f²) of itself. The Horner error and
 // the truncation are relative (the sum is ≥ 1); 2f·p rounds once. Then
 // e·Hi is exact and the two fmas round once each, relative to |v|: for
-// e ≠ 0, |v| ≥ ln2/2 ≥ |2 atanh f|, and |e|·kLn2Res ≤ 3·kLn2Res·|v|;
+// e ≠ 0, |v| ≥ ln2/2 ≥ |2 atanh f|, and |e|·ln2_res ≤ 3·ln2_res·|v|;
 // for e = 0 both fmas return 2f·p exactly.
 template <int T>
 struct log_k {
     static constexpr int    N    = log_terms<T>;
     static constexpr double MRel = [] {
-        const horner_bound h = horner_error(log_c<N>, kZLog, kU);
-        return h.Err + log_trunc(N) + kU + 2 * kU / (1 - kZLog);
+        const horner_bound h = horner_error(log_c<N>, z_log, unit_roundoff);
+        return h.Err + log_trunc(N) + unit_roundoff + 2 * unit_roundoff / (1 - z_log);
     }();
-    static constexpr double Rel   = up(MRel + 2 * kU + 3 * kLn2Res);
-    static constexpr double Rel2  = up(Rel + kU + kLog2eErr);
-    static constexpr double Rel10 = up(Rel + kU + kLog10eErr);
+    static constexpr double Rel   = up(MRel + 2 * unit_roundoff + 3 * ln2_res);
+    static constexpr double Rel2  = up(Rel + unit_roundoff + log2e_err);
+    static constexpr double Rel10 = up(Rel + unit_roundoff + log10e_err);
 
     [[gnu::always_inline]] static double value(double x) {
         int    e;
         double m = ::beman::inside::detail::frexp(x, &e);
-        if (m < kSqrtHalf) {
+        if (m < sqrt_half) {
             m += m;
             --e;
         }
         const double f    = (m - 1.0) / (m + 1.0);
         const double logm = 2.0 * f * horner(f * f, log_c<N>.C);
-        const double r    = fma(static_cast<double>(e), kLn2Hi, logm);
-        return fma(static_cast<double>(e), kLn2Lo, r);
+        const double r    = fma(static_cast<double>(e), ln2_hi, logm);
+        return fma(static_cast<double>(e), ln2_lo, r);
     }
     // ln x as Hi + Lo, for pow and cbrt, whose y = c·ln x multiplies the
     // log's error by |y|. With b + Bl = m + 1 exactly (both differences
     // exact by Sterbenz) and r = a − f·b exact (f is the rounded quotient),
-    // Fl = (r − f·Bl)/b puts f + Fl within 4kU² of a/(m + 1), and |Fl| ≤
-    // 2kU·|f|. Then ln m = 2f + T, T = 2Fl + 2f·z·q(z), q = Σ z^k/(2k+3),
+    // Fl = (r − f·Bl)/b puts f + Fl within 4U² of a/(m + 1), and |Fl| ≤
+    // 2U·|f|. Then ln m = 2f + T, T = 2Fl + 2f·z·q(z), q = Σ z^k/(2k+3),
     // and 2f joins e·Hi in an exact two-sum; only T and the low parts
     // round. Relative to |ln x|, the error is HlRel:
     // - e = 0 (|ln x| ≥ |2f|), in units of |2f|: q evaluated at f, not f +
-    //   Fl (the slope of 2·atanh f − 2f is 2z/(1 − z): 2kU·kZLog/(1 −
-    //   kZLog)); Fl's own error; Horner and the truncation; the product
-    //   2f·z and T's fma (kU each);
+    //   Fl (the slope of 2·atanh f − 2f is 2z/(1 − z): 2U·z_log/(1 −
+    //   z_log)); Fl's own error; Horner and the truncation; the product
+    //   2f·z and T's fma (U each);
     // - e ≠ 0 (|ln x| ≥ 0.3466·|e|, |2f| ≤ 0.3432): that, plus the two
-    //   additions of the low parts, e·Lo's rounding and kLn2Res, per |e|.
+    //   additions of the low parts, e·Lo's rounding and ln2_res, per |e|.
     template <int>
     struct q_series {
         static constexpr poly<N - 1> C = [] {
@@ -14189,18 +14190,18 @@ struct log_k {
         }();
     };
     static constexpr double HlRel = [] {
-        const horner_bound h     = horner_error(q_series<0>::C, kZLog, kU);
-        const double       t     = kZLog * h.Mag + 2 * kU; // |T|/|2f|
-        const double       a2f   = 2 * kU * kZLog / (1 - kZLog) + 4 * kU * kU / (1 - kZLog) + log_trunc(N) +
-                                   kZLog * (h.Err + kU * h.Mag) + kU * t;
-        const double       per_e = 2 * kU * (0.7 * kU + kLn2Lo) + kU * kLn2Lo + kLn2Res;
-        const double       rest  = 2 * kU * (0.35 * kU + 0.3432 * t);
+        const horner_bound h = horner_error(q_series<0>::C, z_log, unit_roundoff);
+        const double       t = z_log * h.Mag + 2 * unit_roundoff; // |T|/|2f|
+        const double a2f = 2 * unit_roundoff * z_log / (1 - z_log) + 4 * unit_roundoff * unit_roundoff / (1 - z_log) +
+                           log_trunc(N) + z_log * (h.Err + unit_roundoff * h.Mag) + unit_roundoff * t;
+        const double per_e = 2 * unit_roundoff * (0.7 * unit_roundoff + ln2_lo) + unit_roundoff * ln2_lo + ln2_res;
+        const double rest  = 2 * unit_roundoff * (0.35 * unit_roundoff + 0.3432 * t);
         return up(max_d(a2f, (0.3432 * a2f + rest + per_e) / 0.3466));
     }();
     [[gnu::always_inline]] static double value_hl(double x, double& lo) {
         int    e;
         double m = ::beman::inside::detail::frexp(x, &e);
-        if (m < kSqrtHalf) {
+        if (m < sqrt_half) {
             m += m;
             --e;
         }
@@ -14212,37 +14213,37 @@ struct log_k {
         const double f2 = f + f;
         const double t  = fma(fenced(f2 * z), horner(z, q_series<0>::C.C), fl + fl);
         const double ed = static_cast<double>(e);
-        const hilo   h  = two_sum(ed * kLn2Hi, f2);
-        const hilo   v  = fast_two_sum(h.Hi, (h.Lo + ed * kLn2Lo) + t);
+        const hilo   h  = two_sum(ed * ln2_hi, f2);
+        const hilo   v  = fast_two_sum(h.Hi, (h.Lo + ed * ln2_lo) + t);
         lo              = v.Lo;
         return v.Hi;
     }
 
     static double log(double x, double& bound) {
         const double v = value(x);
-        bound          = Rel * __builtin_fabs(v) + kTiny;
+        bound          = Rel * __builtin_fabs(v) + tiny;
         return v;
     }
     static double log2(double x, double& bound) {
-        const double v = value(x) * kLog2e;
-        bound          = Rel2 * __builtin_fabs(v) + kTiny;
+        const double v = value(x) * log2e;
+        bound          = Rel2 * __builtin_fabs(v) + tiny;
         return v;
     }
     static double log10(double x, double& bound) {
-        const double v = value(x) * kLog10e;
-        bound          = Rel10 * __builtin_fabs(v) + kTiny;
+        const double v = value(x) * log10e;
+        bound          = Rel10 * __builtin_fabs(v) + tiny;
         return v;
     }
 
     // asinh and acosh as A = ln(1 + u), u ≥ 0 given as uh + ul with
-    // |ul| ≤ kU·uh, through ln's Hi + Lo: 1 + uh = wh + e1 exactly,
+    // |ul| ≤ U·uh, through ln's Hi + Lo: 1 + uh = wh + e1 exactly,
     // wl = e1 + ul rounds once, and A = ln wh + ln(1 + q), q = wl/wh. If
-    // wh = 1, q = wl and only wl's rounding is left; below 2, |wl| ≤ kU·wh
-    // and A ≥ kU, so |q| ≤ A·(1 + 2^-50); from 2 on, |q| ≤ 2kU ≤ 3kU·A. Relative to A: ln wh within HlRel of
+    // wh = 1, q = wl and only wl's rounding is left; below 2, |wl| ≤ U·wh
+    // and A ≥ U, so |q| ≤ A·(1 + 2^-50); from 2 on, |q| ≤ 2U ≤ 3U·A. Relative to A: ln wh within HlRel of
     // |ln wh| ≤ 2A; wl's rounding, the quotient's, the sum with ln wh's Lo
-    // and the final sum (kU each, as |q| ≤ A); q − ln(1 + q) ≤ q²/2
-    // (½kU). Log1pRel collects these; the callers add u's own error.
-    static constexpr double              Log1pRel = up(2 * HlRel + 4 * kU * (1 + 0x1p-50) + 0.5 * kU);
+    // and the final sum (U each, as |q| ≤ A); q − ln(1 + q) ≤ q²/2
+    // (½U). Log1pRel collects these; the callers add u's own error.
+    static constexpr double Log1pRel = up(2 * HlRel + 4 * unit_roundoff * (1 + 0x1p-50) + 0.5 * unit_roundoff);
     [[gnu::always_inline]] static double log1p_hl(double uh, double ul) {
         const hilo   w  = two_sum(1.0, uh);
         const double wl = w.Lo + ul;
@@ -14251,76 +14252,76 @@ struct log_k {
         return v + (lo + wl / w.Hi);
     }
     // asinh a, a = |x| ≤ 2^500: u = a + t, t = a²/(1 + √(1 + a²)), the sum
-    // exact. t is within 4.5kU (a², the fma's ½kU through the root, the
-    // root, 1 + √ and the quotient), which moves A by 4.5kU·t/(1 + u)
+    // exact. t is within 4.5U (a², the fma's ½U through the root, the
+    // root, 1 + √ and the quotient), which moves A by 4.5U·t/(1 + u)
     // absolutely; with a = sinh A, t = cosh A − 1, so relative to A that
-    // is 4.5kU·(1 − e^-A)²/(2A) ≤ 4.5kU·0.2037 (the maximum, at A ≈ 1.26).
-    static constexpr double AsinhRel = up(Log1pRel + 4.5 * kU * 0.2037);
+    // is 4.5U·(1 − e^-A)²/(2A) ≤ 4.5U·0.2037 (the maximum, at A ≈ 1.26).
+    static constexpr double AsinhRel = up(Log1pRel + 4.5 * unit_roundoff * 0.2037);
     // The plain form: below 1, ln(a + √(a² + 1)), whose argument is within
-    // 2.5kU (fma, √, sum); above, ln a + ln(1 + √(1 + 1/a²)), the second
-    // argument within 2kU and the sum one more rounding. Both: within
-    // (Rel + kU)·|v| + 2.5kU.
-    static constexpr double AhRel = up(Rel + kU), AsinhAbs = up(2.5 * kU);
+    // 2.5U (fma, √, sum); above, ln a + ln(1 + √(1 + 1/a²)), the second
+    // argument within 2U and the sum one more rounding. Both: within
+    // (Rel + U)·|v| + 2.5U.
+    static constexpr double AhRel = up(Rel + unit_roundoff), AsinhAbs = up(2.5 * unit_roundoff);
     static double           asinh(double x, double& bound) {
         const double a = x < 0 ? -x : x;
-        if constexpr (T <= kPlainBits) {
+        if constexpr (T <= plain_bits) {
             const double m = a <= 1.0 ? value(a + std::sqrt(fma(a, a, 1.0)))
                                       : value(a) + value(1.0 + std::sqrt(1.0 + 1.0 / (a * a)));
-            bound          = AhRel * m + AsinhAbs + kTiny;
+            bound          = AhRel * m + AsinhAbs + tiny;
             return x < 0 ? -m : m;
         }
         const double t = (a * a) / (1.0 + std::sqrt(fma(a, a, 1.0)));
         const hilo   u = two_sum(a, t);
         const double m = log1p_hl(u.Hi, u.Lo);
-        bound          = AsinhRel * m + kTiny;
+        bound          = AsinhRel * m + tiny;
         return x < 0 ? -m : m;
     }
 
     // acosh x, 1 ≤ x ≤ 2^500: u = y + s, y = x − 1, s = √(y² + 2y) (one
     // fma), the sum exact. y is exact below 2^53; above, its rounding moves
-    // A by at most kU·y/(1 + u) ≤ kU, and A ≥ 37. s is within 1.5kU, which
-    // moves A by 1.5kU·s/(1 + u); with s = sinh A, 1 + u = e^A, relative
-    // to A that is 1.5kU·(1 − e^-2A)/(2A) ≤ 1.5kU.
-    static constexpr double AcoshRel = up(Log1pRel + 1.5 * kU + kU / 37);
+    // A by at most U·y/(1 + u) ≤ U, and A ≥ 37. s is within 1.5U, which
+    // moves A by 1.5U·s/(1 + u); with s = sinh A, 1 + u = e^A, relative
+    // to A that is 1.5U·(1 − e^-2A)/(2A) ≤ 1.5U.
+    static constexpr double AcoshRel = up(Log1pRel + 1.5 * unit_roundoff + unit_roundoff / 37);
     // The plain form: ln x + ln(1 + s), s = √d, d = 1 − 1/x². 1/x² is
-    // within 2kU, and d (exact by Sterbenz, else one rounding of at most
-    // kU·d) within 2kU of 1 − 1/x², which moves √d by at most 2kU/s; the
-    // root, the sum and the logs add (Rel + kU)·|v| + 2kU. At x = 1, s = 0
+    // within 2U, and d (exact by Sterbenz, else one rounding of at most
+    // U·d) within 2U of 1 − 1/x², which moves √d by at most 2U/s; the
+    // root, the sum and the logs add (Rel + U)·|v| + 2U. At x = 1, s = 0
     // makes the bound infinite.
     static double acosh(double x, double& bound) {
-        if constexpr (T <= kPlainBits) {
+        if constexpr (T <= plain_bits) {
             const double s = std::sqrt(1.0 - 1.0 / (x * x));
             const double v = value(x) + value(1.0 + s);
-            bound          = AhRel * v + up(2 * kU) + up(2 * kU * (1 + 0x1p-50)) / s + kTiny;
+            bound          = AhRel * v + up(2 * unit_roundoff) + up(2 * unit_roundoff * (1 + 0x1p-50)) / s + tiny;
             return v;
         }
         const double y = x - 1.0;
         const double s = std::sqrt(fma(y, y, y + y));
         const hilo   u = two_sum(y, s);
         const double v = log1p_hl(u.Hi, u.Lo);
-        bound          = AcoshRel * v + kTiny;
+        bound          = AcoshRel * v + tiny;
         return v;
     }
 
-    // atanh |x| < 1: ½·ln((1 + a)/(1 − a)), the quotient within 3kU.
-    static constexpr double AtanhAbs = up(1.5 * kU);
+    // atanh |x| < 1: ½·ln((1 + a)/(1 − a)), the quotient within 3U.
+    static constexpr double AtanhAbs = up(1.5 * unit_roundoff);
     static double           atanh(double x, double& bound) {
         const double a = x < 0 ? -x : x;
         const double m = 0.5 * value((1.0 + a) / (1.0 - a));
-        bound          = Rel * m + AtanhAbs + kTiny;
+        bound          = Rel * m + AtanhAbs + tiny;
         return x < 0 ? -m : m;
     }
 };
 
 //---------------------------------------------------------------------------
 // atan: |x| > 1 through π/2 − atan(1/x); then a > tan(π/12) through the
-// π/6 addition formula, so |t| ≤ kTMax; atan t = t·Σ (−1)^k t^2k/(2k+1),
+// π/6 addition formula, so |t| ≤ t_max; atan t = t·Σ (−1)^k t^2k/(2k+1),
 // alternating with falling terms.
 //---------------------------------------------------------------------------
-inline constexpr double kTMax    = 0.2681; // ≥ tan(π/12) = 0.267949
-inline constexpr double kZAtan   = kTMax * kTMax;
-inline constexpr double kAtanMin = 1 - kZAtan / 3; // ≤ atan t / t
-constexpr double        atan_trunc(int n) { return pow_n(kZAtan, n) / (2 * n + 1) / kAtanMin; }
+inline constexpr double t_max    = 0.2681; // ≥ tan(π/12) = 0.267949
+inline constexpr double z_atan   = t_max * t_max;
+inline constexpr double atan_min = 1 - z_atan / 3; // ≤ atan t / t
+constexpr double        atan_trunc(int n) { return pow_n(z_atan, n) / (2 * n + 1) / atan_min; }
 template <int T>
 inline constexpr int atan_terms = terms_for(T, 15, atan_trunc);
 
@@ -14330,8 +14331,8 @@ inline constexpr poly<N> atan_c = series<N>([](int k) { return term{k % 2 ? -1.0
 // Unreduced (|x| ≤ tan(π/12), the only case where |v| can be small):
 // the Horner error and truncation over atan t / t, and fma(t, p, 0)'s
 // rounding — relative. Every other path adds absolute errors, in units of
-// kU: t's three roundings (a − c, the fma, the quotient) move atan by
-// 3·kTMax; the constants c and π/6 by 0.23 and 0.5 (atan(c̃) is within
+// U: t's three roundings (a − c, the fma, the quotient) move atan by
+// 3·t_max; the constants c and π/6 by 0.23 and 0.5 (atan(c̃) is within
 // |c̃ − c|·¾ of π/6); fma(t, p, π/6) rounds by π/4; 1/a moves atan by ½;
 // π/2 − r by 0.56 (the constant) and π/2 (the rounding); and t·(Horner +
 // truncation) of the polynomial itself.
@@ -14339,12 +14340,13 @@ template <int T>
 struct atan_k {
     static constexpr int    N       = atan_terms<T>;
     static constexpr double PolyAbs = [] {
-        const horner_bound h = horner_error(atan_c<N>, kZAtan, kU);
-        return h.Err + atan_trunc(N) * kAtanMin;
+        const horner_bound h = horner_error(atan_c<N>, z_atan, unit_roundoff);
+        return h.Err + atan_trunc(N) * atan_min;
     }();
-    static constexpr double Rel = up(PolyAbs / kAtanMin + kU);
-    static constexpr double Abs = up(kTMax * PolyAbs + 3 * kTMax * kU + kInvSqrt3Err * 0.75 + kPiSixthErr +
-                                     kRTrig * kU + 0.5 * kU + kPiHalfErr + 1.5708 * kU);
+    static constexpr double Rel = up(PolyAbs / atan_min + unit_roundoff);
+    static constexpr double Abs =
+        up(t_max * PolyAbs + 3 * t_max * unit_roundoff + inv_sqrt3_err * 0.75 + pi_sixth_err + r_trig * unit_roundoff +
+           0.5 * unit_roundoff + pi_half_err + 1.5708 * unit_roundoff);
 
     [[gnu::always_inline]] static double value(double x) {
         const bool neg = x < 0;
@@ -14353,49 +14355,49 @@ struct atan_k {
         if (inv)
             a = 1.0 / a;
         double off = 0.0;
-        if (a > kTanPi12) {
-            a   = (a - kInvSqrt3) / fma(a, kInvSqrt3, 1.0);
-            off = kPiSixth;
+        if (a > tan_pi12) {
+            a   = (a - inv_sqrt3) / fma(a, inv_sqrt3, 1.0);
+            off = pi_sixth;
         }
         double r = fma(a, horner(a * a, atan_c<N>.C), off);
         if (inv)
-            r = kPiHalf - r;
+            r = pi_half - r;
         return neg ? -r : r;
     }
     static double atan(double x, double& bound) {
         const double v = value(x);
-        bound          = Rel * __builtin_fabs(v) + Abs + kTiny;
+        bound          = Rel * __builtin_fabs(v) + Abs + tiny;
         return v;
     }
 
-    // atan2: y/x rounds (½kU on the angle); x < 0 adds ±π (its constant
+    // atan2: y/x rounds (½U on the angle); x < 0 adds ±π (its constant
     // and one rounding).
-    static constexpr double Atan2Rel = up(Rel + kU), Atan2Abs = up(Abs + 0.5 * kU + kPiErr);
+    static constexpr double Atan2Rel = up(Rel + unit_roundoff), Atan2Abs = up(Abs + 0.5 * unit_roundoff + pi_err);
     static double           atan2(double y, double x, double& bound) {
         double v;
         if (x > 0.0)
             v = value(y / x);
         else if (x < 0.0)
-            v = value(y / x) + (y >= 0.0 ? kPi : -kPi);
+            v = value(y / x) + (y >= 0.0 ? pi_double : -pi_double);
         else
-            v = y > 0.0 ? kPiHalf : y < 0.0 ? -kPiHalf : 0.0;
-        bound = Atan2Rel * __builtin_fabs(v) + Atan2Abs + kTiny;
+            v = y > 0.0 ? pi_half : y < 0.0 ? -pi_half : 0.0;
+        bound = Atan2Rel * __builtin_fabs(v) + Atan2Abs + tiny;
         return v;
     }
 
-    // asin = atan(x/√((1 − x)(1 + x))): the quotient within 3.5kU, which
-    // moves atan by 3.5kU of itself at most. acos = π/2 − asin: absolute.
-    static constexpr double              AsinRel = up(Rel + 3.5 * kU), AsinAbs = Abs;
-    static constexpr double              AcosRel = kU, AcosAbs = up(AsinRel * 1.5708 + AsinAbs + kPiHalfErr);
+    // asin = atan(x/√((1 − x)(1 + x))): the quotient within 3.5U, which
+    // moves atan by 3.5U of itself at most. acos = π/2 − asin: absolute.
+    static constexpr double AsinRel = up(Rel + 3.5 * unit_roundoff), AsinAbs = Abs;
+    static constexpr double AcosRel = unit_roundoff, AcosAbs = up(AsinRel * 1.5708 + AsinAbs + pi_half_err);
     [[gnu::always_inline]] static double asin_value(double x) { return value(x / std::sqrt((1.0 - x) * (1.0 + x))); }
     static double                        asin(double x, double& bound) {
         const double v = asin_value(x);
-        bound          = AsinRel * __builtin_fabs(v) + AsinAbs + kTiny;
+        bound          = AsinRel * __builtin_fabs(v) + AsinAbs + tiny;
         return v;
     }
     static double acos(double x, double& bound) {
-        const double v = kPiHalf - asin_value(x);
-        bound          = AcosRel * __builtin_fabs(v) + AcosAbs + kTiny;
+        const double v = pi_half - asin_value(x);
+        bound          = AcosRel * __builtin_fabs(v) + AcosAbs + tiny;
         return v;
     }
 };
@@ -14404,7 +14406,7 @@ struct atan_k {
 // Compositions.
 //---------------------------------------------------------------------------
 // e^(y), y = ln a / 3 (or e·ln b): ln's relative error Rel_log and the
-// product's roundings move y by |y|·(Rel_log + 2kU), and e^y by that much
+// product's roundings move y by |y|·(Rel_log + 2U), and e^y by that much
 // relatively, on top of Rel_exp. T counts the bits of the result; the
 // log's error is multiplied by |y| (below 2^10), so it gets 10 more. Past
 // T = 52 (outputs past 42 bits, where that would not decide at |y| = 16)
@@ -14412,10 +14414,10 @@ struct atan_k {
 // (the low parts' roundings), and e^y sees one more rounding (RelLo).
 template <int T>
 struct pow_k {
-    using L                      = log_k<T + 10 < kFullBits ? T + 10 : kFullBits>;
+    using L                      = log_k<T + 10 < full_bits ? T + 10 : full_bits>;
     using E                      = exp_k<T>;
     static constexpr bool   Hl   = T > 52;
-    static constexpr double YRel = Hl ? up(L::HlRel + 0x1p-103) : up(L::Rel + 2 * kU);
+    static constexpr double YRel = Hl ? up(L::HlRel + 0x1p-103) : up(L::Rel + 2 * unit_roundoff);
     static constexpr double ERel = Hl ? E::RelLo : E::Rel;
 
     static double cbrt(double x, double& bound) {
@@ -14428,13 +14430,13 @@ struct pow_k {
         if constexpr (Hl) {
             double       lo;
             const double h = L::value_hl(a, lo);
-            y              = rounded_product(h, kThird);
-            m              = E::value(y, fma(h, kThird, -y) + (h * kThirdLo + lo * kThird));
+            y              = rounded_product(h, third);
+            m              = E::value(y, fma(h, third, -y) + (h * third_lo + lo * third));
         } else {
-            y = L::value(a) * kThird;
+            y = L::value(a) * third;
             m = E::value(y);
         }
-        bound = m * (ERel + __builtin_fabs(y) * YRel) + kTiny;
+        bound = m * (ERel + __builtin_fabs(y) * YRel) + tiny;
         return x < 0 ? -m : m;
     }
 
@@ -14451,7 +14453,7 @@ struct pow_k {
         if (!(__builtin_fabs(y) <= 745))
             return false;
         v     = Hl ? E::value(y, ylo) : E::value(y);
-        bound = v * (ERel + __builtin_fabs(y) * YRel) + kTiny;
+        bound = v * (ERel + __builtin_fabs(y) * YRel) + tiny;
         return true;
     }
 
@@ -14462,26 +14464,26 @@ struct pow_k {
         y                = x * lnHi;
         const double ylo = fma(x, lnHi, -y) + x * lnLo;
         const double v   = E::value(y, ylo);
-        bound            = v * (E::RelLo + __builtin_fabs(y) * 0x1p-100) + kTiny;
+        bound            = v * (E::RelLo + __builtin_fabs(y) * 0x1p-100) + tiny;
         return v;
     }
 };
 
 // √ (correctly rounded) and √(x² + y²): the squares and their sum within
-// 2kU, the root halves that and rounds once more. |x|, |y| ≤ 2^500 keep
+// 2U, the root halves that and rounds once more. |x|, |y| ≤ 2^500 keep
 // the squares finite; squares below 2^-1022 lose at most 2^-1074, which
-// moves the root by far less than kTiny.
+// moves the root by far less than tiny.
 inline double           fp_sqrt(double x) { return std::sqrt(x); }
-inline constexpr double kSqrtRel = up(kU), kHypotRel = up(2 * kU);
+inline constexpr double sqrt_rel = up(unit_roundoff), hypot_rel = up(2 * unit_roundoff);
 inline double           fp_hypot(double x, double y) { return std::sqrt(fma(x, x, y * y)); }
 
 // Seeds of the dd tier's Newton steps: one step squares a seed's error,
 // so 2^-48 is enough (the dd kernels' test checks the result).
-inline constexpr int kSeedBits = 48;
+inline constexpr int seed_bits = 48;
 inline double        seed_cbrt(double x) {
     if (x == 0.0)
         return 0.0;
-    const double m = exp_k<kSeedBits>::value(log_k<kSeedBits>::value(x < 0 ? -x : x) * kThird);
+    const double m = exp_k<seed_bits>::value(log_k<seed_bits>::value(x < 0 ? -x : x) * third);
     return x < 0 ? -m : m;
 }
 
@@ -14629,8 +14631,8 @@ constexpr dd of_fixed(wide_sint<K> y, int S) noexcept {
     return negative ? neg(r) : r;
 }
 
-inline constexpr int kS = 136; // the scale (bits after the point) of the constants
-using fixed             = ax::fixed_t<2 * kS + 16>;
+inline constexpr int scale_bits = 136; // the scale (bits after the point) of the constants
+using fixed                     = ax::fixed_t<2 * scale_bits + 16>;
 
 template <std::size_t K>
 constexpr dd of_fixed_any(const wide_sint<K>& y, int S) noexcept {
@@ -14683,7 +14685,7 @@ constexpr std::array<dd, 64> exp2_table(int shift) noexcept {
 }
 
 // sin(jπ/128), j = 0 … 255: cos and sin of π/128 by five half-angle square
-// roots from cos π/4, then j rotations at scale kS (a unit lost per step).
+// roots from cos π/4, then j rotations at scale scale_bits (a unit lost per step).
 template <int S>
 constexpr std::array<dd, 256> sin_table() noexcept {
     const fixed one  = fixed{1} << S;
@@ -14751,7 +14753,7 @@ constexpr std::array<dd, 97> log_table() noexcept {
 // first use only, so a translation unit that never reaches the dd tier
 // pays nothing for them (the scale S is a parameter so that GCC cannot
 // fold the initializers early). D is always dd.
-template <typename D, int S = kS>
+template <typename D, int S = scale_bits>
 struct consts {
     static constexpr D Ln2    = of_fixed_any(ax::ln2_q<S>, S);
     static constexpr D Log2e  = of_fixed_any(ax::log2e_q<S>, S);
@@ -14772,8 +14774,8 @@ struct consts {
     static constexpr D I3 = inv_int<S>(3), I5 = inv_int<S>(5), I7 = inv_int<S>(7);
 };
 
-inline constexpr double kInvLn2By4096 = 4096 * fpk::kLog2e;
-inline constexpr double kInvPiBy128   = 128 / 0x1.921fb54442d18p+1;
+inline constexpr double inv_ln2_by_4096 = 4096 * fpk::log2e;
+inline constexpr double inv_pi_by_128   = 128 / 0x1.921fb54442d18p+1;
 
 // a·2^m for |m| ≤ 1022 (a power-of-two factor, exact unless the result is
 // subnormal).
@@ -14816,7 +14818,7 @@ struct exp_reduced {
 template <dd_type D>
 [[gnu::always_inline]] inline exp_reduced<D> exp_reduce(D x) noexcept {
     using C         = consts<D>;
-    const double k  = __builtin_nearbyint(x.Hi * kInvLn2By4096);
+    const double k  = __builtin_nearbyint(x.Hi * inv_ln2_by_4096);
     const long   ik = static_cast<long>(k);
     return {
         reduce(x, k, C::Ln2By4096[0], C::Ln2By4096[1], C::Ln2By4096[2], 0),
@@ -14893,7 +14895,7 @@ struct trig_reduced {
 template <dd_type D>
 [[gnu::always_inline]] inline trig_reduced<D> trig_reduce(D x) noexcept {
     using C        = consts<D>;
-    const double n = __builtin_nearbyint(x.Hi * kInvPiBy128);
+    const double n = __builtin_nearbyint(x.Hi * inv_pi_by_128);
     const long   j = static_cast<long>(n);
     return {reduce(x, n, C::PiBy128[0], C::PiBy128[1], C::PiBy128[2], C::PiBy128[3]),
             C::Sin[static_cast<std::size_t>(j & 255)],
@@ -15071,34 +15073,36 @@ inline D hypot(D x, D y) noexcept {
 // every rounding counted at its worst, up() for the second-order terms.
 // Results they leave undecided go to the full kernels above.
 //---------------------------------------------------------------------------
-using fpk::kU;
+using fpk::unit_roundoff;
 using fpk::up;
 
 // A table entry or constant (of_fixed: the top 53 bits and the next 53,
 // both cut, from a value within 2^-120 of exact) is within 2^-104 of its
 // value, relatively.
-inline constexpr double kTableErr = 0x1p-104;
+inline constexpr double table_err = 0x1p-104;
 
-// reduce()'s error for |x.Lo| ≤ kU·|x.Hi|, |k| ≤ Kx·max(1, |x|), the second
+// reduce()'s error for |x.Lo| ≤ U·|x.Hi|, |k| ≤ Kx·max(1, |x|), the second
 // part below 2^E1 and a residual of the parts below 2^-Res of their sum: in
-// units of max(1, |x|), the roundings of x.Lo − w.Lo (|w.Lo| ≤ kU·|k|·2^E1),
+// units of max(1, |x|), the roundings of x.Lo − w.Lo (|w.Lo| ≤ U·|k|·2^E1),
 // k·c3 (below |k|·2^E3), their difference and the sum with d.Lo
-// (|d.Lo| ≤ kU·R): three of kU on the terms, kU² of R, and |k|·Res.
+// (|d.Lo| ≤ U·R): three of U on the terms, U² of R, and |k|·Res.
 consteval double reduce_abs(double Kx, int E1, int E3, int Res, double R) {
-    const double t = kU * (1 + kU) + kU * Kx * fpk::pow_n(0.5, -E1) + Kx * fpk::pow_n(0.5, -E3);
-    return up(3 * kU * t * (1 + 4 * kU) + Kx * fpk::pow_n(0.5, Res) + kU * kU * R);
+    const double t =
+        unit_roundoff * (1 + unit_roundoff) + unit_roundoff * Kx * fpk::pow_n(0.5, -E1) + Kx * fpk::pow_n(0.5, -E3);
+    return up(3 * unit_roundoff * t * (1 + 4 * unit_roundoff) + Kx * fpk::pow_n(0.5, Res) +
+              unit_roundoff * unit_roundoff * R);
 }
 
 // sin r = r + r³·S(r²), S = −1/3! + z/5! − z²/7!; cos r = 1 − r²/2 + r⁴·C(r²),
 // C = 1/4! − z/6! + z²/8!.
-inline constexpr fpk::poly<3> kLeanSinC =
+inline constexpr fpk::poly<3> lean_sin_c =
     fpk::series<3>([](int k) { return fpk::term{k % 2 ? 1.0 : -1.0, fpk::factorial(2 * k + 3)}; });
-inline constexpr fpk::poly<3> kLeanCosC =
+inline constexpr fpk::poly<3> lean_cos_c =
     fpk::series<3>([](int k) { return fpk::term{k % 2 ? -1.0 : 1.0, fpk::factorial(2 * k + 4)}; });
 
 // sin and cos for |x| ≤ 2^20, x = n·π/128 + r as in sincos. n's product
 // rounds within 2^-26.6 of a step, and |x.Lo| ≤ 2^-33, so |r| ≤ R. With
-// r = rh + rl (|rl| ≤ kU·|rh|), z = rh² exactly as zh + zl, and the table's
+// r = rh + rl (|rl| ≤ U·|rh|), z = rh² exactly as zh + zl, and the table's
 // A = sin(nπ/128), B = cos(nπ/128):
 //   sin(a + r) = A + B·sr + A·cm,  sr = sin r = rh + ts,
 //   cos(a + r) = B − A·sr + B·cm,  cm = cos r − 1 = −zh/2 + tc,
@@ -15106,12 +15110,12 @@ inline constexpr fpk::poly<3> kLeanCosC =
 // B·rh and A·(−zh/2) are error-free and join A in two exact fast two-sums
 // (|A| ≥ sin(π/128) > 2|B·rh| unless A = 0); everything else is summed in
 // double. All bounds are absolute (|A|, |B| ≤ 1):
-// - sr: rl·(cos − 1) for rl·cos (kU·R³/2); rh·zh's two roundings, S's
-//   Horner error at zh (horner_error with Dz = kU), its truncation; ts's
-//   fma (kU·|ts|);
-// - cm: rl·(rh − sin rh) and rl² (kU·R⁴/6, kU²·Z); zh²'s three roundings,
+// - sr: rl·(cos − 1) for rl·cos (U·R³/2); rh·zh's two roundings, S's
+//   Horner error at zh (horner_error with Dz = U), its truncation; ts's
+//   fma (U·|ts|);
+// - cm: rl·(rh − sin rh) and rl² (U·R⁴/6, U²·Z); zh²'s three roundings,
 //   C's Horner error and truncation; the fmas of tc and of rh·rl + zl/2;
-// - the sum of the low parts: at most 10 roundings of kU, each partial sum
+// - the sum of the low parts: at most 10 roundings of U, each partial sum
 //   within Lmax; the dropped B.Lo·ts and A.Lo·tc; the table's 2^-104 of A
 //   and B times (1 + R).
 // The reduction's error (reduce_abs: |n| ≤ 42·max(1, |x|), c1 < 2^-31,
@@ -15120,16 +15124,22 @@ inline constexpr fpk::poly<3> kLeanCosC =
 struct lean_trig {
     static constexpr double            R = 0.01228; // ≥ (½ + 2^-26)·π/128 + 2^-33
     static constexpr double            Z = R * R, R3 = Z * R, R4 = Z * Z;
-    static constexpr fpk::horner_bound HS = fpk::horner_error(kLeanSinC, Z, kU);
-    static constexpr fpk::horner_bound HC = fpk::horner_error(kLeanCosC, Z, kU);
-    static constexpr double            TS = R3 * HS.Mag * (1 + 4 * kU) + kU * R * (1 + kU);       // ≥ |ts|
-    static constexpr double            TC = R4 * HC.Mag * (1 + 4 * kU) + 1.5 * kU * Z * (1 + kU); // ≥ |tc|
-    static constexpr double            SinR =
-        kU * R3 / 2 + R3 * (2 * kU * HS.Mag + HS.Err + fpk::pow_n(Z, 3) / fpk::factorial(9)) + kU * TS;
-    static constexpr double CosR = kU * R4 / 6 + 2 * kU * kU * Z +
-                                   R4 * (3 * kU * HC.Mag + HC.Err + fpk::pow_n(Z, 3) / fpk::factorial(10)) + kU * TC;
-    static constexpr double Lmax = 2 * kU * (1 + R + Z) + kU * R + kU * Z / 2 + kU + TS + kU * R + TC + kU * Z / 2;
-    static constexpr double Abs  = up(SinR + CosR + 10 * kU * Lmax + kU * (TS + TC) + kTableErr * (1 + R));
+    static constexpr fpk::horner_bound HS = fpk::horner_error(lean_sin_c, Z, unit_roundoff);
+    static constexpr fpk::horner_bound HC = fpk::horner_error(lean_cos_c, Z, unit_roundoff);
+    static constexpr double            TS =
+        R3 * HS.Mag * (1 + 4 * unit_roundoff) + unit_roundoff * R * (1 + unit_roundoff); // ≥ |ts|
+    static constexpr double TC =
+        R4 * HC.Mag * (1 + 4 * unit_roundoff) + 1.5 * unit_roundoff * Z * (1 + unit_roundoff); // ≥ |tc|
+    static constexpr double SinR = unit_roundoff * R3 / 2 +
+                                   R3 * (2 * unit_roundoff * HS.Mag + HS.Err + fpk::pow_n(Z, 3) / fpk::factorial(9)) +
+                                   unit_roundoff * TS;
+    static constexpr double CosR = unit_roundoff * R4 / 6 + 2 * unit_roundoff * unit_roundoff * Z +
+                                   R4 * (3 * unit_roundoff * HC.Mag + HC.Err + fpk::pow_n(Z, 3) / fpk::factorial(10)) +
+                                   unit_roundoff * TC;
+    static constexpr double Lmax = 2 * unit_roundoff * (1 + R + Z) + unit_roundoff * R + unit_roundoff * Z / 2 +
+                                   unit_roundoff + TS + unit_roundoff * R + TC + unit_roundoff * Z / 2;
+    static constexpr double Abs =
+        up(SinR + CosR + 10 * unit_roundoff * Lmax + unit_roundoff * (TS + TC) + table_err * (1 + R));
     static constexpr double AbsX = up(reduce_abs(42, -31, -86, 139, R) * (1 + R));
 };
 
@@ -15152,9 +15162,9 @@ template <dd_type D>
     const double rh = r.Hi, rl = r.Lo;
     const D      z  = two_prod(rh, rh);
     const double zh = z.Hi;
-    const double ts = std::fma(fpk::rounded_product(rh, zh), fpk::horner(zh, kLeanSinC.C), rl);
+    const double ts = std::fma(fpk::rounded_product(rh, zh), fpk::horner(zh, lean_sin_c.C), rl);
     const double tc =
-        std::fma(fpk::rounded_product(zh, zh), fpk::horner(zh, kLeanCosC.C), -std::fma(rh, rl, 0.5 * z.Lo));
+        std::fma(fpk::rounded_product(zh, zh), fpk::horner(zh, lean_cos_c.C), -std::fma(rh, rl, 0.5 * z.Lo));
     const double h = -0.5 * zh;
     return {lean_rotate(sa, ca, rh, ts, h, tc), lean_rotate(ca, neg(sa), rh, ts, h, tc)};
 }
@@ -15162,7 +15172,7 @@ template <dd_type D>
 // The bound of a lean sin or cos at x.
 constexpr double lean_trig_bound(double x) noexcept {
     const double ax = x < 0 ? -x : x;
-    return lean_trig::Abs + lean_trig::AbsX * (ax > 1 ? ax : 1.0) + fpk::kTiny;
+    return lean_trig::Abs + lean_trig::AbsX * (ax > 1 ? ax : 1.0) + fpk::tiny;
 }
 
 template <dd_type D>
@@ -15177,15 +15187,15 @@ inline D cos_lean(D x, double& bound) noexcept {
 }
 
 // e^r − 1 = r + r²·P(r), P = 1/2! + r/3! + r²/4! + r³/5!.
-inline constexpr fpk::poly<4> kLeanExpC = fpk::series<4>([](int k) { return fpk::term{1.0, fpk::factorial(k + 2)}; });
+inline constexpr fpk::poly<4> lean_exp_c = fpk::series<4>([](int k) { return fpk::term{1.0, fpk::factorial(k + 2)}; });
 
 // e^x for |x| ≤ 700, x = k·ln 2/4096 + r as in exp: n's product rounds
 // within 2^-29 of a step and |x.Lo| ≤ 2^-43, so |r| ≤ R. With
 // r = rh + rl and T = 2^(i/64)·2^(j/4096) (a dd product, within
-// 2·2^-104 + 6kU² of its value), e^x = 2^m·(T + T·(rh + tp)),
+// 2·2^-104 + 6U² of its value), e^x = 2^m·(T + T·(rh + tp)),
 // tp = rh²·P(rh) + rl in double; T.Hi·rh is error-free and joins T.Hi in
 // an exact fast two-sum. Relative to T:
-// - rh + tp: rl·(e^rh·(e^rl − 1)/rl − 1) (kU·R²·(1 + R)); rh²'s rounding,
+// - rh + tp: rl·(e^rh·(e^rl − 1)/rl − 1) (U·R²·(1 + R)); rh²'s rounding,
 //   P's Horner error (at rh, exact) and truncation, tp's fma;
 // - the low parts: 5 roundings within Lmax, the dropped T.Lo·tp, T's error
 //   times 1 + R + TP;
@@ -15195,24 +15205,28 @@ inline constexpr fpk::poly<4> kLeanExpC = fpk::series<4>([](int k) { return fpk:
 // relatively.
 struct lean_exp {
     static constexpr double            R  = 8.462e-5; // ≥ (½ + 2^-29)·ln 2/4096 + 2^-43
-    static constexpr fpk::horner_bound HP = fpk::horner_error(kLeanExpC, R, 0);
-    static constexpr double            TP = R * R * HP.Mag * (1 + 3 * kU) + kU * R * (1 + kU); // ≥ |tp|
-    static constexpr double            ER =
-        kU * R * R * (1 + R) + R * R * (kU * HP.Mag + HP.Err + fpk::pow_n(R, 4) / 720 * 1.0001) + kU * TP;
-    static constexpr double Et   = up(2 * kTableErr + 6 * kU * kU);
-    static constexpr double Lmax = kU * (1 + R) + kU * R + kU + TP + kU * R;
-    static constexpr double Rel  = up((ER + Et * (1 + R + TP) + 5 * kU * Lmax + kU * TP) / (1 - R - TP) +
-                                      700 * reduce_abs(5910, -42, -1074, 127, R));
+    static constexpr fpk::horner_bound HP = fpk::horner_error(lean_exp_c, R, 0);
+    static constexpr double            TP =
+        R * R * HP.Mag * (1 + 3 * unit_roundoff) + unit_roundoff * R * (1 + unit_roundoff); // ≥ |tp|
+    static constexpr double ER = unit_roundoff * R * R * (1 + R) +
+                                 R * R * (unit_roundoff * HP.Mag + HP.Err + fpk::pow_n(R, 4) / 720 * 1.0001) +
+                                 unit_roundoff * TP;
+    static constexpr double Et = up(2 * table_err + 6 * unit_roundoff * unit_roundoff);
+    static constexpr double Lmax =
+        unit_roundoff * (1 + R) + unit_roundoff * R + unit_roundoff + TP + unit_roundoff * R;
+    static constexpr double Rel =
+        up((ER + Et * (1 + R + TP) + 5 * unit_roundoff * Lmax + unit_roundoff * TP) / (1 - R - TP) +
+           700 * reduce_abs(5910, -42, -1074, 127, R));
     // exp2: y = x·ln 2 (|x| ≤ 1000, so |y| ≤ 694) as a dd product, within
-    // 2^-104 + 6kU² of itself; it moves e^y by |y| times that.
-    static constexpr double Rel2 = up(Rel + 694 * (kTableErr + 6 * kU * kU));
+    // 2^-104 + 6U² of itself; it moves e^y by |y| times that.
+    static constexpr double Rel2 = up(Rel + 694 * (table_err + 6 * unit_roundoff * unit_roundoff));
 };
 
 template <dd_type D>
 [[gnu::always_inline]] inline D exp_lean_value(D x) noexcept {
     const auto [r, t, m] = exp_reduce(x);
     const double rh      = r.Hi;
-    const double tp      = std::fma(fpk::rounded_product(rh, rh), fpk::horner(rh, kLeanExpC.C), r.Lo);
+    const double tp      = std::fma(fpk::rounded_product(rh, rh), fpk::horner(rh, lean_exp_c.C), r.Lo);
     const D      p       = two_prod(t.Hi, rh);
     const D      s       = fast_two_sum(t.Hi, p.Hi);
     const double lo      = std::fma(t.Hi, tp, std::fma(t.Lo, rh, s.Lo + (p.Lo + t.Lo)));
@@ -15222,51 +15236,53 @@ template <dd_type D>
 template <dd_type D>
 inline D exp_lean(D x, double& bound) noexcept {
     const D v = exp_lean_value(x);
-    bound     = lean_exp::Rel * v.Hi + fpk::kTiny;
+    bound     = lean_exp::Rel * v.Hi + fpk::tiny;
     return v;
 }
 template <dd_type D>
 inline D exp2_lean(D x, double& bound) noexcept {
     const D v = exp_lean_value(mul(x, consts<D>::Ln2));
-    bound     = lean_exp::Rel2 * v.Hi + fpk::kTiny;
+    bound     = lean_exp::Rel2 * v.Hi + fpk::tiny;
     return v;
 }
 // 2·atanh s = 2s + 2s·z·P(z), P = 1/3 + z/5 + z²/7.
-inline constexpr fpk::poly<3> kLeanLogC = fpk::series<3>([](int k) { return fpk::term{1.0, 2.0 * k + 3}; });
+inline constexpr fpk::poly<3> lean_log_c = fpk::series<3>([](int k) { return fpk::term{1.0, 2.0 * k + 3}; });
 
 // ln x for normal x > 0, reduced as in log: ln x = m·ln 2 + ln c + 2·atanh s,
 // |s| ≤ S since |f − c| ≤ 1/256 and f + c ≥ 2·0.75 − 1/256. s is a dd
-// quotient: its numerator is exact, the denominator one dd sum (2kU² of
-// it), and the division within about 15kU², so s is within 32kU²·|s|.
+// quotient: its numerator is exact, the denominator one dd sum (2U² of
+// it), and the division within about 15U², so s is within 32U²·|s|.
 // m·Ln2.Hi, ln c's high part and 2s join in two exact two-sums; the tail
 // t = 2·sh·zh·P(zh) (sh = s.Hi, zh = sh²) and the low parts are summed in
 // double. All bounds absolute, |ln c| ≤ B = ln 1.5:
-// - t: zh, sh·zh and the product with P round (3kU of |t|); P's Horner
+// - t: zh, sh·zh and the product with P round (3U of |t|); P's Horner
 //   error at zh; the truncation (2S⁹/9, widened 1%); and t taken at sh, not
-//   s (|s.Lo| ≤ kU·S moves it by 2S²·kU·S);
-// - 2s: 64kU²·S;
-// - the low sum: 7 roundings within Lsum = 5kU·(B + 2S) + |t|, plus per
-//   unit of |m|·ln 2 the same 5kU in Lsum (35kU²), the product
-//   m·Ln2.Lo's rounding (kU²) and Ln2's 2^-104 (PerM);
+//   s (|s.Lo| ≤ U·S moves it by 2S²·U·S);
+// - 2s: 64U²·S;
+// - the low sum: 7 roundings within Lsum = 5U·(B + 2S) + |t|, plus per
+//   unit of |m|·ln 2 the same 5U in Lsum (35U²), the product
+//   m·Ln2.Lo's rounding (U²) and Ln2's 2^-104 (PerM);
 // - ln c's table entry: 2^-104 of B.
 struct lean_log {
     static constexpr double            S  = 0.002612; // ≥ (1/256)/1.4961
     static constexpr double            Z  = S * S;
     static constexpr double            B  = 0.4055; // ≥ ln 1.5
-    static constexpr fpk::horner_bound HP = fpk::horner_error(kLeanLogC, Z, kU);
-    static constexpr double            TT = 2 * S * Z * HP.Mag * (1 + 4 * kU); // ≥ |t|
-    static constexpr double            ET =
-        3 * kU * TT + 2 * S * Z * HP.Err + 2 * fpk::pow_n(S, 9) / 9 * 1.01 + 2 * Z * kU * S * 1.0001;
-    static constexpr double Lsum = 5 * kU * (B + 2 * S) + TT;
-    static constexpr double Abs  = up(ET + 64 * kU * kU * S + 7 * kU * Lsum + kTableErr * B);
-    static constexpr double PerM = up(0.6932 * (35 * kU * kU + kU * kU + kTableErr));
+    static constexpr fpk::horner_bound HP = fpk::horner_error(lean_log_c, Z, unit_roundoff);
+    static constexpr double            TT = 2 * S * Z * HP.Mag * (1 + 4 * unit_roundoff); // ≥ |t|
+    static constexpr double ET   = 3 * unit_roundoff * TT + 2 * S * Z * HP.Err + 2 * fpk::pow_n(S, 9) / 9 * 1.01 +
+                                   2 * Z * unit_roundoff * S * 1.0001;
+    static constexpr double Lsum = 5 * unit_roundoff * (B + 2 * S) + TT;
+    static constexpr double Abs =
+        up(ET + 64 * unit_roundoff * unit_roundoff * S + 7 * unit_roundoff * Lsum + table_err * B);
+    static constexpr double PerM =
+        up(0.6932 * (35 * unit_roundoff * unit_roundoff + unit_roundoff * unit_roundoff + table_err));
 };
 
 template <dd_type D>
 [[gnu::always_inline]] inline D log_lean_value(D x, double& bound) noexcept {
     const auto [m, s, lc] = log_reduce(x);
     const double sh = s.Hi, zh = sh * sh;
-    const double t  = 2 * (fpk::rounded_product(sh, zh) * fpk::horner(zh, kLeanLogC.C));
+    const double t  = 2 * (fpk::rounded_product(sh, zh) * fpk::horner(zh, lean_log_c.C));
     const double md = static_cast<double>(m);
     const D      a  = two_prod(md, consts<D>::Ln2.Hi);
     const D      s1 = two_sum(a.Hi, lc.Hi);
@@ -15282,7 +15298,7 @@ inline D log_lean(D x, double& bound) noexcept {
 }
 
 // log2 and log10: ln x times the constant (within 2^-104) as a dd product
-// (within 4kU²), so the bound scales by the constant (≤ 1.4427) and adds
+// (within 4U²), so the bound scales by the constant (≤ 1.4427) and adds
 // 2^-100 of the result.
 template <dd_type D>
 inline D log2_lean(D x, double& bound) noexcept {
@@ -15299,17 +15315,17 @@ inline D log10_lean(D x, double& bound) noexcept {
 //---------------------------------------------------------------------------
 // Lean kernels built on the ones above. Error terms of the dd operations,
 // relative to their exact results: a sum (add, sub, add_dominant) rounds
-// within 4kU² of |a| + |b|; a product (mul, sqr) within 4kU²; a quotient
+// within 4U² of |a| + |b|; a product (mul, sqr) within 4U²; a quotient
 // (div: one reciprocal, a residual that cancels exactly, two digits) within
-// 32kU²; sqrt (one Newton step from the correctly rounded root) within 7kU²
+// 32U²; sqrt (one Newton step from the correctly rounded root) within 7U²
 // plus half its argument's. x ± 1 is exact for 0.5 ≤ |x.Hi| ≤ 2 (Sterbenz:
-// the low part then adds to an exact zero), and within 2kU²·(1 + |x|) of
+// the low part then adds to an exact zero), and within 2U²·(1 + |x|) of
 // itself otherwise.
 //---------------------------------------------------------------------------
-inline constexpr double kU2 = kU * kU;
+inline constexpr double unit_roundoff2 = unit_roundoff * unit_roundoff;
 
 // tan = sin/cos from the lean sincos, each within e: |s/c − S/C| ≤
-// e·(1 + |t|)/(|c| − e), plus the quotient's 32kU². No bound (infinity)
+// e·(1 + |t|)/(|c| − e), plus the quotient's 32U². No bound (infinity)
 // where |c| ≤ e: the full kernel decides there.
 template <dd_type D>
 inline D tan_lean(D x, double& bound) noexcept {
@@ -15317,58 +15333,58 @@ inline D tan_lean(D x, double& bound) noexcept {
     const double   e  = lean_trig_bound(x.Hi);
     const D        t  = div(sc.Sin, sc.Cos);
     const double   at = t.Hi < 0 ? -t.Hi : t.Hi, c = (sc.Cos.Hi < 0 ? -sc.Cos.Hi : sc.Cos.Hi) - 2 * e;
-    bound = c > 0 ? e * (1 + at) / c * (1 + 0x1p-40) + 32 * kU2 * at : __builtin_inf();
+    bound = c > 0 ? e * (1 + at) / c * (1 + 0x1p-40) + 32 * unit_roundoff2 * at : __builtin_inf();
     return t;
 }
 
-// sinh, cosh = (e ± 1/e)/2 with e = e^x within Rel: 1/e within Rel + 32kU²,
-// the sum's 4kU² of e + 1/e; all within (Rel + 20kU²)·cosh x, and
+// sinh, cosh = (e ± 1/e)/2 with e = e^x within Rel: 1/e within Rel + 32U²,
+// the sum's 4U² of e + 1/e; all within (Rel + 20U²)·cosh x, and
 // cosh ≤ |sinh| + 1. tanh = (e2 − 1)/(e2 + 1), e2 = e^(2x): e2's Rel moves it
 // by 2·e2·Rel/(e2 + 1)² ≤ Rel/2; the two sums with 1 round within
-// 2kU²·(e2 + 1), 2kU² of the quotient each; the quotient 32kU².
+// 2U²·(e2 + 1), 2U² of the quotient each; the quotient 32U².
 template <dd_type D>
 inline D sinh_lean(D x, double& bound) noexcept {
     const D e = exp_lean_value(x);
     const D v = ldexp(sub(e, div(D{1, 0}, e)), -1);
-    bound     = (lean_exp::Rel + 20 * kU2) * ((v.Hi < 0 ? -v.Hi : v.Hi) + 1) * (1 + 0x1p-40) + fpk::kTiny;
+    bound     = (lean_exp::Rel + 20 * unit_roundoff2) * ((v.Hi < 0 ? -v.Hi : v.Hi) + 1) * (1 + 0x1p-40) + fpk::tiny;
     return v;
 }
 template <dd_type D>
 inline D cosh_lean(D x, double& bound) noexcept {
     const D e = exp_lean_value(x);
     const D v = ldexp(add(e, div(D{1, 0}, e)), -1);
-    bound     = (lean_exp::Rel + 20 * kU2) * v.Hi * (1 + 0x1p-40) + fpk::kTiny;
+    bound     = (lean_exp::Rel + 20 * unit_roundoff2) * v.Hi * (1 + 0x1p-40) + fpk::tiny;
     return v;
 }
 template <dd_type D>
 inline D tanh_lean(D x, double& bound) noexcept {
     const D e2 = exp_lean_value(ldexp(x, 1));
-    bound      = (lean_exp::Rel / 2 + 36 * kU2) * (1 + 0x1p-40);
+    bound      = (lean_exp::Rel / 2 + 36 * unit_roundoff2) * (1 + 0x1p-40);
     return div(add(e2, -1.0), add(e2, 1.0));
 }
 
 // The inverse hyperbolics as ln w, w within ε relative: within the lean
 // log's bound plus ε·(1 + 2^-40).
-// - asinh |x|: w = |x| + √(x² + 1): the square 4kU², + 1 2kU², the root
-//   2kU² + 7kU², the sum 4kU²: ε = 17kU².
+// - asinh |x|: w = |x| + √(x² + 1): the square 4U², + 1 2U², the root
+//   2U² + 7U², the sum 4U²: ε = 17U².
 // - acosh x ≥ 1: w = x + √((x − 1)(x + 1)): x − 1 exact for x.Hi ≤ 2, else
-//   within 2kU²·(1 + x)/(x − 1) ≤ 6kU²; x + 1 2kU²·(1 + x)/(x + 1) ≤ 2kU²;
-//   the product 4kU², the root 6kU² + 7kU², the sum 4kU²: ε = 23kU².
+//   within 2U²·(1 + x)/(x − 1) ≤ 6U²; x + 1 2U²·(1 + x)/(x + 1) ≤ 2U²;
+//   the product 4U², the root 6U² + 7U², the sum 4U²: ε = 23U².
 // - atanh |x| < 1: ½·ln((1 + a)/(1 − a)): 1 − a exact for a.Hi ≥ 0.5, else
-//   within 2kU²·(1 + a)/(1 − a) ≤ 6kU²; 1 + a 2kU²; the quotient 32kU²:
-//   ε = 40kU², and the bound halves.
+//   within 2U²·(1 + a)/(1 − a) ≤ 6U²; 1 + a 2U²; the quotient 32U²:
+//   ε = 40U², and the bound halves.
 template <dd_type D>
 inline D asinh_lean(D x, double& bound) noexcept {
     const bool negative = x.Hi < 0;
     const D    a        = negative ? neg(x) : x;
     const D    m        = log_lean_value(add(a, sqrt(add(sqr(a), 1.0))), bound);
-    bound += 17 * kU2 * (1 + 0x1p-40);
+    bound += 17 * unit_roundoff2 * (1 + 0x1p-40);
     return negative ? neg(m) : m;
 }
 template <dd_type D>
 inline D acosh_lean(D x, double& bound) noexcept {
     const D v = log_lean_value(add(x, sqrt(mul(add(x, -1.0), add(x, 1.0)))), bound);
-    bound += 23 * kU2 * (1 + 0x1p-40);
+    bound += 23 * unit_roundoff2 * (1 + 0x1p-40);
     return v;
 }
 template <dd_type D>
@@ -15376,43 +15392,44 @@ inline D atanh_lean(D x, double& bound) noexcept {
     const bool negative = x.Hi < 0;
     const D    a        = negative ? neg(x) : x;
     const D    m        = ldexp(log_lean_value(div(add(a, 1.0), add(neg(a), 1.0)), bound), -1);
-    bound               = (bound + 40 * kU2) * 0.5 * (1 + 0x1p-40);
+    bound               = (bound + 40 * unit_roundoff2) * 0.5 * (1 + 0x1p-40);
     return negative ? neg(m) : m;
 }
 
 // atan t = t − t·z·P(z), P = 1/3 − z/5 + z²/7 − z³/9 + z⁴/11.
-inline constexpr fpk::poly<5> kLeanAtanC =
+inline constexpr fpk::poly<5> lean_atan_c =
     fpk::series<5>([](int k) { return fpk::term{k % 2 ? -1.0 : 1.0, 2.0 * k + 3}; });
 
 // atan a for 0 ≤ a ≤ 1 (a.Hi ≤ 1), reduced as in atan_unit: c = j/32,
 // t = (a − c)/(1 + a·c), |t| ≤ S. a − c is exact (Sterbenz, c ≥ 1/32, or
-// c = 0); 1 + a·c within 3kU²; so t within 36kU². atan a = atan c + t + T,
+// c = 0); 1 + a·c within 3U²; so t within 36U². atan a = atan c + t + T,
 // T = −th·zh·P(zh) in double (th = t.Hi, zh = th²); atan c + t.Hi in one
 // exact fast two-sum (atan c ≥ atan(1/32) > S unless c = 0). Absolute:
-// - T: three roundings (3kU of |T|), P's Horner error at zh, the
+// - T: three roundings (3U of |T|), P's Horner error at zh, the
 //   alternating series' first omitted term S¹³/13, and T taken at th, not
-//   t (kU·S·S²);
-// - t: 36kU²·S;
+//   t (U·S·S²);
+// - t: 36U²·S;
 // - the low sum: 4 roundings within Lsum; atan c's table 2^-104.
 struct lean_atan {
-    static constexpr double            S    = 0.015626; // ≥ 1/64
-    static constexpr double            Z    = S * S;
-    static constexpr double            A    = 0.7854; // ≥ π/4
-    static constexpr fpk::horner_bound HP   = fpk::horner_error(kLeanAtanC, Z, kU);
-    static constexpr double            TT   = S * Z * HP.Mag * (1 + 4 * kU); // ≥ |T|
-    static constexpr double            ET   = 3 * kU * TT + S * Z * HP.Err + fpk::pow_n(S, 13) / 13 + kU * S * Z;
-    static constexpr double            Lsum = 2 * kU * (A + S) + kU * A + kU * S + TT;
-    static constexpr double            Unit = up(ET + 36 * kU2 * S + 4 * kU * Lsum + kTableErr * A);
-    // atan |x| > 1: π/2 − atan(1/|x|): the quotient 32kU² (slope ≤ 1), the
-    // difference 4kU²·(π/2 + π/4), π/2's 2^-104.
-    static constexpr double Atan = up(Unit + 32 * kU2 + 10 * kU2 + kTableErr * 1.571);
-    // atan2: the quotient of the smaller by the larger 32kU²; ±π or ±π/2 and
-    // the sum 4kU²·(π + π/4) and 2^-104 of π.
-    static constexpr double Atan2 = up(Unit + 32 * kU2 + 16 * kU2 + kTableErr * 3.1416);
+    static constexpr double            S  = 0.015626; // ≥ 1/64
+    static constexpr double            Z  = S * S;
+    static constexpr double            A  = 0.7854; // ≥ π/4
+    static constexpr fpk::horner_bound HP = fpk::horner_error(lean_atan_c, Z, unit_roundoff);
+    static constexpr double            TT = S * Z * HP.Mag * (1 + 4 * unit_roundoff); // ≥ |T|
+    static constexpr double            ET =
+        3 * unit_roundoff * TT + S * Z * HP.Err + fpk::pow_n(S, 13) / 13 + unit_roundoff * S * Z;
+    static constexpr double Lsum = 2 * unit_roundoff * (A + S) + unit_roundoff * A + unit_roundoff * S + TT;
+    static constexpr double Unit = up(ET + 36 * unit_roundoff2 * S + 4 * unit_roundoff * Lsum + table_err * A);
+    // atan |x| > 1: π/2 − atan(1/|x|): the quotient 32U² (slope ≤ 1), the
+    // difference 4U²·(π/2 + π/4), π/2's 2^-104.
+    static constexpr double Atan = up(Unit + 32 * unit_roundoff2 + 10 * unit_roundoff2 + table_err * 1.571);
+    // atan2: the quotient of the smaller by the larger 32U²; ±π or ±π/2 and
+    // the sum 4U²·(π + π/4) and 2^-104 of π.
+    static constexpr double Atan2 = up(Unit + 32 * unit_roundoff2 + 16 * unit_roundoff2 + table_err * 3.1416);
     // asin, acos = atan2 with √((1 − x)(1 + x)) as one argument: 1 ∓ x within
-    // 6kU² (as x ± 1 above), the product 4kU², the root 8kU² + 7kU² — 15kU²
+    // 6U² (as x ± 1 above), the product 4U², the root 8U² + 7U² — 15U²
     // relative, which moves the angle by at most half of it.
-    static constexpr double Asin = up(Atan2 + 8 * kU2);
+    static constexpr double Asin = up(Atan2 + 8 * unit_roundoff2);
 };
 
 template <dd_type D>
@@ -15421,7 +15438,7 @@ template <dd_type D>
     const double c  = j * (1.0 / 32);
     const D      t  = div(add(a, -c), add_dominant(D{1, 0}, mul(a, c)));
     const double th = t.Hi, zh = th * th;
-    const double T  = -(fpk::rounded_product(th, zh) * fpk::horner(zh, kLeanAtanC.C));
+    const double T  = -(fpk::rounded_product(th, zh) * fpk::horner(zh, lean_atan_c.C));
     const D      ac = consts<D>::Atan[static_cast<std::size_t>(j)];
     const D      s  = fast_two_sum(ac.Hi, th);
     return fast_two_sum(s.Hi, ((s.Lo + ac.Lo) + t.Lo) + T);
@@ -15523,7 +15540,7 @@ inline constexpr bool fp_exact_input = [] {
 
 // Outputs the double tier decides nearly always (up to 2^-14 of results go
 // further): below them no other fast tier runs.
-inline constexpr int kFpOnlyBits = 36;
+inline constexpr int fp_only_bits = 36;
 
 // Bits of Out's value indices: every |index| < 2^index_bits.
 template <insidable Out>
@@ -15680,10 +15697,10 @@ namespace fpk = ::beman::inside::math::detail::fp;
 //---------------------------------------------------------------------------
 namespace ddk = ::beman::inside::math::detail::dd;
 
-inline constexpr double kDDRel = 0x1p-88, kDDAbs = 0x1p-92;
+inline constexpr double dd_rel = 0x1p-88, dd_abs = 0x1p-92;
 
 constexpr double dd_eval_bound(double x, double v) noexcept {
-    return kDDRel * fabs_d(v) + kDDAbs * (fabs_d(x) > 1 ? fabs_d(x) : 1.0);
+    return dd_rel * fabs_d(v) + dd_abs * (fabs_d(x) > 1 ? fabs_d(x) : 1.0);
 }
 
 inline constexpr double two53 = 0x1p53;
@@ -15692,7 +15709,7 @@ inline constexpr double two53 = 0x1p53;
 // are doubles exactly.
 template <insidable Out>
 inline constexpr bool dd_output = [] {
-    if constexpr (!notched<Out> || wide_valued<Out> || out_bits<Out> + mag_bits<Out> <= kFpOnlyBits)
+    if constexpr (!notched<Out> || wide_valued<Out> || out_bits<Out> + mag_bits<Out> <= fp_only_bits)
         return false;
     else {
         if (!(notch_p<Out> < two53 && notch_q<Out> < two53))
@@ -15805,12 +15822,12 @@ consteval int fp_limit(double e) {
 // moves at most 2^-9 of a notch.
 template <insidable Out, typename K>
 inline constexpr int fp_target =
-    fp_bits<Out, K::Mag> + 10 < fpk::kFullBits ? fp_bits<Out, K::Mag> + 10 : fpk::kFullBits;
+    fp_bits<Out, K::Mag> + 10 < fpk::full_bits ? fp_bits<Out, K::Mag> + 10 : fpk::full_bits;
 
 // One kernel per function: its value and proved bound at a target T, the
 // bits of its values (Mag, 1024 for unbounded), its limit, and its slope
 // |f′(x)| (for the input's rounding).
-inline constexpr int kUnbounded = 1024;
+inline constexpr int unbounded = 1024;
 struct fp_plain {
     static double dd_eval(double x, double v) { return dd_eval_bound(x, v); }
 };
@@ -15829,16 +15846,16 @@ struct fp_plain {
             static double slope([[maybe_unused]] double x, [[maybe_unused]] double v) { return slope_expr; } \
         };
     #define BEMAN_INSIDE_AX_KERNEL(...) BEMAN_INSIDE_AX_KERNEL_ON(fp_plain, __VA_ARGS__)
-using fp_full_trig = fpk::trig_k<fpk::kFullBits>;
-using fp_full_exp  = fpk::exp_k<fpk::kFullBits>;
-using fp_full_log  = fpk::log_k<fpk::kFullBits>;
-using fp_full_atan = fpk::atan_k<fpk::kFullBits>;
+using fp_full_trig = fpk::trig_k<fpk::full_bits>;
+using fp_full_exp  = fpk::exp_k<fpk::full_bits>;
+using fp_full_log  = fpk::log_k<fpk::full_bits>;
+using fp_full_atan = fpk::atan_k<fpk::full_bits>;
 BEMAN_INSIDE_AX_KERNEL(sin, trig_k, sin, 1, fp_limit(fp_full_trig::Rel), 1.0)
 BEMAN_INSIDE_AX_KERNEL(cos, trig_k, cos, 1, fp_limit(fp_full_trig::Rel), 1.0)
-BEMAN_INSIDE_AX_KERNEL(exp, exp_k, exp, kUnbounded, fp_limit(fp_full_exp::Rel), fabs_d(v))
-BEMAN_INSIDE_AX_KERNEL(exp2, exp_k, exp2, kUnbounded, fp_limit(fp_full_exp::Rel2), fabs_d(v))
-BEMAN_INSIDE_AX_KERNEL(sinh, exp_k, sinh, kUnbounded, fp_limit(fp_full_exp::SinhRel), fabs_d(v) + 1)
-BEMAN_INSIDE_AX_KERNEL(cosh, exp_k, cosh, kUnbounded, fp_limit(fp_full_exp::CoshRel), fabs_d(v) + 1)
+BEMAN_INSIDE_AX_KERNEL(exp, exp_k, exp, unbounded, fp_limit(fp_full_exp::Rel), fabs_d(v))
+BEMAN_INSIDE_AX_KERNEL(exp2, exp_k, exp2, unbounded, fp_limit(fp_full_exp::Rel2), fabs_d(v))
+BEMAN_INSIDE_AX_KERNEL(sinh, exp_k, sinh, unbounded, fp_limit(fp_full_exp::SinhRel), fabs_d(v) + 1)
+BEMAN_INSIDE_AX_KERNEL(cosh, exp_k, cosh, unbounded, fp_limit(fp_full_exp::CoshRel), fabs_d(v) + 1)
 BEMAN_INSIDE_AX_KERNEL(tanh, exp_k, tanh, 1, fp_limit(fp_full_exp::TanhRel + fp_full_exp::TanhAbs), 1.0)
 BEMAN_INSIDE_AX_KERNEL(atan, atan_k, atan, 1, fp_limit(fp_full_atan::Rel + fp_full_atan::Abs), 1.0)
 BEMAN_INSIDE_AX_KERNEL(asin,
@@ -15853,31 +15870,31 @@ BEMAN_INSIDE_AX_KERNEL(acos,
                        2,
                        fp_limit(4 * fp_full_atan::AcosRel + fp_full_atan::AcosAbs),
                        1.0 / fpk::fp_sqrt((1.0 - x) * (1.0 + x)))
-BEMAN_INSIDE_AX_KERNEL(log, log_k, log, kUnbounded, fp_limit(fp_full_log::Rel), 1.0 / fabs_d(x))
-BEMAN_INSIDE_AX_KERNEL(log2, log_k, log2, kUnbounded, fp_limit(fp_full_log::Rel2), 1.5 / fabs_d(x))
-BEMAN_INSIDE_AX_KERNEL(log10, log_k, log10, kUnbounded, fp_limit(fp_full_log::Rel10), 1.0 / fabs_d(x))
-BEMAN_INSIDE_AX_KERNEL(asinh, log_k, asinh, kUnbounded, fp_limit(fp_full_log::AsinhRel), 1.0)
+BEMAN_INSIDE_AX_KERNEL(log, log_k, log, unbounded, fp_limit(fp_full_log::Rel), 1.0 / fabs_d(x))
+BEMAN_INSIDE_AX_KERNEL(log2, log_k, log2, unbounded, fp_limit(fp_full_log::Rel2), 1.5 / fabs_d(x))
+BEMAN_INSIDE_AX_KERNEL(log10, log_k, log10, unbounded, fp_limit(fp_full_log::Rel10), 1.0 / fabs_d(x))
+BEMAN_INSIDE_AX_KERNEL(asinh, log_k, asinh, unbounded, fp_limit(fp_full_log::AsinhRel), 1.0)
 BEMAN_INSIDE_AX_KERNEL(
-    atanh, log_k, atanh, kUnbounded, fp_limit(fp_full_log::Rel + fp_full_log::AtanhAbs), 1.0 / ((1.0 - x) * (1.0 + x)))
+    atanh, log_k, atanh, unbounded, fp_limit(fp_full_log::Rel + fp_full_log::AtanhAbs), 1.0 / ((1.0 - x) * (1.0 + x)))
 // cbrt = e^(ln|x|/3): the log's error grows with |ln|x||, up to 2^4.
 BEMAN_INSIDE_AX_KERNEL(cbrt,
                        pow_k,
                        cbrt,
-                       kUnbounded,
-                       fp_limit(fp_full_exp::Rel + 16 * fpk::pow_k<fpk::kFullBits>::YRel),
+                       unbounded,
+                       fp_limit(fp_full_exp::Rel + 16 * fpk::pow_k<fpk::full_bits>::YRel),
                        x == 0 ? 0.0 : fabs_d(v / x))
 
 // acosh: the dd kernel's bound grows near 1 as 2^-92/√(1 − 1/x²).
 struct fp_acosh_eval {
     static double dd_eval(double x, double v) {
-        return kDDAbs / fpk::fp_sqrt(1.0 - 1.0 / (x * x)) + dd_eval_bound(x, v);
+        return dd_abs / fpk::fp_sqrt(1.0 - 1.0 / (x * x)) + dd_eval_bound(x, v);
     }
 };
 BEMAN_INSIDE_AX_KERNEL_ON(fp_acosh_eval,
                           acosh,
                           log_k,
                           acosh,
-                          kUnbounded,
+                          unbounded,
                           fp_limit(fp_full_log::AcoshRel),
                           1.0 / fpk::fp_sqrt((x - 1.0) * (x + 1.0)))
     #undef BEMAN_INSIDE_AX_KERNEL_ON
@@ -15885,12 +15902,12 @@ BEMAN_INSIDE_AX_KERNEL_ON(fp_acosh_eval,
 
 // sqrt: correctly rounded.
 struct fp_sqrt : fp_plain {
-    static constexpr int Mag   = kUnbounded;
-    static constexpr int Limit = fp_limit(fpk::kSqrtRel);
+    static constexpr int Mag   = unbounded;
+    static constexpr int Limit = fp_limit(fpk::sqrt_rel);
     template <int T>
     static double value(double x, double& bound) {
         const double v = fpk::fp_sqrt(x);
-        bound          = fpk::kSqrtRel * v;
+        bound          = fpk::sqrt_rel * v;
         return v;
     }
     template <typename D>
@@ -15903,7 +15920,7 @@ struct fp_sqrt : fp_plain {
 // The kernels of the two-input functions and of tan, pow and Base^x: their
 // bits and limits.
 struct fp_tan {
-    static constexpr int Mag   = kUnbounded;
+    static constexpr int Mag   = unbounded;
     static constexpr int Limit = fp_limit(fp_full_trig::TanRel);
 };
 struct fp_atan2 {
@@ -15911,16 +15928,16 @@ struct fp_atan2 {
     static constexpr int Limit = fp_limit(4 * fp_full_atan::Atan2Rel + fp_full_atan::Atan2Abs);
 };
 struct fp_hypot {
-    static constexpr int Mag   = kUnbounded;
-    static constexpr int Limit = fp_limit(fpk::kHypotRel);
+    static constexpr int Mag   = unbounded;
+    static constexpr int Limit = fp_limit(fpk::hypot_rel);
 };
 // pow's bound grows with |e·ln b|: the limit holds up to 2^4.
 struct fp_pow {
-    static constexpr int Mag   = kUnbounded;
-    static constexpr int Limit = fp_limit(fp_full_exp::Rel + 16 * fpk::pow_k<fpk::kFullBits>::YRel);
+    static constexpr int Mag   = unbounded;
+    static constexpr int Limit = fp_limit(fp_full_exp::Rel + 16 * fpk::pow_k<fpk::full_bits>::YRel);
 };
 struct fp_pow_base {
-    static constexpr int Mag   = kUnbounded;
+    static constexpr int Mag   = unbounded;
     static constexpr int Limit = fp_limit(fp_full_exp::RelLo);
 };
 
@@ -15950,7 +15967,7 @@ template <insidable Out, insidable InX, insidable InY>
 inline bool fp_attempt_hypot(const InX& xi, const InY& yi, Out& out) {
     const double x = input_double(xi), y = input_double(yi);
     const double v     = fpk::fp_hypot(x, y);
-    const double bound = fpk::kHypotRel * v + fpk::kTiny + input_rel<InX> * fabs_d(x) + input_rel<InY> * fabs_d(y);
+    const double bound = fpk::hypot_rel * v + fpk::tiny + input_rel<InX> * fabs_d(x) + input_rel<InY> * fabs_d(y);
     return fp_decide(v, bound * 1.5, out);
 }
 
@@ -15983,8 +16000,8 @@ inline bool fp_attempt_pow(const InB& bi, const InE& ei, Out& out) {
 // ln Base at compile time, from the integer log, as a double-double.
 template <imax Base>
 inline constexpr ddk::dd ln_base = [] {
-    const ddk::fixed a = ddk::fixed{Base} << ddk::kS;
-    return ddk::of_fixed(log_fixed<ddk::kS>(a, 0).Value, ddk::kS);
+    const ddk::fixed a = ddk::fixed{Base} << ddk::scale_bits;
+    return ddk::of_fixed(log_fixed<ddk::scale_bits>(a, 0).Value, ddk::scale_bits);
 }();
 
 // Base^x = e^(x·ln Base).
@@ -16113,14 +16130,14 @@ inline bool dd_attempt_tan(const In& in, Out& out) {
         [&] {
             const ddk::dd t    = ddk::tan(x);
             const double  sec2 = 1 + t.Hi * t.Hi, mx = fabs_d(x.Hi) > 1 ? fabs_d(x.Hi) : 1.0;
-            return dd_decide(t, (kDDRel * sec2 * mx + kDDAbs * mx + input(t.Hi)) * 1.5, out);
+            return dd_decide(t, (dd_rel * sec2 * mx + dd_abs * mx + input(t.Hi)) * 1.5, out);
         },
         out);
 }
 
 // pow = e^(e·ln b), as in the double tier; e·ln b within the exp range.
 // The lean form: ln b within the lean log's bound Bl moves y = e·ln b by
-// |e|·Bl, the product rounds within 4kU² of |y|, and e^y adds its own Rel,
+// |e|·Bl, the product rounds within 4U² of |y|, and e^y adds its own Rel,
 // all relative to v. The inputs' roundings add |e|·rel(b) and |y|·rel(e).
 template <insidable Out, insidable InB, insidable InE>
 inline bool dd_attempt_pow(const InB& bi, const InE& ei, Out& out) {
@@ -16138,8 +16155,8 @@ inline bool dd_attempt_pow(const InB& bi, const InE& ei, Out& out) {
             }
             const ddk::dd v = ddk::exp_lean_value(y);
             bound           = fabs_d(v.Hi) * (ddk::lean_exp::Rel + fabs_d(e.Hi) * bound * (1 + 0x1p-40) +
-                                              4 * fpk::kU * fpk::kU * L + input(L)) +
-                              fpk::kTiny;
+                                              4 * fpk::unit_roundoff * fpk::unit_roundoff * L + input(L)) +
+                              fpk::tiny;
             return v;
         },
         [&] {
@@ -16148,12 +16165,12 @@ inline bool dd_attempt_pow(const InB& bi, const InE& ei, Out& out) {
             if (!(L <= 700))
                 return false;
             const ddk::dd v = ddk::exp(y);
-            return dd_decide(v, (fabs_d(v.Hi) * (kDDRel * (1 + L) + input(L)) + kDDAbs) * 1.5, out);
+            return dd_decide(v, (fabs_d(v.Hi) * (dd_rel * (1 + L) + input(L)) + dd_abs) * 1.5, out);
         },
         out);
 }
 
-// Base^x = e^(x·ln Base): ln Base within 2^-104 and the product's 4kU².
+// Base^x = e^(x·ln Base): ln Base within 2^-104 and the product's 4U².
 // x·ln Base within the exp range (else the integer path decides).
 template <insidable Out, imax Base, insidable In>
 inline bool dd_attempt_pow_base(const In& xi, Out& out) {
@@ -16165,14 +16182,14 @@ inline bool dd_attempt_pow_base(const In& xi, Out& out) {
     return dd_lean_first(
         [&](double& bound) {
             const ddk::dd v = ddk::exp_lean_value(y);
-            bound =
-                fabs_d(v.Hi) * (ddk::lean_exp::Rel + (4 * fpk::kU * fpk::kU + ddk::kTableErr + dd_input_rel<In>)*L) +
-                fpk::kTiny;
+            bound           = fabs_d(v.Hi) * (ddk::lean_exp::Rel + (4 * fpk::unit_roundoff * fpk::unit_roundoff +
+                                                                    ddk::table_err + dd_input_rel<In>)*L) +
+                              fpk::tiny;
             return v;
         },
         [&] {
             const ddk::dd v = ddk::exp(y);
-            return dd_decide(v, (fabs_d(v.Hi) * (kDDRel * (1 + L) + dd_input_rel<In> * L) + kDDAbs) * 1.5, out);
+            return dd_decide(v, (fabs_d(v.Hi) * (dd_rel * (1 + L) + dd_input_rel<In> * L) + dd_abs) * 1.5, out);
         },
         out);
 }
@@ -16903,8 +16920,8 @@ namespace detail {
 using namespace beman::inside::detail;
 
 // π as a rational, within 2^-58 (3.1e-18), for the constants below.
-inline constexpr rational kPiRat{1068966896, 340262731};
-inline constexpr rational kTwoPiRat = 2 * kPiRat;
+inline constexpr rational pi_rat{1068966896, 340262731};
+inline constexpr rational two_pi_rat = 2 * pi_rat;
 
 // Policy of an auto-deduced output: the input's (a cursor's output is no
 // cursor).
@@ -16920,8 +16937,8 @@ constexpr Out store_value(const V& v) {
 
 // Public irrational constants as point insides, so they compose directly in
 // inside-space (`angle * math::pi`) with no rational on the surface.
-inline constexpr auto pi     = just<detail::kPiRat>;
-inline constexpr auto two_pi = just<detail::kTwoPiRat>;
+inline constexpr auto pi     = just<detail::pi_rat>;
+inline constexpr auto two_pi = just<detail::two_pi_rat>;
 
 namespace detail {
 // Grid-number helpers for the algebraic tier's deduced outputs: exact for

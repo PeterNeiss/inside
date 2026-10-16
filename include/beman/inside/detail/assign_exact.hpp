@@ -96,13 +96,13 @@ constexpr void report_failure(L& lhs, P& policy, A& action, errc code) {
 //---------------------------------------------------------------------------
 template <insidable L, typename R>
 constexpr grid wrap_carry_grid() {
-    constexpr imax kMin = std::numeric_limits<imax>::min();
-    constexpr imax kMax = std::numeric_limits<imax>::max();
+    constexpr imax imax_lo = std::numeric_limits<imax>::min();
+    constexpr imax imax_hi = std::numeric_limits<imax>::max();
     // A range past the rational range (a grid spanning 2^64 or more) has
     // carries in {−1, 0, 1} at most: the full imax grid holds them.
     constexpr auto span_r = try_sub(detail::upper64<L>, detail::lower64<L>);
     if constexpr (!span_r || !try_add(*span_r, detail::notch64<L>))
-        return grid{kMin, kMax};
+        return grid{imax_lo, imax_hi};
     else if constexpr (std::integral<R> || insidable<R>) {
         // An integral source spans its type's limits, an inside its interval.
         constexpr rational src_lo = [] {
@@ -123,13 +123,13 @@ constexpr grid wrap_carry_grid() {
             if (!off)
                 return fallback;
             const auto q = try_div(*off, range);
-            if (!q || *q < rational{kMin} || *q > rational{kMax})
+            if (!q || *q < rational{imax_lo} || *q > rational{imax_hi})
                 return fallback;
             return floor(*q);
         };
-        return grid{carry_of(src_lo, kMin), carry_of(src_hi, kMax)};
+        return grid{carry_of(src_lo, imax_lo), carry_of(src_hi, imax_hi)};
     } else
-        return grid{kMin, kMax};
+        return grid{imax_lo, imax_hi};
 }
 
 template <insidable L, typename R>
@@ -158,9 +158,9 @@ struct unit_fold {
 
     // d saturated to imax (a clamp overshoot or a wrap carry).
     static constexpr imax saturate(const W& d) noexcept {
-        constexpr W kMin = static_cast<W>(std::numeric_limits<imax>::min());
-        constexpr W kMax = static_cast<W>(std::numeric_limits<imax>::max());
-        return static_cast<imax>(d < kMin ? kMin : kMax < d ? kMax : d);
+        constexpr W imax_lo = static_cast<W>(std::numeric_limits<imax>::min());
+        constexpr W imax_hi = static_cast<W>(std::numeric_limits<imax>::max());
+        return static_cast<imax>(d < imax_lo ? imax_lo : imax_hi < d ? imax_hi : d);
     }
 
     // v = Lower + carry·(span + 1) + offset with 0 ≤ offset ≤ span.
@@ -342,8 +342,8 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
             }
         if (out) [[unlikely]] {
             auto saturate = [](const I& d) -> imax {
-                constexpr imax kMin = std::numeric_limits<imax>::min(), kMax = std::numeric_limits<imax>::max();
-                return d < I{kMin} ? kMin : I{kMax} < d ? kMax : static_cast<imax>(d);
+                constexpr imax imax_lo = std::numeric_limits<imax>::min(), imax_hi = std::numeric_limits<imax>::max();
+                return d < I{imax_lo} ? imax_lo : I{imax_hi} < d ? imax_hi : static_cast<imax>(d);
             };
             if (dispatch_out_of_range<true>(
                     lhs,
