@@ -30,8 +30,7 @@
 namespace beman::inside {
 // A chrono period as a grid notch, in seconds: period_notch<std::milli> is 1/1000.
 template <class Period>
-inline constexpr rational period_notch =
-    rational{static_cast<imax>(Period::num), static_cast<imax>(Period::den)};
+inline constexpr rational period_notch = rational{static_cast<imax>(Period::num), static_cast<imax>(Period::den)};
 
 namespace detail {
 template <class T>
@@ -57,7 +56,7 @@ inline constexpr bool duration_total = [] {
         else {
             constexpr std::size_t K = exact_limbs<B>;
             using lim               = std::numeric_limits<Rep>;
-            const auto            q = exact_of<K>(period_notch<typename D::period>);
+            const auto q            = exact_of<K>(period_notch<typename D::period>);
             return exact_of_grid<K>(lower_of<B>) / q >= exact_of<K>(lim::min()) &&
                    exact_of_grid<K>(upper_of<B>) / q <= exact_of<K>(lim::max());
         }
@@ -67,13 +66,13 @@ inline constexpr bool duration_total = [] {
 // D's count for x: the exact value·den/num, rounded by F when F names a mode.
 template <chrono_duration D, policy_flag F, insidable B>
 constexpr std::expected<typename D::rep, errc> duration_count(const B& x) {
-    using Rep = typename D::rep;
+    using Rep    = typename D::rep;
     const auto q = exact_of(x) / exact_of(period_notch<typename D::period>);
     if constexpr (std::floating_point<Rep>)
         return nearest_float<Rep>(q);
     else {
         using I = decltype(q.Num);
-        auto  t = q;
+        auto t  = q;
         if (q.Num % q.Den != I{0}) {
             if constexpr (F == none)
                 return std::unexpected{errc::rounding_error};
