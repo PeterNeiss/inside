@@ -2,7 +2,7 @@
 #ifndef BEMAN_INSIDE_RANGE_HPP
 #define BEMAN_INSIDE_RANGE_HPP
 
-#include <beman/inside/core.hpp>
+#include <beman/inside/detail/compare.hpp> // the inside type and its comparisons
 
 #include <compare>
 #include <cstddef>

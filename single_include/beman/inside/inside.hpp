@@ -34,9 +34,10 @@
 //  beman/inside/inside.hpp
 // ======================================================================
 // Public umbrella header. Include this to get the full `beman::inside::inside` API:
-// the core type (core.hpp) plus the free-function layers that depend on the
-// complete type — casts, arithmetic operators, and inside_range. Those three
-// must follow core.hpp because they need `inside<G, P>` fully defined.
+// the core type (core.hpp) and its comparisons (detail/compare.hpp), plus the
+// free-function layers that depend on the complete type — casts, arithmetic
+// operators, inside_range and cursor. Those follow core.hpp because they
+// need `inside<G, P>` fully defined.
 //---------------------------------------------------------------------------
 
 
@@ -10283,6 +10284,73 @@ template <insidable B>
 }
 
 //---------------------------------------------------------------------------
+// just
+//---------------------------------------------------------------------------
+// The point grid holds the value, so no value constructor is needed: grid
+// numbers past 64 bits (C++26 `_g`) work too.
+template <auto value>
+inline constexpr auto just = inside<grid{value}>::from_raw({});
+
+//---------------------------------------------------------------------------
+// zero / one — universal exact constants. Single-point insides that assign into
+// any grid able to represent the value (compile-time checked) and otherwise
+// behave as 0 / 1. `b = zero;` is a compile error when 0 is not on b's grid.
+//---------------------------------------------------------------------------
+inline constexpr auto zero = just<0>;
+inline constexpr auto one  = just<1>;
+
+//---------------------------------------------------------------------------
+// _ins literal — compile-time `inside<{V, V}>` from a numeric literal.
+//   5_ins           // inside<{5, 5}>            integer
+//   1.25_ins        // inside<{rational{5,4}}>   decimal
+//   1.5e2_ins       // inside<{150}>             decimal scientific
+//   0xff_ins        // inside<{255}>             hex integer
+//   0b1010_ins      // inside<{10}>              binary integer
+//   0x1p15_ins      // inside<{32768}>           hex with 2^N exponent (Q-format)
+//   0x1p-15_ins     // inside<{rational{1,32768}}>   1/2^15 grid notch
+//   0x1.8p3_ins     // inside<{12}>              hex float
+//   1'000_ins       // inside<{1000}>            digit separator
+//
+// Parse is exact (no double round-trip); same parser backs `_r` in
+// rational.hpp. `-1.5_ins` parses as `-(1.5_ins)`.
+//---------------------------------------------------------------------------
+template <char... Chars>
+constexpr auto operator""_ins() {
+    return just<detail::parse_ins_literal<Chars...>()>;
+}
+
+} // namespace beman::inside
+
+// A cursor is a bidirectional iterator: it steps by ++/--, *t reads its value,
+// and end(t) is its sentinel. Not random access: t - u is arithmetic, an
+// inside, not a distance. Plain insides get no traits, so they stay numbers.
+template <beman::inside::grid G, beman::inside::policy_flag P>
+    requires(beman::inside::has_flag(P, beman::inside::detail::cursor_marker))
+struct std::incrementable_traits<beman::inside::inside<G, P>> {
+    using difference_type = beman::inside::imax;
+};
+
+template <beman::inside::grid G, beman::inside::policy_flag P>
+    requires(beman::inside::has_flag(P, beman::inside::detail::cursor_marker))
+struct std::indirectly_readable_traits<beman::inside::inside<G, P>> {
+    using value_type = beman::inside::detail::cursor_value_t<G, P>;
+};
+
+
+// ======================================================================
+//  beman/inside/detail/compare.hpp
+// ======================================================================
+// Internal — include "beman/inside/inside.hpp" (the umbrella), not this directly.
+
+
+
+//---------------------------------------------------------------------------
+// Comparisons of insides: across grids (by value index when both fit imax,
+// else exactly) and against scalars (integers, floating points of any width,
+// rationals).
+//---------------------------------------------------------------------------
+namespace beman::inside {
+//---------------------------------------------------------------------------
 // comparison
 //---------------------------------------------------------------------------
 namespace detail {
@@ -10472,98 +10540,7 @@ template <insidable B, detail::arithmetic A>
 [[nodiscard]] constexpr bool operator==(const B& lhs, A rhs) {
     return detail::compare_scalar(lhs, rhs, detail::equal_to);
 }
-
-//---------------------------------------------------------------------------
-// just
-//---------------------------------------------------------------------------
-// The point grid holds the value, so no value constructor is needed: grid
-// numbers past 64 bits (C++26 `_g`) work too.
-template <auto value>
-inline constexpr auto just = inside<grid{value}>::from_raw({});
-
-//---------------------------------------------------------------------------
-// cursor<T, Step> — an inside on {{Lower, Upper + Step}, Step} of T: it steps
-// (++ moves one notch) from Lower through Upper and one step past it, the
-// end. It keeps T's checks and rounding, default construction starts at
-// Lower, and it carries cursor_marker, which gives it
-// `end(t)`. Step is a number (an integer, `rational`, `per<N>`), T's notch by
-// default: a positive whole number of notches of T dividing its range, so
-// every value but the end is a value of T.
-//   for (cursor<time_t, per<4>> t; t != end(t); ++t) …
-//---------------------------------------------------------------------------
-namespace detail {
-template <insidable T>
-consteval grid cursor_grid(const auto& step) {
-    const grid_rational s = grid{step}.Interval.Lower;
-    if (!(s > 0))
-        constexpr_error<"cursor<T, Step>: the step must be positive - a cursor steps forward, one past the end">();
-    if (notch_of<T> == 0)
-        constexpr_error<"cursor<T, Step>: T has no notch - a continuous grid has no lattice to step on">();
-    if (!interval_of<T>.divides_evenly(s))
-        constexpr_error<"cursor<T, Step>: the step must divide the range of T evenly">();
-    if (!grid_divides_evenly(s, notch_of<T>))
-        constexpr_error<"cursor<T, Step>: the step must be a whole number of notches of T">();
-    return grid{interval{lower_of<T>, grid_add(upper_of<T>, s)}, s};
-}
-
-consteval policy_flag cursor_policy(policy_flag p) { return p | cursor_marker; }
-} // namespace detail
-
-template <insidable T, auto Step = notch_of<T>>
-using cursor = inside<detail::cursor_grid<T>(Step), detail::cursor_policy(policy_of<T>)>;
-
-// end(t): a cursor's past-the-end value, one step past T's Upper. Only a
-// cursor has one — on any other inside its Upper is a value, not an end.
-template <insidable B>
-    requires(has_flag(policy_of<B>, detail::cursor_marker))
-[[nodiscard]] constexpr auto end(const B&) noexcept {
-    return just<upper_of<B>>;
-}
-
-//---------------------------------------------------------------------------
-// zero / one — universal exact constants. Single-point insides that assign into
-// any grid able to represent the value (compile-time checked) and otherwise
-// behave as 0 / 1. `b = zero;` is a compile error when 0 is not on b's grid.
-//---------------------------------------------------------------------------
-inline constexpr auto zero = just<0>;
-inline constexpr auto one  = just<1>;
-
-//---------------------------------------------------------------------------
-// _ins literal — compile-time `inside<{V, V}>` from a numeric literal.
-//   5_ins           // inside<{5, 5}>            integer
-//   1.25_ins        // inside<{rational{5,4}}>   decimal
-//   1.5e2_ins       // inside<{150}>             decimal scientific
-//   0xff_ins        // inside<{255}>             hex integer
-//   0b1010_ins      // inside<{10}>              binary integer
-//   0x1p15_ins      // inside<{32768}>           hex with 2^N exponent (Q-format)
-//   0x1p-15_ins     // inside<{rational{1,32768}}>   1/2^15 grid notch
-//   0x1.8p3_ins     // inside<{12}>              hex float
-//   1'000_ins       // inside<{1000}>            digit separator
-//
-// Parse is exact (no double round-trip); same parser backs `_r` in
-// rational.hpp. `-1.5_ins` parses as `-(1.5_ins)`.
-//---------------------------------------------------------------------------
-template <char... Chars>
-constexpr auto operator""_ins() {
-    return just<detail::parse_ins_literal<Chars...>()>;
-}
-
 } // namespace beman::inside
-
-// A cursor is a bidirectional iterator: it steps by ++/--, *t reads its value,
-// and end(t) is its sentinel. Not random access: t - u is arithmetic, an
-// inside, not a distance. Plain insides get no traits, so they stay numbers.
-template <beman::inside::grid G, beman::inside::policy_flag P>
-    requires(beman::inside::has_flag(P, beman::inside::detail::cursor_marker))
-struct std::incrementable_traits<beman::inside::inside<G, P>> {
-    using difference_type = beman::inside::imax;
-};
-
-template <beman::inside::grid G, beman::inside::policy_flag P>
-    requires(beman::inside::has_flag(P, beman::inside::detail::cursor_marker))
-struct std::indirectly_readable_traits<beman::inside::inside<G, P>> {
-    using value_type = beman::inside::detail::cursor_value_t<G, P>;
-};
 
 
 // ======================================================================
@@ -11353,6 +11330,53 @@ inline constexpr inside_range<grid_of<T>, policy_of<T>> values{};
 
 template <beman::inside::grid G, beman::inside::policy_flag P>
 inline constexpr bool std::ranges::enable_borrowed_range<beman::inside::inside_range<G, P>> = true;
+
+
+// ======================================================================
+//  beman/inside/cursor.hpp
+// ======================================================================
+
+
+namespace beman::inside {
+//---------------------------------------------------------------------------
+// cursor<T, Step> — an inside on {{Lower, Upper + Step}, Step} of T: it steps
+// (++ moves one notch) from Lower through Upper and one step past it, the
+// end. It keeps T's checks and rounding, default construction starts at
+// Lower, and it carries cursor_marker, which gives it
+// `end(t)`. Step is a number (an integer, `rational`, `per<N>`), T's notch by
+// default: a positive whole number of notches of T dividing its range, so
+// every value but the end is a value of T.
+//   for (cursor<time_t, per<4>> t; t != end(t); ++t) …
+//---------------------------------------------------------------------------
+namespace detail {
+template <insidable T>
+consteval grid cursor_grid(const auto& step) {
+    const grid_rational s = grid{step}.Interval.Lower;
+    if (!(s > 0))
+        constexpr_error<"cursor<T, Step>: the step must be positive - a cursor steps forward, one past the end">();
+    if (notch_of<T> == 0)
+        constexpr_error<"cursor<T, Step>: T has no notch - a continuous grid has no lattice to step on">();
+    if (!interval_of<T>.divides_evenly(s))
+        constexpr_error<"cursor<T, Step>: the step must divide the range of T evenly">();
+    if (!grid_divides_evenly(s, notch_of<T>))
+        constexpr_error<"cursor<T, Step>: the step must be a whole number of notches of T">();
+    return grid{interval{lower_of<T>, grid_add(upper_of<T>, s)}, s};
+}
+
+consteval policy_flag cursor_policy(policy_flag p) { return p | cursor_marker; }
+} // namespace detail
+
+template <insidable T, auto Step = notch_of<T>>
+using cursor = inside<detail::cursor_grid<T>(Step), detail::cursor_policy(policy_of<T>)>;
+
+// end(t): a cursor's past-the-end value, one step past T's Upper. Only a
+// cursor has one — on any other inside its Upper is a value, not an end.
+template <insidable B>
+    requires(has_flag(policy_of<B>, detail::cursor_marker))
+[[nodiscard]] constexpr auto end(const B&) noexcept {
+    return just<upper_of<B>>;
+}
+} // namespace beman::inside
 
 
 

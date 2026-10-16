@@ -10,9 +10,11 @@ target_sources(
                 cmath_adaptive.hpp
                 cmath.hpp
                 core.hpp
+                cursor.hpp
                 detail/addition.hpp
                 detail/assignment.hpp
                 detail/big_rational.hpp
+                detail/compare.hpp
                 detail/debug.hpp
                 detail/division.hpp
                 detail/float_bits.hpp

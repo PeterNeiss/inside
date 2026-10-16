@@ -2,7 +2,7 @@
 #ifndef BEMAN_INSIDE_CASTS_HPP
 #define BEMAN_INSIDE_CASTS_HPP
 
-#include <beman/inside/core.hpp>
+#include <beman/inside/detail/compare.hpp> // the inside type and its comparisons
 
 //---------------------------------------------------------------------------
 // Free-function casts complementing the constructors. Unlike a direct B{value}
