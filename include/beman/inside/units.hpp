@@ -658,6 +658,11 @@ struct reference_t {
 };
 
 template <class T>
+inline constexpr bool is_unit_tag_v = false;
+template <unit U>
+inline constexpr bool is_unit_tag_v<unit_t<U>> = true;
+
+template <class T>
 inline constexpr bool is_reference_tag_v = false;
 template <unit U>
 inline constexpr bool is_reference_tag_v<unit_t<U>> = true;
@@ -808,13 +813,18 @@ inline constexpr bool exact_factor_v = M.Pi == 0;
 
 template <magnitude M, insidable V>
 constexpr auto rescale(const V& v) {
-    static_assert(exact_factor_v<M>,
-                  "units: this conversion multiplies by a power of pi, which has no exact grid - "
-                  "round it with value_cast<unit, Rep, round_nearest>(q)");
+    static_assert(
+        exact_factor_v<M>,
+        "units: this conversion multiplies by a power of pi, which has no exact grid - round it "
+        "with value_cast<unit, Rep>(q) from <beman/inside/units_math.hpp>, Rep declared with a rounding mode");
     if constexpr (M.is_one())
         return v;
-    else
-        return v * just<M.Ratio>;
+    else {
+        // The product's grid with v's policy: a conversion keeps clamp, wrap
+        // and the rounding mode.
+        const auto x = v * just<M.Ratio>;
+        return inside<grid_of<decltype(x)>, flags_of<V>>::from_raw(x.raw());
+    }
 }
 
 template <unit From, unit To>
@@ -1094,6 +1104,20 @@ constexpr auto operator/(const quantity<A, VA>&, N) {
     static_assert(!std::is_arithmetic_v<N>, "units: a raw number has no grid - divide by just<2>, not 2");
 }
 
+// pow<N>(q) — q·q·…·q (N ≥ 1): exact, the grid of each product.
+template <int N, reference R, class V>
+    requires(N >= 1)
+[[nodiscard]] constexpr auto pow(const quantity<R, V>& q) {
+    if constexpr (N == 1)
+        return q;
+    else if constexpr (N % 2 == 1)
+        return q * pow<N - 1>(q);
+    else {
+        const auto h = pow<N / 2>(q);
+        return h * h;
+    }
+}
+
 //---------------------------------------------------------------------------
 // Casts
 //---------------------------------------------------------------------------
@@ -1117,6 +1141,18 @@ template <insidable Rep2, reference R, class V>
 [[nodiscard]] constexpr quantity<R, Rep2> value_cast(const quantity<R, V>& q) {
     return quantity<R, Rep2>{Rep2(q.numerical_value())};
 }
+// value_cast<U, Rep2>(q) — in unit U with representation Rep2: the exact
+// value in U, stored by Rep2's constructor. (A pi factor, degree ↔ radian,
+// rounds once: units_math.hpp.)
+template <auto U, insidable Rep2, reference R, class V>
+    requires is_unit_tag_v<decltype(U)> && detail::exact_factor_v<detail::conversion_factor<R.U, decltype(U)::value>>
+[[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q) {
+    constexpr units::unit u = decltype(U)::value;
+    static_assert(dimension_of(u) == dimension_of(R.U), "units: value_cast - the unit has another dimension");
+    constexpr reference to{R.Spec, R.KindOf, R.Derived, u};
+    return quantity<to, Rep2>{Rep2(q.in(U).numerical_value())};
+}
+
 // try_value_cast<Rep2, F>(q) — as Rep2::try_make<F>: an expected.
 template <insidable Rep2, policy_flag F = none, reference R, class V>
 [[nodiscard]] constexpr std::expected<quantity<R, Rep2>, errc> try_value_cast(const quantity<R, V>& q) {
