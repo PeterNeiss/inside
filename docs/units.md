@@ -56,7 +56,15 @@ is `si::metre`, and `m·s` is the same unit as `s·m`.
 
 The representation is always an inside. A raw scalar has no grid, so
 `42 * si::metre` and `q * 2` do not compile; the error message says to
-write `just<42>`. As with insides,
+write `just<42>`.
+
+An operation that cannot happen is a constraint failure, as on inside:
+`requires { a + b; }` is false for a length and a duration, for Hz and Bq,
+for `q * 2`, for `q.in(si::second)` on a length, and for any number
+operation inside rejects (an off-notch `+=`, a product past 64-bit grids).
+A call says why: each unit reason is a deleted overload with a message
+(`= delete("…")`, C++26; GCC 15+ and Clang 19+ accept it in C++23, older
+compilers report a plain deleted function). As with insides,
 `quantity<si::metre, inside<{0, 100}>>{42}` constructs from a number in the
 quantity's unit.
 
@@ -76,7 +84,12 @@ inch → mm is ×25.4. Both are exact. The rescaled number keeps the policy
 | `value_cast<Rep2>(q)` / `try_value_cast<Rep2, F>(q)` | another representation, through Rep2's constructor / `try_make<F>` |
 | `try_value_cast<u, Rep2, F>(q)` | in unit `u`, through `Rep2::try_make<F>` |
 | `value_cast<u, Rep2>(q)` | in unit `u`, stored into Rep2 |
+| `value_cast<Q>(q)` / `try_value_cast<Q, F>(q)` | into the quantity type `Q`: its unit and representation; Q's spec must take q's, as for an implicit conversion |
 | `quantity_cast<isq::height>(q)` | another spec (down the tree, or across one kind) |
+| `q.quantity_spec` | the spec as a value: `q.quantity_spec == isq::length` |
+
+A magnitude scales a unit from either side: `mag<2> * si::metre`,
+`si::metre * mag<2>`, `si::metre / mag_pi`.
 
 A conversion that implicitly converts the spec and gives a number Rep
 takes implicitly is itself implicit. For example, `quantity<si::joule, R>`
@@ -112,7 +125,8 @@ so they stay quantities, as are π-scaled ratios; read their number with
 `+`, `-`, `%` and the comparisons convert both sides to the **common
 unit**. Its magnitude is the gcd of the two magnitudes: km + m runs in m,
 and ft + m runs in 1/1250 m, the smaller unit scaled, printed as
-`[1/381 ft]`; m + ft is the same type. Both conversions are exact rescales, and then inside's `+` runs. The result is
+`[1/381 ft]`; m + ft is the same type. Two spellings of one size (J and
+N·m) add in the shorter one, in either order. Both conversions are exact rescales, and then inside's `+` runs. The result is
 exact, and its grid is the tight hull of the two operands. In mp-units the
 sum is formed from the unscaled representations; here mixed units cannot
 overflow a valid sum.
@@ -166,7 +180,9 @@ k == room;                                                      // true: one abs
 `point<U>(v)` uses the unit's origin (K, ℃ and ℉ have one), and falls back
 to the implicit zero of the dimension. `p.point_in(u)` is the same point in unit `u`,
 counted from `u`'s own origin (350 ℉ → 530/3 ℃). `p.in(u)` keeps the
-origin. `value_cast<Rep2>(p)` and `value_cast<u, Rep2>(p)` cast a point's
+origin. `p.quantity_from_zero()` is the quantity from the absolute origin of
+the dimension (20 ℃ → 293.15 ℃ above absolute zero). Points of two
+unrelated absolute origins have no difference and do not compare. `value_cast<Rep2>(p)` and `value_cast<u, Rep2>(p)` cast a point's
 quantity and keep its origin, which rounds an oven temperature onto whole
 degrees. Point ± quantity gives a point, and
 point − point gives a quantity. `si::absolute_zero + q` makes a point.
@@ -195,7 +211,9 @@ expected (`domain_error` on a negative value). `asin_into`, `acos_into` and
 ## Text
 
 `to_string(q)`, `operator<<` and `std::format` write the number and then
-the symbol: `"5 km"`, `"10.5 m/s"`, `"kg m²/s²"`, `"90°"`, `"20 ℃"`.
+the symbol: `"5 km"`, `"10.5 m/s"`, `"kg m²/s²"`, `"90°"`, `"20 ℃"`. A
+unit with only a denominator shows negative exponents: `"2 s⁻¹"`,
+`"1 m⁻¹ s⁻¹"`.
 A `std::format` spec applies to the number (`{:.2f}`, `{:>8}`).
 `unit_symbol(u, text_encoding::ascii)` gives `"kg m^2/s^2"`, `"um"` and
 `"ohm"`.
@@ -214,8 +232,23 @@ A `std::format` spec applies to the number (`{:.2f}`, `{:>8}`).
 - **`international`**: yd, ft, in, mi, nmi, lb, oz, lbf, kn, ℉.
 
 You define your own entries the same way: a `quantity_spec`, `named_unit`
-or `point_origin` as an `inline constexpr` object, plus a tag
-(`spec_t<&obj>`, `unit_c<obj>`, `origin_t<&obj>`).
+or `point_origin` as an `inline constexpr` object, plus a tag made from it:
+
+```cpp
+inline constexpr quantity_spec  depth_def{"depth", isq::length};
+inline constexpr auto           depth = spec_c<depth_def>;
+inline constexpr named_unit     fathom_def{"ftm", mag<rational{18288, 10000}> * si::metre};
+inline constexpr auto           fathom = unit_c<fathom_def>;
+inline constexpr point_origin   sea_level_def{"sea_level", dim_length};
+inline constexpr auto           sea_level = origin_c<sea_level_def>;
+```
+
+An entry is identified by its content, not its address: a spec by its
+name, dimension, recipe, kind boundary and parent chain; a unit by its
+symbols, dimension, magnitude, kind and origin. A spec that reuses a
+catalog name under another parent is another spec. A unit holds at most 6
+named units (atoms), a recipe at most 6 specs, and an exponent stays
+within ±127; past that is a compile error.
 
 ## C++23 and C++26
 

@@ -10738,6 +10738,31 @@ template <insidable B, numeric A>
 // ======================================================================
 
 
+// ======================================================================
+//  beman/inside/detail/delete_reason.hpp
+// ======================================================================
+
+//---------------------------------------------------------------------------
+// A deleted overload with a reason: `= BEMAN_INSIDE_DELETE("…")`. It takes an
+// operation's failing case, so `requires { a + b; }` is false and the error
+// names the reason (= delete("…"), C++26, accepted as an extension in C++23
+// by GCC 15+ and Clang 19+; older compilers get a plain `= delete`).
+// Declarations using it sit between BEMAN_INSIDE_DELETE_BEGIN and _END,
+// which silence the extension warning.
+//---------------------------------------------------------------------------
+#if defined(__cpp_deleted_function) || (defined(__clang__) && __clang_major__ >= 19) || \
+    (defined(__GNUC__) && !defined(__clang__) && __GNUC__ >= 15)
+    #define BEMAN_INSIDE_DELETE(reason) delete (reason)
+    #define BEMAN_INSIDE_DELETE_BEGIN \
+        _Pragma("GCC diagnostic push") _Pragma("GCC diagnostic ignored \"-Wc++26-extensions\"")
+    #define BEMAN_INSIDE_DELETE_END _Pragma("GCC diagnostic pop")
+#else
+    #define BEMAN_INSIDE_DELETE(reason) delete
+    #define BEMAN_INSIDE_DELETE_BEGIN
+    #define BEMAN_INSIDE_DELETE_END
+#endif
+
+
 
 //---------------------------------------------------------------------------
 // Free-function arithmetic — wraps detail::addition/multiplication/division/
@@ -10832,20 +10857,8 @@ struct divmod_op {
 } // namespace detail
 
 // A deleted overload takes each op's failing case: `requires { a + b; }` is
-// then false, an integer inside cannot fall back on its imax conversion and
-// the built-in operator, and the error names the reason (= delete("…"),
-// C++26, accepted as an extension in C++23 by GCC 15+ and Clang 19+).
-#if defined(__cpp_deleted_function) || (defined(__clang__) && __clang_major__ >= 19) || \
-    (defined(__GNUC__) && !defined(__clang__) && __GNUC__ >= 15)
-    #define BEMAN_INSIDE_DELETE(reason) delete (reason)
-    #define BEMAN_INSIDE_DELETE_BEGIN \
-        _Pragma("GCC diagnostic push") _Pragma("GCC diagnostic ignored \"-Wc++26-extensions\"")
-    #define BEMAN_INSIDE_DELETE_END _Pragma("GCC diagnostic pop")
-#else
-    #define BEMAN_INSIDE_DELETE(reason) delete
-    #define BEMAN_INSIDE_DELETE_BEGIN
-    #define BEMAN_INSIDE_DELETE_END
-#endif
+// then false, and an integer inside cannot fall back on its imax conversion
+// and the built-in operator (detail/delete_reason.hpp).
 
 #define BEMAN_INSIDE_WHY_add                                                                                     \
     "addition: the result grid exceeds the 64-bit grid numbers (coarsen the operand grids, or build with C++26 " \
@@ -11007,9 +11020,6 @@ template <insidable L, insidable R>
     requires(!detail::mod_defined<L, R, flags_of<L> | flags_of<R>>)
 auto operator%(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_mod);
 BEMAN_INSIDE_DELETE_END
-#undef BEMAN_INSIDE_DELETE
-#undef BEMAN_INSIDE_DELETE_BEGIN
-#undef BEMAN_INSIDE_DELETE_END
 #undef BEMAN_INSIDE_WHY_add
 #undef BEMAN_INSIDE_WHY_sub
 #undef BEMAN_INSIDE_WHY_mul
@@ -18443,20 +18453,6 @@ template <insidable B, std::uniform_random_bit_generator G>
 #include <type_traits>
 #include <utility>
 
-// `= delete("reason")` (C++26; an extension from GCC 15 and Clang 19), as
-// arithmetic.hpp spells it.
-#if defined(__cpp_deleted_function) || (defined(__clang__) && __clang_major__ >= 19) || \
-    (defined(__GNUC__) && !defined(__clang__) && __GNUC__ >= 15)
-    #define BEMAN_INSIDE_UNITS_DELETE(reason) delete (reason)
-    #define BEMAN_INSIDE_UNITS_DELETE_BEGIN \
-        _Pragma("GCC diagnostic push") _Pragma("GCC diagnostic ignored \"-Wc++26-extensions\"")
-    #define BEMAN_INSIDE_UNITS_DELETE_END _Pragma("GCC diagnostic pop")
-#else
-    #define BEMAN_INSIDE_UNITS_DELETE(reason) delete
-    #define BEMAN_INSIDE_UNITS_DELETE_BEGIN
-    #define BEMAN_INSIDE_UNITS_DELETE_END
-#endif
-
 namespace beman::inside::units {
 using beman::inside::detail::grid_rational;
 
@@ -18464,26 +18460,35 @@ using beman::inside::detail::grid_rational;
 // dimension — the exponents of the seven SI base dimensions
 // (L M T I Θ N J). Angle is dimensionless, as in SI.
 //---------------------------------------------------------------------------
+namespace detail {
 inline constexpr std::size_t base_dimensions = 7;
+} // namespace detail
 
 struct dimension {
-    std::int8_t Exp[base_dimensions]{};
+    std::int8_t Exp[detail::base_dimensions]{};
+
+    // An exponent past ±127 is an error, not a wrap.
+    static consteval std::int8_t exponent(int e) {
+        if (e < -127 || e > 127)
+            beman::inside::detail::constexpr_error<"units: a dimension exponent past 127">();
+        return static_cast<std::int8_t>(e);
+    }
 
     friend constexpr bool      operator==(const dimension&, const dimension&) = default;
     friend consteval dimension operator*(dimension a, const dimension& b) {
-        for (std::size_t i = 0; i < base_dimensions; ++i)
-            a.Exp[i] = static_cast<std::int8_t>(a.Exp[i] + b.Exp[i]);
+        for (std::size_t i = 0; i < detail::base_dimensions; ++i)
+            a.Exp[i] = exponent(a.Exp[i] + b.Exp[i]);
         return a;
     }
     friend consteval dimension operator/(dimension a, const dimension& b) {
-        for (std::size_t i = 0; i < base_dimensions; ++i)
-            a.Exp[i] = static_cast<std::int8_t>(a.Exp[i] - b.Exp[i]);
+        for (std::size_t i = 0; i < detail::base_dimensions; ++i)
+            a.Exp[i] = exponent(a.Exp[i] - b.Exp[i]);
         return a;
     }
     consteval dimension pow(int n) const {
         dimension r = *this;
         for (auto& e : r.Exp)
-            e = static_cast<std::int8_t>(e * n);
+            e = exponent(e * n);
         return r;
     }
     // The n-th root; every exponent must divide.
@@ -18564,6 +18569,7 @@ struct quantity_spec;
 // content, never by address: under GCC's -fsanitize=undefined `&obj ==
 // nullptr`, and under -fsanitize=pointer-compare `&a == &b`, is no constant
 // expression.
+namespace detail {
 template <class T>
 struct ref_or_none {
     const T* P{};
@@ -18575,22 +18581,30 @@ struct ref_or_none {
     constexpr explicit operator bool() const { return Set; }
     constexpr const T* operator->() const { return P; }
 };
+} // namespace detail
 
-using spec_ref = ref_or_none<quantity_spec>;
+namespace detail {
+using spec_ref = detail::ref_or_none<quantity_spec>;
+} // namespace detail
 
+namespace detail {
 struct spec_factor {
     const quantity_spec*  Spec{};
     std::int8_t           Exp{};
-    friend constexpr bool operator==(const spec_factor& a, const spec_factor& b);
+    friend constexpr bool operator==(const detail::spec_factor& a, const detail::spec_factor& b);
 };
+} // namespace detail
 
+namespace detail {
 inline constexpr std::size_t max_spec_factors = 6;
+} // namespace detail
 
+namespace detail {
 // A product of named specs to integer powers, sorted by name.
 struct recipe {
-    spec_factor           F[max_spec_factors]{};
+    detail::spec_factor   F[detail::max_spec_factors]{};
     std::int8_t           Size{0};
-    friend constexpr bool operator==(const recipe& a, const recipe& b) {
+    friend constexpr bool operator==(const detail::recipe& a, const detail::recipe& b) {
         if (a.Size != b.Size)
             return false;
         for (std::int8_t i = 0; i < a.Size; ++i)
@@ -18599,12 +18613,15 @@ struct recipe {
         return true;
     }
 };
+} // namespace detail
 
+namespace detail {
 // An anonymous spec expression: what length / time is, before it is named.
 struct spec_expr {
-    recipe    Recipe{};
-    dimension Dim{};
+    detail::recipe Recipe{};
+    dimension      Dim{};
 };
+} // namespace detail
 
 struct is_kind_t {
     explicit is_kind_t() = default;
@@ -18617,8 +18634,8 @@ struct spec_t;
 struct quantity_spec {
     std::string_view Name;
     dimension        Dim{};
-    spec_ref         Parent{};
-    recipe           Recipe{};
+    detail::spec_ref Parent{};
+    detail::recipe   Recipe{};
     bool             IsKind{false};
 
     // A base quantity: a dimension of its own.
@@ -18630,18 +18647,20 @@ struct quantity_spec {
     constexpr quantity_spec(std::string_view name, spec_t<P>, is_kind_t)
         : Name{name}, Dim{P->Dim}, Parent{P}, IsKind{true} {}
     // A derived root: named by its recipe.
-    constexpr quantity_spec(std::string_view name, const spec_expr& e) : Name{name}, Dim{e.Dim}, Recipe{e.Recipe} {}
-    constexpr quantity_spec(std::string_view name, const spec_expr& e, is_kind_t)
+    constexpr quantity_spec(std::string_view name, const detail::spec_expr& e)
+        : Name{name}, Dim{e.Dim}, Recipe{e.Recipe} {}
+    constexpr quantity_spec(std::string_view name, const detail::spec_expr& e, is_kind_t)
         : Name{name}, Dim{e.Dim}, Recipe{e.Recipe}, IsKind{true} {}
     // A child with a recipe of its own (velocity: speed, displacement / duration).
     template <const quantity_spec* P>
-    constexpr quantity_spec(std::string_view name, spec_t<P>, const spec_expr& e)
+    constexpr quantity_spec(std::string_view name, spec_t<P>, const detail::spec_expr& e)
         : Name{name}, Dim{P->Dim}, Parent{P}, Recipe{e.Recipe} {
         if (!(e.Dim == P->Dim))
-            beman::inside::detail::constexpr_error<"units: a spec's recipe must have its parent's dimension">();
+            beman::inside::detail::constexpr_error<
+                "units: a spec's detail::recipe must have its parent's dimension">();
     }
     template <const quantity_spec* P>
-    constexpr quantity_spec(std::string_view name, spec_t<P>, const spec_expr& e, is_kind_t)
+    constexpr quantity_spec(std::string_view name, spec_t<P>, const detail::spec_expr& e, is_kind_t)
         : quantity_spec{name, spec_t<P>{}, e} {
         IsKind = true;
     }
@@ -18652,19 +18671,28 @@ namespace detail {
 // is by content, never by address: GCC with -fsanitize=pointer-compare
 // rejects comparing the addresses of two distinct objects in a constant
 // expression. A null pointer test stays a pointer test.
+// A spec is its name, dimension, recipe, kind boundary and parent chain: a
+// user spec that reuses a name ("length") under another parent is another
+// spec.
 constexpr bool same(const quantity_spec* a, const quantity_spec* b) { // both set
-    return a->Name == b->Name && a->Dim == b->Dim && a->IsKind == b->IsKind;
+    if (a->Name != b->Name || !(a->Dim == b->Dim) || a->IsKind != b->IsKind || !(a->Recipe == b->Recipe))
+        return false;
+    if (!a->Parent || !b->Parent)
+        return !a->Parent && !b->Parent;
+    return same(a->Parent.P, b->Parent.P);
 }
-constexpr bool same(const spec_ref& a, const spec_ref& b) {
+constexpr bool same(const detail::spec_ref& a, const detail::spec_ref& b) {
     if (!a || !b)
         return !a && !b;
     return same(a.P, b.P);
 }
 } // namespace detail
 
-constexpr bool operator==(const spec_factor& a, const spec_factor& b) {
+namespace detail {
+constexpr bool operator==(const detail::spec_factor& a, const detail::spec_factor& b) {
     return detail::same(a.Spec, b.Spec) && a.Exp == b.Exp;
 }
+} // namespace detail
 
 namespace detail {
 // The spec's tree root, and its kind root: the first IsKind spec on the way
@@ -18694,10 +18722,10 @@ consteval bool name_before(const quantity_spec* a, const quantity_spec* b) { ret
 
 // r · f^e, merged and kept sorted; an exponent that reaches 0 drops out.
 // Returns false when the recipe is full.
-consteval bool recipe_add(recipe& r, const quantity_spec* f, int e) {
+consteval bool recipe_add(detail::recipe& r, const quantity_spec* f, int e) {
     for (std::int8_t i = 0; i < r.Size; ++i)
         if (same(r.F[i].Spec, f)) {
-            r.F[i].Exp = static_cast<std::int8_t>(r.F[i].Exp + e);
+            r.F[i].Exp = dimension::exponent(r.F[i].Exp + e);
             if (r.F[i].Exp == 0) {
                 for (std::int8_t j = i; j + 1 < r.Size; ++j)
                     r.F[j] = r.F[j + 1];
@@ -18707,37 +18735,37 @@ consteval bool recipe_add(recipe& r, const quantity_spec* f, int e) {
         }
     if (e == 0)
         return true;
-    if (r.Size == static_cast<std::int8_t>(max_spec_factors))
+    if (r.Size == static_cast<std::int8_t>(detail::max_spec_factors))
         return false;
     std::int8_t at = r.Size;
     while (at > 0 && name_before(f, r.F[at - 1].Spec)) {
         r.F[at] = r.F[at - 1];
         --at;
     }
-    r.F[at] = {f, static_cast<std::int8_t>(e)};
+    r.F[at] = {f, dimension::exponent(e)};
     ++r.Size;
     return true;
 }
 
 // a · b^sign; false when the product does not fit a recipe.
-consteval bool recipe_merge(recipe& a, const recipe& b, int sign) {
+consteval bool recipe_merge(detail::recipe& a, const detail::recipe& b, int sign) {
     for (std::int8_t i = 0; i < b.Size; ++i)
         if (!recipe_add(a, b.F[i].Spec, b.F[i].Exp * sign))
             return false;
     return true;
 }
 
-consteval recipe recipe_of(const quantity_spec* s) {
+consteval detail::recipe recipe_of(const quantity_spec* s) {
     if (s->Recipe.Size > 0)
         return s->Recipe;
-    recipe r{};
+    detail::recipe r{};
     recipe_add(r, s, 1);
     return r;
 }
 
 // The recipe with every factor replaced by its kind root, summed.
-consteval recipe recipe_by_kind(const recipe& r) {
-    recipe out{};
+consteval detail::recipe recipe_by_kind(const detail::recipe& r) {
+    detail::recipe out{};
     for (std::int8_t i = 0; i < r.Size; ++i)
         recipe_add(out, kind_root(r.F[i].Spec), r.F[i].Exp);
     return out;
@@ -18745,10 +18773,10 @@ consteval recipe recipe_by_kind(const recipe& r) {
 
 // Each factor of `want` matched by a factor of `have` with the same exponent
 // that is it or descends from it, one to one.
-consteval bool recipe_matches(const recipe& have, const recipe& want) {
+consteval bool recipe_matches(const detail::recipe& have, const detail::recipe& want) {
     if (have.Size != want.Size)
         return false;
-    bool used[max_spec_factors]{};
+    bool used[detail::max_spec_factors]{};
     for (std::int8_t i = 0; i < want.Size; ++i) {
         bool found = false;
         for (std::int8_t j = 0; j < have.Size && !found; ++j)
@@ -18774,45 +18802,53 @@ struct spec_t {
 
 // Spec algebra for recipes: length / time, pow<2>(length), inverse(radius).
 template <const quantity_spec* S>
-consteval spec_expr expr_of(spec_t<S>) {
-    spec_expr e{};
+consteval detail::spec_expr expr_of(spec_t<S>) {
+    detail::spec_expr e{};
     detail::recipe_add(e.Recipe, S, 1);
     e.Dim = S->Dim;
     return e;
 }
-consteval spec_expr expr_of(const spec_expr& e) { return e; }
+consteval detail::spec_expr expr_of(const detail::spec_expr& e) { return e; }
 
 template <class T>
 concept spec_operand = requires(T t) { expr_of(t); };
 
 namespace detail {
-consteval spec_expr spec_combine(const spec_expr& a, const spec_expr& b, int sign) {
-    spec_expr r = a;
+consteval detail::spec_expr spec_combine(const detail::spec_expr& a, const detail::spec_expr& b, int sign) {
+    detail::spec_expr r = a;
     if (!recipe_merge(r.Recipe, b.Recipe, sign))
-        beman::inside::detail::constexpr_error<"units: a recipe holds at most 6 factors">();
+        beman::inside::detail::constexpr_error<"units: a detail::recipe holds at most 6 factors">();
     r.Dim = sign > 0 ? a.Dim * b.Dim : a.Dim / b.Dim;
     return r;
 }
 } // namespace detail
 
 template <spec_operand A, spec_operand B>
-consteval spec_expr operator*(A a, B b) {
+consteval detail::spec_expr operator*(A a, B b) {
     return detail::spec_combine(expr_of(a), expr_of(b), 1);
 }
 template <spec_operand A, spec_operand B>
-consteval spec_expr operator/(A a, B b) {
+consteval detail::spec_expr operator/(A a, B b) {
     return detail::spec_combine(expr_of(a), expr_of(b), -1);
 }
+// Two specs are equal when their expressions are: one named spec, or one
+// recipe of named specs (isq::length / isq::duration == isq::length / isq::time).
+template <spec_operand A, spec_operand B>
+consteval bool operator==(A a, B b) {
+    const detail::spec_expr x = expr_of(a), y = expr_of(b);
+    return x.Recipe == y.Recipe && x.Dim == y.Dim;
+}
+
 template <int N, spec_operand A>
-consteval spec_expr pow(A a) {
-    spec_expr r{};
+consteval detail::spec_expr pow(A a) {
+    detail::spec_expr r{};
     for (int i = 0; i < (N < 0 ? -N : N); ++i)
         r = detail::spec_combine(r, expr_of(a), N < 0 ? -1 : 1);
     return r;
 }
 template <spec_operand A>
-consteval spec_expr inverse(A a) {
-    return detail::spec_combine(spec_expr{}, expr_of(a), -1);
+consteval detail::spec_expr inverse(A a) {
+    return detail::spec_combine(detail::spec_expr{}, expr_of(a), -1);
 }
 
 //---------------------------------------------------------------------------
@@ -18833,28 +18869,30 @@ struct named_unit;
 // SI unit of the dimension (the ice point: absolute zero + 273.15 K).
 //---------------------------------------------------------------------------
 struct point_origin {
-    std::string_view          Name;
-    dimension                 Dim{};
-    ref_or_none<point_origin> Absolute{}; // none for an absolute origin
-    grid_rational             Offset{0};  // from Absolute, in the coherent unit
-};
-
-using origin_ref = ref_or_none<point_origin>; // none: the implicit zero of a dimension
-
-template <origin_ref O>
-struct origin_t {
-    static constexpr origin_ref value = O;
+    std::string_view                  Name;
+    dimension                         Dim{};
+    detail::ref_or_none<point_origin> Absolute{}; // none for an absolute origin
+    grid_rational                     Offset{0};  // from Absolute, in the coherent unit
 };
 
 namespace detail {
-consteval origin_ref absolute_of(origin_ref o) { return o && o->Absolute ? o->Absolute : o; }
+using origin_ref = detail::ref_or_none<point_origin>; // none: the implicit zero of a dimension
+} // namespace detail
+
+template <detail::origin_ref O>
+struct origin_t {
+    static constexpr detail::origin_ref value = O;
+};
+
+namespace detail {
+consteval detail::origin_ref absolute_of(detail::origin_ref o) { return o && o->Absolute ? o->Absolute : o; }
 // By content, as same() for specs and units (see there).
-constexpr bool same(const origin_ref& a, const origin_ref& b) {
+constexpr bool same(const detail::origin_ref& a, const detail::origin_ref& b) {
     if (!a || !b)
         return !a && !b;
     return a->Name == b->Name && a->Dim == b->Dim && a->Offset == b->Offset && same(a->Absolute, b->Absolute);
 }
-consteval grid_rational offset_of(origin_ref o) { return o && o->Absolute ? o->Offset : grid_rational{0}; }
+consteval grid_rational offset_of(detail::origin_ref o) { return o && o->Absolute ? o->Offset : grid_rational{0}; }
 } // namespace detail
 
 struct no_space_before_t {
@@ -18862,19 +18900,23 @@ struct no_space_before_t {
 };
 inline constexpr no_space_before_t no_space_before{};
 
+namespace detail {
 struct unit_atom {
     const named_unit*     U{};
     std::int8_t           Prefix{0}; // power of ten
     std::int8_t           Exp{0};
-    friend constexpr bool operator==(const unit_atom& a, const unit_atom& b);
+    friend constexpr bool operator==(const detail::unit_atom& a, const detail::unit_atom& b);
 };
+} // namespace detail
 
+namespace detail {
 inline constexpr std::size_t max_unit_atoms = 6;
+} // namespace detail
 
 struct unit {
-    unit_atom   Atoms[max_unit_atoms]{};
-    std::int8_t Size{0};
-    magnitude   Scale{};
+    detail::unit_atom Atoms[detail::max_unit_atoms]{};
+    std::int8_t       Size{0};
+    magnitude         Scale{};
 
     constexpr unit() = default;
     constexpr unit(const named_unit& u) : Atoms{{&u, 0, 1}}, Size{1} {}
@@ -18895,13 +18937,13 @@ struct unit_t {
 };
 
 struct named_unit {
-    std::string_view Utf8;
-    std::string_view Ascii;
-    dimension        Dim{};
-    magnitude        Mag{};
-    spec_ref         Kind{};
-    bool             SpaceBefore{true};
-    origin_ref       Origin{}; // the default origin of its points (K: absolute zero)
+    std::string_view   Utf8;
+    std::string_view   Ascii;
+    dimension          Dim{};
+    magnitude          Mag{};
+    detail::spec_ref   Kind{};
+    bool               SpaceBefore{true};
+    detail::origin_ref Origin{}; // the default origin of its points (K: absolute zero)
 
     // A base unit of a kind: the coherent unit of its dimension.
     template <const quantity_spec* K>
@@ -18922,11 +18964,11 @@ struct named_unit {
     template <unit U, const quantity_spec* K>
     constexpr named_unit(std::string_view utf8, std::string_view ascii, unit_t<U>, spec_t<K>);
     // A unit with a default point origin (K: absolute zero, ℃: the ice point).
-    template <const quantity_spec* K, origin_ref O>
+    template <const quantity_spec* K, detail::origin_ref O>
     constexpr named_unit(std::string_view sym, spec_t<K>, origin_t<O>) : named_unit{sym, spec_t<K>{}} {
         Origin = O;
     }
-    template <unit U, origin_ref O>
+    template <unit U, detail::origin_ref O>
     constexpr named_unit(std::string_view utf8, std::string_view ascii, unit_t<U>, origin_t<O>)
         : named_unit{utf8, ascii, unit_t<U>{}} {
         Origin = O;
@@ -18940,26 +18982,30 @@ struct named_unit {
 };
 
 namespace detail {
+// A unit is its symbols, dimension, magnitude, kind and origin.
 constexpr bool same(const named_unit* a, const named_unit* b) { // both set
-    return a->Utf8 == b->Utf8 && a->Ascii == b->Ascii && a->Dim == b->Dim && a->Mag == b->Mag;
+    return a->Utf8 == b->Utf8 && a->Ascii == b->Ascii && a->Dim == b->Dim && a->Mag == b->Mag &&
+           same(a->Kind, b->Kind) && same(a->Origin, b->Origin);
 }
 } // namespace detail
 
-constexpr bool operator==(const unit_atom& a, const unit_atom& b) {
+namespace detail {
+constexpr bool operator==(const detail::unit_atom& a, const detail::unit_atom& b) {
     return detail::same(a.U, b.U) && a.Prefix == b.Prefix && a.Exp == b.Exp;
 }
+} // namespace detail
 
 namespace detail {
-consteval bool atom_before(const unit_atom& a, const unit_atom& b) {
+consteval bool atom_before(const detail::unit_atom& a, const detail::unit_atom& b) {
     if (a.U->Utf8 != b.U->Utf8)
         return a.U->Utf8 < b.U->Utf8;
     return a.Prefix < b.Prefix;
 }
 
-consteval void unit_add(unit& u, unit_atom a) {
+consteval void unit_add(unit& u, detail::unit_atom a) {
     for (std::int8_t i = 0; i < u.Size; ++i)
         if (same(u.Atoms[i].U, a.U) && u.Atoms[i].Prefix == a.Prefix) {
-            u.Atoms[i].Exp = static_cast<std::int8_t>(u.Atoms[i].Exp + a.Exp);
+            u.Atoms[i].Exp = dimension::exponent(u.Atoms[i].Exp + a.Exp);
             if (u.Atoms[i].Exp == 0) {
                 for (std::int8_t j = i; j + 1 < u.Size; ++j)
                     u.Atoms[j] = u.Atoms[j + 1];
@@ -18969,7 +19015,7 @@ consteval void unit_add(unit& u, unit_atom a) {
         }
     if (a.Exp == 0)
         return;
-    if (u.Size == static_cast<std::int8_t>(max_unit_atoms))
+    if (u.Size == static_cast<std::int8_t>(detail::max_unit_atoms))
         beman::inside::detail::constexpr_error<"units: a unit holds at most 6 factors - name it with named_unit">();
     std::int8_t at = u.Size;
     while (at > 0 && atom_before(a, u.Atoms[at - 1])) {
@@ -18982,8 +19028,8 @@ consteval void unit_add(unit& u, unit_atom a) {
 
 consteval unit unit_mul(unit a, const unit& b, int sign) {
     for (std::int8_t i = 0; i < b.Size; ++i) {
-        unit_atom t = b.Atoms[i];
-        t.Exp       = static_cast<std::int8_t>(t.Exp * sign);
+        detail::unit_atom t = b.Atoms[i];
+        t.Exp               = static_cast<std::int8_t>(t.Exp * sign);
         unit_add(a, t);
     }
     a.Scale = sign > 0 ? a.Scale * b.Scale : a.Scale / b.Scale;
@@ -18993,7 +19039,7 @@ consteval unit unit_mul(unit a, const unit& b, int sign) {
 consteval unit unit_pow(const unit& u, int n) {
     unit r{};
     for (std::int8_t i = 0; i < u.Size; ++i)
-        unit_add(r, {u.Atoms[i].U, u.Atoms[i].Prefix, static_cast<std::int8_t>(u.Atoms[i].Exp * n)});
+        unit_add(r, {u.Atoms[i].U, u.Atoms[i].Prefix, dimension::exponent(u.Atoms[i].Exp * n)});
     r.Scale = u.Scale.pow(n);
     return r;
 }
@@ -19027,14 +19073,14 @@ consteval magnitude magnitude_of(const unit& u) {
     return m;
 }
 // The kind a unit measures: a named unit's (with a prefix too), else none.
-consteval spec_ref kind_of(const unit& u) {
-    return u.Size == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one() ? u.Atoms[0].U->Kind : spec_ref{};
+consteval detail::spec_ref kind_of(const unit& u) {
+    return u.Size == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one() ? u.Atoms[0].U->Kind : detail::spec_ref{};
 }
 
 namespace detail {
 // The kind a unit defined by U inherits: its one factor's (min: 60 s).
-consteval spec_ref inherited_kind(const unit& u) {
-    return u.Size == 1 && u.Atoms[0].Exp == 1 ? u.Atoms[0].U->Kind : spec_ref{};
+consteval detail::spec_ref inherited_kind(const unit& u) {
+    return u.Size == 1 && u.Atoms[0].Exp == 1 ? u.Atoms[0].U->Kind : detail::spec_ref{};
 }
 } // namespace detail
 
@@ -19057,9 +19103,16 @@ constexpr named_unit::named_unit(std::string_view utf8, std::string_view ascii, 
         beman::inside::detail::constexpr_error<"units: a unit's kind must have the unit's dimension">();
 }
 
-// unit_c<named> — the tag of a named unit: inline constexpr auto metre = unit_c<metre_def>.
+// The tags of your own entries, each made from its static object:
+//   inline constexpr auto metre  = unit_c<metre_def>;     // a named_unit
+//   inline constexpr auto height = spec_c<height_def>;    // a quantity_spec
+//   inline constexpr auto origin = origin_c<origin_def>;  // a point_origin
 template <const named_unit& N>
 inline constexpr unit_t<unit{N}> unit_c{};
+template <const quantity_spec& S>
+inline constexpr spec_t<&S> spec_c{};
+template <const point_origin& O>
+inline constexpr origin_t<&O> origin_c{};
 
 // The dimensionless unit 1.
 inline constexpr unit_t<unit{}> one{};
@@ -19083,6 +19136,14 @@ consteval auto operator*(mag_t<M>, unit_t<B>) {
 template <magnitude M, unit B>
 consteval auto operator/(mag_t<M>, unit_t<B>) {
     return unit_t<detail::unit_scaled(detail::unit_pow(B, -1), M)>{};
+}
+template <unit B, magnitude M>
+consteval auto operator*(unit_t<B>, mag_t<M>) {
+    return unit_t<detail::unit_scaled(B, M)>{};
+}
+template <unit B, magnitude M>
+consteval auto operator/(unit_t<B>, mag_t<M>) {
+    return unit_t<detail::unit_scaled(B, magnitude{} / M)>{};
 }
 template <int N, unit A>
 consteval auto pow(unit_t<A>) {
@@ -19120,13 +19181,13 @@ struct prefix_t {
 //   Spec null, Derived empty   any quantity of the unit's dimension (m/s)
 //---------------------------------------------------------------------------
 struct reference {
-    spec_ref Spec{};
-    bool     KindOf{false};
-    recipe   Derived{};
-    unit     U{};
+    detail::spec_ref Spec{};
+    bool             KindOf{false};
+    detail::recipe   Derived{};
+    unit             U{};
 
     constexpr reference() = default;
-    constexpr reference(spec_ref s, bool kind_of, recipe derived, unit u)
+    constexpr reference(detail::spec_ref s, bool kind_of, detail::recipe derived, unit u)
         : Spec{s}, KindOf{kind_of}, Derived{derived}, U{u} {}
     // A unit tag as a reference: quantity<si::metre, …>.
     template <unit V>
@@ -19138,8 +19199,8 @@ struct reference {
 };
 
 consteval reference reference_of(const unit& u) {
-    const spec_ref k = kind_of(u);
-    return reference{k, static_cast<bool>(k), recipe{}, u};
+    const detail::spec_ref k = kind_of(u);
+    return reference{k, static_cast<bool>(k), detail::recipe{}, u};
 }
 
 template <reference R>
@@ -19176,10 +19237,10 @@ consteval auto spec_t<S>::operator[](U) const {
     static_assert(is_reference_tag_v<U> && requires { U::value.Size; }, "units: spec[unit] takes a unit");
     constexpr unit u = U::value;
     static_assert(dimension_of(u) == S->Dim, "units: spec[unit] - the unit has another dimension than the spec");
-    constexpr spec_ref k = kind_of(u);
+    constexpr detail::spec_ref k = kind_of(u);
     static_assert(!k || detail::same(detail::kind_root(k.P), detail::kind_root(S)),
                   "units: spec[unit] - the unit measures another kind of quantity (Hz for activity?)");
-    return reference_t<reference{S, false, recipe{}, u}>{};
+    return reference_t<reference{S, false, detail::recipe{}, u}>{};
 }
 
 namespace detail {
@@ -19206,7 +19267,7 @@ consteval bool spec_converts(const reference& from, const reference& to) {
     if (is_generic(from))
         return !to.Spec || !kind_root(to.Spec.P)->IsKind;
     if (!to.Spec) { // a derived target: the source's recipe, by kind
-        const recipe have = from.Spec ? recipe_of(from.Spec.P) : from.Derived;
+        const detail::recipe have = from.Spec ? recipe_of(from.Spec.P) : from.Derived;
         return recipe_by_kind(have) == recipe_by_kind(to.Derived);
     }
     if (!from.Spec)
@@ -19219,9 +19280,9 @@ consteval bool spec_converts(const reference& from, const reference& to) {
 // Explicit conversion (quantity_cast): any spec of the same dimension, but
 // not across IsKind kinds.
 consteval bool spec_casts(const reference& from, const quantity_spec* to) {
-    const spec_ref       fk = from.Spec ? spec_ref{kind_root(from.Spec.P)} : spec_ref{};
-    const quantity_spec* tk = kind_root(to);
-    if (same(fk, spec_ref{tk}))
+    const detail::spec_ref fk = from.Spec ? detail::spec_ref{kind_root(from.Spec.P)} : detail::spec_ref{};
+    const quantity_spec*   tk = kind_root(to);
+    if (same(fk, detail::spec_ref{tk}))
         return true;
     if (fk && fk->IsKind)
         return false;
@@ -19269,11 +19330,11 @@ consteval reference spec_product(const reference& a, const reference& b, int sig
     const auto factors = [](const reference& r) {
         if (!r.Spec)
             return r.Derived;
-        recipe f{};
+        detail::recipe f{};
         recipe_add(f, r.KindOf ? kind_root(r.Spec.P) : r.Spec.P, 1);
         return f;
     };
-    recipe f = factors(a);
+    detail::recipe f = factors(a);
     if (!recipe_merge(f, factors(b), sign) || f.Size == 0) // too many factors, or a pure ratio
         return reference{nullptr, false, {}, u};
     const bool kind_of = (a.KindOf || empty(a)) && (b.KindOf || empty(b));
@@ -19324,15 +19385,31 @@ constexpr auto rescale(const V& v) {
 template <unit From, unit To>
 inline constexpr magnitude conversion_factor = magnitude_of(From) / magnitude_of(To);
 
+// A fixed order of units: fewer atoms first, then by symbol and exponent.
+consteval bool unit_before(const unit& a, const unit& b) {
+    if (a.Size != b.Size)
+        return a.Size < b.Size;
+    for (std::int8_t i = 0; i < a.Size; ++i) {
+        if (atom_before(a.Atoms[i], b.Atoms[i]))
+            return true;
+        if (atom_before(b.Atoms[i], a.Atoms[i]))
+            return false;
+        if (a.Atoms[i].Exp != b.Atoms[i].Exp)
+            return a.Atoms[i].Exp < b.Atoms[i].Exp;
+    }
+    return false;
+}
+
 // The common unit of a sum: the smaller unit when it divides the other
 // (km + m → m), else the smaller unit scaled to the gcd of the magnitudes
-// (ft + m and m + ft → [1/381 ft]), so the sum's type is the same either way.
+// (ft + m and m + ft → [1/381 ft]); of two spellings of one size, the
+// shorter (J + N m → J). The sum's type is the same either way.
 consteval unit common_unit(const unit& a, const unit& b) {
     if (a == b)
         return a;
     const magnitude ma = magnitude_of(a), mb = magnitude_of(b);
-    if (ma == mb)
-        return a;
+    if (ma == mb) // one size, two spellings (J, N m): the shorter, then by symbol
+        return unit_before(b, a) ? b : a;
     if (ma.Pi != mb.Pi)
         beman::inside::detail::constexpr_error<
             "units: no common unit of a pi multiple and a rational one - convert one side with value_cast first">();
@@ -19379,6 +19456,18 @@ concept number_op = (Op == '+' && requires(const X& x, const Y& y) { x + y; }) |
                     (Op == '/' && requires(const X& x, const Y& y) { x / y; }) ||
                     (Op == '=' && requires(const X& x, const Y& y) { x == y; }) ||
                     (Op == '<' && requires(const X& x, const Y& y) { x <=> y; });
+
+// Why q.in(To) cannot convert from From, if it cannot: another dimension, or
+// a factor of pi (which value_cast rounds). A deleted overload per reason.
+enum class in_error : unsigned char { none, dimension, pi };
+template <unit From, unit To>
+consteval in_error in_error_of() {
+    if (dimension_of(From) != dimension_of(To))
+        return in_error::dimension;
+    if (magnitude_of(From).Pi != magnitude_of(To).Pi)
+        return in_error::pi;
+    return in_error::none;
+}
 } // namespace detail
 
 //---------------------------------------------------------------------------
@@ -19456,6 +19545,14 @@ class quantity {
     static constexpr units::reference reference = R;
     static constexpr units::unit      unit      = R.U;
     static constexpr units::dimension dimension = dimension_of(R.U);
+    // The spec as a value: its tag for a named spec (isq::height), else the
+    // spec expression of its recipe. Compare with ==: q.quantity_spec == isq::length.
+    static constexpr auto quantity_spec = [] {
+        if constexpr (static_cast<bool>(R.Spec))
+            return spec_t<R.Spec.P>{};
+        else
+            return detail::spec_expr{R.Derived, dimension_of(R.U)};
+    }();
 
     constexpr quantity() = default;
 
@@ -19476,23 +19573,40 @@ class quantity {
 
     // The same quantity in unit U: exact, the number's grid rescaled.
     template <units::unit U>
-        requires(dimension_of(U) != dimension_of(R.U) || detail::rescalable<R.U, U, Rep>)
+        requires(detail::in_error_of<R.U, U>() == detail::in_error::none && detail::rescalable<R.U, U, Rep>)
     [[nodiscard]] constexpr auto in() const {
-        static_assert(dimension_of(U) == dimension, "units: in() - the unit has another dimension");
         constexpr units::reference to{R.Spec, R.KindOf, R.Derived, U};
         return detail::make_quantity<to>(detail::rescale<detail::conversion_factor<R.U, U>>(Num));
     }
     template <units::unit U>
-        requires(dimension_of(U) != dimension_of(R.U) || detail::rescalable<R.U, U, Rep>)
+        requires(detail::in_error_of<R.U, U>() == detail::in_error::none && detail::rescalable<R.U, U, Rep>)
     [[nodiscard]] constexpr auto in(units::unit_t<U>) const {
         return in<U>();
     }
     // The number in unit U.
     template <units::unit U>
-        requires(dimension_of(U) != dimension_of(R.U) || detail::rescalable<R.U, U, Rep>)
+        requires(detail::in_error_of<R.U, U>() == detail::in_error::none && detail::rescalable<R.U, U, Rep>)
     [[nodiscard]] constexpr auto numerical_value_in(units::unit_t<U>) const {
         return in<U>().numerical_value();
     }
+    BEMAN_INSIDE_DELETE_BEGIN
+    template <units::unit U>
+        requires(detail::in_error_of<R.U, U>() == detail::in_error::dimension)
+    void in() const = BEMAN_INSIDE_DELETE("units: in() - the unit has another dimension");
+    template <units::unit U>
+        requires(detail::in_error_of<R.U, U>() == detail::in_error::dimension)
+    void in(units::unit_t<U>) const = BEMAN_INSIDE_DELETE("units: in() - the unit has another dimension");
+    template <units::unit U>
+        requires(detail::in_error_of<R.U, U>() == detail::in_error::pi)
+    void in() const = BEMAN_INSIDE_DELETE(
+        "units: this conversion multiplies by a power of pi, which has no exact grid - round it with "
+        "value_cast<unit, Rep>(q) from <beman/inside/units_math.hpp>, Rep declared with a rounding mode");
+    template <units::unit U>
+        requires(detail::in_error_of<R.U, U>() == detail::in_error::pi)
+    void in(units::unit_t<U>) const = BEMAN_INSIDE_DELETE(
+        "units: this conversion multiplies by a power of pi, which has no exact grid - round it with "
+        "value_cast<unit, Rep>(q) from <beman/inside/units_math.hpp>, Rep declared with a rounding mode");
+    BEMAN_INSIDE_DELETE_END
 
     // A dimensionless quantity is a number: its value in unit one (km/m is
     // ×1000, % is ×1/100), into any inside that takes it — implicitly when
@@ -19503,13 +19617,12 @@ class quantity {
     constexpr explicit(!std::convertible_to<detail::number_t<R, Rep>, T>) operator T() const {
         return T(detail::rescale<detail::conversion_factor<R.U, units::unit{}>>(Num));
     }
-    BEMAN_INSIDE_UNITS_DELETE_BEGIN
+    BEMAN_INSIDE_DELETE_BEGIN
     template <insidable T>
         requires(dimension_of(R.U) == dim_one && !detail::number_like_v<R>)
-    operator T() const =
-        BEMAN_INSIDE_UNITS_DELETE("units: an angle (an is_kind quantity) or a pi-scaled ratio is no plain "
-                                  "number - read numerical_value(), or value_cast it first");
-    BEMAN_INSIDE_UNITS_DELETE_END
+    operator T() const = BEMAN_INSIDE_DELETE("units: an angle (an is_kind quantity) or a pi-scaled ratio is no plain "
+                                             "number - read numerical_value(), or value_cast it first");
+    BEMAN_INSIDE_DELETE_END
 
     [[nodiscard]] constexpr auto operator+() const { return detail::make_quantity<R>(+Num); }
     [[nodiscard]] constexpr auto operator-() const { return detail::make_quantity<R>(-Num); }
@@ -19552,12 +19665,12 @@ template <insidable V, class Tag>
 [[nodiscard]] constexpr auto operator*(const V& v, Tag t) {
     return quantity<reference_of(t), V>{v};
 }
+BEMAN_INSIDE_DELETE_BEGIN
 template <class N, class Tag>
     requires is_reference_tag_v<Tag> && std::is_arithmetic_v<N>
-constexpr auto operator*(N, Tag) {
-    static_assert(!std::is_arithmetic_v<N>,
-                  "units: a raw number has no grid - write just<42> * unit, or quantity<unit, inside<…>>{42}");
-}
+void operator*(N, Tag) =
+    BEMAN_INSIDE_DELETE("units: a raw number has no grid - write just<42> * unit, or quantity<unit, inside<…>>{42}");
+BEMAN_INSIDE_DELETE_END
 // number / unit: 5 / s.
 template <insidable V, unit U>
 [[nodiscard]] constexpr auto operator/(const V& v, unit_t<U>) {
@@ -19611,16 +19724,27 @@ consteval reference sum_reference() {
     return r;
 }
 
-// Whether a sum or comparison of A and B is a unit error that
-// sum_reference's static_assert or common_unit explains (other dimensions or
-// kinds, no common unit): such a call passes the constraint below and fails
-// with that message.
+// Why a sum or comparison of A and B is a unit error, if it is: other
+// dimensions or kinds, or no common unit. Each reason is a deleted overload
+// with its message.
+enum class sum_error : unsigned char { none, dimensions, kinds, pi, big_grids };
+
+template <reference A, reference B>
+consteval sum_error sum_error_of() {
+    if (dimension_of(A.U) != dimension_of(B.U))
+        return sum_error::dimensions;
+    if (!common_spec(A, B).Ok)
+        return sum_error::kinds;
+    const magnitude ma = magnitude_of(A.U), mb = magnitude_of(B.U);
+    if (ma.Pi != mb.Pi)
+        return sum_error::pi;
+    if (!beman::inside::detail::grid_gcd_fits(ma.Ratio, mb.Ratio))
+        return sum_error::big_grids;
+    return sum_error::none;
+}
 template <reference A, reference B>
 consteval bool sum_diagnosed() {
-    if (dimension_of(A.U) != dimension_of(B.U) || !common_spec(A, B).Ok)
-        return true;
-    const magnitude ma = magnitude_of(A.U), mb = magnitude_of(B.U);
-    return ma.Pi != mb.Pi || !beman::inside::detail::grid_gcd_fits(ma.Ratio, mb.Ratio);
+    return sum_error_of<A, B>() != sum_error::none;
 }
 
 // Whether a Op b exists in the common unit: both numbers rescale to it and
@@ -19633,8 +19757,8 @@ template <reference A, class V, reference B>
 using common_number_t = rescaled_t<A, sum_reference<A, B>(), V>;
 
 template <reference A, class VA, reference B, class VB, char Op>
-concept summable = sum_diagnosed<A, B>() || (common_rescalable<A, VA, B, VB> &&
-                                             number_op<common_number_t<A, VA, B>, common_number_t<B, VB, A>, Op>);
+concept summable = (!sum_diagnosed<A, B>()) && common_rescalable<A, VA, B, VB> &&
+                   number_op<common_number_t<A, VA, B>, common_number_t<B, VB, A>, Op>;
 
 template <reference A, reference B, int Sign>
 consteval reference product_reference() {
@@ -19678,6 +19802,34 @@ template <reference A, class VA, reference B, class VB>
     return detail::rescale<detail::conversion_factor<A.U, C.U>>(a.numerical_value()) <=>
            detail::rescale<detail::conversion_factor<B.U, C.U>>(b.numerical_value());
 }
+
+// A sum, difference, remainder or comparison of two units that cannot meet:
+// a deleted overload per reason, so a requires-test is false and a call says
+// why.
+#define BEMAN_INSIDE_UNITS_SUM_DELETED(ret, op)                                                                \
+    template <reference A, class VA, reference B, class VB>                                                    \
+        requires(detail::sum_error_of<A, B>() == detail::sum_error::dimensions)                                \
+    ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                                                   \
+        BEMAN_INSIDE_DELETE("units: adding or comparing quantities of different dimensions");                  \
+    template <reference A, class VA, reference B, class VB>                                                    \
+        requires(detail::sum_error_of<A, B>() == detail::sum_error::kinds)                                     \
+    ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                                                   \
+        BEMAN_INSIDE_DELETE("units: adding or comparing quantities of different kinds");                       \
+    template <reference A, class VA, reference B, class VB>                                                    \
+        requires(detail::sum_error_of<A, B>() == detail::sum_error::pi)                                        \
+    ret op(const quantity<A, VA>&, const quantity<B, VB>&) = BEMAN_INSIDE_DELETE(                              \
+        "units: no common unit of a pi multiple and a rational one - convert one side with value_cast first"); \
+    template <reference A, class VA, reference B, class VB>                                                    \
+        requires(detail::sum_error_of<A, B>() == detail::sum_error::big_grids)                                 \
+    ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                                                   \
+        BEMAN_INSIDE_DELETE("units: the common unit needs C++26 big grids");
+BEMAN_INSIDE_DELETE_BEGIN
+BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator+)
+BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator-)
+BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator%)
+BEMAN_INSIDE_UNITS_SUM_DELETED(bool, operator==)
+BEMAN_INSIDE_UNITS_SUM_DELETED(std::strong_ordering, operator<=>)
+BEMAN_INSIDE_DELETE_END
 
 template <reference A, class VA, reference B, class VB>
     requires detail::number_op<VA, VB, '*'>
@@ -19724,21 +19876,24 @@ template <reference A, class VA, class Tag>
     return detail::make_quantity<detail::product_reference<A, reference_of(t), -1>()>(a.numerical_value());
 }
 // No raw scalars: q * 2 needs a grid for the 2.
+BEMAN_INSIDE_DELETE_BEGIN
 template <reference A, class VA, class N>
     requires std::is_arithmetic_v<N>
-constexpr auto operator*(const quantity<A, VA>&, N) {
-    static_assert(!std::is_arithmetic_v<N>, "units: a raw number has no grid - scale by just<2>, not 2");
-}
+void operator*(const quantity<A, VA>&,
+               N) = BEMAN_INSIDE_DELETE("units: a raw number has no grid - scale by just<2>, not 2");
 template <reference A, class VA, class N>
     requires std::is_arithmetic_v<N>
-constexpr auto operator*(N, const quantity<A, VA>&) {
-    static_assert(!std::is_arithmetic_v<N>, "units: a raw number has no grid - scale by just<2>, not 2");
-}
+void operator*(N, const quantity<A, VA>&) =
+    BEMAN_INSIDE_DELETE("units: a raw number has no grid - scale by just<2>, not 2");
 template <reference A, class VA, class N>
     requires std::is_arithmetic_v<N>
-constexpr auto operator/(const quantity<A, VA>&, N) {
-    static_assert(!std::is_arithmetic_v<N>, "units: a raw number has no grid - divide by just<2>, not 2");
-}
+void operator/(const quantity<A, VA>&,
+               N) = BEMAN_INSIDE_DELETE("units: a raw number has no grid - divide by just<2>, not 2");
+template <reference A, class VA, class N>
+    requires std::is_arithmetic_v<N>
+void operator/(N, const quantity<A, VA>&) =
+    BEMAN_INSIDE_DELETE("units: a raw number has no grid - divide just<2>, not 2");
+BEMAN_INSIDE_DELETE_END
 
 // pow<N>(q) — q·q·…·q (N ≥ 1): exact, the grid of each product.
 template <int N, reference R, class V>
@@ -19760,17 +19915,41 @@ template <int N, reference R, class V>
 //---------------------------------------------------------------------------
 // quantity_cast<spec>(q) — the same number as another spec of the dimension:
 // down the tree (length → height) or across one kind; never across IsKind.
+namespace detail {
+// Why quantity_cast<To> cannot take R, if it cannot.
+enum class cast_error : unsigned char { none, dimension, is_kind };
+template <reference R, const quantity_spec* To>
+consteval cast_error cast_error_of() {
+    if (!(To->Dim == dimension_of(R.U)))
+        return cast_error::dimension;
+    return spec_casts(R, To) ? cast_error::none : cast_error::is_kind;
+}
+} // namespace detail
+
 template <class SpecTag, reference R, class V>
+    requires(detail::cast_error_of<R, SpecTag::value>() == detail::cast_error::none)
 [[nodiscard]] constexpr auto quantity_cast(const quantity<R, V>& q) {
-    constexpr const quantity_spec* to = SpecTag::value;
-    static_assert(to->Dim == dimension_of(R.U), "units: quantity_cast - another dimension");
-    static_assert(detail::spec_casts(R, to), "units: quantity_cast - across an is_kind boundary");
-    return quantity<reference{to, false, {}, R.U}, V>{q.numerical_value()};
+    return quantity<reference{SpecTag::value, false, {}, R.U}, V>{q.numerical_value()};
 }
 template <auto Spec, reference R, class V>
+    requires(detail::cast_error_of<R, decltype(Spec)::value>() == detail::cast_error::none)
 [[nodiscard]] constexpr auto quantity_cast(const quantity<R, V>& q) {
     return quantity_cast<decltype(Spec)>(q);
 }
+BEMAN_INSIDE_DELETE_BEGIN
+template <class SpecTag, reference R, class V>
+    requires(detail::cast_error_of<R, SpecTag::value>() == detail::cast_error::dimension)
+void quantity_cast(const quantity<R, V>&) = BEMAN_INSIDE_DELETE("units: quantity_cast - another dimension");
+template <auto Spec, reference R, class V>
+    requires(detail::cast_error_of<R, decltype(Spec)::value>() == detail::cast_error::dimension)
+void quantity_cast(const quantity<R, V>&) = BEMAN_INSIDE_DELETE("units: quantity_cast - another dimension");
+template <class SpecTag, reference R, class V>
+    requires(detail::cast_error_of<R, SpecTag::value>() == detail::cast_error::is_kind)
+void quantity_cast(const quantity<R, V>&) = BEMAN_INSIDE_DELETE("units: quantity_cast - across an is_kind boundary");
+template <auto Spec, reference R, class V>
+    requires(detail::cast_error_of<R, decltype(Spec)::value>() == detail::cast_error::is_kind)
+void quantity_cast(const quantity<R, V>&) = BEMAN_INSIDE_DELETE("units: quantity_cast - across an is_kind boundary");
+BEMAN_INSIDE_DELETE_END
 
 // value_cast<Rep2>(q) — another representation, the same unit: Rep2's
 // constructor (checked unless Rep2's policy says otherwise).
@@ -19791,6 +19970,33 @@ template <auto U, insidable Rep2, reference R, class V>
     static_assert(dimension_of(u) == dimension_of(R.U), "units: value_cast - the unit has another dimension");
     constexpr reference to{R.Spec, R.KindOf, R.Derived, u};
     return quantity<to, Rep2>{Rep2(q.in(U).numerical_value())};
+}
+
+// value_cast<Q>(q) — into the quantity type Q = quantity<R2, Rep2>: q in
+// R2's unit, stored by Rep2's constructor. Q's spec must take q's, as for an
+// implicit conversion; only the representation may round.
+namespace detail {
+template <class Q, reference R>
+concept value_castable_to =
+    quantity_like<Q> && dimension_of(Q::reference.U) == dimension_of(R.U) && spec_converts(R, Q::reference) &&
+    factor_fits_v<R.U, Q::reference.U> && exact_factor_v<conversion_factor<R.U, Q::reference.U>>;
+}
+template <class Q, reference R, class V>
+    requires detail::value_castable_to<Q, R> &&
+             requires(const quantity<R, V>& q) { typename Q::rep(q.template in<Q::reference.U>().numerical_value()); }
+[[nodiscard]] constexpr Q value_cast(const quantity<R, V>& q) {
+    return Q{typename Q::rep(q.template in<Q::reference.U>().numerical_value())};
+}
+// try_value_cast<Q, F>(q) — the same through Q's Rep2::try_make<F>.
+template <class Q, policy_flag F = none, reference R, class V>
+    requires detail::value_castable_to<Q, R> && requires(const quantity<R, V>& q) {
+        Q::rep::template try_make<F>(q.template in<Q::reference.U>().numerical_value());
+    }
+[[nodiscard]] constexpr std::expected<Q, errc> try_value_cast(const quantity<R, V>& q) {
+    auto v = Q::rep::template try_make<F>(q.template in<Q::reference.U>().numerical_value());
+    if (!v)
+        return std::unexpected{v.error()};
+    return Q{*v};
 }
 
 // try_value_cast<Rep2, F>(q) — as Rep2::try_make<F>: an expected.
@@ -19825,18 +20031,18 @@ template <auto U, insidable Rep2, policy_flag F = none, reference R, class V>
 //   t.quantity_from(si::absolute_zero)                         // 293.15 K… in ℃
 //   t.point_for(si::absolute_zero).in(si::kelvin)              // the point 293.15 K
 //---------------------------------------------------------------------------
-template <reference R, origin_ref O, insidable Rep>
+template <reference R, detail::origin_ref O, insidable Rep>
 class quantity_point;
 
 template <class T>
 inline constexpr bool is_quantity_point_v = false;
-template <reference R, origin_ref O, class Rep>
+template <reference R, detail::origin_ref O, class Rep>
 inline constexpr bool is_quantity_point_v<quantity_point<R, O, Rep>> = true;
 
 namespace detail {
 // The number, in unit U, that takes a quantity from origin From to origin To:
 // (offset(From) − offset(To)) / mag(U).
-template <origin_ref From, origin_ref To, unit U>
+template <detail::origin_ref From, detail::origin_ref To, unit U>
 consteval grid_rational origin_shift() {
     static_assert(same(absolute_of(From), absolute_of(To)), "units: points of different absolute origins");
     constexpr magnitude m = magnitude_of(U);
@@ -19858,11 +20064,11 @@ constexpr auto shift(const V& v) {
 }
 
 // The default origin of a unit's points: its named unit's (K, ℃, ℉).
-consteval origin_ref origin_of_unit(const unit& u) {
-    return u.Size == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one() ? u.Atoms[0].U->Origin : origin_ref{};
+consteval detail::origin_ref origin_of_unit(const unit& u) {
+    return u.Size == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one() ? u.Atoms[0].U->Origin : detail::origin_ref{};
 }
 
-template <origin_ref O, class Q>
+template <detail::origin_ref O, class Q>
 constexpr auto make_point(Q&& q) {
     using T = std::remove_cvref_t<Q>;
     if constexpr (is_expected_v<T>) {
@@ -19875,22 +20081,22 @@ constexpr auto make_point(Q&& q) {
 }
 } // namespace detail
 
-template <reference R, origin_ref O, insidable Rep>
+template <reference R, detail::origin_ref O, insidable Rep>
 class quantity_point {
     quantity<R, Rep> Q;
 
   public:
-    using quantity_type                         = quantity<R, Rep>;
-    using rep                                   = Rep;
-    static constexpr units::reference reference = R;
-    static constexpr origin_ref       origin    = O;
+    using quantity_type                           = quantity<R, Rep>;
+    using rep                                     = Rep;
+    static constexpr units::reference   reference = R;
+    static constexpr detail::origin_ref origin    = O;
 
     constexpr quantity_point() = default;
     constexpr explicit quantity_point(const quantity<R, Rep>& q) : Q{q} {}
 
     // From a point of another origin (of the same absolute one) or unit:
     // shifted, then rescaled, exactly; implicit as the quantities are.
-    template <units::reference R2, origin_ref O2, class V2>
+    template <units::reference R2, detail::origin_ref O2, class V2>
         requires(detail::same(detail::absolute_of(O2), detail::absolute_of(O))) && detail::implicit_v<R2, R> &&
                 std::constructible_from<
                     quantity<R, Rep>,
@@ -19902,27 +20108,47 @@ class quantity_point {
 
     // The quantity from this point's origin, or from another one.
     [[nodiscard]] constexpr const quantity<R, Rep>& quantity_from_origin() const noexcept { return Q; }
-    // (Other absolute origins, or a pi unit, pass to origin_shift's message.)
-    template <origin_ref O2>
-        requires(!detail::same(detail::absolute_of(O2), detail::absolute_of(O)) || magnitude_of(R.U).Pi != 0 ||
+    template <detail::origin_ref O2>
+        requires(detail::same(detail::absolute_of(O2), detail::absolute_of(O)) && magnitude_of(R.U).Pi == 0 &&
                  detail::shift_forms<detail::origin_shift<O, O2, R.U>(), Rep>)
     [[nodiscard]] constexpr auto quantity_from(origin_t<O2>) const {
         constexpr grid_rational c = detail::origin_shift<O, O2, R.U>();
         return quantity<R, std::remove_cvref_t<decltype(detail::shift<c>(Q.numerical_value()))>>{
             detail::shift<c>(Q.numerical_value())};
     }
+    BEMAN_INSIDE_DELETE_BEGIN
+    template <detail::origin_ref O2>
+        requires(!detail::same(detail::absolute_of(O2), detail::absolute_of(O)))
+    void quantity_from(origin_t<O2>) const = BEMAN_INSIDE_DELETE("units: points of different absolute origins");
+    template <detail::origin_ref O2>
+        requires(detail::same(detail::absolute_of(O2), detail::absolute_of(O)) && magnitude_of(R.U).Pi != 0)
+    void quantity_from(origin_t<O2>) const =
+        BEMAN_INSIDE_DELETE("units: an origin shift in a unit with a pi magnitude has no exact grid");
+    BEMAN_INSIDE_DELETE_END
+    // The quantity from the absolute origin of the dimension (absolute zero,
+    // or the implicit zero): 20 ℃ → 293.15 K counted in ℃.
+    [[nodiscard]] constexpr auto quantity_from_zero() const
+        requires requires(const quantity_point& p) { p.quantity_from(origin_t<detail::absolute_of(O)>{}); }
+    {
+        return quantity_from(origin_t<detail::absolute_of(O)>{});
+    }
     // The same point counted from another origin.
-    template <origin_ref O2>
+    template <detail::origin_ref O2>
+        requires requires(const quantity_point& p, origin_t<O2> o) { p.quantity_from(o); }
     [[nodiscard]] constexpr auto point_for(origin_t<O2> o) const {
         return detail::make_point<O2>(quantity_from(o));
     }
     // The same point in another unit.
     template <units::unit U>
+        requires requires(const quantity<R, Rep>& q, unit_t<U> u) { q.in(u); }
     [[nodiscard]] constexpr auto in(unit_t<U> u) const {
         return detail::make_point<O>(Q.in(u));
     }
     // The same point in unit U, counted from U's own origin: 350 ℉ → 530/3 ℃.
     template <units::unit U>
+        requires requires(const quantity_point& p, unit_t<U> u) {
+            p.point_for(origin_t<detail::origin_of_unit(U)>{}).in(u);
+        }
     [[nodiscard]] constexpr auto point_in(unit_t<U> u) const {
         return point_for(origin_t<detail::origin_of_unit(U)>{}).in(u);
     }
@@ -19942,12 +20168,12 @@ class quantity_point {
 };
 
 // value_cast on a point: its quantity from the origin cast, the origin kept.
-template <insidable Rep2, reference R, origin_ref O, class V>
+template <insidable Rep2, reference R, detail::origin_ref O, class V>
     requires std::constructible_from<Rep2, const V&>
 [[nodiscard]] constexpr quantity_point<R, O, Rep2> value_cast(const quantity_point<R, O, V>& p) {
     return quantity_point<R, O, Rep2>{value_cast<Rep2>(p.quantity_from_origin())};
 }
-template <auto U, insidable Rep2, reference R, origin_ref O, class V>
+template <auto U, insidable Rep2, reference R, detail::origin_ref O, class V>
     requires requires(const quantity<R, V>& q) { value_cast<U, Rep2>(q); }
 [[nodiscard]] constexpr auto value_cast(const quantity_point<R, O, V>& p) {
     const auto q = value_cast<U, Rep2>(p.quantity_from_origin());
@@ -19968,47 +20194,58 @@ template <auto U, insidable V>
 }
 
 // origin + quantity: si::absolute_zero + just<300> * si::kelvin.
-template <origin_ref O, reference R, class V>
+template <detail::origin_ref O, reference R, class V>
 [[nodiscard]] constexpr auto operator+(origin_t<O>, const quantity<R, V>& q) {
     return quantity_point<R, O, V>{q};
 }
-template <reference R, class V, origin_ref O>
+template <reference R, class V, detail::origin_ref O>
 [[nodiscard]] constexpr auto operator+(const quantity<R, V>& q, origin_t<O>) {
     return quantity_point<R, O, V>{q};
 }
 
-// point ± quantity: a point at the same origin; point − point: a quantity
-// (the second counted from the first's origin).
-template <reference R, origin_ref O, class V, reference R2, class V2>
-    requires requires(const quantity<R, V>& a, const quantity<R2, V2>& b) { a + b; }
+// point ± quantity: a point at the same origin, in the point's unit when the
+// quantity converts to it exactly (5 K onto a ℃ point stays ℃), else in the
+// common unit; point − point: a quantity (the second counted from the first's
+// origin).
+namespace detail {
+template <unit U, reference R2, class V2>
+constexpr auto in_point_unit(const quantity<R2, V2>& q) {
+    if constexpr (requires { q.template in<U>(); })
+        return q.template in<U>();
+    else
+        return q;
+}
+} // namespace detail
+template <reference R, detail::origin_ref O, class V, reference R2, class V2>
+    requires requires(const quantity<R, V>& a, const quantity<R2, V2>& b) { a + detail::in_point_unit<R.U>(b); }
 [[nodiscard]] constexpr auto operator+(const quantity_point<R, O, V>& p, const quantity<R2, V2>& q) {
-    return detail::make_point<O>(p.quantity_from_origin() + q);
+    return detail::make_point<O>(p.quantity_from_origin() + detail::in_point_unit<R.U>(q));
 }
-template <reference R2, class V2, reference R, origin_ref O, class V>
-    requires requires(const quantity<R2, V2>& a, const quantity<R, V>& b) { a + b; }
+template <reference R2, class V2, reference R, detail::origin_ref O, class V>
+    requires requires(const quantity<R2, V2>& a, const quantity<R, V>& b) { detail::in_point_unit<R.U>(a) + b; }
 [[nodiscard]] constexpr auto operator+(const quantity<R2, V2>& q, const quantity_point<R, O, V>& p) {
-    return detail::make_point<O>(q + p.quantity_from_origin());
+    return detail::make_point<O>(detail::in_point_unit<R.U>(q) + p.quantity_from_origin());
 }
-template <reference R, origin_ref O, class V, reference R2, class V2>
-    requires requires(const quantity<R, V>& a, const quantity<R2, V2>& b) { a - b; }
+template <reference R, detail::origin_ref O, class V, reference R2, class V2>
+    requires requires(const quantity<R, V>& a, const quantity<R2, V2>& b) { a - detail::in_point_unit<R.U>(b); }
 [[nodiscard]] constexpr auto operator-(const quantity_point<R, O, V>& p, const quantity<R2, V2>& q) {
-    return detail::make_point<O>(p.quantity_from_origin() - q);
+    return detail::make_point<O>(p.quantity_from_origin() - detail::in_point_unit<R.U>(q));
 }
-template <reference R, origin_ref O, class V, reference R2, origin_ref O2, class V2>
+template <reference R, detail::origin_ref O, class V, reference R2, detail::origin_ref O2, class V2>
     requires requires(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
         a.quantity_from_origin() - b.quantity_from(origin_t<O>{});
     }
 [[nodiscard]] constexpr auto operator-(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
     return a.quantity_from_origin() - b.quantity_from(origin_t<O>{});
 }
-template <reference R, origin_ref O, class V, reference R2, origin_ref O2, class V2>
+template <reference R, detail::origin_ref O, class V, reference R2, detail::origin_ref O2, class V2>
     requires requires(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
         a.quantity_from_origin() == b.quantity_from(origin_t<O>{});
     }
 [[nodiscard]] constexpr bool operator==(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
     return a.quantity_from_origin() == b.quantity_from(origin_t<O>{});
 }
-template <reference R, origin_ref O, class V, reference R2, origin_ref O2, class V2>
+template <reference R, detail::origin_ref O, class V, reference R2, detail::origin_ref O2, class V2>
     requires requires(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
         a.quantity_from_origin() <=> b.quantity_from(origin_t<O>{});
     }
@@ -20097,33 +20334,35 @@ inline void append_exponent(std::string& s, int e, text_encoding enc) {
         s += sup[c - '0'];
 }
 
+// The atoms of one sign with |exponent| (sign ±1), or all of them with their
+// own exponent (sign 0).
 inline void append_atoms(std::string& s, const unit& u, int sign, text_encoding enc) {
     bool first = true;
     for (std::int8_t i = 0; i < u.Size; ++i) {
-        const unit_atom& a = u.Atoms[i];
-        if ((a.Exp > 0) != (sign > 0))
+        const detail::unit_atom& a = u.Atoms[i];
+        if (sign != 0 && (a.Exp > 0) != (sign > 0))
             continue;
         if (!first)
             s += ' ';
         first = false;
         s += prefix_symbol(a.Prefix, enc);
         s += enc == text_encoding::utf8 ? a.U->Utf8 : a.U->Ascii;
-        append_exponent(s, a.Exp * sign, enc);
+        append_exponent(s, sign == 0 ? a.Exp : a.Exp * sign, enc);
     }
 }
 } // namespace detail
 
-// The symbol of a unit: "km", "kg m²/s²", "1/s", "[1/381 ft]" (a scaled unit).
+// The symbol of a unit: "km", "kg m²/s²", "s⁻¹", "[1/381 ft]" (a scaled unit).
 inline std::string unit_symbol(const unit& u, text_encoding enc = text_encoding::utf8) {
     std::string s;
     int         num = 0, den = 0;
     for (std::int8_t i = 0; i < u.Size; ++i)
         (u.Atoms[i].Exp > 0 ? num : den) += 1;
-    if (num > 0)
+    if (num == 0) // only a denominator: s⁻¹, m⁻¹ s⁻¹
+        detail::append_atoms(s, u, 0, enc);
+    else
         detail::append_atoms(s, u, 1, enc);
-    else if (den > 0)
-        s += '1';
-    if (den > 0) {
+    if (num > 0 && den > 0) {
         s += '/';
         if (den > 1)
             s += '(';
@@ -20139,11 +20378,7 @@ inline std::string unit_symbol(const unit& u, text_encoding enc = text_encoding:
             scale += enc == text_encoding::utf8 ? "π" : (scale.empty() ? "pi" : "*pi");
             detail::append_exponent(scale, u.Scale.Pi, enc);
         }
-        // [π/m] for a unit with only a denominator, when the scale has no '/'.
-        if (s.starts_with("1/") && scale.find('/') == std::string::npos)
-            s = "[" + scale + s.substr(1) + "]";
-        else
-            s = "[" + scale + (s.empty() ? "" : " " + s) + "]";
+        s = "[" + scale + (s.empty() ? "" : " " + s) + "]";
     }
     return s;
 }
@@ -20172,11 +20407,11 @@ std::ostream& operator<<(std::ostream& os, const quantity<R, V>& q) {
 }
 
 // A point as its quantity from its origin: "20 ℃".
-template <reference R, origin_ref O, class V>
+template <reference R, detail::origin_ref O, class V>
 std::string to_string(const quantity_point<R, O, V>& p, text_encoding enc = text_encoding::utf8) {
     return units::to_string(p.quantity_from_origin(), enc);
 }
-template <reference R, origin_ref O, class V>
+template <reference R, detail::origin_ref O, class V>
 std::ostream& operator<<(std::ostream& os, const quantity_point<R, O, V>& p) {
     return os << units::to_string(p);
 }
@@ -20206,7 +20441,7 @@ struct std::formatter<beman::inside::units::quantity<R, V>> : std::formatter<V> 
     }
 };
 
-template <beman::inside::units::reference R, beman::inside::units::origin_ref O, class V>
+template <beman::inside::units::reference R, beman::inside::units::detail::origin_ref O, class V>
 struct std::formatter<beman::inside::units::quantity_point<R, O, V>>
     : std::formatter<beman::inside::units::quantity<R, V>> {
     template <typename Ctx>
@@ -20226,14 +20461,14 @@ namespace beman::inside::units {
     inline constexpr quantity_spec name{#name, __VA_ARGS__}; \
     }                                                        \
     namespace isq {                                          \
-    inline constexpr spec_t<&isq_defs::name> name{};         \
+    inline constexpr auto name = spec_c<isq_defs::name>;     \
     }
 #define BEMAN_INSIDE_ORIGIN(ns, name, ...)                      \
     namespace ns##_defs {                                       \
         inline constexpr point_origin name{#name, __VA_ARGS__}; \
     }                                                           \
     namespace ns {                                              \
-    inline constexpr origin_t<&ns##_defs::name> name{};         \
+    inline constexpr auto name = origin_c<ns##_defs::name>;     \
     }
 #define BEMAN_INSIDE_UNIT(ns, name, ...)                  \
     namespace ns##_defs {                                 \
@@ -20478,9 +20713,7 @@ BEMAN_INSIDE_UNIT(international,
 #undef BEMAN_INSIDE_UNIT
 #undef BEMAN_INSIDE_ORIGIN
 #undef BEMAN_INSIDE_SPEC
-#undef BEMAN_INSIDE_UNITS_DELETE
-#undef BEMAN_INSIDE_UNITS_DELETE_BEGIN
-#undef BEMAN_INSIDE_UNITS_DELETE_END
+#undef BEMAN_INSIDE_UNITS_SUM_DELETED
 
 } // namespace beman::inside::units
 
@@ -20679,7 +20912,7 @@ template <insidable V>
 }
 // atan2(y, x) of two quantities of one dimension, in their common unit.
 template <reference A, class VA, reference B, class VB>
-    requires(detail::sum_diagnosed<A, B>()) ||
+    requires(!detail::sum_diagnosed<A, B>()) &&
             (detail::common_rescalable<A, VA, B, VB> &&
              requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
                  beman::inside::math::atan2(x, y);
@@ -20693,7 +20926,7 @@ template <reference A, class VA, reference B, class VB>
 
 // hypot(x, y): √(x² + y²) in the common unit.
 template <reference A, class VA, reference B, class VB>
-    requires(detail::sum_diagnosed<A, B>()) ||
+    requires(!detail::sum_diagnosed<A, B>()) &&
             (detail::common_rescalable<A, VA, B, VB> &&
              requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
                  beman::inside::math::hypot(x, y);
@@ -20765,7 +20998,7 @@ template <insidable Out, class X>
     return detail::make_quantity<detail::radian_reference>(beman::inside::math::atan_into<Out>(detail::number_of(x)));
 }
 template <insidable Out, reference A, class VA, reference B, class VB>
-    requires(detail::sum_diagnosed<A, B>()) ||
+    requires(!detail::sum_diagnosed<A, B>()) &&
             (detail::common_rescalable<A, VA, B, VB> &&
              requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
                  beman::inside::math::atan2_into<Out>(x, y);
@@ -20777,7 +21010,7 @@ template <insidable Out, reference A, class VA, reference B, class VB>
         detail::rescale<detail::conversion_factor<B.U, C.U>>(x.numerical_value())));
 }
 template <insidable Out, reference A, class VA, reference B, class VB>
-    requires(detail::sum_diagnosed<A, B>()) ||
+    requires(!detail::sum_diagnosed<A, B>()) &&
             (detail::common_rescalable<A, VA, B, VB> &&
              requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
                  beman::inside::math::hypot_into<Out>(x, y);
@@ -20788,6 +21021,26 @@ template <insidable Out, reference A, class VA, reference B, class VB>
         detail::rescale<detail::conversion_factor<A.U, C.U>>(x.numerical_value()),
         detail::rescale<detail::conversion_factor<B.U, C.U>>(y.numerical_value())));
 }
+// atan2 and hypot of two quantities that do not add (another dimension or
+// kind, no common unit).
+BEMAN_INSIDE_DELETE_BEGIN
+template <reference A, class VA, reference B, class VB>
+    requires(detail::sum_diagnosed<A, B>())
+void atan2(const quantity<A, VA>&, const quantity<B, VB>&) =
+    BEMAN_INSIDE_DELETE("units: atan2 takes two quantities that add - one dimension and kind, a common unit");
+template <reference A, class VA, reference B, class VB>
+    requires(detail::sum_diagnosed<A, B>())
+void hypot(const quantity<A, VA>&, const quantity<B, VB>&) =
+    BEMAN_INSIDE_DELETE("units: hypot takes two quantities that add - one dimension and kind, a common unit");
+template <insidable Out, reference A, class VA, reference B, class VB>
+    requires(detail::sum_diagnosed<A, B>())
+void atan2_into(const quantity<A, VA>&, const quantity<B, VB>&) =
+    BEMAN_INSIDE_DELETE("units: atan2 takes two quantities that add - one dimension and kind, a common unit");
+template <insidable Out, reference A, class VA, reference B, class VB>
+    requires(detail::sum_diagnosed<A, B>())
+void hypot_into(const quantity<A, VA>&, const quantity<B, VB>&) =
+    BEMAN_INSIDE_DELETE("units: hypot takes two quantities that add - one dimension and kind, a common unit");
+BEMAN_INSIDE_DELETE_END
 } // namespace beman::inside::units
 
 

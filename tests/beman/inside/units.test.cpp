@@ -99,7 +99,7 @@ TEST(UnitsTest, products_and_quotients) {
     // Scaling by a number.
     EXPECT_EQ((d * just<2>).numerical_value(), 84);
     EXPECT_EQ((d / just<2>).numerical_value(), 21);
-    EXPECT_EQ(to_string(just<2> / si::second), "2 1/s");
+    EXPECT_EQ(to_string(just<2> / si::second), "2 s⁻¹");
 }
 
 TEST(UnitsTest, dimensionless_quantities_are_numbers) {
@@ -135,7 +135,7 @@ TEST(UnitsTest, magnitudes_scale_the_unit_not_the_number) {
     // A magnitude times a number is that number in [π], then [π s].
     EXPECT_EQ(to_string(mag_pi * just<2> * si::second), "2 [π s]");
     EXPECT_EQ(to_string(just<2> * mag_pi), "2 [π]");
-    EXPECT_EQ(unit_symbol(mag_pi / si::metre), "[π/m]");
+    EXPECT_EQ(unit_symbol(mag_pi / si::metre), "[π m⁻¹]");
 }
 
 TEST(UnitsTest, compound_assignment_and_casts) {

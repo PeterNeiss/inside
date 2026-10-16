@@ -4,6 +4,42 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
+## Unreleased
+
+### Upgrading from 0.3.0
+
+- units: the implementation types `ref_or_none`, `spec_ref`, `origin_ref`,
+  `spec_factor`, `recipe`, `spec_expr`, `unit_atom` and the limits
+  `max_spec_factors`, `max_unit_atoms`, `base_dimensions` moved to
+  `units::detail`. Tags for your own entries are `spec_c<obj>` and
+  `origin_c<obj>` now, as `unit_c<obj>` (`spec_t<&obj>{}` still works).
+- units: a unit with only a denominator prints negative exponents (`2 s⁻¹`,
+  not `2 1/s`), and two spellings of one size add in the shorter one
+  (J + N·m and N·m + J are both in J).
+
+### Added
+
+- units: `q.quantity_spec` (`q.quantity_spec == isq::length`) and `==`
+  between specs; `value_cast<Q>(q)` / `try_value_cast<Q, F>(q)` into a
+  quantity type; `unit * mag` and `unit / mag`;
+  `p.quantity_from_zero()` on points.
+
+### Changed
+
+- units: every unit mismatch is a constraint failure with a message (a
+  deleted overload per reason): sums and comparisons of other dimensions,
+  kinds or no common unit, `q * 2`, `in()` to another dimension or across
+  a factor of π, `quantity_cast` across a dimension or an `is_kind`
+  boundary, `atan2` / `hypot` of quantities that do not add, and points
+  of different absolute origins. `requires { m + s; }` is false.
+
+### Fixed
+
+- units: a spec is identified by its parent chain and recipe too, and a
+  unit by its kind and origin, so a user spec named `length` under another
+  parent is not `isq::length`. A dimension exponent past ±127 is a compile
+  error instead of a wrap.
+
 ## 0.3.0 — 2026-10-16
 
 ### Upgrading from 0.2.0

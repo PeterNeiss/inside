@@ -5,6 +5,7 @@
 #include <beman/inside/detail/compare.hpp> // the inside type and its comparisons
 #include <beman/inside/casts.hpp>
 #include <beman/inside/detail/rep.hpp>
+#include <beman/inside/detail/delete_reason.hpp>
 
 #include <algorithm>
 #include <ranges>
@@ -103,20 +104,8 @@ struct divmod_op {
 } // namespace detail
 
 // A deleted overload takes each op's failing case: `requires { a + b; }` is
-// then false, an integer inside cannot fall back on its imax conversion and
-// the built-in operator, and the error names the reason (= delete("…"),
-// C++26, accepted as an extension in C++23 by GCC 15+ and Clang 19+).
-#if defined(__cpp_deleted_function) || (defined(__clang__) && __clang_major__ >= 19) || \
-    (defined(__GNUC__) && !defined(__clang__) && __GNUC__ >= 15)
-    #define BEMAN_INSIDE_DELETE(reason) delete (reason)
-    #define BEMAN_INSIDE_DELETE_BEGIN \
-        _Pragma("GCC diagnostic push") _Pragma("GCC diagnostic ignored \"-Wc++26-extensions\"")
-    #define BEMAN_INSIDE_DELETE_END _Pragma("GCC diagnostic pop")
-#else
-    #define BEMAN_INSIDE_DELETE(reason) delete
-    #define BEMAN_INSIDE_DELETE_BEGIN
-    #define BEMAN_INSIDE_DELETE_END
-#endif
+// then false, and an integer inside cannot fall back on its imax conversion
+// and the built-in operator (detail/delete_reason.hpp).
 
 #define BEMAN_INSIDE_WHY_add                                                                                     \
     "addition: the result grid exceeds the 64-bit grid numbers (coarsen the operand grids, or build with C++26 " \
@@ -278,9 +267,6 @@ template <insidable L, insidable R>
     requires(!detail::mod_defined<L, R, flags_of<L> | flags_of<R>>)
 auto operator%(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_mod);
 BEMAN_INSIDE_DELETE_END
-#undef BEMAN_INSIDE_DELETE
-#undef BEMAN_INSIDE_DELETE_BEGIN
-#undef BEMAN_INSIDE_DELETE_END
 #undef BEMAN_INSIDE_WHY_add
 #undef BEMAN_INSIDE_WHY_sub
 #undef BEMAN_INSIDE_WHY_mul
