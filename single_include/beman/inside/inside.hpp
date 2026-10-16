@@ -11435,7 +11435,7 @@ template <insidable B>
 
 
 
-#if __STDC_HOSTED__
+#if __STDC_HOSTED__ && !defined(BEMAN_INSIDE_MATH_NO_FP)
 
 // ======================================================================
 //  beman/inside/chrono.hpp
@@ -11570,7 +11570,7 @@ template <detail::chrono_duration D, policy_flag F = none, insidable B>
 } // namespace beman::inside
 
 
-#endif // __STDC_HOSTED__
+#endif // __STDC_HOSTED__ && !BEMAN_INSIDE_MATH_NO_FP
 
 // ======================================================================
 //  beman/inside/cmath.hpp
