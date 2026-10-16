@@ -7,7 +7,6 @@ target_sources(
             FILES
                 arithmetic.hpp
                 casts.hpp
-                cmath_adaptive.hpp
                 cmath.hpp
                 core.hpp
                 cursor.hpp
@@ -22,6 +21,8 @@ target_sources(
                 detail/grid_rational.hpp
                 detail/int_for_bits.hpp
                 detail/math_adaptive.hpp
+                detail/math_cores.hpp
+                detail/math_entry.hpp
                 detail/math_dd.hpp
                 detail/math_fp.hpp
                 detail/wide_int.hpp

@@ -3,14 +3,14 @@
 #define BEMAN_INSIDE_CMATH_HPP
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/cmath_adaptive.hpp> // the math engine
+#include <beman/inside/detail/math_entry.hpp> // the math engine
 
 #include <bit>
 #include <cstdint>
 #include <expected>
 
 //---------------------------------------------------------------------------
-// beman::inside::math — the transcendental functions (cmath_adaptive.hpp)
+// beman::inside::math — the transcendental functions (detail/math_entry.hpp)
 // and the grid operations (abs, sign, copysign, floor, ceil, round, trunc,
 // fmod, pown).
 //
