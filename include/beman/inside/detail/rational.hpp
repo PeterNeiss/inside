@@ -311,6 +311,71 @@ struct rounded_integer {
 }
 
 //---------------------------------------------------------------------------
+// Floating points wider than double (long double), exactly: the sum of the
+// doubles they split into, each the rounding error of the last.
+//---------------------------------------------------------------------------
+template <std::floating_point T>
+[[nodiscard]] constexpr bool is_double_value(T v) noexcept {
+    return static_cast<T>(static_cast<double>(v)) == v; // NaN: false
+}
+
+// |v|·2^wide_float_shift for a finite 2^-64 ≤ |v| < 2^64, truncated to an
+// integer (< 2^244), and the sign of what the truncation dropped (0: exact,
+// as for every long double of at most 116 significant bits).
+inline constexpr int wide_float_shift = 180;
+struct scaled_float {
+    wide_uint<4> Magnitude;
+    int          Tail;
+};
+template <std::floating_point T>
+[[nodiscard]] constexpr scaled_float scaled_magnitude(T v) noexcept {
+    using W = wide_sint<5>;
+    W   acc{0};
+    int tail = 0;
+    T   rem  = v < 0 ? -v : v;
+    for (int i = 0; i < 8 && rem != 0; ++i) {
+        const double d    = static_cast<double>(rem);
+        int          e    = 0;
+        const umax   mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53)); // |d| = mant·2^(e−53)
+        const int    s    = e - 53 + wide_float_shift;
+        if (s < 0) { // below 2^-180: the parts after it are smaller still
+            tail = d < 0 ? -1 : 1;
+            break;
+        }
+        acc += d < 0 ? -(W{mant} << s) : W{mant} << s;
+        rem -= static_cast<T>(d);
+    }
+    if (tail == 0 && rem != 0)
+        tail = rem < 0 ? -1 : 1;
+    return {static_cast<wide_uint<4>>(acc), tail};
+}
+
+// rational{v} for a finite v wider than a double: exact when it fits, else
+// (bits finer than 2^-62) truncated toward zero, as for a double; |v| ≥ 2^64
+// raises.
+template <std::floating_point T>
+constexpr rational rational_of_wide_float(T v, bool& exact) {
+    const T a = v < 0 ? -v : v;
+    exact     = true;
+    if (!(a < static_cast<T>(0x1p64)))
+        raise(errc::overflow, "beman::inside::detail::rational: |long double| >= 2^64");
+    if (a < static_cast<T>(0x1p-62)) {
+        exact = a == 0;
+        return make_raw(0, 1);
+    }
+    const auto [m, tail] = scaled_magnitude(a);
+    constexpr int drop   = wide_float_shift - 62; // keep bits down to 2^-62
+    exact                = tail == 0 && (m << (wide_uint<4>::bits - drop)).is_zero();
+    const auto q         = m >> drop; // ≥ 1 here
+    const int  tz        = std::countr_zero(static_cast<umax>(q)) < 62 ? std::countr_zero(static_cast<umax>(q)) : 62;
+    const auto num       = q >> tz;
+    if (bit_width_of(num) > 64)
+        raise(errc::overflow, "beman::inside::detail::rational: long double past the 64-bit rational");
+    const imax den = imax{1} << (62 - tz);
+    return make_raw(static_cast<umax>(num), v < 0 ? -den : den);
+}
+
+//---------------------------------------------------------------------------
 // rational::rational
 //---------------------------------------------------------------------------
 constexpr rational::rational(std::signed_integral auto num, imax den)
@@ -319,8 +384,14 @@ constexpr rational::rational(std::signed_integral auto num, imax den)
 }
 
 constexpr rational::rational(std::floating_point auto value) {
-    if (not is_finite(value))
+    if (!(value - value == 0))
         raise(errc::not_finite, "non-finite double");
+    if constexpr (sizeof(value) > sizeof(double))
+        if (!is_double_value(value)) {
+            bool exact;
+            *this = rational_of_wide_float(value, exact);
+            return;
+        }
 
     if (value == 0.0) {
         Numerator   = 0;
@@ -1050,33 +1121,64 @@ compare_fine_double(const rational& lhs, double rhs) {
     return ls < 0 ? (0 <=> mag) : mag;
 }
 
-// lhs against a double, exactly (non-finite raises, as rational{rhs}).
+// lhs against a double, exactly (non-finite raises, as rational{rhs}). Every
+// rational lies strictly inside ±2^64, so a larger double is decided by its sign.
 [[nodiscard]] inline constexpr std::strong_ordering compare_double(const rational& lhs, double rhs) {
+    if (rhs - rhs == 0 && !(rhs < 0x1p64 && rhs > -0x1p64)) [[unlikely]]
+        return rhs < 0 ? std::strong_ordering::greater : std::strong_ordering::less;
     if (abs_fraction_exact(rhs) || not is_finite(rhs)) [[likely]]
         return lhs <=> rational{rhs};
     return compare_fine_double(lhs, rhs);
 }
 
+// lhs against a floating point of any width, exactly: one wider than double
+// (long double) with bits past the double's compares as N·2^180 against its
+// scaled magnitude times D.
+template <std::floating_point T>
+[[nodiscard]] constexpr std::strong_ordering compare_float(const rational& lhs, T rhs) {
+    if constexpr (sizeof(T) > sizeof(double))
+        if (rhs - rhs == 0 && !is_double_value(rhs)) [[unlikely]] {
+            const int ls = sign(lhs), rs = rhs < 0 ? -1 : 1;
+            if (ls != rs)
+                return ls <=> rs;
+            const T              a   = rhs < 0 ? -rhs : rhs;
+            std::strong_ordering mag = std::strong_ordering::equal;
+            if (!(a < static_cast<T>(0x1p64))) // past every rational
+                mag = std::strong_ordering::less;
+            else if (a < static_cast<T>(0x1p-64)) // below every nonzero rational
+                mag = std::strong_ordering::greater;
+            else {
+                using W              = wide_uint<5>;
+                const auto [m, tail] = scaled_magnitude(a);
+                mag                  = (W{lhs.Numerator} << wide_float_shift) <=> W{m} * W{abs_den(lhs.Denominator)};
+                if (mag == 0)
+                    mag = 0 <=> tail;
+            }
+            return ls < 0 ? (0 <=> mag) : mag;
+        }
+    return compare_double(lhs, static_cast<double>(rhs));
+}
+
 template <arithmetic T>
 [[nodiscard]] constexpr bool rational::operator==(T value) const {
-    if constexpr (std::floating_point<T> && sizeof(T) <= sizeof(double))
-        return compare_double(*this, static_cast<double>(value)) == 0;
+    if constexpr (std::floating_point<T>)
+        return compare_float(*this, value) == 0;
     else
         return operator==(rational{value});
 }
 
 template <arithmetic T>
 [[nodiscard]] inline constexpr auto operator<=>(T lhs, const rational& rhs) {
-    if constexpr (std::floating_point<T> && sizeof(T) <= sizeof(double))
-        return 0 <=> compare_double(rhs, static_cast<double>(lhs));
+    if constexpr (std::floating_point<T>)
+        return 0 <=> compare_float(rhs, lhs);
     else
         return rational{lhs} <=> rhs;
 }
 
 template <arithmetic T>
 [[nodiscard]] inline constexpr auto operator<=>(const rational& lhs, T rhs) {
-    if constexpr (std::floating_point<T> && sizeof(T) <= sizeof(double))
-        return compare_double(lhs, static_cast<double>(rhs));
+    if constexpr (std::floating_point<T>)
+        return compare_float(lhs, rhs);
     else
         return lhs <=> rational{rhs};
 }

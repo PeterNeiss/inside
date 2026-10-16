@@ -50,10 +50,11 @@ inline constexpr bool needs_runtime_range_check =
     clamp_action<plain_t<A>> || wrap_action<plain_t<A>> || error_action<plain_t<A>> ||
     range_handled(policy_of<L> | plain_t<P>::Flags);
 
-// Shared out-of-range policy cascade. Order: clamp/wrap/error *actions*, then
-// clamp/wrap *policy* bits, then `range_fail`. The callers say how clamp and
-// wrap store; `Wrappable` is false on the fractional path (no wrap *action*
-// branch). Returns true when a handler resolved the write.
+// Shared out-of-range policy cascade. Order: clamp/wrap *actions*, then
+// clamp/wrap *policy* bits, then an on_error action, then `range_fail`. The
+// callers say how clamp and wrap store; `Wrappable` is false on the
+// fractional path (no wrap *action* branch). Returns true when a handler
+// resolved the write.
 template <bool Wrappable, insidable L, typename P, typename A, typename DoClamp, typename DoWrap>
 constexpr bool dispatch_out_of_range(L& lhs, P&& policy, A&& action, DoClamp do_clamp, DoWrap do_wrap) {
     using PA = plain_t<A>;
@@ -63,14 +64,14 @@ constexpr bool dispatch_out_of_range(L& lhs, P&& policy, A&& action, DoClamp do_
     } else if constexpr (Wrappable && wrap_action<PA>) {
         do_wrap();
         return true;
-    } else if constexpr (error_action<PA>) {
-        action.Fn(lhs, errc::overflow, errc_message(errc::overflow));
-        return true;
     } else if constexpr (has_policy<L, P, clamp>) {
         do_clamp();
         return true;
     } else if constexpr (has_policy<L, P, wrap>) {
         do_wrap();
+        return true;
+    } else if constexpr (error_action<PA>) { // on_error replaces the failure, not a clamp or wrap
+        action.Fn(lhs, errc::overflow, errc_message(errc::overflow));
         return true;
     } else
         return range_fail(policy);
@@ -776,7 +777,7 @@ struct assignment<L, R> {
         }();
         errc code{};
         // A recording on_error stands in for one (dispatch_out_of_range ranks
-        // it above clamp): the order holds.
+        // it below clamp and wrap): the order holds.
         if constexpr (error_action<plain_t<A>>)
             assign_exact<R>(r, exact_of_double(rhs), recording_policy<P>{code}, on_error([&code](L&, errc c, auto&&) {
                                 code = c;
@@ -1359,7 +1360,9 @@ struct assignment<L, R> {
             // Offset/Factor map R's 0-based offset (a value raw counts from Lower).
             // A step past the 64-bit rational takes the exact wide store.
             const auto r_offset = [&] {
-                if constexpr (raw_lo<R> == 0)
+                if constexpr (point_storage<R>) // a point's raw holds nothing: the mapping is Offset alone
+                    return std::expected<rational, errc>{rational{0}};
+                else if constexpr (raw_lo<R> == 0)
                     return std::expected<rational, errc>{rational{rhs.raw()}};
                 else
                     return try_sub(rational{rhs.raw()}, detail::lower64<R>);

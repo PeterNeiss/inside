@@ -267,9 +267,27 @@ struct grid {
         if (!includes(Interval, d))
             return false;
         if (detail::fits_rational(Interval.Lower) && detail::fits_rational(Interval.Upper) &&
-            detail::fits_rational(Notch) && !detail::abs_fraction_exact(static_cast<double>(d)))
-            return false;
-        return representable(detail::grid_rational{d});
+            detail::fits_rational(Notch)) {
+            if constexpr (sizeof(T) > sizeof(double))
+                if (!detail::is_double_value(d)) { // a long double with bits past the double's
+                    bool       exact = false;
+                    const auto r     = detail::rational_of_wide_float(d, exact);
+                    return exact && representable(detail::grid_rational{r});
+                }
+            if (!detail::abs_fraction_exact(static_cast<double>(d)))
+                return false;
+            return representable(detail::grid_rational{d});
+        }
+#if BEMAN_INSIDE_BIG_GRIDS
+        // Big grid numbers: d as a transient fraction, which (unlike a big
+        // grid number) also exists at runtime.
+        const auto f = detail::big::frac_of_float(d);
+        if (Notch == 0)
+            return MaxDenominator == 0 || detail::big::compare(f.Den, MaxDenominator.Num.magnitude()) <= 0;
+        return detail::big::same_lattice(f, detail::frac_of(Interval.Lower), detail::frac_of(Notch));
+#else
+        return representable(detail::grid_rational{d}); // (unreachable: 64-bit numbers always fit)
+#endif
     }
 
     // Whether the lattice passes through 0: Lower is a multiple of the notch

@@ -1057,6 +1057,10 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
     constexpr bool imax_scalar = std::signed_integral<A> || (std::unsigned_integral<A> && sizeof(A) < sizeof(imax));
     constexpr bool double_exact_values =
         lower_of<B> >= rational{-(imax{1} << 53)} && upper_of<B> <= rational{imax{1} << 53};
+    // A long double with bits past the double's: the paths below read a double.
+    if constexpr (std::floating_point<A> && sizeof(A) > sizeof(double))
+        if (rhs - rhs == 0 && !is_double_value(rhs)) [[unlikely]]
+            return cmp(exact_of(lhs), exact_of_long_double(rhs));
     if constexpr (wide_valued<B>) {
         if constexpr (std::floating_point<A>) {
             if (rhs != rhs) // NaN: unordered, as the double comparison says

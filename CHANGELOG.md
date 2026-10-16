@@ -81,6 +81,22 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   Clang 19+), so an integer inside no longer falls back on its `imax`
   conversion and the built-in operator. The `grid` operators take only
   grids: an inside no longer converts to a point grid for them.
+- A `long double` with bits past the double's is exact everywhere, not only
+  in stores: `rational{long double}`, comparisons of a `rational` or an
+  inside with it, `includes(interval, …)` and `grid::representable(…)` read
+  it as a double (`rational{0} == 1e-30L` was true).
+- `rational` compares with a double of magnitude 2^64 or more by its sign
+  (it threw).
+- An `on_error` action no longer overrides the type's `clamp` or `wrap`: the
+  store saturates or folds, and `on_error` fires only where the store would
+  fail.
+- A point inside (`just<1/2>`, `5_ins`) stores into a grid whose raws map
+  neither by an integer nor by a 64-bit multiply-add (a 2^-62 notch,
+  `qword`); it did not compile.
+- C++26 big grids: `grid::representable`, `includes` and grid-number
+  comparisons work at runtime when a value or limit passes 64 bits (they
+  terminated): a fine double on a 64-bit grid, any double on a grid past
+  2^64.
 
 ## 0.2.0 — 2026-10-10
 

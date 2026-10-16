@@ -1531,6 +1531,71 @@ struct rounded_integer {
 }
 
 //---------------------------------------------------------------------------
+// Floating points wider than double (long double), exactly: the sum of the
+// doubles they split into, each the rounding error of the last.
+//---------------------------------------------------------------------------
+template <std::floating_point T>
+[[nodiscard]] constexpr bool is_double_value(T v) noexcept {
+    return static_cast<T>(static_cast<double>(v)) == v; // NaN: false
+}
+
+// |v|·2^wide_float_shift for a finite 2^-64 ≤ |v| < 2^64, truncated to an
+// integer (< 2^244), and the sign of what the truncation dropped (0: exact,
+// as for every long double of at most 116 significant bits).
+inline constexpr int wide_float_shift = 180;
+struct scaled_float {
+    wide_uint<4> Magnitude;
+    int          Tail;
+};
+template <std::floating_point T>
+[[nodiscard]] constexpr scaled_float scaled_magnitude(T v) noexcept {
+    using W = wide_sint<5>;
+    W   acc{0};
+    int tail = 0;
+    T   rem  = v < 0 ? -v : v;
+    for (int i = 0; i < 8 && rem != 0; ++i) {
+        const double d    = static_cast<double>(rem);
+        int          e    = 0;
+        const umax   mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53)); // |d| = mant·2^(e−53)
+        const int    s    = e - 53 + wide_float_shift;
+        if (s < 0) { // below 2^-180: the parts after it are smaller still
+            tail = d < 0 ? -1 : 1;
+            break;
+        }
+        acc += d < 0 ? -(W{mant} << s) : W{mant} << s;
+        rem -= static_cast<T>(d);
+    }
+    if (tail == 0 && rem != 0)
+        tail = rem < 0 ? -1 : 1;
+    return {static_cast<wide_uint<4>>(acc), tail};
+}
+
+// rational{v} for a finite v wider than a double: exact when it fits, else
+// (bits finer than 2^-62) truncated toward zero, as for a double; |v| ≥ 2^64
+// raises.
+template <std::floating_point T>
+constexpr rational rational_of_wide_float(T v, bool& exact) {
+    const T a = v < 0 ? -v : v;
+    exact     = true;
+    if (!(a < static_cast<T>(0x1p64)))
+        raise(errc::overflow, "beman::inside::detail::rational: |long double| >= 2^64");
+    if (a < static_cast<T>(0x1p-62)) {
+        exact = a == 0;
+        return make_raw(0, 1);
+    }
+    const auto [m, tail] = scaled_magnitude(a);
+    constexpr int drop   = wide_float_shift - 62; // keep bits down to 2^-62
+    exact                = tail == 0 && (m << (wide_uint<4>::bits - drop)).is_zero();
+    const auto q         = m >> drop; // ≥ 1 here
+    const int  tz        = std::countr_zero(static_cast<umax>(q)) < 62 ? std::countr_zero(static_cast<umax>(q)) : 62;
+    const auto num       = q >> tz;
+    if (bit_width_of(num) > 64)
+        raise(errc::overflow, "beman::inside::detail::rational: long double past the 64-bit rational");
+    const imax den = imax{1} << (62 - tz);
+    return make_raw(static_cast<umax>(num), v < 0 ? -den : den);
+}
+
+//---------------------------------------------------------------------------
 // rational::rational
 //---------------------------------------------------------------------------
 constexpr rational::rational(std::signed_integral auto num, imax den)
@@ -1539,8 +1604,14 @@ constexpr rational::rational(std::signed_integral auto num, imax den)
 }
 
 constexpr rational::rational(std::floating_point auto value) {
-    if (not is_finite(value))
+    if (!(value - value == 0))
         raise(errc::not_finite, "non-finite double");
+    if constexpr (sizeof(value) > sizeof(double))
+        if (!is_double_value(value)) {
+            bool exact;
+            *this = rational_of_wide_float(value, exact);
+            return;
+        }
 
     if (value == 0.0) {
         Numerator   = 0;
@@ -2270,33 +2341,64 @@ compare_fine_double(const rational& lhs, double rhs) {
     return ls < 0 ? (0 <=> mag) : mag;
 }
 
-// lhs against a double, exactly (non-finite raises, as rational{rhs}).
+// lhs against a double, exactly (non-finite raises, as rational{rhs}). Every
+// rational lies strictly inside ±2^64, so a larger double is decided by its sign.
 [[nodiscard]] inline constexpr std::strong_ordering compare_double(const rational& lhs, double rhs) {
+    if (rhs - rhs == 0 && !(rhs < 0x1p64 && rhs > -0x1p64)) [[unlikely]]
+        return rhs < 0 ? std::strong_ordering::greater : std::strong_ordering::less;
     if (abs_fraction_exact(rhs) || not is_finite(rhs)) [[likely]]
         return lhs <=> rational{rhs};
     return compare_fine_double(lhs, rhs);
 }
 
+// lhs against a floating point of any width, exactly: one wider than double
+// (long double) with bits past the double's compares as N·2^180 against its
+// scaled magnitude times D.
+template <std::floating_point T>
+[[nodiscard]] constexpr std::strong_ordering compare_float(const rational& lhs, T rhs) {
+    if constexpr (sizeof(T) > sizeof(double))
+        if (rhs - rhs == 0 && !is_double_value(rhs)) [[unlikely]] {
+            const int ls = sign(lhs), rs = rhs < 0 ? -1 : 1;
+            if (ls != rs)
+                return ls <=> rs;
+            const T              a   = rhs < 0 ? -rhs : rhs;
+            std::strong_ordering mag = std::strong_ordering::equal;
+            if (!(a < static_cast<T>(0x1p64))) // past every rational
+                mag = std::strong_ordering::less;
+            else if (a < static_cast<T>(0x1p-64)) // below every nonzero rational
+                mag = std::strong_ordering::greater;
+            else {
+                using W              = wide_uint<5>;
+                const auto [m, tail] = scaled_magnitude(a);
+                mag                  = (W{lhs.Numerator} << wide_float_shift) <=> W{m} * W{abs_den(lhs.Denominator)};
+                if (mag == 0)
+                    mag = 0 <=> tail;
+            }
+            return ls < 0 ? (0 <=> mag) : mag;
+        }
+    return compare_double(lhs, static_cast<double>(rhs));
+}
+
 template <arithmetic T>
 [[nodiscard]] constexpr bool rational::operator==(T value) const {
-    if constexpr (std::floating_point<T> && sizeof(T) <= sizeof(double))
-        return compare_double(*this, static_cast<double>(value)) == 0;
+    if constexpr (std::floating_point<T>)
+        return compare_float(*this, value) == 0;
     else
         return operator==(rational{value});
 }
 
 template <arithmetic T>
 [[nodiscard]] inline constexpr auto operator<=>(T lhs, const rational& rhs) {
-    if constexpr (std::floating_point<T> && sizeof(T) <= sizeof(double))
-        return 0 <=> compare_double(rhs, static_cast<double>(lhs));
+    if constexpr (std::floating_point<T>)
+        return 0 <=> compare_float(rhs, lhs);
     else
         return rational{lhs} <=> rhs;
 }
 
 template <arithmetic T>
 [[nodiscard]] inline constexpr auto operator<=>(const rational& lhs, T rhs) {
-    if constexpr (std::floating_point<T> && sizeof(T) <= sizeof(double))
-        return compare_double(lhs, static_cast<double>(rhs));
+    if constexpr (std::floating_point<T>)
+        return compare_float(lhs, rhs);
     else
         return lhs <=> rational{rhs};
 }
@@ -2604,6 +2706,88 @@ constexpr mag gcd(mag a, mag b) {
 constexpr int bit_width(const mag& m) {
     return m.empty() ? 0 : static_cast<int>(m.size() - 1) * 64 + (64 - std::countl_zero(m.back()));
 }
+
+// m · 2^k (k ≥ 0).
+constexpr mag shl(const mag& m, int k) {
+    const std::size_t words = static_cast<std::size_t>(k / 64);
+    const int         bits  = k % 64;
+    mag               r(m.size() + words + 1, 0);
+    for (std::size_t i = 0; i < m.size(); ++i) {
+        r[i + words] |= m[i] << bits;
+        if (bits != 0)
+            r[i + words + 1] |= m[i] >> (64 - bits);
+    }
+    trim(r);
+    return r;
+}
+
+// A fraction of transient magnitudes, unreduced: nothing is interned, so it
+// computes at runtime too (a big grid's predicates against a runtime value).
+struct frac {
+    mag  Num;          // |numerator|
+    mag  Den{umax{1}}; // > 0
+    bool Negative = false;
+};
+
+constexpr std::strong_ordering compare(const frac& a, const frac& b) {
+    const int sa = a.Num.empty() ? 0 : a.Negative ? -1 : 1, sb = b.Num.empty() ? 0 : b.Negative ? -1 : 1;
+    if (sa != sb)
+        return sa <=> sb;
+    const std::strong_ordering m = compare(mul(a.Num, b.Den), mul(b.Num, a.Den));
+    return sa < 0 ? 0 <=> m : m;
+}
+
+constexpr frac operator+(const frac& a, const frac& b) {
+    const mag x = mul(a.Num, b.Den), y = mul(b.Num, a.Den);
+    frac      r;
+    r.Den = mul(a.Den, b.Den);
+    if (a.Negative == b.Negative) {
+        r.Num      = add(x, y);
+        r.Negative = a.Negative;
+    } else if (compare(x, y) >= 0) {
+        r.Num      = sub(x, y);
+        r.Negative = a.Negative;
+    } else {
+        r.Num      = sub(y, x);
+        r.Negative = b.Negative;
+    }
+    r.Negative = r.Negative && !r.Num.empty();
+    return r;
+}
+
+// (a − b) / n is an integer (n ≠ 0).
+constexpr bool same_lattice(const frac& a, frac b, const frac& n) {
+    b.Negative   = !b.Negative && !b.Num.empty();
+    const frac d = a + b;
+    return divmod(mul(d.Num, n.Den), mul(d.Den, n.Num)).Remainder.empty();
+}
+
+// A floating-point value within the double range exactly, in lowest terms:
+// a wider one (long double) as the sum of the doubles it splits into.
+template <std::floating_point T>
+constexpr frac frac_of_float(T v) {
+    if constexpr (sizeof(T) > sizeof(double)) {
+        if (static_cast<T>(static_cast<double>(v)) != v) {
+            frac s;
+            for (T rem = v; rem != 0;) {
+                const double p = static_cast<double>(rem);
+                s              = s + frac_of_float(p);
+                rem -= static_cast<T>(p);
+            }
+            const mag g = gcd(s.Num, s.Den);
+            return {divmod(s.Num, g).Quotient, divmod(s.Den, g).Quotient, s.Negative};
+        }
+    }
+    const double d = static_cast<double>(v);
+    if (d == 0)
+        return {};
+    int  e    = 0;
+    umax mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53)); // |d| = mant·2^(e−53)
+    e -= 53;
+    for (; mant % 2 == 0 && e < 0; ++e)
+        mant /= 2;
+    return e >= 0 ? frac{shl(mag{mant}, e), mag{umax{1}}, d < 0} : frac{mag{mant}, shl(mag{umax{1}}, -e), d < 0};
+}
 } // namespace big
 
 //---------------------------------------------------------------------------
@@ -2850,6 +3034,23 @@ struct big_rational {
             }
             raise(errc::not_finite, "big_rational: not a finite number");
         }
+        if constexpr (sizeof(d) > sizeof(double))
+            if (!is_double_value(d)) { // long double: the sum of the doubles it splits into
+                if (!is_finite(static_cast<double>(d))) {
+                    if consteval {
+                        constexpr_error<"big_rational: a long double past the double range">();
+                    }
+                    raise(errc::overflow, "big_rational: a long double past the double range");
+                }
+                big_rational s{0};
+                for (auto rem = d; rem != 0;) {
+                    const double p = static_cast<double>(rem);
+                    s              = s + big_rational{p};
+                    rem -= static_cast<decltype(d)>(p);
+                }
+                *this = s;
+                return;
+            }
         int        e   = 0;
         double     m   = frexp(static_cast<double>(d), &e); // d = m·2^e, |m| in [0.5, 1)
         const bool neg = m < 0;
@@ -2923,7 +3124,8 @@ struct big_rational {
             const std::strong_ordering m = limb::mul_compare(a.Num.Small, b.Den.Small, b.Num.Small, a.Den.Small);
             return a.Num.negative() ? 0 <=> m : m;
         }
-        return a.Num * b.Den <=> b.Num * a.Den;
+        return big::compare(big::frac{a.Num.magnitude(), a.Den.magnitude(), a.Num.negative()},
+                            big::frac{b.Num.magnitude(), b.Den.magnitude(), b.Num.negative()});
     }
 
     friend constexpr big_rational operator-(big_rational a) {
@@ -3034,6 +3236,23 @@ constexpr big_rational gcd(const big_rational& a, const big_rational& b) {
 //   to_rational(r)         number serves the 64-bit-only paths
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
+// (a − b) / n is an integer (true for n == 0), for 64-bit rationals. A
+// difference past the rational range is tested in four limbs:
+// (a − b)/n = (a_n·b_d − b_n·a_d)·n_d / (a_d·b_d·n_n), whose products of
+// three 64-bit magnitudes fit.
+constexpr bool same_lattice64(const rational& a, const rational& b, const rational& n) {
+    if (n == 0)
+        return true;
+    if (const auto d = try_sub(a, b)) [[likely]]
+        return divides_evenly(*d, n);
+    using W        = wide_sint<4>;
+    auto    num_of = [](const rational& r) { return r.Denominator < 0 ? -W{r.Numerator} : W{r.Numerator}; };
+    auto    den_of = [](const rational& r) { return W{abs_den(r.Denominator)}; };
+    const W num    = (num_of(a) * den_of(b) - num_of(b) * den_of(a)) * den_of(n);
+    const W den    = den_of(a) * den_of(b) * num_of(n);
+    return num % den == W{0};
+}
+
 #if BEMAN_INSIDE_BIG_GRIDS
 using grid_rational = big_rational;
 using grid_wide     = big_int;
@@ -3046,14 +3265,22 @@ constexpr grid_wide wide_numerator(const rational& r) {
 }
 constexpr grid_wide wide_denominator(const rational& r) { return grid_wide{abs_den(r.Denominator)}; }
 
-// (Convention, as divides_evenly: everything divides 0 evenly.)
-constexpr bool grid_divides_evenly(const big_rational& a, const big_rational& n) {
-    return n == 0 || (a / n).is_integer();
-}
+// A grid number as a transient fraction, for tests that run at runtime too.
+constexpr big::frac frac_of(const big_rational& r) { return {r.Num.magnitude(), r.Den.magnitude(), r.Num.negative()}; }
 
 // (a − b) / n is an integer (true for n == 0): b and a share n's lattice.
+// (No big value is formed, so the test runs at runtime too.)
 constexpr bool grid_same_lattice(const big_rational& a, const big_rational& b, const big_rational& n) {
-    return grid_divides_evenly(a - b, n);
+    if (n == 0)
+        return true;
+    if (a.fits_rational() && b.fits_rational() && n.fits_rational())
+        return same_lattice64(a, b, n);
+    return big::same_lattice(frac_of(a), frac_of(b), frac_of(n));
+}
+
+// (Convention, as divides_evenly: everything divides 0 evenly.)
+constexpr bool grid_divides_evenly(const big_rational& a, const big_rational& n) {
+    return grid_same_lattice(a, big_rational{0}, n);
 }
 
 // The 64-bit rational of a grid number, for 64-bit-only paths.
@@ -3073,18 +3300,8 @@ constexpr grid_wide wide_denominator(const rational& r) noexcept { return grid_w
 
 constexpr bool grid_divides_evenly(const rational& a, const rational& n) { return divides_evenly(a, n); }
 
-// (A difference past the rational range is tested in grid_wide:
-// (a − b)/n = (a_n·b_d − b_n·a_d)·n_d / (a_d·b_d·n_n), whose products of
-// three 64-bit magnitudes fit.)
 constexpr bool grid_same_lattice(const rational& a, const rational& b, const rational& n) {
-    if (n == 0)
-        return true;
-    if (const auto d = try_sub(a, b)) [[likely]]
-        return divides_evenly(*d, n);
-    const grid_wide num =
-        (wide_numerator(a) * wide_denominator(b) - wide_numerator(b) * wide_denominator(a)) * wide_denominator(n);
-    const grid_wide den = wide_denominator(a) * wide_denominator(b) * wide_numerator(n);
-    return num % den == grid_wide{0};
+    return same_lattice64(a, b, n);
 }
 
 constexpr bool                          fits_rational(const rational&) { return true; }
@@ -3330,9 +3547,9 @@ struct interval {
 }
 #endif
 
-// A double is compared exactly: rational{d} drops the bits past 2^-62 and
-// raises at |d| ≥ 2^64 (no 64-bit limit reaches that far), and a big grid
-// number past 64 bits exists only at compile time.
+// A floating-point value is compared exactly: against 64-bit limits through
+// the rational comparison, against big limits as a transient fraction (a big
+// grid number past 64 bits is never formed at runtime).
 template <detail::arithmetic A>
 [[nodiscard]] constexpr bool includes(const interval& iv, A a) noexcept {
     if constexpr (std::floating_point<A>) {
@@ -3343,7 +3560,13 @@ template <detail::arithmetic A>
                 return false;
             return detail::to_rational(iv.Lower) <= a && a <= detail::to_rational(iv.Upper);
         }
-        return includes(iv, detail::grid_rational{a}); // big limits: compile time only
+#if BEMAN_INSIDE_BIG_GRIDS
+        const auto f = detail::big::frac_of_float(a);
+        return detail::big::compare(detail::frac_of(iv.Lower), f) <= 0 &&
+               detail::big::compare(f, detail::frac_of(iv.Upper)) <= 0;
+#else
+        return false; // (unreachable: 64-bit limits always fit)
+#endif
     } else
         return includes(iv, detail::grid_rational{a});
 }
@@ -4007,9 +4230,27 @@ struct grid {
         if (!includes(Interval, d))
             return false;
         if (detail::fits_rational(Interval.Lower) && detail::fits_rational(Interval.Upper) &&
-            detail::fits_rational(Notch) && !detail::abs_fraction_exact(static_cast<double>(d)))
-            return false;
-        return representable(detail::grid_rational{d});
+            detail::fits_rational(Notch)) {
+            if constexpr (sizeof(T) > sizeof(double))
+                if (!detail::is_double_value(d)) { // a long double with bits past the double's
+                    bool       exact = false;
+                    const auto r     = detail::rational_of_wide_float(d, exact);
+                    return exact && representable(detail::grid_rational{r});
+                }
+            if (!detail::abs_fraction_exact(static_cast<double>(d)))
+                return false;
+            return representable(detail::grid_rational{d});
+        }
+#if BEMAN_INSIDE_BIG_GRIDS
+        // Big grid numbers: d as a transient fraction, which (unlike a big
+        // grid number) also exists at runtime.
+        const auto f = detail::big::frac_of_float(d);
+        if (Notch == 0)
+            return MaxDenominator == 0 || detail::big::compare(f.Den, MaxDenominator.Num.magnitude()) <= 0;
+        return detail::big::same_lattice(f, detail::frac_of(Interval.Lower), detail::frac_of(Notch));
+#else
+        return representable(detail::grid_rational{d}); // (unreachable: 64-bit numbers always fit)
+#endif
     }
 
     // Whether the lattice passes through 0: Lower is a multiple of the notch
@@ -6206,10 +6447,11 @@ inline constexpr bool needs_runtime_range_check =
     clamp_action<plain_t<A>> || wrap_action<plain_t<A>> || error_action<plain_t<A>> ||
     range_handled(policy_of<L> | plain_t<P>::Flags);
 
-// Shared out-of-range policy cascade. Order: clamp/wrap/error *actions*, then
-// clamp/wrap *policy* bits, then `range_fail`. The callers say how clamp and
-// wrap store; `Wrappable` is false on the fractional path (no wrap *action*
-// branch). Returns true when a handler resolved the write.
+// Shared out-of-range policy cascade. Order: clamp/wrap *actions*, then
+// clamp/wrap *policy* bits, then an on_error action, then `range_fail`. The
+// callers say how clamp and wrap store; `Wrappable` is false on the
+// fractional path (no wrap *action* branch). Returns true when a handler
+// resolved the write.
 template <bool Wrappable, insidable L, typename P, typename A, typename DoClamp, typename DoWrap>
 constexpr bool dispatch_out_of_range(L& lhs, P&& policy, A&& action, DoClamp do_clamp, DoWrap do_wrap) {
     using PA = plain_t<A>;
@@ -6219,14 +6461,14 @@ constexpr bool dispatch_out_of_range(L& lhs, P&& policy, A&& action, DoClamp do_
     } else if constexpr (Wrappable && wrap_action<PA>) {
         do_wrap();
         return true;
-    } else if constexpr (error_action<PA>) {
-        action.Fn(lhs, errc::overflow, errc_message(errc::overflow));
-        return true;
     } else if constexpr (has_policy<L, P, clamp>) {
         do_clamp();
         return true;
     } else if constexpr (has_policy<L, P, wrap>) {
         do_wrap();
+        return true;
+    } else if constexpr (error_action<PA>) { // on_error replaces the failure, not a clamp or wrap
+        action.Fn(lhs, errc::overflow, errc_message(errc::overflow));
         return true;
     } else
         return range_fail(policy);
@@ -6932,7 +7174,7 @@ struct assignment<L, R> {
         }();
         errc code{};
         // A recording on_error stands in for one (dispatch_out_of_range ranks
-        // it above clamp): the order holds.
+        // it below clamp and wrap): the order holds.
         if constexpr (error_action<plain_t<A>>)
             assign_exact<R>(r, exact_of_double(rhs), recording_policy<P>{code}, on_error([&code](L&, errc c, auto&&) {
                                 code = c;
@@ -7515,7 +7757,9 @@ struct assignment<L, R> {
             // Offset/Factor map R's 0-based offset (a value raw counts from Lower).
             // A step past the 64-bit rational takes the exact wide store.
             const auto r_offset = [&] {
-                if constexpr (raw_lo<R> == 0)
+                if constexpr (point_storage<R>) // a point's raw holds nothing: the mapping is Offset alone
+                    return std::expected<rational, errc>{rational{0}};
+                else if constexpr (raw_lo<R> == 0)
                     return std::expected<rational, errc>{rational{rhs.raw()}};
                 else
                     return try_sub(rational{rhs.raw()}, detail::lower64<R>);
@@ -10092,6 +10336,10 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
     constexpr bool imax_scalar = std::signed_integral<A> || (std::unsigned_integral<A> && sizeof(A) < sizeof(imax));
     constexpr bool double_exact_values =
         lower_of<B> >= rational{-(imax{1} << 53)} && upper_of<B> <= rational{imax{1} << 53};
+    // A long double with bits past the double's: the paths below read a double.
+    if constexpr (std::floating_point<A> && sizeof(A) > sizeof(double))
+        if (rhs - rhs == 0 && !is_double_value(rhs)) [[unlikely]]
+            return cmp(exact_of(lhs), exact_of_long_double(rhs));
     if constexpr (wide_valued<B>) {
         if constexpr (std::floating_point<A>) {
             if (rhs != rhs) // NaN: unordered, as the double comparison says

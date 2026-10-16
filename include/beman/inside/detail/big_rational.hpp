@@ -117,6 +117,88 @@ constexpr mag gcd(mag a, mag b) {
 constexpr int bit_width(const mag& m) {
     return m.empty() ? 0 : static_cast<int>(m.size() - 1) * 64 + (64 - std::countl_zero(m.back()));
 }
+
+// m · 2^k (k ≥ 0).
+constexpr mag shl(const mag& m, int k) {
+    const std::size_t words = static_cast<std::size_t>(k / 64);
+    const int         bits  = k % 64;
+    mag               r(m.size() + words + 1, 0);
+    for (std::size_t i = 0; i < m.size(); ++i) {
+        r[i + words] |= m[i] << bits;
+        if (bits != 0)
+            r[i + words + 1] |= m[i] >> (64 - bits);
+    }
+    trim(r);
+    return r;
+}
+
+// A fraction of transient magnitudes, unreduced: nothing is interned, so it
+// computes at runtime too (a big grid's predicates against a runtime value).
+struct frac {
+    mag  Num;          // |numerator|
+    mag  Den{umax{1}}; // > 0
+    bool Negative = false;
+};
+
+constexpr std::strong_ordering compare(const frac& a, const frac& b) {
+    const int sa = a.Num.empty() ? 0 : a.Negative ? -1 : 1, sb = b.Num.empty() ? 0 : b.Negative ? -1 : 1;
+    if (sa != sb)
+        return sa <=> sb;
+    const std::strong_ordering m = compare(mul(a.Num, b.Den), mul(b.Num, a.Den));
+    return sa < 0 ? 0 <=> m : m;
+}
+
+constexpr frac operator+(const frac& a, const frac& b) {
+    const mag x = mul(a.Num, b.Den), y = mul(b.Num, a.Den);
+    frac      r;
+    r.Den = mul(a.Den, b.Den);
+    if (a.Negative == b.Negative) {
+        r.Num      = add(x, y);
+        r.Negative = a.Negative;
+    } else if (compare(x, y) >= 0) {
+        r.Num      = sub(x, y);
+        r.Negative = a.Negative;
+    } else {
+        r.Num      = sub(y, x);
+        r.Negative = b.Negative;
+    }
+    r.Negative = r.Negative && !r.Num.empty();
+    return r;
+}
+
+// (a − b) / n is an integer (n ≠ 0).
+constexpr bool same_lattice(const frac& a, frac b, const frac& n) {
+    b.Negative   = !b.Negative && !b.Num.empty();
+    const frac d = a + b;
+    return divmod(mul(d.Num, n.Den), mul(d.Den, n.Num)).Remainder.empty();
+}
+
+// A floating-point value within the double range exactly, in lowest terms:
+// a wider one (long double) as the sum of the doubles it splits into.
+template <std::floating_point T>
+constexpr frac frac_of_float(T v) {
+    if constexpr (sizeof(T) > sizeof(double)) {
+        if (static_cast<T>(static_cast<double>(v)) != v) {
+            frac s;
+            for (T rem = v; rem != 0;) {
+                const double p = static_cast<double>(rem);
+                s              = s + frac_of_float(p);
+                rem -= static_cast<T>(p);
+            }
+            const mag g = gcd(s.Num, s.Den);
+            return {divmod(s.Num, g).Quotient, divmod(s.Den, g).Quotient, s.Negative};
+        }
+    }
+    const double d = static_cast<double>(v);
+    if (d == 0)
+        return {};
+    int  e    = 0;
+    umax mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53)); // |d| = mant·2^(e−53)
+    e -= 53;
+    for (; mant % 2 == 0 && e < 0; ++e)
+        mant /= 2;
+    return e >= 0 ? frac{shl(mag{mant}, e), mag{umax{1}}, d < 0} : frac{mag{mant}, shl(mag{umax{1}}, -e), d < 0};
+}
 } // namespace big
 
 //---------------------------------------------------------------------------
@@ -363,6 +445,23 @@ struct big_rational {
             }
             raise(errc::not_finite, "big_rational: not a finite number");
         }
+        if constexpr (sizeof(d) > sizeof(double))
+            if (!is_double_value(d)) { // long double: the sum of the doubles it splits into
+                if (!is_finite(static_cast<double>(d))) {
+                    if consteval {
+                        constexpr_error<"big_rational: a long double past the double range">();
+                    }
+                    raise(errc::overflow, "big_rational: a long double past the double range");
+                }
+                big_rational s{0};
+                for (auto rem = d; rem != 0;) {
+                    const double p = static_cast<double>(rem);
+                    s              = s + big_rational{p};
+                    rem -= static_cast<decltype(d)>(p);
+                }
+                *this = s;
+                return;
+            }
         int        e   = 0;
         double     m   = frexp(static_cast<double>(d), &e); // d = m·2^e, |m| in [0.5, 1)
         const bool neg = m < 0;
@@ -436,7 +535,8 @@ struct big_rational {
             const std::strong_ordering m = limb::mul_compare(a.Num.Small, b.Den.Small, b.Num.Small, a.Den.Small);
             return a.Num.negative() ? 0 <=> m : m;
         }
-        return a.Num * b.Den <=> b.Num * a.Den;
+        return big::compare(big::frac{a.Num.magnitude(), a.Den.magnitude(), a.Num.negative()},
+                            big::frac{b.Num.magnitude(), b.Den.magnitude(), b.Num.negative()});
     }
 
     friend constexpr big_rational operator-(big_rational a) {
