@@ -21,6 +21,8 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 - `frac<N, D>` is gone: an exact ratio is the point `just<N>.per<D>`
   (`just<frac<1, 2>>` is `just<1>.per<2>`; as a grid limit or step,
   `{{just<-6>.per<5>, just<3>.per<5>}, per<40>}`).
+- `zero` and `one` are gone (`units::one` is the dimensionless unit): write
+  `just<0>` / `just<1>`, or `0_ins` / `1_ins`.
 - Renamed:
 
   | Before | After |
@@ -56,15 +58,17 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   engine), `sqrt`/`cbrt` of the unit, trigonometry and `hypot`.
   `examples/units.cpp`, `circuit.cpp`, `moon_rocket.cpp` and `kitchen.cpp`
   show them. A dimensionless quantity converts to an inside (its value in
-  unit one); `mag_pi * q` keeps π in the unit until one rounding;
-  `sqrt_into<Out>`, `atan2_into<Out>`, … take checked arithmetic results;
-  `p.point_in(u)` and `value_cast` work on points.
+  unit one); `mag_pi * q` (and `mag_pi * just<2> * si::second`) keeps π
+  in the unit until one rounding; `sqrt_into<Out>`, `atan2_into<Out>`, …
+  take checked arithmetic results; `p.point_in(u)` and `value_cast` work on
+  points; `try_value_cast<u, Rep2, F>(q)` converts and stores into an
+  expected. A sum of two units that
+  divide neither way runs in the smaller unit scaled (ft + m and m + ft are
+  `[1/381 ft]`). Every quantity operator, conversion and cast is constrained
+  on the number operation it runs, so a `requires` test of one inside
+  rejects (an off-notch `+=`, a product past 64-bit grids) is false; unit
+  mismatches stay compile errors with a message.
 - `to_string(errc)` and `operator<<` for `errc` print the error message.
-- `<beman/inside/chrono.hpp>`: `from_duration<B, F>(d)` and
-  `to_duration<D, F>(x)` convert between `std::chrono::duration` and insides
-  exactly (a value in seconds, a period as a notch, `period_notch<P>`);
-  `to_duration` returns a plain duration when the grid proves the count
-  exists. `examples/clock.cpp` uses them and checks against `hh_mm_ss`.
 - Open grid limits as a spelling: `inside<{0, 360, bounds::half_open}, wrap>`
   is `inside<{0, 359}, wrap>` (period 360), and `{{0, 64}, per<16>,
   bounds::half_open}` is `{{0, 63.9375}, per<16>}`. `bounds::open` moves both
@@ -138,22 +142,13 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   fail.
 - A point inside (`just<1/2>`, `5_ins`) stores into a grid whose raws map
   neither by an integer nor by a 64-bit multiply-add (a 2^-62 notch,
-  `qword`); it did not compile.
+  `uint64`); it did not compile.
 - C++26 big grids: `grid::representable`, `includes` and grid-number
   comparisons work at runtime when a value or limit passes 64 bits (they
   terminated): a fine double on a 64-bit grid, any double on a grid past
   2^64.
-- `from_duration` takes a floating count with a period other than one
-  second exactly: `duration<double, std::milli>{0.1}` was an overflow (the
-  product left the 64-bit rational), and a `long double` count went
-  through a double.
 - `to<float>()` rounds once: a value whose double is a tie between two
   floats rounded to even from the double, not from the value.
-- `units::quantity` and `quantity_point` operators, conversions and casts
-  are constrained on the number operation they run: a `requires` test of an
-  off-notch `+=`, a product past 64-bit grids or a unit factor past them
-  (au → nm under C++23) is false instead of a hard error. Unit mismatches
-  keep their messages.
 
 ## 0.2.0 — 2026-10-10
 

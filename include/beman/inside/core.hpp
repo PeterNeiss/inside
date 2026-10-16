@@ -948,14 +948,6 @@ template <auto value>
 inline constexpr auto just = inside<grid{value}>::from_raw({});
 
 //---------------------------------------------------------------------------
-// zero / one — universal exact constants. Single-point insides that assign into
-// any grid able to represent the value (compile-time checked) and otherwise
-// behave as 0 / 1. `b = zero;` is a compile error when 0 is not on b's grid.
-//---------------------------------------------------------------------------
-inline constexpr auto zero = just<0>;
-inline constexpr auto one  = just<1>;
-
-//---------------------------------------------------------------------------
 // _ins literal — compile-time `inside<{V, V}>` from a numeric literal.
 //   5_ins           // inside<{5, 5}>            integer
 //   1.25_ins        // inside<{rational{5,4}}>   decimal

@@ -81,7 +81,7 @@ int main() {
     const auto                 o    = read_order(good);
     if (!o)
         return 1;
-    const total_t total{o->price * o->quantity * (one - o->discount)}; // 50.9745 → 50.97
+    const total_t total{o->price * o->quantity * (just<1> - o->discount)}; // 50.9745 → 50.97
     std::cout << "read   " << good << "\n"
               << "write  " << write_order(*o) << "\n"
               << "total  " << total << "\n"

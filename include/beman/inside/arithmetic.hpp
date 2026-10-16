@@ -508,10 +508,10 @@ BEMAN_INSIDE_LIFT_OP(%)
 template <typename A>
 concept builtin_arithmetic = std::integral<A> || std::floating_point<A>;
 
-#define BEMAN_INSIDE_SCALAR_MSG                                                      \
-    "an inside cannot be combined with a raw scalar: give the scalar a grid — "      \
-    "`1_ins`, `just<1>`, `one`, or `inside<{lo,hi}>{n}` for a runtime value with a " \
-    "known range"
+#define BEMAN_INSIDE_SCALAR_MSG                                                     \
+    "an inside cannot be combined with a raw scalar: give the scalar a grid — "     \
+    "`1_ins`, `just<1>`, or `inside<{lo,hi}>{n}` for a runtime value with a known " \
+    "range"
 #define BEMAN_INSIDE_NO_SCALAR(op)                                          \
     template <insidable B, builtin_arithmetic A>                            \
     B operator op(B const&, A) {                                            \

@@ -1,18 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Carry cascades with `wrap` and `on_wrap`: a field that overflows hands the
 // carry to the next one up, so the cascade is one line per field.
-//   1. A 24-hour clock: seconds → minutes → hours, wrapping at 24. It converts
-//      to and from std::chrono (chrono.hpp's from_duration / to_duration), and
-//      the cascade is checked against chrono's own hh_mm_ss.
+//   1. A 24-hour clock: seconds → minutes → hours, wrapping at 24. It
+//      converts to and from seconds since midnight, and the cascade is checked
+//      against that count.
 //   2. A calendar (30-day months for clarity): days → months → years, plus a
-//      day of the week by `%` on a zero-free divisor (a plain value), checked
-//      against std::chrono::weekday.
+//      day of the week by `%` on a zero-free divisor (a plain value).
 
 #include <array>
-#include <chrono>
 #include <iostream>
 
-#include <beman/inside/chrono.hpp>
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
 
@@ -40,11 +37,11 @@ struct clock24 {
 
     void add_hours(auto n) { hours += n; }
 
-    // A time of day from std::chrono: whole days wrap away (the `wrap` flag on
-    // the store), then one divmod per field.
+    // A time of day from a count of seconds: whole days wrap away (the `wrap`
+    // flag on the store), then one divmod per field.
     using day_seconds_t = inside<{0, 86400, bounds::half_open}>;
-    static clock24 from(std::chrono::seconds since_midnight) {
-        const day_seconds_t s = from_duration<day_seconds_t, wrap>(since_midnight).value();
+    static clock24 from(numeric auto seconds_since_midnight) {
+        const day_seconds_t s = day_seconds_t::try_make<wrap>(seconds_since_midnight).value();
         const auto [h, rest]  = divmod(s, 3600_ins);
         const auto [m, sec]   = divmod(rest, 60_ins);
         clock24 c;
@@ -54,10 +51,10 @@ struct clock24 {
         return c;
     }
 
-    // …and back: the sum's grid is [0, 86399] on whole seconds, so the
-    // conversion cannot fail and returns a plain std::chrono::seconds.
-    [[nodiscard]] std::chrono::seconds to_chrono() const {
-        return to_duration<std::chrono::seconds>(hours * 3600_ins + minutes * 60_ins + seconds);
+    // …and back: the sum's grid is [0, 86399] on whole seconds, so it is a
+    // day_seconds_t as it stands.
+    [[nodiscard]] day_seconds_t seconds_since_midnight() const {
+        return hours * 3600_ins + minutes * 60_ins + seconds;
     }
 
     friend std::ostream& operator<<(std::ostream& os, const clock24& c) {
@@ -112,22 +109,16 @@ int main() {
     if (t.hours != 3 || t.minutes != 0 || t.seconds != 35)
         return 1;
 
-    // The same steps in std::chrono: the cascade agrees with hh_mm_ss, and the
-    // clock converts both ways.
+    // The same steps as one count of seconds: the cascade agrees with it, and
+    // the clock converts both ways.
     {
-        using namespace std::chrono;
-        const seconds  end = (23h + 59min + 45s + 20s + 90min + 5430s) % days{1};
-        const hh_mm_ss hms{end};
-        if (t.to_chrono() != end || t.hours != hms.hours().count() || t.minutes != hms.minutes().count() ||
-            t.seconds != hms.seconds().count())
+        const auto end = 23 * 3600 + 59 * 60 + 45 + 20 + 90 * 60 + 5430; // past midnight
+        if (t.seconds_since_midnight() != end % 86400)
             return 1;
-        const clock24 back = clock24::from(t.to_chrono());
+        const clock24 back = clock24::from(t.seconds_since_midnight());
         if (back.hours != t.hours || back.minutes != t.minutes || back.seconds != t.seconds)
             return 1;
-        std::cout << "chrono:     " << clock24::from(end) << " (hh_mm_ss agrees)\n";
-
-        const auto now = system_clock::now();
-        std::cout << "now (UTC):  " << clock24::from(floor<seconds>(now - floor<days>(now))) << "\n";
+        std::cout << "from count: " << clock24::from(end) << " (" << end << " s, whole days wrap away)\n";
     }
 
     date d;
@@ -153,13 +144,12 @@ int main() {
     if (weeks != 2000 || dow != 3)
         return 1;
 
-    // With 1970-01-01 (a Thursday, weekday 4) as day 0, chrono names the day.
+    // With 1970-01-01 (a Thursday, weekday 4) as day 0: 2008-05-04, a Sunday.
     constexpr std::array<const char*, 7> names{
         "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
-    const std::chrono::weekday wd{std::chrono::sys_days{std::chrono::days{14003}}};
-    const auto                 our = (4_ins + dow) % 7_ins;
+    const auto our = (4_ins + dow) % 7_ins;
     std::cout << "1970-01-01 + 14003 days is a " << names[our] << "\n";
-    if (our != wd.c_encoding())
+    if (our != 0)
         return 1;
     return 0;
 }

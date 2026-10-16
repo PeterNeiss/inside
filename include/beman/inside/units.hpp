@@ -626,7 +626,7 @@ consteval magnitude magnitude_of(const unit& u) {
     return m;
 }
 // The kind a unit measures: a named unit's (with a prefix too), else none.
-consteval spec_ref kind_of_unit(const unit& u) {
+consteval spec_ref kind_of(const unit& u) {
     return u.Size == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one() ? u.Atoms[0].U->Kind : spec_ref{};
 }
 
@@ -729,7 +729,7 @@ struct reference {
         : Spec{s}, KindOf{kind_of}, Derived{derived}, U{u} {}
     // A unit tag as a reference: quantity<si::metre, …>.
     template <unit V>
-    constexpr reference(unit_t<V>) : Spec{kind_of_unit(V)}, KindOf{static_cast<bool>(kind_of_unit(V))}, U{V} {}
+    constexpr reference(unit_t<V>) : Spec{kind_of(V)}, KindOf{static_cast<bool>(kind_of(V))}, U{V} {}
 
     friend constexpr bool operator==(const reference& a, const reference& b) {
         return detail::same(a.Spec, b.Spec) && a.KindOf == b.KindOf && a.Derived == b.Derived && a.U == b.U;
@@ -737,7 +737,7 @@ struct reference {
 };
 
 consteval reference reference_of(const unit& u) {
-    const spec_ref k = kind_of_unit(u);
+    const spec_ref k = kind_of(u);
     return reference{k, static_cast<bool>(k), recipe{}, u};
 }
 
@@ -775,7 +775,7 @@ consteval auto spec_t<S>::operator[](U) const {
     static_assert(is_reference_tag_v<U> && requires { U::value.Size; }, "units: spec[unit] takes a unit");
     constexpr unit u = U::value;
     static_assert(dimension_of(u) == S->Dim, "units: spec[unit] - the unit has another dimension than the spec");
-    constexpr spec_ref k = kind_of_unit(u);
+    constexpr spec_ref k = kind_of(u);
     static_assert(!k || detail::same(detail::kind_root(k.P), detail::kind_root(S)),
                   "units: spec[unit] - the unit measures another kind of quantity (Hz for activity?)");
     return reference_t<reference{S, false, recipe{}, u}>{};
@@ -924,8 +924,8 @@ template <unit From, unit To>
 inline constexpr magnitude conversion_factor = magnitude_of(From) / magnitude_of(To);
 
 // The common unit of a sum: the smaller unit when it divides the other
-// (km + m → m), else the first unit scaled to the gcd of the magnitudes
-// (ft + m → [1/1250 m]).
+// (km + m → m), else the smaller unit scaled to the gcd of the magnitudes
+// (ft + m and m + ft → [1/381 ft]), so the sum's type is the same either way.
 consteval unit common_unit(const unit& a, const unit& b) {
     if (a == b)
         return a;
@@ -942,8 +942,9 @@ consteval unit common_unit(const unit& a, const unit& b) {
         return a;
     if (g == mb.Ratio)
         return b;
-    unit u  = a;
-    u.Scale = u.Scale * magnitude{beman::inside::detail::grid_div_of(g, ma.Ratio)};
+    const bool a_smaller = ma.Ratio < mb.Ratio;
+    unit       u         = a_smaller ? a : b;
+    u.Scale              = u.Scale * magnitude{beman::inside::detail::grid_div_of(g, a_smaller ? ma.Ratio : mb.Ratio)};
     return u;
 }
 
@@ -1179,6 +1180,16 @@ template <reference R, class V, magnitude M>
 [[nodiscard]] constexpr auto operator*(const quantity<R, V>& q, mag_t<M>) {
     return quantity<detail::scaled_reference(R, M), V>{q.numerical_value()};
 }
+// A magnitude times a number: the number in the scaled unit one ([π]), so
+// mag_pi * just<2> * si::second is 2 in [π s].
+template <magnitude M, insidable V>
+[[nodiscard]] constexpr auto operator*(mag_t<M>, const V& v) {
+    return quantity<reference_of(detail::unit_scaled(unit{}, M)), V>{v};
+}
+template <insidable V, magnitude M>
+[[nodiscard]] constexpr auto operator*(const V& v, mag_t<M>) {
+    return quantity<reference_of(detail::unit_scaled(unit{}, M)), V>{v};
+}
 template <reference R, class V, magnitude M>
 [[nodiscard]] constexpr auto operator/(const quantity<R, V>& q, mag_t<M>) {
     return quantity<detail::scaled_reference(R, magnitude{} / M), V>{q.numerical_value()};
@@ -1213,10 +1224,16 @@ consteval bool sum_diagnosed() {
 
 // Whether a Op b exists in the common unit: both numbers rescale to it and
 // inside's Op takes them.
+template <reference A, class VA, reference B, class VB>
+concept common_rescalable =
+    rescalable<A.U, sum_reference<A, B>().U, VA> && rescalable<B.U, sum_reference<A, B>().U, VB>;
+// The number of a quantity of A on V, in A and B's common unit.
+template <reference A, class V, reference B>
+using common_number_t = rescaled_t<A, sum_reference<A, B>(), V>;
+
 template <reference A, class VA, reference B, class VB, char Op>
-concept summable = sum_diagnosed<A, B>() ||
-                   (rescalable<A.U, sum_reference<A, B>().U, VA> && rescalable<B.U, sum_reference<A, B>().U, VB> &&
-                    number_op<rescaled_t<A, sum_reference<A, B>(), VA>, rescaled_t<B, sum_reference<A, B>(), VB>, Op>);
+concept summable = sum_diagnosed<A, B>() || (common_rescalable<A, VA, B, VB> &&
+                                             number_op<common_number_t<A, VA, B>, common_number_t<B, VB, A>, Op>);
 
 template <reference A, reference B, int Sign>
 consteval reference product_reference() {
@@ -1324,7 +1341,8 @@ constexpr auto operator/(const quantity<A, VA>&, N) {
 
 // pow<N>(q) — q·q·…·q (N ≥ 1): exact, the grid of each product.
 template <int N, reference R, class V>
-    requires(N >= 1)
+    requires(N == 1 || (N % 2 == 1 && requires(const quantity<R, V>& q) { q * pow<N - 1>(q); }) ||
+             (N >= 2 && N % 2 == 0 && requires(const quantity<R, V>& q) { pow<N / 2>(q) * pow<N / 2>(q); }))
 [[nodiscard]] constexpr auto pow(const quantity<R, V>& q) {
     if constexpr (N == 1)
         return q;
@@ -1382,6 +1400,20 @@ template <insidable Rep2, policy_flag F = none, reference R, class V>
     if (!v)
         return std::unexpected{v.error()};
     return quantity<R, Rep2>{*v};
+}
+
+// try_value_cast<U, Rep2, F>(q) — in unit U, as Rep2::try_make<F>.
+template <auto U, insidable Rep2, policy_flag F = none, reference R, class V>
+    requires is_unit_tag_v<decltype(U)> && detail::factor_fits_v<R.U, decltype(U)::value> &&
+             detail::exact_factor_v<detail::conversion_factor<R.U, decltype(U)::value>> &&
+             requires(const quantity<R, V>& q) { Rep2::template try_make<F>(q.in(U).numerical_value()); }
+[[nodiscard]] constexpr auto try_value_cast(const quantity<R, V>& q) {
+    constexpr reference to{R.Spec, R.KindOf, R.Derived, decltype(U)::value};
+    using Q = quantity<to, Rep2>;
+    auto v  = Rep2::template try_make<F>(q.in(U).numerical_value());
+    if (!v)
+        return std::expected<Q, errc>{std::unexpect, v.error()};
+    return std::expected<Q, errc>{Q{*v}};
 }
 
 //---------------------------------------------------------------------------
@@ -1680,7 +1712,7 @@ inline void append_atoms(std::string& s, const unit& u, int sign, text_encoding 
 }
 } // namespace detail
 
-// The symbol of a unit: "km", "kg m²/s²", "1/s", "[1/1250 m]" (a scaled unit).
+// The symbol of a unit: "km", "kg m²/s²", "1/s", "[1/381 ft]" (a scaled unit).
 inline std::string unit_symbol(const unit& u, text_encoding enc = text_encoding::utf8) {
     std::string s;
     int         num = 0, den = 0;
@@ -1706,7 +1738,11 @@ inline std::string unit_symbol(const unit& u, text_encoding enc = text_encoding:
             scale += enc == text_encoding::utf8 ? "π" : (scale.empty() ? "pi" : "*pi");
             detail::append_exponent(scale, u.Scale.Pi, enc);
         }
-        s = "[" + scale + (s.empty() ? "" : " " + s) + "]";
+        // [π/m] for a unit with only a denominator, when the scale has no '/'.
+        if (s.starts_with("1/") && scale.find('/') == std::string::npos)
+            s = "[" + scale + s.substr(1) + "]";
+        else
+            s = "[" + scale + (s.empty() ? "" : " " + s) + "]";
     }
     return s;
 }

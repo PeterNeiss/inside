@@ -1,16 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Defects from the ninth bug-hunt round. The runtime cases stored or rounded
-// wrongly before the fixes; the concept checks were hard errors inside the
+// Defects from the ninth bug-hunt round. The runtime cases rounded wrongly
+// before the fixes; the concept checks were hard errors inside the
 // operator bodies, not false.
 
-#include <beman/inside/chrono.hpp>
 #include <beman/inside/units.hpp>
+#include <beman/inside/units_math.hpp>
 
 #include <gtest/gtest.h>
 
-#include <bit>
-#include <cfloat>
-#include <chrono>
 #include <cstdint>
 
 using namespace beman::inside;
@@ -22,37 +19,6 @@ T launder(T v) {
     return x;
 }
 } // namespace
-
-// A floating count with a period other than 1 s went through a 64-bit
-// rational: 0.1 ms is 3602879701896397/2^55 ms, and the product by 1/1000
-// passed 64 bits, an overflow for a value well inside the grid.
-TEST(BugHuntRound9, from_duration_of_a_fractional_floating_count) {
-    using namespace std::chrono;
-    using us_t = inside<{{0, 1}, per<1000000>}>;
-    EXPECT_EQ((rational{*from_duration<us_t, round_nearest>(duration<double, std::milli>{launder(0.1)})}),
-              rational(1, 10000));
-    // Off the microsecond grid without a rounding flag: no overflow.
-    EXPECT_EQ(from_duration<us_t>(duration<double, std::milli>{launder(0.1)}).error(), errc::rounding_error);
-    EXPECT_EQ((*from_duration<inside<{0, 100}>, round_nearest>(duration<double, std::ratio<60>>{launder(0.3)})), 18);
-    static_assert(*from_duration<us_t, round_nearest>(duration<double, std::milli>{0.1}) == rational(1, 10000));
-    // Huge counts reach the policy: clamp, and an overflow without it.
-    EXPECT_EQ((*from_duration<inside<{0, 1}, clamp>>(duration<double, std::milli>{launder(1e300)})), 1);
-    EXPECT_EQ(from_duration<us_t>(duration<double, std::milli>{launder(1e300)}).error(), errc::overflow);
-}
-
-// A long double count went through a double; it is taken exactly now.
-TEST(BugHuntRound9, from_duration_of_a_long_double_count) {
-    using namespace std::chrono;
-    using fine_t        = inside<{{0, 1100}, per<(1ll << 50)>}>;
-    const long double c = launder(0x1p20L + 0x1p-36L); // ms; the double holds 2^20 only
-    const auto        r = from_duration<fine_t, round_floor>(duration<long double, std::milli>{c});
-    const auto        d = from_duration<fine_t, round_floor>(duration<double, std::milli>{0x1p20});
-    if constexpr (LDBL_MANT_DIG > DBL_MANT_DIG)
-        EXPECT_GT(rational{*r}, rational{*d}); // 2^-36/1000 s is past the 2^-50 notch
-    else
-        EXPECT_EQ(rational{*r}, rational{*d});
-    EXPECT_TRUE(r.has_value());
-}
 
 // to<float>() rounded through a double: 1 + 2^-24 + 2^-60 rounded to the
 // double 1 + 2^-24, a tie the float broke to even (1), not up.
@@ -118,4 +84,14 @@ static_assert(!can_add<units::quantity<si::astronomical_unit, inside<{0, 100}>>,
 // Points follow their quantities.
 using celsius = decltype(units::point<si::degree_Celsius>(just<20>));
 static_assert(can_add<celsius, decltype(just<1> * si::kelvin)>);
+// pow, atan2 and hypot follow their number ops too.
+template <class A>
+concept can_pow2 = requires(const A& a) { units::pow<2>(a); };
+template <class A, class B>
+concept can_atan2 = requires(const A& a, const B& b) { units::atan2(a, b); };
+template <class A, class B>
+concept can_hypot = requires(const A& a, const B& b) { units::hypot(a, b); };
+using rounding_m  = metres<inside<{{-10, 10}, per<8>}, round_nearest>>;
+static_assert(can_pow2<rounding_m> && can_atan2<rounding_m, rounding_m> && can_hypot<rounding_m, rounding_m>);
+static_assert(can_pow2<metres<huge>> == can_mul<huge, huge>);
 } // namespace honest
