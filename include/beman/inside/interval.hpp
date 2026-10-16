@@ -83,7 +83,7 @@ template <detail::arithmetic A>
         if (!detail::is_finite(static_cast<double>(a)))
             return false;
         if (detail::fits_rational(iv.Lower) && detail::fits_rational(iv.Upper)) {
-            if (!(a < 0x1p64 && a > -0x1p64))
+            if (detail::past_64_bits(a))
                 return false;
             return detail::to_rational(iv.Lower) <= a && a <= detail::to_rational(iv.Upper);
         }

@@ -327,21 +327,18 @@ struct scaled_float {
 template <std::floating_point T>
 [[nodiscard]] constexpr scaled_float scaled_magnitude(T v) noexcept {
     using W = wide_sint<5>;
-    W   acc{0};
-    int tail = 0;
-    T   rem  = v < 0 ? -v : v;
-    for (int i = 0; i < 8 && rem != 0; ++i) {
-        const double d    = static_cast<double>(rem);
-        int          e    = 0;
-        const umax   mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53)); // |d| = mant·2^(e−53)
-        const int    s    = e - 53 + wide_float_shift;
+    W       acc{0};
+    int     tail = 0;
+    const T rem  = for_each_double_part(v < 0 ? -v : v, [&](double d) {
+        const auto [mant, e] = double_parts(d);
+        const int s          = e + wide_float_shift;
         if (s < 0) { // below 2^-180: the parts after it are smaller still
             tail = d < 0 ? -1 : 1;
-            break;
+            return false;
         }
         acc += d < 0 ? -(W{mant} << s) : W{mant} << s;
-        rem -= static_cast<T>(d);
-    }
+        return true;
+    });
     if (tail == 0 && rem != 0)
         tail = rem < 0 ? -1 : 1;
     return {static_cast<wide_uint<4>>(acc), tail};
@@ -381,9 +378,9 @@ constexpr rational::rational(std::signed_integral auto num, imax den)
 }
 
 constexpr rational::rational(std::floating_point auto value) {
-    if (!(value - value == 0))
+    if (!is_finite(value))
         raise(errc::not_finite, "non-finite double");
-    if constexpr (sizeof(value) > sizeof(double))
+    if constexpr (wide_float<decltype(value)>)
         if (!is_double_value(value)) {
             bool exact;
             *this = rational_of_wide_float(value, exact);
@@ -792,7 +789,7 @@ compare_fine_double(const rational& lhs, double rhs) {
 // lhs against a double, exactly (non-finite raises, as rational{rhs}). Every
 // rational lies strictly inside ±2^64, so a larger double is decided by its sign.
 [[nodiscard]] inline constexpr std::strong_ordering compare_double(const rational& lhs, double rhs) {
-    if (rhs - rhs == 0 && !(rhs < 0x1p64 && rhs > -0x1p64)) [[unlikely]]
+    if (is_finite(rhs) && past_64_bits(rhs)) [[unlikely]]
         return rhs < 0 ? std::strong_ordering::greater : std::strong_ordering::less;
     if (abs_fraction_exact(rhs) || not is_finite(rhs)) [[likely]]
         return lhs <=> rational{rhs};
@@ -804,8 +801,8 @@ compare_fine_double(const rational& lhs, double rhs) {
 // scaled magnitude times D.
 template <std::floating_point T>
 [[nodiscard]] constexpr std::strong_ordering compare_float(const rational& lhs, T rhs) {
-    if constexpr (sizeof(T) > sizeof(double))
-        if (rhs - rhs == 0 && !is_double_value(rhs)) [[unlikely]] {
+    if constexpr (wide_float<T>)
+        if (is_finite(rhs) && !is_double_value(rhs)) [[unlikely]] {
             const int ls = sign(lhs), rs = rhs < 0 ? -1 : 1;
             if (ls != rs)
                 return ls <=> rs;

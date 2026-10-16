@@ -108,7 +108,17 @@ constexpr double ldexp(double value, int exp) noexcept {
 // Freestanding finite check: `v - v` is 0 for every finite v, NaN otherwise
 // (and inf - inf is NaN). Avoids <cmath>/std::isfinite so the core stays
 // bare-metal clean; the same idiom is used in the store paths.
-constexpr bool is_finite(double v) noexcept { return v - v == 0; }
+template <std::floating_point T>
+constexpr bool is_finite(T v) noexcept {
+    return v - v == 0;
+}
+
+// |v| ≥ 2^64 or NaN: past every 64-bit integer and rational (a grid within
+// them is decided by the sign alone).
+template <std::floating_point T>
+constexpr bool past_64_bits(T v) noexcept {
+    return !(v < static_cast<T>(0x1p64) && v > static_cast<T>(-0x1p64));
+}
 
 // Whether abs_fraction keeps a finite double exactly below 2^64: its reduced
 // denominator is at most 2^62 (the bits past that are dropped). Every |value|
@@ -202,6 +212,37 @@ constexpr std::pair<umax, umax> abs_fraction(double value) {
 template <std::floating_point T>
 [[nodiscard]] constexpr bool is_double_value(T v) noexcept {
     return static_cast<T>(static_cast<double>(v)) == v; // NaN: false
+}
+
+// A floating point wider than double: long double on x87 and IEEE quad, whose
+// bits past a double's every exact path keeps.
+template <typename T>
+concept wide_float = std::floating_point<T> && (sizeof(T) > sizeof(double));
+
+// A finite nonzero double as |d| = Mant·2^Exp, Mant of 53 bits.
+struct double_parts_t {
+    umax Mant;
+    int  Exp;
+};
+[[nodiscard]] constexpr double_parts_t double_parts(double d) noexcept {
+    int        e    = 0;
+    const umax mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53));
+    return {mant, e - 53};
+}
+
+// The doubles a floating point splits into, each the rounding error of the
+// last: f(part) for each, until a part is 0, f returns false, or 8 parts.
+// Returns what is left (0 when every part was taken).
+template <std::floating_point T, typename F>
+constexpr T for_each_double_part(T v, F f) {
+    T rem = v;
+    for (int i = 0; i < 8 && rem != 0; ++i) {
+        const double d = static_cast<double>(rem);
+        if (d == 0 || !f(d))
+            break;
+        rem -= static_cast<T>(d);
+    }
+    return rem;
 }
 
 } // namespace beman::inside::detail

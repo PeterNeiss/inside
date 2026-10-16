@@ -279,11 +279,9 @@ constexpr exact_frac<exact_limbs<L>> exact_of_large(double d) noexcept {
 
 // A finite double's exact value: m·2^e, with 2^1024 and 2^-1074 in reach.
 constexpr exact_frac<18> exact_of_double(double d) noexcept {
-    using I         = wide_sint<18>;
-    int        e    = 0;
-    const umax mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53)); // |d| = mant·2^(e−53)
-    e -= 53;
-    const I n = e >= 0 ? I{mant} << e : I{mant};
+    using I              = wide_sint<18>;
+    const auto [mant, e] = double_parts(d);
+    const I n            = e >= 0 ? I{mant} << e : I{mant};
     return {d < 0 ? -n : n, e >= 0 ? I{1} : I{1} << -e};
 }
 
@@ -297,19 +295,17 @@ constexpr exact_frac<36> exact_of_long_double(T v) noexcept {
     using I             = wide_sint<36>;
     constexpr int shift = 1130;
     I             num{0};
-    T             rem = v;
-    for (int i = 0; i < 8 && rem != 0; ++i) {
-        const double d = static_cast<double>(rem);
+    bool          past = false;
+    const T       rem  = for_each_double_part(v, [&](double d) {
         if (!is_finite(d))
-            return {rem < 0 ? -(I{1} << 1100) : I{1} << 1100, I{1}};
-        if (d == 0)
-            break;
-        int        e    = 0;
-        const umax mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53)); // |d| = mant·2^(e−53)
-        const I    m    = I{mant} << (e - 53 + shift);
+            return !(past = true);
+        const auto [mant, e] = double_parts(d);
+        const I m            = I{mant} << (e + shift);
         num += d < 0 ? -m : m;
-        rem -= static_cast<T>(d);
-    }
+        return true;
+    });
+    if (past)
+        return {rem < 0 ? -(I{1} << 1100) : I{1} << 1100, I{1}};
     if (rem != 0)
         num += rem < 0 ? I{-1} : I{1};
     return reduced(exact_frac<36>{num, I{1} << shift});

@@ -154,14 +154,14 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
     constexpr bool double_exact_values =
         lower_of<B> >= rational{-(imax{1} << 53)} && upper_of<B> <= rational{imax{1} << 53};
     // A long double with bits past the double's: the paths below read a double.
-    if constexpr (std::floating_point<A> && sizeof(A) > sizeof(double))
-        if (rhs - rhs == 0 && !is_double_value(rhs)) [[unlikely]]
+    if constexpr (wide_float<A>)
+        if (is_finite(rhs) && !is_double_value(rhs)) [[unlikely]]
             return cmp(exact_of(lhs), exact_of_long_double(rhs));
     if constexpr (wide_valued<B>) {
         if constexpr (std::floating_point<A>) {
             if (rhs != rhs) // NaN: unordered, as the double comparison says
                 return cmp(0.0, static_cast<double>(rhs));
-            if (!(rhs - rhs == 0)) // ±inf lies past every grid
+            if (!is_finite(rhs)) // ±inf lies past every grid
                 return cmp(exact_of(0), exact_of(rhs < 0 ? -1 : 1));
             return cmp(exact_of(lhs), exact_of_double(static_cast<double>(rhs)));
         } else
@@ -182,7 +182,7 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
         if constexpr (std::floating_point<A>) {
             if (rhs != rhs) // NaN: unordered, as the double comparison says
                 return cmp(0.0, static_cast<double>(rhs));
-            if (!(rhs < 0x1p64 && rhs > -0x1p64))
+            if (past_64_bits(rhs))
                 return cmp(rational{0}, rational{rhs < 0 ? -1 : 1});
             if (!abs_fraction_exact(static_cast<double>(rhs))) [[unlikely]] // finer than 2^-62
                 return cmp(exact_of(lhs), exact_of_double(static_cast<double>(rhs)));

@@ -268,7 +268,7 @@ struct grid {
             return false;
         if (detail::fits_rational(Interval.Lower) && detail::fits_rational(Interval.Upper) &&
             detail::fits_rational(Notch)) {
-            if constexpr (sizeof(T) > sizeof(double))
+            if constexpr (detail::wide_float<T>)
                 if (!detail::is_double_value(d)) { // a long double with bits past the double's
                     bool       exact = false;
                     const auto r     = detail::rational_of_wide_float(d, exact);

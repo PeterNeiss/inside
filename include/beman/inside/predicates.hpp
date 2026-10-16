@@ -24,7 +24,7 @@ inline constexpr bool predicates_fit64 = fits_rational(grid_of<B>.Interval.Lower
 
 // A double the 64-bit paths cannot take exactly: |d| ≥ 2^64, or finer than
 // 2^-62 (as_rational would truncate it).
-constexpr bool past_rational(double d) noexcept { return !(d < 0x1p64 && d > -0x1p64) || !abs_fraction_exact(d); }
+constexpr bool past_rational(double d) noexcept { return past_64_bits(d) || !abs_fraction_exact(d); }
 
 // What converting the exact value x into B does: overflow (out of range,
 // and B's rounding does not bring it in) and rounding (in range off the
@@ -79,7 +79,7 @@ inline constexpr bool predicates_exact_only = !predicates_fit64<B> || wide_insid
 // exact_lossy for a value, when the 64-bit paths cannot take it.
 template <insidable B, numeric A>
 constexpr std::optional<lossy_result> exact_lossy_of(A value) noexcept {
-    if constexpr (std::floating_point<A> && sizeof(A) > sizeof(double)) {
+    if constexpr (wide_float<A>) {
         // A long double that is no double has bits the 64-bit paths drop.
         const double d = static_cast<double>(value);
         if (static_cast<A>(d) != value)
@@ -100,7 +100,7 @@ constexpr std::optional<lossy_result> exact_lossy_of(A value) noexcept {
 template <insidable B, numeric A>
 [[nodiscard]] constexpr bool conversion_overflows(A value) noexcept {
     if constexpr (std::floating_point<A>)
-        if (!(value - value == 0))
+        if (!detail::is_finite(value))
             return true; // NaN / ±inf fit no grid (and must not raise here)
     // The 64-bit paths below do not compile for a grid (or value) past them.
     if constexpr (detail::predicates_exact_only<B, A>)
@@ -121,7 +121,7 @@ template <insidable B, numeric A>
 template <insidable B, numeric A>
 [[nodiscard]] constexpr bool conversion_rounds(A value) noexcept {
     if constexpr (std::floating_point<A>)
-        if (!(value - value == 0))
+        if (!detail::is_finite(value))
             return false; // non-finite — overflow, not rounding
     // The 64-bit paths below do not compile for a grid (or value) past them.
     if constexpr (detail::predicates_exact_only<B, A>)

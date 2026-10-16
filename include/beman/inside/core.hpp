@@ -327,7 +327,7 @@ struct inside {
     // once to its own digits, not through a double.
     template <std::floating_point T>
     [[nodiscard]] constexpr std::expected<T, errc> to() const {
-        if constexpr (sizeof(T) > sizeof(double))
+        if constexpr (detail::wide_float<T>)
             return detail::nearest_float<T>(detail::exact_of(*this));
         else
             return static_cast<T>(detail::as_double(*this));

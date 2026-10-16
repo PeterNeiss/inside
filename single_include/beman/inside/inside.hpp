@@ -497,7 +497,17 @@ constexpr double ldexp(double value, int exp) noexcept {
 // Freestanding finite check: `v - v` is 0 for every finite v, NaN otherwise
 // (and inf - inf is NaN). Avoids <cmath>/std::isfinite so the core stays
 // bare-metal clean; the same idiom is used in the store paths.
-constexpr bool is_finite(double v) noexcept { return v - v == 0; }
+template <std::floating_point T>
+constexpr bool is_finite(T v) noexcept {
+    return v - v == 0;
+}
+
+// |v| ≥ 2^64 or NaN: past every 64-bit integer and rational (a grid within
+// them is decided by the sign alone).
+template <std::floating_point T>
+constexpr bool past_64_bits(T v) noexcept {
+    return !(v < static_cast<T>(0x1p64) && v > static_cast<T>(-0x1p64));
+}
 
 // Whether abs_fraction keeps a finite double exactly below 2^64: its reduced
 // denominator is at most 2^62 (the bits past that are dropped). Every |value|
@@ -591,6 +601,37 @@ constexpr std::pair<umax, umax> abs_fraction(double value) {
 template <std::floating_point T>
 [[nodiscard]] constexpr bool is_double_value(T v) noexcept {
     return static_cast<T>(static_cast<double>(v)) == v; // NaN: false
+}
+
+// A floating point wider than double: long double on x87 and IEEE quad, whose
+// bits past a double's every exact path keeps.
+template <typename T>
+concept wide_float = std::floating_point<T> && (sizeof(T) > sizeof(double));
+
+// A finite nonzero double as |d| = Mant·2^Exp, Mant of 53 bits.
+struct double_parts_t {
+    umax Mant;
+    int  Exp;
+};
+[[nodiscard]] constexpr double_parts_t double_parts(double d) noexcept {
+    int        e    = 0;
+    const umax mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53));
+    return {mant, e - 53};
+}
+
+// The doubles a floating point splits into, each the rounding error of the
+// last: f(part) for each, until a part is 0, f returns false, or 8 parts.
+// Returns what is left (0 when every part was taken).
+template <std::floating_point T, typename F>
+constexpr T for_each_double_part(T v, F f) {
+    T rem = v;
+    for (int i = 0; i < 8 && rem != 0; ++i) {
+        const double d = static_cast<double>(rem);
+        if (d == 0 || !f(d))
+            break;
+        rem -= static_cast<T>(d);
+    }
+    return rem;
 }
 
 } // namespace beman::inside::detail
@@ -1571,21 +1612,18 @@ struct scaled_float {
 template <std::floating_point T>
 [[nodiscard]] constexpr scaled_float scaled_magnitude(T v) noexcept {
     using W = wide_sint<5>;
-    W   acc{0};
-    int tail = 0;
-    T   rem  = v < 0 ? -v : v;
-    for (int i = 0; i < 8 && rem != 0; ++i) {
-        const double d    = static_cast<double>(rem);
-        int          e    = 0;
-        const umax   mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53)); // |d| = mant·2^(e−53)
-        const int    s    = e - 53 + wide_float_shift;
+    W       acc{0};
+    int     tail = 0;
+    const T rem  = for_each_double_part(v < 0 ? -v : v, [&](double d) {
+        const auto [mant, e] = double_parts(d);
+        const int s          = e + wide_float_shift;
         if (s < 0) { // below 2^-180: the parts after it are smaller still
             tail = d < 0 ? -1 : 1;
-            break;
+            return false;
         }
         acc += d < 0 ? -(W{mant} << s) : W{mant} << s;
-        rem -= static_cast<T>(d);
-    }
+        return true;
+    });
     if (tail == 0 && rem != 0)
         tail = rem < 0 ? -1 : 1;
     return {static_cast<wide_uint<4>>(acc), tail};
@@ -1625,9 +1663,9 @@ constexpr rational::rational(std::signed_integral auto num, imax den)
 }
 
 constexpr rational::rational(std::floating_point auto value) {
-    if (!(value - value == 0))
+    if (!is_finite(value))
         raise(errc::not_finite, "non-finite double");
-    if constexpr (sizeof(value) > sizeof(double))
+    if constexpr (wide_float<decltype(value)>)
         if (!is_double_value(value)) {
             bool exact;
             *this = rational_of_wide_float(value, exact);
@@ -2036,7 +2074,7 @@ compare_fine_double(const rational& lhs, double rhs) {
 // lhs against a double, exactly (non-finite raises, as rational{rhs}). Every
 // rational lies strictly inside ±2^64, so a larger double is decided by its sign.
 [[nodiscard]] inline constexpr std::strong_ordering compare_double(const rational& lhs, double rhs) {
-    if (rhs - rhs == 0 && !(rhs < 0x1p64 && rhs > -0x1p64)) [[unlikely]]
+    if (is_finite(rhs) && past_64_bits(rhs)) [[unlikely]]
         return rhs < 0 ? std::strong_ordering::greater : std::strong_ordering::less;
     if (abs_fraction_exact(rhs) || not is_finite(rhs)) [[likely]]
         return lhs <=> rational{rhs};
@@ -2048,8 +2086,8 @@ compare_fine_double(const rational& lhs, double rhs) {
 // scaled magnitude times D.
 template <std::floating_point T>
 [[nodiscard]] constexpr std::strong_ordering compare_float(const rational& lhs, T rhs) {
-    if constexpr (sizeof(T) > sizeof(double))
-        if (rhs - rhs == 0 && !is_double_value(rhs)) [[unlikely]] {
+    if constexpr (wide_float<T>)
+        if (is_finite(rhs) && !is_double_value(rhs)) [[unlikely]] {
             const int ls = sign(lhs), rs = rhs < 0 ? -1 : 1;
             if (ls != rs)
                 return ls <=> rs;
@@ -2801,14 +2839,13 @@ constexpr bool same_lattice(const frac& a, frac b, const frac& n) {
 // a wider one (long double) as the sum of the doubles it splits into.
 template <std::floating_point T>
 constexpr frac frac_of_float(T v) {
-    if constexpr (sizeof(T) > sizeof(double)) {
+    if constexpr (wide_float<T>) {
         if (static_cast<T>(static_cast<double>(v)) != v) {
             frac s;
-            for (T rem = v; rem != 0;) {
-                const double p = static_cast<double>(rem);
-                s              = s + frac_of_float(p);
-                rem -= static_cast<T>(p);
-            }
+            for_each_double_part(v, [&](double p) {
+                s = s + frac_of_float(p);
+                return true;
+            });
             const mag g = gcd(s.Num, s.Den);
             return {divmod(s.Num, g).Quotient, divmod(s.Den, g).Quotient, s.Negative};
         }
@@ -2816,9 +2853,7 @@ constexpr frac frac_of_float(T v) {
     const double d = static_cast<double>(v);
     if (d == 0)
         return {};
-    int  e    = 0;
-    umax mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53)); // |d| = mant·2^(e−53)
-    e -= 53;
+    auto [mant, e] = double_parts(d);
     for (; mant % 2 == 0 && e < 0; ++e)
         mant /= 2;
     return e >= 0 ? frac{shl(mag{mant}, e), mag{umax{1}}, d < 0} : frac{mag{mant}, shl(mag{umax{1}}, -e), d < 0};
@@ -3069,7 +3104,7 @@ struct big_rational {
             }
             raise(errc::not_finite, "big_rational: not a finite number");
         }
-        if constexpr (sizeof(d) > sizeof(double))
+        if constexpr (wide_float<decltype(d)>)
             if (!is_double_value(d)) { // long double: the sum of the doubles it splits into
                 if (!is_finite(static_cast<double>(d))) {
                     if consteval {
@@ -3078,21 +3113,15 @@ struct big_rational {
                     raise(errc::overflow, "big_rational: a long double past the double range");
                 }
                 big_rational s{0};
-                for (auto rem = d; rem != 0;) {
-                    const double p = static_cast<double>(rem);
-                    s              = s + big_rational{p};
-                    rem -= static_cast<decltype(d)>(p);
-                }
+                for_each_double_part(d, [&](double p) {
+                    s = s + big_rational{p};
+                    return true;
+                });
                 *this = s;
                 return;
             }
-        int        e   = 0;
-        double     m   = frexp(static_cast<double>(d), &e); // d = m·2^e, |m| in [0.5, 1)
-        const bool neg = m < 0;
-        if (neg)
-            m = -m;
-        umax mant = static_cast<umax>(ldexp(m, 53)); // exact: 53 bits
-        e -= 53;
+        const bool neg = d < 0;
+        auto [mant, e] = double_parts(static_cast<double>(d)); // |d| = mant·2^e, 53 bits
         // In lowest terms from the start: a value that fits 64 bits (2^-20)
         // never builds a wider intermediate, which only compile time holds.
         for (; mant % 2 == 0 && e < 0; ++e)
@@ -3591,7 +3620,7 @@ template <detail::arithmetic A>
         if (!detail::is_finite(static_cast<double>(a)))
             return false;
         if (detail::fits_rational(iv.Lower) && detail::fits_rational(iv.Upper)) {
-            if (!(a < 0x1p64 && a > -0x1p64))
+            if (detail::past_64_bits(a))
                 return false;
             return detail::to_rational(iv.Lower) <= a && a <= detail::to_rational(iv.Upper);
         }
@@ -4266,7 +4295,7 @@ struct grid {
             return false;
         if (detail::fits_rational(Interval.Lower) && detail::fits_rational(Interval.Upper) &&
             detail::fits_rational(Notch)) {
-            if constexpr (sizeof(T) > sizeof(double))
+            if constexpr (detail::wide_float<T>)
                 if (!detail::is_double_value(d)) { // a long double with bits past the double's
                     bool       exact = false;
                     const auto r     = detail::rational_of_wide_float(d, exact);
@@ -5988,11 +6017,9 @@ constexpr exact_frac<exact_limbs<L>> exact_of_large(double d) noexcept {
 
 // A finite double's exact value: m·2^e, with 2^1024 and 2^-1074 in reach.
 constexpr exact_frac<18> exact_of_double(double d) noexcept {
-    using I         = wide_sint<18>;
-    int        e    = 0;
-    const umax mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53)); // |d| = mant·2^(e−53)
-    e -= 53;
-    const I n = e >= 0 ? I{mant} << e : I{mant};
+    using I              = wide_sint<18>;
+    const auto [mant, e] = double_parts(d);
+    const I n            = e >= 0 ? I{mant} << e : I{mant};
     return {d < 0 ? -n : n, e >= 0 ? I{1} : I{1} << -e};
 }
 
@@ -6006,19 +6033,17 @@ constexpr exact_frac<36> exact_of_long_double(T v) noexcept {
     using I             = wide_sint<36>;
     constexpr int shift = 1130;
     I             num{0};
-    T             rem = v;
-    for (int i = 0; i < 8 && rem != 0; ++i) {
-        const double d = static_cast<double>(rem);
+    bool          past = false;
+    const T       rem  = for_each_double_part(v, [&](double d) {
         if (!is_finite(d))
-            return {rem < 0 ? -(I{1} << 1100) : I{1} << 1100, I{1}};
-        if (d == 0)
-            break;
-        int        e    = 0;
-        const umax mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53)); // |d| = mant·2^(e−53)
-        const I    m    = I{mant} << (e - 53 + shift);
+            return !(past = true);
+        const auto [mant, e] = double_parts(d);
+        const I m            = I{mant} << (e + shift);
         num += d < 0 ? -m : m;
-        rem -= static_cast<T>(d);
-    }
+        return true;
+    });
+    if (past)
+        return {rem < 0 ? -(I{1} << 1100) : I{1} << 1100, I{1}};
     if (rem != 0)
         num += rem < 0 ? I{-1} : I{1};
     return reduced(exact_frac<36>{num, I{1} << shift});
@@ -7119,7 +7144,7 @@ struct assignment<L, R> {
     // rational form (rational(double) would fail): decide such values by sign.
     static constexpr bool huge(const R& rhs) noexcept {
         if constexpr (std::floating_point<R>)
-            return !(rhs < 0x1p64 && rhs > -0x1p64);
+            return past_64_bits(rhs);
         else
             return false;
     }
@@ -7507,7 +7532,7 @@ struct assignment<L, R> {
     // it is no exact double.)
     static constexpr bool exact_double(const rational& r) {
         const double d = static_cast<double>(r);
-        return d < 0x1p64 && d > -0x1p64 && rational{d} == r;
+        return !past_64_bits(d) && rational{d} == r;
     }
     static constexpr bool double_bounds_exact =
         std::floating_point<R> && exact_double(detail::lower64<L>) && exact_double(detail::upper64<L>);
@@ -7580,9 +7605,9 @@ struct assignment<L, R> {
     static constexpr L& assign(L& lhs, const R& rhs, P&& policy, A&& action = {}) {
         // A long double that is a double stores as that double; one with bits
         // past it stores exactly (the double paths would drop them).
-        if constexpr (std::floating_point<R> && sizeof(R) > sizeof(double)) {
+        if constexpr (wide_float<R>) {
             const double d = static_cast<double>(rhs);
-            if (rhs - rhs == 0 && static_cast<R>(d) != rhs) [[unlikely]] {
+            if (is_finite(rhs) && static_cast<R>(d) != rhs) [[unlikely]] {
                 // Past the double range: a stand-in past every limit, which
                 // clamps or overflows, but a fold needs the exact value.
                 if constexpr (has_policy<L, P, wrap>)
@@ -7597,12 +7622,12 @@ struct assignment<L, R> {
             // NaN / ±inf first, as below; a finite |rhs| ≥ 2^64 is an integer,
             // taken exactly (or by its side, past the grid: exact_of_large).
             if constexpr (std::floating_point<R>)
-                if (!(rhs - rhs == 0) || huge(rhs)) [[unlikely]] {
+                if (!is_finite(rhs) || huge(rhs)) [[unlikely]] {
                     if (rhs != rhs) {
                         report_failure(lhs, policy, action, errc::not_finite);
                         return lhs;
                     }
-                    if (!(rhs - rhs == 0) && !has_policy<L, P, clamp>) {
+                    if (!is_finite(rhs) && !has_policy<L, P, clamp>) {
                         report_failure(lhs, policy, action, errc::not_finite);
                         return lhs;
                     }
@@ -7624,7 +7649,7 @@ struct assignment<L, R> {
         // NaN / ±inf: no rational value to round or range-check. clamp saturates
         // an infinity; everything else reports not_finite through the policy.
         if constexpr (std::floating_point<R>)
-            if (!(rhs - rhs == 0)) [[unlikely]] {
+            if (!is_finite(rhs)) [[unlikely]] {
                 if constexpr (has_policy<L, P, clamp>)
                     if (rhs == rhs) {
                         // Saturated like any value past a limit: an on_clamp
@@ -9285,7 +9310,7 @@ inline constexpr bool predicates_fit64 = fits_rational(grid_of<B>.Interval.Lower
 
 // A double the 64-bit paths cannot take exactly: |d| ≥ 2^64, or finer than
 // 2^-62 (as_rational would truncate it).
-constexpr bool past_rational(double d) noexcept { return !(d < 0x1p64 && d > -0x1p64) || !abs_fraction_exact(d); }
+constexpr bool past_rational(double d) noexcept { return past_64_bits(d) || !abs_fraction_exact(d); }
 
 // What converting the exact value x into B does: overflow (out of range,
 // and B's rounding does not bring it in) and rounding (in range off the
@@ -9340,7 +9365,7 @@ inline constexpr bool predicates_exact_only = !predicates_fit64<B> || wide_insid
 // exact_lossy for a value, when the 64-bit paths cannot take it.
 template <insidable B, numeric A>
 constexpr std::optional<lossy_result> exact_lossy_of(A value) noexcept {
-    if constexpr (std::floating_point<A> && sizeof(A) > sizeof(double)) {
+    if constexpr (wide_float<A>) {
         // A long double that is no double has bits the 64-bit paths drop.
         const double d = static_cast<double>(value);
         if (static_cast<A>(d) != value)
@@ -9361,7 +9386,7 @@ constexpr std::optional<lossy_result> exact_lossy_of(A value) noexcept {
 template <insidable B, numeric A>
 [[nodiscard]] constexpr bool conversion_overflows(A value) noexcept {
     if constexpr (std::floating_point<A>)
-        if (!(value - value == 0))
+        if (!detail::is_finite(value))
             return true; // NaN / ±inf fit no grid (and must not raise here)
     // The 64-bit paths below do not compile for a grid (or value) past them.
     if constexpr (detail::predicates_exact_only<B, A>)
@@ -9382,7 +9407,7 @@ template <insidable B, numeric A>
 template <insidable B, numeric A>
 [[nodiscard]] constexpr bool conversion_rounds(A value) noexcept {
     if constexpr (std::floating_point<A>)
-        if (!(value - value == 0))
+        if (!detail::is_finite(value))
             return false; // non-finite — overflow, not rounding
     // The 64-bit paths below do not compile for a grid (or value) past them.
     if constexpr (detail::predicates_exact_only<B, A>)
@@ -9735,7 +9760,7 @@ struct inside {
     // once to its own digits, not through a double.
     template <std::floating_point T>
     [[nodiscard]] constexpr std::expected<T, errc> to() const {
-        if constexpr (sizeof(T) > sizeof(double))
+        if constexpr (detail::wide_float<T>)
             return detail::nearest_float<T>(detail::exact_of(*this));
         else
             return static_cast<T>(detail::as_double(*this));
@@ -10538,14 +10563,14 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
     constexpr bool double_exact_values =
         lower_of<B> >= rational{-(imax{1} << 53)} && upper_of<B> <= rational{imax{1} << 53};
     // A long double with bits past the double's: the paths below read a double.
-    if constexpr (std::floating_point<A> && sizeof(A) > sizeof(double))
-        if (rhs - rhs == 0 && !is_double_value(rhs)) [[unlikely]]
+    if constexpr (wide_float<A>)
+        if (is_finite(rhs) && !is_double_value(rhs)) [[unlikely]]
             return cmp(exact_of(lhs), exact_of_long_double(rhs));
     if constexpr (wide_valued<B>) {
         if constexpr (std::floating_point<A>) {
             if (rhs != rhs) // NaN: unordered, as the double comparison says
                 return cmp(0.0, static_cast<double>(rhs));
-            if (!(rhs - rhs == 0)) // ±inf lies past every grid
+            if (!is_finite(rhs)) // ±inf lies past every grid
                 return cmp(exact_of(0), exact_of(rhs < 0 ? -1 : 1));
             return cmp(exact_of(lhs), exact_of_double(static_cast<double>(rhs)));
         } else
@@ -10566,7 +10591,7 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
         if constexpr (std::floating_point<A>) {
             if (rhs != rhs) // NaN: unordered, as the double comparison says
                 return cmp(0.0, static_cast<double>(rhs));
-            if (!(rhs < 0x1p64 && rhs > -0x1p64))
+            if (past_64_bits(rhs))
                 return cmp(rational{0}, rational{rhs < 0 ? -1 : 1});
             if (!abs_fraction_exact(static_cast<double>(rhs))) [[unlikely]] // finer than 2^-62
                 return cmp(exact_of(lhs), exact_of_double(static_cast<double>(rhs)));

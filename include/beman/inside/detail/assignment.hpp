@@ -196,7 +196,7 @@ struct assignment<L, R> {
     // rational form (rational(double) would fail): decide such values by sign.
     static constexpr bool huge(const R& rhs) noexcept {
         if constexpr (std::floating_point<R>)
-            return !(rhs < 0x1p64 && rhs > -0x1p64);
+            return past_64_bits(rhs);
         else
             return false;
     }
@@ -584,7 +584,7 @@ struct assignment<L, R> {
     // it is no exact double.)
     static constexpr bool exact_double(const rational& r) {
         const double d = static_cast<double>(r);
-        return d < 0x1p64 && d > -0x1p64 && rational{d} == r;
+        return !past_64_bits(d) && rational{d} == r;
     }
     static constexpr bool double_bounds_exact =
         std::floating_point<R> && exact_double(detail::lower64<L>) && exact_double(detail::upper64<L>);
@@ -657,9 +657,9 @@ struct assignment<L, R> {
     static constexpr L& assign(L& lhs, const R& rhs, P&& policy, A&& action = {}) {
         // A long double that is a double stores as that double; one with bits
         // past it stores exactly (the double paths would drop them).
-        if constexpr (std::floating_point<R> && sizeof(R) > sizeof(double)) {
+        if constexpr (wide_float<R>) {
             const double d = static_cast<double>(rhs);
-            if (rhs - rhs == 0 && static_cast<R>(d) != rhs) [[unlikely]] {
+            if (is_finite(rhs) && static_cast<R>(d) != rhs) [[unlikely]] {
                 // Past the double range: a stand-in past every limit, which
                 // clamps or overflows, but a fold needs the exact value.
                 if constexpr (has_policy<L, P, wrap>)
@@ -674,12 +674,12 @@ struct assignment<L, R> {
             // NaN / ±inf first, as below; a finite |rhs| ≥ 2^64 is an integer,
             // taken exactly (or by its side, past the grid: exact_of_large).
             if constexpr (std::floating_point<R>)
-                if (!(rhs - rhs == 0) || huge(rhs)) [[unlikely]] {
+                if (!is_finite(rhs) || huge(rhs)) [[unlikely]] {
                     if (rhs != rhs) {
                         report_failure(lhs, policy, action, errc::not_finite);
                         return lhs;
                     }
-                    if (!(rhs - rhs == 0) && !has_policy<L, P, clamp>) {
+                    if (!is_finite(rhs) && !has_policy<L, P, clamp>) {
                         report_failure(lhs, policy, action, errc::not_finite);
                         return lhs;
                     }
@@ -701,7 +701,7 @@ struct assignment<L, R> {
         // NaN / ±inf: no rational value to round or range-check. clamp saturates
         // an infinity; everything else reports not_finite through the policy.
         if constexpr (std::floating_point<R>)
-            if (!(rhs - rhs == 0)) [[unlikely]] {
+            if (!is_finite(rhs)) [[unlikely]] {
                 if constexpr (has_policy<L, P, clamp>)
                     if (rhs == rhs) {
                         // Saturated like any value past a limit: an on_clamp

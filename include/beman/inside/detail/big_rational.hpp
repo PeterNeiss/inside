@@ -177,14 +177,13 @@ constexpr bool same_lattice(const frac& a, frac b, const frac& n) {
 // a wider one (long double) as the sum of the doubles it splits into.
 template <std::floating_point T>
 constexpr frac frac_of_float(T v) {
-    if constexpr (sizeof(T) > sizeof(double)) {
+    if constexpr (wide_float<T>) {
         if (static_cast<T>(static_cast<double>(v)) != v) {
             frac s;
-            for (T rem = v; rem != 0;) {
-                const double p = static_cast<double>(rem);
-                s              = s + frac_of_float(p);
-                rem -= static_cast<T>(p);
-            }
+            for_each_double_part(v, [&](double p) {
+                s = s + frac_of_float(p);
+                return true;
+            });
             const mag g = gcd(s.Num, s.Den);
             return {divmod(s.Num, g).Quotient, divmod(s.Den, g).Quotient, s.Negative};
         }
@@ -192,9 +191,7 @@ constexpr frac frac_of_float(T v) {
     const double d = static_cast<double>(v);
     if (d == 0)
         return {};
-    int  e    = 0;
-    umax mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53)); // |d| = mant·2^(e−53)
-    e -= 53;
+    auto [mant, e] = double_parts(d);
     for (; mant % 2 == 0 && e < 0; ++e)
         mant /= 2;
     return e >= 0 ? frac{shl(mag{mant}, e), mag{umax{1}}, d < 0} : frac{mag{mant}, shl(mag{umax{1}}, -e), d < 0};
@@ -445,7 +442,7 @@ struct big_rational {
             }
             raise(errc::not_finite, "big_rational: not a finite number");
         }
-        if constexpr (sizeof(d) > sizeof(double))
+        if constexpr (wide_float<decltype(d)>)
             if (!is_double_value(d)) { // long double: the sum of the doubles it splits into
                 if (!is_finite(static_cast<double>(d))) {
                     if consteval {
@@ -454,21 +451,15 @@ struct big_rational {
                     raise(errc::overflow, "big_rational: a long double past the double range");
                 }
                 big_rational s{0};
-                for (auto rem = d; rem != 0;) {
-                    const double p = static_cast<double>(rem);
-                    s              = s + big_rational{p};
-                    rem -= static_cast<decltype(d)>(p);
-                }
+                for_each_double_part(d, [&](double p) {
+                    s = s + big_rational{p};
+                    return true;
+                });
                 *this = s;
                 return;
             }
-        int        e   = 0;
-        double     m   = frexp(static_cast<double>(d), &e); // d = m·2^e, |m| in [0.5, 1)
-        const bool neg = m < 0;
-        if (neg)
-            m = -m;
-        umax mant = static_cast<umax>(ldexp(m, 53)); // exact: 53 bits
-        e -= 53;
+        const bool neg = d < 0;
+        auto [mant, e] = double_parts(static_cast<double>(d)); // |d| = mant·2^e, 53 bits
         // In lowest terms from the start: a value that fits 64 bits (2^-20)
         // never builds a wider intermediate, which only compile time holds.
         for (; mant % 2 == 0 && e < 0; ++e)
