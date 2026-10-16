@@ -11435,6 +11435,143 @@ template <insidable B>
 
 
 
+#if __STDC_HOSTED__ && !defined(BEMAN_INSIDE_MATH_NO_FP)
+
+// ======================================================================
+//  beman/inside/chrono.hpp
+// ======================================================================
+// Opt-in: std::chrono at the boundary. An inside's value is a time in
+// seconds, its notch the resolution: inside<{{0, 86400}, per<1000>}> is a
+// time of day to the millisecond, and a chrono period is a notch
+// (`period_notch<std::milli>` == per<1000>).
+//   from_duration<B, F>(d)   duration → B: the exact count·num/den seconds,
+//                            stored like B::try_make<F> (B's policy plus F)
+//   to_duration<D, F>(x)     B → duration D: the exact count value·den/num;
+//                            off a whole number of D's periods it is a
+//                            rounding_error unless F names a rounding mode,
+//                            and a count outside D's rep is an overflow
+// to_duration returns a plain D when B's grid proves neither can happen (every
+// value a whole number of periods, the counts within the rep), and always for
+// a floating rep (rounded once); else std::expected<D, errc>.
+// An inside is not a duration *rep*: chrono converts periods by multiplying
+// the count by a raw intmax_t and keeps the operands' rep for a sum, while an
+// inside rejects raw scalars and widens its results.
+//---------------------------------------------------------------------------
+
+
+#include <chrono>
+#include <concepts>
+#include <expected>
+#include <limits>
+#include <ratio>
+
+namespace beman::inside {
+// A chrono period as a grid notch, in seconds: period_notch<std::milli> is 1/1000.
+template <class Period>
+inline constexpr rational period_notch = rational{static_cast<imax>(Period::num), static_cast<imax>(Period::den)};
+
+namespace detail {
+template <class T>
+inline constexpr bool is_duration_v = false;
+template <class Rep, class Period>
+inline constexpr bool is_duration_v<std::chrono::duration<Rep, Period>> = true;
+
+template <class T>
+concept chrono_duration = is_duration_v<std::remove_cvref_t<T>>;
+
+// Whether every value of B gives D a count within its rep — a whole number of
+// periods, unless F rounds — so to_duration cannot fail.
+template <insidable B, chrono_duration D, policy_flag F>
+inline constexpr bool duration_total = [] {
+    using Rep = typename D::rep;
+    if constexpr (std::floating_point<Rep>)
+        return true;
+    else {
+        constexpr grid_rational p{period_notch<typename D::period>};
+        if constexpr (F == none && (!(notched<B> || point_grid<B>) || !grid_divides_evenly(lower_of<B>, p) ||
+                                    !grid_divides_evenly(notch_of<B>, p)))
+            return false;
+        else {
+            constexpr std::size_t K = exact_limbs<B>;
+            using lim               = std::numeric_limits<Rep>;
+            const auto q            = exact_of<K>(period_notch<typename D::period>);
+            return exact_of_grid<K>(lower_of<B>) / q >= exact_of<K>(lim::min()) &&
+                   exact_of_grid<K>(upper_of<B>) / q <= exact_of<K>(lim::max());
+        }
+    }
+}();
+
+// D's count for x: the exact value·den/num, rounded by F when F names a mode.
+template <chrono_duration D, policy_flag F, insidable B>
+constexpr std::expected<typename D::rep, errc> duration_count(const B& x) {
+    using Rep    = typename D::rep;
+    const auto q = exact_of(x) / exact_of(period_notch<typename D::period>);
+    if constexpr (std::floating_point<Rep>)
+        return nearest_float<Rep>(q);
+    else {
+        using I = decltype(q.Num);
+        auto t  = q;
+        if (q.Num % q.Den != I{0}) {
+            if constexpr (F == none)
+                return std::unexpected{errc::rounding_error};
+            else
+                t = round_to_denominator<rounding_of(F)>(q, I{1});
+        }
+        const I n = trunc(t);
+        if (n < I{std::numeric_limits<Rep>::min()} || n > I{std::numeric_limits<Rep>::max()})
+            return std::unexpected{errc::overflow};
+        return static_cast<Rep>(n);
+    }
+}
+} // namespace detail
+
+// duration → B: the exact value count·num/den seconds, then B's store with
+// the flags F added (as B::try_make<F>): B's policy rounds, clamps or wraps,
+// and a value it cannot take is the error. A floating count is taken as its
+// binary value (to 2^-62 off a 1-second period); past 2^63 periods it is an
+// overflow, and a non-finite count is not_finite.
+template <insidable B, policy_flag F = none, class Rep, class Period>
+[[nodiscard]] constexpr std::expected<B, errc> from_duration(std::chrono::duration<Rep, Period> d) {
+    if constexpr (std::floating_point<Rep> && std::ratio_equal_v<Period, std::ratio<1>>)
+        return B::template try_make<F>(d.count());
+    else {
+        std::expected<rational, errc> v{rational{0}};
+        if constexpr (std::floating_point<Rep>) {
+            const Rep c = d.count();
+            if (!detail::is_finite(c))
+                return std::unexpected{errc::not_finite};
+            if (!(c > Rep{-0x1p63} && c < Rep{0x1p63}))
+                return std::unexpected{errc::overflow};
+            v = rational{static_cast<double>(c)} * period_notch<Period>;
+        } else
+            v = rational{d.count()} * period_notch<Period>;
+        if (!v)
+            return std::unexpected{v.error()};
+        return B::template try_make<F>(*v);
+    }
+}
+
+// B → duration D: the count value·den/num, exactly. F (none, or one rounding
+// mode) rounds a count that is not a whole number of D's periods; without it
+// that is errc::rounding_error. A count outside D's rep is errc::overflow.
+// Returns D when the grid rules both out (see the top), else expected<D, errc>.
+template <detail::chrono_duration D, policy_flag F = none, insidable B>
+    requires detail::cast_rounding<F>
+[[nodiscard]] constexpr auto to_duration(const B& x) {
+    if constexpr (detail::duration_total<B, D, F>)
+        return D{*detail::duration_count<D, F>(x)};
+    else {
+        const auto c = detail::duration_count<D, F>(x);
+        if (!c)
+            return std::expected<D, errc>{std::unexpect, c.error()};
+        return std::expected<D, errc>{D{*c}};
+    }
+}
+} // namespace beman::inside
+
+
+#endif // __STDC_HOSTED__ && !BEMAN_INSIDE_MATH_NO_FP
+
 // ======================================================================
 //  beman/inside/cmath.hpp
 // ======================================================================
@@ -17541,7 +17678,7 @@ using wrap_counter = inside<{0, Max}, wrap>;
 // so defining BEMAN_INSIDE_NO_STRING drops it (and its heavy includes) wholesale.
 //
 // Provides:
-//   * to_string(rational | interval | grid | insidable | arithmetic)
+//   * to_string(rational | interval | grid | insidable | arithmetic | errc)
 //   * to_string_debug(insidable)        — value + raw + raw-type + grid
 //   * operator<<(std::ostream&, ...)
 //   * std::formatter<inside<G,P>> / std::formatter<rational>   (when <format>)
@@ -17822,6 +17959,11 @@ inline std::ostream& operator<<(std::ostream& stream, beman::inside::detail::rat
     stream << beman::inside::to_string(r);
     return stream;
 }
+
+// An error code as its message: "division by zero".
+[[nodiscard]] inline std::string to_string(errc e) { return errc_message(e); }
+
+inline std::ostream& operator<<(std::ostream& stream, errc e) { return stream << errc_message(e); }
 
 template <insidable B>
 inline std::ostream& operator<<(std::ostream& stream, B b) {
@@ -18382,5 +18524,2245 @@ template <insidable B, std::uniform_random_bit_generator G>
 
 
 #endif // __STDC_HOSTED__ && !BEMAN_INSIDE_MATH_NO_FP
+
+#if !defined(BEMAN_INSIDE_NO_STRING) && !defined(BEMAN_INSIDE_NO_UNITS)
+
+// ======================================================================
+//  beman/inside/units.hpp
+// ======================================================================
+// Opt-in: physical units and quantity kinds on inside — the main features of
+// mp-units with an inside as the only representation.
+//
+//   quantity<si::metre, inside<{0, 10}>> d{7};      // 7 m
+//   auto k = just<5> * si::kilo(si::metre);         // 5 km, a point grid
+//   auto s = k + d;                                 // 5007 m, exact
+//   auto v = d.in(si::milli(si::metre));            // 7000 mm, the same raw
+//   quantity<isq::height[si::metre], H> h{…};       // a quantity kind
+//
+// A unit conversion is a grid rescale: km → m multiplies the interval and
+// notch by 1000 and keeps the raw, so it is exact, total and free. A sum of
+// two units runs in their common unit (the gcd of the magnitudes), so it is
+// exact too. Products and quotients take inside's result grids.
+//
+// Compile time: dimensions, magnitudes, units, quantity specs and references
+// are structural values combined by consteval functions — no type lists, no
+// type-level sorting. The names a user writes (si::metre, isq::height) are
+// empty tag objects whose type carries the value.
+//
+// Magnitudes are exact rationals times a power of π. A π magnitude (degree ↔
+// radian) has no exact rescale: it rounds once, through value_cast with a
+// target representation and a rounding flag. Grid numbers are 64-bit under
+// C++23; the prefixes and constants that need more (yocto, quetta, the eV)
+// exist only under C++26 big grids (BEMAN_INSIDE_BIG_GRIDS).
+//---------------------------------------------------------------------------
+
+
+#include <algorithm>
+#include <compare>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <ostream>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <utility>
+
+// `= delete("reason")` (C++26; an extension from GCC 15 and Clang 19), as
+// arithmetic.hpp spells it.
+#if defined(__cpp_deleted_function) || (defined(__clang__) && __clang_major__ >= 19) || \
+    (defined(__GNUC__) && !defined(__clang__) && __GNUC__ >= 15)
+    #define BEMAN_INSIDE_UNITS_DELETE(reason) delete (reason)
+    #define BEMAN_INSIDE_UNITS_DELETE_BEGIN \
+        _Pragma("GCC diagnostic push") _Pragma("GCC diagnostic ignored \"-Wc++26-extensions\"")
+    #define BEMAN_INSIDE_UNITS_DELETE_END _Pragma("GCC diagnostic pop")
+#else
+    #define BEMAN_INSIDE_UNITS_DELETE(reason) delete
+    #define BEMAN_INSIDE_UNITS_DELETE_BEGIN
+    #define BEMAN_INSIDE_UNITS_DELETE_END
+#endif
+
+namespace beman::inside::units {
+using beman::inside::detail::grid_rational;
+
+//---------------------------------------------------------------------------
+// dimension — the exponents of the seven SI base dimensions
+// (L M T I Θ N J). Angle is dimensionless, as in SI.
+//---------------------------------------------------------------------------
+inline constexpr std::size_t base_dimensions = 7;
+
+struct dimension {
+    std::int8_t Exp[base_dimensions]{};
+
+    friend constexpr bool      operator==(const dimension&, const dimension&) = default;
+    friend consteval dimension operator*(dimension a, const dimension& b) {
+        for (std::size_t i = 0; i < base_dimensions; ++i)
+            a.Exp[i] = static_cast<std::int8_t>(a.Exp[i] + b.Exp[i]);
+        return a;
+    }
+    friend consteval dimension operator/(dimension a, const dimension& b) {
+        for (std::size_t i = 0; i < base_dimensions; ++i)
+            a.Exp[i] = static_cast<std::int8_t>(a.Exp[i] - b.Exp[i]);
+        return a;
+    }
+    consteval dimension pow(int n) const {
+        dimension r = *this;
+        for (auto& e : r.Exp)
+            e = static_cast<std::int8_t>(e * n);
+        return r;
+    }
+    // The n-th root; every exponent must divide.
+    consteval dimension root(int n) const {
+        dimension r = *this;
+        for (auto& e : r.Exp) {
+            if (e % n != 0)
+                beman::inside::detail::constexpr_error<"units: the root of a dimension needs exponents it divides">();
+            e = static_cast<std::int8_t>(e / n);
+        }
+        return r;
+    }
+};
+
+inline constexpr dimension dim_one{};
+inline constexpr dimension dim_length{{1, 0, 0, 0, 0, 0, 0}};
+inline constexpr dimension dim_mass{{0, 1, 0, 0, 0, 0, 0}};
+inline constexpr dimension dim_time{{0, 0, 1, 0, 0, 0, 0}};
+inline constexpr dimension dim_electric_current{{0, 0, 0, 1, 0, 0, 0}};
+inline constexpr dimension dim_thermodynamic_temperature{{0, 0, 0, 0, 1, 0, 0}};
+inline constexpr dimension dim_amount_of_substance{{0, 0, 0, 0, 0, 1, 0}};
+inline constexpr dimension dim_luminous_intensity{{0, 0, 0, 0, 0, 0, 1}};
+
+//---------------------------------------------------------------------------
+// magnitude — Ratio·π^Pi, exact.
+//---------------------------------------------------------------------------
+struct magnitude {
+    grid_rational Ratio{1};
+    std::int8_t   Pi{0};
+
+    friend constexpr bool      operator==(const magnitude&, const magnitude&) = default;
+    friend consteval magnitude operator*(const magnitude& a, const magnitude& b) {
+        return {beman::inside::detail::grid_mul(a.Ratio, b.Ratio), static_cast<std::int8_t>(a.Pi + b.Pi)};
+    }
+    friend consteval magnitude operator/(const magnitude& a, const magnitude& b) {
+        return {beman::inside::detail::grid_div_of(a.Ratio, b.Ratio), static_cast<std::int8_t>(a.Pi - b.Pi)};
+    }
+    consteval magnitude pow(int n) const {
+        magnitude r{};
+        for (int i = 0; i < (n < 0 ? -n : n); ++i)
+            r = r * *this;
+        return n < 0 ? magnitude{} / r : r;
+    }
+    constexpr bool is_one() const { return Ratio == grid_rational{1} && Pi == 0; }
+};
+
+// mag<r> — a magnitude tag: mag<1000> * si::metre, mag<just<1>.per<3>> * …
+template <magnitude M>
+struct mag_t {
+    static constexpr magnitude value = M;
+};
+template <auto R>
+inline constexpr mag_t<magnitude{grid_rational{R}}>    mag{};
+inline constexpr mag_t<magnitude{grid_rational{1}, 1}> mag_pi{};
+
+template <magnitude A, magnitude B>
+consteval auto operator*(mag_t<A>, mag_t<B>) {
+    return mag_t<A * B>{};
+}
+template <magnitude A, magnitude B>
+consteval auto operator/(mag_t<A>, mag_t<B>) {
+    return mag_t<A / B>{};
+}
+
+//---------------------------------------------------------------------------
+// quantity_spec — a quantity kind (length, height, speed, energy, torque…).
+// Named specs are static objects; the tags users write (isq::height) carry a
+// pointer to one. A spec has a parent (height → altitude → length) or a
+// recipe (speed = length / time), or both (velocity: a speed whose recipe is
+// displacement / duration). IsKind starts a separate kind under its parent:
+// it never converts implicitly across that boundary (angular_measure vs a
+// dimensionless ratio).
+//---------------------------------------------------------------------------
+struct quantity_spec;
+
+// An optional reference to a static object (a parent spec, a unit's kind, an
+// origin). It is tested by its flag, never against nullptr, and compared by
+// content, never by address: under GCC's -fsanitize=undefined `&obj ==
+// nullptr`, and under -fsanitize=pointer-compare `&a == &b`, is no constant
+// expression.
+template <class T>
+struct ref_or_none {
+    const T* P{};
+    bool     Set{false};
+
+    constexpr ref_or_none() = default;
+    constexpr ref_or_none(std::nullptr_t) {}
+    constexpr ref_or_none(const T* p) : P{p}, Set{true} {} // p is not null
+    constexpr explicit operator bool() const { return Set; }
+    constexpr const T* operator->() const { return P; }
+};
+
+using spec_ref = ref_or_none<quantity_spec>;
+
+struct spec_factor {
+    const quantity_spec*  Spec{};
+    std::int8_t           Exp{};
+    friend constexpr bool operator==(const spec_factor& a, const spec_factor& b);
+};
+
+inline constexpr std::size_t max_spec_factors = 6;
+
+// A product of named specs to integer powers, sorted by name.
+struct recipe {
+    spec_factor           F[max_spec_factors]{};
+    std::int8_t           Size{0};
+    friend constexpr bool operator==(const recipe& a, const recipe& b) {
+        if (a.Size != b.Size)
+            return false;
+        for (std::int8_t i = 0; i < a.Size; ++i)
+            if (!(a.F[i] == b.F[i]))
+                return false;
+        return true;
+    }
+};
+
+// An anonymous spec expression: what length / time is, before it is named.
+struct spec_expr {
+    recipe    Recipe{};
+    dimension Dim{};
+};
+
+struct is_kind_t {
+    explicit is_kind_t() = default;
+};
+inline constexpr is_kind_t is_kind{};
+
+template <const quantity_spec* S>
+struct spec_t;
+
+struct quantity_spec {
+    std::string_view Name;
+    dimension        Dim{};
+    spec_ref         Parent{};
+    recipe           Recipe{};
+    bool             IsKind{false};
+
+    // A base quantity: a dimension of its own.
+    constexpr quantity_spec(std::string_view name, dimension d) : Name{name}, Dim{d} {}
+    // A child of a named spec.
+    template <const quantity_spec* P>
+    constexpr quantity_spec(std::string_view name, spec_t<P>) : Name{name}, Dim{P->Dim}, Parent{P} {}
+    template <const quantity_spec* P>
+    constexpr quantity_spec(std::string_view name, spec_t<P>, is_kind_t)
+        : Name{name}, Dim{P->Dim}, Parent{P}, IsKind{true} {}
+    // A derived root: named by its recipe.
+    constexpr quantity_spec(std::string_view name, const spec_expr& e) : Name{name}, Dim{e.Dim}, Recipe{e.Recipe} {}
+    constexpr quantity_spec(std::string_view name, const spec_expr& e, is_kind_t)
+        : Name{name}, Dim{e.Dim}, Recipe{e.Recipe}, IsKind{true} {}
+    // A child with a recipe of its own (velocity: speed, displacement / duration).
+    template <const quantity_spec* P>
+    constexpr quantity_spec(std::string_view name, spec_t<P>, const spec_expr& e)
+        : Name{name}, Dim{P->Dim}, Parent{P}, Recipe{e.Recipe} {
+        if (!(e.Dim == P->Dim))
+            beman::inside::detail::constexpr_error<"units: a spec's recipe must have its parent's dimension">();
+    }
+    template <const quantity_spec* P>
+    constexpr quantity_spec(std::string_view name, spec_t<P>, const spec_expr& e, is_kind_t)
+        : quantity_spec{name, spec_t<P>{}, e} {
+        IsKind = true;
+    }
+};
+
+namespace detail {
+// Identity of the static objects a value points to (specs, units, origins)
+// is by content, never by address: GCC with -fsanitize=pointer-compare
+// rejects comparing the addresses of two distinct objects in a constant
+// expression. A null pointer test stays a pointer test.
+constexpr bool same(const quantity_spec* a, const quantity_spec* b) { // both set
+    return a->Name == b->Name && a->Dim == b->Dim && a->IsKind == b->IsKind;
+}
+constexpr bool same(const spec_ref& a, const spec_ref& b) {
+    if (!a || !b)
+        return !a && !b;
+    return same(a.P, b.P);
+}
+} // namespace detail
+
+constexpr bool operator==(const spec_factor& a, const spec_factor& b) {
+    return detail::same(a.Spec, b.Spec) && a.Exp == b.Exp;
+}
+
+namespace detail {
+// The spec's tree root, and its kind root: the first IsKind spec on the way
+// up, else the tree root.
+consteval const quantity_spec* tree_root(const quantity_spec* s) {
+    while (s->Parent)
+        s = s->Parent.P;
+    return s;
+}
+consteval const quantity_spec* kind_root(const quantity_spec* s) {
+    while (!s->IsKind && s->Parent)
+        s = s->Parent.P;
+    return s;
+}
+// a is s or an ancestor of s within s's kind (not above an IsKind boundary).
+consteval bool is_within_kind_ancestor(const quantity_spec* s, const quantity_spec* a) {
+    for (;;) {
+        if (same(s, a))
+            return true;
+        if (s->IsKind || !s->Parent)
+            return false;
+        s = s->Parent.P;
+    }
+}
+
+consteval bool name_before(const quantity_spec* a, const quantity_spec* b) { return a->Name < b->Name; }
+
+// r · f^e, merged and kept sorted; an exponent that reaches 0 drops out.
+// Returns false when the recipe is full.
+consteval bool recipe_add(recipe& r, const quantity_spec* f, int e) {
+    for (std::int8_t i = 0; i < r.Size; ++i)
+        if (same(r.F[i].Spec, f)) {
+            r.F[i].Exp = static_cast<std::int8_t>(r.F[i].Exp + e);
+            if (r.F[i].Exp == 0) {
+                for (std::int8_t j = i; j + 1 < r.Size; ++j)
+                    r.F[j] = r.F[j + 1];
+                r.F[--r.Size] = {};
+            }
+            return true;
+        }
+    if (e == 0)
+        return true;
+    if (r.Size == static_cast<std::int8_t>(max_spec_factors))
+        return false;
+    std::int8_t at = r.Size;
+    while (at > 0 && name_before(f, r.F[at - 1].Spec)) {
+        r.F[at] = r.F[at - 1];
+        --at;
+    }
+    r.F[at] = {f, static_cast<std::int8_t>(e)};
+    ++r.Size;
+    return true;
+}
+
+// a · b^sign; false when the product does not fit a recipe.
+consteval bool recipe_merge(recipe& a, const recipe& b, int sign) {
+    for (std::int8_t i = 0; i < b.Size; ++i)
+        if (!recipe_add(a, b.F[i].Spec, b.F[i].Exp * sign))
+            return false;
+    return true;
+}
+
+consteval recipe recipe_of(const quantity_spec* s) {
+    if (s->Recipe.Size > 0)
+        return s->Recipe;
+    recipe r{};
+    recipe_add(r, s, 1);
+    return r;
+}
+
+// The recipe with every factor replaced by its kind root, summed.
+consteval recipe recipe_by_kind(const recipe& r) {
+    recipe out{};
+    for (std::int8_t i = 0; i < r.Size; ++i)
+        recipe_add(out, kind_root(r.F[i].Spec), r.F[i].Exp);
+    return out;
+}
+
+// Each factor of `want` matched by a factor of `have` with the same exponent
+// that is it or descends from it, one to one.
+consteval bool recipe_matches(const recipe& have, const recipe& want) {
+    if (have.Size != want.Size)
+        return false;
+    bool used[max_spec_factors]{};
+    for (std::int8_t i = 0; i < want.Size; ++i) {
+        bool found = false;
+        for (std::int8_t j = 0; j < have.Size && !found; ++j)
+            if (!used[j] && have.F[j].Exp == want.F[i].Exp &&
+                is_within_kind_ancestor(have.F[j].Spec, want.F[i].Spec)) {
+                used[j] = true;
+                found   = true;
+            }
+        if (!found)
+            return false;
+    }
+    return true;
+}
+} // namespace detail
+
+template <const quantity_spec* S>
+struct spec_t {
+    static constexpr const quantity_spec* value = S;
+    // isq::height[si::metre] — defined after unit_t and reference_t.
+    template <class U>
+    consteval auto operator[](U) const;
+};
+
+// Spec algebra for recipes: length / time, pow<2>(length), inverse(radius).
+template <const quantity_spec* S>
+consteval spec_expr expr_of(spec_t<S>) {
+    spec_expr e{};
+    detail::recipe_add(e.Recipe, S, 1);
+    e.Dim = S->Dim;
+    return e;
+}
+consteval spec_expr expr_of(const spec_expr& e) { return e; }
+
+template <class T>
+concept spec_operand = requires(T t) { expr_of(t); };
+
+namespace detail {
+consteval spec_expr spec_combine(const spec_expr& a, const spec_expr& b, int sign) {
+    spec_expr r = a;
+    if (!recipe_merge(r.Recipe, b.Recipe, sign))
+        beman::inside::detail::constexpr_error<"units: a recipe holds at most 6 factors">();
+    r.Dim = sign > 0 ? a.Dim * b.Dim : a.Dim / b.Dim;
+    return r;
+}
+} // namespace detail
+
+template <spec_operand A, spec_operand B>
+consteval spec_expr operator*(A a, B b) {
+    return detail::spec_combine(expr_of(a), expr_of(b), 1);
+}
+template <spec_operand A, spec_operand B>
+consteval spec_expr operator/(A a, B b) {
+    return detail::spec_combine(expr_of(a), expr_of(b), -1);
+}
+template <int N, spec_operand A>
+consteval spec_expr pow(A a) {
+    spec_expr r{};
+    for (int i = 0; i < (N < 0 ? -N : N); ++i)
+        r = detail::spec_combine(r, expr_of(a), N < 0 ? -1 : 1);
+    return r;
+}
+template <spec_operand A>
+consteval spec_expr inverse(A a) {
+    return detail::spec_combine(spec_expr{}, expr_of(a), -1);
+}
+
+//---------------------------------------------------------------------------
+// named_unit — a unit with a symbol (m, s, N, Ω, °C): a static object. Its
+// magnitude is relative to the coherent SI unit of its dimension; Kind (if
+// any) is the quantity kind it measures (Hz: frequency, Bq: activity).
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+// unit — a product of named units to integer powers, each with an optional
+// decimal prefix (k, m, µ…), times a scale (mag<1000> * m; the common unit of
+// a sum). A structural value: it is the template argument.
+//---------------------------------------------------------------------------
+struct named_unit;
+
+//---------------------------------------------------------------------------
+// point_origin — where a quantity_point's number counts from. An absolute
+// origin (absolute zero) or one at an exact offset from one, in the coherent
+// SI unit of the dimension (the ice point: absolute zero + 273.15 K).
+//---------------------------------------------------------------------------
+struct point_origin {
+    std::string_view          Name;
+    dimension                 Dim{};
+    ref_or_none<point_origin> Absolute{}; // none for an absolute origin
+    grid_rational             Offset{0};  // from Absolute, in the coherent unit
+};
+
+using origin_ref = ref_or_none<point_origin>; // none: the implicit zero of a dimension
+
+template <origin_ref O>
+struct origin_t {
+    static constexpr origin_ref value = O;
+};
+
+namespace detail {
+consteval origin_ref absolute_of(origin_ref o) { return o && o->Absolute ? o->Absolute : o; }
+// By content, as same() for specs and units (see there).
+constexpr bool same(const origin_ref& a, const origin_ref& b) {
+    if (!a || !b)
+        return !a && !b;
+    return a->Name == b->Name && a->Dim == b->Dim && a->Offset == b->Offset && same(a->Absolute, b->Absolute);
+}
+consteval grid_rational offset_of(origin_ref o) { return o && o->Absolute ? o->Offset : grid_rational{0}; }
+} // namespace detail
+
+struct no_space_before_t {
+    explicit no_space_before_t() = default;
+};
+inline constexpr no_space_before_t no_space_before{};
+
+struct unit_atom {
+    const named_unit*     U{};
+    std::int8_t           Prefix{0}; // power of ten
+    std::int8_t           Exp{0};
+    friend constexpr bool operator==(const unit_atom& a, const unit_atom& b);
+};
+
+inline constexpr std::size_t max_unit_atoms = 6;
+
+struct unit {
+    unit_atom   Atoms[max_unit_atoms]{};
+    std::int8_t Size{0};
+    magnitude   Scale{};
+
+    constexpr unit() = default;
+    constexpr unit(const named_unit& u) : Atoms{{&u, 0, 1}}, Size{1} {}
+
+    friend constexpr bool operator==(const unit& a, const unit& b) {
+        if (a.Size != b.Size || !(a.Scale == b.Scale))
+            return false;
+        for (std::int8_t i = 0; i < a.Size; ++i)
+            if (!(a.Atoms[i] == b.Atoms[i]))
+                return false;
+        return true;
+    }
+};
+
+template <unit U>
+struct unit_t {
+    static constexpr unit value = U;
+};
+
+struct named_unit {
+    std::string_view Utf8;
+    std::string_view Ascii;
+    dimension        Dim{};
+    magnitude        Mag{};
+    spec_ref         Kind{};
+    bool             SpaceBefore{true};
+    origin_ref       Origin{}; // the default origin of its points (K: absolute zero)
+
+    // A base unit of a kind: the coherent unit of its dimension.
+    template <const quantity_spec* K>
+    constexpr named_unit(std::string_view sym, spec_t<K>) : Utf8{sym}, Ascii{sym}, Dim{K->Dim}, Kind{K} {}
+    template <magnitude M, const quantity_spec* K>
+    constexpr named_unit(std::string_view sym, mag_t<M>, spec_t<K>)
+        : Utf8{sym}, Ascii{sym}, Dim{K->Dim}, Mag{M}, Kind{K} {}
+    template <const quantity_spec* K>
+    constexpr named_unit(std::string_view utf8, std::string_view ascii, spec_t<K>)
+        : Utf8{utf8}, Ascii{ascii}, Dim{K->Dim}, Kind{K} {}
+    // A unit defined by another (named_unit{"N", kg * m / s², isq::force}).
+    template <unit U>
+    constexpr named_unit(std::string_view sym, unit_t<U>);
+    template <unit U>
+    constexpr named_unit(std::string_view utf8, std::string_view ascii, unit_t<U>);
+    template <unit U, const quantity_spec* K>
+    constexpr named_unit(std::string_view sym, unit_t<U>, spec_t<K>);
+    template <unit U, const quantity_spec* K>
+    constexpr named_unit(std::string_view utf8, std::string_view ascii, unit_t<U>, spec_t<K>);
+    // A unit with a default point origin (K: absolute zero, ℃: the ice point).
+    template <const quantity_spec* K, origin_ref O>
+    constexpr named_unit(std::string_view sym, spec_t<K>, origin_t<O>) : named_unit{sym, spec_t<K>{}} {
+        Origin = O;
+    }
+    template <unit U, origin_ref O>
+    constexpr named_unit(std::string_view utf8, std::string_view ascii, unit_t<U>, origin_t<O>)
+        : named_unit{utf8, ascii, unit_t<U>{}} {
+        Origin = O;
+    }
+    // A symbol written without a space after the number (90°).
+    template <unit U>
+    constexpr named_unit(std::string_view utf8, std::string_view ascii, unit_t<U>, no_space_before_t)
+        : named_unit{utf8, ascii, unit_t<U>{}} {
+        SpaceBefore = false;
+    }
+};
+
+namespace detail {
+constexpr bool same(const named_unit* a, const named_unit* b) { // both set
+    return a->Utf8 == b->Utf8 && a->Ascii == b->Ascii && a->Dim == b->Dim && a->Mag == b->Mag;
+}
+} // namespace detail
+
+constexpr bool operator==(const unit_atom& a, const unit_atom& b) {
+    return detail::same(a.U, b.U) && a.Prefix == b.Prefix && a.Exp == b.Exp;
+}
+
+namespace detail {
+consteval bool atom_before(const unit_atom& a, const unit_atom& b) {
+    if (a.U->Utf8 != b.U->Utf8)
+        return a.U->Utf8 < b.U->Utf8;
+    return a.Prefix < b.Prefix;
+}
+
+consteval void unit_add(unit& u, unit_atom a) {
+    for (std::int8_t i = 0; i < u.Size; ++i)
+        if (same(u.Atoms[i].U, a.U) && u.Atoms[i].Prefix == a.Prefix) {
+            u.Atoms[i].Exp = static_cast<std::int8_t>(u.Atoms[i].Exp + a.Exp);
+            if (u.Atoms[i].Exp == 0) {
+                for (std::int8_t j = i; j + 1 < u.Size; ++j)
+                    u.Atoms[j] = u.Atoms[j + 1];
+                u.Atoms[--u.Size] = {};
+            }
+            return;
+        }
+    if (a.Exp == 0)
+        return;
+    if (u.Size == static_cast<std::int8_t>(max_unit_atoms))
+        beman::inside::detail::constexpr_error<"units: a unit holds at most 6 factors - name it with named_unit">();
+    std::int8_t at = u.Size;
+    while (at > 0 && atom_before(a, u.Atoms[at - 1])) {
+        u.Atoms[at] = u.Atoms[at - 1];
+        --at;
+    }
+    u.Atoms[at] = a;
+    ++u.Size;
+}
+
+consteval unit unit_mul(unit a, const unit& b, int sign) {
+    for (std::int8_t i = 0; i < b.Size; ++i) {
+        unit_atom t = b.Atoms[i];
+        t.Exp       = static_cast<std::int8_t>(t.Exp * sign);
+        unit_add(a, t);
+    }
+    a.Scale = sign > 0 ? a.Scale * b.Scale : a.Scale / b.Scale;
+    return a;
+}
+
+consteval unit unit_pow(const unit& u, int n) {
+    unit r{};
+    for (std::int8_t i = 0; i < u.Size; ++i)
+        unit_add(r, {u.Atoms[i].U, u.Atoms[i].Prefix, static_cast<std::int8_t>(u.Atoms[i].Exp * n)});
+    r.Scale = u.Scale.pow(n);
+    return r;
+}
+
+consteval unit unit_scaled(unit u, const magnitude& m) {
+    u.Scale = m * u.Scale;
+    return u;
+}
+consteval unit unit_prefixed(unit u, int p) {
+    u.Atoms[0].Prefix = static_cast<std::int8_t>(p);
+    return u;
+}
+
+consteval magnitude ten_pow(int p) {
+    magnitude ten{grid_rational{10}};
+    return ten.pow(p);
+}
+} // namespace detail
+
+// A unit's dimension, magnitude (relative to the coherent SI unit) and kind.
+consteval dimension dimension_of(const unit& u) {
+    dimension d{};
+    for (std::int8_t i = 0; i < u.Size; ++i)
+        d = d * u.Atoms[i].U->Dim.pow(u.Atoms[i].Exp);
+    return d;
+}
+consteval magnitude magnitude_of(const unit& u) {
+    magnitude m = u.Scale;
+    for (std::int8_t i = 0; i < u.Size; ++i)
+        m = m * (u.Atoms[i].U->Mag * detail::ten_pow(u.Atoms[i].Prefix)).pow(u.Atoms[i].Exp);
+    return m;
+}
+// The kind a unit measures: a named unit's (with a prefix too), else none.
+consteval spec_ref kind_of_unit(const unit& u) {
+    return u.Size == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one() ? u.Atoms[0].U->Kind : spec_ref{};
+}
+
+namespace detail {
+// The kind a unit defined by U inherits: its one factor's (min: 60 s).
+consteval spec_ref inherited_kind(const unit& u) {
+    return u.Size == 1 && u.Atoms[0].Exp == 1 ? u.Atoms[0].U->Kind : spec_ref{};
+}
+} // namespace detail
+
+template <unit U>
+constexpr named_unit::named_unit(std::string_view sym, unit_t<U>)
+    : Utf8{sym}, Ascii{sym}, Dim{dimension_of(U)}, Mag{magnitude_of(U)}, Kind{detail::inherited_kind(U)} {}
+template <unit U>
+constexpr named_unit::named_unit(std::string_view utf8, std::string_view ascii, unit_t<U>)
+    : Utf8{utf8}, Ascii{ascii}, Dim{dimension_of(U)}, Mag{magnitude_of(U)}, Kind{detail::inherited_kind(U)} {}
+template <unit U, const quantity_spec* K>
+constexpr named_unit::named_unit(std::string_view sym, unit_t<U>, spec_t<K>)
+    : Utf8{sym}, Ascii{sym}, Dim{dimension_of(U)}, Mag{magnitude_of(U)}, Kind{K} {
+    if (!(K->Dim == Dim))
+        beman::inside::detail::constexpr_error<"units: a unit's kind must have the unit's dimension">();
+}
+template <unit U, const quantity_spec* K>
+constexpr named_unit::named_unit(std::string_view utf8, std::string_view ascii, unit_t<U>, spec_t<K>)
+    : Utf8{utf8}, Ascii{ascii}, Dim{dimension_of(U)}, Mag{magnitude_of(U)}, Kind{K} {
+    if (!(K->Dim == Dim))
+        beman::inside::detail::constexpr_error<"units: a unit's kind must have the unit's dimension">();
+}
+
+// unit_c<named> — the tag of a named unit: inline constexpr auto metre = unit_c<metre_def>.
+template <const named_unit& N>
+inline constexpr unit_t<unit{N}> unit_c{};
+
+// The dimensionless unit 1.
+inline constexpr unit_t<unit{}> one{};
+
+template <unit A, unit B>
+consteval bool operator==(unit_t<A>, unit_t<B>) {
+    return A == B;
+}
+template <unit A, unit B>
+consteval auto operator*(unit_t<A>, unit_t<B>) {
+    return unit_t<detail::unit_mul(A, B, 1)>{};
+}
+template <unit A, unit B>
+consteval auto operator/(unit_t<A>, unit_t<B>) {
+    return unit_t<detail::unit_mul(A, B, -1)>{};
+}
+template <magnitude M, unit B>
+consteval auto operator*(mag_t<M>, unit_t<B>) {
+    return unit_t<detail::unit_scaled(B, M)>{};
+}
+template <magnitude M, unit B>
+consteval auto operator/(mag_t<M>, unit_t<B>) {
+    return unit_t<detail::unit_scaled(detail::unit_pow(B, -1), M)>{};
+}
+template <int N, unit A>
+consteval auto pow(unit_t<A>) {
+    return unit_t<detail::unit_pow(A, N)>{};
+}
+template <unit A>
+consteval auto square(unit_t<A>) {
+    return unit_t<detail::unit_pow(A, 2)>{};
+}
+template <unit A>
+consteval auto cubic(unit_t<A>) {
+    return unit_t<detail::unit_pow(A, 3)>{};
+}
+template <unit A>
+consteval auto inverse(unit_t<A>) {
+    return unit_t<detail::unit_pow(A, -1)>{};
+}
+
+// A decimal prefix: si::kilo(si::metre). Only on a named unit, once.
+template <int P>
+struct prefix_t {
+    template <unit U>
+    consteval auto operator()(unit_t<U>) const {
+        static_assert(U.Size == 1 && U.Atoms[0].Exp == 1 && U.Atoms[0].Prefix == 0 && U.Scale.is_one(),
+                      "units: a prefix applies to a named unit without a prefix (kilo(metre), not kilo(m/s))");
+        return unit_t<detail::unit_prefixed(U, P)>{};
+    }
+};
+
+//---------------------------------------------------------------------------
+// reference — what a quantity's number means: a unit plus a quantity spec.
+//   Spec named, KindOf false   isq::height[m]: exactly that spec
+//   Spec named, KindOf true    a unit's kind (si::hertz): any spec of its kind
+//   Spec null, Derived set     a product of specs (width * height)
+//   Spec null, Derived empty   any quantity of the unit's dimension (m/s)
+//---------------------------------------------------------------------------
+struct reference {
+    spec_ref Spec{};
+    bool     KindOf{false};
+    recipe   Derived{};
+    unit     U{};
+
+    constexpr reference() = default;
+    constexpr reference(spec_ref s, bool kind_of, recipe derived, unit u)
+        : Spec{s}, KindOf{kind_of}, Derived{derived}, U{u} {}
+    // A unit tag as a reference: quantity<si::metre, …>.
+    template <unit V>
+    constexpr reference(unit_t<V>) : Spec{kind_of_unit(V)}, KindOf{static_cast<bool>(kind_of_unit(V))}, U{V} {}
+
+    friend constexpr bool operator==(const reference& a, const reference& b) {
+        return detail::same(a.Spec, b.Spec) && a.KindOf == b.KindOf && a.Derived == b.Derived && a.U == b.U;
+    }
+};
+
+consteval reference reference_of(const unit& u) {
+    const spec_ref k = kind_of_unit(u);
+    return reference{k, static_cast<bool>(k), recipe{}, u};
+}
+
+template <reference R>
+struct reference_t {
+    static constexpr reference value = R;
+    constexpr                  operator reference() const { return R; }
+};
+
+template <class T>
+inline constexpr bool is_unit_tag_v = false;
+template <unit U>
+inline constexpr bool is_unit_tag_v<unit_t<U>> = true;
+
+template <class T>
+inline constexpr bool is_reference_tag_v = false;
+template <unit U>
+inline constexpr bool is_reference_tag_v<unit_t<U>> = true;
+template <reference R>
+inline constexpr bool is_reference_tag_v<reference_t<R>> = true;
+
+// The reference of a tag: a unit_t is the unit with its kind.
+template <unit U>
+consteval reference reference_of(unit_t<U>) {
+    return reference_of(U);
+}
+template <reference R>
+consteval reference reference_of(reference_t<R>) {
+    return R;
+}
+
+template <const quantity_spec* S>
+template <class U>
+consteval auto spec_t<S>::operator[](U) const {
+    static_assert(is_reference_tag_v<U> && requires { U::value.Size; }, "units: spec[unit] takes a unit");
+    constexpr unit u = U::value;
+    static_assert(dimension_of(u) == S->Dim, "units: spec[unit] - the unit has another dimension than the spec");
+    constexpr spec_ref k = kind_of_unit(u);
+    static_assert(!k || detail::same(detail::kind_root(k.P), detail::kind_root(S)),
+                  "units: spec[unit] - the unit measures another kind of quantity (Hz for activity?)");
+    return reference_t<reference{S, false, recipe{}, u}>{};
+}
+
+namespace detail {
+// Which spec facts a reference carries.
+consteval bool is_generic(const reference& r) { return !r.Spec && r.Derived.Size == 0; }
+
+// Whether a reference's quantity may convert implicitly to a named spec `to`.
+consteval bool derived_converts_to(const reference& from, const quantity_spec* to) {
+    if (to->IsKind && !from.KindOf)
+        return false;
+    // Any quantity of the dimension names a kind root: m/s → speed, N·m → energy.
+    if (!to->Parent && !to->IsKind)
+        return true;
+    if (from.KindOf)
+        return derived_converts_to(reference{nullptr, false, from.Derived, from.U}, kind_root(to)) ||
+               recipe_matches(from.Derived, recipe_of(kind_root(to)));
+    return to->Recipe.Size > 0 && recipe_matches(from.Derived, to->Recipe);
+}
+
+// Implicit conversion between the specs of two references of one dimension.
+consteval bool spec_converts(const reference& from, const reference& to) {
+    if (is_generic(to)) // a dimension's quantity takes any of its kinds but an IsKind one
+        return !from.Spec || !kind_root(from.Spec.P)->IsKind;
+    if (is_generic(from))
+        return !to.Spec || !kind_root(to.Spec.P)->IsKind;
+    if (!to.Spec) { // a derived target: the source's recipe, by kind
+        const recipe have = from.Spec ? recipe_of(from.Spec.P) : from.Derived;
+        return recipe_by_kind(have) == recipe_by_kind(to.Derived);
+    }
+    if (!from.Spec)
+        return derived_converts_to(from, to.KindOf ? kind_root(to.Spec.P) : to.Spec.P);
+    if (to.KindOf || from.KindOf) // a unit's kind takes and gives any spec of that kind
+        return same(kind_root(from.Spec.P), kind_root(to.Spec.P));
+    return is_within_kind_ancestor(from.Spec.P, to.Spec.P);
+}
+
+// Explicit conversion (quantity_cast): any spec of the same dimension, but
+// not across IsKind kinds.
+consteval bool spec_casts(const reference& from, const quantity_spec* to) {
+    const spec_ref       fk = from.Spec ? spec_ref{kind_root(from.Spec.P)} : spec_ref{};
+    const quantity_spec* tk = kind_root(to);
+    if (same(fk, spec_ref{tk}))
+        return true;
+    if (fk && fk->IsKind)
+        return false;
+    return !tk->IsKind || !from.Spec;
+}
+
+// The spec part of a sum's reference; ok = false when the two cannot add.
+struct spec_result {
+    bool      Ok{false};
+    reference R{};
+};
+
+consteval spec_result common_spec(const reference& a, const reference& b) {
+    if (same(a.Spec, b.Spec) && a.KindOf == b.KindOf && a.Derived == b.Derived)
+        return {true, a};
+    if (spec_converts(a, b) && !spec_converts(b, a))
+        return {true, b};
+    if (spec_converts(b, a) && !spec_converts(a, b))
+        return {true, a};
+    if (a.Spec && b.Spec) {
+        if (a.KindOf && b.KindOf && same(kind_root(a.Spec.P), kind_root(b.Spec.P)))
+            return {true, reference{kind_root(a.Spec.P), true, {}, a.U}};
+        if (a.KindOf != b.KindOf && same(kind_root(a.Spec.P), kind_root(b.Spec.P))) // kind_of + a named spec of it
+            return {true, a.KindOf ? b : a};
+        // The nearest common ancestor within one kind.
+        for (const quantity_spec* s = a.Spec.P;; s = s->Parent.P) {
+            if (is_within_kind_ancestor(b.Spec.P, s))
+                return {true, reference{s, false, {}, a.U}};
+            if (s->IsKind || !s->Parent)
+                break;
+        }
+        return {};
+    }
+    if (spec_converts(a, b) && spec_converts(b, a)) // e.g. two recipes of one kind
+        return {true, reference{nullptr, false, {}, a.U}};
+    return {};
+}
+
+// The spec part of a product: named factors multiply into a recipe.
+// (Spec null, KindOf, no recipe) is the empty product: 1 / x starts there.
+consteval reference spec_product(const reference& a, const reference& b, int sign, const unit& u) {
+    const auto empty = [](const reference& r) { return !r.Spec && r.KindOf && r.Derived.Size == 0; };
+    if ((is_generic(a) && !empty(a)) || (is_generic(b) && !empty(b)))
+        return reference{nullptr, false, {}, u};
+    const auto factors = [](const reference& r) {
+        if (!r.Spec)
+            return r.Derived;
+        recipe f{};
+        recipe_add(f, r.KindOf ? kind_root(r.Spec.P) : r.Spec.P, 1);
+        return f;
+    };
+    recipe f = factors(a);
+    if (!recipe_merge(f, factors(b), sign) || f.Size == 0) // too many factors, or a pure ratio
+        return reference{nullptr, false, {}, u};
+    const bool kind_of = (a.KindOf || empty(a)) && (b.KindOf || empty(b));
+    if (f.Size == 1 && f.F[0].Exp == 1)
+        return reference{f.F[0].Spec, kind_of, {}, u};
+    return reference{nullptr, kind_of, f, u};
+}
+
+consteval reference spec_pow(const reference& a, int n, const unit& u) {
+    if (is_generic(a) || n == 0)
+        return reference{nullptr, false, {}, u};
+    reference r = a;
+    r.U         = u;
+    for (int i = 1; i < (n < 0 ? -n : n); ++i)
+        r = spec_product(r, a, 1, u);
+    return n < 0 ? spec_product(reference{nullptr, true, {}, u}, r, -1, u) : r;
+}
+} // namespace detail
+
+//---------------------------------------------------------------------------
+// Unit conversion of a number: the value in unit From as a value in unit To,
+// value · mag(From) / mag(To). A rational factor rescales the grid (the raw is
+// kept where the storage allows); a π factor has no exact rescale.
+//---------------------------------------------------------------------------
+namespace detail {
+template <magnitude M>
+inline constexpr bool exact_factor_v = M.Pi == 0;
+
+template <magnitude M, insidable V>
+constexpr auto rescale(const V& v) {
+    static_assert(
+        exact_factor_v<M>,
+        "units: this conversion multiplies by a power of pi, which has no exact grid - round it "
+        "with value_cast<unit, Rep>(q) from <beman/inside/units_math.hpp>, Rep declared with a rounding mode");
+    if constexpr (M.is_one())
+        return v;
+    else {
+        // The product's grid with v's policy: a conversion keeps clamp, wrap
+        // and the rounding mode.
+        const auto x = v * just<M.Ratio>;
+        if constexpr (flags_of<decltype(x)> == flags_of<V>)
+            return x;
+        else
+            return inside<grid_of<decltype(x)>, flags_of<V>>::from_raw(x.raw());
+    }
+}
+
+template <unit From, unit To>
+inline constexpr magnitude conversion_factor = magnitude_of(From) / magnitude_of(To);
+
+// The common unit of a sum: the smaller unit when it divides the other
+// (km + m → m), else the first unit scaled to the gcd of the magnitudes
+// (ft + m → [1/1250 m]).
+consteval unit common_unit(const unit& a, const unit& b) {
+    if (a == b)
+        return a;
+    const magnitude ma = magnitude_of(a), mb = magnitude_of(b);
+    if (ma == mb)
+        return a;
+    if (ma.Pi != mb.Pi)
+        beman::inside::detail::constexpr_error<
+            "units: no common unit of a pi multiple and a rational one - convert one side with value_cast first">();
+    if (!beman::inside::detail::grid_gcd_fits(ma.Ratio, mb.Ratio))
+        beman::inside::detail::constexpr_error<"units: the common unit needs C++26 big grids">();
+    const grid_rational g = beman::inside::detail::grid_gcd_of(ma.Ratio, mb.Ratio);
+    if (g == ma.Ratio)
+        return a;
+    if (g == mb.Ratio)
+        return b;
+    unit u  = a;
+    u.Scale = u.Scale * magnitude{beman::inside::detail::grid_div_of(g, ma.Ratio)};
+    return u;
+}
+} // namespace detail
+
+//---------------------------------------------------------------------------
+// quantity<R, Rep> — a number Rep (an inside) of the reference R.
+//---------------------------------------------------------------------------
+template <reference R, insidable Rep>
+class quantity;
+
+template <class T>
+inline constexpr bool is_quantity_v = false;
+template <reference R, class Rep>
+inline constexpr bool is_quantity_v<quantity<R, Rep>> = true;
+
+template <class T>
+concept quantity_like = is_quantity_v<std::remove_cvref_t<T>>;
+
+namespace detail {
+template <reference From, reference To>
+inline constexpr bool implicit_v = dimension_of(From.U) == dimension_of(To.U) && spec_converts(From, To) &&
+                                   exact_factor_v<conversion_factor<From.U, To.U>>;
+
+// A dimensionless quantity that is a plain number: no is_kind spec (an
+// angle), and an exact factor to unit one.
+template <reference R>
+inline constexpr bool number_like_v = dimension_of(R.U) == dim_one && exact_factor_v<conversion_factor<R.U, unit{}>> &&
+                                      (!R.Spec || !kind_root(R.Spec.P)->IsKind);
+
+// Its number's type; void for any other quantity (never forming the
+// rescale, whose pi check would fire for an angle in degrees).
+template <reference R, class V, bool = number_like_v<R>>
+struct number_type {
+    using type = void;
+};
+template <reference R, class V>
+struct number_type<R, V, true> {
+    using type = decltype(rescale<conversion_factor<R.U, unit{}>>(std::declval<const V&>()));
+};
+template <reference R, class V>
+using number_t = typename number_type<R, V>::type;
+
+template <reference From, reference To, insidable V>
+using rescaled_t = decltype(rescale<conversion_factor<From.U, To.U>>(std::declval<const V&>()));
+
+template <class T>
+inline constexpr bool is_expected_v = false;
+template <class T, class E>
+inline constexpr bool is_expected_v<std::expected<T, E>> = true;
+
+// A quantity of reference R on a number that inside's arithmetic returned: an
+// inside, or an expected of one (division by a grid holding 0).
+template <reference R, class V>
+constexpr auto make_quantity(V&& v) {
+    using T = std::remove_cvref_t<V>;
+    if constexpr (is_expected_v<T>) {
+        using Q = quantity<R, typename T::value_type>;
+        if (!v)
+            return std::expected<Q, errc>{std::unexpect, v.error()};
+        return std::expected<Q, errc>{Q{*std::forward<V>(v)}};
+    } else
+        return quantity<R, T>{std::forward<V>(v)};
+}
+} // namespace detail
+
+template <reference R, insidable Rep>
+class quantity {
+    Rep Num;
+
+  public:
+    using rep                                   = Rep;
+    static constexpr units::reference reference = R;
+    static constexpr units::unit      unit      = R.U;
+    static constexpr units::dimension dimension = dimension_of(R.U);
+
+    constexpr quantity() = default;
+
+    // From a number in the unit R: quantity<si::metre, inside<{0, 100}>>{42}.
+    template <class V>
+        requires std::constructible_from<Rep, V> && (!quantity_like<V>)
+    constexpr explicit quantity(V&& v) : Num(std::forward<V>(v)) {}
+
+    // From another quantity: implicit when the spec converts implicitly and
+    // the number, in R's unit, converts implicitly into Rep.
+    template <units::reference R2, class V2>
+        requires detail::implicit_v<R2, R> && std::constructible_from<Rep, detail::rescaled_t<R2, R, V2>>
+    constexpr explicit(!std::convertible_to<detail::rescaled_t<R2, R, V2>, Rep>) quantity(const quantity<R2, V2>& q)
+        : Num(detail::rescale<detail::conversion_factor<R2.U, R.U>>(q.numerical_value())) {}
+
+    [[nodiscard]] constexpr const Rep& numerical_value() const noexcept { return Num; }
+
+    // The same quantity in unit U: exact, the number's grid rescaled.
+    template <units::unit U>
+    [[nodiscard]] constexpr auto in() const {
+        static_assert(dimension_of(U) == dimension, "units: in() - the unit has another dimension");
+        constexpr units::reference to{R.Spec, R.KindOf, R.Derived, U};
+        return detail::make_quantity<to>(detail::rescale<detail::conversion_factor<R.U, U>>(Num));
+    }
+    template <units::unit U>
+    [[nodiscard]] constexpr auto in(units::unit_t<U>) const {
+        return in<U>();
+    }
+    // The number in unit U.
+    template <units::unit U>
+    [[nodiscard]] constexpr auto numerical_value_in(units::unit_t<U>) const {
+        return in<U>().numerical_value();
+    }
+
+    // A dimensionless quantity is a number: its value in unit one (km/m is
+    // ×1000, % is ×1/100), into any inside that takes it — implicitly when
+    // that number converts implicitly. An angle (an is_kind spec) stays a
+    // quantity; numerical_value() reads its number.
+    template <insidable T>
+        requires detail::number_like_v<R> && std::constructible_from<T, detail::number_t<R, Rep>>
+    constexpr explicit(!std::convertible_to<detail::number_t<R, Rep>, T>) operator T() const {
+        return T(detail::rescale<detail::conversion_factor<R.U, units::unit{}>>(Num));
+    }
+    BEMAN_INSIDE_UNITS_DELETE_BEGIN
+    template <insidable T>
+        requires(dimension_of(R.U) == dim_one && !detail::number_like_v<R>)
+    operator T() const =
+        BEMAN_INSIDE_UNITS_DELETE("units: an angle (an is_kind quantity) or a pi-scaled ratio is no plain "
+                                  "number - read numerical_value(), or value_cast it first");
+    BEMAN_INSIDE_UNITS_DELETE_END
+
+    [[nodiscard]] constexpr auto operator+() const { return detail::make_quantity<R>(+Num); }
+    [[nodiscard]] constexpr auto operator-() const { return detail::make_quantity<R>(-Num); }
+
+    // Compound assignment keeps the type: the number is stored back under Rep's
+    // policy (checked by default).
+    template <units::reference R2, class V2>
+        requires detail::implicit_v<R2, R>
+    constexpr quantity& operator+=(const quantity<R2, V2>& q) {
+        Num += detail::rescale<detail::conversion_factor<R2.U, R.U>>(q.numerical_value());
+        return *this;
+    }
+    template <units::reference R2, class V2>
+        requires detail::implicit_v<R2, R>
+    constexpr quantity& operator-=(const quantity<R2, V2>& q) {
+        Num -= detail::rescale<detail::conversion_factor<R2.U, R.U>>(q.numerical_value());
+        return *this;
+    }
+    template <insidable V>
+    constexpr quantity& operator*=(const V& v) {
+        Num *= v;
+        return *this;
+    }
+    template <insidable V>
+    constexpr quantity& operator/=(const V& v) {
+        Num /= v;
+        return *this;
+    }
+};
+
+//---------------------------------------------------------------------------
+// Construction: number * unit, number * spec[unit]. A raw scalar has no grid.
+//---------------------------------------------------------------------------
+template <insidable V, class Tag>
+    requires is_reference_tag_v<Tag>
+[[nodiscard]] constexpr auto operator*(const V& v, Tag t) {
+    return quantity<reference_of(t), V>{v};
+}
+template <class N, class Tag>
+    requires is_reference_tag_v<Tag> && std::is_arithmetic_v<N>
+constexpr auto operator*(N, Tag) {
+    static_assert(!std::is_arithmetic_v<N>,
+                  "units: a raw number has no grid - write just<42> * unit, or quantity<unit, inside<…>>{42}");
+}
+// number / unit: 5 / s.
+template <insidable V, unit U>
+[[nodiscard]] constexpr auto operator/(const V& v, unit_t<U>) {
+    return quantity<reference_of(detail::unit_pow(U, -1)), V>{v};
+}
+
+// A magnitude scales a quantity's unit, not its number: mag_pi * q is q
+// in [π·unit], exact and free (π is never rounded; value_cast to a plain
+// unit rounds it once, units_math.hpp). mag<2> * q, q / mag_pi likewise.
+namespace detail {
+consteval reference scaled_reference(reference r, const magnitude& m) {
+    r.U = unit_scaled(r.U, m);
+    return r;
+}
+} // namespace detail
+template <magnitude M, reference R, class V>
+[[nodiscard]] constexpr auto operator*(mag_t<M>, const quantity<R, V>& q) {
+    return quantity<detail::scaled_reference(R, M), V>{q.numerical_value()};
+}
+template <reference R, class V, magnitude M>
+[[nodiscard]] constexpr auto operator*(const quantity<R, V>& q, mag_t<M>) {
+    return quantity<detail::scaled_reference(R, M), V>{q.numerical_value()};
+}
+template <reference R, class V, magnitude M>
+[[nodiscard]] constexpr auto operator/(const quantity<R, V>& q, mag_t<M>) {
+    return quantity<detail::scaled_reference(R, magnitude{} / M), V>{q.numerical_value()};
+}
+
+//---------------------------------------------------------------------------
+// Arithmetic
+//---------------------------------------------------------------------------
+namespace detail {
+template <reference A, reference B>
+consteval reference sum_reference() {
+    static_assert(dimension_of(A.U) == dimension_of(B.U),
+                  "units: adding or comparing quantities of different dimensions");
+    constexpr spec_result s = common_spec(A, B);
+    static_assert(s.Ok, "units: adding or comparing quantities of different kinds");
+    reference r = s.R;
+    r.U         = common_unit(A.U, B.U);
+    return r;
+}
+
+template <reference A, reference B, int Sign>
+consteval reference product_reference() {
+    const unit u = unit_mul(A.U, B.U, Sign);
+    return spec_product(A, B, Sign, u);
+}
+} // namespace detail
+
+template <reference A, class VA, reference B, class VB>
+[[nodiscard]] constexpr auto operator+(const quantity<A, VA>& a, const quantity<B, VB>& b) {
+    constexpr reference C = detail::sum_reference<A, B>();
+    return detail::make_quantity<C>(detail::rescale<detail::conversion_factor<A.U, C.U>>(a.numerical_value()) +
+                                    detail::rescale<detail::conversion_factor<B.U, C.U>>(b.numerical_value()));
+}
+template <reference A, class VA, reference B, class VB>
+[[nodiscard]] constexpr auto operator-(const quantity<A, VA>& a, const quantity<B, VB>& b) {
+    constexpr reference C = detail::sum_reference<A, B>();
+    return detail::make_quantity<C>(detail::rescale<detail::conversion_factor<A.U, C.U>>(a.numerical_value()) -
+                                    detail::rescale<detail::conversion_factor<B.U, C.U>>(b.numerical_value()));
+}
+template <reference A, class VA, reference B, class VB>
+[[nodiscard]] constexpr auto operator%(const quantity<A, VA>& a, const quantity<B, VB>& b) {
+    constexpr reference C = detail::sum_reference<A, B>();
+    return detail::make_quantity<C>(detail::rescale<detail::conversion_factor<A.U, C.U>>(a.numerical_value()) %
+                                    detail::rescale<detail::conversion_factor<B.U, C.U>>(b.numerical_value()));
+}
+template <reference A, class VA, reference B, class VB>
+[[nodiscard]] constexpr bool operator==(const quantity<A, VA>& a, const quantity<B, VB>& b) {
+    constexpr reference C = detail::sum_reference<A, B>();
+    return detail::rescale<detail::conversion_factor<A.U, C.U>>(a.numerical_value()) ==
+           detail::rescale<detail::conversion_factor<B.U, C.U>>(b.numerical_value());
+}
+template <reference A, class VA, reference B, class VB>
+[[nodiscard]] constexpr auto operator<=>(const quantity<A, VA>& a, const quantity<B, VB>& b) {
+    constexpr reference C = detail::sum_reference<A, B>();
+    return detail::rescale<detail::conversion_factor<A.U, C.U>>(a.numerical_value()) <=>
+           detail::rescale<detail::conversion_factor<B.U, C.U>>(b.numerical_value());
+}
+
+template <reference A, class VA, reference B, class VB>
+[[nodiscard]] constexpr auto operator*(const quantity<A, VA>& a, const quantity<B, VB>& b) {
+    return detail::make_quantity<detail::product_reference<A, B, 1>()>(a.numerical_value() * b.numerical_value());
+}
+template <reference A, class VA, reference B, class VB>
+[[nodiscard]] constexpr auto operator/(const quantity<A, VA>& a, const quantity<B, VB>& b) {
+    return detail::make_quantity<detail::product_reference<A, B, -1>()>(a.numerical_value() / b.numerical_value());
+}
+
+// A quantity scaled by a dimensionless number (an inside).
+template <reference A, class VA, insidable V>
+[[nodiscard]] constexpr auto operator*(const quantity<A, VA>& a, const V& v) {
+    return detail::make_quantity<A>(a.numerical_value() * v);
+}
+template <insidable V, reference A, class VA>
+[[nodiscard]] constexpr auto operator*(const V& v, const quantity<A, VA>& a) {
+    return detail::make_quantity<A>(v * a.numerical_value());
+}
+template <reference A, class VA, insidable V>
+[[nodiscard]] constexpr auto operator/(const quantity<A, VA>& a, const V& v) {
+    return detail::make_quantity<A>(a.numerical_value() / v);
+}
+template <insidable V, reference A, class VA>
+[[nodiscard]] constexpr auto operator/(const V& v, const quantity<A, VA>& a) {
+    constexpr reference R = detail::product_reference<reference{nullptr, true, {}, unit{}}, A, -1>();
+    return detail::make_quantity<R>(v / a.numerical_value());
+}
+// A quantity times a unit: (5 * m) / s.
+template <reference A, class VA, class Tag>
+    requires is_reference_tag_v<Tag>
+[[nodiscard]] constexpr auto operator*(const quantity<A, VA>& a, Tag t) {
+    return detail::make_quantity<detail::product_reference<A, reference_of(t), 1>()>(a.numerical_value());
+}
+template <reference A, class VA, class Tag>
+    requires is_reference_tag_v<Tag>
+[[nodiscard]] constexpr auto operator/(const quantity<A, VA>& a, Tag t) {
+    return detail::make_quantity<detail::product_reference<A, reference_of(t), -1>()>(a.numerical_value());
+}
+// No raw scalars: q * 2 needs a grid for the 2.
+template <reference A, class VA, class N>
+    requires std::is_arithmetic_v<N>
+constexpr auto operator*(const quantity<A, VA>&, N) {
+    static_assert(!std::is_arithmetic_v<N>, "units: a raw number has no grid - scale by just<2>, not 2");
+}
+template <reference A, class VA, class N>
+    requires std::is_arithmetic_v<N>
+constexpr auto operator*(N, const quantity<A, VA>&) {
+    static_assert(!std::is_arithmetic_v<N>, "units: a raw number has no grid - scale by just<2>, not 2");
+}
+template <reference A, class VA, class N>
+    requires std::is_arithmetic_v<N>
+constexpr auto operator/(const quantity<A, VA>&, N) {
+    static_assert(!std::is_arithmetic_v<N>, "units: a raw number has no grid - divide by just<2>, not 2");
+}
+
+// pow<N>(q) — q·q·…·q (N ≥ 1): exact, the grid of each product.
+template <int N, reference R, class V>
+    requires(N >= 1)
+[[nodiscard]] constexpr auto pow(const quantity<R, V>& q) {
+    if constexpr (N == 1)
+        return q;
+    else if constexpr (N % 2 == 1)
+        return q * pow<N - 1>(q);
+    else {
+        const auto h = pow<N / 2>(q);
+        return h * h;
+    }
+}
+
+//---------------------------------------------------------------------------
+// Casts
+//---------------------------------------------------------------------------
+// quantity_cast<spec>(q) — the same number as another spec of the dimension:
+// down the tree (length → height) or across one kind; never across IsKind.
+template <class SpecTag, reference R, class V>
+[[nodiscard]] constexpr auto quantity_cast(const quantity<R, V>& q) {
+    constexpr const quantity_spec* to = SpecTag::value;
+    static_assert(to->Dim == dimension_of(R.U), "units: quantity_cast - another dimension");
+    static_assert(detail::spec_casts(R, to), "units: quantity_cast - across an is_kind boundary");
+    return quantity<reference{to, false, {}, R.U}, V>{q.numerical_value()};
+}
+template <auto Spec, reference R, class V>
+[[nodiscard]] constexpr auto quantity_cast(const quantity<R, V>& q) {
+    return quantity_cast<decltype(Spec)>(q);
+}
+
+// value_cast<Rep2>(q) — another representation, the same unit: Rep2's
+// constructor (checked unless Rep2's policy says otherwise).
+template <insidable Rep2, reference R, class V>
+[[nodiscard]] constexpr quantity<R, Rep2> value_cast(const quantity<R, V>& q) {
+    return quantity<R, Rep2>{Rep2(q.numerical_value())};
+}
+// value_cast<U, Rep2>(q) — in unit U with representation Rep2: the exact
+// value in U, stored by Rep2's constructor. (A pi factor, degree ↔ radian,
+// rounds once: units_math.hpp.)
+template <auto U, insidable Rep2, reference R, class V>
+    requires is_unit_tag_v<decltype(U)> && detail::exact_factor_v<detail::conversion_factor<R.U, decltype(U)::value>>
+[[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q) {
+    constexpr units::unit u = decltype(U)::value;
+    static_assert(dimension_of(u) == dimension_of(R.U), "units: value_cast - the unit has another dimension");
+    constexpr reference to{R.Spec, R.KindOf, R.Derived, u};
+    return quantity<to, Rep2>{Rep2(q.in(U).numerical_value())};
+}
+
+// try_value_cast<Rep2, F>(q) — as Rep2::try_make<F>: an expected.
+template <insidable Rep2, policy_flag F = none, reference R, class V>
+[[nodiscard]] constexpr std::expected<quantity<R, Rep2>, errc> try_value_cast(const quantity<R, V>& q) {
+    auto v = Rep2::template try_make<F>(q.numerical_value());
+    if (!v)
+        return std::unexpected{v.error()};
+    return quantity<R, Rep2>{*v};
+}
+
+//---------------------------------------------------------------------------
+// quantity_point<R, O, Rep> — a point: a quantity of R counted from origin O
+// (null: the implicit zero of the dimension). A change of origin shifts the
+// grid by the exact offset, a change of unit rescales it.
+//   auto t = point<si::degree_Celsius>(inside<{-40, 60}>{20});   // 20 ℃
+//   t.quantity_from(si::absolute_zero)                         // 293.15 K… in ℃
+//   t.point_for(si::absolute_zero).in(si::kelvin)              // the point 293.15 K
+//---------------------------------------------------------------------------
+template <reference R, origin_ref O, insidable Rep>
+class quantity_point;
+
+template <class T>
+inline constexpr bool is_quantity_point_v = false;
+template <reference R, origin_ref O, class Rep>
+inline constexpr bool is_quantity_point_v<quantity_point<R, O, Rep>> = true;
+
+namespace detail {
+// The number, in unit U, that takes a quantity from origin From to origin To:
+// (offset(From) − offset(To)) / mag(U).
+template <origin_ref From, origin_ref To, unit U>
+consteval grid_rational origin_shift() {
+    static_assert(same(absolute_of(From), absolute_of(To)), "units: points of different absolute origins");
+    constexpr magnitude m = magnitude_of(U);
+    static_assert(m.Pi == 0, "units: an origin shift in a unit with a pi magnitude has no exact grid");
+    return beman::inside::detail::grid_div_of(beman::inside::detail::grid_sub(offset_of(From), offset_of(To)),
+                                              m.Ratio);
+}
+
+template <grid_rational C, insidable V>
+constexpr auto shift(const V& v) {
+    if constexpr (C == grid_rational{0})
+        return v;
+    else
+        return v + just<C>;
+}
+
+// The default origin of a unit's points: its named unit's (K, ℃, ℉).
+consteval origin_ref origin_of_unit(const unit& u) {
+    return u.Size == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one() ? u.Atoms[0].U->Origin : origin_ref{};
+}
+
+template <origin_ref O, class Q>
+constexpr auto make_point(Q&& q) {
+    using T = std::remove_cvref_t<Q>;
+    if constexpr (is_expected_v<T>) {
+        using P = quantity_point<T::value_type::reference, O, typename T::value_type::rep>;
+        if (!q)
+            return std::expected<P, errc>{std::unexpect, q.error()};
+        return std::expected<P, errc>{P{*std::forward<Q>(q)}};
+    } else
+        return quantity_point<T::reference, O, typename T::rep>{std::forward<Q>(q)};
+}
+} // namespace detail
+
+template <reference R, origin_ref O, insidable Rep>
+class quantity_point {
+    quantity<R, Rep> Q;
+
+  public:
+    using quantity_type                         = quantity<R, Rep>;
+    using rep                                   = Rep;
+    static constexpr units::reference reference = R;
+    static constexpr origin_ref       origin    = O;
+
+    constexpr quantity_point() = default;
+    constexpr explicit quantity_point(const quantity<R, Rep>& q) : Q{q} {}
+
+    // From a point of another origin (of the same absolute one) or unit:
+    // shifted, then rescaled, exactly; implicit as the quantities are.
+    template <units::reference R2, origin_ref O2, class V2>
+        requires(detail::same(detail::absolute_of(O2), detail::absolute_of(O))) && detail::implicit_v<R2, R> &&
+                std::constructible_from<
+                    quantity<R, Rep>,
+                    decltype(std::declval<const quantity_point<R2, O2, V2>&>().quantity_from(origin_t<O>{}))>
+    constexpr explicit(
+        !std::convertible_to<decltype(std::declval<const quantity_point<R2, O2, V2>&>().quantity_from(origin_t<O>{})),
+                             quantity<R, Rep>>) quantity_point(const quantity_point<R2, O2, V2>& p)
+        : Q(p.quantity_from(origin_t<O>{})) {}
+
+    // The quantity from this point's origin, or from another one.
+    [[nodiscard]] constexpr const quantity<R, Rep>& quantity_from_origin() const noexcept { return Q; }
+    template <origin_ref O2>
+    [[nodiscard]] constexpr auto quantity_from(origin_t<O2>) const {
+        constexpr grid_rational c = detail::origin_shift<O, O2, R.U>();
+        return quantity<R, std::remove_cvref_t<decltype(detail::shift<c>(Q.numerical_value()))>>{
+            detail::shift<c>(Q.numerical_value())};
+    }
+    // The same point counted from another origin.
+    template <origin_ref O2>
+    [[nodiscard]] constexpr auto point_for(origin_t<O2> o) const {
+        return detail::make_point<O2>(quantity_from(o));
+    }
+    // The same point in another unit.
+    template <units::unit U>
+    [[nodiscard]] constexpr auto in(unit_t<U> u) const {
+        return detail::make_point<O>(Q.in(u));
+    }
+    // The same point in unit U, counted from U's own origin: 350 ℉ → 530/3 ℃.
+    template <units::unit U>
+    [[nodiscard]] constexpr auto point_in(unit_t<U> u) const {
+        return point_for(origin_t<detail::origin_of_unit(U)>{}).in(u);
+    }
+
+    template <units::reference R2, class V2>
+        requires detail::implicit_v<R2, R>
+    constexpr quantity_point& operator+=(const quantity<R2, V2>& q) {
+        Q += q;
+        return *this;
+    }
+    template <units::reference R2, class V2>
+        requires detail::implicit_v<R2, R>
+    constexpr quantity_point& operator-=(const quantity<R2, V2>& q) {
+        Q -= q;
+        return *this;
+    }
+};
+
+// value_cast on a point: its quantity from the origin cast, the origin kept.
+template <insidable Rep2, reference R, origin_ref O, class V>
+[[nodiscard]] constexpr quantity_point<R, O, Rep2> value_cast(const quantity_point<R, O, V>& p) {
+    return quantity_point<R, O, Rep2>{value_cast<Rep2>(p.quantity_from_origin())};
+}
+template <auto U, insidable Rep2, reference R, origin_ref O, class V>
+    requires is_unit_tag_v<decltype(U)> && detail::exact_factor_v<detail::conversion_factor<R.U, decltype(U)::value>>
+[[nodiscard]] constexpr auto value_cast(const quantity_point<R, O, V>& p) {
+    const auto q = value_cast<U, Rep2>(p.quantity_from_origin());
+    return quantity_point<std::remove_cvref_t<decltype(q)>::reference, O, Rep2>{q};
+}
+
+// point<si::degree_Celsius>(v) — a point at the unit's default origin (the
+// implicit zero for a unit without one).
+template <auto U, insidable V>
+[[nodiscard]] constexpr auto point(const V& v) {
+    return quantity_point<reference_of(U), detail::origin_of_unit(decltype(U)::value), V>{
+        quantity<reference_of(U), V>{v}};
+}
+// delta<si::degree_Celsius>(v) — a difference: a plain quantity.
+template <auto U, insidable V>
+[[nodiscard]] constexpr auto delta(const V& v) {
+    return v * U;
+}
+
+// origin + quantity: si::absolute_zero + just<300> * si::kelvin.
+template <origin_ref O, reference R, class V>
+[[nodiscard]] constexpr auto operator+(origin_t<O>, const quantity<R, V>& q) {
+    return quantity_point<R, O, V>{q};
+}
+template <reference R, class V, origin_ref O>
+[[nodiscard]] constexpr auto operator+(const quantity<R, V>& q, origin_t<O>) {
+    return quantity_point<R, O, V>{q};
+}
+
+// point ± quantity: a point at the same origin; point − point: a quantity
+// (the second counted from the first's origin).
+template <reference R, origin_ref O, class V, reference R2, class V2>
+[[nodiscard]] constexpr auto operator+(const quantity_point<R, O, V>& p, const quantity<R2, V2>& q) {
+    return detail::make_point<O>(p.quantity_from_origin() + q);
+}
+template <reference R2, class V2, reference R, origin_ref O, class V>
+[[nodiscard]] constexpr auto operator+(const quantity<R2, V2>& q, const quantity_point<R, O, V>& p) {
+    return detail::make_point<O>(q + p.quantity_from_origin());
+}
+template <reference R, origin_ref O, class V, reference R2, class V2>
+[[nodiscard]] constexpr auto operator-(const quantity_point<R, O, V>& p, const quantity<R2, V2>& q) {
+    return detail::make_point<O>(p.quantity_from_origin() - q);
+}
+template <reference R, origin_ref O, class V, reference R2, origin_ref O2, class V2>
+[[nodiscard]] constexpr auto operator-(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
+    return a.quantity_from_origin() - b.quantity_from(origin_t<O>{});
+}
+template <reference R, origin_ref O, class V, reference R2, origin_ref O2, class V2>
+[[nodiscard]] constexpr bool operator==(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
+    return a.quantity_from_origin() == b.quantity_from(origin_t<O>{});
+}
+template <reference R, origin_ref O, class V, reference R2, origin_ref O2, class V2>
+[[nodiscard]] constexpr auto operator<=>(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
+    return a.quantity_from_origin() <=> b.quantity_from(origin_t<O>{});
+}
+
+//---------------------------------------------------------------------------
+// Text: a unit's symbol (kg m²/s², km/h, 1/s), a quantity as "5 km".
+//---------------------------------------------------------------------------
+enum class text_encoding : unsigned char { utf8, ascii };
+
+namespace detail {
+constexpr std::string_view prefix_symbol(int p, text_encoding e) {
+    switch (p) {
+    case -30:
+        return "q";
+    case -27:
+        return "r";
+    case -24:
+        return "y";
+    case -21:
+        return "z";
+    case -18:
+        return "a";
+    case -15:
+        return "f";
+    case -12:
+        return "p";
+    case -9:
+        return "n";
+    case -6:
+        return e == text_encoding::utf8 ? "µ" : "u";
+    case -3:
+        return "m";
+    case -2:
+        return "c";
+    case -1:
+        return "d";
+    case 0:
+        return "";
+    case 1:
+        return "da";
+    case 2:
+        return "h";
+    case 3:
+        return "k";
+    case 6:
+        return "M";
+    case 9:
+        return "G";
+    case 12:
+        return "T";
+    case 15:
+        return "P";
+    case 18:
+        return "E";
+    case 21:
+        return "Z";
+    case 24:
+        return "Y";
+    case 27:
+        return "R";
+    case 30:
+        return "Q";
+    default:
+        return "?";
+    }
+}
+
+inline void append_exponent(std::string& s, int e, text_encoding enc) {
+    if (e == 1)
+        return;
+    if (enc == text_encoding::ascii) {
+        s += '^';
+        s += std::to_string(e);
+        return;
+    }
+    static constexpr std::string_view sup[] = {"⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹"};
+    if (e < 0) {
+        s += "⁻";
+        e = -e;
+    }
+    const std::string digits = std::to_string(e);
+    for (char c : digits)
+        s += sup[c - '0'];
+}
+
+inline void append_atoms(std::string& s, const unit& u, int sign, text_encoding enc) {
+    bool first = true;
+    for (std::int8_t i = 0; i < u.Size; ++i) {
+        const unit_atom& a = u.Atoms[i];
+        if ((a.Exp > 0) != (sign > 0))
+            continue;
+        if (!first)
+            s += ' ';
+        first = false;
+        s += prefix_symbol(a.Prefix, enc);
+        s += enc == text_encoding::utf8 ? a.U->Utf8 : a.U->Ascii;
+        append_exponent(s, a.Exp * sign, enc);
+    }
+}
+} // namespace detail
+
+// The symbol of a unit: "km", "kg m²/s²", "1/s", "[1/1250 m]" (a scaled unit).
+inline std::string unit_symbol(const unit& u, text_encoding enc = text_encoding::utf8) {
+    std::string s;
+    int         num = 0, den = 0;
+    for (std::int8_t i = 0; i < u.Size; ++i)
+        (u.Atoms[i].Exp > 0 ? num : den) += 1;
+    if (num > 0)
+        detail::append_atoms(s, u, 1, enc);
+    else if (den > 0)
+        s += '1';
+    if (den > 0) {
+        s += '/';
+        if (den > 1)
+            s += '(';
+        detail::append_atoms(s, u, -1, enc);
+        if (den > 1)
+            s += ')';
+    }
+    if (!u.Scale.is_one()) {
+        // "1/1250", "π", "2π", "π⁻¹" (ASCII "pi^-1").
+        std::string scale =
+            u.Scale.Pi != 0 && u.Scale.Ratio == grid_rational{1} ? "" : beman::inside::to_string(u.Scale.Ratio);
+        if (u.Scale.Pi != 0) {
+            scale += enc == text_encoding::utf8 ? "π" : (scale.empty() ? "pi" : "*pi");
+            detail::append_exponent(scale, u.Scale.Pi, enc);
+        }
+        s = "[" + scale + (s.empty() ? "" : " " + s) + "]";
+    }
+    return s;
+}
+template <unit U>
+inline std::string unit_symbol(unit_t<U>, text_encoding enc = text_encoding::utf8) {
+    return unit_symbol(U, enc);
+}
+
+// "5 km", "90°", "3" (unit one).
+template <reference R, class V>
+std::string to_string(const quantity<R, V>& q, text_encoding enc = text_encoding::utf8) {
+    // A copy: clang 20 miscompiles a runtime reference to a template
+    // parameter object holding pointers.
+    static constexpr unit u   = R.U;
+    std::string           s   = beman::inside::to_string(q.numerical_value());
+    const std::string     sym = unit_symbol(u, enc);
+    constexpr bool space = !(u.Size == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one() && !u.Atoms[0].U->SpaceBefore);
+    if (sym.empty())
+        return s;
+    return s + (space ? " " : "") + sym;
+}
+
+template <reference R, class V>
+std::ostream& operator<<(std::ostream& os, const quantity<R, V>& q) {
+    return os << units::to_string(q);
+}
+
+// A point as its quantity from its origin: "20 ℃".
+template <reference R, origin_ref O, class V>
+std::string to_string(const quantity_point<R, O, V>& p, text_encoding enc = text_encoding::utf8) {
+    return units::to_string(p.quantity_from_origin(), enc);
+}
+template <reference R, origin_ref O, class V>
+std::ostream& operator<<(std::ostream& os, const quantity_point<R, O, V>& p) {
+    return os << units::to_string(p);
+}
+
+} // namespace beman::inside::units
+
+#ifdef __cpp_lib_format
+// std::format: the spec formats the number as for its inside ({:.2f}, {:>8}),
+// then the unit symbol follows ("5 km", "90°").
+template <beman::inside::units::reference R, class V>
+struct std::formatter<beman::inside::units::quantity<R, V>> : std::formatter<V> {
+    template <typename Ctx>
+    auto format(const beman::inside::units::quantity<R, V>& q, Ctx& ctx) const {
+        namespace u = beman::inside::units;
+        // A copy: clang 20 miscompiles a runtime reference to a template
+        // parameter object holding pointers.
+        static constexpr u::unit unit = R.U;
+        constexpr bool           space =
+            !(unit.Size == 1 && unit.Atoms[0].Exp == 1 && unit.Scale.is_one() && !unit.Atoms[0].U->SpaceBefore);
+        auto              out = std::formatter<V>::format(q.numerical_value(), ctx);
+        const std::string sym = u::unit_symbol(unit);
+        if (sym.empty())
+            return out;
+        if constexpr (space)
+            *out++ = ' ';
+        return std::ranges::copy(sym, out).out;
+    }
+};
+
+template <beman::inside::units::reference R, beman::inside::units::origin_ref O, class V>
+struct std::formatter<beman::inside::units::quantity_point<R, O, V>>
+    : std::formatter<beman::inside::units::quantity<R, V>> {
+    template <typename Ctx>
+    auto format(const beman::inside::units::quantity_point<R, O, V>& p, Ctx& ctx) const {
+        return std::formatter<beman::inside::units::quantity<R, V>>::format(p.quantity_from_origin(), ctx);
+    }
+};
+#endif // __cpp_lib_format
+
+namespace beman::inside::units {
+//---------------------------------------------------------------------------
+// The catalog: ISQ quantity specs, SI units and prefixes, international units.
+// Each name is a tag object; its definition is a static object in *_defs.
+//---------------------------------------------------------------------------
+#define BEMAN_INSIDE_SPEC(name, ...)                         \
+    namespace isq_defs {                                     \
+    inline constexpr quantity_spec name{#name, __VA_ARGS__}; \
+    }                                                        \
+    namespace isq {                                          \
+    inline constexpr spec_t<&isq_defs::name> name{};         \
+    }
+#define BEMAN_INSIDE_ORIGIN(ns, name, ...)                      \
+    namespace ns##_defs {                                       \
+        inline constexpr point_origin name{#name, __VA_ARGS__}; \
+    }                                                           \
+    namespace ns {                                              \
+    inline constexpr origin_t<&ns##_defs::name> name{};         \
+    }
+#define BEMAN_INSIDE_UNIT(ns, name, ...)                  \
+    namespace ns##_defs {                                 \
+        inline constexpr named_unit name{__VA_ARGS__};    \
+    }                                                     \
+    namespace ns {                                        \
+    inline constexpr auto name = unit_c<ns##_defs::name>; \
+    }
+
+// Base quantities (ISO 80000-1) and the dimensionless one.
+BEMAN_INSIDE_SPEC(dimensionless, dim_one)
+BEMAN_INSIDE_SPEC(length, dim_length)
+BEMAN_INSIDE_SPEC(mass, dim_mass)
+BEMAN_INSIDE_SPEC(duration, dim_time)
+BEMAN_INSIDE_SPEC(electric_current, dim_electric_current)
+BEMAN_INSIDE_SPEC(thermodynamic_temperature, dim_thermodynamic_temperature)
+BEMAN_INSIDE_SPEC(amount_of_substance, dim_amount_of_substance)
+BEMAN_INSIDE_SPEC(luminous_intensity, dim_luminous_intensity)
+namespace isq {
+inline constexpr auto time = duration;
+}
+
+// Space and time (ISO 80000-3).
+BEMAN_INSIDE_SPEC(width, isq::length)
+BEMAN_INSIDE_SPEC(thickness, isq::width)
+BEMAN_INSIDE_SPEC(diameter, isq::width)
+BEMAN_INSIDE_SPEC(radius, isq::width)
+BEMAN_INSIDE_SPEC(altitude, isq::length)
+BEMAN_INSIDE_SPEC(height, isq::altitude)
+BEMAN_INSIDE_SPEC(path_length, isq::length)
+BEMAN_INSIDE_SPEC(arc_length, isq::path_length)
+BEMAN_INSIDE_SPEC(distance, isq::path_length)
+BEMAN_INSIDE_SPEC(radial_distance, isq::distance)
+BEMAN_INSIDE_SPEC(wavelength, isq::length)
+BEMAN_INSIDE_SPEC(displacement, isq::length)
+BEMAN_INSIDE_SPEC(position_vector, isq::displacement)
+BEMAN_INSIDE_SPEC(area, pow<2>(isq::length))
+BEMAN_INSIDE_SPEC(volume, pow<3>(isq::length))
+BEMAN_INSIDE_SPEC(angular_measure, isq::dimensionless, isq::arc_length / isq::radius, is_kind)
+BEMAN_INSIDE_SPEC(rotational_displacement, isq::angular_measure, isq::path_length / isq::radius)
+BEMAN_INSIDE_SPEC(phase_angle, isq::angular_measure, is_kind)
+BEMAN_INSIDE_SPEC(solid_angular_measure, isq::dimensionless, isq::area / pow<2>(isq::radius), is_kind)
+BEMAN_INSIDE_SPEC(period_duration, isq::duration)
+BEMAN_INSIDE_SPEC(time_constant, isq::duration)
+BEMAN_INSIDE_SPEC(speed, isq::length / isq::duration)
+BEMAN_INSIDE_SPEC(velocity, isq::speed, isq::displacement / isq::duration)
+BEMAN_INSIDE_SPEC(acceleration, isq::velocity / isq::duration)
+BEMAN_INSIDE_SPEC(acceleration_of_free_fall, isq::acceleration)
+BEMAN_INSIDE_SPEC(angular_velocity, isq::rotational_displacement / isq::duration)
+BEMAN_INSIDE_SPEC(angular_acceleration, isq::angular_velocity / isq::duration)
+BEMAN_INSIDE_SPEC(frequency, inverse(isq::period_duration))
+BEMAN_INSIDE_SPEC(rotation, isq::dimensionless)
+BEMAN_INSIDE_SPEC(rotational_frequency, isq::rotation / isq::duration)
+BEMAN_INSIDE_SPEC(angular_frequency, isq::phase_angle / isq::duration)
+
+// Mechanics (ISO 80000-4).
+BEMAN_INSIDE_SPEC(mass_density, isq::mass / isq::volume)
+BEMAN_INSIDE_SPEC(momentum, isq::mass* isq::velocity)
+BEMAN_INSIDE_SPEC(force, isq::mass* isq::length / pow<2>(isq::duration))
+BEMAN_INSIDE_SPEC(weight, isq::force, isq::mass* isq::acceleration_of_free_fall)
+BEMAN_INSIDE_SPEC(impulse, isq::momentum, isq::force* isq::duration)
+BEMAN_INSIDE_SPEC(moment_of_force, isq::position_vector* isq::force)
+BEMAN_INSIDE_SPEC(torque, isq::moment_of_force)
+BEMAN_INSIDE_SPEC(pressure, isq::force / isq::area)
+BEMAN_INSIDE_SPEC(gauge_pressure, isq::pressure)
+BEMAN_INSIDE_SPEC(energy, isq::mass* pow<2>(isq::length) / pow<2>(isq::duration))
+BEMAN_INSIDE_SPEC(mechanical_work, isq::energy, isq::force* isq::displacement)
+BEMAN_INSIDE_SPEC(mechanical_energy, isq::mechanical_work)
+BEMAN_INSIDE_SPEC(potential_energy, isq::mechanical_energy)
+BEMAN_INSIDE_SPEC(kinetic_energy, isq::mechanical_energy, isq::mass* pow<2>(isq::speed))
+BEMAN_INSIDE_SPEC(power, isq::mass* pow<2>(isq::length) / pow<3>(isq::duration))
+BEMAN_INSIDE_SPEC(mechanical_power, isq::power, isq::force* isq::velocity)
+BEMAN_INSIDE_SPEC(action, isq::energy* isq::duration)
+BEMAN_INSIDE_SPEC(mass_flow_rate, isq::mass / isq::duration)
+BEMAN_INSIDE_SPEC(volume_flow_rate, isq::volume / isq::duration)
+namespace isq {
+inline constexpr auto work = mechanical_work;
+}
+
+// Thermodynamics (ISO 80000-5).
+BEMAN_INSIDE_SPEC(internal_energy, isq::energy)
+BEMAN_INSIDE_SPEC(heat, isq::internal_energy)
+BEMAN_INSIDE_SPEC(enthalpy, isq::internal_energy)
+BEMAN_INSIDE_SPEC(heat_capacity, isq::heat / isq::thermodynamic_temperature)
+BEMAN_INSIDE_SPEC(entropy, isq::heat / isq::thermodynamic_temperature)
+BEMAN_INSIDE_SPEC(heat_flow_rate, isq::heat / isq::duration)
+
+// Electromagnetism (IEC 80000-6).
+BEMAN_INSIDE_SPEC(electric_charge, isq::electric_current* isq::duration)
+BEMAN_INSIDE_SPEC(electric_potential, isq::energy / (isq::electric_current * isq::duration))
+BEMAN_INSIDE_SPEC(voltage, isq::electric_potential)
+BEMAN_INSIDE_SPEC(capacitance, isq::electric_current* isq::duration / isq::electric_potential)
+BEMAN_INSIDE_SPEC(impedance, isq::electric_potential / isq::electric_current)
+BEMAN_INSIDE_SPEC(resistance, isq::impedance, isq::voltage / isq::electric_current)
+BEMAN_INSIDE_SPEC(admittance, inverse(isq::impedance))
+BEMAN_INSIDE_SPEC(conductance, isq::admittance, inverse(isq::resistance))
+BEMAN_INSIDE_SPEC(magnetic_flux_density, isq::mass / (isq::electric_current * pow<2>(isq::duration)))
+BEMAN_INSIDE_SPEC(magnetic_flux, isq::magnetic_flux_density* isq::area)
+BEMAN_INSIDE_SPEC(inductance, isq::magnetic_flux / isq::electric_current)
+BEMAN_INSIDE_SPEC(electric_power, isq::power)
+
+// Light (ISO 80000-7), photopic vision.
+BEMAN_INSIDE_SPEC(luminous_flux, isq::luminous_intensity* isq::solid_angular_measure)
+BEMAN_INSIDE_SPEC(illuminance, isq::luminous_flux / isq::area)
+
+// Physical chemistry and ionizing radiation (ISO 80000-9, -10).
+BEMAN_INSIDE_SPEC(catalytic_activity, isq::amount_of_substance / isq::duration)
+BEMAN_INSIDE_SPEC(activity, inverse(isq::duration))
+BEMAN_INSIDE_SPEC(absorbed_dose, isq::energy / isq::mass)
+BEMAN_INSIDE_SPEC(ionizing_radiation_quality_factor, isq::dimensionless)
+BEMAN_INSIDE_SPEC(dose_equivalent, isq::absorbed_dose* isq::ionizing_radiation_quality_factor)
+
+// SI prefixes. Past 10^±18 a prefix needs a grid number past 64 bits.
+namespace si {
+#if BEMAN_INSIDE_BIG_GRIDS
+inline constexpr prefix_t<-30> quecto{};
+inline constexpr prefix_t<-27> ronto{};
+inline constexpr prefix_t<-24> yocto{};
+inline constexpr prefix_t<-21> zepto{};
+#endif
+inline constexpr prefix_t<-18> atto{};
+inline constexpr prefix_t<-15> femto{};
+inline constexpr prefix_t<-12> pico{};
+inline constexpr prefix_t<-9>  nano{};
+inline constexpr prefix_t<-6>  micro{};
+inline constexpr prefix_t<-3>  milli{};
+inline constexpr prefix_t<-2>  centi{};
+inline constexpr prefix_t<-1>  deci{};
+inline constexpr prefix_t<1>   deca{};
+inline constexpr prefix_t<2>   hecto{};
+inline constexpr prefix_t<3>   kilo{};
+inline constexpr prefix_t<6>   mega{};
+inline constexpr prefix_t<9>   giga{};
+inline constexpr prefix_t<12>  tera{};
+inline constexpr prefix_t<15>  peta{};
+inline constexpr prefix_t<18>  exa{};
+#if BEMAN_INSIDE_BIG_GRIDS
+inline constexpr prefix_t<21> zetta{};
+inline constexpr prefix_t<24> yotta{};
+inline constexpr prefix_t<27> ronna{};
+inline constexpr prefix_t<30> quetta{};
+#endif
+} // namespace si
+
+// SI base units.
+BEMAN_INSIDE_UNIT(si, second, "s", isq::duration)
+BEMAN_INSIDE_UNIT(si, metre, "m", isq::length)
+BEMAN_INSIDE_UNIT(si, gram, "g", mag<rational{1, 1000}>, isq::mass)
+namespace si {
+inline constexpr auto kilogram = kilo(gram);
+}
+BEMAN_INSIDE_UNIT(si, ampere, "A", isq::electric_current)
+BEMAN_INSIDE_ORIGIN(si, absolute_zero, dim_thermodynamic_temperature)
+BEMAN_INSIDE_ORIGIN(si, ice_point, dim_thermodynamic_temperature, &si_defs::absolute_zero, rational{27315, 100})
+BEMAN_INSIDE_UNIT(si, kelvin, "K", isq::thermodynamic_temperature, si::absolute_zero)
+BEMAN_INSIDE_UNIT(si, mole, "mol", isq::amount_of_substance)
+BEMAN_INSIDE_UNIT(si, candela, "cd", isq::luminous_intensity)
+
+// SI derived units with special names.
+BEMAN_INSIDE_UNIT(si, radian, "rad", si::metre / si::metre, isq::angular_measure)
+BEMAN_INSIDE_UNIT(si, steradian, "sr", square(si::metre) / square(si::metre), isq::solid_angular_measure)
+BEMAN_INSIDE_UNIT(si, hertz, "Hz", one / si::second, isq::frequency)
+BEMAN_INSIDE_UNIT(si, newton, "N", si::kilogram* si::metre / square(si::second), isq::force)
+BEMAN_INSIDE_UNIT(si, pascal, "Pa", si::newton / square(si::metre), isq::pressure)
+BEMAN_INSIDE_UNIT(si, joule, "J", si::newton* si::metre, isq::energy)
+BEMAN_INSIDE_UNIT(si, watt, "W", si::joule / si::second)
+BEMAN_INSIDE_UNIT(si, coulomb, "C", si::ampere* si::second)
+BEMAN_INSIDE_UNIT(si, volt, "V", si::watt / si::ampere, isq::electric_potential)
+BEMAN_INSIDE_UNIT(si, farad, "F", si::coulomb / si::volt, isq::capacitance)
+BEMAN_INSIDE_UNIT(si, ohm, "Ω", "ohm", si::volt / si::ampere, isq::impedance)
+BEMAN_INSIDE_UNIT(si, siemens, "S", one / si::ohm, isq::admittance)
+BEMAN_INSIDE_UNIT(si, weber, "Wb", si::volt* si::second)
+BEMAN_INSIDE_UNIT(si, tesla, "T", si::weber / square(si::metre), isq::magnetic_flux_density)
+BEMAN_INSIDE_UNIT(si, henry, "H", si::weber / si::ampere)
+BEMAN_INSIDE_UNIT(si, degree_Celsius, "℃", "`C", si::kelvin, si::ice_point)
+BEMAN_INSIDE_UNIT(si, lumen, "lm", si::candela* si::steradian, isq::luminous_flux)
+BEMAN_INSIDE_UNIT(si, lux, "lx", si::lumen / square(si::metre), isq::illuminance)
+BEMAN_INSIDE_UNIT(si, becquerel, "Bq", one / si::second, isq::activity)
+BEMAN_INSIDE_UNIT(si, gray, "Gy", si::joule / si::kilogram, isq::absorbed_dose)
+BEMAN_INSIDE_UNIT(si, sievert, "Sv", si::joule / si::kilogram, isq::dose_equivalent)
+BEMAN_INSIDE_UNIT(si, katal, "kat", si::mole / si::second, isq::catalytic_activity)
+
+// Non-SI units accepted for use with the SI.
+BEMAN_INSIDE_UNIT(si, minute, "min", mag<60>* si::second)
+BEMAN_INSIDE_UNIT(si, hour, "h", mag<60>* si::minute)
+BEMAN_INSIDE_UNIT(si, day, "d", mag<24>* si::hour)
+BEMAN_INSIDE_UNIT(si, astronomical_unit, "au", mag<149'597'870'700>* si::metre)
+BEMAN_INSIDE_UNIT(si, degree, "°", "deg", mag_pi* mag<rational{1, 180}>* si::radian, no_space_before)
+BEMAN_INSIDE_UNIT(si, arcminute, "′", "'", mag<rational{1, 60}>* si::degree, no_space_before)
+BEMAN_INSIDE_UNIT(si, arcsecond, "″", "''", mag<rational{1, 60}>* si::arcminute, no_space_before)
+BEMAN_INSIDE_UNIT(si, are, "a", square(si::deca(si::metre)))
+BEMAN_INSIDE_UNIT(si, litre, "L", cubic(si::deci(si::metre)))
+BEMAN_INSIDE_UNIT(si, tonne, "t", mag<1000>* si::kilogram)
+namespace si {
+inline constexpr auto hectare = hecto(are);
+}
+#if BEMAN_INSIDE_BIG_GRIDS
+BEMAN_INSIDE_UNIT(si, dalton, "Da", mag<1.66053906660e-27_g>* si::kilogram)
+BEMAN_INSIDE_UNIT(si, electronvolt, "eV", mag<1.602176634e-19_g>* si::joule)
+#endif
+
+// The defining constants of the SI (2019) and standard gravity, as units:
+// just<1> * si2019::speed_of_light_in_vacuum is c, exactly, and .in(m/s)
+// gives its number. h, e, k and N_A need grid numbers past 64 bits.
+BEMAN_INSIDE_UNIT(
+    si2019, hyperfine_structure_transition_frequency_of_cs, "Δν_Cs", "dv_Cs", mag<9'192'631'770>* si::hertz)
+BEMAN_INSIDE_UNIT(si2019, speed_of_light_in_vacuum, "c", mag<299'792'458>* si::metre / si::second)
+BEMAN_INSIDE_UNIT(si2019, luminous_efficacy, "K_cd", mag<683>* si::lumen / si::watt)
+BEMAN_INSIDE_UNIT(si2019, standard_gravity, "g₀", "g_0", mag<rational{980665, 100000}>* si::metre / square(si::second))
+#if BEMAN_INSIDE_BIG_GRIDS
+BEMAN_INSIDE_UNIT(si2019, planck_constant, "h", mag<6.62607015e-34_g>* si::joule* si::second)
+BEMAN_INSIDE_UNIT(si2019, elementary_charge, "e", mag<1.602176634e-19_g>* si::coulomb)
+BEMAN_INSIDE_UNIT(si2019, boltzmann_constant, "k", mag<1.380649e-23_g>* si::joule / si::kelvin)
+BEMAN_INSIDE_UNIT(si2019, avogadro_constant, "N_A", mag<6.02214076e23_g> / si::mole)
+#endif
+
+// International (yard and pound agreement, 1959) and nautical units.
+BEMAN_INSIDE_UNIT(international, yard, "yd", mag<rational{9144, 10000}>* si::metre)
+BEMAN_INSIDE_UNIT(international, foot, "ft", mag<rational{1, 3}>* international::yard)
+BEMAN_INSIDE_UNIT(international, inch, "in", mag<rational{1, 12}>* international::foot)
+BEMAN_INSIDE_UNIT(international, mile, "mi", mag<1760>* international::yard)
+BEMAN_INSIDE_UNIT(international, nautical_mile, "nmi", mag<1852>* si::metre)
+BEMAN_INSIDE_UNIT(international, pound, "lb", mag<rational{45359237, 100000000}>* si::kilogram)
+BEMAN_INSIDE_UNIT(international, ounce, "oz", mag<rational{1, 16}>* international::pound)
+BEMAN_INSIDE_UNIT(international,
+                  pound_force,
+                  "lbf",
+                  mag<rational{980665, 100000}>* international::pound* si::metre / square(si::second))
+BEMAN_INSIDE_UNIT(international, knot, "kn", international::nautical_mile / si::hour)
+BEMAN_INSIDE_ORIGIN(international,
+                    zeroth_degree_Fahrenheit,
+                    dim_thermodynamic_temperature,
+                    &si_defs::absolute_zero,
+                    rational{45967, 180})
+BEMAN_INSIDE_UNIT(international,
+                  degree_Fahrenheit,
+                  "℉",
+                  "`F",
+                  mag<rational{5, 9}>* si::kelvin,
+                  international::zeroth_degree_Fahrenheit)
+
+#undef BEMAN_INSIDE_UNIT
+#undef BEMAN_INSIDE_ORIGIN
+#undef BEMAN_INSIDE_SPEC
+#undef BEMAN_INSIDE_UNITS_DELETE
+#undef BEMAN_INSIDE_UNITS_DELETE_BEGIN
+#undef BEMAN_INSIDE_UNITS_DELETE_END
+
+} // namespace beman::inside::units
+
+
+#endif // !BEMAN_INSIDE_NO_STRING && !BEMAN_INSIDE_NO_UNITS
+
+#if !defined(BEMAN_INSIDE_NO_STRING) && !defined(BEMAN_INSIDE_NO_UNITS)
+
+// ======================================================================
+//  beman/inside/units_math.hpp
+// ======================================================================
+// Opt-in: math on units::quantity, over the correctly rounded engine
+// (cmath.hpp). Kept apart from units.hpp, which stays free of the engine's
+// compile time.
+//
+//   value_cast<si::radian, Out>(q)   degree → radian (a pi factor): the exact
+//                                    x·π/180, rounded once onto Out's grid
+//   sqrt(q), cbrt(q)                 the unit's root (m² → m), the number's
+//   abs, floor, ceil, round, trunc   on the number, in q's unit
+//   sin, cos, tan(q)                 of an angle in radians: a plain inside
+//   asin, acos, atan(x), atan2(y, x) an angle in radians
+//   hypot(x, y)                      in the common unit
+//   fn_into<Out>(…)                  each of them with the result's number
+//                                    named: Out rounds, the input need not
+//
+// Every result rounds as the inside function does: onto the output grid,
+// under its rounding mode (the deduced forms take the input's grid).
+//---------------------------------------------------------------------------
+
+
+#include <cstddef>
+#include <type_traits>
+
+namespace beman::inside::math::detail::ax {
+// x·(n/d)·π^P for P = ±1: π from pi_q at T = S + B bits, B covering |x·n/d|,
+// so its error adds at most one unit; the division truncates one more.
+template <std::size_t E, int Bits, int P>
+struct pi_scale_core {
+    wide_rational<E> X;
+    umax             N; // the rational factor n/d
+    umax             D;
+    bool             Negative;
+
+    constexpr maybe_exact<E> exact() const { return is_zero(X) ? maybe_exact<E>{X} : std::nullopt; }
+
+    template <int W>
+    constexpr auto run() const {
+        constexpr int         S  = W + 2;
+        constexpr int         T  = S + Bits + 4;
+        constexpr std::size_t KJ = limbs_for_bits(64 * static_cast<int>(E) + 64 + T + 2 * S + 16);
+        using J                  = wide_sint<KJ>;
+        using I                  = fixed_t<Bits + S + 4>;
+        const J pi{static_cast<J>(pi_q<T>)};
+        const J num = J{X.Num} * J{N};
+        const J den = J{X.Den} * J{D};
+        J       y;
+        if constexpr (P > 0)
+            y = (num * pi) / (den << (T - S));
+        else
+            y = (num << (S + T)) / (den * pi);
+        const I v = static_cast<I>(y);
+        return approx<limbs_of<I>>{Negative ? -v : v, S, 2};
+    }
+};
+} // namespace beman::inside::math::detail::ax
+
+namespace beman::inside::units {
+namespace detail {
+// The n-th root of a unit: every factor's exponent must divide.
+consteval unit unit_root(const unit& u, int n) {
+    unit r{};
+    for (std::int8_t i = 0; i < u.Size; ++i) {
+        if (u.Atoms[i].Exp % n != 0)
+            beman::inside::detail::constexpr_error<
+                "units: the root of a unit needs exponents it divides (m², not m)">();
+        unit_add(r, {u.Atoms[i].U, u.Atoms[i].Prefix, static_cast<std::int8_t>(u.Atoms[i].Exp / n)});
+    }
+    if (!u.Scale.is_one())
+        beman::inside::detail::constexpr_error<
+            "units: the root of a scaled unit - convert it to a named unit first">();
+    return r;
+}
+
+// The root of a reference's spec: its recipe's, when the exponents divide.
+consteval reference spec_root(const reference& a, int n, const unit& u) {
+    if (is_generic(a))
+        return reference{nullptr, false, {}, u};
+    const recipe f = a.Spec ? recipe_of(a.KindOf ? kind_root(a.Spec.P) : a.Spec.P) : a.Derived;
+    recipe       r{};
+    for (std::int8_t i = 0; i < f.Size; ++i) {
+        if (f.F[i].Exp % n != 0)
+            return reference{nullptr, false, {}, u};
+        recipe_add(r, f.F[i].Spec, f.F[i].Exp / n);
+    }
+    if (r.Size == 1 && r.F[0].Exp == 1)
+        return reference{r.F[0].Spec, a.KindOf, {}, u};
+    return reference{nullptr, a.KindOf, r, u};
+}
+
+template <reference R, int N>
+consteval reference root_reference() {
+    const unit u = unit_root(R.U, N);
+    return spec_root(R, N, u);
+}
+
+// An angle in radians: a dimensionless quantity of magnitude one.
+template <reference R>
+inline constexpr bool radians_v = dimension_of(R.U) == dim_one && magnitude_of(R.U).is_one();
+
+inline constexpr reference radian_reference = reference{si::radian};
+} // namespace detail
+
+// value_cast<U, Out>(q) across a pi factor (degree ↔ radian): the exact
+// x·r·π^±1, rounded once onto Out's grid under its rounding mode.
+template <auto U, insidable Out, reference R, class V>
+    requires is_unit_tag_v<decltype(U)> &&
+             (!detail::exact_factor_v<detail::conversion_factor<R.U, decltype(U)::value>>)
+[[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q) {
+    namespace ax            = beman::inside::math::detail::ax;
+    constexpr units::unit u = decltype(U)::value;
+    constexpr magnitude   f = detail::conversion_factor<R.U, u>;
+    static_assert(dimension_of(u) == dimension_of(R.U), "units: value_cast - the unit has another dimension");
+    static_assert(f.Pi == 1 || f.Pi == -1, "units: value_cast - only a factor of pi or 1/pi rounds");
+    static_assert(beman::inside::detail::fits_rational(f.Ratio), "units: value_cast - the factor needs 64 bits");
+    beman::inside::math::adaptive::require_rounding<Out>();
+    constexpr rational  r = beman::inside::detail::to_rational(f.Ratio);
+    constexpr reference to{R.Spec, R.KindOf, R.Derived, u};
+    const auto          x = ax::exact_input(q.numerical_value());
+    constexpr int       B = ax::in_mag<V> + static_cast<int>(std::bit_width(r.Numerator)) + 4;
+    using core            = ax::pi_scale_core<ax::input_limbs<V>, B, f.Pi>;
+    return quantity<to, Out>{ax::evaluate<Out, ax::start_bits<Out>>(
+        core{x, r.Numerator, beman::inside::detail::abs_den(r.Denominator), r.Denominator < 0})};
+}
+
+// The number's functions, in q's unit.
+template <reference R, class V>
+[[nodiscard]] constexpr auto abs(const quantity<R, V>& q) {
+    return detail::make_quantity<R>(beman::inside::math::abs(q.numerical_value()));
+}
+template <reference R, class V>
+[[nodiscard]] constexpr auto floor(const quantity<R, V>& q) {
+    return detail::make_quantity<R>(beman::inside::math::floor(q.numerical_value()));
+}
+template <reference R, class V>
+[[nodiscard]] constexpr auto ceil(const quantity<R, V>& q) {
+    return detail::make_quantity<R>(beman::inside::math::ceil(q.numerical_value()));
+}
+template <reference R, class V>
+[[nodiscard]] constexpr auto round(const quantity<R, V>& q) {
+    return detail::make_quantity<R>(beman::inside::math::round(q.numerical_value()));
+}
+template <reference R, class V>
+[[nodiscard]] constexpr auto trunc(const quantity<R, V>& q) {
+    return detail::make_quantity<R>(beman::inside::math::trunc(q.numerical_value()));
+}
+
+// Roots: the unit's (m² → m, m³ → m) and the number's.
+template <reference R, class V>
+[[nodiscard]] constexpr auto sqrt(const quantity<R, V>& q) {
+    return detail::make_quantity<detail::root_reference<R, 2>()>(beman::inside::math::sqrt(q.numerical_value()));
+}
+template <reference R, class V>
+[[nodiscard]] constexpr auto cbrt(const quantity<R, V>& q) {
+    return detail::make_quantity<detail::root_reference<R, 3>()>(beman::inside::math::cbrt(q.numerical_value()));
+}
+
+// Trigonometry of an angle in radians: a plain number.
+template <reference R, class V>
+[[nodiscard]] constexpr auto sin(const quantity<R, V>& q) {
+    static_assert(detail::radians_v<R>, "units: sin takes an angle in radians - value_cast<si::radian, Out>(q) first");
+    return beman::inside::math::sin(q.numerical_value());
+}
+template <reference R, class V>
+[[nodiscard]] constexpr auto cos(const quantity<R, V>& q) {
+    static_assert(detail::radians_v<R>, "units: cos takes an angle in radians - value_cast<si::radian, Out>(q) first");
+    return beman::inside::math::cos(q.numerical_value());
+}
+template <reference R, class V>
+[[nodiscard]] constexpr auto tan(const quantity<R, V>& q) {
+    static_assert(detail::radians_v<R>, "units: tan takes an angle in radians - value_cast<si::radian, Out>(q) first");
+    return beman::inside::math::tan(q.numerical_value());
+}
+
+// Inverse trigonometry: an angle in radians.
+template <insidable V>
+[[nodiscard]] constexpr auto asin(const V& x) {
+    return detail::make_quantity<detail::radian_reference>(beman::inside::math::asin(x));
+}
+template <insidable V>
+[[nodiscard]] constexpr auto acos(const V& x) {
+    return detail::make_quantity<detail::radian_reference>(beman::inside::math::acos(x));
+}
+template <insidable V>
+[[nodiscard]] constexpr auto atan(const V& x) {
+    return detail::make_quantity<detail::radian_reference>(beman::inside::math::atan(x));
+}
+// atan2(y, x) of two quantities of one dimension, in their common unit.
+template <reference A, class VA, reference B, class VB>
+[[nodiscard]] constexpr auto atan2(const quantity<A, VA>& y, const quantity<B, VB>& x) {
+    constexpr reference C = detail::sum_reference<A, B>();
+    return detail::make_quantity<detail::radian_reference>(
+        beman::inside::math::atan2(detail::rescale<detail::conversion_factor<A.U, C.U>>(y.numerical_value()),
+                                   detail::rescale<detail::conversion_factor<B.U, C.U>>(x.numerical_value())));
+}
+
+// hypot(x, y): √(x² + y²) in the common unit.
+template <reference A, class VA, reference B, class VB>
+[[nodiscard]] constexpr auto hypot(const quantity<A, VA>& x, const quantity<B, VB>& y) {
+    constexpr reference C = detail::sum_reference<A, B>();
+    return detail::make_quantity<C>(
+        beman::inside::math::hypot(detail::rescale<detail::conversion_factor<A.U, C.U>>(x.numerical_value()),
+                                   detail::rescale<detail::conversion_factor<B.U, C.U>>(y.numerical_value())));
+}
+
+//---------------------------------------------------------------------------
+// The _into forms: Out names the result's number (an inside with a rounding
+// mode); the input needs no rounding mode — an arithmetic result (checked)
+// goes straight in. As math::fn_into, a result may be an expected (sqrt of a
+// grid that reaches below 0, tan).
+//---------------------------------------------------------------------------
+namespace detail {
+// x's number as an inside: an inside itself, or a dimensionless quantity's.
+template <class X>
+constexpr auto number_of(const X& x) {
+    if constexpr (insidable<X>)
+        return x;
+    else {
+        static_assert(quantity_like<X> && number_like_v<X::reference>,
+                      "units: the argument must be a number - an inside or a dimensionless quantity");
+        return rescale<conversion_factor<X::reference.U, unit{}>>(x.numerical_value());
+    }
+}
+} // namespace detail
+
+template <insidable Out, reference R, class V>
+[[nodiscard]] constexpr auto sqrt_into(const quantity<R, V>& q) {
+    return detail::make_quantity<detail::root_reference<R, 2>()>(
+        beman::inside::math::sqrt_into<Out>(q.numerical_value()));
+}
+template <insidable Out, reference R, class V>
+[[nodiscard]] constexpr auto cbrt_into(const quantity<R, V>& q) {
+    return detail::make_quantity<detail::root_reference<R, 3>()>(
+        beman::inside::math::cbrt_into<Out>(q.numerical_value()));
+}
+
+template <insidable Out, reference R, class V>
+[[nodiscard]] constexpr auto sin_into(const quantity<R, V>& q) {
+    static_assert(detail::radians_v<R>, "units: sin takes an angle in radians - value_cast<si::radian, Out>(q) first");
+    return beman::inside::math::sin_into<Out>(q.numerical_value());
+}
+template <insidable Out, reference R, class V>
+[[nodiscard]] constexpr auto cos_into(const quantity<R, V>& q) {
+    static_assert(detail::radians_v<R>, "units: cos takes an angle in radians - value_cast<si::radian, Out>(q) first");
+    return beman::inside::math::cos_into<Out>(q.numerical_value());
+}
+template <insidable Out, reference R, class V>
+[[nodiscard]] constexpr auto tan_into(const quantity<R, V>& q) {
+    static_assert(detail::radians_v<R>, "units: tan takes an angle in radians - value_cast<si::radian, Out>(q) first");
+    return beman::inside::math::tan_into<Out>(q.numerical_value());
+}
+
+template <insidable Out, class X>
+[[nodiscard]] constexpr auto asin_into(const X& x) {
+    return detail::make_quantity<detail::radian_reference>(beman::inside::math::asin_into<Out>(detail::number_of(x)));
+}
+template <insidable Out, class X>
+[[nodiscard]] constexpr auto acos_into(const X& x) {
+    return detail::make_quantity<detail::radian_reference>(beman::inside::math::acos_into<Out>(detail::number_of(x)));
+}
+template <insidable Out, class X>
+[[nodiscard]] constexpr auto atan_into(const X& x) {
+    return detail::make_quantity<detail::radian_reference>(beman::inside::math::atan_into<Out>(detail::number_of(x)));
+}
+template <insidable Out, reference A, class VA, reference B, class VB>
+[[nodiscard]] constexpr auto atan2_into(const quantity<A, VA>& y, const quantity<B, VB>& x) {
+    constexpr reference C = detail::sum_reference<A, B>();
+    return detail::make_quantity<detail::radian_reference>(beman::inside::math::atan2_into<Out>(
+        detail::rescale<detail::conversion_factor<A.U, C.U>>(y.numerical_value()),
+        detail::rescale<detail::conversion_factor<B.U, C.U>>(x.numerical_value())));
+}
+template <insidable Out, reference A, class VA, reference B, class VB>
+[[nodiscard]] constexpr auto hypot_into(const quantity<A, VA>& x, const quantity<B, VB>& y) {
+    constexpr reference C = detail::sum_reference<A, B>();
+    return detail::make_quantity<C>(beman::inside::math::hypot_into<Out>(
+        detail::rescale<detail::conversion_factor<A.U, C.U>>(x.numerical_value()),
+        detail::rescale<detail::conversion_factor<B.U, C.U>>(y.numerical_value())));
+}
+} // namespace beman::inside::units
+
+
+#endif // !BEMAN_INSIDE_NO_STRING && !BEMAN_INSIDE_NO_UNITS
 
 #endif // BEMAN_INSIDE_SINGLE_HEADER_HPP

@@ -7,6 +7,7 @@ target_sources(
             FILES
                 arithmetic.hpp
                 casts.hpp
+                chrono.hpp
                 cmath.hpp
                 core.hpp
                 cursor.hpp
@@ -49,4 +50,6 @@ target_sources(
                 predicates.hpp
                 random.hpp
                 range.hpp
+                units.hpp
+                units_math.hpp
 )

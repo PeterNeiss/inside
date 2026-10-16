@@ -39,6 +39,32 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Added
 
+- `<beman/inside/units.hpp>`: physical quantities with an inside as the
+  number — the main features of mp-units, without depending on it
+  ([docs/units.md](docs/units.md)). Units, dimensions, ISQ quantity kinds
+  and references are compile-time values: `quantity<si::metre, inside<…>>`,
+  `isq::height[si::metre]`. A unit conversion rescales the grid and keeps
+  the raw (km → mm is a `mov`), and a sum of mixed units runs in their
+  common unit, exactly. `quantity_point` with absolute and relative origins
+  (K, ℃, ℉ are exact grid shifts). Kinds convert as in mp-units: up the
+  tree and by recipe implicitly, `quantity_cast` down; `is_kind` and
+  separate roots never mix (Hz vs Bq). The catalog covers `isq`, `si` (with
+  prefixes; quecto–quetta, eV and Da under C++26 big grids), `si2019`
+  constants and `international` units. `std::format` and `to_string`
+  print `"5 km"`. `<beman/inside/units_math.hpp>` adds `value_cast` across
+  a factor of π (degree → radian, rounded once by the correctly rounded
+  engine), `sqrt`/`cbrt` of the unit, trigonometry and `hypot`.
+  `examples/units.cpp`, `circuit.cpp`, `moon_rocket.cpp` and `kitchen.cpp`
+  show them. A dimensionless quantity converts to an inside (its value in
+  unit one); `mag_pi * q` keeps π in the unit until one rounding;
+  `sqrt_into<Out>`, `atan2_into<Out>`, … take checked arithmetic results;
+  `p.point_in(u)` and `value_cast` work on points.
+- `to_string(errc)` and `operator<<` for `errc` print the error message.
+- `<beman/inside/chrono.hpp>`: `from_duration<B, F>(d)` and
+  `to_duration<D, F>(x)` convert between `std::chrono::duration` and insides
+  exactly (a value in seconds, a period as a notch, `period_notch<P>`);
+  `to_duration` returns a plain duration when the grid proves the count
+  exists. `examples/clock.cpp` uses them and checks against `hh_mm_ss`.
 - Open grid limits as a spelling: `inside<{0, 360, bounds::half_open}, wrap>`
   is `inside<{0, 359}, wrap>` (period 360), and `{{0, 64}, per<16>,
   bounds::half_open}` is `{{0, 63.9375}, per<16>}`. `bounds::open` moves both

@@ -404,6 +404,9 @@ is what keeps the core free of `<string>`/`<ostream>`/`<format>`/`<cmath>`:
 | `beman/inside/grid.hpp`        | `grid`, `raw_for`, grid operators |
 | `beman/inside/numeric_limits.hpp` | `std::numeric_limits<inside>` and `std::hash<inside>` specialisations (opt-in; `std::common_type` is in arithmetic.hpp, always on) |
 | `beman/inside/io.hpp`          | **All** string/stream/`std::format` support — `to_string`, `to_string_debug`, `operator<<`, `operator>>`, `parse(std::string_view)`, `std::formatter`, `type_name_of`. Opt-in and the *only* place `<string>`/`<ostream>`/`<format>` enter; gated by `BEMAN_INSIDE_NO_STRING` in the single header (see [freestanding.md](freestanding.md)) |
+| `beman/inside/chrono.hpp`      | `from_duration<B, F>` / `to_duration<D, F>` / `period_notch<P>` — `std::chrono::duration` at the boundary (a value in seconds, a period as a notch); opt-in (`<chrono>`), dropped from the single header when freestanding or FP-free |
+| `beman/inside/units.hpp`       | `quantity<R, Rep>`, `quantity_point<R, O, Rep>`, units, dimensions, ISQ quantity specs, origins, the `si` / `isq` / `si2019` / `international` catalog, `to_string` / `std::formatter` — physical units with an inside as the number ([units.md](units.md)); opt-in, gated by `BEMAN_INSIDE_NO_UNITS` in the single header |
+| `beman/inside/units_math.hpp`  | Math on quantities over cmath.hpp: `value_cast` across a factor of π (degree ↔ radian, rounded once), roots, trigonometry, `hypot`; opt-in |
 | `beman/inside/random.hpp`      | `uniform<B>(rng)` — uniform sampling over a grid's slots; opt-in (`<random>`), dropped from the single header when freestanding or FP-free |
 | `beman/inside/formats.hpp`     | Curated hardware aliases (`uint8`…`uint64`, `int8`…`int64`, `unorm8`…, `q4_4` / `q8_8` / `q16_16`) and `clamp_counter` / `wrap_counter`; opt-in |
 | `beman/inside/lift.hpp`        | `detail::lift` — the internal combinator behind the expected-lift operators |

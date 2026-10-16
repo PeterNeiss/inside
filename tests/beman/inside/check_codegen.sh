@@ -48,13 +48,20 @@ calls_besides_raise() {
     /[[:space:]]call[a-z]*[[:space:]]/ { call = $0; pending = 1 }
     END { if (pending) print call }'
 }
-for fn in ins_perf_add_fast ins_perf_add_loop ins_perf_mul_fast ins_perf_sub_compound ins_perf_to_double ins_perf_range_sum; do
+for fn in ins_perf_add_fast ins_perf_add_loop ins_perf_mul_fast ins_perf_sub_compound ins_perf_to_double ins_perf_range_sum ins_perf_unit_in ins_perf_unit_sum; do
   body="$(printf '%s\n' "$DIS" | sed -n "/<$fn>:/,/^\$/p")"
   [ -n "$body" ] || fail "could not find $fn in the disassembly" "$DIS"
   if [ -n "$(calls_besides_raise "$body")" ]; then
     fail "$fn contains a call — the integer fast path is no longer fully inlined" "$body"
   fi
 done
+
+# A unit conversion keeps the raw: ins_perf_unit_in is a move and a return,
+# with no arithmetic.
+unit_in="$(printf '%s\n' "$DIS" | sed -n '/<ins_perf_unit_in>:/,/^$/p')"
+if printf '%s\n' "$unit_in" | grep -qE '\b(add|sub|imul|mul|lea|shl|sar|shr|div|idiv)[a-z]*\b'; then
+  fail "ins_perf_unit_in does arithmetic — a unit conversion no longer keeps the raw" "$unit_in"
+fi
 
 # Vectorization is reported but NOT gated: whether the loop autovectorizes at -O2
 # varies by compiler version (e.g. GCC 14 vs 15 on the same loop), so it is too

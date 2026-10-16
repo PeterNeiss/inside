@@ -340,6 +340,51 @@ parse_exact<price>("2000000");         // errc::overflow, not clamped
 The core header takes a pointer pair, `parse<B>(first, last)`, and is
 `constexpr`; `io.hpp` adds the `std::string_view` overload and `operator>>`.
 
+## Physical units
+
+`<beman/inside/units.hpp>` gives an inside a unit and a quantity kind:
+`quantity<si::metre, inside<{0, 10}>>`. A conversion between units rescales
+the grid and keeps the raw, so it is exact. See [units.md](units.md).
+
+## Time: `std::chrono` at the boundary
+
+`#include <beman/inside/chrono.hpp>` (opt-in: it pulls `<chrono>`) converts
+between `std::chrono::duration` and insides. An inside's value is a time in
+**seconds** and its notch the resolution, so a chrono period is a notch:
+`period_notch<std::milli>` is `per<1000>`.
+
+```cpp
+using namespace std::chrono;
+using day_ms = inside<{{0, 86400}, per<1000>}>;   // a time of day to the millisecond
+using day_s  = inside<{0, 86400, bounds::half_open}>;
+
+from_duration<day_ms>(1500ms);                 // 1.5 (std::expected)
+from_duration<day_s>(1500ms);                  // errc::rounding_error: not a whole second
+from_duration<day_s, round_nearest>(1500ms);   // 2
+from_duration<day_s, wrap>(25h);               // 3600: the per-call flag wraps
+
+to_duration<milliseconds>(day_ms{1.5});        // 1500ms — a plain duration
+to_duration<seconds>(day_ms{1.5});             // expected: errc::rounding_error
+to_duration<seconds, round_floor>(day_ms{1.5}); // 1s — plain again
+```
+
+- **`from_duration<B, F>(d)`** takes the exact value `count·num/den` and stores
+  it like `B::try_make<F>`: B's policy plus the flags `F` round, clamp or wrap,
+  and a value B cannot take is the error. A floating count is taken as its
+  binary value.
+- **`to_duration<D, F>(x)`** computes the exact count `value·den/num`. A count
+  that is not a whole number of `D`'s periods is `errc::rounding_error` unless
+  `F` names a rounding mode, and one outside `D`'s rep is `errc::overflow`. It
+  returns a **plain `D`** when the grid rules both out (every value a whole
+  number of periods, the counts within the rep), and always for a floating rep
+  (rounded once); otherwise `std::expected<D, errc>`.
+
+An inside is not a duration *rep*: chrono converts between periods by
+multiplying the count by a raw `intmax_t`, which an inside rejects, and keeps
+the operands' rep for a sum, so `d1 + d2` would narrow the widened result back
+at runtime. [examples/clock.cpp](../examples/clock.cpp) converts a 24-hour
+clock both ways and checks its carry cascade against `std::chrono::hh_mm_ss`.
+
 ## Comparing insides
 
 `inside` compares directly with arithmetic types and other insides — no
