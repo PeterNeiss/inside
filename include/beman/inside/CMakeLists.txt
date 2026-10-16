@@ -7,26 +7,34 @@ target_sources(
             FILES
                 arithmetic.hpp
                 casts.hpp
-                cmath_adaptive.hpp
                 cmath.hpp
                 core.hpp
+                cursor.hpp
                 detail/addition.hpp
+                detail/assign_exact.hpp
                 detail/assignment.hpp
                 detail/big_rational.hpp
+                detail/compare.hpp
                 detail/debug.hpp
                 detail/division.hpp
+                detail/float_bits.hpp
                 detail/grid_rational.hpp
                 detail/int_for_bits.hpp
+                detail/introspection.hpp
                 detail/math_adaptive.hpp
+                detail/math_cores.hpp
+                detail/math_entry.hpp
                 detail/math_dd.hpp
                 detail/math_fp.hpp
                 detail/wide_int.hpp
                 detail/wide_value.hpp
                 detail/multiplication.hpp
+                detail/number_text.hpp
                 detail/overflow.hpp
                 detail/rational.hpp
                 detail/rep.hpp
                 detail/rounding.hpp
+                detail/storage.hpp
                 formats.hpp
                 generic.hpp
                 grid.hpp

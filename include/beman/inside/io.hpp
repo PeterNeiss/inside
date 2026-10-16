@@ -154,6 +154,7 @@ inline constexpr int fixed_decimals = [] {
 
 // delegate to std::to_string
 template <typename V>
+    requires(std::integral<V> || std::floating_point<V>)
 [[nodiscard]] auto to_string(V value) {
     return std::to_string(value);
 }
@@ -164,9 +165,9 @@ template <typename V>
 //-------------------------------------------------------------------------
 namespace detail {
 template <typename T>
-inline constexpr std::string_view type_name_v = is_wide_int_v<T>     ? "wide_int"
-                                                : is_exact_frac_v<T> ? "exact_frac"
-                                                                     : "unknown";
+inline constexpr std::string_view type_name_v = wide_integer<T>     ? "wide_int"
+                                                : exact_fraction<T> ? "exact_frac"
+                                                                    : "unknown";
 template <>
 inline constexpr std::string_view type_name_v<std::uint8_t> = "uint8_t";
 template <>
@@ -591,7 +592,7 @@ bool spec_negative(const exact_frac<K>& f) {
 }
 template <std::size_t K>
 wide_uint<K> spec_magnitude(const exact_frac<K>& f) {
-    return wide_uint<K>{f.Num.negative() ? -f.Num : f.Num};
+    return wide_uint<K>{abs(f.Num)};
 }
 template <std::size_t K>
 wide_uint<K> spec_denominator(const exact_frac<K>& f) {

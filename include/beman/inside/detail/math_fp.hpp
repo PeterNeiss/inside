@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// The double kernels of the math engine's double tier (cmath_adaptive.hpp):
+// The double kernels of the math engine's double tier (detail/math_entry.hpp):
 // a small libm in `double` — Taylor polynomials in Horner form with explicit
 // std::fma, Cody-Waite range reduction, and only std::fma / sqrt / nearbyint
 // from <cmath>.
@@ -15,8 +15,8 @@
 #ifndef BEMAN_INSIDE_DETAIL_MATH_FP_HPP
 #define BEMAN_INSIDE_DETAIL_MATH_FP_HPP
 
-#include <beman/inside/math.hpp>   // beman::inside::detail::ldexp (constexpr, reproducible)
-#include <beman/inside/inside.hpp> // complete inside/rational + has_flag/policy_of (store<>)
+#include <beman/inside/detail/float_bits.hpp> // beman::inside::detail::ldexp (constexpr, reproducible)
+#include <beman/inside/inside.hpp>            // complete inside/rational + has_flag/policy_of (store<>)
 
 // BEMAN_INSIDE_MATH_NO_FP is resolved in policy_flag.hpp (included via inside.hpp).
 
@@ -206,7 +206,7 @@ consteval horner_bound horner_error(const poly<N>& p, double Z, double Dz) {
 }
 
 // The fewest terms n ≤ Max whose truncation trunc(n) is at most 2^-T.
-template <typename F>
+template <std::invocable<int> F>
 consteval int terms_for(int T, int Max, F trunc) {
     double target = 1;
     for (int i = 0; i < T; ++i)

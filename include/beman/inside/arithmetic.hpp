@@ -2,7 +2,7 @@
 #ifndef BEMAN_INSIDE_ARITHMETIC_HPP
 #define BEMAN_INSIDE_ARITHMETIC_HPP
 
-#include <beman/inside/core.hpp>
+#include <beman/inside/detail/compare.hpp> // the inside type and its comparisons
 #include <beman/inside/casts.hpp>
 #include <beman/inside/detail/rep.hpp>
 
@@ -490,7 +490,7 @@ template <insidable Lhs, insidable Rhs>
 namespace detail {
 template <class L, class R>
 concept expected_operands =
-    (is_expected_v<L> || is_expected_v<R>) && (insidable<unwrap_t<L>> || insidable<unwrap_t<R>>);
+    (expected_like<L> || expected_like<R>) && (insidable<unwrap_t<L>> || insidable<unwrap_t<R>>);
 }
 
 #define BEMAN_INSIDE_LIFT_OP(op)                                                            \

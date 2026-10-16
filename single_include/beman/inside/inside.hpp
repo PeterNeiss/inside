@@ -34,9 +34,10 @@
 //  beman/inside/inside.hpp
 // ======================================================================
 // Public umbrella header. Include this to get the full `beman::inside::inside` API:
-// the core type (core.hpp) plus the free-function layers that depend on the
-// complete type — casts, arithmetic operators, and inside_range. Those three
-// must follow core.hpp because they need `inside<G, P>` fully defined.
+// the core type (core.hpp) and its comparisons (detail/compare.hpp), plus the
+// free-function layers that depend on the complete type — casts, arithmetic
+// operators, inside_range and cursor. Those follow core.hpp because they
+// need `inside<G, P>` fully defined.
 //---------------------------------------------------------------------------
 
 
@@ -51,6 +52,11 @@
 
 // ======================================================================
 //  beman/inside/generic.hpp
+// ======================================================================
+
+
+// ======================================================================
+//  beman/inside/detail/introspection.hpp
 // ======================================================================
 
 
@@ -269,7 +275,7 @@ using unwrap_t = typename unwrap<std::remove_cvref_t<T>>::type;
 
 template <class T>
 constexpr decltype(auto) lift_unwrap(T&& v) {
-    if constexpr (is_expected_v<T>)
+    if constexpr (expected_like<T>)
         return *std::forward<T>(v);
     else
         return std::forward<T>(v);
@@ -278,7 +284,7 @@ constexpr decltype(auto) lift_unwrap(T&& v) {
 // Copy an arg's error into `e`; true if the arg holds one.
 template <class T>
 constexpr bool lift_take_error([[maybe_unused]] const T& v, [[maybe_unused]] errc& e) {
-    if constexpr (is_expected_v<T>)
+    if constexpr (expected_like<T>)
         if (!v.has_value()) {
             e = v.error();
             return true;
@@ -303,7 +309,7 @@ template <class Op, class... Args>
     if ((detail::lift_take_error(args, e) || ...))
         return Ret{std::unexpected{e}};
 
-    if constexpr (detail::is_expected_v<R>)
+    if constexpr (detail::expected_like<R>)
         return op(detail::lift_unwrap(std::forward<Args>(args))...);
     else
         return Ret{op(detail::lift_unwrap(std::forward<Args>(args))...)};
@@ -328,12 +334,11 @@ template <class Op, class... Args>
 // ======================================================================
 
 
-
 //---------------------------------------------------------------------------
 // math — primitive numeric utilities: umax/imax, smallest_uint_for /
-// smallest_int_for (grid storage selection), the arithmetic/fractional concepts,
-// safe_abs, constexpr frexp/ldexp, and abs_fraction (the double → rational
-// engine behind rational(double)).
+// smallest_int_for (grid storage selection), the arithmetic/fractional
+// concepts and safe_abs. The floating-point bit helpers are in
+// detail/float_bits.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 using umax = std::uint64_t;
@@ -384,7 +389,22 @@ template <std::signed_integral V>
 [[nodiscard]] constexpr umax safe_abs(V value) noexcept {
     return (value >= 0) ? static_cast<umax>(value) : umax{0} - static_cast<umax>(value);
 }
+} // namespace detail
+} // namespace beman::inside
 
+
+// ======================================================================
+//  beman/inside/detail/float_bits.hpp
+// ======================================================================
+
+
+
+//---------------------------------------------------------------------------
+// float_bits — floating-point values read and built from their IEEE-754
+// bits, with no <cmath>: constexpr frexp/ldexp, finiteness, and abs_fraction
+// (the double → rational engine behind rational(double)).
+//---------------------------------------------------------------------------
+namespace beman::inside::detail {
 inline constexpr double frexp(double value, int* exp) noexcept {
     if (value == 0.0) {
         *exp = 0;
@@ -477,7 +497,17 @@ constexpr double ldexp(double value, int exp) noexcept {
 // Freestanding finite check: `v - v` is 0 for every finite v, NaN otherwise
 // (and inf - inf is NaN). Avoids <cmath>/std::isfinite so the core stays
 // bare-metal clean; the same idiom is used in the store paths.
-constexpr bool is_finite(double v) noexcept { return v - v == 0; }
+template <std::floating_point T>
+constexpr bool is_finite(T v) noexcept {
+    return v - v == 0;
+}
+
+// |v| ≥ 2^64 or NaN: past every 64-bit integer and rational (a grid within
+// them is decided by the sign alone).
+template <std::floating_point T>
+constexpr bool past_64_bits(T v) noexcept {
+    return !(v < static_cast<T>(0x1p64) && v > static_cast<T>(-0x1p64));
+}
 
 // Whether abs_fraction keeps a finite double exactly below 2^64: its reduced
 // denominator is at most 2^62 (the bits past that are dropped). Every |value|
@@ -567,8 +597,44 @@ constexpr std::pair<umax, umax> abs_fraction(double value) {
     return abs_fraction(value, exact);
 }
 
-} // namespace detail
-} // namespace beman::inside
+// A floating point wider than double (long double) whose value is a double.
+template <std::floating_point T>
+[[nodiscard]] constexpr bool is_double_value(T v) noexcept {
+    return static_cast<T>(static_cast<double>(v)) == v; // NaN: false
+}
+
+// A floating point wider than double: long double on x87 and IEEE quad, whose
+// bits past a double's every exact path keeps.
+template <typename T>
+concept wide_float = std::floating_point<T> && (sizeof(T) > sizeof(double));
+
+// A finite nonzero double as |d| = Mant·2^Exp, Mant of 53 bits.
+struct double_parts_t {
+    umax Mant;
+    int  Exp;
+};
+[[nodiscard]] constexpr double_parts_t double_parts(double d) noexcept {
+    int        e    = 0;
+    const umax mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53));
+    return {mant, e - 53};
+}
+
+// The doubles a floating point splits into, each the rounding error of the
+// last: f(part) for each, until a part is 0, f returns false, or 8 parts.
+// Returns what is left (0 when every part was taken).
+template <std::floating_point T, typename F>
+constexpr T for_each_double_part(T v, F f) {
+    T rem = v;
+    for (int i = 0; i < 8 && rem != 0; ++i) {
+        const double d = static_cast<double>(rem);
+        if (d == 0 || !f(d))
+            break;
+        rem -= static_cast<T>(d);
+    }
+    return rem;
+}
+
+} // namespace beman::inside::detail
 
 
 // ======================================================================
@@ -998,6 +1064,9 @@ struct wide_int {
         return t;
     }
 
+    // |a| (a signed minimum stays itself, as the builtin negation wraps).
+    [[nodiscard]] friend constexpr wide_int abs(const wide_int& a) noexcept { return a.negative() ? -a : a; }
+
     // Number of significant bits of a non-negative value (0 for 0).
     [[nodiscard]] friend constexpr int bit_width_of(const wide_int& a) noexcept {
         for (std::size_t i = N; i-- > 0;)
@@ -1106,6 +1175,15 @@ inline constexpr bool is_wide_int_v = false;
 template <std::size_t N, bool S, std::unsigned_integral L>
 inline constexpr bool is_wide_int_v<wide_int<N, S, L>> = true;
 
+// A wide_int of any width and signedness.
+template <typename T>
+concept wide_integer = is_wide_int_v<std::remove_cvref_t<T>>;
+
+// An integer the library may hold in a raw or intermediate: a builtin
+// integer or a wide_int. (std::integral cannot be extended to wide_int.)
+template <typename T>
+concept raw_integer = std::integral<T> || wide_integer<T>;
+
 //---------------------------------------------------------------------------
 // exact_frac — an exact value as a fraction of K-limb integers: the exact
 // paths' intermediate (wide_value.hpp), and, reduced, the raw of a continuous
@@ -1131,6 +1209,10 @@ template <typename T>
 inline constexpr bool is_exact_frac_v = false;
 template <std::size_t K>
 inline constexpr bool is_exact_frac_v<exact_frac<K>> = true;
+
+// An exact_frac of any width.
+template <typename T>
+concept exact_fraction = is_exact_frac_v<std::remove_cvref_t<T>>;
 } // namespace beman::inside::detail
 
 template <std::size_t N, bool Signed, std::unsigned_integral L>
@@ -1531,6 +1613,64 @@ struct rounded_integer {
 }
 
 //---------------------------------------------------------------------------
+// Floating points wider than double (long double), exactly: the sum of the
+// doubles they split into, each the rounding error of the last.
+//---------------------------------------------------------------------------
+
+// |v|·2^wide_float_shift for a finite 2^-64 ≤ |v| < 2^64, truncated to an
+// integer (< 2^244), and the sign of what the truncation dropped (0: exact,
+// as for every long double of at most 116 significant bits).
+inline constexpr int wide_float_shift = 180;
+struct scaled_float {
+    wide_uint<4> Magnitude;
+    int          Tail;
+};
+template <std::floating_point T>
+[[nodiscard]] constexpr scaled_float scaled_magnitude(T v) noexcept {
+    using W = wide_sint<5>;
+    W       acc{0};
+    int     tail = 0;
+    const T rem  = for_each_double_part(v < 0 ? -v : v, [&](double d) {
+        const auto [mant, e] = double_parts(d);
+        const int s          = e + wide_float_shift;
+        if (s < 0) { // below 2^-180: the parts after it are smaller still
+            tail = d < 0 ? -1 : 1;
+            return false;
+        }
+        acc += d < 0 ? -(W{mant} << s) : W{mant} << s;
+        return true;
+    });
+    if (tail == 0 && rem != 0)
+        tail = rem < 0 ? -1 : 1;
+    return {static_cast<wide_uint<4>>(acc), tail};
+}
+
+// rational{v} for a finite v wider than a double: exact when it fits, else
+// (bits finer than 2^-62) truncated toward zero, as for a double; |v| ≥ 2^64
+// raises.
+template <std::floating_point T>
+constexpr rational rational_of_wide_float(T v, bool& exact) {
+    const T a = v < 0 ? -v : v;
+    exact     = true;
+    if (!(a < static_cast<T>(0x1p64)))
+        raise(errc::overflow, "beman::inside::detail::rational: |long double| >= 2^64");
+    if (a < static_cast<T>(0x1p-62)) {
+        exact = a == 0;
+        return make_raw(0, 1);
+    }
+    const auto [m, tail] = scaled_magnitude(a);
+    constexpr int drop   = wide_float_shift - 62; // keep bits down to 2^-62
+    exact                = tail == 0 && (m << (wide_uint<4>::bits - drop)).is_zero();
+    const auto q         = m >> drop; // ≥ 1 here
+    const int  tz        = std::countr_zero(static_cast<umax>(q)) < 62 ? std::countr_zero(static_cast<umax>(q)) : 62;
+    const auto num       = q >> tz;
+    if (bit_width_of(num) > 64)
+        raise(errc::overflow, "beman::inside::detail::rational: long double past the 64-bit rational");
+    const imax den = imax{1} << (62 - tz);
+    return make_raw(static_cast<umax>(num), v < 0 ? -den : den);
+}
+
+//---------------------------------------------------------------------------
 // rational::rational
 //---------------------------------------------------------------------------
 constexpr rational::rational(std::signed_integral auto num, imax den)
@@ -1539,8 +1679,14 @@ constexpr rational::rational(std::signed_integral auto num, imax den)
 }
 
 constexpr rational::rational(std::floating_point auto value) {
-    if (not is_finite(value))
+    if (!is_finite(value))
         raise(errc::not_finite, "non-finite double");
+    if constexpr (wide_float<decltype(value)>)
+        if (!is_double_value(value)) {
+            bool exact;
+            *this = rational_of_wide_float(value, exact);
+            return;
+        }
 
     if (value == 0.0) {
         Numerator   = 0;
@@ -1581,6 +1727,601 @@ constexpr std::expected<T, errc> rational::to() const {
     return static_cast<T>(q);
 }
 
+// per<D> and frac<N, D> are defined publicly in `namespace beman::inside` (see the
+// re-export block at the end of this header) so consumers spell grid values
+// without naming the internal representation type.
+
+// a + b exactly, for the checked add once a 64-bit step overflowed: the
+// numerator and lcm in 3 limbs, reduced, then checked to fit (a sum can
+// reduce back into range: (2^63+1)/2 + 1/6 = (3·2^62+2)/3).
+template <bool Loud>
+BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::expected<rational, errc> add_wide(rational a, rational b) {
+    using W       = wide_sint<3>;
+    const umax ad = abs_den(a.Denominator), bd = abs_den(b.Denominator), g = std::gcd(ad, bd);
+    const W    an  = a.Denominator < 0 ? -W{a.Numerator} : W{a.Numerator};
+    const W    bn  = b.Denominator < 0 ? -W{b.Numerator} : W{b.Numerator};
+    W          num = an * W{bd / g} + bn * W{ad / g};
+    W          den = W{ad} * W{bd / g};
+    if (num.is_zero())
+        return rational{0};
+    W x = abs(num), y = den; // gcd(|num|, den)
+    while (!y.is_zero()) {
+        const W t = x % y;
+        x         = y;
+        y         = t;
+    }
+    num            = num / x;
+    den            = den / x;
+    const bool neg = num.negative();
+    const W    mag = neg ? -num : num;
+    if (W{std::numeric_limits<umax>::max()} < mag || W{std::numeric_limits<imax>::max()} < den)
+        return fail<"rational +: result out of the 64-bit range", Loud>(errc::overflow);
+    const imax d = static_cast<imax>(static_cast<umax>(den));
+    return make_raw(static_cast<umax>(mag), neg ? -d : d);
+}
+
+// Reduce n/d, the sum of two reduced fractions over d = lcm of their
+// denominators, whose gcd is g: gcd(n, d) = gcd(n, g) (Henrici), so a sum
+// over coprime denominators is already reduced.
+constexpr void reduce_sum(umax& n, umax& d, umax g) noexcept {
+    if (g == 1)
+        return;
+    // A power-of-two g: the gcd is the lowest set bit of n | g.
+    const umax h = std::has_single_bit(g) ? (n | g) & (umax{0} - (n | g)) : std::gcd(n, g);
+    n /= h;
+    d /= h;
+}
+
+//---------------------------------------------------------------------------
+// add_impl / mul_impl / div_impl — shared bodies (Checked toggles overflow)
+//---------------------------------------------------------------------------
+template <bool Checked, bool Loud>
+inline constexpr auto rational::add_impl(const rational& a, const rational& b) {
+    using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
+
+    // (a == −b needs no test: equal denominators, opposite signs → num == 0 below.)
+    if (a.Numerator == 0)
+        return ret_t{b};
+    if (b.Numerator == 0)
+        return ret_t{a};
+
+    bool a_neg = a.Denominator < 0;
+    bool b_neg = b.Denominator < 0;
+    umax a_ad  = abs_den(a.Denominator);
+    umax b_ad  = abs_den(b.Denominator);
+
+    if (a_ad == b_ad) {
+        if (a_neg == b_neg) {
+            umax numerator;
+            if constexpr (Checked) {
+                if (add_overflow(a.Numerator, b.Numerator, &numerator)) {
+                    return ret_t{fail<"rational +: numerator overflow (same denominator)", Loud>(errc::overflow)};
+                }
+            } else
+                numerator = a.Numerator + b.Numerator;
+
+            rational r;
+            r.Numerator   = numerator;
+            r.Denominator = a.Denominator;
+            trim(r.Numerator, r.Denominator);
+            return ret_t{r};
+        }
+
+        umax num   = (a.Numerator > b.Numerator) ? (a.Numerator - b.Numerator) : (b.Numerator - a.Numerator);
+        bool r_neg = a_neg ? (a.Numerator > b.Numerator) : (b.Numerator > a.Numerator);
+        if (num == 0)
+            return ret_t{rational{0}};
+        rational r;
+        r.Numerator   = num;
+        r.Denominator = r_neg ? -a_ad : a_ad;
+        trim(r.Numerator, r.Denominator);
+        return ret_t{r};
+    }
+
+    // Common denominator = lcm(a_ad, b_ad) = a_ad·(b_ad/g), not a_ad·b_ad: the
+    // reduced cofactors (g = gcd) overflow far less often than the raw product.
+    umax g      = std::gcd(a_ad, b_ad);
+    umax a_ad_r = a_ad / g; // = a_ad / gcd; coprime with b_ad_r
+    umax b_ad_r = b_ad / g;
+
+    umax denominator;
+    umax A;
+    umax B;
+
+    if constexpr (Checked) {
+        if (mul_overflow(a_ad, b_ad_r, &denominator) || // = lcm(a_ad, b_ad)
+            denominator > static_cast<umax>(std::numeric_limits<imax>::max())) {
+            return ret_t{fail<"rational +: denominator overflow", Loud>(errc::overflow)};
+        }
+        if (mul_overflow(a.Numerator, b_ad_r, &A) || mul_overflow(b.Numerator, a_ad_r, &B)) {
+            // Mixed signs: |A − B| can fit umax even when a cross-product alone
+            // does not (e.g. 1024 − m/2^54 forms 1024·2^54 == 2^64 before the
+            // subtraction brings it back in range — the former double engine's store hit
+            // exactly this). Retry the difference in 128-bit before giving up.
+            if (a_neg != b_neg) {
+                const limb::pair<umax> A2       = limb::mul(a.Numerator, b_ad_r);
+                const limb::pair<umax> B2       = limb::mul(b.Numerator, a_ad_r);
+                const bool             a_bigger = A2.Hi != B2.Hi ? A2.Hi > B2.Hi : A2.Lo > B2.Lo;
+                const limb::pair<umax> big = a_bigger ? A2 : B2, small = a_bigger ? B2 : A2;
+                if (big.Hi - small.Hi - (big.Lo < small.Lo ? 1u : 0u) == 0) {
+                    rational r;
+                    r.Numerator   = big.Lo - small.Lo;
+                    r.Denominator = (a_neg ? a_bigger : !a_bigger) ? -denominator : denominator;
+                    trim(r.Numerator, r.Denominator);
+                    return ret_t{r};
+                }
+            }
+            return ret_t{fail<"rational +: cross-multiplication overflow", Loud>(errc::overflow)};
+        }
+    } else {
+        denominator = a_ad * b_ad_r;
+        A           = a.Numerator * b_ad_r;
+        B           = b.Numerator * a_ad_r;
+    }
+
+    if (a_neg == b_neg) {
+        umax numerator;
+        if constexpr (Checked) {
+            if (add_overflow(A, B, &numerator)) {
+                return ret_t{fail<"rational +: numerator sum overflow", Loud>(errc::overflow)};
+            }
+        } else
+            numerator = A + B;
+
+        // num, den both > 0 here, so the ctor's domain/zero checks are dead;
+        // assemble directly and reduce.
+        reduce_sum(numerator, denominator, g);
+        return ret_t{make_raw(numerator, a_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator))};
+    }
+
+    // numerator == 0 (exact cancellation) is unreachable here: it would
+    // require a == -b, which for canonical inputs has equal denominators and
+    // took the equal-denominator branch above.
+    umax       numerator = (A > B) ? (A - B) : (B - A);
+    const bool r_neg     = a_neg ? (A > B) : (B > A);
+    reduce_sum(numerator, denominator, g);
+    return ret_t{make_raw(numerator, r_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator))};
+}
+
+template <bool Checked, bool Loud>
+inline constexpr auto rational::mul_impl(const rational& a_in, const rational& b_in) {
+    using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
+    rational a = a_in, b = b_in;
+
+    if (a.Numerator == 0 || b.Numerator == 0)
+        return ret_t{rational{0}};
+
+    bool r_neg = (a.Denominator < 0) != (b.Denominator < 0);
+    umax a_ad  = abs_den(a.Denominator);
+    umax b_ad  = abs_den(b.Denominator);
+
+    if (a_ad == 1 && b_ad == 1) {
+        umax numerator;
+        if constexpr (Checked) {
+            if (mul_overflow(a.Numerator, b.Numerator, &numerator)) {
+                return ret_t{fail<"rational *: numerator overflow", Loud>(errc::overflow)};
+            }
+        } else
+            numerator = a.Numerator * b.Numerator;
+
+        return ret_t{make_raw(numerator, r_neg ? imax{-1} : imax{1})};
+    }
+
+    trim(a.Numerator, b_ad);
+    trim(b.Numerator, a_ad);
+
+    umax numerator;
+    umax denominator;
+    if constexpr (Checked) {
+        if (mul_overflow(a.Numerator, b.Numerator, &numerator) || mul_overflow(a_ad, b_ad, &denominator) ||
+            denominator > static_cast<umax>(std::numeric_limits<imax>::max())) {
+            return ret_t{fail<"rational *: numerator or denominator overflow", Loud>(errc::overflow)};
+        }
+    } else {
+        numerator   = a.Numerator * b.Numerator;
+        denominator = a_ad * b_ad;
+    }
+
+    // The cross-trims above guarantee gcd(numerator, denominator) == 1, so
+    // bypass rational(num, den) and skip its redundant trim.
+    return ret_t{make_raw(numerator, r_neg ? -denominator : denominator)};
+}
+
+//---------------------------------------------------------------------------
+// inv_impl — multiplicative inverse (1 / a)
+//---------------------------------------------------------------------------
+// a is already trimmed (Numerator and |Denominator| coprime), so the swapped
+// pair is also trimmed. Sign lives in the denominator and 1/(-x) has the same
+// sign as -x, so the sign bit moves with the (now) denominator unchanged.
+template <bool Checked, bool Loud>
+inline constexpr auto rational::inv_impl(const rational& a) {
+    using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
+
+    if constexpr (Checked) {
+        // a.Numerator goes into the result's Denominator slot, so it must fit in
+        // imax (else the umax→imax conversion wraps and a later -Denominator is UB).
+        if (a.Numerator == 0) {
+            return ret_t{fail<"rational inv: division by zero", Loud>(errc::division_by_zero)};
+        }
+        if (a.Numerator > static_cast<umax>(std::numeric_limits<imax>::max())) {
+            return ret_t{fail<"rational inv: numerator out of denominator range", Loud>(errc::overflow)};
+        }
+    }
+
+    return ret_t{make_raw(abs_den(a.Denominator), signed_numerator(a))};
+}
+
+// div(a, b) = a * inv(b). The checked path goes through inv_impl<true> so
+// the b.Numerator-fits-in-imax check (added there) propagates here too;
+// the unchecked path skips it (caller's contract).
+template <bool Checked, bool Loud>
+inline constexpr auto rational::div_impl(const rational& a, const rational& b) {
+    using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
+
+    if constexpr (Checked) {
+        // Cross-reduce a.N/b.N and b.D/a.D first: b.N need not fit the
+        // denominator alone (x/x with x > 2^63 is 1).
+        if (b.Numerator == 0)
+            return ret_t{fail<"rational /: division by zero", Loud>(errc::division_by_zero)};
+        if (a.Numerator == 0)
+            return ret_t{rational{0}};
+        const umax g1 = std::gcd(a.Numerator, b.Numerator);
+        const umax g2 = std::gcd(abs_den(a.Denominator), abs_den(b.Denominator));
+        umax       num, den;
+        if (mul_overflow(a.Numerator / g1, abs_den(b.Denominator) / g2, &num) ||
+            mul_overflow(abs_den(a.Denominator) / g2, b.Numerator / g1, &den) ||
+            den > static_cast<umax>(std::numeric_limits<imax>::max()))
+            return ret_t{fail<"rational /: numerator or denominator overflow", Loud>(errc::overflow)};
+        const bool neg = (a.Denominator < 0) != (b.Denominator < 0);
+        return ret_t{make_raw(num, neg ? -static_cast<imax>(den) : static_cast<imax>(den))};
+    } else
+        return mul_impl<false>(a, inv_impl<false>(b));
+}
+
+//---------------------------------------------------------------------------
+// unchecked rational arithmetic — caller guarantees: no umax overflow on the
+// products, no zero divisor/numerator, and the result Denominator fits in imax.
+// The checked variants enforce all three; unchecked skips them.
+//---------------------------------------------------------------------------
+inline constexpr rational rational::add_unchecked(rational a, rational b) { return add_impl<false>(a, b); }
+
+inline constexpr rational rational::mul_unchecked(rational a, rational b) { return mul_impl<false>(a, b); }
+
+inline constexpr rational rational::div_unchecked(rational a, rational b) { return div_impl<false>(a, b); }
+
+inline constexpr rational rational::inv_unchecked(rational a) { return inv_impl<false>(a); }
+
+inline constexpr std::expected<rational, errc> rational::inv(rational a) { return inv_impl<true>(a); }
+
+//---------------------------------------------------------------------------
+// operator-
+//---------------------------------------------------------------------------
+[[nodiscard]] inline constexpr rational rational::operator-() const {
+    if (Numerator == 0)
+        return *this;
+
+    // Already trimmed; flip the sign-encoding directly without re-running trim.
+    return make_raw(Numerator, -Denominator);
+}
+
+//---------------------------------------------------------------------------
+// operator<=>
+//---------------------------------------------------------------------------
+[[nodiscard]] inline constexpr auto operator<=>(rational lhs, rational rhs) -> std::strong_ordering {
+    int lhs_sign = sign(lhs);
+    int rhs_sign = sign(rhs);
+
+    if (lhs_sign != rhs_sign)
+        return lhs_sign <=> rhs_sign;
+
+    if (lhs_sign == 0)
+        return std::strong_ordering::equal;
+
+    // signs are equal here (the `lhs_sign != rhs_sign` branch returned above)
+    bool lhs_neg = lhs_sign < 0;
+
+    umax lhs_ad = abs_den(lhs.Denominator);
+    umax rhs_ad = abs_den(rhs.Denominator);
+
+    // integer comparison: skip cross-multiply entirely
+    if (lhs_ad == 1 && rhs_ad == 1) {
+        if (lhs_neg)
+            return rhs.Numerator <=> lhs.Numerator;
+        else
+            return lhs.Numerator <=> rhs.Numerator;
+    }
+
+    // One side is an integer: compare via divmod instead of cross-multiply.
+    // Cross-multiplying would otherwise overflow when the non-integer side
+    // has a huge denominator (e.g. doubles like 19.99 stored as N/2^48).
+    if (rhs_ad == 1) {
+        umax q   = lhs.Numerator / lhs_ad;
+        umax r   = lhs.Numerator % lhs_ad;
+        auto cmp = (q == rhs.Numerator) ? (r == 0 ? std::strong_ordering::equal : std::strong_ordering::greater)
+                                        : (q <=> rhs.Numerator);
+        return lhs_neg ? (0 <=> cmp) : cmp;
+    }
+    if (lhs_ad == 1) {
+        umax q   = rhs.Numerator / rhs_ad;
+        umax r   = rhs.Numerator % rhs_ad;
+        auto cmp = (q == lhs.Numerator) ? (r == 0 ? std::strong_ordering::equal : std::strong_ordering::less)
+                                        : (lhs.Numerator <=> q);
+        return lhs_neg ? (0 <=> cmp) : cmp;
+    }
+
+    // Cross-multiply in 128-bit: |numerator| and |denominator| are each ≤ 2^64−1,
+    // so the products fit exactly in 128 bits — the comparison can never overflow,
+    // so no trap is needed.
+    return lhs_neg ? limb::mul_compare(rhs.Numerator, lhs_ad, lhs.Numerator, rhs_ad)
+                   : limb::mul_compare(lhs.Numerator, rhs_ad, rhs.Numerator, lhs_ad);
+}
+
+template <arithmetic T>
+[[nodiscard]] inline constexpr auto operator<=>(const std::expected<T, errc>& lhs, const rational& rhs) {
+    return rational{lhs.value()} <=> rhs;
+}
+
+template <arithmetic T>
+[[nodiscard]] inline constexpr auto operator<=>(const rational& lhs, const std::expected<T, errc>& rhs) {
+    return lhs <=> rational{rhs.value()};
+}
+
+// lhs against a finite double finer than 2^-62 (which rational{rhs}
+// truncates): |lhs| = N/D against |rhs| = s·2^-k (k > 62) as N·2^k against
+// s·D, which stays within two 64-bit factors. Cold and out of line: the
+// stores compare doubles with their limits.
+[[nodiscard]] BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::strong_ordering
+compare_fine_double(const rational& lhs, double rhs) {
+    const int ls = sign(lhs), rs = rhs < 0 ? -1 : 1;
+    if (ls != rs)
+        return ls <=> rs;
+    const auto bits = std::bit_cast<std::uint64_t>(rhs) & 0x7FFF'FFFF'FFFF'FFFF;
+    const int  e    = static_cast<int>(bits >> 52);
+    const umax s    = (bits & 0x000F'FFFF'FFFF'FFFF) | (e != 0 ? umax{1} << 52 : 0);
+    const int  k    = e != 0 ? 1023 + 52 - e : 1023 + 52 - 1; // rhs = s·2^-k, k > 62
+    const umax n = lhs.Numerator, d = abs_den(lhs.Denominator);
+    // s·D < 2^117: past that width N·2^k is larger.
+    const auto mag = std::bit_width(n) + k > 117
+                         ? std::strong_ordering::greater
+                         : limb::mul_compare(n << (k - 63), umax{1} << 63, s, d); // N·2^(k−63) < 2^54
+    return ls < 0 ? (0 <=> mag) : mag;
+}
+
+// lhs against a double, exactly (non-finite raises, as rational{rhs}). Every
+// rational lies strictly inside ±2^64, so a larger double is decided by its sign.
+[[nodiscard]] inline constexpr std::strong_ordering compare_double(const rational& lhs, double rhs) {
+    if (is_finite(rhs) && past_64_bits(rhs)) [[unlikely]]
+        return rhs < 0 ? std::strong_ordering::greater : std::strong_ordering::less;
+    if (abs_fraction_exact(rhs) || not is_finite(rhs)) [[likely]]
+        return lhs <=> rational{rhs};
+    return compare_fine_double(lhs, rhs);
+}
+
+// lhs against a floating point of any width, exactly: one wider than double
+// (long double) with bits past the double's compares as N·2^180 against its
+// scaled magnitude times D.
+template <std::floating_point T>
+[[nodiscard]] constexpr std::strong_ordering compare_float(const rational& lhs, T rhs) {
+    if constexpr (wide_float<T>)
+        if (is_finite(rhs) && !is_double_value(rhs)) [[unlikely]] {
+            const int ls = sign(lhs), rs = rhs < 0 ? -1 : 1;
+            if (ls != rs)
+                return ls <=> rs;
+            const T              a   = rhs < 0 ? -rhs : rhs;
+            std::strong_ordering mag = std::strong_ordering::equal;
+            if (!(a < static_cast<T>(0x1p64))) // past every rational
+                mag = std::strong_ordering::less;
+            else if (a < static_cast<T>(0x1p-64)) // below every nonzero rational
+                mag = std::strong_ordering::greater;
+            else {
+                using W              = wide_uint<5>;
+                const auto [m, tail] = scaled_magnitude(a);
+                mag                  = (W{lhs.Numerator} << wide_float_shift) <=> W{m} * W{abs_den(lhs.Denominator)};
+                if (mag == 0)
+                    mag = 0 <=> tail;
+            }
+            return ls < 0 ? (0 <=> mag) : mag;
+        }
+    return compare_double(lhs, static_cast<double>(rhs));
+}
+
+template <arithmetic T>
+[[nodiscard]] constexpr bool rational::operator==(T value) const {
+    if constexpr (std::floating_point<T>)
+        return compare_float(*this, value) == 0;
+    else
+        return operator==(rational{value});
+}
+
+template <arithmetic T>
+[[nodiscard]] inline constexpr auto operator<=>(T lhs, const rational& rhs) {
+    if constexpr (std::floating_point<T>)
+        return 0 <=> compare_float(rhs, lhs);
+    else
+        return rational{lhs} <=> rhs;
+}
+
+template <arithmetic T>
+[[nodiscard]] inline constexpr auto operator<=>(const rational& lhs, T rhs) {
+    if constexpr (std::floating_point<T>)
+        return compare_float(lhs, rhs);
+    else
+        return lhs <=> rational{rhs};
+}
+
+//---------------------------------------------------------------------------
+// Expected-lifting operators — one generic overload per arithmetic operator
+// that engages when an operand is a std::expected, both unwrap to arithmetic,
+// and at least one to rational. Gating on `arithmetic` (not `insidable`, which
+// isn't visible this low) excludes inside operands, so inside-involving expected
+// expressions partition cleanly to arithmetic.hpp's generic instead.
+//---------------------------------------------------------------------------
+template <class L, class R>
+concept rational_lift_operands =
+    (expected_like<L> || expected_like<R>) && arithmetic<unwrap_t<L>> && arithmetic<unwrap_t<R>> &&
+    (std::same_as<unwrap_t<L>, rational> || std::same_as<unwrap_t<R>, rational>);
+
+//---------------------------------------------------------------------------
+// Binary operators: the checked rational ⋈ rational cores, then per operator
+// the arithmetic-operand forms (direct construction, no lift overhead), the
+// expected-operand form (propagates via lift), and the compound assignments.
+// Compound assignments unwrap with .value() — std::bad_expected_access on
+// overflow; callers needing a non-throwing path use the binary operators.
+//---------------------------------------------------------------------------
+// add_impl fails on a 64-bit step's overflow; the sum may still fit once
+// reduced, which add_wide (cold) settles.
+[[nodiscard]] inline constexpr std::expected<rational, errc> operator+(const rational& lhs, const rational& rhs) {
+    const auto r = rational::add_impl<true, false>(lhs, rhs);
+    if (!r) [[unlikely]]
+        return add_wide<true>(lhs, rhs);
+    return r;
+}
+
+[[nodiscard]] inline constexpr std::expected<rational, errc> operator-(const rational& lhs, const rational& rhs) {
+    return operator+(lhs, -rhs);
+}
+
+[[nodiscard]] inline constexpr std::expected<rational, errc> operator*(const rational& lhs, const rational& rhs) {
+    return rational::mul_impl<true>(lhs, rhs);
+}
+
+[[nodiscard]] inline constexpr std::expected<rational, errc> operator/(const rational& lhs, const rational& rhs) {
+    return rational::div_impl<true>(lhs, rhs);
+}
+
+// Quiet checked ops: like the operators, but an overflow is an error value
+// even in constant evaluation (the operators make it a compile error there).
+// For compile-time code that asks whether a result fits.
+[[nodiscard]] inline constexpr std::expected<rational, errc> try_add(const rational& a, const rational& b) {
+    const auto r = rational::add_impl<true, false>(a, b);
+    if (!r) [[unlikely]]
+        return add_wide<false>(a, b);
+    return r;
+}
+[[nodiscard]] inline constexpr std::expected<rational, errc> try_sub(const rational& a, const rational& b) {
+    return try_add(a, -b);
+}
+[[nodiscard]] inline constexpr std::expected<rational, errc> try_mul(const rational& a, const rational& b) {
+    return rational::mul_impl<true, false>(a, b);
+}
+[[nodiscard]] inline constexpr std::expected<rational, errc> try_div(const rational& a, const rational& b) {
+    return rational::div_impl<true, false>(a, b);
+}
+
+[[nodiscard]] inline constexpr std::expected<rational, errc> operator-(const std::expected<rational, errc>& v) {
+    return lift([](rational r) { return -r; }, v);
+}
+
+#define BEMAN_INSIDE_RATIONAL_OP(op)                                                                        \
+    template <arithmetic T>                                                                                 \
+    [[nodiscard]] inline constexpr auto operator op(T lhs, rational const& rhs) {                           \
+        return rational{lhs} op rhs;                                                                        \
+    }                                                                                                       \
+    template <arithmetic T>                                                                                 \
+    [[nodiscard]] inline constexpr auto operator op(rational const& lhs, T rhs) {                           \
+        return lhs op rational{rhs};                                                                        \
+    }                                                                                                       \
+    template <class L, class R>                                                                             \
+        requires rational_lift_operands<L, R>                                                               \
+    [[nodiscard]] inline constexpr auto operator op(L const& lhs, R const& rhs) {                           \
+        return lift([](auto const& a, auto const& b) { return a op b; }, lhs, rhs);                         \
+    }                                                                                                       \
+    inline constexpr rational& rational::operator op## = (rational const& rhs) {                            \
+        *this = (*this op rhs).value();                                                                     \
+        return *this;                                                                                       \
+    }                                                                                                       \
+    template <arithmetic T>                                                                                 \
+    inline constexpr rational& operator op## = (rational & lhs, T rhs) {                                    \
+        return lhs op## = rational{rhs};                                                                    \
+    }                                                                                                       \
+    inline constexpr rational& operator op## = (rational & lhs, std::expected<rational, errc> const& rhs) { \
+        return lhs op## = rhs.value();                                                                      \
+    }
+
+BEMAN_INSIDE_RATIONAL_OP(+)
+BEMAN_INSIDE_RATIONAL_OP(-)
+BEMAN_INSIDE_RATIONAL_OP(*)
+BEMAN_INSIDE_RATIONAL_OP(/)
+#undef BEMAN_INSIDE_RATIONAL_OP
+
+//---------------------------------------------------------------------------
+// divides_evenly
+//---------------------------------------------------------------------------
+[[nodiscard]] inline constexpr bool divides_evenly(const rational& dividend, const rational& divisor) {
+    if (divisor == 0)
+        return true; // convention: everything divides 0 evenly
+    if (dividend.Numerator == 0)
+        return true; // 0 / anything is the integer 0
+
+    // dividend/divisor ∈ ℤ without forming the (possibly umax-overflowing)
+    // quotient numerator. In lowest terms dividend = p/q, divisor = r/s; the
+    // quotient p·s/(q·r) is integral iff q | s and r | p (rationals are
+    // canonicalized, so gcd(p,q)=gcd(r,s)=1). All checks are on single fields.
+    const umax p = dividend.Numerator, q = abs_den(dividend.Denominator);
+    const umax r = divisor.Numerator, s = abs_den(divisor.Denominator);
+    return (s % q == 0) && (p % r == 0);
+}
+
+} // namespace beman::inside::detail
+
+namespace beman::inside::detail {
+// Checked builders for the public helpers below: a static_assert here fires at
+// the user's spelling. Denominators are unsigned, so a sign can only sit in
+// frac's numerator.
+template <umax D>
+consteval rational make_per() {
+    static_assert(D >= 1, "per<D> is the positive step 1/D; a continuous grid is spelled 0");
+    static_assert(D <= static_cast<umax>(std::numeric_limits<imax>::max()), "per<D>: denominator too large");
+    return rational{umax{1}, D};
+}
+
+template <imax N, umax D>
+consteval rational make_frac() {
+    static_assert(D >= 1, "frac<N, D>: the denominator must be at least 1");
+    static_assert(D <= static_cast<umax>(std::numeric_limits<imax>::max()), "frac<N, D>: denominator too large");
+    return rational{N, static_cast<imax>(D)};
+}
+} // namespace beman::inside::detail
+
+namespace beman::inside {
+// `rational` — an exact 64-bit fraction: the value of a literal (`0.1_r`), a
+// continuous inside's raw, and a runtime exact value to compute with.
+using detail::rational;
+
+// The grid-building helpers:
+//   per<D>       the step 1/D — the common notch (per<256> is Q·8);
+//   frac<N, D>   any exact ratio (signed numerator): a limit like frac<-6, 5>
+//                for -1.2, or another step like frac<360, 4096>;
+// (the _r literal, an exact decimal / hex value — 0.1_r is exactly 1/10 —
+// is in detail/number_text.hpp.)
+// Integer steps are plain integers ({{0, 100}, 5}); grid::validate rejects a
+// negative notch however it is spelled.
+template <umax D>
+inline constexpr detail::rational per = detail::make_per<D>();
+
+template <imax N, umax D = 1>
+inline constexpr detail::rational frac = detail::make_frac<N, D>();
+
+} // namespace beman::inside
+
+
+// ======================================================================
+//  beman/inside/interval.hpp
+// ======================================================================
+
+
+// ======================================================================
+//  beman/inside/detail/grid_rational.hpp
+// ======================================================================
+
+
+// ======================================================================
+//  beman/inside/detail/number_text.hpp
+// ======================================================================
+
+
+
+namespace beman::inside::detail {
 //---------------------------------------------------------------------------
 // _ins / _r literal parser — shared between core.hpp's `_ins` and `_r` below.
 // Accepts:
@@ -1909,562 +2650,12 @@ template <char... Chars>
 constexpr rational operator""_r() {
     return parse_ins_literal<Chars...>();
 }
-
-// per<D> and frac<N, D> are defined publicly in `namespace beman::inside` (see the
-// re-export block at the end of this header) so consumers spell grid values
-// without naming the internal representation type.
-
-// a + b exactly, for the checked add once a 64-bit step overflowed: the
-// numerator and lcm in 3 limbs, reduced, then checked to fit (a sum can
-// reduce back into range: (2^63+1)/2 + 1/6 = (3·2^62+2)/3).
-template <bool Loud>
-BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::expected<rational, errc> add_wide(rational a, rational b) {
-    using W       = wide_sint<3>;
-    const umax ad = abs_den(a.Denominator), bd = abs_den(b.Denominator), g = std::gcd(ad, bd);
-    const W    an  = a.Denominator < 0 ? -W{a.Numerator} : W{a.Numerator};
-    const W    bn  = b.Denominator < 0 ? -W{b.Numerator} : W{b.Numerator};
-    W          num = an * W{bd / g} + bn * W{ad / g};
-    W          den = W{ad} * W{bd / g};
-    if (num.is_zero())
-        return rational{0};
-    W x = num.negative() ? -num : num, y = den; // gcd(|num|, den)
-    while (!y.is_zero()) {
-        const W t = x % y;
-        x         = y;
-        y         = t;
-    }
-    num            = num / x;
-    den            = den / x;
-    const bool neg = num.negative();
-    const W    mag = neg ? -num : num;
-    if (W{std::numeric_limits<umax>::max()} < mag || W{std::numeric_limits<imax>::max()} < den)
-        return fail<"rational +: result out of the 64-bit range", Loud>(errc::overflow);
-    const imax d = static_cast<imax>(static_cast<umax>(den));
-    return make_raw(static_cast<umax>(mag), neg ? -d : d);
-}
-
-// Reduce n/d, the sum of two reduced fractions over d = lcm of their
-// denominators, whose gcd is g: gcd(n, d) = gcd(n, g) (Henrici), so a sum
-// over coprime denominators is already reduced.
-constexpr void reduce_sum(umax& n, umax& d, umax g) noexcept {
-    if (g == 1)
-        return;
-    // A power-of-two g: the gcd is the lowest set bit of n | g.
-    const umax h = std::has_single_bit(g) ? (n | g) & (umax{0} - (n | g)) : std::gcd(n, g);
-    n /= h;
-    d /= h;
-}
-
-//---------------------------------------------------------------------------
-// add_impl / mul_impl / div_impl — shared bodies (Checked toggles overflow)
-//---------------------------------------------------------------------------
-template <bool Checked, bool Loud>
-inline constexpr auto rational::add_impl(const rational& a, const rational& b) {
-    using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
-
-    // (a == −b needs no test: equal denominators, opposite signs → num == 0 below.)
-    if (a.Numerator == 0)
-        return ret_t{b};
-    if (b.Numerator == 0)
-        return ret_t{a};
-
-    bool a_neg = a.Denominator < 0;
-    bool b_neg = b.Denominator < 0;
-    umax a_ad  = abs_den(a.Denominator);
-    umax b_ad  = abs_den(b.Denominator);
-
-    if (a_ad == b_ad) {
-        if (a_neg == b_neg) {
-            umax numerator;
-            if constexpr (Checked) {
-                if (add_overflow(a.Numerator, b.Numerator, &numerator)) {
-                    return ret_t{fail<"rational +: numerator overflow (same denominator)", Loud>(errc::overflow)};
-                }
-            } else
-                numerator = a.Numerator + b.Numerator;
-
-            rational r;
-            r.Numerator   = numerator;
-            r.Denominator = a.Denominator;
-            trim(r.Numerator, r.Denominator);
-            return ret_t{r};
-        }
-
-        umax num   = (a.Numerator > b.Numerator) ? (a.Numerator - b.Numerator) : (b.Numerator - a.Numerator);
-        bool r_neg = a_neg ? (a.Numerator > b.Numerator) : (b.Numerator > a.Numerator);
-        if (num == 0)
-            return ret_t{0_r};
-        rational r;
-        r.Numerator   = num;
-        r.Denominator = r_neg ? -a_ad : a_ad;
-        trim(r.Numerator, r.Denominator);
-        return ret_t{r};
-    }
-
-    // Common denominator = lcm(a_ad, b_ad) = a_ad·(b_ad/g), not a_ad·b_ad: the
-    // reduced cofactors (g = gcd) overflow far less often than the raw product.
-    umax g      = std::gcd(a_ad, b_ad);
-    umax a_ad_r = a_ad / g; // = a_ad / gcd; coprime with b_ad_r
-    umax b_ad_r = b_ad / g;
-
-    umax denominator;
-    umax A;
-    umax B;
-
-    if constexpr (Checked) {
-        if (mul_overflow(a_ad, b_ad_r, &denominator) || // = lcm(a_ad, b_ad)
-            denominator > static_cast<umax>(std::numeric_limits<imax>::max())) {
-            return ret_t{fail<"rational +: denominator overflow", Loud>(errc::overflow)};
-        }
-        if (mul_overflow(a.Numerator, b_ad_r, &A) || mul_overflow(b.Numerator, a_ad_r, &B)) {
-            // Mixed signs: |A − B| can fit umax even when a cross-product alone
-            // does not (e.g. 1024 − m/2^54 forms 1024·2^54 == 2^64 before the
-            // subtraction brings it back in range — the former double engine's store hit
-            // exactly this). Retry the difference in 128-bit before giving up.
-            if (a_neg != b_neg) {
-                const limb::pair<umax> A2       = limb::mul(a.Numerator, b_ad_r);
-                const limb::pair<umax> B2       = limb::mul(b.Numerator, a_ad_r);
-                const bool             a_bigger = A2.Hi != B2.Hi ? A2.Hi > B2.Hi : A2.Lo > B2.Lo;
-                const limb::pair<umax> big = a_bigger ? A2 : B2, small = a_bigger ? B2 : A2;
-                if (big.Hi - small.Hi - (big.Lo < small.Lo ? 1u : 0u) == 0) {
-                    rational r;
-                    r.Numerator   = big.Lo - small.Lo;
-                    r.Denominator = (a_neg ? a_bigger : !a_bigger) ? -denominator : denominator;
-                    trim(r.Numerator, r.Denominator);
-                    return ret_t{r};
-                }
-            }
-            return ret_t{fail<"rational +: cross-multiplication overflow", Loud>(errc::overflow)};
-        }
-    } else {
-        denominator = a_ad * b_ad_r;
-        A           = a.Numerator * b_ad_r;
-        B           = b.Numerator * a_ad_r;
-    }
-
-    if (a_neg == b_neg) {
-        umax numerator;
-        if constexpr (Checked) {
-            if (add_overflow(A, B, &numerator)) {
-                return ret_t{fail<"rational +: numerator sum overflow", Loud>(errc::overflow)};
-            }
-        } else
-            numerator = A + B;
-
-        // num, den both > 0 here, so the ctor's domain/zero checks are dead;
-        // assemble directly and reduce.
-        reduce_sum(numerator, denominator, g);
-        return ret_t{make_raw(numerator, a_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator))};
-    }
-
-    // numerator == 0 (exact cancellation) is unreachable here: it would
-    // require a == -b, which for canonical inputs has equal denominators and
-    // took the equal-denominator branch above.
-    umax       numerator = (A > B) ? (A - B) : (B - A);
-    const bool r_neg     = a_neg ? (A > B) : (B > A);
-    reduce_sum(numerator, denominator, g);
-    return ret_t{make_raw(numerator, r_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator))};
-}
-
-template <bool Checked, bool Loud>
-inline constexpr auto rational::mul_impl(const rational& a_in, const rational& b_in) {
-    using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
-    rational a = a_in, b = b_in;
-
-    if (a.Numerator == 0 || b.Numerator == 0)
-        return ret_t{0_r};
-
-    bool r_neg = (a.Denominator < 0) != (b.Denominator < 0);
-    umax a_ad  = abs_den(a.Denominator);
-    umax b_ad  = abs_den(b.Denominator);
-
-    if (a_ad == 1 && b_ad == 1) {
-        umax numerator;
-        if constexpr (Checked) {
-            if (mul_overflow(a.Numerator, b.Numerator, &numerator)) {
-                return ret_t{fail<"rational *: numerator overflow", Loud>(errc::overflow)};
-            }
-        } else
-            numerator = a.Numerator * b.Numerator;
-
-        return ret_t{make_raw(numerator, r_neg ? imax{-1} : imax{1})};
-    }
-
-    trim(a.Numerator, b_ad);
-    trim(b.Numerator, a_ad);
-
-    umax numerator;
-    umax denominator;
-    if constexpr (Checked) {
-        if (mul_overflow(a.Numerator, b.Numerator, &numerator) || mul_overflow(a_ad, b_ad, &denominator) ||
-            denominator > static_cast<umax>(std::numeric_limits<imax>::max())) {
-            return ret_t{fail<"rational *: numerator or denominator overflow", Loud>(errc::overflow)};
-        }
-    } else {
-        numerator   = a.Numerator * b.Numerator;
-        denominator = a_ad * b_ad;
-    }
-
-    // The cross-trims above guarantee gcd(numerator, denominator) == 1, so
-    // bypass rational(num, den) and skip its redundant trim.
-    return ret_t{make_raw(numerator, r_neg ? -denominator : denominator)};
-}
-
-//---------------------------------------------------------------------------
-// inv_impl — multiplicative inverse (1 / a)
-//---------------------------------------------------------------------------
-// a is already trimmed (Numerator and |Denominator| coprime), so the swapped
-// pair is also trimmed. Sign lives in the denominator and 1/(-x) has the same
-// sign as -x, so the sign bit moves with the (now) denominator unchanged.
-template <bool Checked, bool Loud>
-inline constexpr auto rational::inv_impl(const rational& a) {
-    using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
-
-    if constexpr (Checked) {
-        // a.Numerator goes into the result's Denominator slot, so it must fit in
-        // imax (else the umax→imax conversion wraps and a later -Denominator is UB).
-        if (a.Numerator == 0) {
-            return ret_t{fail<"rational inv: division by zero", Loud>(errc::division_by_zero)};
-        }
-        if (a.Numerator > static_cast<umax>(std::numeric_limits<imax>::max())) {
-            return ret_t{fail<"rational inv: numerator out of denominator range", Loud>(errc::overflow)};
-        }
-    }
-
-    return ret_t{make_raw(abs_den(a.Denominator), signed_numerator(a))};
-}
-
-// div(a, b) = a * inv(b). The checked path goes through inv_impl<true> so
-// the b.Numerator-fits-in-imax check (added there) propagates here too;
-// the unchecked path skips it (caller's contract).
-template <bool Checked, bool Loud>
-inline constexpr auto rational::div_impl(const rational& a, const rational& b) {
-    using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
-
-    if constexpr (Checked) {
-        // Cross-reduce a.N/b.N and b.D/a.D first: b.N need not fit the
-        // denominator alone (x/x with x > 2^63 is 1).
-        if (b.Numerator == 0)
-            return ret_t{fail<"rational /: division by zero", Loud>(errc::division_by_zero)};
-        if (a.Numerator == 0)
-            return ret_t{0_r};
-        const umax g1 = std::gcd(a.Numerator, b.Numerator);
-        const umax g2 = std::gcd(abs_den(a.Denominator), abs_den(b.Denominator));
-        umax       num, den;
-        if (mul_overflow(a.Numerator / g1, abs_den(b.Denominator) / g2, &num) ||
-            mul_overflow(abs_den(a.Denominator) / g2, b.Numerator / g1, &den) ||
-            den > static_cast<umax>(std::numeric_limits<imax>::max()))
-            return ret_t{fail<"rational /: numerator or denominator overflow", Loud>(errc::overflow)};
-        const bool neg = (a.Denominator < 0) != (b.Denominator < 0);
-        return ret_t{make_raw(num, neg ? -static_cast<imax>(den) : static_cast<imax>(den))};
-    } else
-        return mul_impl<false>(a, inv_impl<false>(b));
-}
-
-//---------------------------------------------------------------------------
-// unchecked rational arithmetic — caller guarantees: no umax overflow on the
-// products, no zero divisor/numerator, and the result Denominator fits in imax.
-// The checked variants enforce all three; unchecked skips them.
-//---------------------------------------------------------------------------
-inline constexpr rational rational::add_unchecked(rational a, rational b) { return add_impl<false>(a, b); }
-
-inline constexpr rational rational::mul_unchecked(rational a, rational b) { return mul_impl<false>(a, b); }
-
-inline constexpr rational rational::div_unchecked(rational a, rational b) { return div_impl<false>(a, b); }
-
-inline constexpr rational rational::inv_unchecked(rational a) { return inv_impl<false>(a); }
-
-inline constexpr std::expected<rational, errc> rational::inv(rational a) { return inv_impl<true>(a); }
-
-//---------------------------------------------------------------------------
-// operator-
-//---------------------------------------------------------------------------
-[[nodiscard]] inline constexpr rational rational::operator-() const {
-    if (Numerator == 0)
-        return *this;
-
-    // Already trimmed; flip the sign-encoding directly without re-running trim.
-    return make_raw(Numerator, -Denominator);
-}
-
-//---------------------------------------------------------------------------
-// operator<=>
-//---------------------------------------------------------------------------
-[[nodiscard]] inline constexpr auto operator<=>(rational lhs, rational rhs) -> std::strong_ordering {
-    int lhs_sign = sign(lhs);
-    int rhs_sign = sign(rhs);
-
-    if (lhs_sign != rhs_sign)
-        return lhs_sign <=> rhs_sign;
-
-    if (lhs_sign == 0)
-        return std::strong_ordering::equal;
-
-    // signs are equal here (the `lhs_sign != rhs_sign` branch returned above)
-    bool lhs_neg = lhs_sign < 0;
-
-    umax lhs_ad = abs_den(lhs.Denominator);
-    umax rhs_ad = abs_den(rhs.Denominator);
-
-    // integer comparison: skip cross-multiply entirely
-    if (lhs_ad == 1 && rhs_ad == 1) {
-        if (lhs_neg)
-            return rhs.Numerator <=> lhs.Numerator;
-        else
-            return lhs.Numerator <=> rhs.Numerator;
-    }
-
-    // One side is an integer: compare via divmod instead of cross-multiply.
-    // Cross-multiplying would otherwise overflow when the non-integer side
-    // has a huge denominator (e.g. doubles like 19.99 stored as N/2^48).
-    if (rhs_ad == 1) {
-        umax q   = lhs.Numerator / lhs_ad;
-        umax r   = lhs.Numerator % lhs_ad;
-        auto cmp = (q == rhs.Numerator) ? (r == 0 ? std::strong_ordering::equal : std::strong_ordering::greater)
-                                        : (q <=> rhs.Numerator);
-        return lhs_neg ? (0 <=> cmp) : cmp;
-    }
-    if (lhs_ad == 1) {
-        umax q   = rhs.Numerator / rhs_ad;
-        umax r   = rhs.Numerator % rhs_ad;
-        auto cmp = (q == lhs.Numerator) ? (r == 0 ? std::strong_ordering::equal : std::strong_ordering::less)
-                                        : (lhs.Numerator <=> q);
-        return lhs_neg ? (0 <=> cmp) : cmp;
-    }
-
-    // Cross-multiply in 128-bit: |numerator| and |denominator| are each ≤ 2^64−1,
-    // so the products fit exactly in 128 bits — the comparison can never overflow,
-    // so no trap is needed.
-    return lhs_neg ? limb::mul_compare(rhs.Numerator, lhs_ad, lhs.Numerator, rhs_ad)
-                   : limb::mul_compare(lhs.Numerator, rhs_ad, rhs.Numerator, lhs_ad);
-}
-
-template <typename T>
-[[nodiscard]] inline constexpr auto operator<=>(const std::expected<T, errc>& lhs, const rational& rhs) {
-    return rational{lhs.value()} <=> rhs;
-}
-
-template <typename T>
-[[nodiscard]] inline constexpr auto operator<=>(const rational& lhs, const std::expected<T, errc>& rhs) {
-    return lhs <=> rational{rhs.value()};
-}
-
-// lhs against a finite double finer than 2^-62 (which rational{rhs}
-// truncates): |lhs| = N/D against |rhs| = s·2^-k (k > 62) as N·2^k against
-// s·D, which stays within two 64-bit factors. Cold and out of line: the
-// stores compare doubles with their limits.
-[[nodiscard]] BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::strong_ordering
-compare_fine_double(const rational& lhs, double rhs) {
-    const int ls = sign(lhs), rs = rhs < 0 ? -1 : 1;
-    if (ls != rs)
-        return ls <=> rs;
-    const auto bits = std::bit_cast<std::uint64_t>(rhs) & 0x7FFF'FFFF'FFFF'FFFF;
-    const int  e    = static_cast<int>(bits >> 52);
-    const umax s    = (bits & 0x000F'FFFF'FFFF'FFFF) | (e != 0 ? umax{1} << 52 : 0);
-    const int  k    = e != 0 ? 1023 + 52 - e : 1023 + 52 - 1; // rhs = s·2^-k, k > 62
-    const umax n = lhs.Numerator, d = abs_den(lhs.Denominator);
-    // s·D < 2^117: past that width N·2^k is larger.
-    const auto mag = std::bit_width(n) + k > 117
-                         ? std::strong_ordering::greater
-                         : limb::mul_compare(n << (k - 63), umax{1} << 63, s, d); // N·2^(k−63) < 2^54
-    return ls < 0 ? (0 <=> mag) : mag;
-}
-
-// lhs against a double, exactly (non-finite raises, as rational{rhs}).
-[[nodiscard]] inline constexpr std::strong_ordering compare_double(const rational& lhs, double rhs) {
-    if (abs_fraction_exact(rhs) || not is_finite(rhs)) [[likely]]
-        return lhs <=> rational{rhs};
-    return compare_fine_double(lhs, rhs);
-}
-
-template <arithmetic T>
-[[nodiscard]] constexpr bool rational::operator==(T value) const {
-    if constexpr (std::floating_point<T> && sizeof(T) <= sizeof(double))
-        return compare_double(*this, static_cast<double>(value)) == 0;
-    else
-        return operator==(rational{value});
-}
-
-template <arithmetic T>
-[[nodiscard]] inline constexpr auto operator<=>(T lhs, const rational& rhs) {
-    if constexpr (std::floating_point<T> && sizeof(T) <= sizeof(double))
-        return 0 <=> compare_double(rhs, static_cast<double>(lhs));
-    else
-        return rational{lhs} <=> rhs;
-}
-
-template <arithmetic T>
-[[nodiscard]] inline constexpr auto operator<=>(const rational& lhs, T rhs) {
-    if constexpr (std::floating_point<T> && sizeof(T) <= sizeof(double))
-        return compare_double(lhs, static_cast<double>(rhs));
-    else
-        return lhs <=> rational{rhs};
-}
-
-//---------------------------------------------------------------------------
-// Expected-lifting operators — one generic overload per arithmetic operator
-// that engages when an operand is a std::expected, both unwrap to arithmetic,
-// and at least one to rational. Gating on `arithmetic` (not `insidable`, which
-// isn't visible this low) excludes inside operands, so inside-involving expected
-// expressions partition cleanly to arithmetic.hpp's generic instead.
-//---------------------------------------------------------------------------
-template <class L, class R>
-concept rational_lift_operands =
-    (is_expected_v<L> || is_expected_v<R>) && arithmetic<unwrap_t<L>> && arithmetic<unwrap_t<R>> &&
-    (std::same_as<unwrap_t<L>, rational> || std::same_as<unwrap_t<R>, rational>);
-
-//---------------------------------------------------------------------------
-// Binary operators: the checked rational ⋈ rational cores, then per operator
-// the arithmetic-operand forms (direct construction, no lift overhead), the
-// expected-operand form (propagates via lift), and the compound assignments.
-// Compound assignments unwrap with .value() — std::bad_expected_access on
-// overflow; callers needing a non-throwing path use the binary operators.
-//---------------------------------------------------------------------------
-// add_impl fails on a 64-bit step's overflow; the sum may still fit once
-// reduced, which add_wide (cold) settles.
-[[nodiscard]] inline constexpr std::expected<rational, errc> operator+(const rational& lhs, const rational& rhs) {
-    const auto r = rational::add_impl<true, false>(lhs, rhs);
-    if (!r) [[unlikely]]
-        return add_wide<true>(lhs, rhs);
-    return r;
-}
-
-[[nodiscard]] inline constexpr std::expected<rational, errc> operator-(const rational& lhs, const rational& rhs) {
-    return operator+(lhs, -rhs);
-}
-
-[[nodiscard]] inline constexpr std::expected<rational, errc> operator*(const rational& lhs, const rational& rhs) {
-    return rational::mul_impl<true>(lhs, rhs);
-}
-
-[[nodiscard]] inline constexpr std::expected<rational, errc> operator/(const rational& lhs, const rational& rhs) {
-    return rational::div_impl<true>(lhs, rhs);
-}
-
-// Quiet checked ops: like the operators, but an overflow is an error value
-// even in constant evaluation (the operators make it a compile error there).
-// For compile-time code that asks whether a result fits.
-[[nodiscard]] inline constexpr std::expected<rational, errc> try_add(const rational& a, const rational& b) {
-    const auto r = rational::add_impl<true, false>(a, b);
-    if (!r) [[unlikely]]
-        return add_wide<false>(a, b);
-    return r;
-}
-[[nodiscard]] inline constexpr std::expected<rational, errc> try_sub(const rational& a, const rational& b) {
-    return try_add(a, -b);
-}
-[[nodiscard]] inline constexpr std::expected<rational, errc> try_mul(const rational& a, const rational& b) {
-    return rational::mul_impl<true, false>(a, b);
-}
-[[nodiscard]] inline constexpr std::expected<rational, errc> try_div(const rational& a, const rational& b) {
-    return rational::div_impl<true, false>(a, b);
-}
-
-[[nodiscard]] inline constexpr std::expected<rational, errc> operator-(const std::expected<rational, errc>& v) {
-    return lift([](rational r) { return -r; }, v);
-}
-
-#define BEMAN_INSIDE_RATIONAL_OP(op)                                                                        \
-    template <arithmetic T>                                                                                 \
-    [[nodiscard]] inline constexpr auto operator op(T lhs, rational const& rhs) {                           \
-        return rational{lhs} op rhs;                                                                        \
-    }                                                                                                       \
-    template <arithmetic T>                                                                                 \
-    [[nodiscard]] inline constexpr auto operator op(rational const& lhs, T rhs) {                           \
-        return lhs op rational{rhs};                                                                        \
-    }                                                                                                       \
-    template <class L, class R>                                                                             \
-        requires rational_lift_operands<L, R>                                                               \
-    [[nodiscard]] inline constexpr auto operator op(L const& lhs, R const& rhs) {                           \
-        return lift([](auto const& a, auto const& b) { return a op b; }, lhs, rhs);                         \
-    }                                                                                                       \
-    inline constexpr rational& rational::operator op## = (rational const& rhs) {                            \
-        *this = (*this op rhs).value();                                                                     \
-        return *this;                                                                                       \
-    }                                                                                                       \
-    template <arithmetic T>                                                                                 \
-    inline constexpr rational& operator op## = (rational & lhs, T rhs) {                                    \
-        return lhs op## = rational{rhs};                                                                    \
-    }                                                                                                       \
-    inline constexpr rational& operator op## = (rational & lhs, std::expected<rational, errc> const& rhs) { \
-        return lhs op## = rhs.value();                                                                      \
-    }
-
-BEMAN_INSIDE_RATIONAL_OP(+)
-BEMAN_INSIDE_RATIONAL_OP(-)
-BEMAN_INSIDE_RATIONAL_OP(*)
-BEMAN_INSIDE_RATIONAL_OP(/)
-#undef BEMAN_INSIDE_RATIONAL_OP
-
-//---------------------------------------------------------------------------
-// divides_evenly
-//---------------------------------------------------------------------------
-[[nodiscard]] inline constexpr bool divides_evenly(const rational& dividend, const rational& divisor) {
-    if (divisor == 0)
-        return true; // convention: everything divides 0 evenly
-    if (dividend.Numerator == 0)
-        return true; // 0 / anything is the integer 0
-
-    // dividend/divisor ∈ ℤ without forming the (possibly umax-overflowing)
-    // quotient numerator. In lowest terms dividend = p/q, divisor = r/s; the
-    // quotient p·s/(q·r) is integral iff q | s and r | p (rationals are
-    // canonicalized, so gcd(p,q)=gcd(r,s)=1). All checks are on single fields.
-    const umax p = dividend.Numerator, q = abs_den(dividend.Denominator);
-    const umax r = divisor.Numerator, s = abs_den(divisor.Denominator);
-    return (s % q == 0) && (p % r == 0);
-}
-
-} // namespace beman::inside::detail
-
-namespace beman::inside::detail {
-// Checked builders for the public helpers below: a static_assert here fires at
-// the user's spelling. Denominators are unsigned, so a sign can only sit in
-// frac's numerator.
-template <umax D>
-consteval rational make_per() {
-    static_assert(D >= 1, "per<D> is the positive step 1/D; a continuous grid is spelled 0");
-    static_assert(D <= static_cast<umax>(std::numeric_limits<imax>::max()), "per<D>: denominator too large");
-    return rational{umax{1}, D};
-}
-
-template <imax N, umax D>
-consteval rational make_frac() {
-    static_assert(D >= 1, "frac<N, D>: the denominator must be at least 1");
-    static_assert(D <= static_cast<umax>(std::numeric_limits<imax>::max()), "frac<N, D>: denominator too large");
-    return rational{N, static_cast<imax>(D)};
-}
 } // namespace beman::inside::detail
 
 namespace beman::inside {
-// `rational` — an exact 64-bit fraction: the value of a literal (`0.1_r`), a
-// continuous inside's raw, and a runtime exact value to compute with.
-using detail::rational;
-
-// The grid-building helpers:
-//   per<D>       the step 1/D — the common notch (per<256> is Q·8);
-//   frac<N, D>   any exact ratio (signed numerator): a limit like frac<-6, 5>
-//                for -1.2, or another step like frac<360, 4096>;
 //   _r literal   an exact decimal / hex value, e.g. 0.1_r is exactly 1/10.
-// Integer steps are plain integers ({{0, 100}, 5}); grid::validate rejects a
-// negative notch however it is spelled.
-template <umax D>
-inline constexpr detail::rational per = detail::make_per<D>();
-
-template <imax N, umax D = 1>
-inline constexpr detail::rational frac = detail::make_frac<N, D>();
-
 using detail::operator""_r;
 } // namespace beman::inside
-
-
-// ======================================================================
-//  beman/inside/interval.hpp
-// ======================================================================
-
-
-// ======================================================================
-//  beman/inside/detail/grid_rational.hpp
-// ======================================================================
 
 
 //---------------------------------------------------------------------------
@@ -2604,6 +2795,85 @@ constexpr mag gcd(mag a, mag b) {
 constexpr int bit_width(const mag& m) {
     return m.empty() ? 0 : static_cast<int>(m.size() - 1) * 64 + (64 - std::countl_zero(m.back()));
 }
+
+// m · 2^k (k ≥ 0).
+constexpr mag shl(const mag& m, int k) {
+    const std::size_t words = static_cast<std::size_t>(k / 64);
+    const int         bits  = k % 64;
+    mag               r(m.size() + words + 1, 0);
+    for (std::size_t i = 0; i < m.size(); ++i) {
+        r[i + words] |= m[i] << bits;
+        if (bits != 0)
+            r[i + words + 1] |= m[i] >> (64 - bits);
+    }
+    trim(r);
+    return r;
+}
+
+// A fraction of transient magnitudes, unreduced: nothing is interned, so it
+// computes at runtime too (a big grid's predicates against a runtime value).
+struct frac {
+    mag  Num;          // |numerator|
+    mag  Den{umax{1}}; // > 0
+    bool Negative = false;
+};
+
+constexpr std::strong_ordering compare(const frac& a, const frac& b) {
+    const int sa = a.Num.empty() ? 0 : a.Negative ? -1 : 1, sb = b.Num.empty() ? 0 : b.Negative ? -1 : 1;
+    if (sa != sb)
+        return sa <=> sb;
+    const std::strong_ordering m = compare(mul(a.Num, b.Den), mul(b.Num, a.Den));
+    return sa < 0 ? 0 <=> m : m;
+}
+
+constexpr frac operator+(const frac& a, const frac& b) {
+    const mag x = mul(a.Num, b.Den), y = mul(b.Num, a.Den);
+    frac      r;
+    r.Den = mul(a.Den, b.Den);
+    if (a.Negative == b.Negative) {
+        r.Num      = add(x, y);
+        r.Negative = a.Negative;
+    } else if (compare(x, y) >= 0) {
+        r.Num      = sub(x, y);
+        r.Negative = a.Negative;
+    } else {
+        r.Num      = sub(y, x);
+        r.Negative = b.Negative;
+    }
+    r.Negative = r.Negative && !r.Num.empty();
+    return r;
+}
+
+// (a − b) / n is an integer (n ≠ 0).
+constexpr bool same_lattice(const frac& a, frac b, const frac& n) {
+    b.Negative   = !b.Negative && !b.Num.empty();
+    const frac d = a + b;
+    return divmod(mul(d.Num, n.Den), mul(d.Den, n.Num)).Remainder.empty();
+}
+
+// A floating-point value within the double range exactly, in lowest terms:
+// a wider one (long double) as the sum of the doubles it splits into.
+template <std::floating_point T>
+constexpr frac frac_of_float(T v) {
+    if constexpr (wide_float<T>) {
+        if (static_cast<T>(static_cast<double>(v)) != v) {
+            frac s;
+            for_each_double_part(v, [&](double p) {
+                s = s + frac_of_float(p);
+                return true;
+            });
+            const mag g = gcd(s.Num, s.Den);
+            return {divmod(s.Num, g).Quotient, divmod(s.Den, g).Quotient, s.Negative};
+        }
+    }
+    const double d = static_cast<double>(v);
+    if (d == 0)
+        return {};
+    auto [mant, e] = double_parts(d);
+    for (; mant % 2 == 0 && e < 0; ++e)
+        mant /= 2;
+    return e >= 0 ? frac{shl(mag{mant}, e), mag{umax{1}}, d < 0} : frac{mag{mant}, shl(mag{umax{1}}, -e), d < 0};
+}
 } // namespace big
 
 //---------------------------------------------------------------------------
@@ -2689,7 +2959,7 @@ struct big_int {
 
     // Truncating conversion to a builtin integer or wide_int (two's complement).
     template <typename T>
-        requires(std::integral<T> || is_wide_int_v<T>)
+        requires raw_integer<T>
     constexpr explicit operator T() const {
         if constexpr (std::integral<T>) {
             const umax low = Size != 0 ? Limbs[0] : Small;
@@ -2850,13 +3120,24 @@ struct big_rational {
             }
             raise(errc::not_finite, "big_rational: not a finite number");
         }
-        int        e   = 0;
-        double     m   = frexp(static_cast<double>(d), &e); // d = m·2^e, |m| in [0.5, 1)
-        const bool neg = m < 0;
-        if (neg)
-            m = -m;
-        umax mant = static_cast<umax>(ldexp(m, 53)); // exact: 53 bits
-        e -= 53;
+        if constexpr (wide_float<decltype(d)>)
+            if (!is_double_value(d)) { // long double: the sum of the doubles it splits into
+                if (!is_finite(static_cast<double>(d))) {
+                    if consteval {
+                        constexpr_error<"big_rational: a long double past the double range">();
+                    }
+                    raise(errc::overflow, "big_rational: a long double past the double range");
+                }
+                big_rational s{0};
+                for_each_double_part(d, [&](double p) {
+                    s = s + big_rational{p};
+                    return true;
+                });
+                *this = s;
+                return;
+            }
+        const bool neg = d < 0;
+        auto [mant, e] = double_parts(static_cast<double>(d)); // |d| = mant·2^e, 53 bits
         // In lowest terms from the start: a value that fits 64 bits (2^-20)
         // never builds a wider intermediate, which only compile time holds.
         for (; mant % 2 == 0 && e < 0; ++e)
@@ -2923,7 +3204,8 @@ struct big_rational {
             const std::strong_ordering m = limb::mul_compare(a.Num.Small, b.Den.Small, b.Num.Small, a.Den.Small);
             return a.Num.negative() ? 0 <=> m : m;
         }
-        return a.Num * b.Den <=> b.Num * a.Den;
+        return big::compare(big::frac{a.Num.magnitude(), a.Den.magnitude(), a.Num.negative()},
+                            big::frac{b.Num.magnitude(), b.Den.magnitude(), b.Num.negative()});
     }
 
     friend constexpr big_rational operator-(big_rational a) {
@@ -3034,6 +3316,23 @@ constexpr big_rational gcd(const big_rational& a, const big_rational& b) {
 //   to_rational(r)         number serves the 64-bit-only paths
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
+// (a − b) / n is an integer (true for n == 0), for 64-bit rationals. A
+// difference past the rational range is tested in four limbs:
+// (a − b)/n = (a_n·b_d − b_n·a_d)·n_d / (a_d·b_d·n_n), whose products of
+// three 64-bit magnitudes fit.
+constexpr bool same_lattice64(const rational& a, const rational& b, const rational& n) {
+    if (n == 0)
+        return true;
+    if (const auto d = try_sub(a, b)) [[likely]]
+        return divides_evenly(*d, n);
+    using W        = wide_sint<4>;
+    auto    num_of = [](const rational& r) { return r.Denominator < 0 ? -W{r.Numerator} : W{r.Numerator}; };
+    auto    den_of = [](const rational& r) { return W{abs_den(r.Denominator)}; };
+    const W num    = (num_of(a) * den_of(b) - num_of(b) * den_of(a)) * den_of(n);
+    const W den    = den_of(a) * den_of(b) * num_of(n);
+    return num % den == W{0};
+}
+
 #if BEMAN_INSIDE_BIG_GRIDS
 using grid_rational = big_rational;
 using grid_wide     = big_int;
@@ -3046,14 +3345,22 @@ constexpr grid_wide wide_numerator(const rational& r) {
 }
 constexpr grid_wide wide_denominator(const rational& r) { return grid_wide{abs_den(r.Denominator)}; }
 
-// (Convention, as divides_evenly: everything divides 0 evenly.)
-constexpr bool grid_divides_evenly(const big_rational& a, const big_rational& n) {
-    return n == 0 || (a / n).is_integer();
-}
+// A grid number as a transient fraction, for tests that run at runtime too.
+constexpr big::frac frac_of(const big_rational& r) { return {r.Num.magnitude(), r.Den.magnitude(), r.Num.negative()}; }
 
 // (a − b) / n is an integer (true for n == 0): b and a share n's lattice.
+// (No big value is formed, so the test runs at runtime too.)
 constexpr bool grid_same_lattice(const big_rational& a, const big_rational& b, const big_rational& n) {
-    return grid_divides_evenly(a - b, n);
+    if (n == 0)
+        return true;
+    if (a.fits_rational() && b.fits_rational() && n.fits_rational())
+        return same_lattice64(a, b, n);
+    return big::same_lattice(frac_of(a), frac_of(b), frac_of(n));
+}
+
+// (Convention, as divides_evenly: everything divides 0 evenly.)
+constexpr bool grid_divides_evenly(const big_rational& a, const big_rational& n) {
+    return grid_same_lattice(a, big_rational{0}, n);
 }
 
 // The 64-bit rational of a grid number, for 64-bit-only paths.
@@ -3073,18 +3380,8 @@ constexpr grid_wide wide_denominator(const rational& r) noexcept { return grid_w
 
 constexpr bool grid_divides_evenly(const rational& a, const rational& n) { return divides_evenly(a, n); }
 
-// (A difference past the rational range is tested in grid_wide:
-// (a − b)/n = (a_n·b_d − b_n·a_d)·n_d / (a_d·b_d·n_n), whose products of
-// three 64-bit magnitudes fit.)
 constexpr bool grid_same_lattice(const rational& a, const rational& b, const rational& n) {
-    if (n == 0)
-        return true;
-    if (const auto d = try_sub(a, b)) [[likely]]
-        return divides_evenly(*d, n);
-    const grid_wide num =
-        (wide_numerator(a) * wide_denominator(b) - wide_numerator(b) * wide_denominator(a)) * wide_denominator(n);
-    const grid_wide den = wide_denominator(a) * wide_denominator(b) * wide_numerator(n);
-    return num % den == grid_wide{0};
+    return same_lattice64(a, b, n);
 }
 
 constexpr bool                          fits_rational(const rational&) { return true; }
@@ -3330,20 +3627,26 @@ struct interval {
 }
 #endif
 
-// A double is compared exactly: rational{d} drops the bits past 2^-62 and
-// raises at |d| ≥ 2^64 (no 64-bit limit reaches that far), and a big grid
-// number past 64 bits exists only at compile time.
+// A floating-point value is compared exactly: against 64-bit limits through
+// the rational comparison, against big limits as a transient fraction (a big
+// grid number past 64 bits is never formed at runtime).
 template <detail::arithmetic A>
 [[nodiscard]] constexpr bool includes(const interval& iv, A a) noexcept {
     if constexpr (std::floating_point<A>) {
         if (!detail::is_finite(static_cast<double>(a)))
             return false;
         if (detail::fits_rational(iv.Lower) && detail::fits_rational(iv.Upper)) {
-            if (!(a < 0x1p64 && a > -0x1p64))
+            if (detail::past_64_bits(a))
                 return false;
             return detail::to_rational(iv.Lower) <= a && a <= detail::to_rational(iv.Upper);
         }
-        return includes(iv, detail::grid_rational{a}); // big limits: compile time only
+#if BEMAN_INSIDE_BIG_GRIDS
+        const auto f = detail::big::frac_of_float(a);
+        return detail::big::compare(detail::frac_of(iv.Lower), f) <= 0 &&
+               detail::big::compare(f, detail::frac_of(iv.Upper)) <= 0;
+#else
+        return false; // (unreachable: 64-bit limits always fit)
+#endif
     } else
         return includes(iv, detail::grid_rational{a});
 }
@@ -3741,11 +4044,6 @@ struct int_for_bits {
 template <int Bits, bool Signed>
 using int_for_bits_t = typename int_for_bits<Bits, Signed>::type;
 
-// An integer the library may hold in a raw or intermediate: a builtin
-// integer or a wide_int. (std::integral cannot be extended to wide_int.)
-template <typename T>
-concept raw_integer = std::integral<T> || is_wide_int_v<T>;
-
 // Signedness of a raw_integer (std::is_signed_v is false for class types).
 template <raw_integer T>
 inline constexpr bool raw_signed = std::numeric_limits<T>::is_signed;
@@ -3858,7 +4156,7 @@ struct grid {
         return iv;
     }
 
-    template <typename T>
+    template <grid_number_like T>
     static constexpr detail::grid_rational to_number(const T& v) {
         if constexpr (std::convertible_to<T, detail::grid_rational>)
             return detail::grid_rational{v};
@@ -3868,7 +4166,7 @@ struct grid {
 
     // With 64-bit grid numbers a combined denominator past imax has no
     // rational notch: fall back to a continuous grid (notch 0), always valid.
-    static constexpr detail::grid_rational derive_notch(auto lower, auto upper) {
+    static constexpr detail::grid_rational derive_notch(grid_number_like auto lower, grid_number_like auto upper) {
         check_short_binary(lower);
         check_short_binary(upper);
         const detail::grid_rational lo = to_number(lower), hi = to_number(upper);
@@ -3885,7 +4183,7 @@ struct grid {
     // A floating-point limit is taken as its exact binary value, so 0.1 would
     // derive a 2^-55 notch. Past 1/1024 the literal almost surely meant a
     // decimal: reject it at compile time and point to the exact spellings.
-    template <typename T>
+    template <grid_number_like T>
     static constexpr void check_short_binary([[maybe_unused]] T v) {
         if constexpr (std::floating_point<T>)
             if (std::is_constant_evaluated() &&
@@ -4007,9 +4305,27 @@ struct grid {
         if (!includes(Interval, d))
             return false;
         if (detail::fits_rational(Interval.Lower) && detail::fits_rational(Interval.Upper) &&
-            detail::fits_rational(Notch) && !detail::abs_fraction_exact(static_cast<double>(d)))
-            return false;
-        return representable(detail::grid_rational{d});
+            detail::fits_rational(Notch)) {
+            if constexpr (detail::wide_float<T>)
+                if (!detail::is_double_value(d)) { // a long double with bits past the double's
+                    bool       exact = false;
+                    const auto r     = detail::rational_of_wide_float(d, exact);
+                    return exact && representable(detail::grid_rational{r});
+                }
+            if (!detail::abs_fraction_exact(static_cast<double>(d)))
+                return false;
+            return representable(detail::grid_rational{d});
+        }
+#if BEMAN_INSIDE_BIG_GRIDS
+        // Big grid numbers: d as a transient fraction, which (unlike a big
+        // grid number) also exists at runtime.
+        const auto f = detail::big::frac_of_float(d);
+        if (Notch == 0)
+            return MaxDenominator == 0 || detail::big::compare(f.Den, MaxDenominator.Num.magnitude()) <= 0;
+        return detail::big::same_lattice(f, detail::frac_of(Interval.Lower), detail::frac_of(Notch));
+#else
+        return representable(detail::grid_rational{d}); // (unreachable: 64-bit numbers always fit)
+#endif
     }
 
     // Whether the lattice passes through 0: Lower is a multiple of the notch
@@ -4038,7 +4354,7 @@ struct grid {
         return g;
     }
 
-    // (Raw → double decoding lives in `detail::as_double` (generic.hpp): the
+    // (Raw → double decoding lives in `detail::as_double` (detail/storage.hpp): the
     // decode depends on the storage KIND, not the raw type's signedness — a
     // whole-number grid above 0 has an unsigned raw that IS the value.)
 };
@@ -4225,7 +4541,7 @@ inline constexpr std::size_t frac_limbs = [] {
     } else {
         auto bits = [](const grid_rational& r) {
             const grid_wide n = wide_numerator(r);
-            return bit_width_of(n.negative() ? -n : n) + bit_width_of(wide_denominator(r));
+            return bit_width_of(abs(n)) + bit_width_of(wide_denominator(r));
         };
         const int b =
             bits(G.Interval.Lower) > bits(G.Interval.Upper) ? bits(G.Interval.Lower) : bits(G.Interval.Upper);
@@ -4280,7 +4596,7 @@ constexpr int scaled_numerator_bits(const grid_rational& r, int f) noexcept {
     const grid_wide n = wide_numerator(r);
     if (n == grid_wide{0})
         return 0;
-    return bit_width_of(n.negative() ? -n : n) + f - (bit_width_of(wide_denominator(r)) - 1);
+    return bit_width_of(abs(n)) + f - (bit_width_of(wide_denominator(r)) - 1);
 }
 
 // `fp`-exactness of a dyadic grid: the IEEE-754 path equals the exact grid
@@ -4554,10 +4870,11 @@ template <std::same_as<grid> G>
 
 
 //---------------------------------------------------------------------------
-// generic — type-level traits and predicates used everywhere else. Public
-// grid/policy introspection (`grid_of<B>`, `policy_of<B>`, `notch64<B>`,
-// `interval_of<B>`) plus the `insidable`/`numeric`/`inside_assignable` concepts; the
-// storage-shape predicates and raw/value converters are internal (`beman::inside::detail`).
+// introspection — an inside's template parameters as values (grid_of<B>,
+// policy_of<B>, lower_of<B>, notch_of<B>, … and their 64-bit forms), the
+// insidable / numeric concepts, and the basic plumbing every layer uses
+// (plain_t, dependent_false, as_rational, raw_t). The storage shapes build
+// on it in detail/storage.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 template <grid G = grid{{0, 0}, 0}, policy_flag P = checked>
@@ -4674,7 +4991,22 @@ template <typename T>
 
 template <insidable B>
 using raw_t = typename B::raw_type;
+} // namespace detail
+} // namespace beman::inside
 
+
+// ======================================================================
+//  beman/inside/detail/storage.hpp
+// ======================================================================
+
+
+
+//---------------------------------------------------------------------------
+// storage — how an inside's value lives in its raw (the storage concepts),
+// the raw ↔ value plumbing, the grid shape predicates, and the integer
+// rounding of quotients the stores share.
+//---------------------------------------------------------------------------
+namespace beman::inside::detail {
 //-------------------------------------------------------------------------
 // Storage — how an inside's value lives in its raw, a function of the grid
 // alone (grid.hpp storage_min). The leaves partition every
@@ -4698,7 +5030,7 @@ concept rational_storage = insidable<B> && std::same_as<raw_t<B>, rational>;
 // A continuous grid whose limits pass 64 bits (C++26): a reduced exact
 // fraction of as many limbs as the limits need.
 template <typename B>
-concept fraction_storage = insidable<B> && is_exact_frac_v<raw_t<B>>;
+concept fraction_storage = insidable<B> && exact_fraction<raw_t<B>>;
 
 // Whether an integer raw holds the value itself (else a slot index): the
 // whole-number grids where that is free (grid.hpp deduces_value).
@@ -4718,7 +5050,7 @@ concept point_storage = insidable<B> && std::same_as<raw_t<B>, point_slot>;
 // Its values need the exact wide paths (detail/wide_value.hpp): a 64-bit
 // rational or imax cannot hold them.
 template <typename B>
-concept wide_index_storage = insidable<B> && is_wide_int_v<raw_t<B>>;
+concept wide_index_storage = insidable<B> && wide_integer<raw_t<B>>;
 
 template <typename B>
 concept value_storage = rational_storage<B> || fraction_storage<B> || integer_value_storage<B>;
@@ -5036,10 +5368,10 @@ template <typename W>
 struct floored {
     W Quot, Rem;
 };
-template <typename W>
+template <raw_integer W>
 [[nodiscard]] constexpr floored<W> floor_divmod(const W& t, const W& m) noexcept {
     floored<W> f;
-    if constexpr (is_wide_int_v<W>) {
+    if constexpr (wide_integer<W>) {
         auto [q, r] = W::divmod(t, m);
         f           = {q, r};
     } else
@@ -5355,7 +5687,18 @@ constexpr bool range_fail(P&& policy) {
     }
     return false;
 }
+} // namespace beman::inside::detail
 
+
+
+//---------------------------------------------------------------------------
+// generic — the type-level layer every other header builds on: the public
+// introspection (detail/introspection.hpp), the storage shapes
+// (detail/storage.hpp), and here the inside_assignable concept with its
+// diagnostics.
+//---------------------------------------------------------------------------
+namespace beman::inside {
+namespace detail {
 // The two non-trivial clauses of `inside_assignable`, named so the concept and
 // its `inside_assignable_why` diagnostic share one definition. Concepts (not
 // bools) so `||` short-circuits *instantiation* (e.g. assignment<L,R>::Factor
@@ -5515,7 +5858,7 @@ template <insidable B>
 inline constexpr int grid_magnitude_bits = [] {
     auto bits = [](const grid_rational& r) {
         const grid_wide n = wide_numerator(r);
-        return bit_width_of(n.negative() ? -n : n) - (bit_width_of(wide_denominator(r)) - 1) + 1;
+        return bit_width_of(abs(n)) - (bit_width_of(wide_denominator(r)) - 1) + 1;
     };
     const int a = bits(lower_of<B>), b = bits(upper_of<B>);
     return a > b ? a : b;
@@ -5525,14 +5868,14 @@ inline constexpr int grid_magnitude_bits = [] {
 template <insidable B>
 inline constexpr int exact_value_bits = [] {
     if constexpr (point_storage<B>) {
-        auto bits = [](const grid_wide& v) { return bit_width_of(v.negative() ? -v : v); };
+        auto bits = [](const grid_wide& v) { return bit_width_of(abs(v)); };
         return bits(wide_numerator(lower_of<B>)) + bits(wide_denominator(lower_of<B>));
     } else if constexpr (fraction_storage<B>)
         return 2 * decltype(raw_t<B>::Num)::bits;
     else if constexpr (!wide_valued<B>)
         return 128; // a 64-bit rational
     else {
-        auto bits = [](const grid_wide& v) { return bit_width_of(v.negative() ? -v : v); };
+        auto bits = [](const grid_wide& v) { return bit_width_of(abs(v)); };
         return grid_magnitude_bits<B> + bits(wide_denominator(notch_of<B>)) + bits(wide_numerator(notch_of<B>));
     }
 }();
@@ -5572,7 +5915,7 @@ constexpr auto exact_of(const B& b) {
 template <std::size_t K>
 constexpr exact_frac<K> reduced(const exact_frac<K>& f) noexcept {
     using I = wide_sint<K>;
-    I a = f.Num.negative() ? -f.Num : f.Num, b = f.Den;
+    I a = abs(f.Num), b = f.Den;
     if (bit_width_of(a) <= 64 && bit_width_of(b) <= 64) { // the common case: one-limb Euclid
         const umax an = static_cast<umax>(a), bn = static_cast<umax>(b), g = std::gcd(an, bn);
         if (g == 1)
@@ -5653,7 +5996,7 @@ constexpr std::optional<F> frac_raw_of(const exact_frac<K>& v) noexcept {
     const auto r      = reduced(v);
     using I           = decltype(F::Num);
     constexpr int cap = I::bits - 1; // magnitude bits
-    if (bit_width_of(r.Num.negative() ? -r.Num : r.Num) > cap || bit_width_of(r.Den) > cap)
+    if (bit_width_of(abs(r.Num)) > cap || bit_width_of(r.Den) > cap)
         return std::nullopt;
     return F{static_cast<I>(r.Num), static_cast<I>(r.Den)};
 }
@@ -5685,11 +6028,9 @@ constexpr exact_frac<exact_limbs<L>> exact_of_large(double d) noexcept {
 
 // A finite double's exact value: m·2^e, with 2^1024 and 2^-1074 in reach.
 constexpr exact_frac<18> exact_of_double(double d) noexcept {
-    using I         = wide_sint<18>;
-    int        e    = 0;
-    const umax mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53)); // |d| = mant·2^(e−53)
-    e -= 53;
-    const I n = e >= 0 ? I{mant} << e : I{mant};
+    using I              = wide_sint<18>;
+    const auto [mant, e] = double_parts(d);
+    const I n            = e >= 0 ? I{mant} << e : I{mant};
     return {d < 0 ? -n : n, e >= 0 ? I{1} : I{1} << -e};
 }
 
@@ -5703,22 +6044,71 @@ constexpr exact_frac<36> exact_of_long_double(T v) noexcept {
     using I             = wide_sint<36>;
     constexpr int shift = 1130;
     I             num{0};
-    T             rem = v;
-    for (int i = 0; i < 8 && rem != 0; ++i) {
-        const double d = static_cast<double>(rem);
+    bool          past = false;
+    const T       rem  = for_each_double_part(v, [&](double d) {
         if (!is_finite(d))
-            return {rem < 0 ? -(I{1} << 1100) : I{1} << 1100, I{1}};
-        if (d == 0)
-            break;
-        int        e    = 0;
-        const umax mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53)); // |d| = mant·2^(e−53)
-        const I    m    = I{mant} << (e - 53 + shift);
+            return !(past = true);
+        const auto [mant, e] = double_parts(d);
+        const I m            = I{mant} << (e + shift);
         num += d < 0 ? -m : m;
-        rem -= static_cast<T>(d);
-    }
+        return true;
+    });
+    if (past)
+        return {rem < 0 ? -(I{1} << 1100) : I{1} << 1100, I{1}};
     if (rem != 0)
         num += rem < 0 ? I{-1} : I{1};
     return reduced(exact_frac<36>{num, I{1} << shift});
+}
+
+// The nearest T to an exact value (ties to even), rounded once from the
+// exact quotient: its top digits + 2 bits and a sticky bit, then scaled by
+// exact powers of two. For a T wider than double (long double), whose
+// digits a double would drop. Past T's range ±infinity, below half its least
+// subnormal ±0.
+template <std::floating_point T, std::size_t K>
+constexpr T nearest_float(const exact_frac<K>& f) noexcept {
+    using U           = wide_uint<2 * K + 2>; // n·2^s with s up to digits + 2 + the denominator's bits
+    using lim         = std::numeric_limits<T>;
+    constexpr int p   = lim::digits;
+    const bool    neg = f.Num.negative() != f.Den.negative();
+    const U       n{static_cast<wide_uint<K>>(abs(f.Num))};
+    const U       d{static_cast<wide_uint<K>>(abs(f.Den))};
+    if (n.is_zero())
+        return neg ? -T{0} : T{0};
+    // q = ⌊n·2^s / d⌋ has p + 2 or p + 3 bits: |v| = (q + sticky)·2^-s.
+    const int  s  = p + 2 - (bit_width_of(n) - bit_width_of(d));
+    const U    nn = s >= 0 ? n << s : n, dd = s >= 0 ? d : d << -s;
+    const U    q      = nn / dd;
+    const bool sticky = !(nn - q * dd).is_zero();
+    const int  bw     = bit_width_of(q);
+    const int  e      = bw - 1 - s; // |v| in [2^e, 2^(e+1))
+    if (e > lim::max_exponent - 1)
+        return neg ? -lim::infinity() : lim::infinity();
+    // Below the normal range a subnormal keeps fewer digits.
+    const int keep = e >= lim::min_exponent - 1 ? p : p - (lim::min_exponent - 1 - e);
+    if (keep < 0)
+        return neg ? -T{0} : T{0};
+    const int drop = bw - keep; // ≥ 2
+    U         m    = q >> drop;
+    const U   low = q - (m << drop), half = U{1} << (drop - 1);
+    if (half < low || (low == half && (sticky || static_cast<umax>(m) % 2 != 0)))
+        m += U{1};
+    if (bit_width_of(m) - 1 - s + drop > lim::max_exponent - 1) // rounded up past the largest finite
+        return neg ? -lim::infinity() : lim::infinity();
+    // m ≤ 2^p is exact in T, limb by limb; the scaling by 2^(drop − s) in
+    // steps of 2^±64 stays exact (every step lies between m and the result).
+    T x = 0;
+    for (int i = U::bits / 64 - 1; i >= 0; --i)
+        x = x * static_cast<T>(0x1p64) + static_cast<T>(m.Word[i]);
+    for (int k = drop - s; k != 0;) {
+        const int step = k > 64 ? 64 : k < -64 ? -64 : k;
+        T         t    = 1;
+        for (int j = 0; j < (step < 0 ? -step : step); ++j)
+            t *= step < 0 ? static_cast<T>(0.5) : static_cast<T>(2);
+        x *= t;
+        k -= step;
+    }
+    return neg ? -x : x;
 }
 
 // Truncation toward zero, as an integer.
@@ -5908,7 +6298,7 @@ constexpr rounded_quotient<K> rounded_div_exact(const wide_sint<K>& n, const wid
     using I        = wide_sint<K>;
     auto [q, r]    = I::divmod(n, d); // toward zero
     const bool neg = n.negative() != d.negative();
-    const I    ar = r.negative() ? -r : r, ad = d.negative() ? -d : d;
+    const I    ar = abs(r), ad = abs(d);
     if (!rounds_away(M, neg, classify_remainder(M, ar, ad), (q.Word[0] & 1u) != 0))
         return {q, r.is_zero()};
     return {neg ? q - I{1} : q + I{1}, false};
@@ -6163,6 +6553,11 @@ constexpr Result exact_result(const exact_frac<K>& v) noexcept {
 // ======================================================================
 
 
+// ======================================================================
+//  beman/inside/detail/assign_exact.hpp
+// ======================================================================
+
+
 
 // policy.hpp includes this header: the recording policy of the fine-double
 // store (an errc& one) is named here and completed there.
@@ -6190,11 +6585,10 @@ struct policy;
 
 namespace beman::inside::detail {
 //---------------------------------------------------------------------------
-// assignment — narrowing/coercion between bounded and arithmetic types. Three
-// specialisations dispatch on the source (integral / fractional / insidable),
-// each routing through `store` (in-range) and `handle_out_of_range` /
-// `apply_clamp` / `apply_wrap` (policy). The insidable path also exposes
-// `is_integer_mapping` / `map_raw` — a pure-integer formula in the hot path.
+// The exact store (assign_exact) and what every assignment path shares: the
+// out-of-range cascade, failure reporting, the on_wrap carry grid and the
+// same-notch wide raw mapping. The source-type specialisations are in
+// assignment.hpp.
 //---------------------------------------------------------------------------
 // needs_runtime_range_check<L, P, A>: true iff any out-of-range handler would
 // fire (an action, a clamp/wrap bit, or default-throw under checked).
@@ -6206,10 +6600,11 @@ inline constexpr bool needs_runtime_range_check =
     clamp_action<plain_t<A>> || wrap_action<plain_t<A>> || error_action<plain_t<A>> ||
     range_handled(policy_of<L> | plain_t<P>::Flags);
 
-// Shared out-of-range policy cascade. Order: clamp/wrap/error *actions*, then
-// clamp/wrap *policy* bits, then `range_fail`. The callers say how clamp and
-// wrap store; `Wrappable` is false on the fractional path (no wrap *action*
-// branch). Returns true when a handler resolved the write.
+// Shared out-of-range policy cascade. Order: clamp/wrap *actions*, then
+// clamp/wrap *policy* bits, then an on_error action, then `range_fail`. The
+// callers say how clamp and wrap store; `Wrappable` is false on the
+// fractional path (no wrap *action* branch). Returns true when a handler
+// resolved the write.
 template <bool Wrappable, insidable L, typename P, typename A, typename DoClamp, typename DoWrap>
 constexpr bool dispatch_out_of_range(L& lhs, P&& policy, A&& action, DoClamp do_clamp, DoWrap do_wrap) {
     using PA = plain_t<A>;
@@ -6219,14 +6614,14 @@ constexpr bool dispatch_out_of_range(L& lhs, P&& policy, A&& action, DoClamp do_
     } else if constexpr (Wrappable && wrap_action<PA>) {
         do_wrap();
         return true;
-    } else if constexpr (error_action<PA>) {
-        action.Fn(lhs, errc::overflow, errc_message(errc::overflow));
-        return true;
     } else if constexpr (has_policy<L, P, clamp>) {
         do_clamp();
         return true;
     } else if constexpr (has_policy<L, P, wrap>) {
         do_wrap();
+        return true;
+    } else if constexpr (error_action<PA>) { // on_error replaces the failure, not a clamp or wrap
+        action.Fn(lhs, errc::overflow, errc_message(errc::overflow));
         return true;
     } else
         return range_fail(policy);
@@ -6569,6 +6964,18 @@ inline constexpr int same_notch_bits = signed_value_bits_of({raw_lo_exact<R>,
                                                              raw_hi_exact<R> + same_notch_shift<L, R>,
                                                              raw_lo_exact<L>,
                                                              raw_hi_exact<L>});
+} // namespace beman::inside::detail
+
+
+
+namespace beman::inside::detail {
+//---------------------------------------------------------------------------
+// assignment — narrowing/coercion between bounded and arithmetic types. Three
+// specialisations dispatch on the source (integral / fractional / insidable),
+// each routing through `store` (in-range) and `handle_out_of_range` /
+// `apply_clamp` / `apply_wrap` (policy). The insidable path also exposes
+// `is_integer_mapping` / `map_raw` — a pure-integer formula in the hot path.
+//---------------------------------------------------------------------------
 
 //---------------------------------------------------------------------------
 // assign(insidable, integral)
@@ -6748,7 +7155,7 @@ struct assignment<L, R> {
     // rational form (rational(double) would fail): decide such values by sign.
     static constexpr bool huge(const R& rhs) noexcept {
         if constexpr (std::floating_point<R>)
-            return !(rhs < 0x1p64 && rhs > -0x1p64);
+            return past_64_bits(rhs);
         else
             return false;
     }
@@ -6932,7 +7339,7 @@ struct assignment<L, R> {
         }();
         errc code{};
         // A recording on_error stands in for one (dispatch_out_of_range ranks
-        // it above clamp): the order holds.
+        // it below clamp and wrap): the order holds.
         if constexpr (error_action<plain_t<A>>)
             assign_exact<R>(r, exact_of_double(rhs), recording_policy<P>{code}, on_error([&code](L&, errc c, auto&&) {
                                 code = c;
@@ -7136,7 +7543,7 @@ struct assignment<L, R> {
     // it is no exact double.)
     static constexpr bool exact_double(const rational& r) {
         const double d = static_cast<double>(r);
-        return d < 0x1p64 && d > -0x1p64 && rational{d} == r;
+        return !past_64_bits(d) && rational{d} == r;
     }
     static constexpr bool double_bounds_exact =
         std::floating_point<R> && exact_double(detail::lower64<L>) && exact_double(detail::upper64<L>);
@@ -7209,9 +7616,9 @@ struct assignment<L, R> {
     static constexpr L& assign(L& lhs, const R& rhs, P&& policy, A&& action = {}) {
         // A long double that is a double stores as that double; one with bits
         // past it stores exactly (the double paths would drop them).
-        if constexpr (std::floating_point<R> && sizeof(R) > sizeof(double)) {
+        if constexpr (wide_float<R>) {
             const double d = static_cast<double>(rhs);
-            if (rhs - rhs == 0 && static_cast<R>(d) != rhs) [[unlikely]] {
+            if (is_finite(rhs) && static_cast<R>(d) != rhs) [[unlikely]] {
                 // Past the double range: a stand-in past every limit, which
                 // clamps or overflows, but a fold needs the exact value.
                 if constexpr (has_policy<L, P, wrap>)
@@ -7226,12 +7633,12 @@ struct assignment<L, R> {
             // NaN / ±inf first, as below; a finite |rhs| ≥ 2^64 is an integer,
             // taken exactly (or by its side, past the grid: exact_of_large).
             if constexpr (std::floating_point<R>)
-                if (!(rhs - rhs == 0) || huge(rhs)) [[unlikely]] {
+                if (!is_finite(rhs) || huge(rhs)) [[unlikely]] {
                     if (rhs != rhs) {
                         report_failure(lhs, policy, action, errc::not_finite);
                         return lhs;
                     }
-                    if (!(rhs - rhs == 0) && !has_policy<L, P, clamp>) {
+                    if (!is_finite(rhs) && !has_policy<L, P, clamp>) {
                         report_failure(lhs, policy, action, errc::not_finite);
                         return lhs;
                     }
@@ -7253,7 +7660,7 @@ struct assignment<L, R> {
         // NaN / ±inf: no rational value to round or range-check. clamp saturates
         // an infinity; everything else reports not_finite through the policy.
         if constexpr (std::floating_point<R>)
-            if (!(rhs - rhs == 0)) [[unlikely]] {
+            if (!is_finite(rhs)) [[unlikely]] {
                 if constexpr (has_policy<L, P, clamp>)
                     if (rhs == rhs) {
                         // Saturated like any value past a limit: an on_clamp
@@ -7515,7 +7922,9 @@ struct assignment<L, R> {
             // Offset/Factor map R's 0-based offset (a value raw counts from Lower).
             // A step past the 64-bit rational takes the exact wide store.
             const auto r_offset = [&] {
-                if constexpr (raw_lo<R> == 0)
+                if constexpr (point_storage<R>) // a point's raw holds nothing: the mapping is Offset alone
+                    return std::expected<rational, errc>{rational{0}};
+                else if constexpr (raw_lo<R> == 0)
                     return std::expected<rational, errc>{rational{rhs.raw()}};
                 else
                     return try_sub(rational{rhs.raw()}, detail::lower64<R>);
@@ -7879,7 +8288,7 @@ struct policy_ref {
   private:
     template <typename R>
     constexpr B& finalise_arith(R&& result, [[maybe_unused]] const char* msg) {
-        if constexpr (is_expected_v<R>) {
+        if constexpr (expected_like<R>) {
             if (!result.has_value()) [[unlikely]] {
                 if (result.error() == errc::division_by_zero)
                     report_zero(errc::division_by_zero, msg); // on_error / ignore_zero, like rational /=
@@ -7896,7 +8305,7 @@ struct policy_ref {
 
     // Shared body for the rational `+=`/`-=`/`*=`/`/=` operators: lift Ref to
     // rational and route the checked result through `finalise_arith`.
-    template <typename RatOp>
+    template <std::invocable<rational, rational> RatOp>
     constexpr B& rational_assign(const rational& rhs, RatOp rat_op, const char* msg) {
         return finalise_arith(rat_op(rational{Ref}, rhs), msg);
     }
@@ -8609,7 +9018,7 @@ struct division {
             auto                max_j = []<insidable B>() {
                 const grid_wide lo = exact_quotient(lower_of<B>, notch_of<B>),
                                 hi = exact_quotient(upper_of<B>, notch_of<B>);
-                const grid_wide a = lo.negative() ? -lo : lo, b = hi.negative() ? -hi : hi;
+                const grid_wide a = abs(lo), b = abs(hi);
                 return a < b ? b : a;
             };
             const grid_wide       a = wide_numerator(notch_of<L>) * wide_denominator(notch_of<R>);
@@ -8912,7 +9321,7 @@ inline constexpr bool predicates_fit64 = fits_rational(grid_of<B>.Interval.Lower
 
 // A double the 64-bit paths cannot take exactly: |d| ≥ 2^64, or finer than
 // 2^-62 (as_rational would truncate it).
-constexpr bool past_rational(double d) noexcept { return !(d < 0x1p64 && d > -0x1p64) || !abs_fraction_exact(d); }
+constexpr bool past_rational(double d) noexcept { return past_64_bits(d) || !abs_fraction_exact(d); }
 
 // What converting the exact value x into B does: overflow (out of range,
 // and B's rounding does not bring it in) and rounding (in range off the
@@ -8967,7 +9376,7 @@ inline constexpr bool predicates_exact_only = !predicates_fit64<B> || wide_insid
 // exact_lossy for a value, when the 64-bit paths cannot take it.
 template <insidable B, numeric A>
 constexpr std::optional<lossy_result> exact_lossy_of(A value) noexcept {
-    if constexpr (std::floating_point<A> && sizeof(A) > sizeof(double)) {
+    if constexpr (wide_float<A>) {
         // A long double that is no double has bits the 64-bit paths drop.
         const double d = static_cast<double>(value);
         if (static_cast<A>(d) != value)
@@ -8988,7 +9397,7 @@ constexpr std::optional<lossy_result> exact_lossy_of(A value) noexcept {
 template <insidable B, numeric A>
 [[nodiscard]] constexpr bool conversion_overflows(A value) noexcept {
     if constexpr (std::floating_point<A>)
-        if (!(value - value == 0))
+        if (!detail::is_finite(value))
             return true; // NaN / ±inf fit no grid (and must not raise here)
     // The 64-bit paths below do not compile for a grid (or value) past them.
     if constexpr (detail::predicates_exact_only<B, A>)
@@ -9009,7 +9418,7 @@ template <insidable B, numeric A>
 template <insidable B, numeric A>
 [[nodiscard]] constexpr bool conversion_rounds(A value) noexcept {
     if constexpr (std::floating_point<A>)
-        if (!(value - value == 0))
+        if (!detail::is_finite(value))
             return false; // non-finite — overflow, not rounding
     // The 64-bit paths below do not compile for a grid (or value) past them.
     if constexpr (detail::predicates_exact_only<B, A>)
@@ -9099,7 +9508,7 @@ constexpr auto abs(In x);
 // arithmetic (arithmetic.hpp), casts (casts.hpp) and `inside_range` (range.hpp)
 // follow in the umbrella. Heavy lifting is delegated to addition/multiplication/division.hpp
 // (per-operator code), assignment.hpp (narrowing/clamp/wrap), and
-// generic.hpp/policy.hpp (traits + policy machinery).
+// generic.hpp (introspection, storage, inside_assignable) and policy.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 namespace detail {
@@ -9358,9 +9767,14 @@ struct inside {
         }
     }
 
+    // A floating point wider than double (long double) gets the value rounded
+    // once to its own digits, not through a double.
     template <std::floating_point T>
     [[nodiscard]] constexpr std::expected<T, errc> to() const {
-        return static_cast<T>(detail::as_double(*this));
+        if constexpr (detail::wide_float<T>)
+            return detail::nearest_float<T>(detail::exact_of(*this));
+        else
+            return static_cast<T>(detail::as_double(*this));
     }
 
     // as<T>() — non-expected sibling of to<T>(): returns T directly, letting any
@@ -9369,7 +9783,8 @@ struct inside {
     // double's policy gate, so a strict inside rejects `b.as<double>()` too.
     template <typename T>
     [[nodiscard]] constexpr T as() const
-        requires(!std::floating_point<T> ||
+        requires(std::integral<T> || std::floating_point<T>) &&
+                (!std::floating_point<T> ||
                  (P & (round_floor | round_ceil | round_nearest | round_half_even | snap)) != 0)
     {
         return to<T>().value();
@@ -9621,7 +10036,7 @@ struct inside {
     // Store a raw computed by the raw-space fast paths of += and -=, in their
     // work type W. Under clamp/wrap/checked an out-of-range raw is clamped,
     // wrapped or reported.
-    template <typename W>
+    template <detail::raw_integer W>
     constexpr inside& store_raw(W new_raw) {
         constexpr W lo = static_cast<W>(detail::raw_lo_exact<inside>);
         constexpr W hi = static_cast<W>(detail::raw_hi_exact<inside>);
@@ -9648,7 +10063,7 @@ struct inside {
   private:
     template <typename Result>
     constexpr inside& assign_op_result(const Result& r) {
-        if constexpr (detail::is_expected_v<Result>) {
+        if constexpr (detail::expected_like<Result>) {
             // A failed op is reported through this type's policy (throw / handler);
             // *this stays unchanged. `*r` (not value()): no bad_expected_access.
             if (r.has_value())
@@ -9662,7 +10077,7 @@ struct inside {
 
     // A zero divisor in /= or %=; ignore_zero on either operand silences it,
     // as it does for div/mod.
-    template <typename R>
+    template <insidable R>
     constexpr inside& report_div_by_zero() {
         if constexpr (!has_flag(P | policy_of<R>, ignore_zero))
             make_policy<P>().report(errc::division_by_zero);
@@ -9954,6 +10369,73 @@ template <insidable B>
 }
 
 //---------------------------------------------------------------------------
+// just
+//---------------------------------------------------------------------------
+// The point grid holds the value, so no value constructor is needed: grid
+// numbers past 64 bits (C++26 `_g`) work too.
+template <auto value>
+inline constexpr auto just = inside<grid{value}>::from_raw({});
+
+//---------------------------------------------------------------------------
+// zero / one — universal exact constants. Single-point insides that assign into
+// any grid able to represent the value (compile-time checked) and otherwise
+// behave as 0 / 1. `b = zero;` is a compile error when 0 is not on b's grid.
+//---------------------------------------------------------------------------
+inline constexpr auto zero = just<0>;
+inline constexpr auto one  = just<1>;
+
+//---------------------------------------------------------------------------
+// _ins literal — compile-time `inside<{V, V}>` from a numeric literal.
+//   5_ins           // inside<{5, 5}>            integer
+//   1.25_ins        // inside<{rational{5,4}}>   decimal
+//   1.5e2_ins       // inside<{150}>             decimal scientific
+//   0xff_ins        // inside<{255}>             hex integer
+//   0b1010_ins      // inside<{10}>              binary integer
+//   0x1p15_ins      // inside<{32768}>           hex with 2^N exponent (Q-format)
+//   0x1p-15_ins     // inside<{rational{1,32768}}>   1/2^15 grid notch
+//   0x1.8p3_ins     // inside<{12}>              hex float
+//   1'000_ins       // inside<{1000}>            digit separator
+//
+// Parse is exact (no double round-trip); same parser backs `_r` in
+// rational.hpp. `-1.5_ins` parses as `-(1.5_ins)`.
+//---------------------------------------------------------------------------
+template <char... Chars>
+constexpr auto operator""_ins() {
+    return just<detail::parse_ins_literal<Chars...>()>;
+}
+
+} // namespace beman::inside
+
+// A cursor is a bidirectional iterator: it steps by ++/--, *t reads its value,
+// and end(t) is its sentinel. Not random access: t - u is arithmetic, an
+// inside, not a distance. Plain insides get no traits, so they stay numbers.
+template <beman::inside::grid G, beman::inside::policy_flag P>
+    requires(beman::inside::has_flag(P, beman::inside::detail::cursor_marker))
+struct std::incrementable_traits<beman::inside::inside<G, P>> {
+    using difference_type = beman::inside::imax;
+};
+
+template <beman::inside::grid G, beman::inside::policy_flag P>
+    requires(beman::inside::has_flag(P, beman::inside::detail::cursor_marker))
+struct std::indirectly_readable_traits<beman::inside::inside<G, P>> {
+    using value_type = beman::inside::detail::cursor_value_t<G, P>;
+};
+
+
+// ======================================================================
+//  beman/inside/detail/compare.hpp
+// ======================================================================
+// Internal — include "beman/inside/inside.hpp" (the umbrella), not this directly.
+
+
+
+//---------------------------------------------------------------------------
+// Comparisons of insides: across grids (by value index when both fit imax,
+// else exactly) and against scalars (integers, floating points of any width,
+// rationals).
+//---------------------------------------------------------------------------
+namespace beman::inside {
+//---------------------------------------------------------------------------
 // comparison
 //---------------------------------------------------------------------------
 namespace detail {
@@ -10092,11 +10574,15 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
     constexpr bool imax_scalar = std::signed_integral<A> || (std::unsigned_integral<A> && sizeof(A) < sizeof(imax));
     constexpr bool double_exact_values =
         lower_of<B> >= rational{-(imax{1} << 53)} && upper_of<B> <= rational{imax{1} << 53};
+    // A long double with bits past the double's: the paths below read a double.
+    if constexpr (wide_float<A>)
+        if (is_finite(rhs) && !is_double_value(rhs)) [[unlikely]]
+            return cmp(exact_of(lhs), exact_of_long_double(rhs));
     if constexpr (wide_valued<B>) {
         if constexpr (std::floating_point<A>) {
             if (rhs != rhs) // NaN: unordered, as the double comparison says
                 return cmp(0.0, static_cast<double>(rhs));
-            if (!(rhs - rhs == 0)) // ±inf lies past every grid
+            if (!is_finite(rhs)) // ±inf lies past every grid
                 return cmp(exact_of(0), exact_of(rhs < 0 ? -1 : 1));
             return cmp(exact_of(lhs), exact_of_double(static_cast<double>(rhs)));
         } else
@@ -10117,7 +10603,7 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
         if constexpr (std::floating_point<A>) {
             if (rhs != rhs) // NaN: unordered, as the double comparison says
                 return cmp(0.0, static_cast<double>(rhs));
-            if (!(rhs < 0x1p64 && rhs > -0x1p64))
+            if (past_64_bits(rhs))
                 return cmp(rational{0}, rational{rhs < 0 ? -1 : 1});
             if (!abs_fraction_exact(static_cast<double>(rhs))) [[unlikely]] // finer than 2^-62
                 return cmp(exact_of(lhs), exact_of_double(static_cast<double>(rhs)));
@@ -10139,98 +10625,7 @@ template <insidable B, detail::arithmetic A>
 [[nodiscard]] constexpr bool operator==(const B& lhs, A rhs) {
     return detail::compare_scalar(lhs, rhs, detail::equal_to);
 }
-
-//---------------------------------------------------------------------------
-// just
-//---------------------------------------------------------------------------
-// The point grid holds the value, so no value constructor is needed: grid
-// numbers past 64 bits (C++26 `_g`) work too.
-template <auto value>
-inline constexpr auto just = inside<grid{value}>::from_raw({});
-
-//---------------------------------------------------------------------------
-// cursor<T, Step> — an inside on {{Lower, Upper + Step}, Step} of T: it steps
-// (++ moves one notch) from Lower through Upper and one step past it, the
-// end. It keeps T's checks and rounding, default construction starts at
-// Lower, and it carries cursor_marker, which gives it
-// `end(t)`. Step is a number (an integer, `rational`, `per<N>`), T's notch by
-// default: a positive whole number of notches of T dividing its range, so
-// every value but the end is a value of T.
-//   for (cursor<time_t, per<4>> t; t != end(t); ++t) …
-//---------------------------------------------------------------------------
-namespace detail {
-template <insidable T>
-consteval grid cursor_grid(const auto& step) {
-    const grid_rational s = grid{step}.Interval.Lower;
-    if (!(s > 0))
-        constexpr_error<"cursor<T, Step>: the step must be positive - a cursor steps forward, one past the end">();
-    if (notch_of<T> == 0)
-        constexpr_error<"cursor<T, Step>: T has no notch - a continuous grid has no lattice to step on">();
-    if (!interval_of<T>.divides_evenly(s))
-        constexpr_error<"cursor<T, Step>: the step must divide the range of T evenly">();
-    if (!grid_divides_evenly(s, notch_of<T>))
-        constexpr_error<"cursor<T, Step>: the step must be a whole number of notches of T">();
-    return grid{interval{lower_of<T>, grid_add(upper_of<T>, s)}, s};
-}
-
-consteval policy_flag cursor_policy(policy_flag p) { return p | cursor_marker; }
-} // namespace detail
-
-template <insidable T, auto Step = notch_of<T>>
-using cursor = inside<detail::cursor_grid<T>(Step), detail::cursor_policy(policy_of<T>)>;
-
-// end(t): a cursor's past-the-end value, one step past T's Upper. Only a
-// cursor has one — on any other inside its Upper is a value, not an end.
-template <insidable B>
-    requires(has_flag(policy_of<B>, detail::cursor_marker))
-[[nodiscard]] constexpr auto end(const B&) noexcept {
-    return just<upper_of<B>>;
-}
-
-//---------------------------------------------------------------------------
-// zero / one — universal exact constants. Single-point insides that assign into
-// any grid able to represent the value (compile-time checked) and otherwise
-// behave as 0 / 1. `b = zero;` is a compile error when 0 is not on b's grid.
-//---------------------------------------------------------------------------
-inline constexpr auto zero = just<0>;
-inline constexpr auto one  = just<1>;
-
-//---------------------------------------------------------------------------
-// _ins literal — compile-time `inside<{V, V}>` from a numeric literal.
-//   5_ins           // inside<{5, 5}>            integer
-//   1.25_ins        // inside<{rational{5,4}}>   decimal
-//   1.5e2_ins       // inside<{150}>             decimal scientific
-//   0xff_ins        // inside<{255}>             hex integer
-//   0b1010_ins      // inside<{10}>              binary integer
-//   0x1p15_ins      // inside<{32768}>           hex with 2^N exponent (Q-format)
-//   0x1p-15_ins     // inside<{rational{1,32768}}>   1/2^15 grid notch
-//   0x1.8p3_ins     // inside<{12}>              hex float
-//   1'000_ins       // inside<{1000}>            digit separator
-//
-// Parse is exact (no double round-trip); same parser backs `_r` in
-// rational.hpp. `-1.5_ins` parses as `-(1.5_ins)`.
-//---------------------------------------------------------------------------
-template <char... Chars>
-constexpr auto operator""_ins() {
-    return just<detail::parse_ins_literal<Chars...>()>;
-}
-
 } // namespace beman::inside
-
-// A cursor is a bidirectional iterator: it steps by ++/--, *t reads its value,
-// and end(t) is its sentinel. Not random access: t - u is arithmetic, an
-// inside, not a distance. Plain insides get no traits, so they stay numbers.
-template <beman::inside::grid G, beman::inside::policy_flag P>
-    requires(beman::inside::has_flag(P, beman::inside::detail::cursor_marker))
-struct std::incrementable_traits<beman::inside::inside<G, P>> {
-    using difference_type = beman::inside::imax;
-};
-
-template <beman::inside::grid G, beman::inside::policy_flag P>
-    requires(beman::inside::has_flag(P, beman::inside::detail::cursor_marker))
-struct std::indirectly_readable_traits<beman::inside::inside<G, P>> {
-    using value_type = beman::inside::detail::cursor_value_t<G, P>;
-};
 
 
 // ======================================================================
@@ -10828,7 +11223,7 @@ template <insidable Lhs, insidable Rhs>
 namespace detail {
 template <class L, class R>
 concept expected_operands =
-    (is_expected_v<L> || is_expected_v<R>) && (insidable<unwrap_t<L>> || insidable<unwrap_t<R>>);
+    (expected_like<L> || expected_like<R>) && (insidable<unwrap_t<L>> || insidable<unwrap_t<R>>);
 }
 
 #define BEMAN_INSIDE_LIFT_OP(op)                                                            \
@@ -11022,6 +11417,53 @@ template <beman::inside::grid G, beman::inside::policy_flag P>
 inline constexpr bool std::ranges::enable_borrowed_range<beman::inside::inside_range<G, P>> = true;
 
 
+// ======================================================================
+//  beman/inside/cursor.hpp
+// ======================================================================
+
+
+namespace beman::inside {
+//---------------------------------------------------------------------------
+// cursor<T, Step> — an inside on {{Lower, Upper + Step}, Step} of T: it steps
+// (++ moves one notch) from Lower through Upper and one step past it, the
+// end. It keeps T's checks and rounding, default construction starts at
+// Lower, and it carries cursor_marker, which gives it
+// `end(t)`. Step is a number (an integer, `rational`, `per<N>`), T's notch by
+// default: a positive whole number of notches of T dividing its range, so
+// every value but the end is a value of T.
+//   for (cursor<time_t, per<4>> t; t != end(t); ++t) …
+//---------------------------------------------------------------------------
+namespace detail {
+template <insidable T>
+consteval grid cursor_grid(const auto& step) {
+    const grid_rational s = grid{step}.Interval.Lower;
+    if (!(s > 0))
+        constexpr_error<"cursor<T, Step>: the step must be positive - a cursor steps forward, one past the end">();
+    if (notch_of<T> == 0)
+        constexpr_error<"cursor<T, Step>: T has no notch - a continuous grid has no lattice to step on">();
+    if (!interval_of<T>.divides_evenly(s))
+        constexpr_error<"cursor<T, Step>: the step must divide the range of T evenly">();
+    if (!grid_divides_evenly(s, notch_of<T>))
+        constexpr_error<"cursor<T, Step>: the step must be a whole number of notches of T">();
+    return grid{interval{lower_of<T>, grid_add(upper_of<T>, s)}, s};
+}
+
+consteval policy_flag cursor_policy(policy_flag p) { return p | cursor_marker; }
+} // namespace detail
+
+template <insidable T, auto Step = notch_of<T>>
+using cursor = inside<detail::cursor_grid<T>(Step), detail::cursor_policy(policy_of<T>)>;
+
+// end(t): a cursor's past-the-end value, one step past T's Upper. Only a
+// cursor has one — on any other inside its Upper is a value, not an end.
+template <insidable B>
+    requires(has_flag(policy_of<B>, detail::cursor_marker))
+[[nodiscard]] constexpr auto end(const B&) noexcept {
+    return just<upper_of<B>>;
+}
+} // namespace beman::inside
+
+
 
 // ======================================================================
 //  beman/inside/cmath.hpp
@@ -11029,7 +11471,12 @@ inline constexpr bool std::ranges::enable_borrowed_range<beman::inside::inside_r
 
 
 // ======================================================================
-//  beman/inside/cmath_adaptive.hpp
+//  beman/inside/detail/math_entry.hpp
+// ======================================================================
+
+
+// ======================================================================
+//  beman/inside/detail/math_cores.hpp
 // ======================================================================
 
 
@@ -11219,7 +11666,7 @@ constexpr wide_sint<K> to_q(const exact_frac<E>& x) noexcept {
 template <std::size_t E>
 constexpr int floor_log2(const exact_frac<E>& x) noexcept {
     using I    = wide_sint<E>;
-    const I  n = x.Num.negative() ? -x.Num : x.Num;
+    const I  n = abs(x.Num);
     const I& d = x.Den;
     int      e = bit_width_of(n) - bit_width_of(d);
     // n/d ≥ 2^e  ⇔  n ≥ d·2^e (or n·2^-e ≥ d).
@@ -11987,7 +12434,7 @@ constexpr bool is_integer(const exact_frac<K>& f) noexcept {
 }
 template <std::size_t K>
 constexpr exact_frac<K> abs(const exact_frac<K>& f) noexcept {
-    return {f.Num.negative() ? -f.Num : f.Num, f.Den};
+    return {abs(f.Num), f.Den};
 }
 // 1/f for f != 0.
 template <std::size_t K>
@@ -12311,10 +12758,936 @@ constexpr approx<K> exp_fixed(const wide_sint<K>& t, umax dt, int KMax) noexcept
 } // namespace beman::inside::math::detail::ax
 
 
+
+//---------------------------------------------------------------------------
+// The integer path of the math engine: the exact inputs, the exact-value
+// helpers, and one core per function (exact square and cube roots, series in
+// wide fixed point), which decides every result and is the only tier at
+// compile time and without an FPU. The tiers and the entry points are in
+// detail/math_entry.hpp; the decision step and the driver in
+// detail/math_adaptive.hpp.
+//---------------------------------------------------------------------------
+namespace beman::inside::math::detail::ax {
+//---------------------------------------------------------------------------
+// Inputs as exact values, in as few limbs as their grid needs.
+//---------------------------------------------------------------------------
+constexpr int grid_bits(const grid_wide& v) { return bit_width_of(abs(v)); }
+
+// A grid integer as a double (a notch's p or q, which may pass imax).
+constexpr double grid_double(const grid_wide& v) {
+#if BEMAN_INSIDE_BIG_GRIDS
+    return static_cast<double>(big_rational{v, big_int{1}});
+#else
+    return static_cast<double>(v);
+#endif
+}
+
+// A value of In is n/d with d dividing the notch's denominator and
+// |n| < 2^magnitude·d: its bits, plus a sign. A continuous grid takes its
+// raw's: the 64-bit rational's, or a wide fraction's.
+template <insidable In>
+inline constexpr int input_bits = [] {
+    if constexpr (fraction_storage<In>)
+        return decltype(raw_t<In>::Num)::bits;
+    else if constexpr (!notched<In>)
+        return 130;
+    else
+        return grid_magnitude_bits<In> + grid_bits(wide_denominator(notch_of<In>)) + 2;
+}();
+
+template <insidable In>
+inline constexpr std::size_t input_limbs = limbs_for_bits(input_bits<In>);
+
+template <insidable In>
+constexpr exact_frac<input_limbs<In>> exact_input(const In& x) {
+    using I = wide_sint<input_limbs<In>>;
+    if constexpr (wide_valued<In>) {
+        const auto v = exact_of(x);
+        return {static_cast<I>(v.Num), static_cast<I>(v.Den)};
+    } else {
+        const auto v = exact_of<2>(as_rational(x));
+        return {static_cast<I>(v.Num), static_cast<I>(v.Den)};
+    }
+}
+
+// |x| < 2^in_mag for every value of In.
+template <insidable In>
+inline constexpr int in_mag = grid_magnitude_bits<In> > 1 ? grid_magnitude_bits<In> : 1;
+
+// Bits of an exact input's numerator or denominator.
+template <std::size_t E>
+inline constexpr int frac_bits = 64 * static_cast<int>(E);
+
+// Result magnitude bound: values of Out lie below 2^out_kmax.
+template <insidable Out>
+inline constexpr int out_kmax = mag_bits<Out> + 1;
+
+// The start precision for Out: its notch's bits plus guard bits.
+template <insidable Out>
+inline constexpr int start_bits = out_bits<Out> + 8 > 16 ? out_bits<Out> + 8 : 16;
+
+template <std::size_t K>
+constexpr exact_frac<K> exact_one() noexcept {
+    return {wide_sint<K>{1}, wide_sint<K>{1}};
+}
+template <std::size_t K>
+constexpr exact_frac<K> exact_int(imax v) noexcept {
+    return {wide_sint<K>{v}, wide_sint<K>{1}};
+}
+
+//---------------------------------------------------------------------------
+// Exact-value helpers at a compile-time scale S.
+//---------------------------------------------------------------------------
+// ⌊√f·2^S⌋ for f ≥ 0 (within 1 unit).
+// Bits bounds the numerator's and denominator's bit widths.
+template <int S, std::size_t K, int Bits, std::size_t E>
+constexpr wide_sint<K> sqrt_exact_q(const exact_frac<E>& f) noexcept {
+    using I   = wide_sint<limbs_for_bits(2 * Bits + 2 * S + 2)>;
+    const I n = (I{f.Num} * I{f.Den}) << (2 * S);
+    return static_cast<wide_sint<K>>(isqrt(n) / I{f.Den});
+}
+
+// log x for x > 0 at scale S: x = m·2^e exactly, m in [0.7, 1.42] rounded to
+// scale S, log x = log m + e·ln 2.
+template <int S, std::size_t K, int Bits, std::size_t E>
+constexpr fx<K> log_exact(const exact_frac<E>& x) noexcept {
+    using I                  = wide_sint<K>;
+    constexpr std::size_t KI = limbs_for_bits(2 * Bits + S + 2);
+    int                   e  = floor_log2(x);
+    I                     m  = to_q_at<K, KI>(x, S - e);
+    if (mul_q(m, m, S) > (one_q<K>(S) << 1)) {
+        ++e;
+        m = to_q_at<K, KI>(x, S - e);
+    }
+    const fx<K> l   = log_series<S>(m, 1);
+    const I     ln2 = static_cast<I>(ln2_q<S>);
+    return {l.Value + I{e} * ln2, l.Error + static_cast<umax>(e < 0 ? -e : e) + 1};
+}
+
+// An approx moved to scale A ≤ its own, rounding (error shrinks, plus ½).
+template <std::size_t K>
+constexpr fx<K> rescale(const approx<K>& a, int A) noexcept {
+    const int sh = a.Scale - A;
+    if (sh <= 0) // a bound past 64 bits saturates (never wraps small)
+        return {a.Value << (-sh), -sh < 64 && a.Error <= (~umax{0} >> -sh) ? a.Error << (-sh) : ~umax{0}};
+    return {round_shift(a.Value, sh), shr_bound(a.Error, sh) + 1};
+}
+
+// asin x for |x| ≤ 1/2 (exact): atan(x/√(1−x²)), the square root as
+// x·(1/√(1−x²)) with 1 − x² ≥ 3/4 in fixed point.
+template <int S, std::size_t K, int Bits, std::size_t E>
+constexpr fx<K> asin_small(const exact_frac<E>& x) noexcept {
+    using I    = wide_sint<K>;
+    const I xq = to_q<S, K>(x);                  // within ½
+    const I c  = one_q<K>(S) - mul_q(xq, xq, S); // within 1.5, ≥ 3/4
+    const I t  = mul_q(xq, rsqrt_q<S>(c), S);    // |t| ≤ 0.58, within 6
+    return atan_fixed<S>(t, 6);
+}
+
+// asin √y for 0 ≤ y ≤ 1/4 (exact): u = √y exactly rounded (within 1), then
+// atan(u·(1/√(1−u²))) with 1 − u² ≥ 3/4.
+template <int S, std::size_t K, int Bits, std::size_t E>
+constexpr fx<K> asin_sqrt(const exact_frac<E>& y) noexcept {
+    using I   = wide_sint<K>;
+    const I u = sqrt_exact_q<S, K, Bits + 2>(y);
+    const I w = one_q<K>(S) - mul_q(u, u, S); // within 2, ≥ 3/4
+    const I t = mul_q(u, rsqrt_q<S>(w), S);   // within 7
+    return atan_fixed<S>(t, 7);
+}
+
+//---------------------------------------------------------------------------
+// The cores: one per function. Each holds its exact inputs and computes the
+// result within its error bound at a precision W (run<W>), plus the exact
+// rational results (exact()), which are the only values a rounding boundary
+// can hold.
+//---------------------------------------------------------------------------
+template <std::size_t E>
+using maybe_exact = std::optional<exact_frac<E>>;
+
+// deep_extra helpers (bits, saturating at the driver's deep_limit): ⌈2^Mag ·
+// milli / 1000⌉ bits for a result that nears a grid point like 2^(−c·|x|),
+// |x| < 2^Mag; and the larger of two bounds.
+constexpr int deep_scaled(int mag, int milli) noexcept {
+    return mag >= 20 ? deep_limit : static_cast<int>(((imax{1} << mag) * milli + 999) / 1000);
+}
+constexpr int deep_max(int a, int b) noexcept { return a > b ? a : b; }
+
+// exp x. Exact only at 0.
+template <std::size_t E, int Mag, int KMax>
+struct exp_core {
+    exact_frac<E> X;
+    // e^−|x| near 0 (1.443·|x| bits), e^x = 1 + x + x²/2 near 1 + x.
+    static constexpr int     deep_extra = deep_max(deep_scaled(Mag, 1443), 2 * frac_bits<E>);
+    constexpr maybe_exact<E> exact() const { return is_zero(X) ? maybe_exact<E>{exact_one<E>()} : std::nullopt; }
+    template <int W>
+    constexpr auto run() const {
+        constexpr int S         = W + 8 + KMax;
+        using I                 = fixed_t<S + Mag + 2>; // |x|·log2(e) < 2^(S+Mag+1)
+        constexpr std::size_t K = limbs_of<I>;
+        return exp_fixed<S>(to_q<S, K>(X), 1, KMax);
+    }
+};
+
+// 2^x = 2^k·e^(f·ln 2), x = k + f. Exact at integers.
+template <std::size_t E, int Mag, int KMax>
+struct exp2_core {
+    exact_frac<E> X;
+    // 2^−|x| near 0 (|x| bits), 2^x near 1 for a small x.
+    static constexpr int deep_extra = deep_max(deep_scaled(Mag, 1000), 2 * frac_bits<E>);
+    template <int W>
+    constexpr auto run() const {
+        constexpr int S         = W + 8 + KMax;
+        using I                 = fixed_t<S + 8>;
+        using J                 = wide_sint<E>;
+        constexpr std::size_t K = limbs_of<I>;
+        const J               k = rounded_div<round_mode::floor>(X.Num, X.Den);
+        if (J{KMax} < k)
+            return approx<K>{I{1}, -(KMax + 2), 0};
+        if (k < J{-(S + 2)})
+            return approx<K>{I{1}, S + 2, 1};
+        int                 kk = static_cast<int>(static_cast<imax>(k));
+        const exact_frac<E> f{X.Num - k * X.Den, X.Den}; // in [0, 1)
+        if (is_zero(f))
+            return approx<K>{I{1}, -kk, 0};
+        const I ln2 = static_cast<I>(ln2_q<S>);
+        I       r   = mul_q(to_q<S, K>(f), ln2, S); // within 2
+        if (r > (ln2 >> 1)) {
+            r -= ln2;
+            ++kk;
+        }
+        const fx<K> e = exp_series<S>(r, 3);
+        return approx<K>{e.Value, S - kk, e.Error};
+    }
+};
+
+// log x, x > 0. Exact at 1.
+template <std::size_t E, int Bits = frac_bits<E>>
+struct log_core {
+    exact_frac<E>            X;
+    constexpr maybe_exact<E> exact() const {
+        return is_one(X) ? maybe_exact<E>{exact_frac<E>{wide_sint<E>{0}, wide_sint<E>{1}}} : std::nullopt;
+    }
+    template <int W>
+    constexpr auto run() const {
+        constexpr int S         = W + 8 + std::bit_width(static_cast<unsigned>(Bits));
+        using I                 = fixed_t<S + std::bit_width(static_cast<unsigned>(Bits)) + 8>;
+        constexpr std::size_t K = limbs_of<I>;
+        const fx<K>           l = log_exact<S, K, Bits>(X);
+        return approx<K>{l.Value, S, l.Error};
+    }
+};
+
+// The integer k with x = B^k (B = 2 or 10), if any, without reducing x:
+// with the factors 2 (and 5) of n and d stripped, n/d = 2^a·5^c·n'/d' is a
+// power of B exactly when n' = d' and a (= c, for 10) is that power.
+template <std::size_t E>
+constexpr std::optional<imax> exact_log(const exact_frac<E>& x, int B) noexcept {
+    using I = wide_sint<E>;
+    if (x.Num.negative() || x.Num.is_zero())
+        return std::nullopt;
+    I    n = x.Num, d = x.Den;
+    auto strip2 = [](I& v) {
+        imax k = 0;
+        while (v.Word[0] == 0) {
+            v = v >> 64;
+            k += 64;
+        }
+        const int z = std::countr_zero(static_cast<umax>(v.Word[0]));
+        v           = v >> z;
+        return k + z;
+    };
+    auto strip5 = [](I& v) {
+        imax k = 0;
+        for (;;) {
+            const auto qr = divmod_small(wide_uint<E>{v}, 5);
+            if (qr.Remainder != 0)
+                return k;
+            v = I{qr.Quotient};
+            ++k;
+        }
+    };
+    const imax a = strip2(n) - strip2(d);
+    if (B == 10 && strip5(n) - strip5(d) != a)
+        return std::nullopt;
+    if (!(n == d))
+        return std::nullopt;
+    return a;
+}
+
+// log2 x and log10 x: log x / ln B. Exact at powers of B.
+template <std::size_t E, int B, int Bits = frac_bits<E>>
+struct logb_core {
+    exact_frac<E>            X;
+    constexpr maybe_exact<E> exact() const {
+        if (const auto k = exact_log(X, B))
+            return exact_int<E>(*k);
+        return std::nullopt;
+    }
+    template <int W>
+    constexpr auto run() const {
+        constexpr int S         = W + 10 + std::bit_width(static_cast<unsigned>(Bits));
+        using I                 = fixed_t<S + std::bit_width(static_cast<unsigned>(Bits)) + 8>;
+        constexpr std::size_t K = limbs_of<I>;
+        const fx<K>           l = log_exact<S, K, Bits>(X);
+        // log x · (1/ln B): within 1.45·error + 2 (the constant is within 1).
+        const I inv = B == 2 ? static_cast<I>(log2e_q<S>) : static_cast<I>(log10e_q<S>);
+        return approx<K>{mul_q(l.Value, inv, S), S, 2 * l.Error + 2 + static_cast<umax>(Bits)};
+    }
+};
+
+// Residues of squares mod 64, as a bit set: 12 of the 64.
+inline constexpr umax square_mod64 = [] {
+    umax m = 0;
+    for (umax i = 0; i < 64; ++i)
+        m |= umax{1} << (i * i % 64);
+    return m;
+}();
+
+// √x, x ≥ 0: ⌊√x·2^P⌋ exactly. Exact when x is a square of a rational.
+template <std::size_t E, int Bits = frac_bits<E>>
+struct sqrt_core {
+    exact_frac<E> X;
+    // n/d is the square of a rational exactly when n·d is a perfect square,
+    // and then √(n/d) = √(n·d)/d. Most non-squares fail the test mod 64.
+    constexpr maybe_exact<E> exact() const {
+        using J   = wide_sint<2 * E>;
+        const J m = J{X.Num} * J{X.Den};
+        if (!((square_mod64 >> (m.Word[0] & 63)) & 1))
+            return std::nullopt;
+        const J s = isqrt(m);
+        if (!(s * s == m))
+            return std::nullopt;
+        return exact_frac<E>{static_cast<wide_sint<E>>(s), X.Den};
+    }
+    template <int W>
+    constexpr auto run() const {
+        constexpr int P         = W + 2;
+        using I                 = fixed_t<Bits + P + 4>;
+        constexpr std::size_t K = limbs_of<I>;
+        return approx<K>{sqrt_exact_q<P, K, Bits>(X), P, 1};
+    }
+};
+
+// Residues of cubes mod 63, as a bit set: 9 of the 63.
+inline constexpr umax cube_mod63 = [] {
+    umax m = 0;
+    for (umax i = 0; i < 63; ++i)
+        m |= umax{1} << (i * i * i % 63);
+    return m;
+}();
+
+// ∛x: ⌊∛(n·d²·2^(3P))⌋/d exactly. Exact when x is a cube of a rational.
+template <std::size_t E, int Bits = frac_bits<E>>
+struct cbrt_core {
+    exact_frac<E> X;
+    // |n|/d is the cube of a rational exactly when |n|·d² is a perfect cube,
+    // and then ∛(|n|/d) = ∛(|n|·d²)/d. Most non-cubes fail the test mod 63.
+    constexpr maybe_exact<E> exact() const {
+        using J   = wide_sint<3 * E>;
+        const J m = J{abs(X).Num} * J{X.Den} * J{X.Den};
+        if (!((cube_mod63 >> static_cast<umax>(m % J{63})) & 1))
+            return std::nullopt;
+        const J c = icbrt(m);
+        if (!(c * c * c == m))
+            return std::nullopt;
+        const wide_sint<E> r = static_cast<wide_sint<E>>(c);
+        return exact_frac<E>{X.Num.negative() ? -r : r, X.Den};
+    }
+    template <int W>
+    constexpr auto run() const {
+        constexpr int P         = W + 2;
+        using I                 = fixed_t<Bits + P + 4>;
+        constexpr std::size_t K = limbs_of<I>;
+        using J                 = wide_sint<limbs_for_bits(3 * Bits + 3 * P + 4)>;
+        const exact_frac<E> a   = abs(X);
+        const J             n   = (J{a.Num} * J{a.Den} * J{a.Den}) << (3 * P);
+        const I             y   = static_cast<I>(icbrt(n) / J{a.Den});
+        return approx<K>{X.Num.negative() ? -y : y, P, 1};
+    }
+};
+
+// sin, cos and tan: x = k·π/2 + r, |r| ≤ π/4, then the series and the
+// quadrant. Exact at 0.
+enum class trig { sin, cos, tan };
+
+template <std::size_t E, int Mag, trig Fn, int KMax>
+struct trig_core {
+    exact_frac<E> X;
+    // sin x = x − x³/6 near x, cos x = 1 − x²/2 near 1 (tan: none).
+    static constexpr int     deep_extra = Fn == trig::sin ? 3 * frac_bits<E> : Fn == trig::cos ? 2 * frac_bits<E> : 0;
+    constexpr maybe_exact<E> exact() const {
+        if (!is_zero(X))
+            return std::nullopt;
+        return Fn == trig::cos ? exact_one<E>() : exact_frac<E>{wide_sint<E>{0}, wide_sint<E>{1}};
+    }
+    template <int W>
+    constexpr auto run() const {
+        constexpr int S = W + 10 + (Fn == trig::tan ? KMax + 4 : 0);
+        constexpr int T = S + Mag + 4;                                       // reduce with Mag more bits
+        using I         = fixed_t<(Fn == trig::tan ? S + KMax + 4 : S + 2)>; // |sin|, |cos| ≤ 1; |tan| ≤ 2^(KMax+3)
+        using R         = fixed_t<T + Mag + 8>;
+        constexpr std::size_t K  = limbs_of<I>;
+        const R               xq = to_q<T, limbs_of<R>>(X);
+        const R               hp = static_cast<R>(pi_q<T - 1>);                                    // π/2 within 1
+        const R               k  = round_shift(mul_q(xq, static_cast<R>(two_over_pi_q<T>), T), T); // round(x·2/π)
+        const I               r  = static_cast<I>(round_shift(xq - k * hp, T - S)); // |r| ≤ π/4 + a hair, within 2
+        const unsigned        q  = static_cast<unsigned>(k.Word[0] & 3u);
+        // sin x and cos x by quadrant: (s, c), (c, −s), (−s, −c), (−c, s).
+        auto neg   = [](fx<K> f) { return fx<K>{-f.Value, f.Error}; };
+        auto sin_x = [&] {
+            return (q == 0)   ? sin_series<S>(r, 2)
+                   : (q == 1) ? cos_series<S>(r, 2)
+                   : (q == 2) ? neg(sin_series<S>(r, 2))
+                              : neg(cos_series<S>(r, 2));
+        };
+        auto cos_x = [&] {
+            return (q == 0)   ? cos_series<S>(r, 2)
+                   : (q == 1) ? neg(sin_series<S>(r, 2))
+                   : (q == 2) ? neg(cos_series<S>(r, 2))
+                              : sin_series<S>(r, 2);
+        };
+        if constexpr (Fn == trig::sin) {
+            const fx<K> sn = sin_x();
+            return approx<K>{sn.Value, S, sn.Error};
+        } else if constexpr (Fn == trig::cos) {
+            const fx<K> cs = cos_x();
+            return approx<K>{cs.Value, S, cs.Error};
+        } else {
+            const fx<K> sn = sin_x(), cs = cos_x();
+            // tan = sin/cos. The error bound, (δs + |t|·δc)/(|c| − δc) + 2 units,
+            // and the test for a result past 2^KMax only need to be upper and
+            // lower bounds: computed in doubles, widened by a hair.
+            const double cd = static_cast<double>(cs.Value), sd = static_cast<double>(sn.Value);
+            const double ac = cd < 0 ? -cd : cd, as = sd < 0 ? -sd : sd;
+            const double ec = static_cast<double>(cs.Error), es = static_cast<double>(sn.Error);
+            if (!(2 * ec < ac))
+                return approx<K>{I{0}, S, ~umax{0}}; // cos unresolved
+            const double unit = ::beman::inside::detail::ldexp(1.0, S);
+            if ((as - es) / (ac + ec) * (1 - 0x1p-40) > ::beman::inside::detail::ldexp(1.0, KMax))
+                return approx<K>{(sn.Value.negative() != cs.Value.negative()) ? I{-1} : I{1}, -(KMax + 2), 0};
+            const I      t   = div_q(sn.Value, cs.Value, S);
+            const double at  = (as + es) / (ac - ec);
+            const double err = ((es + at * ec) / (ac - ec) * unit + 2) * (1 + 0x1p-40) + 1;
+            const umax   e   = err < 0x1p62 ? static_cast<umax>(err) : ~umax{0};
+            return approx<K>{t, S, e};
+        }
+    }
+};
+
+// atan x: |x| ≤ 1 directly, else ±π/2 − atan(1/x). Exact at 0.
+template <int S, std::size_t K, std::size_t E>
+constexpr fx<K> atan_exact(const exact_frac<E>& x) noexcept {
+    using I = wide_sint<K>;
+    if (!(exact_one<E>() < abs(x)))
+        return atan_fixed<S>(to_q<S, K>(x), 1);
+    const fx<K> a  = atan_fixed<S>(to_q<S, K>(inverse(x)), 1);
+    const I     hp = static_cast<I>(pi_q<S - 1>);
+    return {(x.Num.negative() ? -hp : hp) - a.Value, a.Error + 1};
+}
+
+template <std::size_t E>
+struct atan_core {
+    exact_frac<E>            X;
+    constexpr maybe_exact<E> exact() const { return is_zero(X) ? maybe_exact<E>{X} : std::nullopt; }
+    template <int W>
+    constexpr auto run() const {
+        constexpr int S         = W + 10;
+        using I                 = fixed_t<S + 3>; // |atan| < 2, 1 + t·c ≤ 2
+        constexpr std::size_t K = limbs_of<I>;
+        const fx<K>           a = atan_exact<S, K>(X);
+        return approx<K>{a.Value, S, a.Error};
+    }
+};
+
+// atan2(y, x) in [−π, π]; 0 for y = 0, x ≥ 0 (and the (0, 0) convention).
+template <std::size_t E>
+struct atan2_core {
+    exact_frac<E>            Y, X;
+    constexpr maybe_exact<E> exact() const {
+        if (is_zero(Y) && !X.Num.negative())
+            return exact_frac<E>{wide_sint<E>{0}, wide_sint<E>{1}};
+        return std::nullopt;
+    }
+    template <int W>
+    constexpr auto run() const {
+        constexpr int S         = W + 10;
+        using I                 = fixed_t<S + 8>;
+        constexpr std::size_t K = limbs_of<I>;
+        using F                 = exact_frac<2 * E + 1>;
+        const F y{Y}, x{X};
+        const I pi = static_cast<I>(pi_q<S>);
+        if (!(abs(x) < abs(y))) {
+            const fx<K> a = atan_exact<S, K>(y / x);
+            if (!x.Num.negative())
+                return approx<K>{a.Value, S, a.Error};
+            return approx<K>{a.Value + (y.Num.negative() ? -pi : pi), S, a.Error + 1};
+        }
+        const fx<K> a  = atan_exact<S, K>(x / y);
+        const I     hp = static_cast<I>(pi_q<S - 1>);
+        return approx<K>{(y.Num.negative() ? -hp : hp) - a.Value, S, a.Error + 1};
+    }
+};
+
+// asin x, |x| ≤ 1: small arguments directly; past 1/2, the half-angle form
+// ±(π/2 − 2·asin √((1−|x|)/2)), which stays accurate up to ±1.
+template <std::size_t E, int Bits = frac_bits<E>>
+struct asin_core {
+    exact_frac<E>            X;
+    constexpr maybe_exact<E> exact() const { return is_zero(X) ? maybe_exact<E>{X} : std::nullopt; }
+    template <int W>
+    constexpr auto run() const {
+        constexpr int S         = W + 12;
+        using I                 = fixed_t<S + 8>;
+        constexpr std::size_t K = limbs_of<I>;
+        const exact_frac<E>   half{wide_sint<E>{1}, wide_sint<E>{2}};
+        if (!(half < abs(X))) {
+            const fx<K> a = asin_small<S, K, Bits>(X);
+            return approx<K>{a.Value, S, a.Error};
+        }
+        using F         = exact_frac<E + 1>;
+        const F     one = exact_one<E + 1>();
+        const F     y   = (one + F{-abs(X)}) * F{half}; // (1 − |x|)/2
+        const fx<K> a   = asin_sqrt<S, K, Bits + 1>(y);
+        const I     v   = static_cast<I>(pi_q<S - 1>) - (a.Value << 1);
+        return approx<K>{X.Num.negative() ? -v : v, S, 2 * a.Error + 1};
+    }
+};
+
+// acos x = π/2 − asin x for |x| ≤ 1/2; 2·asin √((1−x)/2) above;
+// π − 2·asin √((1+x)/2) below. Exact at 1.
+template <std::size_t E, int Bits = frac_bits<E>>
+struct acos_core {
+    exact_frac<E>            X;
+    constexpr maybe_exact<E> exact() const {
+        return is_one(X) ? maybe_exact<E>{exact_frac<E>{wide_sint<E>{0}, wide_sint<E>{1}}} : std::nullopt;
+    }
+    template <int W>
+    constexpr auto run() const {
+        constexpr int S         = W + 12;
+        using I                 = fixed_t<S + 8>;
+        constexpr std::size_t K = limbs_of<I>;
+        const exact_frac<E>   half{wide_sint<E>{1}, wide_sint<E>{2}};
+        if (!(half < abs(X))) {
+            const fx<K> a = asin_small<S, K, Bits>(X);
+            return approx<K>{static_cast<I>(pi_q<S - 1>) - a.Value, S, a.Error + 1};
+        }
+        using F         = exact_frac<E + 1>;
+        const F     one = exact_one<E + 1>();
+        const F     x{X};
+        const bool  neg = X.Num.negative();
+        const F     y   = (neg ? one + x : one + F{-x}) * F{half};
+        const fx<K> a   = asin_sqrt<S, K, Bits + 1>(y);
+        if (!neg)
+            return approx<K>{a.Value << 1, S, 2 * a.Error};
+        return approx<K>{static_cast<I>(pi_q<S>) - (a.Value << 1), S, 2 * a.Error + 1};
+    }
+};
+
+// sinh, cosh and tanh from e^|x| and e^−|x| at absolute scale A. Exact at 0
+// (sinh, tanh: 0; cosh: 1).
+enum class hyp { sinh, cosh, tanh };
+
+template <std::size_t E, int Mag, hyp Fn, int KMax>
+struct hyp_core {
+    exact_frac<E> X;
+    // tanh |x| = 1 − 2e^−2|x| near 1 (2.886·|x| bits) and x − x³/3 near x;
+    // sinh near x by x³/6, cosh near 1 by x²/2.
+    static constexpr int     deep_extra = Fn == hyp::tanh   ? deep_max(deep_scaled(Mag, 2886), 3 * frac_bits<E>)
+                                          : Fn == hyp::sinh ? 3 * frac_bits<E>
+                                                            : 2 * frac_bits<E>;
+    constexpr maybe_exact<E> exact() const {
+        if (!is_zero(X))
+            return std::nullopt;
+        return Fn == hyp::cosh ? exact_one<E>() : X;
+    }
+    template <int W>
+    constexpr auto run() const {
+        constexpr int A           = W + 10;
+        constexpr int KM          = Fn == hyp::tanh ? 1 : KMax + 1;
+        constexpr int S           = A + KM + 4;
+        using I                   = fixed_t<S + Mag + 3>; // 2|x|·log2(e) < 2^(S+Mag+2)
+        constexpr std::size_t K   = limbs_of<I>;
+        const bool            neg = X.Num.negative();
+        const I               ax  = to_q<S, K>(abs(X)); // within ½
+        if constexpr (Fn == hyp::tanh) {
+            // tanh |x| = (1 − g)/(1 + g), g = e^(−2|x|) ≤ 1.
+            const fx<K> g   = rescale(exp_fixed<S>(-(ax << 1), 1, KM), A);
+            const I     one = one_q<K>(A);
+            const I     t   = div_q(one - g.Value, one + g.Value, A);
+            return approx<K>{neg ? -t : t, A, 2 * g.Error + 2};
+        } else {
+            // One reduction |x| = k·ln 2 + r: e^r = E + O and e^−r = E − O from
+            // the even and odd halves of the series.
+            const I k = round_shift(mul_q(ax, static_cast<I>(log2e_q<S>), S), S);
+            if (I{KM} < k) // e^|x| past 2^KM: past Out
+                return approx<K>{(Fn == hyp::sinh && neg) ? I{-1} : I{1}, -(KMax + 2), 0};
+            const int  kk = static_cast<int>(static_cast<imax>(k));
+            const I    r  = ax - k * static_cast<I>(ln2_q<S>); // within ½ + k
+            const I    z  = mul_q(r, r, S);
+            const I    ev = horner<series::cosh, S, false>(z);
+            const I    od = mul_q(r, horner<series::sinh, S, false>(z), S);
+            const umax e  = 24 + 2 * (static_cast<umax>(kk) + 2);
+            const I    P  = round_shift(ev + od, S - kk - A); // e^|x| at scale A
+            const I    M  = round_shift(ev - od, S + kk - A); // e^−|x| at scale A
+            const umax ep = shr_bound(e, S - kk - A) + 1, em = shr_bound(e, S + kk - A) + 1;
+            if constexpr (Fn == hyp::cosh)
+                return approx<K>{(P + M) >> 1, A, (ep + em) / 2 + 1};
+            else {
+                const I sv = (P - M) >> 1;
+                return approx<K>{neg ? -sv : sv, A, (ep + em) / 2 + 1};
+            }
+        }
+    }
+};
+
+// asinh x = ±log(|x| + √(x²+1)); acosh x = log(x + √((x−1)(x+1))), x ≥ 1;
+// atanh x = ±½·log((1+|x|)/(1−|x|)), |x| < 1.
+enum class ahyp { asinh, acosh, atanh };
+
+template <std::size_t E, int Mag, ahyp Fn, int Bits = frac_bits<E>>
+struct ahyp_core {
+    exact_frac<E>            X;
+    constexpr maybe_exact<E> exact() const {
+        if (Fn == ahyp::acosh)
+            return is_one(X) ? maybe_exact<E>{exact_frac<E>{wide_sint<E>{0}, wide_sint<E>{1}}} : std::nullopt;
+        return is_zero(X) ? maybe_exact<E>{X} : std::nullopt;
+    }
+    template <int W>
+    constexpr auto run() const {
+        constexpr int S = W + 12 + std::bit_width(static_cast<unsigned>(2 * Bits + Mag));
+        // asinh forms x² + 1 in the word: twice the magnitude bits.
+        using I                 = fixed_t<S + (Fn == ahyp::asinh ? 2 * Mag : Mag) + 8>;
+        constexpr std::size_t K = limbs_of<I>;
+        using F                 = exact_frac<2 * E + 1>;
+        const bool neg          = X.Num.negative();
+        const F    a            = abs(F{X});
+        if constexpr (Fn == ahyp::atanh) {
+            // (1 + |x|)/(1 − |x|) = (d + |n|)/(d − |n|), d − |n| > 0.
+            const F     q{a.Num + a.Den, a.Den - a.Num};
+            const fx<K> l = log_exact<S, K, 2 * Bits + 2>(q);
+            return approx<K>{neg ? -(l.Value >> 1) : (l.Value >> 1), S, l.Error / 2 + 1};
+        } else {
+            if constexpr (Fn == ahyp::asinh) {
+                // c = x² + 1 = m·4^h, m in [1, 4): √c = √m·2^h with √m = m·(1/√m);
+                // log of v/2^h = (|x| + √c)/2^h, plus h·ln 2.
+                const I     aq = to_q<S, K>(a);                  // within ½
+                const I     c  = mul_q(aq, aq, S) + one_q<K>(S); // within |x| + 1
+                const int   h  = (bit_width_of(c) - 1 - S) / 2;
+                const I     m  = c >> (2 * h);                           // within 3
+                const I     v  = (aq >> h) + mul_q(m, rsqrt_q<S>(m), S); // in [1, 3), within 30
+                const fx<K> l  = log_fixed<S>(v, 30);
+                const I     lv = l.Value + I{h} * static_cast<I>(ln2_q<S>);
+                return approx<K>{neg ? -lv : lv, S, l.Error + static_cast<umax>(h) + 1};
+            } else {
+                const F     r{(a.Num - a.Den) * (a.Num + a.Den), a.Den * a.Den};     // x² − 1 = (n − d)(n + d)/d²
+                const I     v = to_q<S, K>(a) + sqrt_exact_q<S, K, 2 * Bits + 2>(r); // ≥ 1, within 2
+                const fx<K> l = log_fixed<S>(v, 2);
+                return approx<K>{l.Value, S, l.Error};
+            }
+        }
+    }
+};
+
+// b^e for b > 0: e^(e·log b). Exact for e = 0, b = 1, and e = p/q (q ≤ 64)
+// when b's numerator and denominator are perfect q-th powers (4^0.5 = 2,
+// 2.25^1.5 = 3.375) and the power fits PowLimbs: such a result can sit on a
+// rounding boundary, where no approximation decides.
+inline constexpr std::size_t pow_limbs = 32; // exact integer powers up to 2048 bits
+
+// The q-th root of n ≥ 0 when n is a perfect q-th power: bit by bit, the
+// largest r with r^q ≤ n, then r^q == n.
+constexpr std::optional<wide_sint<pow_limbs>> exact_root(const wide_sint<pow_limbs>& n, int q) noexcept {
+    using P = wide_sint<pow_limbs>;
+    if (q == 1 || n.is_zero() || n == P{1})
+        return n;
+    auto at_most = [&](const P& c) { // c^q ≤ n, stopping once past n
+        P p{1};
+        for (int j = 0; j < q; ++j)
+            if (n < (p = p * c))
+                return false;
+        return true;
+    };
+    P r{0};
+    for (int i = (bit_width_of(n) + q - 1) / q; i-- > 0;)
+        if (const P c = r + (P{1} << i); at_most(c))
+            r = c;
+    P p{1};
+    for (int j = 0; j < q; ++j)
+        p = p * r;
+    return p == n ? std::optional<P>{r} : std::nullopt;
+}
+
+template <std::size_t EB, std::size_t EE>
+constexpr std::optional<exact_frac<pow_limbs>> exact_pow(const exact_frac<EB>& b, const exact_frac<EE>& e) noexcept {
+    using P = wide_sint<pow_limbs>;
+    if (is_zero(e) || is_one(b))
+        return exact_frac<pow_limbs>{P{1}, P{1}};
+    const exact_frac<EE> re = reduced(e); // p/q, q > 0
+    if (bit_width_of(re.Den) > 7 || 64 < static_cast<imax>(re.Den))
+        return std::nullopt;
+    const int            q  = static_cast<int>(static_cast<imax>(re.Den));
+    const auto           k  = re.Num;
+    const auto           ak = abs(k);
+    const exact_frac<EB> r  = reduced(b);
+    // b^(1/q) first: both parts perfect q-th powers, else irrational.
+    const auto rn = exact_root(P{r.Num}, q), rd = exact_root(P{r.Den}, q);
+    if (!rn || !rd)
+        return std::nullopt;
+    const int bits = bit_width_of(*rn) + bit_width_of(*rd);
+    if (bit_width_of(ak) > 12 || static_cast<imax>(ak) * bits > 64 * static_cast<imax>(pow_limbs) - 8)
+        return std::nullopt;
+    P n{1}, d{1};
+    for (imax i = 0; i < static_cast<imax>(ak); ++i) {
+        n = n * *rn;
+        d = d * *rd;
+    }
+    return k.negative() ? inverse(exact_frac<pow_limbs>{n, d}) : exact_frac<pow_limbs>{n, d};
+}
+
+// ConstBase, when nonzero, is the base known at compile time (pow_base): its
+// log is then a constant of each precision.
+template <std::size_t EB,
+          std::size_t EE,
+          int         MagE,
+          int         KMax,
+          int         BitsB     = frac_bits<EB>,
+          int         BitsE     = frac_bits<EE>,
+          imax        ConstBase = 0>
+struct pow_core {
+    exact_frac<EB>                                 B;
+    exact_frac<EE>                                 Exp;
+    constexpr std::optional<exact_frac<pow_limbs>> exact() const { return exact_pow(B, Exp); }
+    template <int W>
+    constexpr auto run() const {
+        // log b at MagE more bits, so e·log b (|e| < 2^MagE) is within 2 units
+        // at scale S.
+        constexpr int S         = W + 12 + KMax;
+        constexpr int SL        = S + MagE + std::bit_width(static_cast<unsigned>(BitsB));
+        using I                 = fixed_t<SL + MagE + std::bit_width(static_cast<unsigned>(BitsB)) + BitsE + 8>;
+        constexpr std::size_t K = limbs_of<I>;
+        const fx<K>           l = [&] {
+            if constexpr (ConstBase != 0) {
+                constexpr fx<K> c = log_exact<SL, K, BitsB>(exact_int<EB>(ConstBase));
+                return c;
+            } else
+                return log_exact<SL, K, BitsB>(B);
+        }();
+        const I prod = mul_q(l.Value, static_cast<I>(Exp.Num), 0);
+        const I q =
+            bit_width_of(Exp.Den) <= 64 ? div_small(prod, static_cast<umax>(Exp.Den)) : prod / static_cast<I>(Exp.Den);
+        const I    t  = round_shift(q, SL - S);
+        const umax dt = (l.Error >> (SL - S - MagE)) + 2;
+        return exp_fixed<S>(t, dt, KMax);
+    }
+};
+
+//---------------------------------------------------------------------------
+// Auto output grids. An endpoint of a deduced output is a core's result at
+// an endpoint of the input, rounded outward to the input's notch: down for
+// a lower end, up for an upper end. The rounding runs on the core's error
+// interval, so the bound always covers the true value; one escalation makes
+// it tight except within 2^-2W of a lattice point.
+//---------------------------------------------------------------------------
+template <grid_rational Notch>
+inline constexpr std::size_t notch_limbs =
+    limbs_for_bits(grid_bits(wide_numerator(Notch)) + grid_bits(wide_denominator(Notch)) + 2);
+
+// k·Notch as a grid number.
+template <grid_rational Notch, std::size_t K>
+constexpr grid_rational lattice_point(const wide_sint<K>& k) {
+#if BEMAN_INSIDE_BIG_GRIDS
+    return grid_rational{big_int{k}} * Notch;
+#else
+    // |k| may pass 2^63 (π on a 2^-62 notch): a rational's numerator holds
+    // up to 2^64 − 1, past it the point has no 64-bit grid number.
+    const wide_sint<K> a = abs(k);
+    if (bit_width_of(a) > 64)
+        constexpr_error<"beman::inside::math: a deduced output limit is past the 64-bit grid numbers">();
+    const grid_rational m = rational{static_cast<umax>(a)} * Notch;
+    return k.negative() ? -m : m;
+#endif
+}
+
+// ⌊v/Notch⌋ (Up false) or ⌈v/Notch⌉ (Up true) for v = n/d, d > 0.
+template <grid_rational Notch, bool Up, std::size_t K>
+constexpr wide_sint<K + notch_limbs<Notch>> lattice_index(const wide_sint<K>& n, const wide_sint<K>& d) {
+    using J   = wide_sint<K + notch_limbs<Notch>>;
+    const J p = static_cast<J>(wide_numerator(Notch)), q = static_cast<J>(wide_denominator(Notch));
+    return rounded_div<Up ? round_mode::ceil : round_mode::floor>(J{n} * q, J{d} * p);
+}
+
+template <grid_rational Notch, bool Up, int W, int Cap, typename Core>
+constexpr grid_rational lattice_bound_from(const Core& core) {
+    const auto            a = core.template run<W>();
+    constexpr std::size_t K = limbs_of<decltype(a.Value)> + 1;
+    using I                 = wide_sint<K>;
+    const I y{a.Value}, e{a.Error};
+    // ⌊v/Notch⌋ of v = y/2^Scale through a shift: a tiny value (exp(−58)
+    // ≈ 2^−84) has a 2^Scale past I, and a nested floor (ceil) by positive
+    // divisors is the floor (ceil) of the whole quotient.
+    auto at = [&](const I& v) {
+        if (a.Scale < 0)
+            return lattice_index<Notch, Up>(v << (-a.Scale), I{1});
+        const auto j = lattice_index<Notch, Up>(v, I{1});
+        return Up ? -(-j >> a.Scale) : j >> a.Scale;
+    };
+    const auto lo = at(y - e), hi = at(y + e);
+    if constexpr (2 * W <= Cap)
+        if (!(lo == hi))
+            return lattice_bound_from<Notch, Up, 2 * W, Cap>(core);
+    return lattice_point<Notch>(Up ? hi : lo);
+}
+
+template <grid_rational Notch, bool Up, typename Core>
+constexpr grid_rational lattice_bound(const Core& core) {
+    if constexpr (requires { core.exact(); })
+        if (const auto v = core.exact()) {
+            return lattice_point<Notch>(lattice_index<Notch, Up>(v->Num, v->Den));
+        }
+    constexpr int W0 = static_cast<int>(64 * notch_limbs<Notch>) + 16;
+    return lattice_bound_from<Notch, Up, W0, 2 * W0>(core);
+}
+
+// An In endpoint as an exact input.
+template <insidable In>
+constexpr exact_frac<input_limbs<In>> grid_input(const grid_rational& r) {
+    return exact_of_grid<input_limbs<In>>(r);
+}
+
+// ⌈|r|⌉ as an int (deduction bounds), saturated at imax: a grid reaching
+// 2^63 must fail every range gate, not wrap past them.
+constexpr imax ceil_abs(const grid_rational& r) {
+    const grid_wide n = wide_numerator(r), d = wide_denominator(r);
+    const grid_wide a = abs(n);
+    const grid_wide c = (a + d - grid_wide{1}) / d;
+    constexpr imax  M = std::numeric_limits<imax>::max();
+    return grid_wide{M} < c ? M : static_cast<imax>(c);
+}
+
+template <insidable In>
+inline constexpr imax max_abs_int = ceil_abs(lower_of<In>) > ceil_abs(upper_of<In>) ? ceil_abs(lower_of<In>)
+                                                                                    : ceil_abs(upper_of<In>);
+
+// Policy of a deduced output: the input's (no cursor), rounding to nearest.
+template <insidable In>
+inline constexpr policy_flag auto_policy = (policy_of<In> & ~cursor_marker) | round_nearest;
+
+template <insidable In, grid_rational Lo, grid_rational Hi>
+using auto_grid_t = inside<{{Lo, Hi}, notch_of<In>}, auto_policy<In>>;
+
+// The bound of Core's result at In's lower or upper end.
+template <insidable In, typename Core, bool AtUpper, bool Up>
+inline constexpr grid_rational bound_at =
+    lattice_bound<notch_of<In>, Up>(Core{grid_input<In>(AtUpper ? upper_of<In> : lower_of<In>)});
+
+template <insidable In, typename Core>
+using increasing_t = auto_grid_t<In, bound_at<In, Core, false, false>, bound_at<In, Core, true, true>>;
+template <insidable In, typename Core>
+using decreasing_t = auto_grid_t<In, bound_at<In, Core, true, false>, bound_at<In, Core, false, true>>;
+
+// Growth bounds for the deduction: |result| < 2^kmax over In.
+template <insidable In>
+inline constexpr int exp_kmax = [] {
+    static_assert(max_abs_int<In> <= 4096,
+                  "beman::inside::math: the deduced output of exp, exp2, sinh and cosh needs |x| <= 4096 - "
+                  "name an output grid with fn_into<Out> instead");
+    return static_cast<int>(max_abs_int<In> * 3 / 2) + 2;
+}();
+
+// Bits of the larger of |b| and 1/|b| over In (b > 0), for pow's growth.
+template <insidable In>
+inline constexpr int log2_span = [] {
+    const imax hi  = ceil_abs(upper_of<In>);
+    const imax inv = ceil_abs(grid_rational{1} / lower_of<In>);
+    const imax m   = hi > inv ? hi : inv;
+    return std::bit_width(static_cast<umax>(m)) + 1;
+}();
+
+template <insidable InB, insidable InE>
+inline constexpr int pow_kmax = [] {
+    static_assert(max_abs_int<InE> * log2_span<InB> <= 1 << 16,
+                  "beman::inside::math::pow: the deduced output would pass 2^65536 - name an output grid "
+                  "with pow_into<Out> instead");
+    return static_cast<int>(max_abs_int<InE>) * log2_span<InB> + 2;
+}();
+
+// The magnitude bound of a growing core onto Out: 2^out_kmax, past which
+// the core returns a stand-in that every policy but wrap treats alike. A
+// wrap Out folds the true value back, so the bound must cover the result
+// over the whole input: Grow::bits, read only then (it may not exist for
+// inputs that other outputs take, such as a base reaching 0).
+template <insidable Out, typename Grow>
+inline constexpr int grow_kmax = [] {
+    if constexpr (has_flag(policy_of<Out>, wrap)) {
+        constexpr int g = Grow::bits;
+        return g > out_kmax<Out> ? g : out_kmax<Out>;
+    } else
+        return out_kmax<Out>;
+}();
+template <insidable In>
+struct exp_grow {
+    static constexpr int bits = exp_kmax<In>;
+};
+template <insidable InB, insidable InE>
+struct pow_grow {
+    // A base reaching 0 grows only through a negative exponent.
+    static_assert(lower_of<InB> > 0 || !(lower_of<InE> < 0),
+                  "beman::inside::math::pow: a wrap output needs the whole result, which has no bound for a "
+                  "base reaching 0 and a negative exponent");
+    static constexpr int bits = [] {
+        if constexpr (lower_of<InB> > 0)
+            return pow_kmax<InB, InE>;
+        else {
+            static_assert(max_abs_int<InE> * (std::bit_width(static_cast<umax>(ceil_abs(upper_of<InB>))) + 1) <=
+                              1 << 16,
+                          "beman::inside::math::pow: a wrap output needs the whole result, which would pass "
+                          "2^65536");
+            return static_cast<int>(max_abs_int<InE>) *
+                       (std::bit_width(static_cast<umax>(ceil_abs(upper_of<InB>))) + 1) +
+                   2;
+        }
+    }();
+};
+template <insidable In, imax Base>
+struct pow_base_grow {
+    static_assert(max_abs_int<In> * std::bit_width(static_cast<umax>(Base)) <= 1 << 16,
+                  "beman::inside::math::pow_base: a wrap output needs the whole result, which would pass "
+                  "2^65536");
+    static constexpr int bits = static_cast<int>(max_abs_int<In>) * std::bit_width(static_cast<umax>(Base)) + 2;
+};
+template <insidable Out, insidable In>
+inline constexpr int exp_out_kmax = grow_kmax<Out, exp_grow<In>>;
+template <insidable Out, insidable InB, insidable InE>
+inline constexpr int pow_out_kmax = grow_kmax<Out, pow_grow<InB, InE>>;
+template <insidable Out, insidable In, imax Base>
+inline constexpr int pow_base_out_kmax = grow_kmax<Out, pow_base_grow<In, Base>>;
+
+// Bits of x² + y² as one fraction: each square doubles its input's bits,
+// and the sum over two denominators adds them.
+template <insidable InX, insidable InY>
+inline constexpr int hypot_bits = 2 * (input_bits<InX> + input_bits<InY>)+2;
+
+// Whether gcd_notch is a grid number, as a constraint of the deduced
+// two-input functions: with 64-bit grid numbers a 2/3 notch against a
+// 2^-62 one has no gcd (1/(3·2^62)).
+template <insidable A, insidable B>
+inline constexpr bool gcd_notch_fits =
+    !notched<A> || !notched<B> || grid_gcd_fits(grid_of<A>.value_unit(), grid_of<B>.value_unit());
+
+// gcd of two value units (0 when either is continuous), for two-input
+// outputs: the notches, or finer where a lattice does not pass through 0.
+// Every value of both inputs is a multiple of it.
+template <insidable A, insidable B>
+    requires gcd_notch_fits<A, B>
+inline constexpr grid_rational gcd_notch =
+    !notched<A> || !notched<B> ? grid_rational{0} : grid_gcd_of(grid_of<A>.value_unit(), grid_of<B>.value_unit());
+} // namespace beman::inside::math::detail::ax
+
+
 // ======================================================================
 //  beman/inside/detail/math_fp.hpp
 // ======================================================================
-// The double kernels of the math engine's double tier (cmath_adaptive.hpp):
+// The double kernels of the math engine's double tier (detail/math_entry.hpp):
 // a small libm in `double` — Taylor polynomials in Horner form with explicit
 // std::fma, Cody-Waite range reduction, and only std::fma / sqrt / nearbyint
 // from <cmath>.
@@ -12517,7 +13890,7 @@ consteval horner_bound horner_error(const poly<N>& p, double Z, double Dz) {
 }
 
 // The fewest terms n ≤ Max whose truncation trunc(n) is at most 2^-T.
-template <typename F>
+template <std::invocable<int> F>
 consteval int terms_for(int T, int Max, F trunc) {
     double target = 1;
     for (int i = 0; i < T; ++i)
@@ -13149,7 +14522,7 @@ inline double        seed_cbrt(double x) {
 // ======================================================================
 //  beman/inside/detail/math_dd.hpp
 // ======================================================================
-// The double-double kernels of the math engine's dd tier (cmath_adaptive.hpp):
+// The double-double kernels of the math engine's dd tier (detail/math_entry.hpp):
 // values as an unevaluated sum Hi + Lo of two doubles (about 106 bits), with
 // error-free sums and products (std::fma), for outputs finer than the double
 // tier decides. Every constant — ln 2, π, the 2^(j/64), 2^(j/4096) and sin(jπ/128)
@@ -14141,931 +15514,11 @@ inline D acos_lean(D x, double& bound) noexcept {
 // Each call takes the first tier that applies: a compile-time table for
 // small inputs; the double kernels (detail/math_fp.hpp), then the dd kernels
 // (detail/math_dd.hpp), each returning a result only when its error bound
-// decides the slot; and the integer path here (exact square and cube roots,
-// series in wide fixed point), which decides every result and is the only
+// decides the slot; and the integer path (detail/math_cores.hpp: exact square
+// and cube roots, series in wide fixed point), which decides every result and is the only
 // tier at compile time and without an FPU.
 //---------------------------------------------------------------------------
 namespace beman::inside::math::detail::ax {
-//---------------------------------------------------------------------------
-// Inputs as exact values, in as few limbs as their grid needs.
-//---------------------------------------------------------------------------
-constexpr int grid_bits(const grid_wide& v) {
-#if BEMAN_INSIDE_BIG_GRIDS
-    return v.bit_width();
-#else
-    return bit_width_of(v.negative() ? -v : v);
-#endif
-}
-
-// A grid integer as a double (a notch's p or q, which may pass imax).
-constexpr double grid_double(const grid_wide& v) {
-#if BEMAN_INSIDE_BIG_GRIDS
-    return static_cast<double>(big_rational{v, big_int{1}});
-#else
-    return static_cast<double>(v);
-#endif
-}
-
-// A value of In is n/d with d dividing the notch's denominator and
-// |n| < 2^magnitude·d: its bits, plus a sign. A continuous grid takes its
-// raw's: the 64-bit rational's, or a wide fraction's.
-template <insidable In>
-inline constexpr int input_bits = [] {
-    if constexpr (fraction_storage<In>)
-        return decltype(raw_t<In>::Num)::bits;
-    else if constexpr (!notched<In>)
-        return 130;
-    else
-        return grid_magnitude_bits<In> + grid_bits(wide_denominator(notch_of<In>)) + 2;
-}();
-
-template <insidable In>
-inline constexpr std::size_t input_limbs = limbs_for_bits(input_bits<In>);
-
-template <insidable In>
-constexpr exact_frac<input_limbs<In>> exact_input(const In& x) {
-    using I = wide_sint<input_limbs<In>>;
-    if constexpr (wide_valued<In>) {
-        const auto v = exact_of(x);
-        return {static_cast<I>(v.Num), static_cast<I>(v.Den)};
-    } else {
-        const auto v = exact_of<2>(as_rational(x));
-        return {static_cast<I>(v.Num), static_cast<I>(v.Den)};
-    }
-}
-
-// |x| < 2^in_mag for every value of In.
-template <insidable In>
-inline constexpr int in_mag = grid_magnitude_bits<In> > 1 ? grid_magnitude_bits<In> : 1;
-
-// Bits of an exact input's numerator or denominator.
-template <std::size_t E>
-inline constexpr int frac_bits = 64 * static_cast<int>(E);
-
-// Result magnitude bound: values of Out lie below 2^out_kmax.
-template <insidable Out>
-inline constexpr int out_kmax = mag_bits<Out> + 1;
-
-// The start precision for Out: its notch's bits plus guard bits.
-template <insidable Out>
-inline constexpr int start_bits = out_bits<Out> + 8 > 16 ? out_bits<Out> + 8 : 16;
-
-template <std::size_t K>
-constexpr exact_frac<K> exact_one() noexcept {
-    return {wide_sint<K>{1}, wide_sint<K>{1}};
-}
-template <std::size_t K>
-constexpr exact_frac<K> exact_int(imax v) noexcept {
-    return {wide_sint<K>{v}, wide_sint<K>{1}};
-}
-
-//---------------------------------------------------------------------------
-// Exact-value helpers at a compile-time scale S.
-//---------------------------------------------------------------------------
-// ⌊√f·2^S⌋ for f ≥ 0 (within 1 unit).
-// Bits bounds the numerator's and denominator's bit widths.
-template <int S, std::size_t K, int Bits, std::size_t E>
-constexpr wide_sint<K> sqrt_exact_q(const exact_frac<E>& f) noexcept {
-    using I   = wide_sint<limbs_for_bits(2 * Bits + 2 * S + 2)>;
-    const I n = (I{f.Num} * I{f.Den}) << (2 * S);
-    return static_cast<wide_sint<K>>(isqrt(n) / I{f.Den});
-}
-
-// log x for x > 0 at scale S: x = m·2^e exactly, m in [0.7, 1.42] rounded to
-// scale S, log x = log m + e·ln 2.
-template <int S, std::size_t K, int Bits, std::size_t E>
-constexpr fx<K> log_exact(const exact_frac<E>& x) noexcept {
-    using I                  = wide_sint<K>;
-    constexpr std::size_t KI = limbs_for_bits(2 * Bits + S + 2);
-    int                   e  = floor_log2(x);
-    I                     m  = to_q_at<K, KI>(x, S - e);
-    if (mul_q(m, m, S) > (one_q<K>(S) << 1)) {
-        ++e;
-        m = to_q_at<K, KI>(x, S - e);
-    }
-    const fx<K> l   = log_series<S>(m, 1);
-    const I     ln2 = static_cast<I>(ln2_q<S>);
-    return {l.Value + I{e} * ln2, l.Error + static_cast<umax>(e < 0 ? -e : e) + 1};
-}
-
-// An approx moved to scale A ≤ its own, rounding (error shrinks, plus ½).
-template <std::size_t K>
-constexpr fx<K> rescale(const approx<K>& a, int A) noexcept {
-    const int sh = a.Scale - A;
-    if (sh <= 0) // a bound past 64 bits saturates (never wraps small)
-        return {a.Value << (-sh), -sh < 64 && a.Error <= (~umax{0} >> -sh) ? a.Error << (-sh) : ~umax{0}};
-    return {round_shift(a.Value, sh), shr_bound(a.Error, sh) + 1};
-}
-
-// asin x for |x| ≤ 1/2 (exact): atan(x/√(1−x²)), the square root as
-// x·(1/√(1−x²)) with 1 − x² ≥ 3/4 in fixed point.
-template <int S, std::size_t K, int Bits, std::size_t E>
-constexpr fx<K> asin_small(const exact_frac<E>& x) noexcept {
-    using I    = wide_sint<K>;
-    const I xq = to_q<S, K>(x);                  // within ½
-    const I c  = one_q<K>(S) - mul_q(xq, xq, S); // within 1.5, ≥ 3/4
-    const I t  = mul_q(xq, rsqrt_q<S>(c), S);    // |t| ≤ 0.58, within 6
-    return atan_fixed<S>(t, 6);
-}
-
-// asin √y for 0 ≤ y ≤ 1/4 (exact): u = √y exactly rounded (within 1), then
-// atan(u·(1/√(1−u²))) with 1 − u² ≥ 3/4.
-template <int S, std::size_t K, int Bits, std::size_t E>
-constexpr fx<K> asin_sqrt(const exact_frac<E>& y) noexcept {
-    using I   = wide_sint<K>;
-    const I u = sqrt_exact_q<S, K, Bits + 2>(y);
-    const I w = one_q<K>(S) - mul_q(u, u, S); // within 2, ≥ 3/4
-    const I t = mul_q(u, rsqrt_q<S>(w), S);   // within 7
-    return atan_fixed<S>(t, 7);
-}
-
-//---------------------------------------------------------------------------
-// The cores: one per function. Each holds its exact inputs and computes the
-// result within its error bound at a precision W (run<W>), plus the exact
-// rational results (exact()), which are the only values a rounding boundary
-// can hold.
-//---------------------------------------------------------------------------
-template <std::size_t E>
-using maybe_exact = std::optional<exact_frac<E>>;
-
-// deep_extra helpers (bits, saturating at the driver's deep_limit): ⌈2^Mag ·
-// milli / 1000⌉ bits for a result that nears a grid point like 2^(−c·|x|),
-// |x| < 2^Mag; and the larger of two bounds.
-constexpr int deep_scaled(int mag, int milli) noexcept {
-    return mag >= 20 ? deep_limit : static_cast<int>(((imax{1} << mag) * milli + 999) / 1000);
-}
-constexpr int deep_max(int a, int b) noexcept { return a > b ? a : b; }
-
-// exp x. Exact only at 0.
-template <std::size_t E, int Mag, int KMax>
-struct exp_core {
-    exact_frac<E> X;
-    // e^−|x| near 0 (1.443·|x| bits), e^x = 1 + x + x²/2 near 1 + x.
-    static constexpr int     deep_extra = deep_max(deep_scaled(Mag, 1443), 2 * frac_bits<E>);
-    constexpr maybe_exact<E> exact() const { return is_zero(X) ? maybe_exact<E>{exact_one<E>()} : std::nullopt; }
-    template <int W>
-    constexpr auto run() const {
-        constexpr int S         = W + 8 + KMax;
-        using I                 = fixed_t<S + Mag + 2>; // |x|·log2(e) < 2^(S+Mag+1)
-        constexpr std::size_t K = limbs_of<I>;
-        return exp_fixed<S>(to_q<S, K>(X), 1, KMax);
-    }
-};
-
-// 2^x = 2^k·e^(f·ln 2), x = k + f. Exact at integers.
-template <std::size_t E, int Mag, int KMax>
-struct exp2_core {
-    exact_frac<E> X;
-    // 2^−|x| near 0 (|x| bits), 2^x near 1 for a small x.
-    static constexpr int deep_extra = deep_max(deep_scaled(Mag, 1000), 2 * frac_bits<E>);
-    template <int W>
-    constexpr auto run() const {
-        constexpr int S         = W + 8 + KMax;
-        using I                 = fixed_t<S + 8>;
-        using J                 = wide_sint<E>;
-        constexpr std::size_t K = limbs_of<I>;
-        const J               k = rounded_div<round_mode::floor>(X.Num, X.Den);
-        if (J{KMax} < k)
-            return approx<K>{I{1}, -(KMax + 2), 0};
-        if (k < J{-(S + 2)})
-            return approx<K>{I{1}, S + 2, 1};
-        int                 kk = static_cast<int>(static_cast<imax>(k));
-        const exact_frac<E> f{X.Num - k * X.Den, X.Den}; // in [0, 1)
-        if (is_zero(f))
-            return approx<K>{I{1}, -kk, 0};
-        const I ln2 = static_cast<I>(ln2_q<S>);
-        I       r   = mul_q(to_q<S, K>(f), ln2, S); // within 2
-        if (r > (ln2 >> 1)) {
-            r -= ln2;
-            ++kk;
-        }
-        const fx<K> e = exp_series<S>(r, 3);
-        return approx<K>{e.Value, S - kk, e.Error};
-    }
-};
-
-// log x, x > 0. Exact at 1.
-template <std::size_t E, int Bits = frac_bits<E>>
-struct log_core {
-    exact_frac<E>            X;
-    constexpr maybe_exact<E> exact() const {
-        return is_one(X) ? maybe_exact<E>{exact_frac<E>{wide_sint<E>{0}, wide_sint<E>{1}}} : std::nullopt;
-    }
-    template <int W>
-    constexpr auto run() const {
-        constexpr int S         = W + 8 + std::bit_width(static_cast<unsigned>(Bits));
-        using I                 = fixed_t<S + std::bit_width(static_cast<unsigned>(Bits)) + 8>;
-        constexpr std::size_t K = limbs_of<I>;
-        const fx<K>           l = log_exact<S, K, Bits>(X);
-        return approx<K>{l.Value, S, l.Error};
-    }
-};
-
-// The integer k with x = B^k (B = 2 or 10), if any, without reducing x:
-// with the factors 2 (and 5) of n and d stripped, n/d = 2^a·5^c·n'/d' is a
-// power of B exactly when n' = d' and a (= c, for 10) is that power.
-template <std::size_t E>
-constexpr std::optional<imax> exact_log(const exact_frac<E>& x, int B) noexcept {
-    using I = wide_sint<E>;
-    if (x.Num.negative() || x.Num.is_zero())
-        return std::nullopt;
-    I    n = x.Num, d = x.Den;
-    auto strip2 = [](I& v) {
-        imax k = 0;
-        while (v.Word[0] == 0) {
-            v = v >> 64;
-            k += 64;
-        }
-        const int z = std::countr_zero(static_cast<umax>(v.Word[0]));
-        v           = v >> z;
-        return k + z;
-    };
-    auto strip5 = [](I& v) {
-        imax k = 0;
-        for (;;) {
-            const auto qr = divmod_small(wide_uint<E>{v}, 5);
-            if (qr.Remainder != 0)
-                return k;
-            v = I{qr.Quotient};
-            ++k;
-        }
-    };
-    const imax a = strip2(n) - strip2(d);
-    if (B == 10 && strip5(n) - strip5(d) != a)
-        return std::nullopt;
-    if (!(n == d))
-        return std::nullopt;
-    return a;
-}
-
-// log2 x and log10 x: log x / ln B. Exact at powers of B.
-template <std::size_t E, int B, int Bits = frac_bits<E>>
-struct logb_core {
-    exact_frac<E>            X;
-    constexpr maybe_exact<E> exact() const {
-        if (const auto k = exact_log(X, B))
-            return exact_int<E>(*k);
-        return std::nullopt;
-    }
-    template <int W>
-    constexpr auto run() const {
-        constexpr int S         = W + 10 + std::bit_width(static_cast<unsigned>(Bits));
-        using I                 = fixed_t<S + std::bit_width(static_cast<unsigned>(Bits)) + 8>;
-        constexpr std::size_t K = limbs_of<I>;
-        const fx<K>           l = log_exact<S, K, Bits>(X);
-        // log x · (1/ln B): within 1.45·error + 2 (the constant is within 1).
-        const I inv = B == 2 ? static_cast<I>(log2e_q<S>) : static_cast<I>(log10e_q<S>);
-        return approx<K>{mul_q(l.Value, inv, S), S, 2 * l.Error + 2 + static_cast<umax>(Bits)};
-    }
-};
-
-// Residues of squares mod 64, as a bit set: 12 of the 64.
-inline constexpr umax square_mod64 = [] {
-    umax m = 0;
-    for (umax i = 0; i < 64; ++i)
-        m |= umax{1} << (i * i % 64);
-    return m;
-}();
-
-// √x, x ≥ 0: ⌊√x·2^P⌋ exactly. Exact when x is a square of a rational.
-template <std::size_t E, int Bits = frac_bits<E>>
-struct sqrt_core {
-    exact_frac<E> X;
-    // n/d is the square of a rational exactly when n·d is a perfect square,
-    // and then √(n/d) = √(n·d)/d. Most non-squares fail the test mod 64.
-    constexpr maybe_exact<E> exact() const {
-        using J   = wide_sint<2 * E>;
-        const J m = J{X.Num} * J{X.Den};
-        if (!((square_mod64 >> (m.Word[0] & 63)) & 1))
-            return std::nullopt;
-        const J s = isqrt(m);
-        if (!(s * s == m))
-            return std::nullopt;
-        return exact_frac<E>{static_cast<wide_sint<E>>(s), X.Den};
-    }
-    template <int W>
-    constexpr auto run() const {
-        constexpr int P         = W + 2;
-        using I                 = fixed_t<Bits + P + 4>;
-        constexpr std::size_t K = limbs_of<I>;
-        return approx<K>{sqrt_exact_q<P, K, Bits>(X), P, 1};
-    }
-};
-
-// Residues of cubes mod 63, as a bit set: 9 of the 63.
-inline constexpr umax cube_mod63 = [] {
-    umax m = 0;
-    for (umax i = 0; i < 63; ++i)
-        m |= umax{1} << (i * i * i % 63);
-    return m;
-}();
-
-// ∛x: ⌊∛(n·d²·2^(3P))⌋/d exactly. Exact when x is a cube of a rational.
-template <std::size_t E, int Bits = frac_bits<E>>
-struct cbrt_core {
-    exact_frac<E> X;
-    // |n|/d is the cube of a rational exactly when |n|·d² is a perfect cube,
-    // and then ∛(|n|/d) = ∛(|n|·d²)/d. Most non-cubes fail the test mod 63.
-    constexpr maybe_exact<E> exact() const {
-        using J   = wide_sint<3 * E>;
-        const J m = J{abs(X).Num} * J{X.Den} * J{X.Den};
-        if (!((cube_mod63 >> static_cast<umax>(m % J{63})) & 1))
-            return std::nullopt;
-        const J c = icbrt(m);
-        if (!(c * c * c == m))
-            return std::nullopt;
-        const wide_sint<E> r = static_cast<wide_sint<E>>(c);
-        return exact_frac<E>{X.Num.negative() ? -r : r, X.Den};
-    }
-    template <int W>
-    constexpr auto run() const {
-        constexpr int P         = W + 2;
-        using I                 = fixed_t<Bits + P + 4>;
-        constexpr std::size_t K = limbs_of<I>;
-        using J                 = wide_sint<limbs_for_bits(3 * Bits + 3 * P + 4)>;
-        const exact_frac<E> a   = abs(X);
-        const J             n   = (J{a.Num} * J{a.Den} * J{a.Den}) << (3 * P);
-        const I             y   = static_cast<I>(icbrt(n) / J{a.Den});
-        return approx<K>{X.Num.negative() ? -y : y, P, 1};
-    }
-};
-
-// sin, cos and tan: x = k·π/2 + r, |r| ≤ π/4, then the series and the
-// quadrant. Exact at 0.
-enum class trig { sin, cos, tan };
-
-template <std::size_t E, int Mag, trig Fn, int KMax>
-struct trig_core {
-    exact_frac<E> X;
-    // sin x = x − x³/6 near x, cos x = 1 − x²/2 near 1 (tan: none).
-    static constexpr int     deep_extra = Fn == trig::sin ? 3 * frac_bits<E> : Fn == trig::cos ? 2 * frac_bits<E> : 0;
-    constexpr maybe_exact<E> exact() const {
-        if (!is_zero(X))
-            return std::nullopt;
-        return Fn == trig::cos ? exact_one<E>() : exact_frac<E>{wide_sint<E>{0}, wide_sint<E>{1}};
-    }
-    template <int W>
-    constexpr auto run() const {
-        constexpr int S = W + 10 + (Fn == trig::tan ? KMax + 4 : 0);
-        constexpr int T = S + Mag + 4;                                       // reduce with Mag more bits
-        using I         = fixed_t<(Fn == trig::tan ? S + KMax + 4 : S + 2)>; // |sin|, |cos| ≤ 1; |tan| ≤ 2^(KMax+3)
-        using R         = fixed_t<T + Mag + 8>;
-        constexpr std::size_t K  = limbs_of<I>;
-        const R               xq = to_q<T, limbs_of<R>>(X);
-        const R               hp = static_cast<R>(pi_q<T - 1>);                                    // π/2 within 1
-        const R               k  = round_shift(mul_q(xq, static_cast<R>(two_over_pi_q<T>), T), T); // round(x·2/π)
-        const I               r  = static_cast<I>(round_shift(xq - k * hp, T - S)); // |r| ≤ π/4 + a hair, within 2
-        const unsigned        q  = static_cast<unsigned>(k.Word[0] & 3u);
-        // sin x and cos x by quadrant: (s, c), (c, −s), (−s, −c), (−c, s).
-        auto neg   = [](fx<K> f) { return fx<K>{-f.Value, f.Error}; };
-        auto sin_x = [&] {
-            return (q == 0)   ? sin_series<S>(r, 2)
-                   : (q == 1) ? cos_series<S>(r, 2)
-                   : (q == 2) ? neg(sin_series<S>(r, 2))
-                              : neg(cos_series<S>(r, 2));
-        };
-        auto cos_x = [&] {
-            return (q == 0)   ? cos_series<S>(r, 2)
-                   : (q == 1) ? neg(sin_series<S>(r, 2))
-                   : (q == 2) ? neg(cos_series<S>(r, 2))
-                              : sin_series<S>(r, 2);
-        };
-        if constexpr (Fn == trig::sin) {
-            const fx<K> sn = sin_x();
-            return approx<K>{sn.Value, S, sn.Error};
-        } else if constexpr (Fn == trig::cos) {
-            const fx<K> cs = cos_x();
-            return approx<K>{cs.Value, S, cs.Error};
-        } else {
-            const fx<K> sn = sin_x(), cs = cos_x();
-            // tan = sin/cos. The error bound, (δs + |t|·δc)/(|c| − δc) + 2 units,
-            // and the test for a result past 2^KMax only need to be upper and
-            // lower bounds: computed in doubles, widened by a hair.
-            const double cd = static_cast<double>(cs.Value), sd = static_cast<double>(sn.Value);
-            const double ac = cd < 0 ? -cd : cd, as = sd < 0 ? -sd : sd;
-            const double ec = static_cast<double>(cs.Error), es = static_cast<double>(sn.Error);
-            if (!(2 * ec < ac))
-                return approx<K>{I{0}, S, ~umax{0}}; // cos unresolved
-            const double unit = ::beman::inside::detail::ldexp(1.0, S);
-            if ((as - es) / (ac + ec) * (1 - 0x1p-40) > ::beman::inside::detail::ldexp(1.0, KMax))
-                return approx<K>{(sn.Value.negative() != cs.Value.negative()) ? I{-1} : I{1}, -(KMax + 2), 0};
-            const I      t   = div_q(sn.Value, cs.Value, S);
-            const double at  = (as + es) / (ac - ec);
-            const double err = ((es + at * ec) / (ac - ec) * unit + 2) * (1 + 0x1p-40) + 1;
-            const umax   e   = err < 0x1p62 ? static_cast<umax>(err) : ~umax{0};
-            return approx<K>{t, S, e};
-        }
-    }
-};
-
-// atan x: |x| ≤ 1 directly, else ±π/2 − atan(1/x). Exact at 0.
-template <int S, std::size_t K, std::size_t E>
-constexpr fx<K> atan_exact(const exact_frac<E>& x) noexcept {
-    using I = wide_sint<K>;
-    if (!(exact_one<E>() < abs(x)))
-        return atan_fixed<S>(to_q<S, K>(x), 1);
-    const fx<K> a  = atan_fixed<S>(to_q<S, K>(inverse(x)), 1);
-    const I     hp = static_cast<I>(pi_q<S - 1>);
-    return {(x.Num.negative() ? -hp : hp) - a.Value, a.Error + 1};
-}
-
-template <std::size_t E>
-struct atan_core {
-    exact_frac<E>            X;
-    constexpr maybe_exact<E> exact() const { return is_zero(X) ? maybe_exact<E>{X} : std::nullopt; }
-    template <int W>
-    constexpr auto run() const {
-        constexpr int S         = W + 10;
-        using I                 = fixed_t<S + 3>; // |atan| < 2, 1 + t·c ≤ 2
-        constexpr std::size_t K = limbs_of<I>;
-        const fx<K>           a = atan_exact<S, K>(X);
-        return approx<K>{a.Value, S, a.Error};
-    }
-};
-
-// atan2(y, x) in [−π, π]; 0 for y = 0, x ≥ 0 (and the (0, 0) convention).
-template <std::size_t E>
-struct atan2_core {
-    exact_frac<E>            Y, X;
-    constexpr maybe_exact<E> exact() const {
-        if (is_zero(Y) && !X.Num.negative())
-            return exact_frac<E>{wide_sint<E>{0}, wide_sint<E>{1}};
-        return std::nullopt;
-    }
-    template <int W>
-    constexpr auto run() const {
-        constexpr int S         = W + 10;
-        using I                 = fixed_t<S + 8>;
-        constexpr std::size_t K = limbs_of<I>;
-        using F                 = exact_frac<2 * E + 1>;
-        const F y{Y}, x{X};
-        const I pi = static_cast<I>(pi_q<S>);
-        if (!(abs(x) < abs(y))) {
-            const fx<K> a = atan_exact<S, K>(y / x);
-            if (!x.Num.negative())
-                return approx<K>{a.Value, S, a.Error};
-            return approx<K>{a.Value + (y.Num.negative() ? -pi : pi), S, a.Error + 1};
-        }
-        const fx<K> a  = atan_exact<S, K>(x / y);
-        const I     hp = static_cast<I>(pi_q<S - 1>);
-        return approx<K>{(y.Num.negative() ? -hp : hp) - a.Value, S, a.Error + 1};
-    }
-};
-
-// asin x, |x| ≤ 1: small arguments directly; past 1/2, the half-angle form
-// ±(π/2 − 2·asin √((1−|x|)/2)), which stays accurate up to ±1.
-template <std::size_t E, int Bits = frac_bits<E>>
-struct asin_core {
-    exact_frac<E>            X;
-    constexpr maybe_exact<E> exact() const { return is_zero(X) ? maybe_exact<E>{X} : std::nullopt; }
-    template <int W>
-    constexpr auto run() const {
-        constexpr int S         = W + 12;
-        using I                 = fixed_t<S + 8>;
-        constexpr std::size_t K = limbs_of<I>;
-        const exact_frac<E>   half{wide_sint<E>{1}, wide_sint<E>{2}};
-        if (!(half < abs(X))) {
-            const fx<K> a = asin_small<S, K, Bits>(X);
-            return approx<K>{a.Value, S, a.Error};
-        }
-        using F         = exact_frac<E + 1>;
-        const F     one = exact_one<E + 1>();
-        const F     y   = (one + F{-abs(X)}) * F{half}; // (1 − |x|)/2
-        const fx<K> a   = asin_sqrt<S, K, Bits + 1>(y);
-        const I     v   = static_cast<I>(pi_q<S - 1>) - (a.Value << 1);
-        return approx<K>{X.Num.negative() ? -v : v, S, 2 * a.Error + 1};
-    }
-};
-
-// acos x = π/2 − asin x for |x| ≤ 1/2; 2·asin √((1−x)/2) above;
-// π − 2·asin √((1+x)/2) below. Exact at 1.
-template <std::size_t E, int Bits = frac_bits<E>>
-struct acos_core {
-    exact_frac<E>            X;
-    constexpr maybe_exact<E> exact() const {
-        return is_one(X) ? maybe_exact<E>{exact_frac<E>{wide_sint<E>{0}, wide_sint<E>{1}}} : std::nullopt;
-    }
-    template <int W>
-    constexpr auto run() const {
-        constexpr int S         = W + 12;
-        using I                 = fixed_t<S + 8>;
-        constexpr std::size_t K = limbs_of<I>;
-        const exact_frac<E>   half{wide_sint<E>{1}, wide_sint<E>{2}};
-        if (!(half < abs(X))) {
-            const fx<K> a = asin_small<S, K, Bits>(X);
-            return approx<K>{static_cast<I>(pi_q<S - 1>) - a.Value, S, a.Error + 1};
-        }
-        using F         = exact_frac<E + 1>;
-        const F     one = exact_one<E + 1>();
-        const F     x{X};
-        const bool  neg = X.Num.negative();
-        const F     y   = (neg ? one + x : one + F{-x}) * F{half};
-        const fx<K> a   = asin_sqrt<S, K, Bits + 1>(y);
-        if (!neg)
-            return approx<K>{a.Value << 1, S, 2 * a.Error};
-        return approx<K>{static_cast<I>(pi_q<S>) - (a.Value << 1), S, 2 * a.Error + 1};
-    }
-};
-
-// sinh, cosh and tanh from e^|x| and e^−|x| at absolute scale A. Exact at 0
-// (sinh, tanh: 0; cosh: 1).
-enum class hyp { sinh, cosh, tanh };
-
-template <std::size_t E, int Mag, hyp Fn, int KMax>
-struct hyp_core {
-    exact_frac<E> X;
-    // tanh |x| = 1 − 2e^−2|x| near 1 (2.886·|x| bits) and x − x³/3 near x;
-    // sinh near x by x³/6, cosh near 1 by x²/2.
-    static constexpr int     deep_extra = Fn == hyp::tanh   ? deep_max(deep_scaled(Mag, 2886), 3 * frac_bits<E>)
-                                          : Fn == hyp::sinh ? 3 * frac_bits<E>
-                                                            : 2 * frac_bits<E>;
-    constexpr maybe_exact<E> exact() const {
-        if (!is_zero(X))
-            return std::nullopt;
-        return Fn == hyp::cosh ? exact_one<E>() : X;
-    }
-    template <int W>
-    constexpr auto run() const {
-        constexpr int A           = W + 10;
-        constexpr int KM          = Fn == hyp::tanh ? 1 : KMax + 1;
-        constexpr int S           = A + KM + 4;
-        using I                   = fixed_t<S + Mag + 3>; // 2|x|·log2(e) < 2^(S+Mag+2)
-        constexpr std::size_t K   = limbs_of<I>;
-        const bool            neg = X.Num.negative();
-        const I               ax  = to_q<S, K>(abs(X)); // within ½
-        if constexpr (Fn == hyp::tanh) {
-            // tanh |x| = (1 − g)/(1 + g), g = e^(−2|x|) ≤ 1.
-            const fx<K> g   = rescale(exp_fixed<S>(-(ax << 1), 1, KM), A);
-            const I     one = one_q<K>(A);
-            const I     t   = div_q(one - g.Value, one + g.Value, A);
-            return approx<K>{neg ? -t : t, A, 2 * g.Error + 2};
-        } else {
-            // One reduction |x| = k·ln 2 + r: e^r = E + O and e^−r = E − O from
-            // the even and odd halves of the series.
-            const I k = round_shift(mul_q(ax, static_cast<I>(log2e_q<S>), S), S);
-            if (I{KM} < k) // e^|x| past 2^KM: past Out
-                return approx<K>{(Fn == hyp::sinh && neg) ? I{-1} : I{1}, -(KMax + 2), 0};
-            const int  kk = static_cast<int>(static_cast<imax>(k));
-            const I    r  = ax - k * static_cast<I>(ln2_q<S>); // within ½ + k
-            const I    z  = mul_q(r, r, S);
-            const I    ev = horner<series::cosh, S, false>(z);
-            const I    od = mul_q(r, horner<series::sinh, S, false>(z), S);
-            const umax e  = 24 + 2 * (static_cast<umax>(kk) + 2);
-            const I    P  = round_shift(ev + od, S - kk - A); // e^|x| at scale A
-            const I    M  = round_shift(ev - od, S + kk - A); // e^−|x| at scale A
-            const umax ep = shr_bound(e, S - kk - A) + 1, em = shr_bound(e, S + kk - A) + 1;
-            if constexpr (Fn == hyp::cosh)
-                return approx<K>{(P + M) >> 1, A, (ep + em) / 2 + 1};
-            else {
-                const I sv = (P - M) >> 1;
-                return approx<K>{neg ? -sv : sv, A, (ep + em) / 2 + 1};
-            }
-        }
-    }
-};
-
-// asinh x = ±log(|x| + √(x²+1)); acosh x = log(x + √((x−1)(x+1))), x ≥ 1;
-// atanh x = ±½·log((1+|x|)/(1−|x|)), |x| < 1.
-enum class ahyp { asinh, acosh, atanh };
-
-template <std::size_t E, int Mag, ahyp Fn, int Bits = frac_bits<E>>
-struct ahyp_core {
-    exact_frac<E>            X;
-    constexpr maybe_exact<E> exact() const {
-        if (Fn == ahyp::acosh)
-            return is_one(X) ? maybe_exact<E>{exact_frac<E>{wide_sint<E>{0}, wide_sint<E>{1}}} : std::nullopt;
-        return is_zero(X) ? maybe_exact<E>{X} : std::nullopt;
-    }
-    template <int W>
-    constexpr auto run() const {
-        constexpr int S = W + 12 + std::bit_width(static_cast<unsigned>(2 * Bits + Mag));
-        // asinh forms x² + 1 in the word: twice the magnitude bits.
-        using I                 = fixed_t<S + (Fn == ahyp::asinh ? 2 * Mag : Mag) + 8>;
-        constexpr std::size_t K = limbs_of<I>;
-        using F                 = exact_frac<2 * E + 1>;
-        const bool neg          = X.Num.negative();
-        const F    a            = abs(F{X});
-        if constexpr (Fn == ahyp::atanh) {
-            // (1 + |x|)/(1 − |x|) = (d + |n|)/(d − |n|), d − |n| > 0.
-            const F     q{a.Num + a.Den, a.Den - a.Num};
-            const fx<K> l = log_exact<S, K, 2 * Bits + 2>(q);
-            return approx<K>{neg ? -(l.Value >> 1) : (l.Value >> 1), S, l.Error / 2 + 1};
-        } else {
-            if constexpr (Fn == ahyp::asinh) {
-                // c = x² + 1 = m·4^h, m in [1, 4): √c = √m·2^h with √m = m·(1/√m);
-                // log of v/2^h = (|x| + √c)/2^h, plus h·ln 2.
-                const I     aq = to_q<S, K>(a);                  // within ½
-                const I     c  = mul_q(aq, aq, S) + one_q<K>(S); // within |x| + 1
-                const int   h  = (bit_width_of(c) - 1 - S) / 2;
-                const I     m  = c >> (2 * h);                           // within 3
-                const I     v  = (aq >> h) + mul_q(m, rsqrt_q<S>(m), S); // in [1, 3), within 30
-                const fx<K> l  = log_fixed<S>(v, 30);
-                const I     lv = l.Value + I{h} * static_cast<I>(ln2_q<S>);
-                return approx<K>{neg ? -lv : lv, S, l.Error + static_cast<umax>(h) + 1};
-            } else {
-                const F     r{(a.Num - a.Den) * (a.Num + a.Den), a.Den * a.Den};     // x² − 1 = (n − d)(n + d)/d²
-                const I     v = to_q<S, K>(a) + sqrt_exact_q<S, K, 2 * Bits + 2>(r); // ≥ 1, within 2
-                const fx<K> l = log_fixed<S>(v, 2);
-                return approx<K>{l.Value, S, l.Error};
-            }
-        }
-    }
-};
-
-// b^e for b > 0: e^(e·log b). Exact for e = 0, b = 1, and e = p/q (q ≤ 64)
-// when b's numerator and denominator are perfect q-th powers (4^0.5 = 2,
-// 2.25^1.5 = 3.375) and the power fits PowLimbs: such a result can sit on a
-// rounding boundary, where no approximation decides.
-inline constexpr std::size_t pow_limbs = 32; // exact integer powers up to 2048 bits
-
-// The q-th root of n ≥ 0 when n is a perfect q-th power: bit by bit, the
-// largest r with r^q ≤ n, then r^q == n.
-constexpr std::optional<wide_sint<pow_limbs>> exact_root(const wide_sint<pow_limbs>& n, int q) noexcept {
-    using P = wide_sint<pow_limbs>;
-    if (q == 1 || n.is_zero() || n == P{1})
-        return n;
-    auto at_most = [&](const P& c) { // c^q ≤ n, stopping once past n
-        P p{1};
-        for (int j = 0; j < q; ++j)
-            if (n < (p = p * c))
-                return false;
-        return true;
-    };
-    P r{0};
-    for (int i = (bit_width_of(n) + q - 1) / q; i-- > 0;)
-        if (const P c = r + (P{1} << i); at_most(c))
-            r = c;
-    P p{1};
-    for (int j = 0; j < q; ++j)
-        p = p * r;
-    return p == n ? std::optional<P>{r} : std::nullopt;
-}
-
-template <std::size_t EB, std::size_t EE>
-constexpr std::optional<exact_frac<pow_limbs>> exact_pow(const exact_frac<EB>& b, const exact_frac<EE>& e) noexcept {
-    using P = wide_sint<pow_limbs>;
-    if (is_zero(e) || is_one(b))
-        return exact_frac<pow_limbs>{P{1}, P{1}};
-    const exact_frac<EE> re = reduced(e); // p/q, q > 0
-    if (bit_width_of(re.Den) > 7 || 64 < static_cast<imax>(re.Den))
-        return std::nullopt;
-    const int            q  = static_cast<int>(static_cast<imax>(re.Den));
-    const auto           k  = re.Num;
-    const auto           ak = k.negative() ? -k : k;
-    const exact_frac<EB> r  = reduced(b);
-    // b^(1/q) first: both parts perfect q-th powers, else irrational.
-    const auto rn = exact_root(P{r.Num}, q), rd = exact_root(P{r.Den}, q);
-    if (!rn || !rd)
-        return std::nullopt;
-    const int bits = bit_width_of(*rn) + bit_width_of(*rd);
-    if (bit_width_of(ak) > 12 || static_cast<imax>(ak) * bits > 64 * static_cast<imax>(pow_limbs) - 8)
-        return std::nullopt;
-    P n{1}, d{1};
-    for (imax i = 0; i < static_cast<imax>(ak); ++i) {
-        n = n * *rn;
-        d = d * *rd;
-    }
-    return k.negative() ? inverse(exact_frac<pow_limbs>{n, d}) : exact_frac<pow_limbs>{n, d};
-}
-
-// ConstBase, when nonzero, is the base known at compile time (pow_base): its
-// log is then a constant of each precision.
-template <std::size_t EB,
-          std::size_t EE,
-          int         MagE,
-          int         KMax,
-          int         BitsB     = frac_bits<EB>,
-          int         BitsE     = frac_bits<EE>,
-          imax        ConstBase = 0>
-struct pow_core {
-    exact_frac<EB>                                 B;
-    exact_frac<EE>                                 Exp;
-    constexpr std::optional<exact_frac<pow_limbs>> exact() const { return exact_pow(B, Exp); }
-    template <int W>
-    constexpr auto run() const {
-        // log b at MagE more bits, so e·log b (|e| < 2^MagE) is within 2 units
-        // at scale S.
-        constexpr int S         = W + 12 + KMax;
-        constexpr int SL        = S + MagE + std::bit_width(static_cast<unsigned>(BitsB));
-        using I                 = fixed_t<SL + MagE + std::bit_width(static_cast<unsigned>(BitsB)) + BitsE + 8>;
-        constexpr std::size_t K = limbs_of<I>;
-        const fx<K>           l = [&] {
-            if constexpr (ConstBase != 0) {
-                constexpr fx<K> c = log_exact<SL, K, BitsB>(exact_int<EB>(ConstBase));
-                return c;
-            } else
-                return log_exact<SL, K, BitsB>(B);
-        }();
-        const I prod = mul_q(l.Value, static_cast<I>(Exp.Num), 0);
-        const I q =
-            bit_width_of(Exp.Den) <= 64 ? div_small(prod, static_cast<umax>(Exp.Den)) : prod / static_cast<I>(Exp.Den);
-        const I    t  = round_shift(q, SL - S);
-        const umax dt = (l.Error >> (SL - S - MagE)) + 2;
-        return exp_fixed<S>(t, dt, KMax);
-    }
-};
-
-//---------------------------------------------------------------------------
-// Auto output grids. An endpoint of a deduced output is a core's result at
-// an endpoint of the input, rounded outward to the input's notch: down for
-// a lower end, up for an upper end. The rounding runs on the core's error
-// interval, so the bound always covers the true value; one escalation makes
-// it tight except within 2^-2W of a lattice point.
-//---------------------------------------------------------------------------
-template <grid_rational Notch>
-inline constexpr std::size_t notch_limbs =
-    limbs_for_bits(grid_bits(wide_numerator(Notch)) + grid_bits(wide_denominator(Notch)) + 2);
-
-// k·Notch as a grid number.
-template <grid_rational Notch, std::size_t K>
-constexpr grid_rational lattice_point(const wide_sint<K>& k) {
-#if BEMAN_INSIDE_BIG_GRIDS
-    return grid_rational{big_int{k}} * Notch;
-#else
-    // |k| may pass 2^63 (π on a 2^-62 notch): a rational's numerator holds
-    // up to 2^64 − 1, past it the point has no 64-bit grid number.
-    const wide_sint<K> a = k.negative() ? -k : k;
-    if (bit_width_of(a) > 64)
-        constexpr_error<"beman::inside::math: a deduced output limit is past the 64-bit grid numbers">();
-    const grid_rational m = rational{static_cast<umax>(a)} * Notch;
-    return k.negative() ? -m : m;
-#endif
-}
-
-// ⌊v/Notch⌋ (Up false) or ⌈v/Notch⌉ (Up true) for v = n/d, d > 0.
-template <grid_rational Notch, bool Up, std::size_t K>
-constexpr wide_sint<K + notch_limbs<Notch>> lattice_index(const wide_sint<K>& n, const wide_sint<K>& d) {
-    using J   = wide_sint<K + notch_limbs<Notch>>;
-    const J p = static_cast<J>(wide_numerator(Notch)), q = static_cast<J>(wide_denominator(Notch));
-    return rounded_div<Up ? round_mode::ceil : round_mode::floor>(J{n} * q, J{d} * p);
-}
-
-template <grid_rational Notch, bool Up, int W, int Cap, typename Core>
-constexpr grid_rational lattice_bound_from(const Core& core) {
-    const auto            a = core.template run<W>();
-    constexpr std::size_t K = limbs_of<decltype(a.Value)> + 1;
-    using I                 = wide_sint<K>;
-    const I y{a.Value}, e{a.Error};
-    // ⌊v/Notch⌋ of v = y/2^Scale through a shift: a tiny value (exp(−58)
-    // ≈ 2^−84) has a 2^Scale past I, and a nested floor (ceil) by positive
-    // divisors is the floor (ceil) of the whole quotient.
-    auto at = [&](const I& v) {
-        if (a.Scale < 0)
-            return lattice_index<Notch, Up>(v << (-a.Scale), I{1});
-        const auto j = lattice_index<Notch, Up>(v, I{1});
-        return Up ? -(-j >> a.Scale) : j >> a.Scale;
-    };
-    const auto lo = at(y - e), hi = at(y + e);
-    if constexpr (2 * W <= Cap)
-        if (!(lo == hi))
-            return lattice_bound_from<Notch, Up, 2 * W, Cap>(core);
-    return lattice_point<Notch>(Up ? hi : lo);
-}
-
-template <grid_rational Notch, bool Up, typename Core>
-constexpr grid_rational lattice_bound(const Core& core) {
-    if constexpr (requires { core.exact(); })
-        if (const auto v = core.exact()) {
-            return lattice_point<Notch>(lattice_index<Notch, Up>(v->Num, v->Den));
-        }
-    constexpr int W0 = static_cast<int>(64 * notch_limbs<Notch>) + 16;
-    return lattice_bound_from<Notch, Up, W0, 2 * W0>(core);
-}
-
-// An In endpoint as an exact input.
-template <insidable In>
-constexpr exact_frac<input_limbs<In>> grid_input(const grid_rational& r) {
-    return exact_of_grid<input_limbs<In>>(r);
-}
-
-// ⌈|r|⌉ as an int (deduction bounds), saturated at imax: a grid reaching
-// 2^63 must fail every range gate, not wrap past them.
-constexpr imax ceil_abs(const grid_rational& r) {
-    const grid_wide n = wide_numerator(r), d = wide_denominator(r);
-    const grid_wide a = n.negative() ? -n : n;
-    const grid_wide c = (a + d - grid_wide{1}) / d;
-    constexpr imax  M = std::numeric_limits<imax>::max();
-    return grid_wide{M} < c ? M : static_cast<imax>(c);
-}
-
-template <insidable In>
-inline constexpr imax max_abs_int = ceil_abs(lower_of<In>) > ceil_abs(upper_of<In>) ? ceil_abs(lower_of<In>)
-                                                                                    : ceil_abs(upper_of<In>);
-
-// Policy of a deduced output: the input's (no cursor), rounding to nearest.
-template <insidable In>
-inline constexpr policy_flag auto_policy = (policy_of<In> & ~cursor_marker) | round_nearest;
-
-template <insidable In, grid_rational Lo, grid_rational Hi>
-using auto_grid_t = inside<{{Lo, Hi}, notch_of<In>}, auto_policy<In>>;
-
-// The bound of Core's result at In's lower or upper end.
-template <insidable In, typename Core, bool AtUpper, bool Up>
-inline constexpr grid_rational bound_at =
-    lattice_bound<notch_of<In>, Up>(Core{grid_input<In>(AtUpper ? upper_of<In> : lower_of<In>)});
-
-template <insidable In, typename Core>
-using increasing_t = auto_grid_t<In, bound_at<In, Core, false, false>, bound_at<In, Core, true, true>>;
-template <insidable In, typename Core>
-using decreasing_t = auto_grid_t<In, bound_at<In, Core, true, false>, bound_at<In, Core, false, true>>;
-
-// Growth bounds for the deduction: |result| < 2^kmax over In.
-template <insidable In>
-inline constexpr int exp_kmax = [] {
-    static_assert(max_abs_int<In> <= 4096,
-                  "beman::inside::math: the deduced output of exp, exp2, sinh and cosh needs |x| <= 4096 - "
-                  "name an output grid with fn_into<Out> instead");
-    return static_cast<int>(max_abs_int<In> * 3 / 2) + 2;
-}();
-
-// Bits of the larger of |b| and 1/|b| over In (b > 0), for pow's growth.
-template <insidable In>
-inline constexpr int log2_span = [] {
-    const imax hi  = ceil_abs(upper_of<In>);
-    const imax inv = ceil_abs(grid_rational{1} / lower_of<In>);
-    const imax m   = hi > inv ? hi : inv;
-    return std::bit_width(static_cast<umax>(m)) + 1;
-}();
-
-template <insidable InB, insidable InE>
-inline constexpr int pow_kmax = [] {
-    static_assert(max_abs_int<InE> * log2_span<InB> <= 1 << 16,
-                  "beman::inside::math::pow: the deduced output would pass 2^65536 - name an output grid "
-                  "with pow_into<Out> instead");
-    return static_cast<int>(max_abs_int<InE>) * log2_span<InB> + 2;
-}();
-
-// The magnitude bound of a growing core onto Out: 2^out_kmax, past which
-// the core returns a stand-in that every policy but wrap treats alike. A
-// wrap Out folds the true value back, so the bound must cover the result
-// over the whole input: Grow::bits, read only then (it may not exist for
-// inputs that other outputs take, such as a base reaching 0).
-template <insidable Out, typename Grow>
-inline constexpr int grow_kmax = [] {
-    if constexpr (has_flag(policy_of<Out>, wrap)) {
-        constexpr int g = Grow::bits;
-        return g > out_kmax<Out> ? g : out_kmax<Out>;
-    } else
-        return out_kmax<Out>;
-}();
-template <insidable In>
-struct exp_grow {
-    static constexpr int bits = exp_kmax<In>;
-};
-template <insidable InB, insidable InE>
-struct pow_grow {
-    // A base reaching 0 grows only through a negative exponent.
-    static_assert(lower_of<InB> > 0 || !(lower_of<InE> < 0),
-                  "beman::inside::math::pow: a wrap output needs the whole result, which has no bound for a "
-                  "base reaching 0 and a negative exponent");
-    static constexpr int bits = [] {
-        if constexpr (lower_of<InB> > 0)
-            return pow_kmax<InB, InE>;
-        else {
-            static_assert(max_abs_int<InE> * (std::bit_width(static_cast<umax>(ceil_abs(upper_of<InB>))) + 1) <=
-                              1 << 16,
-                          "beman::inside::math::pow: a wrap output needs the whole result, which would pass "
-                          "2^65536");
-            return static_cast<int>(max_abs_int<InE>) *
-                       (std::bit_width(static_cast<umax>(ceil_abs(upper_of<InB>))) + 1) +
-                   2;
-        }
-    }();
-};
-template <insidable In, imax Base>
-struct pow_base_grow {
-    static_assert(max_abs_int<In> * std::bit_width(static_cast<umax>(Base)) <= 1 << 16,
-                  "beman::inside::math::pow_base: a wrap output needs the whole result, which would pass "
-                  "2^65536");
-    static constexpr int bits = static_cast<int>(max_abs_int<In>) * std::bit_width(static_cast<umax>(Base)) + 2;
-};
-template <insidable Out, insidable In>
-inline constexpr int exp_out_kmax = grow_kmax<Out, exp_grow<In>>;
-template <insidable Out, insidable InB, insidable InE>
-inline constexpr int pow_out_kmax = grow_kmax<Out, pow_grow<InB, InE>>;
-template <insidable Out, insidable In, imax Base>
-inline constexpr int pow_base_out_kmax = grow_kmax<Out, pow_base_grow<In, Base>>;
-
-// Bits of x² + y² as one fraction: each square doubles its input's bits,
-// and the sum over two denominators adds them.
-template <insidable InX, insidable InY>
-inline constexpr int hypot_bits = 2 * (input_bits<InX> + input_bits<InY>)+2;
-
-// Whether gcd_notch is a grid number, as a constraint of the deduced
-// two-input functions: with 64-bit grid numbers a 2/3 notch against a
-// 2^-62 one has no gcd (1/(3·2^62)).
-template <insidable A, insidable B>
-inline constexpr bool gcd_notch_fits =
-    !notched<A> || !notched<B> || grid_gcd_fits(grid_of<A>.value_unit(), grid_of<B>.value_unit());
-
-// gcd of two value units (0 when either is continuous), for two-input
-// outputs: the notches, or finer where a lattice does not pass through 0.
-// Every value of both inputs is a multiple of it.
-template <insidable A, insidable B>
-    requires gcd_notch_fits<A, B>
-inline constexpr grid_rational gcd_notch =
-    !notched<A> || !notched<B> ? grid_rational{0} : grid_gcd_of(grid_of<A>.value_unit(), grid_of<B>.value_unit());
-
 //---------------------------------------------------------------------------
 // The double tier. Where an FPU is present, the double kernels
 // (detail/math_fp.hpp) give the value first, with an error bound computed
@@ -15616,7 +16069,7 @@ inline bool dd_full_attempt(const ddk::dd& x, Out& out) {
 }
 
 // What follows a lean kernel: rarely taken, so out of line.
-template <typename F>
+template <std::invocable<> F>
 [[gnu::cold, gnu::noinline]] bool dd_cold(const F& f) {
     return f();
 }
@@ -15841,7 +16294,7 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
     static_assert(anchored<Out> || !has_flag(policy_of<Out>, wrap),
                   "beman::inside::math: wrap onto a grid that does not pass through 0 is not supported - "
                   "use clamp, or an anchored output grid");
-    using ::beman::inside::detail::is_expected_v;
+    using ::beman::inside::detail::expected_like;
     if constexpr (anchored<Out>)
         return fn.template operator()<Out>(anchored_input(xs)...);
     else if constexpr (integer_bracket<Out>) {
@@ -15852,7 +16305,7 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
         using Lo                        = bracket_t<Out, round_floor, F>;
         using Hi                        = bracket_t<Out, round_ceil, F>;
         using R                         = decltype(fn.template operator()<Lo>(anchored_input(xs)...));
-        constexpr bool checked          = is_expected_v<R>;
+        constexpr bool checked          = expected_like<R>;
         using Res                       = std::conditional_t<checked, std::expected<Out, errc>, Out>;
         const R lo                      = fn.template operator()<Lo>(anchored_input(xs)...);
         const auto               unwrap = [](const auto& r) -> const auto& {
@@ -15899,7 +16352,7 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
             const auto s = exact_of(a) + exact_of(b);
             return decltype(s){s.Num, s.Den + s.Den};
         };
-        if constexpr (is_expected_v<decltype(lo)>) {
+        if constexpr (expected_like<decltype(lo)>) {
             using R = std::expected<Out, errc>;
             if (!lo)
                 return R{std::unexpected{lo.error()}};
@@ -15920,7 +16373,7 @@ inline constexpr bool unanchored_call = !anchored<Out> || (!anchored<Ins> || ...
 
 // What follows a fast tier: rarely taken, so out of line, which keeps its
 // frame off the tier's fast path.
-template <typename F>
+template <std::invocable<> F>
 [[gnu::cold, gnu::noinline]] constexpr auto cold_call(const F& f) {
     return f();
 }
@@ -16457,7 +16910,7 @@ template <insidable InB, insidable InE>
 
 
 //---------------------------------------------------------------------------
-// beman::inside::math — the transcendental functions (cmath_adaptive.hpp)
+// beman::inside::math — the transcendental functions (detail/math_entry.hpp)
 // and the grid operations (abs, sign, copysign, floor, ceil, round, trunc,
 // fmod, pown).
 //
@@ -16519,7 +16972,7 @@ constexpr grid_rational grid_to_int(const grid_rational& r) {
 #else
     // |q| may pass imax (a qword's 2^64 − 1): build the rational from the
     // magnitude, which a 64-bit grid number's integer part always fits.
-    const grid_wide a = q.negative() ? -q : q;
+    const grid_wide a = abs(q);
     const rational  m{static_cast<umax>(a)};
     return q.negative() ? -m : m;
 #endif
@@ -17242,6 +17695,7 @@ inline constexpr int fixed_decimals = [] {
 
 // delegate to std::to_string
 template <typename V>
+    requires(std::integral<V> || std::floating_point<V>)
 [[nodiscard]] auto to_string(V value) {
     return std::to_string(value);
 }
@@ -17252,9 +17706,9 @@ template <typename V>
 //-------------------------------------------------------------------------
 namespace detail {
 template <typename T>
-inline constexpr std::string_view type_name_v = is_wide_int_v<T>     ? "wide_int"
-                                                : is_exact_frac_v<T> ? "exact_frac"
-                                                                     : "unknown";
+inline constexpr std::string_view type_name_v = wide_integer<T>     ? "wide_int"
+                                                : exact_fraction<T> ? "exact_frac"
+                                                                    : "unknown";
 template <>
 inline constexpr std::string_view type_name_v<std::uint8_t> = "uint8_t";
 template <>
@@ -17679,7 +18133,7 @@ bool spec_negative(const exact_frac<K>& f) {
 }
 template <std::size_t K>
 wide_uint<K> spec_magnitude(const exact_frac<K>& f) {
-    return wide_uint<K>{f.Num.negative() ? -f.Num : f.Num};
+    return wide_uint<K>{abs(f.Num)};
 }
 template <std::size_t K>
 wide_uint<K> spec_denominator(const exact_frac<K>& f) {

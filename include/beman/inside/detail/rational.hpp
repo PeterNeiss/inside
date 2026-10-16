@@ -2,12 +2,13 @@
 #ifndef BEMAN_INSIDE_DETAIL_RATIONAL_HPP
 #define BEMAN_INSIDE_DETAIL_RATIONAL_HPP
 
-#include <beman/inside/math.hpp>            // umax/imax, arithmetic, rational fwd
-#include <beman/inside/lift.hpp>            // lift, is_expected_v, unwrap_t
-#include <beman/inside/detail/overflow.hpp> // add/sub/mul_overflow
-#include <beman/inside/detail/debug.hpp>    // errc, detail::raise, detail::constexpr_error
-#include <beman/inside/detail/wide_int.hpp> // limb kernels for exact 128-bit cross products
-#include <beman/inside/detail/rounding.hpp> // round_mode, rounds_away
+#include <beman/inside/math.hpp>              // umax/imax, arithmetic, rational fwd
+#include <beman/inside/detail/float_bits.hpp> // frexp/ldexp, abs_fraction, is_double_value
+#include <beman/inside/lift.hpp>              // lift, expected_like, unwrap_t
+#include <beman/inside/detail/overflow.hpp>   // add/sub/mul_overflow
+#include <beman/inside/detail/debug.hpp>      // errc, detail::raise, detail::constexpr_error
+#include <beman/inside/detail/wide_int.hpp>   // limb kernels for exact 128-bit cross products
+#include <beman/inside/detail/rounding.hpp>   // round_mode, rounds_away
 
 #include <bit>
 #include <expected> // std::expected, std::unexpected
@@ -311,6 +312,64 @@ struct rounded_integer {
 }
 
 //---------------------------------------------------------------------------
+// Floating points wider than double (long double), exactly: the sum of the
+// doubles they split into, each the rounding error of the last.
+//---------------------------------------------------------------------------
+
+// |v|·2^wide_float_shift for a finite 2^-64 ≤ |v| < 2^64, truncated to an
+// integer (< 2^244), and the sign of what the truncation dropped (0: exact,
+// as for every long double of at most 116 significant bits).
+inline constexpr int wide_float_shift = 180;
+struct scaled_float {
+    wide_uint<4> Magnitude;
+    int          Tail;
+};
+template <std::floating_point T>
+[[nodiscard]] constexpr scaled_float scaled_magnitude(T v) noexcept {
+    using W = wide_sint<5>;
+    W       acc{0};
+    int     tail = 0;
+    const T rem  = for_each_double_part(v < 0 ? -v : v, [&](double d) {
+        const auto [mant, e] = double_parts(d);
+        const int s          = e + wide_float_shift;
+        if (s < 0) { // below 2^-180: the parts after it are smaller still
+            tail = d < 0 ? -1 : 1;
+            return false;
+        }
+        acc += d < 0 ? -(W{mant} << s) : W{mant} << s;
+        return true;
+    });
+    if (tail == 0 && rem != 0)
+        tail = rem < 0 ? -1 : 1;
+    return {static_cast<wide_uint<4>>(acc), tail};
+}
+
+// rational{v} for a finite v wider than a double: exact when it fits, else
+// (bits finer than 2^-62) truncated toward zero, as for a double; |v| ≥ 2^64
+// raises.
+template <std::floating_point T>
+constexpr rational rational_of_wide_float(T v, bool& exact) {
+    const T a = v < 0 ? -v : v;
+    exact     = true;
+    if (!(a < static_cast<T>(0x1p64)))
+        raise(errc::overflow, "beman::inside::detail::rational: |long double| >= 2^64");
+    if (a < static_cast<T>(0x1p-62)) {
+        exact = a == 0;
+        return make_raw(0, 1);
+    }
+    const auto [m, tail] = scaled_magnitude(a);
+    constexpr int drop   = wide_float_shift - 62; // keep bits down to 2^-62
+    exact                = tail == 0 && (m << (wide_uint<4>::bits - drop)).is_zero();
+    const auto q         = m >> drop; // ≥ 1 here
+    const int  tz        = std::countr_zero(static_cast<umax>(q)) < 62 ? std::countr_zero(static_cast<umax>(q)) : 62;
+    const auto num       = q >> tz;
+    if (bit_width_of(num) > 64)
+        raise(errc::overflow, "beman::inside::detail::rational: long double past the 64-bit rational");
+    const imax den = imax{1} << (62 - tz);
+    return make_raw(static_cast<umax>(num), v < 0 ? -den : den);
+}
+
+//---------------------------------------------------------------------------
 // rational::rational
 //---------------------------------------------------------------------------
 constexpr rational::rational(std::signed_integral auto num, imax den)
@@ -319,8 +378,14 @@ constexpr rational::rational(std::signed_integral auto num, imax den)
 }
 
 constexpr rational::rational(std::floating_point auto value) {
-    if (not is_finite(value))
+    if (!is_finite(value))
         raise(errc::not_finite, "non-finite double");
+    if constexpr (wide_float<decltype(value)>)
+        if (!is_double_value(value)) {
+            bool exact;
+            *this = rational_of_wide_float(value, exact);
+            return;
+        }
 
     if (value == 0.0) {
         Numerator   = 0;
@@ -361,335 +426,6 @@ constexpr std::expected<T, errc> rational::to() const {
     return static_cast<T>(q);
 }
 
-//---------------------------------------------------------------------------
-// _ins / _r literal parser — shared between core.hpp's `_ins` and `_r` below.
-// Accepts:
-//   integer:           5, 1'000
-//   decimal:           1.25, .5
-//   decimal scientific 1.5e2, 2.5e-1
-//   hex integer:       0xff
-//   binary integer:    0b1010
-//   hex float (Q-fmt): 0x1p15, 0x1p-15, 0x1.8p3
-// Exact (no double round-trip). A malformed or overflowing literal fails
-// constant evaluation via `constexpr_error<Msg>()`; parse_text (below) is the
-// runtime form behind from_chars.
-//---------------------------------------------------------------------------
-constexpr int parse_digit(char c, int base) {
-    if (c >= '0' && c <= '9') {
-        int d = c - '0';
-        return d < base ? d : -1;
-    }
-    if (base == 16) {
-        if (c >= 'a' && c <= 'f')
-            return 10 + (c - 'a');
-        if (c >= 'A' && c <= 'F')
-            return 10 + (c - 'A');
-    }
-    return -1;
-}
-
-// Failure kinds of the number parser. The literals turn each into a named
-// compile-time diagnostic; runtime parsing maps them onto errc.
-enum class parse_fail : unsigned char {
-    none,
-    empty,
-    invalid_exponent,
-    multiple_dots,
-    dot_in_binary,
-    invalid_digit,
-    numerator_overflow,
-    denominator_overflow,
-    hex_fraction_too_long,
-    p_exponent_too_large,
-    p_exponent_denominator_overflow,
-    e_exponent_numerator_overflow,
-    e_exponent_denominator_overflow,
-};
-
-struct parsed_number {
-    rational   Value;
-    parse_fail Fail;
-};
-
-// An unsigned number in the grammar of the _ins / _r literals, scanned in
-// one pass: the radix and the exponent come back, and each mantissa digit
-// goes to on_digit(d, in_frac, base) (false stops the scan: the builder's
-// overflow). parse_number (64-bit), parse_exact (wide, wide_value.hpp) and
-// stand_in build from it, so all read one grammar.
-struct scanned_number {
-    int        Base    = 10;
-    int        Exp     = 0; // capped at 100000: past it any value overflows
-    bool       ExpNeg  = false;
-    bool       HasP    = false; // 2^Exp (hex floats)
-    bool       HasE    = false; // 10^Exp (decimal scientific)
-    bool       Stopped = false; // on_digit returned false
-    parse_fail Fail    = parse_fail::none;
-};
-
-template <typename OnDigit>
-[[gnu::always_inline]] constexpr scanned_number scan_number(const char* first, const char* last, OnDigit&& on_digit) {
-    scanned_number r;
-    auto           fail = [&](parse_fail f) {
-        r.Fail = f;
-        return r;
-    };
-    if (last - first >= 2 && first[0] == '0') { // radix prefix
-        if (first[1] == 'x' || first[1] == 'X') {
-            r.Base = 16;
-            first += 2;
-        } else if (first[1] == 'b' || first[1] == 'B') {
-            r.Base = 2;
-            first += 2;
-        }
-    }
-    bool in_frac = false, seen_digit = false;
-    for (; first != last; ++first) {
-        const char c = *first;
-        if (c == '\'')
-            continue;
-        if (c == '.') {
-            if (in_frac)
-                return fail(parse_fail::multiple_dots);
-            if (r.Base == 2)
-                return fail(parse_fail::dot_in_binary);
-            in_frac = true;
-            continue;
-        }
-        if (((c == 'p' || c == 'P') && r.Base == 16) || ((c == 'e' || c == 'E') && r.Base == 10))
-            break;
-        const int d = parse_digit(c, r.Base);
-        if (d < 0)
-            return fail(parse_fail::invalid_digit);
-        seen_digit = true;
-        if (!r.Stopped && !on_digit(d, in_frac, r.Base))
-            r.Stopped = true; // keep scanning: malformed text still reports invalid_format
-    }
-    if (!seen_digit)
-        return fail(parse_fail::empty);
-    if (first == last)
-        return r;
-    (r.Base == 16 ? r.HasP : r.HasE) = true;
-    bool exp_seen_digit = false, exp_seen_sign = false; // one sign, right after e/p
-    for (++first; first != last; ++first) {
-        const char c = *first;
-        if (c == '\'')
-            continue;
-        if (!exp_seen_digit && !exp_seen_sign && (c == '+' || c == '-')) {
-            r.ExpNeg      = (c == '-');
-            exp_seen_sign = true;
-            continue;
-        }
-        if (c < '0' || c > '9')
-            return fail(parse_fail::invalid_exponent);
-        if (r.Exp < 100000)
-            r.Exp = r.Exp * 10 + (c - '0');
-        exp_seen_digit = true;
-    }
-    if (!exp_seen_digit)
-        return fail(parse_fail::invalid_exponent);
-    return r;
-}
-
-// Unsigned number in [first, last): the grammar of the _ins / _r literals.
-constexpr parsed_number parse_number(const char* first, const char* last) {
-    auto fail       = [](parse_fail f) { return parsed_number{rational{}, f}; };
-    umax num        = 0;
-    int  frac_len   = 0;
-    int  frac_zeros = 0; // deferred fractional zeros
-    // A fractional zero only matters if a non-zero digit follows: defer it,
-    // so trailing zeros ("1.000…0") cannot overflow num / den.
-    const scanned_number sc = scan_number(first, last, [&](int d, bool in_frac, int base) {
-        const umax base_u = static_cast<umax>(base);
-        if (in_frac && d == 0) {
-            ++frac_zeros;
-            return true;
-        }
-        for (; frac_zeros > 0; --frac_zeros, ++frac_len) {
-            if (num > (~umax{0}) / base_u)
-                return false;
-            num *= base_u;
-        }
-        if (num > (~umax{0} - static_cast<umax>(d)) / base_u)
-            return false;
-        num = num * base_u + static_cast<umax>(d);
-        if (in_frac)
-            ++frac_len;
-        return true;
-    });
-    if (sc.Fail != parse_fail::none)
-        return fail(sc.Fail);
-    if (sc.Stopped)
-        return fail(parse_fail::numerator_overflow);
-    const int  base      = sc.Base;
-    const int  exp       = sc.Exp;
-    const bool exp_neg   = sc.ExpNeg;
-    const bool has_p_exp = sc.HasP;
-    const bool has_e_exp = sc.HasE;
-
-    // Build denominator from fractional part.
-    // For decimal: den = 10^frac_len. For hex: den = 2^(4*frac_len).
-    umax den = 1;
-    if (base == 10) {
-        for (int k = 0; k < frac_len; ++k) {
-            if (den > (~umax{0}) / 10u)
-                return fail(parse_fail::denominator_overflow);
-            den *= 10u;
-        }
-    } else if (base == 16) {
-        const int shift = 4 * frac_len;
-        if (shift >= 64)
-            return fail(parse_fail::hex_fraction_too_long);
-        den <<= shift;
-    }
-
-    // Zero stays zero whatever the exponent: skip the scaling (which could
-    // only overflow).
-    if (num == 0)
-        return parsed_number{rational{umax{0}}, parse_fail::none};
-
-    // Apply binary exponent (hex floats, `p`).
-    // The factors of two cancel first (0x0.1p4 is 1, 0x10p-66 is 2^-62), so
-    // only a value past the 64-bit rationals fails; 2^63 itself fits.
-    if (has_p_exp) {
-        umax&     other  = exp_neg ? num : den; // the side the shift cancels against
-        const int tz     = std::countr_zero(other);
-        const int cancel = tz < exp ? tz : exp;
-        other >>= cancel;
-        const int e = exp - cancel;
-        if (e >= 64)
-            return fail(parse_fail::p_exponent_too_large);
-        if (!exp_neg) {
-            if (num > (~umax{0}) >> e)
-                return fail(parse_fail::numerator_overflow);
-            num <<= e;
-        } else {
-            if (den > (~umax{0}) >> e)
-                return fail(parse_fail::p_exponent_denominator_overflow);
-            den <<= e;
-        }
-    }
-
-    // Apply decimal exponent (decimal scientific, `e`).
-    if (has_e_exp) {
-        for (int k = 0; k < exp; ++k) {
-            if (!exp_neg) {
-                if (num > (~umax{0}) / 10u)
-                    return fail(parse_fail::e_exponent_numerator_overflow);
-                num *= 10u;
-            } else {
-                if (den > (~umax{0}) / 10u)
-                    return fail(parse_fail::e_exponent_denominator_overflow);
-                den *= 10u;
-            }
-        }
-    }
-
-    // In lowest terms before the signed-denominator check (0.5e-18 is
-    // 1/(2·10^18), though 10^19 itself is past imax).
-    const umax g = std::gcd(num, den);
-    num /= g;
-    den /= g;
-    if (den > static_cast<umax>(std::numeric_limits<imax>::max()))
-        return fail(parse_fail::denominator_overflow);
-    return parsed_number{rational{num, den}, parse_fail::none};
-}
-
-// Whether a numeric literal's characters are an octal integer to C++: a
-// leading 0, then only digits (and ' separators). The literal grammar reads
-// decimal, so 010 would silently be ten, not eight: such literals are refused.
-template <char... Chars>
-consteval bool octal_literal() {
-    constexpr char text[] = {Chars..., '\0'};
-    if (sizeof...(Chars) < 2 || text[0] != '0')
-        return false;
-    for (std::size_t i = 1; i < sizeof...(Chars); ++i)
-        if (text[i] != '\'' && (text[i] < '0' || text[i] > '9'))
-            return false;
-    return true;
-}
-
-template <char... Chars>
-consteval rational parse_ins_literal() {
-    constexpr char          src[] = {Chars..., '\0'};
-    constexpr parsed_number r     = parse_number(src, src + sizeof...(Chars));
-    if constexpr (octal_literal<Chars...>())
-        constexpr_error<"_ins/_r literal: a leading 0 makes an octal literal; write the number without it">();
-    else if constexpr (r.Fail == parse_fail::invalid_exponent)
-        constexpr_error<"_ins/_r literal: invalid char in exponent">();
-    else if constexpr (r.Fail == parse_fail::multiple_dots)
-        constexpr_error<"_ins/_r literal: multiple '.'">();
-    else if constexpr (r.Fail == parse_fail::dot_in_binary)
-        constexpr_error<"_ins/_r literal: '.' not allowed in binary">();
-    else if constexpr (r.Fail == parse_fail::invalid_digit || r.Fail == parse_fail::empty)
-        constexpr_error<"_ins/_r literal: invalid digit for radix">();
-    else if constexpr (r.Fail == parse_fail::numerator_overflow)
-        constexpr_error<"_ins/_r literal: numerator overflow">();
-    else if constexpr (r.Fail == parse_fail::denominator_overflow)
-        constexpr_error<"_ins/_r literal: denominator overflow">();
-    else if constexpr (r.Fail == parse_fail::hex_fraction_too_long)
-        constexpr_error<"_ins/_r literal: hex fraction too long">();
-    else if constexpr (r.Fail == parse_fail::p_exponent_too_large)
-        constexpr_error<"_ins/_r literal: p exponent too large">();
-    else if constexpr (r.Fail == parse_fail::p_exponent_denominator_overflow)
-        constexpr_error<"_ins/_r literal: p exponent denominator overflow">();
-    else if constexpr (r.Fail == parse_fail::e_exponent_numerator_overflow)
-        constexpr_error<"_ins/_r literal: e exponent numerator overflow">();
-    else if constexpr (r.Fail == parse_fail::e_exponent_denominator_overflow)
-        constexpr_error<"_ins/_r literal: e exponent denominator overflow">();
-    return r.Value;
-}
-
-// Runtime text → exact value: an optional sign, then a number in the literal
-// grammar, or a fraction `N/D` of two such numbers (the form to_string prints
-// for a non-terminating value). Malformed text is errc::invalid_format; a value
-// past the 64-bit fields is errc::overflow; `N/0` is errc::division_by_zero.
-constexpr std::expected<rational, errc> parse_text(const char* first, const char* last) {
-    bool neg = false;
-    if (first != last && (*first == '+' || *first == '-')) {
-        neg = (*first == '-');
-        ++first;
-    }
-    const char* slash = first;
-    while (slash != last && *slash != '/')
-        ++slash;
-
-    auto one = [](const char* f, const char* l) -> std::expected<rational, errc> {
-        const parsed_number r = parse_number(f, l);
-        switch (r.Fail) {
-        case parse_fail::none:
-            return r.Value;
-        case parse_fail::numerator_overflow:
-        case parse_fail::denominator_overflow:
-        case parse_fail::hex_fraction_too_long:
-        case parse_fail::p_exponent_too_large:
-        case parse_fail::p_exponent_denominator_overflow:
-        case parse_fail::e_exponent_numerator_overflow:
-        case parse_fail::e_exponent_denominator_overflow:
-            return std::unexpected{errc::overflow};
-        default:
-            return std::unexpected{errc::invalid_format};
-        }
-    };
-
-    std::expected<rational, errc> v = one(first, slash);
-    if (v && slash != last) {
-        const auto d = one(slash + 1, last);
-        if (!d)
-            return d;
-        if (d->Numerator == 0)
-            return std::unexpected{errc::division_by_zero};
-        v = *v / *d;
-    }
-    if (v && neg)
-        v = -*v;
-    return v;
-}
-
-template <char... Chars>
-constexpr rational operator""_r() {
-    return parse_ins_literal<Chars...>();
-}
-
 // per<D> and frac<N, D> are defined publicly in `namespace beman::inside` (see the
 // re-export block at the end of this header) so consumers spell grid values
 // without naming the internal representation type.
@@ -707,7 +443,7 @@ BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::expected<rational, errc> 
     W          den = W{ad} * W{bd / g};
     if (num.is_zero())
         return rational{0};
-    W x = num.negative() ? -num : num, y = den; // gcd(|num|, den)
+    W x = abs(num), y = den; // gcd(|num|, den)
     while (!y.is_zero()) {
         const W t = x % y;
         x         = y;
@@ -773,7 +509,7 @@ inline constexpr auto rational::add_impl(const rational& a, const rational& b) {
         umax num   = (a.Numerator > b.Numerator) ? (a.Numerator - b.Numerator) : (b.Numerator - a.Numerator);
         bool r_neg = a_neg ? (a.Numerator > b.Numerator) : (b.Numerator > a.Numerator);
         if (num == 0)
-            return ret_t{0_r};
+            return ret_t{rational{0}};
         rational r;
         r.Numerator   = num;
         r.Denominator = r_neg ? -a_ad : a_ad;
@@ -852,7 +588,7 @@ inline constexpr auto rational::mul_impl(const rational& a_in, const rational& b
     rational a = a_in, b = b_in;
 
     if (a.Numerator == 0 || b.Numerator == 0)
-        return ret_t{0_r};
+        return ret_t{rational{0}};
 
     bool r_neg = (a.Denominator < 0) != (b.Denominator < 0);
     umax a_ad  = abs_den(a.Denominator);
@@ -927,7 +663,7 @@ inline constexpr auto rational::div_impl(const rational& a, const rational& b) {
         if (b.Numerator == 0)
             return ret_t{fail<"rational /: division by zero", Loud>(errc::division_by_zero)};
         if (a.Numerator == 0)
-            return ret_t{0_r};
+            return ret_t{rational{0}};
         const umax g1 = std::gcd(a.Numerator, b.Numerator);
         const umax g2 = std::gcd(abs_den(a.Denominator), abs_den(b.Denominator));
         umax       num, den;
@@ -1019,12 +755,12 @@ inline constexpr std::expected<rational, errc> rational::inv(rational a) { retur
                    : limb::mul_compare(lhs.Numerator, rhs_ad, rhs.Numerator, lhs_ad);
 }
 
-template <typename T>
+template <arithmetic T>
 [[nodiscard]] inline constexpr auto operator<=>(const std::expected<T, errc>& lhs, const rational& rhs) {
     return rational{lhs.value()} <=> rhs;
 }
 
-template <typename T>
+template <arithmetic T>
 [[nodiscard]] inline constexpr auto operator<=>(const rational& lhs, const std::expected<T, errc>& rhs) {
     return lhs <=> rational{rhs.value()};
 }
@@ -1050,33 +786,64 @@ compare_fine_double(const rational& lhs, double rhs) {
     return ls < 0 ? (0 <=> mag) : mag;
 }
 
-// lhs against a double, exactly (non-finite raises, as rational{rhs}).
+// lhs against a double, exactly (non-finite raises, as rational{rhs}). Every
+// rational lies strictly inside ±2^64, so a larger double is decided by its sign.
 [[nodiscard]] inline constexpr std::strong_ordering compare_double(const rational& lhs, double rhs) {
+    if (is_finite(rhs) && past_64_bits(rhs)) [[unlikely]]
+        return rhs < 0 ? std::strong_ordering::greater : std::strong_ordering::less;
     if (abs_fraction_exact(rhs) || not is_finite(rhs)) [[likely]]
         return lhs <=> rational{rhs};
     return compare_fine_double(lhs, rhs);
 }
 
+// lhs against a floating point of any width, exactly: one wider than double
+// (long double) with bits past the double's compares as N·2^180 against its
+// scaled magnitude times D.
+template <std::floating_point T>
+[[nodiscard]] constexpr std::strong_ordering compare_float(const rational& lhs, T rhs) {
+    if constexpr (wide_float<T>)
+        if (is_finite(rhs) && !is_double_value(rhs)) [[unlikely]] {
+            const int ls = sign(lhs), rs = rhs < 0 ? -1 : 1;
+            if (ls != rs)
+                return ls <=> rs;
+            const T              a   = rhs < 0 ? -rhs : rhs;
+            std::strong_ordering mag = std::strong_ordering::equal;
+            if (!(a < static_cast<T>(0x1p64))) // past every rational
+                mag = std::strong_ordering::less;
+            else if (a < static_cast<T>(0x1p-64)) // below every nonzero rational
+                mag = std::strong_ordering::greater;
+            else {
+                using W              = wide_uint<5>;
+                const auto [m, tail] = scaled_magnitude(a);
+                mag                  = (W{lhs.Numerator} << wide_float_shift) <=> W{m} * W{abs_den(lhs.Denominator)};
+                if (mag == 0)
+                    mag = 0 <=> tail;
+            }
+            return ls < 0 ? (0 <=> mag) : mag;
+        }
+    return compare_double(lhs, static_cast<double>(rhs));
+}
+
 template <arithmetic T>
 [[nodiscard]] constexpr bool rational::operator==(T value) const {
-    if constexpr (std::floating_point<T> && sizeof(T) <= sizeof(double))
-        return compare_double(*this, static_cast<double>(value)) == 0;
+    if constexpr (std::floating_point<T>)
+        return compare_float(*this, value) == 0;
     else
         return operator==(rational{value});
 }
 
 template <arithmetic T>
 [[nodiscard]] inline constexpr auto operator<=>(T lhs, const rational& rhs) {
-    if constexpr (std::floating_point<T> && sizeof(T) <= sizeof(double))
-        return 0 <=> compare_double(rhs, static_cast<double>(lhs));
+    if constexpr (std::floating_point<T>)
+        return 0 <=> compare_float(rhs, lhs);
     else
         return rational{lhs} <=> rhs;
 }
 
 template <arithmetic T>
 [[nodiscard]] inline constexpr auto operator<=>(const rational& lhs, T rhs) {
-    if constexpr (std::floating_point<T> && sizeof(T) <= sizeof(double))
-        return compare_double(lhs, static_cast<double>(rhs));
+    if constexpr (std::floating_point<T>)
+        return compare_float(lhs, rhs);
     else
         return lhs <=> rational{rhs};
 }
@@ -1090,7 +857,7 @@ template <arithmetic T>
 //---------------------------------------------------------------------------
 template <class L, class R>
 concept rational_lift_operands =
-    (is_expected_v<L> || is_expected_v<R>) && arithmetic<unwrap_t<L>> && arithmetic<unwrap_t<R>> &&
+    (expected_like<L> || expected_like<R>) && arithmetic<unwrap_t<L>> && arithmetic<unwrap_t<R>> &&
     (std::same_as<unwrap_t<L>, rational> || std::same_as<unwrap_t<R>, rational>);
 
 //---------------------------------------------------------------------------
@@ -1224,7 +991,8 @@ using detail::rational;
 //   per<D>       the step 1/D — the common notch (per<256> is Q·8);
 //   frac<N, D>   any exact ratio (signed numerator): a limit like frac<-6, 5>
 //                for -1.2, or another step like frac<360, 4096>;
-//   _r literal   an exact decimal / hex value, e.g. 0.1_r is exactly 1/10.
+// (the _r literal, an exact decimal / hex value — 0.1_r is exactly 1/10 —
+// is in detail/number_text.hpp.)
 // Integer steps are plain integers ({{0, 100}, 5}); grid::validate rejects a
 // negative notch however it is spelled.
 template <umax D>
@@ -1233,7 +1001,6 @@ inline constexpr detail::rational per = detail::make_per<D>();
 template <imax N, umax D = 1>
 inline constexpr detail::rational frac = detail::make_frac<N, D>();
 
-using detail::operator""_r;
 } // namespace beman::inside
 
 #endif // BEMAN_INSIDE_DETAIL_RATIONAL_HPP

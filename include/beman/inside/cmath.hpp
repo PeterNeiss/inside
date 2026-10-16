@@ -3,14 +3,14 @@
 #define BEMAN_INSIDE_CMATH_HPP
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/cmath_adaptive.hpp> // the math engine
+#include <beman/inside/detail/math_entry.hpp> // the math engine
 
 #include <bit>
 #include <cstdint>
 #include <expected>
 
 //---------------------------------------------------------------------------
-// beman::inside::math — the transcendental functions (cmath_adaptive.hpp)
+// beman::inside::math — the transcendental functions (detail/math_entry.hpp)
 // and the grid operations (abs, sign, copysign, floor, ceil, round, trunc,
 // fmod, pown).
 //
@@ -72,7 +72,7 @@ constexpr grid_rational grid_to_int(const grid_rational& r) {
 #else
     // |q| may pass imax (a qword's 2^64 − 1): build the rational from the
     // magnitude, which a 64-bit grid number's integer part always fits.
-    const grid_wide a = q.negative() ? -q : q;
+    const grid_wide a = abs(q);
     const rational  m{static_cast<umax>(a)};
     return q.negative() ? -m : m;
 #endif

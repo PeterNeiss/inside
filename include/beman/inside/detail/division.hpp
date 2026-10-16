@@ -358,7 +358,7 @@ struct division {
             auto                max_j = []<insidable B>() {
                 const grid_wide lo = exact_quotient(lower_of<B>, notch_of<B>),
                                 hi = exact_quotient(upper_of<B>, notch_of<B>);
-                const grid_wide a = lo.negative() ? -lo : lo, b = hi.negative() ? -hi : hi;
+                const grid_wide a = abs(lo), b = abs(hi);
                 return a < b ? b : a;
             };
             const grid_wide       a = wide_numerator(notch_of<L>) * wide_denominator(notch_of<R>);

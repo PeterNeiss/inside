@@ -2,8 +2,9 @@
 #ifndef BEMAN_INSIDE_DETAIL_WIDE_INT_HPP
 #define BEMAN_INSIDE_DETAIL_WIDE_INT_HPP
 
-#include <beman/inside/math.hpp>         // umax, constexpr ldexp
-#include <beman/inside/detail/debug.hpp> // errc, raise, constexpr_error
+#include <beman/inside/math.hpp>              // umax
+#include <beman/inside/detail/float_bits.hpp> // constexpr ldexp
+#include <beman/inside/detail/debug.hpp>      // errc, raise, constexpr_error
 
 #include <bit>
 #include <compare>
@@ -404,6 +405,9 @@ struct wide_int {
         return t;
     }
 
+    // |a| (a signed minimum stays itself, as the builtin negation wraps).
+    [[nodiscard]] friend constexpr wide_int abs(const wide_int& a) noexcept { return a.negative() ? -a : a; }
+
     // Number of significant bits of a non-negative value (0 for 0).
     [[nodiscard]] friend constexpr int bit_width_of(const wide_int& a) noexcept {
         for (std::size_t i = N; i-- > 0;)
@@ -512,6 +516,15 @@ inline constexpr bool is_wide_int_v = false;
 template <std::size_t N, bool S, std::unsigned_integral L>
 inline constexpr bool is_wide_int_v<wide_int<N, S, L>> = true;
 
+// A wide_int of any width and signedness.
+template <typename T>
+concept wide_integer = is_wide_int_v<std::remove_cvref_t<T>>;
+
+// An integer the library may hold in a raw or intermediate: a builtin
+// integer or a wide_int. (std::integral cannot be extended to wide_int.)
+template <typename T>
+concept raw_integer = std::integral<T> || wide_integer<T>;
+
 //---------------------------------------------------------------------------
 // exact_frac — an exact value as a fraction of K-limb integers: the exact
 // paths' intermediate (wide_value.hpp), and, reduced, the raw of a continuous
@@ -537,6 +550,10 @@ template <typename T>
 inline constexpr bool is_exact_frac_v = false;
 template <std::size_t K>
 inline constexpr bool is_exact_frac_v<exact_frac<K>> = true;
+
+// An exact_frac of any width.
+template <typename T>
+concept exact_fraction = is_exact_frac_v<std::remove_cvref_t<T>>;
 } // namespace beman::inside::detail
 
 template <std::size_t N, bool Signed, std::unsigned_integral L>

@@ -136,7 +136,7 @@ TEST(MathAdaptiveTest, evaluate_escalates_until_decided) {
 // the nearest grid point (or the floor point, for round_floor). Results within
 // a hair of a rounding boundary are skipped (long double cannot tell).
 //---------------------------------------------------------------------------
-#include <beman/inside/cmath_adaptive.hpp>
+#include <beman/inside/detail/math_entry.hpp>
 
 #include <cmath>
 #include <functional>

@@ -3,6 +3,7 @@
 #define BEMAN_INSIDE_DETAIL_WIDE_VALUE_HPP
 
 #include <beman/inside/generic.hpp>
+#include <beman/inside/detail/number_text.hpp> // scan_number
 #include <beman/inside/detail/wide_int.hpp>
 
 #include <compare>
@@ -108,7 +109,7 @@ template <insidable B>
 inline constexpr int grid_magnitude_bits = [] {
     auto bits = [](const grid_rational& r) {
         const grid_wide n = wide_numerator(r);
-        return bit_width_of(n.negative() ? -n : n) - (bit_width_of(wide_denominator(r)) - 1) + 1;
+        return bit_width_of(abs(n)) - (bit_width_of(wide_denominator(r)) - 1) + 1;
     };
     const int a = bits(lower_of<B>), b = bits(upper_of<B>);
     return a > b ? a : b;
@@ -118,14 +119,14 @@ inline constexpr int grid_magnitude_bits = [] {
 template <insidable B>
 inline constexpr int exact_value_bits = [] {
     if constexpr (point_storage<B>) {
-        auto bits = [](const grid_wide& v) { return bit_width_of(v.negative() ? -v : v); };
+        auto bits = [](const grid_wide& v) { return bit_width_of(abs(v)); };
         return bits(wide_numerator(lower_of<B>)) + bits(wide_denominator(lower_of<B>));
     } else if constexpr (fraction_storage<B>)
         return 2 * decltype(raw_t<B>::Num)::bits;
     else if constexpr (!wide_valued<B>)
         return 128; // a 64-bit rational
     else {
-        auto bits = [](const grid_wide& v) { return bit_width_of(v.negative() ? -v : v); };
+        auto bits = [](const grid_wide& v) { return bit_width_of(abs(v)); };
         return grid_magnitude_bits<B> + bits(wide_denominator(notch_of<B>)) + bits(wide_numerator(notch_of<B>));
     }
 }();
@@ -165,7 +166,7 @@ constexpr auto exact_of(const B& b) {
 template <std::size_t K>
 constexpr exact_frac<K> reduced(const exact_frac<K>& f) noexcept {
     using I = wide_sint<K>;
-    I a = f.Num.negative() ? -f.Num : f.Num, b = f.Den;
+    I a = abs(f.Num), b = f.Den;
     if (bit_width_of(a) <= 64 && bit_width_of(b) <= 64) { // the common case: one-limb Euclid
         const umax an = static_cast<umax>(a), bn = static_cast<umax>(b), g = std::gcd(an, bn);
         if (g == 1)
@@ -246,7 +247,7 @@ constexpr std::optional<F> frac_raw_of(const exact_frac<K>& v) noexcept {
     const auto r      = reduced(v);
     using I           = decltype(F::Num);
     constexpr int cap = I::bits - 1; // magnitude bits
-    if (bit_width_of(r.Num.negative() ? -r.Num : r.Num) > cap || bit_width_of(r.Den) > cap)
+    if (bit_width_of(abs(r.Num)) > cap || bit_width_of(r.Den) > cap)
         return std::nullopt;
     return F{static_cast<I>(r.Num), static_cast<I>(r.Den)};
 }
@@ -278,11 +279,9 @@ constexpr exact_frac<exact_limbs<L>> exact_of_large(double d) noexcept {
 
 // A finite double's exact value: m·2^e, with 2^1024 and 2^-1074 in reach.
 constexpr exact_frac<18> exact_of_double(double d) noexcept {
-    using I         = wide_sint<18>;
-    int        e    = 0;
-    const umax mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53)); // |d| = mant·2^(e−53)
-    e -= 53;
-    const I n = e >= 0 ? I{mant} << e : I{mant};
+    using I              = wide_sint<18>;
+    const auto [mant, e] = double_parts(d);
+    const I n            = e >= 0 ? I{mant} << e : I{mant};
     return {d < 0 ? -n : n, e >= 0 ? I{1} : I{1} << -e};
 }
 
@@ -296,22 +295,71 @@ constexpr exact_frac<36> exact_of_long_double(T v) noexcept {
     using I             = wide_sint<36>;
     constexpr int shift = 1130;
     I             num{0};
-    T             rem = v;
-    for (int i = 0; i < 8 && rem != 0; ++i) {
-        const double d = static_cast<double>(rem);
+    bool          past = false;
+    const T       rem  = for_each_double_part(v, [&](double d) {
         if (!is_finite(d))
-            return {rem < 0 ? -(I{1} << 1100) : I{1} << 1100, I{1}};
-        if (d == 0)
-            break;
-        int        e    = 0;
-        const umax mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53)); // |d| = mant·2^(e−53)
-        const I    m    = I{mant} << (e - 53 + shift);
+            return !(past = true);
+        const auto [mant, e] = double_parts(d);
+        const I m            = I{mant} << (e + shift);
         num += d < 0 ? -m : m;
-        rem -= static_cast<T>(d);
-    }
+        return true;
+    });
+    if (past)
+        return {rem < 0 ? -(I{1} << 1100) : I{1} << 1100, I{1}};
     if (rem != 0)
         num += rem < 0 ? I{-1} : I{1};
     return reduced(exact_frac<36>{num, I{1} << shift});
+}
+
+// The nearest T to an exact value (ties to even), rounded once from the
+// exact quotient: its top digits + 2 bits and a sticky bit, then scaled by
+// exact powers of two. For a T wider than double (long double), whose
+// digits a double would drop. Past T's range ±infinity, below half its least
+// subnormal ±0.
+template <std::floating_point T, std::size_t K>
+constexpr T nearest_float(const exact_frac<K>& f) noexcept {
+    using U           = wide_uint<2 * K + 2>; // n·2^s with s up to digits + 2 + the denominator's bits
+    using lim         = std::numeric_limits<T>;
+    constexpr int p   = lim::digits;
+    const bool    neg = f.Num.negative() != f.Den.negative();
+    const U       n{static_cast<wide_uint<K>>(abs(f.Num))};
+    const U       d{static_cast<wide_uint<K>>(abs(f.Den))};
+    if (n.is_zero())
+        return neg ? -T{0} : T{0};
+    // q = ⌊n·2^s / d⌋ has p + 2 or p + 3 bits: |v| = (q + sticky)·2^-s.
+    const int  s  = p + 2 - (bit_width_of(n) - bit_width_of(d));
+    const U    nn = s >= 0 ? n << s : n, dd = s >= 0 ? d : d << -s;
+    const U    q      = nn / dd;
+    const bool sticky = !(nn - q * dd).is_zero();
+    const int  bw     = bit_width_of(q);
+    const int  e      = bw - 1 - s; // |v| in [2^e, 2^(e+1))
+    if (e > lim::max_exponent - 1)
+        return neg ? -lim::infinity() : lim::infinity();
+    // Below the normal range a subnormal keeps fewer digits.
+    const int keep = e >= lim::min_exponent - 1 ? p : p - (lim::min_exponent - 1 - e);
+    if (keep < 0)
+        return neg ? -T{0} : T{0};
+    const int drop = bw - keep; // ≥ 2
+    U         m    = q >> drop;
+    const U   low = q - (m << drop), half = U{1} << (drop - 1);
+    if (half < low || (low == half && (sticky || static_cast<umax>(m) % 2 != 0)))
+        m += U{1};
+    if (bit_width_of(m) - 1 - s + drop > lim::max_exponent - 1) // rounded up past the largest finite
+        return neg ? -lim::infinity() : lim::infinity();
+    // m ≤ 2^p is exact in T, limb by limb; the scaling by 2^(drop − s) in
+    // steps of 2^±64 stays exact (every step lies between m and the result).
+    T x = 0;
+    for (int i = U::bits / 64 - 1; i >= 0; --i)
+        x = x * static_cast<T>(0x1p64) + static_cast<T>(m.Word[i]);
+    for (int k = drop - s; k != 0;) {
+        const int step = k > 64 ? 64 : k < -64 ? -64 : k;
+        T         t    = 1;
+        for (int j = 0; j < (step < 0 ? -step : step); ++j)
+            t *= step < 0 ? static_cast<T>(0.5) : static_cast<T>(2);
+        x *= t;
+        k -= step;
+    }
+    return neg ? -x : x;
 }
 
 // Truncation toward zero, as an integer.
@@ -501,7 +549,7 @@ constexpr rounded_quotient<K> rounded_div_exact(const wide_sint<K>& n, const wid
     using I        = wide_sint<K>;
     auto [q, r]    = I::divmod(n, d); // toward zero
     const bool neg = n.negative() != d.negative();
-    const I    ar = r.negative() ? -r : r, ad = d.negative() ? -d : d;
+    const I    ar = abs(r), ad = abs(d);
     if (!rounds_away(M, neg, classify_remainder(M, ar, ad), (q.Word[0] & 1u) != 0))
         return {q, r.is_zero()};
     return {neg ? q - I{1} : q + I{1}, false};

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// The double-double kernels of the math engine's dd tier (cmath_adaptive.hpp):
+// The double-double kernels of the math engine's dd tier (detail/math_entry.hpp):
 // values as an unevaluated sum Hi + Lo of two doubles (about 106 bits), with
 // error-free sums and products (std::fma), for outputs finer than the double
 // tier decides. Every constant — ln 2, π, the 2^(j/64), 2^(j/4096) and sin(jπ/128)

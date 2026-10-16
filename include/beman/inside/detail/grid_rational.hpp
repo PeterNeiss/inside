@@ -3,6 +3,7 @@
 #define BEMAN_INSIDE_DETAIL_GRID_RATIONAL_HPP
 
 #include <beman/inside/detail/rational.hpp>
+#include <beman/inside/detail/number_text.hpp> // the literal grammar (_g)
 #include <beman/inside/detail/wide_int.hpp>
 
 //---------------------------------------------------------------------------
@@ -51,6 +52,23 @@
 //   to_rational(r)         number serves the 64-bit-only paths
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
+// (a − b) / n is an integer (true for n == 0), for 64-bit rationals. A
+// difference past the rational range is tested in four limbs:
+// (a − b)/n = (a_n·b_d − b_n·a_d)·n_d / (a_d·b_d·n_n), whose products of
+// three 64-bit magnitudes fit.
+constexpr bool same_lattice64(const rational& a, const rational& b, const rational& n) {
+    if (n == 0)
+        return true;
+    if (const auto d = try_sub(a, b)) [[likely]]
+        return divides_evenly(*d, n);
+    using W        = wide_sint<4>;
+    auto    num_of = [](const rational& r) { return r.Denominator < 0 ? -W{r.Numerator} : W{r.Numerator}; };
+    auto    den_of = [](const rational& r) { return W{abs_den(r.Denominator)}; };
+    const W num    = (num_of(a) * den_of(b) - num_of(b) * den_of(a)) * den_of(n);
+    const W den    = den_of(a) * den_of(b) * num_of(n);
+    return num % den == W{0};
+}
+
 #if BEMAN_INSIDE_BIG_GRIDS
 using grid_rational = big_rational;
 using grid_wide     = big_int;
@@ -63,14 +81,22 @@ constexpr grid_wide wide_numerator(const rational& r) {
 }
 constexpr grid_wide wide_denominator(const rational& r) { return grid_wide{abs_den(r.Denominator)}; }
 
-// (Convention, as divides_evenly: everything divides 0 evenly.)
-constexpr bool grid_divides_evenly(const big_rational& a, const big_rational& n) {
-    return n == 0 || (a / n).is_integer();
-}
+// A grid number as a transient fraction, for tests that run at runtime too.
+constexpr big::frac frac_of(const big_rational& r) { return {r.Num.magnitude(), r.Den.magnitude(), r.Num.negative()}; }
 
 // (a − b) / n is an integer (true for n == 0): b and a share n's lattice.
+// (No big value is formed, so the test runs at runtime too.)
 constexpr bool grid_same_lattice(const big_rational& a, const big_rational& b, const big_rational& n) {
-    return grid_divides_evenly(a - b, n);
+    if (n == 0)
+        return true;
+    if (a.fits_rational() && b.fits_rational() && n.fits_rational())
+        return same_lattice64(a, b, n);
+    return big::same_lattice(frac_of(a), frac_of(b), frac_of(n));
+}
+
+// (Convention, as divides_evenly: everything divides 0 evenly.)
+constexpr bool grid_divides_evenly(const big_rational& a, const big_rational& n) {
+    return grid_same_lattice(a, big_rational{0}, n);
 }
 
 // The 64-bit rational of a grid number, for 64-bit-only paths.
@@ -90,18 +116,8 @@ constexpr grid_wide wide_denominator(const rational& r) noexcept { return grid_w
 
 constexpr bool grid_divides_evenly(const rational& a, const rational& n) { return divides_evenly(a, n); }
 
-// (A difference past the rational range is tested in grid_wide:
-// (a − b)/n = (a_n·b_d − b_n·a_d)·n_d / (a_d·b_d·n_n), whose products of
-// three 64-bit magnitudes fit.)
 constexpr bool grid_same_lattice(const rational& a, const rational& b, const rational& n) {
-    if (n == 0)
-        return true;
-    if (const auto d = try_sub(a, b)) [[likely]]
-        return divides_evenly(*d, n);
-    const grid_wide num =
-        (wide_numerator(a) * wide_denominator(b) - wide_numerator(b) * wide_denominator(a)) * wide_denominator(n);
-    const grid_wide den = wide_denominator(a) * wide_denominator(b) * wide_numerator(n);
-    return num % den == grid_wide{0};
+    return same_lattice64(a, b, n);
 }
 
 constexpr bool                          fits_rational(const rational&) { return true; }

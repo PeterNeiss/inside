@@ -118,7 +118,7 @@ struct grid {
         return iv;
     }
 
-    template <typename T>
+    template <grid_number_like T>
     static constexpr detail::grid_rational to_number(const T& v) {
         if constexpr (std::convertible_to<T, detail::grid_rational>)
             return detail::grid_rational{v};
@@ -128,7 +128,7 @@ struct grid {
 
     // With 64-bit grid numbers a combined denominator past imax has no
     // rational notch: fall back to a continuous grid (notch 0), always valid.
-    static constexpr detail::grid_rational derive_notch(auto lower, auto upper) {
+    static constexpr detail::grid_rational derive_notch(grid_number_like auto lower, grid_number_like auto upper) {
         check_short_binary(lower);
         check_short_binary(upper);
         const detail::grid_rational lo = to_number(lower), hi = to_number(upper);
@@ -145,7 +145,7 @@ struct grid {
     // A floating-point limit is taken as its exact binary value, so 0.1 would
     // derive a 2^-55 notch. Past 1/1024 the literal almost surely meant a
     // decimal: reject it at compile time and point to the exact spellings.
-    template <typename T>
+    template <grid_number_like T>
     static constexpr void check_short_binary([[maybe_unused]] T v) {
         if constexpr (std::floating_point<T>)
             if (std::is_constant_evaluated() &&
@@ -267,9 +267,27 @@ struct grid {
         if (!includes(Interval, d))
             return false;
         if (detail::fits_rational(Interval.Lower) && detail::fits_rational(Interval.Upper) &&
-            detail::fits_rational(Notch) && !detail::abs_fraction_exact(static_cast<double>(d)))
-            return false;
-        return representable(detail::grid_rational{d});
+            detail::fits_rational(Notch)) {
+            if constexpr (detail::wide_float<T>)
+                if (!detail::is_double_value(d)) { // a long double with bits past the double's
+                    bool       exact = false;
+                    const auto r     = detail::rational_of_wide_float(d, exact);
+                    return exact && representable(detail::grid_rational{r});
+                }
+            if (!detail::abs_fraction_exact(static_cast<double>(d)))
+                return false;
+            return representable(detail::grid_rational{d});
+        }
+#if BEMAN_INSIDE_BIG_GRIDS
+        // Big grid numbers: d as a transient fraction, which (unlike a big
+        // grid number) also exists at runtime.
+        const auto f = detail::big::frac_of_float(d);
+        if (Notch == 0)
+            return MaxDenominator == 0 || detail::big::compare(f.Den, MaxDenominator.Num.magnitude()) <= 0;
+        return detail::big::same_lattice(f, detail::frac_of(Interval.Lower), detail::frac_of(Notch));
+#else
+        return representable(detail::grid_rational{d}); // (unreachable: 64-bit numbers always fit)
+#endif
     }
 
     // Whether the lattice passes through 0: Lower is a multiple of the notch
@@ -298,7 +316,7 @@ struct grid {
         return g;
     }
 
-    // (Raw → double decoding lives in `detail::as_double` (generic.hpp): the
+    // (Raw → double decoding lives in `detail::as_double` (detail/storage.hpp): the
     // decode depends on the storage KIND, not the raw type's signedness — a
     // whole-number grid above 0 has an unsigned raw that IS the value.)
 };
@@ -485,7 +503,7 @@ inline constexpr std::size_t frac_limbs = [] {
     } else {
         auto bits = [](const grid_rational& r) {
             const grid_wide n = wide_numerator(r);
-            return bit_width_of(n.negative() ? -n : n) + bit_width_of(wide_denominator(r));
+            return bit_width_of(abs(n)) + bit_width_of(wide_denominator(r));
         };
         const int b =
             bits(G.Interval.Lower) > bits(G.Interval.Upper) ? bits(G.Interval.Lower) : bits(G.Interval.Upper);
@@ -540,7 +558,7 @@ constexpr int scaled_numerator_bits(const grid_rational& r, int f) noexcept {
     const grid_wide n = wide_numerator(r);
     if (n == grid_wide{0})
         return 0;
-    return bit_width_of(n.negative() ? -n : n) + f - (bit_width_of(wide_denominator(r)) - 1);
+    return bit_width_of(abs(n)) + f - (bit_width_of(wide_denominator(r)) - 1);
 }
 
 // `fp`-exactness of a dyadic grid: the IEEE-754 path equals the exact grid

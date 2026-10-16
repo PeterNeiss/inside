@@ -39,11 +39,6 @@ struct int_for_bits {
 template <int Bits, bool Signed>
 using int_for_bits_t = typename int_for_bits<Bits, Signed>::type;
 
-// An integer the library may hold in a raw or intermediate: a builtin
-// integer or a wide_int. (std::integral cannot be extended to wide_int.)
-template <typename T>
-concept raw_integer = std::integral<T> || is_wide_int_v<T>;
-
 // Signedness of a raw_integer (std::is_signed_v is false for class types).
 template <raw_integer T>
 inline constexpr bool raw_signed = std::numeric_limits<T>::is_signed;
