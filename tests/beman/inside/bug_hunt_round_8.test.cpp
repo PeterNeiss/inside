@@ -8,6 +8,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cfloat>
 #include <cstdint>
 #include <limits>
 
@@ -17,8 +18,9 @@ namespace {
 using I64 = std::int64_t;
 
 // A long double with bits past the double's (x87 and IEEE quad; not where
-// long double is a double).
-constexpr bool wide_long_double = std::numeric_limits<long double>::digits > 53;
+// long double is a double, as on Apple arm64 and MSVC). A preprocessor test:
+// an if constexpr outside a template still evaluates its static_asserts.
+#define WIDE_LONG_DOUBLE (LDBL_MANT_DIG > DBL_MANT_DIG)
 
 template <class T>
 T launder(T v) {
@@ -39,42 +41,42 @@ TEST(BugHuntRound8, rational_against_a_huge_double) {
 // rational ⋈ long double, rational{long double}: the long double was cast to
 // a double first (1e-30L compared equal to 0, 1 + 2^-60 equal to 1).
 TEST(BugHuntRound8, rational_and_long_double) {
-    if constexpr (wide_long_double) {
-        static_assert(rational{0} != 1e-30L && rational{0} < 1e-30L);
-        static_assert(rational{1} < 1.0L + 0x1p-63L && !(rational{1} == 1.0L + 0x1p-63L));
-        static_assert(rational{1.0L + 0x1p-60L} == (rational{1} + rational{1, I64{1} << 60}).value());
-        static_assert(rational{3} < 1e4000L && rational{3} > -1e4000L);
-        EXPECT_TRUE(rational{1} < launder(1.0L + 0x1p-63L));
-        EXPECT_TRUE((rational{1, 3} < launder(1.0L / 3))); // 1/3 rounds up in 64 bits
-        EXPECT_EQ(rational{launder(0.5L + 0x1p-60L)}, (rational{1, 2} + rational{1, I64{1} << 60}).value());
-    }
+#if WIDE_LONG_DOUBLE
+    static_assert(rational{0} != 1e-30L && rational{0} < 1e-30L);
+    static_assert(rational{1} < 1.0L + 0x1p-63L && !(rational{1} == 1.0L + 0x1p-63L));
+    static_assert(rational{1.0L + 0x1p-60L} == (rational{1} + rational{1, I64{1} << 60}).value());
+    static_assert(rational{3} < 1e4000L && rational{3} > -1e4000L);
+    EXPECT_TRUE(rational{1} < launder(1.0L + 0x1p-63L));
+    EXPECT_TRUE((rational{1, 3} < launder(1.0L / 3))); // 1/3 rounds up in 64 bits
+    EXPECT_EQ(rational{launder(0.5L + 0x1p-60L)}, (rational{1, 2} + rational{1, I64{1} << 60}).value());
+#endif
 }
 
 // inside ⋈ long double read the long double as a double.
 TEST(BugHuntRound8, inside_against_long_double) {
-    if constexpr (wide_long_double) {
-        using Q = inside<{{-100, 100}, per<4>}>;
-        using C = inside<{{-1, 2}, 0}>;
-        static_assert(Q{1} != 1.0L + 0x1p-60L && Q{1} < 1.0L + 0x1p-60L && Q{1} == 1.0L);
-        EXPECT_TRUE(Q{1} < launder(1.0L + 0x1p-60L));
-        EXPECT_FALSE(C{1} == launder(1.0L + 0x1p-63L));
-        EXPECT_TRUE(C{1} > launder(1.0L - 0x1p-64L));
-        EXPECT_TRUE(Q{100} < launder(1e4000L));
-    }
+#if WIDE_LONG_DOUBLE
+    using Q = inside<{{-100, 100}, per<4>}>;
+    using C = inside<{{-1, 2}, 0}>;
+    static_assert(Q{1} != 1.0L + 0x1p-60L && Q{1} < 1.0L + 0x1p-60L && Q{1} == 1.0L);
+    EXPECT_TRUE(Q{1} < launder(1.0L + 0x1p-60L));
+    EXPECT_FALSE(C{1} == launder(1.0L + 0x1p-63L));
+    EXPECT_TRUE(C{1} > launder(1.0L - 0x1p-64L));
+    EXPECT_TRUE(Q{100} < launder(1e4000L));
+#endif
 }
 
 // includes(interval, long double) and grid::representable(long double)
 // dropped the bits past the double's.
 TEST(BugHuntRound8, interval_and_grid_take_long_double_exactly) {
-    if constexpr (wide_long_double) {
-        constexpr grid G{{-100, 100}, per<4>};
-        static_assert(!G.representable(1.0L + 0x1p-60L) && G.representable(1.0L));
-        static_assert(!includes(interval{-100, 1}, 1.0L + 0x1p-60L) && !includes(interval{-1, 0}, 0x1p-70L));
-        static_assert(!grid{{-1, 2}, 0}.representable(1.0L + 0x1p-63L)); // finer than the rational holds
-        static_assert(grid{{-1, 2}, 0}.representable(1.0L + 0x1p-60L));
-        EXPECT_FALSE(G.representable(launder(1.0L + 0x1p-60L)));
-        EXPECT_FALSE(includes(interval{-1, 0}, launder(0x1p-70L)));
-    }
+#if WIDE_LONG_DOUBLE
+    constexpr grid G{{-100, 100}, per<4>};
+    static_assert(!G.representable(1.0L + 0x1p-60L) && G.representable(1.0L));
+    static_assert(!includes(interval{-100, 1}, 1.0L + 0x1p-60L) && !includes(interval{-1, 0}, 0x1p-70L));
+    static_assert(!grid{{-1, 2}, 0}.representable(1.0L + 0x1p-63L)); // finer than the rational holds
+    static_assert(grid{{-1, 2}, 0}.representable(1.0L + 0x1p-60L));
+    EXPECT_FALSE(G.representable(launder(1.0L + 0x1p-60L)));
+    EXPECT_FALSE(includes(interval{-1, 0}, launder(0x1p-70L)));
+#endif
 }
 
 // A fine double on a grid whose v − Lower passes one limb: under C++26 the
@@ -145,17 +147,17 @@ TEST(BugHuntRound8, on_error_does_not_preempt_clamp_or_wrap) {
 // to<long double>() went through a double: 1 + 2^-60 came back as 1. It is
 // now the long double nearest the exact value, rounded once.
 TEST(BugHuntRound8, to_long_double_is_rounded_once) {
-    if constexpr (wide_long_double) {
-        using F = inside<{{-2, 2}, per<(I64{1} << 62)>}>;
-        using T = inside<{{-1, 1}, per<3>}>;
-        static_assert(F{rational{1} + rational{1, I64{1} << 60}}.to<long double>().value() == 1.0L + 0x1p-60L);
-        static_assert(T{rational{1, 3}}.to<long double>().value() == 1.0L / 3);
-        const F f{rational{-1} - rational{1, I64{1} << 62}};
-        EXPECT_EQ(f.to<long double>().value(), -1.0L - 0x1p-62L);
-        using Q = inside<{{-1000000, 1000000}, per<1000000007>}>;
-        const Q q{rational{1, 1000000007}};
-        EXPECT_EQ(q.to<long double>().value(), 1.0L / 1000000007);
-        using S = inside<{{-9223372036854775807, 9223372036854775807}, 1}>;
-        EXPECT_EQ(S{launder(I64{9223372036854775807})}.to<long double>().value(), 9223372036854775807.0L);
-    }
+#if WIDE_LONG_DOUBLE
+    using F = inside<{{-2, 2}, per<(I64{1} << 62)>}>;
+    using T = inside<{{-1, 1}, per<3>}>;
+    static_assert(F{rational{1} + rational{1, I64{1} << 60}}.to<long double>().value() == 1.0L + 0x1p-60L);
+    static_assert(T{rational{1, 3}}.to<long double>().value() == 1.0L / 3);
+    const F f{rational{-1} - rational{1, I64{1} << 62}};
+    EXPECT_EQ(f.to<long double>().value(), -1.0L - 0x1p-62L);
+    using Q = inside<{{-1000000, 1000000}, per<1000000007>}>;
+    const Q q{rational{1, 1000000007}};
+    EXPECT_EQ(q.to<long double>().value(), 1.0L / 1000000007);
+    using S = inside<{{-9223372036854775807, 9223372036854775807}, 1}>;
+    EXPECT_EQ(S{launder(I64{9223372036854775807})}.to<long double>().value(), 9223372036854775807.0L);
+#endif
 }
