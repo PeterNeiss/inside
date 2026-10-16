@@ -29,8 +29,10 @@ std::cout << v.in(km / si::hour);                        // 39.9 km/h
 The examples [`units.cpp`](../examples/units.cpp) (a tour),
 [`circuit.cpp`](../examples/circuit.cpp) (Ohm's law, an RC filter),
 [`moon_rocket.cpp`](../examples/moon_rocket.cpp) (Δv, orbits, a transfer
-time) and [`kitchen.cpp`](../examples/kitchen.cpp) (mixed kitchen units,
-oven temperatures) check their own output.
+time), [`kitchen.cpp`](../examples/kitchen.cpp) (mixed kitchen units,
+oven temperatures) and [`own_units.cpp`](../examples/own_units.cpp) (your
+own units, a temperature scale, currency and information as base
+dimensions) check their own output.
 
 `<beman/inside/units_math.hpp>` adds the functions that need the math
 engine (cmath.hpp). It is a separate header so that units.hpp keeps a low
@@ -242,6 +244,40 @@ inline constexpr auto           fathom = unit_c<fathom_def>;
 inline constexpr point_origin   sea_level_def{"sea_level", dim_length};
 inline constexpr auto           sea_level = origin_c<sea_level_def>;
 ```
+
+A `named_unit` is a base unit of a kind (`{"EUR", money}`, with a scale
+`{"g", mag<rational{1, 1000}>, isq::mass}`) or a unit defined by others
+(`{"ftm", mag<…> * si::metre}`, with a kind `{"Hz", one / si::second,
+isq::frequency}`). A last `unit_options` argument sets the rest, each
+optional, as designated initializers in this order:
+
+```cpp
+inline constexpr named_unit rankine_def{"°R", mag<rational{5, 9}> * si::kelvin,
+                                        {.ascii = "R", .origin = si::absolute_zero}};
+inline constexpr named_unit rpm_def{"rpm", one / si::minute, {.kind = isq::frequency}};
+inline constexpr named_unit turn_def{"tr", mag<2> * mag_pi * si::radian, {.space_before = false}};
+```
+
+`.ascii` is the ASCII symbol (else the symbol itself), `.kind` the kind it
+measures (else its definition's), `.origin` the default origin of its
+points, and `.space_before = false` writes it against the number (`90°`).
+
+### Base dimensions of your own
+
+Next to the seven SI base dimensions, a `base_dimension` adds one of yours
+(up to four in one dimension). Its base quantity and units follow as
+usual:
+
+```cpp
+inline constexpr base_dimension currency_def{"currency"};
+inline constexpr quantity_spec  money_def{"money", currency_def};
+inline constexpr named_unit     euro_def{"EUR", spec_c<money_def>};
+inline constexpr named_unit     cent_def{"ct", mag<rational{1, 100}> * unit_c<euro_def>};
+```
+
+Money then never adds to a length or a plain number, EUR/kg is a dimension
+of its own, and EUR + ct runs in ct. A base dimension is identified by its
+name.
 
 An entry is identified by its content, not its address: a spec by its
 name, dimension, recipe, kind boundary and parent chain; a unit by its

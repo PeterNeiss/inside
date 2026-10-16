@@ -48,50 +48,121 @@ using beman::inside::detail::grid_rational;
 
 //---------------------------------------------------------------------------
 // dimension — the exponents of the seven SI base dimensions
-// (L M T I Θ N J). Angle is dimensionless, as in SI.
+// (L M T I Θ N J), and of up to four base dimensions you define
+// (base_dimension: currency, information). Angle is dimensionless, as in SI.
 //---------------------------------------------------------------------------
+struct base_dimension;
+
 namespace detail {
-inline constexpr std::size_t base_dimensions = 7;
+inline constexpr std::size_t base_dimensions     = 7;
+inline constexpr std::size_t max_user_dimensions = 4;
+
+// A user base dimension to a power. By content (its name), as specs and units.
+struct user_exponent {
+    const base_dimension* D{};
+    std::int8_t           Exp{};
+};
 } // namespace detail
 
+// A base dimension of your own: inline constexpr base_dimension currency{"currency"}.
+struct base_dimension {
+    std::string_view Name;
+};
+
 struct dimension {
-    std::int8_t Exp[detail::base_dimensions]{};
+    std::int8_t           Exp[detail::base_dimensions]{};
+    detail::user_exponent User[detail::max_user_dimensions]{}; // sorted by name, no zero exponents
+    std::int8_t           UserSize{0};
 
     // An exponent past ±127 is an error, not a wrap.
-    static consteval std::int8_t exponent(int e) {
+    static constexpr std::int8_t exponent(int e) {
         if (e < -127 || e > 127)
             beman::inside::detail::constexpr_error<"units: a dimension exponent past 127">();
         return static_cast<std::int8_t>(e);
     }
 
-    friend constexpr bool      operator==(const dimension&, const dimension&) = default;
+    friend constexpr bool operator==(const dimension& a, const dimension& b) {
+        for (std::size_t i = 0; i < detail::base_dimensions; ++i)
+            if (a.Exp[i] != b.Exp[i])
+                return false;
+        if (a.UserSize != b.UserSize)
+            return false;
+        for (std::int8_t i = 0; i < a.UserSize; ++i)
+            if (a.User[i].D->Name != b.User[i].D->Name || a.User[i].Exp != b.User[i].Exp)
+                return false;
+        return true;
+    }
     friend consteval dimension operator*(dimension a, const dimension& b) {
         for (std::size_t i = 0; i < detail::base_dimensions; ++i)
             a.Exp[i] = exponent(a.Exp[i] + b.Exp[i]);
+        for (std::int8_t i = 0; i < b.UserSize; ++i)
+            a.add_user(b.User[i].D, b.User[i].Exp);
         return a;
     }
     friend consteval dimension operator/(dimension a, const dimension& b) {
         for (std::size_t i = 0; i < detail::base_dimensions; ++i)
             a.Exp[i] = exponent(a.Exp[i] - b.Exp[i]);
+        for (std::int8_t i = 0; i < b.UserSize; ++i)
+            a.add_user(b.User[i].D, -b.User[i].Exp);
         return a;
     }
     consteval dimension pow(int n) const {
+        if (n == 0)
+            return dimension{};
         dimension r = *this;
         for (auto& e : r.Exp)
             e = exponent(e * n);
+        for (std::int8_t i = 0; i < r.UserSize; ++i)
+            r.User[i].Exp = exponent(r.User[i].Exp * n);
         return r;
     }
     // The n-th root; every exponent must divide.
     consteval dimension root(int n) const {
-        dimension r = *this;
-        for (auto& e : r.Exp) {
+        dimension  r    = *this;
+        const auto take = [n](std::int8_t& e) {
             if (e % n != 0)
                 beman::inside::detail::constexpr_error<"units: the root of a dimension needs exponents it divides">();
             e = static_cast<std::int8_t>(e / n);
-        }
+        };
+        for (auto& e : r.Exp)
+            take(e);
+        for (std::int8_t i = 0; i < r.UserSize; ++i)
+            take(r.User[i].Exp);
         return r;
     }
+
+    // b^e merged in: kept sorted by name, an exponent reaching 0 drops out.
+    constexpr void add_user(const base_dimension* b, int e) {
+        for (std::int8_t i = 0; i < UserSize; ++i)
+            if (User[i].D->Name == b->Name) {
+                User[i].Exp = exponent(User[i].Exp + e);
+                if (User[i].Exp == 0) {
+                    for (std::int8_t j = i; j + 1 < UserSize; ++j)
+                        User[j] = User[j + 1];
+                    User[--UserSize] = {};
+                }
+                return;
+            }
+        if (e == 0)
+            return;
+        if (UserSize == static_cast<std::int8_t>(detail::max_user_dimensions))
+            beman::inside::detail::constexpr_error<"units: a dimension holds at most 4 base dimensions of your own">();
+        std::int8_t at = UserSize;
+        while (at > 0 && b->Name < User[at - 1].D->Name) {
+            User[at] = User[at - 1];
+            --at;
+        }
+        User[at] = {b, exponent(e)};
+        ++UserSize;
+    }
 };
+
+// The dimension of a base dimension of your own (its exponent 1).
+constexpr dimension dimension_of(const base_dimension& b) {
+    dimension d{};
+    d.add_user(&b, 1);
+    return d;
+}
 
 inline constexpr dimension dim_one{};
 inline constexpr dimension dim_length{{1, 0, 0, 0, 0, 0, 0}};
@@ -230,6 +301,8 @@ struct quantity_spec {
 
     // A base quantity: a dimension of its own.
     constexpr quantity_spec(std::string_view name, dimension d) : Name{name}, Dim{d} {}
+    // A base quantity of a base dimension of your own (money: currency).
+    constexpr quantity_spec(std::string_view name, const base_dimension& b) : Name{name}, Dim{dimension_of(b)} {}
     // A child of a named spec.
     template <const quantity_spec* P>
     constexpr quantity_spec(std::string_view name, spec_t<P>) : Name{name}, Dim{P->Dim}, Parent{P} {}
@@ -385,6 +458,7 @@ consteval bool recipe_matches(const detail::recipe& have, const detail::recipe& 
 template <const quantity_spec* S>
 struct spec_t {
     static constexpr const quantity_spec* value = S;
+    constexpr operator detail::spec_ref() const { return S; } // unit_options{.kind = isq::frequency}
     // isq::height[si::metre] — defined after unit_t and reference_t.
     template <class U>
     consteval auto operator[](U) const;
@@ -472,6 +546,7 @@ using origin_ref = detail::ref_or_none<point_origin>; // none: the implicit zero
 template <detail::origin_ref O>
 struct origin_t {
     static constexpr detail::origin_ref value = O;
+    constexpr operator detail::origin_ref() const { return O; } // unit_options{.origin = si::ice_point}
 };
 
 namespace detail {
@@ -485,10 +560,17 @@ constexpr bool same(const detail::origin_ref& a, const detail::origin_ref& b) {
 consteval grid_rational offset_of(detail::origin_ref o) { return o && o->Absolute ? o->Offset : grid_rational{0}; }
 } // namespace detail
 
-struct no_space_before_t {
-    explicit no_space_before_t() = default;
+// A named unit's options, all optional (designated, in this order):
+//   .ascii         the ASCII symbol ("ohm" for Ω), else the symbol itself
+//   .kind          the quantity kind it measures, else its definition's
+//   .origin        the default origin of its points (℃: the ice point)
+//   .space_before  false for a symbol written against the number (90°)
+struct unit_options {
+    std::string_view   ascii{};
+    detail::spec_ref   kind{};
+    detail::origin_ref origin{};
+    bool               space_before{true};
 };
-inline constexpr no_space_before_t no_space_before{};
 
 namespace detail {
 struct unit_atom {
@@ -535,40 +617,26 @@ struct named_unit {
     bool               SpaceBefore{true};
     detail::origin_ref Origin{}; // the default origin of its points (K: absolute zero)
 
-    // A base unit of a kind: the coherent unit of its dimension.
+    // A base unit of a kind: the coherent unit of its dimension, or a scale
+    // of it (g: 1/1000 of the coherent kg).
     template <const quantity_spec* K>
-    constexpr named_unit(std::string_view sym, spec_t<K>) : Utf8{sym}, Ascii{sym}, Dim{K->Dim}, Kind{K} {}
+    constexpr named_unit(std::string_view sym, spec_t<K>, unit_options o = {})
+        : named_unit{sym, mag_t<magnitude{}>{}, spec_t<K>{}, o} {}
     template <magnitude M, const quantity_spec* K>
-    constexpr named_unit(std::string_view sym, mag_t<M>, spec_t<K>)
-        : Utf8{sym}, Ascii{sym}, Dim{K->Dim}, Mag{M}, Kind{K} {}
-    template <const quantity_spec* K>
-    constexpr named_unit(std::string_view utf8, std::string_view ascii, spec_t<K>)
-        : Utf8{utf8}, Ascii{ascii}, Dim{K->Dim}, Kind{K} {}
-    // A unit defined by another (named_unit{"N", kg * m / s², isq::force}).
+    constexpr named_unit(std::string_view sym, mag_t<M>, spec_t<K>, unit_options o = {})
+        : Utf8{sym},
+          Ascii{o.ascii.empty() ? sym : o.ascii},
+          Dim{K->Dim},
+          Mag{M},
+          Kind{K},
+          SpaceBefore{o.space_before},
+          Origin{o.origin} {}
+    // A unit defined by others: named_unit{"N", kg * m / s², isq::force}. Its
+    // kind is the given one, else .kind, else its one factor's (min: 60 s).
     template <unit U>
-    constexpr named_unit(std::string_view sym, unit_t<U>);
-    template <unit U>
-    constexpr named_unit(std::string_view utf8, std::string_view ascii, unit_t<U>);
+    constexpr named_unit(std::string_view sym, unit_t<U>, unit_options o = {});
     template <unit U, const quantity_spec* K>
-    constexpr named_unit(std::string_view sym, unit_t<U>, spec_t<K>);
-    template <unit U, const quantity_spec* K>
-    constexpr named_unit(std::string_view utf8, std::string_view ascii, unit_t<U>, spec_t<K>);
-    // A unit with a default point origin (K: absolute zero, ℃: the ice point).
-    template <const quantity_spec* K, detail::origin_ref O>
-    constexpr named_unit(std::string_view sym, spec_t<K>, origin_t<O>) : named_unit{sym, spec_t<K>{}} {
-        Origin = O;
-    }
-    template <unit U, detail::origin_ref O>
-    constexpr named_unit(std::string_view utf8, std::string_view ascii, unit_t<U>, origin_t<O>)
-        : named_unit{utf8, ascii, unit_t<U>{}} {
-        Origin = O;
-    }
-    // A symbol written without a space after the number (90°).
-    template <unit U>
-    constexpr named_unit(std::string_view utf8, std::string_view ascii, unit_t<U>, no_space_before_t)
-        : named_unit{utf8, ascii, unit_t<U>{}} {
-        SpaceBefore = false;
-    }
+    constexpr named_unit(std::string_view sym, unit_t<U>, spec_t<K>, unit_options o = {});
 };
 
 namespace detail {
@@ -675,23 +743,22 @@ consteval detail::spec_ref inherited_kind(const unit& u) {
 } // namespace detail
 
 template <unit U>
-constexpr named_unit::named_unit(std::string_view sym, unit_t<U>)
-    : Utf8{sym}, Ascii{sym}, Dim{dimension_of(U)}, Mag{magnitude_of(U)}, Kind{detail::inherited_kind(U)} {}
-template <unit U>
-constexpr named_unit::named_unit(std::string_view utf8, std::string_view ascii, unit_t<U>)
-    : Utf8{utf8}, Ascii{ascii}, Dim{dimension_of(U)}, Mag{magnitude_of(U)}, Kind{detail::inherited_kind(U)} {}
-template <unit U, const quantity_spec* K>
-constexpr named_unit::named_unit(std::string_view sym, unit_t<U>, spec_t<K>)
-    : Utf8{sym}, Ascii{sym}, Dim{dimension_of(U)}, Mag{magnitude_of(U)}, Kind{K} {
-    if (!(K->Dim == Dim))
+constexpr named_unit::named_unit(std::string_view sym, unit_t<U>, unit_options o)
+    : Utf8{sym},
+      Ascii{o.ascii.empty() ? sym : o.ascii},
+      Dim{dimension_of(U)},
+      Mag{magnitude_of(U)},
+      Kind{o.kind ? o.kind : detail::inherited_kind(U)},
+      SpaceBefore{o.space_before},
+      Origin{o.origin} {
+    if (Kind && !(Kind->Dim == Dim))
         beman::inside::detail::constexpr_error<"units: a unit's kind must have the unit's dimension">();
+    if (Origin && !(Origin->Dim == Dim))
+        beman::inside::detail::constexpr_error<"units: a unit's origin must have the unit's dimension">();
 }
 template <unit U, const quantity_spec* K>
-constexpr named_unit::named_unit(std::string_view utf8, std::string_view ascii, unit_t<U>, spec_t<K>)
-    : Utf8{utf8}, Ascii{ascii}, Dim{dimension_of(U)}, Mag{magnitude_of(U)}, Kind{K} {
-    if (!(K->Dim == Dim))
-        beman::inside::detail::constexpr_error<"units: a unit's kind must have the unit's dimension">();
-}
+constexpr named_unit::named_unit(std::string_view sym, unit_t<U>, spec_t<K>, unit_options o)
+    : named_unit{sym, unit_t<U>{}, unit_options{o.ascii, K, o.origin, o.space_before}} {}
 
 // The tags of your own entries, each made from its static object:
 //   inline constexpr auto metre  = unit_c<metre_def>;     // a named_unit
@@ -2213,7 +2280,7 @@ inline constexpr auto kilogram = kilo(gram);
 BEMAN_INSIDE_UNIT(si, ampere, "A", isq::electric_current)
 BEMAN_INSIDE_ORIGIN(si, absolute_zero, dim_thermodynamic_temperature)
 BEMAN_INSIDE_ORIGIN(si, ice_point, dim_thermodynamic_temperature, &si_defs::absolute_zero, rational{27315, 100})
-BEMAN_INSIDE_UNIT(si, kelvin, "K", isq::thermodynamic_temperature, si::absolute_zero)
+BEMAN_INSIDE_UNIT(si, kelvin, "K", isq::thermodynamic_temperature, {.origin = si::absolute_zero})
 BEMAN_INSIDE_UNIT(si, mole, "mol", isq::amount_of_substance)
 BEMAN_INSIDE_UNIT(si, candela, "cd", isq::luminous_intensity)
 
@@ -2228,12 +2295,12 @@ BEMAN_INSIDE_UNIT(si, watt, "W", si::joule / si::second)
 BEMAN_INSIDE_UNIT(si, coulomb, "C", si::ampere* si::second)
 BEMAN_INSIDE_UNIT(si, volt, "V", si::watt / si::ampere, isq::electric_potential)
 BEMAN_INSIDE_UNIT(si, farad, "F", si::coulomb / si::volt, isq::capacitance)
-BEMAN_INSIDE_UNIT(si, ohm, "Ω", "ohm", si::volt / si::ampere, isq::impedance)
+BEMAN_INSIDE_UNIT(si, ohm, "Ω", si::volt / si::ampere, isq::impedance, {.ascii = "ohm"})
 BEMAN_INSIDE_UNIT(si, siemens, "S", one / si::ohm, isq::admittance)
 BEMAN_INSIDE_UNIT(si, weber, "Wb", si::volt* si::second)
 BEMAN_INSIDE_UNIT(si, tesla, "T", si::weber / square(si::metre), isq::magnetic_flux_density)
 BEMAN_INSIDE_UNIT(si, henry, "H", si::weber / si::ampere)
-BEMAN_INSIDE_UNIT(si, degree_Celsius, "℃", "`C", si::kelvin, si::ice_point)
+BEMAN_INSIDE_UNIT(si, degree_Celsius, "℃", si::kelvin, {.ascii = "`C", .origin = si::ice_point})
 BEMAN_INSIDE_UNIT(si, lumen, "lm", si::candela* si::steradian, isq::luminous_flux)
 BEMAN_INSIDE_UNIT(si, lux, "lx", si::lumen / square(si::metre), isq::illuminance)
 BEMAN_INSIDE_UNIT(si, becquerel, "Bq", one / si::second, isq::activity)
@@ -2246,9 +2313,9 @@ BEMAN_INSIDE_UNIT(si, minute, "min", mag<60>* si::second)
 BEMAN_INSIDE_UNIT(si, hour, "h", mag<60>* si::minute)
 BEMAN_INSIDE_UNIT(si, day, "d", mag<24>* si::hour)
 BEMAN_INSIDE_UNIT(si, astronomical_unit, "au", mag<149'597'870'700>* si::metre)
-BEMAN_INSIDE_UNIT(si, degree, "°", "deg", mag_pi* mag<rational{1, 180}>* si::radian, no_space_before)
-BEMAN_INSIDE_UNIT(si, arcminute, "′", "'", mag<rational{1, 60}>* si::degree, no_space_before)
-BEMAN_INSIDE_UNIT(si, arcsecond, "″", "''", mag<rational{1, 60}>* si::arcminute, no_space_before)
+BEMAN_INSIDE_UNIT(si, degree, "°", mag_pi* mag<rational{1, 180}>* si::radian, {.ascii = "deg", .space_before = false})
+BEMAN_INSIDE_UNIT(si, arcminute, "′", mag<rational{1, 60}>* si::degree, {.ascii = "'", .space_before = false})
+BEMAN_INSIDE_UNIT(si, arcsecond, "″", mag<rational{1, 60}>* si::arcminute, {.ascii = "''", .space_before = false})
 BEMAN_INSIDE_UNIT(si, are, "a", square(si::deca(si::metre)))
 BEMAN_INSIDE_UNIT(si, litre, "L", cubic(si::deci(si::metre)))
 BEMAN_INSIDE_UNIT(si, tonne, "t", mag<1000>* si::kilogram)
@@ -2264,10 +2331,11 @@ BEMAN_INSIDE_UNIT(si, electronvolt, "eV", mag<1.602176634e-19_g>* si::joule)
 // just<1> * si2019::speed_of_light_in_vacuum is c, exactly, and .in(m/s)
 // gives its number. h, e, k and N_A need grid numbers past 64 bits.
 BEMAN_INSIDE_UNIT(
-    si2019, hyperfine_structure_transition_frequency_of_cs, "Δν_Cs", "dv_Cs", mag<9'192'631'770>* si::hertz)
+    si2019, hyperfine_structure_transition_frequency_of_cs, "Δν_Cs", mag<9'192'631'770>* si::hertz, {.ascii = "dv_Cs"})
 BEMAN_INSIDE_UNIT(si2019, speed_of_light_in_vacuum, "c", mag<299'792'458>* si::metre / si::second)
 BEMAN_INSIDE_UNIT(si2019, luminous_efficacy, "K_cd", mag<683>* si::lumen / si::watt)
-BEMAN_INSIDE_UNIT(si2019, standard_gravity, "g₀", "g_0", mag<rational{980665, 100000}>* si::metre / square(si::second))
+BEMAN_INSIDE_UNIT(
+    si2019, standard_gravity, "g₀", mag<rational{980665, 100000}>* si::metre / square(si::second), {.ascii = "g_0"})
 #if BEMAN_INSIDE_BIG_GRIDS
 BEMAN_INSIDE_UNIT(si2019, planck_constant, "h", mag<6.62607015e-34_g>* si::joule* si::second)
 BEMAN_INSIDE_UNIT(si2019, elementary_charge, "e", mag<1.602176634e-19_g>* si::coulomb)
@@ -2296,9 +2364,8 @@ BEMAN_INSIDE_ORIGIN(international,
 BEMAN_INSIDE_UNIT(international,
                   degree_Fahrenheit,
                   "℉",
-                  "`F",
                   mag<rational{5, 9}>* si::kelvin,
-                  international::zeroth_degree_Fahrenheit)
+                  {.ascii = "`F", .origin = international::zeroth_degree_Fahrenheit})
 
 #undef BEMAN_INSIDE_UNIT
 #undef BEMAN_INSIDE_ORIGIN

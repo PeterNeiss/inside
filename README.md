@@ -107,6 +107,7 @@ reports)
 [`money.cpp`](examples/money.cpp) (cents-exact currency),
 [`units.cpp`](examples/units.cpp) (exact unit conversions, kinds, temperatures),
 [`moon_rocket.cpp`](examples/moon_rocket.cpp) (a flight to the Moon with units),
+[`own_units.cpp`](examples/own_units.cpp) (units and base dimensions of your own),
 [`expected_pipeline.cpp`](examples/expected_pipeline.cpp) (errors with their cause),
 [`json_io.cpp`](examples/json_io.cpp) (exact JSON numbers),
 [`wei.cpp`](examples/wei.cpp) (10^27-point grids),

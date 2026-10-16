@@ -16,6 +16,10 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 - units: a unit with only a denominator prints negative exponents (`2 s⁻¹`,
   not `2 1/s`), and two spellings of one size add in the shorter one
   (J + N·m and N·m + J are both in J).
+- units: `named_unit`'s positional forms with an ASCII symbol, an origin
+  or `no_space_before` are replaced by a last `unit_options` argument:
+  `{"Ω", si::volt / si::ampere, isq::impedance, {.ascii = "ohm"}}`.
+  `no_space_before` is gone (`.space_before = false`).
 
 ### Added
 
@@ -23,6 +27,10 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   between specs; `value_cast<Q>(q)` / `try_value_cast<Q, F>(q)` into a
   quantity type; `unit * mag` and `unit / mag`;
   `p.quantity_from_zero()` on points.
+- units: base dimensions of your own (`base_dimension`, up to four in one
+  dimension beside the seven SI ones): currency, information.
+  `examples/own_units.cpp` defines a unit, a temperature scale and two base
+  dimensions.
 
 ### Changed
 

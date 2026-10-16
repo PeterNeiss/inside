@@ -23,8 +23,24 @@ inline constexpr named_unit    per_second_f{"Hz", one / si::second, isq::frequen
 inline constexpr named_unit    per_second_a{"Hz", one / si::second, isq::activity};
 inline constexpr point_origin  other_zero{"other_zero", dim_thermodynamic_temperature};
 
+// unit_options: an ASCII symbol, a kind, an origin, no space before.
+inline constexpr named_unit rankine_def{
+    "°R", mag<rational{5, 9}> * si::kelvin, {.ascii = "R", .origin = si::absolute_zero}};
+inline constexpr named_unit turn_def{"tr", mag<2> * mag_pi * si::radian, {.space_before = false}};
+inline constexpr named_unit rpm_def{"rpm", one / si::minute, {.kind = isq::frequency}};
+
+// A base dimension of your own.
+inline constexpr base_dimension currency_def{"currency"};
+inline constexpr quantity_spec  money_def{"money", currency_def};
+inline constexpr named_unit     euro_def{"EUR", spec_c<money_def>};
+inline constexpr named_unit     cent_def{"ct", mag<rational{1, 100}> * unit_c<euro_def>};
+
 template <class A, class B>
 concept can_add = requires(const A& a, const B& b) { a + b; };
+template <class A, class B>
+consteval bool addable_units() {
+    return can_add<A, B>;
+}
 template <class A, class B>
 concept can_less = requires(const A& a, const B& b) { a < b; };
 template <class A>
@@ -128,4 +144,26 @@ TEST(UnitsApiTest, points_from_zero_and_their_constraints) {
     EXPECT_EQ(to_string(c.quantity_from_zero()), "293.15 ℃");
     EXPECT_EQ(to_string(point<si::metre>(just<5>).quantity_from_zero()), "5 m");
     static_assert(!can_in_seconds<decltype(c)> && !can_point_in_seconds<decltype(c)>);
+}
+
+TEST(UnitsApiTest, unit_options) {
+    constexpr auto rankine = unit_c<rankine_def>;
+    EXPECT_EQ(unit_symbol(rankine, text_encoding::ascii), "R");
+    EXPECT_EQ(to_string(point<rankine>(just<9>).point_in(si::kelvin)), "5 K"); // counted from absolute zero
+    EXPECT_EQ(to_string(just<1> * unit_c<turn_def>), "1tr");
+    static_assert(kind_of(unit_c<rpm_def>.value).P->Name == "frequency");
+    static_assert(!addable_units<decltype(just<1> * unit_c<rpm_def>), decltype(just<1> * si::becquerel)>());
+}
+
+TEST(UnitsApiTest, base_dimensions_of_your_own) {
+    constexpr auto euro = unit_c<euro_def>;
+    constexpr auto cent = unit_c<cent_def>;
+    const auto     sum  = just<2> * euro + just<5> * cent;
+    EXPECT_EQ(to_string(sum), "205 ct");
+    static_assert(!can_add<decltype(just<1> * euro), decltype(just<1> * si::metre)>);
+    static_assert(!can_add<decltype(just<1> * euro), decltype(just<1> * one)>); // not a plain number
+    static_assert(!(dimension_of((euro / si::kilogram).value) == dimension_of(euro.value)));
+    static_assert(dimension_of(square(euro).value).root(2) == dimension_of(euro.value));
+    static_assert(dimension_of((euro / cent).value) == dim_one);
+    EXPECT_EQ(to_string((just<3> * euro) / (just<2> * si::kilogram)), "1.5 EUR/kg");
 }
