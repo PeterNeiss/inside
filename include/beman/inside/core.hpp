@@ -64,7 +64,7 @@ constexpr auto abs(In x);
 // arithmetic (arithmetic.hpp), casts (casts.hpp) and `inside_range` (range.hpp)
 // follow in the umbrella. Heavy lifting is delegated to addition/multiplication/division.hpp
 // (per-operator code), assignment.hpp (narrowing/clamp/wrap), and
-// generic.hpp/policy.hpp (traits + policy machinery).
+// generic.hpp (introspection, storage, inside_assignable) and policy.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 namespace detail {

@@ -20,6 +20,7 @@ target_sources(
                 detail/float_bits.hpp
                 detail/grid_rational.hpp
                 detail/int_for_bits.hpp
+                detail/introspection.hpp
                 detail/math_adaptive.hpp
                 detail/math_cores.hpp
                 detail/math_entry.hpp
@@ -33,6 +34,7 @@ target_sources(
                 detail/rational.hpp
                 detail/rep.hpp
                 detail/rounding.hpp
+                detail/storage.hpp
                 formats.hpp
                 generic.hpp
                 grid.hpp

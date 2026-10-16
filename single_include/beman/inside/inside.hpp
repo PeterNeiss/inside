@@ -56,6 +56,11 @@
 
 
 // ======================================================================
+//  beman/inside/detail/introspection.hpp
+// ======================================================================
+
+
+// ======================================================================
 //  beman/inside/detail/debug.hpp
 // ======================================================================
 
@@ -4309,7 +4314,7 @@ struct grid {
         return g;
     }
 
-    // (Raw → double decoding lives in `detail::as_double` (generic.hpp): the
+    // (Raw → double decoding lives in `detail::as_double` (detail/storage.hpp): the
     // decode depends on the storage KIND, not the raw type's signedness — a
     // whole-number grid above 0 has an unsigned raw that IS the value.)
 };
@@ -4825,10 +4830,11 @@ template <std::same_as<grid> G>
 
 
 //---------------------------------------------------------------------------
-// generic — type-level traits and predicates used everywhere else. Public
-// grid/policy introspection (`grid_of<B>`, `policy_of<B>`, `notch64<B>`,
-// `interval_of<B>`) plus the `insidable`/`numeric`/`inside_assignable` concepts; the
-// storage-shape predicates and raw/value converters are internal (`beman::inside::detail`).
+// introspection — an inside's template parameters as values (grid_of<B>,
+// policy_of<B>, lower_of<B>, notch_of<B>, … and their 64-bit forms), the
+// insidable / numeric concepts, and the basic plumbing every layer uses
+// (plain_t, dependent_false, as_rational, raw_t). The storage shapes build
+// on it in detail/storage.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 template <grid G = grid{{0, 0}, 0}, policy_flag P = checked>
@@ -4945,7 +4951,22 @@ template <typename T>
 
 template <insidable B>
 using raw_t = typename B::raw_type;
+} // namespace detail
+} // namespace beman::inside
 
+
+// ======================================================================
+//  beman/inside/detail/storage.hpp
+// ======================================================================
+
+
+
+//---------------------------------------------------------------------------
+// storage — how an inside's value lives in its raw (the storage concepts),
+// the raw ↔ value plumbing, the grid shape predicates, and the integer
+// rounding of quotients the stores share.
+//---------------------------------------------------------------------------
+namespace beman::inside::detail {
 //-------------------------------------------------------------------------
 // Storage — how an inside's value lives in its raw, a function of the grid
 // alone (grid.hpp storage_min). The leaves partition every
@@ -5626,7 +5647,18 @@ constexpr bool range_fail(P&& policy) {
     }
     return false;
 }
+} // namespace beman::inside::detail
 
+
+
+//---------------------------------------------------------------------------
+// generic — the type-level layer every other header builds on: the public
+// introspection (detail/introspection.hpp), the storage shapes
+// (detail/storage.hpp), and here the inside_assignable concept with its
+// diagnostics.
+//---------------------------------------------------------------------------
+namespace beman::inside {
+namespace detail {
 // The two non-trivial clauses of `inside_assignable`, named so the concept and
 // its `inside_assignable_why` diagnostic share one definition. Concepts (not
 // bools) so `||` short-circuits *instantiation* (e.g. assignment<L,R>::Factor
@@ -9440,7 +9472,7 @@ constexpr auto abs(In x);
 // arithmetic (arithmetic.hpp), casts (casts.hpp) and `inside_range` (range.hpp)
 // follow in the umbrella. Heavy lifting is delegated to addition/multiplication/division.hpp
 // (per-operator code), assignment.hpp (narrowing/clamp/wrap), and
-// generic.hpp/policy.hpp (traits + policy machinery).
+// generic.hpp (introspection, storage, inside_assignable) and policy.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 namespace detail {
