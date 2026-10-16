@@ -253,7 +253,7 @@ undefined behaviour, which means the compiler may assume it does not occur and
 optimise on that assumption. Consider a function that asks whether adding one
 to a number makes it bigger.
 
-\lstinputlisting[firstline=13,lastline=18]{int-considered-harmful/h01_overflow_ub.cpp}
+\lstinputlisting[firstline=12,lastline=16]{int-considered-harmful/h01_overflow_ub.cpp}
 
 \noindent
 Since \code{x + 1 > x} can only be false if \code{x + 1} overflows, and
@@ -684,7 +684,7 @@ around a single template:
 
 \begin{lstlisting}
 template<grid G, policy_flag P>
-struct inside;                        // include/beman/inside/core.hpp:66
+struct inside;                        // include/beman/inside/core.hpp:83
 \end{lstlisting}
 
 \noindent
@@ -853,7 +853,7 @@ what grid they belong to --- and the diagnostic says so directly:
 \begin{lstlisting}[style=term]
 $ g++ -std=c++23 -I ../../include x01_bare_int_rejected.cpp
    16 |   auto bad = x + 1;      // error: no grid for the literal
-include/beman/inside/arithmetic.hpp:345:31: error: static assertion failed:
+include/beman/inside/arithmetic.hpp:518:31: error: static assertion failed:
    an inside cannot be combined with a raw scalar: give the scalar a grid --
    `1_ins`, `just<1>`, `one`, or `inside<{lo,hi}>{n}` for a runtime value with
    a known range
