@@ -190,7 +190,7 @@ template <insidable V>
 }
 // atan2(y, x) of two quantities of one dimension, in their common unit.
 template <reference A, class VA, reference B, class VB>
-    requires(detail::sum_diagnosed<A, B>()) ||
+    requires(!detail::sum_diagnosed<A, B>()) &&
             (detail::common_rescalable<A, VA, B, VB> &&
              requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
                  beman::inside::math::atan2(x, y);
@@ -204,7 +204,7 @@ template <reference A, class VA, reference B, class VB>
 
 // hypot(x, y): √(x² + y²) in the common unit.
 template <reference A, class VA, reference B, class VB>
-    requires(detail::sum_diagnosed<A, B>()) ||
+    requires(!detail::sum_diagnosed<A, B>()) &&
             (detail::common_rescalable<A, VA, B, VB> &&
              requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
                  beman::inside::math::hypot(x, y);
@@ -276,7 +276,7 @@ template <insidable Out, class X>
     return detail::make_quantity<detail::radian_reference>(beman::inside::math::atan_into<Out>(detail::number_of(x)));
 }
 template <insidable Out, reference A, class VA, reference B, class VB>
-    requires(detail::sum_diagnosed<A, B>()) ||
+    requires(!detail::sum_diagnosed<A, B>()) &&
             (detail::common_rescalable<A, VA, B, VB> &&
              requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
                  beman::inside::math::atan2_into<Out>(x, y);
@@ -288,7 +288,7 @@ template <insidable Out, reference A, class VA, reference B, class VB>
         detail::rescale<detail::conversion_factor<B.U, C.U>>(x.numerical_value())));
 }
 template <insidable Out, reference A, class VA, reference B, class VB>
-    requires(detail::sum_diagnosed<A, B>()) ||
+    requires(!detail::sum_diagnosed<A, B>()) &&
             (detail::common_rescalable<A, VA, B, VB> &&
              requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
                  beman::inside::math::hypot_into<Out>(x, y);
@@ -299,6 +299,26 @@ template <insidable Out, reference A, class VA, reference B, class VB>
         detail::rescale<detail::conversion_factor<A.U, C.U>>(x.numerical_value()),
         detail::rescale<detail::conversion_factor<B.U, C.U>>(y.numerical_value())));
 }
+// atan2 and hypot of two quantities that do not add (another dimension or
+// kind, no common unit).
+BEMAN_INSIDE_DELETE_BEGIN
+template <reference A, class VA, reference B, class VB>
+    requires(detail::sum_diagnosed<A, B>())
+void atan2(const quantity<A, VA>&, const quantity<B, VB>&) =
+    BEMAN_INSIDE_DELETE("units: atan2 takes two quantities that add - one dimension and kind, a common unit");
+template <reference A, class VA, reference B, class VB>
+    requires(detail::sum_diagnosed<A, B>())
+void hypot(const quantity<A, VA>&, const quantity<B, VB>&) =
+    BEMAN_INSIDE_DELETE("units: hypot takes two quantities that add - one dimension and kind, a common unit");
+template <insidable Out, reference A, class VA, reference B, class VB>
+    requires(detail::sum_diagnosed<A, B>())
+void atan2_into(const quantity<A, VA>&, const quantity<B, VB>&) =
+    BEMAN_INSIDE_DELETE("units: atan2 takes two quantities that add - one dimension and kind, a common unit");
+template <insidable Out, reference A, class VA, reference B, class VB>
+    requires(detail::sum_diagnosed<A, B>())
+void hypot_into(const quantity<A, VA>&, const quantity<B, VB>&) =
+    BEMAN_INSIDE_DELETE("units: hypot takes two quantities that add - one dimension and kind, a common unit");
+BEMAN_INSIDE_DELETE_END
 } // namespace beman::inside::units
 
 #endif // BEMAN_INSIDE_UNITS_MATH_HPP

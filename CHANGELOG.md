@@ -62,12 +62,21 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   in the unit until one rounding; `sqrt_into<Out>`, `atan2_into<Out>`, …
   take checked arithmetic results; `p.point_in(u)` and `value_cast` work on
   points; `try_value_cast<u, Rep2, F>(q)` converts and stores into an
-  expected. A sum of two units that
-  divide neither way runs in the smaller unit scaled (ft + m and m + ft are
-  `[1/381 ft]`). Every quantity operator, conversion and cast is constrained
-  on the number operation it runs, so a `requires` test of one inside
-  rejects (an off-notch `+=`, a product past 64-bit grids) is false; unit
-  mismatches stay compile errors with a message.
+  expected, and `value_cast<Q>(q)` / `try_value_cast<Q, F>(q)` into a
+  quantity type. A sum of two units that divide neither way runs in the
+  smaller unit scaled (ft + m and m + ft are `[1/381 ft]`), and two
+  spellings of one size in the shorter one (J + N·m is in J).
+  `q.quantity_spec == isq::length` queries a spec; `unit * mag`,
+  `p.quantity_from_zero()`. Every quantity operator, conversion and cast is
+  constrained on the number operation it runs, and every unit mismatch is a
+  constraint failure with a message (a deleted overload per reason), so
+  `requires { m + s; }` and `requires { q * 2; }` are false.
+- Units of your own: a `named_unit` with `unit_options` (an ASCII symbol, a
+  kind, an origin, no space before the symbol), specs and origins, each
+  with a tag (`unit_c<obj>`, `spec_c<obj>`, `origin_c<obj>`), and up to
+  four `base_dimension`s beside the seven SI ones (currency, information).
+  `examples/own_units.cpp` shows a unit, a temperature scale and two base
+  dimensions.
 - `to_string(errc)` and `operator<<` for `errc` print the error message.
 - Open grid limits as a spelling: `inside<{0, 360, bounds::half_open}, wrap>`
   is `inside<{0, 359}, wrap>` (period 360), and `{{0, 64}, per<16>,
