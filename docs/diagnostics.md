@@ -52,6 +52,23 @@ So `17179869184` is simply `checked`, the default policy of `inside<G>`. Every
 other policy without the `unsafe` bit is checked too. (Full table:
 `include/beman/inside/policy_flag.hpp`.)
 
+
+## Values in the message (C++26)
+
+Under C++26 a `static_assert` message may be computed (P2741), and the
+library's grid and assignment checks print the numbers that failed:
+
+```
+error: static assertion failed: grid: the notch must divide Upper − Lower evenly
+       (notch 3, Upper − Lower 10)
+error: static assertion failed: inside_assignable: incompatible notches — use
+       `with_snap()` or `policy<snap>()` to allow rounding (lhs notch 1, rhs notch 1/2)
+error: static assertion failed: inside_assignable: rhs interval lies entirely outside
+       lhs interval … (lhs [0, 3], rhs [5, 10])
+```
+
+A C++23 build prints the same text without the part in parentheses.
+
 ## The common surprise: it's the interval, not the notch
 
 ```cpp

@@ -15,7 +15,7 @@
 #---------------------------------------------------------------------------
 file(GLOB BEMAN_INSIDE_FAIL_SOURCES CONFIGURE_DEPENDS *.test.cpp)
 
-# The condition arithmetic.hpp's BEMAN_INSIDE_DELETE uses for `= delete("…")`
+# The condition detail/delete_reason.hpp's BEMAN_INSIDE_DELETE uses for `= delete("…")`
 # (C++26; an extension in C++23 from GCC 15 and Clang 19).
 include(CheckCXXSourceCompiles)
 check_cxx_source_compiles(
@@ -25,6 +25,16 @@ check_cxx_source_compiles(
 int main() {}
 "
     BEMAN_INSIDE_HAS_DELETE_REASON
+)
+# The condition detail/diag_text.hpp's BEMAN_INSIDE_DIAG uses for a
+# static_assert message with values in it (P2741, C++26).
+check_cxx_source_compiles(
+    "#if !(defined(__cpp_static_assert) && __cpp_static_assert >= 202306L && __cplusplus > 202302L)
+#error no user-generated static_assert message
+#endif
+int main() {}
+"
+    BEMAN_INSIDE_HAS_VALUED_DIAG
 )
 
 foreach(src ${BEMAN_INSIDE_FAIL_SOURCES})
@@ -48,9 +58,10 @@ foreach(src ${BEMAN_INSIDE_FAIL_SOURCES})
     endforeach()
     # REQUIRES tags: `64-bit-grids` skips the case in a C++26 reflection build
     # (big grids compile it); `gnu` / `msvc` build it only with GCC/Clang or
-    # only with MSVC; `delete-reason` and `gnu-message` check the message only
-    # where the compiler prints it (a deleted overload's reason; a
-    # constexpr_error's text, which MSVC leaves out) — elsewhere the case must
+    # only with MSVC; `delete-reason`, `gnu-message` and `valued-diagnostics`
+    # check the message only where the compiler prints it (a deleted
+    # overload's reason; a constexpr_error's text, which MSVC leaves out; a
+    # static_assert message with values, C++26) — elsewhere the case must
     # still be ill-formed.
     set(needs_message TRUE)
     if(requires_line)
@@ -73,6 +84,12 @@ foreach(src ${BEMAN_INSIDE_FAIL_SOURCES})
             set(needs_message FALSE)
         endif()
         if(requires_line MATCHES "gnu-message" AND MSVC)
+            set(needs_message FALSE)
+        endif()
+        if(
+            requires_line MATCHES "valued-diagnostics"
+            AND NOT BEMAN_INSIDE_HAS_VALUED_DIAG
+        )
             set(needs_message FALSE)
         endif()
     endif()

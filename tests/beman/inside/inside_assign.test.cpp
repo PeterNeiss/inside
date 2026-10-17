@@ -240,22 +240,25 @@ TEST(InsideAssignTest, disjoint_interval_assignment_is_allowed_under_wrap_clamp)
     ASSERT_EQ(c, 9); // clamped to upper
 }
 
-// trivial-type guarantees
+// trivial-type guarantees (std::is_trivial is deprecated in C++26)
+template <class T>
+constexpr bool is_trivial_type_v = std::is_trivially_default_constructible_v<T> && std::is_trivially_copyable_v<T>;
+
 TEST(InsideAssignTest, trivial_type_guarantees) {
-    static_assert(std::is_trivial_v<inside<{0, 0}, unsafe>>);
-    static_assert(std::is_trivial_v<inside<{0, 100}, unsafe>>);
-    static_assert(std::is_trivial_v<inside<{-100, 100}, unsafe>>);
-    static_assert(std::is_trivial_v<inside<{{0, 10}, rational{1u, 2}}, unsafe>>);
-    static_assert(std::is_trivial_v<inside<{{-10, 10}, 0}, unsafe>>);
-    static_assert(std::is_trivial_v<inside<{0, 100}, clamp>>);
-    static_assert(std::is_trivial_v<inside<{0, 100}, wrap>>);
+    static_assert(is_trivial_type_v<inside<{0, 0}, unsafe>>);
+    static_assert(is_trivial_type_v<inside<{0, 100}, unsafe>>);
+    static_assert(is_trivial_type_v<inside<{-100, 100}, unsafe>>);
+    static_assert(is_trivial_type_v<inside<{{0, 10}, rational{1u, 2}}, unsafe>>);
+    static_assert(is_trivial_type_v<inside<{{-10, 10}, 0}, unsafe>>);
+    static_assert(is_trivial_type_v<inside<{0, 100}, clamp>>);
+    static_assert(is_trivial_type_v<inside<{0, 100}, wrap>>);
 
     static_assert(std::is_trivially_copyable_v<inside<{0, 100}>>);
     static_assert(std::is_trivially_destructible_v<inside<{0, 100}>>);
     // The default ctor is `= default` for every policy (no zero-fill), so even a
     // `checked` inside is trivially default-constructible — and fully trivial.
     static_assert(std::is_trivially_default_constructible_v<inside<{0, 100}>>);
-    static_assert(std::is_trivial_v<inside<{0, 100}>>);
+    static_assert(is_trivial_type_v<inside<{0, 100}>>);
 }
 
 // type-alias smoke checks

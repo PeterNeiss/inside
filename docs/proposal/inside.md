@@ -354,15 +354,20 @@ in v0.3.0, and each is a candidate for a later paper:
    `min`, `max`, `midpoint`, a `std::common_type` that is the grid hull,
    `numeric_limits`, `hash`, and `cursor<T, Step>` for loops over a grid.
 6. **A public exact rational type** and its literals.
+7. **Physical units**: `quantity<si::metre, inside<…>>` with an inside as the
+   number, the ISQ quantity kinds, quantity points with exact origins, and
+   units and base dimensions of your own. A unit conversion rescales the grid
+   and keeps the raw value, so it is exact and costs nothing at run time.
 
 # Implementation experience
 
 The reference implementation is header-only C++23 (GCC 14+, Clang 19+, Clang 18
 with libc++). It ships a single-header amalgamation, a CMake package and a
-vcpkg port, and follows the Beman Standard. Its test suite (738 tests, 748 with
-C++26 reflection) runs in CI on 53 compiler, library and sanitizer
-configurations, including a check that the integer fast paths compile to
-call-free, vectorising code.
+vcpkg port, and follows the Beman Standard. Its test suite (798 tests, 809 with
+C++26 reflection) runs in CI on 48 compiler, library and sanitizer
+configurations. It includes a check that the integer fast paths compile to
+call-free, vectorising code, a property fuzzer, and a differential oracle that
+recomputes random results exactly in Python.
 
 Integer-aligned arithmetic compiles to the same instructions as `int` (paper,
 "The fast path is byte-identical to native"). `inside<unsafe>` runs at native

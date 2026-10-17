@@ -199,6 +199,12 @@ if(BEMAN_INSIDE_BUILD_TESTS OR BEMAN_INSIDE_BUILD_EXAMPLES)
     # Warning flags for this project's own tests and examples. Kept off the
     # public beman.inside interface so consumers don't inherit them.
     add_library(beman.inside.warnings INTERFACE)
+    # MSVC deprecates standard C functions the test tools use (fopen,
+    # getenv) in favour of its _s variants.
+    target_compile_definitions(
+        beman.inside.warnings
+        INTERFACE $<$<CXX_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>
+    )
     target_compile_options(
         beman.inside.warnings
         INTERFACE

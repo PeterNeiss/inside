@@ -17,6 +17,7 @@ target_sources(
                 detail/compare.hpp
                 detail/config.hpp
                 detail/debug.hpp
+                detail/diag_text.hpp
                 detail/division.hpp
                 detail/float_bits.hpp
                 detail/grid_rational.hpp

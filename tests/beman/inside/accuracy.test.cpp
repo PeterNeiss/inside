@@ -13,9 +13,11 @@
 #include <beman/inside/inside.hpp>
 #include <beman/inside/cmath.hpp>
 
+#include <cfloat>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <string_view>
 
 using namespace beman::inside;
 
@@ -77,7 +79,23 @@ stats sweep(EngineFn engine_fn, ReferenceFn reference_fn, long target_samples = 
     return s;
 }
 
+// --check: the rows whose max error passes half a notch, plus the slack of
+// the long-double reference (64 bits: 2^-10 notch on the 2^-40 outputs;
+// where long double is a double, those rows are not checked).
+int failures = 0;
+
+bool within_half_notch(const char* grid, long double max_err) {
+    const bool fine = std::string_view{grid} == "out 2^-40";
+    if (fine && LDBL_MANT_DIG < 64)
+        return true;
+    return max_err <= 0.5L + (fine ? 0x1p-10L : 1e-6L);
+}
+
 void row(std::FILE* out, const char* function, const char* grid, const char* domain, stats s) {
+    if (!within_half_notch(grid, s.max_err)) {
+        ++failures;
+        std::fprintf(stderr, "accuracy: %s on %s exceeds half a notch: %.6Lf\n", function, grid, s.max_err);
+    }
     std::fprintf(out,
                  "| %-7s | %-13s | %-14s | %10.4Lf | %10.6Lf | %ld |\n",
                  function,
@@ -109,8 +127,9 @@ using fine_out = inside<{{-4096, 4096}, per<(std::uint64_t{1} << 40)>}, round_ne
 } // namespace
 
 int main(int argc, char** argv) {
-    std::FILE* out = stdout;
-    if (argc > 1) {
+    std::FILE* out   = stdout;
+    const bool check = argc > 1 && std::string_view{argv[1]} == "--check";
+    if (argc > 1 && !check) {
         out = std::fopen(argv[1], "w");
         if (!out) {
             std::perror(argv[1]);
@@ -177,5 +196,5 @@ int main(int argc, char** argv) {
 
     if (out != stdout)
         std::fclose(out);
-    return 0;
+    return check && failures > 0 ? 1 : 0;
 }

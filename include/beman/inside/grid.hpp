@@ -9,6 +9,7 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <beman/inside/detail/rational.hpp>
 #include <beman/inside/interval.hpp>
 #include <beman/inside/detail/grid_rational.hpp>
+#include <beman/inside/detail/diag_text.hpp>
 #include <beman/inside/policy_flag.hpp>
 #include <beman/inside/detail/int_for_bits.hpp>
 
@@ -163,11 +164,14 @@ struct grid {
     static constexpr bool validate() {
         interval::validate<G.Interval>();
         // Decoding is Lower + raw·Notch: a negative notch would count downward.
-        static_assert(G.Notch >= 0, "grid: the notch must be non-negative");
+        BEMAN_INSIDE_DIAG(G.Notch >= 0, "grid: the notch must be non-negative", << " (notch " << G.Notch << ")");
         // The values are Lower, Lower + Notch, …, Upper: the notch steps from
         // Lower to Upper. Lower need not be a multiple of the notch
         // ({{0.5, 10.5}, 1} holds 0.5, 1.5, …).
-        static_assert(G.Interval.divides_evenly(G.Notch), "grid: the notch must divide Upper − Lower evenly");
+        BEMAN_INSIDE_DIAG(G.Interval.divides_evenly(G.Notch),
+                          "grid: the notch must divide Upper − Lower evenly",
+                          << " (notch " << G.Notch << ", Upper − Lower "
+                          << detail::diag_text::difference{G.Interval.Upper, G.Interval.Lower} << ")");
         static_assert(G.MaxDenominator == 0 || (G.Notch == 0 && G.Interval.Lower != G.Interval.Upper),
                       "grid: only a continuous grid carries a max_denominator");
         // Every value is a multiple of gcd(Lower, Notch): {{0.2, 1.2}, 2^-61}

@@ -39,6 +39,28 @@ endforeach()
 # ill-formed and keep their intended messages (see fail/CMakeLists.txt).
 add_subdirectory(fail)
 
+# The differential oracle against Python Fraction (differential/check.py).
+add_subdirectory(differential)
+
+# The property fuzzer and the math accuracy sweep, as tests: a fixed seed
+# and few iterations per PR (a scheduled CI run takes a random seed and
+# more, see fuzz.test.cpp), and every math result within half a notch.
+add_executable(beman.inside.fuzz fuzz.test.cpp)
+target_link_libraries(
+    beman.inside.fuzz
+    PRIVATE beman::inside beman.inside.warnings
+)
+add_test(NAME beman.inside.tests.fuzz COMMAND beman.inside.fuzz 1 300)
+set_tests_properties(beman.inside.tests.fuzz PROPERTIES LABELS "fuzz")
+
+add_executable(beman.inside.accuracy accuracy.test.cpp)
+target_link_libraries(
+    beman.inside.accuracy
+    PRIVATE beman::inside beman.inside.warnings
+)
+add_test(NAME beman.inside.tests.accuracy COMMAND beman.inside.accuracy --check)
+set_tests_properties(beman.inside.tests.accuracy PROPERTIES LABELS "accuracy")
+
 #---------------------------------------------------------------------------
 # Single header
 #---------------------------------------------------------------------------
@@ -217,19 +239,7 @@ if(BEMAN_INSIDE_BUILD_TOOLS)
         COMMENT "Regenerating docs/performance.md"
     )
 
-    add_executable(beman.inside.fuzz fuzz.test.cpp)
-    target_link_libraries(
-        beman.inside.fuzz
-        PRIVATE beman::inside beman.inside.warnings
-    )
-
-    # Accuracy characterization: sweeps the math engine against a long-double
-    # <cmath> reference and emits a markdown error table.
-    add_executable(beman.inside.accuracy accuracy.test.cpp)
-    target_link_libraries(
-        beman.inside.accuracy
-        PRIVATE beman::inside beman.inside.warnings
-    )
+    # Accuracy characterization: the sweep (built above) as a markdown table.
     add_custom_target(
         beman.inside.accuracy_report
         COMMAND beman.inside.accuracy ${PROJECT_SOURCE_DIR}/docs/accuracy.md

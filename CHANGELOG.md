@@ -4,6 +4,26 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
+## Unreleased
+
+### Added
+
+- Under C++26 the grid and assignment diagnostics print the values that
+  failed (P2741 static_assert messages): `grid: the notch must divide
+  Upper − Lower evenly (notch 3, Upper − Lower 10)`, the two notches of an
+  incompatible assignment, the two intervals of a disjoint one
+  ([diagnostics.md](docs/diagnostics.md)).
+
+### Testing
+
+- A differential oracle (`tests/beman/inside/differential`): random cases of
+  arithmetic, `%`/`divmod`, rounding stores, bounded continuous grids,
+  `to<float>`/`to<double>` and π conversions, each recomputed exactly in
+  Python. ctest runs a fixed seed; a scheduled CI run takes a random seed
+  and twenty times the cases.
+- The property fuzzer and the math accuracy sweep run in every build as
+  tests (`beman.inside.tests.fuzz`, `beman.inside.tests.accuracy`).
+
 ## 0.3.0 — 2026-10-17
 
 ### Upgrading from 0.2.0
