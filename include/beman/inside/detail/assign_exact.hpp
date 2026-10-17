@@ -9,7 +9,6 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <beman/inside/detail/wide_value.hpp>
 #include <beman/inside/grid.hpp>
 
-#include <bit>
 #include <optional>
 
 // policy.hpp includes this header: the recording policy of the fine-double

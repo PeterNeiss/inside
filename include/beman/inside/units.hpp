@@ -321,8 +321,7 @@ struct quantity_spec {
     constexpr quantity_spec(std::string_view name, spec_t<P>, const detail::spec_expr& e)
         : Name{name}, Dim{P->Dim}, Parent{P}, Recipe{e.Recipe} {
         if (!(e.Dim == P->Dim))
-            beman::inside::detail::constexpr_error<
-                "units: a spec's detail::recipe must have its parent's dimension">();
+            beman::inside::detail::constexpr_error<"units: a spec's recipe must have its parent's dimension">();
     }
     template <const quantity_spec* P>
     constexpr quantity_spec(std::string_view name, spec_t<P>, const detail::spec_expr& e, is_kind_t)
@@ -360,13 +359,7 @@ constexpr bool operator==(const detail::spec_factor& a, const detail::spec_facto
 } // namespace detail
 
 namespace detail {
-// The spec's tree root, and its kind root: the first IsKind spec on the way
-// up, else the tree root.
-consteval const quantity_spec* tree_root(const quantity_spec* s) {
-    while (s->Parent)
-        s = s->Parent.P;
-    return s;
-}
+// The spec's kind root: the first IsKind spec on the way up, else the root.
 consteval const quantity_spec* kind_root(const quantity_spec* s) {
     while (!s->IsKind && s->Parent)
         s = s->Parent.P;
@@ -483,7 +476,7 @@ namespace detail {
 consteval detail::spec_expr spec_combine(const detail::spec_expr& a, const detail::spec_expr& b, int sign) {
     detail::spec_expr r = a;
     if (!recipe_merge(r.Recipe, b.Recipe, sign))
-        beman::inside::detail::constexpr_error<"units: a detail::recipe holds at most 6 factors">();
+        beman::inside::detail::constexpr_error<"units: a recipe holds at most 6 factors">();
     r.Dim = sign > 0 ? a.Dim * b.Dim : a.Dim / b.Dim;
     return r;
 }

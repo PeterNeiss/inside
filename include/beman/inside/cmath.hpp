@@ -256,7 +256,8 @@ template <insidable Out, insidable Mag, insidable Sgn>
         return detail::store_exact<Out>(sgn < 0 ? -a : a);
     } else if constexpr (std::same_as<Out, detail::copysign_result_t<Mag, Sgn>> && detail::notched<Mag> &&
                          detail::anchored<Mag> && notch_of<Out> == notch_of<Mag>) {
-        // The same lattice through 0: ±|value index|.
+        // The same lattice through 0: ±|value index|. j is never INT64_MIN:
+        // then Out, symmetric, would hold 2^64 slots and be wide (above).
         const imax j = detail::value_index<imax>(mag), a = j < 0 ? -j : j;
         return detail::from_value_index<Out>(sgn < 0 ? -a : a);
     } else {

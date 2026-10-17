@@ -10,7 +10,6 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <type_traits>
 
 //---------------------------------------------------------------------------
@@ -41,10 +40,6 @@ struct int_for_bits {
 
 template <int Bits, bool Signed>
 using int_for_bits_t = typename int_for_bits<Bits, Signed>::type;
-
-// Signedness of a raw_integer (std::is_signed_v is false for class types).
-template <raw_integer T>
-inline constexpr bool raw_signed = std::numeric_limits<T>::is_signed;
 } // namespace beman::inside::detail
 
 BEMAN_INSIDE_WARNINGS_POP

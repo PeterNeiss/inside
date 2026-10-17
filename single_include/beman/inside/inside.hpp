@@ -4,7 +4,7 @@
 //
 //   *** GENERATED FILE — DO NOT EDIT BY HAND ***
 //
-// Regenerate with:  cmake --build <build-dir> --target amalgamate
+// Regenerate with:  cmake --build <build-dir> --target beman.inside.amalgamate
 // Source of truth:  include/beman/inside/*.hpp, include/beman/inside/detail/*.hpp
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_SINGLE_HEADER_HPP
@@ -29,7 +29,6 @@
 #include <tuple>
 #include <type_traits>
 #include <utility>
-#include <vector>
 #include <version>
 
 // ======================================================================
@@ -60,7 +59,8 @@
 //                       _HAS_STD_FORMAT
 //   Attributes          BEMAN_INSIDE_COLD, _NOINLINE, _ALWAYS_INLINE,
 //                       _NO_UNIQUE_ADDRESS, BEMAN_INSIDE_TRAP()
-//   Deleted overloads   BEMAN_INSIDE_DELETE("reason"), _DELETE_BEGIN / _END
+//   Deleted overloads   BEMAN_INSIDE_DELETE("reason"), _HAS_DELETE_REASON,
+//                       _DELETE_BEGIN / _END
 //   Floating point      BEMAN_INSIDE_FABS(x), _NEARBYINT(x), _INF(),
 //                       _ASSOC_BARRIER(x)
 //   Warnings            BEMAN_INSIDE_WARNINGS_PUSH / _POP
@@ -219,8 +219,10 @@
 //---------------------------------------------------------------------------
 #if defined(__cpp_deleted_function) || (defined(__clang__) && __clang_major__ >= 19) || \
     (defined(__GNUC__) && !defined(__clang__) && __GNUC__ >= 15)
+    #define BEMAN_INSIDE_HAS_DELETE_REASON 1
     #define BEMAN_INSIDE_DELETE(reason) delete (reason)
 #else
+    #define BEMAN_INSIDE_HAS_DELETE_REASON 0
     #define BEMAN_INSIDE_DELETE(reason) delete
 #endif
 #if (defined(__GNUC__) || defined(__clang__)) && !defined(__cpp_deleted_function)
@@ -340,7 +342,6 @@ BEMAN_INSIDE_WARNINGS_PUSH
 // that throws `beman::inside::inside_error` (hosted) or traps (freestanding / no
 // exceptions). `set_error_handler` lets a bare-metal target redirect failures
 // to a reset/log without depending on <system_error> or the C++ exception ABI.
-// `print_types` is a static_assert debug helper for template instantiation.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 //---------------------------------------------------------------------------
@@ -455,16 +456,17 @@ template <fixed_string Msg>
 [[noreturn]] BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE inline void constexpr_error() {
     raise(errc::overflow, Msg.Data);
 }
-
-// Debug helper: instantiating print_types<Ts...> fails and names Ts.
-template <typename... Ts>
-struct print_types {
-    static_assert(!sizeof...(Ts), "=== PRINT_TYPES ===");
-};
 } // namespace detail
 } // namespace beman::inside
 
 BEMAN_INSIDE_WARNINGS_POP
+
+
+// ======================================================================
+//  beman/inside/grid.hpp
+// ======================================================================
+
+BEMAN_INSIDE_WARNINGS_PUSH
 
 
 // ======================================================================
@@ -560,13 +562,6 @@ BEMAN_INSIDE_WARNINGS_POP
 
 
 // ======================================================================
-//  beman/inside/grid.hpp
-// ======================================================================
-
-BEMAN_INSIDE_WARNINGS_PUSH
-
-
-// ======================================================================
 //  beman/inside/detail/rational.hpp
 // ======================================================================
 
@@ -651,8 +646,9 @@ BEMAN_INSIDE_WARNINGS_PUSH
 
 //---------------------------------------------------------------------------
 // float_bits — floating-point values read and built from their IEEE-754
-// bits, with no <cmath>: constexpr frexp/ldexp, finiteness, and abs_fraction
-// (the double → rational engine behind rational(double)).
+// bits, with no <cmath>: constexpr frexp/ldexp, scale_pow2 for the kernels,
+// finiteness, abs_fraction (the double → rational engine behind
+// rational(double)), double_parts and narrow_midpoint.
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
 inline constexpr double frexp(double value, int* exp) noexcept {
@@ -684,9 +680,11 @@ inline constexpr double frexp(double value, int* exp) noexcept {
     return std::bit_cast<double>(bits);
 }
 
-// value·2^exp for |exp| ≤ 2^20 (the kernels' scalings): e + exp below
-// cannot overflow int. ldexp below takes any exp.
-constexpr double ldexp_small(double value, int exp) noexcept {
+// value·2^exp for any exp, rounded to nearest even. Past ±2200 every finite
+// double overflows or underflows alike, so exp is clamped there (an exp near
+// INT_MAX would overflow the exponent sum below).
+constexpr double ldexp(double value, int exp) noexcept {
+    exp = exp > 2200 ? 2200 : exp < -2200 ? -2200 : exp;
     if (value == 0.0 || exp == 0)
         return value;
 
@@ -738,19 +736,12 @@ constexpr double ldexp_small(double value, int exp) noexcept {
 }
 
 // value·2^k where 2^k is a normal double (−1022 ≤ k ≤ 1023): one multiply,
-// which rounds once like ldexp_small's round-to-nearest-even; else ldexp_small.
-// For the run-time kernels (the exp family).
+// which rounds once like ldexp's round-to-nearest-even; else ldexp. For the
+// run-time kernels (the exp family).
 constexpr double scale_pow2(double value, int k) noexcept {
     if (k >= -1022 && k <= 1023) [[likely]]
         return value * std::bit_cast<double>(static_cast<std::uint64_t>(k + 1023) << 52);
-    return ldexp_small(value, k);
-}
-
-// value·2^exp for any exp: past ±2200 every finite double overflows or
-// underflows alike, so exp is clamped there (an exp near INT_MAX would
-// overflow ldexp_small's exponent sum).
-constexpr double ldexp(double value, int exp) noexcept {
-    return ldexp_small(value, exp > 2200 ? 2200 : exp < -2200 ? -2200 : exp);
+    return ldexp(value, k);
 }
 
 // Freestanding finite check: `v - v` is 0 for every finite v, NaN otherwise
@@ -3032,7 +3023,6 @@ BEMAN_INSIDE_WARNINGS_POP
 BEMAN_INSIDE_WARNINGS_PUSH
 
 
-
 //---------------------------------------------------------------------------
 // big_int / big_rational — grid numbers of any size (C++26 static reflection).
 //
@@ -3051,9 +3041,14 @@ BEMAN_INSIDE_WARNINGS_PUSH
 // Arithmetic on large values runs on transient std::vector<umax> magnitudes
 // with the wide_int limb kernels, during constant evaluation only.
 //---------------------------------------------------------------------------
-// Included by grid_rational.hpp, which detects BEMAN_INSIDE_BIG_GRIDS.
-#if defined(BEMAN_INSIDE_BIG_GRIDS) && BEMAN_INSIDE_BIG_GRIDS
+// Empty without big grids (config.hpp sets BEMAN_INSIDE_BIG_GRIDS), so a C++23
+// build includes no <vector> from here.
+#if BEMAN_INSIDE_BIG_GRIDS
+    #include <compare>
+    #include <cstddef>
+    #include <limits>
     #include <meta>
+    #include <vector>
 
 namespace beman::inside::detail {
 namespace big {
@@ -4489,10 +4484,6 @@ struct int_for_bits {
 
 template <int Bits, bool Signed>
 using int_for_bits_t = typename int_for_bits<Bits, Signed>::type;
-
-// Signedness of a raw_integer (std::is_signed_v is false for class types).
-template <raw_integer T>
-inline constexpr bool raw_signed = std::numeric_limits<T>::is_signed;
 } // namespace beman::inside::detail
 
 BEMAN_INSIDE_WARNINGS_POP
@@ -5319,7 +5310,6 @@ template <std::same_as<grid> G>
 BEMAN_INSIDE_WARNINGS_POP
 
 
-
 //---------------------------------------------------------------------------
 // introspection — an inside's template parameters as values (grid_of<B>,
 // flags_of<B>, lower_of<B>, notch_of<B>, … and their 64-bit forms), the
@@ -5349,8 +5339,7 @@ template <typename B>
 struct inside_params;
 template <grid G, policy_flag P>
 struct inside_params<inside<G, P>> {
-    static constexpr grid        grid_v   = G;
-    static constexpr policy_flag policy_v = P;
+    static constexpr grid grid_v = G;
 };
 } // namespace detail
 
@@ -5438,16 +5427,9 @@ template <numeric N>
         return v;
 }
 
-// Canonical-zero test for a divisor. rational stores zero as {0, 1}, so
-// Numerator == 0 catches it regardless of representation; other types compare
-// against their own zero.
-template <typename T>
-[[nodiscard]] constexpr bool is_canonical_zero(const T& v) {
-    if constexpr (std::same_as<T, rational>)
-        return v.Numerator == 0;
-    else
-        return v == T{0};
-}
+// Zero test for a rational divisor: rational stores zero as {0, 1}, so
+// Numerator == 0 catches it.
+[[nodiscard]] constexpr bool is_canonical_zero(const rational& v) { return v.Numerator == 0; }
 
 // From the grid, not B::raw_type: the storage traits are read inside B's own
 // definition, where B is incomplete (MSVC rejects the member there).
@@ -5685,14 +5667,6 @@ inline constexpr bool integer_notch =
 template <insidable B>
 [[nodiscard]] constexpr raw_t<B> raw_cast(auto value) noexcept {
     return static_cast<raw_t<B>>(value);
-}
-
-template <insidable B>
-[[nodiscard]] constexpr raw_t<B> raw_cast(rational value) noexcept {
-    if constexpr (rational_storage<B>)
-        return value;
-    else
-        return value.to<raw_t<B>>().value_or(0);
 }
 
 // Widen raw storage to imax. Distinct from `to_value(b)` for notch-stored
@@ -8629,7 +8603,7 @@ template <policy_flag F = none>
 //---------------------------------------------------------------------------
 namespace detail {
 template <insidable Result, typename A, typename P>
-constexpr auto report_or_unexpected(A&& action, P&& policy, errc code, [[maybe_unused]] const char* what)
+constexpr auto report_or_unexpected(A&& action, P&& policy, errc code)
     -> std::conditional_t<overflow_action<A>, Result, std::expected<Result, errc>> {
     if constexpr (overflow_action<A>) {
         Result res;
@@ -8977,11 +8951,7 @@ inline constexpr bool point_scale =
 template <insidable Result, bool Negate, insidable X>
 constexpr Result scale_by_point(const X& x) noexcept {
     static_assert(max_index_of<Result> == max_index_of<X>);
-    umax off;
-    if constexpr (index_storage<X>)
-        off = static_cast<umax>(x.raw());
-    else
-        off = static_cast<umax>(x.raw()) - static_cast<umax>(raw_lo<X>);
+    const umax off = static_cast<umax>(x.raw()) - static_cast<umax>(raw_lo<X>); // raw_lo is 0 for an index
     return Result::from_raw(raw_from_offset<Result>(Negate ? max_index_of<X> - off : off));
 }
 } // namespace beman::inside::detail
@@ -9025,7 +8995,7 @@ struct addition {
             const auto sum = continuous_raw_of<raw_t<result>>(exact_of(lhs) + exact_of(rhs));
             if constexpr (needs_overflow_check<F>)
                 if (!sum) [[unlikely]]
-                    return report_or_unexpected<result>(action, policy, errc::overflow, "fraction overflow in add");
+                    return report_or_unexpected<result>(action, policy, errc::overflow);
             res = result::from_raw(*sum);
         } else if constexpr (rational_storage<result>) {
             static_assert(!wide_valued<L> && !wide_valued<R>,
@@ -9033,7 +9003,7 @@ struct addition {
             if constexpr (needs_overflow_check<F>) {
                 auto sum = rational::add(lhs, rhs);
                 if (!sum) [[unlikely]]
-                    return report_or_unexpected<result>(action, policy, errc::overflow, "rational overflow in add");
+                    return report_or_unexpected<result>(action, policy, errc::overflow);
                 res = result::from_raw(*sum);
             } else
                 res = result::from_raw(rational::add_unchecked(lhs, rhs));
@@ -9128,7 +9098,7 @@ struct multiplication {
             const auto prod = continuous_raw_of<raw_t<result>>(exact_of(lhs) * exact_of(rhs));
             if constexpr (needs_overflow_check<flags_of<P>>)
                 if (!prod) [[unlikely]]
-                    return report_or_unexpected<result>(action, policy, errc::overflow, "fraction overflow in mul");
+                    return report_or_unexpected<result>(action, policy, errc::overflow);
             return result::from_raw(*prod);
         } else if constexpr (rational_storage<result>) {
             static_assert(!wide_valued<L> && !wide_valued<R>,
@@ -9136,7 +9106,7 @@ struct multiplication {
             if constexpr (needs_overflow_check<flags_of<P>>) {
                 auto prod = as_rational(lhs) * as_rational(rhs);
                 if (!prod) [[unlikely]]
-                    return report_or_unexpected<result>(action, policy, errc::overflow, "rational overflow in mul");
+                    return report_or_unexpected<result>(action, policy, errc::overflow);
                 return result::from_raw(*prod);
             } else
                 return result::from_raw(rational::mul_unchecked(as_rational(lhs), as_rational(rhs)));
@@ -9585,11 +9555,11 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
     // `fail` must stay well-formed even when return_t narrowed to plain
     // `result` (divisor excludes zero, no overflow); there every call to it is
     // removed by the guards below, so the final arm is dead (return-type only).
-    [[maybe_unused]] auto fail = [&]([[maybe_unused]] errc code, [[maybe_unused]] const char* what) -> return_t<A> {
+    [[maybe_unused]] auto fail = [&]([[maybe_unused]] errc code) -> return_t<A> {
         if constexpr (overflow_action<plain_t<A>>)
-            return report_or_unexpected<result>(action, policy, code, what); // -> result
+            return report_or_unexpected<result>(action, policy, code); // -> result
         else if constexpr (!divisor_excludes_zero<R> || may_overflow_nonzero)
-            return report_or_unexpected<result>(action, policy, code, what); // -> expected<result, errc>
+            return report_or_unexpected<result>(action, policy, code); // -> expected<result, errc>
         else
             return result{}; // unreachable: divisor excludes zero, op cannot fail
     };
@@ -9614,7 +9584,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         const W jb = value_index<W>(rhs);
         if constexpr (!zero_unchecked)
             if (jb == W{0})
-                return fail(errc::division_by_zero, "division by zero in div");
+                return fail(errc::division_by_zero);
         const W ja = value_index<W>(lhs) * static_cast<W>(K);
         if constexpr (std::is_integral_v<W>)
             return from_value_index<result>(div_rounded(ja, jb, rmode));
@@ -9625,7 +9595,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         const T rhs_val = static_cast<T>(to_value(rhs));
         if constexpr (!zero_unchecked)
             if (rhs_val == 0)
-                return fail(errc::division_by_zero, "division by zero in div");
+                return fail(errc::division_by_zero);
         const T lhs_val = static_cast<T>(to_value(lhs));
         return native_quotient<result>(lhs_val, rhs_val, div_rounded(lhs_val, rhs_val, rmode));
     } else if constexpr (wide_div_integer) {
@@ -9636,7 +9606,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         const I b               = value_in_units<I, grid_rational{1}>(rhs); // integer values: no division
         if constexpr (!zero_unchecked)
             if (b.is_zero())
-                return fail(errc::division_by_zero, "division by zero in div");
+                return fail(errc::division_by_zero);
         const I a = value_in_units<I, grid_rational{1}>(lhs);
         return exact_result<result>(wide_rational<K>{rounded_div<rmode>(a, b), I{1}});
     } else if constexpr (point_divisor) {
@@ -9649,19 +9619,19 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         const auto d = exact_of(rhs);
         if constexpr (!zero_unchecked)
             if (d.Num.is_zero())
-                return fail(errc::division_by_zero, "division by zero in div");
+                return fail(errc::division_by_zero);
         if constexpr (fraction_storage<result>) {
             // Grids past 64 bits: the exact quotient in the result's wide fraction.
             const auto q = continuous_raw_of<raw_t<result>>(exact_of(lhs) / d);
             if constexpr (!bound_fits)
                 if (!q) [[unlikely]]
-                    return fail(errc::overflow, "quotient past its fraction raw in div");
+                    return fail(errc::overflow);
             return result::from_raw(*q);
         } else {
             const auto q = try_rational(exact_of(lhs) / d);
             if constexpr (!bound_fits)
                 if (!q) [[unlikely]]
-                    return fail(errc::overflow, "rational overflow in div");
+                    return fail(errc::overflow);
             return result::from_raw(*q);
         }
     } else if constexpr (int_quotient_fits) {
@@ -9674,23 +9644,23 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         const imax d = value_index<imax>(rhs) * b;
         if constexpr (!zero_unchecked)
             if (d == 0)
-                return fail(errc::division_by_zero, "division by zero in div");
+                return fail(errc::division_by_zero);
         const imax n = value_index<imax>(lhs) * a;
         return result::from_raw(d < 0 ? rational{-n, -d} : rational{n, d});
     } else if constexpr (needs_overflow_check<G> && !fits_rational && !bound_fits) {
         rational rhs_r = rhs;
         if constexpr (!zero_unchecked)
             if (rhs_r.Numerator == 0)
-                return fail(errc::division_by_zero, "division by zero in div");
+                return fail(errc::division_by_zero);
         auto q = as_rational(lhs) / rhs_r;
         if (!q) [[unlikely]]
-            return fail(errc::overflow, "rational overflow in div");
+            return fail(errc::overflow);
         return result::from_raw(*q);
     } else {
         rational rhs_r = rhs;
         if constexpr (!zero_unchecked)
             if (rhs_r.Numerator == 0)
-                return fail(errc::division_by_zero, "division by zero in div");
+                return fail(errc::division_by_zero);
         return result::from_raw(rational::div_unchecked(as_rational(lhs), rhs_r));
     }
 }
@@ -9745,7 +9715,7 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy, A&& actio
         const I b                     = value_in_units<I, grid_rational{1}>(rhs); // integer values: no division
         if constexpr (!zero_unchecked)
             if (b.is_zero())
-                return report_or_unexpected<result>(action, policy, errc::division_by_zero, "division by zero in mod");
+                return report_or_unexpected<result>(action, policy, errc::division_by_zero);
         const I a = value_in_units<I, grid_rational{1}>(lhs);
         return exact_result<result>(wide_rational<exact_limbs<L, R, result>>{a - rounded_div<rmode>(a, b) * b, I{1}});
     } else {
@@ -9754,7 +9724,7 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy, A&& actio
         constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
         if constexpr (!zero_unchecked)
             if (rhs_val == 0)
-                return report_or_unexpected<result>(action, policy, errc::division_by_zero, "division by zero in mod");
+                return report_or_unexpected<result>(action, policy, errc::division_by_zero);
         result res;
         // Remainder consistent with the rounded quotient (trunc → C++ `%`).
         const T lhs_val = static_cast<T>(to_value(lhs));
@@ -11029,17 +10999,9 @@ inline constexpr imax index_cmp_bias = [] {
 namespace detail {
 // Inside values are finite and exact, so they are always ordered: <=> of two
 // insides, or of an inside and an integer, is a strong_ordering whatever the
-// storage; against a floating
-// scalar it is a partial_ordering (NaN is unordered).
-inline constexpr auto three_way = [](const auto& a, const auto& b) -> std::strong_ordering {
-    const auto c = a <=> b;
-    if constexpr (std::is_same_v<std::remove_const_t<decltype(c)>, std::partial_ordering>)
-        return c < 0   ? std::strong_ordering::less
-               : c > 0 ? std::strong_ordering::greater
-                       : std::strong_ordering::equal;
-    else
-        return c;
-};
+// storage; against a floating scalar it is a partial_ordering (NaN is
+// unordered), three_way_partial.
+inline constexpr auto three_way         = [](const auto& a, const auto& b) -> std::strong_ordering { return a <=> b; };
 inline constexpr auto three_way_partial = [](const auto& a, const auto& b) -> std::partial_ordering {
     return a <=> b;
 };
@@ -13008,10 +12970,6 @@ constexpr bool is_one(const wide_rational<K>& f) noexcept {
     return f.Num == f.Den;
 }
 template <std::size_t K>
-constexpr bool is_integer(const wide_rational<K>& f) noexcept {
-    return (f.Num % f.Den).is_zero();
-}
-template <std::size_t K>
 constexpr wide_rational<K> abs(const wide_rational<K>& f) noexcept {
     return {abs(f.Num), f.Den};
 }
@@ -13456,7 +13414,7 @@ constexpr fx<K> rescale(const approx<K>& a, int A) noexcept {
 
 // asin x for |x| ≤ 1/2 (exact): atan(x/√(1−x²)), the square root as
 // x·(1/√(1−x²)) with 1 − x² ≥ 3/4 in fixed point.
-template <int S, std::size_t K, int Bits, std::size_t E>
+template <int S, std::size_t K, std::size_t E>
 constexpr fx<K> asin_small(const wide_rational<E>& x) noexcept {
     using I    = wide_sint<K>;
     const I xq = to_q<S, K>(x);                  // within ½
@@ -13824,7 +13782,7 @@ struct asin_core {
         constexpr std::size_t  K = limbs_of<I>;
         const wide_rational<E> half{wide_sint<E>{1}, wide_sint<E>{2}};
         if (!(half < abs(X))) {
-            const fx<K> a = asin_small<S, K, Bits>(X);
+            const fx<K> a = asin_small<S, K>(X);
             return approx<K>{a.Value, S, a.Error};
         }
         using F         = wide_rational<E + 1>;
@@ -13851,7 +13809,7 @@ struct acos_core {
         constexpr std::size_t  K = limbs_of<I>;
         const wide_rational<E> half{wide_sint<E>{1}, wide_sint<E>{2}};
         if (!(half < abs(X))) {
-            const fx<K> a = asin_small<S, K, Bits>(X);
+            const fx<K> a = asin_small<S, K>(X);
             return approx<K>{static_cast<I>(pi_q<S - 1>) - a.Value, S, a.Error + 1};
         }
         using F         = wide_rational<E + 1>;
@@ -17759,7 +17717,8 @@ template <insidable Out, insidable Mag, insidable Sgn>
         return detail::store_exact<Out>(sgn < 0 ? -a : a);
     } else if constexpr (std::same_as<Out, detail::copysign_result_t<Mag, Sgn>> && detail::notched<Mag> &&
                          detail::anchored<Mag> && notch_of<Out> == notch_of<Mag>) {
-        // The same lattice through 0: ±|value index|.
+        // The same lattice through 0: ±|value index|. j is never INT64_MIN:
+        // then Out, symmetric, would hold 2^64 slots and be wide (above).
         const imax j = detail::value_index<imax>(mag), a = j < 0 ? -j : j;
         return detail::from_value_index<Out>(sgn < 0 ? -a : a);
     } else {
@@ -19343,8 +19302,7 @@ struct quantity_spec {
     constexpr quantity_spec(std::string_view name, spec_t<P>, const detail::spec_expr& e)
         : Name{name}, Dim{P->Dim}, Parent{P}, Recipe{e.Recipe} {
         if (!(e.Dim == P->Dim))
-            beman::inside::detail::constexpr_error<
-                "units: a spec's detail::recipe must have its parent's dimension">();
+            beman::inside::detail::constexpr_error<"units: a spec's recipe must have its parent's dimension">();
     }
     template <const quantity_spec* P>
     constexpr quantity_spec(std::string_view name, spec_t<P>, const detail::spec_expr& e, is_kind_t)
@@ -19382,13 +19340,7 @@ constexpr bool operator==(const detail::spec_factor& a, const detail::spec_facto
 } // namespace detail
 
 namespace detail {
-// The spec's tree root, and its kind root: the first IsKind spec on the way
-// up, else the tree root.
-consteval const quantity_spec* tree_root(const quantity_spec* s) {
-    while (s->Parent)
-        s = s->Parent.P;
-    return s;
-}
+// The spec's kind root: the first IsKind spec on the way up, else the root.
 consteval const quantity_spec* kind_root(const quantity_spec* s) {
     while (!s->IsKind && s->Parent)
         s = s->Parent.P;
@@ -19505,7 +19457,7 @@ namespace detail {
 consteval detail::spec_expr spec_combine(const detail::spec_expr& a, const detail::spec_expr& b, int sign) {
     detail::spec_expr r = a;
     if (!recipe_merge(r.Recipe, b.Recipe, sign))
-        beman::inside::detail::constexpr_error<"units: a detail::recipe holds at most 6 factors">();
+        beman::inside::detail::constexpr_error<"units: a recipe holds at most 6 factors">();
     r.Dim = sign > 0 ? a.Dim * b.Dim : a.Dim / b.Dim;
     return r;
 }
@@ -21430,8 +21382,9 @@ BEMAN_INSIDE_WARNINGS_POP
 BEMAN_INSIDE_WARNINGS_PUSH
 
 
+#include <bit>
 #include <cstddef>
-#include <type_traits>
+#include <cstdint>
 
 namespace beman::inside::math::detail::ax {
 // x·(n/d)·π^P for P = ±1: π from pi_q at T = S + B bits, B covering |x·n/d|,

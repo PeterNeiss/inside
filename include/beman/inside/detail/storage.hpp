@@ -7,7 +7,6 @@ BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/detail/introspection.hpp>
 
-#include <algorithm>
 #include <bit>
 #include <initializer_list>
 
@@ -229,14 +228,6 @@ inline constexpr bool integer_notch =
 template <insidable B>
 [[nodiscard]] constexpr raw_t<B> raw_cast(auto value) noexcept {
     return static_cast<raw_t<B>>(value);
-}
-
-template <insidable B>
-[[nodiscard]] constexpr raw_t<B> raw_cast(rational value) noexcept {
-    if constexpr (rational_storage<B>)
-        return value;
-    else
-        return value.to<raw_t<B>>().value_or(0);
 }
 
 // Widen raw storage to imax. Distinct from `to_value(b)` for notch-stored

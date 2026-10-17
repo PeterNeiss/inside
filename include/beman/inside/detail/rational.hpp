@@ -6,7 +6,7 @@
 BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/numbers.hpp>           // umax/imax, arithmetic, rational fwd
-#include <beman/inside/detail/float_bits.hpp> // frexp/ldexp, abs_fraction, is_double_value
+#include <beman/inside/detail/float_bits.hpp> // abs_fraction, is_double_value
 #include <beman/inside/lift.hpp>              // lift, expected_like, unwrap_t
 #include <beman/inside/detail/overflow.hpp>   // add/sub/mul_overflow
 #include <beman/inside/detail/debug.hpp>      // errc, detail::raise, detail::constexpr_error
@@ -19,7 +19,6 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <numeric>
 #include <compare>
 #include <limits>
-#include <tuple>
 #include <type_traits>
 
 namespace beman::inside::detail {

@@ -50,7 +50,7 @@ struct multiplication {
             const auto prod = continuous_raw_of<raw_t<result>>(exact_of(lhs) * exact_of(rhs));
             if constexpr (needs_overflow_check<flags_of<P>>)
                 if (!prod) [[unlikely]]
-                    return report_or_unexpected<result>(action, policy, errc::overflow, "fraction overflow in mul");
+                    return report_or_unexpected<result>(action, policy, errc::overflow);
             return result::from_raw(*prod);
         } else if constexpr (rational_storage<result>) {
             static_assert(!wide_valued<L> && !wide_valued<R>,
@@ -58,7 +58,7 @@ struct multiplication {
             if constexpr (needs_overflow_check<flags_of<P>>) {
                 auto prod = as_rational(lhs) * as_rational(rhs);
                 if (!prod) [[unlikely]]
-                    return report_or_unexpected<result>(action, policy, errc::overflow, "rational overflow in mul");
+                    return report_or_unexpected<result>(action, policy, errc::overflow);
                 return result::from_raw(*prod);
             } else
                 return result::from_raw(rational::mul_unchecked(as_rational(lhs), as_rational(rhs)));

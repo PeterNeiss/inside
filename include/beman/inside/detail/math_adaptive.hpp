@@ -957,10 +957,6 @@ constexpr bool is_one(const wide_rational<K>& f) noexcept {
     return f.Num == f.Den;
 }
 template <std::size_t K>
-constexpr bool is_integer(const wide_rational<K>& f) noexcept {
-    return (f.Num % f.Den).is_zero();
-}
-template <std::size_t K>
 constexpr wide_rational<K> abs(const wide_rational<K>& f) noexcept {
     return {abs(f.Num), f.Den};
 }

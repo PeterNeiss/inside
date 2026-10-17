@@ -6,13 +6,8 @@
 BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/detail/debug.hpp>
-#include <beman/inside/lift.hpp>
 #include <beman/inside/grid.hpp>
 #include <beman/inside/policy_flag.hpp>
-
-#include <algorithm>
-#include <bit>
-#include <initializer_list>
 
 //---------------------------------------------------------------------------
 // introspection — an inside's template parameters as values (grid_of<B>,
@@ -43,8 +38,7 @@ template <typename B>
 struct inside_params;
 template <grid G, policy_flag P>
 struct inside_params<inside<G, P>> {
-    static constexpr grid        grid_v   = G;
-    static constexpr policy_flag policy_v = P;
+    static constexpr grid grid_v = G;
 };
 } // namespace detail
 
@@ -132,16 +126,9 @@ template <numeric N>
         return v;
 }
 
-// Canonical-zero test for a divisor. rational stores zero as {0, 1}, so
-// Numerator == 0 catches it regardless of representation; other types compare
-// against their own zero.
-template <typename T>
-[[nodiscard]] constexpr bool is_canonical_zero(const T& v) {
-    if constexpr (std::same_as<T, rational>)
-        return v.Numerator == 0;
-    else
-        return v == T{0};
-}
+// Zero test for a rational divisor: rational stores zero as {0, 1}, so
+// Numerator == 0 catches it.
+[[nodiscard]] constexpr bool is_canonical_zero(const rational& v) { return v.Numerator == 0; }
 
 // From the grid, not B::raw_type: the storage traits are read inside B's own
 // definition, where B is incomplete (MSVC rejects the member there).

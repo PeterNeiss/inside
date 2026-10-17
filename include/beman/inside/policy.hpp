@@ -130,7 +130,7 @@ template <policy_flag F = none>
 //---------------------------------------------------------------------------
 namespace detail {
 template <insidable Result, typename A, typename P>
-constexpr auto report_or_unexpected(A&& action, P&& policy, errc code, [[maybe_unused]] const char* what)
+constexpr auto report_or_unexpected(A&& action, P&& policy, errc code)
     -> std::conditional_t<overflow_action<A>, Result, std::expected<Result, errc>> {
     if constexpr (overflow_action<A>) {
         Result res;

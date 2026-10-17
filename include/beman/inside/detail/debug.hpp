@@ -31,7 +31,6 @@ BEMAN_INSIDE_WARNINGS_PUSH
 // that throws `beman::inside::inside_error` (hosted) or traps (freestanding / no
 // exceptions). `set_error_handler` lets a bare-metal target redirect failures
 // to a reset/log without depending on <system_error> or the C++ exception ABI.
-// `print_types` is a static_assert debug helper for template instantiation.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 //---------------------------------------------------------------------------
@@ -146,12 +145,6 @@ template <fixed_string Msg>
 [[noreturn]] BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE inline void constexpr_error() {
     raise(errc::overflow, Msg.Data);
 }
-
-// Debug helper: instantiating print_types<Ts...> fails and names Ts.
-template <typename... Ts>
-struct print_types {
-    static_assert(!sizeof...(Ts), "=== PRINT_TYPES ===");
-};
 } // namespace detail
 } // namespace beman::inside
 

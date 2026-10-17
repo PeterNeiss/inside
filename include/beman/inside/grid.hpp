@@ -15,7 +15,6 @@ BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <expected> // std::expected, std::unexpected
 
-#include <bit>
 #include <concepts> // std::convertible_to (grid corner ctors)
 
 namespace beman::inside {

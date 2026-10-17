@@ -416,11 +416,11 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
     // `fail` must stay well-formed even when return_t narrowed to plain
     // `result` (divisor excludes zero, no overflow); there every call to it is
     // removed by the guards below, so the final arm is dead (return-type only).
-    [[maybe_unused]] auto fail = [&]([[maybe_unused]] errc code, [[maybe_unused]] const char* what) -> return_t<A> {
+    [[maybe_unused]] auto fail = [&]([[maybe_unused]] errc code) -> return_t<A> {
         if constexpr (overflow_action<plain_t<A>>)
-            return report_or_unexpected<result>(action, policy, code, what); // -> result
+            return report_or_unexpected<result>(action, policy, code); // -> result
         else if constexpr (!divisor_excludes_zero<R> || may_overflow_nonzero)
-            return report_or_unexpected<result>(action, policy, code, what); // -> expected<result, errc>
+            return report_or_unexpected<result>(action, policy, code); // -> expected<result, errc>
         else
             return result{}; // unreachable: divisor excludes zero, op cannot fail
     };
@@ -445,7 +445,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         const W jb = value_index<W>(rhs);
         if constexpr (!zero_unchecked)
             if (jb == W{0})
-                return fail(errc::division_by_zero, "division by zero in div");
+                return fail(errc::division_by_zero);
         const W ja = value_index<W>(lhs) * static_cast<W>(K);
         if constexpr (std::is_integral_v<W>)
             return from_value_index<result>(div_rounded(ja, jb, rmode));
@@ -456,7 +456,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         const T rhs_val = static_cast<T>(to_value(rhs));
         if constexpr (!zero_unchecked)
             if (rhs_val == 0)
-                return fail(errc::division_by_zero, "division by zero in div");
+                return fail(errc::division_by_zero);
         const T lhs_val = static_cast<T>(to_value(lhs));
         return native_quotient<result>(lhs_val, rhs_val, div_rounded(lhs_val, rhs_val, rmode));
     } else if constexpr (wide_div_integer) {
@@ -467,7 +467,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         const I b               = value_in_units<I, grid_rational{1}>(rhs); // integer values: no division
         if constexpr (!zero_unchecked)
             if (b.is_zero())
-                return fail(errc::division_by_zero, "division by zero in div");
+                return fail(errc::division_by_zero);
         const I a = value_in_units<I, grid_rational{1}>(lhs);
         return exact_result<result>(wide_rational<K>{rounded_div<rmode>(a, b), I{1}});
     } else if constexpr (point_divisor) {
@@ -480,19 +480,19 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         const auto d = exact_of(rhs);
         if constexpr (!zero_unchecked)
             if (d.Num.is_zero())
-                return fail(errc::division_by_zero, "division by zero in div");
+                return fail(errc::division_by_zero);
         if constexpr (fraction_storage<result>) {
             // Grids past 64 bits: the exact quotient in the result's wide fraction.
             const auto q = continuous_raw_of<raw_t<result>>(exact_of(lhs) / d);
             if constexpr (!bound_fits)
                 if (!q) [[unlikely]]
-                    return fail(errc::overflow, "quotient past its fraction raw in div");
+                    return fail(errc::overflow);
             return result::from_raw(*q);
         } else {
             const auto q = try_rational(exact_of(lhs) / d);
             if constexpr (!bound_fits)
                 if (!q) [[unlikely]]
-                    return fail(errc::overflow, "rational overflow in div");
+                    return fail(errc::overflow);
             return result::from_raw(*q);
         }
     } else if constexpr (int_quotient_fits) {
@@ -505,23 +505,23 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         const imax d = value_index<imax>(rhs) * b;
         if constexpr (!zero_unchecked)
             if (d == 0)
-                return fail(errc::division_by_zero, "division by zero in div");
+                return fail(errc::division_by_zero);
         const imax n = value_index<imax>(lhs) * a;
         return result::from_raw(d < 0 ? rational{-n, -d} : rational{n, d});
     } else if constexpr (needs_overflow_check<G> && !fits_rational && !bound_fits) {
         rational rhs_r = rhs;
         if constexpr (!zero_unchecked)
             if (rhs_r.Numerator == 0)
-                return fail(errc::division_by_zero, "division by zero in div");
+                return fail(errc::division_by_zero);
         auto q = as_rational(lhs) / rhs_r;
         if (!q) [[unlikely]]
-            return fail(errc::overflow, "rational overflow in div");
+            return fail(errc::overflow);
         return result::from_raw(*q);
     } else {
         rational rhs_r = rhs;
         if constexpr (!zero_unchecked)
             if (rhs_r.Numerator == 0)
-                return fail(errc::division_by_zero, "division by zero in div");
+                return fail(errc::division_by_zero);
         return result::from_raw(rational::div_unchecked(as_rational(lhs), rhs_r));
     }
 }
@@ -576,7 +576,7 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy, A&& actio
         const I b                     = value_in_units<I, grid_rational{1}>(rhs); // integer values: no division
         if constexpr (!zero_unchecked)
             if (b.is_zero())
-                return report_or_unexpected<result>(action, policy, errc::division_by_zero, "division by zero in mod");
+                return report_or_unexpected<result>(action, policy, errc::division_by_zero);
         const I a = value_in_units<I, grid_rational{1}>(lhs);
         return exact_result<result>(wide_rational<exact_limbs<L, R, result>>{a - rounded_div<rmode>(a, b) * b, I{1}});
     } else {
@@ -585,7 +585,7 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy, A&& actio
         constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
         if constexpr (!zero_unchecked)
             if (rhs_val == 0)
-                return report_or_unexpected<result>(action, policy, errc::division_by_zero, "division by zero in mod");
+                return report_or_unexpected<result>(action, policy, errc::division_by_zero);
         result res;
         // Remainder consistent with the rounded quotient (trunc → C++ `%`).
         const T lhs_val = static_cast<T>(to_value(lhs));

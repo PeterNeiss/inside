@@ -8,11 +8,6 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <beman/inside/detail/rational.hpp>
 #include <beman/inside/detail/wide_int.hpp>
 
-#include <compare>
-#include <cstddef>
-#include <limits>
-#include <vector>
-
 //---------------------------------------------------------------------------
 // big_int / big_rational — grid numbers of any size (C++26 static reflection).
 //
@@ -31,9 +26,14 @@ BEMAN_INSIDE_WARNINGS_PUSH
 // Arithmetic on large values runs on transient std::vector<umax> magnitudes
 // with the wide_int limb kernels, during constant evaluation only.
 //---------------------------------------------------------------------------
-// Included by grid_rational.hpp, which detects BEMAN_INSIDE_BIG_GRIDS.
-#if defined(BEMAN_INSIDE_BIG_GRIDS) && BEMAN_INSIDE_BIG_GRIDS
+// Empty without big grids (config.hpp sets BEMAN_INSIDE_BIG_GRIDS), so a C++23
+// build includes no <vector> from here.
+#if BEMAN_INSIDE_BIG_GRIDS
+    #include <compare>
+    #include <cstddef>
+    #include <limits>
     #include <meta>
+    #include <vector>
 
 namespace beman::inside::detail {
 namespace big {

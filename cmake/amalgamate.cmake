@@ -266,7 +266,7 @@ set(banner
 //
 //   *** GENERATED FILE — DO NOT EDIT BY HAND ***
 //
-// Regenerate with:  cmake --build <build-dir> --target amalgamate
+// Regenerate with:  cmake --build <build-dir> --target beman.inside.amalgamate
 // Source of truth:  include/beman/inside/*.hpp, include/beman/inside/detail/*.hpp
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_SINGLE_HEADER_HPP
@@ -297,7 +297,7 @@ if(DEFINED BEMAN_INSIDE_AMALGAMATE_COMPARE)
             FATAL_ERROR
             "Single header is out of date:\n"
             "  ${BEMAN_INSIDE_AMALGAMATE_COMPARE}\n"
-            "differs from a freshly generated amalgamation. Run the 'amalgamate' "
+            "differs from a freshly generated amalgamation. Run the 'beman.inside.amalgamate' "
             "target and commit the result."
         )
     endif()

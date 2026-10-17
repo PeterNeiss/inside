@@ -15,7 +15,8 @@
 //                       _HAS_STD_FORMAT
 //   Attributes          BEMAN_INSIDE_COLD, _NOINLINE, _ALWAYS_INLINE,
 //                       _NO_UNIQUE_ADDRESS, BEMAN_INSIDE_TRAP()
-//   Deleted overloads   BEMAN_INSIDE_DELETE("reason"), _DELETE_BEGIN / _END
+//   Deleted overloads   BEMAN_INSIDE_DELETE("reason"), _HAS_DELETE_REASON,
+//                       _DELETE_BEGIN / _END
 //   Floating point      BEMAN_INSIDE_FABS(x), _NEARBYINT(x), _INF(),
 //                       _ASSOC_BARRIER(x)
 //   Warnings            BEMAN_INSIDE_WARNINGS_PUSH / _POP
@@ -175,8 +176,10 @@
 //---------------------------------------------------------------------------
 #if defined(__cpp_deleted_function) || (defined(__clang__) && __clang_major__ >= 19) || \
     (defined(__GNUC__) && !defined(__clang__) && __GNUC__ >= 15)
+    #define BEMAN_INSIDE_HAS_DELETE_REASON 1
     #define BEMAN_INSIDE_DELETE(reason) delete (reason)
 #else
+    #define BEMAN_INSIDE_HAS_DELETE_REASON 0
     #define BEMAN_INSIDE_DELETE(reason) delete
 #endif
 #if (defined(__GNUC__) || defined(__clang__)) && !defined(__cpp_deleted_function)

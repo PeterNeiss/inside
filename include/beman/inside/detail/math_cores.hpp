@@ -127,7 +127,7 @@ constexpr fx<K> rescale(const approx<K>& a, int A) noexcept {
 
 // asin x for |x| ≤ 1/2 (exact): atan(x/√(1−x²)), the square root as
 // x·(1/√(1−x²)) with 1 − x² ≥ 3/4 in fixed point.
-template <int S, std::size_t K, int Bits, std::size_t E>
+template <int S, std::size_t K, std::size_t E>
 constexpr fx<K> asin_small(const wide_rational<E>& x) noexcept {
     using I    = wide_sint<K>;
     const I xq = to_q<S, K>(x);                  // within ½
@@ -495,7 +495,7 @@ struct asin_core {
         constexpr std::size_t  K = limbs_of<I>;
         const wide_rational<E> half{wide_sint<E>{1}, wide_sint<E>{2}};
         if (!(half < abs(X))) {
-            const fx<K> a = asin_small<S, K, Bits>(X);
+            const fx<K> a = asin_small<S, K>(X);
             return approx<K>{a.Value, S, a.Error};
         }
         using F         = wide_rational<E + 1>;
@@ -522,7 +522,7 @@ struct acos_core {
         constexpr std::size_t  K = limbs_of<I>;
         const wide_rational<E> half{wide_sint<E>{1}, wide_sint<E>{2}};
         if (!(half < abs(X))) {
-            const fx<K> a = asin_small<S, K, Bits>(X);
+            const fx<K> a = asin_small<S, K>(X);
             return approx<K>{static_cast<I>(pi_q<S - 1>) - a.Value, S, a.Error + 1};
         }
         using F         = wide_rational<E + 1>;

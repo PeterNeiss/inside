@@ -51,17 +51,9 @@ inline constexpr imax index_cmp_bias = [] {
 namespace detail {
 // Inside values are finite and exact, so they are always ordered: <=> of two
 // insides, or of an inside and an integer, is a strong_ordering whatever the
-// storage; against a floating
-// scalar it is a partial_ordering (NaN is unordered).
-inline constexpr auto three_way = [](const auto& a, const auto& b) -> std::strong_ordering {
-    const auto c = a <=> b;
-    if constexpr (std::is_same_v<std::remove_const_t<decltype(c)>, std::partial_ordering>)
-        return c < 0   ? std::strong_ordering::less
-               : c > 0 ? std::strong_ordering::greater
-                       : std::strong_ordering::equal;
-    else
-        return c;
-};
+// storage; against a floating scalar it is a partial_ordering (NaN is
+// unordered), three_way_partial.
+inline constexpr auto three_way         = [](const auto& a, const auto& b) -> std::strong_ordering { return a <=> b; };
 inline constexpr auto three_way_partial = [](const auto& a, const auto& b) -> std::partial_ordering {
     return a <=> b;
 };
