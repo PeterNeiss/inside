@@ -45,6 +45,11 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <type_traits>
 #include <utility>
 
+// The diagnostic of a π conversion asked to be exact (rescale, in()).
+#define BEMAN_INSIDE_UNITS_WHY_PI                                                                  \
+    "units: this conversion multiplies by a power of pi, which has no exact grid - round it with " \
+    "value_cast<unit, Rep>(q) from <beman/inside/units_math.hpp>, Rep declared with a rounding mode"
+
 namespace beman::inside::units {
 using beman::inside::detail::grid_rational;
 
@@ -1013,10 +1018,7 @@ inline constexpr bool exact_factor_v = M.Pi == 0;
 
 template <magnitude M, insidable V>
 constexpr auto rescale(const V& v) {
-    static_assert(
-        exact_factor_v<M>,
-        "units: this conversion multiplies by a power of pi, which has no exact grid - round it "
-        "with value_cast<unit, Rep>(q) from <beman/inside/units_math.hpp>, Rep declared with a rounding mode");
+    static_assert(exact_factor_v<M>, BEMAN_INSIDE_UNITS_WHY_PI);
     if constexpr (M.is_one())
         return v;
     else {
@@ -1164,10 +1166,7 @@ using number_t = typename number_type<R, V>::type;
 template <reference From, reference To, insidable V>
 using rescaled_t = decltype(rescale<conversion_factor<From.U, To.U>>(std::declval<const V&>()));
 
-template <class T>
-inline constexpr bool is_expected_v = false;
-template <class T, class E>
-inline constexpr bool is_expected_v<std::expected<T, E>> = true;
+using beman::inside::detail::is_expected_v;
 
 // A quantity of reference R on a number that inside's arithmetic returned: an
 // inside, or an expected of one (division by a grid holding 0).
@@ -1246,14 +1245,10 @@ class quantity {
     void in(units::unit_t<U>) const = BEMAN_INSIDE_DELETE("units: in() - the unit has another dimension");
     template <units::unit U>
         requires(detail::in_error_of<R.U, U>() == detail::in_error::pi)
-    void in() const = BEMAN_INSIDE_DELETE(
-        "units: this conversion multiplies by a power of pi, which has no exact grid - round it with "
-        "value_cast<unit, Rep>(q) from <beman/inside/units_math.hpp>, Rep declared with a rounding mode");
+    void in() const = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_UNITS_WHY_PI);
     template <units::unit U>
         requires(detail::in_error_of<R.U, U>() == detail::in_error::pi)
-    void in(units::unit_t<U>) const = BEMAN_INSIDE_DELETE(
-        "units: this conversion multiplies by a power of pi, which has no exact grid - round it with "
-        "value_cast<unit, Rep>(q) from <beman/inside/units_math.hpp>, Rep declared with a rounding mode");
+    void in(units::unit_t<U>) const = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_UNITS_WHY_PI);
     BEMAN_INSIDE_DELETE_END
 
     // A dimensionless quantity is a number: its value in unit one (km/m is
@@ -1477,6 +1472,7 @@ BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator-)
 BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator%)
 BEMAN_INSIDE_UNITS_SUM_DELETED(bool, operator==)
 BEMAN_INSIDE_UNITS_SUM_DELETED(std::strong_ordering, operator<=>)
+#undef BEMAN_INSIDE_UNITS_SUM_DELETED
 BEMAN_INSIDE_DELETE_END
 
 template <reference A, class VA, reference B, class VB>
@@ -1540,7 +1536,7 @@ void operator/(const quantity<A, VA>&,
 template <reference A, class VA, class N>
     requires std::is_arithmetic_v<N>
 void operator/(N, const quantity<A, VA>&) =
-    BEMAN_INSIDE_DELETE("units: a raw number has no grid - divide just<2>, not 2");
+    BEMAN_INSIDE_DELETE("units: a raw number has no grid - divide by just<2>, not 2");
 BEMAN_INSIDE_DELETE_END
 
 // pow<N>(q) — q·q·…·q (N ≥ 1): exact, the grid of each product.
@@ -2362,9 +2358,10 @@ BEMAN_INSIDE_UNIT(international,
 #undef BEMAN_INSIDE_UNIT
 #undef BEMAN_INSIDE_ORIGIN
 #undef BEMAN_INSIDE_SPEC
-#undef BEMAN_INSIDE_UNITS_SUM_DELETED
 
 } // namespace beman::inside::units
+
+#undef BEMAN_INSIDE_UNITS_WHY_PI
 
 BEMAN_INSIDE_WARNINGS_POP
 

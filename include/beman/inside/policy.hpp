@@ -307,18 +307,9 @@ struct policy_ref {
         return finalize_arith(rat_op(rational{Ref}, rhs), msg);
     }
 
-    // The value an op's result holds (an expected's value type).
-    template <typename T>
-    struct result_value {
-        using type = T;
-    };
-    template <typename T>
-    struct result_value<std::expected<T, errc>> {
-        using type = T;
-    };
+    // The value an op's result holds (an expected's value type) assigns back.
     template <typename R>
-    static constexpr bool stores_back =
-        inside_assignable<B, typename result_value<std::remove_cvref_t<R>>::type, flags_of<B> | flags_of<P>>;
+    static constexpr bool stores_back = inside_assignable<B, detail::unwrap_t<R>, flags_of<B> | flags_of<P>>;
 
   public:
     // Constrained on the free op they call and on storing its result back

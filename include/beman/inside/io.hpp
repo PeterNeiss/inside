@@ -50,13 +50,8 @@ std::string wide_to_decimal(wide_int<N, S> v) {
 // min_digits decimals), else "num/den".
 template <std::size_t K>
 std::string fraction_to_string(bool neg, wide_uint<K> num, wide_uint<K> den, int min_digits = 0) {
-    using U = wide_uint<K>;
-    U g     = den;
-    for (U x = num; !x.is_zero();) {
-        const U t = g % x;
-        g         = x;
-        x         = t;
-    }
+    using U   = wide_uint<K>;
+    const U g = beman::inside::detail::wide_gcd(den, num);
     num /= g;
     den /= g;
     std::string str  = neg && !num.is_zero() ? "-" : "";

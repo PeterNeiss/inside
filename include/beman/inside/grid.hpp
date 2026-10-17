@@ -133,13 +133,8 @@ struct grid {
         check_short_binary(lower);
         check_short_binary(upper);
         const detail::grid_rational lo = to_number(lower), hi = to_number(upper);
-        return detail::lift([](const detail::grid_rational& a,
-                               const detail::grid_rational& b) { return detail::grid_gcd(a, b); },
-                            detail::lift([](const detail::grid_rational& a,
-                                            const detail::grid_rational& b) { return detail::grid_gcd(a, b); },
-                                         detail::grid_rational{1},
-                                         lo),
-                            hi)
+        return detail::lift(
+                   detail::grid_gcd_of_two, detail::lift(detail::grid_gcd_of_two, detail::grid_rational{1}, lo), hi)
             .value_or(detail::grid_rational{0});
     }
 
@@ -634,7 +629,7 @@ constexpr std::expected<grid_rational, errc> product_notch(const grid& a, const 
     const bool          ap = a.Interval.Lower == a.Interval.Upper, bp = b.Interval.Lower == b.Interval.Upper;
     const grid_rational an  = (ap && !bp) ? abs(a.Interval.Lower) : a.Notch;
     const grid_rational bn  = (bp && !ap) ? abs(b.Interval.Lower) : b.Notch;
-    auto                gcd = [](const grid_rational& x, const grid_rational& y) { return grid_gcd(x, y); };
+    constexpr auto      gcd = grid_gcd_of_two;
     auto                mul = [](const grid_rational& x, const grid_rational& y) {
 #if BEMAN_INSIDE_BIG_GRIDS
         return x * y;
@@ -825,8 +820,8 @@ template <std::same_as<grid> G>
                                           : a < b                                              ? b
                                                                                                : a);
     }
-    auto gcd = [](const detail::grid_rational& x, const detail::grid_rational& y) { return detail::grid_gcd(x, y); };
-    std::expected<detail::grid_rational, errc> n = detail::lift(gcd, lhs.Notch, rhs.Notch);
+    constexpr auto                             gcd = detail::grid_gcd_of_two;
+    std::expected<detail::grid_rational, errc> n   = detail::lift(gcd, lhs.Notch, rhs.Notch);
     if (n && (*n == 0 || !detail::grid_same_lattice(lhs.Interval.Lower, rhs.Interval.Lower, *n)))
         n = detail::lift(gcd, n, rhs.Interval.Lower - lhs.Interval.Lower);
     return detail::lift([iv](detail::grid_rational g) { return grid{iv, g}; }, n);

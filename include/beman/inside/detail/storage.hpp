@@ -393,6 +393,12 @@ constexpr raw_t<L> raw_from_offset(W offset) noexcept {
     return raw_cast<L>(static_cast<umax>(offset) + static_cast<umax>(raw_lo<L>)); // raw_lo: 0 for an index raw
 }
 
+// Raw → offset (slot 0 at Lower), raw_from_offset's inverse, in umax.
+template <insidable L, std::integral R>
+constexpr umax raw_offset(R raw) noexcept {
+    return static_cast<umax>(static_cast<imax>(raw)) - static_cast<umax>(raw_lo<L>);
+}
+
 // The raw of L's Lower (low) or Upper endpoint: the exact constant for a
 // rational raw, slot 0 or max_index_of for an integer one.
 template <insidable L>

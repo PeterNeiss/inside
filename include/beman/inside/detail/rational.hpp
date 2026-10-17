@@ -22,9 +22,8 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <type_traits>
 
 namespace beman::inside::detail {
-[[nodiscard]] constexpr umax abs_den(imax d) noexcept {
-    return (d >= 0) ? static_cast<umax>(d) : umax{0} - static_cast<umax>(d);
-}
+// |d| of a signed denominator (any imax, INT64_MIN too).
+[[nodiscard]] constexpr umax abs_den(imax d) noexcept { return safe_abs(d); }
 
 //---------------------------------------------------------------------------
 // trim
@@ -445,12 +444,7 @@ BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::expected<rational, errc> 
     W          den = W{ad} * W{bd / g};
     if (num.is_zero())
         return rational{0};
-    W x = abs(num), y = den; // gcd(|num|, den)
-    while (!y.is_zero()) {
-        const W t = x % y;
-        x         = y;
-        y         = t;
-    }
+    const W x      = wide_gcd(abs(num), den);
     num            = num / x;
     den            = den / x;
     const bool neg = num.negative();

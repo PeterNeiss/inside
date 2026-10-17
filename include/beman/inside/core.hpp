@@ -282,7 +282,7 @@ struct inside {
     //                       in-range sites (array indexing). FP shares the gate.
     //   to<T>(b)/as<T>(b) — free-function forms, for generic code.
     constexpr operator imax() const
-        requires((detail::integer_notch<G> || ((P & snap) != 0 && detail::rational_readable<inside>)) &&
+        requires((detail::integer_notch<G> || (has_flag(P, snap) && detail::rational_readable<inside>)) &&
                  G.Interval.Lower >= detail::rational{std::numeric_limits<imax>::min()} &&
                  G.Interval.Upper <= detail::rational{std::numeric_limits<imax>::max()})
     {
@@ -293,7 +293,7 @@ struct inside {
     }
 
     constexpr explicit operator double() const
-        requires((P & (round_floor | round_ceil | round_nearest | round_half_even | snap)) != 0)
+        requires(has_flag(P, snap))
     {
         return detail::as_double(*this);
     }
@@ -376,9 +376,7 @@ struct inside {
     // double's policy gate, so a strict inside rejects `b.as<double>()` too.
     template <typename T>
     [[nodiscard]] constexpr T as() const
-        requires(std::integral<T> || std::floating_point<T>) &&
-                (!std::floating_point<T> ||
-                 (P & (round_floor | round_ceil | round_nearest | round_half_even | snap)) != 0)
+        requires(std::integral<T> || std::floating_point<T>) && (!std::floating_point<T> || has_flag(P, snap))
     {
         return to<T>().value();
     }
@@ -592,16 +590,8 @@ struct inside {
 
     // A compound op's constraint: its binary op's result (an expected's
     // value) assigns to this type, so `requires { x op= y; }` is honest.
-    template <typename T>
-    struct value_of {
-        using type = T;
-    };
-    template <typename T>
-    struct value_of<std::expected<T, errc>> {
-        using type = T;
-    };
     template <typename Result>
-    static constexpr bool compound_assignable = inside_assignable<inside, typename value_of<Result>::type, P>;
+    static constexpr bool compound_assignable = inside_assignable<inside, detail::unwrap_t<Result>, P>;
 
   public:
     template <insidable R>

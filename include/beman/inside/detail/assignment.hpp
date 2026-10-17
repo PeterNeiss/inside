@@ -450,9 +450,7 @@ struct assignment<L, R> {
             // value raws.
             auto store_slot = [&](auto k) { lhs = L::from_raw(raw_from_offset<L>(k)); };
 
-            constexpr bool has_round_flag = has_policy<L, P, round_nearest> || has_policy<L, P, round_floor> ||
-                                            has_policy<L, P, round_ceil> || has_policy<L, P, round_half_even> ||
-                                            has_policy<L, P, snap>;
+            constexpr bool has_round_flag = has_policy<L, P, snap>; // every round_* flag contains snap
 
             // A floating source on an anchored grid with a power-of-two notch
             // whose values double holds: v/Notch is exact, so round it in
@@ -994,11 +992,7 @@ struct assignment<L, R> {
     static constexpr L& assign(L& lhs, const R& rhs, P&& policy, A&& action = {}) {
         // A wide raw on either side: the exact wide path.
         if constexpr (wide_valued<L> || wide_valued<R>) {
-            static_assert(has_policy<L, P, wrap> || has_policy<L, P, clamp> ||
-                              not excludes(interval_of<L>, interval_of<R>),
-                          "rhs interval lies entirely outside lhs interval and the policy cannot bring it into range");
-            static_assert(notches_compatible<L, R> || has_policy<L, P, snap>,
-                          "incompatible notches: use with_snap() or policy<snap>() to allow rounding");
+            static_checks<P>();
             if constexpr (same_notch_raws<L, R>) {
                 // Equal notches: the raw maps by a constant shift. Out of range
                 // takes the exact path's policy cascade below.
@@ -1015,15 +1009,20 @@ struct assignment<L, R> {
     }
 
   private:
-    template <typename P, typename A>
-    static constexpr L& assign_builtin(L& lhs, const R& rhs, P&& policy, A&& action) {
-        // wrap/clamp bring any value into range, so a disjoint rhs interval is fine
-        // for them (matches the integral-rhs path); only strict policies reject it.
+    // wrap/clamp bring any value into range, so a disjoint rhs interval is fine
+    // for them (matches the integral-rhs path); only strict policies reject it.
+    template <typename P>
+    static constexpr void static_checks() {
         static_assert(has_policy<L, P, wrap> || has_policy<L, P, clamp> ||
                           not excludes(interval_of<L>, interval_of<R>),
                       "rhs interval lies entirely outside lhs interval and the policy cannot bring it into range");
         static_assert(notches_compatible<L, R> || has_policy<L, P, snap>,
                       "incompatible notches: use with_snap() or policy<snap>() to allow rounding");
+    }
+
+    template <typename P, typename A>
+    static constexpr L& assign_builtin(L& lhs, const R& rhs, P&& policy, A&& action) {
+        static_checks<P>();
 
         if constexpr (not includes(interval_of<L>, interval_of<R>)) {
             if constexpr (needs_runtime_range_check<L, plain_t<P>, plain_t<A>>) {

@@ -177,14 +177,10 @@ constexpr wide_rational<K> reduced(const wide_rational<K>& f) noexcept {
         const I n{an / g};
         return {f.Num.negative() ? -n : n, I{bn / g}};
     }
-    while (!b.is_zero()) {
-        const I t = a % b;
-        a         = b;
-        b         = t;
-    }
-    if (a == I{1})
+    const I g = wide_gcd(a, b);
+    if (g == I{1})
         return f;
-    return {f.Num / a, f.Den / a};
+    return {f.Num / g, f.Den / g};
 }
 
 // x rounded by M onto the fractions with denominator at most D (D ≥ 1):

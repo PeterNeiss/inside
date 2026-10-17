@@ -542,6 +542,17 @@ concept wide_integer = is_wide_int_v<std::remove_cvref_t<T>>;
 template <typename T>
 concept raw_integer = std::integral<T> || wide_integer<T>;
 
+// gcd of two non-negative wide integers (Euclid; 0 when both are).
+template <wide_integer I>
+constexpr I wide_gcd(I a, I b) noexcept {
+    while (!b.is_zero()) {
+        const I t = a % b;
+        a         = b;
+        b         = t;
+    }
+    return a;
+}
+
 //---------------------------------------------------------------------------
 // wide_rational — an exact value as a fraction of K-limb integers: the exact
 // paths' intermediate (wide_value.hpp), and, reduced, the raw of a continuous
