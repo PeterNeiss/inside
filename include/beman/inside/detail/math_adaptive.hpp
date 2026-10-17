@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_DETAIL_MATH_ADAPTIVE_HPP
 #define BEMAN_INSIDE_DETAIL_MATH_ADAPTIVE_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/inside.hpp>
 
 #include <array>
@@ -822,7 +825,7 @@ constexpr umax icbrt64(umax t) noexcept {
     return y;
 }
 
-#if defined(__SIZEOF_INT128__)
+#if BEMAN_INSIDE_HAS_INT128
 // ⌊√t⌋ for two limbs: Newton from above on 128-bit words, seeded from the
 // top 62 bits; each quotient t/x ≤ √t fits one limb.
 constexpr umax isqrt128(unsigned __int128 t) noexcept {
@@ -853,7 +856,7 @@ constexpr wide_sint<K> isqrt(const wide_sint<K>& n) noexcept {
     const int bw = bit_width_of(n);
     if (bw <= 64)
         return I{isqrt64(static_cast<umax>(n))};
-#if !defined(__SIZEOF_INT128__)
+#if !BEMAN_INSIDE_HAS_INT128
     // (No 128-bit integer: the root of the top 61 or 62 bits seeds Newton
     // from above with about 30 correct bits.)
     const int sh = (bw - 62 + 1) & ~1;
@@ -884,7 +887,7 @@ constexpr wide_sint<K> isqrt(const wide_sint<K>& n) noexcept {
 #endif
 }
 
-#if defined(__SIZEOF_INT128__)
+#if BEMAN_INSIDE_HAS_INT128
 // ⌊∛t⌋ for two limbs: Newton from above on 128-bit words, seeded from the
 // top 63 bits.
 constexpr umax icbrt128(unsigned __int128 t) noexcept {
@@ -914,7 +917,7 @@ constexpr wide_sint<K> icbrt(const wide_sint<K>& n) noexcept {
     const int bw = bit_width_of(n);
     if (bw <= 64)
         return I{icbrt64(static_cast<umax>(n))};
-#if !defined(__SIZEOF_INT128__)
+#if !BEMAN_INSIDE_HAS_INT128
     // (No 128-bit integer: the root of the top 61 to 63 bits seeds Newton
     // from above with about 20 correct bits.)
     const int sh = (bw - 63 + 2) / 3 * 3;
@@ -1281,5 +1284,7 @@ constexpr approx<K> exp_fixed(const wide_sint<K>& t, umax dt, int KMax) noexcept
     return {e.Value, S - kk, e.Error + 2 * (dt + ak + 1)};
 }
 } // namespace beman::inside::math::detail::ax
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_MATH_ADAPTIVE_HPP

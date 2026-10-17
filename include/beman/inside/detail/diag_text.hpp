@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_DETAIL_DIAG_TEXT_HPP
 #define BEMAN_INSIDE_DETAIL_DIAG_TEXT_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/detail/grid_rational.hpp>
 
 #include <cstddef>
@@ -65,11 +68,13 @@ struct diag_text {
 };
 } // namespace beman::inside::detail
 
-#if defined(__cpp_static_assert) && __cpp_static_assert >= 202306L && __cplusplus > 202302L
+#if BEMAN_INSIDE_HAS_VALUED_DIAG // (config.hpp)
     #define BEMAN_INSIDE_DIAG(cond, text, ...) \
         static_assert(cond, (::beman::inside::detail::diag_text{} << (text)__VA_ARGS__))
 #else
     #define BEMAN_INSIDE_DIAG(cond, text, ...) static_assert(cond, text)
 #endif
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_DIAG_TEXT_HPP

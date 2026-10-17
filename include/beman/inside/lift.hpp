@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_LIFT_HPP
 #define BEMAN_INSIDE_LIFT_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/detail/debug.hpp> // errc
 
 #include <concepts>
@@ -89,5 +92,7 @@ template <class Op, class... Args>
 } // namespace detail
 
 } // namespace beman::inside
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_LIFT_HPP

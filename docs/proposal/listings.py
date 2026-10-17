@@ -20,7 +20,7 @@ BLOCK = re.compile(r"(<!-- listing: (\w+) -->\n```cpp\n)(.*?)(```)", re.S)
 
 
 def region(name):
-    text = (HERE / "examples" / f"{name}.cpp").read_text()
+    text = (HERE / "examples" / f"{name}.cpp").read_text(encoding="utf-8")
     match = re.search(r"// \[listing\]\n(.*?)\n[ \t]*// \[/listing\]", text, re.S)
     if not match:
         sys.exit(f"examples/{name}.cpp has no // [listing] region")
@@ -28,10 +28,10 @@ def region(name):
 
 
 def main(mode):
-    paper = PAPER.read_text()
+    paper = PAPER.read_text(encoding="utf-8")
     stale = [m.group(2) for m in BLOCK.finditer(paper) if m.group(3) != region(m.group(2))]
     if mode == "update":
-        PAPER.write_text(BLOCK.sub(lambda m: m.group(1) + region(m.group(2)) + m.group(4), paper))
+        PAPER.write_text(BLOCK.sub(lambda m: m.group(1) + region(m.group(2)) + m.group(4), paper), encoding="utf-8")
         return 0
     for name in stale:
         print(f"inside.md: listing '{name}' differs from examples/{name}.cpp")

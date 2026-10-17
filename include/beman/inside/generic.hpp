@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_GENERIC_HPP
 #define BEMAN_INSIDE_GENERIC_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/detail/introspection.hpp> // grid_of, flags_of, insidable, numeric
 #include <beman/inside/detail/storage.hpp>       // storage concepts, raw/value plumbing
 
@@ -81,5 +84,7 @@ struct inside_assignable_why {
 template <typename Dst, typename Src, policy_flag P = flags_of<Dst>>
 inline constexpr bool explain_assignable = inside_assignable_why<Dst, std::remove_cvref_t<Src>, P>::value;
 } // namespace beman::inside
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_GENERIC_HPP

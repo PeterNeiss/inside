@@ -2,10 +2,12 @@
 #ifndef BEMAN_INSIDE_ARITHMETIC_HPP
 #define BEMAN_INSIDE_ARITHMETIC_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/detail/compare.hpp> // the inside type and its comparisons
 #include <beman/inside/casts.hpp>
 #include <beman/inside/detail/rep.hpp>
-#include <beman/inside/detail/delete_reason.hpp>
 
 #include <algorithm>
 #include <ranges>
@@ -105,7 +107,7 @@ struct divmod_op {
 
 // A deleted overload takes each op's failing case: `requires { a + b; }` is
 // then false, and an integer inside cannot fall back on its imax conversion
-// and the built-in operator (detail/delete_reason.hpp).
+// and the built-in operator (BEMAN_INSIDE_DELETE, detail/config.hpp).
 
 #define BEMAN_INSIDE_WHY_add                                                                                     \
     "addition: the result grid exceeds the 64-bit grid numbers (coarsen the operand grids, or build with C++26 " \
@@ -358,15 +360,15 @@ template <insidable Target, std::ranges::input_range Rng>
         using W = detail::wide_sint<K>;
         const detail::wide_rational<K> v{static_cast<W>(total) * static_cast<W>(detail::wide_numerator(U)),
                                          static_cast<W>(detail::wide_denominator(U))};
-        no_action                      none;
-        detail::assign_exact<detail::rational>(out, v, policy, none);
+        no_action                      no_op;
+        detail::assign_exact<detail::rational>(out, v, policy, no_op);
     } else {
         detail::rational total{0};
         for (const auto& b : r) {
             const auto s = total + detail::as_rational(b);
             if (!s) [[unlikely]] {
-                no_action none;
-                detail::report_failure(out, policy, none, s.error());
+                no_action no_op;
+                detail::report_failure(out, policy, no_op, s.error());
                 return out;
             }
             total = *s;
@@ -444,7 +446,7 @@ template <insidable Lhs, insidable Rhs>
 // The exact average, on the refined sum grid.
 template <insidable Lhs, insidable Rhs>
 [[nodiscard]] constexpr auto midpoint(Lhs a, Rhs b) {
-    return (a + b) * just<1>.per<2>;
+    return (a + b) * just<1, 2>;
 }
 
 //---------------------------------------------------------------------------
@@ -529,5 +531,7 @@ BEMAN_INSIDE_NO_SCALAR(%)
 template <beman::inside::grid G1, beman::inside::policy_flag P1, beman::inside::grid G2, beman::inside::policy_flag P2>
 struct std::common_type<beman::inside::inside<G1, P1>, beman::inside::inside<G2, P2>>
     : beman::inside::detail::common_inside<beman::inside::inside<G1, P1>, beman::inside::inside<G2, P2>> {};
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_ARITHMETIC_HPP

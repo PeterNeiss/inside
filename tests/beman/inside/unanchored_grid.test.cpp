@@ -466,7 +466,7 @@ TEST(UnanchoredGrid, range_limits_random) {
     EXPECT_EQ(i, 2);
 
     std::mt19937_64 rng{42};
-    for (int i = 0; i < 200; ++i) {
+    for (int k = 0; k < 200; ++k) {
         const rational v = static_cast<rational>(uniform<inside<kTenthOff>>(rng));
         EXPECT_TRUE(inside<kTenthOff>::try_make(v).has_value()) << to_string(v);
     }

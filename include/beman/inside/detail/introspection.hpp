@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_DETAIL_INTROSPECTION_HPP
 #define BEMAN_INSIDE_DETAIL_INTROSPECTION_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/detail/debug.hpp>
 #include <beman/inside/lift.hpp>
 #include <beman/inside/grid.hpp>
@@ -140,9 +143,13 @@ template <typename T>
         return v == T{0};
 }
 
+// From the grid, not B::raw_type: the storage traits are read inside B's own
+// definition, where B is incomplete (MSVC rejects the member there).
 template <insidable B>
-using raw_t = typename B::raw_type;
+using raw_t = raw_for_t<grid_of<B>>;
 } // namespace detail
 } // namespace beman::inside
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_INTROSPECTION_HPP

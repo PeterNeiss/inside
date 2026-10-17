@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_POLICY_HPP
 #define BEMAN_INSIDE_POLICY_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/detail/assignment.hpp>
 #include <beman/inside/detail/overflow.hpp>
 #include <beman/inside/policy_flag.hpp>
@@ -193,9 +196,9 @@ constexpr Dst& dispatch_assign(Dst& dst, const C& src, P& policy, std::tuple<As.
 // conversion as policy_ref, so it stays SFINAE-friendly.
 template <insidable B, typename P, typename... As>
 struct policy_buffer {
-    B                                       Owned;
-    P                                       Policy;
-    [[no_unique_address]] std::tuple<As...> Actions;
+    B                              Owned;
+    P                              Policy;
+    BEMAN_INSIDE_NO_UNIQUE_ADDRESS std::tuple<As...> Actions;
 
     template <insidable Target>
         requires inside_assignable<Target, B, flags_of<Target> | flags_of<P>>
@@ -226,11 +229,11 @@ struct policy_ref {
   public:
     B& Ref;
     P  Policy;
-    // `[[no_unique_address]]` is load-bearing: each captureless action lambda
+    // `BEMAN_INSIDE_NO_UNIQUE_ADDRESS` is load-bearing: each captureless action lambda
     // is an empty type, and without this attribute the tuple would pad each
     // one out to a byte. With it, `policy_ref<B, P>` carrying no actions has
     // the same size as `policy_ref<B, P, no_action>`.
-    [[no_unique_address]] std::tuple<As...> Actions;
+    BEMAN_INSIDE_NO_UNIQUE_ADDRESS std::tuple<As...> Actions;
 
   public:
     // Stores go through dispatch_assign under this ref's Policy and actions:
@@ -405,5 +408,7 @@ struct policy_ref {
 } // namespace detail
 
 } // namespace beman::inside
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_POLICY_HPP

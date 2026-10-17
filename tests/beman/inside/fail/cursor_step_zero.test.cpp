@@ -1,4 +1,5 @@
 // EXPECT: the step must be positive
+// REQUIRES: gnu-message
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // cursor<T, Step> checks its step against T at compile time.
 #include <beman/inside/inside.hpp>

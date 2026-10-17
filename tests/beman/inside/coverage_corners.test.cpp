@@ -324,13 +324,13 @@ TEST(CoverageCornersTest, clamp_policy_truncates_an_in_range_off_notch_fractiona
 //---------------------------------------------------------------------------
 // math::fmod integer fast path (raw_from_offset imax)
 TEST(CoverageCornersTest, math_fmod_integer_fast_path_raw_from_offset_imax) {
-    using in_t  = inside<{{-8, 8}, per<16384>}, round_nearest>; // integer-backed
-    using div_t = inside<{{1, 8}, per<16384>}, round_nearest>;  // excludes zero
-    using out_t = inside<{{-8, 8}, per<16384>}, round_nearest>;
+    using in_t      = inside<{{-8, 8}, per<16384>}, round_nearest>; // integer-backed
+    using divisor_t = inside<{{1, 8}, per<16384>}, round_nearest>;  // excludes zero
+    using out_t     = inside<{{-8, 8}, per<16384>}, round_nearest>;
 
-    ASSERT_TRUE((static_cast<rational>(math::fmod<out_t>(in_t{7_r}, div_t{3_r})) == 1));
-    ASSERT_TRUE((static_cast<rational>(math::fmod<out_t>(in_t{-7_r}, div_t{3_r})) == -1)); // signed offset
-    ASSERT_TRUE((static_cast<rational>(math::fmod<out_t>(in_t{5.5_r}, div_t{2_r})) == rational{3u, 2}));
+    ASSERT_TRUE((static_cast<rational>(math::fmod<out_t>(in_t{7_r}, divisor_t{3_r})) == 1));
+    ASSERT_TRUE((static_cast<rational>(math::fmod<out_t>(in_t{-7_r}, divisor_t{3_r})) == -1)); // signed offset
+    ASSERT_TRUE((static_cast<rational>(math::fmod<out_t>(in_t{5.5_r}, divisor_t{2_r})) == rational{3u, 2}));
 }
 
 //---------------------------------------------------------------------------

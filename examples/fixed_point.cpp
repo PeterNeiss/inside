@@ -33,21 +33,21 @@ int main() {
     // Sums and products are exact: the product of two Q8.8 lives on 1/65536.
     const q8_8 a{3.5}, b{7.25};
     std::cout << "\n3.5 + 7.25 = " << a + b << ", 3.5 * 7.25 = " << a * b << "\n";
-    if (a * b != just<203>.per<8>) // 25.375
+    if (a * b != just<203, 8>) // 25.375
         return 1;
 
     // Storing a product back onto Q8.8: mul_into rounds once, by the mode given.
     const q8_8 gain{1.00390625}; // 257/256
     const auto scaled = mul_into<q8_8, round_nearest>(b, gain);
     std::cout << "7.25 * 1.00390625 = " << b * gain << " -> Q8.8 " << scaled << "\n";
-    if (scaled != just<1863>.per<256>) // 1863.25/256 rounds to 1863/256
+    if (scaled != just<1863, 256>) // 1863.25/256 rounds to 1863/256
         return 1;
 
     // Storing back onto the 0.5 °C grid rounds by the type's policy.
     using celsius = inside<{{-40, 60}, 0.5}, round_nearest>;
     const celsius room{21.4}, body{37};
     std::cout << "room " << room << " C, body - room " << body - room << " C\n";
-    if (room != celsius{21.5} || body - room != just<31>.per<2>)
+    if (room != celsius{21.5} || body - room != just<31, 2>)
         return 1;
     return 0;
 }

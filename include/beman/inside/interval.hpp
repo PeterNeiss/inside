@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_INTERVAL_HPP
 #define BEMAN_INSIDE_INTERVAL_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/lift.hpp>
 #include <beman/inside/detail/rational.hpp>
 #include <beman/inside/detail/grid_rational.hpp>
@@ -187,5 +190,7 @@ corner_hull(grid_rational a, grid_rational b, grid_rational c, grid_rational d) 
 }
 
 } // namespace beman::inside
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_INTERVAL_HPP

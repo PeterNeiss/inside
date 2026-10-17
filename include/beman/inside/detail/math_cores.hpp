@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_DETAIL_MATH_CORES_HPP
 #define BEMAN_INSIDE_DETAIL_MATH_CORES_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/detail/math_adaptive.hpp>
 
 #include <cstddef>
@@ -466,12 +469,12 @@ struct atan2_core {
         constexpr std::size_t K = limbs_of<I>;
         using F                 = wide_rational<2 * E + 1>;
         const F y{Y}, x{X};
-        const I pi = static_cast<I>(pi_q<S>);
+        const I pi_fixed = static_cast<I>(pi_q<S>);
         if (!(abs(x) < abs(y))) {
             const fx<K> a = atan_exact<S, K>(y / x);
             if (!x.Num.negative())
                 return approx<K>{a.Value, S, a.Error};
-            return approx<K>{a.Value + (y.Num.negative() ? -pi : pi), S, a.Error + 1};
+            return approx<K>{a.Value + (y.Num.negative() ? -pi_fixed : pi_fixed), S, a.Error + 1};
         }
         const fx<K> a  = atan_exact<S, K>(x / y);
         const I     hp = static_cast<I>(pi_q<S - 1>);
@@ -934,5 +937,7 @@ template <insidable A, insidable B>
 inline constexpr grid_rational gcd_notch =
     !notched<A> || !notched<B> ? grid_rational{0} : grid_gcd_of(grid_of<A>.value_unit(), grid_of<B>.value_unit());
 } // namespace beman::inside::math::detail::ax
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_MATH_CORES_HPP

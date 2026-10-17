@@ -292,13 +292,13 @@ TEST(StorageBugsTest, predicates_handle_non_finite_input) {
 TEST(StorageBugsTest, uint64_source_above_int64_max) {
     static constexpr unsigned long long big = ~0ull;
 
-    constexpr auto checked = [] {
+    constexpr auto checked_ok = [] {
         errc                   ec{};
         inside<{{-10, 10}, 1}> x{3};
         x.policy(ec) = big;
         return std::pair{x.as<int>(), ec};
     }();
-    static_assert(checked.first == 3 && checked.second == errc::overflow);
+    static_assert(checked_ok.first == 3 && checked_ok.second == errc::overflow);
 
     static_assert(clamp_cast<inside<{{0, 10}, 1}>>(1ull << 63).as<int>() == 10);
     static_assert(clamp_cast<inside<{{-10, 10}, 1}>>(big).as<int>() == 10);
@@ -333,7 +333,7 @@ TEST(StorageBugsTest, huge_double_source) {
     static_assert(rounded(1e300).second == errc::overflow);
     static_assert(rounded(-1e300).second == errc::overflow);
 
-    constexpr auto wrapped = [](double v) {
+    constexpr auto wrap_of = [](double v) {
         errc                      ec{};
         inside<{{0, 9}, 1}, wrap> x{5};
         x.policy(ec) = v;
@@ -341,8 +341,8 @@ TEST(StorageBugsTest, huge_double_source) {
     };
     // wrap folds such a value exactly: 2^64 mod 10 (it reported overflow
     // before the exact fold).
-    static_assert(wrapped(0x1p64).first == 6 && wrapped(0x1p64).second == errc{});
-    static_assert(wrapped(0x1p62).first == static_cast<long>((1ull << 62) % 10));
+    static_assert(wrap_of(0x1p64).first == 6 && wrap_of(0x1p64).second == errc{});
+    static_assert(wrap_of(0x1p62).first == static_cast<long>((1ull << 62) % 10));
 
     using third = inside<{{0, rational{1, 3}}, rational{1, 3}}, clamp>;
     static_assert(rational{third{1e300}} == rational{1, 3});

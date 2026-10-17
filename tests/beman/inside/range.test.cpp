@@ -145,8 +145,8 @@ TEST(RangeTest, inside_range_backwards_iteration_via_operator) {
 TEST(RangeTest, inside_range_postfix_plus_plus_behave_standard) {
     small_grid r;
     auto       it   = r.begin();
-    auto       snap = it++;
-    ASSERT_EQ(int(to_value(*snap)), 0);
+    auto       prev = it++;
+    ASSERT_EQ(int(to_value(*prev)), 0);
     ASSERT_EQ(int(to_value(*it)), 1);
 
     auto snap2 = it--;
@@ -190,9 +190,9 @@ TEST(RangeTest, inside_range_with_std_views_stride) {
     ASSERT_TRUE(collect(5) == std::vector<imax>{0});
 
     // Fractional grid strides over notch values too.
-    using frac_grid = inside_range<{{0, 1}, per<4>}>; // 0,.25,.5,.75,1
+    using quarters = inside_range<{{0, 1}, per<4>}>; // 0,.25,.5,.75,1
     std::vector<rational> fseen;
-    for (auto v : frac_grid{} | std::views::stride(2))
+    for (auto v : quarters{} | std::views::stride(2))
         fseen.push_back(rational{v});
     ASSERT_TRUE((fseen == std::vector<rational>{rational{0}, rational{1, 2}, rational{1}}));
 }

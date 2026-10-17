@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_DETAIL_ASSIGNMENT_HPP
 #define BEMAN_INSIDE_DETAIL_ASSIGNMENT_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/detail/assign_exact.hpp> // the exact store and the out-of-range cascade
 #include <beman/inside/generic.hpp>
 #include <beman/inside/detail/wide_value.hpp>
@@ -216,13 +219,13 @@ struct assignment<L, R> {
 
     template <typename P, typename A>
     static constexpr void apply_clamp(L& lhs, R rhs, P&&, A&& action) {
-        const bool low     = below_lower(rhs);
-        R          clamped = low ? static_cast<R>(detail::lower64<L>) : static_cast<R>(detail::upper64<L>);
+        const bool low   = below_lower(rhs);
+        R          bound = low ? static_cast<R>(detail::lower64<L>) : static_cast<R>(detail::upper64<L>);
         R          overshoot;
         if constexpr (std::same_as<R, rational>)
-            overshoot = try_sub(rhs, clamped).value_or(rational{0});
+            overshoot = try_sub(rhs, bound).value_or(rational{0});
         else
-            overshoot = rhs - clamped;
+            overshoot = rhs - bound;
 
         // The clamp target is an interval endpoint — a grid point, no rounding.
         lhs = L::from_raw(endpoint_raw<L>(low));
@@ -265,7 +268,7 @@ struct assignment<L, R> {
             rhs_r = *r;
         }
         imax     q;
-        rational wrapped;
+        rational folded;
         if (abs_den(rhs_r.Denominator) == 1 && detail::notch64<L> == 1 &&
             abs_den(detail::lower64<L>.Denominator) == 1) {
             // Integer value on a unit lattice: fold exactly (the grid may span
@@ -275,7 +278,7 @@ struct assignment<L, R> {
             const auto [qq, w] = fold::fold(static_cast<W>(wide_numerator(rhs_r)));
             const W v          = fold::lower + w;
             q                  = qq;
-            wrapped            = v < W{0} ? -rational{static_cast<umax>(-v)} : rational{static_cast<umax>(v)};
+            folded             = v < W{0} ? -rational{static_cast<umax>(-v)} : rational{static_cast<umax>(v)};
         } else {
             // q = floor((rhs - lower) / range), wrapped = rhs - q * range. A step
             // past the 64-bit rational range, or a fold count past imax, folds
@@ -292,12 +295,12 @@ struct assignment<L, R> {
             const auto w  = qr ? try_sub(rhs_r, *qr) : qr;
             if (!w) [[unlikely]]
                 return wrap_exact(lhs, exact_of(rhs_r), policy, action);
-            wrapped = *w;
+            folded = *w;
         }
 
         // Re-enter the rational-rhs specialization for the actual store so the
         // notch / rounding policy logic is exercised once.
-        assignment<L, rational>::store_checked(lhs, wrapped, policy, action);
+        assignment<L, rational>::store_checked(lhs, folded, policy, action);
 
         if constexpr (wrap_action<plain_t<A>>)
             action.Fn(lhs, make_wrap_carry<L, R>(q));
@@ -309,7 +312,7 @@ struct assignment<L, R> {
     // saturates, as on the wide paths). A continuous L has no lattice to
     // fold in wide integers, and a point no period: still overflow.
     template <typename P, typename A, std::size_t K>
-    [[gnu::cold, gnu::noinline]] static constexpr void
+    BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE static constexpr void
     wrap_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& action) {
         if constexpr (integer_storage<L> && !point_storage<L>)
             assign_exact<R>(lhs, v, policy, action);
@@ -326,7 +329,7 @@ struct assignment<L, R> {
         bool Exact;
     };
     template <typename P>
-    [[gnu::cold, gnu::noinline]] static constexpr wide_slot_result wide_slot(const rational& v) {
+    BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE static constexpr wide_slot_result wide_slot(const rational& v) {
         const exact_index_result r = exact_index<L, rounding_for<L, P>>(exact_of(v));
         return {static_cast<umax>(r.Index), r.Exact}; // in range: fits 64 bits
     }
@@ -497,8 +500,8 @@ struct assignment<L, R> {
                     umax m = c * 2 + 2;
                     if (k > umax_hi / m)
                         return umax_hi;
-                    umax km = k * m;
-                    return km > umax_hi / 2 ? umax_hi : km * 2;
+                    umax prod = k * m;
+                    return prod > umax_hi / 2 ? umax_hi : prod * 2;
                 }();
                 constexpr umax max_den = static_cast<umax>(std::numeric_limits<imax>::max()) / two_km;
 
@@ -552,8 +555,8 @@ struct assignment<L, R> {
             // source denominator × fine notch): take the slot from the exact wide
             // index instead (rhs is in range, so it fits L's raw). Rounding is
             // the value-space rule, as everywhere else.
-            const auto offset   = try_sub(rv, detail::lower64<L>);
-            const auto quotient = offset ? try_div(*offset, detail::notch64<L>) : offset;
+            const auto rel      = try_sub(rv, detail::lower64<L>);
+            const auto quotient = rel ? try_div(*rel, detail::notch64<L>) : rel;
             if (!quotient.has_value()) [[unlikely]] {
                 const wide_slot_result slot = wide_slot<P>(rv);
                 if constexpr (!has_round_flag)
@@ -863,8 +866,8 @@ struct assignment<L, R> {
     // mapped raw fits imax, so the wrapping umax multiply-add is exact even
     // where an intermediate (the offset, or a signed partial sum) would not be.
     static constexpr imax map_raw(auto rhs_raw) {
-        const umax offset = static_cast<umax>(static_cast<imax>(rhs_raw)) - static_cast<umax>(raw_lo<R>);
-        return static_cast<imax>(static_cast<umax>(map_bias) + static_cast<umax>(Factor.Numerator) * offset);
+        const umax rel = static_cast<umax>(static_cast<imax>(rhs_raw)) - static_cast<umax>(raw_lo<R>);
+        return static_cast<imax>(static_cast<umax>(map_bias) + static_cast<umax>(Factor.Numerator) * rel);
     }
 
   private:
@@ -1050,5 +1053,7 @@ struct assignment<L, R> {
     }
 };
 } // namespace beman::inside::detail
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_ASSIGNMENT_HPP

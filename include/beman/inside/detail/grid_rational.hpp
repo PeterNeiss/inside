@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_DETAIL_GRID_RATIONAL_HPP
 #define BEMAN_INSIDE_DETAIL_GRID_RATIONAL_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/detail/rational.hpp>
 #include <beman/inside/detail/number_text.hpp> // the literal grammar (_g)
 #include <beman/inside/detail/wide_int.hpp>
@@ -21,13 +24,7 @@
 // lives in its own inline namespace: linking a C++23 TU against a C++26 one is
 // a link error, not a silent ODR violation.
 //---------------------------------------------------------------------------
-#if !defined(BEMAN_INSIDE_BIG_GRIDS)
-    #if defined(__cpp_impl_reflection) && __has_include(<meta>)
-        #define BEMAN_INSIDE_BIG_GRIDS 1
-    #else
-        #define BEMAN_INSIDE_BIG_GRIDS 0
-    #endif
-#endif
+// (BEMAN_INSIDE_BIG_GRIDS is resolved in config.hpp.)
 
 #include <beman/inside/detail/big_rational.hpp> // empty without big grids
 
@@ -297,4 +294,6 @@ consteval detail::grid_rational operator""_g() {
 }
 } // namespace beman::inside
 
-#endif
+BEMAN_INSIDE_WARNINGS_POP
+
+#endif // BEMAN_INSIDE_DETAIL_GRID_RATIONAL_HPP

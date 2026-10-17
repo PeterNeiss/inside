@@ -381,8 +381,8 @@ TEST(ConsistencyTest, predicates_round_before_the_range_check) {
 // `%` and snap `/` with a literal take the native integer paths.
 namespace {
 struct with_point {
-    [[no_unique_address]] decltype(just<440>) Pitch;
-    std::uint32_t                             Frames;
+    BEMAN_INSIDE_NO_UNIQUE_ADDRESS decltype(just<440>) Pitch; // [[msvc::no_unique_address]] on MSVC
+    std::uint32_t                                      Frames;
 };
 } // namespace
 
@@ -390,7 +390,7 @@ TEST(ConsistencyTest, point_insides_store_nothing) {
     static_assert(sizeof(5_ins) == 1);
     static_assert(sizeof(with_point) == sizeof(std::uint32_t));
     static_assert(std::is_same_v<decltype(5_ins)::raw_type, point_slot>);
-    static_assert(std::is_same_v<decltype(just<1>.per<3>)::raw_type, point_slot>);
+    static_assert(std::is_same_v<decltype(just<1, 3>)::raw_type, point_slot>);
     static_assert(inside_assignable<inside<{{0, 9}, 3}>, decltype(3_ins)>);
     static_assert(!inside_assignable<inside<{{0, 9}, 3}>, decltype(1_ins)>);
 
@@ -403,8 +403,8 @@ TEST(ConsistencyTest, point_insides_store_nothing) {
     static_assert(!is_expected_v<decltype(d)>);
     EXPECT_EQ(rational{d}, q(3));
     EXPECT_EQ(rational{-5_ins}, q(-5));
-    EXPECT_EQ((rational{just<1>.per<3>}), q(1, 3));
-    EXPECT_EQ((rational{val{17} * just<1>.per<2>}), q(17, 2));
+    EXPECT_EQ((rational{just<1, 3>}), q(1, 3));
+    EXPECT_EQ((rational{val{17} * just<1, 2>}), q(17, 2));
 }
 
 //---------------------------------------------------------------------------

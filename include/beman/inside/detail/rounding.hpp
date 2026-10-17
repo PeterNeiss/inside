@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_DETAIL_ROUNDING_HPP
 #define BEMAN_INSIDE_DETAIL_ROUNDING_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 //---------------------------------------------------------------------------
 // The rounding decision every integer rounding path shares. A path
 // truncates toward zero, classifies the dropped remainder, and asks
@@ -74,5 +77,7 @@ template <typename T>
     }
 }
 } // namespace beman::inside::detail
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_ROUNDING_HPP
