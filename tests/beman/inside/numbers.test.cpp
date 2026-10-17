@@ -4,7 +4,9 @@
 
 #include <gtest/gtest.h>
 
+#include <bit>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 
 using namespace beman::inside;
@@ -177,4 +179,27 @@ TEST(NumbersTest, rational_from_large_doubles) {
 TEST(NumbersTest, rational_rejects_non_finite_double) {
     ASSERT_THROW((void)(rational{std::numeric_limits<double>::infinity()}), beman::inside::inside_error);
     ASSERT_THROW((void)(rational{std::numeric_limits<double>::quiet_NaN()}), beman::inside::inside_error);
+}
+
+// scale_pow2 (the exp kernels' scaling) gives ldexp_small's bits for every k,
+// through normal, subnormal, overflowing and underflowing results.
+TEST(NumbersTest, scale_pow2_matches_ldexp_small) {
+    const double values[] = {1.0,
+                             -1.0,
+                             0.0,
+                             -0.0,
+                             0.7071067811865476,
+                             1.4142135623730951,
+                             1.9999999999999998,
+                             -1.0000000000000002,
+                             std::numeric_limits<double>::denorm_min(),
+                             std::numeric_limits<double>::min(),
+                             std::numeric_limits<double>::infinity()};
+    for (const double v : values)
+        for (int k = -1200; k <= 1200; ++k) {
+            volatile int kk = k; // the run-time path
+            const double a  = scale_pow2(v, kk);
+            const double b  = ldexp_small(v, kk);
+            ASSERT_EQ(std::bit_cast<std::uint64_t>(a), std::bit_cast<std::uint64_t>(b)) << v << " * 2^" << k;
+        }
 }
