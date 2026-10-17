@@ -258,15 +258,15 @@ TEST(InsideArithmeticTest, inside_expected_ops_propagate_error) {
 
 // inside rational-storage expected ops do not double-wrap
 TEST(InsideArithmeticTest, inside_rational_storage_expected_ops_do_not_double_wrap) {
-    using frac = inside<{{-10, 10}, 0}>;
-    frac f1    = *(2_r / 3);
-    frac f2    = *(1_r / 3);
-    auto ok    = [](frac v) -> std::expected<frac, errc> { return v; };
-    auto none  = []() -> std::expected<frac, errc> { return std::unexpected{errc::overflow}; };
+    using frac   = inside<{{-10, 10}, 0}>;
+    frac f1      = *(2_r / 3);
+    frac f2      = *(1_r / 3);
+    auto ok      = [](frac v) -> std::expected<frac, errc> { return v; };
+    auto failing = []() -> std::expected<frac, errc> { return std::unexpected{errc::overflow}; };
 
     ASSERT_EQ(*(ok(f1) + f2), 1);
     ASSERT_EQ(*(f1 + ok(f2)), 1);
-    ASSERT_FALSE((none() + f2).has_value());
+    ASSERT_FALSE((failing() + f2).has_value());
     static_assert(std::is_same_v<decltype(ok(f1) + f2), decltype(f1 + f2)>);
 
     ASSERT_EQ(*(ok(f1) - f2), *(1_r / 3));

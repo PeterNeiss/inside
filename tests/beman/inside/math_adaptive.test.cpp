@@ -1072,9 +1072,12 @@ TEST(MathAdaptiveTest, lean_dd_kernels_decide_double_fine_outputs) {
         double        b;
         amp52         s;
         exp40         e;
-        undecided += !ax::dd_decide(ddk::sin_lean(x, b), b * 1.5, s);
-        undecided += !ax::dd_decide(ddk::cos_lean(x, b), b * 1.5, s);
-        undecided += !ax::dd_decide(ddk::exp_lean(x, b), b * 1.5, e);
+        const ddk::dd sin_lean_v = ddk::sin_lean(x, b);
+        undecided += !ax::dd_decide(sin_lean_v, b * 1.5, s);
+        const ddk::dd cos_lean_v = ddk::cos_lean(x, b);
+        undecided += !ax::dd_decide(cos_lean_v, b * 1.5, s);
+        const ddk::dd exp_lean_v = ddk::exp_lean(x, b);
+        undecided += !ax::dd_decide(exp_lean_v, b * 1.5, e);
     }
     using log48 = inside<{{-8, 8}, rational{1, 1LL << 48}}, round_nearest>;
     static_assert(ax::dd_tier<log48, pos64> && !ax::fp_tier<log48, ax::fp_log, pos64>);
@@ -1083,7 +1086,8 @@ TEST(MathAdaptiveTest, lean_dd_kernels_decide_double_fine_outputs) {
         const ddk::dd x = ax::dd_read(pos64::from_raw(detail::raw_from_offset<pos64>(static_cast<umax>(i))));
         double        b;
         log48         l;
-        undecided += !ax::dd_decide(ddk::log_lean(x, b), b * 1.5, l);
+        const ddk::dd log_lean_v = ddk::log_lean(x, b);
+        undecided += !ax::dd_decide(log_lean_v, b * 1.5, l);
     }
     EXPECT_LE(undecided, (3 * (count + 1) + n + 1) / 1000);
 }

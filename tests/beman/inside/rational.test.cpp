@@ -241,10 +241,10 @@ TEST(RationalTest, rational_arithmetic) {
 
     {
         SCOPED_TRACE("compound-assign throws bad_expected_access on overflow");
-        constexpr auto M = std::numeric_limits<imax>::max();
+        constexpr auto mx = std::numeric_limits<imax>::max();
         // 1/M + 1/(M-1) — denominator product M*(M-1) overflows imax.
-        rational a{1u, M};
-        rational b{1u, M - 1};
+        rational a{1u, mx};
+        rational b{1u, mx - 1};
         ASSERT_THROW((void)(a += b), std::bad_expected_access<errc>);
     }
 }

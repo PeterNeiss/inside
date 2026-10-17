@@ -255,13 +255,14 @@
 
 //---------------------------------------------------------------------------
 // Warnings a library header switches off for its own code on MSVC: C4702
-// (unreachable code: the branches an if constexpr leaves behind) and C4268 (a
-// const object of a class with a defaulted constructor is zeroed). Each
+// (unreachable code: the branches an if constexpr leaves behind), C4268 (a
+// const object of a class with a defaulted constructor is zeroed) and C4459
+// (a local named like one of the user's globals, `base`, `one`). Each
 // header wraps its body in PUSH / POP; templates instantiated from it keep
 // that state, and user code does not.
 //---------------------------------------------------------------------------
 #if defined(_MSC_VER)
-    #define BEMAN_INSIDE_WARNINGS_PUSH __pragma(warning(push)) __pragma(warning(disable : 4702 4268))
+    #define BEMAN_INSIDE_WARNINGS_PUSH __pragma(warning(push)) __pragma(warning(disable : 4702 4268 4459))
     #define BEMAN_INSIDE_WARNINGS_POP __pragma(warning(pop))
 #else
     #define BEMAN_INSIDE_WARNINGS_PUSH
@@ -1742,13 +1743,13 @@ struct rational {
     explicit constexpr operator T() const {
         if (Denominator < 0)
             raise(errc::domain_error, "cannot convert negative rational to unsigned");
-        return Numerator / abs_den(Denominator);
+        return static_cast<T>(Numerator / abs_den(Denominator));
     }
 
     template <std::signed_integral T>
     explicit constexpr operator T() const {
-        umax q = Numerator / abs_den(Denominator);
-        return (Denominator < 0) ? -q : q;
+        const umax q = Numerator / abs_den(Denominator);
+        return static_cast<T>((Denominator < 0) ? umax{0} - q : q);
     }
 
     template <std::floating_point T>
@@ -2011,7 +2012,7 @@ constexpr rational::rational(std::floating_point auto value) {
     if (neg)
         value = -value;
 
-    auto [num, den] = abs_fraction(value);
+    auto [num, den] = abs_fraction(static_cast<double>(value));
     Numerator       = num;
     Denominator     = static_cast<imax>(neg ? umax{0} - den : den);
     // trim not needed, because abs_fraction already trims in its special case

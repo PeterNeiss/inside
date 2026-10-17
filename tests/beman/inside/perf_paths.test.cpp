@@ -210,7 +210,7 @@ TEST(PerfPathsTest, fraction_and_to_value_fast_paths_match_rational) {
     for (imax k = 0; k <= 64; ++k) {
         Q              q = Q::from_raw(static_cast<Q::raw_type>(k));
         const rational r{q};
-        const imax     num = (r.Denominator < 0) ? -r.Numerator : r.Numerator;
+        const imax     num = static_cast<imax>((r.Denominator < 0) ? umax{0} - r.Numerator : r.Numerator);
         EXPECT_EQ(q.numerator(), num);
         EXPECT_EQ(q.denominator(), static_cast<imax>(abs_den(r.Denominator)));
         EXPECT_EQ(to_value(q), trunc(r));

@@ -137,14 +137,14 @@ TEST(SignedTest, signed_clamp_wrap) {
 
 // signed expected helpers
 TEST(SignedTest, signed_expected_helpers) {
-    using s32 = inside<{-100000, 100000}>;
-    auto a    = []() -> std::expected<s32, errc> { return s32{42}; };
-    auto none = []() -> std::expected<s32, errc> { return std::unexpected{errc::overflow}; };
+    using s32    = inside<{-100000, 100000}>;
+    auto a       = []() -> std::expected<s32, errc> { return s32{42}; };
+    auto failing = []() -> std::expected<s32, errc> { return std::unexpected{errc::overflow}; };
 
     auto sum = a() + s32{-100};
     ASSERT_TRUE(sum.has_value());
     ASSERT_EQ(*sum, -58);
-    ASSERT_FALSE((none() + s32{-100}).has_value());
+    ASSERT_FALSE((failing() + s32{-100}).has_value());
 }
 
 // comparison across grids

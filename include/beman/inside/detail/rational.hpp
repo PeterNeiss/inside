@@ -131,13 +131,13 @@ struct rational {
     explicit constexpr operator T() const {
         if (Denominator < 0)
             raise(errc::domain_error, "cannot convert negative rational to unsigned");
-        return Numerator / abs_den(Denominator);
+        return static_cast<T>(Numerator / abs_den(Denominator));
     }
 
     template <std::signed_integral T>
     explicit constexpr operator T() const {
-        umax q = Numerator / abs_den(Denominator);
-        return (Denominator < 0) ? -q : q;
+        const umax q = Numerator / abs_den(Denominator);
+        return static_cast<T>((Denominator < 0) ? umax{0} - q : q);
     }
 
     template <std::floating_point T>
@@ -400,7 +400,7 @@ constexpr rational::rational(std::floating_point auto value) {
     if (neg)
         value = -value;
 
-    auto [num, den] = abs_fraction(value);
+    auto [num, den] = abs_fraction(static_cast<double>(value));
     Numerator       = num;
     Denominator     = static_cast<imax>(neg ? umax{0} - den : den);
     // trim not needed, because abs_fraction already trims in its special case

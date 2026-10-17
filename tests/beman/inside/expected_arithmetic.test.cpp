@@ -125,20 +125,20 @@ TEST(ExpectedArithmeticTest, inside_operator_from_expected_rational) {
 
 // expected<inside> + rational propagates the error
 TEST(ExpectedArithmeticTest, expected_inside_plus_rational_propagates_error) {
-    using b_t = inside<{{0, 1}, per<16>}, round_nearest>;
-    auto some = []() -> std::expected<b_t, errc> { return b_t{0.5_r}; };
-    auto none = []() -> std::expected<b_t, errc> { return std::unexpected{errc::division_by_zero}; };
+    using b_t    = inside<{{0, 1}, per<16>}, round_nearest>;
+    auto some    = []() -> std::expected<b_t, errc> { return b_t{0.5_r}; };
+    auto failing = []() -> std::expected<b_t, errc> { return std::unexpected{errc::division_by_zero}; };
 
     auto r = some() + 0.25_r;
     ASSERT_TRUE(r.has_value());
     ASSERT_EQ(*r, 0.75_r);
 
-    ASSERT_FALSE((none() + 0.25_r).has_value());
-    ASSERT_FALSE((0.25_r + none()).has_value());
-    ASSERT_FALSE((none() - 0.25_r).has_value());
-    ASSERT_FALSE((none() * 0.25_r).has_value());
-    ASSERT_FALSE((none() / 0.25_r).has_value());
-    ASSERT_EQ((none() * 0.25_r).error(), errc::division_by_zero);
+    ASSERT_FALSE((failing() + 0.25_r).has_value());
+    ASSERT_FALSE((0.25_r + failing()).has_value());
+    ASSERT_FALSE((failing() - 0.25_r).has_value());
+    ASSERT_FALSE((failing() * 0.25_r).has_value());
+    ASSERT_FALSE((failing() / 0.25_r).has_value());
+    ASSERT_EQ((failing() * 0.25_r).error(), errc::division_by_zero);
 }
 
 // expected<rational> value_or

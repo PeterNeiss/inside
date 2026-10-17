@@ -1,5 +1,5 @@
 // EXPECT: no 64-bit rational
-// REQUIRES: 64-bit-grids
+// REQUIRES: 64-bit-grids gnu-message
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // With 64-bit grid numbers a double limit of 2^64 or more has no rational form.
 // C++26 big grids take it exactly.
