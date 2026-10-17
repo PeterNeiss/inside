@@ -20,6 +20,16 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   as a base dimension of their own, and a two-point calibration whose gain
   is checked once, after which no division can fail.
 
+### Performance
+
+- `mul_into` / `div_into` compute natively when the numbers fit: the exact
+  product as an inside, or the product or quotient as a 64-bit rational,
+  rounded once as before. The wide rational path remains the fallback.
+  ins/op: `mul_into` 974 → 10, `div_into` 1212 → 92 (u8 grids).
+- The exp-family kernels (exp, exp2, pow10, sinh, cosh, tanh) scale by a
+  power of two built from its bits instead of a branchy `ldexp`: 15–21
+  fewer instructions and about 20–25% fewer cycles per call, the same bits.
+
 ### Testing
 
 - A differential oracle (`tests/beman/inside/differential`): random cases of
