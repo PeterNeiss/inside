@@ -29,14 +29,14 @@ int main() {
     //    sum runs in the common unit of its two units, exactly.
     const auto flour  = just<1> * international::pound + just<200> * si::gram;
     const auto butter = just<4> * international::ounce;
-    const auto milk   = just<1>.per<2> * si::litre + just<150> * ml;
+    const auto milk   = just<1, 2> * si::litre + just<150> * ml;
     std::cout << "flour  " << flour.in(si::gram) << ", butter " << butter.in(si::gram) << ", milk " << milk << '\n';
     if (to_string(flour.in(si::gram)) != "653.59237 g" || to_string(butter.in(si::gram)) != "113.3980925 g" ||
         to_string(milk) != "650 mL")
         return 1;
 
     // 2. Six servings instead of four: everything times 3/2, still exact.
-    constexpr auto scale = just<3>.per<2>;
+    constexpr auto scale = just<3, 2>;
     std::cout << "for 6:  flour " << (flour * scale).in(si::gram) << ", milk " << milk * scale << '\n';
     if (to_string((flour * scale).in(si::gram)) != "980.388555 g" || to_string(milk * scale) != "975 mL")
         return 1;

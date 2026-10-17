@@ -187,14 +187,14 @@ TEST(CompoundAssignTest, compound_raw_fast_path_agrees_with_binary_subtraction) 
 // compound -=: policy tail at the raw edges
 TEST(CompoundAssignTest, compound_policy_tail_at_the_raw_edges) {
     using q_clamp = inside<{{0, 255}, per<256>}, clamp | snap>;
-    q_clamp clamped{1};
-    clamped -= q_clamp{100}; // 1 − 100 < 0 -> clamps to Lower
-    ASSERT_EQ(rational{clamped}, rational{0});
+    q_clamp c{1};
+    c -= q_clamp{100}; // 1 − 100 < 0 -> clamps to Lower
+    ASSERT_EQ(rational{c}, rational{0});
 
     using q_wrap = inside<{{0, 3}, per<4>}, wrap | snap>;
-    q_wrap wrapped{0};
-    wrapped -= q_wrap{rational{1, 4}}; // 0 − 1/4 wraps to Upper − ... = 3
-    ASSERT_EQ(rational{wrapped}, rational{3});
+    q_wrap w{0};
+    w -= q_wrap{rational{1, 4}}; // 0 − 1/4 wraps to Upper − ... = 3
+    ASSERT_EQ(rational{w}, rational{3});
 
     using q_checked = inside<{{0, 255}, per<256>}, checked>;
     q_checked reported{1};

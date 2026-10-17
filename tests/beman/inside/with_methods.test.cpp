@@ -266,9 +266,9 @@ TEST(WithMethodsTest, with_snap_proxy_converts_to_a_value_rhs_return_position) {
     // Safety: `auto square(){ return (n*n).with_snap(); }` returns the value-owning
     // buffer; converting it to `small` after the temporary is gone is well-defined.
     small from_temp = square(small{2.5});
-    small clamped   = square(small{4});
+    small sq        = square(small{4});
     ASSERT_EQ(from_temp, 6.2_r);
-    ASSERT_EQ(clamped, 10);
+    ASSERT_EQ(sq, 10);
 
     // Receiver category picks the proxy kind: lvalue → policy_ref (reference),
     // rvalue → policy_buffer (owns the value). Both convert to small; neither to a

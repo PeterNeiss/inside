@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_DETAIL_STORAGE_HPP
 #define BEMAN_INSIDE_DETAIL_STORAGE_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/detail/introspection.hpp>
 
 #include <algorithm>
@@ -497,8 +500,8 @@ template <insidable L, typename P>
         const auto j            = step ? try_add(base, rational{1}) : std::expected<rational, errc>{base};
         if (!j)
             return j;
-        const auto offset = try_mul(*j, detail::notch64<L>);
-        return (offset && !anchored<L>) ? try_add(detail::lower64<L>, *offset) : offset;
+        const auto rel = try_mul(*j, detail::notch64<L>);
+        return (rel && !anchored<L>) ? try_add(detail::lower64<L>, *rel) : rel;
     }
 }
 
@@ -565,7 +568,7 @@ struct rounded_raw {
 };
 
 template <insidable L, typename P>
-[[gnu::cold, gnu::noinline]] constexpr rounded_raw<L> raw_if_rounds_inside(rational v) {
+BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr rounded_raw<L> raw_if_rounds_inside(rational v) {
     rational r;
     if (!rounds_into_range<L, P>(v, r))
         return {raw_t<L>{}, false};
@@ -696,5 +699,7 @@ constexpr bool range_fail(P&& policy) {
     return false;
 }
 } // namespace beman::inside::detail
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_STORAGE_HPP

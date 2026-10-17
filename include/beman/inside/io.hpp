@@ -15,6 +15,9 @@
 #ifndef BEMAN_INSIDE_IO_HPP
 #define BEMAN_INSIDE_IO_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/inside.hpp>
 
 #include <string>
@@ -334,7 +337,7 @@ inline std::istream& operator>>(std::istream& stream, B& b) {
 // std::format integration is gated on a working <format>; without it this
 // compiles as a no-op and to_string()/operator<< remain.
 //---------------------------------------------------------------------------
-#ifdef __cpp_lib_format
+#if BEMAN_INSIDE_HAS_STD_FORMAT
 
     #include <format>
     #include <type_traits>
@@ -671,6 +674,8 @@ struct std::formatter<beman::inside::detail::rational>
     }
 };
 
-#endif // __cpp_lib_format
+#endif // BEMAN_INSIDE_HAS_STD_FORMAT
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_IO_HPP

@@ -958,7 +958,7 @@ What changed, and what it cost:
       once, at the point of storage, by a stated rule --- not silently at every
       intermediate step.
 \item \textbf{The friction is real but small.} Literals need a grid
-      (\code{0.08\_ins}), non-representable constants need \code{just<1>.per<3>}
+      (\code{0.08\_ins}), non-representable constants need \code{just<1, 3>}
       rather than \code{1.0/3.0}, and the declaration of \code{money} is a line
       of thought that the \code{int} version never had to have. That line is
       the point: it is where the range, the scale, and the rounding rule got

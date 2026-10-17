@@ -1,4 +1,5 @@
 // EXPECT: an open limit needs a notch
+// REQUIRES: gnu-message
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // An open grid limit moves in by one notch: a continuous grid has none.
 #include <beman/inside/inside.hpp>

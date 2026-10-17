@@ -8,11 +8,16 @@
 #ifndef BEMAN_INSIDE_INSIDE_HPP
 #define BEMAN_INSIDE_INSIDE_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/core.hpp>
 #include <beman/inside/detail/compare.hpp>
 #include <beman/inside/casts.hpp>
 #include <beman/inside/arithmetic.hpp>
 #include <beman/inside/range.hpp>
 #include <beman/inside/cursor.hpp>
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_INSIDE_HPP

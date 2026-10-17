@@ -6,6 +6,9 @@
 #ifndef BEMAN_INSIDE_CORE_HPP
 #define BEMAN_INSIDE_CORE_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/generic.hpp>
 #include <beman/inside/detail/wide_value.hpp>
 #include <beman/inside/lift.hpp>
@@ -21,11 +24,6 @@
 #include <expected> // std::expected, std::unexpected
 #include <iterator> // std::incrementable_traits, std::indirectly_readable_traits
 #include <utility>  // std::pair
-
-// Deducing `this` (P0847) folds the lvalue/rvalue overload pairs below.
-#if defined(__GNUC__) && !defined(__clang__) && __GNUC__ < 14
-    #error "beman.inside requires GCC 14 or newer (deducing this)"
-#endif
 
 // Forward-declare the `beman::inside::math` entry points used in-class, so the bodies
 // pass `-Wtemplate-body` without pulling cmath.hpp in unconditionally (its
@@ -68,6 +66,23 @@ constexpr auto abs(In x);
 // and policy.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {
+#if BEMAN_INSIDE_MSVC
+namespace detail {
+// just<N>.per<D> on MSVC: a compiler bug reads a class-type static member
+// variable template through an object wrongly, so .per<D> is this
+// placeholder, which no copy, conversion or operator accepts.
+struct msvc_per_unsupported {
+    constexpr msvc_per_unsupported() = default;
+    BEMAN_INSIDE_DELETE_BEGIN
+    msvc_per_unsupported(const msvc_per_unsupported&) =
+        BEMAN_INSIDE_DELETE("just<N>.per<D> does not work on MSVC (a compiler bug) - write just<N, D>");
+    template <class T>
+    operator T() const =
+        BEMAN_INSIDE_DELETE("just<N>.per<D> does not work on MSVC (a compiler bug) - write just<N, D>");
+    BEMAN_INSIDE_DELETE_END
+};
+} // namespace detail
+#endif
 namespace detail {
 // What `*t` yields for a cursor on G: G without its end point, no cursor — a
 // value of T, which assigns into T.
@@ -88,7 +103,7 @@ struct inside {
     using raw_type     = detail::raw_for_t<G>;
 
   private:
-    [[no_unique_address]] raw_type Raw; // empty for a point grid
+    BEMAN_INSIDE_NO_UNIQUE_ADDRESS raw_type Raw; // empty for a point grid
 
   public:
     // raw() — access escape hatch, symmetric with `from_raw`. Read overload
@@ -236,13 +251,21 @@ struct inside {
         return b;
     }
 
-    // just<N>.per<D> — the point N/D (D >= 1), the exact ratio no literal
-    // spells: just<1>.per<3>, just<-6>.per<5> for -1.2. Only on an integer
-    // point that fits imax. (In dependent code: `just<N>.template per<D>`.)
+    // just<N>.per<D> — the point N/D (D >= 1), the same as just<N, D>, which
+    // is the portable spelling (see MSVC below). Only on an integer point that
+    // fits imax. (In dependent code: `just<N>.template per<D>`.)
     template <umax D>
         requires(G.Interval.Lower == G.Interval.Upper && detail::fits_imax(G.Interval) &&
                  detail::wide_denominator(G.Interval.Lower) == detail::grid_int{1})
-    static constexpr inside<grid{rational{detail::to_rational(G.Interval.Lower) * ::beman::inside::per<D>}}> per{};
+#if BEMAN_INSIDE_MSVC
+    // MSVC reads a class-type static member variable template through an
+    // object wrongly (an error in a constant expression, a wrong value at run
+    // time), so .per<D> is a placeholder there that no expression accepts.
+    static constexpr detail::msvc_per_unsupported per{};
+#else
+    static constexpr inside<grid{detail::grid_mul(G.Interval.Lower, detail::grid_rational{::beman::inside::per<D>})}>
+        per{};
+#endif
 
     // Conversion summary:
     //   operator imax     — implicit, when the values are integers or the policy
@@ -943,9 +966,21 @@ template <insidable B>
 // just
 //---------------------------------------------------------------------------
 // The point grid holds the value, so no value constructor is needed: grid
-// numbers past 64 bits (C++26 `_g`) work too.
-template <auto value>
-inline constexpr auto just = inside<grid{value}>::from_raw({});
+// numbers past 64 bits (C++26 `_g`) work too. just<N, D> is the point N/D
+// for an integer D ≥ 1: just<1, 3>, just<-6, 5> for -1.2 (as just<N>.per<D>).
+namespace detail {
+template <auto value, auto den>
+consteval auto just_point() {
+    if constexpr (std::integral<decltype(den)> && den == 1)
+        return inside<grid{value}>::from_raw({});
+    else {
+        static_assert(std::integral<decltype(den)> && den >= 1, "just<N, D>: D is an integer of at least 1");
+        return inside<grid{grid_div_of(grid_rational{value}, grid_rational{den})}>::from_raw({});
+    }
+}
+} // namespace detail
+template <auto value, auto den = 1>
+inline constexpr auto just = detail::just_point<value, den>();
 
 //---------------------------------------------------------------------------
 // _ins literal — compile-time `inside<{V, V}>` from a numeric literal.
@@ -983,5 +1018,7 @@ template <beman::inside::grid G, beman::inside::policy_flag P>
 struct std::indirectly_readable_traits<beman::inside::inside<G, P>> {
     using value_type = beman::inside::detail::cursor_value_t<G, P>;
 };
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_CORE_HPP

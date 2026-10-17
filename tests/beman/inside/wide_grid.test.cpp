@@ -11,6 +11,8 @@
 
 #include <gtest/gtest.h>
 
+#include <utility>
+
 #include <cstdint>
 #include <random>
 #include <unordered_set>
@@ -177,7 +179,7 @@ TEST(WideGridTest, exact_read_out) {
     const big64 top = std::numeric_limits<umax>::max();
     EXPECT_TRUE(top.numerator() == decltype(top.numerator()){std::numeric_limits<umax>::max()});
     // A grid whose values fit imax keeps imax.
-    static_assert(std::is_same_v<decltype(inside<{0, 100}>{}.numerator()), imax>);
+    static_assert(std::is_same_v<decltype(std::declval<inside<{0, 100}>>().numerator()), imax>);
 }
 
 TEST(WideGridTest, same_notch_assignment) {
@@ -336,11 +338,11 @@ TEST(WideGridTest, limb_edges) {
 
     // += across the 64-bit index boundary, by a point delta and by a raw.
     over64 c = rational{kUM, 4}; // index 2^64 − 1
-    c += just<1>.per<4>;         // index 2^64
+    c += just<1, 4>;             // index 2^64
     EXPECT_TRUE(c.raw() == (detail::wide_uint<2>{1} << 64));
-    EXPECT_THROW((c += just<1>.per<4>), inside_error); // past the top
+    EXPECT_THROW((c += just<1, 4>), inside_error); // past the top
     inside<{{rational{0}, rational{umax{1} << 62}}, per<4>}, wrap> w = rational{umax{1} << 62};
-    w += just<1>.per<4>; // wraps to 0
+    w += just<1, 4>; // wraps to 0
     EXPECT_TRUE(w == 0);
 
     // Sums and differences across the boundary, both ends.

@@ -15,10 +15,15 @@
 #ifndef BEMAN_INSIDE_DETAIL_MATH_FP_HPP
 #define BEMAN_INSIDE_DETAIL_MATH_FP_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/detail/float_bits.hpp> // beman::inside::detail::ldexp (constexpr, reproducible)
 #include <beman/inside/inside.hpp>            // complete inside/rational + has_flag/flags_of (store<>)
 
 // BEMAN_INSIDE_MATH_NO_FP is resolved in policy_flag.hpp (included via inside.hpp).
+
+// BEMAN_INSIDE_FABS, _NEARBYINT, _INF, _ASSOC_BARRIER and _HAS_FMA: config.hpp.
 
 #ifndef BEMAN_INSIDE_MATH_NO_FP // ===== FP engine present (needs <cmath> + an FPU) =====
 
@@ -33,7 +38,7 @@ using std::fma;
 // c0·z^n + c1·z^(n-1) + … + cn as an fma chain from the highest coefficient
 // down (Horner) — the same operation order as writing the chain out by hand.
 template <std::floating_point T, typename... C>
-[[gnu::always_inline]] inline T horner(T z, T c0, C... cs) {
+BEMAN_INSIDE_ALWAYS_INLINE inline T horner(T z, T c0, C... cs) {
     T p = c0;
     ((p = fma(p, z, static_cast<T>(cs))), ...);
     return p;
@@ -41,7 +46,7 @@ template <std::floating_point T, typename... C>
 
 // The same over a coefficient array, highest degree first.
 template <std::size_t N>
-[[gnu::always_inline]] inline double horner(double z, const std::array<double, N>& c) {
+BEMAN_INSIDE_ALWAYS_INLINE inline double horner(double z, const std::array<double, N>& c) {
     return [&]<std::size_t... I>(std::index_sequence<I...>) {
         double p = c[0];
         ((p = fma(p, z, c[I + 1])), ...);
@@ -71,25 +76,13 @@ inline constexpr double third_lo    = 0x1.5555555555555p-56; // 1/3 − third = 
 // adds the exact product where an error-free transformation expects the
 // rounded one. fenced() keeps an operand of an error-free sum out of that, at
 // no runtime cost.
-constexpr double fenced(double x) noexcept {
-    #if defined(__has_builtin)
-        #if __has_builtin(__builtin_assoc_barrier)
-    return __builtin_assoc_barrier(x);
-        #elif __has_builtin(__arithmetic_fence)
-    return __arithmetic_fence(x);
-        #else
-    return x;
-        #endif
-    #else
-    return x;
-    #endif
-}
+constexpr double fenced(double x) noexcept { return BEMAN_INSIDE_ASSOC_BARRIER(x); }
 
 // The product rounded once, which the compiler cannot fuse further:
 // fma(a, b, +0) (+0 keeps it from folding back to a·b), one instruction with
 // hardware FMA; without it nothing contracts.
 inline double rounded_product(double a, double b) noexcept {
-    #if defined(__FMA__) || defined(__ARM_FEATURE_FMA)
+    #if BEMAN_INSIDE_HAS_FMA
     return std::fma(a, b, 0.0);
     #else
     return a * b;
@@ -265,13 +258,13 @@ inline constexpr double cos_poly_rel = [] {
 }();
 
 template <int N>
-[[gnu::always_inline]] inline double sin_poly(double r) {
+BEMAN_INSIDE_ALWAYS_INLINE inline double sin_poly(double r) {
     const double z = r * r;
     return r * horner(z, sin_c<N>.C);
 }
 
 template <int N>
-[[gnu::always_inline]] inline double cos_poly(double r) {
+BEMAN_INSIDE_ALWAYS_INLINE inline double cos_poly(double r) {
     return horner(r * r, cos_c<N>.C);
 }
 
@@ -311,7 +304,7 @@ struct trig_k {
         q              = (q + shift) & 3;
         const double p = q & 1 ? cos_poly<NC>(r) : sin_poly<NS>(r);
         const double v = q & 2 ? -p : p;
-        bound          = Rel * __builtin_fabs(v) + AbsX * (__builtin_fabs(x) > 1 ? __builtin_fabs(x) : 1.0) + tiny;
+        bound = Rel * BEMAN_INSIDE_FABS(v) + AbsX * (BEMAN_INSIDE_FABS(x) > 1 ? BEMAN_INSIDE_FABS(x) : 1.0) + tiny;
         return v;
     }
     static double sin(double x, double& bound) { return quadrant(x, 0, bound); }
@@ -329,8 +322,8 @@ struct trig_k {
             t = -c / s;
         } else
             t = s / c;
-        const double mx = __builtin_fabs(x) > 1 ? __builtin_fabs(x) : 1.0;
-        bound           = TanRel * __builtin_fabs(t) + (1 + t * t) * AbsX * mx + tiny;
+        const double mx = BEMAN_INSIDE_FABS(x) > 1 ? BEMAN_INSIDE_FABS(x) : 1.0;
+        bound           = TanRel * BEMAN_INSIDE_FABS(t) + (1 + t * t) * AbsX * mx + tiny;
         return true;
     }
 };
@@ -355,7 +348,7 @@ inline constexpr double exp_poly_rel = [] {
 }();
 
 template <int N>
-[[gnu::always_inline]] inline double exp_poly(double r) {
+BEMAN_INSIDE_ALWAYS_INLINE inline double exp_poly(double r) {
     return horner(r, exp_c<N>.C);
 }
 
@@ -390,13 +383,13 @@ struct exp_k {
     static constexpr double Rel   = up(exp_poly_rel<N> + unit_roundoff * r_exp + 1100 * ln2_res);
     static constexpr double RelLo = up(Rel + unit_roundoff * r_exp);
 
-    [[gnu::always_inline]] static double value(double x) {
+    BEMAN_INSIDE_ALWAYS_INLINE static double value(double x) {
         const double k = std::nearbyint(x * log2e);
         double       r = fma(-k, ln2_hi, x);
         r              = fma(-k, ln2_lo, r);
         return ::beman::inside::detail::ldexp_small(exp_poly<N>(r), static_cast<int>(k));
     }
-    [[gnu::always_inline]] static double value(double x, double lo) {
+    BEMAN_INSIDE_ALWAYS_INLINE static double value(double x, double lo) {
         const double k = std::nearbyint(x * log2e);
         double       r = fma(-k, ln2_hi, x);
         r              = fma(-k, ln2_lo, r) + lo;
@@ -438,7 +431,7 @@ struct exp_k {
         if constexpr (T <= plain_bits) {
             const double e = value(x);
             const double v = (e - 1.0 / e) * 0.5;
-            bound          = SinhPlainRel * __builtin_fabs(v) + SinhPlainAbs + tiny;
+            bound          = SinhPlainRel * BEMAN_INSIDE_FABS(v) + SinhPlainAbs + tiny;
             return v;
         }
         const double a = x < 0 ? -x : x;
@@ -462,7 +455,7 @@ struct exp_k {
     static double tanh(double x, double& bound) {
         const double e = value(x + x);
         const double v = (e - 1.0) / (e + 1.0);
-        bound          = TanhRel * __builtin_fabs(v) + TanhAbs + tiny;
+        bound          = TanhRel * BEMAN_INSIDE_FABS(v) + TanhAbs + tiny;
         return v;
     }
 };
@@ -498,7 +491,7 @@ struct log_k {
     static constexpr double Rel2  = up(Rel + unit_roundoff + log2e_err);
     static constexpr double Rel10 = up(Rel + unit_roundoff + log10e_err);
 
-    [[gnu::always_inline]] static double value(double x) {
+    BEMAN_INSIDE_ALWAYS_INLINE static double value(double x) {
         int    e;
         double m = ::beman::inside::detail::frexp(x, &e);
         if (m < sqrt_half) {
@@ -543,7 +536,7 @@ struct log_k {
         const double rest  = 2 * unit_roundoff * (0.35 * unit_roundoff + 0.3432 * t);
         return up(max_d(a2f, (0.3432 * a2f + rest + per_e) / 0.3466));
     }();
-    [[gnu::always_inline]] static double value_hl(double x, double& lo) {
+    BEMAN_INSIDE_ALWAYS_INLINE static double value_hl(double x, double& lo) {
         int    e;
         double m = ::beman::inside::detail::frexp(x, &e);
         if (m < sqrt_half) {
@@ -566,17 +559,17 @@ struct log_k {
 
     static double log(double x, double& bound) {
         const double v = value(x);
-        bound          = Rel * __builtin_fabs(v) + tiny;
+        bound          = Rel * BEMAN_INSIDE_FABS(v) + tiny;
         return v;
     }
     static double log2(double x, double& bound) {
         const double v = value(x) * log2e;
-        bound          = Rel2 * __builtin_fabs(v) + tiny;
+        bound          = Rel2 * BEMAN_INSIDE_FABS(v) + tiny;
         return v;
     }
     static double log10(double x, double& bound) {
         const double v = value(x) * log10e;
-        bound          = Rel10 * __builtin_fabs(v) + tiny;
+        bound          = Rel10 * BEMAN_INSIDE_FABS(v) + tiny;
         return v;
     }
 
@@ -589,7 +582,7 @@ struct log_k {
     // and the final sum (U each, as |q| ≤ A); q − ln(1 + q) ≤ q²/2
     // (½U). Log1pRel collects these; the callers add u's own error.
     static constexpr double Log1pRel = up(2 * HlRel + 4 * unit_roundoff * (1 + 0x1p-50) + 0.5 * unit_roundoff);
-    [[gnu::always_inline]] static double log1p_hl(double uh, double ul) {
+    BEMAN_INSIDE_ALWAYS_INLINE static double log1p_hl(double uh, double ul) {
         const hilo   w  = two_sum(1.0, uh);
         const double wl = w.Lo + ul;
         double       lo;
@@ -693,7 +686,7 @@ struct atan_k {
         up(t_max * PolyAbs + 3 * t_max * unit_roundoff + inv_sqrt3_err * 0.75 + pi_sixth_err + r_trig * unit_roundoff +
            0.5 * unit_roundoff + pi_half_err + 1.5708 * unit_roundoff);
 
-    [[gnu::always_inline]] static double value(double x) {
+    BEMAN_INSIDE_ALWAYS_INLINE static double value(double x) {
         const bool neg = x < 0;
         double     a   = neg ? -x : x;
         const bool inv = a > 1.0;
@@ -711,7 +704,7 @@ struct atan_k {
     }
     static double atan(double x, double& bound) {
         const double v = value(x);
-        bound          = Rel * __builtin_fabs(v) + Abs + tiny;
+        bound          = Rel * BEMAN_INSIDE_FABS(v) + Abs + tiny;
         return v;
     }
 
@@ -726,7 +719,7 @@ struct atan_k {
             v = value(y / x) + (y >= 0.0 ? pi_double : -pi_double);
         else
             v = y > 0.0 ? pi_half : y < 0.0 ? -pi_half : 0.0;
-        bound = Atan2Rel * __builtin_fabs(v) + Atan2Abs + tiny;
+        bound = Atan2Rel * BEMAN_INSIDE_FABS(v) + Atan2Abs + tiny;
         return v;
     }
 
@@ -734,15 +727,17 @@ struct atan_k {
     // moves atan by 3.5U of itself at most. acos = π/2 − asin: absolute.
     static constexpr double AsinRel = up(Rel + 3.5 * unit_roundoff), AsinAbs = Abs;
     static constexpr double AcosRel = unit_roundoff, AcosAbs = up(AsinRel * 1.5708 + AsinAbs + pi_half_err);
-    [[gnu::always_inline]] static double asin_value(double x) { return value(x / std::sqrt((1.0 - x) * (1.0 + x))); }
-    static double                        asin(double x, double& bound) {
+    BEMAN_INSIDE_ALWAYS_INLINE static double asin_value(double x) {
+        return value(x / std::sqrt((1.0 - x) * (1.0 + x)));
+    }
+    static double asin(double x, double& bound) {
         const double v = asin_value(x);
-        bound          = AsinRel * __builtin_fabs(v) + AsinAbs + tiny;
+        bound          = AsinRel * BEMAN_INSIDE_FABS(v) + AsinAbs + tiny;
         return v;
     }
     static double acos(double x, double& bound) {
         const double v = pi_half - asin_value(x);
-        bound          = AcosRel * __builtin_fabs(v) + AcosAbs + tiny;
+        bound          = AcosRel * BEMAN_INSIDE_FABS(v) + AcosAbs + tiny;
         return v;
     }
 };
@@ -781,7 +776,7 @@ struct pow_k {
             y = L::value(a) * third;
             m = E::value(y);
         }
-        bound = m * (ERel + __builtin_fabs(y) * YRel) + tiny;
+        bound = m * (ERel + BEMAN_INSIDE_FABS(y) * YRel) + tiny;
         return x < 0 ? -m : m;
     }
 
@@ -795,10 +790,10 @@ struct pow_k {
             ylo            = fma(e, h, -y) + e * lo;
         } else
             y = e * L::value(b);
-        if (!(__builtin_fabs(y) <= 745))
+        if (!(BEMAN_INSIDE_FABS(y) <= 745))
             return false;
         v     = Hl ? E::value(y, ylo) : E::value(y);
-        bound = v * (ERel + __builtin_fabs(y) * YRel) + tiny;
+        bound = v * (ERel + BEMAN_INSIDE_FABS(y) * YRel) + tiny;
         return true;
     }
 
@@ -809,7 +804,7 @@ struct pow_k {
         y                = x * lnHi;
         const double ylo = fma(x, lnHi, -y) + x * lnLo;
         const double v   = E::value(y, ylo);
-        bound            = v * (E::RelLo + __builtin_fabs(y) * 0x1p-100) + tiny;
+        bound            = v * (E::RelLo + BEMAN_INSIDE_FABS(y) * 0x1p-100) + tiny;
         return v;
     }
 };
@@ -835,5 +830,7 @@ inline double        seed_cbrt(double x) {
 } // namespace beman::inside::math::detail::fp
 
 #endif // !BEMAN_INSIDE_MATH_NO_FP
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_MATH_FP_HPP

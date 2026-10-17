@@ -51,7 +51,7 @@ int main() {
     constexpr std::size_t N = 16;
     using frame_t           = inside<{0, N - 1}>;
 
-    using time_t    = inside<{{0, 1}, per<N>}, round_nearest>;
+    using seconds_t = inside<{{0, 1}, per<N>}, round_nearest>;
     using offset_t  = inside<{{-2, 2}, per<16384>}, round_nearest>;
     using angle_t   = inside<{{-4, 10}, per<16384>}, round_nearest>;
     using gainfac_t = inside<{{0, 1}, per<1024>}, round_nearest>;
@@ -66,8 +66,8 @@ int main() {
 
     sample_t channels[4][N];
     for (frame_t i : values<frame_t>) {
-        const time_t  t    = i / just<N>;                        // exact: N is a nonzero point
-        const angle_t base = mul_into<angle_t>(t, math::two_pi); // t·2π rounded once
+        const seconds_t t    = i / just<N>;                        // exact: N is a nonzero point
+        const angle_t   base = mul_into<angle_t>(t, math::two_pi); // t·2π rounded once
         for (int ch = 0; ch < 4; ++ch) {
             const angle_t a = base + offsets[ch]; // same notch: exact
             channels[ch][i] = mul_into<sample_t>(gains[ch], math::sin(a));

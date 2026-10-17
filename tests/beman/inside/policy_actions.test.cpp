@@ -151,8 +151,8 @@ TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_an_inside_rhs) {
     inside<{{0, 2}, per<2>}> fadd{1.5};
     imax                     fcarry = -99;
     p.on_wrap([&](auto&, auto carry) { fcarry = carry + just<0>; }) += fadd;
-    ASSERT_TRUE((p == just<1>.per<2>)); // 2.5 + 1.5 = 4.0 -> 4.0 - 3.5 = 0.5
-    ASSERT_EQ(fcarry, 1);               // floor(4.0 / 3.5)
+    ASSERT_TRUE((p == just<1, 2>)); // 2.5 + 1.5 = 4.0 -> 4.0 - 3.5 = 0.5
+    ASSERT_EQ(fcarry, 1);           // floor(4.0 / 3.5)
 }
 
 // on_clamp action receives overshoot

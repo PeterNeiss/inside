@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_DETAIL_ADDITION_HPP
 #define BEMAN_INSIDE_DETAIL_ADDITION_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/detail/rep.hpp>
 #include <beman/inside/generic.hpp>
 #include <beman/inside/detail/wide_value.hpp>
@@ -99,5 +102,7 @@ inline constexpr bool add_defined = [] {
 template <insidable L, insidable R, policy_flag = none>
 inline constexpr bool sub_defined = add_defined<L, decltype(-std::declval<const R&>())>;
 } // namespace beman::inside::detail
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_ADDITION_HPP

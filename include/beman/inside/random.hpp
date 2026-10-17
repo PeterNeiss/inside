@@ -7,6 +7,9 @@
 #ifndef BEMAN_INSIDE_RANDOM_HPP
 #define BEMAN_INSIDE_RANDOM_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/inside.hpp>
 
 #include <random>
@@ -39,5 +42,7 @@ template <insidable B, std::uniform_random_bit_generator G>
     }
 }
 } // namespace beman::inside
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_RANDOM_HPP

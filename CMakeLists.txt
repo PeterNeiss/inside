@@ -15,6 +15,11 @@ project(
 
 # [CMAKE.SKIP_TESTS]
 option(
+    BEMAN_INSIDE_WARNINGS_AS_ERRORS
+    "Make warnings errors in the tests and examples (/WX, -Werror)."
+    OFF
+)
+option(
     BEMAN_INSIDE_BUILD_TESTS
     "Enable building tests and test infrastructure. Default: ${PROJECT_IS_TOP_LEVEL}. Values: { ON, OFF }."
     ${PROJECT_IS_TOP_LEVEL}
@@ -90,6 +95,17 @@ set_target_properties(
     PROPERTIES VERIFY_INTERFACE_HEADER_SETS ${PROJECT_IS_TOP_LEVEL}
 )
 target_compile_features(beman.inside INTERFACE cxx_std_23)
+# MSVC: the headers hold UTF-8 text (℃, −), test __cplusplus, use the
+# conforming preprocessor, and evaluate more at compile time than its default
+# step limit allows (the correctly rounded math in a constant expression).
+target_compile_options(
+    beman.inside
+    INTERFACE
+        $<$<CXX_COMPILER_ID:MSVC>:/utf-8
+        /Zc:__cplusplus
+        /Zc:preprocessor
+        /constexpr:steps100000000>
+)
 
 if(BEMAN_INSIDE_MATH_NO_FP)
     target_compile_definitions(beman.inside INTERFACE BEMAN_INSIDE_MATH_NO_FP)
@@ -199,6 +215,10 @@ if(BEMAN_INSIDE_BUILD_TESTS OR BEMAN_INSIDE_BUILD_EXAMPLES)
             -Wno-missing-field-initializers
             -Wformat=2
             >
+            # /bigobj: the test files hold more sections than the default.
+            $<$<CXX_COMPILER_ID:MSVC>:/W4
+            /bigobj>
+            $<$<BOOL:${BEMAN_INSIDE_WARNINGS_AS_ERRORS}>:$<IF:$<CXX_COMPILER_ID:MSVC>,/WX,-Werror>>
     )
     # GCC 13.x for x86_64-w64-mingw32 ships a libstdc++.a whose tinfo.o carries
     # an out-of-line `std::type_info::operator==`, while user objects emit the

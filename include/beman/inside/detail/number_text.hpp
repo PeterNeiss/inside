@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_DETAIL_NUMBER_TEXT_HPP
 #define BEMAN_INSIDE_DETAIL_NUMBER_TEXT_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/detail/rational.hpp> // rational, its checked arithmetic
 #include <beman/inside/detail/debug.hpp>    // errc, constexpr_error
 
@@ -76,7 +79,8 @@ struct scanned_number {
 };
 
 template <typename OnDigit>
-[[gnu::always_inline]] constexpr scanned_number scan_number(const char* first, const char* last, OnDigit&& on_digit) {
+BEMAN_INSIDE_ALWAYS_INLINE constexpr scanned_number
+scan_number(const char* first, const char* last, OnDigit&& on_digit) {
     scanned_number r;
     auto           fail = [&](parse_fail f) {
         r.Fail = f;
@@ -344,5 +348,7 @@ namespace beman::inside {
 //   _r literal   an exact decimal / hex value, e.g. 0.1_r is exactly 1/10.
 using detail::operator""_r;
 } // namespace beman::inside
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_NUMBER_TEXT_HPP

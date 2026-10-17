@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_DETAIL_ASSIGN_EXACT_HPP
 #define BEMAN_INSIDE_DETAIL_ASSIGN_EXACT_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/generic.hpp>
 #include <beman/inside/detail/wide_value.hpp>
 #include <beman/inside/grid.hpp>
@@ -415,5 +418,7 @@ inline constexpr int same_notch_bits = signed_value_bits_of({raw_lo_exact<R>,
                                                              raw_lo_exact<L>,
                                                              raw_hi_exact<L>});
 } // namespace beman::inside::detail
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_ASSIGN_EXACT_HPP

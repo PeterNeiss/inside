@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_DETAIL_WIDE_INT_HPP
 #define BEMAN_INSIDE_DETAIL_WIDE_INT_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/numbers.hpp>           // umax
 #include <beman/inside/detail/float_bits.hpp> // constexpr ldexp
 #include <beman/inside/detail/debug.hpp>      // errc, raise, constexpr_error
@@ -67,7 +70,7 @@ constexpr pair<L> mul(L a, L b) noexcept {
         return {static_cast<L>(p >> bits<L>), static_cast<L>(p)};
     } else {
         static_assert(bits<L> == 64, "wide_int: limbs are at most 64 bits");
-#if defined(__SIZEOF_INT128__)
+#if BEMAN_INSIDE_HAS_INT128
         const unsigned __int128 p = static_cast<unsigned __int128>(a) * b;
         return {static_cast<L>(p >> 64), static_cast<L>(p)};
 #else
@@ -82,7 +85,7 @@ constexpr pair<L> mul(L a, L b) noexcept {
 
 // a·b <=> c·d, exactly (the native 128-bit compare where available).
 constexpr std::strong_ordering mul_compare(umax a, umax b, umax c, umax d) noexcept {
-#if defined(__SIZEOF_INT128__)
+#if BEMAN_INSIDE_HAS_INT128
     return static_cast<unsigned __int128>(a) * b <=> static_cast<unsigned __int128>(c) * d;
 #else
     const pair<umax> x = mul(a, b), y = mul(c, d);
@@ -100,7 +103,7 @@ constexpr pair<L> div(L hi, L lo, L d) noexcept // {quotient, remainder}
     } else {
         if (hi == 0)
             return {static_cast<L>(lo / d), static_cast<L>(lo % d)}; // one machine division
-#if defined(__SIZEOF_INT128__)
+#if BEMAN_INSIDE_HAS_INT128
         const unsigned __int128 n = (static_cast<unsigned __int128>(hi) << 64) | lo;
         return {static_cast<L>(n / d), static_cast<L>(n % d)};
 #else
@@ -214,7 +217,7 @@ struct wide_int {
     // builtin conversions do.
     template <std::integral T>
     constexpr wide_int(T v) noexcept {
-#if defined(__SIZEOF_INT128__)
+#if BEMAN_INSIDE_HAS_INT128
         using W = std::conditional_t<(sizeof(T) > 8), unsigned __int128, std::uint64_t>;
 #else
         using W = std::uint64_t;
@@ -254,7 +257,7 @@ struct wide_int {
     // builtin narrowing conversions do.
     template <std::integral T>
     constexpr explicit operator T() const noexcept {
-#if defined(__SIZEOF_INT128__)
+#if BEMAN_INSIDE_HAS_INT128
         using W = std::conditional_t<(sizeof(T) > 8), unsigned __int128, std::uint64_t>;
 #else
         using W = std::uint64_t;
@@ -579,5 +582,7 @@ struct std::numeric_limits<beman::inside::detail::wide_int<N, Signed, L>> {
     static constexpr W    lowest() noexcept { return min(); }
     static constexpr W    max() noexcept { return Signed ? ~top_bit() : ~W{0}; }
 };
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_WIDE_INT_HPP

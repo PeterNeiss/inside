@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_DETAIL_FLOAT_BITS_HPP
 #define BEMAN_INSIDE_DETAIL_FLOAT_BITS_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/numbers.hpp>      // umax, imax
 #include <beman/inside/detail/debug.hpp> // errc, detail::raise
 
@@ -259,5 +262,7 @@ constexpr T for_each_double_part(T v, F f) {
 }
 
 } // namespace beman::inside::detail
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_FLOAT_BITS_HPP

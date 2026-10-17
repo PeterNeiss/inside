@@ -27,8 +27,10 @@
 #ifndef BEMAN_INSIDE_UNITS_HPP
 #define BEMAN_INSIDE_UNITS_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/inside.hpp>
-#include <beman/inside/detail/delete_reason.hpp>
 #include <beman/inside/io.hpp>
 
 #include <algorithm>
@@ -196,7 +198,7 @@ struct magnitude {
     constexpr bool is_one() const { return Ratio == grid_rational{1} && Pi == 0; }
 };
 
-// mag<r> — a magnitude tag: mag<1000> * si::metre, mag<just<1>.per<3>> * …
+// mag<r> — a magnitude tag: mag<1000> * si::metre, mag<just<1, 3>> * …
 template <magnitude M>
 struct mag_t {
     static constexpr magnitude value = M;
@@ -981,10 +983,10 @@ consteval spec_result common_spec(const reference& a, const reference& b) {
 // The spec part of a product: named factors multiply into a recipe.
 // (Spec null, KindOf, no recipe) is the empty product: 1 / x starts there.
 consteval reference spec_product(const reference& a, const reference& b, int sign, const unit& u) {
-    const auto empty = [](const reference& r) { return !r.Spec && r.KindOf && r.Derived.Size == 0; };
+    const auto empty = [](const reference& r) consteval { return !r.Spec && r.KindOf && r.Derived.Size == 0; };
     if ((is_generic(a) && !empty(a)) || (is_generic(b) && !empty(b)))
         return reference{nullptr, false, {}, u};
-    const auto factors = [](const reference& r) {
+    const auto factors = [](const reference& r) consteval {
         if (!r.Spec)
             return r.Derived;
         detail::recipe f{};
@@ -1639,10 +1641,11 @@ concept value_castable_to =
     factor_fits_v<R.U, Q::reference.U> && exact_factor_v<conversion_factor<R.U, Q::reference.U>>;
 }
 template <class Q, reference R, class V>
-    requires detail::value_castable_to<Q, R> &&
-             requires(const quantity<R, V>& q) { typename Q::rep(q.template in<Q::reference.U>().numerical_value()); }
+    requires detail::value_castable_to<Q, R> && requires(const quantity<R, V>& q) {
+        static_cast<typename Q::rep>(q.template in<Q::reference.U>().numerical_value());
+    }
 [[nodiscard]] constexpr Q value_cast(const quantity<R, V>& q) {
-    return Q{typename Q::rep(q.template in<Q::reference.U>().numerical_value())};
+    return Q{static_cast<typename Q::rep>(q.template in<Q::reference.U>().numerical_value())};
 }
 // try_value_cast<Q, F>(q) — the same through Q's Rep2::try_make<F>.
 template <class Q, policy_flag F = none, reference R, class V>
@@ -2075,7 +2078,7 @@ std::ostream& operator<<(std::ostream& os, const quantity_point<R, O, V>& p) {
 
 } // namespace beman::inside::units
 
-#ifdef __cpp_lib_format
+#if BEMAN_INSIDE_HAS_STD_FORMAT
 // std::format: the spec formats the number as for its inside ({:.2f}, {:>8}),
 // then the unit symbol follows ("5 km", "90°").
 template <beman::inside::units::reference R, class V>
@@ -2106,7 +2109,7 @@ struct std::formatter<beman::inside::units::quantity_point<R, O, V>>
         return std::formatter<beman::inside::units::quantity<R, V>>::format(p.quantity_from_origin(), ctx);
     }
 };
-#endif // __cpp_lib_format
+#endif // BEMAN_INSIDE_HAS_STD_FORMAT
 
 namespace beman::inside::units {
 //---------------------------------------------------------------------------
@@ -2373,5 +2376,7 @@ BEMAN_INSIDE_UNIT(international,
 #undef BEMAN_INSIDE_UNITS_SUM_DELETED
 
 } // namespace beman::inside::units
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_UNITS_HPP

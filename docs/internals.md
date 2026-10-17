@@ -43,7 +43,7 @@ grid numbers a combined denominator past `imax` falls back to `Notch = 0`;
 under C++26 the exact gcd is kept (§2a). A floating-point limit is its
 exact binary value, so a double that needs a notch finer than 1/1024 (0.1 is
 3602879701896397/2^55) is rejected at compile time in favour of `0.1_r` or an
-explicit notch; rational, `just<N>.per<D>`, `_r` and inside limits are taken exactly.
+explicit notch; rational, `just<N, D>`, `_r` and inside limits are taken exactly.
 
 **Open limits.** `grid{lo, hi, bounds::half_open}` (or `bounds::open`, or
 with a notch, `{{lo, hi}, notch, bounds::…}`) moves each open limit in by one
