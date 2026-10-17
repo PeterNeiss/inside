@@ -737,6 +737,15 @@ constexpr double ldexp_small(double value, int exp) noexcept {
     return std::bit_cast<double>(bits);
 }
 
+// value·2^k where 2^k is a normal double (−1022 ≤ k ≤ 1023): one multiply,
+// which rounds once like ldexp_small's round-to-nearest-even; else ldexp_small.
+// For the run-time kernels (the exp family).
+constexpr double scale_pow2(double value, int k) noexcept {
+    if (k >= -1022 && k <= 1023) [[likely]]
+        return value * std::bit_cast<double>(static_cast<std::uint64_t>(k + 1023) << 52);
+    return ldexp_small(value, k);
+}
+
 // value·2^exp for any exp: past ±2200 every finite double overflows or
 // underflows alike, so exp is clamped there (an exp near INT_MAX would
 // overflow ldexp_small's exponent sum).
@@ -11448,27 +11457,74 @@ constexpr Out store_exact_into(const wide_rational<K>& v, P&& policy) {
     assign_exact<rational>(out, v, policy, no_action{});
     return out;
 }
+// The same store from a value with 64-bit numbers: an inside or a rational.
+template <insidable Out, numeric V, typename P>
+constexpr Out store_into(const V& v, P&& policy) {
+    Out out{};
+    assignment<Out, V>::assign(out, v, policy, no_action{});
+    return out;
+}
+// Native paths: the exact product as an inside when its grid has 64-bit raws,
+// else the product or quotient as a 64-bit rational when it fits. Each rounds
+// once, as the wide path does; past them the wide path is the fallback.
+// An inside-to-inside store accepts the product only where its compile-time
+// checks pass: notches that fit (or snap) and an interval that meets Out's (or
+// clamp/wrap). The wide path reports those cases at run time instead.
+template <insidable Out, policy_flag F, insidable A, insidable B>
+inline constexpr bool native_product = [] {
+    if constexpr (!mul_defined<A, B>)
+        return false;
+    else {
+        using P                   = typename multiplication<A, B>::result;
+        constexpr policy_flag all = flags_of<Out> | F;
+        return values_fit_imax<P> && (notches_compatible<Out, P> || has_flag(all, snap)) &&
+               (has_flag(all, clamp) || has_flag(all, wrap) || !excludes(interval_of<Out>, interval_of<P>));
+    }
+}();
+template <insidable A, insidable B>
+inline constexpr bool rational_operands = rational_readable<A> && rational_readable<B>;
+
+template <insidable Out, insidable A, insidable B, typename P>
+constexpr Out mul_into_wide(const A& a, const B& b, P&& policy) {
+    using E = wide_rational<exact_limbs<A, B, Out>>;
+    return store_exact_into<Out>(E{exact_of(a)} * E{exact_of(b)}, policy);
+}
+template <insidable Out, insidable A, insidable B, typename P>
+constexpr Out div_into_wide(const A& a, const B& b, P&& policy) {
+    using E = wide_rational<exact_limbs<A, B, Out>>;
+    return store_exact_into<Out>(E{exact_of(a)} / E{exact_of(b)}, policy);
+}
 } // namespace detail
 
 template <insidable Out, policy_flag F = none, insidable A, insidable B>
 [[nodiscard]] constexpr Out mul_into(const A& a, const B& b) {
-    using E = detail::wide_rational<detail::exact_limbs<A, B, Out>>;
-    return detail::store_exact_into<Out>(E{detail::exact_of(a)} * E{detail::exact_of(b)},
-                                         make_policy<flags_of<Out> | F>());
+    auto policy = make_policy<flags_of<Out> | F>();
+    if constexpr (detail::native_product<Out, F, A, B>)
+        return detail::store_into<Out>(a * b, policy);
+    else {
+        if constexpr (detail::rational_operands<A, B>)
+            if (const auto p = detail::try_mul(detail::as_rational(a), detail::as_rational(b)))
+                return detail::store_into<Out>(*p, policy);
+        return detail::mul_into_wide<Out>(a, b, policy);
+    }
 }
 
 template <insidable Out, policy_flag F = none, insidable A, insidable B>
 [[nodiscard]] constexpr auto div_into(const A& a, const B& b)
     -> std::conditional_t<detail::divisor_excludes_zero<B>, Out, std::expected<Out, errc>> {
-    using E     = detail::wide_rational<detail::exact_limbs<A, B, Out>>;
-    const E num = E{detail::exact_of(a)}, den = E{detail::exact_of(b)};
+    const auto quotient = [&](auto&& policy) {
+        if constexpr (detail::rational_operands<A, B>)
+            if (const auto q = detail::try_div(detail::as_rational(a), detail::as_rational(b)))
+                return detail::store_into<Out>(*q, policy);
+        return detail::div_into_wide<Out>(a, b, policy);
+    };
     if constexpr (detail::divisor_excludes_zero<B>)
-        return detail::store_exact_into<Out>(num / den, make_policy<flags_of<Out> | F>());
+        return quotient(make_policy<flags_of<Out> | F>());
     else {
-        if (den.Num.is_zero())
+        if (b == 0)
             return std::unexpected{errc::division_by_zero};
         errc      ec{};
-        const Out out = detail::store_exact_into<Out>(num / den, make_policy<flags_of<Out> | F>(ec));
+        const Out out = quotient(make_policy<flags_of<Out> | F>(ec));
         if (ec != errc{})
             return std::unexpected{ec};
         return out;
@@ -14600,13 +14656,13 @@ struct exp_k {
         const double k = std::nearbyint(x * log2e);
         double       r = fma(-k, ln2_hi, x);
         r              = fma(-k, ln2_lo, r);
-        return ::beman::inside::detail::ldexp_small(exp_poly<N>(r), static_cast<int>(k));
+        return ::beman::inside::detail::scale_pow2(exp_poly<N>(r), static_cast<int>(k));
     }
     BEMAN_INSIDE_ALWAYS_INLINE static double value(double x, double lo) {
         const double k = std::nearbyint(x * log2e);
         double       r = fma(-k, ln2_hi, x);
         r              = fma(-k, ln2_lo, r) + lo;
-        return ::beman::inside::detail::ldexp_small(exp_poly<N>(r), static_cast<int>(k));
+        return ::beman::inside::detail::scale_pow2(exp_poly<N>(r), static_cast<int>(k));
     }
     static double exp(double x, double& bound) {
         const double v = value(x);
@@ -14620,7 +14676,7 @@ struct exp_k {
     static double           exp2(double x, double& bound) {
         const double k = std::nearbyint(x);
         const double r = (x - k) * ln2_full;
-        const double v = ::beman::inside::detail::ldexp_small(exp_poly<N>(r), static_cast<int>(k));
+        const double v = ::beman::inside::detail::scale_pow2(exp_poly<N>(r), static_cast<int>(k));
         bound          = Rel2 * v + tiny;
         return v;
     }

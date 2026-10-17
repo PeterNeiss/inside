@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // S: a store B::try_make(v) of an exact rational or a double, rounded by
-//    B's mode onto its lattice, range checked (or clamped) after rounding.
+//    B's mode onto its lattice, range checked (or clamped) after rounding;
+//    also mul_into<B> / div_into<B> of two grid values (v their exact result).
 //    S <mode> <clamp> <lower> <upper> <notch> <v> <result>
 //    v is a rational, or a double in hex (0x1.8p+1).
 
@@ -31,6 +32,30 @@ void store(rng_t& g, int n, const char* mode, bool clamped, bool ties) {
                   << notch_of<B> << ' ' << hex << ' ';
         out(B::try_make(x));
         std::cout << '\n';
+        // The same through mul_into<B> / div_into<B>: the exact product or
+        // quotient of two grid values. mul_into reports a failed store
+        // through B's policy (a throw); div_into returns it. Anchored grids
+        // only: the products hit ties, which an unanchored grid rounds by slot.
+        if (!ties)
+            continue;
+        using A   = inside<{{-4, 4}, per<4>}>;
+        using D   = inside<{{-3, 3}, per<3>}>;
+        const A a = pick<A>(g);
+        const D e = pick<D>(g);
+        std::cout << "S " << mode << ' ' << clamped << ' ' << lower_of<B> << ' ' << upper_of<B> << ' '
+                  << notch_of<B> << ' ' << rational{a} * rational{e} << ' ';
+        try {
+            std::cout << mul_into<B>(a, e);
+        } catch (const inside_error& err) {
+            std::cout << 'E' << static_cast<int>(err.Code);
+        }
+        std::cout << '\n';
+        if (e != 0) {
+            std::cout << "S " << mode << ' ' << clamped << ' ' << lower_of<B> << ' ' << upper_of<B> << ' '
+                      << notch_of<B> << ' ' << rational{a} / rational{e} << ' ';
+            out(div_into<B>(a, e));
+            std::cout << '\n';
+        }
     }
 }
 
