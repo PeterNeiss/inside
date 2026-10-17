@@ -171,7 +171,7 @@ struct grid {
         BEMAN_INSIDE_DIAG(G.Interval.divides_evenly(G.Notch),
                           "grid: the notch must divide Upper − Lower evenly",
                           << " (notch " << G.Notch << ", Upper − Lower "
-                          << detail::grid_sub(G.Interval.Upper, G.Interval.Lower) << ")");
+                          << detail::diag_text::difference{G.Interval.Upper, G.Interval.Lower} << ")");
         static_assert(G.MaxDenominator == 0 || (G.Notch == 0 && G.Interval.Lower != G.Interval.Upper),
                       "grid: only a continuous grid carries a max_denominator");
         // Every value is a multiple of gcd(Lower, Notch): {{0.2, 1.2}, 2^-61}

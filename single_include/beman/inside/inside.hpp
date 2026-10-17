@@ -4115,6 +4115,30 @@ struct diag_text {
         return *this;
     }
 
+    // a − b, in the formatter's wide integers: the message must stay a
+    // constant expression even where the grid numbers' own a − b overflows
+    // (Clang evaluates a static_assert message when the assertion holds too).
+    struct difference {
+        grid_rational A;
+        grid_rational B;
+    };
+    constexpr diag_text& operator<<(const difference& d) {
+        const grid_int an = wide_numerator(d.A), ad = wide_denominator(d.A);
+        const grid_int bn = wide_numerator(d.B), bd = wide_denominator(d.B);
+        grid_int       num = an * bd - bn * ad, den = ad * bd;
+        const grid_int g   = grid_int_gcd(num, den);
+        if (!(g == grid_int{0}) && !(g == grid_int{1})) {
+            num = num / g;
+            den = den / g;
+        }
+        append(num);
+        if (!(den == grid_int{1})) {
+            push('/');
+            append(den);
+        }
+        return *this;
+    }
+
   private:
     constexpr void append(grid_int v) {
         if (v < grid_int{0}) {
@@ -4596,7 +4620,7 @@ struct grid {
         BEMAN_INSIDE_DIAG(G.Interval.divides_evenly(G.Notch),
                           "grid: the notch must divide Upper − Lower evenly",
                           << " (notch " << G.Notch << ", Upper − Lower "
-                          << detail::grid_sub(G.Interval.Upper, G.Interval.Lower) << ")");
+                          << detail::diag_text::difference{G.Interval.Upper, G.Interval.Lower} << ")");
         static_assert(G.MaxDenominator == 0 || (G.Notch == 0 && G.Interval.Lower != G.Interval.Upper),
                       "grid: only a continuous grid carries a max_denominator");
         // Every value is a multiple of gcd(Lower, Notch): {{0.2, 1.2}, 2^-61}
