@@ -123,9 +123,6 @@ template <insidable B>
 inline constexpr bool rational_readable = !wide_valued<B> || (lattice_past_rational<B> && !wide_index_storage<B> &&
                                                               !wide_grid_numbers<B> && !fraction_storage<B>);
 
-// Ungated double view of any inside (the public operator double() is gated
-// on a rounding flag; this is always available). Everything but index storage holds the value verbatim; an
-// index decodes through the grid.
 template <insidable B>
 constexpr auto exact_of(const B& b); // wide_value.hpp
 
@@ -158,6 +155,9 @@ inline constexpr index_double_codec index_double = [] {
     }
 }();
 
+// Ungated double view of any inside (the public operator double() is gated
+// on a rounding flag; this is always available). Everything but index
+// storage holds the value verbatim; an index decodes through the grid.
 template <insidable B>
 [[nodiscard]] constexpr double as_double(const B& b) noexcept {
     if constexpr (wide_valued<B>)
@@ -231,8 +231,8 @@ template <insidable B>
 }
 
 // Widen raw storage to imax. Distinct from `to_value(b)` for notch-stored
-// grids where raw is an index rather than a value — naming separates the
-// two intents that today both spell `static_cast<imax>`.
+// grids where raw is an index rather than a value; the names keep the two
+// intents apart although both are a `static_cast<imax>`.
 template <insidable B>
     requires(!wide_index_storage<B>) // a wide raw does not fit imax: use the exact wide path
 constexpr imax raw_imax(B b) noexcept {

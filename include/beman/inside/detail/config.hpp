@@ -20,6 +20,7 @@
 //   Floating point      BEMAN_INSIDE_FABS(x), _NEARBYINT(x), _INF(),
 //                       _ASSOC_BARRIER(x)
 //   Warnings            BEMAN_INSIDE_WARNINGS_PUSH / _POP
+//   Preprocessor        BEMAN_INSIDE_EXPAND(x)
 //---------------------------------------------------------------------------
 
 #include <version> // the library feature-test macros (__cpp_lib_format)

@@ -331,11 +331,7 @@ struct quantity_spec {
 };
 
 namespace detail {
-// Identity of the static objects a value points to (specs, units, origins)
-// is by content, never by address: GCC with -fsanitize=pointer-compare
-// rejects comparing the addresses of two distinct objects in a constant
-// expression. A null pointer test stays a pointer test.
-// A spec is its name, dimension, recipe, kind boundary and parent chain: a
+// Identity by content (see ref_or_none). A spec is its name, dimension, recipe, kind boundary and parent chain: a
 // user spec that reuses a name ("length") under another parent is another
 // spec.
 constexpr bool same(const quantity_spec* a, const quantity_spec* b) { // both set
@@ -510,16 +506,6 @@ consteval detail::spec_expr inverse(A a) {
     return detail::spec_combine(detail::spec_expr{}, expr_of(a), -1);
 }
 
-//---------------------------------------------------------------------------
-// named_unit — a unit with a symbol (m, s, N, Ω, °C): a static object. Its
-// magnitude is relative to the coherent SI unit of its dimension; Kind (if
-// any) is the quantity kind it measures (Hz: frequency, Bq: activity).
-//---------------------------------------------------------------------------
-//---------------------------------------------------------------------------
-// unit — a product of named units to integer powers, each with an optional
-// decimal prefix (k, m, µ…), times a scale (mag<1000> * m; the common unit of
-// a sum). A structural value: it is the template argument.
-//---------------------------------------------------------------------------
 struct named_unit;
 
 //---------------------------------------------------------------------------
@@ -580,6 +566,11 @@ namespace detail {
 inline constexpr std::size_t max_unit_atoms = 6;
 } // namespace detail
 
+//---------------------------------------------------------------------------
+// unit — a product of named units to integer powers, each with an optional
+// decimal prefix (k, m, µ…), times a scale (mag<1000> * m; the common unit of
+// a sum). A structural value: it is the template argument.
+//---------------------------------------------------------------------------
 struct unit {
     detail::unit_atom Atoms[detail::max_unit_atoms]{};
     std::int8_t       Size{0};
@@ -603,6 +594,11 @@ struct unit_t {
     static constexpr unit value = U;
 };
 
+//---------------------------------------------------------------------------
+// named_unit — a unit with a symbol (m, s, N, Ω, °C): a static object. Its
+// magnitude is relative to the coherent SI unit of its dimension; Kind (if
+// any) is the quantity kind it measures (Hz: frequency, Bq: activity).
+//---------------------------------------------------------------------------
 struct named_unit {
     std::string_view   Utf8;
     std::string_view   Ascii;

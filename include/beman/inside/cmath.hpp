@@ -335,7 +335,7 @@ inline constexpr bool fmod_int_fast = [] {
 }();
 } // namespace detail
 
-// x mod y = x − ⌊x/y⌋·y (truncated-division convention, matching std::fmod).
+// x mod y = x − trunc(x/y)·y (truncated division, matching std::fmod).
 // Result has the sign of x. Pre: y != 0 (fmod_into checks it).
 template <insidable Out, insidable InX, insidable InY>
 [[nodiscard]] constexpr Out fmod_nonzero(InX x, InY y) {
@@ -393,14 +393,6 @@ template <insidable Out, insidable InX, insidable InY>
 }
 
 //---------------------------------------------------------------------------
-// Auto-deducing forms — algebraic tier.
-//
-// Each `fn_into<Out>(x)` has an auto form `fn(x)` that derives `Out` from `In`
-// and delegates to it. Notch policy: abs/fmod inherit In's notch; floor/ceil/round/trunc
-// deduce notch 1 since their outputs are integer-valued.
-//---------------------------------------------------------------------------
-
-//---------------------------------------------------------------------------
 // pown<E> — compile-time integer powers, pure grid arithmetic
 //---------------------------------------------------------------------------
 // Repeated squaring in inside-space: every multiply widens the result grid
@@ -454,6 +446,14 @@ template <imax E, insidable In>
     return detail::pown_impl<E>(x);
 }
 
+//---------------------------------------------------------------------------
+// Auto-deducing forms — algebraic tier.
+//
+// Each `fn_into<Out>(x)` has an auto form `fn(x)` that derives `Out` from `In`
+// and delegates to it. abs and copysign take a notch symmetric about 0
+// (sym_notch), fmod the gcd of both inputs' notches; floor/ceil/round/trunc
+// deduce notch 1 since their outputs are integer-valued.
+//---------------------------------------------------------------------------
 template <insidable In>
 [[nodiscard]] constexpr auto abs(In x) {
     return abs_into<detail::abs_result_t<In>>(x);

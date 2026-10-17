@@ -32,12 +32,13 @@ option(
     ${PROJECT_IS_TOP_LEVEL}
 )
 
-# Benchmarks, the property fuzzer, the accuracy sweep and the cachegrind perf
-# workload. Large, slow-to-compile harnesses that validate nothing an end user
-# compiles, so they are opt-in.
+# Benchmarks, the docs reports (performance.md, accuracy.md) and the
+# cachegrind perf workload: slow to compile and validating nothing an end user
+# compiles, so they are opt-in. (The fuzzer and the accuracy sweep always run
+# as tests.)
 option(
     BEMAN_INSIDE_BUILD_TOOLS
-    "Enable building benchmarks, fuzzer, accuracy and perf tooling. Default: OFF. Values: { ON, OFF }."
+    "Enable building benchmarks, the docs reports and the perf workload. Default: OFF. Values: { ON, OFF }."
     OFF
 )
 

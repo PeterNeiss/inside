@@ -15,9 +15,9 @@ BEMAN_INSIDE_WARNINGS_PUSH
 namespace beman::inside::detail {
 //---------------------------------------------------------------------------
 // assignment — narrowing/coercion between bounded and arithmetic types. Three
-// specializations dispatch on the source (integral / fractional / insidable),
-// each routing through `store` (in-range) and `handle_out_of_range` /
-// `apply_clamp` / `apply_wrap` (policy). The insidable path also exposes
+// specializations dispatch on the source (integral / fractional / insidable);
+// each stores an in-range value and hands an out-of-range one to the policy
+// (`apply_clamp` / `apply_wrap`, or a report). The insidable path also exposes
 // `is_integer_mapping` / `map_raw` — a pure-integer formula in the hot path.
 //---------------------------------------------------------------------------
 
@@ -85,7 +85,7 @@ struct assignment<L, R> {
         if constexpr (value_storage<L>)
             lhs = L::from_raw(raw_cast<L>(rhs));
         else if constexpr (detail::point_grid<L>)
-            lhs = L::from_raw(0); // notch_storage point grid: 0 is the only offset
+            lhs = L::from_raw(0); // a point grid: 0 is the only offset
         else if constexpr (qformat_codec_fits<L>)
             lhs = L::from_raw(q_format_encode<L>(static_cast<imax>(rhs)));
         else // index storage on a notch 1/K grid: the offset is an exact integer
@@ -240,9 +240,8 @@ struct assignment<L, R> {
     // so the wrap path can reuse store_checked after computing the wrapped
     // value.
     //
-    // apply_wrap for a fractional R — modular reduction into [Lower, Lower + range)
-    // followed by store_checked so the rounding policy still applies if rhs
-    // doesn't land on a notch after wrapping. range = Upper - Lower + Notch.
+    // apply_wrap for a fractional R — rounding onto the lattice, then modular
+    // reduction into [Lower, Lower + range), range = Upper - Lower + Notch.
     template <typename P, typename A>
     static constexpr void apply_wrap(L& lhs, R rhs, P&& policy, A&& action) {
         // Round onto the lattice first (by the policy, like every other store),
@@ -360,16 +359,16 @@ struct assignment<L, R> {
     };
     using fine_result_t = std::conditional_t<rational_storage<L>, fine_rational_result, fine_result>;
 
+    // P's flags, recording its first failure into an errc instead.
+    template <typename P>
+    using recording_policy = ::beman::inside::policy<P::Flags, error_ref>;
+
     // Out of line, and by value (an empty action too): a reference to a
     // caller's local would make it escape the hot path's frame. lhs may be
     // uninitialized (a trivial default ctor), so the store runs on a copy of
     // the lower limit, and a failure is returned, not stored: a failed store
     // leaves lhs intact. The policy hears of it here; an on_error action,
     // which gets lhs, from store_fine_double.
-    // P's flags, recording its first failure into an errc instead.
-    template <typename P>
-    using recording_policy = ::beman::inside::policy<P::Flags, error_ref>;
-
     template <typename P, typename A>
     BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE static constexpr fine_result_t
     fine_double_value(double rhs, P policy, A action) {

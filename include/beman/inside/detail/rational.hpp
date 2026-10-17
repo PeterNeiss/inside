@@ -402,7 +402,7 @@ constexpr rational::rational(std::floating_point auto value) {
     auto [num, den] = abs_fraction(static_cast<double>(value));
     Numerator       = num;
     Denominator     = static_cast<imax>(neg ? umax{0} - den : den);
-    // trim not needed, because abs_fraction already trims in its special case
+    // no trim: abs_fraction returns a reduced fraction
 }
 
 // rational{value}, and whether it is exact: a finite |value| < 2^64 finer
@@ -537,8 +537,7 @@ inline constexpr auto rational::add_impl(const rational& a, const rational& b) {
         if (mul_overflow(a.Numerator, b_ad_r, &A) || mul_overflow(b.Numerator, a_ad_r, &B)) {
             // Mixed signs: |A − B| can fit umax even when a cross-product alone
             // does not (e.g. 1024 − m/2^54 forms 1024·2^54 == 2^64 before the
-            // subtraction brings it back in range — the former double engine's store hit
-            // exactly this). Retry the difference in 128-bit before giving up.
+            // subtraction brings it back in range). Retry the difference in 128-bit before giving up.
             if (a_neg != b_neg) {
                 const limb::pair<umax> A2       = limb::mul(a.Numerator, b_ad_r);
                 const limb::pair<umax> B2       = limb::mul(b.Numerator, a_ad_r);

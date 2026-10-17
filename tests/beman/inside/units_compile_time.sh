@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# Compile time of units.hpp: the best of three wall times for three TUs,
+# Compile time of units.hpp: the best of three wall times for four TUs,
 #   base     inside.hpp + io.hpp (what units.hpp builds on)
 #   include  units.hpp, nothing used
 #   plain    the same N expressions' inside arithmetic without units (the

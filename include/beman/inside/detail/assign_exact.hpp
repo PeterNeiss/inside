@@ -221,9 +221,9 @@ constexpr std::optional<wide_rational<exact_max<K, exact_limbs<L>>>> onto_bound(
 }
 
 //---------------------------------------------------------------------------
-// assign_exact — store an exact value into L. The path for a wide raw (more
-// than 2^64 slots) on either side of an assignment, where neither imax nor
-// the 64-bit rational holds every value. Rounds first, then range-checks,
+// assign_exact — store an exact value into L: the path wherever neither imax
+// nor the 64-bit rational holds every value (a wide raw on either side, fine
+// doubles, mul_into/div_into, parse, sum, wrap_exact). Rounds first, then range-checks,
 // like the builtin paths; out of range runs the usual policy cascade.
 //---------------------------------------------------------------------------
 // R is the source type: an on_clamp action gets the overshoot and an

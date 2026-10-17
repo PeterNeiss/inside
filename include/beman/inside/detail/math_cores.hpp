@@ -644,7 +644,7 @@ struct ahyp_core {
 
 // b^e for b > 0: e^(e·log b). Exact for e = 0, b = 1, and e = p/q (q ≤ 64)
 // when b's numerator and denominator are perfect q-th powers (4^0.5 = 2,
-// 2.25^1.5 = 3.375) and the power fits PowLimbs: such a result can sit on a
+// 2.25^1.5 = 3.375) and the power fits pow_limbs: such a result can sit on a
 // rounding boundary, where no approximation decides.
 inline constexpr std::size_t pow_limbs = 32; // exact integer powers up to 2048 bits
 

@@ -798,7 +798,7 @@ inline constexpr fixed_t<W + 4> ln10_q = [] {
 //---------------------------------------------------------------------------
 // Exact integer helpers.
 //---------------------------------------------------------------------------
-// ⌊√t⌋ and ⌊∛t⌋ for one limb: Newton from above.
+// ⌊√t⌋ for one limb: Newton from above.
 constexpr umax isqrt64(umax t) noexcept {
     if (t < 2)
         return t;
@@ -845,7 +845,7 @@ constexpr umax isqrt128(unsigned __int128 t) noexcept {
 #endif
 
 // ⌊√n⌋ for n ≥ 0. Two limbs or fewer directly; wider, the root of the top
-// 126 bits (an even shift) seeds Newton from above with about 62 correct
+// 126 bits (an even shift) seeds Newton from above with at least 61 correct
 // bits, each step doubling them; once they cover the root, squares
 // correct the last unit (Newton from above never lands below ⌊√n⌋).
 template <std::size_t K>
@@ -908,7 +908,7 @@ constexpr umax icbrt128(unsigned __int128 t) noexcept {
 
 // ⌊∛n⌋ for n ≥ 0, as isqrt: two limbs or fewer directly; wider, the root
 // of the top 126 bits (a shift by a multiple of 3) seeds Newton from above
-// with about 41 correct bits, and cubes correct the last unit.
+// with at least 40 correct bits, and cubes correct the last unit.
 template <std::size_t K>
 constexpr wide_sint<K> icbrt(const wide_sint<K>& n) noexcept {
     using I = wide_sint<K>;
@@ -1185,8 +1185,8 @@ constexpr wide_sint<K> rsqrt_q(const wide_sint<K>& m) noexcept {
     return static_cast<wide_sint<K>>(y);
 }
 
-// atan(j/8) for j = 0 … 8 at scale S, within 1 unit: two half-angle steps
-// t ← t/(1 + √(1+t²)) bring j/8 below 1/4, then the series with no table.
+// atan(j/8) for j = 0 … 8 at scale S, within 1 unit: three half-angle steps
+// t ← t/(1 + √(1+t²)) bring j/8 below tan(π/32), then the series with no table.
 template <int S>
 inline constexpr auto atan_eighths = [] {
     constexpr int T                 = S + 16;

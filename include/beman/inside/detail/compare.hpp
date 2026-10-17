@@ -22,8 +22,8 @@ namespace beman::inside {
 //---------------------------------------------------------------------------
 namespace detail {
 // Integer value-index comparison eligibility: an integer-backed anchored
-// inside whose value indices (value/Notch, integers) fit imax, so two
-// same-notch insides compare as `bias + raw` without a rational decode.
+// inside whose value indices (value/Notch, integers) fit imax, so it
+// compares with a scalar as `bias + raw` without a rational decode.
 template <insidable B>
 inline constexpr bool index_cmp_fits = [] {
     if constexpr (!detail::notched<B> || !detail::anchored<B> || !values_fit_imax<B>)
@@ -80,7 +80,7 @@ constexpr auto compare(const L& lhs, const R& rhs, Cmp cmp) {
         return cmp(lhs.raw(), point_slot_of<L, R>);
     else if constexpr (point_is_slot<R, L>)
         return cmp(point_slot_of<R, L>, rhs.raw());
-    // a wide-index operand: exact wide fractions
+    // a wide-valued operand (wide index, big grid numbers, fraction raws): exact wide fractions
     else if constexpr (wide_valued<L> || wide_valued<R>)
         return cmp(exact_of(lhs), exact_of(rhs));
     // integer raws: both values as exact counts of a unit dividing them both

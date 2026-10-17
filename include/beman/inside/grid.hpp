@@ -42,7 +42,7 @@ enum class bounds : unsigned char {
 
 // The largest maximum denominator a continuous grid can carry: past it a
 // bound would size fractions without limit along an expression chain, so it
-// is dropped (the grid is unbounded, as before). C++26 big grids only; with
+// is dropped (the grid is unbounded). C++26 big grids only; with
 // 64-bit grid numbers a bound must fit the 64-bit rational.
 #ifndef BEMAN_INSIDE_MAX_FRACTION_BITS
     #define BEMAN_INSIDE_MAX_FRACTION_BITS 1024
@@ -441,8 +441,6 @@ struct point_slot {
 };
 } // namespace detail
 
-// Both endpoints lie in imax — the signed value raw candidates (and every
-// `trunc(endpoint)` constant) are only meaningful then.
 namespace detail {
 // Notch 1 from an integer Lower: the values are integers, so a raw can hold
 // the value itself (value storage). {{0.5, 10.5}, 1} has notch 1 but not
@@ -451,6 +449,8 @@ constexpr bool unit_lattice(const grid& g) noexcept {
     return g.Notch == 1 && wide_denominator(g.Interval.Lower) == grid_int{1};
 }
 
+// Both endpoints lie in imax — the signed value raw candidates (and every
+// `trunc(endpoint)` constant) are only meaningful then.
 constexpr bool fits_imax(const interval& iv) noexcept {
     return iv.Lower >= rational{std::numeric_limits<imax>::min()} &&
            iv.Upper <= rational{std::numeric_limits<imax>::max()};
@@ -545,13 +545,13 @@ constexpr auto raw_for() {
 template <grid G>
 using raw_for_t = decltype(raw_for<G>());
 
-// Dyadic grid: power-of-2 notch denominator and Lower denominator, so every
-// on-grid value is a binary fraction (a double when it fits double_exact).
-// A positive power of two, and its log2 (exact at any width).
+// A positive power of two (exact at any width).
 constexpr bool is_pow2(const grid_int& v) noexcept {
     return grid_int{0} < v && v == (grid_int{1} << (bit_width_of(v) - 1));
 }
 
+// Dyadic grid: power-of-2 notch denominator and Lower denominator, so every
+// on-grid value is a binary fraction (a double when it fits double_exact).
 template <grid G>
 inline constexpr bool dyadic_grid =
     G.Notch != 0 && is_pow2(wide_denominator(G.Notch)) && is_pow2(wide_denominator(G.Interval.Lower));

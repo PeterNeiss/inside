@@ -64,6 +64,7 @@
 //   Floating point      BEMAN_INSIDE_FABS(x), _NEARBYINT(x), _INF(),
 //                       _ASSOC_BARRIER(x)
 //   Warnings            BEMAN_INSIDE_WARNINGS_PUSH / _POP
+//   Preprocessor        BEMAN_INSIDE_EXPAND(x)
 //---------------------------------------------------------------------------
 
 
@@ -327,15 +328,6 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #endif
 
 //---------------------------------------------------------------------------
-// Attribute shims. Error/throw paths are marked cold + non-inline so the
-// optimizer keeps them out of the hot path (and out of the inlined body of
-// otherwise-trivial assignment/arithmetic). Standard [[noreturn]] / [[unlikely]]
-// are used directly at the throw sites and branches.
-//---------------------------------------------------------------------------
-// (The attribute shims BEMAN_INSIDE_COLD, _NOINLINE, _ALWAYS_INLINE and
-// BEMAN_INSIDE_TRAP() are in config.hpp.)
-
-//---------------------------------------------------------------------------
 // debug — error codes, the replaceable failure handler, and diagnostic helpers.
 // `errc` enumerates the failure modes. Every runtime failure funnels through
 // `detail::raise`, which calls the installed `error_handler` — by default one
@@ -441,7 +433,7 @@ namespace detail {
 // into the type, so a malformed literal / overflow aborts constant
 // evaluation with the text in the instantiation — no `throw` token, so it
 // also compiles under -fno-exceptions. Never reached at runtime (all call
-// sites are guarded by std::is_constant_evaluated / are consteval).
+// sites are guarded by std::is_constant_evaluated or are consteval).
 //-----------------------------------------------------------------------
 template <unsigned N>
 struct fixed_string {
@@ -1543,7 +1535,7 @@ inline constexpr bool is_wide_rational_v = false;
 template <std::size_t K>
 inline constexpr bool is_wide_rational_v<wide_rational<K>> = true;
 
-// An wide_rational of any width.
+// A wide_rational of any width.
 template <typename T>
 concept wide_rational_like = is_wide_rational_v<std::remove_cvref_t<T>>;
 } // namespace beman::inside::detail
@@ -2040,7 +2032,7 @@ constexpr rational::rational(std::floating_point auto value) {
     auto [num, den] = abs_fraction(static_cast<double>(value));
     Numerator       = num;
     Denominator     = static_cast<imax>(neg ? umax{0} - den : den);
-    // trim not needed, because abs_fraction already trims in its special case
+    // no trim: abs_fraction returns a reduced fraction
 }
 
 // rational{value}, and whether it is exact: a finite |value| < 2^64 finer
@@ -2175,8 +2167,7 @@ inline constexpr auto rational::add_impl(const rational& a, const rational& b) {
         if (mul_overflow(a.Numerator, b_ad_r, &A) || mul_overflow(b.Numerator, a_ad_r, &B)) {
             // Mixed signs: |A − B| can fit umax even when a cross-product alone
             // does not (e.g. 1024 − m/2^54 forms 1024·2^54 == 2^64 before the
-            // subtraction brings it back in range — the former double engine's store hit
-            // exactly this). Retry the difference in 128-bit before giving up.
+            // subtraction brings it back in range). Retry the difference in 128-bit before giving up.
             if (a_neg != b_neg) {
                 const limb::pair<umax> A2       = limb::mul(a.Numerator, b_ad_r);
                 const limb::pair<umax> B2       = limb::mul(b.Numerator, a_ad_r);
@@ -4516,7 +4507,7 @@ enum class bounds : unsigned char {
 
 // The largest maximum denominator a continuous grid can carry: past it a
 // bound would size fractions without limit along an expression chain, so it
-// is dropped (the grid is unbounded, as before). C++26 big grids only; with
+// is dropped (the grid is unbounded). C++26 big grids only; with
 // 64-bit grid numbers a bound must fit the 64-bit rational.
 #ifndef BEMAN_INSIDE_MAX_FRACTION_BITS
     #define BEMAN_INSIDE_MAX_FRACTION_BITS 1024
@@ -4915,8 +4906,6 @@ struct point_slot {
 };
 } // namespace detail
 
-// Both endpoints lie in imax — the signed value raw candidates (and every
-// `trunc(endpoint)` constant) are only meaningful then.
 namespace detail {
 // Notch 1 from an integer Lower: the values are integers, so a raw can hold
 // the value itself (value storage). {{0.5, 10.5}, 1} has notch 1 but not
@@ -4925,6 +4914,8 @@ constexpr bool unit_lattice(const grid& g) noexcept {
     return g.Notch == 1 && wide_denominator(g.Interval.Lower) == grid_int{1};
 }
 
+// Both endpoints lie in imax — the signed value raw candidates (and every
+// `trunc(endpoint)` constant) are only meaningful then.
 constexpr bool fits_imax(const interval& iv) noexcept {
     return iv.Lower >= rational{std::numeric_limits<imax>::min()} &&
            iv.Upper <= rational{std::numeric_limits<imax>::max()};
@@ -5019,13 +5010,13 @@ constexpr auto raw_for() {
 template <grid G>
 using raw_for_t = decltype(raw_for<G>());
 
-// Dyadic grid: power-of-2 notch denominator and Lower denominator, so every
-// on-grid value is a binary fraction (a double when it fits double_exact).
-// A positive power of two, and its log2 (exact at any width).
+// A positive power of two (exact at any width).
 constexpr bool is_pow2(const grid_int& v) noexcept {
     return grid_int{0} < v && v == (grid_int{1} << (bit_width_of(v) - 1));
 }
 
+// Dyadic grid: power-of-2 notch denominator and Lower denominator, so every
+// on-grid value is a binary fraction (a double when it fits double_exact).
 template <grid G>
 inline constexpr bool dyadic_grid =
     G.Notch != 0 && is_pow2(wide_denominator(G.Notch)) && is_pow2(wide_denominator(G.Interval.Lower));
@@ -5562,9 +5553,6 @@ template <insidable B>
 inline constexpr bool rational_readable = !wide_valued<B> || (lattice_past_rational<B> && !wide_index_storage<B> &&
                                                               !wide_grid_numbers<B> && !fraction_storage<B>);
 
-// Ungated double view of any inside (the public operator double() is gated
-// on a rounding flag; this is always available). Everything but index storage holds the value verbatim; an
-// index decodes through the grid.
 template <insidable B>
 constexpr auto exact_of(const B& b); // wide_value.hpp
 
@@ -5597,6 +5585,9 @@ inline constexpr index_double_codec index_double = [] {
     }
 }();
 
+// Ungated double view of any inside (the public operator double() is gated
+// on a rounding flag; this is always available). Everything but index
+// storage holds the value verbatim; an index decodes through the grid.
 template <insidable B>
 [[nodiscard]] constexpr double as_double(const B& b) noexcept {
     if constexpr (wide_valued<B>)
@@ -5670,8 +5661,8 @@ template <insidable B>
 }
 
 // Widen raw storage to imax. Distinct from `to_value(b)` for notch-stored
-// grids where raw is an index rather than a value — naming separates the
-// two intents that today both spell `static_cast<imax>`.
+// grids where raw is an index rather than a value; the names keep the two
+// intents apart although both are a `static_cast<imax>`.
 template <insidable B>
     requires(!wide_index_storage<B>) // a wide raw does not fit imax: use the exact wide path
 constexpr imax raw_imax(B b) noexcept {
@@ -7237,9 +7228,9 @@ constexpr std::optional<wide_rational<exact_max<K, exact_limbs<L>>>> onto_bound(
 }
 
 //---------------------------------------------------------------------------
-// assign_exact — store an exact value into L. The path for a wide raw (more
-// than 2^64 slots) on either side of an assignment, where neither imax nor
-// the 64-bit rational holds every value. Rounds first, then range-checks,
+// assign_exact — store an exact value into L: the path wherever neither imax
+// nor the 64-bit rational holds every value (a wide raw on either side, fine
+// doubles, mul_into/div_into, parse, sum, wrap_exact). Rounds first, then range-checks,
 // like the builtin paths; out of range runs the usual policy cascade.
 //---------------------------------------------------------------------------
 // R is the source type: an on_clamp action gets the overshoot and an
@@ -7441,9 +7432,9 @@ BEMAN_INSIDE_WARNINGS_POP
 namespace beman::inside::detail {
 //---------------------------------------------------------------------------
 // assignment — narrowing/coercion between bounded and arithmetic types. Three
-// specializations dispatch on the source (integral / fractional / insidable),
-// each routing through `store` (in-range) and `handle_out_of_range` /
-// `apply_clamp` / `apply_wrap` (policy). The insidable path also exposes
+// specializations dispatch on the source (integral / fractional / insidable);
+// each stores an in-range value and hands an out-of-range one to the policy
+// (`apply_clamp` / `apply_wrap`, or a report). The insidable path also exposes
 // `is_integer_mapping` / `map_raw` — a pure-integer formula in the hot path.
 //---------------------------------------------------------------------------
 
@@ -7511,7 +7502,7 @@ struct assignment<L, R> {
         if constexpr (value_storage<L>)
             lhs = L::from_raw(raw_cast<L>(rhs));
         else if constexpr (detail::point_grid<L>)
-            lhs = L::from_raw(0); // notch_storage point grid: 0 is the only offset
+            lhs = L::from_raw(0); // a point grid: 0 is the only offset
         else if constexpr (qformat_codec_fits<L>)
             lhs = L::from_raw(q_format_encode<L>(static_cast<imax>(rhs)));
         else // index storage on a notch 1/K grid: the offset is an exact integer
@@ -7666,9 +7657,8 @@ struct assignment<L, R> {
     // so the wrap path can reuse store_checked after computing the wrapped
     // value.
     //
-    // apply_wrap for a fractional R — modular reduction into [Lower, Lower + range)
-    // followed by store_checked so the rounding policy still applies if rhs
-    // doesn't land on a notch after wrapping. range = Upper - Lower + Notch.
+    // apply_wrap for a fractional R — rounding onto the lattice, then modular
+    // reduction into [Lower, Lower + range), range = Upper - Lower + Notch.
     template <typename P, typename A>
     static constexpr void apply_wrap(L& lhs, R rhs, P&& policy, A&& action) {
         // Round onto the lattice first (by the policy, like every other store),
@@ -7786,16 +7776,16 @@ struct assignment<L, R> {
     };
     using fine_result_t = std::conditional_t<rational_storage<L>, fine_rational_result, fine_result>;
 
+    // P's flags, recording its first failure into an errc instead.
+    template <typename P>
+    using recording_policy = ::beman::inside::policy<P::Flags, error_ref>;
+
     // Out of line, and by value (an empty action too): a reference to a
     // caller's local would make it escape the hot path's frame. lhs may be
     // uninitialized (a trivial default ctor), so the store runs on a copy of
     // the lower limit, and a failure is returned, not stored: a failed store
     // leaves lhs intact. The policy hears of it here; an on_error action,
     // which gets lhs, from store_fine_double.
-    // P's flags, recording its first failure into an errc instead.
-    template <typename P>
-    using recording_policy = ::beman::inside::policy<P::Flags, error_ref>;
-
     template <typename P, typename A>
     BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE static constexpr fine_result_t
     fine_double_value(double rhs, P policy, A action) {
@@ -9156,9 +9146,10 @@ BEMAN_INSIDE_WARNINGS_PUSH
 //---------------------------------------------------------------------------
 // division / modulo. `division::div` returns expected<result, errc> unless the
 // divisor's grid excludes zero and the quotient provably fits (then a plain
-// result). Four paths: Q-format (same notch + snap), native integer
-// (integer-aligned grids + snap), point scale (a nonzero point divisor keeps
-// the dividend's lattice) and exact rational (can overflow under checked).
+// result). The paths, in order: Q-format (same notch + snap), native integer
+// and wide integer (integer-aligned grids + snap), point scale (a nonzero
+// point divisor keeps the dividend's lattice), exact wide fractions, an
+// integer quotient that fits, and the rational paths (checked: may overflow).
 // `modulo::mod` is integer-only — non-integer remainders aren't well-defined
 // on fractional notches.
 //---------------------------------------------------------------------------
@@ -9182,18 +9173,18 @@ inline constexpr bool integer_ops = ((F | flags_of<L> | flags_of<R>)&snap) && in
 template <insidable L, insidable R, policy_flag F>
 inline constexpr bool integer_native_ops = integer_ops<L, R, F> && values_fit_imax<L> && values_fit_imax<R>;
 
-// Whether `l / r`, `l % r` and divmod have a result under flags F, as
-// constraints of div / mod / divmod and their operators: the quotient grid
-// exists (not a zero divisor grid; with 64-bit grid numbers, its corners
-// fit), and the remainder needs integer-valued grids (divmod: within imax).
-// ...or past imax but with 64-bit limits (a uint64 grid, the 2^63 of
-// INT64_MIN / -1): the rounded quotient in exact wide integers, on a grid of
-// the corner quotients rounded the same way.
+// Integer operands past imax but with 64-bit limits (a uint64 grid, the 2^63
+// of INT64_MIN / -1): the rounded quotient in exact wide integers, on a grid
+// of the corner quotients rounded the same way.
 template <insidable L, insidable R, policy_flag F>
 inline constexpr bool integer_wide_ops =
     integer_ops<L, R, F> && !integer_native_ops<L, R, F> && fits_rational(lower_of<L>) && fits_rational(upper_of<L>) &&
     fits_rational(lower_of<R>) && fits_rational(upper_of<R>);
 
+// Whether `l / r`, `l % r` and divmod have a result under flags F, as
+// constraints of div / mod / divmod and their operators: the quotient grid
+// exists (not a zero divisor grid; with 64-bit grid numbers, its corners
+// fit), and the remainder needs integer-valued grids (divmod: within imax).
 template <insidable L, insidable R, policy_flag F>
 inline constexpr bool div_defined =
     (integer_native_ops<L, R, F> || integer_wide_ops<L, R, F>) ? lower_of<R> != 0 || upper_of<R> != 0
@@ -9684,12 +9675,12 @@ struct modulo {
     static constexpr grid_rational max_rem =
         lift_unwrap((abs(lower_of<R>) > abs(upper_of<R>) ? abs(lower_of<R>) : abs(upper_of<R>)) - grid_rational{1});
 
+    static constexpr round_mode rmode = rounding_of(F | flags_of<L> | flags_of<R>);
+
     // Remainder consistent with the rounded quotient: r = a − round(a/b)·b. Under
     // truncation it takes the dividend's sign (non-negative for a non-negative
     // dividend grid); any directional mode can flip the sign, so the grid widens
     // to the symmetric ±max_rem (|r| ≤ max_rem for every mode).
-    static constexpr round_mode rmode = rounding_of(F | flags_of<L> | flags_of<R>);
-
     static constexpr grid result_grid =
         (rmode == round_mode::trunc && lower_of<L> >= 0) ? grid{grid_rational{0}, max_rem} : grid{-max_rem, max_rem};
 
@@ -10047,10 +10038,9 @@ struct inside {
     }
 
     // Trivial default ctor — Raw is left uninitialized, like a built-in scalar: a
-    // default-constructed inside has no value until assigned. (A previous checked
-    // overload zero-filled Raw, which decoded to an out-of-range value or an invalid
-    // {0,0} rational for grids not containing 0 — a defined-but-invalid footgun.
-    // Value-init `inside{}` still zero-fills where a zero raw is genuinely wanted.)
+    // default-constructed inside has no value until assigned. (A zero raw would
+    // decode to an out-of-range value on grids without 0.) Value-init `inside{}`
+    // still zero-fills where a zero raw is genuinely wanted.
     constexpr inside()
         requires(!has_flag(P, detail::cursor_marker))
     = default;
@@ -10970,8 +10960,8 @@ namespace beman::inside {
 //---------------------------------------------------------------------------
 namespace detail {
 // Integer value-index comparison eligibility: an integer-backed anchored
-// inside whose value indices (value/Notch, integers) fit imax, so two
-// same-notch insides compare as `bias + raw` without a rational decode.
+// inside whose value indices (value/Notch, integers) fit imax, so it
+// compares with a scalar as `bias + raw` without a rational decode.
 template <insidable B>
 inline constexpr bool index_cmp_fits = [] {
     if constexpr (!detail::notched<B> || !detail::anchored<B> || !values_fit_imax<B>)
@@ -11028,7 +11018,7 @@ constexpr auto compare(const L& lhs, const R& rhs, Cmp cmp) {
         return cmp(lhs.raw(), point_slot_of<L, R>);
     else if constexpr (point_is_slot<R, L>)
         return cmp(point_slot_of<R, L>, rhs.raw());
-    // a wide-index operand: exact wide fractions
+    // a wide-valued operand (wide index, big grid numbers, fraction raws): exact wide fractions
     else if constexpr (wide_valued<L> || wide_valued<R>)
         return cmp(exact_of(lhs), exact_of(rhs));
     // integer raws: both values as exact counts of a unit dividing them both
@@ -12811,7 +12801,7 @@ inline constexpr fixed_t<W + 4> ln10_q = [] {
 //---------------------------------------------------------------------------
 // Exact integer helpers.
 //---------------------------------------------------------------------------
-// ⌊√t⌋ and ⌊∛t⌋ for one limb: Newton from above.
+// ⌊√t⌋ for one limb: Newton from above.
 constexpr umax isqrt64(umax t) noexcept {
     if (t < 2)
         return t;
@@ -12858,7 +12848,7 @@ constexpr umax isqrt128(unsigned __int128 t) noexcept {
 #endif
 
 // ⌊√n⌋ for n ≥ 0. Two limbs or fewer directly; wider, the root of the top
-// 126 bits (an even shift) seeds Newton from above with about 62 correct
+// 126 bits (an even shift) seeds Newton from above with at least 61 correct
 // bits, each step doubling them; once they cover the root, squares
 // correct the last unit (Newton from above never lands below ⌊√n⌋).
 template <std::size_t K>
@@ -12921,7 +12911,7 @@ constexpr umax icbrt128(unsigned __int128 t) noexcept {
 
 // ⌊∛n⌋ for n ≥ 0, as isqrt: two limbs or fewer directly; wider, the root
 // of the top 126 bits (a shift by a multiple of 3) seeds Newton from above
-// with about 41 correct bits, and cubes correct the last unit.
+// with at least 40 correct bits, and cubes correct the last unit.
 template <std::size_t K>
 constexpr wide_sint<K> icbrt(const wide_sint<K>& n) noexcept {
     using I = wide_sint<K>;
@@ -13198,8 +13188,8 @@ constexpr wide_sint<K> rsqrt_q(const wide_sint<K>& m) noexcept {
     return static_cast<wide_sint<K>>(y);
 }
 
-// atan(j/8) for j = 0 … 8 at scale S, within 1 unit: two half-angle steps
-// t ← t/(1 + √(1+t²)) bring j/8 below 1/4, then the series with no table.
+// atan(j/8) for j = 0 … 8 at scale S, within 1 unit: three half-angle steps
+// t ← t/(1 + √(1+t²)) bring j/8 below tan(π/32), then the series with no table.
 template <int S>
 inline constexpr auto atan_eighths = [] {
     constexpr int T                 = S + 16;
@@ -13931,7 +13921,7 @@ struct ahyp_core {
 
 // b^e for b > 0: e^(e·log b). Exact for e = 0, b = 1, and e = p/q (q ≤ 64)
 // when b's numerator and denominator are perfect q-th powers (4^0.5 = 2,
-// 2.25^1.5 = 3.375) and the power fits PowLimbs: such a result can sit on a
+// 2.25^1.5 = 3.375) and the power fits pow_limbs: such a result can sit on a
 // rounding boundary, where no approximation decides.
 inline constexpr std::size_t pow_limbs = 32; // exact integer powers up to 2048 bits
 
@@ -15070,7 +15060,8 @@ BEMAN_INSIDE_WARNINGS_POP
 // tier decides. Every constant — ln 2, π, the 2^(j/64), 2^(j/4096) and sin(jπ/128)
 // tables, the Taylor coefficients — comes at compile time from the integer
 // path's exact series (detail/math_adaptive.hpp), never from a generator.
-// Results are within about 2^-96 relative (measured); the tier bounds them
+// Results are within 2^-97 relative, 2^-99 absolute at worst (measured; the
+// dd tier in math_entry.hpp); the tier bounds them
 // generously and lets the integer path decide whenever the bound does not.
 //---------------------------------------------------------------------------
 
@@ -15367,7 +15358,7 @@ inline dd reduce(dd x, double k, double c0, double c1, double c2, double c3) noe
 }
 
 //---------------------------------------------------------------------------
-// Kernels. Each is within about 2^-96 of its value (relative, plus an
+// Kernels. Each is within about 2^-97 of its value (relative, plus an
 // absolute 2^-99 where a subtraction cancels; dd_kernels_stay_far_inside_
 // their_bound in math_adaptive.test.cpp checks it). Horner steps add a
 // small product to a larger coefficient, so they use add_dominant. They are
@@ -17796,7 +17787,7 @@ inline constexpr bool fmod_int_fast = [] {
 }();
 } // namespace detail
 
-// x mod y = x − ⌊x/y⌋·y (truncated-division convention, matching std::fmod).
+// x mod y = x − trunc(x/y)·y (truncated division, matching std::fmod).
 // Result has the sign of x. Pre: y != 0 (fmod_into checks it).
 template <insidable Out, insidable InX, insidable InY>
 [[nodiscard]] constexpr Out fmod_nonzero(InX x, InY y) {
@@ -17854,14 +17845,6 @@ template <insidable Out, insidable InX, insidable InY>
 }
 
 //---------------------------------------------------------------------------
-// Auto-deducing forms — algebraic tier.
-//
-// Each `fn_into<Out>(x)` has an auto form `fn(x)` that derives `Out` from `In`
-// and delegates to it. Notch policy: abs/fmod inherit In's notch; floor/ceil/round/trunc
-// deduce notch 1 since their outputs are integer-valued.
-//---------------------------------------------------------------------------
-
-//---------------------------------------------------------------------------
 // pown<E> — compile-time integer powers, pure grid arithmetic
 //---------------------------------------------------------------------------
 // Repeated squaring in inside-space: every multiply widens the result grid
@@ -17915,6 +17898,14 @@ template <imax E, insidable In>
     return detail::pown_impl<E>(x);
 }
 
+//---------------------------------------------------------------------------
+// Auto-deducing forms — algebraic tier.
+//
+// Each `fn_into<Out>(x)` has an auto form `fn(x)` that derives `Out` from `In`
+// and delegates to it. abs and copysign take a notch symmetric about 0
+// (sym_notch), fmod the gcd of both inputs' notches; floor/ceil/round/trunc
+// deduce notch 1 since their outputs are integer-valued.
+//---------------------------------------------------------------------------
 template <insidable In>
 [[nodiscard]] constexpr auto abs(In x) {
     return abs_into<detail::abs_result_t<In>>(x);
@@ -19312,11 +19303,7 @@ struct quantity_spec {
 };
 
 namespace detail {
-// Identity of the static objects a value points to (specs, units, origins)
-// is by content, never by address: GCC with -fsanitize=pointer-compare
-// rejects comparing the addresses of two distinct objects in a constant
-// expression. A null pointer test stays a pointer test.
-// A spec is its name, dimension, recipe, kind boundary and parent chain: a
+// Identity by content (see ref_or_none). A spec is its name, dimension, recipe, kind boundary and parent chain: a
 // user spec that reuses a name ("length") under another parent is another
 // spec.
 constexpr bool same(const quantity_spec* a, const quantity_spec* b) { // both set
@@ -19491,16 +19478,6 @@ consteval detail::spec_expr inverse(A a) {
     return detail::spec_combine(detail::spec_expr{}, expr_of(a), -1);
 }
 
-//---------------------------------------------------------------------------
-// named_unit — a unit with a symbol (m, s, N, Ω, °C): a static object. Its
-// magnitude is relative to the coherent SI unit of its dimension; Kind (if
-// any) is the quantity kind it measures (Hz: frequency, Bq: activity).
-//---------------------------------------------------------------------------
-//---------------------------------------------------------------------------
-// unit — a product of named units to integer powers, each with an optional
-// decimal prefix (k, m, µ…), times a scale (mag<1000> * m; the common unit of
-// a sum). A structural value: it is the template argument.
-//---------------------------------------------------------------------------
 struct named_unit;
 
 //---------------------------------------------------------------------------
@@ -19561,6 +19538,11 @@ namespace detail {
 inline constexpr std::size_t max_unit_atoms = 6;
 } // namespace detail
 
+//---------------------------------------------------------------------------
+// unit — a product of named units to integer powers, each with an optional
+// decimal prefix (k, m, µ…), times a scale (mag<1000> * m; the common unit of
+// a sum). A structural value: it is the template argument.
+//---------------------------------------------------------------------------
 struct unit {
     detail::unit_atom Atoms[detail::max_unit_atoms]{};
     std::int8_t       Size{0};
@@ -19584,6 +19566,11 @@ struct unit_t {
     static constexpr unit value = U;
 };
 
+//---------------------------------------------------------------------------
+// named_unit — a unit with a symbol (m, s, N, Ω, °C): a static object. Its
+// magnitude is relative to the coherent SI unit of its dimension; Kind (if
+// any) is the quantity kind it measures (Hz: frequency, Bq: activity).
+//---------------------------------------------------------------------------
 struct named_unit {
     std::string_view   Utf8;
     std::string_view   Ascii;

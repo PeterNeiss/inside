@@ -152,7 +152,7 @@ endforeach()
 # if any <cmath> is pulled in. Proves the single header honors the FP-free guard
 # (the math engine runs on its integer path). GNU/Clang only — the proof relies on
 # -I ordering for angle-bracket includes; bare-metal toolchains are GCC/Clang.
-# Compile-only (an object library), as before.
+# Compile-only (an object library).
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_library(
         beman.inside.tests.single_header_nofp_smoke
@@ -210,7 +210,7 @@ if(
 endif()
 
 #---------------------------------------------------------------------------
-# Tooling (opt-in): benchmarks, property fuzzer, accuracy sweep, perf workload
+# Tooling (opt-in): benchmarks, the docs reports, the perf workload
 #---------------------------------------------------------------------------
 if(BEMAN_INSIDE_BUILD_TOOLS)
     include(FetchContent)

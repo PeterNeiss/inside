@@ -17,9 +17,10 @@ BEMAN_INSIDE_WARNINGS_PUSH
 //---------------------------------------------------------------------------
 // division / modulo. `division::div` returns expected<result, errc> unless the
 // divisor's grid excludes zero and the quotient provably fits (then a plain
-// result). Four paths: Q-format (same notch + snap), native integer
-// (integer-aligned grids + snap), point scale (a nonzero point divisor keeps
-// the dividend's lattice) and exact rational (can overflow under checked).
+// result). The paths, in order: Q-format (same notch + snap), native integer
+// and wide integer (integer-aligned grids + snap), point scale (a nonzero
+// point divisor keeps the dividend's lattice), exact wide fractions, an
+// integer quotient that fits, and the rational paths (checked: may overflow).
 // `modulo::mod` is integer-only — non-integer remainders aren't well-defined
 // on fractional notches.
 //---------------------------------------------------------------------------
@@ -43,18 +44,18 @@ inline constexpr bool integer_ops = ((F | flags_of<L> | flags_of<R>)&snap) && in
 template <insidable L, insidable R, policy_flag F>
 inline constexpr bool integer_native_ops = integer_ops<L, R, F> && values_fit_imax<L> && values_fit_imax<R>;
 
-// Whether `l / r`, `l % r` and divmod have a result under flags F, as
-// constraints of div / mod / divmod and their operators: the quotient grid
-// exists (not a zero divisor grid; with 64-bit grid numbers, its corners
-// fit), and the remainder needs integer-valued grids (divmod: within imax).
-// ...or past imax but with 64-bit limits (a uint64 grid, the 2^63 of
-// INT64_MIN / -1): the rounded quotient in exact wide integers, on a grid of
-// the corner quotients rounded the same way.
+// Integer operands past imax but with 64-bit limits (a uint64 grid, the 2^63
+// of INT64_MIN / -1): the rounded quotient in exact wide integers, on a grid
+// of the corner quotients rounded the same way.
 template <insidable L, insidable R, policy_flag F>
 inline constexpr bool integer_wide_ops =
     integer_ops<L, R, F> && !integer_native_ops<L, R, F> && fits_rational(lower_of<L>) && fits_rational(upper_of<L>) &&
     fits_rational(lower_of<R>) && fits_rational(upper_of<R>);
 
+// Whether `l / r`, `l % r` and divmod have a result under flags F, as
+// constraints of div / mod / divmod and their operators: the quotient grid
+// exists (not a zero divisor grid; with 64-bit grid numbers, its corners
+// fit), and the remainder needs integer-valued grids (divmod: within imax).
 template <insidable L, insidable R, policy_flag F>
 inline constexpr bool div_defined =
     (integer_native_ops<L, R, F> || integer_wide_ops<L, R, F>) ? lower_of<R> != 0 || upper_of<R> != 0
@@ -545,12 +546,12 @@ struct modulo {
     static constexpr grid_rational max_rem =
         lift_unwrap((abs(lower_of<R>) > abs(upper_of<R>) ? abs(lower_of<R>) : abs(upper_of<R>)) - grid_rational{1});
 
+    static constexpr round_mode rmode = rounding_of(F | flags_of<L> | flags_of<R>);
+
     // Remainder consistent with the rounded quotient: r = a − round(a/b)·b. Under
     // truncation it takes the dividend's sign (non-negative for a non-negative
     // dividend grid); any directional mode can flip the sign, so the grid widens
     // to the symmetric ±max_rem (|r| ≤ max_rem for every mode).
-    static constexpr round_mode rmode = rounding_of(F | flags_of<L> | flags_of<R>);
-
     static constexpr grid result_grid =
         (rmode == round_mode::trunc && lower_of<L> >= 0) ? grid{grid_rational{0}, max_rem} : grid{-max_rem, max_rem};
 

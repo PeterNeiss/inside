@@ -119,10 +119,9 @@ struct inside {
     }
 
     // Trivial default ctor — Raw is left uninitialized, like a built-in scalar: a
-    // default-constructed inside has no value until assigned. (A previous checked
-    // overload zero-filled Raw, which decoded to an out-of-range value or an invalid
-    // {0,0} rational for grids not containing 0 — a defined-but-invalid footgun.
-    // Value-init `inside{}` still zero-fills where a zero raw is genuinely wanted.)
+    // default-constructed inside has no value until assigned. (A zero raw would
+    // decode to an out-of-range value on grids without 0.) Value-init `inside{}`
+    // still zero-fills where a zero raw is genuinely wanted.
     constexpr inside()
         requires(!has_flag(P, detail::cursor_marker))
     = default;

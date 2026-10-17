@@ -568,7 +568,7 @@ inline constexpr bool is_wide_rational_v = false;
 template <std::size_t K>
 inline constexpr bool is_wide_rational_v<wide_rational<K>> = true;
 
-// An wide_rational of any width.
+// A wide_rational of any width.
 template <typename T>
 concept wide_rational_like = is_wide_rational_v<std::remove_cvref_t<T>>;
 } // namespace beman::inside::detail
