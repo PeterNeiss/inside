@@ -25,6 +25,7 @@
 #include <numeric>
 #include <optional>
 #include <ranges>
+#include <string_view>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -3752,6 +3753,78 @@ corner_hull(grid_rational a, grid_rational b, grid_rational c, grid_rational d) 
 
 
 // ======================================================================
+//  beman/inside/detail/diag_text.hpp
+// ======================================================================
+
+
+
+//---------------------------------------------------------------------------
+// Compile-time diagnostics with the values in them. C++26 lets a
+// static_assert message be any constant object with size() and data()
+// (P2741), so an error can say "notch 3, Upper − Lower 10". diag_text is
+// that object: text and grid numbers appended with <<, in a fixed buffer.
+//
+//   BEMAN_INSIDE_DIAG(cond, "grid: the notch must …", << " (notch " << n << ")");
+//
+// Before C++26 (or where the compiler lacks it) the same static_assert has
+// the plain text alone, which every valued message starts with.
+//---------------------------------------------------------------------------
+namespace beman::inside::detail {
+struct diag_text {
+    static constexpr std::size_t capacity = 480;
+    char                         Buf[capacity]{};
+    std::size_t                  Size{0};
+
+    [[nodiscard]] constexpr std::size_t size() const noexcept { return Size; }
+    [[nodiscard]] constexpr const char* data() const noexcept { return Buf; }
+
+    constexpr void push(char c) noexcept {
+        if (Size + 1 < capacity)
+            Buf[Size++] = c;
+    }
+    constexpr diag_text& operator<<(std::string_view s) noexcept {
+        for (char c : s)
+            push(c);
+        return *this;
+    }
+    // A grid number: an integer, or N/D.
+    constexpr diag_text& operator<<(const grid_rational& r) {
+        append(wide_numerator(r));
+        if (const grid_int d = wide_denominator(r); !(d == grid_int{1})) {
+            push('/');
+            append(d);
+        }
+        return *this;
+    }
+
+  private:
+    constexpr void append(grid_int v) {
+        if (v < grid_int{0}) {
+            push('-');
+            v = -v;
+        }
+        char        digits[160]{};
+        std::size_t n = 0;
+        do {
+            const grid_int q = v / grid_int{10};
+            digits[n++]      = static_cast<char>('0' + static_cast<int>(v - q * grid_int{10}));
+            v                = q;
+        } while (!(v == grid_int{0}) && n < sizeof digits);
+        while (n > 0)
+            push(digits[--n]);
+    }
+};
+} // namespace beman::inside::detail
+
+#if defined(__cpp_static_assert) && __cpp_static_assert >= 202306L && __cplusplus > 202302L
+    #define BEMAN_INSIDE_DIAG(cond, text, ...) \
+        static_assert(cond, (::beman::inside::detail::diag_text{} << (text)__VA_ARGS__))
+#else
+    #define BEMAN_INSIDE_DIAG(cond, text, ...) static_assert(cond, text)
+#endif
+
+
+// ======================================================================
 //  beman/inside/policy_flag.hpp
 // ======================================================================
 
@@ -4208,11 +4281,14 @@ struct grid {
     static constexpr bool validate() {
         interval::validate<G.Interval>();
         // Decoding is Lower + raw·Notch: a negative notch would count downward.
-        static_assert(G.Notch >= 0, "grid: the notch must be non-negative");
+        BEMAN_INSIDE_DIAG(G.Notch >= 0, "grid: the notch must be non-negative", << " (notch " << G.Notch << ")");
         // The values are Lower, Lower + Notch, …, Upper: the notch steps from
         // Lower to Upper. Lower need not be a multiple of the notch
         // ({{0.5, 10.5}, 1} holds 0.5, 1.5, …).
-        static_assert(G.Interval.divides_evenly(G.Notch), "grid: the notch must divide Upper − Lower evenly");
+        BEMAN_INSIDE_DIAG(G.Interval.divides_evenly(G.Notch),
+                          "grid: the notch must divide Upper − Lower evenly",
+                          << " (notch " << G.Notch << ", Upper − Lower "
+                          << detail::grid_sub(G.Interval.Upper, G.Interval.Lower) << ")");
         static_assert(G.MaxDenominator == 0 || (G.Notch == 0 && G.Interval.Lower != G.Interval.Upper),
                       "grid: only a continuous grid carries a max_denominator");
         // Every value is a multiple of gcd(Lower, Notch): {{0.2, 1.2}, 2^-61}
@@ -5730,6 +5806,15 @@ concept assign_intervals_ok =
 
 template <typename L, typename R, policy_flag P>
 concept assign_notch_ok = !insidable<R> || ((flags_of<L> | P) & snap) != 0 || notches_compatible<L, R>;
+
+// R's notch for a diagnostic (0 for a non-inside, which never fails there).
+template <typename R>
+consteval grid_rational notch_for_diag() {
+    if constexpr (insidable<R>)
+        return notch_of<R>;
+    else
+        return grid_rational{0};
+}
 } // namespace detail
 
 // Compile-time prerequisites for L = R, gating three failure modes at the call
@@ -5756,11 +5841,15 @@ struct inside_assignable_why {
     static constexpr bool intervals_ok = detail::assign_intervals_ok<L, R, P>;
     static constexpr bool notch_ok     = detail::assign_notch_ok<L, R, P>;
     static_assert(is_numeric, "inside_assignable: rhs is not numeric (must be an inside or arithmetic type)");
-    static_assert(intervals_ok,
-                  "inside_assignable: rhs interval lies entirely outside lhs interval and the policy "
-                  "(not wrap/clamp) cannot bring it into range — assignment can never succeed");
-    static_assert(notch_ok,
-                  "inside_assignable: incompatible notches — use `with_snap()` or `policy<snap>()` to allow rounding");
+    BEMAN_INSIDE_DIAG(intervals_ok,
+                      "inside_assignable: rhs interval lies entirely outside lhs interval and the policy "
+                      "(not wrap/clamp) cannot bring it into range — assignment can never succeed",
+                      << " (lhs [" << interval_of<L>.Lower << ", " << interval_of<L>.Upper << "], rhs ["
+                      << interval_of<R>.Lower << ", " << interval_of<R>.Upper << "])");
+    BEMAN_INSIDE_DIAG(notch_ok,
+                      "inside_assignable: incompatible notches — use `with_snap()` or `policy<snap>()` to allow "
+                      "rounding",
+                      << " (lhs notch " << notch_of<L> << ", rhs notch " << detail::notch_for_diag<R>() << ")");
     static constexpr bool value = inside_assignable<L, R, P>;
 };
 

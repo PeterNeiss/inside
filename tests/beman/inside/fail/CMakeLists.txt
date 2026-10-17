@@ -6,8 +6,9 @@
 # (`// EXPECT: <substring>`; keep it free of regex metacharacters; an optional
 # second line `// REQUIRES: <tags>` names what the case needs — `64-bit-grids`
 # limits it to builds without C++26 big grids, `delete-reason` to compilers
-# whose `= delete("…")` prints its reason (elsewhere the case must still be
-# ill-formed, without the hint) — and `// FLAGS: <options>` compiles it with
+# whose `= delete("…")` prints its reason and `valued-diagnostics` to C++26
+# builds whose static_assert messages carry values (elsewhere the case must
+# still be ill-formed, without the hint) — and `// FLAGS: <options>` compiles it with
 # extra options). The test
 # invokes the build for the object target; PASS_REGULAR_EXPRESSION passes the
 # test only when the build output contains the expected diagnostic — a TU that
@@ -17,7 +18,7 @@
 #---------------------------------------------------------------------------
 file(GLOB BEMAN_INSIDE_FAIL_SOURCES CONFIGURE_DEPENDS *.test.cpp)
 
-# The condition arithmetic.hpp's BEMAN_INSIDE_DELETE uses for `= delete("…")`
+# The condition detail/delete_reason.hpp's BEMAN_INSIDE_DELETE uses for `= delete("…")`
 # (C++26; an extension in C++23 from GCC 15 and Clang 19).
 include(CheckCXXSourceCompiles)
 check_cxx_source_compiles(
@@ -28,6 +29,16 @@ int main() {}
 "
     BEMAN_INSIDE_HAS_DELETE_REASON
 )
+# The condition detail/diag_text.hpp's BEMAN_INSIDE_DIAG uses for a
+# static_assert message with values in it (P2741, C++26).
+check_cxx_source_compiles(
+    "#if !(defined(__cpp_static_assert) && __cpp_static_assert >= 202306L && __cplusplus > 202302L)
+#error no user-generated static_assert message
+#endif
+int main() {}
+"
+    BEMAN_INSIDE_HAS_VALUED_DIAG
+)
 
 foreach(src ${BEMAN_INSIDE_FAIL_SOURCES})
     get_filename_component(case_name ${src} NAME_WE)
@@ -35,7 +46,7 @@ foreach(src ${BEMAN_INSIDE_FAIL_SOURCES})
         continue()
     endif()
 
-    file(STRINGS ${src} head_lines LIMIT_COUNT 2)
+    file(STRINGS ${src} head_lines LIMIT_COUNT 2 ENCODING UTF-8)
     list(GET head_lines 0 first_line)
     # `// REQUIRES: 64-bit-grids` on the second line: the case is only
     # ill-formed with 64-bit grid numbers, so skip it in a C++26 reflection
@@ -54,6 +65,12 @@ foreach(src ${BEMAN_INSIDE_FAIL_SOURCES})
         if(
             second_line MATCHES "delete-reason"
             AND NOT BEMAN_INSIDE_HAS_DELETE_REASON
+        )
+            set(needs_message FALSE)
+        endif()
+        if(
+            second_line MATCHES "valued-diagnostics"
+            AND NOT BEMAN_INSIDE_HAS_VALUED_DIAG
         )
             set(needs_message FALSE)
         endif()

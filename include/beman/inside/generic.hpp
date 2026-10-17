@@ -28,6 +28,15 @@ concept assign_intervals_ok =
 
 template <typename L, typename R, policy_flag P>
 concept assign_notch_ok = !insidable<R> || ((flags_of<L> | P) & snap) != 0 || notches_compatible<L, R>;
+
+// R's notch for a diagnostic (0 for a non-inside, which never fails there).
+template <typename R>
+consteval grid_rational notch_for_diag() {
+    if constexpr (insidable<R>)
+        return notch_of<R>;
+    else
+        return grid_rational{0};
+}
 } // namespace detail
 
 // Compile-time prerequisites for L = R, gating three failure modes at the call
@@ -54,11 +63,15 @@ struct inside_assignable_why {
     static constexpr bool intervals_ok = detail::assign_intervals_ok<L, R, P>;
     static constexpr bool notch_ok     = detail::assign_notch_ok<L, R, P>;
     static_assert(is_numeric, "inside_assignable: rhs is not numeric (must be an inside or arithmetic type)");
-    static_assert(intervals_ok,
-                  "inside_assignable: rhs interval lies entirely outside lhs interval and the policy "
-                  "(not wrap/clamp) cannot bring it into range — assignment can never succeed");
-    static_assert(notch_ok,
-                  "inside_assignable: incompatible notches — use `with_snap()` or `policy<snap>()` to allow rounding");
+    BEMAN_INSIDE_DIAG(intervals_ok,
+                      "inside_assignable: rhs interval lies entirely outside lhs interval and the policy "
+                      "(not wrap/clamp) cannot bring it into range — assignment can never succeed",
+                      << " (lhs [" << interval_of<L>.Lower << ", " << interval_of<L>.Upper << "], rhs ["
+                      << interval_of<R>.Lower << ", " << interval_of<R>.Upper << "])");
+    BEMAN_INSIDE_DIAG(notch_ok,
+                      "inside_assignable: incompatible notches — use `with_snap()` or `policy<snap>()` to allow "
+                      "rounding",
+                      << " (lhs notch " << notch_of<L> << ", rhs notch " << detail::notch_for_diag<R>() << ")");
     static constexpr bool value = inside_assignable<L, R, P>;
 };
 

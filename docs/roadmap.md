@@ -4,13 +4,6 @@ Capabilities deliberately *not* implemented because the language doesn't yet
 allow them, with the standard facility that unblocks each. Nothing here is a
 promise of a date.
 
-## Adoptable with C++26
-
-### Rich, formatted `static_assert` messages
-Compile-time diagnostics use static text. Embedding the offending value /
-interval / notch needs C++26's constexpr formatting and user-generated
-`static_assert` messages ([P2741]-family).
-
 ## Needs a language change beyond C++26
 
 ### A heap-backed, unbounded `bigratio` NTTP
@@ -34,6 +27,5 @@ non-transient `constexpr` allocation ([P1974], after C++20's transient
   use case demands it.
 - **Modules / compile-time footprint** — parked; modules are C++20, not a blocker.
 
-[P2741]: https://wg21.link/p2741
 [P0784]: https://wg21.link/p0784
 [P1974]: https://wg21.link/p1974
