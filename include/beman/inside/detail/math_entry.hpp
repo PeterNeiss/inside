@@ -365,7 +365,7 @@ struct fp_plain {
             }                                                                                                \
             static double slope([[maybe_unused]] double x, [[maybe_unused]] double v) { return slope_expr; } \
         };
-    #define BEMAN_INSIDE_AX_KERNEL(...) BEMAN_INSIDE_AX_KERNEL_ON(fp_plain, __VA_ARGS__)
+    #define BEMAN_INSIDE_AX_KERNEL(...) BEMAN_INSIDE_EXPAND(BEMAN_INSIDE_AX_KERNEL_ON(fp_plain, __VA_ARGS__))
 using fp_full_trig = fpk::trig_k<fpk::full_bits>;
 using fp_full_exp  = fpk::exp_k<fpk::full_bits>;
 using fp_full_log  = fpk::log_k<fpk::full_bits>;

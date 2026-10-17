@@ -121,6 +121,10 @@
     #define BEMAN_INSIDE_HAS_STD_FORMAT 0
 #endif
 
+// One more expansion pass: MSVC's traditional preprocessor (without
+// /Zc:preprocessor) passes a forwarded __VA_ARGS__ on as one argument.
+#define BEMAN_INSIDE_EXPAND(x) x
+
 //---------------------------------------------------------------------------
 // Attributes. Error and throw paths are cold and out of line, so the
 // optimizer keeps them out of the hot path. MSVC ignores the standard

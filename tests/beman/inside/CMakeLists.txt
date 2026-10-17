@@ -118,6 +118,10 @@ foreach(
     if(BEMAN_INSIDE_MATH_NO_FP)
         target_compile_definitions(${smoke} PRIVATE BEMAN_INSIDE_MATH_NO_FP)
     endif()
+    # The one flag a single-header MSVC user needs: the headers are UTF-8.
+    # (No /Zc:preprocessor here: the header also works with the traditional
+    # preprocessor.)
+    target_compile_options(${smoke} PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
     add_test(NAME ${smoke} COMMAND ${smoke})
 endforeach()
 

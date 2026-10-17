@@ -164,6 +164,10 @@
     #define BEMAN_INSIDE_HAS_STD_FORMAT 0
 #endif
 
+// One more expansion pass: MSVC's traditional preprocessor (without
+// /Zc:preprocessor) passes a forwarded __VA_ARGS__ on as one argument.
+#define BEMAN_INSIDE_EXPAND(x) x
+
 //---------------------------------------------------------------------------
 // Attributes. Error and throw paths are cold and out of line, so the
 // optimizer keeps them out of the hot path. MSVC ignores the standard
@@ -16258,7 +16262,7 @@ struct fp_plain {
             }                                                                                                \
             static double slope([[maybe_unused]] double x, [[maybe_unused]] double v) { return slope_expr; } \
         };
-    #define BEMAN_INSIDE_AX_KERNEL(...) BEMAN_INSIDE_AX_KERNEL_ON(fp_plain, __VA_ARGS__)
+    #define BEMAN_INSIDE_AX_KERNEL(...) BEMAN_INSIDE_EXPAND(BEMAN_INSIDE_AX_KERNEL_ON(fp_plain, __VA_ARGS__))
 using fp_full_trig = fpk::trig_k<fpk::full_bits>;
 using fp_full_exp  = fpk::exp_k<fpk::full_bits>;
 using fp_full_log  = fpk::log_k<fpk::full_bits>;
