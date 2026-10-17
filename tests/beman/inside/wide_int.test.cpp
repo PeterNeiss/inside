@@ -264,3 +264,60 @@ TEST(WideIntTest, equality_in_constant_evaluation) {
     }());
     SUCCEED();
 }
+
+using beman::inside::umax;
+
+// The 64-bit limb product and division: native __int128, MSVC's _umul128 /
+// _udiv128 at run time, or the portable split in constant evaluation. Every
+// path gives the same {hi, lo} and {quotient, remainder}.
+namespace {
+struct limb_case {
+    umax A, B;
+};
+constexpr umax      ones         = std::numeric_limits<umax>::max();
+constexpr limb_case limb_cases[] = {
+    {0, 0},
+    {1, ones},
+    {ones, ones},
+    {ones, 2},
+    {umax{1} << 63, umax{1} << 63},
+    {umax{1} << 32, umax{1} << 32},
+    {0xffffffffu, 0xffffffffu},
+    {0x123456789abcdef0u, 0x0fedcba987654321u},
+};
+constexpr bool limb_ops_agree(limb_case c) {
+    const limb::pair<umax> p = limb::mul(c.A, c.B);
+    if (c.B == 0)
+        return p.Hi == 0 && p.Lo == 0;
+    // {hi, lo} / B gives back A, remainder 0; hi < B holds because A·B / B = A.
+    const limb::pair<umax> q = limb::div(p.Hi, p.Lo, c.B);
+    return q.Hi == c.A && q.Lo == 0;
+}
+} // namespace
+
+TEST(WideIntTest, limb_mul_and_div_paths_agree) {
+    static_assert([] {
+        for (const limb_case c : limb_cases)
+            if (!limb_ops_agree(c))
+                return false;
+        return true;
+    }());
+    for (const limb_case c : limb_cases) {
+        volatile umax   a = c.A, b = c.B; // keep the run-time path
+        const limb_case rt{a, b};
+        EXPECT_TRUE(limb_ops_agree(rt)) << c.A << " * " << c.B;
+        const limb::pair<umax> p  = limb::mul(rt.A, rt.B);
+        const limb::pair<umax> pc = limb::mul(c.A, c.B);
+        EXPECT_EQ(p.Hi, pc.Hi);
+        EXPECT_EQ(p.Lo, pc.Lo);
+    }
+    // hi = d − 1, the largest high word div accepts.
+    volatile umax          d    = 0x8000000000000001u;
+    const limb::pair<umax> q    = limb::div(d - 1, ones, umax{d});
+    const limb::pair<umax> back = limb::mul(q.Hi, umax{d});
+    // q·d + r == {d − 1, ones}, and r < d.
+    EXPECT_LT(q.Lo, umax{d});
+    const umax lo = back.Lo + q.Lo;
+    EXPECT_EQ(back.Hi + (lo < back.Lo), umax{d} - 1);
+    EXPECT_EQ(lo, ones);
+}

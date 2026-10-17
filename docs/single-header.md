@@ -19,6 +19,10 @@ is wrapped in a guard — define `BEMAN_INSIDE_NO_STRING` to drop it and its
 ([units.md](units.md)) sit inside the same guard; define
 `BEMAN_INSIDE_NO_UNITS` to drop just them and their compile time.
 
+On MSVC, compile with `/utf-8`: the header holds UTF-8 text (℃, −). If you
+evaluate math functions in constant expressions, also raise the step limit
+with `/constexpr:steps100000000`.
+
 ## On Compiler Explorer
 
 Where there is no include tree to set up, the single header is the easy way in:

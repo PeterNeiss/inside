@@ -362,10 +362,10 @@ in v0.3.0, and each is a candidate for a later paper:
 # Implementation experience
 
 The reference implementation is header-only C++23 (GCC 14+, Clang 19+, Clang 18
-with libc++). It ships a single-header amalgamation, a CMake package and a
-vcpkg port, and follows the Beman Standard. Its test suite (798 tests, 809 with
-C++26 reflection) runs in CI on 48 compiler, library and sanitizer
-configurations. It includes a check that the integer fast paths compile to
+with libc++, MSVC 19.51+). It ships a single-header amalgamation, a CMake
+package and a vcpkg port, and follows the Beman Standard. Its test suite (803
+tests, 814 with C++26 reflection) runs in CI on 51 compiler, library and
+sanitizer configurations. It includes a check that the integer fast paths compile to
 call-free, vectorising code, a property fuzzer, and a differential oracle that
 recomputes random results exactly in Python.
 

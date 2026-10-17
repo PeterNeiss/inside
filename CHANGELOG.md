@@ -13,6 +13,12 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   Upper − Lower evenly (notch 3, Upper − Lower 10)`, the two notches of an
   incompatible assignment, the two intervals of a disjoint one
   ([diagnostics.md](docs/diagnostics.md)).
+- MSVC 19.51 (Visual Studio 2026) and later is supported, /W4 clean, with
+  three CI cells. `just<N, D>` spells the ratio `just<N>.per<D>`; on MSVC
+  only `just<N, D>` works, because of a compiler bug.
+- Example [`adc_calibration.cpp`](examples/adc_calibration.cpp): ADC counts
+  as a base dimension of their own, and a two-point calibration whose gain
+  is checked once, after which no division can fail.
 
 ### Testing
 
