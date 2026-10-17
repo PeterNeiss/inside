@@ -19,6 +19,9 @@
 #ifndef BEMAN_INSIDE_UNITS_MATH_HPP
 #define BEMAN_INSIDE_UNITS_MATH_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/cmath.hpp>
 #include <beman/inside/units.hpp>
 
@@ -44,14 +47,14 @@ struct pi_scale_core {
         constexpr std::size_t KJ = limbs_for_bits(64 * static_cast<int>(E) + 64 + T + 2 * S + 16);
         using J                  = wide_sint<KJ>;
         using I                  = fixed_t<Bits + S + 4>;
-        const J pi{static_cast<J>(pi_q<T>)};
+        const J pi_fixed{static_cast<J>(pi_q<T>)};
         const J num = J{X.Num} * J{N};
         const J den = J{X.Den} * J{D};
         J       y;
         if constexpr (P > 0)
-            y = (num * pi) / (den << (T - S));
+            y = (num * pi_fixed) / (den << (T - S));
         else
-            y = (num << (S + T)) / (den * pi);
+            y = (num << (S + T)) / (den * pi_fixed);
         const I v = static_cast<I>(y);
         return approx<limbs_of<I>>{Negative ? -v : v, S, 2};
     }
@@ -320,5 +323,7 @@ void hypot_into(const quantity<A, VA>&, const quantity<B, VB>&) =
     BEMAN_INSIDE_DELETE("units: hypot takes two quantities that add - one dimension and kind, a common unit");
 BEMAN_INSIDE_DELETE_END
 } // namespace beman::inside::units
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_UNITS_MATH_HPP

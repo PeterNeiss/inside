@@ -17,11 +17,11 @@
 
 using namespace beman::inside;
 
-using reading = inside<{{just<-1>.per<10>, just<1>.per<10>}, per<1'000'000>}>; // ±100 mV, 1 µV steps
-using gain    = inside<{{0, 10}, per<100>}>;                                   // 0 is possible: a dead channel
-using volts   = inside<{{-1, 1}, per<1'000'000>}, round_nearest>;              // the result, 1 µV
+using reading = inside<{{just<-1, 10>, just<1, 10>}, per<1'000'000>}>; // ±100 mV, 1 µV steps
+using gain    = inside<{{0, 10}, per<100>}>;                           // 0 is possible: a dead channel
+using volts   = inside<{{-1, 1}, per<1'000'000>}, round_nearest>;      // the result, 1 µV
 
-constexpr reading offset{just<1>.per<4000>}; // 0.25 mV
+constexpr reading offset{just<1, 4000>}; // 0.25 mV
 
 // One sample: a reading and the channel's gain, both as text.
 std::expected<volts, errc> calibrate(std::string_view r, std::string_view g) {
@@ -65,12 +65,12 @@ int main() {
 
     // The lift operators chain without and_then: an expected operand makes the
     // whole expression an expected, and the first error wins.
-    const auto chained = (reading{just<1>.per<100>} - offset) / gain{0} * just<2> + reading{just<1>.per<1000>};
+    const auto chained = (reading{just<1, 100>} - offset) / gain{0} * just<2> + reading{just<1, 1000>};
     std::cout << "chained -> " << errc_message(chained.error()) << "\n";
 
     // A gain that cannot be 0 makes the division total: a plain value.
     using live_gain   = inside<{{0.5, 10}, per<100>}>;
-    const auto always = (reading{just<1>.per<100>} - offset) / live_gain{2};
+    const auto always = (reading{just<1, 100>} - offset) / live_gain{2};
     static_assert(insidable<decltype(always)>); // not an expected
     std::cout << "zero-free gain -> " << always << " V\n";
     return fallback && *fallback == 0 && !chained && chained.error() == errc::division_by_zero ? 0 : 1;

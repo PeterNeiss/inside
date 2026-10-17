@@ -142,7 +142,7 @@ TEST(PerfPathsTest, multiply_by_point_matches_exact_product) {
         EXPECT_EQ(rational{x * just<3>}, rational{3 * v});
         EXPECT_EQ(rational{just<3> * x}, rational{3 * v});
         EXPECT_EQ(rational{x * just<-2>}, rational{-2 * v});
-        EXPECT_EQ((rational{x * just<-1>.per<4>}), (rational{v} * rational(-1, 4)).value());
+        EXPECT_EQ((rational{x * just<-1, 4>}), (rational{v} * rational(-1, 4)).value());
     }
     inside<{0, 200}> a{3}, b{4};
     EXPECT_EQ(rational{midpoint(a, b)}, (rational{7, 2}));
@@ -155,7 +155,7 @@ TEST(PerfPathsTest, divide_by_point_keeps_integer_storage) {
     using R5 = decltype(U{} / 5_ins);
     static_assert(!rational_storage<R5>);
     static_assert(notch_of<R5> == rational{1, 5} && lower_of<R5> == -20 && upper_of<R5> == 20);
-    using RN = decltype(U{} / just<-3>.per<2>);
+    using RN = decltype(U{} / just<-3, 2>);
     static_assert(notch_of<RN> == rational{2, 3} && lower_of<RN> == rational{-200, 3});
     using tenth = inside<{{-50, 150}, per<10>}>;
     using F     = decltype(tenth{} * 9_ins / 5_ins + 32_ins); // plain: no expected anywhere
@@ -170,7 +170,7 @@ TEST(PerfPathsTest, divide_by_point_matches_exact_quotient) {
         inside<{-100, 100}> x{v};
         EXPECT_EQ(rational{x / just<3>}, (rational{v} / rational{3}).value());
         EXPECT_EQ(rational{x / just<-4>}, (rational{v} / rational{-4}).value());
-        EXPECT_EQ((rational{x / just<-3>.per<2>}), (rational{v} * rational(-2, 3)).value());
+        EXPECT_EQ((rational{x / just<-3, 2>}), (rational{v} * rational(-2, 3)).value());
         EXPECT_EQ(rational{x / just<3> * just<3>}, rational{v});
     }
 }
@@ -205,7 +205,7 @@ TEST(PerfPathsTest, int32_native_div_mod_matches_wide_reference) {
 // numerator()/denominator() and to_value fast paths agree with the rational view.
 //---------------------------------------------------------------------------
 TEST(PerfPathsTest, fraction_and_to_value_fast_paths_match_rational) {
-    using Q = inside<{-4, 4, just<1>.per<8>}>; // dyadic, negative Lower
+    using Q = inside<{-4, 4, just<1, 8>}>; // dyadic, negative Lower
     static_assert(index_storage<Q> && qformat_codec_fits<Q>);
     for (imax k = 0; k <= 64; ++k) {
         Q              q = Q::from_raw(static_cast<Q::raw_type>(k));

@@ -22,14 +22,14 @@ int main() {
     std::cout << "(x, y) -> (r, theta) -> (x, y)\n";
     for (auto [x, y] : {std::pair{coord_t{1}, coord_t{0}},
                         {coord_t{-1}, coord_t{1}},
-                        {coord_t{just<3>.per<5>}, coord_t{just<4>.per<5>}},
+                        {coord_t{just<3, 5>}, coord_t{just<4, 5>}},
                         {coord_t{0.5}, coord_t{-0.5}}}) {
         const auto    r     = math::hypot(x, y);
         const auto    theta = math::atan2_into<angle_t>(y, x);
         const coord_t rx = mul_into<coord_t>(r, math::cos(theta)), ry = mul_into<coord_t>(r, math::sin(theta));
         std::cout << "  (" << x << ", " << y << ") -> (" << r << ", " << theta << ") -> (" << rx << ", " << ry
                   << ")\n";
-        if (math::abs(rx - x) > just<2>.per<16384> || math::abs(ry - y) > just<2>.per<16384>)
+        if (math::abs(rx - x) > just<2, 16384> || math::abs(ry - y) > just<2, 16384>)
             return 1;
     }
 

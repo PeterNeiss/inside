@@ -11,6 +11,8 @@
 
 #include <gtest/gtest.h>
 
+#include <utility>
+
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -52,7 +54,8 @@ TEST(BugHunt20261012, integer_division_by_int64_min_divisor) {
                grid_of<decltype(*q)> == grid{-7, 7};
     }());
     // The range is the rounded corners, as the exact quotient grid gave it.
-    static_assert(grid_of<decltype(div(small{}, inside<{-3, 4}>{}, rounded_ceil))::value_type> == grid{-7, 7});
+    static_assert(grid_of<decltype(div(small{}, std::declval<inside<{-3, 4}>>(), rounded_ceil))::value_type> ==
+                  grid{-7, 7});
 }
 
 // A native integer quotient whose grid reaches 2^63 (INT64_MIN / −1): every

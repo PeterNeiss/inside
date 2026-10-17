@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_DETAIL_RATIONAL_HPP
 #define BEMAN_INSIDE_DETAIL_RATIONAL_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/numbers.hpp>           // umax/imax, arithmetic, rational fwd
 #include <beman/inside/detail/float_bits.hpp> // frexp/ldexp, abs_fraction, is_double_value
 #include <beman/inside/lift.hpp>              // lift, expected_like, unwrap_t
@@ -44,7 +47,7 @@ inline constexpr void trim(umax& numerator, imax& denominator) {
         return;
     numerator /= g;
     ad /= g;
-    denominator = (denominator < 0) ? -ad : ad;
+    denominator = static_cast<imax>((denominator < 0) ? umax{0} - ad : ad);
 }
 
 inline constexpr void trim(umax& a, umax& b) {
@@ -267,7 +270,7 @@ struct rounded_integer {
 // Narrowed to imax (callers keep |v| within it).
 [[nodiscard]] constexpr imax round_to_int(rational v, round_mode m) {
     const auto [mag, neg] = round_magnitude(v, m);
-    return neg ? -mag : mag;
+    return static_cast<imax>(neg ? umax{0} - mag : mag);
 }
 
 // Kept exact as a rational, for indices that may pass imax.
@@ -399,7 +402,7 @@ constexpr rational::rational(std::floating_point auto value) {
 
     auto [num, den] = abs_fraction(value);
     Numerator       = num;
-    Denominator     = neg ? -den : den;
+    Denominator     = static_cast<imax>(neg ? umax{0} - den : den);
     // trim not needed, because abs_fraction already trims in its special case
 }
 
@@ -512,7 +515,7 @@ inline constexpr auto rational::add_impl(const rational& a, const rational& b) {
             return ret_t{rational{0}};
         rational r;
         r.Numerator   = num;
-        r.Denominator = r_neg ? -a_ad : a_ad;
+        r.Denominator = static_cast<imax>(r_neg ? umax{0} - a_ad : a_ad);
         trim(r.Numerator, r.Denominator);
         return ret_t{r};
     }
@@ -544,8 +547,9 @@ inline constexpr auto rational::add_impl(const rational& a, const rational& b) {
                 const limb::pair<umax> big = a_bigger ? A2 : B2, small = a_bigger ? B2 : A2;
                 if (big.Hi - small.Hi - (big.Lo < small.Lo ? 1u : 0u) == 0) {
                     rational r;
-                    r.Numerator   = big.Lo - small.Lo;
-                    r.Denominator = (a_neg ? a_bigger : !a_bigger) ? -denominator : denominator;
+                    r.Numerator = big.Lo - small.Lo;
+                    r.Denominator =
+                        static_cast<imax>((a_neg ? a_bigger : !a_bigger) ? umax{0} - denominator : denominator);
                     trim(r.Numerator, r.Denominator);
                     return ret_t{r};
                 }
@@ -623,7 +627,7 @@ inline constexpr auto rational::mul_impl(const rational& a_in, const rational& b
 
     // The cross-trims above guarantee gcd(numerator, denominator) == 1, so
     // bypass rational(num, den) and skip its redundant trim.
-    return ret_t{make_raw(numerator, r_neg ? -denominator : denominator)};
+    return ret_t{make_raw(numerator, static_cast<imax>(r_neg ? umax{0} - denominator : denominator))};
 }
 
 //---------------------------------------------------------------------------
@@ -965,7 +969,7 @@ BEMAN_INSIDE_RATIONAL_OP(/)
 
 namespace beman::inside::detail {
 // Checked builder for per<D> below: a static_assert here fires at the user's
-// spelling (also through just<N>.per<D>, which is N · per<D>).
+// spelling (also through just<N, D>, which is N · per<D>).
 template <umax D>
 consteval rational make_per() {
     static_assert(D >= 1, "per<D> is the positive step 1/D; a continuous grid is spelled 0");
@@ -981,8 +985,8 @@ using detail::rational;
 
 // The grid-building helpers:
 //   per<D>       the step 1/D — the common notch (per<256> is Q·8);
-// any other exact ratio is the point just<N>.per<D> (core.hpp): a limit like
-// just<-6>.per<5> for -1.2, or another step like just<360>.per<4096>
+// any other exact ratio is the point just<N, D> (core.hpp): a limit like
+// just<-6, 5> for -1.2, or another step like just<360, 4096>
 // (the _r literal, an exact decimal / hex value — 0.1_r is exactly 1/10 —
 // is in detail/number_text.hpp.)
 // Integer steps are plain integers ({{0, 100}, 5}); grid::validate rejects a
@@ -991,5 +995,7 @@ template <umax D>
 inline constexpr detail::rational per = detail::make_per<D>();
 
 } // namespace beman::inside
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_RATIONAL_HPP

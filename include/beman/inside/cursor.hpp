@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_CURSOR_HPP
 #define BEMAN_INSIDE_CURSOR_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/detail/compare.hpp>
 
 namespace beman::inside {
@@ -44,5 +47,7 @@ template <insidable B>
     return just<upper_of<B>>;
 }
 } // namespace beman::inside
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_CURSOR_HPP

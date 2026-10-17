@@ -12,6 +12,9 @@
 
 #include <gtest/gtest.h>
 
+#include <cfloat>
+#include <utility>
+
 #include <cstdint>
 #include <limits>
 #include <string_view>
@@ -115,8 +118,10 @@ TEST(BugHuntRound7, long_double_is_taken_exactly) {
         EXPECT_EQ((inside<{0, 100}, round_ceil>{x}), 2);
         EXPECT_EQ((inside<{0, 100}, round_floor>{1.0L - 0x1p-60L}), 0);
         EXPECT_EQ((inside<{0, 100}, wrap>{0x1p60L + 3.0L}), static_cast<int>(((1ull << 60) + 3) % 101));
+#if LDBL_MAX_EXP > DBL_MAX_EXP // past the double range (not where long double is a double)
         EXPECT_EQ((inside<{0, 100}, clamp>{1e4000L}), 100);
         EXPECT_EQ((inside<{0, 100}, wrap>::try_make(1e4000L).error()), errc::overflow);
+#endif
     }
     EXPECT_EQ((inside<{0, 100}>{2.0L}), 2);
 }
@@ -135,8 +140,8 @@ TEST(BugHuntRound7, numerator_past_int64) {
     const auto m = z.numerator();
     EXPECT_TRUE(m == -std::remove_cvref_t<decltype(m)>{UINT64_MAX - 2});
     // A grid whose numerators fit keeps imax.
-    static_assert(std::same_as<decltype(inside<{{0, 10}, rational{1, 4}}>{}.numerator()), I64>);
-    static_assert(std::same_as<decltype(inside<{{0, 1}, 0}>{}.numerator()), I64>);
+    static_assert(std::same_as<decltype(std::declval<inside<{{0, 10}, rational{1, 4}}>>().numerator()), I64>);
+    static_assert(std::same_as<decltype(std::declval<inside<{{0, 1}, 0}>>().numerator()), I64>);
 }
 
 // raw·notch passed imax in to_value although the value fits.

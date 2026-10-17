@@ -113,6 +113,22 @@ jobs:
                 }
               ]
             }
+          ],
+          "msvc": [
+            { "versions": ["latest"],
+              "tests": [
+                { "cxxversions": ["c++23"],
+                  "tests": [
+                    { "stdlibs": ["stl"],
+                      "tests": [
+                        "Debug.Default", "Release.Default",
+                        "Release.-DBEMAN_INSIDE_WARNINGS_AS_ERRORS=ON"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
           ]
         }
 

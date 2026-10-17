@@ -2,17 +2,17 @@
 #ifndef BEMAN_INSIDE_DETAIL_DEBUG_HPP
 #define BEMAN_INSIDE_DETAIL_DEBUG_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 // <stdexcept> backs the *default* throwing handler only; it is the single heavy
 // error include and is pulled in solely when exceptions are available. A
 // freestanding / -fno-exceptions build never sees it and traps instead. Error
 // reporting otherwise stays on static const-char* messages — no <string>, no
 // <string_view>, no <system_error>. (General-purpose stringification lives in
 // the opt-in "beman/inside/io.hpp".)
-#if defined(__cpp_exceptions) || defined(__EXCEPTIONS)
-    #define BEMAN_INSIDE_HAS_EXCEPTIONS 1
+#if BEMAN_INSIDE_HAS_EXCEPTIONS // (config.hpp)
     #include <stdexcept>
-#else
-    #define BEMAN_INSIDE_HAS_EXCEPTIONS 0
 #endif
 
 //---------------------------------------------------------------------------
@@ -21,20 +21,8 @@
 // otherwise-trivial assignment/arithmetic). Standard [[noreturn]] / [[unlikely]]
 // are used directly at the throw sites and branches.
 //---------------------------------------------------------------------------
-#if defined(__GNUC__) || defined(__clang__)
-    #define BEMAN_INSIDE_COLD [[gnu::cold]]
-    #define BEMAN_INSIDE_NOINLINE [[gnu::noinline]]
-    #define BEMAN_INSIDE_TRAP() __builtin_trap()
-#elif defined(_MSC_VER)
-    #define BEMAN_INSIDE_COLD
-    #define BEMAN_INSIDE_NOINLINE __declspec(noinline)
-    #define BEMAN_INSIDE_TRAP() __debugbreak()
-#else
-    #define BEMAN_INSIDE_COLD
-    #define BEMAN_INSIDE_NOINLINE
-    #include <cstdlib>
-    #define BEMAN_INSIDE_TRAP() ::abort()
-#endif
+// (The attribute shims BEMAN_INSIDE_COLD, _NOINLINE, _ALWAYS_INLINE and
+// BEMAN_INSIDE_TRAP() are in config.hpp.)
 
 //---------------------------------------------------------------------------
 // debug — error codes, the replaceable failure handler, and diagnostic helpers.
@@ -166,5 +154,7 @@ struct print_types {
 };
 } // namespace detail
 } // namespace beman::inside
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_DEBUG_HPP

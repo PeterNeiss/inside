@@ -112,7 +112,7 @@ TEST(UnitsTest, dimensionless_quantities_are_numbers) {
     const inside<{1500}> n     = ratio;
     EXPECT_EQ(n, 1500);
     // Into a grid that must round: explicit, through that inside's constructor.
-    const auto x = inside<{{0, 10}, per<10>}, round_nearest>(a / b * just<1>.per<3>);
+    const auto x = inside<{{0, 10}, per<10>}, round_nearest>(a / b * just<1, 3>);
     EXPECT_EQ(rational{x}, rational(12, 10));
     // An angle is a quantity, not a number.
     static_assert(!std::is_convertible_v<quantity<si::radian, inside<{0, 7}>>, inside<{0, 7}>>);

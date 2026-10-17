@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_CASTS_HPP
 #define BEMAN_INSIDE_CASTS_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/detail/compare.hpp> // the inside type and its comparisons
 
 //---------------------------------------------------------------------------
@@ -80,5 +83,7 @@ template <insidable B, numeric A>
 }
 
 } // namespace beman::inside
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_CASTS_HPP

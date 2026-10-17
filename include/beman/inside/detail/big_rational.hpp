@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_DETAIL_BIG_RATIONAL_HPP
 #define BEMAN_INSIDE_DETAIL_BIG_RATIONAL_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/detail/rational.hpp>
 #include <beman/inside/detail/wide_int.hpp>
 
@@ -435,7 +438,7 @@ struct big_rational {
         if (r.Denominator < 0)
             Num = -Num;
     }
-    // Anything else that converts to `rational` (an inside: just<-6>.per<5>)
+    // Anything else that converts to `rational` (an inside: just<-6, 5>)
     // takes that one conversion, so it can be a grid limit or notch.
     template <class T>
         requires(std::is_class_v<T> && !std::same_as<T, rational> && std::convertible_to<const T&, rational>)
@@ -622,4 +625,6 @@ constexpr big_rational gcd(const big_rational& a, const big_rational& b) {
 } // namespace beman::inside::detail
 
 #endif // BEMAN_INSIDE_BIG_GRIDS
+BEMAN_INSIDE_WARNINGS_POP
+
 #endif // BEMAN_INSIDE_DETAIL_BIG_RATIONAL_HPP

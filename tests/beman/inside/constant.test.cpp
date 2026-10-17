@@ -4,6 +4,8 @@
 
 #include <gtest/gtest.h>
 
+#include <type_traits>
+
 using namespace beman::inside;
 using namespace beman::inside::detail;
 
@@ -142,4 +144,17 @@ TEST(ConstantTest, just_0_and_just_1_in_comparison_and_arithmetic) {
     B b = 41;
     b   = b + just<1>;
     ASSERT_EQ(b, 42);
+}
+
+// just<N, D> is the point N/D, the same type as just<N>.per<D> (which MSVC
+// rejects, see core.hpp).
+TEST(ConstantTest, just_numerator_denominator) {
+    static_assert(rational{just<1, 3>} == rational(1, 3));
+    static_assert(std::is_same_v<decltype(just<4, 2>), decltype(just<2>)>);
+    static_assert(std::is_same_v<decltype(just<7>), decltype(just<7, 1>)>);
+    static_assert(lower_of<inside<{{just<-1, 10>, just<1, 10>}, per<1000>}>> == rational(-1, 10));
+#if !BEMAN_INSIDE_MSVC
+    static_assert(std::is_same_v<decltype(just<1, 3>), decltype(just<1>.per<3>)>);
+    static_assert(std::is_same_v<decltype(just<-6, 5>), decltype(just<-6>.per<5>)>);
+#endif
 }

@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_DETAIL_REP_HPP
 #define BEMAN_INSIDE_DETAIL_REP_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/generic.hpp>
 #include <beman/inside/grid.hpp>
 #include <beman/inside/policy_flag.hpp>
@@ -66,4 +69,6 @@ constexpr Result scale_by_point(const X& x) noexcept {
     return Result::from_raw(raw_from_offset<Result>(Negate ? max_index_of<X> - off : off));
 }
 } // namespace beman::inside::detail
-#endif
+BEMAN_INSIDE_WARNINGS_POP
+
+#endif // BEMAN_INSIDE_DETAIL_REP_HPP

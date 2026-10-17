@@ -208,8 +208,8 @@ names the internal representation.
 | Bare literal (`0`, `0.5`, `100`) | Constructing or assigning an inside (`pct{42}`, `gain{0.5}`, `b = 7`) and comparisons (`b == 5`, `b < 50`). Not arithmetic or compound assignment — `b + 1` and `b += 1` are ill-formed. Dyadic decimals (`0.5`, `0.25`, `0x1p-8`) are binary-exact and fine as grid endpoints. |
 | `_ins` literal (`1_ins`, `0.5_ins`, `0xff_ins`) | An inside operand for arithmetic and compound assignment — `a + 1_ins`, `a * 2_ins`, `b += 1_ins`, `b > 0.5_ins`. Gives a scalar a grid so it joins inside arithmetic; the result stays an inside. The parse is exact (no double round-trip). An octal-looking integer (`010_ins`) is rejected: the grammar is decimal, so it would not mean what C++ reads. |
 | `just<V>` | A compile-time point-inside from any structural NTTP value — `just<2>`, `just<math::pi>`. Same role as `_ins` for non-literal constants. |
-| `per<D>` | The grid **step** 1/D: `per<16384>`. Other steps are `just<N>.per<D>` (`just<360>.per<4096>`) or a plain integer (`{{0, 100}, 5}`). A step is always positive (`per<0>` and negative steps are errors; a continuous grid is spelled `0`). Optional with two limits: `{0.5, 10}` derives the step 1/2. |
-| `just<N>.per<D>` | An exact **ratio** no literal can spell — `just<1>.per<3>`, `just<-6>.per<5>` for −1.2. Signed numerator, positive denominator. |
+| `per<D>` | The grid **step** 1/D: `per<16384>`. Other steps are `just<N, D>` (`just<360, 4096>`) or a plain integer (`{{0, 100}, 5}`). A step is always positive (`per<0>` and negative steps are errors; a continuous grid is spelled `0`). Optional with two limits: `{0.5, 10}` derives the step 1/2. |
+| `just<N, D>` | An exact **ratio** no literal can spell — `just<1, 3>`, `just<-6, 5>` for −1.2. Signed numerator, positive denominator. `just<N>.per<D>` is the same point, except on MSVC, where a compiler bug rejects it. |
 | `_r` literal (`0.1_r`, `1.25_r`, `0x1p-12_r`) | An exact **decimal or hex** value: `0.1_r` is exactly 1/10, unlike the double `0.1`. Use it for grid limits that are decimal fractions (`{0.1_r, 1}`), where a plain `0.1` is rejected. |
 
 Examples:
@@ -221,8 +221,8 @@ pct x = 42;
 auto y = x + 1_ins;                 // inside + inside, stays bounded
 if (x > 50) { ... }              // bare scalar compare is fine (exact, also for 50.5)
 
-// Exact non-dyadic grid endpoints — just<N>.per<D> (1.2 and 0.6 are not dyadic):
-using db_div20 = inside<{{just<-6>.per<5>, just<3>.per<5>}, per<40>}, round_nearest>;
+// Exact non-dyadic grid endpoints — just<N, D> (1.2 and 0.6 are not dyadic):
+using db_div20 = inside<{{just<-6, 5>, just<3, 5>}, per<40>}, round_nearest>;
 
 // A runtime fraction n/16 without leaving inside-space: divide by a grid'd 16.
 vel_t v{ inside<{-12, 12}>{n} / just<16> };
@@ -230,7 +230,7 @@ vel_t v{ inside<{-12, 12}>{n} / just<16> };
 
 Dyadic decimals are exact as plain literals: `0.5` is exactly 1/2, `0x1p-8`
 is exactly 1/256. A decimal that is *not* a binary fraction (0.1, 8/100, −1.2)
-needs an exact spelling: `0.1_r`, `0.08_r`, `-1.2_r`, or `just<N>.per<D>` for a
+needs an exact spelling: `0.1_r`, `0.08_r`, `-1.2_r`, or `just<N, D>` for a
 ratio with no finite decimal (1/3). The two-limit form `{lo, hi}` derives its
 notch from a plain floating-point limit only down to 1/1024, so
 `inside<{0.1, 1}>` is a compile error that points to `0.1_r`.

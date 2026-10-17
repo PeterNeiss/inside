@@ -23,8 +23,8 @@ A grid is `{ {Lower, Upper}, Notch }`. Three exact fractions, one invariant:
 notches across the interval. Written with two limits, `{Lower, Upper}`, the
 notch is derived: the coarsest step `1/k` that keeps every integer and both
 limits on the grid — 1 for integer limits, 1/2 for `{0.5, 10}`, 1/80 for
-`{just<3>.per<10>, just<13>.per<16>}`. You write the fractions with integer/dyadic
-literals, `per<D>` (the step 1/D), `just<N>.per<D>` (the exact ratio N/D) and
+`{just<3, 10>, just<13, 16>}`. You write the fractions with integer/dyadic
+literals, `per<D>` (the step 1/D), `just<N, D>` (the exact ratio N/D) and
 the exact `_r` literal (`0.1_r` is exactly 1/10); a grid never needs you to
 name its fraction type.
 

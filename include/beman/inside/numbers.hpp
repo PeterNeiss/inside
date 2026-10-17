@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_NUMBERS_HPP
 #define BEMAN_INSIDE_NUMBERS_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <cstdint>
 #include <utility>
 #include <concepts>
@@ -66,5 +69,7 @@ template <std::signed_integral V>
 }
 } // namespace detail
 } // namespace beman::inside
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_NUMBERS_HPP

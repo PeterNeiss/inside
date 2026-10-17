@@ -16,12 +16,12 @@
 using namespace beman::inside;
 
 int main() {
-    // 1. Growth and decay: t = −4, −3.75, …, 4 by a cursor over time_t in
+    // 1. Growth and decay: t = −4, −3.75, …, 4 by a cursor over seconds_t in
     //    steps of 1/4 (end(t) is the step past 4), amp on Q.14.
-    using time_t = inside<{{-4, 4}, per<1024>}, round_nearest>;
-    using amp_t  = inside<{{0, 100}, per<16384>}, round_nearest>;
+    using seconds_t = inside<{{-4, 4}, per<1024>}, round_nearest>;
+    using amp_t     = inside<{{0, 100}, per<16384>}, round_nearest>;
     std::cout << "t     exp(t)\n";
-    for (cursor<time_t, per<4>> t; t != end(t); ++t) {
+    for (cursor<seconds_t, per<4>> t; t != end(t); ++t) {
         std::cout << t << "\t" << math::exp_into<amp_t>(t) << "\n";
     }
 
@@ -46,7 +46,7 @@ int main() {
         const auto c   = math::cosh(x);
         const auto one = c * c - s * s; // within a few notches of 1
         std::cout << "cosh^2 - sinh^2 at " << x << " = " << one << "\n";
-        if (math::abs(one - just<1>) > just<1>.per<64>)
+        if (math::abs(one - just<1>) > just<1, 64>)
             return 1;
     }
 

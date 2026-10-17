@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_DETAIL_INT_FOR_BITS_HPP
 #define BEMAN_INSIDE_DETAIL_INT_FOR_BITS_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/detail/wide_int.hpp>
 
 #include <concepts>
@@ -43,5 +46,7 @@ using int_for_bits_t = typename int_for_bits<Bits, Signed>::type;
 template <raw_integer T>
 inline constexpr bool raw_signed = std::numeric_limits<T>::is_signed;
 } // namespace beman::inside::detail
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_INT_FOR_BITS_HPP

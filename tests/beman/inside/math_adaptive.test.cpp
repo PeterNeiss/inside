@@ -506,7 +506,9 @@ int root_failures() {
 static_assert(ax::isqrt(detail::wide_sint<4>{1} << 200) == detail::wide_sint<4>{1} << 100);
 static_assert(ax::isqrt((detail::wide_sint<4>{1} << 200) - detail::wide_sint<4>{1}) ==
               (detail::wide_sint<4>{1} << 100) - detail::wide_sint<4>{1});
+#if defined(__SIZEOF_INT128__)
 static_assert(ax::isqrt128(~static_cast<unsigned __int128>(0)) == ~umax{0});
+#endif
 } // namespace
 
 // The one-pass decision against fast_index at both ends of the interval,
@@ -1198,6 +1200,7 @@ TEST(MathAdaptiveTest, double_kernels_stay_within_their_proved_bounds) {
 // x = a/512, y = b/1000 and the result M·2^-48, |M·2^-48 − √(x² + y²)| ≤
 // 2^-49 is (2M − 1)²·5^6 ≤ 2^74·P ≤ (2M + 1)²·5^6, P = a²·10^6 + b²·2^18
 // (a long double reference is only a double on some targets).
+#if defined(__SIZEOF_INT128__) // the reference squares in 128 bits
 TEST(MathAdaptiveTest, hypot_on_mixed_grids_at_fine_outputs) {
     using xd   = inside<{{-4, 4}, rational{1, 512}}, round_nearest>;
     using ym   = inside<{{-4, 4}, rational{1, 1000}}, round_nearest>;
@@ -1216,3 +1219,4 @@ TEST(MathAdaptiveTest, hypot_on_mixed_grids_at_fine_outputs) {
         }
     EXPECT_EQ(bad, 0);
 }
+#endif

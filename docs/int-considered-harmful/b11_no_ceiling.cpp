@@ -28,7 +28,7 @@ int main()
 
   // A notch of exactly 10^-30, which no double and no int64 ratio can hold.
   using fine = inside<{{0, 1}, 1e-30_g}, round_nearest>;
-  fine third = just<1>.per<3>;                    // rounded once, onto the 1e-30 grid
+  fine third = just<1, 3>;                    // rounded once, onto the 1e-30 grid
   std::cout << "1/3 on a 1e-30 grid = " << third << "\n";
   return 0;
 }

@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_DETAIL_DIVISION_HPP
 #define BEMAN_INSIDE_DETAIL_DIVISION_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/detail/rep.hpp>
 #include <beman/inside/generic.hpp>
 #include <beman/inside/detail/wide_value.hpp>
@@ -413,7 +416,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
     // `fail` must stay well-formed even when return_t narrowed to plain
     // `result` (divisor excludes zero, no overflow); there every call to it is
     // removed by the guards below, so the final arm is dead (return-type only).
-    [[maybe_unused]] auto fail = [&](errc code, const char* what) -> return_t<A> {
+    [[maybe_unused]] auto fail = [&]([[maybe_unused]] errc code, [[maybe_unused]] const char* what) -> return_t<A> {
         if constexpr (overflow_action<plain_t<A>>)
             return report_or_unexpected<result>(action, policy, code, what); // -> result
         else if constexpr (!divisor_excludes_zero<R> || may_overflow_nonzero)
@@ -636,5 +639,7 @@ struct quotient_remainder {
 };
 
 } // namespace beman::inside::detail
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_DIVISION_HPP

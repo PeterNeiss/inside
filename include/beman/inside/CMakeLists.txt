@@ -15,8 +15,8 @@ target_sources(
                 detail/assignment.hpp
                 detail/big_rational.hpp
                 detail/compare.hpp
+                detail/config.hpp
                 detail/debug.hpp
-                detail/delete_reason.hpp
                 detail/division.hpp
                 detail/float_bits.hpp
                 detail/grid_rational.hpp

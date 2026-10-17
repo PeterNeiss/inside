@@ -2,6 +2,9 @@
 #ifndef BEMAN_INSIDE_GRID_HPP
 #define BEMAN_INSIDE_GRID_HPP
 
+#include <beman/inside/detail/config.hpp>
+BEMAN_INSIDE_WARNINGS_PUSH
+
 #include <beman/inside/lift.hpp>
 #include <beman/inside/detail/rational.hpp>
 #include <beman/inside/interval.hpp>
@@ -74,7 +77,7 @@ struct grid {
         : grid{interval{to_number(lower), to_number(upper)}, to_number(notch)} {}
     // Two limits: the notch is derived — gcd(1, Lower, Upper), the coarsest
     // step 1/k that keeps every integer and both limits on the lattice. Integer
-    // limits give 1; {0.5, 10} gives 1/2; {just<-6>.per<5>, just<3>.per<5>} gives 1/5.
+    // limits give 1; {0.5, 10} gives 1/2; {just<-6, 5>, just<3, 5>} gives 1/5.
     constexpr grid(grid_number_like auto lower, grid_number_like auto upper)
         : grid{interval{to_number(lower), to_number(upper)}, derive_notch(lower, upper)} {}
     constexpr grid(grid_number_like auto lower)
@@ -826,5 +829,7 @@ template <std::same_as<grid> G>
     return detail::lift([iv](detail::grid_rational g) { return grid{iv, g}; }, n);
 }
 } // namespace beman::inside
+
+BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_GRID_HPP
