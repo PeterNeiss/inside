@@ -4126,7 +4126,7 @@ struct diag_text {
         const grid_int an = wide_numerator(d.A), ad = wide_denominator(d.A);
         const grid_int bn = wide_numerator(d.B), bd = wide_denominator(d.B);
         grid_int       num = an * bd - bn * ad, den = ad * bd;
-        const grid_int g   = grid_int_gcd(num, den);
+        const grid_int g = grid_int_gcd(num, den);
         if (!(g == grid_int{0}) && !(g == grid_int{1})) {
             num = num / g;
             den = den / g;
