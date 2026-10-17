@@ -67,3 +67,67 @@ TEST(IntoTest, div_into) {
     const eth a = *parse<eth>("1.000000000000000001"), b = *parse<eth>("0.999999999999999999");
     EXPECT_EQ(div_into<fine>(a, b).value(), fine::from_raw((umax{1} << 62) + 9));
 }
+
+// The native paths (the exact product inside, or a 64-bit rational) round as
+// the wide path does: every value pair of small grids, every Out policy, the
+// same result or the same error.
+namespace {
+template <class Out, policy_flag F, class Fn>
+std::expected<Out, errc> outcome(Fn&& f) {
+    try {
+        return f();
+    } catch (const inside_error& e) {
+        return std::unexpected{e.Code};
+    }
+}
+template <class Out, policy_flag F, class A, class B>
+void expect_mul_div_agree() {
+    for (const A a : values<A>)
+        for (const B b : values<B>) {
+            const auto policy = make_policy<flags_of<Out> | F>();
+            const auto m      = outcome<Out, F>([&] { return mul_into<Out, F>(a, b); });
+            const auto mw     = outcome<Out, F>([&] { return detail::mul_into_wide<Out>(a, b, policy); });
+            EXPECT_EQ(m, mw) << to_string(a) << " * " << to_string(b);
+            if (b == 0)
+                continue;
+            const auto d  = outcome<Out, F>([&] {
+                const auto r = div_into<Out, F>(a, b);
+                if constexpr (detail::expected_like<std::remove_const_t<decltype(r)>>) {
+                    if (!r)
+                        throw inside_error(r.error());
+                    return *r;
+                } else
+                    return r;
+            });
+            const auto dw = outcome<Out, F>([&] { return detail::div_into_wide<Out>(a, b, policy); });
+            EXPECT_EQ(d, dw) << to_string(a) << " / " << to_string(b);
+        }
+}
+using int_g  = inside<{-7, 9}>;
+using quart  = inside<{{-3, 3}, per<4>}>;
+using thirds = inside<{{rational{1, 3}, rational{13, 3}}, rational{1, 2}}>; // unanchored
+using neg    = inside<{{-2, -1}, per<8>}>;
+} // namespace
+
+TEST(IntoTest, native_paths_agree_with_the_wide_path) {
+    using round_out = inside<{{-50, 50}, per<3>}, round_nearest>;
+    using floor_out = inside<{-40, 40}, round_floor>;
+    using clamp_out = inside<{{-5, 5}, per<2>}, clamp | round_ceil>;
+    using check_out = inside<{{-20, 20}, per<2>}>;
+    // Both native paths are taken: the product inside, and the rational
+    // product where the store would reject the product type at compile time.
+    static_assert(detail::native_product<round_out, none, int_g, quart>);
+    static_assert(detail::native_product<clamp_out, none, int_g, int_g>);
+    static_assert(!detail::native_product<check_out, none, int_g, quart>);
+    static_assert(detail::rational_operands<int_g, quart>);
+    expect_mul_div_agree<round_out, none, int_g, quart>();
+    expect_mul_div_agree<round_out, none, quart, thirds>();
+    expect_mul_div_agree<floor_out, none, thirds, int_g>();
+    expect_mul_div_agree<floor_out, none, neg, quart>();
+    expect_mul_div_agree<clamp_out, none, int_g, int_g>();
+    expect_mul_div_agree<clamp_out, none, quart, thirds>();
+    expect_mul_div_agree<check_out, none, int_g, quart>();
+    expect_mul_div_agree<check_out, none, thirds, thirds>();
+    expect_mul_div_agree<check_out, round_nearest, quart, int_g>();
+    expect_mul_div_agree<int_g, round_floor, quart, quart>();
+}
