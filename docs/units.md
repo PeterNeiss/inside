@@ -30,9 +30,11 @@ The examples [`units.cpp`](../examples/units.cpp) (a tour),
 [`circuit.cpp`](../examples/circuit.cpp) (Ohm's law, an RC filter),
 [`moon_rocket.cpp`](../examples/moon_rocket.cpp) (Δv, orbits, a transfer
 time), [`kitchen.cpp`](../examples/kitchen.cpp) (mixed kitchen units,
-oven temperatures) and [`own_units.cpp`](../examples/own_units.cpp) (your
+oven temperatures), [`own_units.cpp`](../examples/own_units.cpp) (your
 own units, a temperature scale, currency and information as base
-dimensions) check their own output.
+dimensions) and [`adc_calibration.cpp`](../examples/adc_calibration.cpp)
+(ADC counts as a dimension, a two-point calibration) check their own
+output.
 
 `<beman/inside/units_math.hpp>` adds the functions that need the math
 engine (cmath.hpp). It is a separate header so that units.hpp keeps a low
@@ -278,6 +280,19 @@ inline constexpr named_unit     cent_def{"ct", mag<rational{1, 100}> * unit_c<eu
 Money then never adds to a length or a plain number, EUR/kg is a dimension
 of its own, and EUR + ct runs in ct. A base dimension is identified by its
 name.
+
+#### Counts and calibration
+
+ADC counts work the same way: `base_dimension count_def{"count"}`, a spec
+`adc_counts` on it, and a unit `cts`. A reading `quantity<cts,
+inside<{0, 4095}>>` then never adds to a voltage, and a gain in cts/V is
+not a 1/V. With a gain type whose range excludes 0, `(raw − offset) /
+gain` is a plain voltage, exact; one `value_cast` rounds it onto mV. A
+two-point calibration computes the gain as Δcts / ΔV. When the two
+reference voltages have disjoint ranges, ΔV is never 0. Checking the
+result into the gain type with `try_value_cast` catches a broken
+calibration once, and after that no division can fail. See
+[`adc_calibration.cpp`](../examples/adc_calibration.cpp).
 
 An entry is identified by its content, not its address: a spec by its
 name, dimension, recipe, kind boundary and parent chain; a unit by its
