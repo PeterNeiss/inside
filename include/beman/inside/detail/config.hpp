@@ -10,7 +10,8 @@
 //   Compiler            BEMAN_INSIDE_MSVC
 //   Build options       BEMAN_INSIDE_MATH_NO_FP, BEMAN_INSIDE_BIG_GRIDS
 //   Features            BEMAN_INSIDE_HAS_EXCEPTIONS, _HAS_INT128,
-//                       _HAS_OVERFLOW_BUILTINS, _HAS_FMA, _HAS_VALUED_DIAG,
+//                       _HAS_UMUL128, _HAS_OVERFLOW_BUILTINS, _HAS_FMA,
+//                       _HAS_VALUED_DIAG,
 //                       _HAS_STD_FORMAT
 //   Attributes          BEMAN_INSIDE_COLD, _NOINLINE, _ALWAYS_INLINE,
 //                       _NO_UNIQUE_ADDRESS, BEMAN_INSIDE_TRAP()
@@ -90,6 +91,15 @@
     #define BEMAN_INSIDE_HAS_INT128 1
 #else
     #define BEMAN_INSIDE_HAS_INT128 0
+#endif
+
+// MSVC on x64 has no __int128, but the _umul128 / _udiv128 intrinsics do the
+// same at run time (not in constant expressions).
+#if !BEMAN_INSIDE_HAS_INT128 && defined(_MSC_VER) && defined(_M_X64) && !defined(_M_ARM64EC) && !defined(__clang__)
+    #define BEMAN_INSIDE_HAS_UMUL128 1
+    #include <intrin.h>
+#else
+    #define BEMAN_INSIDE_HAS_UMUL128 0
 #endif
 
 // __builtin_{add,sub,mul}_overflow (overflow.hpp); else portable checks.

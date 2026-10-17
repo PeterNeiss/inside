@@ -115,7 +115,7 @@ compile time equals the runtime one.
   `-fassociative-math` or `-funsafe-math-optimizations`, which do not.
 - FMA contraction is handled internally (explicit `std::fma`), so `-mfma` is safe;
   `BEMAN_INSIDE_FMA` (default `ON`) adds it on x86-64 and the results are identical.
-- Toolchain: GCC 14+, Clang 19+, or Clang 18 with libc++, in C++23 mode (MSVC is not supported).
+- Toolchain: GCC 14+, Clang 19+, Clang 18 with libc++, or MSVC 19.51+, in C++23 mode.
 - To keep floating point out of the picture entirely, build with
   `-DBEMAN_INSIDE_MATH_NO_FP=ON`.
 

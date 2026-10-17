@@ -132,6 +132,10 @@ This project requires at least the following to build:
   `<expected>`). Grid limits and notches past 64 bits additionally need C++26
   static reflection — GCC 16 with `-freflection` (the `gcc16-*` presets);
   everything else works the same under C++23.
+* On MSVC (19.51, Visual Studio 2026, and later) the `beman::inside` target adds
+  `/utf-8 /Zc:__cplusplus /Zc:preprocessor /constexpr:steps100000000`. The
+  single header needs only `/utf-8`, plus the step limit if you evaluate math in
+  constant expressions.
 * CMake 3.30 or later
 * (Test Only) GoogleTest
 
@@ -169,6 +173,7 @@ CMake, add `-mfma` (or `-march=x86-64-v3`) yourself.
 | Clang      | 22-19   | C++26-C++23   | libstdc++, libc++ |
 | Clang      | 18      | C++26-C++23   | libc++            |
 | AppleClang | latest  | C++26-C++23   | libc++            |
+| MSVC       | 19.51+  | C++23         | MSVC STL          |
 
 ## Development
 

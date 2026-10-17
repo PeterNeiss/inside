@@ -62,7 +62,7 @@ constexpr L sub_borrow(L a, L b, L& borrow) noexcept {
 }
 
 // Full product a·b as {hi, lo}. Native where the target has unsigned
-// __int128; else a schoolbook 32-bit split (32-bit targets).
+// __int128, _umul128 at run time on MSVC x64; else a schoolbook 32-bit split.
 template <std::unsigned_integral L>
 constexpr pair<L> mul(L a, L b) noexcept {
     if constexpr (bits<L> <= 32) {
@@ -74,6 +74,13 @@ constexpr pair<L> mul(L a, L b) noexcept {
         const unsigned __int128 p = static_cast<unsigned __int128>(a) * b;
         return {static_cast<L>(p >> 64), static_cast<L>(p)};
 #else
+    #if BEMAN_INSIDE_HAS_UMUL128
+        if !consteval {
+            unsigned long long hi = 0;
+            const L            lo = _umul128(a, b, &hi);
+            return {static_cast<L>(hi), lo};
+        }
+    #endif
         const L al = a & 0xffffffffu, ah = a >> 32;
         const L bl = b & 0xffffffffu, bh = b >> 32;
         const L ll = al * bl, lh = al * bh, hl = ah * bl, hh = ah * bh;
@@ -107,6 +114,13 @@ constexpr pair<L> div(L hi, L lo, L d) noexcept // {quotient, remainder}
         const unsigned __int128 n = (static_cast<unsigned __int128>(hi) << 64) | lo;
         return {static_cast<L>(n / d), static_cast<L>(n % d)};
 #else
+    #if BEMAN_INSIDE_HAS_UMUL128
+        if !consteval {
+            unsigned long long r = 0;
+            const L            q = _udiv128(hi, lo, d, &r);
+            return {q, static_cast<L>(r)};
+        }
+    #endif
         // Restoring shift-subtract; `top` keeps the bit shifted out of r.
         L r = hi, q = 0;
         for (int i = 63; i >= 0; --i) {

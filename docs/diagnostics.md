@@ -122,6 +122,23 @@ An impossible operator is a deleted overload whose message names the reason
 (`use of deleted function …: division: no result grid - …`); compilers before GCC 15 /
 Clang 19 print only *use of deleted function*.
 
+## On MSVC
+
+A failed check during constant evaluation (a value outside a `checked`
+interval, a malformed `_g` literal, a units limit) carries its message as a
+template argument. GCC and Clang print it as text. MSVC prints its characters
+as numbers instead, so read the note that names the header line:
+
+```text
+<source>(3): error C2131: expression did not evaluate to a constant
+beman/inside/inside.hpp(…): note: see usage of 'beman::inside::detail::constexpr_error'
+```
+
+That line holds the message as a string literal, here `inside: value out of
+range during constant evaluation (checked policy hit; choose clamp/wrap or widen
+the interval)`. The call stack below it ("while evaluating function …") leads
+back to your code.
+
 ## `BEMAN_INSIDE_STRICT_SFINAE` — turning the hints off
 
 The automatic hints work by giving `inside` a diagnostic overload for incompatible types,
