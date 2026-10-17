@@ -8,6 +8,7 @@
 
 #include <gtest/gtest.h>
 
+#include <concepts>
 #include <type_traits>
 
 using namespace beman::inside;
@@ -34,6 +35,11 @@ inline constexpr base_dimension currency_def{"currency"};
 inline constexpr quantity_spec  money_def{"money", currency_def};
 inline constexpr named_unit     euro_def{"EUR", spec_c<money_def>};
 inline constexpr named_unit     cent_def{"ct", mag<rational{1, 100}> * unit_c<euro_def>};
+
+// ADC counts: a dimension apart from SI's dimensionless one.
+inline constexpr base_dimension count_def{"count"};
+inline constexpr quantity_spec  adc_counts_def{"adc_counts", count_def};
+inline constexpr named_unit     cts_def{"cts", spec_c<adc_counts_def>};
 
 template <class A, class B>
 concept can_add = requires(const A& a, const B& b) { a + b; };
@@ -166,4 +172,28 @@ TEST(UnitsApiTest, base_dimensions_of_your_own) {
     static_assert(dimension_of(square(euro).value).root(2) == dimension_of(euro.value));
     static_assert(dimension_of((euro / cent).value) == dim_one);
     EXPECT_EQ(to_string((just<3> * euro) / (just<2> * si::kilogram)), "1.5 EUR/kg");
+}
+
+TEST(UnitsApiTest, adc_counts) {
+    constexpr auto cts = unit_c<cts_def>;
+    using reading      = quantity<cts, inside<{0, 4095}>>;
+    using gain_t       = quantity<cts / si::volt, inside<{{1000, 1500}, per<1000>}, round_nearest>>;
+    using volts_t      = quantity<si::volt, inside<{{0, 5}, per<1000>}>>;
+    const reading                          raw{2048};
+    const quantity<cts, inside<{-64, 64}>> offset{12};
+    const gain_t                           gain{rational{1240909, 1000}};
+    const auto                             v = (raw - offset) / gain; // zero-free gain: a plain quantity
+    EXPECT_EQ(to_string(value_cast<quantity<si::milli(si::volt), inside<{-5000, 5000}, round_nearest>>>(v)),
+              "1641 mV");
+    // Two-point calibration: the exact Δcts / ΔV, checked into gain_t once.
+    const quantity<si::volt, inside<{{0, 1}, per<1000>}>> v1{rational{1, 2}};
+    const quantity<si::volt, inside<{{2, 5}, per<1000>}>> v2{rational{5, 2}};
+    const auto g = try_value_cast<gain_t>((reading{3114} - reading{632}) / (v2 - v1));
+    ASSERT_TRUE(g.has_value());
+    EXPECT_EQ(to_string(*g), "1241.000 cts/V");
+    EXPECT_FALSE(try_value_cast<gain_t>((reading{632} - reading{632}) / (v2 - v1)).has_value());
+    static_assert(!can_add<reading, volts_t>);
+    static_assert(!can_add<reading, decltype(just<1> * one)>); // counts are not a plain number
+    static_assert(!(dimension_of((cts / si::volt).value) == dimension_of((one / si::volt).value)));
+    static_assert(!std::constructible_from<quantity<si::ampere, inside<{0, 5}>>, decltype(v)>);
 }
