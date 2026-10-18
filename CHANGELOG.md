@@ -19,6 +19,17 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 - Example [`adc_calibration.cpp`](examples/adc_calibration.cpp): ADC counts
   as a base dimension of their own, and a two-point calibration whose gain
   is checked once, after which no division can fail.
+- `round_toward_zero`, the rounding flag that names truncation toward zero
+  (the `snap` bit alone), and its named policy `rounded_toward_zero`.
+
+### Changed
+
+- **Breaking:** the named policy `snapped` is now `rounded_toward_zero`,
+  next to `rounded_nearest`, `rounded_floor`, `rounded_ceil` and
+  `rounded_half_even`. Every mode snaps onto the grid, so the old name did
+  not say which way. `snap` stays the flag that permits rounding, and
+  `with_snap<Mode>()` is unchanged. Replace `div(a, b, snapped)` with
+  `div(a, b, rounded_toward_zero)`.
 
 ### Performance
 

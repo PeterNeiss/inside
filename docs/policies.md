@@ -59,7 +59,8 @@ goes away from zero. On such a grid 0 itself can be a tie (between −0.5 and
 | `unsafe` | opt out of all runtime checks |
 | `clamp` | saturate to boundary on out-of-range (mutually exclusive with `wrap`) |
 | `wrap` | modular arithmetic on out-of-range |
-| `snap` | rounding mismatches truncate toward zero (no error) |
+| `snap` | off-notch values round onto the grid (no error); on its own toward zero |
+| `round_toward_zero` | truncate toward zero: `snap` alone, named |
 | `round_nearest` | round to nearest notch, half away from zero (implies `snap`) |
 | `round_floor` | round toward −∞ (implies `snap`) |
 | `round_ceil` | round toward +∞ (implies `snap`) |
@@ -101,7 +102,7 @@ Each named policy is spelled after the flag it carries:
 
 | Name | Flag |
 |---|---|
-| `snapped` | `snap` (truncate toward zero) |
+| `rounded_toward_zero` | `round_toward_zero` (truncate toward zero) |
 | `rounded_nearest` / `rounded_floor` / `rounded_ceil` / `rounded_half_even` | `round_nearest` / `round_floor` / `round_ceil` / `round_half_even` |
 | `clamped` / `wrapped` | `clamp` / `wrap` |
 

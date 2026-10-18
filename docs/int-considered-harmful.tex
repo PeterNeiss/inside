@@ -753,11 +753,11 @@ process in \S2.4 becomes a value you can test.
 
 \lstinputlisting[firstline=16,lastline=30]{int-considered-harmful/b07_rounding.cpp}
 \begin{lstlisting}[style=term]
-n / d              = -3.5   (exact)
-rounded_nearest    = -4
-rounded_floor      = -4
-rounded_ceil       = -3
-snapped (trunc)    = -3
+n / d               = -3.5   (exact)
+rounded_nearest     = -4
+rounded_floor       = -4
+rounded_ceil        = -3
+rounded_toward_zero = -3
 \end{lstlisting}
 
 \begin{sloppypar}
@@ -1142,7 +1142,7 @@ grid arithmetic discharges; comparisons that run on raw storage. &
 the type system. &
 Byte-identical disassembly; a unit conversion is one \code{mov}
 (\S\ref{sec:codegen}); construct, add,
-\code{std::accumulate}, sort, transform at 98--101\% \\[0.6em]
+\code{std::accumulate}, sort, transform at 98--100\% \\[0.6em]
 \textbf{Additional cost} & Continuous (rational) grids, element-wise checking,
 transcendentals correctly rounded at full \code{double} resolution. &
 rational add about 5$\times$ \code{double}; checked loop at 20\%; fine math
@@ -1297,26 +1297,26 @@ run.
 \end{sloppypar}
 
 \begin{benchtablec}{construct (u8 [0,200])}
-  100.0\% & 0.30 & 7.00 & no & \texttt{native uint8} \\
-  63.6\% & 0.47 & 13.00 & yes & \texttt{native clamped} \\
-  90.4\% & 0.33 & 9.00 & yes & \texttt{native checked (exceptions)} \\
-  100.1\% & 0.30 & 7.00 & no & \texttt{inside<unsafe>} \\
+  100.0\% & 0.29 & 7.00 & no & \texttt{native uint8} \\
+  62.8\% & 0.47 & 13.00 & yes & \texttt{native clamped} \\
+  90.1\% & 0.33 & 9.00 & yes & \texttt{native checked (exceptions)} \\
+  99.9\% & 0.29 & 7.00 & no & \texttt{inside<unsafe>} \\
 \end{benchtablec}
 
 \begin{benchtablec}{add (u8 [0,200])}
   100.0\% & 0.41 & 11.00 & no & \texttt{native uint8} \\
-  41.8\% & 0.98 & 15.00 & yes & \texttt{native clamped} \\
-  79.7\% & 0.52 & 17.00 & yes & \texttt{native checked (exceptions)} \\
-  97.8\% & 0.42 & 10.00 & no & \texttt{inside<unsafe>} \\
+  49.7\% & 0.82 & 15.00 & yes & \texttt{native clamped} \\
+  79.8\% & 0.51 & 17.00 & yes & \texttt{native checked (exceptions)} \\
+  99.7\% & 0.41 & 10.00 & no & \texttt{inside<unsafe>} \\
 \end{benchtablec}
 
 \begin{benchtable}{accumulate 1000 (u32 [0,200000], per element)}
   100.0\% & 0.05 & 1.03 & \texttt{native loop} \\
-  99.9\% & 0.05 & 1.03 & \texttt{inside<unsafe> loop} \\
-  19.8\% & 0.26 & 9.01 & \texttt{inside<checked> loop} \\
-  47.3\% & 0.11 & 2.47 & \texttt{beman::inside::sum<checked> (bulk check)} \\
+  100.1\% & 0.05 & 1.03 & \texttt{inside<unsafe> loop} \\
+  20.1\% & 0.26 & 9.01 & \texttt{inside<checked> loop} \\
+  47.4\% & 0.11 & 2.47 & \texttt{beman::inside::sum<checked> (bulk check)} \\
   100.0\% & 0.05 & 1.03 & \texttt{std::accumulate native} \\
-  99.8\% & 0.05 & 1.03 & \texttt{std::accumulate inside} \\
+  100.0\% & 0.05 & 1.03 & \texttt{std::accumulate inside} \\
 \end{benchtable}
 
 \noindent
@@ -1326,9 +1326,9 @@ Without the check, both loops vectorise like native code.
 
 \begin{benchtable}{comparison ==}
   100.0\% & 0.53 & 12.00 & \texttt{native int16} \\
-  102.1\% & 0.52 & 12.00 & \texttt{inside same grid} \\
+  101.3\% & 0.52 & 12.00 & \texttt{inside same grid} \\
   130.0\% & 0.41 & 9.00 & \texttt{inside == int scalar (value raw)} \\
-  129.9\% & 0.41 & 9.00 & \texttt{inside Q8.8 == int scalar (index raw)} \\
+  129.6\% & 0.41 & 9.00 & \texttt{inside Q8.8 == int scalar (index raw)} \\
 \end{benchtable}
 
 \noindent
@@ -1336,17 +1336,17 @@ The grid lets a comparison against a scalar run on raw storage, which takes
 fewer instructions than native.
 
 \begin{benchtable}{rational add (continuous grid)}
-  100.0\% & 4.84 & 97.20 & \texttt{native fraction} \\
-  842.0\% & 0.58 & 12.00 & \texttt{std double (reference)} \\
-  182.3\% & 2.66 & 62.27 & \texttt{inside (continuous)} \\
+  100.0\% & 4.97 & 97.20 & \texttt{native fraction} \\
+  863.6\% & 0.58 & 12.00 & \texttt{std double (reference)} \\
+  187.1\% & 2.66 & 62.27 & \texttt{inside (continuous)} \\
 \end{benchtable}
 
 \noindent
 Overflow-checked rational addition beats a hand-rolled reduced \code{int64}
 fraction, and costs about 5$\times$ a \code{double}. That is the price of
 exactness. Only continuous grids pay it: any notched grid, thirds included,
-stores an integer index. Sort and \code{std::transform} run at 100.2\% and
-100.8\% of native.
+stores an integer index. Sort and \code{std::transform} run at 98.7\% and
+99.0\% of native.
 
 \textbf{Increment} (\code{u32 [0,200000]}) is the outlier, at 12.0\%, and the
 library's arithmetic is not the cause. As plain functions, the two increments
@@ -1365,12 +1365,12 @@ measures it onto the grid deduced from a $2^{-14}$ input:
 \toprule
 Function (deduced grid) & \code{std} ns & \code{inside} ns & rel. \\
 \midrule
-\code{sin}   & 3.72 & 4.68 &  79.4\% \\
-\code{hypot} & 2.97 & 3.15 &  94.3\% \\
-\code{atan2} & 7.71 & 7.64 & 101.0\% \\
-\code{log}   & 2.61 & 5.36 &  48.7\% \\
+\code{sin}   & 3.72 & 4.67 &  79.8\% \\
+\code{hypot} & 2.97 & 3.14 &  94.5\% \\
+\code{atan2} & 7.70 & 7.56 & 101.7\% \\
+\code{log}   & 2.61 & 5.37 &  48.6\% \\
 \code{sqrt}  & 1.23 & 2.20 &  55.6\% \\
-\code{exp}   & 2.87 & 5.36 &  53.7\% \\
+\code{exp}   & 2.87 & 5.37 &  53.5\% \\
 \bottomrule
 \end{tabular}
 \end{center}

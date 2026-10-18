@@ -210,10 +210,10 @@ static void bench_scalar_u8() {
         u200 a(din.a[i & kMask]), b(din.b[i & kMask]);
         doNotOptimizeAway((a / b)->raw());
     });
-    dv.run("inside div(a, b, snapped)", [&] {
+    dv.run("inside div(a, b, rounded_toward_zero)", [&] {
         ++i;
         u200 a(din.a[i & kMask]), b(din.b[i & kMask]);
-        doNotOptimizeAway(div(a, b, snapped)->raw());
+        doNotOptimizeAway(div(a, b, rounded_toward_zero)->raw());
     });
     using q16 = inside<{{0, 200}, per<16>}, round_nearest>;
     dv.run("inside div_into<1/16> (divisor excludes 0)", [&] {
@@ -244,10 +244,10 @@ static void bench_scalar_u8() {
         d9   b(din.b[i & kMask]);
         doNotOptimizeAway((a % b).raw());
     });
-    md.run("inside mod(a, b, snapped) (zero-checked)", [&] {
+    md.run("inside mod(a, b, rounded_toward_zero) (zero-checked)", [&] {
         ++i;
         u200 a(din.a[i & kMask]), b(din.b[i & kMask]);
-        doNotOptimizeAway(mod(a, b, snapped)->raw());
+        doNotOptimizeAway(mod(a, b, rounded_toward_zero)->raw());
     });
     finish(md);
 }
@@ -585,16 +585,16 @@ static void bench_fixed_point() {
     finish(mul);
 
     static const scalar_inputs din{16, 200, 1, 8};
-    auto                       dv = group("Q8.8 div (snapped)");
+    auto                       dv = group("Q8.8 div (toward zero)");
     dv.run("native (a<<8)/b", [&] {
         ++i;
         std::int32_t a = din.a[i & kMask] << 8, b = din.b[i & kMask] << 8;
         doNotOptimizeAway((a << 8) / b);
     });
-    dv.run("inside div(a, b, snapped)", [&] {
+    dv.run("inside div(a, b, rounded_toward_zero)", [&] {
         ++i;
         fp a(din.a[i & kMask]), b(din.b[i & kMask]);
-        doNotOptimizeAway(div(a, b, snapped)->raw());
+        doNotOptimizeAway(div(a, b, rounded_toward_zero)->raw());
     });
     finish(dv);
 

@@ -27,14 +27,18 @@ using policy_flag = unsigned long long;
 inline constexpr policy_flag none{0ull};
 inline constexpr policy_flag ignore_zero{1ull << 1};
 inline constexpr policy_flag ignore_range{1ull << 2};
-// `snap` — an off-notch value is rounded to fit the grid instead of
-// rejected; on its own truncate-toward-zero. Without it, an off-notch value is
-// a compile/runtime error and div/mod fall through to exact-rational results.
+// `snap` — permission: an off-notch value is rounded to fit the grid instead
+// of rejected. Without it, an off-notch value is a compile/runtime error and
+// div/mod fall through to exact-rational results. Every round_* mode carries
+// it; on its own it rounds toward zero.
 inline constexpr policy_flag snap{1ull << 4};
+// `round_toward_zero` — the snap bit alone: truncate toward zero (IEEE 754
+// roundTowardZero). Last in dispatch, after every explicit mode.
+inline constexpr policy_flag round_toward_zero{snap};
 inline constexpr policy_flag round_nearest{(1ull << 5) | snap};
 // Rounding modes each pick a unique bit and OR in `snap`. Conceptually
 // exclusive; combining two is allowed but dispatch (storage.hpp) picks the
-// first match: floor → ceil → half_even → nearest → trunc (rounding_for).
+// first match: floor → ceil → half_even → nearest → toward zero (rounding_of).
 inline constexpr policy_flag round_floor{(1ull << 6) | snap};
 inline constexpr policy_flag round_ceil{(1ull << 7) | snap};
 inline constexpr policy_flag round_half_even{(1ull << 8) | snap};
