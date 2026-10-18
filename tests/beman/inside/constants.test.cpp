@@ -7,43 +7,53 @@
 
 #include <gtest/gtest.h>
 
-#include <cmath>
-#include <format>
-#include <numbers>
+#include <cstdint>
+#include <version> // __cpp_lib_format
+#ifdef __cpp_lib_format
+    #include <format>
+#endif
 
 using namespace beman::inside;
 using namespace beman::inside::units;
 namespace pc = beman::inside::units::constants;
 
 namespace {
-// Every rational is within 2^-57 of its constant; long double carries 64 bits.
-void expect_close(const auto& c, long double ref) {
-    const rational    r{c};
-    const long double v = static_cast<long double>(r.Numerator) / static_cast<long double>(r.Denominator);
-    EXPECT_LT(std::fabs(v - ref), std::ldexp(1.0L, -56)) << static_cast<double>(ref);
+// Every rational n/d is within 2^-57 of its constant v, checked exactly (no
+// long double, which is a double on some platforms). ref = floor(v·10^18), so
+// v lies in [ref, ref + 1]·10^-18 and |n/d − v| ≤ |n·10^18 − ref·d|/(d·10^18)
+// + 10^-18. The test asks for that bound to be below 2^-57, in 256 bits.
+void expect_close(const auto& c, std::uint64_t ref) {
+    using W          = beman::inside::detail::wide_sint<4>;
+    const rational r = rational{c};
+    const W        n{r.Numerator};
+    const W        d{static_cast<std::uint64_t>(r.Denominator)};
+    const W        scale{1'000'000'000'000'000'000ULL};
+    W              diff = n * scale - W{ref} * d;
+    if (diff < W{0})
+        diff = -diff;
+    EXPECT_TRUE((diff << 57) + (d << 57) < d * scale) << ref;
 }
 } // namespace
 
 TEST(ConstantsTest, mathematical_constants_are_close_rationals) {
-    using std::numbers::pi_v;
-    expect_close(math::pi, pi_v<long double>);
-    expect_close(math::two_pi, 2 * pi_v<long double>);
-    expect_close(math::half_pi, pi_v<long double> / 2);
-    expect_close(math::inv_pi, std::numbers::inv_pi_v<long double>);
-    expect_close(math::inv_sqrt_pi, std::numbers::inv_sqrtpi_v<long double>);
-    expect_close(math::e, std::numbers::e_v<long double>);
-    expect_close(math::log2e, std::numbers::log2e_v<long double>);
-    expect_close(math::log10e, std::numbers::log10e_v<long double>);
-    expect_close(math::ln2, std::numbers::ln2_v<long double>);
-    expect_close(math::ln10, std::numbers::ln10_v<long double>);
-    expect_close(math::sqrt2, std::numbers::sqrt2_v<long double>);
-    expect_close(math::sqrt3, std::numbers::sqrt3_v<long double>);
-    expect_close(math::inv_sqrt2, 1 / std::numbers::sqrt2_v<long double>);
-    expect_close(math::inv_sqrt3, std::numbers::inv_sqrt3_v<long double>);
-    expect_close(math::phi, std::numbers::phi_v<long double>);
-    expect_close(math::egamma, std::numbers::egamma_v<long double>);
-    expect_close(math::catalan, 0.915965594177219015054603514932384110774L);
-    expect_close(math::zeta3, 1.202056903159594285399738161511449990765L);
+    expect_close(math::pi, 3141592653589793238ULL);
+    expect_close(math::two_pi, 6283185307179586476ULL);
+    expect_close(math::half_pi, 1570796326794896619ULL);
+    expect_close(math::inv_pi, 318309886183790671ULL);
+    expect_close(math::inv_sqrt_pi, 564189583547756286ULL);
+    expect_close(math::e, 2718281828459045235ULL);
+    expect_close(math::log2e, 1442695040888963407ULL);
+    expect_close(math::log10e, 434294481903251827ULL);
+    expect_close(math::ln2, 693147180559945309ULL);
+    expect_close(math::ln10, 2302585092994045684ULL);
+    expect_close(math::sqrt2, 1414213562373095048ULL);
+    expect_close(math::sqrt3, 1732050807568877293ULL);
+    expect_close(math::inv_sqrt2, 707106781186547524ULL);
+    expect_close(math::inv_sqrt3, 577350269189625764ULL);
+    expect_close(math::phi, 1618033988749894848ULL);
+    expect_close(math::egamma, 577215664901532860ULL);
+    expect_close(math::catalan, 915965594177219015ULL);
+    expect_close(math::zeta3, 1202056903159594285ULL);
 }
 
 TEST(ConstantsTest, physical_constants_have_their_kind_and_value) {
@@ -58,14 +68,16 @@ TEST(ConstantsTest, physical_constants_have_their_kind_and_value) {
     EXPECT_EQ(to_string(pc::fine_structure_constant.in(one)), "0.0072973525643");
     EXPECT_EQ(to_string(pc::rydberg_constant.in(one / si::metre)), "10973731.568157 m⁻¹");
     EXPECT_EQ(to_string(pc::characteristic_impedance_of_vacuum.in(si::ohm)), "376.730313412 Ω");
+#ifdef __cpp_lib_format
     EXPECT_EQ(
         std::format("{:.5e}", pc::gravitational_constant.in(cubic(si::metre) / (si::kilogram * square(si::second)))),
         "6.67430e-11 m³/(kg s²)");
     EXPECT_EQ(std::format("{:.11e}", pc::vacuum_magnetic_permeability.in(si::newton / square(si::ampere))),
               "1.25663706127e-06 N/A²");
+#endif
 }
 
-#if BEMAN_INSIDE_BIG_GRIDS
+#if BEMAN_INSIDE_BIG_GRIDS && defined(__cpp_lib_format)
 TEST(ConstantsTest, si2019_defining_constants_are_exact) {
     static_assert(pc::planck_constant.quantity_spec == isq::action);
     static_assert(pc::elementary_charge.quantity_spec == isq::electric_charge);
