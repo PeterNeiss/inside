@@ -101,6 +101,15 @@ constexpr double ldexp_small(double value, int exp) noexcept {
     return std::bit_cast<double>(bits);
 }
 
+// value·2^k where 2^k is a normal double (−1022 ≤ k ≤ 1023): one multiply,
+// which rounds once like ldexp_small's round-to-nearest-even; else ldexp_small.
+// For the run-time kernels (the exp family).
+constexpr double scale_pow2(double value, int k) noexcept {
+    if (k >= -1022 && k <= 1023) [[likely]]
+        return value * std::bit_cast<double>(static_cast<std::uint64_t>(k + 1023) << 52);
+    return ldexp_small(value, k);
+}
+
 // value·2^exp for any exp: past ±2200 every finite double overflows or
 // underflows alike, so exp is clamped there (an exp near INT_MAX would
 // overflow ldexp_small's exponent sum).

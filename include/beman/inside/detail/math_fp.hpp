@@ -387,13 +387,13 @@ struct exp_k {
         const double k = std::nearbyint(x * log2e);
         double       r = fma(-k, ln2_hi, x);
         r              = fma(-k, ln2_lo, r);
-        return ::beman::inside::detail::ldexp_small(exp_poly<N>(r), static_cast<int>(k));
+        return ::beman::inside::detail::scale_pow2(exp_poly<N>(r), static_cast<int>(k));
     }
     BEMAN_INSIDE_ALWAYS_INLINE static double value(double x, double lo) {
         const double k = std::nearbyint(x * log2e);
         double       r = fma(-k, ln2_hi, x);
         r              = fma(-k, ln2_lo, r) + lo;
-        return ::beman::inside::detail::ldexp_small(exp_poly<N>(r), static_cast<int>(k));
+        return ::beman::inside::detail::scale_pow2(exp_poly<N>(r), static_cast<int>(k));
     }
     static double exp(double x, double& bound) {
         const double v = value(x);
@@ -407,7 +407,7 @@ struct exp_k {
     static double           exp2(double x, double& bound) {
         const double k = std::nearbyint(x);
         const double r = (x - k) * ln2_full;
-        const double v = ::beman::inside::detail::ldexp_small(exp_poly<N>(r), static_cast<int>(k));
+        const double v = ::beman::inside::detail::scale_pow2(exp_poly<N>(r), static_cast<int>(k));
         bound          = Rel2 * v + tiny;
         return v;
     }

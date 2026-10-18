@@ -191,6 +191,11 @@ static void bench_scalar_u8() {
         u200 a(min.a[i & kMask]), b(min.b[i & kMask]);
         doNotOptimizeAway((a * b).raw());
     });
+    mul.run("inside mul_into<u200>", [&] {
+        ++i;
+        u200 a(min.a[i & kMask]), b(min.b[i & kMask]);
+        doNotOptimizeAway(mul_into<u200>(a, b).raw());
+    });
     finish(mul);
 
     static const scalar_inputs din{20, 200, 1, 9};
@@ -209,6 +214,18 @@ static void bench_scalar_u8() {
         ++i;
         u200 a(din.a[i & kMask]), b(din.b[i & kMask]);
         doNotOptimizeAway(div(a, b, snapped)->raw());
+    });
+    using q16 = inside<{{0, 200}, per<16>}, round_nearest>;
+    dv.run("inside div_into<1/16> (divisor excludes 0)", [&] {
+        ++i;
+        u200                   a(din.a[i & kMask]);
+        inside<{1, 9}, unsafe> b(din.b[i & kMask]);
+        doNotOptimizeAway(div_into<q16>(a, b).raw());
+    });
+    dv.run("inside div_into<1/16> (expected)", [&] {
+        ++i;
+        u200 a(din.a[i & kMask]), b(din.b[i & kMask]);
+        doNotOptimizeAway(div_into<q16>(a, b)->raw());
     });
     finish(dv);
 
@@ -559,6 +576,11 @@ static void bench_fixed_point() {
         ++i;
         fp a(min.a[i & kMask]), b(min.b[i & kMask]);
         doNotOptimizeAway((a * b).raw());
+    });
+    mul.run("inside mul_into<Q8.8, round_nearest>", [&] {
+        ++i;
+        fp a(min.a[i & kMask]), b(min.b[i & kMask]);
+        doNotOptimizeAway(mul_into<inside<{{0, 255}, 1.0 / 256}, round_nearest>>(a, b).raw());
     });
     finish(mul);
 
