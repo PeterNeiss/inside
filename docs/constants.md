@@ -1,0 +1,109 @@
+# Constants
+
+<!--
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
+
+`#include <beman/inside/constants.hpp>` gives you the common mathematical
+constants and the physical constants. Each physical constant is a
+[quantity](units.md) of its ISQ kind.
+
+```cpp
+#include <beman/inside/constants.hpp>
+using namespace beman::inside;
+using namespace beman::inside::units;
+namespace pc = units::constants;
+
+auto x   = angle * math::pi;                                    // a point inside
+auto R   = pc::avogadro_constant * pc::boltzmann_constant;      // exact (C++26)
+auto E   = pc::planck_constant * quantity<si::tera(si::hertz), inside<{0, 1000}>>{540};
+auto E_J = E.in(si::joule);                                     // 3.578077881e-19 J, exact
+```
+
+## Mathematical constants: `math::`
+
+Each constant is a point `inside`, `just<r>`, where `r` is the best rational
+whose numerator and denominator stay below 2^31. The numbers stay small, so
+products of a few constants keep 64-bit grid numbers. `cmath.hpp` defines
+them too.
+
+| Name | Value | Error |
+|---|---|---|
+| `pi`, `two_pi`, `half_pi` | π, 2π, π/2 | 2^-58.2, 2^-57.2, 2^-60.2 |
+| `inv_pi`, `inv_sqrt_pi` | 1/π, 1/√π | 2^-61.5, 2^-58.0 |
+| `e`, `log2e`, `log10e` | e, log₂e, log₁₀e | 2^-60.5, 2^-61.6, 2^-66.1 |
+| `ln2`, `ln10` | ln 2, ln 10 | 2^-62.6, 2^-63.7 |
+| `sqrt2`, `sqrt3`, `inv_sqrt2`, `inv_sqrt3` | √2, √3, 1/√2, 1/√3 | 2^-62.1, 2^-60.9, 2^-63.1, 2^-62.5 |
+| `phi` | golden ratio φ | 2^-61.3 |
+| `egamma` | Euler–Mascheroni γ | 2^-62.2 |
+| `catalan` | Catalan's constant G | 2^-59.4 |
+| `zeta3` | Apéry's constant ζ(3) | 2^-60.6 |
+
+For a correctly rounded value on a grid you choose, call the function:
+`math::sqrt_into<Out>(just<2>)`, `math::exp_into<Out>(just<1>)`. For π in a
+unit, scale the unit with `mag_pi` ([units.md](units.md#factors-of-π-round-once)),
+so π is never approximated.
+
+## Physical constants: `units::constants::`
+
+Each constant is the number 1 of a named unit whose magnitude is the
+constant, under the constant's ISQ kind where one fits. Products therefore
+stay exact: `R`, `F` and `E = h·ν` are exact rationals. `.in(u)` gives the
+number in unit `u`, and `std::format` with `{:e}` prints it compactly. A
+factor of π, as in ħ or σ, rounds once, through `value_cast` (units_math.hpp).
+
+The constant's unit is in `si2019::` or `codata2022::`, under the same name.
+**C++26** means the constant needs grid numbers past 64 bits, so it exists
+only under C++26 big grids (`BEMAN_INSIDE_BIG_GRIDS`).
+
+### Exact: the SI 2019 definitions and what follows
+
+| Name | Symbol | Kind | Value | |
+|---|---|---|---|---|
+| `hyperfine_structure_transition_frequency_of_cs` | Δν_Cs | frequency | 9 192 631 770 Hz | |
+| `speed_of_light_in_vacuum` | c | speed | 299 792 458 m/s | |
+| `luminous_efficacy` | K_cd | — | 683 lm/W | |
+| `planck_constant` | h | action | 6.626 070 15 × 10⁻³⁴ J s | C++26 |
+| `elementary_charge` | e | electric charge | 1.602 176 634 × 10⁻¹⁹ C | C++26 |
+| `boltzmann_constant` | k | — | 1.380 649 × 10⁻²³ J/K | C++26 |
+| `avogadro_constant` | N_A | — | 6.022 140 76 × 10²³ mol⁻¹ | C++26 |
+| `reduced_planck_constant` | ħ = h/2π | action | 1.054 571 817… × 10⁻³⁴ J s | C++26 |
+| `molar_gas_constant` | R = N_A k | — | 8.314 462 618 153 24 J/(mol K) | C++26 |
+| `faraday_constant` | F = N_A e | — | 96 485.332 123 310 0184 C/mol | C++26 |
+| `josephson_constant` | K_J = 2e/h | — | 4.835 978 484… × 10¹⁴ Hz/V | C++26 |
+| `von_klitzing_constant` | R_K = h/e² | resistance | 25 812.807 45… Ω | C++26 |
+| `conductance_quantum` | G₀ = 2e²/h | conductance | 7.748 091 729… × 10⁻⁵ S | C++26 |
+| `magnetic_flux_quantum` | Φ₀ = h/2e | magnetic flux | 2.067 833 848… × 10⁻¹⁵ Wb | C++26 |
+| `stefan_boltzmann_constant` | σ = 2π⁵k⁴/15h³c² | — | 5.670 374 419… × 10⁻⁸ W/(m² K⁴) | C++26 |
+| `first_radiation_constant` | c₁ = 2πhc² | — | 3.741 771 852… × 10⁻¹⁶ W m² | C++26 |
+| `second_radiation_constant` | c₂ = hc/k | — | 1.438 776 877… × 10⁻² m K | C++26 |
+| `standard_gravity` | g₀ | acceleration of free fall | 9.806 65 m/s² | |
+| `standard_atmosphere` | atm | pressure | 101 325 Pa | |
+
+### Measured: CODATA 2022
+
+The CODATA 2022 recommended values (Mohr et al., *Rev. Mod. Phys.* 97,
+025002, 2025) are stored exactly as published. Their standard uncertainty is
+not represented, so a result is only as good as the constant behind it.
+
+| Name | Symbol | Kind | Value | |
+|---|---|---|---|---|
+| `gravitational_constant` | G | — | 6.674 30 × 10⁻¹¹ m³/(kg s²) | |
+| `fine_structure_constant` | α | — | 7.297 352 5643 × 10⁻³ | |
+| `rydberg_constant` | R_∞ | — | 10 973 731.568 157 m⁻¹ | |
+| `vacuum_magnetic_permeability` | μ₀ | — | 1.256 637 061 27 × 10⁻⁶ N/A² | |
+| `characteristic_impedance_of_vacuum` | Z₀ | impedance | 376.730 313 412 Ω | |
+| `electron_mass` | m_e | mass | 9.109 383 7139 × 10⁻³¹ kg | C++26 |
+| `proton_mass` | m_p | mass | 1.672 621 925 95 × 10⁻²⁷ kg | C++26 |
+| `neutron_mass` | m_n | mass | 1.674 927 500 56 × 10⁻²⁷ kg | C++26 |
+| `atomic_mass_constant` | m_u | mass | 1.660 539 068 92 × 10⁻²⁷ kg | C++26 |
+| `bohr_radius` | a₀ | radius | 5.291 772 105 44 × 10⁻¹¹ m | C++26 |
+| `vacuum_electric_permittivity` | ε₀ | — | 8.854 187 8188 × 10⁻¹² F/m | C++26 |
+
+`si::dalton` uses the same 2022 value as `atomic_mass_constant`.
+
+## In the single header
+
+The math constants come with `cmath.hpp`. The physical constants sit inside
+the units guard, so `BEMAN_INSIDE_NO_UNITS` drops them
+([single-header.md](single-header.md)).

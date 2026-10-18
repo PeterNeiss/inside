@@ -371,7 +371,7 @@ is what keeps the core free of `<string>`/`<ostream>`/`<format>`/`<cmath>`:
 | `beman/inside/detail/compare.hpp` | `<=>` / `==` across grids and against scalars (integers, floating points of any width, `rational`) |
 | `beman/inside/cursor.hpp`       | `cursor<T, Step>` and `end(t)` |
 | `beman/inside/policy_flag.hpp`  | The `policy_flag` bits, `has_flag` / `is_checked`, rounding precedence, the `on_*` action factories and `is_*_action` traits |
-| `beman/inside/policy.hpp`       | `policy<F, E>` (report / error-code mode), `make_policy`, the named policies (`snapped`, `rounded_*`, `clamped`, `wrapped`), `policy_ref` |
+| `beman/inside/policy.hpp`       | `policy<F, E>` (report / error-code mode), `make_policy`, the named policies (`rounded_*`, `clamped`, `wrapped`), `policy_ref` |
 | `beman/inside/predicates.hpp`   | `conversion_overflows` / `conversion_rounds` / `conversion_loses` |
 | `beman/inside/interval.hpp`     | `interval` and its operators, `includes` / `excludes` / `overlaps` |
 | `beman/inside/numbers.hpp`         | `umax` / `imax`, `smallest_uint_for_t` / `smallest_int_for_t`, the `plain_number` / `fractional` concepts, `safe_abs` |

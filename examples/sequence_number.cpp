@@ -5,7 +5,7 @@
 //   - `wrap` policy for modular-2^N arithmetic
 //   - `on_wrap` callback feeding a wrap-epoch counter (cascade pattern)
 //   - `_ins` integer literal in arithmetic expressions
-//   - `divmod(s, 256_ins, snapped)` for the ring-buffer lap and slot
+//   - `divmod(s, 256_ins, rounded_toward_zero)` for the ring-buffer lap and slot
 
 #include <iostream>
 
@@ -46,14 +46,14 @@ int main() {
 
     std::cout << "\nepoch count after burst: " << epoch << "\n";
 
-    // Ring-buffer indexing — one integer division (`snapped`, per call) gives
+    // Ring-buffer indexing — one integer division (`rounded_toward_zero`, per call) gives
     // the lap through the 256-slot ring and the slot in it. 256_ins excludes
     // zero, so the result is plain, not an expected.
     std::cout << "\nslot assignment (seq / 256, seq % 256):\n";
     seq_t s{65500};
     for (int i = 0; i < 6; ++i) {
         s += window;
-        const auto [lap, slot] = divmod(s, 256_ins, snapped);
+        const auto [lap, slot] = divmod(s, 256_ins, rounded_toward_zero);
         std::cout << "  seq=" << s << "  ->  lap " << lap << ", slot " << slot << "\n";
     }
 

@@ -10,15 +10,15 @@ The `h*` (int hazard) and `d*` (double hazard) programs need nothing but a
 compiler:
 
 ```bash
-g++ -std=c++23 -O2 h01_overflow_ub.cpp -o h01
-g++ -std=c++23 -O0 h01_overflow_ub.cpp -o h01_O0    # compare the two
+g++ -std=c++26 -O2 h01_overflow_ub.cpp -o h01
+g++ -std=c++26 -O0 h01_overflow_ub.cpp -o h01_O0    # folded even at -O0
 ```
 
 The `b*` (inside), `m_after` and `p*` programs need the library on the include
 path:
 
 ```bash
-g++ -std=c++23 -O2 -I ../../include b01_no_overflow.cpp -o b01
+g++ -std=c++26 -O2 -I ../../include b01_no_overflow.cpp -o b01
 ```
 
 `b11_no_ceiling.cpp` uses grids past 64 bits, which need C++26 static
@@ -28,8 +28,8 @@ reflection (GCC 16):
 g++-16 -std=c++26 -freflection -O2 -I ../../include b11_no_ceiling.cpp -o b11
 ```
 
-The committed single header (`../../single_include`) holds `io.hpp` and
-`cmath.hpp` as well; to build a program against it, keep only the
+The committed single header (`../../single_include`) holds `io.hpp`,
+`cmath.hpp` and `units.hpp` as well; to build a program against it, keep only the
 `#include <beman/inside/inside.hpp>` line and use `-I ../../single_include`.
 
 ## Programs that are meant to fail
@@ -45,9 +45,11 @@ diagnostics are quoted in the paper.
 | `h02_overflow_loop.cpp` | At `-O2` GCC emits no instructions for `main`; the binary segfaults. At `-O0` it prints `iterations = 3`. |
 | `h04_divzero.cpp` | Raises `SIGFPE`. Takes an argument: `0` for `x / 0`, `1` for `INT_MIN / -1`. |
 
-`h01`, `h05` and `h08` rely on undefined behaviour and may legitimately produce
-different output on another compiler or platform — that is the point being
-made. Output in the paper is from GCC 15.2.0 on x86-64 Linux.
+`h01` and `h08` rely on undefined behaviour, and `h06` on
+implementation-defined properties; they may legitimately produce different
+output on another compiler or platform — that is the point being made.
+Everything is built as C++26 (`-std=c++26`); the library itself needs C++23.
+Output in the paper is from GCC 15.2.0 on x86-64 Linux.
 
 ## Benchmarks
 
@@ -70,11 +72,14 @@ the mean of three such runs.
 `p01_codegen.cpp` is compiled, not run:
 
 ```bash
-g++ -std=c++23 -O2 -I ../../include -c p01_codegen.cpp -o p01.o
+g++ -std=c++26 -O2 -I ../../include -c p01_codegen.cpp -o p01.o
 objdump -d --no-show-raw-insn -C p01.o
 ```
 
-`inside_add` and `native_add` lower to identical instructions. The repository
+`inside_add` (checked, returning the widened sum) and `native_add` lower to
+identical instructions, and `to_mm` (a km quantity in mm) is a single `mov`.
+The `inside_loop` element is `unsafe`: a checked `+=` is checked per element
+and keeps the loop scalar. The repository
 enforces the same property in CI via `tests/beman/inside/check_codegen.sh`.
 
 ## Rebuilding the paper

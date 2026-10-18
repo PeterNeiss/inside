@@ -148,15 +148,15 @@ constexpr auto report_or_unexpected(A&& action, P&& policy, errc code)
 // Named convenience policies — let user code skip `make_policy<F>()` entirely
 // for the per-call flag form on free arithmetic functions.
 //---------------------------------------------------------------------------
-// Each is named after its flag: snapped = snap (truncate toward zero),
-// rounded_* = round_*, clamped = clamp, wrapped = wrap.
-inline constexpr auto snapped           = make_policy<snap>();
-inline constexpr auto rounded_nearest   = make_policy<round_nearest>();
-inline constexpr auto rounded_floor     = make_policy<round_floor>();
-inline constexpr auto rounded_ceil      = make_policy<round_ceil>();
-inline constexpr auto rounded_half_even = make_policy<round_half_even>();
-inline constexpr auto clamped           = make_policy<clamp>();
-inline constexpr auto wrapped           = make_policy<wrap>();
+// Each is named after its flag: rounded_* = round_*, clamped = clamp,
+// wrapped = wrap.
+inline constexpr auto rounded_toward_zero = make_policy<round_toward_zero>();
+inline constexpr auto rounded_nearest     = make_policy<round_nearest>();
+inline constexpr auto rounded_floor       = make_policy<round_floor>();
+inline constexpr auto rounded_ceil        = make_policy<round_ceil>();
+inline constexpr auto rounded_half_even   = make_policy<round_half_even>();
+inline constexpr auto clamped             = make_policy<clamp>();
+inline constexpr auto wrapped             = make_policy<wrap>();
 
 //---------------------------------------------------------------------------
 // policy_ref — variadic in actions (stores std::tuple<As...>). policy_ref

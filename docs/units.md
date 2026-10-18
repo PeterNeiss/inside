@@ -232,7 +232,9 @@ A `std::format` spec applies to the number (`{:.2f}`, `{:>8}`).
   h, d, au, °, ′, ″, a, ha, L, t). The eV and Da need big grids.
 - **`si2019`**: the defining constants as units (Δν_Cs, c, K_cd, and
   under big grids h, e, k, N_A) and g₀. `just<1> * si2019::speed_of_light_in_vacuum`
-  is c exactly.
+  is c exactly. [constants.hpp](constants.md) adds the constants that follow
+  from them (ħ, R, F, K_J, R_K, G₀, Φ₀, σ, c₁, c₂), the standard atmosphere
+  and the CODATA 2022 measured values, all as quantities of their kind.
 - **`international`**: yd, ft, in, mi, nmi, lb, oz, lbf, kn, ℉.
 
 You define your own entries the same way: a `quantity_spec`, `named_unit`

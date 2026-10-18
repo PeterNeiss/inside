@@ -21,12 +21,12 @@ int main()
 
   // The default is the exact quotient. The divisor cannot be zero and the
   // quotient provably fits, so it is a plain value: nothing to unwrap.
-  std::cout << "n / d              = " << n / d << "   (exact)\n";
+  std::cout << "n / d               = " << n / d << "   (exact)\n";
 
   // Or, if you ask for a rounding, the one you name -- per call.
-  std::cout << "rounded_nearest    = " << div(n, d, rounded_nearest) << "\n";
-  std::cout << "rounded_floor      = " << div(n, d, rounded_floor) << "\n";
-  std::cout << "rounded_ceil       = " << div(n, d, rounded_ceil) << "\n";
-  std::cout << "snapped (trunc)    = " << div(n, d, snapped) << "\n";
+  std::cout << "rounded_nearest     = " << div(n, d, rounded_nearest) << "\n";
+  std::cout << "rounded_floor       = " << div(n, d, rounded_floor) << "\n";
+  std::cout << "rounded_ceil        = " << div(n, d, rounded_ceil) << "\n";
+  std::cout << "rounded_toward_zero = " << div(n, d, rounded_toward_zero) << "\n";
   return 0;
 }

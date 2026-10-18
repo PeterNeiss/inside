@@ -2296,7 +2296,7 @@ namespace si {
 inline constexpr auto hectare = hecto(are);
 }
 #if BEMAN_INSIDE_BIG_GRIDS
-BEMAN_INSIDE_UNIT(si, dalton, "Da", mag<1.66053906660e-27_g>* si::kilogram)
+BEMAN_INSIDE_UNIT(si, dalton, "Da", mag<1.66053906892e-27_g>* si::kilogram) // CODATA 2022
 BEMAN_INSIDE_UNIT(si, electronvolt, "eV", mag<1.602176634e-19_g>* si::joule)
 #endif
 
