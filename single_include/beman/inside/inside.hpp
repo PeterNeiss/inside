@@ -20648,9 +20648,11 @@ template <class Q, numeric A>
 namespace detail {
 template <class Q, class X>
 constexpr decltype(auto) number_in(const X& x) {
-    if constexpr (quantity_like<X>)
-        return x.template in<Q::reference.U>().numerical_value();
-    else
+    if constexpr (quantity_like<X>) {
+        // A copy: numerical_value() refers into the converted temporary.
+        auto v = x.template in<Q::reference.U>().numerical_value();
+        return v;
+    } else
         return (x);
 }
 template <class Q, class X>
