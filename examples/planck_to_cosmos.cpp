@@ -7,6 +7,8 @@
 //      correctly rounded — about 10^61.74.
 //   2. Their geometric mean — halfway in log scale — by sqrt, correctly rounded
 //      onto the same 10^-41 m grid: about 0.12 mm.
+// The lengths are quantities in m: their ratio is a plain number, and the
+// square root of m² is m again.
 
 #include <format>
 #include <iostream>
@@ -14,31 +16,34 @@
 #include <beman/inside/cmath.hpp>
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
+#include <beman/inside/units_math.hpp>
 
 using namespace beman::inside;
+using namespace beman::inside::units;
 
 #if BEMAN_INSIDE_BIG_GRIDS
 
-using length = inside<{{1e-41_g, 1e27_g}, 1e-41_g}, round_nearest>; // positive: log10 needs it
-using decade = inside<{{-100, 100}, per<1 << 20>}, round_nearest>;  // log10 to 2^-20
+using length_number = inside<{{1e-41_g, 1e27_g}, 1e-41_g}, round_nearest>; // positive: log10 needs it
+using length        = quantity<si::metre, length_number>;
+using decade        = inside<{{-100, 100}, per<1 << 20>}, round_nearest>; // log10 to 2^-20
 
 int main() {
-    const length planck   = just<1.616255e-35_g>;
-    const length universe = just<8.8e26_g>;
+    const length planck   = just<1.616255e-35_g> * si::metre;
+    const length universe = just<8.8e26_g> * si::metre;
 
     // 1. The exact ratio (a fraction of 226-bit integers) — a plain value: its
     //    denominator bound sizes the fraction — and one rounding for its log10.
     const auto ratio = universe / planck;
     std::cout << "universe / planck = " << ratio << "\n";
-    const decade d = math::log10_into<decade>(ratio);
+    const decade d = units::log10_into<decade>(ratio);
     std::cout << std::format("log10              = {:.6f}\n", d);
     if (to_string(ratio) != "17600000000000000000000000000000000000000000000000000000000000000000/323251" ||
         d != decade{rational{64'734'859, 1 << 20}})
         return 1;
 
     // 2. The geometric mean, exact to the last of 41 decimals.
-    const length mean = math::sqrt_into<length>(planck * universe);
-    std::cout << "sqrt(planck * universe) = " << mean << " m\n";
+    const length mean = units::sqrt_into<length_number>(planck * universe);
+    std::cout << "sqrt(planck * universe) = " << mean << "\n";
     if (mean != *parse<length>("0.00011926040415829555623064347860850441433"))
         return 1;
     return 0;

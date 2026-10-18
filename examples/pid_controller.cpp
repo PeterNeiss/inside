@@ -7,28 +7,34 @@
 //   - `clamp | round_nearest` on the output type to saturate AND snap the
 //     actuator command to its physical range in one `output_t{raw}` write
 //   - `on_clamp` on the integrator to detect anti-wind-up saturation
+//   - Units: a temperature loop. The error and the integral (summed once per
+//     tick) are temperature differences in K, the gains are in %/K, and the
+//     actuator command is a heater power in % — gain × error is a % by its
+//     own arithmetic.
 
 #include <iostream>
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
+#include <beman/inside/units.hpp>
 #include <beman/inside/formats.hpp>
 
 using namespace beman::inside;
+using namespace beman::inside::units;
 
-// Sensor error in [-10, 10] with 1/16 resolution.
-using err_t = inside<{{-10, 10}, per<16>}, round_nearest | clamp>;
+// Sensor error in [-10, 10] K with 1/16 K resolution.
+using err_t = quantity<si::kelvin, inside<{{-10, 10}, per<16>}, round_nearest | clamp>>;
 
 // Integrator accumulates errors; clamp-saturating to prevent wind-up.
-using integ_t = inside<{{-200, 200}, per<16>}, round_nearest | clamp>;
+using integ_t = quantity<si::kelvin, inside<{{-200, 200}, per<16>}, round_nearest | clamp>>;
 
-// Gain coefficients: [0, 4] with 1/256 step.
-using gain_t = inside<{{0, 4}, per<256>}, round_nearest>;
+// Gain coefficients: [0, 4] %/K with 1/256 step.
+using gain_t = quantity<percent / si::kelvin, inside<{{0, 4}, per<256>}, round_nearest>>;
 
-// Actuator command in [-100, 100] integer steps. `clamp | round_nearest`
-// lets `output_t{raw}` saturate AND round the wider rational/inside input
-// in one step — no explicit `clamp_cast<output_t, round_nearest>(...)` cast needed.
-using output_t = inside<{-100, 100}, clamp | round_nearest>;
+// Actuator command in [-100, 100] % integer steps. `clamp | round_nearest`
+// lets `output_t{raw}` saturate AND round the wider input in one step — no
+// explicit `clamp_cast<output_t, round_nearest>(...)` cast needed.
+using output_t = quantity<percent, inside<{-100, 100}, clamp | round_nearest>>;
 
 struct pid {
     gain_t kp{1.5};
@@ -45,7 +51,7 @@ struct pid {
         // we could derate the gain adaptively; here we just count events.
         integral.on_clamp([&](auto&, auto) { ++windup_events; }) += err;
 
-        // Three weighted terms — each is an inside on a wider grid than err.
+        // Three weighted terms — each a % on a wider grid than err.
         auto p_term = kp * err;
         auto i_term = ki * integral;
         auto d_term = kd * (err - previous);
@@ -74,5 +80,7 @@ int main() {
     }
     std::cout << "\nintegrator saturation events: " << loop.windup_events << "\n";
 
+    if (to_string(loop.integral) != "41 K" || to_string(loop.step(err_t{0})) != "6 %")
+        return 1;
     return 0;
 }

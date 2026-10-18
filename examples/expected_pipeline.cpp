@@ -7,6 +7,9 @@
 // grids prove them total (a gain that cannot be 0) return plain values, and
 // their error handling disappears at compile time.
 // errors.cpp tours the other reporting mechanisms (throw, policies, callbacks).
+// The reading and the result are quantities in volts; the gain is a plain
+// number, so (reading − offset) / gain is a voltage by its own arithmetic, and
+// parse<Q> reads the number in Q's unit.
 
 #include <expected>
 #include <iostream>
@@ -14,12 +17,14 @@
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
+#include <beman/inside/units.hpp>
 
 using namespace beman::inside;
+using namespace beman::inside::units;
 
-using reading = inside<{{just<-1, 10>, just<1, 10>}, per<1'000'000>}>; // ±100 mV, 1 µV steps
-using gain    = inside<{{0, 10}, per<100>}>;                           // 0 is possible: a dead channel
-using volts   = inside<{{-1, 1}, per<1'000'000>}, round_nearest>;      // the result, 1 µV
+using reading = quantity<si::volt, inside<{{just<-1, 10>, just<1, 10>}, per<1'000'000>}>>; // ±100 mV, 1 µV steps
+using gain    = inside<{{0, 10}, per<100>}>;                                          // 0 is possible: a dead channel
+using volts   = quantity<si::volt, inside<{{-1, 1}, per<1'000'000>}, round_nearest>>; // the result, 1 µV
 
 constexpr reading offset{just<1, 4000>}; // 0.25 mV
 
@@ -50,7 +55,7 @@ int main() {
     for (const auto& s : samples) {
         const auto v = calibrate(s.r, s.g);
         std::cout << "(" << s.r << " - 0.00025) / " << s.g << " -> "
-                  << (v ? to_string(*v) + " V" : std::string{"error: "} + errc_message(v.error())) << "\n";
+                  << (v ? to_string(*v) : std::string{"error: "} + errc_message(v.error())) << "\n";
         if (v ? s.expect != errc{} : v.error() != s.expect)
             return 1;
     }
@@ -61,7 +66,7 @@ int main() {
             return volts{0};
         return std::unexpected(e);
     });
-    std::cout << "dead channel with fallback -> " << *fallback << " V\n";
+    std::cout << "dead channel with fallback -> " << *fallback << "\n";
 
     // The lift operators chain without and_then: an expected operand makes the
     // whole expression an expected, and the first error wins.
@@ -71,7 +76,7 @@ int main() {
     // A gain that cannot be 0 makes the division total: a plain value.
     using live_gain   = inside<{{0.5, 10}, per<100>}>;
     const auto always = (reading{just<1, 100>} - offset) / live_gain{2};
-    static_assert(insidable<decltype(always)>); // not an expected
-    std::cout << "zero-free gain -> " << always << " V\n";
-    return fallback && *fallback == 0 && !chained && chained.error() == errc::division_by_zero ? 0 : 1;
+    static_assert(quantity_like<decltype(always)>);
+    std::cout << "zero-free gain -> " << always << "\n";
+    return fallback && *fallback == volts{0} && !chained && chained.error() == errc::division_by_zero ? 0 : 1;
 }

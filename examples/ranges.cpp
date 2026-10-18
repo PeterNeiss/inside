@@ -17,10 +17,12 @@
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
+#include <beman/inside/units.hpp>
 
 namespace rng   = std::ranges;
 namespace views = std::views;
 using namespace beman::inside;
+using namespace beman::inside::units;
 
 template <rng::input_range R>
 void show(std::string_view label, R&& r) {
@@ -52,14 +54,17 @@ int main() {
     constexpr std::array<char, values<digit>.size()> names{'z', 'o', 't', 't', 'f', 'f', 's', 's', 'e', 'n'};
     show("initials:    ", values<digit> | views::transform([&](digit d) { return names[d]; }));
 
-    // 2. Bisect a grid: the first tenth of a degree Celsius past 212 °F, in 11
-    //    exact comparisons out of 2001 values. Dividing by 5_ins keeps the
-    //    lattice (notch 9/50), so the whole formula is plain and exact.
-    using celsius         = inside<{{-50, 150}, per<10>}>;
-    auto       fahrenheit = [](celsius c) { return c * 9_ins / 5_ins + 32_ins; };
-    const auto boil       = rng::partition_point(values<celsius>, [&](celsius c) { return fahrenheit(c) <= 212_ins; });
-    std::cout << "above 212 °F: " << *boil << " °C = " << fahrenheit(*boil) << " °F\n";
-    if (*boil != 100.1_ins)
+    // 2. Bisect a grid: the first tenth of a degree Celsius past 212 ℉, in 11
+    //    exact comparisons out of 2001 values. Each value is a ℃ point, and
+    //    its ℉ point is an exact shift and scale of the grid (units.hpp).
+    using celsius   = inside<{{-50, 150}, per<10>}>;
+    auto fahrenheit = [](celsius c) {
+        return point<si::degree_Celsius>(c).point_in(international::degree_Fahrenheit);
+    };
+    const auto boiling = point<international::degree_Fahrenheit>(212_ins);
+    const auto boil    = rng::partition_point(values<celsius>, [&](celsius c) { return fahrenheit(c) <= boiling; });
+    std::cout << "above 212 ℉: " << point<si::degree_Celsius>(*boil) << " = " << fahrenheit(*boil) << "\n";
+    if (*boil != 100.1_ins || to_string(fahrenheit(*boil)) != "212.18 ℉")
         return 1;
 
     // The first thousandth whose square exceeds 2: sqrt(2), rounded up.
