@@ -10,6 +10,7 @@
 // the kernels and fails the build if any of them contains a `call`.
 
 #include <beman/inside/inside.hpp>
+#include <beman/inside/units.hpp>
 
 using namespace beman::inside;
 
@@ -27,8 +28,20 @@ using val = inside<{0, 1000}>;
   return a + b;
 }
 
-// A loop, to check that vectorization still happens.
-[[gnu::noinline]] void inside_loop(val* data, int n)
+// A unit conversion rescales the grid and keeps the raw.
+using km = units::quantity<units::si::kilo(units::si::metre), inside<{{0, 100}, per<1000>}>>;
+
+[[gnu::noinline]] auto to_mm(km d)
+{
+  return d.in(units::si::milli(units::si::metre));
+}
+
+// A loop, to check that vectorization still happens. In-place += can leave
+// [0, 1000], so a checked element is checked on every pass and the loop stays
+// scalar; unsafe states that the caller keeps it in range.
+using fast = inside<{0, 1000}, unsafe>;
+
+[[gnu::noinline]] void inside_loop(fast* data, int n)
 {
   for (int i = 0; i < n; ++i)
     data[i] += 1_ins;

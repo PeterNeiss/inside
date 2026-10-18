@@ -74,7 +74,7 @@
   columns=fullflexible,
   keepspaces=true,
   tabsize=2,
-  literate={·}{{$\cdot$}}1 {—}{{---}}1,
+  literate={·}{{$\cdot$}}1 {—}{{---}}1 {²}{{$^2$}}1,
   aboveskip=0.9em,
   belowskip=0.9em,
   morekeywords={constexpr,consteval,static_assert,noexcept,auto,using,
@@ -94,7 +94,7 @@
   showstringspaces=false,
   columns=fullflexible,
   keepspaces=true,
-  literate={·}{{$\cdot$}}1 {—}{{---}}1,
+  literate={·}{{$\cdot$}}1 {—}{{---}}1 {²}{{$^2$}}1,
   aboveskip=0.7em,
   belowskip=0.9em,
 }
@@ -148,18 +148,21 @@
 C++'s \code{int} is not a number. It is a platform-dependent bit pattern with
 undefined behaviour at both ends of its range. It changes width and
 signedness in the middle of expressions, it rounds without being asked, and it
-records nothing about what it counts. C++26 changes none of this. This paper puts \code{int} in the dock
-with eleven hazards, each a complete program with its real output. One of them
+records nothing about what it counts. C++26 changes none of this. This paper
+puts \code{int} in the dock with eleven hazards, each a complete program with its real output. One of them
 makes GCC emit \emph{no machine code at all} for \code{main}. The paper then
 shows, more briefly, that reaching for \code{double} trades one kind of silent
 wrongness for another.
 
-It then presents \code{inside}, a header-only library (C++23 and later) in which the range
-and step size of a number are part of its type. Arithmetic widens its result
-type at compile time, so overflow is unreachable. Division by zero is a value
-you can test. Fractions are exact rationals, physical units are checked
-dimensions, and what happens at the edge of a range is a policy written in the
-declaration. Performance has no single answer. Against code that gives the
+It then presents \code{inside}, a header-only library (C++23 and later) with
+two layers. The number, \code{inside}, carries its range and step size in its
+type. The quantity layer, \code{units.hpp}, adds units, dimensions and quantity
+kinds on top of it, following Mateusz Pusz's mp-units. Arithmetic widens its
+result type at compile time, so overflow is unreachable. Division by zero is a
+value you can test. Fractions are exact rationals, a unit conversion is an
+exact rescale of the grid, a unit mismatch does not compile, and what happens
+at the edge of a range is a policy written in the declaration. Performance has
+no single answer. Against code that gives the
 same guarantee, \code{inside} is sometimes \emph{faster}, sometimes
 byte-identical and sometimes substantially slower. We report all three,
 together with the programs that produced them.
@@ -212,7 +215,8 @@ this value may occupy, what it counts, and what should happen if it leaves the
 range. That information lives only in the programmer's head, or in a comment.
 
 \code{inside} puts that information in the type, where the compiler can act on
-it. The rest of this paper does four things:
+it: the range and step size in the number, and the unit and kind in the
+quantity built on it. The rest of this paper does four things:
 \begin{itemize}
 \item shows that the problem is real (\S\ref{sec:indictment}--\S\ref{sec:double});
 \item shows that the usual defences do not solve it (\S\ref{sec:mitigations});
@@ -454,7 +458,7 @@ The midpoint of two in-range values lands outside the range. Bentley's
 in the JDK's \code{Arrays.binarySearch}, where it had lived for nine years. The
 problem is not a lack of care.
 
-\subsection{The semantic hazard: \code{int} does not know what it counts}
+\subsection{The semantic hazard: int does not know what it counts}
 
 Every hazard so far concerned range. This one concerns meaning, and no
 sanitizer can catch it, because the arithmetic itself is valid.
@@ -475,7 +479,7 @@ out of range. What the number \emph{meant} was never written down anywhere the
 compiler could see it.
 
 % ============================================================================
-\section{``Just use \code{double}''}\label{sec:double}
+\section{``Just use double''}\label{sec:double}
 
 The usual answer to the above is floating point: a wider range, no trap on
 division by zero, and fractions. \code{double} is the right tool for many
@@ -535,7 +539,7 @@ Past $2^{53}$ a counter stops incrementing. That matters for identifiers and
 timestamps that pass through JSON. The last line is catastrophic cancellation:
 subtracting two nearly equal values wipes out every digit that mattered.
 
-\subsection{\code{NaN} breaks equality and ordering}
+\subsection{NaN breaks equality and ordering}
 
 \begin{lstlisting}[style=term]
 0.0 / 0.0          = -nan
@@ -575,7 +579,7 @@ It reports line 24, the \code{printf} argument. It says nothing about
 \code{grows()}, whose comparison was already folded away, so there was no
 arithmetic left to instrument.
 
-\paragraph{\code{-fwrapv} changes the language.} It removes the undefined
+\paragraph{-fwrapv changes the language.} It removes the undefined
 behaviour and makes the wrong answer reliable: the midpoint is still negative.
 It fixes the UB, not the arithmetic.
 
@@ -600,6 +604,13 @@ data structures is undecidable in general. No analyser can tell that one
 \code{int} holds cents and another holds dollars, because nothing in the
 program says so.
 
+\paragraph{Unit libraries solve the other hazard.} mp-units, by Mateusz Pusz,
+and Boost.Units check dimensions at compile time, and mp-units is proposed for
+the standard as P3045. They catch \S2.11. But their number is still an
+\code{int} or a \code{double}, with every hazard of \S\ref{sec:indictment} and
+\S\ref{sec:double}: with an \code{int}, km to mm can overflow, and with a
+\code{double}, inches to millimetres rounds.
+
 \paragraph{Safe-integer libraries solve one hazard.} \code{boost::safe\_numerics}
 and \code{SafeInt} fix overflow (\S2.1--\S2.2). They do not handle units,
 rounding policy or ranges narrower than the underlying type. They also check at
@@ -608,14 +619,18 @@ runtime what could have been rejected at compile time.
 \medskip
 \noindent
 Every one of these tools works at a point where the necessary information has
-already been thrown away: the range, the quantity, the rounding rule and the
-behaviour at the boundary. The proposal is simply to record that information.
+already been thrown away, or records only part of it: the range, the unit, the
+rounding rule and the behaviour at the boundary. The proposal is simply to
+record all of it.
 
 % ============================================================================
-\section{\code{inside}: putting the range in the type}\label{sec:inside}
+\section{inside: the range and the unit in the type}\label{sec:inside}
 
-\code{inside} is a header-only library built around one template. It needs
-C++23; C++26 adds grids past 64 bits and diagnostics that show values:
+\code{inside} is a header-only library with two layers. It needs C++23; C++26
+adds grids past 64 bits and diagnostics that show values.
+
+\paragraph{The number.} \code{inside} is a number whose type holds its grid
+and its edge policy:
 
 \begin{lstlisting}
 template<grid G, policy_flag P>
@@ -635,14 +650,49 @@ alone determines the storage:
 \item a wider integer for grids past 64 bits (\S\ref{sec:noceiling}).
 \end{itemize}
 
+\paragraph{The quantity.} \file{units.hpp} gives a number a unit and a kind.
+The number is always an \code{inside}:
+
+\begin{lstlisting}
+template<reference R, insidable Rep>
+class quantity;                       // include/beman/inside/units.hpp:1180
+template<reference R, origin_ref O, insidable Rep>
+class quantity_point;                 // include/beman/inside/units.hpp:1718
+\end{lstlisting}
+
+\noindent
+A reference is either a unit, such as \code{si::kilo(si::metre)}, or a
+quantity kind with a unit, such as \code{isq::height[si::metre]}. A quantity
+point counts from an origin, such as absolute zero or the ice point.
+\file{units\_math.hpp} adds the math functions on quantities.
+
 \begin{lstlisting}
 using namespace beman::inside;
+using namespace beman::inside::units;
 
 using pct    = inside<{0, 100}>;                    // integers 0..100
 using money  = inside<{{0, 1'000'000}, per<100>}, round_nearest>;  // cents
 using angle  = inside<{0, 359}, wrap>;              // modular
 using sample = inside<{{-1, 1}, per<16384>}, round_nearest>;       // Q1.14
+using trip   = quantity<si::kilo(si::metre), inside<{{0, 500}, per<1000>}>>;
+using height = quantity<isq::height[si::metre], inside<{0, 9000}>>;
 \end{lstlisting}
+
+\paragraph{Credit where it is due.} The quantity layer follows
+\textbf{mp-units}, the library by \textbf{Mateusz Pusz} and the basis of the
+WG21 proposal P3045, \emph{Quantities and units library}. The design is
+mp-units':
+the ISQ tree of quantity kinds, references as unit plus kind, the conversion
+rules between kinds, and quantity points with origins. \file{units.hpp}
+reimplements that model with an \code{inside} as the number and does not
+depend on mp-units. Three things differ:
+\begin{itemize}
+\item the representation is always an \code{inside}: no \code{double} or
+      \code{int} representations;
+\item conversions and mixed-unit sums are exact, and their result grids are
+      inferred;
+\item a factor of $\pi$ scales the unit and rounds once, only when asked.
+\end{itemize}
 
 \subsection{Arithmetic widens, so overflow is unreachable}
 
@@ -769,11 +819,11 @@ include/beman/inside/arithmetic.hpp:552:31: error: static assertion failed:
    known range
 \end{lstlisting}
 
-\noindent
-Scale is not the same as dimension. \file{units.hpp} builds quantities on
-\code{inside}: units, dimensions, ISQ quantity kinds and quantity points
-(\file{docs/units.md}). With them, the Mars Climate Orbiter mismatch converts
-exactly, and adding an impulse to a length does not compile:
+\subsection{The unit is part of the type}\label{sec:units}
+
+Scale is not the same as dimension. A quantity carries its unit, so the Mars
+Climate Orbiter mismatch of \S2.11 converts exactly, and adding an impulse to a
+length does not compile:
 
 \lstinputlisting[firstline=15,lastline=33]{int-considered-harmful/b12_impulse.cpp}
 \begin{lstlisting}[style=term]
@@ -782,9 +832,44 @@ N·s + m            : does not compile
 \end{lstlisting}
 
 \noindent
-A unit conversion only rescales the grid at compile time, so it is exact and
-costs nothing at runtime. A call that does not compile states its reason:
+A sum runs in the common unit of its operands. Both sides are rescaled exactly,
+and then the \code{inside} addition runs, so a mixed-unit sum cannot overflow.
+A rejected call states its reason as a deleted overload:
 \code{units: adding or comparing quantities of different dimensions}.
+
+Units do more than dimensions. A conversion multiplies the grid, not the
+number. Temperatures are points with origins. Kinds separate quantities that
+share a dimension:
+
+\lstinputlisting[firstline=20,lastline=46]{int-considered-harmful/b13_quantities.cpp}
+\begin{lstlisting}[style=term]
+12.5 km in m       = 12500 m   (raw 12500 -> 12500)
+20 C in K          = 293.15 K
+50 Hz + 50 Bq      : does not compile
+3 m x 4 m          = 12 m²
+3 km / 2 m         = 1500
+\end{lstlisting}
+
+\begin{itemize}
+\item \textbf{Conversion keeps the raw.} km to m turns the grid's notch of
+      1/1000 km into 1 m, and the stored integer does not change. At runtime a
+      conversion is a \code{mov} (\S\ref{sec:codegen}).
+\item \textbf{Points change origin exactly.} 20\,\textcelsius{} sits 273.15\,K
+      above absolute zero. The grid shifts by that offset, with no rounding.
+\item \textbf{Kinds keep one dimension apart.} Hz and Bq are both s$^{-1}$,
+      but a frequency is not an activity:
+      \code{units: adding or comparing quantities of different kinds}. A width
+      times a height, by contrast, is an area.
+\item \textbf{A ratio is a number.} 3\,km / 2\,m has dimension one and
+      converts to a plain \code{inside}.
+\end{itemize}
+
+\noindent
+Units, kinds and references are \code{consteval} values, not type lists for
+the compiler to sort, so \code{m·s} and \code{s·m} are one unit. A factor of
+$\pi$ (degrees to radians) scales the unit instead of the number, so $\pi$ is
+never approximated; \code{value\_cast} rounds it once, with the correctly
+rounded engine of \S\ref{sec:correctness}.
 
 \subsection{Bounded indices}
 
@@ -826,10 +911,14 @@ that is its exact value; an exact $10^{30}$ is spelled \code{1e30\_g}. The
 product lives in $[0, 2^{200}]$, so the widening rule still applies: the result
 is a plain 32-byte value, with no allocation. No \code{double} and no 64-bit
 ratio can hold the notch $10^{-30}$. Compiled without reflection, the file is
-rejected with a message naming the C++26 big-grid requirement.
+rejected with a message naming the C++26 big-grid requirement. Big grids also
+complete the unit catalogue: the SI prefixes past $10^{\pm18}$, the eV, and the
+exact defining constants $h$, $e$, $k$ and $N_A$, so $E = h\nu$ is exact.
 
 % ============================================================================
 \section{A worked migration}\label{sec:migration}
+
+\subsection{An invoice}
 
 Here is an invoice in \code{int}. It has three defects, and the compiler
 mentions none of them.
@@ -875,6 +964,36 @@ discount on a 1/300 grid       = $67108864/75   (nothing was lost)
       get written down.
 \end{itemize}
 
+\subsection{A sensor reading}
+
+Physical code adds units to the mix. Here a 12-bit ADC reading is converted to
+millivolts in \code{int}. It compiles cleanly at \code{-Wall -Wextra}:
+
+\lstinputlisting[firstline=9,lastline=22]{int-considered-harmful/m2_before.cpp}
+\begin{lstlisting}[style=term]
+reading            = 1640 mV   <- truncated
+over-voltage?      = yes   <- counts compared with mV
+
+expected           = 1641 mV (1640.73), no over-voltage
+\end{lstlisting}
+
+\noindent
+The gain was rounded to whole counts per volt, the division truncated, and the
+over-voltage check compares 2048 counts with 2000 millivolts. With quantities,
+counts get a base dimension of their own, as in \file{examples/adc\_calibration.cpp}:
+
+\lstinputlisting[firstline=14,lastline=42]{int-considered-harmful/m2_after.cpp}
+\begin{lstlisting}[style=term]
+reading            = 1641 mV
+over-voltage?      = no
+\end{lstlisting}
+
+\noindent
+The gain keeps its data-sheet value exactly. Its range excludes 0, so
+\code{(raw - offset) / gain} is a plain, exact voltage, rounded once onto
+millivolts. Comparing a reading with a voltage is no longer a bug to find: it
+does not compile.
+
 % ============================================================================
 \section{Correctness}\label{sec:correctness}
 
@@ -899,7 +1018,9 @@ error: call to non-'constexpr' function 'void beman::inside::detail::raise(beman
 
 \noindent
 The error path is deliberately not \code{constexpr}, so reaching it during
-constant evaluation is a compile error. The library's
+constant evaluation is a compile error. Dimension and kind mismatches are
+caught the same way, as constraint failures with a stated reason
+(\S\ref{sec:units}). The library's
 \file{tests/beman/inside/constexpr.test.cpp} relies on this: 159
 \code{static\_assert}s that run inside the compiler.
 
@@ -924,7 +1045,8 @@ Callback & \code{on\_clamp}, \code{on\_wrap} & The event is expected and carries
 \end{center}
 
 \noindent
-The codes form a small closed set (\file{detail/debug.hpp:30}). A value that
+Quantities keep these shapes: dividing by a quantity whose grid holds 0 gives
+an \code{expected}, as it does for an \code{inside}. The codes form a small closed set (\file{detail/debug.hpp:30}). A value that
 does not fit is always \code{overflow}, whichever path found it:
 
 \begin{lstlisting}
@@ -1007,7 +1129,8 @@ grid arithmetic discharges; comparisons that run on raw storage. &
 130\% of native \\[0.6em]
 \textbf{Zero cost} & Integer operands, where all the range reasoning happens in
 the type system. &
-Byte-identical disassembly (\S\ref{sec:codegen}); construct, add,
+Byte-identical disassembly; a unit conversion is one \code{mov}
+(\S\ref{sec:codegen}); construct, add,
 \code{std::accumulate}, sort, transform at 98--101\% \\[0.6em]
 \textbf{Additional cost} & Continuous (rational) grids, element-wise checking,
 transcendentals correctly rounded at full \code{double} resolution. &
@@ -1026,7 +1149,7 @@ least one direction.
 
 \subsection{The fast path is byte-identical to native}\label{sec:codegen}
 
-\lstinputlisting[firstline=16,lastline=28]{int-considered-harmful/p01_codegen.cpp}
+\lstinputlisting[firstline=17,lastline=37]{int-considered-harmful/p01_codegen.cpp}
 \begin{lstlisting}[style=term]
 $ g++ -std=c++26 -O2 -I ../../include -c p01_codegen.cpp && objdump -d p01.o
 
@@ -1039,15 +1162,25 @@ $ g++ -std=c++26 -O2 -I ../../include -c p01_codegen.cpp && objdump -d p01.o
   10:   endbr64
   14:   lea    (%rdi,%rsi,1),%eax
   17:   ret
+
+0000000000000020 <to_mm(quantity<...>)>:
+  20:   endbr64
+  24:   mov    %edi,%eax
+  26:   ret
 \end{lstlisting}
 
 \noindent
-The two are byte-identical, under the default \code{checked} policy: the sum
-widens to $[0, 2000]$, so there is nothing to check. Loops still vectorise,
-\code{inside} on 16-bit lanes (its storage for $[0,1000]$) and native on 32-bit
-lanes. CI enforces this. \file{tests/beman/inside/check\_codegen.sh}
-disassembles named kernels and fails on any \code{call} other than the cold
-error report, and on a loop that does not vectorise.
+\code{inside\_add} and \code{native\_add} are byte-identical under the
+default \code{checked} policy: the sum widens to $[0, 2000]$, so there is
+nothing to check. The km-to-mm conversion is a single \code{mov}: it rescales
+the grid and keeps the raw. An in-place \code{+=} can leave its range, so a
+\code{checked} element is checked on every pass and the loop stays scalar, as
+in the accumulate table below. With \code{unsafe} it vectorises, on 16-bit lanes
+(its storage for $[0,1000]$) where native uses 32-bit lanes.
+\file{tests/beman/inside/check\_codegen.sh} runs in CI. It disassembles named
+kernels and fails on any \code{call} other than the cold error report, and on
+a unit conversion that does arithmetic. Whether the loop vectorises is
+reported, not gated.
 
 \subsection{The like-for-like comparison}\label{sec:fair}
 
@@ -1278,7 +1411,12 @@ hardware.
       or MSVC 19.51+. Grids past 64 bits need C++26 static reflection, which
       today means GCC~16 with \code{-freflection}.
 \item \textbf{Compile times increase.} Arithmetic on grids is compile-time
-      work, and it happens in your build.
+      work, and it happens in your build. Units add about 7\,ms per
+      expression on top (\file{docs/units.md}).
+\item \textbf{The units layer is narrower than mp-units.} There are no
+      \code{double} representations, no vector or tensor quantities and no
+      logarithmic units, and the kind rules are a simplified version of
+      mp-units'.
 \item \textbf{Error messages are template errors.} On the guided path a
       hand-written message names the fix (\S\ref{sec:inside}). Off it, you get
       the usual template output.
@@ -1315,14 +1453,15 @@ program:
       instructions.
 \end{itemize}
 
-\code{inside} shows that a range, a step size and an edge policy written into
-the type are enough to fix these. Overflow becomes unreachable, division by
+\code{inside} shows that a range, a step size, a unit and an edge policy
+written into the type are enough to fix these. Overflow becomes unreachable, division by
 zero becomes a value, rounding becomes a decision, and a unit mismatch becomes
 a compile error. On the fast paths, it emits the same instructions as the
 \code{int} it replaces.
 
-For any number in your program, you already know its range, its units and what
-should happen at its limits. Writing that down costs a line. Not writing it
+The unit layer stands on mp-units' design, and the number beneath it is what
+makes its conversions exact. For any number in your program, you already know
+its range, its units and what should happen at its limits. Writing that down costs a line. Not writing it
 down costs whatever the bug costs.
 
 % ============================================================================
@@ -1378,11 +1517,13 @@ File & Demonstrates \\
 \file{b10\_negation.cpp}          & Negation reflects the grid \\
 \file{b11\_no\_ceiling.cpp}       & Grids past 64 bits (C++26) \\
 \file{b12\_impulse.cpp}           & lbf$\cdot$s + N$\cdot$s converts; impulse + length rejected \\
+\file{b13\_quantities.cpp}        & Conversions, points, kinds, ratios \\
 \midrule
-\file{m\_before.cpp} / \file{m\_after.cpp} & The worked migration \\
+\file{m\_before.cpp} / \file{m\_after.cpp} & The worked migration: an invoice \\
+\file{m2\_before.cpp} / \file{m2\_after.cpp} & The worked migration: an ADC reading \\
 \file{x01\_bare\_int\_rejected.cpp} & Bare literal rejected (expected failure) \\
 \file{x02\_range\_rejected.cpp}     & Out-of-range constant rejected (expected failure) \\
-\file{p01\_codegen.cpp}             & Fast path vs.\ native disassembly \\
+\file{p01\_codegen.cpp}             & Fast path and unit conversion vs.\ native \\
 \file{p02\_fair\_bench.cpp}         & Like-for-like benchmark vs.\ checked native \\
 \file{p03\_check\_elision.cpp}      & Chain of ops: inside elides checks native cannot \\
 \file{p04\_math\_cost.cpp}          & What correct rounding costs, coarse and fine \\
@@ -1409,6 +1550,11 @@ File & Demonstrates \\
 \item ISO/IEC 14882, \emph{Programming languages --- C++} (C++26):
       [expr.pre] (undefined behaviour on overflow), [expr.shift],
       [expr.mul], [conv.integral].
+\item M.~Pusz, \emph{mp-units}, \url{https://github.com/mpusz/mp-units}.
+\item M.~Pusz et al., \emph{Quantities and units library}, WG21 P3045,
+      2024--2026.
+\item M.~C. Schabel and S.~Watanabe, \emph{Boost.Units},
+      \url{https://www.boost.org/libs/units}.
 \item A.~Ziv, ``Fast evaluation of elementary mathematical functions with
       correctly rounded last bit,'' \emph{ACM Transactions on Mathematical
       Software}, 17(3):410--423, 1991.

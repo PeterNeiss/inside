@@ -77,7 +77,9 @@ objdump -d --no-show-raw-insn -C p01.o
 ```
 
 `inside_add` (checked, returning the widened sum) and `native_add` lower to
-identical instructions. The repository
+identical instructions, and `to_mm` (a km quantity in mm) is a single `mov`.
+The `inside_loop` element is `unsafe`: a checked `+=` is checked per element
+and keeps the loop scalar. The repository
 enforces the same property in CI via `tests/beman/inside/check_codegen.sh`.
 
 ## Rebuilding the paper
