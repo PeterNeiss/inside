@@ -102,17 +102,18 @@ reports)
 
 ### Examples
 
-[`examples/`](examples/) holds 36 self-contained programs — start with
+[`examples/`](examples/) holds 38 self-contained programs, most of them with
+physical units or units of their own — start with
 [`basics.cpp`](examples/basics.cpp) (clamp, wrap, bounded loops); then e.g.
-[`clock.cpp`](examples/clock.cpp) (wrap with carry),
-[`money.cpp`](examples/money.cpp) (cents-exact currency),
+[`clock.cpp`](examples/clock.cpp) (wrap with carry through s, min and h),
+[`money.cpp`](examples/money.cpp) (cents-exact USD as a dimension of its own),
 [`units.cpp`](examples/units.cpp) (exact unit conversions, kinds, temperatures),
 [`moon_rocket.cpp`](examples/moon_rocket.cpp) (a flight to the Moon with units),
 [`own_units.cpp`](examples/own_units.cpp) (units and base dimensions of your own),
 [`adc_calibration.cpp`](examples/adc_calibration.cpp) (ADC counts as a dimension, two-point calibration),
 [`expected_pipeline.cpp`](examples/expected_pipeline.cpp) (errors with their cause),
 [`json_io.cpp`](examples/json_io.cpp) (exact JSON numbers),
-[`wei.cpp`](examples/wei.cpp) (10^27-point grids),
+[`wei.cpp`](examples/wei.cpp) (10^27-point grids in ETH, gwei/gas and USD/ETH),
 [`planck_to_cosmos.cpp`](examples/planck_to_cosmos.cpp) (grids past 64 bits, C++26).
 Each builds as `beman.inside.examples.<name>` and runs as a ctest test
 (`ctest --preset gcc-debug -L example`).

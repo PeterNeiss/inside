@@ -189,8 +189,9 @@ p.on_wrap([&](auto&, auto) { ++wrap_count; }) += 65.5_ins;
 ```
 
 See [examples/torus_map.cpp](../examples/torus_map.cpp) for a full sprite
-position demo using this pattern on both axes, with a runtime delta typed as
-a ranged inside.
+position demo using this pattern on both axes, in px (a unit of its own),
+with a runtime delta typed as a ranged quantity; `q.on_wrap(f)` works on a
+quantity as on an inside.
 
 ### Combining actions: `with(...)`
 

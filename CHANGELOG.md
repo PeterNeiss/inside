@@ -8,6 +8,27 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Added
 
+- inside's algorithms on quantities ([units.md](docs/units.md#insides-algorithms-on-quantities)):
+  the hooks `q.on_wrap/on_clamp/on_error/on_overflow` (stores take
+  quantities, the hook gets the quantity), `++`/`--` by one unit,
+  `Q::try_make`, `mul_into`/`div_into` into a quantity type (the unit
+  factor folds into the one rounding), `add_all`, `mul_all`, `sum<Q>`,
+  `divmod` in the common unit, `parse<Q>`/`parse_exact<Q>`, the conversion
+  predicates, `clamp_cast`/`wrap_cast` into a quantity type, and
+  `dot`/`cross`/`lerp`. An expected quantity chains through the
+  expected-lift operators.
+- `units::sin_into`/`cos_into` take an angle in any unit with a factor of
+  π (°, a turn, 2π/65536 rad): it is reduced exactly by quarter turns, so
+  sin 30° is exactly 1/2 under any rounding.
+- `units::exp_into`, `log10_into`, `pow_base_into`, `pow_into` and the
+  other number functions take a dimensionless quantity: 10^(L / 20 dB).
+- `units::percent` (%) and `units::per_mille` (‰).
+- 25 more examples on units, half of them with units of their own: ETH,
+  gwei, wei, gas and USD (`wei`), USD and ¢ (`money`, `json_io`), HP
+  (`game_hp`), rounds (`rifle`), months and weeks (`clock`), px
+  (`torus_map`, `geometry`), a phase slot (`oscillator`), packets
+  (`sequence_number`, `jitter_buffer`), dB (`decibels`, `audio_mixer`).
+
 - Under C++26 the grid and assignment diagnostics print the values that
   failed (P2741 static_assert messages): `grid: the notch must divide
   Upper − Lower evenly (notch 3, Upper − Lower 10)`, the two notches of an

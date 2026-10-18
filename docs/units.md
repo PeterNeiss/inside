@@ -34,7 +34,16 @@ oven temperatures), [`own_units.cpp`](../examples/own_units.cpp) (your
 own units, a temperature scale, currency and information as base
 dimensions) and [`adc_calibration.cpp`](../examples/adc_calibration.cpp)
 (ADC counts as a dimension, a two-point calibration) check their own
-output.
+output. Most other examples use units too. Some have units of their own:
+[`wei.cpp`](../examples/wei.cpp) (ETH, gwei, wei, gas and USD as three base
+dimensions), [`money.cpp`](../examples/money.cpp) (USD and ¢, a tax in %),
+[`clock.cpp`](../examples/clock.cpp) (wrap carries through s, min and h,
+months and weeks), [`decibels.cpp`](../examples/decibels.cpp) (dB as a
+level), [`oscillator.cpp`](../examples/oscillator.cpp) (a phase counter in
+slots of 2π/65536 rad), [`game_hp.cpp`](../examples/game_hp.cpp) and
+[`rifle.cpp`](../examples/rifle.cpp) (HP and rounds). The pure tours of
+inside (algorithms, casts, division, errors, storage, combinatorics,
+id_pool) stay on plain insides.
 
 `<beman/inside/units_math.hpp>` adds the functions that need the math
 engine (cmath.hpp). It is a separate header so that units.hpp keeps a low
@@ -197,7 +206,7 @@ point − point gives a quantity. `si::absolute_zero + q` makes a point.
 |---|---|
 | `abs`, `floor`, `ceil`, `round`, `trunc` | the same |
 | `sqrt`, `cbrt` | the root of the unit and spec (m² → m, area → length) |
-| `sin`, `cos`, `tan` | a plain inside; the angle must be in radians |
+| `sin`, `cos`, `tan` | a plain inside; the angle must be in radians (`sin_into`, `cos_into`: or in a unit with a factor of π) |
 | `asin`, `acos`, `atan`, `atan2(y, x)` | radians |
 | `hypot(x, y)` | the common unit |
 
@@ -211,6 +220,46 @@ rounds and the input needs no rounding mode. An arithmetic result is
 As with inside, a grid that reaches below 0 makes `sqrt_into` return an
 expected (`domain_error` on a negative value). `asin_into`, `acos_into` and
 `atan_into` also take a dimensionless quantity.
+
+`sin_into` and `cos_into` also take an angle in a unit with a factor of π:
+a degree, a turn (`mag<2> * mag_pi * si::radian`), or a phase slot of
+2π/65536 rad. The angle is x·r half turns for a rational r, so it is reduced
+by quarter turns exactly, and only the rest, at most π/4, is approximated.
+The result rounds once, and Niven's rational values (0, ±1/2, ±1) come out
+exact under any rounding mode: `cos_into<Out>(deg{120})` is −1/2 even with
+`round_floor`.
+
+The number functions `exp_into`, `exp2_into`, `log_into`, `log2_into`,
+`log10_into`, `sinh_into` … `atanh_into`, `pow_base_into<Out, B>` and
+`pow_into` take an inside or a dimensionless quantity. A level in dB (a
+dimensionless `is_kind` unit of your own) is no number, but its ratio to
+20 dB is, so 10^(L / 20 dB) is `units::pow_base_into<gain_t, 10>(L / (just<20> * dB))`
+(see [`decibels.cpp`](../examples/decibels.cpp)).
+
+## inside's algorithms on quantities
+
+The rest of inside's vocabulary works on quantities. Each one converts its
+operands exactly into the target's unit, then calls the inside function on
+the numbers, so it still rounds once and checks once.
+
+| Spelling | What it does |
+|---|---|
+| `q.on_wrap(f) += d`, `on_clamp`, `on_error`, `on_overflow` | a store with a hook: `d` is a quantity (rescaled as `+=` does), `f` gets the quantity, then the inside's carry, overshoot or errc |
+| `++q`, `q--` | one unit up or down, under Rep's policy |
+| `Q::try_make<F>(v)` | Rep's `try_make` of a number in Q's unit |
+| `mul_into<Out, F>(a, b)`, `div_into<Out, F>(a, b)` | a·b or a/b rounded once into Out, a quantity type, or a plain inside for a dimensionless result. A factor between units folds into the exact product: `mul_into<usd>(eth, usd_per_eth)`, `div_into<bin_t>(latency, just<10> * ms)` |
+| `add_all(…)`, `mul_all(…)`, `sum<Q>(range)` | the folds; `sum<Q>` takes quantities of any unit that converts to Q's |
+| `divmod(a, b, args…)` | in the common unit: the quotient is a plain number, the remainder a quantity (`divmod(s, just<1> * si::hour)`) |
+| `parse<Q, F>(text)`, `parse_exact<Q>(text)` | the number in Q's unit, as for an inside |
+| `conversion_overflows<Q>(v)`, `conversion_rounds`, `conversion_loses` | a number in Q's unit against Q's grid |
+| `clamp_cast<Q, Round>(x)`, `wrap_cast<Q>(x)` | a number in Q's unit, or a quantity converted to it first |
+| `dot`, `cross`, `lerp` | on quantity components: `dot` of two px vectors is px², `lerp`'s t is a number |
+
+An expected quantity (a division by a grid that holds 0) chains through
+`+ - * / %` as an expected inside does, and the first error wins.
+
+`values<T>` and `cursor<T, Step>` stay inside-only: loop over the number
+grid and attach the unit, `for (cursor<db_t::rep, 3> n; …) { const db_t db{*n}; … }`.
 
 ## Text
 
@@ -236,6 +285,8 @@ A `std::format` spec applies to the number (`{:.2f}`, `{:>8}`).
   from them (ħ, R, F, K_J, R_K, G₀, Φ₀, σ, c₁, c₂), the standard atmosphere
   and the CODATA 2022 measured values, all as quantities of their kind.
 - **`international`**: yd, ft, in, mi, nmi, lb, oz, lbf, kn, ℉.
+- **`units::percent`** (%) and **`units::per_mille`** (‰): dimensionless,
+  so 8 % is the number 2/25.
 
 You define your own entries the same way: a `quantity_spec`, `named_unit`
 or `point_origin` as an `inline constexpr` object, plus a tag made from it:
