@@ -295,17 +295,17 @@ TEST(FormatTest, to_string_debug_emits_raw_type_and_grid) {
 
 // type_name_of covers all raw types
 TEST(FormatTest, type_name_covers_all_raw_types) {
-    ASSERT_TRUE(type_name_of<std::uint8_t> == "uint8_t");
-    ASSERT_TRUE(type_name_of<std::uint16_t> == "uint16_t");
-    ASSERT_TRUE(type_name_of<std::uint32_t> == "uint32_t");
-    ASSERT_TRUE(type_name_of<std::uint64_t> == "uint64_t");
-    ASSERT_TRUE(type_name_of<std::int8_t> == "int8_t");
-    ASSERT_TRUE(type_name_of<std::int16_t> == "int16_t");
-    ASSERT_TRUE(type_name_of<std::int32_t> == "int32_t");
-    ASSERT_TRUE(type_name_of<std::int64_t> == "int64_t");
-    ASSERT_TRUE(type_name_of<rational> == "rational");
-    ASSERT_TRUE(type_name_of<point_slot> == "point");
-    ASSERT_TRUE(type_name_of<bool> == "unknown");
+    ASSERT_TRUE(type_name_of<std::uint8_t>() == "uint8_t");
+    ASSERT_TRUE(type_name_of<std::uint16_t>() == "uint16_t");
+    ASSERT_TRUE(type_name_of<std::uint32_t>() == "uint32_t");
+    ASSERT_TRUE(type_name_of<std::uint64_t>() == "uint64_t");
+    ASSERT_TRUE(type_name_of<std::int8_t>() == "int8_t");
+    ASSERT_TRUE(type_name_of<std::int16_t>() == "int16_t");
+    ASSERT_TRUE(type_name_of<std::int32_t>() == "int32_t");
+    ASSERT_TRUE(type_name_of<std::int64_t>() == "int64_t");
+    ASSERT_TRUE(type_name_of<rational>() == "rational");
+    ASSERT_TRUE(type_name_of<point_slot>() == "point");
+    ASSERT_TRUE(type_name_of<bool>() == "unknown");
 }
 
 #ifdef __cpp_lib_format

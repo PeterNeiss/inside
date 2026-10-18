@@ -19,6 +19,10 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 - Example [`adc_calibration.cpp`](examples/adc_calibration.cpp): ADC counts
   as a base dimension of their own, and a two-point calibration whose gain
   is checked once, after which no division can fail.
+- Experimental C++ modules `beman.inside` and `beman.inside.units`
+  (`-DBEMAN_INSIDE_BUILD_MODULES=ON`, Ninja): wrappers around the headers,
+  checked by building every example against them
+  ([modules.md](docs/modules.md)).
 
 ### Performance
 

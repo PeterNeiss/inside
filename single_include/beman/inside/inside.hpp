@@ -18190,33 +18190,38 @@ template <typename V>
 //-------------------------------------------------------------------------
 namespace detail {
 template <typename T>
-inline constexpr std::string_view type_name_of = wide_integer<T>         ? "wide_int"
-                                                 : wide_rational_like<T> ? "wide_rational"
-                                                                         : "unknown";
-template <>
-inline constexpr std::string_view type_name_of<std::uint8_t> = "uint8_t";
-template <>
-inline constexpr std::string_view type_name_of<std::uint16_t> = "uint16_t";
-template <>
-inline constexpr std::string_view type_name_of<std::uint32_t> = "uint32_t";
-template <>
-inline constexpr std::string_view type_name_of<std::uint64_t> = "uint64_t";
-template <>
-inline constexpr std::string_view type_name_of<std::int8_t> = "int8_t";
-template <>
-inline constexpr std::string_view type_name_of<std::int16_t> = "int16_t";
-template <>
-inline constexpr std::string_view type_name_of<std::int32_t> = "int32_t";
-template <>
-inline constexpr std::string_view type_name_of<std::int64_t> = "int64_t";
-template <>
-inline constexpr std::string_view type_name_of<rational> = "rational";
-template <>
-inline constexpr std::string_view type_name_of<point_slot> = "point";
-template <>
-inline constexpr std::string_view type_name_of<wide_uint<2>> = "wide_uint<2>";
-template <>
-inline constexpr std::string_view type_name_of<wide_uint<3>> = "wide_uint<3>";
+constexpr std::string_view type_name_of() {
+    if constexpr (std::same_as<T, std::uint8_t>)
+        return "uint8_t";
+    else if constexpr (std::same_as<T, std::uint16_t>)
+        return "uint16_t";
+    else if constexpr (std::same_as<T, std::uint32_t>)
+        return "uint32_t";
+    else if constexpr (std::same_as<T, std::uint64_t>)
+        return "uint64_t";
+    else if constexpr (std::same_as<T, std::int8_t>)
+        return "int8_t";
+    else if constexpr (std::same_as<T, std::int16_t>)
+        return "int16_t";
+    else if constexpr (std::same_as<T, std::int32_t>)
+        return "int32_t";
+    else if constexpr (std::same_as<T, std::int64_t>)
+        return "int64_t";
+    else if constexpr (std::same_as<T, rational>)
+        return "rational";
+    else if constexpr (std::same_as<T, point_slot>)
+        return "point";
+    else if constexpr (std::same_as<T, wide_uint<2>>)
+        return "wide_uint<2>";
+    else if constexpr (std::same_as<T, wide_uint<3>>)
+        return "wide_uint<3>";
+    else if constexpr (wide_integer<T>)
+        return "wide_int";
+    else if constexpr (wide_rational_like<T>)
+        return "wide_rational";
+    else
+        return "unknown";
+}
 } // namespace detail
 
 //-------------------------------------------------------------------------
@@ -18304,7 +18309,7 @@ template <insidable B>
         str += detail::exact_to_string(b.raw());
     else
         str += beman::inside::to_string(+b.raw());
-    str += "[" + std::string(detail::type_name_of<detail::raw_t<B>>);
+    str += "[" + std::string(detail::type_name_of<detail::raw_t<B>>());
     constexpr auto slots = grid_of<B>.slot_count();
     str += " Max:" + beman::inside::to_string(slots) + "] ";
     str += beman::inside::to_string(grid_of<B>);

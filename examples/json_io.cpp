@@ -7,6 +7,7 @@
 // values back as the same decimal text, so the document round-trips byte for
 // byte. (A value with no finite decimal, such as 1/3, prints as N/D: not JSON.)
 
+#include <expected>
 #include <iostream>
 #include <map>
 #include <string>

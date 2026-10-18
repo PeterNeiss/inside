@@ -25,7 +25,14 @@ non-transient `constexpr` allocation ([P1974], after C++20's transient
   already computes the two zero-free halves internally; expressing the union in
   the type would touch every operator and predicate, so it stays a sketch until a
   use case demands it.
-- **Modules / compile-time footprint** — parked; modules are C++20, not a blocker.
+- **Modules** — an experimental spike since 2026-10-18 ([modules.md](modules.md)):
+  `import beman.inside;` and `import beman.inside.units;` behind
+  `BEMAN_INSIDE_BUILD_MODULES` (off). Clang 20 builds all 38 examples against
+  them; GCC 16 all but one, with limits in how it merges standard headers. An
+  import saves the header parse (about 0.4 s per file), not the instantiation
+  cost that dominates heavy files. Next step when GCC's header merging works,
+  or when users ask: install the modules (the Beman infra supports it) and add
+  a Clang CI cell. Until then they stay opt-in and uninstalled.
 
 [P0784]: https://wg21.link/p0784
 [P1974]: https://wg21.link/p1974

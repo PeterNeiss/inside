@@ -80,6 +80,15 @@ option(
     ON
 )
 
+# The modules beman.inside and beman.inside.units (modules/), wrappers around
+# the headers: an experiment, off by default. Needs a generator with module
+# support (Ninja or Visual Studio).
+option(
+    BEMAN_INSIDE_BUILD_MODULES
+    "Build the C++ modules beman.inside and beman.inside.units (experimental). Default: OFF. Values: { ON, OFF }."
+    OFF
+)
+
 # for find of beman_install_library and configure_build_telemetry
 include(infra/cmake/beman-install-library.cmake)
 include(infra/cmake/BuildTelemetryConfig.cmake)
@@ -251,4 +260,9 @@ if(BEMAN_INSIDE_BUILD_EXAMPLES)
         enable_testing()
     endif()
     add_subdirectory(examples)
+endif()
+
+if(BEMAN_INSIDE_BUILD_MODULES)
+    enable_testing()
+    add_subdirectory(modules)
 endif()
