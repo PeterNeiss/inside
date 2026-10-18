@@ -5,7 +5,8 @@
 // tier decides. Every constant — ln 2, π, the 2^(j/64), 2^(j/4096) and sin(jπ/128)
 // tables, the Taylor coefficients — comes at compile time from the integer
 // path's exact series (detail/math_adaptive.hpp), never from a generator.
-// Results are within about 2^-96 relative (measured); the tier bounds them
+// Results are within 2^-97 relative, 2^-99 absolute at worst (measured; the
+// dd tier in math_entry.hpp); the tier bounds them
 // generously and lets the integer path decide whenever the bound does not.
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_DETAIL_MATH_DD_HPP
@@ -307,7 +308,7 @@ inline dd reduce(dd x, double k, double c0, double c1, double c2, double c3) noe
 }
 
 //---------------------------------------------------------------------------
-// Kernels. Each is within about 2^-96 of its value (relative, plus an
+// Kernels. Each is within about 2^-97 of its value (relative, plus an
 // absolute 2^-99 where a subtraction cancels; dd_kernels_stay_far_inside_
 // their_bound in math_adaptive.test.cpp checks it). Horner steps add a
 // small product to a larger coefficient, so they use add_dominant. They are

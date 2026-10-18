@@ -22,8 +22,8 @@ namespace beman::inside {
 //---------------------------------------------------------------------------
 namespace detail {
 // Integer value-index comparison eligibility: an integer-backed anchored
-// inside whose value indices (value/Notch, integers) fit imax, so two
-// same-notch insides compare as `bias + raw` without a rational decode.
+// inside whose value indices (value/Notch, integers) fit imax, so it
+// compares with a scalar as `bias + raw` without a rational decode.
 template <insidable B>
 inline constexpr bool index_cmp_fits = [] {
     if constexpr (!detail::notched<B> || !detail::anchored<B> || !values_fit_imax<B>)
@@ -46,22 +46,12 @@ inline constexpr imax index_cmp_bias = [] {
     } else
         return imax{0};
 }();
-} // namespace detail
 
-namespace detail {
 // Inside values are finite and exact, so they are always ordered: <=> of two
 // insides, or of an inside and an integer, is a strong_ordering whatever the
-// storage; against a floating
-// scalar it is a partial_ordering (NaN is unordered).
-inline constexpr auto three_way = [](const auto& a, const auto& b) -> std::strong_ordering {
-    const auto c = a <=> b;
-    if constexpr (std::is_same_v<std::remove_const_t<decltype(c)>, std::partial_ordering>)
-        return c < 0   ? std::strong_ordering::less
-               : c > 0 ? std::strong_ordering::greater
-                       : std::strong_ordering::equal;
-    else
-        return c;
-};
+// storage; against a floating scalar it is a partial_ordering (NaN is
+// unordered), three_way_partial.
+inline constexpr auto three_way         = [](const auto& a, const auto& b) -> std::strong_ordering { return a <=> b; };
 inline constexpr auto three_way_partial = [](const auto& a, const auto& b) -> std::partial_ordering {
     return a <=> b;
 };
@@ -88,7 +78,7 @@ constexpr auto compare(const L& lhs, const R& rhs, Cmp cmp) {
         return cmp(lhs.raw(), point_slot_of<L, R>);
     else if constexpr (point_is_slot<R, L>)
         return cmp(point_slot_of<R, L>, rhs.raw());
-    // a wide-index operand: exact wide fractions
+    // a wide-valued operand (wide index, big grid numbers, fraction raws): exact wide fractions
     else if constexpr (wide_valued<L> || wide_valued<R>)
         return cmp(exact_of(lhs), exact_of(rhs));
     // integer raws: both values as exact counts of a unit dividing them both
@@ -145,9 +135,7 @@ inline constexpr bool scalar_index_cmp_fits = [] {
                !mul_overflow(scalar_mag, notch_den, &product) && product <= cap;
     }
 }();
-} // namespace detail
 
-namespace detail {
 // inside ⋈ arithmetic scalar. Integer storage compares as integers when the
 // scalar's type fits imax, and in double when it is floating point and the
 // grid's values are exact in double; everything else goes through rational.

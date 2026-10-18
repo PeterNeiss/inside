@@ -256,7 +256,8 @@ template <insidable Out, insidable Mag, insidable Sgn>
         return detail::store_exact<Out>(sgn < 0 ? -a : a);
     } else if constexpr (std::same_as<Out, detail::copysign_result_t<Mag, Sgn>> && detail::notched<Mag> &&
                          detail::anchored<Mag> && notch_of<Out> == notch_of<Mag>) {
-        // The same lattice through 0: ±|value index|.
+        // The same lattice through 0: ±|value index|. j is never INT64_MIN:
+        // then Out, symmetric, would hold 2^64 slots and be wide (above).
         const imax j = detail::value_index<imax>(mag), a = j < 0 ? -j : j;
         return detail::from_value_index<Out>(sgn < 0 ? -a : a);
     } else {
@@ -284,8 +285,6 @@ template <insidable Out, insidable In>
 }
 
 namespace detail {
-using namespace beman::inside::detail;
-
 // Gate for fmod's integer fast path. When both operands and Out are
 // integer-backed on commensurable notches, fmod collapses to ONE integer
 // remainder in units of g = gcd(notch of InX, notch of InY): with x
@@ -334,7 +333,7 @@ inline constexpr bool fmod_int_fast = [] {
 }();
 } // namespace detail
 
-// x mod y = x − ⌊x/y⌋·y (truncated-division convention, matching std::fmod).
+// x mod y = x − trunc(x/y)·y (truncated division, matching std::fmod).
 // Result has the sign of x. Pre: y != 0 (fmod_into checks it).
 template <insidable Out, insidable InX, insidable InY>
 [[nodiscard]] constexpr Out fmod_nonzero(InX x, InY y) {
@@ -392,14 +391,6 @@ template <insidable Out, insidable InX, insidable InY>
 }
 
 //---------------------------------------------------------------------------
-// Auto-deducing forms — algebraic tier.
-//
-// Each `fn_into<Out>(x)` has an auto form `fn(x)` that derives `Out` from `In`
-// and delegates to it. Notch policy: abs/fmod inherit In's notch; floor/ceil/round/trunc
-// deduce notch 1 since their outputs are integer-valued.
-//---------------------------------------------------------------------------
-
-//---------------------------------------------------------------------------
 // pown<E> — compile-time integer powers, pure grid arithmetic
 //---------------------------------------------------------------------------
 // Repeated squaring in inside-space: every multiply widens the result grid
@@ -453,6 +444,14 @@ template <imax E, insidable In>
     return detail::pown_impl<E>(x);
 }
 
+//---------------------------------------------------------------------------
+// Auto-deducing forms — algebraic tier.
+//
+// Each `fn_into<Out>(x)` has an auto form `fn(x)` that derives `Out` from `In`
+// and delegates to it. abs and copysign take a notch symmetric about 0
+// (sym_notch), fmod the gcd of both inputs' notches; floor/ceil/round/trunc
+// deduce notch 1 since their outputs are integer-valued.
+//---------------------------------------------------------------------------
 template <insidable In>
 [[nodiscard]] constexpr auto abs(In x) {
     return abs_into<detail::abs_result_t<In>>(x);

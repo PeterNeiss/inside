@@ -542,6 +542,17 @@ concept wide_integer = is_wide_int_v<std::remove_cvref_t<T>>;
 template <typename T>
 concept raw_integer = std::integral<T> || wide_integer<T>;
 
+// gcd of two non-negative wide integers (Euclid; 0 when both are).
+template <wide_integer I>
+constexpr I wide_gcd(I a, I b) noexcept {
+    while (!b.is_zero()) {
+        const I t = a % b;
+        a         = b;
+        b         = t;
+    }
+    return a;
+}
+
 //---------------------------------------------------------------------------
 // wide_rational — an exact value as a fraction of K-limb integers: the exact
 // paths' intermediate (wide_value.hpp), and, reduced, the raw of a continuous
@@ -568,7 +579,7 @@ inline constexpr bool is_wide_rational_v = false;
 template <std::size_t K>
 inline constexpr bool is_wide_rational_v<wide_rational<K>> = true;
 
-// An wide_rational of any width.
+// A wide_rational of any width.
 template <typename T>
 concept wide_rational_like = is_wide_rational_v<std::remove_cvref_t<T>>;
 } // namespace beman::inside::detail

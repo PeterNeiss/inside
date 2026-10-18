@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Cachegrind instruction-count regression gate.
+"""Cachegrind instruction-count regression check (run by hand; CONTRIBUTING.md).
 
-Runs a workload binary under `valgrind --tool=cachegrind`, reads the total
+Runs the perf workload under `valgrind --tool=cachegrind`, reads the total
 retired-instruction count (Ir) from the cachegrind output's `summary:` line, and
-compares it to a committed baseline within a tolerance. Instruction counts are
-deterministic regardless of host load, so this gives a stable regression signal
-on noisy shared CI runners where wall-clock timing would be useless.
+compares it to the committed baseline within a tolerance. Instruction counts are
+deterministic regardless of host load, unlike wall-clock timing. The committed
+baseline comes from one machine and build: compare before/after on the same
+build (or refresh the baseline with --update) rather than across machines.
 
-Bootstrap: if the baseline file does not exist, this writes it from the current
-run and exits 0 with a notice — so the first CI run produces the baseline as an
-artifact to review and commit. Subsequent runs gate against it.
+A key with no baseline entry is recorded and passes.
 
 Usage:
   check_perf.py --binary build/<preset>/tests/beman/inside/beman.inside.perf_workload --baseline tests/beman/inside/perf_baseline.json
-                [--key integer_qformat] [--tol 0.05] [--update]
+                [--key integer_qformat | --all] [--tol 0.05] [--update]
 """
 import argparse
 import json
@@ -59,38 +58,44 @@ def main() -> int:
                     help="allowed fractional growth before failing (default 5%%)")
     ap.add_argument("--update", action="store_true",
                     help="overwrite the baseline entry with the measured value")
+    ap.add_argument("--all", action="store_true",
+                    help="check every key of the baseline file")
     args = ap.parse_args()
-
-    ir = run_cachegrind(args.binary, args.key)
-    print(f"[perf] {args.key}: Ir = {ir:,}")
 
     baseline = {}
     if os.path.exists(args.baseline):
         with open(args.baseline, encoding="utf-8") as f:
             baseline = json.load(f)
 
-    if args.update or args.key not in baseline:
-        baseline[args.key] = ir
+    keys = sorted(baseline) if args.all else [args.key]
+    failed = [key for key in keys if not check(args, baseline, key)]
+    if args.update or any(key not in baseline for key in keys):
         with open(args.baseline, "w", encoding="utf-8") as f:
             json.dump(baseline, f, indent=2, sort_keys=True)
             f.write("\n")
-        reason = "updated" if args.update else "bootstrapped (no prior entry)"
-        print(f"[perf] baseline {reason}: {args.baseline} [{args.key}] = {ir:,}")
-        print("[perf] review and commit this baseline; the gate is active once it exists.")
-        return 0
+    return 1 if failed else 0
 
-    ref = int(baseline[args.key])
+
+def check(args, baseline: dict, key: str) -> bool:
+    ir = run_cachegrind(args.binary, key)
+    print(f"[perf] {key}: Ir = {ir:,}")
+    if args.update or key not in baseline:
+        reason = "updated" if args.update else "recorded (no prior entry)"
+        baseline[key] = ir
+        print(f"[perf] baseline {reason}: {args.baseline} [{key}] = {ir:,}")
+        return True
+
+    ref = int(baseline[key])
     limit = int(ref * (1.0 + args.tol))
     growth = (ir - ref) / ref * 100.0
     print(f"[perf] baseline = {ref:,}  limit = {limit:,} (+{args.tol*100:.0f}%)  "
           f"delta = {growth:+.2f}%")
     if ir > limit:
-        print(f"[perf] FAIL: {args.key} grew {growth:+.2f}% (> {args.tol*100:.0f}% tolerance)")
+        print(f"[perf] FAIL: {key} grew {growth:+.2f}% (> {args.tol*100:.0f}% tolerance)")
         print("[perf] If this is an intentional change, re-run with --update and commit.")
-        return 1
-    print(f"[perf] OK: {args.key} within tolerance")
-    return 0
-
+        return False
+    print(f"[perf] OK: {key} within tolerance")
+    return True
 
 if __name__ == "__main__":
     sys.exit(main())

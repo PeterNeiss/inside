@@ -29,6 +29,10 @@ namespace beman::inside {
 //   op(l, r, ec [, action])          error-code form (checked, reports into ec)
 // detail::arith normalizes the form to (policy, action) for the op's core.
 //---------------------------------------------------------------------------
+#define BEMAN_INSIDE_WHY_arith_action                                                                               \
+    "add/sub/mul/div/mod fire only on_overflow; on_clamp / on_wrap / on_error apply to assignment — use them with " \
+    "b.with(...) or a cast"
+
 namespace detail {
 // Arithmetic fires only on_overflow; any other action would be silently
 // ignored, so it is rejected.
@@ -38,9 +42,7 @@ inline constexpr bool arith_accepts_action =
 
 template <class Op, class L, class R, policy_like P = policy<>, class A = no_action>
 constexpr auto arith(Op op, const L& l, const R& r, P&& pol = {}, A&& act = {}) {
-    static_assert(arith_accepts_action<A>,
-                  "add/sub/mul/div/mod fire only on_overflow; on_clamp / on_wrap / on_error "
-                  "apply to assignment — use them with b.with(...) or a cast");
+    static_assert(arith_accepts_action<A>, BEMAN_INSIDE_WHY_arith_action);
     return op(l, r, std::forward<P>(pol), std::forward<A>(act));
 }
 
@@ -53,17 +55,13 @@ inline constexpr bool is_action_tag_v =
 template <class Op, class L, class R, class... Actions>
     requires(sizeof...(Actions) >= 1) && (is_action_tag_v<std::remove_cvref_t<Actions>> && ...)
 constexpr auto arith(Op op, const L& l, const R& r, Actions&&... acts) {
-    static_assert((overflow_action<std::remove_cvref_t<Actions>> && ...),
-                  "add/sub/mul/div/mod fire only on_overflow; on_clamp / on_wrap / on_error "
-                  "apply to assignment — use them with b.with(...) or a cast");
+    static_assert((overflow_action<std::remove_cvref_t<Actions>> && ...), BEMAN_INSIDE_WHY_arith_action);
     return op(l, r, make_policy<merged_implied_flags<Actions...>>(), pick_action<is_overflow_action>(acts...));
 }
 
 template <class Op, class L, class R, class A = no_action>
 constexpr auto arith(Op op, const L& l, const R& r, errc& ec, A&& act = {}) {
-    static_assert(arith_accepts_action<A>,
-                  "add/sub/mul/div/mod fire only on_overflow; on_clamp / on_wrap / on_error "
-                  "apply to assignment — use them with b.with(...) or a cast");
+    static_assert(arith_accepts_action<A>, BEMAN_INSIDE_WHY_arith_action);
     return op(l, r, make_policy<checked>(ec), std::forward<A>(act));
 }
 
@@ -316,6 +314,7 @@ template <insidable L, insidable R>
     requires(!detail::mod_defined<L, R, flags_of<L> | flags_of<R>>)
 auto operator%(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_mod);
 BEMAN_INSIDE_DELETE_END
+#undef BEMAN_INSIDE_WHY_arith_action
 #undef BEMAN_INSIDE_WHY_add
 #undef BEMAN_INSIDE_WHY_sub
 #undef BEMAN_INSIDE_WHY_mul

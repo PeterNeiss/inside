@@ -15,9 +15,9 @@ BEMAN_INSIDE_WARNINGS_PUSH
 namespace beman::inside::detail {
 //---------------------------------------------------------------------------
 // assignment — narrowing/coercion between bounded and arithmetic types. Three
-// specializations dispatch on the source (integral / fractional / insidable),
-// each routing through `store` (in-range) and `handle_out_of_range` /
-// `apply_clamp` / `apply_wrap` (policy). The insidable path also exposes
+// specializations dispatch on the source (integral / fractional / insidable);
+// each stores an in-range value and hands an out-of-range one to the policy
+// (`apply_clamp` / `apply_wrap`, or a report). The insidable path also exposes
 // `is_integer_mapping` / `map_raw` — a pure-integer formula in the hot path.
 //---------------------------------------------------------------------------
 
@@ -62,7 +62,7 @@ struct assignment<L, R> {
         const bool low = v < fold::lower;
         lhs            = L::from_raw(raw_of_slot<L>(low ? W{0} : fold::span));
         if constexpr (clamp_action<plain_t<A>>)
-            action.Fn(lhs, fold::saturate(v - (low ? fold::lower : fold::upper)));
+            action.Fn(lhs, saturate_imax(v - (low ? fold::lower : fold::upper)));
     }
 
     template <typename A>
@@ -85,7 +85,7 @@ struct assignment<L, R> {
         if constexpr (value_storage<L>)
             lhs = L::from_raw(raw_cast<L>(rhs));
         else if constexpr (detail::point_grid<L>)
-            lhs = L::from_raw(0); // notch_storage point grid: 0 is the only offset
+            lhs = L::from_raw(0); // a point grid: 0 is the only offset
         else if constexpr (qformat_codec_fits<L>)
             lhs = L::from_raw(q_format_encode<L>(static_cast<imax>(rhs)));
         else // index storage on a notch 1/K grid: the offset is an exact integer
@@ -240,9 +240,8 @@ struct assignment<L, R> {
     // so the wrap path can reuse store_checked after computing the wrapped
     // value.
     //
-    // apply_wrap for a fractional R — modular reduction into [Lower, Lower + range)
-    // followed by store_checked so the rounding policy still applies if rhs
-    // doesn't land on a notch after wrapping. range = Upper - Lower + Notch.
+    // apply_wrap for a fractional R — rounding onto the lattice, then modular
+    // reduction into [Lower, Lower + range), range = Upper - Lower + Notch.
     template <typename P, typename A>
     static constexpr void apply_wrap(L& lhs, R rhs, P&& policy, A&& action) {
         // Round onto the lattice first (by the policy, like every other store),
@@ -360,16 +359,16 @@ struct assignment<L, R> {
     };
     using fine_result_t = std::conditional_t<rational_storage<L>, fine_rational_result, fine_result>;
 
+    // P's flags, recording its first failure into an errc instead.
+    template <typename P>
+    using recording_policy = ::beman::inside::policy<P::Flags, error_ref>;
+
     // Out of line, and by value (an empty action too): a reference to a
     // caller's local would make it escape the hot path's frame. lhs may be
     // uninitialized (a trivial default ctor), so the store runs on a copy of
     // the lower limit, and a failure is returned, not stored: a failed store
     // leaves lhs intact. The policy hears of it here; an on_error action,
     // which gets lhs, from store_fine_double.
-    // P's flags, recording its first failure into an errc instead.
-    template <typename P>
-    using recording_policy = ::beman::inside::policy<P::Flags, error_ref>;
-
     template <typename P, typename A>
     BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE static constexpr fine_result_t
     fine_double_value(double rhs, P policy, A action) {
@@ -451,9 +450,7 @@ struct assignment<L, R> {
             // value raws.
             auto store_slot = [&](auto k) { lhs = L::from_raw(raw_from_offset<L>(k)); };
 
-            constexpr bool has_round_flag = has_policy<L, P, round_nearest> || has_policy<L, P, round_floor> ||
-                                            has_policy<L, P, round_ceil> || has_policy<L, P, round_half_even> ||
-                                            has_policy<L, P, snap>;
+            constexpr bool has_round_flag = has_policy<L, P, snap>; // every round_* flag contains snap
 
             // A floating source on an anchored grid with a power-of-two notch
             // whose values double holds: v/Notch is exact, so round it in
@@ -755,7 +752,7 @@ struct assignment<L, R> {
     // path instead (both 0, unused), and a point L holds one value (both 0).
     static constexpr bool integer_raws = integer_storage<L> && integer_storage<R>;
 
-    static constexpr std::expected<rational, errc> calcOffset() {
+    static constexpr std::expected<rational, errc> calc_offset() {
         if constexpr (!integer_raws || !detail::notched<L>)
             return rational{0};
         else
@@ -764,7 +761,7 @@ struct assignment<L, R> {
             });
     }
 
-    static constexpr std::expected<rational, errc> calcFactor() {
+    static constexpr std::expected<rational, errc> calc_factor() {
         if constexpr (!integer_raws || !detail::notched<L> || point_storage<R>)
             return rational{0}; // a point R's raw is always 0: the mapping is Offset alone
         else
@@ -773,11 +770,11 @@ struct assignment<L, R> {
 
     // A mapping past the 64-bit rational (a full-int64 source into a fine
     // grid) stores through the rational path, as a continuous side does.
-    static constexpr bool maps_raws = integer_raws && calcOffset().has_value() && calcFactor().has_value();
+    static constexpr bool maps_raws = integer_raws && calc_offset().has_value() && calc_factor().has_value();
 
   public:
-    static constexpr rational Offset = calcOffset().value_or(rational{0});
-    static constexpr rational Factor = calcFactor().value_or(rational{0});
+    static constexpr rational Offset = calc_offset().value_or(rational{0});
+    static constexpr rational Factor = calc_factor().value_or(rational{0});
 
     // Raw-space integer-only mapping — requires integer raw storage on both
     // sides (not rational).
@@ -995,11 +992,7 @@ struct assignment<L, R> {
     static constexpr L& assign(L& lhs, const R& rhs, P&& policy, A&& action = {}) {
         // A wide raw on either side: the exact wide path.
         if constexpr (wide_valued<L> || wide_valued<R>) {
-            static_assert(has_policy<L, P, wrap> || has_policy<L, P, clamp> ||
-                              not excludes(interval_of<L>, interval_of<R>),
-                          "rhs interval lies entirely outside lhs interval and the policy cannot bring it into range");
-            static_assert(notches_compatible<L, R> || has_policy<L, P, snap>,
-                          "incompatible notches: use with_snap() or policy<snap>() to allow rounding");
+            static_checks<P>();
             if constexpr (same_notch_raws<L, R>) {
                 // Equal notches: the raw maps by a constant shift. Out of range
                 // takes the exact path's policy cascade below.
@@ -1016,15 +1009,20 @@ struct assignment<L, R> {
     }
 
   private:
-    template <typename P, typename A>
-    static constexpr L& assign_builtin(L& lhs, const R& rhs, P&& policy, A&& action) {
-        // wrap/clamp bring any value into range, so a disjoint rhs interval is fine
-        // for them (matches the integral-rhs path); only strict policies reject it.
+    // wrap/clamp bring any value into range, so a disjoint rhs interval is fine
+    // for them (matches the integral-rhs path); only strict policies reject it.
+    template <typename P>
+    static constexpr void static_checks() {
         static_assert(has_policy<L, P, wrap> || has_policy<L, P, clamp> ||
                           not excludes(interval_of<L>, interval_of<R>),
                       "rhs interval lies entirely outside lhs interval and the policy cannot bring it into range");
         static_assert(notches_compatible<L, R> || has_policy<L, P, snap>,
                       "incompatible notches: use with_snap() or policy<snap>() to allow rounding");
+    }
+
+    template <typename P, typename A>
+    static constexpr L& assign_builtin(L& lhs, const R& rhs, P&& policy, A&& action) {
+        static_checks<P>();
 
         if constexpr (not includes(interval_of<L>, interval_of<R>)) {
             if constexpr (needs_runtime_range_check<L, plain_t<P>, plain_t<A>>) {

@@ -18,7 +18,7 @@
 #include <beman/inside/detail/config.hpp>
 BEMAN_INSIDE_WARNINGS_PUSH
 
-#include <beman/inside/detail/float_bits.hpp> // beman::inside::detail::ldexp (constexpr, reproducible)
+#include <beman/inside/detail/float_bits.hpp> // frexp, scale_pow2 (constexpr, reproducible)
 #include <beman/inside/inside.hpp>            // complete inside/rational + has_flag/flags_of (store<>)
 
 // BEMAN_INSIDE_MATH_NO_FP is resolved in policy_flag.hpp (included via inside.hpp).

@@ -30,6 +30,12 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   power of two built from its bits instead of a branchy `ldexp`: 15–21
   fewer instructions and about 20–25% fewer cycles per call, the same bits.
 
+### Fixed
+
+- Two units error messages said "detail::recipe" instead of "recipe".
+- The single header's banner and the drift-check error name the real
+  regenerate target, `beman.inside.amalgamate`.
+
 ### Testing
 
 - A differential oracle (`tests/beman/inside/differential`): random cases of

@@ -15,27 +15,36 @@
 #---------------------------------------------------------------------------
 file(GLOB BEMAN_INSIDE_FAIL_SOURCES CONFIGURE_DEPENDS *.test.cpp)
 
-# The condition detail/delete_reason.hpp's BEMAN_INSIDE_DELETE uses for `= delete("…")`
-# (C++26; an extension in C++23 from GCC 15 and Clang 19).
+# What the headers themselves detect (detail/config.hpp), probed with the
+# flags the cases compile with: a deleted overload's reason (`= delete("…")`),
+# a static_assert message with values (P2741), and big grids (C++26 static
+# reflection), which compile the `64-bit-grids` cases.
 include(CheckCXXSourceCompiles)
-check_cxx_source_compiles(
-    "#if !(defined(__cpp_deleted_function) || (defined(__clang__) && __clang_major__ >= 19) || (defined(__GNUC__) && !defined(__clang__) && __GNUC__ >= 15))
-#error no deleted-function reason
+set(CMAKE_REQUIRED_INCLUDES ${PROJECT_SOURCE_DIR}/include)
+set(CMAKE_REQUIRED_FLAGS "")
+if(MSVC)
+    set(CMAKE_REQUIRED_FLAGS "/utf-8 /Zc:__cplusplus /Zc:preprocessor")
+elseif(BEMAN_INSIDE_HAS_FREFLECTION)
+    set(CMAKE_REQUIRED_FLAGS "-freflection")
+endif()
+foreach(feature IN ITEMS DELETE_REASON VALUED_DIAG BIG_GRIDS)
+    if(feature STREQUAL "BIG_GRIDS")
+        set(macro BEMAN_INSIDE_BIG_GRIDS)
+    else()
+        set(macro BEMAN_INSIDE_HAS_${feature})
+    endif()
+    check_cxx_source_compiles(
+        "#include <beman/inside/detail/config.hpp>
+#if !${macro}
+#error ${macro} is 0
 #endif
 int main() {}
 "
-    BEMAN_INSIDE_HAS_DELETE_REASON
-)
-# The condition detail/diag_text.hpp's BEMAN_INSIDE_DIAG uses for a
-# static_assert message with values in it (P2741, C++26).
-check_cxx_source_compiles(
-    "#if !(defined(__cpp_static_assert) && __cpp_static_assert >= 202306L && __cplusplus > 202302L)
-#error no user-generated static_assert message
-#endif
-int main() {}
-"
-    BEMAN_INSIDE_HAS_VALUED_DIAG
-)
+        BEMAN_INSIDE_FAIL_${feature}
+    )
+endforeach()
+unset(CMAKE_REQUIRED_INCLUDES)
+unset(CMAKE_REQUIRED_FLAGS)
 
 foreach(src ${BEMAN_INSIDE_FAIL_SOURCES})
     get_filename_component(case_name ${src} NAME_WE)
@@ -56,8 +65,7 @@ foreach(src ${BEMAN_INSIDE_FAIL_SOURCES})
             set(flags_line "${line}")
         endif()
     endforeach()
-    # REQUIRES tags: `64-bit-grids` skips the case in a C++26 reflection build
-    # (big grids compile it); `gnu` / `msvc` build it only with GCC/Clang or
+    # REQUIRES tags: `64-bit-grids` skips the case where big grids compile it; `gnu` / `msvc` build it only with GCC/Clang or
     # only with MSVC; `delete-reason`, `gnu-message` and `valued-diagnostics`
     # check the message only where the compiler prints it (a deleted
     # overload's reason; a constexpr_error's text, which MSVC leaves out; a
@@ -65,10 +73,7 @@ foreach(src ${BEMAN_INSIDE_FAIL_SOURCES})
     # still be ill-formed.
     set(needs_message TRUE)
     if(requires_line)
-        if(
-            requires_line MATCHES "64-bit-grids"
-            AND BEMAN_INSIDE_HAS_FREFLECTION
-        )
+        if(requires_line MATCHES "64-bit-grids" AND BEMAN_INSIDE_FAIL_BIG_GRIDS)
             continue()
         endif()
         if(requires_line MATCHES "REQUIRES: (.* )?msvc( |$)" AND NOT MSVC)
@@ -79,7 +84,7 @@ foreach(src ${BEMAN_INSIDE_FAIL_SOURCES})
         endif()
         if(
             requires_line MATCHES "delete-reason"
-            AND NOT BEMAN_INSIDE_HAS_DELETE_REASON
+            AND NOT BEMAN_INSIDE_FAIL_DELETE_REASON
         )
             set(needs_message FALSE)
         endif()
@@ -88,7 +93,7 @@ foreach(src ${BEMAN_INSIDE_FAIL_SOURCES})
         endif()
         if(
             requires_line MATCHES "valued-diagnostics"
-            AND NOT BEMAN_INSIDE_HAS_VALUED_DIAG
+            AND NOT BEMAN_INSIDE_FAIL_VALUED_DIAG
         )
             set(needs_message FALSE)
         endif()

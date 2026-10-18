@@ -2,13 +2,12 @@
 // Corner-case tests closing coverage holes surfaced by the gcov build
 // (configure a Debug build with --coverage, e.g. the CI's Debug.Coverage cell).
 //
-// Each TEST names the library file:line(s) it is meant to exercise. Many
+// Each TEST names the library file it is meant to exercise. Many
 // of these paths were already checked at *compile* time via static_assert —
 // which gcov does not count — so the assertions here are deliberately runtime
 // (plain ASSERT_*) to drive the instrumented code.
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/cmath.hpp>
 #include <beman/inside/cmath.hpp>
 #include <beman/inside/casts.hpp>
 #include <beman/inside/predicates.hpp>

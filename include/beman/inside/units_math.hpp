@@ -25,8 +25,9 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <beman/inside/cmath.hpp>
 #include <beman/inside/units.hpp>
 
+#include <bit>
 #include <cstddef>
-#include <type_traits>
+#include <cstdint>
 
 namespace beman::inside::math::detail::ax {
 // x·(n/d)·π^P for P = ±1: π from pi_q at T = S + B bits, B covering |x·n/d|,

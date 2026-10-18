@@ -61,11 +61,7 @@ inline constexpr bool point_scale =
 template <insidable Result, bool Negate, insidable X>
 constexpr Result scale_by_point(const X& x) noexcept {
     static_assert(max_index_of<Result> == max_index_of<X>);
-    umax off;
-    if constexpr (index_storage<X>)
-        off = static_cast<umax>(x.raw());
-    else
-        off = static_cast<umax>(x.raw()) - static_cast<umax>(raw_lo<X>);
+    const umax off = raw_offset<X>(x.raw());
     return Result::from_raw(raw_from_offset<Result>(Negate ? max_index_of<X> - off : off));
 }
 } // namespace beman::inside::detail

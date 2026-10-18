@@ -15,8 +15,9 @@ BEMAN_INSIDE_WARNINGS_PUSH
 
 //---------------------------------------------------------------------------
 // float_bits — floating-point values read and built from their IEEE-754
-// bits, with no <cmath>: constexpr frexp/ldexp, finiteness, and abs_fraction
-// (the double → rational engine behind rational(double)).
+// bits, with no <cmath>: constexpr frexp/ldexp, scale_pow2 for the kernels,
+// finiteness, abs_fraction (the double → rational engine behind
+// rational(double)), double_parts and narrow_midpoint.
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
 inline constexpr double frexp(double value, int* exp) noexcept {
@@ -48,9 +49,11 @@ inline constexpr double frexp(double value, int* exp) noexcept {
     return std::bit_cast<double>(bits);
 }
 
-// value·2^exp for |exp| ≤ 2^20 (the kernels' scalings): e + exp below
-// cannot overflow int. ldexp below takes any exp.
-constexpr double ldexp_small(double value, int exp) noexcept {
+// value·2^exp for any exp, rounded to nearest even. Past ±2200 every finite
+// double overflows or underflows alike, so exp is clamped there (an exp near
+// INT_MAX would overflow the exponent sum below).
+constexpr double ldexp(double value, int exp) noexcept {
+    exp = exp > 2200 ? 2200 : exp < -2200 ? -2200 : exp;
     if (value == 0.0 || exp == 0)
         return value;
 
@@ -102,19 +105,12 @@ constexpr double ldexp_small(double value, int exp) noexcept {
 }
 
 // value·2^k where 2^k is a normal double (−1022 ≤ k ≤ 1023): one multiply,
-// which rounds once like ldexp_small's round-to-nearest-even; else ldexp_small.
-// For the run-time kernels (the exp family).
+// which rounds once like ldexp's round-to-nearest-even; else ldexp. For the
+// run-time kernels (the exp family).
 constexpr double scale_pow2(double value, int k) noexcept {
     if (k >= -1022 && k <= 1023) [[likely]]
         return value * std::bit_cast<double>(static_cast<std::uint64_t>(k + 1023) << 52);
-    return ldexp_small(value, k);
-}
-
-// value·2^exp for any exp: past ±2200 every finite double overflows or
-// underflows alike, so exp is clamped there (an exp near INT_MAX would
-// overflow ldexp_small's exponent sum).
-constexpr double ldexp(double value, int exp) noexcept {
-    return ldexp_small(value, exp > 2200 ? 2200 : exp < -2200 ? -2200 : exp);
+    return ldexp(value, k);
 }
 
 // Freestanding finite check: `v - v` is 0 for every finite v, NaN otherwise

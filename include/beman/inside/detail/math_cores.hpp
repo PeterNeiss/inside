@@ -23,8 +23,6 @@ namespace beman::inside::math::detail::ax {
 //---------------------------------------------------------------------------
 // Inputs as exact values, in as few limbs as their grid needs.
 //---------------------------------------------------------------------------
-constexpr int grid_bits(const grid_int& v) { return bit_width_of(abs(v)); }
-
 // A grid integer as a double (a notch's p or q, which may pass imax).
 constexpr double grid_double(const grid_int& v) {
 #if BEMAN_INSIDE_BIG_GRIDS
@@ -127,7 +125,7 @@ constexpr fx<K> rescale(const approx<K>& a, int A) noexcept {
 
 // asin x for |x| ≤ 1/2 (exact): atan(x/√(1−x²)), the square root as
 // x·(1/√(1−x²)) with 1 − x² ≥ 3/4 in fixed point.
-template <int S, std::size_t K, int Bits, std::size_t E>
+template <int S, std::size_t K, std::size_t E>
 constexpr fx<K> asin_small(const wide_rational<E>& x) noexcept {
     using I    = wide_sint<K>;
     const I xq = to_q<S, K>(x);                  // within ½
@@ -495,7 +493,7 @@ struct asin_core {
         constexpr std::size_t  K = limbs_of<I>;
         const wide_rational<E> half{wide_sint<E>{1}, wide_sint<E>{2}};
         if (!(half < abs(X))) {
-            const fx<K> a = asin_small<S, K, Bits>(X);
+            const fx<K> a = asin_small<S, K>(X);
             return approx<K>{a.Value, S, a.Error};
         }
         using F         = wide_rational<E + 1>;
@@ -522,7 +520,7 @@ struct acos_core {
         constexpr std::size_t  K = limbs_of<I>;
         const wide_rational<E> half{wide_sint<E>{1}, wide_sint<E>{2}};
         if (!(half < abs(X))) {
-            const fx<K> a = asin_small<S, K, Bits>(X);
+            const fx<K> a = asin_small<S, K>(X);
             return approx<K>{static_cast<I>(pi_q<S - 1>) - a.Value, S, a.Error + 1};
         }
         using F         = wide_rational<E + 1>;
@@ -644,7 +642,7 @@ struct ahyp_core {
 
 // b^e for b > 0: e^(e·log b). Exact for e = 0, b = 1, and e = p/q (q ≤ 64)
 // when b's numerator and denominator are perfect q-th powers (4^0.5 = 2,
-// 2.25^1.5 = 3.375) and the power fits PowLimbs: such a result can sit on a
+// 2.25^1.5 = 3.375) and the power fits pow_limbs: such a result can sit on a
 // rounding boundary, where no approximation decides.
 inline constexpr std::size_t pow_limbs = 32; // exact integer powers up to 2048 bits
 

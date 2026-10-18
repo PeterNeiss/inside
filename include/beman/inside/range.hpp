@@ -110,7 +110,7 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P>> {
 
     constexpr inside_range(value_type start) {
         // Map a grid value back to its notch index: the raw's offset.
-        StartIndex = static_cast<umax>(start.raw()) - static_cast<umax>(detail::raw_lo<value_type>);
+        StartIndex = detail::raw_offset<value_type>(start.raw());
     }
 
     constexpr iterator begin() const { return {StartIndex, 0}; }

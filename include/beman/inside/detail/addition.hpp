@@ -49,7 +49,7 @@ struct addition {
             const auto sum = continuous_raw_of<raw_t<result>>(exact_of(lhs) + exact_of(rhs));
             if constexpr (needs_overflow_check<F>)
                 if (!sum) [[unlikely]]
-                    return report_or_unexpected<result>(action, policy, errc::overflow, "fraction overflow in add");
+                    return report_or_unexpected<result>(action, policy, errc::overflow);
             res = result::from_raw(*sum);
         } else if constexpr (rational_storage<result>) {
             static_assert(!wide_valued<L> && !wide_valued<R>,
@@ -57,7 +57,7 @@ struct addition {
             if constexpr (needs_overflow_check<F>) {
                 auto sum = rational::add(lhs, rhs);
                 if (!sum) [[unlikely]]
-                    return report_or_unexpected<result>(action, policy, errc::overflow, "rational overflow in add");
+                    return report_or_unexpected<result>(action, policy, errc::overflow);
                 res = result::from_raw(*sum);
             } else
                 res = result::from_raw(rational::add_unchecked(lhs, rhs));
