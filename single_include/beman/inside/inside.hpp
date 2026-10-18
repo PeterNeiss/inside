@@ -11669,10 +11669,14 @@ template <insidable Lhs, insidable Rhs>
 // inheriting whichever bare overload applies.
 //---------------------------------------------------------------------------
 namespace detail {
+// Other types whose results chain the same way (units.hpp: quantity).
+template <class T>
+inline constexpr bool lift_operand_v = insidable<T>;
+
 template <class L, class R>
 concept expected_operands =
-    (expected_like<L> || expected_like<R>) && (insidable<unwrap_t<L>> || insidable<unwrap_t<R>>);
-}
+    (expected_like<L> || expected_like<R>) && (lift_operand_v<unwrap_t<L>> || lift_operand_v<unwrap_t<R>>);
+} // namespace detail
 
 #define BEMAN_INSIDE_LIFT_OP(op)                                                            \
     template <class L, class R>                                                             \
@@ -18732,6 +18736,7 @@ BEMAN_INSIDE_WARNINGS_POP
 #include <cstdint>
 #include <expected>
 #include <ostream>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -19866,6 +19871,48 @@ constexpr auto make_quantity(V&& v) {
     } else
         return quantity<R, T>{std::forward<V>(v)};
 }
+
+// q.on_wrap(f) and the other hooks: the inside's policy_ref on q's number,
+// with stores taking quantities (rescaled exactly, as +=) and f called on the
+// quantity. The other arguments (carry, overshoot, errc) are the inside's.
+template <class F, class Q>
+constexpr auto on_quantity(Q& q, F&& f) {
+    return [&q, f = std::forward<F>(f)](auto&, auto&&... a) mutable -> decltype(auto) {
+        return f(q, std::forward<decltype(a)>(a)...);
+    };
+}
+
+template <reference R, class Q, class Ref>
+struct quantity_action_ref {
+    Q&  Self;
+    Ref NumRef;
+
+    template <reference R2, class V2>
+        requires implicit_v<R2, R> && rescalable<R2.U, R.U, V2> &&
+                 requires(Ref& r, const rescaled_t<R2, R, V2>& v) { r = v; }
+    constexpr Q& operator=(const quantity<R2, V2>& q) {
+        NumRef = rescale<conversion_factor<R2.U, R.U>>(q.numerical_value());
+        return Self;
+    }
+    template <reference R2, class V2>
+        requires implicit_v<R2, R> && rescalable<R2.U, R.U, V2> &&
+                 requires(Ref& r, const rescaled_t<R2, R, V2>& v) { r += v; }
+    constexpr Q& operator+=(const quantity<R2, V2>& q) {
+        NumRef += rescale<conversion_factor<R2.U, R.U>>(q.numerical_value());
+        return Self;
+    }
+    template <reference R2, class V2>
+        requires implicit_v<R2, R> && rescalable<R2.U, R.U, V2> &&
+                 requires(Ref& r, const rescaled_t<R2, R, V2>& v) { r -= v; }
+    constexpr Q& operator-=(const quantity<R2, V2>& q) {
+        NumRef -= rescale<conversion_factor<R2.U, R.U>>(q.numerical_value());
+        return Self;
+    }
+};
+template <reference R, class Q, class Ref>
+constexpr auto make_action_ref(Q& q, Ref&& r) {
+    return quantity_action_ref<R, Q, std::remove_cvref_t<Ref>>{q, std::forward<Ref>(r)};
+}
 } // namespace detail
 
 template <reference R, insidable Rep>
@@ -19983,7 +20030,70 @@ class quantity {
         Num /= v;
         return *this;
     }
+
+    // One unit up or down: ++q is q += 1·unit, under Rep's policy.
+    constexpr quantity& operator++()
+        requires requires(Rep& n) { ++n; }
+    {
+        ++Num;
+        return *this;
+    }
+    constexpr quantity& operator--()
+        requires requires(Rep& n) { --n; }
+    {
+        --Num;
+        return *this;
+    }
+    constexpr quantity operator++(int)
+        requires requires(Rep& n) { ++n; }
+    {
+        auto old = *this;
+        ++Num;
+        return old;
+    }
+    constexpr quantity operator--(int)
+        requires requires(Rep& n) { --n; }
+    {
+        auto old = *this;
+        --Num;
+        return old;
+    }
+
+    // A store with a hook, as on inside: q.on_wrap(f) += d calls f(q, carry)
+    // when the sum wraps. Stores take quantities; f gets the quantity.
+    template <class F>
+    [[nodiscard]] constexpr auto on_wrap(F&& f) {
+        return detail::make_action_ref<R>(*this, Num.on_wrap(detail::on_quantity(*this, std::forward<F>(f))));
+    }
+    template <class F>
+    [[nodiscard]] constexpr auto on_clamp(F&& f) {
+        return detail::make_action_ref<R>(*this, Num.on_clamp(detail::on_quantity(*this, std::forward<F>(f))));
+    }
+    template <class F>
+    [[nodiscard]] constexpr auto on_error(F&& f) {
+        return detail::make_action_ref<R>(*this, Num.on_error(detail::on_quantity(*this, std::forward<F>(f))));
+    }
+    template <class F>
+    [[nodiscard]] constexpr auto on_overflow(F&& f) {
+        return detail::make_action_ref<R>(*this, Num.on_overflow(detail::on_quantity(*this, std::forward<F>(f))));
+    }
+
+    // Rep's try_make in the unit R: quantity<si::metre, M>::try_make(12.5).
+    template <policy_flag F = none, class V>
+        requires requires(const V& v) { Rep::template try_make<F>(v); }
+    [[nodiscard]] static constexpr auto try_make(const V& v) {
+        return detail::make_quantity<R>(Rep::template try_make<F>(v));
+    }
 };
+
+// A quantity chains through inside's expected-lift operators: a division by
+// a grid holding 0 and the rest of the expression stay one std::expected.
+} // namespace beman::inside::units
+namespace beman::inside::detail {
+template <units::reference R, class Rep>
+inline constexpr bool lift_operand_v<units::quantity<R, Rep>> = true;
+} // namespace beman::inside::detail
+namespace beman::inside::units {
 
 //---------------------------------------------------------------------------
 // Construction: number * unit, number * spec[unit]. A raw scalar has no grid.
@@ -20348,6 +20458,230 @@ template <auto U, insidable Rep2, policy_flag F = none, reference R, class V>
     if (!v)
         return std::expected<Q, errc>{std::unexpect, v.error()};
     return std::expected<Q, errc>{Q{*v}};
+}
+
+//---------------------------------------------------------------------------
+// inside's algorithms on quantities: the number goes through the inside
+// function in the target's unit, so each still rounds once and checks once.
+//---------------------------------------------------------------------------
+namespace detail {
+// A plain inside is a quantity of unit one.
+template <class T>
+constexpr auto as_quantity(const T& x) {
+    if constexpr (quantity_like<T>)
+        return x;
+    else
+        return quantity<reference_of(one), T>{x};
+}
+template <class T>
+using as_quantity_t = decltype(as_quantity(std::declval<const T&>()));
+
+// The reference an Out takes: a quantity's, or unit one for a plain inside.
+template <class Out>
+constexpr reference out_reference() {
+    if constexpr (quantity_like<Out>)
+        return Out::reference;
+    else
+        return reference_of(one);
+}
+template <class Out>
+struct out_rep {
+    using type = Out;
+};
+template <class Out>
+    requires quantity_like<Out>
+struct out_rep<Out> {
+    using type = typename Out::rep;
+};
+
+// Out from its number (or an expected of one).
+template <class Out, class V>
+constexpr auto wrap_out(V&& v) {
+    if constexpr (!quantity_like<Out>)
+        return std::forward<V>(v);
+    else if constexpr (is_expected_v<std::remove_cvref_t<V>>) {
+        if (!v)
+            return std::expected<Out, errc>{std::unexpect, v.error()};
+        return std::expected<Out, errc>{Out{*std::forward<V>(v)}};
+    } else
+        return Out{std::forward<V>(v)};
+}
+
+// a·b (E = 1) or a/b (E = −1) stored into Out: the product's reference must
+// convert to Out's, implicitly; a plain Out takes a dimensionless result.
+template <class Out, int E, class A, class B>
+concept into_operands =
+    (quantity_like<A> || quantity_like<B> || quantity_like<Out>) &&
+    requires {
+        requires implicit_v<product_reference<as_quantity_t<A>::reference, as_quantity_t<B>::reference, E>(),
+                            out_reference<Out>()>;
+    } &&
+    rescalable<product_reference<as_quantity_t<A>::reference, as_quantity_t<B>::reference, E>().U,
+               out_reference<Out>().U,
+               typename as_quantity_t<A>::rep>;
+template <class Out, int E, class A>
+constexpr auto into_scaled(const A& a, const auto& b) {
+    constexpr reference P =
+        product_reference<as_quantity_t<A>::reference, std::remove_cvref_t<decltype(as_quantity(b))>::reference, E>();
+    return rescale<conversion_factor<P.U, out_reference<Out>().U>>(as_quantity(a).numerical_value());
+}
+} // namespace detail
+
+// mul_into<Out, F>(a, b) / div_into<Out, F>(a, b): a·b or a/b rounded once
+// into Out, a quantity type (or a plain inside for a dimensionless result).
+// The unit factor is folded into the exact product: mul_into<usd>(eth, usd/eth).
+template <class Out, policy_flag F = none, class A, class B>
+    requires detail::into_operands<Out, 1, A, B> && requires(const A& a, const B& b) {
+        beman::inside::mul_into<typename detail::out_rep<Out>::type, F>(detail::into_scaled<Out, 1>(a, b),
+                                                                        detail::as_quantity(b).numerical_value());
+    }
+[[nodiscard]] constexpr auto mul_into(const A& a, const B& b) {
+    return detail::wrap_out<Out>(beman::inside::mul_into<typename detail::out_rep<Out>::type, F>(
+        detail::into_scaled<Out, 1>(a, b), detail::as_quantity(b).numerical_value()));
+}
+template <class Out, policy_flag F = none, class A, class B>
+    requires detail::into_operands<Out, -1, A, B> && requires(const A& a, const B& b) {
+        beman::inside::div_into<typename detail::out_rep<Out>::type, F>(detail::into_scaled<Out, -1>(a, b),
+                                                                        detail::as_quantity(b).numerical_value());
+    }
+[[nodiscard]] constexpr auto div_into(const A& a, const B& b) {
+    return detail::wrap_out<Out>(beman::inside::div_into<typename detail::out_rep<Out>::type, F>(
+        detail::into_scaled<Out, -1>(a, b), detail::as_quantity(b).numerical_value()));
+}
+
+// add_all / mul_all with at least one quantity: the same folds as on inside.
+template <class First, class... Rest>
+    requires(quantity_like<First> || ... || quantity_like<Rest>)
+[[nodiscard]] constexpr auto add_all(const First& first, const Rest&... rest) {
+    return (first + ... + rest);
+}
+template <class First, class... Rest>
+    requires(quantity_like<First> || ... || quantity_like<Rest>)
+[[nodiscard]] constexpr auto mul_all(const First& first, const Rest&... rest) {
+    return (first * ... * rest);
+}
+
+// sum<Q>(r): the quantities of r in Q's unit, added by inside's sum with one
+// range check.
+template <class Q, std::ranges::input_range Rng>
+    requires quantity_like<Q> && quantity_like<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>> &&
+             detail::implicit_v<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>::reference, Q::reference> &&
+             detail::exact_rescale_v<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>::reference.U,
+                                     Q::reference.U>
+[[nodiscard]] constexpr Q sum(Rng&& r) {
+    return Q{beman::inside::sum<typename Q::rep>(std::forward<Rng>(r) | std::views::transform([](const auto& q) {
+                                                     return q.template in<Q::reference.U>().numerical_value();
+                                                 }))};
+}
+
+// parse<Q, F>(text) / parse_exact<Q>(text): the number, in Q's unit.
+template <class Q, policy_flag F = none>
+    requires quantity_like<Q>
+[[nodiscard]] constexpr std::expected<Q, errc> parse(std::string_view text) {
+    return detail::wrap_out<Q>(beman::inside::parse<typename Q::rep, F>(text));
+}
+template <class Q>
+    requires quantity_like<Q>
+[[nodiscard]] constexpr std::expected<Q, errc> parse_exact(std::string_view text) {
+    return detail::wrap_out<Q>(beman::inside::parse_exact<typename Q::rep>(text));
+}
+
+// conversion_overflows<Q>(v) / conversion_rounds / conversion_loses: v, a
+// number in Q's unit, against Q's grid.
+template <class Q, numeric A>
+    requires quantity_like<Q>
+[[nodiscard]] constexpr bool conversion_overflows(A value) noexcept {
+    return beman::inside::conversion_overflows<typename Q::rep>(value);
+}
+template <class Q, numeric A>
+    requires quantity_like<Q>
+[[nodiscard]] constexpr bool conversion_rounds(A value) noexcept {
+    return beman::inside::conversion_rounds<typename Q::rep>(value);
+}
+template <class Q, numeric A>
+    requires quantity_like<Q>
+[[nodiscard]] constexpr bool conversion_loses(A value) noexcept {
+    return beman::inside::conversion_loses<typename Q::rep>(value);
+}
+
+// clamp_cast<Q, Round>(x) / wrap_cast<Q>(x): x a number in Q's unit, or a
+// quantity converted to it exactly first.
+namespace detail {
+template <class Q, class X>
+constexpr decltype(auto) number_in(const X& x) {
+    if constexpr (quantity_like<X>)
+        return x.template in<Q::reference.U>().numerical_value();
+    else
+        return (x);
+}
+template <class Q, class X>
+concept castable_quantity =
+    quantity_like<X> && implicit_v<X::reference, Q::reference> && exact_rescale_v<X::reference.U, Q::reference.U>;
+template <class Q, class X>
+concept castable_from = quantity_like<Q> && (castable_quantity<Q, X> || (!quantity_like<X> && numeric<X>));
+} // namespace detail
+template <class Q, policy_flag Round = none, class X>
+    requires detail::castable_from<Q, X> &&
+             requires(const X& x) { beman::inside::clamp_cast<typename Q::rep, Round>(detail::number_in<Q>(x)); }
+[[nodiscard]] constexpr Q clamp_cast(const X& x) {
+    return Q{beman::inside::clamp_cast<typename Q::rep, Round>(detail::number_in<Q>(x))};
+}
+template <class Q, class X>
+    requires detail::castable_from<Q, X> &&
+             requires(const X& x) { beman::inside::wrap_cast<typename Q::rep>(detail::number_in<Q>(x)); }
+[[nodiscard]] constexpr Q wrap_cast(const X& x) {
+    return Q{beman::inside::wrap_cast<typename Q::rep>(detail::number_in<Q>(x))};
+}
+
+// dot, cross, lerp on quantity components (lerp's t is a plain number).
+template <quantity_like AX, quantity_like AY, quantity_like BX, quantity_like BY>
+[[nodiscard]] constexpr auto dot(const AX& ax, const AY& ay, const BX& bx, const BY& by)
+    -> decltype(ax * bx + ay * by) {
+    return ax * bx + ay * by;
+}
+template <quantity_like AX, quantity_like AY, quantity_like BX, quantity_like BY>
+[[nodiscard]] constexpr auto cross(const AX& ax, const AY& ay, const BX& bx, const BY& by)
+    -> decltype(ax * by - ay * bx) {
+    return ax * by - ay * bx;
+}
+template <quantity_like A, quantity_like B, insidable T>
+[[nodiscard]] constexpr auto lerp(const A& a, const B& b, const T& t) -> decltype(a + (b - a) * t) {
+    return a + (b - a) * t;
+}
+
+// divmod(a, b, args...) of two quantities of one dimension, in their common
+// unit: the quotient is a plain number, the remainder a quantity.
+template <class Q, class R>
+struct divmod_result {
+    Q Quotient;
+    R Remainder;
+};
+namespace detail {
+template <reference C, class D>
+constexpr auto quantity_divmod(D&& d) {
+    using T = std::remove_cvref_t<D>;
+    if constexpr (is_expected_v<T>) {
+        using V      = typename T::value_type;
+        using result = divmod_result<decltype(d->Quotient), quantity<C, decltype(d->Remainder)>>;
+        if (!d)
+            return std::expected<result, errc>{std::unexpect, d.error()};
+        return std::expected<result, errc>{result{d->Quotient, quantity<C, decltype(V::Remainder)>{d->Remainder}}};
+    } else
+        return divmod_result<decltype(d.Quotient), quantity<C, decltype(d.Remainder)>>{
+            d.Quotient, quantity<C, decltype(d.Remainder)>{d.Remainder}};
+}
+} // namespace detail
+template <reference A, class VA, reference B, class VB, class... Args>
+    requires(!detail::sum_diagnosed<A, B>()) && detail::common_rescalable<A, VA, B, VB> &&
+            requires(const detail::common_number_t<A, VA, B>& x,
+                     const detail::common_number_t<B, VB, A>& y,
+                     Args&&... args) { beman::inside::divmod(x, y, std::forward<Args>(args)...); }
+[[nodiscard]] constexpr auto divmod(const quantity<A, VA>& a, const quantity<B, VB>& b, Args&&... args) {
+    constexpr reference C = detail::sum_reference<A, B>();
+    return detail::quantity_divmod<C>(
+        beman::inside::divmod(detail::rescale<detail::conversion_factor<A.U, C.U>>(a.numerical_value()),
+                              detail::rescale<detail::conversion_factor<B.U, C.U>>(b.numerical_value()),
+                              std::forward<Args>(args)...));
 }
 
 //---------------------------------------------------------------------------
@@ -21032,6 +21366,14 @@ BEMAN_INSIDE_UNIT(international,
                   mag<rational{5, 9}>* si::kelvin,
                   {.ascii = "`F", .origin = international::zeroth_degree_Fahrenheit})
 
+// Scaled dimensionless units, as in mp-units: 8 % is the number 2/25.
+namespace dimensionless_defs {
+inline constexpr named_unit percent{"%", mag<rational{1, 100}> * one};
+inline constexpr named_unit per_mille{"‰", mag<rational{1, 1000}> * one, {.ascii = "permille"}};
+} // namespace dimensionless_defs
+inline constexpr auto percent   = unit_c<dimensionless_defs::percent>;
+inline constexpr auto per_mille = unit_c<dimensionless_defs::per_mille>;
+
 #undef BEMAN_INSIDE_UNIT
 #undef BEMAN_INSIDE_ORIGIN
 #undef BEMAN_INSIDE_SPEC
@@ -21545,6 +21887,66 @@ struct pi_scale_core {
         return approx<limbs_of<I>>{Negative ? -v : v, S, 2};
     }
 };
+
+// sin or cos of an angle x·(n/d)·π (a unit with a factor of π: °, a turn):
+// t = x·n/d half turns is reduced exactly by k = round(2t) quarter turns, so
+// only r = π·(t − k/2), |r| ≤ π/4, is approximated. Exact where Niven's
+// theorem allows a rational value: 0, ±1/2, ±1.
+template <std::size_t E, bool Cos, std::size_t KF = 1>
+struct pi_trig_core {
+    using factor = std::conditional_t<KF == 1, umax, beman::inside::detail::wide_uint<KF>>;
+    wide_rational<E> X;
+    factor           N; // the rational factor n/d
+    factor           D;
+    bool             Negative;
+
+    template <class J>
+    constexpr J numerator() const {
+        const J num = J{X.Num} * J{N};
+        return Negative ? -num : num;
+    }
+
+    constexpr maybe_exact<E> exact() const {
+        using J     = wide_sint<limbs_for_bits(64 * static_cast<int>(E + KF) + 8)>;
+        const J six = numerator<J>() * J{6}, den = J{X.Den} * J{D};
+        if (!(six % den).is_zero())
+            return std::nullopt;
+        J m = (six / den) % J{12}; // 6t mod 12: the angle in multiples of 30°
+        if (m.negative())
+            m += J{12};
+        // 2·sin and 2·cos at m·30°; 3 marks an irrational value (√3/2).
+        constexpr signed char twice_sin[12] = {0, 1, 3, 2, 3, 1, 0, -1, 3, -2, 3, -1};
+        constexpr signed char twice_cos[12] = {2, 3, 1, 0, -1, 3, -2, 3, -1, 0, 1, 3};
+        const int             v             = (Cos ? twice_cos : twice_sin)[m.Word[0]];
+        if (v == 3)
+            return std::nullopt;
+        return wide_rational<E>{wide_sint<E>{v}, wide_sint<E>{2}};
+    }
+
+    template <int W>
+    constexpr auto run() const {
+        constexpr int S               = W + 10;
+        constexpr int P               = S + 4;
+        using J                       = wide_sint<limbs_for_bits(64 * static_cast<int>(E + KF) + P + 16)>;
+        using I                       = fixed_t<S + 2>;
+        constexpr std::size_t K       = limbs_of<I>;
+        const J               two_num = J{2} * numerator<J>(), den = J{X.Den} * J{D};
+        const J               k = nearest_div(two_num, den); // quarter turns
+        // r = π·(2t − k)/2 at scale S, within 1 unit.
+        const I r = static_cast<I>(nearest_div((two_num - k * den) * static_cast<J>(pi_q<P>), den << (P - S + 1)));
+        const unsigned q   = static_cast<unsigned>(k.Word[0] & 3u);
+        auto           neg = [](fx<K> f) { return fx<K>{-f.Value, f.Error}; };
+        const fx<K>    v   = Cos ? ((q == 0)   ? cos_series<S>(r, 2)
+                                    : (q == 1) ? neg(sin_series<S>(r, 2))
+                                    : (q == 2) ? neg(cos_series<S>(r, 2))
+                                               : sin_series<S>(r, 2))
+                                 : ((q == 0)   ? sin_series<S>(r, 2)
+                                    : (q == 1) ? cos_series<S>(r, 2)
+                                    : (q == 2) ? neg(sin_series<S>(r, 2))
+                                               : neg(cos_series<S>(r, 2)));
+        return approx<K>{v.Value, S, v.Error};
+    }
+};
 } // namespace beman::inside::math::detail::ax
 
 namespace beman::inside::units {
@@ -21591,6 +21993,24 @@ template <reference R>
 inline constexpr bool radians_v = dimension_of(R.U) == dim_one && magnitude_of(R.U).is_one();
 
 inline constexpr reference radian_reference = reference{si::radian};
+
+// An angle in a unit with a factor of π (°, a turn): sin and cos reduce it exactly.
+template <reference R>
+inline constexpr bool pi_angle_v = dimension_of(R.U) == dim_one && magnitude_of(R.U).Pi == 1 &&
+                                   beman::inside::detail::fits_rational(magnitude_of(R.U).Ratio);
+
+// sin_into / cos_into of a π-scaled angle: one rounding onto Out.
+template <insidable Out, bool Cos, reference R, class V>
+constexpr Out pi_trig_into(const quantity<R, V>& q) {
+    namespace ax = beman::inside::math::detail::ax;
+    beman::inside::math::adaptive::require_rounding<Out>();
+    constexpr rational r = beman::inside::detail::to_rational(magnitude_of(R.U).Ratio);
+    using core           = ax::pi_trig_core<ax::input_limbs<V>, Cos>;
+    return ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_input(q.numerical_value()),
+                                                       static_cast<umax>(r.Numerator < 0 ? -r.Numerator : r.Numerator),
+                                                       beman::inside::detail::abs_den(r.Denominator),
+                                                       (r.Numerator < 0) != (r.Denominator < 0)});
+}
 } // namespace detail
 
 // value_cast<U, Out>(q) across a pi factor (degree ↔ radian): the exact
@@ -21668,12 +22088,14 @@ template <reference R, class V>
 // Trigonometry of an angle in radians: a plain number.
 template <reference R, class V>
 [[nodiscard]] constexpr auto sin(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R>, "units: sin takes an angle in radians - value_cast<si::radian, Out>(q) first");
+    static_assert(detail::radians_v<R>,
+                  "units: sin takes an angle in radians - sin_into<Out>(q) takes a unit with a factor of pi");
     return beman::inside::math::sin(q.numerical_value());
 }
 template <reference R, class V>
 [[nodiscard]] constexpr auto cos(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R>, "units: cos takes an angle in radians - value_cast<si::radian, Out>(q) first");
+    static_assert(detail::radians_v<R>,
+                  "units: cos takes an angle in radians - cos_into<Out>(q) takes a unit with a factor of pi");
     return beman::inside::math::cos(q.numerical_value());
 }
 template <reference R, class V>
@@ -21754,15 +22176,25 @@ template <insidable Out, reference R, class V>
         beman::inside::math::cbrt_into<Out>(q.numerical_value()));
 }
 
+// An angle in radians, or in a unit with a factor of π (°, a turn, 2π/65536
+// rad): that one is reduced exactly, and the result rounds once.
 template <insidable Out, reference R, class V>
 [[nodiscard]] constexpr auto sin_into(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R>, "units: sin takes an angle in radians - value_cast<si::radian, Out>(q) first");
-    return beman::inside::math::sin_into<Out>(q.numerical_value());
+    static_assert(detail::radians_v<R> || detail::pi_angle_v<R>,
+                  "units: sin_into takes an angle in radians or in a unit with a factor of pi");
+    if constexpr (detail::radians_v<R>)
+        return beman::inside::math::sin_into<Out>(q.numerical_value());
+    else
+        return detail::pi_trig_into<Out, false>(q);
 }
 template <insidable Out, reference R, class V>
 [[nodiscard]] constexpr auto cos_into(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R>, "units: cos takes an angle in radians - value_cast<si::radian, Out>(q) first");
-    return beman::inside::math::cos_into<Out>(q.numerical_value());
+    static_assert(detail::radians_v<R> || detail::pi_angle_v<R>,
+                  "units: cos_into takes an angle in radians or in a unit with a factor of pi");
+    if constexpr (detail::radians_v<R>)
+        return beman::inside::math::cos_into<Out>(q.numerical_value());
+    else
+        return detail::pi_trig_into<Out, true>(q);
 }
 template <insidable Out, reference R, class V>
 [[nodiscard]] constexpr auto tan_into(const quantity<R, V>& q) {
@@ -21781,6 +22213,34 @@ template <insidable Out, class X>
 template <insidable Out, class X>
 [[nodiscard]] constexpr auto atan_into(const X& x) {
     return detail::make_quantity<detail::radian_reference>(beman::inside::math::atan_into<Out>(detail::number_of(x)));
+}
+
+// Exponentials, logarithms and the hyperbolic functions of a number: an
+// inside or a dimensionless quantity (10^(L / 20 dB), log10(P / 1 mW)).
+#define BEMAN_INSIDE_UNITS_NUMBER_FN(fn)                                  \
+    template <insidable Out, class X>                                     \
+    [[nodiscard]] constexpr auto fn##_into(const X& x) {                  \
+        return beman::inside::math::fn##_into<Out>(detail::number_of(x)); \
+    }
+BEMAN_INSIDE_UNITS_NUMBER_FN(exp)
+BEMAN_INSIDE_UNITS_NUMBER_FN(exp2)
+BEMAN_INSIDE_UNITS_NUMBER_FN(log)
+BEMAN_INSIDE_UNITS_NUMBER_FN(log2)
+BEMAN_INSIDE_UNITS_NUMBER_FN(log10)
+BEMAN_INSIDE_UNITS_NUMBER_FN(sinh)
+BEMAN_INSIDE_UNITS_NUMBER_FN(cosh)
+BEMAN_INSIDE_UNITS_NUMBER_FN(tanh)
+BEMAN_INSIDE_UNITS_NUMBER_FN(asinh)
+BEMAN_INSIDE_UNITS_NUMBER_FN(acosh)
+BEMAN_INSIDE_UNITS_NUMBER_FN(atanh)
+#undef BEMAN_INSIDE_UNITS_NUMBER_FN
+template <insidable Out, imax Base, class X>
+[[nodiscard]] constexpr auto pow_base_into(const X& x) {
+    return beman::inside::math::pow_base_into<Out, Base>(detail::number_of(x));
+}
+template <insidable Out, class B, class E>
+[[nodiscard]] constexpr auto pow_into(const B& base, const E& exp) {
+    return beman::inside::math::pow_into<Out>(detail::number_of(base), detail::number_of(exp));
 }
 template <insidable Out, reference A, class VA, reference B, class VB>
     requires(!detail::sum_diagnosed<A, B>()) &&
