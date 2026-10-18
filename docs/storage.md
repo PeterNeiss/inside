@@ -1,428 +1,347 @@
-# Storage, iteration & standard-library integration
+# Storage, iteration and the standard library
 
-Each `inside` stores a single private `Raw` member. The storage type follows
-from the grid alone — no policy flag picks it; this page summarises the rules and
-shows how `inside` integrates with the standard containers and algorithms.
-For the full decision tree see [internals.md](internals.md); for which grids are
-fastest (from a fixed-point perspective) see [fixed-point.md](fixed-point.md).
+<!--
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
+
+An inside stores one private member, its **raw**. The raw's type follows from
+the grid alone; no flag chooses it. This page gives the rules, the predefined
+native formats, raw access, iteration, random sampling and the standard-library
+hooks. The full decision tree is in [internals.md](internals.md); which grids
+are fastest is in [fixed-point.md](fixed-point.md).
 
 ## Storage selection
 
-**Unsigned integer storage** — when `Lower ≥ 0` and notch is nonzero, `Raw`
-is the smallest `uint8_t`…`uint64_t` that can hold `(Upper − Lower) / Notch`.
-The value is recovered as `Raw * Notch + Lower` (offset encoding).
+The raw is the smallest native integer that numbers every point of the grid,
+except in the cases at the end of this list.
+
+| Grid | Raw | Example |
+|---|---|---|
+| Lower ≥ 0, a notch | the smallest `uint8_t` … `uint64_t` holding the index (Upper − Lower) / Notch; the value is Lower + raw·Notch | `inside<{0, 100}>`: `uint8_t` (101 values); `inside<{{0, 5}, 0.5}>`: `uint8_t` |
+| whole numbers, notch 1 | the value itself, when its type is no wider than the index's | `inside<{5, 100}>`: `uint8_t`, raw == value; `inside<{200, 300}>`: a `uint8_t` index (300 would need 16 bits) |
+| Lower < 0, notch 1 | the smallest `int8_t` … `int64_t`, holding the value: native `int` speed | `inside<{-40, 85}>`: `int8_t`; `inside<{-255, 255}>`: `int16_t` |
+| Lower < 0, a fractional notch | an unsigned offset index | `inside<{{-5, 5}, 0.5}>`: `uint8_t` |
+| more than 2⁶⁴ points | a library `wide_int` of as many 64-bit limbs as needed | `inside<{{0, 1ull << 34}, per<(1ull << 32)>}>`: 2 limbs |
+| a single point (`just<…>`, `5_ins`) | nothing: the value is in the type | `sizeof(5_ins) == 1`, 0 bytes as a `[[no_unique_address]]` member |
+| notch 0 (continuous) | an exact fraction (`beman::inside::rational`) | `inside<{{-10, 10}, 0}>`, and exact quotients |
+
+The selection uses each type's full range: `inside<{0, 255}>` is a `uint8_t`
+and `inside<{-128, 127}>` an `int8_t`, so a loop over them vectorizes with the
+same lane count as native bytes.
+
+**Grids off the notch's multiples.** Lower need not be a multiple of the notch:
+`{{0.5, 255.5}, 1}` holds 0.5, 1.5, …, 255.5 (bin centres), and
+`{{-1.1_r, 0.9_r}, 0.2_r}` holds −1.1, −0.9, …, 0.9. These always use an offset
+index, because their values are not integers. Arithmetic finds the lattice of
+the result: `c + c` on the bin centres is on the integers again, and the
+product of two half-offset grids has notch 1/2. Rounding on them is in value
+space ([arithmetic.md](arithmetic.md#rounding)).
 
 ```cpp
-using pct  = inside<{0, 100}>;          // Raw: uint8_t  (101 values)
-using big  = inside<{0, 100'000}>;      // Raw: uint32_t (100 001 values)
-using step = inside<{{0, 5}, 0.5}>;     // Raw: uint8_t  (10 steps)
+using centres = inside<{{0.5, 255.5}, 1}>;
+centres c = 3.5;               // 3 or 4 would be a rounding_error
+auto    s = c + c;             // inside<{{1, 511}, 1}>: on the integers
 ```
 
-**Whole numbers store the value** where that costs no width: with `Notch == 1`
-and integer limits, `Raw` is the value itself when its type is no wider than
-the index's. From `Lower == 0` index and value coincide; above 0 the value
-wins until it needs a wider type:
+**Wide raws** behave like any other: compare, `+ - * %`, negate, every
+policy and hook, `sum`, print, parse, hash and sample, all exact. `+=` and a
+same-notch store are a raw add of the limbs. Their values can outgrow the
+64-bit fraction, so a wide inside has no implicit `rational` conversion: read
+it with `numerator()`/`denominator()` (wide integers) or `to<T>()`. A quotient
+`a / b` is an exact fraction and reports `errc::overflow` if it does not fit
+one. [`wei.cpp`](../examples/wei.cpp) (10²⁷ points of 10⁻¹⁸ ETH) and
+[`solar_system.cpp`](../examples/solar_system.cpp) (nanometres across ±10¹³ m)
+use wide raws, as quantities.
 
-```cpp
-using reg  = inside<{5, 100}>;          // Raw: uint8_t, raw() == value (5..100)
-using port = inside<{1024, 65535}>;     // Raw: uint16_t, raw() == value
-using year = inside<{200, 300}>;        // Raw: uint8_t index (300 needs 16 bits)
-```
-
-**Wide integer storage** — a grid with more than 2⁶⁴ slots stores its index
-in a library `wide_int` of as many 64-bit limbs as the slot count needs, so
-the value stays exact and arithmetic on it stays total (no `expected`):
-
-```cpp
-using fine = inside<{{0, 1ull << 34}, per<(1ull << 32)>}>;
-                                        // Raw: 2-limb wide_int (2⁶⁶ + 1 slots)
-fine a = 1.5;
-auto s = a + a;                         // exact; a 2-limb index again
-```
-
-Such an inside compares, adds, subtracts, multiplies, negates, takes `%`,
-assigns (under every policy and `on_clamp` / `on_wrap` action), sums, prints,
-parses, hashes and samples exactly; `+=`, `-=` and same-notch assignments
-are a raw add of the limbs. Its values can outgrow the 64-bit exact
-fraction, so it has no implicit conversion to it — compare it, read it
-exactly with `numerator()` / `denominator()` (wide integers), or
-approximately with `to<T>()`. A quotient `a / b` is an exact fraction and reports
-`errc::overflow` when it does not fit one (a same-notch Q-format quotient
-under `snap` stays on the Q-format grid, computed in a wide work type when
-`raw·N` passes 64 bits). `parse` reads values past the
-64-bit fraction in decimal (`digits[.digits][e±n]`, or `n/d`).
-
-A grid written with two limits derives its notch (the coarsest `1/k` keeping
-integers and both limits on the grid), and storage follows from that:
-`inside<{0.5, 10}>` has notch 1/2 and 20 values in a `uint8_t`;
-`inside<{just<3, 10>, just<13, 16>}>` has notch 1/80 and 42 values.
-
-**Signed integer storage** — when `Lower < 0` and `Notch == 1`, `Raw` is the
-smallest `int8_t`…`int64_t` that fits the interval. `Raw` stores the value
-directly (`Raw == value`) with no offset, matching native `int` performance
-exactly.
-
-```cpp
-using temp = inside<{-40, 85}>;          // Raw: int8_t  (the value)
-using pos  = inside<{-100'000, 100'000}>;// Raw: int32_t (the value)
-using diff = inside<{-255, 255}>;        // Raw: int16_t (the value)
-```
-
-Grids with `Lower < 0` and a fractional notch still use unsigned offset
-encoding:
-
-```cpp
-using fstep = inside<{{-5, 5}, 0.5}>;    // Raw: uint8_t (20 steps, offset encoding)
-```
-
-**Grids off the notch's multiples** — Lower need not be a multiple of the
-notch: the values are Lower, Lower + Notch, …, Upper. Such a grid always uses
-offset encoding, even with notch 1, because its values are not integers:
-
-```cpp
-using centres = inside<{{0.5, 255.5}, 1}>;     // Raw: uint8_t, 0.5 … 255.5 (bin centres)
-using tenths  = inside<{{-1.1_r, 0.9_r}, 0.2_r}>; // −1.1, −0.9, …, 0.9 (decimal steps)
-centres c = 3.5;                               // 3 or 4 would be rounding_error
-auto    s = c + c;                             // inside<{{1, 511}, 1}>: on the integers
-```
-
-Arithmetic infers the lattice the result lies on: `c + c` above is
-anchored again, a product of two half-offset grids has notch 1/2
-(`(0.5 + i)(0.5 + j) = 0.25 + (i + j)/2 + ij`). Values round in value space
-(see [policies.md](policies.md#rounding-modes)); because 0 is not a value,
-truncating a small positive number goes down to the point below 0.
-
-**Exact-fraction storage** — when `Notch == 0`, `Raw` becomes an exact
-fraction (`beman::inside::rational`). This happens for grids
-with `Notch == 0` and exact division results (except division by a point,
-which keeps the dividend's lattice scaled: `x / 5_ins` has notch `N/5`).
-Read the value back out with `numerator()` / `denominator()`.
-
-**No storage for a point** — a single-value grid (`Lower == Upper`: `just<…>`,
-`5_ins`, `math::pi`) holds its value in the type, so its raw is
-empty: `sizeof(5_ins) == 1` (the C++ minimum for a complete object), and a
-point stored as a `[[no_unique_address]]` member of your own struct takes no
-space at all. An integer-valued point counts as integer storage, so it takes
-the native integer paths (`a % 5_ins`, `a / 5_ins` under `snap`).
+**A point** costs no storage, and an integer point takes the native integer
+paths (`a % 5_ins`, `a / 5_ins` under `snap`):
 
 ```cpp
 struct voice {
-  [[no_unique_address]] decltype(just<440>) pitch;   // 0 bytes
-  std::uint32_t frames;
+    [[no_unique_address]] decltype(just<440>) pitch;   // 0 bytes
+    std::uint32_t frames;
 };
 static_assert(sizeof(voice) == 4);
 ```
 
+**A continuous grid** holds any fraction in its range, exactly, but is larger
+and slower than an integer raw. It comes from a notch of 0 or from an exact
+quotient (except division by a point, which scales the dividend's lattice):
+
 ```cpp
-using ratio = inside<{{-10, 10}, 0}>;    // Raw: exact-fraction representation
-ratio f = inside<{2, 2}>{2} / just<3>;   // exact 2/3
-f.numerator();                          // 2  (denominator() == 3)
-
 using lvl = inside<{1, 255}>;
-auto q = lvl{7} / lvl{3};               // inside with an exact-fraction raw, exactly 7/3
-                                        // (a plain value: the divisor cannot be zero)
+auto q = lvl{7} / lvl{3};       // exactly 7/3, and plain: the divisor cannot be 0
+q.numerator();                  // 7 (denominator() == 3)
 ```
-
-Exact-fraction storage is exact (no floating-point rounding) but larger and
-slower than integer storage. The library picks the most efficient representation
-for each grid.
 
 ### Grids past 64 bits (C++26)
 
-Under C++23 a grid's limits and notch are 64-bit fractions: a limit past
-2⁶⁴, or a notch finer than about 2⁻⁶³, does not compile. Under C++26 with
-static reflection they have **no size limit**: the library interns large grid
-numbers in static storage (`std::define_static_array`), so equal grids stay the
-same type however they were spelled.
+Under C++23 a grid's limits and notch are 64-bit fractions: a limit past 2⁶⁴,
+or a notch finer than about 2⁻⁶³, does not compile. Under C++26 with static
+reflection they have **no size limit**. The library interns large grid numbers
+in static storage (`std::define_static_array`), so equal grids are the same
+type however they are spelled.
 
 ```cpp
 using huge = inside<{0, 0x1p100}>;        // {0, 2¹⁰⁰}: a 101-bit index
-using fine = inside<{{0, 1}, 0x1p-80}>;    // a 2⁻⁸⁰ notch: 2⁸⁰ + 1 slots
-using sq   = inside<(grid_of<huge> * grid_of<huge>).value()>;   // {0, 2²⁰⁰}
-
-huge h = 1e30;          // 1000000000000000019884624838656: a double is exact
-auto p = h * h;         // the result grid reaches 2²⁰⁰; exact, no expected
-auto q = uint64{~0ull} + uint64{~0ull};     // 2⁶⁵ − 2 needs a big upper bound
+using fine = inside<{{0, 1}, 0x1p-80}>;   // notch 2⁻⁸⁰: 2⁸⁰ + 1 points
+huge h = 1e30;                            // 1000000000000000019884624838656: the double, exactly
+auto p = h * h;                           // a grid up to 2²⁰⁰; exact, no expected
+auto q = uint64{~0ull} + uint64{~0ull};   // 2⁶⁵ − 2 needs a big upper limit
 ```
 
-The `_g` literal spells a grid number exactly, from decimal digits, a point
-and an `e±n` exponent: `inside<{0, 1267650600228229401496703205376_g}>` is the
-same type as `inside<{0, 0x1p100}>`, and `inside<{{0, 1}, 1e-30_g}>` has an
-exact decimal notch of 10⁻³⁰. A floating-point limit or notch is taken as its
-exact binary value, and grid arithmetic builds the rest. (`per<D>`,
-`just<N, D>` and the `_r` / `_ins` literals stay 64-bit; under C++23 `_g` is
-64-bit too and rejects larger values at compile time.)
+The `_g` literal spells a grid number exactly from decimal digits, a point and
+an exponent: `inside<{0, 1267650600228229401496703205376_g}>` is
+`inside<{0, 0x1p100}>`, and `inside<{{0, 1}, 1e-30_g}>` has an exact decimal
+notch of 10⁻³⁰. Under C++23 `_g` is 64-bit and rejects larger values.
+`per<D>`, `just<N, D>`, `_r` and `_ins` stay 64-bit in both modes.
 
-Grid helpers such as `grid_of<B>.slot_count()` form big values; call them in a
-constant expression (`constexpr auto n = grid_of<B>.slot_count();`) — at
-runtime a result past 64 bits reports `errc::overflow`.
+Grid numbers past 64 bits exist only at compile time; the raw of such an
+inside is a fixed-width integer sized from them. A grid can hold huge values
+in few points (`{2¹⁰⁰, 2¹⁰⁰ + 10}` is a `uint8_t`). The math functions take and
+return such insides, correctly rounded. Call grid helpers that form big
+values, like `grid_of<B>.slot_count()`, in a constant expression; at run time a
+result past 64 bits reports `errc::overflow`.
 
-Such an inside supports everything a wide-index inside does (above) — values
-past 64 bits may even sit on a grid with few slots, like
-`{2¹⁰⁰, 2¹⁰⁰ + 10}` in a `uint8_t`. The math functions (`sin`, `sqrt`, …)
-take and return such insides too, correctly rounded: `log` of a value near
-2³⁰⁰, or `sin` onto a 2⁻¹⁰⁰ grid ([math.md](math.md)). The big grid numbers
-themselves (limits and notch) exist only at compile time; runtime arithmetic
-on such an inside uses fixed-width integers sized from them.
-
-A continuous grid (notch 0) past 64 bits stores its value as an exact
-fraction of fixed-width integers. A bounded one
-([arithmetic.md](arithmetic.md#bounded-continuous-grids)) sizes them from its
-denominator bound, so every value fits; a quotient of such values keeps its
-exact value, is a plain value, and prints it:
+A continuous grid past 64 bits stores an exact fraction of fixed-width
+integers. A bounded one ([arithmetic.md](arithmetic.md#bounded-continuous-grids))
+sizes them from its denominator bound, so its quotients are plain values:
 
 ```cpp
 using length = inside<{{1e-41_g, 1e27_g}, 1e-41_g}, round_nearest>;
-auto ratio = universe / planck;   // exactly 17600…000/323251, den ≤ 10^109
-math::log10_into<decade>(ratio);  // 61.7359724…, rounded once
+using decade = inside<{{-100, 100}, per<1 << 20>}, round_nearest>;
+const length planck   = just<1.616255e-35_g>;
+const length universe = just<8.8e26_g>;
+auto ratio = universe / planck;           // exactly 1760…0/323251, a plain value
+math::log10_into<decade>(ratio);          // 61.73597…, rounded once
 ```
 
-An unbounded one sizes them from its limits; a sum, product or quotient whose
-fraction outgrows them reports `errc::overflow`, as one past the 64-bit
-fraction does on a 64-bit grid.
+An unbounded one sizes them from its limits, and reports `errc::overflow`
+when a result outgrows them. [`planck_to_cosmos.cpp`](../examples/planck_to_cosmos.cpp)
+runs this example with lengths in metres.
 
-Requirements and switches:
+Switches:
 
-- C++26 with static reflection: GCC 16 with `-freflection`. The CMake option
-  `BEMAN_INSIDE_REFLECTION` (default `ON`) adds the flag under C++26; the
-  `gcc16-debug` / `gcc16-release` presets build that way.
-- The headers detect reflection (`BEMAN_INSIDE_BIG_GRIDS`); define it to `0`
+- C++26 with static reflection means GCC 16 with `-freflection`. The CMake
+  option `BEMAN_INSIDE_REFLECTION` (default `ON`) adds the flag; the
+  `gcc16-debug` and `gcc16-release` presets build that way.
+- The headers detect reflection as `BEMAN_INSIDE_BIG_GRIDS`. Define it to `0`
   to keep 64-bit grids on a C++26 compiler.
-- The two modes give `grid` a different layout, so they live in different
-  inline namespaces: mixing C++23 and C++26 translation units that pass
-  insides between them fails at link time instead of misbehaving.
-- Big grids cost compile time (about 4–10% in the test suite); small grids
-  compile and run exactly as under C++23.
+- The two modes give `grid` different layouts, in different inline namespaces,
+  so mixing C++23 and C++26 translation units that pass insides fails at link
+  time instead of misbehaving.
+- Big grids cost compile time; small grids compile and run as under C++23.
 
 ## Why no representation flags
 
-Storage is not a policy: the same grid always has the same raw, so two
-insides on one grid share their encoding and every result type deduces its
-own. Every former flag only changed the layout, never a value:
-- a notched grid's index is already exact (past 2⁶⁴ slots a wide index);
-- value storage happens where it is free;
-- for a fixed wire layout, write `b.to<std::uint16_t>()` into the field
-  (checked) and read it back with `B{field}` or `B::try_make(field)`.
+Storage is not a policy: one grid always has one raw, so two insides on a
+grid share their encoding, and every result type finds its own. For a fixed
+wire layout, write `b.to<std::uint16_t>()` into the field (checked) and read
+it back with `B{field}` or `B::try_make(field)`
+([`storage.cpp`](../examples/storage.cpp)).
 
-A result grid finer than the `uint64` index space deduces a wide integer
-index, keeping the result exact. See
-[`examples/storage.cpp`](../examples/storage.cpp); [`examples/wei.cpp`](../examples/wei.cpp)
-and [`examples/solar_system.cpp`](../examples/solar_system.cpp) use wide raws.
+## Predefined native formats
 
-> **Full range and SIMD width.** The smallest-type selection uses each raw
-> type's full range: `inside<{0, 255}>` is a **uint8** and `inside<{-128, 127}>`
-> an **int8**, so SIMD-width-sensitive loops run at the same lane count as
-> native `uint8_t` / `int8_t`.
+`<beman/inside/formats.hpp>` names grids that fill a native width, so you can
+write `uint8`, `unorm16` or `q8_8` instead of the grid:
 
-## Predefined hardware formats
+| Types | Range, notch | Raw | Policy |
+|---|---|---|---|
+| `uint8`, `uint16`, `uint32`, `uint64` | [0, 2ᴺ − 1], 1 | `uintN_t` | checked |
+| `int8`, `int16`, `int32` | [−2ᴺ⁻¹, 2ᴺ⁻¹ − 1], 1 | `intN_t` | checked |
+| `int64` | [−(2⁶³ − 1), 2⁶³ − 1], 1 | `int64_t` | checked |
+| `unorm8`, `unorm16`, `unorm32` | [0, 1], 1/(2ᴺ − 1) | `uintN_t` | `round_nearest` |
+| `q4_4`, `q8_8`, `q16_16` | [0, 2ᴹ − 2⁻ᴹ], 2⁻ᴹ: every bit pattern | `uint8_t`, `uint16_t`, `uint32_t` | `round_nearest` |
 
-`#include <beman/inside/formats.hpp>` for a curated set of `beman::inside::` aliases that map to
-native byte widths — so you can write `beman::inside::uint8` / `beman::inside::unorm16` / `beman::inside::q8_8`
-instead of spelling the grid and policy by hand.
-
-| Type | Range / notch | Storage |
-|---|---|---|
-| `uint8` `uint16` `uint32` `uint64` | `[0, 255]` … `[0, 2⁶⁴−1]` | uint8 / uint16 / uint32 / uint64 |
-| `int8` `int16` `int32` | `[−128, 127]` … `[−2³¹, 2³¹−1]` | int8 / int16 / int32 |
-| `int64` | `[−(2⁶³−1), 2⁶³−1]` | int64 |
-| `unorm8` `unorm16` `unorm32` | `[0,1]`, notch 1/255, 1/65535, 1/(2³²−1) | uint8 / uint16 / uint32 |
-| `q4_4` `q8_8` `q16_16` | `[0, 16 − 1/16]`/`[0, 256 − 1/256]`/`[0, 65536 − 1/65536]` (every bit pattern), notch 1/16, 1/256, 1/65536 | uint8 / uint16 / uint32 |
-
-Every alias fills its native type's range: `uint8` is `[0, 255]` and `unorm8`
-uses notch 1/255 (reaching 1.0 exactly). `int64` stays symmetric because the
-internal value path is `imax` and −2⁶³ has no negation in int64. Q-formats keep
-their full natural range and power-of-two notches.
-
-`uint64` reaches past int64, so it has no implicit `operator imax`: read it with
-`to<std::uint64_t>()`. A difference of two `uint64`s spans 2⁶⁵ values and gets a
-wide integer index; a sum's upper bound passes the 64-bit grid numbers, so it
-needs [C++26 big grids](#grids-past-64-bits-c26).
-
-**Performance.** Multiplication is unaffected by the (non-power-of-two) UNORM
-notches — it operates on raw notch indices, with the denominator folded into
-the compile-time result grid. Power-of-two notches give only a negligible
-shift-vs-constant-multiply edge on division/construction. The integer types are
-direct storage (native-speed). Behavior is composable: these default to
-`checked`; for register-style `wrap`/`clamp` declare your own variant, e.g.
-`inside<{0,255}, wrap>`.
+- `unorm8`'s notch 1/255 reaches 1.0 exactly. A product works on the raw
+  indices, with the odd denominator folded into the result grid at compile
+  time, so non-power-of-two notches cost nothing there.
+- `int64` is symmetric: the internal value path is `imax`, and −2⁶³ has no
+  negation in `int64`.
+- `uint64` passes `int64`, so it has no implicit `imax`; read it with
+  `to<std::uint64_t>()`. A difference of two `uint64`s spans 2⁶⁵ values and
+  gets a wide raw; a sum needs [C++26 big grids](#grids-past-64-bits-c26).
+- For register-style wrapping, declare your own: `inside<{0, 255}, wrap>`.
 
 ### Counters
 
-`formats.hpp` also names the two counter shapes, where the policy says what
-`++` does at the ceiling:
-
-| Type | Definition | At the ceiling |
+| Type | Is | At the ceiling |
 |---|---|---|
-| `clamp_counter<Max>` | `inside<{0, Max}, clamp>` | `++` stays at `Max`, `--` stays at 0 (a saturating tally) |
-| `wrap_counter<Max>` | `inside<{0, Max}, wrap>` | `++` wraps `Max` → 0 (sequence numbers, epochs) |
+| `clamp_counter<Max>` | `inside<{0, Max}, clamp>` | `++` stays at Max, `--` stays at 0: a saturating tally |
+| `wrap_counter<Max>` | `inside<{0, Max}, wrap>` | `++` wraps Max → 0: sequence numbers, epochs |
 
 ```cpp
-beman::inside::wrap_counter<255> seq{255};
-++seq;                                  // seq == 0
+wrap_counter<255> seq{255};
+++seq;                       // 0
 ```
 
-## Raw storage access
+## Raw access
 
-`Raw` is private. The supported access patterns are:
+The raw is private. The supported ways in and out:
 
-- **`b.raw()`** — a const reference to the storage-layout raw value, under
-  every policy (read-only C interop: `&std::as_const(b).raw()`).
-- **`B::from_raw(raw)`** — static factory constructing an inside directly from a
-  storage-layout raw value, with no validation (same trust contract as
-  `unsafe`). The supported entry point for raw-level construction in tests,
-  fast paths, and same-grid raw transfer.
-- **Writes through `b.raw()`** — the mutable overload exists only under the
-  `unsafe` policy (which opts out of all runtime checks); elsewhere it is a
-  compile error, because the library assumes the raw always encodes a valid
-  grid value. Prefer `B::from_raw(raw)` for trusted raw construction.
+- **`b.raw()`**: a const reference to the raw, under every policy (for C
+  interop, `&std::as_const(b).raw()`).
+- **`B::from_raw(raw)`**: build an inside from a raw, without validation (the
+  `unsafe` contract). The entry point for trusted raw transfer.
+- **Writing through `b.raw()`**: only under `unsafe`. Elsewhere it does not
+  compile, because the library relies on the raw always being a valid point.
 
-## Iteration: `inside_range`
+A quantity stores its number and nothing else, so `sizeof(q)` is the size of
+its inside. It has no `raw()` of its own: go through `q.numerical_value().raw()`.
+A unit conversion keeps the raw: km → mm on `inside<{0, 10}>` is the same
+`uint8_t`, read on a rescaled grid.
 
-`inside_range` provides range-based for loop support:
+## Iteration
 
-```cpp
-// Iterate over all values in the grid [0, 9].
-for (auto i : inside_range<{0, 9}>{})
-  std::cout << i;  // 0 1 2 3 4 5 6 7 8 9
+### `inside_range` and `values<T>`
 
-// Wrapping iteration starting at 5 (visits all values once).
-for (auto i : inside_range<{0, 9}>{5})
-  std::cout << i;  // 5 6 7 8 9 0 1 2 3 4
-```
-
-The yielded values are insides, not raw integers, so they slot directly into
-`vec[i]` via the implicit `operator imax()` (the standard imax → size_t
-conversion does the rest — see
-[conversions.md](conversions.md#implicit-operator-conversions-on-inside)):
+`inside_range<G>` walks every point of a grid, from Lower or from a start
+point, wrapping once past Upper. `values<T>` is the same range named by a
+type. Both yield insides, so `vec[i]` works without a cast:
 
 ```cpp
-std::vector<int> bins(10);
-for (auto i : inside_range<{0, 9}>{})
-  bins[i] = some_value(i);   // no .as<>() needed
-```
+for (auto i : inside_range<{0, 9}>{})  std::cout << i;    // 0 1 2 … 9
+for (auto i : inside_range<{0, 9}>{5}) std::cout << i;    // 5 6 7 8 9 0 1 2 3 4: a ring in age order
 
-`values<T>` is the same range spelled by a type: every value of `T`, Lower to
-Upper. It needs a notch, and a cursor has none (its grid ends past `T`'s
-Upper):
-
-```cpp
 using bin = inside<{0, 9}>;
-for (bin b : values<bin>) { ... }
+std::vector<int> bins(10);
+for (bin b : values<bin>) bins[b] = 0;
 auto it = std::ranges::find_if(values<bin>, is_full);
 ```
 
-`inside_range` is a random-access, sized range, so the standard view adaptors
-and algorithms work on it directly:
+Both are random-access sized ranges, so views and algorithms compose on them,
+and `[i]`, `size()` and `back()` cost nothing:
 
 ```cpp
 inside_range<{0, 9}> r;
-for (auto i : std::views::reverse(r))      { ... }  // 9 8 7 … 0
-for (auto i : r | std::views::stride(3))   { ... }  // 0 3 6 9
-for (auto [n, v] : std::views::enumerate(r)) { ... } // (0,0) (1,1) …
+for (auto i : std::views::reverse(r)) { /* … */ }              // 9 8 … 0
+for (auto i : r | std::views::stride(3)) { /* … */ }           // 0 3 6 9
+auto first = std::ranges::partition_point(values<bin>, below_threshold);   // bisects: O(log n)
 ```
 
-`std::views::stride` and `std::views::enumerate` are C++23; libc++ 20 does not
-ship them yet. A [`cursor<T, Step>`](arithmetic.md#stepping-loops-cursort-step)
-steps by more than one notch with any standard library.
+`std::views::stride` and `std::views::enumerate` are C++23 library features
+that some libc++ versions still lack; `cursor` (below) steps by more than one
+notch with any standard library.
+
+### Stepping loops: `cursor<T, Step>`
+
+`for (T t = lo; t <= hi; t += step)` needs a value one step past `hi`, which
+`T` cannot hold, so the last increment reports out of range. A cursor can hold
+it: `cursor<T, Step>` steps through `T`'s range by `Step`, one step past
+Upper. It starts at `T`'s Lower, and `end(t)` is the value past the last:
+
+```cpp
+using time_t = inside<{{-4, 4}, per<1024>}, round_nearest>;
+using amp_t  = inside<{{0, 100}, per<16384>}, round_nearest>;
+for (cursor<time_t, per<4>> t; t != end(t); ++t)          // −4, −3.75, …, 4
+    std::cout << t << " " << math::exp_into<amp_t>(t) << "\n";
+for (cursor<time_t, 0.25_r> t = -2_ins; t <= 2_ins; ++t)  // any start, the classic test
+    /* … */;
+```
+
+- A cursor is an inside on `{{Lower, Upper + Step}, Step}`: math, printing,
+  comparison and assignment back to `T` work on it. It keeps `T`'s checks and
+  rounding, so `--` below Lower and `++` past the end report like any store.
+- `Step` defaults to `T`'s notch. It must be positive, divide `T`'s range and
+  be a whole number of `T`'s notches, all checked at compile time.
+- A default-constructed cursor is `T`'s Lower (a plain inside is left
+  uninitialized). `t != end(t)` is one integer compare.
+- A cursor is its own bidirectional iterator, and `end(t)` its sentinel. `*t`
+  is the value as a `T`, so range algorithms take a cursor directly:
+
+  ```cpp
+  cursor<time_t, per<4>> t;
+  for (time_t x : std::ranges::subrange(t, end(t))) { /* … */ }
+  auto hit = std::ranges::find(t, end(t), 1.5_ins);
+  ```
+
+  It is not random access: `t - u` is arithmetic, not a distance.
+
+### Iterating quantities
+
+`values` and `cursor` take insides only. For quantities, loop over the
+number's grid and attach the unit:
+
+```cpp
+using db_t = quantity<dB, inside<{{-24, 12}, per<2>}, round_nearest>>;   // dB: a unit of your own
+for (cursor<db_t::rep, 3> n; n != end(n); ++n) {
+    const db_t level{*n};                                                 // −24 dB, −21 dB, …, 12 dB
+    /* … */
+}
+```
+
+[`decibels.cpp`](../examples/decibels.cpp) and
+[`audio_math.cpp`](../examples/audio_math.cpp) use this form.
 
 ## Random sampling: `uniform<B>(rng)`
 
-`#include <beman/inside/random.hpp>` (opt-in: it pulls `<random>`) for
-`uniform<B>(rng)`, which draws a `B` uniformly from the grid's slots — `Lower`,
-`Lower + Notch`, …, `Upper` — for any storage and any standard random engine:
+`<beman/inside/random.hpp>` (opt-in: it includes `<random>`) adds
+`uniform<B>(rng)`, which draws one of B's points uniformly, for any raw and any
+standard engine:
 
 ```cpp
 std::mt19937 rng{42};
-auto die  = uniform<inside<{1, 6}>>(rng);                   // 1..6
-auto gain = uniform<inside<{{0, 1}, per<256>}>>(rng);       // one of 257 slots in [0, 1]
+auto die  = uniform<inside<{1, 6}>>(rng);                // 1 … 6
+auto gain = uniform<inside<{{0, 1}, per<256>}>>(rng);    // one of the 257 points of [0, 1]
 ```
 
-A continuous grid (notch 0) has no slots and is a compile error. The single header
-drops this part in freestanding and `BEMAN_INSIDE_MATH_NO_FP` builds.
+A continuous grid has no points to draw from: a compile error. The single
+header leaves this header out of freestanding and `BEMAN_INSIDE_MATH_NO_FP`
+builds.
 
-## Compile-time constants
+## `min`, `max`, `midpoint`
 
-`just<V>` and the `_ins` literal are point insides: their value
-lives in the type and their raw is empty ([above](#storage-selection)). When to
-use which: [conversions.md](conversions.md#idiom-writing-literal-values-into-insides).
+`arithmetic.hpp` has ADL-found `min`, `max` and `midpoint`, so generic code
+that calls them unqualified works on insides. On one type they return that
+type; on two grids, `common_inside_t<L, R>` (also `std::common_type_t<L, R>`):
+the hull of both ranges with the gcd notch, which holds every value of both.
 
-## `std`-vocabulary helpers
-
-`beman/inside/arithmetic.hpp` provides ADL-found `beman::inside::min`, `beman::inside::max`, and
-`beman::inside::midpoint` (alongside `lerp` / `dot` / `cross`) so insides drop into generic
-code that calls them unqualified. `min` / `max` on two values of the same type
-return that type. On two different grids they return `common_inside_t<L, R>`:
-the interval hull with the gcd notch, which holds every value of both exactly
-(the same type `std::common_type_t<L, R>` names). `midpoint` takes mixed grids
-too.
-`midpoint` returns the **exact** average on a refined grid — the true midpoint
-of two grid points need not land on the grid, so unlike `std::midpoint` on
-integers it neither rounds nor overflows. The refined grid has half the notch
-and stays integer-backed, so `midpoint` costs about the same as `(a + b) / 2`.
+`midpoint` returns the **exact** average, on a grid with half the notch. Unlike
+`std::midpoint` on integers it neither rounds nor overflows, and it costs
+about the same as `(a + b) / 2`:
 
 ```cpp
 inside<{0, 100}> a = 30, b = 71;
-auto lo  = beman::inside::min(a, b);        // 30
-auto mid = beman::inside::midpoint(a, b);   // exactly 50.5 (notch ½ grid), never 50
+auto lo  = min(a, b);           // 30
+auto mid = midpoint(a, b);      // exactly 50.5
 ```
 
-There is no `beman::inside::clamp` free function: the name belongs to the `clamp` policy
-flag. To clamp a value into a grid, use the `clamp` policy or
-`clamp_cast<Target>` (see [conversions.md](conversions.md)).
+There is no `clamp` function: the name is the policy flag. To clamp a value,
+use the policy or `clamp_cast` ([conversions.md](conversions.md#free-function-casts)).
 
-## `std` integration
+## `std::hash` and `std::numeric_limits`
 
-`inside` specialises `std::hash` (works in `unordered_set` / `unordered_map`)
-and `std::numeric_limits`, so `numeric_limits<inside<{0,100}>>::max()`
-returns the upper bound, and `is_signed` / `is_integer` / `is_bounded` etc.
-all report correctly. Include `beman/inside/numeric_limits.hpp` to pull both in.
+`<beman/inside/numeric_limits.hpp>` specialises `std::hash` (for
+`unordered_set` and `unordered_map`) and `std::numeric_limits`, whose `min()`,
+`max()`, `is_signed`, `is_integer` and `is_bounded` describe the grid:
 
 ```cpp
 #include <beman/inside/numeric_limits.hpp>
 
 std::unordered_set<inside<{0, 9}>> s;
 s.insert(inside<{0, 9}>{3});
-
 static_assert(std::numeric_limits<inside<{-40, 60}>>::is_signed);
-static_assert(std::numeric_limits<inside<{0,  100}>>::max() == 100);
+static_assert(std::numeric_limits<inside<{0, 100}>>::max() == 100);
 ```
+
+A quantity has neither: hash or bound its `numerical_value()`.
 
 ## STL algorithms
 
-`inside` types work with standard algorithms out of the box — both
-`std::ranges` and classic iterator-based forms:
+Insides and quantities work with the standard algorithms, both `std::ranges`
+and the iterator forms. Comparisons take a path as fast as native integer
+compares:
 
 ```cpp
-#include <algorithm>
-#include <numeric>
-#include <vector>
-#include <beman/inside/inside.hpp>
-using namespace beman::inside;
-
 using celsius = inside<{{-40, 60}, 0.5}, round_nearest>;
-using score   = inside<{0, 1000}>;
-
 std::vector<celsius> temps = {21.5, -5.0, 37.0, 0.0, 15.5};
-
-// Ranges algorithms
 std::ranges::sort(temps);
-auto it = std::ranges::find(temps, celsius{0.0});
-auto hot = std::ranges::count_if(temps, [](celsius c) { return c > 30; });
+auto hot      = std::ranges::count_if(temps, [](celsius c) { return c > 30; });
 auto [lo, hi] = std::ranges::minmax_element(temps);
-
-// Classic STL algorithms
-std::sort(temps.begin(), temps.end(), std::greater<>{});
 std::nth_element(temps.begin(), temps.begin() + 2, temps.end());
-
-// Accumulate into a wider type to avoid overflow.
-using wide = inside<{0, 100'000}>;
-std::vector<score> scores = {100, 250, 500};
-auto total = std::reduce    (scores.begin(), scores.end(), wide{0}, std::plus<>{});
-auto sum   = std::accumulate(scores.begin(), scores.end(), wide{0}, std::plus<>{});
 ```
 
-Comparison-heavy algorithms (sort, find, min/max, lower_bound) use an
-optimised comparison path that matches native integer performance — no
-runtime overhead versus raw `int16_t` or `uint8_t`. See
-[examples/algorithms.cpp](../examples/algorithms.cpp) for a full pass over
-common STL / ranges operations.
+To add a range, use [`sum<Target>`](arithmetic.md#folds-and-sums), which checks
+the total once, rather than `std::reduce` or `std::accumulate` into a wider
+type. [`algorithms.cpp`](../examples/algorithms.cpp) runs the common STL and
+ranges operations on insides.

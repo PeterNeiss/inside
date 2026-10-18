@@ -1,581 +1,396 @@
 # Arithmetic
 
-Binary operations compute the result grid at compile time:
+<!--
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
+
+Every operation computes its **result grid** at compile time, wide enough for
+every value it can produce. The result is a new inside type, so arithmetic
+itself never goes out of range. A value can only fail to fit when it is stored
+back into a narrower type, and there the type's policy decides
+([policies.md](policies.md)).
 
 ```cpp
 using lvl = inside<{0, 255}>;
 lvl a{100}, b{200};
 
-auto sum  = a + b;   // inside<{0, 510}>
-auto diff = a - b;   // inside<{-255, 255}>
-auto prod = a * b;   // inside<{0, 65025}>
-auto quot = a / b;   // std::expected<inside<{rational}>, errc>
+auto sum  = a + b;   // inside<{0, 510}>: 300
+auto diff = a - b;   // inside<{-255, 255}>: -100
+auto prod = a * b;   // inside<{0, 65025}>: 20000
+auto quot = a / b;   // std::expected (b's grid holds 0): the exact 0.5
 ```
 
-Division is rich enough to warrant its [own section](#division) below — `inside / inside` picks between four code paths at compile time, and its `std::expected` result has two distinct failure causes.
+On this page: [scalars](#scalars-need-a-grid) · [division](#division) ·
+[rounding](#rounding) · [rounding straight into a type](#rounding-straight-into-a-type-mul_into-and-div_into) ·
+[modulo and divmod](#modulo-and-divmod) · [folds and sums](#folds-and-sums) ·
+[vector helpers](#vector-helpers-dot-cross-lerp) ·
+[compound assignment](#compound-assignment) · [`std::expected`](#when-the-result-is-stdexpected) ·
+[quantities](#arithmetic-on-quantities).
 
-The free functions `add`, `sub`, `mul`, `div`, `mod` and `divmod` take one of three
-trailing forms:
+## The free functions
 
-- `op(l, r [, policy [, action]])` — a named convenience policy
-  (`beman::inside::rounded_toward_zero`, `beman::inside::rounded_nearest`, `beman::inside::clamped`,
-  `beman::inside::wrapped`, or any `policy<F>`), optionally followed by one action;
-- `op(l, r, on_*(…), …)` — one or more `on_*` action factories (at least one
-  `on_overflow`); the policy is the flags those actions imply;
-- `op(l, r, ec [, action])` — a `beman::inside::errc&` that receives the error.
+`add`, `sub`, `mul`, `div`, `mod` and `divmod` are the operators as functions,
+with one of three trailing forms:
 
-See
-[policies.md § Callbacks](policies.md#callbacks-on_wrap--on_clamp--on_overflow--on_error)
-for the action API. Example — recovering from divide-by-zero:
+| Form | Meaning |
+|---|---|
+| `op(l, r, policy)` | a named policy (`rounded_floor`, `clamped`, … or `make_policy<F>()`), optionally followed by one hook |
+| `op(l, r, on_overflow(f), …)` | one or more hooks ([policies.md](policies.md#hooks-on_wrap-on_clamp-on_error-on_overflow)) |
+| `op(l, r, ec)` | an `errc&` that receives the error |
 
 ```cpp
-auto q = div(x, y, on_overflow([&](auto& res, errc) {
-    res = std::remove_cvref_t<decltype(res)>{0};
+auto q = div(x, y, on_overflow([&](auto& result, errc) {
+    result = std::remove_cvref_t<decltype(result)>{0};      // a division by zero gives 0
 }));
 ```
 
-## Division
+## Scalars need a grid
 
-`inside / inside` takes one of **four code paths**, chosen at compile time from
-the operand grids and whether `snap` is in effect. It returns a plain `inside`
-when the divisor's grid excludes zero and the quotient provably fits, otherwise
-`std::expected` ([below](#when-the-result-is-stdexpected-and-when-it-isnt)).
-
-### The four paths
-
-| Path | Triggered when… | Algorithm | Result storage | Result interval |
-|---|---|---|---|---|
-| **Q-format fast** | `snap` is set **and** both operands share the same Q-format grid (notch `1/N` with `N ≥ 2`, `Lower == 0`) | `(lhs.Raw × N) ÷ rhs.Raw` — the textbook fixed-point divide, **rounded per the policy's mode** (folds to `(a << log2(N)) / b` for power-of-2 N under plain `snap`) | Q-format integer raw, **same notch as L** | `[0, upper_of<L> / notch_of<R>]` — Upper *expands* (see below) |
-| **Integer-aligned fast** | `snap` is set **and** both grids are integer-aligned (notch and Lower both have denominator 1) **and** neither operand uses rational raw storage | `to_value(lhs) / to_value(rhs)`, **rounded per the policy's mode** — see below | Integer raw | `grid_of<L> / grid_of<R>` with each endpoint rounded by the same mode |
-| **Exact rational** *(fall-through)* | everything else | `as_rational(lhs) / rational{rhs}` — exact rational arithmetic. Under `checked` this is the expected-returning `rational::operator/`; under `unsafe` it's the unchecked variant. | `rational` raw — the result type is `inside<{interval, 0}>` | `*(grid_of<L> / grid_of<R>)` — the grid divider widens the interval when the divisor's range straddles zero |
-| **Point scale** *(path D)* | the divisor is a nonzero point `c` (`5_ins`, `just<c>`), the dividend has a notch, and no native path applies | none — the raw is reused (mirrored for negative `c`), as for `x * just<c>` | **the dividend's lattice scaled by 1/\|c\|**: notch `N/|c|`, integer raw | `grid_of<L> / c` |
-
-Both native paths divide in 32 bits when both operand ranges fit (the integer
-path excludes `INT32_MIN`, so `a / -1` cannot overflow), so `/` and `%` on small
-grids run at native speed rather than as a 64-bit divide.
-
-**Rounding mode (native paths).** Plain `snap` (== `round_toward_zero`) truncates toward
-zero — the historical, C++-`/` behaviour. Any rounding-mode flag rounds the quotient
-instead: `round_nearest` (half away from zero), `round_floor` (toward −∞),
-`round_ceil` (toward +∞), `round_half_even` (banker's). The remainder from `%` stays
-consistent with the rounded quotient, so `(a / b) * b + a % b == a` for every mode
-(e.g. under `round_floor`, `(-8) % 3 == 1`; under `round_toward_zero`, `(-8) % 3 == -2`).
-Without `snap` or a mode, `/` is exact while `%` truncates (C++ `%`), so the
-identity pairs `%` with a toward-zero `/`.
-
-```cpp
-using val = inside<{0, 100}>;
-val a{7}, b{3};
-
-// Exact rational result (path C — the default).
-auto exact = a / b;                            // expected<inside<{rational}>>, value 7/3
-
-// Per-call integer truncation (path B). The divisor's range includes 1, so the
-// quotient's range is 0..100; the divisor's range includes 0, so it is expected.
-auto quot  = div(a, b, rounded_toward_zero);             // expected<inside<{0, 100}>> integer raw, value 2
-
-// Type-level integer truncation (path B again — gating is on policy,
-// not on the operator's call site).
-using fast = inside<{0, 100}, snap>;
-auto q     = fast{7} / fast{3};                // expected<inside<{0, 100}>> integer raw, value 2
-
-// Q-format same-notch (path A).
-using fp = inside<{{0, 255}, per<256>}, unsafe>;   // Q8.8; unsafe implies snap
-auto qfp = div(fp{200}, fp{3}, rounded_toward_zero);     // Q8.8 raw 17066 ≈ 66.6641
-```
-
-The Q-format spot check matches `tests/beman/inside/perf_paths.test.cpp` to the bit
-(`200 / 3 ≈ 66.6667`; the formula multiplies before dividing, so the result
-is `(51200 × 256) / 768 = 17066` — i.e. `floor(66.6667 × 256)`, **not**
-`66 × 256 = 16896`, which would lose the fractional precision).
-
-### When the result is `std::expected` (and when it isn't)
-
-When the divisor's grid **excludes zero** (`Lower > 0 || Upper < 0`, the
-`divisor_excludes_zero` trait) and the op can't otherwise fault, `operator/`
-returns a **plain `inside`**:
-
-```cpp
-using num = inside<{0, 100}, snap>;
-using pos = inside<{1, 10},  snap>;   // grid excludes zero
-auto d = num{42} / pos{3};                   // inside, == 14  (not expected)
-```
-
-Paths A and B can only fault on divide-by-zero, and path D cannot fault at all. Path C under `checked` can also
-overflow its fraction, unless the grids rule that out. They usually do: x = p/a
-over y = r/b is p·b/(a·r), so the quotient's denominators are at most
-`den_bound(x)·num_bound(y)` — the dividend's largest denominator times the
-divisor's largest numerator. The quotient's grid records that bound
-([bounded continuous grids](#bounded-continuous-grids)), and when its fraction
-holds every value, path C is total and skips the runtime overflow test — true
-for every integer grid and literal point, and in C++26 for every bound up to
-`BEMAN_INSIDE_MAX_FRACTION_BITS`:
-
-```cpp
-using val = inside<{-100, 100}>;
-using pos = inside<{1, 100}>;                // excludes zero
-auto e = val{-7} / pos{2};                   // inside (rational raw, den ≤ 100), == -7/2, not expected
-using fine = inside<{{0, 1}, rational{1, umax{1} << 40}}>;
-auto f = fine{0.5} / inside<{{1, 2}, rational{1, umax{1} << 40}}>{1.5};
-    // C++23: expected — 2^81 denominators pass the 64-bit rational
-    // C++26: a plain value in a fraction sized for them
-```
-
-Otherwise the result is `std::expected<result, errc>` with one of two errors:
-
-1. **`errc::division_by_zero`** — on every path (path A tests `rhs.Raw == 0`,
-   safe because a Q-format Lower is 0).
-2. **`errc::overflow`** — the rational denominator doesn't fit `imax`; only on
-   path C under `checked`. The same code reaches `div(a, b, ec)` and an
-   `on_overflow` callback.
-
-Test the result and read the cause when it matters:
-
-```cpp
-auto q = a / b;
-if (!q) log(errc_message(q.error()));   // "division by zero" or overflow
-```
-
-Test or chain an `expected` right away and store the unwrapped `inside`
-([why](internals.md#7-error-vocabulary)).
-
-### Opting into integer-truncation semantics
-
-Three ways to reach paths A and B:
-
-```cpp
-using val = inside<{0, 100}>;
-
-// 1. Type-level: every operator/ on this type takes the integer path.
-using fast = inside<{0, 100}, snap>;
-auto q1 = fast{7} / fast{3};               // -> 2
-
-// 2. Per-call: OR `snap` into the operation's flags.
-auto q2 = div(val{7}, val{3}, rounded_toward_zero);  // -> 2
-
-// 3. Same as (2) using the operation's named policy alias.
-//    `rounded_toward_zero = make_policy<round_toward_zero>()`; siblings include
-//    `rounded_*`, `clamped`, `wrapped` — see policies.md#named-policies.
-```
-
-Without any of these, `operator/` takes path C and returns an exact
-`inside<rational>` (in `std::expected` when the divisor's grid holds 0), with
-the rational storage costs described in [storage.md](storage.md) — or, for a
-point divisor, path D and an exact value on the scaled lattice.
-
-### Result-grid widening on path A (the subtle bit)
-
-The Q-format fast path keeps the *notch* but expands the *interval*:
-
-```cpp
-using fp = inside<{{0, 255}, per<256>}, unsafe>;   // Q8.8
-auto q = fp{1} / fp{1};   // expected<inside<{{0, 65280}, per<256>}>>, value 1
-```
-
-The result's upper bound is `upper_of<L> / notch_of<R> = 255 / (1/256) = 65 280`,
-not `255`. The smallest non-zero divisor in a Q8.8 grid is `1/256`, so an
-input of `255` could be divided by `1/256` and produce `65 280` — the
-result type must be wide enough to hold every possible quotient.
-
-Path C similarly widens when the divisor's range straddles zero:
-`grid::operator/` splits into the positive `[step, Upper]` and negative
-`[Lower, -step]` halves (excluding the zero gap), divides each, and unions
-the results.
-
-### Examples and tests
-
-- [examples/division.cpp](../examples/division.cpp) — paths B and C side by
-  side: exact quotients, per-call and type-level `snap`, rounding modes, the
-  `errc::division_by_zero` case and a zero-free divisor's plain result.
-- [examples/expected_pipeline.cpp](../examples/expected_pipeline.cpp) —
-  chaining fallible steps (`parse`, `div_into`) with
-  `and_then` / `or_else`, and the first error's cause at the end.
-- [tests/beman/inside/inside_arithmetic.test.cpp](../tests/beman/inside/inside_arithmetic.test.cpp) — the
-  `"inside div: rational vs integer paths"` case covers paths B and C across
-  unit / non-unit notch and signed bounds.
-- [tests/beman/inside/perf_paths.test.cpp](../tests/beman/inside/perf_paths.test.cpp) — the
-  Q-format fast-path correctness test with the bit-exact 200/3 → 17066
-  reference.
-
-## Rounding straight into a type: `mul_into<Out>` / `div_into<Out>`
-
-`a * b` and `a / b` produce the exact result on its own grid, which you then
-store. When that grid is not wanted — or cannot exist — round the exact
-result straight into the type you need:
-
-```cpp
-using eth   = inside<{{0, 1'000'000'000}, 1e-18_r}>;          // wei
-using price = inside<{{0, 100'000'000}, per<100>}>;           // dollars, to the cent
-using usd   = inside<{{0, 1'000'000'000'000'000}, per<100>}, round_nearest>;
-
-usd value = mul_into<usd>(balance, p);         // one rounding, to the cent
-auto r    = div_into<usd, round_floor>(a, b);  // Out's policy, plus per-call flags
-```
-
-- **`mul_into<Out, F = none>(a, b)`** — the exact product, rounded once onto
-  `Out` by `Out`'s policy (`| F`). Use it when the product grid would need
-  grid numbers past 64 bits (the `eth × price` notch above is 10⁻²⁰: a C++23
-  compile error for `a * b`), or simply to skip the intermediate type.
-- **`div_into<Out, F = none>(a, b)`** — the exact quotient, rounded once onto
-  `Out`. It returns `Out` when `b`'s grid excludes zero and
-  `std::expected<Out, errc>` otherwise; in that case every failure — a zero
-  divisor, or a store `Out`'s policy rejects — is the error. Unlike `a / b`
-  it never forms a continuous quotient, so a quotient with no 64-bit fraction
-  still lands on `Out`.
-
-A store that fails in the plain-`Out` forms is reported through the policy
-(it throws under `checked`).
-
-## Scalars in inside arithmetic need a grid
-
-A raw `int` or `double` carries no grid, so `inside op rawscalar` has no
-type-safe result and is **ill-formed by design**. Writing `b + 1` or
-`b * 2.5` triggers a `static_assert` that hands you the fix: give the scalar a
-grid.
+A raw `int` or `double` has no grid, so `b + 1` and `b * 2.5` have no
+type-safe result. They do not compile, and the error says what to write
+instead: give the scalar a grid.
 
 ```cpp
 using money = inside<{{0, 1'000'000}, per<100>}, round_nearest>;
 money sub{45.07};
 
-auto a = sub + 1;        // ❌ ill-formed: a raw int has no grid
-auto b = sub * 2.5;      // ❌ ill-formed: a raw double has no grid
-
-auto c = sub + 1_ins;    // ✅ inside + inside → widened inside (stays bounded)
-auto e = sub + just<1>;  // ✅ same thing — `just<1>` is the point inside 1
-auto d = sub * just<2>;  // ✅ inside × inside → widened inside
+auto a = sub + 1;        // ❌ a raw int has no grid
+auto c = sub + 1_ins;    // ✅ a one-point inside: the sum widens by 1
+auto e = sub + just<1>;  // ✅ the same
+auto d = sub * just<2>;  // ✅ inside × inside
 ```
 
-Use `1_ins` / `just<N>` to give a compile-time literal a tight point grid, or
-`inside<{lo,hi}>{n}` to give a runtime value a known range (`sub + just<1>`,
-`b == 0_ins`). Comparisons
-(`b == 5`, `b < 10`, `b < 1.5`) with raw scalars are fine — they don't manufacture
-a new value/type — and exact: a floating scalar is compared at full precision,
-never truncated to an integer. Compound assignment with a raw scalar (`b += 1`)
-is ill-formed like the binary operators ("an inside cannot be combined with a raw
-scalar"); write `b += 1_ins`.
+`1_ins` and `just<N>` give a constant a one-point grid; `inside<{lo, hi}>{n}`
+gives a runtime value its range. Compound assignment follows the same rule:
+`b += 1_ins`, not `b += 1`. Comparisons with raw scalars are fine
+(`b == 5`, `b < 1.5`): they make no new value, and they are exact, so a
+`double` is compared at full precision.
 
 ### Scaling by an exact fraction
 
-There is **no** `inside op rational` mixed-mode operator. To scale an inside by an
-exact non-dyadic factor, wrap the factor in a point-inside and multiply
-inside-by-inside; the result stays an inside (which a rounding target snaps):
+To scale by a factor that is not dyadic, multiply by a one-point inside:
 
 ```cpp
-money tax{ sub * just<8, 100> };   // inside × point-inside → inside → money
-auto    half = sub * just<1, 2>;   // exact ×½, stays an inside
+money tax{sub * just<8, 100>};   // 8 %, rounded onto the cent by money's policy
+auto  half = sub * just<1, 2>;   // exact: notch 1/200
 ```
 
-`just<N, D>` is the exact-fraction point-inside; `0.5_ins` / `2_ins` cover
-dyadic factors. Multiplying by a point `c` scales the lattice: the result's notch
-is `N·|c|`, so it keeps integer storage (`sub * just<1, 2>` has notch 1/200)
-and costs about a native multiply — the raw value is reused, mirrored for
-negative `c`. Dividing by a point does the same with `N/|c|`: `x / 5_ins` on an
-integer grid has notch 1/5, so it is exact, plain, and its sums and products
-stay plain too (`c * 9_ins / 5_ins + 32_ins` converts Celsius to Fahrenheit
-without an `expected`). Read an exact value back out with `numerator()` /
-`denominator()` (see [Conversions](conversions.md)) — never a `rational`.
+Multiplying by a point `c` scales the lattice: the notch becomes `N·|c|`, the
+raw number is reused (mirrored for a negative `c`), and the cost is about one
+native multiply. Dividing by a point does the same with `N/|c|`, so `x / 5_ins`
+on an integer grid has notch 1/5 and is exact and plain. That makes
+`c * 9_ins / 5_ins + 32_ins` a ℃ → ℉ conversion without any `expected`
+(with units, `point<si::degree_Celsius>(c).point_in(international::degree_Fahrenheit)`
+says the same thing).
 
-## Vector helpers: `dot` / `cross` / `lerp`
+## Division
 
-For 2-D geometry that would otherwise tempt you out of inside-space, the
-library ships three widening helpers. Each composes `+`/`*` so the result grid
-is computed at compile time and overflow is impossible — no scalar ever
-appears.
+`a / b` is exact by default. It returns a plain inside when the divisor's grid
+excludes 0, and `std::expected<…, errc>` when it holds 0. Which code runs is
+chosen at compile time:
+
+| Path | When | What it does | Result grid |
+|---|---|---|---|
+| A: Q-format | `snap` is on, and both operands share one Q-format grid (notch 1/N, N ≥ 2, Lower 0) | `(a.raw × N) / b.raw`, rounded by the mode: the textbook fixed-point divide | same notch; Upper widens to `upper(a) / notch(b)` |
+| B: integer | `snap` is on, both grids are on whole numbers | a native integer divide, rounded by the mode | `grid(a) / grid(b)`, each limit rounded the same way |
+| C: exact | otherwise | the exact fraction | a continuous grid (notch 0) with a denominator bound |
+| D: point | the divisor is a nonzero point (`5_ins`), the dividend has a notch | nothing: the dividend's lattice scaled by 1/\|c\| | notch `N/|c|`, integer storage |
+
+Both native paths divide in 32 bits when the operands fit, so `/` and `%` on
+small grids run at native speed.
 
 ```cpp
-auto d = beman::inside::dot  (ax, ay, bx, by);   // ax*bx + ay*by
-auto z = beman::inside::cross(ax, ay, bx, by);   // ax*by - ay*bx  (2-D "which side")
-auto p = beman::inside::lerp (a, b, t);          // a + (b - a) * t   (t a [0,1] inside)
+using val = inside<{0, 100}>;
+val a{7}, b{3};
+auto exact = a / b;                            // path C: expected, 7/3
+auto quot  = div(a, b, rounded_toward_zero);   // path B, per call: expected, 2
+using fast = inside<{0, 100}, snap>;
+auto q     = fast{7} / fast{3};                // path B, from the type: expected, 2
+using fp   = inside<{{0, 255}, per<256>}, unsafe>;     // Q8.8 (unsafe includes snap)
+auto qfp   = div(fp{200}, fp{3}, rounded_toward_zero); // path A: raw 17066, about 66.664
 ```
 
-A sqrt-free squared distance is just `dot(dx, dy, dx, dy)`; compare it against
-a squared-radius point-inside to test a hit without leaving the bounded world —
-e.g. a 2-D space sim can drive collision and autopilot steering entirely in
-inside-space.
+Path A multiplies before it divides: (51200 × 256) / 768 = 17066, that is
+⌊66.667 × 256⌋. Dividing first would give 66 × 256 = 16896 and lose the
+fraction.
+
+**Path A widens the interval.** `fp{1} / fp{1}` has the type
+`inside<{{0, 65280}, per<256>}>`: the smallest nonzero divisor is 1/256, so 255
+divided by it is 65280, and the result type must hold that.
+
+**Path C splits a divisor range around 0.** A divisor grid that straddles 0 is
+divided as its positive part `[notch, Upper]` and its negative part
+`[Lower, −notch]`, and the results are joined.
+
+### When the result is plain
+
+A divisor grid that excludes 0 (`Lower > 0` or `Upper < 0`) gives a plain
+inside, provided the quotient also cannot overflow:
+
+```cpp
+using pos = inside<{1, 10}, snap>;
+auto d = fast{42} / pos{3};                 // inside: 14
+using sval = inside<{-100, 100}>;
+auto e = sval{-7} / inside<{1, 100}>{2};    // inside: -3.5 (exact, a denominator ≤ 100)
+```
+
+Paths A, B and D cannot overflow. Path C usually cannot either: for x = p/a and
+y = r/b, x/y = p·b/(a·r), so the quotient's denominator is at most the
+dividend's largest denominator times the divisor's largest numerator. The
+result grid records that bound ([below](#bounded-continuous-grids)), and when
+the bound fits the result's fraction, path C skips the overflow check. That
+holds for every integer grid and every literal point. In C++23 a fraction is
+64-bit; in C++26 it is sized for the bound, up to
+`BEMAN_INSIDE_MAX_FRACTION_BITS`.
+
+```cpp
+using fine = inside<{{0, 1}, rational{1, umax{1} << 40}}>;
+auto f = fine{0.5} / inside<{{1, 2}, rational{1, umax{1} << 40}}>{1.5};
+// C++23: expected — denominators up to 2^81 pass a 64-bit fraction
+// C++26: a plain value, in a fraction sized for them
+```
+
+Otherwise the error is `errc::division_by_zero` (any path), or
+`errc::overflow` when the exact fraction does not fit (path C only). Test the
+result right away, or chain it ([below](#when-the-result-is-stdexpected)), and
+store the unwrapped inside.
+
+[`division.cpp`](../examples/division.cpp) shows paths B and C side by side.
+`inside_arithmetic.test.cpp` (`InsideArithmeticTest.inside_div_rational_vs_integer_paths`)
+and `perf_paths.test.cpp` (the 200/3 → 17066 check) test them.
 
 ## Rounding
 
-Assigning between insides with incompatible notches is a compile-time error:
+Storing a value between two notches is a compile-time error when the source
+grid can produce one:
 
 ```cpp
-using coarse = inside<{{0, 10}, 2}>;   // notch 2: values 0, 2, 4, 6, 8, 10
-using fine   = inside<{{0, 10}, 1}>;   // notch 1: values 0, 1, 2, …, 10
-
+using coarse = inside<{{0, 10}, 2}>;   // 0, 2, 4, …, 10
+using fine   = inside<{{0, 10}, 1}>;   // 0, 1, 2, …, 10
 coarse c{0};
 fine f{3};
-c = f;  // ERROR: incompatible notches (3 would round to 2)
+c = f;                                 // ❌ 3 is between notches
 ```
 
-Notches are "compatible" when the target notch is an integer multiple of the
-source notch. Notch 2 → notch 1 is always exact (every even number is an
-integer); notch 1 → notch 2 may round.
-
-To opt in to rounding:
+Two notches are compatible when the target's notch is a whole multiple of
+the source's: notch 2 → 1 is always exact, 1 → 2 may round. To round, say so:
 
 ```cpp
-// Per-operation (truncates toward zero).
-c.with_snap() = f;
-
-// Round to nearest notch.
-c.with_snap<round_nearest>() = f;
-
-// Per-call with explicit policy.
-c.policy<snap>() = f;
-c.policy<round_nearest>() = f;
-
-// Type-level: all assignments allow rounding.
-using coarse_r = inside<{{0, 10}, 2}, snap>;
-coarse_r cr = f;  // OK, truncates to nearest notch
+c.with_snap() = f;                       // this store: toward zero, 2
+c.with_snap<round_nearest>() = f;        // this store: to nearest, 4
+using coarse_r = inside<{{0, 10}, 2}, round_nearest>;
+coarse_r r = f;                          // every store of this type: 4
+coarse half(fine x) { return x.with_snap(); }   // as a value: round at the return
 ```
 
-The same `.with_snap()` also reads out as a **value**, not only as an
-assignment target — so you can round inside an expression or a `return`:
+`.with_snap()` on a temporary, `(a * a).with_snap()`, holds the value, so it is
+safe to return. The target's own policy still applies: into a `clamp` type the
+range clamps while `with_snap` handles the notch.
+
+**How each mode rounds.** Rounding is in value space, on every grid, also on
+one whose points are offset from multiples of the notch (`{{0.5, 10.5}, 1}`):
+
+| Mode | Rounds |
+|---|---|
+| `snap`, `round_toward_zero` | toward zero: down at or above 0, up below 0 |
+| `round_nearest` | to the nearest point; a tie away from zero |
+| `round_floor`, `round_ceil` | toward −∞, toward +∞ |
+| `round_half_even` | to the nearest point; a tie to the even point, counted from the grid's anchor (…, −1.5, 0.5, 2.5, … on `{{-2.5, 2.5}, 1}`) |
+
+On an offset grid 0 itself can be a tie (between −0.5 and 0.5); it rounds up,
+like any value at or above 0. A rounding mode rounds before the range check,
+so 9.5 into `inside<{0, 9}, round_floor>` stores 9.
+
+**Rounding a quotient.** On the native paths plain `snap` truncates toward
+zero, like C++ `/`. A rounding mode rounds the quotient instead, and `%` stays
+consistent with it, so `(a / b) * b + a % b == a` for every mode: under
+`round_floor`, `-8 % 3 == 1`; under `round_toward_zero`, `-8 % 3 == -2`.
+Without `snap`, `/` is exact and `%` truncates.
+
+For the same fine → coarse conversion as a function, use
+`clamp_cast<B, round_nearest>(v)` ([conversions.md](conversions.md#free-function-casts)).
+
+## Rounding straight into a type: `mul_into` and `div_into`
+
+`a * b` and `a / b` give the exact result on its own grid. When that grid is
+not wanted, or cannot exist, round the exact result straight into the type you
+need:
 
 ```cpp
-coarse result  = f.with_snap();                  // 2  — value form, truncates
-coarse nearest = f.with_snap<round_nearest>();   // 4
+using eth   = inside<{{0, 1'000'000'000}, 1e-18_r}>;      // to the wei
+using price = inside<{{0, 100'000'000}, per<100>}>;       // dollars per ETH, to the cent
+using usd   = inside<{{0, 1'000'000'000'000'000}, per<100>}, round_nearest>;
 
-coarse half(fine x) { return x.with_snap(); }    // round at the return boundary
+usd value = mul_into<usd>(balance, p);          // one rounding, to the cent
+auto r    = div_into<usd, round_floor>(a, b);   // Out's policy, plus flags for this call
 ```
 
-The target's own policy still applies through the conversion: returning into a
-`inside<…, clamp>` clamps the range while `with_snap` handles the notch. For the
-same fine→coarse conversion as a free function (including an inside source), use
-`clamp_cast<B, round_nearest>(v)` — see [conversions](conversions.md).
+- **`mul_into<Out, F>(a, b)`**: the exact product, rounded once into `Out` by
+  `Out`'s policy plus `F`. The `eth × price` grid above would have notch
+  10⁻²⁰, past 64-bit grid numbers, so `balance * p` does not compile in C++23;
+  `mul_into` never forms it.
+- **`div_into<Out, F>(a, b)`**: the exact quotient, rounded once into `Out`.
+  It returns `Out` when `b`'s grid excludes 0, else `std::expected<Out, errc>`
+  carrying either a zero divisor or a failed store. It never forms a
+  continuous quotient, so a quotient that needs a fraction past 64 bits still
+  lands on `Out`.
 
-`.with_snap()` adapts to its receiver: on a named inside it yields a lightweight
-reference proxy, but on a **temporary** — `(a * a).with_snap()` — it returns a
-value-owning buffer that moves the result in, so it is safe to return or store
-even with an `auto` return type (no dangling reference to the expired temporary).
+Otherwise a failed store is reported through `Out`'s policy (it throws when
+checked).
 
-## Modulo
+## Modulo and divmod
 
-`inside % inside` requires integer-aligned grids, a **hard requirement**
-enforced by `static_assert` in
-[`include/beman/inside/detail/division.hpp`](../include/beman/inside/detail/division.hpp) —
-there is no rational fallback, because `a mod b` is only meaningfully
-defined when both operands are integers. It needs no `snap`: the remainder
-always belongs to an integer quotient, truncated (C++ `%`) unless the policy
-names a rounding mode. `snap` only decides whether `/` rounds too.
+`a % b` needs grids on whole numbers (a `static_assert`): a remainder only
+means something for whole numbers. It needs no `snap`: the remainder belongs
+to an integer quotient, truncated unless the policy names a rounding mode.
 
 ```cpp
 using val = inside<{0, 100}>;
 val a{17}, b{5};
-auto r = a % b;  // std::expected<inside<{0, 99}>, errc>, value 2
+auto r   = a % b;                    // expected (b's grid holds 0): 2
+auto r2  = a % inside<{1, 10}>{5};   // inside<{0, 9}>: 2
+auto r3  = a % 5_ins;                // inside<{0, 4}>: 2
 inside<{0, 9}> d{7};
-auto odd = d % 2_ins == 1_ins;  // true; d / 2_ins is 3.5
+bool odd = d % 2_ins == 1_ins;       // true (d / 2_ins is 3.5: exact)
 ```
 
-The result interval is `[0, max_rem]` when the rounding mode is plain
-truncation (`snap`) and `lower_of<L> >= 0`, and `[-max_rem, max_rem]`
-otherwise (a negative dividend, or a directional rounding mode, which can flip
-the remainder's sign). Here `max_rem = max(|lower_of<R>|, |upper_of<R>|) - 1`
-is the largest remainder magnitude any divisor in R's range could produce.
+The result is `[0, m]` for a dividend at or above 0 under truncation, else
+`[−m, m]`, where `m` is the largest divisor magnitude minus 1. A remainder
+cannot overflow, so the only error is a zero divisor, and the result is an
+`expected` only when the divisor's grid holds 0.
 
-Modulo never overflows, so its only failure is a zero divisor. Like division,
-it returns `std::expected` (`errc::division_by_zero`) when R's grid holds zero,
-and a plain inside when R's grid excludes zero:
+`divmod(a, b)` gives both halves from one division, as a
+`divmod_result` with `Quotient` and `Remainder`. They are typed as `a / b`
+under `snap` and `a % b`, with the same rounding mode. It takes the same
+trailing forms as `div`, and every value must fit `imax`:
 
 ```cpp
 using pos = inside<{1, 10}, snap>;
-auto r2 = a % pos{5};   // inside<{0, 9}>, value 2 — no expected
-auto r3 = a % 5_ins;    // inside<{0, 4}>, value 2 — a literal divisor, no expected
+auto [q, rem] = divmod(val{17}, pos{5});                            // 3, 2
+auto [f, m]   = divmod(inside<{-100, 100}>{-8}, pos{3}, rounded_floor);   // -3, 1
 ```
 
-An integer literal is an integer-valued point, so `a % 5_ins` and, under
-`snap`, `a / 5_ins` take the native integer paths; without `snap`, `a / 5_ins`
-keeps `a`'s lattice scaled by 1/5. A non-integer point
-(`0.5_ins`) is rejected by `%` like any non-integer grid.
+## Folds and sums
 
-`divmod(a, b)` returns both halves from one division: a
-`divmod_result<Q, R>` with members `Quotient` and `Remainder`, typed as
-`a / b` under `snap` and `a % b`, with the same rounding mode — so like `%`,
-it rounds the quotient even without `snap`. It takes the same trailing
-forms as `div` and has the same requirements as `%`, and every value must fit
-`imax`. Like `%`, it returns `std::expected` only when the divisor's grid
-holds zero:
-
-```cpp
-auto [q, r] = divmod(val{17}, pos{5});      // 3, 2
-using num   = inside<{-100, 100}>;
-auto [f, m] = divmod(num{-8}, pos{3}, rounded_floor); // -3, 1
-```
-
-## Bulk reduction: `beman::inside::sum<Target>(range)`
-
-A per-element `target += b` loop re-validates the running total on every
-step: a compare-and-branch per element, which also stands in the way of
-vectorization (on the reference machine: 9 vs 4 instructions per element).
-`beman::inside::sum<Target>(range)` accumulates exactly with **one** deferred check:
-the *total* is validated/clamped against `Target`'s policy, not every running
-prefix — and runs within a few percent of the native loop (see
-[performance.md](performance.md), "accumulate 1000"). The total is exact
-whatever the elements: wide-index elements, and totals past 64 bits, are
-summed in a wide integer and rounded into `Target` once.
-
-```cpp
-using elem = inside<{0, 200'000}, checked>;
-std::vector<elem> v = ...;
-auto total = beman::inside::sum<elem>(v);            // one range check, vectorized
-
-using bus = inside<{0, 100}, clamp>;
-auto clipped = beman::inside::sum<bus>(v);           // clamps the TOTAL once
-```
-
-## Compound assignment
-
-Compound assignment takes another inside (or an `expected<inside>`, or a
-`rational`); the result is computed as by the binary operator, then narrowed
-back into the left-hand type through its policy. A raw `int` / `double` is
-ill-formed, as for the binary operators: give it a grid with `_ins`,
-`just<…>`, or an inside over its range. Under an unchecked policy (no
-`checked`/`clamp`/`wrap`) with value storage, `+=`/`-=`/`*=` operate directly
-at the raw type's width — a loop of byte-wide `b += 1_ins` vectorizes at the
-same lane count as native `uint8_t`:
-
-```cpp
-using pct = inside<{0, 100}, clamp | snap>;
-pct x{50};
-x += 30_ins;        // x == 80
-x -= 10_ins;        // x == 70
-x *= 2_ins;         // x == 100 (clamped)
-x /= 3_ins;         // x == 33  (snap truncates 100/3)
-x %= 10_ins;        // x == 3
-
-++x;                // x == 4
-x--;                // x == 3
-```
-
-An `expected` right-hand side (`x += a / b`) is unwrapped once; an error in it
-is reported through the left-hand type's policy.
-
-`x /= 0` triggers the inside's divide-by-zero handling (throws, sets the
-error code, or is silent under `ignore_zero` — see
-[policies.md](policies.md#error-code-mode)). This is the same per-path
-zero check used by `inside / inside`; see
-[Division § When the result is `std::expected`](#when-the-result-is-stdexpected-and-when-it-isnt).
-
-```cpp
-using rn = inside<{{0, 100}, per<100>}, round_nearest>;
-rn a{0.5};
-a += just<1, 4>;  // 0.75 — exact inside-space accumulation, snaps to 1/100
-a *= 0.5_ins;           // 0.375, rounded to 0.38 on assign
-```
-
-`++` and `--` move one notch: on a notch-1 grid that is ±1, on
-`inside<{{0, 2}, per<4>}>` it is ±1/4. A grid without a notch has no `++`.
-
-## Stepping loops: `cursor<T, Step>`
-
-`for (T t = lo; t <= hi; t += step)` needs a value one step past `hi`, which
-`T` cannot hold, so the last increment reports out of range. A cursor is an
-inside that can hold it: `cursor<T, Step>` steps through `T`'s range by `Step`
-and one step past its Upper. It starts at `T`'s Lower, and `end(t)` is the
-value one past the last:
-
-```cpp
-using time_t = inside<{{-4, 4}, per<1024>}, round_nearest>;
-using amp_t  = inside<{{0, 100}, per<16384>}, round_nearest>;
-for (cursor<time_t, per<4>> t; t != end(t); ++t)         // −4, −3.75, …, 4
-    std::cout << t << " " << math::exp_into<amp_t>(t) << "\n";
-for (cursor<time_t, 0.25_r> t = -2_ins; t <= 2_ins; ++t) // any start, the classic test
-    …
-```
-
-- It is a plain inside on `{{Lower, Upper + Step}, Step}`: math, printing,
-  comparison and assignment back to `T` (exact: every value but the end is
-  one of `T`'s) work on it directly. It keeps `T`'s checks and rounding; `--`
-  below Lower and `++` past the end report like any out-of-range value.
-- `Step` is a number (an integer, `rational`, `per<N>`) and defaults to `T`'s
-  notch. It must be positive, divide `T`'s range, and be a whole number of
-  `T`'s notches — checked at compile time.
-- A default-constructed cursor is `T`'s Lower (a plain inside's default
-  constructor leaves it uninitialized). `end(t)` exists only for cursors;
-  `t != end(t)` is one integer compare.
-- A cursor is also its own bidirectional iterator, and `end(t)` is its
-  sentinel. `*t` is its value without the end, which converts into `T`
-  exactly, so the range algorithms take a cursor directly:
-
-  ```cpp
-  cursor<time_t, per<4>> t;
-  for (time_t x : std::ranges::subrange(t, end(t))) …
-  auto hit = std::ranges::find(t, end(t), 1.5_ins);
-  std::views::iota(t, end(t))                      // yields the cursors
-  ```
-
-  `*` on the end reports out of range. A cursor is not random access: `t - u`
-  is arithmetic and gives an inside, not a distance, so `std::ranges::distance`
-  counts the steps. Plain insides have no `*` and no iterator traits. For every
-  value of a type, use [`values<T>`](storage.md#iteration-inside_range).
-
-## Variadic folds
-
-`add_all` and `mul_all` are variadic equivalents of `+` and `*` over insides:
+`add_all` and `mul_all` are `+` and `*` over any number of operands, with the
+same widening:
 
 ```cpp
 using v = inside<{0, 100}>;
 v a{10}, b{20}, c{30};
-auto sum  = add_all(a, b, c);   // inside<{0, 300}>, value 60
-auto prod = mul_all(a, b);      // inside<{0, 10000}>, value 200
+auto s = add_all(a, b, c);                              // inside<{0, 300}>: 60
+auto p = mul_all(a, b);                                 // inside<{0, 10000}>: 200
+auto capped = clamp_cast<v>(add_all(a, b, c, v{90}));   // 100 (150 clamped)
 ```
 
-To collapse the widened result into a narrower type, apply a cast or let the
-target's policy do it:
+`sum<Target>(range)` adds a whole range with **one** check. A `target += x`
+loop checks the running total at every step, a compare and branch that also
+blocks vectorization. `sum` adds exactly and checks or clamps only the total,
+against `Target`'s policy, and runs within a few percent of a native loop
+([performance.md](performance.md)). Wide elements, and totals past 64 bits,
+are added in a wide integer and rounded into `Target` once.
 
 ```cpp
-auto capped = clamp_cast<v>(add_all(a, b, c, v{90}));   // v, value 100 (150 clamped)
+using elem = inside<{0, 200'000}>;
+std::vector<elem> v = /* … */;
+auto total   = sum<elem>(v);                         // one range check
+auto clipped = sum<inside<{0, 100}, clamp>>(v);      // clamps the total once
 ```
 
-## When `std::expected` is returned
+## Vector helpers: `dot`, `cross`, `lerp`
 
-Operations return `std::expected<inside, errc>` in two cases:
-
-1. **Division and modulo** whose divisor grid holds zero, or whose exact
-   quotient may overflow ([details](#when-the-result-is-stdexpected-and-when-it-isnt)).
-
-2. **Unbounded continuous storage** — a grid with notch 0 and no denominator
-   bound (`inside<{{0, 10}, 0}>`) holds any rational in range; `+` and `×` on
-   it return `std::expected` (`errc::overflow`), since `lcm(b, d)` of the
-   denominators may exceed `imax`. Notched grids, and continuous grids whose
-   denominator bound proves the result fits, return plain values.
-
-All operators accept `std::expected` operands and propagate errors: if either
-operand holds an error, the result holds that error (the left one when both
-do).
+Three widening helpers for 2-D geometry, built from `+` and `*`, so they
+cannot overflow:
 
 ```cpp
-using lvl = inside<{0, 255}>;     // divisor grid holds zero → `/` returns expected
+auto d = dot(ax, ay, bx, by);     // ax·bx + ay·by
+auto z = cross(ax, ay, bx, by);   // ax·by − ay·bx: which side of a line
+auto p = lerp(a, b, t);           // a + (b − a)·t, t an inside in [0, 1]
+```
+
+A squared distance is `dot(dx, dy, dx, dy)`: compare it with a squared radius
+to test a hit without a square root.
+
+## Compound assignment
+
+`x op= y` computes `x op y`, then stores the result back into `x`'s type
+through its policy. `y` is an inside, an `expected` of one (its error goes
+through `x`'s policy), or a `rational`.
+
+```cpp
+using pct = inside<{0, 100}, clamp | snap>;
+pct x{50};
+x += 30_ins;     // 80
+x -= 10_ins;     // 70
+x *= 2_ins;      // 100 (clamped)
+x /= 3_ins;      // 33 (snap truncates 100/3)
+x %= 10_ins;     // 3
+++x;             // 4
+x--;             // 3
+
+using rn = inside<{{0, 100}, per<100>}, round_nearest>;
+rn r{0.5};
+r += just<1, 4>; // 0.75
+r *= 0.5_ins;    // 0.375, stored as 0.38
+```
+
+`++` and `--` move one notch: ±1 on a notch-1 grid, ±1/4 on
+`inside<{{0, 2}, per<4>}>`. A continuous grid has no `++`.
+
+`x /= 0` goes through the division-by-zero handling: a throw, an `errc`, or
+nothing under `ignore_zero`.
+
+Under a policy with no checks, `+=`, `-=` and `*=` run at the raw type's width:
+a loop of byte-wide `b += 1_ins` vectorizes like native `uint8_t`.
+
+## When the result is `std::expected`
+
+An operation returns `std::expected<inside, errc>` in two cases:
+
+1. **Division and modulo** by a grid that holds 0, or an exact quotient that
+   may overflow ([above](#division)).
+2. **An unbounded continuous grid** (notch 0, no denominator bound, like
+   `inside<{{0, 10}, 0}>`): `+` and `×` on it may need a denominator past
+   64 bits, so they return `expected` (`errc::overflow`).
+
+Every operator takes `expected` operands and passes the first error on (the
+left one when both hold one), so a chain needs no unwrapping:
+
+```cpp
+using lvl = inside<{0, 255}>;
 lvl a{100}, b{4}, z{0};
-
-auto r1 = a / b + lvl{10};   // expected<inside<…>, errc>, value 35
-auto r2 = a / z + lvl{10};   // expected<inside<…>, errc>, errc::division_by_zero
+auto r1 = a / b + lvl{10};   // expected: 35
+auto r2 = a / z + lvl{10};   // expected: errc::division_by_zero
+auto r3 = math::sqrt(signed_in{v}) * gain + offset;   // fragment: an expected from the math
 ```
+
+An operation that fails inside the chain reports its own cause. See
+[internals.md](internals.md#7-error-vocabulary) for the full rule.
 
 ### Bounded continuous grids
 
-A continuous grid can carry a **denominator bound**: every value is `n/d` with
-`d ≤ MaxDenominator`. The exact operators compute it, so a quotient knows how
-large its fractions can get, and so does everything computed from it:
+A continuous grid can carry a **denominator bound**: every value is n/d with
+d ≤ `MaxDenominator`. The exact operators compute the bound, so a quotient
+knows how large its fractions can get, and so does everything computed from
+it:
 
-| Op | Result's denominator bound |
+| Operation | Denominator bound of the result |
 |---|---|
-| `x + y`, `x − y`, `x × y` | `D_x · D_y` |
-| `x ÷ y` | `D_x · num_bound(y)` (`num_bound` = max \|y\| · `D_y`) |
-| `−x`, `abs`, `copysign` | `D_x` |
-| `fmod(x, y)` | `D_x · D_y` |
-| `hull` / `common_type` | the larger |
+| `x + y`, `x − y`, `x × y` | D(x) · D(y) |
+| `x / y` | D(x) · max\|y\| · D(y) |
+| `−x`, `abs`, `copysign` | D(x) |
+| `fmod(x, y)` | D(x) · D(y) |
+| `hull`, `common_type` | the larger |
 
-`D` of a notched grid is its value unit's denominator, of a point its own, of
-a continuous grid its bound (0: unbounded, which makes the result unbounded).
-When the bound sizes the result's fraction, the op cannot overflow and returns
-a plain value:
+D of a notched grid is its notch's denominator, of a point its own, and of a
+continuous grid its bound (0 means unbounded, and makes the result unbounded).
+When the bound fits the result's fraction, the operation cannot overflow and
+returns a plain value:
 
 ```cpp
-using num = inside<{0, 100}>;
-using den = inside<{1, 7}>;
-auto q = num{50} / den{3};            // inside<{{0, 100}, 0, den<=7}>, 50/3
-auto f = q * 9_ins / 5_ins + 32_ins;  // plain, den ≤ 7: 62
-auto s = q * q - q;                   // plain, den ≤ 49
+auto q = inside<{0, 100}>{50} / inside<{1, 7}>{3};   // a fraction with denominator ≤ 7: 50/3
+auto f = q * 9_ins / 5_ins + 32_ins;                 // plain, ≤ 7: 62
+auto s = q * q - q;                                  // plain, ≤ 49
 ```
 
 Declare one with `max_denominator`:
@@ -583,37 +398,52 @@ Declare one with `max_denominator`:
 ```cpp
 using thousandths = inside<{{0, 1}, max_denominator{1000}}>;
 thousandths a{rational{1, 1000}};
-auto p = a * a;                       // plain: den ≤ 10^6
+auto p = a * a;                       // plain: ≤ 10^6
 a = rational{1, 1001};                // rounding_error: off the grid
 ```
 
-A bound must fit a fraction: in C++23 the 64-bit `rational` (a larger one is
-dropped — the grid is unbounded and the op checked, as before); in C++26 any
-bound up to `BEMAN_INSIDE_MAX_FRACTION_BITS` (default 1024 bits of numerator
-and denominator), stored in a fraction sized from it. Storing a value whose
-denominator passes the bound reports `rounding_error`, unless the policy
-rounds: then the value goes to a neighbouring fraction within the bound (its
-Farey neighbours) — `round_floor` / `round_ceil` / `snap` pick a side,
-`round_nearest` the closer one (a tie away from zero). So
+In C++23 a bound must fit a 64-bit `rational`; a larger one is dropped (the
+grid is then unbounded, and its operations checked). In C++26 any bound up to
+`BEMAN_INSIDE_MAX_FRACTION_BITS` (default 1024) works. A stored value whose
+denominator passes the bound is a `rounding_error` unless the policy rounds.
+Then it goes to a neighbouring fraction within the bound (its Farey
+neighbours): `round_floor`, `round_ceil` and `snap` pick a side,
+`round_nearest` the closer one. So
 `inside<{{0, 1}, max_denominator{1000}}, round_nearest>{0.1}` holds exactly
-1/10, though the double 0.1 is not 1/10. `unsafe` carries `snap`, so it
-truncates onto the bound.
+1/10, although the `double` 0.1 is not 1/10.
 
-### Chaining `expected` results
+## Arithmetic on quantities
 
-`beman::inside::math`'s fallible functions use the same
-`std::expected<inside, errc>` vocabulary, so their results chain into
-arithmetic directly:
+With `<beman/inside/units.hpp>` every operation above also takes quantities
+([units.md](units.md)). `+`, `-`, `%` and the comparisons run in the two
+units' common unit; `*` and `/` multiply the units. Each function converts its
+operands exactly into the target's unit, then runs on the numbers, so it still
+rounds once and checks once:
 
 ```cpp
-// expected-lift operators — first (left) error wins and keeps its cause.
-auto r = math::sqrt(signed_in{v}) * gain + offset;   // expected<inside, errc>
-if (!r) log(r.error());                              // domain_error from sqrt
+constexpr auto ms = si::milli(si::second);
+quantity<ms, inside<{{0, 100}, per<10>}>> lat{rational{955, 10}};
+auto bin = div_into<inside<{0, 9}, clamp | round_floor>>(lat, just<10> * ms);   // 9: a plain number
+
+using usd_t = quantity<USD, inside<{{0, 1'000'000}, per<100>}, round_nearest>>;  // USD: a unit of your own
+usd_t tax   = mul_into<usd_t>(usd_t{45.07}, just<8> * percent);                 // 3.61 USD: one rounding
+
+quantity<si::second, inside<{0, 86399}>> t{3725};
+auto [h, rest] = divmod(t, just<1> * si::hour);   // 1, 125 s: the remainder keeps its unit
 ```
 
-An operation that fails inside the chain reports its own cause — a division
-by zero reports `errc::division_by_zero`, a rational overflow reports
-`errc::overflow`.
+- `mul_into<Out>` / `div_into<Out>`: `Out` is a quantity type, or a plain
+  inside when the result is dimensionless (ms / ms). The factor between the
+  units is folded into the exact product.
+- `add_all`, `mul_all`, `sum<Q>(range)`: `sum<Q>` takes quantities in any unit
+  that converts to Q's.
+- `divmod(a, b)`: in the common unit; the quotient is a number, the remainder
+  a quantity.
+- `dot`, `cross`, `lerp`: `dot` of two px vectors is in px²; `lerp`'s t is a
+  number.
+- `++q` and `q--` move one unit.
+- An `expected` quantity, from a division by a grid that holds 0, chains
+  through `+ - * / %` like an `expected` inside.
 
-See [internals.md](internals.md#7-error-vocabulary) for the full rule and the
-per-operation audit.
+[`money.cpp`](../examples/money.cpp), [`wei.cpp`](../examples/wei.cpp) and
+[`histogram.cpp`](../examples/histogram.cpp) show these on real data.
