@@ -1,109 +1,145 @@
 # inside for fixed-point users
 
-If you already think in Qm.n, `inside` will feel familiar: it *is* fixed-point,
-with the scale and range lifted into the type so the compiler tracks them for
-you. This page maps your mental model onto `inside` and tells you which grids run
-at native speed.
+<!--
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
 
-## The bridge: a grid is a fixed-point format
+If you think in Qm.n, inside will feel familiar: it *is* fixed point, with the
+scale and the range moved into the type so that the compiler tracks them. This
+page maps the Qm.n habits onto grids, says which grids are fast, and shows the
+same formats with physical units.
 
-An `inside`'s type is a **grid** `{interval, notch}`:
+## A grid is a fixed-point format
 
-- **notch** = the resolution (the value of 1 LSB). `per<2^N>` is a fraction
-  `1/2^N` — i.e. **N fractional bits**.
-- **interval** = `[Lower, Upper]`, the representable range.
-- A value is `Lower + index · notch`; on a whole-number grid the raw storage
-  *is* the value where that costs no width, like a plain integer register.
+An inside's type is a **grid** `{interval, notch}`:
 
-So a Q8.8 unsigned register — 8 integer bits, 8 fractional bits, range
-`[0, 255 + 255/256]` step `1/256`, all 65536 bit patterns — is:
+- the **notch** is the resolution, the value of one LSB: `per<256>` is 2⁻⁸,
+  that is **8 fractional bits**;
+- the **interval** `[Lower, Upper]` is the range;
+- a value is Lower + index · notch. On a whole-number grid the raw *is* the
+  value wherever that costs no width, like a plain integer register.
+
+An unsigned Q8.8 register (8 integer bits, 8 fractional bits, every one of the
+65536 bit patterns) is:
 
 ```cpp
-using q8_8 = inside<{{0, rational{65535, 256}}, per<256>}, round_nearest>;  // == beman::inside::q8_8
+using q8_8 = inside<{{0, rational{65535, 256}}, per<256>}, round_nearest>;   // == beman::inside::q8_8
 ```
 
-`#include <beman/inside/formats.hpp>` for the curated aliases: `q4_4`, `q8_8`, `q16_16`
-(8/16/32 bits), the integer widths `uint8`…`uint64` / `int8`…`int64`, and
-`unorm8/16/32` (`[0,1]` at N-bit resolution).
+`<beman/inside/formats.hpp>` has the common ones ([storage.md](storage.md#predefined-native-formats)):
 
-Two grid shapes take the integer fast paths: **integer-aligned** (notch and
-Lower are whole numbers) and **Q-format** (notch `1/N`, `N ≥ 2`, Lower 0).
+| Alias | Format | Raw |
+|---|---|---|
+| `q4_4`, `q8_8`, `q16_16` | unsigned Q4.4, Q8.8, Q16.16, `round_nearest` | `uint8_t`, `uint16_t`, `uint32_t` |
+| `unorm8`, `unorm16`, `unorm32` | [0, 1] in steps of 1/(2ᴺ − 1), so 1.0 is exact, `round_nearest` | `uint8_t`, `uint16_t`, `uint32_t` |
+| `uint8` … `uint64`, `int8` … `int64` | the full integer ranges (`int64` from −(2⁶³ − 1)) | the same width |
 
-## What `inside` adds over a raw integer Qm.n
+Any other format is one line: a signed Q1.14 sample is
+`inside<{{-1, 1}, per<16384>}, round_nearest>`, a 0.5 °C step
+`inside<{{-40, 60}, 0.5}, round_nearest>`.
 
-- **The scale lives in the type.** `q8_8{1.5}` stores `384`; you never hand-track
-  the radix point or shift amounts.
-- **Result grids widen automatically.** `a * b` produces a *new* grid whose
-  interval and notch are computed at compile time — no manual headroom analysis
-  to avoid overflow. `Q8.8 × Q8.8 → Q16.16`-shaped, exactly. Scaling by a
-  constant point (`x * just<c>`) keeps the lattice (notch `N·|c|`) and the
-  integer storage.
-- **Narrowing is a policy, not a hope.** Storing back onto a coarser grid runs
-  `snap` (truncate), `round_nearest`, `clamp`, `wrap`, or `checked` — you
-  choose per type or per operation.
-- **Out-of-range is explicit.** `clamp`/`wrap` saturate/fold; `checked`
-  reports (a throw by default, or `std::expected` / `beman::inside::errc`)
-  instead of silently wrapping.
-- **Exactness by default.** Values on a notched grid are exact integer
-  indices; only a continuous grid (an exact quotient) needs a rational.
+## What inside adds over a raw Qm.n integer
 
-## Storage representations and their cost
+- **The scale is in the type.** `q8_8{1.5}` stores 384; you never track the
+  radix point or the shifts.
+- **Result grids widen by themselves.** `a * b` has a new grid, computed at
+  compile time: Q8.8 × Q8.8 is Q16.16-shaped, exactly, with no headroom
+  analysis. Scaling by a constant point (`x * just<c>`) keeps integer storage
+  on a scaled lattice.
+- **Storing back is a policy.** Onto a coarser grid a store truncates
+  (`snap`), rounds (`round_nearest`, …), saturates (`clamp`), wraps, or
+  reports (checked), chosen per type or per store.
+- **Round once.** `mul_into<Out>(a, b)` rounds the exact product straight onto
+  `Out`, the fixed-point "multiply, then shift with rounding" in one step,
+  without a wide intermediate type.
+- **Exact by default.** A notched grid holds exact integer indices; only a
+  continuous grid (an exact quotient) needs a fraction.
 
-| Representation | Raw holds | Cost | Use for |
+## What storage costs
+
+| Raw | Holds | Cost | For |
 |---|---|---|---|
-| value (whole-number grids) | the value, as a plain integer (Notch 1) | cheapest — one int | integer ranges, interop (`raw()` == wire value) |
-| index (every other notched grid) | 0-based notch index | one int (+ a shift/offset to read the value) | Q-format, dense serialization |
-| exact fraction (continuous grids) | `rational` | **gcd/lcm per op** | exact quotients |
+| the value (whole-number grids) | the value as a plain integer | one integer | integer ranges, interop: `raw()` is the wire value |
+| an index (every other notched grid) | the 0-based notch index | one integer, plus an offset or shift to read the value | Q formats, dense serialization |
+| an exact fraction (continuous grids) | a `rational` | a gcd per operation | exact quotients |
 
-Storage follows from the grid alone (see
-[storage.md](storage.md#storage-selection)). Rule of thumb: integer raws are
-cheap; **rational is the slow one** — keep continuous grids out of hot loops.
+Integer raws are cheap. **The fraction is the slow one**: keep continuous grids
+out of hot loops ([storage.md](storage.md#storage-selection)).
 
 ## Which grids are fast
 
-1. **Integer-aligned grids (notch 1)** — `inside<{0,N}>`, `inside<{a,b}>`. `+ − × ÷`
-   run on the raw integer at native parity (multiplication multiplies the value
-   indices, one `imul`; division with `snap` is a native `a/b`). Byte-
-   wide unchecked loops vectorize at native lane count.
-2. **Q-format grids (notch `1/N`, Lower 0)** — a power-of-two `N` makes scaling a
-   shift. Division of two same-notch Q-format operands takes the fast path
-   `(a · N) / b` (`(a << log2 N) / b` for power-of-two `N`) (`qformat_codec_fits` / `q_format_encode` in
-   `detail/storage.hpp`; the Q-format divide in `detail/division.hpp`). Construction is
-   ~native (Q8.8 / Q16.16 measure at ~0.97×).
-3. **Avoid in hot loops:** continuous (Notch 0) grids use rational storage
-   (gcd/lcm every op). For bulk reductions use
-   `beman::inside::sum<Target>`, which checks the total once and keeps
-   vectorization (`add_all` / `mul_all` are plain pairwise folds).
+1. **Whole-number grids** (`inside<{0, N}>`, `inside<{a, b}>`): `+ − ×` run on
+   the raw integers, a product is one `imul`, and a division under `snap` is a
+   native `a / b`. Byte-wide loops without checks vectorize at the native lane
+   count.
+2. **Q-format grids** (notch 1/N, Lower 0): a power-of-two N makes scaling a
+   shift. Two same-notch operands divide as `(a·N) / b`, a shift and a divide
+   for a power-of-two N ([arithmetic.md](arithmetic.md#division)).
+3. **Continuous grids** (notch 0): avoid in hot loops.
+
+For a bulk sum use `sum<Target>`, which checks the total once and keeps the
+loop vectorizable; a per-element checked `+=` pays a compare and branch per
+element.
 
 ## Performance
 
-The generated per-operation tables — Q8.8/Q16.16 construct/add/mul/div,
-accumulation, and the math engines, each with a native baseline and hardware
-counters — are in [performance.md](performance.md) (`beman.inside.perf_report` target).
-The short version: unchecked Q-format arithmetic sits at native parity;
-`checked` on a tight loop pays a compare-and-branch per element (9 vs 4
-instructions per element on the reference machine), which also stands in the way
-of autovectorisation — use `unsafe` inside proven-safe inner loops, or
-`beman::inside::sum` for a single deferred check.
+[performance.md](performance.md) has the measured tables for Q8.8 and Q16.16
+construct, add, sub, mul, div, store and accumulate, and for the math
+functions, each against a native baseline with hardware counters (built by the
+`beman.inside.perf_report` target). On the reference machine Q8.8 construction
+and accumulation run faster than the hand-written native code, division
+matches it, and a product or an add costs a few instructions more (about
+70–90% of native speed). A checked store adds a compare and branch; `unsafe`
+or `sum` removes it from a proven-safe inner loop.
 
-## Choosing your grid
+## Q formats with units
 
-- **Hot integer/fixed-point math:** integer-aligned or Q-format grids; `unsafe`
-  in the proven-safe inner loop, then assign the result into a checked type.
+A unit puts a meaning on the same raw at no cost (see [units.md](units.md)):
+
+```cpp
+#include <beman/inside/units.hpp>
+using namespace beman::inside::units;
+
+using celsius = inside<{{-40, 60}, 0.5}, round_nearest>;     // a 0.5 °C step, a uint8_t
+auto room = point<si::degree_Celsius>(celsius{21.4});        // 21.5 ℃: rounded onto the step
+auto body = point<si::degree_Celsius>(celsius{37});
+auto diff = body - room;                                     // 15.5 ℃, a temperature difference
+
+constexpr auto km = si::kilo(si::metre);
+quantity<km, inside<{0, 10}>> d{7};
+auto mm = d.in(si::milli(si::metre));                        // 7000000 mm: the same uint8_t raw
+```
+
+- A unit conversion rescales the grid and keeps the raw: km → mm compiles to
+  one `mov`.
+- `mul_into<Out>` on quantities folds the unit factor into the same single
+  rounding: `mul_into<usd>(subtotal, just<8> * percent)`.
+- A sensor count can be a dimension of its own: an ADC reading in `cts`
+  never adds to a voltage, and a calibrated gain in cts/V turns it into volts
+  with one exact division ([`adc_calibration.cpp`](../examples/adc_calibration.cpp)).
+
+[`fixed_point.cpp`](../examples/fixed_point.cpp) shows the formats table, exact
+products, `mul_into` onto Q8.8, and the 0.5 °C grid as ℃ points.
+
+## Choosing a grid
+
+- **Hot integer or fixed-point math:** whole-number or Q-format grids;
+  `unsafe` in the proven-safe inner loop, then store the result into a checked
+  type.
 - **Transcendentals:** any grid; integer outputs are the fast ones
   ([math.md](math.md#storage)).
-- **No rounding allowed:** pick a notch that holds every value (thirds:
-  `per<3>`); only a continuous grid pays the rational cost.
-- **SIMD byte/halfword loops:** keep the range within the native type (the
-  `formats.hpp` aliases use the full range, e.g. `uint8` is `[0, 255]`) so the raw
-  stays at native width.
+- **No rounding allowed:** choose a notch that holds every value (thirds:
+  `per<3>`); only a continuous grid pays for fractions.
+- **SIMD byte and halfword loops:** keep the range within the native type (the
+  `formats.hpp` aliases use the full range) so the raw stays native width.
 
 ## Where to go next
 
-| You want to… | Read |
+| You want | Read |
 |---|---|
-| the full storage / deduction rules | [storage.md](storage.md) |
-| result-grid rules for `+ − × ÷` | [arithmetic.md](arithmetic.md) |
-| out-of-range policies & errors | [policies.md](policies.md) |
-| reproducibility guarantees | [determinism.md](determinism.md) |
-| call sin/cos/sqrt/… | [math.md](math.md) |
+| the full storage rules | [storage.md](storage.md) |
+| the result grid of each operation | [arithmetic.md](arithmetic.md) |
+| policies and errors | [policies.md](policies.md) |
+| reproducibility | [determinism.md](determinism.md) |
+| sin, cos, sqrt, … | [math.md](math.md) |
+| units on your formats | [units.md](units.md) |

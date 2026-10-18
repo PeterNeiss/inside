@@ -1,144 +1,154 @@
-# Freestanding & bare-metal
+# Freestanding and bare metal
 
-`inside` is designed to run on freestanding / bare-metal targets with a minimal
-standard-library surface. The core carries **no `<system_error>` dependency**, never
-builds an `std::string` on its own surface, and replaces exceptions with a single
-**replaceable error handler**. This page explains how to build for such a target and
-where the current limits are.
+<!--
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
 
-> **TL;DR** — Compile with `-fno-exceptions`, don't include `beman/inside/io.hpp` (or define
-> `BEMAN_INSIDE_NO_STRING` for the single header), and install a `beman::inside::set_error_handler`. The
-> core arithmetic library then needs no hosted-only header. Transcendental math is
-> included: under `BEMAN_INSIDE_MATH_NO_FP` (auto-enabled by `-ffreestanding`) the `<cmath>`
-> dependency is compiled out entirely — see
-> [Math without `<cmath>`](#math-without-cmath-beman_inside_math_no_fp).
+inside runs on freestanding and bare-metal targets with a small standard
+library. The core has **no `<system_error>` dependency**, builds no
+`std::string` on its own, and reports errors through one **replaceable
+handler** instead of exceptions. The math engine needs no FPU. This page shows
+how to build for such a target, and where the limits are. It is also the home
+of `BEMAN_INSIDE_MATH_NO_FP`.
 
-## What you get
+**In short:**
 
-The core umbrella — `beman/inside/inside.hpp` plus the free-function layers
-`beman/inside/casts.hpp`, `beman/inside/arithmetic.hpp`, `beman/inside/range.hpp` — compiles under
-`-ffreestanding` (verified on GCC 15 / libstdc++) once exceptions are off:
+- compile with `-fno-exceptions`, and install a handler with
+  `set_error_handler`;
+- don't include `io.hpp`, `units.hpp`, `constants.hpp` or `random.hpp` (with
+  the single header, define `BEMAN_INSIDE_NO_STRING`);
+- the math is included: under `-ffreestanding` `BEMAN_INSIDE_MATH_NO_FP` turns
+  on by itself, and `<cmath>` is never included.
 
-```sh
-g++ -std=c++23 -ffreestanding -fno-exceptions -I include -fsyntax-only my_tu.cpp
-```
+## What compiles freestanding
 
-No `<system_error>`, no `<string>`/`<ostream>`/`<format>`, no `<stdexcept>` reach the
-core in that configuration.
+Measured with GCC 15 and libstdc++,
+`g++ -std=c++23 -ffreestanding -fno-exceptions -fsyntax-only`:
 
-## The two build conditions
+| Header | Freestanding |
+|---|---|
+| `inside.hpp` (the umbrella), `casts.hpp`, `arithmetic.hpp`, `range.hpp`, `cursor.hpp` | yes |
+| `cmath.hpp` (the math engine), `formats.hpp`, `predicates.hpp`, `numeric_limits.hpp` | yes |
+| `io.hpp` | no: `<string>`, `<ostream>`, `<format>` |
+| `units.hpp`, `units_math.hpp`, `constants.hpp` | no: they include io.hpp |
+| `random.hpp` | no: `<random>` |
 
-### 1. Exceptions off → install a handler
+No `<system_error>`, `<string>`, `<ostream>`, `<format>` or `<stdexcept>`
+reaches the core in that configuration. Units need a hosted library today.
+Under `BEMAN_INSIDE_MATH_NO_FP` on a *hosted* build (no FPU, but a full
+library) units and their math work unchanged: neither header uses floating
+point. The mathematical constants (`math::pi`, …) come with cmath.hpp and are
+freestanding too.
 
-Every checked failure (out-of-range assignment, division by zero, rounding mismatch,
-overflow, non-finite input) funnels through `beman::inside::detail::raise`, which calls the
-installed handler. The **default** handler throws `beman::inside::inside_error` (carrying the
-`beman::inside::errc`) — which needs `<stdexcept>`, a hosted header. Compiling with
-`-fno-exceptions` removes that include and makes the default handler **trap** instead.
+## Two build conditions
 
-For anything other than "trap on error", install your own handler:
+### 1. Exceptions off: install a handler
+
+Every checked failure (an out-of-range store, a division by zero, a rounding
+mismatch, an overflow, a non-finite input) goes through
+`beman::inside::detail::raise`, which calls the installed handler. The
+**default** handler throws `beman::inside::inside_error`, which needs
+`<stdexcept>`, a hosted header. With `-fno-exceptions` that include goes away
+and the default handler **traps** instead.
+
+For anything other than a trap, install your own handler:
 
 ```cpp
 #include <beman/inside/inside.hpp>
 
-// Contract: the handler MUST NOT return (raise() traps if it does). Redirect a
-// failure to a log/reset/longjmp — a real target would not spin forever.
-[[noreturn]] void on_inside_error(beman::inside::errc code, const char* what) noexcept
-{
-    board_log(static_cast<int>(code), what);   // `what` = static message text
+// The handler must not return (raise() traps if it does): log, reset, longjmp.
+[[noreturn]] void on_inside_error(beman::inside::errc code, const char* what) noexcept {
+    board_log(static_cast<int>(code), what);   // `what` is a static message
     board_fault_reset();
     for (;;) {}
 }
 
-int main()
-{
-    beman::inside::set_error_handler(&on_inside_error);    // returns the previous handler
-    // ... beman::inside::get_error_handler() reads the current one;
-    //     beman::inside::set_error_handler(nullptr) restores the default.
+int main() {
+    beman::inside::set_error_handler(&on_inside_error);   // returns the previous handler
+    // get_error_handler() reads it; set_error_handler(nullptr) restores the default
 }
 ```
 
-`what` is a static, null-terminated `const char*` (`beman::inside::errc_message(code)` by
-default) — no allocation, no `<string>`.
+`what` is a static, null-terminated string (`errc_message(code)` by default):
+no allocation, no `<string>`.
 
-### 2. Drop the string/printing layer
+### 2. Drop the text layer
 
-All stringification — `to_string`, `operator<<`, and the `std::formatter`
-specializations — lives in the opt-in header `beman/inside/io.hpp`, the only place that pulls
-`<string>`, `<ostream>`, and `<format>`. **Simply don't include `beman/inside/io.hpp`** and
-the core never sees those headers.
-
-For the [single-header amalgamation](single-header.md), that block is wrapped in
-a guard — define `BEMAN_INSIDE_NO_STRING` to drop it (and its heavy includes) wholesale:
+`to_string`, `operator<<`, `operator>>` and the `std::formatter`
+specializations live in `io.hpp`, the only header that pulls in `<string>`,
+`<ostream>` and `<format>`. Don't include it. With the
+[single header](single-header.md), define `BEMAN_INSIDE_NO_STRING` before the
+include; it drops the text layer, and with it the units and the physical
+constants:
 
 ```cpp
 #define BEMAN_INSIDE_NO_STRING
 #include <beman/inside/inside.hpp>   // single_include/beman/inside/inside.hpp
 ```
 
-You give up `beman::inside::to_string` / `operator<<` / `std::format`; report state through the
-error handler and the error-code channel instead.
+Report state through the handler and the error codes instead.
 
-## Error reporting without exceptions
+## Errors without exceptions
 
-Besides the handler, errors come back as values — the throw-free reporting
-channel, with **no `std::error_code` / `<system_error>`**: construction through
-`try_make` (an `expected<inside, errc>`), assignment and free arithmetic through a
-`beman::inside::errc` out-parameter:
+Besides the handler, errors come back as values, without `std::error_code`:
 
-[Error code mode](policies.md#error-code-mode) shows the surface. `clamp` /
-`wrap` policies and `std::expected` results are all non-throwing and work unchanged
-on freestanding (test `has_value()` / `error()` rather than calling `.value()`,
-which would need to throw).
+- construction through `try_make`, an `std::expected<inside, errc>`;
+- stores and free functions through an `errc&` out-parameter;
+- `clamp` and `wrap` policies, which never fail;
+- `std::expected` results of division and math. Test `has_value()` and read
+  `error()`; don't call `.value()`, which would throw.
+
+[policies.md](policies.md#error-codes-instead-of-exceptions) shows the surface.
 
 ## Math without `<cmath>` (`BEMAN_INSIDE_MATH_NO_FP`)
 
-The transcendental math API (`beman::inside::math::sin/cos/exp/log/sqrt/pow/atan/…` in
-**`beman/inside/cmath.hpp`**) works on freestanding targets too. Define **`BEMAN_INSIDE_MATH_NO_FP`**
-and the math engine's double and dd tiers — including their `#include <cmath>` — are
-compiled out **entirely**; the integer path computes every result. The public surface,
-output grids, types **and values** are unchanged: results are correctly rounded either
-way.
+The math functions (`math::sin`, `cos`, `exp`, `log`, `sqrt`, `pow`, `atan`, …
+in `cmath.hpp`) work on freestanding targets. Under `BEMAN_INSIDE_MATH_NO_FP`
+the engine's `double` and double-double tiers, and their `#include <cmath>`,
+are compiled out **entirely**; the integer path computes every result. The
+interface, the output grids, the types **and the values** are unchanged:
+results are correctly rounded either way.
 
-- **Auto-enabled** when `__STDC_HOSTED__ == 0` (i.e. `-ffreestanding`).
-- Holds for the modular headers **and** the amalgamated
-  [single header](single-header.md). A CI smoke (`single_header_nofp_smoke`) compiles
-  the single header with a *poison* `<cmath>` shim first on the include path, so the
-  build fails if any `<cmath>` sneaks in. It defines `BEMAN_INSIDE_NO_STRING` too:
-  `io.hpp`'s streams bring `<cmath>` along on libc++, whose `<ostream>` includes
-  `<format>`.
-- All transcendentals are `constexpr` in every build, so they evaluate at compile time
-  as well as runtime.
+- It turns on by itself when `__STDC_HOSTED__ == 0` (`-ffreestanding`), or set
+  the CMake option `BEMAN_INSIDE_MATH_NO_FP=ON`, or define the macro.
+- It holds for the modular headers and for the single header. The CI smoke
+  `single_header_nofp_smoke` compiles the single header with a *poison*
+  `<cmath>` first on the include path, so any `<cmath>` that sneaks in breaks
+  the build. That smoke defines `BEMAN_INSIDE_NO_STRING` too, because libc++'s
+  `<ostream>` includes `<format>`, which includes `<cmath>`.
+- The whole test suite also runs with `BEMAN_INSIDE_MATH_NO_FP=ON` on a hosted
+  build, units included.
+- Every math function is `constexpr`, so it works at compile time too.
 
 ```bash
-g++ -std=c++23 -ffreestanding -I single_include my_app.cpp              # NO_FP auto-on
-g++ -std=c++23 -DBEMAN_INSIDE_MATH_NO_FP -I single_include my_app.cpp   # or force it
+g++ -std=c++23 -ffreestanding -I single_include my_app.cpp              # NO_FP on by itself
+g++ -std=c++23 -DBEMAN_INSIDE_MATH_NO_FP -I single_include my_app.cpp   # or forced
 ```
 
-## Limitations & caveats
+## Limits
 
-- **Toolchain-dependent.** The "core is freestanding" result was verified on GCC 15 /
-  libstdc++, which makes `<ranges>`, `<algorithm>`, `<expected>`, `<memory>`,
-  `<functional>`, `<tuple>`, `<numeric>`, `<string_view>`, … freestanding (C++26
-  P2407/P2738). On older libstdc++ or libc++ several of these are still hosted and
-  would also block `-ffreestanding`; the library does not work around that.
-- **Compile-time vs. link-time.** `-ffreestanding` here is a *compile* property. A real
-  bare-metal **link** additionally needs: libm symbols that the FP path may call
-  (`sqrt`, `fma` — not needed under `BEMAN_INSIDE_MATH_NO_FP`); `abort` / `__builtin_trap` for
-  the no-exceptions failure path; and a
-  startup/runtime that does not assume a hosted environment.
-- **Exceptions on + freestanding don't mix** out of the box — the default throwing
-  handler needs `<stdexcept>`. Use `-fno-exceptions`, or replace the handler and avoid
-  the throwing default.
+- **It depends on the toolchain.** GCC 15's libstdc++ makes `<ranges>`,
+  `<algorithm>`, `<expected>`, `<memory>`, `<functional>`, `<tuple>`,
+  `<numeric>`, `<string_view>` and more freestanding (C++26 P2407, P2738).
+  On older libstdc++ or on libc++ some of them are still hosted and block
+  `-ffreestanding`; the library does not work around that.
+- **Compile versus link.** `-ffreestanding` here is a compile property. A real
+  bare-metal link also needs `abort` or `__builtin_trap` for the failure path,
+  libm's `sqrt` and `fma` unless `BEMAN_INSIDE_MATH_NO_FP` is on, and a start-up
+  that does not assume a hosted environment.
+- **Exceptions on, freestanding** does not work out of the box: the default
+  handler needs `<stdexcept>`. Use `-fno-exceptions`, or replace the handler.
+- **Units are hosted only**, for now: units.hpp includes io.hpp for its text
+  output ([roadmap.md](roadmap.md)).
 
-## Worked example
+## A worked example
 
-`tests/beman/inside/single_header_freestanding_smoke.test.cpp` is a complete TU that sees **only** the
-amalgamated single header with the string block dropped and exceptions off. It installs
-a trapping handler and exercises clamp/wrap, the error-code channel, and checked
-arithmetic:
+`tests/beman/inside/single_header_freestanding_smoke.test.cpp` is a complete
+translation unit that sees **only** the single header, with the text layer
+dropped and exceptions off. It installs a trapping handler and runs clamp,
+wrap, the error codes and checked arithmetic:
 
 ```sh
 ctest --test-dir <build-dir> -R single_header_freestanding_smoke
-# compiled with: -DBEMAN_INSIDE_NO_STRING -fno-exceptions, -I single_include only
+# built with -DBEMAN_INSIDE_NO_STRING -fno-exceptions, -I single_include only
 ```
