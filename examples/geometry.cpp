@@ -58,9 +58,9 @@ int main() {
     std::cout << "cross(a, b)    = " << cross(ax, ay, bx, by) << "   (sign = side of a)\n";
 
     // Side test for three points P, Q, R: cross(Q-P, R-P).
-    auto side = [](coord px, coord py, coord qx, coord qy, coord rx, coord ry) {
+    auto side = [](coord p_x, coord p_y, coord q_x, coord q_y, coord r_x, coord r_y) {
         // Edge vectors widen to a signed grid; cross widens further. No overflow.
-        auto c = cross(qx - px, qy - py, rx - px, ry - py);
+        auto c = cross(q_x - p_x, q_y - p_y, r_x - p_x, r_y - p_y);
         return c > zero_area ? "left" : c < zero_area ? "right" : "collinear";
     };
     std::cout << "\nside of segment (0,0)->(10,0):\n";

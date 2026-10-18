@@ -20648,9 +20648,11 @@ template <class Q, numeric A>
 namespace detail {
 template <class Q, class X>
 constexpr decltype(auto) number_in(const X& x) {
-    if constexpr (quantity_like<X>)
-        return x.template in<Q::reference.U>().numerical_value();
-    else
+    if constexpr (quantity_like<X>) {
+        // A copy: numerical_value() refers into the converted temporary.
+        auto v = x.template in<Q::reference.U>().numerical_value();
+        return v;
+    } else
         return (x);
 }
 template <class Q, class X>
@@ -22053,9 +22055,9 @@ constexpr Out pi_trig_into(const quantity<R, V>& q) {
     constexpr rational r = beman::inside::detail::to_rational(magnitude_of(R.U).Ratio);
     using core           = ax::pi_trig_core<ax::input_limbs<V>, Cos>;
     return ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_input(q.numerical_value()),
-                                                       static_cast<umax>(r.Numerator < 0 ? -r.Numerator : r.Numerator),
+                                                       r.Numerator,
                                                        beman::inside::detail::abs_den(r.Denominator),
-                                                       (r.Numerator < 0) != (r.Denominator < 0)});
+                                                       r.Denominator < 0});
 }
 } // namespace detail
 

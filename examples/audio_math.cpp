@@ -50,11 +50,11 @@ int main() {
         std::cout << x << "\t" << math::tanh(x) << "\t" << inside<{{-1, 1}, per<1024>}, clamp | round_nearest>{x}
                   << "\n";
     for (const drive_t x : {drive_t{-2}, drive_t{0}, drive_t{2}}) {
-        const auto s   = math::sinh(x);
-        const auto c   = math::cosh(x);
-        const auto one = c * c - s * s; // within a few notches of 1
-        std::cout << "cosh^2 - sinh^2 at " << x << " = " << one << "\n";
-        if (math::abs(one - just<1>) > just<1, 64>)
+        const auto s        = math::sinh(x);
+        const auto c        = math::cosh(x);
+        const auto identity = c * c - s * s; // within a few notches of 1
+        std::cout << "cosh^2 - sinh^2 at " << x << " = " << identity << "\n";
+        if (math::abs(identity - just<1>) > just<1, 64>)
             return 1;
     }
 
