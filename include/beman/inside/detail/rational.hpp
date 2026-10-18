@@ -6,7 +6,7 @@
 BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/numbers.hpp>           // umax/imax, arithmetic, rational fwd
-#include <beman/inside/detail/float_bits.hpp> // frexp/ldexp, abs_fraction, is_double_value
+#include <beman/inside/detail/float_bits.hpp> // abs_fraction, is_double_value
 #include <beman/inside/lift.hpp>              // lift, expected_like, unwrap_t
 #include <beman/inside/detail/overflow.hpp>   // add/sub/mul_overflow
 #include <beman/inside/detail/debug.hpp>      // errc, detail::raise, detail::constexpr_error
@@ -19,13 +19,11 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <numeric>
 #include <compare>
 #include <limits>
-#include <tuple>
 #include <type_traits>
 
 namespace beman::inside::detail {
-[[nodiscard]] constexpr umax abs_den(imax d) noexcept {
-    return (d >= 0) ? static_cast<umax>(d) : umax{0} - static_cast<umax>(d);
-}
+// |d| of a signed denominator (any imax, INT64_MIN too).
+[[nodiscard]] constexpr umax abs_den(imax d) noexcept { return safe_abs(d); }
 
 //---------------------------------------------------------------------------
 // trim
@@ -403,7 +401,7 @@ constexpr rational::rational(std::floating_point auto value) {
     auto [num, den] = abs_fraction(static_cast<double>(value));
     Numerator       = num;
     Denominator     = static_cast<imax>(neg ? umax{0} - den : den);
-    // trim not needed, because abs_fraction already trims in its special case
+    // no trim: abs_fraction returns a reduced fraction
 }
 
 // rational{value}, and whether it is exact: a finite |value| < 2^64 finer
@@ -446,12 +444,7 @@ BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::expected<rational, errc> 
     W          den = W{ad} * W{bd / g};
     if (num.is_zero())
         return rational{0};
-    W x = abs(num), y = den; // gcd(|num|, den)
-    while (!y.is_zero()) {
-        const W t = x % y;
-        x         = y;
-        y         = t;
-    }
+    const W x      = wide_gcd(abs(num), den);
     num            = num / x;
     den            = den / x;
     const bool neg = num.negative();
@@ -538,8 +531,7 @@ inline constexpr auto rational::add_impl(const rational& a, const rational& b) {
         if (mul_overflow(a.Numerator, b_ad_r, &A) || mul_overflow(b.Numerator, a_ad_r, &B)) {
             // Mixed signs: |A − B| can fit umax even when a cross-product alone
             // does not (e.g. 1024 − m/2^54 forms 1024·2^54 == 2^64 before the
-            // subtraction brings it back in range — the former double engine's store hit
-            // exactly this). Retry the difference in 128-bit before giving up.
+            // subtraction brings it back in range). Retry the difference in 128-bit before giving up.
             if (a_neg != b_neg) {
                 const limb::pair<umax> A2       = limb::mul(a.Numerator, b_ad_r);
                 const limb::pair<umax> B2       = limb::mul(b.Numerator, a_ad_r);

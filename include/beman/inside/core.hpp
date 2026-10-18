@@ -119,10 +119,9 @@ struct inside {
     }
 
     // Trivial default ctor — Raw is left uninitialized, like a built-in scalar: a
-    // default-constructed inside has no value until assigned. (A previous checked
-    // overload zero-filled Raw, which decoded to an out-of-range value or an invalid
-    // {0,0} rational for grids not containing 0 — a defined-but-invalid footgun.
-    // Value-init `inside{}` still zero-fills where a zero raw is genuinely wanted.)
+    // default-constructed inside has no value until assigned. (A zero raw would
+    // decode to an out-of-range value on grids without 0.) Value-init `inside{}`
+    // still zero-fills where a zero raw is genuinely wanted.
     constexpr inside()
         requires(!has_flag(P, detail::cursor_marker))
     = default;
@@ -283,7 +282,7 @@ struct inside {
     //                       in-range sites (array indexing). FP shares the gate.
     //   to<T>(b)/as<T>(b) — free-function forms, for generic code.
     constexpr operator imax() const
-        requires((detail::integer_notch<G> || ((P & snap) != 0 && detail::rational_readable<inside>)) &&
+        requires((detail::integer_notch<G> || (has_flag(P, snap) && detail::rational_readable<inside>)) &&
                  G.Interval.Lower >= detail::rational{std::numeric_limits<imax>::min()} &&
                  G.Interval.Upper <= detail::rational{std::numeric_limits<imax>::max()})
     {
@@ -294,7 +293,7 @@ struct inside {
     }
 
     constexpr explicit operator double() const
-        requires((P & (round_floor | round_ceil | round_nearest | round_half_even | snap)) != 0)
+        requires(has_flag(P, snap))
     {
         return detail::as_double(*this);
     }
@@ -377,9 +376,7 @@ struct inside {
     // double's policy gate, so a strict inside rejects `b.as<double>()` too.
     template <typename T>
     [[nodiscard]] constexpr T as() const
-        requires(std::integral<T> || std::floating_point<T>) &&
-                (!std::floating_point<T> ||
-                 (P & (round_floor | round_ceil | round_nearest | round_half_even | snap)) != 0)
+        requires(std::integral<T> || std::floating_point<T>) && (!std::floating_point<T> || has_flag(P, snap))
     {
         return to<T>().value();
     }
@@ -593,16 +590,8 @@ struct inside {
 
     // A compound op's constraint: its binary op's result (an expected's
     // value) assigns to this type, so `requires { x op= y; }` is honest.
-    template <typename T>
-    struct value_of {
-        using type = T;
-    };
-    template <typename T>
-    struct value_of<std::expected<T, errc>> {
-        using type = T;
-    };
     template <typename Result>
-    static constexpr bool compound_assignable = inside_assignable<inside, typename value_of<Result>::type, P>;
+    static constexpr bool compound_assignable = inside_assignable<inside, detail::unwrap_t<Result>, P>;
 
   public:
     template <insidable R>
@@ -649,12 +638,10 @@ struct inside {
         return *this;
     }
 
-  public:
     //-----------------------------------------------------------------------
     // Compound assignment private helpers — extracted to keep each
     // `operator*=` body focused on its own arithmetic shape.
     //-----------------------------------------------------------------------
-  private:
     template <typename Result>
     constexpr inside& assign_op_result(const Result& r) {
         if constexpr (detail::expected_like<Result>) {
@@ -678,10 +665,6 @@ struct inside {
         return *this;
     }
 
-  public:
-    // Only a `rational` (a library type) may join an inside in a compound assign;
-    // raw int/float/double are ill-formed — give the scalar a grid (`1_ins` /
-    // `just<1>` / `inside<{lo,hi}>{n}`), mirroring the binary operators.
     // A rational on a Q-format grid's lattice as a signed notch count (rhs·K
     // for notch 1/K), when it is a whole number of notches of moderate size.
     static constexpr bool raw_delta_ok = detail::qformat_codec_fits<inside> && detail::values_fit_imax<inside>;
@@ -702,6 +685,11 @@ struct inside {
         const imax n = static_cast<imax>(r.Numerator * (K / d));
         return r.Denominator < 0 ? -n : n;
     }
+
+  public:
+    // Only a `rational` (a library type) may join an inside in a compound assign;
+    // raw int/float/double are ill-formed — give the scalar a grid (`1_ins` /
+    // `just<1>` / `inside<{lo,hi}>{n}`), mirroring the binary operators.
 
     template <std::same_as<detail::rational> A>
     constexpr inside& operator+=(const A& rhs) {

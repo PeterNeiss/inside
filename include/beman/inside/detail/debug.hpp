@@ -16,22 +16,12 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #endif
 
 //---------------------------------------------------------------------------
-// Attribute shims. Error/throw paths are marked cold + non-inline so the
-// optimizer keeps them out of the hot path (and out of the inlined body of
-// otherwise-trivial assignment/arithmetic). Standard [[noreturn]] / [[unlikely]]
-// are used directly at the throw sites and branches.
-//---------------------------------------------------------------------------
-// (The attribute shims BEMAN_INSIDE_COLD, _NOINLINE, _ALWAYS_INLINE and
-// BEMAN_INSIDE_TRAP() are in config.hpp.)
-
-//---------------------------------------------------------------------------
 // debug — error codes, the replaceable failure handler, and diagnostic helpers.
 // `errc` enumerates the failure modes. Every runtime failure funnels through
 // `detail::raise`, which calls the installed `error_handler` — by default one
 // that throws `beman::inside::inside_error` (hosted) or traps (freestanding / no
 // exceptions). `set_error_handler` lets a bare-metal target redirect failures
 // to a reset/log without depending on <system_error> or the C++ exception ABI.
-// `print_types` is a static_assert debug helper for template instantiation.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 //---------------------------------------------------------------------------
@@ -131,7 +121,7 @@ namespace detail {
 // into the type, so a malformed literal / overflow aborts constant
 // evaluation with the text in the instantiation — no `throw` token, so it
 // also compiles under -fno-exceptions. Never reached at runtime (all call
-// sites are guarded by std::is_constant_evaluated / are consteval).
+// sites are guarded by std::is_constant_evaluated or are consteval).
 //-----------------------------------------------------------------------
 template <unsigned N>
 struct fixed_string {
@@ -146,12 +136,6 @@ template <fixed_string Msg>
 [[noreturn]] BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE inline void constexpr_error() {
     raise(errc::overflow, Msg.Data);
 }
-
-// Debug helper: instantiating print_types<Ts...> fails and names Ts.
-template <typename... Ts>
-struct print_types {
-    static_assert(!sizeof...(Ts), "=== PRINT_TYPES ===");
-};
 } // namespace detail
 } // namespace beman::inside
 

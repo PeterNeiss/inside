@@ -15,7 +15,6 @@ BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <expected> // std::expected, std::unexpected
 
-#include <bit>
 #include <concepts> // std::convertible_to (grid corner ctors)
 
 namespace beman::inside {
@@ -43,7 +42,7 @@ enum class bounds : unsigned char {
 
 // The largest maximum denominator a continuous grid can carry: past it a
 // bound would size fractions without limit along an expression chain, so it
-// is dropped (the grid is unbounded, as before). C++26 big grids only; with
+// is dropped (the grid is unbounded). C++26 big grids only; with
 // 64-bit grid numbers a bound must fit the 64-bit rational.
 #ifndef BEMAN_INSIDE_MAX_FRACTION_BITS
     #define BEMAN_INSIDE_MAX_FRACTION_BITS 1024
@@ -134,13 +133,8 @@ struct grid {
         check_short_binary(lower);
         check_short_binary(upper);
         const detail::grid_rational lo = to_number(lower), hi = to_number(upper);
-        return detail::lift([](const detail::grid_rational& a,
-                               const detail::grid_rational& b) { return detail::grid_gcd(a, b); },
-                            detail::lift([](const detail::grid_rational& a,
-                                            const detail::grid_rational& b) { return detail::grid_gcd(a, b); },
-                                         detail::grid_rational{1},
-                                         lo),
-                            hi)
+        return detail::lift(
+                   detail::grid_gcd_of_two, detail::lift(detail::grid_gcd_of_two, detail::grid_rational{1}, lo), hi)
             .value_or(detail::grid_rational{0});
     }
 
@@ -229,27 +223,15 @@ struct grid {
     // Bits needed to hold every slot index 0..slot_count().
     [[nodiscard]] constexpr int slot_bits() const noexcept { return bit_width_of(slot_count()); }
 
-    // The slot count as a umax; false (out = 0) when it needs more than 64
-    // bits — such a grid stores a wide_int index.
-    [[nodiscard]] constexpr bool max_index_checked(umax& out) const {
-        const detail::grid_int c    = slot_count();
-        const bool             fits = !(detail::grid_int{std::numeric_limits<umax>::max()} < c);
-        out                         = fits ? static_cast<umax>(c) : umax{0};
-        return fits;
+    // True when the slot count fits umax (a builtin index). False ⇒ the grid is
+    // still valid and stores a wide index.
+    [[nodiscard]] constexpr bool max_index_representable() const {
+        return !(detail::grid_int{std::numeric_limits<umax>::max()} < slot_count());
     }
 
     // Index-storage slot count (0 on overflow: such grids store a wide index).
     [[nodiscard]] constexpr umax max_index() const {
-        umax c = 0;
-        (void)max_index_checked(c);
-        return c;
-    }
-
-    // True when the slot count fits umax (a builtin index). False ⇒ the grid is
-    // still valid and stores a wide index.
-    [[nodiscard]] constexpr bool max_index_representable() const {
-        umax c = 0;
-        return max_index_checked(c);
+        return max_index_representable() ? static_cast<umax>(slot_count()) : umax{0};
     }
 
     // True when `v` is an *exact* slot: in the interval AND on a notch (notch-0
@@ -395,9 +377,7 @@ constexpr std::expected<grid, errc> lattice_grid(const interval& iv, const grid_
         return std::unexpected{errc::overflow};
     return grid{iv, n};
 }
-} // namespace detail
 
-namespace detail {
 // The value index v/Notch of a double v rounded onto G by mode M, the
 // integer storage's rule (rounding_of; ties of `nearest` half away from
 // zero). G is anchored with a power-of-two notch whose values double holds
@@ -440,11 +420,7 @@ struct point_slot {
     constexpr bool operator==(const point_slot&) const  = default;
     constexpr auto operator<=>(const point_slot&) const = default;
 };
-} // namespace detail
 
-// Both endpoints lie in imax — the signed value raw candidates (and every
-// `trunc(endpoint)` constant) are only meaningful then.
-namespace detail {
 // Notch 1 from an integer Lower: the values are integers, so a raw can hold
 // the value itself (value storage). {{0.5, 10.5}, 1} has notch 1 but not
 // integer values.
@@ -452,6 +428,8 @@ constexpr bool unit_lattice(const grid& g) noexcept {
     return g.Notch == 1 && wide_denominator(g.Interval.Lower) == grid_int{1};
 }
 
+// Both endpoints lie in imax — the signed value raw candidates (and every
+// `trunc(endpoint)` constant) are only meaningful then.
 constexpr bool fits_imax(const interval& iv) noexcept {
     return iv.Lower >= rational{std::numeric_limits<imax>::min()} &&
            iv.Upper <= rational{std::numeric_limits<imax>::max()};
@@ -546,13 +524,13 @@ constexpr auto raw_for() {
 template <grid G>
 using raw_for_t = decltype(raw_for<G>());
 
-// Dyadic grid: power-of-2 notch denominator and Lower denominator, so every
-// on-grid value is a binary fraction (a double when it fits double_exact).
-// A positive power of two, and its log2 (exact at any width).
+// A positive power of two (exact at any width).
 constexpr bool is_pow2(const grid_int& v) noexcept {
     return grid_int{0} < v && v == (grid_int{1} << (bit_width_of(v) - 1));
 }
 
+// Dyadic grid: power-of-2 notch denominator and Lower denominator, so every
+// on-grid value is a binary fraction (a double when it fits double_exact).
 template <grid G>
 inline constexpr bool dyadic_grid =
     G.Notch != 0 && is_pow2(wide_denominator(G.Notch)) && is_pow2(wide_denominator(G.Interval.Lower));
@@ -635,7 +613,7 @@ constexpr std::expected<grid_rational, errc> product_notch(const grid& a, const 
     const bool          ap = a.Interval.Lower == a.Interval.Upper, bp = b.Interval.Lower == b.Interval.Upper;
     const grid_rational an  = (ap && !bp) ? abs(a.Interval.Lower) : a.Notch;
     const grid_rational bn  = (bp && !ap) ? abs(b.Interval.Lower) : b.Notch;
-    auto                gcd = [](const grid_rational& x, const grid_rational& y) { return grid_gcd(x, y); };
+    constexpr auto      gcd = grid_gcd_of_two;
     auto                mul = [](const grid_rational& x, const grid_rational& y) {
 #if BEMAN_INSIDE_BIG_GRIDS
         return x * y;
@@ -826,8 +804,8 @@ template <std::same_as<grid> G>
                                           : a < b                                              ? b
                                                                                                : a);
     }
-    auto gcd = [](const detail::grid_rational& x, const detail::grid_rational& y) { return detail::grid_gcd(x, y); };
-    std::expected<detail::grid_rational, errc> n = detail::lift(gcd, lhs.Notch, rhs.Notch);
+    constexpr auto                             gcd = detail::grid_gcd_of_two;
+    std::expected<detail::grid_rational, errc> n   = detail::lift(gcd, lhs.Notch, rhs.Notch);
     if (n && (*n == 0 || !detail::grid_same_lattice(lhs.Interval.Lower, rhs.Interval.Lower, *n)))
         n = detail::lift(gcd, n, rhs.Interval.Lower - lhs.Interval.Lower);
     return detail::lift([iv](detail::grid_rational g) { return grid{iv, g}; }, n);

@@ -25,11 +25,9 @@ target_sources(
                 detail/introspection.hpp
                 detail/math_adaptive.hpp
                 detail/math_cores.hpp
-                detail/math_entry.hpp
                 detail/math_dd.hpp
+                detail/math_entry.hpp
                 detail/math_fp.hpp
-                detail/wide_int.hpp
-                detail/wide_value.hpp
                 detail/multiplication.hpp
                 detail/number_text.hpp
                 detail/overflow.hpp
@@ -37,6 +35,8 @@ target_sources(
                 detail/rep.hpp
                 detail/rounding.hpp
                 detail/storage.hpp
+                detail/wide_int.hpp
+                detail/wide_value.hpp
                 formats.hpp
                 generic.hpp
                 grid.hpp
@@ -46,8 +46,8 @@ target_sources(
                 lift.hpp
                 numbers.hpp
                 numeric_limits.hpp
-                policy_flag.hpp
                 policy.hpp
+                policy_flag.hpp
                 predicates.hpp
                 random.hpp
                 range.hpp

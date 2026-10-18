@@ -130,7 +130,7 @@ template <policy_flag F = none>
 //---------------------------------------------------------------------------
 namespace detail {
 template <insidable Result, typename A, typename P>
-constexpr auto report_or_unexpected(A&& action, P&& policy, errc code, [[maybe_unused]] const char* what)
+constexpr auto report_or_unexpected(A&& action, P&& policy, errc code)
     -> std::conditional_t<overflow_action<A>, Result, std::expected<Result, errc>> {
     if constexpr (overflow_action<A>) {
         Result res;
@@ -235,7 +235,6 @@ struct policy_ref {
     // the same size as `policy_ref<B, P, no_action>`.
     BEMAN_INSIDE_NO_UNIQUE_ADDRESS std::tuple<As...> Actions;
 
-  public:
     // Stores go through dispatch_assign under this ref's Policy and actions:
     // into Ref for `operator=`, into a fresh target for the conversion below,
     // so a one-shot snap can be read out as a value (`(a * b).with_snap()`).
@@ -307,18 +306,9 @@ struct policy_ref {
         return finalize_arith(rat_op(rational{Ref}, rhs), msg);
     }
 
-    // The value an op's result holds (an expected's value type).
-    template <typename T>
-    struct result_value {
-        using type = T;
-    };
-    template <typename T>
-    struct result_value<std::expected<T, errc>> {
-        using type = T;
-    };
+    // The value an op's result holds (an expected's value type) assigns back.
     template <typename R>
-    static constexpr bool stores_back =
-        inside_assignable<B, typename result_value<std::remove_cvref_t<R>>::type, flags_of<B> | flags_of<P>>;
+    static constexpr bool stores_back = inside_assignable<B, detail::unwrap_t<R>, flags_of<B> | flags_of<P>>;
 
   public:
     // Constrained on the free op they call and on storing its result back

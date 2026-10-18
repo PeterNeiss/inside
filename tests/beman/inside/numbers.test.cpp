@@ -181,9 +181,9 @@ TEST(NumbersTest, rational_rejects_non_finite_double) {
     ASSERT_THROW((void)(rational{std::numeric_limits<double>::quiet_NaN()}), beman::inside::inside_error);
 }
 
-// scale_pow2 (the exp kernels' scaling) gives ldexp_small's bits for every k,
+// scale_pow2 (the exp kernels' scaling) gives ldexp's bits for every k,
 // through normal, subnormal, overflowing and underflowing results.
-TEST(NumbersTest, scale_pow2_matches_ldexp_small) {
+TEST(NumbersTest, scale_pow2_matches_ldexp) {
     const double values[] = {1.0,
                              -1.0,
                              0.0,
@@ -199,7 +199,7 @@ TEST(NumbersTest, scale_pow2_matches_ldexp_small) {
         for (int k = -1200; k <= 1200; ++k) {
             volatile int kk = k; // the run-time path
             const double a  = scale_pow2(v, kk);
-            const double b  = ldexp_small(v, kk);
+            const double b  = beman::inside::detail::ldexp(v, kk);
             ASSERT_EQ(std::bit_cast<std::uint64_t>(a), std::bit_cast<std::uint64_t>(b)) << v << " * 2^" << k;
         }
 }

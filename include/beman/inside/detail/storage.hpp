@@ -7,7 +7,6 @@ BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/detail/introspection.hpp>
 
-#include <algorithm>
 #include <bit>
 #include <initializer_list>
 
@@ -124,9 +123,6 @@ template <insidable B>
 inline constexpr bool rational_readable = !wide_valued<B> || (lattice_past_rational<B> && !wide_index_storage<B> &&
                                                               !wide_grid_numbers<B> && !fraction_storage<B>);
 
-// Ungated double view of any inside (the public operator double() is gated
-// on a rounding flag; this is always available). Everything but index storage holds the value verbatim; an
-// index decodes through the grid.
 template <insidable B>
 constexpr auto exact_of(const B& b); // wide_value.hpp
 
@@ -159,6 +155,9 @@ inline constexpr index_double_codec index_double = [] {
     }
 }();
 
+// Ungated double view of any inside (the public operator double() is gated
+// on a rounding flag; this is always available). Everything but index
+// storage holds the value verbatim; an index decodes through the grid.
 template <insidable B>
 [[nodiscard]] constexpr double as_double(const B& b) noexcept {
     if constexpr (wide_valued<B>)
@@ -231,17 +230,9 @@ template <insidable B>
     return static_cast<raw_t<B>>(value);
 }
 
-template <insidable B>
-[[nodiscard]] constexpr raw_t<B> raw_cast(rational value) noexcept {
-    if constexpr (rational_storage<B>)
-        return value;
-    else
-        return value.to<raw_t<B>>().value_or(0);
-}
-
 // Widen raw storage to imax. Distinct from `to_value(b)` for notch-stored
-// grids where raw is an index rather than a value — naming separates the
-// two intents that today both spell `static_cast<imax>`.
+// grids where raw is an index rather than a value; the names keep the two
+// intents apart although both are a `static_cast<imax>`.
 template <insidable B>
     requires(!wide_index_storage<B>) // a wide raw does not fit imax: use the exact wide path
 constexpr imax raw_imax(B b) noexcept {
@@ -400,6 +391,12 @@ template <raw_integer W>
 template <insidable L, std::integral W>
 constexpr raw_t<L> raw_from_offset(W offset) noexcept {
     return raw_cast<L>(static_cast<umax>(offset) + static_cast<umax>(raw_lo<L>)); // raw_lo: 0 for an index raw
+}
+
+// Raw → offset (slot 0 at Lower), raw_from_offset's inverse, in umax.
+template <insidable L, std::integral R>
+constexpr umax raw_offset(R raw) noexcept {
+    return static_cast<umax>(static_cast<imax>(raw)) - static_cast<umax>(raw_lo<L>);
 }
 
 // The raw of L's Lower (low) or Upper endpoint: the exact constant for a

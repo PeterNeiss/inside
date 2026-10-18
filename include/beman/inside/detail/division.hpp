@@ -17,9 +17,10 @@ BEMAN_INSIDE_WARNINGS_PUSH
 //---------------------------------------------------------------------------
 // division / modulo. `division::div` returns expected<result, errc> unless the
 // divisor's grid excludes zero and the quotient provably fits (then a plain
-// result). Four paths: Q-format (same notch + snap), native integer
-// (integer-aligned grids + snap), point scale (a nonzero point divisor keeps
-// the dividend's lattice) and exact rational (can overflow under checked).
+// result). The paths, in order: Q-format (same notch + snap), native integer
+// and wide integer (integer-aligned grids + snap), point scale (a nonzero
+// point divisor keeps the dividend's lattice), exact wide fractions, an
+// integer quotient that fits, and the rational paths (checked: may overflow).
 // `modulo::mod` is integer-only — non-integer remainders aren't well-defined
 // on fractional notches.
 //---------------------------------------------------------------------------
@@ -43,18 +44,18 @@ inline constexpr bool integer_ops = ((F | flags_of<L> | flags_of<R>)&snap) && in
 template <insidable L, insidable R, policy_flag F>
 inline constexpr bool integer_native_ops = integer_ops<L, R, F> && values_fit_imax<L> && values_fit_imax<R>;
 
-// Whether `l / r`, `l % r` and divmod have a result under flags F, as
-// constraints of div / mod / divmod and their operators: the quotient grid
-// exists (not a zero divisor grid; with 64-bit grid numbers, its corners
-// fit), and the remainder needs integer-valued grids (divmod: within imax).
-// ...or past imax but with 64-bit limits (a uint64 grid, the 2^63 of
-// INT64_MIN / -1): the rounded quotient in exact wide integers, on a grid of
-// the corner quotients rounded the same way.
+// Integer operands past imax but with 64-bit limits (a uint64 grid, the 2^63
+// of INT64_MIN / -1): the rounded quotient in exact wide integers, on a grid
+// of the corner quotients rounded the same way.
 template <insidable L, insidable R, policy_flag F>
 inline constexpr bool integer_wide_ops =
     integer_ops<L, R, F> && !integer_native_ops<L, R, F> && fits_rational(lower_of<L>) && fits_rational(upper_of<L>) &&
     fits_rational(lower_of<R>) && fits_rational(upper_of<R>);
 
+// Whether `l / r`, `l % r` and divmod have a result under flags F, as
+// constraints of div / mod / divmod and their operators: the quotient grid
+// exists (not a zero divisor grid; with 64-bit grid numbers, its corners
+// fit), and the remainder needs integer-valued grids (divmod: within imax).
 template <insidable L, insidable R, policy_flag F>
 inline constexpr bool div_defined =
     (integer_native_ops<L, R, F> || integer_wide_ops<L, R, F>) ? lower_of<R> != 0 || upper_of<R> != 0
@@ -416,11 +417,11 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
     // `fail` must stay well-formed even when return_t narrowed to plain
     // `result` (divisor excludes zero, no overflow); there every call to it is
     // removed by the guards below, so the final arm is dead (return-type only).
-    [[maybe_unused]] auto fail = [&]([[maybe_unused]] errc code, [[maybe_unused]] const char* what) -> return_t<A> {
+    [[maybe_unused]] auto fail = [&]([[maybe_unused]] errc code) -> return_t<A> {
         if constexpr (overflow_action<plain_t<A>>)
-            return report_or_unexpected<result>(action, policy, code, what); // -> result
+            return report_or_unexpected<result>(action, policy, code); // -> result
         else if constexpr (!divisor_excludes_zero<R> || may_overflow_nonzero)
-            return report_or_unexpected<result>(action, policy, code, what); // -> expected<result, errc>
+            return report_or_unexpected<result>(action, policy, code); // -> expected<result, errc>
         else
             return result{}; // unreachable: divisor excludes zero, op cannot fail
     };
@@ -445,7 +446,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         const W jb = value_index<W>(rhs);
         if constexpr (!zero_unchecked)
             if (jb == W{0})
-                return fail(errc::division_by_zero, "division by zero in div");
+                return fail(errc::division_by_zero);
         const W ja = value_index<W>(lhs) * static_cast<W>(K);
         if constexpr (std::is_integral_v<W>)
             return from_value_index<result>(div_rounded(ja, jb, rmode));
@@ -456,7 +457,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         const T rhs_val = static_cast<T>(to_value(rhs));
         if constexpr (!zero_unchecked)
             if (rhs_val == 0)
-                return fail(errc::division_by_zero, "division by zero in div");
+                return fail(errc::division_by_zero);
         const T lhs_val = static_cast<T>(to_value(lhs));
         return native_quotient<result>(lhs_val, rhs_val, div_rounded(lhs_val, rhs_val, rmode));
     } else if constexpr (wide_div_integer) {
@@ -467,7 +468,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         const I b               = value_in_units<I, grid_rational{1}>(rhs); // integer values: no division
         if constexpr (!zero_unchecked)
             if (b.is_zero())
-                return fail(errc::division_by_zero, "division by zero in div");
+                return fail(errc::division_by_zero);
         const I a = value_in_units<I, grid_rational{1}>(lhs);
         return exact_result<result>(wide_rational<K>{rounded_div<rmode>(a, b), I{1}});
     } else if constexpr (point_divisor) {
@@ -480,19 +481,19 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         const auto d = exact_of(rhs);
         if constexpr (!zero_unchecked)
             if (d.Num.is_zero())
-                return fail(errc::division_by_zero, "division by zero in div");
+                return fail(errc::division_by_zero);
         if constexpr (fraction_storage<result>) {
             // Grids past 64 bits: the exact quotient in the result's wide fraction.
             const auto q = continuous_raw_of<raw_t<result>>(exact_of(lhs) / d);
             if constexpr (!bound_fits)
                 if (!q) [[unlikely]]
-                    return fail(errc::overflow, "quotient past its fraction raw in div");
+                    return fail(errc::overflow);
             return result::from_raw(*q);
         } else {
             const auto q = try_rational(exact_of(lhs) / d);
             if constexpr (!bound_fits)
                 if (!q) [[unlikely]]
-                    return fail(errc::overflow, "rational overflow in div");
+                    return fail(errc::overflow);
             return result::from_raw(*q);
         }
     } else if constexpr (int_quotient_fits) {
@@ -505,23 +506,23 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         const imax d = value_index<imax>(rhs) * b;
         if constexpr (!zero_unchecked)
             if (d == 0)
-                return fail(errc::division_by_zero, "division by zero in div");
+                return fail(errc::division_by_zero);
         const imax n = value_index<imax>(lhs) * a;
         return result::from_raw(d < 0 ? rational{-n, -d} : rational{n, d});
     } else if constexpr (needs_overflow_check<G> && !fits_rational && !bound_fits) {
         rational rhs_r = rhs;
         if constexpr (!zero_unchecked)
             if (rhs_r.Numerator == 0)
-                return fail(errc::division_by_zero, "division by zero in div");
+                return fail(errc::division_by_zero);
         auto q = as_rational(lhs) / rhs_r;
         if (!q) [[unlikely]]
-            return fail(errc::overflow, "rational overflow in div");
+            return fail(errc::overflow);
         return result::from_raw(*q);
     } else {
         rational rhs_r = rhs;
         if constexpr (!zero_unchecked)
             if (rhs_r.Numerator == 0)
-                return fail(errc::division_by_zero, "division by zero in div");
+                return fail(errc::division_by_zero);
         return result::from_raw(rational::div_unchecked(as_rational(lhs), rhs_r));
     }
 }
@@ -545,12 +546,12 @@ struct modulo {
     static constexpr grid_rational max_rem =
         lift_unwrap((abs(lower_of<R>) > abs(upper_of<R>) ? abs(lower_of<R>) : abs(upper_of<R>)) - grid_rational{1});
 
+    static constexpr round_mode rmode = rounding_of(F | flags_of<L> | flags_of<R>);
+
     // Remainder consistent with the rounded quotient: r = a − round(a/b)·b. Under
     // truncation it takes the dividend's sign (non-negative for a non-negative
     // dividend grid); any directional mode can flip the sign, so the grid widens
     // to the symmetric ±max_rem (|r| ≤ max_rem for every mode).
-    static constexpr round_mode rmode = rounding_of(F | flags_of<L> | flags_of<R>);
-
     static constexpr grid result_grid =
         (rmode == round_mode::trunc && lower_of<L> >= 0) ? grid{grid_rational{0}, max_rem} : grid{-max_rem, max_rem};
 
@@ -576,7 +577,7 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy, A&& actio
         const I b                     = value_in_units<I, grid_rational{1}>(rhs); // integer values: no division
         if constexpr (!zero_unchecked)
             if (b.is_zero())
-                return report_or_unexpected<result>(action, policy, errc::division_by_zero, "division by zero in mod");
+                return report_or_unexpected<result>(action, policy, errc::division_by_zero);
         const I a = value_in_units<I, grid_rational{1}>(lhs);
         return exact_result<result>(wide_rational<exact_limbs<L, R, result>>{a - rounded_div<rmode>(a, b) * b, I{1}});
     } else {
@@ -585,7 +586,7 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy, A&& actio
         constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
         if constexpr (!zero_unchecked)
             if (rhs_val == 0)
-                return report_or_unexpected<result>(action, policy, errc::division_by_zero, "division by zero in mod");
+                return report_or_unexpected<result>(action, policy, errc::division_by_zero);
         result res;
         // Remainder consistent with the rounded quotient (trunc → C++ `%`).
         const T lhs_val = static_cast<T>(to_value(lhs));

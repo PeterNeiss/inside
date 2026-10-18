@@ -31,9 +31,6 @@ namespace detail {
 // library's exact rational. Internal; the public operand concept is `numeric`.
 template <typename T>
 concept plain_number = std::integral<T> || std::floating_point<T> || std::same_as<rational, T>;
-} // namespace detail
-
-namespace detail {
 
 // Smallest unsigned type whose range holds every index 0..N.
 template <std::uintmax_t N>

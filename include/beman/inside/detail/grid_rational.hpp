@@ -124,6 +124,9 @@ constexpr rational                      to_rational(const rational& r) { return 
 constexpr std::expected<rational, errc> grid_gcd(const rational& a, const rational& b) { return gcd(a, b); }
 #endif
 
+// grid_gcd as a callable, for lift over expected grid numbers.
+inline constexpr auto grid_gcd_of_two = [](const grid_rational& a, const grid_rational& b) { return grid_gcd(a, b); };
+
 // + − × and gcd of grid numbers as grid numbers in both modes, for the
 // compile-time grid computations (a 64-bit overflow stops the build).
 constexpr grid_rational grid_add(const grid_rational& a, const grid_rational& b) {
@@ -166,16 +169,7 @@ constexpr grid_int grid_int_gcd(grid_int a, grid_int b) {
 #if BEMAN_INSIDE_BIG_GRIDS
     return gcd(a, b);
 #else
-    if (a < grid_int{0})
-        a = -a;
-    if (b < grid_int{0})
-        b = -b;
-    while (!(b == grid_int{0})) {
-        const grid_int t = a % b;
-        a                = b;
-        b                = t;
-    }
-    return a;
+    return wide_gcd(a < grid_int{0} ? -a : a, b < grid_int{0} ? -b : b);
 #endif
 }
 // Whether gcd(a, b) is a grid number: always with big grid numbers; with
@@ -270,14 +264,9 @@ consteval grid_rational parse_grid_literal() {
 #if BEMAN_INSIDE_BIG_GRIDS
     return big_rational{num, den};
 #else
-    grid_int a = num, b = den; // reduce, then it must fit
-    while (!(b == grid_int{0})) {
-        const grid_int t = a % b;
-        a                = b;
-        b                = t;
-    }
-    num = num / a;
-    den = den / a;
+    const grid_int a = wide_gcd(num, den); // reduce (num ≥ 0), then it must fit
+    num              = num / a;
+    den              = den / a;
     if (grid_int{std::numeric_limits<umax>::max()} < num || grid_int{std::numeric_limits<imax>::max()} < den)
         constexpr_error<"_g literal: past the 64-bit grid numbers (needs C++26 big grids)">();
     return rational{static_cast<umax>(num), static_cast<imax>(den)};
