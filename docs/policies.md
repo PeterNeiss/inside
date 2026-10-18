@@ -1,281 +1,252 @@
 # Policies
 
-The second template parameter of `inside<G, P>` controls what happens on
-out-of-range assignment, on rounding mismatch, and on the various opt-in
-runtime checks. Policies are **flag bits**; combine them with bitwise `|`.
+<!--
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
+
+The second template parameter of `inside<G, P>` says what happens when a value
+does not fit: when it is out of range, or off the grid's notches, or when a
+division meets 0. A policy is a set of **flag bits**, combined with `|`.
 
 ```cpp
-// Default: checked — runtime range validation (throws beman::inside::inside_error)
-using safe = inside<{0, 100}>;
-safe x = 150;      // throws beman::inside::inside_error at runtime
+using safe    = inside<{0, 100}>;                           // the default: checked
+safe s = 150;                                               // throws beman::inside::inside_error
 
-// Unsafe: opt out of all runtime checks (compile-time checks always apply)
-using fast = inside<{0, 100}, unsafe>;
-fast f = 150;      // silently stores out-of-range value; UB on read
+using clamped = inside<{0, 100}, clamp>;                    // saturate
+clamped c = 150;                                            // 100
+clamped d = -5;                                             // 0
 
-// Clamp: saturates to the nearest boundary
-using clamped = inside<{0, 100}, clamp>;
-clamped x = 150;   // x == 100
-clamped y = -5;    // y == 0
+using angle   = inside<{0, 360, bounds::half_open}, wrap>;  // modular: [0, 360), period 360
+angle a = 370;                                              // 10
+angle b = -10;                                              // 350
 
-// Wrap: modular arithmetic, period Upper − Lower + Notch
-using angle = inside<{0, 360, bounds::half_open}, wrap>; // [0, 360), i.e. {0, 359}
-angle a = 370;     // a == 10
-angle b = -10;     // b == 350
-
-// try_make: out-of-range is a value you test, not a throw
-using index = inside<{0, 9}>;
-auto i = index::try_make(10);  // !i, i.error() == errc::overflow
+using index   = inside<{0, 9}>;
+auto i = index::try_make(10);                               // no throw: !i, i.error() == errc::overflow
 ```
 
-Every policy runs the runtime checks unless it carries `unsafe`:
-`inside<G>`, `inside<G, round_nearest>` and `inside<G, ignore_zero>` all report an
-out-of-range or off-notch value (by default, by throwing). `clamp` / `wrap`
-handle the range instead, and `snap` / `round_*` handle the notch. Use `unsafe`
-to drop runtime checks for maximum performance when correctness is proven
-elsewhere; spelling `checked` next to `unsafe` turns them back on. `clamp` and
-`wrap` are mutually exclusive (enforced by `static_assert`).
-
-A rounding policy rounds **before** the range check: with
-`inside<{0, 9}, round_floor>`, assigning 9.5 stores 9, while 10.0 is out of
-range. The conversion predicates follow the same order
-(`conversion_overflows<B>(9.5)` is false for that type, `conversion_rounds` is
-true). A policy without a rounding mode rounds nothing, so 9.5 into
-`inside<{0, 9}>` is out of range.
-
-Rounding is in value space on every grid, including one whose values are
-offset from the notch's multiples (`{{0.5, 10.5}, 1}`): `snap` truncates
-toward zero — down for a value ≥ 0, up below 0 — and a tie of `round_nearest`
-goes away from zero. On such a grid 0 itself can be a tie (between −0.5 and
-0.5 on `{{-2.5, 2.5}, 1}`); it rounds up, as a value ≥ 0 does.
-`round_half_even` picks the even point counting from the lattice's anchor
-(…, −1.5, 0.5, 2.5, … on that grid).
+Out of range is only possible when a value is **stored** into a type:
+construction, `=`, compound assignment, a cast. Arithmetic widens its result
+grid instead (see [arithmetic.md](arithmetic.md)), so it cannot leave its range.
 
 ## Policy flags
 
 | Flag | Effect |
 |---|---|
-| `checked` | runtime range / notch / overflow checks — on for every policy without `unsafe`; spelled explicitly only to override `unsafe` |
-| `unsafe` | opt out of all runtime checks |
-| `clamp` | saturate to boundary on out-of-range (mutually exclusive with `wrap`) |
-| `wrap` | modular arithmetic on out-of-range |
-| `snap` | off-notch values round onto the grid (no error); on its own toward zero |
-| `round_toward_zero` | truncate toward zero: `snap` alone, named |
-| `round_nearest` | round to nearest notch, half away from zero (implies `snap`) |
-| `round_floor` | round toward −∞ (implies `snap`) |
-| `round_ceil` | round toward +∞ (implies `snap`) |
-| `round_half_even` | banker's rounding — half to even (implies `snap`) |
-| `ignore_zero` | skip the divide-by-zero check — `a / 0` / `a % 0` is UB (binary `div`/`mod`); compound `/= 0` / `%= 0` no-op |
-| `ignore_range` | suppress the runtime range check |
+| `checked` | report an out-of-range or off-notch store, or a division by 0. On for every policy without `unsafe` |
+| `clamp` | saturate to the nearer limit |
+| `wrap` | fold back modulo the period, Upper − Lower + Notch |
+| `snap` | round an off-notch value onto the grid instead of rejecting it; alone, toward zero |
+| `round_toward_zero` | `snap` alone, named |
+| `round_nearest` | to the nearest notch, ties away from zero (includes `snap`) |
+| `round_floor`, `round_ceil` | toward −∞, toward +∞ (include `snap`) |
+| `round_half_even` | to the nearest notch, ties to the even point (includes `snap`) |
+| `ignore_zero` | no division-by-zero check: `a / 0` is undefined, `/= 0` does nothing |
+| `ignore_range` | no runtime range check |
+| `unsafe` | `ignore_range | snap | ignore_zero`: no runtime checks at all; a wrong value is undefined behaviour |
 
-## Storage is not a policy
+- `clamp` and `wrap` exclude each other (a `static_assert`).
+- Every policy without `unsafe` checks: `inside<G>`, `inside<G, round_nearest>`
+  and `inside<G, ignore_zero>` all report a value outside the range. `clamp`
+  and `wrap` handle the range, the rounding modes handle the notch.
+- Spelling `checked` next to `unsafe` turns the checks back on.
+- A rounding mode rounds **before** the range check. With
+  `inside<{0, 9}, round_floor>`, 9.5 stores 9 and 10.0 is out of range. Without
+  a rounding mode nothing rounds, so 9.5 into `inside<{0, 9}>` is out of range.
+  How each mode rounds, on every kind of grid, is in
+  [arithmetic.md](arithmetic.md#rounding).
 
-No flag selects the raw storage: it follows from the grid alone (see
-[storage.md](storage.md#why-no-representation-flags)).
+No flag picks the raw storage: it follows from the grid alone
+([storage.md](storage.md#why-no-representation-flags)).
 
-> **API-boundary shorthand:** the modern idiom for "saturate-and-round into
-> this type" is to put `clamp | round_nearest` on the target inside's policy
-> and write `T{value}`. This replaces the explicit
-> `clamp_cast<T, round_nearest>(value)` cast for typed boundaries — see
-> [conversions.md](conversions.md#api-boundary-clamp--round_nearest).
+> **At an API boundary**, put `clamp | round_nearest` on the target type and
+> write `T{value}`: it saturates and rounds in one store, with no explicit
+> cast ([conversions.md](conversions.md#api-boundary-clamp--round_nearest)).
 
-## Per-operation override
+## Per-store override
 
-Without a type-level policy, you can clamp, wrap, or pick a rounding mode on
-a per-operation basis:
+A type without a clamp, wrap or rounding policy can still get one for a
+single store:
 
 ```cpp
 inside<{0, 100}> x{50};
-x.with_clamp() = 150;  // x == 100
-x.with_wrap()  = 103;  // x == 2
+x.with_clamp() = 150;                   // 100
+x.with_wrap()  = 103;                   // 2
 
 inside<{{0, 10}, 2}> g{0};
-g.with_snap<round_floor>()           = 3.0;  // g == 2
-g.with_snap<round_ceil>()            = 3.0;  // g == 4
-g.with_snap<round_half_even>() = 5.0;  // g == 4 (tie → even)
+g.with_snap<round_floor>()     = 3.0;   // 2
+g.with_snap<round_ceil>()      = 3.0;   // 4
+g.with_snap<round_half_even>() = 5.0;   // 4: the tie goes to the even point
 ```
+
+`x.policy<F>()` adds any flags `F` the same way.
 
 ## Named policies
 
-The free arithmetic functions take a policy object as an optional argument.
-Each named policy is spelled after the flag it carries:
+The free arithmetic functions (`add`, `sub`, `mul`, `div`, `mod`, `divmod`)
+take a policy object as a last argument:
 
 | Name | Flag |
 |---|---|
-| `rounded_toward_zero` | `round_toward_zero` (truncate toward zero) |
-| `rounded_nearest` / `rounded_floor` / `rounded_ceil` / `rounded_half_even` | `round_nearest` / `round_floor` / `round_ceil` / `round_half_even` |
-| `clamped` / `wrapped` | `clamp` / `wrap` |
+| `rounded_toward_zero` | `round_toward_zero` |
+| `rounded_nearest`, `rounded_floor`, `rounded_ceil`, `rounded_half_even` | the rounding mode of that name |
+| `clamped`, `wrapped` | `clamp`, `wrap` |
 
 ```cpp
-auto q = div(a, b, rounded_floor);   // == div(a, b, make_policy<round_floor>())
+auto q = div(a, b, rounded_floor);      // the same as div(a, b, make_policy<round_floor>())
 ```
 
-## Callbacks: `on_wrap` / `on_clamp` / `on_overflow` / `on_error`
+## Hooks: `on_wrap`, `on_clamp`, `on_error`, `on_overflow`
 
-Each policy event can fire a zero-overhead callback. Unused handlers are
-eliminated entirely by the compiler (`if constexpr` + `[[no_unique_address]]`).
-Each handler receives the inside by mutable reference (so it can override the
-stored value) plus an event-specific payload.
+A hook runs your code when a policy acts. `x.on_wrap(f)` returns a handle; its
+`=`, `+=`, `-=`, `*=`, `/=` and `%=` store into `x` with `f` wired in. A hook
+also adds the flag it implies: `on_clamp` adds `clamp`, `on_wrap` adds `wrap`.
+A hook you do not use costs nothing.
 
-| Method | Path | Fires when | Callback signature |
-|---|---|---|---|
-| `on_clamp(λ)`    | assignment | a narrowed value leaves the grid and `clamp` saturates it | `λ(inside&, overshoot)` |
-| `on_wrap(λ)`     | assignment | a narrowed value leaves the grid and `wrap` folds it (carry) | `λ(inside&, carry)` — the carry is an inside |
-| `on_error(λ)`    | assignment | an out-of-range (`overflow`) or off-notch (`rounding_error`) value under `checked` (replaces the throw) | `λ(inside&, errc, const char* msg)` |
-| `on_overflow(λ)` | binary arithmetic | a fractional or imax result overflows, or `div`/`mod` divides by zero | `λ(inside&, errc)` |
+| Hook | Fires when | Called as |
+|---|---|---|
+| `on_clamp(f)` | a stored value leaves the range and is saturated | `f(x, overshoot)` |
+| `on_wrap(f)` | a stored value leaves the range and is folded back | `f(x, carry)`; the carry is an inside |
+| `on_error(f)` | a checked store fails (`overflow`, `rounding_error`); replaces the throw | `f(x, errc, const char* message)` |
+| `on_overflow(f)` | arithmetic fails: a division by 0, or a result past 64-bit numbers | `f(x, errc)` |
 
-The first three fire on the **assignment** path — narrowing a value *into* an
-inside: a direct `=`, the `.on_*()= …` / `with(…) = …` proxies, and the
-compound `+= / -= / *= / /=`. `on_overflow` fires on the **binary-arithmetic**
-path — the free `add` / `sub` / `mul` / `div` / `mod` and the `+ - * /`
-operators, whose widened result can overflow (or, for `div`/`mod`, hit a zero
-divisor).
-
-`on_*()` returns a temporary handle whose `=`/`+=`/`-=`/etc. apply the
-operation with the callback wired in. Calling `on_*` automatically OR-merges
-the policy bit it implies (e.g. `on_clamp` adds `clamp`). A pack may carry
-handlers for *both* paths — e.g. `with(on_overflow(…), on_clamp(…))` on a
-compound `+=`, whose widened arithmetic can overflow *and* whose narrowing back
-into the target can clamp —
-and each handler fires only on its own path; handlers that a given operation
-never reaches are accepted but simply not invoked.
+The first three act on the store. `on_overflow` acts on the arithmetic before
+it: the free `add`/`sub`/`mul`/`div`/`mod` and the operators inside a compound
+assignment. `f` gets `x` by reference, so it can change the stored value.
 
 ```cpp
 using sec = inside<{0, 59}, wrap>;
 using min = inside<{0, 59}>;
-
 sec seconds{0};
 min minutes{0};
 
-// When seconds overflows, carry into minutes.
-seconds.on_wrap([&](auto& self, auto carry) {
-    (void)self;
-    minutes += carry;
-}) = 125;
+seconds.on_wrap([&](auto&, auto carry) { minutes += carry; }) = 125;
 // seconds == 5, minutes == 2
 ```
 
-The carry is always an inside, so it adds straight into another inside. Its
-grid holds every carry the source can produce: an inside source's own range
-(`125_ins` gives `[2, 2]`), an integer source's type limits (`int` into
-`{0, 59}` gives about ±35.8 million), and the whole `imax` range for a `double`
-or exact-fraction source. The `+=` then narrows through `minutes`' own policy.
-A callback that takes `imax` instead of `auto` still works through the
-implicit `operator imax()`.
+The carry is an inside, so it adds straight into another inside. Its grid holds
+every carry the source can produce: for `125_ins`, `[2, 2]`; for an `int`,
+that type's limits divided by the period. A hook that takes `imax` instead of
+`auto` works too.
 
-The free arithmetic functions accept the same factories — useful for catching
-divide-by-zero or arithmetic overflow without throwing:
-
-```cpp
-auto q = div(d, z, on_overflow([&](auto& res, errc c) {
-    res = std::remove_cvref_t<decltype(res)>{0};
-    log(c);
-}));
-```
-
-### `policy_ref` compound assignment
-
-`x.on_wrap(...) += rhs` (and `-=`, `*=`, `/=`, `%=`) accept another inside or a
-`rational`. A raw `int` / `double` is ill-formed, as for plain compound
-assignment: give it a grid with `_ins`, `just<…>`, or an inside over its range.
+The right-hand side of a hook's `+=` is an inside, a quantity or a `rational`.
+A raw `int` or `double` is rejected, as for plain compound assignment: give it
+a grid (`5_ins`, `just<5>`, or an inside over its range).
 
 ```cpp
 using pos = inside<{{0, 64}, per<16>}, wrap | round_nearest>;
 pos p{0};
-int wrap_count = 0;
-
-p.on_wrap([&](auto&, auto) { ++wrap_count; }) += 65.5_ins;
-// p == 1.4375 (65.5 − 1025/16: the wrap period is span + notch), wrap_count == 1
+int wraps = 0;
+p.on_wrap([&](auto&, auto) { ++wraps; }) += 65.5_ins;
+// p == 1.4375 (65.5 − 1025/16: the period is the span plus one notch), wraps == 1
 ```
 
-See [examples/torus_map.cpp](../examples/torus_map.cpp) for a full sprite
-position demo using this pattern on both axes, in px (a unit of its own),
-with a runtime delta typed as a ranged quantity; `q.on_wrap(f)` works on a
-quantity as on an inside.
-
-### Combining actions: `with(...)`
-
-`inside::with(actions...)` packs multiple `on_*` callbacks into a single
-operation. Mutually exclusive combinations (e.g. `on_clamp` + `on_wrap`) are
-rejected at compile time by `static_assert`.
+The free functions take the same factories, to catch a division by zero
+without a throw:
 
 ```cpp
-using c100 = inside<{0, 100}>;
-c100 acc{50};
-inside<{0, 1000}> big_value{900};
-
-acc.with(
-    on_overflow([&](auto& self, errc) { self = 0; /* arithmetic overflowed */ }),
-    on_clamp   ([&](auto&, auto over)  { log_overshoot(over);              })
-) += big_value;                         // acc == 100, overshoot 850
+auto q = div(d, z, on_overflow([&](auto& result, errc e) {
+    result = std::remove_cvref_t<decltype(result)>{0};
+    log(e);
+}));
 ```
 
-## Error code mode
+### Several hooks at once: `with(...)`
 
-Instead of throwing, errors can be reported via `beman::inside::errc` (the library has no
-`std::error_code` / `<system_error>` dependency). Construction that can fail is
-`try_make` (see [Non-throwing construction](#non-throwing-construction)); assignment and
-free arithmetic take an `errc&`:
+`x.with(hooks...)` packs hooks into one store. Each fires only on its own path,
+so a compound `+=` can carry an `on_overflow` for its arithmetic and an
+`on_clamp` for its store. Exclusive pairs (`on_clamp` with `on_wrap`) do not
+compile.
 
 ```cpp
-beman::inside::errc ec{};   // value-initialised: errc{} == 0 means "no error"
+inside<{0, 100}> acc{50};
+inside<{0, 1000}> big{900};
+acc.with(on_overflow([&](auto& self, errc) { self = 0; }),
+         on_clamp([&](auto&, auto over) { log_overshoot(over); })) += big;
+// acc == 100, overshoot 850
+```
 
-// Per-operation with error code
+### Hooks on quantities
+
+A quantity (see [units.md](units.md)) has the same four hooks. The handle's
+`=`, `+=` and `-=` take a quantity in any unit of the same kind and convert it
+exactly first. The hook gets the **quantity**, then the inside's carry,
+overshoot or errc:
+
+```cpp
+quantity<si::second, inside<{0, 60, bounds::half_open}, wrap>> s{50};
+quantity<si::minute, inside<{0, 60, bounds::half_open}, wrap>> m{0};
+s.on_wrap([&](auto&, auto carry) { m += carry * si::minute; }) += just<2> * si::minute;
+// s == 50 s (170 s fold to 50 s), m == 2 min
+```
+
+[`clock.cpp`](../examples/clock.cpp) builds a whole s → min → h → day cascade
+this way. [`game_hp.cpp`](../examples/game_hp.cpp) uses `on_clamp` on hit
+points, and [`torus_map.cpp`](../examples/torus_map.cpp) uses `on_wrap` on pixel
+positions.
+
+## Error codes instead of exceptions
+
+Errors can be reported as a `beman::inside::errc` instead of a throw. The
+library does not use `std::error_code` or `<system_error>`.
+
+| Code | Means |
+|---|---|
+| `overflow` | the value does not fit its destination: an inside's range, a native type (`to<T>()`), a 64-bit rational |
+| `rounding_error` | the value is between two notches, and the policy does not round |
+| `division_by_zero` | the divisor is 0 |
+| `domain_error` | the argument is outside the function's mathematical domain: `sqrt` of a negative, `pow` of a negative base, a negative value into an unsigned `to<T>()`, bad `grid::try_make` parameters |
+| `not_finite` | a NaN or an infinity came in from a `double` |
+| `invalid_format` | text that is not a number (`parse`, `operator>>`) |
+
+`errc{}` (0) means no error, and `errc_message(e)` gives a short text.
+
+A store or a free function reports through an `errc&`:
+
+```cpp
+errc ec{};
 inside<{0, 100}> y{50};
-y.policy(ec) = 200;
-// ec is set to errc::overflow, y remains 50 (a failed assignment leaves the prior value intact)
+y.policy(ec) = 200;             // ec == errc::overflow; y keeps 50
+auto sum = add(y, y, ec);       // an arithmetic failure lands in ec too
 
-// Free arithmetic with error code
-auto sum = add(y, y, ec);
-// overflow / range errors captured in ec
-
-// Combining flags with error code
 inside<{{0, 10}, 2}> coarse{0};
 inside<{{0, 10}, 1}> fine{3};
-coarse.policy<snap>(ec) = fine;
-// snap suppresses the rounding error, ec captures range errors only
+coarse.policy<snap>(ec) = fine; // snap rounds; ec only sees a range error
 ```
 
-The error code is only set on the first error (subsequent errors don't
-overwrite it). A value outside the interval produces `errc::overflow`, an
-off-notch value `errc::rounding_error`.
+The first error is kept; later ones do not overwrite it. A failed store leaves
+the previous value.
 
-**One condition, one code.** `errc::overflow` always means "the value does not
-fit its destination's range" — an inside's interval (assignment, construction,
-`try_make`, casts, a math result past `Out`), a native type (`to<T>()`), or a
-rational's 64-bit fields. `errc::domain_error` means "the argument is outside the
-function's mathematical domain": `sqrt` of a negative, `pow` with a negative base, a
-negative value into an unsigned `to<T>()`, invalid `grid::try_make` parameters.
-
-## Replacing the throw handler (freestanding / bare-metal)
-
-Every checked failure funnels through one replaceable handler, which by default
-throws `beman::inside::inside_error` (it traps under `-fno-exceptions`).
-`set_error_handler` installs your own; see
-[freestanding.md](freestanding.md#1-exceptions-off--install-a-handler).
-
-## Non-throwing construction
+## Construction that can fail: `try_make`
 
 `try_make` returns `std::expected<inside, errc>` instead of throwing:
 
 ```cpp
-auto maybe = inside<{0, 100}>::try_make(150);
-if (!maybe) { /* maybe.error() == errc::overflow */ }
+auto maybe = inside<{0, 100}>::try_make(150);   // !maybe, maybe.error() == errc::overflow
+auto sure  = inside<{0, 100}, clamp>::try_make(150);  // 100: a clamp or wrap policy always succeeds
 ```
 
-`try_make<F>(value)` adds the flags `F` to the type's policy for that store,
-and `try_make` of a `std::expected` passes its error on, so a fallible step
-feeds the next without unwrapping:
+`try_make<F>(v)` adds the flags `F` to the policy for that one store. Given a
+`std::expected`, `try_make` passes its error on, so one fallible step feeds the
+next without unwrapping:
 
 ```cpp
 using volts = inside<{{-1, 1}, per<1'000'000>}, round_nearest>;
-auto v = volts::try_make((x - offset) / gain);   // the quotient's error, or the store's
+auto v = volts::try_make((x - offset) / gain);  // the division's error, or the store's
 ```
 
-For types with a `clamp` or `wrap` policy, `try_make` applies the policy
-before checking, so it will always succeed:
+For a quantity, `Q::try_make<F>(v)` takes a number in Q's unit, and
+`try_value_cast<Q, F>(q)` takes another quantity:
 
 ```cpp
-auto clamped = inside<{0, 100}, clamp>::try_make(150);
-// clamped has value 100 — clamp always succeeds
+using metres = quantity<si::metre, inside<{0, 1000}>>;
+const quantity<si::kilo(si::metre), inside<{0, 5}>> leg{2};
+auto a = metres::try_make(1200);        // !a: overflow
+auto b = try_value_cast<metres>(leg);   // !b: 2000 m does not fit
 ```
+
+## Replacing the throw handler
+
+Every checked failure that is not caught by a hook or an `errc&` goes through
+one handler. By default it throws `beman::inside::inside_error`; under
+`-fno-exceptions` it traps. `set_error_handler` installs your own (see
+[freestanding.md](freestanding.md#1-exceptions-off--install-a-handler)).
