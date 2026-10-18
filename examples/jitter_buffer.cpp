@@ -2,6 +2,8 @@
 // Reorder buffer with a checked slot type: each slot holds a packet's seq
 // number, and an out-of-range write trips on_error — exactly the "this
 // packet arrived too late to fit the window" event a jitter buffer needs.
+// Packet offsets are quantities of a unit of our own (pkt) and timestamps are
+// in ms; the slot numbers are indices into the window and stay plain.
 //
 // Demonstrates:
 //   - `on_error` callback (per-write hook) on a checked inside
@@ -14,19 +16,29 @@
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
+#include <beman/inside/units.hpp>
 
 using namespace beman::inside;
+using namespace beman::inside::units;
+
+namespace {
+inline constexpr base_dimension packet_dim{"packets"};
+inline constexpr quantity_spec  packets_def{"packets", packet_dim};
+inline constexpr named_unit     pkt_def{"pkt", spec_c<packets_def>};
+inline constexpr auto           pkt = unit_c<pkt_def>;
+constexpr auto                  ms  = si::milli(si::second);
+} // namespace
 
 // Window of 16 slots indexed 0..15.
 using slot_id_t = inside<{0, 15}>;
 
-// Slot contents: relative offset from the playback base (0..63). Whether a
-// slot holds a packet is tracked separately, so the slot keeps its native
+// Slot contents: relative offset from the playback base (0..63 pkt). Whether
+// a slot holds a packet is tracked separately, so the slot keeps its native
 // 8-bit storage.
-using packet_id_t = inside<{0, 63}>;
+using packet_id_t = quantity<pkt, inside<{0, 63}>>;
 
 // Timestamp in 1/8 ms — fixed-point precision tied to the audio frame.
-using ts_t = inside<{{0, 8000}, per<8>}, round_nearest>;
+using ts_t = quantity<ms, inside<{{0, 8000}, per<8>}, round_nearest>>;
 
 int main() {
     constexpr std::size_t    window = values<slot_id_t>.size(); // 16
@@ -38,7 +50,7 @@ int main() {
     // Per-packet insertion. The "offset" is (seq - base). If it exceeds the
     // window (offset > 63), the write is rejected and on_error fires.
     auto insert = [&](int seq, int base) {
-        int offset = seq - base;
+        const quantity<pkt, inside<{-1024, 1024}>> offset{seq - base};
 
         // The slot is seq modulo the window: wrap_cast folds it into slot_id_t.
         const auto idx = wrap_cast<slot_id_t>(seq);
@@ -71,7 +83,9 @@ int main() {
     // with sub-millisecond audio clocks without slipping into floating point.
     ts_t arrival{125.375};
     ts_t playback{125.5};
-    std::cout << "\narrival - playback (1/8 ms grid): " << (playback - arrival) << " ms\n";
+    std::cout << "\nplayback - arrival (1/8 ms grid): " << (playback - arrival) << "\n";
 
+    if (dropped != 2 || to_string(slots[slot_id_t{5}]) != "5 pkt" || to_string(playback - arrival) != "0.125 ms")
+        return 1;
     return 0;
 }

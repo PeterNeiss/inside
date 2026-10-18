@@ -2,8 +2,9 @@
 // Audio-shaped corners of beman::inside::math, each result the correctly
 // rounded point of its output grid (no <cmath>, the same at compile time and on
 // every platform):
-//   1. An exponential curve over a stepping loop, exp(t).
-//   2. A log-spaced frequency sweep, 20 Hz · 2^e, e by half octaves.
+//   1. An exponential envelope over a stepping loop, exp(t / τ), t in s and
+//      τ = 1 s: the ratio is a plain number.
+//   2. A log-spaced frequency sweep, 20 Hz · 2^e, e by half octaves, in Hz.
 //   3. A tanh soft clipper beside a hard clip, and cosh² − sinh² = 1.
 //   4. Octaves with log2, and a cube-root loudness curve.
 
@@ -12,26 +13,33 @@
 #include <beman/inside/cmath.hpp>
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
+#include <beman/inside/units_math.hpp>
 
 using namespace beman::inside;
+using namespace beman::inside::units;
 
 int main() {
-    // 1. Growth and decay: t = −4, −3.75, …, 4 by a cursor over seconds_t in
-    //    steps of 1/4 (end(t) is the step past 4), amp on Q.14.
-    using seconds_t = inside<{{-4, 4}, per<1024>}, round_nearest>;
-    using amp_t     = inside<{{0, 100}, per<16384>}, round_nearest>;
-    std::cout << "t     exp(t)\n";
-    for (cursor<seconds_t, per<4>> t; t != end(t); ++t) {
-        std::cout << t << "\t" << math::exp_into<amp_t>(t) << "\n";
+    // 1. Growth and decay: t = −4, −3.75, …, 4 s by a cursor over the number
+    //    grid in steps of 1/4 (end(n) is the step past 4), amp on Q.14.
+    using seconds_t    = quantity<si::second, inside<{{-4, 4}, per<1024>}, round_nearest>>;
+    using amp_t        = inside<{{0, 100}, per<16384>}, round_nearest>;
+    constexpr auto tau = just<1> * si::second;
+    std::cout << "t     exp(t / 1 s)\n";
+    for (cursor<seconds_t::rep, per<4>> n; n != end(n); ++n) {
+        const seconds_t t{*n};
+        std::cout << t << "\t" << units::exp_into<amp_t>(t / tau) << "\n";
     }
 
     // 2. Sweep: half-octave steps from 20 Hz, 2^e rounded once onto mult_t;
     //    every whole octave doubles exactly.
-    using exponent_t = inside<{{0, 4}, per<1024>}, round_nearest>;
-    using mult_t     = inside<{{0, 16}, per<16384>}, round_nearest>;
-    std::cout << "\noctave  Hz\n";
+    using exponent_t  = inside<{{0, 4}, per<1024>}, round_nearest>;
+    using mult_t      = inside<{{0, 16}, per<16384>}, round_nearest>;
+    constexpr auto f0 = just<20> * si::hertz;
+    std::cout << "\noctave  frequency\n";
     for (cursor<exponent_t, per<2>> e; e != end(e); ++e)
-        std::cout << *e << "\t" << just<20> * math::exp2_into<mult_t>(*e) << "\n";
+        std::cout << *e << "\t" << f0 * math::exp2_into<mult_t>(*e) << "\n";
+    if (f0 * math::exp2_into<mult_t>(exponent_t{3}) != just<160> * si::hertz)
+        return 1;
     if (math::exp2_into<mult_t>(exponent_t{3}) != 8 || math::exp2_into<mult_t>(exponent_t{4}) != 16)
         return 1;
 

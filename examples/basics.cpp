@@ -2,7 +2,7 @@
 // The first things to reach for: what happens at the edge of a range is the
 // type's policy, written once.
 //   1. `clamp` — saturate: a brightness, an RGB pixel.
-//   2. `wrap` — modular: a compass heading.
+//   2. `wrap` — modular: a compass heading, in degrees (units.hpp).
 //   3. `inside_range`, `values<T>`, `cursor` — loops whose index is an inside,
 //      so `arr[i]` is in range.
 // The default policy, `checked`, reports instead; errors.cpp shows how.
@@ -11,8 +11,10 @@
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
+#include <beman/inside/units.hpp>
 
 using namespace beman::inside;
+using namespace beman::inside::units;
 
 // A pixel whose channels saturate. A runtime delta has a range too — name it,
 // so `R += amount` stays inside += inside.
@@ -51,14 +53,14 @@ int main() {
     if (pixel.R != 0 || pixel.G != 0)
         return 1;
 
-    // 2. wrap.
-    using degree   = inside<{0, 360, bounds::half_open}, wrap>; // [0, 360): 0..359
-    degree heading = 350;
-    heading += 30_ins;  // 20
-    heading += -90_ins; // 290
-    heading += 360_ins; // a full turn: 290
+    // 2. wrap: a heading in [0°, 360°), whole degrees.
+    using heading_t = quantity<si::degree, inside<{0, 360, bounds::half_open}, wrap>>;
+    heading_t heading{350};
+    heading += 30_ins * si::degree;  // 20°
+    heading += -90_ins * si::degree; // 290°
+    heading += 360_ins * si::degree; // a full turn: 290°
     std::cout << "heading    " << heading << "\n";
-    if (heading != 290)
+    if (heading != 290_ins * si::degree)
         return 1;
 
     // 3. Bounded loops.

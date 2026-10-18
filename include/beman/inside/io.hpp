@@ -8,9 +8,12 @@
 //
 // Provides:
 //   * to_string(rational | interval | grid | insidable | arithmetic | errc)
-//   * to_string_debug(insidable)        — value + raw + raw-type + grid
-//   * operator<<(std::ostream&, ...)
-//   * std::formatter<inside<G,P>> / std::formatter<rational>   (when <format>)
+//   * to_string_debug(insidable)        — value + raw + raw type + grid
+//   * operator<< and operator>> (one token, failbit on error)
+//   * parse<B, F>(std::string_view), parse_exact<B>(std::string_view)
+//   * std::formatter<inside<G, P>>, std::formatter<rational> (with <format>)
+//   * type_name_of<B>                   — a readable name of an inside type
+// units.hpp builds on it (to_string and std::formatter of quantities).
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_IO_HPP
 #define BEMAN_INSIDE_IO_HPP

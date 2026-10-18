@@ -2,10 +2,12 @@
 // Quadrature oscillator: a wrapping phase accumulator + beman::inside::math::sin/cos.
 //
 // Demonstrates:
-//   - A 16-bit phase counter as `inside<{0, 65535}, wrap>`: `+=` wraps at a
-//     full turn, and `on_wrap` counts the completed cycles.
-//   - Counter → radians as one exact multiply by the constant `rad_per_slot`,
-//     with `math::sin_into` / `cos_into` rounding the result once onto Q.14.
+//   - A 16-bit phase counter as `quantity<slot, inside<{0, 65535}, wrap>>`:
+//     `+=` wraps at a full turn, and `on_wrap` counts the completed cycles.
+//   - The counter is an angle in a unit of our own, the slot (2π/65536 rad).
+//     A unit with a factor of π reduces exactly: `units::sin_into` /
+//     `cos_into` take the slots as they are and round once onto Q.14 — no
+//     rational approximation of 2π anywhere.
 //   - A frequency-swept variant where the per-sample increment changes
 //     each step — exactly the pattern a chirp generator or vibrato LFO uses.
 
@@ -13,19 +15,22 @@
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
-#include <beman/inside/cmath.hpp>
+#include <beman/inside/units_math.hpp>
 
 using namespace beman::inside;
+using namespace beman::inside::units;
+
+namespace {
+// One full turn is 65536 slots: a slot is 2π/65536 = π/32768 rad.
+inline constexpr named_unit slot_def{"slot", mag<rational{1, 32768}> * mag_pi * si::radian};
+inline constexpr auto       slot = unit_c<slot_def>;
+} // namespace
 
 int main() {
     // One full turn of phase in 65536 slots; wrap is the periodicity.
-    using phase_t = inside<{0, 65535}, wrap>;
+    using phase_t = quantity<slot, inside<{0, 65535}, wrap>>;
     // Q.14 output of sin and cos.
     using out_t = inside<{{-1, 1}, per<16384>}, round_nearest>;
-
-    // 2π / 65536 — radians per slot, as a compile-time point. phase ×
-    // rad_per_slot is the exact angle; sin_into rounds only the result.
-    constexpr auto rad_per_slot = math::two_pi / just<65536>;
 
     std::cout << "Fixed-frequency oscillator (1/8 turn per sample, 8 samples = 1 cycle):\n";
     std::cout << "  i   sin              cos\n";
@@ -34,26 +39,29 @@ int main() {
         constexpr phase_t increment{65536 / 8}; // 1/8 turn per sample
         int               cycles = 0;
         for (int i = 0; i < 8; ++i) {
-            const auto a = phase * rad_per_slot;
-            std::cout << "  " << i << "   " << math::sin_into<out_t>(a) << "   " << math::cos_into<out_t>(a) << "\n";
+            std::cout << "  " << i << "   " << units::sin_into<out_t>(phase) << "   " << units::cos_into<out_t>(phase)
+                      << "\n";
             phase.on_wrap([&](auto&, auto) { ++cycles; }) += increment;
         }
         std::cout << "  completed cycles: " << cycles << "\n";
-        if (cycles != 1 || phase != 0)
+        if (cycles != 1 || phase != just<0> * slot)
+            return 1;
+        // 1/8 turn is 45°: sin and cos both round to 11585/16384.
+        if (units::sin_into<out_t>(increment) != just<11585, 16384> || units::cos_into<out_t>(phase_t{65536 / 4}) != 0)
             return 1;
     }
 
     std::cout << "\nSwept-frequency oscillator (increment grows each step):\n";
-    std::cout << "  i   inc      phase    sin\n";
+    std::cout << "  i   inc        phase        sin\n";
     {
-        using inc_t = inside<{1, 65535}, snap>; // snap: inc / 4 truncates
+        using inc_t = quantity<slot, inside<{1, 65535}, snap>>; // snap: inc / 4 truncates
         phase_t phase{0};
         inc_t   inc{256}; // start at 1/256 turn
         for (int i = 0; i < 12; ++i) {
-            std::cout << "  " << i << "   " << inc << "    " << phase << "    "
-                      << math::sin_into<out_t>(phase * rad_per_slot) << "\n";
-            phase += inc;       // wraps at a full turn
-            inc += inc / 4_ins; // ×1.25 each step
+            std::cout << "  " << i << "   " << inc << "    " << phase << "    " << units::sin_into<out_t>(phase)
+                      << "\n";
+            phase += inc;         // wraps at a full turn
+            inc += inc / just<4>; // ×1.25 each step
         }
     }
 

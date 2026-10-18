@@ -19,11 +19,13 @@ BEMAN_INSIDE_WARNINGS_PUSH
 
 namespace beman::inside {
 //---------------------------------------------------------------------------
-// grid — structural NTTP type (public members only). Discretizes its interval
-// into notch-sized steps (interval must divide evenly by notch; Notch == 0
-// allows every rational, raw not offset). Its operator+/-/*// is the engine of
-// compile-time result-grid inference: every inside arithmetic operator computes
-// its result grid here, so the result interval contains every reachable value.
+// grid — structural NTTP type (public members only): an interval split into
+// notch-sized steps (the notch must divide the interval; Notch == 0 allows
+// every rational in it), optionally with a MaxDenominator bound. Its + - * /
+// are the engine of compile-time result-grid inference: every inside operator
+// computes its result grid here, so the result holds every reachable value.
+// Also here: bounds (closed, half_open, open), grid::try_make for runtime
+// checks, max_denominator, and raw_for (the storage a grid deduces).
 //---------------------------------------------------------------------------
 // A grid corner: a number (int / float / rational / grid number), or
 // anything that converts to the 64-bit rational, such as an inside (the grid

@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Rifle / magazine / reserve simulation built on the inside policy system.
+// Ammunition is a base dimension with the unit `rd` (rounds): magazine,
+// reserve and dropped rounds are quantities of it, while trigger pulls,
+// reloads and dry clicks stay plain event counts — the two never mix.
 //
 // Three classes, each leaning on a different policy:
 //
@@ -19,9 +22,6 @@
 //   - Partial reloads when the reserve is short of a full mag
 //   - Per-shot counters: pulled_trigger, missed_shots, dry_clicks
 //   - Combat-reload that drops the partial mag (rounds_dropped)
-//   - End-to-end without any explicit casts — every inside ↔ integer
-//     interaction flows through the implicit operators or the policy
-//     callbacks.
 
 #include <iostream>
 #include <string_view>
@@ -29,31 +29,40 @@
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
 #include <beman/inside/formats.hpp>
+#include <beman/inside/units.hpp>
 
 using namespace beman::inside;
+using namespace beman::inside::units;
+
+namespace {
+inline constexpr base_dimension ammunition_dim{"ammunition"};
+inline constexpr quantity_spec  ammunition_def{"ammunition", ammunition_dim};
+inline constexpr named_unit     round_def{"rd", spec_c<ammunition_def>};
+inline constexpr auto           rd = unit_c<round_def>;
+} // namespace
 
 class magazine {
   public:
-    static constexpr auto capacity = just<30>;
-    using count_t                  = inside<{0, capacity}, wrap>; // 31 states; wraps at empty
+    static constexpr auto capacity = just<30> * rd;
+    using count_t                  = quantity<rd, inside<{0, 30}, wrap>>; // 31 states; wraps at empty
 
     count_t rounds{capacity}; // start full
 
-    bool empty() const { return rounds == 0; } // arithmetic compare, no cast
+    bool empty() const { return rounds == just<0> * rd; }
 };
 
 class rifle {
   public:
-    magazine                 mag;
-    clamp_counter<1'000'000> pulled_trigger{0}; // saturating event tallies
-    clamp_counter<1'000'000> missed_shots{0};
-    clamp_counter<1'000'000> reloads{0};
-    clamp_counter<1'000'000> rounds_dropped{0}; // accumulates count_t values
+    magazine                                    mag;
+    clamp_counter<1'000'000>                    pulled_trigger{0}; // saturating event tallies
+    clamp_counter<1'000'000>                    missed_shots{0};
+    clamp_counter<1'000'000>                    reloads{0};
+    quantity<rd, inside<{0, 1'000'000}, clamp>> rounds_dropped{0}; // accumulates count_t values
 };
 
 class player {
   public:
-    using reserve_t = inside<{0, 200}, clamp>;
+    using reserve_t = quantity<rd, inside<{0, 200}, clamp>>;
     reserve_t                reserve{60}; // two spare mags' worth
     rifle                    weapon;
     clamp_counter<1'000'000> dry_clicks{0}; // mag empty AND reserve empty
@@ -75,7 +84,7 @@ class player {
 void player::pull_trigger() {
     ++weapon.pulled_trigger;
 
-    if (weapon.mag.empty() && reserve == 0) {
+    if (weapon.mag.empty() && reserve == just<0> * rd) {
         ++dry_clicks;
         return;
     }
@@ -85,21 +94,21 @@ void player::pull_trigger() {
     weapon.mag.rounds.on_wrap([&](auto& m, auto) {
         // The wrap put `m` at capacity. Withdraw a full mag from the reserve;
         // on_clamp's overshoot tells us how much we were short of capacity.
-        magazine::count_t shortfall = 0;
-        reserve.on_clamp([&](auto&, auto over) { shortfall = -over; }) -= magazine::capacity;
+        magazine::count_t shortfall{0};
+        reserve.on_clamp([&](auto&, auto over) { shortfall = magazine::count_t{-over}; }) -= magazine::capacity;
         ++weapon.reloads;
-        if (shortfall > 0)
+        if (shortfall > just<0> * rd)
             m = magazine::capacity - shortfall;
-    }) -= 1_ins;
+    }) -= just<1> * rd;
 }
 
 void player::combat_reload() {
-    // The partial mag is dropped; accumulate its round count. `rounds_dropped` is a
-    // saturating `clamp_counter`, so this stays inside += inside (the count_t magazine value).
+    // The partial mag is dropped; accumulate its rounds. `rounds_dropped`
+    // saturates, so this stays a plain += of two round counts.
     weapon.rounds_dropped += weapon.mag.rounds;
 
-    magazine::count_t shortfall = 0;
-    reserve.on_clamp([&](auto&, auto over) { shortfall = -over; }) -= magazine::capacity;
+    magazine::count_t shortfall{0};
+    reserve.on_clamp([&](auto&, auto over) { shortfall = magazine::count_t{-over}; }) -= magazine::capacity;
     ++weapon.reloads;
     weapon.mag.rounds = magazine::capacity - shortfall;
 }
@@ -134,5 +143,8 @@ int main() {
         p.pull_trigger();
     status("after 40 more (reserve dries up):   ");
 
+    if (to_string(p.weapon.rounds_dropped) != "10 rd" || p.weapon.reloads != 2 || p.dry_clicks != 10 ||
+        !p.weapon.mag.empty())
+        return 1;
     return 0;
 }

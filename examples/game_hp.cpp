@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Game character HP with fixed-point damage multipliers.
+// Game character HP with fixed-point damage multipliers. Health is a base
+// dimension of its own with the unit HP, so damage and healing are HP and a
+// multiplier stays a plain number: HP never adds to a count of anything else.
 //
 // Demonstrates:
 //   - `mul_all` to chain damage multipliers (crit * vulnerable * armor_pen)
@@ -16,24 +18,33 @@
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
+#include <beman/inside/units.hpp>
 
 using namespace beman::inside;
+using namespace beman::inside::units;
 
-// Health in [0, 100], clamp-saturating.
-using hp_t = inside<{0, 100}, clamp>;
+namespace {
+inline constexpr base_dimension health_dim{"health"};
+inline constexpr quantity_spec  health_def{"health", health_dim};
+inline constexpr named_unit     hp_def{"HP", spec_c<health_def>};
+inline constexpr auto           HP = unit_c<hp_def>;
+} // namespace
+
+// Health in [0, 100] HP, clamp-saturating.
+using hp_t = quantity<HP, inside<{0, 100}, clamp>>;
 
 // Damage multipliers in [0, 4] with 1/16 step (Q2.4-ish).
 using mult_t = inside<{{0, 4}, per<16>}, round_nearest>;
 
-// Base damage in [0, 50] integer.
-using damage_t = inside<{0, 50}>;
+// Base damage in [0, 50] HP.
+using damage_t = quantity<HP, inside<{0, 50}>>;
 
 // A widened pool that level-scaling can produce — values may exceed hp_t.
-using big_pool_t = inside<{0, 1000}>;
+using big_pool_t = quantity<HP, inside<{0, 1000}>>;
 
 int main() {
     hp_t hp{75};
-    std::cout << "starting HP: " << hp << "\n";
+    std::cout << "starting health: " << hp << "\n";
 
     bool downed = false;
 
@@ -46,34 +57,36 @@ int main() {
     // mul_all folds three multipliers into one — grid widens each step.
     auto chain = mul_all(crit, vuln, pen);
     // chain has interval [0, 64] notch 1/4096. mul_into scales base by it and
-    // rounds once to the nearest whole point of damage — no rational, no cast.
-    using dealt_t    = inside<{0, 3200}, round_nearest>;
+    // rounds once to the nearest whole HP of damage — no rational, no cast.
+    using dealt_t    = quantity<HP, inside<{0, 3200}, round_nearest>>;
     const auto dealt = mul_into<dealt_t>(base, chain);
-    std::cout << "damage chain (2.0 * 1.25 * 1.5) on base 10 = " << dealt << "\n";
+    std::cout << "damage chain (2.0 * 1.25 * 1.5) on base 10 HP = " << dealt << "\n";
 
     hp -= dealt; // 75 − 38 stays in range: nothing to clamp
-    std::cout << "HP after hit: " << hp << "\n";
+    std::cout << "after hit: " << hp << "\n";
 
     // Pile on more damage to trigger the downed callback.
     hp.on_clamp([&](auto& self, auto overshoot) {
-        if (self == 0) {
-            std::cout << "[downed — overshoot " << overshoot << "]\n";
+        if (self == just<0> * HP) {
+            std::cout << "[downed — overshoot " << overshoot << " HP]\n";
             downed = true;
         }
-    }) -= 200_ins;
-    std::cout << "HP after big hit: " << hp << "  (downed=" << std::boolalpha << downed << ")\n";
+    }) -= just<200> * HP;
+    std::cout << "after big hit: " << hp << "  (downed=" << std::boolalpha << downed << ")\n";
 
     // Heal via clamp-saturation back to full.
-    hp.on_clamp([&](auto&, auto) { std::cout << "[heal saturated to max HP]\n"; }) += 250_ins;
-    std::cout << "HP after heal: " << hp << "\n";
+    hp.on_clamp([&](auto&, auto) { std::cout << "[heal saturated to max HP]\n"; }) += just<250> * HP;
+    std::cout << "after heal: " << hp << "\n";
 
     // Level-scaled max-HP buff — could exceed hp_t. Because `hp_t` carries a
-    // `clamp` policy, the implicit inside→inside conversion already clips at the
+    // `clamp` policy, the implicit quantity→quantity conversion already clips at the
     // boundary: no `clamp_cast` needed when the target type already says
     // what to do with out-of-range values.
     big_pool_t bonus{180};
     hp_t       capped = bonus;
-    std::cout << "\nlevel bonus 180 -> hp_t (implicit clamp): " << capped << "\n";
+    std::cout << "\nlevel bonus 180 HP -> hp_t (implicit clamp): " << capped << "\n";
 
+    if (to_string(dealt) != "38 HP" || !downed || to_string(hp) != "100 HP" || to_string(capped) != "100 HP")
+        return 1;
     return 0;
 }

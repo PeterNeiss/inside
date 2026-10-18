@@ -3,6 +3,8 @@
 // (0.5 °C, 0.25 steps) works the same way, and the library does the scaling —
 // no shifts, no hand-tracked radix point. Products land on a finer grid, so
 // they are exact; storing back onto a coarse grid rounds by the policy.
+// The 0.5 °C grid carries its unit: temperatures are ℃ points, and the
+// difference of two of them is a temperature difference.
 
 #include <iomanip>
 #include <iostream>
@@ -10,8 +12,10 @@
 #include <beman/inside/formats.hpp>
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
+#include <beman/inside/units.hpp>
 
 using namespace beman::inside;
+using namespace beman::inside::units;
 
 int main() {
     // Q-format reference: the predefined formats and two custom ones.
@@ -43,11 +47,13 @@ int main() {
     if (scaled != just<1863, 256>) // 1863.25/256 rounds to 1863/256
         return 1;
 
-    // Storing back onto the 0.5 °C grid rounds by the type's policy.
-    using celsius = inside<{{-40, 60}, 0.5}, round_nearest>;
-    const celsius room{21.4}, body{37};
-    std::cout << "room " << room << " C, body - room " << body - room << " C\n";
-    if (room != celsius{21.5} || body - room != just<31, 2>)
+    // Storing onto the 0.5 °C grid rounds by the type's policy; a reading is a
+    // point on the ℃ scale, and body − room is a difference of 15.5 ℃.
+    using celsius   = inside<{{-40, 60}, 0.5}, round_nearest>;
+    const auto room = point<si::degree_Celsius>(celsius{21.4});
+    const auto body = point<si::degree_Celsius>(celsius{37});
+    std::cout << "room " << room << ", body - room " << body - room << " = " << (body - room).in(si::kelvin) << "\n";
+    if (to_string(room) != "21.5 ℃" || body - room != just<31, 2> * si::kelvin)
         return 1;
     return 0;
 }

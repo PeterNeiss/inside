@@ -15,6 +15,8 @@ BEMAN_INSIDE_WARNINGS_PUSH
 // policy — runtime policy carrier, plus `policy_ref` for per-operation dispatch.
 //   policy<F, E>  — compile-time flags F plus an optional error_ref E holding a
 //                   beman::inside::errc& (EBO so the no-error-code form is zero-sized).
+//   make_policy<F>() and the named policies rounded_toward_zero, rounded_nearest,
+//                   rounded_floor, rounded_ceil, rounded_half_even, clamped, wrapped.
 //   policy_ref    — wraps an inside& with a policy<...> and a tuple of on_* actions;
 //                   compound ops flow through it, routing each action to the right
 //                   callback at the right pipeline stage.

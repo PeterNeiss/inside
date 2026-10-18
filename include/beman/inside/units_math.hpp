@@ -8,8 +8,14 @@
 //   sqrt(q), cbrt(q)                 the unit's root (m² → m), the number's
 //   abs, floor, ceil, round, trunc   on the number, in q's unit
 //   sin, cos, tan(q)                 of an angle in radians: a plain inside
-//   asin, acos, atan(x), atan2(y, x) an angle in radians
+//   sin_into, cos_into<Out>(q)       also of an angle in a unit with a factor
+//                                    of π (°, a turn): reduced exactly by
+//                                    quarter turns, exact at Niven's values
+//   asin, acos, atan(x), atan2(y, x) an angle in radians (x an inside or a
+//                                    dimensionless quantity)
 //   hypot(x, y)                      in the common unit
+//   exp_into … atanh_into, log10_into, pow_base_into<Out, B>, pow_into
+//                                    of an inside or a dimensionless quantity
 //   fn_into<Out>(…)                  each of them with the result's number
 //                                    named: Out rounds, the input need not
 //
@@ -66,6 +72,66 @@ struct pi_scale_core {
         return approx<limbs_of<I>>{Negative ? -v : v, S, 2};
     }
 };
+
+// sin or cos of an angle x·(n/d)·π (a unit with a factor of π: °, a turn):
+// t = x·n/d half turns is reduced exactly by k = round(2t) quarter turns, so
+// only r = π·(t − k/2), |r| ≤ π/4, is approximated. Exact where Niven's
+// theorem allows a rational value: 0, ±1/2, ±1.
+template <std::size_t E, bool Cos, std::size_t KF = 1>
+struct pi_trig_core {
+    using factor = std::conditional_t<KF == 1, umax, beman::inside::detail::wide_uint<KF>>;
+    wide_rational<E> X;
+    factor           N; // the rational factor n/d
+    factor           D;
+    bool             Negative;
+
+    template <class J>
+    constexpr J numerator() const {
+        const J num = J{X.Num} * J{N};
+        return Negative ? -num : num;
+    }
+
+    constexpr maybe_exact<E> exact() const {
+        using J     = wide_sint<limbs_for_bits(64 * static_cast<int>(E + KF) + 8)>;
+        const J six = numerator<J>() * J{6}, den = J{X.Den} * J{D};
+        if (!(six % den).is_zero())
+            return std::nullopt;
+        J m = (six / den) % J{12}; // 6t mod 12: the angle in multiples of 30°
+        if (m.negative())
+            m += J{12};
+        // 2·sin and 2·cos at m·30°; 3 marks an irrational value (√3/2).
+        constexpr signed char twice_sin[12] = {0, 1, 3, 2, 3, 1, 0, -1, 3, -2, 3, -1};
+        constexpr signed char twice_cos[12] = {2, 3, 1, 0, -1, 3, -2, 3, -1, 0, 1, 3};
+        const int             v             = (Cos ? twice_cos : twice_sin)[m.Word[0]];
+        if (v == 3)
+            return std::nullopt;
+        return wide_rational<E>{wide_sint<E>{v}, wide_sint<E>{2}};
+    }
+
+    template <int W>
+    constexpr auto run() const {
+        constexpr int S               = W + 10;
+        constexpr int P               = S + 4;
+        using J                       = wide_sint<limbs_for_bits(64 * static_cast<int>(E + KF) + P + 16)>;
+        using I                       = fixed_t<S + 2>;
+        constexpr std::size_t K       = limbs_of<I>;
+        const J               two_num = J{2} * numerator<J>(), den = J{X.Den} * J{D};
+        const J               k = nearest_div(two_num, den); // quarter turns
+        // r = π·(2t − k)/2 at scale S, within 1 unit.
+        const I r = static_cast<I>(nearest_div((two_num - k * den) * static_cast<J>(pi_q<P>), den << (P - S + 1)));
+        const unsigned q   = static_cast<unsigned>(k.Word[0] & 3u);
+        auto           neg = [](fx<K> f) { return fx<K>{-f.Value, f.Error}; };
+        const fx<K>    v   = Cos ? ((q == 0)   ? cos_series<S>(r, 2)
+                                    : (q == 1) ? neg(sin_series<S>(r, 2))
+                                    : (q == 2) ? neg(cos_series<S>(r, 2))
+                                               : sin_series<S>(r, 2))
+                                 : ((q == 0)   ? sin_series<S>(r, 2)
+                                    : (q == 1) ? cos_series<S>(r, 2)
+                                    : (q == 2) ? neg(sin_series<S>(r, 2))
+                                               : neg(cos_series<S>(r, 2)));
+        return approx<K>{v.Value, S, v.Error};
+    }
+};
 } // namespace beman::inside::math::detail::ax
 
 namespace beman::inside::units {
@@ -112,6 +178,24 @@ template <reference R>
 inline constexpr bool radians_v = dimension_of(R.U) == dim_one && magnitude_of(R.U).is_one();
 
 inline constexpr reference radian_reference = reference{si::radian};
+
+// An angle in a unit with a factor of π (°, a turn): sin and cos reduce it exactly.
+template <reference R>
+inline constexpr bool pi_angle_v = dimension_of(R.U) == dim_one && magnitude_of(R.U).Pi == 1 &&
+                                   beman::inside::detail::fits_rational(magnitude_of(R.U).Ratio);
+
+// sin_into / cos_into of a π-scaled angle: one rounding onto Out.
+template <insidable Out, bool Cos, reference R, class V>
+constexpr Out pi_trig_into(const quantity<R, V>& q) {
+    namespace ax = beman::inside::math::detail::ax;
+    beman::inside::math::adaptive::require_rounding<Out>();
+    constexpr rational r = beman::inside::detail::to_rational(magnitude_of(R.U).Ratio);
+    using core           = ax::pi_trig_core<ax::input_limbs<V>, Cos>;
+    return ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_input(q.numerical_value()),
+                                                       static_cast<umax>(r.Numerator < 0 ? -r.Numerator : r.Numerator),
+                                                       beman::inside::detail::abs_den(r.Denominator),
+                                                       (r.Numerator < 0) != (r.Denominator < 0)});
+}
 } // namespace detail
 
 // value_cast<U, Out>(q) across a pi factor (degree ↔ radian): the exact
@@ -189,12 +273,14 @@ template <reference R, class V>
 // Trigonometry of an angle in radians: a plain number.
 template <reference R, class V>
 [[nodiscard]] constexpr auto sin(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R>, "units: sin takes an angle in radians - value_cast<si::radian, Out>(q) first");
+    static_assert(detail::radians_v<R>,
+                  "units: sin takes an angle in radians - sin_into<Out>(q) takes a unit with a factor of pi");
     return beman::inside::math::sin(q.numerical_value());
 }
 template <reference R, class V>
 [[nodiscard]] constexpr auto cos(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R>, "units: cos takes an angle in radians - value_cast<si::radian, Out>(q) first");
+    static_assert(detail::radians_v<R>,
+                  "units: cos takes an angle in radians - cos_into<Out>(q) takes a unit with a factor of pi");
     return beman::inside::math::cos(q.numerical_value());
 }
 template <reference R, class V>
@@ -275,15 +361,25 @@ template <insidable Out, reference R, class V>
         beman::inside::math::cbrt_into<Out>(q.numerical_value()));
 }
 
+// An angle in radians, or in a unit with a factor of π (°, a turn, 2π/65536
+// rad): that one is reduced exactly, and the result rounds once.
 template <insidable Out, reference R, class V>
 [[nodiscard]] constexpr auto sin_into(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R>, "units: sin takes an angle in radians - value_cast<si::radian, Out>(q) first");
-    return beman::inside::math::sin_into<Out>(q.numerical_value());
+    static_assert(detail::radians_v<R> || detail::pi_angle_v<R>,
+                  "units: sin_into takes an angle in radians or in a unit with a factor of pi");
+    if constexpr (detail::radians_v<R>)
+        return beman::inside::math::sin_into<Out>(q.numerical_value());
+    else
+        return detail::pi_trig_into<Out, false>(q);
 }
 template <insidable Out, reference R, class V>
 [[nodiscard]] constexpr auto cos_into(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R>, "units: cos takes an angle in radians - value_cast<si::radian, Out>(q) first");
-    return beman::inside::math::cos_into<Out>(q.numerical_value());
+    static_assert(detail::radians_v<R> || detail::pi_angle_v<R>,
+                  "units: cos_into takes an angle in radians or in a unit with a factor of pi");
+    if constexpr (detail::radians_v<R>)
+        return beman::inside::math::cos_into<Out>(q.numerical_value());
+    else
+        return detail::pi_trig_into<Out, true>(q);
 }
 template <insidable Out, reference R, class V>
 [[nodiscard]] constexpr auto tan_into(const quantity<R, V>& q) {
@@ -302,6 +398,34 @@ template <insidable Out, class X>
 template <insidable Out, class X>
 [[nodiscard]] constexpr auto atan_into(const X& x) {
     return detail::make_quantity<detail::radian_reference>(beman::inside::math::atan_into<Out>(detail::number_of(x)));
+}
+
+// Exponentials, logarithms and the hyperbolic functions of a number: an
+// inside or a dimensionless quantity (10^(L / 20 dB), log10(P / 1 mW)).
+#define BEMAN_INSIDE_UNITS_NUMBER_FN(fn)                                  \
+    template <insidable Out, class X>                                     \
+    [[nodiscard]] constexpr auto fn##_into(const X& x) {                  \
+        return beman::inside::math::fn##_into<Out>(detail::number_of(x)); \
+    }
+BEMAN_INSIDE_UNITS_NUMBER_FN(exp)
+BEMAN_INSIDE_UNITS_NUMBER_FN(exp2)
+BEMAN_INSIDE_UNITS_NUMBER_FN(log)
+BEMAN_INSIDE_UNITS_NUMBER_FN(log2)
+BEMAN_INSIDE_UNITS_NUMBER_FN(log10)
+BEMAN_INSIDE_UNITS_NUMBER_FN(sinh)
+BEMAN_INSIDE_UNITS_NUMBER_FN(cosh)
+BEMAN_INSIDE_UNITS_NUMBER_FN(tanh)
+BEMAN_INSIDE_UNITS_NUMBER_FN(asinh)
+BEMAN_INSIDE_UNITS_NUMBER_FN(acosh)
+BEMAN_INSIDE_UNITS_NUMBER_FN(atanh)
+#undef BEMAN_INSIDE_UNITS_NUMBER_FN
+template <insidable Out, imax Base, class X>
+[[nodiscard]] constexpr auto pow_base_into(const X& x) {
+    return beman::inside::math::pow_base_into<Out, Base>(detail::number_of(x));
+}
+template <insidable Out, class B, class E>
+[[nodiscard]] constexpr auto pow_into(const B& base, const E& exp) {
+    return beman::inside::math::pow_into<Out>(detail::number_of(base), detail::number_of(exp));
 }
 template <insidable Out, reference A, class VA, reference B, class VB>
     requires(!detail::sum_diagnosed<A, B>()) &&

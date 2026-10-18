@@ -6,6 +6,9 @@
 // policy — so a bad field is reported by name and cause. to_string writes the
 // values back as the same decimal text, so the document round-trips byte for
 // byte. (A value with no finite decimal, such as 1/3, prints as N/D: not JSON.)
+// The fields carry units — a price in USD/item, a quantity in items — so the
+// total is USD by its own arithmetic; the JSON text holds the bare numbers,
+// read and written in those units.
 
 #include <iostream>
 #include <map>
@@ -14,15 +17,28 @@
 #include <vector>
 
 #include <beman/inside/inside.hpp>
+#include <beman/inside/units.hpp>
 #include <beman/inside/io.hpp>
 
 using namespace beman::inside;
+using namespace beman::inside::units;
 
-using order_id   = inside<{0, 9'000'000'000'000'000'000}>;                // 64-bit IDs
-using cents_t    = inside<{{0, 1'000'000}, per<100>}, round_nearest>;     // a price; rounds in arithmetic
-using quantity_t = inside<{1, 1000}>;                                     // whole units
-using ratio_t    = inside<{{0, 1}, per<100>}>;                            // a discount, 1 %
-using total_t    = inside<{{0, 1'000'000'000}, per<100>}, round_nearest>; // rounded once, to the cent
+namespace {
+inline constexpr base_dimension dollar_dim{"dollar"};
+inline constexpr quantity_spec  dollars_def{"dollars", dollar_dim};
+inline constexpr named_unit     usd_def{"USD", spec_c<dollars_def>};
+inline constexpr auto           USD = unit_c<usd_def>;
+inline constexpr base_dimension count_dim{"count"};
+inline constexpr quantity_spec  items_def{"items", count_dim};
+inline constexpr named_unit     item_def{"item", spec_c<items_def>};
+inline constexpr auto           item = unit_c<item_def>;
+} // namespace
+
+using order_id   = inside<{0, 9'000'000'000'000'000'000}>;                                  // 64-bit IDs
+using price_t    = quantity<USD / item, inside<{{0, 1'000'000}, per<100>}, round_nearest>>; // to the cent
+using quantity_t = quantity<item, inside<{1, 1000}>>;                                       // whole items
+using ratio_t    = inside<{{0, 1}, per<100>}>;                                              // a discount, 1 %
+using total_t    = quantity<USD, inside<{{0, 1'000'000'000}, per<100>}, round_nearest>>;    // rounded once
 
 // A flat JSON object of numbers: key → the number's text. Minimal on purpose
 // (no nesting, strings or escapes) — just enough to feed parse.
@@ -42,7 +58,7 @@ std::map<std::string, std::string_view> scan(std::string_view json) {
 
 struct order {
     order_id   id;
-    cents_t    price;
+    price_t    price;
     quantity_t quantity;
     ratio_t    discount;
 };
@@ -60,7 +76,7 @@ std::expected<order, std::vector<std::pair<std::string, errc>>> read_order(std::
         else
             errors.emplace_back(key, v.error());
     };
-    order o{order_id{0}, cents_t{0}, quantity_t{1}, ratio_t{0}};
+    order o{order_id{0}, price_t{0}, quantity_t{1}, ratio_t{0}};
     get("id", o.id);
     get("price", o.price);
     get("quantity", o.quantity);
@@ -71,8 +87,9 @@ std::expected<order, std::vector<std::pair<std::string, errc>>> read_order(std::
 }
 
 std::string write_order(const order& o) {
-    return R"({"id": )" + to_string(o.id) + R"(, "price": )" + to_string(o.price) + R"(, "quantity": )" +
-           to_string(o.quantity) + R"(, "discount": )" + to_string(o.discount) + "}";
+    return R"({"id": )" + to_string(o.id) + R"(, "price": )" + to_string(o.price.numerical_value_in(USD / item)) +
+           R"(, "quantity": )" + to_string(o.quantity.numerical_value_in(item)) + R"(, "discount": )" +
+           to_string(o.discount) + "}";
 }
 
 int main() {
@@ -86,7 +103,7 @@ int main() {
               << "write  " << write_order(*o) << "\n"
               << "total  " << total << "\n"
               << "as double the id is " << static_cast<long long>(std::stod("9007199254740993")) << "\n";
-    if (write_order(*o) != good || total != 50.97_ins)
+    if (write_order(*o) != good || to_string(total) != "50.97 USD")
         return 1;
 
     // 2. A bad order: each failing field reported with its cause.

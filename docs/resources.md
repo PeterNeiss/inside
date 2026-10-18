@@ -1,4 +1,8 @@
-# Resources — prior art & talks
+# Resources: prior art and talks
+
+<!--
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
 
 `inside` did not appear in a vacuum. The idea that a number's range belongs in its
 *type*, that arithmetic should *widen* that range automatically, and that
@@ -15,18 +19,18 @@ partial / related · **○** no · **—** not applicable.
 
 **Numeric model & capabilities**
 
-| Library | Domain | Range in type `[lo,hi]` | Auto-widening result | Out-of-range handling | Fixed-point | Rational / exact | Transcendental math | Determinism / FPU-free | Freestanding / `-fno-exceptions` |
-|---|---|---|---|---|---|---|---|---|---|
-| **inside** | bounded rational grids | ● | ● | clamp / wrap / round / snap / throw / `errc` / `std::expected` | ● | ● | ● (correctly rounded on any grid) | ● | ◐ ¹⁰ |
-| **bounded::integer** | integers | ● | ● | policy on narrowing (clamp / modulo / throw / assume) | ○ | ○ | ○ | — | ○ ¹¹ |
-| **Intel safe-arithmetic** | integers | ● ¹⁹ | ● | compile-time proof (reject) / runtime `safe::function` | ○ | ○ | ○ | — | ○ ²⁰ |
-| **Boost.SafeNumerics** | integers | ◐ ¹ | ◐ ² | detect → exception (custom exception / trap policy) | ○ | ○ | ○ | — | ◐ ¹² |
-| **CNL** | fixed-point + elastic ints | ◐ ³ | ● | composable: native / saturated / throwing / undefined | ● | ◐ ⁴ | ○ | ● | ◐ ¹³ |
-| **fpm** | fixed-point | ○ | ○ | ○ (wraps, no checks) | ● | ○ | ● (full `<cmath>`) | ● | ◐ ¹⁴ |
-| **type_safe** | strong typedefs / vocab types | ◐ ⁵ | ○ | ◐ (arith. policy `ub`/`checked`; clamped/constrained) | ○ | ○ | ○ | — | ◐ ¹⁵ |
-| **SafeInt** | integers | ○ | ○ | detect → throw / custom handler | ○ | ○ | ○ | — | ◐ ¹⁶ |
-| **google/integers** | integers | ◐ ⁶ | ○ | trapping / wrapping / clamping ⁶ | ○ | ○ | ○ | — | ◐ ¹⁷ |
-| **PSsst** | strong-typedef framework | ○ | ○ | ○ | ○ | ○ | ◐ ⁷ | — | ○ ¹⁸ |
+| Library | Domain | Range in type `[lo,hi]` | Auto-widening result | Out-of-range handling | Fixed-point | Rational / exact | Transcendental math | Determinism / FPU-free | Freestanding / `-fno-exceptions` | Physical units |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **inside** | bounded rational grids | ● | ● | clamp / wrap / round / snap / throw / `errc` / `std::expected` | ● | ● | ● (correctly rounded on any grid) | ● | ◐ ¹⁰ | ● ²¹ |
+| **bounded::integer** | integers | ● | ● | policy on narrowing (clamp / modulo / throw / assume) | ○ | ○ | ○ | — | ○ ¹¹ | ○ |
+| **Intel safe-arithmetic** | integers | ● ¹⁹ | ● | compile-time proof (reject) / runtime `safe::function` | ○ | ○ | ○ | — | ○ ²⁰ | ○ |
+| **Boost.SafeNumerics** | integers | ◐ ¹ | ◐ ² | detect → exception (custom exception / trap policy) | ○ | ○ | ○ | — | ◐ ¹² | ○ |
+| **CNL** | fixed-point + elastic ints | ◐ ³ | ● | composable: native / saturated / throwing / undefined | ● | ◐ ⁴ | ○ | ● | ◐ ¹³ | ○ |
+| **fpm** | fixed-point | ○ | ○ | ○ (wraps, no checks) | ● | ○ | ● (full `<cmath>`) | ● | ◐ ¹⁴ | ○ |
+| **type_safe** | strong typedefs / vocab types | ◐ ⁵ | ○ | ◐ (arith. policy `ub`/`checked`; clamped/constrained) | ○ | ○ | ○ | — | ◐ ¹⁵ | ○ |
+| **SafeInt** | integers | ○ | ○ | detect → throw / custom handler | ○ | ○ | ○ | — | ◐ ¹⁶ | ○ |
+| **google/integers** | integers | ◐ ⁶ | ○ | trapping / wrapping / clamping ⁶ | ○ | ○ | ○ | — | ◐ ¹⁷ | ○ |
+| **PSsst** | strong-typedef framework | ○ | ○ | ○ | ○ | ○ | ◐ ⁷ | — | ○ ¹⁸ | ○ |
 
 **Practical**
 
@@ -43,43 +47,35 @@ partial / related · **○** no · **—** not applicable.
 | **google/integers** | ● | ○ | C++17 | Apache-2.0 | **archived (Apr 2026) · partial** ⁶ |
 | **PSsst** | ● | ● | C++17 | BSL-1.0 | active |
 
-<sub>¹ via `safe_signed_range<MIN,MAX>` / `safe_unsigned_range`. ² through the
-promotion policy. ³ `elastic_integer` tracks digit/bit-width, not arbitrary
-`[lo,hi]`. ⁴ dyadic scaling, not arbitrary rationals. ⁵ `bounded_type` /
-`constrained_type` / `clamped_type` enforce intervals but don't propagate ranges
-through arithmetic. ⁶ `ranged<T>` constrains a range; repo archived April 2026
-with only `trapping<T>` fully implemented. ⁷ `Trigonometric` / `ExpLog` / `Root`
-mix-ins delegate to `<cmath>` on the wrapped type. ⁸ implemented as C++20
-modules, so not header-only in the classic sense. ⁹ a *generated* amalgamation of
-the multi-file source (`single_include/beman/inside/inside.hpp`, standard-library-only),
-rebuilt by a CMake target — SafeInt (`SafeInt.hpp`) and PSsst (`pssst.h`) are
-instead authored as a single file; the rest ship a multi-header tree (fpm, e.g.,
-splits `fixed.hpp` / `math.hpp` / `ios.hpp`).
-¹⁰ core compiles `-ffreestanding -fno-exceptions` (no `<system_error>`; a
-replaceable `error_handler`; strings/printing in the opt-in `beman/inside/io.hpp`, droppable
-via `BEMAN_INSIDE_NO_STRING`). `BEMAN_INSIDE_MATH_NO_FP` (auto under `-ffreestanding`) compiles the
-`<cmath>` dependency out of `beman::inside::math` entirely; full `-ffreestanding` still depends
-on the stdlib's freestanding maturity — see
-[freestanding.md](freestanding.md). ¹¹ C++20 modules (clang-only) with throwing
-policies; no documented freestanding / no-exceptions path. ¹² `-fno-exceptions` via the
-compile-time `trap` exception policy; the default policy throws. ¹³ non-throwing
-overflow tags (`native` / `saturated` / `undefined`) and no `<cmath>`, but no explicit
-`-ffreestanding` guarantee. ¹⁴ no overflow checks → no exception path, but the math
-header pulls full `<cmath>` (not FPU-free). ¹⁵ the `DEBUG_ASSERT` handler is
-user-overridable (no exceptions); no documented `-ffreestanding`. ¹⁶ a custom
-`SafeIntException` / overflow handler avoids exceptions; integer-only (no `<cmath>`).
-¹⁷ `trapping<T>` traps without exceptions, but the repo is archived / partial.
-¹⁸ strong-typedef only — no overflow checks, so nothing to throw, but no
-numeric-safety story either. ¹⁹ also models disjoint interval *unions* (e.g.
-`ival<-1000,-1> || ival<1,1000>` to exclude zero), not just a single `[lo,hi]`;
-arithmetic propagates ranges via the Cartesian product of the operand intervals.
-²⁰ no documented freestanding / `-fno-exceptions` path; integer-only (no `<cmath>`).
-Freestanding marks are best-effort from each project's
-docs as of June 2026 — corrections welcome.</sub>
+Notes:
+
+1. via `safe_signed_range<MIN,MAX>` / `safe_unsigned_range`.
+2. through the promotion policy.
+3. `elastic_integer` tracks digit/bit-width, not arbitrary `[lo,hi]`.
+4. dyadic scaling, not arbitrary rationals.
+5. `bounded_type` / `constrained_type` / `clamped_type` enforce intervals but don't propagate ranges through arithmetic.
+6. `ranged<T>` constrains a range; repo archived April 2026 with only `trapping<T>` fully implemented.
+7. `Trigonometric` / `ExpLog` / `Root` mix-ins delegate to `<cmath>` on the wrapped type.
+8. implemented as C++20 modules, so not header-only in the classic sense.
+9. a *generated* amalgamation of the multi-file source (`single_include/beman/inside/inside.hpp`, standard-library-only), rebuilt by a CMake target — SafeInt (`SafeInt.hpp`) and PSsst (`pssst.h`) are instead authored as a single file; the rest ship a multi-header tree (fpm, e.g., splits `fixed.hpp` / `math.hpp` / `ios.hpp`).
+10. core compiles `-ffreestanding -fno-exceptions` (no `<system_error>`; a replaceable `error_handler`; strings/printing in the opt-in `beman/inside/io.hpp`, droppable via `BEMAN_INSIDE_NO_STRING`). `BEMAN_INSIDE_MATH_NO_FP` (auto under `-ffreestanding`) compiles the `<cmath>` dependency out of `beman::inside::math` entirely; full `-ffreestanding` still depends on the stdlib's freestanding maturity — see [freestanding.md](freestanding.md). The units (`units.hpp`) need a hosted library.
+11. C++20 modules (clang-only) with throwing policies; no documented freestanding / no-exceptions path.
+12. `-fno-exceptions` via the compile-time `trap` exception policy; the default policy throws.
+13. non-throwing overflow tags (`native` / `saturated` / `undefined`) and no `<cmath>`, but no explicit `-ffreestanding` guarantee.
+14. no overflow checks → no exception path, but the math header pulls full `<cmath>` (not FPU-free).
+15. the `DEBUG_ASSERT` handler is user-overridable (no exceptions); no documented `-ffreestanding`.
+16. a custom `SafeIntException` / overflow handler avoids exceptions; integer-only (no `<cmath>`).
+17. `trapping<T>` traps without exceptions, but the repo is archived / partial.
+18. strong-typedef only — no overflow checks, so nothing to throw, but no numeric-safety story either.
+19. also models disjoint interval *unions* (e.g. `ival<-1000,-1> || ival<1,1000>` to exclude zero), not just a single `[lo,hi]`; arithmetic propagates ranges via the Cartesian product of the operand intervals.
+20. no documented freestanding / `-fno-exceptions` path; integer-only (no `<cmath>`).
+21. `<beman/inside/units.hpp>`, an opt-in header: quantities, kinds, points and units of your own on an inside, in the style of mp-units ([units.md](units.md)). The libraries above have no units; the dedicated units libraries are listed [below](#units-libraries).
+
+Freestanding marks are best-effort from each project's docs as of June 2026 — corrections welcome.
 
 A filled-in cell is **not** a verdict. The mature, widely deployed options here
 (Boost.SafeNumerics, SafeInt, CNL, fpm) have years of production hardening, broad
-compiler support, and wide use; `inside` is at its third release (0.3.0),
+compiler support, and wide use; `inside` is at its third release (0.3.0, October 2026),
 under development, single-author, and not yet battle-tested. What `inside` brings that the others
 don't combine is *rational* grids with arbitrary `[lower, upper]` bounds **and**
 reproducible transcendental math over those grids — not dominance of every
@@ -147,6 +143,30 @@ column. Pick the tool that fits: if you need overflow-safe plain integers,
   (Peter Sommerlad) — a tiny `strong<T, Tag>` base for building safe numeric
   wrappers with only the operators you opt into. Kindred to `inside`'s view that
   a bounded quantity is a *type*, not a runtime check.
+
+## Units libraries
+
+`units.hpp` follows the design of mp-units, without depending on it; the
+other libraries here shaped the field. What sets `units.hpp` apart is the
+number: always an inside, so a conversion is an exact rescale of its grid and
+a mixed-unit sum cannot overflow. The others take any arithmetic type as the
+number, and are far more mature.
+
+- **[mp-units](https://github.com/mpusz/mp-units)** (Mateusz Pusz) — the
+  modern C++20 units library behind the WG21 proposal
+  [P3045](https://wg21.link/p3045) "Quantities and units library": dimensions,
+  units, the ISQ quantity kinds and quantity points. `units.hpp` copies its
+  model (kinds, the ISQ tree, points and origins); the differences are listed
+  in [units.md](units.md#differences-from-mp-units).
+  [[documentation](https://mpusz.github.io/mp-units/)]
+- **[Au](https://github.com/aurora-opensource/au)** (Aurora Innovation) — a
+  C++14 units library with a strong focus on safe conversions of integer
+  representations, and a single-header distribution.
+- **[Boost.Units](https://www.boost.org/libs/units/)** (Matthias Schabel,
+  Steven Watanabe) — the long-standing Boost library for dimensional analysis,
+  with zero runtime overhead.
+- **[nholthaus/units](https://github.com/nholthaus/units)** (Nic Holthaus) — a
+  header-only, compile-time units library for C++14.
 
 ## Talks & videos
 

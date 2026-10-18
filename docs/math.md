@@ -1,15 +1,19 @@
 # `beman::inside::math` — correctly rounded math on any grid
 
-`beman/inside/cmath.hpp` provides a `<cmath>`-shaped function set that operates on
-`inside` values instead of `float`/`double`. Every transcendental returns the
-**correctly rounded point of its output grid**, under the output's rounding mode:
-the engine works at whatever precision that grid needs. Two consequences follow:
+<!--
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
 
-- **Results do not depend on how they were computed.** The same value comes out on
-  every platform and compiler, at compile time and at runtime, with or without an
-  FPU, under any flags.
-- **No precision ceiling.** A 2^-100 output grid gets a correctly rounded result,
-  and inputs and outputs may be grids past 64 bits (C++26, see
+`<beman/inside/cmath.hpp>` is a `<cmath>`-shaped set of functions on insides.
+Every transcendental returns the **correctly rounded point of its output
+grid**, under the output's rounding mode, and the engine works at whatever
+precision that grid needs. So:
+
+- **A result does not depend on how it was computed.** The same value comes
+  out on every platform and compiler, at compile time and at run time, with or
+  without an FPU, under any flags ([determinism.md](determinism.md)).
+- **There is no precision ceiling.** A 2⁻¹⁰⁰ output grid gets a correctly
+  rounded result, and inputs and outputs may be grids past 64 bits (C++26,
   [storage.md](storage.md#grids-past-64-bits-c26)).
 
 ```cpp
@@ -17,284 +21,242 @@ the engine works at whatever precision that grid needs. Two consequences follow:
 using namespace beman::inside;
 
 using angle = inside<{{-8, 8}, per<16384>}, round_nearest>;
-auto s = math::sin(angle{1});         // amplitude in [-1, 1], notch 1/16384
-auto h = math::hypot(s, s);           // √(s²+s²), output grid deduced
+auto s = math::sin(angle{1});                              // 0.84149169921875: [-1, 1], notch 1/16384
+auto c = math::cos_into<math::unit_amplitude<256>>(angle{1});   // 0.5390625: a coarser output, named
+auto h = math::hypot(s, s);                                // √(s² + s²), output grid deduced
 ```
 
-For the reproducibility story across the whole library, see
-[determinism.md](determinism.md).
+With units, `<beman/inside/units_math.hpp>` gives the same functions on
+quantities, and trig on degrees and turns that is reduced exactly
+([below](#quantities)).
 
 ## How it works
 
-A result is computed in fixed point together with an error bound. The engine maps
-both ends of that interval onto the output grid. When both land on the same grid
-point, that point is the correctly rounded result. When they straddle a rounding
-boundary, the engine computes again at twice the precision (Ziv's strategy). A
-transcendental value lies exactly on a boundary only at the few exact rational
-inputs (`exp(0)`, `log(1)`, `sqrt(9/4)`, `log2(2^k)`, integer powers, …); the
-engine recognises those and stores them exactly.
+A result is computed in fixed point together with an error bound, and both
+ends of that interval are mapped onto the output grid. When they land on the
+same point, that point is the correctly rounded result. When they straddle a
+rounding boundary, the engine computes again at twice the precision (Ziv's
+strategy). A transcendental value lies exactly on a boundary only at a few
+exact inputs (`exp(0)`, `log(1)`, `sqrt(9/4)`, `log2(2^k)`, integer powers);
+the engine recognises those and stores them exactly.
 
-Precision follows the **output** grid: the start precision is the bits that
-resolve the output notch plus 8 guard bits. A coarse output is cheap; a fine one
+The precision follows the **output** grid: it starts at the bits that resolve
+the output notch, plus 8 guard bits. A coarse output is cheap and a fine one
 costs more, with no fixed limit.
 
-Each call takes the first of four paths that applies — all four give the same
+Each call takes the first of four paths that applies. All four give the same
 grid point:
 
 | Path | When | Cost |
 |---|---|---|
-| **Table** | the input has at most `BEMAN_INSIDE_MATH_TABLE_SLOTS` slots (default 256), the output stores an integer raw, and every result lies in the output's range | one load; the table is computed at compile time |
-| **Double tier** | an FPU is present (not `BEMAN_INSIDE_MATH_NO_FP`), the output's value indices stay within ±2^52, and it needs no more bits than the kernel's limit (45–49, by function) | the library's own double kernels, sized to the output, plus a proved error bound; decided results are stored as raws |
-| **dd tier** | an FPU is present, the output needs more than 36 bits, and its value indices stay within ±2^62; where the double tier also applies, it runs second | double-double kernels (about 106 bits) from compile-time tables, plus an error bound; for every function but `sqrt`, `cbrt` and `hypot` (one Newton step already) a lean kernel with a proved bound of about 2^-70 runs first |
-| **Integer path** | always available; the only path at compile time and without an FPU | Taylor polynomials with compile-time coefficient tables in wide fixed point |
+| table | the input has at most `BEMAN_INSIDE_MATH_TABLE_SLOTS` points (default 256), the output has an integer raw, and every result is in range | one load; the table is computed at compile time |
+| double tier | an FPU is present, the output's value indices stay within ±2⁵², and it needs at most 45–49 bits (by function) | the library's own `double` kernels with a proved error bound |
+| double-double tier | an FPU is present, the output needs more than 36 bits, indices within ±2⁶² | kernels of about 106 bits, behind a lean kernel with a proved bound of about 2⁻⁷⁰ |
+| integer path | always; the only path at compile time and without an FPU | Taylor series on compile-time coefficient tables, in wide fixed point |
 
-The double tier's kernels are Taylor polynomials sized to the output: each
-gets the fewest terms whose truncation stays 10 bits below the output's notch.
-`sin` onto a 2^-20 grid evaluates 6 terms where the full kernel has 9; `exp`
-onto 10^-6 evaluates 10 of 15. Every kernel carries a bound proved at compile
-time from its own coefficients and argument range: the first omitted term, the
-rounding of each Horner step, the coefficients' and constants' roundings, and
-the range reduction's. The full kernels prove about 2^-51 of the result
-(`log` 2^-50.4). The bounds are tight: measured against `__float128`, the
-kernels' worst errors reach up to 0.99 of them. An input that is not a double
-exactly adds its rounding times the function's slope. A kernel takes outputs
-up to the bits where its full-size bound still decides about 3 results in 4
-at the output's largest values: 48 for `sin`, `cos` and `exp`, 47 for `log`,
-`atan`, `pow`, `cbrt`, `sinh`, `asinh` and `acosh`. Past 46 bits `sinh`,
-`asinh` and `acosh` take sharper forms that cost 15–40% more: `sinh` the odd
-series below ln 2 (no cancellation) and (e − 1/e)/2 above it; `asinh` and
-`acosh` ln(1 + u) with u as an exact sum of two doubles, through the log's
-two-double result. `pow` and `cbrt` multiply the log's error by
-|y| = |e·ln b|, so past 42 bits they take the log as a sum of two doubles
-(within 2^-56 relative) and their limit holds up to |y| = 16. Whenever
-the bound does not place the result in a single slot, the dd tier or the
-integer path decides. Tests check every kernel against its bound and that the
-tiers agree slot for slot.
-
-The dd tier works the same way with values carried as a sum of two doubles. Its
-kernels use table-driven reductions (2^(i/64)·2^(j/4096) for exp, sin(jπ/128),
-atan(j/32), ln(j/128) for log) and Newton steps for sqrt and cbrt. Every table and coefficient
-comes at compile time from the integer path's series, computed only in
-translation units that use the tier. Its bound is 2^-88 of the result plus
-2^-92·max(1, |x|), with the same condition-number terms. A test checks that the
-kernels' errors against the integer path at 150 bits stay at least 2^8 below
-this bound; the measured worst is about 2^-96 relative.
-
-Outputs in the dd tier have notches no finer than 2^-62, so about 2^-70
-decides nearly all of them. For every function but `sqrt`, `cbrt` and `hypot`
-the tier first runs a lean kernel: the same tables and reduction, but only the
-table values, the reduced argument and the leading products (all error-free)
-in double-double, the polynomial tails in double. Their bounds are proved like
-the double tier's: 2^-70.3 absolute for `sin` and `cos` (plus 2^-104·max(1,
-|x|) from the reduction), 2^-77.6 relative for `exp`, 2^-75.3 absolute for
-`log` (plus 2^-101 per unit of the binary exponent), 2^-69 absolute for
-`atan`; measured errors reach 0.15, 0.29 and 0.26 of the first three. The
-others are built from these (`tan` = `sin`/`cos`, the hyperbolics from `exp`,
-their inverses from `log`, `asin`, `acos` and `atan2` from `atan`, `pow` from
-`log` and `exp`), each bound adding the proved error of the double-double
-operations in between. Onto a 2^-52 amplitude grid they leave about one
-result in 60 000 undecided, onto 2^-60 about one in 400; those go to the full
-kernels.
+How the floating-point tiers prove their bounds, and the speed each guard
+costs, is in [internals.md](internals.md#10-the-math-engine).
 
 ## Conventions
 
-- **Angles are radians**, as in `<cmath>`. `math::unit_amplitude<K>` (`[-1, 1]` at
-  resolution `1/K`) is a ready-made output grid: `math::sin_into<math::unit_amplitude<32768>>(x)`.
-- **Rounding needs permission.** A transcendental result is rounded onto a grid,
-  so the operand of a deduced form (or the `Out` of an explicit one) must permit
-  rounding: `round_nearest`, `round_floor`, `round_ceil`, `round_half_even`
-  or `snap`. Omitting it is a compile error.
-- **Deduced outputs: `fn(x)`.** The output takes the input's notch and policy
-  (plus `round_nearest`; a cursor input gives a plain inside). Its interval is the
-  function's range over the input, computed at compile time by the same engine
-  and rounded outward to the notch. Exceptions: `sin`/`cos` give `[-1, 1]`,
-  `tan` gives `[-1024, 1024]`, `atan2` gives `[-π, π]` and `hypot` `[0, …]` on
-  the gcd of both notches, `pow` uses the base's notch, and the integer
-  roundings (`floor`, …) use notch 1. A fine input notch gives a fine (and
-  slower) output; name a coarser output with `fn_into` when you need less.
-- **Explicit output: `fn_into<Out>(x)`.** Every function has an `_into` form
-  taking the output type — `math::sin_into<math::unit_amplitude<16384>>(a)`, `math::pow_into<Out>(b, e)`,
-  `math::pow_base_into<Out, 10>(x)`. The result is correctly rounded under
-  `Out`'s rounding mode; a result past `Out`'s range goes through `Out`'s policy
-  (`clamp` saturates, `wrap` wraps the true value, the default reports).
-  `tan` cannot take a `wrap` output (a compile error): near its poles the
-  value has no bound to compute it within.
-- **Grids off the notch's multiples.** An input or output whose values are
-  offset from the notch's multiples (`{{0.5, 10.5}, 1}`) works like any other
-  and is correctly rounded too: the engine rounds down onto an anchored grid
-  1024 times finer than the output's points and midpoints, and the output's slot
-  follows by one integer division; only a result that lands exactly on a
-  rounding boundary takes a second evaluation (rounded up) to tell whether it
-  is exact. Expect about 1.5× the time of an anchored output. Such an output
-  cannot use `wrap` (a compile error; `clamp` and
-  the default work). `abs` and `copysign` deduce the lattice of ±x (notch
-  `gcd(Notch, 2·Lower)`), and `fmod`, `atan2` and `hypot` the gcd of both
-  inputs' value units.
-- **Error model.** A domain limit knowable from the *type* is a `static_assert`.
-  A failure that depends on the *runtime value* is reported through
-  `std::expected<Out, errc>` (`tan`, `pow`, mixed-sign `sqrt`). Total functions
-  return the inside directly.
-- **Domains are mathematical.** There is no working-scale envelope: `sin` takes
-  any finite argument, `exp` any argument whose result fits the output, `log`
-  any positive one. The deduced forms of `exp`, `exp2`, `sinh` and `cosh` need
-  `|x| ≤ 4096` and `pow`'s deduced output must stay below 2^65536 — past that,
-  name an output grid.
-- **constexpr.** Every function is `constexpr` in every build.
+- **Angles are radians**, as in `<cmath>`. `math::unit_amplitude<K>` ([−1, 1]
+  at resolution 1/K) is a ready-made output: `math::sin_into<math::unit_amplitude<32768>>(x)`.
+- **Rounding needs permission.** The input of a deduced form, or the `Out` of
+  an `_into` form, must have a rounding mode (`round_nearest`, `round_floor`,
+  `round_ceil`, `round_half_even` or `snap`). Without one it does not compile.
+- **`fn(x)` deduces its output** from the input: the input's notch and policy
+  (plus `round_nearest`), and the function's range over the input's range,
+  computed at compile time and rounded outward. The exceptions are fixed
+  ranges: `sin`/`cos` [−1, 1], `tan` [−1024, 1024], `atan2` [−π, π]; `hypot`
+  uses the gcd of both notches, `pow` the base's notch, `floor` & co. notch 1.
+  A fine input gives a fine, slower output; name a coarser one with `fn_into`.
+- **`fn_into<Out>(x)` names the output.** The result is correctly rounded under
+  `Out`'s mode, and a result past `Out`'s range goes through `Out`'s policy
+  (`clamp` saturates, `wrap` wraps the true value, the default reports). `tan`
+  cannot have a `wrap` output: near a pole its value has no bound.
+- **Grids off the notch's multiples** (`{{0.5, 10.5}, 1}`) are correctly
+  rounded too, at about 1.5× the time; such an output cannot use `wrap`.
+- **Errors.** A domain limit visible in the *type* is a `static_assert`. A
+  failure that depends on the *value* comes back as `std::expected<Out, errc>`
+  (`tan`, `pow`, `sqrt` of a grid that crosses 0). Total functions return the
+  inside directly.
+- **Domains are mathematical.** `sin` takes any finite argument, `exp` any
+  whose result fits the output, `log` any positive one. Only the deduced forms
+  of `exp`, `exp2`, `sinh` and `cosh` need |x| ≤ 4096, and a deduced `pow`
+  output must stay below 2⁶⁵⁵³⁶; past that, name an output.
+- **`constexpr`** in every build.
 - **Measured accuracy.** [accuracy.md](accuracy.md) checks every function on
-  dyadic, decimal and 2^-40 grids against a long-double reference: every maximum
-  error is at most 0.5 notch.
+  dyadic, decimal and 2⁻⁴⁰ grids against a `long double` reference. Every
+  maximum error is 0.5 notch, up to the reference's own error: a result within
+  about 2⁻²⁰ notch of a boundary can read a hair past 0.5.
 
-## Grid operations (exact)
+## The functions
 
-| Function | Domain | Output | Errors | Notes |
-|---|---|---|---|---|
-| `abs(x)` | all | `[0, max\|·\|]` | — | exact |
-| `floor(x)` / `ceil(x)` / `round(x)` / `trunc(x)` | all | integer notch | — | exact; `round` is half-away-from-zero |
-| `sign(x)` | all | `{sign(Lower), sign(Upper)}`, notch 1 | — | −1 / 0 / 1 by exact comparison |
-| `copysign(mag, sgn)` | all | `±\|mag\|` for the signs `sgn` can take, `mag`'s notch | — | `sgn == 0` counts as positive |
-| `fmod(x, y)` | all | sign of `x` | `expected` (`division_by_zero`) when `y`'s grid holds 0 | truncated-division convention, exact |
-| `pown<E>(x)` | all, `E ≥ 0` compile-time | corner-widened per multiply | per the checked-exact rules | repeated squaring in inside-space |
+### Exact grid operations
+
+| Function | Output | Notes |
+|---|---|---|
+| `abs(x)` | `[0, max |x|]` | exact |
+| `floor`, `ceil`, `round`, `trunc` | notch 1 | exact; `round` sends a half away from zero |
+| `sign(x)` | −1, 0 or 1 | by exact comparison |
+| `copysign(mag, sgn)` | `±|mag|` for the signs `sgn` can take | `sgn == 0` counts as positive |
+| `fmod(x, y)` | the sign of `x` | truncated division, exact; `expected` when `y`'s grid holds 0 |
+| `pown<E>(x)` | widened at every multiply | `E ≥ 0`, known at compile time: repeated squaring |
 
 These work on grids past 64 bits too.
 
-## Roots
+### Roots
 
 | Function | Domain | Errors | Notes |
 |---|---|---|---|
-| `sqrt(x)` (`Lower ≥ 0`) | non-negative grids | — | exact integer square root |
-| `sqrt(x)` (`Lower < 0`) | grids crossing 0 | `expected`; `domain_error` for a value < 0 | |
-| `cbrt(x)` | all | — | exact integer cube root |
-| `hypot(x, y)` | all | — | `√(x²+y²)` formed exactly |
+| `sqrt(x)` on a grid with Lower ≥ 0 | x ≥ 0 | none | exact integer square root |
+| `sqrt(x)` on a grid that crosses 0 | all | `expected`: `domain_error` for x < 0 | |
+| `cbrt(x)` | all | none | exact integer cube root |
+| `hypot(x, y)` | all | none | √(x² + y²), the sum formed exactly |
 
-## Trigonometric (radians)
+### Trigonometric (radians)
 
 | Function | Domain | Deduced output | Errors |
 |---|---|---|---|
-| `sin(x)` / `cos(x)` | all | `[-1, 1]` | — |
-| `tan(x)` | all | `[-1024, 1024]` | `expected`; `overflow` past `Out` (saturates when `Out` carries `clamp`) |
-| `atan(x)` | all | `(-π/2, π/2)` rounded out | — |
-| `asin(x)` / `acos(x)` | `[-1, 1]` | `[-π/2, π/2]` / `[0, π]` rounded out | — |
-| `atan2(y, x)` | all | `[-π, π]` rounded out | — (`atan2(0, 0) = 0`) |
+| `sin`, `cos` | all | [−1, 1] | none |
+| `tan` | all | [−1024, 1024] | `expected`: `overflow` past `Out` (saturates when `Out` has `clamp`) |
+| `atan` | all | (−π/2, π/2), rounded out | none |
+| `asin`, `acos` | [−1, 1] | [−π/2, π/2], [0, π], rounded out | none |
+| `atan2(y, x)` | all; `atan2(0, 0)` is 0 | [−π, π], rounded out | none |
 
-## Hyperbolic
+### Hyperbolic
 
-| Function | Domain | Errors |
-|---|---|---|
-| `sinh(x)` / `cosh(x)` / `tanh(x)` | all (deduced forms: `\|x\| ≤ 4096`) | — |
-| `asinh(x)` | all | — |
-| `acosh(x)` | `x ≥ 1` | — |
-| `atanh(x)` | `-1 < x < 1` | — |
+| Function | Domain |
+|---|---|
+| `sinh`, `cosh`, `tanh` | all (deduced forms: \|x\| ≤ 4096) |
+| `asinh` | all |
+| `acosh` | x ≥ 1 |
+| `atanh` | −1 < x < 1 |
 
-## Exponential & logarithmic
+### Exponential and logarithmic
 
 | Function | Domain | Errors | Notes |
 |---|---|---|---|
-| `exp(x)` / `exp2(x)` | all (deduced forms: `\|x\| ≤ 4096`) | — | |
-| `log(x)` / `log2(x)` / `log10(x)` | `x > 0` | — | `log2` / `log10` of an exact power are exact |
-| `pow_base<B>(x)` | integer `B ≥ 2` | — | `B` compile-time |
-| `pow(base, exp)` | deduced form: `Lower(base) > 0` | `expected`; `domain_error` for a base < 0, `division_by_zero` for 0 to a negative power (0^y is 0 for y > 0, 0^0 is 1), `overflow` past `Out` (a `clamp` `Out` saturates) | exact for integer exponents, and for p/q when the base is a perfect q-th power |
+| `exp`, `exp2` | all (deduced forms: \|x\| ≤ 4096) | none | |
+| `log`, `log2`, `log10` | x > 0 | none | `log2`, `log10` of an exact power are exact |
+| `pow_base<B>(x)` | `B` an integer ≥ 2, known at compile time | none | |
+| `pow(base, e)` | deduced form: Lower(base) > 0 | `expected`: `domain_error` for a negative base, `division_by_zero` for 0 to a negative power, `overflow` past `Out` | exact for integer exponents, and for p/q when the base is a perfect q-th power |
+
+Every function also has its `_into<Out>` form: `math::sqrt_into<Out>(x)`,
+`math::pow_into<Out>(b, e)`, `math::pow_base_into<Out, 10>(x)`.
 
 ## Constants
 
-`math::pi` and `math::two_pi` are point insides (`just<…>`), so they compose
-directly in inside-space: `angle * math::two_pi`.
+`math::pi`, `math::two_pi`, `math::e`, `math::ln2`, `math::sqrt2` and 13 more
+are one-point insides, within 2⁻⁵⁷ of the true value, so they compose in
+arithmetic: `angle * math::two_pi`. The full list, and the physical constants,
+are in [constants.md](constants.md).
 
 ## Angles over many turns
 
-No rational notch divides 2π, so how an angle survives many revolutions depends
-on how it is carried:
+No rational notch divides 2π, so how an angle survives many revolutions
+depends on how it is carried.
 
-- **Don't `wrap` a radians angle.** `wrap` folds modulo the grid's period,
-  `span + notch` (`Upper − Lower` for a `bounds::half_open` grid), which is
-  never exactly 2π. `inside<{{0, 6.28125}, per<64>}, wrap>` folds every 6.296875 rad, about 0.014 rad more than a turn, so each revolution
-  shifts the angle.
-- **Unwrapped radians are exact.** Accumulated on its grid (`x += step`), the angle
-  stays an exact grid value, and `sin`/`cos`/`tan` reduce any argument exactly
-  enough, so the result carries only the output grid's rounding — no drift,
-  however many turns.
-- **Wrapping phase: carry it in turns.** A phase in turns has the exact period 1,
-  so it wraps without drift. Convert at the call; the conversion error is the
-  snap onto the angle grid plus `math::two_pi`'s own error (it is the rational
-  convergent 2·1068966896/340262731, |error| ≈ 6·10⁻¹⁸), and it never accumulates:
+**Best: an angle in a unit with a factor of π.** With units, a phase can be in
+turns, degrees, or slots of 2π/65536 rad. `units::sin_into` and `cos_into`
+reduce such an angle exactly: x·r half turns, for a rational r, minus whole
+quarter turns. Only the rest, at most π/4, is approximated. The result rounds
+once, and Niven's rational values (0, ±1/2, ±1) are exact under any rounding
+mode:
+
+```cpp
+#include <beman/inside/units_math.hpp>
+using namespace beman::inside::units;
+
+inline constexpr named_unit slot_def{"slot", mag<rational{1, 32768}> * mag_pi * si::radian};
+inline constexpr auto       slot = unit_c<slot_def>;           // 2π/65536 rad
+
+quantity<slot, inside<{0, 65535}, wrap>> phase{0};             // wraps at exactly one turn
+phase += quantity<slot, inside<{0, 65535}>>{16384};            // a quarter turn
+units::sin_into<math::unit_amplitude<16384>>(phase);           // exactly 1
+units::cos_into<inside<{{-1, 1}, per<16384>}, round_floor>>(
+    quantity<si::degree, inside<{0, 360}>>{120});              // exactly −1/2, even under round_floor
+```
+
+[`oscillator.cpp`](../examples/oscillator.cpp) runs a phase counter this way, and
+[`audio_mixer.cpp`](../examples/audio_mixer.cpp) mixes tones whose phase
+offsets are exact fractions of a turn.
+
+**Unwrapped radians are exact.** An angle accumulated on its own grid
+(`x += step`) stays an exact grid value, and `sin`/`cos`/`tan` reduce any
+argument exactly enough, so only the output's rounding remains: no drift,
+however many turns. [`huge_angles.cpp`](../examples/huge_angles.cpp) takes the
+sine of 10¹⁸ rad, correctly rounded.
+
+**Don't `wrap` a radians angle.** `wrap` folds modulo the grid's period,
+span + notch, which is never exactly 2π: `inside<{{0, 6.28125}, per<64>}, wrap>`
+folds every 6.296875 rad, so each revolution shifts the angle by about
+0.014 rad.
+
+Without units, carry a wrapping phase in turns (period exactly 1) and convert
+at the call. The conversion adds the snap onto the angle grid and
+`math::two_pi`'s own error (about 6·10⁻¹⁸), but never accumulates:
 
 ```cpp
 using turn_t  = inside<{{0, 1 - 1.0 / 4096}, per<4096>}, wrap | round_nearest>;
 using angle_t = inside<{{0, 8}, per<16384>}, round_nearest>;
-
 turn_t phase{0};
-phase += turn_t{0.25};                                   // a quarter turn, exactly
-auto s = math::sin_into<math::unit_amplitude<16384>>(angle_t{phase * math::two_pi});
+phase += turn_t{0.25};
+auto s = math::sin_into<math::unit_amplitude<16384>>(angle_t{phase * math::two_pi});   // 1
 ```
 
-## Using `expected` results
+## Quantities
+
+`<beman/inside/units_math.hpp>` gives each function the unit it should have
+([units.md](units.md#math-units_mathhpp)):
+
+| Function | Takes | Gives |
+|---|---|---|
+| `abs`, `floor`, `ceil`, `round`, `trunc` | any quantity | the same unit |
+| `sqrt`, `cbrt` (and `_into`) | a quantity whose unit has the root | the root of the unit and kind: m² → m |
+| `sin`, `cos`, `tan` | an angle in rad | a plain inside |
+| `sin_into`, `cos_into` | an angle in rad, or in a unit with a factor of π | a plain inside, reduced exactly |
+| `asin`, `acos`, `atan` (and `_into`) | an inside or a dimensionless quantity | rad |
+| `atan2(y, x)`, `hypot(x, y)` | two quantities of one dimension | rad; the common unit |
+| `exp_into`, `log_into`, `log10_into`, `sinh_into`, … `pow_base_into<Out, B>`, `pow_into` | an inside or a dimensionless quantity | a plain inside |
+
+The number functions are what a level in dB needs: 10^(L / 20 dB) is
+`units::pow_base_into<gain_t, 10>(level / (just<20> * dB))`
+([`decibels.cpp`](../examples/decibels.cpp)). `value_cast<si::radian, Out>(q)`
+converts degrees to radians with one rounding, through the same engine.
+
+## `expected` results
+
+A fallible function returns `std::expected<Out, errc>`, and the result chains
+through arithmetic, the first error winning
+([arithmetic.md](arithmetic.md#when-the-result-is-stdexpected)). In this
+fragment `signed_in` is a grid that crosses 0:
 
 ```cpp
-auto t = math::tan(angle{1});          // expected<inside, errc>
-if (t) use(*t);
-
-auto r = math::sqrt(signed_in{v});     // mixed-sign → expected
-auto p = math::pow(base, exponent);    // expected
+auto t = math::tan(angle{1});                        // expected
+auto r = math::sqrt(signed_in{v}) * gain + offset;   // expected: domain_error for v < 0
 ```
-
-Expected results compose with arithmetic directly — the chain stays an
-`expected` and the first error wins:
-
-```cpp
-auto r = math::sqrt(signed_in{v}) * gain + offset;   // expected<inside, errc>
-```
-
-See [arithmetic.md](arithmetic.md) for the chaining rules and
-[internals.md](internals.md#7-error-vocabulary) for the error vocabulary.
 
 ## Storage
 
-Any storage works for inputs and outputs: integer index or value raws,
-exact fractions of continuous grids, and wide raws past 64 bits — with the
-same results. The
-double tier reads an integer input as its value index times the notch (exact
-on a dyadic grid) and stores integer outputs as raws.
+Any storage works for inputs and outputs: integer index or value raws, the
+exact fractions of continuous grids, and wide raws past 64 bits, all with the
+same results. The double tier reads an integer input as its index times the
+notch (exact on a dyadic grid) and stores integer outputs as raws.
 
 ## Speed
 
-Onto the grid deduced from the input, the functions run from 2.8× slower to
-3× faster than `<cmath>` (the `math:` tables in [performance.md](performance.md)).
-Inputs of up to 256 slots use the table path and cost one load; each table adds
-about 0.13 s of compile time on GCC, and `BEMAN_INSIDE_MATH_TABLE_SLOTS=0` turns
-tables off. Onto grids as fine as a `double`, correct rounding costs 4–9×
-`<cmath>`: `sin` onto 2^-52 14.6 ns, `exp` onto 2^-40 12.5 ns, `log` onto
-2^-48 17.4 ns (x86-64, `-O3 -mfma`; `docs/int-considered-harmful/p04_math_cost.cpp`).
+Onto the grid deduced from the input, the functions run from about 3× slower
+to 3× faster than `<cmath>` (the `math:` tables in
+[performance.md](performance.md)). Inputs of up to 256 points use the table
+path and cost one load; each table adds about 0.13 s of compile time on GCC,
+and `BEMAN_INSIDE_MATH_TABLE_SLOTS=0` turns tables off. Onto grids as fine as a
+`double`, correct rounding costs 4–9× `<cmath>`: `sin` onto 2⁻⁵² in 14.6 ns,
+`exp` onto 2⁻⁴⁰ in 12.5 ns, `log` onto 2⁻⁴⁸ in 17.4 ns (x86-64, `-O3 -mfma`).
 
-## Where correctness comes first
+## Without floating point
 
-The fast tiers exist only to return the integer path's answer sooner. Wherever
-a faster choice could, under some build, input or storage, return a different
-grid point, the engine takes the slower one. Each choice below gives up speed
-measured on x86-64 with `-mfma`.
-
-| Choice | What it guards against | What it costs |
-|---|---|---|
-| The double tier's bounds proved, not measured: every rounding of every step counted at its worst, times 1.5 | a kernel error the measurements missed (an input, a compiler, a platform) turning into a wrong slot | the proofs are worst cases, about 2–4 times the error measured, so outputs near a kernel's limit fall back to the dd tier for up to 13% of inputs |
-| The full dd kernels' bound far wider than their measured error: 2^-88 + 2^-92·max(1, \|x\|) (measured at worst 2^-96), times 1.5 | the same, for kernels whose bounds are not proved (the lean kernels' are) | outputs past the double tier's limits take the dd tier, 2–9 times slower than the double tier |
-| `-ffast-math`, `-fassociative-math` and `-ffinite-math-only` builds rejected with an `#error` | reassociation adding roundings the proofs did not count and breaking the error-free sums; NaN and infinity tests folded away | such builds do not compile |
-| Strict decision tests: a value within the bound of a slot boundary, exact ties and exact grid points under directed rounding go to the integer path | a rounding the double arithmetic cannot settle | the integer path's time for those inputs; rare for irrational results, every time for exact ones such as `sqrt` of a perfect square under `round_floor` |
-| `nearbyint` to round the value index, not adding and subtracting 1.5·2^52 | reassociation (Clang's `-fassociative-math`, which no macro announces) folding the add-subtract away; the tests then pass a non-integer and return a wrong slot | 0.1–0.4 ns per call |
-| Range checked in double before the index becomes an integer; no finite checks, since NaN and infinities fail every comparison | a huge or non-finite kernel value converted to an integer (undefined behaviour) | none measured |
-| Inputs that are not doubles exactly (decimal notches, rational storage) add their conversion error times the function's slope to the bound | a decimal input's rounding moving a result across a boundary | slightly more fallbacks for those inputs |
-| Error-free sums fenced against FMA contraction (`__builtin_assoc_barrier`), the error-free product's rounded part computed as `fma(a, b, +0)` | GCC's default `-ffp-contract=fast` fusing a rounded product into a later sum, which made the dd tier 1–2 notches wrong at `-O2` | about 2% more instructions in the dd tier, no measurable time |
-| The dd tier only for value indices up to 2^62 | index arithmetic overflowing 64 bits | finer or wider outputs take the integer path |
-| The full dd kernels carry about 100 bits even when the output needs 50, behind a lean kernel with a proved bound | an undersized kernel for some output, or a lean kernel whose bound is only measured | a result the lean kernel leaves undecided pays both |
-| Every constant and table computed at compile time from the integer path's own series, never written out as literals | a constant that drifts from the series it should equal | compile time only: about 0.1–0.3 s in a translation unit that uses the dd tier, nothing in one that does not |
-
-What the tiers never trade away: they return a result only when it provably
-equals the integer path's, and the integer path is the only path at compile
-time and without an FPU. A build cannot change a value; it can only change how
-fast the value comes.
-
-Speed that can still be won without giving any of this up: tighter proofs
-for `cbrt` and `pow`, whose double-tier bounds grow with the input.
-
-## Compiling without floating point (`BEMAN_INSIDE_MATH_NO_FP`)
-
-With `BEMAN_INSIDE_MATH_NO_FP` (automatic under `-ffreestanding`) the double and
-dd tiers compile out and the integer path computes every result; **results do
-not change**. See [freestanding.md](freestanding.md#math-without-cmath-beman_inside_math_no_fp).
+Under `BEMAN_INSIDE_MATH_NO_FP` (automatic with `-ffreestanding`) the
+floating-point tiers compile out and the integer path computes every result.
+**The results do not change**
+([freestanding.md](freestanding.md#math-without-cmath-beman_inside_math_no_fp)).

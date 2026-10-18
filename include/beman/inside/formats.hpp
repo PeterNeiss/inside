@@ -16,8 +16,9 @@ BEMAN_INSIDE_WARNINGS_PUSH
 // `uint8` is [0, 255] in a std::uint8_t (save int64, which stops one short of
 // -2^63). Q-format types keep power-of-two notches.
 //
-// These default to `checked`; for wraparound/saturation declare your own (e.g.
-// `inside<{0,254}, wrap>`).
+// The integer widths are `checked`; unorm and the Q formats round to nearest.
+// For wraparound or saturation declare your own (`inside<{0, 255}, wrap>`),
+// or use the counters clamp_counter<Max> and wrap_counter<Max> below.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 //-------------------------------------------------------------------------
