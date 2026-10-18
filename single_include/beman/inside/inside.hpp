@@ -22053,9 +22053,9 @@ constexpr Out pi_trig_into(const quantity<R, V>& q) {
     constexpr rational r = beman::inside::detail::to_rational(magnitude_of(R.U).Ratio);
     using core           = ax::pi_trig_core<ax::input_limbs<V>, Cos>;
     return ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_input(q.numerical_value()),
-                                                       static_cast<umax>(r.Numerator < 0 ? -r.Numerator : r.Numerator),
+                                                       r.Numerator,
                                                        beman::inside::detail::abs_den(r.Denominator),
-                                                       (r.Numerator < 0) != (r.Denominator < 0)});
+                                                       r.Denominator < 0});
 }
 } // namespace detail
 
