@@ -16,8 +16,9 @@ and `BEMAN_INSIDE_MATH_TABLE_SLOTS` apply the same way, as ordinary compiler fla
 is wrapped in a guard — define `BEMAN_INSIDE_NO_STRING` to drop it and its
 `<string>`/`<ostream>`/`<format>` includes wholesale (see
 [freestanding.md](freestanding.md)). The physical units
-([units.md](units.md)) sit inside the same guard; define
-`BEMAN_INSIDE_NO_UNITS` to drop just them and their compile time.
+([units.md](units.md)) and physical constants ([constants.md](constants.md))
+sit inside the same guard; define `BEMAN_INSIDE_NO_UNITS` to drop just them
+and their compile time.
 
 On MSVC, compile with `/utf-8`: the header holds UTF-8 text (℃, −). If you
 evaluate math functions in constant expressions, also raise the step limit

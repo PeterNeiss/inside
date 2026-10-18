@@ -86,7 +86,8 @@ through a program. Read it first; everything else builds on it.
 [conversions, casts & text](docs/conversions.md) ([printing](docs/conversions.md#writing-text-to_string-operator-and-stdformat)) ·
 [storage & STL integration](docs/storage.md) ·
 [`beman::inside::math` — bit-exact math](docs/math.md) ·
-[physical units](docs/units.md)
+[physical units](docs/units.md) ·
+[mathematical & physical constants](docs/constants.md)
 
 **Special topics** — [for fixed-point users](docs/fixed-point.md) ·
 [determinism & reproducibility](docs/determinism.md) ·

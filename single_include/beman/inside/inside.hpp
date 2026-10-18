@@ -11933,6 +11933,68 @@ BEMAN_INSIDE_WARNINGS_PUSH
 
 
 // ======================================================================
+//  beman/inside/detail/math_constants.hpp
+// ======================================================================
+
+BEMAN_INSIDE_WARNINGS_PUSH
+
+
+//---------------------------------------------------------------------------
+// Mathematical constants as rationals: for each, the best approximation whose
+// numerator and denominator stay below 2^31, so products of a few of them
+// keep 64-bit grid numbers. The comment gives |rational − value|. They are
+// public as math::pi, math::e, … (point insides), from cmath.hpp and
+// constants.hpp.
+//---------------------------------------------------------------------------
+namespace beman::inside::detail {
+inline constexpr rational pi_rat{1068966896, 340262731};           // 2^-58.2
+inline constexpr rational two_pi_rat = 2 * pi_rat;                 // 2^-57.2
+inline constexpr rational half_pi_rat{2015008331, 1282794145};     // 2^-60.2
+inline constexpr rational inv_pi_rat{340262731, 1068966896};       // 2^-61.5
+inline constexpr rational inv_sqrt_pi_rat{1196609286, 2120934737}; // 2^-58.0
+inline constexpr rational e_rat{848456353, 312129649};             // 2^-60.5
+inline constexpr rational log2e_rat{717140287, 497083768};         // 2^-61.6
+inline constexpr rational log10e_rat{774923109, 1784326399};       // 2^-66.1
+inline constexpr rational ln2_rat{497083768, 717140287};           // 2^-62.6
+inline constexpr rational ln10_rat{1784326399, 774923109};         // 2^-63.7
+inline constexpr rational sqrt2_rat{1855077841, 1311738121};       // 2^-62.1
+inline constexpr rational sqrt3_rat{1934726305, 1117014753};       // 2^-60.9
+inline constexpr rational inv_sqrt2_rat{1311738121, 1855077841};   // 2^-63.1
+inline constexpr rational inv_sqrt3_rat{1117014753, 1934726305};   // 2^-62.5
+inline constexpr rational phi_rat{1836311903, 1134903170};         // 2^-61.3
+inline constexpr rational egamma_rat{376566901, 652385103};        // 2^-62.2
+inline constexpr rational catalan_rat{150820265, 164657129};       // 2^-59.4
+inline constexpr rational zeta3_rat{461424925, 383862797};         // 2^-60.6
+} // namespace beman::inside::detail
+
+namespace beman::inside::math {
+// Point insides, so they compose directly in inside-space (`angle * math::pi`)
+// with no rational on the surface. For a correctly rounded value on a grid of
+// your choice, use the functions (math::sqrt_into<Out>(just<2>)).
+inline constexpr auto pi          = just<beman::inside::detail::pi_rat>;
+inline constexpr auto two_pi      = just<beman::inside::detail::two_pi_rat>;
+inline constexpr auto half_pi     = just<beman::inside::detail::half_pi_rat>;
+inline constexpr auto inv_pi      = just<beman::inside::detail::inv_pi_rat>;
+inline constexpr auto inv_sqrt_pi = just<beman::inside::detail::inv_sqrt_pi_rat>;
+inline constexpr auto e           = just<beman::inside::detail::e_rat>;
+inline constexpr auto log2e       = just<beman::inside::detail::log2e_rat>;
+inline constexpr auto log10e      = just<beman::inside::detail::log10e_rat>;
+inline constexpr auto ln2         = just<beman::inside::detail::ln2_rat>;
+inline constexpr auto ln10        = just<beman::inside::detail::ln10_rat>;
+inline constexpr auto sqrt2       = just<beman::inside::detail::sqrt2_rat>;
+inline constexpr auto sqrt3       = just<beman::inside::detail::sqrt3_rat>;
+inline constexpr auto inv_sqrt2   = just<beman::inside::detail::inv_sqrt2_rat>;
+inline constexpr auto inv_sqrt3   = just<beman::inside::detail::inv_sqrt3_rat>;
+inline constexpr auto phi         = just<beman::inside::detail::phi_rat>;     // golden ratio
+inline constexpr auto egamma      = just<beman::inside::detail::egamma_rat>;  // Euler–Mascheroni γ
+inline constexpr auto catalan     = just<beman::inside::detail::catalan_rat>; // Catalan's G
+inline constexpr auto zeta3       = just<beman::inside::detail::zeta3_rat>;   // Apéry's ζ(3)
+} // namespace beman::inside::math
+
+BEMAN_INSIDE_WARNINGS_POP
+
+
+// ======================================================================
 //  beman/inside/detail/math_entry.hpp
 // ======================================================================
 
@@ -17417,10 +17479,6 @@ namespace beman::inside::math {
 namespace detail {
 using namespace beman::inside::detail;
 
-// π as a rational, within 2^-58 (3.1e-18), for the constants below.
-inline constexpr rational pi_rat{1068966896, 340262731};
-inline constexpr rational two_pi_rat = 2 * pi_rat;
-
 // Policy of an auto-deduced output: the input's (a cursor's output is no
 // cursor).
 template <insidable In>
@@ -17433,10 +17491,7 @@ constexpr Out store_value(const V& v) {
 }
 } // namespace detail
 
-// Public irrational constants as point insides, so they compose directly in
-// inside-space (`angle * math::pi`) with no rational on the surface.
-inline constexpr auto pi     = just<detail::pi_rat>;
-inline constexpr auto two_pi = just<detail::two_pi_rat>;
+// The constants (math::pi, math::e, …) are in detail/math_constants.hpp.
 
 namespace detail {
 // Grid-number helpers for the algebraic tier's deduced outputs: exact for
@@ -17955,81 +18010,46 @@ using adaptive::tanh_into;
 BEMAN_INSIDE_WARNINGS_POP
 
 
+#if !defined(BEMAN_INSIDE_NO_STRING) && !defined(BEMAN_INSIDE_NO_UNITS)
+
 // ======================================================================
-//  beman/inside/formats.hpp
+//  beman/inside/constants.hpp
 // ======================================================================
 
 BEMAN_INSIDE_WARNINGS_PUSH
 
 
-//---------------------------------------------------------------------------
-// formats — predefined `inside` aliases mapping to hardware byte widths, so you
-// can write `beman::inside::uint8` / `beman::inside::unorm16` / `beman::inside::q8_8` directly.
+// ======================================================================
+//  beman/inside/units.hpp
+// ======================================================================
+// Opt-in: physical units and quantity kinds on inside — the main features of
+// mp-units with an inside as the only representation.
 //
-// `uint8` … `uint64` and `int8` … `int64` are named after the std::uintN_t /
-// std::intN_t they are stored in, and each uses that type's full range:
-// `uint8` is [0, 255] in a std::uint8_t (save int64, which stops one short of
-// -2^63). Q-format types keep power-of-two notches.
+//   quantity<si::metre, inside<{0, 10}>> d{7};      // 7 m
+//   auto k = just<5> * si::kilo(si::metre);         // 5 km, a point grid
+//   auto s = k + d;                                 // 5007 m, exact
+//   auto v = d.in(si::milli(si::metre));            // 7000 mm, the same raw
+//   quantity<isq::height[si::metre], H> h{…};       // a quantity kind
 //
-// These default to `checked`; for wraparound/saturation declare your own (e.g.
-// `inside<{0,254}, wrap>`).
+// A unit conversion is a grid rescale: km → m multiplies the interval and
+// notch by 1000 and keeps the raw, so it is exact, total and free. A sum of
+// two units runs in their common unit (the gcd of the magnitudes), so it is
+// exact too. Products and quotients take inside's result grids.
+//
+// Compile time: dimensions, magnitudes, units, quantity specs and references
+// are structural values combined by consteval functions — no type lists, no
+// type-level sorting. The names a user writes (si::metre, isq::height) are
+// empty tag objects whose type carries the value.
+//
+// Magnitudes are exact rationals times a power of π. A π magnitude (degree ↔
+// radian) has no exact rescale: it rounds once, through value_cast with a
+// target representation and a rounding flag. Grid numbers are 64-bit under
+// C++23; the prefixes and constants that need more (yocto, quetta, the eV)
+// exist only under C++26 big grids (BEMAN_INSIDE_BIG_GRIDS).
 //---------------------------------------------------------------------------
-namespace beman::inside {
-//-------------------------------------------------------------------------
-// Native integer widths — value storage (Raw == value), `checked`.
-// Full native range.
-//-------------------------------------------------------------------------
-using uint8  = inside<{0, 255}>;
-using uint16 = inside<{0, 65535}>;
-using uint32 = inside<{0, 4294967295}>;
-// uint64 reaches past int64, so it has no implicit `operator imax`; read it
-// with `to<std::uint64_t>()`. A difference of two uint64s spans 2^65 values and
-// gets a wide-integer index; a sum's upper bound passes the 64-bit grid
-// numbers, so it needs C++26 big grids.
-using uint64 = inside<{0, 18446744073709551615u}>;
 
-using int8  = inside<{-128, 127}>;
-using int16 = inside<{-32768, 32767}>;
-using int32 = inside<{-2147483648, 2147483647}>;
-// int64 stays symmetric: the internal value path is `imax`, and -2^63
-// has no negation in int64.
-using int64 = inside<{-9223372036854775807, 9223372036854775807}>;
+BEMAN_INSIDE_WARNINGS_PUSH
 
-//-------------------------------------------------------------------------
-// Unsigned normalized (UNORM) — [0, 1] at N-bit resolution, `round_nearest`.
-// The notch denominator is the type max, so the index 0..max fills the native
-// width; both endpoints (0 and 1) are exactly representable.
-//-------------------------------------------------------------------------
-using unorm8  = inside<{{0, 1}, per<255>}, round_nearest>;        // uint8
-using unorm16 = inside<{{0, 1}, per<65535>}, round_nearest>;      // uint16
-using unorm32 = inside<{{0, 1}, per<4294967295>}, round_nearest>; // uint32
-
-//-------------------------------------------------------------------------
-// Q-format fixed-point — unsigned integer.fraction, power-of-two notch,
-// full natural range. `round_nearest`.
-//-------------------------------------------------------------------------
-using q4_4   = inside<{{0, rational{255, 16}}, per<16>}, round_nearest>;                // uint8: [0, 15.9375]
-using q8_8   = inside<{{0, rational{65535, 256}}, per<256>}, round_nearest>;            // uint16
-using q16_16 = inside<{{0, rational{4294967295u, 65536u}}, per<65536>}, round_nearest>; // uint32
-
-//-------------------------------------------------------------------------
-// Counters — a counter is an inside over [0, Max] whose overflow policy says
-// what `++` does at the ceiling (the boundary behavior is in the type).
-//-------------------------------------------------------------------------
-// Saturating counter: `++` caps at Max (never throws or wraps) — the honest
-// "count up to a ceiling / ≥Max" tally. `--` saturates at 0.
-template <umax Max>
-using clamp_counter = inside<{0, Max}, clamp>;
-// Wrapping counter: `++` wraps Max → 0 (sequence numbers, epochs).
-template <umax Max>
-using wrap_counter = inside<{0, Max}, wrap>;
-
-} // namespace beman::inside
-
-BEMAN_INSIDE_WARNINGS_POP
-
-
-#ifndef BEMAN_INSIDE_NO_STRING
 
 // ======================================================================
 //  beman/inside/io.hpp
@@ -18703,231 +18723,6 @@ struct std::formatter<beman::inside::detail::rational>
 #endif // BEMAN_INSIDE_HAS_STD_FORMAT
 
 BEMAN_INSIDE_WARNINGS_POP
-
-
-#endif // BEMAN_INSIDE_NO_STRING
-
-// ======================================================================
-//  beman/inside/numeric_limits.hpp
-// ======================================================================
-
-BEMAN_INSIDE_WARNINGS_PUSH
-
-
-
-//---------------------------------------------------------------------------
-// numeric_limits / hash — std:: specializations for inside<G, P>.
-// numeric_limits reports the *grid* bounds (Lower/Upper), not the raw type's
-// limits. std::hash hashes the Raw member (rational raw: Numerator+Denominator,
-// boost-style combine). (std::common_type lives in arithmetic.hpp, always on.)
-//---------------------------------------------------------------------------
-
-template <beman::inside::grid G, beman::inside::policy_flag P>
-struct std::numeric_limits<beman::inside::inside<G, P>> {
-    using B = beman::inside::inside<G, P>;
-
-    static constexpr bool is_specialized = true;
-    static constexpr bool is_signed      = (G.Interval.Lower < beman::inside::detail::rational{0});
-    // Every value is an integer: a non-zero integer notch over an integer Lower.
-    static constexpr bool is_integer        = beman::inside::detail::integer_lattice<B>;
-    static constexpr bool is_exact          = true; // rational + integer raw are both exact
-    static constexpr bool is_bounded        = true;
-    static constexpr bool is_modulo         = (P & beman::inside::wrap) != 0;
-    static constexpr bool has_infinity      = false;
-    static constexpr bool has_quiet_NaN     = false;
-    static constexpr bool has_signaling_NaN = false;
-    static constexpr bool traps             = beman::inside::is_checked(P);
-    static constexpr bool is_iec559         = false;
-    static constexpr int  radix             = 2;
-    // The mode stores round by (rounding_of, the one precedence every path uses).
-    static constexpr std::float_round_style round_style = [] {
-        using enum beman::inside::detail::round_mode;
-        switch (beman::inside::detail::rounding_of(P)) {
-        case floor:
-            return std::round_toward_neg_infinity;
-        case ceil:
-            return std::round_toward_infinity;
-        case nearest:
-        case half_even:
-            return std::round_to_nearest;
-        default:
-            return std::round_toward_zero;
-        }
-    }();
-
-    // digits / digits10 forward to the raw type so generic algorithms see the
-    // storage size, not the rational interval count.
-    using deduced_raw             = beman::inside::detail::raw_t<B>;
-    static constexpr int digits   = std::numeric_limits<deduced_raw>::digits;
-    static constexpr int digits10 = std::numeric_limits<deduced_raw>::digits10;
-
-  private:
-    // The value v of B (on its grid). Past 64 bits through the exact store:
-    // no 64-bit rational holds a big grid's limits.
-    static constexpr B at(const beman::inside::detail::grid_rational& v) noexcept {
-        namespace d = ::beman::inside::detail;
-        if constexpr (d::wide_valued<B>) {
-            B                   b{};
-            beman::inside::errc ec{};
-            d::assign_exact<d::rational>(b,
-                                         d::exact_of_grid<d::exact_limbs<B>>(v),
-                                         beman::inside::make_policy<P>(ec),
-                                         beman::inside::no_action{});
-            return b;
-        } else
-            return B{d::to_rational(v)};
-    }
-
-  public:
-    static constexpr B min() noexcept { return at(G.Interval.Lower); }
-    static constexpr B max() noexcept { return at(G.Interval.Upper); }
-    static constexpr B lowest() noexcept { return at(G.Interval.Lower); }
-    // Exact types have no rounding noise — epsilon and round_error are 0 when
-    // 0 is on the grid. A lattice that misses 0 but spans it gives its first
-    // point above 0; when 0 is outside the interval, the grid minimum — the
-    // closest representable stand-in for "no error" the type can express.
-    static constexpr B epsilon() noexcept {
-        namespace d = ::beman::inside::detail;
-        if constexpr (G.representable(d::grid_rational{0}))
-            return at(d::grid_rational{0});
-        else if constexpr (G.Interval.Lower < d::grid_rational{0} && d::grid_rational{0} < G.Interval.Upper) {
-            // Lower + ⌈−Lower/Notch⌉·Notch
-#if BEMAN_INSIDE_BIG_GRIDS
-            constexpr d::grid_rational t = d::grid_div_of(d::grid_sub(d::grid_rational{0}, G.Interval.Lower), G.Notch);
-            constexpr d::grid_int      k =
-                (d::wide_numerator(t) + d::wide_denominator(t) - d::grid_int{1}) / d::wide_denominator(t);
-            return at(d::grid_add(G.Interval.Lower, d::grid_mul(d::grid_rational{k}, G.Notch)));
-#else
-            // In grid integers, Lower = a/b and Notch = e/f: −Lower/Notch and
-            // k·Notch may pass the 64-bit rational where the point does not.
-            constexpr d::grid_int a = d::wide_numerator(G.Interval.Lower), b = d::wide_denominator(G.Interval.Lower);
-            constexpr d::grid_int e = d::wide_numerator(G.Notch), f = d::wide_denominator(G.Notch);
-            constexpr d::grid_int k = (-a * f + b * e - d::grid_int{1}) / (b * e);
-            constexpr d::grid_int n = a * f + k * e * b, q = b * f, g = d::grid_int_gcd(n, q);
-            // q/g divides the value unit's denominator, which fits.
-            static_assert(bit_width_of(n / g) <= 64,
-                          "numeric_limits::epsilon: the first point above 0 is past the 64-bit rational");
-            return at(d::rational{static_cast<beman::inside::umax>(n / g), static_cast<beman::inside::imax>(q / g)});
-#endif
-        } else
-            return at(G.Interval.Lower);
-    }
-    static constexpr B round_error() noexcept { return epsilon(); }
-};
-
-template <beman::inside::grid G, beman::inside::policy_flag P>
-struct std::hash<beman::inside::inside<G, P>> {
-    using B = beman::inside::inside<G, P>;
-
-    // Boost-style combine of h with the limbs of a wide integer.
-    static constexpr std::size_t combine(std::size_t h, const auto& w) noexcept {
-        for (auto limb : w.Word)
-            h ^= std::hash<beman::inside::umax>{}(limb) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
-        return h;
-    }
-
-    constexpr std::size_t operator()(const B& b) const noexcept {
-        if constexpr (beman::inside::detail::point_storage<B>)
-            return 0; // one value: the type
-        else if constexpr (beman::inside::detail::fraction_storage<B>)
-            return combine(combine(0, b.raw().Num), b.raw().Den); // a reduced fraction
-        else if constexpr (beman::inside::detail::rational_storage<B>) {
-            // Boost-style hash combine over (Numerator, Denominator).
-            auto h1 = std::hash<beman::inside::umax>{}(b.raw().Numerator);
-            auto h2 = std::hash<beman::inside::imax>{}(b.raw().Denominator);
-            return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
-        } else if constexpr (beman::inside::detail::wide_index_storage<B>) {
-            return combine(0, b.raw());
-        } else
-            return std::hash<beman::inside::detail::raw_t<B>>{}(b.raw());
-    }
-};
-
-BEMAN_INSIDE_WARNINGS_POP
-
-
-#if __STDC_HOSTED__ && !defined(BEMAN_INSIDE_MATH_NO_FP)
-
-// ======================================================================
-//  beman/inside/random.hpp
-// ======================================================================
-// Opt-in: uniform sampling over a grid. `uniform<B>(rng)` returns a B drawn
-// uniformly from the grid's slots (Lower, Lower + Notch, …, Upper) — exact, any
-// storage. Kept out of the umbrella because <random> is heavy, hosted-only and
-// pulls <cmath> (so the single header drops it under BEMAN_INSIDE_MATH_NO_FP).
-//---------------------------------------------------------------------------
-
-BEMAN_INSIDE_WARNINGS_PUSH
-
-
-#include <random>
-
-namespace beman::inside {
-template <insidable B, std::uniform_random_bit_generator G>
-[[nodiscard]] B uniform(G& g) {
-    static_assert(detail::notched<B> || detail::point_grid<B>,
-                  "uniform<B>: a continuous grid (notch 0) has no slots to choose from");
-    if constexpr (detail::wide_index_storage<B>) {
-        // More than 2^64 slots: draw limbs uniformly, masked to the slot count's
-        // bit width, and reject draws past the count (accepts > 1/2 of draws).
-        using W                = detail::raw_t<B>;
-        constexpr W   count    = static_cast<W>(grid_of<B>.slot_count());
-        constexpr int top_bits = grid_of<B>.slot_bits() - 64 * (static_cast<int>(sizeof(W) / 8) - 1);
-        std::uniform_int_distribution<umax> limb;
-        for (;;) {
-            W k;
-            for (auto& w : k.Word)
-                w = limb(g);
-            if constexpr (top_bits < 64)
-                k.Word[sizeof(W) / 8 - 1] &= (umax{1} << top_bits) - 1;
-            if (!(k > count))
-                return B::from_raw(k);
-        }
-    } else {
-        std::uniform_int_distribution<umax> pick(0, detail::max_index_of<B>);
-        const umax                          k = pick(g);
-        return B::from_raw(detail::raw_from_offset<B>(k)); // index or value storage
-    }
-}
-} // namespace beman::inside
-
-BEMAN_INSIDE_WARNINGS_POP
-
-
-#endif // __STDC_HOSTED__ && !BEMAN_INSIDE_MATH_NO_FP
-
-#if !defined(BEMAN_INSIDE_NO_STRING) && !defined(BEMAN_INSIDE_NO_UNITS)
-
-// ======================================================================
-//  beman/inside/units.hpp
-// ======================================================================
-// Opt-in: physical units and quantity kinds on inside — the main features of
-// mp-units with an inside as the only representation.
-//
-//   quantity<si::metre, inside<{0, 10}>> d{7};      // 7 m
-//   auto k = just<5> * si::kilo(si::metre);         // 5 km, a point grid
-//   auto s = k + d;                                 // 5007 m, exact
-//   auto v = d.in(si::milli(si::metre));            // 7000 mm, the same raw
-//   quantity<isq::height[si::metre], H> h{…};       // a quantity kind
-//
-// A unit conversion is a grid rescale: km → m multiplies the interval and
-// notch by 1000 and keeps the raw, so it is exact, total and free. A sum of
-// two units runs in their common unit (the gcd of the magnitudes), so it is
-// exact too. Products and quotients take inside's result grids.
-//
-// Compile time: dimensions, magnitudes, units, quantity specs and references
-// are structural values combined by consteval functions — no type lists, no
-// type-level sorting. The names a user writes (si::metre, isq::height) are
-// empty tag objects whose type carries the value.
-//
-// Magnitudes are exact rationals times a power of π. A π magnitude (degree ↔
-// radian) has no exact rescale: it rounds once, through value_cast with a
-// target representation and a rounding flag. Grid numbers are 64-bit under
-// C++23; the prefixes and constants that need more (yocto, quetta, the eV)
-// exist only under C++26 big grids (BEMAN_INSIDE_BIG_GRIDS).
-//---------------------------------------------------------------------------
-
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 #include <algorithm>
@@ -21193,7 +20988,7 @@ namespace si {
 inline constexpr auto hectare = hecto(are);
 }
 #if BEMAN_INSIDE_BIG_GRIDS
-BEMAN_INSIDE_UNIT(si, dalton, "Da", mag<1.66053906660e-27_g>* si::kilogram)
+BEMAN_INSIDE_UNIT(si, dalton, "Da", mag<1.66053906892e-27_g>* si::kilogram) // CODATA 2022
 BEMAN_INSIDE_UNIT(si, electronvolt, "eV", mag<1.602176634e-19_g>* si::joule)
 #endif
 
@@ -21248,6 +21043,439 @@ BEMAN_INSIDE_UNIT(international,
 BEMAN_INSIDE_WARNINGS_POP
 
 
+//---------------------------------------------------------------------------
+// constants.hpp — mathematical and physical constants.
+//
+// beman::inside::math            mathematical constants as point insides:
+//                                 pi, e, sqrt2, ln2, phi, egamma, … as
+//                                 rationals within 2^-57 of the value
+//                                 (detail/math_constants.hpp; cmath.hpp has
+//                                 them too).
+// beman::inside::units::constants physical constants as quantities of their
+//                                 ISQ kind, each the number 1 of the
+//                                 constant's own unit, so products stay
+//                                 exact and .in(u) gives the SI number.
+//
+// Exact: the SI 2019 defining constants and what follows from them (ħ, R, F,
+// K_J, R_K, G₀, Φ₀, σ, c₁, c₂), standard gravity and the standard atmosphere.
+// Measured: the CODATA 2022 recommended values (codata2022::), held exactly as
+// published; their uncertainty is not represented. Constants whose numbers
+// need more than 64 bits (h, e, k, N_A and what uses them, the particle
+// masses, a₀, ε₀) exist only under C++26 big grids (BEMAN_INSIDE_BIG_GRIDS).
+//---------------------------------------------------------------------------
+namespace beman::inside::units {
+//---------------------------------------------------------------------------
+// The constants' units. Each is a named unit whose magnitude is the constant,
+// in the namespace of its source, next to si2019's defining constants.
+//---------------------------------------------------------------------------
+namespace si2019_defs {
+inline constexpr named_unit standard_atmosphere{"atm", mag<101'325> * si::pascal};
+#if BEMAN_INSIDE_BIG_GRIDS
+inline constexpr named_unit reduced_planck_constant{
+    "ħ", si2019::planck_constant / (mag<2> * mag_pi), {.ascii = "hbar"}};
+inline constexpr named_unit molar_gas_constant{"R", si2019::avogadro_constant * si2019::boltzmann_constant};
+inline constexpr named_unit faraday_constant{"F", si2019::avogadro_constant * si2019::elementary_charge};
+inline constexpr named_unit josephson_constant{"K_J", mag<2> * si2019::elementary_charge / si2019::planck_constant};
+inline constexpr named_unit von_klitzing_constant{"R_K", si2019::planck_constant / square(si2019::elementary_charge)};
+inline constexpr named_unit conductance_quantum{
+    "G₀", mag<2> * square(si2019::elementary_charge) / si2019::planck_constant, {.ascii = "G_0"}};
+inline constexpr named_unit magnetic_flux_quantum{
+    "Φ₀", si2019::planck_constant / (mag<2> * si2019::elementary_charge), {.ascii = "Phi_0"}};
+inline constexpr named_unit stefan_boltzmann_constant{
+    "σ",
+    mag<2> * mag_pi * mag_pi * mag_pi * mag_pi * mag_pi * square(square(si2019::boltzmann_constant)) /
+        (mag<15> * cubic(si2019::planck_constant) * square(si2019::speed_of_light_in_vacuum)),
+    {.ascii = "sigma"}};
+inline constexpr named_unit first_radiation_constant{
+    "c₁", mag<2> * mag_pi * si2019::planck_constant * square(si2019::speed_of_light_in_vacuum), {.ascii = "c_1"}};
+inline constexpr named_unit second_radiation_constant{
+    "c₂", si2019::planck_constant * si2019::speed_of_light_in_vacuum / si2019::boltzmann_constant, {.ascii = "c_2"}};
+#endif
+} // namespace si2019_defs
+
+namespace si2019 {
+inline constexpr auto standard_atmosphere = unit_c<si2019_defs::standard_atmosphere>;
+#if BEMAN_INSIDE_BIG_GRIDS
+inline constexpr auto reduced_planck_constant   = unit_c<si2019_defs::reduced_planck_constant>;
+inline constexpr auto molar_gas_constant        = unit_c<si2019_defs::molar_gas_constant>;
+inline constexpr auto faraday_constant          = unit_c<si2019_defs::faraday_constant>;
+inline constexpr auto josephson_constant        = unit_c<si2019_defs::josephson_constant>;
+inline constexpr auto von_klitzing_constant     = unit_c<si2019_defs::von_klitzing_constant>;
+inline constexpr auto conductance_quantum       = unit_c<si2019_defs::conductance_quantum>;
+inline constexpr auto magnetic_flux_quantum     = unit_c<si2019_defs::magnetic_flux_quantum>;
+inline constexpr auto stefan_boltzmann_constant = unit_c<si2019_defs::stefan_boltzmann_constant>;
+inline constexpr auto first_radiation_constant  = unit_c<si2019_defs::first_radiation_constant>;
+inline constexpr auto second_radiation_constant = unit_c<si2019_defs::second_radiation_constant>;
+#endif
+} // namespace si2019
+
+// CODATA 2022 recommended values (Mohr et al., Rev. Mod. Phys. 97, 025002).
+namespace codata2022_defs {
+inline constexpr named_unit gravitational_constant{
+    "G", mag<rational{667'430, 10'000'000'000'000'000}> * cubic(si::metre) / (si::kilogram * square(si::second))};
+inline constexpr named_unit fine_structure_constant{
+    "α", mag<rational{72'973'525'643, 10'000'000'000'000}> * one, {.ascii = "alpha"}};
+inline constexpr named_unit rydberg_constant{
+    "R_∞", mag<rational{10'973'731'568'157, 1'000'000}> / si::metre, {.ascii = "R_inf"}};
+inline constexpr named_unit vacuum_magnetic_permeability{"μ₀",
+                                                         mag<rational{125'663'706'127, 100'000'000'000'000'000}> *
+                                                             si::newton / square(si::ampere),
+                                                         {.ascii = "mu_0"}};
+inline constexpr named_unit characteristic_impedance_of_vacuum{
+    "Z₀", mag<rational{376'730'313'412, 1'000'000'000}> * si::ohm, {.ascii = "Z_0"}};
+#if BEMAN_INSIDE_BIG_GRIDS
+inline constexpr named_unit electron_mass{"m_e", mag<9.1093837139e-31_g> * si::kilogram};
+inline constexpr named_unit proton_mass{"m_p", mag<1.67262192595e-27_g> * si::kilogram};
+inline constexpr named_unit neutron_mass{"m_n", mag<1.67492750056e-27_g> * si::kilogram};
+inline constexpr named_unit atomic_mass_constant{"m_u", mag<1.66053906892e-27_g> * si::kilogram};
+inline constexpr named_unit bohr_radius{"a₀", mag<5.29177210544e-11_g> * si::metre, {.ascii = "a_0"}};
+inline constexpr named_unit vacuum_electric_permittivity{
+    "ε₀", mag<8.8541878188e-12_g> * si::farad / si::metre, {.ascii = "epsilon_0"}};
+#endif
+} // namespace codata2022_defs
+
+namespace codata2022 {
+inline constexpr auto gravitational_constant             = unit_c<codata2022_defs::gravitational_constant>;
+inline constexpr auto fine_structure_constant            = unit_c<codata2022_defs::fine_structure_constant>;
+inline constexpr auto rydberg_constant                   = unit_c<codata2022_defs::rydberg_constant>;
+inline constexpr auto vacuum_magnetic_permeability       = unit_c<codata2022_defs::vacuum_magnetic_permeability>;
+inline constexpr auto characteristic_impedance_of_vacuum = unit_c<codata2022_defs::characteristic_impedance_of_vacuum>;
+#if BEMAN_INSIDE_BIG_GRIDS
+inline constexpr auto electron_mass                = unit_c<codata2022_defs::electron_mass>;
+inline constexpr auto proton_mass                  = unit_c<codata2022_defs::proton_mass>;
+inline constexpr auto neutron_mass                 = unit_c<codata2022_defs::neutron_mass>;
+inline constexpr auto atomic_mass_constant         = unit_c<codata2022_defs::atomic_mass_constant>;
+inline constexpr auto bohr_radius                  = unit_c<codata2022_defs::bohr_radius>;
+inline constexpr auto vacuum_electric_permittivity = unit_c<codata2022_defs::vacuum_electric_permittivity>;
+#endif
+} // namespace codata2022
+
+//---------------------------------------------------------------------------
+// The constants as quantities: the number 1 of the constant's unit, under its
+// ISQ kind where the kind is unambiguous.
+//---------------------------------------------------------------------------
+namespace detail {
+template <reference R>
+inline constexpr quantity<R, std::remove_cvref_t<decltype(just<1>)>> one_of{just<1>};
+} // namespace detail
+
+namespace constants {
+// SI 2019 defining constants, standard gravity and the standard atmosphere.
+inline constexpr auto hyperfine_structure_transition_frequency_of_cs =
+    detail::one_of<isq::frequency[si2019::hyperfine_structure_transition_frequency_of_cs]>;
+inline constexpr auto speed_of_light_in_vacuum = detail::one_of<isq::speed[si2019::speed_of_light_in_vacuum]>;
+inline constexpr auto luminous_efficacy        = detail::one_of<si2019::luminous_efficacy>;
+inline constexpr auto standard_gravity    = detail::one_of<isq::acceleration_of_free_fall[si2019::standard_gravity]>;
+inline constexpr auto standard_atmosphere = detail::one_of<isq::pressure[si2019::standard_atmosphere]>;
+#if BEMAN_INSIDE_BIG_GRIDS
+inline constexpr auto planck_constant           = detail::one_of<isq::action[si2019::planck_constant]>;
+inline constexpr auto reduced_planck_constant   = detail::one_of<isq::action[si2019::reduced_planck_constant]>;
+inline constexpr auto elementary_charge         = detail::one_of<isq::electric_charge[si2019::elementary_charge]>;
+inline constexpr auto boltzmann_constant        = detail::one_of<si2019::boltzmann_constant>;
+inline constexpr auto avogadro_constant         = detail::one_of<si2019::avogadro_constant>;
+inline constexpr auto molar_gas_constant        = detail::one_of<si2019::molar_gas_constant>;
+inline constexpr auto faraday_constant          = detail::one_of<si2019::faraday_constant>;
+inline constexpr auto josephson_constant        = detail::one_of<si2019::josephson_constant>;
+inline constexpr auto von_klitzing_constant     = detail::one_of<isq::resistance[si2019::von_klitzing_constant]>;
+inline constexpr auto conductance_quantum       = detail::one_of<isq::conductance[si2019::conductance_quantum]>;
+inline constexpr auto magnetic_flux_quantum     = detail::one_of<isq::magnetic_flux[si2019::magnetic_flux_quantum]>;
+inline constexpr auto stefan_boltzmann_constant = detail::one_of<si2019::stefan_boltzmann_constant>;
+inline constexpr auto first_radiation_constant  = detail::one_of<si2019::first_radiation_constant>;
+inline constexpr auto second_radiation_constant = detail::one_of<si2019::second_radiation_constant>;
+#endif
+
+// CODATA 2022 recommended values.
+inline constexpr auto gravitational_constant       = detail::one_of<codata2022::gravitational_constant>;
+inline constexpr auto fine_structure_constant      = detail::one_of<codata2022::fine_structure_constant>;
+inline constexpr auto rydberg_constant             = detail::one_of<codata2022::rydberg_constant>;
+inline constexpr auto vacuum_magnetic_permeability = detail::one_of<codata2022::vacuum_magnetic_permeability>;
+inline constexpr auto characteristic_impedance_of_vacuum =
+    detail::one_of<isq::impedance[codata2022::characteristic_impedance_of_vacuum]>;
+#if BEMAN_INSIDE_BIG_GRIDS
+inline constexpr auto electron_mass                = detail::one_of<isq::mass[codata2022::electron_mass]>;
+inline constexpr auto proton_mass                  = detail::one_of<isq::mass[codata2022::proton_mass]>;
+inline constexpr auto neutron_mass                 = detail::one_of<isq::mass[codata2022::neutron_mass]>;
+inline constexpr auto atomic_mass_constant         = detail::one_of<isq::mass[codata2022::atomic_mass_constant]>;
+inline constexpr auto bohr_radius                  = detail::one_of<isq::radius[codata2022::bohr_radius]>;
+inline constexpr auto vacuum_electric_permittivity = detail::one_of<codata2022::vacuum_electric_permittivity>;
+#endif
+} // namespace constants
+} // namespace beman::inside::units
+
+BEMAN_INSIDE_WARNINGS_POP
+
+
+#endif // !BEMAN_INSIDE_NO_STRING && !BEMAN_INSIDE_NO_UNITS
+
+// ======================================================================
+//  beman/inside/formats.hpp
+// ======================================================================
+
+BEMAN_INSIDE_WARNINGS_PUSH
+
+
+//---------------------------------------------------------------------------
+// formats — predefined `inside` aliases mapping to hardware byte widths, so you
+// can write `beman::inside::uint8` / `beman::inside::unorm16` / `beman::inside::q8_8` directly.
+//
+// `uint8` … `uint64` and `int8` … `int64` are named after the std::uintN_t /
+// std::intN_t they are stored in, and each uses that type's full range:
+// `uint8` is [0, 255] in a std::uint8_t (save int64, which stops one short of
+// -2^63). Q-format types keep power-of-two notches.
+//
+// These default to `checked`; for wraparound/saturation declare your own (e.g.
+// `inside<{0,254}, wrap>`).
+//---------------------------------------------------------------------------
+namespace beman::inside {
+//-------------------------------------------------------------------------
+// Native integer widths — value storage (Raw == value), `checked`.
+// Full native range.
+//-------------------------------------------------------------------------
+using uint8  = inside<{0, 255}>;
+using uint16 = inside<{0, 65535}>;
+using uint32 = inside<{0, 4294967295}>;
+// uint64 reaches past int64, so it has no implicit `operator imax`; read it
+// with `to<std::uint64_t>()`. A difference of two uint64s spans 2^65 values and
+// gets a wide-integer index; a sum's upper bound passes the 64-bit grid
+// numbers, so it needs C++26 big grids.
+using uint64 = inside<{0, 18446744073709551615u}>;
+
+using int8  = inside<{-128, 127}>;
+using int16 = inside<{-32768, 32767}>;
+using int32 = inside<{-2147483648, 2147483647}>;
+// int64 stays symmetric: the internal value path is `imax`, and -2^63
+// has no negation in int64.
+using int64 = inside<{-9223372036854775807, 9223372036854775807}>;
+
+//-------------------------------------------------------------------------
+// Unsigned normalized (UNORM) — [0, 1] at N-bit resolution, `round_nearest`.
+// The notch denominator is the type max, so the index 0..max fills the native
+// width; both endpoints (0 and 1) are exactly representable.
+//-------------------------------------------------------------------------
+using unorm8  = inside<{{0, 1}, per<255>}, round_nearest>;        // uint8
+using unorm16 = inside<{{0, 1}, per<65535>}, round_nearest>;      // uint16
+using unorm32 = inside<{{0, 1}, per<4294967295>}, round_nearest>; // uint32
+
+//-------------------------------------------------------------------------
+// Q-format fixed-point — unsigned integer.fraction, power-of-two notch,
+// full natural range. `round_nearest`.
+//-------------------------------------------------------------------------
+using q4_4   = inside<{{0, rational{255, 16}}, per<16>}, round_nearest>;                // uint8: [0, 15.9375]
+using q8_8   = inside<{{0, rational{65535, 256}}, per<256>}, round_nearest>;            // uint16
+using q16_16 = inside<{{0, rational{4294967295u, 65536u}}, per<65536>}, round_nearest>; // uint32
+
+//-------------------------------------------------------------------------
+// Counters — a counter is an inside over [0, Max] whose overflow policy says
+// what `++` does at the ceiling (the boundary behavior is in the type).
+//-------------------------------------------------------------------------
+// Saturating counter: `++` caps at Max (never throws or wraps) — the honest
+// "count up to a ceiling / ≥Max" tally. `--` saturates at 0.
+template <umax Max>
+using clamp_counter = inside<{0, Max}, clamp>;
+// Wrapping counter: `++` wraps Max → 0 (sequence numbers, epochs).
+template <umax Max>
+using wrap_counter = inside<{0, Max}, wrap>;
+
+} // namespace beman::inside
+
+BEMAN_INSIDE_WARNINGS_POP
+
+
+#ifndef BEMAN_INSIDE_NO_STRING
+
+#endif // BEMAN_INSIDE_NO_STRING
+
+// ======================================================================
+//  beman/inside/numeric_limits.hpp
+// ======================================================================
+
+BEMAN_INSIDE_WARNINGS_PUSH
+
+
+
+//---------------------------------------------------------------------------
+// numeric_limits / hash — std:: specializations for inside<G, P>.
+// numeric_limits reports the *grid* bounds (Lower/Upper), not the raw type's
+// limits. std::hash hashes the Raw member (rational raw: Numerator+Denominator,
+// boost-style combine). (std::common_type lives in arithmetic.hpp, always on.)
+//---------------------------------------------------------------------------
+
+template <beman::inside::grid G, beman::inside::policy_flag P>
+struct std::numeric_limits<beman::inside::inside<G, P>> {
+    using B = beman::inside::inside<G, P>;
+
+    static constexpr bool is_specialized = true;
+    static constexpr bool is_signed      = (G.Interval.Lower < beman::inside::detail::rational{0});
+    // Every value is an integer: a non-zero integer notch over an integer Lower.
+    static constexpr bool is_integer        = beman::inside::detail::integer_lattice<B>;
+    static constexpr bool is_exact          = true; // rational + integer raw are both exact
+    static constexpr bool is_bounded        = true;
+    static constexpr bool is_modulo         = (P & beman::inside::wrap) != 0;
+    static constexpr bool has_infinity      = false;
+    static constexpr bool has_quiet_NaN     = false;
+    static constexpr bool has_signaling_NaN = false;
+    static constexpr bool traps             = beman::inside::is_checked(P);
+    static constexpr bool is_iec559         = false;
+    static constexpr int  radix             = 2;
+    // The mode stores round by (rounding_of, the one precedence every path uses).
+    static constexpr std::float_round_style round_style = [] {
+        using enum beman::inside::detail::round_mode;
+        switch (beman::inside::detail::rounding_of(P)) {
+        case floor:
+            return std::round_toward_neg_infinity;
+        case ceil:
+            return std::round_toward_infinity;
+        case nearest:
+        case half_even:
+            return std::round_to_nearest;
+        default:
+            return std::round_toward_zero;
+        }
+    }();
+
+    // digits / digits10 forward to the raw type so generic algorithms see the
+    // storage size, not the rational interval count.
+    using deduced_raw             = beman::inside::detail::raw_t<B>;
+    static constexpr int digits   = std::numeric_limits<deduced_raw>::digits;
+    static constexpr int digits10 = std::numeric_limits<deduced_raw>::digits10;
+
+  private:
+    // The value v of B (on its grid). Past 64 bits through the exact store:
+    // no 64-bit rational holds a big grid's limits.
+    static constexpr B at(const beman::inside::detail::grid_rational& v) noexcept {
+        namespace d = ::beman::inside::detail;
+        if constexpr (d::wide_valued<B>) {
+            B                   b{};
+            beman::inside::errc ec{};
+            d::assign_exact<d::rational>(b,
+                                         d::exact_of_grid<d::exact_limbs<B>>(v),
+                                         beman::inside::make_policy<P>(ec),
+                                         beman::inside::no_action{});
+            return b;
+        } else
+            return B{d::to_rational(v)};
+    }
+
+  public:
+    static constexpr B min() noexcept { return at(G.Interval.Lower); }
+    static constexpr B max() noexcept { return at(G.Interval.Upper); }
+    static constexpr B lowest() noexcept { return at(G.Interval.Lower); }
+    // Exact types have no rounding noise — epsilon and round_error are 0 when
+    // 0 is on the grid. A lattice that misses 0 but spans it gives its first
+    // point above 0; when 0 is outside the interval, the grid minimum — the
+    // closest representable stand-in for "no error" the type can express.
+    static constexpr B epsilon() noexcept {
+        namespace d = ::beman::inside::detail;
+        if constexpr (G.representable(d::grid_rational{0}))
+            return at(d::grid_rational{0});
+        else if constexpr (G.Interval.Lower < d::grid_rational{0} && d::grid_rational{0} < G.Interval.Upper) {
+            // Lower + ⌈−Lower/Notch⌉·Notch
+#if BEMAN_INSIDE_BIG_GRIDS
+            constexpr d::grid_rational t = d::grid_div_of(d::grid_sub(d::grid_rational{0}, G.Interval.Lower), G.Notch);
+            constexpr d::grid_int      k =
+                (d::wide_numerator(t) + d::wide_denominator(t) - d::grid_int{1}) / d::wide_denominator(t);
+            return at(d::grid_add(G.Interval.Lower, d::grid_mul(d::grid_rational{k}, G.Notch)));
+#else
+            // In grid integers, Lower = a/b and Notch = e/f: −Lower/Notch and
+            // k·Notch may pass the 64-bit rational where the point does not.
+            constexpr d::grid_int a = d::wide_numerator(G.Interval.Lower), b = d::wide_denominator(G.Interval.Lower);
+            constexpr d::grid_int e = d::wide_numerator(G.Notch), f = d::wide_denominator(G.Notch);
+            constexpr d::grid_int k = (-a * f + b * e - d::grid_int{1}) / (b * e);
+            constexpr d::grid_int n = a * f + k * e * b, q = b * f, g = d::grid_int_gcd(n, q);
+            // q/g divides the value unit's denominator, which fits.
+            static_assert(bit_width_of(n / g) <= 64,
+                          "numeric_limits::epsilon: the first point above 0 is past the 64-bit rational");
+            return at(d::rational{static_cast<beman::inside::umax>(n / g), static_cast<beman::inside::imax>(q / g)});
+#endif
+        } else
+            return at(G.Interval.Lower);
+    }
+    static constexpr B round_error() noexcept { return epsilon(); }
+};
+
+template <beman::inside::grid G, beman::inside::policy_flag P>
+struct std::hash<beman::inside::inside<G, P>> {
+    using B = beman::inside::inside<G, P>;
+
+    // Boost-style combine of h with the limbs of a wide integer.
+    static constexpr std::size_t combine(std::size_t h, const auto& w) noexcept {
+        for (auto limb : w.Word)
+            h ^= std::hash<beman::inside::umax>{}(limb) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+        return h;
+    }
+
+    constexpr std::size_t operator()(const B& b) const noexcept {
+        if constexpr (beman::inside::detail::point_storage<B>)
+            return 0; // one value: the type
+        else if constexpr (beman::inside::detail::fraction_storage<B>)
+            return combine(combine(0, b.raw().Num), b.raw().Den); // a reduced fraction
+        else if constexpr (beman::inside::detail::rational_storage<B>) {
+            // Boost-style hash combine over (Numerator, Denominator).
+            auto h1 = std::hash<beman::inside::umax>{}(b.raw().Numerator);
+            auto h2 = std::hash<beman::inside::imax>{}(b.raw().Denominator);
+            return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
+        } else if constexpr (beman::inside::detail::wide_index_storage<B>) {
+            return combine(0, b.raw());
+        } else
+            return std::hash<beman::inside::detail::raw_t<B>>{}(b.raw());
+    }
+};
+
+BEMAN_INSIDE_WARNINGS_POP
+
+
+#if __STDC_HOSTED__ && !defined(BEMAN_INSIDE_MATH_NO_FP)
+
+// ======================================================================
+//  beman/inside/random.hpp
+// ======================================================================
+// Opt-in: uniform sampling over a grid. `uniform<B>(rng)` returns a B drawn
+// uniformly from the grid's slots (Lower, Lower + Notch, …, Upper) — exact, any
+// storage. Kept out of the umbrella because <random> is heavy, hosted-only and
+// pulls <cmath> (so the single header drops it under BEMAN_INSIDE_MATH_NO_FP).
+//---------------------------------------------------------------------------
+
+BEMAN_INSIDE_WARNINGS_PUSH
+
+
+#include <random>
+
+namespace beman::inside {
+template <insidable B, std::uniform_random_bit_generator G>
+[[nodiscard]] B uniform(G& g) {
+    static_assert(detail::notched<B> || detail::point_grid<B>,
+                  "uniform<B>: a continuous grid (notch 0) has no slots to choose from");
+    if constexpr (detail::wide_index_storage<B>) {
+        // More than 2^64 slots: draw limbs uniformly, masked to the slot count's
+        // bit width, and reject draws past the count (accepts > 1/2 of draws).
+        using W                = detail::raw_t<B>;
+        constexpr W   count    = static_cast<W>(grid_of<B>.slot_count());
+        constexpr int top_bits = grid_of<B>.slot_bits() - 64 * (static_cast<int>(sizeof(W) / 8) - 1);
+        std::uniform_int_distribution<umax> limb;
+        for (;;) {
+            W k;
+            for (auto& w : k.Word)
+                w = limb(g);
+            if constexpr (top_bits < 64)
+                k.Word[sizeof(W) / 8 - 1] &= (umax{1} << top_bits) - 1;
+            if (!(k > count))
+                return B::from_raw(k);
+        }
+    } else {
+        std::uniform_int_distribution<umax> pick(0, detail::max_index_of<B>);
+        const umax                          k = pick(g);
+        return B::from_raw(detail::raw_from_offset<B>(k)); // index or value storage
+    }
+}
+} // namespace beman::inside
+
+BEMAN_INSIDE_WARNINGS_POP
+
+
+#endif // __STDC_HOSTED__ && !BEMAN_INSIDE_MATH_NO_FP
+
+#if !defined(BEMAN_INSIDE_NO_STRING) && !defined(BEMAN_INSIDE_NO_UNITS)
+
 #endif // !BEMAN_INSIDE_NO_STRING && !BEMAN_INSIDE_NO_UNITS
 
 #if !defined(BEMAN_INSIDE_NO_STRING) && !defined(BEMAN_INSIDE_NO_UNITS)
@@ -21276,29 +21504,35 @@ BEMAN_INSIDE_WARNINGS_POP
 BEMAN_INSIDE_WARNINGS_PUSH
 
 
+#include <algorithm>
 #include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
 namespace beman::inside::math::detail::ax {
 // x·(n/d)·π^P for P = ±1: π from pi_q at T = S + B bits, B covering |x·n/d|,
-// so its error adds at most one unit; the division truncates one more.
-template <std::size_t E, int Bits, int P>
+// so its error adds at most one unit; the division truncates one more. The
+// factor is 64-bit (KF = 1), or KF limbs for a factor past 64 bits (C++26 big
+// grids: ħ = h/2π in J·s).
+template <std::size_t E, int Bits, int P, std::size_t KF = 1>
 struct pi_scale_core {
+    using factor = std::conditional_t<KF == 1, umax, beman::inside::detail::wide_uint<KF>>;
     wide_rational<E> X;
-    umax             N; // the rational factor n/d
-    umax             D;
+    factor           N; // the rational factor n/d
+    factor           D;
     bool             Negative;
 
     constexpr maybe_exact<E> exact() const { return is_zero(X) ? maybe_exact<E>{X} : std::nullopt; }
 
     template <int W>
     constexpr auto run() const {
-        constexpr int         S  = W + 2;
-        constexpr int         T  = S + Bits + 4;
-        constexpr std::size_t KJ = limbs_for_bits(64 * static_cast<int>(E) + 64 + T + 2 * S + 16);
-        using J                  = wide_sint<KJ>;
-        using I                  = fixed_t<Bits + S + 4>;
+        constexpr int         S = W + 2;
+        constexpr int         T = S + Bits + 4;
+        constexpr std::size_t KJ =
+            limbs_for_bits(64 * static_cast<int>(E) + 64 * static_cast<int>(KF) + T + 2 * S + 16);
+        using J = wide_sint<KJ>;
+        using I = fixed_t<Bits + S + 4>;
         const J pi_fixed{static_cast<J>(pi_q<T>)};
         const J num = J{X.Num} * J{N};
         const J den = J{X.Den} * J{D};
@@ -21370,15 +21604,33 @@ template <auto U, insidable Out, reference R, class V>
     constexpr magnitude   f = detail::conversion_factor<R.U, u>;
     static_assert(dimension_of(u) == dimension_of(R.U), "units: value_cast - the unit has another dimension");
     static_assert(f.Pi == 1 || f.Pi == -1, "units: value_cast - only a factor of pi or 1/pi rounds");
-    static_assert(beman::inside::detail::fits_rational(f.Ratio), "units: value_cast - the factor needs 64 bits");
     beman::inside::math::adaptive::require_rounding<Out>();
-    constexpr rational  r = beman::inside::detail::to_rational(f.Ratio);
     constexpr reference to{R.Spec, R.KindOf, R.Derived, u};
     const auto          x = ax::exact_input(q.numerical_value());
-    constexpr int       B = ax::in_mag<V> + static_cast<int>(std::bit_width(r.Numerator)) + 4;
-    using core            = ax::pi_scale_core<ax::input_limbs<V>, B, f.Pi>;
-    return quantity<to, Out>{ax::evaluate<Out, ax::start_bits<Out>>(
-        core{x, r.Numerator, beman::inside::detail::abs_den(r.Denominator), r.Denominator < 0})};
+    if constexpr (beman::inside::detail::fits_rational(f.Ratio)) {
+        constexpr rational r = beman::inside::detail::to_rational(f.Ratio);
+        constexpr int      B = ax::in_mag<V> + static_cast<int>(std::bit_width(r.Numerator)) + 4;
+        using core           = ax::pi_scale_core<ax::input_limbs<V>, B, f.Pi>;
+        return quantity<to, Out>{ax::evaluate<Out, ax::start_bits<Out>>(
+            core{x, r.Numerator, beman::inside::detail::abs_den(r.Denominator), r.Denominator < 0})};
+    }
+#if BEMAN_INSIDE_BIG_GRIDS
+    else {
+        // A factor past 64 bits (C++26 big grids): the same core on wide integers.
+        using beman::inside::detail::grid_int;
+        constexpr grid_int    n  = beman::inside::detail::wide_numerator(f.Ratio);
+        constexpr grid_int    d  = beman::inside::detail::wide_denominator(f.Ratio);
+        constexpr bool        ng = n.negative();
+        constexpr int         NB = n.bit_width();
+        constexpr std::size_t KF = beman::inside::detail::limbs_for_bits(std::max(NB, d.bit_width()) + 1);
+        using WF                 = beman::inside::detail::wide_uint<KF>;
+        constexpr WF  wn         = static_cast<WF>(ng ? -n : n);
+        constexpr WF  wd         = static_cast<WF>(d);
+        constexpr int B          = ax::in_mag<V> + NB + 4;
+        using core               = ax::pi_scale_core<ax::input_limbs<V>, B, f.Pi, KF>;
+        return quantity<to, Out>{ax::evaluate<Out, ax::start_bits<Out>>(core{x, wn, wd, ng})};
+    }
+#endif
 }
 
 // The number's functions, in q's unit.

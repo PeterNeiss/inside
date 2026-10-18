@@ -8,6 +8,7 @@ target_sources(
                 arithmetic.hpp
                 casts.hpp
                 cmath.hpp
+                constants.hpp
                 core.hpp
                 cursor.hpp
                 detail/addition.hpp
@@ -24,6 +25,7 @@ target_sources(
                 detail/int_for_bits.hpp
                 detail/introspection.hpp
                 detail/math_adaptive.hpp
+                detail/math_constants.hpp
                 detail/math_cores.hpp
                 detail/math_dd.hpp
                 detail/math_entry.hpp

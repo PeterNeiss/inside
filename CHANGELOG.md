@@ -19,11 +19,23 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 - Example [`adc_calibration.cpp`](examples/adc_calibration.cpp): ADC counts
   as a base dimension of their own, and a two-point calibration whose gain
   is checked once, after which no division can fail.
+- `<beman/inside/constants.hpp>` ([constants.md](docs/constants.md)):
+  mathematical constants in `math::` (π, e, √2, ln 2, φ, γ, Catalan's G,
+  ζ(3), … as point insides within 2^-57), and physical constants in
+  `units::constants::` as quantities of their ISQ kind. The SI 2019 defining
+  constants and what follows from them (ħ, R, F, K_J, R_K, G₀, Φ₀, σ, c₁, c₂)
+  are exact, along with the standard atmosphere and the CODATA 2022 measured
+  values (G, α, R_∞, μ₀, Z₀, and under C++26 big grids the particle masses,
+  a₀, ε₀).
+- `value_cast` across a factor of π takes a factor past 64 bits under C++26
+  big grids, so ħ converts to J s.
 - `round_toward_zero`, the rounding flag that names truncation toward zero
   (the `snap` bit alone), and its named policy `rounded_toward_zero`.
 
 ### Changed
 
+- `si::dalton` uses the CODATA 2022 value, 1.66053906892e-27 kg (was 2018's
+  1.66053906660e-27 kg).
 - **Breaking:** the named policy `snapped` is now `rounded_toward_zero`,
   next to `rounded_nearest`, `rounded_floor`, `rounded_ceil` and
   `rounded_half_even`. Every mode snaps onto the grid, so the old name did

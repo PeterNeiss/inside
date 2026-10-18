@@ -74,7 +74,7 @@
   columns=fullflexible,
   keepspaces=true,
   tabsize=2,
-  literate={·}{{$\cdot$}}1 {—}{{---}}1 {²}{{$^2$}}1 {°}{{\textdegree}}1,
+  literate={·}{{$\cdot$}}1 {—}{{---}}1 {²}{{$^2$}}1 {°}{{\textdegree}}1 {⁻}{{$^-$}}1 {¹}{{$^1$}}1,
   aboveskip=0.9em,
   belowskip=0.9em,
   deletestring=[b]',
@@ -95,7 +95,7 @@
   showstringspaces=false,
   columns=fullflexible,
   keepspaces=true,
-  literate={·}{{$\cdot$}}1 {—}{{---}}1 {²}{{$^2$}}1 {°}{{\textdegree}}1,
+  literate={·}{{$\cdot$}}1 {—}{{---}}1 {²}{{$^2$}}1 {°}{{\textdegree}}1 {⁻}{{$^-$}}1 {¹}{{$^1$}}1,
   aboveskip=0.7em,
   belowskip=0.9em,
 }
@@ -922,9 +922,32 @@ that is its exact value; an exact $10^{30}$ is spelled \code{1e30\_g}. The
 product lives in $[0, 2^{200}]$, so the widening rule still applies: the result
 is a plain 32-byte value, with no allocation. No \code{double} and no 64-bit
 ratio can hold the notch $10^{-30}$. Compiled without reflection, the file is
-rejected with a message naming the C++26 big-grid requirement. Big grids also
-complete the unit catalogue: the SI prefixes past $10^{\pm18}$, the eV, and the
-exact defining constants $h$, $e$, $k$ and $N_A$, so $E = h\nu$ is exact.
+rejected with a message naming the C++26 big-grid requirement.
+
+Big grids also complete the unit catalogue: the SI prefixes past
+$10^{\pm18}$, the eV, and the physical constants. Since 2019 the SI defines
+$h$, $e$, $k$ and $N_A$ as exact numbers. \file{constants.hpp} holds each of
+them as a quantity of its kind: $h$ is an action and $e$ an electric charge.
+It also holds the constants that follow from them, the CODATA 2022 measured
+values, and the common mathematical constants (\file{docs/constants.md}):
+
+\lstinputlisting[firstline=21,lastline=40]{int-considered-harmful/b14_constants.cpp}
+\begin{lstlisting}[style=term]
+$ g++-16 -std=c++26 -freflection -O2 -I ../../include b14_constants.cpp
+h    = 6.62607015e-34 J s
+e    = 1.602176634e-19 C
+N_A  = 6.02214076e+23 mol⁻¹
+k    = 1.380649e-23 J/K
+h nu = 3.578077881e-19 J
+R    = 8.31446261815324 J/(K mol)
+F    = 96485.3321233100184 C/mol
+hbar = 1.054571818e-34 J s
+\end{lstlisting}
+
+\noindent
+$E = h\nu$, $R = N_A k$ and $F = N_A e$ are exact products: every digit of
+$R$ and $F$ is printed above. Only $\hbar = h/2\pi$ rounds, once, because
+of its factor of $\pi$.
 
 % ============================================================================
 \section{A worked migration}\label{sec:migration}
@@ -1530,6 +1553,7 @@ File & Demonstrates \\
 \file{b11\_no\_ceiling.cpp}       & Grids past 64 bits (C++26) \\
 \file{b12\_impulse.cpp}           & lbf$\cdot$s + N$\cdot$s converts; impulse + length rejected \\
 \file{b13\_quantities.cpp}        & Conversions, points, kinds, ratios \\
+\file{b14\_constants.cpp}         & $h$, $e$, $N_A$, $k$, $h\nu$, $R$, $F$, $\hbar$ (C++26) \\
 \midrule
 \file{m\_before.cpp} / \file{m\_after.cpp} & The worked migration: an invoice \\
 \file{m2\_before.cpp} / \file{m2\_after.cpp} & The worked migration: an ADC reading \\
@@ -1574,7 +1598,7 @@ File & Demonstrates \\
       \url{https://github.com/PeterNeiss/inside}: \file{README.md},
       \file{docs/tutorial.md}, \file{docs/policies.md},
       \file{docs/arithmetic.md}, \file{docs/storage.md}, \file{docs/units.md},
-      \file{docs/math.md}, \file{docs/determinism.md}, \file{docs/accuracy.md},
+      \file{docs/constants.md}, \file{docs/math.md}, \file{docs/determinism.md}, \file{docs/accuracy.md},
       \file{docs/performance.md}.\end{sloppypar}
 \end{enumerate}
 

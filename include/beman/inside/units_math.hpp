@@ -25,29 +25,35 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <beman/inside/cmath.hpp>
 #include <beman/inside/units.hpp>
 
+#include <algorithm>
 #include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
 namespace beman::inside::math::detail::ax {
 // x·(n/d)·π^P for P = ±1: π from pi_q at T = S + B bits, B covering |x·n/d|,
-// so its error adds at most one unit; the division truncates one more.
-template <std::size_t E, int Bits, int P>
+// so its error adds at most one unit; the division truncates one more. The
+// factor is 64-bit (KF = 1), or KF limbs for a factor past 64 bits (C++26 big
+// grids: ħ = h/2π in J·s).
+template <std::size_t E, int Bits, int P, std::size_t KF = 1>
 struct pi_scale_core {
+    using factor = std::conditional_t<KF == 1, umax, beman::inside::detail::wide_uint<KF>>;
     wide_rational<E> X;
-    umax             N; // the rational factor n/d
-    umax             D;
+    factor           N; // the rational factor n/d
+    factor           D;
     bool             Negative;
 
     constexpr maybe_exact<E> exact() const { return is_zero(X) ? maybe_exact<E>{X} : std::nullopt; }
 
     template <int W>
     constexpr auto run() const {
-        constexpr int         S  = W + 2;
-        constexpr int         T  = S + Bits + 4;
-        constexpr std::size_t KJ = limbs_for_bits(64 * static_cast<int>(E) + 64 + T + 2 * S + 16);
-        using J                  = wide_sint<KJ>;
-        using I                  = fixed_t<Bits + S + 4>;
+        constexpr int         S = W + 2;
+        constexpr int         T = S + Bits + 4;
+        constexpr std::size_t KJ =
+            limbs_for_bits(64 * static_cast<int>(E) + 64 * static_cast<int>(KF) + T + 2 * S + 16);
+        using J = wide_sint<KJ>;
+        using I = fixed_t<Bits + S + 4>;
         const J pi_fixed{static_cast<J>(pi_q<T>)};
         const J num = J{X.Num} * J{N};
         const J den = J{X.Den} * J{D};
@@ -119,15 +125,33 @@ template <auto U, insidable Out, reference R, class V>
     constexpr magnitude   f = detail::conversion_factor<R.U, u>;
     static_assert(dimension_of(u) == dimension_of(R.U), "units: value_cast - the unit has another dimension");
     static_assert(f.Pi == 1 || f.Pi == -1, "units: value_cast - only a factor of pi or 1/pi rounds");
-    static_assert(beman::inside::detail::fits_rational(f.Ratio), "units: value_cast - the factor needs 64 bits");
     beman::inside::math::adaptive::require_rounding<Out>();
-    constexpr rational  r = beman::inside::detail::to_rational(f.Ratio);
     constexpr reference to{R.Spec, R.KindOf, R.Derived, u};
     const auto          x = ax::exact_input(q.numerical_value());
-    constexpr int       B = ax::in_mag<V> + static_cast<int>(std::bit_width(r.Numerator)) + 4;
-    using core            = ax::pi_scale_core<ax::input_limbs<V>, B, f.Pi>;
-    return quantity<to, Out>{ax::evaluate<Out, ax::start_bits<Out>>(
-        core{x, r.Numerator, beman::inside::detail::abs_den(r.Denominator), r.Denominator < 0})};
+    if constexpr (beman::inside::detail::fits_rational(f.Ratio)) {
+        constexpr rational r = beman::inside::detail::to_rational(f.Ratio);
+        constexpr int      B = ax::in_mag<V> + static_cast<int>(std::bit_width(r.Numerator)) + 4;
+        using core           = ax::pi_scale_core<ax::input_limbs<V>, B, f.Pi>;
+        return quantity<to, Out>{ax::evaluate<Out, ax::start_bits<Out>>(
+            core{x, r.Numerator, beman::inside::detail::abs_den(r.Denominator), r.Denominator < 0})};
+    }
+#if BEMAN_INSIDE_BIG_GRIDS
+    else {
+        // A factor past 64 bits (C++26 big grids): the same core on wide integers.
+        using beman::inside::detail::grid_int;
+        constexpr grid_int    n  = beman::inside::detail::wide_numerator(f.Ratio);
+        constexpr grid_int    d  = beman::inside::detail::wide_denominator(f.Ratio);
+        constexpr bool        ng = n.negative();
+        constexpr int         NB = n.bit_width();
+        constexpr std::size_t KF = beman::inside::detail::limbs_for_bits(std::max(NB, d.bit_width()) + 1);
+        using WF                 = beman::inside::detail::wide_uint<KF>;
+        constexpr WF  wn         = static_cast<WF>(ng ? -n : n);
+        constexpr WF  wd         = static_cast<WF>(d);
+        constexpr int B          = ax::in_mag<V> + NB + 4;
+        using core               = ax::pi_scale_core<ax::input_limbs<V>, B, f.Pi, KF>;
+        return quantity<to, Out>{ax::evaluate<Out, ax::start_bits<Out>>(core{x, wn, wd, ng})};
+    }
+#endif
 }
 
 // The number's functions, in q's unit.
