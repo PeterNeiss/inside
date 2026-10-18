@@ -144,3 +144,19 @@ TEST(UnitsAlgorithmsTest, trig_of_a_pi_scaled_angle_reduces_exactly) {
     EXPECT_EQ(units::sin_into<amp>(p), 1);
     EXPECT_EQ(units::cos_into<amp>(p), 0);
 }
+
+TEST(UnitsAlgorithmsTest, divmod_in_the_common_unit_and_percent) {
+    const quantity<si::second, inside<{0, 86399}>> s{3725};
+    const auto [h, rest] = divmod(s, just<1> * si::hour);
+    EXPECT_EQ(h, 1);
+    EXPECT_EQ(to_string(rest), "125 s");
+    const auto [q, r] = divmod(quantity<si::day, inside<{0, 100}, snap>>{17}, just<1, 1> * si::day * just<7>);
+    EXPECT_EQ(q, 2);
+    EXPECT_EQ(to_string(r), "3 d");
+
+    EXPECT_EQ(to_string(just<8> * percent), "8 %");
+    const inside<{{0, 1}, per<100>}> x = just<8> * percent;
+    EXPECT_EQ(x, (just<2, 25>));
+    EXPECT_EQ(to_string(mul_into<usd_t>(just<45> * HP, just<8> * percent)), "3.60 HP");
+    EXPECT_EQ(unit_symbol(per_mille, text_encoding::ascii), "permille");
+}

@@ -1945,6 +1945,41 @@ template <quantity_like A, quantity_like B, insidable T>
     return a + (b - a) * t;
 }
 
+// divmod(a, b, args...) of two quantities of one dimension, in their common
+// unit: the quotient is a plain number, the remainder a quantity.
+template <class Q, class R>
+struct divmod_result {
+    Q Quotient;
+    R Remainder;
+};
+namespace detail {
+template <reference C, class D>
+constexpr auto quantity_divmod(D&& d) {
+    using T = std::remove_cvref_t<D>;
+    if constexpr (is_expected_v<T>) {
+        using V      = typename T::value_type;
+        using result = divmod_result<decltype(d->Quotient), quantity<C, decltype(d->Remainder)>>;
+        if (!d)
+            return std::expected<result, errc>{std::unexpect, d.error()};
+        return std::expected<result, errc>{result{d->Quotient, quantity<C, decltype(V::Remainder)>{d->Remainder}}};
+    } else
+        return divmod_result<decltype(d.Quotient), quantity<C, decltype(d.Remainder)>>{
+            d.Quotient, quantity<C, decltype(d.Remainder)>{d.Remainder}};
+}
+} // namespace detail
+template <reference A, class VA, reference B, class VB, class... Args>
+    requires(!detail::sum_diagnosed<A, B>()) && detail::common_rescalable<A, VA, B, VB> &&
+            requires(const detail::common_number_t<A, VA, B>& x,
+                     const detail::common_number_t<B, VB, A>& y,
+                     Args&&... args) { beman::inside::divmod(x, y, std::forward<Args>(args)...); }
+[[nodiscard]] constexpr auto divmod(const quantity<A, VA>& a, const quantity<B, VB>& b, Args&&... args) {
+    constexpr reference C = detail::sum_reference<A, B>();
+    return detail::quantity_divmod<C>(
+        beman::inside::divmod(detail::rescale<detail::conversion_factor<A.U, C.U>>(a.numerical_value()),
+                              detail::rescale<detail::conversion_factor<B.U, C.U>>(b.numerical_value()),
+                              std::forward<Args>(args)...));
+}
+
 //---------------------------------------------------------------------------
 // quantity_point<R, O, Rep> — a point: a quantity of R counted from origin O
 // (null: the implicit zero of the dimension). A change of origin shifts the
@@ -2626,6 +2661,14 @@ BEMAN_INSIDE_UNIT(international,
                   "℉",
                   mag<rational{5, 9}>* si::kelvin,
                   {.ascii = "`F", .origin = international::zeroth_degree_Fahrenheit})
+
+// Scaled dimensionless units, as in mp-units: 8 % is the number 2/25.
+namespace dimensionless_defs {
+inline constexpr named_unit percent{"%", mag<rational{1, 100}> * one};
+inline constexpr named_unit per_mille{"‰", mag<rational{1, 1000}> * one, {.ascii = "permille"}};
+} // namespace dimensionless_defs
+inline constexpr auto percent   = unit_c<dimensionless_defs::percent>;
+inline constexpr auto per_mille = unit_c<dimensionless_defs::per_mille>;
 
 #undef BEMAN_INSIDE_UNIT
 #undef BEMAN_INSIDE_ORIGIN
