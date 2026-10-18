@@ -74,9 +74,10 @@
   columns=fullflexible,
   keepspaces=true,
   tabsize=2,
-  literate={·}{{$\cdot$}}1 {—}{{---}}1 {²}{{$^2$}}1,
+  literate={·}{{$\cdot$}}1 {—}{{---}}1 {²}{{$^2$}}1 {°}{{\textdegree}}1,
   aboveskip=0.9em,
   belowskip=0.9em,
+  deletestring=[b]',
   morekeywords={constexpr,consteval,static_assert,noexcept,auto,using,
                 nullptr,uint8_t,int16_t,int64_t,uint16_t,size_t,concept,
                 requires,co_await,decltype},
@@ -94,7 +95,7 @@
   showstringspaces=false,
   columns=fullflexible,
   keepspaces=true,
-  literate={·}{{$\cdot$}}1 {—}{{---}}1 {²}{{$^2$}}1,
+  literate={·}{{$\cdot$}}1 {—}{{---}}1 {²}{{$^2$}}1 {°}{{\textdegree}}1,
   aboveskip=0.7em,
   belowskip=0.9em,
 }
@@ -666,17 +667,27 @@ quantity kind with a unit, such as \code{isq::height[si::metre]}. A quantity
 point counts from an origin, such as absolute zero or the ice point.
 \file{units\_math.hpp} adds the math functions on quantities.
 
-\begin{lstlisting}
-using namespace beman::inside;
-using namespace beman::inside::units;
+Units of your own are values too: here a per cent, a currency with euros and
+cents, and samples per second. The catalogue supplies the degree, the radian,
+the kilometre and the height kind:
 
-using pct    = inside<{0, 100}>;                    // integers 0..100
-using money  = inside<{{0, 1'000'000}, per<100>}, round_nearest>;  // cents
-using angle  = inside<{0, 359}, wrap>;              // modular
-using sample = inside<{{-1, 1}, per<16384>}, round_nearest>;       // Q1.14
-using trip   = quantity<si::kilo(si::metre), inside<{{0, 500}, per<1000>}>>;
-using height = quantity<isq::height[si::metre], inside<{0, 9000}>>;
+\lstinputlisting[firstline=15,lastline=50]{int-considered-harmful/b00_declarations.cpp}
+\begin{lstlisting}[style=term]
+pct          = 42%
+money        = 19.99 EUR = 1999 ct
+angle        = 10°   (370° wraps)
+90° in rad   = 1.5708 rad
+1 rad in deg = 57.30°
+sample_rate  = 48000 SPS
+trip         = 12.500 km = 12500 m
+height       = 8849 m
 \end{lstlisting}
+
+\noindent
+Euros to cents is an exact rescale. Degrees to radians is a factor of $\pi$,
+which no grid holds exactly. \code{.in()} refuses it, and
+\code{value\_cast} from \file{units\_math.hpp} computes $x\pi/180$ exactly
+and rounds once onto the target grid.
 
 \paragraph{Credit where it is due.} The quantity layer follows
 \textbf{mp-units}, the library by \textbf{Mateusz Pusz} and the basis of the
@@ -1506,6 +1517,7 @@ File & Demonstrates \\
 \file{d04\_precision.cpp}         & $2^{53}$; catastrophic cancellation \\
 \file{d05\_nan.cpp}               & \code{NaN} breaks equality and ordering \\
 \midrule
+\file{b00\_declarations.cpp}      & Quantities: \%, EUR/ct, \textdegree{} $\leftrightarrow$ rad, SPS \\
 \file{b01\_no\_overflow.cpp}      & Widening arithmetic; the midpoint, fixed \\
 \file{b02\_divzero.cpp}           & Division as \code{expected}; exact by default \\
 \file{b03\_policies.cpp}          & \code{checked} / \code{clamp} / \code{wrap} / \code{try\_make} \\
