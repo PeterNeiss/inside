@@ -4,7 +4,13 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-## Unreleased
+## 0.4.0 — 2026-10-19
+
+### Upgrading from 0.3.0
+
+- The named policy `snapped` is now `rounded_toward_zero`: replace
+  `div(a, b, snapped)` with `div(a, b, rounded_toward_zero)`. The flag
+  `snap` and `with_snap<Mode>()` are unchanged.
 
 ### Added
 
@@ -28,7 +34,6 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   (`game_hp`), rounds (`rifle`), months and weeks (`clock`), px
   (`torus_map`, `geometry`), a phase slot (`oscillator`), packets
   (`sequence_number`, `jitter_buffer`), dB (`decibels`, `audio_mixer`).
-
 - Under C++26 the grid and assignment diagnostics print the values that
   failed (P2741 static_assert messages): `grid: the notch must divide
   Upper − Lower evenly (notch 3, Upper − Lower 10)`, the two notches of an
