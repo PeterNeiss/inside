@@ -14,29 +14,42 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 <!-- markdownlint-restore -->
 
 `beman.inside` is a header-only library for numbers that **cannot go out of
-range** — the range and step size live in the *type*. It needs the C++23
-standard (grids past 64 bits need C++26), and follows the layout and tooling of
+range**: the range and the step size live in the *type*. With
+`<beman/inside/units.hpp>` the unit, the dimension and the kind live there too,
+so a conversion is a compile-time rescale of the grid — exact and free. It needs
+C++23 (grids past 64 bits need C++26) and follows
 [The Beman Standard](https://github.com/bemanproject/beman/blob/main/docs/beman_standard.md).
 
+```cpp
+inside<{0, 100}> a{42}, b{58};
+auto sum = a + b;                       // inside<{0, 200}>: 100, cannot overflow
+inside<{0, 50}, clamp> capped = sum;    // 50: the type's policy decides
+auto d = just<5> * si::kilo(si::metre) + just<250> * si::metre;   // 5250 m, exact
+```
+
 - **Arithmetic cannot overflow.** `+ - * /` widen the result type at compile
-  time to hold every possible value — no runtime surprises.
-- **You decide what happens at the edges.** Out-of-range is only possible when a
-  value is assigned into a narrower type, and a policy you pick — `clamp`
-  (saturate), `wrap` (modular), checked error — decides the outcome. Fallible
-  results such as division come back as `std::expected<inside, errc>`.
-- **It's fixed-point, done by the compiler.** Think Qm.n with the scale and
-  range checked for you; the raw storage (uint8…int64, an exact fraction for a
-  continuous grid, or a multi-limb integer past 2⁶⁴ steps) follows from the
-  grid alone.
+  time to hold every possible value.
+- **You decide what happens at the edges.** Out of range is only possible when
+  a value is stored into a narrower type, and a policy you pick decides:
+  `clamp` (saturate), `wrap` (modular, with a carry), or a checked error.
+  Fallible results such as division by a grid that holds 0 come back as
+  `std::expected<inside, errc>`.
+- **Fixed point, done by the compiler.** Think Qm.n with the scale and range
+  checked for you; the raw storage (uint8 … int64, an exact fraction, or a
+  multi-limb integer past 2⁶⁴ steps) follows from the grid alone.
+- **Physical units, and units of your own.** SI and ISQ quantities with kinds,
+  ℃/℉ points, and mixed-unit sums that are exact. Add a base dimension for
+  your domain — a currency, hit points, pixels, ADC counts — and it never mixes
+  with anything else.
+- **Correctly rounded math.** `sin`/`cos`/`sqrt`/`exp`/… return the correctly
+  rounded point of any output grid — bit-identical on every platform, at
+  compile time, and on bare metal without an FPU. `sin` of 30° is exactly ½.
 - **Any size of grid.** Under C++26 with static reflection a grid's limits and
   notch have no size limit (`inside<{0, 0x1p100}>`); see
   [docs/storage.md](docs/storage.md#grids-past-64-bits-c26).
-- **Correctly rounded math.** `sin`/`cos`/`sqrt`/`exp`/… return the correctly
-  rounded point of any output grid — bit-identical on every platform, at
-  compile time, and on bare metal without an FPU.
-- **Built for:** audio samples, money, percentages, PID controllers, sensor
-  fusion, embedded registers — anywhere a plain `int`/`float` silently
-  overflows, wraps, or drifts.
+- **Built for:** audio samples, money, sensor fusion, PID controllers, clocks
+  and calendars, game state, embedded registers — anywhere a plain
+  `int`/`float` silently overflows, wraps, or drifts.
 
 **Implements**: not yet proposed for standardization; a draft proposal is in
 [docs/proposal/inside.md](docs/proposal/inside.md) (build it with
@@ -52,26 +65,59 @@ Developed with [Claude Code](https://claude.com/claude-code).
 
 ## Usage
 
+### Numbers in a range
+
 ```cpp
 #include <beman/inside/inside.hpp>
 using namespace beman::inside;
 
-// A percentage: integer values in [0, 100].
-using pct = inside<{0, 100}>;
-pct x = 42;
-pct y = 58;
-auto sum = x + y;          // inside<{0, 200}> — no overflow possible
-auto z = x + 1_ins;        // scalars need a grid: 1_ins, not 1
+using pct = inside<{0, 100}>;           // integers 0 … 100
+pct x{42}, y{58};
+auto sum = x + y;                       // inside<{0, 200}>: no overflow possible
+auto z   = x + 1_ins;                   // a scalar needs a grid: 1_ins, not 1
 
-// Fractional grid: −1 .. 1 in 1/16 384 steps (Q1.14 audio sample).
+// −1 … 1 in steps of 1/16384: a Q1.14 audio sample.
 using sample = inside<{{-1, 1}, per<16384>}, round_nearest>;
-sample s = 0.5;            // dyadic literal — exact
-s.numerator();             // 1   (denominator() == 2): exact read-out
+sample s{0.5};                          // a dyadic literal: exact
 
-// Clamped percentage: saturates instead of throwing.
 using safe_pct = inside<{0, 100}, clamp>;
-safe_pct p = 150;          // p == 100
+safe_pct p{150};                        // 100: saturates instead of failing
+
+auto q = x / inside<{1, 10}>{4};        // 10.5: exact, and a plain value
+auto r = x / inside<{0, 10}>{0};        // std::expected: this divisor's grid holds 0
 ```
+
+### Units
+
+```cpp
+#include <beman/inside/units.hpp>
+using namespace beman::inside::units;
+
+constexpr auto km = si::kilo(si::metre);
+quantity<km, inside<{{0, 500}, per<1000>}>> leg{12.5};    // 12.5 km, to the metre
+auto total = leg + just<800> * si::metre;                 // 13300 m: the sum runs in metres, exactly
+auto speed = total / quantity<si::minute, inside<{1, 600}>>{20};
+speed.in(km / si::hour);                                  // 39.9 km/h
+// total + just<1> * si::second;                          // does not compile: another dimension
+
+// Temperatures are points: 350 ℉ is exactly 530/3 ℃.
+auto oven = point<international::degree_Fahrenheit>(inside<{0, 600}>{350});
+oven.point_in(si::degree_Celsius);                        // 530/3 ℃
+
+// A currency of your own: a base dimension, its quantity, a unit.
+inline constexpr base_dimension dollar_dim{"dollar"};
+inline constexpr quantity_spec  dollars_def{"dollars", dollar_dim};
+inline constexpr named_unit     usd_def{"USD", spec_c<dollars_def>};
+inline constexpr auto           USD = unit_c<usd_def>;
+
+using usd = quantity<USD, inside<{{0, 1'000'000}, per<100>}, round_nearest>>;
+const usd subtotal{45.07};
+const usd tax = mul_into<usd>(subtotal, just<8> * percent);  // 3.61 USD: rounded once, to the cent
+```
+
+The policies, `on_wrap`/`on_clamp` hooks, `sum`, `mul_into`, `parse` and the
+math functions all work on quantities. See [docs/units.md](docs/units.md) and
+[`own_units.cpp`](examples/own_units.cpp).
 
 ### New to inside? Start with the tutorial
 
@@ -81,12 +127,12 @@ through a program. Read it first; everything else builds on it.
 
 ### Documentation
 
-**Guides** — [policies & error handling](docs/policies.md) ·
+**Guides** — [physical units](docs/units.md) ·
+[policies & error handling](docs/policies.md) ·
 [arithmetic & rounding](docs/arithmetic.md) ·
 [conversions, casts & text](docs/conversions.md) ([printing](docs/conversions.md#writing-text-to_string-operator-and-stdformat)) ·
 [storage & STL integration](docs/storage.md) ·
 [`beman::inside::math` — bit-exact math](docs/math.md) ·
-[physical units](docs/units.md) ·
 [mathematical & physical constants](docs/constants.md)
 
 **Special topics** — [for fixed-point users](docs/fixed-point.md) ·
@@ -102,19 +148,32 @@ reports)
 
 ### Examples
 
-[`examples/`](examples/) holds 38 self-contained programs, most of them with
-physical units or units of their own — start with
-[`basics.cpp`](examples/basics.cpp) (clamp, wrap, bounded loops); then e.g.
-[`clock.cpp`](examples/clock.cpp) (wrap with carry through s, min and h),
-[`money.cpp`](examples/money.cpp) (cents-exact USD as a dimension of its own),
-[`units.cpp`](examples/units.cpp) (exact unit conversions, kinds, temperatures),
-[`moon_rocket.cpp`](examples/moon_rocket.cpp) (a flight to the Moon with units),
-[`own_units.cpp`](examples/own_units.cpp) (units and base dimensions of your own),
-[`adc_calibration.cpp`](examples/adc_calibration.cpp) (ADC counts as a dimension, two-point calibration),
-[`expected_pipeline.cpp`](examples/expected_pipeline.cpp) (errors with their cause),
-[`json_io.cpp`](examples/json_io.cpp) (exact JSON numbers),
-[`wei.cpp`](examples/wei.cpp) (10^27-point grids in ETH, gwei/gas and USD/ETH),
-[`planck_to_cosmos.cpp`](examples/planck_to_cosmos.cpp) (grids past 64 bits, C++26).
+[`examples/`](examples/) holds 38 self-contained programs; each checks its own
+output.
+
+- **Start:** [`basics.cpp`](examples/basics.cpp) (clamp, wrap, bounded loops).
+- **Units:** [`units.cpp`](examples/units.cpp) (conversions, kinds, temperatures),
+  [`moon_rocket.cpp`](examples/moon_rocket.cpp) (a flight to the Moon),
+  [`kitchen.cpp`](examples/kitchen.cpp) (mixed kitchen units, oven points),
+  [`circuit.cpp`](examples/circuit.cpp) (Ohm's law, an RC filter),
+  [`navigation.cpp`](examples/navigation.cpp) (range and bearing).
+- **Units of your own:** [`own_units.cpp`](examples/own_units.cpp) (fathoms, °R, EUR, bytes),
+  [`money.cpp`](examples/money.cpp) (USD and ¢, a tax in %),
+  [`wei.cpp`](examples/wei.cpp) (ETH, gwei/gas and USD/ETH on 10^27-point grids),
+  [`clock.cpp`](examples/clock.cpp) (wrap carries through s, min, h, months),
+  [`decibels.cpp`](examples/decibels.cpp) (dB as a level),
+  [`adc_calibration.cpp`](examples/adc_calibration.cpp) (ADC counts, a two-point calibration),
+  [`game_hp.cpp`](examples/game_hp.cpp), [`rifle.cpp`](examples/rifle.cpp) and
+  [`torus_map.cpp`](examples/torus_map.cpp) (HP, rounds, pixels).
+- **Exact and big:** [`json_io.cpp`](examples/json_io.cpp) (exact JSON numbers),
+  [`expected_pipeline.cpp`](examples/expected_pipeline.cpp) (errors with their cause),
+  [`solar_system.cpp`](examples/solar_system.cpp) (nanometres across the solar system),
+  [`planck_to_cosmos.cpp`](examples/planck_to_cosmos.cpp) (grids past 64 bits, C++26).
+- **Signal and control:** [`audio_mixer.cpp`](examples/audio_mixer.cpp),
+  [`oscillator.cpp`](examples/oscillator.cpp) (a phase counter in slots of 2π/65536 rad),
+  [`pid_controller.cpp`](examples/pid_controller.cpp) (K in, % out),
+  [`sensor_fusion.cpp`](examples/sensor_fusion.cpp) (a weighted mean of ℃ points).
+
 Each builds as `beman.inside.examples.<name>` and runs as a ctest test
 (`ctest --preset gcc-debug -L example`).
 
@@ -265,3 +324,6 @@ include an appropriate `beman.inside` header from your source code.
 ```c++
 #include <beman/inside/inside.hpp>
 ```
+
+Units are in `<beman/inside/units.hpp>`, and their math functions in
+`<beman/inside/units_math.hpp>`; the single header holds both.
