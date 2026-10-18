@@ -3,7 +3,7 @@
 // grid, `a + b` must lower to a plain machine add -- no branch into the
 // checked/clamp/rational fallback.
 //
-//   g++ -std=c++23 -O2 -I ../../include -c p01_codegen.cpp -o p01.o
+//   g++ -std=c++26 -O2 -I ../../include -c p01_codegen.cpp -o p01.o
 //   objdump -d p01.o
 //
 // The repo enforces exactly this in CI: tests/beman/inside/check_codegen.sh disassembles

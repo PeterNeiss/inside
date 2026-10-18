@@ -3,8 +3,8 @@
 // The compiler is entitled to assume it never happens -- and then to
 // delete the code you wrote to check for it.
 //
-//   g++ -std=c++23 -O0 h01_overflow_ub.cpp -o h01_O0   ->  "no"
-//   g++ -std=c++23 -O2 h01_overflow_ub.cpp -o h01_O2   ->  "yes, always"
+//   g++ -std=c++26 -O0 h01_overflow_ub.cpp -o h01_O0   ->  "yes, always"
+//   g++ -std=c++26 -O2 h01_overflow_ub.cpp -o h01_O2   ->  "yes, always" (folded at any -O)
 
 #include <climits>
 #include <cstdio>

@@ -5,7 +5,7 @@
 // grid as fine as a double's own significand it is several times slower.
 // std:: is neither correctly rounded nor reproducible across libraries.
 //
-//   g++ -std=c++23 -O3 -mfma -DNDEBUG -I ../../include p04_math_cost.cpp -o p04
+//   g++ -std=c++26 -O3 -mfma -DNDEBUG -I ../../include p04_math_cost.cpp -o p04
 //   taskset -c 2 ./p04
 
 #include <chrono>

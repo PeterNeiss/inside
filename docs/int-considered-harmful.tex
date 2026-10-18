@@ -148,13 +148,13 @@
 C++'s \code{int} is not a number. It is a platform-dependent bit pattern with
 undefined behaviour at both ends of its range. It changes width and
 signedness in the middle of expressions, it rounds without being asked, and it
-records nothing about what it counts. This paper puts \code{int} in the dock
+records nothing about what it counts. C++26 changes none of this. This paper puts \code{int} in the dock
 with eleven hazards, each a complete program with its real output. One of them
 makes GCC emit \emph{no machine code at all} for \code{main}. The paper then
 shows, more briefly, that reaching for \code{double} trades one kind of silent
 wrongness for another.
 
-It then presents \code{inside}, a header-only C++23 library in which the range
+It then presents \code{inside}, a header-only library (C++23 and later) in which the range
 and step size of a number are part of its type. Arithmetic widens its result
 type at compile time, so overflow is unreachable. Division by zero is a value
 you can test. Fractions are exact rationals, physical units are checked
@@ -173,8 +173,10 @@ together with the programs that produced them.
 \noindent\textbf{A note on evidence.} Every program in this paper is in
 \file{docs/int-considered-harmful/} in the \code{inside} repository. Every
 output block was captured by running it, and every measurement comes from those
-programs or from the repository's generated \file{docs/performance.md}. The
-compiler is GCC 15.2.0 on \mbox{x86-64} Linux unless stated otherwise.
+programs or from the repository's generated \file{docs/performance.md}. Every
+program is built as C++26 (\code{-std=c++26}), and every language rule cited is
+C++26's. The compiler is GCC 15.2.0 on \mbox{x86-64} Linux unless stated
+otherwise.
 \code{inside} is at version 0.3 and still under development, so its API may
 change. The paper and the library were developed with
 \href{https://claude.com/claude-code}{Claude Code}, which wrote and ran the
@@ -235,7 +237,7 @@ undefined, so the compiler treats the comparison as always true and deletes it,
 without a warning:
 
 \begin{lstlisting}[style=term]
-$ g++ -std=c++23 -O0 h01_overflow_ub.cpp -o h01 && objdump -d h01
+$ g++ -std=c++26 -O0 h01_overflow_ub.cpp -o h01 && objdump -d h01
 0000000000001149 <grows(int)>:
     1149:   endbr64
     114d:   push   %rbp
@@ -275,7 +277,7 @@ iterations. At \code{-O2} the compiler follows the chain to its end:
 nothing after it is reachable, so \code{main} has no reachable exit:
 
 \begin{lstlisting}[style=term]
-$ g++ -std=c++23 -O2 -Wall h02_overflow_loop.cpp -o h02
+$ g++ -std=c++26 -O2 -Wall h02_overflow_loop.cpp -o h02
 $ objdump -d h02
 
 0000000000001040 <main>:
@@ -358,7 +360,8 @@ loop body entered  = 4 times on an EMPTY vector
 \end{lstlisting}
 
 \noindent
-Without the escape hatch, the loop over the empty vector would run about
+\code{-Wall} warns about the literal \code{-1 < 0u}, but not about the loop,
+where both sides are unsigned. Without the escape hatch, the loop over the empty vector would run about
 $1.8\times10^{19}$ times and index past the allocation on its first pass. This
 is a common source of exploitable memory-safety bugs, and it comes from a
 \emph{comparison}.
@@ -401,16 +404,22 @@ percentages. Because the remainder is negative for negative operands,
 
 \subsection{Shifts}
 
-\lstinputlisting[firstline=9,lastline=21]{int-considered-harmful/h08_shift.cpp}
+\lstinputlisting[firstline=11,lastline=25]{int-considered-harmful/h08_shift.cpp}
 \begin{lstlisting}[style=term]
-1 << 31            = -2147483648   <- undefined behaviour
--8 >> 1            = -4
+1 << 31            = -2147483648   <- defined, and negative
+-7 >> 1            = -4
+-7 / 2             = -3   <- same "halve", other answer
+1 << 32            = 1   <- undefined behaviour
 \end{lstlisting}
 
 \noindent
-Three shifts are undefined: shifting into the sign bit, shifting by the width
-or more, and shifting by a negative amount. The printed value is what the
-hardware did. The optimiser is not obliged to agree.
+C++20 made signed shifts well-defined. \code{<<} now wraps modulo $2^N$, and
+\code{>>} on a negative value rounds down. Defined does not mean right: a
+positive value shifted into the sign bit silently turns negative, and halving
+by \code{>>} and halving by \code{/} round in different directions. A shift
+count that is negative, or not less than the width, is still undefined. x86
+masks the count, so \code{1 << 32} printed \code{1} here. The standard
+promises nothing, and only UBSan reported it.
 
 \subsection{Narrowing is silent}
 
@@ -422,7 +431,8 @@ int 300 -> char    = 44
 \end{lstlisting}
 
 \noindent
-This is Ariane 5 Flight 501 in miniature. In June 1996, a horizontal velocity
+Since C++20 these conversions are defined: the value is reduced modulo $2^N$.
+Defined is not the same as right, and nothing warns. This is Ariane 5 Flight 501 in miniature. In June 1996, a horizontal velocity
 was converted to a 16-bit signed integer by software carried over from Ariane
 4, where the value had been provably smaller. The conversion overflowed 37
 seconds after ignition and the vehicle was lost. The code was correct for the
@@ -552,7 +562,7 @@ when it happens, and only in an instrumented build. It cannot see what the
 optimiser already deleted. On our first example:
 
 \begin{lstlisting}[style=term]
-$ g++ -std=c++23 -O2 -fsanitize=undefined h01_overflow_ub.cpp && ./a.out
+$ g++ -std=c++26 -O2 -fsanitize=undefined h01_overflow_ub.cpp && ./a.out
 h01_overflow_ub.cpp:24:14: runtime error: signed integer overflow:
     2147483647 + 1 cannot be represented in type 'int'
 INT_MAX            = 2147483647
@@ -569,9 +579,21 @@ arithmetic left to instrument.
 behaviour and makes the wrong answer reliable: the midpoint is still negative.
 It fixes the UB, not the arithmetic.
 
-\paragraph{Assertions are manual.} They exist only where someone wrote them,
-they state a range the type system does not know, and release builds often
-compile them out.
+\begin{sloppypar}
+\paragraph{Contracts and hardening are runtime checks.} C++26 contracts
+(\code{pre}, \code{post}, \code{contract\_assert}) put a precondition in the
+declaration, and a hardened standard library traps an out-of-bounds
+\code{v[i]}. Both check at runtime, only where someone wrote the predicate or
+called the library. A contract's evaluation semantic may be \code{ignore}, and
+then nothing is checked. Neither changes what \code{a + b} does.
+
+\paragraph{The standard's helpers fix one call at a time.} \code{std::midpoint},
+\code{std::cmp\_less} and \code{std::in\_range} (C++20) fix the midpoint and
+the mixed comparison. C++26 adds saturation (\code{std::add\_sat},
+\code{std::saturate\_cast}) and \code{<stdckdint.h>}, whose
+\code{ckd\_add} reports overflow. Each works only at the call sites that
+remember to use it, and only for the full range of a built-in type.
+\end{sloppypar}
 
 \paragraph{Static analysis is partial.} Range analysis across functions and
 data structures is undecidable in general. No analyser can tell that one
@@ -592,7 +614,8 @@ behaviour at the boundary. The proposal is simply to record that information.
 % ============================================================================
 \section{\code{inside}: putting the range in the type}\label{sec:inside}
 
-\code{inside} is a header-only C++23 library built around one template:
+\code{inside} is a header-only library built around one template. It needs
+C++23; C++26 adds grids past 64 bits and diagnostics that show values:
 
 \begin{lstlisting}
 template<grid G, policy_flag P>
@@ -738,7 +761,7 @@ A bare integer cannot enter the arithmetic at all, because nothing says which
 grid it belongs to. The diagnostic says so:
 
 \begin{lstlisting}[style=term]
-$ g++ -std=c++23 -I ../../include x01_bare_int_rejected.cpp
+$ g++ -std=c++26 -I ../../include x01_bare_int_rejected.cpp
    16 |   auto bad = x + 1;      // error: no grid for the literal
 include/beman/inside/arithmetic.hpp:552:31: error: static assertion failed:
    an inside cannot be combined with a raw scalar: give the scalar a grid --
@@ -778,8 +801,9 @@ and an index that would not be in range is never created.
 
 \subsection{No 64-bit ceiling}\label{sec:noceiling}
 
-Under C++23 the limits and notch of a grid are 64-bit fractions. Under C++26
-with static reflection (GCC~16, \code{-freflection}) they have no size limit:
+Without static reflection, the limits and notch of a grid are 64-bit fractions.
+With C++26 static reflection (GCC~16, \code{-freflection}) they have no size
+limit:
 \begin{itemize}
 \item large grid numbers are interned in static storage
       (\code{std::define\_static\_array}), so equal grids are the same type
@@ -801,8 +825,8 @@ The first line is not a typo. The literal \code{1e30} is a \code{double}, and
 that is its exact value; an exact $10^{30}$ is spelled \code{1e30\_g}. The
 product lives in $[0, 2^{200}]$, so the widening rule still applies: the result
 is a plain 32-byte value, with no allocation. No \code{double} and no 64-bit
-ratio can hold the notch $10^{-30}$. Compiled as C++23, the file is rejected
-with a message naming the C++26 requirement.
+ratio can hold the notch $10^{-30}$. Compiled without reflection, the file is
+rejected with a message naming the C++26 big-grid requirement.
 
 % ============================================================================
 \section{A worked migration}\label{sec:migration}
@@ -866,7 +890,7 @@ Every line is a \code{static\_assert}. An out-of-range constant is rejected
 outright:
 
 \begin{lstlisting}[style=term]
-$ g++ -std=c++23 -I ../../include x02_range_rejected.cpp
+$ g++ -std=c++26 -I ../../include x02_range_rejected.cpp
 error: 'constexpr void beman::inside::policy<W,E>::report(beman::inside::errc) const'
        called in a constant expression
 error: call to non-'constexpr' function 'void beman::inside::detail::raise(beman::inside::errc,
@@ -958,7 +982,9 @@ without an FPU. Each result is computed with a proved error bound and escalated
 by cheap tiers: compile-time tables for small grids, and the library's own
 \code{double} and double-\code{double} kernels with proved bounds. An integer
 path answers the rest, and it is the only path at compile time and without an
-FPU. Against a long-double reference, every function's maximum error is 0.5000
+FPU. C++26 makes most of \code{<cmath>} \code{constexpr} but leaves its
+accuracy unspecified, so a \code{std::sin} folded by the compiler need not
+match the one computed at runtime. Against a long-double reference, every function's maximum error is 0.5000
 notches (\file{docs/accuracy.md}). \code{-ffast-math} builds are refused with
 an \code{\#error}. Correct rounding costs time, which
 \S\ref{sec:mathcost} measures.
@@ -982,7 +1008,7 @@ grid arithmetic discharges; comparisons that run on raw storage. &
 \textbf{Zero cost} & Integer operands, where all the range reasoning happens in
 the type system. &
 Byte-identical disassembly (\S\ref{sec:codegen}); construct, add,
-\code{std::accumulate}, sort, transform at 96--100\% \\[0.6em]
+\code{std::accumulate}, sort, transform at 98--101\% \\[0.6em]
 \textbf{Additional cost} & Continuous (rational) grids, element-wise checking,
 transcendentals correctly rounded at full \code{double} resolution. &
 rational add about 5$\times$ \code{double}; checked loop at 20\%; fine math
@@ -1002,7 +1028,7 @@ least one direction.
 
 \lstinputlisting[firstline=16,lastline=28]{int-considered-harmful/p01_codegen.cpp}
 \begin{lstlisting}[style=term]
-$ g++ -std=c++23 -O2 -I ../../include -c p01_codegen.cpp && objdump -d p01.o
+$ g++ -std=c++26 -O2 -I ../../include -c p01_codegen.cpp && objdump -d p01.o
 
 0000000000000000 <inside_add(inside<...>, inside<...>)>:
    0:   endbr64
@@ -1044,20 +1070,20 @@ summed pass over 4096 values, repeated 20{,}000 times, with no throws.
 \toprule
 Implementation & ns/op & vs.\ unchecked & enforces? & vs.\ safe native \\
 \midrule
-\code{native unchecked}   & 0.440 & 100.0\% & no  & --- \\
-\code{native clamped}     & 0.461 &  95.4\% & yes & 100.0\% \\
-\code{native checked}     & 0.518 &  84.9\% & yes &  89.0\% \\
-\code{inside<checked>}    & 0.524 &  84.0\% & yes & \textbf{88.1\%} \\
-\code{inside<unsafe>}     & 0.439 & 100.3\% & no  & --- \\
+\code{native unchecked}   & 0.439 & 100.0\% & no  & --- \\
+\code{native clamped}     & 0.459 &  95.6\% & yes & 100.0\% \\
+\code{native checked}     & 0.518 &  84.6\% & yes &  88.5\% \\
+\code{inside<checked>}    & 0.522 &  84.1\% & yes & \textbf{87.9\%} \\
+\code{inside<unsafe>}     & 0.439 & 100.0\% & no  & --- \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 \noindent
-\emph{Mean of three runs pinned to one core; GCC 15.2.0, \code{-O2}, x86-64.}
+\emph{Mean of three runs pinned to one core; GCC 15.2.0, \code{-std=c++26 -O2}, x86-64.}
 
 The guarantee itself costs 5--15\% in plain C++. \code{inside<checked>} runs at
-99.0\% of the hand-rolled checked struct, so the library adds about 1\% on top.
+99.4\% of the hand-rolled checked struct, so the library adds under 1\% on top.
 \code{inside<unsafe>} matches unchecked native. This is a favourable pattern:
 a tight, predictable loop. It shows that the gap is small \emph{when you
 compare against code doing the same work}, not that \code{inside} is free
@@ -1099,9 +1125,9 @@ chain. \code{inside} lets intermediates widen and checks only the final store.
 \toprule
 Implementation & ns/op & vs.\ unchecked & runtime checks \\
 \midrule
-\code{native unchecked}  & 0.877 & 100.0\% & 0 \\
-\code{native checked}    & 1.073 &  81.8\% & 3 \\
-\code{inside<checked>}   & 0.890 &  \textbf{98.6\%} & \textbf{0} \\
+\code{native unchecked}  & 0.874 & 100.0\% & 0 \\
+\code{native checked}    & 1.067 &  81.9\% & 3 \\
+\code{inside<checked>}   & 0.881 &  \textbf{99.2\%} & \textbf{0} \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1119,7 +1145,7 @@ in \code{int} records what has already been established.
 
 \begin{sloppypar}
 \noindent
-These come from \file{docs/performance.md} (GCC 15, \code{-O3}, one run pinned
+These come from \file{docs/performance.md} (GCC 15, C++26, \code{-O3}, one run pinned
 to one core). \emph{rel.} is throughput relative to the first row, so smaller
 means slower. Frequency scaling was active, so read the ratios and instruction
 counts, not the nanoseconds. Sub-nanosecond rows move by 15--20\% from run to
@@ -1128,25 +1154,25 @@ run.
 
 \begin{benchtablec}{construct (u8 [0,200])}
   100.0\% & 0.30 & 7.00 & no & \texttt{native uint8} \\
-  62.7\% & 0.47 & 13.00 & yes & \texttt{native clamped} \\
-  90.7\% & 0.33 & 9.00 & yes & \texttt{native checked (exceptions)} \\
-  99.7\% & 0.30 & 7.00 & no & \texttt{inside<unsafe>} \\
+  63.6\% & 0.47 & 13.00 & yes & \texttt{native clamped} \\
+  90.4\% & 0.33 & 9.00 & yes & \texttt{native checked (exceptions)} \\
+  100.1\% & 0.30 & 7.00 & no & \texttt{inside<unsafe>} \\
 \end{benchtablec}
 
 \begin{benchtablec}{add (u8 [0,200])}
   100.0\% & 0.41 & 11.00 & no & \texttt{native uint8} \\
-  30.4\% & 1.35 & 15.00 & yes & \texttt{native clamped} \\
-  78.4\% & 0.52 & 17.00 & yes & \texttt{native checked (exceptions)} \\
-  99.0\% & 0.41 & 10.00 & no & \texttt{inside<unsafe>} \\
+  41.8\% & 0.98 & 15.00 & yes & \texttt{native clamped} \\
+  79.7\% & 0.52 & 17.00 & yes & \texttt{native checked (exceptions)} \\
+  97.8\% & 0.42 & 10.00 & no & \texttt{inside<unsafe>} \\
 \end{benchtablec}
 
 \begin{benchtable}{accumulate 1000 (u32 [0,200000], per element)}
   100.0\% & 0.05 & 1.03 & \texttt{native loop} \\
-  100.1\% & 0.05 & 1.03 & \texttt{inside<unsafe> loop} \\
+  99.9\% & 0.05 & 1.03 & \texttt{inside<unsafe> loop} \\
   19.8\% & 0.26 & 9.01 & \texttt{inside<checked> loop} \\
-  46.9\% & 0.11 & 2.47 & \texttt{beman::inside::sum<checked> (bulk check)} \\
-  100.2\% & 0.05 & 1.03 & \texttt{std::accumulate native} \\
-  100.1\% & 0.05 & 1.03 & \texttt{std::accumulate inside} \\
+  47.3\% & 0.11 & 2.47 & \texttt{beman::inside::sum<checked> (bulk check)} \\
+  100.0\% & 0.05 & 1.03 & \texttt{std::accumulate native} \\
+  99.8\% & 0.05 & 1.03 & \texttt{std::accumulate inside} \\
 \end{benchtable}
 
 \noindent
@@ -1156,9 +1182,9 @@ Without the check, both loops vectorise like native code.
 
 \begin{benchtable}{comparison ==}
   100.0\% & 0.53 & 12.00 & \texttt{native int16} \\
-  100.2\% & 0.53 & 12.00 & \texttt{inside same grid} \\
+  102.1\% & 0.52 & 12.00 & \texttt{inside same grid} \\
   130.0\% & 0.41 & 9.00 & \texttt{inside == int scalar (value raw)} \\
-  130.2\% & 0.41 & 9.00 & \texttt{inside Q8.8 == int scalar (index raw)} \\
+  129.9\% & 0.41 & 9.00 & \texttt{inside Q8.8 == int scalar (index raw)} \\
 \end{benchtable}
 
 \noindent
@@ -1166,19 +1192,19 @@ The grid lets a comparison against a scalar run on raw storage, which takes
 fewer instructions than native.
 
 \begin{benchtable}{rational add (continuous grid)}
-  100.0\% & 4.97 & 97.20 & \texttt{native fraction} \\
-  861.7\% & 0.58 & 12.00 & \texttt{std double (reference)} \\
-  186.6\% & 2.66 & 62.27 & \texttt{inside (continuous)} \\
+  100.0\% & 4.84 & 97.20 & \texttt{native fraction} \\
+  842.0\% & 0.58 & 12.00 & \texttt{std double (reference)} \\
+  182.3\% & 2.66 & 62.27 & \texttt{inside (continuous)} \\
 \end{benchtable}
 
 \noindent
 Overflow-checked rational addition beats a hand-rolled reduced \code{int64}
 fraction, and costs about 5$\times$ a \code{double}. That is the price of
 exactness. Only continuous grids pay it: any notched grid, thirds included,
-stores an integer index. Sort and \code{std::transform} run at 95.6\% and
-99.9\% of native.
+stores an integer index. Sort and \code{std::transform} run at 100.2\% and
+100.8\% of native.
 
-\textbf{Increment} (\code{u32 [0,200000]}) is the outlier, at 12.1\%, and the
+\textbf{Increment} (\code{u32 [0,200000]}) is the outlier, at 12.0\%, and the
 library's arithmetic is not the cause. As plain functions, the two increments
 compile identically (\code{lea; xor; cmp; cmovae}). In the benchmark, GCC
 gives the native counter a predicted branch and the \code{inside} one a
@@ -1195,12 +1221,12 @@ measures it onto the grid deduced from a $2^{-14}$ input:
 \toprule
 Function (deduced grid) & \code{std} ns & \code{inside} ns & rel. \\
 \midrule
-\code{sin}   & 3.73 & 4.70 &  79.4\% \\
-\code{hypot} & 3.04 & 3.14 &  97.0\% \\
-\code{atan2} & 7.70 & 7.54 & 102.1\% \\
-\code{log}   & 2.66 & 5.39 &  49.4\% \\
-\code{sqrt}  & 1.23 & 2.21 &  55.6\% \\
-\code{exp}   & 2.87 & 5.41 &  53.0\% \\
+\code{sin}   & 3.72 & 4.68 &  79.4\% \\
+\code{hypot} & 2.97 & 3.15 &  94.3\% \\
+\code{atan2} & 7.71 & 7.64 & 101.0\% \\
+\code{log}   & 2.61 & 5.36 &  48.7\% \\
+\code{sqrt}  & 1.23 & 2.20 &  55.6\% \\
+\code{exp}   & 2.87 & 5.36 &  53.7\% \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1217,17 +1243,17 @@ fine as a \code{double}:
 \toprule
 Function & \code{std} ns & deduced grid ns & \code{double}-fine ns & fine vs.\ \code{std} \\
 \midrule
-\code{sin}  ($2^{-52}$) & 3.40 & 4.91 & 14.6 & 4.3$\times$ \\
-\code{exp}  ($2^{-40}$ on $[0,4096]$) & 2.68 & 5.60 & 12.5 & 4.7$\times$ \\
-\code{log}  ($2^{-48}$) & 2.34 & 5.58 & 17.4 & 7.4$\times$ \\
-\code{sqrt} ($2^{-51}$) & 1.23 & 2.39 & 10.5 & 8.5$\times$ \\
+\code{sin}  ($2^{-52}$) & 3.40 & 4.93 & 14.5 & 4.3$\times$ \\
+\code{exp}  ($2^{-40}$ on $[0,4096]$) & 2.67 & 5.61 & 12.4 & 4.7$\times$ \\
+\code{log}  ($2^{-48}$) & 2.32 & 5.57 & 17.4 & 7.5$\times$ \\
+\code{sqrt} ($2^{-51}$) & 1.23 & 2.38 & 10.5 & 8.6$\times$ \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 \noindent
-\emph{Mean of three runs pinned to one core; GCC 15.2.0, \code{-O3 -mfma},
-x86-64.}
+\emph{Mean of three runs pinned to one core; GCC 15.2.0,
+\code{-std=c++26 -O3 -mfma}, x86-64.}
 
 At full \code{double} resolution, correct rounding costs \textbf{4 to
 9$\times$} \code{std}. In return, the results are correct to the last bit and
@@ -1330,7 +1356,7 @@ File & Demonstrates \\
 \file{h05\_signed\_unsigned.cpp}  & Loop over an empty container \\
 \file{h06\_promotion.cpp}         & Promotion, \code{char} signedness, \code{int} width \\
 \file{h07\_truncdiv.cpp}          & Truncation toward zero, negative remainder \\
-\file{h08\_shift.cpp}             & Shift into the sign bit \\
+\file{h08\_shift.cpp}             & Defined shifts that mislead; a count past the width \\
 \file{h09\_units.cpp}             & Cents added to dollars \\
 \file{h10\_binsearch.cpp}         & Midpoint outside the range \\
 \file{h11\_narrowing.cpp}         & Silent narrowing (Ariane 5) \\
@@ -1380,8 +1406,9 @@ File & Demonstrates \\
 \item D.~Goldberg, ``What Every Computer Scientist Should Know About
       Floating-Point Arithmetic,'' \emph{ACM Computing Surveys},
       23(1):5--48, 1991.
-\item ISO/IEC 14882, \emph{Programming languages --- C++}, \S7.1 [expr.pre]
-      (undefined behaviour on overflow), \S7.4 [conv.integral].
+\item ISO/IEC 14882, \emph{Programming languages --- C++} (C++26):
+      [expr.pre] (undefined behaviour on overflow), [expr.shift],
+      [expr.mul], [conv.integral].
 \item A.~Ziv, ``Fast evaluation of elementary mathematical functions with
       correctly rounded last bit,'' \emph{ACM Transactions on Mathematical
       Software}, 17(3):410--423, 1991.

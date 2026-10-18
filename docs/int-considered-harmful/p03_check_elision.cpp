@@ -20,7 +20,7 @@
 // Widen `total` to [0,199] and the store check reappears -- the proof is
 // genuinely being done, not skipped.
 //
-//   g++ -std=c++23 -O2 -I ../../include p03_check_elision.cpp -o p03 && ./p03
+//   g++ -std=c++26 -O2 -I ../../include p03_check_elision.cpp -o p03 && ./p03
 
 #include <chrono>
 #include <cstdint>

@@ -13,7 +13,7 @@
 // belong in a fair comparison. 1 is included only to show what the guarantee
 // costs in the first place.
 //
-//   g++ -std=c++23 -O2 -I ../../include p02_fair_bench.cpp -o p02 && ./p02
+//   g++ -std=c++26 -O2 -I ../../include p02_fair_bench.cpp -o p02 && ./p02
 
 #include <algorithm>
 #include <chrono>
