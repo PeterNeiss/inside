@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Internal — include "beman/inside/inside.hpp" (the umbrella), not this directly.
-// Defines the core `beman::inside::inside<G, P>` type; the umbrella adds the free-function
-// casts/arithmetic/range layers that depend on this complete type.
+// The core type beman::inside::inside<G, P>: construction and try_make,
+// compound assignment, ++/--, the conversions (imax, rational, double,
+// to<T>/as<T>), numerator()/denominator(), raw()/from_raw, the per-store
+// overrides (with_clamp, with_snap, policy<F>) and hooks (on_wrap, on_clamp,
+// on_error, on_overflow), parse(first, last), just<…> and the _ins literal.
+// The umbrella adds the casts, arithmetic, range and cursor layers, which
+// need this complete type.
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_CORE_HPP
 #define BEMAN_INSIDE_CORE_HPP

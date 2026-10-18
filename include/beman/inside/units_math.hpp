@@ -8,8 +8,14 @@
 //   sqrt(q), cbrt(q)                 the unit's root (m² → m), the number's
 //   abs, floor, ceil, round, trunc   on the number, in q's unit
 //   sin, cos, tan(q)                 of an angle in radians: a plain inside
-//   asin, acos, atan(x), atan2(y, x) an angle in radians
+//   sin_into, cos_into<Out>(q)       also of an angle in a unit with a factor
+//                                    of π (°, a turn): reduced exactly by
+//                                    quarter turns, exact at Niven's values
+//   asin, acos, atan(x), atan2(y, x) an angle in radians (x an inside or a
+//                                    dimensionless quantity)
 //   hypot(x, y)                      in the common unit
+//   exp_into … atanh_into, log10_into, pow_base_into<Out, B>, pow_into
+//                                    of an inside or a dimensionless quantity
 //   fn_into<Out>(…)                  each of them with the result's number
 //                                    named: Out rounds, the input need not
 //

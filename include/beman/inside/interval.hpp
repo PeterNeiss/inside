@@ -14,9 +14,10 @@ BEMAN_INSIDE_WARNINGS_PUSH
 namespace beman::inside {
 //---------------------------------------------------------------------------
 // interval — structural NTTP type (public members only) with inclusive Lower
-// and Upper bounds. Like `grid`, its operator+/-/*// computes result intervals
-// at compile time; division returns errc::division_by_zero when the divisor straddles zero
-// (grid::operator/ re-runs on the two zero-free halves and unions them).
+// and Upper bounds, and includes / excludes / overlaps. Like `grid`, its
+// + - * / compute result intervals at compile time; division returns
+// errc::division_by_zero when the divisor straddles zero (grid::operator/
+// re-runs on the two zero-free halves and joins them).
 //---------------------------------------------------------------------------
 inline namespace BEMAN_INSIDE_GRID_ABI {
 struct interval {

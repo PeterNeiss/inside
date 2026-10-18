@@ -16,7 +16,11 @@ BEMAN_INSIDE_WARNINGS_PUSH
 
 namespace beman::inside {
 //---------------------------------------------------------------------------
-// policy_flag
+// policy_flag — the policy bits of inside<G, P> (none, ignore_zero,
+// ignore_range, snap and the rounding modes, clamp, wrap, checked, unsafe),
+// has_flag / is_checked, the rounding precedence (rounding_of), the hook
+// factories on_clamp / on_wrap / on_error / on_overflow with their
+// is_*_action traits, and the flags each hook implies.
 //---------------------------------------------------------------------------
 using policy_flag = unsigned long long;
 

@@ -290,8 +290,13 @@ BEMAN_INSIDE_WARNINGS_PUSH
 //  beman/inside/core.hpp
 // ======================================================================
 // Internal — include "beman/inside/inside.hpp" (the umbrella), not this directly.
-// Defines the core `beman::inside::inside<G, P>` type; the umbrella adds the free-function
-// casts/arithmetic/range layers that depend on this complete type.
+// The core type beman::inside::inside<G, P>: construction and try_make,
+// compound assignment, ++/--, the conversions (imax, rational, double,
+// to<T>/as<T>), numerator()/denominator(), raw()/from_raw, the per-store
+// overrides (with_clamp, with_snap, policy<F>) and hooks (on_wrap, on_clamp,
+// on_error, on_overflow), parse(first, last), just<…> and the _ins literal.
+// The umbrella adds the casts, arithmetic, range and cursor layers, which
+// need this complete type.
 //---------------------------------------------------------------------------
 
 BEMAN_INSIDE_WARNINGS_PUSH
@@ -3898,9 +3903,10 @@ BEMAN_INSIDE_WARNINGS_POP
 namespace beman::inside {
 //---------------------------------------------------------------------------
 // interval — structural NTTP type (public members only) with inclusive Lower
-// and Upper bounds. Like `grid`, its operator+/-/*// computes result intervals
-// at compile time; division returns errc::division_by_zero when the divisor straddles zero
-// (grid::operator/ re-runs on the two zero-free halves and unions them).
+// and Upper bounds, and includes / excludes / overlaps. Like `grid`, its
+// + - * / compute result intervals at compile time; division returns
+// errc::division_by_zero when the divisor straddles zero (grid::operator/
+// re-runs on the two zero-free halves and joins them).
 //---------------------------------------------------------------------------
 inline namespace BEMAN_INSIDE_GRID_ABI {
 struct interval {
@@ -4191,7 +4197,11 @@ BEMAN_INSIDE_WARNINGS_PUSH
 
 namespace beman::inside {
 //---------------------------------------------------------------------------
-// policy_flag
+// policy_flag — the policy bits of inside<G, P> (none, ignore_zero,
+// ignore_range, snap and the rounding modes, clamp, wrap, checked, unsafe),
+// has_flag / is_checked, the rounding precedence (rounding_of), the hook
+// factories on_clamp / on_wrap / on_error / on_overflow with their
+// is_*_action traits, and the flags each hook implies.
 //---------------------------------------------------------------------------
 using policy_flag = unsigned long long;
 
@@ -4479,11 +4489,13 @@ BEMAN_INSIDE_WARNINGS_POP
 
 namespace beman::inside {
 //---------------------------------------------------------------------------
-// grid — structural NTTP type (public members only). Discretizes its interval
-// into notch-sized steps (interval must divide evenly by notch; Notch == 0
-// allows every rational, raw not offset). Its operator+/-/*// is the engine of
-// compile-time result-grid inference: every inside arithmetic operator computes
-// its result grid here, so the result interval contains every reachable value.
+// grid — structural NTTP type (public members only): an interval split into
+// notch-sized steps (the notch must divide the interval; Notch == 0 allows
+// every rational in it), optionally with a MaxDenominator bound. Its + - * /
+// are the engine of compile-time result-grid inference: every inside operator
+// computes its result grid here, so the result holds every reachable value.
+// Also here: bounds (closed, half_open, open), grid::try_make for runtime
+// checks, max_denominator, and raw_for (the storage a grid deduces).
 //---------------------------------------------------------------------------
 // A grid corner: a number (int / float / rational / grid number), or
 // anything that converts to the 64-bit rational, such as an inside (the grid
@@ -8447,6 +8459,8 @@ BEMAN_INSIDE_WARNINGS_POP
 // policy — runtime policy carrier, plus `policy_ref` for per-operation dispatch.
 //   policy<F, E>  — compile-time flags F plus an optional error_ref E holding a
 //                   beman::inside::errc& (EBO so the no-error-code form is zero-sized).
+//   make_policy<F>() and the named policies rounded_toward_zero, rounded_nearest,
+//                   rounded_floor, rounded_ceil, rounded_half_even, clamped, wrapped.
 //   policy_ref    — wraps an inside& with a policy<...> and a tuple of on_* actions;
 //                   compound ops flow through it, routing each action to the right
 //                   callback at the right pipeline stage.
@@ -11088,9 +11102,10 @@ BEMAN_INSIDE_WARNINGS_PUSH
 
 
 //---------------------------------------------------------------------------
-// Free-function casts complementing the constructors. Unlike a direct B{value}
-// call, these read naturally in algorithm callbacks and make the intent (clamp
-// vs. wrap vs. throw vs. trust) explicit at the call site.
+// Free-function casts next to the constructors: clamp_cast<B> (optionally
+// clamp_cast<B, round_floor> & co.), wrap_cast<B>, checked_cast<B> and
+// unchecked_cast<B>. Unlike B{value} they name the intent (clamp, wrap,
+// report, trust) at the call site, which reads well in algorithm callbacks.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 namespace detail {
@@ -11176,12 +11191,16 @@ BEMAN_INSIDE_WARNINGS_PUSH
 
 
 //---------------------------------------------------------------------------
-// Free-function arithmetic — wraps detail::addition/multiplication/division/
-// modulo with caller-friendly overloads:
-//   add(l, r) / add(l, r, policy<F>{}) / add(l, r, on_overflow(λ)) /
-//   add(l, r, ec) / l + r
-// Plus the variadic folds add_all/mul_all and *_into<Target>, and the
-// std::expected operator overloads (an error operand propagates through).
+// Free-function arithmetic over detail::addition/multiplication/division/
+// modulo:
+//   add, sub, mul, div, mod, divmod   with a policy, hooks or an errc&
+//   mul_into<Out>, div_into<Out>      the exact result, rounded once into Out
+//   add_all, mul_all, sum<Target>     folds; sum checks the total once
+//   min, max, midpoint                ADL-found, exact on mixed grids
+//   dot, cross, lerp                  2-D helpers that widen like + and *
+//   common_inside_t, std::common_type the hull of two grids
+// and the operators, including the std::expected-lift overloads (an error
+// operand passes through; detail::lift_operand_v names the operand types).
 //---------------------------------------------------------------------------
 namespace beman::inside {
 //---------------------------------------------------------------------------
@@ -11756,7 +11775,8 @@ BEMAN_INSIDE_WARNINGS_PUSH
 
 
 //---------------------------------------------------------------------------
-// inside_range — random-access range over a grid. Walks by notch index (any
+// inside_range — random-access range over a grid, and values<T>, the same
+// range named by a type (every value of T). Walks by notch index (any
 // non-zero notch), each `*it` computing the exact `Lower + index·Notch`; the
 // iterator wraps modulo the slot count so a mid-range start visits every slot
 // once. A random-access sized view (view_interface adds [], front, back,
@@ -17463,9 +17483,10 @@ BEMAN_INSIDE_WARNINGS_POP
 
 
 //---------------------------------------------------------------------------
-// beman::inside::math — the transcendental functions (detail/math_entry.hpp)
-// and the grid operations (abs, sign, copysign, floor, ceil, round, trunc,
-// fmod, pown).
+// beman::inside::math — the transcendental functions (detail/math_entry.hpp),
+// the grid operations (abs, sign, copysign, floor, ceil, round, trunc, fmod,
+// pown), the constants (pi, e, … from detail/math_constants.hpp) and
+// unit_amplitude<K>, the [-1, 1] output grid at resolution 1/K.
 //
 // Every transcendental returns the correctly rounded point of its output grid,
 // under the output's rounding mode, at whatever precision that grid needs —
@@ -18047,9 +18068,24 @@ BEMAN_INSIDE_WARNINGS_PUSH
 //
 // Magnitudes are exact rationals times a power of π. A π magnitude (degree ↔
 // radian) has no exact rescale: it rounds once, through value_cast with a
-// target representation and a rounding flag. Grid numbers are 64-bit under
-// C++23; the prefixes and constants that need more (yocto, quetta, the eV)
-// exist only under C++26 big grids (BEMAN_INSIDE_BIG_GRIDS).
+// target representation and a rounding flag (units_math.hpp).
+//
+// Also here:
+//   quantity_point, point<U>(v), the origins     ℃ and ℉ points, exact shifts
+//   quantity_cast, value_cast, try_value_cast    kinds and representations
+//   named_unit, quantity_spec, point_origin,     units, kinds, origins and
+//   base_dimension, unit_c / spec_c / origin_c   dimensions of your own
+//   q.on_wrap / on_clamp / on_error / on_overflow, ++q, Q::try_make
+//   mul_into, div_into, add_all, mul_all, sum<Q>, divmod, parse<Q>,
+//   conversion_overflows / rounds / loses<Q>, clamp_cast / wrap_cast<Q>,
+//   dot, cross, lerp                             inside's algorithms
+//   percent, per_mille                           dimensionless units
+//   to_string, operator<<, std::formatter        number, then the symbol
+// The catalog: isq, si, si2019, international. Grid numbers are 64-bit under
+// C++23; the prefixes past 10^±18 (quecto … quetta), the eV, the Da and the
+// SI constants h, e, k and N_A exist only under C++26 big grids
+// (BEMAN_INSIDE_BIG_GRIDS). The derived physical constants are in
+// constants.hpp.
 //---------------------------------------------------------------------------
 
 BEMAN_INSIDE_WARNINGS_PUSH
@@ -18067,9 +18103,12 @@ BEMAN_INSIDE_WARNINGS_PUSH
 //
 // Provides:
 //   * to_string(rational | interval | grid | insidable | arithmetic | errc)
-//   * to_string_debug(insidable)        — value + raw + raw-type + grid
-//   * operator<<(std::ostream&, ...)
-//   * std::formatter<inside<G,P>> / std::formatter<rational>   (when <format>)
+//   * to_string_debug(insidable)        — value + raw + raw type + grid
+//   * operator<< and operator>> (one token, failbit on error)
+//   * parse<B, F>(std::string_view), parse_exact<B>(std::string_view)
+//   * std::formatter<inside<G, P>>, std::formatter<rational> (with <format>)
+//   * type_name_of<B>                   — a readable name of an inside type
+// units.hpp builds on it (to_string and std::formatter of quantities).
 //---------------------------------------------------------------------------
 
 BEMAN_INSIDE_WARNINGS_PUSH
@@ -21565,8 +21604,9 @@ BEMAN_INSIDE_WARNINGS_PUSH
 // `uint8` is [0, 255] in a std::uint8_t (save int64, which stops one short of
 // -2^63). Q-format types keep power-of-two notches.
 //
-// These default to `checked`; for wraparound/saturation declare your own (e.g.
-// `inside<{0,254}, wrap>`).
+// The integer widths are `checked`; unorm and the Q formats round to nearest.
+// For wraparound or saturation declare your own (`inside<{0, 255}, wrap>`),
+// or use the counters clamp_counter<Max> and wrap_counter<Max> below.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 //-------------------------------------------------------------------------
@@ -21834,8 +21874,14 @@ BEMAN_INSIDE_WARNINGS_POP
 //   sqrt(q), cbrt(q)                 the unit's root (m² → m), the number's
 //   abs, floor, ceil, round, trunc   on the number, in q's unit
 //   sin, cos, tan(q)                 of an angle in radians: a plain inside
-//   asin, acos, atan(x), atan2(y, x) an angle in radians
+//   sin_into, cos_into<Out>(q)       also of an angle in a unit with a factor
+//                                    of π (°, a turn): reduced exactly by
+//                                    quarter turns, exact at Niven's values
+//   asin, acos, atan(x), atan2(y, x) an angle in radians (x an inside or a
+//                                    dimensionless quantity)
 //   hypot(x, y)                      in the common unit
+//   exp_into … atanh_into, log10_into, pow_base_into<Out, B>, pow_into
+//                                    of an inside or a dimensionless quantity
 //   fn_into<Out>(…)                  each of them with the result's number
 //                                    named: Out rounds, the input need not
 //

@@ -14,7 +14,8 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <ranges>
 
 //---------------------------------------------------------------------------
-// inside_range — random-access range over a grid. Walks by notch index (any
+// inside_range — random-access range over a grid, and values<T>, the same
+// range named by a type (every value of T). Walks by notch index (any
 // non-zero notch), each `*it` computing the exact `Lower + index·Notch`; the
 // iterator wraps modulo the slot count so a mid-range start visits every slot
 // once. A random-access sized view (view_interface adds [], front, back,

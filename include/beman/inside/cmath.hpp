@@ -14,9 +14,10 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <expected>
 
 //---------------------------------------------------------------------------
-// beman::inside::math — the transcendental functions (detail/math_entry.hpp)
-// and the grid operations (abs, sign, copysign, floor, ceil, round, trunc,
-// fmod, pown).
+// beman::inside::math — the transcendental functions (detail/math_entry.hpp),
+// the grid operations (abs, sign, copysign, floor, ceil, round, trunc, fmod,
+// pown), the constants (pi, e, … from detail/math_constants.hpp) and
+// unit_amplitude<K>, the [-1, 1] output grid at resolution 1/K.
 //
 // Every transcendental returns the correctly rounded point of its output grid,
 // under the output's rounding mode, at whatever precision that grid needs —

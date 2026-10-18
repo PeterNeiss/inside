@@ -8,9 +8,10 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <beman/inside/detail/compare.hpp> // the inside type and its comparisons
 
 //---------------------------------------------------------------------------
-// Free-function casts complementing the constructors. Unlike a direct B{value}
-// call, these read naturally in algorithm callbacks and make the intent (clamp
-// vs. wrap vs. throw vs. trust) explicit at the call site.
+// Free-function casts next to the constructors: clamp_cast<B> (optionally
+// clamp_cast<B, round_floor> & co.), wrap_cast<B>, checked_cast<B> and
+// unchecked_cast<B>. Unlike B{value} they name the intent (clamp, wrap,
+// report, trust) at the call site, which reads well in algorithm callbacks.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 namespace detail {

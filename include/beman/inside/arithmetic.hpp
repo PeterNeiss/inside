@@ -14,12 +14,16 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <type_traits> // std::common_type
 
 //---------------------------------------------------------------------------
-// Free-function arithmetic — wraps detail::addition/multiplication/division/
-// modulo with caller-friendly overloads:
-//   add(l, r) / add(l, r, policy<F>{}) / add(l, r, on_overflow(λ)) /
-//   add(l, r, ec) / l + r
-// Plus the variadic folds add_all/mul_all and *_into<Target>, and the
-// std::expected operator overloads (an error operand propagates through).
+// Free-function arithmetic over detail::addition/multiplication/division/
+// modulo:
+//   add, sub, mul, div, mod, divmod   with a policy, hooks or an errc&
+//   mul_into<Out>, div_into<Out>      the exact result, rounded once into Out
+//   add_all, mul_all, sum<Target>     folds; sum checks the total once
+//   min, max, midpoint                ADL-found, exact on mixed grids
+//   dot, cross, lerp                  2-D helpers that widen like + and *
+//   common_inside_t, std::common_type the hull of two grids
+// and the operators, including the std::expected-lift overloads (an error
+// operand passes through; detail::lift_operand_v names the operand types).
 //---------------------------------------------------------------------------
 namespace beman::inside {
 //---------------------------------------------------------------------------

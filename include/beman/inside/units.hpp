@@ -20,9 +20,24 @@
 //
 // Magnitudes are exact rationals times a power of π. A π magnitude (degree ↔
 // radian) has no exact rescale: it rounds once, through value_cast with a
-// target representation and a rounding flag. Grid numbers are 64-bit under
-// C++23; the prefixes and constants that need more (yocto, quetta, the eV)
-// exist only under C++26 big grids (BEMAN_INSIDE_BIG_GRIDS).
+// target representation and a rounding flag (units_math.hpp).
+//
+// Also here:
+//   quantity_point, point<U>(v), the origins     ℃ and ℉ points, exact shifts
+//   quantity_cast, value_cast, try_value_cast    kinds and representations
+//   named_unit, quantity_spec, point_origin,     units, kinds, origins and
+//   base_dimension, unit_c / spec_c / origin_c   dimensions of your own
+//   q.on_wrap / on_clamp / on_error / on_overflow, ++q, Q::try_make
+//   mul_into, div_into, add_all, mul_all, sum<Q>, divmod, parse<Q>,
+//   conversion_overflows / rounds / loses<Q>, clamp_cast / wrap_cast<Q>,
+//   dot, cross, lerp                             inside's algorithms
+//   percent, per_mille                           dimensionless units
+//   to_string, operator<<, std::formatter        number, then the symbol
+// The catalog: isq, si, si2019, international. Grid numbers are 64-bit under
+// C++23; the prefixes past 10^±18 (quecto … quetta), the eV, the Da and the
+// SI constants h, e, k and N_A exist only under C++26 big grids
+// (BEMAN_INSIDE_BIG_GRIDS). The derived physical constants are in
+// constants.hpp.
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_UNITS_HPP
 #define BEMAN_INSIDE_UNITS_HPP
