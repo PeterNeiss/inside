@@ -4,9 +4,9 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-`#include <beman/inside/constants.hpp>` gives you the common mathematical
-constants and the physical constants. Each physical constant is a
-[quantity](units.md) of its ISQ kind.
+`<beman/inside/constants.hpp>` gives the common mathematical constants, as
+one-point insides, and the physical constants, each a [quantity](units.md) of
+its ISQ kind. Products of constants are exact.
 
 ```cpp
 #include <beman/inside/constants.hpp>
@@ -14,18 +14,26 @@ using namespace beman::inside;
 using namespace beman::inside::units;
 namespace pc = units::constants;
 
-auto x   = angle * math::pi;                                    // a point inside
-auto R   = pc::avogadro_constant * pc::boltzmann_constant;      // exact (C++26)
-auto E   = pc::planck_constant * quantity<si::tera(si::hertz), inside<{0, 1000}>>{540};
-auto E_J = E.in(si::joule);                                     // 3.578077881e-19 J, exact
+using angle_t = inside<{{0, 4}, per<1024>}>;
+auto x = angle_t{1.5} * math::pi;                                   // an exact product with π's rational
+auto d = pc::speed_of_light_in_vacuum * quantity<si::second, inside<{0, 10}>>{2};
+d.in(si::metre);                                                    // 599584916 m, exact
+auto w = pc::standard_gravity * quantity<si::kilogram, inside<{0, 100}>>{70};
+w.in(si::newton);                                                   // 686.46550 N, exact
+
+// C++26 big grids: h, e, k and N_A need grid numbers past 64 bits.
+auto R = pc::avogadro_constant * pc::boltzmann_constant;            // exact
+std::format("{:.14e}", R.in(si::joule / (si::mole * si::kelvin)));  // 8.31446261815324e+00 J/(K mol)
+auto E = pc::planck_constant * quantity<si::tera(si::hertz), inside<{0, 1000}>>{540};
+std::format("{:.9e}", E.in(si::joule));                             // 3.578077881e-19 J
 ```
 
 ## Mathematical constants: `math::`
 
 Each constant is a point `inside`, `just<r>`, where `r` is the best rational
-whose numerator and denominator stay below 2^31. The numbers stay small, so
-products of a few constants keep 64-bit grid numbers. `cmath.hpp` defines
-them too.
+whose numerator and denominator stay below 2³¹. The numbers stay small, so
+products of a few constants keep 64-bit grid numbers. `cmath.hpp` defines them
+too.
 
 | Name | Value | Error |
 |---|---|---|
@@ -40,9 +48,11 @@ them too.
 | `zeta3` | Apéry's constant ζ(3) | 2^-60.6 |
 
 For a correctly rounded value on a grid you choose, call the function:
-`math::sqrt_into<Out>(just<2>)`, `math::exp_into<Out>(just<1>)`. For π in a
-unit, scale the unit with `mag_pi` ([units.md](units.md#factors-of-π-round-once)),
-so π is never approximated.
+`math::sqrt_into<Out>(just<2>)`, `math::exp_into<Out>(just<1>)`. Two ways
+avoid approximating π at all: scale a unit with `mag_pi`
+([units.md](units.md#factors-of-π-round-once)), and take the sine of an angle
+in degrees or turns, which `units::sin_into` reduces exactly
+([math.md](math.md#angles-over-many-turns)).
 
 ## Physical constants: `units::constants::`
 
@@ -104,6 +114,7 @@ not represented, so a result is only as good as the constant behind it.
 
 ## In the single header
 
-The math constants come with `cmath.hpp`. The physical constants sit inside
-the units guard, so `BEMAN_INSIDE_NO_UNITS` drops them
+The math constants come with `cmath.hpp`, also freestanding. The physical
+constants sit inside the units guard, which is inside the string guard: both
+`BEMAN_INSIDE_NO_UNITS` and `BEMAN_INSIDE_NO_STRING` drop them
 ([single-header.md](single-header.md)).
