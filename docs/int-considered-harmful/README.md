@@ -28,8 +28,8 @@ reflection (GCC 16):
 g++-16 -std=c++26 -freflection -O2 -I ../../include b11_no_ceiling.cpp -o b11
 ```
 
-The committed single header (`../../single_include`) holds `io.hpp` and
-`cmath.hpp` as well; to build a program against it, keep only the
+The committed single header (`../../single_include`) holds `io.hpp`,
+`cmath.hpp` and `units.hpp` as well; to build a program against it, keep only the
 `#include <beman/inside/inside.hpp>` line and use `-I ../../single_include`.
 
 ## Programs that are meant to fail
@@ -74,7 +74,8 @@ g++ -std=c++23 -O2 -I ../../include -c p01_codegen.cpp -o p01.o
 objdump -d --no-show-raw-insn -C p01.o
 ```
 
-`inside_add` and `native_add` lower to identical instructions. The repository
+`inside_add` (checked, returning the widened sum) and `native_add` lower to
+identical instructions. The repository
 enforces the same property in CI via `tests/beman/inside/check_codegen.sh`.
 
 ## Rebuilding the paper

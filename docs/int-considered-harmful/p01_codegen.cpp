@@ -6,19 +6,19 @@
 //   g++ -std=c++23 -O2 -I ../../include -c p01_codegen.cpp -o p01.o
 //   objdump -d p01.o
 //
-// The repo enforces exactly this in CI: tests/check_codegen.sh disassembles
+// The repo enforces exactly this in CI: tests/beman/inside/check_codegen.sh disassembles
 // the kernels and fails the build if any of them contains a `call`.
 
 #include <beman/inside/inside.hpp>
 
 using namespace beman::inside;
 
-using val = inside<{0, 1000}, unsafe>;
+using val = inside<{0, 1000}>;
 
 // The inside version.
-[[gnu::noinline]] val inside_add(val a, val b)
+[[gnu::noinline]] auto inside_add(val a, val b)
 {
-  return val{a.raw() + b.raw()};
+  return a + b;   // inside<{0, 2000}>: the sum widens, nothing to check
 }
 
 // The native version, for comparison.
