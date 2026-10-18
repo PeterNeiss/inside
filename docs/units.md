@@ -72,7 +72,7 @@ An operation that cannot happen is a constraint failure:
 for `q * 2`, for `q.in(si::second)` on a length, and for any number operation
 inside rejects. A call says why: each reason is a deleted overload with a
 message (`= delete("…")`; GCC 15+ and Clang 19+ also in C++23,
-[diagnostics.md](diagnostics.md#reading-a-quantity-in-an-error)).
+[diagnostics.md](diagnostics.md#named-reasons-for-a-unit-mismatch)).
 
 ## Conversions are grid rescales
 
@@ -350,8 +350,8 @@ with those, E = h·ν comes out exact.
 units.hpp includes io.hpp, `<ostream>` and `<string>`, so it needs a hosted
 standard library ([freestanding.md](freestanding.md)). In the single header
 the units sit inside the string guard: `BEMAN_INSIDE_NO_STRING` drops them
-along with io.hpp, and `BEMAN_INSIDE_NO_UNITS` drops only units.hpp and
-units_math.hpp. Under `BEMAN_INSIDE_MATH_NO_FP` on a hosted build, everything
+along with io.hpp, and `BEMAN_INSIDE_NO_UNITS` drops only units.hpp,
+units_math.hpp and the physical constants. Under `BEMAN_INSIDE_MATH_NO_FP` on a hosted build, everything
 here works: neither header uses floating point.
 
 ## Compile time

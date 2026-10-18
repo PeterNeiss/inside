@@ -249,4 +249,4 @@ auto b = try_value_cast<metres>(leg);   // !b: 2000 m does not fit
 Every checked failure that is not caught by a hook or an `errc&` goes through
 one handler. By default it throws `beman::inside::inside_error`; under
 `-fno-exceptions` it traps. `set_error_handler` installs your own (see
-[freestanding.md](freestanding.md#1-exceptions-off--install-a-handler)).
+[freestanding.md](freestanding.md#1-exceptions-off-install-a-handler)).
