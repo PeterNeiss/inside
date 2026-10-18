@@ -160,3 +160,20 @@ TEST(UnitsAlgorithmsTest, divmod_in_the_common_unit_and_percent) {
     EXPECT_EQ(to_string(mul_into<usd_t>(just<45> * HP, just<8> * percent)), "3.60 HP");
     EXPECT_EQ(unit_symbol(per_mille, text_encoding::ascii), "permille");
 }
+
+TEST(UnitsAlgorithmsTest, math_of_a_dimensionless_quantity_and_lifted_chains) {
+    constexpr auto ratio = just<-6> * si::metre / (just<20> * si::metre); // −0.3
+    using gain_t         = inside<{{0x1p-8, 4}, per<65536>}, round_nearest>;
+    using decade_t       = inside<{{-1, 1}, per<1024>}, round_nearest>;
+    const auto g         = units::pow_base_into<gain_t, 10>(ratio);
+    EXPECT_EQ(g, (gain_t{rational{32846, 65536}}));
+    const auto d = units::log10_into<decade_t>(just<1> * si::metre / (just<1> * si::metre));
+    EXPECT_EQ(d, 0);
+    // An expected quantity chains through +, *, as an expected inside does.
+    const auto chained = just<1> * si::volt / inside<{0, 4}>{0} * just<2> + just<1> * si::volt;
+    ASSERT_FALSE(chained);
+    EXPECT_EQ(chained.error(), errc::division_by_zero);
+    const auto fine = just<1> * si::volt / inside<{0, 4}>{2} * just<2> + just<1> * si::volt;
+    ASSERT_TRUE(fine);
+    EXPECT_EQ(to_string(*fine), "2 V");
+}

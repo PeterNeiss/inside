@@ -393,6 +393,34 @@ template <insidable Out, class X>
 [[nodiscard]] constexpr auto atan_into(const X& x) {
     return detail::make_quantity<detail::radian_reference>(beman::inside::math::atan_into<Out>(detail::number_of(x)));
 }
+
+// Exponentials, logarithms and the hyperbolic functions of a number: an
+// inside or a dimensionless quantity (10^(L / 20 dB), log10(P / 1 mW)).
+#define BEMAN_INSIDE_UNITS_NUMBER_FN(fn)                                  \
+    template <insidable Out, class X>                                     \
+    [[nodiscard]] constexpr auto fn##_into(const X& x) {                  \
+        return beman::inside::math::fn##_into<Out>(detail::number_of(x)); \
+    }
+BEMAN_INSIDE_UNITS_NUMBER_FN(exp)
+BEMAN_INSIDE_UNITS_NUMBER_FN(exp2)
+BEMAN_INSIDE_UNITS_NUMBER_FN(log)
+BEMAN_INSIDE_UNITS_NUMBER_FN(log2)
+BEMAN_INSIDE_UNITS_NUMBER_FN(log10)
+BEMAN_INSIDE_UNITS_NUMBER_FN(sinh)
+BEMAN_INSIDE_UNITS_NUMBER_FN(cosh)
+BEMAN_INSIDE_UNITS_NUMBER_FN(tanh)
+BEMAN_INSIDE_UNITS_NUMBER_FN(asinh)
+BEMAN_INSIDE_UNITS_NUMBER_FN(acosh)
+BEMAN_INSIDE_UNITS_NUMBER_FN(atanh)
+#undef BEMAN_INSIDE_UNITS_NUMBER_FN
+template <insidable Out, imax Base, class X>
+[[nodiscard]] constexpr auto pow_base_into(const X& x) {
+    return beman::inside::math::pow_base_into<Out, Base>(detail::number_of(x));
+}
+template <insidable Out, class B, class E>
+[[nodiscard]] constexpr auto pow_into(const B& base, const E& exp) {
+    return beman::inside::math::pow_into<Out>(detail::number_of(base), detail::number_of(exp));
+}
 template <insidable Out, reference A, class VA, reference B, class VB>
     requires(!detail::sum_diagnosed<A, B>()) &&
             (detail::common_rescalable<A, VA, B, VB> &&

@@ -1391,6 +1391,15 @@ class quantity {
     }
 };
 
+// A quantity chains through inside's expected-lift operators: a division by
+// a grid holding 0 and the rest of the expression stay one std::expected.
+} // namespace beman::inside::units
+namespace beman::inside::detail {
+template <units::reference R, class Rep>
+inline constexpr bool lift_operand_v<units::quantity<R, Rep>> = true;
+} // namespace beman::inside::detail
+namespace beman::inside::units {
+
 //---------------------------------------------------------------------------
 // Construction: number * unit, number * spec[unit]. A raw scalar has no grid.
 //---------------------------------------------------------------------------

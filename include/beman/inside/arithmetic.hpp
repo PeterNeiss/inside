@@ -507,10 +507,14 @@ template <insidable Lhs, insidable Rhs>
 // inheriting whichever bare overload applies.
 //---------------------------------------------------------------------------
 namespace detail {
+// Other types whose results chain the same way (units.hpp: quantity).
+template <class T>
+inline constexpr bool lift_operand_v = insidable<T>;
+
 template <class L, class R>
 concept expected_operands =
-    (expected_like<L> || expected_like<R>) && (insidable<unwrap_t<L>> || insidable<unwrap_t<R>>);
-}
+    (expected_like<L> || expected_like<R>) && (lift_operand_v<unwrap_t<L>> || lift_operand_v<unwrap_t<R>>);
+} // namespace detail
 
 #define BEMAN_INSIDE_LIFT_OP(op)                                                            \
     template <class L, class R>                                                             \
