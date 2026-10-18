@@ -141,6 +141,15 @@ constexpr auto make_wrap_carry(imax q) {
     return carry;
 }
 
+// d saturated to imax: a clamp overshoot or a wrap carry, from a work type W
+// (imax or a wide integer).
+template <typename W>
+constexpr imax saturate_imax(const W& d) noexcept {
+    constexpr W lo = static_cast<W>(std::numeric_limits<imax>::min());
+    constexpr W hi = static_cast<W>(std::numeric_limits<imax>::max());
+    return static_cast<imax>(d < lo ? lo : hi < d ? hi : d);
+}
+
 //---------------------------------------------------------------------------
 // unit_fold — clamp/wrap of an integer value v in [SrcLo, SrcHi] onto a
 // unit-notch integer grid L, exactly. v − Lower and the range
@@ -158,13 +167,6 @@ struct unit_fold {
     static constexpr W upper = static_cast<W>(hi);
     static constexpr W span  = static_cast<W>(hi - lo);
 
-    // d saturated to imax (a clamp overshoot or a wrap carry).
-    static constexpr imax saturate(const W& d) noexcept {
-        constexpr W imax_lo = static_cast<W>(std::numeric_limits<imax>::min());
-        constexpr W imax_hi = static_cast<W>(std::numeric_limits<imax>::max());
-        return static_cast<imax>(d < imax_lo ? imax_lo : imax_hi < d ? imax_hi : d);
-    }
-
     // v = Lower + carry·(span + 1) + offset with 0 ≤ offset ≤ span.
     struct folded {
         imax Carry;
@@ -172,7 +174,7 @@ struct unit_fold {
     };
     static constexpr folded fold(const W& v) noexcept {
         const auto [q, w] = floor_divmod(v - lower, span + W{1});
-        return {saturate(q), w};
+        return {saturate_imax(q), w};
     }
 };
 
@@ -192,12 +194,6 @@ inline constexpr grid_int source_hi = [] {
     else
         return grid_int{1} << 64;
 }();
-
-//---------------------------------------------------------------------------
-// assignment
-//---------------------------------------------------------------------------
-template <typename L, typename R>
-struct assignment;
 
 // A value off a bounded continuous grid (its reduced denominator past
 // MaxDenominator) rounded onto it by P's rounding, kept within [Lower,
@@ -343,10 +339,6 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
                 out = low || exact_of_grid<KK>(upper_of<L>) < x;
             }
         if (out) [[unlikely]] {
-            auto saturate = [](const I& d) -> imax {
-                constexpr imax imax_lo = std::numeric_limits<imax>::min(), imax_hi = std::numeric_limits<imax>::max();
-                return d < I{imax_lo} ? imax_lo : I{imax_hi} < d ? imax_hi : static_cast<imax>(d);
-            };
             if (dispatch_out_of_range<true>(
                     lhs,
                     policy,
@@ -364,7 +356,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
                                 action.Fn(
                                     lhs, exact_result<beman::inside::inside<(grid_of<R> - grid_of<L>).value()>>(over));
                             } else if constexpr (std::integral<R>)
-                                action.Fn(lhs, saturate(trunc(over)));
+                                action.Fn(lhs, saturate_imax(trunc(over)));
                             else if constexpr (std::floating_point<R>)
                                 action.Fn(lhs, static_cast<R>(static_cast<double>(over)));
                             else
@@ -380,7 +372,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
                             const auto [q, w] = floor_divmod(index, count + I{1});
                             lhs               = L::from_raw(raw_of_slot<L>(w));
                             if constexpr (wrap_action<plain_t<A>>)
-                                action.Fn(lhs, make_wrap_carry<L, R>(saturate(q)));
+                                action.Fn(lhs, make_wrap_carry<L, R>(saturate_imax(q)));
                         }
                     }))
                 return lhs;

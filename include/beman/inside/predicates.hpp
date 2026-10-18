@@ -133,31 +133,25 @@ template <insidable B, numeric A>
         if (const auto e = detail::exact_lossy_of<B>(value)) [[unlikely]]
             return e->Rounds;
         const detail::rational r = detail::as_rational(value);
-        if constexpr (!::beman::inside::detail::notched<B>) {
+        if (!includes(interval_of<B>, r)) {
+            // Out of range: a rounding policy that brings it onto the grid
+            // rounds (a grid rounds before the range check); anything else is
+            // overflow, not rounding.
+            detail::rational rounded;
+            return detail::rounds_into_range<B, policy<>>(r, rounded);
+        }
+        if constexpr (!detail::notched<B>) {
             // Continuous: nothing to miss, unless the grid bounds denominators
             // (an in-range value with a larger one is off the grid).
             if constexpr (grid_of<B>.MaxDenominator == 0)
                 return false;
-            else {
-                if (!includes(interval_of<B>, r)) {
-                    // Out of range: rounding onto the bound may bring it in
-                    // (a bounded grid rounds before the range check).
-                    detail::rational rounded;
-                    return detail::rounds_into_range<B, policy<>>(r, rounded);
-                }
+            else
                 return detail::abs_den(r.Denominator) > detail::to_rational(grid_of<B>.MaxDenominator).Numerator;
-            }
         } else {
-            if (!includes(interval_of<B>, r)) {
-                // Out of range: a rounding policy that brings it onto the grid
-                // rounds; anything else is overflow, not rounding.
-                detail::rational rounded;
-                return detail::rounds_into_range<B, policy<>>(r, rounded);
-            }
             // In range: rounding occurs iff (value − Lower) / Notch is not an
             // integer — exactly when the 64-bit steps overflow.
-            if (const auto d = try_sub(r, ::beman::inside::detail::lower64<B>))
-                if (const auto q = try_div(*d, ::beman::inside::detail::notch64<B>))
+            if (const auto d = try_sub(r, detail::lower64<B>))
+                if (const auto q = try_div(*d, detail::notch64<B>))
                     return detail::abs_den(q->Denominator) != 1;
             return !detail::exact_index<B, detail::round_mode::floor>(detail::exact_of(r)).Exact;
         }

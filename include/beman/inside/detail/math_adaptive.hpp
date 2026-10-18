@@ -50,7 +50,7 @@ inline constexpr std::size_t limbs_of = sizeof(T) / sizeof(umax);
 // The same value in a word of twice the limbs (for products and shifted
 // dividends).
 template <std::size_t K>
-using double_t = wide_sint<2 * K>;
+using twice_t = wide_sint<2 * K>;
 
 //---------------------------------------------------------------------------
 // Q.W arithmetic. Products and quotients truncate toward zero: each is
@@ -134,7 +134,7 @@ constexpr wide_sint<K> div_small(const wide_sint<K>& v, umax d) noexcept;
 // a / b at scale 2^W. Pre: b != 0.
 template <std::size_t K>
 constexpr wide_sint<K> div_q(const wide_sint<K>& a, const wide_sint<K>& b, int W) noexcept {
-    using D = double_t<K>;
+    using D = twice_t<K>;
     return static_cast<wide_sint<K>>((D{a} << W) / D{b});
 }
 
@@ -601,11 +601,8 @@ constexpr Out evaluate_from(const Core& core, P&& policy) {
         constexpr int A = 60 - mag_bits<Out> > 1 ? 60 - mag_bits<Out> : 1;
         if (a.Scale <= A)
             return store_exact<Out>(midpoint(a), policy);
-        using I        = decltype(a.Value);
-        const int sh   = a.Scale - A;
-        const I   half = I{1} << (sh - 1);
-        const I   v    = a.Value.negative() ? -((-a.Value + half) >> sh) : (a.Value + half) >> sh;
-        return store_exact<Out>(midpoint(approx<limbs_of<I>>{v, A, 0}), policy);
+        using I = decltype(a.Value);
+        return store_exact<Out>(midpoint(approx<limbs_of<I>>{round_shift(a.Value, a.Scale - A), A, 0}), policy);
     } else {
         if (wide_sint<limbs_of<decltype(a.Value)> + 2> j; quick_slot<Out>(a, j)) [[likely]]
             return store<Out>(j, policy);
@@ -1159,7 +1156,7 @@ constexpr fx<K> atan_series(const wide_sint<K>& u, umax du) noexcept {
 // within da/2 + 1 units (a ≥ 1/4).
 template <std::size_t K>
 constexpr wide_sint<K> sqrt_q(const wide_sint<K>& a, int S) noexcept {
-    using D = double_t<K>;
+    using D = twice_t<K>;
     return static_cast<wide_sint<K>>(isqrt(D{a} << S));
 }
 

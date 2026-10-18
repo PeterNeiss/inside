@@ -285,8 +285,6 @@ template <insidable Out, insidable In>
 }
 
 namespace detail {
-using namespace beman::inside::detail;
-
 // Gate for fmod's integer fast path. When both operands and Out are
 // integer-backed on commensurable notches, fmod collapses to ONE integer
 // remainder in units of g = gcd(notch of InX, notch of InY): with x

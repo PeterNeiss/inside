@@ -223,27 +223,15 @@ struct grid {
     // Bits needed to hold every slot index 0..slot_count().
     [[nodiscard]] constexpr int slot_bits() const noexcept { return bit_width_of(slot_count()); }
 
-    // The slot count as a umax; false (out = 0) when it needs more than 64
-    // bits — such a grid stores a wide_int index.
-    [[nodiscard]] constexpr bool max_index_checked(umax& out) const {
-        const detail::grid_int c    = slot_count();
-        const bool             fits = !(detail::grid_int{std::numeric_limits<umax>::max()} < c);
-        out                         = fits ? static_cast<umax>(c) : umax{0};
-        return fits;
+    // True when the slot count fits umax (a builtin index). False ⇒ the grid is
+    // still valid and stores a wide index.
+    [[nodiscard]] constexpr bool max_index_representable() const {
+        return !(detail::grid_int{std::numeric_limits<umax>::max()} < slot_count());
     }
 
     // Index-storage slot count (0 on overflow: such grids store a wide index).
     [[nodiscard]] constexpr umax max_index() const {
-        umax c = 0;
-        (void)max_index_checked(c);
-        return c;
-    }
-
-    // True when the slot count fits umax (a builtin index). False ⇒ the grid is
-    // still valid and stores a wide index.
-    [[nodiscard]] constexpr bool max_index_representable() const {
-        umax c = 0;
-        return max_index_checked(c);
+        return max_index_representable() ? static_cast<umax>(slot_count()) : umax{0};
     }
 
     // True when `v` is an *exact* slot: in the interval AND on a notch (notch-0
@@ -389,9 +377,7 @@ constexpr std::expected<grid, errc> lattice_grid(const interval& iv, const grid_
         return std::unexpected{errc::overflow};
     return grid{iv, n};
 }
-} // namespace detail
 
-namespace detail {
 // The value index v/Notch of a double v rounded onto G by mode M, the
 // integer storage's rule (rounding_of; ties of `nearest` half away from
 // zero). G is anchored with a power-of-two notch whose values double holds
@@ -434,9 +420,7 @@ struct point_slot {
     constexpr bool operator==(const point_slot&) const  = default;
     constexpr auto operator<=>(const point_slot&) const = default;
 };
-} // namespace detail
 
-namespace detail {
 // Notch 1 from an integer Lower: the values are integers, so a raw can hold
 // the value itself (value storage). {{0.5, 10.5}, 1} has notch 1 but not
 // integer values.

@@ -62,7 +62,7 @@ struct assignment<L, R> {
         const bool low = v < fold::lower;
         lhs            = L::from_raw(raw_of_slot<L>(low ? W{0} : fold::span));
         if constexpr (clamp_action<plain_t<A>>)
-            action.Fn(lhs, fold::saturate(v - (low ? fold::lower : fold::upper)));
+            action.Fn(lhs, saturate_imax(v - (low ? fold::lower : fold::upper)));
     }
 
     template <typename A>
@@ -752,7 +752,7 @@ struct assignment<L, R> {
     // path instead (both 0, unused), and a point L holds one value (both 0).
     static constexpr bool integer_raws = integer_storage<L> && integer_storage<R>;
 
-    static constexpr std::expected<rational, errc> calcOffset() {
+    static constexpr std::expected<rational, errc> calc_offset() {
         if constexpr (!integer_raws || !detail::notched<L>)
             return rational{0};
         else
@@ -761,7 +761,7 @@ struct assignment<L, R> {
             });
     }
 
-    static constexpr std::expected<rational, errc> calcFactor() {
+    static constexpr std::expected<rational, errc> calc_factor() {
         if constexpr (!integer_raws || !detail::notched<L> || point_storage<R>)
             return rational{0}; // a point R's raw is always 0: the mapping is Offset alone
         else
@@ -770,11 +770,11 @@ struct assignment<L, R> {
 
     // A mapping past the 64-bit rational (a full-int64 source into a fine
     // grid) stores through the rational path, as a continuous side does.
-    static constexpr bool maps_raws = integer_raws && calcOffset().has_value() && calcFactor().has_value();
+    static constexpr bool maps_raws = integer_raws && calc_offset().has_value() && calc_factor().has_value();
 
   public:
-    static constexpr rational Offset = calcOffset().value_or(rational{0});
-    static constexpr rational Factor = calcFactor().value_or(rational{0});
+    static constexpr rational Offset = calc_offset().value_or(rational{0});
+    static constexpr rational Factor = calc_factor().value_or(rational{0});
 
     // Raw-space integer-only mapping — requires integer raw storage on both
     // sides (not rational).

@@ -235,7 +235,6 @@ struct policy_ref {
     // the same size as `policy_ref<B, P, no_action>`.
     BEMAN_INSIDE_NO_UNIQUE_ADDRESS std::tuple<As...> Actions;
 
-  public:
     // Stores go through dispatch_assign under this ref's Policy and actions:
     // into Ref for `operator=`, into a fresh target for the conversion below,
     // so a one-shot snap can be read out as a value (`(a * b).with_snap()`).

@@ -46,9 +46,7 @@ inline constexpr imax index_cmp_bias = [] {
     } else
         return imax{0};
 }();
-} // namespace detail
 
-namespace detail {
 // Inside values are finite and exact, so they are always ordered: <=> of two
 // insides, or of an inside and an integer, is a strong_ordering whatever the
 // storage; against a floating scalar it is a partial_ordering (NaN is
@@ -137,9 +135,7 @@ inline constexpr bool scalar_index_cmp_fits = [] {
                !mul_overflow(scalar_mag, notch_den, &product) && product <= cap;
     }
 }();
-} // namespace detail
 
-namespace detail {
 // inside ⋈ arithmetic scalar. Integer storage compares as integers when the
 // scalar's type fits imax, and in double when it is floating point and the
 // grid's values are exact in double; everything else goes through rational.

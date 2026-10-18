@@ -118,19 +118,21 @@ inline constexpr int grid_magnitude_bits = [] {
     return a > b ? a : b;
 }();
 
+// Bits of |v| for a grid integer.
+constexpr int grid_bits(const grid_int& v) { return bit_width_of(abs(v)); }
+
 // Bits of B's values as fractions J·n/d: numerator and denominator together.
 template <insidable B>
 inline constexpr int exact_value_bits = [] {
     if constexpr (point_storage<B>) {
-        auto bits = [](const grid_int& v) { return bit_width_of(abs(v)); };
-        return bits(wide_numerator(lower_of<B>)) + bits(wide_denominator(lower_of<B>));
+        return grid_bits(wide_numerator(lower_of<B>)) + grid_bits(wide_denominator(lower_of<B>));
     } else if constexpr (fraction_storage<B>)
         return 2 * decltype(raw_t<B>::Num)::bits;
     else if constexpr (!wide_valued<B>)
         return 128; // a 64-bit rational
     else {
-        auto bits = [](const grid_int& v) { return bit_width_of(abs(v)); };
-        return grid_magnitude_bits<B> + bits(wide_denominator(notch_of<B>)) + bits(wide_numerator(notch_of<B>));
+        return grid_magnitude_bits<B> + grid_bits(wide_denominator(notch_of<B>)) +
+               grid_bits(wide_numerator(notch_of<B>));
     }
 }();
 

@@ -638,12 +638,10 @@ struct inside {
         return *this;
     }
 
-  public:
     //-----------------------------------------------------------------------
     // Compound assignment private helpers — extracted to keep each
     // `operator*=` body focused on its own arithmetic shape.
     //-----------------------------------------------------------------------
-  private:
     template <typename Result>
     constexpr inside& assign_op_result(const Result& r) {
         if constexpr (detail::expected_like<Result>) {
@@ -667,10 +665,6 @@ struct inside {
         return *this;
     }
 
-  public:
-    // Only a `rational` (a library type) may join an inside in a compound assign;
-    // raw int/float/double are ill-formed — give the scalar a grid (`1_ins` /
-    // `just<1>` / `inside<{lo,hi}>{n}`), mirroring the binary operators.
     // A rational on a Q-format grid's lattice as a signed notch count (rhs·K
     // for notch 1/K), when it is a whole number of notches of moderate size.
     static constexpr bool raw_delta_ok = detail::qformat_codec_fits<inside> && detail::values_fit_imax<inside>;
@@ -691,6 +685,11 @@ struct inside {
         const imax n = static_cast<imax>(r.Numerator * (K / d));
         return r.Denominator < 0 ? -n : n;
     }
+
+  public:
+    // Only a `rational` (a library type) may join an inside in a compound assign;
+    // raw int/float/double are ill-formed — give the scalar a grid (`1_ins` /
+    // `just<1>` / `inside<{lo,hi}>{n}`), mirroring the binary operators.
 
     template <std::same_as<detail::rational> A>
     constexpr inside& operator+=(const A& rhs) {

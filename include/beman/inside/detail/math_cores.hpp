@@ -23,8 +23,6 @@ namespace beman::inside::math::detail::ax {
 //---------------------------------------------------------------------------
 // Inputs as exact values, in as few limbs as their grid needs.
 //---------------------------------------------------------------------------
-constexpr int grid_bits(const grid_int& v) { return bit_width_of(abs(v)); }
-
 // A grid integer as a double (a notch's p or q, which may pass imax).
 constexpr double grid_double(const grid_int& v) {
 #if BEMAN_INSIDE_BIG_GRIDS
