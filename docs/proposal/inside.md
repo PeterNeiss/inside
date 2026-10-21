@@ -26,14 +26,18 @@ returns a failure value only where the operand grids allow one. What a store
 into a narrower grid does (check, clamp, wrap or round) is part of the
 declaration.
 
-The proposal has two layers. The first is the number: the type, its grid, the
-policies and the operators. The second is quantities: `quantity<unit, inside>`,
-which follows the model of mp-units [@P3045R9] with an `inside` as the only
-representation. Because a grid is a compile-time value, a unit conversion
-rescales the grid and keeps the stored integer, so it is exact, cannot fail,
-and costs nothing at run time. Correctly rounded transcendental functions onto
-a grid, text conversion and the convenience functions of the reference
-implementation are left to later papers ([Future work](#future-work)).
+The proposal has three layers. The first is the number: the type, its grid,
+the policies and the operators. The second is quantities:
+`quantity<unit, inside>`, which follows the model of mp-units [@P3045R9] with
+an `inside` as the only representation. Because a grid is a compile-time
+value, a unit conversion rescales the grid and keeps the stored integer, so it
+is exact, cannot fail, and costs nothing at run time. The third is math: the
+functions of `<cmath>` on an `inside`, each returning the correctly rounded
+point of its output grid. The result is the same at compile time and at run
+time, on every platform, with or without an FPU. `sin(x)` deduces its output
+grid from the input; `sin_into<Out>(x)` names it. Text conversion and the
+convenience functions of the reference implementation are left to later
+papers ([Future work](#future-work)).
 
 The reference implementation is [beman.inside
 v0.4.0](https://github.com/PeterNeiss/inside/tree/v0.4.0). A long-form
@@ -73,6 +77,13 @@ What each of them lacks is the same: the range a value may occupy, its scale,
 the rounding rule and the edge behaviour. `inside` records all four in the type,
 where the compiler can act on them, and the unit layer adds the fifth: what the
 number counts.
+
+The same holds for functions. `std::sin` on a `double` is not required to be
+correctly rounded, so its result can differ between platforms, between
+compile time and run time, and between library versions, and its precision is
+the `double`'s, whatever the program needs. The math layer takes the precision
+from the output's grid and fixes the result to one value: the nearest point,
+or the one the output's rounding mode selects.
 
 # A tour
 
@@ -178,6 +189,23 @@ quantity<isq::width[si::metre], inside<{1, 10}>>  w{3};
 quantity<isq::height[si::metre], inside<{1, 10}>> h{4};
 quantity<isq::area[square(si::metre)], inside<{1, 100}>> area = w * h;
 inside<{0, 10'000}, round_nearest> ratio = trip / w; // km / m: a plain number
+```
+
+**A function rounds once, onto the grid it returns.**
+
+<!-- listing: math -->
+```cpp
+using angle = inside<{{-8, 8}, per<16384>}, round_nearest>;
+auto s = math::sin(angle{1});                    // 0.84149169921875, the nearest 1/16384
+static_assert(grid_of<decltype(s)> == grid{{-1, 1}, per<16384>});
+auto c = math::cos_into<math::unit_amplitude<256>>(angle{1}); // 0.5390625: a coarser output, named
+
+using level = inside<{{-4, 4}, per<256>}, round_nearest>;
+auto r = math::sqrt(level{2.25});                // expected: the grid holds negative values
+auto n = math::sqrt(level{-1});                  // unexpected(errc::domain_error)
+
+using down = inside<{{-1, 1}, per<16384>}, round_floor>;
+auto h = units::cos_into<down>(quantity<si::degree, inside<{0, 360}>>{120}); // exactly -1/2, even rounding down
 ```
 
 # Design
@@ -305,7 +333,8 @@ grid.
 - **π is never approximated.** A magnitude is an exact rational times a power
   of π. A conversion with a factor of π (degree to radian) has no exact
   rescale, so it is ill-formed until it is rounded once onto a declared grid
-  by the math companion's `value_cast`.
+  by the math layer's `value_cast` ([Correctly rounded
+  math](#correctly-rounded-math)).
 - **No bare scalars here either.** `42 * si::metre` and `q * 2` are ill-formed.
   A quantity is made from a number in its unit
   (`quantity<si::metre, inside<{0, 100}>>{42}`) or from an `inside` times a
@@ -322,6 +351,56 @@ A unit operation that cannot happen is a constraint failure, so
 `requires { a + b; }` is false for a length and a duration. A call that is
 written anyway names its reason as a deleted overload, for example
 `units: adding or comparing quantities of different kinds`.
+
+## Correctly rounded math
+
+The third layer is `<cmath>` on an `inside`. A function's result is a point of
+its output grid, and the contract is that it is the *correctly rounded* point:
+the one the output's rounding mode selects from the true value. Because the
+output grid is part of the type, so is the precision. A coarse output is cheap,
+a fine one costs more, and there is no ceiling: an output notch of 2⁻¹⁰⁰ gets a
+correctly rounded result too. The result does not depend on how it was
+computed, so it is the same at compile time and at run time, on every
+platform, with or without an FPU, and under any compiler flags.
+
+- **Two forms.** `fn_into<Out>(x)` names the output. `fn(x)` deduces it: the
+  input's notch and policy, and the function's range over the input's
+  interval, computed at compile time and rounded outward. A few ranges are
+  fixed instead: `sin` and `cos` give [−1, 1], `tan` [−1024, 1024] and `atan2`
+  [−π, π]. `hypot` takes the gcd of both notches, `pow` the base's notch and
+  `floor` & co. notch 1.
+- **Rounding needs permission.** A transcendental result is never on a grid by
+  accident, so `Out` (or, for `fn(x)`, the input) must name a rounding mode,
+  as a store that rounds must. A result past `Out`'s interval goes through
+  `Out`'s policy: `clamp` saturates, `wrap` folds the true value, and the
+  default reports.
+- **Errors follow the number layer.** A domain limit that the input's *type*
+  violates (`log` of a grid that reaches 0, `asin` of a grid past ±1) is
+  ill-formed. A failure that depends on the *value* returns
+  `expected<Out, errc>`: `sqrt` of a grid that crosses 0, `tan` near a pole,
+  and `pow`. A total function returns a plain `inside`.
+- **The grid operations are exact.** `abs`, `sign`, `copysign`, `floor`,
+  `ceil`, `round`, `trunc`, `fmod` and `pown<E>` need no rounding. Their
+  outputs are deduced exactly (`abs` of `[−3, 5]` is `[0, 5]`), and `fmod` is
+  `expected` only when the divisor's grid holds 0, as `%` is.
+- **Exact cases are exact.** `exp(0)`, `log(1)`, `sqrt(9/4)`, `log2(2^k)` and a
+  power with an integer exponent land on the grid point itself under every
+  rounding mode, as do the rational values of `sin` and `cos` (0, ±1/2, ±1) of
+  an angle in degrees or turns.
+- **On quantities the unit follows the function.** `sqrt` of an area is a
+  length, `atan2` and `hypot` take two quantities of one dimension, inverse
+  trigonometry returns radians, and `exp`, `log` and `pow` take a
+  dimensionless quantity (the decibel's 10^(L / 20 dB)). An angle in a unit
+  with a factor of π (degrees, turns) is reduced exactly by `sin_into` and
+  `cos_into`, so only a remainder of at most π/4 is approximated, and
+  `value_cast<si::radian, Out>(q)` rounds a degree-to-radian conversion once.
+
+How a result is found is recommended practice, not specification. The
+reference implementation evaluates in fixed point with an error bound and
+doubles the precision while the interval straddles a rounding boundary (Ziv's
+strategy). It reads a precomputed table for small inputs and uses
+floating-point kernels with proved bounds where an FPU is present, behind an
+integer path that always applies and gives the same results.
 
 # Proposed interface
 
@@ -527,42 +606,105 @@ namespace std::units {
 | `p.point_for(o)`, `p.quantity_from(o)` | the point or quantity from origin `o` | an exact shift of the grid |
 | `p - p`, `p ± q` | a quantity; a point | no difference between unrelated absolute origins |
 
+## Math
+
+Every function below except `pown` also has the form `fn_into<Out>(args)`,
+which returns `Out` (or `expected<Out, errc>` where the deduced form is
+fallible). Except for the grid operations, `Out` must be an `inside` whose
+policy names a rounding mode, and the deduced form `fn(args)` requires the
+same of its input.
+
+```cpp
+namespace std::math {
+  template<uint64_t K>                                        // [-1, 1] at resolution 1/K
+    using unit_amplitude = inside<{{-1, 1}, per<K>}, round_nearest>;
+
+  // grid operations: exact
+  template<class In> constexpr auto abs(In x);               // [0, max|x|]
+  template<class In> constexpr auto sign(In x);              // -1, 0, 1
+  template<class M, class S> constexpr auto copysign(M mag, S sgn);
+  template<class In> constexpr auto floor(In x);             // also ceil, round, trunc: notch 1
+  template<class X, class Y> constexpr auto fmod(X x, Y y);  // expected iff y's grid holds 0
+  template<intmax_t E, class In> constexpr auto pown(In x);  // E >= 0: widened at every multiply
+
+  // roots
+  template<class In> constexpr auto sqrt(In x);              // expected iff x's grid holds a negative
+  template<class In> constexpr auto cbrt(In x);
+  template<class X, class Y> constexpr auto hypot(X x, Y y);
+
+  // trigonometric, in radians
+  template<class In> constexpr auto sin(In x);               // also cos: [-1, 1]
+  template<class In> constexpr auto tan(In x);               // expected: [-1024, 1024]
+  template<class In> constexpr auto asin(In x);              // also acos; x's grid within [-1, 1]
+  template<class In> constexpr auto atan(In x);
+  template<class Y, class X> constexpr auto atan2(Y y, X x); // [-pi, pi]; atan2(0, 0) == 0
+
+  // hyperbolic
+  template<class In> constexpr auto sinh(In x);              // also cosh, tanh, asinh
+  template<class In> constexpr auto acosh(In x);             // x's grid within [1, inf)
+  template<class In> constexpr auto atanh(In x);             // x's grid within (-1, 1)
+
+  // exponential and logarithmic
+  template<class In> constexpr auto exp(In x);               // also exp2
+  template<class In> constexpr auto log(In x);               // also log2, log10; x's grid > 0
+  template<intmax_t B, class In> constexpr auto pow_base(In x); // B^x, B >= 2
+  template<class B, class E> constexpr auto pow(B base, E e);  // expected; deduced: base's grid > 0
+}
+
+namespace std::units {
+  // q's unit:              abs, floor, ceil, round, trunc
+  // the unit's root:       sqrt, cbrt (m² → m), and _into
+  // an angle in rad:       sin, cos, tan; sin_into, cos_into also take a unit with a factor of pi
+  // to rad:                asin, acos, atan of an inside or a dimensionless quantity; atan2
+  // the common unit:       hypot
+  // a dimensionless input: exp_into ... atanh_into, log10_into, pow_base_into<Out, B>, pow_into
+  template<auto U, class Out, reference R, class V>          // across a factor of pi: one rounding
+    constexpr auto value_cast(const quantity<R, V>&);
+}
+```
+
+### Semantics
+
+| Expression | Result | Errors |
+|---|---|---|
+| `fn_into<Out>(x)` | the true value rounded onto `Out`'s grid by `Out`'s mode, then stored by `Out`'s policy | ill-formed without a rounding mode in `Out`, except for a grid operation |
+| `fn(x)` | `fn_into<Out>(x)`, `Out` deduced from `x`'s grid and policy | ill-formed without a rounding mode in `x`'s policy, except for a grid operation |
+| `abs`, `sign`, `copysign`, `floor`, `ceil`, `round`, `trunc`, `pown<E>` | exact | none; `round` sends a half away from zero |
+| `fmod(x, y)` | `x − trunc(x/y)·y`, exact, the sign of `x` | `division_by_zero`, iff `y`'s grid holds 0 |
+| `sqrt(x)` | | `domain_error` for `x < 0`, iff `x`'s grid holds a negative |
+| `log`, `log2`, `log10`, `asin`, `acos`, `acosh`, `atanh` | | ill-formed unless `x`'s grid lies in the domain |
+| `tan(x)` | | `overflow` past `Out` (saturates under `clamp`) |
+| `pow(b, e)` | exact for an integer `e`, and for `p/q` when `b` is a perfect `q`-th power | `domain_error` for `b < 0`, `division_by_zero` for 0 to a negative power, `overflow` past `Out` |
+| `units::sin_into<Out>(q)` | `q` reduced exactly by quarter turns when its unit has a factor of π | as `sin_into` |
+| `value_cast<U, Out>(q)` | the exact `x·r·π^±1`, rounded once onto `Out` | ill-formed without a rounding mode in `Out` |
+
 # Future work
 
-The reference implementation provides more than these two layers. Each item
+The reference implementation provides more than these three layers. Each item
 below is in v0.4.0, and each is a candidate for a later paper:
 
-1. **Correctly rounded math**: `math::sin_into<Out>(x)` and its siblings
-   (`exp`, `log`, `pow`, the trigonometric and hyperbolic functions and their
-   inverses, `sqrt`, `cbrt`, `hypot`) return the correctly rounded point of
-   `Out`. The result is the same at compile time and at run time, on every
-   platform, with or without an FPU. At coarse output grids it is as fast as
-   `<cmath>`; at the full resolution of a `double` it costs 4–9× (paper,
-   "Performance"). The same engine rounds a π conversion of a quantity
-   (`value_cast<si::radian, Out>(q)`) and gives trigonometry on angles in
-   degrees or turns, reduced exactly. This is the companion paper.
-2. **Per-call policies and actions**: `div(a, b, rounded_floor)`, `mod`,
+1. **Per-call policies and actions**: `div(a, b, rounded_floor)`, `mod`,
    `divmod`, and callbacks that receive the overshoot (`on_clamp`, `on_wrap`,
    `on_error`, `on_overflow`). With them a clock's seconds carry into minutes.
-3. **Conversions**: `clamp_cast`, `wrap_cast`, `checked_cast`, `as<T>()`,
+2. **Conversions**: `clamp_cast`, `wrap_cast`, `checked_cast`, `as<T>()`,
    `numerator()` and `denominator()`, and the predicates
    `conversion_overflows`, `conversion_rounds` and `conversion_loses`.
-4. **Text**: `to_string`, `parse`, `parse_exact`, `std::formatter` and stream
+3. **Text**: `to_string`, `parse`, `parse_exact`, `std::formatter` and stream
    operators, printing the exact value; quantities print the number, then the
    symbol.
-5. **Algorithms and generic code**: `sum<Target>` with one deferred check,
+4. **Algorithms and generic code**: `sum<Target>` with one deferred check,
    `add_all`, `mul_all`, `mul_into<Out>` / `div_into<Out>` (one rounding, no
    intermediate grid), `min`, `max`, `midpoint`, `lerp`, `dot`, `cross`, a
    `std::common_type` that is the grid hull, `numeric_limits` and `hash`. All
    of them work on quantities too.
-6. **Iterating a grid**: `cursor<T, Step>` for loops, the range
+5. **Iterating a grid**: `cursor<T, Step>` for loops, the range
    `inside_range` and `values<T>` (every value of `T`), and `uniform<B>(rng)`,
    which samples a grid exactly.
-7. **Predefined types and constants**: `uint8` … `int64` on their full ranges,
+6. **Predefined types and constants**: `uint8` … `int64` on their full ranges,
    `unorm8`/`unorm16` and the Q formats (`q8_8`), the mathematical constants
    as point grids, and the physical constants as quantities of their kind.
-8. **A public exact rational type** and its literals.
-9. **The full unit catalog**: about 80 ISQ kinds, the SI units and prefixes
+7. **A public exact rational type** and its literals.
+8. **The full unit catalog**: about 80 ISQ kinds, the SI units and prefixes
    (quecto … quetta past 64 bits), the defining constants as units,
    the international units, and `percent` and `per_mille`.
 
@@ -572,10 +714,18 @@ The reference implementation is header-only C++23 (GCC 14+, Clang 19+, Clang 18
 with libc++, AppleClang, MSVC 19.51+). Grids past 64 bits use C++26 static
 reflection (GCC 16 with `-freflection`). It ships a single-header amalgamation,
 a CMake package and a vcpkg port, and follows the Beman Standard. Its test
-suite (817 tests, 830 with C++26 reflection) runs in CI on 50 compiler,
+suite (818 tests, 831 with C++26 reflection) runs in CI on 50 compiler,
 library and sanitizer configurations. It includes a check that the integer
 fast paths compile to call-free, vectorising code, a property fuzzer, and a
 differential oracle that recomputes random results exactly in Python.
+
+The math layer is checked for every function on dyadic, decimal and 2⁻⁴⁰
+grids against a `long double` reference, and every maximum error is 0.5
+notch (the repository's `docs/accuracy.md`). A build without floating point
+(`-ffreestanding`) computes every result on the integer path, and the results
+do not change. Onto the grid deduced from the input, the functions run from
+about 3× slower to 3× faster than `<cmath>`. Onto grids as fine as a `double`,
+correct rounding costs 4–9× (paper, "Performance").
 
 Integer-aligned arithmetic compiles to the same instructions as `int` (paper,
 "The fast path is byte-identical to native"). `inside<unsafe>` runs at native
@@ -605,6 +755,10 @@ repository's examples use both layers.
 - **Boost.Units** and **Au** (Aurora): units libraries over a generic
   representation.
 - Numerics work in progress [@P1889R1]; saturation arithmetic [@P0543R3].
+- **CRlibm** and **[CORE-MATH](https://core-math.gitlabpages.inria.fr/)**:
+  correctly rounded functions for the IEEE binary formats. C23 reserves the
+  `cr_` prefix for such functions. The math layer here rounds correctly onto
+  any grid, at the precision the grid needs, instead of onto a binary format.
 
 The repository's `docs/resources.md` compares their features.
 
@@ -630,3 +784,13 @@ The repository's `docs/resources.md` compares their features.
    Should the unit layer be a separate paper, coordinated with P3045?
 7. **Interaction** with C++26 saturation arithmetic and with `std::linalg`
    element types.
+8. **Math naming.** A namespace `std::math`, as in the implementation, or
+   overloads of `std::sin` and the others, with `sin_into<Out>` beside them?
+9. **Correct rounding as a requirement.** The proposal requires the correctly
+   rounded point. The cost is small onto coarse grids and 4–9× at a `double`'s
+   resolution. Should implementations be allowed a faithful result (one of the
+   two neighbouring points) instead, at the price of results that differ
+   between platforms?
+10. **Deduced outputs.** The deduced output's grid follows the input's notch,
+    with fixed ranges for `sin`, `cos`, `tan` and `atan2`. The fixed `tan`
+    range [−1024, 1024] is a choice; it could instead be required to be named.
