@@ -4,6 +4,14 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
+## Unreleased
+
+### Upgrading from 0.4.0
+
+- `just<N>.per<D>` is gone: it miscompiled on MSVC. Write `just<N, D>`
+  (`just<1>.per<3>` is `just<1, 3>`; in dependent code,
+  `just<N>.template per<D>` is `just<N, D>`).
+
 ## 0.4.0 — 2026-10-19
 
 ### Upgrading from 0.3.0

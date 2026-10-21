@@ -71,23 +71,6 @@ constexpr auto abs(In x);
 // and policy.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {
-#if BEMAN_INSIDE_MSVC
-namespace detail {
-// just<N>.per<D> on MSVC: a compiler bug reads a class-type static member
-// variable template through an object wrongly, so .per<D> is this
-// placeholder, which no copy, conversion or operator accepts.
-struct msvc_per_unsupported {
-    constexpr msvc_per_unsupported() = default;
-    BEMAN_INSIDE_DELETE_BEGIN
-    msvc_per_unsupported(const msvc_per_unsupported&) =
-        BEMAN_INSIDE_DELETE("just<N>.per<D> does not work on MSVC (a compiler bug) - write just<N, D>");
-    template <class T>
-    operator T() const =
-        BEMAN_INSIDE_DELETE("just<N>.per<D> does not work on MSVC (a compiler bug) - write just<N, D>");
-    BEMAN_INSIDE_DELETE_END
-};
-} // namespace detail
-#endif
 namespace detail {
 // What `*t` yields for a cursor on G: G without its end point, no cursor — a
 // value of T, which assigns into T.
@@ -254,22 +237,6 @@ struct inside {
         b.Raw = r;
         return b;
     }
-
-    // just<N>.per<D> — the point N/D (D >= 1), the same as just<N, D>, which
-    // is the portable spelling (see MSVC below). Only on an integer point that
-    // fits imax. (In dependent code: `just<N>.template per<D>`.)
-    template <umax D>
-        requires(G.Interval.Lower == G.Interval.Upper && detail::fits_imax(G.Interval) &&
-                 detail::wide_denominator(G.Interval.Lower) == detail::grid_int{1})
-#if BEMAN_INSIDE_MSVC
-    // MSVC reads a class-type static member variable template through an
-    // object wrongly (an error in a constant expression, a wrong value at run
-    // time), so .per<D> is a placeholder there that no expression accepts.
-    static constexpr detail::msvc_per_unsupported per{};
-#else
-    static constexpr inside<grid{detail::grid_mul(G.Interval.Lower, detail::grid_rational{::beman::inside::per<D>})}>
-        per{};
-#endif
 
     // Conversion summary:
     //   operator imax     — implicit, when the values are integers or the policy
@@ -960,7 +927,7 @@ template <insidable B>
 //---------------------------------------------------------------------------
 // The point grid holds the value, so no value constructor is needed: grid
 // numbers past 64 bits (C++26 `_g`) work too. just<N, D> is the point N/D
-// for an integer D ≥ 1: just<1, 3>, just<-6, 5> for -1.2 (as just<N>.per<D>).
+// for an integer D ≥ 1: just<1, 3>, just<-6, 5> for -1.2.
 namespace detail {
 template <auto value, auto den>
 consteval auto just_point() {
