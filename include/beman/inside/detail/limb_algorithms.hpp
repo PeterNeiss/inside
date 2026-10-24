@@ -199,15 +199,6 @@ constexpr void mul_basecase(L* r, const L* a, std::size_t an, const L* b, std::s
     for (std::size_t i = 0; i < an; ++i)
         r[i + bn] = addmul_1(r + i, b, bn, a[i]);
 }
-// r[0, n) = a·b mod B^n, the low half of the product (r aliases neither,
-// and starts at 0). Past two limbs a's zero limbs are skipped: a small
-// value's high limbs add nothing.
-template <std::unsigned_integral L>
-constexpr void mul_low(L* r, const L* a, const L* b, std::size_t n) noexcept {
-    for (std::size_t i = 0; i < n; ++i)
-        if (n <= 2 || a[i] != 0)
-            addmul_1(r + i, b, n - i, a[i]);
-}
 // q[0, n) = a / d, top down (q may alias a); a mod d.
 template <std::unsigned_integral L>
 constexpr L div_1(L* q, const L* a, std::size_t n, L d) noexcept {

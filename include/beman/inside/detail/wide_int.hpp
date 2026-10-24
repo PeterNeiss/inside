@@ -125,8 +125,9 @@ struct wide_int {
     }
 
     // ---- arithmetic (wraps modulo 2^bits) -------------------------------
-    // + − × stay written out: through limb::add_n / sub_n / mul_low the
-    // math tier's rows lose an instruction each (the ins/op bench).
+    // + − × stay written out: through limb::add_n / sub_n and a truncated
+    // addmul_1 product the math tier's rows lose an instruction each (the
+    // ins/op bench).
     friend constexpr wide_int operator+(wide_int a, const wide_int& b) noexcept {
         L c = 0;
         for (std::size_t i = 0; i < N; ++i)
