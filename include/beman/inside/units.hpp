@@ -156,30 +156,52 @@ struct dimension {
     }
 
     // b^e merged in: kept sorted by name, an exponent reaching 0 drops out.
-    constexpr void add_user(const base_dimension* b, int e) {
-        for (std::int8_t i = 0; i < UserSize; ++i)
-            if (User[i].D->Name == b->Name) {
-                User[i].Exp = exponent(User[i].Exp + e);
-                if (User[i].Exp == 0) {
-                    for (std::int8_t j = i; j + 1 < UserSize; ++j)
-                        User[j] = User[j + 1];
-                    User[--UserSize] = {};
-                }
-                return;
-            }
-        if (e == 0)
-            return;
-        if (UserSize == static_cast<std::int8_t>(detail::max_user_dimensions))
-            beman::inside::detail::constexpr_error<"units: a dimension holds at most 4 base dimensions of your own">();
-        std::int8_t at = UserSize;
-        while (at > 0 && b->Name < User[at - 1].D->Name) {
-            User[at] = User[at - 1];
-            --at;
-        }
-        User[at] = {b, exponent(e)};
-        ++UserSize;
-    }
+    constexpr void add_user(const base_dimension* b, int e);
 };
+
+namespace detail {
+// x^e merged into the sorted items[0, size): an item `same` as x takes the
+// summed exponent and drops out at 0; otherwise x goes in at its place by
+// `before`. False when items is full.
+template <class T, std::size_t N, class Same, class Before>
+constexpr bool sorted_add(T (&items)[N], std::int8_t& size, T x, int e, Same same, Before before) {
+    for (std::int8_t i = 0; i < size; ++i)
+        if (same(items[i], x)) {
+            items[i].Exp = dimension::exponent(items[i].Exp + e);
+            if (items[i].Exp == 0) {
+                for (std::int8_t j = i; j + 1 < size; ++j)
+                    items[j] = items[j + 1];
+                items[--size] = {};
+            }
+            return true;
+        }
+    if (e == 0)
+        return true;
+    if (size == static_cast<std::int8_t>(N))
+        return false;
+    x.Exp          = dimension::exponent(e);
+    std::int8_t at = size;
+    while (at > 0 && before(x, items[at - 1])) {
+        items[at] = items[at - 1];
+        --at;
+    }
+    items[at] = x;
+    ++size;
+    return true;
+}
+} // namespace detail
+
+constexpr void dimension::add_user(const base_dimension* b, int e) {
+    auto name = [](const detail::user_exponent& u) { return u.D->Name; };
+    if (!detail::sorted_add(
+            User,
+            UserSize,
+            detail::user_exponent{b, 0},
+            e,
+            [&](const auto& a, const auto& c) { return name(a) == name(c); },
+            [&](const auto& a, const auto& c) { return name(a) < name(c); }))
+        beman::inside::detail::constexpr_error<"units: a dimension holds at most 4 base dimensions of your own">();
+}
 
 // The dimension of a base dimension of your own (its exponent 1).
 constexpr dimension dimension_of(const base_dimension& b) {
@@ -380,33 +402,16 @@ consteval bool is_within_kind_ancestor(const quantity_spec* s, const quantity_sp
     }
 }
 
-consteval bool name_before(const quantity_spec* a, const quantity_spec* b) { return a->Name < b->Name; }
-
-// r · f^e, merged and kept sorted; an exponent that reaches 0 drops out.
-// Returns false when the recipe is full.
+// r · f^e, merged and kept sorted by name; an exponent that reaches 0 drops
+// out. Returns false when the recipe is full.
 consteval bool recipe_add(recipe& r, const quantity_spec* f, int e) {
-    for (std::int8_t i = 0; i < r.Size; ++i)
-        if (same(r.F[i].Spec, f)) {
-            r.F[i].Exp = dimension::exponent(r.F[i].Exp + e);
-            if (r.F[i].Exp == 0) {
-                for (std::int8_t j = i; j + 1 < r.Size; ++j)
-                    r.F[j] = r.F[j + 1];
-                r.F[--r.Size] = {};
-            }
-            return true;
-        }
-    if (e == 0)
-        return true;
-    if (r.Size == static_cast<std::int8_t>(max_spec_factors))
-        return false;
-    std::int8_t at = r.Size;
-    while (at > 0 && name_before(f, r.F[at - 1].Spec)) {
-        r.F[at] = r.F[at - 1];
-        --at;
-    }
-    r.F[at] = {f, dimension::exponent(e)};
-    ++r.Size;
-    return true;
+    return sorted_add(
+        r.F,
+        r.Size,
+        spec_factor{f, 0},
+        e,
+        [](const spec_factor& a, const spec_factor& b) { return same(a.Spec, b.Spec); },
+        [](const spec_factor& a, const spec_factor& b) { return a.Spec->Name < b.Spec->Name; });
 }
 
 // a · b^sign; false when the product does not fit a recipe.
@@ -647,34 +652,21 @@ constexpr bool operator==(const unit_atom& a, const unit_atom& b) {
     return same(a.U, b.U) && a.Prefix == b.Prefix && a.Exp == b.Exp;
 }
 
-consteval bool atom_before(const unit_atom& a, const unit_atom& b) {
+constexpr bool atom_before(const unit_atom& a, const unit_atom& b) {
     if (a.U->Utf8 != b.U->Utf8)
         return a.U->Utf8 < b.U->Utf8;
     return a.Prefix < b.Prefix;
 }
 
 consteval void unit_add(unit& u, unit_atom a) {
-    for (std::int8_t i = 0; i < u.Size; ++i)
-        if (same(u.Atoms[i].U, a.U) && u.Atoms[i].Prefix == a.Prefix) {
-            u.Atoms[i].Exp = dimension::exponent(u.Atoms[i].Exp + a.Exp);
-            if (u.Atoms[i].Exp == 0) {
-                for (std::int8_t j = i; j + 1 < u.Size; ++j)
-                    u.Atoms[j] = u.Atoms[j + 1];
-                u.Atoms[--u.Size] = {};
-            }
-            return;
-        }
-    if (a.Exp == 0)
-        return;
-    if (u.Size == static_cast<std::int8_t>(max_unit_atoms))
+    if (!sorted_add(
+            u.Atoms,
+            u.Size,
+            a,
+            a.Exp,
+            [](const unit_atom& x, const unit_atom& y) { return same(x.U, y.U) && x.Prefix == y.Prefix; },
+            atom_before))
         beman::inside::detail::constexpr_error<"units: a unit holds at most 6 factors - name it with named_unit">();
-    std::int8_t at = u.Size;
-    while (at > 0 && atom_before(a, u.Atoms[at - 1])) {
-        u.Atoms[at] = u.Atoms[at - 1];
-        --at;
-    }
-    u.Atoms[at] = a;
-    ++u.Size;
 }
 
 consteval unit unit_mul(unit a, const unit& b, int sign) {
@@ -1153,6 +1145,12 @@ inline constexpr bool exact_rescale_v = [] {
 template <reference From, reference To>
 inline constexpr bool implicit_v =
     exact_rescale_v<From.U, To.U> && dimension_of(From.U) == dimension_of(To.U) && spec_converts(From, To);
+// A quantity of From on V that converts implicitly to To; one of R that
+// converts to unit U (q.in<U>()).
+template <reference From, reference To, class V>
+concept implicit_rescalable = implicit_v<From, To> && rescalable<From.U, To.U, V>;
+template <reference R, unit U, class V>
+concept in_rescalable = in_error_of<R.U, U>() == in_error::none && rescalable<R.U, U, V>;
 
 // A dimensionless quantity that is a plain number: no is_kind spec (an
 // angle), and an exact factor to unit one.
@@ -1178,18 +1176,22 @@ using rescaled_t = decltype(rescale<conversion_factor<From.U, To.U>>(std::declva
 
 using beman::inside::detail::is_expected_v;
 
-// A quantity of reference R on a number that inside's arithmetic returned: an
-// inside, or an expected of one (division by a grid holding 0).
-template <reference R, class V>
-constexpr auto make_quantity(V&& v) {
-    using T = std::remove_cvref_t<V>;
-    if constexpr (is_expected_v<T>) {
-        using Q = quantity<R, typename T::value_type>;
+// Q from v, or an expected Q from an expected v (its error passed on).
+template <class Q, class V>
+constexpr auto lift_to(V&& v) {
+    if constexpr (is_expected_v<std::remove_cvref_t<V>>) {
         if (!v)
             return std::expected<Q, errc>{std::unexpect, v.error()};
         return std::expected<Q, errc>{Q{*std::forward<V>(v)}};
     } else
-        return quantity<R, T>{std::forward<V>(v)};
+        return Q{std::forward<V>(v)};
+}
+
+// A quantity of reference R on a number that inside's arithmetic returned: an
+// inside, or an expected of one (division by a grid holding 0).
+template <reference R, class V>
+constexpr auto make_quantity(V&& v) {
+    return lift_to<quantity<R, beman::inside::detail::unwrap_t<V>>>(std::forward<V>(v));
 }
 
 // q.on_wrap(f) and the other hooks: the inside's policy_ref on q's number,
@@ -1208,22 +1210,19 @@ struct quantity_action_ref {
     Ref NumRef;
 
     template <reference R2, class V2>
-        requires implicit_v<R2, R> && rescalable<R2.U, R.U, V2> &&
-                 requires(Ref& r, const rescaled_t<R2, R, V2>& v) { r = v; }
+        requires implicit_rescalable<R2, R, V2> && requires(Ref& r, const rescaled_t<R2, R, V2>& v) { r = v; }
     constexpr Q& operator=(const quantity<R2, V2>& q) {
         NumRef = rescale<conversion_factor<R2.U, R.U>>(q.numerical_value());
         return Self;
     }
     template <reference R2, class V2>
-        requires implicit_v<R2, R> && rescalable<R2.U, R.U, V2> &&
-                 requires(Ref& r, const rescaled_t<R2, R, V2>& v) { r += v; }
+        requires implicit_rescalable<R2, R, V2> && requires(Ref& r, const rescaled_t<R2, R, V2>& v) { r += v; }
     constexpr Q& operator+=(const quantity<R2, V2>& q) {
         NumRef += rescale<conversion_factor<R2.U, R.U>>(q.numerical_value());
         return Self;
     }
     template <reference R2, class V2>
-        requires implicit_v<R2, R> && rescalable<R2.U, R.U, V2> &&
-                 requires(Ref& r, const rescaled_t<R2, R, V2>& v) { r -= v; }
+        requires implicit_rescalable<R2, R, V2> && requires(Ref& r, const rescaled_t<R2, R, V2>& v) { r -= v; }
     constexpr Q& operator-=(const quantity<R2, V2>& q) {
         NumRef -= rescale<conversion_factor<R2.U, R.U>>(q.numerical_value());
         return Self;
@@ -1263,8 +1262,7 @@ class quantity {
     // From another quantity: implicit when the spec converts implicitly and
     // the number, in R's unit, converts implicitly into Rep.
     template <units::reference R2, class V2>
-        requires detail::implicit_v<R2, R> && detail::rescalable<R2.U, R.U, V2> &&
-                 std::constructible_from<Rep, detail::rescaled_t<R2, R, V2>>
+        requires detail::implicit_rescalable<R2, R, V2> && std::constructible_from<Rep, detail::rescaled_t<R2, R, V2>>
     constexpr explicit(!std::convertible_to<detail::rescaled_t<R2, R, V2>, Rep>) quantity(const quantity<R2, V2>& q)
         : Num(detail::rescale<detail::conversion_factor<R2.U, R.U>>(q.numerical_value())) {}
 
@@ -1272,19 +1270,19 @@ class quantity {
 
     // The same quantity in unit U: exact, the number's grid rescaled.
     template <units::unit U>
-        requires(detail::in_error_of<R.U, U>() == detail::in_error::none && detail::rescalable<R.U, U, Rep>)
+        requires detail::in_rescalable<R, U, Rep>
     [[nodiscard]] constexpr auto in() const {
         constexpr units::reference to{R.Spec, R.KindOf, R.Derived, U};
         return detail::make_quantity<to>(detail::rescale<detail::conversion_factor<R.U, U>>(Num));
     }
     template <units::unit U>
-        requires(detail::in_error_of<R.U, U>() == detail::in_error::none && detail::rescalable<R.U, U, Rep>)
+        requires detail::in_rescalable<R, U, Rep>
     [[nodiscard]] constexpr auto in(units::unit_t<U>) const {
         return in<U>();
     }
     // The number in unit U.
     template <units::unit U>
-        requires(detail::in_error_of<R.U, U>() == detail::in_error::none && detail::rescalable<R.U, U, Rep>)
+        requires detail::in_rescalable<R, U, Rep>
     [[nodiscard]] constexpr auto numerical_value_in(units::unit_t<U>) const {
         return in<U>().numerical_value();
     }
@@ -1325,14 +1323,14 @@ class quantity {
     // Compound assignment keeps the type: the number is stored back under Rep's
     // policy (checked by default).
     template <units::reference R2, class V2>
-        requires detail::implicit_v<R2, R> && detail::rescalable<R2.U, R.U, V2> &&
+        requires detail::implicit_rescalable<R2, R, V2> &&
                  requires(Rep& n, const detail::rescaled_t<R2, R, V2>& r) { n += r; }
     constexpr quantity& operator+=(const quantity<R2, V2>& q) {
         Num += detail::rescale<detail::conversion_factor<R2.U, R.U>>(q.numerical_value());
         return *this;
     }
     template <units::reference R2, class V2>
-        requires detail::implicit_v<R2, R> && detail::rescalable<R2.U, R.U, V2> &&
+        requires detail::implicit_rescalable<R2, R, V2> &&
                  requires(Rep& n, const detail::rescaled_t<R2, R, V2>& r) { n -= r; }
     constexpr quantity& operator-=(const quantity<R2, V2>& q) {
         Num -= detail::rescale<detail::conversion_factor<R2.U, R.U>>(q.numerical_value());
@@ -1505,23 +1503,29 @@ consteval bool sum_diagnosed() {
     return sum_error_of<A, B>() != sum_error::none;
 }
 
-// Whether a Op b exists in the common unit: both numbers rescale to it and
-// inside's Op takes them.
+// Whether the two quantities have a common unit (no sum diagnostic) and both
+// numbers rescale to it.
 template <reference A, class VA, reference B, class VB>
-concept common_rescalable =
-    rescalable<A.U, sum_reference<A, B>().U, VA> && rescalable<B.U, sum_reference<A, B>().U, VB>;
+concept common_rescalable = (!sum_diagnosed<A, B>()) && rescalable<A.U, sum_reference<A, B>().U, VA> &&
+                            rescalable<B.U, sum_reference<A, B>().U, VB>;
 // The number of a quantity of A on V, in A and B's common unit.
 template <reference A, class V, reference B>
 using common_number_t = rescaled_t<A, sum_reference<A, B>(), V>;
 
 template <reference A, class VA, reference B, class VB, char Op>
-concept summable = (!sum_diagnosed<A, B>()) && common_rescalable<A, VA, B, VB> &&
-                   number_op<common_number_t<A, VA, B>, common_number_t<B, VB, A>, Op>;
+concept summable =
+    common_rescalable<A, VA, B, VB> && number_op<common_number_t<A, VA, B>, common_number_t<B, VB, A>, Op>;
 
 template <reference A, reference B, int Sign>
 consteval reference product_reference() {
     const unit u = unit_mul(A.U, B.U, Sign);
     return spec_product(A, B, Sign, u);
+}
+
+// q's number in the common unit of A and B: the unit of their sum.
+template <reference A, reference B, reference R, class V>
+constexpr auto in_common_unit(const quantity<R, V>& q) {
+    return rescale<conversion_factor<R.U, sum_reference<A, B>().U>>(q.numerical_value());
 }
 } // namespace detail
 
@@ -1529,36 +1533,29 @@ template <reference A, class VA, reference B, class VB>
     requires detail::summable<A, VA, B, VB, '+'>
 [[nodiscard]] constexpr auto operator+(const quantity<A, VA>& a, const quantity<B, VB>& b) {
     constexpr reference C = detail::sum_reference<A, B>();
-    return detail::make_quantity<C>(detail::rescale<detail::conversion_factor<A.U, C.U>>(a.numerical_value()) +
-                                    detail::rescale<detail::conversion_factor<B.U, C.U>>(b.numerical_value()));
+    return detail::make_quantity<C>(detail::in_common_unit<A, B>(a) + detail::in_common_unit<A, B>(b));
 }
 template <reference A, class VA, reference B, class VB>
     requires detail::summable<A, VA, B, VB, '-'>
 [[nodiscard]] constexpr auto operator-(const quantity<A, VA>& a, const quantity<B, VB>& b) {
     constexpr reference C = detail::sum_reference<A, B>();
-    return detail::make_quantity<C>(detail::rescale<detail::conversion_factor<A.U, C.U>>(a.numerical_value()) -
-                                    detail::rescale<detail::conversion_factor<B.U, C.U>>(b.numerical_value()));
+    return detail::make_quantity<C>(detail::in_common_unit<A, B>(a) - detail::in_common_unit<A, B>(b));
 }
 template <reference A, class VA, reference B, class VB>
     requires detail::summable<A, VA, B, VB, '%'>
 [[nodiscard]] constexpr auto operator%(const quantity<A, VA>& a, const quantity<B, VB>& b) {
     constexpr reference C = detail::sum_reference<A, B>();
-    return detail::make_quantity<C>(detail::rescale<detail::conversion_factor<A.U, C.U>>(a.numerical_value()) %
-                                    detail::rescale<detail::conversion_factor<B.U, C.U>>(b.numerical_value()));
+    return detail::make_quantity<C>(detail::in_common_unit<A, B>(a) % detail::in_common_unit<A, B>(b));
 }
 template <reference A, class VA, reference B, class VB>
     requires detail::summable<A, VA, B, VB, '='>
 [[nodiscard]] constexpr bool operator==(const quantity<A, VA>& a, const quantity<B, VB>& b) {
-    constexpr reference C = detail::sum_reference<A, B>();
-    return detail::rescale<detail::conversion_factor<A.U, C.U>>(a.numerical_value()) ==
-           detail::rescale<detail::conversion_factor<B.U, C.U>>(b.numerical_value());
+    return detail::in_common_unit<A, B>(a) == detail::in_common_unit<A, B>(b);
 }
 template <reference A, class VA, reference B, class VB>
     requires detail::summable<A, VA, B, VB, '<'>
 [[nodiscard]] constexpr auto operator<=>(const quantity<A, VA>& a, const quantity<B, VB>& b) {
-    constexpr reference C = detail::sum_reference<A, B>();
-    return detail::rescale<detail::conversion_factor<A.U, C.U>>(a.numerical_value()) <=>
-           detail::rescale<detail::conversion_factor<B.U, C.U>>(b.numerical_value());
+    return detail::in_common_unit<A, B>(a) <=> detail::in_common_unit<A, B>(b);
 }
 
 // A sum, difference, remainder or comparison of two units that cannot meet:
@@ -1751,20 +1748,14 @@ template <class Q, policy_flag F = none, reference R, class V>
         Q::rep::template try_make<F>(q.template in<Q::reference.U>().numerical_value());
     }
 [[nodiscard]] constexpr std::expected<Q, errc> try_value_cast(const quantity<R, V>& q) {
-    auto v = Q::rep::template try_make<F>(q.template in<Q::reference.U>().numerical_value());
-    if (!v)
-        return std::unexpected{v.error()};
-    return Q{*v};
+    return detail::lift_to<Q>(Q::rep::template try_make<F>(q.template in<Q::reference.U>().numerical_value()));
 }
 
 // try_value_cast<Rep2, F>(q) — as Rep2::try_make<F>: an expected.
 template <insidable Rep2, policy_flag F = none, reference R, class V>
     requires requires(const V& v) { Rep2::template try_make<F>(v); }
 [[nodiscard]] constexpr std::expected<quantity<R, Rep2>, errc> try_value_cast(const quantity<R, V>& q) {
-    auto v = Rep2::template try_make<F>(q.numerical_value());
-    if (!v)
-        return std::unexpected{v.error()};
-    return quantity<R, Rep2>{*v};
+    return detail::lift_to<quantity<R, Rep2>>(Rep2::template try_make<F>(q.numerical_value()));
 }
 
 // try_value_cast<U, Rep2, F>(q) — in unit U, as Rep2::try_make<F>.
@@ -1773,11 +1764,7 @@ template <auto U, insidable Rep2, policy_flag F = none, reference R, class V>
              requires(const quantity<R, V>& q) { Rep2::template try_make<F>(q.in(U).numerical_value()); }
 [[nodiscard]] constexpr auto try_value_cast(const quantity<R, V>& q) {
     constexpr reference to{R.Spec, R.KindOf, R.Derived, decltype(U)::value};
-    using Q = quantity<to, Rep2>;
-    auto v  = Rep2::template try_make<F>(q.in(U).numerical_value());
-    if (!v)
-        return std::expected<Q, errc>{std::unexpect, v.error()};
-    return std::expected<Q, errc>{Q{*v}};
+    return detail::lift_to<quantity<to, Rep2>>(Rep2::template try_make<F>(q.in(U).numerical_value()));
 }
 
 //---------------------------------------------------------------------------
@@ -1819,12 +1806,8 @@ template <class Out, class V>
 constexpr auto wrap_out(V&& v) {
     if constexpr (!quantity_like<Out>)
         return std::forward<V>(v);
-    else if constexpr (is_expected_v<std::remove_cvref_t<V>>) {
-        if (!v)
-            return std::expected<Out, errc>{std::unexpect, v.error()};
-        return std::expected<Out, errc>{Out{*std::forward<V>(v)}};
-    } else
-        return Out{std::forward<V>(v)};
+    else
+        return lift_to<Out>(std::forward<V>(v));
 }
 
 // a·b (E = 1) or a/b (E = −1) stored into Out: the product's reference must
@@ -1994,16 +1977,14 @@ constexpr auto quantity_divmod(D&& d) {
 }
 } // namespace detail
 template <reference A, class VA, reference B, class VB, class... Args>
-    requires(!detail::sum_diagnosed<A, B>()) && detail::common_rescalable<A, VA, B, VB> &&
-            requires(const detail::common_number_t<A, VA, B>& x,
-                     const detail::common_number_t<B, VB, A>& y,
-                     Args&&... args) { beman::inside::divmod(x, y, std::forward<Args>(args)...); }
+    requires detail::common_rescalable<A, VA, B, VB> &&
+             requires(const detail::common_number_t<A, VA, B>& x,
+                      const detail::common_number_t<B, VB, A>& y,
+                      Args&&... args) { beman::inside::divmod(x, y, std::forward<Args>(args)...); }
 [[nodiscard]] constexpr auto divmod(const quantity<A, VA>& a, const quantity<B, VB>& b, Args&&... args) {
     constexpr reference C = detail::sum_reference<A, B>();
-    return detail::quantity_divmod<C>(
-        beman::inside::divmod(detail::rescale<detail::conversion_factor<A.U, C.U>>(a.numerical_value()),
-                              detail::rescale<detail::conversion_factor<B.U, C.U>>(b.numerical_value()),
-                              std::forward<Args>(args)...));
+    return detail::quantity_divmod<C>(beman::inside::divmod(
+        detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b), std::forward<Args>(args)...));
 }
 
 //---------------------------------------------------------------------------
@@ -2051,14 +2032,8 @@ consteval origin_ref origin_of_unit(const unit& u) { return is_single_named(u) ?
 
 template <origin_ref O, class Q>
 constexpr auto make_point(Q&& q) {
-    using T = std::remove_cvref_t<Q>;
-    if constexpr (is_expected_v<T>) {
-        using P = quantity_point<T::value_type::reference, O, typename T::value_type::rep>;
-        if (!q)
-            return std::expected<P, errc>{std::unexpect, q.error()};
-        return std::expected<P, errc>{P{*std::forward<Q>(q)}};
-    } else
-        return quantity_point<T::reference, O, typename T::rep>{std::forward<Q>(q)};
+    using T = beman::inside::detail::unwrap_t<Q>;
+    return lift_to<quantity_point<T::reference, O, typename T::rep>>(std::forward<Q>(q));
 }
 } // namespace detail
 
@@ -2241,60 +2216,17 @@ enum class text_encoding : unsigned char { utf8, ascii };
 
 namespace detail {
 constexpr std::string_view prefix_symbol(int p, text_encoding e) {
-    switch (p) {
-    case -30:
-        return "q";
-    case -27:
-        return "r";
-    case -24:
-        return "y";
-    case -21:
-        return "z";
-    case -18:
-        return "a";
-    case -15:
-        return "f";
-    case -12:
-        return "p";
-    case -9:
-        return "n";
-    case -6:
-        return e == text_encoding::utf8 ? "µ" : "u";
-    case -3:
-        return "m";
-    case -2:
-        return "c";
-    case -1:
-        return "d";
-    case 0:
-        return "";
-    case 1:
-        return "da";
-    case 2:
-        return "h";
-    case 3:
-        return "k";
-    case 6:
-        return "M";
-    case 9:
-        return "G";
-    case 12:
-        return "T";
-    case 15:
-        return "P";
-    case 18:
-        return "E";
-    case 21:
-        return "Z";
-    case 24:
-        return "Y";
-    case 27:
-        return "R";
-    case 30:
-        return "Q";
-    default:
-        return "?";
-    }
+    // 10^-2 … 10^2, then 10^-30 … 10^30 in steps of 3.
+    constexpr std::string_view near_one[]  = {"c", "d", "", "da", "h"};
+    constexpr std::string_view thousands[] = {"q", "r", "y", "z", "a", "f", "p", "n", "µ", "m", "",
+                                              "k", "M", "G", "T", "P", "E", "Z", "Y", "R", "Q"};
+    if (p == -6 && e == text_encoding::ascii)
+        return "u";
+    if (p >= -2 && p <= 2)
+        return near_one[p + 2];
+    if (p >= -30 && p <= 30 && p % 3 == 0)
+        return thousands[(p + 30) / 3];
+    return "?";
 }
 
 inline void append_exponent(std::string& s, int e, text_encoding enc) {

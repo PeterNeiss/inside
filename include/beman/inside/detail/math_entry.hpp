@@ -583,7 +583,6 @@ inline bool dd_full_attempt(const ddk::dd& x, Out& out) {
     return dd_decide(v, bound * 1.5, out);
 }
 
-
 // A lean attempt (its value, setting the bound) first, then the full one.
 template <insidable Out, typename Lean, typename Full>
 BEMAN_INSIDE_ALWAYS_INLINE inline bool dd_lean_first(const Lean& lean, const Full& full, Out& out) {
