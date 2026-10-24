@@ -8486,14 +8486,16 @@ struct policy : E {
     static constexpr bool test(policy_flag w) { return has_flag(W, w); }
 
     static constexpr bool range_check() {
-        if (std::is_constant_evaluated())
+        if consteval {
             return true;
+        }
         return is_checked(W) && not test(ignore_range);
     }
 
     static constexpr bool round_check() {
-        if (std::is_constant_evaluated())
+        if consteval {
             return true;
+        }
         return is_checked(W) && not test(snap);
     }
 
@@ -8507,9 +8509,10 @@ struct policy : E {
         if constexpr (std::is_same_v<E, detail::error_ref>)
             E::Code = E::Code != errc{} ? E::Code : code;
         else {
-            if (std::is_constant_evaluated())
+            if consteval {
                 detail::constexpr_error<"inside: value out of range during constant evaluation "
                                         "(checked policy hit; choose clamp/wrap or widen the interval)">();
+            }
             detail::raise(code);
         }
     }
@@ -10691,9 +10694,7 @@ struct inside {
     template <policy_flag F = none, numeric A>
         requires inside_assignable<inside, A, P | F>
     [[nodiscard]] static constexpr std::expected<inside, errc> try_make(const std::expected<A, errc>& value) {
-        if (!value)
-            return std::unexpected{value.error()};
-        return try_make<F>(*value);
+        return value.and_then([](const A& a) { return try_make<F>(a); });
     }
 };
 
@@ -20448,20 +20449,17 @@ template <class Q, policy_flag F = none, reference R, class V>
         Q::rep::template try_make<F>(q.template in<Q::reference.U>().numerical_value());
     }
 [[nodiscard]] constexpr std::expected<Q, errc> try_value_cast(const quantity<R, V>& q) {
-    auto v = Q::rep::template try_make<F>(q.template in<Q::reference.U>().numerical_value());
-    if (!v)
-        return std::unexpected{v.error()};
-    return Q{*v};
+    return Q::rep::template try_make<F>(q.template in<Q::reference.U>().numerical_value())
+        .transform([](const auto& v) { return Q{v}; });
 }
 
 // try_value_cast<Rep2, F>(q) — as Rep2::try_make<F>: an expected.
 template <insidable Rep2, policy_flag F = none, reference R, class V>
     requires requires(const V& v) { Rep2::template try_make<F>(v); }
 [[nodiscard]] constexpr std::expected<quantity<R, Rep2>, errc> try_value_cast(const quantity<R, V>& q) {
-    auto v = Rep2::template try_make<F>(q.numerical_value());
-    if (!v)
-        return std::unexpected{v.error()};
-    return quantity<R, Rep2>{*v};
+    return Rep2::template try_make<F>(q.numerical_value()).transform([](const Rep2& v) {
+        return quantity<R, Rep2>{v};
+    });
 }
 
 // try_value_cast<U, Rep2, F>(q) — in unit U, as Rep2::try_make<F>.
@@ -20471,10 +20469,7 @@ template <auto U, insidable Rep2, policy_flag F = none, reference R, class V>
 [[nodiscard]] constexpr auto try_value_cast(const quantity<R, V>& q) {
     constexpr reference to{R.Spec, R.KindOf, R.Derived, decltype(U)::value};
     using Q = quantity<to, Rep2>;
-    auto v  = Rep2::template try_make<F>(q.in(U).numerical_value());
-    if (!v)
-        return std::expected<Q, errc>{std::unexpect, v.error()};
-    return std::expected<Q, errc>{Q{*v}};
+    return Rep2::template try_make<F>(q.in(U).numerical_value()).transform([](const Rep2& v) { return Q{v}; });
 }
 
 //---------------------------------------------------------------------------
