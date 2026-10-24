@@ -995,21 +995,21 @@ BEMAN_INSIDE_WARNINGS_POP
 BEMAN_INSIDE_WARNINGS_PUSH
 
 
+// ======================================================================
+//  beman/inside/detail/limb_algorithms.hpp
+// ======================================================================
+// Internal — include "beman/inside/inside.hpp" (the umbrella), not this directly.
+
+BEMAN_INSIDE_WARNINGS_PUSH
+
+
 
 //---------------------------------------------------------------------------
-// wide_int — a fixed-width two's-complement integer of N limbs, for raws and
-// intermediates wider than 64 bits. It behaves like a builtin integer of
-// N·limb_bits bits: + − × wrap, / and % truncate toward zero, >> is arithmetic
-// when signed, and conversions to and from builtin integers truncate or
-// sign-extend as the builtin conversions do. Unlike a builtin, overflow and
-// out-of-range shifts are defined (wrap, and 0 or the sign fill).
-//
-// Structural (a public C array) and trivially copyable, so it can be an NTTP
-// member and an inside raw. Every operation is constexpr and allocation-free.
-//
-// The limb type is a template parameter so tests can run wide_int over uint8_t
-// limbs exhaustively against builtin oracles; the library uses umax limbs.
-// The limb kernels below are also used by the C++26 big_rational.
+// The library's own integer algorithms: the limb primitives and array
+// kernels shared by wide_int, big_rational's magnitudes, the adaptive math
+// tier's fixed-point arrays and the text output; and three value algorithms
+// for any of its integer types (Euclid's gcd, stripping a factor, a power by
+// squaring).
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
 namespace limb {
@@ -1116,13 +1116,142 @@ constexpr pair<L> div(L hi, L lo, L d) noexcept // {quotient, remainder}
     }
 }
 
+
+//---------------------------------------------------------------------------
+// Array kernels over (pointer, length), least significant limb first, in
+// the style of GMP's mpn layer. An output may alias an input of the same
+// position where noted.
+//---------------------------------------------------------------------------
+// r[0, n) = a + b (r may alias a or b); the carry out.
+template <std::unsigned_integral L>
+constexpr L add_n(L* r, const L* a, const L* b, std::size_t n) noexcept {
+    L c = 0;
+    for (std::size_t i = 0; i < n; ++i)
+        r[i] = add_carry(a[i], b[i], c);
+    return c;
+}
+// r[0, n) = a − b (r may alias a or b); the borrow out.
+template <std::unsigned_integral L>
+constexpr L sub_n(L* r, const L* a, const L* b, std::size_t n) noexcept {
+    L br = 0;
+    for (std::size_t i = 0; i < n; ++i)
+        r[i] = sub_borrow(a[i], b[i], br);
+    return br;
+}
+// r[0, an) = a + b[0, bn) for an ≥ bn; the carry out.
+template <std::unsigned_integral L>
+constexpr L add(L* r, const L* a, std::size_t an, const L* b, std::size_t bn) noexcept {
+    L c = add_n(r, a, b, bn);
+    for (std::size_t i = bn; i < an; ++i)
+        r[i] = add_carry(a[i], L{0}, c);
+    return c;
+}
+// r[0, an) = a − b[0, bn) for an ≥ bn; the borrow out.
+template <std::unsigned_integral L>
+constexpr L sub(L* r, const L* a, std::size_t an, const L* b, std::size_t bn) noexcept {
+    L br = sub_n(r, a, b, bn);
+    for (std::size_t i = bn; i < an; ++i)
+        r[i] = sub_borrow(a[i], L{0}, br);
+    return br;
+}
+// r[0, n) = a·q (r may alias a); the top limb.
+template <std::unsigned_integral L>
+constexpr L mul_1(L* r, const L* a, std::size_t n, L q) noexcept {
+    L carry = 0;
+    for (std::size_t i = 0; i < n; ++i) {
+        const pair<L> t = mul(a[i], q);
+        L             c = 0;
+        r[i]            = add_carry(t.Lo, carry, c);
+        carry           = static_cast<L>(t.Hi + c);
+    }
+    return carry;
+}
+// r[0, n) += a·q; the carry out of the top limb.
+template <std::unsigned_integral L>
+constexpr L addmul_1(L* r, const L* a, std::size_t n, L q) noexcept {
+    L carry = 0;
+    for (std::size_t i = 0; i < n; ++i) {
+        const pair<L> p  = mul(q, a[i]);
+        L             c1 = 0, c2 = 0;
+        L             s  = add_carry(r[i], p.Lo, c1);
+        s                = add_carry(s, carry, c2);
+        r[i]             = s;
+        carry            = static_cast<L>(p.Hi + c1 + c2); // fits: (b−1)² + 2(b−1) < b²
+    }
+    return carry;
+}
+// r[0, an + bn) = a·b (schoolbook; r aliases neither).
+template <std::unsigned_integral L>
+constexpr void mul_basecase(L* r, const L* a, std::size_t an, const L* b, std::size_t bn) noexcept {
+    for (std::size_t i = 0; i < an + bn; ++i)
+        r[i] = 0;
+    for (std::size_t i = 0; i < an; ++i)
+        r[i + bn] = addmul_1(r + i, b, bn, a[i]);
+}
+// r[0, n) = a·b mod B^n, the low half of the product (r aliases neither,
+// and starts at 0). Past two limbs a's zero limbs are skipped: a small
+// value's high limbs add nothing.
+template <std::unsigned_integral L>
+constexpr void mul_low(L* r, const L* a, const L* b, std::size_t n) noexcept {
+    for (std::size_t i = 0; i < n; ++i)
+        if (n <= 2 || a[i] != 0)
+            addmul_1(r + i, b, n - i, a[i]);
+}
+// q[0, n) = a / d, top down (q may alias a); a mod d.
+template <std::unsigned_integral L>
+constexpr L div_1(L* q, const L* a, std::size_t n, L d) noexcept {
+    L rem = 0;
+    for (std::size_t i = n; i-- > 0;) {
+        const pair<L> t = div(rem, a[i], d);
+        q[i]            = t.Hi;
+        rem             = t.Lo;
+    }
+    return rem;
+}
+// r[0, rn) = a[0, an) >> s, the limbs past an read as fill (0, or a sign).
+template <std::unsigned_integral L>
+constexpr void shift_right(L* r, std::size_t rn, const L* a, std::size_t an, int s, L fill = 0) noexcept {
+    constexpr int     B    = bits<L>;
+    const std::size_t ws   = static_cast<std::size_t>(s / B);
+    const int         bs   = s % B;
+    const auto        word = [&](std::size_t k) { return k < an ? a[k] : fill; };
+    for (std::size_t i = 0; i < rn; ++i) {
+        L w = static_cast<L>(word(i + ws) >> bs);
+        if (bs != 0)
+            w |= static_cast<L>(word(i + ws + 1) << (B - bs));
+        r[i] = w;
+    }
+}
+// r[0, rn) = a[0, an) << s, the bits past rn dropped. r starts at 0 (its
+// limbs below the shift are not written) and aliases nothing.
+template <std::unsigned_integral L>
+constexpr void shift_left(L* r, std::size_t rn, const L* a, std::size_t an, int s) noexcept {
+    constexpr int     B    = bits<L>;
+    const std::size_t ws   = static_cast<std::size_t>(s / B);
+    const int         bs   = s % B;
+    const auto        word = [&](std::size_t k) { return k < an ? a[k] : L{0}; };
+    for (std::size_t i = ws; i < rn; ++i) {
+        L w = static_cast<L>(word(i - ws) << bs);
+        if (bs != 0 && i > ws)
+            w |= static_cast<L>(word(i - ws - 1) >> (B - bs));
+        r[i] = w;
+    }
+}
+// The significant length of a[0, n): n without its top zero limbs.
+template <std::unsigned_integral L>
+constexpr std::size_t top_size(const L* a, std::size_t n) noexcept {
+    while (n > 0 && a[n - 1] == 0)
+        --n;
+    return n;
+}
+
 // Knuth's algorithm D (TAOCP 4.3.1). u has m limbs, v has n limbs with
 // v[n−1] != 0 and m >= n. Writes the m−n+1 quotient limbs to q and the n
 // remainder limbs to r. The caller provides scratch: un (m+1) and vn (n).
 template <std::unsigned_integral L>
 constexpr void divmod(const L* u, std::size_t m, const L* v, std::size_t n, L* q, L* r, L* un, L* vn) noexcept {
     constexpr int B = bits<L>;
-    if (n == 1) {
+    if (n == 1) { // (written out: through div_1, GCC loses that this returns for n == 1)
         L rem = 0;
         for (std::size_t i = m; i-- > 0;) {
             const pair<L> d = div(rem, u[i], v[0]);
@@ -1195,6 +1324,94 @@ constexpr void divmod(const L* u, std::size_t m, const L* v, std::size_t n, L* q
 }
 } // namespace limb
 
+// gcd(a, b) of non-negative a and b by Euclid (0 when both are), with
+// rem(a, b) the remainder.
+template <class I, class Rem = std::modulus<>>
+constexpr I euclid_gcd(I a, I b, Rem rem = {}) {
+    const auto zero = [](const I& v) {
+        if constexpr (requires { v.is_zero(); })
+            return v.is_zero();
+        else
+            return v.empty();
+    };
+    while (!zero(b)) {
+        I t = rem(a, b);
+        a   = std::move(b);
+        b   = std::move(t);
+    }
+    return a;
+}
+
+// x divided by p as often as p divides it (x ≠ 0); how often. A wide x
+// (one with Word limbs) divides limb-wise; any other integer type by its
+// own % and /.
+template <class I>
+constexpr imax strip_factor(I& x, umax p) {
+    imax k = 0;
+    if constexpr (requires { x.Word; }) {
+        constexpr std::size_t N = sizeof(x.Word) / sizeof(x.Word[0]);
+        if (p == 2) {
+            std::size_t w = 0;
+            while (w < N && x.Word[w] == 0)
+                ++w;
+            const int s = static_cast<int>(w) * 64 + (w < N ? std::countr_zero(x.Word[w]) : 0);
+            x           = x >> s;
+            return s;
+        }
+        for (;;) {
+            umax       q[N];
+            const umax r = limb::div_1(q, x.Word, N, p);
+            if (r != 0)
+                return k;
+            std::copy_n(q, N, x.Word);
+            ++k;
+        }
+    } else {
+        const I d{p};
+        for (; x % d == I{0}; x = x / d)
+            ++k;
+        return k;
+    }
+}
+
+// x^n for n ≥ 0 by squaring, with mul(a, b) the product and one the unit.
+// For exact multiplication only: a rounded mul would round differently
+// from the repeated product.
+template <class T, class Mul>
+constexpr T pow_by_squaring(T x, unsigned n, Mul mul, T one) {
+    T r = std::move(one);
+    while (n != 0) {
+        if (n & 1u)
+            r = mul(r, x);
+        n >>= 1;
+        if (n != 0)
+            x = mul(x, x);
+    }
+    return r;
+}
+} // namespace beman::inside::detail
+
+BEMAN_INSIDE_WARNINGS_POP
+
+
+
+//---------------------------------------------------------------------------
+// wide_int — a fixed-width two's-complement integer of N limbs, for raws and
+// intermediates wider than 64 bits. It behaves like a builtin integer of
+// N·limb_bits bits: + − × wrap, / and % truncate toward zero, >> is arithmetic
+// when signed, and conversions to and from builtin integers truncate or
+// sign-extend as the builtin conversions do. Unlike a builtin, overflow and
+// out-of-range shifts are defined (wrap, and 0 or the sign fill).
+//
+// Structural (a public C array) and trivially copyable, so it can be an NTTP
+// member and an inside raw. Every operation is constexpr and allocation-free.
+//
+// The limb type is a template parameter so tests can run wide_int over uint8_t
+// limbs exhaustively against builtin oracles; the library uses umax limbs.
+// The limb kernels below are also used by the C++26 big_rational.
+//---------------------------------------------------------------------------
+namespace beman::inside::detail {
+
 template <std::size_t N, bool Signed, std::unsigned_integral L = umax>
 struct wide_int {
     static_assert(N >= 1, "wide_int: at least one limb");
@@ -1230,6 +1447,7 @@ struct wide_int {
     template <std::size_t M, bool S2>
         requires(M != N || S2 != Signed)
     constexpr explicit(M >= N) wide_int(const wide_int<M, S2, L>& o) noexcept {
+        // (One loop, not copy_n + fill: that costs the math rows an instruction.)
         const L fill = o.negative() ? static_cast<L>(~L{0}) : L{0};
         for (std::size_t i = 0; i < N; ++i)
             Word[i] = (i < M) ? o.Word[i] : fill;
@@ -1238,10 +1456,7 @@ struct wide_int {
     [[nodiscard]] constexpr bool negative() const noexcept { return Signed && (Word[N - 1] >> (limb_bits - 1)) != 0; }
 
     [[nodiscard]] constexpr bool is_zero() const noexcept {
-        for (std::size_t i = 0; i < N; ++i)
-            if (Word[i] != 0)
-                return false;
-        return true;
+        return std::ranges::all_of(Word, [](L w) { return w == 0; });
     }
 
     constexpr explicit operator bool() const noexcept { return !is_zero(); }
@@ -1282,6 +1497,8 @@ struct wide_int {
     }
 
     // ---- arithmetic (wraps modulo 2^bits) -------------------------------
+    // + − × stay written out: through limb::add_n / sub_n / mul_low the
+    // math tier's rows lose an instruction each (the ins/op bench).
     friend constexpr wide_int operator+(wide_int a, const wide_int& b) noexcept {
         L c = 0;
         for (std::size_t i = 0; i < N; ++i)
@@ -1331,23 +1548,19 @@ struct wide_int {
 
     // ---- bitwise ---------------------------------------------------------
     friend constexpr wide_int operator~(wide_int a) noexcept {
-        for (std::size_t i = 0; i < N; ++i)
-            a.Word[i] = static_cast<L>(~a.Word[i]);
+        std::ranges::transform(a.Word, a.Word, [](L w) { return static_cast<L>(~w); });
         return a;
     }
     friend constexpr wide_int operator&(wide_int a, const wide_int& b) noexcept {
-        for (std::size_t i = 0; i < N; ++i)
-            a.Word[i] &= b.Word[i];
+        std::ranges::transform(a.Word, b.Word, a.Word, std::bit_and<L>{});
         return a;
     }
     friend constexpr wide_int operator|(wide_int a, const wide_int& b) noexcept {
-        for (std::size_t i = 0; i < N; ++i)
-            a.Word[i] |= b.Word[i];
+        std::ranges::transform(a.Word, b.Word, a.Word, std::bit_or<L>{});
         return a;
     }
     friend constexpr wide_int operator^(wide_int a, const wide_int& b) noexcept {
-        for (std::size_t i = 0; i < N; ++i)
-            a.Word[i] ^= b.Word[i];
+        std::ranges::transform(a.Word, b.Word, a.Word, std::bit_xor<L>{});
         return a;
     }
 
@@ -1363,11 +1576,13 @@ struct wide_int {
     // Written out: GCC 15/16 miscompare a defaulted == over an array member in
     // constant evaluation (`a == x && b == y` can come out true with b != y).
     friend constexpr bool operator==(const wide_int& a, const wide_int& b) noexcept {
-        for (std::size_t i = 0; i < N; ++i)
+        for (std::size_t i = 0; i < N; ++i) // (not ranges::equal: that calls memcmp)
             if (a.Word[i] != b.Word[i])
                 return false;
         return true;
     }
+    // (A loop, not lexicographical_compare_three_way on reverse iterators,
+    // which moves the ins/op bench both ways.)
     friend constexpr std::strong_ordering operator<=>(const wide_int& a, const wide_int& b) noexcept {
         if (a.negative() != b.negative())
             return a.negative() ? std::strong_ordering::less : std::strong_ordering::greater;
@@ -1406,43 +1621,24 @@ struct wide_int {
 
     // Number of significant bits of a non-negative value (0 for 0).
     [[nodiscard]] friend constexpr int bit_width_of(const wide_int& a) noexcept {
-        for (std::size_t i = N; i-- > 0;)
-            if (a.Word[i] != 0)
-                return static_cast<int>(i) * limb_bits + (limb_bits - std::countl_zero(a.Word[i]));
-        return 0;
+        const std::size_t n = limb::top_size(a.Word, N);
+        return n == 0 ? 0 : static_cast<int>(n - 1) * limb_bits + static_cast<int>(std::bit_width(a.Word[n - 1]));
     }
 
   private:
     static constexpr wide_int shl(const wide_int& a, int s) noexcept {
         wide_int r{0};
-        if (s >= bits)
-            return r;
-        const std::size_t ws = static_cast<std::size_t>(s / limb_bits);
-        const int         bs = s % limb_bits;
-        for (std::size_t i = ws; i < N; ++i) {
-            L w = static_cast<L>(a.Word[i - ws] << bs);
-            if (bs != 0 && i > ws)
-                w |= static_cast<L>(a.Word[i - ws - 1] >> (limb_bits - bs));
-            r.Word[i] = w;
-        }
+        if (s < bits)
+            limb::shift_left(r.Word, N, a.Word, N, s);
         return r;
     }
     static constexpr wide_int shr(const wide_int& a, int s, L fill) noexcept {
         wide_int r;
-        if (s >= bits) {
-            for (std::size_t i = 0; i < N; ++i)
+        if (s >= bits)
+            for (std::size_t i = 0; i < N; ++i) // (not ranges::fill: that calls memset)
                 r.Word[i] = fill;
-            return r;
-        }
-        const std::size_t ws   = static_cast<std::size_t>(s / limb_bits);
-        const int         bs   = s % limb_bits;
-        const auto        word = [&](std::size_t k) { return k < N ? a.Word[k] : fill; };
-        for (std::size_t i = 0; i < N; ++i) {
-            L w = static_cast<L>(word(i + ws) >> bs);
-            if (bs != 0)
-                w |= static_cast<L>(word(i + ws + 1) << (limb_bits - bs));
-            r.Word[i] = w;
-        }
+        else
+            limb::shift_right(r.Word, N, a.Word, N, s, fill);
         return r;
     }
     static constexpr wide_int lshr(const wide_int& a, int s) noexcept { return shr(a, s, L{0}); }
@@ -1459,11 +1655,10 @@ constexpr auto wide_int<N, Signed, L>::divmod(const wide_int& a, const wide_int&
     if (b.is_zero())
         fail_hard<"wide_int: division by zero">(errc::division_by_zero);
     // Divide the magnitudes; −min reads correctly as an unsigned magnitude.
-    const bool     na = a.negative(), nb = b.negative();
-    const wide_int ua = na ? -a : a, ub = nb ? -b : b;
-    std::size_t    m = N, n = N;
-    while (m > 0 && ua.Word[m - 1] == 0)
-        --m;
+    const bool        na = a.negative(), nb = b.negative();
+    const wide_int    ua = na ? -a : a, ub = nb ? -b : b;
+    const std::size_t m = limb::top_size(ua.Word, N);
+    std::size_t       n = N; // b ≠ 0: no n > 0 test, which GCC's bounds warnings would need
     while (ub.Word[n - 1] == 0)
         --n;
     divmod_result res{wide_int{0}, wide_int{0}};
@@ -1495,11 +1690,7 @@ struct small_divmod {
 template <std::size_t K>
 constexpr small_divmod<K> divmod_small(const wide_uint<K>& n, umax d) noexcept {
     small_divmod<K> r{wide_uint<K>{0}, 0};
-    for (std::size_t i = K; i-- > 0;) {
-        const limb::pair<umax> qr = limb::div(r.Remainder, n.Word[i], d);
-        r.Quotient.Word[i]        = qr.Hi;
-        r.Remainder               = qr.Lo;
-    }
+    r.Remainder = limb::div_1(r.Quotient.Word, n.Word, K, d);
     return r;
 }
 
@@ -1520,12 +1711,7 @@ concept raw_integer = std::integral<T> || wide_integer<T>;
 // gcd of two non-negative wide integers (Euclid; 0 when both are).
 template <wide_integer I>
 constexpr I wide_gcd(I a, I b) noexcept {
-    while (!b.is_zero()) {
-        const I t = a % b;
-        a         = b;
-        b         = t;
-    }
-    return a;
+    return euclid_gcd(a, b);
 }
 
 //---------------------------------------------------------------------------

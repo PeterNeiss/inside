@@ -24,6 +24,7 @@ target_sources(
                 detail/grid_rational.hpp
                 detail/int_for_bits.hpp
                 detail/introspection.hpp
+                detail/limb_algorithms.hpp
                 detail/math_adaptive.hpp
                 detail/math_constants.hpp
                 detail/math_cores.hpp
