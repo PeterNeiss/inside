@@ -11,6 +11,7 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <cstddef>
 #include <expected>
 #include <limits>
+#include <utility>
 
 namespace beman::inside::detail {
 //---------------------------------------------------------------------------
@@ -242,7 +243,7 @@ constexpr parsed_number parse_number(const char* first, const char* last) {
     const umax g = std::gcd(num, den);
     num /= g;
     den /= g;
-    if (den > static_cast<umax>(std::numeric_limits<imax>::max()))
+    if (!std::in_range<imax>(den))
         return fail(parse_fail::denominator_overflow);
     return parsed_number{rational{num, den}, parse_fail::none};
 }

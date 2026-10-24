@@ -9,6 +9,7 @@ BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <bit>
 #include <initializer_list>
+#include <utility>
 
 //---------------------------------------------------------------------------
 // storage — how an inside's value lives in its raw (the storage concepts),
@@ -197,8 +198,7 @@ inline constexpr umax max_index_of = grid_of<B>.max_index();
 // the exact rational / umax paths instead.
 template <insidable B>
 inline constexpr bool values_fit_imax =
-    !wide_valued<B> && fits_imax(interval_of<B>) &&
-    (value_storage<B> || max_index_of<B> <= static_cast<umax>(std::numeric_limits<imax>::max()));
+    !wide_valued<B> && fits_imax(interval_of<B>) && (value_storage<B> || std::in_range<imax>(max_index_of<B>));
 
 // Every value's reduced numerator and denominator fit imax too: a value
 // within int64 can still have a numerator past it ((2^63 + 1)/2). An
@@ -631,8 +631,8 @@ template <insidable L, typename P>
         // exactly when the floor's value index m + q is.
         const imax di = static_cast<imax>(den);
         imax       mdi, NUM;
-        if (num > static_cast<umax>(std::numeric_limits<imax>::max()) || mul_overflow(m, di, &mdi) ||
-            add_overflow(mdi, static_cast<imax>(num), &NUM)) [[unlikely]] {
+        if (!std::in_range<imax>(num) || mul_overflow(m, di, &mdi) || add_overflow(mdi, static_cast<imax>(num), &NUM))
+            [[unlikely]] {
             constexpr round_mode mode = rounding_for<L, P>;
             const umax           q = num / den, r = num % den;
             const bool           negative = m < 0 && q < umax{0} - static_cast<umax>(m);

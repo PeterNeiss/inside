@@ -12,6 +12,7 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <cstddef>
 #include <expected>
 #include <optional>
+#include <utility>
 
 //---------------------------------------------------------------------------
 // beman::inside::math::adaptive — the math engine behind cmath.hpp (which
@@ -792,7 +793,7 @@ constexpr std::optional<imax> bracket_slot(imax num, bool negative) noexcept {
                                            negative,
                                            classify_remainder(m, static_cast<umax>(r), static_cast<umax>(den)),
                                            ((q & 1) != 0) != lower_index_odd<Out>);
-    if (k < 0 || static_cast<umax>(k) > max_index_of<Out>)
+    if (k < 0 || std::cmp_greater(k, max_index_of<Out>))
         return std::nullopt;
     return k;
 }

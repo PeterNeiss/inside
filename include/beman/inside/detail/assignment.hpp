@@ -11,6 +11,7 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <beman/inside/grid.hpp>
 
 #include <bit>
+#include <utility>
 
 namespace beman::inside::detail {
 //---------------------------------------------------------------------------
@@ -27,25 +28,22 @@ namespace beman::inside::detail {
 template <insidable L, std::integral R>
 struct assignment<L, R> {
   private:
-    // A 64-bit unsigned source can exceed imax: `static_cast<imax>(rhs)` would
-    // turn 2^64−1 into −1. Compare such a source in umax instead; every
-    // narrower or signed source is exact in imax and keeps the plain cast.
-    static constexpr bool wide_unsigned = std::is_unsigned_v<R> && sizeof(R) >= sizeof(imax);
-
     // Exact integer arithmetic for the bounds and the cold clamp/wrap paths:
     // an integer interval may reach past int64 on either side (e.g.
     // {0, 2^64−1}), and rhs − Lower may need 65 bits.
     using fold = unit_fold<L, source_lo<R>, source_hi<R>>;
     using W    = typename fold::W;
 
-    // Hot-path range test. Bounds within imax compare as plain integers;
-    // bounds past int64 compare exactly in the fold's work type.
+    // Hot-path range test. Bounds within imax compare as plain integers; a
+    // 64-bit unsigned source can exceed imax and compares sign-safe instead.
+    // (Not std::cmp_* throughout: GCC then misses folding `lo ≤ x ≤ hi` into
+    // one unsigned compare.) Bounds past int64 compare exactly in the fold's
+    // work type.
     static constexpr bool out_of_range(R rhs) noexcept {
         if constexpr (fits_imax(interval_of<L>)) {
             constexpr imax lower = lower_imax<L>, upper = upper_imax<L>;
-            if constexpr (wide_unsigned)
-                return (lower > 0 && static_cast<umax>(rhs) < static_cast<umax>(lower)) || upper < 0 ||
-                       static_cast<umax>(rhs) > static_cast<umax>(upper);
+            if constexpr (std::is_unsigned_v<R> && sizeof(R) >= sizeof(imax))
+                return std::cmp_less(rhs, lower) || std::cmp_greater(rhs, upper);
             else
                 return static_cast<imax>(rhs) < lower || static_cast<imax>(rhs) > upper;
         } else {
@@ -814,8 +812,7 @@ struct assignment<L, R> {
                       !values_fit_imax<R>)
             return no;
         else {
-            constexpr umax cap = static_cast<umax>(std::numeric_limits<imax>::max());
-            if (Factor.Numerator > cap || Offset.Numerator > cap)
+            if (!std::in_range<imax>(Factor.Numerator) || !std::in_range<imax>(Offset.Numerator))
                 return no;
             const imax   f_n = static_cast<imax>(Factor.Numerator); // Factor > 0
             const imax   f_d = abs_den(Factor.Denominator);
@@ -825,7 +822,7 @@ struct assignment<L, R> {
             if (mul_overflow(f_n, o_d, &m.Mul) || mul_overflow(o_s, f_d, &m.Add) || mul_overflow(o_d, f_d, &m.Den))
                 return no;
             // worst-case |numerator| over R's offset range [0, max_index]
-            if (max_index_of<R> > cap)
+            if (!std::in_range<imax>(max_index_of<R>))
                 return no;
             const imax rmax = static_cast<imax>(max_index_of<R>);
             imax       term, num;
@@ -837,7 +834,7 @@ struct assignment<L, R> {
             // take the same branch (ties on negatives differ across branches).
             constexpr auto zl = try_div(detail::lower64<L>, detail::notch64<L>).value_or(rational{0});
             if (abs_den(zl.Denominator) == 1) {
-                if (zl.Numerator > cap)
+                if (!std::in_range<imax>(zl.Numerator))
                     return no;
                 const imax mbias = signed_numerator(zl);
                 imax       mdi, total;
