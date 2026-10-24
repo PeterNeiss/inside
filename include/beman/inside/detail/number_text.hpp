@@ -8,6 +8,7 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <beman/inside/detail/rational.hpp> // rational, its checked arithmetic
 #include <beman/inside/detail/debug.hpp>    // errc, constexpr_error
 
+#include <algorithm>
 #include <cstddef>
 #include <expected>
 #include <limits>
@@ -256,10 +257,7 @@ consteval bool octal_literal() {
     constexpr char text[] = {Chars..., '\0'};
     if (sizeof...(Chars) < 2 || text[0] != '0')
         return false;
-    for (std::size_t i = 1; i < sizeof...(Chars); ++i)
-        if (text[i] != '\'' && (text[i] < '0' || text[i] > '9'))
-            return false;
-    return true;
+    return std::all_of(text + 1, text + sizeof...(Chars), [](char c) { return c == '\'' || (c >= '0' && c <= '9'); });
 }
 
 template <char... Chars>

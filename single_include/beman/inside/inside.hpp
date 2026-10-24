@@ -443,10 +443,7 @@ namespace detail {
 template <unsigned N>
 struct fixed_string {
     char Data[N]{};
-    constexpr fixed_string(const char (&s)[N]) {
-        for (unsigned i = 0; i < N; ++i)
-            Data[i] = s[i];
-    }
+    constexpr fixed_string(const char (&s)[N]) { std::copy_n(s, N, Data); }
 };
 
 template <fixed_string Msg>
@@ -3103,10 +3100,7 @@ consteval bool octal_literal() {
     constexpr char text[] = {Chars..., '\0'};
     if (sizeof...(Chars) < 2 || text[0] != '0')
         return false;
-    for (std::size_t i = 1; i < sizeof...(Chars); ++i)
-        if (text[i] != '\'' && (text[i] < '0' || text[i] > '9'))
-            return false;
-    return true;
+    return std::all_of(text + 1, text + sizeof...(Chars), [](char c) { return c == '\'' || (c >= '0' && c <= '9'); });
 }
 
 template <char... Chars>
@@ -4930,9 +4924,7 @@ constexpr grid bounded_continuous(const interval& iv, grid_int d) {
         return g;
     // Each limit is a value of the result, but an operator's interval may be
     // wider than the values it reaches: cover the limits' denominators.
-    for (const grid_rational* x : {&iv.Lower, &iv.Upper})
-        if (d < wide_denominator(*x))
-            d = wide_denominator(*x);
+    d                = std::max({d, wide_denominator(iv.Lower), wide_denominator(iv.Upper)});
     const grid_int n = num_bound(iv, d);
 #if BEMAN_INSIDE_BIG_GRIDS
     if (bit_width_of(n) + bit_width_of(d) > BEMAN_INSIDE_MAX_FRACTION_BITS)
@@ -5220,10 +5212,7 @@ constexpr bool grid_product_fits([[maybe_unused]] const grid& a, [[maybe_unused]
         return false;
     if (*n == 0) // continuous or a point
         return true;
-    grid_rational lo = *c0;
-    for (const grid_rational& c : {*c1, *c2, *c3})
-        lo = c < lo ? c : lo;
-    return grid_gcd_fits(*n, lo);
+    return grid_gcd_fits(*n, std::min({*c0, *c1, *c2, *c3}));
 #endif
 }
 // Whether a / b has a result grid: the divisor is not the point 0, an
@@ -5869,13 +5858,7 @@ constexpr int signed_value_bits(const grid_int& lo, const grid_int& hi) noexcept
 
 // Value bits for every value in a list (their min .. max).
 constexpr int signed_value_bits_of(std::initializer_list<grid_int> vals) noexcept {
-    grid_int mn = *vals.begin(), mx = *vals.begin();
-    for (const grid_int& v : vals) {
-        if (v < mn)
-            mn = v;
-        if (mx < v)
-            mx = v;
-    }
+    const auto [mn, mx] = std::minmax(vals);
     return signed_value_bits(mn, mx);
 }
 
@@ -6643,14 +6626,16 @@ constexpr T nearest_float(const wide_rational<K>& f) noexcept {
         return neg ? -lim::infinity() : lim::infinity();
     // m ≤ 2^p is exact in T, limb by limb; the scaling by 2^(drop − s) in
     // steps of 2^±64 stays exact (every step lies between m and the result).
-    T x = 0;
-    for (int i = U::bits / 64 - 1; i >= 0; --i)
-        x = x * static_cast<T>(0x1p64) + static_cast<T>(m.Word[i]);
+    T x = std::accumulate(std::rbegin(m.Word), std::rend(m.Word), T{0}, [](T acc, umax w) {
+        return acc * static_cast<T>(0x1p64) + static_cast<T>(w);
+    });
     for (int k = drop - s; k != 0;) {
         const int step = k > 64 ? 64 : k < -64 ? -64 : k;
-        T         t    = 1;
-        for (int j = 0; j < (step < 0 ? -step : step); ++j)
-            t *= step < 0 ? static_cast<T>(0.5) : static_cast<T>(2);
+        const T   t    = pow_by_squaring(
+            step < 0 ? static_cast<T>(0.5) : static_cast<T>(2),
+            static_cast<unsigned>(step < 0 ? -step : step),
+            [](T a, T b) { return a * b; },
+            T{1});
         x *= t;
         k -= step;
     }
@@ -18051,6 +18036,7 @@ BEMAN_INSIDE_WARNINGS_PUSH
 BEMAN_INSIDE_WARNINGS_PUSH
 
 
+#include <algorithm>
 #include <string>
 #include <string_view>
 #include <istream>
@@ -18085,15 +18071,10 @@ std::string fraction_to_string(bool neg, wide_uint<K> num, wide_uint<K> den, int
     const U g = beman::inside::detail::wide_gcd(den, num);
     num /= g;
     den /= g;
-    std::string str  = neg && !num.is_zero() ? "-" : "";
-    int         twos = 0, fives = 0;
-    U           rest = den;
-    for (; (rest.Word[0] & 1) == 0; rest >>= 1)
-        ++twos;
-    for (auto d = divmod_small(rest, 5); d.Remainder == 0; d = divmod_small(rest, 5)) {
-        rest = d.Quotient;
-        ++fives;
-    }
+    std::string str   = neg && !num.is_zero() ? "-" : "";
+    U           rest  = den;
+    const auto  twos  = strip_factor(rest, 2);
+    const auto  fives = strip_factor(rest, 5);
     if (!(rest == U{1}))
         return str += wide_to_decimal(num) + "/" + wide_to_decimal(den);
     // num·10^digits/den is an integer; 19 digits at a time keep the scratch
@@ -18141,12 +18122,9 @@ inline constexpr int fixed_decimals = [] {
     if constexpr (!notched<B>)
         return 0;
     else {
-        grid_int q   = wide_denominator(grid_of<B>.value_unit());
-        int      two = 0, five = 0;
-        for (; q % grid_int{2} == grid_int{0}; q = q / grid_int{2})
-            ++two;
-        for (; q % grid_int{5} == grid_int{0}; q = q / grid_int{5})
-            ++five;
+        grid_int   q    = wide_denominator(grid_of<B>.value_unit());
+        const imax two  = detail::strip_factor(q, 2);
+        const imax five = detail::strip_factor(q, 5);
         return q == grid_int{1} && five > 0 ? (two > five ? two : five) : 0;
     }
 }();
@@ -18249,12 +18227,8 @@ template <std::size_t N, bool S>
     detail::big::mag m = v.magnitude();
     std::string      out;
     do {
-        umax rem = 0; // m /= 10^19, rem = m % 10^19
-        for (std::size_t i = m.size(); i-- > 0;) {
-            const auto d = detail::limb::div(rem, m[i], umax{10'000'000'000'000'000'000ull});
-            m[i]         = d.Hi;
-            rem          = d.Lo;
-        }
+        // m /= 10^19, rem = m % 10^19
+        const umax rem = detail::limb::div_1(m.data(), m.data(), m.size(), umax{10'000'000'000'000'000'000ull});
         detail::big::trim(m);
         std::string part = std::to_string(rem);
         if (!m.empty())
@@ -18566,9 +18540,7 @@ struct exact_format_spec {
 
   private:
     static std::string to_upper(std::string s) {
-        for (char& c : s)
-            if (c == 'e')
-                c = 'E';
+        std::ranges::replace(s, 'e', 'E');
         return s;
     }
 
@@ -18762,15 +18734,10 @@ struct dimension {
     }
 
     friend constexpr bool operator==(const dimension& a, const dimension& b) {
-        for (std::size_t i = 0; i < detail::base_dimensions; ++i)
-            if (a.Exp[i] != b.Exp[i])
-                return false;
-        if (a.UserSize != b.UserSize)
-            return false;
-        for (std::int8_t i = 0; i < a.UserSize; ++i)
-            if (a.User[i].D->Name != b.User[i].D->Name || a.User[i].Exp != b.User[i].Exp)
-                return false;
-        return true;
+        return std::ranges::equal(a.Exp, b.Exp) && a.UserSize == b.UserSize &&
+               std::equal(a.User, a.User + a.UserSize, b.User, [](const auto& x, const auto& y) {
+                   return x.D->Name == y.D->Name && x.Exp == y.Exp;
+               });
     }
     friend consteval dimension operator*(dimension a, const dimension& b) {
         for (std::size_t i = 0; i < detail::base_dimensions; ++i)
@@ -18821,16 +18788,15 @@ namespace detail {
 // `before`. False when items is full.
 template <class T, std::size_t N, class Same, class Before>
 constexpr bool sorted_add(T (&items)[N], std::int8_t& size, T x, int e, Same same, Before before) {
-    for (std::int8_t i = 0; i < size; ++i)
-        if (same(items[i], x)) {
-            items[i].Exp = dimension::exponent(items[i].Exp + e);
-            if (items[i].Exp == 0) {
-                for (std::int8_t j = i; j + 1 < size; ++j)
-                    items[j] = items[j + 1];
-                items[--size] = {};
-            }
-            return true;
+    T* const end = items + size;
+    if (T* const it = std::find_if(items, end, [&](const T& y) { return same(y, x); }); it != end) {
+        it->Exp = dimension::exponent(it->Exp + e);
+        if (it->Exp == 0) {
+            std::shift_left(it, end, 1);
+            items[--size] = {};
         }
+        return true;
+    }
     if (e == 0)
         return true;
     if (size == static_cast<std::int8_t>(N))
@@ -18960,12 +18926,7 @@ struct recipe {
     spec_factor           F[max_spec_factors]{};
     std::int8_t           Size{0};
     friend constexpr bool operator==(const recipe& a, const recipe& b) {
-        if (a.Size != b.Size)
-            return false;
-        for (std::int8_t i = 0; i < a.Size; ++i)
-            if (!(a.F[i] == b.F[i]))
-                return false;
-        return true;
+        return a.Size == b.Size && std::equal(a.F, a.F + a.Size, b.F);
     }
 };
 
@@ -19247,12 +19208,7 @@ struct unit {
     constexpr unit(const named_unit& u) : Atoms{{&u, 0, 1}}, Size{1} {}
 
     friend constexpr bool operator==(const unit& a, const unit& b) {
-        if (a.Size != b.Size || !(a.Scale == b.Scale))
-            return false;
-        for (std::int8_t i = 0; i < a.Size; ++i)
-            if (!(a.Atoms[i] == b.Atoms[i]))
-                return false;
-        return true;
+        return a.Size == b.Size && a.Scale == b.Scale && std::equal(a.Atoms, a.Atoms + a.Size, b.Atoms);
     }
 };
 
@@ -19692,15 +19648,12 @@ inline constexpr magnitude conversion_factor = magnitude_of(From) / magnitude_of
 consteval bool unit_before(const unit& a, const unit& b) {
     if (a.Size != b.Size)
         return a.Size < b.Size;
-    for (std::int8_t i = 0; i < a.Size; ++i) {
-        if (atom_before(a.Atoms[i], b.Atoms[i]))
-            return true;
-        if (atom_before(b.Atoms[i], a.Atoms[i]))
-            return false;
-        if (a.Atoms[i].Exp != b.Atoms[i].Exp)
-            return a.Atoms[i].Exp < b.Atoms[i].Exp;
-    }
-    return false;
+    return std::lexicographical_compare(
+        a.Atoms, a.Atoms + a.Size, b.Atoms, b.Atoms + b.Size, [](const unit_atom& x, const unit_atom& y) {
+            if (atom_before(x, y) || atom_before(y, x))
+                return atom_before(x, y);
+            return x.Exp < y.Exp;
+        });
 }
 
 // The common unit of a sum: the smaller unit when it divides the other
@@ -20924,9 +20877,9 @@ inline void append_atoms(std::string& s, const unit& u, int sign, text_encoding 
 // The symbol of a unit: "km", "kg m²/s²", "s⁻¹", "[1/381 ft]" (a scaled unit).
 inline std::string unit_symbol(const unit& u, text_encoding enc = text_encoding::utf8) {
     std::string s;
-    int         num = 0, den = 0;
-    for (std::int8_t i = 0; i < u.Size; ++i)
-        (u.Atoms[i].Exp > 0 ? num : den) += 1;
+    const int   num =
+        static_cast<int>(std::count_if(u.Atoms, u.Atoms + u.Size, [](const auto& a) { return a.Exp > 0; }));
+    const int den = u.Size - num;
     if (num == 0) // only a denominator: s⁻¹, m⁻¹ s⁻¹
         detail::append_atoms(s, u, 0, enc);
     else

@@ -23,6 +23,7 @@ BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/inside.hpp>
 
+#include <algorithm>
 #include <string>
 #include <string_view>
 #include <istream>
@@ -57,15 +58,10 @@ std::string fraction_to_string(bool neg, wide_uint<K> num, wide_uint<K> den, int
     const U g = beman::inside::detail::wide_gcd(den, num);
     num /= g;
     den /= g;
-    std::string str  = neg && !num.is_zero() ? "-" : "";
-    int         twos = 0, fives = 0;
-    U           rest = den;
-    for (; (rest.Word[0] & 1) == 0; rest >>= 1)
-        ++twos;
-    for (auto d = divmod_small(rest, 5); d.Remainder == 0; d = divmod_small(rest, 5)) {
-        rest = d.Quotient;
-        ++fives;
-    }
+    std::string str   = neg && !num.is_zero() ? "-" : "";
+    U           rest  = den;
+    const auto  twos  = strip_factor(rest, 2);
+    const auto  fives = strip_factor(rest, 5);
     if (!(rest == U{1}))
         return str += wide_to_decimal(num) + "/" + wide_to_decimal(den);
     // num·10^digits/den is an integer; 19 digits at a time keep the scratch
@@ -113,12 +109,9 @@ inline constexpr int fixed_decimals = [] {
     if constexpr (!notched<B>)
         return 0;
     else {
-        grid_int q   = wide_denominator(grid_of<B>.value_unit());
-        int      two = 0, five = 0;
-        for (; q % grid_int{2} == grid_int{0}; q = q / grid_int{2})
-            ++two;
-        for (; q % grid_int{5} == grid_int{0}; q = q / grid_int{5})
-            ++five;
+        grid_int   q    = wide_denominator(grid_of<B>.value_unit());
+        const imax two  = detail::strip_factor(q, 2);
+        const imax five = detail::strip_factor(q, 5);
         return q == grid_int{1} && five > 0 ? (two > five ? two : five) : 0;
     }
 }();
@@ -221,12 +214,8 @@ template <std::size_t N, bool S>
     detail::big::mag m = v.magnitude();
     std::string      out;
     do {
-        umax rem = 0; // m /= 10^19, rem = m % 10^19
-        for (std::size_t i = m.size(); i-- > 0;) {
-            const auto d = detail::limb::div(rem, m[i], umax{10'000'000'000'000'000'000ull});
-            m[i]         = d.Hi;
-            rem          = d.Lo;
-        }
+        // m /= 10^19, rem = m % 10^19
+        const umax rem = detail::limb::div_1(m.data(), m.data(), m.size(), umax{10'000'000'000'000'000'000ull});
         detail::big::trim(m);
         std::string part = std::to_string(rem);
         if (!m.empty())
@@ -538,9 +527,7 @@ struct exact_format_spec {
 
   private:
     static std::string to_upper(std::string s) {
-        for (char& c : s)
-            if (c == 'e')
-                c = 'E';
+        std::ranges::replace(s, 'e', 'E');
         return s;
     }
 

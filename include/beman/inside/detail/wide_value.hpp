@@ -9,6 +9,8 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <beman/inside/detail/number_text.hpp> // scan_number
 #include <beman/inside/detail/wide_int.hpp>
 
+#include <numeric>
+#include <iterator>
 #include <compare>
 #include <expected>
 #include <optional>
@@ -349,14 +351,16 @@ constexpr T nearest_float(const wide_rational<K>& f) noexcept {
         return neg ? -lim::infinity() : lim::infinity();
     // m ≤ 2^p is exact in T, limb by limb; the scaling by 2^(drop − s) in
     // steps of 2^±64 stays exact (every step lies between m and the result).
-    T x = 0;
-    for (int i = U::bits / 64 - 1; i >= 0; --i)
-        x = x * static_cast<T>(0x1p64) + static_cast<T>(m.Word[i]);
+    T x = std::accumulate(std::rbegin(m.Word), std::rend(m.Word), T{0}, [](T acc, umax w) {
+        return acc * static_cast<T>(0x1p64) + static_cast<T>(w);
+    });
     for (int k = drop - s; k != 0;) {
         const int step = k > 64 ? 64 : k < -64 ? -64 : k;
-        T         t    = 1;
-        for (int j = 0; j < (step < 0 ? -step : step); ++j)
-            t *= step < 0 ? static_cast<T>(0.5) : static_cast<T>(2);
+        const T   t    = pow_by_squaring(
+            step < 0 ? static_cast<T>(0.5) : static_cast<T>(2),
+            static_cast<unsigned>(step < 0 ? -step : step),
+            [](T a, T b) { return a * b; },
+            T{1});
         x *= t;
         k -= step;
     }

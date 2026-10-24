@@ -4,6 +4,7 @@
 
 #include <beman/inside/detail/config.hpp>
 BEMAN_INSIDE_WARNINGS_PUSH
+#include <algorithm>
 
 // <stdexcept> backs the *default* throwing handler only; it is the single heavy
 // error include and is pulled in solely when exceptions are available. A
@@ -126,10 +127,7 @@ namespace detail {
 template <unsigned N>
 struct fixed_string {
     char Data[N]{};
-    constexpr fixed_string(const char (&s)[N]) {
-        for (unsigned i = 0; i < N; ++i)
-            Data[i] = s[i];
-    }
+    constexpr fixed_string(const char (&s)[N]) { std::copy_n(s, N, Data); }
 };
 
 template <fixed_string Msg>
