@@ -60,8 +60,8 @@ std::string fraction_to_string(bool neg, wide_uint<K> num, wide_uint<K> den, int
     den /= g;
     std::string str   = neg && !num.is_zero() ? "-" : "";
     U           rest  = den;
-    const auto  twos  = strip_factor(rest, 2);
-    const auto  fives = strip_factor(rest, 5);
+    const int   twos  = static_cast<int>(strip_factor(rest, 2)); // ≤ the bit width
+    const int   fives = static_cast<int>(strip_factor(rest, 5));
     if (!(rest == U{1}))
         return str += wide_to_decimal(num) + "/" + wide_to_decimal(den);
     // num·10^digits/den is an integer; 19 digits at a time keep the scratch
@@ -109,9 +109,9 @@ inline constexpr int fixed_decimals = [] {
     if constexpr (!notched<B>)
         return 0;
     else {
-        grid_int   q    = wide_denominator(grid_of<B>.value_unit());
-        const imax two  = detail::strip_factor(q, 2);
-        const imax five = detail::strip_factor(q, 5);
+        grid_int  q    = wide_denominator(grid_of<B>.value_unit());
+        const int two  = static_cast<int>(detail::strip_factor(q, 2)); // ≤ the bit width
+        const int five = static_cast<int>(detail::strip_factor(q, 5));
         return q == grid_int{1} && five > 0 ? (two > five ? two : five) : 0;
     }
 }();
