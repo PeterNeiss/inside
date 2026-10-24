@@ -509,7 +509,7 @@ struct big_rational {
 
     // The 64-bit rational, when the value fits it.
     [[nodiscard]] constexpr bool fits_rational() const noexcept {
-        return Num.fits_limb() && Den.fits_limb() && Den.Small <= static_cast<umax>(std::numeric_limits<imax>::max());
+        return Num.fits_limb() && Den.fits_limb() && std::in_range<imax>(Den.Small);
     }
 
     // Implicit: lets every 64-bit path keep working on a small grid. A value

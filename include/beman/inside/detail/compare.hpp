@@ -10,6 +10,7 @@ BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <compare>
 #include <limits>
+#include <utility>
 
 //---------------------------------------------------------------------------
 // Comparisons of insides: across grids (by value index when both fit imax,
@@ -29,10 +30,10 @@ inline constexpr bool index_cmp_fits = [] {
     if constexpr (!detail::notched<B> || !detail::anchored<B> || !values_fit_imax<B>)
         return false;
     else {
-        constexpr auto lo  = detail::lower64<B> / detail::notch64<B>;
-        constexpr auto hi  = detail::upper64<B> / detail::notch64<B>;
-        constexpr umax cap = static_cast<umax>(std::numeric_limits<imax>::max());
-        return lo.has_value() && hi.has_value() && (*lo).Numerator <= cap && (*hi).Numerator <= cap;
+        constexpr auto lo = detail::lower64<B> / detail::notch64<B>;
+        constexpr auto hi = detail::upper64<B> / detail::notch64<B>;
+        return lo.has_value() && hi.has_value() && std::in_range<imax>((*lo).Numerator) &&
+               std::in_range<imax>((*hi).Numerator);
     }
 }();
 
@@ -51,11 +52,28 @@ inline constexpr imax index_cmp_bias = [] {
 // insides, or of an inside and an integer, is a strong_ordering whatever the
 // storage; against a floating scalar it is a partial_ordering (NaN is
 // unordered), three_way_partial.
-inline constexpr auto three_way         = [](const auto& a, const auto& b) -> std::strong_ordering { return a <=> b; };
+// Integers of mixed signedness compare by value (std::cmp_*), not by the
+// usual arithmetic conversions; same-signed pairs keep the plain operator.
+template <typename A, typename B>
+concept mixed_sign_integers     = std::integral<std::remove_cvref_t<A>> && std::integral<std::remove_cvref_t<B>> &&
+                                  std::is_signed_v<std::remove_cvref_t<A>> != std::is_signed_v<std::remove_cvref_t<B>>;
+inline constexpr auto three_way = [](const auto& a, const auto& b) -> std::strong_ordering {
+    if constexpr (mixed_sign_integers<decltype(a), decltype(b)>)
+        return std::cmp_less(a, b)    ? std::strong_ordering::less
+               : std::cmp_equal(a, b) ? std::strong_ordering::equal
+                                      : std::strong_ordering::greater;
+    else
+        return a <=> b;
+};
 inline constexpr auto three_way_partial = [](const auto& a, const auto& b) -> std::partial_ordering {
     return a <=> b;
 };
-inline constexpr auto equal_to = [](const auto& a, const auto& b) { return a == b; };
+inline constexpr auto equal_to = [](const auto& a, const auto& b) {
+    if constexpr (mixed_sign_integers<decltype(a), decltype(b)>)
+        return std::cmp_equal(a, b);
+    else
+        return a == b;
+};
 
 // A point P that is one of X's slots, with X storing a builtin index: X's
 // raw orders like its value, so X ⋈ P is its raw ⋈ that constant slot
@@ -113,7 +131,6 @@ inline constexpr bool scalar_index_cmp_fits = [] {
     if constexpr (!std::integral<A> || value_storage<B> || !index_cmp_fits<B>)
         return false;
     else {
-        constexpr umax cap       = static_cast<umax>(std::numeric_limits<imax>::max());
         constexpr umax notch_num = detail::notch64<B>.Numerator;
         constexpr umax notch_den = static_cast<umax>(detail::notch64<B>.Denominator); // Notch > 0
         constexpr umax index_mag = [] {
@@ -131,8 +148,8 @@ inline constexpr bool scalar_index_cmp_fits = [] {
             return mag;
         }();
         umax product;
-        return !mul_overflow(index_mag, notch_num, &product) && product <= cap &&
-               !mul_overflow(scalar_mag, notch_den, &product) && product <= cap;
+        return !mul_overflow(index_mag, notch_num, &product) && std::in_range<imax>(product) &&
+               !mul_overflow(scalar_mag, notch_den, &product) && std::in_range<imax>(product);
     }
 }();
 
@@ -159,6 +176,8 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
             return cmp(exact_of(lhs), exact_of(as_rational(rhs)));
     } else if constexpr (integer_value_storage<B> && values_fit_imax<B> && imax_scalar)
         return cmp(raw_imax(lhs), static_cast<imax>(rhs));
+    else if constexpr (integer_value_storage<B> && values_fit_imax<B> && std::unsigned_integral<A>)
+        return cmp(raw_imax(lhs), rhs); // a 64-bit unsigned: sign-safe, by the cmp_* forms
     else if constexpr (integer_value_storage<B> && values_fit_imax<B> && std::floating_point<A> && double_exact_values)
         return cmp(static_cast<double>(raw_imax(lhs)), static_cast<double>(rhs));
     else if constexpr (integer_index_storage<B> && std::floating_point<A> && double_exact<grid_of<B>> &&

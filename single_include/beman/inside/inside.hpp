@@ -1741,7 +1741,7 @@ struct rational {
     // numerator. A den past imax has no signed denominator: overflow.
     template <std::unsigned_integral N, std::unsigned_integral D>
     constexpr rational(N num, D den) : Numerator{num}, Denominator{static_cast<imax>(den)} {
-        if (static_cast<umax>(den) > static_cast<umax>(std::numeric_limits<imax>::max()))
+        if (!std::in_range<imax>(den))
             raise(errc::overflow, "rational: denominator past imax");
         canonicalize(Numerator, Denominator);
     }
@@ -1948,7 +1948,7 @@ struct rounded_integer {
     umax denominator;
     if (mul_overflow(a / g, b, &denominator))
         return std::unexpected{errc::overflow};
-    if (denominator > static_cast<umax>(std::numeric_limits<imax>::max()))
+    if (!std::in_range<imax>(denominator))
         return std::unexpected{errc::overflow};
 
     auto numerator = std::gcd(lhs.Numerator, rhs.Numerator);
@@ -2065,7 +2065,7 @@ constexpr std::expected<T, errc> rational::to() const {
     if (Denominator < 0)
         return std::unexpected{errc::domain_error};
     const umax q = Numerator / abs_den(Denominator);
-    if (q > static_cast<umax>(std::numeric_limits<T>::max()))
+    if (!std::in_range<T>(q))
         return std::unexpected{errc::overflow};
     return static_cast<T>(q);
 }
@@ -2168,7 +2168,7 @@ inline constexpr auto rational::add_impl(const rational& a, const rational& b) {
 
     if constexpr (Checked) {
         if (mul_overflow(a_ad, b_ad_r, &denominator) || // = lcm(a_ad, b_ad)
-            denominator > static_cast<umax>(std::numeric_limits<imax>::max())) {
+            !std::in_range<imax>(denominator)) {
             return ret_t{fail<"rational +: denominator overflow", Loud>(errc::overflow)};
         }
         if (mul_overflow(a.Numerator, b_ad_r, &A) || mul_overflow(b.Numerator, a_ad_r, &B)) {
@@ -2252,7 +2252,7 @@ inline constexpr auto rational::mul_impl(const rational& a_in, const rational& b
     umax denominator;
     if constexpr (Checked) {
         if (mul_overflow(a.Numerator, b.Numerator, &numerator) || mul_overflow(a_ad, b_ad, &denominator) ||
-            denominator > static_cast<umax>(std::numeric_limits<imax>::max())) {
+            !std::in_range<imax>(denominator)) {
             return ret_t{fail<"rational *: numerator or denominator overflow", Loud>(errc::overflow)};
         }
     } else {
@@ -2281,7 +2281,7 @@ inline constexpr auto rational::inv_impl(const rational& a) {
         if (a.Numerator == 0) {
             return ret_t{fail<"rational inv: division by zero", Loud>(errc::division_by_zero)};
         }
-        if (a.Numerator > static_cast<umax>(std::numeric_limits<imax>::max())) {
+        if (!std::in_range<imax>(a.Numerator)) {
             return ret_t{fail<"rational inv: numerator out of denominator range", Loud>(errc::overflow)};
         }
     }
@@ -2307,8 +2307,7 @@ inline constexpr auto rational::div_impl(const rational& a, const rational& b) {
         const umax g2 = std::gcd(abs_den(a.Denominator), abs_den(b.Denominator));
         umax       num, den;
         if (mul_overflow(a.Numerator / g1, abs_den(b.Denominator) / g2, &num) ||
-            mul_overflow(abs_den(a.Denominator) / g2, b.Numerator / g1, &den) ||
-            den > static_cast<umax>(std::numeric_limits<imax>::max()))
+            mul_overflow(abs_den(a.Denominator) / g2, b.Numerator / g1, &den) || !std::in_range<imax>(den))
             return ret_t{fail<"rational /: numerator or denominator overflow", Loud>(errc::overflow)};
         const bool neg = (a.Denominator < 0) != (b.Denominator < 0);
         return ret_t{make_raw(num, neg ? -static_cast<imax>(den) : static_cast<imax>(den))};
@@ -2608,7 +2607,7 @@ namespace beman::inside::detail {
 template <umax D>
 consteval rational make_per() {
     static_assert(D >= 1, "per<D> is the positive step 1/D; a continuous grid is spelled 0");
-    static_assert(D <= static_cast<umax>(std::numeric_limits<imax>::max()), "per<D>: denominator too large");
+    static_assert(std::in_range<imax>(D), "per<D>: denominator too large");
     return rational{umax{1}, D};
 }
 } // namespace beman::inside::detail
@@ -2886,7 +2885,7 @@ constexpr parsed_number parse_number(const char* first, const char* last) {
     const umax g = std::gcd(num, den);
     num /= g;
     den /= g;
-    if (den > static_cast<umax>(std::numeric_limits<imax>::max()))
+    if (!std::in_range<imax>(den))
         return fail(parse_fail::denominator_overflow);
     return parsed_number{rational{num, den}, parse_fail::none};
 }
@@ -3522,7 +3521,7 @@ struct big_rational {
 
     // The 64-bit rational, when the value fits it.
     [[nodiscard]] constexpr bool fits_rational() const noexcept {
-        return Num.fits_limb() && Den.fits_limb() && Den.Small <= static_cast<umax>(std::numeric_limits<imax>::max());
+        return Num.fits_limb() && Den.fits_limb() && std::in_range<imax>(Den.Small);
     }
 
     // Implicit: lets every 64-bit path keep working on a small grid. A value
@@ -5613,8 +5612,7 @@ inline constexpr umax max_index_of = grid_of<B>.max_index();
 // the exact rational / umax paths instead.
 template <insidable B>
 inline constexpr bool values_fit_imax =
-    !wide_valued<B> && fits_imax(interval_of<B>) &&
-    (value_storage<B> || max_index_of<B> <= static_cast<umax>(std::numeric_limits<imax>::max()));
+    !wide_valued<B> && fits_imax(interval_of<B>) && (value_storage<B> || std::in_range<imax>(max_index_of<B>));
 
 // Every value's reduced numerator and denominator fit imax too: a value
 // within int64 can still have a numerator past it ((2^63 + 1)/2). An
@@ -6047,8 +6045,8 @@ template <insidable L, typename P>
         // exactly when the floor's value index m + q is.
         const imax di = static_cast<imax>(den);
         imax       mdi, NUM;
-        if (num > static_cast<umax>(std::numeric_limits<imax>::max()) || mul_overflow(m, di, &mdi) ||
-            add_overflow(mdi, static_cast<imax>(num), &NUM)) [[unlikely]] {
+        if (!std::in_range<imax>(num) || mul_overflow(m, di, &mdi) || add_overflow(mdi, static_cast<imax>(num), &NUM))
+            [[unlikely]] {
             constexpr round_mode mode = rounding_for<L, P>;
             const umax           q = num / den, r = num % den;
             const bool           negative = m < 0 && q < umax{0} - static_cast<umax>(m);
@@ -7426,25 +7424,22 @@ namespace beman::inside::detail {
 template <insidable L, std::integral R>
 struct assignment<L, R> {
   private:
-    // A 64-bit unsigned source can exceed imax: `static_cast<imax>(rhs)` would
-    // turn 2^64−1 into −1. Compare such a source in umax instead; every
-    // narrower or signed source is exact in imax and keeps the plain cast.
-    static constexpr bool wide_unsigned = std::is_unsigned_v<R> && sizeof(R) >= sizeof(imax);
-
     // Exact integer arithmetic for the bounds and the cold clamp/wrap paths:
     // an integer interval may reach past int64 on either side (e.g.
     // {0, 2^64−1}), and rhs − Lower may need 65 bits.
     using fold = unit_fold<L, source_lo<R>, source_hi<R>>;
     using W    = typename fold::W;
 
-    // Hot-path range test. Bounds within imax compare as plain integers;
-    // bounds past int64 compare exactly in the fold's work type.
+    // Hot-path range test. Bounds within imax compare as plain integers; a
+    // 64-bit unsigned source can exceed imax and compares sign-safe instead.
+    // (Not std::cmp_* throughout: GCC then misses folding `lo ≤ x ≤ hi` into
+    // one unsigned compare.) Bounds past int64 compare exactly in the fold's
+    // work type.
     static constexpr bool out_of_range(R rhs) noexcept {
         if constexpr (fits_imax(interval_of<L>)) {
             constexpr imax lower = lower_imax<L>, upper = upper_imax<L>;
-            if constexpr (wide_unsigned)
-                return (lower > 0 && static_cast<umax>(rhs) < static_cast<umax>(lower)) || upper < 0 ||
-                       static_cast<umax>(rhs) > static_cast<umax>(upper);
+            if constexpr (std::is_unsigned_v<R> && sizeof(R) >= sizeof(imax))
+                return std::cmp_less(rhs, lower) || std::cmp_greater(rhs, upper);
             else
                 return static_cast<imax>(rhs) < lower || static_cast<imax>(rhs) > upper;
         } else {
@@ -8214,8 +8209,7 @@ struct assignment<L, R> {
                       !values_fit_imax<R>)
             return no;
         else {
-            constexpr umax cap = static_cast<umax>(std::numeric_limits<imax>::max());
-            if (Factor.Numerator > cap || Offset.Numerator > cap)
+            if (!std::in_range<imax>(Factor.Numerator) || !std::in_range<imax>(Offset.Numerator))
                 return no;
             const imax   f_n = static_cast<imax>(Factor.Numerator); // Factor > 0
             const imax   f_d = abs_den(Factor.Denominator);
@@ -8225,7 +8219,7 @@ struct assignment<L, R> {
             if (mul_overflow(f_n, o_d, &m.Mul) || mul_overflow(o_s, f_d, &m.Add) || mul_overflow(o_d, f_d, &m.Den))
                 return no;
             // worst-case |numerator| over R's offset range [0, max_index]
-            if (max_index_of<R> > cap)
+            if (!std::in_range<imax>(max_index_of<R>))
                 return no;
             const imax rmax = static_cast<imax>(max_index_of<R>);
             imax       term, num;
@@ -8237,7 +8231,7 @@ struct assignment<L, R> {
             // take the same branch (ties on negatives differ across branches).
             constexpr auto zl = try_div(detail::lower64<L>, detail::notch64<L>).value_or(rational{0});
             if (abs_den(zl.Denominator) == 1) {
-                if (zl.Numerator > cap)
+                if (!std::in_range<imax>(zl.Numerator))
                     return no;
                 const imax mbias = signed_numerator(zl);
                 imax       mdi, total;
@@ -9289,10 +9283,9 @@ constexpr bool quotient_fits_rational() noexcept {
         if (!integer_storage<L> || !integer_storage<R>) // a continuous operand bounds no denominator
             return false;
         constexpr value_bounds l = value_bounds_of<L>(), r = value_bounds_of<R>();
-        constexpr umax         imax_max = static_cast<umax>(std::numeric_limits<imax>::max());
         umax                   ad, bc;
-        return l.Ok && r.Ok && r.Num <= imax_max && !mul_overflow(l.Num, r.Den, &ad) &&
-               !mul_overflow(l.Den, r.Num, &bc) && bc <= imax_max;
+        return l.Ok && r.Ok && std::in_range<imax>(r.Num) && !mul_overflow(l.Num, r.Den, &ad) &&
+               !mul_overflow(l.Den, r.Num, &bc) && std::in_range<imax>(bc);
     }
 }
 
@@ -10891,10 +10884,10 @@ inline constexpr bool index_cmp_fits = [] {
     if constexpr (!detail::notched<B> || !detail::anchored<B> || !values_fit_imax<B>)
         return false;
     else {
-        constexpr auto lo  = detail::lower64<B> / detail::notch64<B>;
-        constexpr auto hi  = detail::upper64<B> / detail::notch64<B>;
-        constexpr umax cap = static_cast<umax>(std::numeric_limits<imax>::max());
-        return lo.has_value() && hi.has_value() && (*lo).Numerator <= cap && (*hi).Numerator <= cap;
+        constexpr auto lo = detail::lower64<B> / detail::notch64<B>;
+        constexpr auto hi = detail::upper64<B> / detail::notch64<B>;
+        return lo.has_value() && hi.has_value() && std::in_range<imax>((*lo).Numerator) &&
+               std::in_range<imax>((*hi).Numerator);
     }
 }();
 
@@ -10913,11 +10906,28 @@ inline constexpr imax index_cmp_bias = [] {
 // insides, or of an inside and an integer, is a strong_ordering whatever the
 // storage; against a floating scalar it is a partial_ordering (NaN is
 // unordered), three_way_partial.
-inline constexpr auto three_way         = [](const auto& a, const auto& b) -> std::strong_ordering { return a <=> b; };
+// Integers of mixed signedness compare by value (std::cmp_*), not by the
+// usual arithmetic conversions; same-signed pairs keep the plain operator.
+template <typename A, typename B>
+concept mixed_sign_integers     = std::integral<std::remove_cvref_t<A>> && std::integral<std::remove_cvref_t<B>> &&
+                                  std::is_signed_v<std::remove_cvref_t<A>> != std::is_signed_v<std::remove_cvref_t<B>>;
+inline constexpr auto three_way = [](const auto& a, const auto& b) -> std::strong_ordering {
+    if constexpr (mixed_sign_integers<decltype(a), decltype(b)>)
+        return std::cmp_less(a, b)    ? std::strong_ordering::less
+               : std::cmp_equal(a, b) ? std::strong_ordering::equal
+                                      : std::strong_ordering::greater;
+    else
+        return a <=> b;
+};
 inline constexpr auto three_way_partial = [](const auto& a, const auto& b) -> std::partial_ordering {
     return a <=> b;
 };
-inline constexpr auto equal_to = [](const auto& a, const auto& b) { return a == b; };
+inline constexpr auto equal_to = [](const auto& a, const auto& b) {
+    if constexpr (mixed_sign_integers<decltype(a), decltype(b)>)
+        return std::cmp_equal(a, b);
+    else
+        return a == b;
+};
 
 // A point P that is one of X's slots, with X storing a builtin index: X's
 // raw orders like its value, so X ⋈ P is its raw ⋈ that constant slot
@@ -10975,7 +10985,6 @@ inline constexpr bool scalar_index_cmp_fits = [] {
     if constexpr (!std::integral<A> || value_storage<B> || !index_cmp_fits<B>)
         return false;
     else {
-        constexpr umax cap       = static_cast<umax>(std::numeric_limits<imax>::max());
         constexpr umax notch_num = detail::notch64<B>.Numerator;
         constexpr umax notch_den = static_cast<umax>(detail::notch64<B>.Denominator); // Notch > 0
         constexpr umax index_mag = [] {
@@ -10993,8 +11002,8 @@ inline constexpr bool scalar_index_cmp_fits = [] {
             return mag;
         }();
         umax product;
-        return !mul_overflow(index_mag, notch_num, &product) && product <= cap &&
-               !mul_overflow(scalar_mag, notch_den, &product) && product <= cap;
+        return !mul_overflow(index_mag, notch_num, &product) && std::in_range<imax>(product) &&
+               !mul_overflow(scalar_mag, notch_den, &product) && std::in_range<imax>(product);
     }
 }();
 
@@ -11021,6 +11030,8 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
             return cmp(exact_of(lhs), exact_of(as_rational(rhs)));
     } else if constexpr (integer_value_storage<B> && values_fit_imax<B> && imax_scalar)
         return cmp(raw_imax(lhs), static_cast<imax>(rhs));
+    else if constexpr (integer_value_storage<B> && values_fit_imax<B> && std::unsigned_integral<A>)
+        return cmp(raw_imax(lhs), rhs); // a 64-bit unsigned: sign-safe, by the cmp_* forms
     else if constexpr (integer_value_storage<B> && values_fit_imax<B> && std::floating_point<A> && double_exact_values)
         return cmp(static_cast<double>(raw_imax(lhs)), static_cast<double>(rhs));
     else if constexpr (integer_index_storage<B> && std::floating_point<A> && double_exact<grid_of<B>> &&
@@ -12482,7 +12493,7 @@ constexpr decision<Out, K> decide(const approx<K>& a) noexcept {
     // An error past wide_sint<K>'s range (~umax{0}: "unresolved" at K = 1)
     // would come out negative and invert the interval: undecided.
     if constexpr (K == 1)
-        if (a.Error > static_cast<umax>(std::numeric_limits<imax>::max())) [[unlikely]]
+        if (!std::in_range<imax>(a.Error)) [[unlikely]]
             return {false, I{}};
     const I lo = index(a.Value - e), hi = index(a.Value + e);
     // Both ends past the same end of Out's range also decide: the policy
@@ -16821,7 +16832,7 @@ constexpr std::optional<imax> bracket_slot(imax num, bool negative) noexcept {
                                            negative,
                                            classify_remainder(m, static_cast<umax>(r), static_cast<umax>(den)),
                                            ((q & 1) != 0) != lower_index_odd<Out>);
-    if (k < 0 || static_cast<umax>(k) > max_index_of<Out>)
+    if (k < 0 || std::cmp_greater(k, max_index_of<Out>))
         return std::nullopt;
     return k;
 }
