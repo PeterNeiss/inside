@@ -451,6 +451,19 @@ struct assignment<L, R> {
             auto store_slot = [&](auto k) { lhs = L::from_raw(raw_from_offset<L>(k)); };
 
             constexpr bool has_round_flag = has_policy<L, P, snap>; // every round_* flag contains snap
+            // The slot onum/den when it is exact or P rounds; false otherwise
+            // (strict policy, off-notch: the rational path below reports it).
+            auto try_slot = [&](umax onum, umax den) {
+                if (onum % den == 0) {
+                    store_slot(onum / den);
+                    return true;
+                }
+                if constexpr (has_round_flag) {
+                    store_slot(round_quotient<L, P>(onum, den));
+                    return true;
+                }
+                return false;
+            };
 
             // A floating source on an anchored grid with a power-of-two notch
             // whose values double holds: v/Notch is exact, so round it in
@@ -510,16 +523,8 @@ struct assignment<L, R> {
                     const imax num  = signed_numerator(rv);
                     const umax onum = // ≥ 0: rhs ≥ Lower (in range)
                         static_cast<umax>((num - Lo * static_cast<imax>(aden)) * K);
-                    if (onum % aden == 0) {
-                        store_slot(onum / aden);
+                    if (try_slot(onum, aden))
                         return;
-                    }
-                    if constexpr (has_round_flag) {
-                        store_slot(round_quotient<L, P>(onum, aden));
-                        return;
-                    }
-                    // strict policy, off-notch: fall through to the rational path for
-                    // the error message / action plumbing (cold).
                 }
             }
 
@@ -537,14 +542,8 @@ struct assignment<L, R> {
                     const umax onum = // ≥ 0: rhs ≥ Lower (in range)
                         static_cast<umax>(num * c.K - c.M * static_cast<imax>(aden));
                     const umax den2 = aden * static_cast<umax>(c.S);
-                    if (onum % den2 == 0) {
-                        store_slot(onum / den2);
+                    if (try_slot(onum, den2))
                         return;
-                    }
-                    if constexpr (has_round_flag) {
-                        store_slot(round_quotient<L, P>(onum, den2));
-                        return;
-                    }
                 }
             }
 
