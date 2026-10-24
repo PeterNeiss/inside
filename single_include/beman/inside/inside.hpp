@@ -453,6 +453,16 @@ template <fixed_string Msg>
 [[noreturn]] BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE inline void constexpr_error() {
     raise(errc::overflow, Msg.Data);
 }
+
+// A checked path's hard failure: Msg as the compile-time diagnostic during
+// constant evaluation, else raised with code.
+template <fixed_string Msg>
+[[noreturn]] constexpr void fail_hard(errc code) {
+    if consteval {
+        constexpr_error<Msg>();
+    }
+    raise(code, Msg.Data);
+}
 } // namespace detail
 } // namespace beman::inside
 
@@ -1446,12 +1456,8 @@ struct wide_int<N, Signed, L>::divmod_result {
 
 template <std::size_t N, bool Signed, std::unsigned_integral L>
 constexpr auto wide_int<N, Signed, L>::divmod(const wide_int& a, const wide_int& b) noexcept -> divmod_result {
-    if (b.is_zero()) {
-        if consteval {
-            constexpr_error<"wide_int: division by zero">();
-        }
-        raise(errc::division_by_zero, "wide_int: division by zero");
-    }
+    if (b.is_zero())
+        fail_hard<"wide_int: division by zero">(errc::division_by_zero);
     // Divide the magnitudes; −min reads correctly as an unsigned magnitude.
     const bool     na = a.negative(), nb = b.negative();
     const wide_int ua = na ? -a : a, ub = nb ? -b : b;
@@ -2940,16 +2946,43 @@ consteval rational parse_ins_literal() {
 // grammar, or a fraction `N/D` of two such numbers (the form to_string prints
 // for a non-terminating value). Malformed text is errc::invalid_format; a value
 // past the 64-bit fields is errc::overflow; `N/0` is errc::division_by_zero.
-constexpr std::expected<rational, errc> parse_text(const char* first, const char* last) {
-    bool neg = false;
-    if (first != last && (*first == '+' || *first == '-')) {
-        neg = (*first == '-');
+// Text as an optional sign and the number's [First, Slash), with the
+// denominator after Slash when Slash != last.
+struct signed_fraction_text {
+    bool        Neg;
+    const char* First;
+    const char* Slash;
+};
+constexpr signed_fraction_text split_fraction(const char* first, const char* last) noexcept {
+    const bool neg = first != last && *first == '-';
+    if (first != last && (*first == '+' || *first == '-'))
         ++first;
-    }
     const char* slash = first;
     while (slash != last && *slash != '/')
         ++slash;
+    return {neg, first, slash};
+}
 
+// The sign and N/D around `one` (text → an expected value): N/0 is
+// division_by_zero.
+template <class One, class IsZero>
+constexpr auto parse_fraction(const char* first, const char* last, One one, IsZero is_zero) {
+    const auto [neg, f, slash] = split_fraction(first, last);
+    auto v                     = one(f, slash);
+    if (v && slash != last) {
+        const auto d = one(slash + 1, last);
+        if (!d)
+            return d;
+        if (is_zero(*d))
+            return decltype(v){std::unexpect, errc::division_by_zero};
+        v = *v / *d;
+    }
+    if (v && neg)
+        v = -*v;
+    return v;
+}
+
+constexpr std::expected<rational, errc> parse_text(const char* first, const char* last) {
     auto one = [](const char* f, const char* l) -> std::expected<rational, errc> {
         const parsed_number r = parse_number(f, l);
         switch (r.Fail) {
@@ -2967,19 +3000,7 @@ constexpr std::expected<rational, errc> parse_text(const char* first, const char
             return std::unexpected{errc::invalid_format};
         }
     };
-
-    std::expected<rational, errc> v = one(first, slash);
-    if (v && slash != last) {
-        const auto d = one(slash + 1, last);
-        if (!d)
-            return d;
-        if (d->Numerator == 0)
-            return std::unexpected{errc::division_by_zero};
-        v = *v / *d;
-    }
-    if (v && neg)
-        v = -*v;
-    return v;
+    return parse_fraction(first, last, one, [](const rational& d) { return d.Numerator == 0; });
 }
 
 template <char... Chars>
@@ -3377,16 +3398,7 @@ struct big_int {
             r.Small   = a.Small << k;
             return r;
         }
-        big::mag          m     = a.magnitude();
-        const std::size_t words = static_cast<std::size_t>(k / 64);
-        const int         bits  = k % 64;
-        big::mag          r(m.size() + words + 1, 0);
-        for (std::size_t i = 0; i < m.size(); ++i) {
-            r[i + words] |= m[i] << bits;
-            if (bits != 0)
-                r[i + words + 1] |= m[i] >> (64 - bits);
-        }
-        return from_mag(std::move(r), a.Negative);
+        return from_mag(big::shl(a.magnitude(), k), a.Negative);
     }
 };
 
@@ -3402,12 +3414,8 @@ constexpr big_int abs(big_int a) {
 }
 
 constexpr auto big_int::divmod(const big_int& a, const big_int& b) -> divmod_result {
-    if (b.is_zero()) {
-        if consteval {
-            constexpr_error<"big_int: division by zero">();
-        }
-        raise(errc::division_by_zero, "big_int: division by zero");
-    }
+    if (b.is_zero())
+        fail_hard<"big_int: division by zero">(errc::division_by_zero);
     if (a.Size == 0 && b.Size == 0) {
         big_int q, r;
         q.Small    = a.Small / b.Small;
@@ -3458,53 +3466,23 @@ struct big_rational {
     constexpr big_rational(const T& v) : big_rational(rational(v)) {}
     constexpr big_rational(std::floating_point auto d) // exact binary value
     {
-        if (d != d || d - d != 0) {
-            if consteval {
-                constexpr_error<"big_rational: not a finite number">();
-            }
-            raise(errc::not_finite, "big_rational: not a finite number");
-        }
+        if (d != d || d - d != 0)
+            fail_hard<"big_rational: not a finite number">(errc::not_finite);
         if constexpr (wide_float<decltype(d)>)
-            if (!is_double_value(d)) { // long double: the sum of the doubles it splits into
-                if (!is_finite(static_cast<double>(d))) {
-                    if consteval {
-                        constexpr_error<"big_rational: a long double past the double range">();
-                    }
-                    raise(errc::overflow, "big_rational: a long double past the double range");
-                }
-                big_rational s{0};
-                for_each_double_part(d, [&](double p) {
-                    s = s + big_rational{p};
-                    return true;
-                });
-                *this = s;
-                return;
-            }
-        const bool neg = d < 0;
-        auto [mant, e] = double_parts(static_cast<double>(d)); // |d| = mant·2^e, 53 bits
-        // In lowest terms from the start: a value that fits 64 bits (2^-20)
-        // never builds a wider intermediate, which only compile time holds.
-        for (; mant % 2 == 0 && e < 0; ++e)
-            mant /= 2;
-        big_int n{mant}, den{1};
-        for (; e > 0; --e)
-            n = n * big_int{2};
-        for (; e < 0; ++e)
-            den = den * big_int{2};
-        Num = neg ? -n : n;
-        Den = den;
-        normalize();
+            if (!is_double_value(d) && !is_finite(static_cast<double>(d)))
+                fail_hard<"big_rational: a long double past the double range">(errc::overflow);
+        // In lowest terms from the start (a long double as the sum of the
+        // doubles it splits into).
+        const big::fraction f = big::fraction_of_float(d);
+        Num                   = big_int::from_mag(f.Num, f.Negative);
+        Den                   = big_int::from_mag(f.Den, false);
     }
 
     friend constexpr bool operator==(const big_rational&, const big_rational&) = default;
 
     constexpr void normalize() {
-        if (Den.is_zero()) {
-            if consteval {
-                constexpr_error<"big_rational: zero denominator">();
-            }
-            raise(errc::division_by_zero, "big_rational: zero denominator");
-        }
+        if (Den.is_zero())
+            fail_hard<"big_rational: zero denominator">(errc::division_by_zero);
         if (Den.negative()) {
             Num = -Num;
             Den = -Den;
@@ -3685,11 +3663,6 @@ using grid_int      = big_int;
 
 constexpr grid_int wide_numerator(const big_rational& r) { return r.Num; }
 constexpr grid_int wide_denominator(const big_rational& r) { return r.Den; }
-constexpr grid_int wide_numerator(const rational& r) {
-    const grid_int n{r.Numerator};
-    return r.Denominator < 0 ? -n : n;
-}
-constexpr grid_int wide_denominator(const rational& r) { return grid_int{abs_den(r.Denominator)}; }
 
 // A grid number as a transient fraction, for tests that run at runtime too.
 constexpr big::fraction fraction_of(const big_rational& r) {
@@ -3720,12 +3693,6 @@ using grid_rational = rational;
 // A product of three 64-bit magnitudes plus a sign.
 using grid_int = wide_sint<4>;
 
-constexpr grid_int wide_numerator(const rational& r) noexcept {
-    const grid_int n{r.Numerator};
-    return r.Denominator < 0 ? -n : n;
-}
-constexpr grid_int wide_denominator(const rational& r) noexcept { return grid_int{abs_den(r.Denominator)}; }
-
 constexpr bool grid_divides_evenly(const rational& a, const rational& n) { return divides_evenly(a, n); }
 
 constexpr bool grid_same_lattice(const rational& a, const rational& b, const rational& n) {
@@ -3740,42 +3707,27 @@ constexpr std::expected<rational, errc> grid_gcd(const rational& a, const ration
 // grid_gcd as a callable, for lift over expected grid numbers.
 inline constexpr auto grid_gcd_of_two = [](const grid_rational& a, const grid_rational& b) { return grid_gcd(a, b); };
 
+constexpr grid_int wide_numerator(const rational& r) noexcept {
+    const grid_int n{r.Numerator};
+    return r.Denominator < 0 ? -n : n;
+}
+constexpr grid_int wide_denominator(const rational& r) noexcept { return grid_int{abs_den(r.Denominator)}; }
+
 // + − × and gcd of grid numbers as grid numbers in both modes, for the
 // compile-time grid computations (a 64-bit overflow stops the build).
-constexpr grid_rational grid_add(const grid_rational& a, const grid_rational& b) {
-#if BEMAN_INSIDE_BIG_GRIDS
-    return a + b;
-#else
-    return (a + b).value();
-#endif
+template <class T>
+constexpr grid_rational grid_value(const T& v) {
+    if constexpr (std::same_as<T, grid_rational>)
+        return v;
+    else
+        return v.value();
 }
-constexpr grid_rational grid_sub(const grid_rational& a, const grid_rational& b) {
-#if BEMAN_INSIDE_BIG_GRIDS
-    return a - b;
-#else
-    return (a - b).value();
-#endif
-}
-constexpr grid_rational grid_mul(const grid_rational& a, const grid_rational& b) {
-#if BEMAN_INSIDE_BIG_GRIDS
-    return a * b;
-#else
-    return (a * b).value();
-#endif
-}
-constexpr grid_rational grid_div_of(const grid_rational& a, const grid_rational& b) {
-#if BEMAN_INSIDE_BIG_GRIDS
-    return a / b;
-#else
-    return (a / b).value();
-#endif
-}
+constexpr grid_rational grid_add(const grid_rational& a, const grid_rational& b) { return grid_value(a + b); }
+constexpr grid_rational grid_sub(const grid_rational& a, const grid_rational& b) { return grid_value(a - b); }
+constexpr grid_rational grid_mul(const grid_rational& a, const grid_rational& b) { return grid_value(a * b); }
+constexpr grid_rational grid_div_of(const grid_rational& a, const grid_rational& b) { return grid_value(a / b); }
 constexpr grid_rational grid_gcd_of(const grid_rational& a, const grid_rational& b) {
-#if BEMAN_INSIDE_BIG_GRIDS
-    return grid_gcd(a, b);
-#else
-    return grid_gcd(a, b).value();
-#endif
+    return grid_value(grid_gcd(a, b));
 }
 // gcd of two grid integers, non-negative (0 when both are).
 constexpr grid_int grid_int_gcd(grid_int a, grid_int b) {
@@ -6580,12 +6532,7 @@ constexpr std::expected<wide_rational<K>, errc> parse_exact(const char* first, c
     using I           = wide_sint<K>;
     constexpr I limit = std::numeric_limits<I>::max() / I{32}; // room for ·16 + a digit
     const auto  big   = [&](const I& x) { return limit < x; };
-    bool        neg   = false;
-    if (first != last && (*first == '+' || *first == '-')) {
-        neg = (*first == '-');
-        ++first;
-    }
-    auto one = [&](const char* f, const char* l) -> std::expected<wide_rational<K>, errc> {
+    auto        one   = [&](const char* f, const char* l) -> std::expected<wide_rational<K>, errc> {
         I                    num{0}, den{1};
         int                  frac_zeros = 0; // deferred, as in parse_number: trailing zeros cost nothing
         const scanned_number sc         = scan_number(f, l, [&](int d, bool in_frac, int b) {
@@ -6627,21 +6574,7 @@ constexpr std::expected<wide_rational<K>, errc> parse_exact(const char* first, c
             }
         return wide_rational<K>{num, den};
     };
-    const char* slash = first;
-    while (slash != last && *slash != '/')
-        ++slash;
-    auto v = one(first, slash);
-    if (v && slash != last) {
-        const auto d = one(slash + 1, last);
-        if (!d)
-            return d;
-        if (d->Num.is_zero())
-            return std::unexpected{errc::division_by_zero};
-        v = *v / *d;
-    }
-    if (v && neg)
-        v = -*v;
-    return v;
+    return parse_fraction(first, last, one, [](const wide_rational<K>& d) { return d.Num.is_zero(); });
 }
 
 // The text parse's width: wide enough for about 1200 decimal digits or a
@@ -6698,17 +6631,10 @@ constexpr std::optional<log2_bounds> number_log2_bounds(const char* first, const
 // bounded from its digits and exponents, is that small or that large.
 template <insidable B, std::size_t K, bool Wrap = false>
 constexpr std::optional<wide_rational<K>> stand_in(const char* first, const char* last) noexcept {
-    constexpr int G   = finest_den_bits<B> + 2;
-    constexpr int H   = exact_value_bits<B> + 2;
-    bool          neg = false;
-    if (first != last && (*first == '+' || *first == '-')) {
-        neg = (*first == '-');
-        ++first;
-    }
-    const char* slash = first;
-    while (slash != last && *slash != '/')
-        ++slash;
-    auto b = number_log2_bounds(first, slash);
+    constexpr int G            = finest_den_bits<B> + 2;
+    constexpr int H            = exact_value_bits<B> + 2;
+    const auto [neg, f, slash] = split_fraction(first, last);
+    auto b                     = number_log2_bounds(f, slash);
     if (!b)
         return std::nullopt;
     if (slash != last) {
@@ -9334,51 +9260,10 @@ struct division {
     // as round_rat). a/b is monotonic in each operand on either side of 0,
     // and so is its rounding, so these are the rounded endpoints of the exact
     // quotient grid — which is not formed: its endpoints can pass the 64-bit
-    // rational (7/2^63 for a divisor reaching INT64_MIN).
+    // rational (7/2^63 for a divisor reaching INT64_MIN). Rounded in umax,
+    // sign apart, so limits past imax and INT64_MIN / −1 = 2^63 need no
+    // special case: |a / b| ≤ |a| for an integer |b| ≥ 1.
     static constexpr interval integer_quotient_range() {
-        const round_mode lo_mode = rmode == round_mode::half_even ? round_mode::floor : rmode;
-        const round_mode hi_mode = rmode == round_mode::half_even ? round_mode::ceil : rmode;
-        // INT64_MIN / -1 is 2^63, past imax.
-        auto quotient = [](imax a, imax b, round_mode m) {
-            return a == std::numeric_limits<imax>::min() && b == -1 ? -rational{a} : rational{div_rounded(a, b, m)};
-        };
-        // The divisor's extremes on each side of 0; the one nearest 0 is ±step
-        // when its range reaches 0 (grid operator/).
-        constexpr imax lo = lower_imax<R>, hi = upper_imax<R>;
-        constexpr imax step = signed_numerator(to_rational(grid_of<R>.value_unit()));
-        imax           divisors[4];
-        int            n = 0;
-        if (lo > 0 || hi < 0) {
-            divisors[n++] = lo;
-            divisors[n++] = hi;
-        } else {
-            if (hi > 0) {
-                divisors[n++] = step;
-                divisors[n++] = hi;
-            }
-            if (lo < 0) {
-                divisors[n++] = lo;
-                divisors[n++] = -step;
-            }
-        }
-        if (n == 0) // a zero divisor grid (the static_assert above)
-            return interval{0, 0};
-        interval q{quotient(lower_imax<L>, divisors[0], lo_mode), quotient(lower_imax<L>, divisors[0], hi_mode)};
-        for (const imax a : {lower_imax<L>, upper_imax<L>})
-            for (int i = 0; i < n; ++i) {
-                const rational l = quotient(a, divisors[i], lo_mode), h = quotient(a, divisors[i], hi_mode);
-                if (l < q.Lower)
-                    q.Lower = l;
-                if (q.Upper < h)
-                    q.Upper = h;
-            }
-        return q;
-    }
-
-    // integer_quotient_range for limits past imax (64-bit magnitudes): the
-    // corner quotients rounded in umax, sign apart. |a / b| ≤ |a| for an
-    // integer |b| ≥ 1, so every rounded quotient fits.
-    static constexpr interval wide_integer_quotient_range() {
         const round_mode lo_mode = rmode == round_mode::half_even ? round_mode::floor : rmode;
         const round_mode hi_mode = rmode == round_mode::half_even ? round_mode::ceil : rmode;
         struct signed_mag {
@@ -9431,10 +9316,8 @@ struct division {
     // quotient, so e.g. round_ceil can't escape the grid: onto the integers,
     // or onto the operands' notch 1/K.
     static constexpr grid result_grid = [] {
-        if constexpr (native_div_integer)
+        if constexpr (native_div_integer || wide_div_integer)
             return grid{integer_quotient_range(), rational{1}};
-        else if constexpr (wide_div_integer)
-            return grid{wide_integer_quotient_range(), rational{1}};
         else if constexpr (native_div_fixed) {
             constexpr interval q = (*(grid_of<L> / grid_of<R>)).Interval;
             // An endpoint on the notch stays; one off it rounds onto it.

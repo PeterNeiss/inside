@@ -296,16 +296,43 @@ consteval rational parse_ins_literal() {
 // grammar, or a fraction `N/D` of two such numbers (the form to_string prints
 // for a non-terminating value). Malformed text is errc::invalid_format; a value
 // past the 64-bit fields is errc::overflow; `N/0` is errc::division_by_zero.
-constexpr std::expected<rational, errc> parse_text(const char* first, const char* last) {
-    bool neg = false;
-    if (first != last && (*first == '+' || *first == '-')) {
-        neg = (*first == '-');
+// Text as an optional sign and the number's [First, Slash), with the
+// denominator after Slash when Slash != last.
+struct signed_fraction_text {
+    bool        Neg;
+    const char* First;
+    const char* Slash;
+};
+constexpr signed_fraction_text split_fraction(const char* first, const char* last) noexcept {
+    const bool neg = first != last && *first == '-';
+    if (first != last && (*first == '+' || *first == '-'))
         ++first;
-    }
     const char* slash = first;
     while (slash != last && *slash != '/')
         ++slash;
+    return {neg, first, slash};
+}
 
+// The sign and N/D around `one` (text → an expected value): N/0 is
+// division_by_zero.
+template <class One, class IsZero>
+constexpr auto parse_fraction(const char* first, const char* last, One one, IsZero is_zero) {
+    const auto [neg, f, slash] = split_fraction(first, last);
+    auto v                     = one(f, slash);
+    if (v && slash != last) {
+        const auto d = one(slash + 1, last);
+        if (!d)
+            return d;
+        if (is_zero(*d))
+            return decltype(v){std::unexpect, errc::division_by_zero};
+        v = *v / *d;
+    }
+    if (v && neg)
+        v = -*v;
+    return v;
+}
+
+constexpr std::expected<rational, errc> parse_text(const char* first, const char* last) {
     auto one = [](const char* f, const char* l) -> std::expected<rational, errc> {
         const parsed_number r = parse_number(f, l);
         switch (r.Fail) {
@@ -323,19 +350,7 @@ constexpr std::expected<rational, errc> parse_text(const char* first, const char
             return std::unexpected{errc::invalid_format};
         }
     };
-
-    std::expected<rational, errc> v = one(first, slash);
-    if (v && slash != last) {
-        const auto d = one(slash + 1, last);
-        if (!d)
-            return d;
-        if (d->Numerator == 0)
-            return std::unexpected{errc::division_by_zero};
-        v = *v / *d;
-    }
-    if (v && neg)
-        v = -*v;
-    return v;
+    return parse_fraction(first, last, one, [](const rational& d) { return d.Numerator == 0; });
 }
 
 template <char... Chars>

@@ -364,16 +364,7 @@ struct big_int {
             r.Small   = a.Small << k;
             return r;
         }
-        big::mag          m     = a.magnitude();
-        const std::size_t words = static_cast<std::size_t>(k / 64);
-        const int         bits  = k % 64;
-        big::mag          r(m.size() + words + 1, 0);
-        for (std::size_t i = 0; i < m.size(); ++i) {
-            r[i + words] |= m[i] << bits;
-            if (bits != 0)
-                r[i + words + 1] |= m[i] >> (64 - bits);
-        }
-        return from_mag(std::move(r), a.Negative);
+        return from_mag(big::shl(a.magnitude(), k), a.Negative);
     }
 };
 
@@ -389,12 +380,8 @@ constexpr big_int abs(big_int a) {
 }
 
 constexpr auto big_int::divmod(const big_int& a, const big_int& b) -> divmod_result {
-    if (b.is_zero()) {
-        if consteval {
-            constexpr_error<"big_int: division by zero">();
-        }
-        raise(errc::division_by_zero, "big_int: division by zero");
-    }
+    if (b.is_zero())
+        fail_hard<"big_int: division by zero">(errc::division_by_zero);
     if (a.Size == 0 && b.Size == 0) {
         big_int q, r;
         q.Small    = a.Small / b.Small;
@@ -445,53 +432,23 @@ struct big_rational {
     constexpr big_rational(const T& v) : big_rational(rational(v)) {}
     constexpr big_rational(std::floating_point auto d) // exact binary value
     {
-        if (d != d || d - d != 0) {
-            if consteval {
-                constexpr_error<"big_rational: not a finite number">();
-            }
-            raise(errc::not_finite, "big_rational: not a finite number");
-        }
+        if (d != d || d - d != 0)
+            fail_hard<"big_rational: not a finite number">(errc::not_finite);
         if constexpr (wide_float<decltype(d)>)
-            if (!is_double_value(d)) { // long double: the sum of the doubles it splits into
-                if (!is_finite(static_cast<double>(d))) {
-                    if consteval {
-                        constexpr_error<"big_rational: a long double past the double range">();
-                    }
-                    raise(errc::overflow, "big_rational: a long double past the double range");
-                }
-                big_rational s{0};
-                for_each_double_part(d, [&](double p) {
-                    s = s + big_rational{p};
-                    return true;
-                });
-                *this = s;
-                return;
-            }
-        const bool neg = d < 0;
-        auto [mant, e] = double_parts(static_cast<double>(d)); // |d| = mant·2^e, 53 bits
-        // In lowest terms from the start: a value that fits 64 bits (2^-20)
-        // never builds a wider intermediate, which only compile time holds.
-        for (; mant % 2 == 0 && e < 0; ++e)
-            mant /= 2;
-        big_int n{mant}, den{1};
-        for (; e > 0; --e)
-            n = n * big_int{2};
-        for (; e < 0; ++e)
-            den = den * big_int{2};
-        Num = neg ? -n : n;
-        Den = den;
-        normalize();
+            if (!is_double_value(d) && !is_finite(static_cast<double>(d)))
+                fail_hard<"big_rational: a long double past the double range">(errc::overflow);
+        // In lowest terms from the start (a long double as the sum of the
+        // doubles it splits into).
+        const big::fraction f = big::fraction_of_float(d);
+        Num                   = big_int::from_mag(f.Num, f.Negative);
+        Den                   = big_int::from_mag(f.Den, false);
     }
 
     friend constexpr bool operator==(const big_rational&, const big_rational&) = default;
 
     constexpr void normalize() {
-        if (Den.is_zero()) {
-            if consteval {
-                constexpr_error<"big_rational: zero denominator">();
-            }
-            raise(errc::division_by_zero, "big_rational: zero denominator");
-        }
+        if (Den.is_zero())
+            fail_hard<"big_rational: zero denominator">(errc::division_by_zero);
         if (Den.negative()) {
             Num = -Num;
             Den = -Den;

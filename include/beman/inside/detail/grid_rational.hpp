@@ -72,11 +72,6 @@ using grid_int      = big_int;
 
 constexpr grid_int wide_numerator(const big_rational& r) { return r.Num; }
 constexpr grid_int wide_denominator(const big_rational& r) { return r.Den; }
-constexpr grid_int wide_numerator(const rational& r) {
-    const grid_int n{r.Numerator};
-    return r.Denominator < 0 ? -n : n;
-}
-constexpr grid_int wide_denominator(const rational& r) { return grid_int{abs_den(r.Denominator)}; }
 
 // A grid number as a transient fraction, for tests that run at runtime too.
 constexpr big::fraction fraction_of(const big_rational& r) {
@@ -107,12 +102,6 @@ using grid_rational = rational;
 // A product of three 64-bit magnitudes plus a sign.
 using grid_int = wide_sint<4>;
 
-constexpr grid_int wide_numerator(const rational& r) noexcept {
-    const grid_int n{r.Numerator};
-    return r.Denominator < 0 ? -n : n;
-}
-constexpr grid_int wide_denominator(const rational& r) noexcept { return grid_int{abs_den(r.Denominator)}; }
-
 constexpr bool grid_divides_evenly(const rational& a, const rational& n) { return divides_evenly(a, n); }
 
 constexpr bool grid_same_lattice(const rational& a, const rational& b, const rational& n) {
@@ -127,42 +116,27 @@ constexpr std::expected<rational, errc> grid_gcd(const rational& a, const ration
 // grid_gcd as a callable, for lift over expected grid numbers.
 inline constexpr auto grid_gcd_of_two = [](const grid_rational& a, const grid_rational& b) { return grid_gcd(a, b); };
 
+constexpr grid_int wide_numerator(const rational& r) noexcept {
+    const grid_int n{r.Numerator};
+    return r.Denominator < 0 ? -n : n;
+}
+constexpr grid_int wide_denominator(const rational& r) noexcept { return grid_int{abs_den(r.Denominator)}; }
+
 // + − × and gcd of grid numbers as grid numbers in both modes, for the
 // compile-time grid computations (a 64-bit overflow stops the build).
-constexpr grid_rational grid_add(const grid_rational& a, const grid_rational& b) {
-#if BEMAN_INSIDE_BIG_GRIDS
-    return a + b;
-#else
-    return (a + b).value();
-#endif
+template <class T>
+constexpr grid_rational grid_value(const T& v) {
+    if constexpr (std::same_as<T, grid_rational>)
+        return v;
+    else
+        return v.value();
 }
-constexpr grid_rational grid_sub(const grid_rational& a, const grid_rational& b) {
-#if BEMAN_INSIDE_BIG_GRIDS
-    return a - b;
-#else
-    return (a - b).value();
-#endif
-}
-constexpr grid_rational grid_mul(const grid_rational& a, const grid_rational& b) {
-#if BEMAN_INSIDE_BIG_GRIDS
-    return a * b;
-#else
-    return (a * b).value();
-#endif
-}
-constexpr grid_rational grid_div_of(const grid_rational& a, const grid_rational& b) {
-#if BEMAN_INSIDE_BIG_GRIDS
-    return a / b;
-#else
-    return (a / b).value();
-#endif
-}
+constexpr grid_rational grid_add(const grid_rational& a, const grid_rational& b) { return grid_value(a + b); }
+constexpr grid_rational grid_sub(const grid_rational& a, const grid_rational& b) { return grid_value(a - b); }
+constexpr grid_rational grid_mul(const grid_rational& a, const grid_rational& b) { return grid_value(a * b); }
+constexpr grid_rational grid_div_of(const grid_rational& a, const grid_rational& b) { return grid_value(a / b); }
 constexpr grid_rational grid_gcd_of(const grid_rational& a, const grid_rational& b) {
-#if BEMAN_INSIDE_BIG_GRIDS
-    return grid_gcd(a, b);
-#else
-    return grid_gcd(a, b).value();
-#endif
+    return grid_value(grid_gcd(a, b));
 }
 // gcd of two grid integers, non-negative (0 when both are).
 constexpr grid_int grid_int_gcd(grid_int a, grid_int b) {
