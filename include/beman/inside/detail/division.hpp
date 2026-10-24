@@ -13,6 +13,7 @@ BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <limits>
 #include <numeric>
+#include <utility>
 
 //---------------------------------------------------------------------------
 // division / modulo. `division::div` returns expected<result, errc> unless the
@@ -184,10 +185,9 @@ constexpr bool quotient_fits_rational() noexcept {
         if (!integer_storage<L> || !integer_storage<R>) // a continuous operand bounds no denominator
             return false;
         constexpr value_bounds l = value_bounds_of<L>(), r = value_bounds_of<R>();
-        constexpr umax         imax_max = static_cast<umax>(std::numeric_limits<imax>::max());
         umax                   ad, bc;
-        return l.Ok && r.Ok && r.Num <= imax_max && !mul_overflow(l.Num, r.Den, &ad) &&
-               !mul_overflow(l.Den, r.Num, &bc) && bc <= imax_max;
+        return l.Ok && r.Ok && std::in_range<imax>(r.Num) && !mul_overflow(l.Num, r.Den, &ad) &&
+               !mul_overflow(l.Den, r.Num, &bc) && std::in_range<imax>(bc);
     }
 }
 

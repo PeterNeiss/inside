@@ -20,6 +20,7 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <compare>
 #include <limits>
 #include <type_traits>
+#include <utility>
 
 namespace beman::inside::detail {
 // |d| of a signed denominator (any imax, INT64_MIN too).
@@ -98,7 +99,7 @@ struct rational {
     // numerator. A den past imax has no signed denominator: overflow.
     template <std::unsigned_integral N, std::unsigned_integral D>
     constexpr rational(N num, D den) : Numerator{num}, Denominator{static_cast<imax>(den)} {
-        if (static_cast<umax>(den) > static_cast<umax>(std::numeric_limits<imax>::max()))
+        if (!std::in_range<imax>(den))
             raise(errc::overflow, "rational: denominator past imax");
         canonicalize(Numerator, Denominator);
     }
@@ -305,7 +306,7 @@ struct rounded_integer {
     umax denominator;
     if (mul_overflow(a / g, b, &denominator))
         return std::unexpected{errc::overflow};
-    if (denominator > static_cast<umax>(std::numeric_limits<imax>::max()))
+    if (!std::in_range<imax>(denominator))
         return std::unexpected{errc::overflow};
 
     auto numerator = std::gcd(lhs.Numerator, rhs.Numerator);
@@ -422,7 +423,7 @@ constexpr std::expected<T, errc> rational::to() const {
     if (Denominator < 0)
         return std::unexpected{errc::domain_error};
     const umax q = Numerator / abs_den(Denominator);
-    if (q > static_cast<umax>(std::numeric_limits<T>::max()))
+    if (!std::in_range<T>(q))
         return std::unexpected{errc::overflow};
     return static_cast<T>(q);
 }
@@ -525,7 +526,7 @@ inline constexpr auto rational::add_impl(const rational& a, const rational& b) {
 
     if constexpr (Checked) {
         if (mul_overflow(a_ad, b_ad_r, &denominator) || // = lcm(a_ad, b_ad)
-            denominator > static_cast<umax>(std::numeric_limits<imax>::max())) {
+            !std::in_range<imax>(denominator)) {
             return ret_t{fail<"rational +: denominator overflow", Loud>(errc::overflow)};
         }
         if (mul_overflow(a.Numerator, b_ad_r, &A) || mul_overflow(b.Numerator, a_ad_r, &B)) {
@@ -609,7 +610,7 @@ inline constexpr auto rational::mul_impl(const rational& a_in, const rational& b
     umax denominator;
     if constexpr (Checked) {
         if (mul_overflow(a.Numerator, b.Numerator, &numerator) || mul_overflow(a_ad, b_ad, &denominator) ||
-            denominator > static_cast<umax>(std::numeric_limits<imax>::max())) {
+            !std::in_range<imax>(denominator)) {
             return ret_t{fail<"rational *: numerator or denominator overflow", Loud>(errc::overflow)};
         }
     } else {
@@ -638,7 +639,7 @@ inline constexpr auto rational::inv_impl(const rational& a) {
         if (a.Numerator == 0) {
             return ret_t{fail<"rational inv: division by zero", Loud>(errc::division_by_zero)};
         }
-        if (a.Numerator > static_cast<umax>(std::numeric_limits<imax>::max())) {
+        if (!std::in_range<imax>(a.Numerator)) {
             return ret_t{fail<"rational inv: numerator out of denominator range", Loud>(errc::overflow)};
         }
     }
@@ -664,8 +665,7 @@ inline constexpr auto rational::div_impl(const rational& a, const rational& b) {
         const umax g2 = std::gcd(abs_den(a.Denominator), abs_den(b.Denominator));
         umax       num, den;
         if (mul_overflow(a.Numerator / g1, abs_den(b.Denominator) / g2, &num) ||
-            mul_overflow(abs_den(a.Denominator) / g2, b.Numerator / g1, &den) ||
-            den > static_cast<umax>(std::numeric_limits<imax>::max()))
+            mul_overflow(abs_den(a.Denominator) / g2, b.Numerator / g1, &den) || !std::in_range<imax>(den))
             return ret_t{fail<"rational /: numerator or denominator overflow", Loud>(errc::overflow)};
         const bool neg = (a.Denominator < 0) != (b.Denominator < 0);
         return ret_t{make_raw(num, neg ? -static_cast<imax>(den) : static_cast<imax>(den))};
@@ -965,7 +965,7 @@ namespace beman::inside::detail {
 template <umax D>
 consteval rational make_per() {
     static_assert(D >= 1, "per<D> is the positive step 1/D; a continuous grid is spelled 0");
-    static_assert(D <= static_cast<umax>(std::numeric_limits<imax>::max()), "per<D>: denominator too large");
+    static_assert(std::in_range<imax>(D), "per<D>: denominator too large");
     return rational{umax{1}, D};
 }
 } // namespace beman::inside::detail

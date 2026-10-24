@@ -4,6 +4,9 @@
 
 #include <gtest/gtest.h>
 
+#include <compare>
+#include <cstdint>
+#include <limits>
 #include <type_traits>
 
 using namespace beman::inside;
@@ -388,4 +391,34 @@ TEST(InsideAssignTest, continuous_source_off_the_lattice_is_checked) {
     const auto half = (any{1} / any{2}).value();
     s               = half; // on the lattice: exact
     EXPECT_EQ(s, (rational{1, 2}));
+}
+
+// Mixed-sign integer sources and scalars compare by value: a uint64_t past
+// INT64_MAX is not −1, and a negative inside is below every unsigned.
+TEST(InsideAssignTest, mixed_sign_integers_compare_by_value) {
+    constexpr std::uint64_t big       = std::numeric_limits<std::uint64_t>::max();
+    constexpr std::uint64_t past_imax = std::uint64_t{1} << 63;
+    using neg                         = inside<{-10, 10}>;
+    EXPECT_THROW((void)(neg{big}), inside_error);
+    EXPECT_THROW((void)(neg{past_imax}), inside_error);
+    inside<{-10, 10}, clamp> c{std::uint64_t{3}};
+    c = big;
+    EXPECT_EQ(c, 10);
+    c = past_imax;
+    EXPECT_EQ(c, 10);
+    c = 4u;
+    EXPECT_EQ(c, 4);
+
+    const neg m{-1};
+    EXPECT_NE(m, big);
+    EXPECT_NE(m, 0xFFFFFFFFu);
+    EXPECT_TRUE(m < 0u);
+    EXPECT_TRUE(m < big);
+    EXPECT_EQ(m <=> past_imax, std::strong_ordering::less);
+    EXPECT_EQ(neg{7} <=> std::uint64_t{7}, std::strong_ordering::equal);
+    EXPECT_EQ(neg{7} <=> 6u, std::strong_ordering::greater);
+    EXPECT_EQ(neg{7}, std::uint64_t{7});
+    EXPECT_EQ(neg{1}, true);
+    EXPECT_EQ(neg{0}, false);
+    static_assert(neg{-1} != big && neg{-1} < past_imax);
 }
