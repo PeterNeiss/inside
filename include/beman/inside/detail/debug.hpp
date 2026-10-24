@@ -136,6 +136,16 @@ template <fixed_string Msg>
 [[noreturn]] BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE inline void constexpr_error() {
     raise(errc::overflow, Msg.Data);
 }
+
+// A checked path's hard failure: Msg as the compile-time diagnostic during
+// constant evaluation, else raised with code.
+template <fixed_string Msg>
+[[noreturn]] constexpr void fail_hard(errc code) {
+    if consteval {
+        constexpr_error<Msg>();
+    }
+    raise(code, Msg.Data);
+}
 } // namespace detail
 } // namespace beman::inside
 

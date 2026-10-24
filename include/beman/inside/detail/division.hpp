@@ -232,51 +232,10 @@ struct division {
     // as round_rat). a/b is monotonic in each operand on either side of 0,
     // and so is its rounding, so these are the rounded endpoints of the exact
     // quotient grid — which is not formed: its endpoints can pass the 64-bit
-    // rational (7/2^63 for a divisor reaching INT64_MIN).
+    // rational (7/2^63 for a divisor reaching INT64_MIN). Rounded in umax,
+    // sign apart, so limits past imax and INT64_MIN / −1 = 2^63 need no
+    // special case: |a / b| ≤ |a| for an integer |b| ≥ 1.
     static constexpr interval integer_quotient_range() {
-        const round_mode lo_mode = rmode == round_mode::half_even ? round_mode::floor : rmode;
-        const round_mode hi_mode = rmode == round_mode::half_even ? round_mode::ceil : rmode;
-        // INT64_MIN / -1 is 2^63, past imax.
-        auto quotient = [](imax a, imax b, round_mode m) {
-            return a == std::numeric_limits<imax>::min() && b == -1 ? -rational{a} : rational{div_rounded(a, b, m)};
-        };
-        // The divisor's extremes on each side of 0; the one nearest 0 is ±step
-        // when its range reaches 0 (grid operator/).
-        constexpr imax lo = lower_imax<R>, hi = upper_imax<R>;
-        constexpr imax step = signed_numerator(to_rational(grid_of<R>.value_unit()));
-        imax           divisors[4];
-        int            n = 0;
-        if (lo > 0 || hi < 0) {
-            divisors[n++] = lo;
-            divisors[n++] = hi;
-        } else {
-            if (hi > 0) {
-                divisors[n++] = step;
-                divisors[n++] = hi;
-            }
-            if (lo < 0) {
-                divisors[n++] = lo;
-                divisors[n++] = -step;
-            }
-        }
-        if (n == 0) // a zero divisor grid (the static_assert above)
-            return interval{0, 0};
-        interval q{quotient(lower_imax<L>, divisors[0], lo_mode), quotient(lower_imax<L>, divisors[0], hi_mode)};
-        for (const imax a : {lower_imax<L>, upper_imax<L>})
-            for (int i = 0; i < n; ++i) {
-                const rational l = quotient(a, divisors[i], lo_mode), h = quotient(a, divisors[i], hi_mode);
-                if (l < q.Lower)
-                    q.Lower = l;
-                if (q.Upper < h)
-                    q.Upper = h;
-            }
-        return q;
-    }
-
-    // integer_quotient_range for limits past imax (64-bit magnitudes): the
-    // corner quotients rounded in umax, sign apart. |a / b| ≤ |a| for an
-    // integer |b| ≥ 1, so every rounded quotient fits.
-    static constexpr interval wide_integer_quotient_range() {
         const round_mode lo_mode = rmode == round_mode::half_even ? round_mode::floor : rmode;
         const round_mode hi_mode = rmode == round_mode::half_even ? round_mode::ceil : rmode;
         struct signed_mag {
@@ -329,10 +288,8 @@ struct division {
     // quotient, so e.g. round_ceil can't escape the grid: onto the integers,
     // or onto the operands' notch 1/K.
     static constexpr grid result_grid = [] {
-        if constexpr (native_div_integer)
+        if constexpr (native_div_integer || wide_div_integer)
             return grid{integer_quotient_range(), rational{1}};
-        else if constexpr (wide_div_integer)
-            return grid{wide_integer_quotient_range(), rational{1}};
         else if constexpr (native_div_fixed) {
             constexpr interval q = (*(grid_of<L> / grid_of<R>)).Interval;
             // An endpoint on the notch stays; one off it rounds onto it.

@@ -391,12 +391,7 @@ constexpr std::expected<wide_rational<K>, errc> parse_exact(const char* first, c
     using I           = wide_sint<K>;
     constexpr I limit = std::numeric_limits<I>::max() / I{32}; // room for ·16 + a digit
     const auto  big   = [&](const I& x) { return limit < x; };
-    bool        neg   = false;
-    if (first != last && (*first == '+' || *first == '-')) {
-        neg = (*first == '-');
-        ++first;
-    }
-    auto one = [&](const char* f, const char* l) -> std::expected<wide_rational<K>, errc> {
+    auto        one   = [&](const char* f, const char* l) -> std::expected<wide_rational<K>, errc> {
         I                    num{0}, den{1};
         int                  frac_zeros = 0; // deferred, as in parse_number: trailing zeros cost nothing
         const scanned_number sc         = scan_number(f, l, [&](int d, bool in_frac, int b) {
@@ -438,21 +433,7 @@ constexpr std::expected<wide_rational<K>, errc> parse_exact(const char* first, c
             }
         return wide_rational<K>{num, den};
     };
-    const char* slash = first;
-    while (slash != last && *slash != '/')
-        ++slash;
-    auto v = one(first, slash);
-    if (v && slash != last) {
-        const auto d = one(slash + 1, last);
-        if (!d)
-            return d;
-        if (d->Num.is_zero())
-            return std::unexpected{errc::division_by_zero};
-        v = *v / *d;
-    }
-    if (v && neg)
-        v = -*v;
-    return v;
+    return parse_fraction(first, last, one, [](const wide_rational<K>& d) { return d.Num.is_zero(); });
 }
 
 // The text parse's width: wide enough for about 1200 decimal digits or a
@@ -509,17 +490,10 @@ constexpr std::optional<log2_bounds> number_log2_bounds(const char* first, const
 // bounded from its digits and exponents, is that small or that large.
 template <insidable B, std::size_t K, bool Wrap = false>
 constexpr std::optional<wide_rational<K>> stand_in(const char* first, const char* last) noexcept {
-    constexpr int G   = finest_den_bits<B> + 2;
-    constexpr int H   = exact_value_bits<B> + 2;
-    bool          neg = false;
-    if (first != last && (*first == '+' || *first == '-')) {
-        neg = (*first == '-');
-        ++first;
-    }
-    const char* slash = first;
-    while (slash != last && *slash != '/')
-        ++slash;
-    auto b = number_log2_bounds(first, slash);
+    constexpr int G            = finest_den_bits<B> + 2;
+    constexpr int H            = exact_value_bits<B> + 2;
+    const auto [neg, f, slash] = split_fraction(first, last);
+    auto b                     = number_log2_bounds(f, slash);
     if (!b)
         return std::nullopt;
     if (slash != last) {

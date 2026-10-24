@@ -239,36 +239,17 @@ template <auto U, insidable Out, reference R, class V>
 }
 
 // The number's functions, in q's unit.
-template <reference R, class V>
-[[nodiscard]] constexpr auto abs(const quantity<R, V>& q) {
-    return detail::make_quantity<R>(beman::inside::math::abs(q.numerical_value()));
-}
-template <reference R, class V>
-[[nodiscard]] constexpr auto floor(const quantity<R, V>& q) {
-    return detail::make_quantity<R>(beman::inside::math::floor(q.numerical_value()));
-}
-template <reference R, class V>
-[[nodiscard]] constexpr auto ceil(const quantity<R, V>& q) {
-    return detail::make_quantity<R>(beman::inside::math::ceil(q.numerical_value()));
-}
-template <reference R, class V>
-[[nodiscard]] constexpr auto round(const quantity<R, V>& q) {
-    return detail::make_quantity<R>(beman::inside::math::round(q.numerical_value()));
-}
-template <reference R, class V>
-[[nodiscard]] constexpr auto trunc(const quantity<R, V>& q) {
-    return detail::make_quantity<R>(beman::inside::math::trunc(q.numerical_value()));
-}
-
-// Roots: the unit's (m² → m, m³ → m) and the number's.
-template <reference R, class V>
-[[nodiscard]] constexpr auto sqrt(const quantity<R, V>& q) {
-    return detail::make_quantity<detail::root_reference<R, 2>()>(beman::inside::math::sqrt(q.numerical_value()));
-}
-template <reference R, class V>
-[[nodiscard]] constexpr auto cbrt(const quantity<R, V>& q) {
-    return detail::make_quantity<detail::root_reference<R, 3>()>(beman::inside::math::cbrt(q.numerical_value()));
-}
+#define BEMAN_INSIDE_UNITS_SAME_UNIT_FN(fn)                                            \
+    template <reference R, class V>                                                    \
+    [[nodiscard]] constexpr auto fn(const quantity<R, V>& q) {                         \
+        return detail::make_quantity<R>(beman::inside::math::fn(q.numerical_value())); \
+    }
+BEMAN_INSIDE_UNITS_SAME_UNIT_FN(abs)
+BEMAN_INSIDE_UNITS_SAME_UNIT_FN(floor)
+BEMAN_INSIDE_UNITS_SAME_UNIT_FN(ceil)
+BEMAN_INSIDE_UNITS_SAME_UNIT_FN(round)
+BEMAN_INSIDE_UNITS_SAME_UNIT_FN(trunc)
+#undef BEMAN_INSIDE_UNITS_SAME_UNIT_FN
 
 // Trigonometry of an angle in radians: a plain number.
 template <reference R, class V>
@@ -289,45 +270,27 @@ template <reference R, class V>
     return beman::inside::math::tan(q.numerical_value());
 }
 
-// Inverse trigonometry: an angle in radians.
-template <insidable V>
-[[nodiscard]] constexpr auto asin(const V& x) {
-    return detail::make_quantity<detail::radian_reference>(beman::inside::math::asin(x));
-}
-template <insidable V>
-[[nodiscard]] constexpr auto acos(const V& x) {
-    return detail::make_quantity<detail::radian_reference>(beman::inside::math::acos(x));
-}
-template <insidable V>
-[[nodiscard]] constexpr auto atan(const V& x) {
-    return detail::make_quantity<detail::radian_reference>(beman::inside::math::atan(x));
-}
 // atan2(y, x) of two quantities of one dimension, in their common unit.
 template <reference A, class VA, reference B, class VB>
-    requires(!detail::sum_diagnosed<A, B>()) &&
-            (detail::common_rescalable<A, VA, B, VB> &&
+    requires(detail::common_rescalable<A, VA, B, VB> &&
              requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
                  beman::inside::math::atan2(x, y);
              })
 [[nodiscard]] constexpr auto atan2(const quantity<A, VA>& y, const quantity<B, VB>& x) {
-    constexpr reference C = detail::sum_reference<A, B>();
     return detail::make_quantity<detail::radian_reference>(
-        beman::inside::math::atan2(detail::rescale<detail::conversion_factor<A.U, C.U>>(y.numerical_value()),
-                                   detail::rescale<detail::conversion_factor<B.U, C.U>>(x.numerical_value())));
+        beman::inside::math::atan2(detail::in_common_unit<A, B>(y), detail::in_common_unit<A, B>(x)));
 }
 
 // hypot(x, y): √(x² + y²) in the common unit.
 template <reference A, class VA, reference B, class VB>
-    requires(!detail::sum_diagnosed<A, B>()) &&
-            (detail::common_rescalable<A, VA, B, VB> &&
+    requires(detail::common_rescalable<A, VA, B, VB> &&
              requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
                  beman::inside::math::hypot(x, y);
              })
 [[nodiscard]] constexpr auto hypot(const quantity<A, VA>& x, const quantity<B, VB>& y) {
     constexpr reference C = detail::sum_reference<A, B>();
     return detail::make_quantity<C>(
-        beman::inside::math::hypot(detail::rescale<detail::conversion_factor<A.U, C.U>>(x.numerical_value()),
-                                   detail::rescale<detail::conversion_factor<B.U, C.U>>(y.numerical_value())));
+        beman::inside::math::hypot(detail::in_common_unit<A, B>(x), detail::in_common_unit<A, B>(y)));
 }
 
 //---------------------------------------------------------------------------
@@ -350,16 +313,20 @@ constexpr auto number_of(const X& x) {
 }
 } // namespace detail
 
-template <insidable Out, reference R, class V>
-[[nodiscard]] constexpr auto sqrt_into(const quantity<R, V>& q) {
-    return detail::make_quantity<detail::root_reference<R, 2>()>(
-        beman::inside::math::sqrt_into<Out>(q.numerical_value()));
-}
-template <insidable Out, reference R, class V>
-[[nodiscard]] constexpr auto cbrt_into(const quantity<R, V>& q) {
-    return detail::make_quantity<detail::root_reference<R, 3>()>(
-        beman::inside::math::cbrt_into<Out>(q.numerical_value()));
-}
+// Roots: the unit's (m² → m, m³ → m) and the number's.
+#define BEMAN_INSIDE_UNITS_ROOT_FN(fn, n)                                                                           \
+    template <reference R, class V>                                                                                 \
+    [[nodiscard]] constexpr auto fn(const quantity<R, V>& q) {                                                      \
+        return detail::make_quantity<detail::root_reference<R, n>()>(beman::inside::math::fn(q.numerical_value())); \
+    }                                                                                                               \
+    template <insidable Out, reference R, class V>                                                                  \
+    [[nodiscard]] constexpr auto fn##_into(const quantity<R, V>& q) {                                               \
+        return detail::make_quantity<detail::root_reference<R, n>()>(                                               \
+            beman::inside::math::fn##_into<Out>(q.numerical_value()));                                              \
+    }
+BEMAN_INSIDE_UNITS_ROOT_FN(sqrt, 2)
+BEMAN_INSIDE_UNITS_ROOT_FN(cbrt, 3)
+#undef BEMAN_INSIDE_UNITS_ROOT_FN
 
 // An angle in radians, or in a unit with a factor of π (°, a turn, 2π/65536
 // rad): that one is reduced exactly, and the result rounds once.
@@ -387,18 +354,21 @@ template <insidable Out, reference R, class V>
     return beman::inside::math::tan_into<Out>(q.numerical_value());
 }
 
-template <insidable Out, class X>
-[[nodiscard]] constexpr auto asin_into(const X& x) {
-    return detail::make_quantity<detail::radian_reference>(beman::inside::math::asin_into<Out>(detail::number_of(x)));
-}
-template <insidable Out, class X>
-[[nodiscard]] constexpr auto acos_into(const X& x) {
-    return detail::make_quantity<detail::radian_reference>(beman::inside::math::acos_into<Out>(detail::number_of(x)));
-}
-template <insidable Out, class X>
-[[nodiscard]] constexpr auto atan_into(const X& x) {
-    return detail::make_quantity<detail::radian_reference>(beman::inside::math::atan_into<Out>(detail::number_of(x)));
-}
+// Inverse trigonometry: an angle in radians.
+#define BEMAN_INSIDE_UNITS_ARC_FN(fn)                                                       \
+    template <insidable V>                                                                  \
+    [[nodiscard]] constexpr auto fn(const V& x) {                                           \
+        return detail::make_quantity<detail::radian_reference>(beman::inside::math::fn(x)); \
+    }                                                                                       \
+    template <insidable Out, class X>                                                       \
+    [[nodiscard]] constexpr auto fn##_into(const X& x) {                                    \
+        return detail::make_quantity<detail::radian_reference>(                             \
+            beman::inside::math::fn##_into<Out>(detail::number_of(x)));                     \
+    }
+BEMAN_INSIDE_UNITS_ARC_FN(asin)
+BEMAN_INSIDE_UNITS_ARC_FN(acos)
+BEMAN_INSIDE_UNITS_ARC_FN(atan)
+#undef BEMAN_INSIDE_UNITS_ARC_FN
 
 // Exponentials, logarithms and the hyperbolic functions of a number: an
 // inside or a dimensionless quantity (10^(L / 20 dB), log10(P / 1 mW)).
@@ -428,28 +398,23 @@ template <insidable Out, class B, class E>
     return beman::inside::math::pow_into<Out>(detail::number_of(base), detail::number_of(exp));
 }
 template <insidable Out, reference A, class VA, reference B, class VB>
-    requires(!detail::sum_diagnosed<A, B>()) &&
-            (detail::common_rescalable<A, VA, B, VB> &&
+    requires(detail::common_rescalable<A, VA, B, VB> &&
              requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
                  beman::inside::math::atan2_into<Out>(x, y);
              })
 [[nodiscard]] constexpr auto atan2_into(const quantity<A, VA>& y, const quantity<B, VB>& x) {
-    constexpr reference C = detail::sum_reference<A, B>();
-    return detail::make_quantity<detail::radian_reference>(beman::inside::math::atan2_into<Out>(
-        detail::rescale<detail::conversion_factor<A.U, C.U>>(y.numerical_value()),
-        detail::rescale<detail::conversion_factor<B.U, C.U>>(x.numerical_value())));
+    return detail::make_quantity<detail::radian_reference>(
+        beman::inside::math::atan2_into<Out>(detail::in_common_unit<A, B>(y), detail::in_common_unit<A, B>(x)));
 }
 template <insidable Out, reference A, class VA, reference B, class VB>
-    requires(!detail::sum_diagnosed<A, B>()) &&
-            (detail::common_rescalable<A, VA, B, VB> &&
+    requires(detail::common_rescalable<A, VA, B, VB> &&
              requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
                  beman::inside::math::hypot_into<Out>(x, y);
              })
 [[nodiscard]] constexpr auto hypot_into(const quantity<A, VA>& x, const quantity<B, VB>& y) {
     constexpr reference C = detail::sum_reference<A, B>();
-    return detail::make_quantity<C>(beman::inside::math::hypot_into<Out>(
-        detail::rescale<detail::conversion_factor<A.U, C.U>>(x.numerical_value()),
-        detail::rescale<detail::conversion_factor<B.U, C.U>>(y.numerical_value())));
+    return detail::make_quantity<C>(
+        beman::inside::math::hypot_into<Out>(detail::in_common_unit<A, B>(x), detail::in_common_unit<A, B>(y)));
 }
 // atan2 and hypot of two quantities that do not add (another dimension or
 // kind, no common unit).

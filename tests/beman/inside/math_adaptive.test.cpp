@@ -507,7 +507,7 @@ static_assert(ax::isqrt(detail::wide_sint<4>{1} << 200) == detail::wide_sint<4>{
 static_assert(ax::isqrt((detail::wide_sint<4>{1} << 200) - detail::wide_sint<4>{1}) ==
               (detail::wide_sint<4>{1} << 100) - detail::wide_sint<4>{1});
 #if defined(__SIZEOF_INT128__)
-static_assert(ax::isqrt128(~static_cast<unsigned __int128>(0)) == ~umax{0});
+static_assert(ax::iroot128<2>(~static_cast<unsigned __int128>(0)) == ~umax{0});
 #endif
 } // namespace
 
