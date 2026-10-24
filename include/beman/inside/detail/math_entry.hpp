@@ -203,6 +203,13 @@ inline bool fp_decide(double v, double bound, Out& out) noexcept {
 template <insidable In>
 inline constexpr double in_max = static_cast<double>(max_abs_int<In>);
 
+// What follows a fast tier or a lean kernel: rarely taken, so out of line,
+// which keeps its frame off the fast path.
+template <std::invocable<> F>
+BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr auto cold_call(const F& f) {
+    return f();
+}
+
 #ifndef BEMAN_INSIDE_MATH_NO_FP
 namespace fpk = ::beman::inside::math::detail::fp;
 
@@ -576,12 +583,6 @@ inline bool dd_full_attempt(const ddk::dd& x, Out& out) {
     return dd_decide(v, bound * 1.5, out);
 }
 
-// What follows a fast tier or a lean kernel: rarely taken, so out of line,
-// which keeps its frame off the fast path.
-template <std::invocable<> F>
-BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr auto cold_call(const F& f) {
-    return f();
-}
 
 // A lean attempt (its value, setting the bound) first, then the full one.
 template <insidable Out, typename Lean, typename Full>
