@@ -16,7 +16,6 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <limits>
 #include <ranges>
 #include <type_traits>
@@ -178,15 +177,15 @@ struct wide_int {
         return a;
     }
     friend constexpr wide_int operator&(wide_int a, const wide_int& b) noexcept {
-        std::ranges::transform(a.Word, b.Word, a.Word, std::bit_and<L>{});
+        std::ranges::transform(a.Word, b.Word, a.Word, [](L x, L y) { return static_cast<L>(x & y); });
         return a;
     }
     friend constexpr wide_int operator|(wide_int a, const wide_int& b) noexcept {
-        std::ranges::transform(a.Word, b.Word, a.Word, std::bit_or<L>{});
+        std::ranges::transform(a.Word, b.Word, a.Word, [](L x, L y) { return static_cast<L>(x | y); });
         return a;
     }
     friend constexpr wide_int operator^(wide_int a, const wide_int& b) noexcept {
-        std::ranges::transform(a.Word, b.Word, a.Word, std::bit_xor<L>{});
+        std::ranges::transform(a.Word, b.Word, a.Word, [](L x, L y) { return static_cast<L>(x ^ y); });
         return a;
     }
 

@@ -14,7 +14,6 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <limits>
 
 //---------------------------------------------------------------------------
@@ -129,7 +128,6 @@ constexpr pair<L> div(L hi, L lo, L d) noexcept // {quotient, remainder}
     }
 }
 
-
 //---------------------------------------------------------------------------
 // Array kernels over (pointer, length), least significant limb first, in
 // the style of GMP's mpn layer. An output may alias an input of the same
@@ -186,10 +184,10 @@ constexpr L addmul_1(L* r, const L* a, std::size_t n, L q) noexcept {
     for (std::size_t i = 0; i < n; ++i) {
         const pair<L> p  = mul(q, a[i]);
         L             c1 = 0, c2 = 0;
-        L             s  = add_carry(r[i], p.Lo, c1);
-        s                = add_carry(s, carry, c2);
-        r[i]             = s;
-        carry            = static_cast<L>(p.Hi + c1 + c2); // fits: (b−1)² + 2(b−1) < b²
+        L             s = add_carry(r[i], p.Lo, c1);
+        s               = add_carry(s, carry, c2);
+        r[i]            = s;
+        carry           = static_cast<L>(p.Hi + c1 + c2); // fits: (b−1)² + 2(b−1) < b²
     }
     return carry;
 }
@@ -339,8 +337,9 @@ constexpr void divmod(const L* u, std::size_t m, const L* v, std::size_t n, L* q
 
 // gcd(a, b) of non-negative a and b by Euclid (0 when both are), with
 // rem(a, b) the remainder.
-template <class I, class Rem = std::modulus<>>
-constexpr I euclid_gcd(I a, I b, Rem rem = {}) {
+inline constexpr auto remainder_of = [](const auto& a, const auto& b) { return a % b; };
+template <class I, class Rem = decltype(remainder_of)>
+constexpr I euclid_gcd(I a, I b, Rem rem = remainder_of) {
     const auto zero = [](const I& v) {
         if constexpr (requires { v.is_zero(); })
             return v.is_zero();
