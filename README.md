@@ -236,6 +236,9 @@ CMake, add `-mfma` (or `-march=x86-64-v3`) yourself.
 | AppleClang | latest  | C++26-C++23   | libc++            |
 | MSVC       | 19.51+  | C++23         | MSVC STL          |
 
+CI tests every row on a weekly run. Pull requests test the oldest and newest
+versions (GCC 14 and 16, Clang 18, 19 and 22), AppleClang and MSVC.
+
 ## Development
 
 See the [Contributing Guidelines](CONTRIBUTING.md).
