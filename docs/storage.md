@@ -285,6 +285,11 @@ auto die  = uniform<inside<{1, 6}>>(rng);                // 1 … 6
 auto gain = uniform<inside<{{0, 1}, per<256>}>>(rng);    // one of the 257 points of [0, 1]
 ```
 
+The draw uses only the generator's outputs, by the library's own recipe
+(`std::uniform_int_distribution` differs between standard libraries), so a
+seed gives the same values on libstdc++, libc++ and the MSVC STL
+([determinism.md](determinism.md#other-surfaces)).
+
 A continuous grid has no points to draw from: a compile error. The single
 header leaves this header out of freestanding and `BEMAN_INSIDE_MATH_NO_FP`
 builds.
