@@ -106,15 +106,10 @@ struct dimension {
     }
 
     friend constexpr bool operator==(const dimension& a, const dimension& b) {
-        for (std::size_t i = 0; i < detail::base_dimensions; ++i)
-            if (a.Exp[i] != b.Exp[i])
-                return false;
-        if (a.UserSize != b.UserSize)
-            return false;
-        for (std::int8_t i = 0; i < a.UserSize; ++i)
-            if (a.User[i].D->Name != b.User[i].D->Name || a.User[i].Exp != b.User[i].Exp)
-                return false;
-        return true;
+        return std::ranges::equal(a.Exp, b.Exp) && a.UserSize == b.UserSize &&
+               std::equal(a.User, a.User + a.UserSize, b.User, [](const auto& x, const auto& y) {
+                   return x.D->Name == y.D->Name && x.Exp == y.Exp;
+               });
     }
     friend consteval dimension operator*(dimension a, const dimension& b) {
         for (std::size_t i = 0; i < detail::base_dimensions; ++i)
@@ -165,16 +160,15 @@ namespace detail {
 // `before`. False when items is full.
 template <class T, std::size_t N, class Same, class Before>
 constexpr bool sorted_add(T (&items)[N], std::int8_t& size, T x, int e, Same same, Before before) {
-    for (std::int8_t i = 0; i < size; ++i)
-        if (same(items[i], x)) {
-            items[i].Exp = dimension::exponent(items[i].Exp + e);
-            if (items[i].Exp == 0) {
-                for (std::int8_t j = i; j + 1 < size; ++j)
-                    items[j] = items[j + 1];
-                items[--size] = {};
-            }
-            return true;
+    T* const end = items + size;
+    if (T* const it = std::find_if(items, end, [&](const T& y) { return same(y, x); }); it != end) {
+        it->Exp = dimension::exponent(it->Exp + e);
+        if (it->Exp == 0) {
+            std::shift_left(it, end, 1);
+            items[--size] = {};
         }
+        return true;
+    }
     if (e == 0)
         return true;
     if (size == static_cast<std::int8_t>(N))
@@ -304,12 +298,7 @@ struct recipe {
     spec_factor           F[max_spec_factors]{};
     std::int8_t           Size{0};
     friend constexpr bool operator==(const recipe& a, const recipe& b) {
-        if (a.Size != b.Size)
-            return false;
-        for (std::int8_t i = 0; i < a.Size; ++i)
-            if (!(a.F[i] == b.F[i]))
-                return false;
-        return true;
+        return a.Size == b.Size && std::equal(a.F, a.F + a.Size, b.F);
     }
 };
 
@@ -591,12 +580,7 @@ struct unit {
     constexpr unit(const named_unit& u) : Atoms{{&u, 0, 1}}, Size{1} {}
 
     friend constexpr bool operator==(const unit& a, const unit& b) {
-        if (a.Size != b.Size || !(a.Scale == b.Scale))
-            return false;
-        for (std::int8_t i = 0; i < a.Size; ++i)
-            if (!(a.Atoms[i] == b.Atoms[i]))
-                return false;
-        return true;
+        return a.Size == b.Size && a.Scale == b.Scale && std::equal(a.Atoms, a.Atoms + a.Size, b.Atoms);
     }
 };
 
@@ -1036,15 +1020,12 @@ inline constexpr magnitude conversion_factor = magnitude_of(From) / magnitude_of
 consteval bool unit_before(const unit& a, const unit& b) {
     if (a.Size != b.Size)
         return a.Size < b.Size;
-    for (std::int8_t i = 0; i < a.Size; ++i) {
-        if (atom_before(a.Atoms[i], b.Atoms[i]))
-            return true;
-        if (atom_before(b.Atoms[i], a.Atoms[i]))
-            return false;
-        if (a.Atoms[i].Exp != b.Atoms[i].Exp)
-            return a.Atoms[i].Exp < b.Atoms[i].Exp;
-    }
-    return false;
+    return std::lexicographical_compare(
+        a.Atoms, a.Atoms + a.Size, b.Atoms, b.Atoms + b.Size, [](const unit_atom& x, const unit_atom& y) {
+            if (atom_before(x, y) || atom_before(y, x))
+                return atom_before(x, y);
+            return x.Exp < y.Exp;
+        });
 }
 
 // The common unit of a sum: the smaller unit when it divides the other
@@ -2268,9 +2249,9 @@ inline void append_atoms(std::string& s, const unit& u, int sign, text_encoding 
 // The symbol of a unit: "km", "kg m²/s²", "s⁻¹", "[1/381 ft]" (a scaled unit).
 inline std::string unit_symbol(const unit& u, text_encoding enc = text_encoding::utf8) {
     std::string s;
-    int         num = 0, den = 0;
-    for (std::int8_t i = 0; i < u.Size; ++i)
-        (u.Atoms[i].Exp > 0 ? num : den) += 1;
+    const int   num =
+        static_cast<int>(std::count_if(u.Atoms, u.Atoms + u.Size, [](const auto& a) { return a.Exp > 0; }));
+    const int den = u.Size - num;
     if (num == 0) // only a denominator: s⁻¹, m⁻¹ s⁻¹
         detail::append_atoms(s, u, 0, enc);
     else

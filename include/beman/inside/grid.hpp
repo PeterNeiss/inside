@@ -4,6 +4,7 @@
 
 #include <beman/inside/detail/config.hpp>
 BEMAN_INSIDE_WARNINGS_PUSH
+#include <algorithm>
 
 #include <beman/inside/lift.hpp>
 #include <beman/inside/detail/rational.hpp>
@@ -354,9 +355,7 @@ constexpr grid bounded_continuous(const interval& iv, grid_int d) {
         return g;
     // Each limit is a value of the result, but an operator's interval may be
     // wider than the values it reaches: cover the limits' denominators.
-    for (const grid_rational* x : {&iv.Lower, &iv.Upper})
-        if (d < wide_denominator(*x))
-            d = wide_denominator(*x);
+    d                = std::max({d, wide_denominator(iv.Lower), wide_denominator(iv.Upper)});
     const grid_int n = num_bound(iv, d);
 #if BEMAN_INSIDE_BIG_GRIDS
     if (bit_width_of(n) + bit_width_of(d) > BEMAN_INSIDE_MAX_FRACTION_BITS)
@@ -644,10 +643,7 @@ constexpr bool grid_product_fits([[maybe_unused]] const grid& a, [[maybe_unused]
         return false;
     if (*n == 0) // continuous or a point
         return true;
-    grid_rational lo = *c0;
-    for (const grid_rational& c : {*c1, *c2, *c3})
-        lo = c < lo ? c : lo;
-    return grid_gcd_fits(*n, lo);
+    return grid_gcd_fits(*n, std::min({*c0, *c1, *c2, *c3}));
 #endif
 }
 // Whether a / b has a result grid: the divisor is not the point 0, an

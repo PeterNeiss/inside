@@ -237,29 +237,9 @@ constexpr std::optional<imax> exact_log(const wide_rational<E>& x, int B) noexce
     using I = wide_sint<E>;
     if (x.Num.negative() || x.Num.is_zero())
         return std::nullopt;
-    I    n = x.Num, d = x.Den;
-    auto strip2 = [](I& v) {
-        imax k = 0;
-        while (v.Word[0] == 0) {
-            v = v >> 64;
-            k += 64;
-        }
-        const int z = std::countr_zero(static_cast<umax>(v.Word[0]));
-        v           = v >> z;
-        return k + z;
-    };
-    auto strip5 = [](I& v) {
-        imax k = 0;
-        for (;;) {
-            const auto qr = divmod_small(wide_uint<E>{v}, 5);
-            if (qr.Remainder != 0)
-                return k;
-            v = I{qr.Quotient};
-            ++k;
-        }
-    };
-    const imax a = strip2(n) - strip2(d);
-    if (B == 10 && strip5(n) - strip5(d) != a)
+    I          n = x.Num, d = x.Den;
+    const imax a = strip_factor(n, 2) - strip_factor(d, 2);
+    if (B == 10 && strip_factor(n, 5) - strip_factor(d, 5) != a)
         return std::nullopt;
     if (!(n == d))
         return std::nullopt;
@@ -654,9 +634,7 @@ constexpr std::optional<wide_sint<pow_limbs>> exact_root(const wide_sint<pow_lim
     for (int i = (bit_width_of(n) + q - 1) / q; i-- > 0;)
         if (const P c = r + (P{1} << i); at_most(c))
             r = c;
-    P p{1};
-    for (int j = 0; j < q; ++j)
-        p = p * r;
+    const P p = pow_by_squaring(r, static_cast<unsigned>(q), [](const P& x, const P& y) { return x * y; }, P{1});
     return p == n ? std::optional<P>{r} : std::nullopt;
 }
 

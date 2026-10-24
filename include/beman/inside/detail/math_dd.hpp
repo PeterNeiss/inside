@@ -18,6 +18,11 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <beman/inside/detail/math_adaptive.hpp>
 #include <beman/inside/detail/math_fp.hpp>
 
+#include <algorithm>
+#include <iterator>
+#include <numeric>
+#include <ranges>
+
 #ifndef BEMAN_INSIDE_MATH_NO_FP
 
     #include <array>
@@ -251,13 +256,19 @@ constexpr std::array<dd, 97> log_table() noexcept {
         }
         return sum + sum;
     };
-    std::array<dd, 97> r{};
-    fixed              acc{0};
-    for (int j = 129; j <= 192; ++j)
-        r[static_cast<std::size_t>(j - 96)] = of_fixed(acc = acc + step(j), W);
-    acc = fixed{0};
-    for (int j = 127; j >= 96; --j)
-        r[static_cast<std::size_t>(j - 96)] = of_fixed(acc = acc - step(j + 1), W);
+    const auto         to_dd = [](const fixed& s) { return of_fixed(s, W); };
+    std::array<dd, 97> r{}; // r[32] = ln 1 = 0
+    // Upward: r[j − 96] = Σ step(i), i = 129 … j.
+    std::array<fixed, 64> up;
+    std::ranges::transform(std::views::iota(129, 193), up.begin(), step);
+    std::inclusive_scan(up.begin(), up.end(), up.begin());
+    std::ranges::transform(up, r.begin() + 33, to_dd);
+    // Downward: r[j − 96] = −Σ step(i), i = j + 1 … 128, j = 127 … 96.
+    std::array<fixed, 32> down;
+    std::ranges::transform(
+        std::views::iota(97, 129) | std::views::reverse, down.begin(), [&](int i) { return -step(i); });
+    std::inclusive_scan(down.begin(), down.end(), down.begin());
+    std::ranges::transform(down, std::make_reverse_iterator(r.begin() + 32), to_dd);
     return r;
 }
 

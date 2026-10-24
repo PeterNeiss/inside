@@ -7,6 +7,7 @@ BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/detail/introspection.hpp>
 
+#include <algorithm>
 #include <bit>
 #include <initializer_list>
 #include <utility>
@@ -348,13 +349,7 @@ constexpr int signed_value_bits(const grid_int& lo, const grid_int& hi) noexcept
 
 // Value bits for every value in a list (their min .. max).
 constexpr int signed_value_bits_of(std::initializer_list<grid_int> vals) noexcept {
-    grid_int mn = *vals.begin(), mx = *vals.begin();
-    for (const grid_int& v : vals) {
-        if (v < mn)
-            mn = v;
-        if (mx < v)
-            mx = v;
-    }
+    const auto [mn, mx] = std::minmax(vals);
     return signed_value_bits(mn, mx);
 }
 
