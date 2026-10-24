@@ -9,7 +9,7 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <beman/inside/detail/overflow.hpp>
 #include <beman/inside/policy_flag.hpp>
 
-#include <type_traits> // std::is_constant_evaluated
+#include <type_traits>
 
 //---------------------------------------------------------------------------
 // policy — runtime policy carrier, plus `policy_ref` for per-operation dispatch.
@@ -48,14 +48,16 @@ struct policy : E {
     static constexpr bool test(policy_flag w) { return has_flag(W, w); }
 
     static constexpr bool range_check() {
-        if (std::is_constant_evaluated())
+        if consteval {
             return true;
+        }
         return is_checked(W) && not test(ignore_range);
     }
 
     static constexpr bool round_check() {
-        if (std::is_constant_evaluated())
+        if consteval {
             return true;
+        }
         return is_checked(W) && not test(snap);
     }
 
@@ -69,9 +71,10 @@ struct policy : E {
         if constexpr (std::is_same_v<E, detail::error_ref>)
             E::Code = E::Code != errc{} ? E::Code : code;
         else {
-            if (std::is_constant_evaluated())
+            if consteval {
                 detail::constexpr_error<"inside: value out of range during constant evaluation "
                                         "(checked policy hit; choose clamp/wrap or widen the interval)">();
+            }
             detail::raise(code);
         }
     }

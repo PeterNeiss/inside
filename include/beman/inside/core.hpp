@@ -817,9 +817,7 @@ struct inside {
     template <policy_flag F = none, numeric A>
         requires inside_assignable<inside, A, P | F>
     [[nodiscard]] static constexpr std::expected<inside, errc> try_make(const std::expected<A, errc>& value) {
-        if (!value)
-            return std::unexpected{value.error()};
-        return try_make<F>(*value);
+        return value.and_then([](const A& a) { return try_make<F>(a); });
     }
 };
 
