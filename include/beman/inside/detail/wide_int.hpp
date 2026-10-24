@@ -81,7 +81,10 @@ struct wide_int {
     [[nodiscard]] constexpr bool negative() const noexcept { return Signed && (Word[N - 1] >> (limb_bits - 1)) != 0; }
 
     [[nodiscard]] constexpr bool is_zero() const noexcept {
-        return std::ranges::all_of(Word, [](L w) { return w == 0; });
+        for (std::size_t i = 0; i < N; ++i) // (not ranges::all_of: slower to constant-evaluate)
+            if (Word[i] != 0)
+                return false;
+        return true;
     }
 
     constexpr explicit operator bool() const noexcept { return !is_zero(); }
@@ -315,7 +318,11 @@ struct small_divmod {
 template <std::size_t K>
 constexpr small_divmod<K> divmod_small(const wide_uint<K>& n, umax d) noexcept {
     small_divmod<K> r{wide_uint<K>{0}, 0};
-    r.Remainder = limb::div_1(r.Quotient.Word, n.Word, K, d);
+    for (std::size_t i = K; i-- > 0;) { // (not limb::div_1: slower to constant-evaluate)
+        const limb::pair<umax> qr = limb::div(r.Remainder, n.Word[i], d);
+        r.Quotient.Word[i]        = qr.Hi;
+        r.Remainder               = qr.Lo;
+    }
     return r;
 }
 

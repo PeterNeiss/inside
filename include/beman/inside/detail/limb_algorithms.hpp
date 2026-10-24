@@ -222,30 +222,36 @@ constexpr L div_1(L* q, const L* a, std::size_t n, L d) noexcept {
 // r[0, rn) = a[0, an) >> s, the limbs past an read as fill (0, or a sign).
 template <std::unsigned_integral L>
 constexpr void shift_right(L* r, std::size_t rn, const L* a, std::size_t an, int s, L fill = 0) noexcept {
-    constexpr int     B    = bits<L>;
-    const std::size_t ws   = static_cast<std::size_t>(s / B);
-    const int         bs   = s % B;
-    const auto        word = [&](std::size_t k) { return k < an ? a[k] : fill; };
+    constexpr int     B  = bits<L>;
+    const std::size_t ws = static_cast<std::size_t>(s / B);
+    const int         bs = s % B;
     for (std::size_t i = 0; i < rn; ++i) {
-        L w = static_cast<L>(word(i + ws) >> bs);
-        if (bs != 0)
-            w |= static_cast<L>(word(i + ws + 1) << (B - bs));
-        r[i] = w;
+        const std::size_t k  = i + ws;
+        const L           lo = k < an ? a[k] : fill;
+        if (bs == 0)
+            r[i] = lo;
+        else {
+            const L hi = k + 1 < an ? a[k + 1] : fill;
+            r[i]       = static_cast<L>(static_cast<L>(lo >> bs) | static_cast<L>(hi << (B - bs)));
+        }
     }
 }
 // r[0, rn) = a[0, an) << s, the bits past rn dropped. r starts at 0 (its
 // limbs below the shift are not written) and aliases nothing.
 template <std::unsigned_integral L>
 constexpr void shift_left(L* r, std::size_t rn, const L* a, std::size_t an, int s) noexcept {
-    constexpr int     B    = bits<L>;
-    const std::size_t ws   = static_cast<std::size_t>(s / B);
-    const int         bs   = s % B;
-    const auto        word = [&](std::size_t k) { return k < an ? a[k] : L{0}; };
+    constexpr int     B  = bits<L>;
+    const std::size_t ws = static_cast<std::size_t>(s / B);
+    const int         bs = s % B;
     for (std::size_t i = ws; i < rn; ++i) {
-        L w = static_cast<L>(word(i - ws) << bs);
-        if (bs != 0 && i > ws)
-            w |= static_cast<L>(word(i - ws - 1) >> (B - bs));
-        r[i] = w;
+        const std::size_t k  = i - ws;
+        const L           lo = k < an ? a[k] : L{0};
+        if (bs == 0 || k == 0)
+            r[i] = static_cast<L>(lo << bs);
+        else {
+            const L below = k - 1 < an ? a[k - 1] : L{0};
+            r[i]          = static_cast<L>(static_cast<L>(lo << bs) | static_cast<L>(below >> (B - bs)));
+        }
     }
 }
 // The significant length of a[0, n): n without its top zero limbs.
