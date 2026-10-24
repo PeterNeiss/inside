@@ -13,6 +13,7 @@
 
 #include <utility>
 
+#include <array>
 #include <cstdint>
 #include <random>
 #include <unordered_set>
@@ -254,6 +255,28 @@ TEST(WideGridTest, uniform_sampling) {
         above_2_33 = above_2_33 || v > (umax{1} << 33);
     }
     EXPECT_TRUE(above_2_33);
+}
+
+// Pinned like the 64-bit draws (sign_uniform.test.cpp): the same limbs on every
+// standard library.
+TEST(WideGridTest, uniform_draws_are_pinned_across_standard_libraries) {
+    const auto expect = [](auto g, const std::array<std::array<umax, 2>, 4>& want) {
+        for (const auto& [hi, lo] : want) {
+            const auto r = uniform<fine>(g).raw();
+            EXPECT_EQ(r.Word[1], hi);
+            EXPECT_EQ(r.Word[0], lo);
+        }
+    };
+    expect(std::mt19937_64{42},
+           {{{0x0u, 0xc151df7d6ee5e2d6u},
+             {0x0u, 0x93170a1965d42420u},
+             {0x1u, 0x461c9cf62eb9fcb6u},
+             {0x0u, 0xd398c3c9b02b56cdu}}});
+    expect(std::minstd_rand{42},
+           {{{0x3u, 0x3fbdde24bd38d973u},
+             {0x2u, 0x6f951d3b3ad29545u},
+             {0x3u, 0x51a288b798c54832u},
+             {0x0u, 0x3ad020608824cbe3u}}});
 }
 
 TEST(WideGridTest, division) {
