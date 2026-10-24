@@ -21,6 +21,8 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <beman/inside/detail/float_bits.hpp> // frexp, scale_pow2 (constexpr, reproducible)
 #include <beman/inside/inside.hpp>            // complete inside/rational + has_flag/flags_of (store<>)
 
+#include <algorithm>
+
 // BEMAN_INSIDE_MATH_NO_FP is resolved in policy_flag.hpp (included via inside.hpp).
 
 // BEMAN_INSIDE_FABS, _NEARBYINT, _INF, _ASSOC_BARRIER and _HAS_FMA: config.hpp.
@@ -520,10 +522,8 @@ struct log_k {
     struct q_series {
         static constexpr poly<N - 1> C = [] {
             poly<N - 1> q{};
-            for (std::size_t i = 0; i + 1 < N; ++i) {
-                q.C[i]   = log_c<N>.C[i];
-                q.Err[i] = log_c<N>.Err[i];
-            }
+            std::copy_n(log_c<N>.C.begin(), N - 1, q.C.begin());
+            std::copy_n(log_c<N>.Err.begin(), N - 1, q.Err.begin());
             return q;
         }();
     };

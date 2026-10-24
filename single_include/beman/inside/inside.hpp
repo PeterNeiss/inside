@@ -1210,30 +1210,36 @@ constexpr L div_1(L* q, const L* a, std::size_t n, L d) noexcept {
 // r[0, rn) = a[0, an) >> s, the limbs past an read as fill (0, or a sign).
 template <std::unsigned_integral L>
 constexpr void shift_right(L* r, std::size_t rn, const L* a, std::size_t an, int s, L fill = 0) noexcept {
-    constexpr int     B    = bits<L>;
-    const std::size_t ws   = static_cast<std::size_t>(s / B);
-    const int         bs   = s % B;
-    const auto        word = [&](std::size_t k) { return k < an ? a[k] : fill; };
+    constexpr int     B  = bits<L>;
+    const std::size_t ws = static_cast<std::size_t>(s / B);
+    const int         bs = s % B;
     for (std::size_t i = 0; i < rn; ++i) {
-        L w = static_cast<L>(word(i + ws) >> bs);
-        if (bs != 0)
-            w |= static_cast<L>(word(i + ws + 1) << (B - bs));
-        r[i] = w;
+        const std::size_t k  = i + ws;
+        const L           lo = k < an ? a[k] : fill;
+        if (bs == 0)
+            r[i] = lo;
+        else {
+            const L hi = k + 1 < an ? a[k + 1] : fill;
+            r[i]       = static_cast<L>(static_cast<L>(lo >> bs) | static_cast<L>(hi << (B - bs)));
+        }
     }
 }
 // r[0, rn) = a[0, an) << s, the bits past rn dropped. r starts at 0 (its
 // limbs below the shift are not written) and aliases nothing.
 template <std::unsigned_integral L>
 constexpr void shift_left(L* r, std::size_t rn, const L* a, std::size_t an, int s) noexcept {
-    constexpr int     B    = bits<L>;
-    const std::size_t ws   = static_cast<std::size_t>(s / B);
-    const int         bs   = s % B;
-    const auto        word = [&](std::size_t k) { return k < an ? a[k] : L{0}; };
+    constexpr int     B  = bits<L>;
+    const std::size_t ws = static_cast<std::size_t>(s / B);
+    const int         bs = s % B;
     for (std::size_t i = ws; i < rn; ++i) {
-        L w = static_cast<L>(word(i - ws) << bs);
-        if (bs != 0 && i > ws)
-            w |= static_cast<L>(word(i - ws - 1) >> (B - bs));
-        r[i] = w;
+        const std::size_t k  = i - ws;
+        const L           lo = k < an ? a[k] : L{0};
+        if (bs == 0 || k == 0)
+            r[i] = static_cast<L>(lo << bs);
+        else {
+            const L below = k - 1 < an ? a[k - 1] : L{0};
+            r[i]          = static_cast<L>(static_cast<L>(lo << bs) | static_cast<L>(below >> (B - bs)));
+        }
     }
 }
 // The significant length of a[0, n): n without its top zero limbs.
@@ -1456,7 +1462,10 @@ struct wide_int {
     [[nodiscard]] constexpr bool negative() const noexcept { return Signed && (Word[N - 1] >> (limb_bits - 1)) != 0; }
 
     [[nodiscard]] constexpr bool is_zero() const noexcept {
-        return std::ranges::all_of(Word, [](L w) { return w == 0; });
+        for (std::size_t i = 0; i < N; ++i) // (not ranges::all_of: slower to constant-evaluate)
+            if (Word[i] != 0)
+                return false;
+        return true;
     }
 
     constexpr explicit operator bool() const noexcept { return !is_zero(); }
@@ -1690,7 +1699,11 @@ struct small_divmod {
 template <std::size_t K>
 constexpr small_divmod<K> divmod_small(const wide_uint<K>& n, umax d) noexcept {
     small_divmod<K> r{wide_uint<K>{0}, 0};
-    r.Remainder = limb::div_1(r.Quotient.Word, n.Word, K, d);
+    for (std::size_t i = K; i-- > 0;) { // (not limb::div_1: slower to constant-evaluate)
+        const limb::pair<umax> qr = limb::div(r.Remainder, n.Word[i], d);
+        r.Quotient.Word[i]        = qr.Hi;
+        r.Remainder               = qr.Lo;
+    }
     return r;
 }
 
@@ -12127,7 +12140,9 @@ constexpr wide_sint<K> mul_q(const wide_sint<K>& a, const wide_sint<K>& b, int W
         const wide_sint<2> r{m};
         return na != nb ? -r : r;
     } else {
-        // Schoolbook on the magnitudes into 2K limbs, then the shift.
+        // Schoolbook on the magnitudes into 2K limbs, then the shift. (Not
+        // limb::mul_basecase + shift_right: with fast_index on the same
+        // kernels the math_decimal workload grows.)
         const bool         na = a.negative(), nb = b.negative();
         const wide_uint<K> ma{na ? -a : a}, mb{nb ? -b : b};
         umax               prod[2 * K]{};
@@ -12339,15 +12354,8 @@ constexpr wide_sint<K + 2> fast_index(const wide_sint<K>& y, int S) noexcept {
     constexpr umax        q   = static_cast<umax>(wide_denominator(notch_of<Out>));
     const bool            neg = y.negative();
     const wide_uint<K>    mag{neg ? -y : y};
-    umax                  a[N]{};
-    umax                  carry = 0;
-    for (std::size_t i = 0; i < K; ++i) {
-        const limb::pair<umax> t = limb::mul(mag.Word[i], q);
-        umax                   c = 0;
-        a[i]                     = limb::add_carry(t.Lo, carry, c);
-        carry                    = t.Hi + c;
-    }
-    a[K]     = carry;
+    umax                  a[N];
+    a[K]     = limb::mul_1(a, mag.Word, K, q);
     auto bit = [&](int i) -> bool {
         const std::size_t w = static_cast<std::size_t>(i / 64);
         return w < N && ((a[w] >> (i % 64)) & 1u) != 0;
@@ -12365,24 +12373,13 @@ constexpr wide_sint<K + 2> fast_index(const wide_sint<K>& y, int S) noexcept {
     const bool low_zero = !half_bit && !below_half;
     const int  vs_half  = !half_bit ? -1 : below_half ? 1 : 0;
     // hi = a >> S
-    umax              hi[N]{};
-    const std::size_t ws = static_cast<std::size_t>(S / 64);
-    const int         bs = S % 64;
-    for (std::size_t i = 0; i + ws < N; ++i) {
-        const umax lo = a[i + ws];
-        const umax up = i + ws + 1 < N ? a[i + ws + 1] : 0;
-        hi[i]         = bs == 0 ? lo : (lo >> bs) | (up << (64 - bs));
-    }
+    umax hi[N];
+    limb::shift_right(hi, N, a, N, S);
     umax r = 0;
     if constexpr (p != 1)
-        for (std::size_t i = N; i-- > 0;) {
-            const limb::pair<umax> d = limb::div(r, hi[i], p);
-            hi[i]                    = d.Hi;
-            r                        = d.Lo;
-        }
+        r = limb::div_1(hi, hi, N, p);
     J m{0};
-    for (std::size_t i = 0; i < N; ++i)
-        m.Word[i] = hi[i];
+    std::copy_n(hi, N, m.Word);
     if (round_up<M>(neg, hi[0], r, p, low_zero, vs_half))
         m += J{1};
     constexpr J base = static_cast<J>(slot_base<Out>);
@@ -12397,6 +12394,8 @@ constexpr wide_sint<K + 2> fast_index(const wide_sint<K>& y, int S) noexcept {
 // this is the slot fast_index gives at each end: from one product, two
 // shifts and one short division by p. Otherwise false, and decide asks
 // fast_index at both ends.
+// (Its limb loops stay written out: on limb::mul_1 / shift_right / div_1,
+// shared with fast_index, the math_integer workload grows by about 10%.)
 template <insidable Out, round_mode M, std::size_t K>
 constexpr bool decide_fast(const wide_sint<K>& y, umax e, int S, wide_sint<K + 2>& index) noexcept {
     using J                       = wide_sint<K + 2>;
@@ -13080,7 +13079,8 @@ inline constexpr auto series_coef = [] {
     return c;
 }();
 
-// Σ c_k x^k by Horner at scale S.
+// Σ c_k x^k by Horner at scale S. (A loop, not std::accumulate: that copies
+// the accumulator every step, +8% on the math_integer workload.)
 template <series Kind, int S, bool Alternate, std::size_t K>
 constexpr wide_sint<K> horner(const wide_sint<K>& x) noexcept {
     constexpr auto& c = series_coef<Kind, S, Alternate>;
@@ -13511,29 +13511,9 @@ constexpr std::optional<imax> exact_log(const wide_rational<E>& x, int B) noexce
     using I = wide_sint<E>;
     if (x.Num.negative() || x.Num.is_zero())
         return std::nullopt;
-    I    n = x.Num, d = x.Den;
-    auto strip2 = [](I& v) {
-        imax k = 0;
-        while (v.Word[0] == 0) {
-            v = v >> 64;
-            k += 64;
-        }
-        const int z = std::countr_zero(static_cast<umax>(v.Word[0]));
-        v           = v >> z;
-        return k + z;
-    };
-    auto strip5 = [](I& v) {
-        imax k = 0;
-        for (;;) {
-            const auto qr = divmod_small(wide_uint<E>{v}, 5);
-            if (qr.Remainder != 0)
-                return k;
-            v = I{qr.Quotient};
-            ++k;
-        }
-    };
-    const imax a = strip2(n) - strip2(d);
-    if (B == 10 && strip5(n) - strip5(d) != a)
+    I          n = x.Num, d = x.Den;
+    const imax a = strip_factor(n, 2) - strip_factor(d, 2);
+    if (B == 10 && strip_factor(n, 5) - strip_factor(d, 5) != a)
         return std::nullopt;
     if (!(n == d))
         return std::nullopt;
@@ -13928,9 +13908,7 @@ constexpr std::optional<wide_sint<pow_limbs>> exact_root(const wide_sint<pow_lim
     for (int i = (bit_width_of(n) + q - 1) / q; i-- > 0;)
         if (const P c = r + (P{1} << i); at_most(c))
             r = c;
-    P p{1};
-    for (int j = 0; j < q; ++j)
-        p = p * r;
+    const P p = pow_by_squaring(r, static_cast<unsigned>(q), [](const P& x, const P& y) { return x * y; }, P{1});
     return p == n ? std::optional<P>{r} : std::nullopt;
 }
 
@@ -14222,6 +14200,7 @@ BEMAN_INSIDE_WARNINGS_POP
 //---------------------------------------------------------------------------
 
 BEMAN_INSIDE_WARNINGS_PUSH
+
 
 
 // BEMAN_INSIDE_MATH_NO_FP is resolved in policy_flag.hpp (included via inside.hpp).
@@ -14723,10 +14702,8 @@ struct log_k {
     struct q_series {
         static constexpr poly<N - 1> C = [] {
             poly<N - 1> q{};
-            for (std::size_t i = 0; i + 1 < N; ++i) {
-                q.C[i]   = log_c<N>.C[i];
-                q.Err[i] = log_c<N>.Err[i];
-            }
+            std::copy_n(log_c<N>.C.begin(), N - 1, q.C.begin());
+            std::copy_n(log_c<N>.Err.begin(), N - 1, q.Err.begin());
             return q;
         }();
     };
@@ -15054,6 +15031,7 @@ BEMAN_INSIDE_WARNINGS_POP
 BEMAN_INSIDE_WARNINGS_PUSH
 
 
+
 #ifndef BEMAN_INSIDE_MATH_NO_FP
 
     #include <array>
@@ -15287,13 +15265,19 @@ constexpr std::array<dd, 97> log_table() noexcept {
         }
         return sum + sum;
     };
-    std::array<dd, 97> r{};
-    fixed              acc{0};
-    for (int j = 129; j <= 192; ++j)
-        r[static_cast<std::size_t>(j - 96)] = of_fixed(acc = acc + step(j), W);
-    acc = fixed{0};
-    for (int j = 127; j >= 96; --j)
-        r[static_cast<std::size_t>(j - 96)] = of_fixed(acc = acc - step(j + 1), W);
+    const auto         to_dd = [](const fixed& s) { return of_fixed(s, W); };
+    std::array<dd, 97> r{}; // r[32] = ln 1 = 0
+    // Upward: r[j − 96] = Σ step(i), i = 129 … j.
+    std::array<fixed, 64> up;
+    std::ranges::transform(std::views::iota(129, 193), up.begin(), step);
+    std::inclusive_scan(up.begin(), up.end(), up.begin());
+    std::ranges::transform(up, r.begin() + 33, to_dd);
+    // Downward: r[j − 96] = −Σ step(i), i = j + 1 … 128, j = 127 … 96.
+    std::array<fixed, 32> down;
+    std::ranges::transform(
+        std::views::iota(97, 129) | std::views::reverse, down.begin(), [&](int i) { return -step(i); });
+    std::inclusive_scan(down.begin(), down.end(), down.begin());
+    std::ranges::transform(down, std::make_reverse_iterator(r.begin() + 32), to_dd);
     return r;
 }
 
@@ -17343,13 +17327,11 @@ inline constexpr grid_rational pow_corner =
 // The least (Up: greatest) bound over the four corners.
 template <insidable InB, insidable InE, bool Up>
 inline constexpr grid_rational pow_extreme = [] {
-    grid_rational m = pow_corner<InB, InE, false, false, Up>;
-    for (const grid_rational& c : {pow_corner<InB, InE, false, true, Up>,
-                                   pow_corner<InB, InE, true, false, Up>,
-                                   pow_corner<InB, InE, true, true, Up>})
-        if (Up ? m < c : c < m)
-            m = c;
-    return m;
+    const std::initializer_list<grid_rational> c{pow_corner<InB, InE, false, false, Up>,
+                                                 pow_corner<InB, InE, false, true, Up>,
+                                                 pow_corner<InB, InE, true, false, Up>,
+                                                 pow_corner<InB, InE, true, true, Up>};
+    return Up ? std::max(c) : std::min(c);
 }();
 template <insidable InB, insidable InE>
 using pow =

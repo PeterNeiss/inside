@@ -9,8 +9,10 @@ BEMAN_INSIDE_WARNINGS_PUSH
 #include <beman/inside/detail/math_fp.hpp> // the double tier's kernels
 #include <beman/inside/detail/math_dd.hpp> // the dd tier's kernels
 
+#include <algorithm>
 #include <cstddef>
 #include <expected>
+#include <initializer_list>
 #include <optional>
 #include <utility>
 
@@ -1321,13 +1323,11 @@ inline constexpr grid_rational pow_corner =
 // The least (Up: greatest) bound over the four corners.
 template <insidable InB, insidable InE, bool Up>
 inline constexpr grid_rational pow_extreme = [] {
-    grid_rational m = pow_corner<InB, InE, false, false, Up>;
-    for (const grid_rational& c : {pow_corner<InB, InE, false, true, Up>,
-                                   pow_corner<InB, InE, true, false, Up>,
-                                   pow_corner<InB, InE, true, true, Up>})
-        if (Up ? m < c : c < m)
-            m = c;
-    return m;
+    const std::initializer_list<grid_rational> c{pow_corner<InB, InE, false, false, Up>,
+                                                 pow_corner<InB, InE, false, true, Up>,
+                                                 pow_corner<InB, InE, true, false, Up>,
+                                                 pow_corner<InB, InE, true, true, Up>};
+    return Up ? std::max(c) : std::min(c);
 }();
 template <insidable InB, insidable InE>
 using pow =

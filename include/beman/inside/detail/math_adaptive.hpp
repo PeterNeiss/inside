@@ -7,6 +7,7 @@ BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/inside.hpp>
 
+#include <algorithm>
 #include <array>
 #include <bit>
 
@@ -98,7 +99,9 @@ constexpr wide_sint<K> mul_q(const wide_sint<K>& a, const wide_sint<K>& b, int W
         const wide_sint<2> r{m};
         return na != nb ? -r : r;
     } else {
-        // Schoolbook on the magnitudes into 2K limbs, then the shift.
+        // Schoolbook on the magnitudes into 2K limbs, then the shift. (Not
+        // limb::mul_basecase + shift_right: with fast_index on the same
+        // kernels the math_decimal workload grows.)
         const bool         na = a.negative(), nb = b.negative();
         const wide_uint<K> ma{na ? -a : a}, mb{nb ? -b : b};
         umax               prod[2 * K]{};
@@ -310,15 +313,8 @@ constexpr wide_sint<K + 2> fast_index(const wide_sint<K>& y, int S) noexcept {
     constexpr umax        q   = static_cast<umax>(wide_denominator(notch_of<Out>));
     const bool            neg = y.negative();
     const wide_uint<K>    mag{neg ? -y : y};
-    umax                  a[N]{};
-    umax                  carry = 0;
-    for (std::size_t i = 0; i < K; ++i) {
-        const limb::pair<umax> t = limb::mul(mag.Word[i], q);
-        umax                   c = 0;
-        a[i]                     = limb::add_carry(t.Lo, carry, c);
-        carry                    = t.Hi + c;
-    }
-    a[K]     = carry;
+    umax                  a[N];
+    a[K]     = limb::mul_1(a, mag.Word, K, q);
     auto bit = [&](int i) -> bool {
         const std::size_t w = static_cast<std::size_t>(i / 64);
         return w < N && ((a[w] >> (i % 64)) & 1u) != 0;
@@ -336,24 +332,13 @@ constexpr wide_sint<K + 2> fast_index(const wide_sint<K>& y, int S) noexcept {
     const bool low_zero = !half_bit && !below_half;
     const int  vs_half  = !half_bit ? -1 : below_half ? 1 : 0;
     // hi = a >> S
-    umax              hi[N]{};
-    const std::size_t ws = static_cast<std::size_t>(S / 64);
-    const int         bs = S % 64;
-    for (std::size_t i = 0; i + ws < N; ++i) {
-        const umax lo = a[i + ws];
-        const umax up = i + ws + 1 < N ? a[i + ws + 1] : 0;
-        hi[i]         = bs == 0 ? lo : (lo >> bs) | (up << (64 - bs));
-    }
+    umax hi[N];
+    limb::shift_right(hi, N, a, N, S);
     umax r = 0;
     if constexpr (p != 1)
-        for (std::size_t i = N; i-- > 0;) {
-            const limb::pair<umax> d = limb::div(r, hi[i], p);
-            hi[i]                    = d.Hi;
-            r                        = d.Lo;
-        }
+        r = limb::div_1(hi, hi, N, p);
     J m{0};
-    for (std::size_t i = 0; i < N; ++i)
-        m.Word[i] = hi[i];
+    std::copy_n(hi, N, m.Word);
     if (round_up<M>(neg, hi[0], r, p, low_zero, vs_half))
         m += J{1};
     constexpr J base = static_cast<J>(slot_base<Out>);
@@ -368,6 +353,8 @@ constexpr wide_sint<K + 2> fast_index(const wide_sint<K>& y, int S) noexcept {
 // this is the slot fast_index gives at each end: from one product, two
 // shifts and one short division by p. Otherwise false, and decide asks
 // fast_index at both ends.
+// (Its limb loops stay written out: on limb::mul_1 / shift_right / div_1,
+// shared with fast_index, the math_integer workload grows by about 10%.)
 template <insidable Out, round_mode M, std::size_t K>
 constexpr bool decide_fast(const wide_sint<K>& y, umax e, int S, wide_sint<K + 2>& index) noexcept {
     using J                       = wide_sint<K + 2>;
@@ -1051,7 +1038,8 @@ inline constexpr auto series_coef = [] {
     return c;
 }();
 
-// Σ c_k x^k by Horner at scale S.
+// Σ c_k x^k by Horner at scale S. (A loop, not std::accumulate: that copies
+// the accumulator every step, +8% on the math_integer workload.)
 template <series Kind, int S, bool Alternate, std::size_t K>
 constexpr wide_sint<K> horner(const wide_sint<K>& x) noexcept {
     constexpr auto& c = series_coef<Kind, S, Alternate>;
