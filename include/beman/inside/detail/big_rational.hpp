@@ -29,8 +29,11 @@ BEMAN_INSIDE_WARNINGS_PUSH
 // Empty without big grids (config.hpp sets BEMAN_INSIDE_BIG_GRIDS), so a C++23
 // build includes no <vector> from here.
 #if BEMAN_INSIDE_BIG_GRIDS
+    #include <algorithm>
+    #include <bit>
     #include <compare>
     #include <cstddef>
+    #include <iterator>
     #include <limits>
     #include <meta>
     #include <vector>
@@ -39,36 +42,27 @@ namespace beman::inside::detail {
 namespace big {
 using mag = std::vector<umax>; // little-endian, no top zeros
 
-constexpr void trim(mag& m) {
-    while (!m.empty() && m.back() == 0)
-        m.pop_back();
-}
+constexpr void trim(mag& m) { m.resize(limb::top_size(m.data(), m.size())); }
 
 constexpr std::strong_ordering compare(const mag& a, const mag& b) {
     if (a.size() != b.size())
         return a.size() <=> b.size();
-    for (std::size_t i = a.size(); i-- > 0;)
-        if (a[i] != b[i])
-            return a[i] <=> b[i];
-    return std::strong_ordering::equal;
+    return std::lexicographical_compare_three_way(a.rbegin(), a.rend(), b.rbegin(), b.rend());
 }
 
 constexpr mag add(const mag& a, const mag& b) {
-    mag  r(a.size() > b.size() ? a.size() + 1 : b.size() + 1, 0);
-    umax c = 0;
-    for (std::size_t i = 0; i + 1 < r.size(); ++i)
-        r[i] = limb::add_carry(i < a.size() ? a[i] : umax{0}, i < b.size() ? b[i] : umax{0}, c);
-    r.back() = c;
+    const mag& x = a.size() >= b.size() ? a : b; // the longer
+    const mag& y = a.size() >= b.size() ? b : a;
+    mag        r(x.size() + 1, 0);
+    r.back() = limb::add(r.data(), x.data(), x.size(), y.data(), y.size());
     trim(r);
     return r;
 }
 
 // a − b for a ≥ b.
 constexpr mag sub(const mag& a, const mag& b) {
-    mag  r(a.size(), 0);
-    umax br = 0;
-    for (std::size_t i = 0; i < a.size(); ++i)
-        r[i] = limb::sub_borrow(a[i], i < b.size() ? b[i] : umax{0}, br);
+    mag r(a.size(), 0);
+    limb::sub(r.data(), a.data(), a.size(), b.data(), b.size());
     trim(r);
     return r;
 }
@@ -77,18 +71,7 @@ constexpr mag mul(const mag& a, const mag& b) {
     if (a.empty() || b.empty())
         return {};
     mag r(a.size() + b.size(), 0);
-    for (std::size_t i = 0; i < a.size(); ++i) {
-        umax carry = 0;
-        for (std::size_t j = 0; j < b.size(); ++j) {
-            const limb::pair<umax> p  = limb::mul(a[i], b[j]);
-            umax                   c1 = 0, c2 = 0;
-            umax                   s = limb::add_carry(r[i + j], p.Lo, c1);
-            s                        = limb::add_carry(s, carry, c2);
-            r[i + j]                 = s;
-            carry                    = p.Hi + c1 + c2;
-        }
-        r[i + b.size()] = carry;
-    }
+    limb::mul_basecase(r.data(), a.data(), a.size(), b.data(), b.size());
     trim(r);
     return r;
 }
@@ -109,12 +92,7 @@ constexpr divmod_result divmod(const mag& a, const mag& b) {
 }
 
 constexpr mag gcd(mag a, mag b) {
-    while (!b.empty()) {
-        mag t = divmod(a, b).Remainder;
-        a     = std::move(b);
-        b     = std::move(t);
-    }
-    return a;
+    return euclid_gcd(std::move(a), std::move(b), [](const mag& x, const mag& y) { return divmod(x, y).Remainder; });
 }
 
 constexpr int bit_width(const mag& m) {
@@ -123,14 +101,8 @@ constexpr int bit_width(const mag& m) {
 
 // m · 2^k (k ≥ 0).
 constexpr mag shl(const mag& m, int k) {
-    const std::size_t words = static_cast<std::size_t>(k / 64);
-    const int         bits  = k % 64;
-    mag               r(m.size() + words + 1, 0);
-    for (std::size_t i = 0; i < m.size(); ++i) {
-        r[i + words] |= m[i] << bits;
-        if (bits != 0)
-            r[i + words + 1] |= m[i] >> (64 - bits);
-    }
+    mag r(m.size() + static_cast<std::size_t>(k / 64) + 1, 0);
+    limb::shift_left(r.data(), r.size(), m.data(), m.size(), k);
     trim(r);
     return r;
 }
@@ -195,8 +167,11 @@ constexpr fraction fraction_of_float(T v) {
     if (d == 0)
         return {};
     auto [mant, e] = double_parts(d);
-    for (; mant % 2 == 0 && e < 0; ++e)
-        mant /= 2;
+    if (e < 0) { // in lowest terms: the twos the denominator shares
+        const int z = std::min(std::countr_zero(mant), -e);
+        mant >>= z;
+        e += z;
+    }
     return e >= 0 ? fraction{shl(mag{mant}, e), mag{umax{1}}, d < 0}
                   : fraction{mag{mant}, shl(mag{umax{1}}, -e), d < 0};
 }
@@ -223,27 +198,17 @@ struct big_int {
     // From a wide_int (sign-extending a signed one).
     template <std::size_t N, bool S, std::unsigned_integral L>
     constexpr big_int(const wide_int<N, S, L>& w) {
+        static_assert(std::numeric_limits<L>::digits == 64, "big_int: umax limbs only");
         const bool                  neg = w.negative();
         const wide_int<N, false, L> m(neg ? -w : w);
-        big::mag                    v;
-        for (std::size_t i = 0; i < N; ++i) {
-            if constexpr (std::numeric_limits<L>::digits == 64)
-                v.push_back(m.Word[i]);
-            else
-                static_assert(std::numeric_limits<L>::digits == 64, "big_int: umax limbs only");
-        }
-        *this = from_mag(std::move(v), neg);
+        *this = from_mag(big::mag(std::begin(m.Word), std::end(m.Word)), neg);
     }
 
     // By value, not by pointer (see Size): equal magnitudes intern to the
     // same array, so this matches the defaulted comparison.
     friend constexpr bool operator==(const big_int& a, const big_int& b) noexcept {
-        if (a.Size != b.Size || a.Small != b.Small || a.Negative != b.Negative)
-            return false;
-        for (std::size_t i = 0; i < a.Size; ++i)
-            if (a.Limbs[i] != b.Limbs[i])
-                return false;
-        return true;
+        return a.Size == b.Size && a.Small == b.Small && a.Negative == b.Negative &&
+               std::equal(a.Limbs, a.Limbs + a.Size, b.Limbs);
     }
 
     [[nodiscard]] constexpr bool is_zero() const noexcept { return Size == 0 && Small == 0; }
@@ -396,16 +361,7 @@ constexpr auto big_int::divmod(const big_int& a, const big_int& b) -> divmod_res
 constexpr big_int operator/(const big_int& a, const big_int& b) { return big_int::divmod(a, b).Quotient; }
 constexpr big_int operator%(const big_int& a, const big_int& b) { return big_int::divmod(a, b).Remainder; }
 
-constexpr big_int gcd(big_int a, big_int b) {
-    a = abs(a);
-    b = abs(b);
-    while (!b.is_zero()) {
-        const big_int t = a % b;
-        a               = b;
-        b               = t;
-    }
-    return a;
-}
+constexpr big_int gcd(const big_int& a, const big_int& b) { return euclid_gcd(abs(a), abs(b)); }
 
 constexpr int bit_width_of(const big_int& v) { return v.bit_width(); }
 
@@ -542,9 +498,9 @@ struct big_rational {
             umax              top = m[w] >> b;
             if (b != 0 && w + 1 < m.size())
                 top |= m[w + 1] << (64 - b);
-            bool sticky = b != 0 && (m[w] << (64 - b)) != 0;
-            for (std::size_t i = 0; i < w && !sticky; ++i)
-                sticky = m[i] != 0;
+            const bool sticky =
+                (b != 0 && (m[w] << (64 - b)) != 0) ||
+                std::any_of(m.begin(), m.begin() + static_cast<std::ptrdiff_t>(w), [](umax x) { return x != 0; });
             return static_cast<double>(top | (sticky ? 1u : 0u));
         };
         int          sn = 0, sd = 0;
