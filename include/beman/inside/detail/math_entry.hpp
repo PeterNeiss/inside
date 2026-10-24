@@ -576,9 +576,10 @@ inline bool dd_full_attempt(const ddk::dd& x, Out& out) {
     return dd_decide(v, bound * 1.5, out);
 }
 
-// What follows a lean kernel: rarely taken, so out of line.
+// What follows a fast tier or a lean kernel: rarely taken, so out of line,
+// which keeps its frame off the fast path.
 template <std::invocable<> F>
-BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE bool dd_cold(const F& f) {
+BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr auto cold_call(const F& f) {
     return f();
 }
 
@@ -589,7 +590,7 @@ BEMAN_INSIDE_ALWAYS_INLINE inline bool dd_lean_first(const Lean& lean, const Ful
     const ddk::dd v = lean(bound);
     if (dd_decide(v, bound * 1.5, out))
         return true;
-    return dd_cold(full);
+    return cold_call(full);
 }
 
 // The lean kernel first where K has one, then the full one.
@@ -879,13 +880,6 @@ template <insidable Out, insidable... Ins>
 inline constexpr bool unanchored_call = !anchored<Out> || (!anchored<Ins> || ...);
 } // namespace anchoring
 
-// What follows a fast tier: rarely taken, so out of line, which keeps its
-// frame off the tier's fast path.
-template <std::invocable<> F>
-BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr auto cold_call(const F& f) {
-    return f();
-}
-
 // The tiers in order at runtime: the double kernel (when FP), the dd
 // kernel (when DD), the integer path. Each fast tier stores a decided
 // result and returns true; whatever runs after the first one is cold.
@@ -898,7 +892,7 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
             if constexpr (FP) {
                 if (Out r; fp(r))
                     return r;
-                return cold_call([&]() -> decltype(integer()) {
+                return ax::cold_call([&]() -> decltype(integer()) {
                     if constexpr (DD)
                         if (Out r; dd(r))
                             return r;
@@ -907,7 +901,7 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
             } else {
                 if (Out r; dd(r))
                     return r;
-                return cold_call(integer);
+                return ax::cold_call(integer);
             }
         }
     return integer();

@@ -77,6 +77,10 @@ template <insidable Out>
 inline constexpr int start_bits = out_bits<Out> + 8 > 16 ? out_bits<Out> + 8 : 16;
 
 template <std::size_t K>
+constexpr wide_rational<K> exact_zero() noexcept {
+    return {wide_sint<K>{0}, wide_sint<K>{1}};
+}
+template <std::size_t K>
 constexpr wide_rational<K> exact_one() noexcept {
     return {wide_sint<K>{1}, wide_sint<K>{1}};
 }
@@ -214,9 +218,7 @@ struct exp2_core {
 template <std::size_t E, int Bits = fraction_bits<E>>
 struct log_core {
     wide_rational<E>         X;
-    constexpr maybe_exact<E> exact() const {
-        return is_one(X) ? maybe_exact<E>{wide_rational<E>{wide_sint<E>{0}, wide_sint<E>{1}}} : std::nullopt;
-    }
+    constexpr maybe_exact<E> exact() const { return is_one(X) ? maybe_exact<E>{exact_zero<E>()} : std::nullopt; }
     template <int W>
     constexpr auto run() const {
         constexpr int S         = W + 8 + std::bit_width(static_cast<unsigned>(Bits));
@@ -370,7 +372,7 @@ struct trig_core {
     constexpr maybe_exact<E> exact() const {
         if (!is_zero(X))
             return std::nullopt;
-        return Fn == trig::cos ? exact_one<E>() : wide_rational<E>{wide_sint<E>{0}, wide_sint<E>{1}};
+        return Fn == trig::cos ? exact_one<E>() : exact_zero<E>();
     }
     template <int W>
     constexpr auto run() const {
@@ -385,19 +387,17 @@ struct trig_core {
         const I               r  = static_cast<I>(round_shift(xq - k * hp, T - S)); // |r| ≤ π/4 + a hair, within 2
         const unsigned        q  = static_cast<unsigned>(k.Word[0] & 3u);
         // sin x and cos x by quadrant: (s, c), (c, −s), (−s, −c), (−c, s).
-        auto neg   = [](fx<K> f) { return fx<K>{-f.Value, f.Error}; };
-        auto sin_x = [&] {
-            return (q == 0)   ? sin_series<S>(r, 2)
-                   : (q == 1) ? cos_series<S>(r, 2)
-                   : (q == 2) ? neg(sin_series<S>(r, 2))
+        // cos is sin one quadrant on.
+        auto neg  = [](fx<K> f) { return fx<K>{-f.Value, f.Error}; };
+        auto quad = [&](unsigned p) {
+            p &= 3u;
+            return (p == 0)   ? sin_series<S>(r, 2)
+                   : (p == 1) ? cos_series<S>(r, 2)
+                   : (p == 2) ? neg(sin_series<S>(r, 2))
                               : neg(cos_series<S>(r, 2));
         };
-        auto cos_x = [&] {
-            return (q == 0)   ? cos_series<S>(r, 2)
-                   : (q == 1) ? neg(sin_series<S>(r, 2))
-                   : (q == 2) ? neg(cos_series<S>(r, 2))
-                              : sin_series<S>(r, 2);
-        };
+        auto sin_x = [&] { return quad(q); };
+        auto cos_x = [&] { return quad(q + 1); };
         if constexpr (Fn == trig::sin) {
             const fx<K> sn = sin_x();
             return approx<K>{sn.Value, S, sn.Error};
@@ -457,7 +457,7 @@ struct atan2_core {
     wide_rational<E>         Y, X;
     constexpr maybe_exact<E> exact() const {
         if (is_zero(Y) && !X.Num.negative())
-            return wide_rational<E>{wide_sint<E>{0}, wide_sint<E>{1}};
+            return exact_zero<E>();
         return std::nullopt;
     }
     template <int W>
@@ -480,60 +480,51 @@ struct atan2_core {
     }
 };
 
-// asin x, |x| ≤ 1: small arguments directly; past 1/2, the half-angle form
-// ±(π/2 − 2·asin √((1−|x|)/2)), which stays accurate up to ±1.
-template <std::size_t E, int Bits = fraction_bits<E>>
-struct asin_core {
-    wide_rational<E>         X;
-    constexpr maybe_exact<E> exact() const { return is_zero(X) ? maybe_exact<E>{X} : std::nullopt; }
-    template <int W>
-    constexpr auto run() const {
-        constexpr int S          = W + 12;
-        using I                  = fixed_t<S + 8>;
-        constexpr std::size_t  K = limbs_of<I>;
-        const wide_rational<E> half{wide_sint<E>{1}, wide_sint<E>{2}};
-        if (!(half < abs(X))) {
-            const fx<K> a = asin_small<S, K>(X);
-            return approx<K>{a.Value, S, a.Error};
-        }
-        using F         = wide_rational<E + 1>;
-        const F     one = exact_one<E + 1>();
-        const F     y   = (one + F{-abs(X)}) * F{half}; // (1 − |x|)/2
-        const fx<K> a   = asin_sqrt<S, K, Bits + 1>(y);
-        const I     v   = static_cast<I>(pi_q<S - 1>) - (a.Value << 1);
-        return approx<K>{X.Num.negative() ? -v : v, S, 2 * a.Error + 1};
-    }
-};
-
-// acos x = π/2 − asin x for |x| ≤ 1/2; 2·asin √((1−x)/2) above;
-// π − 2·asin √((1+x)/2) below. Exact at 1.
-template <std::size_t E, int Bits = fraction_bits<E>>
-struct acos_core {
+// asin x (Acos false) or acos x (true), |x| ≤ 1. For |x| ≤ 1/2 asin
+// directly, acos = π/2 − asin x. Past 1/2 the half-angle forms, accurate up
+// to ±1, both from a = asin √((1−|x|)/2): asin = ±(π/2 − 2a); acos = 2a above
+// 0, π − 2a below. asin is exact at 0, acos at 1.
+template <std::size_t E, int Bits, bool Acos>
+struct arcsin_core {
     wide_rational<E>         X;
     constexpr maybe_exact<E> exact() const {
-        return is_one(X) ? maybe_exact<E>{wide_rational<E>{wide_sint<E>{0}, wide_sint<E>{1}}} : std::nullopt;
+        if constexpr (Acos)
+            return is_one(X) ? maybe_exact<E>{exact_zero<E>()} : std::nullopt;
+        else
+            return is_zero(X) ? maybe_exact<E>{X} : std::nullopt;
     }
     template <int W>
     constexpr auto run() const {
-        constexpr int S          = W + 12;
-        using I                  = fixed_t<S + 8>;
-        constexpr std::size_t  K = limbs_of<I>;
+        constexpr int S           = W + 12;
+        using I                   = fixed_t<S + 8>;
+        constexpr std::size_t  K  = limbs_of<I>;
+        const I                hp = static_cast<I>(pi_q<S - 1>); // π/2
         const wide_rational<E> half{wide_sint<E>{1}, wide_sint<E>{2}};
         if (!(half < abs(X))) {
             const fx<K> a = asin_small<S, K>(X);
-            return approx<K>{static_cast<I>(pi_q<S - 1>) - a.Value, S, a.Error + 1};
+            if constexpr (Acos)
+                return approx<K>{hp - a.Value, S, a.Error + 1};
+            else
+                return approx<K>{a.Value, S, a.Error};
         }
         using F         = wide_rational<E + 1>;
-        const F     one = exact_one<E + 1>();
-        const F     x{X};
-        const bool  neg = X.Num.negative();
-        const F     y   = (neg ? one + x : one + F{-x}) * F{half};
+        const F     y   = (exact_one<E + 1>() + F{-abs(X)}) * F{half}; // (1 − |x|)/2
         const fx<K> a   = asin_sqrt<S, K, Bits + 1>(y);
-        if (!neg)
-            return approx<K>{a.Value << 1, S, 2 * a.Error};
-        return approx<K>{static_cast<I>(pi_q<S>) - (a.Value << 1), S, 2 * a.Error + 1};
+        const bool  neg = X.Num.negative();
+        if constexpr (Acos) {
+            if (!neg)
+                return approx<K>{a.Value << 1, S, 2 * a.Error};
+            return approx<K>{static_cast<I>(pi_q<S>) - (a.Value << 1), S, 2 * a.Error + 1};
+        } else {
+            const I v = hp - (a.Value << 1);
+            return approx<K>{neg ? -v : v, S, 2 * a.Error + 1};
+        }
     }
 };
+template <std::size_t E, int Bits = fraction_bits<E>>
+using asin_core = arcsin_core<E, Bits, false>;
+template <std::size_t E, int Bits = fraction_bits<E>>
+using acos_core = arcsin_core<E, Bits, true>;
 
 // sinh, cosh and tanh from e^|x| and e^−|x| at absolute scale A. Exact at 0
 // (sinh, tanh: 0; cosh: 1).
@@ -601,7 +592,7 @@ struct ahyp_core {
     wide_rational<E>         X;
     constexpr maybe_exact<E> exact() const {
         if (Fn == ahyp::acosh)
-            return is_one(X) ? maybe_exact<E>{wide_rational<E>{wide_sint<E>{0}, wide_sint<E>{1}}} : std::nullopt;
+            return is_one(X) ? maybe_exact<E>{exact_zero<E>()} : std::nullopt;
         return is_zero(X) ? maybe_exact<E>{X} : std::nullopt;
     }
     template <int W>

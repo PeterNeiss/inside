@@ -822,17 +822,36 @@ constexpr umax icbrt64(umax t) noexcept {
     return y;
 }
 
+// The N-th root (N = 2, 3) helpers: the 64-bit root, and a shift that keeps
+// `keep` top bits and is a multiple of N (so the root shifts back by sh / N).
+template <int N>
+constexpr umax iroot64(umax t) noexcept {
+    if constexpr (N == 2)
+        return isqrt64(t);
+    else
+        return icbrt64(t);
+}
+template <int N>
+constexpr int iroot_shift(int bw, int keep) noexcept {
+    return N == 2 ? (bw - keep + 1) & ~1 : (bw - keep + 2) / 3 * 3;
+}
+
 #if BEMAN_INSIDE_HAS_INT128
-// ⌊√t⌋ for two limbs: Newton from above on 128-bit words, seeded from the
-// top 62 bits; each quotient t/x ≤ √t fits one limb.
-constexpr umax isqrt128(unsigned __int128 t) noexcept {
+// ⌊√t⌋ / ⌊∛t⌋ for two limbs: Newton from above on 128-bit words, seeded from
+// the root of the top 62 (√) or 63 (∛) bits; each quotient fits one limb.
+template <int N>
+constexpr umax iroot128(unsigned __int128 t) noexcept {
     if ((t >> 64) == 0)
-        return isqrt64(static_cast<umax>(t));
+        return iroot64<N>(static_cast<umax>(t));
     const int         bw = 128 - std::countl_zero(static_cast<umax>(t >> 64));
-    const int         sh = (bw - 62 + 1) & ~1; // even, leaves 61 or 62 bits
-    unsigned __int128 x  = static_cast<unsigned __int128>(isqrt64(static_cast<umax>(t >> sh)) + 1) << (sh / 2);
+    const int         sh = iroot_shift<N>(bw, N == 2 ? 62 : 63);
+    unsigned __int128 x  = static_cast<unsigned __int128>(iroot64<N>(static_cast<umax>(t >> sh)) + 1) << (sh / N);
     for (;;) {
-        const unsigned __int128 y = (x + t / x) >> 1;
+        unsigned __int128 y;
+        if constexpr (N == 2)
+            y = (x + t / x) >> 1;
+        else
+            y = (2 * x + t / (x * x)) / 3;
         if (!(y < x))
             return static_cast<umax>(x);
         x = y;
@@ -841,108 +860,63 @@ constexpr umax isqrt128(unsigned __int128 t) noexcept {
 
 #endif
 
-// ⌊√n⌋ for n ≥ 0. Two limbs or fewer directly; wider, the root of the top
-// 126 bits (an even shift) seeds Newton from above with at least 61 correct
-// bits, each step doubling them; once they cover the root, squares
-// correct the last unit (Newton from above never lands below ⌊√n⌋).
-template <std::size_t K>
-constexpr wide_sint<K> isqrt(const wide_sint<K>& n) noexcept {
+// ⌊√n⌋ (N = 2) or ⌊∛n⌋ (N = 3) for n ≥ 0. Two limbs or fewer directly;
+// wider, the root of the top 126 bits (a shift by a multiple of N) seeds
+// Newton from above with at least 61 (√) or 40 (∛) correct bits, each step
+// doubling them; once they cover the root, powers correct the last unit
+// (Newton from above never lands below the floor root).
+template <int N, std::size_t K>
+constexpr wide_sint<K> iroot(const wide_sint<K>& n) noexcept {
     using I = wide_sint<K>;
     if (n.is_zero())
         return n;
     const int bw = bit_width_of(n);
     if (bw <= 64)
-        return I{isqrt64(static_cast<umax>(n))};
-#if !BEMAN_INSIDE_HAS_INT128
-    // (No 128-bit integer: the root of the top 61 or 62 bits seeds Newton
-    // from above with about 30 correct bits.)
-    const int sh = (bw - 62 + 1) & ~1;
-    I         x  = (I{isqrt64(static_cast<umax>(n >> sh))} + I{1}) << (sh / 2); // ≥ √n
-    for (int bits = 30; bits < bw / 2 + 2; bits *= 2)
-        x = (x + n / x) >> 1;
-    while (n < x * x)
-        x -= I{1};
-    return x;
-#else
-    if constexpr (K >= 2) {
-        const int               sh  = bw > 126 ? (bw - 126 + 1) & ~1 : 0;
-        const I                 top = n >> sh;
-        const unsigned __int128 t =
-            (static_cast<unsigned __int128>(static_cast<umax>(top.Word[1])) << 64) | static_cast<umax>(top.Word[0]);
-        const umax r = isqrt128(t);
-        if (sh == 0)
-            return I{r};
-        I x = I{r} + I{1};
-        x   = x << (sh / 2); // ≥ √n, within 2^-61 of it
-        for (int bits = 61; bits < bw / 2 + 2; bits *= 2)
-            x = (x + n / x) >> 1;
-        while (n < x * x)
-            x -= I{1};
-        return x;
-    } else
-        return I{isqrt64(static_cast<umax>(n))};
-#endif
-}
-
-#if BEMAN_INSIDE_HAS_INT128
-// ⌊∛t⌋ for two limbs: Newton from above on 128-bit words, seeded from the
-// top 63 bits.
-constexpr umax icbrt128(unsigned __int128 t) noexcept {
-    if ((t >> 64) == 0)
-        return icbrt64(static_cast<umax>(t));
-    const int         bw = 128 - std::countl_zero(static_cast<umax>(t >> 64));
-    const int         sh = (bw - 63 + 2) / 3 * 3; // a multiple of 3, leaves at most 63 bits
-    unsigned __int128 x  = static_cast<unsigned __int128>(icbrt64(static_cast<umax>(t >> sh)) + 1) << (sh / 3);
-    for (;;) {
-        const unsigned __int128 y = (2 * x + t / (x * x)) / 3;
-        if (!(y < x))
-            return static_cast<umax>(x);
-        x = y;
-    }
-}
-
-#endif
-
-// ⌊∛n⌋ for n ≥ 0, as isqrt: two limbs or fewer directly; wider, the root
-// of the top 126 bits (a shift by a multiple of 3) seeds Newton from above
-// with at least 40 correct bits, and cubes correct the last unit.
-template <std::size_t K>
-constexpr wide_sint<K> icbrt(const wide_sint<K>& n) noexcept {
-    using I = wide_sint<K>;
-    if (n.is_zero())
-        return n;
-    const int bw = bit_width_of(n);
-    if (bw <= 64)
-        return I{icbrt64(static_cast<umax>(n))};
+        return I{iroot64<N>(static_cast<umax>(n))};
+    I   x{};
+    int seed = 0;
 #if !BEMAN_INSIDE_HAS_INT128
     // (No 128-bit integer: the root of the top 61 to 63 bits seeds Newton
-    // from above with about 20 correct bits.)
-    const int sh = (bw - 63 + 2) / 3 * 3;
-    I         x  = (I{icbrt64(static_cast<umax>(n >> sh))} + I{1}) << (sh / 3); // ≥ ∛n
-    for (int bits = 20; bits < bw / 3 + 2; bits *= 2)
-        x = (I{2} * x + n / (x * x)) / I{3};
-    while (n < x * x * x)
-        x -= I{1};
-    return x;
+    // from above with about 30 (√) or 20 (∛) correct bits.)
+    const int sh = iroot_shift<N>(bw, N == 2 ? 62 : 63);
+    x            = (I{iroot64<N>(static_cast<umax>(n >> sh))} + I{1}) << (sh / N);
+    seed         = N == 2 ? 30 : 20;
 #else
-    if constexpr (K >= 2) {
-        const int               sh  = bw > 126 ? (bw - 126 + 2) / 3 * 3 : 0;
+    if constexpr (K < 2)
+        return I{iroot64<N>(static_cast<umax>(n))};
+    else {
+        const int               sh  = bw > 126 ? iroot_shift<N>(bw, 126) : 0;
         const I                 top = n >> sh;
         const unsigned __int128 t =
             (static_cast<unsigned __int128>(static_cast<umax>(top.Word[1])) << 64) | static_cast<umax>(top.Word[0]);
-        const umax r = icbrt128(t);
+        const umax r = iroot128<N>(t);
         if (sh == 0)
             return I{r};
-        I x = I{r} + I{1};
-        x   = x << (sh / 3); // ≥ ∛n, within 2^-40 of it
-        for (int bits = 40; bits < bw / 3 + 2; bits *= 2)
+        x    = (I{r} + I{1}) << (sh / N); // ≥ the root, within 2^-61 (√) or 2^-40 (∛) of it
+        seed = N == 2 ? 61 : 40;
+    }
+#endif
+    for (int bits = seed; bits < bw / N + 2; bits *= 2) {
+        if constexpr (N == 2)
+            x = (x + n / x) >> 1;
+        else
             x = (I{2} * x + n / (x * x)) / I{3};
+    }
+    if constexpr (N == 2)
+        while (n < x * x)
+            x -= I{1};
+    else
         while (n < x * x * x)
             x -= I{1};
-        return x;
-    } else
-        return I{icbrt64(static_cast<umax>(n))};
-#endif
+    return x;
+}
+template <std::size_t K>
+constexpr wide_sint<K> isqrt(const wide_sint<K>& n) noexcept {
+    return iroot<2>(n);
+}
+template <std::size_t K>
+constexpr wide_sint<K> icbrt(const wide_sint<K>& n) noexcept {
+    return iroot<3>(n);
 }
 
 template <std::size_t K>

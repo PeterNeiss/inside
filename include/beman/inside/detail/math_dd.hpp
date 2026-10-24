@@ -461,32 +461,41 @@ inline D atan_unit(D a) noexcept {
     return add_dominant(C::Atan[static_cast<std::size_t>(j)], r);
 }
 
-// atan2(y, x): the ratio of the smaller to the larger magnitude, then the
-// octant.
-template <dd_type D>
-inline D atan2(D y, D x) noexcept {
+// atan2(y, x) by `unit` (atan on [0, 1], the full or the lean kernel): the
+// ratio of the smaller to the larger magnitude, then the octant.
+template <dd_type D, class Unit>
+inline D atan2_with(D y, D x, Unit unit) noexcept {
     using C         = consts<D>;
     const double ay = y.Hi < 0 ? -y.Hi : y.Hi, ax_ = x.Hi < 0 ? -x.Hi : x.Hi;
     if (ay == 0 && ax_ == 0)
         return D{0, 0};
     if (ay <= ax_) {
         const D q = div(y, x);
-        const D r = q.Hi < 0 ? neg(atan_unit(neg(q))) : atan_unit(q);
+        const D r = q.Hi < 0 ? neg(unit(neg(q))) : unit(q);
         if (x.Hi > 0)
             return r;
         return y.Hi < 0 ? sub(r, C::Pi) : add(r, C::Pi);
     }
     const D q = div(x, y); // |q| < 1
-    const D r = q.Hi < 0 ? neg(atan_unit(neg(q))) : atan_unit(q);
+    const D r = q.Hi < 0 ? neg(unit(neg(q))) : unit(q);
     return y.Hi > 0 ? sub(C::HalfPi, r) : sub(neg(C::HalfPi), r);
 }
 
-template <dd_type D>
-inline D atan(D x) noexcept {
+template <dd_type D, class Unit>
+inline D atan_with(D x, Unit unit) noexcept {
     const bool negative = x.Hi < 0;
     const D    a        = negative ? neg(x) : x;
-    const D    r        = a.Hi <= 1 ? atan_unit(a) : sub(consts<D>::HalfPi, atan_unit(div(D{1, 0}, a)));
+    const D    r        = a.Hi <= 1 ? unit(a) : sub(consts<D>::HalfPi, unit(div(D{1, 0}, a)));
     return negative ? neg(r) : r;
+}
+
+template <dd_type D>
+inline D atan2(D y, D x) noexcept {
+    return atan2_with(y, x, [](D q) { return atan_unit(q); });
+}
+template <dd_type D>
+inline D atan(D x) noexcept {
+    return atan_with(x, [](D q) { return atan_unit(q); });
 }
 
 // √x: one Newton step from the correctly rounded double root.
@@ -507,6 +516,12 @@ inline D cbrt(D x) noexcept {
     const double y = fpk::seed_cbrt(x.Hi);
     const D      e = sub(mul(two_prod(y, y), y), x); // y³ − x
     return fast_two_sum(y, -e.Hi / (3 * y * y));
+}
+
+// √(1 − x²) as √((1 − x)(1 + x)): asin x = atan2(x, that), acos x = atan2(that, x).
+template <dd_type D>
+inline D asin_cofactor(D x) noexcept {
+    return sqrt(mul(add(neg(x), 1.0), add(x, 1.0)));
 }
 
 template <dd_type D>
@@ -564,11 +579,11 @@ inline D atanh(D x) noexcept {
 }
 template <dd_type D>
 inline D asin(D x) noexcept {
-    return atan2(x, sqrt(mul(add(neg(x), 1.0), add(x, 1.0))));
+    return atan2(x, asin_cofactor(x));
 }
 template <dd_type D>
 inline D acos(D x) noexcept {
-    return atan2(sqrt(mul(add(neg(x), 1.0), add(x, 1.0))), x);
+    return atan2(asin_cofactor(x), x);
 }
 template <dd_type D>
 inline D hypot(D x, D y) noexcept {
@@ -956,48 +971,26 @@ BEMAN_INSIDE_ALWAYS_INLINE inline D atan_unit_lean(D a) noexcept {
     return fast_two_sum(s.Hi, ((s.Lo + ac.Lo) + t.Lo) + T);
 }
 
+// The full kernels' atan forms with the lean unit atan.
 template <dd_type D>
 inline D atan_lean(D x, double& bound) noexcept {
-    const bool negative = x.Hi < 0;
-    const D    a        = negative ? neg(x) : x;
-    const D    r        = a.Hi <= 1 ? atan_unit_lean(a) : sub(consts<D>::HalfPi, atan_unit_lean(div(D{1, 0}, a)));
-    bound               = lean_atan::Atan;
-    return negative ? neg(r) : r;
+    bound = lean_atan::Atan;
+    return atan_with(x, [](D q) { return atan_unit_lean(q); });
 }
-
-// atan2 as in the full kernel, with the lean unit atan.
 template <dd_type D>
 inline D atan2_lean(D y, D x, double& bound) noexcept {
-    using C         = consts<D>;
-    bound           = lean_atan::Atan2;
-    const double ay = y.Hi < 0 ? -y.Hi : y.Hi, ax_ = x.Hi < 0 ? -x.Hi : x.Hi;
-    if (ay == 0 && ax_ == 0) {
-        bound = 0;
-        return D{0, 0};
-    }
-    if (ay <= ax_) {
-        const D q = div(y, x);
-        const D r = q.Hi < 0 ? neg(atan_unit_lean(neg(q))) : atan_unit_lean(q);
-        if (x.Hi > 0)
-            return r;
-        return y.Hi < 0 ? sub(r, C::Pi) : add(r, C::Pi);
-    }
-    const D q = div(x, y);
-    const D r = q.Hi < 0 ? neg(atan_unit_lean(neg(q))) : atan_unit_lean(q);
-    return y.Hi > 0 ? sub(C::HalfPi, r) : sub(neg(C::HalfPi), r);
+    bound = y.Hi == 0 && x.Hi == 0 ? 0 : lean_atan::Atan2;
+    return atan2_with(y, x, [](D q) { return atan_unit_lean(q); });
 }
-
 template <dd_type D>
 inline D asin_lean(D x, double& bound) noexcept {
-    const D v = atan2_lean(x, sqrt(mul(add(neg(x), 1.0), add(x, 1.0))), bound);
-    bound     = lean_atan::Asin;
-    return v;
+    bound = lean_atan::Asin;
+    return atan2_with(x, asin_cofactor(x), [](D q) { return atan_unit_lean(q); });
 }
 template <dd_type D>
 inline D acos_lean(D x, double& bound) noexcept {
-    const D v = atan2_lean(sqrt(mul(add(neg(x), 1.0), add(x, 1.0))), x, bound);
-    bound     = lean_atan::Asin;
-    return v;
+    bound = lean_atan::Asin;
+    return atan2_with(asin_cofactor(x), x, [](D q) { return atan_unit_lean(q); });
 }
 } // namespace beman::inside::math::detail::dd
 

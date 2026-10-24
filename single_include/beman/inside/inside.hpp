@@ -12815,17 +12815,36 @@ constexpr umax icbrt64(umax t) noexcept {
     return y;
 }
 
+// The N-th root (N = 2, 3) helpers: the 64-bit root, and a shift that keeps
+// `keep` top bits and is a multiple of N (so the root shifts back by sh / N).
+template <int N>
+constexpr umax iroot64(umax t) noexcept {
+    if constexpr (N == 2)
+        return isqrt64(t);
+    else
+        return icbrt64(t);
+}
+template <int N>
+constexpr int iroot_shift(int bw, int keep) noexcept {
+    return N == 2 ? (bw - keep + 1) & ~1 : (bw - keep + 2) / 3 * 3;
+}
+
 #if BEMAN_INSIDE_HAS_INT128
-// ⌊√t⌋ for two limbs: Newton from above on 128-bit words, seeded from the
-// top 62 bits; each quotient t/x ≤ √t fits one limb.
-constexpr umax isqrt128(unsigned __int128 t) noexcept {
+// ⌊√t⌋ / ⌊∛t⌋ for two limbs: Newton from above on 128-bit words, seeded from
+// the root of the top 62 (√) or 63 (∛) bits; each quotient fits one limb.
+template <int N>
+constexpr umax iroot128(unsigned __int128 t) noexcept {
     if ((t >> 64) == 0)
-        return isqrt64(static_cast<umax>(t));
+        return iroot64<N>(static_cast<umax>(t));
     const int         bw = 128 - std::countl_zero(static_cast<umax>(t >> 64));
-    const int         sh = (bw - 62 + 1) & ~1; // even, leaves 61 or 62 bits
-    unsigned __int128 x  = static_cast<unsigned __int128>(isqrt64(static_cast<umax>(t >> sh)) + 1) << (sh / 2);
+    const int         sh = iroot_shift<N>(bw, N == 2 ? 62 : 63);
+    unsigned __int128 x  = static_cast<unsigned __int128>(iroot64<N>(static_cast<umax>(t >> sh)) + 1) << (sh / N);
     for (;;) {
-        const unsigned __int128 y = (x + t / x) >> 1;
+        unsigned __int128 y;
+        if constexpr (N == 2)
+            y = (x + t / x) >> 1;
+        else
+            y = (2 * x + t / (x * x)) / 3;
         if (!(y < x))
             return static_cast<umax>(x);
         x = y;
@@ -12834,108 +12853,63 @@ constexpr umax isqrt128(unsigned __int128 t) noexcept {
 
 #endif
 
-// ⌊√n⌋ for n ≥ 0. Two limbs or fewer directly; wider, the root of the top
-// 126 bits (an even shift) seeds Newton from above with at least 61 correct
-// bits, each step doubling them; once they cover the root, squares
-// correct the last unit (Newton from above never lands below ⌊√n⌋).
-template <std::size_t K>
-constexpr wide_sint<K> isqrt(const wide_sint<K>& n) noexcept {
+// ⌊√n⌋ (N = 2) or ⌊∛n⌋ (N = 3) for n ≥ 0. Two limbs or fewer directly;
+// wider, the root of the top 126 bits (a shift by a multiple of N) seeds
+// Newton from above with at least 61 (√) or 40 (∛) correct bits, each step
+// doubling them; once they cover the root, powers correct the last unit
+// (Newton from above never lands below the floor root).
+template <int N, std::size_t K>
+constexpr wide_sint<K> iroot(const wide_sint<K>& n) noexcept {
     using I = wide_sint<K>;
     if (n.is_zero())
         return n;
     const int bw = bit_width_of(n);
     if (bw <= 64)
-        return I{isqrt64(static_cast<umax>(n))};
-#if !BEMAN_INSIDE_HAS_INT128
-    // (No 128-bit integer: the root of the top 61 or 62 bits seeds Newton
-    // from above with about 30 correct bits.)
-    const int sh = (bw - 62 + 1) & ~1;
-    I         x  = (I{isqrt64(static_cast<umax>(n >> sh))} + I{1}) << (sh / 2); // ≥ √n
-    for (int bits = 30; bits < bw / 2 + 2; bits *= 2)
-        x = (x + n / x) >> 1;
-    while (n < x * x)
-        x -= I{1};
-    return x;
-#else
-    if constexpr (K >= 2) {
-        const int               sh  = bw > 126 ? (bw - 126 + 1) & ~1 : 0;
-        const I                 top = n >> sh;
-        const unsigned __int128 t =
-            (static_cast<unsigned __int128>(static_cast<umax>(top.Word[1])) << 64) | static_cast<umax>(top.Word[0]);
-        const umax r = isqrt128(t);
-        if (sh == 0)
-            return I{r};
-        I x = I{r} + I{1};
-        x   = x << (sh / 2); // ≥ √n, within 2^-61 of it
-        for (int bits = 61; bits < bw / 2 + 2; bits *= 2)
-            x = (x + n / x) >> 1;
-        while (n < x * x)
-            x -= I{1};
-        return x;
-    } else
-        return I{isqrt64(static_cast<umax>(n))};
-#endif
-}
-
-#if BEMAN_INSIDE_HAS_INT128
-// ⌊∛t⌋ for two limbs: Newton from above on 128-bit words, seeded from the
-// top 63 bits.
-constexpr umax icbrt128(unsigned __int128 t) noexcept {
-    if ((t >> 64) == 0)
-        return icbrt64(static_cast<umax>(t));
-    const int         bw = 128 - std::countl_zero(static_cast<umax>(t >> 64));
-    const int         sh = (bw - 63 + 2) / 3 * 3; // a multiple of 3, leaves at most 63 bits
-    unsigned __int128 x  = static_cast<unsigned __int128>(icbrt64(static_cast<umax>(t >> sh)) + 1) << (sh / 3);
-    for (;;) {
-        const unsigned __int128 y = (2 * x + t / (x * x)) / 3;
-        if (!(y < x))
-            return static_cast<umax>(x);
-        x = y;
-    }
-}
-
-#endif
-
-// ⌊∛n⌋ for n ≥ 0, as isqrt: two limbs or fewer directly; wider, the root
-// of the top 126 bits (a shift by a multiple of 3) seeds Newton from above
-// with at least 40 correct bits, and cubes correct the last unit.
-template <std::size_t K>
-constexpr wide_sint<K> icbrt(const wide_sint<K>& n) noexcept {
-    using I = wide_sint<K>;
-    if (n.is_zero())
-        return n;
-    const int bw = bit_width_of(n);
-    if (bw <= 64)
-        return I{icbrt64(static_cast<umax>(n))};
+        return I{iroot64<N>(static_cast<umax>(n))};
+    I   x{};
+    int seed = 0;
 #if !BEMAN_INSIDE_HAS_INT128
     // (No 128-bit integer: the root of the top 61 to 63 bits seeds Newton
-    // from above with about 20 correct bits.)
-    const int sh = (bw - 63 + 2) / 3 * 3;
-    I         x  = (I{icbrt64(static_cast<umax>(n >> sh))} + I{1}) << (sh / 3); // ≥ ∛n
-    for (int bits = 20; bits < bw / 3 + 2; bits *= 2)
-        x = (I{2} * x + n / (x * x)) / I{3};
-    while (n < x * x * x)
-        x -= I{1};
-    return x;
+    // from above with about 30 (√) or 20 (∛) correct bits.)
+    const int sh = iroot_shift<N>(bw, N == 2 ? 62 : 63);
+    x            = (I{iroot64<N>(static_cast<umax>(n >> sh))} + I{1}) << (sh / N);
+    seed         = N == 2 ? 30 : 20;
 #else
-    if constexpr (K >= 2) {
-        const int               sh  = bw > 126 ? (bw - 126 + 2) / 3 * 3 : 0;
+    if constexpr (K < 2)
+        return I{iroot64<N>(static_cast<umax>(n))};
+    else {
+        const int               sh  = bw > 126 ? iroot_shift<N>(bw, 126) : 0;
         const I                 top = n >> sh;
         const unsigned __int128 t =
             (static_cast<unsigned __int128>(static_cast<umax>(top.Word[1])) << 64) | static_cast<umax>(top.Word[0]);
-        const umax r = icbrt128(t);
+        const umax r = iroot128<N>(t);
         if (sh == 0)
             return I{r};
-        I x = I{r} + I{1};
-        x   = x << (sh / 3); // ≥ ∛n, within 2^-40 of it
-        for (int bits = 40; bits < bw / 3 + 2; bits *= 2)
+        x    = (I{r} + I{1}) << (sh / N); // ≥ the root, within 2^-61 (√) or 2^-40 (∛) of it
+        seed = N == 2 ? 61 : 40;
+    }
+#endif
+    for (int bits = seed; bits < bw / N + 2; bits *= 2) {
+        if constexpr (N == 2)
+            x = (x + n / x) >> 1;
+        else
             x = (I{2} * x + n / (x * x)) / I{3};
+    }
+    if constexpr (N == 2)
+        while (n < x * x)
+            x -= I{1};
+    else
         while (n < x * x * x)
             x -= I{1};
-        return x;
-    } else
-        return I{icbrt64(static_cast<umax>(n))};
-#endif
+    return x;
+}
+template <std::size_t K>
+constexpr wide_sint<K> isqrt(const wide_sint<K>& n) noexcept {
+    return iroot<2>(n);
+}
+template <std::size_t K>
+constexpr wide_sint<K> icbrt(const wide_sint<K>& n) noexcept {
+    return iroot<3>(n);
 }
 
 template <std::size_t K>
@@ -13341,6 +13315,10 @@ template <insidable Out>
 inline constexpr int start_bits = out_bits<Out> + 8 > 16 ? out_bits<Out> + 8 : 16;
 
 template <std::size_t K>
+constexpr wide_rational<K> exact_zero() noexcept {
+    return {wide_sint<K>{0}, wide_sint<K>{1}};
+}
+template <std::size_t K>
 constexpr wide_rational<K> exact_one() noexcept {
     return {wide_sint<K>{1}, wide_sint<K>{1}};
 }
@@ -13478,9 +13456,7 @@ struct exp2_core {
 template <std::size_t E, int Bits = fraction_bits<E>>
 struct log_core {
     wide_rational<E>         X;
-    constexpr maybe_exact<E> exact() const {
-        return is_one(X) ? maybe_exact<E>{wide_rational<E>{wide_sint<E>{0}, wide_sint<E>{1}}} : std::nullopt;
-    }
+    constexpr maybe_exact<E> exact() const { return is_one(X) ? maybe_exact<E>{exact_zero<E>()} : std::nullopt; }
     template <int W>
     constexpr auto run() const {
         constexpr int S         = W + 8 + std::bit_width(static_cast<unsigned>(Bits));
@@ -13634,7 +13610,7 @@ struct trig_core {
     constexpr maybe_exact<E> exact() const {
         if (!is_zero(X))
             return std::nullopt;
-        return Fn == trig::cos ? exact_one<E>() : wide_rational<E>{wide_sint<E>{0}, wide_sint<E>{1}};
+        return Fn == trig::cos ? exact_one<E>() : exact_zero<E>();
     }
     template <int W>
     constexpr auto run() const {
@@ -13649,19 +13625,17 @@ struct trig_core {
         const I               r  = static_cast<I>(round_shift(xq - k * hp, T - S)); // |r| ≤ π/4 + a hair, within 2
         const unsigned        q  = static_cast<unsigned>(k.Word[0] & 3u);
         // sin x and cos x by quadrant: (s, c), (c, −s), (−s, −c), (−c, s).
-        auto neg   = [](fx<K> f) { return fx<K>{-f.Value, f.Error}; };
-        auto sin_x = [&] {
-            return (q == 0)   ? sin_series<S>(r, 2)
-                   : (q == 1) ? cos_series<S>(r, 2)
-                   : (q == 2) ? neg(sin_series<S>(r, 2))
+        // cos is sin one quadrant on.
+        auto neg  = [](fx<K> f) { return fx<K>{-f.Value, f.Error}; };
+        auto quad = [&](unsigned p) {
+            p &= 3u;
+            return (p == 0)   ? sin_series<S>(r, 2)
+                   : (p == 1) ? cos_series<S>(r, 2)
+                   : (p == 2) ? neg(sin_series<S>(r, 2))
                               : neg(cos_series<S>(r, 2));
         };
-        auto cos_x = [&] {
-            return (q == 0)   ? cos_series<S>(r, 2)
-                   : (q == 1) ? neg(sin_series<S>(r, 2))
-                   : (q == 2) ? neg(cos_series<S>(r, 2))
-                              : sin_series<S>(r, 2);
-        };
+        auto sin_x = [&] { return quad(q); };
+        auto cos_x = [&] { return quad(q + 1); };
         if constexpr (Fn == trig::sin) {
             const fx<K> sn = sin_x();
             return approx<K>{sn.Value, S, sn.Error};
@@ -13721,7 +13695,7 @@ struct atan2_core {
     wide_rational<E>         Y, X;
     constexpr maybe_exact<E> exact() const {
         if (is_zero(Y) && !X.Num.negative())
-            return wide_rational<E>{wide_sint<E>{0}, wide_sint<E>{1}};
+            return exact_zero<E>();
         return std::nullopt;
     }
     template <int W>
@@ -13744,60 +13718,51 @@ struct atan2_core {
     }
 };
 
-// asin x, |x| ≤ 1: small arguments directly; past 1/2, the half-angle form
-// ±(π/2 − 2·asin √((1−|x|)/2)), which stays accurate up to ±1.
-template <std::size_t E, int Bits = fraction_bits<E>>
-struct asin_core {
-    wide_rational<E>         X;
-    constexpr maybe_exact<E> exact() const { return is_zero(X) ? maybe_exact<E>{X} : std::nullopt; }
-    template <int W>
-    constexpr auto run() const {
-        constexpr int S          = W + 12;
-        using I                  = fixed_t<S + 8>;
-        constexpr std::size_t  K = limbs_of<I>;
-        const wide_rational<E> half{wide_sint<E>{1}, wide_sint<E>{2}};
-        if (!(half < abs(X))) {
-            const fx<K> a = asin_small<S, K>(X);
-            return approx<K>{a.Value, S, a.Error};
-        }
-        using F         = wide_rational<E + 1>;
-        const F     one = exact_one<E + 1>();
-        const F     y   = (one + F{-abs(X)}) * F{half}; // (1 − |x|)/2
-        const fx<K> a   = asin_sqrt<S, K, Bits + 1>(y);
-        const I     v   = static_cast<I>(pi_q<S - 1>) - (a.Value << 1);
-        return approx<K>{X.Num.negative() ? -v : v, S, 2 * a.Error + 1};
-    }
-};
-
-// acos x = π/2 − asin x for |x| ≤ 1/2; 2·asin √((1−x)/2) above;
-// π − 2·asin √((1+x)/2) below. Exact at 1.
-template <std::size_t E, int Bits = fraction_bits<E>>
-struct acos_core {
+// asin x (Acos false) or acos x (true), |x| ≤ 1. For |x| ≤ 1/2 asin
+// directly, acos = π/2 − asin x. Past 1/2 the half-angle forms, accurate up
+// to ±1, both from a = asin √((1−|x|)/2): asin = ±(π/2 − 2a); acos = 2a above
+// 0, π − 2a below. asin is exact at 0, acos at 1.
+template <std::size_t E, int Bits, bool Acos>
+struct arcsin_core {
     wide_rational<E>         X;
     constexpr maybe_exact<E> exact() const {
-        return is_one(X) ? maybe_exact<E>{wide_rational<E>{wide_sint<E>{0}, wide_sint<E>{1}}} : std::nullopt;
+        if constexpr (Acos)
+            return is_one(X) ? maybe_exact<E>{exact_zero<E>()} : std::nullopt;
+        else
+            return is_zero(X) ? maybe_exact<E>{X} : std::nullopt;
     }
     template <int W>
     constexpr auto run() const {
-        constexpr int S          = W + 12;
-        using I                  = fixed_t<S + 8>;
-        constexpr std::size_t  K = limbs_of<I>;
+        constexpr int S           = W + 12;
+        using I                   = fixed_t<S + 8>;
+        constexpr std::size_t  K  = limbs_of<I>;
+        const I                hp = static_cast<I>(pi_q<S - 1>); // π/2
         const wide_rational<E> half{wide_sint<E>{1}, wide_sint<E>{2}};
         if (!(half < abs(X))) {
             const fx<K> a = asin_small<S, K>(X);
-            return approx<K>{static_cast<I>(pi_q<S - 1>) - a.Value, S, a.Error + 1};
+            if constexpr (Acos)
+                return approx<K>{hp - a.Value, S, a.Error + 1};
+            else
+                return approx<K>{a.Value, S, a.Error};
         }
         using F         = wide_rational<E + 1>;
-        const F     one = exact_one<E + 1>();
-        const F     x{X};
-        const bool  neg = X.Num.negative();
-        const F     y   = (neg ? one + x : one + F{-x}) * F{half};
+        const F     y   = (exact_one<E + 1>() + F{-abs(X)}) * F{half}; // (1 − |x|)/2
         const fx<K> a   = asin_sqrt<S, K, Bits + 1>(y);
-        if (!neg)
-            return approx<K>{a.Value << 1, S, 2 * a.Error};
-        return approx<K>{static_cast<I>(pi_q<S>) - (a.Value << 1), S, 2 * a.Error + 1};
+        const bool  neg = X.Num.negative();
+        if constexpr (Acos) {
+            if (!neg)
+                return approx<K>{a.Value << 1, S, 2 * a.Error};
+            return approx<K>{static_cast<I>(pi_q<S>) - (a.Value << 1), S, 2 * a.Error + 1};
+        } else {
+            const I v = hp - (a.Value << 1);
+            return approx<K>{neg ? -v : v, S, 2 * a.Error + 1};
+        }
     }
 };
+template <std::size_t E, int Bits = fraction_bits<E>>
+using asin_core = arcsin_core<E, Bits, false>;
+template <std::size_t E, int Bits = fraction_bits<E>>
+using acos_core = arcsin_core<E, Bits, true>;
 
 // sinh, cosh and tanh from e^|x| and e^−|x| at absolute scale A. Exact at 0
 // (sinh, tanh: 0; cosh: 1).
@@ -13865,7 +13830,7 @@ struct ahyp_core {
     wide_rational<E>         X;
     constexpr maybe_exact<E> exact() const {
         if (Fn == ahyp::acosh)
-            return is_one(X) ? maybe_exact<E>{wide_rational<E>{wide_sint<E>{0}, wide_sint<E>{1}}} : std::nullopt;
+            return is_one(X) ? maybe_exact<E>{exact_zero<E>()} : std::nullopt;
         return is_zero(X) ? maybe_exact<E>{X} : std::nullopt;
     }
     template <int W>
@@ -15496,32 +15461,41 @@ inline D atan_unit(D a) noexcept {
     return add_dominant(C::Atan[static_cast<std::size_t>(j)], r);
 }
 
-// atan2(y, x): the ratio of the smaller to the larger magnitude, then the
-// octant.
-template <dd_type D>
-inline D atan2(D y, D x) noexcept {
+// atan2(y, x) by `unit` (atan on [0, 1], the full or the lean kernel): the
+// ratio of the smaller to the larger magnitude, then the octant.
+template <dd_type D, class Unit>
+inline D atan2_with(D y, D x, Unit unit) noexcept {
     using C         = consts<D>;
     const double ay = y.Hi < 0 ? -y.Hi : y.Hi, ax_ = x.Hi < 0 ? -x.Hi : x.Hi;
     if (ay == 0 && ax_ == 0)
         return D{0, 0};
     if (ay <= ax_) {
         const D q = div(y, x);
-        const D r = q.Hi < 0 ? neg(atan_unit(neg(q))) : atan_unit(q);
+        const D r = q.Hi < 0 ? neg(unit(neg(q))) : unit(q);
         if (x.Hi > 0)
             return r;
         return y.Hi < 0 ? sub(r, C::Pi) : add(r, C::Pi);
     }
     const D q = div(x, y); // |q| < 1
-    const D r = q.Hi < 0 ? neg(atan_unit(neg(q))) : atan_unit(q);
+    const D r = q.Hi < 0 ? neg(unit(neg(q))) : unit(q);
     return y.Hi > 0 ? sub(C::HalfPi, r) : sub(neg(C::HalfPi), r);
 }
 
-template <dd_type D>
-inline D atan(D x) noexcept {
+template <dd_type D, class Unit>
+inline D atan_with(D x, Unit unit) noexcept {
     const bool negative = x.Hi < 0;
     const D    a        = negative ? neg(x) : x;
-    const D    r        = a.Hi <= 1 ? atan_unit(a) : sub(consts<D>::HalfPi, atan_unit(div(D{1, 0}, a)));
+    const D    r        = a.Hi <= 1 ? unit(a) : sub(consts<D>::HalfPi, unit(div(D{1, 0}, a)));
     return negative ? neg(r) : r;
+}
+
+template <dd_type D>
+inline D atan2(D y, D x) noexcept {
+    return atan2_with(y, x, [](D q) { return atan_unit(q); });
+}
+template <dd_type D>
+inline D atan(D x) noexcept {
+    return atan_with(x, [](D q) { return atan_unit(q); });
 }
 
 // √x: one Newton step from the correctly rounded double root.
@@ -15542,6 +15516,12 @@ inline D cbrt(D x) noexcept {
     const double y = fpk::seed_cbrt(x.Hi);
     const D      e = sub(mul(two_prod(y, y), y), x); // y³ − x
     return fast_two_sum(y, -e.Hi / (3 * y * y));
+}
+
+// √(1 − x²) as √((1 − x)(1 + x)): asin x = atan2(x, that), acos x = atan2(that, x).
+template <dd_type D>
+inline D asin_cofactor(D x) noexcept {
+    return sqrt(mul(add(neg(x), 1.0), add(x, 1.0)));
 }
 
 template <dd_type D>
@@ -15599,11 +15579,11 @@ inline D atanh(D x) noexcept {
 }
 template <dd_type D>
 inline D asin(D x) noexcept {
-    return atan2(x, sqrt(mul(add(neg(x), 1.0), add(x, 1.0))));
+    return atan2(x, asin_cofactor(x));
 }
 template <dd_type D>
 inline D acos(D x) noexcept {
-    return atan2(sqrt(mul(add(neg(x), 1.0), add(x, 1.0))), x);
+    return atan2(asin_cofactor(x), x);
 }
 template <dd_type D>
 inline D hypot(D x, D y) noexcept {
@@ -15991,48 +15971,26 @@ BEMAN_INSIDE_ALWAYS_INLINE inline D atan_unit_lean(D a) noexcept {
     return fast_two_sum(s.Hi, ((s.Lo + ac.Lo) + t.Lo) + T);
 }
 
+// The full kernels' atan forms with the lean unit atan.
 template <dd_type D>
 inline D atan_lean(D x, double& bound) noexcept {
-    const bool negative = x.Hi < 0;
-    const D    a        = negative ? neg(x) : x;
-    const D    r        = a.Hi <= 1 ? atan_unit_lean(a) : sub(consts<D>::HalfPi, atan_unit_lean(div(D{1, 0}, a)));
-    bound               = lean_atan::Atan;
-    return negative ? neg(r) : r;
+    bound = lean_atan::Atan;
+    return atan_with(x, [](D q) { return atan_unit_lean(q); });
 }
-
-// atan2 as in the full kernel, with the lean unit atan.
 template <dd_type D>
 inline D atan2_lean(D y, D x, double& bound) noexcept {
-    using C         = consts<D>;
-    bound           = lean_atan::Atan2;
-    const double ay = y.Hi < 0 ? -y.Hi : y.Hi, ax_ = x.Hi < 0 ? -x.Hi : x.Hi;
-    if (ay == 0 && ax_ == 0) {
-        bound = 0;
-        return D{0, 0};
-    }
-    if (ay <= ax_) {
-        const D q = div(y, x);
-        const D r = q.Hi < 0 ? neg(atan_unit_lean(neg(q))) : atan_unit_lean(q);
-        if (x.Hi > 0)
-            return r;
-        return y.Hi < 0 ? sub(r, C::Pi) : add(r, C::Pi);
-    }
-    const D q = div(x, y);
-    const D r = q.Hi < 0 ? neg(atan_unit_lean(neg(q))) : atan_unit_lean(q);
-    return y.Hi > 0 ? sub(C::HalfPi, r) : sub(neg(C::HalfPi), r);
+    bound = y.Hi == 0 && x.Hi == 0 ? 0 : lean_atan::Atan2;
+    return atan2_with(y, x, [](D q) { return atan_unit_lean(q); });
 }
-
 template <dd_type D>
 inline D asin_lean(D x, double& bound) noexcept {
-    const D v = atan2_lean(x, sqrt(mul(add(neg(x), 1.0), add(x, 1.0))), bound);
-    bound     = lean_atan::Asin;
-    return v;
+    bound = lean_atan::Asin;
+    return atan2_with(x, asin_cofactor(x), [](D q) { return atan_unit_lean(q); });
 }
 template <dd_type D>
 inline D acos_lean(D x, double& bound) noexcept {
-    const D v = atan2_lean(sqrt(mul(add(neg(x), 1.0), add(x, 1.0))), x, bound);
-    bound     = lean_atan::Asin;
-    return v;
+    bound = lean_atan::Asin;
+    return atan2_with(asin_cofactor(x), x, [](D q) { return atan_unit_lean(q); });
 }
 } // namespace beman::inside::math::detail::dd
 
@@ -16605,9 +16563,10 @@ inline bool dd_full_attempt(const ddk::dd& x, Out& out) {
     return dd_decide(v, bound * 1.5, out);
 }
 
-// What follows a lean kernel: rarely taken, so out of line.
+// What follows a fast tier or a lean kernel: rarely taken, so out of line,
+// which keeps its frame off the fast path.
 template <std::invocable<> F>
-BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE bool dd_cold(const F& f) {
+BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr auto cold_call(const F& f) {
     return f();
 }
 
@@ -16618,7 +16577,7 @@ BEMAN_INSIDE_ALWAYS_INLINE inline bool dd_lean_first(const Lean& lean, const Ful
     const ddk::dd v = lean(bound);
     if (dd_decide(v, bound * 1.5, out))
         return true;
-    return dd_cold(full);
+    return cold_call(full);
 }
 
 // The lean kernel first where K has one, then the full one.
@@ -16908,13 +16867,6 @@ template <insidable Out, insidable... Ins>
 inline constexpr bool unanchored_call = !anchored<Out> || (!anchored<Ins> || ...);
 } // namespace anchoring
 
-// What follows a fast tier: rarely taken, so out of line, which keeps its
-// frame off the tier's fast path.
-template <std::invocable<> F>
-BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr auto cold_call(const F& f) {
-    return f();
-}
-
 // The tiers in order at runtime: the double kernel (when FP), the dd
 // kernel (when DD), the integer path. Each fast tier stores a decided
 // result and returns true; whatever runs after the first one is cold.
@@ -16927,7 +16879,7 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
             if constexpr (FP) {
                 if (Out r; fp(r))
                     return r;
-                return cold_call([&]() -> decltype(integer()) {
+                return ax::cold_call([&]() -> decltype(integer()) {
                     if constexpr (DD)
                         if (Out r; dd(r))
                             return r;
@@ -16936,7 +16888,7 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
             } else {
                 if (Out r; dd(r))
                     return r;
-                return cold_call(integer);
+                return ax::cold_call(integer);
             }
         }
     return integer();
