@@ -4,7 +4,7 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-## Unreleased
+## 0.5.0 — 2026-10-25
 
 ### Upgrading from 0.4.0
 
@@ -26,8 +26,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   at the precision cap, and hashes every result. `find_grids.py` finds the
   pairs a build uses in its symbols and certifies them, with progress and a
   time estimate. [certified.md](docs/certified.md) lists the library's
-  certified pairs and their hashes; every CI configuration must reproduce
-  them.
+  certified pairs and their hashes, which CI must reproduce.
 - [certified.md](docs/certified.md) also certifies the math pairs the
   examples use: 20 pairs, among them `atan2` and `hypot` over two 2⁻¹⁴-grid
   inputs (1.07 G inputs each). Five more, of up to 10¹⁹ inputs, are listed

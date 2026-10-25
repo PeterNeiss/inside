@@ -40,9 +40,9 @@ convenience functions of the reference implementation are left to later
 papers ([Future work](#future-work)).
 
 The reference implementation is [beman.inside
-v0.4.0](https://github.com/PeterNeiss/inside/tree/v0.4.0). A long-form
+v0.5.0](https://github.com/PeterNeiss/inside/tree/v0.5.0). A long-form
 motivation with compiled exhibits is [*int considered
-harmful*](https://github.com/PeterNeiss/inside/blob/v0.4.0/docs/int-considered-harmful.pdf)
+harmful*](https://github.com/PeterNeiss/inside/blob/v0.5.0/docs/int-considered-harmful.pdf)
 (the *paper* below).
 
 # Motivation
@@ -694,7 +694,7 @@ namespace std::units {
 # Future work
 
 The reference implementation provides more than these three layers. Each item
-below is in v0.4.0, and each is a candidate for a later paper:
+below is in v0.5.0, and each is a candidate for a later paper:
 
 1. **Per-call policies and actions**: `div(a, b, rounded_floor)`, `mod`,
    `divmod`, and callbacks that receive the overshoot (`on_clamp`, `on_wrap`,

@@ -43,7 +43,7 @@ in:
   use `main` for the latest:
 
   ```cpp
-  #include <https://raw.githubusercontent.com/PeterNeiss/inside/v0.4.0/single_include/beman/inside/inside.hpp>
+  #include <https://raw.githubusercontent.com/PeterNeiss/inside/v0.5.0/single_include/beman/inside/inside.hpp>
   #include <https://raw.githubusercontent.com/PeterNeiss/inside/main/single_include/beman/inside/inside.hpp>
   ```
 
