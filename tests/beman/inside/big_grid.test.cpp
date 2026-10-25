@@ -235,6 +235,46 @@ TEST(BigGridTest, divmod_past_64_bits) {
     EXPECT_FALSE(divmod(n, digits{0}).has_value());
 }
 
+namespace {
+constexpr grid_rational two_100   = g(pow2(100));
+constexpr grid_rational below     = two_100 - 1;
+constexpr grid_rational above     = two_100 + 1;
+constexpr grid_rational far_out   = g(pow2(5000)); // wider than any store's exact type
+constexpr grid_rational far_frac  = grid_rational{big_int{1}, pow2(5000)};
+constexpr grid_rational half_past = grid_rational{pow2(101) - big_int{1}, big_int{2}}; // 2^100 − 1/2
+static_assert(huge{below} + huge{1} == huge{two_100});                                 // the store is constexpr too
+} // namespace
+
+TEST(BigGridTest, grid_number_at_run_time) {
+    // A grid number past 64 bits is formed at compile time only, but a store
+    // reads one at run time: construct, assign, try_make.
+    volatile int             pick      = 1;
+    const grid_rational&     v         = pick ? below : two_100; // chosen at run time
+    huge                     a         = v;
+    constexpr huge::raw_type raw_below = static_cast<huge::raw_type>(pow2(100) - big_int{1});
+    EXPECT_TRUE(a.raw() == raw_below);
+    a = two_100;
+    EXPECT_TRUE(a == huge::from_raw(raw_2_100));
+    using small = inside<{-5, 5}>;
+    EXPECT_TRUE(small{grid_rational{-3}} == -3); // a value within 64 bits
+    // Out of range: checked throws, clamp saturates, try_make reports.
+    EXPECT_THROW(small{two_100}, inside_error);
+    EXPECT_TRUE((small{two_100, clamped}) == 5);
+    EXPECT_TRUE((small{-far_out, clamped}) == -5);
+    EXPECT_EQ(huge::try_make(above).error(), errc::overflow);
+    EXPECT_EQ(huge::try_make(far_out).error(), errc::overflow);
+    EXPECT_EQ(huge::try_make(-two_100).error(), errc::overflow);
+    // Off the lattice: rounds under a rounding policy, else rejected.
+    EXPECT_FALSE(huge::try_make(half_past).has_value());
+    EXPECT_TRUE((huge{half_past, rounded_floor}) == huge{below});
+    EXPECT_TRUE((huge{half_past, rounded_ceil}) == huge{two_100});
+    EXPECT_EQ(huge::try_make(far_frac).error(), errc::overflow);
+    // A fine big grid takes its own notch.
+    constexpr grid_rational three_notches = grid_rational{big_int{3}, pow2(80)};
+    fine                    f             = three_notches;
+    EXPECT_TRUE(f.raw() == 3);
+}
+
 TEST(BigGridTest, continuous_past_64_bits) {
     // A quotient of big-grid values holds its exact value: a wide fraction raw,
     // sized from the quotient's denominator bound — so a plain value.

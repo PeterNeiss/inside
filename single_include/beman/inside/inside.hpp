@@ -8551,6 +8551,33 @@ struct assignment<L, R> {
         return lhs;
     }
 };
+
+#if BEMAN_INSIDE_BIG_GRIDS
+//---------------------------------------------------------------------------
+// assign_grid_number — store a C++26 grid number at run time (a constexpr
+// variable, `N - 1_g`). Forming a value past 64 bits is compile-time only, but
+// reading one is not: its limbs live in static storage. The exact value then
+// stores like any exact value. A number too wide for L's exact type lies far
+// outside L when it is an integer, so a stand-in just past the near limit
+// takes the out-of-range path; a fraction that wide is overflow.
+//---------------------------------------------------------------------------
+template <insidable L, typename P>
+constexpr L& assign_grid_number(L& lhs, const big_rational& v, P&& policy) {
+    constexpr std::size_t K     = exact_limbs<L>;
+    auto                  limbs = [](const big_int& x) { return x.Size != 0 ? x.Size : std::size_t{1}; };
+    if (limbs(v.Num) < K && limbs(v.Den) < K) [[likely]]
+        return assign_exact<rational>(lhs, exact_of_grid<K>(v), policy, no_action{});
+    if (!v.is_integer()) {
+        no_action none;
+        report_failure(lhs, policy, none, errc::overflow);
+        return lhs;
+    }
+    const wide_rational<K> one{wide_sint<K>{1}, wide_sint<K>{1}};
+    const wide_rational<K> past =
+        v.Num.negative() ? exact_of_grid<K>(lower_of<L>) + -one : exact_of_grid<K>(upper_of<L>) + one;
+    return assign_exact<rational>(lhs, past, policy, no_action{});
+}
+#endif
 } // namespace beman::inside::detail
 
 BEMAN_INSIDE_WARNINGS_POP
@@ -10143,6 +10170,25 @@ struct inside {
         store_value(value.value());
     }
 
+#if BEMAN_INSIDE_BIG_GRIDS
+    // A C++26 grid number at run time (`residue r = N - 1_g;`, a constexpr big
+    // variable): checked like any store, since its interval is not part of
+    // its type. (Exactly a grid number: templates, so nothing converts to one.)
+    template <std::same_as<detail::grid_rational> V>
+    constexpr inside(const V& value) : Raw{} {
+        detail::assign_grid_number(*this, value, make_policy<P>());
+    }
+    template <std::same_as<detail::grid_rational> V, detail::policy_like Pol>
+    constexpr inside(const V& value, Pol&& pol) : Raw{} {
+        detail::assign_grid_number(*this, value, pol);
+    }
+    template <std::same_as<detail::grid_rational> V>
+    constexpr inside& operator=(const V& value) {
+        detail::assign_grid_number(*this, value, make_policy<P>());
+        return *this;
+    }
+#endif
+
     template <numeric B>
         requires inside_assignable<inside, B, P>
     constexpr inside& operator=(const B& other) {
@@ -10791,6 +10837,17 @@ struct inside {
     [[nodiscard]] static constexpr std::expected<inside, errc> try_make(const std::expected<A, errc>& value) {
         return value.and_then([](const A& a) { return try_make<F>(a); });
     }
+#if BEMAN_INSIDE_BIG_GRIDS
+    template <policy_flag F = none, std::same_as<detail::grid_rational> V>
+    [[nodiscard]] static constexpr std::expected<inside, errc> try_make(const V& value) {
+        errc   ec{};
+        inside result{};
+        detail::assign_grid_number(result, value, make_policy<P | F>(ec));
+        if (ec != errc{})
+            return std::unexpected{ec};
+        return result;
+    }
+#endif
 };
 
 //---------------------------------------------------------------------------

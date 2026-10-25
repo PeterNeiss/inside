@@ -12,6 +12,9 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   with quotient and remainder from one exact division.
 - C++26 grid numbers take built-in integers in `+ - * /`: `N - 1` was
   ambiguous and had to be spelled `N - 1_g`.
+- C++26 big grids: an inside takes a grid number at run time (constructor,
+  `=`, `try_make`), checked like any store: `residue r = top;` for a
+  `constexpr` big `top`. Before, only `just<top>` worked.
 
 ### Fixed
 

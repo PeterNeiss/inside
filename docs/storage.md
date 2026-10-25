@@ -103,6 +103,11 @@ return such insides, correctly rounded. Call grid helpers that form big
 values, like `grid_of<B>.slot_count()`, in a constant expression; at run time a
 result past 64 bits reports `errc::overflow`.
 
+An inside takes a grid number at run time, checked like any store, once the
+number exists: name a big one as a constant first (`constexpr auto top = N - 1;`
+then `residue r = top;`), since `N - 1` evaluated at run time would have to form
+it. `B::try_make(top)` reports instead of throwing.
+
 A continuous grid past 64 bits stores an exact fraction of fixed-width
 integers. A bounded one ([arithmetic.md](arithmetic.md#bounded-continuous-grids))
 sizes them from its denominator bound, so its quotients are plain values:

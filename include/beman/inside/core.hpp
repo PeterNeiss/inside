@@ -171,6 +171,25 @@ struct inside {
         store_value(value.value());
     }
 
+#if BEMAN_INSIDE_BIG_GRIDS
+    // A C++26 grid number at run time (`residue r = N - 1_g;`, a constexpr big
+    // variable): checked like any store, since its interval is not part of
+    // its type. (Exactly a grid number: templates, so nothing converts to one.)
+    template <std::same_as<detail::grid_rational> V>
+    constexpr inside(const V& value) : Raw{} {
+        detail::assign_grid_number(*this, value, make_policy<P>());
+    }
+    template <std::same_as<detail::grid_rational> V, detail::policy_like Pol>
+    constexpr inside(const V& value, Pol&& pol) : Raw{} {
+        detail::assign_grid_number(*this, value, pol);
+    }
+    template <std::same_as<detail::grid_rational> V>
+    constexpr inside& operator=(const V& value) {
+        detail::assign_grid_number(*this, value, make_policy<P>());
+        return *this;
+    }
+#endif
+
     template <numeric B>
         requires inside_assignable<inside, B, P>
     constexpr inside& operator=(const B& other) {
@@ -819,6 +838,17 @@ struct inside {
     [[nodiscard]] static constexpr std::expected<inside, errc> try_make(const std::expected<A, errc>& value) {
         return value.and_then([](const A& a) { return try_make<F>(a); });
     }
+#if BEMAN_INSIDE_BIG_GRIDS
+    template <policy_flag F = none, std::same_as<detail::grid_rational> V>
+    [[nodiscard]] static constexpr std::expected<inside, errc> try_make(const V& value) {
+        errc   ec{};
+        inside result{};
+        detail::assign_grid_number(result, value, make_policy<P | F>(ec));
+        if (ec != errc{})
+            return std::unexpected{ec};
+        return result;
+    }
+#endif
 };
 
 //---------------------------------------------------------------------------
