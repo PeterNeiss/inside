@@ -17,6 +17,9 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   `constexpr` big `top`. Before, only `just<top>` worked.
 - Example [`rsa.cpp`](examples/rsa.cpp): textbook RSA-1024 on C++26 big
   grids (extended Euclid, square-and-multiply, CRT, signatures).
+- [docs/adoption.md](docs/adoption.md): why safer number types are hard to
+  adopt (Mooers' Law), what arithmetic bugs have cost, and how to make
+  knowing cheap. The paper gains a matching section.
 
 ### Fixed
 

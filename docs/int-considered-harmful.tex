@@ -138,7 +138,7 @@
 \title{\vspace{-1.5cm}\textbf{int considered harmful}\\[0.4em]
        \large A case against the default integer, and a type that fixes it}
 \author{Peter Neiss}
-\date{18 October 2026}
+\date{26 October 2026}
 
 \begin{document}
 \maketitle
@@ -181,7 +181,7 @@ programs or from the repository's generated \file{docs/performance.md}. Every
 program is built as C++26 (\code{-std=c++26}), and every language rule cited is
 C++26's. The compiler is GCC 15.2.0 on \mbox{x86-64} Linux unless stated
 otherwise.
-\code{inside} is at version 0.3 and still under development, so its API may
+\code{inside} is at version 0.5 and still under development, so its API may
 change. The paper and the library were developed with
 \href{https://claude.com/claude-code}{Claude Code}, which wrote and ran the
 programs, extracted the figures and typeset the document. The argument and the
@@ -426,7 +426,7 @@ count that is negative, or not less than the width, is still undefined. x86
 masks the count, so \code{1 << 32} printed \code{1} here. The standard
 promises nothing, and only UBSan reported it.
 
-\subsection{Narrowing is silent}
+\subsection{Narrowing is silent}\label{sec:narrowing}
 
 \lstinputlisting[firstline=11,lastline=24]{int-considered-harmful/h11_narrowing.cpp}
 \begin{lstlisting}[style=term]
@@ -459,7 +459,7 @@ The midpoint of two in-range values lands outside the range. Bentley's
 in the JDK's \code{Arrays.binarySearch}, where it had lived for nine years. The
 problem is not a lack of care.
 
-\subsection{The semantic hazard: int does not know what it counts}
+\subsection{The semantic hazard: int does not know what it counts}\label{sec:semantic}
 
 Every hazard so far concerned range. This one concerns meaning, and no
 sanitizer can catch it, because the arithmetic itself is valid.
@@ -1439,7 +1439,7 @@ hardware.
 \section{When not to use this}\label{sec:limits}
 
 \begin{itemize}
-\item \textbf{It is not yet ready for production.} Version 0.3 is at the Beman
+\item \textbf{It is not yet ready for production.} Version 0.5 is at the Beman
       ``under development'' maturity level, and the API may change.
 \item \textbf{It requires C++23}: GCC 14+, Clang 19+ (Clang 18 with libc++),
       or MSVC 19.51+. Grids past 64 bits need C++26 static reflection, which
@@ -1468,6 +1468,95 @@ hardware.
 \end{itemize}
 
 % ============================================================================
+\section{The pain of knowing}\label{sec:adoption}
+
+Better number types are not new, and they are not much used. In 1959 the
+information scientist Calvin Mooers asked the same question about retrieval
+systems, and his answer applies unchanged:
+
+\begin{quote}\small
+We are all aware that some retrieval systems, although technically rather
+poor, nevertheless receive intensive use, while other systems, sometimes
+technically very much better, receive very little customer use. Why is this?
+[\dots] \emph{Mooers' Law:} An information retrieval system will tend not to be
+used whenever it is more painful and troublesome for a customer to have
+information than for him not to have it.
+\end{quote}
+
+A type that knows its range is a retrieval system for facts about your own
+code. The first build hands you those facts: this sum can overflow, this
+divisor can be zero, these numbers are in different units. Mooers describes
+what receiving them costs:
+
+\begin{quote}\small
+If you have information, you must first read it, which is not always easy. You
+must then try to understand it. [\dots] The information may require you to
+make decisions about it or other information. [\dots] Understanding the
+information may show that your work was wrong, or that your boss was wrong, or
+may show that your work was needless. [\dots] Work saved is seldom recognized.
+Work done---even in duplication---is well paid and rewarded.
+\end{quote}
+
+The cost of \emph{not} having the information is measured differently.
+Table~\ref{tab:losses} lists six failures. Each came from an arithmetic fact
+that no type recorded.
+
+\begin{table}[ht]
+\centering
+\small
+\caption{What not knowing cost}\label{tab:losses}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{3.0cm} >{\raggedright\arraybackslash}p{7.6cm} >{\raggedright\arraybackslash}p{4.4cm}@{}}
+\toprule
+Event & Arithmetic cause & Loss \\
+\midrule
+Patriot, Dhahran, 1991 & Tenths of a second scaled by 1/10 in a 24-bit register. After 100\,h the clock was off by 0.3433\,s and the range gate by 687\,m & 28 soldiers killed \\
+Therac-25, 1985--87 & A one-byte flag set by incrementing wrapped to 0 every 256th pass and skipped a safety check & Six massive overdoses; deaths and serious injuries \\
+Vancouver Stock Exchange, 1982--83 & The index was truncated to three decimals on every trade. After 22 months it read about 520, not 1098.892 & An index off by half for almost two years \\
+Ariane 5 Flight 501, 1996 & A 64-bit float converted to a 16-bit integer (\S\ref{sec:narrowing}) & Rocket and four satellites, reported at more than US\$370 million \\
+Mars Climate Orbiter, 1999 & Pound-force seconds read as newton seconds (\S\ref{sec:semantic}) & The spacecraft \\
+Boeing 787, 2015 & A counter overflowed after 248 days of continuous power; all AC power could be lost & None: found in time, and the aircraft had to be power-cycled until fixed \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+None of these teams were careless. The Ariane code was correct for the rocket
+it was written for, and the Patriot was designed to run for hours, not days.
+Programmers who learn this late in a career often meet it with dismay: the
+floor they have stood on for decades has a crack in it. That reaction is a
+sign of caring about correctness, not of having failed at it. The defaults
+failed them, and a finding today is not a verdict on yesterday's work.
+
+Mooers' Law cannot be argued away, but it can be turned around by making the
+information cheap. \code{inside} is built for that. It is adopted one
+declaration at a time, at the boundary where a number enters (\code{parse},
+\code{try\_make}), with no rewrite. Every store is checked unless the code says
+\code{unsafe}, so nobody is silently opted out of knowing. Rejections name
+their reason (\S\ref{sec:inside}), and where the range proves a result fits,
+the generated code is the code of the \code{int} it replaces
+(\S\ref{sec:codegen}). The single header lets anyone try a formula on Compiler
+Explorer, privately, before raising it with anyone.
+
+Mooers also named the way out:
+
+\begin{quote}\small
+On the other hand, there are situations where the diligent finding and use of
+information is stressed and rewarded, and where failure to find or to use
+information is severely punished. In such places, we can expect retrieval
+systems to be actively used and we can expect pressure from the information
+users themselves for better systems.
+\end{quote}
+
+Aviation, medicine and spaceflight learned this from the failures in
+Table~\ref{tab:losses}. Any team can create the same climate before its own
+failure. Review arithmetic findings without blame, record the incidents that
+did not happen so that saved work becomes visible, and treat the compile error
+that stopped a build as good news. Memory safety took this path: once the
+tools made a whole class of bugs cheap to see, the talk moved from blame to
+engineering. Arithmetic can follow. \file{docs/adoption.md} develops this
+section at length.
+
+% ============================================================================
 \section{Conclusion}
 
 The defects of \S\ref{sec:indictment} are not exotic. They are the arithmetic
@@ -1475,7 +1564,8 @@ of the type C++ programmers reach for by default, and carelessness does not
 cause them. The midpoint bug lived nine years in the JDK, and Ariane 5 was
 destroyed by code that had been correct on the previous rocket. These defects
 persist because the information needed to catch them is absent from the
-program:
+program, and because, as \S\ref{sec:adoption} argues, having it has been more
+painful than not having it:
 \begin{itemize}
 \item \code{int} does not know its range, so it cannot check it.
 \item It does not know what it counts, so it cannot object to a mismatch.
@@ -1586,6 +1676,20 @@ File & Demonstrates \\
 \item ISO/IEC 14882, \emph{Programming languages --- C++} (C++26):
       [expr.pre] (undefined behaviour on overflow), [expr.shift],
       [expr.mul], [conv.integral].
+\item C.~N. Mooers, ``Mooers' Law, or why some retrieval systems are used and
+      others are not,'' remarks at the American Documentation Institute,
+      24 October 1959; \emph{Bulletin of the American Society for Information
+      Science}, October/November 1996,
+      \href{https://web.archive.org/web/20110608152902/http://findarticles.com/p/articles/mi_qa3633/is_199610/ai_n8749122/}{archived copy}.
+\item U.S. General Accounting Office, \emph{Patriot Missile Defense: Software
+      Problem Led to System Failure at Dhahran, Saudi Arabia},
+      GAO/IMTEC-92-26, February 1992.
+\item N.~G. Leveson and C.~S. Turner, ``An Investigation of the Therac-25
+      Accidents,'' \emph{IEEE Computer}, 26(7):18--41, July 1993.
+\item \emph{The Wall Street Journal}, 8 November 1983, p.~37, on the Vancouver
+      Stock Exchange index.
+\item Federal Aviation Administration, Airworthiness Directive 2015-09-07,
+      Boeing 787 generator control units, May 2015.
 \item M.~Pusz, \emph{mp-units}, \url{https://github.com/mpusz/mp-units}.
 \item M.~Pusz et al., \emph{Quantities and units library}, WG21 P3045,
       2024--2026.
@@ -1599,7 +1703,7 @@ File & Demonstrates \\
       \file{docs/tutorial.md}, \file{docs/policies.md},
       \file{docs/arithmetic.md}, \file{docs/storage.md}, \file{docs/units.md},
       \file{docs/constants.md}, \file{docs/math.md}, \file{docs/determinism.md}, \file{docs/accuracy.md},
-      \file{docs/performance.md}.\end{sloppypar}
+      \file{docs/performance.md}, \file{docs/adoption.md}.\end{sloppypar}
 \end{enumerate}
 
 \end{document}
