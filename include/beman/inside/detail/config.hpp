@@ -67,6 +67,15 @@
         "beman::inside does not support -ffast-math, -fassociative-math, -ffinite-math-only or /fp:fast: its results rely on IEEE floating point as written"
 #endif
 
+// Excess precision is not supported either: the x87 unit (32-bit x86 without
+// SSE2) evaluates double expressions at 80 bits and rounds them when it
+// spills, so the same source rounds differently by register pressure.
+#if (defined(__FLT_EVAL_METHOD__) && __FLT_EVAL_METHOD__ != 0) || \
+    (defined(_M_IX86) && (!defined(_M_IX86_FP) || _M_IX86_FP < 2))
+    #error \
+        "beman::inside needs floating point evaluated in its own type (FLT_EVAL_METHOD 0): on 32-bit x86 compile for SSE2 (-msse2 -mfpmath=sse, /arch:SSE2)"
+#endif
+
 // BEMAN_INSIDE_BIG_GRIDS — grid numbers of any size (C++26 static
 // reflection), else 64-bit grids. Define it to 0 to force the 64-bit grids on
 // a C++26 compiler (grid_rational.hpp).

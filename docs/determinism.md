@@ -17,9 +17,13 @@ build rules that the other pages link to.
 |---|---|---|
 | integer and fraction storage, `+ − × ÷`, policies | **always** | none: fixed-width integers and exact fractions |
 | units: conversions, mixed-unit sums, points | **always** | none: a conversion is an exact grid rescale |
-| conversions to and from `double` | **yes** | IEEE-754 binary64, round to nearest; fast-math is rejected at compile time |
+| conversions to and from `double` and `float` | **yes** | IEEE-754, round to nearest; fast-math and x87 excess precision are rejected at compile time |
+| conversions to and from `long double` | **per format** | one rounding to the platform's `long double` (x87 80-bit, IEEE quad, or `double`) |
 | `beman::inside::math`, `units_math.hpp`, `value_cast` across π | **always** | none: every result is the correctly rounded grid point |
 | compile-time constants and coefficient tables | **always** | `constexpr`, no external generators |
+| text: `to_string`, `parse`, `<<`, `>>`, `std::format` | **always** | none: integer digits, no locale |
+| `uniform<B>(rng)` | **always** | the same generator and seed |
+| `std::hash` values | **per standard library** | built on `std::hash` of the raw's integers |
 
 A transcendental has exactly one correct answer on a given output grid, and
 the engine returns it. Nothing about the build — compiler, flags, FPU,
@@ -62,11 +66,16 @@ nearest even (the default), binary64, and no rewrites that change values:
 
 - A build with `-ffast-math`, GCC's `-fassociative-math` or `-ffinite-math-only`
   (which define `__FAST_MATH__`, `__ASSOCIATIVE_MATH__` or
-  `__FINITE_MATH_ONLY__`) stops with an `#error` at the first include.
+  `__FINITE_MATH_ONLY__`), or MSVC's `/fp:fast` (`_M_FP_FAST`), stops with an
+  `#error` at the first include.
 - Clang's bare `-fassociative-math` and `-funsafe-math-optimizations` define no
   macro, so they cannot be detected: don't pass them.
-- On 32-bit x86, compile for SSE2. The x87 stack works at 80 bits and does not
-  match.
+- Excess precision stops with an `#error` too: a build whose
+  `__FLT_EVAL_METHOD__` is not 0, or 32-bit MSVC below `/arch:SSE2`. That is
+  32-bit x86 on the x87 unit, which works at 80 bits and rounds when a value
+  leaves a register. Compile for SSE2 (`-msse2 -mfpmath=sse`).
+- On MSVC keep `/fp:precise` (the default) or `/fp:strict`. MSVC has no
+  association barrier (below), so `/fp:contract` is outside the guarantee.
 - Flush-to-zero modes and `fesetround` are outside the guarantee.
 
 ## The math engine
@@ -85,7 +94,8 @@ The floating-point tiers rely on the build rules above, plus:
 - an explicit `std::fma` and a 1.5× margin on every bound, so FMA contraction
   cannot change a result (`-mfma` is safe; `BEMAN_INSIDE_FMA`, default `ON`,
   adds it on x86-64);
-- error-free sums fenced with `__builtin_assoc_barrier`.
+- error-free sums fenced with `__builtin_assoc_barrier` (GCC) or
+  `__arithmetic_fence` (Clang), so `-ffp-contract=fast` cannot fuse them.
 
 `BEMAN_INSIDE_MATH_NO_FP` removes both tiers, with the same results.
 [internals.md](internals.md#10-the-math-engine) lists each place where the
@@ -100,6 +110,48 @@ input bounds (tanh x → 1, sin x → x, eˣ → 0) then runs once more, at up t
 2048 extra bits. Only after that does the engine take the nearest point. That
 needs an irrational value within 2^−4W of a boundary, and no test has ever
 reached it.
+
+## Other surfaces
+
+- **`float`.** A store from a `float` reads its exact value, like a
+  `double`. `to<float>()` rounds the exact value once: where its `double` is
+  a tie between two floats, the tie is decided from the value, not from the
+  `double`.
+- **`long double`.** A `long double` source is exact everywhere, including the
+  bits past a `double`'s. `to<long double>()` rounds the exact value once to
+  the platform's `long double`. That type is 80-bit x87 on x86 Linux, IEEE
+  quad on AArch64 Linux, and `double` on MSVC and Apple, so the bits match
+  between machines with the same format, not across formats.
+- **Text.** `to_string`, `parse`, `from_chars`, `operator<<`/`>>` and the
+  `std::formatter`s write and read the digits themselves: no `printf`,
+  `to_chars`, `strtod` or locale. Only an integer spec that the formatter
+  forwards to `std::formatter<std::int64_t>` and that asks for the locale
+  (`{:L}`) depends on it.
+- **Random sampling.** `uniform<B>(rng)` draws from the generator's raw
+  outputs by a fixed recipe, not through `std::uniform_int_distribution`,
+  whose algorithm each standard library picks for itself. A seeded
+  `std::mt19937_64` gives the same B on libstdc++, libc++ and the MSVC STL
+  (pinned in `sign_uniform.test.cpp` and `wide_grid.test.cpp`).
+- **Hashing.** `std::hash<inside>` hashes its raw with `std::hash` of the
+  raw's integers (and combines them for a fraction or wide raw). The integer
+  hash is the identity on libstdc++ and libc++ and FNV-1a on the MSVC STL.
+  Hash values, and so the iteration order of unordered containers, are
+  stable within one standard library but not across them. Don't store them.
+
+## How it is checked
+
+- CI runs the same exact-value pins on x86-64 Linux (GCC 14–16, Clang 18–22,
+  libstdc++ and libc++), arm64 macOS (AppleClang) and x64 Windows (MSVC). It
+  also runs a `BEMAN_INSIDE_MATH_NO_FP=ON` cell, where the integer path
+  computes every result alone.
+- The differential oracle (`tests/beman/inside/differential`) recomputes
+  arithmetic, rounding stores, `to<float>`/`to<double>` and π conversions
+  exactly in Python. ctest runs a fixed seed, and a scheduled CI run takes a
+  random seed and twenty times the cases.
+- The FP-free smoke test puts a poisoned `<cmath>`
+  (`tests/beman/inside/nofp_poison`) first on the include path, so a
+  `BEMAN_INSIDE_MATH_NO_FP` build that pulls in floating-point math fails to
+  compile.
 
 ## Value stability across releases
 
@@ -127,9 +179,13 @@ time one.
 
 - Transcendentals need nothing: they are correctly rounded in every build.
 - For conversions with `double`: round to nearest even, IEEE-754 binary64,
-  SSE2 on 32-bit x86, no Clang `-fassociative-math` or
-  `-funsafe-math-optimizations` (fast-math itself is rejected).
+  no Clang `-fassociative-math` or `-funsafe-math-optimizations` (fast-math,
+  `/fp:fast` and x87 excess precision are rejected).
+- On MSVC: `/fp:precise` or `/fp:strict`, not `/fp:contract`.
 - `-mfma` is safe.
+- `long double` results match only between platforms with the same
+  `long double` format, and `std::hash` values only within one standard
+  library.
 - Toolchain: GCC 14+, Clang 19+, Clang 18 with libc++, or MSVC 19.51+, in
   C++23 mode or later.
 - To keep floating point out entirely, build with `-DBEMAN_INSIDE_MATH_NO_FP=ON`

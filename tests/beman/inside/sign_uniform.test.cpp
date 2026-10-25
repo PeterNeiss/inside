@@ -71,3 +71,26 @@ TEST(UniformTest, uniform_covers_every_slot_and_stays_on_the_grid) {
     EXPECT_EQ(sample<thirds>(2000).size(), 4u);
     EXPECT_EQ(sample<decltype(5_ins)>(10).size(), 1u); // a point
 }
+
+// The draw is the library's own, so these sequences are the same on every
+// standard library: a 64-bit generator (one output per word) and a 31-bit one
+// (bits gathered from several outputs).
+TEST(UniformTest, uniform_draws_are_pinned_across_standard_libraries) {
+    using idx = inside<{-5, 5}>;
+    std::mt19937_64 mt{42};
+    for (int v : {1, 3, 5, 0, -5, -5, 1, -4})
+        EXPECT_EQ(uniform<idx>(mt), v);
+    std::minstd_rand ms{42};
+    for (int v : {1, 0, -2, 3, 0, 5, -3, -2})
+        EXPECT_EQ(uniform<idx>(ms), v);
+
+    using quarter = inside<{{-1, 1}, per<4>}>;
+    std::mt19937_64 mq{42};
+    for (int q : {2, 4, 1, -4, -4, 2, -3, 2}) // in quarters
+        EXPECT_EQ((rational{uniform<quarter>(mq)}), (rational{q, 4}));
+
+    using big = inside<{0, 1'000'000}>;
+    std::minstd_rand mb{42};
+    for (int v : {876198, 72741, 579955, 669995, 974328, 246765, 169285, 905162})
+        EXPECT_EQ(uniform<big>(mb), v);
+}

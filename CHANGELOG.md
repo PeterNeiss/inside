@@ -11,6 +11,18 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 - `just<N>.per<D>` is gone: it miscompiled on MSVC. Write `just<N, D>`
   (`just<1>.per<3>` is `just<1, 3>`; in dependent code,
   `just<N>.template per<D>` is `just<N, D>`).
+- `uniform<B>(rng)` draws a different sequence for the same seed: it now
+  draws from the generator's raw outputs by its own recipe, so the sequence
+  is the same on every standard library. Re-record seeded samples.
+- A build with excess floating-point precision (`__FLT_EVAL_METHOD__` not
+  0: 32-bit x86 on the x87 unit, or 32-bit MSVC below `/arch:SSE2`) stops
+  with an `#error`. Compile for SSE2 (`-msse2 -mfpmath=sse`).
+
+### Changed
+
+- [determinism.md](docs/determinism.md) covers `float`, `long double`,
+  text, random sampling, hashing, MSVC's `/fp` modes and how the guarantee
+  is tested.
 
 ## 0.4.0 — 2026-10-19
 

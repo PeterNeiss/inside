@@ -23,7 +23,7 @@ BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <algorithm>
 
-// BEMAN_INSIDE_MATH_NO_FP is resolved in policy_flag.hpp (included via inside.hpp).
+// BEMAN_INSIDE_MATH_NO_FP is resolved in config.hpp.
 
 // BEMAN_INSIDE_FABS, _NEARBYINT, _INF, _ASSOC_BARRIER and _HAS_FMA: config.hpp.
 
