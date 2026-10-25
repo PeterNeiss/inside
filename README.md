@@ -172,7 +172,8 @@ output.
 - **Exact and big:** [`json_io.cpp`](examples/json_io.cpp) (exact JSON numbers),
   [`expected_pipeline.cpp`](examples/expected_pipeline.cpp) (errors with their cause),
   [`solar_system.cpp`](examples/solar_system.cpp) (nanometres across the solar system),
-  [`planck_to_cosmos.cpp`](examples/planck_to_cosmos.cpp) (grids past 64 bits, C++26).
+  [`planck_to_cosmos.cpp`](examples/planck_to_cosmos.cpp) (grids past 64 bits, C++26),
+  [`rsa.cpp`](examples/rsa.cpp) (textbook RSA-1024 on residue grids, C++26).
 - **Signal and control:** [`audio_mixer.cpp`](examples/audio_mixer.cpp),
   [`oscillator.cpp`](examples/oscillator.cpp) (a phase counter in slots of 2π/65536 rad),
   [`pid_controller.cpp`](examples/pid_controller.cpp) (K in, % out),

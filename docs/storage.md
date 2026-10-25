@@ -125,6 +125,11 @@ An unbounded one sizes them from its limits, and reports `errc::overflow`
 when a result outgrows them. [`planck_to_cosmos.cpp`](../examples/planck_to_cosmos.cpp)
 runs this example with lengths in metres.
 
+Integer grids past 64 bits compute exactly in fixed-width integers.
+[`rsa.cpp`](../examples/rsa.cpp) runs textbook RSA-1024 on residues
+`inside<{0, n - 1}>`: a product of two residues is a 2048-bit grid, and
+`% inside<{n, n}>{}` brings it back as a plain residue.
+
 Switches:
 
 - C++26 with static reflection means GCC 16 with `-freflection`. The CMake

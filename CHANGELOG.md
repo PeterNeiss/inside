@@ -15,6 +15,8 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 - C++26 big grids: an inside takes a grid number at run time (constructor,
   `=`, `try_make`), checked like any store: `residue r = top;` for a
   `constexpr` big `top`. Before, only `just<top>` worked.
+- Example [`rsa.cpp`](examples/rsa.cpp): textbook RSA-1024 on C++26 big
+  grids (extended Euclid, square-and-multiply, CRT, signatures).
 
 ### Fixed
 
