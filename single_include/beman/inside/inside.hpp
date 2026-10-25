@@ -3716,6 +3716,38 @@ struct big_rational {
     friend constexpr std::strong_ordering operator<=>(const big_rational& a, T b) {
         return a <=> big_rational{b};
     }
+    template <std::integral T>
+    friend constexpr big_rational operator+(const big_rational& a, T b) {
+        return a + big_rational{b};
+    }
+    template <std::integral T>
+    friend constexpr big_rational operator+(T a, const big_rational& b) {
+        return big_rational{a} + b;
+    }
+    template <std::integral T>
+    friend constexpr big_rational operator-(const big_rational& a, T b) {
+        return a - big_rational{b};
+    }
+    template <std::integral T>
+    friend constexpr big_rational operator-(T a, const big_rational& b) {
+        return big_rational{a} - b;
+    }
+    template <std::integral T>
+    friend constexpr big_rational operator*(const big_rational& a, T b) {
+        return a * big_rational{b};
+    }
+    template <std::integral T>
+    friend constexpr big_rational operator*(T a, const big_rational& b) {
+        return big_rational{a} * b;
+    }
+    template <std::integral T>
+    friend constexpr big_rational operator/(const big_rational& a, T b) {
+        return a / big_rational{b};
+    }
+    template <std::integral T>
+    friend constexpr big_rational operator/(T a, const big_rational& b) {
+        return big_rational{a} / b;
+    }
 
     // The nearest double, by way of the top 64 bits of each part.
     constexpr explicit operator double() const {

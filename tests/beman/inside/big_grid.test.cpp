@@ -127,6 +127,9 @@ TEST(BigGridTest, grid_number_literal) {
     static_assert(123'456'789'012'345'678'901'234'567'890_g ==
                   grid_rational{big_int{123'456'789'012'345'678ull} * big_int{1'000'000'000'000ull} +
                                 big_int{901'234'567'890ull}});
+    // Grid numbers take built-in integers: {0, 2^100 − 1} without spelling 1_g.
+    static_assert(std::is_same_v<inside<{0, 1267650600228229401496703205376_g - 1}>,
+                                 inside<{0, 1267650600228229401496703205375_g}>>);
 }
 
 // The exact paths are constexpr.

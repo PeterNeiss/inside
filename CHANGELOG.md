@@ -10,6 +10,8 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 - `divmod` on integer grids past imax: uint64 grids and C++26 big grids,
   with quotient and remainder from one exact division.
+- C++26 grid numbers take built-in integers in `+ - * /`: `N - 1` was
+  ambiguous and had to be spelled `N - 1_g`.
 
 ### Fixed
 

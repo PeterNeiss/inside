@@ -56,6 +56,15 @@ static_assert(big_rational{0x1p-100} == big_rational{big_int{1}, pow2(100)});
 constexpr rational r = big_rational{rational{-3, 7}};
 static_assert(r == rational{-3, 7});
 static_assert(big_rational{rational{5, 2}} == rational{5, 2}); // mixed comparison
+
+// Mixed arithmetic with built-in integers: unambiguous (an int converts to
+// both big_rational and rational), on either side.
+constexpr big_rational p100{pow2(100)};
+static_assert(p100 - 1 == big_rational{pow2(100) - big_int{1}});
+static_assert(1 - p100 == -(p100 - 1));
+static_assert(p100 + 2u == 2u + p100 && (p100 + 2u) - p100 == 2);
+static_assert(p100 * 3 == 3 * p100 && (p100 * 3) / 3 == p100);
+static_assert(1 / big_rational{2} == big_rational{rational{1, 2}} && fine / -2 == -(fine * rational{1, 2}));
 } // namespace
 
 TEST(BigRationalTest, runtime_small_values) {
