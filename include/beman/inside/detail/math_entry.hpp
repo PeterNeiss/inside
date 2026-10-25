@@ -886,25 +886,36 @@ inline constexpr bool unanchored_call = !anchored<Out> || (!anchored<Ins> || ...
 // The tiers in order at runtime: the double kernel (when FP), the dd
 // kernel (when DD), the integer path. Each fast tier stores a decided
 // result and returns true; whatever runs after the first one is cold.
-// Constant evaluation takes the integer path.
+// Constant evaluation takes the integer path, and so does every call under
+// math::driver.IntegerOnly (BEMAN_INSIDE_MATH_INSTRUMENT).
 template <insidable Out, bool FP, bool DD, typename F, typename D, typename I>
 BEMAN_INSIDE_ALWAYS_INLINE constexpr auto
-tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integer) -> decltype(integer()) {
+tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integer_path) -> decltype(integer_path()) {
+#if BEMAN_INSIDE_MATH_INSTRUMENT
+    const auto integer = [&] {
+        ax::note_integer_run();
+        return integer_path();
+    };
+#else
+    const I& integer = integer_path;
+#endif
     if constexpr (FP || DD)
         if !consteval {
-            if constexpr (FP) {
-                if (Out r; fp(r))
-                    return r;
-                return ax::cold_call([&]() -> decltype(integer()) {
-                    if constexpr (DD)
-                        if (Out r; dd(r))
-                            return r;
-                    return integer();
-                });
-            } else {
-                if (Out r; dd(r))
-                    return r;
-                return ax::cold_call(integer);
+            if (!ax::integer_only()) {
+                if constexpr (FP) {
+                    if (Out r; fp(r))
+                        return r;
+                    return ax::cold_call([&]() -> decltype(integer()) {
+                        if constexpr (DD)
+                            if (Out r; dd(r))
+                                return r;
+                        return integer();
+                    });
+                } else {
+                    if (Out r; dd(r))
+                        return r;
+                    return ax::cold_call(integer);
+                }
             }
         }
     return integer();
@@ -919,7 +930,9 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
                                                                    [&](auto& r) -> bool { return dd_call; }, \
                                                                    [&] { return __VA_ARGS__; });
 #else
-    #define BEMAN_INSIDE_AX_TIERS(Out, FP, DD, fp_call, dd_call, ...) return __VA_ARGS__;
+    #define BEMAN_INSIDE_AX_TIERS(Out, FP, DD, fp_call, dd_call, ...) \
+        ::beman::inside::math::detail::ax::note_integer_run();        \
+        return __VA_ARGS__;
 #endif
 
 // The tiers of a one-input kernel fn, where ok holds.

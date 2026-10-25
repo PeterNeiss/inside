@@ -19,16 +19,19 @@ build rules that the other pages link to.
 | units: conversions, mixed-unit sums, points | **always** | none: a conversion is an exact grid rescale |
 | conversions to and from `double` and `float` | **yes** | IEEE-754, round to nearest; fast-math and x87 excess precision are rejected at compile time |
 | conversions to and from `long double` | **per format** | one rounding to the platform's `long double` (x87 80-bit, IEEE quad, or `double`) |
-| `beman::inside::math`, `units_math.hpp`, `value_cast` across π | **always** | none: every result is the correctly rounded grid point |
+| `beman::inside::math`, `units_math.hpp`, `value_cast` across π | **yes** | the same build rules as `double`, for the floating-point tiers (none under `BEMAN_INSIDE_MATH_NO_FP`); see [the math engine](#the-math-engine) for what *correctly rounded* covers |
 | compile-time constants and coefficient tables | **always** | `constexpr`, no external generators |
 | text: `to_string`, `parse`, `<<`, `>>`, `std::format` | **always** | none: integer digits, no locale |
 | `uniform<B>(rng)` | **always** | the same generator and seed |
 | `std::hash` values | **per standard library** | built on `std::hash` of the raw's integers |
 
-A transcendental has exactly one correct answer on a given output grid, and
-the engine returns it. Nothing about the build — compiler, flags, FPU,
-constant evaluation — can change it, and an x86 host and a soft-float core
-agree bit for bit.
+A math result is the integer path's grid point in every build: a
+floating-point tier returns a point only where its error bound settles it, and
+then it is the point the integer path computes. So an x86 host, a soft-float
+core and constant evaluation agree bit for bit. That point is the correctly
+rounded one wherever the engine decided it, which is every result except one
+within about 2^−4W of a rounding boundary; [below](#when-is-a-result-decided)
+says what happens there, how rare it is, and how to certify a type pair.
 
 ## The integer and fraction core
 
@@ -82,12 +85,13 @@ nearest even (the default), binary64, and no rewrites that change values:
 
 `beman::inside::math` and the units math return the **correctly rounded point
 of the output grid**, under the output's rounding mode
-([math.md](math.md#how-it-works)). Such a result depends only on the input
-value and the output grid, so it cannot depend on how it was computed. The fast
-paths (tables, `double` and double-double kernels) return a point only when
-their error bound proves it is the one the integer path returns. The integer
-path, the only one at compile time and without an FPU, uses no `<cmath>`, no
-run-time tables and no generated code.
+([math.md](math.md#how-it-works)), for every result the engine decides (the
+exception is [below](#when-is-a-result-decided)). Such a result depends only
+on the input value and the output grid, so it cannot depend on how it was
+computed. The fast paths (tables, `double` and double-double kernels) return a
+point only when their error bound proves it is the one the integer path
+returns. The integer path, the only one at compile time and without an FPU,
+uses no `<cmath>`, no run-time tables and no generated code.
 
 The floating-point tiers rely on the build rules above, plus:
 
@@ -97,19 +101,49 @@ The floating-point tiers rely on the build rules above, plus:
 - error-free sums fenced with `__builtin_assoc_barrier` (GCC) or
   `__arithmetic_fence` (Clang), so `-ffp-contract=fast` cannot fuse them.
 
-`BEMAN_INSIDE_MATH_NO_FP` removes both tiers, with the same results.
-[internals.md](internals.md#10-the-math-engine) lists each place where the
-engine chose correctness over speed.
+`BEMAN_INSIDE_MATH_NO_FP` removes both tiers, with the same results as far as
+the tiers' bounds hold. The `double` tier's and the lean double-double
+kernels' bounds are proved; the full double-double kernels' are measured,
+with a margin of about 2⁹ over the worst error seen
+([internals.md](internals.md#10-the-math-engine), which lists each place where
+the engine chose correctness over speed). `beman.inside.certify`, below, checks
+the tiers against the integer path on every input of its pairs.
 
-**When is a result decided?** A transcendental value can sit exactly on a
-rounding boundary only at exact inputs (`exp(0)`, `sqrt(9/4)`, …), and the
-engine stores those exactly. For every other input it doubles the precision
-until the result is decided, up to a cap of four times the start precision W.
-A function whose results can come close to a grid point by an amount the
-input bounds (tanh x → 1, sin x → x, eˣ → 0) then runs once more, at up to
-2048 extra bits. Only after that does the engine take the nearest point. That
-needs an irrational value within 2^−4W of a boundary, and no test has ever
-reached it.
+### When is a result decided?
+
+Every rounding boundary — a grid point, or the midpoint between two — is
+rational, so a result can lie exactly on one only if it is rational. At a
+rational input the rational results are few and known: `exp(0)`, `log(1)`,
+`2^−1`, `log2(8)`, `sqrt(9/4)`, `8^(2/3)`, `hypot(3/2, 2)`, sin 30°, and the
+like. Lindemann–Weierstrass, Niven's theorem and the rational root theorem
+leave no others, and the engine stores each one exactly
+(`tests/beman/inside/math_exact.test.cpp` puts every kind on a tie, under
+every rounding mode). Every other result is irrational, so doubling the
+precision decides it at some point.
+
+How far that point is, nobody knows in advance for an arbitrary grid. Bounds
+on the worst case exist only for fixed formats such as binary64, found by
+long searches; this is the table-maker's dilemma, and no amount of testing
+solves it. So the engine caps the doubling at four times the start precision
+W, the output's bits plus 8 (at least 16). A function whose results can come
+close to a grid point by an amount the input bounds (tanh x → 1, sin x → x,
+eˣ → 0) then runs once more, at up to 2048 extra bits. A result still
+undecided after that lies within about 2^−4W of a boundary, and the engine
+stores the point nearest its last approximation: the same in every build, but
+a guess, which may be the wrong neighbour.
+
+An irrational result with no reason to be near a boundary is undecided at the
+cap for roughly one input in 2^(3W−9): one in 2³⁹ for the coarsest outputs,
+and far fewer for fine ones. For a type pair whose input has up to a few
+million points, exhaustion settles the question. The certify tool
+([certify.md](certify.md)) computes every input of a pair both through the
+public call and through the integer path alone, counts the guesses, and
+certifies the pair when no result differs and none was guessed. It also
+hashes all the results, so another machine or build can show it computed
+the same bits. The library's pairs are all certified ([certified.md](certified.md)):
+every function, on coarse 4-bit outputs (a cap of only 64 bits), fine and
+decimal ones, and outputs on the double-double tier. `find_grids.py` finds
+the pairs your own build uses and certifies them.
 
 ## Other surfaces
 
@@ -148,6 +182,11 @@ reached it.
   arithmetic, rounding stores, `to<float>`/`to<double>` and π conversions
   exactly in Python. ctest runs a fixed seed, and a scheduled CI run takes a
   random seed and twenty times the cases.
+- `beman.inside.certify` sweeps every input of its math pairs, as
+  [above](#when-is-a-result-decided), and checks every result hash against
+  [certified.md](certified.md): every pair in an optimized build, the small
+  ones in a debug build. Each configuration (GCC, Clang, AppleClang on arm64,
+  MSVC, the FP-free build) has to reproduce the same hashes.
 - The FP-free smoke test puts a poisoned `<cmath>`
   (`tests/beman/inside/nofp_poison`) first on the include path, so a
   `BEMAN_INSIDE_MATH_NO_FP` build that pulls in floating-point math fails to
@@ -177,7 +216,10 @@ time one.
 
 ## Checklist
 
-- Transcendentals need nothing: they are correctly rounded in every build.
+- Transcendentals need the same rules for their floating-point tiers (or
+  `BEMAN_INSIDE_MATH_NO_FP`). Their results are then the same in every build,
+  and correctly rounded wherever the engine decides them, which `certify`
+  checks for a type pair.
 - For conversions with `double`: round to nearest even, IEEE-754 binary64,
   no Clang `-fassociative-math` or `-funsafe-math-optimizations` (fast-math,
   `/fp:fast` and x87 excess precision are rejected).

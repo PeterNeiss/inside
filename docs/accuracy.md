@@ -5,8 +5,9 @@ Regenerate with `cmake --build <build-dir> --target beman.inside.accuracy_report
 
 Error is measured against a long-double `<cmath>` reference, in units of
 the **output grid notch**: max < 0.5 means every sampled result is the
-correctly rounded grid point. The engine rounds correctly by construction
-(see [math.md](math.md)); this table checks it on three kinds of grid:
+correctly rounded grid point. The engine rounds correctly wherever it
+decides a result ([math.md](math.md#what-is-guaranteed)); this table
+checks it on three kinds of grid:
 `dyadic 2^-14` (dyadic inputs, deduced outputs),
 `decimal` (inputs in steps of 1/1000, deduced outputs) and `out 2^-40`
 (the dyadic inputs into an explicit output with a 2^-40 notch). The

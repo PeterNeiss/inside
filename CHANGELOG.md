@@ -18,8 +18,34 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   0: 32-bit x86 on the x87 unit, or 32-bit MSVC below `/arch:SSE2`) stops
   with an `#error`. Compile for SSE2 (`-msse2 -mfpmath=sse`).
 
+### Added
+
+- The certify tool ([certify.md](docs/certify.md)): for an In → Out pair of
+  a math function it computes every input as a run-time call and on the
+  integer path alone, fails on any difference or any result left undecided
+  at the precision cap, and hashes every result. `find_grids.py` finds the
+  pairs a build uses in its symbols and certifies them, with progress and a
+  time estimate. [certified.md](docs/certified.md) lists the library's
+  certified pairs and their hashes; every CI configuration must reproduce
+  them.
+- `BEMAN_INSIDE_MATH_INSTRUMENT=1`: `math::driver` counts the integer path's
+  calls, deep steps and guesses, and `IntegerOnly` sends every call to the
+  integer path. Off by default, at no cost.
+- `tests/beman/inside/math_exact.test.cpp` puts every kind of rational math
+  result (`2^−1`, `sqrt(9/4)`, `8^(2/3)`, `hypot(3/2, 2)`, sin 30°, …) on a
+  tie or a grid point, under every rounding mode, at compile time and at run
+  time.
+
 ### Changed
 
+- The math docs say exactly what holds. Results are the same in every build
+  and correctly rounded wherever the engine decides them. A result still
+  undecided at the precision cap (within about 2^−4W of a rounding boundary)
+  is a deterministic guess ([math.md](docs/math.md#what-is-guaranteed),
+  [determinism.md](docs/determinism.md#when-is-a-result-decided)). Before,
+  they claimed correct rounding always.
+- The math tables tier skips an input whose result is a guess, so the
+  run-time counters see it. The results are unchanged.
 - [determinism.md](docs/determinism.md) covers `float`, `long double`,
   text, random sampling, hashing, MSVC's `/fp` modes and how the guarantee
   is tested.

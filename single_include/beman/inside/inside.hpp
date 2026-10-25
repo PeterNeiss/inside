@@ -52,7 +52,8 @@
 // __SIZEOF_INT128__, …) themselves. Every header includes this one first.
 //
 //   Compiler            BEMAN_INSIDE_MSVC
-//   Build options       BEMAN_INSIDE_MATH_NO_FP, BEMAN_INSIDE_BIG_GRIDS
+//   Build options       BEMAN_INSIDE_MATH_NO_FP, BEMAN_INSIDE_BIG_GRIDS,
+//                       BEMAN_INSIDE_MATH_INSTRUMENT
 //   Features            BEMAN_INSIDE_HAS_EXCEPTIONS, _HAS_INT128,
 //                       _HAS_UMUL128, _HAS_OVERFLOW_BUILTINS, _HAS_FMA,
 //                       _HAS_VALUED_DIAG,
@@ -96,6 +97,15 @@
     #if defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 0
         #define BEMAN_INSIDE_MATH_NO_FP
     #endif
+#endif
+
+// BEMAN_INSIDE_MATH_INSTRUMENT — 1 adds math::driver (detail/math_adaptive.hpp):
+// run-time counts of the math engine's integer path, its deep steps and its
+// guesses (results still undecided at the cap), and a switch that sends every
+// call to the integer path. The certify tool (tests/beman/inside/certify) is
+// built on it. 0, the default, compiles all of it out.
+#if !defined(BEMAN_INSIDE_MATH_INSTRUMENT)
+    #define BEMAN_INSIDE_MATH_INSTRUMENT 0
 #endif
 
 // -ffast-math is not supported. The library's results are exact or correctly
@@ -12042,6 +12052,10 @@ BEMAN_INSIDE_WARNINGS_PUSH
 
 
 
+#if BEMAN_INSIDE_MATH_INSTRUMENT
+    #include <atomic>
+    #include <cstdint>
+#endif
 
 //---------------------------------------------------------------------------
 // The adaptive math engine's foundation: correctly rounded results on any
@@ -12055,15 +12069,32 @@ BEMAN_INSIDE_WARNINGS_PUSH
 // precision produced it. When they straddle a rounding boundary, the driver
 // (`evaluate`) runs the core again at twice the precision (Ziv's strategy).
 //
-// Transcendental results land exactly on a boundary only at a few exact
-// inputs (exp(0), log(1), ...); the cores return those with Error 0, so for
-// every other input the escalation ends. A cap stops it in any case; past the
-// cap the result is the slot nearest Y.
+// A result can land exactly on a boundary only where it is rational: at a
+// few exact inputs (exp(0), log(1), √(9/4), ...), which the cores return with
+// Error 0. Every other result is irrational, so the escalation ends at some
+// precision, though no bound on it is known for an arbitrary grid. A cap
+// stops it: past the cap the result is the slot nearest Y, the same in every
+// build but not proven to be the correctly rounded one.
 //
 // Everything here is constexpr and every value is computed in integers
 // (wide_int; doubles only size series lengths and error bounds, with
 // margins), so a result is the same at compile time and at runtime.
 //---------------------------------------------------------------------------
+#if BEMAN_INSIDE_MATH_INSTRUMENT
+namespace beman::inside::math {
+// The engine's run-time instruments (BEMAN_INSIDE_MATH_INSTRUMENT): calls
+// that reached the integer path, its deep steps, and results still undecided
+// at the cap, stored as the nearest slot (guesses). IntegerOnly sends every
+// call to the integer path, past the double and dd tiers. Constant
+// evaluation counts nothing.
+struct driver_probe {
+    std::atomic<std::uint64_t> IntegerRuns{0}, Deep{0}, Guesses{0};
+    std::atomic<bool>          IntegerOnly{false};
+};
+inline driver_probe driver;
+} // namespace beman::inside::math
+#endif
+
 namespace beman::inside::math::detail::ax {
 using namespace ::beman::inside::detail;
 
@@ -12607,6 +12638,40 @@ inline constexpr int deep_bits = [] {
         return 0;
 }();
 
+#if BEMAN_INSIDE_MATH_INSTRUMENT
+inline void note(std::atomic<std::uint64_t>& count) noexcept { count.fetch_add(1, std::memory_order_relaxed); }
+#endif
+// Whether math::driver.IntegerOnly sends this call past the fast tiers.
+constexpr bool integer_only() noexcept {
+#if BEMAN_INSIDE_MATH_INSTRUMENT
+    if !consteval {
+        return driver.IntegerOnly.load(std::memory_order_relaxed);
+    }
+#endif
+    return false;
+}
+constexpr void note_integer_run() noexcept {
+#if BEMAN_INSIDE_MATH_INSTRUMENT
+    if !consteval {
+        note(driver.IntegerRuns);
+    }
+#endif
+}
+constexpr void note_deep() noexcept {
+#if BEMAN_INSIDE_MATH_INSTRUMENT
+    if !consteval {
+        note(driver.Deep);
+    }
+#endif
+}
+constexpr void note_guess() noexcept {
+#if BEMAN_INSIDE_MATH_INSTRUMENT
+    if !consteval {
+        note(driver.Guesses);
+    }
+#endif
+}
+
 template <insidable Out, int W, int Cap, int Deep, typename Core, typename P>
 constexpr Out evaluate_from(const Core& core, P&& policy) {
     const auto a = core.template run<W>();
@@ -12624,18 +12689,21 @@ constexpr Out evaluate_from(const Core& core, P&& policy) {
         if (d.Decided)
             return store<Out>(d.Index, policy);
         if constexpr (2 * W > Cap) {
-            if constexpr (Deep > W)
+            if constexpr (Deep > W) {
+                note_deep();
                 return evaluate_from<Out, Deep, Deep, 0>(core, policy); // once, then the guess
-            else
+            } else {
+                note_guess();
                 return store<Out>(nearest_index<Out>(a), policy);
+            }
         } else
             return evaluate_from<Out, 2 * W, Cap, Deep>(core, policy);
     }
 }
 
 // The precision cap for a start precision W0: two doublings. A result still
-// undecided at 4·W0 lies within 2^-4W0 of a rounding boundary — for an
-// irrational value that is the rare case the cap gives up on (nearest slot).
+// undecided at 4·W0 lies within about 2^-4W0 of a rounding boundary: the cap
+// gives up on it and stores the nearest slot (counted as a guess).
 constexpr int precision_cap(int W0) noexcept { return 4 * W0; }
 
 template <insidable Out, int W0, typename Core, typename P>
@@ -12651,7 +12719,8 @@ constexpr Out evaluate(const Core& core, P&& policy) {
 // compile time (the same driver, so the same correctly rounded slots) and a
 // call is one load. Only when every result lands inside Out's range — a
 // result the policy would clamp, wrap or report keeps the computed path, as
-// does one that needs the deep step (too costly per slot at compile time).
+// does one that needs the deep step (too costly per slot at compile time) or
+// stays undecided at the cap (so that the run-time counters see it).
 // BEMAN_INSIDE_MATH_TABLE_SLOTS sets the largest input (0 turns tables off).
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_MATH_TABLE_SLOTS
@@ -12660,7 +12729,7 @@ constexpr Out evaluate(const Core& core, P&& policy) {
 
 // Out's slot offset for core's result (escalating as evaluate does), or
 // −1 when it falls outside Out's range.
-template <insidable Out, int W, int Cap, int Deep, typename Core>
+template <insidable Out, int W, int Cap, typename Core>
 constexpr imax slot_from(const Core& core) {
     const auto a        = core.template run<W>();
     auto       in_range = [](const auto& i) -> imax {
@@ -12671,13 +12740,13 @@ constexpr imax slot_from(const Core& core) {
     if (wide_sint<limbs_of<decltype(a.Value)> + 2> j; quick_slot<Out>(a, j))
         return in_range(j);
     const auto d = decide<Out>(a);
-    if constexpr (2 * W <= Cap) {
-        if (!d.Decided)
-            return slot_from<Out, 2 * W, Cap, Deep>(core);
-    } else if constexpr (Deep > W)
-        if (!d.Decided)
-            return imax{-1}; // needs the deep step: too costly per slot at compile time, so no table
-    return in_range(d.Decided ? d.Index : nearest_index<Out>(a));
+    if (!d.Decided) {
+        if constexpr (2 * W <= Cap)
+            return slot_from<Out, 2 * W, Cap>(core);
+        else
+            return imax{-1}; // the deep step (too costly per slot at compile time) or a guess: no table
+    }
+    return in_range(d.Index);
 }
 
 template <insidable Out, int W0, typename Core>
@@ -12689,7 +12758,7 @@ constexpr imax slot_of(const Core& core) {
             constexpr I count = static_cast<I>(grid_of<Out>.slot_count());
             return (i.negative() || count < i) ? imax{-1} : static_cast<imax>(i);
         }
-    return slot_from<Out, W0, precision_cap(W0), deep_bits<Core, W0>>(core);
+    return slot_from<Out, W0, precision_cap(W0)>(core);
 }
 
 template <insidable In>
@@ -13413,7 +13482,9 @@ constexpr fx<K> asin_sqrt(const wide_rational<E>& y) noexcept {
 // The cores: one per function. Each holds its exact inputs and computes the
 // result within its error bound at a precision W (run<W>), plus the exact
 // rational results (exact()), which are the only values a rounding boundary
-// can hold.
+// can hold. Each core's comment names the theorem that makes its list
+// complete for rational inputs; every other result is irrational, so the
+// driver decides it at some precision (tests/beman/inside/math_exact).
 //---------------------------------------------------------------------------
 template <std::size_t E>
 using maybe_exact = std::optional<wide_rational<E>>;
@@ -13426,7 +13497,8 @@ constexpr int deep_scaled(int mag, int milli) noexcept {
 }
 constexpr int deep_max(int a, int b) noexcept { return a > b ? a : b; }
 
-// exp x. Exact only at 0.
+// exp x. Exact only at 0 (Lindemann–Weierstrass: e^x is transcendental for
+// a rational x ≠ 0).
 template <std::size_t E, int Mag, int KMax>
 struct exp_core {
     wide_rational<E> X;
@@ -13442,7 +13514,8 @@ struct exp_core {
     }
 };
 
-// 2^x = 2^k·e^(f·ln 2), x = k + f. Exact at integers.
+// 2^x = 2^k·e^(f·ln 2), x = k + f. Exact at integers, where run() has no
+// error; 2^(p/q) is irrational for q ∤ p.
 template <std::size_t E, int Mag, int KMax>
 struct exp2_core {
     wide_rational<E> X;
@@ -13474,7 +13547,7 @@ struct exp2_core {
     }
 };
 
-// log x, x > 0. Exact at 1.
+// log x, x > 0. Exact at 1 (Lindemann–Weierstrass).
 template <std::size_t E, int Bits = fraction_bits<E>>
 struct log_core {
     wide_rational<E>         X;
@@ -13506,7 +13579,8 @@ constexpr std::optional<imax> exact_log(const wide_rational<E>& x, int B) noexce
     return a;
 }
 
-// log2 x and log10 x: log x / ln B. Exact at powers of B.
+// log2 x and log10 x: log x / ln B. Exact at the integer powers of B: B is
+// not a perfect power, so B^(p/q) is irrational for q ∤ p.
 template <std::size_t E, int B, int Bits = fraction_bits<E>>
 struct logb_core {
     wide_rational<E>         X;
@@ -13535,7 +13609,8 @@ inline constexpr umax square_mod64 = [] {
     return m;
 }();
 
-// √x, x ≥ 0: ⌊√x·2^P⌋ exactly. Exact when x is a square of a rational.
+// √x, x ≥ 0: ⌊√x·2^P⌋ exactly. Exact when x is a square of a rational (else
+// irrational, by the rational root theorem).
 template <std::size_t E, int Bits = fraction_bits<E>>
 struct sqrt_core {
     wide_rational<E> X;
@@ -13568,7 +13643,8 @@ inline constexpr umax cube_mod63 = [] {
     return m;
 }();
 
-// ∛x: ⌊∛(n·d²·2^(3P))⌋/d exactly. Exact when x is a cube of a rational.
+// ∛x: ⌊∛(n·d²·2^(3P))⌋/d exactly. Exact when x is a cube of a rational (else
+// irrational, by the rational root theorem).
 template <std::size_t E, int Bits = fraction_bits<E>>
 struct cbrt_core {
     wide_rational<E> X;
@@ -13599,7 +13675,8 @@ struct cbrt_core {
 };
 
 // sin, cos and tan: x = k·π/2 + r, |r| ≤ π/4, then the series and the
-// quadrant. Exact at 0.
+// quadrant. Exact at 0 (Lindemann–Weierstrass); the angles in degrees and
+// turns, exact at Niven's values, are units_math.hpp's.
 enum class trig { sin, cos, tan };
 
 template <std::size_t E, int Mag, trig Fn, int KMax>
@@ -13692,6 +13769,7 @@ struct atan_core {
 };
 
 // atan2(y, x) in [−π, π]; 0 for y = 0, x ≥ 0 (and the (0, 0) convention).
+// Every other result is irrational (Lindemann–Weierstrass), ±π and ±π/2 too.
 template <std::size_t E>
 struct atan2_core {
     wide_rational<E>         Y, X;
@@ -13723,7 +13801,7 @@ struct atan2_core {
 // asin x (Acos false) or acos x (true), |x| ≤ 1. For |x| ≤ 1/2 asin
 // directly, acos = π/2 − asin x. Past 1/2 the half-angle forms, accurate up
 // to ±1, both from a = asin √((1−|x|)/2): asin = ±(π/2 − 2a); acos = 2a above
-// 0, π − 2a below. asin is exact at 0, acos at 1.
+// 0, π − 2a below. asin is exact at 0, acos at 1 (Lindemann–Weierstrass).
 template <std::size_t E, int Bits, bool Acos>
 struct arcsin_core {
     wide_rational<E>         X;
@@ -13767,7 +13845,7 @@ template <std::size_t E, int Bits = fraction_bits<E>>
 using acos_core = arcsin_core<E, Bits, true>;
 
 // sinh, cosh and tanh from e^|x| and e^−|x| at absolute scale A. Exact at 0
-// (sinh, tanh: 0; cosh: 1).
+// (sinh, tanh: 0; cosh: 1); e^x is transcendental elsewhere.
 enum class hyp { sinh, cosh, tanh };
 
 template <std::size_t E, int Mag, hyp Fn, int KMax>
@@ -13824,7 +13902,8 @@ struct hyp_core {
 };
 
 // asinh x = ±log(|x| + √(x²+1)); acosh x = log(x + √((x−1)(x+1))), x ≥ 1;
-// atanh x = ±½·log((1+|x|)/(1−|x|)), |x| < 1.
+// atanh x = ±½·log((1+|x|)/(1−|x|)), |x| < 1. Exact at 0 (acosh: 1): each
+// is a log of an algebraic number ≠ 1 elsewhere (Lindemann–Weierstrass).
 enum class ahyp { asinh, acosh, atanh };
 
 template <std::size_t E, int Mag, ahyp Fn, int Bits = fraction_bits<E>>
@@ -13898,6 +13977,11 @@ constexpr std::optional<wide_sint<pow_limbs>> exact_root(const wide_sint<pow_lim
     return p == n ? std::optional<P>{r} : std::nullopt;
 }
 
+// b^(p/q), q > 0 and p/q reduced, is rational exactly when b's numerator and
+// denominator are perfect q-th powers (the rational root theorem). The size
+// limits leave out only results no 64-bit grid can hold as a boundary: q > 64
+// needs a part of b past 2^64, and a power past 2040 bits is far beyond any
+// such grid's range or notch.
 template <std::size_t EB, std::size_t EE>
 constexpr std::optional<wide_rational<pow_limbs>> exact_pow(const wide_rational<EB>& b,
                                                             const wide_rational<EE>& e) noexcept {
@@ -16876,25 +16960,36 @@ inline constexpr bool unanchored_call = !anchored<Out> || (!anchored<Ins> || ...
 // The tiers in order at runtime: the double kernel (when FP), the dd
 // kernel (when DD), the integer path. Each fast tier stores a decided
 // result and returns true; whatever runs after the first one is cold.
-// Constant evaluation takes the integer path.
+// Constant evaluation takes the integer path, and so does every call under
+// math::driver.IntegerOnly (BEMAN_INSIDE_MATH_INSTRUMENT).
 template <insidable Out, bool FP, bool DD, typename F, typename D, typename I>
 BEMAN_INSIDE_ALWAYS_INLINE constexpr auto
-tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integer) -> decltype(integer()) {
+tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integer_path) -> decltype(integer_path()) {
+#if BEMAN_INSIDE_MATH_INSTRUMENT
+    const auto integer = [&] {
+        ax::note_integer_run();
+        return integer_path();
+    };
+#else
+    const I& integer = integer_path;
+#endif
     if constexpr (FP || DD)
         if !consteval {
-            if constexpr (FP) {
-                if (Out r; fp(r))
-                    return r;
-                return ax::cold_call([&]() -> decltype(integer()) {
-                    if constexpr (DD)
-                        if (Out r; dd(r))
-                            return r;
-                    return integer();
-                });
-            } else {
-                if (Out r; dd(r))
-                    return r;
-                return ax::cold_call(integer);
+            if (!ax::integer_only()) {
+                if constexpr (FP) {
+                    if (Out r; fp(r))
+                        return r;
+                    return ax::cold_call([&]() -> decltype(integer()) {
+                        if constexpr (DD)
+                            if (Out r; dd(r))
+                                return r;
+                        return integer();
+                    });
+                } else {
+                    if (Out r; dd(r))
+                        return r;
+                    return ax::cold_call(integer);
+                }
             }
         }
     return integer();
@@ -16909,7 +17004,9 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
                                                                    [&](auto& r) -> bool { return dd_call; }, \
                                                                    [&] { return __VA_ARGS__; });
 #else
-    #define BEMAN_INSIDE_AX_TIERS(Out, FP, DD, fp_call, dd_call, ...) return __VA_ARGS__;
+    #define BEMAN_INSIDE_AX_TIERS(Out, FP, DD, fp_call, dd_call, ...) \
+        ::beman::inside::math::detail::ax::note_integer_run();        \
+        return __VA_ARGS__;
 #endif
 
 // The tiers of a one-input kernel fn, where ok holds.

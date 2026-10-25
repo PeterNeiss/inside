@@ -13,7 +13,7 @@ list(
     FILTER BEMAN_INSIDE_TEST_SOURCES
     EXCLUDE
     REGEX
-        "/(accuracy|bench|fuzz|perf_codegen|perf_workload|single_header(_[a-z]+)?_smoke)\\.test\\.cpp$"
+        "/(accuracy|bench|certify|fuzz|perf_codegen|perf_workload|single_header(_[a-z]+)?_smoke)\\.test\\.cpp$"
 )
 foreach(test_src ${BEMAN_INSIDE_TEST_SOURCES})
     get_filename_component(test_name ${test_src} NAME)
@@ -60,6 +60,31 @@ target_link_libraries(
 )
 add_test(NAME beman.inside.tests.accuracy COMMAND beman.inside.accuracy --check)
 set_tests_properties(beman.inside.tests.accuracy PROPERTIES LABELS "accuracy")
+
+# The math certification by exhaustion (certify/): every input of each pair,
+# a run-time call against the integer path, no guess allowed, and every
+# result hash equal to the committed docs/certified.md. An optimized build
+# runs every pair, a debug build the small ones.
+add_executable(beman.inside.certify certify.test.cpp)
+target_link_libraries(
+    beman.inside.certify
+    PRIVATE beman::inside beman.inside.warnings
+)
+add_test(
+    NAME beman.inside.tests.certify
+    COMMAND
+        beman.inside.certify --no-progress --check
+        ${PROJECT_SOURCE_DIR}/docs/certified.md
+)
+set_tests_properties(beman.inside.tests.certify PROPERTIES LABELS "certify")
+add_custom_target(
+    beman.inside.certify_report
+    COMMAND
+        beman.inside.certify --no-progress --markdown
+        ${PROJECT_SOURCE_DIR}/docs/certified.md
+    COMMENT "Regenerating docs/certified.md"
+)
+add_subdirectory(certify)
 
 #---------------------------------------------------------------------------
 # Single header

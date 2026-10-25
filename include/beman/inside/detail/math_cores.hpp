@@ -153,7 +153,9 @@ constexpr fx<K> asin_sqrt(const wide_rational<E>& y) noexcept {
 // The cores: one per function. Each holds its exact inputs and computes the
 // result within its error bound at a precision W (run<W>), plus the exact
 // rational results (exact()), which are the only values a rounding boundary
-// can hold.
+// can hold. Each core's comment names the theorem that makes its list
+// complete for rational inputs; every other result is irrational, so the
+// driver decides it at some precision (tests/beman/inside/math_exact).
 //---------------------------------------------------------------------------
 template <std::size_t E>
 using maybe_exact = std::optional<wide_rational<E>>;
@@ -166,7 +168,8 @@ constexpr int deep_scaled(int mag, int milli) noexcept {
 }
 constexpr int deep_max(int a, int b) noexcept { return a > b ? a : b; }
 
-// exp x. Exact only at 0.
+// exp x. Exact only at 0 (Lindemann–Weierstrass: e^x is transcendental for
+// a rational x ≠ 0).
 template <std::size_t E, int Mag, int KMax>
 struct exp_core {
     wide_rational<E> X;
@@ -182,7 +185,8 @@ struct exp_core {
     }
 };
 
-// 2^x = 2^k·e^(f·ln 2), x = k + f. Exact at integers.
+// 2^x = 2^k·e^(f·ln 2), x = k + f. Exact at integers, where run() has no
+// error; 2^(p/q) is irrational for q ∤ p.
 template <std::size_t E, int Mag, int KMax>
 struct exp2_core {
     wide_rational<E> X;
@@ -214,7 +218,7 @@ struct exp2_core {
     }
 };
 
-// log x, x > 0. Exact at 1.
+// log x, x > 0. Exact at 1 (Lindemann–Weierstrass).
 template <std::size_t E, int Bits = fraction_bits<E>>
 struct log_core {
     wide_rational<E>         X;
@@ -246,7 +250,8 @@ constexpr std::optional<imax> exact_log(const wide_rational<E>& x, int B) noexce
     return a;
 }
 
-// log2 x and log10 x: log x / ln B. Exact at powers of B.
+// log2 x and log10 x: log x / ln B. Exact at the integer powers of B: B is
+// not a perfect power, so B^(p/q) is irrational for q ∤ p.
 template <std::size_t E, int B, int Bits = fraction_bits<E>>
 struct logb_core {
     wide_rational<E>         X;
@@ -275,7 +280,8 @@ inline constexpr umax square_mod64 = [] {
     return m;
 }();
 
-// √x, x ≥ 0: ⌊√x·2^P⌋ exactly. Exact when x is a square of a rational.
+// √x, x ≥ 0: ⌊√x·2^P⌋ exactly. Exact when x is a square of a rational (else
+// irrational, by the rational root theorem).
 template <std::size_t E, int Bits = fraction_bits<E>>
 struct sqrt_core {
     wide_rational<E> X;
@@ -308,7 +314,8 @@ inline constexpr umax cube_mod63 = [] {
     return m;
 }();
 
-// ∛x: ⌊∛(n·d²·2^(3P))⌋/d exactly. Exact when x is a cube of a rational.
+// ∛x: ⌊∛(n·d²·2^(3P))⌋/d exactly. Exact when x is a cube of a rational (else
+// irrational, by the rational root theorem).
 template <std::size_t E, int Bits = fraction_bits<E>>
 struct cbrt_core {
     wide_rational<E> X;
@@ -339,7 +346,8 @@ struct cbrt_core {
 };
 
 // sin, cos and tan: x = k·π/2 + r, |r| ≤ π/4, then the series and the
-// quadrant. Exact at 0.
+// quadrant. Exact at 0 (Lindemann–Weierstrass); the angles in degrees and
+// turns, exact at Niven's values, are units_math.hpp's.
 enum class trig { sin, cos, tan };
 
 template <std::size_t E, int Mag, trig Fn, int KMax>
@@ -432,6 +440,7 @@ struct atan_core {
 };
 
 // atan2(y, x) in [−π, π]; 0 for y = 0, x ≥ 0 (and the (0, 0) convention).
+// Every other result is irrational (Lindemann–Weierstrass), ±π and ±π/2 too.
 template <std::size_t E>
 struct atan2_core {
     wide_rational<E>         Y, X;
@@ -463,7 +472,7 @@ struct atan2_core {
 // asin x (Acos false) or acos x (true), |x| ≤ 1. For |x| ≤ 1/2 asin
 // directly, acos = π/2 − asin x. Past 1/2 the half-angle forms, accurate up
 // to ±1, both from a = asin √((1−|x|)/2): asin = ±(π/2 − 2a); acos = 2a above
-// 0, π − 2a below. asin is exact at 0, acos at 1.
+// 0, π − 2a below. asin is exact at 0, acos at 1 (Lindemann–Weierstrass).
 template <std::size_t E, int Bits, bool Acos>
 struct arcsin_core {
     wide_rational<E>         X;
@@ -507,7 +516,7 @@ template <std::size_t E, int Bits = fraction_bits<E>>
 using acos_core = arcsin_core<E, Bits, true>;
 
 // sinh, cosh and tanh from e^|x| and e^−|x| at absolute scale A. Exact at 0
-// (sinh, tanh: 0; cosh: 1).
+// (sinh, tanh: 0; cosh: 1); e^x is transcendental elsewhere.
 enum class hyp { sinh, cosh, tanh };
 
 template <std::size_t E, int Mag, hyp Fn, int KMax>
@@ -564,7 +573,8 @@ struct hyp_core {
 };
 
 // asinh x = ±log(|x| + √(x²+1)); acosh x = log(x + √((x−1)(x+1))), x ≥ 1;
-// atanh x = ±½·log((1+|x|)/(1−|x|)), |x| < 1.
+// atanh x = ±½·log((1+|x|)/(1−|x|)), |x| < 1. Exact at 0 (acosh: 1): each
+// is a log of an algebraic number ≠ 1 elsewhere (Lindemann–Weierstrass).
 enum class ahyp { asinh, acosh, atanh };
 
 template <std::size_t E, int Mag, ahyp Fn, int Bits = fraction_bits<E>>
@@ -638,6 +648,11 @@ constexpr std::optional<wide_sint<pow_limbs>> exact_root(const wide_sint<pow_lim
     return p == n ? std::optional<P>{r} : std::nullopt;
 }
 
+// b^(p/q), q > 0 and p/q reduced, is rational exactly when b's numerator and
+// denominator are perfect q-th powers (the rational root theorem). The size
+// limits leave out only results no 64-bit grid can hold as a boundary: q > 64
+// needs a part of b past 2^64, and a power past 2040 bits is far beyond any
+// such grid's range or notch.
 template <std::size_t EB, std::size_t EE>
 constexpr std::optional<wide_rational<pow_limbs>> exact_pow(const wide_rational<EB>& b,
                                                             const wide_rational<EE>& e) noexcept {

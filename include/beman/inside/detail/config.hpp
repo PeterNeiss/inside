@@ -8,7 +8,8 @@
 // __SIZEOF_INT128__, …) themselves. Every header includes this one first.
 //
 //   Compiler            BEMAN_INSIDE_MSVC
-//   Build options       BEMAN_INSIDE_MATH_NO_FP, BEMAN_INSIDE_BIG_GRIDS
+//   Build options       BEMAN_INSIDE_MATH_NO_FP, BEMAN_INSIDE_BIG_GRIDS,
+//                       BEMAN_INSIDE_MATH_INSTRUMENT
 //   Features            BEMAN_INSIDE_HAS_EXCEPTIONS, _HAS_INT128,
 //                       _HAS_UMUL128, _HAS_OVERFLOW_BUILTINS, _HAS_FMA,
 //                       _HAS_VALUED_DIAG,
@@ -53,6 +54,15 @@
     #if defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 0
         #define BEMAN_INSIDE_MATH_NO_FP
     #endif
+#endif
+
+// BEMAN_INSIDE_MATH_INSTRUMENT — 1 adds math::driver (detail/math_adaptive.hpp):
+// run-time counts of the math engine's integer path, its deep steps and its
+// guesses (results still undecided at the cap), and a switch that sends every
+// call to the integer path. The certify tool (tests/beman/inside/certify) is
+// built on it. 0, the default, compiles all of it out.
+#if !defined(BEMAN_INSIDE_MATH_INSTRUMENT)
+    #define BEMAN_INSIDE_MATH_INSTRUMENT 0
 #endif
 
 // -ffast-math is not supported. The library's results are exact or correctly

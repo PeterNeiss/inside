@@ -107,7 +107,8 @@ in `cmath.hpp`) work on freestanding targets. Under `BEMAN_INSIDE_MATH_NO_FP`
 the engine's `double` and double-double tiers, and their `#include <cmath>`,
 are compiled out **entirely**; the integer path computes every result. The
 interface, the output grids, the types **and the values** are unchanged:
-results are correctly rounded either way.
+the floating-point tiers only ever return the integer path's point
+([math.md](math.md#what-is-guaranteed)).
 
 - It turns on by itself when `__STDC_HOSTED__ == 0` (`-ffreestanding`), or set
   the CMake option `BEMAN_INSIDE_MATH_NO_FP=ON`, or define the macro.
