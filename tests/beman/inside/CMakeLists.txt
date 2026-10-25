@@ -72,10 +72,8 @@ target_link_libraries(
     beman.inside.certify
     PRIVATE beman::inside beman.inside.warnings
 )
-string(TOUPPER "${CMAKE_BUILD_TYPE}" certify_build_type)
-if(certify_build_type STREQUAL "" OR certify_build_type STREQUAL "DEBUG")
-    set(certify_cap) # the debug default, 4096
-elseif(BEMAN_INSIDE_CERTIFY_FULL)
+# The cap is passed in every build; an unoptimized one lowers it to 4096.
+if(BEMAN_INSIDE_CERTIFY_FULL)
     set(certify_cap --max-slots 4294967296)
 else()
     set(certify_cap --max-slots 1048576)

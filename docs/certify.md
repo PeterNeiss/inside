@@ -103,7 +103,7 @@ The certify program's options:
 | Option | Effect |
 |---|---|
 | `--estimate` | list the pairs and the estimated time, then stop |
-| `--max-slots N` | skip pairs with more than N inputs (default 2³², about an hour; 4096 in a debug build) |
+| `--max-slots N` | skip pairs with more than N inputs (default 2³², about an hour; a debug build caps it at 4096) |
 | `--max-seconds S` | skip pairs estimated to take longer than S seconds |
 | `--pair TEXT` | only the pairs whose "function input output" contains TEXT |
 | `--markdown FILE` | also write the table as a Markdown page |

@@ -21,7 +21,7 @@
 //
 // find_grids.py writes such a program from the pairs a build uses. Options:
 //   --estimate        list the pairs and the estimated time, then stop
-//   --max-slots N     skip pairs with more inputs (default: 2^32 optimized, 4096 debug)
+//   --max-slots N     skip pairs with more inputs (default 2^32; a debug build caps it at 4096)
 //   --max-seconds S   skip pairs estimated to take longer
 //   --pair TEXT       only the pairs whose "function input output" contains TEXT
 //   --markdown FILE   also write the table as a page (docs/certified.md)
@@ -233,15 +233,11 @@ struct result {
 };
 
 struct options {
-#ifdef NDEBUG
-    std::uint64_t MaxSlots = std::uint64_t{1} << 32; // hours at most
-#else
-    std::uint64_t MaxSlots = 4096;
-#endif
-    double      MaxSeconds = 0; // 0: no limit
-    std::string Pair, Markdown, Check;
-    bool        Estimate = false, Dump = false, RequireAll = false;
-    int         Progress = -1; // -1: when stderr is a terminal
+    std::uint64_t MaxSlots   = std::uint64_t{1} << 32; // hours at most
+    double        MaxSeconds = 0;                      // 0: no limit
+    std::string   Pair, Markdown, Check;
+    bool          Estimate = false, Dump = false, RequireAll = false;
+    int           Progress = -1; // -1: when stderr is a terminal
 };
 
 class runner {
@@ -498,6 +494,9 @@ inline int main(int argc, char** argv, void (*pairs)(runner&)) {
         }
     }
 
+#ifndef NDEBUG
+    o.MaxSlots = std::min<std::uint64_t>(o.MaxSlots, 4096); // unoptimized: the small pairs only
+#endif
     runner r;
     pairs(r);
     std::vector<result> results;
