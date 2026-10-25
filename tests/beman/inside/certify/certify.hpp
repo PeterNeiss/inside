@@ -485,8 +485,11 @@ inline int main(int argc, char** argv, void (*pairs)(runner&)) {
     pairs(r);
     std::vector<result> results;
     for (const job& j : r.jobs())
-        if (o.Pair.empty() || j.key().find(o.Pair) != std::string::npos)
-            results.push_back({&j});
+        if (o.Pair.empty() || j.key().find(o.Pair) != std::string::npos) {
+            result res;
+            res.Job = &j;
+            results.push_back(res);
+        }
 
     // The plan: each pair's size and estimated time.
     double        total  = 0;
