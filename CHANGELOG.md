@@ -28,6 +28,17 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   time estimate. [certified.md](docs/certified.md) lists the library's
   certified pairs and their hashes; every CI configuration must reproduce
   them.
+- [certified.md](docs/certified.md) also certifies the math pairs the
+  examples use: 20 pairs, among them `atan2` and `hypot` over two 2⁻¹⁴-grid
+  inputs (1.07 G inputs each). Five more, of up to 10¹⁹ inputs, are listed
+  as too large to compute. A debug build's test scans the examples' symbols
+  and fails when one of their pairs has no row. The certify tool's
+  `--require-all` makes that check, and `runner::section` groups the pairs
+  under headings.
+- `BEMAN_INSIDE_CERTIFY_FULL=ON` checks every certified pair. By default
+  the certify test checks the pairs up to 2²⁰ inputs, which takes seconds,
+  also under sanitizers. The weekly CI run sets it on GCC, Clang with
+  libc++, AppleClang and MSVC.
 - `BEMAN_INSIDE_MATH_INSTRUMENT=1`: `math::driver` counts the integer path's
   calls, deep steps and guesses, and `IntegerOnly` sends every call to the
   integer path. Off by default, at no cost.

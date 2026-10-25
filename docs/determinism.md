@@ -142,8 +142,10 @@ certifies the pair when no result differs and none was guessed. It also
 hashes all the results, so another machine or build can show it computed
 the same bits. The library's pairs are all certified ([certified.md](certified.md)):
 every function, on coarse 4-bit outputs (a cap of only 64 bits), fine and
-decimal ones, and outputs on the double-double tier. `find_grids.py` finds
-the pairs your own build uses and certifies them.
+decimal ones, and outputs on the double-double tier. So is every pair the
+examples use, short of five with too many inputs (up to 10¹⁹): the grids of
+real programs, such as 2⁻¹⁴ coordinates, 1/4096 ratios and decibel steps.
+`find_grids.py` finds the pairs your own build uses and certifies them.
 
 ## Other surfaces
 
@@ -184,9 +186,12 @@ the pairs your own build uses and certifies them.
   random seed and twenty times the cases.
 - `beman.inside.certify` sweeps every input of its math pairs, as
   [above](#when-is-a-result-decided), and checks every result hash against
-  [certified.md](certified.md): every pair in an optimized build, the small
-  ones in a debug build. Each configuration (GCC, Clang, AppleClang on arm64,
-  MSVC, the FP-free build) has to reproduce the same hashes.
+  [certified.md](certified.md): the pairs up to 2²⁰ inputs in an optimized
+  build, the small ones in a debug build. Each configuration (GCC, Clang,
+  AppleClang on arm64, MSVC, the FP-free build) has to reproduce the same
+  hashes. The weekly run recomputes every pair, up to 2³² inputs, on GCC,
+  Clang with libc++, AppleClang and MSVC. A debug build also scans the
+  examples' symbols and fails if one of their pairs has no row.
 - The FP-free smoke test puts a poisoned `<cmath>`
   (`tests/beman/inside/nofp_poison`) first on the include path, so a
   `BEMAN_INSIDE_MATH_NO_FP` build that pulls in floating-point math fails to

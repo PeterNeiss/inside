@@ -39,8 +39,12 @@ build, and compare. That is a determinism check you can run yourself, on the
 grids you ship.
 
 The library's own certified pairs, with their hashes, are in
-[certified.md](certified.md). Every CI configuration (GCC, Clang, AppleClang
-on arm64, MSVC, the FP-free build) recomputes them and must match.
+[certified.md](certified.md): pairs picked to cover every function, and every
+pair the [examples](../examples) use. Every CI configuration (GCC, Clang,
+AppleClang on arm64, MSVC, the FP-free build) recomputes the pairs up to 2²⁰
+inputs and must match; the weekly run recomputes all of them on four
+toolchains. A test also scans the examples' build and fails if one of their
+pairs has no row.
 
 ## Certify your program's grids
 
@@ -99,11 +103,12 @@ The certify program's options:
 | Option | Effect |
 |---|---|
 | `--estimate` | list the pairs and the estimated time, then stop |
-| `--max-slots N` | skip pairs with more than N inputs (default 2³², about an hour; 4096 in a debug build) |
+| `--max-slots N` | skip pairs with more than N inputs (default 2³², about an hour; a debug build caps it at 4096) |
 | `--max-seconds S` | skip pairs estimated to take longer than S seconds |
 | `--pair TEXT` | only the pairs whose "function input output" contains TEXT |
 | `--markdown FILE` | also write the table as a Markdown page |
 | `--check FILE` | fail unless every hash equals the one in FILE's table |
+| `--require-all` | with `--check`: a pair skipped by `--max-slots` must still have a row in FILE |
 | `--dump` | print every result record (what the hash covers) |
 | `--progress`, `--no-progress` | progress on stderr; the default is "when stderr is a terminal" |
 
@@ -118,6 +123,9 @@ as JSON).
 |:--|:--|:--|--:|--:|--:|:--|:--|
 | `sin` | `{[-4, 4], 1/262144} round_nearest` | `{[-64, 64], 1/16} round_floor, clamp` | 2097153 | 0 | 0 | `bd2965…` | certified |
 
+- **Sections.** A certify program can put its pairs under headings
+  (`runner::section("## …")`); each starts a new table. certified.md has the
+  library's pairs, then the examples' pairs by example file.
 - **inputs** is the number of grid points of the input (the product, for
   `atan2`, `hypot` and `pow`).
 - **guesses** counts results the integer path left undecided at its cap. Any

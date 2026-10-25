@@ -64,19 +64,30 @@ set_tests_properties(beman.inside.tests.accuracy PROPERTIES LABELS "accuracy")
 # The math certification by exhaustion (certify/): every input of each pair,
 # a run-time call against the integer path, no guess allowed, and every
 # result hash equal to the committed docs/certified.md. An optimized build
-# runs every pair, a debug build the small ones.
+# runs the pairs up to 2^20 inputs (seconds, under sanitizers too), with
+# BEMAN_INSIDE_CERTIFY_FULL every pair up to 2^32 (minutes); a debug build
+# the small ones.
 add_executable(beman.inside.certify certify.test.cpp)
 target_link_libraries(
     beman.inside.certify
     PRIVATE beman::inside beman.inside.warnings
 )
+# The cap is passed in every build; an unoptimized one lowers it to 4096.
+if(BEMAN_INSIDE_CERTIFY_FULL)
+    set(certify_cap --max-slots 4294967296)
+else()
+    set(certify_cap --max-slots 1048576)
+endif()
 add_test(
     NAME beman.inside.tests.certify
     COMMAND
-        beman.inside.certify --no-progress --check
-        ${PROJECT_SOURCE_DIR}/docs/certified.md
+        beman.inside.certify --no-progress ${certify_cap} --check
+        ${PROJECT_SOURCE_DIR}/docs/certified.md --require-all
 )
-set_tests_properties(beman.inside.tests.certify PROPERTIES LABELS "certify")
+set_tests_properties(
+    beman.inside.tests.certify
+    PROPERTIES LABELS "certify" TIMEOUT 3600
+)
 add_custom_target(
     beman.inside.certify_report
     COMMAND

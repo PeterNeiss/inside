@@ -42,6 +42,15 @@ option(
     OFF
 )
 
+# The certify test checks the pairs of docs/certified.md up to 2^20 inputs
+# (seconds); BEMAN_INSIDE_CERTIFY_FULL=ON checks every pair up to 2^32 (the
+# weekly CI run, minutes).
+option(
+    BEMAN_INSIDE_CERTIFY_FULL
+    "Check every certified math pair, not only those up to 2^20 inputs. Default: OFF. Values: { ON, OFF }."
+    OFF
+)
+
 # BEMAN_INSIDE_MATH_NO_FP=ON builds with no hardware floating point: the math
 # engine's double and dd tiers compile out (its integer path computes every
 # result; results do not change).

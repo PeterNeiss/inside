@@ -734,13 +734,15 @@ differential oracle that recomputes random results exactly in Python.
 
 The math layer is checked for every function on dyadic, decimal and 2⁻⁴⁰
 grids against a `long double` reference, and every maximum error is 0.5
-notch (the repository's `docs/accuracy.md`). 39 type pairs covering every
-function are certified by exhaustion: every input computed both through the
-floating-point kernels and through the integer path alone, with no
-difference and no result left undecided at the precision cap. A SHA-256 of
-each pair's results is committed (`docs/certified.md`), and every CI
-configuration reproduces it. A tool finds the pairs a user's own build uses,
-from its symbols, and certifies them the same way. A build without floating point
+notch (the repository's `docs/accuracy.md`). 59 type pairs are certified
+by exhaustion: 39 covering every function, and the 20 pairs the examples use
+that are small enough to compute (up to about 10⁹ inputs). Every input is
+computed both through the floating-point kernels and through the integer
+path alone, with no difference and no result left undecided at the
+precision cap. A SHA-256 of each pair's results is committed
+(`docs/certified.md`), and CI reproduces it in every configuration (the
+largest pairs weekly). A tool finds the pairs a user's own build uses, from
+its symbols, and certifies them the same way. A build without floating point
 (`-ffreestanding`) computes every result on the integer path, and the results
 do not change. Onto the grid deduced from the input, the functions run from
 about 3× slower to 3× faster than `<cmath>`. Onto grids as fine as a `double`,
