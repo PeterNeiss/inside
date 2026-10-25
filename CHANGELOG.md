@@ -4,6 +4,14 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
+## Unreleased
+
+### Added
+
+- [docs/adoption.md](docs/adoption.md): why safer number types are hard to
+  adopt (Mooers' Law), what arithmetic bugs have cost, and how to make
+  knowing cheap. The paper gains a matching section.
+
 ## 0.5.0 — 2026-10-25
 
 ### Upgrading from 0.4.0

@@ -138,7 +138,8 @@ through a program. Read it first; everything else builds on it.
 [`beman::inside::math` — bit-exact math](docs/math.md) ·
 [mathematical & physical constants](docs/constants.md)
 
-**Special topics** — [for fixed-point users](docs/fixed-point.md) ·
+**Special topics** — [adopting safe numbers](docs/adoption.md) ·
+[for fixed-point users](docs/fixed-point.md) ·
 [determinism & reproducibility](docs/determinism.md) ·
 [certifying your math grids](docs/certify.md) ·
 [freestanding & bare-metal](docs/freestanding.md) ·
