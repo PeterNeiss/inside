@@ -125,7 +125,7 @@ struct divmod_op {
     "division: no result grid - the divisor grid is the point 0, an unbounded continuous divisor reaches 0, or the " \
     "quotient passes the 64-bit grid numbers (round it with div_into<Out>(a, b), or build with C++26 big grids)"
 #define BEMAN_INSIDE_WHY_mod "modulo requires integer-valued grids"
-#define BEMAN_INSIDE_WHY_divmod "divmod requires integer-valued grids within imax"
+#define BEMAN_INSIDE_WHY_divmod "divmod requires integer-valued grids"
 
 namespace detail {
 // The policy flags a call's trailing arguments select, as arith normalizes

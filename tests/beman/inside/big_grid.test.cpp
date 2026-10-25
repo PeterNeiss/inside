@@ -198,10 +198,38 @@ TEST(BigGridTest, division) {
     const auto t = huge{12} / huge{8};
     ASSERT_TRUE(t.has_value());
     EXPECT_TRUE(*t == 1.5);
+    // Under a rounding policy the integer quotient rounds, as on 64-bit grids
+    // (it was the exact 3.5).
+    const auto f = div(huge{7}, huge{2}, rounded_floor);
+    ASSERT_TRUE(f.has_value());
+    EXPECT_TRUE(*f == 3);
+    static_assert(grid_of<decltype(f)::value_type>.Notch == 1);
+    EXPECT_TRUE(div(huge{7}, inside<{2, 2}>{}, rounded_ceil) == 4);
     using micro  = inside<{{0, 1}, 1e-30_g}>;
     const auto u = micro{0.5} / micro{0.25};
     ASSERT_TRUE(u.has_value());
     EXPECT_TRUE(*u == 2);
+}
+
+TEST(BigGridTest, divmod_past_64_bits) {
+    // Quotient and remainder of big integers in one exact division, each on
+    // the grid of `/` and `%`, agreeing with them.
+    using seven  = inside<{7, 7}>;
+    using three  = inside<{3, 3}>;
+    using digits = inside<{-9, 9}>;
+    const huge a{huge::from_raw(raw_2_100_3)};
+    const auto [q, r] = divmod(a, seven{}); // a point divisor: no zero, a plain result
+    EXPECT_TRUE(q * seven{} + r == a);
+    EXPECT_TRUE(r == a % seven{});
+    EXPECT_TRUE(q == div(a, seven{}, rounded_toward_zero));
+    EXPECT_TRUE(r == 5); // (2^100 + 3) mod 7
+    using signed_huge    = inside<{-g(pow2(100)), g(pow2(100))}>;
+    const signed_huge n  = -signed_huge{huge::from_raw(raw_2_100)}; // −2^100
+    const auto        fl = divmod(n, digits{3}, rounded_floor);
+    ASSERT_TRUE(fl.has_value());
+    EXPECT_TRUE(fl->Remainder == 2); // floored: −2^100 mod 3 = 2
+    EXPECT_TRUE(fl->Quotient * three{} + fl->Remainder == n);
+    EXPECT_FALSE(divmod(n, digits{0}).has_value());
 }
 
 TEST(BigGridTest, continuous_past_64_bits) {

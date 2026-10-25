@@ -4,6 +4,19 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
+## Unreleased
+
+### Added
+
+- `divmod` on integer grids past imax: uint64 grids and C++26 big grids,
+  with quotient and remainder from one exact division.
+
+### Fixed
+
+- C++26 big grids: an integer division under a rounding policy
+  (`div(a, b, rounded_floor)`, or `snap`) returned the exact quotient
+  (7 / 2 gave 3.5). Now it rounds onto the integers, as on 64-bit grids.
+
 ## 0.5.0 — 2026-10-25
 
 ### Upgrading from 0.4.0
