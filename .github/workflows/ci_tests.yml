@@ -140,7 +140,8 @@ jobs:
         ]
 
   # The full matrix: weekly and on demand. Every supported compiler version,
-  # both language modes, sanitizers and MSVC Debug.
+  # both language modes, sanitizers and MSVC Debug, and the certify test over
+  # every certified pair (BEMAN_INSIDE_CERTIFY_FULL) on four toolchains.
   build-and-test-full:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     uses: bemanproject/infra-workflows/.github/workflows/reusable-beman-build-and-test.yml@1.7.4
@@ -163,7 +164,7 @@ jobs:
                   ]
                 },
                 { "cxxversions": ["c++23"],
-                  "tests": [{ "stdlibs": ["libstdc++"], "tests": ["Release.Default"]}]
+                  "tests": [{ "stdlibs": ["libstdc++"], "tests": ["Release.Default", "Release.-DBEMAN_INSIDE_CERTIFY_FULL=ON"]}]
                 }
               ]
             },
@@ -190,7 +191,8 @@ jobs:
                 },
                 { "cxxversions": ["c++23"],
                   "tests": [
-                    { "stdlibs": ["libstdc++", "libc++"], "tests": ["Release.Default"]}
+                    { "stdlibs": ["libstdc++"], "tests": ["Release.Default"]},
+                    { "stdlibs": ["libc++"], "tests": ["Release.Default", "Release.-DBEMAN_INSIDE_CERTIFY_FULL=ON"]}
                   ]
                 }
               ]
@@ -215,8 +217,11 @@ jobs:
           "appleclang": [
             { "versions": ["latest"],
               "tests": [
-                { "cxxversions": ["c++26", "c++23"],
+                { "cxxversions": ["c++26"],
                   "tests": [{ "stdlibs": ["libc++"], "tests": ["Release.Default"]}]
+                },
+                { "cxxversions": ["c++23"],
+                  "tests": [{ "stdlibs": ["libc++"], "tests": ["Release.Default", "Release.-DBEMAN_INSIDE_CERTIFY_FULL=ON"]}]
                 }
               ]
             }
@@ -229,7 +234,8 @@ jobs:
                     { "stdlibs": ["stl"],
                       "tests": [
                         "Debug.Default", "Release.Default",
-                        "Release.-DBEMAN_INSIDE_WARNINGS_AS_ERRORS=ON"
+                        "Release.-DBEMAN_INSIDE_WARNINGS_AS_ERRORS=ON",
+                        "Release.-DBEMAN_INSIDE_CERTIFY_FULL=ON"
                       ]
                     }
                   ]

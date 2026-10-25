@@ -2,7 +2,9 @@
 
 # The certify tool's own checks: the result hash recomputed with Python's
 # hashlib, and find_grids.py run over the examples (whose unoptimized objects
-# keep every math instantiation as a symbol).
+# keep every math instantiation as a symbol). Every pair the examples use
+# needs a row in docs/certified.md, and those up to 2^20 inputs are
+# recomputed against its hashes.
 find_package(Python3 COMPONENTS Interpreter)
 if(NOT Python3_Interpreter_FOUND OR CMAKE_CROSSCOMPILING)
     return()
@@ -36,7 +38,8 @@ if(
             ${PROJECT_BINARY_DIR}/examples --nm ${CMAKE_NM} --min-pairs 10
             --emit ${CMAKE_CURRENT_BINARY_DIR}/example_pairs.cpp --run --cxx
             ${CMAKE_CXX_COMPILER} --cxxflags "${CMAKE_CXX_FLAGS}" -I
-            ${PROJECT_SOURCE_DIR}/include -- --estimate --max-slots 0
+            ${PROJECT_SOURCE_DIR}/include -- --no-progress --max-slots 1048576
+            --check ${PROJECT_SOURCE_DIR}/docs/certified.md --require-all
     )
     set_tests_properties(
         beman.inside.tests.find_grids

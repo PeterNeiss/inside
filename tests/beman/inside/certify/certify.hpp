@@ -26,6 +26,7 @@
 //   --pair TEXT       only the pairs whose "function input output" contains TEXT
 //   --markdown FILE   also write the table as a page (docs/certified.md)
 //   --check FILE      fail unless every hash equals the one in FILE's table
+//   --require-all     with --check: a skipped pair must have a row in FILE too
 //   --dump            print every result record of the selected pairs
 //   --progress / --no-progress   progress on stderr (default: when it is a terminal)
 //
@@ -216,7 +217,7 @@ void evaluate_both(const Fn& fn, record& fast, record& integer, const X&... x) {
 }
 
 struct job {
-    std::string   Function, In, Out;
+    std::string   Section, Function, In, Out;
     std::uint64_t Slots = 0;
     evaluator     Eval;
     std::string   key() const { return Function + " " + In + " " + Out; }
@@ -239,15 +240,19 @@ struct options {
 #endif
     double      MaxSeconds = 0; // 0: no limit
     std::string Pair, Markdown, Check;
-    bool        Estimate = false, Dump = false;
+    bool        Estimate = false, Dump = false, RequireAll = false;
     int         Progress = -1; // -1: when stderr is a terminal
 };
 
 class runner {
   public:
+    // The pairs added after this go under its Markdown heading and text.
+    void section(std::string heading) { Section = std::move(heading); }
+
     template <insidable Out, insidable In, class Fn>
     void unary(std::string function, Fn fn) {
-        Jobs.push_back({std::move(function),
+        Jobs.push_back({Section,
+                        std::move(function),
                         type_text<In>(),
                         type_text<Out>(),
                         slots_of<In>(),
@@ -259,7 +264,8 @@ class runner {
     template <insidable Out, insidable A, insidable B, class Fn>
     void binary(std::string function, Fn fn) {
         const std::uint64_t nb = slots_of<B>();
-        Jobs.push_back({std::move(function),
+        Jobs.push_back({Section,
+                        std::move(function),
                         type_text<A>() + " × " + type_text<B>(),
                         type_text<Out>(),
                         product(slots_of<A>(), nb),
@@ -271,6 +277,7 @@ class runner {
     const std::vector<job>& jobs() const { return Jobs; }
 
   private:
+    std::string      Section;
     std::vector<job> Jobs;
 };
 
@@ -394,14 +401,19 @@ sweep(const job& j, result& r, const options& o, progress& p, std::size_t index,
         std::printf("# sha256 %s\n", r.Hash.c_str());
 }
 
-// The table: one row per pair. `|` never appears in a cell (flags are
-// comma-separated), so a row splits on it.
+// The table: one row per pair, a new table under each section's heading.
+// `|` never appears in a cell (flags are comma-separated), so a row splits
+// on it.
 inline std::string table(const std::vector<result>& results) {
-    std::string out =
-        "| function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |\n"
-        "|:--|:--|:--|--:|--:|--:|:--|:--|\n";
-    for (const result& r : results) {
-        const job& j = *r.Job;
+    std::string out;
+    for (std::size_t i = 0; i < results.size(); ++i) {
+        const job&    j = *results[i].Job;
+        const result& r = results[i];
+        if (i == 0 || j.Section != results[i - 1].Job->Section)
+            out +=
+                (i == 0 ? "" : "\n") + (j.Section.empty() ? "" : j.Section + "\n\n") +
+                "| function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |\n"
+                "|:--|:--|:--|--:|--:|--:|:--|:--|\n";
         out += "| `" + j.Function + "` | `" + j.In + "` | `" + j.Out + "` | " +
                (j.Slots == saturated ? count_text(j.Slots) : std::to_string(j.Slots)) + " | ";
         if (r.Ran)
@@ -413,7 +425,8 @@ inline std::string table(const std::vector<result>& results) {
     return out;
 }
 
-// The committed hashes of FILE's table, by "function input output".
+// The rows of FILE's tables, by "function input output": the committed hash,
+// or empty for a row without one (a skipped pair).
 inline std::map<std::string, std::string> read_hashes(const std::string& file) {
     std::map<std::string, std::string> hashes;
     std::ifstream                      in{file};
@@ -427,8 +440,8 @@ inline std::map<std::string, std::string> read_hashes(const std::string& file) {
             cells.push_back(a == std::string::npos ? std::string{} : cell.substr(a, b - a + 1));
         }
         // "", function, input, output, inputs, guesses, mismatches, hash, verdict
-        if (cells.size() >= 9 && cells[7].size() == 64)
-            hashes[cells[1] + " " + cells[2] + " " + cells[3]] = cells[7];
+        if (cells.size() >= 9 && cells[1] != "function" && !cells[1].starts_with(":--"))
+            hashes[cells[1] + " " + cells[2] + " " + cells[3]] = cells[7].size() == 64 ? cells[7] : "";
     }
     return hashes;
 }
@@ -445,7 +458,8 @@ inline const char* page_header =
     "constant evaluation and a `BEMAN_INSIDE_MATH_NO_FP` build compute). A certified pair has no input where\n"
     "the two differ and no result left undecided at the engine's precision cap: every result is the correctly\n"
     "rounded point, the same in every build. The hash covers every result, so a build on another compiler,\n"
-    "platform or FPU reproduces it exactly; the test suite checks it in every CI configuration.\n"
+    "platform or FPU reproduces it exactly. Every CI configuration checks the pairs up to 2^20 inputs, and\n"
+    "the weekly run all of them.\n"
     "[certify.md](certify.md) explains the tool, the hash, and how to certify the grids of your own program.\n"
     "\n";
 
@@ -464,6 +478,8 @@ inline int main(int argc, char** argv, void (*pairs)(runner&)) {
             o.Markdown = next();
         else if (a == "--check")
             o.Check = next();
+        else if (a == "--require-all")
+            o.RequireAll = true;
         else if (a == "--estimate")
             o.Estimate = true;
         else if (a == "--dump")
@@ -475,7 +491,8 @@ inline int main(int argc, char** argv, void (*pairs)(runner&)) {
         else {
             std::fprintf(stderr,
                          "usage: %s [--estimate] [--max-slots N] [--max-seconds S] [--pair TEXT]\n"
-                         "          [--markdown FILE] [--check FILE] [--dump] [--progress | --no-progress]\n",
+                         "          [--markdown FILE] [--check FILE] [--require-all] [--dump]\n"
+                         "          [--progress | --no-progress]\n",
                          argv[0]);
             return 2;
         }
@@ -559,19 +576,19 @@ inline int main(int argc, char** argv, void (*pairs)(runner&)) {
     if (!o.Check.empty()) {
         const auto committed = read_hashes(o.Check);
         for (const result& res : results) {
-            if (!res.Ran)
+            if (!res.Ran && !o.RequireAll)
                 continue;
             const auto it = committed.find(res.Job->key());
             if (it == committed.end()) {
                 std::fprintf(stderr, "certify: not in %s: %s\n", o.Check.c_str(), res.Job->key().c_str());
                 status = 1;
-            } else if (it->second != res.Hash) {
+            } else if (res.Ran && it->second != res.Hash) {
                 std::fprintf(stderr,
                              "certify: hash differs from %s: %s\n  computed  %s\n  committed %s\n",
                              o.Check.c_str(),
                              res.Job->key().c_str(),
                              res.Hash.c_str(),
-                             it->second.c_str());
+                             it->second.empty() ? "none (skipped there)" : it->second.c_str());
                 status = 1;
             }
         }

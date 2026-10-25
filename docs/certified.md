@@ -11,8 +11,14 @@ Every input of each pair was computed twice, as a run-time call and on the integ
 constant evaluation and a `BEMAN_INSIDE_MATH_NO_FP` build compute). A certified pair has no input where
 the two differ and no result left undecided at the engine's precision cap: every result is the correctly
 rounded point, the same in every build. The hash covers every result, so a build on another compiler,
-platform or FPU reproduces it exactly; the test suite checks it in every CI configuration.
+platform or FPU reproduces it exactly. Every CI configuration checks the pairs up to 2^20 inputs, and
+the weekly run all of them.
 [certify.md](certify.md) explains the tool, the hash, and how to certify the grids of your own program.
+
+## Library pairs
+
+Grids picked to cover every function, each rounding mode, coarse and fine outputs, decimal
+notches and the double-double tier.
 
 | function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
 |:--|:--|:--|--:|--:|--:|:--|:--|
@@ -55,3 +61,73 @@ platform or FPU reproduces it exactly; the test suite checks it in every CI conf
 | `atan2` | `{[-16, 16], 1/32} round_nearest × {[-16, 16], 1/32} round_nearest` | `{[-64, 64], 1/16} round_nearest, clamp` | 1050625 | 0 | 0 | `9a65cb2a39267dcef2456d31b5a52c221601845ffd7d4fea2f815672953ee7d4` | certified |
 | `hypot` | `{[-16, 16], 1/32} round_nearest × {[-16, 16], 1/32} round_nearest` | `{[-64, 64], 1/1048576} round_nearest, clamp` | 1050625 | 0 | 0 | `5be81db03628e8cebc03790ebcf0f49cdbd56cffc4b2610ec663cb5b7ee821e7` | certified |
 | `pow` | `{[1/64, 16], 1/64} round_nearest × {[-4, 4], 1/8} round_nearest` | `{[-1048576, 1048576], 1/16} round_nearest` | 66560 | 0 | 0 | `f5933e0978be082791ad8ce1b8a7b4d1d70bad34fc9384f42896ec0866ddaaa8` | certified |
+
+## Pairs the examples use
+
+Every math call of the [examples](../examples) on a notched grid. The rows marked skipped have
+more inputs than exhaustion can compute.
+
+### navigation.cpp
+
+| function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
+|:--|:--|:--|--:|--:|--:|:--|:--|
+| `sin` | `{[-4, 4], 1/16384} round_nearest` | `{[-1, 1], 1/16384} round_nearest` | 131073 | 0 | 0 | `031a93e2ad9b518e0a27557b4d710fbee31e67c446760d95dacc419f8315cea0` | certified |
+| `cos` | `{[-4, 4], 1/16384} round_nearest` | `{[-1, 1], 1/16384} round_nearest` | 131073 | 0 | 0 | `8c958bddd2776f5bcde318558e57eea3c0579572d1bdddd05bda8419b85cfbd4` | certified |
+| `asin` | `{[-1, 1], 1/4096} round_nearest` | `{[-3217/2048, 3217/2048], 1/4096} round_nearest` | 8193 | 0 | 0 | `7fdb8f24ad5550b15b354d8c963fc534d7e5e09e7bc10d04d53a4035df3d79f5` | certified |
+| `acos` | `{[-1, 1], 1/4096} round_nearest` | `{[0, 3217/1024], 1/4096} round_nearest` | 8193 | 0 | 0 | `810c89e56e31b187e823abde7186179ad08f700097c20a5686f720de16b86e4f` | certified |
+| `atan2` | `{[-1, 1], 1/16384} round_nearest × {[-1, 1], 1/16384} round_nearest` | `{[-4, 4], 1/16384} round_nearest` | 1073807361 | 0 | 0 | `0ea93bb107289163a5a711080b2cd223197ba1d0cdefe478bf4ac1af66f1191d` | certified |
+| `hypot` | `{[-1, 1], 1/16384} round_nearest × {[-1, 1], 1/16384} round_nearest` | `{[0, 23171/16384], 1/16384} round_nearest` | 1073807361 | 0 | 0 | `5e3d50b8cd3b9da832a977a3aa1faae71d5e4b55ac1bf466c46344bd276fcd70` | certified |
+| `atan2` | `{[-1024, 1024], 1/256} round_nearest × {[-1024, 1024], 1/256} round_nearest` | `{[-4, 4], 1/1048576} round_nearest` | 274878955521 | – | – | – | skipped: 274.9 G inputs, over --max-slots (~11 h 52 min) |
+| `hypot` | `{[-1024, 1024], 1/256} round_nearest × {[-1024, 1024], 1/256} round_nearest` | `{[0, 46341/32], 1/256} round_nearest` | 274878955521 | – | – | – | skipped: 274.9 G inputs, over --max-slots (~12 h 41 min) |
+
+### audio_math.cpp
+
+| function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
+|:--|:--|:--|--:|--:|--:|:--|:--|
+| `exp` | `{[-4, 4], 1/1024} checked` | `{[0, 100], 1/16384} round_nearest` | 8193 | 0 | 0 | `8be94bf2017946d52914e3b2cf11dc8e8802fad740cb1fa0211b2c8cb13cd0a8` | certified |
+| `exp2` | `{[0, 4], 1/2} round_nearest` | `{[0, 16], 1/16384} round_nearest` | 9 | 0 | 0 | `02c1498e58196a42851514085cb2763c43082b6e4c6646ce41fe30a7993a8c63` | certified |
+| `exp2` | `{[0, 4], 1/1024} round_nearest` | `{[0, 16], 1/16384} round_nearest` | 4097 | 0 | 0 | `5433cd272cdfb76e8afc5321f3d2c79f49f5bd7facbe37c27fb0a228728c2fe9` | certified |
+| `tanh` | `{[-4, 4], 1/2048} round_nearest` | `{[-2047/2048, 2047/2048], 1/2048} round_nearest` | 16385 | 0 | 0 | `bf8bcb44db70b7fa12ce3703eae15034fbf86962549086756ca910afcf6cd3e6` | certified |
+| `sinh` | `{[-4, 4], 1/2048} round_nearest` | `{[-27945/1024, 27945/1024], 1/2048} round_nearest` | 16385 | 0 | 0 | `8a8d00fecb36b076e66c7c1af335a5c1fb31fffb4410a9fc06c41a102c65051e` | certified |
+| `cosh` | `{[-4, 4], 1/2048} round_nearest` | `{[1, 6991/256], 1/2048} round_nearest` | 16385 | 0 | 0 | `8268cd63f662dff5dd54ce59da9681cf8b1fdfd0223d11073f8581a8ebe39e40` | certified |
+| `log2` | `{[1/16, 16], 1/1024} round_nearest` | `{[-4, 4], 1/1024} round_nearest` | 16321 | 0 | 0 | `ca1c9b44a9255ec6196091fe34bce03bb732e9d4765274eb7bec3d5d0a53f93c` | certified |
+| `cbrt` | `{[0, 64], 1/256} round_nearest` | `{[0, 4], 1/256} round_nearest` | 16385 | 0 | 0 | `4764dd2fb6e6a553c61cb00195d5715f2a23b22e03ac2cdb7f1862a87d79f759` | certified |
+
+### units.cpp
+
+| function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
+|:--|:--|:--|--:|--:|--:|:--|:--|
+| `sin` | `{[0, 7], 1/1000000} round_nearest` | `{[-1, 1], 1/1000000} round_nearest` | 7000001 | 0 | 0 | `d8012699e473073ce5ca3c5394878d6d80ee5d74e6fbca913a0d24a7f7eda52c` | certified |
+| `cos` | `{[0, 7], 1/1000000} round_nearest` | `{[-1, 1], 1/1000000} round_nearest` | 7000001 | 0 | 0 | `65e42dbe80f225da30f54ef68af9e1fca665662ec2b05966d82c8d20f84984c3` | certified |
+
+### decibels.cpp
+
+| function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
+|:--|:--|:--|--:|--:|--:|:--|:--|
+| `log10` | `{[1/256, 4], 1/65536} round_nearest` | `{[-5/2, 1], 1/40} round_nearest` | 261889 | 0 | 0 | `cab0a8a7196c52b2fe919a6a61710bf86fa341bcaadb9403953dde31d9168621` | certified |
+| `pow_base<10>` | `{[-6/5, 3/5], 1/40} checked` | `{[1/256, 4], 1/65536} round_nearest` | 73 | 0 | 0 | `95e86dcdd0125a5279739d77f143b4940caaedd20ab3cc7f1c2dae5572d6f96d` | certified |
+
+### audio_mixer.cpp
+
+| function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
+|:--|:--|:--|--:|--:|--:|:--|:--|
+| `pow_base<10>` | `{[-6/5, 3/5], 1/40} checked` | `{[0, 4], 1/65536} round_nearest` | 73 | 0 | 0 | `95e86dcdd0125a5279739d77f143b4940caaedd20ab3cc7f1c2dae5572d6f96d` | certified |
+
+### moon_rocket.cpp
+
+| function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
+|:--|:--|:--|--:|--:|--:|:--|:--|
+| `sqrt` | `{[977000000/1993002209, 979500000/1993002209], 2500/1993002209} checked` | `{[0, 200], 1/1000000000} round_nearest` | 1001 | 0 | 0 | `4162c4b13289d8784b8a2c7e60949585205e0e09bf90d7e740250f55b7a55d0f` | certified |
+
+### huge_angles.cpp
+
+| function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
+|:--|:--|:--|--:|--:|--:|:--|:--|
+| `sin` | `{[0, 4611686018427387903], 1} checked` | `{[-1, 1], 1/4503599627370496} round_nearest` | 4611686018427387904 | – | – | – | skipped: 4.6e+18 inputs, over --max-slots (~6.8e+04 years) |
+| `cos` | `{[0, 4611686018427387903], 1} checked` | `{[-1, 1], 1/4503599627370496} round_nearest` | 4611686018427387904 | – | – | – | skipped: 4.6e+18 inputs, over --max-slots (~6.7e+04 years) |
+
+### solar_system.cpp
+
+| function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
+|:--|:--|:--|--:|--:|--:|:--|:--|
+| `hypot` | `{[-10000000000000, 10000000000000], 1/1000000000} checked × {[-10000000000000, 10000000000000], 1/1000000000} checked` | `{[0, 100000000000000], 1/1000} round_nearest` | > 1.8e+19 | – | – | – | skipped: > 1.8e+19 inputs, over --max-slots (~9.2e+05 years) |

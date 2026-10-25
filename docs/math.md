@@ -86,7 +86,7 @@ costs, is in [internals.md](internals.md#10-the-math-engine).
   alone, certifies it when no result differs and none was guessed, and
   hashes all its results. [certify.md](certify.md) shows how to find and
   certify the pairs your own program uses; [certified.md](certified.md)
-  lists the library's, with their hashes. `BEMAN_INSIDE_MATH_INSTRUMENT=1`
+  lists the library's and the examples', with their hashes. `BEMAN_INSIDE_MATH_INSTRUMENT=1`
   gives a program of your own the counters (`math::driver`).
 - **Inverse trigonometry into degrees rounds twice.** `asin`, `acos`, `atan`
   and `atan2` return radians; `value_cast` to degrees then rounds a second
