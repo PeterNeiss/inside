@@ -361,7 +361,7 @@ output grid is part of the type, so is the precision. A coarse output is cheap,
 a fine one costs more, and there is no ceiling: an output notch of 2⁻¹⁰⁰ gets a
 correctly rounded result too. The result does not depend on how it was
 computed, so it is the same at compile time and at run time, on every
-platform, with or without an FPU, and under any compiler flags.
+platform, with or without an FPU.
 
 - **Two forms.** `fn_into<Out>(x)` names the output. `fn(x)` deduces it: the
   input's notch and policy, and the function's range over the input's
@@ -401,6 +401,19 @@ doubles the precision while the interval straddles a rounding boundary (Ziv's
 strategy). It reads a precomputed table for small inputs and uses
 floating-point kernels with proved bounds where an FPU is present, behind an
 integer path that always applies and gives the same results.
+
+The requirement is met wherever that loop ends, and it ends for every input:
+a rounding boundary is rational, the rational results are exactly the exact
+cases above (Lindemann–Weierstrass, Niven's theorem and the rational root
+theorem leave no others), and every other result is irrational. How many
+doublings an input needs is not known in advance for an arbitrary grid, the
+table-maker's dilemma, so the reference implementation stops at four times
+its start precision (plus one deeper step for functions that approach a grid
+point, such as tanh x → 1). A result still undecided there, within about
+2^−4W of a boundary, is stored as the nearest point: the same in every build,
+but not proven correct. A tool certifies a type pair by exhaustion instead,
+computing every input and requiring that none is undecided
+([Implementation experience](#implementation-experience)).
 
 # Proposed interface
 
@@ -714,14 +727,20 @@ The reference implementation is header-only C++23 (GCC 14+, Clang 19+, Clang 18
 with libc++, AppleClang, MSVC 19.51+). Grids past 64 bits use C++26 static
 reflection (GCC 16 with `-freflection`). It ships a single-header amalgamation,
 a CMake package and a vcpkg port, and follows the Beman Standard. Its test
-suite (818 tests, 831 with C++26 reflection) runs in CI on 50 compiler,
+suite (835 tests, 847 with C++26 reflection) runs in CI on 50 compiler,
 library and sanitizer configurations. It includes a check that the integer
 fast paths compile to call-free, vectorising code, a property fuzzer, and a
 differential oracle that recomputes random results exactly in Python.
 
 The math layer is checked for every function on dyadic, decimal and 2⁻⁴⁰
 grids against a `long double` reference, and every maximum error is 0.5
-notch (the repository's `docs/accuracy.md`). A build without floating point
+notch (the repository's `docs/accuracy.md`). 39 type pairs covering every
+function are certified by exhaustion: every input computed both through the
+floating-point kernels and through the integer path alone, with no
+difference and no result left undecided at the precision cap. A SHA-256 of
+each pair's results is committed (`docs/certified.md`), and every CI
+configuration reproduces it. A tool finds the pairs a user's own build uses,
+from its symbols, and certifies them the same way. A build without floating point
 (`-ffreestanding`) computes every result on the integer path, and the results
 do not change. Onto the grid deduced from the input, the functions run from
 about 3× slower to 3× faster than `<cmath>`. Onto grids as fine as a `double`,
@@ -790,7 +809,10 @@ The repository's `docs/resources.md` compares their features.
    rounded point. The cost is small onto coarse grids and 4–9× at a `double`'s
    resolution. Should implementations be allowed a faithful result (one of the
    two neighbouring points) instead, at the price of results that differ
-   between platforms?
+   between platforms? And since no bound on the precision a result needs is
+   known for an arbitrary grid, may an implementation stop at a precision cap,
+   as the reference implementation does, provided the result it then returns
+   is the same on every platform?
 10. **Deduced outputs.** The deduced output's grid follows the input's notch,
     with fixed ranges for `sin`, `cos`, `tan` and `atan2`. The fixed `tan`
     range [−1024, 1024] is a choice; it could instead be required to be named.

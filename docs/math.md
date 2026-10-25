@@ -1,4 +1,4 @@
-# `beman::inside::math` — correctly rounded math on any grid
+# `beman::inside::math` — math on any grid, rounded once
 
 <!--
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -6,12 +6,14 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 `<beman/inside/cmath.hpp>` is a `<cmath>`-shaped set of functions on insides.
 Every transcendental returns the **correctly rounded point of its output
-grid**, under the output's rounding mode, and the engine works at whatever
-precision that grid needs. So:
+grid**, under the output's rounding mode, wherever the engine can decide it,
+and it works at whatever precision that grid needs. A result it cannot decide
+within its precision cap is a deterministic guess; [what is
+guaranteed](#what-is-guaranteed) says when that can happen. So:
 
 - **A result does not depend on how it was computed.** The same value comes
   out on every platform and compiler, at compile time and at run time, with or
-  without an FPU, under any flags ([determinism.md](determinism.md)).
+  without an FPU, under the build rules of [determinism.md](determinism.md).
 - **There is no precision ceiling.** A 2⁻¹⁰⁰ output grid gets a correctly
   rounded result, and inputs and outputs may be grids past 64 bits (C++26,
   [storage.md](storage.md#grids-past-64-bits-c26)).
@@ -38,7 +40,9 @@ same point, that point is the correctly rounded result. When they straddle a
 rounding boundary, the engine computes again at twice the precision (Ziv's
 strategy). A transcendental value lies exactly on a boundary only at a few
 exact inputs (`exp(0)`, `log(1)`, `sqrt(9/4)`, `log2(2^k)`, integer powers);
-the engine recognises those and stores them exactly.
+the engine recognises those and stores them exactly. Every other value is
+irrational, so the doubling ends, but only up to a cap
+([below](#what-is-guaranteed)).
 
 The precision follows the **output** grid: it starts at the bits that resolve
 the output notch, plus 8 guard bits. A coarse output is cheap and a fine one
@@ -57,6 +61,38 @@ grid point:
 How the floating-point tiers prove their bounds, and the speed each guard
 costs, is in [internals.md](internals.md#10-the-math-engine).
 
+## What is guaranteed
+
+- **The same point in every build.** Under the build rules of
+  [determinism.md](determinism.md), every path returns the point the integer
+  path computes. The `double` tier's and the lean double-double kernels'
+  bounds are proved; the full double-double kernels' are measured, with a
+  margin of about 2⁹.
+- **Exact values are exact.** The rational results — `exp(0)`, `2^−1`,
+  `log10(1000)`, `sqrt(9/4)`, `8^(2/3)`, `hypot(3/2, 2)`, sin 30° — are stored
+  exactly, so a tie between two points or a point under directed rounding
+  rounds correctly. The theorems that make the list complete are named in
+  `detail/math_cores.hpp`, and `tests/beman/inside/math_exact.test.cpp`
+  checks each kind.
+- **Correctly rounded, except within about 2^−4W of a boundary.** W is the
+  start precision (the output's bits plus 8, at least 16). The engine doubles
+  it twice, and a function that can come close to a grid point (tanh x → 1,
+  sin x → x) runs once more at up to 2048 extra bits. A result still
+  undecided then is stored as the point nearest its last approximation: the
+  same in every build, but possibly the wrong neighbour. Nobody knows a bound
+  that rules this out for an arbitrary grid, the table-maker's dilemma.
+- **Certified by exhaustion, per type pair.** The certify tool computes every
+  input of a pair through the public call and through the integer path
+  alone, certifies it when no result differs and none was guessed, and
+  hashes all its results. [certify.md](certify.md) shows how to find and
+  certify the pairs your own program uses; [certified.md](certified.md)
+  lists the library's, with their hashes. `BEMAN_INSIDE_MATH_INSTRUMENT=1`
+  gives a program of your own the counters (`math::driver`).
+- **Inverse trigonometry into degrees rounds twice.** `asin`, `acos`, `atan`
+  and `atan2` return radians; `value_cast` to degrees then rounds a second
+  time, so the angle in degrees is not correctly rounded
+  ([roadmap.md](roadmap.md#units)).
+
 ## Conventions
 
 - **Angles are radians**, as in `<cmath>`. `math::unit_amplitude<K>` ([−1, 1]
@@ -70,8 +106,8 @@ costs, is in [internals.md](internals.md#10-the-math-engine).
   ranges: `sin`/`cos` [−1, 1], `tan` [−1024, 1024], `atan2` [−π, π]; `hypot`
   uses the gcd of both notches, `pow` the base's notch, `floor` & co. notch 1.
   A fine input gives a fine, slower output; name a coarser one with `fn_into`.
-- **`fn_into<Out>(x)` names the output.** The result is correctly rounded under
-  `Out`'s mode, and a result past `Out`'s range goes through `Out`'s policy
+- **`fn_into<Out>(x)` names the output.** The result rounds under `Out`'s mode,
+  as [above](#what-is-guaranteed), and a result past `Out`'s range goes through `Out`'s policy
   (`clamp` saturates, `wrap` wraps the true value, the default reports). `tan`
   cannot have a `wrap` output: near a pole its value has no bound.
 - **Grids off the notch's multiples** (`{{0.5, 10.5}, 1}`) are correctly

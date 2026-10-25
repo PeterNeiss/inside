@@ -42,8 +42,11 @@ auto d = just<5> * si::kilo(si::metre) + just<250> * si::metre;   // 5250 m, exa
   your domain — a currency, hit points, pixels, ADC counts — and it never mixes
   with anything else.
 - **Correctly rounded math.** `sin`/`cos`/`sqrt`/`exp`/… return the correctly
-  rounded point of any output grid — bit-identical on every platform, at
-  compile time, and on bare metal without an FPU. `sin` of 30° is exactly ½.
+  rounded point of any output grid wherever the engine decides it, and the
+  same bits on every platform, at compile time, and on bare metal without an
+  FPU. `sin` of 30° is exactly ½. What is guaranteed, and how to certify a
+  type pair your program uses, is in [docs/math.md](docs/math.md#what-is-guaranteed)
+  and [docs/certify.md](docs/certify.md).
 - **Any size of grid.** Under C++26 with static reflection a grid's limits and
   notch have no size limit (`inside<{0, 0x1p100}>`); see
   [docs/storage.md](docs/storage.md#grids-past-64-bits-c26).
@@ -137,6 +140,7 @@ through a program. Read it first; everything else builds on it.
 
 **Special topics** — [for fixed-point users](docs/fixed-point.md) ·
 [determinism & reproducibility](docs/determinism.md) ·
+[certifying your math grids](docs/certify.md) ·
 [freestanding & bare-metal](docs/freestanding.md) ·
 [reading compiler errors](docs/diagnostics.md) ·
 [the single header](docs/single-header.md)

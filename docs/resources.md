@@ -21,7 +21,7 @@ partial / related · **○** no · **—** not applicable.
 
 | Library | Domain | Range in type `[lo,hi]` | Auto-widening result | Out-of-range handling | Fixed-point | Rational / exact | Transcendental math | Determinism / FPU-free | Freestanding / `-fno-exceptions` | Physical units |
 |---|---|---|---|---|---|---|---|---|---|---|
-| **inside** | bounded rational grids | ● | ● | clamp / wrap / round / snap / throw / `errc` / `std::expected` | ● | ● | ● (correctly rounded on any grid) | ● | ◐ ¹⁰ | ● ²¹ |
+| **inside** | bounded rational grids | ● | ● | clamp / wrap / round / snap / throw / `errc` / `std::expected` | ● | ● | ● (correctly rounded on any grid where decided) | ● | ◐ ¹⁰ | ● ²¹ |
 | **bounded::integer** | integers | ● | ● | policy on narrowing (clamp / modulo / throw / assume) | ○ | ○ | ○ | — | ○ ¹¹ | ○ |
 | **Intel safe-arithmetic** | integers | ● ¹⁹ | ● | compile-time proof (reject) / runtime `safe::function` | ○ | ○ | ○ | — | ○ ²⁰ | ○ |
 | **Boost.SafeNumerics** | integers | ◐ ¹ | ◐ ² | detect → exception (custom exception / trap policy) | ○ | ○ | ○ | — | ◐ ¹² | ○ |
@@ -127,7 +127,7 @@ column. Pick the tool that fits: if you need overflow-safe plain integers,
 - **[fpm](https://github.com/MikeLankamp/fpm)** (Mike Lankamp) — header-only
   fixed-point math with a `<cmath>`-shaped API (trig, pow, log, …) implemented in
   pure integer arithmetic. A direct point of comparison for `inside`'s math
-  engine, whose integer path is FPU-free and correctly rounded — see
+  engine, whose integer path is FPU-free and rounds correctly where it decides — see
   [docs/math.md](math.md).
 - **[type_safe](https://github.com/foonathan/type_safe)** (Jonathan Müller) —
   zero-overhead vocabulary types that use the type system to prevent bugs,
