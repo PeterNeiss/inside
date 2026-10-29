@@ -104,14 +104,11 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P>> {
         [[nodiscard]] constexpr auto            operator<=>(iterator o) const { return Pos <=> o.Pos; }
     };
 
-    umax StartIndex;
+    umax StartIndex{0};
 
-    constexpr inside_range() : StartIndex{0} {}
-
-    constexpr inside_range(value_type start) {
-        // Map a grid value back to its notch index: the raw's offset.
-        StartIndex = detail::raw_offset<value_type>(start.raw());
-    }
+    constexpr inside_range() = default;
+    // A grid value's notch index: its raw's offset.
+    constexpr inside_range(value_type start) : StartIndex{detail::raw_offset<value_type>(start.raw())} {}
 
     constexpr iterator begin() const { return {StartIndex, 0}; }
     constexpr iterator end() const { return {StartIndex, static_cast<imax>(slot_count)}; }

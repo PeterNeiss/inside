@@ -11075,14 +11075,11 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P>> {
         [[nodiscard]] constexpr auto            operator<=>(iterator o) const { return Pos <=> o.Pos; }
     };
 
-    umax StartIndex;
+    umax StartIndex{0};
 
-    constexpr inside_range() : StartIndex{0} {}
-
-    constexpr inside_range(value_type start) {
-        // Map a grid value back to its notch index: the raw's offset.
-        StartIndex = detail::raw_offset<value_type>(start.raw());
-    }
+    constexpr inside_range() = default;
+    // A grid value's notch index: its raw's offset.
+    constexpr inside_range(value_type start) : StartIndex{detail::raw_offset<value_type>(start.raw())} {}
 
     constexpr iterator begin() const { return {StartIndex, 0}; }
     constexpr iterator end() const { return {StartIndex, static_cast<imax>(slot_count)}; }
@@ -17202,11 +17199,12 @@ using adaptive::tanh_into;
 
 
 #include <algorithm>
-#include <string>
-#include <string_view>
+#include <format>
 #include <istream>
 #include <ostream>
-#include <version>
+#include <string>
+#include <string_view>
+#include <type_traits>
 
 namespace beman::inside {
 namespace detail {
@@ -17227,13 +17225,45 @@ std::string wide_to_decimal(wide_int<N, S> v) {
     return neg ? "-" + out : out;
 }
 
+// Decimal digits of num/den (den > 0) on demand: the integer part, then the
+// fraction one chunk at a time. Tail() says whether anything nonzero is left,
+// which rounding needs to tell a tie from a value above it.
+template <std::size_t K>
+struct decimal_stream {
+    using W = wide_uint<K + 1>;
+    W Rem, Den;
+
+    decimal_stream(const wide_uint<K>& num, const wide_uint<K>& den) : Rem{num}, Den{den} {}
+
+    std::string whole() {
+        const auto [q, r] = W::divmod(Rem, Den);
+        Rem               = r;
+        return wide_to_decimal(q);
+    }
+    std::string next(int n) {
+        std::string out;
+        for (; n > 0; n -= 19) {
+            const int chunk = n < 19 ? n : 19;
+            umax      p     = 1;
+            for (int i = 0; i < chunk; ++i)
+                p *= 10;
+            const auto [q, r]      = W::divmod(Rem * W{p}, Den);
+            const std::string part = std::to_string(static_cast<umax>(q));
+            out.append(static_cast<std::size_t>(chunk) - part.size(), '0') += part;
+            Rem = r;
+        }
+        return out;
+    }
+    bool tail() const { return !Rem.is_zero(); }
+};
+
 // num/den (den > 0) in the forms parse reads: its exact decimal when the
 // reduced denominator is 2^a·5^b (however many digits, and at least
 // min_digits decimals), else "num/den".
 template <std::size_t K>
 std::string fraction_to_string(bool neg, wide_uint<K> num, wide_uint<K> den, int min_digits = 0) {
     using U   = wide_uint<K>;
-    const U g = beman::inside::detail::wide_gcd(den, num);
+    const U g = wide_gcd(den, num);
     num /= g;
     den /= g;
     std::string str   = neg && !num.is_zero() ? "-" : "";
@@ -17242,28 +17272,14 @@ std::string fraction_to_string(bool neg, wide_uint<K> num, wide_uint<K> den, int
     const int   fives = static_cast<int>(strip_factor(rest, 5));
     if (!(rest == U{1}))
         return str += wide_to_decimal(num) + "/" + wide_to_decimal(den);
-    // num·10^digits/den is an integer; 19 digits at a time keep the scratch
-    // below den·10^19.
-    const auto [whole, frac] = U::divmod(num, den);
-    str += wide_to_decimal(whole);
+    // num·10^digits/den is an integer: its decimals end there.
+    decimal_stream<K> ds{num, den};
+    str += ds.whole();
     int digits = twos > fives ? twos : fives;
     if (digits < min_digits)
         digits = min_digits;
-    if (digits == 0)
-        return str;
-    str += '.';
-    using W = wide_uint<K + 1>;
-    W r{frac};
-    for (int left = digits; left > 0; left -= 19) {
-        const int chunk = left < 19 ? left : 19;
-        umax      p     = 1;
-        for (int i = 0; i < chunk; ++i)
-            p *= 10;
-        const auto [q, m]      = W::divmod(r * W{p}, W{den});
-        const std::string part = std::to_string(static_cast<umax>(q));
-        str.append(static_cast<std::size_t>(chunk) - part.size(), '0') += part;
-        r = m;
-    }
+    if (digits != 0)
+        str += '.' + ds.next(digits);
     return str;
 }
 } // namespace detail
@@ -17288,8 +17304,8 @@ inline constexpr int fixed_decimals = [] {
         return 0;
     else {
         grid_int  q    = wide_denominator(grid_of<B>.value_unit());
-        const int two  = static_cast<int>(detail::strip_factor(q, 2)); // ≤ the bit width
-        const int five = static_cast<int>(detail::strip_factor(q, 5));
+        const int two  = static_cast<int>(strip_factor(q, 2)); // ≤ the bit width
+        const int five = static_cast<int>(strip_factor(q, 5));
         return q == grid_int{1} && five > 0 ? (two > five ? two : five) : 0;
     }
 }();
@@ -17493,13 +17509,8 @@ inline std::istream& operator>>(std::istream& stream, B& b) {
 } // namespace beman::inside
 
 //---------------------------------------------------------------------------
-// std::format integration is gated on a working <format>; without it this
-// compiles as a no-op and to_string()/operator<< remain.
+// std::format integration
 //---------------------------------------------------------------------------
-
-#include <format>
-#include <type_traits>
-
 namespace beman::inside::detail {
 // Shared spec handling: an empty `{}` is left to the derived format() (exact
 // to_string); a non-empty spec is parsed and applied by `Numeric`.
@@ -17516,40 +17527,6 @@ struct numeric_spec_formatter {
         }
         return it;
     }
-};
-} // namespace beman::inside::detail
-
-namespace beman::inside::detail {
-// Decimal digits of num/den (den > 0) on demand: the integer part, then the
-// fraction one chunk at a time. Tail() says whether anything nonzero is left,
-// which rounding needs to tell a tie from a value above it.
-template <std::size_t K>
-struct decimal_stream {
-    using W = wide_uint<K + 1>;
-    W Rem, Den;
-
-    decimal_stream(const wide_uint<K>& num, const wide_uint<K>& den) : Rem{num}, Den{den} {}
-
-    std::string whole() {
-        const auto [q, r] = W::divmod(Rem, Den);
-        Rem               = r;
-        return wide_to_decimal(q);
-    }
-    std::string next(int n) {
-        std::string out;
-        for (; n > 0; n -= 19) {
-            const int chunk = n < 19 ? n : 19;
-            umax      p     = 1;
-            for (int i = 0; i < chunk; ++i)
-                p *= 10;
-            const auto [q, r]      = W::divmod(Rem * W{p}, Den);
-            const std::string part = std::to_string(static_cast<umax>(q));
-            out.append(static_cast<std::size_t>(chunk) - part.size(), '0') += part;
-            Rem = r;
-        }
-        return out;
-    }
-    bool tail() const { return !Rem.is_zero(); }
 };
 
 // Keep the first `keep` digits of the magnitude `d` (digits[keep..] and a
@@ -17636,6 +17613,25 @@ struct exact_format_spec {
             throw std::format_error("inside: unsupported format spec (use f, e or g with fill, align, sign, #, 0, "
                                     "width and precision)");
         return it;
+    }
+
+    // v's shortest form (to_string) without its sign, which body() reads only
+    // without a type or precision (else empty).
+    template <class V>
+    std::string plain_text(const V& v) const {
+        if (Type != 0 || Precision >= 0)
+            return {};
+        std::string s = beman::inside::to_string(v);
+        if (!s.empty() && s[0] == '-')
+            s.erase(0, 1);
+        return s;
+    }
+
+    // An exact value's text by the spec, then written with its sign.
+    template <std::size_t K, typename Ctx>
+    auto write_exact(const wide_rational<K>& f, std::string_view plain, round_mode mode, Ctx& ctx) const {
+        const bool neg = f.Num.negative();
+        return write(neg, body(wide_uint<K>{abs(f.Num)}, wide_uint<K>{f.Den}, plain, neg, mode), ctx);
     }
 
     // The value's text: `plain` (to_string) for no type and no precision,
@@ -17738,9 +17734,7 @@ struct exact_format_spec {
         return out + (x < 0 ? "e-" : "e+") + (ax < 10 ? "0" : "") + std::to_string(ax);
     }
 };
-} // namespace beman::inside::detail
 
-namespace beman::inside::detail {
 // The rounding a format spec applies to B: B's own mode when its policy
 // names one (as storing at that precision would round), else ties to even.
 template <insidable B>
@@ -17748,20 +17742,6 @@ inline constexpr round_mode display_rounding =
     has_any_flag(flags_of<B>, round_floor | round_ceil | round_nearest | round_half_even | snap)
         ? rounding_of(flags_of<B>)
         : round_mode::half_even;
-
-// x's exact value as a sign and a magnitude fraction, for the exact specs.
-template <std::size_t K>
-bool spec_negative(const wide_rational<K>& f) {
-    return f.Num.negative();
-}
-template <std::size_t K>
-wide_uint<K> spec_magnitude(const wide_rational<K>& f) {
-    return wide_uint<K>{abs(f.Num)};
-}
-template <std::size_t K>
-wide_uint<K> spec_denominator(const wide_rational<K>& f) {
-    return wide_uint<K>{f.Den};
-}
 } // namespace beman::inside::detail
 
 // Empty `{}` prints to_string. A notched integer grid within imax takes the
@@ -17788,20 +17768,8 @@ struct std::formatter<beman::inside::inside<G, P>>
             return this->Numeric.format(d::to_value(b), ctx);
         else if (!this->HasSpec)
             return std::format_to(ctx.out(), "{}", beman::inside::to_string(b));
-        else {
-            const auto  v = d::exact_of(b);
-            std::string plain; // the shortest form, read only without a type or precision
-            if (this->Numeric.Type == 0 && this->Numeric.Precision < 0) {
-                plain = beman::inside::to_string(b);
-                if (!plain.empty() && plain[0] == '-')
-                    plain.erase(0, 1);
-            }
-            const bool neg = d::spec_negative(v);
-            return this->Numeric.write(
-                neg,
-                this->Numeric.body(d::spec_magnitude(v), d::spec_denominator(v), plain, neg, d::display_rounding<B>),
-                ctx);
-        }
+        else
+            return this->Numeric.write_exact(d::exact_of(b), this->Numeric.plain_text(b), d::display_rounding<B>, ctx);
     }
 };
 
@@ -17813,20 +17781,7 @@ struct std::formatter<beman::inside::detail::rational>
         namespace d = beman::inside::detail;
         if (!HasSpec)
             return std::format_to(ctx.out(), "{}", beman::inside::to_string(r));
-        std::string plain; // the shortest form, read only without a type or precision
-        if (Numeric.Type == 0 && Numeric.Precision < 0) {
-            plain = beman::inside::to_string(r);
-            if (!plain.empty() && plain[0] == '-')
-                plain.erase(0, 1);
-        }
-        const bool neg = r.Denominator < 0 && r.Numerator != 0;
-        return Numeric.write(neg,
-                             Numeric.body(d::wide_uint<1>{r.Numerator},
-                                          d::wide_uint<1>{d::abs_den(r.Denominator)},
-                                          plain,
-                                          neg,
-                                          d::round_mode::half_even),
-                             ctx);
+        return Numeric.write_exact(d::exact_of(r), Numeric.plain_text(r), d::round_mode::half_even, ctx);
     }
 };
 
