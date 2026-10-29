@@ -76,6 +76,18 @@ namespace detail {
 template <grid G, policy_flag P>
 using cursor_value_t =
     inside<grid{interval{G.Interval.Lower, G.Interval.Upper - G.Notch}, G.Notch}, P & ~cursor_marker>;
+
+// A store into a fresh B through store(b, policy) under B's flags F with an
+// errc& policy: b, or the error it reported.
+template <class B, policy_flag F, class Store>
+constexpr std::expected<B, errc> try_store(Store store) {
+    errc ec{};
+    B    b{};
+    store(b, make_policy<F>(ec));
+    if (ec != errc{})
+        return std::unexpected{ec};
+    return b;
+}
 } // namespace detail
 
 //---------------------------------------------------------------------------
@@ -268,8 +280,7 @@ struct inside {
     //   to<T>(b)/as<T>(b) — free-function forms, for generic code.
     constexpr operator imax() const
         requires((detail::integer_notch<G> || (has_flag(P, snap) && detail::rational_readable<inside>)) &&
-                 G.Interval.Lower >= detail::rational{std::numeric_limits<imax>::min()} &&
-                 G.Interval.Upper <= detail::rational{std::numeric_limits<imax>::max()})
+                 detail::fits_imax(G.Interval))
     {
         if constexpr (detail::integer_notch<G>)
             return detail::to_value(*this);
@@ -522,10 +533,7 @@ struct inside {
     // every grid within int64, a wide_int beyond — never overflowing.
     template <insidable R>
     static constexpr bool point_delta_ok =
-        detail::notched<inside> && detail::point_grid<R> &&
-        (detail::wide_numerator(lower_of<R>) * detail::wide_denominator(notch_of<inside>)) %
-                (detail::wide_denominator(lower_of<R>) * detail::wide_numerator(notch_of<inside>)) ==
-            detail::grid_int{0};
+        detail::notched<inside> && detail::point_grid<R> && detail::grid_divides_evenly(lower_of<R>, notch_of<inside>);
 
     // (R anchored: its Lower is a whole number of notches, the bias.)
     template <insidable R>
@@ -632,12 +640,16 @@ struct inside {
         if constexpr (detail::expected_like<Result>) {
             // A failed op is reported through this type's policy (throw / handler);
             // *this stays unchanged. `*r` (not value()): no bad_expected_access.
-            if (r.has_value())
-                *this = *r;
-            else
-                make_policy<P>().report(r.error());
+            if (!r.has_value())
+                return report_error(r.error());
+            *this = *r;
         } else
             *this = r;
+        return *this;
+    }
+
+    constexpr inside& report_error(errc e) {
+        make_policy<P>().report(e);
         return *this;
     }
 
@@ -772,13 +784,6 @@ struct inside {
         return rhs ? (*this %= *rhs) : report_error(rhs.error());
     }
 
-  private:
-    constexpr inside& report_error(errc e) {
-        make_policy<P>().report(e);
-        return *this;
-    }
-
-  public:
     // ++/-- move one notch: they add the point inside of ±Notch through the
     // insidable += (which has the raw-level integer fast path) instead of the
     // rational round-trip (~30× the instructions on an integer grid). On a
@@ -820,12 +825,7 @@ struct inside {
     template <policy_flag F = none, numeric A>
         requires inside_assignable<inside, A, P | F>
     [[nodiscard]] static constexpr std::expected<inside, errc> try_make(A value) {
-        errc   ec{};
-        inside result{};
-        result.store_value(value, make_policy<P | F>(ec));
-        if (ec != errc{})
-            return std::unexpected{ec};
-        return result;
+        return detail::try_store<inside, P | F>([&](inside& r, auto&& pol) { r.store_value(value, pol); });
     }
     template <policy_flag F = none, numeric A>
         requires inside_assignable<inside, A, P | F>
@@ -834,12 +834,8 @@ struct inside {
     }
     template <policy_flag F = none, std::same_as<detail::grid_rational> V>
     [[nodiscard]] static constexpr std::expected<inside, errc> try_make(const V& value) {
-        errc   ec{};
-        inside result{};
-        detail::assign_grid_number(result, value, make_policy<P | F>(ec));
-        if (ec != errc{})
-            return std::unexpected{ec};
-        return result;
+        return detail::try_store<inside, P | F>(
+            [&](inside& r, auto&& pol) { detail::assign_grid_number(r, value, pol); });
     }
 };
 
@@ -884,12 +880,7 @@ template <insidable B, policy_flag F>
             w = *t;
     if (!w)
         return std::unexpected{w.error()};
-    errc ec{};
-    B    b{};
-    assign_exact<rational>(b, *w, make_policy<flags_of<B> | F>(ec), no_action{});
-    if (ec != errc{})
-        return std::unexpected{ec};
-    return b;
+    return try_store<B, flags_of<B> | F>([&](B& b, auto&& pol) { assign_exact<rational>(b, *w, pol, no_action{}); });
 }
 } // namespace detail
 
@@ -933,12 +924,8 @@ template <insidable B>
             detail::reduced(*w).Den)
             return std::unexpected{errc::rounding_error};
     }
-    errc ec{};
-    B    b{};
-    detail::assign_exact<detail::rational>(b, *w, make_policy<flags_of<B>>(ec), no_action{});
-    if (ec != errc{})
-        return std::unexpected{ec};
-    return b;
+    return detail::try_store<B, flags_of<B>>(
+        [&](B& b, auto&& pol) { detail::assign_exact<detail::rational>(b, *w, pol, no_action{}); });
 }
 
 //---------------------------------------------------------------------------
