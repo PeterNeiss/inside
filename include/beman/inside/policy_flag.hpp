@@ -10,9 +10,6 @@
 #include <type_traits>
 #include <utility>
 
-// BEMAN_INSIDE_MATH_NO_FP (auto-enabled on freestanding targets) and the
-// -ffast-math check are in config.hpp, which every header includes first.
-
 namespace beman::inside {
 //---------------------------------------------------------------------------
 // policy_flag — the policy bits of inside<G, P> (none, ignore_zero,
@@ -162,24 +159,22 @@ template <typename F>
 }
 
 namespace detail {
-// Action detection: the `is_*_action` trait is the primary detector; the concept
+// Action detection: the `is_*_action` trait is the primary detector (the
+// pack helpers below take it as a template-template parameter); the concept
 // derives from it and strips cvref so the ref form matches the value form.
+template <template <typename> class Action, typename T>
+inline constexpr bool is_action = false;
+template <template <typename> class Action, typename F>
+inline constexpr bool is_action<Action, Action<F>> = true;
+
 template <typename T>
-struct is_clamp_action : std::false_type {};
-template <typename F>
-struct is_clamp_action<on_clamp_t<F>> : std::true_type {};
+using is_clamp_action = std::bool_constant<is_action<on_clamp_t, T>>;
 template <typename T>
-struct is_wrap_action : std::false_type {};
-template <typename F>
-struct is_wrap_action<on_wrap_t<F>> : std::true_type {};
+using is_wrap_action = std::bool_constant<is_action<on_wrap_t, T>>;
 template <typename T>
-struct is_error_action : std::false_type {};
-template <typename F>
-struct is_error_action<on_error_t<F>> : std::true_type {};
+using is_error_action = std::bool_constant<is_action<on_error_t, T>>;
 template <typename T>
-struct is_overflow_action : std::false_type {};
-template <typename F>
-struct is_overflow_action<on_overflow_t<F>> : std::true_type {};
+using is_overflow_action = std::bool_constant<is_action<on_overflow_t, T>>;
 
 template <typename T>
 concept clamp_action = is_clamp_action<std::remove_cvref_t<T>>::value;
@@ -223,13 +218,9 @@ template <typename... As>
 inline constexpr policy_flag merged_implied_flags = (none | ... | implied_flags<std::remove_cvref_t<As>>);
 
 // pick_action<Trait>(actions...) returns a reference to the first pack element
-// matching the trait, or a static `no_action` fallback if none does. Conflict
+// matching the trait, or to `fallback_action` if none does. Conflict
 // diagnostics elsewhere ensure at most one match.
-template <template <typename> class Trait>
-inline no_action& pick_action_fallback() {
-    static no_action n;
-    return n;
-}
+inline no_action fallback_action;
 
 template <template <typename> class Trait, typename... As>
 constexpr auto& pick_action(As&... as) {
@@ -241,7 +232,7 @@ constexpr auto& pick_action(As&... as) {
     if constexpr (i < sizeof...(As))
         return as...[i];
     else
-        return pick_action_fallback<Trait>();
+        return fallback_action;
 }
 
 // Same, but operating on a tuple.

@@ -19,16 +19,33 @@
 // rational(double)), double_parts and narrow_midpoint.
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
+// The binary64 fields: the sign bit, the 52 stored significand bits, and the
+// 11-bit biased exponent (0: zero or subnormal, 0x7FF: infinity or NaN).
+inline constexpr std::uint64_t sign_mask     = 0x8000'0000'0000'0000;
+inline constexpr std::uint64_t mantissa_mask = 0x000F'FFFF'FFFF'FFFF;
+constexpr int biased_exponent(std::uint64_t bits) noexcept { return static_cast<int>((bits >> 52) & 0x7FF); }
+
+// A finite |value| as Significand·2^Exp2, exactly: the stored bits with the
+// implicit 1 of a normal double (a subnormal has none).
+struct float_fields {
+    umax Significand;
+    int  Exp2;
+};
+constexpr float_fields abs_fields(double value) noexcept {
+    const auto bits = std::bit_cast<std::uint64_t>(value);
+    const int  e    = biased_exponent(bits);
+    const umax m    = bits & mantissa_mask;
+    return e == 0 ? float_fields{m, 1 - 1023 - 52} : float_fields{m | umax{1} << 52, e - 1023 - 52};
+}
+
 inline constexpr double frexp(double value, int* exp) noexcept {
     if (value == 0.0) {
         *exp = 0;
         return value;
     }
 
-    auto                    bits          = std::bit_cast<std::uint64_t>(value);
-    constexpr std::uint64_t mantissa_mask = 0x000F'FFFF'FFFF'FFFF;
-    constexpr std::uint64_t sign_mask     = 0x8000'0000'0000'0000;
-    auto                    e             = static_cast<int>((bits >> 52) & 0x7FF);
+    auto bits = std::bit_cast<std::uint64_t>(value);
+    auto e    = biased_exponent(bits);
 
     if (e == 0x7FF) {
         *exp = 0;
@@ -56,10 +73,8 @@ constexpr double ldexp(double value, int exp) noexcept {
     if (value == 0.0 || exp == 0)
         return value;
 
-    auto                    bits          = std::bit_cast<std::uint64_t>(value);
-    constexpr std::uint64_t sign_mask     = 0x8000'0000'0000'0000;
-    constexpr std::uint64_t mantissa_mask = 0x000F'FFFF'FFFF'FFFF;
-    auto                    e             = static_cast<int>((bits >> 52) & 0x7FF);
+    auto bits = std::bit_cast<std::uint64_t>(value);
+    auto e    = biased_exponent(bits);
 
     if (e == 0x7FF)
         return value; // inf or NaN
@@ -68,7 +83,7 @@ constexpr double ldexp(double value, int exp) noexcept {
     int extra = 0;
     if (e == 0) {
         bits  = std::bit_cast<std::uint64_t>(value * 0x1p53);
-        e     = static_cast<int>((bits >> 52) & 0x7FF);
+        e     = biased_exponent(bits);
         extra = -53;
     }
 
@@ -131,12 +146,10 @@ constexpr bool past_64_bits(T v) noexcept {
 // denominator is at most 2^62 (the bits past that are dropped). Every |value|
 // ≥ 2^-10 qualifies; smaller ones need enough trailing zero bits.
 constexpr bool abs_fraction_exact(double value) noexcept {
-    const auto bits = std::bit_cast<std::uint64_t>(value) & 0x7FFF'FFFF'FFFF'FFFF;
-    const int  e    = static_cast<int>(bits >> 52);
-    if (e >= 1023 - 10 || bits == 0)
+    const auto bits = std::bit_cast<std::uint64_t>(value) & ~sign_mask;
+    if (biased_exponent(bits) >= 1023 - 10 || bits == 0)
         return true;
-    const umax significand = (bits & 0x000F'FFFF'FFFF'FFFF) | (e != 0 ? umax{1} << 52 : 0);
-    const int  exp2        = e != 0 ? e - 1023 - 52 : 1 - 1023 - 52;
+    const auto [significand, exp2] = abs_fields(value);
     return exp2 + std::countr_zero(significand) >= -62;
 }
 
@@ -150,20 +163,7 @@ constexpr std::pair<umax, umax> abs_fraction(double value, bool& exact) {
 
     if (value == 0.0)
         return {0, 1};
-    if (value < 0)
-        value = -value; // |value|; sign is the caller's job
-
-    const auto bits        = std::bit_cast<std::uint64_t>(value);
-    const int  e           = static_cast<int>((bits >> 52) & 0x7FF);
-    umax       significand = bits & 0x000F'FFFF'FFFF'FFFF;
-    int        exp2;
-    if (e == 0) // subnormal: no implicit leading 1
-        exp2 = 1 - 1023 - 52;
-    else // normal: restore the implicit bit
-    {
-        significand |= (umax{1} << 52);
-        exp2 = e - 1023 - 52;
-    }
+    auto [significand, exp2] = abs_fields(value); // |value|; the sign is the caller's job
 
     // value == significand * 2^exp2. Re-express as num/den with den = 2^k.
     if (exp2 >= 0) // integer-valued: scale up, den = 1
@@ -237,15 +237,17 @@ template <std::floating_point T>
     return g != static_cast<double>(f) && static_cast<double>(static_cast<T>(g)) == g;
 }
 
-// A finite nonzero double as |d| = Mant·2^Exp, Mant of 53 bits.
+// A finite double as |d| = Mant·2^Exp, Mant of 53 bits ({0, 0} for 0).
 struct double_parts_t {
     umax Mant;
     int  Exp;
 };
 [[nodiscard]] constexpr double_parts_t double_parts(double d) noexcept {
-    int        e    = 0;
-    const umax mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53));
-    return {mant, e - 53};
+    const auto [m, exp2] = abs_fields(d);
+    if (m == 0)
+        return {0, 0};
+    const int shift = 53 - std::bit_width(m); // a subnormal's leading 1 moves up
+    return {m << shift, exp2 - shift};
 }
 
 // The doubles a floating point splits into, each the rounding error of the

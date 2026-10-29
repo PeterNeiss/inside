@@ -6,18 +6,13 @@
 
 #include <beman/inside/detail/rational.hpp>
 #include <beman/inside/detail/number_text.hpp> // the literal grammar (_g)
-#include <beman/inside/detail/wide_int.hpp>
-
-//---------------------------------------------------------------------------
-// grid_rational — the number type of a grid's limits and notch (the NTTP
-// substrate of `interval` and `grid`): a big_rational, of any size. C++26
-// static reflection (std::define_static_array) interns its limbs in static
-// storage, so equal values stay the same template argument.
-//---------------------------------------------------------------------------
 #include <beman/inside/detail/big_rational.hpp>
 
 //---------------------------------------------------------------------------
-// The grid-number vocabulary:
+// The grid-number vocabulary. A grid's limits and notch (the NTTP substrate
+// of `interval` and `grid`) are big_rationals, of any size: C++26 static
+// reflection (std::define_static_array) interns their limbs in static
+// storage, so equal values stay the same template argument.
 //   grid_rational          the type of a grid's limits and notch
 //   grid_int               exact integers for grid computations (slot counts,
 //                          value indices): wide enough for every grid
@@ -104,9 +99,9 @@ constexpr grid_rational grid_to_int(const grid_rational& r) {
 }
 
 //---------------------------------------------------------------------------
-// parse_grid_literal — the _g literal: decimal digits (with ' separators),
-// an optional point and an optional e±n exponent, taken exactly, of any
-// size.
+// parse_grid_literal — the _g literal: the decimal forms of the literal
+// grammar (scan_number: digits with ' separators, an optional point, an
+// optional e±n exponent), taken exactly, of any size.
 //---------------------------------------------------------------------------
 template <char... Chars>
 consteval grid_rational parse_grid_literal() {
@@ -117,60 +112,34 @@ consteval grid_rational parse_grid_literal() {
     // The value is m·10^e10. Zero digits are held back (`zeros`) and only
     // multiplied in before a later nonzero digit, so trailing zeros
     // (1.000…) never grow m.
-    grid_int    m{0};
-    int         e10 = 0, zeros = 0;
-    std::size_t i     = 0;
-    bool        point = false, digits = false;
-    for (; i < sizeof(text); ++i) {
-        const char c = text[i];
-        if (c == '\'')
-            continue;
-        if (c == '.' && !point) {
-            point = true;
-            continue;
-        }
-        if (c < '0' || c > '9')
-            break;
-        if (c == '0')
+    grid_int             m{0};
+    int                  e10 = 0, zeros = 0;
+    const scanned_number sc = scan_number(text, text + sizeof(text), [&](int d, bool in_frac, int) {
+        if (d == 0)
             ++zeros;
         else {
             for (; zeros > 0; --zeros)
                 m = m * ten;
-            m = m * ten + grid_int{c - '0'};
+            m = m * ten + grid_int{d};
         }
-        if (point)
-            --e10;
-        digits = true;
-    }
-    if (!digits)
+        e10 -= in_frac;
+        return true;
+    });
+    if (sc.Fail == parse_fail::empty)
         constexpr_error<"_g literal: expected decimal digits">();
-    e10 += zeros;
-    if (i < sizeof(text)) {
-        if (text[i] != 'e' && text[i] != 'E')
-            constexpr_error<"_g literal: decimal digits, a point and e±n only">();
-        ++i;
-        bool neg = false;
-        if (i < sizeof(text) && (text[i] == '+' || text[i] == '-')) {
-            neg = text[i] == '-';
-            ++i;
-        }
-        if (i == sizeof(text))
-            constexpr_error<"_g literal: missing exponent digits">();
-        int e = 0;
-        for (; i < sizeof(text); ++i) {
-            if (text[i] < '0' || text[i] > '9')
-                constexpr_error<"_g literal: decimal digits, a point and e±n only">();
-            e = e * 10 + (text[i] - '0');
-            if (e > 10000)
-                constexpr_error<"_g literal: exponent too large">();
-        }
-        e10 += neg ? -e : e;
-    }
-    grid_int num = m, den{1};
-    if (!(m == grid_int{0}))
-        for (; e10 != 0; e10 += e10 > 0 ? -1 : 1)
-            (e10 > 0 ? num : den) = (e10 > 0 ? num : den) * ten;
-    return big_rational{num, den};
+    if (sc.Fail != parse_fail::none || sc.Base != 10)
+        constexpr_error<"_g literal: decimal digits, a point and e±n only">();
+    if (sc.Exp > 10000)
+        constexpr_error<"_g literal: exponent too large">();
+    if (m == grid_int{0})
+        return big_rational{0};
+    e10 += zeros + (sc.ExpNeg ? -sc.Exp : sc.Exp);
+    const grid_int p = pow_by_squaring(
+        ten,
+        static_cast<unsigned>(e10 < 0 ? -e10 : e10),
+        [](const grid_int& a, const grid_int& b) { return a * b; },
+        grid_int{1});
+    return e10 < 0 ? big_rational{m, p} : big_rational{m * p, grid_int{1}};
 }
 } // namespace beman::inside::detail
 

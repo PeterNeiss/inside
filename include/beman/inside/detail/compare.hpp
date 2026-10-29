@@ -21,29 +21,31 @@ namespace beman::inside {
 // comparison
 //---------------------------------------------------------------------------
 namespace detail {
+// The value indices Lower/Notch and Upper/Notch, as 64-bit rationals.
+template <insidable B>
+inline constexpr auto index_lo64 = lower64<B> / notch64<B>;
+template <insidable B>
+inline constexpr auto index_hi64 = upper64<B> / notch64<B>;
+
 // Integer value-index comparison eligibility: an integer-backed anchored
 // inside whose value indices (value/Notch, integers) fit imax, so it
 // compares with a scalar as `bias + raw` without a rational decode.
 template <insidable B>
 inline constexpr bool index_cmp_fits = [] {
-    if constexpr (!detail::notched<B> || !detail::anchored<B> || !values_fit_imax<B>)
+    if constexpr (!notched<B> || !anchored<B> || !values_fit_imax<B>)
         return false;
-    else {
-        constexpr auto lo = detail::lower64<B> / detail::notch64<B>;
-        constexpr auto hi = detail::upper64<B> / detail::notch64<B>;
-        return lo.has_value() && hi.has_value() && std::in_range<imax>((*lo).Numerator) &&
-               std::in_range<imax>((*hi).Numerator);
-    }
+    else
+        return index_lo64<B> && index_hi64<B> && std::in_range<imax>(index_lo64<B>->Numerator) &&
+               std::in_range<imax>(index_hi64<B>->Numerator);
 }();
 
 // Signed value index of Raw == 0: Lower/Notch for offset (index) storage,
 // 0 for a value raw (raw is already the value == the index at notch 1).
 template <insidable B>
 inline constexpr imax index_cmp_bias = [] {
-    if constexpr (index_storage<B>) {
-        constexpr auto lo = *(detail::lower64<B> / detail::notch64<B>);
-        return signed_numerator(lo);
-    } else
+    if constexpr (index_storage<B>)
+        return signed_numerator(*index_lo64<B>);
+    else
         return imax{0};
 }();
 
@@ -130,23 +132,13 @@ inline constexpr bool scalar_index_cmp_fits = [] {
     if constexpr (!std::integral<A> || value_storage<B> || !index_cmp_fits<B>)
         return false;
     else {
-        constexpr umax notch_num = detail::notch64<B>.Numerator;
-        constexpr umax notch_den = static_cast<umax>(detail::notch64<B>.Denominator); // Notch > 0
-        constexpr umax index_mag = [] {
-            constexpr auto lo = *(detail::lower64<B> / detail::notch64<B>);
-            constexpr auto hi = *(detail::upper64<B> / detail::notch64<B>);
-            return lo.Numerator > hi.Numerator ? lo.Numerator : hi.Numerator;
-        }();
-        constexpr umax scalar_mag = [] {
-            umax mag = static_cast<umax>(std::numeric_limits<A>::max());
-            if constexpr (std::signed_integral<A>) {
-                umax min_mag = static_cast<umax>(-(std::numeric_limits<A>::min() + 1)) + 1;
-                if (min_mag > mag)
-                    mag = min_mag;
-            }
-            return mag;
-        }();
-        umax product;
+        constexpr umax notch_num = notch64<B>.Numerator;
+        constexpr umax notch_den = static_cast<umax>(notch64<B>.Denominator); // Notch > 0
+        constexpr umax index_mag =
+            index_lo64<B>->Numerator > index_hi64<B>->Numerator ? index_lo64<B>->Numerator : index_hi64<B>->Numerator;
+        // The largest |c| of A: |min| = max + 1 for a signed type.
+        constexpr umax scalar_mag = static_cast<umax>(std::numeric_limits<A>::max()) + std::signed_integral<A>;
+        umax           product;
         return !mul_overflow(index_mag, notch_num, &product) && std::in_range<imax>(product) &&
                !mul_overflow(scalar_mag, notch_den, &product) && std::in_range<imax>(product);
     }
@@ -183,8 +175,8 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
                        index_double<B>.Ok)
         return cmp(as_double(lhs), static_cast<double>(rhs)); // exact: every value is a double
     else if constexpr (scalar_index_cmp_fits<B, A>)
-        return cmp((index_cmp_bias<B> + raw_imax(lhs)) * static_cast<imax>(detail::notch64<B>.Numerator),
-                   static_cast<imax>(rhs) * detail::notch64<B>.Denominator);
+        return cmp((index_cmp_bias<B> + raw_imax(lhs)) * static_cast<imax>(notch64<B>.Numerator),
+                   static_cast<imax>(rhs) * notch64<B>.Denominator);
     else {
         // |rhs| ≥ 2^64 (or infinite) has no rational form, and every grid value
         // lies strictly inside ±2^64: the sign of rhs decides.

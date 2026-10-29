@@ -448,16 +448,33 @@ template <std::signed_integral V>
 // rational(double)), double_parts and narrow_midpoint.
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
+// The binary64 fields: the sign bit, the 52 stored significand bits, and the
+// 11-bit biased exponent (0: zero or subnormal, 0x7FF: infinity or NaN).
+inline constexpr std::uint64_t sign_mask     = 0x8000'0000'0000'0000;
+inline constexpr std::uint64_t mantissa_mask = 0x000F'FFFF'FFFF'FFFF;
+constexpr int biased_exponent(std::uint64_t bits) noexcept { return static_cast<int>((bits >> 52) & 0x7FF); }
+
+// A finite |value| as Significand·2^Exp2, exactly: the stored bits with the
+// implicit 1 of a normal double (a subnormal has none).
+struct float_fields {
+    umax Significand;
+    int  Exp2;
+};
+constexpr float_fields abs_fields(double value) noexcept {
+    const auto bits = std::bit_cast<std::uint64_t>(value);
+    const int  e    = biased_exponent(bits);
+    const umax m    = bits & mantissa_mask;
+    return e == 0 ? float_fields{m, 1 - 1023 - 52} : float_fields{m | umax{1} << 52, e - 1023 - 52};
+}
+
 inline constexpr double frexp(double value, int* exp) noexcept {
     if (value == 0.0) {
         *exp = 0;
         return value;
     }
 
-    auto                    bits          = std::bit_cast<std::uint64_t>(value);
-    constexpr std::uint64_t mantissa_mask = 0x000F'FFFF'FFFF'FFFF;
-    constexpr std::uint64_t sign_mask     = 0x8000'0000'0000'0000;
-    auto                    e             = static_cast<int>((bits >> 52) & 0x7FF);
+    auto bits = std::bit_cast<std::uint64_t>(value);
+    auto e    = biased_exponent(bits);
 
     if (e == 0x7FF) {
         *exp = 0;
@@ -485,10 +502,8 @@ constexpr double ldexp(double value, int exp) noexcept {
     if (value == 0.0 || exp == 0)
         return value;
 
-    auto                    bits          = std::bit_cast<std::uint64_t>(value);
-    constexpr std::uint64_t sign_mask     = 0x8000'0000'0000'0000;
-    constexpr std::uint64_t mantissa_mask = 0x000F'FFFF'FFFF'FFFF;
-    auto                    e             = static_cast<int>((bits >> 52) & 0x7FF);
+    auto bits = std::bit_cast<std::uint64_t>(value);
+    auto e    = biased_exponent(bits);
 
     if (e == 0x7FF)
         return value; // inf or NaN
@@ -497,7 +512,7 @@ constexpr double ldexp(double value, int exp) noexcept {
     int extra = 0;
     if (e == 0) {
         bits  = std::bit_cast<std::uint64_t>(value * 0x1p53);
-        e     = static_cast<int>((bits >> 52) & 0x7FF);
+        e     = biased_exponent(bits);
         extra = -53;
     }
 
@@ -560,12 +575,10 @@ constexpr bool past_64_bits(T v) noexcept {
 // denominator is at most 2^62 (the bits past that are dropped). Every |value|
 // ≥ 2^-10 qualifies; smaller ones need enough trailing zero bits.
 constexpr bool abs_fraction_exact(double value) noexcept {
-    const auto bits = std::bit_cast<std::uint64_t>(value) & 0x7FFF'FFFF'FFFF'FFFF;
-    const int  e    = static_cast<int>(bits >> 52);
-    if (e >= 1023 - 10 || bits == 0)
+    const auto bits = std::bit_cast<std::uint64_t>(value) & ~sign_mask;
+    if (biased_exponent(bits) >= 1023 - 10 || bits == 0)
         return true;
-    const umax significand = (bits & 0x000F'FFFF'FFFF'FFFF) | (e != 0 ? umax{1} << 52 : 0);
-    const int  exp2        = e != 0 ? e - 1023 - 52 : 1 - 1023 - 52;
+    const auto [significand, exp2] = abs_fields(value);
     return exp2 + std::countr_zero(significand) >= -62;
 }
 
@@ -579,20 +592,7 @@ constexpr std::pair<umax, umax> abs_fraction(double value, bool& exact) {
 
     if (value == 0.0)
         return {0, 1};
-    if (value < 0)
-        value = -value; // |value|; sign is the caller's job
-
-    const auto bits        = std::bit_cast<std::uint64_t>(value);
-    const int  e           = static_cast<int>((bits >> 52) & 0x7FF);
-    umax       significand = bits & 0x000F'FFFF'FFFF'FFFF;
-    int        exp2;
-    if (e == 0) // subnormal: no implicit leading 1
-        exp2 = 1 - 1023 - 52;
-    else // normal: restore the implicit bit
-    {
-        significand |= (umax{1} << 52);
-        exp2 = e - 1023 - 52;
-    }
+    auto [significand, exp2] = abs_fields(value); // |value|; the sign is the caller's job
 
     // value == significand * 2^exp2. Re-express as num/den with den = 2^k.
     if (exp2 >= 0) // integer-valued: scale up, den = 1
@@ -666,15 +666,17 @@ template <std::floating_point T>
     return g != static_cast<double>(f) && static_cast<double>(static_cast<T>(g)) == g;
 }
 
-// A finite nonzero double as |d| = Mant·2^Exp, Mant of 53 bits.
+// A finite double as |d| = Mant·2^Exp, Mant of 53 bits ({0, 0} for 0).
 struct double_parts_t {
     umax Mant;
     int  Exp;
 };
 [[nodiscard]] constexpr double_parts_t double_parts(double d) noexcept {
-    int        e    = 0;
-    const umax mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53));
-    return {mant, e - 53};
+    const auto [m, exp2] = abs_fields(d);
+    if (m == 0)
+        return {0, 0};
+    const int shift = 53 - std::bit_width(m); // a subnormal's leading 1 moves up
+    return {m << shift, exp2 - shift};
 }
 
 // The doubles a floating point splits into, each the rounding error of the
@@ -2911,13 +2913,6 @@ using detail::operator""_r;
 } // namespace beman::inside
 
 
-//---------------------------------------------------------------------------
-// grid_rational — the number type of a grid's limits and notch (the NTTP
-// substrate of `interval` and `grid`): a big_rational, of any size. C++26
-// static reflection (std::define_static_array) interns its limbs in static
-// storage, so equal values stay the same template argument.
-//---------------------------------------------------------------------------
-
 // ======================================================================
 //  beman/inside/detail/big_rational.hpp
 // ======================================================================
@@ -3476,7 +3471,10 @@ constexpr big_rational gcd(const big_rational& a, const big_rational& b) {
 
 
 //---------------------------------------------------------------------------
-// The grid-number vocabulary:
+// The grid-number vocabulary. A grid's limits and notch (the NTTP substrate
+// of `interval` and `grid`) are big_rationals, of any size: C++26 static
+// reflection (std::define_static_array) interns their limbs in static
+// storage, so equal values stay the same template argument.
 //   grid_rational          the type of a grid's limits and notch
 //   grid_int               exact integers for grid computations (slot counts,
 //                          value indices): wide enough for every grid
@@ -3563,9 +3561,9 @@ constexpr grid_rational grid_to_int(const grid_rational& r) {
 }
 
 //---------------------------------------------------------------------------
-// parse_grid_literal — the _g literal: decimal digits (with ' separators),
-// an optional point and an optional e±n exponent, taken exactly, of any
-// size.
+// parse_grid_literal — the _g literal: the decimal forms of the literal
+// grammar (scan_number: digits with ' separators, an optional point, an
+// optional e±n exponent), taken exactly, of any size.
 //---------------------------------------------------------------------------
 template <char... Chars>
 consteval grid_rational parse_grid_literal() {
@@ -3576,60 +3574,34 @@ consteval grid_rational parse_grid_literal() {
     // The value is m·10^e10. Zero digits are held back (`zeros`) and only
     // multiplied in before a later nonzero digit, so trailing zeros
     // (1.000…) never grow m.
-    grid_int    m{0};
-    int         e10 = 0, zeros = 0;
-    std::size_t i     = 0;
-    bool        point = false, digits = false;
-    for (; i < sizeof(text); ++i) {
-        const char c = text[i];
-        if (c == '\'')
-            continue;
-        if (c == '.' && !point) {
-            point = true;
-            continue;
-        }
-        if (c < '0' || c > '9')
-            break;
-        if (c == '0')
+    grid_int             m{0};
+    int                  e10 = 0, zeros = 0;
+    const scanned_number sc = scan_number(text, text + sizeof(text), [&](int d, bool in_frac, int) {
+        if (d == 0)
             ++zeros;
         else {
             for (; zeros > 0; --zeros)
                 m = m * ten;
-            m = m * ten + grid_int{c - '0'};
+            m = m * ten + grid_int{d};
         }
-        if (point)
-            --e10;
-        digits = true;
-    }
-    if (!digits)
+        e10 -= in_frac;
+        return true;
+    });
+    if (sc.Fail == parse_fail::empty)
         constexpr_error<"_g literal: expected decimal digits">();
-    e10 += zeros;
-    if (i < sizeof(text)) {
-        if (text[i] != 'e' && text[i] != 'E')
-            constexpr_error<"_g literal: decimal digits, a point and e±n only">();
-        ++i;
-        bool neg = false;
-        if (i < sizeof(text) && (text[i] == '+' || text[i] == '-')) {
-            neg = text[i] == '-';
-            ++i;
-        }
-        if (i == sizeof(text))
-            constexpr_error<"_g literal: missing exponent digits">();
-        int e = 0;
-        for (; i < sizeof(text); ++i) {
-            if (text[i] < '0' || text[i] > '9')
-                constexpr_error<"_g literal: decimal digits, a point and e±n only">();
-            e = e * 10 + (text[i] - '0');
-            if (e > 10000)
-                constexpr_error<"_g literal: exponent too large">();
-        }
-        e10 += neg ? -e : e;
-    }
-    grid_int num = m, den{1};
-    if (!(m == grid_int{0}))
-        for (; e10 != 0; e10 += e10 > 0 ? -1 : 1)
-            (e10 > 0 ? num : den) = (e10 > 0 ? num : den) * ten;
-    return big_rational{num, den};
+    if (sc.Fail != parse_fail::none || sc.Base != 10)
+        constexpr_error<"_g literal: decimal digits, a point and e±n only">();
+    if (sc.Exp > 10000)
+        constexpr_error<"_g literal: exponent too large">();
+    if (m == grid_int{0})
+        return big_rational{0};
+    e10 += zeros + (sc.ExpNeg ? -sc.Exp : sc.Exp);
+    const grid_int p = pow_by_squaring(
+        ten,
+        static_cast<unsigned>(e10 < 0 ? -e10 : e10),
+        [](const grid_int& a, const grid_int& b) { return a * b; },
+        grid_int{1});
+    return e10 < 0 ? big_rational{m, p} : big_rational{m * p, grid_int{1}};
 }
 } // namespace beman::inside::detail
 
@@ -3641,7 +3613,6 @@ consteval detail::grid_rational operator""_g() {
     return detail::parse_grid_literal<Chars...>();
 }
 } // namespace beman::inside
-
 
 
 namespace beman::inside {
@@ -3741,12 +3712,6 @@ corner_hull(grid_rational a, grid_rational b, grid_rational c, grid_rational d) 
     return interval{lo1 < lo2 ? lo1 : lo2, hi1 < hi2 ? hi2 : hi1};
 }
 } // namespace detail
-
-[[nodiscard]] constexpr interval                      operator+(const interval&, const interval&);
-[[nodiscard]] constexpr interval                      operator-(const interval&, const interval&);
-[[nodiscard]] constexpr interval                      operator*(const interval&, const interval&);
-[[nodiscard]] constexpr std::expected<interval, errc> operator/(const interval&, const interval&);
-[[nodiscard]] constexpr auto operator<=>(const interval&, const interval&) -> std::partial_ordering;
 
 //---------------------------------------------------------------------------
 // operator+
@@ -3869,9 +3834,6 @@ struct diag_text {
 
 
 
-
-// BEMAN_INSIDE_MATH_NO_FP (auto-enabled on freestanding targets) and the
-// -ffast-math check are in config.hpp, which every header includes first.
 
 namespace beman::inside {
 //---------------------------------------------------------------------------
@@ -4022,24 +3984,22 @@ template <typename F>
 }
 
 namespace detail {
-// Action detection: the `is_*_action` trait is the primary detector; the concept
+// Action detection: the `is_*_action` trait is the primary detector (the
+// pack helpers below take it as a template-template parameter); the concept
 // derives from it and strips cvref so the ref form matches the value form.
+template <template <typename> class Action, typename T>
+inline constexpr bool is_action = false;
+template <template <typename> class Action, typename F>
+inline constexpr bool is_action<Action, Action<F>> = true;
+
 template <typename T>
-struct is_clamp_action : std::false_type {};
-template <typename F>
-struct is_clamp_action<on_clamp_t<F>> : std::true_type {};
+using is_clamp_action = std::bool_constant<is_action<on_clamp_t, T>>;
 template <typename T>
-struct is_wrap_action : std::false_type {};
-template <typename F>
-struct is_wrap_action<on_wrap_t<F>> : std::true_type {};
+using is_wrap_action = std::bool_constant<is_action<on_wrap_t, T>>;
 template <typename T>
-struct is_error_action : std::false_type {};
-template <typename F>
-struct is_error_action<on_error_t<F>> : std::true_type {};
+using is_error_action = std::bool_constant<is_action<on_error_t, T>>;
 template <typename T>
-struct is_overflow_action : std::false_type {};
-template <typename F>
-struct is_overflow_action<on_overflow_t<F>> : std::true_type {};
+using is_overflow_action = std::bool_constant<is_action<on_overflow_t, T>>;
 
 template <typename T>
 concept clamp_action = is_clamp_action<std::remove_cvref_t<T>>::value;
@@ -4083,13 +4043,9 @@ template <typename... As>
 inline constexpr policy_flag merged_implied_flags = (none | ... | implied_flags<std::remove_cvref_t<As>>);
 
 // pick_action<Trait>(actions...) returns a reference to the first pack element
-// matching the trait, or a static `no_action` fallback if none does. Conflict
+// matching the trait, or to `fallback_action` if none does. Conflict
 // diagnostics elsewhere ensure at most one match.
-template <template <typename> class Trait>
-inline no_action& pick_action_fallback() {
-    static no_action n;
-    return n;
-}
+inline no_action fallback_action;
 
 template <template <typename> class Trait, typename... As>
 constexpr auto& pick_action(As&... as) {
@@ -4101,7 +4057,7 @@ constexpr auto& pick_action(As&... as) {
     if constexpr (i < sizeof...(As))
         return as...[i];
     else
-        return pick_action_fallback<Trait>();
+        return fallback_action;
 }
 
 // Same, but operating on a tuple.
@@ -5965,9 +5921,8 @@ constexpr wide_rational<exact_limbs<L>> exact_of_large(double d) noexcept {
     const double  m   = neg ? -d : d;
     if (!(m < ldexp(1.0, k)))
         return {neg ? -(I{1} << (k + 1)) : I{1} << (k + 1), I{1}};
-    int          e = 0;
-    const double f = frexp(m, &e);                                   // m = f·2^e, f in [0.5, 1)
-    const I      v = I{static_cast<umax>(ldexp(f, 53))} << (e - 53); // e ≥ 65
+    const auto [mant, e] = double_parts(m);
+    const I v            = I{mant} << e; // e ≥ 12
     return {neg ? -v : v, I{1}};
 }
 
@@ -9172,8 +9127,8 @@ struct quotient_remainder {
 //---------------------------------------------------------------------------
 namespace beman::inside {
 namespace detail {
-// Whether B's limits and notch are 64-bit rationals (always, without big
-// grids): the predicates' 64-bit paths need them.
+// Whether B's limits and notch are 64-bit rationals: the predicates' 64-bit
+// paths need them.
 template <insidable B>
 inline constexpr bool predicates_fit64 = fits_rational(grid_of<B>.Interval.Lower) &&
                                          fits_rational(grid_of<B>.Interval.Upper) && fits_rational(grid_of<B>.Notch);
@@ -10307,29 +10262,31 @@ namespace beman::inside {
 // comparison
 //---------------------------------------------------------------------------
 namespace detail {
+// The value indices Lower/Notch and Upper/Notch, as 64-bit rationals.
+template <insidable B>
+inline constexpr auto index_lo64 = lower64<B> / notch64<B>;
+template <insidable B>
+inline constexpr auto index_hi64 = upper64<B> / notch64<B>;
+
 // Integer value-index comparison eligibility: an integer-backed anchored
 // inside whose value indices (value/Notch, integers) fit imax, so it
 // compares with a scalar as `bias + raw` without a rational decode.
 template <insidable B>
 inline constexpr bool index_cmp_fits = [] {
-    if constexpr (!detail::notched<B> || !detail::anchored<B> || !values_fit_imax<B>)
+    if constexpr (!notched<B> || !anchored<B> || !values_fit_imax<B>)
         return false;
-    else {
-        constexpr auto lo = detail::lower64<B> / detail::notch64<B>;
-        constexpr auto hi = detail::upper64<B> / detail::notch64<B>;
-        return lo.has_value() && hi.has_value() && std::in_range<imax>((*lo).Numerator) &&
-               std::in_range<imax>((*hi).Numerator);
-    }
+    else
+        return index_lo64<B> && index_hi64<B> && std::in_range<imax>(index_lo64<B>->Numerator) &&
+               std::in_range<imax>(index_hi64<B>->Numerator);
 }();
 
 // Signed value index of Raw == 0: Lower/Notch for offset (index) storage,
 // 0 for a value raw (raw is already the value == the index at notch 1).
 template <insidable B>
 inline constexpr imax index_cmp_bias = [] {
-    if constexpr (index_storage<B>) {
-        constexpr auto lo = *(detail::lower64<B> / detail::notch64<B>);
-        return signed_numerator(lo);
-    } else
+    if constexpr (index_storage<B>)
+        return signed_numerator(*index_lo64<B>);
+    else
         return imax{0};
 }();
 
@@ -10416,23 +10373,13 @@ inline constexpr bool scalar_index_cmp_fits = [] {
     if constexpr (!std::integral<A> || value_storage<B> || !index_cmp_fits<B>)
         return false;
     else {
-        constexpr umax notch_num = detail::notch64<B>.Numerator;
-        constexpr umax notch_den = static_cast<umax>(detail::notch64<B>.Denominator); // Notch > 0
-        constexpr umax index_mag = [] {
-            constexpr auto lo = *(detail::lower64<B> / detail::notch64<B>);
-            constexpr auto hi = *(detail::upper64<B> / detail::notch64<B>);
-            return lo.Numerator > hi.Numerator ? lo.Numerator : hi.Numerator;
-        }();
-        constexpr umax scalar_mag = [] {
-            umax mag = static_cast<umax>(std::numeric_limits<A>::max());
-            if constexpr (std::signed_integral<A>) {
-                umax min_mag = static_cast<umax>(-(std::numeric_limits<A>::min() + 1)) + 1;
-                if (min_mag > mag)
-                    mag = min_mag;
-            }
-            return mag;
-        }();
-        umax product;
+        constexpr umax notch_num = notch64<B>.Numerator;
+        constexpr umax notch_den = static_cast<umax>(notch64<B>.Denominator); // Notch > 0
+        constexpr umax index_mag =
+            index_lo64<B>->Numerator > index_hi64<B>->Numerator ? index_lo64<B>->Numerator : index_hi64<B>->Numerator;
+        // The largest |c| of A: |min| = max + 1 for a signed type.
+        constexpr umax scalar_mag = static_cast<umax>(std::numeric_limits<A>::max()) + std::signed_integral<A>;
+        umax           product;
         return !mul_overflow(index_mag, notch_num, &product) && std::in_range<imax>(product) &&
                !mul_overflow(scalar_mag, notch_den, &product) && std::in_range<imax>(product);
     }
@@ -10469,8 +10416,8 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
                        index_double<B>.Ok)
         return cmp(as_double(lhs), static_cast<double>(rhs)); // exact: every value is a double
     else if constexpr (scalar_index_cmp_fits<B, A>)
-        return cmp((index_cmp_bias<B> + raw_imax(lhs)) * static_cast<imax>(detail::notch64<B>.Numerator),
-                   static_cast<imax>(rhs) * detail::notch64<B>.Denominator);
+        return cmp((index_cmp_bias<B> + raw_imax(lhs)) * static_cast<imax>(notch64<B>.Numerator),
+                   static_cast<imax>(rhs) * notch64<B>.Denominator);
     else {
         // |rhs| ≥ 2^64 (or infinite) has no rational form, and every grid value
         // lies strictly inside ±2^64: the sign of rhs decides.

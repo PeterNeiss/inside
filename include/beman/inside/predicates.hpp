@@ -18,8 +18,8 @@
 //---------------------------------------------------------------------------
 namespace beman::inside {
 namespace detail {
-// Whether B's limits and notch are 64-bit rationals (always, without big
-// grids): the predicates' 64-bit paths need them.
+// Whether B's limits and notch are 64-bit rationals: the predicates' 64-bit
+// paths need them.
 template <insidable B>
 inline constexpr bool predicates_fit64 = fits_rational(grid_of<B>.Interval.Lower) &&
                                          fits_rational(grid_of<B>.Interval.Upper) && fits_rational(grid_of<B>.Notch);

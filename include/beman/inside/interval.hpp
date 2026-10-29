@@ -7,8 +7,6 @@
 #include <beman/inside/detail/rational.hpp>
 #include <beman/inside/detail/grid_rational.hpp>
 
-#include <initializer_list>
-
 namespace beman::inside {
 //---------------------------------------------------------------------------
 // interval — structural NTTP type (public members only) with inclusive Lower
@@ -106,12 +104,6 @@ corner_hull(grid_rational a, grid_rational b, grid_rational c, grid_rational d) 
     return interval{lo1 < lo2 ? lo1 : lo2, hi1 < hi2 ? hi2 : hi1};
 }
 } // namespace detail
-
-[[nodiscard]] constexpr interval                      operator+(const interval&, const interval&);
-[[nodiscard]] constexpr interval                      operator-(const interval&, const interval&);
-[[nodiscard]] constexpr interval                      operator*(const interval&, const interval&);
-[[nodiscard]] constexpr std::expected<interval, errc> operator/(const interval&, const interval&);
-[[nodiscard]] constexpr auto operator<=>(const interval&, const interval&) -> std::partial_ordering;
 
 //---------------------------------------------------------------------------
 // operator+

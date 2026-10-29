@@ -273,9 +273,8 @@ constexpr wide_rational<exact_limbs<L>> exact_of_large(double d) noexcept {
     const double  m   = neg ? -d : d;
     if (!(m < ldexp(1.0, k)))
         return {neg ? -(I{1} << (k + 1)) : I{1} << (k + 1), I{1}};
-    int          e = 0;
-    const double f = frexp(m, &e);                                   // m = f·2^e, f in [0.5, 1)
-    const I      v = I{static_cast<umax>(ldexp(f, 53))} << (e - 53); // e ≥ 65
+    const auto [mant, e] = double_parts(m);
+    const I v            = I{mant} << e; // e ≥ 12
     return {neg ? -v : v, I{1}};
 }
 
