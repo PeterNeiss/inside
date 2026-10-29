@@ -20,10 +20,10 @@
 namespace beman::inside::detail {
 constexpr std::size_t limbs_for_bits(int bits) noexcept { return static_cast<std::size_t>((bits + 63) / 64); }
 
-// Bits counts value bits; a signed type spends one more on the sign.
 template <std::size_t I, class... Ts>
 using nth_type_t = Ts...[I];
 
+// Bits counts value bits; a signed type spends one more on the sign.
 template <int Bits, bool Signed>
 struct int_for_bits {
     static constexpr int         total = Bits + (Signed ? 1 : 0);

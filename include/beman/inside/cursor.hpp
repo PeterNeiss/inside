@@ -31,12 +31,10 @@ consteval grid cursor_grid(const auto& step) {
         constexpr_error<"cursor<T, Step>: the step must be a whole number of notches of T">();
     return grid{interval{lower_of<T>, upper_of<T> + s}, s};
 }
-
-consteval policy_flag cursor_policy(policy_flag p) { return p | cursor_marker; }
 } // namespace detail
 
 template <insidable T, auto Step = notch_of<T>>
-using cursor = inside<detail::cursor_grid<T>(Step), detail::cursor_policy(flags_of<T>)>;
+using cursor = inside<detail::cursor_grid<T>(Step), flags_of<T> | detail::cursor_marker>;
 
 // end(t): a cursor's past-the-end value, one step past T's Upper. Only a
 // cursor has one — on any other inside its Upper is a value, not an end.

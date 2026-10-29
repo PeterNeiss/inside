@@ -83,6 +83,26 @@ constexpr grid_int wide_numerator(const rational& r) noexcept {
 }
 constexpr grid_int wide_denominator(const rational& r) noexcept { return grid_int{abs_den(r.Denominator)}; }
 
+// Value bits a signed integer needs to hold every value in [lo, hi].
+constexpr int signed_value_bits(const grid_int& lo, const grid_int& hi) noexcept {
+    auto      mag = [](const grid_int& v) { return bit_width_of(v.negative() ? -(v + grid_int{1}) : v); };
+    const int a = mag(lo), b = mag(hi);
+    return a > b ? a : b;
+}
+
+// r rounded to an integer by M (half away from zero for nearest).
+template <round_mode M>
+constexpr grid_rational grid_to_int(const grid_rational& r) {
+    const grid_int n = wide_numerator(r), d = wide_denominator(r);
+    grid_int       q   = n / d;
+    const grid_int rem = n - q * d;
+    const bool     neg = n.negative();
+    const bool     odd = !(q / grid_int{2} * grid_int{2} == q);
+    if (rounds_away(M, neg, classify_remainder(M, neg ? -rem : rem, d), odd))
+        q = neg ? q - grid_int{1} : q + grid_int{1};
+    return grid_rational{q};
+}
+
 //---------------------------------------------------------------------------
 // parse_grid_literal — the _g literal: decimal digits (with ' separators),
 // an optional point and an optional e±n exponent, taken exactly, of any

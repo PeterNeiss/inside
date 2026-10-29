@@ -322,16 +322,16 @@ template <fixed_string Msg>
 
 //---------------------------------------------------------------------------
 // lift — monadic composition for `std::expected<T, errc>`. `lift(op, args...)`
-// unwraps each expected arg, calls `op`, and re-wraps; the first arg holding an
-// error short-circuits with that error. An `op` already returning expected<R>
-// is forwarded as-is, so the inner operation reports its own cause. Used by
-// interval/grid/inside arithmetic and rational's operators.
+// unwraps each expected arg, calls `op`, and re-wraps; the first arg (left to
+// right) holding an error short-circuits with that error. An `op` already
+// returning expected<R> is forwarded as-is, so the inner operation reports
+// its own cause. Internal: it backs grid division and the expected-lift
+// operators; user code chains through those.
 //
 // std::expected is larger than its value (flag + errc), so it only ever
 // travels as a parameter or return value — never as stored state.
 //---------------------------------------------------------------------------
-namespace beman::inside {
-namespace detail {
+namespace beman::inside::detail {
 template <class T>
 struct is_expected : std::false_type {};
 template <class T, class E>
@@ -374,32 +374,22 @@ constexpr bool lift_take_error([[maybe_unused]] const T& v, [[maybe_unused]] err
         }
     return false;
 }
-} // namespace detail
 
-//---------------------------------------------------------------------------
-// detail::lift(op, args...) — call op on the unwrapped args → expected<result,
-// errc>; the first erroneous arg (left to right) short-circuits with its error.
-// An op already returning expected<R, errc> passes through. Internal: it backs
-// the expected-lift operators; user code chains through those.
-//---------------------------------------------------------------------------
-namespace detail {
 template <class Op, class... Args>
 [[nodiscard]] constexpr auto lift(Op op, Args&&... args) {
-    using R   = std::remove_cvref_t<decltype(op(detail::lift_unwrap(std::forward<Args>(args))...))>;
-    using Ret = std::conditional_t<detail::is_expected_v<R>, R, std::expected<R, errc>>;
+    using R   = std::remove_cvref_t<decltype(op(lift_unwrap(std::forward<Args>(args))...))>;
+    using Ret = std::conditional_t<is_expected_v<R>, R, std::expected<R, errc>>;
 
     errc e{};
-    if ((detail::lift_take_error(args, e) || ...))
+    if ((lift_take_error(args, e) || ...))
         return Ret{std::unexpected{e}};
 
-    if constexpr (detail::expected_like<R>)
-        return op(detail::lift_unwrap(std::forward<Args>(args))...);
+    if constexpr (expected_like<R>)
+        return op(lift_unwrap(std::forward<Args>(args))...);
     else
-        return Ret{op(detail::lift_unwrap(std::forward<Args>(args))...)};
+        return Ret{op(lift_unwrap(std::forward<Args>(args))...)};
 }
-} // namespace detail
-
-} // namespace beman::inside
+} // namespace beman::inside::detail
 
 
 // ======================================================================
@@ -415,9 +405,8 @@ template <class Op, class... Args>
 
 
 //---------------------------------------------------------------------------
-// numbers — primitive numeric utilities: umax/imax, smallest_uint_for_t /
-// smallest_int_for_t (grid storage selection), the plain_number/fractional
-// concepts and safe_abs. The floating-point bit helpers are in
+// numbers — primitive numeric utilities: umax/imax, the plain_number /
+// fractional concepts and safe_abs. The floating-point bit helpers are in
 // detail/float_bits.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {
@@ -426,36 +415,11 @@ using imax = std::int64_t;
 
 namespace detail {
 struct rational;
-}
 
-namespace detail {
 // A plain number a grid-less value can be: integral, floating point, or the
 // library's exact rational. Internal; the public operand concept is `numeric`.
 template <typename T>
 concept plain_number = std::integral<T> || std::floating_point<T> || std::same_as<rational, T>;
-
-// Smallest unsigned type whose range holds every index 0..N.
-template <std::uintmax_t N>
-using smallest_uint_for_t = std::conditional_t<
-    (N == 0),
-    rational,
-    std::conditional_t<(N <= UINT8_MAX),
-                       std::uint8_t,
-                       std::conditional_t<(N <= UINT16_MAX),
-                                          std::uint16_t,
-                                          std::conditional_t<(N <= UINT32_MAX), std::uint32_t, std::uint64_t>>>>;
-
-// Smallest signed type whose range holds Low..High.
-template <std::intmax_t Low, std::intmax_t High>
-using smallest_int_for_t = std::conditional_t<
-    (Low >= INT8_MIN && High <= INT8_MAX),
-    std::int8_t,
-    std::conditional_t<(Low >= INT16_MIN && High <= INT16_MAX),
-                       std::int16_t,
-                       std::conditional_t<(Low >= INT32_MIN && High <= INT32_MAX), std::int32_t, std::int64_t>>>;
-
-// (type_name_of<T> — used only by the debug stringifier — lives in
-// "beman/inside/io.hpp" so the core stays free of <string_view>.)
 
 // Subset of arithmetic excluding integrals — the rhs types that need the
 // rational-arithmetic assignment path.
@@ -3578,6 +3542,26 @@ constexpr grid_int wide_numerator(const rational& r) noexcept {
 }
 constexpr grid_int wide_denominator(const rational& r) noexcept { return grid_int{abs_den(r.Denominator)}; }
 
+// Value bits a signed integer needs to hold every value in [lo, hi].
+constexpr int signed_value_bits(const grid_int& lo, const grid_int& hi) noexcept {
+    auto      mag = [](const grid_int& v) { return bit_width_of(v.negative() ? -(v + grid_int{1}) : v); };
+    const int a = mag(lo), b = mag(hi);
+    return a > b ? a : b;
+}
+
+// r rounded to an integer by M (half away from zero for nearest).
+template <round_mode M>
+constexpr grid_rational grid_to_int(const grid_rational& r) {
+    const grid_int n = wide_numerator(r), d = wide_denominator(r);
+    grid_int       q   = n / d;
+    const grid_int rem = n - q * d;
+    const bool     neg = n.negative();
+    const bool     odd = !(q / grid_int{2} * grid_int{2} == q);
+    if (rounds_away(M, neg, classify_remainder(M, neg ? -rem : rem, d), odd))
+        q = neg ? q - grid_int{1} : q + grid_int{1};
+    return grid_rational{q};
+}
+
 //---------------------------------------------------------------------------
 // parse_grid_literal — the _g literal: decimal digits (with ' separators),
 // an optional point and an optional e±n exponent, taken exactly, of any
@@ -3855,30 +3839,6 @@ struct diag_text {
         if (const grid_int d = wide_denominator(r); !(d == grid_int{1})) {
             push('/');
             append(d);
-        }
-        return *this;
-    }
-
-    // a − b, in the formatter's wide integers: the message must stay a
-    // constant expression even where the grid numbers' own a − b overflows
-    // (Clang evaluates a static_assert message when the assertion holds too).
-    struct difference {
-        grid_rational A;
-        grid_rational B;
-    };
-    constexpr diag_text& operator<<(const difference& d) {
-        const grid_int an = wide_numerator(d.A), ad = wide_denominator(d.A);
-        const grid_int bn = wide_numerator(d.B), bd = wide_denominator(d.B);
-        grid_int       num = an * bd - bn * ad, den = ad * bd;
-        const grid_int g = gcd(num, den);
-        if (!(g == grid_int{0}) && !(g == grid_int{1})) {
-            num = num / g;
-            den = den / g;
-        }
-        append(num);
-        if (!(den == grid_int{1})) {
-            push('/');
-            append(den);
         }
         return *this;
     }
@@ -4171,10 +4131,10 @@ constexpr auto& pick_action_in(Tuple& t) {
 namespace beman::inside::detail {
 constexpr std::size_t limbs_for_bits(int bits) noexcept { return static_cast<std::size_t>((bits + 63) / 64); }
 
-// Bits counts value bits; a signed type spends one more on the sign.
 template <std::size_t I, class... Ts>
 using nth_type_t = Ts...[I];
 
+// Bits counts value bits; a signed type spends one more on the sign.
 template <int Bits, bool Signed>
 struct int_for_bits {
     static constexpr int         total = Bits + (Signed ? 1 : 0);
@@ -4336,8 +4296,7 @@ struct grid {
         // ({{0.5, 10.5}, 1} holds 0.5, 1.5, …).
         static_assert(G.Interval.divides_evenly(G.Notch),
                       detail::diag_text{} << "grid: the notch must divide Upper − Lower evenly (notch " << G.Notch
-                                          << ", Upper − Lower "
-                                          << detail::diag_text::difference{G.Interval.Upper, G.Interval.Lower} << ")");
+                                          << ", Upper − Lower " << G.Interval.Upper - G.Interval.Lower << ")");
         static_assert(G.MaxDenominator == 0 || (G.Notch == 0 && G.Interval.Lower != G.Interval.Upper),
                       "grid: only a continuous grid carries a max_denominator");
 
@@ -4578,9 +4537,11 @@ constexpr bool fits_imax(const interval& iv) noexcept {
 namespace detail {
 // Unsigned index raw for G's slots: a builtin up to 64 bits, else wide.
 template <grid G>
-using index_raw_for_t = std::conditional_t<G.max_index_representable(),
-                                           smallest_uint_for_t<G.max_index()>,
-                                           int_for_bits_t<G.slot_bits(), false>>;
+using index_raw_for_t = int_for_bits_t<G.slot_bits(), false>;
+
+// The value raw of a whole-number grid above 0: unsigned, holding Upper.
+template <grid G>
+using value_uint_for_t = int_for_bits_t<bit_width_of(wide_numerator(G.Interval.Upper)), false>;
 
 // A whole-number grid stores the value itself where that is free: below
 // zero a signed value (within int64); from 0 the index is the value; above
@@ -4598,8 +4559,7 @@ inline constexpr bool deduces_value = [] {
     else if constexpr (!fits_imax(G.Interval))
         return false;
     else
-        return sizeof(smallest_uint_for_t<static_cast<umax>(trunc(G.Interval.Upper))>) <=
-               sizeof(smallest_uint_for_t<G.max_index()>);
+        return sizeof(value_uint_for_t<G>) <= sizeof(index_raw_for_t<G>);
 }();
 
 // A continuous grid stores its value as an exact fraction: the 64-bit
@@ -4643,11 +4603,12 @@ constexpr auto raw_for() {
     else if constexpr (!deduces_value<G>)
         return index_raw_for_t<G>{};
     else if constexpr (G.Interval.Lower < 0)
-        return smallest_int_for_t<trunc(G.Interval.Lower), trunc(G.Interval.Upper)>{};
+        return int_for_bits_t<signed_value_bits(wide_numerator(G.Interval.Lower), wide_numerator(G.Interval.Upper)),
+                              true>{};
     else if constexpr (G.Interval.Lower == 0)
-        return smallest_uint_for_t<G.max_index()>{};
+        return index_raw_for_t<G>{};
     else
-        return smallest_uint_for_t<static_cast<umax>(trunc(G.Interval.Upper))>{};
+        return value_uint_for_t<G>{};
 }
 
 // The raw type of inside<G, P> (the policy plays no part).
@@ -5314,13 +5275,6 @@ template <insidable B>
 inline constexpr grid_int raw_lo_exact = index_storage<B> ? grid_int{0} : wide_numerator(lower_of<B>);
 template <insidable B>
 inline constexpr grid_int raw_hi_exact = index_storage<B> ? grid_of<B>.slot_count() : wide_numerator(upper_of<B>);
-
-// Value bits a signed integer needs to hold every value in [lo, hi].
-constexpr int signed_value_bits(const grid_int& lo, const grid_int& hi) noexcept {
-    auto      mag = [](const grid_int& v) { return bit_width_of(v.negative() ? -(v + grid_int{1}) : v); };
-    const int a = mag(lo), b = mag(hi);
-    return a > b ? a : b;
-}
 
 // Value bits for every value in a list (their min .. max).
 constexpr int signed_value_bits_of(std::initializer_list<grid_int> vals) noexcept {
@@ -10571,12 +10525,11 @@ inline constexpr policy_flag range_flags    = clamp | wrap;
 // wrap). Same grid, so the raw carries over.
 template <insidable B, policy_flag Cast, policy_flag Replaced>
 using cast_twin = inside<grid_of<B>, (flags_of<B> & ~Replaced) | Cast>;
-} // namespace detail
 
-// Each cast constructs through B's grid with a one-shot policy that
-// overrides B's declared one for this conversion only — and is constrained
-// like that constructor, so a probe sees whether it compiles.
-namespace detail {
+// Each cast constructs through such a twin of B — its policy overrides B's
+// declared one for this conversion only — and is constrained like that
+// constructor, so a probe sees whether it compiles.
+
 // clamp, and with a rounding mode, that mode in place of B's own:
 // clamp_cast<B, round_floor> is the "double in, bounded integer out, never
 // throw" pipeline.
@@ -10584,6 +10537,9 @@ template <insidable B, policy_flag Round>
 using clamp_twin = std::conditional_t<Round == none,
                                       cast_twin<B, clamp, range_flags>,
                                       cast_twin<B, clamp | Round, range_flags | rounding_flags>>;
+
+template <insidable B>
+using wrap_twin = cast_twin<B, wrap, range_flags>;
 
 template <policy_flag Round>
 concept cast_rounding =
@@ -10600,11 +10556,9 @@ template <insidable B, policy_flag Round = none, numeric N>
 // `wrap_cast` — modular semantics: the input is reduced into the target grid's
 // interval rather than clipped. For integer-style wraparound (angles, indices).
 template <insidable B, numeric N>
-    requires inside_assignable<detail::cast_twin<B, wrap, detail::range_flags>,
-                               N,
-                               flags_of<detail::cast_twin<B, wrap, detail::range_flags>>>
+    requires inside_assignable<detail::wrap_twin<B>, N, flags_of<detail::wrap_twin<B>>>
 [[nodiscard]] constexpr B wrap_cast(N value) {
-    return B::from_raw(detail::cast_twin<B, wrap, detail::range_flags>{value}.raw());
+    return B::from_raw(detail::wrap_twin<B>{value}.raw());
 }
 
 // `checked_cast` — throws (via the installed handler) when the value would not
@@ -11347,12 +11301,10 @@ consteval grid cursor_grid(const auto& step) {
         constexpr_error<"cursor<T, Step>: the step must be a whole number of notches of T">();
     return grid{interval{lower_of<T>, upper_of<T> + s}, s};
 }
-
-consteval policy_flag cursor_policy(policy_flag p) { return p | cursor_marker; }
 } // namespace detail
 
 template <insidable T, auto Step = notch_of<T>>
-using cursor = inside<detail::cursor_grid<T>(Step), detail::cursor_policy(flags_of<T>)>;
+using cursor = inside<detail::cursor_grid<T>(Step), flags_of<T> | detail::cursor_marker>;
 
 // end(t): a cursor's past-the-end value, one step past T's Upper. Only a
 // cursor has one — on any other inside its Upper is a value, not an end.
@@ -11378,55 +11330,33 @@ template <insidable B>
 
 
 //---------------------------------------------------------------------------
-// Mathematical constants as rationals: for each, the best approximation whose
+// Mathematical constants as point insides: for each, the best rational whose
 // numerator and denominator stay below 2^31, so products of a few of them
-// keep 64-bit grid numbers (the fast paths). The comment gives |rational − value|. They are
-// public as math::pi, math::e, … (point insides), from cmath.hpp and
-// constants.hpp.
+// keep 64-bit grid numbers (the fast paths). The comment gives
+// |rational − value|. They compose directly in inside-space
+// (`angle * math::pi`); for a correctly rounded value on a grid of your
+// choice, use the functions (math::sqrt_into<Out>(just<2>)). Public from
+// cmath.hpp and constants.hpp.
 //---------------------------------------------------------------------------
-namespace beman::inside::detail {
-inline constexpr rational pi_rat{1068966896, 340262731};           // 2^-58.2
-inline constexpr rational two_pi_rat = 2 * pi_rat;                 // 2^-57.2
-inline constexpr rational half_pi_rat{2015008331, 1282794145};     // 2^-60.2
-inline constexpr rational inv_pi_rat{340262731, 1068966896};       // 2^-61.5
-inline constexpr rational inv_sqrt_pi_rat{1196609286, 2120934737}; // 2^-58.0
-inline constexpr rational e_rat{848456353, 312129649};             // 2^-60.5
-inline constexpr rational log2e_rat{717140287, 497083768};         // 2^-61.6
-inline constexpr rational log10e_rat{774923109, 1784326399};       // 2^-66.1
-inline constexpr rational ln2_rat{497083768, 717140287};           // 2^-62.6
-inline constexpr rational ln10_rat{1784326399, 774923109};         // 2^-63.7
-inline constexpr rational sqrt2_rat{1855077841, 1311738121};       // 2^-62.1
-inline constexpr rational sqrt3_rat{1934726305, 1117014753};       // 2^-60.9
-inline constexpr rational inv_sqrt2_rat{1311738121, 1855077841};   // 2^-63.1
-inline constexpr rational inv_sqrt3_rat{1117014753, 1934726305};   // 2^-62.5
-inline constexpr rational phi_rat{1836311903, 1134903170};         // 2^-61.3
-inline constexpr rational egamma_rat{376566901, 652385103};        // 2^-62.2
-inline constexpr rational catalan_rat{150820265, 164657129};       // 2^-59.4
-inline constexpr rational zeta3_rat{461424925, 383862797};         // 2^-60.6
-} // namespace beman::inside::detail
-
 namespace beman::inside::math {
-// Point insides, so they compose directly in inside-space (`angle * math::pi`)
-// with no rational on the surface. For a correctly rounded value on a grid of
-// your choice, use the functions (math::sqrt_into<Out>(just<2>)).
-inline constexpr auto pi          = just<beman::inside::detail::pi_rat>;
-inline constexpr auto two_pi      = just<beman::inside::detail::two_pi_rat>;
-inline constexpr auto half_pi     = just<beman::inside::detail::half_pi_rat>;
-inline constexpr auto inv_pi      = just<beman::inside::detail::inv_pi_rat>;
-inline constexpr auto inv_sqrt_pi = just<beman::inside::detail::inv_sqrt_pi_rat>;
-inline constexpr auto e           = just<beman::inside::detail::e_rat>;
-inline constexpr auto log2e       = just<beman::inside::detail::log2e_rat>;
-inline constexpr auto log10e      = just<beman::inside::detail::log10e_rat>;
-inline constexpr auto ln2         = just<beman::inside::detail::ln2_rat>;
-inline constexpr auto ln10        = just<beman::inside::detail::ln10_rat>;
-inline constexpr auto sqrt2       = just<beman::inside::detail::sqrt2_rat>;
-inline constexpr auto sqrt3       = just<beman::inside::detail::sqrt3_rat>;
-inline constexpr auto inv_sqrt2   = just<beman::inside::detail::inv_sqrt2_rat>;
-inline constexpr auto inv_sqrt3   = just<beman::inside::detail::inv_sqrt3_rat>;
-inline constexpr auto phi         = just<beman::inside::detail::phi_rat>;     // golden ratio
-inline constexpr auto egamma      = just<beman::inside::detail::egamma_rat>;  // Euler–Mascheroni γ
-inline constexpr auto catalan     = just<beman::inside::detail::catalan_rat>; // Catalan's G
-inline constexpr auto zeta3       = just<beman::inside::detail::zeta3_rat>;   // Apéry's ζ(3)
+inline constexpr auto pi          = just<rational{1068966896, 340262731}>;  // 2^-58.2
+inline constexpr auto two_pi      = just<rational{2137933792, 340262731}>;  // 2^-57.2
+inline constexpr auto half_pi     = just<rational{2015008331, 1282794145}>; // 2^-60.2
+inline constexpr auto inv_pi      = just<rational{340262731, 1068966896}>;  // 2^-61.5
+inline constexpr auto inv_sqrt_pi = just<rational{1196609286, 2120934737}>; // 2^-58.0
+inline constexpr auto e           = just<rational{848456353, 312129649}>;   // 2^-60.5
+inline constexpr auto log2e       = just<rational{717140287, 497083768}>;   // 2^-61.6
+inline constexpr auto log10e      = just<rational{774923109, 1784326399}>;  // 2^-66.1
+inline constexpr auto ln2         = just<rational{497083768, 717140287}>;   // 2^-62.6
+inline constexpr auto ln10        = just<rational{1784326399, 774923109}>;  // 2^-63.7
+inline constexpr auto sqrt2       = just<rational{1855077841, 1311738121}>; // 2^-62.1
+inline constexpr auto sqrt3       = just<rational{1934726305, 1117014753}>; // 2^-60.9
+inline constexpr auto inv_sqrt2   = just<rational{1311738121, 1855077841}>; // 2^-63.1
+inline constexpr auto inv_sqrt3   = just<rational{1117014753, 1934726305}>; // 2^-62.5
+inline constexpr auto phi         = just<rational{1836311903, 1134903170}>; // golden ratio, 2^-61.3
+inline constexpr auto egamma      = just<rational{376566901, 652385103}>;   // Euler–Mascheroni γ, 2^-62.2
+inline constexpr auto catalan     = just<rational{150820265, 164657129}>;   // Catalan's G, 2^-59.4
+inline constexpr auto zeta3       = just<rational{461424925, 383862797}>;   // Apéry's ζ(3), 2^-60.6
 } // namespace beman::inside::math
 
 
@@ -16899,19 +16829,6 @@ namespace detail {
 constexpr grid_rational grid_abs(const grid_rational& r) { return r < 0 ? -r : r; }
 constexpr grid_rational grid_sign(const grid_rational& r) { return grid_rational{(r > 0) - (r < 0)}; }
 
-// r rounded to an integer by M (half away from zero for nearest).
-template <round_mode M>
-constexpr grid_rational grid_to_int(const grid_rational& r) {
-    const grid_int n = wide_numerator(r), d = wide_denominator(r);
-    grid_int       q   = n / d;
-    const grid_int rem = n - q * d;
-    const bool     neg = n.negative();
-    const bool     odd = !(q / grid_int{2} * grid_int{2} == q);
-    if (rounds_away(M, neg, classify_remainder(M, neg ? -rem : rem, d), odd))
-        q = neg ? q - grid_int{1} : q + grid_int{1};
-    return grid_rational{q};
-}
-
 // max(|Lower|, |Upper|): sizes the abs and copysign outputs.
 template <insidable In>
 inline constexpr grid_rational abs_result_upper = grid_abs(lower_of<In>) > grid_abs(upper_of<In>)
@@ -20917,10 +20834,8 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
             return at(d::grid_rational{0});
         else if constexpr (G.Interval.Lower < d::grid_rational{0} && d::grid_rational{0} < G.Interval.Upper) {
             // Lower + ⌈−Lower/Notch⌉·Notch
-            constexpr d::grid_rational t = (d::grid_rational{0} - G.Interval.Lower) / G.Notch;
-            constexpr d::grid_int      k =
-                (d::wide_numerator(t) + d::wide_denominator(t) - d::grid_int{1}) / d::wide_denominator(t);
-            return at(G.Interval.Lower + (d::grid_rational{k} * G.Notch));
+            constexpr d::grid_rational k = d::grid_to_int<d::round_mode::ceil>(-G.Interval.Lower / G.Notch);
+            return at(G.Interval.Lower + k * G.Notch);
         } else
             return at(G.Interval.Lower);
     }
@@ -20931,10 +20846,14 @@ template <beman::inside::grid G, beman::inside::policy_flag P>
 struct std::hash<beman::inside::inside<G, P>> {
     using B = beman::inside::inside<G, P>;
 
-    // Boost-style combine of h with the limbs of a wide integer.
+    // Boost-style combine of h with v, and with the limbs of a wide integer.
+    template <class V>
+    static constexpr std::size_t mix(std::size_t h, V v) noexcept {
+        return h ^ (std::hash<V>{}(v) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2));
+    }
     static constexpr std::size_t combine(std::size_t h, const auto& w) noexcept {
-        for (auto limb : w.Word)
-            h ^= std::hash<beman::inside::umax>{}(limb) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+        for (beman::inside::umax limb : w.Word)
+            h = mix(h, limb);
         return h;
     }
 
@@ -20943,14 +20862,11 @@ struct std::hash<beman::inside::inside<G, P>> {
             return 0; // one value: the type
         else if constexpr (beman::inside::detail::fraction_storage<B>)
             return combine(combine(0, b.raw().Num), b.raw().Den); // a reduced fraction
-        else if constexpr (beman::inside::detail::rational_storage<B>) {
-            // Boost-style hash combine over (Numerator, Denominator).
-            auto h1 = std::hash<beman::inside::umax>{}(b.raw().Numerator);
-            auto h2 = std::hash<beman::inside::imax>{}(b.raw().Denominator);
-            return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
-        } else if constexpr (beman::inside::detail::wide_index_storage<B>) {
+        else if constexpr (beman::inside::detail::rational_storage<B>)
+            return mix(std::hash<beman::inside::umax>{}(b.raw().Numerator), b.raw().Denominator);
+        else if constexpr (beman::inside::detail::wide_index_storage<B>)
             return combine(0, b.raw());
-        } else
+        else
             return std::hash<beman::inside::detail::raw_t<B>>{}(b.raw());
     }
 };

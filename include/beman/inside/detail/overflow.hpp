@@ -7,8 +7,6 @@
 #include <beman/inside/detail/config.hpp>
 
 #include <concepts>
-#include <limits>
-#include <type_traits>
 
 //---------------------------------------------------------------------------
 // overflow — overflow-detecting add/sub/mul for integers: the GCC/Clang

@@ -86,10 +86,8 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
             return at(d::grid_rational{0});
         else if constexpr (G.Interval.Lower < d::grid_rational{0} && d::grid_rational{0} < G.Interval.Upper) {
             // Lower + ⌈−Lower/Notch⌉·Notch
-            constexpr d::grid_rational t = (d::grid_rational{0} - G.Interval.Lower) / G.Notch;
-            constexpr d::grid_int      k =
-                (d::wide_numerator(t) + d::wide_denominator(t) - d::grid_int{1}) / d::wide_denominator(t);
-            return at(G.Interval.Lower + (d::grid_rational{k} * G.Notch));
+            constexpr d::grid_rational k = d::grid_to_int<d::round_mode::ceil>(-G.Interval.Lower / G.Notch);
+            return at(G.Interval.Lower + k * G.Notch);
         } else
             return at(G.Interval.Lower);
     }
@@ -100,10 +98,14 @@ template <beman::inside::grid G, beman::inside::policy_flag P>
 struct std::hash<beman::inside::inside<G, P>> {
     using B = beman::inside::inside<G, P>;
 
-    // Boost-style combine of h with the limbs of a wide integer.
+    // Boost-style combine of h with v, and with the limbs of a wide integer.
+    template <class V>
+    static constexpr std::size_t mix(std::size_t h, V v) noexcept {
+        return h ^ (std::hash<V>{}(v) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2));
+    }
     static constexpr std::size_t combine(std::size_t h, const auto& w) noexcept {
-        for (auto limb : w.Word)
-            h ^= std::hash<beman::inside::umax>{}(limb) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+        for (beman::inside::umax limb : w.Word)
+            h = mix(h, limb);
         return h;
     }
 
@@ -112,14 +114,11 @@ struct std::hash<beman::inside::inside<G, P>> {
             return 0; // one value: the type
         else if constexpr (beman::inside::detail::fraction_storage<B>)
             return combine(combine(0, b.raw().Num), b.raw().Den); // a reduced fraction
-        else if constexpr (beman::inside::detail::rational_storage<B>) {
-            // Boost-style hash combine over (Numerator, Denominator).
-            auto h1 = std::hash<beman::inside::umax>{}(b.raw().Numerator);
-            auto h2 = std::hash<beman::inside::imax>{}(b.raw().Denominator);
-            return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
-        } else if constexpr (beman::inside::detail::wide_index_storage<B>) {
+        else if constexpr (beman::inside::detail::rational_storage<B>)
+            return mix(std::hash<beman::inside::umax>{}(b.raw().Numerator), b.raw().Denominator);
+        else if constexpr (beman::inside::detail::wide_index_storage<B>)
             return combine(0, b.raw());
-        } else
+        else
             return std::hash<beman::inside::detail::raw_t<B>>{}(b.raw());
     }
 };

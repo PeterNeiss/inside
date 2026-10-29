@@ -339,13 +339,6 @@ inline constexpr grid_int raw_lo_exact = index_storage<B> ? grid_int{0} : wide_n
 template <insidable B>
 inline constexpr grid_int raw_hi_exact = index_storage<B> ? grid_of<B>.slot_count() : wide_numerator(upper_of<B>);
 
-// Value bits a signed integer needs to hold every value in [lo, hi].
-constexpr int signed_value_bits(const grid_int& lo, const grid_int& hi) noexcept {
-    auto      mag = [](const grid_int& v) { return bit_width_of(v.negative() ? -(v + grid_int{1}) : v); };
-    const int a = mag(lo), b = mag(hi);
-    return a > b ? a : b;
-}
-
 // Value bits for every value in a list (their min .. max).
 constexpr int signed_value_bits_of(std::initializer_list<grid_int> vals) noexcept {
     const auto [mn, mx] = std::minmax(vals);

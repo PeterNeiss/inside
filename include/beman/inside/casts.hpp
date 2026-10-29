@@ -23,12 +23,11 @@ inline constexpr policy_flag range_flags    = clamp | wrap;
 // wrap). Same grid, so the raw carries over.
 template <insidable B, policy_flag Cast, policy_flag Replaced>
 using cast_twin = inside<grid_of<B>, (flags_of<B> & ~Replaced) | Cast>;
-} // namespace detail
 
-// Each cast constructs through B's grid with a one-shot policy that
-// overrides B's declared one for this conversion only — and is constrained
-// like that constructor, so a probe sees whether it compiles.
-namespace detail {
+// Each cast constructs through such a twin of B — its policy overrides B's
+// declared one for this conversion only — and is constrained like that
+// constructor, so a probe sees whether it compiles.
+
 // clamp, and with a rounding mode, that mode in place of B's own:
 // clamp_cast<B, round_floor> is the "double in, bounded integer out, never
 // throw" pipeline.
@@ -36,6 +35,9 @@ template <insidable B, policy_flag Round>
 using clamp_twin = std::conditional_t<Round == none,
                                       cast_twin<B, clamp, range_flags>,
                                       cast_twin<B, clamp | Round, range_flags | rounding_flags>>;
+
+template <insidable B>
+using wrap_twin = cast_twin<B, wrap, range_flags>;
 
 template <policy_flag Round>
 concept cast_rounding =
@@ -52,11 +54,9 @@ template <insidable B, policy_flag Round = none, numeric N>
 // `wrap_cast` — modular semantics: the input is reduced into the target grid's
 // interval rather than clipped. For integer-style wraparound (angles, indices).
 template <insidable B, numeric N>
-    requires inside_assignable<detail::cast_twin<B, wrap, detail::range_flags>,
-                               N,
-                               flags_of<detail::cast_twin<B, wrap, detail::range_flags>>>
+    requires inside_assignable<detail::wrap_twin<B>, N, flags_of<detail::wrap_twin<B>>>
 [[nodiscard]] constexpr B wrap_cast(N value) {
-    return B::from_raw(detail::cast_twin<B, wrap, detail::range_flags>{value}.raw());
+    return B::from_raw(detail::wrap_twin<B>{value}.raw());
 }
 
 // `checked_cast` — throws (via the installed handler) when the value would not

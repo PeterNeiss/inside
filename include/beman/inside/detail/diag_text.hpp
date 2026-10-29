@@ -45,30 +45,6 @@ struct diag_text {
         return *this;
     }
 
-    // a − b, in the formatter's wide integers: the message must stay a
-    // constant expression even where the grid numbers' own a − b overflows
-    // (Clang evaluates a static_assert message when the assertion holds too).
-    struct difference {
-        grid_rational A;
-        grid_rational B;
-    };
-    constexpr diag_text& operator<<(const difference& d) {
-        const grid_int an = wide_numerator(d.A), ad = wide_denominator(d.A);
-        const grid_int bn = wide_numerator(d.B), bd = wide_denominator(d.B);
-        grid_int       num = an * bd - bn * ad, den = ad * bd;
-        const grid_int g = gcd(num, den);
-        if (!(g == grid_int{0}) && !(g == grid_int{1})) {
-            num = num / g;
-            den = den / g;
-        }
-        append(num);
-        if (!(den == grid_int{1})) {
-            push('/');
-            append(den);
-        }
-        return *this;
-    }
-
   private:
     constexpr void append(grid_int v) {
         if (v < grid_int{0}) {

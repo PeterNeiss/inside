@@ -161,8 +161,7 @@ struct grid {
         // ({{0.5, 10.5}, 1} holds 0.5, 1.5, …).
         static_assert(G.Interval.divides_evenly(G.Notch),
                       detail::diag_text{} << "grid: the notch must divide Upper − Lower evenly (notch " << G.Notch
-                                          << ", Upper − Lower "
-                                          << detail::diag_text::difference{G.Interval.Upper, G.Interval.Lower} << ")");
+                                          << ", Upper − Lower " << G.Interval.Upper - G.Interval.Lower << ")");
         static_assert(G.MaxDenominator == 0 || (G.Notch == 0 && G.Interval.Lower != G.Interval.Upper),
                       "grid: only a continuous grid carries a max_denominator");
 
@@ -403,9 +402,11 @@ constexpr bool fits_imax(const interval& iv) noexcept {
 namespace detail {
 // Unsigned index raw for G's slots: a builtin up to 64 bits, else wide.
 template <grid G>
-using index_raw_for_t = std::conditional_t<G.max_index_representable(),
-                                           smallest_uint_for_t<G.max_index()>,
-                                           int_for_bits_t<G.slot_bits(), false>>;
+using index_raw_for_t = int_for_bits_t<G.slot_bits(), false>;
+
+// The value raw of a whole-number grid above 0: unsigned, holding Upper.
+template <grid G>
+using value_uint_for_t = int_for_bits_t<bit_width_of(wide_numerator(G.Interval.Upper)), false>;
 
 // A whole-number grid stores the value itself where that is free: below
 // zero a signed value (within int64); from 0 the index is the value; above
@@ -423,8 +424,7 @@ inline constexpr bool deduces_value = [] {
     else if constexpr (!fits_imax(G.Interval))
         return false;
     else
-        return sizeof(smallest_uint_for_t<static_cast<umax>(trunc(G.Interval.Upper))>) <=
-               sizeof(smallest_uint_for_t<G.max_index()>);
+        return sizeof(value_uint_for_t<G>) <= sizeof(index_raw_for_t<G>);
 }();
 
 // A continuous grid stores its value as an exact fraction: the 64-bit
@@ -468,11 +468,12 @@ constexpr auto raw_for() {
     else if constexpr (!deduces_value<G>)
         return index_raw_for_t<G>{};
     else if constexpr (G.Interval.Lower < 0)
-        return smallest_int_for_t<trunc(G.Interval.Lower), trunc(G.Interval.Upper)>{};
+        return int_for_bits_t<signed_value_bits(wide_numerator(G.Interval.Lower), wide_numerator(G.Interval.Upper)),
+                              true>{};
     else if constexpr (G.Interval.Lower == 0)
-        return smallest_uint_for_t<G.max_index()>{};
+        return index_raw_for_t<G>{};
     else
-        return smallest_uint_for_t<static_cast<umax>(trunc(G.Interval.Upper))>{};
+        return value_uint_for_t<G>{};
 }
 
 // The raw type of inside<G, P> (the policy plays no part).

@@ -54,19 +54,6 @@ namespace detail {
 constexpr grid_rational grid_abs(const grid_rational& r) { return r < 0 ? -r : r; }
 constexpr grid_rational grid_sign(const grid_rational& r) { return grid_rational{(r > 0) - (r < 0)}; }
 
-// r rounded to an integer by M (half away from zero for nearest).
-template <round_mode M>
-constexpr grid_rational grid_to_int(const grid_rational& r) {
-    const grid_int n = wide_numerator(r), d = wide_denominator(r);
-    grid_int       q   = n / d;
-    const grid_int rem = n - q * d;
-    const bool     neg = n.negative();
-    const bool     odd = !(q / grid_int{2} * grid_int{2} == q);
-    if (rounds_away(M, neg, classify_remainder(M, neg ? -rem : rem, d), odd))
-        q = neg ? q - grid_int{1} : q + grid_int{1};
-    return grid_rational{q};
-}
-
 // max(|Lower|, |Upper|): sizes the abs and copysign outputs.
 template <insidable In>
 inline constexpr grid_rational abs_result_upper = grid_abs(lower_of<In>) > grid_abs(upper_of<In>)

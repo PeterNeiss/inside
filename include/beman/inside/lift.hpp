@@ -13,16 +13,16 @@
 
 //---------------------------------------------------------------------------
 // lift — monadic composition for `std::expected<T, errc>`. `lift(op, args...)`
-// unwraps each expected arg, calls `op`, and re-wraps; the first arg holding an
-// error short-circuits with that error. An `op` already returning expected<R>
-// is forwarded as-is, so the inner operation reports its own cause. Used by
-// interval/grid/inside arithmetic and rational's operators.
+// unwraps each expected arg, calls `op`, and re-wraps; the first arg (left to
+// right) holding an error short-circuits with that error. An `op` already
+// returning expected<R> is forwarded as-is, so the inner operation reports
+// its own cause. Internal: it backs grid division and the expected-lift
+// operators; user code chains through those.
 //
 // std::expected is larger than its value (flag + errc), so it only ever
 // travels as a parameter or return value — never as stored state.
 //---------------------------------------------------------------------------
-namespace beman::inside {
-namespace detail {
+namespace beman::inside::detail {
 template <class T>
 struct is_expected : std::false_type {};
 template <class T, class E>
@@ -65,31 +65,21 @@ constexpr bool lift_take_error([[maybe_unused]] const T& v, [[maybe_unused]] err
         }
     return false;
 }
-} // namespace detail
 
-//---------------------------------------------------------------------------
-// detail::lift(op, args...) — call op on the unwrapped args → expected<result,
-// errc>; the first erroneous arg (left to right) short-circuits with its error.
-// An op already returning expected<R, errc> passes through. Internal: it backs
-// the expected-lift operators; user code chains through those.
-//---------------------------------------------------------------------------
-namespace detail {
 template <class Op, class... Args>
 [[nodiscard]] constexpr auto lift(Op op, Args&&... args) {
-    using R   = std::remove_cvref_t<decltype(op(detail::lift_unwrap(std::forward<Args>(args))...))>;
-    using Ret = std::conditional_t<detail::is_expected_v<R>, R, std::expected<R, errc>>;
+    using R   = std::remove_cvref_t<decltype(op(lift_unwrap(std::forward<Args>(args))...))>;
+    using Ret = std::conditional_t<is_expected_v<R>, R, std::expected<R, errc>>;
 
     errc e{};
-    if ((detail::lift_take_error(args, e) || ...))
+    if ((lift_take_error(args, e) || ...))
         return Ret{std::unexpected{e}};
 
-    if constexpr (detail::expected_like<R>)
-        return op(detail::lift_unwrap(std::forward<Args>(args))...);
+    if constexpr (expected_like<R>)
+        return op(lift_unwrap(std::forward<Args>(args))...);
     else
-        return Ret{op(detail::lift_unwrap(std::forward<Args>(args))...)};
+        return Ret{op(lift_unwrap(std::forward<Args>(args))...)};
 }
-} // namespace detail
-
-} // namespace beman::inside
+} // namespace beman::inside::detail
 
 #endif // BEMAN_INSIDE_LIFT_HPP
