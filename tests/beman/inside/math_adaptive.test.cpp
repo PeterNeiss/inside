@@ -779,7 +779,7 @@ TEST(MathAdaptiveTest, double_tier_agrees_on_decimal_inputs_and_checked_forms) {
     for (int j = -300; j <= 300; ++j) {
         const expo e{rational{j, 100}};
         using core    = ax::pow_core<2, ax::input_limbs<expo>, ax::in_mag<expo>, ax::out_kmax<tanout>>;
-        const auto r2 = ax::evaluate<tanout, ax::start_bits<tanout>>(core{ax::exact_int<2>(10), ax::exact_input(e)});
+        const auto r2 = ax::evaluate<tanout, ax::start_bits<tanout>>(core{ax::exact_of<2>(10), ax::exact_input(e)});
         if ((am::pow_base_into<tanout, 10>(e)).raw() != r2.raw())
             ++bad;
     }
@@ -913,7 +913,7 @@ TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
     for (int j = -900; j <= 900; ++j) {
         const auto e  = inside<{{-9, 9}, rational{1, 100}}, round_nearest>{rational{j, 100}};
         using core    = ax::pow_core<2, ax::input_limbs<decltype(e)>, ax::in_mag<decltype(e)>, ax::out_kmax<p10out>>;
-        const auto r2 = ax::evaluate<p10out, ax::start_bits<p10out>>(core{ax::exact_int<2>(10), ax::exact_input(e)});
+        const auto r2 = ax::evaluate<p10out, ax::start_bits<p10out>>(core{ax::exact_of<2>(10), ax::exact_input(e)});
         if ((am::pow_base_into<p10out, 10>(e)).raw() != r2.raw())
             ++bad;
     }
@@ -1071,11 +1071,11 @@ TEST(MathAdaptiveTest, lean_dd_kernels_decide_double_fine_outputs) {
         amp52         s;
         exp40         e;
         const ddk::dd sin_lean_v = ddk::sin_lean(x, b);
-        undecided += !ax::dd_decide(sin_lean_v, b * 1.5, s);
+        undecided += !ax::dd_decide(sin_lean_v, b, s);
         const ddk::dd cos_lean_v = ddk::cos_lean(x, b);
-        undecided += !ax::dd_decide(cos_lean_v, b * 1.5, s);
+        undecided += !ax::dd_decide(cos_lean_v, b, s);
         const ddk::dd exp_lean_v = ddk::exp_lean(x, b);
-        undecided += !ax::dd_decide(exp_lean_v, b * 1.5, e);
+        undecided += !ax::dd_decide(exp_lean_v, b, e);
     }
     using log48 = inside<{{-8, 8}, rational{1, 1LL << 48}}, round_nearest>;
     static_assert(ax::dd_tier<log48, pos64> && !ax::fp_tier<log48, ax::fp_log, pos64>);
@@ -1085,7 +1085,7 @@ TEST(MathAdaptiveTest, lean_dd_kernels_decide_double_fine_outputs) {
         double        b;
         log48         l;
         const ddk::dd log_lean_v = ddk::log_lean(x, b);
-        undecided += !ax::dd_decide(log_lean_v, b * 1.5, l);
+        undecided += !ax::dd_decide(log_lean_v, b, l);
     }
     EXPECT_LE(undecided, (3 * (count + 1) + n + 1) / 1000);
 }

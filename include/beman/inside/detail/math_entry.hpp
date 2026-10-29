@@ -55,8 +55,7 @@ inline constexpr bool fp_exact_input = [] {
         return false;
     else {
         const grid_int q = wide_denominator(notch_of<In>), p = wide_numerator(notch_of<In>);
-        const bool     dyadic = (grid_int{1} << (grid_bits(q) - 1)) == q;
-        return dyadic && grid_magnitude_bits<In> + grid_bits(q) + grid_bits(p) <= 53;
+        return is_pow2(q) && grid_magnitude_bits<In> + grid_bits(q) + grid_bits(p) <= 53;
     }
 }();
 
@@ -71,8 +70,7 @@ inline constexpr int index_bits = [] {
         return 1024;
     else {
         const grid_int lo = slot_base<Out>, hi = slot_base<Out> + grid_of<Out>.slot_count();
-        const grid_int m = (-lo < hi) ? hi : -lo;
-        return bit_width_of(m);
+        return bit_width_of(std::max(-lo, hi));
     }
 }();
 
@@ -81,7 +79,7 @@ inline constexpr int index_bits = [] {
 // over the notch (≥ 2^-(out_bits − 1)). A relative error of 2^-fp_bits is
 // within one notch.
 template <insidable Out, int Mag>
-inline constexpr int fp_bits = index_bits<Out> < Mag + out_bits<Out> - 1 ? index_bits<Out> : Mag + out_bits<Out> - 1;
+inline constexpr int fp_bits = std::min(index_bits<Out>, Mag + out_bits<Out> - 1);
 
 // Value indices of Out within ±2^52, so its slot bounds are doubles exactly.
 template <insidable Out>
@@ -101,10 +99,8 @@ inline constexpr double notch_p = grid_double(wide_numerator(notch_of<Out>));
 template <insidable Out>
 inline constexpr double notch_q = grid_double(wide_denominator(notch_of<Out>));
 template <insidable Out>
-inline constexpr bool dyadic_notch = [] {
-    const grid_int p = wide_numerator(notch_of<Out>), q = wide_denominator(notch_of<Out>);
-    return (grid_int{1} << (grid_bits(p) - 1)) == p && (grid_int{1} << (grid_bits(q) - 1)) == q;
-}();
+inline constexpr bool dyadic_notch =
+    is_pow2(wide_numerator(notch_of<Out>)) && is_pow2(wide_denominator(notch_of<Out>));
 
 // Value indices of In below 2^53: exact as doubles.
 template <insidable In>
@@ -131,25 +127,16 @@ constexpr double input_double(const In& x) noexcept {
 template <insidable In>
 inline constexpr double input_rel = fp_exact_input<In> ? 0.0 : 0x1p-50;
 
-constexpr double fabs_d(double v) noexcept { return __builtin_fabs(v); }
-
 // An integer near t (the nearest in the default rounding mode); NaN stays
 // NaN. The tests below only need J to be an integer, so no compiler
 // rewrite can make them pass wrongly — unlike the add-and-subtract-2^52
-// trick, which reassociation folds away (and Clang's -fassociative-math
-// does not announce).
+// trick, which reassociation folds away.
 inline double nearest_int(double t) noexcept { return __builtin_nearbyint(t); }
-
-// Stores the grid point with slot offset k in out.
-template <insidable Out>
-[[gnu::always_inline]] inline void store_slot(umax k, Out& out) {
-    out = Out::from_raw(raw_from_offset<Out>(k)); // a slot: a notched, integer raw
-}
 
 // The slot of a kernel value v within an absolute bound, decided in double
 // arithmetic. t = v·q/p is v's value index (exact for a dyadic notch, else
-// within |t|·2^-52) and bt the bound in index units; the bound's own 1.5
-// margin covers the roundings of its arithmetic. Every point of
+// within |t|·2^-52) and bt the bound in index units, with a margin of 1.5
+// for the roundings of the bound's arithmetic. Every point of
 // [t − bt, t + bt] must round to the same index J: for the nearest modes
 // |t − J| < ½ − bt, for the directed ones a floor F with F < t − bt and
 // t + bt < F + 1. Exact ties and integers fail the strict tests and go to
@@ -163,12 +150,12 @@ inline bool fp_decide(double v, double bound, Out& out) noexcept {
     constexpr double     lo = static_cast<double>(static_cast<imax>(slot_base<Out>));
     constexpr double     hi = lo + static_cast<double>(static_cast<imax>(grid_of<Out>.slot_count()));
     const double         t  = v * s;
-    double               bt = bound * s;
+    double               bt = bound * (1.5 * s);
     if constexpr (!dyadic_notch<Out>)
-        bt += fabs_d(t) * 0x1p-51;
+        bt += __builtin_fabs(t) * 0x1p-51;
     double j = nearest_int(t);
     if constexpr (M == round_mode::nearest || M == round_mode::half_even) {
-        if (!(fabs_d(t - j) < 0.5 - bt))
+        if (!(__builtin_fabs(t - j) < 0.5 - bt))
             return false;
     } else {
         if (j > t)
@@ -187,17 +174,17 @@ inline bool fp_decide(double v, double bound, Out& out) noexcept {
         // policy reports or wraps on the integer path.
         if constexpr (has_flag(flags_of<Out>, clamp)) {
             if (j < lo) {
-                store_slot(0, out);
+                out = at_slot<Out>(0);
                 return true;
             }
             if (j > hi) {
-                store_slot(static_cast<umax>(static_cast<imax>(hi - lo)), out);
+                out = at_slot<Out>(static_cast<umax>(static_cast<imax>(hi - lo)));
                 return true;
             }
         }
         return false; // NaN too
     }
-    store_slot(static_cast<umax>(static_cast<imax>(j - lo)), out);
+    out = at_slot<Out>(static_cast<umax>(static_cast<imax>(j - lo)));
     return true;
 }
 
@@ -229,7 +216,7 @@ namespace ddk = ::beman::inside::math::detail::dd;
 inline constexpr double dd_rel = 0x1p-88, dd_abs = 0x1p-92;
 
 constexpr double dd_eval_bound(double x, double v) noexcept {
-    return dd_rel * fabs_d(v) + dd_abs * (fabs_d(x) > 1 ? fabs_d(x) : 1.0);
+    return dd_rel * __builtin_fabs(v) + dd_abs * std::max(1.0, __builtin_fabs(x));
 }
 
 inline constexpr double two53 = 0x1p53;
@@ -272,9 +259,8 @@ inline ddk::dd dd_read(const In& x) noexcept {
             return ddk::fast_two_sum(static_cast<double>(n & ~umax{0xFFFFFFFF}),
                                      static_cast<double>(n & umax{0xFFFFFFFF}));
         };
-        const imax    d = r.Denominator;
-        const ddk::dd q = ddk::div(exact(r.Numerator), exact(static_cast<umax>(d < 0 ? -d : d)));
-        return d < 0 ? ddk::neg(q) : q;
+        const ddk::dd q = ddk::div(exact(r.Numerator), exact(abs_den(r.Denominator)));
+        return r.Denominator < 0 ? ddk::neg(q) : q;
     } else {
         const ddk::dd n = ddk::two_prod(static_cast<double>(value_index<imax>(x)), notch_p<In>);
         return ddk::div(n, ddk::dd{notch_q<In>, 0});
@@ -282,9 +268,10 @@ inline ddk::dd dd_read(const In& x) noexcept {
 }
 
 // The slot of a dd value v within an absolute bound: the value index
-// t = v·q/p as a dd (within 2^-104 of t), split into J1 = nearbyint(t.Hi)
-// and the rest u = (t.Hi − J1) + t.Lo, which rounds to J2 with remainder d.
-// The tests on d are fp_decide's, with the bound widened by u's rounding.
+// t = v·q/p as a dd (within 2^-104 of t; exact for a dyadic notch), split
+// into J1 = nearbyint(t.Hi) and the rest u = (t.Hi − J1) + t.Lo, which
+// rounds to J2 with remainder d. The tests on d are fp_decide's, with the
+// bound widened by u's rounding.
 template <insidable Out>
 inline bool dd_decide(ddk::dd v, double bound, Out& out) noexcept {
     constexpr round_mode M     = out_rounding<Out>;
@@ -295,16 +282,20 @@ inline bool dd_decide(ddk::dd v, double bound, Out& out) noexcept {
     // t = J + u with J = j1 + j2: u is t.Hi's distance to its nearest
     // integer plus t.Lo, and may pass ½ (t.Hi on a half, or t.Lo carrying
     // it over), so it is rounded again rather than rejected.
-    const ddk::dd t  = ddk::mul(v, s);
-    const double  j1 = nearest_int(t.Hi);
+    ddk::dd t;
+    if constexpr (dyadic_notch<Out>)
+        t = {v.Hi * s.Hi, v.Lo * s.Hi}; // s a power of two
+    else
+        t = ddk::mul(v, s);
+    const double j1 = nearest_int(t.Hi);
     if (!(j1 >= lo && j1 <= hi))
         return false; // NaN and infinities too
     const double u  = (t.Hi - j1) + t.Lo;
     double       j2 = nearest_int(u);
     double       d  = u - j2;
-    const double bt = bound * s.Hi + fabs_d(t.Hi) * 0x1p-100 + (fabs_d(u) + 1) * 0x1p-52;
+    const double bt = bound * (1.5 * s.Hi) + __builtin_fabs(t.Hi) * 0x1p-100 + (__builtin_fabs(u) + 1) * 0x1p-52;
     if constexpr (M == round_mode::nearest || M == round_mode::half_even) {
-        if (!(fabs_d(d) < 0.5 - bt))
+        if (!(__builtin_fabs(d) < 0.5 - bt))
             return false;
     } else {
         if (d < 0) {
@@ -323,35 +314,31 @@ inline bool dd_decide(ddk::dd v, double bound, Out& out) noexcept {
     }
     if (j < first || j > last) {
         if constexpr (has_flag(flags_of<Out>, clamp)) { // as fp_decide
-            store_slot(j < first ? umax{0} : static_cast<umax>(last) - static_cast<umax>(first), out);
+            out = at_slot<Out>(j < first ? umax{0} : static_cast<umax>(last) - static_cast<umax>(first));
             return true;
         }
         return false;
     }
-    store_slot(static_cast<umax>(j) - static_cast<umax>(first), out);
+    out = at_slot<Out>(static_cast<umax>(j) - static_cast<umax>(first));
     return true;
 }
 
 // The double kernels' bounds hold for IEEE arithmetic in the default
-// rounding mode, with or without FMA contraction; fp_decide gets them with
-// a 1.5 margin for the roundings of the bound arithmetic. The bits a
-// kernel's full-size bound resolves: 2^-n ≤ e < 2^-(n−1) gives n − 4, where
+// rounding mode, with or without FMA contraction; fp_decide adds a 1.5
+// margin for the roundings of the bound arithmetic. The bits a kernel's
+// full-size bound e < 1 resolves: 2^-n ≤ e < 2^-(n−1) gives n − 4, where
 // the bound spans at most 1/8 of a notch at Out's largest values, so 3 of 4
 // results decide there and nearly all of the smaller ones.
 consteval int fp_limit(double e) {
-    int n = 0;
-    while (e < 1) {
-        e *= 2;
-        ++n;
-    }
-    return n - 4;
+    int x = 0; // e = m·2^x, m in [½, 1): n = 1 − x
+    ::beman::inside::detail::frexp(e, &x);
+    return -x - 3;
 }
 
 // The kernel's target for Out: 10 bits past fp_bits, so the truncation
 // moves at most 2^-9 of a notch.
 template <insidable Out, typename K>
-inline constexpr int fp_target =
-    fp_bits<Out, K::Mag> + 10 < fpk::full_bits ? fp_bits<Out, K::Mag> + 10 : fpk::full_bits;
+inline constexpr int fp_target = std::min(fp_bits<Out, K::Mag> + 10, fpk::full_bits);
 
 // One kernel per function: its value and proved bound at a target T, the
 // bits of its values (Mag, 1024 for unbounded), its limit, and its slope
@@ -381,10 +368,10 @@ using fp_full_log  = fpk::log_k<fpk::full_bits>;
 using fp_full_atan = fpk::atan_k<fpk::full_bits>;
 BEMAN_INSIDE_AX_KERNEL(sin, trig_k, sin, 1, fp_limit(fp_full_trig::Rel), 1.0)
 BEMAN_INSIDE_AX_KERNEL(cos, trig_k, cos, 1, fp_limit(fp_full_trig::Rel), 1.0)
-BEMAN_INSIDE_AX_KERNEL(exp, exp_k, exp, unbounded, fp_limit(fp_full_exp::Rel), fabs_d(v))
-BEMAN_INSIDE_AX_KERNEL(exp2, exp_k, exp2, unbounded, fp_limit(fp_full_exp::Rel2), fabs_d(v))
-BEMAN_INSIDE_AX_KERNEL(sinh, exp_k, sinh, unbounded, fp_limit(fp_full_exp::SinhRel), fabs_d(v) + 1)
-BEMAN_INSIDE_AX_KERNEL(cosh, exp_k, cosh, unbounded, fp_limit(fp_full_exp::CoshRel), fabs_d(v) + 1)
+BEMAN_INSIDE_AX_KERNEL(exp, exp_k, exp, unbounded, fp_limit(fp_full_exp::Rel), __builtin_fabs(v))
+BEMAN_INSIDE_AX_KERNEL(exp2, exp_k, exp2, unbounded, fp_limit(fp_full_exp::Rel2), __builtin_fabs(v))
+BEMAN_INSIDE_AX_KERNEL(sinh, exp_k, sinh, unbounded, fp_limit(fp_full_exp::SinhRel), __builtin_fabs(v) + 1)
+BEMAN_INSIDE_AX_KERNEL(cosh, exp_k, cosh, unbounded, fp_limit(fp_full_exp::CoshRel), __builtin_fabs(v) + 1)
 BEMAN_INSIDE_AX_KERNEL(tanh, exp_k, tanh, 1, fp_limit(fp_full_exp::TanhRel + fp_full_exp::TanhAbs), 1.0)
 BEMAN_INSIDE_AX_KERNEL(atan, atan_k, atan, 1, fp_limit(fp_full_atan::Rel + fp_full_atan::Abs), 1.0)
 BEMAN_INSIDE_AX_KERNEL(asin,
@@ -399,9 +386,9 @@ BEMAN_INSIDE_AX_KERNEL(acos,
                        2,
                        fp_limit(4 * fp_full_atan::AcosRel + fp_full_atan::AcosAbs),
                        1.0 / fpk::fp_sqrt((1.0 - x) * (1.0 + x)))
-BEMAN_INSIDE_AX_KERNEL(log, log_k, log, unbounded, fp_limit(fp_full_log::Rel), 1.0 / fabs_d(x))
-BEMAN_INSIDE_AX_KERNEL(log2, log_k, log2, unbounded, fp_limit(fp_full_log::Rel2), 1.5 / fabs_d(x))
-BEMAN_INSIDE_AX_KERNEL(log10, log_k, log10, unbounded, fp_limit(fp_full_log::Rel10), 1.0 / fabs_d(x))
+BEMAN_INSIDE_AX_KERNEL(log, log_k, log, unbounded, fp_limit(fp_full_log::Rel), 1.0 / __builtin_fabs(x))
+BEMAN_INSIDE_AX_KERNEL(log2, log_k, log2, unbounded, fp_limit(fp_full_log::Rel2), 1.5 / __builtin_fabs(x))
+BEMAN_INSIDE_AX_KERNEL(log10, log_k, log10, unbounded, fp_limit(fp_full_log::Rel10), 1.0 / __builtin_fabs(x))
 BEMAN_INSIDE_AX_KERNEL(asinh, log_k, asinh, unbounded, fp_limit(fp_full_log::AsinhRel), 1.0)
 BEMAN_INSIDE_AX_KERNEL(
     atanh, log_k, atanh, unbounded, fp_limit(fp_full_log::Rel + fp_full_log::AtanhAbs), 1.0 / ((1.0 - x) * (1.0 + x)))
@@ -411,7 +398,7 @@ BEMAN_INSIDE_AX_KERNEL(cbrt,
                        cbrt,
                        unbounded,
                        fp_limit(fp_full_exp::Rel + 16 * fpk::pow_k<fpk::full_bits>::YRel),
-                       x == 0 ? 0.0 : fabs_d(v / x))
+                       x == 0 ? 0.0 : __builtin_fabs(v / x))
 
 // acosh: the dd kernel's bound grows near 1 as 2^-92/√(1 − 1/x²).
 struct fp_acosh_eval {
@@ -443,7 +430,7 @@ struct fp_sqrt : fp_plain {
     static D dd_value(D x) {
         return ddk::sqrt(x);
     }
-    static double slope(double x, double v) { return x == 0 ? 0.0 : fabs_d(v / x); }
+    static double slope(double x, double v) { return x == 0 ? 0.0 : __builtin_fabs(v / x); }
 };
 
 // The kernels of the two-input functions and of tan, pow and Base^x: their
@@ -477,8 +464,8 @@ inline bool fp_attempt(const In& in, Out& out) {
     double       bound;
     const double v = K::template value<fp_target<Out, K>>(x, bound);
     if constexpr (!fp_exact_input<In>)
-        bound += input_rel<In> * fabs_d(x) * K::slope(x, v);
-    return fp_decide(v, bound * 1.5, out);
+        bound += input_rel<In> * __builtin_fabs(x) * K::slope(x, v);
+    return fp_decide(v, bound, out);
 }
 
 // atan2: each input's rounding moves the angle by at most its relative
@@ -489,15 +476,16 @@ inline bool fp_attempt_atan2(const InY& yi, const InX& xi, Out& out) {
     double       bound;
     const double v = fpk::atan_k<fp_target<Out, fp_atan2>>::atan2(y, x, bound);
     bound += input_rel<InY> + input_rel<InX>;
-    return fp_decide(v, bound * 1.5, out);
+    return fp_decide(v, bound, out);
 }
 
 template <insidable Out, insidable InX, insidable InY>
 inline bool fp_attempt_hypot(const InX& xi, const InY& yi, Out& out) {
     const double x = input_double(xi), y = input_double(yi);
-    const double v     = fpk::fp_hypot(x, y);
-    const double bound = fpk::hypot_rel * v + fpk::tiny + input_rel<InX> * fabs_d(x) + input_rel<InY> * fabs_d(y);
-    return fp_decide(v, bound * 1.5, out);
+    const double v = fpk::fp_hypot(x, y);
+    const double bound =
+        fpk::hypot_rel * v + fpk::tiny + input_rel<InX> * __builtin_fabs(x) + input_rel<InY> * __builtin_fabs(y);
+    return fp_decide(v, bound, out);
 }
 
 // tan: the input's rounding grows by sec² = 1 + t².
@@ -508,8 +496,8 @@ inline bool fp_attempt_tan(const In& in, Out& out) {
     if (!fpk::trig_k<fp_target<Out, fp_tan>>::tan(x, t, bound))
         return false;
     if constexpr (!fp_exact_input<In>)
-        bound += input_rel<In> * fabs_d(x) * (1 + t * t);
-    return fp_decide(t, bound * 1.5, out);
+        bound += input_rel<In> * __builtin_fabs(x) * (1 + t * t);
+    return fp_decide(t, bound, out);
 }
 
 // pow = e^(e·ln b): the inputs' roundings move it by |e|·rel(b) and
@@ -522,8 +510,8 @@ inline bool fp_attempt_pow(const InB& bi, const InE& ei, Out& out) {
     double v, bound, y;
     if (!fpk::pow_k<fp_target<Out, fp_pow>>::pow(b, e, v, bound, y))
         return false;
-    bound += v * (input_rel<InB> * fabs_d(e) + input_rel<InE> * fabs_d(y));
-    return fp_decide(v, bound * 1.5, out);
+    bound += v * (input_rel<InB> * __builtin_fabs(e) + input_rel<InE> * __builtin_fabs(y));
+    return fp_decide(v, bound, out);
 }
 
 // ln Base at compile time, from the integer log, as a double-double.
@@ -540,8 +528,8 @@ inline bool fp_attempt_pow_base(const In& xi, Out& out) {
     double       bound, y;
     const double v = fpk::pow_k<fp_target<Out, fp_pow_base>>::pow_ln(x, ln_base<Base>.Hi, ln_base<Base>.Lo, bound, y);
     if constexpr (!fp_exact_input<In>)
-        bound += v * input_rel<In> * fabs_d(y);
-    return fp_decide(v, bound * 1.5, out);
+        bound += v * input_rel<In> * __builtin_fabs(y);
+    return fp_decide(v, bound, out);
 }
 // The lean dd kernel of K, where it has one (detail/math_dd.hpp): its value
 // at x and its proved bound.
@@ -581,8 +569,8 @@ inline bool dd_full_attempt(const ddk::dd& x, Out& out) {
     const ddk::dd v     = K::dd_value(x);
     double        bound = K::dd_eval(x.Hi, v.Hi);
     if constexpr (dd_input_rel<In> != 0)
-        bound += dd_input_rel<In> * fabs_d(x.Hi) * K::slope(x.Hi, v.Hi);
-    return dd_decide(v, bound * 1.5, out);
+        bound += dd_input_rel<In> * __builtin_fabs(x.Hi) * K::slope(x.Hi, v.Hi);
+    return dd_decide(v, bound, out);
 }
 
 // A lean attempt (its value, setting the bound) first, then the full one.
@@ -590,7 +578,7 @@ template <insidable Out, typename Lean, typename Full>
 [[gnu::always_inline]] inline bool dd_lean_first(const Lean& lean, const Full& full, Out& out) {
     double        bound;
     const ddk::dd v = lean(bound);
-    if (dd_decide(v, bound * 1.5, out))
+    if (dd_decide(v, bound, out))
         return true;
     return cold_call(full);
 }
@@ -604,7 +592,7 @@ inline bool dd_attempt(const In& in, Out& out) {
             [&](double& bound) {
                 const ddk::dd v = dd_lean<K>::value(x, bound);
                 if constexpr (dd_input_rel<In> != 0)
-                    bound += dd_input_rel<In> * fabs_d(x.Hi) * K::slope(x.Hi, v.Hi);
+                    bound += dd_input_rel<In> * __builtin_fabs(x.Hi) * K::slope(x.Hi, v.Hi);
                 return v;
             },
             [&] { return dd_full_attempt<Out, K, In>(x, out); },
@@ -625,7 +613,7 @@ inline bool dd_attempt_atan2(const InY& yi, const InX& xi, Out& out) {
         },
         [&] {
             const ddk::dd v = ddk::atan2(y, x);
-            return dd_decide(v, (dd_eval_bound(1.0, v.Hi) + input) * 1.5, out);
+            return dd_decide(v, dd_eval_bound(1.0, v.Hi) + input, out);
         },
         out);
 }
@@ -634,16 +622,16 @@ template <insidable Out, insidable InX, insidable InY>
 inline bool dd_attempt_hypot(const InX& xi, const InY& yi, Out& out) {
     const ddk::dd x = dd_read(xi), y = dd_read(yi);
     const ddk::dd v  = ddk::hypot(x, y);
-    const double  ax = fabs_d(x.Hi), ay = fabs_d(y.Hi);
-    const double  bound = dd_eval_bound(ax > ay ? ax : ay, v.Hi) + dd_input_rel<InX> * ax + dd_input_rel<InY> * ay;
-    return dd_decide(v, bound * 1.5, out);
+    const double  ax = __builtin_fabs(x.Hi), ay = __builtin_fabs(y.Hi);
+    const double  bound = dd_eval_bound(std::max(ay, ax), v.Hi) + dd_input_rel<InX> * ax + dd_input_rel<InY> * ay;
+    return dd_decide(v, bound, out);
 }
 
 // tan: the input's rounding grows by sec² = 1 + t².
 template <insidable Out, insidable In>
 inline bool dd_attempt_tan(const In& in, Out& out) {
     const ddk::dd x     = dd_read(in);
-    auto          input = [&](double t) { return dd_input_rel<In> * fabs_d(x.Hi) * (1 + t * t); };
+    auto          input = [&](double t) { return dd_input_rel<In> * __builtin_fabs(x.Hi) * (1 + t * t); };
     return dd_lean_first(
         [&](double& bound) {
             const ddk::dd t = ddk::tan_lean(x, bound);
@@ -652,8 +640,8 @@ inline bool dd_attempt_tan(const In& in, Out& out) {
         },
         [&] {
             const ddk::dd t    = ddk::tan(x);
-            const double  sec2 = 1 + t.Hi * t.Hi, mx = fabs_d(x.Hi) > 1 ? fabs_d(x.Hi) : 1.0;
-            return dd_decide(t, (dd_rel * sec2 * mx + dd_abs * mx + input(t.Hi)) * 1.5, out);
+            const double  sec2 = 1 + t.Hi * t.Hi, mx = std::max(1.0, __builtin_fabs(x.Hi));
+            return dd_decide(t, dd_rel * sec2 * mx + dd_abs * mx + input(t.Hi), out);
         },
         out);
 }
@@ -667,28 +655,28 @@ inline bool dd_attempt_pow(const InB& bi, const InE& ei, Out& out) {
     const ddk::dd b = dd_read(bi), e = dd_read(ei);
     if (!(b.Hi > 0))
         return false;
-    auto input = [&](double L) { return dd_input_rel<InB> * fabs_d(e.Hi) + dd_input_rel<InE> * L; };
+    auto input = [&](double L) { return dd_input_rel<InB> * __builtin_fabs(e.Hi) + dd_input_rel<InE> * L; };
     return dd_lean_first(
         [&](double& bound) {
-            const ddk::dd y = ddk::mul(ddk::log_lean_value(b, bound), e);
-            const double  L = fabs_d(y.Hi);
+            const ddk::dd y = ddk::mul(ddk::log_lean(b, bound), e);
+            const double  L = __builtin_fabs(y.Hi);
             if (!(L <= 700)) {
                 bound = __builtin_inf();
                 return ddk::dd{0, 0};
             }
             const ddk::dd v = ddk::exp_lean_value(y);
-            bound           = fabs_d(v.Hi) * (ddk::lean_exp::Rel + fabs_d(e.Hi) * bound * (1 + 0x1p-40) +
-                                              4 * fpk::unit_roundoff * fpk::unit_roundoff * L + input(L)) +
-                              fpk::tiny;
+            bound = __builtin_fabs(v.Hi) * (ddk::lean_exp::Rel + __builtin_fabs(e.Hi) * bound * (1 + 0x1p-40) +
+                                            4 * fpk::unit_roundoff2 * L + input(L)) +
+                    fpk::tiny;
             return v;
         },
         [&] {
             const ddk::dd y = ddk::mul(ddk::log(b), e);
-            const double  L = fabs_d(y.Hi);
+            const double  L = __builtin_fabs(y.Hi);
             if (!(L <= 700))
                 return false;
             const ddk::dd v = ddk::exp(y);
-            return dd_decide(v, (fabs_d(v.Hi) * (dd_rel * (1 + L) + input(L)) + dd_abs) * 1.5, out);
+            return dd_decide(v, __builtin_fabs(v.Hi) * (dd_rel * (1 + L) + input(L)) + dd_abs, out);
         },
         out);
 }
@@ -699,20 +687,20 @@ template <insidable Out, imax Base, insidable In>
 inline bool dd_attempt_pow_base(const In& xi, Out& out) {
     const ddk::dd x = dd_read(xi);
     const ddk::dd y = ddk::mul(x, ln_base<Base>);
-    const double  L = fabs_d(y.Hi);
+    const double  L = __builtin_fabs(y.Hi);
     if (!(L <= 700))
         return false;
     return dd_lean_first(
         [&](double& bound) {
             const ddk::dd v = ddk::exp_lean_value(y);
-            bound           = fabs_d(v.Hi) * (ddk::lean_exp::Rel + (4 * fpk::unit_roundoff * fpk::unit_roundoff +
-                                                                    ddk::table_err + dd_input_rel<In>)*L) +
-                              fpk::tiny;
+            bound = __builtin_fabs(v.Hi) *
+                        (ddk::lean_exp::Rel + (4 * fpk::unit_roundoff2 + ddk::table_err + dd_input_rel<In>)*L) +
+                    fpk::tiny;
             return v;
         },
         [&] {
             const ddk::dd v = ddk::exp(y);
-            return dd_decide(v, (fabs_d(v.Hi) * (dd_rel * (1 + L) + dd_input_rel<In> * L) + dd_abs) * 1.5, out);
+            return dd_decide(v, __builtin_fabs(v.Hi) * (dd_rel * (1 + L) + dd_input_rel<In> * L) + dd_abs, out);
         },
         out);
 }
@@ -847,11 +835,10 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
         const auto v = exact_of(unwrap(lo)) +
                        wide_rational<exact_min_limbs>{wide_sint<exact_min_limbs>{1}, wide_sint<exact_min_limbs>{2}} *
                            exact_of_grid<exact_min_limbs>(F);
-        if constexpr (checked) {
-            errc      ec{};
-            const Out out = ax::store_exact<Out>(v, make_policy<flags_of<Out>>(ec));
-            return ec == errc{} ? Res{out} : Res{std::unexpected{ec}};
-        } else
+        if constexpr (checked)
+            return try_store<Out, flags_of<Out>>(
+                [&](Out& out, auto&& policy) { out = ax::store_exact<Out>(v, policy); });
+        else
             return ax::store_exact<Out>(v, make_policy<flags_of<Out>>());
     } else {
         const auto lo                   = fn.template operator()<bracket_t<Out, round_floor>>(anchored_input(xs)...);
@@ -867,9 +854,8 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
                 return R{std::unexpected{lo.error()}};
             if (!hi)
                 return R{std::unexpected{hi.error()}};
-            errc      ec{};
-            const Out out = ax::store_exact<Out>(mid(*lo, *hi), make_policy<flags_of<Out>>(ec));
-            return ec == errc{} ? R{out} : R{std::unexpected{ec}};
+            return ::beman::inside::detail::try_store<Out, flags_of<Out>>(
+                [&](Out& out, auto&& policy) { out = ax::store_exact<Out>(mid(*lo, *hi), policy); });
         } else
             return ax::store_exact<Out>(mid(lo, hi), make_policy<flags_of<Out>>());
     }
@@ -890,7 +876,7 @@ template <insidable Out, bool FP, bool DD, typename F, typename D, typename I>
 tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integer_path) -> decltype(integer_path()) {
 #if BEMAN_INSIDE_MATH_INSTRUMENT
     const auto integer = [&] {
-        ax::note_integer_run();
+        ax::note<ax::probe::integer_run>();
         return integer_path();
     };
 #else
@@ -927,8 +913,8 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
                                                                    [&](auto& r) -> bool { return dd_call; }, \
                                                                    [&] { return __VA_ARGS__; });
 #else
-    #define BEMAN_INSIDE_AX_TIERS(Out, FP, DD, fp_call, dd_call, ...) \
-        ::beman::inside::math::detail::ax::note_integer_run();        \
+    #define BEMAN_INSIDE_AX_TIERS(Out, FP, DD, fp_call, dd_call, ...)                                     \
+        ::beman::inside::math::detail::ax::note<::beman::inside::math::detail::ax::probe::integer_run>(); \
         return __VA_ARGS__;
 #endif
 
@@ -1106,9 +1092,8 @@ template <insidable Out, insidable InY, insidable InX>
     if constexpr (anchoring::unanchored_call<Out, InY, InX>)
         return anchoring::via_anchored<Out>([]<insidable O>(auto a, auto b) { return atan2_into<O>(a, b); }, y, x);
     else {
-        constexpr std::size_t E =
-            ax::input_limbs<InY> > ax::input_limbs<InX> ? ax::input_limbs<InY> : ax::input_limbs<InX>;
-        using F = ::beman::inside::detail::wide_rational<E>;
+        constexpr std::size_t E = std::max(ax::input_limbs<InY>, ax::input_limbs<InX>);
+        using F                 = ::beman::inside::detail::wide_rational<E>;
         BEMAN_INSIDE_AX_TIERS(
             Out,
             (ax::fp_tier<Out, ax::fp_atan2, InY, InX> && ax::in_max<InY> <= 0x1p500 && ax::in_max<InX> <= 0x1p500),
@@ -1195,7 +1180,7 @@ template <insidable Out, imax Base, insidable In>
                               (ax::dd_tier<Out, In> && ax::in_max<In> <= 700),
                               (ax::fp_attempt_pow_base<Out, Base>(x, r)),
                               (ax::dd_attempt_pow_base<Out, Base>(x, r)),
-                              ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_int<2>(Base), ax::exact_input(x)}))
+                              ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_of<2>(Base), ax::exact_input(x)}))
     }
 }
 
@@ -1266,15 +1251,13 @@ inline constexpr grid_rational cosh_lo = (lower_of<In> <= 0 && upper_of<In> >= 0
                                                               : ax::bound_at<In, cosh_core<In>, true, false>;
 template <insidable In>
 inline constexpr grid_rational cosh_hi =
-    ax::bound_at<In, cosh_core<In>, false, true> > ax::bound_at<In, cosh_core<In>, true, true>
-        ? ax::bound_at<In, cosh_core<In>, false, true>
-        : ax::bound_at<In, cosh_core<In>, true, true>;
+    std::max(ax::bound_at<In, cosh_core<In>, true, true>, ax::bound_at<In, cosh_core<In>, false, true>);
 template <insidable In>
 using cosh = ax::result_grid_t<In, cosh_lo<In>, cosh_hi<In>>;
 
 // sqrt of a mixed-sign input: [0, √max(|Lower|, |Upper|)].
 template <insidable In>
-inline constexpr grid_rational max_abs = (-lower_of<In> > upper_of<In>) ? -lower_of<In> : upper_of<In>;
+inline constexpr grid_rational max_abs = std::max(upper_of<In>, -lower_of<In>);
 template <insidable In>
 using sqrt_signed =
     ax::result_grid_t<In,
@@ -1286,7 +1269,7 @@ using sqrt_signed =
 template <imax Base, std::size_t E, int Mag, int KMax>
 struct pow_base_core : ax::pow_core<2, E, Mag, KMax> {
     constexpr pow_base_core(::beman::inside::detail::wide_rational<E> x)
-        : ax::pow_core<2, E, Mag, KMax>{ax::exact_int<2>(Base), x} {}
+        : ax::pow_core<2, E, Mag, KMax>{ax::exact_of<2>(Base), x} {}
 };
 template <imax Base, insidable In>
 using pow_base_t = ax::increasing_t<
@@ -1299,7 +1282,7 @@ using pow_base_t = ax::increasing_t<
 // atan2: [−π, π] rounded outward on the gcd notch (π = atan2(0, −1)).
 template <insidable A, insidable B>
 inline constexpr grid_rational pi_up =
-    ax::lattice_bound<ax::gcd_notch<A, B>, true>(ax::atan2_core<1>{ax::exact_int<1>(0), ax::exact_int<1>(-1)});
+    ax::lattice_bound<ax::gcd_notch<A, B>, true>(ax::atan2_core<1>{ax::exact_of<1>(0), ax::exact_of<1>(-1)});
 template <insidable InY, insidable InX>
 using atan2 = inside<{{-pi_up<InY, InX>, pi_up<InY, InX>}, ax::gcd_notch<InY, InX>}, ax::result_policy<InY>>;
 

@@ -17,18 +17,17 @@
 #include <beman/inside/detail/math_adaptive.hpp>
 #include <beman/inside/detail/math_fp.hpp>
 
-#include <algorithm>
-#include <iterator>
-#include <numeric>
-#include <ranges>
-
 #ifndef BEMAN_INSIDE_MATH_NO_FP
 
+    #include <algorithm>
     #include <array>
     #include <bit>
     #include <cmath> // std::fma
     #include <concepts>
     #include <cstdint>
+    #include <iterator>
+    #include <numeric>
+    #include <ranges>
     #include <utility>
 
 namespace beman::inside::math::detail::dd {
@@ -39,30 +38,18 @@ namespace fpk = ::beman::inside::math::detail::fp;
 using dd = fpk::hilo;
 
 //---------------------------------------------------------------------------
-// Error-free transformations and the arithmetic on them (QD-library style).
-// Products use std::fma at runtime and Dekker's split at compile time.
+// Error-free transformations and the arithmetic on them (QD-library style),
+// products by std::fma.
 //---------------------------------------------------------------------------
 using fpk::fast_two_sum;
 using fpk::fenced;
 using fpk::two_sum;
 
-constexpr dd split(double a) noexcept {
-    const double c  = 134217729.0 * a; // 2^27 + 1
-    const double hi = c - (c - a);
-    return {hi, a - hi};
-}
-
 using fpk::rounded_product;
 
 constexpr dd two_prod(double a, double b) noexcept {
-    if consteval {
-        const double p = a * b;
-        const dd     x = split(a), y = split(b);
-        return {p, ((x.Hi * y.Hi - p) + x.Hi * y.Lo + x.Lo * y.Hi) + x.Lo * y.Lo};
-    } else {
-        const double p = rounded_product(a, b);
-        return {p, std::fma(a, b, -p)};
-    }
+    const double p = rounded_product(a, b);
+    return {p, std::fma(a, b, -p)};
 }
 
 constexpr dd neg(dd a) noexcept { return {-a.Hi, -a.Lo}; }
@@ -118,59 +105,42 @@ constexpr dd div(dd a, dd b) noexcept {
     return fast_two_sum(q1, r * inv);
 }
 
-constexpr dd ldexp(dd a, int e) noexcept {
-    return {::beman::inside::detail::ldexp(a.Hi, e), ::beman::inside::detail::ldexp(a.Lo, e)};
+// a·2^m for |m| ≤ 1022 (a power-of-two factor, exact unless the result is
+// subnormal).
+constexpr dd scale(dd a, long m) noexcept {
+    const double f = std::bit_cast<double>(static_cast<std::uint64_t>(m + 1023) << 52);
+    return {a.Hi * f, a.Lo * f};
 }
 
 //---------------------------------------------------------------------------
 // Constants from the integer path's fixed-point values Y·2^-S.
 //---------------------------------------------------------------------------
+// c·2^-S cut into N parts of B bits each (the last one of 53), so that
+// k·part is exact for |k| < 2^(53−B): Cody–Waite reduction constants.
+template <std::size_t N, std::size_t K>
+constexpr std::array<double, N> parts(wide_sint<K> y, int S, int B) noexcept {
+    std::array<double, N> r{};
+    int                   n = bit_width_of(y); // the bits still to place
+    for (std::size_t i = 0; i < N && !y.is_zero(); ++i) {
+        const int          bits = i + 1 < N ? B : 53;
+        const int          sh   = n > bits ? n - bits : 0;
+        const wide_sint<K> top  = y >> sh;
+        r[i]                    = ::beman::inside::detail::ldexp(static_cast<double>(static_cast<umax>(top)), sh - S);
+        y                       = y - (top << sh);
+        n                       = sh;
+    }
+    return r;
+}
+
 template <std::size_t K>
-constexpr dd of_fixed(wide_sint<K> y, int S) noexcept {
-    const bool negative = y.negative();
-    if (negative)
-        y = -y;
-    if (y.is_zero())
-        return {0, 0};
-    const int n = bit_width_of(y);
-    if (n <= 53)
-        return {::beman::inside::detail::ldexp(static_cast<double>(static_cast<umax>(y)), -S), 0};
-    const int          sh   = n - 53;
-    const wide_sint<K> top  = y >> sh;
-    const wide_sint<K> rest = y - (top << sh);
-    const double       hi   = ::beman::inside::detail::ldexp(static_cast<double>(static_cast<umax>(top)), sh - S);
-    const double       lo =
-        sh > 53
-            ? ::beman::inside::detail::ldexp(static_cast<double>(static_cast<umax>(rest >> (sh - 53))), sh - 53 - S)
-            : ::beman::inside::detail::ldexp(static_cast<double>(static_cast<umax>(rest)), -S);
-    const dd r = fast_two_sum(hi, lo);
-    return negative ? neg(r) : r;
+constexpr dd of_fixed(const wide_sint<K>& y, int S) noexcept {
+    const auto [hi, lo] = parts<2>(y.negative() ? -y : y, S, 53);
+    const dd r          = fast_two_sum(hi, lo);
+    return y.negative() ? neg(r) : r;
 }
 
 inline constexpr int scale_bits = 136; // the scale (bits after the point) of the constants
 using fixed                     = ax::fixed_t<2 * scale_bits + 16>;
-
-template <std::size_t K>
-constexpr dd of_fixed_any(const wide_sint<K>& y, int S) noexcept {
-    return of_fixed(static_cast<fixed>(y), S);
-}
-
-// c·2^-S cut into N parts of B bits each (the last one of 53), so that
-// k·part is exact for |k| < 2^(53−B): Cody–Waite reduction constants.
-template <std::size_t N>
-constexpr std::array<double, N> parts(fixed y, int S, int B) noexcept {
-    std::array<double, N> r{};
-    int                   n = bit_width_of(y); // the bits still to place
-    for (std::size_t i = 0; i < N && !y.is_zero(); ++i) {
-        const int   bits = i + 1 < N ? B : 53;
-        const int   sh   = n > bits ? n - bits : 0;
-        const fixed top  = y >> sh;
-        r[i]             = ::beman::inside::detail::ldexp(static_cast<double>(static_cast<umax>(top)), sh - S);
-        y                = y - (top << sh);
-        n                = sh;
-    }
-    return r;
-}
 
 // 1/n! and 1/n at full dd precision.
 template <int S>
@@ -247,13 +217,8 @@ template <int S>
 constexpr std::array<dd, 97> log_table() noexcept {
     constexpr int W    = S + 16;
     auto          step = [](int i) {
-        const fixed d{2 * i - 1}, d2 = d * d;
-        fixed       t = (fixed{1} << W) / d, sum{0};
-        for (int k = 1; !t.is_zero(); k += 2) {
-            sum = sum + t / fixed{k};
-            t   = t / d2;
-        }
-        return sum + sum;
+        const fixed s = ax::inverse_series<ax::limbs_of<fixed>>(2 * i - 1, +1, W);
+        return s + s;
     };
     const auto         to_dd = [](const fixed& s) { return of_fixed(s, W); };
     std::array<dd, 97> r{}; // r[32] = ln 1 = 0
@@ -277,15 +242,15 @@ constexpr std::array<dd, 97> log_table() noexcept {
 // fold the initializers early). D is always dd.
 template <typename D, int S = scale_bits>
 struct consts {
-    static constexpr D Ln2    = of_fixed_any(ax::ln2_q<S>, S);
-    static constexpr D Log2e  = of_fixed_any(ax::log2e_q<S>, S);
-    static constexpr D Log10e = of_fixed_any(ax::log10e_q<S>, S);
-    static constexpr D Pi     = of_fixed_any(ax::pi_q<S>, S);
-    static constexpr D HalfPi = ldexp(Pi, -1);
+    static constexpr D Ln2    = of_fixed(ax::ln2_q<S>, S);
+    static constexpr D Log2e  = of_fixed(ax::log2e_q<S>, S);
+    static constexpr D Log10e = of_fixed(ax::log10e_q<S>, S);
+    static constexpr D Pi     = of_fixed(ax::pi_q<S>, S);
+    static constexpr D HalfPi = scale(Pi, -1);
     // ln 2/4096 in parts of 31 bits (|k| < 2^22: |x| ≤ 700 · 4096/ln 2), and
     // π/128 in parts of 27 bits (|n| < 2^26: |x| ≤ 2^20 · 128/π).
-    static constexpr std::array<double, 3> Ln2By4096  = parts<3>(static_cast<fixed>(ax::ln2_q<S>), S + 12, 31);
-    static constexpr std::array<double, 4> PiBy128    = parts<4>(static_cast<fixed>(ax::pi_q<S>), S + 7, 27);
+    static constexpr std::array<double, 3> Ln2By4096  = parts<3>(ax::ln2_q<S>, S + 12, 31);
+    static constexpr std::array<double, 4> PiBy128    = parts<4>(ax::pi_q<S>, S + 7, 27);
     static constexpr std::array<D, 64>     Exp2By64   = exp2_table<S>(6);
     static constexpr std::array<D, 64>     Exp2By4096 = exp2_table<S>(12);
     static constexpr std::array<D, 256>    Sin        = sin_table<S>();
@@ -297,14 +262,7 @@ struct consts {
 };
 
 inline constexpr double inv_ln2_by_4096 = 4096 * fpk::log2e;
-inline constexpr double inv_pi_by_128   = 128 / 0x1.921fb54442d18p+1;
-
-// a·2^m for |m| ≤ 1022 (a power-of-two factor, exact unless the result is
-// subnormal).
-inline dd scale(dd a, long m) noexcept {
-    const double f = std::bit_cast<double>(static_cast<std::uint64_t>(m + 1023) << 52);
-    return {a.Hi * f, a.Lo * f};
-}
+inline constexpr double inv_pi_by_128   = 128 / fpk::pi_double;
 
 // x − k·(c0 + c1 + c2 + c3), the parts from parts<>: x.Hi − k·c0 is exact
 // (k·c0 fits 53 bits and lies within a factor 2 of x.Hi), k·c1 and k·c2
@@ -383,7 +341,7 @@ template <dd_type D>
     const double j = __builtin_nearbyint(f.Hi * 128);
     const double c = j * 0x1p-7;
     return {m,
-            div(two_sum(f.Hi - c, f.Lo), add(f, c)), // f.Hi − c is exact
+            div(fast_two_sum(f.Hi - c, f.Lo), add(f, c)), // f.Hi − c is exact, 0 or past |f.Lo|
             consts<D>::Log[static_cast<std::size_t>(j) - 96]};
 }
 
@@ -476,7 +434,7 @@ inline D atan_unit(D a) noexcept {
 template <dd_type D, class Unit>
 inline D atan2_with(D y, D x, Unit unit) noexcept {
     using C         = consts<D>;
-    const double ay = y.Hi < 0 ? -y.Hi : y.Hi, ax_ = x.Hi < 0 ? -x.Hi : x.Hi;
+    const double ay = __builtin_fabs(y.Hi), ax_ = __builtin_fabs(x.Hi);
     if (ay == 0 && ax_ == 0)
         return D{0, 0};
     if (ay <= ax_) {
@@ -555,16 +513,16 @@ inline D log10(D x) noexcept {
 template <dd_type D>
 inline D sinh(D x) noexcept {
     const D e = exp(x);
-    return ldexp(sub(e, div(D{1, 0}, e)), -1);
+    return scale(sub(e, div(D{1, 0}, e)), -1);
 }
 template <dd_type D>
 inline D cosh(D x) noexcept {
     const D e = exp(x);
-    return ldexp(add(e, div(D{1, 0}, e)), -1);
+    return scale(add(e, div(D{1, 0}, e)), -1);
 }
 template <dd_type D>
 inline D tanh(D x) noexcept {
-    const D e = exp(ldexp(x, 1));
+    const D e = exp(scale(x, 1));
     return div(add(e, -1.0), add(e, 1.0));
 }
 
@@ -584,7 +542,7 @@ template <dd_type D>
 inline D atanh(D x) noexcept {
     const bool negative = x.Hi < 0;
     const D    a        = negative ? neg(x) : x;
-    const D    m        = ldexp(log(div(add(a, 1.0), add(neg(a), 1.0))), -1);
+    const D    m        = scale(log(div(add(a, 1.0), add(neg(a), 1.0))), -1);
     return negative ? neg(m) : m;
 }
 template <dd_type D>
@@ -611,6 +569,7 @@ inline D hypot(D x, D y) noexcept {
 // Results they leave undecided go to the full kernels above.
 //---------------------------------------------------------------------------
 using fpk::unit_roundoff;
+using fpk::unit_roundoff2;
 using fpk::up;
 
 // A table entry or constant (of_fixed: the top 53 bits and the next 53,
@@ -626,8 +585,7 @@ inline constexpr double table_err = 0x1p-104;
 consteval double reduce_abs(double Kx, int E1, int E3, int Res, double R) {
     const double t =
         unit_roundoff * (1 + unit_roundoff) + unit_roundoff * Kx * fpk::pow_n(0.5, -E1) + Kx * fpk::pow_n(0.5, -E3);
-    return up(3 * unit_roundoff * t * (1 + 4 * unit_roundoff) + Kx * fpk::pow_n(0.5, Res) +
-              unit_roundoff * unit_roundoff * R);
+    return up(3 * unit_roundoff * t * (1 + 4 * unit_roundoff) + Kx * fpk::pow_n(0.5, Res) + unit_roundoff2 * R);
 }
 
 // sin r = r + r³·S(r²), S = −1/3! + z/5! − z²/7!; cos r = 1 − r²/2 + r⁴·C(r²),
@@ -670,7 +628,7 @@ struct lean_trig {
     static constexpr double SinR = unit_roundoff * R3 / 2 +
                                    R3 * (2 * unit_roundoff * HS.Mag + HS.Err + fpk::pow_n(Z, 3) / fpk::factorial(9)) +
                                    unit_roundoff * TS;
-    static constexpr double CosR = unit_roundoff * R4 / 6 + 2 * unit_roundoff * unit_roundoff * Z +
+    static constexpr double CosR = unit_roundoff * R4 / 6 + 2 * unit_roundoff2 * Z +
                                    R4 * (3 * unit_roundoff * HC.Mag + HC.Err + fpk::pow_n(Z, 3) / fpk::factorial(10)) +
                                    unit_roundoff * TC;
     static constexpr double Lmax = 2 * unit_roundoff * (1 + R + Z) + unit_roundoff * R + unit_roundoff * Z / 2 +
@@ -708,8 +666,7 @@ template <dd_type D>
 
 // The bound of a lean sin or cos at x.
 constexpr double lean_trig_bound(double x) noexcept {
-    const double ax = x < 0 ? -x : x;
-    return lean_trig::Abs + lean_trig::AbsX * (ax > 1 ? ax : 1.0) + fpk::tiny;
+    return lean_trig::Abs + lean_trig::AbsX * std::max(1.0, __builtin_fabs(x)) + fpk::tiny;
 }
 
 template <dd_type D>
@@ -748,7 +705,7 @@ struct lean_exp {
     static constexpr double ER = unit_roundoff * R * R * (1 + R) +
                                  R * R * (unit_roundoff * HP.Mag + HP.Err + fpk::pow_n(R, 4) / 720 * 1.0001) +
                                  unit_roundoff * TP;
-    static constexpr double Et = up(2 * table_err + 6 * unit_roundoff * unit_roundoff);
+    static constexpr double Et = up(2 * table_err + 6 * unit_roundoff2);
     static constexpr double Lmax =
         unit_roundoff * (1 + R) + unit_roundoff * R + unit_roundoff + TP + unit_roundoff * R;
     static constexpr double Rel =
@@ -756,7 +713,7 @@ struct lean_exp {
            700 * reduce_abs(5910, -42, -1074, 127, R));
     // exp2: y = x·ln 2 (|x| ≤ 1000, so |y| ≤ 694) as a dd product, within
     // 2^-104 + 6U² of itself; it moves e^y by |y| times that.
-    static constexpr double Rel2 = up(Rel + 694 * (table_err + 6 * unit_roundoff * unit_roundoff));
+    static constexpr double Rel2 = up(Rel + 694 * (table_err + 6 * unit_roundoff2));
 };
 
 template <dd_type D>
@@ -783,13 +740,15 @@ inline D exp2_lean(D x, double& bound) noexcept {
     return v;
 }
 // 2·atanh s = 2s + 2s·z·P(z), P = 1/3 + z/5 + z²/7.
-inline constexpr fpk::poly<3> lean_log_c = fpk::series<3>([](int k) { return fpk::term{1.0, 2.0 * k + 3}; });
+inline constexpr fpk::poly<3> lean_log_c = fpk::log_tail_c<3>;
 
 // ln x for normal x > 0, reduced as in log: ln x = m·ln 2 + ln c + 2·atanh s,
 // |s| ≤ S since |f − c| ≤ 1/256 and f + c ≥ 2·0.75 − 1/256. s is a dd
 // quotient: its numerator is exact, the denominator one dd sum (2U² of
 // it), and the division within about 15U², so s is within 32U²·|s|.
-// m·Ln2.Hi, ln c's high part and 2s join in two exact two-sums; the tail
+// m·Ln2.Hi, ln c's high part and 2s join in two exact fast two-sums
+// (|m·ln 2| ≥ ln 2 > B unless m = 0, and |m·ln 2 + ln c| ≥ ln(129/128) > 2S
+// unless it is 0); the tail
 // t = 2·sh·zh·P(zh) (sh = s.Hi, zh = sh²) and the low parts are summed in
 // double. All bounds absolute, |ln c| ≤ B = ln 1.5:
 // - t: zh, sh·zh and the product with P round (3U of |t|); P's Horner
@@ -809,29 +768,22 @@ struct lean_log {
     static constexpr double ET   = 3 * unit_roundoff * TT + 2 * S * Z * HP.Err + 2 * fpk::pow_n(S, 9) / 9 * 1.01 +
                                    2 * Z * unit_roundoff * S * 1.0001;
     static constexpr double Lsum = 5 * unit_roundoff * (B + 2 * S) + TT;
-    static constexpr double Abs =
-        up(ET + 64 * unit_roundoff * unit_roundoff * S + 7 * unit_roundoff * Lsum + table_err * B);
-    static constexpr double PerM =
-        up(0.6932 * (35 * unit_roundoff * unit_roundoff + unit_roundoff * unit_roundoff + table_err));
+    static constexpr double Abs  = up(ET + 64 * unit_roundoff2 * S + 7 * unit_roundoff * Lsum + table_err * B);
+    static constexpr double PerM = up(0.6932 * (36 * unit_roundoff2 + table_err));
 };
 
 template <dd_type D>
-[[gnu::always_inline]] inline D log_lean_value(D x, double& bound) noexcept {
+[[gnu::always_inline]] inline D log_lean(D x, double& bound) noexcept {
     const auto [m, s, lc] = log_reduce(x);
     const double sh = s.Hi, zh = sh * sh;
     const double t  = 2 * (fpk::rounded_product(sh, zh) * fpk::horner(zh, lean_log_c.C));
     const double md = static_cast<double>(m);
     const D      a  = two_prod(md, consts<D>::Ln2.Hi);
-    const D      s1 = two_sum(a.Hi, lc.Hi);
-    const D      s2 = two_sum(s1.Hi, 2 * s.Hi);
+    const D      s1 = fast_two_sum(a.Hi, lc.Hi);
+    const D      s2 = fast_two_sum(s1.Hi, 2 * s.Hi);
     const double lo = (((s1.Lo + s2.Lo) + (a.Lo + md * consts<D>::Ln2.Lo)) + (lc.Lo + 2 * s.Lo)) + t;
-    bound           = lean_log::Abs + lean_log::PerM * (md < 0 ? -md : md);
+    bound           = lean_log::Abs + lean_log::PerM * __builtin_fabs(md);
     return fast_two_sum(s2.Hi, lo);
-}
-
-template <dd_type D>
-inline D log_lean(D x, double& bound) noexcept {
-    return log_lean_value(x, bound);
 }
 
 // log2 and log10: ln x times the constant (within 2^-104) as a dd product
@@ -839,14 +791,14 @@ inline D log_lean(D x, double& bound) noexcept {
 // 2^-100 of the result.
 template <dd_type D>
 inline D log2_lean(D x, double& bound) noexcept {
-    const D v = mul(log_lean_value(x, bound), consts<D>::Log2e);
-    bound     = bound * 1.4427 + 0x1p-100 * (v.Hi < 0 ? -v.Hi : v.Hi);
+    const D v = mul(log_lean(x, bound), consts<D>::Log2e);
+    bound     = bound * 1.4427 + 0x1p-100 * __builtin_fabs(v.Hi);
     return v;
 }
 template <dd_type D>
 inline D log10_lean(D x, double& bound) noexcept {
-    const D v = mul(log_lean_value(x, bound), consts<D>::Log10e);
-    bound     = bound * 0.4343 + 0x1p-100 * (v.Hi < 0 ? -v.Hi : v.Hi);
+    const D v = mul(log_lean(x, bound), consts<D>::Log10e);
+    bound     = bound * 0.4343 + 0x1p-100 * __builtin_fabs(v.Hi);
     return v;
 }
 //---------------------------------------------------------------------------
@@ -859,8 +811,6 @@ inline D log10_lean(D x, double& bound) noexcept {
 // the low part then adds to an exact zero), and within 2U²·(1 + |x|) of
 // itself otherwise.
 //---------------------------------------------------------------------------
-inline constexpr double unit_roundoff2 = unit_roundoff * unit_roundoff;
-
 // tan = sin/cos from the lean sincos, each within e: |s/c − S/C| ≤
 // e·(1 + |t|)/(|c| − e), plus the quotient's 32U². No bound (infinity)
 // where |c| ≤ e: the full kernel decides there.
@@ -869,7 +819,7 @@ inline D tan_lean(D x, double& bound) noexcept {
     const sincos_t sc = sincos_lean(x);
     const double   e  = lean_trig_bound(x.Hi);
     const D        t  = div(sc.Sin, sc.Cos);
-    const double   at = t.Hi < 0 ? -t.Hi : t.Hi, c = (sc.Cos.Hi < 0 ? -sc.Cos.Hi : sc.Cos.Hi) - 2 * e;
+    const double   at = __builtin_fabs(t.Hi), c = __builtin_fabs(sc.Cos.Hi) - 2 * e;
     bound = c > 0 ? e * (1 + at) / c * (1 + 0x1p-40) + 32 * unit_roundoff2 * at : __builtin_inf();
     return t;
 }
@@ -882,20 +832,20 @@ inline D tan_lean(D x, double& bound) noexcept {
 template <dd_type D>
 inline D sinh_lean(D x, double& bound) noexcept {
     const D e = exp_lean_value(x);
-    const D v = ldexp(sub(e, div(D{1, 0}, e)), -1);
-    bound     = (lean_exp::Rel + 20 * unit_roundoff2) * ((v.Hi < 0 ? -v.Hi : v.Hi) + 1) * (1 + 0x1p-40) + fpk::tiny;
+    const D v = scale(sub(e, div(D{1, 0}, e)), -1);
+    bound     = (lean_exp::Rel + 20 * unit_roundoff2) * (__builtin_fabs(v.Hi) + 1) * (1 + 0x1p-40) + fpk::tiny;
     return v;
 }
 template <dd_type D>
 inline D cosh_lean(D x, double& bound) noexcept {
     const D e = exp_lean_value(x);
-    const D v = ldexp(add(e, div(D{1, 0}, e)), -1);
+    const D v = scale(add(e, div(D{1, 0}, e)), -1);
     bound     = (lean_exp::Rel + 20 * unit_roundoff2) * v.Hi * (1 + 0x1p-40) + fpk::tiny;
     return v;
 }
 template <dd_type D>
 inline D tanh_lean(D x, double& bound) noexcept {
-    const D e2 = exp_lean_value(ldexp(x, 1));
+    const D e2 = exp_lean_value(scale(x, 1));
     bound      = (lean_exp::Rel / 2 + 36 * unit_roundoff2) * (1 + 0x1p-40);
     return div(add(e2, -1.0), add(e2, 1.0));
 }
@@ -914,13 +864,13 @@ template <dd_type D>
 inline D asinh_lean(D x, double& bound) noexcept {
     const bool negative = x.Hi < 0;
     const D    a        = negative ? neg(x) : x;
-    const D    m        = log_lean_value(add(a, sqrt(add(sqr(a), 1.0))), bound);
+    const D    m        = log_lean(add(a, sqrt(add(sqr(a), 1.0))), bound);
     bound += 17 * unit_roundoff2 * (1 + 0x1p-40);
     return negative ? neg(m) : m;
 }
 template <dd_type D>
 inline D acosh_lean(D x, double& bound) noexcept {
-    const D v = log_lean_value(add(x, sqrt(mul(add(x, -1.0), add(x, 1.0)))), bound);
+    const D v = log_lean(add(x, sqrt(mul(add(x, -1.0), add(x, 1.0)))), bound);
     bound += 23 * unit_roundoff2 * (1 + 0x1p-40);
     return v;
 }
@@ -928,7 +878,7 @@ template <dd_type D>
 inline D atanh_lean(D x, double& bound) noexcept {
     const bool negative = x.Hi < 0;
     const D    a        = negative ? neg(x) : x;
-    const D    m        = ldexp(log_lean_value(div(add(a, 1.0), add(neg(a), 1.0)), bound), -1);
+    const D    m        = scale(log_lean(div(add(a, 1.0), add(neg(a), 1.0)), bound), -1);
     bound               = (bound + 40 * unit_roundoff2) * 0.5 * (1 + 0x1p-40);
     return negative ? neg(m) : m;
 }
