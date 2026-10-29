@@ -114,14 +114,8 @@ struct dimension {
             a.add_user(b.User[i].D, b.User[i].Exp);
         return a;
     }
-    friend consteval dimension operator/(dimension a, const dimension& b) {
-        for (std::size_t i = 0; i < detail::base_dimensions; ++i)
-            a.Exp[i] = exponent(a.Exp[i] - b.Exp[i]);
-        for (std::int8_t i = 0; i < b.UserSize; ++i)
-            a.add_user(b.User[i].D, -b.User[i].Exp);
-        return a;
-    }
-    consteval dimension pow(int n) const {
+    friend consteval dimension operator/(const dimension& a, const dimension& b) { return a * b.pow(-1); }
+    consteval dimension        pow(int n) const {
         if (n == 0)
             return dimension{};
         dimension r = *this;
@@ -1132,16 +1126,20 @@ using number_t = typename number_type<R, V>::type;
 template <reference From, reference To, insidable V>
 using rescaled_t = decltype(rescale<conversion_factor<From.U, To.U>>(std::declval<const V&>()));
 
+// q's number in unit U: exact, its grid rescaled.
+template <unit U, reference R, class V>
+constexpr auto number_in_unit(const quantity<R, V>& q) {
+    return rescale<conversion_factor<R.U, U>>(q.numerical_value());
+}
+
 using beman::inside::detail::is_expected_v;
 
 // Q from v, or an expected Q from an expected v (its error passed on).
 template <class Q, class V>
 constexpr auto lift_to(V&& v) {
-    if constexpr (is_expected_v<std::remove_cvref_t<V>>) {
-        if (!v)
-            return std::expected<Q, errc>{std::unexpect, v.error()};
-        return std::expected<Q, errc>{Q{*std::forward<V>(v)}};
-    } else
+    if constexpr (is_expected_v<std::remove_cvref_t<V>>)
+        return std::forward<V>(v).transform([](auto&& x) { return Q{std::forward<decltype(x)>(x)}; });
+    else
         return Q{std::forward<V>(v)};
 }
 
@@ -1170,19 +1168,19 @@ struct quantity_action_ref {
     template <reference R2, class V2>
         requires implicit_rescalable<R2, R, V2> && requires(Ref& r, const rescaled_t<R2, R, V2>& v) { r = v; }
     constexpr Q& operator=(const quantity<R2, V2>& q) {
-        NumRef = rescale<conversion_factor<R2.U, R.U>>(q.numerical_value());
+        NumRef = number_in_unit<R.U>(q);
         return Self;
     }
     template <reference R2, class V2>
         requires implicit_rescalable<R2, R, V2> && requires(Ref& r, const rescaled_t<R2, R, V2>& v) { r += v; }
     constexpr Q& operator+=(const quantity<R2, V2>& q) {
-        NumRef += rescale<conversion_factor<R2.U, R.U>>(q.numerical_value());
+        NumRef += number_in_unit<R.U>(q);
         return Self;
     }
     template <reference R2, class V2>
         requires implicit_rescalable<R2, R, V2> && requires(Ref& r, const rescaled_t<R2, R, V2>& v) { r -= v; }
     constexpr Q& operator-=(const quantity<R2, V2>& q) {
-        NumRef -= rescale<conversion_factor<R2.U, R.U>>(q.numerical_value());
+        NumRef -= number_in_unit<R.U>(q);
         return Self;
     }
 };
@@ -1222,7 +1220,7 @@ class quantity {
     template <units::reference R2, class V2>
         requires detail::implicit_rescalable<R2, R, V2> && std::constructible_from<Rep, detail::rescaled_t<R2, R, V2>>
     constexpr explicit(!std::convertible_to<detail::rescaled_t<R2, R, V2>, Rep>) quantity(const quantity<R2, V2>& q)
-        : Num(detail::rescale<detail::conversion_factor<R2.U, R.U>>(q.numerical_value())) {}
+        : Num(detail::number_in_unit<R.U>(q)) {}
 
     [[nodiscard]] constexpr const Rep& numerical_value() const noexcept { return Num; }
 
@@ -1280,14 +1278,14 @@ class quantity {
         requires detail::implicit_rescalable<R2, R, V2> &&
                  requires(Rep& n, const detail::rescaled_t<R2, R, V2>& r) { n += r; }
     constexpr quantity& operator+=(const quantity<R2, V2>& q) {
-        Num += detail::rescale<detail::conversion_factor<R2.U, R.U>>(q.numerical_value());
+        Num += detail::number_in_unit<R.U>(q);
         return *this;
     }
     template <units::reference R2, class V2>
         requires detail::implicit_rescalable<R2, R, V2> &&
                  requires(Rep& n, const detail::rescaled_t<R2, R, V2>& r) { n -= r; }
     constexpr quantity& operator-=(const quantity<R2, V2>& q) {
-        Num -= detail::rescale<detail::conversion_factor<R2.U, R.U>>(q.numerical_value());
+        Num -= detail::number_in_unit<R.U>(q);
         return *this;
     }
     template <insidable V>
@@ -1475,7 +1473,7 @@ consteval reference product_reference() {
 // q's number in the common unit of A and B: the unit of their sum.
 template <reference A, reference B, reference R, class V>
 constexpr auto in_common_unit(const quantity<R, V>& q) {
-    return rescale<conversion_factor<R.U, sum_reference<A, B>().U>>(q.numerical_value());
+    return number_in_unit<sum_reference<A, B>().U>(q);
 }
 } // namespace detail
 
@@ -1848,11 +1846,9 @@ template <class Q, numeric A>
 namespace detail {
 template <class Q, class X>
 constexpr decltype(auto) number_in(const X& x) {
-    if constexpr (quantity_like<X>) {
-        // A copy: numerical_value() refers into the converted temporary.
-        auto v = x.template in<Q::reference.U>().numerical_value();
-        return v;
-    } else
+    if constexpr (quantity_like<X>)
+        return number_in_unit<Q::reference.U>(x);
+    else
         return (x);
 }
 template <class Q, class X>
@@ -1898,18 +1894,17 @@ struct divmod_result {
     R Remainder;
 };
 namespace detail {
+// The remainder as a quantity in C (an expected's error passed on).
 template <reference C, class D>
 constexpr auto quantity_divmod(D&& d) {
-    using T = std::remove_cvref_t<D>;
-    if constexpr (is_expected_v<T>) {
-        using V      = typename T::value_type;
-        using result = divmod_result<decltype(d->Quotient), quantity<C, decltype(d->Remainder)>>;
-        if (!d)
-            return std::expected<result, errc>{std::unexpect, d.error()};
-        return std::expected<result, errc>{result{d->Quotient, quantity<C, decltype(V::Remainder)>{d->Remainder}}};
-    } else
-        return divmod_result<decltype(d.Quotient), quantity<C, decltype(d.Remainder)>>{
-            d.Quotient, quantity<C, decltype(d.Remainder)>{d.Remainder}};
+    const auto with_unit = [](const auto& v) {
+        using M = quantity<C, decltype(v.Remainder)>;
+        return divmod_result<decltype(v.Quotient), M>{v.Quotient, M{v.Remainder}};
+    };
+    if constexpr (is_expected_v<std::remove_cvref_t<D>>)
+        return d.transform(with_unit);
+    else
+        return with_unit(d);
 }
 } // namespace detail
 template <reference A, class VA, reference B, class VB, class... Args>
