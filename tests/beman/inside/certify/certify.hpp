@@ -85,15 +85,9 @@ grid_from(umax lo_n, imax lo_d, umax hi_n, imax hi_d, umax notch_n, imax notch_d
 // "{[-4, 4], 1/4} round_nearest, clamp": the grid's limits and notch as
 // fractions, and the policy's flags by name.
 inline std::string number_text(const detail::grid_rational& v) {
-#if BEMAN_INSIDE_BIG_GRIDS
     // A grid number of any size, as the 64-bit form prints it.
     const std::string n = to_string(v.Num);
     return v.is_integer() ? n : n + "/" + to_string(v.Den);
-#else
-    const std::string n = (v.Denominator < 0 && v.Numerator != 0 ? "-" : "") + std::to_string(v.Numerator);
-    const umax        d = detail::abs_den(v.Denominator);
-    return d == 1 ? n : n + "/" + std::to_string(d);
-#endif
 }
 inline std::string grid_text(const grid& g) {
     std::string out =

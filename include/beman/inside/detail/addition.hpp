@@ -22,13 +22,7 @@
 namespace beman::inside::detail {
 template <insidable L, insidable R = L>
 struct addition {
-    static_assert(grid_sum_fits(grid_of<L>, grid_of<R>),
-                  "addition: the result grid exceeds the 64-bit grid numbers — coarsen the "
-                  "operand grids, or build with C++26 big grids");
-    // (Falls back to L's grid when the assertion failed, so the build stops at
-    // that message instead of the rational overflow behind it.)
-    static constexpr grid result_grid =
-        grid_sum_fits(grid_of<L>, grid_of<R>) ? (grid_of<L> + grid_of<R>).value() : grid_of<L>;
+    static constexpr grid result_grid = grid_of<L> + grid_of<R>;
     // A result is checked, whatever its operands' policies.
     using result = inside<result_grid>;
 
@@ -68,17 +62,9 @@ struct addition {
             // gcd(N_L, N_R) on anchored grids), in imax or by wrapping arithmetic
             // (wide_value.hpp). Exact for every grid, at any width.
             static_assert(integer_storage<L> && integer_storage<R>);
-            if constexpr (grid_gcd_fits(unit_of<L>, unit_of<R>)) {
-                constexpr grid_rational U = grid_gcd_of(unit_of<L>, unit_of<R>);
-                using W                   = index_work_t<result, L, U, R, U, U>;
-                res = from_value_in_units<result, U>(value_in_units<W, U>(lhs) + value_in_units<W, U>(rhs));
-            } else {
-                // The units' gcd passes the 64-bit grid numbers (1/(3·2^60)
-                // against 1/(7·2^58)) though the sum grid fits: the exact sum,
-                // a point of result's lattice, gives its slot.
-                const auto j = exact_index<result, round_mode::floor>(exact_of(lhs) + exact_of(rhs)).Index;
-                res          = result::from_raw(raw_of_slot<result>(j));
-            }
+            constexpr grid_rational U = gcd(unit_of<L>, unit_of<R>);
+            using W                   = index_work_t<result, L, U, R, U, U>;
+            res = from_value_in_units<result, U>(value_in_units<W, U>(lhs) + value_in_units<W, U>(rhs));
         }
         return res;
     }
@@ -86,16 +72,11 @@ struct addition {
 
 // Whether `l + r` has a result, as a constraint of add / + / += (so a
 // requires-expression or `if constexpr` probe gets the answer instead of a
-// hard error): the sum grid within the 64-bit grid numbers (C++26 big grids
-// lift that), and no wide-index operand with a continuous result. (F, the
+// hard error): no wide-index operand with a continuous result. (F, the
 // call's flags, is taken for symmetry with div_defined; a sum ignores it.)
 template <insidable L, insidable R, policy_flag = none>
-inline constexpr bool add_defined = [] {
-    if constexpr (!grid_sum_fits(grid_of<L>, grid_of<R>))
-        return false;
-    else
-        return !rational_storage<typename addition<L, R>::result> || (!wide_valued<L> && !wide_valued<R>);
-}();
+inline constexpr bool add_defined =
+    !rational_storage<typename addition<L, R>::result> || (!wide_valued<L> && !wide_valued<R>);
 
 // The same for `l - r` (l + (−r)).
 template <insidable L, insidable R, policy_flag = none>

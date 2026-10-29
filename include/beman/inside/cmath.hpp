@@ -50,7 +50,7 @@ constexpr Out store_value(const V& v) {
 
 namespace detail {
 // Grid-number helpers for the algebraic tier's deduced outputs: exact for
-// grid numbers of any size (C++26), the 64-bit rationals otherwise.
+// grid numbers of any size.
 constexpr grid_rational grid_abs(const grid_rational& r) { return r < 0 ? -r : r; }
 constexpr grid_rational grid_sign(const grid_rational& r) { return grid_rational{(r > 0) - (r < 0)}; }
 
@@ -64,15 +64,7 @@ constexpr grid_rational grid_to_int(const grid_rational& r) {
     const bool     odd = !(q / grid_int{2} * grid_int{2} == q);
     if (rounds_away(M, neg, classify_remainder(M, neg ? -rem : rem, d), odd))
         q = neg ? q - grid_int{1} : q + grid_int{1};
-#if BEMAN_INSIDE_BIG_GRIDS
     return grid_rational{q};
-#else
-    // |q| may pass imax (a uint64's 2^64 − 1): build the rational from the
-    // magnitude, which a 64-bit grid number's integer part always fits.
-    const grid_int a = abs(q);
-    const rational m{static_cast<umax>(a)};
-    return q.negative() ? -m : m;
-#endif
 }
 
 // max(|Lower|, |Upper|): sizes the abs and copysign outputs.
@@ -85,7 +77,7 @@ inline constexpr grid_rational abs_result_upper = grid_abs(lower_of<In>) > grid_
 // not pass through 0 (±(0.25 + k/2) lie on 0.25 + ℤ/2; ±(0.5 + k) on ℤ/2).
 template <insidable In>
 inline constexpr grid_rational sym_notch =
-    anchored<In> ? notch_of<In> : grid_gcd_of(notch_of<In>, grid_add(lower_of<In>, lower_of<In>));
+    anchored<In> ? notch_of<In> : gcd(notch_of<In>, lower_of<In> + lower_of<In>);
 
 // The lowest non-negative point of that lattice: 0 when it passes through 0.
 template <insidable In>
@@ -95,7 +87,7 @@ inline constexpr grid_rational sym_floor = [] {
     else {
         const grid_rational n = sym_notch<In>, l = lower_of<In>;
         // l − n·⌊l/n⌋, with ⌊l/n⌋ from the rounding helper below
-        return grid_sub(l, grid_mul(n, grid_to_int<round_mode::floor>(grid_div_of(l, n))));
+        return l - (n * grid_to_int<round_mode::floor>(l / n));
     }
 }();
 
@@ -409,9 +401,8 @@ constexpr auto pown_impl(In x) noexcept {
     }
 }
 
-// pown<E>(x) exists when each squaring and multiply does: a product grid
-// past the 64-bit grid numbers, or a checked continuous product (an
-// expected), does not multiply further.
+// pown<E>(x) exists when each squaring and multiply does: a checked
+// continuous product (an expected) does not multiply further.
 template <imax E, class In>
 inline constexpr bool pown_defined = [] {
     if constexpr (E < 0)
@@ -497,7 +488,6 @@ using fmod_result_t = inside<exact_out_grid({(lower_of<InX> < 0 ? -fmod_bound<In
 } // namespace detail
 
 template <insidable InX, insidable InY>
-    requires detail::ax::gcd_notch_fits<InX, InY>
 [[nodiscard]] constexpr auto fmod(InX x, InY y) {
     return fmod_into<detail::fmod_result_t<InX, InY>>(x, y);
 }

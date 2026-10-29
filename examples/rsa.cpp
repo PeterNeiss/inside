@@ -22,8 +22,6 @@
 
 using namespace beman::inside;
 
-#if BEMAN_INSIDE_BIG_GRIDS
-
 // The test key: two 512-bit primes, made with Python's random module from
 // seed 1024 (not a secret, not for use).
 constexpr auto P =
@@ -154,12 +152,3 @@ int main() {
     std::cout << "signature  = " << digits(sig) << "\nverified   = " << ok << "\n";
     return ok && digits(sig) == "147061418896...979242965584 (309 digits)" ? 0 : 1;
 }
-
-#else
-
-int main() {
-    std::cout << "rsa needs C++26 static reflection (BEMAN_INSIDE_BIG_GRIDS).\n";
-    return 0;
-}
-
-#endif

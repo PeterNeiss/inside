@@ -24,9 +24,7 @@
 // Exact: the SI 2019 defining constants and what follows from them (ħ, R, F,
 // K_J, R_K, G₀, Φ₀, σ, c₁, c₂), standard gravity and the standard atmosphere.
 // Measured: the CODATA 2022 recommended values (codata2022::), held exactly as
-// published; their uncertainty is not represented. Constants whose numbers
-// need more than 64 bits (h, e, k, N_A and what uses them, the particle
-// masses, a₀, ε₀) exist only under C++26 big grids (BEMAN_INSIDE_BIG_GRIDS).
+// published; their uncertainty is not represented.
 //---------------------------------------------------------------------------
 namespace beman::inside::units {
 //---------------------------------------------------------------------------
@@ -35,7 +33,6 @@ namespace beman::inside::units {
 //---------------------------------------------------------------------------
 namespace si2019_defs {
 inline constexpr named_unit standard_atmosphere{"atm", mag<101'325> * si::pascal};
-#if BEMAN_INSIDE_BIG_GRIDS
 inline constexpr named_unit reduced_planck_constant{
     "ħ", si2019::planck_constant / (mag<2> * mag_pi), {.ascii = "hbar"}};
 inline constexpr named_unit molar_gas_constant{"R", si2019::avogadro_constant * si2019::boltzmann_constant};
@@ -55,12 +52,10 @@ inline constexpr named_unit first_radiation_constant{
     "c₁", mag<2> * mag_pi * si2019::planck_constant * square(si2019::speed_of_light_in_vacuum), {.ascii = "c_1"}};
 inline constexpr named_unit second_radiation_constant{
     "c₂", si2019::planck_constant * si2019::speed_of_light_in_vacuum / si2019::boltzmann_constant, {.ascii = "c_2"}};
-#endif
 } // namespace si2019_defs
 
 namespace si2019 {
-inline constexpr auto standard_atmosphere = unit_c<si2019_defs::standard_atmosphere>;
-#if BEMAN_INSIDE_BIG_GRIDS
+inline constexpr auto standard_atmosphere       = unit_c<si2019_defs::standard_atmosphere>;
 inline constexpr auto reduced_planck_constant   = unit_c<si2019_defs::reduced_planck_constant>;
 inline constexpr auto molar_gas_constant        = unit_c<si2019_defs::molar_gas_constant>;
 inline constexpr auto faraday_constant          = unit_c<si2019_defs::faraday_constant>;
@@ -71,7 +66,6 @@ inline constexpr auto magnetic_flux_quantum     = unit_c<si2019_defs::magnetic_f
 inline constexpr auto stefan_boltzmann_constant = unit_c<si2019_defs::stefan_boltzmann_constant>;
 inline constexpr auto first_radiation_constant  = unit_c<si2019_defs::first_radiation_constant>;
 inline constexpr auto second_radiation_constant = unit_c<si2019_defs::second_radiation_constant>;
-#endif
 } // namespace si2019
 
 // CODATA 2022 recommended values (Mohr et al., Rev. Mod. Phys. 97, 025002).
@@ -88,7 +82,6 @@ inline constexpr named_unit vacuum_magnetic_permeability{"μ₀",
                                                          {.ascii = "mu_0"}};
 inline constexpr named_unit characteristic_impedance_of_vacuum{
     "Z₀", mag<rational{376'730'313'412, 1'000'000'000}> * si::ohm, {.ascii = "Z_0"}};
-#if BEMAN_INSIDE_BIG_GRIDS
 inline constexpr named_unit electron_mass{"m_e", mag<9.1093837139e-31_g> * si::kilogram};
 inline constexpr named_unit proton_mass{"m_p", mag<1.67262192595e-27_g> * si::kilogram};
 inline constexpr named_unit neutron_mass{"m_n", mag<1.67492750056e-27_g> * si::kilogram};
@@ -96,7 +89,6 @@ inline constexpr named_unit atomic_mass_constant{"m_u", mag<1.66053906892e-27_g>
 inline constexpr named_unit bohr_radius{"a₀", mag<5.29177210544e-11_g> * si::metre, {.ascii = "a_0"}};
 inline constexpr named_unit vacuum_electric_permittivity{
     "ε₀", mag<8.8541878188e-12_g> * si::farad / si::metre, {.ascii = "epsilon_0"}};
-#endif
 } // namespace codata2022_defs
 
 namespace codata2022 {
@@ -105,14 +97,12 @@ inline constexpr auto fine_structure_constant            = unit_c<codata2022_def
 inline constexpr auto rydberg_constant                   = unit_c<codata2022_defs::rydberg_constant>;
 inline constexpr auto vacuum_magnetic_permeability       = unit_c<codata2022_defs::vacuum_magnetic_permeability>;
 inline constexpr auto characteristic_impedance_of_vacuum = unit_c<codata2022_defs::characteristic_impedance_of_vacuum>;
-#if BEMAN_INSIDE_BIG_GRIDS
-inline constexpr auto electron_mass                = unit_c<codata2022_defs::electron_mass>;
-inline constexpr auto proton_mass                  = unit_c<codata2022_defs::proton_mass>;
-inline constexpr auto neutron_mass                 = unit_c<codata2022_defs::neutron_mass>;
-inline constexpr auto atomic_mass_constant         = unit_c<codata2022_defs::atomic_mass_constant>;
-inline constexpr auto bohr_radius                  = unit_c<codata2022_defs::bohr_radius>;
-inline constexpr auto vacuum_electric_permittivity = unit_c<codata2022_defs::vacuum_electric_permittivity>;
-#endif
+inline constexpr auto electron_mass                      = unit_c<codata2022_defs::electron_mass>;
+inline constexpr auto proton_mass                        = unit_c<codata2022_defs::proton_mass>;
+inline constexpr auto neutron_mass                       = unit_c<codata2022_defs::neutron_mass>;
+inline constexpr auto atomic_mass_constant               = unit_c<codata2022_defs::atomic_mass_constant>;
+inline constexpr auto bohr_radius                        = unit_c<codata2022_defs::bohr_radius>;
+inline constexpr auto vacuum_electric_permittivity       = unit_c<codata2022_defs::vacuum_electric_permittivity>;
 } // namespace codata2022
 
 //---------------------------------------------------------------------------
@@ -132,8 +122,7 @@ inline constexpr auto speed_of_light_in_vacuum = detail::one_of<isq::speed[si201
 inline constexpr auto luminous_efficacy        = detail::one_of<si2019::luminous_efficacy>;
 inline constexpr auto standard_gravity    = detail::one_of<isq::acceleration_of_free_fall[si2019::standard_gravity]>;
 inline constexpr auto standard_atmosphere = detail::one_of<isq::pressure[si2019::standard_atmosphere]>;
-#if BEMAN_INSIDE_BIG_GRIDS
-inline constexpr auto planck_constant           = detail::one_of<isq::action[si2019::planck_constant]>;
+inline constexpr auto planck_constant     = detail::one_of<isq::action[si2019::planck_constant]>;
 inline constexpr auto reduced_planck_constant   = detail::one_of<isq::action[si2019::reduced_planck_constant]>;
 inline constexpr auto elementary_charge         = detail::one_of<isq::electric_charge[si2019::elementary_charge]>;
 inline constexpr auto boltzmann_constant        = detail::one_of<si2019::boltzmann_constant>;
@@ -147,7 +136,6 @@ inline constexpr auto magnetic_flux_quantum     = detail::one_of<isq::magnetic_f
 inline constexpr auto stefan_boltzmann_constant = detail::one_of<si2019::stefan_boltzmann_constant>;
 inline constexpr auto first_radiation_constant  = detail::one_of<si2019::first_radiation_constant>;
 inline constexpr auto second_radiation_constant = detail::one_of<si2019::second_radiation_constant>;
-#endif
 
 // CODATA 2022 recommended values.
 inline constexpr auto gravitational_constant       = detail::one_of<codata2022::gravitational_constant>;
@@ -156,14 +144,12 @@ inline constexpr auto rydberg_constant             = detail::one_of<codata2022::
 inline constexpr auto vacuum_magnetic_permeability = detail::one_of<codata2022::vacuum_magnetic_permeability>;
 inline constexpr auto characteristic_impedance_of_vacuum =
     detail::one_of<isq::impedance[codata2022::characteristic_impedance_of_vacuum]>;
-#if BEMAN_INSIDE_BIG_GRIDS
 inline constexpr auto electron_mass                = detail::one_of<isq::mass[codata2022::electron_mass]>;
 inline constexpr auto proton_mass                  = detail::one_of<isq::mass[codata2022::proton_mass]>;
 inline constexpr auto neutron_mass                 = detail::one_of<isq::mass[codata2022::neutron_mass]>;
 inline constexpr auto atomic_mass_constant         = detail::one_of<isq::mass[codata2022::atomic_mass_constant]>;
 inline constexpr auto bohr_radius                  = detail::one_of<isq::radius[codata2022::bohr_radius]>;
 inline constexpr auto vacuum_electric_permittivity = detail::one_of<codata2022::vacuum_electric_permittivity>;
-#endif
 } // namespace constants
 } // namespace beman::inside::units
 

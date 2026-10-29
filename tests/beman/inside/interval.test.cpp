@@ -64,17 +64,15 @@ TEST(IntervalTest, interval_arithmetic_via_lift) {
     {
         SCOPED_TRACE("addition");
         constexpr auto r = a + b;
-        static_assert(r.has_value());
-        static_assert(r->Lower == 2);
-        static_assert(r->Upper == 15);
+        static_assert(r.Lower == 2);
+        static_assert(r.Upper == 15);
     }
 
     {
         SCOPED_TRACE("subtraction propagates via -rhs");
         constexpr auto r = a - b;
-        static_assert(r.has_value());
-        static_assert(r->Lower == -5);
-        static_assert(r->Upper == 8);
+        static_assert(r.Lower == -5);
+        static_assert(r.Upper == 8);
     }
 
     {
@@ -82,9 +80,8 @@ TEST(IntervalTest, interval_arithmetic_via_lift) {
         constexpr interval x{-2, 3};
         constexpr interval y{-4, 5};
         constexpr auto     r = x * y;
-        static_assert(r.has_value());
-        static_assert(r->Lower == -12); // -2 * 6 ... actually min(-2*-4, -2*5, 3*-4, 3*5) = min(8,-10,-12,15) = -12
-        static_assert(r->Upper == 15);
+        static_assert(r.Lower == -12); // -2 * 6 ... actually min(-2*-4, -2*5, 3*-4, 3*5) = min(8,-10,-12,15) = -12
+        static_assert(r.Upper == 15);
     }
 
     {

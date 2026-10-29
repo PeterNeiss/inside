@@ -9,7 +9,7 @@
 //---------------------------------------------------------------------------
 // Mathematical constants as rationals: for each, the best approximation whose
 // numerator and denominator stay below 2^31, so products of a few of them
-// keep 64-bit grid numbers. The comment gives |rational − value|. They are
+// keep 64-bit grid numbers (the fast paths). The comment gives |rational − value|. They are
 // public as math::pi, math::e, … (point insides), from cmath.hpp and
 // constants.hpp.
 //---------------------------------------------------------------------------

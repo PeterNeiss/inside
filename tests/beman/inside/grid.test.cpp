@@ -70,10 +70,9 @@ TEST(GridTest, grid_arithmetic) {
         grid a{{0, 10}, 1};
         grid b{{0, 5}, 1};
         auto r = a + b;
-        ASSERT_TRUE(r.has_value());
-        ASSERT_TRUE(r->Interval.Lower == 0);
-        ASSERT_TRUE(r->Interval.Upper == 15);
-        ASSERT_TRUE(r->Notch == 1);
+        ASSERT_TRUE(r.Interval.Lower == 0);
+        ASSERT_TRUE(r.Interval.Upper == 15);
+        ASSERT_TRUE(r.Notch == 1);
     }
 
     {
@@ -81,9 +80,8 @@ TEST(GridTest, grid_arithmetic) {
         grid a{{0, 10}, 1};
         grid b{{0, 5}, 1};
         auto r = a * b;
-        ASSERT_TRUE(r.has_value());
-        ASSERT_TRUE(r->Interval.Lower == 0);
-        ASSERT_TRUE(r->Interval.Upper == 50);
+        ASSERT_TRUE(r.Interval.Lower == 0);
+        ASSERT_TRUE(r.Interval.Upper == 50);
     }
 
     {
@@ -171,14 +169,10 @@ TEST(GridTest, two_limit_ctor_derives_the_notch) {
     static_assert(grid{0.1_r, 1}.Notch == rational{1, 10});
     static_assert(grid{0, 0x1p-10}.Notch == rational{1, 1024});   // at the double bound
     static_assert(grid{0, 0x1p-11_r}.Notch == rational{1, 2048}); // exact spelling: no bound
-#if BEMAN_INSIDE_BIG_GRIDS
     // Big grid numbers: the exact notch 1/(2^62·(2^62−1)), past 64 bits.
     static_assert(
         grid{just<1, (1ll << 62)>, just<1, (1ll << 62) - 1>}.Notch ==
         detail::grid_rational{detail::big_int{1}, detail::big_int{1ll << 62} * detail::big_int{(1ll << 62) - 1}});
-#else
-    static_assert(grid{just<1, (1ll << 62)>, just<1, (1ll << 62) - 1>}.Notch == 0); // no rational notch
-#endif
     static_assert(grid::validate<grid{just<-6, 5>, just<3, 5>}>());
     // _g: grid numbers from decimal literals, exactly (any size with C++26 big grids).
     static_assert(grid{0, 2.5_g}.Notch == rational{1, 2});
@@ -330,18 +324,18 @@ TEST(GridTest, quotients_and_their_results_bound_denominators) {
     // x/y = p·b/(a·r): den ≤ den_bound(x)·num_bound(y) = 1·7
     constexpr grid q = *(kHundred / kOneToSeven);
     static_assert(q.Notch == 0 && q.MaxDenominator == 7);
-    static_assert((*(q + grid{32})).MaxDenominator == 7);           // a point adds den 1
-    static_assert((*(q * q)).MaxDenominator == 49);                 // products multiply
-    static_assert((*(q - q)).MaxDenominator == 49);                 // sums too
+    static_assert((q + grid{32}).MaxDenominator == 7);              // a point adds den 1
+    static_assert((q * q).MaxDenominator == 49);                    // products multiply
+    static_assert((q - q).MaxDenominator == 49);                    // sums too
     static_assert((-q).MaxDenominator == 7);                        // negation keeps it
     static_assert((*(kHundred / grid{-7, 7})).MaxDenominator == 7); // a divisor spanning 0 too
-    static_assert((*(q + kUnbounded)).MaxDenominator == 0);         // unbounded stays unbounded
+    static_assert((q + kUnbounded).MaxDenominator == 0);            // unbounded stays unbounded
     static_assert((*(kHundred / grid{{1, 10}, 0})).MaxDenominator == 0);
     // an unbounded divisor reaching 0 comes arbitrarily close to it: no bounded quotient
     static_assert((kHundred / kUnbounded).error() == errc::overflow);
     // hull: the larger bound; a lattice bounds by its value unit's denominator
-    static_assert((*hull(kThousandths, grid{{0, 2}, rational{1, 4}})).MaxDenominator == 1000);
-    static_assert((*hull(kThousandths, kUnbounded)).MaxDenominator == 0);
+    static_assert(hull(kThousandths, grid{{0, 2}, rational{1, 4}}).MaxDenominator == 1000);
+    static_assert(hull(kThousandths, kUnbounded).MaxDenominator == 0);
     // a quotient that is a point, or lands on a lattice, carries no bound
     static_assert((*(grid{3} / grid{4})).MaxDenominator == 0);
     static_assert((*(kHundred / grid{4})).MaxDenominator == 0);
@@ -361,26 +355,19 @@ TEST(GridTest, max_denominator_spelling_and_representable) {
 
 TEST(GridTest, bounds_past_their_storage_are_dropped) {
     constexpr grid billionths{interval{0, 1}, max_denominator{1'000'000'000}};
-    constexpr grid b2 = *(billionths * billionths);
+    constexpr grid b2 = billionths * billionths;
     static_assert(b2.MaxDenominator == 1'000'000'000'000'000'000);
-#if BEMAN_INSIDE_BIG_GRIDS
     // C++26: kept until num + den need more than BEMAN_INSIDE_MAX_FRACTION_BITS
-    constexpr grid b4 = *(b2 * b2), b8 = *(b4 * b4), b16 = *(b8 * b8), b32 = *(b16 * b16);
+    constexpr grid b4 = b2 * b2, b8 = b4 * b4, b16 = b8 * b8, b32 = b16 * b16;
     static_assert(b16.MaxDenominator != 0 && b32.MaxDenominator == 0); // 10^144 kept, 10^288 dropped
-#else
-    // C++23: kept while it fits the 64-bit rational
-    static_assert((*(b2 * billionths)).MaxDenominator == 0);
-#endif
 }
 
 TEST(GridTest, bounded_storage_holds_every_value) {
     // Within the 64-bit rational a bounded grid stores a rational, as before.
     static_assert(std::same_as<raw_for_t<kThousandths>, rational>);
     static_assert(std::same_as<raw_for_t<*(kHundred / kOneToSeven)>, rational>);
-#if BEMAN_INSIDE_BIG_GRIDS
     // C++26: past it, a fraction sized from the bounds — here 10^36 needs 120 bits.
     constexpr grid billionths{interval{0, 1}, max_denominator{1'000'000'000}};
-    constexpr grid b2 = *(billionths * billionths), b4 = *(b2 * b2);
+    constexpr grid b2 = billionths * billionths, b4 = b2 * b2;
     static_assert(std::same_as<raw_for_t<b4>, wide_rational<2>>);
-#endif
 }

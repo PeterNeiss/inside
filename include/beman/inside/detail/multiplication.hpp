@@ -19,14 +19,7 @@
 namespace beman::inside::detail {
 template <insidable L, insidable R = L>
 struct multiplication {
-    static_assert(grid_product_fits(grid_of<L>, grid_of<R>),
-                  "multiplication: the result grid exceeds the 64-bit grid numbers — round the "
-                  "product into a coarser type with mul_into<Out>(a, b), coarsen the operand "
-                  "grids, or build with C++26 big grids");
-    // (Falls back to L's grid when the assertion failed, so the build stops at
-    // that message instead of the rational overflow behind it.)
-    static constexpr grid result_grid =
-        grid_product_fits(grid_of<L>, grid_of<R>) ? (grid_of<L> * grid_of<R>).value() : grid_of<L>;
+    static constexpr grid result_grid = grid_of<L> * grid_of<R>;
     // A result is checked, whatever its operands' policies.
     using result = inside<result_grid>;
 
@@ -70,7 +63,7 @@ struct multiplication {
             // The product of the unit counts counts the product in the product of the units — on anchored grids the
             // result notch — exact for every grid and sign, at any width.
             static_assert(integer_storage<L> && integer_storage<R>);
-            constexpr grid_rational U = grid_mul(unit_of<L>, unit_of<R>);
+            constexpr grid_rational U = unit_of<L> * unit_of<R>;
             using W                   = index_work_t<result, L, unit_of<L>, R, unit_of<R>, U>;
             return from_value_in_units<result, U>(value_in_units<W, unit_of<L>>(lhs) *
                                                   value_in_units<W, unit_of<R>>(rhs));
@@ -78,18 +71,13 @@ struct multiplication {
     }
 };
 
-// Whether `l * r` has a result, as a constraint of mul / * / *=: the
-// product grid within the 64-bit grid numbers (C++26 big grids lift that),
-// and no wide-index operand with a continuous result.
+// Whether `l * r` has a result, as a constraint of mul / * / *=: no
+// wide-index operand with a continuous result.
 template <insidable L, insidable R, policy_flag = none>
 inline constexpr bool mul_defined = [] {
-    if constexpr (!grid_product_fits(grid_of<L>, grid_of<R>))
-        return false;
-    else {
-        using result = typename multiplication<L, R>::result;
-        return point_scale<R, L, result> || point_scale<L, R, result> || !rational_storage<result> ||
-               (!wide_valued<L> && !wide_valued<R>);
-    }
+    using result = typename multiplication<L, R>::result;
+    return point_scale<R, L, result> || point_scale<L, R, result> || !rational_storage<result> ||
+           (!wide_valued<L> && !wide_valued<R>);
 }();
 } // namespace beman::inside::detail
 

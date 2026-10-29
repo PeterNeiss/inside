@@ -170,14 +170,3 @@ TEST(BugHuntRound6, sum_over_a_sentinel_range) {
     const auto                 total = sum<inside<{0, 10000}>>(std::ranges::subrange(v.cbegin(), zero_end{}));
     EXPECT_EQ(total, 6);
 }
-
-#if !BEMAN_INSIDE_BIG_GRIDS
-// A span past the 64-bit rationals was on the lattice only when both limits
-// were multiples of the notch: odd limits 2 apart are too.
-TEST(BugHuntRound6, divides_evenly_past_the_rational_range) {
-    constexpr interval iv{rational{-9223372036854775807ll}, rational{18446744073709551615ull}};
-    static_assert(iv.divides_evenly(rational{2}));
-    static_assert(!iv.divides_evenly(rational{3}));
-    static_assert(grid::try_make(iv, rational{2}).has_value());
-}
-#endif

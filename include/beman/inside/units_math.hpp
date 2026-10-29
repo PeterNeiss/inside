@@ -39,8 +39,8 @@
 namespace beman::inside::math::detail::ax {
 // x·(n/d)·π^P for P = ±1: π from pi_q at T = S + B bits, B covering |x·n/d|,
 // so its error adds at most one unit; the division truncates one more. The
-// factor is 64-bit (KF = 1), or KF limbs for a factor past 64 bits (C++26 big
-// grids: ħ = h/2π in J·s).
+// factor is 64-bit (KF = 1), or KF limbs for a factor past 64 bits (ħ = h/2π
+// in J·s).
 template <std::size_t E, int Bits, int P, std::size_t KF = 1>
 struct pi_scale_core {
     using factor = std::conditional_t<KF == 1, umax, beman::inside::detail::wide_uint<KF>>;
@@ -217,10 +217,8 @@ template <auto U, insidable Out, reference R, class V>
         using core           = ax::pi_scale_core<ax::input_limbs<V>, B, f.Pi>;
         return quantity<to, Out>{ax::evaluate<Out, ax::start_bits<Out>>(
             core{x, r.Numerator, beman::inside::detail::abs_den(r.Denominator), r.Denominator < 0})};
-    }
-#if BEMAN_INSIDE_BIG_GRIDS
-    else {
-        // A factor past 64 bits (C++26 big grids): the same core on wide integers.
+    } else {
+        // A factor past 64 bits: the same core on wide integers.
         using beman::inside::detail::grid_int;
         constexpr grid_int    n  = beman::inside::detail::wide_numerator(f.Ratio);
         constexpr grid_int    d  = beman::inside::detail::wide_denominator(f.Ratio);
@@ -234,7 +232,6 @@ template <auto U, insidable Out, reference R, class V>
         using core               = ax::pi_scale_core<ax::input_limbs<V>, B, f.Pi, KF>;
         return quantity<to, Out>{ax::evaluate<Out, ax::start_bits<Out>>(core{x, wn, wd, ng})};
     }
-#endif
 }
 
 // The number's functions, in q's unit.

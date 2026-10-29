@@ -52,12 +52,12 @@ inline constexpr bool integer_wide_ops = integer_ops<L, R, F> && !integer_native
 
 // Whether `l / r`, `l % r` and divmod have a result under flags F, as
 // constraints of div / mod / divmod and their operators: the quotient grid
-// exists (not a zero divisor grid; with 64-bit grid numbers, its corners
-// fit), and the remainder needs integer-valued grids.
+// exists (not a zero divisor grid), and the remainder needs integer-valued
+// grids.
 template <insidable L, insidable R, policy_flag F>
 inline constexpr bool div_defined =
     (integer_native_ops<L, R, F> || integer_wide_ops<L, R, F>) ? lower_of<R> != 0 || upper_of<R> != 0
-                                                               : grid_quotient_fits(grid_of<L>, grid_of<R>);
+                                                               : grid_quotient_fits(grid_of<R>);
 
 // (A zero divisor grid has no remainder grid: |r| < |b| holds no value.)
 template <insidable L, insidable R, policy_flag F>
@@ -217,12 +217,12 @@ struct division {
     // The rounding mode for the native paths (shared by the grid and runtime).
     static constexpr round_mode rmode = rounding_of(F | flags_of<L> | flags_of<R>);
 
-    // A clear diagnostic when the result grid is unrepresentable, instead of the
-    // raw expected-deref / .value() below failing cryptically (mirrors add/mul).
-    // The native integer path forms no exact quotient grid (below).
+    // A clear diagnostic when there is no result grid, instead of the
+    // expected-deref below failing cryptically. The native integer path forms
+    // no exact quotient grid (below).
     static_assert(div_defined<L, R, F>,
-                  "division: result grid not representable (notch/interval exceeds the "
-                  "representable rational range) — coarsen the operand grids");
+                  "division: no result grid - the divisor grid is the point 0, or a continuous divisor without "
+                  "max_denominator reaches 0");
 
     // The native integer quotient's range: the corner quotients rounded by
     // the runtime's mode (half_even: the low end by floor, the high by ceil,

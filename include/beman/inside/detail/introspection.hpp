@@ -75,7 +75,7 @@ inline constexpr detail::grid_rational notch_of = grid_of<B>.Notch;
 namespace detail {
 // The same as 64-bit rationals, for the paths that work in 64 bits (the
 // integer fast paths, the math engines). A grid number past 64 bits fails
-// the build here, never truncates. Under C++23 they equal lower_of & co.
+// the build here, never truncates.
 template <insidable B>
 inline constexpr rational lower64 = to_rational(grid_of<B>.Interval.Lower);
 template <insidable B>

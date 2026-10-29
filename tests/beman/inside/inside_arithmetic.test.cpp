@@ -203,11 +203,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
         // rational path stays — in C++26 a fraction sized from the bound holds it.
         using fine = inside<{{0, 1}, rational{1, umax{1} << 40}}>;
         using fpos = inside<{{1, 2}, rational{1, umax{1} << 40}}>;
-#if BEMAN_INSIDE_BIG_GRIDS
         static_assert(!is_expected_v<decltype(fine{0.5} / fpos{1.5})>);
-#else
-        static_assert(is_expected_v<decltype(fine{0.5} / fpos{1.5})>);
-#endif
         EXPECT_TRUE(lift_unwrap(fine{0.5} / fpos{1.5}) == (just<1, 3>));
     }
 }

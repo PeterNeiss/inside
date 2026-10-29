@@ -37,7 +37,7 @@ namespace beman::inside::detail {
 template <typename B>
 concept rational_storage = insidable<B> && std::same_as<raw_t<B>, rational>;
 
-// A continuous grid whose limits pass 64 bits (C++26): a reduced exact
+// A continuous grid whose limits pass 64 bits: a reduced exact
 // fraction of as many limbs as the limits need.
 template <typename B>
 concept fraction_storage = insidable<B> && wide_rational_like<raw_t<B>>;
@@ -84,7 +84,7 @@ inline constexpr bool same_storage = std::is_same_v<raw_t<L>, raw_t<R>> && index
 //   point_grid  — Lower == Upper: one value. Its raw is point_storage.
 //   wide_valued — values past 64 bits: a wide raw, or grid numbers (a limit
 //                 or the notch) past 64 bits even with few slots
-//                 (wide_grid_numbers, never under C++23). They take the
+//                 (wide_grid_numbers). They take the
 //                 exact paths of detail/wide_value.hpp.
 //-------------------------------------------------------------------------
 template <insidable B>
@@ -113,7 +113,7 @@ inline constexpr bool lattice_past_rational =
 
 // Values past the 64-bit rational: a wide index, grid numbers past 64 bits,
 // a lattice past it, or a fraction raw (a bounded continuous grid can need
-// one, C++26).
+// one).
 template <insidable B>
 inline constexpr bool wide_valued =
     wide_index_storage<B> || wide_grid_numbers<B> || lattice_past_rational<B> || fraction_storage<B>;

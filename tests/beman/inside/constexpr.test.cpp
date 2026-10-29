@@ -117,9 +117,9 @@ TEST(ConstexprTest, constexpr_interval_arithmetic) {
     constexpr interval a{0, 10};
     constexpr interval b{0, 5};
 
-    static_assert(*(a + b) == interval{0, 15});
-    static_assert(*(a - b) == interval{-5, 10});
-    static_assert(*(a * b) == interval{0, 50});
+    static_assert(a + b == interval{0, 15});
+    static_assert(a - b == interval{-5, 10});
+    static_assert(a * b == interval{0, 50});
 
     // division by an interval that straddles zero returns division_by_zero
     constexpr interval zero_crossing{-1, 1};
@@ -147,13 +147,11 @@ TEST(ConstexprTest, constexpr_grid_arithmetic_produces_expected_result_grids) {
     constexpr grid g_b{{0, 5}, 1};
 
     constexpr auto sum = g_a + g_b;
-    static_assert(sum.has_value());
-    static_assert(sum->Interval == interval{0, 15});
-    static_assert(sum->Notch == 1);
+    static_assert(sum.Interval == interval{0, 15});
+    static_assert(sum.Notch == 1);
 
     constexpr auto prod = g_a * g_b;
-    static_assert(prod.has_value());
-    static_assert(prod->Interval == interval{0, 50});
+    static_assert(prod.Interval == interval{0, 50});
 
     // div by a zero-only divisor grid is division_by_zero
     constexpr grid g_zero{{0, 0}, 0};
@@ -167,8 +165,7 @@ TEST(ConstexprTest, constexpr_grid_notch_alignment_via_gcd) {
     constexpr grid coarse{{0, 10}, 1};
     constexpr grid fine{{0, 5}, rational{1u, 2}};
     constexpr auto r = coarse + fine;
-    static_assert(r.has_value());
-    static_assert(r->Notch == rational{1u, 2});
+    static_assert(r.Notch == rational{1u, 2});
 }
 
 //---------------------------------------------------------------------------

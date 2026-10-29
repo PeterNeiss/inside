@@ -10,15 +10,12 @@
 #include <string_view>
 
 //---------------------------------------------------------------------------
-// Compile-time diagnostics with the values in them. C++26 lets a
-// static_assert message be any constant object with size() and data()
+// Compile-time diagnostics with the values in them. A static_assert
+// message can be any constant object with size() and data()
 // (P2741), so an error can say "notch 3, Upper − Lower 10". diag_text is
 // that object: text and grid numbers appended with <<, in a fixed buffer.
 //
 //   BEMAN_INSIDE_DIAG(cond, "grid: the notch must …", << " (notch " << n << ")");
-//
-// Before C++26 (or where the compiler lacks it) the same static_assert has
-// the plain text alone, which every valued message starts with.
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
 struct diag_text {
@@ -59,7 +56,7 @@ struct diag_text {
         const grid_int an = wide_numerator(d.A), ad = wide_denominator(d.A);
         const grid_int bn = wide_numerator(d.B), bd = wide_denominator(d.B);
         grid_int       num = an * bd - bn * ad, den = ad * bd;
-        const grid_int g = grid_int_gcd(num, den);
+        const grid_int g = gcd(num, den);
         if (!(g == grid_int{0}) && !(g == grid_int{1})) {
             num = num / g;
             den = den / g;

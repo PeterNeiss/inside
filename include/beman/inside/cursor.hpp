@@ -29,7 +29,7 @@ consteval grid cursor_grid(const auto& step) {
         constexpr_error<"cursor<T, Step>: the step must divide the range of T evenly">();
     if (!grid_divides_evenly(s, notch_of<T>))
         constexpr_error<"cursor<T, Step>: the step must be a whole number of notches of T">();
-    return grid{interval{lower_of<T>, grid_add(upper_of<T>, s)}, s};
+    return grid{interval{lower_of<T>, upper_of<T> + s}, s};
 }
 
 consteval policy_flag cursor_policy(policy_flag p) { return p | cursor_marker; }

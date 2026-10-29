@@ -7,8 +7,7 @@
 // The other headers test these, never a platform macro (__SIZEOF_INT128__,
 // __FMA__, …) themselves. Every header includes this one first.
 //
-//   Build options       BEMAN_INSIDE_MATH_NO_FP, BEMAN_INSIDE_BIG_GRIDS,
-//                       BEMAN_INSIDE_MATH_INSTRUMENT
+//   Build options       BEMAN_INSIDE_MATH_NO_FP, BEMAN_INSIDE_MATH_INSTRUMENT
 //   Features            BEMAN_INSIDE_HAS_EXCEPTIONS, _HAS_INT128, _HAS_FMA
 //
 // The library is C++26 with static reflection (GCC 16, -freflection), written
@@ -62,9 +61,6 @@
     #error \
         "beman::inside needs floating point evaluated in its own type (FLT_EVAL_METHOD 0): on 32-bit x86 compile for SSE2 (-msse2 -mfpmath=sse)"
 #endif
-
-// BEMAN_INSIDE_BIG_GRIDS — grid numbers of any size (grid_rational.hpp).
-#define BEMAN_INSIDE_BIG_GRIDS 1
 
 //---------------------------------------------------------------------------
 // Features

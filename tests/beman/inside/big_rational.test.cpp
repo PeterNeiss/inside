@@ -6,7 +6,6 @@
 
 #include <gtest/gtest.h>
 
-#if BEMAN_INSIDE_BIG_GRIDS
 using namespace beman::inside::detail;
 using beman::inside::imax;
 using beman::inside::umax;
@@ -94,6 +93,3 @@ TEST(BigRationalTest, runtime_overflow_is_reported) {
     EXPECT_THROW((void)(big_int{static_cast<umax>(big)} * big_int{static_cast<umax>(big)}),
                  beman::inside::inside_error);
 }
-#else
-TEST(BigRationalTest, needs_cxx26_reflection) { GTEST_SKIP() << "C++26 static reflection unavailable"; }
-#endif

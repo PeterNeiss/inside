@@ -753,14 +753,12 @@ constexpr auto anchored_input(const In& x) {
 }
 
 template <insidable Out>
-inline constexpr grid_rational half_unit = ::beman::inside::detail::grid_gcd_of(
-    ::beman::inside::detail::grid_div_of(notch_of<Out>, grid_rational{2}), lower_of<Out>);
+inline constexpr grid_rational half_unit =
+    ::beman::inside::detail::gcd(notch_of<Out> / grid_rational{2}, lower_of<Out>);
 
 template <insidable Out, policy_flag R, grid_rational Unit = half_unit<Out>>
-using bracket_t = inside<grid{{::beman::inside::detail::grid_sub(lower_of<Out>, notch_of<Out>),
-                               ::beman::inside::detail::grid_add(upper_of<Out>, notch_of<Out>)},
-                              Unit},
-                         R | (flags_of<Out> & clamp)>;
+using bracket_t =
+    inside<grid{{lower_of<Out> - notch_of<Out>, upper_of<Out> + notch_of<Out>}, Unit}, R | (flags_of<Out> & clamp)>;
 
 // The integer form: a bracket 1024 times finer than half_unit, counted in
 // imax. Rounded down there, the value lies in [y, y + F); only when y is
@@ -768,7 +766,7 @@ using bracket_t = inside<grid{{::beman::inside::detail::grid_sub(lower_of<Out>, 
 // bracket point in 1024) does rounding up decide whether the value is exactly y.
 // Then Out's slot follows from the bracket index by one integer division.
 template <insidable Out>
-inline constexpr grid_rational fine_unit = ::beman::inside::detail::grid_div_of(half_unit<Out>, grid_rational{1024});
+inline constexpr grid_rational fine_unit = half_unit<Out> / grid_rational{1024};
 
 template <insidable Out>
 inline constexpr bool integer_bracket = [] {
@@ -1398,14 +1396,12 @@ template <imax Base, insidable In>
 }
 
 template <insidable InY, insidable InX>
-    requires ax::gcd_notch_fits<InY, InX>
 [[nodiscard]] constexpr auto atan2(InY y, InX x) {
     static_assert(deducible<InY>() && deducible<InX>());
     return atan2_into<results::atan2<InY, InX>>(y, x);
 }
 
 template <insidable InX, insidable InY>
-    requires ax::gcd_notch_fits<InX, InY>
 [[nodiscard]] constexpr auto hypot(InX x, InY y) {
     static_assert(deducible<InX>() && deducible<InY>());
     return hypot_into<results::hypot<InX, InY>>(x, y);

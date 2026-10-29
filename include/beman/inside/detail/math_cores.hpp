@@ -23,13 +23,7 @@ namespace beman::inside::math::detail::ax {
 // Inputs as exact values, in as few limbs as their grid needs.
 //---------------------------------------------------------------------------
 // A grid integer as a double (a notch's p or q, which may pass imax).
-constexpr double grid_double(const grid_int& v) {
-#if BEMAN_INSIDE_BIG_GRIDS
-    return static_cast<double>(big_rational{v, big_int{1}});
-#else
-    return static_cast<double>(v);
-#endif
-}
+constexpr double grid_double(const grid_int& v) { return static_cast<double>(big_rational{v, big_int{1}}); }
 
 // A value of In is n/d with d dividing the notch's denominator and
 // |n| < 2^magnitude·d: its bits, plus a sign. A continuous grid takes its
@@ -731,17 +725,7 @@ inline constexpr std::size_t notch_limbs =
 // k·Notch as a grid number.
 template <grid_rational Notch, std::size_t K>
 constexpr grid_rational lattice_point(const wide_sint<K>& k) {
-#if BEMAN_INSIDE_BIG_GRIDS
     return grid_rational{big_int{k}} * Notch;
-#else
-    // |k| may pass 2^63 (π on a 2^-62 notch): a rational's numerator holds
-    // up to 2^64 − 1, past it the point has no 64-bit grid number.
-    const wide_sint<K> a = abs(k);
-    if (bit_width_of(a) > 64)
-        constexpr_error<"beman::inside::math: a deduced output limit is past the 64-bit grid numbers">();
-    const grid_rational m = rational{static_cast<umax>(a)} * Notch;
-    return k.negative() ? -m : m;
-#endif
 }
 
 // ⌊v/Notch⌋ (Up false) or ⌈v/Notch⌉ (Up true) for v = n/d, d > 0.
@@ -903,20 +887,12 @@ inline constexpr int pow_base_out_kmax = grow_kmax<Out, pow_base_grow<In, Base>>
 template <insidable InX, insidable InY>
 inline constexpr int hypot_bits = 2 * (input_bits<InX> + input_bits<InY>)+2;
 
-// Whether gcd_notch is a grid number, as a constraint of the deduced
-// two-input functions: with 64-bit grid numbers a 2/3 notch against a
-// 2^-62 one has no gcd (1/(3·2^62)).
-template <insidable A, insidable B>
-inline constexpr bool gcd_notch_fits =
-    !notched<A> || !notched<B> || grid_gcd_fits(grid_of<A>.value_unit(), grid_of<B>.value_unit());
-
 // gcd of two value units (0 when either is continuous), for two-input
 // outputs: the notches, or finer where a lattice does not pass through 0.
 // Every value of both inputs is a multiple of it.
 template <insidable A, insidable B>
-    requires gcd_notch_fits<A, B>
 inline constexpr grid_rational gcd_notch =
-    !notched<A> || !notched<B> ? grid_rational{0} : grid_gcd_of(grid_of<A>.value_unit(), grid_of<B>.value_unit());
+    !notched<A> || !notched<B> ? grid_rational{0} : gcd(grid_of<A>.value_unit(), grid_of<B>.value_unit());
 } // namespace beman::inside::math::detail::ax
 
 #endif // BEMAN_INSIDE_DETAIL_MATH_CORES_HPP

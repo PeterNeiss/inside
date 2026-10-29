@@ -116,10 +116,8 @@ inline constexpr int fixed_decimals = [] {
 }();
 } // namespace detail
 
-#if BEMAN_INSIDE_BIG_GRIDS
 // A grid number of any size, in the forms of to_string(rational).
 [[nodiscard]] inline std::string to_string(const detail::big_rational& r);
-#endif
 
 [[nodiscard]] inline std::string to_string(interval ival) {
     std::string str{"["};
@@ -206,7 +204,6 @@ template <std::size_t N, bool S>
     return detail::wide_to_decimal(v);
 }
 
-#if BEMAN_INSIDE_BIG_GRIDS
 // A grid number of any size, in decimal (reads the interned limbs; no new
 // big values are formed at runtime).
 [[nodiscard]] inline std::string to_string(const detail::big_int& v) {
@@ -223,9 +220,7 @@ template <std::size_t N, bool S>
     } while (!m.empty());
     return v.negative() ? "-" + out : out;
 }
-#endif
 
-#if BEMAN_INSIDE_BIG_GRIDS
 namespace detail {
 template <std::size_t K>
 std::string big_fraction_to_string(const big_rational& r) {
@@ -243,7 +238,6 @@ std::string big_fraction_to_string(const big_rational& r) {
     const std::string num = beman::inside::to_string(r.Num);
     return r.is_integer() ? num : num + "/" + beman::inside::to_string(r.Den);
 }
-#endif
 
 // An inside's exact value: with a decimal notch, every value prints that
 // notch's decimals (19.90, 2.00); otherwise its shortest exact form — a

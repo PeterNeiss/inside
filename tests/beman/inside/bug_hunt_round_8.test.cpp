@@ -88,7 +88,6 @@ TEST(BugHuntRound8, representable_fine_double_at_runtime) {
     EXPECT_TRUE(G.representable(launder(0.25)));
 }
 
-#if BEMAN_INSIDE_BIG_GRIDS
 // The predicates of a grid past 64 bits at runtime: comparisons and the
 // lattice test formed big values (std::terminate).
 TEST(BugHuntRound8, big_grid_predicates_at_runtime) {
@@ -105,7 +104,6 @@ TEST(BugHuntRound8, big_grid_predicates_at_runtime) {
     EXPECT_TRUE(includes(G.Interval, launder(7)));
     EXPECT_FALSE(includes(H.Interval, launder(7)));
 }
-#endif
 
 // A point source into a grid whose raw map is neither integer nor a 64-bit
 // multiply-add (a 2^-62 notch, the full uint64 range) did not compile.

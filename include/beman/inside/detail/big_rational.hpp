@@ -8,7 +8,7 @@
 #include <beman/inside/detail/wide_int.hpp>
 
 //---------------------------------------------------------------------------
-// big_int / big_rational — grid numbers of any size (C++26 static reflection).
+// big_int / big_rational — grid numbers of any size (static reflection).
 //
 // A grid is a template argument, so its numbers must be structural values.
 // A value of at most one limb is held inline (Small); a larger magnitude is
@@ -25,17 +25,14 @@
 // Arithmetic on large values runs on transient std::vector<umax> magnitudes
 // with the wide_int limb kernels, during constant evaluation only.
 //---------------------------------------------------------------------------
-// Empty without big grids (config.hpp sets BEMAN_INSIDE_BIG_GRIDS), so a C++23
-// build includes no <vector> from here.
-#if BEMAN_INSIDE_BIG_GRIDS
-    #include <algorithm>
-    #include <bit>
-    #include <compare>
-    #include <cstddef>
-    #include <iterator>
-    #include <limits>
-    #include <meta>
-    #include <vector>
+#include <algorithm>
+#include <bit>
+#include <compare>
+#include <cstddef>
+#include <iterator>
+#include <limits>
+#include <meta>
+#include <vector>
 
 namespace beman::inside::detail {
 namespace big {
@@ -567,7 +564,5 @@ constexpr big_rational gcd(const big_rational& a, const big_rational& b) {
     return {gcd(a.Num, b.Num), a.Den / dg * b.Den};
 }
 } // namespace beman::inside::detail
-
-#endif // BEMAN_INSIDE_BIG_GRIDS
 
 #endif // BEMAN_INSIDE_DETAIL_BIG_RATIONAL_HPP

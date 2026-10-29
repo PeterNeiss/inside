@@ -82,7 +82,7 @@ inline constexpr bool point_is_slot =
     integer_index_storage<X> && !point_grid<X> && point_grid<P> && grid_of<X>.representable(lower_of<P>);
 template <insidable X, insidable P>
 inline constexpr raw_t<X> point_slot_of =
-    static_cast<raw_t<X>>(exact_quotient(grid_sub(lower_of<P>, lower_of<X>), notch_of<X>));
+    static_cast<raw_t<X>>(exact_quotient(lower_of<P> - lower_of<X>, notch_of<X>));
 
 // inside ⋈ inside (⋈ = `cmp`: <=> or ==) in the cheapest exact form the two
 // storage shapes allow.
@@ -102,7 +102,7 @@ constexpr auto compare(const L& lhs, const R& rhs, Cmp cmp) {
     // (the gcd of their value units), one integer compare — any notches and
     // offsets, without the rational decode.
     else if constexpr (units_cmp_fits<L, R>) {
-        constexpr grid_rational U = grid_gcd_of(unit_of<L>, unit_of<R>);
+        constexpr grid_rational U = gcd(unit_of<L>, unit_of<R>);
         return cmp(value_in_units<imax, U>(lhs), value_in_units<imax, U>(rhs));
     } else
         return cmp(as_rational(lhs), as_rational(rhs));

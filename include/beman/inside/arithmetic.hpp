@@ -110,19 +110,13 @@ struct divmod_op {
 // then false, and an integer inside cannot fall back on its imax conversion
 // and the built-in operator.
 
-#define BEMAN_INSIDE_WHY_add                                                                                     \
-    "addition: the result grid exceeds the 64-bit grid numbers (coarsen the operand grids, or build with C++26 " \
-    "big grids), or a wide-index operand meets a continuous result (not supported yet)"
-#define BEMAN_INSIDE_WHY_sub                                                                                        \
-    "subtraction: the result grid exceeds the 64-bit grid numbers (coarsen the operand grids, or build with C++26 " \
-    "big grids), or a wide-index operand meets a continuous result (not supported yet)"
-#define BEMAN_INSIDE_WHY_mul                                                                                         \
-    "multiplication: the result grid exceeds the 64-bit grid numbers (round the product into a coarser type with "   \
-    "mul_into<Out>(a, b), coarsen the operand grids, or build with C++26 big grids), or a wide-index operand meets " \
-    "a continuous result (not supported yet)"
-#define BEMAN_INSIDE_WHY_div                                                                                         \
-    "division: no result grid - the divisor grid is the point 0, an unbounded continuous divisor reaches 0, or the " \
-    "quotient passes the 64-bit grid numbers (round it with div_into<Out>(a, b), or build with C++26 big grids)"
+#define BEMAN_INSIDE_WHY_add "addition: a wide-index operand meets a continuous result (not supported yet)"
+#define BEMAN_INSIDE_WHY_sub "subtraction: a wide-index operand meets a continuous result (not supported yet)"
+#define BEMAN_INSIDE_WHY_mul                                                                                       \
+    "multiplication: a wide-index operand meets a continuous result (not supported yet) - round the product into " \
+    "a coarser type with mul_into<Out>(a, b)"
+#define BEMAN_INSIDE_WHY_div \
+    "division: no result grid - the divisor grid is the point 0, or an unbounded continuous divisor reaches 0"
 #define BEMAN_INSIDE_WHY_mod "modulo requires integer-valued grids"
 #define BEMAN_INSIDE_WHY_divmod "divmod requires integer-valued grids"
 
@@ -171,8 +165,8 @@ BEMAN_INSIDE_ARITH_FN(divmod, divmod_op)
 //---------------------------------------------------------------------------
 // mul_into<Out> / div_into<Out> — the exact product or quotient, rounded once
 // onto Out by Out's policy (plus the per-call flags F). Neither forms the
-// product or quotient grid, so they work where `a * b` would need grid numbers
-// past 64 bits (C++23) or a quotient past the 64-bit fraction. A store that
+// product or quotient grid, so they work where `a * b` would meet a wide index
+// with a continuous result, or a quotient past the 64-bit fraction. A store that
 // fails is reported through the policy (it throws under `checked`).
 // div_into returns std::expected<Out, errc> when the divisor's grid holds 0 —
 // then every failure, a zero divisor or a failed store, is the error — else Out.
@@ -435,25 +429,18 @@ template <insidable Target, std::ranges::input_range Rng>
 //---------------------------------------------------------------------------
 // common_inside — the "hull" type able to hold every value of L and R exactly:
 // interval hull + notch gcd (grid `hull`), checked like arithmetic results.
-// Backs the
-// std::common_type specialization and mixed-grid min/max below. The primary has no `type` when the hull grid is
-// unrepresentable, so common_type_t SFINAEs away instead of erroring.
+// Backs the std::common_type specialization and mixed-grid min/max below.
 //---------------------------------------------------------------------------
 namespace detail {
 template <insidable Lhs, insidable Rhs>
-struct common_inside {};
+struct common_inside {
+    using type = inside<hull(grid_of<Lhs>, grid_of<Rhs>)>;
+};
 
 // Same type stays itself (policy included) — mirrors std::common_type<T, T>.
 template <insidable Same>
 struct common_inside<Same, Same> {
     using type = Same;
-};
-
-template <insidable Lhs, insidable Rhs>
-    requires(!std::same_as<Lhs, Rhs>) && (hull(grid_of<Lhs>, grid_of<Rhs>).has_value())
-struct common_inside<Lhs, Rhs> {
-    static constexpr grid hull_grid = *hull(grid_of<Lhs>, grid_of<Rhs>);
-    using type                      = inside<hull_grid>;
 };
 } // namespace detail
 
@@ -567,8 +554,7 @@ BEMAN_INSIDE_NO_SCALAR(%)
 
 // std::common_type is the grid hull (beman::inside::common_inside_t above), so
 // mixed-grid insides work in generic code (std::max over two grids, ranges)
-// without opting into numeric_limits.hpp. SFINAE-friendly: no `type` when the
-// hull grid is unrepresentable.
+// without opting into numeric_limits.hpp.
 template <beman::inside::grid G1, beman::inside::policy_flag P1, beman::inside::grid G2, beman::inside::policy_flag P2>
 struct std::common_type<beman::inside::inside<G1, P1>, beman::inside::inside<G2, P2>>
     : beman::inside::detail::common_inside<beman::inside::inside<G1, P1>, beman::inside::inside<G2, P2>> {};

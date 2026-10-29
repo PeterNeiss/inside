@@ -76,11 +76,6 @@ static_assert(can_div<metres<huge>, metres<fine>> == can_div<huge, fine>);
 static_assert(can_eq<metres<huge>, metres<fine>> == can_eq<huge, fine>);
 static_assert(can_mul<metres<huge>, fine> == can_mul<huge, fine>);
 static_assert(can_div<fine, metres<huge>> == can_div<fine, huge>);
-#if !BEMAN_INSIDE_BIG_GRIDS
-// au → nm is 1.5·10^20: no 64-bit grid number, so no common number.
-static_assert(!can_add<units::quantity<si::astronomical_unit, inside<{0, 100}>>,
-                       units::quantity<si::nano(si::metre), inside<{0, 1000}>>>);
-#endif
 // Points follow their quantities.
 using celsius = decltype(units::point<si::degree_Celsius>(just<20>));
 static_assert(can_add<celsius, decltype(just<1> * si::kelvin)>);

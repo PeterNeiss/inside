@@ -99,7 +99,6 @@ TEST(BugHunt20261012, lattice_past_the_rational) {
 
 // The same-notch fast path of a wide store took any equal notch, so an
 // offset lattice (0.5 + k) shifted by a truncated 0.5: every mode floored.
-#if BEMAN_INSIDE_BIG_GRIDS
 TEST(BugHunt20261012, wide_store_from_offset_lattice) {
     constexpr grid wide{{-0x1p63, 0x1p63}, 1};
     using ceil_t    = inside<wide, round_ceil>;
@@ -109,7 +108,6 @@ TEST(BugHunt20261012, wide_store_from_offset_lattice) {
     EXPECT_EQ(*nearest_t::try_make(halves{rational{3, 2}}), 2_ins);
     EXPECT_EQ(*trunc_t::try_make(neg{rational{-5, 2}}), -2_ins);
 }
-#endif
 
 // A double into a grid whose limit no double holds (INT64_MAX): the range
 // test built the double as a grid number, whose runtime ops stop at 64 bits
@@ -208,13 +206,7 @@ TEST(BugHunt20261012, operations_are_constraint_friendly) {
     static_assert(can_mod<digit, digit> && !can_mod<fourths, digit>);
     static_assert(can_divmod<digit, inside<{1, 3}>> && !can_divmod<fourths, digit>);
     static_assert(can_add<digit, fourths> && can_mul<fourths, fourths>);
-#if BEMAN_INSIDE_BIG_GRIDS
     static_assert(can_add<uint64, uint64> && can_mul<full, full>);
-#else
-    static_assert(!can_add<uint64, uint64> && !can_mul<full, full>); // not imax · imax
-    static_assert(!can_div<inside<{-7, 5}>, full>);                  // 7/2^63
-    static_assert(can_div<inside<{-7, 5}, snap>, full>);             // an integer quotient
-#endif
     static_assert(can_make<digit, int> && can_make<digit, inside<{5, 20}>> && !can_make<digit, inside<{20, 30}>>);
     static_assert(!can_make<digit, fourths> && can_make<inside<{0, 9}, snap>, fourths>);
     static_assert(can_add_assign<digit, digit> && can_add_assign<digit, inside<{10}>> &&

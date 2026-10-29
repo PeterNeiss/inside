@@ -21,8 +21,6 @@
 using namespace beman::inside;
 using namespace beman::inside::units;
 
-#if BEMAN_INSIDE_BIG_GRIDS
-
 using length_number = inside<{{1e-41_g, 1e27_g}, 1e-41_g}, round_nearest>; // positive: log10 needs it
 using length        = quantity<si::metre, length_number>;
 using decade        = inside<{{-100, 100}, per<1 << 20>}, round_nearest>; // log10 to 2^-20
@@ -48,12 +46,3 @@ int main() {
         return 1;
     return 0;
 }
-
-#else
-
-int main() {
-    std::cout << "planck_to_cosmos needs C++26 static reflection (BEMAN_INSIDE_BIG_GRIDS).\n";
-    return 0;
-}
-
-#endif

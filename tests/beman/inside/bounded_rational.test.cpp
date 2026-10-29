@@ -58,12 +58,8 @@ TEST(BoundedRationalTest, bounds_past_storage_report_in_cxx23_and_fit_in_cxx26) 
     using b2         = decltype(billionths{} * billionths{});
     static_assert(!is_expected_v<b2>); // 10^18 fits the 64-bit rational
     using b3 = decltype(b2{} * billionths{});
-#if BEMAN_INSIDE_BIG_GRIDS
     static_assert(!is_expected_v<b3>); // a fraction sized for 10^27
     static_assert(fraction_storage<b3>);
-#else
-    static_assert(is_expected_v<b3>); // past 64 bits: unbounded, checked
-#endif
     // (A value whose cube still fits 64 bits, so both modes have one.)
     const billionths x{rational{1, 1000}};
     const auto       x3 = lift_unwrap(x * x * x);
@@ -117,11 +113,10 @@ TEST(BoundedRationalTest, store_past_the_bound_reports_rounding_error) {
     EXPECT_TRUE(u == 0);
 }
 
-#if BEMAN_INSIDE_BIG_GRIDS
 // C++26: the same check on a bounded grid stored as a wide fraction.
 TEST(BoundedRationalTest, wide_bounded_store_checks_the_bound) {
     constexpr grid e18{interval{0, 1}, max_denominator{1'000'000'000'000'000'000}};
-    using wide = inside<*(e18 * e18)>; // denominators ≤ 10^36
+    using wide = inside<e18 * e18>; // denominators ≤ 10^36
     static_assert(fraction_storage<wide>);
     const auto ok = parse<wide>("0.000000000000000000000000000000000001"); // 10^-36
     ASSERT_TRUE(ok.has_value());
@@ -130,7 +125,6 @@ TEST(BoundedRationalTest, wide_bounded_store_checks_the_bound) {
     EXPECT_TRUE((parse<wide, round_floor>("0.0000000000000000000000000000000000001").value() == 0));
     EXPECT_TRUE((parse<wide, round_ceil>("0.0000000000000000000000000000000000001").value() == *ok));
 }
-#endif
 
 // Exact math outputs on continuous inputs keep the bound.
 TEST(BoundedRationalTest, abs_copysign_fmod_keep_the_bound) {

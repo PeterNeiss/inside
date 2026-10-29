@@ -75,7 +75,7 @@ namespace detail {
 // value of T, which assigns into T.
 template <grid G, policy_flag P>
 using cursor_value_t =
-    inside<grid{interval{G.Interval.Lower, grid_sub(G.Interval.Upper, G.Notch)}, G.Notch}, P & ~cursor_marker>;
+    inside<grid{interval{G.Interval.Lower, G.Interval.Upper - G.Notch}, G.Notch}, P & ~cursor_marker>;
 } // namespace detail
 
 //---------------------------------------------------------------------------
@@ -170,8 +170,7 @@ struct inside {
         store_value(value.value());
     }
 
-#if BEMAN_INSIDE_BIG_GRIDS
-    // A C++26 grid number at run time (`residue r = N - 1_g;`, a constexpr big
+    // A grid number at run time (`residue r = N - 1_g;`, a constexpr big
     // variable): checked like any store, since its interval is not part of
     // its type. (Exactly a grid number: templates, so nothing converts to one.)
     template <std::same_as<detail::grid_rational> V>
@@ -187,7 +186,6 @@ struct inside {
         detail::assign_grid_number(*this, value, make_policy<P>());
         return *this;
     }
-#endif
 
     template <numeric B>
         requires inside_assignable<inside, B, P>
@@ -837,7 +835,6 @@ struct inside {
     [[nodiscard]] static constexpr std::expected<inside, errc> try_make(const std::expected<A, errc>& value) {
         return value.and_then([](const A& a) { return try_make<F>(a); });
     }
-#if BEMAN_INSIDE_BIG_GRIDS
     template <policy_flag F = none, std::same_as<detail::grid_rational> V>
     [[nodiscard]] static constexpr std::expected<inside, errc> try_make(const V& value) {
         errc   ec{};
@@ -847,7 +844,6 @@ struct inside {
             return std::unexpected{ec};
         return result;
     }
-#endif
 };
 
 //---------------------------------------------------------------------------
@@ -952,7 +948,7 @@ template <insidable B>
 // just
 //---------------------------------------------------------------------------
 // The point grid holds the value, so no value constructor is needed: grid
-// numbers past 64 bits (C++26 `_g`) work too. just<N, D> is the point N/D
+// numbers past 64 bits (`_g`) work too. just<N, D> is the point N/D
 // for an integer D ≥ 1: just<1, 3>, just<-6, 5> for -1.2.
 namespace detail {
 template <auto value, auto den>
@@ -961,7 +957,7 @@ consteval auto just_point() {
         return inside<grid{value}>::from_raw({});
     else {
         static_assert(std::integral<decltype(den)> && den >= 1, "just<N, D>: D is an integer of at least 1");
-        return inside<grid{grid_div_of(grid_rational{value}, grid_rational{den})}>::from_raw({});
+        return inside<grid{grid_rational{value} / grid_rational{den}}>::from_raw({});
     }
 }
 } // namespace detail

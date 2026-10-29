@@ -32,7 +32,7 @@
 //
 // The limb type is a template parameter so tests can run wide_int over uint8_t
 // limbs exhaustively against builtin oracles; the library uses umax limbs.
-// The limb kernels below are also used by the C++26 big_rational.
+// The limb kernels below are also used by big_rational.
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
 

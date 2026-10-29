@@ -288,11 +288,7 @@ TEST(WideGridTest, division) {
     // (2^33 + 2^-32) / 1 has no 64-bit rational form: reported, not wrapped —
     // in C++26 the quotient's denominator bound sizes a fraction that holds it.
     const fine odd = fine::from_raw((detail::wide_uint<2>{1} << 65) + detail::wide_uint<2>{1});
-#if BEMAN_INSIDE_BIG_GRIDS
     EXPECT_TRUE(odd / divisor{1} == odd);
-#else
-    EXPECT_EQ((odd / divisor{1}).error(), errc::overflow);
-#endif
     // narrow ÷ wide, including a zero divisor.
     auto r = inside<{0, 10}>{3} / fine{0.5};
     ASSERT_TRUE(r.has_value());
@@ -372,11 +368,9 @@ TEST(WideGridTest, limb_edges) {
     auto s = o + inside<{{0, 1}, per<4>}>{1}; // 2^64 + 4 slots
     static_assert(detail::wide_index_storage<decltype(s)>);
     EXPECT_TRUE((s == rational{(umax{1} << 62) + 1}));
-#if BEMAN_INSIDE_BIG_GRIDS
     // (2^64 − 1)/4 + (2^64 − 1)/4 passes the 64-bit grid numbers.
     auto tt = t + t; // 2^65 − 1 slots
     EXPECT_TRUE((tt == rational{kUM, 2}));
-#endif
     auto d = top64{0} - t;
     EXPECT_TRUE((d == -rational{kUM, 4}));
     EXPECT_TRUE(t - top64{q1} == (rational{kUM, 4} - q1).value());

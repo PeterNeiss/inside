@@ -634,7 +634,7 @@ struct assignment<L, R> {
             return !(in_lo && in_hi);
         } else if constexpr (std::floating_point<R>) {
             // A limit no double holds (INT64_MAX): compare exactly, without
-            // grid numbers, whose runtime ops stop at 64 bits under C++26.
+            // grid numbers, whose runtime ops stop at 64 bits.
             // Below 2^64 a rational holds the value unless it is finer than 2^-62.
             const double d = static_cast<double>(rhs);
             if (abs_fraction_exact(d)) [[likely]] {
@@ -868,11 +868,8 @@ struct assignment<L, R> {
         // Overshoot (rhs − clamped) as an inside, via the result-grid inference of normal
         // inside arithmetic: both operands are insides, so the overshoot is too. It is always
         // in-grid and on-notch for grid_of<R> − grid_of<L>, so the construction is exact.
-        if constexpr (clamp_action<plain_t<A>> && !overshoot_grid_ok<L, R>)
-            static_assert(dependent_false<A>,
-                          "on_clamp: the overshoot grid (source minus target) passes the 64-bit grid numbers");
-        else if constexpr (clamp_action<plain_t<A>>) {
-            constexpr grid            OG = (grid_of<R> - grid_of<L>).value();
+        if constexpr (clamp_action<plain_t<A>>) {
+            constexpr grid            OG = grid_of<R> - grid_of<L>;
             beman::inside::inside<OG> overshoot{(as_rational(rhs) - as_rational(lhs)).value()};
             action.Fn(lhs, overshoot);
         }
@@ -922,7 +919,7 @@ struct assignment<L, R> {
     // counts in a common unit against L's endpoints, else the exact value.
     static constexpr bool out_of_interval(const R& rhs) {
         if constexpr (units_cmp_fits<L, R>) {
-            constexpr grid_rational U  = grid_gcd_of(unit_of<L>, unit_of<R>);
+            constexpr grid_rational U  = gcd(unit_of<L>, unit_of<R>);
             constexpr imax          lo = static_cast<imax>(units_lo<L, U>), hi = static_cast<imax>(units_hi<L, U>);
             const imax              c = value_in_units<imax, U>(rhs);
             return c < lo || c > hi;
@@ -1045,9 +1042,8 @@ struct assignment<L, R> {
     }
 };
 
-#if BEMAN_INSIDE_BIG_GRIDS
 //---------------------------------------------------------------------------
-// assign_grid_number — store a C++26 grid number at run time (a constexpr
+// assign_grid_number — store a grid number at run time (a constexpr
 // variable, `N - 1_g`). Forming a value past 64 bits is compile-time only, but
 // reading one is not: its limbs live in static storage. The exact value then
 // stores like any exact value. A number too wide for L's exact type lies far
@@ -1070,7 +1066,6 @@ constexpr L& assign_grid_number(L& lhs, const big_rational& v, P&& policy) {
         v.Num.negative() ? exact_of_grid<K>(lower_of<L>) + -one : exact_of_grid<K>(upper_of<L>) + one;
     return assign_exact<rational>(lhs, past, policy, no_action{});
 }
-#endif
 } // namespace beman::inside::detail
 
 #endif // BEMAN_INSIDE_DETAIL_ASSIGNMENT_HPP

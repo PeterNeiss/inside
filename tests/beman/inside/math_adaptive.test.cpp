@@ -350,7 +350,6 @@ TEST(MathAdaptiveTest, two_argument_functions_round_correctly) {
 // Grids past 64 bits (C++26): fine notches and huge inputs. The expected raws
 // come from an exact integer computation at 600 bits.
 //---------------------------------------------------------------------------
-#if BEMAN_INSIDE_BIG_GRIDS
 namespace {
 using detail::big_int;
 using detail::grid_rational;
@@ -408,7 +407,6 @@ TEST(MathAdaptiveTest, deduced_outputs_past_64_bits) {
     static_assert(notch_of<S> == notch_of<fine_in>);
     EXPECT_EQ(am::sin(third), am::sin_into<S>(third));
 }
-#endif
 
 TEST(MathAdaptiveTest, constant_evaluation) {
     // The engine is integer-only, so the same results are available at compile time.

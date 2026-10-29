@@ -62,23 +62,6 @@ TEST(BugHuntRound4, compare_without_a_common_unit) {
     EXPECT_EQ((thirds{rational{1, 3}} <=> fine{rational{1, 2}}), std::strong_ordering::less);
 }
 
-#if !BEMAN_INSIDE_BIG_GRIDS
-// The deduced two-input functions put their result on the gcd of the input
-// notches; with 64-bit grid numbers that gcd may not exist. A requires probe
-// said they were callable, and the call was a hard error.
-template <class A, class B>
-constexpr bool hypot_ok = requires(A a, B b) { math::hypot(a, b); };
-template <class A, class B>
-constexpr bool atan2_ok = requires(A a, B b) { math::atan2(a, b); };
-template <class A, class B>
-constexpr bool fmod_ok = requires(A a, B b) { math::fmod(a, b); };
-
-TEST(BugHuntRound4, deduced_two_input_math_is_constrained) {
-    static_assert(!hypot_ok<thirds, fine> && !atan2_ok<thirds, fine> && !fmod_ok<thirds, fine>);
-    static_assert(hypot_ok<thirds, thirds> && atan2_ok<fine, fine> && fmod_ok<thirds, thirds>);
-}
-#endif
-
 // A deduced output limit k·Notch with the index k past 2^63 (π, √2 on a
 // 2^-62 notch) wrapped through imax: atan2's grid came out as [0.86, −0.86]
 // and did not compile.
@@ -91,7 +74,6 @@ TEST(BugHuntRound4, deduced_limit_past_int64_index) {
     EXPECT_GT(math::hypot(fine{1}, fine{1}), rational(141, 100));
 }
 
-#if BEMAN_INSIDE_BIG_GRIDS
 // numeric_limits built min/max/lowest/epsilon from the 64-bit rational: on
 // a grid past 64 bits they did not compile.
 TEST(BugHuntRound4, numeric_limits_of_a_big_grid) {
@@ -104,7 +86,6 @@ TEST(BugHuntRound4, numeric_limits_of_a_big_grid) {
     EXPECT_EQ(to_string(std::numeric_limits<far>::max()), "1267650600228229401496703205386");
     EXPECT_EQ(to_string(std::numeric_limits<big>::max()), "1237940039285380274899124224");
 }
-#endif
 
 // epsilon of a lattice that spans 0 but misses it: its first point above 0.
 TEST(BugHuntRound4, numeric_limits_epsilon_off_zero) {
@@ -112,20 +93,6 @@ TEST(BugHuntRound4, numeric_limits_epsilon_off_zero) {
     static_assert(std::numeric_limits<inside<{{rational{-7, 3}, rational{5, 3}}, rational{2, 3}}>>::epsilon() ==
                   rational(1, 3));
 }
-
-#if !BEMAN_INSIDE_BIG_GRIDS
-// {{1/5, 6/5}, 2^-61}: Lower, Upper and the notch fit, but the value unit
-// 1/(5·2^61) does not. grid * grid read that unit through .value() (a hard
-// error in constant evaluation, bad_expected_access at runtime); the grid's
-// try_make accepted it. (inside<> rejects it: fail/value_unit_past_64_bits.)
-TEST(BugHuntRound4, grid_whose_value_unit_passes_64_bits) {
-    static_assert(grid::try_make(interval{rational{1, 5}, rational{6, 5}}, rational{1, 1ll << 61}).error() ==
-                  errc::overflow);
-    constexpr grid odd{interval{rational{1, 5}, rational{6, 5}}, rational{1, 1ll << 61}};
-    constexpr auto p = odd * grid{interval{0, 1}, rational{0}};
-    static_assert(p.has_value() && p->Notch == 0);
-}
-#endif
 
 // A failed store of a double finer than 2^-62 through errc& or on_error
 // replaced the destination with a value-initialised raw (0/0 on a
@@ -156,10 +123,6 @@ constexpr bool plain_add_ok = requires(T a, U b) { a += b; };
 TEST(BugHuntRound4, policy_proxy_compound_is_constrained) {
     using sixteenth = inside<{{0, 8}, per<16>}>;
     using whole     = inside<{-100, 100}>;
-#if !BEMAN_INSIDE_BIG_GRIDS // (big grids give the int64 sum a grid)
-    using i64 = inside<{INT64_MIN, INT64_MAX}>;
-    static_assert(!proxy_add_ok<i64> && plain_add_ok<i64>);
-#endif
     static_assert(!proxy_add_ok<whole, sixteenth> && !plain_add_ok<whole, sixteenth>);
     static_assert(proxy_add_ok<inside<{0, 100}>> && proxy_add_ok<sixteenth, whole>);
 }
@@ -175,40 +138,6 @@ TEST(BugHuntRound4, on_error_sees_rounding_from_a_continuous_source) {
     EXPECT_EQ(cb, errc::rounding_error);
     EXPECT_EQ(w, 7);
 }
-
-#if !BEMAN_INSIDE_BIG_GRIDS
-// epsilon formed −Lower/Notch and k·Notch as 64-bit rationals: on a fine
-// notch they overflowed (a hard error) although the point itself fits.
-TEST(BugHuntRound4, numeric_limits_epsilon_on_a_fine_notch) {
-    using E = inside<{{rational{-4000, 3}, rational{4103, 3}}, rational{1, 1ll << 55}}>;
-    static_assert(std::numeric_limits<E>::epsilon() == rational(1, 3ll << 55));
-    EXPECT_EQ(std::numeric_limits<E>::epsilon(), rational(1, 3ll << 55));
-}
-
-// A sum, product or quotient grid whose value unit passes 64 bits: the grid
-// ops returned it, so the operators' fits-tests passed and the result type
-// failed validate() — a hard error where a requires probe expected false.
-template <class A, class B>
-constexpr bool sum_ok = requires(A a, B b) { a + b; };
-template <class A, class B>
-constexpr bool product_ok = requires(A a, B b) { a * b; };
-TEST(BugHuntRound4, result_grid_whose_value_unit_passes_64_bits) {
-    constexpr grid fine61{interval{0, 1}, rational{1, 1ll << 61}};
-    constexpr grid fifth{interval{rational{1, 5}, rational{1, 5}}, rational{0}};
-    static_assert((fine61 + fifth).error() == errc::overflow);
-    static_assert((fine61 * fifth).error() == errc::overflow);
-    static_assert(!detail::grid_sum_fits(fine61, fifth) && !detail::grid_product_fits(fine61, fifth));
-    // / 4: notch 2^-62 and Lower 1/12 fit, the unit 1/(3·2^62) does not.
-    constexpr grid thirds60{interval{rational{1, 3}, rational{4, 3}}, rational{1, 1ll << 60}};
-    constexpr grid four{interval{4, 4}, rational{0}};
-    static_assert((thirds60 / four).error() == errc::overflow && !detail::grid_quotient_fits(thirds60, four));
-    static_assert((thirds60 / grid{interval{2, 2}, rational{0}}).has_value());
-    using X = inside<fine61>;
-    using C = std::remove_cvref_t<decltype(just<rational{1, 5}>)>;
-    static_assert(!sum_ok<X, C> && !product_ok<X, C>);
-    static_assert(sum_ok<X, X> && sum_ok<X, std::remove_cvref_t<decltype(just<rational{1, 4}>)>>);
-}
-#endif
 
 // A double finer than 2^-62 stored into a default-constructed inside copied
 // its uninitialized raw (not a constant expression; indeterminate at run time).

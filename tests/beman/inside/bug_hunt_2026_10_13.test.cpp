@@ -103,13 +103,6 @@ TEST(BugHunt20261013, casts_and_math_are_constraint_friendly) {
     static_assert(!can_clamp_cast<halves, three> && can_checked_cast<halves, three>); // 3 is off the .5 lattice
     static_assert(can_abs_into<digit, small> && !can_abs_into<inside<{1, 10}>, small>);
     static_assert(can_pown<5, digit> && can_pown<0, inside<{{-2, 2}, 0}>>);
-#if !BEMAN_INSIDE_BIG_GRIDS
-    // Q1.14 to the 8th has a 2^-112 notch: no product grid. The product test
-    // itself used a loud rational multiply and stopped the build.
-    static_assert(!can_pown<8, inside<{{-1, 1}, per<16384>}>>);
-    using q56 = inside<{{-1, 1}, per<(1ll << 56)>}>;
-    static_assert(!can_mul<inside<{{-1, 1}, per<16384>}>, q56>);
-#endif
     EXPECT_EQ(math::pown<3>(small{-2}), -8_ins);
     EXPECT_EQ(clamp_cast<digit>(small{-3}), 0_ins);
 }

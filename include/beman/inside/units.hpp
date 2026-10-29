@@ -33,11 +33,8 @@
 //   dot, cross, lerp                             inside's algorithms
 //   percent, per_mille                           dimensionless units
 //   to_string, operator<<, std::formatter        number, then the symbol
-// The catalog: isq, si, si2019, international. Grid numbers are 64-bit under
-// C++23; the prefixes past 10^±18 (quecto … quetta), the eV, the Da and the
-// SI constants h, e, k and N_A exist only under C++26 big grids
-// (BEMAN_INSIDE_BIG_GRIDS). The derived physical constants are in
-// constants.hpp.
+// The catalog: isq, si, si2019, international. The derived physical
+// constants are in constants.hpp.
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_UNITS_HPP
 #define BEMAN_INSIDE_UNITS_HPP
@@ -221,10 +218,10 @@ struct magnitude {
 
     friend constexpr bool      operator==(const magnitude&, const magnitude&) = default;
     friend consteval magnitude operator*(const magnitude& a, const magnitude& b) {
-        return {beman::inside::detail::grid_mul(a.Ratio, b.Ratio), static_cast<std::int8_t>(a.Pi + b.Pi)};
+        return {a.Ratio * b.Ratio, static_cast<std::int8_t>(a.Pi + b.Pi)};
     }
     friend consteval magnitude operator/(const magnitude& a, const magnitude& b) {
-        return {beman::inside::detail::grid_div_of(a.Ratio, b.Ratio), static_cast<std::int8_t>(a.Pi - b.Pi)};
+        return {a.Ratio / b.Ratio, static_cast<std::int8_t>(a.Pi - b.Pi)};
     }
     consteval magnitude pow(int n) const {
         magnitude r{};
@@ -1040,29 +1037,16 @@ consteval unit common_unit(const unit& a, const unit& b) {
     if (ma.Pi != mb.Pi)
         beman::inside::detail::constexpr_error<
             "units: no common unit of a pi multiple and a rational one - convert one side with value_cast first">();
-    if (!beman::inside::detail::grid_gcd_fits(ma.Ratio, mb.Ratio))
-        beman::inside::detail::constexpr_error<"units: the common unit needs C++26 big grids">();
-    const grid_rational g = beman::inside::detail::grid_gcd_of(ma.Ratio, mb.Ratio);
+    const grid_rational g = beman::inside::detail::gcd(ma.Ratio, mb.Ratio);
     if (g == ma.Ratio)
         return a;
     if (g == mb.Ratio)
         return b;
     const bool a_smaller = ma.Ratio < mb.Ratio;
     unit       u         = a_smaller ? a : b;
-    u.Scale              = u.Scale * magnitude{beman::inside::detail::grid_div_of(g, a_smaller ? ma.Ratio : mb.Ratio)};
+    u.Scale              = u.Scale * magnitude{g / (a_smaller ? ma.Ratio : mb.Ratio)};
     return u;
 }
-
-// Whether the factor between two units is a grid number: always with big
-// grid numbers; with 64-bit ones au → nm (1.5·10^20) is none.
-template <unit From, unit To>
-inline constexpr bool factor_fits_v = [] {
-#if BEMAN_INSIDE_BIG_GRIDS
-    return true;
-#else
-    return beman::inside::detail::try_div(magnitude_of(From).Ratio, magnitude_of(To).Ratio).has_value();
-#endif
-}();
 
 // Whether rescale<M>(v) forms: inside's v · M exists. A pi factor passes, for
 // rescale's static_assert to explain.
@@ -1071,7 +1055,7 @@ concept rescale_forms = !exact_factor_v<M> || M.is_one() || requires(const V& v)
 
 // Whether a number of V in unit From rescales to unit To.
 template <unit From, unit To, class V>
-concept rescalable = factor_fits_v<From, To> && rescale_forms<conversion_factor<From, To>, V>;
+concept rescalable = rescale_forms<conversion_factor<From, To>, V>;
 
 // Whether inside's x Op y exists (Op one of + - % * / = <, the last two for
 // == and <=>).
@@ -1112,15 +1096,9 @@ template <class T>
 concept quantity_like = is_quantity_v<std::remove_cvref_t<T>>;
 
 namespace detail {
-// An exact conversion factor from unit From to unit To: it fits the grid
-// numbers and holds no π.
+// An exact conversion factor from unit From to unit To: it holds no π.
 template <unit From, unit To>
-inline constexpr bool exact_rescale_v = [] {
-    if constexpr (!factor_fits_v<From, To>)
-        return false;
-    else
-        return exact_factor_v<conversion_factor<From, To>>;
-}();
+inline constexpr bool exact_rescale_v = exact_factor_v<conversion_factor<From, To>>;
 
 template <reference From, reference To>
 inline constexpr bool implicit_v =
@@ -1457,7 +1435,7 @@ consteval reference sum_reference() {
 // Why a sum or comparison of A and B is a unit error, if it is: other
 // dimensions or kinds, or no common unit. Each reason is a deleted overload
 // with its message.
-enum class sum_error : unsigned char { none, dimensions, kinds, pi, big_grids };
+enum class sum_error : unsigned char { none, dimensions, kinds, pi };
 
 template <reference A, reference B>
 consteval sum_error sum_error_of() {
@@ -1468,8 +1446,6 @@ consteval sum_error sum_error_of() {
     const magnitude ma = magnitude_of(A.U), mb = magnitude_of(B.U);
     if (ma.Pi != mb.Pi)
         return sum_error::pi;
-    if (!beman::inside::detail::grid_gcd_fits(ma.Ratio, mb.Ratio))
-        return sum_error::big_grids;
     return sum_error::none;
 }
 template <reference A, reference B>
@@ -1535,22 +1511,19 @@ template <reference A, class VA, reference B, class VB>
 // A sum, difference, remainder or comparison of two units that cannot meet:
 // a deleted overload per reason, so a requires-test is false and a call says
 // why.
-#define BEMAN_INSIDE_UNITS_SUM_DELETED(ret, op)                                                                \
-    template <reference A, class VA, reference B, class VB>                                                    \
-        requires(detail::sum_error_of<A, B>() == detail::sum_error::dimensions)                                \
-    ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                                                   \
-        delete ("units: adding or comparing quantities of different dimensions");                              \
-    template <reference A, class VA, reference B, class VB>                                                    \
-        requires(detail::sum_error_of<A, B>() == detail::sum_error::kinds)                                     \
-    ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                                                   \
-        delete ("units: adding or comparing quantities of different kinds");                                   \
-    template <reference A, class VA, reference B, class VB>                                                    \
-        requires(detail::sum_error_of<A, B>() == detail::sum_error::pi)                                        \
-    ret op(const quantity<A, VA>&, const quantity<B, VB>&) = delete (                                          \
-        "units: no common unit of a pi multiple and a rational one - convert one side with value_cast first"); \
-    template <reference A, class VA, reference B, class VB>                                                    \
-        requires(detail::sum_error_of<A, B>() == detail::sum_error::big_grids)                                 \
-    ret op(const quantity<A, VA>&, const quantity<B, VB>&) = delete ("units: the common unit needs C++26 big grids");
+#define BEMAN_INSIDE_UNITS_SUM_DELETED(ret, op)                                   \
+    template <reference A, class VA, reference B, class VB>                       \
+        requires(detail::sum_error_of<A, B>() == detail::sum_error::dimensions)   \
+    ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                      \
+        delete ("units: adding or comparing quantities of different dimensions"); \
+    template <reference A, class VA, reference B, class VB>                       \
+        requires(detail::sum_error_of<A, B>() == detail::sum_error::kinds)        \
+    ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                      \
+        delete ("units: adding or comparing quantities of different kinds");      \
+    template <reference A, class VA, reference B, class VB>                       \
+        requires(detail::sum_error_of<A, B>() == detail::sum_error::pi)           \
+    ret op(const quantity<A, VA>&, const quantity<B, VB>&) = delete (             \
+        "units: no common unit of a pi multiple and a rational one - convert one side with value_cast first");
 BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator+)
 BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator-)
 BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator%)
@@ -1974,8 +1947,7 @@ consteval grid_rational origin_shift() {
     static_assert(same(absolute_of(From), absolute_of(To)), "units: points of different absolute origins");
     constexpr magnitude m = magnitude_of(U);
     static_assert(m.Pi == 0, "units: an origin shift in a unit with a pi magnitude has no exact grid");
-    return beman::inside::detail::grid_div_of(beman::inside::detail::grid_sub(offset_of(From), offset_of(To)),
-                                              m.Ratio);
+    return (offset_of(From) - offset_of(To)) / m.Ratio;
 }
 
 // Whether shift<C> forms on V: inside's v + C exists.
@@ -2452,12 +2424,10 @@ BEMAN_INSIDE_SPEC(dose_equivalent, isq::absorbed_dose* isq::ionizing_radiation_q
 
 // SI prefixes. Past 10^±18 a prefix needs a grid number past 64 bits.
 namespace si {
-#if BEMAN_INSIDE_BIG_GRIDS
 inline constexpr prefix_t<-30> quecto{};
 inline constexpr prefix_t<-27> ronto{};
 inline constexpr prefix_t<-24> yocto{};
 inline constexpr prefix_t<-21> zepto{};
-#endif
 inline constexpr prefix_t<-18> atto{};
 inline constexpr prefix_t<-15> femto{};
 inline constexpr prefix_t<-12> pico{};
@@ -2474,12 +2444,10 @@ inline constexpr prefix_t<9>   giga{};
 inline constexpr prefix_t<12>  tera{};
 inline constexpr prefix_t<15>  peta{};
 inline constexpr prefix_t<18>  exa{};
-#if BEMAN_INSIDE_BIG_GRIDS
-inline constexpr prefix_t<21> zetta{};
-inline constexpr prefix_t<24> yotta{};
-inline constexpr prefix_t<27> ronna{};
-inline constexpr prefix_t<30> quetta{};
-#endif
+inline constexpr prefix_t<21>  zetta{};
+inline constexpr prefix_t<24>  yotta{};
+inline constexpr prefix_t<27>  ronna{};
+inline constexpr prefix_t<30>  quetta{};
 } // namespace si
 
 // SI base units.
@@ -2534,10 +2502,8 @@ BEMAN_INSIDE_UNIT(si, tonne, "t", mag<1000>* si::kilogram)
 namespace si {
 inline constexpr auto hectare = hecto(are);
 }
-#if BEMAN_INSIDE_BIG_GRIDS
 BEMAN_INSIDE_UNIT(si, dalton, "Da", mag<1.66053906892e-27_g>* si::kilogram) // CODATA 2022
 BEMAN_INSIDE_UNIT(si, electronvolt, "eV", mag<1.602176634e-19_g>* si::joule)
-#endif
 
 // The defining constants of the SI (2019) and standard gravity, as units:
 // just<1> * si2019::speed_of_light_in_vacuum is c, exactly, and .in(m/s)
@@ -2548,12 +2514,10 @@ BEMAN_INSIDE_UNIT(si2019, speed_of_light_in_vacuum, "c", mag<299'792'458>* si::m
 BEMAN_INSIDE_UNIT(si2019, luminous_efficacy, "K_cd", mag<683>* si::lumen / si::watt)
 BEMAN_INSIDE_UNIT(
     si2019, standard_gravity, "g₀", mag<rational{980665, 100000}>* si::metre / square(si::second), {.ascii = "g_0"})
-#if BEMAN_INSIDE_BIG_GRIDS
 BEMAN_INSIDE_UNIT(si2019, planck_constant, "h", mag<6.62607015e-34_g>* si::joule* si::second)
 BEMAN_INSIDE_UNIT(si2019, elementary_charge, "e", mag<1.602176634e-19_g>* si::coulomb)
 BEMAN_INSIDE_UNIT(si2019, boltzmann_constant, "k", mag<1.380649e-23_g>* si::joule / si::kelvin)
 BEMAN_INSIDE_UNIT(si2019, avogadro_constant, "N_A", mag<6.02214076e23_g> / si::mole)
-#endif
 
 // International (yard and pound agreement, 1959) and nautical units.
 BEMAN_INSIDE_UNIT(international, yard, "yd", mag<rational{9144, 10000}>* si::metre)

@@ -233,7 +233,6 @@ TEST(UnitsTest, constants_are_units) {
     EXPECT_EQ(to_string(g), "9.80665 m/s²");
 }
 
-#if BEMAN_INSIDE_BIG_GRIDS
 TEST(UnitsTest, big_grid_prefixes_and_units) {
     static_assert(magnitude_of(si::yocto(si::gram).value) == magnitude{1e-27_g});
     const auto e = (just<1> * si::electronvolt).in(si::joule);
@@ -243,7 +242,6 @@ TEST(UnitsTest, big_grid_prefixes_and_units) {
         (just<1> * si2019::planck_constant) * (just<1> * si2019::hyperfine_structure_transition_frequency_of_cs);
     EXPECT_EQ(to_string(en.in(si::joule)), "0.00000000000000000000000609110229711386655 J");
 }
-#endif
 
 TEST(UnitsTest, points_shift_their_grid_between_origins) {
     const auto t = point<si::degree_Celsius>(inside<{-40, 60}>{20});

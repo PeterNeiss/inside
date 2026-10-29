@@ -103,20 +103,20 @@ TEST(UnanchoredGrid, grid_shape) {
     static_assert(!grid::try_make(interval{0.5_r, 10.25_r}, 1).has_value()); // the notch must divide the span
 
     // + keeps the gcd notch, anchored at the sum of the Lowers
-    static_assert((kHalfOff + kHalfOff).value() == grid{{1, 21}, 1});
-    static_assert((kHalfOff + grid{{0, 10}, 1}).value() == grid{{0.5_r, 20.5_r}, 1});
+    static_assert(kHalfOff + kHalfOff == grid{{1, 21}, 1});
+    static_assert((kHalfOff + grid{{0, 10}, 1}) == grid{{0.5_r, 20.5_r}, 1});
     // × refines the notch by the offsets: (0.5 + i)(0.5 + j) = 0.25 + (i + j)/2 + ij
-    static_assert((kHalfOff * kHalfOff).value().Notch == 0.5_r);
-    static_assert((kHalfOff * grid{{0, 10}, 1}).value().Notch == 0.5_r);
-    static_assert((kHalfOff * grid{{0, 10}, 2}).value().Notch == 1);
+    static_assert((kHalfOff * kHalfOff).Notch == 0.5_r);
+    static_assert((kHalfOff * grid{{0, 10}, 1}).Notch == 0.5_r);
+    static_assert((kHalfOff * grid{{0, 10}, 2}).Notch == 1);
     // a point scales the lattice
-    static_assert((kHalfOff * grid{3}).value() == grid{{1.5_r, 31.5_r}, 3});
+    static_assert((kHalfOff * grid{3}) == grid{{1.5_r, 31.5_r}, 3});
     static_assert((kHalfOff / grid{2}).value() == grid{{0.25_r, 5.25_r}, 0.5_r});
     static_assert((kHalfOff / grid{-2}).value() == grid{{-5.25_r, -0.25_r}, 0.5_r});
     static_assert((grid{{0, 10}, 0} / grid{2}).value().Notch == 0); // continuous stays continuous
     // hull of offset lattices refines to their common lattice
-    static_assert(hull(grid{{0, 2}, 1}, grid{{0.5_r, 1.5_r}, 1}).value().Notch == 0.5_r);
-    static_assert(hull(kHalfOff, grid{{1.5_r, 3.5_r}, 1}).value().Notch == 1);
+    static_assert(hull(grid{{0, 2}, 1}, grid{{0.5_r, 1.5_r}, 1}).Notch == 0.5_r);
+    static_assert(hull(kHalfOff, grid{{1.5_r, 3.5_r}, 1}).Notch == 1);
 }
 
 TEST(UnanchoredGrid, storage) {

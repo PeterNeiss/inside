@@ -4,7 +4,6 @@
 
 #include <beman/inside/detail/config.hpp>
 
-#include <beman/inside/lift.hpp>
 #include <beman/inside/detail/rational.hpp>
 #include <beman/inside/detail/grid_rational.hpp>
 
@@ -18,7 +17,6 @@ namespace beman::inside {
 // errc::division_by_zero when the divisor straddles zero (grid::operator/
 // re-runs on the two zero-free halves and joins them).
 //---------------------------------------------------------------------------
-inline namespace BEMAN_INSIDE_GRID_ABI {
 struct interval {
     detail::grid_rational Lower;
     detail::grid_rational Upper;
@@ -38,29 +36,18 @@ struct interval {
     [[nodiscard]] constexpr bool     operator==(const interval& rhs) const = default;
     [[nodiscard]] constexpr interval operator-() const { return interval{-Upper, -Lower}; }
 
-    // With 64-bit grid numbers a span past the rational range (an interval
-    // reaching past int64 on both sides) is tested in wide integers.
     [[nodiscard]] constexpr bool divides_evenly(const detail::grid_rational& notch) const {
-#if BEMAN_INSIDE_BIG_GRIDS
         return detail::grid_divides_evenly(Upper - Lower, notch);
-#else
-        return detail::grid_same_lattice(Upper, Lower, notch);
-#endif
     }
 
     // The span in units of `notch` (the slot count of a grid).
     [[nodiscard]] constexpr std::expected<detail::grid_rational, errc>
     operator/(const detail::grid_rational& notch) const {
-#if BEMAN_INSIDE_BIG_GRIDS
         if (notch == 0)
             return std::unexpected{errc::division_by_zero};
         return (Upper - Lower) / notch;
-#else
-        return (Upper - Lower) / notch;
-#endif
     }
 };
-} // namespace BEMAN_INSIDE_GRID_ABI
 
 // Containment / disjointness — free functions over the public endpoints
 // (siblings of the binary interval operators below).
@@ -72,11 +59,9 @@ struct interval {
     return iv.Lower <= r && r <= iv.Upper;
 }
 
-#if BEMAN_INSIDE_BIG_GRIDS
 [[nodiscard]] constexpr bool includes(const interval& iv, const detail::grid_rational& r) noexcept {
     return iv.Lower <= r && r <= iv.Upper;
 }
-#endif
 
 // A floating-point value is compared exactly: against 64-bit limits through
 // the rational comparison, against big limits as a transient fraction (a big
@@ -91,13 +76,9 @@ template <detail::plain_number A>
                 return false;
             return detail::to_rational(iv.Lower) <= a && a <= detail::to_rational(iv.Upper);
         }
-#if BEMAN_INSIDE_BIG_GRIDS
         const auto f = detail::big::fraction_of_float(a);
         return detail::big::compare(detail::fraction_of(iv.Lower), f) <= 0 &&
                detail::big::compare(f, detail::fraction_of(iv.Upper)) <= 0;
-#else
-        return false; // (unreachable: 64-bit limits always fit)
-#endif
     } else
         return includes(iv, detail::grid_rational{a});
 }
@@ -126,37 +107,32 @@ corner_hull(grid_rational a, grid_rational b, grid_rational c, grid_rational d) 
 }
 } // namespace detail
 
-[[nodiscard]] constexpr std::expected<interval, errc> operator+(const interval&, const interval&);
-[[nodiscard]] constexpr std::expected<interval, errc> operator-(const interval&, const interval&);
-[[nodiscard]] constexpr std::expected<interval, errc> operator*(const interval&, const interval&);
+[[nodiscard]] constexpr interval                      operator+(const interval&, const interval&);
+[[nodiscard]] constexpr interval                      operator-(const interval&, const interval&);
+[[nodiscard]] constexpr interval                      operator*(const interval&, const interval&);
 [[nodiscard]] constexpr std::expected<interval, errc> operator/(const interval&, const interval&);
 [[nodiscard]] constexpr auto operator<=>(const interval&, const interval&) -> std::partial_ordering;
 
 //---------------------------------------------------------------------------
 // operator+
 //---------------------------------------------------------------------------
-[[nodiscard]] inline constexpr std::expected<interval, errc> operator+(const interval& lhs, const interval& rhs) {
-    return detail::lift([](detail::grid_rational l, detail::grid_rational u) { return interval{l, u}; },
-                        lhs.Lower + rhs.Lower,
-                        lhs.Upper + rhs.Upper);
+[[nodiscard]] inline constexpr interval operator+(const interval& lhs, const interval& rhs) {
+    return interval{lhs.Lower + rhs.Lower, lhs.Upper + rhs.Upper};
 }
 
 //---------------------------------------------------------------------------
 // operator-
 //---------------------------------------------------------------------------
-[[nodiscard]] inline constexpr std::expected<interval, errc> operator-(const interval& lhs, const interval& rhs) {
+[[nodiscard]] inline constexpr interval operator-(const interval& lhs, const interval& rhs) {
     return operator+(lhs, -rhs);
 }
 
 //---------------------------------------------------------------------------
 // operator*
 //---------------------------------------------------------------------------
-[[nodiscard]] inline constexpr std::expected<interval, errc> operator*(const interval& lhs, const interval& rhs) {
-    return detail::lift(detail::corner_hull,
-                        lhs.Lower * rhs.Lower,
-                        lhs.Lower * rhs.Upper,
-                        lhs.Upper * rhs.Lower,
-                        lhs.Upper * rhs.Upper);
+[[nodiscard]] inline constexpr interval operator*(const interval& lhs, const interval& rhs) {
+    return detail::corner_hull(
+        lhs.Lower * rhs.Lower, lhs.Lower * rhs.Upper, lhs.Upper * rhs.Lower, lhs.Upper * rhs.Upper);
 }
 
 //---------------------------------------------------------------------------
@@ -166,11 +142,8 @@ corner_hull(grid_rational a, grid_rational b, grid_rational c, grid_rational d) 
     if (includes(rhs, 0))
         return std::unexpected{errc::division_by_zero};
 
-    return detail::lift(detail::corner_hull,
-                        lhs.Lower / rhs.Lower,
-                        lhs.Lower / rhs.Upper,
-                        lhs.Upper / rhs.Lower,
-                        lhs.Upper / rhs.Upper);
+    return detail::corner_hull(
+        lhs.Lower / rhs.Lower, lhs.Lower / rhs.Upper, lhs.Upper / rhs.Lower, lhs.Upper / rhs.Upper);
 }
 
 //---------------------------------------------------------------------------

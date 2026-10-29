@@ -77,7 +77,6 @@ TEST(ConstantsTest, physical_constants_have_their_kind_and_value) {
 #endif
 }
 
-#if BEMAN_INSIDE_BIG_GRIDS && defined(__cpp_lib_format)
 TEST(ConstantsTest, si2019_defining_constants_are_exact) {
     static_assert(pc::planck_constant.quantity_spec == isq::action);
     static_assert(pc::elementary_charge.quantity_spec == isq::electric_charge);
@@ -109,4 +108,3 @@ TEST(ConstantsTest, derived_constants_are_exact_products) {
     // c₂ = hc/k.
     EXPECT_EQ(std::format("{:.9e}", pc::second_radiation_constant.in(si::metre * si::kelvin)), "1.438776878e-02 K m");
 }
-#endif

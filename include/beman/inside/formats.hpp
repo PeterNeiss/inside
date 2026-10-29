@@ -29,8 +29,7 @@ using uint16 = inside<{0, 65535}>;
 using uint32 = inside<{0, 4294967295}>;
 // uint64 reaches past int64, so it has no implicit `operator imax`; read it
 // with `to<std::uint64_t>()`. A difference of two uint64s spans 2^65 values and
-// gets a wide-integer index; a sum's upper bound passes the 64-bit grid
-// numbers, so it needs C++26 big grids.
+// gets a wide-integer index.
 using uint64 = inside<{0, 18446744073709551615u}>;
 
 using int8  = inside<{-128, 127}>;

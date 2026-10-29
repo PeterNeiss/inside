@@ -14,20 +14,6 @@
 // store (an errc& one) is named here and completed there.
 namespace beman::inside {
 namespace detail {
-// An on_clamp's overshoot from an inside source is an inside on
-// grid_of<R> − grid_of<L>: that grid must exist (with 64-bit grid numbers its
-// limits must fit them).
-template <typename L, typename R>
-inline constexpr bool overshoot_grid_ok = [] {
-#if BEMAN_INSIDE_BIG_GRIDS
-    return true;
-#else
-    // (The grid difference itself stops the build past them.)
-    return try_sub(grid_of<R>.Interval.Lower, grid_of<L>.Interval.Upper).has_value() &&
-           try_sub(grid_of<R>.Interval.Upper, grid_of<L>.Interval.Lower).has_value();
-#endif
-}();
-
 struct error_ref;
 } // namespace detail
 template <policy_flag W, typename E>
@@ -349,11 +335,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
                             const auto over = v + wide_rational<KK>{I{-1}, I{1}} *
                                                       exact_of_grid<KK>(low ? lower_of<L> : upper_of<L>);
                             if constexpr (insidable<R>) {
-                                static_assert(overshoot_grid_ok<L, R>,
-                                              "on_clamp: the overshoot grid (source minus target) passes the 64-bit "
-                                              "grid numbers");
-                                action.Fn(
-                                    lhs, exact_result<beman::inside::inside<(grid_of<R> - grid_of<L>).value()>>(over));
+                                action.Fn(lhs, exact_result<beman::inside::inside<grid_of<R> - grid_of<L>>>(over));
                             } else if constexpr (std::integral<R>)
                                 action.Fn(lhs, saturate_imax(trunc(over)));
                             else if constexpr (std::floating_point<R>)
@@ -393,13 +375,13 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
 template <insidable L, insidable R>
 inline constexpr bool same_notch_raws =
     notched<L> && notch_of<L> == notch_of<R> && !point_storage<L> && !point_storage<R> && // ⇒ integer raws
-    grid_divides_evenly(grid_sub(lower_of<R>, lower_of<L>), notch_of<L>);                 // one lattice
+    grid_divides_evenly(lower_of<R> - lower_of<L>, notch_of<L>);                          // one lattice
 // The shift is the exact offset between the Lowers in notches, plus the raws
 // of the Lowers (0 for an index raw, Lower for a value raw): exact on
 // unanchored lattices too.
 template <insidable L, insidable R>
 inline constexpr grid_int same_notch_shift =
-    exact_quotient(grid_sub(lower_of<R>, lower_of<L>), notch_of<L>) + raw_lo_exact<L> - raw_lo_exact<R>;
+    exact_quotient(lower_of<R> - lower_of<L>, notch_of<L>) + raw_lo_exact<L> - raw_lo_exact<R>;
 template <insidable L, insidable R>
 inline constexpr int same_notch_bits = signed_value_bits_of({raw_lo_exact<R>,
                                                              raw_hi_exact<R>,
