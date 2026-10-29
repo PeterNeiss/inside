@@ -2236,14 +2236,11 @@ inline std::string unit_symbol(unit_t<U>, text_encoding enc = text_encoding::utf
 // "5 km", "90°", "3" (unit one).
 template <reference R, class V>
 std::string to_string(const quantity<R, V>& q, text_encoding enc = text_encoding::utf8) {
-    // A copy: clang 20 miscompiles a runtime reference to a template
-    // parameter object holding pointers.
-    static constexpr unit u   = R.U;
-    std::string           s   = beman::inside::to_string(q.numerical_value());
-    const std::string     sym = unit_symbol(u, enc);
+    std::string       s   = beman::inside::to_string(q.numerical_value());
+    const std::string sym = unit_symbol(R.U, enc);
     if (sym.empty())
         return s;
-    return s + (detail::space_before(u) ? " " : "") + sym;
+    return s + (detail::space_before(R.U) ? " " : "") + sym;
 }
 
 template <reference R, class V>
@@ -2269,15 +2266,12 @@ template <beman::inside::units::reference R, class V>
 struct std::formatter<beman::inside::units::quantity<R, V>> : std::formatter<V> {
     template <typename Ctx>
     auto format(const beman::inside::units::quantity<R, V>& q, Ctx& ctx) const {
-        namespace u = beman::inside::units;
-        // A copy: clang 20 miscompiles a runtime reference to a template
-        // parameter object holding pointers.
-        static constexpr u::unit unit = R.U;
-        auto                     out  = std::formatter<V>::format(q.numerical_value(), ctx);
-        const std::string        sym  = u::unit_symbol(unit);
+        namespace u           = beman::inside::units;
+        auto              out = std::formatter<V>::format(q.numerical_value(), ctx);
+        const std::string sym = u::unit_symbol(R.U);
         if (sym.empty())
             return out;
-        if constexpr (u::detail::space_before(unit))
+        if constexpr (u::detail::space_before(R.U))
             *out++ = ' ';
         return std::ranges::copy(sym, out).out;
     }

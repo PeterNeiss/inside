@@ -216,7 +216,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
         // A continuous grid past 64 bits: the value itself, reduced, when it
         // lies within the limits and fits the raw's limbs.
         if constexpr (clamp_action<plain_t<A>> || wrap_action<plain_t<A>>)
-            static_assert(dependent_false<A>, "on_clamp / on_wrap: not supported on a continuous grid past 64 bits");
+            static_assert(false, "on_clamp / on_wrap: not supported on a continuous grid past 64 bits");
         constexpr std::size_t   KK = exact_max<K, exact_limbs<L>>;
         const wide_rational<KK> lo = exact_of_grid<KK>(lower_of<L>), hi = exact_of_grid<KK>(upper_of<L>);
         auto                    store = [&](const wide_rational<KK>& x) {
@@ -291,7 +291,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
         }
         if constexpr (clamp_action<plain_t<A>> || wrap_action<plain_t<A>>)
             static_assert(
-                dependent_false<A>,
+                false,
                 "on_clamp / on_wrap: a source past the 64-bit rational into a rational inside is not supported");
         return assignment<L, rational>::assign(lhs, *r, policy, std::forward<A>(action));
     } else {

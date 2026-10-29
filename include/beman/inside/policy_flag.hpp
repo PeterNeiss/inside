@@ -207,8 +207,7 @@ inline constexpr policy_flag implied_flags<on_overflow_t<F>> = checked;
 
 //---------------------------------------------------------------------------
 // Pack helpers — let policy_ref/assignment/arithmetic accept Actions... packs.
-// The `is_*_action` traits are passed as template-template parameters
-// (concepts can't be in C++23).
+// The `is_*_action` traits are passed as template-template parameters.
 //---------------------------------------------------------------------------
 
 // True if any element of the pack matches the trait.
@@ -232,28 +231,24 @@ inline no_action& pick_action_fallback() {
     return n;
 }
 
-template <template <typename> class Trait, typename A, typename... Rest>
-constexpr auto& pick_action_impl(A& a, Rest&... rest) {
-    if constexpr (Trait<std::remove_cvref_t<A>>::value)
-        return a;
-    else if constexpr (sizeof...(Rest) > 0)
-        return pick_action_impl<Trait>(rest...);
-    else
-        return pick_action_fallback<Trait>();
-}
-
 template <template <typename> class Trait, typename... As>
 constexpr auto& pick_action(As&... as) {
-    if constexpr (sizeof...(As) == 0)
-        return pick_action_fallback<Trait>();
+    constexpr std::size_t i = [] { // the first match, or sizeof...(As)
+        std::size_t k = 0;
+        (void)((Trait<std::remove_cvref_t<As>>::value || (++k, false)) || ...);
+        return k;
+    }();
+    if constexpr (i < sizeof...(As))
+        return as...[i];
     else
-        return pick_action_impl<Trait>(as...);
+        return pick_action_fallback<Trait>();
 }
 
-// Same, but operating on a tuple (lvalue or rvalue ref).
+// Same, but operating on a tuple.
 template <template <typename> class Trait, typename Tuple>
 constexpr auto& pick_action_in(Tuple& t) {
-    return std::apply([](auto&... as) -> auto& { return pick_action<Trait>(as...); }, t);
+    auto& [... as] = t;
+    return pick_action<Trait>(as...);
 }
 
 } // namespace detail

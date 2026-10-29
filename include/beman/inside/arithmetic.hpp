@@ -124,14 +124,16 @@ namespace detail {
 // The policy flags a call's trailing arguments select, as arith normalizes
 // them: a policy's own, checked for an errc&, an action's implied flags.
 template <class... Args>
-inline constexpr policy_flag call_flags = merged_implied_flags<Args...>;
-template <>
-inline constexpr policy_flag call_flags<> = none;
-template <class First, class... Rest>
-    requires policy_like<std::remove_cvref_t<First>>
-inline constexpr policy_flag call_flags<First, Rest...> = flags_of<First>;
-template <class... Rest>
-inline constexpr policy_flag call_flags<errc&, Rest...> = checked;
+inline constexpr policy_flag call_flags = [] {
+    if constexpr (sizeof...(Args) == 0)
+        return none;
+    else if constexpr (policy_like<std::remove_cvref_t<Args...[0]>>)
+        return flags_of<Args...[0]>;
+    else if constexpr (std::same_as<Args...[0], errc&>)
+        return checked;
+    else
+        return merged_implied_flags<Args...>;
+}();
 
 // Each op's well-formedness under flags F is detail::add_defined & co.
 // (detail/addition.hpp, multiplication.hpp, division.hpp): the first
@@ -528,18 +530,18 @@ concept builtin_arithmetic = std::integral<A> || std::floating_point<A>;
     "an inside cannot be combined with a raw scalar: give the scalar a grid — "     \
     "`1_ins`, `just<1>`, or `inside<{lo,hi}>{n}` for a runtime value with a known " \
     "range"
-#define BEMAN_INSIDE_NO_SCALAR(op)                                          \
-    template <insidable B, builtin_arithmetic A>                            \
-    B operator op(B const&, A) {                                            \
-        static_assert(detail::dependent_false<B>, BEMAN_INSIDE_SCALAR_MSG); \
-    }                                                                       \
-    template <builtin_arithmetic A, insidable B>                            \
-    B operator op(A, B const&) {                                            \
-        static_assert(detail::dependent_false<B>, BEMAN_INSIDE_SCALAR_MSG); \
-    }                                                                       \
-    template <insidable B, builtin_arithmetic A>                            \
-    B& operator op## = (B&, A) {                                            \
-        static_assert(detail::dependent_false<B>, BEMAN_INSIDE_SCALAR_MSG); \
+#define BEMAN_INSIDE_NO_SCALAR(op)                     \
+    template <insidable B, builtin_arithmetic A>       \
+    B operator op(B const&, A) {                       \
+        static_assert(false, BEMAN_INSIDE_SCALAR_MSG); \
+    }                                                  \
+    template <builtin_arithmetic A, insidable B>       \
+    B operator op(A, B const&) {                       \
+        static_assert(false, BEMAN_INSIDE_SCALAR_MSG); \
+    }                                                  \
+    template <insidable B, builtin_arithmetic A>       \
+    B& operator op## = (B&, A) {                       \
+        static_assert(false, BEMAN_INSIDE_SCALAR_MSG); \
     }
 
 BEMAN_INSIDE_NO_SCALAR(+)

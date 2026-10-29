@@ -15,7 +15,7 @@
 // (P2741), so an error can say "notch 3, Upper − Lower 10". diag_text is
 // that object: text and grid numbers appended with <<, in a fixed buffer.
 //
-//   BEMAN_INSIDE_DIAG(cond, "grid: the notch must …", << " (notch " << n << ")");
+//   static_assert(cond, diag_text{} << "grid: the notch must …" << " (notch " << n << ")");
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
 struct diag_text {
@@ -87,8 +87,5 @@ struct diag_text {
     }
 };
 } // namespace beman::inside::detail
-
-#define BEMAN_INSIDE_DIAG(cond, text, ...) \
-    static_assert(cond, (::beman::inside::detail::diag_text{} << (text)__VA_ARGS__))
 
 #endif // BEMAN_INSIDE_DETAIL_DIAG_TEXT_HPP

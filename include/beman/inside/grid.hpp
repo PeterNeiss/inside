@@ -154,14 +154,15 @@ struct grid {
     static constexpr bool validate() {
         interval::validate<G.Interval>();
         // Decoding is Lower + raw·Notch: a negative notch would count downward.
-        BEMAN_INSIDE_DIAG(G.Notch >= 0, "grid: the notch must be non-negative", << " (notch " << G.Notch << ")");
+        static_assert(G.Notch >= 0,
+                      detail::diag_text{} << "grid: the notch must be non-negative (notch " << G.Notch << ")");
         // The values are Lower, Lower + Notch, …, Upper: the notch steps from
         // Lower to Upper. Lower need not be a multiple of the notch
         // ({{0.5, 10.5}, 1} holds 0.5, 1.5, …).
-        BEMAN_INSIDE_DIAG(G.Interval.divides_evenly(G.Notch),
-                          "grid: the notch must divide Upper − Lower evenly",
-                          << " (notch " << G.Notch << ", Upper − Lower "
-                          << detail::diag_text::difference{G.Interval.Upper, G.Interval.Lower} << ")");
+        static_assert(G.Interval.divides_evenly(G.Notch),
+                      detail::diag_text{} << "grid: the notch must divide Upper − Lower evenly (notch " << G.Notch
+                                          << ", Upper − Lower "
+                                          << detail::diag_text::difference{G.Interval.Upper, G.Interval.Lower} << ")");
         static_assert(G.MaxDenominator == 0 || (G.Notch == 0 && G.Interval.Lower != G.Interval.Upper),
                       "grid: only a continuous grid carries a max_denominator");
 

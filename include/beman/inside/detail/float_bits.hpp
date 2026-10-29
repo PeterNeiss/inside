@@ -199,8 +199,7 @@ constexpr std::pair<umax, umax> abs_fraction(double value, bool& exact) {
 
     // den is a power of two, so the whole reduction is one shift by the
     // shared factor count (bounded by den's exponent). Plain ternary — no
-    // <algorithm> in this core header (libc++ does not provide std::min
-    // transitively).
+    // <algorithm> in this core header.
     if (significand != 0) {
         const int trailing = std::countr_zero(significand);
         const int shift    = trailing < den_pow ? trailing : den_pow;

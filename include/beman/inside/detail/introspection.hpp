@@ -12,7 +12,7 @@
 // introspection — an inside's template parameters as values (grid_of<B>,
 // flags_of<B>, lower_of<B>, notch_of<B>, … and their 64-bit forms), the
 // insidable / numeric concepts, and the basic plumbing every layer uses
-// (plain_t, dependent_false, as_rational, raw_t). The storage shapes build
+// (plain_t, as_rational, raw_t). The storage shapes build
 // on it in detail/storage.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {
@@ -93,12 +93,6 @@ concept numeric = insidable<N> or detail::plain_number<N>;
 namespace detail {
 template <typename T>
 using plain_t = std::remove_cvref_t<T>;
-
-// Always-false but template-dependent: lets a `static_assert` inside a
-// template body fire only when that template is actually instantiated
-// (e.g. the guidance overloads that make `inside + 1` ill-formed).
-template <typename...>
-inline constexpr bool dependent_false = false;
 
 //-------------------------------------------------------------------------
 // Conversion-helper legend — the value/raw plumbing reused across the

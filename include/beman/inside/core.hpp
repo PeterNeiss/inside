@@ -155,11 +155,8 @@ struct inside {
     // `inside x(value, ec)` into a readable error (an errc& would otherwise bind
     // the Pol&& constructor above).
     template <numeric A>
-    constexpr inside(A, errc&) {
-        static_assert(detail::dependent_false<A>,
-                      "inside(value, errc&) was removed: use `auto r = B::try_make(value);` "
-                      "(expected<B, errc>), or `b.policy(ec) = value` to assign with an error code");
-    }
+    inside(A, errc&) = delete ("inside(value, errc&) was removed: use `auto r = B::try_make(value);` "
+                               "(expected<B, errc>), or `b.policy(ec) = value` to assign with an error code");
 
     // expected<A> sink — unwrap once at the construction boundary so callers can
     // chain checked arithmetic without per-step `.value()`. Throws

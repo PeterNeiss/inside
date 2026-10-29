@@ -664,8 +664,7 @@ constexpr std::pair<umax, umax> abs_fraction(double value, bool& exact) {
 
     // den is a power of two, so the whole reduction is one shift by the
     // shared factor count (bounded by den's exponent). Plain ternary — no
-    // <algorithm> in this core header (libc++ does not provide std::min
-    // transitively).
+    // <algorithm> in this core header.
     if (significand != 0) {
         const int trailing = std::countr_zero(significand);
         const int shift    = trailing < den_pow ? trailing : den_pow;
@@ -3830,7 +3829,7 @@ corner_hull(grid_rational a, grid_rational b, grid_rational c, grid_rational d) 
 // (P2741), so an error can say "notch 3, Upper − Lower 10". diag_text is
 // that object: text and grid numbers appended with <<, in a fixed buffer.
 //
-//   BEMAN_INSIDE_DIAG(cond, "grid: the notch must …", << " (notch " << n << ")");
+//   static_assert(cond, diag_text{} << "grid: the notch must …" << " (notch " << n << ")");
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
 struct diag_text {
@@ -3902,9 +3901,6 @@ struct diag_text {
     }
 };
 } // namespace beman::inside::detail
-
-#define BEMAN_INSIDE_DIAG(cond, text, ...) \
-    static_assert(cond, (::beman::inside::detail::diag_text{} << (text)__VA_ARGS__))
 
 
 // ======================================================================
@@ -4111,8 +4107,7 @@ inline constexpr policy_flag implied_flags<on_overflow_t<F>> = checked;
 
 //---------------------------------------------------------------------------
 // Pack helpers — let policy_ref/assignment/arithmetic accept Actions... packs.
-// The `is_*_action` traits are passed as template-template parameters
-// (concepts can't be in C++23).
+// The `is_*_action` traits are passed as template-template parameters.
 //---------------------------------------------------------------------------
 
 // True if any element of the pack matches the trait.
@@ -4136,28 +4131,24 @@ inline no_action& pick_action_fallback() {
     return n;
 }
 
-template <template <typename> class Trait, typename A, typename... Rest>
-constexpr auto& pick_action_impl(A& a, Rest&... rest) {
-    if constexpr (Trait<std::remove_cvref_t<A>>::value)
-        return a;
-    else if constexpr (sizeof...(Rest) > 0)
-        return pick_action_impl<Trait>(rest...);
-    else
-        return pick_action_fallback<Trait>();
-}
-
 template <template <typename> class Trait, typename... As>
 constexpr auto& pick_action(As&... as) {
-    if constexpr (sizeof...(As) == 0)
-        return pick_action_fallback<Trait>();
+    constexpr std::size_t i = [] { // the first match, or sizeof...(As)
+        std::size_t k = 0;
+        (void)((Trait<std::remove_cvref_t<As>>::value || (++k, false)) || ...);
+        return k;
+    }();
+    if constexpr (i < sizeof...(As))
+        return as...[i];
     else
-        return pick_action_impl<Trait>(as...);
+        return pick_action_fallback<Trait>();
 }
 
-// Same, but operating on a tuple (lvalue or rvalue ref).
+// Same, but operating on a tuple.
 template <template <typename> class Trait, typename Tuple>
 constexpr auto& pick_action_in(Tuple& t) {
-    return std::apply([](auto&... as) -> auto& { return pick_action<Trait>(as...); }, t);
+    auto& [... as] = t;
+    return pick_action<Trait>(as...);
 }
 
 } // namespace detail
@@ -4181,20 +4172,17 @@ namespace beman::inside::detail {
 constexpr std::size_t limbs_for_bits(int bits) noexcept { return static_cast<std::size_t>((bits + 63) / 64); }
 
 // Bits counts value bits; a signed type spends one more on the sign.
+template <std::size_t I, class... Ts>
+using nth_type_t = Ts...[I];
+
 template <int Bits, bool Signed>
 struct int_for_bits {
-    static constexpr int total = Bits + (Signed ? 1 : 0);
-    using type                 = std::conditional_t<
-        (total <= 8),
-        std::conditional_t<Signed, std::int8_t, std::uint8_t>,
-        std::conditional_t<
-            (total <= 16),
-            std::conditional_t<Signed, std::int16_t, std::uint16_t>,
-            std::conditional_t<(total <= 32),
-                               std::conditional_t<Signed, std::int32_t, std::uint32_t>,
-                               std::conditional_t<(total <= 64),
-                                                  std::conditional_t<Signed, std::int64_t, std::uint64_t>,
-                                                  wide_int<limbs_for_bits(total), Signed>>>>>;
+    static constexpr int         total = Bits + (Signed ? 1 : 0);
+    static constexpr std::size_t i     = total <= 8 ? 0 : total <= 16 ? 1 : total <= 32 ? 2 : total <= 64 ? 3 : 4;
+    using wide                         = wide_int<limbs_for_bits(total), Signed>;
+    using type = std::conditional_t<Signed,
+                                    nth_type_t<i, std::int8_t, std::int16_t, std::int32_t, std::int64_t, wide>,
+                                    nth_type_t<i, std::uint8_t, std::uint16_t, std::uint32_t, std::uint64_t, wide>>;
 };
 
 template <int Bits, bool Signed>
@@ -4341,14 +4329,15 @@ struct grid {
     static constexpr bool validate() {
         interval::validate<G.Interval>();
         // Decoding is Lower + raw·Notch: a negative notch would count downward.
-        BEMAN_INSIDE_DIAG(G.Notch >= 0, "grid: the notch must be non-negative", << " (notch " << G.Notch << ")");
+        static_assert(G.Notch >= 0,
+                      detail::diag_text{} << "grid: the notch must be non-negative (notch " << G.Notch << ")");
         // The values are Lower, Lower + Notch, …, Upper: the notch steps from
         // Lower to Upper. Lower need not be a multiple of the notch
         // ({{0.5, 10.5}, 1} holds 0.5, 1.5, …).
-        BEMAN_INSIDE_DIAG(G.Interval.divides_evenly(G.Notch),
-                          "grid: the notch must divide Upper − Lower evenly",
-                          << " (notch " << G.Notch << ", Upper − Lower "
-                          << detail::diag_text::difference{G.Interval.Upper, G.Interval.Lower} << ")");
+        static_assert(G.Interval.divides_evenly(G.Notch),
+                      detail::diag_text{} << "grid: the notch must divide Upper − Lower evenly (notch " << G.Notch
+                                          << ", Upper − Lower "
+                                          << detail::diag_text::difference{G.Interval.Upper, G.Interval.Lower} << ")");
         static_assert(G.MaxDenominator == 0 || (G.Notch == 0 && G.Interval.Lower != G.Interval.Upper),
                       "grid: only a continuous grid carries a max_denominator");
 
@@ -4872,7 +4861,7 @@ template <std::same_as<grid> G>
 // introspection — an inside's template parameters as values (grid_of<B>,
 // flags_of<B>, lower_of<B>, notch_of<B>, … and their 64-bit forms), the
 // insidable / numeric concepts, and the basic plumbing every layer uses
-// (plain_t, dependent_false, as_rational, raw_t). The storage shapes build
+// (plain_t, as_rational, raw_t). The storage shapes build
 // on it in detail/storage.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {
@@ -4953,12 +4942,6 @@ concept numeric = insidable<N> or detail::plain_number<N>;
 namespace detail {
 template <typename T>
 using plain_t = std::remove_cvref_t<T>;
-
-// Always-false but template-dependent: lets a `static_assert` inside a
-// template body fire only when that template is actually instantiated
-// (e.g. the guidance overloads that make `inside + 1` ill-formed).
-template <typename...>
-inline constexpr bool dependent_false = false;
 
 //-------------------------------------------------------------------------
 // Conversion-helper legend — the value/raw plumbing reused across the
@@ -5742,15 +5725,16 @@ struct inside_assignable_why {
     static constexpr bool intervals_ok = detail::assign_intervals_ok<L, R, P>;
     static constexpr bool notch_ok     = detail::assign_notch_ok<L, R, P>;
     static_assert(is_numeric, "inside_assignable: rhs is not numeric (must be an inside or arithmetic type)");
-    BEMAN_INSIDE_DIAG(intervals_ok,
-                      "inside_assignable: rhs interval lies entirely outside lhs interval and the policy "
-                      "(not wrap/clamp) cannot bring it into range — assignment can never succeed",
-                      << " (lhs [" << interval_of<L>.Lower << ", " << interval_of<L>.Upper << "], rhs ["
-                      << interval_of<R>.Lower << ", " << interval_of<R>.Upper << "])");
-    BEMAN_INSIDE_DIAG(notch_ok,
-                      "inside_assignable: incompatible notches — use `with_snap()` or `policy<snap>()` to allow "
-                      "rounding",
-                      << " (lhs notch " << notch_of<L> << ", rhs notch " << detail::notch_for_diag<R>() << ")");
+    static_assert(
+        intervals_ok,
+        detail::diag_text{} << "inside_assignable: rhs interval lies entirely outside lhs interval and the policy "
+                               "(not wrap/clamp) cannot bring it into range — assignment can never succeed (lhs ["
+                            << interval_of<L>.Lower << ", " << interval_of<L>.Upper << "], rhs ["
+                            << interval_of<R>.Lower << ", " << interval_of<R>.Upper << "])");
+    static_assert(notch_ok,
+                  detail::diag_text{} << "inside_assignable: incompatible notches — use `with_snap()` or "
+                                         "`policy<snap>()` to allow rounding (lhs notch "
+                                      << notch_of<L> << ", rhs notch " << detail::notch_for_diag<R>() << ")");
     static constexpr bool value = inside_assignable<L, R, P>;
 };
 
@@ -6748,7 +6732,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
         // A continuous grid past 64 bits: the value itself, reduced, when it
         // lies within the limits and fits the raw's limbs.
         if constexpr (clamp_action<plain_t<A>> || wrap_action<plain_t<A>>)
-            static_assert(dependent_false<A>, "on_clamp / on_wrap: not supported on a continuous grid past 64 bits");
+            static_assert(false, "on_clamp / on_wrap: not supported on a continuous grid past 64 bits");
         constexpr std::size_t   KK = exact_max<K, exact_limbs<L>>;
         const wide_rational<KK> lo = exact_of_grid<KK>(lower_of<L>), hi = exact_of_grid<KK>(upper_of<L>);
         auto                    store = [&](const wide_rational<KK>& x) {
@@ -6823,7 +6807,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
         }
         if constexpr (clamp_action<plain_t<A>> || wrap_action<plain_t<A>>)
             static_assert(
-                dependent_false<A>,
+                false,
                 "on_clamp / on_wrap: a source past the 64-bit rational into a rational inside is not supported");
         return assignment<L, rational>::assign(lhs, *r, policy, std::forward<A>(action));
     } else {
@@ -9507,11 +9491,8 @@ struct inside {
     // `inside x(value, ec)` into a readable error (an errc& would otherwise bind
     // the Pol&& constructor above).
     template <numeric A>
-    constexpr inside(A, errc&) {
-        static_assert(detail::dependent_false<A>,
-                      "inside(value, errc&) was removed: use `auto r = B::try_make(value);` "
-                      "(expected<B, errc>), or `b.policy(ec) = value` to assign with an error code");
-    }
+    inside(A, errc&) = delete ("inside(value, errc&) was removed: use `auto r = B::try_make(value);` "
+                               "(expected<B, errc>), or `b.policy(ec) = value` to assign with an error code");
 
     // expected<A> sink — unwrap once at the construction boundary so callers can
     // chain checked arithmetic without per-step `.value()`. Throws
@@ -10771,14 +10752,16 @@ namespace detail {
 // The policy flags a call's trailing arguments select, as arith normalizes
 // them: a policy's own, checked for an errc&, an action's implied flags.
 template <class... Args>
-inline constexpr policy_flag call_flags = merged_implied_flags<Args...>;
-template <>
-inline constexpr policy_flag call_flags<> = none;
-template <class First, class... Rest>
-    requires policy_like<std::remove_cvref_t<First>>
-inline constexpr policy_flag call_flags<First, Rest...> = flags_of<First>;
-template <class... Rest>
-inline constexpr policy_flag call_flags<errc&, Rest...> = checked;
+inline constexpr policy_flag call_flags = [] {
+    if constexpr (sizeof...(Args) == 0)
+        return none;
+    else if constexpr (policy_like<std::remove_cvref_t<Args...[0]>>)
+        return flags_of<Args...[0]>;
+    else if constexpr (std::same_as<Args...[0], errc&>)
+        return checked;
+    else
+        return merged_implied_flags<Args...>;
+}();
 
 // Each op's well-formedness under flags F is detail::add_defined & co.
 // (detail/addition.hpp, multiplication.hpp, division.hpp): the first
@@ -11175,18 +11158,18 @@ concept builtin_arithmetic = std::integral<A> || std::floating_point<A>;
     "an inside cannot be combined with a raw scalar: give the scalar a grid — "     \
     "`1_ins`, `just<1>`, or `inside<{lo,hi}>{n}` for a runtime value with a known " \
     "range"
-#define BEMAN_INSIDE_NO_SCALAR(op)                                          \
-    template <insidable B, builtin_arithmetic A>                            \
-    B operator op(B const&, A) {                                            \
-        static_assert(detail::dependent_false<B>, BEMAN_INSIDE_SCALAR_MSG); \
-    }                                                                       \
-    template <builtin_arithmetic A, insidable B>                            \
-    B operator op(A, B const&) {                                            \
-        static_assert(detail::dependent_false<B>, BEMAN_INSIDE_SCALAR_MSG); \
-    }                                                                       \
-    template <insidable B, builtin_arithmetic A>                            \
-    B& operator op## = (B&, A) {                                            \
-        static_assert(detail::dependent_false<B>, BEMAN_INSIDE_SCALAR_MSG); \
+#define BEMAN_INSIDE_NO_SCALAR(op)                     \
+    template <insidable B, builtin_arithmetic A>       \
+    B operator op(B const&, A) {                       \
+        static_assert(false, BEMAN_INSIDE_SCALAR_MSG); \
+    }                                                  \
+    template <builtin_arithmetic A, insidable B>       \
+    B operator op(A, B const&) {                       \
+        static_assert(false, BEMAN_INSIDE_SCALAR_MSG); \
+    }                                                  \
+    template <insidable B, builtin_arithmetic A>       \
+    B& operator op## = (B&, A) {                       \
+        static_assert(false, BEMAN_INSIDE_SCALAR_MSG); \
     }
 
 BEMAN_INSIDE_NO_SCALAR(+)
@@ -20309,14 +20292,11 @@ inline std::string unit_symbol(unit_t<U>, text_encoding enc = text_encoding::utf
 // "5 km", "90°", "3" (unit one).
 template <reference R, class V>
 std::string to_string(const quantity<R, V>& q, text_encoding enc = text_encoding::utf8) {
-    // A copy: clang 20 miscompiles a runtime reference to a template
-    // parameter object holding pointers.
-    static constexpr unit u   = R.U;
-    std::string           s   = beman::inside::to_string(q.numerical_value());
-    const std::string     sym = unit_symbol(u, enc);
+    std::string       s   = beman::inside::to_string(q.numerical_value());
+    const std::string sym = unit_symbol(R.U, enc);
     if (sym.empty())
         return s;
-    return s + (detail::space_before(u) ? " " : "") + sym;
+    return s + (detail::space_before(R.U) ? " " : "") + sym;
 }
 
 template <reference R, class V>
@@ -20342,15 +20322,12 @@ template <beman::inside::units::reference R, class V>
 struct std::formatter<beman::inside::units::quantity<R, V>> : std::formatter<V> {
     template <typename Ctx>
     auto format(const beman::inside::units::quantity<R, V>& q, Ctx& ctx) const {
-        namespace u = beman::inside::units;
-        // A copy: clang 20 miscompiles a runtime reference to a template
-        // parameter object holding pointers.
-        static constexpr u::unit unit = R.U;
-        auto                     out  = std::formatter<V>::format(q.numerical_value(), ctx);
-        const std::string        sym  = u::unit_symbol(unit);
+        namespace u           = beman::inside::units;
+        auto              out = std::formatter<V>::format(q.numerical_value(), ctx);
+        const std::string sym = u::unit_symbol(R.U);
         if (sym.empty())
             return out;
-        if constexpr (u::detail::space_before(unit))
+        if constexpr (u::detail::space_before(R.U))
             *out++ = ' ';
         return std::ranges::copy(sym, out).out;
     }
