@@ -314,85 +314,6 @@ template <fixed_string Msg>
 
 
 // ======================================================================
-//  beman/inside/lift.hpp
-// ======================================================================
-
-
-
-
-//---------------------------------------------------------------------------
-// lift — monadic composition for `std::expected<T, errc>`. `lift(op, args...)`
-// unwraps each expected arg, calls `op`, and re-wraps; the first arg (left to
-// right) holding an error short-circuits with that error. An `op` already
-// returning expected<R> is forwarded as-is, so the inner operation reports
-// its own cause. Internal: it backs grid division and the expected-lift
-// operators; user code chains through those.
-//
-// std::expected is larger than its value (flag + errc), so it only ever
-// travels as a parameter or return value — never as stored state.
-//---------------------------------------------------------------------------
-namespace beman::inside::detail {
-template <class T>
-struct is_expected : std::false_type {};
-template <class T, class E>
-struct is_expected<std::expected<T, E>> : std::true_type {};
-
-template <class T>
-inline constexpr bool is_expected_v = is_expected<std::remove_cvref_t<T>>::value;
-
-// Any std::expected specialization (cv/ref-stripped).
-template <typename T>
-concept expected_like = is_expected_v<T>;
-
-// strip expected<X, E> down to X, leave non-expected unchanged
-template <class T>
-struct unwrap {
-    using type = T;
-};
-template <class T, class E>
-struct unwrap<std::expected<T, E>> {
-    using type = T;
-};
-template <class T>
-using unwrap_t = typename unwrap<std::remove_cvref_t<T>>::type;
-
-template <class T>
-constexpr decltype(auto) lift_unwrap(T&& v) {
-    if constexpr (expected_like<T>)
-        return *std::forward<T>(v);
-    else
-        return std::forward<T>(v);
-}
-
-// Copy an arg's error into `e`; true if the arg holds one.
-template <class T>
-constexpr bool lift_take_error([[maybe_unused]] const T& v, [[maybe_unused]] errc& e) {
-    if constexpr (expected_like<T>)
-        if (!v.has_value()) {
-            e = v.error();
-            return true;
-        }
-    return false;
-}
-
-template <class Op, class... Args>
-[[nodiscard]] constexpr auto lift(Op op, Args&&... args) {
-    using R   = std::remove_cvref_t<decltype(op(lift_unwrap(std::forward<Args>(args))...))>;
-    using Ret = std::conditional_t<is_expected_v<R>, R, std::expected<R, errc>>;
-
-    errc e{};
-    if ((lift_take_error(args, e) || ...))
-        return Ret{std::unexpected{e}};
-
-    if constexpr (expected_like<R>)
-        return op(lift_unwrap(std::forward<Args>(args))...);
-    else
-        return Ret{op(lift_unwrap(std::forward<Args>(args))...)};
-}
-} // namespace beman::inside::detail
-
-
-// ======================================================================
 //  beman/inside/detail/rational.hpp
 // ======================================================================
 
@@ -694,6 +615,85 @@ constexpr T for_each_double_part(T v, F f) {
     return rem;
 }
 
+} // namespace beman::inside::detail
+
+
+// ======================================================================
+//  beman/inside/lift.hpp
+// ======================================================================
+
+
+
+
+//---------------------------------------------------------------------------
+// lift — monadic composition for `std::expected<T, errc>`. `lift(op, args...)`
+// unwraps each expected arg, calls `op`, and re-wraps; the first arg (left to
+// right) holding an error short-circuits with that error. An `op` already
+// returning expected<R> is forwarded as-is, so the inner operation reports
+// its own cause. Internal: it backs grid division and the expected-lift
+// operators; user code chains through those.
+//
+// std::expected is larger than its value (flag + errc), so it only ever
+// travels as a parameter or return value — never as stored state.
+//---------------------------------------------------------------------------
+namespace beman::inside::detail {
+template <class T>
+struct is_expected : std::false_type {};
+template <class T, class E>
+struct is_expected<std::expected<T, E>> : std::true_type {};
+
+template <class T>
+inline constexpr bool is_expected_v = is_expected<std::remove_cvref_t<T>>::value;
+
+// Any std::expected specialization (cv/ref-stripped).
+template <typename T>
+concept expected_like = is_expected_v<T>;
+
+// strip expected<X, E> down to X, leave non-expected unchanged
+template <class T>
+struct unwrap {
+    using type = T;
+};
+template <class T, class E>
+struct unwrap<std::expected<T, E>> {
+    using type = T;
+};
+template <class T>
+using unwrap_t = typename unwrap<std::remove_cvref_t<T>>::type;
+
+template <class T>
+constexpr decltype(auto) lift_unwrap(T&& v) {
+    if constexpr (expected_like<T>)
+        return *std::forward<T>(v);
+    else
+        return std::forward<T>(v);
+}
+
+// Copy an arg's error into `e`; true if the arg holds one.
+template <class T>
+constexpr bool lift_take_error([[maybe_unused]] const T& v, [[maybe_unused]] errc& e) {
+    if constexpr (expected_like<T>)
+        if (!v.has_value()) {
+            e = v.error();
+            return true;
+        }
+    return false;
+}
+
+template <class Op, class... Args>
+[[nodiscard]] constexpr auto lift(Op op, Args&&... args) {
+    using R   = std::remove_cvref_t<decltype(op(lift_unwrap(std::forward<Args>(args))...))>;
+    using Ret = std::conditional_t<is_expected_v<R>, R, std::expected<R, errc>>;
+
+    errc e{};
+    if ((lift_take_error(args, e) || ...))
+        return Ret{std::unexpected{e}};
+
+    if constexpr (expected_like<R>)
+        return op(lift_unwrap(std::forward<Args>(args))...);
+    else
+        return Ret{op(lift_unwrap(std::forward<Args>(args))...)};
+}
 } // namespace beman::inside::detail
 
 
@@ -3681,6 +3681,11 @@ corner_hull(grid_rational a, grid_rational b, grid_rational c, grid_rational d) 
     const grid_rational lo2 = c < d ? c : d, hi2 = c < d ? d : c;
     return interval{lo1 < lo2 ? lo1 : lo2, hi1 < hi2 ? hi2 : hi1};
 }
+
+// The smallest interval holding both.
+[[nodiscard]] constexpr interval interval_hull(const interval& a, const interval& b) noexcept {
+    return interval{a.Lower < b.Lower ? a.Lower : b.Lower, a.Upper < b.Upper ? b.Upper : a.Upper};
+}
 } // namespace detail
 
 //---------------------------------------------------------------------------
@@ -4077,7 +4082,6 @@ using int_for_bits_t = typename int_for_bits<Bits, Signed>::type;
 
 
 
-
 namespace beman::inside {
 //---------------------------------------------------------------------------
 // grid — structural NTTP type (public members only): an interval split into
@@ -4170,15 +4174,23 @@ struct grid {
         return d;
     }
 
-    static constexpr interval close_bounds(interval iv, const detail::grid_rational& notch, bounds b) {
+    // Moves iv's open limits in by one notch; false when the notch is 0 (no
+    // next point) or no grid point is left between them.
+    static constexpr bool move_in(interval& iv, const detail::grid_rational& notch, bounds b) {
         if (b == bounds::closed)
-            return iv;
+            return true;
         if (notch == 0)
-            detail::constexpr_error<"bounds: an open limit needs a notch - a continuous grid has no next point">();
+            return false;
         if (b == bounds::open)
             iv.Lower = iv.Lower + notch;
         iv.Upper = iv.Upper - notch;
-        if (iv.Lower > iv.Upper)
+        return !(iv.Lower > iv.Upper);
+    }
+
+    static constexpr interval close_bounds(interval iv, const detail::grid_rational& notch, bounds b) {
+        if (b != bounds::closed && notch == 0)
+            detail::constexpr_error<"bounds: an open limit needs a notch - a continuous grid has no next point">();
+        if (!move_in(iv, notch, b))
             detail::constexpr_error<"bounds: no grid point lies between the limits">();
         return iv;
     }
@@ -4235,19 +4247,8 @@ struct grid {
     // An open limit (`bounds`) moves in by one notch first, as in the ctors.
     [[nodiscard]] static constexpr std::expected<grid, errc>
     try_make(interval iv, detail::grid_rational notch, bounds b = bounds::closed) {
-        if (iv.Lower > iv.Upper)
+        if (iv.Lower > iv.Upper || notch < 0 || !move_in(iv, notch, b))
             return std::unexpected{errc::domain_error};
-        if (notch < 0)
-            return std::unexpected{errc::domain_error};
-        if (b != bounds::closed) {
-            if (notch == 0)
-                return std::unexpected{errc::domain_error};
-            if (b == bounds::open)
-                iv.Lower = iv.Lower + notch;
-            iv.Upper = iv.Upper - notch;
-            if (iv.Lower > iv.Upper)
-                return std::unexpected{errc::domain_error};
-        }
         if (!iv.divides_evenly(notch))
             return std::unexpected{errc::rounding_error};
         return grid{iv, notch};
@@ -4362,19 +4363,14 @@ constexpr grid_int den_bound(const grid& g) {
         return wide_numerator(g.MaxDenominator);
     if (g.Notch == 0)
         return wide_denominator(g.Interval.Lower);
-    // The value unit gcd(Lower, Notch) has denominator lcm(den Lower, den
-    // Notch), taken here in wide integers: the unit itself may not fit a
-    // 64-bit rational (a grid op then reports overflow, not a hard error).
+    // The value unit gcd(Lower, Notch) has denominator lcm(den Lower, den Notch).
     const grid_int a = wide_denominator(g.Interval.Lower), b = wide_denominator(g.Notch);
     return a / gcd(a, b) * b;
 }
 
 // floor(max(|Lower|, |Upper|) · d): the largest numerator over denominator d.
 constexpr grid_int num_bound(const interval& iv, const grid_int& d) {
-    auto mag = [&](const grid_rational& x) {
-        const grid_int n = wide_numerator(x);
-        return (n < grid_int{0} ? -n : n) * d / wide_denominator(x);
-    };
+    auto           mag = [&](const grid_rational& x) { return abs(wide_numerator(x)) * d / wide_denominator(x); };
     const grid_int a = mag(iv.Lower), b = mag(iv.Upper);
     return a < b ? b : a;
 }
@@ -4421,7 +4417,6 @@ template <grid G, round_mode M>
     else
         return t;
 }
-} // namespace detail
 
 // Raw of a point grid (Lower == Upper): its value lives in the type, so the
 // raw is empty. It acts as index slot 0 — constructible from any index,
@@ -4429,7 +4424,6 @@ template <grid G, round_mode M>
 // yields the point's value without special cases. Declared
 // [[no_unique_address]] in inside, a point member of another struct (also
 // marked [[no_unique_address]]) takes no space.
-namespace detail {
 struct point_slot {
     constexpr point_slot() = default;
     template <typename T>
@@ -4454,13 +4448,12 @@ constexpr bool fits_imax(const interval& iv) noexcept {
     return iv.Lower >= rational{std::numeric_limits<imax>::min()} &&
            iv.Upper <= rational{std::numeric_limits<imax>::max()};
 }
-} // namespace detail
 
 // Storage is a function of the grid alone. Order: point → empty point_slot;
 // notch zero → an exact fraction (no integer index space); more than 2^64
 // slots → a wide_int index; a whole-number grid → its value where that costs
 // no width (deduces_value); otherwise the unsigned 0-based index.
-namespace detail {
+
 // Unsigned index raw for G's slots: a builtin up to 64 bits, else wide.
 template <grid G>
 using index_raw_for_t = int_for_bits_t<G.slot_bits(), false>;
@@ -4585,21 +4578,6 @@ constexpr bool compute_fp_exact() noexcept {
 template <grid G>
 inline constexpr bool double_exact = compute_fp_exact<G, 53, 1022>();
 
-} // namespace detail
-
-template <std::same_as<grid> G>
-[[nodiscard]] constexpr grid operator+(const G&, const G&);
-template <std::same_as<grid> G>
-[[nodiscard]] constexpr grid operator-(const G&, const G&);
-template <std::same_as<grid> G>
-[[nodiscard]] constexpr grid operator*(const G&, const G&);
-template <std::same_as<grid> G>
-[[nodiscard]] constexpr std::expected<grid, errc> operator/(const G&, const G&);
-// (Templates on G = grid: no conversion reaches them, so an inside — which
-// converts to its point grid — never lands here when its own operator is
-// constrained away.)
-
-namespace detail {
 // The notch of a × b. A product (La + i·Na)(Lb + j·Nb) differs from La·Lb
 // by multiples of Na·Nb, Na·Lb and Nb·La; on an anchored operand its term is
 // already a multiple of Na·Nb, so only an unanchored operand adds one. A
@@ -4628,7 +4606,9 @@ constexpr bool grid_quotient_fits(const grid& b) {
 } // namespace detail
 
 //---------------------------------------------------------------------------
-// operator+
+// operator+ - * / — templates on G = grid: no conversion reaches them, so an
+// inside (which converts to its point grid) never lands here when its own
+// operator is constrained away.
 //---------------------------------------------------------------------------
 template <std::same_as<grid> G>
 [[nodiscard]] constexpr grid operator+(const G& lhs, const G& rhs) {
@@ -4670,49 +4650,36 @@ template <std::same_as<grid> G>
 //---------------------------------------------------------------------------
 template <std::same_as<grid> G>
 [[nodiscard]] constexpr std::expected<grid, errc> operator/(const G& lhs, const G& rhs) {
-    auto d = lhs.Interval / rhs.Interval;
+    const interval& r = rhs.Interval;
     // A nonzero point divisor c scales the other lattice exactly, as in
     // operator*: its notch becomes N/|c|, so `x / just<c>` keeps integer
-    // storage instead of turning continuous. Any other quotient is continuous.
-    if (d.has_value() && rhs.Interval.Lower == rhs.Interval.Upper && lhs.Notch != 0)
-        return grid{*d, lhs.Notch / detail::abs(rhs.Interval.Lower)};
+    // storage instead of turning continuous.
+    if (r.Lower == r.Upper && r.Lower != 0 && lhs.Notch != 0)
+        return grid{*(lhs.Interval / r), lhs.Notch / detail::abs(r.Lower)};
     // Any other quotient is continuous: x = p/a over y = r/b is p·b/(a·r), so
     // its denominators stay within den_bound(lhs)·num_bound(rhs).
     const detail::grid_int qd         = detail::den_bound(lhs) * detail::num_bound(rhs);
-    auto                   continuous = [qd](interval i) { return detail::bounded_continuous(i, qd); };
-    if (d.has_value())
-        return continuous(*d);
-
-    // Divisor interval includes zero — exclude zero for result interval.
-    if (rhs.Interval.Lower == 0 && rhs.Interval.Upper == 0)
+    auto                   continuous = [&](const interval& i) { return detail::bounded_continuous(i, qd); };
+    if (!includes(r, 0))
+        return continuous(*(lhs.Interval / r));
+    if (r.Lower == 0 && r.Upper == 0)
         return std::unexpected{errc::division_by_zero};
 
-    // `step` bounds the non-zero divisor magnitudes from below; it splits the
-    // divisor interval into positive [step, Upper] and negative [Lower, -step]
-    // (skipping zero). Both sides present → the result is their union. Every
-    // lattice value is a multiple of the value unit (the notch when anchored,
-    // finer when not: {{-1.5, 1.5}, 1} holds ±0.5), and a bounded continuous
-    // value p/q has q ≤ MaxDenominator. An unbounded continuous divisor comes
-    // arbitrarily close to zero: no bounded quotient.
+    // The divisor interval holds 0: `step` bounds the nonzero divisor
+    // magnitudes from below, splitting it into positive [step, Upper] and
+    // negative [Lower, −step]; with both present the result is their union.
+    // Every lattice value is a multiple of the value unit (the notch when
+    // anchored, finer when not: {{-1.5, 1.5}, 1} holds ±0.5), and a bounded
+    // continuous value p/q has q ≤ MaxDenominator. An unbounded continuous
+    // divisor comes arbitrarily close to zero: no bounded quotient.
     if (rhs.Notch == 0 && rhs.MaxDenominator == 0)
         return std::unexpected{errc::overflow};
-    detail::grid_rational step    = (rhs.Notch != 0) ? rhs.value_unit() : (1 / rhs.MaxDenominator);
-    bool                  has_pos = 0 < rhs.Interval.Upper;
-    bool                  has_neg = 0 > rhs.Interval.Lower;
-
-    if (has_pos && has_neg) {
-        return detail::lift(
-            [continuous](interval pos, interval neg) {
-                return continuous(interval{neg.Lower < pos.Lower ? neg.Lower : pos.Lower,
-                                           neg.Upper < pos.Upper ? pos.Upper : neg.Upper});
-            },
-            lhs.Interval / interval{step, rhs.Interval.Upper},
-            lhs.Interval / interval{rhs.Interval.Lower, -step});
-    } else if (has_pos) {
-        return detail::lift(continuous, lhs.Interval / interval{step, rhs.Interval.Upper});
-    } else {
-        return detail::lift(continuous, lhs.Interval / interval{rhs.Interval.Lower, -step});
-    }
+    const detail::grid_rational step = rhs.Notch != 0 ? rhs.value_unit() : 1 / rhs.MaxDenominator;
+    const interval              pos{step, r.Upper}, neg{r.Lower, -step};
+    auto over = [&](const interval& part) { return *(lhs.Interval / part); }; // zero-free: no error
+    if (0 < r.Upper && 0 > r.Lower)
+        return continuous(detail::interval_hull(over(pos), over(neg)));
+    return continuous(over(0 < r.Upper ? pos : neg));
 }
 
 //---------------------------------------------------------------------------
@@ -4724,8 +4691,7 @@ template <std::same_as<grid> G>
 // 1/2). A continuous operand (Notch 0) makes the hull continuous.
 //---------------------------------------------------------------------------
 [[nodiscard]] inline constexpr grid hull(const grid& lhs, const grid& rhs) {
-    const interval iv{lhs.Interval.Lower < rhs.Interval.Lower ? lhs.Interval.Lower : rhs.Interval.Lower,
-                      lhs.Interval.Upper < rhs.Interval.Upper ? rhs.Interval.Upper : lhs.Interval.Upper};
+    const interval iv = detail::interval_hull(lhs.Interval, rhs.Interval);
     // A continuous operand makes the hull continuous, bounded by the larger
     // bound (unbounded if either is); a point (also notch 0) joins the other
     // lattice through the offset between them.
@@ -4881,9 +4847,8 @@ using raw_t = raw_for_t<grid_of<B>>;
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
 //-------------------------------------------------------------------------
-// Storage — how an inside's value lives in its raw, a function of the grid
-// alone (grid.hpp raw_for). The leaves partition every
-// inside; each names the raw type and what it means:
+// The storage is a function of the grid alone (grid.hpp raw_for). The
+// leaves partition every inside; each names the raw type and what it means:
 //
 //   value_storage — the raw IS the value
 //     rational_storage                         a 64-bit rational
@@ -4990,6 +4955,13 @@ inline constexpr bool rational_readable = !wide_valued<B> || (lattice_past_ratio
 template <insidable B>
 constexpr auto exact_of(const B& b); // wide_value.hpp
 
+// The value indices Lower/Notch and Upper/Notch, as 64-bit rationals (for
+// the 64-bit paths of a notched grid).
+template <insidable B>
+inline constexpr auto index_lo64 = lower64<B> / notch64<B>;
+template <insidable B>
+inline constexpr auto index_hi64 = upper64<B> / notch64<B>;
+
 // Index raw → double in one IEEE operation. On an anchored grid with Notch
 // p/q the value is J·p/q, J = raw + Lower/Notch. With |J·p| and q at most 2^53
 // both are exact doubles, so double(J·p) / double(q) is the correctly rounded
@@ -5008,8 +4980,8 @@ inline constexpr index_double_codec index_double = [] {
     else {
         constexpr umax k53 = umax{1} << 53;
         const rational n   = notch64<B>;
-        const auto     lo = lower64<B> / n, hi = upper64<B> / n;
-        if (!lo || !hi || abs_den(n.Denominator) > k53)
+        const auto     lo = index_lo64<B>, hi = index_hi64<B>;
+        if (abs_den(n.Denominator) > k53)
             return index_double_codec{};
         const umax m = lo->Numerator > hi->Numerator ? lo->Numerator : hi->Numerator; // max |J|
         if (m > k53 / n.Numerator)
@@ -5027,7 +4999,7 @@ template <insidable B>
     if constexpr (wide_valued<B>)
         return static_cast<double>(exact_of(b));
     else if constexpr (point_storage<B>)
-        return static_cast<double>(detail::lower64<B>);
+        return static_cast<double>(lower64<B>);
     else if constexpr (value_storage<B>)
         return static_cast<double>(b.raw());
     else if constexpr (constexpr auto c = index_double<B>; c.Ok)
@@ -5043,12 +5015,12 @@ template <insidable R>
 inline constexpr bool divisor_excludes_zero = (lower_of<R> > 0) || (upper_of<R> < 0);
 
 // Storage-agnostic int truncation of interval endpoints — intent-revealing
-// `static_cast<imax>(detail::lower64<B>)`. Used by from_value, raw_lo, the fast paths.
+// `static_cast<imax>(lower64<B>)`. Used by from_value, raw_lo, the fast paths.
 template <insidable B>
-inline constexpr imax lower_imax = trunc(detail::lower64<B>);
+inline constexpr imax lower_imax = trunc(lower64<B>);
 
 template <insidable B>
-inline constexpr imax upper_imax = trunc(detail::upper64<B>);
+inline constexpr imax upper_imax = trunc(upper64<B>);
 
 // Slot count via grid::max_index (overflow-safe: 0 when it doesn't fit umax,
 // for grids with a wide index, which take the exact wide paths).
@@ -5110,13 +5082,12 @@ constexpr imax raw_imax(B b) noexcept {
 //-------------------------------------------------------------------------
 template <insidable B>
 inline constexpr bool qformat_codec_fits = [] {
-    if constexpr (abs_den(detail::lower64<B>.Denominator) != 1 || detail::notch64<B>.Numerator != 1 ||
-                  !values_fit_imax<B>)
+    if constexpr (abs_den(lower64<B>.Denominator) != 1 || notch64<B>.Numerator != 1 || !values_fit_imax<B>)
         return false;
     else { // every value·nd (so Lower·nd and raw + Lower·nd) in imax
-        constexpr imax nd = abs_den(detail::notch64<B>.Denominator);
-        constexpr auto lo = try_mul(detail::lower64<B>, rational{nd});
-        constexpr auto hi = try_mul(detail::upper64<B>, rational{nd});
+        constexpr imax nd = abs_den(notch64<B>.Denominator);
+        constexpr auto lo = try_mul(lower64<B>, rational{nd});
+        constexpr auto hi = try_mul(upper64<B>, rational{nd});
         return lo.has_value() && hi.has_value() && *lo >= rational{std::numeric_limits<imax>::min()} &&
                *hi <= rational{std::numeric_limits<imax>::max()};
     }
@@ -5126,7 +5097,7 @@ inline constexpr bool qformat_codec_fits = [] {
 template <insidable B>
     requires qformat_codec_fits<B>
 constexpr raw_t<B> q_format_encode(imax value) noexcept {
-    constexpr imax nd = abs_den(detail::notch64<B>.Denominator);
+    constexpr imax nd = abs_den(notch64<B>.Denominator);
     return raw_cast<B>((value - lower_imax<B>)*nd);
 }
 
@@ -5134,7 +5105,7 @@ constexpr raw_t<B> q_format_encode(imax value) noexcept {
 template <insidable B>
     requires qformat_codec_fits<B>
 constexpr rational q_format_decode(B b) noexcept {
-    constexpr imax nd = abs_den(detail::notch64<B>.Denominator);
+    constexpr imax nd = abs_den(notch64<B>.Denominator);
     const imax     n  = raw_imax(b) + lower_imax<B> * nd;
     if constexpr (std::has_single_bit(static_cast<umax>(nd))) {
         // A power-of-two denominator reduces by the common trailing zeros
@@ -5157,12 +5128,12 @@ template <insidable B>
 [[nodiscard]] constexpr imax to_value(B b) noexcept {
     if constexpr (value_storage<B>)
         return raw_imax(b);
-    else if constexpr (abs_den(detail::notch64<B>.Denominator) == 1 && abs_den(detail::lower64<B>.Denominator) == 1)
+    else if constexpr (abs_den(notch64<B>.Denominator) == 1 && abs_den(lower64<B>.Denominator) == 1)
         // In umax: raw·Notch can pass imax although the value fits.
         return static_cast<imax>(static_cast<umax>(lower_imax<B>) +
-                                 static_cast<umax>(raw_imax(b)) * detail::notch64<B>.Numerator);
+                                 static_cast<umax>(raw_imax(b)) * notch64<B>.Numerator);
     else if constexpr (qformat_codec_fits<B>) {
-        constexpr imax nd = abs_den(detail::notch64<B>.Denominator);
+        constexpr imax nd = abs_den(notch64<B>.Denominator);
         return (raw_imax(b) + lower_imax<B> * nd) / nd; // q_format_decode, truncated
     } else                                              // index storage, generic rational path
         return trunc(as_rational(b));
@@ -5172,14 +5143,14 @@ template <insidable B>
 constexpr void from_value(B& b, imax val) {
     if constexpr (value_storage<B>)
         b = B::from_raw(raw_cast<B>(val));
-    else if constexpr (abs_den(detail::notch64<B>.Denominator) == 1 && abs_den(detail::lower64<B>.Denominator) == 1)
+    else if constexpr (abs_den(notch64<B>.Denominator) == 1 && abs_den(lower64<B>.Denominator) == 1)
         b = B::from_raw(
-            raw_cast<B>((static_cast<umax>(val) - static_cast<umax>(lower_imax<B>)) / detail::notch64<B>.Numerator));
+            raw_cast<B>((static_cast<umax>(val) - static_cast<umax>(lower_imax<B>)) / notch64<B>.Numerator));
     else if constexpr (qformat_codec_fits<B>)
         b = B::from_raw(q_format_encode<B>(val));
     else // index storage, generic rational path
     {
-        auto offset = (rational{val} - detail::lower64<B>) / detail::notch64<B>;
+        auto offset = (rational{val} - lower64<B>) / notch64<B>;
         b           = B::from_raw(raw_cast<B>(offset.value().Numerator));
     }
 }
@@ -5254,7 +5225,7 @@ constexpr umax raw_offset(R raw) noexcept {
 template <insidable L>
 constexpr raw_t<L> endpoint_raw(bool low) noexcept {
     if constexpr (rational_storage<L>)
-        return low ? detail::lower64<L> : detail::upper64<L>;
+        return low ? lower64<L> : upper64<L>;
     else
         return raw_from_offset<L>(low ? umax{0} : max_index_of<L>);
 }
@@ -5263,7 +5234,7 @@ constexpr raw_t<L> endpoint_raw(bool low) noexcept {
 // exact offset (v − Lower)/Notch.
 template <insidable L>
 constexpr raw_t<L> raw_of_lattice_value(rational v) {
-    return raw_from_offset<L>(((v - detail::lower64<L>).value() / detail::notch64<L>).value().Numerator);
+    return raw_from_offset<L>(((v - lower64<L>).value() / notch64<L>).value().Numerator);
 }
 
 //-------------------------------------------------------------------------
@@ -5300,9 +5271,12 @@ inline constexpr round_mode rounding_for = has_policy<L, P, round_floor>       ?
 // anchored), is odd: with an offset's parity it says which lattice points are
 // even. Exact past imax.
 template <insidable L>
-inline constexpr bool lower_index_odd =
-    detail::notched<L> &&
-    (round_to_integral((detail::lower64<L> / detail::notch64<L>).value(), round_mode::floor).Numerator & 1) != 0;
+inline constexpr bool lower_index_odd = [] {
+    if constexpr (!notched<L>) // (index_lo64 divides by the notch)
+        return false;
+    else
+        return (round_to_integral(*index_lo64<L>, round_mode::floor).Numerator & 1) != 0;
+}();
 
 // The rounding step onto L's lattice by rounding_for<L, P>: the exact
 // lattice offset q (v/Notch when anchored, (v − Lower)/Notch otherwise) as
@@ -5334,21 +5308,20 @@ template <insidable L, typename P>
 // result or step past the rational range is errc::overflow.
 template <insidable L, typename P>
 [[nodiscard]] constexpr std::expected<rational, errc> try_round_to_lattice(rational v) {
-    if constexpr (!detail::notched<L>)
+    if constexpr (!notched<L>)
         return v;
     else {
-        const auto q =
-            anchored<L> ? try_div(v, detail::notch64<L>) : try_sub(v, detail::lower64<L>).and_then([](rational off) {
-                return try_div(off, detail::notch64<L>);
-            });
+        const auto q = anchored<L>
+                           ? try_div(v, notch64<L>)
+                           : try_sub(v, lower64<L>).and_then([](rational off) { return try_div(off, notch64<L>); });
         if (!q)
             return q;
         const auto [base, step] = lattice_step_of<L, P>(*q, v < 0);
         const auto j            = step ? try_add(base, rational{1}) : std::expected<rational, errc>{base};
         if (!j)
             return j;
-        const auto rel = try_mul(*j, detail::notch64<L>);
-        return (rel && !anchored<L>) ? try_add(detail::lower64<L>, *rel) : rel;
+        const auto rel = try_mul(*j, notch64<L>);
+        return (rel && !anchored<L>) ? try_add(lower64<L>, *rel) : rel;
     }
 }
 
@@ -5362,7 +5335,7 @@ template <insidable L, typename P>
 // values, and fractions k/D lie 1/D apart.
 template <insidable L, typename P>
 inline constexpr bool rounds_before_range_check =
-    (detail::notched<L> || grid_of<L>.MaxDenominator != 0) && has_policy<L, P, snap>;
+    (notched<L> || grid_of<L>.MaxDenominator != 0) && has_policy<L, P, snap>;
 
 // rounds_into_range for a v whose rounding passes the 64-bit rational on the
 // way (v − Lower for a fine v's denominator), decided exactly (wide_value.hpp).
@@ -5377,19 +5350,19 @@ template <insidable L, typename P>
         // A bound past imax: 1/imax still widens the limits by at least a
         // step (only a prefilter: the exact rounding decides).
         constexpr rational step = [] {
-            if constexpr (detail::notched<L>)
-                return detail::notch64<L>;
+            if constexpr (notched<L>)
+                return notch64<L>;
             else {
                 constexpr umax D = to_rational(grid_of<L>.MaxDenominator).Numerator;
                 constexpr umax M = static_cast<umax>(std::numeric_limits<imax>::max());
                 return rational{1, static_cast<imax>(D < M ? D : M)};
             }
         }();
-        constexpr rational lo = try_sub(detail::lower64<L>, step).value_or(detail::lower64<L>);
-        constexpr rational hi = try_add(detail::upper64<L>, step).value_or(detail::upper64<L>);
+        constexpr rational lo = try_sub(lower64<L>, step).value_or(lower64<L>);
+        constexpr rational hi = try_add(upper64<L>, step).value_or(upper64<L>);
         if (v <= lo || v >= hi)
             return false;
-        if constexpr (!detail::notched<L>)
+        if constexpr (!notched<L>)
             return exact_rounds_into_range<L, P>(v, out);
         // Within one notch of the limits the rounded value fits; the steps
         // there may not, for a fine v.
@@ -5442,8 +5415,8 @@ template <insidable L, typename P>
     const umax           q = num / den, r = num % den;
     constexpr round_mode m        = rounding_for<L, P>;
     bool                 negative = false;
-    if constexpr (detail::lower64<L> < 0) {
-        constexpr rational c = (-detail::lower64<L> / detail::notch64<L>).value(); // > 0
+    if constexpr (lower64<L> < 0) {
+        constexpr rational c = -*index_lo64<L>; // > 0
         using W              = wide_uint<2>;
         negative             = W{num} * W{abs_den(c.Denominator)} < W{c.Numerator} * W{den};
     }
@@ -5454,7 +5427,7 @@ template <insidable L, typename P>
 // notch index per L's rounding policy.
 //
 // Tie/sign rules are in VALUE space, not offset space, so assigning a value
-// rounds it the same way dividing down to it does (detail::div_rounded is the
+// rounds it the same way dividing down to it does (div_rounded is the
 // reference). The offset num/den is >= 0 (sign lost by subtracting Lower), so
 // we rebuild the signed value-index NUM = m·den + num (m = Lower/Notch), round
 // it like div_rounded, and return the offset J - m. m is integral on every
@@ -5463,8 +5436,7 @@ template <insidable L, typename P>
 [[nodiscard]] constexpr umax round_quotient(umax num, umax den) noexcept {
     // Lower/Notch past 64 bits (a far-off grid with a fine notch) has no imax
     // value index: round the offset as for a non-integral m.
-    constexpr auto zq   = (!detail::notched<L>) ? std::expected<rational, errc>{rational{0}}
-                                                : try_div(detail::lower64<L>, detail::notch64<L>);
+    constexpr auto zq   = (!notched<L>) ? std::expected<rational, errc>{rational{0}} : try_div(lower64<L>, notch64<L>);
     constexpr bool vidx = zq.has_value() && abs_den(zq->Denominator) == 1 &&
                           zq->Numerator <= static_cast<umax>(std::numeric_limits<imax>::max()) + 1;
     constexpr imax m    = vidx ? signed_numerator(*zq) : imax{0};
@@ -5474,7 +5446,7 @@ template <insidable L, typename P>
     else if constexpr (!vidx)
         return round_offset<L, P>(num / den, num % den, den);
     else {
-        // Round the signed value-index NUM/di exactly like detail::div_rounded.
+        // Round the signed value-index NUM/di exactly like div_rounded.
         // A numerator or m·di beyond imax (fine-denominator sources on grids
         // with large |Lower·count|) cannot rebuild the signed index: round the
         // offset's floor q instead, in value space — the value is below zero
@@ -10232,12 +10204,6 @@ namespace beman::inside {
 // comparison
 //---------------------------------------------------------------------------
 namespace detail {
-// The value indices Lower/Notch and Upper/Notch, as 64-bit rationals.
-template <insidable B>
-inline constexpr auto index_lo64 = lower64<B> / notch64<B>;
-template <insidable B>
-inline constexpr auto index_hi64 = upper64<B> / notch64<B>;
-
 // Integer value-index comparison eligibility: an integer-backed anchored
 // inside whose value indices (value/Notch, integers) fit imax, so it
 // compares with a scalar as `bias + raw` without a rational decode.

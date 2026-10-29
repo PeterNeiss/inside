@@ -21,12 +21,6 @@ namespace beman::inside {
 // comparison
 //---------------------------------------------------------------------------
 namespace detail {
-// The value indices Lower/Notch and Upper/Notch, as 64-bit rationals.
-template <insidable B>
-inline constexpr auto index_lo64 = lower64<B> / notch64<B>;
-template <insidable B>
-inline constexpr auto index_hi64 = upper64<B> / notch64<B>;
-
 // Integer value-index comparison eligibility: an integer-backed anchored
 // inside whose value indices (value/Notch, integers) fit imax, so it
 // compares with a scalar as `bias + raw` without a rational decode.

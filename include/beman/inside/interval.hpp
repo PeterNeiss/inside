@@ -103,6 +103,11 @@ corner_hull(grid_rational a, grid_rational b, grid_rational c, grid_rational d) 
     const grid_rational lo2 = c < d ? c : d, hi2 = c < d ? d : c;
     return interval{lo1 < lo2 ? lo1 : lo2, hi1 < hi2 ? hi2 : hi1};
 }
+
+// The smallest interval holding both.
+[[nodiscard]] constexpr interval interval_hull(const interval& a, const interval& b) noexcept {
+    return interval{a.Lower < b.Lower ? a.Lower : b.Lower, a.Upper < b.Upper ? b.Upper : a.Upper};
+}
 } // namespace detail
 
 //---------------------------------------------------------------------------
