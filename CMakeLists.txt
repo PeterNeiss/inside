@@ -116,9 +116,12 @@ if(BEMAN_INSIDE_STRICT_SFINAE)
     )
 endif()
 # Static reflection (std::define_static_array) interns grid numbers of any
-# size. GCC 16 gates it behind -freflection.
+# size. GCC 16 gates it behind -freflection, which it accepts only in C++26
+# mode: probe the two together (a consumer may not set CMAKE_CXX_STANDARD).
 include(CheckCXXCompilerFlag)
+set(CMAKE_REQUIRED_FLAGS "-std=c++26")
 check_cxx_compiler_flag(-freflection BEMAN_INSIDE_HAS_FREFLECTION)
+unset(CMAKE_REQUIRED_FLAGS)
 if(NOT BEMAN_INSIDE_HAS_FREFLECTION)
     message(
         FATAL_ERROR
