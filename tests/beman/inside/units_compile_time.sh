@@ -13,7 +13,7 @@
 set -euo pipefail
 export LC_ALL=C
 
-CXX="${1:?compiler}"; INC="${2:?include dir}"; STD="${3:-23}"; N="${4:-200}"
+CXX="${1:?compiler}"; INC="${2:?include dir}"; STD="${3:-26}"; N="${4:-200}"
 read -r -a FLAGS <<< "${5:-}"
 DIR="$(mktemp -d)"
 trap 'rm -rf "$DIR"' EXIT
@@ -64,7 +64,7 @@ best() {
   for _ in 1 2 3; do
     local t0 t1
     t0=$(date +%s.%N)
-    "$CXX" ${FLAGS[@]+"${FLAGS[@]}"} -std="c++${STD}" -I "$INC" -c "$1" -o /dev/null
+    "$CXX" ${FLAGS[@]+"${FLAGS[@]}"} -std="c++${STD}" -freflection -I "$INC" -c "$1" -o /dev/null
     t1=$(date +%s.%N)
     b=$(awk -v t0="$t0" -v t1="$t1" -v b="$b" 'BEGIN { d = t1 - t0; print (b == "" || d < b) ? d : b }')
   done

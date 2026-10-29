@@ -10,7 +10,7 @@
 # Exits non-zero (with the offending disassembly) if either invariant fails.
 set -euo pipefail
 
-CXX="${1:?compiler}"; SRC="${2:?source}"; INC="${3:?include dir}"; STD="${4:-23}"
+CXX="${1:?compiler}"; SRC="${2:?source}"; INC="${3:?include dir}"; STD="${4:-26}"
 read -r -a ALL <<< "${5:-}"
 FLAGS=()
 for f in "${ALL[@]}"; do
@@ -25,7 +25,7 @@ trap 'rm -f "$OBJ"' EXIT
 
 # Force -O2 regardless of the project's build type: this guards *optimized*
 # codegen, which is what ships and what a refactor can pessimize.
-"$CXX" ${FLAGS[@]+"${FLAGS[@]}"} -std="c++${STD}" -O2 -I "$INC" -c "$SRC" -o "$OBJ"
+"$CXX" ${FLAGS[@]+"${FLAGS[@]}"} -std="c++${STD}" -freflection -O2 -I "$INC" -c "$SRC" -o "$OBJ"
 
 # -r prints each call's relocation (its target symbol) on the next line.
 DIS="$(objdump -drC --no-show-raw-insn "$OBJ")"

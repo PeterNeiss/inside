@@ -132,7 +132,7 @@ target_include_directories(
 )
 target_compile_features(
     beman.inside.tests.single_header_smoke
-    PRIVATE cxx_std_23
+    PRIVATE cxx_std_26
 )
 target_link_libraries(
     beman.inside.tests.single_header_smoke
@@ -153,7 +153,7 @@ target_include_directories(
 )
 target_compile_features(
     beman.inside.tests.single_header_freestanding_smoke
-    PRIVATE cxx_std_23
+    PRIVATE cxx_std_26
 )
 target_compile_definitions(
     beman.inside.tests.single_header_freestanding_smoke
@@ -161,7 +161,7 @@ target_compile_definitions(
 )
 target_compile_options(
     beman.inside.tests.single_header_freestanding_smoke
-    PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-fno-exceptions>
+    PRIVATE -fno-exceptions
 )
 target_link_libraries(
     beman.inside.tests.single_header_freestanding_smoke
@@ -176,44 +176,43 @@ foreach(
     if(BEMAN_INSIDE_MATH_NO_FP)
         target_compile_definitions(${smoke} PRIVATE BEMAN_INSIDE_MATH_NO_FP)
     endif()
-    # The one flag a single-header MSVC user needs: the headers are UTF-8.
-    # (No /Zc:preprocessor here: the header also works with the traditional
-    # preprocessor.)
-    target_compile_options(${smoke} PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
+    # The one flag a single-header user needs: static reflection.
+    target_compile_options(${smoke} PRIVATE -freflection)
     add_test(NAME ${smoke} COMMAND ${smoke})
 endforeach()
 
 # FP-free smoke: compiles the single header with BEMAN_INSIDE_MATH_NO_FP and a
 # poison <cmath> shim placed FIRST on the include path, so the build hard-errors
 # if any <cmath> is pulled in. Proves the single header honors the FP-free guard
-# (the math engine runs on its integer path). GNU/Clang only — the proof relies on
-# -I ordering for angle-bracket includes; bare-metal toolchains are GCC/Clang.
-# Compile-only (an object library).
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    add_library(
-        beman.inside.tests.single_header_nofp_smoke
-        OBJECT
-        single_header_nofp_smoke.test.cpp
-    )
-    # The poison dir must precede single_include AND the system dirs. BEFORE
-    # keeps it ahead of single_include; angle-bracket search already places -I
-    # dirs ahead of the system headers, so <cmath> resolves to the poison shim.
-    target_include_directories(
-        beman.inside.tests.single_header_nofp_smoke
-        BEFORE
-        PRIVATE
-            "${CMAKE_CURRENT_SOURCE_DIR}/nofp_poison"
-            "${single_include_dir}"
-    )
-    target_compile_features(
-        beman.inside.tests.single_header_nofp_smoke
-        PRIVATE cxx_std_23
-    )
-    target_compile_definitions(
-        beman.inside.tests.single_header_nofp_smoke
-        PRIVATE BEMAN_INSIDE_MATH_NO_FP BEMAN_INSIDE_NO_STRING
-    )
-endif()
+# (the math engine runs on its integer path). The proof relies on -I ordering
+# for angle-bracket includes. Compile-only (an object library).
+add_library(
+    beman.inside.tests.single_header_nofp_smoke
+    OBJECT
+    single_header_nofp_smoke.test.cpp
+)
+# The poison dir must precede single_include AND the system dirs. BEFORE
+# keeps it ahead of single_include; angle-bracket search already places -I
+# dirs ahead of the system headers, so <cmath> resolves to the poison shim.
+target_include_directories(
+    beman.inside.tests.single_header_nofp_smoke
+    BEFORE
+    PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/nofp_poison"
+        "${single_include_dir}"
+)
+target_compile_features(
+    beman.inside.tests.single_header_nofp_smoke
+    PRIVATE cxx_std_26
+)
+target_compile_definitions(
+    beman.inside.tests.single_header_nofp_smoke
+    PRIVATE BEMAN_INSIDE_MATH_NO_FP BEMAN_INSIDE_NO_STRING
+)
+target_compile_options(
+    beman.inside.tests.single_header_nofp_smoke
+    PRIVATE -freflection
+)
 
 #---------------------------------------------------------------------------
 # Codegen guard (label "perf") — compiles the arithmetic fast paths at -O2 and
@@ -227,17 +226,12 @@ if(
     AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang"
     AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64"
 )
-    if(CMAKE_CXX_STANDARD)
-        set(codegen_std ${CMAKE_CXX_STANDARD})
-    else()
-        set(codegen_std 23)
-    endif()
     add_test(
         NAME beman.inside.tests.codegen_guard
         COMMAND
             ${CMAKE_CURRENT_SOURCE_DIR}/check_codegen.sh ${CMAKE_CXX_COMPILER}
             ${CMAKE_CURRENT_SOURCE_DIR}/perf_codegen.test.cpp
-            ${PROJECT_SOURCE_DIR}/include ${codegen_std} "${CMAKE_CXX_FLAGS}"
+            ${PROJECT_SOURCE_DIR}/include 26 "${CMAKE_CXX_FLAGS}"
     )
     set_tests_properties(
         beman.inside.tests.codegen_guard

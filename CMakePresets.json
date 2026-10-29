@@ -7,7 +7,7 @@
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
-        "CMAKE_CXX_STANDARD": "23",
+        "CMAKE_CXX_STANDARD": "26",
         "CMAKE_CXX_EXTENSIONS": false,
         "CMAKE_CXX_STANDARD_REQUIRED": true,
         "CMAKE_EXPORT_COMPILE_COMMANDS": true,
@@ -52,80 +52,15 @@
       }
     },
     {
-      "name": "llvm-debug",
-      "displayName": "Clang Debug Build",
-      "inherits": [
-        "_root-config",
-        "_debug-base"
-      ],
-      "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/infra/cmake/llvm-toolchain.cmake"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Linux"
-      }
-    },
-    {
-      "name": "llvm-release",
-      "displayName": "Clang Release Build",
-      "inherits": [
-        "_root-config",
-        "_release-base"
-      ],
-      "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/infra/cmake/llvm-toolchain.cmake"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Linux"
-      }
-    },
-    {
-      "name": "appleclang-debug",
-      "displayName": "Appleclang Debug Build",
-      "inherits": [
-        "_root-config",
-        "_debug-base"
-      ],
-      "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/infra/cmake/appleclang-toolchain.cmake"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Darwin"
-      }
-    },
-    {
-      "name": "appleclang-release",
-      "displayName": "Appleclang Release Build",
-      "inherits": [
-        "_root-config",
-        "_release-base"
-      ],
-      "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/infra/cmake/appleclang-toolchain.cmake"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Darwin"
-      }
-    },
-    {
       "name": "gcc16-debug",
-      "displayName": "GCC 16 C++26 Debug Build (reflection: big grids)",
+      "displayName": "GCC 16 Debug Build",
       "inherits": [
         "_root-config",
         "_debug-base"
       ],
       "cacheVariables": {
         "CMAKE_CXX_COMPILER": "g++-16",
-        "CMAKE_C_COMPILER": "gcc-16",
-        "CMAKE_CXX_STANDARD": "26"
+        "CMAKE_C_COMPILER": "gcc-16"
       },
       "condition": {
         "type": "equals",
@@ -135,15 +70,14 @@
     },
     {
       "name": "gcc16-release",
-      "displayName": "GCC 16 C++26 Release Build (reflection: big grids)",
+      "displayName": "GCC 16 Release Build",
       "inherits": [
         "_root-config",
         "_release-base"
       ],
       "cacheVariables": {
         "CMAKE_CXX_COMPILER": "g++-16",
-        "CMAKE_C_COMPILER": "gcc-16",
-        "CMAKE_CXX_STANDARD": "26"
+        "CMAKE_C_COMPILER": "gcc-16"
       },
       "condition": {
         "type": "equals",
@@ -172,34 +106,6 @@
     {
       "name": "gcc-release",
       "configurePreset": "gcc-release",
-      "inherits": [
-        "_root-build"
-      ]
-    },
-    {
-      "name": "llvm-debug",
-      "configurePreset": "llvm-debug",
-      "inherits": [
-        "_root-build"
-      ]
-    },
-    {
-      "name": "llvm-release",
-      "configurePreset": "llvm-release",
-      "inherits": [
-        "_root-build"
-      ]
-    },
-    {
-      "name": "appleclang-debug",
-      "configurePreset": "appleclang-debug",
-      "inherits": [
-        "_root-build"
-      ]
-    },
-    {
-      "name": "appleclang-release",
-      "configurePreset": "appleclang-release",
       "inherits": [
         "_root-build"
       ]
@@ -240,26 +146,6 @@
       "name": "gcc-release",
       "inherits": "_test_base",
       "configurePreset": "gcc-release"
-    },
-    {
-      "name": "llvm-debug",
-      "inherits": "_test_base",
-      "configurePreset": "llvm-debug"
-    },
-    {
-      "name": "llvm-release",
-      "inherits": "_test_base",
-      "configurePreset": "llvm-release"
-    },
-    {
-      "name": "appleclang-debug",
-      "inherits": "_test_base",
-      "configurePreset": "appleclang-debug"
-    },
-    {
-      "name": "appleclang-release",
-      "inherits": "_test_base",
-      "configurePreset": "appleclang-release"
     },
     {
       "name": "gcc16-debug",
@@ -304,74 +190,6 @@
         {
           "type": "test",
           "name": "gcc-release"
-        }
-      ]
-    },
-    {
-      "name": "llvm-debug",
-      "steps": [
-        {
-          "type": "configure",
-          "name": "llvm-debug"
-        },
-        {
-          "type": "build",
-          "name": "llvm-debug"
-        },
-        {
-          "type": "test",
-          "name": "llvm-debug"
-        }
-      ]
-    },
-    {
-      "name": "llvm-release",
-      "steps": [
-        {
-          "type": "configure",
-          "name": "llvm-release"
-        },
-        {
-          "type": "build",
-          "name": "llvm-release"
-        },
-        {
-          "type": "test",
-          "name": "llvm-release"
-        }
-      ]
-    },
-    {
-      "name": "appleclang-debug",
-      "steps": [
-        {
-          "type": "configure",
-          "name": "appleclang-debug"
-        },
-        {
-          "type": "build",
-          "name": "appleclang-debug"
-        },
-        {
-          "type": "test",
-          "name": "appleclang-debug"
-        }
-      ]
-    },
-    {
-      "name": "appleclang-release",
-      "steps": [
-        {
-          "type": "configure",
-          "name": "appleclang-release"
-        },
-        {
-          "type": "build",
-          "name": "appleclang-release"
-        },
-        {
-          "type": "test",
-          "name": "appleclang-release"
         }
       ]
     },

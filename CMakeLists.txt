@@ -10,13 +10,13 @@ project(
     VERSION 0.5.0
 )
 
-# The library requires C++23: fallible operations return std::expected<T, errc>.
-# The standard is selected with CMAKE_CXX_STANDARD (the presets default to 23).
+# The library requires C++26 with static reflection (GCC 16, -freflection):
+# grid numbers of any size are interned with std::define_static_array.
 
 # [CMAKE.SKIP_TESTS]
 option(
     BEMAN_INSIDE_WARNINGS_AS_ERRORS
-    "Make warnings errors in the tests and examples (/WX, -Werror)."
+    "Make warnings errors in the tests and examples (-Werror)."
     OFF
 )
 option(
@@ -104,18 +104,7 @@ set_target_properties(
     beman.inside
     PROPERTIES VERIFY_INTERFACE_HEADER_SETS ${PROJECT_IS_TOP_LEVEL}
 )
-target_compile_features(beman.inside INTERFACE cxx_std_23)
-# MSVC: the headers hold UTF-8 text (℃, −), test __cplusplus, use the
-# conforming preprocessor, and evaluate more at compile time than its default
-# step limit allows (the correctly rounded math in a constant expression).
-target_compile_options(
-    beman.inside
-    INTERFACE
-        $<$<CXX_COMPILER_ID:MSVC>:/utf-8
-        /Zc:__cplusplus
-        /Zc:preprocessor
-        /constexpr:steps100000000>
-)
+target_compile_features(beman.inside INTERFACE cxx_std_26)
 
 if(BEMAN_INSIDE_MATH_NO_FP)
     target_compile_definitions(beman.inside INTERFACE BEMAN_INSIDE_MATH_NO_FP)
@@ -126,30 +115,21 @@ if(BEMAN_INSIDE_STRICT_SFINAE)
         INTERFACE BEMAN_INSIDE_STRICT_SFINAE
     )
 endif()
-# Big grids: under C++26 with static reflection (std::define_static_array) a
-# grid's limits and notch have no size limit. GCC 16 gates reflection behind
-# -freflection, so add it to the interface when the standard is 26 or later
-# and the compiler takes the flag. The headers detect the feature themselves
-# (BEMAN_INSIDE_BIG_GRIDS); without it grids keep their 64-bit limits.
-option(
-    BEMAN_INSIDE_REFLECTION
-    "Add -freflection under C++26 when the compiler accepts it (enables big grids). Default: ON. Values: { ON, OFF }."
-    ON
-)
-if(BEMAN_INSIDE_REFLECTION AND CMAKE_CXX_STANDARD GREATER_EQUAL 26)
-    include(CheckCXXCompilerFlag)
-    check_cxx_compiler_flag(-freflection BEMAN_INSIDE_HAS_FREFLECTION)
-    if(BEMAN_INSIDE_HAS_FREFLECTION)
-        target_compile_options(
-            beman.inside
-            INTERFACE $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-freflection>
-        )
-    endif()
+# Static reflection (std::define_static_array) interns grid numbers of any
+# size. GCC 16 gates it behind -freflection.
+include(CheckCXXCompilerFlag)
+check_cxx_compiler_flag(-freflection BEMAN_INSIDE_HAS_FREFLECTION)
+if(NOT BEMAN_INSIDE_HAS_FREFLECTION)
+    message(
+        FATAL_ERROR
+        "beman.inside needs C++26 static reflection: build with g++-16 (-freflection)"
+    )
 endif()
+target_compile_options(beman.inside INTERFACE -freflection)
 if(BEMAN_INSIDE_FMA AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
     target_compile_options(
         beman.inside
-        INTERFACE $<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:-mfma>
+        INTERFACE -mfma
     )
 endif()
 
@@ -209,16 +189,9 @@ if(BEMAN_INSIDE_BUILD_TESTS OR BEMAN_INSIDE_BUILD_EXAMPLES)
     # Warning flags for this project's own tests and examples. Kept off the
     # public beman.inside interface so consumers don't inherit them.
     add_library(beman.inside.warnings INTERFACE)
-    # MSVC deprecates standard C functions the test tools use (fopen,
-    # getenv) in favour of its _s variants.
-    target_compile_definitions(
-        beman.inside.warnings
-        INTERFACE $<$<CXX_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>
-    )
     target_compile_options(
         beman.inside.warnings
         INTERFACE
-            $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:
             -Wall
             -Wextra
             -Wnon-virtual-dtor
@@ -230,23 +203,8 @@ if(BEMAN_INSIDE_BUILD_TESTS OR BEMAN_INSIDE_BUILD_EXAMPLES)
             -Wno-uninitialized
             -Wno-missing-field-initializers
             -Wformat=2
-            >
-            # /bigobj: the test files hold more sections than the default.
-            $<$<CXX_COMPILER_ID:MSVC>:/W4
-            /bigobj>
-            $<$<BOOL:${BEMAN_INSIDE_WARNINGS_AS_ERRORS}>:$<IF:$<CXX_COMPILER_ID:MSVC>,/WX,-Werror>>
+            $<$<BOOL:${BEMAN_INSIDE_WARNINGS_AS_ERRORS}>:-Werror>
     )
-    # GCC 13.x for x86_64-w64-mingw32 ships a libstdc++.a whose tinfo.o carries
-    # an out-of-line `std::type_info::operator==`, while user objects emit the
-    # inline form from <typeinfo>. Static-linking them trips a spurious
-    # "multiple definition of std::type_info::operator==". Tolerate it on MinGW
-    # (the two definitions are identical); harmless elsewhere, so it stays scoped.
-    if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        target_link_options(
-            beman.inside.warnings
-            INTERFACE -Wl,--allow-multiple-definition
-        )
-    endif()
 endif()
 
 if(BEMAN_INSIDE_BUILD_TESTS)

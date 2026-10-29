@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - main
+      - pureCPP26
   pull_request:
   workflow_dispatch:
   schedule:
@@ -19,24 +20,19 @@ jobs:
   beman-submodule-check:
     uses: bemanproject/infra-workflows/.github/workflows/reusable-beman-submodule-check.yml@1.7.4
 
-  # PRs and pushes run a small matrix: the oldest and newest compilers, every
-  # build option once, sanitizers on the newest GCC and Clang. The weekly run
-  # (and workflow_dispatch) runs the full matrix below. A C++26 cell on a
-  # compiler without reflection compiles the C++23 code, so the old versions
-  # run C++23 only.
+  # inside requires C++26 with static reflection, which GCC 16 alone provides
+  # (-freflection). PRs and pushes run every build option once; the weekly run
+  # (and workflow_dispatch) adds Debug, TSan and the certify test over every
+  # certified pair (BEMAN_INSIDE_CERTIFY_FULL).
   preset-test:
     if: github.event_name == 'push' || github.event_name == 'pull_request'
     uses: bemanproject/infra-workflows/.github/workflows/reusable-beman-preset-test.yml@1.7.4
     with:
       matrix_config: >
         [
-          {"preset": "gcc-debug", "image": "ghcr.io/bemanproject/infra-containers-gcc:latest"},
-          {"preset": "appleclang-release", "runner": "macos-latest"}
+          {"preset": "gcc-debug", "image": "ghcr.io/bemanproject/infra-containers-gcc:16"}
         ]
 
-  # inside requires C++23 (std::expected), so there are no c++20 or older cells.
-  # Clang 18 reports __cpp_concepts < 202002L, which hides libstdc++'s
-  # <expected>; it is tested against libc++ only.
   build-and-test:
     if: github.event_name == 'push' || github.event_name == 'pull_request'
     uses: bemanproject/infra-workflows/.github/workflows/reusable-beman-build-and-test.yml@1.7.4
@@ -56,69 +52,6 @@ jobs:
                       ]
                     }
                   ]
-                },
-                { "cxxversions": ["c++23"],
-                  "tests": [{ "stdlibs": ["libstdc++"], "tests": ["Release.Default"]}]
-                }
-              ]
-            },
-            { "versions": ["14"],
-              "tests": [
-                { "cxxversions": ["c++23"],
-                  "tests": [{ "stdlibs": ["libstdc++"], "tests": ["Release.Default"]}]
-                }
-              ]
-            }
-          ],
-          "clang": [
-            { "versions": ["22"],
-              "tests": [
-                { "cxxversions": ["c++26"],
-                  "tests": [
-                    { "stdlibs": ["libc++"], "tests": ["Release.MaxSan", "Debug.Werror"]},
-                    { "stdlibs": ["libstdc++"], "tests": ["Release.Default"]}
-                  ]
-                },
-                { "cxxversions": ["c++23"],
-                  "tests": [{ "stdlibs": ["libstdc++"], "tests": ["Release.Default"]}]
-                }
-              ]
-            },
-            { "versions": ["19"],
-              "tests": [
-                { "cxxversions": ["c++23"],
-                  "tests": [
-                    { "stdlibs": ["libstdc++", "libc++"], "tests": ["Release.Default"]}
-                  ]
-                }
-              ]
-            },
-            { "versions": ["18"],
-              "tests": [
-                { "cxxversions": ["c++23"],
-                  "tests": [{ "stdlibs": ["libc++"], "tests": ["Release.Default"]}]
-                }
-              ]
-            }
-          ],
-          "appleclang": [
-            { "versions": ["latest"],
-              "tests": [
-                { "cxxversions": ["c++23"],
-                  "tests": [{ "stdlibs": ["libc++"], "tests": ["Release.Default"]}]
-                }
-              ]
-            }
-          ],
-          "msvc": [
-            { "versions": ["latest"],
-              "tests": [
-                { "cxxversions": ["c++23"],
-                  "tests": [
-                    { "stdlibs": ["stl"],
-                      "tests": ["Release.-DBEMAN_INSIDE_WARNINGS_AS_ERRORS=ON"]
-                    }
-                  ]
                 }
               ]
             }
@@ -131,17 +64,10 @@ jobs:
     with:
       matrix_config: >
         [
-          {"preset": "gcc-debug", "image": "ghcr.io/bemanproject/infra-containers-gcc:latest"},
-          {"preset": "gcc-release", "image": "ghcr.io/bemanproject/infra-containers-gcc:latest"},
-          {"preset": "llvm-debug", "image": "ghcr.io/bemanproject/infra-containers-clang:latest"},
-          {"preset": "llvm-release", "image": "ghcr.io/bemanproject/infra-containers-clang:latest"},
-          {"preset": "appleclang-debug", "runner": "macos-latest"},
-          {"preset": "appleclang-release", "runner": "macos-latest"}
+          {"preset": "gcc-debug", "image": "ghcr.io/bemanproject/infra-containers-gcc:16"},
+          {"preset": "gcc-release", "image": "ghcr.io/bemanproject/infra-containers-gcc:16"}
         ]
 
-  # The full matrix: weekly and on demand. Every supported compiler version,
-  # both language modes, sanitizers and MSVC Debug, and the certify test over
-  # every certified pair (BEMAN_INSIDE_CERTIFY_FULL) on four toolchains.
   build-and-test-full:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     uses: bemanproject/infra-workflows/.github/workflows/reusable-beman-build-and-test.yml@1.7.4
@@ -158,83 +84,7 @@ jobs:
                         "Debug.Default", "Release.Default", "Release.TSan",
                         "Release.MaxSan", "Debug.Werror", "Debug.Coverage",
                         "Release.-DBEMAN_INSIDE_MATH_NO_FP=ON",
-                        "Debug.-DBEMAN_INSIDE_STRICT_SFINAE=ON"
-                      ]
-                    }
-                  ]
-                },
-                { "cxxversions": ["c++23"],
-                  "tests": [{ "stdlibs": ["libstdc++"], "tests": ["Release.Default", "Release.-DBEMAN_INSIDE_CERTIFY_FULL=ON"]}]
-                }
-              ]
-            },
-            { "versions": ["15", "14"],
-              "tests": [
-                { "cxxversions": ["c++26", "c++23"],
-                  "tests": [{ "stdlibs": ["libstdc++"], "tests": ["Release.Default"]}]
-                }
-              ]
-            }
-          ],
-          "clang": [
-            { "versions": ["22"],
-              "tests": [
-                { "cxxversions": ["c++26"],
-                  "tests": [
-                    { "stdlibs": ["libstdc++", "libc++"],
-                      "tests": [
-                        "Debug.Default", "Release.Default", "Release.TSan",
-                        "Release.MaxSan", "Debug.Werror"
-                      ]
-                    }
-                  ]
-                },
-                { "cxxversions": ["c++23"],
-                  "tests": [
-                    { "stdlibs": ["libstdc++"], "tests": ["Release.Default"]},
-                    { "stdlibs": ["libc++"], "tests": ["Release.Default", "Release.-DBEMAN_INSIDE_CERTIFY_FULL=ON"]}
-                  ]
-                }
-              ]
-            },
-            { "versions": ["21", "20", "19"],
-              "tests": [
-                { "cxxversions": ["c++26", "c++23"],
-                  "tests": [
-                    { "stdlibs": ["libstdc++", "libc++"], "tests": ["Release.Default"]}
-                  ]
-                }
-              ]
-            },
-            { "versions": ["18"],
-              "tests": [
-                { "cxxversions": ["c++26", "c++23"],
-                  "tests": [{ "stdlibs": ["libc++"], "tests": ["Release.Default"]}]
-                }
-              ]
-            }
-          ],
-          "appleclang": [
-            { "versions": ["latest"],
-              "tests": [
-                { "cxxversions": ["c++26"],
-                  "tests": [{ "stdlibs": ["libc++"], "tests": ["Release.Default"]}]
-                },
-                { "cxxversions": ["c++23"],
-                  "tests": [{ "stdlibs": ["libc++"], "tests": ["Release.Default", "Release.-DBEMAN_INSIDE_CERTIFY_FULL=ON"]}]
-                }
-              ]
-            }
-          ],
-          "msvc": [
-            { "versions": ["latest"],
-              "tests": [
-                { "cxxversions": ["c++23"],
-                  "tests": [
-                    { "stdlibs": ["stl"],
-                      "tests": [
-                        "Debug.Default", "Release.Default",
-                        "Release.-DBEMAN_INSIDE_WARNINGS_AS_ERRORS=ON",
+                        "Debug.-DBEMAN_INSIDE_STRICT_SFINAE=ON",
                         "Release.-DBEMAN_INSIDE_CERTIFY_FULL=ON"
                       ]
                     }
@@ -249,6 +99,7 @@ jobs:
     uses: bemanproject/infra-workflows/.github/workflows/reusable-beman-vcpkg-ci.yml@1.7.4
     with:
       port_name: beman-inside
+      container_image: ghcr.io/bemanproject/infra-containers-gcc:16
 
   create-issue-when-fault:
     needs: [preset-test, build-and-test, preset-test-full, build-and-test-full]
