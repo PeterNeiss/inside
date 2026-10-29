@@ -5267,16 +5267,19 @@ inline constexpr round_mode rounding_for = has_policy<L, P, round_floor>       ?
                                            : has_policy<L, P, round_nearest>   ? round_mode::nearest
                                                                                : round_mode::trunc;
 
-// Whether the lattice index of Lower, ⌊Lower/Notch⌋ (= Lower/Notch when
-// anchored), is odd: with an offset's parity it says which lattice points are
-// even. Exact past imax.
-template <insidable L>
-inline constexpr bool lower_index_odd = [] {
-    if constexpr (!notched<L>) // (index_lo64 divides by the notch)
-        return false;
-    else
-        return (round_to_integral(*index_lo64<L>, round_mode::floor).Numerator & 1) != 0;
-}();
+// ⌊a / b⌋ for grid numbers (b > 0).
+constexpr grid_int floor_quotient(const grid_rational& a, const grid_rational& b) noexcept {
+    const grid_int n = wide_numerator(a) * wide_denominator(b), d = wide_denominator(a) * wide_numerator(b);
+    const grid_int q = n / d;
+    return (n % d != grid_int{0} && n.negative()) ? q - grid_int{1} : q;
+}
+
+// The lattice index of Lower, ⌊Lower/Notch⌋ — slot_base on an anchored grid.
+// Its parity plus an offset's says which lattice points are even.
+template <insidable B>
+inline constexpr grid_int lower_index_wide = notched<B> ? floor_quotient(lower_of<B>, notch_of<B>) : grid_int{0};
+template <insidable B>
+inline constexpr bool lower_index_odd = (static_cast<umax>(lower_index_wide<B>) & 1) != 0;
 
 // The rounding step onto L's lattice by rounding_for<L, P>: the exact
 // lattice offset q (v/Notch when anchored, (v − Lower)/Notch otherwise) as
@@ -5675,28 +5678,15 @@ constexpr wide_rational<K> exact_of_grid(const grid_rational& r) noexcept {
     return {static_cast<wide_sint<K>>(wide_numerator(r)), static_cast<wide_sint<K>>(wide_denominator(r))};
 }
 
+// a / b for grid numbers, known at compile time to be an integer.
+constexpr grid_int exact_quotient(const grid_rational& a, const grid_rational& b) noexcept {
+    return wide_numerator(a) * wide_denominator(b) / (wide_denominator(a) * wide_numerator(b));
+}
+
 // m = Lower/Notch, the value index of slot 0 (0 for a continuous grid). An
 // integer only on an anchored grid: the paths that use it require one.
 template <insidable B>
-inline constexpr grid_int slot_base = [] {
-    if constexpr (!notched<B>)
-        return grid_int{0};
-    else
-        return wide_numerator(lower_of<B>) * wide_denominator(notch_of<B>) /
-               (wide_denominator(lower_of<B>) * wide_numerator(notch_of<B>));
-}();
-
-// ⌊a / b⌋ for grid numbers (b > 0).
-constexpr grid_int floor_quotient(const grid_rational& a, const grid_rational& b) noexcept {
-    const grid_int n = wide_numerator(a) * wide_denominator(b), d = wide_denominator(a) * wide_numerator(b);
-    const grid_int q = n / d;
-    return (n % d != grid_int{0} && n.negative()) ? q - grid_int{1} : q;
-}
-
-// The lattice index of Lower, ⌊Lower/Notch⌋ — slot_base on an anchored grid.
-// Its parity plus an offset's says which lattice points are even.
-template <insidable B>
-inline constexpr grid_int lower_index_wide = notched<B> ? floor_quotient(lower_of<B>, notch_of<B>) : grid_int{0};
+inline constexpr grid_int slot_base = notched<B> ? exact_quotient(lower_of<B>, notch_of<B>) : grid_int{0};
 
 // Bits that bound every value of B's grid: |value| < 2^grid_magnitude_bits.
 template <insidable B>
@@ -6180,8 +6170,7 @@ constexpr bool exact_rounds_into_range(const rational& v, rational& out) {
         using I      = std::remove_cvref_t<decltype(j)>;
         if (j.negative() || I{max_index_of<L>} < j)
             return false;
-        out =
-            (detail::lower64<L> + (rational{static_cast<umax>(j)} * detail::notch64<L>).value()).value(); // L's point
+        out = (lower64<L> + (rational{static_cast<umax>(j)} * notch64<L>).value()).value(); // L's point
         return true;
     }
 }
@@ -6258,11 +6247,6 @@ using index_work_t = std::conditional_t<(index_work_bits<Result, L, UL, R, UR, U
                                         std::conditional_t<divides_units<Result, URes>,
                                                            work_int_t<index_work_bits<Result, L, UL, R, UR, URes>>,
                                                            wrap_work_t<Result>>>;
-
-// a / b for grid numbers, known at compile time to be an integer.
-constexpr grid_int exact_quotient(const grid_rational& a, const grid_rational& b) noexcept {
-    return wide_numerator(a) * wide_denominator(b) / (wide_denominator(a) * wide_numerator(b));
-}
 
 template <typename W, integer_storage X>
 constexpr W value_index(const X& x) noexcept {
@@ -6454,26 +6438,26 @@ constexpr grid wrap_carry_grid() {
     constexpr imax imax_hi = std::numeric_limits<imax>::max();
     // A range past the rational range (a grid spanning 2^64 or more) has
     // carries in {−1, 0, 1} at most: the full imax grid holds them.
-    constexpr auto span_r = try_sub(detail::upper64<L>, detail::lower64<L>);
-    if constexpr (!span_r || !try_add(*span_r, detail::notch64<L>))
+    constexpr auto span_r = try_sub(upper64<L>, lower64<L>);
+    if constexpr (!span_r || !try_add(*span_r, notch64<L>))
         return grid{imax_lo, imax_hi};
     else if constexpr (std::integral<R> || insidable<R>) {
         // An integral source spans its type's limits, an inside its interval.
         constexpr rational src_lo = [] {
             if constexpr (insidable<R>)
-                return detail::lower64<R>;
+                return lower64<R>;
             else
                 return rational{std::numeric_limits<R>::min()};
         }();
         constexpr rational src_hi = [] {
             if constexpr (insidable<R>)
-                return detail::upper64<R>;
+                return upper64<R>;
             else
                 return rational{std::numeric_limits<R>::max()};
         }();
-        const rational range    = *try_add(*span_r, detail::notch64<L>);
+        const rational range    = *try_add(*span_r, notch64<L>);
         auto           carry_of = [&](rational v, imax fallback) -> imax {
-            const auto off = try_sub(v, detail::lower64<L>);
+            const auto off = try_sub(v, lower64<L>);
             if (!off)
                 return fallback;
             const auto q = try_div(*off, range);
@@ -6653,7 +6637,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
                     fail(errc::overflow);
                     return lhs;
                 } else
-                    r = low ? detail::lower64<L> : detail::upper64<L>;
+                    r = low ? lower64<L> : upper64<L>;
             }
         }
         if constexpr (clamp_action<plain_t<A>> || wrap_action<plain_t<A>>)
@@ -6668,10 +6652,10 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
             if constexpr (point_storage<L>) {
                 // One value and no lattice to divide by: the slot below it,
                 // its own, or the one above (the slot count is 0).
-                using F      = wide_rational<exact_max<K, exact_limbs<L>>>;
-                using W      = decltype(F{}.Num);
-                const auto c = F{v} <=> exact_of_grid<exact_max<K, exact_limbs<L>>>(lower_of<L>);
-                return exact_index_result<exact_max<K, exact_limbs<L>>>{c < 0 ? W{-1} : W{c > 0 ? 1 : 0}, true};
+                constexpr std::size_t KP = exact_max<K, exact_limbs<L>>;
+                using W                  = wide_sint<KP>;
+                const auto c             = wide_rational<KP>{v} <=> exact_of_grid<KP>(lower_of<L>);
+                return exact_index_result<KP>{c < 0 ? W{-1} : W{c > 0 ? 1 : 0}, true};
             } else
                 return exact_index<L, rounding_for<L, plain_t<P>>>(v);
         }();

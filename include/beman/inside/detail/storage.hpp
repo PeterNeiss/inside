@@ -438,16 +438,19 @@ inline constexpr round_mode rounding_for = has_policy<L, P, round_floor>       ?
                                            : has_policy<L, P, round_nearest>   ? round_mode::nearest
                                                                                : round_mode::trunc;
 
-// Whether the lattice index of Lower, ⌊Lower/Notch⌋ (= Lower/Notch when
-// anchored), is odd: with an offset's parity it says which lattice points are
-// even. Exact past imax.
-template <insidable L>
-inline constexpr bool lower_index_odd = [] {
-    if constexpr (!notched<L>) // (index_lo64 divides by the notch)
-        return false;
-    else
-        return (round_to_integral(*index_lo64<L>, round_mode::floor).Numerator & 1) != 0;
-}();
+// ⌊a / b⌋ for grid numbers (b > 0).
+constexpr grid_int floor_quotient(const grid_rational& a, const grid_rational& b) noexcept {
+    const grid_int n = wide_numerator(a) * wide_denominator(b), d = wide_denominator(a) * wide_numerator(b);
+    const grid_int q = n / d;
+    return (n % d != grid_int{0} && n.negative()) ? q - grid_int{1} : q;
+}
+
+// The lattice index of Lower, ⌊Lower/Notch⌋ — slot_base on an anchored grid.
+// Its parity plus an offset's says which lattice points are even.
+template <insidable B>
+inline constexpr grid_int lower_index_wide = notched<B> ? floor_quotient(lower_of<B>, notch_of<B>) : grid_int{0};
+template <insidable B>
+inline constexpr bool lower_index_odd = (static_cast<umax>(lower_index_wide<B>) & 1) != 0;
 
 // The rounding step onto L's lattice by rounding_for<L, P>: the exact
 // lattice offset q (v/Notch when anchored, (v − Lower)/Notch otherwise) as

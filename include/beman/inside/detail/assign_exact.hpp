@@ -87,26 +87,26 @@ constexpr grid wrap_carry_grid() {
     constexpr imax imax_hi = std::numeric_limits<imax>::max();
     // A range past the rational range (a grid spanning 2^64 or more) has
     // carries in {−1, 0, 1} at most: the full imax grid holds them.
-    constexpr auto span_r = try_sub(detail::upper64<L>, detail::lower64<L>);
-    if constexpr (!span_r || !try_add(*span_r, detail::notch64<L>))
+    constexpr auto span_r = try_sub(upper64<L>, lower64<L>);
+    if constexpr (!span_r || !try_add(*span_r, notch64<L>))
         return grid{imax_lo, imax_hi};
     else if constexpr (std::integral<R> || insidable<R>) {
         // An integral source spans its type's limits, an inside its interval.
         constexpr rational src_lo = [] {
             if constexpr (insidable<R>)
-                return detail::lower64<R>;
+                return lower64<R>;
             else
                 return rational{std::numeric_limits<R>::min()};
         }();
         constexpr rational src_hi = [] {
             if constexpr (insidable<R>)
-                return detail::upper64<R>;
+                return upper64<R>;
             else
                 return rational{std::numeric_limits<R>::max()};
         }();
-        const rational range    = *try_add(*span_r, detail::notch64<L>);
+        const rational range    = *try_add(*span_r, notch64<L>);
         auto           carry_of = [&](rational v, imax fallback) -> imax {
-            const auto off = try_sub(v, detail::lower64<L>);
+            const auto off = try_sub(v, lower64<L>);
             if (!off)
                 return fallback;
             const auto q = try_div(*off, range);
@@ -286,7 +286,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
                     fail(errc::overflow);
                     return lhs;
                 } else
-                    r = low ? detail::lower64<L> : detail::upper64<L>;
+                    r = low ? lower64<L> : upper64<L>;
             }
         }
         if constexpr (clamp_action<plain_t<A>> || wrap_action<plain_t<A>>)
@@ -301,10 +301,10 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
             if constexpr (point_storage<L>) {
                 // One value and no lattice to divide by: the slot below it,
                 // its own, or the one above (the slot count is 0).
-                using F      = wide_rational<exact_max<K, exact_limbs<L>>>;
-                using W      = decltype(F{}.Num);
-                const auto c = F{v} <=> exact_of_grid<exact_max<K, exact_limbs<L>>>(lower_of<L>);
-                return exact_index_result<exact_max<K, exact_limbs<L>>>{c < 0 ? W{-1} : W{c > 0 ? 1 : 0}, true};
+                constexpr std::size_t KP = exact_max<K, exact_limbs<L>>;
+                using W                  = wide_sint<KP>;
+                const auto c             = wide_rational<KP>{v} <=> exact_of_grid<KP>(lower_of<L>);
+                return exact_index_result<KP>{c < 0 ? W{-1} : W{c > 0 ? 1 : 0}, true};
             } else
                 return exact_index<L, rounding_for<L, plain_t<P>>>(v);
         }();
