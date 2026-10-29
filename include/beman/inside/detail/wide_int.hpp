@@ -35,6 +35,15 @@
 // The limb kernels below are also used by big_rational.
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
+// The builtin word a conversion between wide_int and T goes through: 128 bits
+// for a T wider than 64 where the target has them.
+#if BEMAN_INSIDE_HAS_INT128
+template <class T>
+using conversion_word_t = std::conditional_t<(sizeof(T) > 8), unsigned __int128, std::uint64_t>;
+#else
+template <class T>
+using conversion_word_t = std::uint64_t;
+#endif
 
 template <std::size_t N, bool Signed, std::unsigned_integral L = umax>
 struct wide_int {
@@ -51,11 +60,7 @@ struct wide_int {
     // builtin conversions do.
     template <std::integral T>
     constexpr wide_int(T v) noexcept {
-#if BEMAN_INSIDE_HAS_INT128
-        using W = std::conditional_t<(sizeof(T) > 8), unsigned __int128, std::uint64_t>;
-#else
-        using W = std::uint64_t;
-#endif
+        using W             = conversion_word_t<T>;
         using S             = std::make_signed_t<W>;
         constexpr int wbits = std::numeric_limits<W>::digits;
         const W       w     = std::is_signed_v<T> ? static_cast<W>(static_cast<S>(v)) : static_cast<W>(v);
@@ -92,11 +97,7 @@ struct wide_int {
     // builtin narrowing conversions do.
     template <std::integral T>
     constexpr explicit operator T() const noexcept {
-#if BEMAN_INSIDE_HAS_INT128
-        using W = std::conditional_t<(sizeof(T) > 8), unsigned __int128, std::uint64_t>;
-#else
-        using W = std::uint64_t;
-#endif
+        using W             = conversion_word_t<T>;
         constexpr int wbits = std::numeric_limits<W>::digits;
         W             acc   = 0;
         for (std::size_t i = 0; i < N && static_cast<int>(i) * limb_bits < wbits; ++i)

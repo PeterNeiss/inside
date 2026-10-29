@@ -1130,6 +1130,15 @@ constexpr T pow_by_squaring(T x, unsigned n, Mul mul, T one) {
 // The limb kernels below are also used by big_rational.
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
+// The builtin word a conversion between wide_int and T goes through: 128 bits
+// for a T wider than 64 where the target has them.
+#if BEMAN_INSIDE_HAS_INT128
+template <class T>
+using conversion_word_t = std::conditional_t<(sizeof(T) > 8), unsigned __int128, std::uint64_t>;
+#else
+template <class T>
+using conversion_word_t = std::uint64_t;
+#endif
 
 template <std::size_t N, bool Signed, std::unsigned_integral L = umax>
 struct wide_int {
@@ -1146,11 +1155,7 @@ struct wide_int {
     // builtin conversions do.
     template <std::integral T>
     constexpr wide_int(T v) noexcept {
-#if BEMAN_INSIDE_HAS_INT128
-        using W = std::conditional_t<(sizeof(T) > 8), unsigned __int128, std::uint64_t>;
-#else
-        using W = std::uint64_t;
-#endif
+        using W             = conversion_word_t<T>;
         using S             = std::make_signed_t<W>;
         constexpr int wbits = std::numeric_limits<W>::digits;
         const W       w     = std::is_signed_v<T> ? static_cast<W>(static_cast<S>(v)) : static_cast<W>(v);
@@ -1187,11 +1192,7 @@ struct wide_int {
     // builtin narrowing conversions do.
     template <std::integral T>
     constexpr explicit operator T() const noexcept {
-#if BEMAN_INSIDE_HAS_INT128
-        using W = std::conditional_t<(sizeof(T) > 8), unsigned __int128, std::uint64_t>;
-#else
-        using W = std::uint64_t;
-#endif
+        using W             = conversion_word_t<T>;
         constexpr int wbits = std::numeric_limits<W>::digits;
         W             acc   = 0;
         for (std::size_t i = 0; i < N && static_cast<int>(i) * limb_bits < wbits; ++i)
@@ -1623,15 +1624,6 @@ inline constexpr void trim(umax& a, umax& b) {
 [[nodiscard]] constexpr auto                          operator<=>(rational, rational) -> std::strong_ordering;
 
 //---------------------------------------------------------------------------
-// Overflow / malformed-literal signalling
-//---------------------------------------------------------------------------
-// Failure aborts constant evaluation via `detail::constexpr_error<Msg>()` — a
-// non-constexpr [[noreturn]] helper carrying the message in an NTTP (literal
-// parsers and the checked paths' `fail<"...">` under `if consteval`),
-// hard-failing the build with the text in the diagnostic; at runtime those
-// paths fall through to `std::unexpected`. No `throw`, so it is -fno-exceptions clean.
-
-//---------------------------------------------------------------------------
 // rational — structural type for NTTP (public members only). Sign is encoded
 // in the denominator (negative = negative rational); numerator is unsigned to
 // represent e.g. umax itself.
@@ -1735,28 +1727,28 @@ struct rational {
     static constexpr auto inv_impl(const rational&);
 
   private:
-    // Domain check + canonical-zero + gcd reduction; used by the integral ctors.
-    // Two domain errors: Denominator == 0 (undefined)
-    // and Denominator == imax_min (cannot be negated without UB, which every
-    // sign-flip in the file assumes is well-defined).
-    static constexpr void canonicalize(umax& num, imax& den) {
+    // The two domain errors of a denominator: 0 (undefined) and imax_min
+    // (cannot be negated without UB, which every sign-flip in the file
+    // assumes is well-defined).
+    static constexpr void check_den(imax den) {
         if (den == 0)
             raise(errc::domain_error, "Denominator of Zero is invalid");
         if (den == std::numeric_limits<imax>::min())
             raise(errc::domain_error, "Denominator imax_min is invalid (cannot be negated)");
+    }
+
+    // Domain check + canonical-zero + gcd reduction; used by the integral ctors.
+    static constexpr void canonicalize(umax& num, imax& den) {
+        check_den(den);
         if (num == 0)
             den = 1;
         trim(num, den);
     }
 
     // Signed-encoded denominator for the signed ctor, validated BEFORE the
-    // negation so `-den` is never UB (the ctor-body canonicalize() would catch
-    // these too, but only after the mem-init already evaluated `-den`).
+    // negation so `-den` is never UB.
     static constexpr imax signed_den_from(std::signed_integral auto num, imax den) {
-        if (den == 0)
-            raise(errc::domain_error, "Denominator of Zero is invalid");
-        if (den == std::numeric_limits<imax>::min())
-            raise(errc::domain_error, "Denominator imax_min is invalid (cannot be negated)");
+        check_den(den);
         return (num < 0) ? -den : den;
     }
 };
@@ -1935,40 +1927,27 @@ constexpr rational::rational(std::signed_integral auto num, imax den)
     canonicalize(Numerator, Denominator);
 }
 
-constexpr rational::rational(std::floating_point auto value) {
-    if (!is_finite(value))
-        raise(errc::not_finite, "non-finite double");
-    if constexpr (wide_float<decltype(value)>)
-        if (!is_double_value(value)) {
-            bool exact;
-            *this = rational_of_wide_float(value, exact);
-            return;
-        }
-
-    if (value == 0.0) {
-        Numerator   = 0;
-        Denominator = 1;
-        return;
-    }
-
-    bool neg = (value < 0.0);
-    if (neg)
-        value = -value;
-
-    auto [num, den] = abs_fraction(static_cast<double>(value));
-    Numerator       = num;
-    Denominator     = static_cast<imax>(neg ? umax{0} - den : den);
-    // no trim: abs_fraction returns a reduced fraction
-}
-
 // rational{value}, and whether it is exact: a finite |value| < 2^64 finer
-// than 2^-62 loses its low bits (truncated toward zero).
+// than 2^-62 loses its low bits (truncated toward zero). abs_fraction's
+// fraction is already reduced.
 constexpr rational rational_of_double(double value, bool& exact) {
     exact = true;
     if (value == 0.0)
-        return rational{0};
-    const auto [num, den] = abs_fraction(value < 0 ? -value : value, exact);
+        return make_raw(0, 1);
+    const auto [num, den] = abs_fraction(value, exact);
     return make_raw(num, value < 0 ? -static_cast<imax>(den) : static_cast<imax>(den));
+}
+
+constexpr rational::rational(std::floating_point auto value) {
+    if (!is_finite(value))
+        raise(errc::not_finite, "non-finite double");
+    bool exact;
+    if constexpr (wide_float<decltype(value)>)
+        if (!is_double_value(value)) {
+            *this = rational_of_wide_float(value, exact);
+            return;
+        }
+    *this = rational_of_double(static_cast<double>(value), exact);
 }
 
 //---------------------------------------------------------------------------
@@ -1983,10 +1962,6 @@ constexpr std::expected<T, errc> rational::to() const {
         return std::unexpected{errc::overflow};
     return static_cast<T>(q);
 }
-
-// per<D> is defined publicly in `namespace beman::inside` (see the
-// re-export block at the end of this header) so consumers spell grid values
-// without naming the internal representation type.
 
 // a + b exactly, for the checked add once a 64-bit step overflowed: the
 // numerator and lcm in 3 limbs, reduced, then checked to fit (a sum can
@@ -2326,10 +2301,8 @@ template <plain_number T>
     const int ls = sign(lhs), rs = rhs < 0 ? -1 : 1;
     if (ls != rs)
         return ls <=> rs;
-    const auto bits = std::bit_cast<std::uint64_t>(rhs) & 0x7FFF'FFFF'FFFF'FFFF;
-    const int  e    = static_cast<int>(bits >> 52);
-    const umax s    = (bits & 0x000F'FFFF'FFFF'FFFF) | (e != 0 ? umax{1} << 52 : 0);
-    const int  k    = e != 0 ? 1023 + 52 - e : 1023 + 52 - 1; // rhs = s·2^-k, k > 62
+    const auto [s, exp2] = abs_fields(rhs);
+    const int  k         = -exp2; // rhs = s·2^-k, k > 62
     const umax n = lhs.Numerator, d = abs_den(lhs.Denominator);
     // s·D < 2^117: past that width N·2^k is larger.
     const auto mag = std::bit_width(n) + k > 117
@@ -2513,9 +2486,6 @@ BEMAN_INSIDE_RATIONAL_OP(/)
     return (s % q == 0) && (p % r == 0);
 }
 
-} // namespace beman::inside::detail
-
-namespace beman::inside::detail {
 // Checked builder for per<D> below: a static_assert here fires at the user's
 // spelling (also through just<N, D>, which is N · per<D>).
 template <umax D>
