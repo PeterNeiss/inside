@@ -192,6 +192,16 @@ constexpr Dst& dispatch_assign(Dst& dst, const C& src, P& policy, std::tuple<As.
     return assignment<Dst, C>::assign(dst, src, policy, assignment_action(actions));
 }
 
+// The same into a fresh Target: the value read-out of policy_ref and
+// policy_buffer. A failed store (errc&, on_error) leaves it value-initialized,
+// not garbage.
+template <insidable Target, numeric C, typename P, typename... As>
+constexpr Target dispatch_new(const C& src, P& policy, std::tuple<As...>& actions) {
+    Target r{};
+    dispatch_assign(r, src, policy, actions);
+    return r;
+}
+
 // policy_buffer — the rvalue-receiver sibling of policy_ref. `with_snap()` etc.
 // on a *temporary* return this instead: it OWNS the inside by value (the temporary
 // is moved in), so the snapped value can be returned/stored without dangling —
@@ -207,9 +217,7 @@ struct policy_buffer {
     template <insidable Target>
         requires inside_assignable<Target, B, flags_of<Target> | flags_of<P>>
     constexpr operator Target() {
-        Target r{}; // a failed store (errc&, on_error) leaves it, not garbage
-        dispatch_assign(r, Owned, Policy, Actions);
-        return r;
+        return dispatch_new<Target>(Owned, Policy, Actions);
     }
 };
 
@@ -255,9 +263,7 @@ struct policy_ref {
     template <insidable Target>
         requires inside_assignable<Target, B, flags_of<Target> | flags_of<P>>
     constexpr operator Target() {
-        Target r{}; // a failed store (errc&, on_error) leaves it, not garbage
-        dispatch_assign(r, Ref, Policy, Actions);
-        return r;
+        return dispatch_new<Target>(Ref, Policy, Actions);
     }
 
     // expected<C> sink — unwrap once at the proxy boundary so callers can chain
@@ -270,12 +276,9 @@ struct policy_ref {
     }
 
   private:
-    constexpr void report_zero(errc code, const char* what) {
-        if constexpr (has_action<is_error_action, As...>)
-            pick_action_in<is_error_action>(Actions).Fn(Ref, code, what);
-        else if constexpr (!has_policy<B, P, ignore_zero>)
-            Policy.report(code);
-    }
+    // The value an op's result holds (an expected's value type) assigns back.
+    template <typename R>
+    static constexpr bool stores_back = inside_assignable<B, detail::unwrap_t<R>, flags_of<B> | flags_of<P>>;
 
   public:
     //-------------------------------------------------------------------------
@@ -283,43 +286,10 @@ struct policy_ref {
     // assign via dispatch_assign so callbacks fire on the narrowing back to B.
     // An expected<inside> result carrying an error (rational-raw overflow,
     // division by zero) surfaces its errc through on_overflow if registered,
-    // else report.
+    // else report. Constrained on the free op they call and on storing its
+    // result back under this policy, so a requires probe sees what compiles:
+    // a 1/16 sum does not store into an integer grid without snap.
     //-------------------------------------------------------------------------
-  private:
-    template <typename R>
-    constexpr B& finalize_arith(R&& result, [[maybe_unused]] const char* msg) {
-        if constexpr (expected_like<R>) {
-            if (!result.has_value()) [[unlikely]] {
-                if (result.error() == errc::division_by_zero)
-                    report_zero(errc::division_by_zero, msg); // on_error / ignore_zero, like rational /=
-                else if constexpr (has_action<is_overflow_action, As...>)
-                    pick_action_in<is_overflow_action>(Actions).Fn(Ref, result.error());
-                else
-                    Policy.report(result.error());
-                return Ref;
-            }
-            return dispatch_assign(Ref, result.value(), Policy, Actions);
-        } else
-            return dispatch_assign(Ref, std::forward<R>(result), Policy, Actions);
-    }
-
-    // Shared body for the rational `+=`/`-=`/`*=`/`/=` operators: lift Ref to
-    // rational and route the checked result through `finalize_arith`.
-    template <std::invocable<rational, rational> RatOp>
-    constexpr B& rational_assign(const rational& rhs, RatOp rat_op, const char* msg) {
-        return finalize_arith(rat_op(rational{Ref}, rhs), msg);
-    }
-
-    // The value an op's result holds (an expected's value type) assigns back.
-    template <typename R>
-    static constexpr bool stores_back = inside_assignable<B, detail::unwrap_t<R>, flags_of<B> | flags_of<P>>;
-
-  public:
-    // Constrained on the free op they call and on storing its result back
-    // under this policy, so a requires probe sees what compiles: an int64
-    // grid's `+=` takes its raw path, but its `add` (whose sum grid passes
-    // 64 bits) does not exist; a 1/16 sum does not store into an integer
-    // grid without snap.
     template <insidable C>
         requires requires(const B& b, const C& c, P& p) { add(b, c, p); } &&
                  stores_back<decltype(add(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
@@ -372,21 +342,21 @@ struct policy_ref {
     // rational RHS overloads — the only non-inside operand a compound assign
     // accepts. Lets callers write `b += rational{1,3}`. Raw int/float/double are
     // ill-formed: give the scalar a grid (`1_ins` / `just<1>` / `inside<{lo,hi}>{n}`).
-    // Lift Ref to rational, checked op, finalize_arith.
+    // Ref as a rational, checked op, finalize_arith.
     //-------------------------------------------------------------------------
     template <std::same_as<rational> C>
     constexpr B& operator+=(const C& rhs) {
-        return rational_assign(rhs, [](rational a, rational b) { return a + b; }, "policy_ref::operator+= overflow");
+        return finalize_arith(rational{Ref} + rhs, "policy_ref::operator+= overflow");
     }
 
     template <std::same_as<rational> C>
     constexpr B& operator-=(const C& rhs) {
-        return rational_assign(rhs, [](rational a, rational b) { return a - b; }, "policy_ref::operator-= overflow");
+        return finalize_arith(rational{Ref} - rhs, "policy_ref::operator-= overflow");
     }
 
     template <std::same_as<rational> C>
     constexpr B& operator*=(const C& rhs) {
-        return rational_assign(rhs, [](rational a, rational b) { return a * b; }, "policy_ref::operator*= overflow");
+        return finalize_arith(rational{Ref} * rhs, "policy_ref::operator*= overflow");
     }
 
     template <std::same_as<rational> C>
@@ -395,8 +365,32 @@ struct policy_ref {
             report_zero(errc::division_by_zero, "policy_ref::operator/= division by zero");
             return Ref;
         }
-        return rational_assign(
-            rhs, [](rational a, rational b) { return a / b; }, "policy_ref::operator/= division/overflow");
+        return finalize_arith(rational{Ref} / rhs, "policy_ref::operator/= division/overflow");
+    }
+
+  private:
+    constexpr void report_zero(errc code, const char* what) {
+        if constexpr (has_action<is_error_action, As...>)
+            pick_action_in<is_error_action>(Actions).Fn(Ref, code, what);
+        else if constexpr (!has_policy<B, P, ignore_zero>)
+            Policy.report(code);
+    }
+
+    template <typename R>
+    constexpr B& finalize_arith(R&& result, [[maybe_unused]] const char* msg) {
+        if constexpr (expected_like<R>) {
+            if (!result.has_value()) [[unlikely]] {
+                if (result.error() == errc::division_by_zero)
+                    report_zero(errc::division_by_zero, msg); // on_error / ignore_zero, like rational /=
+                else if constexpr (has_action<is_overflow_action, As...>)
+                    pick_action_in<is_overflow_action>(Actions).Fn(Ref, result.error());
+                else
+                    Policy.report(result.error());
+                return Ref;
+            }
+            return dispatch_assign(Ref, result.value(), Policy, Actions);
+        } else
+            return dispatch_assign(Ref, std::forward<R>(result), Policy, Actions);
     }
 };
 } // namespace detail

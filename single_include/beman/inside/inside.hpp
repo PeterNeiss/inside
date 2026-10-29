@@ -6829,13 +6829,13 @@ struct assignment<L, R> {
     static constexpr void store(L& lhs, R rhs) {
         if constexpr (value_storage<L>)
             lhs = L::from_raw(raw_cast<L>(rhs));
-        else if constexpr (detail::point_grid<L>)
+        else if constexpr (point_grid<L>)
             lhs = L::from_raw(0); // a point grid: 0 is the only offset
         else if constexpr (qformat_codec_fits<L>)
             lhs = L::from_raw(q_format_encode<L>(static_cast<imax>(rhs)));
         else // index storage on a notch 1/K grid: the offset is an exact integer
         {
-            rational raw = ((rhs - detail::lower64<L>) / detail::notch64<L>).value();
+            rational raw = ((rhs - lower64<L>) / notch64<L>).value();
             lhs          = L::from_raw(raw_cast<L>(raw.Numerator));
         }
     }
@@ -6845,7 +6845,7 @@ struct assignment<L, R> {
     // Lower (or the grid is continuous); otherwise it may fall between notches
     // and must round or report exactly like the same value given as a rational.
     static constexpr bool integers_on_grid =
-        !detail::notched<L> || (detail::notch64<L>.Numerator == 1 && abs_den(detail::lower64<L>.Denominator) == 1);
+        !notched<L> || (notch64<L>.Numerator == 1 && abs_den(lower64<L>.Denominator) == 1);
 
     template <typename P, typename A = no_action>
     static constexpr L& assign(L& lhs, const R& rhs, P&& policy, A&& action = {}) {
@@ -6872,7 +6872,7 @@ struct assignment<L, R> {
                             // The integer clamp/wrap formulas need consecutive integers to be
                             // adjacent grid points (notch 1); a finer notch wraps modulo
                             // span + notch on the rational path.
-                            if constexpr (detail::notch64<L> == 1) {
+                            if constexpr (notch64<L> == 1) {
                                 if (handle_out_of_range(lhs, rhs, policy, action))
                                     return lhs;
                             } else
@@ -6910,7 +6910,7 @@ inline constexpr unanchored_codec_t unanchored_codec = [] {
         return no;
     else {
         constexpr umax cap = static_cast<umax>(std::numeric_limits<imax>::max());
-        const rational n = detail::notch64<L>, lo = detail::lower64<L>, hi = detail::upper64<L>;
+        const rational n = notch64<L>, lo = lower64<L>, hi = upper64<L>;
         const umax     dn = abs_den(n.Denominator), dl = abs_den(lo.Denominator);
         umax           k;
         if (mul_overflow(dn / std::gcd(dn, dl), dl, &k) || k > cap)
@@ -6954,18 +6954,18 @@ struct assignment<L, R> {
     [[gnu::noinline]] static constexpr bool below_lower(R rhs)
         requires std::floating_point<R>
     {
-        return huge(rhs) ? rhs < 0 : rhs < detail::lower64<L>;
+        return huge(rhs) ? rhs < 0 : rhs < lower64<L>;
     }
     static constexpr bool below_lower(const R& rhs)
         requires(!std::floating_point<R>)
     {
-        return rhs < detail::lower64<L>;
+        return rhs < lower64<L>;
     }
 
     template <typename P, typename A>
     static constexpr void apply_clamp(L& lhs, R rhs, P&&, A&& action) {
         const bool low   = below_lower(rhs);
-        R          bound = low ? static_cast<R>(detail::lower64<L>) : static_cast<R>(detail::upper64<L>);
+        R          bound = low ? static_cast<R>(lower64<L>) : static_cast<R>(upper64<L>);
         R          overshoot;
         if constexpr (std::same_as<R, rational>)
             overshoot = try_sub(rhs, bound).value_or(rational{0});
@@ -7013,8 +7013,7 @@ struct assignment<L, R> {
         }
         imax     q;
         rational folded;
-        if (abs_den(rhs_r.Denominator) == 1 && detail::notch64<L> == 1 &&
-            abs_den(detail::lower64<L>.Denominator) == 1) {
+        if (abs_den(rhs_r.Denominator) == 1 && notch64<L> == 1 && abs_den(lower64<L>.Denominator) == 1) {
             // Integer value on a unit lattice: fold exactly (the grid may span
             // 2^64 values, past the rational range).
             using fold         = unit_fold<L, source_lo<rational>, source_hi<rational>>;
@@ -7027,9 +7026,9 @@ struct assignment<L, R> {
             // q = floor((rhs - lower) / range), wrapped = rhs - q * range. A step
             // past the 64-bit rational range, or a fold count past imax, folds
             // exactly instead.
-            const auto span  = try_sub(detail::upper64<L>, detail::lower64<L>);
-            const auto range = span ? try_add(*span, detail::notch64<L>) : span;
-            const auto off   = try_sub(rhs_r, detail::lower64<L>);
+            const auto span  = try_sub(upper64<L>, lower64<L>);
+            const auto range = span ? try_add(*span, notch64<L>) : span;
+            const auto off   = try_sub(rhs_r, lower64<L>);
             const auto quot  = (range && off) ? try_div(*off, *range) : off;
             if (!range || !quot || *quot < rational{std::numeric_limits<imax>::min()} ||
                 *quot > rational{std::numeric_limits<imax>::max()}) [[unlikely]]
@@ -7118,7 +7117,7 @@ struct assignment<L, R> {
     [[gnu::cold]] [[gnu::noinline]] static constexpr fine_result_t fine_double_value(double rhs, P policy, A action) {
         L r = [] {
             if constexpr (rational_storage<L>)
-                return L::from_raw(detail::lower64<L>);
+                return L::from_raw(lower64<L>);
             else if constexpr (point_storage<L>)
                 return L::from_raw(raw_t<L>{});
             else
@@ -7187,7 +7186,7 @@ struct assignment<L, R> {
                         return report_failure(lhs, policy, action, errc::rounding_error);
                 }
             lhs = L::from_raw(rv);
-        } else if constexpr (detail::point_grid<L>)
+        } else if constexpr (point_grid<L>)
             lhs = L::from_raw({}); // a point: its value is the type
         else {
             // Store the k-th notch slot: raw_from_offset<L> covers index and
@@ -7214,12 +7213,12 @@ struct assignment<L, R> {
             // double (the integer storage's rule) and read the slot off the
             // value index. No rational round trip.
             if constexpr (std::floating_point<R> && anchored<L> && double_exact<grid_of<L>> &&
-                          std::has_single_bit(detail::notch64<L>.Numerator)) {
-                constexpr imax lo = signed_numerator((detail::lower64<L> / detail::notch64<L>).value());
+                          std::has_single_bit(notch64<L>.Numerator)) {
+                constexpr imax lo = signed_numerator(*index_lo64<L>);
                 const double   v  = static_cast<double>(rhs);
                 const imax     j  = snap_double_index<grid_of<L>, rounding_for<L, P>>(v);
                 if constexpr (!has_round_flag)
-                    if (static_cast<double>(j) * static_cast<double>(detail::notch64<L>) != v && policy.round_check())
+                    if (static_cast<double>(j) * static_cast<double>(notch64<L>) != v && policy.round_check())
                         [[unlikely]]
                         return report_failure(lhs, policy, action, errc::rounding_error);
                 store_slot(static_cast<umax>(j - lo));
@@ -7236,18 +7235,15 @@ struct assignment<L, R> {
             // round_quotient is invariant under reduction, so the slot is
             // bit-identical to the rational path. Oversized denominators
             // fall through (the max_den guard keeps every product inside imax).
-            if constexpr (qformat_codec_fits<L> && detail::notched<L>) {
-                constexpr imax K      = abs_den(detail::notch64<L>.Denominator);
+            if constexpr (qformat_codec_fits<L> && notched<L>) {
+                constexpr imax K      = abs_den(notch64<L>.Denominator);
                 constexpr imax Lo     = lower_imax<L>;
                 constexpr umax two_km = [] {
                     // 2 · K · M with saturation (M bounds |value| and the offset span)
                     // ceil in umax: a bound's magnitude may reach 2^63 (past imax)
                     constexpr umax umax_hi = std::numeric_limits<umax>::max();
-                    const rational a       = detail::abs(detail::lower64<L>) > detail::abs(detail::upper64<L>)
-                                                 ? detail::abs(detail::lower64<L>)
-                                                 : detail::abs(detail::upper64<L>);
-                    const umax     d       = abs_den(a.Denominator);
-                    const umax     c       = a.Numerator / d + (a.Numerator % d != 0 ? 1 : 0);
+                    const rational a       = abs(lower64<L>) > abs(upper64<L>) ? abs(lower64<L>) : abs(upper64<L>);
+                    const umax     c       = round_magnitude(a, round_mode::ceil).Magnitude;
                     if (c > (umax_hi - 2) / 2)
                         return umax_hi;
                     umax k = static_cast<umax>(K);
@@ -7295,8 +7291,8 @@ struct assignment<L, R> {
             // source denominator × fine notch): take the slot from the exact wide
             // index instead (rhs is in range, so it fits L's raw). Rounding is
             // the value-space rule, as everywhere else.
-            const auto rel      = try_sub(rv, detail::lower64<L>);
-            const auto quotient = rel ? try_div(*rel, detail::notch64<L>) : rel;
+            const auto rel      = try_sub(rv, lower64<L>);
+            const auto quotient = rel ? try_div(*rel, notch64<L>) : rel;
             if (!quotient.has_value()) [[unlikely]] {
                 const wide_slot_result slot = wide_slot<P>(rv);
                 if constexpr (!has_round_flag)
@@ -7330,24 +7326,24 @@ struct assignment<L, R> {
         return !past_64_bits(d) && rational{d} == r;
     }
     static constexpr bool double_bounds_exact =
-        std::floating_point<R> && exact_double(detail::lower64<L>) && exact_double(detail::upper64<L>);
+        std::floating_point<R> && exact_double(lower64<L>) && exact_double(upper64<L>);
 
     // A rational source on integer endpoints compares by multiplying the
     // endpoint by the denominator (n/d ≤ m ⇔ n ≤ m·d; an overflowing m·d
     // exceeds any n) — exact, and no division.
-    static constexpr bool integer_bounds = std::same_as<R, rational> && abs_den(detail::lower64<L>.Denominator) == 1 &&
-                                           abs_den(detail::upper64<L>.Denominator) == 1 && fits_imax(interval_of<L>);
+    static constexpr bool integer_bounds = std::same_as<R, rational> && abs_den(lower64<L>.Denominator) == 1 &&
+                                           abs_den(upper64<L>.Denominator) == 1 && fits_imax(interval_of<L>);
 
     static constexpr bool out_of_interval(const R& rhs) {
         if (huge(rhs))
             return true;
         if constexpr (double_bounds_exact) {
-            constexpr double lo = static_cast<double>(detail::lower64<L>);
-            constexpr double hi = static_cast<double>(detail::upper64<L>);
+            constexpr double lo = static_cast<double>(lower64<L>);
+            constexpr double hi = static_cast<double>(upper64<L>);
             return rhs < lo || rhs > hi;
         } else if constexpr (integer_bounds) {
-            constexpr imax lo = signed_numerator(detail::lower64<L>);
-            constexpr imax hi = signed_numerator(detail::upper64<L>);
+            constexpr imax lo = signed_numerator(lower64<L>);
+            constexpr imax hi = signed_numerator(upper64<L>);
             const umax     n = rhs.Numerator, d = abs_den(rhs.Denominator);
             auto           le = [&](umax m) {
                 umax p;
@@ -7387,10 +7383,10 @@ struct assignment<L, R> {
             const double d = static_cast<double>(rhs);
             if (abs_fraction_exact(d)) [[likely]] {
                 const rational r{d};
-                return r < detail::lower64<L> || detail::upper64<L> < r;
+                return r < lower64<L> || upper64<L> < r;
             }
             const auto v = exact_of_double(d);
-            return v < exact_of(detail::lower64<L>) || exact_of(detail::upper64<L>) < v;
+            return v < exact_of(lower64<L>) || exact_of(upper64<L>) < v;
         } else
             return not includes(interval_of<L>, rhs);
     }
@@ -7496,19 +7492,17 @@ struct assignment<L, R> {
     static constexpr bool integer_raws = integer_storage<L> && integer_storage<R>;
 
     static constexpr std::expected<rational, errc> calc_offset() {
-        if constexpr (!integer_raws || !detail::notched<L>)
+        if constexpr (!integer_raws || !notched<L>)
             return rational{0};
         else
-            return try_sub(detail::lower64<R>, detail::lower64<L>).and_then([](const rational& d) {
-                return try_div(d, detail::notch64<L>);
-            });
+            return try_sub(lower64<R>, lower64<L>).and_then([](const rational& d) { return try_div(d, notch64<L>); });
     }
 
     static constexpr std::expected<rational, errc> calc_factor() {
-        if constexpr (!integer_raws || !detail::notched<L> || point_storage<R>)
+        if constexpr (!integer_raws || !notched<L> || point_storage<R>)
             return rational{0}; // a point R's raw is always 0: the mapping is Offset alone
         else
-            return try_div(detail::notch64<R>, detail::notch64<L>);
+            return try_div(notch64<R>, notch64<L>);
     }
 
     // A mapping past the 64-bit rational (a full-int64 source into a fine
@@ -7528,7 +7522,7 @@ struct assignment<L, R> {
                       !values_fit_imax<L> || !values_fit_imax<R>)
             return false;
         else {
-            const rational base = index_storage<L> ? rational{0} : detail::lower64<L>;
+            const rational base = index_storage<L> ? rational{0} : lower64<L>;
             const auto     lo   = Offset + base;
             const auto     span = Factor * rational{max_index_of<R>};
             if (!lo || !span)
@@ -7554,8 +7548,7 @@ struct assignment<L, R> {
     };
     static constexpr affine_map_t affine_map = [] {
         constexpr affine_map_t no{0, 0, 0, false};
-        if constexpr (!maps_raws || !detail::notched<L> || is_integer_mapping || !values_fit_imax<L> ||
-                      !values_fit_imax<R>)
+        if constexpr (!maps_raws || !notched<L> || is_integer_mapping || !values_fit_imax<L> || !values_fit_imax<R>)
             return no;
         else {
             if (!std::in_range<imax>(Factor.Numerator) || !std::in_range<imax>(Offset.Numerator))
@@ -7578,7 +7571,7 @@ struct assignment<L, R> {
             // its value-index-vs-offset branch CHOICE keys on m·di + num fitting
             // imax — mirror those checks for the unreduced den so both forms
             // take the same branch (ties on negatives differ across branches).
-            constexpr auto zl = try_div(detail::lower64<L>, detail::notch64<L>).value_or(rational{0});
+            constexpr auto zl = try_div(lower64<L>, notch64<L>).value_or(rational{0});
             if (abs_den(zl.Denominator) == 1) {
                 if (!std::in_range<imax>(zl.Numerator))
                     return no;
@@ -7595,7 +7588,7 @@ struct assignment<L, R> {
     // proves fits imax (Offset alone may not, e.g. 2^63 into a full int64).
     static constexpr imax map_bias = [] {
         if constexpr (is_integer_mapping)
-            return signed_numerator((Offset + (index_storage<L> ? rational{0} : detail::lower64<L>)).value());
+            return signed_numerator((Offset + (index_storage<L> ? rational{0} : lower64<L>)).value());
         else
             return imax{0};
     }();
@@ -7612,7 +7605,7 @@ struct assignment<L, R> {
   private:
     template <typename A>
     static constexpr void apply_clamp(L& lhs, const R& rhs, A&& action) {
-        lhs = L::from_raw(endpoint_raw<L>(as_rational(rhs) < detail::lower64<L>));
+        lhs = L::from_raw(endpoint_raw<L>(as_rational(rhs) < lower64<L>));
         // Overshoot (rhs − clamped) as an inside, via the result-grid inference of normal
         // inside arithmetic: both operands are insides, so the overshoot is too. It is always
         // in-grid and on-notch for grid_of<R> − grid_of<L>, so the construction is exact.
@@ -7707,7 +7700,7 @@ struct assignment<L, R> {
                 else if constexpr (raw_lo<R> == 0)
                     return std::expected<rational, errc>{rational{rhs.raw()}};
                 else
-                    return try_sub(rational{rhs.raw()}, detail::lower64<R>);
+                    return try_sub(rational{rhs.raw()}, lower64<R>);
             }();
             const auto scaled = r_offset ? try_mul(Factor, *r_offset) : r_offset;
             const auto mapped = scaled ? try_add(Offset, *scaled) : scaled;
@@ -7720,7 +7713,7 @@ struct assignment<L, R> {
             // Round the L-offset to a notch index in VALUE space via round_quotient
             // (same as the scalar path), honouring every rounding mode.
             umax q = round_quotient<L, P>(rat.Numerator, ad);
-            // rat is the L-offset; raw_from_offset<L> adds detail::lower64<L> back for value storage.
+            // rat is the L-offset; raw_from_offset<L> adds lower64<L> back for value storage.
             lhs =
                 L::from_raw((rat.Denominator < 0) ? raw_from_offset<L>(-static_cast<imax>(q)) : raw_from_offset<L>(q));
         }
@@ -8000,6 +7993,16 @@ constexpr Dst& dispatch_assign(Dst& dst, const C& src, P& policy, std::tuple<As.
     return assignment<Dst, C>::assign(dst, src, policy, assignment_action(actions));
 }
 
+// The same into a fresh Target: the value read-out of policy_ref and
+// policy_buffer. A failed store (errc&, on_error) leaves it value-initialized,
+// not garbage.
+template <insidable Target, numeric C, typename P, typename... As>
+constexpr Target dispatch_new(const C& src, P& policy, std::tuple<As...>& actions) {
+    Target r{};
+    dispatch_assign(r, src, policy, actions);
+    return r;
+}
+
 // policy_buffer — the rvalue-receiver sibling of policy_ref. `with_snap()` etc.
 // on a *temporary* return this instead: it OWNS the inside by value (the temporary
 // is moved in), so the snapped value can be returned/stored without dangling —
@@ -8015,9 +8018,7 @@ struct policy_buffer {
     template <insidable Target>
         requires inside_assignable<Target, B, flags_of<Target> | flags_of<P>>
     constexpr operator Target() {
-        Target r{}; // a failed store (errc&, on_error) leaves it, not garbage
-        dispatch_assign(r, Owned, Policy, Actions);
-        return r;
+        return dispatch_new<Target>(Owned, Policy, Actions);
     }
 };
 
@@ -8063,9 +8064,7 @@ struct policy_ref {
     template <insidable Target>
         requires inside_assignable<Target, B, flags_of<Target> | flags_of<P>>
     constexpr operator Target() {
-        Target r{}; // a failed store (errc&, on_error) leaves it, not garbage
-        dispatch_assign(r, Ref, Policy, Actions);
-        return r;
+        return dispatch_new<Target>(Ref, Policy, Actions);
     }
 
     // expected<C> sink — unwrap once at the proxy boundary so callers can chain
@@ -8078,12 +8077,9 @@ struct policy_ref {
     }
 
   private:
-    constexpr void report_zero(errc code, const char* what) {
-        if constexpr (has_action<is_error_action, As...>)
-            pick_action_in<is_error_action>(Actions).Fn(Ref, code, what);
-        else if constexpr (!has_policy<B, P, ignore_zero>)
-            Policy.report(code);
-    }
+    // The value an op's result holds (an expected's value type) assigns back.
+    template <typename R>
+    static constexpr bool stores_back = inside_assignable<B, detail::unwrap_t<R>, flags_of<B> | flags_of<P>>;
 
   public:
     //-------------------------------------------------------------------------
@@ -8091,43 +8087,10 @@ struct policy_ref {
     // assign via dispatch_assign so callbacks fire on the narrowing back to B.
     // An expected<inside> result carrying an error (rational-raw overflow,
     // division by zero) surfaces its errc through on_overflow if registered,
-    // else report.
+    // else report. Constrained on the free op they call and on storing its
+    // result back under this policy, so a requires probe sees what compiles:
+    // a 1/16 sum does not store into an integer grid without snap.
     //-------------------------------------------------------------------------
-  private:
-    template <typename R>
-    constexpr B& finalize_arith(R&& result, [[maybe_unused]] const char* msg) {
-        if constexpr (expected_like<R>) {
-            if (!result.has_value()) [[unlikely]] {
-                if (result.error() == errc::division_by_zero)
-                    report_zero(errc::division_by_zero, msg); // on_error / ignore_zero, like rational /=
-                else if constexpr (has_action<is_overflow_action, As...>)
-                    pick_action_in<is_overflow_action>(Actions).Fn(Ref, result.error());
-                else
-                    Policy.report(result.error());
-                return Ref;
-            }
-            return dispatch_assign(Ref, result.value(), Policy, Actions);
-        } else
-            return dispatch_assign(Ref, std::forward<R>(result), Policy, Actions);
-    }
-
-    // Shared body for the rational `+=`/`-=`/`*=`/`/=` operators: lift Ref to
-    // rational and route the checked result through `finalize_arith`.
-    template <std::invocable<rational, rational> RatOp>
-    constexpr B& rational_assign(const rational& rhs, RatOp rat_op, const char* msg) {
-        return finalize_arith(rat_op(rational{Ref}, rhs), msg);
-    }
-
-    // The value an op's result holds (an expected's value type) assigns back.
-    template <typename R>
-    static constexpr bool stores_back = inside_assignable<B, detail::unwrap_t<R>, flags_of<B> | flags_of<P>>;
-
-  public:
-    // Constrained on the free op they call and on storing its result back
-    // under this policy, so a requires probe sees what compiles: an int64
-    // grid's `+=` takes its raw path, but its `add` (whose sum grid passes
-    // 64 bits) does not exist; a 1/16 sum does not store into an integer
-    // grid without snap.
     template <insidable C>
         requires requires(const B& b, const C& c, P& p) { add(b, c, p); } &&
                  stores_back<decltype(add(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
@@ -8180,21 +8143,21 @@ struct policy_ref {
     // rational RHS overloads — the only non-inside operand a compound assign
     // accepts. Lets callers write `b += rational{1,3}`. Raw int/float/double are
     // ill-formed: give the scalar a grid (`1_ins` / `just<1>` / `inside<{lo,hi}>{n}`).
-    // Lift Ref to rational, checked op, finalize_arith.
+    // Ref as a rational, checked op, finalize_arith.
     //-------------------------------------------------------------------------
     template <std::same_as<rational> C>
     constexpr B& operator+=(const C& rhs) {
-        return rational_assign(rhs, [](rational a, rational b) { return a + b; }, "policy_ref::operator+= overflow");
+        return finalize_arith(rational{Ref} + rhs, "policy_ref::operator+= overflow");
     }
 
     template <std::same_as<rational> C>
     constexpr B& operator-=(const C& rhs) {
-        return rational_assign(rhs, [](rational a, rational b) { return a - b; }, "policy_ref::operator-= overflow");
+        return finalize_arith(rational{Ref} - rhs, "policy_ref::operator-= overflow");
     }
 
     template <std::same_as<rational> C>
     constexpr B& operator*=(const C& rhs) {
-        return rational_assign(rhs, [](rational a, rational b) { return a * b; }, "policy_ref::operator*= overflow");
+        return finalize_arith(rational{Ref} * rhs, "policy_ref::operator*= overflow");
     }
 
     template <std::same_as<rational> C>
@@ -8203,8 +8166,32 @@ struct policy_ref {
             report_zero(errc::division_by_zero, "policy_ref::operator/= division by zero");
             return Ref;
         }
-        return rational_assign(
-            rhs, [](rational a, rational b) { return a / b; }, "policy_ref::operator/= division/overflow");
+        return finalize_arith(rational{Ref} / rhs, "policy_ref::operator/= division/overflow");
+    }
+
+  private:
+    constexpr void report_zero(errc code, const char* what) {
+        if constexpr (has_action<is_error_action, As...>)
+            pick_action_in<is_error_action>(Actions).Fn(Ref, code, what);
+        else if constexpr (!has_policy<B, P, ignore_zero>)
+            Policy.report(code);
+    }
+
+    template <typename R>
+    constexpr B& finalize_arith(R&& result, [[maybe_unused]] const char* msg) {
+        if constexpr (expected_like<R>) {
+            if (!result.has_value()) [[unlikely]] {
+                if (result.error() == errc::division_by_zero)
+                    report_zero(errc::division_by_zero, msg); // on_error / ignore_zero, like rational /=
+                else if constexpr (has_action<is_overflow_action, As...>)
+                    pick_action_in<is_overflow_action>(Actions).Fn(Ref, result.error());
+                else
+                    Policy.report(result.error());
+                return Ref;
+            }
+            return dispatch_assign(Ref, result.value(), Policy, Actions);
+        } else
+            return dispatch_assign(Ref, std::forward<R>(result), Policy, Actions);
     }
 };
 } // namespace detail
