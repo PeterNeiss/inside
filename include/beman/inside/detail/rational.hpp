@@ -152,7 +152,6 @@ struct rational {
     static constexpr rational div_unchecked(rational, rational);
     static constexpr rational inv_unchecked(rational);
 
-    static constexpr std::expected<rational, errc> add(rational a, rational b) { return a + b; }
     static constexpr std::expected<rational, errc> inv(rational);
 
     // Shared algorithm bodies. Checked=true returns expected<rational, errc>,
@@ -236,10 +235,14 @@ constexpr std::unexpected<errc> fail(errc code) {
     return std::unexpected{code};
 }
 
-// The numerator with the value's sign, as imax (callers ensure it fits).
-// Negated in umax, so −2^63 (numerator 2^63) comes out as INT64_MIN.
-[[nodiscard]] constexpr imax signed_numerator(rational v) noexcept {
-    return static_cast<imax>((v.Denominator < 0) ? umax{0} - v.Numerator : v.Numerator);
+// The numerator with the value's sign, as I (callers ensure it fits). A
+// builtin I negates in umax, so −2^63 (numerator 2^63) comes out as INT64_MIN.
+template <class I = imax>
+[[nodiscard]] constexpr I signed_numerator(rational v) noexcept {
+    if constexpr (std::integral<I>)
+        return static_cast<I>((v.Denominator < 0) ? umax{0} - v.Numerator : v.Numerator);
+    else
+        return v.Denominator < 0 ? -I{v.Numerator} : I{v.Numerator};
 }
 
 // v rounded to an integer by m (nearest: half away from zero), as a sign
@@ -412,9 +415,7 @@ template <bool Loud>
 [[gnu::cold]] [[gnu::noinline]] constexpr std::expected<rational, errc> add_wide(rational a, rational b) {
     using W       = wide_sint<3>;
     const umax ad = abs_den(a.Denominator), bd = abs_den(b.Denominator), g = std::gcd(ad, bd);
-    const W    an  = a.Denominator < 0 ? -W{a.Numerator} : W{a.Numerator};
-    const W    bn  = b.Denominator < 0 ? -W{b.Numerator} : W{b.Numerator};
-    W          num = an * W{bd / g} + bn * W{ad / g};
+    W          num = signed_numerator<W>(a) * W{bd / g} + signed_numerator<W>(b) * W{ad / g};
     W          den = W{ad} * W{bd / g};
     if (num.is_zero())
         return rational{0};

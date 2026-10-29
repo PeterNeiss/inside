@@ -243,7 +243,6 @@ constexpr std::size_t top_size(const L* a, std::size_t n) noexcept {
 // remainder limbs to r. The caller provides scratch: un (m+1) and vn (n).
 template <std::unsigned_integral L>
 constexpr void divmod(const L* u, std::size_t m, const L* v, std::size_t n, L* q, L* r, L* un, L* vn) noexcept {
-    constexpr int B = bits<L>;
     if (n == 1) { // (written out: through div_1, GCC loses that this returns for n == 1)
         L rem = 0;
         for (std::size_t i = m; i-- > 0;) {
@@ -255,17 +254,9 @@ constexpr void divmod(const L* u, std::size_t m, const L* v, std::size_t n, L* q
         return;
     }
     // Normalise: shift so the divisor's top limb has its high bit set.
-    const int  s   = std::countl_zero(v[n - 1]);
-    const auto shl = [&](L hi, L lo) -> L {
-        return s == 0 ? hi : static_cast<L>(static_cast<L>(hi << s) | static_cast<L>(lo >> (B - s)));
-    };
-    for (std::size_t i = n - 1; i > 0; --i)
-        vn[i] = shl(v[i], v[i - 1]);
-    vn[0] = static_cast<L>(v[0] << s);
-    un[m] = (s == 0) ? L{0} : static_cast<L>(u[m - 1] >> (B - s));
-    for (std::size_t i = m - 1; i > 0; --i)
-        un[i] = shl(u[i], u[i - 1]);
-    un[0] = static_cast<L>(u[0] << s);
+    const int s = std::countl_zero(v[n - 1]);
+    shift_left(vn, n, v, n, s);
+    shift_left(un, m + 1, u, m, s);
 
     for (std::size_t j = m - n + 1; j-- > 0;) {
         // Estimate q̂ from the top two dividend limbs, then correct it with the
@@ -300,20 +291,13 @@ constexpr void divmod(const L* u, std::size_t m, const L* v, std::size_t n, L* q
             un[i + j]        = sub_borrow(un[i + j], lo, borrow);
         }
         un[j + n] = sub_borrow(un[j + n], carry, borrow);
-        if (borrow != 0) // q̂ was one too large: add back
-        {
+        if (borrow != 0) { // q̂ was one too large: add back
             --qhat;
-            L c = 0;
-            for (std::size_t i = 0; i < n; ++i)
-                un[i + j] = add_carry(un[i + j], vn[i], c);
-            un[j + n] = static_cast<L>(un[j + n] + c);
+            un[j + n] = static_cast<L>(un[j + n] + add_n(un + j, un + j, vn, n));
         }
         q[j] = qhat;
     }
-    // Denormalise the remainder.
-    for (std::size_t i = 0; i + 1 < n; ++i)
-        r[i] = (s == 0) ? un[i] : static_cast<L>(static_cast<L>(un[i] >> s) | static_cast<L>(un[i + 1] << (B - s)));
-    r[n - 1] = static_cast<L>(un[n - 1] >> s);
+    shift_right(r, n, un, n, s); // denormalise the remainder
 }
 } // namespace limb
 
@@ -368,18 +352,17 @@ constexpr imax strip_factor(I& x, umax p) {
     }
 }
 
-// x^n for n ≥ 0 by squaring, with mul(a, b) the product and one the unit.
-// For exact multiplication only: a rounded mul would round differently
-// from the repeated product.
-template <class T, class Mul>
-constexpr T pow_by_squaring(T x, unsigned n, Mul mul, T one) {
-    T r = std::move(one);
+// x^n for n ≥ 0 by squaring. For exact multiplication only: a rounded
+// product would round differently from the repeated product.
+template <class T>
+constexpr T pow_by_squaring(T x, unsigned n) {
+    T r{1};
     while (n != 0) {
         if (n & 1u)
-            r = mul(r, x);
+            r = r * x;
         n >>= 1;
         if (n != 0)
-            x = mul(x, x);
+            x = x * x;
     }
     return r;
 }

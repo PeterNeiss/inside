@@ -37,25 +37,22 @@ struct addition {
 
     template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
     static constexpr auto add(L lhs, R rhs, policy<F, E> policy = {}, A&& action = {}) -> return_t<F, A> {
-        result res;
         if constexpr (fraction_storage<result>) {
             const auto sum = continuous_raw_of<raw_t<result>>(exact_of(lhs) + exact_of(rhs));
             if constexpr (needs_overflow_check<F>)
                 if (!sum) [[unlikely]]
                     return report_or_unexpected<result>(action, policy, errc::overflow);
-            res = result::from_raw(*sum);
+            return result::from_raw(*sum);
         } else if constexpr (rational_storage<result>) {
-            static_assert(!wide_valued<L> && !wide_valued<R>,
-                          "addition: a wide-index operand with a continuous result is not supported yet");
             if constexpr (needs_overflow_check<F>) {
-                auto sum = rational::add(lhs, rhs);
+                auto sum = as_rational(lhs) + as_rational(rhs);
                 if (!sum) [[unlikely]]
                     return report_or_unexpected<result>(action, policy, errc::overflow);
-                res = result::from_raw(*sum);
+                return result::from_raw(*sum);
             } else
-                res = result::from_raw(rational::add_unchecked(lhs, rhs));
+                return result::from_raw(rational::add_unchecked(lhs, rhs));
         } else if constexpr (point_storage<result>)
-            res = result::from_raw(raw_t<result>{}); // point + point: a point
+            return result::from_raw(raw_t<result>{}); // point + point: a point
         else {
             // Integer raws (a notched result has no continuous operand): add the
             // values in a unit dividing both operands' (the result notch
@@ -64,9 +61,8 @@ struct addition {
             static_assert(integer_storage<L> && integer_storage<R>);
             constexpr grid_rational U = gcd(unit_of<L>, unit_of<R>);
             using W                   = index_work_t<result, L, U, R, U, U>;
-            res = from_value_in_units<result, U>(value_in_units<W, U>(lhs) + value_in_units<W, U>(rhs));
+            return from_value_in_units<result, U>(value_in_units<W, U>(lhs) + value_in_units<W, U>(rhs));
         }
-        return res;
     }
 };
 

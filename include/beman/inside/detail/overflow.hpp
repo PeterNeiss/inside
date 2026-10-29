@@ -9,7 +9,7 @@
 #include <concepts>
 
 //---------------------------------------------------------------------------
-// overflow — overflow-detecting add/sub/mul for integers: the GCC/Clang
+// overflow — overflow-detecting add/sub/mul for integers: GCC's
 // __builtin_*_overflow intrinsics. Return true on overflow; *result holds the
 // wrapped value either way. Used by rational::*_impl and every checked path.
 //---------------------------------------------------------------------------

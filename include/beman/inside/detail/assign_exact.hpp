@@ -295,8 +295,6 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
                 "on_clamp / on_wrap: a source past the 64-bit rational into a rational inside is not supported");
         return assignment<L, rational>::assign(lhs, *r, policy, std::forward<A>(action));
     } else {
-        // (Plain variables, not a structured binding: Clang rejects a binding
-        // captured by the lambdas below in constant evaluation.)
         const auto slot = [&] {
             if constexpr (point_storage<L>) {
                 // One value and no lattice to divide by: the slot below it,

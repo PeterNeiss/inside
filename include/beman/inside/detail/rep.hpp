@@ -27,12 +27,11 @@ inline constexpr bool exact_fits = [] {
     else if constexpr (!rational_storage<Result>)
         return false;
     else {
-        const grid_int umax_max{std::numeric_limits<umax>::max()}, imax_max{std::numeric_limits<imax>::max()};
         if constexpr (Op == exact_op::add) {
             const grid_int d = den_bound(grid_of<L>) * den_bound(grid_of<R>);
-            return !(umax_max < num_bound(interval_of<L>, d)) && !(umax_max < num_bound(interval_of<R>, d));
+            return num_bound(interval_of<L>, d).fits_limb() && num_bound(interval_of<R>, d).fits_limb();
         } else if constexpr (Op == exact_op::div)
-            return !(imax_max < num_bound(grid_of<R>));
+            return num_bound(grid_of<R>) <= std::numeric_limits<imax>::max();
         else
             return true;
     }
@@ -57,11 +56,11 @@ template <insidable Point, insidable X, insidable Result>
 inline constexpr bool point_scale =
     point_grid<Point> && lower_of<Point> != 0 && notched<X> && !wide_valued<X> && !wide_valued<Result>;
 
-template <insidable Result, bool Negate, insidable X>
+template <insidable Result, insidable Point, insidable X>
 constexpr Result scale_by_point(const X& x) noexcept {
     static_assert(max_index_of<Result> == max_index_of<X>);
     const umax off = raw_offset<X>(x.raw());
-    return Result::from_raw(raw_from_offset<Result>(Negate ? max_index_of<X> - off : off));
+    return Result::from_raw(raw_from_offset<Result>(lower_of<Point> < 0 ? max_index_of<X> - off : off));
 }
 } // namespace beman::inside::detail
 

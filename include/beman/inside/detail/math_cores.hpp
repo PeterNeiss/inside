@@ -598,7 +598,7 @@ constexpr std::optional<wide_sint<pow_limbs>> exact_root(const wide_sint<pow_lim
     for (int i = (bit_width_of(n) + q - 1) / q; i-- > 0;)
         if (const P c = r + (P{1} << i); at_most(c))
             r = c;
-    const P p = pow_by_squaring(r, static_cast<unsigned>(q), [](const P& x, const P& y) { return x * y; }, P{1});
+    const P p = pow_by_squaring(r, static_cast<unsigned>(q));
     return p == n ? std::optional<P>{r} : std::nullopt;
 }
 
@@ -627,9 +627,8 @@ constexpr std::optional<wide_rational<pow_limbs>> exact_pow(const wide_rational<
     const int bits = bit_width_of(*rn) + bit_width_of(*rd);
     if (bit_width_of(ak) > 12 || static_cast<imax>(ak) * bits > 64 * static_cast<imax>(pow_limbs) - 8)
         return std::nullopt;
-    const auto     mul   = [](const P& x, const P& y) { return x * y; };
     const unsigned power = static_cast<unsigned>(static_cast<imax>(ak));
-    const P        n = pow_by_squaring(*rn, power, mul, P{1}), d = pow_by_squaring(*rd, power, mul, P{1});
+    const P        n = pow_by_squaring(*rn, power), d = pow_by_squaring(*rd, power);
     return k.negative() ? inverse(wide_rational<pow_limbs>{n, d}) : wide_rational<pow_limbs>{n, d};
 }
 

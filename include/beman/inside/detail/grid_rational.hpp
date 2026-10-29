@@ -35,7 +35,7 @@ constexpr bool same_lattice64(const rational& a, const rational& b, const ration
     if (const auto d = try_sub(a, b)) [[likely]]
         return divides_evenly(*d, n);
     using W        = wide_sint<4>;
-    auto    num_of = [](const rational& r) { return r.Denominator < 0 ? -W{r.Numerator} : W{r.Numerator}; };
+    auto    num_of = [](const rational& r) { return signed_numerator<W>(r); };
     auto    den_of = [](const rational& r) { return W{abs_den(r.Denominator)}; };
     const W num    = (num_of(a) * den_of(b) - num_of(b) * den_of(a)) * den_of(n);
     const W den    = den_of(a) * den_of(b) * num_of(n);
@@ -47,11 +47,6 @@ using grid_int      = big_int;
 
 constexpr grid_int wide_numerator(const big_rational& r) { return r.Num; }
 constexpr grid_int wide_denominator(const big_rational& r) { return r.Den; }
-
-// A grid number as a transient fraction, for tests that run at runtime too.
-constexpr big::fraction fraction_of(const big_rational& r) {
-    return {r.Num.magnitude(), r.Den.magnitude(), r.Num.negative()};
-}
 
 // (a − b) / n is an integer (true for n == 0): b and a share n's lattice.
 // (No big value is formed, so the test runs at runtime too.)
@@ -134,11 +129,7 @@ consteval grid_rational parse_grid_literal() {
     if (m == grid_int{0})
         return big_rational{0};
     e10 += zeros + (sc.ExpNeg ? -sc.Exp : sc.Exp);
-    const grid_int p = pow_by_squaring(
-        ten,
-        static_cast<unsigned>(e10 < 0 ? -e10 : e10),
-        [](const grid_int& a, const grid_int& b) { return a * b; },
-        grid_int{1});
+    const grid_int p = pow_by_squaring(ten, static_cast<unsigned>(e10 < 0 ? -e10 : e10));
     return e10 < 0 ? big_rational{m, p} : big_rational{m * p, grid_int{1}};
 }
 } // namespace beman::inside::detail

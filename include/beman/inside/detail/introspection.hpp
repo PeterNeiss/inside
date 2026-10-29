@@ -77,11 +77,11 @@ namespace detail {
 // integer fast paths, the math engines). A grid number past 64 bits fails
 // the build here, never truncates.
 template <insidable B>
-inline constexpr rational lower64 = to_rational(grid_of<B>.Interval.Lower);
+inline constexpr rational lower64 = to_rational(lower_of<B>);
 template <insidable B>
-inline constexpr rational upper64 = to_rational(grid_of<B>.Interval.Upper);
+inline constexpr rational upper64 = to_rational(upper_of<B>);
 template <insidable B>
-inline constexpr rational notch64 = to_rational(grid_of<B>.Notch);
+inline constexpr rational notch64 = to_rational(notch_of<B>);
 } // namespace detail
 
 template <typename N>

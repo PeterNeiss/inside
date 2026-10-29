@@ -171,7 +171,6 @@ constexpr std::pair<umax, umax> abs_fraction(double value, bool& exact) {
         // |value| ≥ 2^64 has no 64-bit numerator: fail rather than wrap the shift.
         if (exp2 > 64 - std::bit_width(significand)) {
             if consteval {
-                // Clang prints only the first ~34 characters: lead with the cause.
                 constexpr_error<"no 64-bit rational for a double of magnitude 2^64 or more">();
             }
             raise(errc::overflow, "beman::inside::detail::abs_fraction: |double| >= 2^64");

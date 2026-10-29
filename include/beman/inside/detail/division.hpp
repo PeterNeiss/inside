@@ -433,7 +433,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         return exact_result<result>(wide_rational<K>{rounded_div<rmode>(a, b), I{1}});
     } else if constexpr (point_divisor) {
         if constexpr (point_scale<R, L, result>)
-            return scale_by_point<result, (lower_of<R> < 0)>(lhs);
+            return scale_by_point<result, R>(lhs);
         else
             return exact_result<result>(exact_of(lhs) / exact_of(rhs));
     } else if constexpr (wide_valued<L> || wide_valued<R> || wide_valued<result>) {

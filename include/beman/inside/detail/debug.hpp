@@ -121,7 +121,7 @@ namespace detail {
 // into the type, so a malformed literal / overflow aborts constant
 // evaluation with the text in the instantiation — no `throw` token, so it
 // also compiles under -fno-exceptions. Never reached at runtime (all call
-// sites are guarded by std::is_constant_evaluated or are consteval).
+// sites are guarded by if consteval or are consteval).
 //-----------------------------------------------------------------------
 template <unsigned N>
 struct fixed_string {

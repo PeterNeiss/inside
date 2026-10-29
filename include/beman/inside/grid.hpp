@@ -148,11 +148,9 @@ struct grid {
         if constexpr (std::floating_point<T>)
             if (std::is_constant_evaluated() &&
                 detail::grid_int{1024} < detail::wide_denominator(detail::grid_rational{v}))
-                detail::constexpr_error<
-                    // Clang prints only the first ~34 characters: lead with the fix.
-                    "float limit: use _r literal (0.1_r) or give a notch {{lo, hi}, per<D>}; "
-                    "grid{lo, hi} derives a notch from a floating-point limit only down to "
-                    "1/1024 (0.1 is not 1/10 in binary)">();
+                detail::constexpr_error<"float limit: use _r literal (0.1_r) or give a notch {{lo, hi}, per<D>}; "
+                                        "grid{lo, hi} derives a notch from a floating-point limit only down to "
+                                        "1/1024 (0.1 is not 1/10 in binary)">();
     }
 
   public:

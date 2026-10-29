@@ -281,7 +281,7 @@ namespace detail {
 // into the type, so a malformed literal / overflow aborts constant
 // evaluation with the text in the instantiation — no `throw` token, so it
 // also compiles under -fno-exceptions. Never reached at runtime (all call
-// sites are guarded by std::is_constant_evaluated or are consteval).
+// sites are guarded by if consteval or are consteval).
 //-----------------------------------------------------------------------
 template <unsigned N>
 struct fixed_string {
@@ -521,7 +521,6 @@ constexpr std::pair<umax, umax> abs_fraction(double value, bool& exact) {
         // |value| ≥ 2^64 has no 64-bit numerator: fail rather than wrap the shift.
         if (exp2 > 64 - std::bit_width(significand)) {
             if consteval {
-                // Clang prints only the first ~34 characters: lead with the cause.
                 constexpr_error<"no 64-bit rational for a double of magnitude 2^64 or more">();
             }
             raise(errc::overflow, "beman::inside::detail::abs_fraction: |double| >= 2^64");
@@ -706,7 +705,7 @@ template <class Op, class... Args>
 
 
 //---------------------------------------------------------------------------
-// overflow — overflow-detecting add/sub/mul for integers: the GCC/Clang
+// overflow — overflow-detecting add/sub/mul for integers: GCC's
 // __builtin_*_overflow intrinsics. Return true on overflow; *result holds the
 // wrapped value either way. Used by rational::*_impl and every checked path.
 //---------------------------------------------------------------------------
@@ -970,7 +969,6 @@ constexpr std::size_t top_size(const L* a, std::size_t n) noexcept {
 // remainder limbs to r. The caller provides scratch: un (m+1) and vn (n).
 template <std::unsigned_integral L>
 constexpr void divmod(const L* u, std::size_t m, const L* v, std::size_t n, L* q, L* r, L* un, L* vn) noexcept {
-    constexpr int B = bits<L>;
     if (n == 1) { // (written out: through div_1, GCC loses that this returns for n == 1)
         L rem = 0;
         for (std::size_t i = m; i-- > 0;) {
@@ -982,17 +980,9 @@ constexpr void divmod(const L* u, std::size_t m, const L* v, std::size_t n, L* q
         return;
     }
     // Normalise: shift so the divisor's top limb has its high bit set.
-    const int  s   = std::countl_zero(v[n - 1]);
-    const auto shl = [&](L hi, L lo) -> L {
-        return s == 0 ? hi : static_cast<L>(static_cast<L>(hi << s) | static_cast<L>(lo >> (B - s)));
-    };
-    for (std::size_t i = n - 1; i > 0; --i)
-        vn[i] = shl(v[i], v[i - 1]);
-    vn[0] = static_cast<L>(v[0] << s);
-    un[m] = (s == 0) ? L{0} : static_cast<L>(u[m - 1] >> (B - s));
-    for (std::size_t i = m - 1; i > 0; --i)
-        un[i] = shl(u[i], u[i - 1]);
-    un[0] = static_cast<L>(u[0] << s);
+    const int s = std::countl_zero(v[n - 1]);
+    shift_left(vn, n, v, n, s);
+    shift_left(un, m + 1, u, m, s);
 
     for (std::size_t j = m - n + 1; j-- > 0;) {
         // Estimate q̂ from the top two dividend limbs, then correct it with the
@@ -1027,20 +1017,13 @@ constexpr void divmod(const L* u, std::size_t m, const L* v, std::size_t n, L* q
             un[i + j]        = sub_borrow(un[i + j], lo, borrow);
         }
         un[j + n] = sub_borrow(un[j + n], carry, borrow);
-        if (borrow != 0) // q̂ was one too large: add back
-        {
+        if (borrow != 0) { // q̂ was one too large: add back
             --qhat;
-            L c = 0;
-            for (std::size_t i = 0; i < n; ++i)
-                un[i + j] = add_carry(un[i + j], vn[i], c);
-            un[j + n] = static_cast<L>(un[j + n] + c);
+            un[j + n] = static_cast<L>(un[j + n] + add_n(un + j, un + j, vn, n));
         }
         q[j] = qhat;
     }
-    // Denormalise the remainder.
-    for (std::size_t i = 0; i + 1 < n; ++i)
-        r[i] = (s == 0) ? un[i] : static_cast<L>(static_cast<L>(un[i] >> s) | static_cast<L>(un[i + 1] << (B - s)));
-    r[n - 1] = static_cast<L>(un[n - 1] >> s);
+    shift_right(r, n, un, n, s); // denormalise the remainder
 }
 } // namespace limb
 
@@ -1095,18 +1078,17 @@ constexpr imax strip_factor(I& x, umax p) {
     }
 }
 
-// x^n for n ≥ 0 by squaring, with mul(a, b) the product and one the unit.
-// For exact multiplication only: a rounded mul would round differently
-// from the repeated product.
-template <class T, class Mul>
-constexpr T pow_by_squaring(T x, unsigned n, Mul mul, T one) {
-    T r = std::move(one);
+// x^n for n ≥ 0 by squaring. For exact multiplication only: a rounded
+// product would round differently from the repeated product.
+template <class T>
+constexpr T pow_by_squaring(T x, unsigned n) {
+    T r{1};
     while (n != 0) {
         if (n & 1u)
-            r = mul(r, x);
+            r = r * x;
         n >>= 1;
         if (n != 0)
-            x = mul(x, x);
+            x = x * x;
     }
     return r;
 }
@@ -1710,7 +1692,6 @@ struct rational {
     static constexpr rational div_unchecked(rational, rational);
     static constexpr rational inv_unchecked(rational);
 
-    static constexpr std::expected<rational, errc> add(rational a, rational b) { return a + b; }
     static constexpr std::expected<rational, errc> inv(rational);
 
     // Shared algorithm bodies. Checked=true returns expected<rational, errc>,
@@ -1794,10 +1775,14 @@ constexpr std::unexpected<errc> fail(errc code) {
     return std::unexpected{code};
 }
 
-// The numerator with the value's sign, as imax (callers ensure it fits).
-// Negated in umax, so −2^63 (numerator 2^63) comes out as INT64_MIN.
-[[nodiscard]] constexpr imax signed_numerator(rational v) noexcept {
-    return static_cast<imax>((v.Denominator < 0) ? umax{0} - v.Numerator : v.Numerator);
+// The numerator with the value's sign, as I (callers ensure it fits). A
+// builtin I negates in umax, so −2^63 (numerator 2^63) comes out as INT64_MIN.
+template <class I = imax>
+[[nodiscard]] constexpr I signed_numerator(rational v) noexcept {
+    if constexpr (std::integral<I>)
+        return static_cast<I>((v.Denominator < 0) ? umax{0} - v.Numerator : v.Numerator);
+    else
+        return v.Denominator < 0 ? -I{v.Numerator} : I{v.Numerator};
 }
 
 // v rounded to an integer by m (nearest: half away from zero), as a sign
@@ -1970,9 +1955,7 @@ template <bool Loud>
 [[gnu::cold]] [[gnu::noinline]] constexpr std::expected<rational, errc> add_wide(rational a, rational b) {
     using W       = wide_sint<3>;
     const umax ad = abs_den(a.Denominator), bd = abs_den(b.Denominator), g = std::gcd(ad, bd);
-    const W    an  = a.Denominator < 0 ? -W{a.Numerator} : W{a.Numerator};
-    const W    bn  = b.Denominator < 0 ? -W{b.Numerator} : W{b.Numerator};
-    W          num = an * W{bd / g} + bn * W{ad / g};
+    W          num = signed_numerator<W>(a) * W{bd / g} + signed_numerator<W>(b) * W{ad / g};
     W          den = W{ad} * W{bd / g};
     if (num.is_zero())
         return rational{0};
@@ -2577,7 +2560,7 @@ enum class parse_fail : unsigned char {
     p_exponent_too_large,
     p_exponent_denominator_overflow,
     e_exponent_numerator_overflow,
-    e_exponent_denominator_overflow,
+    e_exponent_denominator_overflow, // the overflow kinds last (parse_text)
 };
 
 struct parsed_number {
@@ -2588,8 +2571,9 @@ struct parsed_number {
 // An unsigned number in the grammar of the _ins / _r literals, scanned in
 // one pass: the radix and the exponent come back, and each mantissa digit
 // goes to on_digit(d, in_frac, base) (false stops the scan: the builder's
-// overflow). parse_number (64-bit), parse_exact (wide, wide_value.hpp) and
-// stand_in build from it, so all read one grammar.
+// overflow). parse_number (64-bit), parse_exact (wide, wide_value.hpp),
+// parse_grid_literal (the _g literal) and stand_in build from it, so all
+// read one grammar.
 struct scanned_number {
     int        Base    = 10;
     int        Exp     = 0; // capped at 100000: past it any value overflows
@@ -2678,14 +2662,11 @@ constexpr parsed_number parse_number(const char* first, const char* last) {
             ++frac_zeros;
             return true;
         }
-        for (; frac_zeros > 0; --frac_zeros, ++frac_len) {
-            if (num > (~umax{0}) / base_u)
+        for (; frac_zeros > 0; --frac_zeros, ++frac_len)
+            if (mul_overflow(num, base_u, &num))
                 return false;
-            num *= base_u;
-        }
-        if (num > (~umax{0} - static_cast<umax>(d)) / base_u)
+        if (mul_overflow(num, base_u, &num) || add_overflow(num, static_cast<umax>(d), &num))
             return false;
-        num = num * base_u + static_cast<umax>(d);
         if (in_frac)
             ++frac_len;
         return true;
@@ -2694,22 +2675,15 @@ constexpr parsed_number parse_number(const char* first, const char* last) {
         return fail(sc.Fail);
     if (sc.Stopped)
         return fail(parse_fail::numerator_overflow);
-    const int  base      = sc.Base;
-    const int  exp       = sc.Exp;
-    const bool exp_neg   = sc.ExpNeg;
-    const bool has_p_exp = sc.HasP;
-    const bool has_e_exp = sc.HasE;
 
     // Build denominator from fractional part.
     // For decimal: den = 10^frac_len. For hex: den = 2^(4*frac_len).
     umax den = 1;
-    if (base == 10) {
-        for (int k = 0; k < frac_len; ++k) {
-            if (den > (~umax{0}) / 10u)
+    if (sc.Base == 10) {
+        for (int k = 0; k < frac_len; ++k)
+            if (mul_overflow(den, umax{10}, &den))
                 return fail(parse_fail::denominator_overflow);
-            den *= 10u;
-        }
-    } else if (base == 16) {
+    } else if (sc.Base == 16) {
         const int shift = 4 * frac_len;
         if (shift >= 64)
             return fail(parse_fail::hex_fraction_too_long);
@@ -2721,48 +2695,32 @@ constexpr parsed_number parse_number(const char* first, const char* last) {
     if (num == 0)
         return parsed_number{rational{umax{0}}, parse_fail::none};
 
-    // Apply binary exponent (hex floats, `p`).
-    // The factors of two cancel first (0x0.1p4 is 1, 0x10p-66 is 2^-62), so
-    // only a value past the 64-bit rationals fails; 2^63 itself fits.
-    if (has_p_exp) {
-        umax&     other  = exp_neg ? num : den; // the side the shift cancels against
-        const int tz     = std::countr_zero(other);
-        const int cancel = tz < exp ? tz : exp;
+    // The exponent scales the numerator, or the denominator when negative.
+    umax& side = sc.ExpNeg ? den : num;
+    // Binary exponent (hex floats, `p`). The factors of two cancel first
+    // (0x0.1p4 is 1, 0x10p-66 is 2^-62), so only a value past the 64-bit
+    // rationals fails; 2^63 itself fits.
+    if (sc.HasP) {
+        umax&     other  = sc.ExpNeg ? num : den; // the side the shift cancels against
+        const int cancel = std::min(std::countr_zero(other), sc.Exp);
         other >>= cancel;
-        const int e = exp - cancel;
+        const int e = sc.Exp - cancel;
         if (e >= 64)
             return fail(parse_fail::p_exponent_too_large);
-        if (!exp_neg) {
-            if (num > (~umax{0}) >> e)
-                return fail(parse_fail::numerator_overflow);
-            num <<= e;
-        } else {
-            if (den > (~umax{0}) >> e)
-                return fail(parse_fail::p_exponent_denominator_overflow);
-            den <<= e;
-        }
+        if (side > ~umax{0} >> e)
+            return fail(sc.ExpNeg ? parse_fail::p_exponent_denominator_overflow : parse_fail::numerator_overflow);
+        side <<= e;
     }
-
-    // Apply decimal exponent (decimal scientific, `e`).
-    if (has_e_exp) {
-        for (int k = 0; k < exp; ++k) {
-            if (!exp_neg) {
-                if (num > (~umax{0}) / 10u)
-                    return fail(parse_fail::e_exponent_numerator_overflow);
-                num *= 10u;
-            } else {
-                if (den > (~umax{0}) / 10u)
-                    return fail(parse_fail::e_exponent_denominator_overflow);
-                den *= 10u;
-            }
-        }
-    }
+    // Decimal exponent (decimal scientific, `e`).
+    if (sc.HasE)
+        for (int k = 0; k < sc.Exp; ++k)
+            if (mul_overflow(side, umax{10}, &side))
+                return fail(sc.ExpNeg ? parse_fail::e_exponent_denominator_overflow
+                                      : parse_fail::e_exponent_numerator_overflow);
 
     // In lowest terms before the signed-denominator check (0.5e-18 is
     // 1/(2·10^18), though 10^19 itself is past imax).
-    const umax g = std::gcd(num, den);
-    num /= g;
-    den /= g;
+    trim(num, den);
     if (!std::in_range<imax>(den))
         return fail(parse_fail::denominator_overflow);
     return parsed_number{rational{num, den}, parse_fail::none};
@@ -2773,10 +2731,7 @@ constexpr parsed_number parse_number(const char* first, const char* last) {
 // decimal, so 010 would silently be ten, not eight: such literals are refused.
 template <char... Chars>
 consteval bool octal_literal() {
-    constexpr char text[] = {Chars..., '\0'};
-    if (sizeof...(Chars) < 2 || text[0] != '0')
-        return false;
-    return std::all_of(text + 1, text + sizeof...(Chars), [](char c) { return c == '\'' || (c >= '0' && c <= '9'); });
+    return sizeof...(Chars) >= 2 && Chars...[0] == '0' && ((Chars == '\'' || (Chars >= '0' && Chars <= '9')) && ...);
 }
 
 template <char... Chars>
@@ -2810,10 +2765,6 @@ consteval rational parse_ins_literal() {
     return r.Value;
 }
 
-// Runtime text → exact value: an optional sign, then a number in the literal
-// grammar, or a fraction `N/D` of two such numbers (the form to_string prints
-// for a non-terminating value). Malformed text is errc::invalid_format; a value
-// past the 64-bit fields is errc::overflow; `N/0` is errc::division_by_zero.
 // Text as an optional sign and the number's [First, Slash), with the
 // denominator after Slash when Slash != last.
 struct signed_fraction_text {
@@ -2825,10 +2776,7 @@ constexpr signed_fraction_text split_fraction(const char* first, const char* las
     const bool neg = first != last && *first == '-';
     if (first != last && (*first == '+' || *first == '-'))
         ++first;
-    const char* slash = first;
-    while (slash != last && *slash != '/')
-        ++slash;
-    return {neg, first, slash};
+    return {neg, first, std::find(first, last, '/')};
 }
 
 // The sign and N/D around `one` (text → an expected value): N/0 is
@@ -2850,23 +2798,16 @@ constexpr auto parse_fraction(const char* first, const char* last, One one, IsZe
     return v;
 }
 
+// Runtime text → exact value: an optional sign, then a number in the literal
+// grammar, or a fraction `N/D` of two such numbers (the form to_string prints
+// for a non-terminating value). Malformed text is errc::invalid_format; a value
+// past the 64-bit fields is errc::overflow; `N/0` is errc::division_by_zero.
 constexpr std::expected<rational, errc> parse_text(const char* first, const char* last) {
     auto one = [](const char* f, const char* l) -> std::expected<rational, errc> {
         const parsed_number r = parse_number(f, l);
-        switch (r.Fail) {
-        case parse_fail::none:
+        if (r.Fail == parse_fail::none)
             return r.Value;
-        case parse_fail::numerator_overflow:
-        case parse_fail::denominator_overflow:
-        case parse_fail::hex_fraction_too_long:
-        case parse_fail::p_exponent_too_large:
-        case parse_fail::p_exponent_denominator_overflow:
-        case parse_fail::e_exponent_numerator_overflow:
-        case parse_fail::e_exponent_denominator_overflow:
-            return std::unexpected{errc::overflow};
-        default:
-            return std::unexpected{errc::invalid_format};
-        }
+        return std::unexpected{r.Fail >= parse_fail::numerator_overflow ? errc::overflow : errc::invalid_format};
     };
     return parse_fraction(first, last, one, [](const rational& d) { return d.Numerator == 0; });
 }
@@ -2966,7 +2907,7 @@ constexpr mag gcd(mag a, mag b) {
 }
 
 constexpr int bit_width(const mag& m) {
-    return m.empty() ? 0 : static_cast<int>(m.size() - 1) * 64 + (64 - std::countl_zero(m.back()));
+    return m.empty() ? 0 : static_cast<int>(m.size() - 1) * 64 + std::bit_width(m.back());
 }
 
 // m · 2^k (k ≥ 0).
@@ -2975,6 +2916,17 @@ constexpr mag shl(const mag& m, int k) {
     limb::shift_left(r.data(), r.size(), m.data(), m.size(), k);
     trim(r);
     return r;
+}
+
+// x·(−1)^xn + y·(−1)^yn as a magnitude and sign.
+struct signed_mag {
+    mag  Mag;
+    bool Negative;
+};
+constexpr signed_mag add_signed(const mag& x, bool xn, const mag& y, bool yn) {
+    if (xn == yn)
+        return {add(x, y), xn};
+    return compare(x, y) >= 0 ? signed_mag{sub(x, y), xn} : signed_mag{sub(y, x), yn};
 }
 
 // A fraction of transient magnitudes, unreduced: nothing is interned, so it
@@ -2994,21 +2946,8 @@ constexpr std::strong_ordering compare(const fraction& a, const fraction& b) {
 }
 
 constexpr fraction operator+(const fraction& a, const fraction& b) {
-    const mag x = mul(a.Num, b.Den), y = mul(b.Num, a.Den);
-    fraction  r;
-    r.Den = mul(a.Den, b.Den);
-    if (a.Negative == b.Negative) {
-        r.Num      = add(x, y);
-        r.Negative = a.Negative;
-    } else if (compare(x, y) >= 0) {
-        r.Num      = sub(x, y);
-        r.Negative = a.Negative;
-    } else {
-        r.Num      = sub(y, x);
-        r.Negative = b.Negative;
-    }
-    r.Negative = r.Negative && !r.Num.empty();
-    return r;
+    auto [n, neg] = add_signed(mul(a.Num, b.Den), a.Negative, mul(b.Num, a.Den), b.Negative);
+    return {n, mul(a.Den, b.Den), neg && !n.empty()};
 }
 
 // (a − b) / n is an integer (n ≠ 0).
@@ -3023,7 +2962,7 @@ constexpr bool same_lattice(const fraction& a, fraction b, const fraction& n) {
 template <std::floating_point T>
 constexpr fraction fraction_of_float(T v) {
     if constexpr (wide_float<T>) {
-        if (static_cast<T>(static_cast<double>(v)) != v) {
+        if (!is_double_value(v)) {
             fraction s;
             for_each_double_part(v, [&](double p) {
                 s = s + fraction_of_float(p);
@@ -3066,12 +3005,11 @@ struct big_int {
           Negative{std::is_signed_v<T> && v < 0} {}
 
     // From a wide_int (sign-extending a signed one).
-    template <std::size_t N, bool S, std::unsigned_integral L>
-    constexpr big_int(const wide_int<N, S, L>& w) {
-        static_assert(std::numeric_limits<L>::digits == 64, "big_int: umax limbs only");
-        const bool                  neg = w.negative();
-        const wide_int<N, false, L> m(neg ? -w : w);
-        *this = from_mag(big::mag(std::begin(m.Word), std::end(m.Word)), neg);
+    template <std::size_t N, bool S>
+    constexpr big_int(const wide_int<N, S>& w) {
+        const bool               neg = w.negative();
+        const wide_int<N, false> m(neg ? -w : w);
+        *this = from_mag(big::mag(m.Word, m.Word + N), neg);
     }
 
     // By value, not by pointer (see Size): equal magnitudes intern to the
@@ -3093,16 +3031,21 @@ struct big_int {
         return {};
     }
 
+    // The canonical big_int of a one-limb magnitude and sign.
+    static constexpr big_int of_limb(umax m, bool neg) noexcept {
+        big_int r;
+        r.Small    = m;
+        r.Negative = neg && m != 0;
+        return r;
+    }
+
     // The canonical big_int of a magnitude and sign: inline when it fits one
     // limb, else interned (constant evaluation only).
     static constexpr big_int from_mag(big::mag m, bool neg) {
         big::trim(m);
+        if (m.size() <= 1)
+            return of_limb(m.empty() ? umax{0} : m[0], neg);
         big_int r;
-        if (m.size() <= 1) {
-            r.Small    = m.empty() ? umax{0} : m[0];
-            r.Negative = neg && r.Small != 0;
-            return r;
-        }
         if consteval {
             const auto s = std::define_static_array(m);
             r.Limbs      = s.data();
@@ -3115,7 +3058,7 @@ struct big_int {
     }
 
     [[nodiscard]] constexpr int bit_width() const {
-        return Size != 0 ? big::bit_width(magnitude()) : (Small ? 64 - std::countl_zero(Small) : 0);
+        return Size != 0 ? static_cast<int>(Size - 1) * 64 + std::bit_width(Limbs[Size - 1]) : std::bit_width(Small);
     }
 
     // Truncating conversion to a builtin integer or wide_int (two's complement).
@@ -3136,8 +3079,14 @@ struct big_int {
     friend constexpr std::strong_ordering operator<=>(const big_int& a, const big_int& b) {
         if (a.Negative != b.Negative)
             return a.Negative ? std::strong_ordering::less : std::strong_ordering::greater;
-        const std::strong_ordering m =
-            (a.Size != 0 || b.Size != 0) ? big::compare(a.magnitude(), b.magnitude()) : a.Small <=> b.Small;
+        std::strong_ordering m = a.Size <=> b.Size; // canonical: more limbs, larger
+        if (m == 0) {
+            if (a.Size == 0)
+                m = a.Small <=> b.Small;
+            else
+                for (std::size_t i = a.Size; i-- > 0 && m == 0;)
+                    m = a.Limbs[i] <=> b.Limbs[i];
+        }
         return a.Negative ? 0 <=> m : m;
     }
 
@@ -3151,37 +3100,28 @@ struct big_int {
             if (a.Negative == b.Negative) {
                 umax       c = 0;
                 const umax s = limb::add_carry(a.Small, b.Small, c);
-                if (c == 0) {
-                    big_int r;
-                    r.Small    = s;
-                    r.Negative = a.Negative && s != 0;
-                    return r;
-                }
-            } else {
-                const bool a_big = a.Small >= b.Small;
-                big_int    r;
-                r.Small    = a_big ? a.Small - b.Small : b.Small - a.Small;
-                r.Negative = (a_big ? a.Negative : b.Negative) && r.Small != 0;
-                return r;
-            }
+                if (c == 0)
+                    return of_limb(s, a.Negative);
+            } else
+                return a.Small >= b.Small ? of_limb(a.Small - b.Small, a.Negative)
+                                          : of_limb(b.Small - a.Small, b.Negative);
         }
-        const big::mag ma = a.magnitude(), mb = b.magnitude();
-        if (a.Negative == b.Negative)
-            return from_mag(big::add(ma, mb), a.Negative);
-        return big::compare(ma, mb) >= 0 ? from_mag(big::sub(ma, mb), a.Negative)
-                                         : from_mag(big::sub(mb, ma), b.Negative);
+        auto [m, neg] = big::add_signed(a.magnitude(), a.Negative, b.magnitude(), b.Negative);
+        return from_mag(std::move(m), neg);
     }
     friend constexpr big_int operator-(const big_int& a, const big_int& b) { return a + (-b); }
 
     friend constexpr big_int operator*(const big_int& a, const big_int& b) {
         if (a.Size == 0 && b.Size == 0) {
             const limb::pair<umax> p = limb::mul(a.Small, b.Small);
-            if (p.Hi == 0) {
-                big_int r;
-                r.Small    = p.Lo;
-                r.Negative = (a.Negative != b.Negative) && p.Lo != 0;
-                return r;
-            }
+            if (p.Hi == 0)
+                return of_limb(p.Lo, a.Negative != b.Negative);
+        }
+        // ×±1 (a unit denominator, mostly): no product to form and intern.
+        if ((a.Size == 0 && a.Small == 1) || (b.Size == 0 && b.Small == 1)) {
+            big_int r  = a.Size == 0 && a.Small == 1 ? b : a;
+            r.Negative = a.Negative != b.Negative && !r.is_zero();
+            return r;
         }
         return from_mag(big::mul(a.magnitude(), b.magnitude()), a.Negative != b.Negative);
     }
@@ -3194,7 +3134,7 @@ struct big_int {
 
     // a · 2^k (k ≥ 0).
     friend constexpr big_int operator<<(const big_int& a, int k) {
-        if (a.Size == 0 && k < 64 && (k == 0 || (a.Small >> (64 - k)) == 0)) {
+        if (a.Size == 0 && k < 64 && std::countl_zero(a.Small) >= k) {
             big_int r = a;
             r.Small   = a.Small << k;
             return r;
@@ -3217,19 +3157,26 @@ constexpr big_int abs(big_int a) {
 constexpr auto big_int::divmod(const big_int& a, const big_int& b) -> divmod_result {
     if (b.is_zero())
         fail_hard<"big_int: division by zero">(errc::division_by_zero);
-    if (a.Size == 0 && b.Size == 0) {
-        big_int q, r;
-        q.Small    = a.Small / b.Small;
-        q.Negative = (a.Negative != b.Negative) && q.Small != 0;
-        r.Small    = a.Small % b.Small;
-        r.Negative = a.Negative && r.Small != 0;
-        return {q, r};
+    if (a.Size == 0 && b.Size == 0)
+        return {of_limb(a.Small / b.Small, a.Negative != b.Negative), of_limb(a.Small % b.Small, a.Negative)};
+    if (b.Size == 0) { // a one-limb divisor: one pass over a's limbs
+        big::mag   q(a.Limbs, a.Limbs + a.Size);
+        const umax r = limb::div_1(q.data(), q.data(), q.size(), b.Small);
+        return {from_mag(std::move(q), a.Negative != b.Negative), of_limb(r, a.Negative)};
     }
     big::divmod_result m = big::divmod(a.magnitude(), b.magnitude());
     return {from_mag(std::move(m.Quotient), a.Negative != b.Negative), from_mag(std::move(m.Remainder), a.Negative)};
 }
 constexpr big_int operator/(const big_int& a, const big_int& b) { return big_int::divmod(a, b).Quotient; }
-constexpr big_int operator%(const big_int& a, const big_int& b) { return big_int::divmod(a, b).Remainder; }
+constexpr big_int operator%(const big_int& a, const big_int& b) {
+    if (b.Size == 0 && a.Size != 0 && !b.is_zero()) { // a one-limb divisor: the remainder alone
+        umax r = 0;
+        for (std::size_t i = a.Size; i-- > 0;)
+            r = limb::div(r, a.Limbs[i], b.Small).Lo;
+        return big_int::of_limb(r, a.Negative);
+    }
+    return big_int::divmod(a, b).Remainder;
+}
 
 constexpr big_int gcd(const big_int& a, const big_int& b) { return euclid_gcd(abs(a), abs(b)); }
 
@@ -3239,6 +3186,12 @@ constexpr int bit_width_of(const big_int& v) { return v.bit_width(); }
 // big_rational — an exact fraction of any size; structural and canonical
 // (reduced, positive denominator).
 //---------------------------------------------------------------------------
+struct big_rational;
+constexpr big::fraction fraction_of(const big_rational& r);
+
+template <class T>
+concept big_operand = std::integral<T> || std::same_as<T, rational>;
+
 struct big_rational {
     big_int Num{};
     big_int Den{1};
@@ -3247,10 +3200,8 @@ struct big_rational {
     template <std::integral T>
     constexpr big_rational(T v) noexcept : Num{v} {}
     constexpr big_rational(big_int n, big_int d = big_int{1}) : Num{n}, Den{d} { normalize(); }
-    constexpr big_rational(const rational& r) : Num{r.Numerator}, Den{abs_den(r.Denominator)} {
-        if (r.Denominator < 0)
-            Num = -Num;
-    }
+    constexpr big_rational(const rational& r)
+        : Num{big_int::of_limb(r.Numerator, r.Denominator < 0)}, Den{abs_den(r.Denominator)} {}
     // Anything else that converts to `rational` (an inside: just<-6, 5>)
     // takes that one conversion, so it can be a grid limit or notch.
     template <class T>
@@ -3258,11 +3209,27 @@ struct big_rational {
     constexpr big_rational(const T& v) : big_rational(rational(v)) {}
     constexpr big_rational(std::floating_point auto d) // exact binary value
     {
-        if (d != d || d - d != 0)
+        if (!is_finite(d))
             fail_hard<"big_rational: not a finite number">(errc::not_finite);
         if constexpr (wide_float<decltype(d)>)
             if (!is_double_value(d) && !is_finite(static_cast<double>(d)))
                 fail_hard<"big_rational: a long double past the double range">(errc::overflow);
+        // One limb each (most limits): m·2^e reduced, no transient magnitudes.
+        if (is_double_value(d)) {
+            auto [m, e] = double_parts(static_cast<double>(d));
+            if (m == 0)
+                return;
+            if (e < 0) {
+                const int z = std::min(std::countr_zero(m), -e);
+                m >>= z;
+                e += z;
+            }
+            if (e < 0 ? e > -64 : e <= std::countl_zero(m)) {
+                Num = big_int::of_limb(e >= 0 ? m << e : m, d < 0);
+                Den = big_int{e >= 0 ? umax{1} : umax{1} << -e};
+                return;
+            }
+        }
         // In lowest terms from the start (a long double as the sum of the
         // doubles it splits into).
         const big::fraction f = big::fraction_of_float(d);
@@ -3284,7 +3251,7 @@ struct big_rational {
             return;
         }
         const big_int g = gcd(Num, Den);
-        if (!(g == big_int{1})) {
+        if (g != big_int{1}) {
             Num = Num / g;
             Den = Den / g;
         }
@@ -3298,14 +3265,10 @@ struct big_rational {
     // Implicit: lets every 64-bit path keep working on a small grid. A value
     // past 64 bits fails the build when such a path meets it.
     constexpr operator rational() const {
-        if (!fits_rational()) {
-            if consteval {
-                constexpr_error<"grid number past 64 bits on a path that needs a 64-bit rational">();
-            }
-            raise(errc::overflow, "big_rational: value past 64 bits");
-        }
-        const imax d = static_cast<imax>(Den.Small);
-        return rational{Num.Small, Num.negative() ? -d : d};
+        if (!fits_rational())
+            fail_hard<"grid number past 64 bits on a path that needs a 64-bit rational">(errc::overflow);
+        const imax d = static_cast<imax>(Den.Small); // in lowest terms already
+        return make_raw(Num.Small, Num.negative() ? -d : d);
     }
 
     friend constexpr std::strong_ordering operator<=>(const big_rational& a, const big_rational& b) {
@@ -3318,8 +3281,14 @@ struct big_rational {
             const std::strong_ordering m = limb::mul_compare(a.Num.Small, b.Den.Small, b.Num.Small, a.Den.Small);
             return a.Num.negative() ? 0 <=> m : m;
         }
-        return big::compare(big::fraction{a.Num.magnitude(), a.Den.magnitude(), a.Num.negative()},
-                            big::fraction{b.Num.magnitude(), b.Den.magnitude(), b.Num.negative()});
+        // Signs, then integers, decide without forming magnitudes.
+        const int sa = a.Num.is_zero() ? 0 : a.Num.negative() ? -1 : 1;
+        const int sb = b.Num.is_zero() ? 0 : b.Num.negative() ? -1 : 1;
+        if (sa != sb || sa == 0)
+            return sa <=> sb;
+        if (a.is_integer() && b.is_integer())
+            return a.Num <=> b.Num;
+        return big::compare(fraction_of(a), fraction_of(b));
     }
 
     friend constexpr big_rational operator-(big_rational a) {
@@ -3340,45 +3309,47 @@ struct big_rational {
 
     [[nodiscard]] constexpr bool is_integer() const noexcept { return Den == big_int{1}; }
 
-    // With an integer: exact, and unambiguous (an int converts to both).
-    template <std::integral T>
-    friend constexpr bool operator==(const big_rational& a, T b) {
-        return a.Den == big_int{1} && a.Num == big_int{b};
+    // Mixed with an integer or the 64-bit rational: each converts to both
+    // big_rational and rational, so these exact overloads keep the operators
+    // unambiguous.
+    template <big_operand T>
+    friend constexpr bool operator==(const big_rational& a, const T& b) {
+        return a == big_rational{b};
     }
-    template <std::integral T>
-    friend constexpr std::strong_ordering operator<=>(const big_rational& a, T b) {
+    template <big_operand T>
+    friend constexpr std::strong_ordering operator<=>(const big_rational& a, const T& b) {
         return a <=> big_rational{b};
     }
-    template <std::integral T>
-    friend constexpr big_rational operator+(const big_rational& a, T b) {
+    template <big_operand T>
+    friend constexpr big_rational operator+(const big_rational& a, const T& b) {
         return a + big_rational{b};
     }
-    template <std::integral T>
-    friend constexpr big_rational operator+(T a, const big_rational& b) {
+    template <big_operand T>
+    friend constexpr big_rational operator+(const T& a, const big_rational& b) {
         return big_rational{a} + b;
     }
-    template <std::integral T>
-    friend constexpr big_rational operator-(const big_rational& a, T b) {
+    template <big_operand T>
+    friend constexpr big_rational operator-(const big_rational& a, const T& b) {
         return a - big_rational{b};
     }
-    template <std::integral T>
-    friend constexpr big_rational operator-(T a, const big_rational& b) {
+    template <big_operand T>
+    friend constexpr big_rational operator-(const T& a, const big_rational& b) {
         return big_rational{a} - b;
     }
-    template <std::integral T>
-    friend constexpr big_rational operator*(const big_rational& a, T b) {
+    template <big_operand T>
+    friend constexpr big_rational operator*(const big_rational& a, const T& b) {
         return a * big_rational{b};
     }
-    template <std::integral T>
-    friend constexpr big_rational operator*(T a, const big_rational& b) {
+    template <big_operand T>
+    friend constexpr big_rational operator*(const T& a, const big_rational& b) {
         return big_rational{a} * b;
     }
-    template <std::integral T>
-    friend constexpr big_rational operator/(const big_rational& a, T b) {
+    template <big_operand T>
+    friend constexpr big_rational operator/(const big_rational& a, const T& b) {
         return a / big_rational{b};
     }
-    template <std::integral T>
-    friend constexpr big_rational operator/(T a, const big_rational& b) {
+    template <big_operand T>
+    friend constexpr big_rational operator/(const T& a, const big_rational& b) {
         return big_rational{a} / b;
     }
 
@@ -3411,22 +3382,12 @@ struct big_rational {
         return Num.negative() ? -q : q;
     }
     constexpr explicit operator float() const { return static_cast<float>(static_cast<double>(*this)); }
-
-    // Mixed with the 64-bit rational: each converts to the other, so these
-    // exact overloads keep the operators unambiguous.
-    friend constexpr bool operator==(const big_rational& a, const rational& b) { return a == big_rational{b}; }
-    friend constexpr std::strong_ordering operator<=>(const big_rational& a, const rational& b) {
-        return a <=> big_rational{b};
-    }
-    friend constexpr big_rational operator+(const big_rational& a, const rational& b) { return a + big_rational{b}; }
-    friend constexpr big_rational operator+(const rational& a, const big_rational& b) { return big_rational{a} + b; }
-    friend constexpr big_rational operator-(const big_rational& a, const rational& b) { return a - big_rational{b}; }
-    friend constexpr big_rational operator-(const rational& a, const big_rational& b) { return big_rational{a} - b; }
-    friend constexpr big_rational operator*(const big_rational& a, const rational& b) { return a * big_rational{b}; }
-    friend constexpr big_rational operator*(const rational& a, const big_rational& b) { return big_rational{a} * b; }
-    friend constexpr big_rational operator/(const big_rational& a, const rational& b) { return a / big_rational{b}; }
-    friend constexpr big_rational operator/(const rational& a, const big_rational& b) { return big_rational{a} / b; }
 };
+// A grid number as a transient fraction, for tests that run at runtime too.
+constexpr big::fraction fraction_of(const big_rational& r) {
+    return {r.Num.magnitude(), r.Den.magnitude(), r.Num.negative()};
+}
+
 constexpr big_rational abs(big_rational a) {
     a.Num = abs(a.Num);
     return a;
@@ -3467,7 +3428,7 @@ constexpr bool same_lattice64(const rational& a, const rational& b, const ration
     if (const auto d = try_sub(a, b)) [[likely]]
         return divides_evenly(*d, n);
     using W        = wide_sint<4>;
-    auto    num_of = [](const rational& r) { return r.Denominator < 0 ? -W{r.Numerator} : W{r.Numerator}; };
+    auto    num_of = [](const rational& r) { return signed_numerator<W>(r); };
     auto    den_of = [](const rational& r) { return W{abs_den(r.Denominator)}; };
     const W num    = (num_of(a) * den_of(b) - num_of(b) * den_of(a)) * den_of(n);
     const W den    = den_of(a) * den_of(b) * num_of(n);
@@ -3479,11 +3440,6 @@ using grid_int      = big_int;
 
 constexpr grid_int wide_numerator(const big_rational& r) { return r.Num; }
 constexpr grid_int wide_denominator(const big_rational& r) { return r.Den; }
-
-// A grid number as a transient fraction, for tests that run at runtime too.
-constexpr big::fraction fraction_of(const big_rational& r) {
-    return {r.Num.magnitude(), r.Den.magnitude(), r.Num.negative()};
-}
 
 // (a − b) / n is an integer (true for n == 0): b and a share n's lattice.
 // (No big value is formed, so the test runs at runtime too.)
@@ -3566,11 +3522,7 @@ consteval grid_rational parse_grid_literal() {
     if (m == grid_int{0})
         return big_rational{0};
     e10 += zeros + (sc.ExpNeg ? -sc.Exp : sc.Exp);
-    const grid_int p = pow_by_squaring(
-        ten,
-        static_cast<unsigned>(e10 < 0 ? -e10 : e10),
-        [](const grid_int& a, const grid_int& b) { return a * b; },
-        grid_int{1});
+    const grid_int p = pow_by_squaring(ten, static_cast<unsigned>(e10 < 0 ? -e10 : e10));
     return e10 < 0 ? big_rational{m, p} : big_rational{m * p, grid_int{1}};
 }
 } // namespace beman::inside::detail
@@ -4215,11 +4167,9 @@ struct grid {
         if constexpr (std::floating_point<T>)
             if (std::is_constant_evaluated() &&
                 detail::grid_int{1024} < detail::wide_denominator(detail::grid_rational{v}))
-                detail::constexpr_error<
-                    // Clang prints only the first ~34 characters: lead with the fix.
-                    "float limit: use _r literal (0.1_r) or give a notch {{lo, hi}, per<D>}; "
-                    "grid{lo, hi} derives a notch from a floating-point limit only down to "
-                    "1/1024 (0.1 is not 1/10 in binary)">();
+                detail::constexpr_error<"float limit: use _r literal (0.1_r) or give a notch {{lo, hi}, per<D>}; "
+                                        "grid{lo, hi} derives a notch from a floating-point limit only down to "
+                                        "1/1024 (0.1 is not 1/10 in binary)">();
     }
 
   public:
@@ -4779,11 +4729,11 @@ namespace detail {
 // integer fast paths, the math engines). A grid number past 64 bits fails
 // the build here, never truncates.
 template <insidable B>
-inline constexpr rational lower64 = to_rational(grid_of<B>.Interval.Lower);
+inline constexpr rational lower64 = to_rational(lower_of<B>);
 template <insidable B>
-inline constexpr rational upper64 = to_rational(grid_of<B>.Interval.Upper);
+inline constexpr rational upper64 = to_rational(upper_of<B>);
 template <insidable B>
-inline constexpr rational notch64 = to_rational(grid_of<B>.Notch);
+inline constexpr rational notch64 = to_rational(notch_of<B>);
 } // namespace detail
 
 template <typename N>
@@ -5541,10 +5491,10 @@ concept assign_intervals_ok =
     (!insidable<R> && !std::integral<R>)
     // wrap/clamp bring any value into range, so a disjoint rhs interval is fine
     // for them (the integral-rhs path already allows it — int's interval is unbounded).
-    || ((flags_of<L> | P) & (wrap | clamp)) != 0 || not excludes(interval_of<L>, interval_of<R>);
+    || has_any_flag(flags_of<L> | P, wrap | clamp) || not excludes(interval_of<L>, interval_of<R>);
 
 template <typename L, typename R, policy_flag P>
-concept assign_notch_ok = !insidable<R> || ((flags_of<L> | P) & snap) != 0 || notches_compatible<L, R>;
+concept assign_notch_ok = !insidable<R> || has_flag(flags_of<L> | P, snap) || notches_compatible<L, R>;
 
 // R's notch for a diagnostic (0 for a non-inside, which never fails there).
 template <typename R>
@@ -5934,11 +5884,8 @@ constexpr T nearest_float(const wide_rational<K>& f) noexcept {
     });
     for (int k = drop - s; k != 0;) {
         const int step = k > 64 ? 64 : k < -64 ? -64 : k;
-        const T   t    = pow_by_squaring(
-            step < 0 ? static_cast<T>(0.5) : static_cast<T>(2),
-            static_cast<unsigned>(step < 0 ? -step : step),
-            [](T a, T b) { return a * b; },
-            T{1});
+        const T   t    = pow_by_squaring(step < 0 ? static_cast<T>(0.5) : static_cast<T>(2),
+                                         static_cast<unsigned>(step < 0 ? -step : step));
         x *= t;
         k -= step;
     }
@@ -6646,8 +6593,6 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
                 "on_clamp / on_wrap: a source past the 64-bit rational into a rational inside is not supported");
         return assignment<L, rational>::assign(lhs, *r, policy, std::forward<A>(action));
     } else {
-        // (Plain variables, not a structured binding: Clang rejects a binding
-        // captured by the lambdas below in constant evaluation.)
         const auto slot = [&] {
             if constexpr (point_storage<L>) {
                 // One value and no lattice to divide by: the slot below it,
@@ -8214,12 +8159,11 @@ inline constexpr bool exact_fits = [] {
     else if constexpr (!rational_storage<Result>)
         return false;
     else {
-        const grid_int umax_max{std::numeric_limits<umax>::max()}, imax_max{std::numeric_limits<imax>::max()};
         if constexpr (Op == exact_op::add) {
             const grid_int d = den_bound(grid_of<L>) * den_bound(grid_of<R>);
-            return !(umax_max < num_bound(interval_of<L>, d)) && !(umax_max < num_bound(interval_of<R>, d));
+            return num_bound(interval_of<L>, d).fits_limb() && num_bound(interval_of<R>, d).fits_limb();
         } else if constexpr (Op == exact_op::div)
-            return !(imax_max < num_bound(grid_of<R>));
+            return num_bound(grid_of<R>) <= std::numeric_limits<imax>::max();
         else
             return true;
     }
@@ -8244,11 +8188,11 @@ template <insidable Point, insidable X, insidable Result>
 inline constexpr bool point_scale =
     point_grid<Point> && lower_of<Point> != 0 && notched<X> && !wide_valued<X> && !wide_valued<Result>;
 
-template <insidable Result, bool Negate, insidable X>
+template <insidable Result, insidable Point, insidable X>
 constexpr Result scale_by_point(const X& x) noexcept {
     static_assert(max_index_of<Result> == max_index_of<X>);
     const umax off = raw_offset<X>(x.raw());
-    return Result::from_raw(raw_from_offset<Result>(Negate ? max_index_of<X> - off : off));
+    return Result::from_raw(raw_from_offset<Result>(lower_of<Point> < 0 ? max_index_of<X> - off : off));
 }
 } // namespace beman::inside::detail
 
@@ -8279,25 +8223,22 @@ struct addition {
 
     template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
     static constexpr auto add(L lhs, R rhs, policy<F, E> policy = {}, A&& action = {}) -> return_t<F, A> {
-        result res;
         if constexpr (fraction_storage<result>) {
             const auto sum = continuous_raw_of<raw_t<result>>(exact_of(lhs) + exact_of(rhs));
             if constexpr (needs_overflow_check<F>)
                 if (!sum) [[unlikely]]
                     return report_or_unexpected<result>(action, policy, errc::overflow);
-            res = result::from_raw(*sum);
+            return result::from_raw(*sum);
         } else if constexpr (rational_storage<result>) {
-            static_assert(!wide_valued<L> && !wide_valued<R>,
-                          "addition: a wide-index operand with a continuous result is not supported yet");
             if constexpr (needs_overflow_check<F>) {
-                auto sum = rational::add(lhs, rhs);
+                auto sum = as_rational(lhs) + as_rational(rhs);
                 if (!sum) [[unlikely]]
                     return report_or_unexpected<result>(action, policy, errc::overflow);
-                res = result::from_raw(*sum);
+                return result::from_raw(*sum);
             } else
-                res = result::from_raw(rational::add_unchecked(lhs, rhs));
+                return result::from_raw(rational::add_unchecked(lhs, rhs));
         } else if constexpr (point_storage<result>)
-            res = result::from_raw(raw_t<result>{}); // point + point: a point
+            return result::from_raw(raw_t<result>{}); // point + point: a point
         else {
             // Integer raws (a notched result has no continuous operand): add the
             // values in a unit dividing both operands' (the result notch
@@ -8306,9 +8247,8 @@ struct addition {
             static_assert(integer_storage<L> && integer_storage<R>);
             constexpr grid_rational U = gcd(unit_of<L>, unit_of<R>);
             using W                   = index_work_t<result, L, U, R, U, U>;
-            res = from_value_in_units<result, U>(value_in_units<W, U>(lhs) + value_in_units<W, U>(rhs));
+            return from_value_in_units<result, U>(value_in_units<W, U>(lhs) + value_in_units<W, U>(rhs));
         }
-        return res;
     }
 };
 
@@ -8354,31 +8294,28 @@ struct multiplication {
     using return_t = std::
         conditional_t<overflow_action<plain_t<A>> || !needs_overflow_check<F>, result, std::expected<result, errc>>;
 
-    template <typename P, typename A = no_action>
-    static constexpr auto mul(L lhs, R rhs, P&& policy, A&& action = {}) -> return_t<flags_of<P>, A> {
+    template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
+    static constexpr auto mul(L lhs, R rhs, policy<F, E> policy = {}, A&& action = {}) -> return_t<F, A> {
         if constexpr (point_scale<R, L, result>) // x * just<c>: x's offset (see rep.hpp)
-            return scale_by_point<result, (lower_of<R> < 0)>(lhs);
+            return scale_by_point<result, R>(lhs);
         else if constexpr (point_scale<L, R, result>)
-            return scale_by_point<result, (lower_of<L> < 0)>(rhs);
+            return scale_by_point<result, L>(rhs);
         else if constexpr (fraction_storage<result>) {
             const auto prod = continuous_raw_of<raw_t<result>>(exact_of(lhs) * exact_of(rhs));
-            if constexpr (needs_overflow_check<flags_of<P>>)
+            if constexpr (needs_overflow_check<F>)
                 if (!prod) [[unlikely]]
                     return report_or_unexpected<result>(action, policy, errc::overflow);
             return result::from_raw(*prod);
         } else if constexpr (rational_storage<result>) {
-            static_assert(!wide_valued<L> && !wide_valued<R>,
-                          "multiplication: a wide-index operand with a continuous result is not supported yet");
-            if constexpr (needs_overflow_check<flags_of<P>>) {
+            if constexpr (needs_overflow_check<F>) {
                 auto prod = as_rational(lhs) * as_rational(rhs);
                 if (!prod) [[unlikely]]
                     return report_or_unexpected<result>(action, policy, errc::overflow);
                 return result::from_raw(*prod);
             } else
                 return result::from_raw(rational::mul_unchecked(as_rational(lhs), as_rational(rhs)));
-        } else if constexpr (point_storage<result>)
-            return result::from_raw(
-                raw_t<result>{}); // a one-point result (point × point, or × 0): its value is the grid's
+        } else if constexpr (point_storage<result>) // point × point, or × 0: the grid's one value
+            return result::from_raw(raw_t<result>{});
         else {
             // Integer raws (a notched result has no continuous operand): multiply the operands' values in their own
             // units (a notch or value unit, or |c| for a point c), in imax or by wrapping arithmetic (wide_value.hpp).
@@ -8830,7 +8767,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         return exact_result<result>(wide_rational<K>{rounded_div<rmode>(a, b), I{1}});
     } else if constexpr (point_divisor) {
         if constexpr (point_scale<R, L, result>)
-            return scale_by_point<result, (lower_of<R> < 0)>(lhs);
+            return scale_by_point<result, R>(lhs);
         else
             return exact_result<result>(exact_of(lhs) / exact_of(rhs));
     } else if constexpr (wide_valued<L> || wide_valued<R> || wide_valued<result>) {
@@ -9708,8 +9645,6 @@ struct inside {
     // raw_hi + Dhi]), the wrap range raw_hi − raw_lo + 1 and the new raw's
     // offset from raw_lo (wrap divides it), so the add cannot overflow. imax
     // for every grid within int64.
-    // (A variable template, not a function: Clang would instantiate a plain
-    // member function's body while the class is still incomplete.)
     template <detail::grid_int Dlo, detail::grid_int Dhi>
     static constexpr int raw_work_bits = [] {
         using W        = detail::grid_int;
@@ -13031,7 +12966,7 @@ constexpr std::optional<wide_sint<pow_limbs>> exact_root(const wide_sint<pow_lim
     for (int i = (bit_width_of(n) + q - 1) / q; i-- > 0;)
         if (const P c = r + (P{1} << i); at_most(c))
             r = c;
-    const P p = pow_by_squaring(r, static_cast<unsigned>(q), [](const P& x, const P& y) { return x * y; }, P{1});
+    const P p = pow_by_squaring(r, static_cast<unsigned>(q));
     return p == n ? std::optional<P>{r} : std::nullopt;
 }
 
@@ -13060,9 +12995,8 @@ constexpr std::optional<wide_rational<pow_limbs>> exact_pow(const wide_rational<
     const int bits = bit_width_of(*rn) + bit_width_of(*rd);
     if (bit_width_of(ak) > 12 || static_cast<imax>(ak) * bits > 64 * static_cast<imax>(pow_limbs) - 8)
         return std::nullopt;
-    const auto     mul   = [](const P& x, const P& y) { return x * y; };
     const unsigned power = static_cast<unsigned>(static_cast<imax>(ak));
-    const P        n = pow_by_squaring(*rn, power, mul, P{1}), d = pow_by_squaring(*rd, power, mul, P{1});
+    const P        n = pow_by_squaring(*rn, power), d = pow_by_squaring(*rd, power);
     return k.negative() ? inverse(wide_rational<pow_limbs>{n, d}) : wide_rational<pow_limbs>{n, d};
 }
 

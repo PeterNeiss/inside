@@ -555,8 +555,6 @@ struct inside {
     // raw_hi + Dhi]), the wrap range raw_hi − raw_lo + 1 and the new raw's
     // offset from raw_lo (wrap divides it), so the add cannot overflow. imax
     // for every grid within int64.
-    // (A variable template, not a function: Clang would instantiate a plain
-    // member function's body while the class is still incomplete.)
     template <detail::grid_int Dlo, detail::grid_int Dhi>
     static constexpr int raw_work_bits = [] {
         using W        = detail::grid_int;

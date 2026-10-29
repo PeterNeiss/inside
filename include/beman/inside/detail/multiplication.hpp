@@ -32,31 +32,28 @@ struct multiplication {
     using return_t = std::
         conditional_t<overflow_action<plain_t<A>> || !needs_overflow_check<F>, result, std::expected<result, errc>>;
 
-    template <typename P, typename A = no_action>
-    static constexpr auto mul(L lhs, R rhs, P&& policy, A&& action = {}) -> return_t<flags_of<P>, A> {
+    template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
+    static constexpr auto mul(L lhs, R rhs, policy<F, E> policy = {}, A&& action = {}) -> return_t<F, A> {
         if constexpr (point_scale<R, L, result>) // x * just<c>: x's offset (see rep.hpp)
-            return scale_by_point<result, (lower_of<R> < 0)>(lhs);
+            return scale_by_point<result, R>(lhs);
         else if constexpr (point_scale<L, R, result>)
-            return scale_by_point<result, (lower_of<L> < 0)>(rhs);
+            return scale_by_point<result, L>(rhs);
         else if constexpr (fraction_storage<result>) {
             const auto prod = continuous_raw_of<raw_t<result>>(exact_of(lhs) * exact_of(rhs));
-            if constexpr (needs_overflow_check<flags_of<P>>)
+            if constexpr (needs_overflow_check<F>)
                 if (!prod) [[unlikely]]
                     return report_or_unexpected<result>(action, policy, errc::overflow);
             return result::from_raw(*prod);
         } else if constexpr (rational_storage<result>) {
-            static_assert(!wide_valued<L> && !wide_valued<R>,
-                          "multiplication: a wide-index operand with a continuous result is not supported yet");
-            if constexpr (needs_overflow_check<flags_of<P>>) {
+            if constexpr (needs_overflow_check<F>) {
                 auto prod = as_rational(lhs) * as_rational(rhs);
                 if (!prod) [[unlikely]]
                     return report_or_unexpected<result>(action, policy, errc::overflow);
                 return result::from_raw(*prod);
             } else
                 return result::from_raw(rational::mul_unchecked(as_rational(lhs), as_rational(rhs)));
-        } else if constexpr (point_storage<result>)
-            return result::from_raw(
-                raw_t<result>{}); // a one-point result (point × point, or × 0): its value is the grid's
+        } else if constexpr (point_storage<result>) // point × point, or × 0: the grid's one value
+            return result::from_raw(raw_t<result>{});
         else {
             // Integer raws (a notched result has no continuous operand): multiply the operands' values in their own
             // units (a notch or value unit, or |c| for a point c), in imax or by wrapping arithmetic (wide_value.hpp).

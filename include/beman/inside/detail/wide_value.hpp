@@ -341,11 +341,8 @@ constexpr T nearest_float(const wide_rational<K>& f) noexcept {
     });
     for (int k = drop - s; k != 0;) {
         const int step = k > 64 ? 64 : k < -64 ? -64 : k;
-        const T   t    = pow_by_squaring(
-            step < 0 ? static_cast<T>(0.5) : static_cast<T>(2),
-            static_cast<unsigned>(step < 0 ? -step : step),
-            [](T a, T b) { return a * b; },
-            T{1});
+        const T   t    = pow_by_squaring(step < 0 ? static_cast<T>(0.5) : static_cast<T>(2),
+                                         static_cast<unsigned>(step < 0 ? -step : step));
         x *= t;
         k -= step;
     }

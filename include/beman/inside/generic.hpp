@@ -26,10 +26,10 @@ concept assign_intervals_ok =
     (!insidable<R> && !std::integral<R>)
     // wrap/clamp bring any value into range, so a disjoint rhs interval is fine
     // for them (the integral-rhs path already allows it — int's interval is unbounded).
-    || ((flags_of<L> | P) & (wrap | clamp)) != 0 || not excludes(interval_of<L>, interval_of<R>);
+    || has_any_flag(flags_of<L> | P, wrap | clamp) || not excludes(interval_of<L>, interval_of<R>);
 
 template <typename L, typename R, policy_flag P>
-concept assign_notch_ok = !insidable<R> || ((flags_of<L> | P) & snap) != 0 || notches_compatible<L, R>;
+concept assign_notch_ok = !insidable<R> || has_flag(flags_of<L> | P, snap) || notches_compatible<L, R>;
 
 // R's notch for a diagnostic (0 for a non-inside, which never fails there).
 template <typename R>
