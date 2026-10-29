@@ -36,7 +36,7 @@ partial / related · **○** no · **—** not applicable.
 
 | Library | Header-only | Single header | Min C++ | License | Maturity / status |
 |---|---|---|---|---|---|
-| **inside** | ● | ● ⁹ | C++23 | Apache-2.0 WITH LLVM-exception | **under development (v0.5.0) · single-author · not yet battle-tested** |
+| **inside** | ● | ● ⁹ | C++26 (reflection) | Apache-2.0 WITH LLVM-exception | **under development (v0.5.0) · single-author · not yet battle-tested** |
 | **bounded::integer** | ○ (C++ modules) ⁸ | ○ | C++20+ (clang 22+) | BSL-1.0 | mature · active |
 | **Intel safe-arithmetic** | ● | ○ | C++20 | BSL-1.0 | **pre-release · WIP (not for production)** |
 | **Boost.SafeNumerics** | ● | ○ | C++14 | BSL-1.0 | mature (Boost) |
@@ -58,7 +58,7 @@ Notes:
 7. `Trigonometric` / `ExpLog` / `Root` mix-ins delegate to `<cmath>` on the wrapped type.
 8. implemented as C++20 modules, so not header-only in the classic sense.
 9. a *generated* amalgamation of the multi-file source (`single_include/beman/inside/inside.hpp`, standard-library-only), rebuilt by a CMake target — SafeInt (`SafeInt.hpp`) and PSsst (`pssst.h`) are instead authored as a single file; the rest ship a multi-header tree (fpm, e.g., splits `fixed.hpp` / `math.hpp` / `ios.hpp`).
-10. core compiles `-ffreestanding -fno-exceptions` (no `<system_error>`; a replaceable `error_handler`; strings/printing in the opt-in `beman/inside/io.hpp`, droppable via `BEMAN_INSIDE_NO_STRING`). `BEMAN_INSIDE_MATH_NO_FP` (auto under `-ffreestanding`) compiles the `<cmath>` dependency out of `beman::inside::math` entirely; full `-ffreestanding` still depends on the stdlib's freestanding maturity — see [freestanding.md](freestanding.md). The units (`units.hpp`) need a hosted library.
+10. core compiles `-fno-exceptions` (no `<system_error>`; a replaceable `error_handler`; strings/printing in the opt-in `beman/inside/io.hpp`, droppable via `BEMAN_INSIDE_NO_STRING`). `BEMAN_INSIDE_MATH_NO_FP` compiles the `<cmath>` dependency out of `beman::inside::math` entirely; `-ffreestanding` waits for a freestanding `<meta>` — see [freestanding.md](freestanding.md). The units (`units.hpp`) need a hosted library.
 11. C++20 modules (clang-only) with throwing policies; no documented freestanding / no-exceptions path.
 12. `-fno-exceptions` via the compile-time `trap` exception policy; the default policy throws.
 13. non-throwing overflow tags (`native` / `saturated` / `undefined`) and no `<cmath>`, but no explicit `-ffreestanding` guarantee.

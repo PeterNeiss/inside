@@ -17,7 +17,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 range**: the range and the step size live in the *type*. With
 `<beman/inside/units.hpp>` the unit, the dimension and the kind live there too,
 so a conversion is a compile-time rescale of the grid — exact and free. It needs
-C++23 (grids past 64 bits need C++26) and follows
+C++26 with static reflection (GCC 16) and follows
 [The Beman Standard](https://github.com/bemanproject/beman/blob/main/docs/beman_standard.md).
 
 ```cpp
@@ -47,9 +47,9 @@ auto d = just<5> * si::kilo(si::metre) + just<250> * si::metre;   // 5250 m, exa
   FPU. `sin` of 30° is exactly ½. What is guaranteed, and how to certify a
   type pair your program uses, is in [docs/math.md](docs/math.md#what-is-guaranteed)
   and [docs/certify.md](docs/certify.md).
-- **Any size of grid.** Under C++26 with static reflection a grid's limits and
-  notch have no size limit (`inside<{0, 0x1p100}>`); see
-  [docs/storage.md](docs/storage.md#grids-past-64-bits-c26).
+- **Any size of grid.** A grid's limits and notch have no size limit
+  (`inside<{0, 0x1p100}>`); see
+  [docs/storage.md](docs/storage.md#grids-past-64-bits).
 - **Built for:** audio samples, money, sensor fusion, PID controllers, clocks
   and calendars, game state, embedded registers — anywhere a plain
   `int`/`float` silently overflows, wraps, or drifts.
@@ -173,8 +173,8 @@ output.
 - **Exact and big:** [`json_io.cpp`](examples/json_io.cpp) (exact JSON numbers),
   [`expected_pipeline.cpp`](examples/expected_pipeline.cpp) (errors with their cause),
   [`solar_system.cpp`](examples/solar_system.cpp) (nanometres across the solar system),
-  [`planck_to_cosmos.cpp`](examples/planck_to_cosmos.cpp) (grids past 64 bits, C++26),
-  [`rsa.cpp`](examples/rsa.cpp) (textbook RSA-1024 on residue grids, C++26).
+  [`planck_to_cosmos.cpp`](examples/planck_to_cosmos.cpp) (grids past 64 bits),
+  [`rsa.cpp`](examples/rsa.cpp) (textbook RSA-1024 on residue grids).
 - **Signal and control:** [`audio_mixer.cpp`](examples/audio_mixer.cpp),
   [`oscillator.cpp`](examples/oscillator.cpp) (a phase counter in slots of 2π/65536 rad),
   [`pid_controller.cpp`](examples/pid_controller.cpp) (K in, % out),
@@ -195,14 +195,9 @@ ideal for Compiler Explorer. See [docs/single-header.md](docs/single-header.md).
 
 This project requires at least the following to build:
 
-* A C++ compiler and standard library that conform to C++23 (the library needs
-  `<expected>`). Grid limits and notches past 64 bits additionally need C++26
-  static reflection — GCC 16 with `-freflection` (the `gcc16-*` presets);
-  everything else works the same under C++23.
-* On MSVC (19.51, Visual Studio 2026, and later) the `beman::inside` target adds
-  `/utf-8 /Zc:__cplusplus /Zc:preprocessor /constexpr:steps100000000`. The
-  single header needs only `/utf-8`, plus the step limit if you evaluate math in
-  constant expressions.
+* A C++26 compiler with static reflection: GCC 16 with `-freflection`, which
+  the `beman::inside` target adds (configuring fails without it). Grid numbers
+  of any size are interned with `std::define_static_array`.
 * CMake 3.30 or later
 * (Test Only) GoogleTest
 
@@ -218,9 +213,8 @@ Library options:
 |--------|---------|--------|
 | `BEMAN_INSIDE_MATH_NO_FP` | `OFF` | Build without hardware floating point: no `<cmath>`, the math engine's integer path computes every result; results do not change |
 | `BEMAN_INSIDE_STRICT_SFINAE` | `OFF` | Drop the assignment diagnostic overloads so `is_constructible` stays honest |
-| `BEMAN_INSIDE_FMA` | `ON` | Add `-mfma` on x86-64 GCC/Clang so the math engine's `std::fma` is one instruction (see below) |
+| `BEMAN_INSIDE_FMA` | `ON` | Add `-mfma` on x86-64 so the math engine's `std::fma` is one instruction (see below) |
 | `BEMAN_INSIDE_BUILD_TOOLS` | `OFF` | Build the benchmarks, property fuzzer, accuracy sweep and perf workload |
-| `BEMAN_INSIDE_REFLECTION` | `ON` | Under C++26, add `-freflection` when the compiler accepts it, enabling grid numbers past 64 bits |
 
 The math engine and bare-metal builds are covered in
 [docs/freestanding.md](docs/freestanding.md) and [docs/math.md](docs/math.md).
@@ -228,22 +222,19 @@ The math engine and bare-metal builds are covered in
 **FMA on x86-64.** The math engine's kernels use `std::fma`; baseline x86-64
 emulates it in software, several times slower (results don't change).
 `BEMAN_INSIDE_FMA` (default `ON`) adds `-mfma` to targets linking
-`beman::inside` on x86-64 GCC/Clang, which needs a Haswell/Piledriver (2013) or
+`beman::inside` on x86-64, which needs a Haswell/Piledriver (2013) or
 later CPU; configure with `-DBEMAN_INSIDE_FMA=OFF` for older ones. Without
 CMake, add `-mfma` (or `-march=x86-64-v3`) yourself.
 
 ### Supported Platforms
 
-| Compiler   | Version | C++ Standards | Standard Library  |
-|------------|---------|---------------|-------------------|
-| GCC        | 16-14   | C++26-C++23   | libstdc++         |
-| Clang      | 22-19   | C++26-C++23   | libstdc++, libc++ |
-| Clang      | 18      | C++26-C++23   | libc++            |
-| AppleClang | latest  | C++26-C++23   | libc++            |
-| MSVC       | 19.51+  | C++23         | MSVC STL          |
+| Compiler | Version | C++ Standard | Standard Library |
+|----------|---------|--------------|------------------|
+| GCC      | 16      | C++26        | libstdc++        |
 
-CI tests every row on a weekly run. Pull requests test the oldest and newest
-versions (GCC 14 and 16, Clang 18, 19 and 22), AppleClang and MSVC.
+The library needs static reflection; GCC 16 is the first compiler with it
+(`-freflection`). CI tests every build option on GCC 16, and a weekly run adds
+Debug, TSan and the full certify check.
 
 ## Development
 
@@ -258,6 +249,9 @@ You can build inside using a CMake workflow preset:
 ```bash
 cmake --workflow --preset gcc-release
 ```
+
+The `gcc-*` presets use the `g++` on the path, which must be GCC 16; the
+`gcc16-*` presets name `g++-16` (the build directory is then `build/gcc16-release`).
 
 To list available workflow presets, you can invoke:
 

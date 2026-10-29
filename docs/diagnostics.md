@@ -13,26 +13,26 @@ probe an operation without an error at all.
 
 ## Decoding an inside
 
-GCC spells every name out; Clang abbreviates. The point `3_ins`:
+GCC spells every name out. The point `3_ins`:
 
 ```text
-GCC:   inside<small_grids_v2::grid{small_grids_v2::interval{grid_rational{3, 1}, grid_rational{3, 1}},
-                                   grid_rational{0, 1}, grid_rational{0, 1}}, 17179869184>
-
-Clang: inside<grid{{{3, 1}, {3, 1}}, {0, 1}, {0, 1}}>
+inside<grid{interval{grid_rational{big_int{3, 0, 0, false}, big_int{1, 0, 0, false}},
+                     grid_rational{big_int{3, 0, 0, false}, big_int{1, 0, 0, false}}},
+            grid_rational{big_int{0, 0, 0, false}, big_int{1, 0, 0, false}},
+            grid_rational{big_int{0, 0, 0, false}, big_int{1, 0, 0, false}}}, 17179869184>
 ```
 
 GCC also prefixes `beman::inside::` and `beman::inside::detail::`, shortened
-here; Clang leaves out a policy equal to the default. In Clang's form,
-`{{3, 1}, {3, 1}}` is the interval, the first `{0, 1}` the notch, the second
-the bound:
+here. The first `grid_rational` pair is the interval, the next the notch, the
+last the bound:
 
 | Part | Means |
 |---|---|
-| interval `{lo, hi}` | the range, both limits included, as exact fractions. A fraction prints as `{numerator, denominator}`, the sign on the denominator: −3 is `{3, -1}` |
-| notch | the step, a fraction. `{0, 1}` is 0: a *continuous* grid or a point, not a missing value |
-| bound | `MaxDenominator`, the denominator bound of a bounded continuous grid ([arithmetic.md](arithmetic.md#bounded-continuous-grids)); `{0, 1}` otherwise |
-| `small_grids_v2`, `big_grids_v2` | the grid ABI: 64-bit grid numbers, or C++26 big grids (each number a `big_rational` of limbs) |
+| `grid_rational{num, den}` | a grid number, an exact fraction: numerator and denominator as `big_int`s |
+| `big_int{small, limbs, size, negative}` | an integer: `small` is the magnitude while it fits 64 bits (`limbs` 0, `size` 0); past that `limbs` points to `size` interned 64-bit limbs, least significant first. −3 is `big_int{3, 0, 0, true}` |
+| interval | the range, both limits included |
+| notch | the step. 0 is a *continuous* grid or a point, not a missing value |
+| bound | `MaxDenominator`, the denominator bound of a bounded continuous grid ([arithmetic.md](arithmetic.md#bounded-continuous-grids)); 0 otherwise |
 | the policy `P` | a bitset, printed as an integer: decode it with the table below |
 
 | Bit | Decimal | Flag |
@@ -57,17 +57,11 @@ without the `unsafe` bit is checked. (The definitions are in
 
 ## Decoding a quantity
 
-Clang prints a quantity as you wrote it:
-
-```text
-error: no viable conversion from 'quantity<si::kilo(si::metre), inside<{0, 10}>>' to 'int'
-```
-
-GCC prints the reference as the structure behind it:
+GCC prints a quantity's reference as the structure behind it:
 
 ```text
 quantity<reference{spec_ref{(& isq_defs::length), true}, true, recipe{…},
-                   unit{unit_atom[6]{unit_atom{(& si_defs::metre), 3, 1}}, 1, magnitude{grid_rational{1, 1}, 0}}},
+                   unit{unit_atom[6]{unit_atom{(& si_defs::metre), 3, 1}}, 1, magnitude{grid_rational{…}, 0}}},
          inside<…>>
 ```
 
@@ -75,13 +69,13 @@ quantity<reference{spec_ref{(& isq_defs::length), true}, true, recipe{…},
 |---|---|
 | `spec_ref{(& isq_defs::length), true}` | the quantity kind: `isq::length` |
 | `unit_atom{(& si_defs::metre), 3, 1}` | a named unit, its decimal prefix as a power of 10 (3: kilo), and its exponent (1) |
-| `magnitude{grid_rational{1, 1}, 0}` | the unit's extra factor as a rational and a power of π: 1·π⁰ |
+| `magnitude{grid_rational{…}, 0}` | the unit's extra factor as a grid number and a power of π: here 1·π⁰ |
 | `inside<…>` | the number, decoded as above |
 
-## Values in the message (C++26)
+## Values in the message
 
-Under C++26 a `static_assert` message can be computed (P2741), and the grid
-and assignment checks print the numbers that failed:
+A `static_assert` message can be computed (P2741, C++26), and the grid and
+assignment checks print the numbers that failed:
 
 ```text
 error: static assertion failed: grid: the notch must divide Upper − Lower evenly
@@ -91,8 +85,6 @@ error: static assertion failed: inside_assignable: incompatible notches — use
 error: static assertion failed: inside_assignable: rhs interval lies entirely outside
        lhs interval … (lhs [0, 3], rhs [5, 10])
 ```
-
-A C++23 build prints the same text without the part in parentheses.
 
 ## The common surprise: it is the interval, not the notch
 
@@ -132,8 +124,7 @@ static_assert(beman::inside::explain_assignable<Dst, decltype(src)>);   // print
 ## Named reasons for a unit mismatch
 
 Each units mistake is a deleted overload whose message says what to write
-instead. GCC 15+ and Clang 19+ print the reason in C++23 too
-(`= delete("…")`); older compilers print only *use of deleted function*:
+instead (`= delete("…")`):
 
 | Code | Message |
 |---|---|
@@ -169,23 +160,6 @@ static_assert(!can_add<decltype(just<1> * si::metre), decltype(just<1> * si::sec
 
 An impossible operator is a deleted overload whose message names the reason
 (`use of deleted function …: division: no result grid - …`).
-
-## On MSVC
-
-A check that fails during constant evaluation (a value outside a checked
-range, a malformed `_g` literal, a units limit) carries its message as a
-template argument. GCC and Clang print it as text; MSVC prints its characters
-as numbers. Read the note that names the header line instead:
-
-```text
-<source>(3): error C2131: expression did not evaluate to a constant
-beman/inside/inside.hpp(…): note: see usage of 'beman::inside::detail::constexpr_error'
-```
-
-That line holds the message as a string literal, for example `inside: value
-out of range during constant evaluation (checked policy hit; choose clamp/wrap
-or widen the interval)`. The call stack below it ("while evaluating function
-…") leads back to your code.
 
 ## `BEMAN_INSIDE_STRICT_SFINAE`: turning the hints off
 

@@ -10,9 +10,9 @@ about performance or about the units layer. For the user's view start with
 the [tutorial](tutorial.md).
 
 The exact-fraction type is `beman::inside::rational` (defined in `detail`,
-public through a using-declaration). It is the raw of continuous grids and,
-under C++23, the grid's template-argument substrate; under C++26 grids use
-`detail::big_rational` (§2a). "Rational" below always means this type.
+public through a using-declaration). It is the raw of continuous grids and
+the type of the 64-bit fast paths; grids themselves use `detail::big_rational`
+(§2a). "Rational" below always means this type.
 
 Contents: [1 grid invariants](#1-grid-invariants) ·
 [2 storage encoding](#2-storage-encoding) ·
@@ -57,8 +57,7 @@ runtime check on the grid arithmetic itself: every value of `a + b` for
 **Two-limit grids.** `grid{lo, hi}` derives Notch = gcd(1, Lower, Upper) (the
 gcd of the numerators over the lcm of the denominators): the coarsest 1/k that
 keeps every integer and both limits on the lattice. Integer limits give 1.
-With 64-bit grid numbers a combined denominator past `imax` falls back to
-notch 0; under C++26 the exact gcd is kept. A floating-point limit is its exact
+The exact gcd is kept, however large its denominator. A floating-point limit is its exact
 binary value, so a `double` that would need a notch finer than 1/1024 (0.1 is
 3602879701896397/2⁵⁵) is rejected in favour of `0.1_r` or an explicit notch.
 
@@ -158,14 +157,13 @@ independent of the encoding, and gate different fast paths:
 
 ## 2a. Grid numbers, wide raws and the exact paths
 
-**Grid numbers.** `detail/grid_rational.hpp` names one vocabulary for both
-language modes: `grid_rational` (the type of a grid's limits and notch, and of
-`lower_of`, `upper_of`, `notch_of`), `grid_int` (exact integers for index
-counts), `wide_numerator`, `wide_denominator`, `grid_divides_evenly`,
-`grid_same_lattice`, `grid_gcd` and `to_rational`. Under C++23 these are the
-64-bit `rational` and a 4-limb `wide_int`. Under C++26 with static reflection
-(`BEMAN_INSIDE_BIG_GRIDS`) they are `big_rational` and `big_int`
-(`detail/big_rational.hpp`): canonical values whose magnitude past one limb is
+**Grid numbers.** `detail/grid_rational.hpp` names the vocabulary:
+`grid_rational` (the type of a grid's limits and notch, and of `lower_of`,
+`upper_of`, `notch_of`), `grid_int` (exact integers for index counts),
+`wide_numerator`, `wide_denominator`, `grid_divides_evenly`,
+`grid_same_lattice`, and `fits_rational` / `to_rational` for the 64-bit fast
+paths. They are `big_rational` and `big_int` (`detail/big_rational.hpp`),
+with their own `+ − × /` and `gcd`: canonical values whose magnitude past one limb is
 interned with `std::define_static_array`, so equal values are equal template
 arguments. Interning is `consteval`: a big value exists only at compile time,
 and runtime code reads big grid numbers through constants.
@@ -391,7 +389,7 @@ arithmetic, range and cursor layers, which need the complete type). The
 
 | Header | Holds |
 |---|---|
-| `config.hpp` | every compiler- and platform-dependent macro; included first everywhere (`BEMAN_INSIDE_DELETE`, warning control, feature detection) |
+| `config.hpp` | the build options and platform features (`__int128`, FMA, exceptions); the C++26-reflection `#error`; included first everywhere |
 | `compare.hpp` | `<=>` and `==` across grids and against integers, floating points of any width and `rational` |
 | `introspection.hpp` | `grid_of`, `flags_of`, `interval_of`, `lower_of`, `upper_of`, `notch_of`, the `insidable` and `numeric` concepts, `raw_t`, `as_rational` |
 | `storage.hpp` | the storage concepts, `as_double`, `to_value`/`from_value`, `raw_imax`, the Q-format codec, `max_index_of`, `round_quotient` |
@@ -400,12 +398,12 @@ arithmetic, range and cursor layers, which need the complete type). The
 | `assignment.hpp`, `assign_exact.hpp` | stores for integral, fractional and inside sources; the exact and wide store, the out-of-range cascade, the `on_wrap` carry grid |
 | `addition.hpp`, `multiplication.hpp`, `division.hpp` | `addition<L, R>`, `multiplication<L, R>`, `division<L, R, F>`, `modulo<L, R, F>`, `divmod_result` |
 | `overflow.hpp`, `debug.hpp` | `add_overflow` and kin; `errc`, `errc_message`, the error handler and `raise` |
-| `diag_text.hpp` | `diag_text` and `BEMAN_INSIDE_DIAG`: `static_assert` messages with values (C++26) |
+| `diag_text.hpp` | `diag_text`: `static_assert` messages with values |
 | `rational.hpp` | `rational` and its checked and unchecked arithmetic |
 | `number_text.hpp` | the literal and text grammar, and the `_r` literal |
 | `float_bits.hpp` | floating points from their IEEE-754 bits: `frexp`, `ldexp`, `is_finite`, `abs_fraction` |
-| `grid_rational.hpp` | the grid-number vocabulary and the `BEMAN_INSIDE_BIG_GRIDS` switch (§2a) |
-| `big_rational.hpp` | `big_int`, `big_rational`: interned grid numbers of any size (C++26) |
+| `grid_rational.hpp` | the grid-number vocabulary (§2a) |
+| `big_rational.hpp` | `big_int`, `big_rational`: interned grid numbers of any size |
 | `wide_int.hpp`, `int_for_bits.hpp`, `wide_value.hpp` | `wide_int<N, Signed>` and its kernels; the width rule; exact values and wide value-index arithmetic |
 | `math_constants.hpp` | the 18 math constants as rationals below 2³¹ |
 | `math_adaptive.hpp` | the engine's foundation: the decision step, the Ziv driver, the stores, π / ln 2 / ln 10 at any precision, the series kernels |
@@ -455,7 +453,7 @@ a matching recipe, never across an `is_kind` boundary.
 **Operations as constraints.** Every operator is constrained on the number
 operation it runs (`number_op`, `summable`), so `requires` probes are honest.
 Each reason a units operation can be wrong is a deleted overload with a
-message (`BEMAN_INSIDE_DELETE`, `detail/config.hpp`).
+message (`= delete("…")`).
 
 **inside's algorithms on quantities** (`mul_into`, `div_into`, `sum`, `divmod`,
 `parse`, the predicates, the casts, `dot`/`cross`/`lerp`) all follow one
@@ -476,9 +474,7 @@ correctly under directed modes too. The quadrant k mod 4 picks sin or cos of
 r' and the sign.
 
 **Text.** `to_string` and the `std::formatter` print the number and then the
-unit symbol. Clang 20 miscompiles a runtime reference to a class NTTP object
-that holds pointers, so the printers copy the reference into a
-`static constexpr` local first.
+unit symbol.
 
 ---
 
@@ -552,7 +548,7 @@ measured on x86-64 with `-mfma`.
 | The full dd kernels' bound far wider than their measured error: 2^-88 + 2^-92·max(1, \|x\|) (measured at worst 2^-96), times 1.5 | the same, for kernels whose bounds are not proved (the lean kernels' are) | outputs past the double tier's limits take the dd tier, 2–9 times slower than the double tier |
 | `-ffast-math`, `-fassociative-math` and `-ffinite-math-only` builds rejected with an `#error` | reassociation adding roundings the proofs did not count and breaking the error-free sums; NaN and infinity tests folded away | such builds do not compile |
 | Strict decision tests: a value within the bound of a slot boundary, exact ties and exact grid points under directed rounding go to the integer path | a rounding the double arithmetic cannot settle | the integer path's time for those inputs; rare for irrational results, every time for exact ones such as `sqrt` of a perfect square under `round_floor` |
-| `nearbyint` to round the value index, not adding and subtracting 1.5·2^52 | reassociation (Clang's `-fassociative-math`, which no macro announces) folding the add-subtract away; the tests then pass a non-integer and return a wrong slot | 0.1–0.4 ns per call |
+| `nearbyint` to round the value index, not adding and subtracting 1.5·2^52 | reassociation (an `-fassociative-math` no macro announces) folding the add-subtract away; the tests then pass a non-integer and return a wrong slot | 0.1–0.4 ns per call |
 | Range checked in double before the index becomes an integer; no finite checks, since NaN and infinities fail every comparison | a huge or non-finite kernel value converted to an integer (undefined behaviour) | none measured |
 | Inputs that are not doubles exactly (decimal notches, rational storage) add their conversion error times the function's slope to the bound | a decimal input's rounding moving a result across a boundary | slightly more fallbacks for those inputs |
 | Error-free sums fenced against FMA contraction (`__builtin_assoc_barrier`), the error-free product's rounded part computed as `fma(a, b, +0)` | GCC's default `-ffp-contract=fast` fusing a rounded product into a later sum, which made the dd tier 1–2 notches wrong at `-O2` | about 2% more instructions in the dd tier, no measurable time |

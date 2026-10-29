@@ -74,11 +74,10 @@ auto q = lvl{7} / lvl{3};       // exactly 7/3, and plain: the divisor cannot be
 q.numerator();                  // 7 (denominator() == 3)
 ```
 
-### Grids past 64 bits (C++26)
+### Grids past 64 bits
 
-Under C++23 a grid's limits and notch are 64-bit fractions: a limit past 2⁶⁴,
-or a notch finer than about 2⁻⁶³, does not compile. Under C++26 with static
-reflection they have **no size limit**. The library interns large grid numbers
+A grid's limits and notch have **no size limit**: a limit past 2⁶⁴ or a notch
+finer than 2⁻⁶³ is fine. The library interns large grid numbers
 in static storage (`std::define_static_array`), so equal grids are the same
 type however they are spelled.
 
@@ -93,8 +92,7 @@ auto q = uint64{~0ull} + uint64{~0ull};   // 2⁶⁵ − 2 needs a big upper lim
 The `_g` literal spells a grid number exactly from decimal digits, a point and
 an exponent: `inside<{0, 1267650600228229401496703205376_g}>` is
 `inside<{0, 0x1p100}>`, and `inside<{{0, 1}, 1e-30_g}>` has an exact decimal
-notch of 10⁻³⁰. Under C++23 `_g` is 64-bit and rejects larger values.
-`per<D>`, `just<N, D>`, `_r` and `_ins` stay 64-bit in both modes.
+notch of 10⁻³⁰. `per<D>`, `just<N, D>`, `_r` and `_ins` stay 64-bit.
 
 Grid numbers past 64 bits exist only at compile time; the raw of such an
 inside is a fixed-width integer sized from them. A grid can hold huge values
@@ -130,17 +128,9 @@ Integer grids past 64 bits compute exactly in fixed-width integers.
 `inside<{0, n - 1}>`: a product of two residues is a 2048-bit grid, and
 `% inside<{n, n}>{}` brings it back as a plain residue.
 
-Switches:
-
-- C++26 with static reflection means GCC 16 with `-freflection`. The CMake
-  option `BEMAN_INSIDE_REFLECTION` (default `ON`) adds the flag; the
-  `gcc16-debug` and `gcc16-release` presets build that way.
-- The headers detect reflection as `BEMAN_INSIDE_BIG_GRIDS`. Define it to `0`
-  to keep 64-bit grids on a C++26 compiler.
-- The two modes give `grid` different layouts, in different inline namespaces,
-  so mixing C++23 and C++26 translation units that pass insides fails at link
-  time instead of misbehaving.
-- Big grids cost compile time; small grids compile and run as under C++23.
+Interning needs C++26 static reflection: GCC 16 with `-freflection`, which
+the `beman::inside` CMake target adds. Big grid numbers cost compile time;
+grids within 64 bits take the 64-bit fast paths and run as fast as before.
 
 ## Why no representation flags
 
@@ -170,7 +160,7 @@ write `uint8`, `unorm16` or `q8_8` instead of the grid:
   negation in `int64`.
 - `uint64` passes `int64`, so it has no implicit `imax`; read it with
   `to<std::uint64_t>()`. A difference of two `uint64`s spans 2⁶⁵ values and
-  gets a wide raw; a sum needs [C++26 big grids](#grids-past-64-bits-c26).
+  gets a wide raw; a sum has a big upper limit ([grids past 64 bits](#grids-past-64-bits)).
 - For register-style wrapping, declare your own: `inside<{0, 255}, wrap>`.
 
 ### Counters
@@ -229,9 +219,8 @@ for (auto i : r | std::views::stride(3)) { /* … */ }           // 0 3 6 9
 auto first = std::ranges::partition_point(values<bin>, below_threshold);   // bisects: O(log n)
 ```
 
-`std::views::stride` and `std::views::enumerate` are C++23 library features
-that some libc++ versions still lack; `cursor` (below) steps by more than one
-notch with any standard library.
+`cursor` (below) steps by more than one notch, as a typed alternative to
+`std::views::stride`.
 
 ### Stepping loops: `cursor<T, Step>`
 
@@ -297,7 +286,7 @@ auto gain = uniform<inside<{{0, 1}, per<256>}>>(rng);    // one of the 257 point
 
 The draw uses only the generator's outputs, by the library's own recipe
 (`std::uniform_int_distribution` differs between standard libraries), so a
-seed gives the same values on libstdc++, libc++ and the MSVC STL
+seed gives the same values on every standard library
 ([determinism.md](determinism.md#other-surfaces)).
 
 A continuous grid has no points to draw from: a compile error. The single

@@ -40,15 +40,14 @@ grids you ship.
 
 The library's own certified pairs, with their hashes, are in
 [certified.md](certified.md): pairs picked to cover every function, and every
-pair the [examples](../examples) use. Every CI configuration (GCC, Clang,
-AppleClang on arm64, MSVC, the FP-free build) recomputes the pairs up to 2²⁰
-inputs and must match; the weekly run recomputes all of them on four
-toolchains. A test also scans the examples' build and fails if one of their
+pair the [examples](../examples) use. Every CI configuration (optimized,
+debug, sanitized, the FP-free build) recomputes the pairs up to 2²⁰ inputs and
+must match; the weekly run recomputes all of them. A test also scans the examples' build and fails if one of their
 pairs has no row.
 
 ## Certify your program's grids
 
-**1. Build your program unoptimized**, with GCC or Clang: a Debug build, or
+**1. Build your program unoptimized**: a Debug build, or
 add `-O0` (or `-fkeep-inline-functions`). Each math call instantiates
 `beman::inside::math::adaptive::<fn>_into<Out, In>`, and an unoptimized build
 keeps that instantiation as a symbol whose demangled name spells both grids
@@ -182,13 +181,8 @@ same way.
     integer path alone and are reported, but not certified: the tool cannot
     rebuild their unit types.
   - Inputs on continuous grids have no finite set of inputs, and are
-    reported as not certifiable. So is every pair of a C++26 build with big
-    grids (`-freflection`), where every grid's fields are big numbers the
-    scanner does not read. Scan a C++23 build of the same code, or one with
-    `BEMAN_INSIDE_BIG_GRIDS=0`; the certify program itself runs under C++26.
-- **MSVC.** Its symbols are not in the Itanium form the scanner reads. Scan a
-  GCC or Clang build of the same code; the certify program itself builds with
-  MSVC.
+    reported as not certifiable. So is a pair with a grid number past the
+    64-bit rational, which the certify program cannot spell.
 - **Inverse trigonometry into degrees.** `value_cast` of a radian result
   rounds a second time ([math.md](math.md#what-is-guaranteed)). A certified
   `asin` pair covers the radian result, not the conversion.

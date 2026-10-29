@@ -170,7 +170,7 @@ pain of knowing.
   ([policies.md](policies.md)). When two types can never fit, the compiler says
   so before the program runs.
 - **Errors that explain themselves.** A rejected store names the clause that
-  failed, and under C++26 the values involved ([diagnostics.md](diagnostics.md)). Reading
+  failed, and the values involved ([diagnostics.md](diagnostics.md)). Reading
   the information should not require decoding template noise.
 - **No price on the fast path.** Where the range proves a result fits, the
   generated code is the same as the `int` it replaces

@@ -42,7 +42,7 @@ Every example checks its own output.
 | hooks and wrap | [`clock.cpp`](../examples/clock.cpp) (s → min → h, months, weeks), [`game_hp.cpp`](../examples/game_hp.cpp) (HP), [`rifle.cpp`](../examples/rifle.cpp) (rounds), [`torus_map.cpp`](../examples/torus_map.cpp) (px), [`sequence_number.cpp`](../examples/sequence_number.cpp) and [`jitter_buffer.cpp`](../examples/jitter_buffer.cpp) (packets, ms) |
 | angles and math | [`oscillator.cpp`](../examples/oscillator.cpp) (a phase in slots of 2π/65536 rad), [`audio_mixer.cpp`](../examples/audio_mixer.cpp) (dB gains, phases in turns), [`decibels.cpp`](../examples/decibels.cpp) (dB as a level), [`navigation.cpp`](../examples/navigation.cpp) (range and bearing), [`huge_angles.cpp`](../examples/huge_angles.cpp) (sin of 10¹⁸ rad), [`audio_math.cpp`](../examples/audio_math.cpp) (s and Hz) |
 | points and control | [`sensor_fusion.cpp`](../examples/sensor_fusion.cpp) (a weighted mean of ℃ points), [`pid_controller.cpp`](../examples/pid_controller.cpp) (K in, % out), [`fixed_point.cpp`](../examples/fixed_point.cpp) (a 0.5 ℃ grid), [`expected_pipeline.cpp`](../examples/expected_pipeline.cpp) (volts) |
-| big grids | [`solar_system.cpp`](../examples/solar_system.cpp) (nm across ±10¹³ m), [`planck_to_cosmos.cpp`](../examples/planck_to_cosmos.cpp) (10⁻⁴¹ m to 10²⁷ m, C++26) |
+| big grids | [`solar_system.cpp`](../examples/solar_system.cpp) (nm across ±10¹³ m), [`planck_to_cosmos.cpp`](../examples/planck_to_cosmos.cpp) (10⁻⁴¹ m to 10²⁷ m) |
 
 ## The model
 
@@ -71,7 +71,7 @@ An operation that cannot happen is a constraint failure:
 `requires { a + b; }` is false for a length and a duration, for Hz and Bq,
 for `q * 2`, for `q.in(si::second)` on a length, and for any number operation
 inside rejects. A call says why: each reason is a deleted overload with a
-message (`= delete("…")`; GCC 15+ and Clang 19+ also in C++23,
+message (`= delete("…")`,
 [diagnostics.md](diagnostics.md#named-reasons-for-a-unit-mismatch)).
 
 ## Conversions are grid rescales
@@ -331,8 +331,8 @@ gives the ASCII spelling: `kg m^2/s^2`, `um`, `ohm`.
 | Namespace | Holds |
 |---|---|
 | `isq` | about 80 specs: base quantities, space and time, mechanics, thermodynamics, electromagnetism, light and radiation; `time` and `work` are aliases |
-| `si` | the base units, the 22 named derived units, the prefixes atto … exa (quecto … quetta under C++26 big grids), the accepted non-SI units min, h, d, au, °, ′, ″, a, ha, L, t; the eV and the Da under big grids |
-| `si2019` | the defining constants as units (Δν_Cs, c, K_cd, and under big grids h, e, k, N_A) and g₀: `just<1> * si2019::speed_of_light_in_vacuum` is c exactly |
+| `si` | the base units, the 22 named derived units, the prefixes quecto … quetta, the accepted non-SI units min, h, d, au, °, ′, ″, a, ha, L, t; the eV and the Da |
+| `si2019` | the defining constants as units (Δν_Cs, c, K_cd, h, e, k, N_A) and g₀: `just<1> * si2019::speed_of_light_in_vacuum` is c exactly |
 | `international` | yd, ft, in, mi, nmi, lb, oz, lbf, kn, ℉ |
 | `units` | `percent` (%) and `per_mille` (‰): dimensionless |
 
@@ -340,12 +340,10 @@ gives the ASCII spelling: `kg m^2/s^2`, `um`, `ohm`.
 (ħ, R, F, K_J, R_K, G₀, Φ₀, σ, c₁, c₂), the standard atmosphere and the CODATA
 2022 measured values, as quantities of their kind.
 
-## C++23 and C++26
+## Big numbers and the standard library
 
-Everything works under C++23 with 64-bit grid numbers. Under C++26 with static
-reflection (`BEMAN_INSIDE_BIG_GRIDS`) grid numbers have any size, which adds
-the prefixes past 10^±18, the eV, the Da and the SI constants h, e, k and N_A;
-with those, E = h·ν comes out exact.
+Grid numbers have any size, so the prefixes past 10^±18, the eV, the Da and
+the SI constants h, e, k and N_A are exact; E = h·ν comes out exact.
 
 units.hpp includes io.hpp, `<ostream>` and `<string>`, so it needs a hosted
 standard library ([freestanding.md](freestanding.md)). In the single header
@@ -361,17 +359,15 @@ translation units (best of three). On the maintainer's machine:
 
 | Compiler | inside + io | units.hpp | 200 inside expressions | as quantities |
 |---|---:|---:|---:|---:|
-| GCC 15, C++23 | 0.54 s | 0.61 s | 3.69 s | 5.06 s |
-| GCC 16, C++26 | 0.80 s | 0.97 s | 4.01 s | 5.67 s |
-| Clang 20, C++23 | 0.83 s | 0.93 s | 6.58 s | 7.92 s |
+| GCC 16, C++26 | 0.89 s | 1.13 s | 4.37 s | 6.70 s |
 
-The header adds about 0.1 s. Each of the 200 expressions uses its own grid, so
-most of the time is inside's arithmetic on those grids; units add about 7 ms
-per expression.
+The header adds about 0.25 s. Each of the 200 expressions uses its own grid,
+so most of the time is inside's arithmetic on those grids; units add about
+12 ms per expression.
 
-A one-off comparison with mp-units (master 5df0314, 2026-10-16, a `double`
-representation, the same five expression shapes, one fixed grid on the inside
-side):
+A one-off comparison with mp-units (master 5df0314, 2026-10-16, C++23 builds,
+a `double` representation, the same five expression shapes, one fixed grid on
+the inside side):
 
 | Compiler | mp-units si + isq | units.hpp | 200 expressions: mp-units | 200 expressions: units.hpp |
 |---|---:|---:|---:|---:|

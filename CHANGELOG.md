@@ -4,6 +4,31 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
+## pureCPP26 branch
+
+The library without pre-C++26 compatibility, kept in sync with main.
+
+### Changed
+
+- Requires C++26 with static reflection: GCC 16 with `-freflection` (the
+  CMake target adds it; configuring fails without it). C++23, Clang,
+  AppleClang and MSVC are no longer supported, and `-ffreestanding` waits
+  for a freestanding `<meta>` ([freestanding.md](docs/freestanding.md)).
+- Grid numbers have any size, always: the 64-bit grid fallback,
+  `BEMAN_INSIDE_BIG_GRIDS` and `BEMAN_INSIDE_REFLECTION` are gone, and so
+  are the diagnostics for results past the 64-bit grid numbers.
+- `grid` and `interval` `+ - *` and `hull` return plain values (they cannot
+  fail); `/` still returns `std::expected`. `common_inside_t` and
+  `std::common_type` always have a type.
+- The `small_grids_v2` / `big_grids_v2` ABI namespaces are gone.
+- `inside(value, errc&)` is a deleted constructor with the reason.
+
+### Removed
+
+- The compiler shims in `detail/config.hpp` (MSVC warnings, `_umul128`,
+  portable overflow checks, `BEMAN_INSIDE_DELETE`, the valued-diagnostic and
+  `std::format` detection).
+
 ## Unreleased
 
 ### Added

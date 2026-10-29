@@ -69,16 +69,13 @@ nearest even (the default), binary64, and no rewrites that change values:
 
 - A build with `-ffast-math`, GCC's `-fassociative-math` or `-ffinite-math-only`
   (which define `__FAST_MATH__`, `__ASSOCIATIVE_MATH__` or
-  `__FINITE_MATH_ONLY__`), or MSVC's `/fp:fast` (`_M_FP_FAST`), stops with an
-  `#error` at the first include.
-- Clang's bare `-fassociative-math` and `-funsafe-math-optimizations` define no
-  macro, so they cannot be detected: don't pass them.
+  `__FINITE_MATH_ONLY__`), stops with an `#error` at the first include.
+- `-funsafe-math-optimizations` alone defines no macro, so it cannot be
+  detected: don't pass it.
 - Excess precision stops with an `#error` too: a build whose
-  `__FLT_EVAL_METHOD__` is not 0, or 32-bit MSVC below `/arch:SSE2`. That is
+  `__FLT_EVAL_METHOD__` is not 0. That is
   32-bit x86 on the x87 unit, which works at 80 bits and rounds when a value
   leaves a register. Compile for SSE2 (`-msse2 -mfpmath=sse`).
-- On MSVC keep `/fp:precise` (the default) or `/fp:strict`. MSVC has no
-  association barrier (below), so `/fp:contract` is outside the guarantee.
 - Flush-to-zero modes and `fesetround` are outside the guarantee.
 
 ## The math engine
@@ -98,8 +95,8 @@ The floating-point tiers rely on the build rules above, plus:
 - an explicit `std::fma` and a 1.5× margin on every bound, so FMA contraction
   cannot change a result (`-mfma` is safe; `BEMAN_INSIDE_FMA`, default `ON`,
   adds it on x86-64);
-- error-free sums fenced with `__builtin_assoc_barrier` (GCC) or
-  `__arithmetic_fence` (Clang), so `-ffp-contract=fast` cannot fuse them.
+- error-free sums fenced with `__builtin_assoc_barrier`, so
+  `-ffp-contract=fast` cannot fuse them.
 
 `BEMAN_INSIDE_MATH_NO_FP` removes both tiers, with the same results as far as
 the tiers' bounds hold. The `double` tier's and the lean double-double
@@ -156,7 +153,7 @@ real programs, such as 2⁻¹⁴ coordinates, 1/4096 ratios and decibel steps.
 - **`long double`.** A `long double` source is exact everywhere, including the
   bits past a `double`'s. `to<long double>()` rounds the exact value once to
   the platform's `long double`. That type is 80-bit x87 on x86 Linux, IEEE
-  quad on AArch64 Linux, and `double` on MSVC and Apple, so the bits match
+  quad on AArch64 Linux, and `double` on some other platforms, so the bits match
   between machines with the same format, not across formats.
 - **Text.** `to_string`, `parse`, `from_chars`, `operator<<`/`>>` and the
   `std::formatter`s write and read the digits themselves: no `printf`,
@@ -166,20 +163,17 @@ real programs, such as 2⁻¹⁴ coordinates, 1/4096 ratios and decibel steps.
 - **Random sampling.** `uniform<B>(rng)` draws from the generator's raw
   outputs by a fixed recipe, not through `std::uniform_int_distribution`,
   whose algorithm each standard library picks for itself. A seeded
-  `std::mt19937_64` gives the same B on libstdc++, libc++ and the MSVC STL
-  (pinned in `sign_uniform.test.cpp` and `wide_grid.test.cpp`).
+  `std::mt19937_64` gives the same B on every standard library (pinned in `sign_uniform.test.cpp` and `wide_grid.test.cpp`).
 - **Hashing.** `std::hash<inside>` hashes its raw with `std::hash` of the
-  raw's integers (and combines them for a fraction or wide raw). The integer
-  hash is the identity on libstdc++ and libc++ and FNV-1a on the MSVC STL.
-  Hash values, and so the iteration order of unordered containers, are
+  raw's integers (and combines them for a fraction or wide raw), which each
+  standard library defines for itself. Hash values, and so the iteration order of unordered containers, are
   stable within one standard library but not across them. Don't store them.
 
 ## How it is checked
 
-- CI runs the same exact-value pins on x86-64 Linux (GCC 14–16, Clang 18–22,
-  libstdc++ and libc++), arm64 macOS (AppleClang) and x64 Windows (MSVC). It
-  also runs a `BEMAN_INSIDE_MATH_NO_FP=ON` cell, where the integer path
-  computes every result alone.
+- CI runs the exact-value pins on x86-64 Linux with GCC 16, in Debug,
+  Release and sanitizer builds. It also runs a `BEMAN_INSIDE_MATH_NO_FP=ON`
+  cell, where the integer path computes every result alone.
 - The differential oracle (`tests/beman/inside/differential`) recomputes
   arithmetic, rounding stores, `to<float>`/`to<double>` and π conversions
   exactly in Python. ctest runs a fixed seed, and a scheduled CI run takes a
@@ -187,10 +181,9 @@ real programs, such as 2⁻¹⁴ coordinates, 1/4096 ratios and decibel steps.
 - `beman.inside.certify` sweeps every input of its math pairs, as
   [above](#when-is-a-result-decided), and checks every result hash against
   [certified.md](certified.md): the pairs up to 2²⁰ inputs in an optimized
-  build, the small ones in a debug build. Each configuration (GCC, Clang,
-  AppleClang on arm64, MSVC, the FP-free build) has to reproduce the same
-  hashes. The weekly run recomputes every pair, up to 2³² inputs, on GCC,
-  Clang with libc++, AppleClang and MSVC. A debug build also scans the
+  build, the small ones in a debug build. Each configuration (optimized,
+  debug, the FP-free build) has to reproduce the same hashes. The weekly run
+  recomputes every pair, up to 2³² inputs. A debug build also scans the
   examples' symbols and fails if one of their pairs has no row.
 - The FP-free smoke test puts a poisoned `<cmath>`
   (`tests/beman/inside/nofp_poison`) first on the include path, so a
@@ -226,15 +219,13 @@ time one.
   and correctly rounded wherever the engine decides them, which `certify`
   checks for a type pair.
 - For conversions with `double`: round to nearest even, IEEE-754 binary64,
-  no Clang `-fassociative-math` or `-funsafe-math-optimizations` (fast-math,
-  `/fp:fast` and x87 excess precision are rejected).
-- On MSVC: `/fp:precise` or `/fp:strict`, not `/fp:contract`.
+  no `-funsafe-math-optimizations` (fast-math and x87 excess precision are
+  rejected).
 - `-mfma` is safe.
 - `long double` results match only between platforms with the same
   `long double` format, and `std::hash` values only within one standard
   library.
-- Toolchain: GCC 14+, Clang 19+, Clang 18 with libc++, or MSVC 19.51+, in
-  C++23 mode or later.
+- Toolchain: GCC 16 in C++26 mode with `-freflection`.
 - To keep floating point out entirely, build with `-DBEMAN_INSIDE_MATH_NO_FP=ON`
   ([freestanding.md](freestanding.md#math-without-cmath-beman_inside_math_no_fp)).
 

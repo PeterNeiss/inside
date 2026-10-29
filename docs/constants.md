@@ -21,7 +21,7 @@ d.in(si::metre);                                                    // 599584916
 auto w = pc::standard_gravity * quantity<si::kilogram, inside<{0, 100}>>{70};
 w.in(si::newton);                                                   // 686.46550 N, exact
 
-// C++26 big grids: h, e, k and N_A need grid numbers past 64 bits.
+// h, e, k and N_A are grid numbers past 64 bits.
 auto R = pc::avogadro_constant * pc::boltzmann_constant;            // exact
 std::format("{:.14e}", R.in(si::joule / (si::mole * si::kelvin)));  // 8.31446261815324e+00 J/(K mol)
 auto E = pc::planck_constant * quantity<si::tera(si::hertz), inside<{0, 1000}>>{540};
@@ -63,32 +63,30 @@ number in unit `u`, and `std::format` with `{:e}` prints it compactly. A
 factor of π, as in ħ or σ, rounds once, through `value_cast` (units_math.hpp).
 
 The constant's unit is in `si2019::` or `codata2022::`, under the same name.
-**C++26** means the constant needs grid numbers past 64 bits, so it exists
-only under C++26 big grids (`BEMAN_INSIDE_BIG_GRIDS`).
 
 ### Exact: the SI 2019 definitions and what follows
 
-| Name | Symbol | Kind | Value | |
-|---|---|---|---|---|
-| `hyperfine_structure_transition_frequency_of_cs` | Δν_Cs | frequency | 9 192 631 770 Hz | |
-| `speed_of_light_in_vacuum` | c | speed | 299 792 458 m/s | |
-| `luminous_efficacy` | K_cd | — | 683 lm/W | |
-| `planck_constant` | h | action | 6.626 070 15 × 10⁻³⁴ J s | C++26 |
-| `elementary_charge` | e | electric charge | 1.602 176 634 × 10⁻¹⁹ C | C++26 |
-| `boltzmann_constant` | k | — | 1.380 649 × 10⁻²³ J/K | C++26 |
-| `avogadro_constant` | N_A | — | 6.022 140 76 × 10²³ mol⁻¹ | C++26 |
-| `reduced_planck_constant` | ħ = h/2π | action | 1.054 571 817… × 10⁻³⁴ J s | C++26 |
-| `molar_gas_constant` | R = N_A k | — | 8.314 462 618 153 24 J/(mol K) | C++26 |
-| `faraday_constant` | F = N_A e | — | 96 485.332 123 310 0184 C/mol | C++26 |
-| `josephson_constant` | K_J = 2e/h | — | 4.835 978 484… × 10¹⁴ Hz/V | C++26 |
-| `von_klitzing_constant` | R_K = h/e² | resistance | 25 812.807 45… Ω | C++26 |
-| `conductance_quantum` | G₀ = 2e²/h | conductance | 7.748 091 729… × 10⁻⁵ S | C++26 |
-| `magnetic_flux_quantum` | Φ₀ = h/2e | magnetic flux | 2.067 833 848… × 10⁻¹⁵ Wb | C++26 |
-| `stefan_boltzmann_constant` | σ = 2π⁵k⁴/15h³c² | — | 5.670 374 419… × 10⁻⁸ W/(m² K⁴) | C++26 |
-| `first_radiation_constant` | c₁ = 2πhc² | — | 3.741 771 852… × 10⁻¹⁶ W m² | C++26 |
-| `second_radiation_constant` | c₂ = hc/k | — | 1.438 776 877… × 10⁻² m K | C++26 |
-| `standard_gravity` | g₀ | acceleration of free fall | 9.806 65 m/s² | |
-| `standard_atmosphere` | atm | pressure | 101 325 Pa | |
+| Name | Symbol | Kind | Value |
+|---|---|---|---|
+| `hyperfine_structure_transition_frequency_of_cs` | Δν_Cs | frequency | 9 192 631 770 Hz |
+| `speed_of_light_in_vacuum` | c | speed | 299 792 458 m/s |
+| `luminous_efficacy` | K_cd | — | 683 lm/W |
+| `planck_constant` | h | action | 6.626 070 15 × 10⁻³⁴ J s |
+| `elementary_charge` | e | electric charge | 1.602 176 634 × 10⁻¹⁹ C |
+| `boltzmann_constant` | k | — | 1.380 649 × 10⁻²³ J/K |
+| `avogadro_constant` | N_A | — | 6.022 140 76 × 10²³ mol⁻¹ |
+| `reduced_planck_constant` | ħ = h/2π | action | 1.054 571 817… × 10⁻³⁴ J s |
+| `molar_gas_constant` | R = N_A k | — | 8.314 462 618 153 24 J/(mol K) |
+| `faraday_constant` | F = N_A e | — | 96 485.332 123 310 0184 C/mol |
+| `josephson_constant` | K_J = 2e/h | — | 4.835 978 484… × 10¹⁴ Hz/V |
+| `von_klitzing_constant` | R_K = h/e² | resistance | 25 812.807 45… Ω |
+| `conductance_quantum` | G₀ = 2e²/h | conductance | 7.748 091 729… × 10⁻⁵ S |
+| `magnetic_flux_quantum` | Φ₀ = h/2e | magnetic flux | 2.067 833 848… × 10⁻¹⁵ Wb |
+| `stefan_boltzmann_constant` | σ = 2π⁵k⁴/15h³c² | — | 5.670 374 419… × 10⁻⁸ W/(m² K⁴) |
+| `first_radiation_constant` | c₁ = 2πhc² | — | 3.741 771 852… × 10⁻¹⁶ W m² |
+| `second_radiation_constant` | c₂ = hc/k | — | 1.438 776 877… × 10⁻² m K |
+| `standard_gravity` | g₀ | acceleration of free fall | 9.806 65 m/s² |
+| `standard_atmosphere` | atm | pressure | 101 325 Pa |
 
 ### Measured: CODATA 2022
 
@@ -96,19 +94,19 @@ The CODATA 2022 recommended values (Mohr et al., *Rev. Mod. Phys.* 97,
 025002, 2025) are stored exactly as published. Their standard uncertainty is
 not represented, so a result is only as good as the constant behind it.
 
-| Name | Symbol | Kind | Value | |
-|---|---|---|---|---|
-| `gravitational_constant` | G | — | 6.674 30 × 10⁻¹¹ m³/(kg s²) | |
-| `fine_structure_constant` | α | — | 7.297 352 5643 × 10⁻³ | |
-| `rydberg_constant` | R_∞ | — | 10 973 731.568 157 m⁻¹ | |
-| `vacuum_magnetic_permeability` | μ₀ | — | 1.256 637 061 27 × 10⁻⁶ N/A² | |
-| `characteristic_impedance_of_vacuum` | Z₀ | impedance | 376.730 313 412 Ω | |
-| `electron_mass` | m_e | mass | 9.109 383 7139 × 10⁻³¹ kg | C++26 |
-| `proton_mass` | m_p | mass | 1.672 621 925 95 × 10⁻²⁷ kg | C++26 |
-| `neutron_mass` | m_n | mass | 1.674 927 500 56 × 10⁻²⁷ kg | C++26 |
-| `atomic_mass_constant` | m_u | mass | 1.660 539 068 92 × 10⁻²⁷ kg | C++26 |
-| `bohr_radius` | a₀ | radius | 5.291 772 105 44 × 10⁻¹¹ m | C++26 |
-| `vacuum_electric_permittivity` | ε₀ | — | 8.854 187 8188 × 10⁻¹² F/m | C++26 |
+| Name | Symbol | Kind | Value |
+|---|---|---|---|
+| `gravitational_constant` | G | — | 6.674 30 × 10⁻¹¹ m³/(kg s²) |
+| `fine_structure_constant` | α | — | 7.297 352 5643 × 10⁻³ |
+| `rydberg_constant` | R_∞ | — | 10 973 731.568 157 m⁻¹ |
+| `vacuum_magnetic_permeability` | μ₀ | — | 1.256 637 061 27 × 10⁻⁶ N/A² |
+| `characteristic_impedance_of_vacuum` | Z₀ | impedance | 376.730 313 412 Ω |
+| `electron_mass` | m_e | mass | 9.109 383 7139 × 10⁻³¹ kg |
+| `proton_mass` | m_p | mass | 1.672 621 925 95 × 10⁻²⁷ kg |
+| `neutron_mass` | m_n | mass | 1.674 927 500 56 × 10⁻²⁷ kg |
+| `atomic_mass_constant` | m_u | mass | 1.660 539 068 92 × 10⁻²⁷ kg |
+| `bohr_radius` | a₀ | radius | 5.291 772 105 44 × 10⁻¹¹ m |
+| `vacuum_electric_permittivity` | ε₀ | — | 8.854 187 8188 × 10⁻¹² F/m |
 
 `si::dalton` uses the same 2022 value as `atomic_mass_constant`.
 

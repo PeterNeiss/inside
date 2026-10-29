@@ -160,7 +160,7 @@ A column of prices lines up (`19.90`, not `19.9`), a binary fixed-point value
 is not padded to 16 decimals, and a value with no finite decimal stays exact.
 Every form reads back through `parse`.
 
-- Wide and C++26 big values print every digit.
+- Wide and big values print every digit.
 - A `rational` prints its shortest exact form, an `interval` `[lo..hi]`, a
   grid `{[lo..hi], notch}`.
 - `to_string_debug(x)` adds the raw, its type and the grid:

@@ -15,8 +15,8 @@ guaranteed](#what-is-guaranteed) says when that can happen. So:
   out on every platform and compiler, at compile time and at run time, with or
   without an FPU, under the build rules of [determinism.md](determinism.md).
 - **There is no precision ceiling.** A 2⁻¹⁰⁰ output grid gets a correctly
-  rounded result, and inputs and outputs may be grids past 64 bits (C++26,
-  [storage.md](storage.md#grids-past-64-bits-c26)).
+  rounded result, and inputs and outputs may be grids past 64 bits
+  ([storage.md](storage.md#grids-past-64-bits)).
 
 ```cpp
 #include <beman/inside/cmath.hpp>

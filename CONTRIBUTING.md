@@ -7,8 +7,9 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 ## Configure and Build the Project Using CMake Presets
 
 The simplest way of configuring and building the project is to use [CMake
-Presets](https://cmake.org/cmake/help/latest/manual/cmake-presets.7.html). Appropriate
-presets for major compilers have been included by default.  You can use `cmake
+Presets](https://cmake.org/cmake/help/latest/manual/cmake-presets.7.html). The
+library needs C++26 static reflection, so the presets are GCC 16 only: `gcc-*`
+with the `g++` on the path, `gcc16-*` with `g++-16`. You can use `cmake
 --list-presets=workflow` to see all available presets.
 
 Here is an example of invoking the `gcc-debug` preset:
@@ -43,7 +44,8 @@ that this requires GoogleTest to be installed.
 cmake \
   -B build \
   -S . \
-  -DCMAKE_CXX_STANDARD=23 \
+  -DCMAKE_CXX_COMPILER=g++-16 \
+  -DCMAKE_CXX_STANDARD=26 \
   # Your extra arguments here.
 cmake --build build
 ctest --test-dir build
@@ -73,7 +75,8 @@ Example commands:
 cmake \
   -B build \
   -S . \
-  -DCMAKE_CXX_STANDARD=23 \
+  -DCMAKE_CXX_COMPILER=g++-16 \
+  -DCMAKE_CXX_STANDARD=26 \
   -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 cmake --build build
 ctest --test-dir build
@@ -97,7 +100,8 @@ Example commands:
 cmake \
   -B build \
   -S . \
-  -DCMAKE_CXX_STANDARD=23 \
+  -DCMAKE_CXX_COMPILER=g++-16 \
+  -DCMAKE_CXX_STANDARD=26 \
   -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=./infra/cmake/use-fetch-content.cmake
 cmake --build build
 ctest --test-dir build

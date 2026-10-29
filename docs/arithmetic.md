@@ -139,15 +139,13 @@ y = r/b, x/y = p·b/(a·r), so the quotient's denominator is at most the
 dividend's largest denominator times the divisor's largest numerator. The
 result grid records that bound ([below](#bounded-continuous-grids)), and when
 the bound fits the result's fraction, path C skips the overflow check. That
-holds for every integer grid and every literal point. In C++23 a fraction is
-64-bit; in C++26 it is sized for the bound, up to
-`BEMAN_INSIDE_MAX_FRACTION_BITS`.
+holds for every integer grid and every literal point. The fraction is sized
+for the bound, up to `BEMAN_INSIDE_MAX_FRACTION_BITS`.
 
 ```cpp
 using fine = inside<{{0, 1}, rational{1, umax{1} << 40}}>;
 auto f = fine{0.5} / inside<{{1, 2}, rational{1, umax{1} << 40}}>{1.5};
-// C++23: expected — denominators up to 2^81 pass a 64-bit fraction
-// C++26: a plain value, in a fraction sized for them
+// a plain value: denominators up to 2^81, in a fraction sized for them
 ```
 
 Otherwise the error is `errc::division_by_zero` (any path), or
@@ -227,8 +225,7 @@ auto r    = div_into<usd, round_floor>(a, b);   // Out's policy, plus flags for 
 
 - **`mul_into<Out, F>(a, b)`**: the exact product, rounded once into `Out` by
   `Out`'s policy plus `F`. The `eth × price` grid above would have notch
-  10⁻²⁰, past 64-bit grid numbers, so `balance * p` does not compile in C++23;
-  `mul_into` never forms it.
+  10⁻²⁰; `mul_into` never forms it and rounds the exact product once.
 - **`div_into<Out, F>(a, b)`**: the exact quotient, rounded once into `Out`.
   It returns `Out` when `b`'s grid excludes 0, else `std::expected<Out, errc>`
   carrying either a zero divisor or a failed store. It never forms a
@@ -402,9 +399,9 @@ auto p = a * a;                       // plain: ≤ 10^6
 a = rational{1, 1001};                // rounding_error: off the grid
 ```
 
-In C++23 a bound must fit a 64-bit `rational`; a larger one is dropped (the
-grid is then unbounded, and its operations checked). In C++26 any bound up to
-`BEMAN_INSIDE_MAX_FRACTION_BITS` (default 1024) works. A stored value whose
+Any bound up to `BEMAN_INSIDE_MAX_FRACTION_BITS` (default 1024) works; a
+larger one is dropped (the grid is then unbounded, and its operations
+checked). A stored value whose
 denominator passes the bound is a `rounding_error` unless the policy rounds.
 Then it goes to a neighbouring fraction within the bound (its Farey
 neighbours): `round_floor`, `round_ceil` and `snap` pick a side,

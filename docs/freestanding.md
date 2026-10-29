@@ -4,12 +4,18 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-inside runs on freestanding and bare-metal targets with a small standard
-library. The core has **no `<system_error>` dependency**, builds no
-`std::string` on its own, and reports errors through one **replaceable
-handler** instead of exceptions. The math engine needs no FPU. This page shows
-how to build for such a target, and where the limits are. It is also the home
-of `BEMAN_INSIDE_MATH_NO_FP`.
+The core has **no `<system_error>` dependency**, builds no `std::string` on
+its own, and reports errors through one **replaceable handler** instead of
+exceptions. The math engine needs no FPU. This page shows how to build without
+exceptions or floating point, and where the limits are. It is also the home of
+`BEMAN_INSIDE_MATH_NO_FP`.
+
+> [!IMPORTANT]
+> `-ffreestanding` does not compile today. The library needs static
+> reflection, and libstdc++ 16 ships `<meta>` (`std::define_static_array`)
+> as a hosted header; its freestanding `<optional>` also fails in C++26.
+> Exceptions off and the FP-free math work on a hosted library, which is what
+> the smoke tests check.
 
 **In short:**
 
@@ -17,28 +23,22 @@ of `BEMAN_INSIDE_MATH_NO_FP`.
   `set_error_handler`;
 - don't include `io.hpp`, `units.hpp`, `constants.hpp` or `random.hpp` (with
   the single header, define `BEMAN_INSIDE_NO_STRING`);
-- the math is included: under `-ffreestanding` `BEMAN_INSIDE_MATH_NO_FP` turns
-  on by itself, and `<cmath>` is never included.
+- for the math without an FPU, build with `BEMAN_INSIDE_MATH_NO_FP`, and
+  `<cmath>` is never included.
 
-## What compiles freestanding
+## What needs a hosted library
 
-Measured with GCC 15 and libstdc++,
-`g++ -std=c++23 -ffreestanding -fno-exceptions -fsyntax-only`:
-
-| Header | Freestanding |
+| Header | Needs |
 |---|---|
-| `inside.hpp` (the umbrella), `casts.hpp`, `arithmetic.hpp`, `range.hpp`, `cursor.hpp` | yes |
-| `cmath.hpp` (the math engine), `formats.hpp`, `predicates.hpp`, `numeric_limits.hpp` | yes |
-| `io.hpp` | no: `<string>`, `<ostream>`, `<format>` |
-| `units.hpp`, `units_math.hpp`, `constants.hpp` | no: they include io.hpp |
-| `random.hpp` | no: `<random>` |
+| every header | `<meta>` (static reflection), hosted in libstdc++ 16 |
+| `io.hpp` | also `<string>`, `<ostream>`, `<format>` |
+| `units.hpp`, `units_math.hpp`, `constants.hpp` | also io.hpp |
+| `random.hpp` | also `<random>` |
 
-No `<system_error>`, `<string>`, `<ostream>`, `<format>` or `<stdexcept>`
-reaches the core in that configuration. Units need a hosted library today.
-Under `BEMAN_INSIDE_MATH_NO_FP` on a *hosted* build (no FPU, but a full
-library) units and their math work unchanged: neither header uses floating
-point. The mathematical constants (`math::pi`, …) come with cmath.hpp and are
-freestanding too.
+Beyond `<meta>`, no `<system_error>`, `<string>`, `<ostream>`, `<format>` or
+`<stdexcept>` reaches the core with exceptions off. Under
+`BEMAN_INSIDE_MATH_NO_FP` (no FPU, but a full library) units and their math
+work unchanged: neither header uses floating point.
 
 ## Two build conditions
 
@@ -103,7 +103,7 @@ Besides the handler, errors come back as values, without `std::error_code`:
 ## Math without `<cmath>` (`BEMAN_INSIDE_MATH_NO_FP`)
 
 The math functions (`math::sin`, `cos`, `exp`, `log`, `sqrt`, `pow`, `atan`, …
-in `cmath.hpp`) work on freestanding targets. Under `BEMAN_INSIDE_MATH_NO_FP`
+in `cmath.hpp`) work without an FPU. Under `BEMAN_INSIDE_MATH_NO_FP`
 the engine's `double` and double-double tiers, and their `#include <cmath>`,
 are compiled out **entirely**; the integer path computes every result. The
 interface, the output grids, the types **and the values** are unchanged:
@@ -115,26 +115,21 @@ the floating-point tiers only ever return the integer path's point
 - It holds for the modular headers and for the single header. The CI smoke
   `single_header_nofp_smoke` compiles the single header with a *poison*
   `<cmath>` first on the include path, so any `<cmath>` that sneaks in breaks
-  the build. That smoke defines `BEMAN_INSIDE_NO_STRING` too, because libc++'s
-  `<ostream>` includes `<format>`, which includes `<cmath>`.
+  the build. That smoke defines `BEMAN_INSIDE_NO_STRING` too, because
+  `<format>` includes `<cmath>`.
 - The whole test suite also runs with `BEMAN_INSIDE_MATH_NO_FP=ON` on a hosted
   build, units included.
 - Every math function is `constexpr`, so it works at compile time too.
 
 ```bash
-g++ -std=c++23 -ffreestanding -I single_include my_app.cpp              # NO_FP on by itself
-g++ -std=c++23 -DBEMAN_INSIDE_MATH_NO_FP -I single_include my_app.cpp   # or forced
+g++-16 -std=c++26 -freflection -DBEMAN_INSIDE_MATH_NO_FP -I single_include my_app.cpp
 ```
 
 ## Limits
 
-- **It depends on the toolchain.** GCC 15's libstdc++ makes `<ranges>`,
-  `<algorithm>`, `<expected>`, `<memory>`, `<functional>`, `<tuple>`,
-  `<numeric>`, `<string_view>` and more freestanding (C++26 P2407, P2738).
-  On older libstdc++ or on libc++ some of them are still hosted and block
-  `-ffreestanding`; the library does not work around that.
-- **Compile versus link.** `-ffreestanding` here is a compile property. A real
-  bare-metal link also needs `abort` or `__builtin_trap` for the failure path,
+- **It depends on the toolchain.** `-ffreestanding` waits for a libstdc++
+  whose `<meta>` is freestanding; the library does not work around that.
+- **Bare metal.** A bare-metal link also needs `abort` or `__builtin_trap` for the failure path,
   libm's `sqrt` and `fma` unless `BEMAN_INSIDE_MATH_NO_FP` is on, and a start-up
   that does not assume a hosted environment.
 - **Exceptions on, freestanding** does not work out of the box: the default

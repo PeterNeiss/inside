@@ -27,9 +27,8 @@ guards drop parts of it:
 The mathematical constants (`math::pi`, …) come with the math and stay in
 every configuration.
 
-On MSVC, compile with `/utf-8`: the header holds UTF-8 text (℃, −). If you
-evaluate math functions in constant expressions, also raise the step limit
-with `/constexpr:steps100000000`.
+Compile with `-std=c++26 -freflection` (GCC 16): the header needs static
+reflection.
 
 ## On Compiler Explorer
 
@@ -39,12 +38,11 @@ in:
 - paste it into a second source pane named `beman/inside/inside.hpp` and
   `#include` it; or
 - include it by URL (Compiler Explorer resolves URL includes for
-  single-header libraries). Pin a release tag for a link that stays valid, or
-  use `main` for the latest:
+  single-header libraries). This branch's header, for GCC 16 with
+  `-std=c++26 -freflection`:
 
   ```cpp
-  #include <https://raw.githubusercontent.com/PeterNeiss/inside/v0.5.0/single_include/beman/inside/inside.hpp>
-  #include <https://raw.githubusercontent.com/PeterNeiss/inside/main/single_include/beman/inside/inside.hpp>
+  #include <https://raw.githubusercontent.com/PeterNeiss/inside/pureCPP26/single_include/beman/inside/inside.hpp>
   ```
 
 A first program with units:

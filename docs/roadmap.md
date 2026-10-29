@@ -12,8 +12,8 @@ a date; the [changelog](../CHANGELOG.md) records what has shipped.
 
 ### A heap-backed, unbounded grid number
 
-Under C++26, grids past 64 bits already work by interning limbs in static
-storage ([storage.md](storage.md#grids-past-64-bits-c26)). A *heap-backed*
+Grids past 64 bits already work by interning limbs in static
+storage ([storage.md](storage.md#grids-past-64-bits)). A *heap-backed*
 bignum as a template argument stays impossible: a class template argument must
 be structural, with public members only ([temp.param]/7), so `std::vector`
 cannot qualify; a pointer argument must point to static storage
