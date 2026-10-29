@@ -18,7 +18,7 @@ namespace {
 using I64 = std::int64_t;
 
 // A long double with bits past the double's (x87 and IEEE quad; not where
-// long double is a double, as on Apple arm64 and MSVC). A preprocessor test:
+// long double is a double, as on Apple arm64). A preprocessor test:
 // an if constexpr outside a template still evaluates its static_asserts.
 #define WIDE_LONG_DOUBLE (LDBL_MANT_DIG > DBL_MANT_DIG)
 
@@ -79,7 +79,7 @@ TEST(BugHuntRound8, interval_and_grid_take_long_double_exactly) {
 #endif
 }
 
-// A fine double on a grid whose v − Lower passes one limb: under C++26 the
+// A fine double on a grid whose v − Lower passes one limb: the
 // lattice test formed that difference as a big grid number, which exists
 // only at compile time (std::terminate from the noexcept representable).
 TEST(BugHuntRound8, representable_fine_double_at_runtime) {

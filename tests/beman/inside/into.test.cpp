@@ -20,7 +20,7 @@ using usd   = inside<{{0, 1'000'000'000'000'000}, per<100>}>; // dollars to the 
 } // namespace
 
 TEST(IntoTest, mul_into_rounds_the_exact_product_once) {
-    // eth × price has a 10^-20 notch: past the 64-bit grid numbers under C++23.
+    // eth × price has a 10^-20 notch: rounded once onto usd's grid.
     const eth   balance = *parse<eth>("123456789.123456789123456789");
     const price p       = *parse<price>("3141.59");
     using usd_nearest   = inside<grid_of<usd>, round_nearest>;

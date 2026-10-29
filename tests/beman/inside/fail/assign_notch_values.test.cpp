@@ -1,6 +1,6 @@
 // EXPECT: lhs notch 1, rhs notch 1/2
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Under C++26 the diagnostic names both notches: halves do not store into
+// The diagnostic names both notches: halves do not store into
 // whole numbers without a rounding mode.
 #include <beman/inside/inside.hpp>
 

@@ -18,8 +18,7 @@ Arguments after `--` go to the certify program (certify.hpp lists them:
 --estimate, --max-slots N, --max-seconds S, --markdown FILE, --check FILE, ...).
 
 Build the project with -O0 (a Debug build) or -fkeep-inline-functions first:
-an inlined call leaves no symbol. MSVC symbols are not supported; scan a GCC
-or Clang build of the same code. docs/certify.md has the whole workflow.
+an inlined call leaves no symbol. docs/certify.md has the whole workflow.
 """
 
 import argparse
@@ -43,7 +42,12 @@ BINARY = {"atan2", "hypot", "pow"}  # atan2<Out, Y, X>, hypot<Out, X, Y>, pow<Ou
 INTO = re.compile(r"beman::inside::math::adaptive::(\w+?)_into<")
 PI_TRIG = re.compile(r"beman::inside::units::detail::pi_trig_into<")
 NUMBER = r"(-?\d+)[uUlL]*"
-RATIONAL = re.compile(r"rational\{" + NUMBER + r", " + NUMBER + r"\}")
+# A grid number: big_rational{big_int{…}, big_int{…}}. A big_int prints its
+# fields with the trailing defaults left out: Small, then the interned limbs
+# (a mangled array, least significant first) and their count, then Negative.
+BIG_INT = r"(?:[\w:]*::)?big_int\{([^{}]*)\}"
+BIG_RATIONAL = re.compile(r"big_rational\{" + BIG_INT + r", " + BIG_INT + r"\}")
+LIMB = re.compile(r"Lm(\d+)E")
 FLAGS = re.compile(r"^\s*" + NUMBER + r"\s*$")
 OBJECT_SUFFIXES = {".o", ".obj", ".a", ".so", ".dylib", ".lib"}
 MAGICS = (b"\x7fELF", b"\xfe\xed\xfa\xce", b"\xfe\xed\xfa\xcf", b"\xce\xfa\xed\xfe", b"\xcf\xfa\xed\xfe",
@@ -110,17 +114,32 @@ def parse_inside(arg):
         if depth == 0:
             break
     literal = arg[open_:close + 1]
-    parts = [(int(n), int(d)) for n, d in RATIONAL.findall(literal)]
-    if len(parts) == 3:
-        parts.append((0, 1))
-    if len(parts) != 4 or any(d == 0 for _, d in parts):
-        raise Unsupported("a C++26 big-grid build, where every grid has big fields: scan a C++23 build or one with "
-                          "BEMAN_INSIDE_BIG_GRIDS=0")
+    parts = [rational_field(big_int(n), big_int(d)) for n, d in BIG_RATIONAL.findall(literal)]
+    if len(parts) != 4:
+        raise Unsupported(f"unexpected grid {literal!r}")
     rest = arg[close + 1:].lstrip(", ").rstrip(">").strip()
     flags = FLAGS.match(rest)
     if not flags:
         raise Unsupported(f"unexpected policy {rest!r}")
     return {"fields": parts, "flags": int(flags.group(1))}
+
+
+def big_int(body):
+    """The value of a big_int's printed fields."""
+    fields = [f.strip() for f in body.split(",")] if body.strip() else []
+    if len(fields) > 1 and fields[1].startswith("&"):
+        magnitude = sum(int(limb) << (64 * i) for i, limb in enumerate(LIMB.findall(fields[1])))
+    else:
+        magnitude = int(re.match(r"\d+", fields[0]).group()) if fields else 0
+    return -magnitude if len(fields) > 3 and fields[3] == "true" else magnitude
+
+
+def rational_field(n, d):
+    """A grid number as the 64-bit rational's fields: the magnitude and the
+    denominator with the sign. Past them the pair has no certify spelling."""
+    if abs(n) >= 1 << 64 or d >= 1 << 63:
+        raise Unsupported("a grid number past the 64-bit rational")
+    return (abs(n), -d if n < 0 else d)
 
 
 def value(field):
@@ -264,8 +283,8 @@ def main():
     ap.add_argument("--cxx", default=os.environ.get("CXX", "c++"), help="compiler for --run (default: $CXX or c++)")
     ap.add_argument("-I", dest="includes", action="append", type=Path, default=[],
                     help="include directory with beman/inside (default: this repository's)")
-    ap.add_argument("--std", default="c++23", help="language standard for --run (default: c++23)")
-    ap.add_argument("--cxxflags", default="", help="more compiler flags for --run, e.g. -stdlib=libc++")
+    ap.add_argument("--std", default="c++26", help="language standard for --run (default: c++26)")
+    ap.add_argument("--cxxflags", default="", help="more compiler flags for --run")
     ap.add_argument("--min-pairs", type=int, default=0, help="fail when fewer pairs are found (for tests)")
     args = ap.parse_args(argv)
 
@@ -301,7 +320,7 @@ def main():
 
     exe = program.with_suffix(".exe" if os.name == "nt" else "")
     includes = args.includes or [REPO_INCLUDE]
-    command = [args.cxx, f"-std={args.std}", "-O2", "-DNDEBUG", f"-I{HERE}"] + args.cxxflags.split()
+    command = [args.cxx, f"-std={args.std}", "-freflection", "-O2", "-DNDEBUG", f"-I{HERE}"] + args.cxxflags.split()
     command += [f"-I{i}" for i in includes] + [str(program), "-o", str(exe)]
     print("find_grids: " + " ".join(command), flush=True)
     if subprocess.run(command).returncode != 0:

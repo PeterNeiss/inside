@@ -58,8 +58,7 @@ struct expected_results {
     rational Nearest, Even, Floor, Ceil, Zero;
 };
 
-// F is a captureless lambda []<class O>() { return fn_into<O>(x); }: a
-// function argument, not a template argument, which MSVC cannot parse.
+// F is a captureless lambda []<class O>() { return fn_into<O>(x); }.
 template <policy_flag M, template <policy_flag> class G, class F>
 void expect_mode(rational want, const char* mode) {
     using Out                       = G<M>;

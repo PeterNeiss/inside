@@ -8,10 +8,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
-#include <version> // __cpp_lib_format
-#ifdef __cpp_lib_format
-    #include <format>
-#endif
+#include <format>
 
 using namespace beman::inside;
 using namespace beman::inside::units;
@@ -68,13 +65,11 @@ TEST(ConstantsTest, physical_constants_have_their_kind_and_value) {
     EXPECT_EQ(to_string(pc::fine_structure_constant.in(one)), "0.0072973525643");
     EXPECT_EQ(to_string(pc::rydberg_constant.in(one / si::metre)), "10973731.568157 m⁻¹");
     EXPECT_EQ(to_string(pc::characteristic_impedance_of_vacuum.in(si::ohm)), "376.730313412 Ω");
-#ifdef __cpp_lib_format
     EXPECT_EQ(
         std::format("{:.5e}", pc::gravitational_constant.in(cubic(si::metre) / (si::kilogram * square(si::second)))),
         "6.67430e-11 m³/(kg s²)");
     EXPECT_EQ(std::format("{:.11e}", pc::vacuum_magnetic_permeability.in(si::newton / square(si::ampere))),
               "1.25663706127e-06 N/A²");
-#endif
 }
 
 TEST(ConstantsTest, si2019_defining_constants_are_exact) {

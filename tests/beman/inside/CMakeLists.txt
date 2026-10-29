@@ -120,6 +120,19 @@ set_tests_properties(
     PROPERTIES LABELS "tooling"
 )
 
+# The library is C++26 with reflection only: no pre-C++26 or other-compiler
+# code comes back (a merge from main brings it).
+add_test(
+    NAME beman.inside.tests.no_compat_code
+    COMMAND
+        ${CMAKE_COMMAND} -D BEMAN_INSIDE_ROOT=${PROJECT_SOURCE_DIR} -P
+        ${CMAKE_CURRENT_SOURCE_DIR}/no_compat_code.cmake
+)
+set_tests_properties(
+    beman.inside.tests.no_compat_code
+    PROPERTIES LABELS "tooling"
+)
+
 # Self-containment smoke: a TU that sees ONLY single_include/ proves the single
 # header stands alone.
 add_executable(
@@ -197,9 +210,7 @@ add_library(
 target_include_directories(
     beman.inside.tests.single_header_nofp_smoke
     BEFORE
-    PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/nofp_poison"
-        "${single_include_dir}"
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/nofp_poison" "${single_include_dir}"
 )
 target_compile_features(
     beman.inside.tests.single_header_nofp_smoke

@@ -4,10 +4,7 @@
 
 #include <gtest/gtest.h>
 
-#include <version> // __cpp_lib_format
-#ifdef __cpp_lib_format
-    #include <format>
-#endif
+#include <format>
 #include <limits>
 #include <sstream>
 
@@ -85,7 +82,6 @@ TEST(FormatTest, rational_max_as_integer_formats_without_1) {
 // std::format integration is only exercised where <format> is available
 // (libstdc++ from GCC 13). GCC 12 / C++20 builds skip these and keep the
 // to_string()/operator<< coverage below.
-#ifdef __cpp_lib_format
 // std::format integration
 TEST(FormatTest, std_format_integration) {
     ASSERT_EQ((std::format("{}", inside<{0, 99}>{42})), "42");
@@ -216,7 +212,6 @@ TEST(FormatTest, std_format_specs_follow_the_rounding_policy) {
     const milli_nearest m{rational{125, 1000}};
     EXPECT_EQ(std::format("{:.2f}", m), beman::inside::to_string(cents_nearest{m}));
 }
-#endif // __cpp_lib_format
 
 // A decimal notch prints every value with that notch's decimals; any other
 // notch prints the value's shortest exact form.
@@ -240,9 +235,7 @@ TEST(FormatTest, decimal_notches_fix_the_digits) {
     // Every form reads back.
     for (const cents c : {cents{rational{199, 10}}, cents{-1}, cents{0}})
         EXPECT_EQ(parse<cents>(beman::inside::to_string(c)), c);
-#ifdef __cpp_lib_format
     EXPECT_EQ(std::format("{}", cents{rational{199, 10}}), "19.90");
-#endif
 }
 
 // interval and grid to_string
@@ -308,7 +301,6 @@ TEST(FormatTest, type_name_covers_all_raw_types) {
     ASSERT_TRUE(type_name_of<bool> == "unknown");
 }
 
-#ifdef __cpp_lib_format
 // A continuous grid with integer bounds still holds fractions: `{}` must not
 // format it through the integer path.
 TEST(FormatTest, continuous_grid_with_integer_bounds_formats_the_fraction) {
@@ -317,4 +309,3 @@ TEST(FormatTest, continuous_grid_with_integer_bounds_formats_the_fraction) {
     EXPECT_NE(std::format("{}", c), "0");
     EXPECT_EQ(std::format("{:.3f}", c), "0.667");
 }
-#endif

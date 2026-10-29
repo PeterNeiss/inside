@@ -113,7 +113,7 @@ TEST(BoundedRationalTest, store_past_the_bound_reports_rounding_error) {
     EXPECT_TRUE(u == 0);
 }
 
-// C++26: the same check on a bounded grid stored as a wide fraction.
+// The same check on a bounded grid stored as a wide fraction.
 TEST(BoundedRationalTest, wide_bounded_store_checks_the_bound) {
     constexpr grid e18{interval{0, 1}, max_denominator{1'000'000'000'000'000'000}};
     using wide = inside<e18 * e18>; // denominators ≤ 10^36

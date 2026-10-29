@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// big_int / big_rational: grid numbers of any size (C++26 static reflection).
-// Without reflection the header compiles to nothing and the test is skipped.
+// big_int / big_rational: grid numbers of any size.
 
 #include <beman/inside/detail/grid_rational.hpp>
 

@@ -15,8 +15,6 @@ namespace {
 constexpr auto km = si::kilo(si::metre);
 constexpr auto mm = si::milli(si::metre);
 
-// A function, not a variable template: clang 18 rejects a consteval call in
-// a variable template's initializer.
 template <class A, class B>
 consteval bool addable() {
     return units::detail::common_spec(std::remove_cvref_t<A>::reference, std::remove_cvref_t<B>::reference).Ok;
@@ -283,7 +281,6 @@ TEST(UnitsTest, point_arithmetic) {
     EXPECT_EQ((x - point<si::metre>(just<1>)).numerical_value(), 2);
 }
 
-#ifdef __cpp_lib_format
 TEST(UnitsTest, std_format) {
     EXPECT_EQ(std::format("{}", just<5> * si::kilo(si::metre)), "5 km");
     EXPECT_EQ(std::format("{:>4}", just<5> * si::newton), "   5 N");
@@ -293,7 +290,6 @@ TEST(UnitsTest, std_format) {
     EXPECT_EQ(std::format("{}", point<si::degree_Celsius>(inside<{-40, 60}>{20})), "20 ℃");
     EXPECT_EQ(std::format("{}", just<3> * units::one), "3");
 }
-#endif
 
 TEST(UnitsTest, point_in_and_value_cast_on_points) {
     const auto oven = point<international::degree_Fahrenheit>(inside<{0, 600}>{350});

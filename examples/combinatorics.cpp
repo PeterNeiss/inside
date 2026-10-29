@@ -2,7 +2,7 @@
 // Counting: the numbers grow faster than any fixed-width integer, and the
 // grids follow that growth at compile time.
 //   1. n! as a product of 1..n: its grid is [1, n!], so 20! is known to fit
-//      64 bits before anything runs; 21! does not compile under C++23.
+//      64 bits before anything runs; 21! gets a wide raw.
 //   2. Binomials by the multiplicative rule C·(n − i + 1) / i: divmod gives
 //      the quotient and the remainder, which is zero at every step. The count
 //      type ends exactly at C(60, 30), the largest answer it must hold.

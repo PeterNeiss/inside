@@ -174,7 +174,7 @@ TEST(GridTest, two_limit_ctor_derives_the_notch) {
         grid{just<1, (1ll << 62)>, just<1, (1ll << 62) - 1>}.Notch ==
         detail::grid_rational{detail::big_int{1}, detail::big_int{1ll << 62} * detail::big_int{(1ll << 62) - 1}});
     static_assert(grid::validate<grid{just<-6, 5>, just<3, 5>}>());
-    // _g: grid numbers from decimal literals, exactly (any size with C++26 big grids).
+    // _g: grid numbers from decimal literals, exactly, of any size.
     static_assert(grid{0, 2.5_g}.Notch == rational{1, 2});
     static_assert(1'000_g == 1000 && 25e-2_g == rational{1, 4} && 1.5e3_g == 1500);
 
@@ -357,7 +357,7 @@ TEST(GridTest, bounds_past_their_storage_are_dropped) {
     constexpr grid billionths{interval{0, 1}, max_denominator{1'000'000'000}};
     constexpr grid b2 = billionths * billionths;
     static_assert(b2.MaxDenominator == 1'000'000'000'000'000'000);
-    // C++26: kept until num + den need more than BEMAN_INSIDE_MAX_FRACTION_BITS
+    // Kept until num + den need more than BEMAN_INSIDE_MAX_FRACTION_BITS
     constexpr grid b4 = b2 * b2, b8 = b4 * b4, b16 = b8 * b8, b32 = b16 * b16;
     static_assert(b16.MaxDenominator != 0 && b32.MaxDenominator == 0); // 10^144 kept, 10^288 dropped
 }
@@ -366,7 +366,7 @@ TEST(GridTest, bounded_storage_holds_every_value) {
     // Within the 64-bit rational a bounded grid stores a rational, as before.
     static_assert(std::same_as<raw_for_t<kThousandths>, rational>);
     static_assert(std::same_as<raw_for_t<*(kHundred / kOneToSeven)>, rational>);
-    // C++26: past it, a fraction sized from the bounds — here 10^36 needs 120 bits.
+    // Past it, a fraction sized from the bounds — here 10^36 needs 120 bits.
     constexpr grid billionths{interval{0, 1}, max_denominator{1'000'000'000}};
     constexpr grid b2 = billionths * billionths, b4 = b2 * b2;
     static_assert(std::same_as<raw_for_t<b4>, wide_rational<2>>);

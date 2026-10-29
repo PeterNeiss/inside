@@ -12,42 +12,12 @@
 //   - A sweep in 3 dB steps (a cursor over the level's number grid) showing
 //     dB → linear → dB recovers the input at every step.
 
-#include <version>
-
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
 #include <beman/inside/units_math.hpp>
 
-// std::println needs io.hpp's std::formatter, which needs <format> (libc++ 18
-// has <print> without __cpp_lib_format).
-#if defined(__cpp_lib_print) && defined(__cpp_lib_format)
-    #include <print>
+#include <print>
 using std::println;
-#else
-    // Kept portable to standard libraries without <print>: a minimal stand-in
-    // covering the `{}` forms this example uses, rendered through the
-    // inside/rational operator<< from io.hpp.
-    #include <iostream>
-    #include <sstream>
-    #include <string_view>
-namespace {
-template <class... Ts>
-void println(std::string_view fmt, const Ts&... args) {
-    std::ostringstream    oss;
-    std::size_t           pos  = 0;
-    [[maybe_unused]] auto emit = [&](const auto& a) {
-        auto open = fmt.find("{}", pos);
-        if (open == std::string_view::npos)
-            return;
-        oss << fmt.substr(pos, open - pos) << a;
-        pos = open + 2;
-    };
-    (emit(args), ...);
-    oss << fmt.substr(pos) << '\n';
-    std::cout << oss.str();
-}
-} // namespace
-#endif
 
 using namespace beman::inside;
 using namespace beman::inside::units;

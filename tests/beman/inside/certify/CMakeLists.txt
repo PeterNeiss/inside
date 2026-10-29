@@ -21,14 +21,11 @@ set_tests_properties(
     PROPERTIES LABELS "certify"
 )
 
-# Only where the examples are built unoptimized, with an Itanium nm, and
-# without big grids (their symbols have no 64-bit spelling).
+# Only where the examples are built unoptimized.
 string(TOUPPER "${CMAKE_BUILD_TYPE}" build_type)
 if(
     BEMAN_INSIDE_BUILD_EXAMPLES
     AND CMAKE_NM
-    AND NOT MSVC
-    AND NOT BEMAN_INSIDE_HAS_FREFLECTION
     AND (build_type STREQUAL "" OR build_type STREQUAL "DEBUG")
 )
     add_test(

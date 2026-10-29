@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // One length type from the Planck length (1.616255·10^-35 m) to the observable
-// universe (8.8·10^26 m), on a 10^-41 m grid: about 2^226 points. Grid numbers
-// past 64 bits need C++26 static reflection (GCC 16 -freflection); the `_g`
-// literal spells them exactly.
+// universe (8.8·10^26 m), on a 10^-41 m grid: about 2^226 points. The `_g`
+// literal spells its grid numbers exactly.
 //   1. The universe in Planck lengths: their exact ratio, and its log10
 //      correctly rounded — about 10^61.74.
 //   2. Their geometric mean — halfway in log scale — by sqrt, correctly rounded

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Textbook RSA-1024 on exact integer grids. Grid numbers past 64 bits need
-// C++26 static reflection (GCC 16 -freflection). The types carry the sizes:
+// Textbook RSA-1024 on exact integer grids. The types carry the sizes:
 // a residue mod n is inside<{0, n - 1}>, the product of two residues is a
 // 2048-bit grid without anyone writing it, and "% n" lands back in
 // [0, n - 1] as a plain value, since the point divisor n cannot be 0.

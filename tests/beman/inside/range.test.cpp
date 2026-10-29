@@ -163,7 +163,6 @@ TEST(RangeTest, inside_range_works_with_std_views_reverse) {
     ASSERT_TRUE((seen == std::vector<imax>{4, 3, 2, 1, 0}));
 }
 
-#ifdef __cpp_lib_ranges_enumerate
 // std::views::enumerate pairs each value with its position
 TEST(RangeTest, inside_range_with_std_views_enumerate) {
     small_grid                         r;
@@ -172,9 +171,7 @@ TEST(RangeTest, inside_range_with_std_views_enumerate) {
         seen.emplace_back(i, v);
     ASSERT_TRUE((seen == std::vector<std::pair<imax, imax>>{{0, 0}, {1, 1}, {2, 2}, {3, 3}, {4, 4}}));
 }
-#endif
 
-#ifdef __cpp_lib_ranges_stride
 // std::views::stride visits every step-th value
 TEST(RangeTest, inside_range_with_std_views_stride) {
     small_grid r; // 0,1,2,3,4
@@ -196,7 +193,6 @@ TEST(RangeTest, inside_range_with_std_views_stride) {
         fseen.push_back(rational{v});
     ASSERT_TRUE((fseen == std::vector<rational>{rational{0}, rational{1, 2}, rational{1}}));
 }
-#endif
 
 //---------------------------------------------------------------------------
 // values<T>: the range of a type's values

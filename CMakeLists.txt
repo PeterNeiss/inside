@@ -127,10 +127,7 @@ if(NOT BEMAN_INSIDE_HAS_FREFLECTION)
 endif()
 target_compile_options(beman.inside INTERFACE -freflection)
 if(BEMAN_INSIDE_FMA AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
-    target_compile_options(
-        beman.inside
-        INTERFACE -mfma
-    )
+    target_compile_options(beman.inside INTERFACE -mfma)
 endif()
 
 # Error reporting carries no strings: a checked violation funnels through the

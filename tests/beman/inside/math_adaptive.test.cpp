@@ -347,7 +347,7 @@ TEST(MathAdaptiveTest, two_argument_functions_round_correctly) {
 }
 
 //---------------------------------------------------------------------------
-// Grids past 64 bits (C++26): fine notches and huge inputs. The expected raws
+// Grids past 64 bits: fine notches and huge inputs. The expected raws
 // come from an exact integer computation at 600 bits.
 //---------------------------------------------------------------------------
 namespace {

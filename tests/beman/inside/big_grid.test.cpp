@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Grids whose limits or notch pass 64 bits (C++26 static reflection): storage,
-// construction and assignment, comparison, arithmetic with result grids past
-// 64 bits, conversions and io. Skipped without reflection.
+// Grids whose limits or notch pass 64 bits: storage, construction and
+// assignment, comparison, arithmetic with result grids past 64 bits,
+// conversions and io.
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/cmath.hpp>
@@ -11,10 +11,7 @@
 
 #include <gtest/gtest.h>
 
-#include <version> // __cpp_lib_format
-#ifdef __cpp_lib_format
-    #include <format>
-#endif
+#include <format>
 
 using namespace beman::inside;
 using detail::big_int;
@@ -107,11 +104,9 @@ TEST(BigGridTest, conversions_and_io) {
     EXPECT_EQ(to_string(grid_of<inside<{{0, 1}, 1e-30_g}>>), "{[0..1], 0.000000000000000000000000000001}");
     constexpr grid_rational third_80{big_int{1}, pow2(80) * big_int{3}};
     EXPECT_EQ(to_string(third_80), "1/3626777458843887524118528");
-#ifdef __cpp_lib_format
     EXPECT_EQ(std::format("{}", f), "1267650600228229401496703205379");
     EXPECT_EQ(std::format("{}", fine::from_raw(1)), to_string(fine::from_raw(1)));
     EXPECT_EQ(std::format("{:.3e} {:.2f}", f, f), "1.268e+30 1267650600228229401496703205379.00");
-#endif
     using micro = inside<{{0, 1}, 1e-30_g}>; // a decimal notch: 30 decimals
     EXPECT_EQ(to_string(micro{0.5}), "0.500000000000000000000000000000");
 }
@@ -284,9 +279,7 @@ TEST(BigGridTest, continuous_past_64_bits) {
     static_assert(detail::fraction_storage<std::remove_cvref_t<decltype(ratio)>>);
     EXPECT_EQ(to_string(ratio), "17600000000000000000000000000000000000000000000000000000000000000000/323251");
     EXPECT_TRUE(ratio > 5.4e61 && ratio < 5.5e61);
-#ifdef __cpp_lib_format
     EXPECT_EQ(std::format("{:.6e}", ratio), "5.444685e+61");
-#endif
     using decade = inside<{{-100, 100}, per<1 << 20>}, round_nearest>;
     EXPECT_EQ(math::log10_into<decade>(ratio), (decade{rational{64'734'859, 1 << 20}})); // 61.7359724…
     const auto one = universe / universe;

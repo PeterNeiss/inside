@@ -114,7 +114,7 @@ TEST(WideIntTest, exhaustive_division_two_uint8_limbs) {
 
 #if defined(__SIZEOF_INT128__)
 namespace {
-// __int128 is not std::integral in strict C++23 modes: go through the limbs.
+// __int128 is not std::integral in strict modes: go through the limbs.
 using u128n = unsigned __int128;
 template <bool S>
 wide_int<2, S> from128(u128n v) {
@@ -267,9 +267,9 @@ TEST(WideIntTest, equality_in_constant_evaluation) {
 
 using beman::inside::umax;
 
-// The 64-bit limb product and division: native __int128, MSVC's _umul128 /
-// _udiv128 at run time, or the portable split in constant evaluation. Every
-// path gives the same {hi, lo} and {quotient, remainder}.
+// The 64-bit limb product and division: native __int128, or the portable
+// split on targets without it. Every path gives the same {hi, lo} and
+// {quotient, remainder}.
 namespace {
 struct limb_case {
     umax A, B;
