@@ -210,28 +210,20 @@ template <auto U, insidable Out, reference R, class V>
     static_assert(f.Pi == 1 || f.Pi == -1, "units: value_cast - only a factor of pi or 1/pi rounds");
     beman::inside::math::adaptive::require_rounding<Out>();
     constexpr reference to{R.Spec, R.KindOf, R.Derived, u};
-    const auto          x = ax::exact_input(q.numerical_value());
-    if constexpr (beman::inside::detail::fits_rational(f.Ratio)) {
-        constexpr rational r = beman::inside::detail::to_rational(f.Ratio);
-        constexpr int      B = ax::in_mag<V> + static_cast<int>(std::bit_width(r.Numerator)) + 4;
-        using core           = ax::pi_scale_core<ax::input_limbs<V>, B, f.Pi>;
-        return quantity<to, Out>{ax::evaluate<Out, ax::start_bits<Out>>(
-            core{x, r.Numerator, beman::inside::detail::abs_den(r.Denominator), r.Denominator < 0})};
-    } else {
-        // A factor past 64 bits: the same core on wide integers.
-        using beman::inside::detail::grid_int;
-        constexpr grid_int    n  = beman::inside::detail::wide_numerator(f.Ratio);
-        constexpr grid_int    d  = beman::inside::detail::wide_denominator(f.Ratio);
-        constexpr bool        ng = n.negative();
-        constexpr int         NB = n.bit_width();
-        constexpr std::size_t KF = beman::inside::detail::limbs_for_bits(std::max(NB, d.bit_width()) + 1);
-        using WF                 = beman::inside::detail::wide_uint<KF>;
-        constexpr WF  wn         = static_cast<WF>(ng ? -n : n);
-        constexpr WF  wd         = static_cast<WF>(d);
-        constexpr int B          = ax::in_mag<V> + NB + 4;
-        using core               = ax::pi_scale_core<ax::input_limbs<V>, B, f.Pi, KF>;
-        return quantity<to, Out>{ax::evaluate<Out, ax::start_bits<Out>>(core{x, wn, wd, ng})};
-    }
+    // The factor n/d in one limb when it is a 64-bit rational, else in as
+    // many as it needs (ħ = h/2π in J·s).
+    using beman::inside::detail::grid_int;
+    constexpr grid_int    n  = beman::inside::detail::wide_numerator(f.Ratio);
+    constexpr grid_int    d  = beman::inside::detail::wide_denominator(f.Ratio);
+    constexpr bool        ng = n.negative();
+    constexpr int         NB = n.bit_width();
+    constexpr std::size_t KF = beman::inside::detail::fits_rational(f.Ratio)
+                                   ? 1
+                                   : beman::inside::detail::limbs_for_bits(std::max(NB, d.bit_width()) + 1);
+    using core               = ax::pi_scale_core<ax::input_limbs<V>, ax::in_mag<V> + NB + 4, f.Pi, KF>;
+    using factor             = typename core::factor;
+    return quantity<to, Out>{ax::evaluate<Out, ax::start_bits<Out>>(
+        core{ax::exact_input(q.numerical_value()), static_cast<factor>(ng ? -n : n), static_cast<factor>(d), ng})};
 }
 
 // The number's functions, in q's unit.

@@ -71,17 +71,12 @@ inline constexpr auto second_radiation_constant = unit_c<si2019_defs::second_rad
 // CODATA 2022 recommended values (Mohr et al., Rev. Mod. Phys. 97, 025002).
 namespace codata2022_defs {
 inline constexpr named_unit gravitational_constant{
-    "G", mag<rational{667'430, 10'000'000'000'000'000}> * cubic(si::metre) / (si::kilogram * square(si::second))};
-inline constexpr named_unit fine_structure_constant{
-    "α", mag<rational{72'973'525'643, 10'000'000'000'000}> * one, {.ascii = "alpha"}};
-inline constexpr named_unit rydberg_constant{
-    "R_∞", mag<rational{10'973'731'568'157, 1'000'000}> / si::metre, {.ascii = "R_inf"}};
-inline constexpr named_unit vacuum_magnetic_permeability{"μ₀",
-                                                         mag<rational{125'663'706'127, 100'000'000'000'000'000}> *
-                                                             si::newton / square(si::ampere),
-                                                         {.ascii = "mu_0"}};
-inline constexpr named_unit characteristic_impedance_of_vacuum{
-    "Z₀", mag<rational{376'730'313'412, 1'000'000'000}> * si::ohm, {.ascii = "Z_0"}};
+    "G", mag<6.67430e-11_g> * cubic(si::metre) / (si::kilogram * square(si::second))};
+inline constexpr named_unit fine_structure_constant{"α", mag<7.2973525643e-3_g> * one, {.ascii = "alpha"}};
+inline constexpr named_unit rydberg_constant{"R_∞", mag<10'973'731.568157_g> / si::metre, {.ascii = "R_inf"}};
+inline constexpr named_unit vacuum_magnetic_permeability{
+    "μ₀", mag<1.25663706127e-6_g> * si::newton / square(si::ampere), {.ascii = "mu_0"}};
+inline constexpr named_unit characteristic_impedance_of_vacuum{"Z₀", mag<376.730313412_g> * si::ohm, {.ascii = "Z_0"}};
 inline constexpr named_unit electron_mass{"m_e", mag<9.1093837139e-31_g> * si::kilogram};
 inline constexpr named_unit proton_mass{"m_p", mag<1.67262192595e-27_g> * si::kilogram};
 inline constexpr named_unit neutron_mass{"m_n", mag<1.67492750056e-27_g> * si::kilogram};
