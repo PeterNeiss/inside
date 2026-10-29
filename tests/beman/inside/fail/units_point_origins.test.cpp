@@ -1,5 +1,4 @@
 // EXPECT: points of different absolute origins
-// REQUIRES: delete-reason
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Two points counted from unrelated absolute origins have no difference.
 #include <beman/inside/units.hpp>

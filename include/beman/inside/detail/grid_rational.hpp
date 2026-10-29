@@ -3,7 +3,6 @@
 #define BEMAN_INSIDE_DETAIL_GRID_RATIONAL_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/detail/rational.hpp>
 #include <beman/inside/detail/number_text.hpp> // the literal grammar (_g)
@@ -256,7 +255,5 @@ consteval detail::grid_rational operator""_g() {
     return detail::parse_grid_literal<Chars...>();
 }
 } // namespace beman::inside
-
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_GRID_RATIONAL_HPP

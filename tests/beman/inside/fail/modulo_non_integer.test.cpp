@@ -1,5 +1,4 @@
 // EXPECT: modulo requires integer-valued grids
-// REQUIRES: delete-reason
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // `%` is integer-only by design — non-integer remainders are not representable
 // on a fractional grid without a rounding story.

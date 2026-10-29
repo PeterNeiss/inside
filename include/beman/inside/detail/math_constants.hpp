@@ -3,7 +3,6 @@
 #define BEMAN_INSIDE_DETAIL_MATH_CONSTANTS_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/inside.hpp>
 
@@ -58,7 +57,5 @@ inline constexpr auto egamma      = just<beman::inside::detail::egamma_rat>;  //
 inline constexpr auto catalan     = just<beman::inside::detail::catalan_rat>; // Catalan's G
 inline constexpr auto zeta3       = just<beman::inside::detail::zeta3_rat>;   // Apéry's ζ(3)
 } // namespace beman::inside::math
-
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_MATH_CONSTANTS_HPP

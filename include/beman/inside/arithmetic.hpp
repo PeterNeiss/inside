@@ -3,7 +3,6 @@
 #define BEMAN_INSIDE_ARITHMETIC_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/detail/compare.hpp> // the inside type and its comparisons
 #include <beman/inside/casts.hpp>
@@ -109,7 +108,7 @@ struct divmod_op {
 
 // A deleted overload takes each op's failing case: `requires { a + b; }` is
 // then false, and an integer inside cannot fall back on its imax conversion
-// and the built-in operator (BEMAN_INSIDE_DELETE, detail/config.hpp).
+// and the built-in operator.
 
 #define BEMAN_INSIDE_WHY_add                                                                                     \
     "addition: the result grid exceeds the 64-bit grid numbers (coarsen the operand grids, or build with C++26 " \
@@ -146,22 +145,20 @@ inline constexpr policy_flag call_flags<errc&, Rest...> = checked;
 // `if constexpr` probe is false where the op cannot compile.
 } // namespace detail
 
-#define BEMAN_INSIDE_ARITH_FN(name, op)                                                      \
-    template <insidable L, insidable R, class... Args>                                       \
-        requires detail::name                                                                \
-    ##_defined<L, R, detail::call_flags<Args...>>&&                                          \
-        requires(L const& l, R const& r, Args && ... args)                                   \
-    {                                                                                        \
-        detail::arith(detail::op{}, l, r, std::forward<Args>(args)...);                      \
-    }                                                                                        \
-    [[nodiscard]] constexpr auto name(L const& lhs, R const& rhs, Args&&... args) {          \
-        return detail::arith(detail::op{}, lhs, rhs, std::forward<Args>(args)...);           \
-    }                                                                                        \
-    BEMAN_INSIDE_DELETE_BEGIN                                                                \
-    template <insidable L, insidable R, class... Args>                                       \
-        requires(!detail::name##_defined<L, R, detail::call_flags<Args...>>)                 \
-    auto name(L const&, R const&, Args&&...) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_##name); \
-    BEMAN_INSIDE_DELETE_END
+#define BEMAN_INSIDE_ARITH_FN(name, op)                                             \
+    template <insidable L, insidable R, class... Args>                              \
+        requires detail::name                                                       \
+    ##_defined<L, R, detail::call_flags<Args...>>&&                                 \
+        requires(L const& l, R const& r, Args && ... args)                          \
+    {                                                                               \
+        detail::arith(detail::op{}, l, r, std::forward<Args>(args)...);             \
+    }                                                                               \
+    [[nodiscard]] constexpr auto name(L const& lhs, R const& rhs, Args&&... args) { \
+        return detail::arith(detail::op{}, lhs, rhs, std::forward<Args>(args)...);  \
+    }                                                                               \
+    template <insidable L, insidable R, class... Args>                              \
+        requires(!detail::name##_defined<L, R, detail::call_flags<Args...>>)        \
+    auto name(L const&, R const&, Args&&...) = delete (BEMAN_INSIDE_WHY_##name);
 
 BEMAN_INSIDE_ARITH_FN(add, add_op)
 BEMAN_INSIDE_ARITH_FN(sub, sub_op)
@@ -269,55 +266,45 @@ template <insidable L, insidable R>
 [[nodiscard]] constexpr auto operator+(L lhs, R rhs) {
     return beman::inside::add(lhs, rhs);
 }
-BEMAN_INSIDE_DELETE_BEGIN
 template <insidable L, insidable R>
     requires(!detail::add_defined<L, R>)
-auto operator+(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_add);
-BEMAN_INSIDE_DELETE_END
+auto operator+(L, R) = delete (BEMAN_INSIDE_WHY_add);
 
 template <insidable L, insidable R>
     requires detail::sub_defined<L, R>
 [[nodiscard]] constexpr auto operator-(L lhs, R rhs) {
     return beman::inside::sub(lhs, rhs);
 }
-BEMAN_INSIDE_DELETE_BEGIN
 template <insidable L, insidable R>
     requires(!detail::sub_defined<L, R>)
-auto operator-(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_sub);
-BEMAN_INSIDE_DELETE_END
+auto operator-(L, R) = delete (BEMAN_INSIDE_WHY_sub);
 
 template <insidable L, insidable R>
     requires detail::mul_defined<L, R>
 [[nodiscard]] constexpr auto operator*(L lhs, R rhs) {
     return beman::inside::mul(lhs, rhs);
 }
-BEMAN_INSIDE_DELETE_BEGIN
 template <insidable L, insidable R>
     requires(!detail::mul_defined<L, R>)
-auto operator*(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_mul);
-BEMAN_INSIDE_DELETE_END
+auto operator*(L, R) = delete (BEMAN_INSIDE_WHY_mul);
 
 template <insidable L, insidable R>
     requires detail::div_defined<L, R, flags_of<L> | flags_of<R>>
 [[nodiscard]] constexpr auto operator/(L lhs, R rhs) {
     return beman::inside::div(lhs, rhs, make_policy<flags_of<L> | flags_of<R>>());
 }
-BEMAN_INSIDE_DELETE_BEGIN
 template <insidable L, insidable R>
     requires(!detail::div_defined<L, R, flags_of<L> | flags_of<R>>)
-auto operator/(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_div);
-BEMAN_INSIDE_DELETE_END
+auto operator/(L, R) = delete (BEMAN_INSIDE_WHY_div);
 
 template <insidable L, insidable R>
     requires detail::mod_defined<L, R, flags_of<L> | flags_of<R>>
 [[nodiscard]] constexpr auto operator%(L lhs, R rhs) {
     return beman::inside::mod(lhs, rhs, make_policy<flags_of<L> | flags_of<R>>());
 }
-BEMAN_INSIDE_DELETE_BEGIN
 template <insidable L, insidable R>
     requires(!detail::mod_defined<L, R, flags_of<L> | flags_of<R>>)
-auto operator%(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_mod);
-BEMAN_INSIDE_DELETE_END
+auto operator%(L, R) = delete (BEMAN_INSIDE_WHY_mod);
 #undef BEMAN_INSIDE_WHY_arith_action
 #undef BEMAN_INSIDE_WHY_add
 #undef BEMAN_INSIDE_WHY_sub
@@ -585,7 +572,5 @@ BEMAN_INSIDE_NO_SCALAR(%)
 template <beman::inside::grid G1, beman::inside::policy_flag P1, beman::inside::grid G2, beman::inside::policy_flag P2>
 struct std::common_type<beman::inside::inside<G1, P1>, beman::inside::inside<G2, P2>>
     : beman::inside::detail::common_inside<beman::inside::inside<G1, P1>, beman::inside::inside<G2, P2>> {};
-
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_ARITHMETIC_HPP

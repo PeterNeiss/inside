@@ -3,7 +3,6 @@
 #define BEMAN_INSIDE_DETAIL_MATH_ENTRY_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/detail/math_cores.hpp>
 #include <beman/inside/detail/math_fp.hpp> // the double tier's kernels
@@ -132,18 +131,18 @@ constexpr double input_double(const In& x) noexcept {
 template <insidable In>
 inline constexpr double input_rel = fp_exact_input<In> ? 0.0 : 0x1p-50;
 
-constexpr double fabs_d(double v) noexcept { return BEMAN_INSIDE_FABS(v); }
+constexpr double fabs_d(double v) noexcept { return __builtin_fabs(v); }
 
 // An integer near t (the nearest in the default rounding mode); NaN stays
 // NaN. The tests below only need J to be an integer, so no compiler
 // rewrite can make them pass wrongly — unlike the add-and-subtract-2^52
 // trick, which reassociation folds away (and Clang's -fassociative-math
 // does not announce).
-inline double nearest_int(double t) noexcept { return BEMAN_INSIDE_NEARBYINT(t); }
+inline double nearest_int(double t) noexcept { return __builtin_nearbyint(t); }
 
 // Stores the grid point with slot offset k in out.
 template <insidable Out>
-BEMAN_INSIDE_ALWAYS_INLINE inline void store_slot(umax k, Out& out) {
+[[gnu::always_inline]] inline void store_slot(umax k, Out& out) {
     out = Out::from_raw(raw_from_offset<Out>(k)); // a slot: a notched, integer raw
 }
 
@@ -209,7 +208,7 @@ inline constexpr double in_max = static_cast<double>(max_abs_int<In>);
 // What follows a fast tier or a lean kernel: rarely taken, so out of line,
 // which keeps its frame off the fast path.
 template <std::invocable<> F>
-BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr auto cold_call(const F& f) {
+[[gnu::cold]] [[gnu::noinline]] constexpr auto cold_call(const F& f) {
     return f();
 }
 
@@ -375,7 +374,7 @@ struct fp_plain {
             }                                                                                                \
             static double slope([[maybe_unused]] double x, [[maybe_unused]] double v) { return slope_expr; } \
         };
-    #define BEMAN_INSIDE_AX_KERNEL(...) BEMAN_INSIDE_EXPAND(BEMAN_INSIDE_AX_KERNEL_ON(fp_plain, __VA_ARGS__))
+    #define BEMAN_INSIDE_AX_KERNEL(...) BEMAN_INSIDE_AX_KERNEL_ON(fp_plain, __VA_ARGS__)
 using fp_full_trig = fpk::trig_k<fpk::full_bits>;
 using fp_full_exp  = fpk::exp_k<fpk::full_bits>;
 using fp_full_log  = fpk::log_k<fpk::full_bits>;
@@ -588,7 +587,7 @@ inline bool dd_full_attempt(const ddk::dd& x, Out& out) {
 
 // A lean attempt (its value, setting the bound) first, then the full one.
 template <insidable Out, typename Lean, typename Full>
-BEMAN_INSIDE_ALWAYS_INLINE inline bool dd_lean_first(const Lean& lean, const Full& full, Out& out) {
+[[gnu::always_inline]] inline bool dd_lean_first(const Lean& lean, const Full& full, Out& out) {
     double        bound;
     const ddk::dd v = lean(bound);
     if (dd_decide(v, bound * 1.5, out))
@@ -674,7 +673,7 @@ inline bool dd_attempt_pow(const InB& bi, const InE& ei, Out& out) {
             const ddk::dd y = ddk::mul(ddk::log_lean_value(b, bound), e);
             const double  L = fabs_d(y.Hi);
             if (!(L <= 700)) {
-                bound = BEMAN_INSIDE_INF();
+                bound = __builtin_inf();
                 return ddk::dd{0, 0};
             }
             const ddk::dd v = ddk::exp_lean_value(y);
@@ -889,7 +888,7 @@ inline constexpr bool unanchored_call = !anchored<Out> || (!anchored<Ins> || ...
 // Constant evaluation takes the integer path, and so does every call under
 // math::driver.IntegerOnly (BEMAN_INSIDE_MATH_INSTRUMENT).
 template <insidable Out, bool FP, bool DD, typename F, typename D, typename I>
-BEMAN_INSIDE_ALWAYS_INLINE constexpr auto
+[[gnu::always_inline]] constexpr auto
 tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integer_path) -> decltype(integer_path()) {
 #if BEMAN_INSIDE_MATH_INSTRUMENT
     const auto integer = [&] {
@@ -1423,7 +1422,5 @@ template <insidable InB, insidable InE>
 #undef BEMAN_INSIDE_AX_TIERS
 #undef BEMAN_INSIDE_AX_KERNEL_TIERS
 #undef BEMAN_INSIDE_AX_TABLE
-
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_MATH_ENTRY_HPP

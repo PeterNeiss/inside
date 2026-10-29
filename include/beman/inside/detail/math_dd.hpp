@@ -13,7 +13,6 @@
 #define BEMAN_INSIDE_DETAIL_MATH_DD_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/detail/math_adaptive.hpp>
 #include <beman/inside/detail/math_fp.hpp>
@@ -339,9 +338,9 @@ struct exp_reduced {
 };
 
 template <dd_type D>
-BEMAN_INSIDE_ALWAYS_INLINE inline exp_reduced<D> exp_reduce(D x) noexcept {
+[[gnu::always_inline]] inline exp_reduced<D> exp_reduce(D x) noexcept {
     using C         = consts<D>;
-    const double k  = BEMAN_INSIDE_NEARBYINT(x.Hi * inv_ln2_by_4096);
+    const double k  = __builtin_nearbyint(x.Hi * inv_ln2_by_4096);
     const long   ik = static_cast<long>(k);
     return {
         reduce(x, k, C::Ln2By4096[0], C::Ln2By4096[1], C::Ln2By4096[2], 0),
@@ -374,14 +373,14 @@ struct log_reduced {
 };
 
 template <dd_type D>
-BEMAN_INSIDE_ALWAYS_INLINE inline log_reduced<D> log_reduce(D x) noexcept {
+[[gnu::always_inline]] inline log_reduced<D> log_reduce(D x) noexcept {
     long m = static_cast<long>(std::bit_cast<std::uint64_t>(x.Hi) >> 52) - 1023;
     D    f = scale(x, -m); // [1, 2)
     if (f.Hi >= 1.5) {
         f = {f.Hi * 0.5, f.Lo * 0.5};
         ++m;
     }
-    const double j = BEMAN_INSIDE_NEARBYINT(f.Hi * 128);
+    const double j = __builtin_nearbyint(f.Hi * 128);
     const double c = j * 0x1p-7;
     return {m,
             div(two_sum(f.Hi - c, f.Lo), add(f, c)), // f.Hi − c is exact
@@ -416,9 +415,9 @@ struct trig_reduced {
 };
 
 template <dd_type D>
-BEMAN_INSIDE_ALWAYS_INLINE inline trig_reduced<D> trig_reduce(D x) noexcept {
+[[gnu::always_inline]] inline trig_reduced<D> trig_reduce(D x) noexcept {
     using C        = consts<D>;
-    const double n = BEMAN_INSIDE_NEARBYINT(x.Hi * inv_pi_by_128);
+    const double n = __builtin_nearbyint(x.Hi * inv_pi_by_128);
     const long   j = static_cast<long>(n);
     return {reduce(x, n, C::PiBy128[0], C::PiBy128[1], C::PiBy128[2], C::PiBy128[3]),
             C::Sin[static_cast<std::size_t>(j & 255)],
@@ -426,7 +425,7 @@ BEMAN_INSIDE_ALWAYS_INLINE inline trig_reduced<D> trig_reduce(D x) noexcept {
 }
 
 template <dd_type D>
-BEMAN_INSIDE_ALWAYS_INLINE inline sincos_t sincos(D x) noexcept {
+[[gnu::always_inline]] inline sincos_t sincos(D x) noexcept {
     using C                = consts<D>;
     const auto [r, sa, ca] = trig_reduce(x);
     const D      z         = sqr(r);
@@ -459,7 +458,7 @@ inline D cos(D x) noexcept {
 template <dd_type D>
 inline D atan_unit(D a) noexcept {
     using C           = consts<D>;
-    const double j    = BEMAN_INSIDE_NEARBYINT(a.Hi * 32);
+    const double j    = __builtin_nearbyint(a.Hi * 32);
     const double c    = j * (1.0 / 32);
     const D      t    = div(add(a, -c), add_dominant(D{1, 0}, mul(a, c)));
     const D      z    = sqr(t);
@@ -683,7 +682,7 @@ struct lean_trig {
 
 // A + B·(rh + ts) + A·(h + tc), h = −zh/2, as above.
 template <dd_type D>
-BEMAN_INSIDE_ALWAYS_INLINE inline D lean_rotate(D a, D b, double rh, double ts, double h, double tc) noexcept {
+[[gnu::always_inline]] inline D lean_rotate(D a, D b, double rh, double ts, double h, double tc) noexcept {
     const D p  = two_prod(b.Hi, rh);
     const D q  = two_prod(a.Hi, h);
     const D s1 = fast_two_sum(a.Hi, p.Hi);
@@ -695,7 +694,7 @@ BEMAN_INSIDE_ALWAYS_INLINE inline D lean_rotate(D a, D b, double rh, double ts, 
 }
 
 template <dd_type D>
-BEMAN_INSIDE_ALWAYS_INLINE inline sincos_t sincos_lean(D x) noexcept {
+[[gnu::always_inline]] inline sincos_t sincos_lean(D x) noexcept {
     const auto [r, sa, ca] = trig_reduce(x);
     const double rh = r.Hi, rl = r.Lo;
     const D      z  = two_prod(rh, rh);
@@ -761,7 +760,7 @@ struct lean_exp {
 };
 
 template <dd_type D>
-BEMAN_INSIDE_ALWAYS_INLINE inline D exp_lean_value(D x) noexcept {
+[[gnu::always_inline]] inline D exp_lean_value(D x) noexcept {
     const auto [r, t, m] = exp_reduce(x);
     const double rh      = r.Hi;
     const double tp      = std::fma(fpk::rounded_product(rh, rh), fpk::horner(rh, lean_exp_c.C), r.Lo);
@@ -817,7 +816,7 @@ struct lean_log {
 };
 
 template <dd_type D>
-BEMAN_INSIDE_ALWAYS_INLINE inline D log_lean_value(D x, double& bound) noexcept {
+[[gnu::always_inline]] inline D log_lean_value(D x, double& bound) noexcept {
     const auto [m, s, lc] = log_reduce(x);
     const double sh = s.Hi, zh = sh * sh;
     const double t  = 2 * (fpk::rounded_product(sh, zh) * fpk::horner(zh, lean_log_c.C));
@@ -871,7 +870,7 @@ inline D tan_lean(D x, double& bound) noexcept {
     const double   e  = lean_trig_bound(x.Hi);
     const D        t  = div(sc.Sin, sc.Cos);
     const double   at = t.Hi < 0 ? -t.Hi : t.Hi, c = (sc.Cos.Hi < 0 ? -sc.Cos.Hi : sc.Cos.Hi) - 2 * e;
-    bound = c > 0 ? e * (1 + at) / c * (1 + 0x1p-40) + 32 * unit_roundoff2 * at : BEMAN_INSIDE_INF();
+    bound = c > 0 ? e * (1 + at) / c * (1 + 0x1p-40) + 32 * unit_roundoff2 * at : __builtin_inf();
     return t;
 }
 
@@ -971,8 +970,8 @@ struct lean_atan {
 };
 
 template <dd_type D>
-BEMAN_INSIDE_ALWAYS_INLINE inline D atan_unit_lean(D a) noexcept {
-    const double j  = BEMAN_INSIDE_NEARBYINT(a.Hi * 32);
+[[gnu::always_inline]] inline D atan_unit_lean(D a) noexcept {
+    const double j  = __builtin_nearbyint(a.Hi * 32);
     const double c  = j * (1.0 / 32);
     const D      t  = div(add(a, -c), add_dominant(D{1, 0}, mul(a, c)));
     const double th = t.Hi, zh = th * th;
@@ -1006,7 +1005,5 @@ inline D acos_lean(D x, double& bound) noexcept {
 } // namespace beman::inside::math::detail::dd
 
 #endif // !BEMAN_INSIDE_MATH_NO_FP
-
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_MATH_DD_HPP

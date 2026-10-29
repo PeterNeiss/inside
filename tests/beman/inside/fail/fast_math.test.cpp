@@ -1,5 +1,4 @@
 // EXPECT: does not support -ffast-math
-// REQUIRES: gnu
 // FLAGS: -ffast-math
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // The library's exact and correctly rounded results rest on IEEE arithmetic

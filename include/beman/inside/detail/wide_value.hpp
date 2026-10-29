@@ -3,7 +3,6 @@
 #define BEMAN_INSIDE_DETAIL_WIDE_VALUE_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/generic.hpp>
 #include <beman/inside/detail/number_text.hpp> // scan_number
@@ -771,7 +770,5 @@ constexpr Result exact_result(const wide_rational<K>& v) noexcept {
     return Result::from_raw(raw_of_slot<Result>(exact_index<Result, round_mode::trunc>(v).Index));
 }
 } // namespace beman::inside::detail
-
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_WIDE_VALUE_HPP

@@ -3,7 +3,6 @@
 #define BEMAN_INSIDE_DETAIL_DIAG_TEXT_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/detail/grid_rational.hpp>
 
@@ -92,13 +91,7 @@ struct diag_text {
 };
 } // namespace beman::inside::detail
 
-#if BEMAN_INSIDE_HAS_VALUED_DIAG // (config.hpp)
-    #define BEMAN_INSIDE_DIAG(cond, text, ...) \
-        static_assert(cond, (::beman::inside::detail::diag_text{} << (text)__VA_ARGS__))
-#else
-    #define BEMAN_INSIDE_DIAG(cond, text, ...) static_assert(cond, text)
-#endif
-
-BEMAN_INSIDE_WARNINGS_POP
+#define BEMAN_INSIDE_DIAG(cond, text, ...) \
+    static_assert(cond, (::beman::inside::detail::diag_text{} << (text)__VA_ARGS__))
 
 #endif // BEMAN_INSIDE_DETAIL_DIAG_TEXT_HPP

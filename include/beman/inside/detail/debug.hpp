@@ -3,7 +3,6 @@
 #define BEMAN_INSIDE_DETAIL_DEBUG_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 #include <algorithm>
 
 // <stdexcept> backs the *default* throwing handler only; it is the single heavy
@@ -79,13 +78,13 @@ struct inside_error : std::runtime_error {
 using error_handler_t = void (*)(errc code, const char* what);
 
 namespace detail {
-[[noreturn]] BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE inline void default_error_handler(errc code, const char* what) {
+[[noreturn]] [[gnu::cold]] [[gnu::noinline]] inline void default_error_handler(errc code, const char* what) {
 #if BEMAN_INSIDE_HAS_EXCEPTIONS
     throw inside_error(code, what);
 #else
     (void)code;
     (void)what;
-    BEMAN_INSIDE_TRAP();
+    __builtin_trap();
 #endif
 }
 
@@ -112,9 +111,9 @@ namespace detail {
 // evaluation is ill-formed, which is exactly how the checked compile-time
 // paths hard-fail the build.
 //-----------------------------------------------------------------------
-[[noreturn]] BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE inline void raise(errc code, const char* what = nullptr) {
+[[noreturn]] [[gnu::cold]] [[gnu::noinline]] inline void raise(errc code, const char* what = nullptr) {
     g_error_handler(code, what ? what : errc_message(code));
-    BEMAN_INSIDE_TRAP(); // handler must not return; trap if it did
+    __builtin_trap(); // handler must not return; trap if it did
 }
 
 //-----------------------------------------------------------------------
@@ -131,7 +130,7 @@ struct fixed_string {
 };
 
 template <fixed_string Msg>
-[[noreturn]] BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE inline void constexpr_error() {
+[[noreturn]] [[gnu::cold]] [[gnu::noinline]] inline void constexpr_error() {
     raise(errc::overflow, Msg.Data);
 }
 
@@ -146,7 +145,5 @@ template <fixed_string Msg>
 }
 } // namespace detail
 } // namespace beman::inside
-
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_DEBUG_HPP

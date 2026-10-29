@@ -3,7 +3,6 @@
 #define BEMAN_INSIDE_DETAIL_MATH_CORES_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/detail/math_adaptive.hpp>
 
@@ -919,7 +918,5 @@ template <insidable A, insidable B>
 inline constexpr grid_rational gcd_notch =
     !notched<A> || !notched<B> ? grid_rational{0} : grid_gcd_of(grid_of<A>.value_unit(), grid_of<B>.value_unit());
 } // namespace beman::inside::math::detail::ax
-
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_MATH_CORES_HPP

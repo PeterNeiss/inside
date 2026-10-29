@@ -26,7 +26,6 @@
 #define BEMAN_INSIDE_UNITS_MATH_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/cmath.hpp>
 #include <beman/inside/units.hpp>
@@ -418,26 +417,22 @@ template <insidable Out, reference A, class VA, reference B, class VB>
 }
 // atan2 and hypot of two quantities that do not add (another dimension or
 // kind, no common unit).
-BEMAN_INSIDE_DELETE_BEGIN
 template <reference A, class VA, reference B, class VB>
     requires(detail::sum_diagnosed<A, B>())
 void atan2(const quantity<A, VA>&, const quantity<B, VB>&) =
-    BEMAN_INSIDE_DELETE("units: atan2 takes two quantities that add - one dimension and kind, a common unit");
+    delete ("units: atan2 takes two quantities that add - one dimension and kind, a common unit");
 template <reference A, class VA, reference B, class VB>
     requires(detail::sum_diagnosed<A, B>())
 void hypot(const quantity<A, VA>&, const quantity<B, VB>&) =
-    BEMAN_INSIDE_DELETE("units: hypot takes two quantities that add - one dimension and kind, a common unit");
+    delete ("units: hypot takes two quantities that add - one dimension and kind, a common unit");
 template <insidable Out, reference A, class VA, reference B, class VB>
     requires(detail::sum_diagnosed<A, B>())
 void atan2_into(const quantity<A, VA>&, const quantity<B, VB>&) =
-    BEMAN_INSIDE_DELETE("units: atan2 takes two quantities that add - one dimension and kind, a common unit");
+    delete ("units: atan2 takes two quantities that add - one dimension and kind, a common unit");
 template <insidable Out, reference A, class VA, reference B, class VB>
     requires(detail::sum_diagnosed<A, B>())
 void hypot_into(const quantity<A, VA>&, const quantity<B, VB>&) =
-    BEMAN_INSIDE_DELETE("units: hypot takes two quantities that add - one dimension and kind, a common unit");
-BEMAN_INSIDE_DELETE_END
+    delete ("units: hypot takes two quantities that add - one dimension and kind, a common unit");
 } // namespace beman::inside::units
-
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_UNITS_MATH_HPP

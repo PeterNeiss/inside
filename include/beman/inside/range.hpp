@@ -3,7 +3,6 @@
 #define BEMAN_INSIDE_RANGE_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/detail/compare.hpp> // the inside type and its comparisons
 
@@ -130,7 +129,5 @@ inline constexpr inside_range<grid_of<T>, flags_of<T>> values{};
 
 template <beman::inside::grid G, beman::inside::policy_flag P>
 inline constexpr bool std::ranges::enable_borrowed_range<beman::inside::inside_range<G, P>> = true;
-
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_RANGE_HPP

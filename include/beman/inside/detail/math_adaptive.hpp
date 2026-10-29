@@ -3,7 +3,6 @@
 #define BEMAN_INSIDE_DETAIL_MATH_ADAPTIVE_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/inside.hpp>
 
@@ -1298,7 +1297,5 @@ constexpr approx<K> exp_fixed(const wide_sint<K>& t, umax dt, int KMax) noexcept
     return {e.Value, S - kk, e.Error + 2 * (dt + ak + 1)};
 }
 } // namespace beman::inside::math::detail::ax
-
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_MATH_ADAPTIVE_HPP

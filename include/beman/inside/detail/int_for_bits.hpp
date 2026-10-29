@@ -3,7 +3,6 @@
 #define BEMAN_INSIDE_DETAIL_INT_FOR_BITS_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/detail/wide_int.hpp>
 
@@ -41,7 +40,5 @@ struct int_for_bits {
 template <int Bits, bool Signed>
 using int_for_bits_t = typename int_for_bits<Bits, Signed>::type;
 } // namespace beman::inside::detail
-
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_INT_FOR_BITS_HPP

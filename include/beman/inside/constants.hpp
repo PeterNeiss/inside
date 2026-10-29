@@ -3,7 +3,6 @@
 #define BEMAN_INSIDE_CONSTANTS_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/units.hpp>
@@ -167,7 +166,5 @@ inline constexpr auto vacuum_electric_permittivity = detail::one_of<codata2022::
 #endif
 } // namespace constants
 } // namespace beman::inside::units
-
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_CONSTANTS_HPP

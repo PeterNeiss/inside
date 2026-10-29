@@ -3,7 +3,6 @@
 #define BEMAN_INSIDE_DETAIL_STORAGE_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/detail/introspection.hpp>
 
@@ -560,7 +559,7 @@ struct rounded_raw {
 };
 
 template <insidable L, typename P>
-BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr rounded_raw<L> raw_if_rounds_inside(rational v) {
+[[gnu::cold]] [[gnu::noinline]] constexpr rounded_raw<L> raw_if_rounds_inside(rational v) {
     rational r;
     if (!rounds_into_range<L, P>(v, r))
         return {raw_t<L>{}, false};
@@ -691,7 +690,5 @@ constexpr bool range_fail(P&& policy) {
     return false;
 }
 } // namespace beman::inside::detail
-
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_STORAGE_HPP

@@ -1,5 +1,4 @@
 // EXPECT: of different dimensions
-// REQUIRES: delete-reason
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // ADC counts as a base dimension of their own: a reading never adds to a
 // voltage.

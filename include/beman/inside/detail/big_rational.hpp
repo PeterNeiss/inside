@@ -3,7 +3,6 @@
 #define BEMAN_INSIDE_DETAIL_BIG_RATIONAL_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/detail/rational.hpp>
 #include <beman/inside/detail/wide_int.hpp>
@@ -570,6 +569,5 @@ constexpr big_rational gcd(const big_rational& a, const big_rational& b) {
 } // namespace beman::inside::detail
 
 #endif // BEMAN_INSIDE_BIG_GRIDS
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_BIG_RATIONAL_HPP

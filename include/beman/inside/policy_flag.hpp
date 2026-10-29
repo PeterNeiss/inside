@@ -3,7 +3,6 @@
 #define BEMAN_INSIDE_POLICY_FLAG_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/detail/rounding.hpp>
 
@@ -127,19 +126,19 @@ struct no_action {};
 //---------------------------------------------------------------------------
 template <typename F>
 struct on_clamp_t {
-    BEMAN_INSIDE_NO_UNIQUE_ADDRESS F Fn;
+    [[no_unique_address]] F Fn;
 };
 template <typename F>
 struct on_wrap_t {
-    BEMAN_INSIDE_NO_UNIQUE_ADDRESS F Fn;
+    [[no_unique_address]] F Fn;
 };
 template <typename F>
 struct on_error_t {
-    BEMAN_INSIDE_NO_UNIQUE_ADDRESS F Fn;
+    [[no_unique_address]] F Fn;
 };
 template <typename F>
 struct on_overflow_t {
-    BEMAN_INSIDE_NO_UNIQUE_ADDRESS F Fn;
+    [[no_unique_address]] F Fn;
 };
 
 //---------------------------------------------------------------------------
@@ -259,7 +258,5 @@ constexpr auto& pick_action_in(Tuple& t) {
 
 } // namespace detail
 } // namespace beman::inside
-
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_POLICY_FLAG_HPP

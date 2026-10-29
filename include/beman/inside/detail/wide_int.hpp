@@ -3,7 +3,6 @@
 #define BEMAN_INSIDE_DETAIL_WIDE_INT_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/numbers.hpp>                // umax
 #include <beman/inside/detail/float_bits.hpp>      // constexpr ldexp
@@ -401,7 +400,5 @@ struct std::numeric_limits<beman::inside::detail::wide_int<N, Signed, L>> {
     static constexpr W    lowest() noexcept { return min(); }
     static constexpr W    max() noexcept { return Signed ? ~top_bit() : ~W{0}; }
 };
-
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_WIDE_INT_HPP

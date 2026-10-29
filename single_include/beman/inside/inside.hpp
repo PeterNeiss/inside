@@ -47,42 +47,21 @@
 // ======================================================================
 
 //---------------------------------------------------------------------------
-// config — every compiler- and platform-dependent macro in one place. The
-// other headers test these, never a compiler macro (_MSC_VER, __GNUC__,
-// __SIZEOF_INT128__, …) themselves. Every header includes this one first.
+// config — the build options and the platform-dependent macros in one place.
+// The other headers test these, never a platform macro (__SIZEOF_INT128__,
+// __FMA__, …) themselves. Every header includes this one first.
 //
-//   Compiler            BEMAN_INSIDE_MSVC
 //   Build options       BEMAN_INSIDE_MATH_NO_FP, BEMAN_INSIDE_BIG_GRIDS,
 //                       BEMAN_INSIDE_MATH_INSTRUMENT
-//   Features            BEMAN_INSIDE_HAS_EXCEPTIONS, _HAS_INT128,
-//                       _HAS_UMUL128, _HAS_OVERFLOW_BUILTINS, _HAS_FMA,
-//                       _HAS_VALUED_DIAG,
-//                       _HAS_STD_FORMAT
-//   Attributes          BEMAN_INSIDE_COLD, _NOINLINE, _ALWAYS_INLINE,
-//                       _NO_UNIQUE_ADDRESS, BEMAN_INSIDE_TRAP()
-//   Deleted overloads   BEMAN_INSIDE_DELETE("reason"), _HAS_DELETE_REASON,
-//                       _DELETE_BEGIN / _END
-//   Floating point      BEMAN_INSIDE_FABS(x), _NEARBYINT(x), _INF(),
-//                       _ASSOC_BARRIER(x)
-//   Warnings            BEMAN_INSIDE_WARNINGS_PUSH / _POP
-//   Preprocessor        BEMAN_INSIDE_EXPAND(x)
+//   Features            BEMAN_INSIDE_HAS_EXCEPTIONS, _HAS_INT128, _HAS_FMA
+//
+// The library is C++26 with static reflection (GCC 16, -freflection), written
+// in the GNU dialect: [[gnu::cold]], __builtin_fabs, __builtin_*_overflow.
 //---------------------------------------------------------------------------
 
 
-//---------------------------------------------------------------------------
-// Compiler
-//---------------------------------------------------------------------------
-// Microsoft's compiler (not clang-cl, which behaves as Clang), for its
-// workarounds.
-#if defined(_MSC_VER) && !defined(__clang__)
-    #define BEMAN_INSIDE_MSVC 1
-#else
-    #define BEMAN_INSIDE_MSVC 0
-#endif
-
-// Deducing `this` (P0847) folds the lvalue/rvalue overload pairs.
-#if defined(__GNUC__) && !defined(__clang__) && __GNUC__ < 14
-    #error "beman.inside requires GCC 14 or newer (deducing this)"
+#if !defined(__cpp_impl_reflection) || !__has_include(<meta>)
+    #error "beman::inside needs C++26 static reflection: compile with g++-16 -std=c++26 -freflection"
 #endif
 
 //---------------------------------------------------------------------------
@@ -114,63 +93,37 @@
 // error-free sums count every rounding in program order. Fast-math lets the
 // compiler assume no NaN or infinity and reassociate, which can change
 // results silently, so a build that announces it stops here.
-#if defined(__FAST_MATH__) || defined(__ASSOCIATIVE_MATH__) || \
-    (defined(__FINITE_MATH_ONLY__) && __FINITE_MATH_ONLY__) || defined(_M_FP_FAST)
+#if defined(__FAST_MATH__) || defined(__ASSOCIATIVE_MATH__) || (defined(__FINITE_MATH_ONLY__) && __FINITE_MATH_ONLY__)
     #error \
-        "beman::inside does not support -ffast-math, -fassociative-math, -ffinite-math-only or /fp:fast: its results rely on IEEE floating point as written"
+        "beman::inside does not support -ffast-math, -fassociative-math or -ffinite-math-only: its results rely on IEEE floating point as written"
 #endif
 
 // Excess precision is not supported either: the x87 unit (32-bit x86 without
 // SSE2) evaluates double expressions at 80 bits and rounds them when it
 // spills, so the same source rounds differently by register pressure.
-#if (defined(__FLT_EVAL_METHOD__) && __FLT_EVAL_METHOD__ != 0) || \
-    (defined(_M_IX86) && (!defined(_M_IX86_FP) || _M_IX86_FP < 2))
+#if defined(__FLT_EVAL_METHOD__) && __FLT_EVAL_METHOD__ != 0
     #error \
-        "beman::inside needs floating point evaluated in its own type (FLT_EVAL_METHOD 0): on 32-bit x86 compile for SSE2 (-msse2 -mfpmath=sse, /arch:SSE2)"
+        "beman::inside needs floating point evaluated in its own type (FLT_EVAL_METHOD 0): on 32-bit x86 compile for SSE2 (-msse2 -mfpmath=sse)"
 #endif
 
-// BEMAN_INSIDE_BIG_GRIDS — grid numbers of any size (C++26 static
-// reflection), else 64-bit grids. Define it to 0 to force the 64-bit grids on
-// a C++26 compiler (grid_rational.hpp).
-#if !defined(BEMAN_INSIDE_BIG_GRIDS)
-    #if defined(__cpp_impl_reflection) && __has_include(<meta>)
-        #define BEMAN_INSIDE_BIG_GRIDS 1
-    #else
-        #define BEMAN_INSIDE_BIG_GRIDS 0
-    #endif
-#endif
+// BEMAN_INSIDE_BIG_GRIDS — grid numbers of any size (grid_rational.hpp).
+#define BEMAN_INSIDE_BIG_GRIDS 1
 
 //---------------------------------------------------------------------------
 // Features
 //---------------------------------------------------------------------------
-#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
+#if defined(__cpp_exceptions)
     #define BEMAN_INSIDE_HAS_EXCEPTIONS 1
 #else
     #define BEMAN_INSIDE_HAS_EXCEPTIONS 0
 #endif
 
 // unsigned __int128: the 64×64 → 128 products and divisions in one step; else
-// a portable 32-bit split.
+// (32-bit targets) a portable 32-bit split.
 #if defined(__SIZEOF_INT128__)
     #define BEMAN_INSIDE_HAS_INT128 1
 #else
     #define BEMAN_INSIDE_HAS_INT128 0
-#endif
-
-// MSVC on x64 has no __int128, but the _umul128 / _udiv128 intrinsics do the
-// same at run time (not in constant expressions).
-#if !BEMAN_INSIDE_HAS_INT128 && defined(_MSC_VER) && defined(_M_X64) && !defined(_M_ARM64EC) && !defined(__clang__)
-    #define BEMAN_INSIDE_HAS_UMUL128 1
-    #include <intrin.h>
-#else
-    #define BEMAN_INSIDE_HAS_UMUL128 0
-#endif
-
-// __builtin_{add,sub,mul}_overflow (overflow.hpp); else portable checks.
-#if defined(__GNUC__) || defined(__clang__)
-    #define BEMAN_INSIDE_HAS_OVERFLOW_BUILTINS 1
-#else
-    #define BEMAN_INSIDE_HAS_OVERFLOW_BUILTINS 0
 #endif
 
 // A hardware fused multiply-add the compiler targets (math_fp.hpp).
@@ -180,129 +133,6 @@
     #define BEMAN_INSIDE_HAS_FMA 0
 #endif
 
-// A static_assert message with values in it (P2741, C++26; diag_text.hpp).
-// Clang accepts it in C++23 too, with a warning, so it waits for C++26 mode.
-#if defined(__cpp_static_assert) && __cpp_static_assert >= 202306L && __cplusplus > 202302L
-    #define BEMAN_INSIDE_HAS_VALUED_DIAG 1
-#else
-    #define BEMAN_INSIDE_HAS_VALUED_DIAG 0
-#endif
-
-// std::format and std::formatter specializations (io.hpp, units.hpp).
-#if defined(__cpp_lib_format)
-    #define BEMAN_INSIDE_HAS_STD_FORMAT 1
-#else
-    #define BEMAN_INSIDE_HAS_STD_FORMAT 0
-#endif
-
-// One more expansion pass: MSVC's traditional preprocessor (without
-// /Zc:preprocessor) passes a forwarded __VA_ARGS__ on as one argument.
-#define BEMAN_INSIDE_EXPAND(x) x
-
-//---------------------------------------------------------------------------
-// Attributes. Error and throw paths are cold and out of line, so the
-// optimizer keeps them out of the hot path. MSVC ignores the standard
-// [[no_unique_address]] in favour of its own spelling: an empty raw (a point
-// grid) or an empty action then takes no space.
-//---------------------------------------------------------------------------
-#if defined(__GNUC__) || defined(__clang__)
-    #define BEMAN_INSIDE_COLD [[gnu::cold]]
-    #define BEMAN_INSIDE_NOINLINE [[gnu::noinline]]
-    #define BEMAN_INSIDE_ALWAYS_INLINE [[gnu::always_inline]]
-    #define BEMAN_INSIDE_TRAP() __builtin_trap()
-#elif BEMAN_INSIDE_MSVC
-    #define BEMAN_INSIDE_COLD
-    #define BEMAN_INSIDE_NOINLINE __declspec(noinline)
-    #define BEMAN_INSIDE_ALWAYS_INLINE
-    #define BEMAN_INSIDE_TRAP() __debugbreak()
-#else
-    #include <cstdlib>
-    #define BEMAN_INSIDE_COLD
-    #define BEMAN_INSIDE_NOINLINE
-    #define BEMAN_INSIDE_ALWAYS_INLINE
-    #define BEMAN_INSIDE_TRAP() ::abort()
-#endif
-
-#if BEMAN_INSIDE_MSVC
-    #define BEMAN_INSIDE_NO_UNIQUE_ADDRESS [[msvc::no_unique_address]]
-#else
-    #define BEMAN_INSIDE_NO_UNIQUE_ADDRESS [[no_unique_address]]
-#endif
-
-//---------------------------------------------------------------------------
-// Deleted overloads with a reason: `= BEMAN_INSIDE_DELETE("…")`. They take an
-// operation's failing case, so `requires { a + b; }` is false and the error
-// names the reason (= delete("…"), C++26, accepted as an extension in C++23
-// by GCC 15+ and Clang 19+; older compilers get a plain `= delete`).
-// Declarations using it sit between BEGIN and END, which silence the
-// extension warning.
-//---------------------------------------------------------------------------
-#if defined(__cpp_deleted_function) || (defined(__clang__) && __clang_major__ >= 19) || \
-    (defined(__GNUC__) && !defined(__clang__) && __GNUC__ >= 15)
-    #define BEMAN_INSIDE_HAS_DELETE_REASON 1
-    #define BEMAN_INSIDE_DELETE(reason) delete (reason)
-#else
-    #define BEMAN_INSIDE_HAS_DELETE_REASON 0
-    #define BEMAN_INSIDE_DELETE(reason) delete
-#endif
-#if (defined(__GNUC__) || defined(__clang__)) && !defined(__cpp_deleted_function)
-    #define BEMAN_INSIDE_DELETE_BEGIN \
-        _Pragma("GCC diagnostic push") _Pragma("GCC diagnostic ignored \"-Wc++26-extensions\"")
-    #define BEMAN_INSIDE_DELETE_END _Pragma("GCC diagnostic pop")
-#else
-    #define BEMAN_INSIDE_DELETE_BEGIN
-    #define BEMAN_INSIDE_DELETE_END
-#endif
-
-//---------------------------------------------------------------------------
-// Floating point for the double kernels: |x|, round-to-nearest-even and +inf
-// are the GCC/Clang builtins (constexpr, no errno, no call, no <cmath>); MSVC
-// takes |x| by its sign (-0 + 0 is +0) and <cmath>. ASSOC_BARRIER keeps an
-// operand of an error-free sum out of an fma the compiler may contract
-// (-ffp-contract=fast); without the builtin it is the value itself.
-//---------------------------------------------------------------------------
-#if defined(__GNUC__) || defined(__clang__)
-    #define BEMAN_INSIDE_FABS(x) __builtin_fabs(x)
-    #define BEMAN_INSIDE_NEARBYINT(x) __builtin_nearbyint(x)
-    #define BEMAN_INSIDE_INF() __builtin_inf()
-#else
-    #if !defined(BEMAN_INSIDE_MATH_NO_FP)
-        #include <cmath>
-    #endif
-    #include <limits>
-    #define BEMAN_INSIDE_FABS(x) ((x) < 0.0 ? -(x) : (x) + 0.0)
-    #define BEMAN_INSIDE_NEARBYINT(x) std::nearbyint(x)
-    #define BEMAN_INSIDE_INF() std::numeric_limits<double>::infinity()
-#endif
-
-#if defined(__has_builtin)
-    #if __has_builtin(__builtin_assoc_barrier)
-        #define BEMAN_INSIDE_ASSOC_BARRIER(x) __builtin_assoc_barrier(x)
-    #elif __has_builtin(__arithmetic_fence)
-        #define BEMAN_INSIDE_ASSOC_BARRIER(x) __arithmetic_fence(x)
-    #endif
-#endif
-#if !defined(BEMAN_INSIDE_ASSOC_BARRIER)
-    #define BEMAN_INSIDE_ASSOC_BARRIER(x) (x)
-#endif
-
-//---------------------------------------------------------------------------
-// Warnings a library header switches off for its own code on MSVC: C4702
-// (unreachable code: the branches an if constexpr leaves behind), C4268 (a
-// const object of a class with a defaulted constructor is zeroed) and C4459
-// (a local named like one of the user's globals, `base`, `one`). Each
-// header wraps its body in PUSH / POP; templates instantiated from it keep
-// that state, and user code does not.
-//---------------------------------------------------------------------------
-#if defined(_MSC_VER)
-    #define BEMAN_INSIDE_WARNINGS_PUSH __pragma(warning(push)) __pragma(warning(disable : 4702 4268 4459))
-    #define BEMAN_INSIDE_WARNINGS_POP __pragma(warning(pop))
-#else
-    #define BEMAN_INSIDE_WARNINGS_PUSH
-    #define BEMAN_INSIDE_WARNINGS_POP
-#endif
-
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 // ======================================================================
@@ -318,28 +148,24 @@ BEMAN_INSIDE_WARNINGS_PUSH
 // need this complete type.
 //---------------------------------------------------------------------------
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 // ======================================================================
 //  beman/inside/generic.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 // ======================================================================
 //  beman/inside/detail/introspection.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 // ======================================================================
 //  beman/inside/detail/debug.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 // <stdexcept> backs the *default* throwing handler only; it is the single heavy
 // error include and is pulled in solely when exceptions are available. A
@@ -414,13 +240,13 @@ struct inside_error : std::runtime_error {
 using error_handler_t = void (*)(errc code, const char* what);
 
 namespace detail {
-[[noreturn]] BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE inline void default_error_handler(errc code, const char* what) {
+[[noreturn]] [[gnu::cold]] [[gnu::noinline]] inline void default_error_handler(errc code, const char* what) {
 #if BEMAN_INSIDE_HAS_EXCEPTIONS
     throw inside_error(code, what);
 #else
     (void)code;
     (void)what;
-    BEMAN_INSIDE_TRAP();
+    __builtin_trap();
 #endif
 }
 
@@ -447,9 +273,9 @@ namespace detail {
 // evaluation is ill-formed, which is exactly how the checked compile-time
 // paths hard-fail the build.
 //-----------------------------------------------------------------------
-[[noreturn]] BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE inline void raise(errc code, const char* what = nullptr) {
+[[noreturn]] [[gnu::cold]] [[gnu::noinline]] inline void raise(errc code, const char* what = nullptr) {
     g_error_handler(code, what ? what : errc_message(code));
-    BEMAN_INSIDE_TRAP(); // handler must not return; trap if it did
+    __builtin_trap(); // handler must not return; trap if it did
 }
 
 //-----------------------------------------------------------------------
@@ -466,7 +292,7 @@ struct fixed_string {
 };
 
 template <fixed_string Msg>
-[[noreturn]] BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE inline void constexpr_error() {
+[[noreturn]] [[gnu::cold]] [[gnu::noinline]] inline void constexpr_error() {
     raise(errc::overflow, Msg.Data);
 }
 
@@ -482,21 +308,17 @@ template <fixed_string Msg>
 } // namespace detail
 } // namespace beman::inside
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 // ======================================================================
 //  beman/inside/grid.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 // ======================================================================
 //  beman/inside/lift.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 
@@ -581,21 +403,17 @@ template <class Op, class... Args>
 
 } // namespace beman::inside
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 // ======================================================================
 //  beman/inside/detail/rational.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 // ======================================================================
 //  beman/inside/numbers.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 //---------------------------------------------------------------------------
@@ -653,14 +471,11 @@ template <std::signed_integral V>
 } // namespace detail
 } // namespace beman::inside
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 // ======================================================================
 //  beman/inside/detail/float_bits.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 
@@ -919,8 +734,6 @@ constexpr T for_each_double_part(T v, F f) {
 
 } // namespace beman::inside::detail
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 // ======================================================================
 //  beman/inside/detail/overflow.hpp
@@ -928,7 +741,6 @@ BEMAN_INSIDE_WARNINGS_POP
 // This is derived from Peter Sommerlads odins.h, allowed by MIT license
 //---------------------------------------------------------------------------
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 //---------------------------------------------------------------------------
@@ -937,7 +749,6 @@ BEMAN_INSIDE_WARNINGS_PUSH
 // wrapped value either way. Used by rational::*_impl and every checked path.
 //---------------------------------------------------------------------------
 namespace beman::inside {
-#if BEMAN_INSIDE_HAS_OVERFLOW_BUILTINS
 template <std::integral T>
 [[nodiscard]] constexpr bool add_overflow(T l, T r, T* result) noexcept {
     return __builtin_add_overflow(l, r, result);
@@ -952,63 +763,13 @@ template <std::integral T>
 [[nodiscard]] constexpr bool mul_overflow(T l, T r, T* result) noexcept {
     return __builtin_mul_overflow(l, r, result);
 }
-#else
-// Portable forms (MSVC): the wrapped value in the unsigned type of at least
-// unsigned int's width (no promotion to int), the overflow by sign or bound.
-namespace detail {
-template <std::integral T>
-using overflow_word_t = std::conditional_t<(sizeof(T) < sizeof(unsigned)), unsigned, std::make_unsigned_t<T> >;
-}
-
-template <std::integral T>
-[[nodiscard]] constexpr bool add_overflow(T l, T r, T* result) noexcept {
-    using U = detail::overflow_word_t<T>;
-    *result = static_cast<T>(static_cast<U>(static_cast<U>(l) + static_cast<U>(r)));
-    if constexpr (std::is_unsigned_v<T>)
-        return *result < l;
-    else
-        return (l < 0) == (r < 0) && (*result < 0) != (l < 0);
-}
-
-template <std::integral T>
-[[nodiscard]] constexpr bool sub_overflow(T l, T r, T* result) noexcept {
-    using U = detail::overflow_word_t<T>;
-    *result = static_cast<T>(static_cast<U>(static_cast<U>(l) - static_cast<U>(r)));
-    if constexpr (std::is_unsigned_v<T>)
-        return l < r;
-    else
-        return (l < 0) != (r < 0) && (*result < 0) != (l < 0);
-}
-
-template <std::integral T>
-[[nodiscard]] constexpr bool mul_overflow(T l, T r, T* result) noexcept {
-    using U  = detail::overflow_word_t<T>;
-    using UT = std::make_unsigned_t<T>;
-    *result  = static_cast<T>(static_cast<U>(static_cast<U>(l) * static_cast<U>(r)));
-    if (l == 0 || r == 0)
-        return false;
-    if constexpr (std::is_unsigned_v<T>)
-        return l > std::numeric_limits<T>::max() / r;
-    else {
-        // |l|·|r| against the bound of the result's sign (max, or max + 1).
-        const UT   al  = l < 0 ? static_cast<UT>(UT{0} - static_cast<UT>(l)) : static_cast<UT>(l);
-        const UT   ar  = r < 0 ? static_cast<UT>(UT{0} - static_cast<UT>(r)) : static_cast<UT>(r);
-        const bool neg = (l < 0) != (r < 0);
-        const UT   lim = static_cast<UT>(static_cast<UT>(std::numeric_limits<T>::max()) + (neg ? 1 : 0));
-        return al > lim / ar;
-    }
-}
-#endif
 } // namespace beman::inside
-
-BEMAN_INSIDE_WARNINGS_POP
 
 
 // ======================================================================
 //  beman/inside/detail/wide_int.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 // ======================================================================
@@ -1016,7 +777,6 @@ BEMAN_INSIDE_WARNINGS_PUSH
 // ======================================================================
 // Internal — include "beman/inside/inside.hpp" (the umbrella), not this directly.
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 
@@ -1057,7 +817,7 @@ constexpr L sub_borrow(L a, L b, L& borrow) noexcept {
 }
 
 // Full product a·b as {hi, lo}. Native where the target has unsigned
-// __int128, _umul128 at run time on MSVC x64; else a schoolbook 32-bit split.
+// __int128, else a schoolbook 32-bit split.
 template <std::unsigned_integral L>
 constexpr pair<L> mul(L a, L b) noexcept {
     if constexpr (bits<L> <= 32) {
@@ -1069,13 +829,6 @@ constexpr pair<L> mul(L a, L b) noexcept {
         const unsigned __int128 p = static_cast<unsigned __int128>(a) * b;
         return {static_cast<L>(p >> 64), static_cast<L>(p)};
 #else
-    #if BEMAN_INSIDE_HAS_UMUL128
-        if !consteval {
-            unsigned long long hi = 0;
-            const L            lo = _umul128(a, b, &hi);
-            return {static_cast<L>(hi), lo};
-        }
-    #endif
         const L al = a & 0xffffffffu, ah = a >> 32;
         const L bl = b & 0xffffffffu, bh = b >> 32;
         const L ll = al * bl, lh = al * bh, hl = ah * bl, hh = ah * bh;
@@ -1109,13 +862,6 @@ constexpr pair<L> div(L hi, L lo, L d) noexcept // {quotient, remainder}
         const unsigned __int128 n = (static_cast<unsigned __int128>(hi) << 64) | lo;
         return {static_cast<L>(n / d), static_cast<L>(n % d)};
 #else
-    #if BEMAN_INSIDE_HAS_UMUL128
-        if !consteval {
-            unsigned long long r = 0;
-            const L            q = _udiv128(hi, lo, d, &r);
-            return {q, static_cast<L>(r)};
-        }
-    #endif
         // Restoring shift-subtract; `top` keeps the bit shifted out of r.
         L r = hi, q = 0;
         for (int i = 63; i >= 0; --i) {
@@ -1403,8 +1149,6 @@ constexpr T pow_by_squaring(T x, unsigned n, Mul mul, T one) {
     return r;
 }
 } // namespace beman::inside::detail
-
-BEMAN_INSIDE_WARNINGS_POP
 
 
 
@@ -1790,14 +1534,11 @@ struct std::numeric_limits<beman::inside::detail::wide_int<N, Signed, L>> {
     static constexpr W    max() noexcept { return Signed ? ~top_bit() : ~W{0}; }
 };
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 // ======================================================================
 //  beman/inside/detail/rounding.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 //---------------------------------------------------------------------------
 // The rounding decision every integer rounding path shares. A path
@@ -1871,8 +1612,6 @@ template <typename T>
     }
 }
 } // namespace beman::inside::detail
-
-BEMAN_INSIDE_WARNINGS_POP
 
 
 
@@ -2291,7 +2030,7 @@ constexpr std::expected<T, errc> rational::to() const {
 // numerator and lcm in 3 limbs, reduced, then checked to fit (a sum can
 // reduce back into range: (2^63+1)/2 + 1/6 = (3·2^62+2)/3).
 template <bool Loud>
-BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::expected<rational, errc> add_wide(rational a, rational b) {
+[[gnu::cold]] [[gnu::noinline]] constexpr std::expected<rational, errc> add_wide(rational a, rational b) {
     using W       = wide_sint<3>;
     const umax ad = abs_den(a.Denominator), bd = abs_den(b.Denominator), g = std::gcd(ad, bd);
     const W    an  = a.Denominator < 0 ? -W{a.Numerator} : W{a.Numerator};
@@ -2620,8 +2359,8 @@ template <plain_number T>
 // truncates): |lhs| = N/D against |rhs| = s·2^-k (k > 62) as N·2^k against
 // s·D, which stays within two 64-bit factors. Cold and out of line: the
 // stores compare doubles with their limits.
-[[nodiscard]] BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::strong_ordering
-compare_fine_double(const rational& lhs, double rhs) {
+[[nodiscard]] [[gnu::cold]] [[gnu::noinline]] constexpr std::strong_ordering compare_fine_double(const rational& lhs,
+                                                                                                 double          rhs) {
     const int ls = sign(lhs), rs = rhs < 0 ? -1 : 1;
     if (ls != rs)
         return ls <=> rs;
@@ -2843,28 +2582,23 @@ inline constexpr detail::rational per = detail::make_per<D>();
 
 } // namespace beman::inside
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 // ======================================================================
 //  beman/inside/interval.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 // ======================================================================
 //  beman/inside/detail/grid_rational.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 // ======================================================================
 //  beman/inside/detail/number_text.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 
@@ -2935,8 +2669,7 @@ struct scanned_number {
 };
 
 template <typename OnDigit>
-BEMAN_INSIDE_ALWAYS_INLINE constexpr scanned_number
-scan_number(const char* first, const char* last, OnDigit&& on_digit) {
+[[gnu::always_inline]] constexpr scanned_number scan_number(const char* first, const char* last, OnDigit&& on_digit) {
     scanned_number r;
     auto           fail = [&](parse_fail f) {
         r.Fail = f;
@@ -3217,8 +2950,6 @@ namespace beman::inside {
 using detail::operator""_r;
 } // namespace beman::inside
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 //---------------------------------------------------------------------------
 // grid_rational — the number type of a grid's limits and notch (the NTTP
@@ -3242,7 +2973,6 @@ BEMAN_INSIDE_WARNINGS_POP
 //  beman/inside/detail/big_rational.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 //---------------------------------------------------------------------------
@@ -3807,7 +3537,6 @@ constexpr big_rational gcd(const big_rational& a, const big_rational& b) {
 } // namespace beman::inside::detail
 
 #endif // BEMAN_INSIDE_BIG_GRIDS
-BEMAN_INSIDE_WARNINGS_POP
 
 
 #if BEMAN_INSIDE_BIG_GRIDS
@@ -4039,8 +3768,6 @@ consteval detail::grid_rational operator""_g() {
 }
 } // namespace beman::inside
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 
 namespace beman::inside {
@@ -4224,14 +3951,11 @@ corner_hull(grid_rational a, grid_rational b, grid_rational c, grid_rational d) 
 
 } // namespace beman::inside
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 // ======================================================================
 //  beman/inside/detail/diag_text.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 
@@ -4317,21 +4041,14 @@ struct diag_text {
 };
 } // namespace beman::inside::detail
 
-#if BEMAN_INSIDE_HAS_VALUED_DIAG // (config.hpp)
-    #define BEMAN_INSIDE_DIAG(cond, text, ...) \
-        static_assert(cond, (::beman::inside::detail::diag_text{} << (text)__VA_ARGS__))
-#else
-    #define BEMAN_INSIDE_DIAG(cond, text, ...) static_assert(cond, text)
-#endif
-
-BEMAN_INSIDE_WARNINGS_POP
+#define BEMAN_INSIDE_DIAG(cond, text, ...) \
+    static_assert(cond, (::beman::inside::detail::diag_text{} << (text)__VA_ARGS__))
 
 
 // ======================================================================
 //  beman/inside/policy_flag.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 
@@ -4451,19 +4168,19 @@ struct no_action {};
 //---------------------------------------------------------------------------
 template <typename F>
 struct on_clamp_t {
-    BEMAN_INSIDE_NO_UNIQUE_ADDRESS F Fn;
+    [[no_unique_address]] F Fn;
 };
 template <typename F>
 struct on_wrap_t {
-    BEMAN_INSIDE_NO_UNIQUE_ADDRESS F Fn;
+    [[no_unique_address]] F Fn;
 };
 template <typename F>
 struct on_error_t {
-    BEMAN_INSIDE_NO_UNIQUE_ADDRESS F Fn;
+    [[no_unique_address]] F Fn;
 };
 template <typename F>
 struct on_overflow_t {
-    BEMAN_INSIDE_NO_UNIQUE_ADDRESS F Fn;
+    [[no_unique_address]] F Fn;
 };
 
 //---------------------------------------------------------------------------
@@ -4584,14 +4301,11 @@ constexpr auto& pick_action_in(Tuple& t) {
 } // namespace detail
 } // namespace beman::inside
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 // ======================================================================
 //  beman/inside/detail/int_for_bits.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 
@@ -4624,8 +4338,6 @@ struct int_for_bits {
 template <int Bits, bool Signed>
 using int_for_bits_t = typename int_for_bits<Bits, Signed>::type;
 } // namespace beman::inside::detail
-
-BEMAN_INSIDE_WARNINGS_POP
 
 
 
@@ -5422,8 +5134,6 @@ template <std::same_as<grid> G>
 }
 } // namespace beman::inside
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 //---------------------------------------------------------------------------
 // introspection — an inside's template parameters as values (grid_of<B>,
@@ -5547,20 +5257,17 @@ template <numeric N>
 [[nodiscard]] constexpr bool is_canonical_zero(const rational& v) { return v.Numerator == 0; }
 
 // From the grid, not B::raw_type: the storage traits are read inside B's own
-// definition, where B is incomplete (MSVC rejects the member there).
+// definition, where B is incomplete.
 template <insidable B>
 using raw_t = raw_for_t<grid_of<B>>;
 } // namespace detail
 } // namespace beman::inside
-
-BEMAN_INSIDE_WARNINGS_POP
 
 
 // ======================================================================
 //  beman/inside/detail/storage.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 
@@ -6112,7 +5819,7 @@ struct rounded_raw {
 };
 
 template <insidable L, typename P>
-BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr rounded_raw<L> raw_if_rounds_inside(rational v) {
+[[gnu::cold]] [[gnu::noinline]] constexpr rounded_raw<L> raw_if_rounds_inside(rational v) {
     rational r;
     if (!rounds_into_range<L, P>(v, r))
         return {raw_t<L>{}, false};
@@ -6244,8 +5951,6 @@ constexpr bool range_fail(P&& policy) {
 }
 } // namespace beman::inside::detail
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 
 //---------------------------------------------------------------------------
@@ -6323,14 +6028,11 @@ template <typename Dst, typename Src, policy_flag P = flags_of<Dst>>
 inline constexpr bool explain_assignable = inside_assignable_why<Dst, std::remove_cvref_t<Src>, P>::value;
 } // namespace beman::inside
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 // ======================================================================
 //  beman/inside/detail/wide_value.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 
@@ -7090,28 +6792,23 @@ constexpr Result exact_result(const wide_rational<K>& v) noexcept {
 }
 } // namespace beman::inside::detail
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 // ======================================================================
 //  beman/inside/policy.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 // ======================================================================
 //  beman/inside/detail/assignment.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 // ======================================================================
 //  beman/inside/detail/assign_exact.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 
@@ -7514,8 +7211,6 @@ inline constexpr int same_notch_bits = signed_value_bits_of({raw_lo_exact<R>,
                                                              raw_hi_exact<L>});
 } // namespace beman::inside::detail
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 
 namespace beman::inside::detail {
@@ -7709,7 +7404,7 @@ struct assignment<L, R> {
 
     // (Out of line, by value, for a double: its exact comparison has a cold
     // tail whose call would otherwise cost the inlined store registers.)
-    BEMAN_INSIDE_NOINLINE static constexpr bool below_lower(R rhs)
+    [[gnu::noinline]] static constexpr bool below_lower(R rhs)
         requires std::floating_point<R>
     {
         return huge(rhs) ? rhs < 0 : rhs < detail::lower64<L>;
@@ -7814,7 +7509,7 @@ struct assignment<L, R> {
     // saturates, as on the wide paths). A continuous L has no lattice to
     // fold in wide integers, and a point no period: still overflow.
     template <typename P, typename A, std::size_t K>
-    BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE static constexpr void
+    [[gnu::cold]] [[gnu::noinline]] static constexpr void
     wrap_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& action) {
         if constexpr (integer_storage<L> && !point_storage<L>)
             assign_exact<R>(lhs, v, policy, action);
@@ -7831,7 +7526,7 @@ struct assignment<L, R> {
         bool Exact;
     };
     template <typename P>
-    BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE static constexpr wide_slot_result wide_slot(const rational& v) {
+    [[gnu::cold]] [[gnu::noinline]] static constexpr wide_slot_result wide_slot(const rational& v) {
         const exact_index_result r = exact_index<L, rounding_for<L, P>>(exact_of(v));
         return {static_cast<umax>(r.Index), r.Exact}; // in range: fits 64 bits
     }
@@ -7873,8 +7568,7 @@ struct assignment<L, R> {
     // leaves lhs intact. The policy hears of it here; an on_error action,
     // which gets lhs, from store_fine_double.
     template <typename P, typename A>
-    BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE static constexpr fine_result_t
-    fine_double_value(double rhs, P policy, A action) {
+    [[gnu::cold]] [[gnu::noinline]] static constexpr fine_result_t fine_double_value(double rhs, P policy, A action) {
         L r = [] {
             if constexpr (rational_storage<L>)
                 return L::from_raw(detail::lower64<L>);
@@ -8580,8 +8274,6 @@ constexpr L& assign_grid_number(L& lhs, const big_rational& v, P&& policy) {
 #endif
 } // namespace beman::inside::detail
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 
 //---------------------------------------------------------------------------
@@ -8774,9 +8466,9 @@ constexpr Dst& dispatch_assign(Dst& dst, const C& src, P& policy, std::tuple<As.
 // conversion as policy_ref, so it stays SFINAE-friendly.
 template <insidable B, typename P, typename... As>
 struct policy_buffer {
-    B                              Owned;
-    P                              Policy;
-    BEMAN_INSIDE_NO_UNIQUE_ADDRESS std::tuple<As...> Actions;
+    B                                       Owned;
+    P                                       Policy;
+    [[no_unique_address]] std::tuple<As...> Actions;
 
     template <insidable Target>
         requires inside_assignable<Target, B, flags_of<Target> | flags_of<P>>
@@ -8807,11 +8499,11 @@ struct policy_ref {
   public:
     B& Ref;
     P  Policy;
-    // `BEMAN_INSIDE_NO_UNIQUE_ADDRESS` is load-bearing: each captureless action lambda
+    // `[[no_unique_address]]` is load-bearing: each captureless action lambda
     // is an empty type, and without this attribute the tuple would pad each
     // one out to a byte. With it, `policy_ref<B, P>` carrying no actions has
     // the same size as `policy_ref<B, P, no_action>`.
-    BEMAN_INSIDE_NO_UNIQUE_ADDRESS std::tuple<As...> Actions;
+    [[no_unique_address]] std::tuple<As...> Actions;
 
     // Stores go through dispatch_assign under this ref's Policy and actions:
     // into Ref for `operator=`, into a fresh target for the conversion below,
@@ -8977,21 +8669,17 @@ struct policy_ref {
 
 } // namespace beman::inside
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 // ======================================================================
 //  beman/inside/detail/addition.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 // ======================================================================
 //  beman/inside/detail/rep.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 namespace beman::inside::detail {
@@ -9050,7 +8738,6 @@ constexpr Result scale_by_point(const X& x) noexcept {
     return Result::from_raw(raw_from_offset<Result>(Negate ? max_index_of<X> - off : off));
 }
 } // namespace beman::inside::detail
-BEMAN_INSIDE_WARNINGS_POP
 
 
 
@@ -9144,14 +8831,11 @@ template <insidable L, insidable R, policy_flag = none>
 inline constexpr bool sub_defined = add_defined<L, decltype(-std::declval<const R&>())>;
 } // namespace beman::inside::detail
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 // ======================================================================
 //  beman/inside/detail/multiplication.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 //---------------------------------------------------------------------------
@@ -9237,14 +8921,11 @@ inline constexpr bool mul_defined = [] {
 }();
 } // namespace beman::inside::detail
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 // ======================================================================
 //  beman/inside/detail/division.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 
@@ -9861,14 +9542,11 @@ struct quotient_remainder {
 
 } // namespace beman::inside::detail
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 // ======================================================================
 //  beman/inside/predicates.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 //---------------------------------------------------------------------------
@@ -10025,8 +9703,6 @@ template <insidable B, numeric A>
 }
 } // namespace beman::inside
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 
 // Forward-declare the `beman::inside::math` entry points used in-class, so the bodies
@@ -10090,7 +9766,7 @@ struct inside {
     using raw_type     = detail::raw_for_t<G>;
 
   private:
-    BEMAN_INSIDE_NO_UNIQUE_ADDRESS raw_type Raw; // empty for a point grid
+    [[no_unique_address]] raw_type Raw; // empty for a point grid
 
   public:
     // raw() — access escape hatch, symmetric with `from_raw`. Read overload
@@ -10883,8 +10559,7 @@ namespace detail {
 // 1e-200): the text parsed exactly, or past that width as a tiny or huge
 // value's stand-in. Out of line: the common parse stays small.
 template <insidable B, policy_flag F>
-BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::expected<B, errc> parse_wide(const char* first,
-                                                                                    const char* last) {
+[[gnu::cold]] [[gnu::noinline]] constexpr std::expected<B, errc> parse_wide(const char* first, const char* last) {
     constexpr std::size_t K = exact_max<exact_limbs<B>, parse_limbs>;
     auto                  w = parse_exact<K>(first, last);
     if (!w && w.error() == errc::overflow)
@@ -11006,15 +10681,12 @@ struct std::indirectly_readable_traits<beman::inside::inside<G, P>> {
     using value_type = beman::inside::detail::cursor_value_t<G, P>;
 };
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 // ======================================================================
 //  beman/inside/detail/compare.hpp
 // ======================================================================
 // Internal — include "beman/inside/inside.hpp" (the umbrella), not this directly.
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 
@@ -11222,14 +10894,11 @@ template <insidable B, detail::plain_number A>
 }
 } // namespace beman::inside
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 // ======================================================================
 //  beman/inside/casts.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 //---------------------------------------------------------------------------
@@ -11310,14 +10979,11 @@ template <insidable B, numeric A>
 
 } // namespace beman::inside
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 // ======================================================================
 //  beman/inside/arithmetic.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 
@@ -11417,7 +11083,7 @@ struct divmod_op {
 
 // A deleted overload takes each op's failing case: `requires { a + b; }` is
 // then false, and an integer inside cannot fall back on its imax conversion
-// and the built-in operator (BEMAN_INSIDE_DELETE, detail/config.hpp).
+// and the built-in operator.
 
 #define BEMAN_INSIDE_WHY_add                                                                                     \
     "addition: the result grid exceeds the 64-bit grid numbers (coarsen the operand grids, or build with C++26 " \
@@ -11454,22 +11120,20 @@ inline constexpr policy_flag call_flags<errc&, Rest...> = checked;
 // `if constexpr` probe is false where the op cannot compile.
 } // namespace detail
 
-#define BEMAN_INSIDE_ARITH_FN(name, op)                                                      \
-    template <insidable L, insidable R, class... Args>                                       \
-        requires detail::name                                                                \
-    ##_defined<L, R, detail::call_flags<Args...>>&&                                          \
-        requires(L const& l, R const& r, Args && ... args)                                   \
-    {                                                                                        \
-        detail::arith(detail::op{}, l, r, std::forward<Args>(args)...);                      \
-    }                                                                                        \
-    [[nodiscard]] constexpr auto name(L const& lhs, R const& rhs, Args&&... args) {          \
-        return detail::arith(detail::op{}, lhs, rhs, std::forward<Args>(args)...);           \
-    }                                                                                        \
-    BEMAN_INSIDE_DELETE_BEGIN                                                                \
-    template <insidable L, insidable R, class... Args>                                       \
-        requires(!detail::name##_defined<L, R, detail::call_flags<Args...>>)                 \
-    auto name(L const&, R const&, Args&&...) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_##name); \
-    BEMAN_INSIDE_DELETE_END
+#define BEMAN_INSIDE_ARITH_FN(name, op)                                             \
+    template <insidable L, insidable R, class... Args>                              \
+        requires detail::name                                                       \
+    ##_defined<L, R, detail::call_flags<Args...>>&&                                 \
+        requires(L const& l, R const& r, Args && ... args)                          \
+    {                                                                               \
+        detail::arith(detail::op{}, l, r, std::forward<Args>(args)...);             \
+    }                                                                               \
+    [[nodiscard]] constexpr auto name(L const& lhs, R const& rhs, Args&&... args) { \
+        return detail::arith(detail::op{}, lhs, rhs, std::forward<Args>(args)...);  \
+    }                                                                               \
+    template <insidable L, insidable R, class... Args>                              \
+        requires(!detail::name##_defined<L, R, detail::call_flags<Args...>>)        \
+    auto name(L const&, R const&, Args&&...) = delete (BEMAN_INSIDE_WHY_##name);
 
 BEMAN_INSIDE_ARITH_FN(add, add_op)
 BEMAN_INSIDE_ARITH_FN(sub, sub_op)
@@ -11577,55 +11241,45 @@ template <insidable L, insidable R>
 [[nodiscard]] constexpr auto operator+(L lhs, R rhs) {
     return beman::inside::add(lhs, rhs);
 }
-BEMAN_INSIDE_DELETE_BEGIN
 template <insidable L, insidable R>
     requires(!detail::add_defined<L, R>)
-auto operator+(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_add);
-BEMAN_INSIDE_DELETE_END
+auto operator+(L, R) = delete (BEMAN_INSIDE_WHY_add);
 
 template <insidable L, insidable R>
     requires detail::sub_defined<L, R>
 [[nodiscard]] constexpr auto operator-(L lhs, R rhs) {
     return beman::inside::sub(lhs, rhs);
 }
-BEMAN_INSIDE_DELETE_BEGIN
 template <insidable L, insidable R>
     requires(!detail::sub_defined<L, R>)
-auto operator-(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_sub);
-BEMAN_INSIDE_DELETE_END
+auto operator-(L, R) = delete (BEMAN_INSIDE_WHY_sub);
 
 template <insidable L, insidable R>
     requires detail::mul_defined<L, R>
 [[nodiscard]] constexpr auto operator*(L lhs, R rhs) {
     return beman::inside::mul(lhs, rhs);
 }
-BEMAN_INSIDE_DELETE_BEGIN
 template <insidable L, insidable R>
     requires(!detail::mul_defined<L, R>)
-auto operator*(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_mul);
-BEMAN_INSIDE_DELETE_END
+auto operator*(L, R) = delete (BEMAN_INSIDE_WHY_mul);
 
 template <insidable L, insidable R>
     requires detail::div_defined<L, R, flags_of<L> | flags_of<R>>
 [[nodiscard]] constexpr auto operator/(L lhs, R rhs) {
     return beman::inside::div(lhs, rhs, make_policy<flags_of<L> | flags_of<R>>());
 }
-BEMAN_INSIDE_DELETE_BEGIN
 template <insidable L, insidable R>
     requires(!detail::div_defined<L, R, flags_of<L> | flags_of<R>>)
-auto operator/(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_div);
-BEMAN_INSIDE_DELETE_END
+auto operator/(L, R) = delete (BEMAN_INSIDE_WHY_div);
 
 template <insidable L, insidable R>
     requires detail::mod_defined<L, R, flags_of<L> | flags_of<R>>
 [[nodiscard]] constexpr auto operator%(L lhs, R rhs) {
     return beman::inside::mod(lhs, rhs, make_policy<flags_of<L> | flags_of<R>>());
 }
-BEMAN_INSIDE_DELETE_BEGIN
 template <insidable L, insidable R>
     requires(!detail::mod_defined<L, R, flags_of<L> | flags_of<R>>)
-auto operator%(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_mod);
-BEMAN_INSIDE_DELETE_END
+auto operator%(L, R) = delete (BEMAN_INSIDE_WHY_mod);
 #undef BEMAN_INSIDE_WHY_arith_action
 #undef BEMAN_INSIDE_WHY_add
 #undef BEMAN_INSIDE_WHY_sub
@@ -11894,14 +11548,11 @@ template <beman::inside::grid G1, beman::inside::policy_flag P1, beman::inside::
 struct std::common_type<beman::inside::inside<G1, P1>, beman::inside::inside<G2, P2>>
     : beman::inside::detail::common_inside<beman::inside::inside<G1, P1>, beman::inside::inside<G2, P2>> {};
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 // ======================================================================
 //  beman/inside/range.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 
@@ -12023,14 +11674,11 @@ inline constexpr inside_range<grid_of<T>, flags_of<T>> values{};
 template <beman::inside::grid G, beman::inside::policy_flag P>
 inline constexpr bool std::ranges::enable_borrowed_range<beman::inside::inside_range<G, P>> = true;
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 // ======================================================================
 //  beman/inside/cursor.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 namespace beman::inside {
@@ -12074,24 +11722,18 @@ template <insidable B>
 }
 } // namespace beman::inside
 
-BEMAN_INSIDE_WARNINGS_POP
-
-
-BEMAN_INSIDE_WARNINGS_POP
 
 
 // ======================================================================
 //  beman/inside/cmath.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 // ======================================================================
 //  beman/inside/detail/math_constants.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 //---------------------------------------------------------------------------
@@ -12146,28 +11788,23 @@ inline constexpr auto catalan     = just<beman::inside::detail::catalan_rat>; //
 inline constexpr auto zeta3       = just<beman::inside::detail::zeta3_rat>;   // Apéry's ζ(3)
 } // namespace beman::inside::math
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 // ======================================================================
 //  beman/inside/detail/math_entry.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 // ======================================================================
 //  beman/inside/detail/math_cores.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 // ======================================================================
 //  beman/inside/detail/math_adaptive.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 
@@ -13455,8 +13092,6 @@ constexpr approx<K> exp_fixed(const wide_sint<K>& t, umax dt, int KMax) noexcept
 }
 } // namespace beman::inside::math::detail::ax
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 
 //---------------------------------------------------------------------------
@@ -14368,8 +14003,6 @@ inline constexpr grid_rational gcd_notch =
     !notched<A> || !notched<B> ? grid_rational{0} : grid_gcd_of(grid_of<A>.value_unit(), grid_of<B>.value_unit());
 } // namespace beman::inside::math::detail::ax
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 // ======================================================================
 //  beman/inside/detail/math_fp.hpp
@@ -14388,13 +14021,12 @@ BEMAN_INSIDE_WARNINGS_POP
 // itself for the second-order terms and the bound arithmetic's roundings.
 //---------------------------------------------------------------------------
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 
 // BEMAN_INSIDE_MATH_NO_FP is resolved in config.hpp.
 
-// BEMAN_INSIDE_FABS, _NEARBYINT, _INF, _ASSOC_BARRIER and _HAS_FMA: config.hpp.
+// BEMAN_INSIDE_HAS_FMA: config.hpp.
 
 #ifndef BEMAN_INSIDE_MATH_NO_FP // ===== FP engine present (needs <cmath> + an FPU) =====
 
@@ -14409,7 +14041,7 @@ using std::fma;
 // c0·z^n + c1·z^(n-1) + … + cn as an fma chain from the highest coefficient
 // down (Horner) — the same operation order as writing the chain out by hand.
 template <std::floating_point T, typename... C>
-BEMAN_INSIDE_ALWAYS_INLINE inline T horner(T z, T c0, C... cs) {
+[[gnu::always_inline]] inline T horner(T z, T c0, C... cs) {
     T p = c0;
     ((p = fma(p, z, static_cast<T>(cs))), ...);
     return p;
@@ -14417,7 +14049,7 @@ BEMAN_INSIDE_ALWAYS_INLINE inline T horner(T z, T c0, C... cs) {
 
 // The same over a coefficient array, highest degree first.
 template <std::size_t N>
-BEMAN_INSIDE_ALWAYS_INLINE inline double horner(double z, const std::array<double, N>& c) {
+[[gnu::always_inline]] inline double horner(double z, const std::array<double, N>& c) {
     return [&]<std::size_t... I>(std::index_sequence<I...>) {
         double p = c[0];
         ((p = fma(p, z, c[I + 1])), ...);
@@ -14447,7 +14079,7 @@ inline constexpr double third_lo    = 0x1.5555555555555p-56; // 1/3 − third = 
 // adds the exact product where an error-free transformation expects the
 // rounded one. fenced() keeps an operand of an error-free sum out of that, at
 // no runtime cost.
-constexpr double fenced(double x) noexcept { return BEMAN_INSIDE_ASSOC_BARRIER(x); }
+constexpr double fenced(double x) noexcept { return __builtin_assoc_barrier(x); }
 
 // The product rounded once, which the compiler cannot fuse further:
 // fma(a, b, +0) (+0 keeps it from folding back to a·b), one instruction with
@@ -14629,13 +14261,13 @@ inline constexpr double cos_poly_rel = [] {
 }();
 
 template <int N>
-BEMAN_INSIDE_ALWAYS_INLINE inline double sin_poly(double r) {
+[[gnu::always_inline]] inline double sin_poly(double r) {
     const double z = r * r;
     return r * horner(z, sin_c<N>.C);
 }
 
 template <int N>
-BEMAN_INSIDE_ALWAYS_INLINE inline double cos_poly(double r) {
+[[gnu::always_inline]] inline double cos_poly(double r) {
     return horner(r * r, cos_c<N>.C);
 }
 
@@ -14675,7 +14307,7 @@ struct trig_k {
         q              = (q + shift) & 3;
         const double p = q & 1 ? cos_poly<NC>(r) : sin_poly<NS>(r);
         const double v = q & 2 ? -p : p;
-        bound = Rel * BEMAN_INSIDE_FABS(v) + AbsX * (BEMAN_INSIDE_FABS(x) > 1 ? BEMAN_INSIDE_FABS(x) : 1.0) + tiny;
+        bound          = Rel * __builtin_fabs(v) + AbsX * (__builtin_fabs(x) > 1 ? __builtin_fabs(x) : 1.0) + tiny;
         return v;
     }
     static double sin(double x, double& bound) { return quadrant(x, 0, bound); }
@@ -14693,8 +14325,8 @@ struct trig_k {
             t = -c / s;
         } else
             t = s / c;
-        const double mx = BEMAN_INSIDE_FABS(x) > 1 ? BEMAN_INSIDE_FABS(x) : 1.0;
-        bound           = TanRel * BEMAN_INSIDE_FABS(t) + (1 + t * t) * AbsX * mx + tiny;
+        const double mx = __builtin_fabs(x) > 1 ? __builtin_fabs(x) : 1.0;
+        bound           = TanRel * __builtin_fabs(t) + (1 + t * t) * AbsX * mx + tiny;
         return true;
     }
 };
@@ -14719,7 +14351,7 @@ inline constexpr double exp_poly_rel = [] {
 }();
 
 template <int N>
-BEMAN_INSIDE_ALWAYS_INLINE inline double exp_poly(double r) {
+[[gnu::always_inline]] inline double exp_poly(double r) {
     return horner(r, exp_c<N>.C);
 }
 
@@ -14754,13 +14386,13 @@ struct exp_k {
     static constexpr double Rel   = up(exp_poly_rel<N> + unit_roundoff * r_exp + 1100 * ln2_res);
     static constexpr double RelLo = up(Rel + unit_roundoff * r_exp);
 
-    BEMAN_INSIDE_ALWAYS_INLINE static double value(double x) {
+    [[gnu::always_inline]] static double value(double x) {
         const double k = std::nearbyint(x * log2e);
         double       r = fma(-k, ln2_hi, x);
         r              = fma(-k, ln2_lo, r);
         return ::beman::inside::detail::scale_pow2(exp_poly<N>(r), static_cast<int>(k));
     }
-    BEMAN_INSIDE_ALWAYS_INLINE static double value(double x, double lo) {
+    [[gnu::always_inline]] static double value(double x, double lo) {
         const double k = std::nearbyint(x * log2e);
         double       r = fma(-k, ln2_hi, x);
         r              = fma(-k, ln2_lo, r) + lo;
@@ -14802,7 +14434,7 @@ struct exp_k {
         if constexpr (T <= plain_bits) {
             const double e = value(x);
             const double v = (e - 1.0 / e) * 0.5;
-            bound          = SinhPlainRel * BEMAN_INSIDE_FABS(v) + SinhPlainAbs + tiny;
+            bound          = SinhPlainRel * __builtin_fabs(v) + SinhPlainAbs + tiny;
             return v;
         }
         const double a = x < 0 ? -x : x;
@@ -14826,7 +14458,7 @@ struct exp_k {
     static double tanh(double x, double& bound) {
         const double e = value(x + x);
         const double v = (e - 1.0) / (e + 1.0);
-        bound          = TanhRel * BEMAN_INSIDE_FABS(v) + TanhAbs + tiny;
+        bound          = TanhRel * __builtin_fabs(v) + TanhAbs + tiny;
         return v;
     }
 };
@@ -14862,7 +14494,7 @@ struct log_k {
     static constexpr double Rel2  = up(Rel + unit_roundoff + log2e_err);
     static constexpr double Rel10 = up(Rel + unit_roundoff + log10e_err);
 
-    BEMAN_INSIDE_ALWAYS_INLINE static double value(double x) {
+    [[gnu::always_inline]] static double value(double x) {
         int    e;
         double m = ::beman::inside::detail::frexp(x, &e);
         if (m < sqrt_half) {
@@ -14905,7 +14537,7 @@ struct log_k {
         const double rest  = 2 * unit_roundoff * (0.35 * unit_roundoff + 0.3432 * t);
         return up(max_d(a2f, (0.3432 * a2f + rest + per_e) / 0.3466));
     }();
-    BEMAN_INSIDE_ALWAYS_INLINE static double value_hl(double x, double& lo) {
+    [[gnu::always_inline]] static double value_hl(double x, double& lo) {
         int    e;
         double m = ::beman::inside::detail::frexp(x, &e);
         if (m < sqrt_half) {
@@ -14928,17 +14560,17 @@ struct log_k {
 
     static double log(double x, double& bound) {
         const double v = value(x);
-        bound          = Rel * BEMAN_INSIDE_FABS(v) + tiny;
+        bound          = Rel * __builtin_fabs(v) + tiny;
         return v;
     }
     static double log2(double x, double& bound) {
         const double v = value(x) * log2e;
-        bound          = Rel2 * BEMAN_INSIDE_FABS(v) + tiny;
+        bound          = Rel2 * __builtin_fabs(v) + tiny;
         return v;
     }
     static double log10(double x, double& bound) {
         const double v = value(x) * log10e;
-        bound          = Rel10 * BEMAN_INSIDE_FABS(v) + tiny;
+        bound          = Rel10 * __builtin_fabs(v) + tiny;
         return v;
     }
 
@@ -14951,7 +14583,7 @@ struct log_k {
     // and the final sum (U each, as |q| ≤ A); q − ln(1 + q) ≤ q²/2
     // (½U). Log1pRel collects these; the callers add u's own error.
     static constexpr double Log1pRel = up(2 * HlRel + 4 * unit_roundoff * (1 + 0x1p-50) + 0.5 * unit_roundoff);
-    BEMAN_INSIDE_ALWAYS_INLINE static double log1p_hl(double uh, double ul) {
+    [[gnu::always_inline]] static double log1p_hl(double uh, double ul) {
         const hilo   w  = two_sum(1.0, uh);
         const double wl = w.Lo + ul;
         double       lo;
@@ -15055,7 +14687,7 @@ struct atan_k {
         up(t_max * PolyAbs + 3 * t_max * unit_roundoff + inv_sqrt3_err * 0.75 + pi_sixth_err + r_trig * unit_roundoff +
            0.5 * unit_roundoff + pi_half_err + 1.5708 * unit_roundoff);
 
-    BEMAN_INSIDE_ALWAYS_INLINE static double value(double x) {
+    [[gnu::always_inline]] static double value(double x) {
         const bool neg = x < 0;
         double     a   = neg ? -x : x;
         const bool inv = a > 1.0;
@@ -15073,7 +14705,7 @@ struct atan_k {
     }
     static double atan(double x, double& bound) {
         const double v = value(x);
-        bound          = Rel * BEMAN_INSIDE_FABS(v) + Abs + tiny;
+        bound          = Rel * __builtin_fabs(v) + Abs + tiny;
         return v;
     }
 
@@ -15088,7 +14720,7 @@ struct atan_k {
             v = value(y / x) + (y >= 0.0 ? pi_double : -pi_double);
         else
             v = y > 0.0 ? pi_half : y < 0.0 ? -pi_half : 0.0;
-        bound = Atan2Rel * BEMAN_INSIDE_FABS(v) + Atan2Abs + tiny;
+        bound = Atan2Rel * __builtin_fabs(v) + Atan2Abs + tiny;
         return v;
     }
 
@@ -15096,17 +14728,15 @@ struct atan_k {
     // moves atan by 3.5U of itself at most. acos = π/2 − asin: absolute.
     static constexpr double AsinRel = up(Rel + 3.5 * unit_roundoff), AsinAbs = Abs;
     static constexpr double AcosRel = unit_roundoff, AcosAbs = up(AsinRel * 1.5708 + AsinAbs + pi_half_err);
-    BEMAN_INSIDE_ALWAYS_INLINE static double asin_value(double x) {
-        return value(x / std::sqrt((1.0 - x) * (1.0 + x)));
-    }
-    static double asin(double x, double& bound) {
+    [[gnu::always_inline]] static double asin_value(double x) { return value(x / std::sqrt((1.0 - x) * (1.0 + x))); }
+    static double                        asin(double x, double& bound) {
         const double v = asin_value(x);
-        bound          = AsinRel * BEMAN_INSIDE_FABS(v) + AsinAbs + tiny;
+        bound          = AsinRel * __builtin_fabs(v) + AsinAbs + tiny;
         return v;
     }
     static double acos(double x, double& bound) {
         const double v = pi_half - asin_value(x);
-        bound          = AcosRel * BEMAN_INSIDE_FABS(v) + AcosAbs + tiny;
+        bound          = AcosRel * __builtin_fabs(v) + AcosAbs + tiny;
         return v;
     }
 };
@@ -15145,7 +14775,7 @@ struct pow_k {
             y = L::value(a) * third;
             m = E::value(y);
         }
-        bound = m * (ERel + BEMAN_INSIDE_FABS(y) * YRel) + tiny;
+        bound = m * (ERel + __builtin_fabs(y) * YRel) + tiny;
         return x < 0 ? -m : m;
     }
 
@@ -15159,10 +14789,10 @@ struct pow_k {
             ylo            = fma(e, h, -y) + e * lo;
         } else
             y = e * L::value(b);
-        if (!(BEMAN_INSIDE_FABS(y) <= 745))
+        if (!(__builtin_fabs(y) <= 745))
             return false;
         v     = Hl ? E::value(y, ylo) : E::value(y);
-        bound = v * (ERel + BEMAN_INSIDE_FABS(y) * YRel) + tiny;
+        bound = v * (ERel + __builtin_fabs(y) * YRel) + tiny;
         return true;
     }
 
@@ -15173,7 +14803,7 @@ struct pow_k {
         y                = x * lnHi;
         const double ylo = fma(x, lnHi, -y) + x * lnLo;
         const double v   = E::value(y, ylo);
-        bound            = v * (E::RelLo + BEMAN_INSIDE_FABS(y) * 0x1p-100) + tiny;
+        bound            = v * (E::RelLo + __builtin_fabs(y) * 0x1p-100) + tiny;
         return v;
     }
 };
@@ -15200,8 +14830,6 @@ inline double        seed_cbrt(double x) {
 
 #endif // !BEMAN_INSIDE_MATH_NO_FP
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 // ======================================================================
 //  beman/inside/detail/math_dd.hpp
@@ -15217,7 +14845,6 @@ BEMAN_INSIDE_WARNINGS_POP
 // generously and lets the integer path decide whenever the bound does not.
 //---------------------------------------------------------------------------
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 
@@ -15537,9 +15164,9 @@ struct exp_reduced {
 };
 
 template <dd_type D>
-BEMAN_INSIDE_ALWAYS_INLINE inline exp_reduced<D> exp_reduce(D x) noexcept {
+[[gnu::always_inline]] inline exp_reduced<D> exp_reduce(D x) noexcept {
     using C         = consts<D>;
-    const double k  = BEMAN_INSIDE_NEARBYINT(x.Hi * inv_ln2_by_4096);
+    const double k  = __builtin_nearbyint(x.Hi * inv_ln2_by_4096);
     const long   ik = static_cast<long>(k);
     return {
         reduce(x, k, C::Ln2By4096[0], C::Ln2By4096[1], C::Ln2By4096[2], 0),
@@ -15572,14 +15199,14 @@ struct log_reduced {
 };
 
 template <dd_type D>
-BEMAN_INSIDE_ALWAYS_INLINE inline log_reduced<D> log_reduce(D x) noexcept {
+[[gnu::always_inline]] inline log_reduced<D> log_reduce(D x) noexcept {
     long m = static_cast<long>(std::bit_cast<std::uint64_t>(x.Hi) >> 52) - 1023;
     D    f = scale(x, -m); // [1, 2)
     if (f.Hi >= 1.5) {
         f = {f.Hi * 0.5, f.Lo * 0.5};
         ++m;
     }
-    const double j = BEMAN_INSIDE_NEARBYINT(f.Hi * 128);
+    const double j = __builtin_nearbyint(f.Hi * 128);
     const double c = j * 0x1p-7;
     return {m,
             div(two_sum(f.Hi - c, f.Lo), add(f, c)), // f.Hi − c is exact
@@ -15614,9 +15241,9 @@ struct trig_reduced {
 };
 
 template <dd_type D>
-BEMAN_INSIDE_ALWAYS_INLINE inline trig_reduced<D> trig_reduce(D x) noexcept {
+[[gnu::always_inline]] inline trig_reduced<D> trig_reduce(D x) noexcept {
     using C        = consts<D>;
-    const double n = BEMAN_INSIDE_NEARBYINT(x.Hi * inv_pi_by_128);
+    const double n = __builtin_nearbyint(x.Hi * inv_pi_by_128);
     const long   j = static_cast<long>(n);
     return {reduce(x, n, C::PiBy128[0], C::PiBy128[1], C::PiBy128[2], C::PiBy128[3]),
             C::Sin[static_cast<std::size_t>(j & 255)],
@@ -15624,7 +15251,7 @@ BEMAN_INSIDE_ALWAYS_INLINE inline trig_reduced<D> trig_reduce(D x) noexcept {
 }
 
 template <dd_type D>
-BEMAN_INSIDE_ALWAYS_INLINE inline sincos_t sincos(D x) noexcept {
+[[gnu::always_inline]] inline sincos_t sincos(D x) noexcept {
     using C                = consts<D>;
     const auto [r, sa, ca] = trig_reduce(x);
     const D      z         = sqr(r);
@@ -15657,7 +15284,7 @@ inline D cos(D x) noexcept {
 template <dd_type D>
 inline D atan_unit(D a) noexcept {
     using C           = consts<D>;
-    const double j    = BEMAN_INSIDE_NEARBYINT(a.Hi * 32);
+    const double j    = __builtin_nearbyint(a.Hi * 32);
     const double c    = j * (1.0 / 32);
     const D      t    = div(add(a, -c), add_dominant(D{1, 0}, mul(a, c)));
     const D      z    = sqr(t);
@@ -15881,7 +15508,7 @@ struct lean_trig {
 
 // A + B·(rh + ts) + A·(h + tc), h = −zh/2, as above.
 template <dd_type D>
-BEMAN_INSIDE_ALWAYS_INLINE inline D lean_rotate(D a, D b, double rh, double ts, double h, double tc) noexcept {
+[[gnu::always_inline]] inline D lean_rotate(D a, D b, double rh, double ts, double h, double tc) noexcept {
     const D p  = two_prod(b.Hi, rh);
     const D q  = two_prod(a.Hi, h);
     const D s1 = fast_two_sum(a.Hi, p.Hi);
@@ -15893,7 +15520,7 @@ BEMAN_INSIDE_ALWAYS_INLINE inline D lean_rotate(D a, D b, double rh, double ts, 
 }
 
 template <dd_type D>
-BEMAN_INSIDE_ALWAYS_INLINE inline sincos_t sincos_lean(D x) noexcept {
+[[gnu::always_inline]] inline sincos_t sincos_lean(D x) noexcept {
     const auto [r, sa, ca] = trig_reduce(x);
     const double rh = r.Hi, rl = r.Lo;
     const D      z  = two_prod(rh, rh);
@@ -15959,7 +15586,7 @@ struct lean_exp {
 };
 
 template <dd_type D>
-BEMAN_INSIDE_ALWAYS_INLINE inline D exp_lean_value(D x) noexcept {
+[[gnu::always_inline]] inline D exp_lean_value(D x) noexcept {
     const auto [r, t, m] = exp_reduce(x);
     const double rh      = r.Hi;
     const double tp      = std::fma(fpk::rounded_product(rh, rh), fpk::horner(rh, lean_exp_c.C), r.Lo);
@@ -16015,7 +15642,7 @@ struct lean_log {
 };
 
 template <dd_type D>
-BEMAN_INSIDE_ALWAYS_INLINE inline D log_lean_value(D x, double& bound) noexcept {
+[[gnu::always_inline]] inline D log_lean_value(D x, double& bound) noexcept {
     const auto [m, s, lc] = log_reduce(x);
     const double sh = s.Hi, zh = sh * sh;
     const double t  = 2 * (fpk::rounded_product(sh, zh) * fpk::horner(zh, lean_log_c.C));
@@ -16069,7 +15696,7 @@ inline D tan_lean(D x, double& bound) noexcept {
     const double   e  = lean_trig_bound(x.Hi);
     const D        t  = div(sc.Sin, sc.Cos);
     const double   at = t.Hi < 0 ? -t.Hi : t.Hi, c = (sc.Cos.Hi < 0 ? -sc.Cos.Hi : sc.Cos.Hi) - 2 * e;
-    bound = c > 0 ? e * (1 + at) / c * (1 + 0x1p-40) + 32 * unit_roundoff2 * at : BEMAN_INSIDE_INF();
+    bound = c > 0 ? e * (1 + at) / c * (1 + 0x1p-40) + 32 * unit_roundoff2 * at : __builtin_inf();
     return t;
 }
 
@@ -16169,8 +15796,8 @@ struct lean_atan {
 };
 
 template <dd_type D>
-BEMAN_INSIDE_ALWAYS_INLINE inline D atan_unit_lean(D a) noexcept {
-    const double j  = BEMAN_INSIDE_NEARBYINT(a.Hi * 32);
+[[gnu::always_inline]] inline D atan_unit_lean(D a) noexcept {
+    const double j  = __builtin_nearbyint(a.Hi * 32);
     const double c  = j * (1.0 / 32);
     const D      t  = div(add(a, -c), add_dominant(D{1, 0}, mul(a, c)));
     const double th = t.Hi, zh = th * th;
@@ -16204,8 +15831,6 @@ inline D acos_lean(D x, double& bound) noexcept {
 } // namespace beman::inside::math::detail::dd
 
 #endif // !BEMAN_INSIDE_MATH_NO_FP
-
-BEMAN_INSIDE_WARNINGS_POP
 
 
 
@@ -16325,18 +15950,18 @@ constexpr double input_double(const In& x) noexcept {
 template <insidable In>
 inline constexpr double input_rel = fp_exact_input<In> ? 0.0 : 0x1p-50;
 
-constexpr double fabs_d(double v) noexcept { return BEMAN_INSIDE_FABS(v); }
+constexpr double fabs_d(double v) noexcept { return __builtin_fabs(v); }
 
 // An integer near t (the nearest in the default rounding mode); NaN stays
 // NaN. The tests below only need J to be an integer, so no compiler
 // rewrite can make them pass wrongly — unlike the add-and-subtract-2^52
 // trick, which reassociation folds away (and Clang's -fassociative-math
 // does not announce).
-inline double nearest_int(double t) noexcept { return BEMAN_INSIDE_NEARBYINT(t); }
+inline double nearest_int(double t) noexcept { return __builtin_nearbyint(t); }
 
 // Stores the grid point with slot offset k in out.
 template <insidable Out>
-BEMAN_INSIDE_ALWAYS_INLINE inline void store_slot(umax k, Out& out) {
+[[gnu::always_inline]] inline void store_slot(umax k, Out& out) {
     out = Out::from_raw(raw_from_offset<Out>(k)); // a slot: a notched, integer raw
 }
 
@@ -16402,7 +16027,7 @@ inline constexpr double in_max = static_cast<double>(max_abs_int<In>);
 // What follows a fast tier or a lean kernel: rarely taken, so out of line,
 // which keeps its frame off the fast path.
 template <std::invocable<> F>
-BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr auto cold_call(const F& f) {
+[[gnu::cold]] [[gnu::noinline]] constexpr auto cold_call(const F& f) {
     return f();
 }
 
@@ -16568,7 +16193,7 @@ struct fp_plain {
             }                                                                                                \
             static double slope([[maybe_unused]] double x, [[maybe_unused]] double v) { return slope_expr; } \
         };
-    #define BEMAN_INSIDE_AX_KERNEL(...) BEMAN_INSIDE_EXPAND(BEMAN_INSIDE_AX_KERNEL_ON(fp_plain, __VA_ARGS__))
+    #define BEMAN_INSIDE_AX_KERNEL(...) BEMAN_INSIDE_AX_KERNEL_ON(fp_plain, __VA_ARGS__)
 using fp_full_trig = fpk::trig_k<fpk::full_bits>;
 using fp_full_exp  = fpk::exp_k<fpk::full_bits>;
 using fp_full_log  = fpk::log_k<fpk::full_bits>;
@@ -16781,7 +16406,7 @@ inline bool dd_full_attempt(const ddk::dd& x, Out& out) {
 
 // A lean attempt (its value, setting the bound) first, then the full one.
 template <insidable Out, typename Lean, typename Full>
-BEMAN_INSIDE_ALWAYS_INLINE inline bool dd_lean_first(const Lean& lean, const Full& full, Out& out) {
+[[gnu::always_inline]] inline bool dd_lean_first(const Lean& lean, const Full& full, Out& out) {
     double        bound;
     const ddk::dd v = lean(bound);
     if (dd_decide(v, bound * 1.5, out))
@@ -16867,7 +16492,7 @@ inline bool dd_attempt_pow(const InB& bi, const InE& ei, Out& out) {
             const ddk::dd y = ddk::mul(ddk::log_lean_value(b, bound), e);
             const double  L = fabs_d(y.Hi);
             if (!(L <= 700)) {
-                bound = BEMAN_INSIDE_INF();
+                bound = __builtin_inf();
                 return ddk::dd{0, 0};
             }
             const ddk::dd v = ddk::exp_lean_value(y);
@@ -17082,7 +16707,7 @@ inline constexpr bool unanchored_call = !anchored<Out> || (!anchored<Ins> || ...
 // Constant evaluation takes the integer path, and so does every call under
 // math::driver.IntegerOnly (BEMAN_INSIDE_MATH_INSTRUMENT).
 template <insidable Out, bool FP, bool DD, typename F, typename D, typename I>
-BEMAN_INSIDE_ALWAYS_INLINE constexpr auto
+[[gnu::always_inline]] constexpr auto
 tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integer_path) -> decltype(integer_path()) {
 #if BEMAN_INSIDE_MATH_INSTRUMENT
     const auto integer = [&] {
@@ -17616,8 +17241,6 @@ template <insidable InB, insidable InE>
 #undef BEMAN_INSIDE_AX_TIERS
 #undef BEMAN_INSIDE_AX_KERNEL_TIERS
 #undef BEMAN_INSIDE_AX_TABLE
-
-BEMAN_INSIDE_WARNINGS_POP
 
 
 
@@ -18171,8 +17794,6 @@ using adaptive::tanh;
 using adaptive::tanh_into;
 } // namespace beman::inside::math
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 #if !defined(BEMAN_INSIDE_NO_STRING) && !defined(BEMAN_INSIDE_NO_UNITS)
 
@@ -18180,7 +17801,6 @@ BEMAN_INSIDE_WARNINGS_POP
 //  beman/inside/constants.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 // ======================================================================
@@ -18227,7 +17847,6 @@ BEMAN_INSIDE_WARNINGS_PUSH
 // constants.hpp.
 //---------------------------------------------------------------------------
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 // ======================================================================
@@ -18250,7 +17869,6 @@ BEMAN_INSIDE_WARNINGS_PUSH
 // units.hpp builds on it (to_string and std::formatter of quantities).
 //---------------------------------------------------------------------------
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 #include <algorithm>
@@ -18554,10 +18172,9 @@ inline std::istream& operator>>(std::istream& stream, B& b) {
 // std::format integration is gated on a working <format>; without it this
 // compiles as a no-op and to_string()/operator<< remain.
 //---------------------------------------------------------------------------
-#if BEMAN_INSIDE_HAS_STD_FORMAT
 
-    #include <format>
-    #include <type_traits>
+#include <format>
+#include <type_traits>
 
 namespace beman::inside::detail {
 // Shared spec handling: an empty `{}` is left to the derived format() (exact
@@ -18888,10 +18505,6 @@ struct std::formatter<beman::inside::detail::rational>
                              ctx);
     }
 };
-
-#endif // BEMAN_INSIDE_HAS_STD_FORMAT
-
-BEMAN_INSIDE_WARNINGS_POP
 
 
 #include <algorithm>
@@ -20112,20 +19725,18 @@ class quantity {
     [[nodiscard]] constexpr auto numerical_value_in(units::unit_t<U>) const {
         return in<U>().numerical_value();
     }
-    BEMAN_INSIDE_DELETE_BEGIN
     template <units::unit U>
         requires(detail::in_error_of<R.U, U>() == detail::in_error::dimension)
-    void in() const = BEMAN_INSIDE_DELETE("units: in() - the unit has another dimension");
+    void in() const = delete ("units: in() - the unit has another dimension");
     template <units::unit U>
         requires(detail::in_error_of<R.U, U>() == detail::in_error::dimension)
-    void in(units::unit_t<U>) const = BEMAN_INSIDE_DELETE("units: in() - the unit has another dimension");
+    void in(units::unit_t<U>) const = delete ("units: in() - the unit has another dimension");
     template <units::unit U>
         requires(detail::in_error_of<R.U, U>() == detail::in_error::pi)
-    void in() const = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_UNITS_WHY_PI);
+    void in() const = delete (BEMAN_INSIDE_UNITS_WHY_PI);
     template <units::unit U>
         requires(detail::in_error_of<R.U, U>() == detail::in_error::pi)
-    void in(units::unit_t<U>) const = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_UNITS_WHY_PI);
-    BEMAN_INSIDE_DELETE_END
+    void in(units::unit_t<U>) const = delete (BEMAN_INSIDE_UNITS_WHY_PI);
 
     // A dimensionless quantity is a number: its value in unit one (km/m is
     // ×1000, % is ×1/100), into any inside that takes it — implicitly when
@@ -20136,12 +19747,10 @@ class quantity {
     constexpr explicit(!std::convertible_to<detail::number_t<R, Rep>, T>) operator T() const {
         return T(detail::rescale<detail::conversion_factor<R.U, units::unit{}>>(Num));
     }
-    BEMAN_INSIDE_DELETE_BEGIN
     template <insidable T>
         requires(dimension_of(R.U) == dim_one && !detail::number_like_v<R>)
-    operator T() const = BEMAN_INSIDE_DELETE("units: an angle (an is_kind quantity) or a pi-scaled ratio is no plain "
-                                             "number - read numerical_value(), or value_cast it first");
-    BEMAN_INSIDE_DELETE_END
+    operator T() const = delete ("units: an angle (an is_kind quantity) or a pi-scaled ratio is no plain "
+                                 "number - read numerical_value(), or value_cast it first");
 
     [[nodiscard]] constexpr auto operator+() const { return detail::make_quantity<R>(+Num); }
     [[nodiscard]] constexpr auto operator-() const { return detail::make_quantity<R>(-Num); }
@@ -20247,12 +19856,10 @@ template <insidable V, class Tag>
 [[nodiscard]] constexpr auto operator*(const V& v, Tag t) {
     return quantity<reference_of(t), V>{v};
 }
-BEMAN_INSIDE_DELETE_BEGIN
 template <class N, class Tag>
     requires is_reference_tag_v<Tag> && std::is_arithmetic_v<N>
 void operator*(N, Tag) =
-    BEMAN_INSIDE_DELETE("units: a raw number has no grid - write just<42> * unit, or quantity<unit, inside<…>>{42}");
-BEMAN_INSIDE_DELETE_END
+    delete ("units: a raw number has no grid - write just<42> * unit, or quantity<unit, inside<…>>{42}");
 // number / unit: 5 / s.
 template <insidable V, unit U>
 [[nodiscard]] constexpr auto operator/(const V& v, unit_t<U>) {
@@ -20391,27 +19998,24 @@ template <reference A, class VA, reference B, class VB>
     template <reference A, class VA, reference B, class VB>                                                    \
         requires(detail::sum_error_of<A, B>() == detail::sum_error::dimensions)                                \
     ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                                                   \
-        BEMAN_INSIDE_DELETE("units: adding or comparing quantities of different dimensions");                  \
+        delete ("units: adding or comparing quantities of different dimensions");                              \
     template <reference A, class VA, reference B, class VB>                                                    \
         requires(detail::sum_error_of<A, B>() == detail::sum_error::kinds)                                     \
     ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                                                   \
-        BEMAN_INSIDE_DELETE("units: adding or comparing quantities of different kinds");                       \
+        delete ("units: adding or comparing quantities of different kinds");                                   \
     template <reference A, class VA, reference B, class VB>                                                    \
         requires(detail::sum_error_of<A, B>() == detail::sum_error::pi)                                        \
-    ret op(const quantity<A, VA>&, const quantity<B, VB>&) = BEMAN_INSIDE_DELETE(                              \
+    ret op(const quantity<A, VA>&, const quantity<B, VB>&) = delete (                                          \
         "units: no common unit of a pi multiple and a rational one - convert one side with value_cast first"); \
     template <reference A, class VA, reference B, class VB>                                                    \
         requires(detail::sum_error_of<A, B>() == detail::sum_error::big_grids)                                 \
-    ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                                                   \
-        BEMAN_INSIDE_DELETE("units: the common unit needs C++26 big grids");
-BEMAN_INSIDE_DELETE_BEGIN
+    ret op(const quantity<A, VA>&, const quantity<B, VB>&) = delete ("units: the common unit needs C++26 big grids");
 BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator+)
 BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator-)
 BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator%)
 BEMAN_INSIDE_UNITS_SUM_DELETED(bool, operator==)
 BEMAN_INSIDE_UNITS_SUM_DELETED(std::strong_ordering, operator<=>)
 #undef BEMAN_INSIDE_UNITS_SUM_DELETED
-BEMAN_INSIDE_DELETE_END
 
 template <reference A, class VA, reference B, class VB>
     requires detail::number_op<VA, VB, '*'>
@@ -20458,24 +20062,18 @@ template <reference A, class VA, class Tag>
     return detail::make_quantity<detail::product_reference<A, reference_of(t), -1>()>(a.numerical_value());
 }
 // No raw scalars: q * 2 needs a grid for the 2.
-BEMAN_INSIDE_DELETE_BEGIN
 template <reference A, class VA, class N>
     requires std::is_arithmetic_v<N>
-void operator*(const quantity<A, VA>&,
-               N) = BEMAN_INSIDE_DELETE("units: a raw number has no grid - scale by just<2>, not 2");
+void operator*(const quantity<A, VA>&, N) = delete ("units: a raw number has no grid - scale by just<2>, not 2");
 template <reference A, class VA, class N>
     requires std::is_arithmetic_v<N>
-void operator*(N, const quantity<A, VA>&) =
-    BEMAN_INSIDE_DELETE("units: a raw number has no grid - scale by just<2>, not 2");
+void operator*(N, const quantity<A, VA>&) = delete ("units: a raw number has no grid - scale by just<2>, not 2");
 template <reference A, class VA, class N>
     requires std::is_arithmetic_v<N>
-void operator/(const quantity<A, VA>&,
-               N) = BEMAN_INSIDE_DELETE("units: a raw number has no grid - divide by just<2>, not 2");
+void operator/(const quantity<A, VA>&, N) = delete ("units: a raw number has no grid - divide by just<2>, not 2");
 template <reference A, class VA, class N>
     requires std::is_arithmetic_v<N>
-void operator/(N, const quantity<A, VA>&) =
-    BEMAN_INSIDE_DELETE("units: a raw number has no grid - divide by just<2>, not 2");
-BEMAN_INSIDE_DELETE_END
+void operator/(N, const quantity<A, VA>&) = delete ("units: a raw number has no grid - divide by just<2>, not 2");
 
 // pow<N>(q) — q·q·…·q (N ≥ 1): exact, the grid of each product.
 template <int N, reference R, class V>
@@ -20518,20 +20116,18 @@ template <auto Spec, reference R, class V>
 [[nodiscard]] constexpr auto quantity_cast(const quantity<R, V>& q) {
     return quantity_cast<decltype(Spec)>(q);
 }
-BEMAN_INSIDE_DELETE_BEGIN
 template <class SpecTag, reference R, class V>
     requires(detail::cast_error_of<R, SpecTag::value>() == detail::cast_error::dimension)
-void quantity_cast(const quantity<R, V>&) = BEMAN_INSIDE_DELETE("units: quantity_cast - another dimension");
+void quantity_cast(const quantity<R, V>&) = delete ("units: quantity_cast - another dimension");
 template <auto Spec, reference R, class V>
     requires(detail::cast_error_of<R, decltype(Spec)::value>() == detail::cast_error::dimension)
-void quantity_cast(const quantity<R, V>&) = BEMAN_INSIDE_DELETE("units: quantity_cast - another dimension");
+void quantity_cast(const quantity<R, V>&) = delete ("units: quantity_cast - another dimension");
 template <class SpecTag, reference R, class V>
     requires(detail::cast_error_of<R, SpecTag::value>() == detail::cast_error::is_kind)
-void quantity_cast(const quantity<R, V>&) = BEMAN_INSIDE_DELETE("units: quantity_cast - across an is_kind boundary");
+void quantity_cast(const quantity<R, V>&) = delete ("units: quantity_cast - across an is_kind boundary");
 template <auto Spec, reference R, class V>
     requires(detail::cast_error_of<R, decltype(Spec)::value>() == detail::cast_error::is_kind)
-void quantity_cast(const quantity<R, V>&) = BEMAN_INSIDE_DELETE("units: quantity_cast - across an is_kind boundary");
-BEMAN_INSIDE_DELETE_END
+void quantity_cast(const quantity<R, V>&) = delete ("units: quantity_cast - across an is_kind boundary");
 
 // value_cast<Rep2>(q) — another representation, the same unit: Rep2's
 // constructor (checked unless Rep2's policy says otherwise).
@@ -20898,15 +20494,13 @@ class quantity_point {
         return quantity<R, std::remove_cvref_t<decltype(detail::shift<c>(Q.numerical_value()))>>{
             detail::shift<c>(Q.numerical_value())};
     }
-    BEMAN_INSIDE_DELETE_BEGIN
     template <detail::origin_ref O2>
         requires(!detail::same(detail::absolute_of(O2), detail::absolute_of(O)))
-    void quantity_from(origin_t<O2>) const = BEMAN_INSIDE_DELETE("units: points of different absolute origins");
+    void quantity_from(origin_t<O2>) const = delete ("units: points of different absolute origins");
     template <detail::origin_ref O2>
         requires(detail::same(detail::absolute_of(O2), detail::absolute_of(O)) && magnitude_of(R.U).Pi != 0)
     void quantity_from(origin_t<O2>) const =
-        BEMAN_INSIDE_DELETE("units: an origin shift in a unit with a pi magnitude has no exact grid");
-    BEMAN_INSIDE_DELETE_END
+        delete ("units: an origin shift in a unit with a pi magnitude has no exact grid");
     // The quantity from the absolute origin of the dimension (absolute zero,
     // or the implicit zero): 20 ℃ → 293.15 K counted in ℃.
     [[nodiscard]] constexpr auto quantity_from_zero() const
@@ -21156,7 +20750,6 @@ std::ostream& operator<<(std::ostream& os, const quantity_point<R, O, V>& p) {
 
 } // namespace beman::inside::units
 
-#if BEMAN_INSIDE_HAS_STD_FORMAT
 // std::format: the spec formats the number as for its inside ({:.2f}, {:>8}),
 // then the unit symbol follows ("5 km", "90°").
 template <beman::inside::units::reference R, class V>
@@ -21185,7 +20778,6 @@ struct std::formatter<beman::inside::units::quantity_point<R, O, V>>
         return std::formatter<beman::inside::units::quantity<R, V>>::format(p.quantity_from_origin(), ctx);
     }
 };
-#endif // BEMAN_INSIDE_HAS_STD_FORMAT
 
 namespace beman::inside::units {
 //---------------------------------------------------------------------------
@@ -21462,8 +21054,6 @@ inline constexpr auto per_mille = unit_c<dimensionless_defs::per_mille>;
 
 #undef BEMAN_INSIDE_UNITS_WHY_PI
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 //---------------------------------------------------------------------------
 // constants.hpp — mathematical and physical constants.
@@ -21624,8 +21214,6 @@ inline constexpr auto vacuum_electric_permittivity = detail::one_of<codata2022::
 } // namespace constants
 } // namespace beman::inside::units
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 #endif // !BEMAN_INSIDE_NO_STRING && !BEMAN_INSIDE_NO_UNITS
 
@@ -21633,7 +21221,6 @@ BEMAN_INSIDE_WARNINGS_POP
 //  beman/inside/formats.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 //---------------------------------------------------------------------------
@@ -21701,8 +21288,6 @@ using wrap_counter = inside<{0, Max}, wrap>;
 
 } // namespace beman::inside
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 #ifndef BEMAN_INSIDE_NO_STRING
 
@@ -21712,7 +21297,6 @@ BEMAN_INSIDE_WARNINGS_POP
 //  beman/inside/numeric_limits.hpp
 // ======================================================================
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 
@@ -21844,8 +21428,6 @@ struct std::hash<beman::inside::inside<G, P>> {
     }
 };
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 #if __STDC_HOSTED__ && !defined(BEMAN_INSIDE_MATH_NO_FP)
 
@@ -21861,7 +21443,6 @@ BEMAN_INSIDE_WARNINGS_POP
 // BEMAN_INSIDE_MATH_NO_FP).
 //---------------------------------------------------------------------------
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 #include <bit>
@@ -21934,8 +21515,6 @@ template <insidable B, std::uniform_random_bit_generator G>
 }
 } // namespace beman::inside
 
-BEMAN_INSIDE_WARNINGS_POP
-
 
 #endif // __STDC_HOSTED__ && !BEMAN_INSIDE_MATH_NO_FP
 
@@ -21972,7 +21551,6 @@ BEMAN_INSIDE_WARNINGS_POP
 // under its rounding mode (the deduced forms take the input's grid).
 //---------------------------------------------------------------------------
 
-BEMAN_INSIDE_WARNINGS_PUSH
 
 
 #include <algorithm>
@@ -22362,27 +21940,23 @@ template <insidable Out, reference A, class VA, reference B, class VB>
 }
 // atan2 and hypot of two quantities that do not add (another dimension or
 // kind, no common unit).
-BEMAN_INSIDE_DELETE_BEGIN
 template <reference A, class VA, reference B, class VB>
     requires(detail::sum_diagnosed<A, B>())
 void atan2(const quantity<A, VA>&, const quantity<B, VB>&) =
-    BEMAN_INSIDE_DELETE("units: atan2 takes two quantities that add - one dimension and kind, a common unit");
+    delete ("units: atan2 takes two quantities that add - one dimension and kind, a common unit");
 template <reference A, class VA, reference B, class VB>
     requires(detail::sum_diagnosed<A, B>())
 void hypot(const quantity<A, VA>&, const quantity<B, VB>&) =
-    BEMAN_INSIDE_DELETE("units: hypot takes two quantities that add - one dimension and kind, a common unit");
+    delete ("units: hypot takes two quantities that add - one dimension and kind, a common unit");
 template <insidable Out, reference A, class VA, reference B, class VB>
     requires(detail::sum_diagnosed<A, B>())
 void atan2_into(const quantity<A, VA>&, const quantity<B, VB>&) =
-    BEMAN_INSIDE_DELETE("units: atan2 takes two quantities that add - one dimension and kind, a common unit");
+    delete ("units: atan2 takes two quantities that add - one dimension and kind, a common unit");
 template <insidable Out, reference A, class VA, reference B, class VB>
     requires(detail::sum_diagnosed<A, B>())
 void hypot_into(const quantity<A, VA>&, const quantity<B, VB>&) =
-    BEMAN_INSIDE_DELETE("units: hypot takes two quantities that add - one dimension and kind, a common unit");
-BEMAN_INSIDE_DELETE_END
+    delete ("units: hypot takes two quantities that add - one dimension and kind, a common unit");
 } // namespace beman::inside::units
-
-BEMAN_INSIDE_WARNINGS_POP
 
 
 #endif // !BEMAN_INSIDE_NO_STRING && !BEMAN_INSIDE_NO_UNITS

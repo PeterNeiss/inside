@@ -1,5 +1,4 @@
 // EXPECT: of different dimensions
-// REQUIRES: delete-reason
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // A base dimension of your own is a dimension like the SI ones: money does
 // not add to a length.

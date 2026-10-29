@@ -3,7 +3,6 @@
 #define BEMAN_INSIDE_NUMERIC_LIMITS_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/inside.hpp>
 
@@ -137,7 +136,5 @@ struct std::hash<beman::inside::inside<G, P>> {
             return std::hash<beman::inside::detail::raw_t<B>>{}(b.raw());
     }
 };
-
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_NUMERIC_LIMITS_HPP

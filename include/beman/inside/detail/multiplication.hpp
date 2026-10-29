@@ -3,7 +3,6 @@
 #define BEMAN_INSIDE_DETAIL_MULTIPLICATION_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/detail/rep.hpp>
 #include <beman/inside/generic.hpp>
@@ -93,7 +92,5 @@ inline constexpr bool mul_defined = [] {
     }
 }();
 } // namespace beman::inside::detail
-
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_MULTIPLICATION_HPP

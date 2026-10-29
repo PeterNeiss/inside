@@ -3,7 +3,6 @@
 #define BEMAN_INSIDE_DETAIL_ASSIGNMENT_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/detail/assign_exact.hpp> // the exact store and the out-of-range cascade
 #include <beman/inside/generic.hpp>
@@ -204,7 +203,7 @@ struct assignment<L, R> {
 
     // (Out of line, by value, for a double: its exact comparison has a cold
     // tail whose call would otherwise cost the inlined store registers.)
-    BEMAN_INSIDE_NOINLINE static constexpr bool below_lower(R rhs)
+    [[gnu::noinline]] static constexpr bool below_lower(R rhs)
         requires std::floating_point<R>
     {
         return huge(rhs) ? rhs < 0 : rhs < detail::lower64<L>;
@@ -309,7 +308,7 @@ struct assignment<L, R> {
     // saturates, as on the wide paths). A continuous L has no lattice to
     // fold in wide integers, and a point no period: still overflow.
     template <typename P, typename A, std::size_t K>
-    BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE static constexpr void
+    [[gnu::cold]] [[gnu::noinline]] static constexpr void
     wrap_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& action) {
         if constexpr (integer_storage<L> && !point_storage<L>)
             assign_exact<R>(lhs, v, policy, action);
@@ -326,7 +325,7 @@ struct assignment<L, R> {
         bool Exact;
     };
     template <typename P>
-    BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE static constexpr wide_slot_result wide_slot(const rational& v) {
+    [[gnu::cold]] [[gnu::noinline]] static constexpr wide_slot_result wide_slot(const rational& v) {
         const exact_index_result r = exact_index<L, rounding_for<L, P>>(exact_of(v));
         return {static_cast<umax>(r.Index), r.Exact}; // in range: fits 64 bits
     }
@@ -368,8 +367,7 @@ struct assignment<L, R> {
     // leaves lhs intact. The policy hears of it here; an on_error action,
     // which gets lhs, from store_fine_double.
     template <typename P, typename A>
-    BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE static constexpr fine_result_t
-    fine_double_value(double rhs, P policy, A action) {
+    [[gnu::cold]] [[gnu::noinline]] static constexpr fine_result_t fine_double_value(double rhs, P policy, A action) {
         L r = [] {
             if constexpr (rational_storage<L>)
                 return L::from_raw(detail::lower64<L>);
@@ -1074,7 +1072,5 @@ constexpr L& assign_grid_number(L& lhs, const big_rational& v, P&& policy) {
 }
 #endif
 } // namespace beman::inside::detail
-
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_ASSIGNMENT_HPP

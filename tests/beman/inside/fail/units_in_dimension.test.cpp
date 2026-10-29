@@ -1,5 +1,4 @@
 // EXPECT: the unit has another dimension
-// REQUIRES: delete-reason
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // A length in seconds: in() takes a unit of the quantity's dimension.
 #include <beman/inside/units.hpp>

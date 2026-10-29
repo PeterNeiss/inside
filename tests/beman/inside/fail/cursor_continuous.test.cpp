@@ -1,5 +1,4 @@
 // EXPECT: T has no notch
-// REQUIRES: gnu-message
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // cursor<T, Step> checks its step against T at compile time.
 #include <beman/inside/inside.hpp>

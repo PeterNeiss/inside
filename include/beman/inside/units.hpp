@@ -43,7 +43,6 @@
 #define BEMAN_INSIDE_UNITS_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
@@ -1267,20 +1266,18 @@ class quantity {
     [[nodiscard]] constexpr auto numerical_value_in(units::unit_t<U>) const {
         return in<U>().numerical_value();
     }
-    BEMAN_INSIDE_DELETE_BEGIN
     template <units::unit U>
         requires(detail::in_error_of<R.U, U>() == detail::in_error::dimension)
-    void in() const = BEMAN_INSIDE_DELETE("units: in() - the unit has another dimension");
+    void in() const = delete ("units: in() - the unit has another dimension");
     template <units::unit U>
         requires(detail::in_error_of<R.U, U>() == detail::in_error::dimension)
-    void in(units::unit_t<U>) const = BEMAN_INSIDE_DELETE("units: in() - the unit has another dimension");
+    void in(units::unit_t<U>) const = delete ("units: in() - the unit has another dimension");
     template <units::unit U>
         requires(detail::in_error_of<R.U, U>() == detail::in_error::pi)
-    void in() const = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_UNITS_WHY_PI);
+    void in() const = delete (BEMAN_INSIDE_UNITS_WHY_PI);
     template <units::unit U>
         requires(detail::in_error_of<R.U, U>() == detail::in_error::pi)
-    void in(units::unit_t<U>) const = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_UNITS_WHY_PI);
-    BEMAN_INSIDE_DELETE_END
+    void in(units::unit_t<U>) const = delete (BEMAN_INSIDE_UNITS_WHY_PI);
 
     // A dimensionless quantity is a number: its value in unit one (km/m is
     // ×1000, % is ×1/100), into any inside that takes it — implicitly when
@@ -1291,12 +1288,10 @@ class quantity {
     constexpr explicit(!std::convertible_to<detail::number_t<R, Rep>, T>) operator T() const {
         return T(detail::rescale<detail::conversion_factor<R.U, units::unit{}>>(Num));
     }
-    BEMAN_INSIDE_DELETE_BEGIN
     template <insidable T>
         requires(dimension_of(R.U) == dim_one && !detail::number_like_v<R>)
-    operator T() const = BEMAN_INSIDE_DELETE("units: an angle (an is_kind quantity) or a pi-scaled ratio is no plain "
-                                             "number - read numerical_value(), or value_cast it first");
-    BEMAN_INSIDE_DELETE_END
+    operator T() const = delete ("units: an angle (an is_kind quantity) or a pi-scaled ratio is no plain "
+                                 "number - read numerical_value(), or value_cast it first");
 
     [[nodiscard]] constexpr auto operator+() const { return detail::make_quantity<R>(+Num); }
     [[nodiscard]] constexpr auto operator-() const { return detail::make_quantity<R>(-Num); }
@@ -1402,12 +1397,10 @@ template <insidable V, class Tag>
 [[nodiscard]] constexpr auto operator*(const V& v, Tag t) {
     return quantity<reference_of(t), V>{v};
 }
-BEMAN_INSIDE_DELETE_BEGIN
 template <class N, class Tag>
     requires is_reference_tag_v<Tag> && std::is_arithmetic_v<N>
 void operator*(N, Tag) =
-    BEMAN_INSIDE_DELETE("units: a raw number has no grid - write just<42> * unit, or quantity<unit, inside<…>>{42}");
-BEMAN_INSIDE_DELETE_END
+    delete ("units: a raw number has no grid - write just<42> * unit, or quantity<unit, inside<…>>{42}");
 // number / unit: 5 / s.
 template <insidable V, unit U>
 [[nodiscard]] constexpr auto operator/(const V& v, unit_t<U>) {
@@ -1546,27 +1539,24 @@ template <reference A, class VA, reference B, class VB>
     template <reference A, class VA, reference B, class VB>                                                    \
         requires(detail::sum_error_of<A, B>() == detail::sum_error::dimensions)                                \
     ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                                                   \
-        BEMAN_INSIDE_DELETE("units: adding or comparing quantities of different dimensions");                  \
+        delete ("units: adding or comparing quantities of different dimensions");                              \
     template <reference A, class VA, reference B, class VB>                                                    \
         requires(detail::sum_error_of<A, B>() == detail::sum_error::kinds)                                     \
     ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                                                   \
-        BEMAN_INSIDE_DELETE("units: adding or comparing quantities of different kinds");                       \
+        delete ("units: adding or comparing quantities of different kinds");                                   \
     template <reference A, class VA, reference B, class VB>                                                    \
         requires(detail::sum_error_of<A, B>() == detail::sum_error::pi)                                        \
-    ret op(const quantity<A, VA>&, const quantity<B, VB>&) = BEMAN_INSIDE_DELETE(                              \
+    ret op(const quantity<A, VA>&, const quantity<B, VB>&) = delete (                                          \
         "units: no common unit of a pi multiple and a rational one - convert one side with value_cast first"); \
     template <reference A, class VA, reference B, class VB>                                                    \
         requires(detail::sum_error_of<A, B>() == detail::sum_error::big_grids)                                 \
-    ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                                                   \
-        BEMAN_INSIDE_DELETE("units: the common unit needs C++26 big grids");
-BEMAN_INSIDE_DELETE_BEGIN
+    ret op(const quantity<A, VA>&, const quantity<B, VB>&) = delete ("units: the common unit needs C++26 big grids");
 BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator+)
 BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator-)
 BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator%)
 BEMAN_INSIDE_UNITS_SUM_DELETED(bool, operator==)
 BEMAN_INSIDE_UNITS_SUM_DELETED(std::strong_ordering, operator<=>)
 #undef BEMAN_INSIDE_UNITS_SUM_DELETED
-BEMAN_INSIDE_DELETE_END
 
 template <reference A, class VA, reference B, class VB>
     requires detail::number_op<VA, VB, '*'>
@@ -1613,24 +1603,18 @@ template <reference A, class VA, class Tag>
     return detail::make_quantity<detail::product_reference<A, reference_of(t), -1>()>(a.numerical_value());
 }
 // No raw scalars: q * 2 needs a grid for the 2.
-BEMAN_INSIDE_DELETE_BEGIN
 template <reference A, class VA, class N>
     requires std::is_arithmetic_v<N>
-void operator*(const quantity<A, VA>&,
-               N) = BEMAN_INSIDE_DELETE("units: a raw number has no grid - scale by just<2>, not 2");
+void operator*(const quantity<A, VA>&, N) = delete ("units: a raw number has no grid - scale by just<2>, not 2");
 template <reference A, class VA, class N>
     requires std::is_arithmetic_v<N>
-void operator*(N, const quantity<A, VA>&) =
-    BEMAN_INSIDE_DELETE("units: a raw number has no grid - scale by just<2>, not 2");
+void operator*(N, const quantity<A, VA>&) = delete ("units: a raw number has no grid - scale by just<2>, not 2");
 template <reference A, class VA, class N>
     requires std::is_arithmetic_v<N>
-void operator/(const quantity<A, VA>&,
-               N) = BEMAN_INSIDE_DELETE("units: a raw number has no grid - divide by just<2>, not 2");
+void operator/(const quantity<A, VA>&, N) = delete ("units: a raw number has no grid - divide by just<2>, not 2");
 template <reference A, class VA, class N>
     requires std::is_arithmetic_v<N>
-void operator/(N, const quantity<A, VA>&) =
-    BEMAN_INSIDE_DELETE("units: a raw number has no grid - divide by just<2>, not 2");
-BEMAN_INSIDE_DELETE_END
+void operator/(N, const quantity<A, VA>&) = delete ("units: a raw number has no grid - divide by just<2>, not 2");
 
 // pow<N>(q) — q·q·…·q (N ≥ 1): exact, the grid of each product.
 template <int N, reference R, class V>
@@ -1673,20 +1657,18 @@ template <auto Spec, reference R, class V>
 [[nodiscard]] constexpr auto quantity_cast(const quantity<R, V>& q) {
     return quantity_cast<decltype(Spec)>(q);
 }
-BEMAN_INSIDE_DELETE_BEGIN
 template <class SpecTag, reference R, class V>
     requires(detail::cast_error_of<R, SpecTag::value>() == detail::cast_error::dimension)
-void quantity_cast(const quantity<R, V>&) = BEMAN_INSIDE_DELETE("units: quantity_cast - another dimension");
+void quantity_cast(const quantity<R, V>&) = delete ("units: quantity_cast - another dimension");
 template <auto Spec, reference R, class V>
     requires(detail::cast_error_of<R, decltype(Spec)::value>() == detail::cast_error::dimension)
-void quantity_cast(const quantity<R, V>&) = BEMAN_INSIDE_DELETE("units: quantity_cast - another dimension");
+void quantity_cast(const quantity<R, V>&) = delete ("units: quantity_cast - another dimension");
 template <class SpecTag, reference R, class V>
     requires(detail::cast_error_of<R, SpecTag::value>() == detail::cast_error::is_kind)
-void quantity_cast(const quantity<R, V>&) = BEMAN_INSIDE_DELETE("units: quantity_cast - across an is_kind boundary");
+void quantity_cast(const quantity<R, V>&) = delete ("units: quantity_cast - across an is_kind boundary");
 template <auto Spec, reference R, class V>
     requires(detail::cast_error_of<R, decltype(Spec)::value>() == detail::cast_error::is_kind)
-void quantity_cast(const quantity<R, V>&) = BEMAN_INSIDE_DELETE("units: quantity_cast - across an is_kind boundary");
-BEMAN_INSIDE_DELETE_END
+void quantity_cast(const quantity<R, V>&) = delete ("units: quantity_cast - across an is_kind boundary");
 
 // value_cast<Rep2>(q) — another representation, the same unit: Rep2's
 // constructor (checked unless Rep2's policy says otherwise).
@@ -2053,15 +2035,13 @@ class quantity_point {
         return quantity<R, std::remove_cvref_t<decltype(detail::shift<c>(Q.numerical_value()))>>{
             detail::shift<c>(Q.numerical_value())};
     }
-    BEMAN_INSIDE_DELETE_BEGIN
     template <detail::origin_ref O2>
         requires(!detail::same(detail::absolute_of(O2), detail::absolute_of(O)))
-    void quantity_from(origin_t<O2>) const = BEMAN_INSIDE_DELETE("units: points of different absolute origins");
+    void quantity_from(origin_t<O2>) const = delete ("units: points of different absolute origins");
     template <detail::origin_ref O2>
         requires(detail::same(detail::absolute_of(O2), detail::absolute_of(O)) && magnitude_of(R.U).Pi != 0)
     void quantity_from(origin_t<O2>) const =
-        BEMAN_INSIDE_DELETE("units: an origin shift in a unit with a pi magnitude has no exact grid");
-    BEMAN_INSIDE_DELETE_END
+        delete ("units: an origin shift in a unit with a pi magnitude has no exact grid");
     // The quantity from the absolute origin of the dimension (absolute zero,
     // or the implicit zero): 20 ℃ → 293.15 K counted in ℃.
     [[nodiscard]] constexpr auto quantity_from_zero() const
@@ -2311,7 +2291,6 @@ std::ostream& operator<<(std::ostream& os, const quantity_point<R, O, V>& p) {
 
 } // namespace beman::inside::units
 
-#if BEMAN_INSIDE_HAS_STD_FORMAT
 // std::format: the spec formats the number as for its inside ({:.2f}, {:>8}),
 // then the unit symbol follows ("5 km", "90°").
 template <beman::inside::units::reference R, class V>
@@ -2340,7 +2319,6 @@ struct std::formatter<beman::inside::units::quantity_point<R, O, V>>
         return std::formatter<beman::inside::units::quantity<R, V>>::format(p.quantity_from_origin(), ctx);
     }
 };
-#endif // BEMAN_INSIDE_HAS_STD_FORMAT
 
 namespace beman::inside::units {
 //---------------------------------------------------------------------------
@@ -2616,7 +2594,5 @@ inline constexpr auto per_mille = unit_c<dimensionless_defs::per_mille>;
 } // namespace beman::inside::units
 
 #undef BEMAN_INSIDE_UNITS_WHY_PI
-
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_UNITS_HPP

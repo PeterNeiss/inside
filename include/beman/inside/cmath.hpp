@@ -3,7 +3,6 @@
 #define BEMAN_INSIDE_CMATH_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/detail/math_constants.hpp>
@@ -562,7 +561,5 @@ using adaptive::tan_into;
 using adaptive::tanh;
 using adaptive::tanh_into;
 } // namespace beman::inside::math
-
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_CMATH_HPP

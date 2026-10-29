@@ -381,8 +381,8 @@ TEST(ConsistencyTest, predicates_round_before_the_range_check) {
 // `%` and snap `/` with a literal take the native integer paths.
 namespace {
 struct with_point {
-    BEMAN_INSIDE_NO_UNIQUE_ADDRESS decltype(just<440>) Pitch; // [[msvc::no_unique_address]] on MSVC
-    std::uint32_t                                      Frames;
+    [[no_unique_address]] decltype(just<440>) Pitch;
+    std::uint32_t                             Frames;
 };
 } // namespace
 

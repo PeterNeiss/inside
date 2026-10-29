@@ -12,7 +12,6 @@
 #define BEMAN_INSIDE_CORE_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/generic.hpp>
 #include <beman/inside/detail/wide_value.hpp>
@@ -91,7 +90,7 @@ struct inside {
     using raw_type     = detail::raw_for_t<G>;
 
   private:
-    BEMAN_INSIDE_NO_UNIQUE_ADDRESS raw_type Raw; // empty for a point grid
+    [[no_unique_address]] raw_type Raw; // empty for a point grid
 
   public:
     // raw() — access escape hatch, symmetric with `from_raw`. Read overload
@@ -884,8 +883,7 @@ namespace detail {
 // 1e-200): the text parsed exactly, or past that width as a tiny or huge
 // value's stand-in. Out of line: the common parse stays small.
 template <insidable B, policy_flag F>
-BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::expected<B, errc> parse_wide(const char* first,
-                                                                                    const char* last) {
+[[gnu::cold]] [[gnu::noinline]] constexpr std::expected<B, errc> parse_wide(const char* first, const char* last) {
     constexpr std::size_t K = exact_max<exact_limbs<B>, parse_limbs>;
     auto                  w = parse_exact<K>(first, last);
     if (!w && w.error() == errc::overflow)
@@ -1006,7 +1004,5 @@ template <beman::inside::grid G, beman::inside::policy_flag P>
 struct std::indirectly_readable_traits<beman::inside::inside<G, P>> {
     using value_type = beman::inside::detail::cursor_value_t<G, P>;
 };
-
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_CORE_HPP

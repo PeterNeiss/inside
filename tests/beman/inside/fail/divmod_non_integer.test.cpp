@@ -1,5 +1,4 @@
 // EXPECT: divmod requires integer-valued grids
-// REQUIRES: delete-reason
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // divmod rounds an integer quotient, so like `%` it is integer-only.
 #include <beman/inside/inside.hpp>

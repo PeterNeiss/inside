@@ -3,7 +3,6 @@
 #define BEMAN_INSIDE_GRID_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 #include <algorithm>
 
 #include <beman/inside/lift.hpp>
@@ -809,7 +808,5 @@ template <std::same_as<grid> G>
     return detail::lift([iv](detail::grid_rational g) { return grid{iv, g}; }, n);
 }
 } // namespace beman::inside
-
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_GRID_HPP

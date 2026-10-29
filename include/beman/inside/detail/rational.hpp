@@ -3,7 +3,6 @@
 #define BEMAN_INSIDE_DETAIL_RATIONAL_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/numbers.hpp>           // umax/imax, arithmetic, rational fwd
 #include <beman/inside/detail/float_bits.hpp> // abs_fraction, is_double_value
@@ -436,7 +435,7 @@ constexpr std::expected<T, errc> rational::to() const {
 // numerator and lcm in 3 limbs, reduced, then checked to fit (a sum can
 // reduce back into range: (2^63+1)/2 + 1/6 = (3·2^62+2)/3).
 template <bool Loud>
-BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::expected<rational, errc> add_wide(rational a, rational b) {
+[[gnu::cold]] [[gnu::noinline]] constexpr std::expected<rational, errc> add_wide(rational a, rational b) {
     using W       = wide_sint<3>;
     const umax ad = abs_den(a.Denominator), bd = abs_den(b.Denominator), g = std::gcd(ad, bd);
     const W    an  = a.Denominator < 0 ? -W{a.Numerator} : W{a.Numerator};
@@ -765,8 +764,8 @@ template <plain_number T>
 // truncates): |lhs| = N/D against |rhs| = s·2^-k (k > 62) as N·2^k against
 // s·D, which stays within two 64-bit factors. Cold and out of line: the
 // stores compare doubles with their limits.
-[[nodiscard]] BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::strong_ordering
-compare_fine_double(const rational& lhs, double rhs) {
+[[nodiscard]] [[gnu::cold]] [[gnu::noinline]] constexpr std::strong_ordering compare_fine_double(const rational& lhs,
+                                                                                                 double          rhs) {
     const int ls = sign(lhs), rs = rhs < 0 ? -1 : 1;
     if (ls != rs)
         return ls <=> rs;
@@ -987,7 +986,5 @@ template <umax D>
 inline constexpr detail::rational per = detail::make_per<D>();
 
 } // namespace beman::inside
-
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_DETAIL_RATIONAL_HPP

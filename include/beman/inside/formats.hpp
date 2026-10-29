@@ -3,7 +3,6 @@
 #define BEMAN_INSIDE_FORMATS_HPP
 
 #include <beman/inside/detail/config.hpp>
-BEMAN_INSIDE_WARNINGS_PUSH
 
 #include <beman/inside/inside.hpp>
 
@@ -71,7 +70,5 @@ template <umax Max>
 using wrap_counter = inside<{0, Max}, wrap>;
 
 } // namespace beman::inside
-
-BEMAN_INSIDE_WARNINGS_POP
 
 #endif // BEMAN_INSIDE_FORMATS_HPP

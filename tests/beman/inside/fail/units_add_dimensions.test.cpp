@@ -1,5 +1,4 @@
 // EXPECT: of different dimensions
-// REQUIRES: delete-reason
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // A length and a duration do not add.
 #include <beman/inside/units.hpp>
