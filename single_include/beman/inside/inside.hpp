@@ -16651,21 +16651,14 @@ template <insidable Out, typename V>
 constexpr Out store_value(const V& v) {
     return Out{v};
 }
-} // namespace detail
 
-// The constants (math::pi, math::e, …) are in detail/math_constants.hpp.
-
-namespace detail {
-// Grid-number helpers for the algebraic tier's deduced outputs: exact for
-// grid numbers of any size.
-constexpr grid_rational grid_abs(const grid_rational& r) { return r < 0 ? -r : r; }
+// The sign of a grid number, for the deduced sign() output.
 constexpr grid_rational grid_sign(const grid_rational& r) { return grid_rational{(r > 0) - (r < 0)}; }
 
 // max(|Lower|, |Upper|): sizes the abs and copysign outputs.
 template <insidable In>
-inline constexpr grid_rational abs_result_upper = grid_abs(lower_of<In>) > grid_abs(upper_of<In>)
-                                                      ? grid_abs(lower_of<In>)
-                                                      : grid_abs(upper_of<In>);
+inline constexpr grid_rational abs_result_upper = abs(lower_of<In>) > abs(upper_of<In>) ? abs(lower_of<In>)
+                                                                                        : abs(upper_of<In>);
 
 // The lattice of ±x: x's notch, refined by 2·Lower when x's lattice does
 // not pass through 0 (±(0.25 + k/2) lie on 0.25 + ℤ/2; ±(0.5 + k) on ℤ/2).
@@ -16705,10 +16698,9 @@ using sign_result_t = inside<{grid_sign(lower_of<In>), grid_sign(upper_of<In>)},
 // [m_lo, m_hi] (m_lo = 0 when mag's interval spans 0); ±|mag| lies on
 // sym_notch's lattice (mag's own when it passes through 0).
 template <insidable Mag>
-inline constexpr grid_rational abs_result_lower =
-    (lower_of<Mag> <= 0 && upper_of<Mag> >= 0)            ? sym_floor<Mag>
-    : (grid_abs(lower_of<Mag>) < grid_abs(upper_of<Mag>)) ? grid_abs(lower_of<Mag>)
-                                                          : grid_abs(upper_of<Mag>);
+inline constexpr grid_rational abs_result_lower = (lower_of<Mag> <= 0 && upper_of<Mag> >= 0)  ? sym_floor<Mag>
+                                                  : (abs(lower_of<Mag>) < abs(upper_of<Mag>)) ? abs(lower_of<Mag>)
+                                                                                              : abs(upper_of<Mag>);
 
 template <insidable Mag, insidable Sgn>
 using copysign_result_t = inside<exact_out_grid({lower_of<Sgn> < 0 ? -abs_result_upper<Mag> : abs_result_lower<Mag>,
@@ -16754,12 +16746,9 @@ inline constexpr bool int_direct = [] {
                   !anchored<In> || wide_valued<In> || wide_valued<Out>)
         return false;
     else {
-        const rational n  = notch64<In>;
-        const auto     lo = lower64<In> / n, hi = upper64<In> / n;
-        if (!lo || !hi)
-            return false;
-        const umax m = lo->Numerator > hi->Numerator ? lo->Numerator : hi->Numerator; // max |J|
-        return m <= static_cast<umax>(std::numeric_limits<imax>::max()) / n.Numerator;
+        const umax m = index_lo64<In>->Numerator > index_hi64<In>->Numerator ? index_lo64<In>->Numerator
+                                                                             : index_hi64<In>->Numerator; // max |J|
+        return m <= static_cast<umax>(std::numeric_limits<imax>::max()) / notch64<In>.Numerator;
     }
 }();
 
@@ -16876,38 +16865,32 @@ namespace detail {
 //   * all unit counts fit comfortably in imax (headroom 4).
 template <insidable Out, insidable InX, insidable InY>
 inline constexpr bool fmod_int_fast = [] {
-    if (!::beman::inside::detail::notched<InX> || !::beman::inside::detail::notched<InY> ||
-        !::beman::inside::detail::notched<Out>)
+    if (!notched<InX> || !notched<InY> || !notched<Out>)
         return false;
     // (y != 0 is fmod_nonzero's precondition.) Lower/g must be an integer:
     // the lattices pass through 0.
-    if (!::beman::inside::detail::anchored<InX> || !::beman::inside::detail::anchored<InY> ||
-        !::beman::inside::detail::anchored<Out>)
+    if (!anchored<InX> || !anchored<InY> || !anchored<Out>)
         return false;
-    auto go = gcd(::beman::inside::detail::notch64<InX>, ::beman::inside::detail::notch64<InY>);
+    auto go = gcd(notch64<InX>, notch64<InY>);
     if (!go.has_value())
         return false;
     rational g = *go;
     // (try_ ops: a quotient past 64 bits makes the fast path inapplicable,
     // not the build fail.)
-    auto qo = try_div(g, ::beman::inside::detail::notch64<Out>);
+    auto qo = try_div(g, notch64<Out>);
     if (!qo.has_value() || abs_den(qo->Denominator) != 1)
         return false;
-    rational maxx = abs(::beman::inside::detail::lower64<InX>) > abs(::beman::inside::detail::upper64<InX>)
-                        ? abs(::beman::inside::detail::lower64<InX>)
-                        : abs(::beman::inside::detail::upper64<InX>);
-    rational maxy = abs(::beman::inside::detail::lower64<InY>) > abs(::beman::inside::detail::upper64<InY>)
-                        ? abs(::beman::inside::detail::lower64<InY>)
-                        : abs(::beman::inside::detail::upper64<InY>);
+    rational maxx = abs(lower64<InX>) > abs(upper64<InX>) ? abs(lower64<InX>) : abs(upper64<InX>);
+    rational maxy = abs(lower64<InY>) > abs(upper64<InY>) ? abs(lower64<InY>) : abs(upper64<InY>);
     // Out holds every remainder: |r| ≤ min(max|x|, max|y|), with x's sign.
     const rational bound = maxx < maxy ? maxx : maxy;
-    if (::beman::inside::detail::lower64<Out> > (::beman::inside::detail::lower64<InX> < 0 ? -bound : rational{0}) ||
-        ::beman::inside::detail::upper64<Out> < (::beman::inside::detail::upper64<InX> > 0 ? bound : rational{0}))
+    if (lower64<Out> > (lower64<InX> < 0 ? -bound : rational{0}) ||
+        upper64<Out> < (upper64<InX> > 0 ? bound : rational{0}))
         return false;
     constexpr umax lim = static_cast<umax>(std::numeric_limits<imax>::max() / 4);
     auto           ux  = try_div(maxx, g);
     auto           uy  = try_div(maxy, g);
-    auto           uo  = try_div(maxy, ::beman::inside::detail::notch64<Out>);
+    auto           uo  = try_div(maxy, notch64<Out>);
     return ux.has_value() && uy.has_value() && uo.has_value() && ux->Numerator <= lim && uy->Numerator <= lim &&
            uo->Numerator <= lim;
 }();
@@ -16922,7 +16905,7 @@ template <insidable Out, insidable InX, insidable InY>
         constexpr std::size_t E =
             2 * (detail::ax::input_limbs<InX> > detail::ax::input_limbs<InY> ? detail::ax::input_limbs<InX>
                                                                              : detail::ax::input_limbs<InY>)+1;
-        using F = beman::inside::detail::wide_rational<E>;
+        using F = detail::wide_rational<E>;
         const F    a{detail::ax::exact_input(x)}, b{detail::ax::exact_input(y)};
         const auto q = (a.Num * b.Den) / (a.Den * b.Num); // truncated
         return detail::store_exact<Out>(a + F{-(q * b.Num), b.Den});
@@ -16931,19 +16914,17 @@ template <insidable Out, insidable InX, insidable InY>
         return exact();
     else if constexpr (detail::fmod_int_fast<Out, InX, InY>) {
         // One integer remainder in g-units; bit-identical to the rational path.
-        constexpr rational g =
-            *beman::inside::detail::gcd(::beman::inside::detail::notch64<InX>, ::beman::inside::detail::notch64<InY>);
-        constexpr imax wx  = trunc((::beman::inside::detail::notch64<InX> / g).value());
-        constexpr imax wy  = trunc((::beman::inside::detail::notch64<InY> / g).value());
-        constexpr imax wo  = trunc((g / ::beman::inside::detail::notch64<Out>).value());
-        constexpr imax lox = trunc((::beman::inside::detail::lower64<InX> / g).value()); // exact: grid invariant
-        constexpr imax loy = trunc((::beman::inside::detail::lower64<InY> / g).value());
-        constexpr imax loo =
-            trunc((::beman::inside::detail::lower64<Out> / ::beman::inside::detail::notch64<Out>).value());
-        const imax a = beman::inside::detail::raw_imax(x) * wx + (beman::inside::detail::index_storage<InX> ? lox : 0);
-        const imax b = beman::inside::detail::raw_imax(y) * wy + (beman::inside::detail::index_storage<InY> ? loy : 0);
-        const imax r = a % b; // |r| < |b|, in Out's range
-        return Out::from_raw(beman::inside::detail::raw_from_offset<Out>(r * wo - loo));
+        constexpr rational g   = *detail::gcd(detail::notch64<InX>, detail::notch64<InY>);
+        constexpr imax     wx  = trunc((detail::notch64<InX> / g).value());
+        constexpr imax     wy  = trunc((detail::notch64<InY> / g).value());
+        constexpr imax     wo  = trunc((g / detail::notch64<Out>).value());
+        constexpr imax     lox = trunc((detail::lower64<InX> / g).value()); // exact: grid invariant
+        constexpr imax     loy = trunc((detail::lower64<InY> / g).value());
+        constexpr imax     loo = trunc((detail::lower64<Out> / detail::notch64<Out>).value());
+        const imax         a   = detail::raw_imax(x) * wx + (detail::index_storage<InX> ? lox : 0);
+        const imax         b   = detail::raw_imax(y) * wy + (detail::index_storage<InY> ? loy : 0);
+        const imax         r   = a % b; // |r| < |b|, in Out's range
+        return Out::from_raw(detail::raw_from_offset<Out>(r * wo - loo));
     } else {
         // In 64-bit rationals while every step fits (the quotient within
         // imax); else exactly — the remainder itself always fits Out.
