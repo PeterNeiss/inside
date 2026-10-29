@@ -8658,10 +8658,7 @@ struct division {
         const M          step = of(grid_of<R>.value_unit()).Mag;
         signed_mag       divisors[4];
         int              n = 0;
-        if (!lo.Neg && lo.Mag != M{0}) {
-            divisors[n++] = lo;
-            divisors[n++] = hi;
-        } else if (hi.Neg) {
+        if ((!lo.Neg && lo.Mag != M{0}) || hi.Neg) { // zero-free: the limits
             divisors[n++] = lo;
             divisors[n++] = hi;
         } else {
@@ -8698,7 +8695,7 @@ struct division {
         else if constexpr (native_div_fixed) {
             constexpr interval q = (*(grid_of<L> / grid_of<R>)).Interval;
             // An endpoint on the notch stays; one off it rounds onto it.
-            constexpr rational n = detail::notch64<L>, k = (rational{1} / n).value();
+            constexpr rational n = notch64<L>, k = (rational{1} / n).value();
             auto               on = [&](const grid_rational& x, bool up) {
                 return grid_divides_evenly(x, notch_of<L>)
                            ? to_rational(x)
@@ -8780,10 +8777,8 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
     // `result` (divisor excludes zero, no overflow); there every call to it is
     // removed by the guards below, so the final arm is dead (return-type only).
     [[maybe_unused]] auto fail = [&]([[maybe_unused]] errc code) -> return_t<A> {
-        if constexpr (overflow_action<plain_t<A>>)
-            return report_or_unexpected<result>(action, policy, code); // -> result
-        else if constexpr (!divisor_excludes_zero<R> || may_overflow_nonzero)
-            return report_or_unexpected<result>(action, policy, code); // -> expected<result, errc>
+        if constexpr (overflow_action<plain_t<A>> || !divisor_excludes_zero<R> || may_overflow_nonzero)
+            return report_or_unexpected<result>(action, policy, code); // result, or expected<result, errc>
         else
             return result{}; // unreachable: divisor excludes zero, op cannot fail
     };
@@ -8906,7 +8901,7 @@ struct modulo {
     static constexpr bool native_mod = integer_native_ops<L, R, FS>;
 
     static constexpr grid_rational max_rem =
-        lift_unwrap((abs(lower_of<R>) > abs(upper_of<R>) ? abs(lower_of<R>) : abs(upper_of<R>)) - grid_rational{1});
+        (abs(lower_of<R>) > abs(upper_of<R>) ? abs(lower_of<R>) : abs(upper_of<R>)) - grid_rational{1};
 
     static constexpr round_mode rmode = rounding_of(F | flags_of<L> | flags_of<R>);
 
@@ -10669,11 +10664,7 @@ template <insidable Out, policy_flag F = none, insidable A, insidable B>
     else {
         if (b == 0)
             return std::unexpected{errc::division_by_zero};
-        errc      ec{};
-        const Out out = quotient(make_policy<flags_of<Out> | F>(ec));
-        if (ec != errc{})
-            return std::unexpected{ec};
-        return out;
+        return detail::try_store<Out, flags_of<Out> | F>([&](Out& out, auto&& policy) { out = quotient(policy); });
     }
 }
 

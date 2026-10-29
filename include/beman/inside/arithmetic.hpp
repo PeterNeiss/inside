@@ -246,11 +246,7 @@ template <insidable Out, policy_flag F = none, insidable A, insidable B>
     else {
         if (b == 0)
             return std::unexpected{errc::division_by_zero};
-        errc      ec{};
-        const Out out = quotient(make_policy<flags_of<Out> | F>(ec));
-        if (ec != errc{})
-            return std::unexpected{ec};
-        return out;
+        return detail::try_store<Out, flags_of<Out> | F>([&](Out& out, auto&& policy) { out = quotient(policy); });
     }
 }
 
