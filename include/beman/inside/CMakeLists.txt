@@ -31,6 +31,7 @@ target_sources(
                 detail/math_dd.hpp
                 detail/math_entry.hpp
                 detail/math_fp.hpp
+                detail/math_tiers.hpp
                 detail/multiplication.hpp
                 detail/number_text.hpp
                 detail/op_result.hpp

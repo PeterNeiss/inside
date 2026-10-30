@@ -11095,6 +11095,12 @@ inline constexpr auto zeta3       = just<rational{461424925, 383862797}>;   // A
 
 
 // ======================================================================
+//  beman/inside/detail/math_tiers.hpp
+// ======================================================================
+
+
+
+// ======================================================================
 //  beman/inside/detail/math_cores.hpp
 // ======================================================================
 
@@ -14956,17 +14962,10 @@ inline D acos_lean(D x, double& bound) noexcept {
 
 
 //---------------------------------------------------------------------------
-// beman::inside::math::adaptive — the math engine behind cmath.hpp (which
-// states the guarantee). The decision step and the driver are in
-// detail/math_adaptive.hpp. Domains are the mathematical ones; a result past
-// Out's range goes through Out's policy, as any assignment.
-//
-// Each call takes the first tier that applies: a compile-time table for
-// small inputs; the double kernels (detail/math_fp.hpp), then the dd kernels
-// (detail/math_dd.hpp), each returning a result only when its error bound
-// decides the slot; and the integer path (detail/math_cores.hpp: exact square
-// and cube roots, series in wide fixed point), which decides every result and is the only
-// tier at compile time and without an FPU.
+// The double and dd tiers of the math engine (detail/math_entry.hpp): which
+// kernel applies to an Out and its inputs, the per-call error bound, and the
+// decision that turns a kernel's value into a slot when that bound allows.
+// Without an FPU (BEMAN_INSIDE_MATH_NO_FP) both tiers are off.
 //---------------------------------------------------------------------------
 namespace beman::inside::math::detail::engine {
 //---------------------------------------------------------------------------
@@ -15651,6 +15650,22 @@ inline constexpr bool dd_tier = false;
 
 } // namespace beman::inside::math::detail::engine
 
+
+
+//---------------------------------------------------------------------------
+// beman::inside::math::adaptive — the math engine behind cmath.hpp (which
+// states the guarantee). The decision step and the driver are in
+// detail/math_adaptive.hpp. Domains are the mathematical ones; a result past
+// Out's range goes through Out's policy, as any assignment.
+//
+// Each call takes the first tier that applies: a compile-time table for
+// small inputs; the double kernels (detail/math_fp.hpp), then the dd kernels
+// (detail/math_dd.hpp), each returning a result only when its error bound
+// decides the slot (their glue: detail/math_tiers.hpp); and the integer path
+// (detail/math_cores.hpp: exact square and cube roots, series in wide fixed
+// point), which decides every result and is the only tier at compile time and
+// without an FPU.
+//---------------------------------------------------------------------------
 namespace beman::inside::math::adaptive {
 namespace engine = ::beman::inside::math::detail::engine;
 using ::beman::inside::detail::grid_rational;
