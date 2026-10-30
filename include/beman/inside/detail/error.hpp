@@ -66,8 +66,8 @@ constexpr const char* errc_message(errc e) noexcept {
 //---------------------------------------------------------------------------
 struct inside_error : std::runtime_error {
     errc Code;
-    explicit inside_error(errc c) : std::runtime_error(errc_message(c)), Code(c) {}
-    inside_error(errc c, const char* what) : std::runtime_error(what ? what : errc_message(c)), Code(c) {}
+    constexpr explicit inside_error(errc c) : std::runtime_error(errc_message(c)), Code(c) {}
+    constexpr inside_error(errc c, const char* what) : std::runtime_error(what ? what : errc_message(c)), Code(c) {}
 };
 #endif
 
@@ -107,13 +107,33 @@ inline error_handler_t get_error_handler() noexcept { return detail::g_error_han
 namespace detail {
 //-----------------------------------------------------------------------
 // Outlined failure funnel. Cold + non-inline so the (rare) machinery is
-// emitted once, off the hot path. Not constexpr: calling it during constant
-// evaluation is ill-formed, which is exactly how the checked compile-time
-// paths hard-fail the build.
+// emitted once, off the hot path. During constant evaluation it throws an
+// inside_error (C++26 constexpr exceptions), so a failed compile-time path is
+// a compile error whose text is `what`. (Without exceptions, it is the call
+// to the non-constexpr handler.)
 //-----------------------------------------------------------------------
-[[noreturn]] [[gnu::cold]] [[gnu::noinline]] inline void raise(errc code, const char* what = nullptr) {
+[[noreturn]] [[gnu::cold]] [[gnu::noinline]] constexpr void raise(errc code, const char* what = nullptr) {
+#if BEMAN_INSIDE_HAS_EXCEPTIONS
+    if consteval {
+        throw inside_error(code, what);
+    }
+#endif
     g_error_handler(code, what ? what : errc_message(code));
     __builtin_trap(); // handler must not return; trap if it did
+}
+
+// The compile-time text of a failed checked store: what happened, and the fix.
+constexpr const char* store_failure_message(errc e) noexcept {
+    switch (e) {
+    case errc::overflow:
+        return "inside: a checked store in a constant expression is outside the grid's interval - widen the "
+               "interval, or store with clamp or wrap";
+    case errc::rounding_error:
+        return "inside: a checked store in a constant expression is not on the grid's notch - write the value "
+               "exactly (3.49_ins, just<349, 100>), or store with a rounding policy";
+    default:
+        return errc_message(e);
+    }
 }
 
 //-----------------------------------------------------------------------
@@ -138,9 +158,11 @@ template <fixed_string Msg>
 // constant evaluation, else raised with code.
 template <fixed_string Msg>
 [[noreturn]] constexpr void fail_hard(errc code) {
+#if !BEMAN_INSIDE_HAS_EXCEPTIONS
     if consteval {
         constexpr_error<Msg>();
     }
+#endif
     raise(code, Msg.Data);
 }
 } // namespace detail

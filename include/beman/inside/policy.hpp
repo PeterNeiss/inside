@@ -64,15 +64,14 @@ struct policy : E {
     // code (sticky: keeps the first error) — also during constant evaluation, so
     // try_make / parse / tan_into return error values in constexpr code.
     // Throw mode funnels through the installed handler via an outlined cold
-    // helper; at compile time it names a fixed-string diagnostic instead of
-    // "non-constexpr function called".
+    // helper; at compile time it throws, so the build fails with a text that
+    // names the code and the fix.
     constexpr void report(errc code) const {
         if constexpr (std::is_same_v<E, detail::error_ref>)
             E::Code = E::Code != errc{} ? E::Code : code;
         else {
             if consteval {
-                detail::constexpr_error<"inside: value out of range during constant evaluation "
-                                        "(checked policy hit; choose clamp/wrap or widen the interval)">();
+                detail::raise(code, detail::store_failure_message(code));
             }
             detail::raise(code);
         }
