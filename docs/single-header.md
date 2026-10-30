@@ -38,10 +38,11 @@ in:
 - paste it into a second source pane named `beman/inside/inside.hpp` and
   `#include` it; or
 - include it by URL (Compiler Explorer resolves URL includes for
-  single-header libraries). The header, for GCC 16 with
-  `-std=c++26 -freflection`:
+  single-header libraries), for GCC 16 with `-std=c++26 -freflection`. Pin
+  a release tag for a link that stays valid, or use `main` for the latest:
 
   ```cpp
+  #include <https://raw.githubusercontent.com/PeterNeiss/inside/v0.6.0/single_include/beman/inside/inside.hpp>
   #include <https://raw.githubusercontent.com/PeterNeiss/inside/main/single_include/beman/inside/inside.hpp>
   ```
 

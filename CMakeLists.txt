@@ -7,7 +7,7 @@ project(
     DESCRIPTION
         "Numbers that cannot go out of range: the range and step size live in the type"
     LANGUAGES CXX
-    VERSION 0.5.0
+    VERSION 0.6.0
 )
 
 # The library requires C++26 with static reflection (GCC 16, -freflection):

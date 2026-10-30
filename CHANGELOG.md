@@ -4,10 +4,25 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-## Unreleased: C++26 only
+## 0.6.0 — 2026-10-30
 
-The library without pre-C++26 compatibility. The last C++23 version is the
-tag `preCPP26` (the section below).
+The first C++26-only release: it needs static reflection (GCC 16 with
+`-freflection`). 0.5.0 stays the release for C++23 compilers; the tag
+`preCPP26` is the last C++23 state of main.
+
+### Upgrading from 0.5.0
+
+- Build with GCC 16 and `-std=c++26 -freflection` (the CMake target adds the
+  flag). Clang, AppleClang, MSVC and C++23 builds stay on 0.5.0.
+- A continuous grid names its denominator bound:
+  `inside<{{0, 1}, max_denominator{1000}}>`, not `inside<{{0, 1}, 0}>`.
+- `to<int>()` and `as<int>()` of a fractional value need a rounding:
+  `to<int, round_floor>()`, or a rounding policy on the type.
+- `on_overflow` and `x.with(...)` are gone: `+ - * /` cannot overflow, and a
+  store takes one hook (`x.on_clamp(f)`, `x.on_wrap(f)`, `x.on_error(f)`).
+- Code that prints a quantity includes `<beman/inside/units_io.hpp>`.
+- `rational`'s `Numerator` / `Denominator` are `Num` / `Den`, and
+  `grid::slot_count()` is `grid::step_count()`.
 
 ### Changed
 
@@ -46,25 +61,20 @@ tag `preCPP26` (the section below).
   point.
 - `x.with(hooks...)` is removed: a store takes one hook, so it repeated
   `x.on_clamp(f)`, `x.on_wrap(f)` and `x.on_error(f)`.
-
 - `std::common_type` (and `common_inside_t`, `min`, `max`) of two insides
   keeps the policy they share; only different policies give `checked`.
-
 - `as<T>()` reports a value that does not convert like a failed checked
   store (`inside_error`, or the installed handler), not as
   `std::bad_expected_access`.
-
 - `to<T>()` / `as<T>()` into an integer `T` no longer truncate a fractional
   value silently: they round by the call's mode (`to<int, round_floor>()`, also
   on the free forms), else by the type's rounding mode, and with neither report
   `errc::rounding_error`. A `round_nearest` type now rounds to nearest here.
-
 - `std::numeric_limits` of an inside: `digits` / `digits10` come from the grid
   (the narrowest integer that numbers every value, less a sign bit for a grid
   with negatives), not the storage; `epsilon()` and `round_error()` are 0 and
   exist only when 0 is a value of the grid (they returned an ad-hoc stand-in
   otherwise).
-
 - A continuous inside needs a denominator bound:
   `inside<{{0, 1}, max_denominator{1000}}>`. `inside<{{0, 1}, 0}>` no longer
   compiles, and its message names the fix. `+`, `-` and `*` are therefore
@@ -77,9 +87,29 @@ tag `preCPP26` (the section below).
 
 ### Added
 
+- A checked store that fails in a constant expression says why and how to
+  fix it, through C++26 constexpr exceptions: `constexpr inside<{0, 10}> x{11};`
+  stops with "a checked store in a constant expression is outside the grid's
+  interval - widen the interval, or store with clamp or wrap".
 - `math::fn<mode>(x)` beside every deduced math form (`pow_base<B, mode>`,
   `atan2<mode>`, and the `units::` forms): the rounding mode on the call, so
   the input's type need not carry one.
+- `divmod` on integer grids past imax: uint64 grids and big grids,
+  with quotient and remainder from one exact division.
+- Grid numbers take built-in integers in `+ - * /`: `N - 1` was
+  ambiguous and had to be spelled `N - 1_g`.
+- Big grids: an inside takes a grid number at run time (constructor,
+  `=`, `try_make`), checked like any store: `residue r = top;` for a
+  `constexpr` big `top`. Before, only `just<top>` worked.
+- Example [`rsa.cpp`](examples/rsa.cpp): textbook RSA-1024 on big
+  grids (extended Euclid, square-and-multiply, CRT, signatures).
+- [docs/adoption.md](docs/adoption.md): why safer number types are hard to
+  adopt (Mooers' Law), what arithmetic bugs have cost, and how to make
+  knowing cheap. The paper gains a matching section.
+- Three WG21 drafts replace the single one in `docs/proposal`: the number
+  (`inside.md`), quantities (`quantity.md`) and the math functions
+  (`math.md`). ctest (label `proposal`) checks their listings against
+  compiled programs.
 
 ### Removed
 
@@ -89,26 +119,9 @@ tag `preCPP26` (the section below).
 - `<beman/inside/lift.hpp>`: it held only `detail::` names and is
   `detail/lift.hpp`.
 
-## preCPP26 (tag, after 0.5.0)
-
-### Added
-
-- `divmod` on integer grids past imax: uint64 grids and C++26 big grids,
-  with quotient and remainder from one exact division.
-- C++26 grid numbers take built-in integers in `+ - * /`: `N - 1` was
-  ambiguous and had to be spelled `N - 1_g`.
-- C++26 big grids: an inside takes a grid number at run time (constructor,
-  `=`, `try_make`), checked like any store: `residue r = top;` for a
-  `constexpr` big `top`. Before, only `just<top>` worked.
-- Example [`rsa.cpp`](examples/rsa.cpp): textbook RSA-1024 on C++26 big
-  grids (extended Euclid, square-and-multiply, CRT, signatures).
-- [docs/adoption.md](docs/adoption.md): why safer number types are hard to
-  adopt (Mooers' Law), what arithmetic bugs have cost, and how to make
-  knowing cheap. The paper gains a matching section.
-
 ### Fixed
 
-- C++26 big grids: an integer division under a rounding policy
+- Big grids: an integer division under a rounding policy
   (`div(a, b, rounded_floor)`, or `snap`) returned the exact quotient
   (7 / 2 gave 3.5). Now it rounds onto the integers, as on 64-bit grids.
 

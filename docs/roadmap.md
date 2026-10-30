@@ -4,7 +4,7 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-What is deliberately *not* implemented, as of v0.5.0
+What is deliberately *not* implemented, as of v0.6.0
 (October 2026), and what would unblock each item. Nothing here is a promise of
 a date; the [changelog](../CHANGELOG.md) records what has shipped.
 
