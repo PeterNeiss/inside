@@ -5,7 +5,7 @@
 
 int main() {
     using namespace beman::inside;
-    using bad = cursor<inside<{{0, 1}, 0}>, 1>;
+    using bad = cursor<inside<{{0, 1}, max_denominator{10}}>, 1>;
     bad b;
     (void)b;
 }

@@ -24,9 +24,10 @@ TEST(GridTryMakeTest, grid_try_make_accepts_well_formed_grids) {
     }
 
     {
-        SCOPED_TRACE("non-degenerate interval, zero notch (rational storage)");
-        auto g = grid::try_make(interval{0, 1}, 0_r);
+        SCOPED_TRACE("continuous: a denominator bound (rational storage)");
+        auto g = grid::try_make(interval{0, 1}, max_denominator{1000});
         ASSERT_TRUE(g.has_value());
+        ASSERT_TRUE(g->Notch == 0 && g->MaxDenominator == 1000);
     }
 
     {
@@ -50,6 +51,14 @@ TEST(GridTryMakeTest, grid_try_make_rejects_malformed_grids_with_typed_errors) {
         auto g = grid::try_make(interval{0, 10}, 3_r); // 10 / 3 has remainder
         ASSERT_FALSE(g.has_value());
         ASSERT_EQ(g.error(), errc::rounding_error);
+    }
+
+    {
+        SCOPED_TRACE("continuous without a denominator bound -> domain_error");
+        EXPECT_EQ(grid::try_make(interval{0, 1}, 0_r).error(), errc::domain_error);
+        EXPECT_EQ(grid::try_make(interval{0, 1}, max_denominator{rational{1, 2}}).error(), errc::domain_error);
+        EXPECT_EQ(grid::try_make(interval{0, rational{1, 3}}, max_denominator{2}).error(), errc::domain_error);
+        EXPECT_EQ(grid::try_make(interval{1, 1}, max_denominator{10}).error(), errc::domain_error); // a point
     }
 }
 

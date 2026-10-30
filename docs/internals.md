@@ -37,8 +37,13 @@ checks these when the type is instantiated:
 - **The notch divides the interval** (`Interval.divides_evenly(Notch)`): a
   whole number of notches lies between Lower and Upper. The count is
   `max_index_of<B>` (`detail/storage.hpp`).
-- **Notch 0 is legal** and means any fraction in the interval; the storage
-  changes accordingly (§2).
+- **Notch 0 is legal** and means any fraction in the interval whose
+  denominator is at most the grid's bound, `MaxDenominator`
+  (`{{0, 1}, max_denominator{1000}}`); the storage changes accordingly (§2).
+  An inside needs the bound: it sizes every exact result's fraction, so
+  `+ − ×` are total. A grid *value* may lack it (`grid{{0, 1}, 0}`, or a
+  result whose fractions would pass `BEMAN_INSIDE_MAX_FRACTION_BITS`), and
+  `inside<G>` then does not compile.
 - **Notch ≥ 0.** Decoding is Lower + raw·Notch, so a negative notch would
   count downward; `per<D>` is positive by construction, and any other negative
   notch is rejected.
@@ -69,8 +74,10 @@ both are compile errors.
 
 **Runtime grids.** `grid::try_make(interval, notch, bounds)` checks the same
 invariants at run time and returns `std::expected<grid, errc>`:
-`domain_error` for Lower > Upper, a negative notch, or an open limit without
-a notch; `rounding_error` when the notch does not divide the interval. It
+`domain_error` for Lower > Upper, a negative notch, notch 0 on two limits
+(a continuous grid takes `try_make(interval, max_denominator{D})`), or an
+open limit without a notch; `rounding_error` when the notch does not divide
+the interval. It
 validates configuration before choosing between precompiled types; a runtime
 grid cannot become a template argument.
 
@@ -106,8 +113,8 @@ policy flag changes it, so two insides on one grid share their encoding:
 ```text
   Lower == Upper (a point)          ───▶  empty raw      (the value is in the type;
                                                           reads as index 0, value = Lower)
-  Notch == 0                        ───▶  rational raw   (continuous; wide_rational past
-                                                          64-bit limits)
+  Notch == 0                        ───▶  rational raw   (continuous; wide_rational sized
+                                                          from the bound past 64 bits)
   more than 2⁶⁴ indices             ───▶  wide_int raw   (the index in 64-bit limbs,
                                                           exact paths in detail/wide_value.hpp)
   deduces_value<G>: Notch 1, integer
@@ -130,7 +137,7 @@ them in `requires` clauses:
 |---|---|---|
 | `value_storage<B>` | | the raw is the value: one of the next three |
 | ├ `rational_storage<B>` | `rational` | an exact 64-bit fraction |
-| ├ `fraction_storage<B>` | `wide_rational<K>` | a continuous grid past 64-bit limits |
+| ├ `fraction_storage<B>` | `wide_rational<K>` | a continuous grid whose bound passes 64 bits |
 | └ `integer_value_storage<B>` | a builtin integer | the plain value |
 | `index_storage<B>` | | the raw is a 0-based index; value = Lower + raw·Notch |
 | ├ `point_storage<B>` | `point_slot` | a point's empty raw, read as index 0 |
@@ -317,7 +324,7 @@ Two shapes, by role:
 | Shape | Role | Why |
 |---|---|---|
 | the policy cascade (handler / throw, `errc&`, clamp, wrap, hooks) | **storing** a value into an inside: construction, assignment, compound assignment | the caller chose the failure behaviour on the type or the store |
-| `std::expected<T, errc>` | every fallible **result**: arithmetic (`/`, `%`, unbounded continuous `+`/`×`), queries (`to<T>()`, `try_make`, `parse`) and math (`tan`, `pow`, `sqrt` of a grid that crosses 0) | the caller tests the result and can read the cause; it chains through the lift operators |
+| `std::expected<T, errc>` | every fallible **result**: arithmetic (`/`, `%` by a grid holding 0), queries (`to<T>()`, `try_make`, `parse`) and math (`tan`, `pow`, `sqrt` of a grid that crosses 0) | the caller tests the result and can read the cause; it chains through the lift operators |
 
 `std::expected<inside, errc>` is larger than an inside (a flag and an `errc`),
 so it appears only as a **parameter or return value**, never as stored state
@@ -327,16 +334,15 @@ can fail: a result the grids prove total stays a plain inside.
 | Operation | Shape | Causes |
 |---|---|---|
 | `a + b`, `a − b`, `a × b` on integer raws | inside | total: the result grid holds every value |
-| the same with a bounded continuous result whose fraction holds its bound | inside | total: the bound sizes the raw (`exact_fits`, `detail/op_result.hpp`) |
-| the same with an unbounded continuous result, checked | expected | `overflow`: the denominator may outgrow the raw |
+| the same with a continuous result | inside | total: the bound sizes the raw (`exact_fits`, `exact_path_fits`, `detail/op_result.hpp`) |
 | `a / b`, `a % b`, divisor grid without 0 | inside | total |
-| `a / b`, `a % b`, divisor grid with 0 | expected | `division_by_zero`; `overflow` for a fraction raw |
+| `a / b`, `a % b`, divisor grid with 0 | expected | `division_by_zero` |
 | `math::sin`, `cos`, `exp`, `log`, … | inside | total over the asserted domain |
 | `math::tan` | expected | `division_by_zero` (a pole), `overflow` (past `Out`) |
 | `math::pow` | expected | `domain_error` (a negative base), `division_by_zero` (0 to a negative power), `overflow` |
 | `math::sqrt` of a grid that crosses 0 | expected | `domain_error` |
 | `to<T>()` | expected | `overflow`, `domain_error` (negative into unsigned) |
-| `as<T>()` | `T` | `to<T>().value()`: throws |
+| `as<T>()` | `T` | `to<T>()`; a failure is raised (`inside_error`, or the installed handler) |
 | `try_make`, `parse` | expected | `overflow`, `rounding_error`, `invalid_format` (text) |
 | construction, assignment | the cascade | by the policy: `overflow`, `rounding_error`, `not_finite` |
 | `sum<Target>` | `Target` | Target's policy, applied once to the total |

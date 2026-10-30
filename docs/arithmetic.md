@@ -134,13 +134,12 @@ using sval = inside<{-100, 100}>;
 auto e = sval{-7} / inside<{1, 100}>{2};    // inside: -3.5 (exact, a denominator ≤ 100)
 ```
 
-Paths A, B and D cannot overflow. Path C usually cannot either: for x = p/a and
-y = r/b, x/y = p·b/(a·r), so the quotient's denominator is at most the
-dividend's largest denominator times the divisor's largest numerator. The
-result grid records that bound ([below](#bounded-continuous-grids)), and when
-the bound fits the result's fraction, path C skips the overflow check. That
-holds for every integer grid and every literal point. The fraction is sized
-for the bound, up to `BEMAN_INSIDE_MAX_FRACTION_BITS`.
+No path can overflow. For path C, x = p/a and y = r/b give x/y = p·b/(a·r),
+so the quotient's denominator is at most the dividend's largest denominator
+times the divisor's largest numerator. The result grid records that bound
+([below](#bounded-continuous-grids)), and the result's fraction is sized for
+it, up to `BEMAN_INSIDE_MAX_FRACTION_BITS`. Past that the quotient has no
+type: `/` does not compile, and `div_into` rounds the quotient instead.
 
 ```cpp
 using fine = inside<{{0, 1}, rational{1, umax{1} << 40}}>;
@@ -148,9 +147,7 @@ auto f = fine{0.5} / inside<{{1, 2}, rational{1, umax{1} << 40}}>{1.5};
 // a plain value: denominators up to 2^81, in a fraction sized for them
 ```
 
-Otherwise the error is `errc::division_by_zero` (any path), or
-`errc::overflow` when the exact fraction does not fit (path C only). Test the
-result right away, or chain it ([below](#when-the-result-is-stdexpected)), and
+The one error is `errc::division_by_zero`. Test the result right away, or chain it ([below](#when-the-result-is-stdexpected)), and
 store the unwrapped inside.
 
 [`division.cpp`](../examples/division.cpp) shows paths B and C side by side.
@@ -342,13 +339,11 @@ a loop of byte-wide `b += 1_ins` vectorizes like native `uint8_t`.
 
 ## When the result is `std::expected`
 
-An operation returns `std::expected<inside, errc>` in two cases:
-
-1. **Division and modulo** by a grid that holds 0, or an exact quotient that
-   may overflow ([above](#division)).
-2. **An unbounded continuous grid** (notch 0, no denominator bound, like
-   `inside<{{0, 10}, 0}>`): `+` and `×` on it may need a denominator past
-   64 bits, so they return `expected` (`errc::overflow`).
+An operator returns `std::expected<inside, errc>` in one case: **division
+and modulo** by a grid that holds 0 ([above](#division)). `+`, `−` and `×`
+are total: the result grid holds every result, and a continuous grid's
+denominator bound sizes every fraction
+([below](#bounded-continuous-grids)).
 
 Every operator takes `expected` operands and passes the first error on (the
 left one when both hold one), so a chain needs no unwrapping:
@@ -366,7 +361,7 @@ An operation that fails inside the chain reports its own cause. See
 
 ### Bounded continuous grids
 
-A continuous grid can carry a **denominator bound**: every value is n/d with
+A continuous grid carries a **denominator bound**: every value is n/d with
 d ≤ `MaxDenominator`. The exact operators compute the bound, so a quotient
 knows how large its fractions can get, and so does everything computed from
 it:
@@ -380,9 +375,8 @@ it:
 | `hull`, `common_type` | the larger |
 
 D of a notched grid is its notch's denominator, of a point its own, and of a
-continuous grid its bound (0 means unbounded, and makes the result unbounded).
-When the bound fits the result's fraction, the operation cannot overflow and
-returns a plain value:
+continuous grid its bound. The result's fraction is sized for the bound, so
+the operation cannot overflow and returns a plain value:
 
 ```cpp
 auto q = inside<{0, 100}>{50} / inside<{1, 7}>{3};   // a fraction with denominator ≤ 7: 50/3
@@ -390,7 +384,8 @@ auto f = q * 9_ins / 5_ins + 32_ins;                 // plain, ≤ 7: 62
 auto s = q * q - q;                                  // plain, ≤ 49
 ```
 
-Declare one with `max_denominator`:
+A continuous grid you declare names its bound with `max_denominator`;
+`inside<{{0, 1}, 0}>` does not compile:
 
 ```cpp
 using thousandths = inside<{{0, 1}, max_denominator{1000}}>;
@@ -399,9 +394,11 @@ auto p = a * a;                       // plain: ≤ 10^6
 a = rational{1, 1001};                // rounding_error: off the grid
 ```
 
-Any bound up to `BEMAN_INSIDE_MAX_FRACTION_BITS` (default 1024) works; a
-larger one is dropped (the grid is then unbounded, and its operations
-checked). A stored value whose
+Any bound works while a value's numerator and denominator together fit
+`BEMAN_INSIDE_MAX_FRACTION_BITS` (default 1024). An operation whose exact
+result would need more has no result type: the operator is deleted, and its
+message names the fix (store an operand into a coarser type first, or round
+the result once with `mul_into` or `div_into`). A stored value whose
 denominator passes the bound is a `rounding_error` unless the policy rounds.
 Then it goes to a neighbouring fraction within the bound (its Farey
 neighbours): `round_floor`, `round_ceil` and `snap` pick a side,

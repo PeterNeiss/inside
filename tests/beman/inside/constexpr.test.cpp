@@ -187,7 +187,7 @@ TEST(ConstexprTest, constexpr_storage_min_picks_the_smallest_fitting_raw) {
     static_assert(std::is_same_v<raw_t<inside<{-129, 127}>>, std::int16_t>);
 
     // notch 0 → rational raw
-    static_assert(std::is_same_v<raw_t<inside<{{-10, 10}, 0}>>, rational>);
+    static_assert(std::is_same_v<raw_t<inside<{{-10, 10}, max_denominator{1000}}>>, rational>);
 
     // fractional notch with unsigned offset (signed lower forced into offset
     // encoding because notch != 1).
@@ -201,7 +201,7 @@ TEST(ConstexprTest, constexpr_storage_kind_classification) {
     static_assert(integer_value_storage<inside<{0, 100}>>);
     static_assert(integer_value_storage<inside<{-40, 85}>>);
     // rational_storage: notch 0 — Raw is the value as a rational.
-    static_assert(rational_storage<inside<{{-10, 10}, 0}>>);
+    static_assert(rational_storage<inside<{{-10, 10}, max_denominator{1000}}>>);
     // notch 1 above 0: the value while it is no wider than the index ({5, 100}),
     // else a 0-based notch index ({200, 300}), as for a fractional notch.
     static_assert(integer_value_storage<inside<{5, 100}>>);

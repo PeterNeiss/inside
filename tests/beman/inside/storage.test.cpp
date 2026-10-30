@@ -177,17 +177,13 @@ TEST(StorageTest, notched_arithmetic_returns_a_plain_inside) {
     static_assert(!detail::is_expected_v<decltype(p)>);
     ASSERT_EQ(rational{p}, (rational{15, 16}));
 
-    // Continuous grids: denominators unbounded → wrapper stays (add AND mul).
-    using C = inside<{{0, 10}, 0}, checked>;
-    static_assert(detail::is_expected_v<decltype(C{} + C{})>);
-    static_assert(detail::is_expected_v<decltype(C{} * C{})>);
-
-    // ...and the check is real: huge-denominator values overflow into an error
-    // instead of silently wrapping (the pre-fix mul gate claimed these safe).
-    C    x    = C::from_raw(rational{1, imax{1} << 40});
-    auto wide = x * x; // den 2^80 > imax
-    ASSERT_TRUE(!wide.has_value());
-    ASSERT_EQ(wide.error(), errc::overflow);
+    // Continuous grids bound their denominators: add and mul are plain too,
+    // in a fraction sized from the bounds.
+    using C = inside<{{0, 10}, max_denominator{imax{1} << 20}}, checked>;
+    static_assert(!detail::is_expected_v<decltype(C{} + C{})>);
+    static_assert(!detail::is_expected_v<decltype(C{} * C{})>);
+    const C x = C::from_raw(rational{1, imax{1} << 20});
+    ASSERT_EQ(rational{x * x}, (rational{1, imax{1} << 40}));
 }
 
 // Smaller-threads batch: wide trig envelope, pown, clamp saturation.

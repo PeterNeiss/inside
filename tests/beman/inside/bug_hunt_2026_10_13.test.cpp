@@ -102,7 +102,7 @@ TEST(BugHunt20261013, casts_and_math_are_constraint_friendly) {
     static_assert(can_clamp_cast<digit, int> && can_clamp_cast<digit, small>);
     static_assert(!can_clamp_cast<halves, three> && can_checked_cast<halves, three>); // 3 is off the .5 lattice
     static_assert(can_abs_into<digit, small> && !can_abs_into<inside<{1, 10}>, small>);
-    static_assert(can_pown<5, digit> && can_pown<0, inside<{{-2, 2}, 0}>>);
+    static_assert(can_pown<5, digit> && can_pown<0, inside<{{-2, 2}, max_denominator{1000}}>>);
     EXPECT_EQ(math::pown<3>(small{-2}), -8_ins);
     EXPECT_EQ(clamp_cast<digit>(small{-3}), 0_ins);
 }

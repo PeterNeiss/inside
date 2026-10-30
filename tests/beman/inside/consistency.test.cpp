@@ -149,8 +149,8 @@ TEST(ConsistencyTest, math_output_deduces_its_storage) {
 // double compares exactly, not after rounding the other side to double.
 TEST(ConsistencyTest, dyadic_vs_exact_comparison_is_exact) {
     using F = inside<{{0, 2}, per<2>}>;
-    using C = inside<{{0, 2}, rational{0}}>;         // continuous, rational raw
-    const C c{(q(1) + q(1, imax{1} << 53)).value()}; // 1 + 2^-53: rounds to 1.0
+    using C = inside<{{0, 2}, max_denominator{imax{1} << 53}}>; // continuous, rational raw
+    const C c{(q(1) + q(1, imax{1} << 53)).value()};            // 1 + 2^-53: rounds to 1.0
     const F one{1};
     EXPECT_FALSE(one == c);
     EXPECT_TRUE(one < c);
@@ -180,11 +180,12 @@ TEST(ConsistencyTest, fmod_zero_divisor_is_an_error_value) {
     EXPECT_EQ(rational{*math::fmod(X{7}, X{-3})}, q(1));
 }
 
-// Continuous (rational) arithmetic is overflow-checked, and a result is
-// checked.
-TEST(ConsistencyTest, continuous_arithmetic_is_overflow_checked) {
-    using E = inside<{{0, 1}, rational{0}}>;
-    static_assert(detail::is_expected_v<decltype(E{q(1, 3)} + E{q(1, 7)})>);
+// Continuous (rational) arithmetic is total: the bounds size the result.
+// A result keeps the checked policy.
+TEST(ConsistencyTest, continuous_arithmetic_is_total) {
+    using E = inside<{{0, 1}, max_denominator{1000}}>;
+    static_assert(!detail::is_expected_v<decltype(E{q(1, 3)} + E{q(1, 7)})>);
+    EXPECT_EQ(rational{E{q(1, 3)} + E{q(1, 7)}}, q(10, 21));
     using D = inside<{0, 10}, checked>;
     static_assert(has_flag(flags_of<decltype(D{1} + D{2})>, checked));
 }
@@ -194,13 +195,12 @@ TEST(ConsistencyTest, continuous_arithmetic_is_overflow_checked) {
 // a silent no-op, never std::bad_expected_access.
 //---------------------------------------------------------------------------
 TEST(ConsistencyTest, compound_ops_report_errors_through_the_policy) {
-    constexpr imax big = (imax{1} << 62) - 1;
-    using E            = inside<{{0, 1}, rational{0}}, checked>;
-    E e{q(1, big)};
-    EXPECT_THROW(e += q(1, big - 2), inside_error);    // rational RHS overflow
-    EXPECT_EQ(rational{e}, q(1, big));                 // left unchanged
-    EXPECT_THROW(e += E{q(1, big - 2)}, inside_error); // slow path, rational overflow
-    EXPECT_THROW(e *= E{q(1, big - 2)}, inside_error);
+    using E = inside<{{0, 1}, max_denominator{1000}}, checked>;
+    E e{q(1, 1000)};
+    EXPECT_THROW(e += q(1, 999), inside_error);    // rational RHS: 1999/999000 is off the grid
+    EXPECT_EQ(rational{e}, q(1, 1000));            // left unchanged
+    EXPECT_THROW(e += E{q(1, 999)}, inside_error); // inside RHS: the same sum
+    EXPECT_THROW(e *= E{q(1, 999)}, inside_error);
 }
 
 // The raw += fast path honours ignore_range like plain assignment does.
@@ -492,15 +492,15 @@ TEST(ConsistencyTest, snap_truncates_fine_negative_rationals_toward_zero) {
 // A continuous quotient is exact: the integer division paths need integer
 // values, which a continuous grid does not have whatever its limits.
 TEST(ConsistencyTest, continuous_division_is_exact) {
-    using C = inside<{{1, 10}, 0}, round_nearest>;
-    EXPECT_EQ(rational{*(C{q(7, 2)} / C{q(3, 2)})}, q(7, 3));
+    using C = inside<{{1, 10}, max_denominator{10}}, round_nearest>;
+    EXPECT_EQ(rational{C{q(7, 2)} / C{q(3, 2)}}, q(7, 3));
 }
 
 // Wrapping a continuous source folds its value, not its numerator.
 TEST(ConsistencyTest, continuous_source_wraps_by_value) {
     using W = inside<{0, 3}, wrap | round_nearest>;
     W w{0};
-    w = inside<{{0, 10}, 0}>{q(11, 2)}; // 5.5 ≡ 1.5 (mod 4) → 2
+    w = inside<{{0, 10}, max_denominator{2}}>{q(11, 2)}; // 5.5 ≡ 1.5 (mod 4) → 2
     EXPECT_EQ(rational{w}, q(2));
 }
 
@@ -516,7 +516,7 @@ TEST(ConsistencyTest, hull_with_a_point_keeps_the_lattice) {
 
 // Clamping an inside into a continuous target stores the exact endpoint.
 TEST(ConsistencyTest, clamp_into_continuous_stores_the_endpoint) {
-    inside<{{rational{1, 2}, rational{21, 2}}, 0}, clamp> c{q(1, 2)};
+    inside<{{rational{1, 2}, rational{21, 2}}, max_denominator{2}}, clamp> c{q(1, 2)};
     c = inside<{0, 20}>{15};
     EXPECT_EQ(rational{c}, q(21, 2));
     c = inside<{-5, 0}>{-3};
@@ -525,19 +525,19 @@ TEST(ConsistencyTest, clamp_into_continuous_stores_the_endpoint) {
 
 // Notched → continuous needs no snap; continuous → notched is checked on store.
 TEST(ConsistencyTest, continuous_sides_are_assignable) {
-    inside<{{0, 1}, 0}> c{0};
+    inside<{{0, 1}, max_denominator{10}}> c{0};
     c = inside<{{0, 1}, per<10>}>{q(3, 10)};
     EXPECT_EQ(rational{c}, q(3, 10));
     inside<{{0, 10}, 2}> e{0};
-    e = inside<{{0, 10}, 0}>{4};
+    e = inside<{{0, 10}, max_denominator{10}}>{4};
     EXPECT_EQ(rational{e}, q(4));
-    EXPECT_THROW((e = inside<{{0, 10}, 0}>{3}), inside_error);
+    EXPECT_THROW((e = inside<{{0, 10}, max_denominator{10}}>{3}), inside_error);
 }
 
 TEST(ConsistencyTest, hash_covers_every_storage) {
     EXPECT_EQ(std::hash<std::remove_cvref_t<decltype(just<5>)>>{}(just<5>),
               std::hash<std::remove_cvref_t<decltype(just<5>)>>{}(just<5>));
-    using C = inside<{{0, 1}, 0}>;
+    using C = inside<{{0, 1}, max_denominator{10}}>;
     EXPECT_EQ(std::hash<C>{}(C{q(1, 3)}), std::hash<C>{}(C{q(1, 3)}));
 }
 

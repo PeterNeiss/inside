@@ -265,7 +265,7 @@ TEST(InsideArithmeticTest, inside_expected_ops_propagate_error) {
 
 // inside rational-storage expected ops do not double-wrap
 TEST(InsideArithmeticTest, inside_rational_storage_expected_ops_do_not_double_wrap) {
-    using frac   = inside<{{-10, 10}, 0}>;
+    using frac   = inside<{{-10, 10}, max_denominator{100}}>;
     frac f1      = *(2_r / 3);
     frac f2      = *(1_r / 3);
     auto ok      = [](frac v) -> std::expected<frac, errc> { return v; };
@@ -274,12 +274,13 @@ TEST(InsideArithmeticTest, inside_rational_storage_expected_ops_do_not_double_wr
     ASSERT_EQ(*(ok(f1) + f2), 1);
     ASSERT_EQ(*(f1 + ok(f2)), 1);
     ASSERT_FALSE((failing() + f2).has_value());
-    static_assert(std::is_same_v<decltype(ok(f1) + f2), decltype(f1 + f2)>);
+    static_assert(std::is_same_v<decltype(ok(f1) + f2), std::expected<decltype(f1 + f2), errc>>);
+    static_assert(std::is_same_v<decltype(ok(f1) / f2), decltype(f1 / f2)>); // already expected
 
     ASSERT_EQ(*(ok(f1) - f2), *(1_r / 3));
     ASSERT_EQ(*(ok(f1) * f2), *(2_r / 9));
 
-    using pfrac = inside<{{1, 10}, 0}>;
+    using pfrac = inside<{{1, 10}, max_denominator{100}}>;
     pfrac p1 = 3, p2 = 2;
     auto  pok = [](pfrac v) -> std::expected<pfrac, errc> { return v; };
     ASSERT_EQ(*(pok(p1) / p2), *(3_r / 2));
@@ -308,29 +309,6 @@ TEST(InsideArithmeticTest, inside_action_first_arithmetic_overloads) {
     auto q_def = div(d, z);
     ASSERT_FALSE(q_def.has_value());
     ASSERT_EQ(q_def.error(), errc::division_by_zero);
-}
-
-// inside rational-storage on_overflow free fn
-TEST(InsideArithmeticTest, inside_rational_storage_on_overflow_free_fn) {
-    // Disparate large denominators force cross-multiplication overflow even
-    // though the result interval [0, 2] fits.
-    constexpr umax M = std::numeric_limits<umax>::max();
-    using unit       = inside<{{0_r, 1_r}, 0}, checked>;
-
-    auto a = unit::from_raw(rational{1u, static_cast<imax>(M / 2)});
-    auto b = unit::from_raw(rational{1u, static_cast<imax>(M / 2 - 1)});
-
-    bool fired = false;
-    errc seen{};
-    auto sum = add(a, b, on_overflow([&](auto& res, errc code) {
-                       fired = true;
-                       seen  = code;
-                       res   = unit::from_raw(0_r); // unit is rational-storage; reset to value 0
-                   }));
-    (void)sum;
-
-    ASSERT_TRUE(fired);
-    ASSERT_EQ(seen, errc::overflow);
 }
 
 // inside just<N>
@@ -448,10 +426,10 @@ TEST(InsideArithmeticTest, beman_inside_sum_bulk_reduction_with_one_deferred_che
     using wide_total = inside<{0, std::numeric_limits<umax>::max()}, clamp>;
     ASSERT_TRUE(beman::inside::sum<wide_total>(big) == std::numeric_limits<umax>::max());
 
-    // A continuous total past the 64-bit rational is reported through the
-    // target's policy (not bad_expected_access).
-    using cont = inside<{{0, 1}, 0}>;
-    std::vector<cont> c{cont{rational{1, (imax{1} << 62) - 1}}, cont{rational{1, (imax{1} << 62) - 3}}};
+    // A continuous total past the target is reported through the target's
+    // policy (not bad_expected_access).
+    using cont = inside<{{0, 1}, max_denominator{10}}>;
+    std::vector<cont> c{cont{rational{3, 5}}, cont{rational{7, 10}}};
     ASSERT_THROW((void)beman::inside::sum<cont>(c), inside_error);
 }
 

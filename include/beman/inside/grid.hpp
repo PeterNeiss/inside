@@ -95,14 +95,20 @@ struct grid {
         : Interval{val}, Notch{0}, MaxDenominator{check_bound(val, d.Value)} {}
 
   private:
-    // A bound is a positive integer at least the limits' denominators (each
-    // limit is a value).
-    static constexpr detail::grid_rational check_bound(const interval& iv, const detail::grid_rational& d) {
+    static constexpr bool positive_integer(const detail::grid_rational& d) {
+        return d > 0 && detail::grid_denominator(d) == detail::grid_int{1};
+    }
+    // Each limit is a value, so the bound covers their denominators.
+    static constexpr bool bound_covers_limits(const interval& iv, const detail::grid_rational& d) {
         using detail::grid_denominator;
-        if (!(d > 0) || grid_denominator(d) != detail::grid_int{1})
+        return !(detail::grid_numerator(d) < grid_denominator(iv.Lower) ||
+                 detail::grid_numerator(d) < grid_denominator(iv.Upper));
+    }
+    // A bound is a positive integer at least the limits' denominators.
+    static constexpr detail::grid_rational check_bound(const interval& iv, const detail::grid_rational& d) {
+        if (!positive_integer(d))
             detail::constexpr_error<"max_denominator: the bound must be a positive integer">();
-        if (detail::grid_numerator(d) < grid_denominator(iv.Lower) ||
-            detail::grid_numerator(d) < grid_denominator(iv.Upper))
+        if (!bound_covers_limits(iv, d))
             detail::constexpr_error<"max_denominator: the bound is below a limit's denominator">();
         return d;
     }
@@ -168,6 +174,11 @@ struct grid {
                                           << ", Upper − Lower " << G.Interval.Upper - G.Interval.Lower << ")");
         static_assert(G.MaxDenominator == 0 || (G.Notch == 0 && G.Interval.Lower != G.Interval.Upper),
                       "grid: only a continuous grid carries a max_denominator");
+        // A bound sizes every value's fraction, so + - * on it are exact and total.
+        static_assert(G.Notch != 0 || G.Interval.Lower == G.Interval.Upper || G.MaxDenominator != 0,
+                      "grid: a continuous grid (notch 0) needs a denominator bound - write {{lower, upper}, "
+                      "max_denominator{D}}; an exact result whose fractions pass BEMAN_INSIDE_MAX_FRACTION_BITS "
+                      "has none - store an operand in a coarser grid first");
 
         return true;
     }
@@ -176,13 +187,19 @@ struct grid {
     // error instead of failing a static_assert — for grids built from runtime
     // config. A value, so it can't be an inside<G,P> template argument.
     // An open limit (`bounds`) moves in by one notch first, as in the ctors.
+    // Notch 0 makes a point; a continuous grid takes a max_denominator.
     [[nodiscard]] static constexpr std::expected<grid, errc>
     try_make(interval iv, detail::grid_rational notch, bounds b = bounds::closed) {
-        if (iv.Lower > iv.Upper || notch < 0 || !move_in(iv, notch, b))
+        if (iv.Lower > iv.Upper || notch < 0 || (notch == 0 && iv.Lower != iv.Upper) || !move_in(iv, notch, b))
             return std::unexpected{errc::domain_error};
         if (!iv.divides_evenly(notch))
             return std::unexpected{errc::rounding_error};
         return grid{iv, notch};
+    }
+    [[nodiscard]] static constexpr std::expected<grid, errc> try_make(interval iv, max_denominator d) {
+        if (!(iv.Lower < iv.Upper) || !positive_integer(d.Value) || !bound_covers_limits(iv, d.Value))
+            return std::unexpected{errc::domain_error};
+        return grid{iv, d};
     }
 
     // The steps of one notch from Lower to Upper, (Upper − Lower)/Notch: the
@@ -289,6 +306,11 @@ namespace detail {
 // too, so an exact result can be sized from its operands' bounds.
 //---------------------------------------------------------------------------
 constexpr bool continuous_grid(const grid& g) { return g.Notch == 0 && g.Interval.Lower != g.Interval.Upper; }
+
+// Whether an inside on g exists (grid::validate): a lattice, a point, or a
+// continuous grid with a bound. An exact result whose fractions would pass
+// BEMAN_INSIDE_MAX_FRACTION_BITS has none.
+constexpr bool bounded_grid(const grid& g) { return !continuous_grid(g) || g.MaxDenominator != 0; }
 
 constexpr grid_int den_bound(const grid& g) {
     if (continuous_grid(g))
@@ -526,15 +548,6 @@ constexpr grid_rational product_notch(const grid& a, const grid& b) {
         n = gcd(n, b.Notch * a.Interval.Lower);
     return n;
 }
-
-// Whether a / b has a result grid: the divisor is not the point 0, and an
-// unbounded continuous divisor does not reach 0.
-constexpr bool grid_quotient_fits(const grid& b) {
-    const interval& d = b.Interval;
-    if (d.Lower == 0 && d.Upper == 0)
-        return false;
-    return !includes(d, 0) || b.Notch != 0 || b.MaxDenominator != 0;
-}
 } // namespace detail
 
 //---------------------------------------------------------------------------
@@ -613,6 +626,15 @@ template <std::same_as<grid> G>
         return continuous(detail::interval_hull(over(pos), over(neg)));
     return continuous(over(0 < r.Upper ? pos : neg));
 }
+
+namespace detail {
+// Whether a / b has a result type: the divisor is not the point 0, and the
+// quotient's fractions stay within BEMAN_INSIDE_MAX_FRACTION_BITS.
+constexpr bool grid_quotient_fits(const grid& a, const grid& b) {
+    const auto q = a / b;
+    return q.has_value() && bounded_grid(*q);
+}
+} // namespace detail
 
 //---------------------------------------------------------------------------
 // hull

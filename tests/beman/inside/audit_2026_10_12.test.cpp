@@ -117,8 +117,8 @@ TEST(Audit20261012, tiny_double_is_exact) {
     EXPECT_FALSE(cent::try_make(1e-20).has_value());
     EXPECT_FALSE((inside<{{0, 1}, per<100>}, round_floor>::try_make(-1e-20).has_value())); // floors to -0.01
     EXPECT_EQ((inside<{{0, 1}, per<100>}, round_ceil>{-1e-20}), 0);
-    EXPECT_FALSE((inside<grid{interval{0, 1}, 0}>::try_make(1e-20).has_value())); // no 64-bit rational holds it
-    constexpr inside<grid{interval{0, 1}, 0}> zero{0};
+    EXPECT_FALSE((inside<grid{interval{0, 1}, max_denominator{1000}}>::try_make(1e-20).has_value())); // off the grid
+    constexpr inside<grid{interval{0, 1}, max_denominator{1000}}> zero{0};
     static_assert(zero < 1e-20 && zero != 1e-20);
 }
 
@@ -175,7 +175,7 @@ TEST(Audit20261012, quotient_grid_reaches_2_pow_63) {
 // without an integer or double fast path; it is unordered.
 TEST(Audit20261012, nan_compares_unordered) {
     const double nan = std::numeric_limits<double>::quiet_NaN();
-    using C          = inside<grid{interval{0, 1}, 0}>;
+    using C          = inside<grid{interval{0, 1}, max_denominator{1000}}>;
     using thirds     = inside<{{0, 1}, rational{1, 3}}>;
     const C      c{rational{1, 2}};
     const thirds t{rational{1, 3}};

@@ -110,13 +110,19 @@ struct divmod_op {
 // then false, and an integer inside cannot fall back on its imax conversion
 // and the built-in operator.
 
-#define BEMAN_INSIDE_WHY_add "addition: a wide-index operand meets a continuous result (not supported yet)"
-#define BEMAN_INSIDE_WHY_sub "subtraction: a wide-index operand meets a continuous result (not supported yet)"
-#define BEMAN_INSIDE_WHY_mul                                                                                       \
-    "multiplication: a wide-index operand meets a continuous result (not supported yet) - round the product into " \
-    "a coarser type with mul_into<Out>(a, b)"
-#define BEMAN_INSIDE_WHY_div \
-    "division: no result grid - the divisor grid is the point 0, or an unbounded continuous divisor reaches 0"
+#define BEMAN_INSIDE_WHY_add                                                                                      \
+    "addition: no result type - the exact sum's fractions pass BEMAN_INSIDE_MAX_FRACTION_BITS (store an operand " \
+    "into a coarser type first), or a wide-index operand meets a continuous result (not supported yet)"
+#define BEMAN_INSIDE_WHY_sub                                                                                     \
+    "subtraction: no result type - the exact difference's fractions pass BEMAN_INSIDE_MAX_FRACTION_BITS (store " \
+    "an operand into a coarser type first), or a wide-index operand meets a continuous result (not supported yet)"
+#define BEMAN_INSIDE_WHY_mul                                                                                    \
+    "multiplication: no result type - the exact product's fractions pass BEMAN_INSIDE_MAX_FRACTION_BITS, or a " \
+    "wide-index operand meets a continuous result (not supported yet) - round the product into a coarser type " \
+    "with mul_into<Out>(a, b)"
+#define BEMAN_INSIDE_WHY_div                                                                              \
+    "division: no result type - the divisor grid is the point 0, or the exact quotient's fractions pass " \
+    "BEMAN_INSIDE_MAX_FRACTION_BITS"
 #define BEMAN_INSIDE_WHY_mod "modulo requires integer-valued grids"
 #define BEMAN_INSIDE_WHY_divmod "divmod requires integer-valued grids"
 

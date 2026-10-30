@@ -234,11 +234,11 @@ TEST(CrossGridTest, scalar_comparison_integer_arm_agrees_with_the_rational_decod
 // A continuous operand makes a sum continuous (gcd(0, 1) = 1 is a point's
 // rule, not a continuous grid's): 3/10 + 5 is 53/10, not a notch-1 value.
 TEST(CrossGridTest, continuous_plus_notched_is_continuous) {
-    using C = inside<{{-8, 8}, 0}>;
+    using C = inside<{{-8, 8}, max_denominator{10}}>;
     using I = inside<{0, 10}>;
-    static_assert(notch_of<std::remove_cvref_t<decltype(*(C{} + I{}))>> == 0);
-    EXPECT_EQ(rational{*(C{rational{3, 10}} + I{5})}, (rational{53, 10}));
-    EXPECT_EQ(rational{*(I{5} - C{rational{3, 10}})}, (rational{47, 10}));
+    static_assert(notch_of<decltype(C{} + I{})> == 0);
+    EXPECT_EQ((rational{C{rational{3, 10}} + I{5}}), (rational{53, 10}));
+    EXPECT_EQ((rational{I{5} - C{rational{3, 10}}}), (rational{47, 10}));
     // a point still shifts the lattice
     static_assert(notch_of<decltype(I{} + just<rational{1, 2}>)> == 1);
 }

@@ -58,6 +58,16 @@ The library without pre-C++26 compatibility, kept in sync with main.
   exist only when 0 is a value of the grid (they returned an ad-hoc stand-in
   otherwise).
 
+- A continuous inside needs a denominator bound:
+  `inside<{{0, 1}, max_denominator{1000}}>`. `inside<{{0, 1}, 0}>` no longer
+  compiles, and its message names the fix. `+`, `-` and `*` are therefore
+  total and never return `std::expected`, and neither does a division by a
+  divisor whose grid excludes 0. An exact result whose fractions would pass
+  `BEMAN_INSIDE_MAX_FRACTION_BITS` has no type: the operator is deleted, and
+  its message names the fix (it was unbounded, with checked operations).
+  `grid::try_make(interval, 0)` on two limits is a `domain_error`; the new
+  `grid::try_make(interval, max_denominator)` makes a continuous grid.
+
 ### Added
 
 - `math::fn<mode>(x)` beside every deduced math form (`pow_base<B, mode>`,

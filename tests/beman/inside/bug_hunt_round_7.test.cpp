@@ -38,13 +38,13 @@ TEST(BugHuntRound7, double_into_a_grid_reaching_2_pow_64) {
     EXPECT_EQ(c.to<std::uint64_t>(), UINT64_MAX);
 }
 
-// A double finer than 2^-62 does not fit the rational of an unbounded
-// continuous grid (the store reports overflow); the predicates said "fits".
+// A double finer than a continuous grid's bound is off the grid; the
+// predicates agree with the store.
 TEST(BugHuntRound7, continuous_predicates_see_the_rational_store) {
-    using C        = inside<{{-1, 1}, 0}>;
+    using C        = inside<{{-1, 1}, max_denominator{imax{1} << 62}}>;
     const double d = 0x1.644cb4ec9ec46p-20;
-    EXPECT_EQ(C::try_make(d).error(), errc::overflow);
-    EXPECT_TRUE(conversion_overflows<C>(d));
+    EXPECT_EQ(C::try_make(d).error(), errc::rounding_error);
+    EXPECT_FALSE(conversion_overflows<C>(d));
     EXPECT_TRUE(conversion_loses<C>(d));
     EXPECT_FALSE(conversion_overflows<C>(0.25));
 }
@@ -141,7 +141,7 @@ TEST(BugHuntRound7, numerator_past_int64) {
     EXPECT_TRUE(m == -std::remove_cvref_t<decltype(m)>{UINT64_MAX - 2});
     // A grid whose numerators fit keeps imax.
     static_assert(std::same_as<decltype(std::declval<inside<{{0, 10}, rational{1, 4}}>>().numerator()), I64>);
-    static_assert(std::same_as<decltype(std::declval<inside<{{0, 1}, 0}>>().numerator()), I64>);
+    static_assert(std::same_as<decltype(std::declval<inside<{{0, 1}, max_denominator{1000}}>>().numerator()), I64>);
 }
 
 // raw·notch passed imax in to_value although the value fits.

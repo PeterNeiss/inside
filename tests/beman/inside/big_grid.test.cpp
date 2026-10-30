@@ -286,39 +286,37 @@ TEST(BigGridTest, continuous_past_64_bits) {
     EXPECT_EQ(to_string(planck / length{2}), "0.000000000000000000000000000000000008081275");
 
     // Declared directly, with every policy.
-    using big_real = inside<{{0, 1e30_g}, 0}>;
+    using big_real = inside<{{0, 1e30_g}, max_denominator{1000}}>;
     static_assert(detail::fraction_storage<big_real>);
     big_real b = rational{1, 3};
     EXPECT_EQ(to_string(b), "1/3");
     b = *parse<big_real>("123456789012345678901234567890/11");
     EXPECT_EQ(to_string(b), "123456789012345678901234567890/11");
     EXPECT_THROW(b = -1, inside_error);
-    inside<{{0, 1e30_g}, 0}, clamp> c = 0;
-    c                                 = huge::from_raw(raw_2_100);
+    inside<{{0, 1e30_g}, max_denominator{1000}}, clamp> c = 0;
+    c                                                     = huge::from_raw(raw_2_100);
     EXPECT_EQ(to_string(c), "1000000000000000000000000000000");
-    inside<{{0, 1e30_g}, 0}, wrap> w = 0;
-    w                                = far{huge::from_raw(raw_2_100_3)}; // 2^100 + 3 − 10^30
+    inside<{{0, 1e30_g}, max_denominator{1000}}, wrap> w = 0;
+    w                                                    = far{huge::from_raw(raw_2_100_3)}; // 2^100 + 3 − 10^30
     EXPECT_EQ(to_string(w), "267650600228229401496703205379");
-    // + and × hold the exact value, and report a fraction past the raw.
+    // + and × hold the exact value, in fractions sized from the bounds.
     const auto s = b + b;
-    ASSERT_TRUE(s.has_value());
-    EXPECT_EQ(to_string(*s), "246913578024691357802469135780/11");
+    static_assert(!detail::is_expected_v<decltype(s)>);
+    EXPECT_EQ(to_string(s), "246913578024691357802469135780/11");
     const auto p = b * big_real{rational{1, 2}};
-    ASSERT_TRUE(p.has_value());
-    EXPECT_EQ(to_string(*p), "61728394506172839450617283945/11");
-    // 1/(2^250 + 1) fits big_real's raw; its square does not fit the product's.
-    const big_real x =
-        *parse<big_real>("1/1809251394333065553493296640760748560207343510400633813116524750123642650625");
-    EXPECT_EQ((x * x).error(), errc::overflow);
+    static_assert(!detail::is_expected_v<decltype(p)>);
+    EXPECT_EQ(to_string(p), "61728394506172839450617283945/11");
+    // A denominator past the bound is off the grid.
+    EXPECT_EQ(parse<big_real>("1/1001").error(), errc::rounding_error);
 }
 
 // A continuous grid past 64 bits (an exact-fraction raw) negates and subtracts.
 TEST(BigGrid, big_continuous_negates) {
-    using F = inside<{{-1e30_g, 1e30_g}, 0}>;
+    using F = inside<{{-1e30_g, 1e30_g}, max_denominator{1000}}>;
     static_assert(detail::fraction_storage<F>);
     const F a{3}, b{rational{1, 2}};
     EXPECT_EQ(to_string(-a), "-3");
-    EXPECT_EQ(to_string(*(b - a)), "-2.5");
+    EXPECT_EQ(to_string(b - a), "-2.5");
 }
 
 // A same-notch store between grids whose lattices sit off 0 shifts by the

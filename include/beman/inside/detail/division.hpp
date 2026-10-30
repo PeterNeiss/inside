@@ -57,7 +57,7 @@ inline constexpr bool integer_wide_ops = integer_ops<L, R, F> && !integer_native
 template <insidable L, insidable R, policy_flag F>
 inline constexpr bool div_defined =
     (integer_native_ops<L, R, F> || integer_wide_ops<L, R, F>) ? lower_of<R> != 0 || upper_of<R> != 0
-                                                               : grid_quotient_fits(grid_of<R>);
+                                                               : grid_quotient_fits(grid_of<L>, grid_of<R>);
 
 // (A zero divisor grid has no remainder grid: |r| < |b| holds no value.)
 template <insidable L, insidable R, policy_flag F>
@@ -221,8 +221,8 @@ struct division {
     // expected-deref below failing cryptically. The native integer path forms
     // no exact quotient grid (below).
     static_assert(div_defined<L, R, F>,
-                  "division: no result grid - the divisor grid is the point 0, or a continuous divisor without "
-                  "max_denominator reaches 0");
+                  "division: no result type - the divisor grid is the point 0, or the exact quotient's fractions "
+                  "pass BEMAN_INSIDE_MAX_FRACTION_BITS");
 
     // The native integer quotient's range: the corner quotients rounded by
     // the runtime's mode (half_even: the low end by floor, the high by ceil,

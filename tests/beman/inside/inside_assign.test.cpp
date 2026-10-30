@@ -252,7 +252,7 @@ TEST(InsideAssignTest, trivial_type_guarantees) {
     static_assert(is_trivial_type_v<inside<{0, 100}, unsafe>>);
     static_assert(is_trivial_type_v<inside<{-100, 100}, unsafe>>);
     static_assert(is_trivial_type_v<inside<{{0, 10}, rational{1u, 2}}, unsafe>>);
-    static_assert(is_trivial_type_v<inside<{{-10, 10}, 0}, unsafe>>);
+    static_assert(is_trivial_type_v<inside<{{-10, 10}, max_denominator{1000}}, unsafe>>);
     static_assert(is_trivial_type_v<inside<{0, 100}, clamp>>);
     static_assert(is_trivial_type_v<inside<{0, 100}, wrap>>);
 

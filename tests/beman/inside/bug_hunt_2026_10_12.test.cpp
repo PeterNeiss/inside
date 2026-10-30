@@ -195,13 +195,13 @@ template <class T, class S>
 constexpr bool can_div_assign = requires(T t, S s) { t /= s; };
 
 using digit   = inside<{0, 9}>;
-using reals   = inside<{{-2, 2}, 0}>;
+using reals   = inside<{{-2, 2}, max_denominator{1000}}>;
 using fourths = inside<{{-2, 3}, per<4>}>;
 } // namespace
 
 TEST(BugHunt20261012, operations_are_constraint_friendly) {
     static_assert(can_div<digit, digit> && can_div<reals, digit>);
-    static_assert(!can_div<digit, reals>);       // a continuous divisor reaching 0
+    static_assert(can_div<digit, reals>);        // a bounded divisor stays 1/1000 from 0
     static_assert(!can_div<digit, inside<{0}>>); // the point 0
     static_assert(can_mod<digit, digit> && !can_mod<fourths, digit>);
     static_assert(can_divmod<digit, inside<{1, 3}>> && !can_divmod<fourths, digit>);
@@ -211,5 +211,5 @@ TEST(BugHunt20261012, operations_are_constraint_friendly) {
     static_assert(!can_make<digit, fourths> && can_make<inside<{0, 9}, snap>, fourths>);
     static_assert(can_add_assign<digit, digit> && can_add_assign<digit, inside<{10}>> &&
                   !can_add_assign<digit, fourths>);
-    static_assert(!can_div_assign<digit, reals> && can_div_assign<inside<{0, 9}, snap>, digit>);
+    static_assert(!can_div_assign<digit, inside<{0}>> && can_div_assign<inside<{0, 9}, snap>, digit>);
 }

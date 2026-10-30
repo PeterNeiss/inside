@@ -70,11 +70,18 @@ struct addition {
 
 // Whether `l + r` has a result, as a constraint of add / + / += (so a
 // requires-expression or `if constexpr` probe gets the answer instead of a
-// hard error): no wide-index operand with a continuous result. (F, the
-// call's flags, is taken for symmetry with div_defined; a sum ignores it.)
+// hard error): a result grid with a bound (its fractions within
+// BEMAN_INSIDE_MAX_FRACTION_BITS), and no wide-index operand with a
+// continuous result. (F, the call's flags, is taken for symmetry with
+// div_defined; a sum ignores it.)
 template <insidable L, insidable R, policy_flag = none>
-inline constexpr bool add_defined =
-    !rational_storage<typename addition<L, R>::result> || (!wide_valued<L> && !wide_valued<R>);
+inline constexpr bool add_defined = [] {
+    using result = typename addition<L, R>::result;
+    if constexpr (!bounded_grid(grid_of<result>))
+        return false;
+    else
+        return !rational_storage<result> || (!wide_valued<L> && !wide_valued<R>);
+}();
 
 // The same for `l - r` (l + (−r)).
 template <insidable L, insidable R, policy_flag = none>

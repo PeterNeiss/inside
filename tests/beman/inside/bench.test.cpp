@@ -1061,9 +1061,8 @@ fraction64 fraction_div(fraction64 a, fraction64 b) { return fraction_reduce(a.n
 } // namespace
 
 static void bench_rational() {
-    using continuous = inside<{{-8, 8}, 0}>; // a rational raw
-    // A divisor reaching 0 has no bounded quotient: the divisor excludes it.
-    using positive = inside<grid{interval{rational{1, 1024}, 8}, 0}>;
+    using continuous = inside<{{-8, 8}, max_denominator{1024}}>; // a rational raw
+    using positive   = inside<grid{interval{rational{1, 1024}, 8}, max_denominator{1024}}>;
     std::vector<continuous> ea(kMask + 1), eb(kMask + 1);
     std::vector<positive>   ep(kMask + 1);
     std::vector<rational>   qa(kMask + 1), qb(kMask + 1);
@@ -1100,7 +1099,7 @@ static void bench_rational() {
     });
     add.run("inside (continuous)", [&] {
         ++i;
-        doNotOptimizeAway((ea[i & kMask] + eb[i & kMask])->raw().Num);
+        doNotOptimizeAway((ea[i & kMask] + eb[i & kMask]).raw().Num);
     });
     finish(add);
 
@@ -1111,7 +1110,7 @@ static void bench_rational() {
     });
     mul.run("inside (continuous)", [&] {
         ++i;
-        doNotOptimizeAway((ea[i & kMask] * eb[i & kMask])->raw().Num);
+        doNotOptimizeAway((ea[i & kMask] * eb[i & kMask]).raw().Num);
     });
     finish(mul);
 
@@ -1122,7 +1121,7 @@ static void bench_rational() {
     });
     dv.run("inside (continuous)", [&] {
         ++i;
-        doNotOptimizeAway((ea[i & kMask] / ep[i & kMask])->raw().Num);
+        doNotOptimizeAway((ea[i & kMask] / ep[i & kMask]).raw().Num);
     });
     finish(dv);
 
@@ -1149,7 +1148,7 @@ static void bench_rational() {
     });
     mx.run("inside continuous + inside integer grid", [&] {
         ++i;
-        doNotOptimizeAway((ea[i & kMask] + ib[i & kMask])->raw().Num);
+        doNotOptimizeAway((ea[i & kMask] + ib[i & kMask]).raw().Num);
     });
     finish(mx);
 

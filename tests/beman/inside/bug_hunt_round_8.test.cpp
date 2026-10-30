@@ -56,7 +56,7 @@ TEST(BugHuntRound8, rational_and_long_double) {
 TEST(BugHuntRound8, inside_against_long_double) {
 #if WIDE_LONG_DOUBLE
     using Q = inside<{{-100, 100}, per<4>}>;
-    using C = inside<{{-1, 2}, 0}>;
+    using C = inside<{{-1, 2}, max_denominator{I64{1} << 62}}>;
     static_assert(Q{1} != 1.0L + 0x1p-60L && Q{1} < 1.0L + 0x1p-60L && Q{1} == 1.0L);
     EXPECT_TRUE(Q{1} < launder(1.0L + 0x1p-60L));
     EXPECT_FALSE(C{1} == launder(1.0L + 0x1p-63L));
@@ -72,8 +72,9 @@ TEST(BugHuntRound8, interval_and_grid_take_long_double_exactly) {
     constexpr grid G{{-100, 100}, per<4>};
     static_assert(!G.representable(1.0L + 0x1p-60L) && G.representable(1.0L));
     static_assert(!includes(interval{-100, 1}, 1.0L + 0x1p-60L) && !includes(interval{-1, 0}, 0x1p-70L));
-    static_assert(!grid{{-1, 2}, 0}.representable(1.0L + 0x1p-63L)); // finer than the rational holds
-    static_assert(grid{{-1, 2}, 0}.representable(1.0L + 0x1p-60L));
+    constexpr grid C{{-1, 2}, max_denominator{I64{1} << 62}};
+    static_assert(!C.representable(1.0L + 0x1p-63L)); // finer than the bound
+    static_assert(C.representable(1.0L + 0x1p-60L));
     EXPECT_FALSE(G.representable(launder(1.0L + 0x1p-60L)));
     EXPECT_FALSE(includes(interval{-1, 0}, launder(0x1p-70L)));
 #endif

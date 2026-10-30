@@ -212,8 +212,8 @@ static_assert(std::ranges::random_access_range<decltype(values<bin>)>);
 static_assert(std::ranges::sized_range<decltype(values<bin>)>);
 static_assert(std::is_same_v<std::ranges::range_value_t<decltype(values<quarter>)>, quarter>);
 static_assert(has_values<bin>);
-static_assert(!has_values<cursor<bin>>);         // ends past bin's Upper
-static_assert(!has_values<inside<{{0, 1}, 0}>>); // no notch
+static_assert(!has_values<cursor<bin>>);                           // ends past bin's Upper
+static_assert(!has_values<inside<{{0, 1}, max_denominator{10}}>>); // no notch
 static_assert(std::ranges::size(values<bin>) == 10);
 static_assert(std::ranges::count_if(values<bin>, [](bin b) { return b > 5_ins; }) == 4);
 

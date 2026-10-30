@@ -27,8 +27,8 @@ using namespace beman::inside::detail;
 //---------------------------------------------------------------------------
 // Bug A: rational-mixed add into value-storage result
 TEST(StorageBugsTest, bug_a_rational_mixed_add_into_direct_storage_result) {
-    using L = inside<{-5, 5}>;          // signed value-storage
-    using R = inside<{{-10, 10}, 0_r}>; // rational raw
+    using L = inside<{-5, 5}>;                            // signed value-storage
+    using R = inside<{{-10, 10}, max_denominator{1000}}>; // rational raw
 
     constexpr L l{2};
     constexpr R r{1_r};

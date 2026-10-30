@@ -225,8 +225,10 @@ std::unordered_set<small> seen{small{3}, small{4}, small{3}};  // two elements
 
 A grid is an interval `[lower, upper]` and a notch `n ≥ 0`. Its values are
 `lower + k·n` for `k = 0, 1, …` up to `upper`, so `n` must divide
-`upper − lower`. A notch of zero gives a continuous grid: every rational in the
-interval, optionally with a bound on the denominators (`max_denominator`). A
+`upper − lower`. A notch of zero and a bound `D` on the denominators give a
+continuous grid: every rational in the interval whose denominator is at most
+`D` (`{{0, 1}, max_denominator{1000}}`). An `inside` on a continuous grid
+needs the bound, because it sizes the fraction of every exact result (below). A
 grid with `lower == upper` is a point. A floating-point limit is taken at its
 exact binary value; when the notch is derived from such a limit, one that is
 not a short binary fraction is rejected (`0.1` is not 1/10).
@@ -258,7 +260,8 @@ every result grid exist.
 Storage follows from the grid alone: there are no storage flags. The reference
 implementation stores the narrowest integer that numbers every point, or holds
 the value itself for a whole-number grid when that is no wider. Past 2⁶⁴ points
-it stores a multi-limb integer, and a continuous grid stores an exact fraction.
+it stores a multi-limb integer, and a continuous grid stores an exact fraction
+sized from its bound.
 We propose that the storage be unspecified, with this as recommended practice.
 Equal grids give the same type, so values of the same grid always share a
 representation.
@@ -267,15 +270,16 @@ representation.
 
 The result of `a + b`, `a - b`, `a * b` and `-a` is an `inside` whose grid holds
 every possible result. `[0, 100] + [0, 100]` is `[0, 200]`, and negation mirrors
-the interval. On a lattice (a notch above zero), and on a continuous grid with a
-denominator bound, no operation produces a value outside its result type, so
-these operators need no overflow check and return a plain `inside`.
+the interval. A continuous result's denominator bound follows from the
+operands': `D_a·D_b` for `+`, `-` and `*`, where `D` of a lattice is its
+notch's denominator. So no operation produces a value outside its result type,
+and these operators need no overflow check and always return a plain `inside`.
 
-The one exception is a continuous operand without a denominator bound: the
-exact fraction of a result can outgrow any fixed storage, so the operator
-returns `std::expected<inside, errc>` with `errc::overflow` (under `unsafe`,
-fitting is a precondition). A program that needs total arithmetic on fractions
-names a bound, and division (below) produces one by itself.
+A chain of exact operations on fractions multiplies the bounds. The reference
+implementation gives a result whose fractions would need more than 1024 bits
+(a configurable limit) no type: the operator is deleted, and its message names
+the fix, which is to round an operand, or the product with `mul_into`, into a
+coarser type.
 
 ## Division
 
@@ -325,8 +329,8 @@ and is 21% faster than a native checked type in the paper's benchmark ("Where
 are the checks?").
 
 Fallible results are values only where failure is possible at run time:
-`try_make`, `to<T>()`, division by a divisor whose grid holds zero, and
-arithmetic on an unbounded continuous grid. A total operation returns a plain
+`try_make`, `to<T>()`, and division by a divisor whose grid holds zero. A
+total operation returns a plain
 value, so the type says whether failure is possible. A failed checked store
 throws `inside_error`, which carries the `errc`.
 
@@ -447,7 +451,7 @@ namespace std {
   struct grid {
     interval Interval;
     @*grid-number*@ Notch;                                       // >= 0, divides Upper - Lower
-    @*grid-number*@ MaxDenominator;                              // continuous grids: 0 or a bound
+    @*grid-number*@ MaxDenominator;                              // a continuous grid's bound, else 0
     constexpr grid(@*number*@ lower, @*number*@ upper, @*number*@ notch);
     constexpr grid(@*number*@ lower, @*number*@ upper);          // notch gcd(1, lower, upper)
     constexpr grid(@*number*@ lower, @*number*@ upper, @*number*@ notch, bounds);
@@ -469,7 +473,7 @@ namespace std {
   struct inside_error : runtime_error { errc Code; };
 
   // the type
-  template<grid G, policy_flag P = checked>
+  template<grid G, policy_flag P = checked>               // G continuous: MaxDenominator != 0
   struct inside {
     constexpr inside() = default;                         // trivial
     template<class A> constexpr inside(A value);          // A arithmetic or inside: a store by P
@@ -563,8 +567,8 @@ namespace std {
 | `inside<G, P>{v}` | stores `v` by `P` | ill-formed when no value of `v`'s type can fit (disjoint intervals without `clamp`/`wrap`, incompatible notch without a rounding) |
 | `B::try_make<F>(v)` | `expected<B, errc>` | the store under `P | F`, reporting instead of throwing |
 | `-a` | `inside<-G, P>` | mirrored interval, same notch |
-| `a + b`, `a - b` | interval sum or difference; notch `gcd(n_a, n_b)` | continuous if either operand is, with denominator bound `D_a·D_b`; `expected` iff an operand is continuous without a bound |
-| `a * b` | interval product; notch `n_a·n_b`, refined by the operands' offsets | a point `c` scales the other notch by `|c|`; `expected` as for `+` |
+| `a + b`, `a - b` | interval sum or difference; notch `gcd(n_a, n_b)` | continuous if either operand is, with denominator bound `D_a·D_b` |
+| `a * b` | interval product; notch `n_a·n_b`, refined by the operands' offsets | a point `c` scales the other notch by `|c|`; continuous as for `+` |
 | `a / b` | a point `c`: `a`'s notch scaled by `1/|c|`; else continuous with denominator bound `D_a·max|b|·D_b` | rounded onto the integers or the shared notch when a policy names a rounding; `expected` iff `b`'s grid holds 0 |
 | `a % b` | `[0, m]` or `[−m, m]`, `m = max|b| − 1` | integer grids required; `r = a − q·b` for `q` truncated or rounded by the policy |
 | `e op b`, `a op e` (`e` an `expected`) | `expected` of `a op b`'s result | the first error passes through |
@@ -654,11 +658,8 @@ The repository's `docs/resources.md` compares their features.
    implementation has one, which lets the core run without exceptions).
 3. **Bare scalars.** Rejecting `a + 1` is deliberate. Should mixed arithmetic
    with an integer of a stated range be allowed instead?
-4. **Unbounded continuous grids.** Their arithmetic is the only `+`, `-` and `*`
-   that can fail. Should a continuous grid require a denominator bound, so that
-   every `+`, `-` and `*` is total?
-5. **The per-call interface.** Trailing arguments on free functions for one
+4. **The per-call interface.** Trailing arguments on free functions for one
    call, and a proxy for one store, are the implementation's shape. The proxy
    type is left unspecified.
-6. **Interaction** with C++26 saturation arithmetic and with `std::linalg`
+5. **Interaction** with C++26 saturation arithmetic and with `std::linalg`
    element types.

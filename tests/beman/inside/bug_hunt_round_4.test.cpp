@@ -51,10 +51,10 @@ TEST(BugHuntRound4, bounded_grid_rounds_a_fine_double) {
 // clamp saturated every out-of-range value but a double finer than 2^-62:
 // on a continuous grid it reported overflow.
 TEST(BugHuntRound4, continuous_grid_clamps_a_fine_double) {
-    EXPECT_EQ(*(inside<{{0, 1}, rational{0}}, clamp>::try_make(-1e-20)), 0);
-    EXPECT_EQ(*(inside<{{1, 2}, rational{0}}, clamp>::try_make(1e-20)), 1);
+    EXPECT_EQ(*(inside<{{0, 1}, max_denominator{1000}}, clamp>::try_make(-1e-20)), 0);
+    EXPECT_EQ(*(inside<{{1, 2}, max_denominator{1000}}, clamp>::try_make(1e-20)), 1);
     EXPECT_EQ((*inside<sevenths, clamp>::try_make(-1e-20)), 0);
-    EXPECT_EQ((inside<{{0, 1}, rational{0}}>::try_make(-1e-20).error()), errc::overflow);
+    EXPECT_EQ((inside<{{0, 1}, max_denominator{1000}}>::try_make(-1e-20).error()), errc::overflow);
 }
 
 // Two integer raws whose common unit (the gcd of a 2/3 and a 2^-62 notch) is
@@ -102,16 +102,16 @@ TEST(BugHuntRound4, numeric_limits_epsilon_off_zero) {
 // replaced the destination with a value-initialised raw (0/0 on a
 // continuous grid) instead of leaving it intact.
 TEST(BugHuntRound4, failed_fine_double_store_keeps_the_value) {
-    using C = inside<{{0, 1}, rational{0}}>;
+    using C = inside<{{0, 1}, max_denominator{1000}}>;
     C    z{rational{1, 2}};
     errc ec{};
-    z.policy(ec) = 1e-30; // past the 64-bit rational: overflow
-    EXPECT_EQ(ec, errc::overflow);
+    z.policy(ec) = 1e-30; // finer than the bound: off the grid
+    EXPECT_EQ(ec, errc::rounding_error);
     EXPECT_EQ(z, rational(1, 2));
     C    w{rational{1, 2}};
     errc cb{};
     w.on_error([&](auto&, errc c, const char*) { cb = c; }) = 1e-30;
-    EXPECT_EQ(cb, errc::overflow);
+    EXPECT_EQ(cb, errc::rounding_error);
     EXPECT_EQ(w, rational(1, 2));
 }
 
@@ -158,16 +158,16 @@ TEST(BugHuntRound4, fine_double_into_an_uninitialized_inside) {
     EXPECT_EQ(x, 0);
     // A failure still reaches on_error with the destination's value; a clamp
     // policy saturates instead (no failure).
-    using U = inside<{{0, 1}, rational{0}}>;
+    using U = inside<{{0, 1}, max_denominator{1000}}>;
     U    u{rational{1, 2}};
     errc cb{};
     u.on_error([&](auto& v, errc c, const char*) {
         cb = c;
         EXPECT_EQ(v, rational(1, 2));
     }) = 1e-30;
-    EXPECT_EQ(cb, errc::overflow);
+    EXPECT_EQ(cb, errc::rounding_error);
     EXPECT_EQ(u, rational(1, 2));
-    using C = inside<{{1, 2}, rational{0}}, clamp>;
+    using C = inside<{{1, 2}, max_denominator{1000}}, clamp>;
     C w{rational{3, 2}};
     cb                                                      = {};
     w.on_error([&](auto&, errc c, const char*) { cb = c; }) = 1e-30;

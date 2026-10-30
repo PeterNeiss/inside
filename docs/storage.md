@@ -23,7 +23,7 @@ except in the cases at the end of this list.
 | Lower < 0, a fractional notch | an unsigned offset index | `inside<{{-5, 5}, 0.5}>`: `uint8_t` |
 | more than 2⁶⁴ points | a library `wide_int` of as many 64-bit limbs as needed | `inside<{{0, 1ull << 34}, per<(1ull << 32)>}>`: 2 limbs |
 | a single point (`just<…>`, `5_ins`) | nothing: the value is in the type | `sizeof(5_ins) == 1`, 0 bytes as a `[[no_unique_address]]` member |
-| notch 0 (continuous) | an exact fraction (`beman::inside::rational`) | `inside<{{-10, 10}, 0}>`, and exact quotients |
+| notch 0 (continuous), with a denominator bound | an exact fraction (`beman::inside::rational`), or past 64 bits a fraction of fixed-width integers sized from the bound | `inside<{{-10, 10}, max_denominator{1000}}>`, and exact quotients |
 
 The selection uses each type's full range: `inside<{0, 255}>` is a `uint8_t`
 and `inside<{-128, 127}>` an `int8_t`, so a loop over them vectorizes with the
@@ -107,8 +107,9 @@ then `residue r = top;`), since `N - 1` evaluated at run time would have to form
 it. `B::try_make(top)` reports instead of throwing.
 
 A continuous grid past 64 bits stores an exact fraction of fixed-width
-integers. A bounded one ([arithmetic.md](arithmetic.md#bounded-continuous-grids))
-sizes them from its denominator bound, so its quotients are plain values:
+integers, sized from its denominator bound
+([arithmetic.md](arithmetic.md#bounded-continuous-grids)), so its quotients
+are plain values:
 
 ```cpp
 using length = inside<{{1e-41_g, 1e27_g}, 1e-41_g}, round_nearest>;
@@ -119,9 +120,8 @@ auto ratio = universe / planck;           // exactly 1760…0/323251, a plain va
 math::log10_into<decade>(ratio);          // 61.73597…, rounded once
 ```
 
-An unbounded one sizes them from its limits, and reports `errc::overflow`
-when a result outgrows them. [`planck_to_cosmos.cpp`](../examples/planck_to_cosmos.cpp)
-runs this example with lengths in metres.
+[`planck_to_cosmos.cpp`](../examples/planck_to_cosmos.cpp) runs this example
+with lengths in metres.
 
 Integer grids past 64 bits compute exactly in fixed-width integers.
 [`rsa.cpp`](../examples/rsa.cpp) runs textbook RSA-1024 on residues

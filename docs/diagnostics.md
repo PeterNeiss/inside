@@ -150,7 +150,6 @@ result, and so are the quantity operations. A requires-expression or
 ```cpp
 template <class A, class B>
 constexpr bool can_divide = requires(A a, B b) { a / b; };
-static_assert(!can_divide<inside<{0, 9}>, inside<{{-2, 2}, 0}>>);   // a continuous divisor reaching 0
 static_assert(!can_divide<inside<{0, 9}>, inside<{0}>>);            // the point 0
 
 template <class A, class B>
@@ -159,7 +158,7 @@ static_assert(!can_add<decltype(just<1> * si::metre), decltype(just<1> * si::sec
 ```
 
 An impossible operator is a deleted overload whose message names the reason
-(`use of deleted function …: division: no result grid - …`).
+(`use of deleted function …: division: no result type - …`).
 
 ## `BEMAN_INSIDE_STRICT_SFINAE`: turning the hints off
 

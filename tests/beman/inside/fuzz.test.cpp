@@ -1423,8 +1423,8 @@ int main(int argc, char** argv) {
     // addition / multiplication / assignment. Default `checked` policy goes
     // through the overflow-checked rational arithmetic; the `none` variant
     // exercises rational::add_unchecked / mul_unchecked.
-    run_props<inside<{{-1000, 1000}, 0}>>(s, iters, "raw_rat");
-    run_props<inside<{{-1000, 1000}, 0}, none>>(s, iters, "raw_rat_unck");
+    run_props<inside<{{-1000, 1000}, max_denominator{1000}}>>(s, iters, "raw_rat");
+    run_props<inside<{{-1000, 1000}, max_denominator{1000}}, none>>(s, iters, "raw_rat_unck");
     // Unanchored lattices (Lower off the notch's multiples): offset storage
     // whose values are not whole notches.
     run_props<inside<{{0.5_r, 100.5_r}, 1}>>(s, iters, "half_off");

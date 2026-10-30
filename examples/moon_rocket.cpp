@@ -45,12 +45,13 @@ int main() {
     if (to_string(m0) != "104500 kg" || to_string(m_final) != "19500 kg")
         return 1;
 
-    // 2. m0 / mf is a number (kg/kg): exactly 209/39. Its log rounds once onto
+    // 2. m0 / mf is a number (kg/kg): exactly 209/39, a fraction whose
+    //    denominator is at most 60000 (mf in kg). Its log rounds once onto
     //    a 1e-6 grid, and v_e = 3.1 km/s scales it into a Δv.
-    const inside<{{1, 300}, 0}>                     ratio = m0 / m_final;
-    const auto                                      ln    = math::log_into<fine<1'000'000>>(ratio);
-    const quantity<km_s, inside<{{1, 5}, per<10>}>> v_e{rational{31, 10}};
-    const auto                                      dv_stage = v_e * ln;
+    const inside<{{1, 300}, max_denominator{60'000}}> ratio = m0 / m_final;
+    const auto                                        ln    = math::log_into<fine<1'000'000>>(ratio);
+    const quantity<km_s, inside<{{1, 5}, per<10>}>>   v_e{rational{31, 10}};
+    const auto                                        dv_stage = v_e * ln;
     std::cout << "dv stage  = " << dv_stage.in(si::metre / si::second) << '\n';
     if (to_string(dv_stage) != "5.2041963 km/s")
         return 1;

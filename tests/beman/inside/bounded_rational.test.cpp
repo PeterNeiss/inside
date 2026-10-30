@@ -18,7 +18,6 @@ namespace {
 using num   = inside<{0, 100}>;
 using den   = inside<{1, 7}>;
 using quot  = decltype(num{} / den{});
-using C     = inside<{{0, 10}, 0}>; // declared continuous: unbounded
 using half  = inside<{{-6, 6}, per<2>}>;
 using small = inside<{1, 5}>;
 } // namespace
@@ -36,12 +35,6 @@ TEST(BoundedRationalTest, quotient_of_notched_grids_is_bounded_and_plain) {
     EXPECT_EQ(rational{q * 9_ins / 5_ins + 32_ins}, 62);
     EXPECT_EQ(rational{q + q - q * q}, (rational{-2200, 9}));
     EXPECT_EQ(rational{q / den{7}}, (rational{50, 21}));
-}
-
-TEST(BoundedRationalTest, unbounded_continuous_grids_still_report) {
-    static_assert(is_expected_v<decltype(C{} + C{})>);
-    static_assert(is_expected_v<decltype(C{} * C{})>);
-    static_assert(is_expected_v<decltype(quot{} + C{})>); // one unbounded operand
 }
 
 TEST(BoundedRationalTest, declared_bound_makes_arithmetic_plain) {
@@ -153,4 +146,24 @@ TEST(BoundedRationalTest, bounded_results_are_total_past_64_bit_intermediates) {
     static_assert(insidable<decltype(s)>); // a plain value
     static_assert(s == rational{1, 3});
     EXPECT_EQ(static_cast<rational>(a - (-b)), (rational{1, 3}));
+}
+
+// Fractions past BEMAN_INSIDE_MAX_FRACTION_BITS have no type: the operator
+// is deleted, so a probe answers, and mul_into rounds the product instead.
+template <class A, class B>
+constexpr bool can_mul = requires(A a, B b) { a * b; };
+template <class A, class B>
+constexpr bool can_add = requires(A a, B b) { a + b; };
+
+TEST(BoundedRationalTest, results_past_the_fraction_cap_have_no_type) {
+    using billionths = inside<{interval{0, 1}, max_denominator{1'000'000'000}}>;
+    using b2         = decltype(billionths{} * billionths{});
+    using b4         = decltype(b2{} * b2{});
+    using b8         = decltype(b4{} * b4{});
+    using b16        = decltype(b8{} * b8{}); // denominators to 10^144
+    static_assert(can_mul<b8, b8> && can_add<b16, billionths>);
+    static_assert(!can_mul<b16, b16> && !can_add<b16, b16>); // 10^288: past 1024 bits
+    using cent      = inside<{{0, 1}, per<100>}, round_nearest>;
+    const b16 tenth = rational{1, 10};
+    EXPECT_EQ(mul_into<cent>(tenth, tenth), rational(1, 100));
 }

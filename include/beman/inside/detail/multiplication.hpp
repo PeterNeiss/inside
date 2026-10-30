@@ -70,13 +70,16 @@ struct multiplication {
     }
 };
 
-// Whether `l * r` has a result, as a constraint of mul / * / *=: no
-// wide-index operand with a continuous result.
+// Whether `l * r` has a result, as a constraint of mul / * / *=: a result
+// grid with a bound, and no wide-index operand with a continuous result.
 template <insidable L, insidable R, policy_flag = none>
 inline constexpr bool mul_defined = [] {
     using result = typename multiplication<L, R>::result;
-    return point_scale<R, L, result> || point_scale<L, R, result> || !rational_storage<result> ||
-           (!wide_valued<L> && !wide_valued<R>);
+    if constexpr (!bounded_grid(grid_of<result>))
+        return false;
+    else
+        return point_scale<R, L, result> || point_scale<L, R, result> || !rational_storage<result> ||
+               (!wide_valued<L> && !wide_valued<R>);
 }();
 } // namespace beman::inside::detail
 

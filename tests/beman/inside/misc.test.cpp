@@ -138,7 +138,7 @@ TEST(MiscTest, numeric_limits_epsilon_round_error_report_0_for_exact_types) {
     static_assert(std::numeric_limits<half>::round_error() == 0);
 
     // Rational raw (Notch = 0) — still exact, epsilon = 0.
-    using r01 = inside<{{0_r, 1_r}, 0}>;
+    using r01 = inside<{{0_r, 1_r}, max_denominator{1000}}>;
     static_assert(std::numeric_limits<r01>::epsilon() == 0);
 
     // 0 is *outside* the interval: no epsilon, as 0 is no value.
