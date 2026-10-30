@@ -159,13 +159,13 @@ struct value_bounds {
 template <insidable B>
 constexpr value_bounds value_bounds_of() noexcept {
     const rational lo = lower64<B>, hi = upper64<B>, n = notch64<B>;
-    const umax     dl = abs_den(lo.Denominator), dn = n.Numerator == 0 ? umax{1} : abs_den(n.Denominator);
+    const umax     dl = abs_den(lo.Den), dn = n.Num == 0 ? umax{1} : abs_den(n.Den);
     umax           den, nlo, nhi;
     if (mul_overflow(dl / std::gcd(dl, dn), dn, &den))
         return {0, 0, false};
-    if (mul_overflow(lo.Numerator, den / dl, &nlo))
+    if (mul_overflow(lo.Num, den / dl, &nlo))
         return {0, 0, false};
-    if (mul_overflow(hi.Numerator, den / abs_den(hi.Denominator), &nhi))
+    if (mul_overflow(hi.Num, den / abs_den(hi.Den), &nhi))
         return {0, 0, false};
     return {nlo > nhi ? nlo : nhi, den, true};
 }
@@ -248,7 +248,7 @@ struct division {
                 return signed_mag{abs(wide_numerator(g)), wide_numerator(g).negative()};
             else {
                 const rational r = to_rational(g);
-                return signed_mag{r.Numerator, r.Denominator < 0 && r.Numerator != 0};
+                return signed_mag{r.Num, r.Den < 0 && r.Num != 0};
             }
         };
         auto quotient = [](const signed_mag& a, const signed_mag& b, round_mode m) {
@@ -459,11 +459,9 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
     } else if constexpr (int_quotient_fits) {
         // Two integer raws: J_L·Notch_L / (J_R·Notch_R) as one fraction of
         // value indices, reduced once — no operand decodes, no checked divide.
-        constexpr imax a =
-            static_cast<imax>(notch64<L>.Numerator) * static_cast<imax>(abs_den(notch64<R>.Denominator));
-        constexpr imax b =
-            static_cast<imax>(notch64<R>.Numerator) * static_cast<imax>(abs_den(notch64<L>.Denominator));
-        const imax d = value_index<imax>(rhs) * b;
+        constexpr imax a = static_cast<imax>(notch64<L>.Num) * static_cast<imax>(abs_den(notch64<R>.Den));
+        constexpr imax b = static_cast<imax>(notch64<R>.Num) * static_cast<imax>(abs_den(notch64<L>.Den));
+        const imax     d = value_index<imax>(rhs) * b;
         if constexpr (!zero_unchecked)
             if (d == 0)
                 return fail(errc::division_by_zero);
@@ -472,7 +470,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
     } else if constexpr (needs_overflow_check<G> && !fits_rational && !bound_fits) {
         rational rhs_r = rhs;
         if constexpr (!zero_unchecked)
-            if (rhs_r.Numerator == 0)
+            if (rhs_r.Num == 0)
                 return fail(errc::division_by_zero);
         auto q = as_rational(lhs) / rhs_r;
         if (!q) [[unlikely]]
@@ -481,7 +479,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
     } else {
         rational rhs_r = rhs;
         if constexpr (!zero_unchecked)
-            if (rhs_r.Numerator == 0)
+            if (rhs_r.Num == 0)
                 return fail(errc::division_by_zero);
         return result::from_raw(rational::div_unchecked(as_rational(lhs), rhs_r));
     }

@@ -843,8 +843,8 @@ inline constexpr bool DyadicNotch = [] {
     if constexpr (rational_storage<B> || integer_lattice<B>)
         return false;
     else {
-        imax d = abs_den(detail::notch64<B>.Denominator);
-        return detail::notch64<B>.Numerator == 1 && (d & (d - 1)) == 0;
+        imax d = abs_den(detail::notch64<B>.Den);
+        return detail::notch64<B>.Num == 1 && (d & (d - 1)) == 0;
     }
 }();
 

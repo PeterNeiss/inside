@@ -12,7 +12,7 @@
 //---------------------------------------------------------------------------
 // numeric_limits / hash — std:: specializations for inside<G, P>.
 // numeric_limits reports the *grid* bounds (Lower/Upper), not the raw type's
-// limits. std::hash hashes the Raw member (rational raw: Numerator+Denominator,
+// limits. std::hash hashes the Raw member (rational raw: Num+Den,
 // boost-style combine). (std::common_type lives in arithmetic.hpp, always on.)
 //---------------------------------------------------------------------------
 
@@ -115,7 +115,7 @@ struct std::hash<beman::inside::inside<G, P>> {
         else if constexpr (beman::inside::detail::fraction_storage<B>)
             return combine(combine(0, b.raw().Num), b.raw().Den); // a reduced fraction
         else if constexpr (beman::inside::detail::rational_storage<B>)
-            return mix(std::hash<beman::inside::umax>{}(b.raw().Numerator), b.raw().Denominator);
+            return mix(std::hash<beman::inside::umax>{}(b.raw().Num), b.raw().Den);
         else if constexpr (beman::inside::detail::wide_index_storage<B>)
             return combine(0, b.raw());
         else

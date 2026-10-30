@@ -120,8 +120,8 @@ template <numeric N>
 }
 
 // Zero test for a rational divisor: rational stores zero as {0, 1}, so
-// Numerator == 0 catches it.
-[[nodiscard]] constexpr bool is_canonical_zero(const rational& v) { return v.Numerator == 0; }
+// Num == 0 catches it.
+[[nodiscard]] constexpr bool is_canonical_zero(const rational& v) { return v.Num == 0; }
 
 // From the grid, not B::raw_type: the storage traits are read inside B's own
 // definition, where B is incomplete.

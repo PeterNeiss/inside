@@ -185,10 +185,11 @@ struct grid {
         return grid{iv, notch};
     }
 
-    // Exact slot count (Upper − Lower)/Notch, however large: with Upper = a/b,
-    // Lower = c/d and Notch = e/f it is (a·d − c·b)·f / (b·d·e), exact on a
-    // valid grid. 0 for a continuous grid.
-    [[nodiscard]] constexpr detail::grid_int slot_count() const noexcept {
+    // The steps of one notch from Lower to Upper, (Upper − Lower)/Notch: the
+    // largest index, one less than the number of values. Exact however large:
+    // with Upper = a/b, Lower = c/d and Notch = e/f it is
+    // (a·d − c·b)·f / (b·d·e), exact on a valid grid. 0 for a continuous grid.
+    [[nodiscard]] constexpr detail::grid_int step_count() const noexcept {
         using detail::wide_numerator, detail::wide_denominator;
         if (Notch == 0)
             return detail::grid_int{0};
@@ -200,18 +201,18 @@ struct grid {
         return num / (wide_denominator(U) * wide_denominator(L) * wide_numerator(Notch));
     }
 
-    // Bits needed to hold every slot index 0..slot_count().
-    [[nodiscard]] constexpr int slot_bits() const noexcept { return bit_width_of(slot_count()); }
+    // Bits needed to hold every slot index 0..step_count().
+    [[nodiscard]] constexpr int slot_bits() const noexcept { return bit_width_of(step_count()); }
 
-    // True when the slot count fits umax (a builtin index). False ⇒ the grid is
+    // True when the step count fits umax (a builtin index). False ⇒ the grid is
     // still valid and stores a wide index.
     [[nodiscard]] constexpr bool max_index_representable() const {
-        return !(detail::grid_int{std::numeric_limits<umax>::max()} < slot_count());
+        return !(detail::grid_int{std::numeric_limits<umax>::max()} < step_count());
     }
 
-    // Index-storage slot count (0 on overflow: such grids store a wide index).
+    // step_count() as a builtin index (0 on overflow: such grids store a wide index).
     [[nodiscard]] constexpr umax max_index() const {
-        return max_index_representable() ? static_cast<umax>(slot_count()) : umax{0};
+        return max_index_representable() ? static_cast<umax>(step_count()) : umax{0};
     }
 
     // True when `v` is an *exact* slot: in the interval AND on a notch (notch-0

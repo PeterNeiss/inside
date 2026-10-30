@@ -23,9 +23,7 @@ using namespace beman::inside;
 
 namespace {
 // Exact value of an inside (or grid constant) as long double, via rational.
-long double to_long_double(rational r) {
-    return static_cast<long double>(r.Numerator) / static_cast<long double>(r.Denominator);
-}
+long double to_long_double(rational r) { return static_cast<long double>(r.Num) / static_cast<long double>(r.Den); }
 
 struct stats {
     long double max_err  = 0.0L; // in output notches

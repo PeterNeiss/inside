@@ -158,7 +158,7 @@ int check_rounding(Fn fn, Ref ref, int stride = 1) {
     const ld       n          = notch_ld<Out>();
     constexpr bool floor_mode = detail::rounding_of(flags_of<Out>) == detail::round_mode::floor;
     int            bad        = 0;
-    const auto     count      = static_cast<long long>(grid_of<In>.slot_count());
+    const auto     count      = static_cast<long long>(grid_of<In>.step_count());
     for (long long i = 0; i <= count; i += stride) {
         const In x    = In::from_raw(detail::raw_from_offset<In>(static_cast<umax>(i)));
         const ld xv   = static_cast<ld>(static_cast<double>(x));
@@ -586,7 +586,7 @@ namespace {
 template <typename Out, typename In, typename Core, typename Fn>
 int tier_mismatches(Fn fn) {
     int        bad   = 0;
-    const auto count = static_cast<long long>(grid_of<In>.slot_count());
+    const auto count = static_cast<long long>(grid_of<In>.step_count());
     for (long long i = 0; i <= count; ++i) {
         const In  x       = In::from_raw(detail::raw_from_offset<In>(static_cast<umax>(i)));
         const Out integer = ax::evaluate<Out, ax::start_bits<Out>>(Core{ax::exact_input(x)});
@@ -929,7 +929,7 @@ namespace ddk = beman::inside::math::detail::dd;
 
 template <insidable In, typename Core, typename F>
 double dd_worst_ratio(F kernel) {
-    const long long count = static_cast<long long>(grid_of<In>.slot_count());
+    const long long count = static_cast<long long>(grid_of<In>.step_count());
     double          worst = 0;
     for (long long i = 0; i <= count; ++i) {
         const In      x     = In::from_raw(detail::raw_from_offset<In>(static_cast<umax>(i)));
@@ -980,7 +980,7 @@ TEST(MathAdaptiveTest, dd_kernels_stay_far_inside_their_bound) {
 namespace {
 template <insidable In, typename Core, typename F>
 double lean_worst_ratio(F kernel) {
-    const long long count = static_cast<long long>(grid_of<In>.slot_count());
+    const long long count = static_cast<long long>(grid_of<In>.step_count());
     double          worst = 0;
     for (long long i = 0; i <= count; ++i) {
         const In      x   = In::from_raw(detail::raw_from_offset<In>(static_cast<umax>(i)));
@@ -1045,7 +1045,7 @@ TEST(MathAdaptiveTest, lean_dd_kernels_stay_within_their_proved_bounds) {
     // A sparse sweep of a wide grid: 4096 points spread over it.
     const auto x     = [](long long i) { return huge::from_raw(detail::raw_from_offset<huge>(static_cast<umax>(i))); };
     double     worst = 0;
-    const long long count = static_cast<long long>(grid_of<huge>.slot_count());
+    const long long count = static_cast<long long>(grid_of<huge>.step_count());
     for (long long i = 1; i < count; i += count / 4096 + 1) {
         const auto    a = ax::log_core<ax::input_limbs<huge>>{ax::exact_input(x(i))}.template run<150>();
         double        b = 0;
@@ -1063,7 +1063,7 @@ TEST(MathAdaptiveTest, lean_dd_kernels_decide_double_fine_outputs) {
     using exp40 = inside<{{0, 4096}, rational{1, 1LL << 40}}, round_nearest>;
     static_assert(ax::dd_tier<amp52, sym4> && !ax::fp_tier<amp52, ax::fp_sin, sym4>);
     static_assert(ax::dd_tier<exp40, sym4> && !ax::fp_tier<exp40, ax::fp_exp, sym4>);
-    const long long count     = static_cast<long long>(grid_of<sym4>.slot_count());
+    const long long count     = static_cast<long long>(grid_of<sym4>.step_count());
     long long       undecided = 0;
     for (long long i = 0; i <= count; ++i) {
         const ddk::dd x = ax::dd_read(sym4::from_raw(detail::raw_from_offset<sym4>(static_cast<umax>(i))));
@@ -1079,7 +1079,7 @@ TEST(MathAdaptiveTest, lean_dd_kernels_decide_double_fine_outputs) {
     }
     using log48 = inside<{{-8, 8}, rational{1, 1LL << 48}}, round_nearest>;
     static_assert(ax::dd_tier<log48, pos64> && !ax::fp_tier<log48, ax::fp_log, pos64>);
-    const long long n = static_cast<long long>(grid_of<pos64>.slot_count());
+    const long long n = static_cast<long long>(grid_of<pos64>.step_count());
     for (long long i = 0; i <= n; ++i) {
         const ddk::dd x = ax::dd_read(pos64::from_raw(detail::raw_from_offset<pos64>(static_cast<umax>(i))));
         double        b;
@@ -1100,7 +1100,7 @@ namespace fpk = beman::inside::math::detail::fp;
 
 template <insidable In, typename Core, typename F>
 double fp_worst_ratio(F kernel) {
-    const long long count = static_cast<long long>(grid_of<In>.slot_count());
+    const long long count = static_cast<long long>(grid_of<In>.step_count());
     double          worst = 0;
     for (long long i = 0; i <= count; ++i) {
         const In      x     = In::from_raw(detail::raw_from_offset<In>(static_cast<umax>(i)));
@@ -1171,8 +1171,8 @@ TEST(MathAdaptiveTest, double_kernels_stay_within_their_proved_bounds) {
                                     ax::input_bits<base>,
                                     ax::input_bits<expo>>;
         double worst = 0;
-        for (umax i = 1; i <= static_cast<umax>(grid_of<base>.slot_count()); i += 7)
-            for (umax j = 0; j <= static_cast<umax>(grid_of<expo>.slot_count()); ++j) {
+        for (umax i = 1; i <= static_cast<umax>(grid_of<base>.step_count()); i += 7)
+            for (umax j = 0; j <= static_cast<umax>(grid_of<expo>.step_count()); ++j) {
                 const base b = base::from_raw(detail::raw_from_offset<base>(i));
                 const expo e = expo::from_raw(detail::raw_from_offset<expo>(j));
                 const auto a = core{ax::exact_input(b), ax::exact_input(e)}.template run<150>();
@@ -1213,7 +1213,7 @@ TEST(MathAdaptiveTest, hypot_on_mixed_grids_at_fine_outputs) {
         for (int j = 0; j <= 8000; j += 211) {
             const long long a = i - 2048, b = j - 4000;
             const rational r = static_cast<rational>(am::hypot_into<o48>(xd{rational{a, 512}}, ym{rational{b, 1000}}));
-            const u128     m2  = u128{r.Numerator} * ((umax{1} << 48) / static_cast<umax>(r.Denominator)) * 2;
+            const u128     m2  = u128{r.Num} * ((umax{1} << 48) / static_cast<umax>(r.Den)) * 2;
             const u128     p74 = u128(static_cast<umax>(a * a * 1'000'000 + b * b * (1 << 18))) << 74;
             const u128     lo = m2 == 0 ? 0 : (m2 - 1) * (m2 - 1) * 15625, hi = (m2 + 1) * (m2 + 1) * 15625;
             if (!(lo <= p74 && p74 <= hi))

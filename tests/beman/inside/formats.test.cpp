@@ -95,7 +95,7 @@ TEST(FormatsTest, formats_round_trip_representative_values) {
     ASSERT_EQ(q8_8{255.99609375}, rational(65535u, 256u));
     ASSERT_EQ(q16_16{65535.5}, 65535.5_r);
     ASSERT_FALSE(q4_4::try_make(16).has_value());
-    static_assert(grid_of<q4_4>.slot_count() == 255 && grid_of<q8_8>.slot_count() == 65535); // steps
+    static_assert(grid_of<q4_4>.step_count() == 255 && grid_of<q8_8>.step_count() == 65535);
 }
 
 //---------------------------------------------------------------------------

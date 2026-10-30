@@ -209,8 +209,8 @@ values times nd fit `imax`, the conversion between value and raw is integer
 arithmetic. The gate is `qformat_codec_fits<B>` (`detail/storage.hpp`):
 
 ```cpp
-abs_den(lower64<B>.Denominator) == 1         // an integer Lower
-&& notch64<B>.Numerator == 1                 // notch 1/nd
+abs_den(lower64<B>.Den) == 1                 // an integer Lower
+&& notch64<B>.Num == 1                       // notch 1/nd
 && values_fit_imax<B>
 && Lower·nd and Upper·nd within imax         // so every value·nd, and raw + Lower·nd
 ```

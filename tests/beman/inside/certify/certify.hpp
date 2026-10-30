@@ -154,12 +154,12 @@ record record_of(const R& r) {
         return record_of(*r);
     } else {
         const rational      v{r};
-        std::uint64_t       n = v.Numerator;
-        std::uint64_t       d = detail::abs_den(v.Denominator);
+        std::uint64_t       n = v.Num;
+        std::uint64_t       d = detail::abs_den(v.Den);
         const std::uint64_t g = std::gcd(n, d);
         n /= g;
         d /= g;
-        return {static_cast<unsigned char>(v.Denominator < 0 && n != 0 ? 1 : 0), n, n == 0 ? 1 : d};
+        return {static_cast<unsigned char>(v.Den < 0 && n != 0 ? 1 : 0), n, n == 0 ? 1 : d};
     }
 }
 
@@ -184,7 +184,7 @@ inline std::string record_text(const record& r) {
 constexpr std::uint64_t saturated = ~std::uint64_t{0};
 template <insidable In>
 std::uint64_t slots_of() {
-    constexpr auto count = grid_of<In>.slot_count();
+    constexpr auto count = grid_of<In>.step_count();
     if constexpr (count < detail::grid_int{saturated})
         return static_cast<std::uint64_t>(count) + 1;
     else

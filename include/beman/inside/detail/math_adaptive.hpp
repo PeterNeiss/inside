@@ -499,7 +499,7 @@ constexpr decision<Out, K> decide(const approx<K>& a) noexcept {
     // Not under wrap: it folds each value there to a different point.
     if constexpr (has_flag(flags_of<Out>, wrap))
         return {lo == hi, lo};
-    constexpr I count = static_cast<I>(grid_of<Out>.slot_count());
+    constexpr I count = static_cast<I>(grid_of<Out>.step_count());
     const bool  below = lo.negative() && hi.negative();
     const bool  above = count < lo && count < hi;
     return {lo == hi || below || above, lo};
@@ -532,7 +532,7 @@ constexpr auto nearest_index(const approx<K>& a) noexcept {
 // Whether slot offset i lies in Out's range.
 template <insidable Out, typename I>
 constexpr bool in_slots(const I& i) noexcept {
-    constexpr I count = static_cast<I>(grid_of<Out>.slot_count());
+    constexpr I count = static_cast<I>(grid_of<Out>.step_count());
     return !i.negative() && !(count < i);
 }
 
@@ -697,13 +697,13 @@ constexpr imax slot_of(const Core& core) {
 
 template <insidable In>
 inline constexpr bool table_input =
-    !wide_valued<In> && notched<In> && grid_of<In>.slot_count() < grid_int{BEMAN_INSIDE_MATH_TABLE_SLOTS};
+    !wide_valued<In> && notched<In> && grid_of<In>.step_count() < grid_int{BEMAN_INSIDE_MATH_TABLE_SLOTS};
 
 // Outputs whose raw a table can hold: an integer index or value.
 template <insidable Out>
 inline constexpr bool table_output = notched<Out> && !wide_valued<Out>;
 
-// The slot offset of an input value (0 … slot count).
+// The slot offset of an input value (0 … step count).
 template <insidable In>
 constexpr std::size_t offset_of(const In& x) noexcept {
     return static_cast<std::size_t>(value_index<imax>(x) - static_cast<imax>(slot_base<In>));
@@ -730,7 +730,7 @@ constexpr raw_t<Out> table_raw(imax i) noexcept {
 // builds the core from an In value.
 template <insidable Out, insidable In, int W0, auto MakeCore>
 struct result_table {
-    static constexpr std::size_t N = static_cast<std::size_t>(static_cast<imax>(grid_of<In>.slot_count())) + 1;
+    static constexpr std::size_t N = static_cast<std::size_t>(static_cast<imax>(grid_of<In>.step_count())) + 1;
     struct data {
         std::array<raw_t<Out>, N> Raw;
         bool                      Valid;

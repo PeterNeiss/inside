@@ -383,8 +383,7 @@ struct big_rational {
     template <std::integral T>
     constexpr big_rational(T v) noexcept : Num{v} {}
     constexpr big_rational(big_int n, big_int d = big_int{1}) : Num{n}, Den{d} { normalize(); }
-    constexpr big_rational(const rational& r)
-        : Num{big_int::of_limb(r.Numerator, r.Denominator < 0)}, Den{abs_den(r.Denominator)} {}
+    constexpr big_rational(const rational& r) : Num{big_int::of_limb(r.Num, r.Den < 0)}, Den{abs_den(r.Den)} {}
     // Anything else that converts to `rational` (an inside: just<-6, 5>)
     // takes that one conversion, so it can be a grid limit or notch.
     template <class T>

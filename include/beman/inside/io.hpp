@@ -114,7 +114,7 @@ std::string fraction_to_string(bool neg, wide_uint<K> num, wide_uint<K> den, int
 // prints as its exact decimal when it has one, else as num/den.
 //-------------------------------------------------------------------------
 [[nodiscard]] inline std::string to_string(beman::inside::detail::rational r) {
-    return detail::fraction_to_string<1>(r.Denominator < 0, r.Numerator, detail::abs_den(r.Denominator));
+    return detail::fraction_to_string<1>(r.Den < 0, r.Num, detail::abs_den(r.Den));
 }
 
 namespace detail {
@@ -268,7 +268,7 @@ template <insidable B>
         return detail::exact_to_string(detail::exact_of(b), n);
     else {
         const detail::rational r = detail::as_rational(b);
-        return detail::fraction_to_string<1>(r.Denominator < 0, r.Numerator, detail::abs_den(r.Denominator), n);
+        return detail::fraction_to_string<1>(r.Den < 0, r.Num, detail::abs_den(r.Den), n);
     }
 }
 
@@ -282,7 +282,7 @@ template <insidable B>
     else
         str += beman::inside::to_string(+b.raw());
     str += "[" + std::string(detail::type_name_of<detail::raw_t<B>>);
-    constexpr auto slots = grid_of<B>.slot_count();
+    constexpr auto slots = grid_of<B>.step_count();
     str += " Max:" + beman::inside::to_string(slots) + "] ";
     str += beman::inside::to_string(grid_of<B>);
     str += "}";

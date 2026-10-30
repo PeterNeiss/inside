@@ -48,7 +48,7 @@ constexpr lossy_result exact_lossy(const wide_rational<K>& x) noexcept {
             return {true, false};
         else {
             using I         = std::remove_cvref_t<decltype(j.Index)>;
-            const bool fits = !j.Index.negative() && !(static_cast<I>(grid_of<B>.slot_count()) < j.Index);
+            const bool fits = !j.Index.negative() && !(static_cast<I>(grid_of<B>.step_count()) < j.Index);
             return {!fits, fits};
         }
     } else {
@@ -145,13 +145,13 @@ template <insidable B, numeric A>
             if constexpr (grid_of<B>.MaxDenominator == 0)
                 return false;
             else
-                return detail::abs_den(r.Denominator) > detail::to_rational(grid_of<B>.MaxDenominator).Numerator;
+                return detail::abs_den(r.Den) > detail::to_rational(grid_of<B>.MaxDenominator).Num;
         } else {
             // In range: rounding occurs iff (value − Lower) / Notch is not an
             // integer — exactly when the 64-bit steps overflow.
             if (const auto d = try_sub(r, detail::lower64<B>))
                 if (const auto q = try_div(*d, detail::notch64<B>))
-                    return detail::abs_den(q->Denominator) != 1;
+                    return detail::abs_den(q->Den) != 1;
             return !detail::exact_index<B, detail::round_mode::floor>(detail::exact_of(r)).Exact;
         }
     }

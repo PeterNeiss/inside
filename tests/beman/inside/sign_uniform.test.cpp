@@ -66,7 +66,7 @@ TEST(UniformTest, uniform_covers_every_slot_and_stays_on_the_grid) {
     EXPECT_EQ(q.size(), 9u);
     for (auto v : q) {
         const rational slots = ((v + 1).value() / rational{1, 4}).value();
-        EXPECT_EQ(detail::abs_den(slots.Denominator), 1u); // on the 1/4 lattice
+        EXPECT_EQ(detail::abs_den(slots.Den), 1u); // on the 1/4 lattice
     }
     EXPECT_EQ(sample<thirds>(2000).size(), 4u);
     EXPECT_EQ(sample<decltype(5_ins)>(10).size(), 1u); // a point

@@ -56,9 +56,9 @@ TEST(WrapOverflowTest, wrap_reduces_extreme_integers_with_no_signed_overflow) {
                         std::numeric_limits<long long>::max(),
                         std::numeric_limits<long long>::min() + 1,
                         std::numeric_limits<long long>::min()}) {
-        W               b   = v;
-        const long long got = static_cast<long long>(static_cast<rational>(b).Numerator) *
-                              (static_cast<rational>(b).Denominator < 0 ? -1 : 1);
+        W               b = v;
+        const long long got =
+            static_cast<long long>(static_cast<rational>(b).Num) * (static_cast<rational>(b).Den < 0 ? -1 : 1);
         SCOPED_TRACE(::testing::Message() << "v=" << v);
         ASSERT_EQ(got, (wrap_ref(v, lo, hi)));
         ASSERT_TRUE(got >= lo);

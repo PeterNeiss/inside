@@ -66,9 +66,9 @@ template <insidable B, std::uniform_random_bit_generator G>
                   "uniform<B>: a continuous grid (notch 0) has no slots to choose from");
     if constexpr (detail::wide_index_storage<B>) {
         // More than 2^64 slots: the same recipe limb by limb, low limb first,
-        // the top limb masked to the slot count's bit width.
+        // the top limb masked to the step count's bit width.
         using W                = detail::raw_t<B>;
-        constexpr W   count    = static_cast<W>(grid_of<B>.slot_count());
+        constexpr W   count    = static_cast<W>(grid_of<B>.step_count());
         constexpr int top_bits = grid_of<B>.slot_bits() - 64 * (static_cast<int>(sizeof(W) / 8) - 1);
         for (;;) {
             W k;

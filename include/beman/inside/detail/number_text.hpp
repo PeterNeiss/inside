@@ -304,7 +304,7 @@ constexpr std::expected<rational, errc> parse_text(const char* first, const char
             return r.Value;
         return std::unexpected{r.Fail >= parse_fail::numerator_overflow ? errc::overflow : errc::invalid_format};
     };
-    return parse_fraction(first, last, one, [](const rational& d) { return d.Numerator == 0; });
+    return parse_fraction(first, last, one, [](const rational& d) { return d.Num == 0; });
 }
 
 template <char... Chars>

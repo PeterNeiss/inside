@@ -298,7 +298,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
         const auto slot = [&] {
             if constexpr (point_storage<L>) {
                 // One value and no lattice to divide by: the slot below it,
-                // its own, or the one above (the slot count is 0).
+                // its own, or the one above (the step count is 0).
                 constexpr std::size_t KP = exact_max<K, exact_limbs<L>>;
                 using W                  = wide_sint<KP>;
                 const auto c             = wide_rational<KP>{v} <=> exact_of_grid<KP>(lower_of<L>);
@@ -310,7 +310,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
         constexpr std::size_t KK      = sizeof(I) / sizeof(umax);
         const I               index   = slot.Index;
         const bool            inexact = !slot.Exact && !has_policy<L, P, snap> && policy.round_check();
-        constexpr I           count   = static_cast<I>(grid_of<L>.slot_count());
+        constexpr I           count   = static_cast<I>(grid_of<L>.step_count());
         // Without a rounding flag the range test reads the value itself,
         // before the notch, as the builtin stores do: an off-notch value past
         // a limit is out of range (it clamps, or reports overflow).

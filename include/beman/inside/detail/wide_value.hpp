@@ -579,7 +579,7 @@ constexpr bool exact_rounds_into_range(const rational& v, rational& out) {
     }
 }
 
-// The raw of slot offset `offset` (0 .. slot count) in L's storage. W is
+// The raw of slot offset `offset` (0 .. step count) in L's storage. W is
 // any signed integer holding the offset and the value index J = offset +
 // Lower/Notch: imax, a wide_int, a wide_sint.
 template <insidable L, typename W>
@@ -639,7 +639,7 @@ inline constexpr int index_work_bits =
                           units_hi<R, UR>,
                           units_lo<Result, URes>,
                           units_hi<Result, URes>,
-                          grid_of<Result>.slot_count() * exact_quotient(notch_of<Result>, URes)});
+                          grid_of<Result>.step_count() * exact_quotient(notch_of<Result>, URes)});
 template <insidable     Result,
           insidable     L,
           grid_rational UL,
@@ -655,7 +655,7 @@ using index_work_t = std::conditional_t<(index_work_bits<Result, L, UL, R, UR, U
 template <typename W, integer_storage X>
 constexpr W value_index(const X& x) noexcept {
     if constexpr (index_storage<X> && std::is_integral_v<W>) {
-        // In W's unsigned twin: a raw past W's max (a slot count past 2^63
+        // In W's unsigned twin: a raw past W's max (a step count past 2^63
         // from a negative base) wraps back onto the index, which fits W.
         using U = std::make_unsigned_t<W>;
         return static_cast<W>(static_cast<U>(static_cast<W>(slot_base<X>)) + static_cast<U>(x.raw()));

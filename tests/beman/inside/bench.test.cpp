@@ -1100,7 +1100,7 @@ static void bench_rational() {
     });
     add.run("inside (continuous)", [&] {
         ++i;
-        doNotOptimizeAway((ea[i & kMask] + eb[i & kMask])->raw().Numerator);
+        doNotOptimizeAway((ea[i & kMask] + eb[i & kMask])->raw().Num);
     });
     finish(add);
 
@@ -1111,7 +1111,7 @@ static void bench_rational() {
     });
     mul.run("inside (continuous)", [&] {
         ++i;
-        doNotOptimizeAway((ea[i & kMask] * eb[i & kMask])->raw().Numerator);
+        doNotOptimizeAway((ea[i & kMask] * eb[i & kMask])->raw().Num);
     });
     finish(mul);
 
@@ -1122,7 +1122,7 @@ static void bench_rational() {
     });
     dv.run("inside (continuous)", [&] {
         ++i;
-        doNotOptimizeAway((ea[i & kMask] / ep[i & kMask])->raw().Numerator);
+        doNotOptimizeAway((ea[i & kMask] / ep[i & kMask])->raw().Num);
     });
     finish(dv);
 
@@ -1149,7 +1149,7 @@ static void bench_rational() {
     });
     mx.run("inside continuous + inside integer grid", [&] {
         ++i;
-        doNotOptimizeAway((ea[i & kMask] + ib[i & kMask])->raw().Numerator);
+        doNotOptimizeAway((ea[i & kMask] + ib[i & kMask])->raw().Num);
     });
     finish(mx);
 
@@ -1161,7 +1161,7 @@ static void bench_rational() {
     });
     ra.run("rational", [&] {
         ++i;
-        doNotOptimizeAway((qa[i & kMask] + qb[i & kMask])->Numerator);
+        doNotOptimizeAway((qa[i & kMask] + qb[i & kMask])->Num);
     });
     finish(ra);
 
@@ -1172,7 +1172,7 @@ static void bench_rational() {
     });
     rm.run("rational", [&] {
         ++i;
-        doNotOptimizeAway((qa[i & kMask] * qb[i & kMask])->Numerator);
+        doNotOptimizeAway((qa[i & kMask] * qb[i & kMask])->Num);
     });
     finish(rm);
 

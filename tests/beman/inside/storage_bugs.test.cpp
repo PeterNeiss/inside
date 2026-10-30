@@ -92,7 +92,7 @@ TEST(StorageBugsTest, bug_c_wrap_policy_fires_for_double_rhs) {
 //---------------------------------------------------------------------------
 // Bug D — gcd(rational, rational) (rational.hpp)
 //
-// `gcd(rational, rational)` calls `std::lcm` on |Denominator|s without an
+// `gcd(rational, rational)` calls `std::lcm` on |Den|s without an
 // overflow check and casts the result to imax via static_cast. Large
 // denominators silently wrap. The fix is to make `gcd` return
 // `std::expected<rational, errc>` and detect the overflow.

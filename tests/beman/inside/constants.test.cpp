@@ -22,8 +22,8 @@ namespace {
 void expect_close(const auto& c, std::uint64_t ref) {
     using W          = beman::inside::detail::wide_sint<4>;
     const rational r = rational{c};
-    const W        n{r.Numerator};
-    const W        d{static_cast<std::uint64_t>(r.Denominator)};
+    const W        n{r.Num};
+    const W        d{static_cast<std::uint64_t>(r.Den)};
     const W        scale{1'000'000'000'000'000'000ULL};
     W              diff = n * scale - W{ref} * d;
     if (diff < W{0})

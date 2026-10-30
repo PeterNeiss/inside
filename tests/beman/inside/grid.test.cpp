@@ -191,12 +191,12 @@ namespace {
 template <grid G>
 constexpr bool derived_notch_is_coarsest() {
     const rational n = G.Notch;
-    if (n.Numerator != 1)
+    if (n.Num != 1)
         return false; // always 1/k
     auto on = [](rational v, rational step) { return divides_evenly(v, step); };
     if (!on(1, n) || !on(G.Interval.Lower, n) || !on(G.Interval.Upper, n))
         return false;
-    const umax k    = abs_den(n.Denominator);
+    const umax k    = abs_den(n.Den);
     umax       rest = k;
     for (umax p = 2; p * p <= rest || rest > 1; ++p) {
         if (p * p > rest)
@@ -213,7 +213,7 @@ constexpr bool derived_notch_is_coarsest() {
 }
 
 template <grid G>
-constexpr bool slot_count_matches() {
+constexpr bool max_index_matches() {
     const rational span = (detail::to_rational(G.Interval.Upper) - detail::to_rational(G.Interval.Lower)).value();
     return rational{G.max_index()} == (span / detail::to_rational(G.Notch)).value();
 }
@@ -226,7 +226,7 @@ TEST(GridTest, derived_notch_of_fraction_pairs) {
     constexpr grid a{just<3, 10>, just<13, 16>};
     static_assert(a.Notch == rational{1, 80});
     static_assert(a.max_index() == 41);
-    static_assert(grid::validate<a>() && derived_notch_is_coarsest<a>() && slot_count_matches<a>());
+    static_assert(grid::validate<a>() && derived_notch_is_coarsest<a>() && max_index_matches<a>());
 
     // Reversed order is not an interval: the notch still derives, the grid is invalid.
     static_assert(grid{just<13, 16>, just<3, 10>}.Notch == rational{1, 80});
@@ -235,29 +235,29 @@ TEST(GridTest, derived_notch_of_fraction_pairs) {
     // Shared factors reduce first: 6/8 is 3/4, 10/12 is 5/6 → lcm(4, 6) = 12.
     constexpr grid b{just<6, 8>, just<10, 12>};
     static_assert(b.Notch == rational{1, 12});
-    static_assert(derived_notch_is_coarsest<b>() && slot_count_matches<b>());
+    static_assert(derived_notch_is_coarsest<b>() && max_index_matches<b>());
 
     // Mixed signs, coprime denominators: lcm(7, 9) = 63.
     constexpr grid c{just<-5, 7>, just<4, 9>};
     static_assert(c.Notch == rational{1, 63});
     static_assert(c.max_index() == 73); // (4/9 + 5/7)·63 = 28 + 45
-    static_assert(grid::validate<c>() && derived_notch_is_coarsest<c>() && slot_count_matches<c>());
+    static_assert(grid::validate<c>() && derived_notch_is_coarsest<c>() && max_index_matches<c>());
 
     // Both negative.
     constexpr grid d{just<-13, 16>, just<-3, 10>};
     static_assert(d.Notch == rational{1, 80});
-    static_assert(derived_notch_is_coarsest<d>() && slot_count_matches<d>());
+    static_assert(derived_notch_is_coarsest<d>() && max_index_matches<d>());
 
     // Integer and fraction: the integer contributes nothing finer.
     constexpr grid e{-3, just<7, 3>};
     static_assert(e.Notch == rational{1, 3});
     static_assert(e.max_index() == 16);
-    static_assert(derived_notch_is_coarsest<e>() && slot_count_matches<e>());
+    static_assert(derived_notch_is_coarsest<e>() && max_index_matches<e>());
 
     // One denominator divides the other: lcm(4, 12) = 12.
     constexpr grid f{just<1, 4>, just<11, 12>};
     static_assert(f.Notch == rational{1, 12});
-    static_assert(derived_notch_is_coarsest<f>() && slot_count_matches<f>());
+    static_assert(derived_notch_is_coarsest<f>() && max_index_matches<f>());
 
     // A whole number written as a fraction stays an integer grid.
     constexpr grid g{just<6, 3>, just<20, 4>};
@@ -273,7 +273,7 @@ TEST(GridTest, derived_notch_of_fraction_pairs) {
     constexpr grid i{just<1, 1013>, just<1, 1009>};
     static_assert(i.Notch == rational{1, 1022117});
     static_assert(i.max_index() == 4); // 1013 − 1009
-    static_assert(grid::validate<i>() && derived_notch_is_coarsest<i>() && slot_count_matches<i>());
+    static_assert(grid::validate<i>() && derived_notch_is_coarsest<i>() && max_index_matches<i>());
 
     // inside on derived fractional grids: storage, exact values, assignment.
     using eightieths = inside<{just<3, 10>, just<13, 16>}>;

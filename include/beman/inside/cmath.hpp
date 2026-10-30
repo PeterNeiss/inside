@@ -139,9 +139,9 @@ inline constexpr bool int_direct = [] {
                   !anchored<In> || wide_valued<In> || wide_valued<Out>)
         return false;
     else {
-        const umax m = index_lo64<In>->Numerator > index_hi64<In>->Numerator ? index_lo64<In>->Numerator
-                                                                             : index_hi64<In>->Numerator; // max |J|
-        return m <= static_cast<umax>(std::numeric_limits<imax>::max()) / notch64<In>.Numerator;
+        const umax m =
+            index_lo64<In>->Num > index_hi64<In>->Num ? index_lo64<In>->Num : index_hi64<In>->Num; // max |J|
+        return m <= static_cast<umax>(std::numeric_limits<imax>::max()) / notch64<In>.Num;
     }
 }();
 
@@ -152,8 +152,8 @@ constexpr Out integer_into(In x) {
     if constexpr (any_wide_valued<Out, In>)
         return store_exact<Out>(exact_to_int<M>(ax::exact_input(x)));
     else if constexpr (int_direct<Out, integer_result_t<In, M>, In>) {
-        constexpr imax p = static_cast<imax>(notch64<In>.Numerator);
-        constexpr imax q = static_cast<imax>(abs_den(notch64<In>.Denominator));
+        constexpr imax p = static_cast<imax>(notch64<In>.Num);
+        constexpr imax q = static_cast<imax>(abs_den(notch64<In>.Den));
         const imax     j = value_index<imax>(x) * p;
         if constexpr (p == 1 && std::has_single_bit(static_cast<umax>(q)) && M != round_mode::half_even) {
             // A notch 2^-k: shifts. floor is the arithmetic shift, ceil its
@@ -271,7 +271,7 @@ inline constexpr bool fmod_int_fast = [] {
     // (try_ ops: a quotient past 64 bits makes the fast path inapplicable,
     // not the build fail.)
     auto qo = try_div(g, notch64<Out>);
-    if (!qo.has_value() || abs_den(qo->Denominator) != 1)
+    if (!qo.has_value() || abs_den(qo->Den) != 1)
         return false;
     rational maxx = abs(lower64<InX>) > abs(upper64<InX>) ? abs(lower64<InX>) : abs(upper64<InX>);
     rational maxy = abs(lower64<InY>) > abs(upper64<InY>) ? abs(lower64<InY>) : abs(upper64<InY>);
@@ -284,8 +284,7 @@ inline constexpr bool fmod_int_fast = [] {
     auto           ux  = try_div(maxx, g);
     auto           uy  = try_div(maxy, g);
     auto           uo  = try_div(maxy, notch64<Out>);
-    return ux.has_value() && uy.has_value() && uo.has_value() && ux->Numerator <= lim && uy->Numerator <= lim &&
-           uo->Numerator <= lim;
+    return ux.has_value() && uy.has_value() && uo.has_value() && ux->Num <= lim && uy->Num <= lim && uo->Num <= lim;
 }();
 } // namespace detail
 

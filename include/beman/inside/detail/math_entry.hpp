@@ -69,7 +69,7 @@ inline constexpr int index_bits = [] {
     if constexpr (!notched<Out> || wide_valued<Out>)
         return 1024;
     else {
-        const grid_int lo = slot_base<Out>, hi = slot_base<Out> + grid_of<Out>.slot_count();
+        const grid_int lo = slot_base<Out>, hi = slot_base<Out> + grid_of<Out>.step_count();
         return bit_width_of(std::max(-lo, hi));
     }
 }();
@@ -148,7 +148,7 @@ inline bool fp_decide(double v, double bound, Out& out) noexcept {
     constexpr round_mode M  = out_rounding<Out>;
     constexpr double     s  = notch_q<Out> / notch_p<Out>;
     constexpr double     lo = static_cast<double>(static_cast<imax>(slot_base<Out>));
-    constexpr double     hi = lo + static_cast<double>(static_cast<imax>(grid_of<Out>.slot_count()));
+    constexpr double     hi = lo + static_cast<double>(static_cast<imax>(grid_of<Out>.step_count()));
     const double         t  = v * s;
     double               bt = bound * (1.5 * s);
     if constexpr (!dyadic_notch<Out>)
@@ -231,7 +231,7 @@ inline constexpr bool dd_output = [] {
         if (!(notch_p<Out> < two53 && notch_q<Out> < two53))
             return false;
         const grid_int lim = grid_int{1} << 62;
-        const grid_int lo = slot_base<Out>, hi = slot_base<Out> + grid_of<Out>.slot_count();
+        const grid_int lo = slot_base<Out>, hi = slot_base<Out> + grid_of<Out>.step_count();
         return !(lo < -lim) && !(lim < hi);
     }
 }();
@@ -254,13 +254,13 @@ inline ddk::dd dd_read(const In& x) noexcept {
     if constexpr (fp_exact_input<In>)
         return {input_double(x), 0};
     else if constexpr (rational_storage<In>) {
-        const rational r     = x.raw();     // ±Numerator/|Denominator|
+        const rational r     = x.raw();     // ±Num/|Den|
         auto           exact = [](umax n) { // two 32-bit halves, each a double exactly
             return ddk::fast_two_sum(static_cast<double>(n & ~umax{0xFFFFFFFF}),
                                      static_cast<double>(n & umax{0xFFFFFFFF}));
         };
-        const ddk::dd q = ddk::div(exact(r.Numerator), exact(abs_den(r.Denominator)));
-        return r.Denominator < 0 ? ddk::neg(q) : q;
+        const ddk::dd q = ddk::div(exact(r.Num), exact(abs_den(r.Den)));
+        return r.Den < 0 ? ddk::neg(q) : q;
     } else {
         const ddk::dd n = ddk::two_prod(static_cast<double>(value_index<imax>(x)), notch_p<In>);
         return ddk::div(n, ddk::dd{notch_q<In>, 0});
@@ -277,7 +277,7 @@ inline bool dd_decide(ddk::dd v, double bound, Out& out) noexcept {
     constexpr round_mode M     = out_rounding<Out>;
     constexpr ddk::dd    s     = ddk::div(ddk::dd{notch_q<Out>, 0}, ddk::dd{notch_p<Out>, 0});
     constexpr imax       first = static_cast<imax>(slot_base<Out>); // |index| ≤ 2^62
-    constexpr imax       last  = static_cast<imax>(slot_base<Out> + grid_of<Out>.slot_count());
+    constexpr imax       last  = static_cast<imax>(slot_base<Out> + grid_of<Out>.step_count());
     constexpr double     lo = static_cast<double>(first) - 1024, hi = static_cast<double>(last) + 1024;
     // t = J + u with J = j1 + j2: u is t.Hi's distance to its nearest
     // integer plus t.Lo, and may pass ½ (t.Hi on a half, or t.Lo carrying

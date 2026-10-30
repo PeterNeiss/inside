@@ -380,7 +380,7 @@ TEST(WideGridTest, limb_edges) {
     static_assert(grid_of<full>.slot_bits() == 128);
     full lo = rational{kUM, imax{-1}}, hi = rational{kUM};
     EXPECT_TRUE(lo.raw() == detail::wide_uint<2>{0});
-    constexpr auto full_top = static_cast<detail::wide_uint<2>>(grid_of<full>.slot_count());
+    constexpr auto full_top = static_cast<detail::wide_uint<2>>(grid_of<full>.step_count());
     EXPECT_TRUE(hi.raw() == full_top);
     EXPECT_TRUE(-lo == hi && lo < hi);
 }

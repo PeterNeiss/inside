@@ -167,12 +167,12 @@ TEST(NumbersTest, abs_fraction_throws_on_non_finite) {
 TEST(NumbersTest, rational_from_large_doubles) {
     // Through rational ctor — exercises the exponent>=53 branch in abs_fraction
     rational r1{static_cast<double>(1ull << 53)};
-    ASSERT_EQ(r1.Numerator, (1ull << 53));
-    ASSERT_EQ(r1.Denominator, 1);
+    ASSERT_EQ(r1.Num, (1ull << 53));
+    ASSERT_EQ(r1.Den, 1);
 
     rational r2{static_cast<double>(1ull << 50)};
-    ASSERT_EQ(r2.Numerator, (1ull << 50));
-    ASSERT_EQ(r2.Denominator, 1);
+    ASSERT_EQ(r2.Num, (1ull << 50));
+    ASSERT_EQ(r2.Den, 1);
 }
 
 // rational rejects non-finite double

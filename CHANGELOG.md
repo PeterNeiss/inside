@@ -22,6 +22,11 @@ The library without pre-C++26 compatibility, kept in sync with main.
   `std::common_type` always have a type.
 - The `small_grids_v2` / `big_grids_v2` ABI namespaces are gone.
 - `inside(value, errc&)` is a deleted constructor with the reason.
+- `grid::slot_count()` is `grid::step_count()`: it returns (Upper − Lower)/Notch,
+  the number of steps, one less than the number of values (255 for `uint8`).
+- `rational`'s members are `Num` and `Den` (were `Numerator` and
+  `Denominator`), as in every other fraction type of the library and in
+  `std::ratio`.
 
 ### Removed
 

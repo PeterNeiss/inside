@@ -14,7 +14,7 @@
 // reflection (std::define_static_array) interns their limbs in static
 // storage, so equal values stay the same template argument.
 //   grid_rational          the type of a grid's limits and notch
-//   grid_int               exact integers for grid computations (slot counts,
+//   grid_int               exact integers for grid computations (step counts,
 //                          value indices): wide enough for every grid
 //   wide_numerator(r) /    a grid number's signed numerator and positive
 //   wide_denominator(r)    denominator as grid_int (also for a rational)
@@ -36,7 +36,7 @@ constexpr bool same_lattice64(const rational& a, const rational& b, const ration
         return divides_evenly(*d, n);
     using W        = wide_sint<4>;
     auto    num_of = [](const rational& r) { return signed_numerator<W>(r); };
-    auto    den_of = [](const rational& r) { return W{abs_den(r.Denominator)}; };
+    auto    den_of = [](const rational& r) { return W{abs_den(r.Den)}; };
     const W num    = (num_of(a) * den_of(b) - num_of(b) * den_of(a)) * den_of(n);
     const W den    = den_of(a) * den_of(b) * num_of(n);
     return num % den == W{0};
@@ -68,10 +68,10 @@ constexpr bool     fits_rational(const big_rational& r) { return r.fits_rational
 constexpr rational to_rational(const big_rational& r) { return r; }
 
 constexpr grid_int wide_numerator(const rational& r) noexcept {
-    const grid_int n{r.Numerator};
-    return r.Denominator < 0 ? -n : n;
+    const grid_int n{r.Num};
+    return r.Den < 0 ? -n : n;
 }
-constexpr grid_int wide_denominator(const rational& r) noexcept { return grid_int{abs_den(r.Denominator)}; }
+constexpr grid_int wide_denominator(const rational& r) noexcept { return grid_int{abs_den(r.Den)}; }
 
 // Value bits a signed integer needs to hold every value in [lo, hi].
 constexpr int signed_value_bits(const grid_int& lo, const grid_int& hi) noexcept {

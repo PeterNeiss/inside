@@ -98,7 +98,7 @@ Grid numbers past 64 bits exist only at compile time; the raw of such an
 inside is a fixed-width integer sized from them. A grid can hold huge values
 in few points (`{2¹⁰⁰, 2¹⁰⁰ + 10}` is a `uint8_t`). The math functions take and
 return such insides, correctly rounded. Call grid helpers that form big
-values, like `grid_of<B>.slot_count()`, in a constant expression; at run time a
+values, like `grid_of<B>.step_count()`, in a constant expression; at run time a
 result past 64 bits reports `errc::overflow`.
 
 An inside takes a grid number at run time, checked like any store, once the

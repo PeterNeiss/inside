@@ -29,8 +29,8 @@ inline constexpr bool index_cmp_fits = [] {
     if constexpr (!notched<B> || !anchored<B> || !values_fit_imax<B>)
         return false;
     else
-        return index_lo64<B> && index_hi64<B> && std::in_range<imax>(index_lo64<B>->Numerator) &&
-               std::in_range<imax>(index_hi64<B>->Numerator);
+        return index_lo64<B> && index_hi64<B> && std::in_range<imax>(index_lo64<B>->Num) &&
+               std::in_range<imax>(index_hi64<B>->Num);
 }();
 
 // Signed value index of Raw == 0: Lower/Notch for offset (index) storage,
@@ -126,10 +126,9 @@ inline constexpr bool scalar_index_cmp_fits = [] {
     if constexpr (!std::integral<A> || value_storage<B> || !index_cmp_fits<B>)
         return false;
     else {
-        constexpr umax notch_num = notch64<B>.Numerator;
-        constexpr umax notch_den = static_cast<umax>(notch64<B>.Denominator); // Notch > 0
-        constexpr umax index_mag =
-            index_lo64<B>->Numerator > index_hi64<B>->Numerator ? index_lo64<B>->Numerator : index_hi64<B>->Numerator;
+        constexpr umax notch_num = notch64<B>.Num;
+        constexpr umax notch_den = static_cast<umax>(notch64<B>.Den); // Notch > 0
+        constexpr umax index_mag = index_lo64<B>->Num > index_hi64<B>->Num ? index_lo64<B>->Num : index_hi64<B>->Num;
         // The largest |c| of A: |min| = max + 1 for a signed type.
         constexpr umax scalar_mag = static_cast<umax>(std::numeric_limits<A>::max()) + std::signed_integral<A>;
         umax           product;
@@ -169,8 +168,8 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
                        index_double<B>.Ok)
         return cmp(as_double(lhs), static_cast<double>(rhs)); // exact: every value is a double
     else if constexpr (scalar_index_cmp_fits<B, A>)
-        return cmp((index_cmp_bias<B> + raw_imax(lhs)) * static_cast<imax>(notch64<B>.Numerator),
-                   static_cast<imax>(rhs) * notch64<B>.Denominator);
+        return cmp((index_cmp_bias<B> + raw_imax(lhs)) * static_cast<imax>(notch64<B>.Num),
+                   static_cast<imax>(rhs) * notch64<B>.Den);
     else {
         // |rhs| ≥ 2^64 (or infinite) has no rational form, and every grid value
         // lies strictly inside ±2^64: the sign of rhs decides.

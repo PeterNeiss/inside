@@ -38,7 +38,7 @@ struct interval {
         return detail::grid_divides_evenly(Upper - Lower, notch);
     }
 
-    // The span in units of `notch` (the slot count of a grid).
+    // The span in units of `notch` (the step count of a grid).
     [[nodiscard]] constexpr std::expected<detail::grid_rational, errc>
     operator/(const detail::grid_rational& notch) const {
         if (notch == 0)

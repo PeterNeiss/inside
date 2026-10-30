@@ -403,14 +403,14 @@ struct inside {
         if constexpr (detail::integer_storage<inside> && detail::integer_lattice<inside>)
             return {detail::to_value(*this), 1};
         else if constexpr (detail::index_storage<inside> && detail::qformat_codec_fits<inside> &&
-                           std::has_single_bit(detail::abs_den(detail::notch64<inside>.Denominator))) {
-            constexpr imax nd  = detail::abs_den(detail::notch64<inside>.Denominator);
+                           std::has_single_bit(detail::abs_den(detail::notch64<inside>.Den))) {
+            constexpr imax nd  = detail::abs_den(detail::notch64<inside>.Den);
             const imax     num = detail::raw_imax(*this) + detail::lower_imax<inside> * nd;
             const int      s   = std::countr_zero(static_cast<umax>(num) | static_cast<umax>(nd)); // 0 → 0/1
             return {num >> s, nd >> s};
         } else {
             auto r = detail::as_rational(*this);
-            return {signed_numerator(r), static_cast<imax>(detail::abs_den(r.Denominator))};
+            return {signed_numerator(r), static_cast<imax>(detail::abs_den(r.Den))};
         }
     }
 
@@ -432,7 +432,7 @@ struct inside {
             // counts the slot from the opposite end instead.
             using W = detail::index_work_t<negated_type, inside, G.Notch, inside, G.Notch>;
             if constexpr (detail::index_storage<inside> && detail::index_storage<negated_type>) {
-                constexpr W count = static_cast<W>(G.slot_count());
+                constexpr W count = static_cast<W>(G.step_count());
                 neg = negated_type::from_raw(static_cast<detail::raw_t<negated_type>>(count - static_cast<W>(Raw)));
             } else
                 neg = detail::from_value_index<negated_type>(W{0} - detail::value_index<W>(*this));
@@ -673,12 +673,12 @@ struct inside {
         return room.negative() ? umax{0} : static_cast<umax>(room);
     }();
     static constexpr std::optional<imax> notch_delta(const detail::rational& r) noexcept {
-        constexpr umax K = detail::abs_den(detail::notch64<inside>.Denominator);
-        const umax     d = detail::abs_den(r.Denominator);
-        if (K % d != 0 || r.Numerator > max_notch_delta / (K / d))
+        constexpr umax K = detail::abs_den(detail::notch64<inside>.Den);
+        const umax     d = detail::abs_den(r.Den);
+        if (K % d != 0 || r.Num > max_notch_delta / (K / d))
             return std::nullopt;
-        const imax n = static_cast<imax>(r.Numerator * (K / d));
-        return r.Denominator < 0 ? -n : n;
+        const imax n = static_cast<imax>(r.Num * (K / d));
+        return r.Den < 0 ? -n : n;
     }
 
   public:

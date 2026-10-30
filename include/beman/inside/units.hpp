@@ -1192,7 +1192,7 @@ constexpr auto make_action_ref(Q& q, Ref&& r) {
 
 template <reference R, insidable Rep>
 class quantity {
-    Rep Num;
+    Rep Value;
 
   public:
     using rep                                   = Rep;
@@ -1213,23 +1213,23 @@ class quantity {
     // From a number in the unit R: quantity<si::metre, inside<{0, 100}>>{42}.
     template <class V>
         requires std::constructible_from<Rep, V> && (!quantity_like<V>)
-    constexpr explicit quantity(V&& v) : Num(std::forward<V>(v)) {}
+    constexpr explicit quantity(V&& v) : Value(std::forward<V>(v)) {}
 
     // From another quantity: implicit when the spec converts implicitly and
     // the number, in R's unit, converts implicitly into Rep.
     template <units::reference R2, class V2>
         requires detail::implicit_rescalable<R2, R, V2> && std::constructible_from<Rep, detail::rescaled_t<R2, R, V2>>
     constexpr explicit(!std::convertible_to<detail::rescaled_t<R2, R, V2>, Rep>) quantity(const quantity<R2, V2>& q)
-        : Num(detail::number_in_unit<R.U>(q)) {}
+        : Value(detail::number_in_unit<R.U>(q)) {}
 
-    [[nodiscard]] constexpr const Rep& numerical_value() const noexcept { return Num; }
+    [[nodiscard]] constexpr const Rep& numerical_value() const noexcept { return Value; }
 
     // The same quantity in unit U: exact, the number's grid rescaled.
     template <units::unit U>
         requires detail::in_rescalable<R, U, Rep>
     [[nodiscard]] constexpr auto in() const {
         constexpr units::reference to{R.Spec, R.KindOf, R.Derived, U};
-        return detail::make_quantity<to>(detail::rescale<detail::conversion_factor<R.U, U>>(Num));
+        return detail::make_quantity<to>(detail::rescale<detail::conversion_factor<R.U, U>>(Value));
     }
     template <units::unit U>
         requires detail::in_rescalable<R, U, Rep>
@@ -1262,15 +1262,15 @@ class quantity {
     template <insidable T>
         requires detail::number_like_v<R> && std::constructible_from<T, detail::number_t<R, Rep>>
     constexpr explicit(!std::convertible_to<detail::number_t<R, Rep>, T>) operator T() const {
-        return T(detail::rescale<detail::conversion_factor<R.U, units::unit{}>>(Num));
+        return T(detail::rescale<detail::conversion_factor<R.U, units::unit{}>>(Value));
     }
     template <insidable T>
         requires(dimension_of(R.U) == dim_one && !detail::number_like_v<R>)
     operator T() const = delete ("units: an angle (an is_kind quantity) or a pi-scaled ratio is no plain "
                                  "number - read numerical_value(), or value_cast it first");
 
-    [[nodiscard]] constexpr auto operator+() const { return detail::make_quantity<R>(+Num); }
-    [[nodiscard]] constexpr auto operator-() const { return detail::make_quantity<R>(-Num); }
+    [[nodiscard]] constexpr auto operator+() const { return detail::make_quantity<R>(+Value); }
+    [[nodiscard]] constexpr auto operator-() const { return detail::make_quantity<R>(-Value); }
 
     // Compound assignment keeps the type: the number is stored back under Rep's
     // policy (checked by default).
@@ -1278,26 +1278,26 @@ class quantity {
         requires detail::implicit_rescalable<R2, R, V2> &&
                  requires(Rep& n, const detail::rescaled_t<R2, R, V2>& r) { n += r; }
     constexpr quantity& operator+=(const quantity<R2, V2>& q) {
-        Num += detail::number_in_unit<R.U>(q);
+        Value += detail::number_in_unit<R.U>(q);
         return *this;
     }
     template <units::reference R2, class V2>
         requires detail::implicit_rescalable<R2, R, V2> &&
                  requires(Rep& n, const detail::rescaled_t<R2, R, V2>& r) { n -= r; }
     constexpr quantity& operator-=(const quantity<R2, V2>& q) {
-        Num -= detail::number_in_unit<R.U>(q);
+        Value -= detail::number_in_unit<R.U>(q);
         return *this;
     }
     template <insidable V>
         requires requires(Rep& n, const V& v) { n *= v; }
     constexpr quantity& operator*=(const V& v) {
-        Num *= v;
+        Value *= v;
         return *this;
     }
     template <insidable V>
         requires requires(Rep& n, const V& v) { n /= v; }
     constexpr quantity& operator/=(const V& v) {
-        Num /= v;
+        Value /= v;
         return *this;
     }
 
@@ -1305,27 +1305,27 @@ class quantity {
     constexpr quantity& operator++()
         requires requires(Rep& n) { ++n; }
     {
-        ++Num;
+        ++Value;
         return *this;
     }
     constexpr quantity& operator--()
         requires requires(Rep& n) { --n; }
     {
-        --Num;
+        --Value;
         return *this;
     }
     constexpr quantity operator++(int)
         requires requires(Rep& n) { ++n; }
     {
         auto old = *this;
-        ++Num;
+        ++Value;
         return old;
     }
     constexpr quantity operator--(int)
         requires requires(Rep& n) { --n; }
     {
         auto old = *this;
-        --Num;
+        --Value;
         return old;
     }
 
@@ -1333,19 +1333,19 @@ class quantity {
     // when the sum wraps. Stores take quantities; f gets the quantity.
     template <class F>
     [[nodiscard]] constexpr auto on_wrap(F&& f) {
-        return detail::make_action_ref<R>(*this, Num.on_wrap(detail::on_quantity(*this, std::forward<F>(f))));
+        return detail::make_action_ref<R>(*this, Value.on_wrap(detail::on_quantity(*this, std::forward<F>(f))));
     }
     template <class F>
     [[nodiscard]] constexpr auto on_clamp(F&& f) {
-        return detail::make_action_ref<R>(*this, Num.on_clamp(detail::on_quantity(*this, std::forward<F>(f))));
+        return detail::make_action_ref<R>(*this, Value.on_clamp(detail::on_quantity(*this, std::forward<F>(f))));
     }
     template <class F>
     [[nodiscard]] constexpr auto on_error(F&& f) {
-        return detail::make_action_ref<R>(*this, Num.on_error(detail::on_quantity(*this, std::forward<F>(f))));
+        return detail::make_action_ref<R>(*this, Value.on_error(detail::on_quantity(*this, std::forward<F>(f))));
     }
     template <class F>
     [[nodiscard]] constexpr auto on_overflow(F&& f) {
-        return detail::make_action_ref<R>(*this, Num.on_overflow(detail::on_quantity(*this, std::forward<F>(f))));
+        return detail::make_action_ref<R>(*this, Value.on_overflow(detail::on_quantity(*this, std::forward<F>(f))));
     }
 
     // Rep's try_make in the unit R: quantity<si::metre, M>::try_make(12.5).

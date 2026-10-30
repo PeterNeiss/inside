@@ -98,7 +98,7 @@ TEST(UnanchoredGrid, grid_shape) {
     static_assert(grid{{0, 10}, 1}.anchored());
     static_assert(kHalfOff.value_unit() == 0.5_r);
     static_assert(kTenthOff.value_unit() == 0.1_r);
-    static_assert(kHalfOff.slot_count() == grid_int{10});
+    static_assert(kHalfOff.step_count() == grid_int{10});
     static_assert(grid::try_make(interval{0.5_r, 10.5_r}, 1).has_value());
     static_assert(!grid::try_make(interval{0.5_r, 10.25_r}, 1).has_value()); // the notch must divide the span
 
@@ -144,7 +144,7 @@ void check_decode() {
         EXPECT_EQ(static_cast<rational>(b), want) << to_string(want);
         EXPECT_EQ(b.raw(), static_cast<raw_t<B>>(k));
         EXPECT_EQ(b.numerator(), signed_numerator(want));
-        EXPECT_EQ(b.denominator(), abs_den(want.Denominator));
+        EXPECT_EQ(b.denominator(), abs_den(want.Den));
         EXPECT_EQ(b.template as<imax>(), trunc(want));
         EXPECT_EQ(as_double(b), static_cast<double>(want));
         EXPECT_TRUE(b == want);
@@ -178,7 +178,7 @@ void check_store_rational() {
         if (static_cast<double>(v) == static_cast<double>(v) && rational{static_cast<double>(v)} == v) {
             EXPECT_EQ(static_cast<rational>(B{static_cast<double>(v)}), want);
         }
-        if (abs_den(v.Denominator) == 1) {
+        if (abs_den(v.Den) == 1) {
             EXPECT_EQ(static_cast<rational>(B{static_cast<imax>(signed_numerator(v))}), want);
         }
     }

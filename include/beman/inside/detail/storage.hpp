@@ -152,13 +152,13 @@ inline constexpr index_double_codec index_double = [] {
         constexpr umax k53 = umax{1} << 53;
         const rational n   = notch64<B>;
         const auto     lo = index_lo64<B>, hi = index_hi64<B>;
-        if (abs_den(n.Denominator) > k53)
+        if (abs_den(n.Den) > k53)
             return index_double_codec{};
-        const umax m = lo->Numerator > hi->Numerator ? lo->Numerator : hi->Numerator; // max |J|
-        if (m > k53 / n.Numerator)
+        const umax m = lo->Num > hi->Num ? lo->Num : hi->Num; // max |J|
+        if (m > k53 / n.Num)
             return index_double_codec{};
         return index_double_codec{
-            true, signed_numerator(*lo), static_cast<imax>(n.Numerator), static_cast<double>(abs_den(n.Denominator))};
+            true, signed_numerator(*lo), static_cast<imax>(n.Num), static_cast<double>(abs_den(n.Den))};
     }
 }();
 
@@ -193,7 +193,7 @@ inline constexpr imax lower_imax = trunc(lower64<B>);
 template <insidable B>
 inline constexpr imax upper_imax = trunc(upper64<B>);
 
-// Slot count via grid::max_index (overflow-safe: 0 when it doesn't fit umax,
+// The largest index, grid::max_index (overflow-safe: 0 when it doesn't fit umax,
 // for grids with a wide index, which take the exact wide paths).
 template <insidable B>
 inline constexpr umax max_index_of = grid_of<B>.max_index();
@@ -253,10 +253,10 @@ constexpr imax raw_imax(B b) noexcept {
 //-------------------------------------------------------------------------
 template <insidable B>
 inline constexpr bool qformat_codec_fits = [] {
-    if constexpr (abs_den(lower64<B>.Denominator) != 1 || notch64<B>.Numerator != 1 || !values_fit_imax<B>)
+    if constexpr (abs_den(lower64<B>.Den) != 1 || notch64<B>.Num != 1 || !values_fit_imax<B>)
         return false;
     else { // every value·nd (so Lower·nd and raw + Lower·nd) in imax
-        constexpr imax nd = abs_den(notch64<B>.Denominator);
+        constexpr imax nd = abs_den(notch64<B>.Den);
         constexpr auto lo = try_mul(lower64<B>, rational{nd});
         constexpr auto hi = try_mul(upper64<B>, rational{nd});
         return lo.has_value() && hi.has_value() && *lo >= rational{std::numeric_limits<imax>::min()} &&
@@ -268,7 +268,7 @@ inline constexpr bool qformat_codec_fits = [] {
 template <insidable B>
     requires qformat_codec_fits<B>
 constexpr raw_t<B> q_format_encode(imax value) noexcept {
-    constexpr imax nd = abs_den(notch64<B>.Denominator);
+    constexpr imax nd = abs_den(notch64<B>.Den);
     return raw_cast<B>((value - lower_imax<B>)*nd);
 }
 
@@ -276,7 +276,7 @@ constexpr raw_t<B> q_format_encode(imax value) noexcept {
 template <insidable B>
     requires qformat_codec_fits<B>
 constexpr rational q_format_decode(B b) noexcept {
-    constexpr imax nd = abs_den(notch64<B>.Denominator);
+    constexpr imax nd = abs_den(notch64<B>.Den);
     const imax     n  = raw_imax(b) + lower_imax<B> * nd;
     if constexpr (std::has_single_bit(static_cast<umax>(nd))) {
         // A power-of-two denominator reduces by the common trailing zeros
@@ -284,8 +284,8 @@ constexpr rational q_format_decode(B b) noexcept {
         const umax m = n < 0 ? umax{0} - static_cast<umax>(n) : static_cast<umax>(n);
         const int  s = std::countr_zero(m | static_cast<umax>(nd));
         rational   r;
-        r.Numerator   = m >> s;
-        r.Denominator = n < 0 ? -(nd >> s) : nd >> s;
+        r.Num = m >> s;
+        r.Den = n < 0 ? -(nd >> s) : nd >> s;
         return r;
     } else
         return rational{n, nd};
@@ -299,12 +299,11 @@ template <insidable B>
 [[nodiscard]] constexpr imax to_value(B b) noexcept {
     if constexpr (value_storage<B>)
         return raw_imax(b);
-    else if constexpr (abs_den(notch64<B>.Denominator) == 1 && abs_den(lower64<B>.Denominator) == 1)
+    else if constexpr (abs_den(notch64<B>.Den) == 1 && abs_den(lower64<B>.Den) == 1)
         // In umax: raw·Notch can pass imax although the value fits.
-        return static_cast<imax>(static_cast<umax>(lower_imax<B>) +
-                                 static_cast<umax>(raw_imax(b)) * notch64<B>.Numerator);
+        return static_cast<imax>(static_cast<umax>(lower_imax<B>) + static_cast<umax>(raw_imax(b)) * notch64<B>.Num);
     else if constexpr (qformat_codec_fits<B>) {
-        constexpr imax nd = abs_den(notch64<B>.Denominator);
+        constexpr imax nd = abs_den(notch64<B>.Den);
         return (raw_imax(b) + lower_imax<B> * nd) / nd; // q_format_decode, truncated
     } else                                              // index storage, generic rational path
         return trunc(as_rational(b));
@@ -314,15 +313,14 @@ template <insidable B>
 constexpr void from_value(B& b, imax val) {
     if constexpr (value_storage<B>)
         b = B::from_raw(raw_cast<B>(val));
-    else if constexpr (abs_den(notch64<B>.Denominator) == 1 && abs_den(lower64<B>.Denominator) == 1)
-        b = B::from_raw(
-            raw_cast<B>((static_cast<umax>(val) - static_cast<umax>(lower_imax<B>)) / notch64<B>.Numerator));
+    else if constexpr (abs_den(notch64<B>.Den) == 1 && abs_den(lower64<B>.Den) == 1)
+        b = B::from_raw(raw_cast<B>((static_cast<umax>(val) - static_cast<umax>(lower_imax<B>)) / notch64<B>.Num));
     else if constexpr (qformat_codec_fits<B>)
         b = B::from_raw(q_format_encode<B>(val));
     else // index storage, generic rational path
     {
         auto offset = (rational{val} - lower64<B>) / notch64<B>;
-        b           = B::from_raw(raw_cast<B>(offset.value().Numerator));
+        b           = B::from_raw(raw_cast<B>(offset.value().Num));
     }
 }
 
@@ -337,12 +335,12 @@ inline constexpr imax raw_lo = integer_value_storage<B> ? lower_imax<B> : 0;
 template <insidable B>
 inline constexpr imax raw_hi = integer_value_storage<B> ? upper_imax<B> : static_cast<imax>(max_index_of<B>);
 
-// The exact raw range: 0 .. slot count for index storage, Lower .. Upper
+// The exact raw range: 0 .. step count for index storage, Lower .. Upper
 // for value storage (integers there). Sizes the work types below.
 template <insidable B>
 inline constexpr grid_int raw_lo_exact = index_storage<B> ? grid_int{0} : wide_numerator(lower_of<B>);
 template <insidable B>
-inline constexpr grid_int raw_hi_exact = index_storage<B> ? grid_of<B>.slot_count() : wide_numerator(upper_of<B>);
+inline constexpr grid_int raw_hi_exact = index_storage<B> ? grid_of<B>.step_count() : wide_numerator(upper_of<B>);
 
 // Value bits for every value in a list (their min .. max).
 constexpr int signed_value_bits_of(std::initializer_list<grid_int> vals) noexcept {
@@ -405,7 +403,7 @@ constexpr raw_t<L> endpoint_raw(bool low) noexcept {
 // exact offset (v − Lower)/Notch.
 template <insidable L>
 constexpr raw_t<L> raw_of_lattice_value(rational v) {
-    return raw_from_offset<L>(((v - lower64<L>).value() / notch64<L>).value().Numerator);
+    return raw_from_offset<L>(((v - lower64<L>).value() / notch64<L>).value().Num);
 }
 
 //-------------------------------------------------------------------------
@@ -468,11 +466,10 @@ template <insidable L, typename P>
     else {
         const rational k = round_to_integral(q, round_mode::floor);
         const rational f = (q - k).value(); // in [0, 1): no overflow
-        return {k,
-                rounds_up(m,
-                          negative,
-                          classify_remainder(m, f.Numerator, abs_den(f.Denominator)),
-                          ((k.Numerator & 1) != 0) != lower_index_odd<L>)};
+        return {
+            k,
+            rounds_up(
+                m, negative, classify_remainder(m, f.Num, abs_den(f.Den)), ((k.Num & 1) != 0) != lower_index_odd<L>)};
     }
 }
 
@@ -527,7 +524,7 @@ template <insidable L, typename P>
             if constexpr (notched<L>)
                 return notch64<L>;
             else {
-                constexpr umax D = to_rational(grid_of<L>.MaxDenominator).Numerator;
+                constexpr umax D = to_rational(grid_of<L>.MaxDenominator).Num;
                 constexpr umax M = static_cast<umax>(std::numeric_limits<imax>::max());
                 return rational{1, static_cast<imax>(D < M ? D : M)};
             }
@@ -592,7 +589,7 @@ template <insidable L, typename P>
     if constexpr (lower64<L> < 0) {
         constexpr rational c = -*index_lo64<L>; // > 0
         using W              = wide_uint<2>;
-        negative             = W{num} * W{abs_den(c.Denominator)} < W{c.Numerator} * W{den};
+        negative             = W{num} * W{abs_den(c.Den)} < W{c.Num} * W{den};
     }
     return q + rounds_up(m, negative, classify_remainder(m, r, den), ((q & 1) != 0) != lower_index_odd<L>);
 }
@@ -610,10 +607,10 @@ template <insidable L, typename P>
 [[nodiscard]] constexpr umax round_quotient(umax num, umax den) noexcept {
     // Lower/Notch past 64 bits (a far-off grid with a fine notch) has no imax
     // value index: round the offset as for a non-integral m.
-    constexpr auto zq   = (!notched<L>) ? std::expected<rational, errc>{rational{0}} : try_div(lower64<L>, notch64<L>);
-    constexpr bool vidx = zq.has_value() && abs_den(zq->Denominator) == 1 &&
-                          zq->Numerator <= static_cast<umax>(std::numeric_limits<imax>::max()) + 1;
-    constexpr imax m    = vidx ? signed_numerator(*zq) : imax{0};
+    constexpr auto zq = (!notched<L>) ? std::expected<rational, errc>{rational{0}} : try_div(lower64<L>, notch64<L>);
+    constexpr bool vidx =
+        zq.has_value() && abs_den(zq->Den) == 1 && zq->Num <= static_cast<umax>(std::numeric_limits<imax>::max()) + 1;
+    constexpr imax m = vidx ? signed_numerator(*zq) : imax{0};
 
     if constexpr (!anchored<L>)
         return round_offset_unanchored<L, P>(num, den);
@@ -676,8 +673,7 @@ inline constexpr bool notches_compatible = [] {
     else
         // R's notch a whole number of L's, and R's lattice on L's (a given
         // when both pass through 0).
-        return abs_den(assignment<L, R>::Factor.Denominator) == 1 &&
-               grid_same_lattice(lower_of<R>, lower_of<L>, notch_of<L>);
+        return abs_den(assignment<L, R>::Factor.Den) == 1 && grid_same_lattice(lower_of<R>, lower_of<L>, notch_of<L>);
 }();
 
 // Tail of the policy cascade: checked reports.

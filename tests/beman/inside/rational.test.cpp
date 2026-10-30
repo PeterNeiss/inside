@@ -19,14 +19,14 @@ TEST(RationalTest, rational_construction_normalises) {
         SCOPED_TRACE("zero numerator collapses denominator");
         ASSERT_EQ((rational{0u, 7}), (rational{0u, 1}));
         ASSERT_EQ((rational{0, -5}), (rational{0u, 1}));
-        ASSERT_EQ((0_r).Denominator, 1);
+        ASSERT_EQ((0_r).Den, 1);
     }
 
     {
         SCOPED_TRACE("negative denominator carries sign onto rational");
         rational a{1, -2};
-        ASSERT_EQ(a.Numerator, 1u);
-        ASSERT_EQ(a.Denominator, -2);
+        ASSERT_EQ(a.Num, 1u);
+        ASSERT_EQ(a.Den, -2);
         ASSERT_TRUE(a < 0);
         ASSERT_EQ((rational{-1, 2}), (rational{1, -2}));
         ASSERT_EQ((rational{-1, -2}), (rational{1, 2}));
@@ -58,7 +58,7 @@ TEST(RationalTest, rational_construction_normalises) {
     {
         SCOPED_TRACE("from int min");
         constexpr rational a{std::numeric_limits<int>::min()};
-        ASSERT_TRUE(a.Denominator < 0);
+        ASSERT_TRUE(a.Den < 0);
         ASSERT_TRUE(a < 0);
     }
 
@@ -313,7 +313,7 @@ TEST(RationalTest, rational_overflow_detection) {
         // add: lcm > imax_max.
         ASSERT_FALSE(((rational{1u, p62} + rational{1u, 3}).has_value()));
 
-        // inv of M (M > imax_max) would land M in the result's Denominator slot.
+        // inv of M (M > imax_max) would land M in the result's Den slot.
         ASSERT_FALSE((rational::inv(rational{M, 1}).has_value()));
 
         // div via the checked path inherits the inv range check.
@@ -466,8 +466,8 @@ TEST(RationalTest, mixed_sign_add_rescues_a_cross_product_overflow_when_the_diff
 
     const auto offset = fp_value + rational{1024};
     ASSERT_TRUE(offset.has_value());
-    ASSERT_TRUE(offset->Numerator == umax{18437737427537921425u});
-    ASSERT_TRUE(offset->Denominator == imax{18014398509481984});
+    ASSERT_TRUE(offset->Num == umax{18437737427537921425u});
+    ASSERT_TRUE(offset->Den == imax{18014398509481984});
 
     // Same-sign sums past umax stay an error (the result truly needs > 64 bits).
     const rational positive{umax{9006646171630191}, imax{18014398509481984}};

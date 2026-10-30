@@ -176,7 +176,7 @@ constexpr long math_iters = 10000L * BEMAN_INSIDE_PERF_SCALE;
 template <typename In, typename F>
 std::int64_t run_math(F f) {
     std::int64_t acc = 0, x = 1;
-    const auto   slots = static_cast<std::uint64_t>(static_cast<std::int64_t>(grid_of<In>.slot_count())) + 1;
+    const auto   slots = static_cast<std::uint64_t>(static_cast<std::int64_t>(grid_of<In>.step_count())) + 1;
     for (long i = 0; i < math_iters; ++i) {
         lcg(x);
         const In v = In::from_raw(detail::raw_from_offset<In>((static_cast<std::uint64_t>(x) >> 20) % slots));
