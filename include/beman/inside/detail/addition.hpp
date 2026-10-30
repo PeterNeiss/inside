@@ -4,7 +4,7 @@
 
 #include <beman/inside/detail/config.hpp>
 
-#include <beman/inside/detail/rep.hpp>
+#include <beman/inside/detail/op_result.hpp>
 #include <beman/inside/generic.hpp>
 #include <beman/inside/detail/wide_value.hpp>
 #include <beman/inside/grid.hpp>

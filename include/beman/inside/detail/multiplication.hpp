@@ -4,7 +4,7 @@
 
 #include <beman/inside/detail/config.hpp>
 
-#include <beman/inside/detail/rep.hpp>
+#include <beman/inside/detail/op_result.hpp>
 #include <beman/inside/generic.hpp>
 #include <beman/inside/detail/wide_value.hpp>
 #include <beman/inside/grid.hpp>
@@ -34,7 +34,7 @@ struct multiplication {
 
     template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
     static constexpr auto mul(L lhs, R rhs, policy<F, E> policy = {}, A&& action = {}) -> return_t<F, A> {
-        if constexpr (point_scale<R, L, result>) // x * just<c>: x's offset (see rep.hpp)
+        if constexpr (point_scale<R, L, result>) // x * just<c>: x's offset (see op_result.hpp)
             return scale_by_point<result, R>(lhs);
         else if constexpr (point_scale<L, R, result>)
             return scale_by_point<result, L>(rhs);

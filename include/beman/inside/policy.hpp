@@ -4,7 +4,7 @@
 
 #include <beman/inside/detail/config.hpp>
 
-#include <beman/inside/detail/debug.hpp>         // errc, raise, constexpr_error
+#include <beman/inside/detail/error.hpp>         // errc, raise, constexpr_error
 #include <beman/inside/detail/introspection.hpp> // insidable, flags_of_impl
 #include <beman/inside/policy_flag.hpp>
 

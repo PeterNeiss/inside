@@ -9,7 +9,7 @@
 #include <beman/inside/detail/grid_rational.hpp>
 #include <beman/inside/detail/diag_text.hpp>
 #include <beman/inside/policy_flag.hpp>
-#include <beman/inside/detail/int_for_bits.hpp>
+#include <beman/inside/detail/wide_int.hpp>
 
 #include <algorithm>
 #include <concepts> // std::convertible_to (grid corner ctors)

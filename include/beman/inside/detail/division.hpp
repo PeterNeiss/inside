@@ -4,7 +4,7 @@
 
 #include <beman/inside/detail/config.hpp>
 
-#include <beman/inside/detail/rep.hpp>
+#include <beman/inside/detail/op_result.hpp>
 #include <beman/inside/generic.hpp>
 #include <beman/inside/detail/wide_value.hpp>
 #include <beman/inside/grid.hpp>
@@ -346,11 +346,11 @@ struct division {
 
     // `x / just<c>` (c != 0) off the native paths: the result keeps x's
     // lattice scaled by 1/|c| (grid operator/), so it is x's offset (see
-    // rep.hpp) — or, past 64 bits, the exact quotient on that lattice.
+    // op_result.hpp) — or, past 64 bits, the exact quotient on that lattice.
     // Exact and in range by construction: it cannot fail.
     static constexpr bool point_divisor = !native_div && point_grid<R> && lower_of<R> != 0 && notched<result>;
 
-    // A continuous quotient whose denominator bound proves it fits (rep.hpp)
+    // A continuous quotient whose denominator bound proves it fits (op_result.hpp)
     // cannot overflow either.
     static constexpr bool bound_fits = exact_fits<exact_op::div, result, L, R>;
 

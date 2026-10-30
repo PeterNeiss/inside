@@ -176,7 +176,7 @@ view instantiates it even in a short-circuited `&&`, so predicates that every
 inside instantiates compare grid numbers, or hide the view behind
 `if constexpr`.
 
-**Wide raws.** `int_for_bits_t<Bits, Signed>` (`detail/int_for_bits.hpp`) is
+**Wide raws.** `int_for_bits_t<Bits, Signed>` (`detail/wide_int.hpp`) is
 the one width rule: a builtin integer up to 64 bits, else a `wide_int`
 (`detail/wide_int.hpp`: Knuth's algorithm D, the only `__int128` site). A grid
 with more than 2⁶⁴ indices gets a `wide_int` index; a grid number past 64 bits
@@ -327,7 +327,7 @@ can fail: a result the grids prove total stays a plain inside.
 | Operation | Shape | Causes |
 |---|---|---|
 | `a + b`, `a − b`, `a × b` on integer raws | inside | total: the result grid holds every value |
-| the same with a bounded continuous result whose fraction holds its bound | inside | total: the bound sizes the raw (`exact_fits`, `detail/rep.hpp`) |
+| the same with a bounded continuous result whose fraction holds its bound | inside | total: the bound sizes the raw (`exact_fits`, `detail/op_result.hpp`) |
 | the same with an unbounded continuous result, checked | expected | `overflow`: the denominator may outgrow the raw |
 | `a / b`, `a % b`, divisor grid without 0 | inside | total |
 | `a / b`, `a % b`, divisor grid with 0 | expected | `division_by_zero`; `overflow` for a fraction raw |
@@ -342,7 +342,7 @@ can fail: a result the grids prove total stays a plain inside.
 | `sum<Target>` | `Target` | Target's policy, applied once to the total |
 | a quantity's `/`, `div_into`, `try_value_cast`, `parse<Q>`, `Q::try_make` | as the inside's | the inside's causes, with the quantity as the value |
 
-Chaining (`lift.hpp`, `arithmetic.hpp`): the expected-lift operators keep an
+Chaining (`detail/lift.hpp`, `arithmetic.hpp`): the expected-lift operators keep an
 `expected` chain intact, so `a / b * gain + offset` stays an
 `expected<inside, errc>` end to end. The first (left) error wins and keeps its
 cause; an operation that fails inside the chain reports its own.
@@ -375,7 +375,7 @@ arithmetic, range and cursor layers, which need the complete type). The
 | `cursor.hpp` | `cursor<T, Step>`, `end(t)` |
 | `predicates.hpp` | `conversion_overflows`, `conversion_rounds`, `conversion_loses` |
 | `generic.hpp` | the `inside_assignable` concept, `inside_assignable_why`, `explain_assignable` |
-| `lift.hpp` | `detail::lift`, the combinator behind the lift operators |
+| `detail/lift.hpp` | `detail::lift`, the combinator behind the lift operators |
 | `numeric_limits.hpp` | `std::numeric_limits` and `std::hash` for insides (opt-in) |
 | `formats.hpp` | the native aliases `uint8` … `q16_16`, `clamp_counter`, `wrap_counter` (opt-in) |
 | `io.hpp` | **all** text: `to_string`, `to_string_debug`, `<<`, `>>`, `parse(string_view)`, `std::formatter`, `type_name_of`. Opt-in; the only header that brings `<string>`, `<ostream>`, `<format>` |
@@ -393,11 +393,11 @@ arithmetic, range and cursor layers, which need the complete type). The
 | `compare.hpp` | `<=>` and `==` across grids and against integers, floating points of any width and `rational` |
 | `introspection.hpp` | `grid_of`, `flags_of`, `interval_of`, `lower_of`, `upper_of`, `notch_of`, the `insidable` and `numeric` concepts, `raw_t`, `as_rational` |
 | `storage.hpp` | the storage concepts, `as_double`, `to_value`/`from_value`, `raw_imax`, the Q-format codec, `max_index_of`, `round_quotient` |
-| `rep.hpp` | `lattice_op_checked`: whether `+` or `×` into a result runs its overflow check |
+| `op_result.hpp` | `lattice_op_checked`: whether `+` or `×` into a result runs its overflow check |
 | `rounding.hpp` | `classify_remainder`, `rounds_up`, `rounds_away`: the one rounding decision every integer path shares |
 | `assignment.hpp`, `assign_exact.hpp` | stores for integral, fractional and inside sources; the exact and wide store, the out-of-range cascade, the `on_wrap` carry grid |
 | `addition.hpp`, `multiplication.hpp`, `division.hpp` | `addition<L, R>`, `multiplication<L, R>`, `division<L, R, F>`, `modulo<L, R, F>`, `divmod_result` |
-| `overflow.hpp`, `debug.hpp` | `add_overflow` and kin; `errc`, `errc_message`, the error handler and `raise` |
+| `overflow.hpp`, `error.hpp` | `add_overflow` and kin; `errc`, `errc_message`, the error handler and `raise` |
 | `diag_text.hpp` | `diag_text`: `static_assert` messages with values |
 | `rational.hpp` | `rational` and its checked and unchecked arithmetic |
 | `number_text.hpp` | the literal and text grammar, and the `_r` literal |

@@ -6,7 +6,7 @@
 
 #include <beman/inside/detail/compare.hpp> // the inside type and its comparisons
 #include <beman/inside/casts.hpp>
-#include <beman/inside/detail/rep.hpp>
+#include <beman/inside/detail/op_result.hpp>
 
 #include <algorithm>
 #include <ranges>

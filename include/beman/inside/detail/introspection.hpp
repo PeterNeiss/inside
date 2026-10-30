@@ -4,7 +4,7 @@
 
 #include <beman/inside/detail/config.hpp>
 
-#include <beman/inside/detail/debug.hpp>
+#include <beman/inside/detail/error.hpp>
 #include <beman/inside/grid.hpp>
 #include <beman/inside/policy_flag.hpp>
 

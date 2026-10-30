@@ -15,7 +15,7 @@
 
 #include <beman/inside/generic.hpp>
 #include <beman/inside/detail/wide_value.hpp>
-#include <beman/inside/lift.hpp>
+#include <beman/inside/detail/lift.hpp>
 #include <beman/inside/policy.hpp>
 #include <beman/inside/detail/policy_ref.hpp>
 #include <beman/inside/detail/addition.hpp>

@@ -5,7 +5,7 @@
 #include <beman/inside/detail/config.hpp>
 
 #include <beman/inside/numbers.hpp>      // umax, imax
-#include <beman/inside/detail/debug.hpp> // errc, detail::raise
+#include <beman/inside/detail/error.hpp> // errc, detail::raise
 
 #include <bit>
 #include <concepts>

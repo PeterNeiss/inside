@@ -6,7 +6,7 @@
 
 #include <beman/inside/numbers.hpp>                // umax
 #include <beman/inside/detail/float_bits.hpp>      // constexpr ldexp
-#include <beman/inside/detail/debug.hpp>           // errc, raise, constexpr_error
+#include <beman/inside/detail/error.hpp>           // errc, raise, constexpr_error
 #include <beman/inside/detail/limb_algorithms.hpp> // limb kernels
 
 #include <algorithm>
@@ -376,6 +376,31 @@ inline constexpr bool is_wide_rational_v<wide_rational<K>> = true;
 // A wide_rational of any width.
 template <typename T>
 concept wide_rational_like = is_wide_rational_v<std::remove_cvref_t<T>>;
+
+//---------------------------------------------------------------------------
+// int_for_bits — one rule for every integer the library stores or computes
+// with: the smallest builtin integer of at least Bits value bits, else a
+// wide_int of enough 64-bit limbs. Raws and intermediates both size by it, so
+// a grid's bit count fully decides its integer types.
+//---------------------------------------------------------------------------
+constexpr std::size_t limbs_for_bits(int bits) noexcept { return static_cast<std::size_t>((bits + 63) / 64); }
+
+template <std::size_t I, class... Ts>
+using nth_type_t = Ts...[I];
+
+// Bits counts value bits; a signed type spends one more on the sign.
+template <int Bits, bool Signed>
+struct int_for_bits {
+    static constexpr int         total = Bits + (Signed ? 1 : 0);
+    static constexpr std::size_t i     = total <= 8 ? 0 : total <= 16 ? 1 : total <= 32 ? 2 : total <= 64 ? 3 : 4;
+    using wide                         = wide_int<limbs_for_bits(total), Signed>;
+    using type = std::conditional_t<Signed,
+                                    nth_type_t<i, std::int8_t, std::int16_t, std::int32_t, std::int64_t, wide>,
+                                    nth_type_t<i, std::uint8_t, std::uint16_t, std::uint32_t, std::uint64_t, wide>>;
+};
+
+template <int Bits, bool Signed>
+using int_for_bits_t = typename int_for_bits<Bits, Signed>::type;
 } // namespace beman::inside::detail
 
 template <std::size_t N, bool Signed, std::unsigned_integral L>

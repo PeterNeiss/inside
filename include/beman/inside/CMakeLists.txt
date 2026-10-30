@@ -17,13 +17,13 @@ target_sources(
                 detail/big_rational.hpp
                 detail/compare.hpp
                 detail/config.hpp
-                detail/debug.hpp
                 detail/diag_text.hpp
                 detail/division.hpp
+                detail/error.hpp
                 detail/float_bits.hpp
                 detail/grid_rational.hpp
-                detail/int_for_bits.hpp
                 detail/introspection.hpp
+                detail/lift.hpp
                 detail/limb_algorithms.hpp
                 detail/math_adaptive.hpp
                 detail/math_constants.hpp
@@ -33,10 +33,9 @@ target_sources(
                 detail/math_fp.hpp
                 detail/multiplication.hpp
                 detail/number_text.hpp
-                detail/overflow.hpp
+                detail/op_result.hpp
                 detail/policy_ref.hpp
                 detail/rational.hpp
-                detail/rep.hpp
                 detail/rounding.hpp
                 detail/storage.hpp
                 detail/wide_int.hpp
@@ -47,7 +46,6 @@ target_sources(
                 inside.hpp
                 interval.hpp
                 io.hpp
-                lift.hpp
                 numbers.hpp
                 numeric_limits.hpp
                 policy.hpp

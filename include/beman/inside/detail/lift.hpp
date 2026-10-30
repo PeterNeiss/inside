@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-#ifndef BEMAN_INSIDE_LIFT_HPP
-#define BEMAN_INSIDE_LIFT_HPP
+#ifndef BEMAN_INSIDE_DETAIL_LIFT_HPP
+#define BEMAN_INSIDE_DETAIL_LIFT_HPP
 
 #include <beman/inside/detail/config.hpp>
 
-#include <beman/inside/detail/debug.hpp> // errc
+#include <beman/inside/detail/error.hpp> // errc
 
 #include <concepts>
 #include <expected>
@@ -82,4 +82,4 @@ template <class Op, class... Args>
 }
 } // namespace beman::inside::detail
 
-#endif // BEMAN_INSIDE_LIFT_HPP
+#endif // BEMAN_INSIDE_DETAIL_LIFT_HPP

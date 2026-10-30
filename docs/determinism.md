@@ -45,7 +45,7 @@ differently:
   arrays of 64-bit limbs.
 - A fraction is a `beman::inside::rational` (`detail/rational.hpp`). Every
   checked operation goes through overflow-detecting add, sub and mul
-  (`detail/overflow.hpp`), so an overflow is a reported `errc::overflow`, not
+  (`numbers.hpp`), so an overflow is a reported `errc::overflow`, not
   a platform-dependent wrap.
 - `rational(double)` takes the value straight from its IEEE-754 bits: a finite
   `double` is exactly significand · 2^exponent, with no `<cmath>` and no FPU

@@ -6,9 +6,8 @@
 
 #include <beman/inside/numbers.hpp>           // umax/imax, arithmetic, rational fwd
 #include <beman/inside/detail/float_bits.hpp> // abs_fraction, is_double_value
-#include <beman/inside/lift.hpp>              // lift, expected_like, unwrap_t
-#include <beman/inside/detail/overflow.hpp>   // add/sub/mul_overflow
-#include <beman/inside/detail/debug.hpp>      // errc, detail::raise, detail::constexpr_error
+#include <beman/inside/detail/lift.hpp>       // lift, expected_like, unwrap_t
+#include <beman/inside/detail/error.hpp>      // errc, detail::raise, detail::constexpr_error
 #include <beman/inside/detail/wide_int.hpp>   // limb kernels for exact 128-bit cross products
 #include <beman/inside/detail/rounding.hpp>   // round_mode, rounds_away
 

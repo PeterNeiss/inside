@@ -8,13 +8,33 @@
 #include <cstdint>
 
 //---------------------------------------------------------------------------
-// numbers — primitive numeric utilities: umax/imax, the plain_number /
-// fractional concepts and safe_abs. The floating-point bit helpers are in
-// detail/float_bits.hpp.
+// numbers — primitive numeric utilities: umax/imax, the overflow-detecting
+// add/sub/mul, the plain_number / fractional concepts and safe_abs. The
+// floating-point bit helpers are in detail/float_bits.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 using umax = std::uint64_t;
 using imax = std::int64_t;
+
+// Overflow-detecting add/sub/mul for integers (derived from Peter Sommerlad's
+// odins.h, MIT license): GCC's __builtin_*_overflow intrinsics. Return true on
+// overflow; *result holds the wrapped value either way. Used by rational's
+// kernels and every checked path. (C++26's ckd_add is not constexpr in
+// libstdc++ 16.)
+template <std::integral T>
+[[nodiscard]] constexpr bool add_overflow(T l, T r, T* result) noexcept {
+    return __builtin_add_overflow(l, r, result);
+}
+
+template <std::integral T>
+[[nodiscard]] constexpr bool sub_overflow(T l, T r, T* result) noexcept {
+    return __builtin_sub_overflow(l, r, result);
+}
+
+template <std::integral T>
+[[nodiscard]] constexpr bool mul_overflow(T l, T r, T* result) noexcept {
+    return __builtin_mul_overflow(l, r, result);
+}
 
 namespace detail {
 struct rational;

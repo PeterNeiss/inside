@@ -87,7 +87,7 @@ TEST(CoverageCornersTest, dbl_cbrt_of_negatives_and_atan2_on_the_axes) {
 #endif // !BEMAN_INSIDE_MATH_NO_FP
 
 //---------------------------------------------------------------------------
-// lift (lift.hpp) — the binary expected-lift short-circuits on a RIGHT-side
+// lift (detail/lift.hpp) — the binary expected-lift short-circuits on a RIGHT-side
 // error (the left-error short-circuit was already covered).
 //---------------------------------------------------------------------------
 // expected-lift propagates a right-hand-side error

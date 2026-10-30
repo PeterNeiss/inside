@@ -161,7 +161,7 @@
 
 
 // ======================================================================
-//  beman/inside/detail/debug.hpp
+//  beman/inside/detail/error.hpp
 // ======================================================================
 
 
@@ -326,13 +326,33 @@ template <fixed_string Msg>
 
 
 //---------------------------------------------------------------------------
-// numbers — primitive numeric utilities: umax/imax, the plain_number /
-// fractional concepts and safe_abs. The floating-point bit helpers are in
-// detail/float_bits.hpp.
+// numbers — primitive numeric utilities: umax/imax, the overflow-detecting
+// add/sub/mul, the plain_number / fractional concepts and safe_abs. The
+// floating-point bit helpers are in detail/float_bits.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 using umax = std::uint64_t;
 using imax = std::int64_t;
+
+// Overflow-detecting add/sub/mul for integers (derived from Peter Sommerlad's
+// odins.h, MIT license): GCC's __builtin_*_overflow intrinsics. Return true on
+// overflow; *result holds the wrapped value either way. Used by rational's
+// kernels and every checked path. (C++26's ckd_add is not constexpr in
+// libstdc++ 16.)
+template <std::integral T>
+[[nodiscard]] constexpr bool add_overflow(T l, T r, T* result) noexcept {
+    return __builtin_add_overflow(l, r, result);
+}
+
+template <std::integral T>
+[[nodiscard]] constexpr bool sub_overflow(T l, T r, T* result) noexcept {
+    return __builtin_sub_overflow(l, r, result);
+}
+
+template <std::integral T>
+[[nodiscard]] constexpr bool mul_overflow(T l, T r, T* result) noexcept {
+    return __builtin_mul_overflow(l, r, result);
+}
 
 namespace detail {
 struct rational;
@@ -618,7 +638,7 @@ constexpr T for_each_double_part(T v, F f) {
 
 
 // ======================================================================
-//  beman/inside/lift.hpp
+//  beman/inside/detail/lift.hpp
 // ======================================================================
 
 
@@ -694,37 +714,6 @@ template <class Op, class... Args>
         return Ret{op(lift_unwrap(std::forward<Args>(args))...)};
 }
 } // namespace beman::inside::detail
-
-
-// ======================================================================
-//  beman/inside/detail/overflow.hpp
-// ======================================================================
-// This is derived from Peter Sommerlads odins.h, allowed by MIT license
-//---------------------------------------------------------------------------
-
-
-
-//---------------------------------------------------------------------------
-// overflow — overflow-detecting add/sub/mul for integers: GCC's
-// __builtin_*_overflow intrinsics. Return true on overflow; *result holds the
-// wrapped value either way. Used by rational::*_impl and every checked path.
-//---------------------------------------------------------------------------
-namespace beman::inside {
-template <std::integral T>
-[[nodiscard]] constexpr bool add_overflow(T l, T r, T* result) noexcept {
-    return __builtin_add_overflow(l, r, result);
-}
-
-template <std::integral T>
-[[nodiscard]] constexpr bool sub_overflow(T l, T r, T* result) noexcept {
-    return __builtin_sub_overflow(l, r, result);
-}
-
-template <std::integral T>
-[[nodiscard]] constexpr bool mul_overflow(T l, T r, T* result) noexcept {
-    return __builtin_mul_overflow(l, r, result);
-}
-} // namespace beman::inside
 
 
 // ======================================================================
@@ -1453,6 +1442,31 @@ inline constexpr bool is_wide_rational_v<wide_rational<K>> = true;
 // A wide_rational of any width.
 template <typename T>
 concept wide_rational_like = is_wide_rational_v<std::remove_cvref_t<T>>;
+
+//---------------------------------------------------------------------------
+// int_for_bits — one rule for every integer the library stores or computes
+// with: the smallest builtin integer of at least Bits value bits, else a
+// wide_int of enough 64-bit limbs. Raws and intermediates both size by it, so
+// a grid's bit count fully decides its integer types.
+//---------------------------------------------------------------------------
+constexpr std::size_t limbs_for_bits(int bits) noexcept { return static_cast<std::size_t>((bits + 63) / 64); }
+
+template <std::size_t I, class... Ts>
+using nth_type_t = Ts...[I];
+
+// Bits counts value bits; a signed type spends one more on the sign.
+template <int Bits, bool Signed>
+struct int_for_bits {
+    static constexpr int         total = Bits + (Signed ? 1 : 0);
+    static constexpr std::size_t i     = total <= 8 ? 0 : total <= 16 ? 1 : total <= 32 ? 2 : total <= 64 ? 3 : 4;
+    using wide                         = wide_int<limbs_for_bits(total), Signed>;
+    using type = std::conditional_t<Signed,
+                                    nth_type_t<i, std::int8_t, std::int16_t, std::int32_t, std::int64_t, wide>,
+                                    nth_type_t<i, std::uint8_t, std::uint16_t, std::uint32_t, std::uint64_t, wide>>;
+};
+
+template <int Bits, bool Signed>
+using int_for_bits_t = typename int_for_bits<Bits, Signed>::type;
 } // namespace beman::inside::detail
 
 template <std::size_t N, bool Signed, std::unsigned_integral L>
@@ -3994,41 +4008,6 @@ constexpr auto& pick_action_in(Tuple& t) {
 
 } // namespace detail
 } // namespace beman::inside
-
-
-// ======================================================================
-//  beman/inside/detail/int_for_bits.hpp
-// ======================================================================
-
-
-
-
-//---------------------------------------------------------------------------
-// int_for_bits — one rule for every integer the library stores or computes
-// with: the smallest builtin integer of at least Bits value bits, else a
-// wide_int of enough 64-bit limbs. Raws and intermediates both size by it, so
-// a grid's bit count fully decides its integer types.
-//---------------------------------------------------------------------------
-namespace beman::inside::detail {
-constexpr std::size_t limbs_for_bits(int bits) noexcept { return static_cast<std::size_t>((bits + 63) / 64); }
-
-template <std::size_t I, class... Ts>
-using nth_type_t = Ts...[I];
-
-// Bits counts value bits; a signed type spends one more on the sign.
-template <int Bits, bool Signed>
-struct int_for_bits {
-    static constexpr int         total = Bits + (Signed ? 1 : 0);
-    static constexpr std::size_t i     = total <= 8 ? 0 : total <= 16 ? 1 : total <= 32 ? 2 : total <= 64 ? 3 : 4;
-    using wide                         = wide_int<limbs_for_bits(total), Signed>;
-    using type = std::conditional_t<Signed,
-                                    nth_type_t<i, std::int8_t, std::int16_t, std::int32_t, std::int64_t, wide>,
-                                    nth_type_t<i, std::uint8_t, std::uint16_t, std::uint32_t, std::uint64_t, wide>>;
-};
-
-template <int Bits, bool Signed>
-using int_for_bits_t = typename int_for_bits<Bits, Signed>::type;
-} // namespace beman::inside::detail
 
 
 
@@ -8128,7 +8107,7 @@ struct policy_ref {
 
 
 // ======================================================================
-//  beman/inside/detail/rep.hpp
+//  beman/inside/detail/op_result.hpp
 // ======================================================================
 
 
@@ -8289,7 +8268,7 @@ struct multiplication {
 
     template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
     static constexpr auto mul(L lhs, R rhs, policy<F, E> policy = {}, A&& action = {}) -> return_t<F, A> {
-        if constexpr (point_scale<R, L, result>) // x * just<c>: x's offset (see rep.hpp)
+        if constexpr (point_scale<R, L, result>) // x * just<c>: x's offset (see op_result.hpp)
             return scale_by_point<result, R>(lhs);
         else if constexpr (point_scale<L, R, result>)
             return scale_by_point<result, L>(rhs);
@@ -8673,11 +8652,11 @@ struct division {
 
     // `x / just<c>` (c != 0) off the native paths: the result keeps x's
     // lattice scaled by 1/|c| (grid operator/), so it is x's offset (see
-    // rep.hpp) — or, past 64 bits, the exact quotient on that lattice.
+    // op_result.hpp) — or, past 64 bits, the exact quotient on that lattice.
     // Exact and in range by construction: it cannot fail.
     static constexpr bool point_divisor = !native_div && point_grid<R> && lower_of<R> != 0 && notched<result>;
 
-    // A continuous quotient whose denominator bound proves it fits (rep.hpp)
+    // A continuous quotient whose denominator bound proves it fits (op_result.hpp)
     // cannot overflow either.
     static constexpr bool bound_fits = exact_fits<exact_op::div, result, L, R>;
 

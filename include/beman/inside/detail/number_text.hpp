@@ -5,7 +5,7 @@
 #include <beman/inside/detail/config.hpp>
 
 #include <beman/inside/detail/rational.hpp> // rational, its checked arithmetic
-#include <beman/inside/detail/debug.hpp>    // errc, constexpr_error
+#include <beman/inside/detail/error.hpp>    // errc, constexpr_error
 
 #include <algorithm>
 #include <bit>
