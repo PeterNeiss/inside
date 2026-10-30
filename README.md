@@ -54,9 +54,11 @@ auto d = just<5> * si::kilo(si::metre) + just<250> * si::metre;   // 5250 m, exa
   and calendars, game state, embedded registers — anywhere a plain
   `int`/`float` silently overflows, wraps, or drifts.
 
-**Implements**: not yet proposed for standardization; a draft proposal is in
-[docs/proposal/inside.md](docs/proposal/inside.md) (build it with
-`make -C docs/proposal`).
+**Implements**: not yet proposed for standardization. Three draft proposals
+are in [docs/proposal](docs/proposal): the number
+([inside.md](docs/proposal/inside.md)), quantities
+([quantity.md](docs/proposal/quantity.md)) and correctly rounded math
+([math.md](docs/proposal/math.md)); build them with `make -C docs/proposal`.
 
 **Status**: [Under development and not yet ready for production use.](https://github.com/bemanproject/beman/blob/main/docs/beman_library_maturity_model.md#under-development-and-not-yet-ready-for-production-use)
 The public API may change between versions; see the [changelog](CHANGELOG.md).

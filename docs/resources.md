@@ -58,7 +58,7 @@ Notes:
 7. `Trigonometric` / `ExpLog` / `Root` mix-ins delegate to `<cmath>` on the wrapped type.
 8. implemented as C++20 modules, so not header-only in the classic sense.
 9. a *generated* amalgamation of the multi-file source (`single_include/beman/inside/inside.hpp`, standard-library-only), rebuilt by a CMake target — SafeInt (`SafeInt.hpp`) and PSsst (`pssst.h`) are instead authored as a single file; the rest ship a multi-header tree (fpm, e.g., splits `fixed.hpp` / `math.hpp` / `ios.hpp`).
-10. core compiles `-fno-exceptions` (no `<system_error>`; a replaceable `error_handler`; strings/printing in the opt-in `beman/inside/io.hpp`, droppable via `BEMAN_INSIDE_NO_STRING`). `BEMAN_INSIDE_MATH_NO_FP` compiles the `<cmath>` dependency out of `beman::inside::math` entirely; `-ffreestanding` waits for a freestanding `<meta>` — see [freestanding.md](freestanding.md). The units (`units.hpp`) need a hosted library.
+10. core compiles `-fno-exceptions` (no `<system_error>`; a replaceable `error_handler`; strings/printing in the opt-in `beman/inside/io.hpp`, droppable via `BEMAN_INSIDE_NO_STRING`). `BEMAN_INSIDE_MATH_NO_FP` compiles the `<cmath>` dependency out of `beman::inside::math` entirely; `-ffreestanding` waits for a freestanding `<meta>` — see [freestanding.md](freestanding.md). The units' text (`units_io.hpp`) needs a hosted library.
 11. C++20 modules (clang-only) with throwing policies; no documented freestanding / no-exceptions path.
 12. `-fno-exceptions` via the compile-time `trap` exception policy; the default policy throws.
 13. non-throwing overflow tags (`native` / `saturated` / `undefined`) and no `<cmath>`, but no explicit `-ffreestanding` guarantee.
