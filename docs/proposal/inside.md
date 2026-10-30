@@ -343,7 +343,11 @@ throws `inside_error`, which carries the `errc`.
 Fallible results chain. The operators also accept a `std::expected<inside,
 errc>` operand, so `a / b * gain + offset` stays one `expected` from end to
 end. The first error passes through with its cause, and an operation that fails
-later in the chain reports its own.
+later in the chain reports its own. Storing an `expected` into an `inside`
+reports its error as a failed store does, through the target's policy: the
+error never escapes as `std::bad_expected_access`. The handler that a failed
+store reaches (it throws `inside_error` by default) is one per program, and
+installing one is safe while other threads raise.
 
 ## Conversions
 

@@ -725,7 +725,8 @@ void prop_interval_eq(fuzz_state& s) {
 
 void prop_expected_throws(fuzz_state& s) {
     // A fallible result holding an error throws std::bad_expected_access from
-    // .value() and from the inside sink constructor.
+    // .value() (std::expected's own), and inside_error with its errc from the
+    // inside sink constructor (the policy's report).
     s.current_prop        = "expected_throws";
     s.iter                = 0;
     using B               = inside<{0, 100}>;
@@ -742,14 +743,15 @@ void prop_expected_throws(fuzz_state& s) {
     FUZZ_REQUIRE(s, got_throw);
     FUZZ_REQUIRE(s, !what.empty());
 
-    // The inside sink unwraps with .value(), so an error result throws too.
+    // The inside sink reports an error result through its policy.
     bool sink_throw = false;
     try {
         using Q = std::remove_cvref_t<decltype(*(B{7} / B{1}))>;
         Q q{B{7} / B{0}};
         (void)q;
-    } catch (const std::bad_expected_access<errc>&) {
+    } catch (const inside_error& e) {
         sink_throw = true;
+        FUZZ_REQUIRE(s, e.Code == errc::division_by_zero);
     } catch (...) {
     } // NOLINT(bugprone-empty-catch): deliberate — the assert below verifies the expected throw fired
     FUZZ_REQUIRE(s, sink_throw);

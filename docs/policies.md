@@ -231,9 +231,27 @@ auto a = metres::try_make(1200);        // !a: overflow
 auto b = try_value_cast<metres>(leg);   // !b: 2000 m does not fit
 ```
 
+## Which channel reports a failure
+
+Each operation reports through one channel:
+
+| Operation | A failure goes to |
+|---|---|
+| a store: construction, `=`, `+=` and the other compound ops, `as<T>()`, `checked_cast` | the hook (`on_error`, or `on_clamp` / `on_wrap` where they apply), else the policy's `errc&`, else the handler |
+| `try_make`, `parse`, `to<T>()`, `grid::try_make` | the returned `std::expected` |
+| `/` and `%` by a grid that holds 0, `rational` arithmetic | the returned `std::expected` |
+| a store from a `std::expected`: `T x = a / b;`, `x = a / b;`, `rational r = p / q;` | the error is reported like a failed store: the hook, the `errc&`, else the handler |
+
+No path throws `std::bad_expected_access`; only calling `.value()` on an
+`expected` yourself does.
+
 ## Replacing the throw handler
 
 Every checked failure that is not caught by a hook or an `errc&` goes through
 one handler. By default it throws `beman::inside::inside_error`; under
 `-fno-exceptions` it traps. `set_error_handler` installs your own (see
 [freestanding.md](freestanding.md#1-exceptions-off-install-a-handler)).
+
+There is one handler per program. It is atomic, so one thread may install a
+handler while others raise, and it has default visibility, so shared libraries
+built with `-fvisibility=hidden` see the same one.

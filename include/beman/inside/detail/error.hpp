@@ -4,6 +4,7 @@
 
 #include <beman/inside/detail/config.hpp>
 #include <algorithm>
+#include <atomic> // the handler (freestanding)
 
 // <stdexcept> backs the *default* throwing handler only; it is the single heavy
 // error include and is pulled in solely when exceptions are available. A
@@ -88,21 +89,21 @@ namespace detail {
 #endif
 }
 
-// Header-only global: an inline variable, one per program. Mutating it is a
-// runtime-only act (constant evaluation never reads it), so constexpr paths
+// Header-only global: an inline variable, one per program. Atomic, so one
+// thread may install a handler while another raises; default visibility, so
+// shared libraries built with -fvisibility=hidden share it too. Mutating it is
+// a runtime-only act (constant evaluation never reads it), so constexpr paths
 // are unaffected.
-inline error_handler_t g_error_handler = &default_error_handler;
+[[gnu::visibility("default")]] inline std::atomic<error_handler_t> g_error_handler{&default_error_handler};
 } // namespace detail
 
 // Install a handler; returns the previous one. A null argument restores the
-// default. Never throws.
+// default. Never throws; safe to call while other threads raise.
 inline error_handler_t set_error_handler(error_handler_t h) noexcept {
-    error_handler_t prev    = detail::g_error_handler;
-    detail::g_error_handler = h ? h : &detail::default_error_handler;
-    return prev;
+    return detail::g_error_handler.exchange(h ? h : &detail::default_error_handler, std::memory_order_acq_rel);
 }
 
-inline error_handler_t get_error_handler() noexcept { return detail::g_error_handler; }
+inline error_handler_t get_error_handler() noexcept { return detail::g_error_handler.load(std::memory_order_acquire); }
 
 namespace detail {
 //-----------------------------------------------------------------------
@@ -118,7 +119,7 @@ namespace detail {
         throw inside_error(code, what);
     }
 #endif
-    g_error_handler(code, what ? what : errc_message(code));
+    g_error_handler.load(std::memory_order_acquire)(code, what ? what : errc_message(code));
     __builtin_trap(); // handler must not return; trap if it did
 }
 

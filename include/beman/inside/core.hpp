@@ -184,12 +184,16 @@ struct inside {
                                "(expected<B, errc>), or `b.policy(ec) = value` to assign with an error code");
 
     // expected<A> sink — unwrap once at the construction boundary so callers can
-    // chain checked arithmetic without per-step `.value()`. Throws
-    // std::bad_expected_access on an error.
+    // chain checked arithmetic without per-step `.value()`. An error is
+    // reported through this type's policy, as a failed store is (inside_error
+    // or the installed handler; a compile error in a constant expression).
     template <numeric A>
         requires inside_assignable<inside, A, P>
     constexpr inside(const std::expected<A, errc>& value) : Raw{detail::default_raw<inside>} {
-        store_value(value.value());
+        if (!value) [[unlikely]]
+            report_error(value.error());
+        else
+            store_value(*value);
     }
 
     // A grid number at run time (`residue r = N - 1_g;`, a constexpr big
@@ -216,11 +220,11 @@ struct inside {
         return *this;
     }
 
+    // An error is reported through this type's policy; *this stays unchanged.
     template <numeric B>
         requires inside_assignable<inside, B, P>
     constexpr inside& operator=(const std::expected<B, errc>& other) {
-        store_value(other.value());
-        return *this;
+        return assign_op_result(other);
     }
 
     // ---- Diagnostic fallbacks (default on; -DBEMAN_INSIDE_STRICT_SFINAE removes them) ----

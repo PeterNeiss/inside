@@ -64,6 +64,16 @@ inline constexpr void cancel_gcd(umax& a, umax& b) {
 [[nodiscard]] constexpr std::expected<rational, errc> operator*(const rational&, const rational&);
 [[nodiscard]] constexpr auto                          operator<=>(rational, rational) -> std::strong_ordering;
 
+// The value of a checked result. An error is raised like a failed checked
+// store (inside_error, or the installed handler; a compile error in constant
+// evaluation), never std::bad_expected_access.
+template <class T>
+[[nodiscard]] constexpr T value_or_raise(const std::expected<T, errc>& e) {
+    if (!e) [[unlikely]]
+        raise(e.error());
+    return *e;
+}
+
 //---------------------------------------------------------------------------
 // rational — structural type for NTTP (public members only). Sign is encoded
 // in the denominator (negative = negative rational); numerator is unsigned to
@@ -93,13 +103,13 @@ struct rational {
 
     // Implicit unwrap of a checked result, so coefficient expressions read as
     // plain arithmetic (`rational two_pi = 2 * pi;`); an error (overflow) is a
-    // compile error in constant evaluation, a throw at runtime. same_as-constrained
+    // compile error in constant evaluation, else raised (value_or_raise). same_as-constrained
     // (not a plain `rational(expected<rational, errc>)`) because expected's own
     // converting ctor is gated on `is_constructible_v<rational, U>` — a
     // non-template overload would make that trait depend on itself.
     template <class O>
         requires std::same_as<std::remove_cvref_t<O>, std::expected<rational, errc>>
-    constexpr rational(O&& o) : rational(o.value()) {}
+    constexpr rational(O&& o) : rational(value_or_raise(o)) {}
 
     // operator== by default for structural type
     [[nodiscard]] constexpr bool operator==(const rational&) const = default;
@@ -135,8 +145,8 @@ struct rational {
     // allow unary+ for generic programming
     [[nodiscard]] constexpr rational operator+() const { return *this; }
 
-    // Compound-assign: forward to the checked binary op and unwrap via .value()
-    // — overflow surfaces as std::bad_expected_access (no error channel here).
+    // Compound-assign: forward to the checked binary op and unwrap it; an
+    // error (overflow, a zero divisor) is raised (value_or_raise).
     constexpr rational& operator+=(const rational& rhs);
     constexpr rational& operator-=(const rational& rhs);
     constexpr rational& operator*=(const rational& rhs);
@@ -725,12 +735,12 @@ inline constexpr std::expected<rational, errc> rational::inv(rational a) { retur
 
 template <plain_number T>
 [[nodiscard]] inline constexpr auto operator<=>(const std::expected<T, errc>& lhs, const rational& rhs) {
-    return rational{lhs.value()} <=> rhs;
+    return rational{value_or_raise(lhs)} <=> rhs;
 }
 
 template <plain_number T>
 [[nodiscard]] inline constexpr auto operator<=>(const rational& lhs, const std::expected<T, errc>& rhs) {
-    return lhs <=> rational{rhs.value()};
+    return lhs <=> rational{value_or_raise(rhs)};
 }
 
 // lhs against a finite double finer than 2^-62 (which rational{rhs}
@@ -830,8 +840,9 @@ concept rational_lift_operands =
 // Binary operators: the checked rational ⋈ rational cores, then per operator
 // the arithmetic-operand forms (direct construction, no lift overhead), the
 // expected-operand form (propagates via lift), and the compound assignments.
-// Compound assignments unwrap with .value() — std::bad_expected_access on
-// overflow; callers needing a non-throwing path use the binary operators.
+// Compound assignments unwrap with value_or_raise — an error is raised like
+// a failed checked store; callers needing a non-throwing path use the binary
+// operators.
 //---------------------------------------------------------------------------
 // add_impl fails on a 64-bit step's overflow; the sum may still fit once
 // reduced, which add_wide (cold) settles.
@@ -892,7 +903,7 @@ concept rational_lift_operands =
         return lift([](auto const& a, auto const& b) { return a op b; }, lhs, rhs);                         \
     }                                                                                                       \
     inline constexpr rational& rational::operator op## = (rational const& rhs) {                            \
-        *this = (*this op rhs).value();                                                                     \
+        *this = value_or_raise(*this op rhs);                                                               \
         return *this;                                                                                       \
     }                                                                                                       \
     template <plain_number T>                                                                               \
@@ -900,7 +911,7 @@ concept rational_lift_operands =
         return lhs op## = rational{rhs};                                                                    \
     }                                                                                                       \
     inline constexpr rational& operator op## = (rational & lhs, std::expected<rational, errc> const& rhs) { \
-        return lhs op## = rhs.value();                                                                      \
+        return lhs op## = value_or_raise(rhs);                                                              \
     }
 
 BEMAN_INSIDE_RATIONAL_OP(+)

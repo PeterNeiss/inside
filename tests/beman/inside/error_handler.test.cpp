@@ -9,8 +9,11 @@
 #include <beman/inside/casts.hpp>
 
 #include <gtest/gtest.h>
+#include <atomic>
 #include <string_view>
 #include <limits>
+#include <thread>
+#include <vector>
 
 using namespace beman::inside;
 
@@ -137,4 +140,58 @@ TEST(ErrorHandlerTest, set_error_handler_redirects_failures_and_is_restorable) {
     set_error_handler(&recording_handler);
     set_error_handler(nullptr);
     ASSERT_EQ(get_error_handler(), before);
+}
+
+// A failed expected sink reaches the installed handler like any failed store.
+TEST(ErrorHandlerTest, expected_sinks_reach_the_handler) {
+    inside<{0, 10}> a{4};
+    inside<{0, 2}>  b{0};
+    scoped_handler  guard{&recording_handler};
+    g_seen = errc{};
+    try {
+        inside<{0, 100}, round_nearest> c = a / b;
+        (void)c;
+    } catch (const handler_fired& f) {
+        EXPECT_EQ(f.code, errc::division_by_zero);
+    }
+    EXPECT_EQ(g_seen, errc::division_by_zero);
+    g_seen = errc{};
+    try {
+        rational r = rational{1} / rational{0};
+        (void)r;
+    } catch (const handler_fired& f) {
+        EXPECT_EQ(f.code, errc::division_by_zero);
+    }
+    EXPECT_EQ(g_seen, errc::division_by_zero);
+}
+
+// The handler is atomic: installing one while other threads raise is no data
+// race (the weekly TSan run checks it).
+TEST(ErrorHandlerTest, handler_swaps_while_other_threads_raise) {
+    using c100 = inside<{0, 100}, checked>;
+    // No shared state in the handler: only the handler pointer is contended.
+    constexpr error_handler_t quiet  = [](errc code, const char* what) { throw handler_fired{code, what}; };
+    const error_handler_t     before = get_error_handler();
+    std::atomic<int>          caught{0};
+    std::vector<std::thread>  raisers;
+    for (int t = 0; t < 4; ++t)
+        raisers.emplace_back([&] {
+            for (int i = 0; i < 200; ++i)
+                try {
+                    c100 x{200};
+                    (void)x;
+                } catch (const inside_error&) {
+                    ++caught;
+                } catch (const handler_fired&) {
+                    ++caught;
+                }
+        });
+    for (int i = 0; i < 200; ++i) {
+        const error_handler_t prev = set_error_handler(quiet);
+        set_error_handler(prev);
+    }
+    for (auto& r : raisers)
+        r.join();
+    EXPECT_EQ(caught.load(), 4 * 200);
+    EXPECT_EQ(get_error_handler(), before);
 }
