@@ -441,16 +441,16 @@ TEST(ConstexprTest, constexpr_implied_flags_merged_implied_flags) {
     auto noop  = [](auto&, auto) {};
     auto noerr = [](auto&, errc) {};
 
-    using clamp_tag    = on_clamp_t<decltype(noop)>;
-    using overflow_tag = on_overflow_t<decltype(noerr)>;
-    using wrap_tag     = on_wrap_t<decltype(noop)>;
+    using clamp_tag = on_clamp_t<decltype(noop)>;
+    using error_tag = on_error_t<decltype(noerr)>;
+    using wrap_tag  = on_wrap_t<decltype(noop)>;
 
     static_assert(implied_flags<clamp_tag> == clamp);
     static_assert(implied_flags<wrap_tag> == wrap);
-    static_assert(implied_flags<overflow_tag> == checked);
+    static_assert(implied_flags<error_tag> == checked);
 
     // OR-merge across the pack
-    static_assert(merged_implied_flags<clamp_tag, overflow_tag> == (clamp | checked));
+    static_assert(merged_implied_flags<clamp_tag, error_tag> == (clamp | checked));
 }
 
 // constexpr: is_policy_v / uses_error_ref

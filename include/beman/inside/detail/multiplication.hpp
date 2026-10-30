@@ -23,9 +23,9 @@ struct multiplication {
     // A result is checked, whatever its operands' policies.
     using result = inside<result_grid>;
 
-    // Total, as a sum: the policy and an on_overflow action have nothing to take.
-    template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
-    static constexpr result mul(L lhs, R rhs, policy<F, E> = {}, A&& = {}) {
+    // Total, as a sum: the policy has nothing to decide.
+    template <policy_flag F = none, typename E = empty_ref>
+    static constexpr result mul(L lhs, R rhs, policy<F, E> = {}) {
         if constexpr (point_scale<R, L, result>) // x * just<c>: x's offset (see op_result.hpp)
             return scale_by_point<result, R>(lhs);
         else if constexpr (point_scale<L, R, result>)

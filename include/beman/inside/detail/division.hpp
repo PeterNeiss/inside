@@ -302,25 +302,22 @@ struct division {
     // other quotient is a point or continuous with a denominator bound that
     // sizes its raw (exact_fits). So the only failure is a zero divisor —
     // excluded by the grid → plain `result`.
-    template <typename A>
     using return_t = std::conditional_t<divisor_excludes_zero<R>, result, std::expected<result, errc>>;
 
-    template <policy_flag G = F, typename E = empty_ref, typename A = no_action>
-    static constexpr return_t<A> div(L, R, policy<G, E> = {}, A&& = {});
+    template <policy_flag G = F, typename E = empty_ref>
+    static constexpr return_t div(L, R, policy<G, E> = {});
 };
 
 //---------------------------------------------------------------------------
 // div
 //---------------------------------------------------------------------------
 template <insidable L, insidable R, policy_flag F>
-template <policy_flag G, typename E, typename A>
-constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, [[maybe_unused]] A&& action) -> return_t<A> {
+template <policy_flag G, typename E>
+constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy) -> return_t {
     // A zero divisor: reported through the policy's errc& (if any) and returned
     // as the error. Only reachable where return_t is expected (the divisor grid
     // holds zero and ignore_zero is off).
-    [[maybe_unused]] auto zero = [&] {
-        return report_or_unexpected<result>(no_action{}, policy, errc::division_by_zero);
-    };
+    [[maybe_unused]] auto zero = [&] { return report_or_unexpected<result>(policy, errc::division_by_zero); };
     [[maybe_unused]] constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
 
     if constexpr (native_div_fixed) {
@@ -439,16 +436,15 @@ struct modulo {
 
     // Modulo never overflows (the remainder fits result_grid), so the only
     // failure is a zero divisor — excluded by the grid → plain `result`.
-    template <typename A>
     using return_t = std::conditional_t<divisor_excludes_zero<R>, result, std::expected<result, errc>>;
 
-    template <policy_flag G = F, typename E = empty_ref, typename A = no_action>
-    static constexpr return_t<A> mod(L, R, policy<G, E> = {}, A&& = {});
+    template <policy_flag G = F, typename E = empty_ref>
+    static constexpr return_t mod(L, R, policy<G, E> = {});
 };
 
 template <insidable L, insidable R, policy_flag F>
-template <policy_flag G, typename E, typename A>
-constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy, [[maybe_unused]] A&& action) -> return_t<A> {
+template <policy_flag G, typename E>
+constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy) -> return_t {
     if constexpr (!native_mod) {
         // Integer values past imax: r = a − round(a/b)·b in exact wide integers.
         constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
@@ -456,7 +452,7 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy, [[maybe_u
         const I b                     = value_in_units<I, grid_rational{1}>(rhs); // integer values: no division
         if constexpr (!zero_unchecked)
             if (b.is_zero())
-                return report_or_unexpected<result>(no_action{}, policy, errc::division_by_zero);
+                return report_or_unexpected<result>(policy, errc::division_by_zero);
         const I a = value_in_units<I, grid_rational{1}>(lhs);
         return exact_result<result>(wide_rational<exact_limbs<L, R, result>>{a - rounded_div<rmode>(a, b) * b, I{1}});
     } else {
@@ -465,7 +461,7 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy, [[maybe_u
         constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
         if constexpr (!zero_unchecked)
             if (rhs_val == 0)
-                return report_or_unexpected<result>(no_action{}, policy, errc::division_by_zero);
+                return report_or_unexpected<result>(policy, errc::division_by_zero);
         result res;
         // Remainder consistent with the rounded quotient (trunc → C++ `%`).
         const T lhs_val = static_cast<T>(to_value(lhs));
@@ -491,15 +487,13 @@ struct quotient_remainder {
 
     using result = divmod_result<typename division<L, R, FS>::result, typename modulo<L, R, FS>::result>;
 
-    template <typename A>
     using return_t = std::conditional_t<divisor_excludes_zero<R>, result, std::expected<result, errc>>;
 
-    // The only failure is a zero divisor, which is no overflow: an
-    // on_overflow action never fires here.
-    template <policy_flag G = F, typename E = empty_ref, typename A = no_action>
-    static constexpr return_t<A> divmod(L lhs, R rhs, policy<G, E> policy = {}, [[maybe_unused]] A&& action = {}) {
+    // The only failure is a zero divisor.
+    template <policy_flag G = F, typename E = empty_ref>
+    static constexpr return_t divmod(L lhs, R rhs, policy<G, E> policy = {}) {
         // (Generic: its body is formed only where a zero divisor is possible.)
-        auto fail = [&](auto code) -> return_t<A> {
+        auto fail = [&](auto code) -> return_t {
             if constexpr (uses_error_ref<std::remove_cvref_t<decltype(policy)>>)
                 policy.report(code);
             return std::unexpected{code};

@@ -4,7 +4,7 @@
 // compound assignment, ++/--, the conversions (imax, rational, double,
 // to<T>/as<T>), numerator()/denominator(), raw()/from_raw, the per-store
 // overrides (with_clamp, with_snap, policy<F>) and hooks (on_wrap, on_clamp,
-// on_error, on_overflow), parse(first, last), just<…> and the _ins literal.
+// on_error), parse(first, last), just<…> and the _ins literal.
 // The umbrella adds the casts, arithmetic, range and cursor layers, which
 // need this complete type.
 //---------------------------------------------------------------------------
@@ -532,15 +532,10 @@ struct inside {
     [[nodiscard]] constexpr auto on_error(A&& a) {
         return make_action_ref<on_error_t>(std::forward<A>(a));
     }
-    template <typename A>
-    [[nodiscard]] constexpr auto on_overflow(A&& a) {
-        return make_action_ref<on_overflow_t>(std::forward<A>(a));
-    }
 
     // Multi-action entry point: combine N tagged actions into one policy_ref.
-    // policy_ref rejects mutually exclusive combinations at compile time. E.g.
-    // `b.with(on_overflow(λ1), on_clamp(λ2)) += rhs` — the arithmetic fires λ1,
-    // the narrowing back into b fires λ2.
+    // policy_ref rejects mutually exclusive combinations at compile time
+    // (on_clamp with on_wrap, two of one kind).
     template <typename... Actions>
     [[nodiscard]] constexpr auto with(Actions&&... actions) {
         constexpr policy_flag merged = detail::merged_implied_flags<Actions...>;

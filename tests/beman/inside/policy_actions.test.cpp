@@ -195,69 +195,46 @@ TEST(PolicyActionsTest, on_error_action_receives_code_and_message) {
     ASSERT_EQ(e, 0);
 }
 
-// (Removed: "on_overflow on compound op" / "...subtraction" — they fired the
-// action on imax-level overflow from a raw scalar RHS. Raw compound assigns are
-// gone, and a range-bounded operand can't overflow imax, so the path is moot.)
-
-// multi-action with(...) - overflow vs clamp paths fire correctly
-TEST(PolicyActionsTest, multi_action_with_overflow_vs_clamp_paths_fire_correctly) {
+// with(...): the sum overshoots the target, and the store back fires on_clamp.
+TEST(PolicyActionsTest, with_fires_on_clamp_on_the_store_back) {
     using c100 = inside<{0, 100}, checked>;
-
-    {
-        SCOPED_TRACE("post-probe narrowing fires on_clamp only");
-        c100 b{50};
-        bool of = false, cl = false;
-        imax over = 0;
-        b.with(on_overflow([&](auto&, errc) { of = true; }), on_clamp([&](auto&, auto o) {
-                   cl   = true;
-                   over = o;
-               })) += 200_ins; // 50+200=250 overshoots [0,100]; on_clamp fires, not on_overflow
-        ASSERT_FALSE(of);
-        ASSERT_TRUE(cl);
-        ASSERT_EQ(over, 150);
-        ASSERT_EQ(b, 100);
-    }
+    c100 b{50};
+    bool cl   = false;
+    imax over = 0;
+    b.with(on_clamp([&](auto&, auto o) {
+        cl   = true;
+        over = o;
+    })) += 200_ins; // 50+200=250 overshoots [0,100]
+    ASSERT_TRUE(cl);
+    ASSERT_EQ(over, 150);
+    ASSERT_EQ(b, 100);
 }
 
-// free-fn pack form
-TEST(PolicyActionsTest, free_fn_pack_form) {
-    using c100 = inside<{0, 100}, checked>;
+// The free functions take a policy or an errc&, no hook: a zero divisor is in
+// the result, as for `/` (on_clamp / on_wrap / on_error are rejected, see
+// fail/arith_unused_action).
+TEST(PolicyActionsTest, free_div_and_mod_return_a_zero_divisor) {
+    using c100   = inside<{0, 100}, checked>;
+    using u100ic = inside<{0, 100}, checked | snap>;
     c100 d{50}, z{0};
-    bool of = false;
-    errc seen{};
-    auto q = div(d, z, on_overflow([&](auto& res, errc c) {
-                     of   = true;
-                     seen = c;
-                     res  = std::remove_cvref_t<decltype(res)>{1};
-                 }));
-    // A zero divisor is no overflow: the action stays silent and the result
-    // reports it, as `/` does.
-    ASSERT_FALSE(of);
+    auto q = div(d, z, make_policy<round_nearest>());
     ASSERT_FALSE(q.has_value());
     ASSERT_EQ(q.error(), errc::division_by_zero);
-
-    // SFINAE positive cases: pack with on_overflow must bind. The negative case
-    // (pack without on_overflow) is enforced by the overload's `requires` clause
-    // and would surface noisy compiler diagnostics if probed here.
-    using u100 = inside<{0, 100}>;
-    auto noop  = [](auto&, auto) {};
-    static_assert(requires(u100 x, u100 y) { add(x, y, on_overflow(noop)); });
-    // on_clamp / on_wrap / on_error never fire in free arithmetic and are
-    // rejected (static_assert; see fail/arith_unused_action.cpp).
-}
-
-// mod free-fn: on_overflow does not take a zero divisor, the result reports it
-TEST(PolicyActionsTest, mod_free_fn_on_overflow_leaves_div_0_to_the_result) {
-    using u100ic = inside<{0, 100}, checked | snap>;
     u100ic l{7}, r{0};
-    bool   fired = false;
-    auto   m     = mod(l, r, on_overflow([&](auto& res, errc) {
-                     fired = true;
-                     res   = std::remove_cvref_t<decltype(res)>{0};
-                       }));
-    ASSERT_FALSE(fired);
+    auto   m = mod(l, r);
     ASSERT_FALSE(m.has_value());
     ASSERT_EQ(m.error(), errc::division_by_zero);
+}
+
+// A rational right-hand side past the 64-bit rational fails like a store:
+// on_error takes it, and the value is unchanged.
+TEST(PolicyActionsTest, rational_rhs_overflow_reaches_on_error) {
+    using frac = inside<{{0, 1}, max_denominator{imax{1} << 62}}>;
+    frac f{rational{1, (imax{1} << 62) - 1}};
+    errc seen{};
+    f.on_error([&](auto&, errc c, const char*) { seen = c; }) += rational{1, (imax{1} << 62) - 3};
+    ASSERT_EQ(seen, errc::overflow);
+    ASSERT_EQ(f, (rational{1, (imax{1} << 62) - 1}));
 }
 
 // free-fn div with beman::inside::errc& sets ec on div/0 / success path leaves ec clear

@@ -26,82 +26,72 @@
 //---------------------------------------------------------------------------
 namespace beman::inside {
 //---------------------------------------------------------------------------
-// add / sub / mul / div / mod / divmod — each takes one of three trailing forms:
-//   op(l, r [, policy [, action]])   explicit per-call policy (+ action)
-//   op(l, r, on_overflow(λ), ...)    tagged actions (policy = their implied flags)
-//   op(l, r, ec [, action])          error-code form (checked, reports into ec)
-// detail::arith normalizes the form to (policy, action) for the op's core.
+// add / sub / mul / div / mod / divmod — each takes one of two trailing forms:
+//   op(l, r [, policy])   explicit per-call policy (the division's rounding)
+//   op(l, r, ec)          error-code form (checked, a zero divisor sets ec)
+// detail::arith normalizes the form to a policy for the op's core.
 //---------------------------------------------------------------------------
-#define BEMAN_INSIDE_WHY_arith_action                                                                               \
-    "add/sub/mul/div/mod fire only on_overflow; on_clamp / on_wrap / on_error apply to assignment — use them with " \
-    "b.with(...) or a cast"
+#define BEMAN_INSIDE_WHY_arith_action                                                                                \
+    "add/sub/mul/div/mod take no hooks: on_clamp / on_wrap / on_error apply to a store - use them with b.with(...) " \
+    "or a cast"
 
 namespace detail {
-// Arithmetic fires only on_overflow; any other action would be silently
-// ignored, so it is rejected.
-template <class A>
-inline constexpr bool arith_accepts_action =
-    std::same_as<std::remove_cvref_t<A>, no_action> || overflow_action<std::remove_cvref_t<A>>;
-
-template <class Op, class L, class R, policy_like P = policy<>, class A = no_action>
-constexpr auto arith(Op op, const L& l, const R& r, P&& pol = {}, A&& act = {}) {
-    static_assert(arith_accepts_action<A>, BEMAN_INSIDE_WHY_arith_action);
-    return op(l, r, std::forward<P>(pol), std::forward<A>(act));
+template <class Op, class L, class R, policy_like P = policy<>>
+constexpr auto arith(Op op, const L& l, const R& r, P&& pol = {}) {
+    return op(l, r, std::forward<P>(pol));
 }
 
-// Action-first form: on_overflow actions (the only kind arithmetic fires;
-// any other tag is rejected below with a message, not a bare mismatch).
+template <class Op, class L, class R>
+constexpr auto arith(Op op, const L& l, const R& r, errc& ec) {
+    return op(l, r, make_policy<checked>(ec));
+}
+
+// A hook would be silently ignored (arithmetic cannot fail but for a zero
+// divisor, which stays in the result): rejected with a message.
 template <class A>
 inline constexpr bool is_action_tag_v =
-    is_overflow_action<A>::value || is_clamp_action<A>::value || is_wrap_action<A>::value || is_error_action<A>::value;
+    is_clamp_action<A>::value || is_wrap_action<A>::value || is_error_action<A>::value;
 
-template <class Op, class L, class R, class... Actions>
-    requires(sizeof...(Actions) >= 1) && (is_action_tag_v<std::remove_cvref_t<Actions>> && ...)
-constexpr auto arith(Op op, const L& l, const R& r, Actions&&... acts) {
-    static_assert((overflow_action<std::remove_cvref_t<Actions>> && ...), BEMAN_INSIDE_WHY_arith_action);
-    return op(l, r, make_policy<merged_implied_flags<Actions...>>(), pick_action<is_overflow_action>(acts...));
-}
-
-template <class Op, class L, class R, class A = no_action>
-constexpr auto arith(Op op, const L& l, const R& r, errc& ec, A&& act = {}) {
-    static_assert(arith_accepts_action<A>, BEMAN_INSIDE_WHY_arith_action);
-    return op(l, r, make_policy<checked>(ec), std::forward<A>(act));
+template <class Op, class L, class R, class... Args>
+    requires(is_action_tag_v<std::remove_cvref_t<Args>> || ...)
+constexpr void arith(Op, const L&, const R&, Args&&...) {
+    static_assert(false, BEMAN_INSIDE_WHY_arith_action);
 }
 
 struct add_op {
-    template <class L, class R, class P, class A>
-    constexpr auto operator()(const L& l, const R& r, P&& p, A&& a) const {
-        return addition<L, R>::add(l, r, std::forward<P>(p), std::forward<A>(a));
+    template <class L, class R, class P>
+    constexpr auto operator()(const L& l, const R& r, P&& p) const {
+        return addition<L, R>::add(l, r, std::forward<P>(p));
     }
 };
 struct sub_op {
-    template <class L, class R, class P, class A>
-    constexpr auto operator()(const L& l, const R& r, P&& p, A&& a) const {
-        return add_op{}(l, -r, std::forward<P>(p), std::forward<A>(a));
+    template <class L, class R, class P>
+    constexpr auto operator()(const L& l, const R& r, P&& p) const {
+        return add_op{}(l, -r, std::forward<P>(p));
     }
 };
 struct mul_op {
-    template <class L, class R, class P, class A>
-    constexpr auto operator()(const L& l, const R& r, P&& p, A&& a) const {
-        return multiplication<L, R>::mul(l, r, std::forward<P>(p), std::forward<A>(a));
+    template <class L, class R, class P>
+    constexpr auto operator()(const L& l, const R& r, P&& p) const {
+        return multiplication<L, R>::mul(l, r, std::forward<P>(p));
     }
 };
 struct div_op {
-    template <class L, class R, class P, class A>
-    constexpr auto operator()(const L& l, const R& r, P&& p, A&& a) const {
-        return division<L, R, flags_of<P>>::div(l, r, p, std::forward<A>(a));
+    template <class L, class R, class P>
+    constexpr auto operator()(const L& l, const R& r, P&& p) const {
+        return division<L, R, flags_of<P>>::div(l, r, p);
     }
 };
 struct mod_op {
-    template <class L, class R, class P, class A>
-    constexpr auto operator()(const L& l, const R& r, P&& p, A&& a) const {
-        return modulo<L, R, flags_of<P>>::mod(l, r, p, std::forward<A>(a));
+    template <class L, class R, class P>
+    constexpr auto operator()(const L& l, const R& r, P&& p) const {
+        return modulo<L, R, flags_of<P>>::mod(l, r, p);
     }
 };
 struct divmod_op {
-    template <class L, class R, class P, class A>
-    constexpr auto operator()(const L& l, const R& r, P&& p, A&& a) const {
-        return quotient_remainder<L, R, flags_of<P>>::divmod(l, r, p, std::forward<A>(a));
+    template <class L, class R, class P>
+    constexpr auto operator()(const L& l, const R& r, P&& p) const {
+        return quotient_remainder<L, R, flags_of<P>>::divmod(l, r, p);
     }
 };
 } // namespace detail

@@ -54,8 +54,7 @@ int main() {
 
     // === Section 3: Every errc value gets a demo ===
     // overflow (out of range) already shown in Sections 1-2. Now: rounding_error (via
-    // on_error) and division_by_zero (in the expected a division returns: a zero
-    // divisor is no overflow, so on_overflow does not take it).
+    // on_error) and division_by_zero (in the expected a division returns).
 
     coarse c(0);
     c.on_error([](auto& self, errc code, std::string_view msg) {
@@ -105,14 +104,10 @@ int main() {
         std::cout << "on_wrap:  carry=" << carry << " (wrapped to " << self << ")" << "\n";
     }) = 75;
 
-    // .with(...) packs multiple callbacks for one operation. The inside add
-    // overshoots [0,100], so the narrowing fires on_clamp; on_overflow is packed
-    // too but stays silent (a range-bounded operand can't overflow imax).
+    // A hook on a compound op: the inside add overshoots [0,100], so the
+    // store back fires on_clamp (the sum itself cannot fail).
     clamp_100 combo(50);
-    combo.with(on_overflow(
-                   [](auto& self, errc) { std::cout << "combo:    on_overflow fired (self=" << self << ")" << "\n"; }),
-               on_clamp([](auto&, auto over) { std::cout << "combo:    on_clamp overshoot=" << over << "\n"; })) +=
-        200_ins;
+    combo.on_clamp([](auto&, auto over) { std::cout << "combo:    on_clamp overshoot=" << over << "\n"; }) += 200_ins;
     std::cout << "          (combo=" << combo << ")" << "\n";
 
     return 0;

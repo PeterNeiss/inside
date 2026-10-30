@@ -125,25 +125,15 @@ template <policy_flag F = none>
 }
 
 //---------------------------------------------------------------------------
-// report_or_unexpected — uniform "rational arithmetic failed" handler shared
-// by addition/multiplication/division/modulo. Three compile-time behaviors:
-// overflow_action<A> → fire it on a default Result; uses_error_ref<P> →
-// policy.report then std::unexpected{code}; plain throw-policy →
-// std::unexpected{code}.
+// report_or_unexpected — the zero-divisor result of division and modulo:
+// an errc& policy (uses_error_ref<P>) is set too; the error is returned.
 //---------------------------------------------------------------------------
 namespace detail {
-template <insidable Result, typename A, typename P>
-constexpr auto report_or_unexpected(A&& action, P&& policy, errc code)
-    -> std::conditional_t<overflow_action<A>, Result, std::expected<Result, errc>> {
-    if constexpr (overflow_action<A>) {
-        Result res;
-        action.Fn(res, code);
-        return res;
-    } else {
-        if constexpr (uses_error_ref<std::remove_cvref_t<P>>)
-            policy.report(code);
-        return std::unexpected{code};
-    }
+template <insidable Result, typename P>
+constexpr std::expected<Result, errc> report_or_unexpected(P&& policy, errc code) {
+    if constexpr (uses_error_ref<std::remove_cvref_t<P>>)
+        policy.report(code);
+    return std::unexpected{code};
 }
 } // namespace detail
 

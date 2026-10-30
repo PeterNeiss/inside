@@ -27,9 +27,9 @@ struct addition {
     // A result is checked, whatever its operands' policies.
     using result = inside<result_grid>;
 
-    // Total: the policy and an on_overflow action have nothing to take.
-    template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
-    static constexpr result add(L lhs, R rhs, policy<F, E> = {}, A&& = {}) {
+    // Total: the policy has nothing to decide.
+    template <policy_flag F = none, typename E = empty_ref>
+    static constexpr result add(L lhs, R rhs, policy<F, E> = {}) {
         if constexpr (fraction_storage<result>)
             return result::from_raw(*continuous_raw_of<raw_t<result>>(exact_of(lhs) + exact_of(rhs)));
         else if constexpr (exact_path_fits<exact_op::add, result, L, R>)

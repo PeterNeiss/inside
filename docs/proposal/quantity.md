@@ -237,9 +237,9 @@ comparing quantities of different kinds`.
 
 A quantity's stores are its number's stores: `++q`, `q += r` and the
 construction from a number apply `Rep`'s policy, and `q.on_wrap(f)`,
-`q.on_clamp(f)`, `q.on_error(f)` and `q.on_overflow(f)` attach the number
-paper's actions. `Q::try_make(v)`, `clamp_cast<Q>`, `wrap_cast<Q>`,
-`value_cast` and `try_value_cast` convert into a quantity type, and
+`q.on_clamp(f)` and `q.on_error(f)` attach the number paper's actions.
+`Q::try_make(v)`, `clamp_cast<Q>`, `wrap_cast<Q>`, `value_cast` and
+`try_value_cast` convert into a quantity type, and
 `conversion_overflows<Q>(v)` and its siblings answer for a number `v` in `Q`'s
 unit.
 
@@ -300,7 +300,7 @@ namespace std::units {
     template<@*unit*@ U> constexpr auto numerical_value_in(U) const;
     template<class T> constexpr explicit(@*see below*@) operator T() const; // dimension one: its number
     template<policy_flag F = none, class V> static constexpr auto try_make(const V&);
-    template<class F> constexpr auto on_clamp(F f);               // also on_wrap, on_error, on_overflow
+    template<class F> constexpr auto on_clamp(F f);               // also on_wrap, on_error
     // ++, --, compound assignment: a store by Rep's policy
   };
   // quantity + - % <=> == quantity: in the common unit

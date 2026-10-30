@@ -296,7 +296,7 @@ numbers, so it still rounds once and checks once.
 
 | Spelling | Does |
 |---|---|
-| `q.on_wrap(f) += d`, `on_clamp`, `on_error`, `on_overflow` | a store with a hook: `d` is a quantity, converted as `+=` does; `f` gets the quantity, then the carry, overshoot or errc |
+| `q.on_wrap(f) += d`, `on_clamp`, `on_error` | a store with a hook: `d` is a quantity, converted as `+=` does; `f` gets the quantity, then the carry, overshoot or errc |
 | `++q`, `q--` | one unit up or down, under the number's policy |
 | `Q::try_make<F>(v)` | the number's `try_make`, of a number in Q's unit |
 | `mul_into<Out, F>(a, b)`, `div_into<Out, F>(a, b)` | a·b or a/b rounded once into `Out`, a quantity type (or a plain inside for a dimensionless result); the factor between units folds into the exact product |

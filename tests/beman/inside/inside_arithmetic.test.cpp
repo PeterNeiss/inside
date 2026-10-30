@@ -286,26 +286,17 @@ TEST(InsideArithmeticTest, inside_rational_storage_expected_ops_do_not_double_wr
     ASSERT_EQ(*(pok(p1) / p2), *(3_r / 2));
 }
 
-// inside action-first arithmetic overloads
-TEST(InsideArithmeticTest, inside_action_first_arithmetic_overloads) {
+// The free div reports a zero divisor in its result, and into an errc&.
+TEST(InsideArithmeticTest, free_div_reports_a_zero_divisor) {
     using c100 = inside<{0, 100}, checked>;
     c100 d{50}, z{0};
 
-    bool fired = false;
     errc seen{};
-    auto q = div(d, z, on_overflow([&](auto& res, errc c) {
-                     fired = true;
-                     seen  = c;
-                     res   = std::remove_cvref_t<decltype(res)>{0};
-                 }));
-
-    // on_overflow means "does not fit": a zero divisor goes to the result.
-    ASSERT_FALSE(fired);
-    ASSERT_EQ(seen, errc{});
+    auto q = div(d, z, seen);
+    ASSERT_EQ(seen, errc::division_by_zero);
     ASSERT_FALSE(q.has_value());
     ASSERT_EQ(q.error(), errc::division_by_zero);
 
-    // No-action default: errc::division_by_zero
     auto q_def = div(d, z);
     ASSERT_FALSE(q_def.has_value());
     ASSERT_EQ(q_def.error(), errc::division_by_zero);

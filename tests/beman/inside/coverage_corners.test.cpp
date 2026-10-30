@@ -256,15 +256,15 @@ TEST(CoverageCornersTest, on_error_fires_for_an_out_of_range_double_assignment) 
 }
 
 //---------------------------------------------------------------------------
-// policy.hpp — action-decorated operator-=(insidable) on the NON-overflow path
-// (existing tests only exercise the overflowing arm).
+// policy.hpp — action-decorated operator-=(insidable) on the path that does
+// not fail (existing tests only exercise the failing arm).
 //---------------------------------------------------------------------------
-// on_overflow compound subtract that does not overflow
-TEST(CoverageCornersTest, on_overflow_compound_subtract_that_does_not_overflow) {
+// on_error compound subtract that does not fail
+TEST(CoverageCornersTest, on_error_compound_subtract_that_does_not_fail) {
     using c100 = inside<{0, 100}, checked>;
     c100 acc{50};
     bool fired = false;
-    acc.on_overflow([&](auto&, errc) { fired = true; }) -= 10_ins; // 40, no overflow
+    acc.on_error([&](auto&, errc, const char*) { fired = true; }) -= 10_ins; // 40, in range
     ASSERT_FALSE(fired);
     ASSERT_EQ(acc, 40);
 }

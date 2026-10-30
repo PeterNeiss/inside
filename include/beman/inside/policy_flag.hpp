@@ -15,8 +15,8 @@ namespace beman::inside {
 // policy_flag — the policy bits of inside<G, P> (none, ignore_zero,
 // ignore_range, snap and the rounding modes, clamp, wrap, checked, unsafe),
 // has_flag / is_checked, the rounding precedence (rounding_of), the hook
-// factories on_clamp / on_wrap / on_error / on_overflow with their
-// is_*_action traits, and the flags each hook implies.
+// factories on_clamp / on_wrap / on_error with their is_*_action traits, and
+// the flags each hook implies.
 //---------------------------------------------------------------------------
 using policy_flag = unsigned long long;
 
@@ -112,7 +112,7 @@ namespace detail {
 } // namespace detail
 
 //---------------------------------------------------------------------------
-// no_action — zero-overhead default for overflow callbacks
+// no_action — zero-overhead default: a store without a hook
 //---------------------------------------------------------------------------
 struct no_action {};
 
@@ -133,13 +133,9 @@ template <typename F>
 struct on_error_t {
     [[no_unique_address]] F Fn;
 };
-template <typename F>
-struct on_overflow_t {
-    [[no_unique_address]] F Fn;
-};
 
 //---------------------------------------------------------------------------
-// CTAD-style factories — drop the on_overflow_t{lambda} brace-init.
+// CTAD-style factories — drop the on_error_t{lambda} brace-init.
 //---------------------------------------------------------------------------
 template <typename F>
 [[nodiscard]] constexpr auto on_clamp(F&& fn) {
@@ -152,10 +148,6 @@ template <typename F>
 template <typename F>
 [[nodiscard]] constexpr auto on_error(F&& fn) {
     return on_error_t<std::remove_cvref_t<F>>{std::forward<F>(fn)};
-}
-template <typename F>
-[[nodiscard]] constexpr auto on_overflow(F&& fn) {
-    return on_overflow_t<std::remove_cvref_t<F>>{std::forward<F>(fn)};
 }
 
 namespace detail {
@@ -173,8 +165,6 @@ template <typename T>
 using is_wrap_action = std::bool_constant<is_action<on_wrap_t, T>>;
 template <typename T>
 using is_error_action = std::bool_constant<is_action<on_error_t, T>>;
-template <typename T>
-using is_overflow_action = std::bool_constant<is_action<on_overflow_t, T>>;
 
 template <typename T>
 concept clamp_action = is_clamp_action<std::remove_cvref_t<T>>::value;
@@ -182,12 +172,10 @@ template <typename T>
 concept wrap_action = is_wrap_action<std::remove_cvref_t<T>>::value;
 template <typename T>
 concept error_action = is_error_action<std::remove_cvref_t<T>>::value;
-template <typename T>
-concept overflow_action = is_overflow_action<std::remove_cvref_t<T>>::value;
 
 //---------------------------------------------------------------------------
 // implied_flags<A> — single source of truth for "this action requires these
-// policy bits". Used by inside::on_* and the action-first free-fn overloads.
+// policy bits". Used by inside::on_* and with(...).
 //---------------------------------------------------------------------------
 template <typename T>
 inline constexpr policy_flag implied_flags = none;
@@ -197,11 +185,9 @@ template <typename F>
 inline constexpr policy_flag implied_flags<on_wrap_t<F>> = wrap;
 template <typename F>
 inline constexpr policy_flag implied_flags<on_error_t<F>> = checked;
-template <typename F>
-inline constexpr policy_flag implied_flags<on_overflow_t<F>> = checked;
 
 //---------------------------------------------------------------------------
-// Pack helpers — let policy_ref/assignment/arithmetic accept Actions... packs.
+// Pack helpers — let policy_ref and assignment accept Actions... packs.
 // The `is_*_action` traits are passed as template-template parameters.
 //---------------------------------------------------------------------------
 

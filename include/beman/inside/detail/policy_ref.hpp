@@ -21,9 +21,8 @@
 namespace beman::inside {
 //---------------------------------------------------------------------------
 // policy_ref — variadic in actions (stores std::tuple<As...>). policy_ref
-// pre-picks the matching action per call path, so assignment/arithmetic keep
-// their single-A signatures. Payoff: the arithmetic and narrowing stages of a
-// compound op can each fire a different action (e.g. on_overflow + on_clamp).
+// pre-picks the matching action per call path, so assignment keeps its
+// single-A signature.
 //---------------------------------------------------------------------------
 namespace detail {
 // The single assignment-time action among `actions` (at most one such tag is
@@ -83,17 +82,15 @@ struct policy_ref {
   private:
     // Conflict diagnostics: at most one assignment-time tag (clamp / wrap /
     // error), at most one of each kind, no clamp+wrap.
-    static constexpr unsigned ClampCount    = count_action_matches<is_clamp_action, As...>;
-    static constexpr unsigned WrapCount     = count_action_matches<is_wrap_action, As...>;
-    static constexpr unsigned ErrorCount    = count_action_matches<is_error_action, As...>;
-    static constexpr unsigned OverflowCount = count_action_matches<is_overflow_action, As...>;
+    static constexpr unsigned ClampCount = count_action_matches<is_clamp_action, As...>;
+    static constexpr unsigned WrapCount  = count_action_matches<is_wrap_action, As...>;
+    static constexpr unsigned ErrorCount = count_action_matches<is_error_action, As...>;
 
     static_assert(ClampCount + WrapCount + ErrorCount <= 1,
                   "on_clamp / on_wrap / on_error are mutually exclusive in a single policy_ref");
     static_assert(ClampCount <= 1, "duplicate on_clamp");
     static_assert(WrapCount <= 1, "duplicate on_wrap");
     static_assert(ErrorCount <= 1, "duplicate on_error");
-    static_assert(OverflowCount <= 1, "duplicate on_overflow");
 
   public:
     B& Ref;
@@ -125,8 +122,8 @@ struct policy_ref {
 
     // expected<C> sink — unwrap once at the proxy boundary so callers can chain
     // checked arithmetic into `.with_clamp() = ...` without per-step `.value()`.
-    // An error goes through this ref's policy (on_overflow / on_error, or the
-    // errc& sink), as an arithmetic result's does.
+    // An error goes to on_error, else through this ref's policy (or the errc&
+    // sink), as an arithmetic result's does.
     template <numeric C>
     constexpr B& operator=(const std::expected<C, errc>& other) {
         return finalize_arith(other, "policy_ref::operator= of an expected without a value");
@@ -141,31 +138,30 @@ struct policy_ref {
     //-------------------------------------------------------------------------
     // insidable RHS overloads — route through the inside's arithmetic, then
     // assign via dispatch_assign so callbacks fire on the narrowing back to B.
-    // An expected<inside> result carrying an error (rational-raw overflow,
-    // division by zero) surfaces its errc through on_overflow if registered,
-    // else report. Constrained on the free op they call and on storing its
-    // result back under this policy, so a requires probe sees what compiles:
-    // a 1/16 sum does not store into an integer grid without snap.
+    // An expected<inside> result carrying an error (a zero divisor) surfaces
+    // its errc through on_error if registered, else the policy. Constrained on the free op they call and on storing
+    // its result back under this policy, so a requires probe sees what compiles: a 1/16 sum does not store into an
+    // integer grid without snap.
     //-------------------------------------------------------------------------
     template <insidable C>
         requires requires(const B& b, const C& c, P& p) { add(b, c, p); } &&
                  stores_back<decltype(add(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator+=(const C& rhs) {
-        return finalize_arith(add(Ref, rhs, Policy), "policy_ref::operator+= overflow");
+        return finalize_arith(add(Ref, rhs, Policy), "policy_ref::operator+=");
     }
 
     template <insidable C>
         requires requires(const B& b, const C& c, P& p) { sub(b, c, p); } &&
                  stores_back<decltype(sub(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator-=(const C& rhs) {
-        return finalize_arith(sub(Ref, rhs, Policy), "policy_ref::operator-= overflow");
+        return finalize_arith(sub(Ref, rhs, Policy), "policy_ref::operator-=");
     }
 
     template <insidable C>
         requires requires(const B& b, const C& c, P& p) { mul(b, c, p); } &&
                  stores_back<decltype(mul(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator*=(const C& rhs) {
-        return finalize_arith(mul(Ref, rhs, Policy), "policy_ref::operator*= overflow");
+        return finalize_arith(mul(Ref, rhs, Policy), "policy_ref::operator*=");
     }
 
     // A zero divisor is reported (on_error / ignore_zero) and leaves Ref
@@ -177,10 +173,10 @@ struct policy_ref {
     constexpr B& operator/=(const C& rhs) {
         if (rhs == 0) {
             if constexpr (!has_flag(flags_of<C>, ignore_zero)) // either operand silences it
-                report_zero(errc::division_by_zero, "policy_ref::operator/= division by zero");
+                report_error(errc::division_by_zero, "policy_ref::operator/= division by zero");
             return Ref;
         }
-        return finalize_arith(div(Ref, rhs, Policy), "policy_ref::operator/= division/overflow");
+        return finalize_arith(div(Ref, rhs, Policy), "policy_ref::operator/= division by zero");
     }
 
     template <insidable C>
@@ -189,10 +185,10 @@ struct policy_ref {
     constexpr B& operator%=(const C& rhs) {
         if (rhs == 0) {
             if constexpr (!has_flag(flags_of<C>, ignore_zero)) // either operand silences it
-                report_zero(errc::division_by_zero, "policy_ref::operator%= division by zero");
+                report_error(errc::division_by_zero, "policy_ref::operator%= division by zero");
             return Ref;
         }
-        return finalize_arith(mod(Ref, rhs, Policy), "policy_ref::operator%= division/overflow");
+        return finalize_arith(mod(Ref, rhs, Policy), "policy_ref::operator%= division by zero");
     }
 
     //-------------------------------------------------------------------------
@@ -219,30 +215,28 @@ struct policy_ref {
     template <std::same_as<rational> C>
     constexpr B& operator/=(const C& rhs) {
         if (is_canonical_zero(rhs)) {
-            report_zero(errc::division_by_zero, "policy_ref::operator/= division by zero");
+            report_error(errc::division_by_zero, "policy_ref::operator/= division by zero");
             return Ref;
         }
-        return finalize_arith(rational{Ref} / rhs, "policy_ref::operator/= division/overflow");
+        return finalize_arith(rational{Ref} / rhs, "policy_ref::operator/= overflow");
     }
 
   private:
-    constexpr void report_zero(errc code, const char* what) {
+    // A failed op leaves Ref unchanged: on_error takes the failure, else the
+    // policy reports it — but ignore_zero skips a zero divisor.
+    constexpr void report_error(errc code, const char* what) {
         if constexpr (has_action<is_error_action, As...>)
             pick_action_in<is_error_action>(Actions).Fn(Ref, code, what);
-        else if constexpr (!uses_flag<B, P, ignore_zero>)
+        else if (code != errc::division_by_zero || !uses_flag<B, P, ignore_zero>)
             Policy.report(code);
     }
 
+    // A zero divisor, or a rational right-hand side past the 64-bit rational.
     template <typename R>
     constexpr B& finalize_arith(R&& result, [[maybe_unused]] const char* msg) {
         if constexpr (expected_like<R>) {
             if (!result.has_value()) [[unlikely]] {
-                if (result.error() == errc::division_by_zero)
-                    report_zero(errc::division_by_zero, msg); // on_error / ignore_zero, like rational /=
-                else if constexpr (has_action<is_overflow_action, As...>)
-                    pick_action_in<is_overflow_action>(Actions).Fn(Ref, result.error());
-                else
-                    Policy.report(result.error());
+                report_error(result.error(), msg);
                 return Ref;
             }
             return dispatch_assign(Ref, result.value(), Policy, Actions);

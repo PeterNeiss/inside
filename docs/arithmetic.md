@@ -30,18 +30,19 @@ On this page: [scalars](#scalars-need-a-grid) · [division](#division) ·
 ## The free functions
 
 `add`, `sub`, `mul`, `div`, `mod` and `divmod` are the operators as functions,
-with one of three trailing forms:
+with one of two trailing forms:
 
 | Form | Meaning |
 |---|---|
-| `op(l, r, policy)` | a named policy (`rounded_floor`, `clamped`, … or `make_policy<F>()`), optionally followed by one hook |
-| `op(l, r, on_overflow(f), …)` | one or more hooks ([policies.md](policies.md#hooks-on_wrap-on_clamp-on_error-on_overflow)) |
-| `op(l, r, ec)` | an `errc&` that receives the error |
+| `op(l, r, policy)` | a named policy (`rounded_floor`, … or `make_policy<F>()`): how a division rounds |
+| `op(l, r, ec)` | an `errc&` that receives a zero divisor |
+
+They take no hooks ([policies.md](policies.md#hooks-on_wrap-on_clamp-on_error)):
+the arithmetic cannot fail but for a zero divisor, which stays in the result.
 
 ```cpp
-auto q = div(x, y, on_overflow([&](auto& result, errc) {
-    result = std::remove_cvref_t<decltype(result)>{0};      // a division by zero gives 0
-}));
+errc ec{};
+auto q = div(x, y, ec);   // y == 0: ec == errc::division_by_zero, and q holds it
 ```
 
 ## Scalars need a grid

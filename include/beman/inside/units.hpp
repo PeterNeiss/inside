@@ -27,7 +27,7 @@
 //   quantity_cast, value_cast, try_value_cast    kinds and representations
 //   named_unit, quantity_spec, point_origin,     units, kinds, origins and
 //   base_dimension, unit_c / spec_c / origin_c   dimensions of your own
-//   q.on_wrap / on_clamp / on_error / on_overflow, ++q, Q::try_make
+//   q.on_wrap / on_clamp / on_error, ++q, Q::try_make
 //   mul_into, div_into, add_all, mul_all, sum<Q>, divmod,
 //   conversion_overflows / rounds / loses<Q>, clamp_cast / wrap_cast<Q>,
 //   dot, cross, lerp                             inside's algorithms
@@ -1339,10 +1339,6 @@ class quantity {
     template <class F>
     [[nodiscard]] constexpr auto on_error(F&& f) {
         return detail::make_action_ref<R>(*this, Value.on_error(detail::on_quantity(*this, std::forward<F>(f))));
-    }
-    template <class F>
-    [[nodiscard]] constexpr auto on_overflow(F&& f) {
-        return detail::make_action_ref<R>(*this, Value.on_overflow(detail::on_quantity(*this, std::forward<F>(f))));
     }
 
     // Rep's try_make in the unit R: quantity<si::metre, M>::try_make(12.5).

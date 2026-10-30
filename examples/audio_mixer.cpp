@@ -4,7 +4,7 @@
 // Demonstrates:
 //   - Signed Q1.14 sample storage (1/16384 notch)
 //   - Q-format gain inside; per-frame mix runs entirely in integer notch math
-//   - `with(on_clamp, on_overflow)` multi-action probe for peak metering
+//   - an `on_clamp` hook for peak metering
 //   - `clamp_cast` to push the mixed value back into the sample grid
 //   - `units::pow_base_into` / `mul_into`: one rounding straight into the
 //     target type, never a wide product narrowed afterwards
@@ -89,7 +89,6 @@ int main() {
     }
 
     clamp_counter<1'000'000> clip_events{0};
-    clamp_counter<1'000'000> overflow_events{0};
 
     std::cout << "frame  c0      c1      c2      c3      mix    \n";
     for (frame_t i : values<frame_t>) {
@@ -99,19 +98,15 @@ int main() {
         auto mix = (gain[0] * channels[0][i]) + (gain[1] * channels[1][i]) + (gain[2] * channels[2][i]) +
                    (gain[3] * channels[3][i]);
 
-        // `with(...)` packs two callbacks into a single write. on_overflow
-        // fires for an integer-cast overflow on the way through assignment;
         // on_clamp fires when the value lands outside [-1, 1] and is clipped.
         sample_t bus{0};
-        bus.with(on_overflow([&](auto&, errc) { ++overflow_events; }), on_clamp([&](auto&, auto) { ++clip_events; })) =
-            mix;
+        bus.on_clamp([&](auto&, auto) { ++clip_events; }) = mix;
 
         std::cout << channels[0][i] << "   " << channels[1][i] << "   " << channels[2][i] << "   " << channels[3][i]
                   << "   " << bus << "\n";
     }
 
     std::cout << "\nclip events:     " << clip_events << "\n";
-    std::cout << "overflow events: " << overflow_events << "\n";
 
     // Standalone: clamp_cast pushes a wider-grid inside into sample_t.
     // Common idiom inside std::transform over a sum bus.
@@ -127,7 +122,7 @@ int main() {
     std::cout << "clamp_cast<bus_t>(add_all(1,-1,1,1)) = "
               << clamp_cast<bus_t>(add_all(channel_t{1}, channel_t{-1}, channel_t{1}, channel_t{1})) << "\n";
 
-    if (clip_events != 10 || overflow_events != 0 || db_to_linear(level[2]) != gain_t{rational{32846, 65536}})
+    if (clip_events != 10 || db_to_linear(level[2]) != gain_t{rational{32846, 65536}})
         return 1;
     return 0;
 }

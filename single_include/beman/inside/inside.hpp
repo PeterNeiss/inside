@@ -142,7 +142,7 @@
 // compound assignment, ++/--, the conversions (imax, rational, double,
 // to<T>/as<T>), numerator()/denominator(), raw()/from_raw, the per-store
 // overrides (with_clamp, with_snap, policy<F>) and hooks (on_wrap, on_clamp,
-// on_error, on_overflow), parse(first, last), just<…> and the _ins literal.
+// on_error), parse(first, last), just<…> and the _ins literal.
 // The umbrella adds the casts, arithmetic, range and cursor layers, which
 // need this complete type.
 //---------------------------------------------------------------------------
@@ -3802,8 +3802,8 @@ namespace beman::inside {
 // policy_flag — the policy bits of inside<G, P> (none, ignore_zero,
 // ignore_range, snap and the rounding modes, clamp, wrap, checked, unsafe),
 // has_flag / is_checked, the rounding precedence (rounding_of), the hook
-// factories on_clamp / on_wrap / on_error / on_overflow with their
-// is_*_action traits, and the flags each hook implies.
+// factories on_clamp / on_wrap / on_error with their is_*_action traits, and
+// the flags each hook implies.
 //---------------------------------------------------------------------------
 using policy_flag = unsigned long long;
 
@@ -3899,7 +3899,7 @@ namespace detail {
 } // namespace detail
 
 //---------------------------------------------------------------------------
-// no_action — zero-overhead default for overflow callbacks
+// no_action — zero-overhead default: a store without a hook
 //---------------------------------------------------------------------------
 struct no_action {};
 
@@ -3920,13 +3920,9 @@ template <typename F>
 struct on_error_t {
     [[no_unique_address]] F Fn;
 };
-template <typename F>
-struct on_overflow_t {
-    [[no_unique_address]] F Fn;
-};
 
 //---------------------------------------------------------------------------
-// CTAD-style factories — drop the on_overflow_t{lambda} brace-init.
+// CTAD-style factories — drop the on_error_t{lambda} brace-init.
 //---------------------------------------------------------------------------
 template <typename F>
 [[nodiscard]] constexpr auto on_clamp(F&& fn) {
@@ -3939,10 +3935,6 @@ template <typename F>
 template <typename F>
 [[nodiscard]] constexpr auto on_error(F&& fn) {
     return on_error_t<std::remove_cvref_t<F>>{std::forward<F>(fn)};
-}
-template <typename F>
-[[nodiscard]] constexpr auto on_overflow(F&& fn) {
-    return on_overflow_t<std::remove_cvref_t<F>>{std::forward<F>(fn)};
 }
 
 namespace detail {
@@ -3960,8 +3952,6 @@ template <typename T>
 using is_wrap_action = std::bool_constant<is_action<on_wrap_t, T>>;
 template <typename T>
 using is_error_action = std::bool_constant<is_action<on_error_t, T>>;
-template <typename T>
-using is_overflow_action = std::bool_constant<is_action<on_overflow_t, T>>;
 
 template <typename T>
 concept clamp_action = is_clamp_action<std::remove_cvref_t<T>>::value;
@@ -3969,12 +3959,10 @@ template <typename T>
 concept wrap_action = is_wrap_action<std::remove_cvref_t<T>>::value;
 template <typename T>
 concept error_action = is_error_action<std::remove_cvref_t<T>>::value;
-template <typename T>
-concept overflow_action = is_overflow_action<std::remove_cvref_t<T>>::value;
 
 //---------------------------------------------------------------------------
 // implied_flags<A> — single source of truth for "this action requires these
-// policy bits". Used by inside::on_* and the action-first free-fn overloads.
+// policy bits". Used by inside::on_* and with(...).
 //---------------------------------------------------------------------------
 template <typename T>
 inline constexpr policy_flag implied_flags = none;
@@ -3984,11 +3972,9 @@ template <typename F>
 inline constexpr policy_flag implied_flags<on_wrap_t<F>> = wrap;
 template <typename F>
 inline constexpr policy_flag implied_flags<on_error_t<F>> = checked;
-template <typename F>
-inline constexpr policy_flag implied_flags<on_overflow_t<F>> = checked;
 
 //---------------------------------------------------------------------------
-// Pack helpers — let policy_ref/assignment/arithmetic accept Actions... packs.
+// Pack helpers — let policy_ref and assignment accept Actions... packs.
 // The `is_*_action` traits are passed as template-template parameters.
 //---------------------------------------------------------------------------
 
@@ -6401,25 +6387,15 @@ template <policy_flag F = none>
 }
 
 //---------------------------------------------------------------------------
-// report_or_unexpected — uniform "rational arithmetic failed" handler shared
-// by addition/multiplication/division/modulo. Three compile-time behaviors:
-// overflow_action<A> → fire it on a default Result; uses_error_ref<P> →
-// policy.report then std::unexpected{code}; plain throw-policy →
-// std::unexpected{code}.
+// report_or_unexpected — the zero-divisor result of division and modulo:
+// an errc& policy (uses_error_ref<P>) is set too; the error is returned.
 //---------------------------------------------------------------------------
 namespace detail {
-template <insidable Result, typename A, typename P>
-constexpr auto report_or_unexpected(A&& action, P&& policy, errc code)
-    -> std::conditional_t<overflow_action<A>, Result, std::expected<Result, errc>> {
-    if constexpr (overflow_action<A>) {
-        Result res;
-        action.Fn(res, code);
-        return res;
-    } else {
-        if constexpr (uses_error_ref<std::remove_cvref_t<P>>)
-            policy.report(code);
-        return std::unexpected{code};
-    }
+template <insidable Result, typename P>
+constexpr std::expected<Result, errc> report_or_unexpected(P&& policy, errc code) {
+    if constexpr (uses_error_ref<std::remove_cvref_t<P>>)
+        policy.report(code);
+    return std::unexpected{code};
 }
 } // namespace detail
 
@@ -7883,9 +7859,8 @@ constexpr L& assign_grid_number(L& lhs, const big_rational& v, P&& policy) {
 namespace beman::inside {
 //---------------------------------------------------------------------------
 // policy_ref — variadic in actions (stores std::tuple<As...>). policy_ref
-// pre-picks the matching action per call path, so assignment/arithmetic keep
-// their single-A signatures. Payoff: the arithmetic and narrowing stages of a
-// compound op can each fire a different action (e.g. on_overflow + on_clamp).
+// pre-picks the matching action per call path, so assignment keeps its
+// single-A signature.
 //---------------------------------------------------------------------------
 namespace detail {
 // The single assignment-time action among `actions` (at most one such tag is
@@ -7945,17 +7920,15 @@ struct policy_ref {
   private:
     // Conflict diagnostics: at most one assignment-time tag (clamp / wrap /
     // error), at most one of each kind, no clamp+wrap.
-    static constexpr unsigned ClampCount    = count_action_matches<is_clamp_action, As...>;
-    static constexpr unsigned WrapCount     = count_action_matches<is_wrap_action, As...>;
-    static constexpr unsigned ErrorCount    = count_action_matches<is_error_action, As...>;
-    static constexpr unsigned OverflowCount = count_action_matches<is_overflow_action, As...>;
+    static constexpr unsigned ClampCount = count_action_matches<is_clamp_action, As...>;
+    static constexpr unsigned WrapCount  = count_action_matches<is_wrap_action, As...>;
+    static constexpr unsigned ErrorCount = count_action_matches<is_error_action, As...>;
 
     static_assert(ClampCount + WrapCount + ErrorCount <= 1,
                   "on_clamp / on_wrap / on_error are mutually exclusive in a single policy_ref");
     static_assert(ClampCount <= 1, "duplicate on_clamp");
     static_assert(WrapCount <= 1, "duplicate on_wrap");
     static_assert(ErrorCount <= 1, "duplicate on_error");
-    static_assert(OverflowCount <= 1, "duplicate on_overflow");
 
   public:
     B& Ref;
@@ -7987,8 +7960,8 @@ struct policy_ref {
 
     // expected<C> sink — unwrap once at the proxy boundary so callers can chain
     // checked arithmetic into `.with_clamp() = ...` without per-step `.value()`.
-    // An error goes through this ref's policy (on_overflow / on_error, or the
-    // errc& sink), as an arithmetic result's does.
+    // An error goes to on_error, else through this ref's policy (or the errc&
+    // sink), as an arithmetic result's does.
     template <numeric C>
     constexpr B& operator=(const std::expected<C, errc>& other) {
         return finalize_arith(other, "policy_ref::operator= of an expected without a value");
@@ -8003,31 +7976,30 @@ struct policy_ref {
     //-------------------------------------------------------------------------
     // insidable RHS overloads — route through the inside's arithmetic, then
     // assign via dispatch_assign so callbacks fire on the narrowing back to B.
-    // An expected<inside> result carrying an error (rational-raw overflow,
-    // division by zero) surfaces its errc through on_overflow if registered,
-    // else report. Constrained on the free op they call and on storing its
-    // result back under this policy, so a requires probe sees what compiles:
-    // a 1/16 sum does not store into an integer grid without snap.
+    // An expected<inside> result carrying an error (a zero divisor) surfaces
+    // its errc through on_error if registered, else the policy. Constrained on the free op they call and on storing
+    // its result back under this policy, so a requires probe sees what compiles: a 1/16 sum does not store into an
+    // integer grid without snap.
     //-------------------------------------------------------------------------
     template <insidable C>
         requires requires(const B& b, const C& c, P& p) { add(b, c, p); } &&
                  stores_back<decltype(add(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator+=(const C& rhs) {
-        return finalize_arith(add(Ref, rhs, Policy), "policy_ref::operator+= overflow");
+        return finalize_arith(add(Ref, rhs, Policy), "policy_ref::operator+=");
     }
 
     template <insidable C>
         requires requires(const B& b, const C& c, P& p) { sub(b, c, p); } &&
                  stores_back<decltype(sub(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator-=(const C& rhs) {
-        return finalize_arith(sub(Ref, rhs, Policy), "policy_ref::operator-= overflow");
+        return finalize_arith(sub(Ref, rhs, Policy), "policy_ref::operator-=");
     }
 
     template <insidable C>
         requires requires(const B& b, const C& c, P& p) { mul(b, c, p); } &&
                  stores_back<decltype(mul(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator*=(const C& rhs) {
-        return finalize_arith(mul(Ref, rhs, Policy), "policy_ref::operator*= overflow");
+        return finalize_arith(mul(Ref, rhs, Policy), "policy_ref::operator*=");
     }
 
     // A zero divisor is reported (on_error / ignore_zero) and leaves Ref
@@ -8039,10 +8011,10 @@ struct policy_ref {
     constexpr B& operator/=(const C& rhs) {
         if (rhs == 0) {
             if constexpr (!has_flag(flags_of<C>, ignore_zero)) // either operand silences it
-                report_zero(errc::division_by_zero, "policy_ref::operator/= division by zero");
+                report_error(errc::division_by_zero, "policy_ref::operator/= division by zero");
             return Ref;
         }
-        return finalize_arith(div(Ref, rhs, Policy), "policy_ref::operator/= division/overflow");
+        return finalize_arith(div(Ref, rhs, Policy), "policy_ref::operator/= division by zero");
     }
 
     template <insidable C>
@@ -8051,10 +8023,10 @@ struct policy_ref {
     constexpr B& operator%=(const C& rhs) {
         if (rhs == 0) {
             if constexpr (!has_flag(flags_of<C>, ignore_zero)) // either operand silences it
-                report_zero(errc::division_by_zero, "policy_ref::operator%= division by zero");
+                report_error(errc::division_by_zero, "policy_ref::operator%= division by zero");
             return Ref;
         }
-        return finalize_arith(mod(Ref, rhs, Policy), "policy_ref::operator%= division/overflow");
+        return finalize_arith(mod(Ref, rhs, Policy), "policy_ref::operator%= division by zero");
     }
 
     //-------------------------------------------------------------------------
@@ -8081,30 +8053,28 @@ struct policy_ref {
     template <std::same_as<rational> C>
     constexpr B& operator/=(const C& rhs) {
         if (is_canonical_zero(rhs)) {
-            report_zero(errc::division_by_zero, "policy_ref::operator/= division by zero");
+            report_error(errc::division_by_zero, "policy_ref::operator/= division by zero");
             return Ref;
         }
-        return finalize_arith(rational{Ref} / rhs, "policy_ref::operator/= division/overflow");
+        return finalize_arith(rational{Ref} / rhs, "policy_ref::operator/= overflow");
     }
 
   private:
-    constexpr void report_zero(errc code, const char* what) {
+    // A failed op leaves Ref unchanged: on_error takes the failure, else the
+    // policy reports it — but ignore_zero skips a zero divisor.
+    constexpr void report_error(errc code, const char* what) {
         if constexpr (has_action<is_error_action, As...>)
             pick_action_in<is_error_action>(Actions).Fn(Ref, code, what);
-        else if constexpr (!uses_flag<B, P, ignore_zero>)
+        else if (code != errc::division_by_zero || !uses_flag<B, P, ignore_zero>)
             Policy.report(code);
     }
 
+    // A zero divisor, or a rational right-hand side past the 64-bit rational.
     template <typename R>
     constexpr B& finalize_arith(R&& result, [[maybe_unused]] const char* msg) {
         if constexpr (expected_like<R>) {
             if (!result.has_value()) [[unlikely]] {
-                if (result.error() == errc::division_by_zero)
-                    report_zero(errc::division_by_zero, msg); // on_error / ignore_zero, like rational /=
-                else if constexpr (has_action<is_overflow_action, As...>)
-                    pick_action_in<is_overflow_action>(Actions).Fn(Ref, result.error());
-                else
-                    Policy.report(result.error());
+                report_error(result.error(), msg);
                 return Ref;
             }
             return dispatch_assign(Ref, result.value(), Policy, Actions);
@@ -8196,9 +8166,9 @@ struct addition {
     // A result is checked, whatever its operands' policies.
     using result = inside<result_grid>;
 
-    // Total: the policy and an on_overflow action have nothing to take.
-    template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
-    static constexpr result add(L lhs, R rhs, policy<F, E> = {}, A&& = {}) {
+    // Total: the policy has nothing to decide.
+    template <policy_flag F = none, typename E = empty_ref>
+    static constexpr result add(L lhs, R rhs, policy<F, E> = {}) {
         if constexpr (fraction_storage<result>)
             return result::from_raw(*continuous_raw_of<raw_t<result>>(exact_of(lhs) + exact_of(rhs)));
         else if constexpr (exact_path_fits<exact_op::add, result, L, R>)
@@ -8260,9 +8230,9 @@ struct multiplication {
     // A result is checked, whatever its operands' policies.
     using result = inside<result_grid>;
 
-    // Total, as a sum: the policy and an on_overflow action have nothing to take.
-    template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
-    static constexpr result mul(L lhs, R rhs, policy<F, E> = {}, A&& = {}) {
+    // Total, as a sum: the policy has nothing to decide.
+    template <policy_flag F = none, typename E = empty_ref>
+    static constexpr result mul(L lhs, R rhs, policy<F, E> = {}) {
         if constexpr (point_scale<R, L, result>) // x * just<c>: x's offset (see op_result.hpp)
             return scale_by_point<result, R>(lhs);
         else if constexpr (point_scale<L, R, result>)
@@ -8598,25 +8568,22 @@ struct division {
     // other quotient is a point or continuous with a denominator bound that
     // sizes its raw (exact_fits). So the only failure is a zero divisor —
     // excluded by the grid → plain `result`.
-    template <typename A>
     using return_t = std::conditional_t<divisor_excludes_zero<R>, result, std::expected<result, errc>>;
 
-    template <policy_flag G = F, typename E = empty_ref, typename A = no_action>
-    static constexpr return_t<A> div(L, R, policy<G, E> = {}, A&& = {});
+    template <policy_flag G = F, typename E = empty_ref>
+    static constexpr return_t div(L, R, policy<G, E> = {});
 };
 
 //---------------------------------------------------------------------------
 // div
 //---------------------------------------------------------------------------
 template <insidable L, insidable R, policy_flag F>
-template <policy_flag G, typename E, typename A>
-constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, [[maybe_unused]] A&& action) -> return_t<A> {
+template <policy_flag G, typename E>
+constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy) -> return_t {
     // A zero divisor: reported through the policy's errc& (if any) and returned
     // as the error. Only reachable where return_t is expected (the divisor grid
     // holds zero and ignore_zero is off).
-    [[maybe_unused]] auto zero = [&] {
-        return report_or_unexpected<result>(no_action{}, policy, errc::division_by_zero);
-    };
+    [[maybe_unused]] auto zero = [&] { return report_or_unexpected<result>(policy, errc::division_by_zero); };
     [[maybe_unused]] constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
 
     if constexpr (native_div_fixed) {
@@ -8735,16 +8702,15 @@ struct modulo {
 
     // Modulo never overflows (the remainder fits result_grid), so the only
     // failure is a zero divisor — excluded by the grid → plain `result`.
-    template <typename A>
     using return_t = std::conditional_t<divisor_excludes_zero<R>, result, std::expected<result, errc>>;
 
-    template <policy_flag G = F, typename E = empty_ref, typename A = no_action>
-    static constexpr return_t<A> mod(L, R, policy<G, E> = {}, A&& = {});
+    template <policy_flag G = F, typename E = empty_ref>
+    static constexpr return_t mod(L, R, policy<G, E> = {});
 };
 
 template <insidable L, insidable R, policy_flag F>
-template <policy_flag G, typename E, typename A>
-constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy, [[maybe_unused]] A&& action) -> return_t<A> {
+template <policy_flag G, typename E>
+constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy) -> return_t {
     if constexpr (!native_mod) {
         // Integer values past imax: r = a − round(a/b)·b in exact wide integers.
         constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
@@ -8752,7 +8718,7 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy, [[maybe_u
         const I b                     = value_in_units<I, grid_rational{1}>(rhs); // integer values: no division
         if constexpr (!zero_unchecked)
             if (b.is_zero())
-                return report_or_unexpected<result>(no_action{}, policy, errc::division_by_zero);
+                return report_or_unexpected<result>(policy, errc::division_by_zero);
         const I a = value_in_units<I, grid_rational{1}>(lhs);
         return exact_result<result>(wide_rational<exact_limbs<L, R, result>>{a - rounded_div<rmode>(a, b) * b, I{1}});
     } else {
@@ -8761,7 +8727,7 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy, [[maybe_u
         constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
         if constexpr (!zero_unchecked)
             if (rhs_val == 0)
-                return report_or_unexpected<result>(no_action{}, policy, errc::division_by_zero);
+                return report_or_unexpected<result>(policy, errc::division_by_zero);
         result res;
         // Remainder consistent with the rounded quotient (trunc → C++ `%`).
         const T lhs_val = static_cast<T>(to_value(lhs));
@@ -8787,15 +8753,13 @@ struct quotient_remainder {
 
     using result = divmod_result<typename division<L, R, FS>::result, typename modulo<L, R, FS>::result>;
 
-    template <typename A>
     using return_t = std::conditional_t<divisor_excludes_zero<R>, result, std::expected<result, errc>>;
 
-    // The only failure is a zero divisor, which is no overflow: an
-    // on_overflow action never fires here.
-    template <policy_flag G = F, typename E = empty_ref, typename A = no_action>
-    static constexpr return_t<A> divmod(L lhs, R rhs, policy<G, E> policy = {}, [[maybe_unused]] A&& action = {}) {
+    // The only failure is a zero divisor.
+    template <policy_flag G = F, typename E = empty_ref>
+    static constexpr return_t divmod(L lhs, R rhs, policy<G, E> policy = {}) {
         // (Generic: its body is formed only where a zero divisor is possible.)
-        auto fail = [&](auto code) -> return_t<A> {
+        auto fail = [&](auto code) -> return_t {
             if constexpr (uses_error_ref<std::remove_cvref_t<decltype(policy)>>)
                 policy.report(code);
             return std::unexpected{code};
@@ -9489,15 +9453,10 @@ struct inside {
     [[nodiscard]] constexpr auto on_error(A&& a) {
         return make_action_ref<on_error_t>(std::forward<A>(a));
     }
-    template <typename A>
-    [[nodiscard]] constexpr auto on_overflow(A&& a) {
-        return make_action_ref<on_overflow_t>(std::forward<A>(a));
-    }
 
     // Multi-action entry point: combine N tagged actions into one policy_ref.
-    // policy_ref rejects mutually exclusive combinations at compile time. E.g.
-    // `b.with(on_overflow(λ1), on_clamp(λ2)) += rhs` — the arithmetic fires λ1,
-    // the narrowing back into b fires λ2.
+    // policy_ref rejects mutually exclusive combinations at compile time
+    // (on_clamp with on_wrap, two of one kind).
     template <typename... Actions>
     [[nodiscard]] constexpr auto with(Actions&&... actions) {
         constexpr policy_flag merged = detail::merged_implied_flags<Actions...>;
@@ -10276,82 +10235,72 @@ template <insidable B, numeric A>
 //---------------------------------------------------------------------------
 namespace beman::inside {
 //---------------------------------------------------------------------------
-// add / sub / mul / div / mod / divmod — each takes one of three trailing forms:
-//   op(l, r [, policy [, action]])   explicit per-call policy (+ action)
-//   op(l, r, on_overflow(λ), ...)    tagged actions (policy = their implied flags)
-//   op(l, r, ec [, action])          error-code form (checked, reports into ec)
-// detail::arith normalizes the form to (policy, action) for the op's core.
+// add / sub / mul / div / mod / divmod — each takes one of two trailing forms:
+//   op(l, r [, policy])   explicit per-call policy (the division's rounding)
+//   op(l, r, ec)          error-code form (checked, a zero divisor sets ec)
+// detail::arith normalizes the form to a policy for the op's core.
 //---------------------------------------------------------------------------
-#define BEMAN_INSIDE_WHY_arith_action                                                                               \
-    "add/sub/mul/div/mod fire only on_overflow; on_clamp / on_wrap / on_error apply to assignment — use them with " \
-    "b.with(...) or a cast"
+#define BEMAN_INSIDE_WHY_arith_action                                                                                \
+    "add/sub/mul/div/mod take no hooks: on_clamp / on_wrap / on_error apply to a store - use them with b.with(...) " \
+    "or a cast"
 
 namespace detail {
-// Arithmetic fires only on_overflow; any other action would be silently
-// ignored, so it is rejected.
-template <class A>
-inline constexpr bool arith_accepts_action =
-    std::same_as<std::remove_cvref_t<A>, no_action> || overflow_action<std::remove_cvref_t<A>>;
-
-template <class Op, class L, class R, policy_like P = policy<>, class A = no_action>
-constexpr auto arith(Op op, const L& l, const R& r, P&& pol = {}, A&& act = {}) {
-    static_assert(arith_accepts_action<A>, BEMAN_INSIDE_WHY_arith_action);
-    return op(l, r, std::forward<P>(pol), std::forward<A>(act));
+template <class Op, class L, class R, policy_like P = policy<>>
+constexpr auto arith(Op op, const L& l, const R& r, P&& pol = {}) {
+    return op(l, r, std::forward<P>(pol));
 }
 
-// Action-first form: on_overflow actions (the only kind arithmetic fires;
-// any other tag is rejected below with a message, not a bare mismatch).
+template <class Op, class L, class R>
+constexpr auto arith(Op op, const L& l, const R& r, errc& ec) {
+    return op(l, r, make_policy<checked>(ec));
+}
+
+// A hook would be silently ignored (arithmetic cannot fail but for a zero
+// divisor, which stays in the result): rejected with a message.
 template <class A>
 inline constexpr bool is_action_tag_v =
-    is_overflow_action<A>::value || is_clamp_action<A>::value || is_wrap_action<A>::value || is_error_action<A>::value;
+    is_clamp_action<A>::value || is_wrap_action<A>::value || is_error_action<A>::value;
 
-template <class Op, class L, class R, class... Actions>
-    requires(sizeof...(Actions) >= 1) && (is_action_tag_v<std::remove_cvref_t<Actions>> && ...)
-constexpr auto arith(Op op, const L& l, const R& r, Actions&&... acts) {
-    static_assert((overflow_action<std::remove_cvref_t<Actions>> && ...), BEMAN_INSIDE_WHY_arith_action);
-    return op(l, r, make_policy<merged_implied_flags<Actions...>>(), pick_action<is_overflow_action>(acts...));
-}
-
-template <class Op, class L, class R, class A = no_action>
-constexpr auto arith(Op op, const L& l, const R& r, errc& ec, A&& act = {}) {
-    static_assert(arith_accepts_action<A>, BEMAN_INSIDE_WHY_arith_action);
-    return op(l, r, make_policy<checked>(ec), std::forward<A>(act));
+template <class Op, class L, class R, class... Args>
+    requires(is_action_tag_v<std::remove_cvref_t<Args>> || ...)
+constexpr void arith(Op, const L&, const R&, Args&&...) {
+    static_assert(false, BEMAN_INSIDE_WHY_arith_action);
 }
 
 struct add_op {
-    template <class L, class R, class P, class A>
-    constexpr auto operator()(const L& l, const R& r, P&& p, A&& a) const {
-        return addition<L, R>::add(l, r, std::forward<P>(p), std::forward<A>(a));
+    template <class L, class R, class P>
+    constexpr auto operator()(const L& l, const R& r, P&& p) const {
+        return addition<L, R>::add(l, r, std::forward<P>(p));
     }
 };
 struct sub_op {
-    template <class L, class R, class P, class A>
-    constexpr auto operator()(const L& l, const R& r, P&& p, A&& a) const {
-        return add_op{}(l, -r, std::forward<P>(p), std::forward<A>(a));
+    template <class L, class R, class P>
+    constexpr auto operator()(const L& l, const R& r, P&& p) const {
+        return add_op{}(l, -r, std::forward<P>(p));
     }
 };
 struct mul_op {
-    template <class L, class R, class P, class A>
-    constexpr auto operator()(const L& l, const R& r, P&& p, A&& a) const {
-        return multiplication<L, R>::mul(l, r, std::forward<P>(p), std::forward<A>(a));
+    template <class L, class R, class P>
+    constexpr auto operator()(const L& l, const R& r, P&& p) const {
+        return multiplication<L, R>::mul(l, r, std::forward<P>(p));
     }
 };
 struct div_op {
-    template <class L, class R, class P, class A>
-    constexpr auto operator()(const L& l, const R& r, P&& p, A&& a) const {
-        return division<L, R, flags_of<P>>::div(l, r, p, std::forward<A>(a));
+    template <class L, class R, class P>
+    constexpr auto operator()(const L& l, const R& r, P&& p) const {
+        return division<L, R, flags_of<P>>::div(l, r, p);
     }
 };
 struct mod_op {
-    template <class L, class R, class P, class A>
-    constexpr auto operator()(const L& l, const R& r, P&& p, A&& a) const {
-        return modulo<L, R, flags_of<P>>::mod(l, r, p, std::forward<A>(a));
+    template <class L, class R, class P>
+    constexpr auto operator()(const L& l, const R& r, P&& p) const {
+        return modulo<L, R, flags_of<P>>::mod(l, r, p);
     }
 };
 struct divmod_op {
-    template <class L, class R, class P, class A>
-    constexpr auto operator()(const L& l, const R& r, P&& p, A&& a) const {
-        return quotient_remainder<L, R, flags_of<P>>::divmod(l, r, p, std::forward<A>(a));
+    template <class L, class R, class P>
+    constexpr auto operator()(const L& l, const R& r, P&& p) const {
+        return quotient_remainder<L, R, flags_of<P>>::divmod(l, r, p);
     }
 };
 } // namespace detail
@@ -17098,7 +17047,7 @@ using adaptive::tanh_into;
 //   quantity_cast, value_cast, try_value_cast    kinds and representations
 //   named_unit, quantity_spec, point_origin,     units, kinds, origins and
 //   base_dimension, unit_c / spec_c / origin_c   dimensions of your own
-//   q.on_wrap / on_clamp / on_error / on_overflow, ++q, Q::try_make
+//   q.on_wrap / on_clamp / on_error, ++q, Q::try_make
 //   mul_into, div_into, add_all, mul_all, sum<Q>, divmod,
 //   conversion_overflows / rounds / loses<Q>, clamp_cast / wrap_cast<Q>,
 //   dot, cross, lerp                             inside's algorithms
@@ -18405,10 +18354,6 @@ class quantity {
     template <class F>
     [[nodiscard]] constexpr auto on_error(F&& f) {
         return detail::make_action_ref<R>(*this, Value.on_error(detail::on_quantity(*this, std::forward<F>(f))));
-    }
-    template <class F>
-    [[nodiscard]] constexpr auto on_overflow(F&& f) {
-        return detail::make_action_ref<R>(*this, Value.on_overflow(detail::on_quantity(*this, std::forward<F>(f))));
     }
 
     // Rep's try_make in the unit R: quantity<si::metre, M>::try_make(12.5).

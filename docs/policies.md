@@ -95,7 +95,7 @@ take a policy object as a last argument:
 auto q = div(a, b, rounded_floor);      // the same as div(a, b, make_policy<round_floor>())
 ```
 
-## Hooks: `on_wrap`, `on_clamp`, `on_error`, `on_overflow`
+## Hooks: `on_wrap`, `on_clamp`, `on_error`
 
 A hook runs your code when a policy acts. `x.on_wrap(f)` returns a handle; its
 `=`, `+=`, `-=`, `*=`, `/=` and `%=` store into `x` with `f` wired in. A hook
@@ -106,15 +106,13 @@ A hook you do not use costs nothing.
 |---|---|---|
 | `on_clamp(f)` | a stored value leaves the range and is saturated | `f(x, overshoot)` |
 | `on_wrap(f)` | a stored value leaves the range and is folded back | `f(x, carry)`; the carry is an inside |
-| `on_error(f)` | a checked store fails (`overflow`, `rounding_error`); replaces the throw | `f(x, errc, const char* message)` |
-| `on_overflow(f)` | an arithmetic result does not fit its storage | `f(x, errc)` |
+| `on_error(f)` | a checked store fails (`overflow`, `rounding_error`), or a compound op does (a zero divisor in `/=` or `%=`, a `rational` right-hand side past 64 bits); replaces the throw | `f(x, errc, const char* message)` |
 
-The first three act on the store. `on_overflow` acts on the arithmetic before
-it: the free `add`/`sub`/`mul`/`div`/`mod` and the operators inside a compound
-assignment. `f` gets `x` by reference, so it can change the stored value. A
-division by zero is no overflow: the free functions return it as
-`unexpected(errc::division_by_zero)`, as `/` does, and a compound `/=` or `%=`
-reports it through `on_error` (or skips it under `ignore_zero`).
+Each acts on the store. `f` gets `x` by reference, so it can change the stored
+value. The arithmetic of a compound assignment cannot fail but for a zero
+divisor, which `on_error` takes (`ignore_zero` skips it). The free `add` … `divmod`
+take no hooks: they return a zero divisor as `unexpected(errc::division_by_zero)`,
+as `/` does.
 
 ```cpp
 using sec = inside<{0, 59}, wrap>;
@@ -143,33 +141,22 @@ p.on_wrap([&](auto&, auto) { ++wraps; }) += 65.5_ins;
 // p == 1.4375 (65.5 − 1025/16: the period is the span plus one notch), wraps == 1
 ```
 
-The free functions take `on_overflow` too, for a result that does not fit;
-a zero divisor stays in the `expected`:
+### A hook as a value: `with(...)`
 
-```cpp
-auto q = div(d, z, on_overflow([&](auto& result, errc e) { log(e); }));
-if (!q) // q.error() == errc::division_by_zero
-    ...
-```
-
-### Several hooks at once: `with(...)`
-
-`x.with(hooks...)` packs hooks into one store. Each fires only on its own path,
-so a compound `+=` can carry an `on_overflow` for its arithmetic and an
-`on_clamp` for its store. Exclusive pairs (`on_clamp` with `on_wrap`) do not
-compile.
+`x.with(hook)` takes the hook as a value (`on_clamp(f)`, `on_wrap(f)`,
+`on_error(f)`), for code that passes hooks around. The three are exclusive,
+so a store has at most one.
 
 ```cpp
 inside<{0, 100}> acc{50};
 inside<{0, 1000}> big{900};
-acc.with(on_overflow([&](auto& self, errc) { self = 0; }),
-         on_clamp([&](auto&, auto over) { log_overshoot(over); })) += big;
+acc.with(on_clamp([&](auto&, auto over) { log_overshoot(over); })) += big;
 // acc == 100, overshoot 850
 ```
 
 ### Hooks on quantities
 
-A quantity (see [units.md](units.md)) has the same four hooks. The handle's
+A quantity (see [units.md](units.md)) has the same three hooks. The handle's
 `=`, `+=` and `-=` take a quantity in any unit of the same kind and convert it
 exactly first. The hook gets the **quantity**, then the inside's carry,
 overshoot or errc:

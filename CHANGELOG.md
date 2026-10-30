@@ -35,10 +35,14 @@ The library without pre-C++26 compatibility, kept in sync with main.
 - The umbrella `inside.hpp` includes `numeric_limits.hpp`: without it a TU
   silently got the primary `std::numeric_limits` for an inside, and an ODR
   violation beside a TU that had the specialization.
-- `on_overflow` takes only a result that does not fit. A zero divisor in
-  the free `div`, `mod` and `divmod` stays in the returned `expected`, as for
-  `/` (it reached `on_overflow` before, while `x.on_overflow(f) /= 0` sent it
-  to `on_error`).
+- `on_overflow` is removed: arithmetic on insides cannot overflow (continuous
+  grids have a bound, and a quotient always fits its result type). A zero
+  divisor in the free `div`, `mod` and `divmod` stays in the returned
+  `expected`, as for `/`; the free functions take a policy or an `errc&`, no
+  hook. A compound op's failure (a zero divisor in `/=`, a `rational`
+  right-hand side past 64 bits) goes to `on_error`, else the policy. `/` by a
+  zero-free divisor is never `expected`: `just<1e30_g> / just<3>` is a plain
+  point.
 
 - `std::common_type` (and `common_inside_t`, `min`, `max`) of two insides
   keeps the policy they share; only different policies give `checked`.

@@ -1,7 +1,7 @@
-// EXPECT: fire only on_overflow
+// EXPECT: take no hooks
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Free arithmetic never fires on_clamp / on_wrap / on_error, so passing one is
-// rejected instead of silently ignored.
+// Free arithmetic takes no hooks (it cannot fail but for a zero divisor, which
+// stays in the result), so passing one is rejected instead of silently ignored.
 #include <beman/inside/inside.hpp>
 
 int main() {

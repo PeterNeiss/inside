@@ -394,16 +394,14 @@ what it did. `b.on_wrap(f) += x` stores into `b` with `f` wired in:
 |---|---|---|
 | `on_clamp(f)` | a stored value leaves the range and is saturated | `f(b, overshoot)` |
 | `on_wrap(f)` | a stored value leaves the range and is folded back | `f(b, carry)`; the carry is an `inside` whose grid holds every possible carry |
-| `on_error(f)` | a checked store fails; replaces the exception | `f(b, errc, message)` |
-| `on_overflow(f)` | an arithmetic result does not fit its storage; a zero divisor is not such a failure | `f(b, errc)` |
+| `on_error(f)` | a checked store fails, or a compound assignment does (a zero divisor in `/=`); replaces the exception | `f(b, errc, message)` |
 
 `f` receives the destination by reference and may change it. An action implies
-its flag (`on_clamp` adds `clamp`, `on_wrap` adds `wrap`), and several combine
-in `b.with(on_overflow(f), on_clamp(g))`: the arithmetic fires `f`, the store
-back into `b` fires `g`. At most one of `on_clamp`, `on_wrap` and `on_error`
-may be given, since one store takes one of those paths, and at most one of each
-kind; anything else is ill-formed. The arithmetic functions accept only
-`on_overflow`. An action that is not used costs nothing.
+its flag (`on_clamp` adds `clamp`, `on_wrap` adds `wrap`). A store takes one
+of the three paths, so one action is given at most; `b.with(a)` takes it as a
+value. The arithmetic functions take no actions: they cannot fail but for a
+zero divisor, which stays in the `expected`. An action that is not used costs
+nothing.
 
 ## Generic code
 
@@ -493,8 +491,8 @@ namespace std {
     template<policy_flag M = snap> constexpr @*store-proxy*@ with_snap(); // M: a rounding mode
     constexpr @*store-proxy*@ with_clamp();
     constexpr @*store-proxy*@ with_wrap();
-    template<class F> constexpr @*store-proxy*@ on_clamp(F f);  // also on_wrap, on_error, on_overflow
-    template<class... A> constexpr @*store-proxy*@ with(A... actions);
+    template<class F> constexpr @*store-proxy*@ on_clamp(F f);  // also on_wrap, on_error
+    template<class A> constexpr @*store-proxy*@ with(A action);
 
     constexpr inside<-G, P> operator-() const;
     constexpr inside& operator++();                       // one notch
@@ -539,9 +537,8 @@ namespace std {
   template<policy_flag F = none> constexpr policy<F, @*unspecified*@> make_policy(errc& ec);
   inline constexpr policy<@*see below*@> rounded_toward_zero, rounded_nearest, rounded_floor,
                                        rounded_ceil, rounded_half_even, clamped, wrapped;
-  template<class L, class R, class... Args>                   // Args: none, a policy, an errc&,
-    constexpr auto add(const L&, const R&, Args&&...);        // or on_overflow actions;
-                                                              // also sub, mul, div, mod
+  template<class L, class R, class... Args>                   // Args: none, a policy or an errc&;
+    constexpr auto add(const L&, const R&, Args&&...);        // also sub, mul, div, mod
   template<class Q, class R> struct divmod_result { Q Quotient; R Remainder; };
   template<class L, class R, class... Args>
     constexpr auto divmod(const L&, const R&, Args&&...);     // divmod_result, or expected of it
@@ -550,7 +547,6 @@ namespace std {
   template<class F> constexpr @*action*@ on_clamp(F f);           // f(inside&, overshoot)
   template<class F> constexpr @*action*@ on_wrap(F f);            // f(inside&, carry)
   template<class F> constexpr @*action*@ on_error(F f);           // f(inside&, errc, const char*)
-  template<class F> constexpr @*action*@ on_overflow(F f);        // f(inside&, errc)
 
   // generic code
   template<grid G, policy_flag P> struct numeric_limits<inside<G, P>>;
@@ -583,7 +579,7 @@ namespace std {
 | `checked_cast<B>(v)` | `v` | throws `inside_error` (`overflow`, `rounding_error`) |
 | `unchecked_cast<B>(v)` | `v` | precondition: `v` fits |
 | `conversion_overflows<B>(v)`, `conversion_rounds<B>(v)` | what `B{v}` would report or round | a rounding that brings `v` in is a rounding |
-| `op(a, b, policy)` (`op` one of `add` … `mod`) | `a op b`, the store and the division under `P | F` | `errc&`: failures set it; `on_overflow(f)`: `f` takes a result that does not fit (a zero divisor stays in the `expected`) |
+| `op(a, b, policy)` (`op` one of `add` … `mod`) | `a op b`, the store and the division under `P | F` | `errc&`: a zero divisor sets it (and stays in the `expected`) |
 | `divmod(a, b, …)` | `{q, r}`, `q·b + r == a` | as `/` and `%` |
 | `b.with_clamp() = v` etc. | stores `v` into `b` under `P | F` | an rvalue's proxy converts to any `inside` the value fits |
 | `b.on_wrap(f) += v` etc. | `b += v`, `f` called when the policy acts | ill-formed: two of `on_clamp`, `on_wrap`, `on_error`, or two of one kind |
