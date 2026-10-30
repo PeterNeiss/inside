@@ -7,7 +7,7 @@
 #include <gtest/gtest.h>
 
 using namespace beman::inside;
-namespace ax = beman::inside::math::detail::ax;
+namespace engine = beman::inside::math::detail::engine;
 using beman::inside::umax;
 using detail::wide_rational;
 using detail::wide_sint;
@@ -28,86 +28,86 @@ constexpr wide_sint<K> hex2(umax hi, umax lo) {
 
 // Value v (a rational) as an approx at scale 2^W with error e units.
 template <int W>
-constexpr ax::approx<4> approx_of(rational v, umax e) {
-    return {ax::to_q<W, 4>(detail::exact_of(v)), W, e};
+constexpr engine::approx<4> approx_of(rational v, umax e) {
+    return {engine::to_q<W, 4>(detail::exact_of(v)), W, e};
 }
 } // namespace
 
 TEST(MathAdaptiveTest, constants) {
     // floor(π·2^128) and floor(ln 2·2^128) are 0x3243f6a8885a308d313198a2e03707344
     // and 0xb17217f7d1cf79abc9e3b39803f2f6af; each constant is within one unit.
-    constexpr auto pi  = ax::pi_q<128>;
-    constexpr auto ln2 = ax::ln2_q<128>;
+    constexpr auto pi  = engine::pi_q<128>;
+    constexpr auto ln2 = engine::ln2_q<128>;
     using P            = std::remove_cvref_t<decltype(pi)>;
     using L            = std::remove_cvref_t<decltype(ln2)>;
-    const P pi_ref     = (P{3} << 128) | hex2<ax::limbs_of<P>>(0x243f6a8885a308d3ULL, 0x13198a2e03707344ULL);
-    const L ln2_ref    = hex2<ax::limbs_of<L>>(0xb17217f7d1cf79abULL, 0xc9e3b39803f2f6afULL);
+    const P pi_ref     = (P{3} << 128) | hex2<engine::limbs_of<P>>(0x243f6a8885a308d3ULL, 0x13198a2e03707344ULL);
+    const L ln2_ref    = hex2<engine::limbs_of<L>>(0xb17217f7d1cf79abULL, 0xc9e3b39803f2f6afULL);
     const P dp         = pi - pi_ref;
     const L dl         = ln2 - ln2_ref;
     EXPECT_TRUE(P{-1} <= dp && dp <= P{1});
     EXPECT_TRUE(L{-1} <= dl && dl <= L{1});
     // At 64 bits.
-    static_assert(static_cast<umax>(ax::ln2_q<64>) - 0xb17217f7d1cf79abULL <= 1);
+    static_assert(static_cast<umax>(engine::ln2_q<64>) - 0xb17217f7d1cf79abULL <= 1);
 }
 
 TEST(MathAdaptiveTest, fixed_point_helpers) {
     using W4 = wide_sint<4>;
     // 1/3 at scale 2^10: 341.33 → 341; −2/3 → −683 (half away from zero).
-    static_assert(ax::to_q<10, 4>(detail::exact_of(rational{1, 3})) == W4{341});
-    static_assert(ax::to_q<10, 4>(detail::exact_of(rational{-2, 3})) == W4{-683});
+    static_assert(engine::to_q<10, 4>(detail::exact_of(rational{1, 3})) == W4{341});
+    static_assert(engine::to_q<10, 4>(detail::exact_of(rational{-2, 3})) == W4{-683});
     // 5/2 at scale 2^-1: 1.25 → 1.
-    static_assert(ax::to_q<-1, 4>(detail::exact_of(rational{5, 2})) == W4{1});
-    static_assert(ax::floor_log2(detail::exact_of(rational{1, 3})) == -2);
-    static_assert(ax::floor_log2(detail::exact_of(rational{8})) == 3);
-    static_assert(ax::floor_log2(detail::exact_of(rational{-9, 1})) == 3);
-    static_assert(ax::floor_log2(detail::exact_of(rational{1, 1024})) == -10);
+    static_assert(engine::to_q<-1, 4>(detail::exact_of(rational{5, 2})) == W4{1});
+    static_assert(engine::floor_log2(detail::exact_of(rational{1, 3})) == -2);
+    static_assert(engine::floor_log2(detail::exact_of(rational{8})) == 3);
+    static_assert(engine::floor_log2(detail::exact_of(rational{-9, 1})) == 3);
+    static_assert(engine::floor_log2(detail::exact_of(rational{1, 1024})) == -10);
     // Products and quotients at scale 2^8: 1.5·2.25 = 3.375, 1/3 = 0.33…
-    static_assert(ax::mul_q(W4{384}, W4{576}, 8) == W4{864});
-    static_assert(ax::div_q(W4{256}, W4{768}, 8) == W4{85});
-    static_assert(ax::round_shift(W4{-6}, 2) == W4{-2}); // −1.5 → −2
-    static_assert(ax::round_shift(W4{5}, 1) == W4{3});   // 2.5 → 3
+    static_assert(engine::mul_q(W4{384}, W4{576}, 8) == W4{864});
+    static_assert(engine::div_q(W4{256}, W4{768}, 8) == W4{85});
+    static_assert(engine::round_shift(W4{-6}, 2) == W4{-2}); // −1.5 → −2
+    static_assert(engine::round_shift(W4{5}, 1) == W4{3});   // 2.5 → 3
 }
 
 TEST(MathAdaptiveTest, output_precision) {
-    static_assert(ax::out_bits<eighths> == 5);  // conservative: 2^-5 ≤ 1/16
-    static_assert(ax::out_bits<sevenths> == 3); // 2^-3 ≤ 3/14
-    static_assert(ax::mag_bits<eighths> >= 1);
+    static_assert(engine::out_bits<eighths> == 5);  // conservative: 2^-5 ≤ 1/16
+    static_assert(engine::out_bits<sevenths> == 3); // 2^-3 ≤ 3/14
+    static_assert(engine::mag_bits<eighths> >= 1);
 }
 
 TEST(MathAdaptiveTest, decide_rounds_when_the_interval_is_inside_one_slot) {
     // 0.3 ± 2^-20 → nearest eighth is 2/8.
     constexpr auto a = approx_of<30>(rational{3, 10}, 1024);
-    constexpr auto d = ax::decide<eighths>(a);
+    constexpr auto d = engine::decide<eighths>(a);
     static_assert(d.Decided);
-    EXPECT_EQ(ax::store<eighths>(d.Index), eighths{0.25});
+    EXPECT_EQ(engine::store<eighths>(d.Index), eighths{0.25});
     // Floor and ceil of 0.3: 2/8 and 3/8.
-    EXPECT_EQ(ax::store<eighths_floor>(ax::decide<eighths_floor>(a).Index), eighths_floor{0.25});
-    EXPECT_EQ(ax::store<eighths_ceil>(ax::decide<eighths_ceil>(a).Index), eighths_ceil{0.375});
+    EXPECT_EQ(engine::store<eighths_floor>(engine::decide<eighths_floor>(a).Index), eighths_floor{0.25});
+    EXPECT_EQ(engine::store<eighths_ceil>(engine::decide<eighths_ceil>(a).Index), eighths_ceil{0.375});
     // 0.5 on multiples of 3/7: nearest is 3/7.
-    constexpr auto s = ax::decide<sevenths>(approx_of<30>(rational{1, 2}, 4));
+    constexpr auto s = engine::decide<sevenths>(approx_of<30>(rational{1, 2}, 4));
     static_assert(s.Decided);
-    EXPECT_EQ(ax::store<sevenths>(s.Index), (sevenths{rational{3, 7}}));
+    EXPECT_EQ(engine::store<sevenths>(s.Index), (sevenths{rational{3, 7}}));
 }
 
 TEST(MathAdaptiveTest, decide_refuses_an_interval_across_a_boundary) {
     // 1/16 is a tie between 0 and 1/8: any error straddles it.
-    static_assert(!ax::decide<eighths>(approx_of<30>(rational{1, 16}, 1)).Decided);
+    static_assert(!engine::decide<eighths>(approx_of<30>(rational{1, 16}, 1)).Decided);
     // Exact (error 0) ties round by the mode: half away from zero → 1/8.
-    constexpr auto t = ax::decide<eighths>(approx_of<30>(rational{1, 16}, 0));
+    constexpr auto t = engine::decide<eighths>(approx_of<30>(rational{1, 16}, 0));
     static_assert(t.Decided);
-    EXPECT_EQ(ax::store<eighths>(t.Index), eighths{0.125});
+    EXPECT_EQ(engine::store<eighths>(t.Index), eighths{0.125});
     // For floor, the boundary is the grid point itself.
-    static_assert(!ax::decide<eighths_floor>(approx_of<30>(rational{1, 8}, 1)).Decided);
-    static_assert(ax::decide<eighths_floor>(approx_of<30>(rational{1, 16}, 1)).Decided);
+    static_assert(!engine::decide<eighths_floor>(approx_of<30>(rational{1, 8}, 1)).Decided);
+    static_assert(engine::decide<eighths_floor>(approx_of<30>(rational{1, 16}, 1)).Decided);
 }
 
 TEST(MathAdaptiveTest, store_out_of_range_runs_the_policy) {
     // 1.3 rounds to 10/8, past Upper: a clamp grid saturates.
-    constexpr auto d = ax::decide<eighths_clamp>(approx_of<30>(rational{13, 10}, 1));
+    constexpr auto d = engine::decide<eighths_clamp>(approx_of<30>(rational{13, 10}, 1));
     static_assert(d.Decided);
-    EXPECT_EQ(ax::store<eighths_clamp>(d.Index), eighths_clamp{1});
+    EXPECT_EQ(engine::store<eighths_clamp>(d.Index), eighths_clamp{1});
     // The default checked policy reports it.
-    EXPECT_ANY_THROW((void)ax::store<eighths>(ax::decide<eighths>(approx_of<30>(rational{13, 10}, 1)).Index));
+    EXPECT_ANY_THROW((void)engine::store<eighths>(engine::decide<eighths>(approx_of<30>(rational{13, 10}, 1)).Index));
 }
 
 namespace {
@@ -116,17 +116,17 @@ namespace {
 struct near_tie {
     mutable int Runs = 0;
     template <int W>
-    constexpr ax::approx<8> run() const {
+    constexpr engine::approx<8> run() const {
         ++Runs;
         const auto v = detail::exact_of<8>(rational{1, 16}) + wide_rational<8>{wide_sint<8>{1}, wide_sint<8>{1} << 40};
-        return {ax::to_q<W, 8>(v), W, 4};
+        return {engine::to_q<W, 8>(v), W, 4};
     }
 };
 } // namespace
 
 TEST(MathAdaptiveTest, evaluate_escalates_until_decided) {
     near_tie   core;
-    const auto r = ax::evaluate<eighths, 24>(core);
+    const auto r = engine::evaluate<eighths, 24>(core);
     EXPECT_EQ(r, eighths{0.125});
     EXPECT_EQ(core.Runs, 2); // undecided at W = 24, decided at 48
 }
@@ -467,7 +467,7 @@ int root_failures() {
     int  bad   = 0;
     auto check = [&](const I& n) {
         const W wn{n};
-        const W r{ax::isqrt(n)}, c{ax::icbrt(n)};
+        const W r{engine::isqrt(n)}, c{engine::icbrt(n)};
         if (wn < r * r || !(wn < (r + W{1}) * (r + W{1})))
             ++bad;
         if (wn < c * c * c || !(wn < (c + W{1}) * (c + W{1}) * (c + W{1})))
@@ -488,7 +488,7 @@ int root_failures() {
                 v = -v;
             check(v);
             // Around a perfect square and a perfect cube.
-            const I r = ax::isqrt(v), c = ax::icbrt(v);
+            const I r = engine::isqrt(v), c = engine::icbrt(v);
             const I sq = r * r, cu = c * c * c;
             check(sq);
             check(sq + I{1});
@@ -501,11 +501,11 @@ int root_failures() {
         }
     return bad;
 }
-static_assert(ax::isqrt(detail::wide_sint<4>{1} << 200) == detail::wide_sint<4>{1} << 100);
-static_assert(ax::isqrt((detail::wide_sint<4>{1} << 200) - detail::wide_sint<4>{1}) ==
+static_assert(engine::isqrt(detail::wide_sint<4>{1} << 200) == detail::wide_sint<4>{1} << 100);
+static_assert(engine::isqrt((detail::wide_sint<4>{1} << 200) - detail::wide_sint<4>{1}) ==
               (detail::wide_sint<4>{1} << 100) - detail::wide_sint<4>{1});
 #if defined(__SIZEOF_INT128__)
-static_assert(ax::iroot128<2>(~static_cast<unsigned __int128>(0)) == ~umax{0});
+static_assert(engine::iroot128<2>(~static_cast<unsigned __int128>(0)) == ~umax{0});
 #endif
 } // namespace
 
@@ -515,7 +515,7 @@ static_assert(ax::iroot128<2>(~static_cast<unsigned __int128>(0)) == ~umax{0});
 namespace {
 template <typename Out, std::size_t K>
 std::pair<int, int> decide_fast_failures() {
-    constexpr auto M   = ax::out_rounding<Out>;
+    constexpr auto M   = engine::out_rounding<Out>;
     int            bad = 0, decided = 0;
     umax           state = 0x2545F4914F6CDD1Du;
     auto           next  = [&] {
@@ -534,11 +534,11 @@ std::pair<int, int> decide_fast_failures() {
         if (e == 0)
             continue;
         detail::wide_sint<K + 2> j;
-        if (!ax::decide_fast<Out, M>(y, e, S, j))
+        if (!engine::decide_fast<Out, M>(y, e, S, j))
             continue;
         ++decided;
         const detail::wide_sint<K> ew{e};
-        const auto                 lo = ax::fast_index<Out, M>(y - ew, S), hi = ax::fast_index<Out, M>(y + ew, S);
+        const auto lo = engine::fast_index<Out, M>(y - ew, S), hi = engine::fast_index<Out, M>(y + ew, S);
         if (!(lo == hi) || !(lo == j))
             ++bad;
     }
@@ -589,7 +589,7 @@ int tier_mismatches(Fn fn) {
     const auto count = static_cast<long long>(grid_of<In>.step_count());
     for (long long i = 0; i <= count; ++i) {
         const In  x       = In::from_raw(detail::raw_from_offset<In>(static_cast<umax>(i)));
-        const Out integer = ax::evaluate<Out, ax::start_bits<Out>>(Core{ax::exact_input(x)});
+        const Out integer = engine::evaluate<Out, engine::start_bits<Out>>(Core{engine::exact_input(x)});
         if (!(fn(x).raw() == integer.raw()) && bad++ < 3)
             ADD_FAILURE() << "x = " << static_cast<double>(x);
     }
@@ -608,59 +608,93 @@ using outdect = inside<{{-64, 64}, rational{1, 1000}}, snap>;
     EXPECT_EQ((tier_mismatches<Out, In, __VA_ARGS__>([](In x) { return am::fn##_into<Out>(x); })), 0) << #fn " " #Out
 
 TEST(MathAdaptiveTest, double_tier_agrees_with_the_integer_path) {
-    TIER_CHECK(sin, out20, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
-    TIER_CHECK(sin, out8f, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
-    TIER_CHECK(cos, outdec, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::cos, 1>);
-    TIER_CHECK(cos, out16c, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::cos, 1>);
-    TIER_CHECK(exp, out20, sym4, ax::exp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::out_kmax<out20>>);
-    TIER_CHECK(exp, out8, sym4, ax::exp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::out_kmax<out8>>);
-    TIER_CHECK(exp2, out16c, sym4, ax::exp2_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::out_kmax<out16c>>);
     TIER_CHECK(
-        sinh, out20, sym4, ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::sinh, ax::out_kmax<out20>>);
+        sin, out20, sym4, engine::trig_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::trig::sin, 1>);
     TIER_CHECK(
-        cosh, out8f, sym4, ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::cosh, ax::out_kmax<out8f>>);
-    TIER_CHECK(tanh, outdec, sym4, ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::tanh, 1>);
-    TIER_CHECK(atan, out20, sym4, ax::atan_core<ax::input_limbs<sym4>>);
-    TIER_CHECK(asinh, out16c, sym4, ax::ahyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::ahyp::asinh>);
-    TIER_CHECK(cbrt, out20, sym4, ax::cbrt_core<ax::input_limbs<sym4>>);
-    TIER_CHECK(log, out20, pos64, ax::log_core<ax::input_limbs<pos64>>);
-    TIER_CHECK(log2, out8f, pos64, ax::logb_core<ax::input_limbs<pos64>, 2>);
-    TIER_CHECK(log10, outdec, pos64, ax::logb_core<ax::input_limbs<pos64>, 10>);
-    TIER_CHECK(sqrt, out16c, pos64, ax::sqrt_core<ax::input_limbs<pos64>>);
-    TIER_CHECK(sqrt, out8, pos64, ax::sqrt_core<ax::input_limbs<pos64>>);
-    TIER_CHECK(asin, out20, unit, ax::asin_core<ax::input_limbs<unit>>);
-    TIER_CHECK(acos, out16c, unit, ax::acos_core<ax::input_limbs<unit>>);
-    TIER_CHECK(sin, out8t, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
-    TIER_CHECK(sinh,
-               outdect,
+        sin, out8f, sym4, engine::trig_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::trig::sin, 1>);
+    TIER_CHECK(
+        cos, outdec, sym4, engine::trig_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::trig::cos, 1>);
+    TIER_CHECK(
+        cos, out16c, sym4, engine::trig_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::trig::cos, 1>);
+    TIER_CHECK(
+        exp, out20, sym4, engine::exp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::out_kmax<out20>>);
+    TIER_CHECK(
+        exp, out8, sym4, engine::exp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::out_kmax<out8>>);
+    TIER_CHECK(exp2,
+               out16c,
                sym4,
-               ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::sinh, ax::out_kmax<outdect>>);
-    TIER_CHECK(atan, out16e, sym4, ax::atan_core<ax::input_limbs<sym4>>);
-    TIER_CHECK(cbrt, out16e, sym4, ax::cbrt_core<ax::input_limbs<sym4>>);
-    TIER_CHECK(atanh, out20, open1, ax::ahyp_core<ax::input_limbs<open1>, ax::in_mag<open1>, ax::ahyp::atanh>);
+               engine::exp2_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::out_kmax<out16c>>);
+    TIER_CHECK(
+        sinh,
+        out20,
+        sym4,
+        engine::hyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::hyp::sinh, engine::out_kmax<out20>>);
+    TIER_CHECK(
+        cosh,
+        out8f,
+        sym4,
+        engine::hyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::hyp::cosh, engine::out_kmax<out8f>>);
+    TIER_CHECK(
+        tanh, outdec, sym4, engine::hyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::hyp::tanh, 1>);
+    TIER_CHECK(atan, out20, sym4, engine::atan_core<engine::input_limbs<sym4>>);
+    TIER_CHECK(
+        asinh, out16c, sym4, engine::ahyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::ahyp::asinh>);
+    TIER_CHECK(cbrt, out20, sym4, engine::cbrt_core<engine::input_limbs<sym4>>);
+    TIER_CHECK(log, out20, pos64, engine::log_core<engine::input_limbs<pos64>>);
+    TIER_CHECK(log2, out8f, pos64, engine::logb_core<engine::input_limbs<pos64>, 2>);
+    TIER_CHECK(log10, outdec, pos64, engine::logb_core<engine::input_limbs<pos64>, 10>);
+    TIER_CHECK(sqrt, out16c, pos64, engine::sqrt_core<engine::input_limbs<pos64>>);
+    TIER_CHECK(sqrt, out8, pos64, engine::sqrt_core<engine::input_limbs<pos64>>);
+    TIER_CHECK(asin, out20, unit, engine::asin_core<engine::input_limbs<unit>>);
+    TIER_CHECK(acos, out16c, unit, engine::acos_core<engine::input_limbs<unit>>);
+    TIER_CHECK(
+        sin, out8t, sym4, engine::trig_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::trig::sin, 1>);
+    TIER_CHECK(
+        sinh,
+        outdect,
+        sym4,
+        engine::
+            hyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::hyp::sinh, engine::out_kmax<outdect>>);
+    TIER_CHECK(atan, out16e, sym4, engine::atan_core<engine::input_limbs<sym4>>);
+    TIER_CHECK(cbrt, out16e, sym4, engine::cbrt_core<engine::input_limbs<sym4>>);
+    TIER_CHECK(atanh,
+               out20,
+               open1,
+               engine::ahyp_core<engine::input_limbs<open1>, engine::in_mag<open1>, engine::ahyp::atanh>);
     // Floating-point outputs: the slot decided in double arithmetic.
     using b14out  = inside<{{-64, 64}, per<16384>}, round_nearest>;
     using b14outf = inside<{{-64, 64}, per<16384>}, round_floor>;
     using b14outt = inside<{{-64, 64}, per<16384>}, snap>;
-    TIER_CHECK(sin, b14out, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
-    TIER_CHECK(exp, b14outf, sym4, ax::exp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::out_kmax<b14outf>>);
-    TIER_CHECK(atan, b14out, sym4, ax::atan_core<ax::input_limbs<sym4>>);
-    TIER_CHECK(sin, b14outt, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
-    TIER_CHECK(log, b14outf, pos64, ax::log_core<ax::input_limbs<pos64>>);
+    TIER_CHECK(
+        sin, b14out, sym4, engine::trig_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::trig::sin, 1>);
+    TIER_CHECK(exp,
+               b14outf,
+               sym4,
+               engine::exp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::out_kmax<b14outf>>);
+    TIER_CHECK(atan, b14out, sym4, engine::atan_core<engine::input_limbs<sym4>>);
+    TIER_CHECK(
+        sin, b14outt, sym4, engine::trig_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::trig::sin, 1>);
+    TIER_CHECK(log, b14outf, pos64, engine::log_core<engine::input_limbs<pos64>>);
 
     // Decimal inputs: the tier reads them as index·p/q, within 2^-51.
     using symm  = inside<{{-4, 4}, rational{1, 1000}}, round_nearest>;
     using posm  = inside<{{rational{1, 1000}, 8}, rational{1, 1000}}, round_nearest>;
     using unitm = inside<{{-1, 1}, rational{1, 1000}}, round_nearest>;
-    TIER_CHECK(sin, out20, symm, ax::trig_core<ax::input_limbs<symm>, ax::in_mag<symm>, ax::trig::sin, 1>);
-    TIER_CHECK(exp, outdec, symm, ax::exp_core<ax::input_limbs<symm>, ax::in_mag<symm>, ax::out_kmax<outdec>>);
-    TIER_CHECK(tanh, out16c, symm, ax::hyp_core<ax::input_limbs<symm>, ax::in_mag<symm>, ax::hyp::tanh, 1>);
-    TIER_CHECK(atan, out8t, symm, ax::atan_core<ax::input_limbs<symm>>);
-    TIER_CHECK(cbrt, out20, symm, ax::cbrt_core<ax::input_limbs<symm>>);
-    TIER_CHECK(log, out20, posm, ax::log_core<ax::input_limbs<posm>>);
-    TIER_CHECK(sqrt, out16e, posm, ax::sqrt_core<ax::input_limbs<posm>>);
-    TIER_CHECK(asin, out20, unitm, ax::asin_core<ax::input_limbs<unitm>>);
-    TIER_CHECK(sin, b14out, symm, ax::trig_core<ax::input_limbs<symm>, ax::in_mag<symm>, ax::trig::sin, 1>);
+    TIER_CHECK(
+        sin, out20, symm, engine::trig_core<engine::input_limbs<symm>, engine::in_mag<symm>, engine::trig::sin, 1>);
+    TIER_CHECK(exp,
+               outdec,
+               symm,
+               engine::exp_core<engine::input_limbs<symm>, engine::in_mag<symm>, engine::out_kmax<outdec>>);
+    TIER_CHECK(
+        tanh, out16c, symm, engine::hyp_core<engine::input_limbs<symm>, engine::in_mag<symm>, engine::hyp::tanh, 1>);
+    TIER_CHECK(atan, out8t, symm, engine::atan_core<engine::input_limbs<symm>>);
+    TIER_CHECK(cbrt, out20, symm, engine::cbrt_core<engine::input_limbs<symm>>);
+    TIER_CHECK(log, out20, posm, engine::log_core<engine::input_limbs<posm>>);
+    TIER_CHECK(sqrt, out16e, posm, engine::sqrt_core<engine::input_limbs<posm>>);
+    TIER_CHECK(asin, out20, unitm, engine::asin_core<engine::input_limbs<unitm>>);
+    TIER_CHECK(
+        sin, b14out, symm, engine::trig_core<engine::input_limbs<symm>, engine::in_mag<symm>, engine::trig::sin, 1>);
 }
 #undef TIER_CHECK
 
@@ -668,35 +702,46 @@ TEST(MathAdaptiveTest, tables_agree_with_the_integer_path) {
     // 256 slots: within the default table size.
     using s8 = inside<{{rational{-128, 64}, rational{127, 64}}, rational{1, 64}}, round_nearest>;
     using p8 = inside<{{rational{1, 64}, 4}, rational{1, 64}}, round_nearest>;
-    static_assert(ax::table_input<s8> && ax::table_output<out20>);
-    EXPECT_EQ((tier_mismatches<out20, s8, ax::trig_core<ax::input_limbs<s8>, ax::in_mag<s8>, ax::trig::sin, 1>>(
+    static_assert(engine::table_input<s8> && engine::table_output<out20>);
+    EXPECT_EQ((tier_mismatches<out20,
+                               s8,
+                               engine::trig_core<engine::input_limbs<s8>, engine::in_mag<s8>, engine::trig::sin, 1>>(
                   [](s8 x) { return am::sin_into<out20>(x); })),
               0);
-    EXPECT_EQ((tier_mismatches<out40, s8, ax::exp_core<ax::input_limbs<s8>, ax::in_mag<s8>, ax::out_kmax<out40>>>(
+    EXPECT_EQ((tier_mismatches<out40,
+                               s8,
+                               engine::exp_core<engine::input_limbs<s8>, engine::in_mag<s8>, engine::out_kmax<out40>>>(
                   [](s8 x) { return am::exp_into<out40>(x); })),
               0);
-    EXPECT_EQ(
-        (tier_mismatches<outdec, p8, ax::log_core<ax::input_limbs<p8>>>([](p8 x) { return am::log_into<outdec>(x); })),
-        0);
+    EXPECT_EQ((tier_mismatches<outdec, p8, engine::log_core<engine::input_limbs<p8>>>(
+                  [](p8 x) { return am::log_into<outdec>(x); })),
+              0);
     // Floating-point outputs: the table holds the grid point as a double or float.
     using b14t = inside<{{-64, 64}, per<16384>}, round_nearest>;
     using b8t  = inside<{{-64, 64}, per<256>}, round_floor>;
-    static_assert(ax::table_output<b14t> && ax::table_output<b8t>);
-    static_assert(ax::result_table<b14t, s8, ax::start_bits<b14t>, [](s8 v) {
-                      return ax::trig_core<ax::input_limbs<s8>, ax::in_mag<s8>, ax::trig::sin, 1>{ax::exact_input(v)};
+    static_assert(engine::table_output<b14t> && engine::table_output<b8t>);
+    static_assert(engine::result_table<b14t, s8, engine::start_bits<b14t>, [](s8 v) {
+                      return engine::trig_core<engine::input_limbs<s8>, engine::in_mag<s8>, engine::trig::sin, 1>{
+                          engine::exact_input(v)};
                   }>::Table.Valid);
-    EXPECT_EQ((tier_mismatches<b14t, s8, ax::trig_core<ax::input_limbs<s8>, ax::in_mag<s8>, ax::trig::sin, 1>>(
+    EXPECT_EQ((tier_mismatches<b14t,
+                               s8,
+                               engine::trig_core<engine::input_limbs<s8>, engine::in_mag<s8>, engine::trig::sin, 1>>(
                   [](s8 x) { return am::sin_into<b14t>(x); })),
               0);
-    EXPECT_EQ((tier_mismatches<b8t, s8, ax::exp_core<ax::input_limbs<s8>, ax::in_mag<s8>, ax::out_kmax<b8t>>>(
+    EXPECT_EQ((tier_mismatches<b8t,
+                               s8,
+                               engine::exp_core<engine::input_limbs<s8>, engine::in_mag<s8>, engine::out_kmax<b8t>>>(
                   [](s8 x) { return am::exp_into<b8t>(x); })),
               0);
-    EXPECT_EQ(
-        (tier_mismatches<b14t, p8, ax::log_core<ax::input_limbs<p8>>>([](p8 x) { return am::log_into<b14t>(x); })), 0);
+    EXPECT_EQ((tier_mismatches<b14t, p8, engine::log_core<engine::input_limbs<p8>>>(
+                  [](p8 x) { return am::log_into<b14t>(x); })),
+              0);
     // Results past Out's range keep the computed path, and its policy.
     using small_clamp = inside<{{0, 4}, rational{1, 64}}, round_nearest | clamp>;
-    using table       = ax::result_table<small_clamp, s8, ax::start_bits<small_clamp>, [](s8 v) {
-        return ax::exp_core<ax::input_limbs<s8>, ax::in_mag<s8>, ax::out_kmax<small_clamp>>{ax::exact_input(v)};
+    using table       = engine::result_table<small_clamp, s8, engine::start_bits<small_clamp>, [](s8 v) {
+        return engine::exp_core<engine::input_limbs<s8>, engine::in_mag<s8>, engine::out_kmax<small_clamp>>{
+            engine::exact_input(v)};
     }>;
     static_assert(!table::Table.Valid); // e^2 > 4
     EXPECT_EQ(am::exp_into<small_clamp>(s8{1.984375}), small_clamp{4});
@@ -711,36 +756,48 @@ TEST(MathAdaptiveTest, double_tier_agrees_on_decimal_inputs_and_checked_forms) {
     using unid   = inside<{{-1, 1}, rational{1, 1000}}, round_nearest>;
     using ge1d   = inside<{{1, 8}, rational{1, 1000}}, round_nearest>;
     using tanout = inside<{{-1024, 1024}, rational{1, 1 << 20}}, round_nearest>;
-    static_assert(!ax::fp_exact_input<symd>);
+    static_assert(!engine::fp_exact_input<symd>);
 #ifndef BEMAN_INSIDE_MATH_NO_FP
-    static_assert(ax::fp_tier<out20, ax::fp_sin, symd>);
+    static_assert(engine::fp_tier<out20, engine::fp_sin, symd>);
 #endif
-    EXPECT_EQ((tier_mismatches<out20, symd, ax::trig_core<ax::input_limbs<symd>, ax::in_mag<symd>, ax::trig::sin, 1>>(
-                  [](symd x) { return am::sin_into<out20>(x); })),
-              0);
     EXPECT_EQ(
-        (tier_mismatches<outdec, symd, ax::exp_core<ax::input_limbs<symd>, ax::in_mag<symd>, ax::out_kmax<outdec>>>(
+        (tier_mismatches<out20,
+                         symd,
+                         engine::trig_core<engine::input_limbs<symd>, engine::in_mag<symd>, engine::trig::sin, 1>>(
+            [](symd x) { return am::sin_into<out20>(x); })),
+        0);
+    EXPECT_EQ(
+        (tier_mismatches<outdec,
+                         symd,
+                         engine::exp_core<engine::input_limbs<symd>, engine::in_mag<symd>, engine::out_kmax<outdec>>>(
             [](symd x) { return am::exp_into<outdec>(x); })),
         0);
-    EXPECT_EQ((tier_mismatches<out20, symd, ax::cbrt_core<ax::input_limbs<symd>>>(
+    EXPECT_EQ((tier_mismatches<out20, symd, engine::cbrt_core<engine::input_limbs<symd>>>(
                   [](symd x) { return am::cbrt_into<out20>(x); })),
               0);
-    EXPECT_EQ((tier_mismatches<out16c, posd, ax::log_core<ax::input_limbs<posd>>>(
+    EXPECT_EQ((tier_mismatches<out16c, posd, engine::log_core<engine::input_limbs<posd>>>(
                   [](posd x) { return am::log_into<out16c>(x); })),
               0);
-    EXPECT_EQ((tier_mismatches<out20, unid, ax::asin_core<ax::input_limbs<unid>>>(
+    EXPECT_EQ((tier_mismatches<out20, unid, engine::asin_core<engine::input_limbs<unid>>>(
                   [](unid x) { return am::asin_into<out20>(x); })),
               0);
-    EXPECT_EQ((tier_mismatches<out20, ge1d, ax::ahyp_core<ax::input_limbs<ge1d>, ax::in_mag<ge1d>, ax::ahyp::acosh>>(
-                  [](ge1d x) { return am::acosh_into<out20>(x); })),
-              0);
-    EXPECT_EQ((tier_mismatches<out8f, ge1, ax::ahyp_core<ax::input_limbs<ge1>, ax::in_mag<ge1>, ax::ahyp::acosh>>(
+    EXPECT_EQ(
+        (tier_mismatches<out20,
+                         ge1d,
+                         engine::ahyp_core<engine::input_limbs<ge1d>, engine::in_mag<ge1d>, engine::ahyp::acosh>>(
+            [](ge1d x) { return am::acosh_into<out20>(x); })),
+        0);
+    EXPECT_EQ((tier_mismatches<out8f,
+                               ge1,
+                               engine::ahyp_core<engine::input_limbs<ge1>, engine::in_mag<ge1>, engine::ahyp::acosh>>(
                   [](ge1 x) { return am::acosh_into<out8f>(x); })),
               0);
-    EXPECT_EQ((tier_mismatches<
-                  tanout,
-                  tan_in,
-                  ax::trig_core<ax::input_limbs<tan_in>, ax::in_mag<tan_in>, ax::trig::tan, ax::out_kmax<tanout>>>(
+    EXPECT_EQ((tier_mismatches<tanout,
+                               tan_in,
+                               engine::trig_core<engine::input_limbs<tan_in>,
+                                                 engine::in_mag<tan_in>,
+                                                 engine::trig::tan,
+                                                 engine::out_kmax<tanout>>>(
                   [](tan_in x) { return *am::tan_into<tanout>(x); })),
               0);
 
@@ -752,14 +809,14 @@ TEST(MathAdaptiveTest, double_tier_agrees_on_decimal_inputs_and_checked_forms) {
         for (int j = -40; j <= 40; j += 3) {
             const symd y{i / 10.0}, x{j / 10.0};
             const auto a  = am::atan2_into<out20>(y, x);
-            const auto a2 = ax::evaluate<out20, ax::start_bits<out20>>(
-                ax::atan2_core<ax::input_limbs<symd>>{ax::exact_input(y), ax::exact_input(x)});
+            const auto a2 = engine::evaluate<out20, engine::start_bits<out20>>(
+                engine::atan2_core<engine::input_limbs<symd>>{engine::exact_input(y), engine::exact_input(x)});
             if (a.raw() != a2.raw())
                 ++bad;
-            using F = detail::wide_rational<2 * ax::input_limbs<symd> + 1>;
-            const F    fx{ax::exact_input(x)}, fy{ax::exact_input(y)};
-            const auto h2 = ax::evaluate<out20, ax::start_bits<out20>>(
-                ax::sqrt_core<2 * ax::input_limbs<symd> + 1>{fx * fx + fy * fy});
+            using F = detail::wide_rational<2 * engine::input_limbs<symd> + 1>;
+            const F    fx{engine::exact_input(x)}, fy{engine::exact_input(y)};
+            const auto h2 = engine::evaluate<out20, engine::start_bits<out20>>(
+                engine::sqrt_core<2 * engine::input_limbs<symd> + 1>{fx * fx + fy * fy});
             if (am::hypot_into<out20>(x, y).raw() != h2.raw())
                 ++bad;
         }
@@ -767,19 +824,22 @@ TEST(MathAdaptiveTest, double_tier_agrees_on_decimal_inputs_and_checked_forms) {
         for (int j = -300; j <= 300; j += 13) {
             const base b{i / 16.0};
             const expo e{rational{j, 100}};
-            const auto r = am::pow_into<tanout>(b, e);
-            using core =
-                ax::pow_core<ax::input_limbs<base>, ax::input_limbs<expo>, ax::in_mag<expo>, ax::out_kmax<tanout>>;
-            const auto r2 =
-                ax::evaluate_checked<tanout, ax::start_bits<tanout>>(core{ax::exact_input(b), ax::exact_input(e)});
+            const auto r  = am::pow_into<tanout>(b, e);
+            using core    = engine::pow_core<engine::input_limbs<base>,
+                                             engine::input_limbs<expo>,
+                                             engine::in_mag<expo>,
+                                             engine::out_kmax<tanout>>;
+            const auto r2 = engine::evaluate_checked<tanout, engine::start_bits<tanout>>(
+                core{engine::exact_input(b), engine::exact_input(e)});
             if (r.has_value() != r2.has_value() || (r && r->raw() != r2->raw()))
                 ++bad;
         }
     // pow_base<10> over a decimal exponent.
     for (int j = -300; j <= 300; ++j) {
         const expo e{rational{j, 100}};
-        using core    = ax::pow_core<2, ax::input_limbs<expo>, ax::in_mag<expo>, ax::out_kmax<tanout>>;
-        const auto r2 = ax::evaluate<tanout, ax::start_bits<tanout>>(core{ax::exact_of<2>(10), ax::exact_input(e)});
+        using core    = engine::pow_core<2, engine::input_limbs<expo>, engine::in_mag<expo>, engine::out_kmax<tanout>>;
+        const auto r2 = engine::evaluate<tanout, engine::start_bits<tanout>>(
+            core{engine::exact_of<2>(10), engine::exact_input(e)});
         if ((am::pow_base_into<tanout, 10>(e)).raw() != r2.raw())
             ++bad;
     }
@@ -806,75 +866,116 @@ using posm8    = inside<{{rational{1, 1000}, 8}, rational{1, 1000}}, round_neare
         << #fn " " #Out " " #In
 
 TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
-    static_assert(!ax::fp_tier_available ||
-                  (ax::dd_tier<out52, sym4> && ax::dd_tier<outdec15, symm4> && ax::dd_tier<b44out, sym4>));
-    static_assert(!ax::dd_tier<out20, sym4>); // the double tier's
+    static_assert(!engine::fp_tier_available ||
+                  (engine::dd_tier<out52, sym4> && engine::dd_tier<outdec15, symm4> && engine::dd_tier<b44out, sym4>));
+    static_assert(!engine::dd_tier<out20, sym4>); // the double tier's
 #ifndef BEMAN_INSIDE_MATH_NO_FP
     // Below their limits the double kernels run first and the dd tier takes
     // what they leave; above, the dd tier alone.
-    static_assert(ax::fp_tier<out44f, ax::fp_cos, sym4> && ax::fp_tier<out40, ax::fp_exp, sym4> &&
-                  ax::fp_tier<out40, ax::fp_log, pos64> && ax::fp_tier<out40, ax::fp_sin, sym4>);
-    static_assert(!ax::fp_tier<out48c, ax::fp_exp2, sym4> && !ax::fp_tier<out52, ax::fp_atan, sym4> &&
-                  !ax::fp_tier<out44f, ax::fp_log2, pos64> && !ax::fp_tier<out40, ax::fp_tan, tan_in>);
+    static_assert(engine::fp_tier<out44f, engine::fp_cos, sym4> && engine::fp_tier<out40, engine::fp_exp, sym4> &&
+                  engine::fp_tier<out40, engine::fp_log, pos64> && engine::fp_tier<out40, engine::fp_sin, sym4>);
+    static_assert(!engine::fp_tier<out48c, engine::fp_exp2, sym4> && !engine::fp_tier<out52, engine::fp_atan, sym4> &&
+                  !engine::fp_tier<out44f, engine::fp_log2, pos64> && !engine::fp_tier<out40, engine::fp_tan, tan_in>);
 #endif
-    DD_CHECK(sin, out52, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
-    DD_CHECK(cos, out44f, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::cos, 1>);
-    DD_CHECK(exp, out40, sym4, ax::exp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::out_kmax<out40>>);
-    DD_CHECK(exp, out52, symm4, ax::exp_core<ax::input_limbs<symm4>, ax::in_mag<symm4>, ax::out_kmax<out52>>);
-    DD_CHECK(exp2, out48c, sym4, ax::exp2_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::out_kmax<out48c>>);
-    DD_CHECK(sinh,
-             out50t,
+    DD_CHECK(
+        sin, out52, sym4, engine::trig_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::trig::sin, 1>);
+    DD_CHECK(
+        cos, out44f, sym4, engine::trig_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::trig::cos, 1>);
+    DD_CHECK(
+        exp, out40, sym4, engine::exp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::out_kmax<out40>>);
+    DD_CHECK(exp,
+             out52,
+             symm4,
+             engine::exp_core<engine::input_limbs<symm4>, engine::in_mag<symm4>, engine::out_kmax<out52>>);
+    DD_CHECK(exp2,
+             out48c,
              sym4,
-             ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::sinh, ax::out_kmax<out50t>>);
-    DD_CHECK(cosh,
-             out46e,
-             sym4,
-             ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::cosh, ax::out_kmax<out46e>>);
-    DD_CHECK(tanh, outdec15, sym4, ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::tanh, 1>);
-    DD_CHECK(atan, out52, sym4, ax::atan_core<ax::input_limbs<sym4>>);
-    DD_CHECK(atan, out50t, symm4, ax::atan_core<ax::input_limbs<symm4>>);
-    DD_CHECK(asinh, out48c, sym4, ax::ahyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::ahyp::asinh>);
-    DD_CHECK(cbrt, out52, sym4, ax::cbrt_core<ax::input_limbs<sym4>>);
-    DD_CHECK(cbrt, out44f, symm4, ax::cbrt_core<ax::input_limbs<symm4>>);
-    DD_CHECK(log, out52, pos64, ax::log_core<ax::input_limbs<pos64>>);
-    DD_CHECK(log, out46e, posm8, ax::log_core<ax::input_limbs<posm8>>);
-    DD_CHECK(log2, out44f, pos64, ax::logb_core<ax::input_limbs<pos64>, 2>);
-    DD_CHECK(log10, outdec15, pos64, ax::logb_core<ax::input_limbs<pos64>, 10>);
-    DD_CHECK(sqrt, out52, pos64, ax::sqrt_core<ax::input_limbs<pos64>>);
-    DD_CHECK(sqrt, out48c, posm8, ax::sqrt_core<ax::input_limbs<posm8>>);
-    DD_CHECK(asin, out52, unit, ax::asin_core<ax::input_limbs<unit>>);
-    DD_CHECK(acos, out50t, unit, ax::acos_core<ax::input_limbs<unit>>);
-    DD_CHECK(atanh, out52, open1, ax::ahyp_core<ax::input_limbs<open1>, ax::in_mag<open1>, ax::ahyp::atanh>);
-    DD_CHECK(acosh, out52, ge1, ax::ahyp_core<ax::input_limbs<ge1>, ax::in_mag<ge1>, ax::ahyp::acosh>);
-    DD_CHECK(sin, b44out, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
+             engine::exp2_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::out_kmax<out48c>>);
+    DD_CHECK(
+        sinh,
+        out50t,
+        sym4,
+        engine::
+            hyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::hyp::sinh, engine::out_kmax<out50t>>);
+    DD_CHECK(
+        cosh,
+        out46e,
+        sym4,
+        engine::
+            hyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::hyp::cosh, engine::out_kmax<out46e>>);
+    DD_CHECK(
+        tanh, outdec15, sym4, engine::hyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::hyp::tanh, 1>);
+    DD_CHECK(atan, out52, sym4, engine::atan_core<engine::input_limbs<sym4>>);
+    DD_CHECK(atan, out50t, symm4, engine::atan_core<engine::input_limbs<symm4>>);
+    DD_CHECK(
+        asinh, out48c, sym4, engine::ahyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::ahyp::asinh>);
+    DD_CHECK(cbrt, out52, sym4, engine::cbrt_core<engine::input_limbs<sym4>>);
+    DD_CHECK(cbrt, out44f, symm4, engine::cbrt_core<engine::input_limbs<symm4>>);
+    DD_CHECK(log, out52, pos64, engine::log_core<engine::input_limbs<pos64>>);
+    DD_CHECK(log, out46e, posm8, engine::log_core<engine::input_limbs<posm8>>);
+    DD_CHECK(log2, out44f, pos64, engine::logb_core<engine::input_limbs<pos64>, 2>);
+    DD_CHECK(log10, outdec15, pos64, engine::logb_core<engine::input_limbs<pos64>, 10>);
+    DD_CHECK(sqrt, out52, pos64, engine::sqrt_core<engine::input_limbs<pos64>>);
+    DD_CHECK(sqrt, out48c, posm8, engine::sqrt_core<engine::input_limbs<posm8>>);
+    DD_CHECK(asin, out52, unit, engine::asin_core<engine::input_limbs<unit>>);
+    DD_CHECK(acos, out50t, unit, engine::acos_core<engine::input_limbs<unit>>);
+    DD_CHECK(atanh,
+             out52,
+             open1,
+             engine::ahyp_core<engine::input_limbs<open1>, engine::in_mag<open1>, engine::ahyp::atanh>);
+    DD_CHECK(acosh, out52, ge1, engine::ahyp_core<engine::input_limbs<ge1>, engine::in_mag<ge1>, engine::ahyp::acosh>);
+    DD_CHECK(
+        sin, b44out, sym4, engine::trig_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::trig::sin, 1>);
     // 2^-40 outputs: the double kernels near their limits, the dd tier after.
-    DD_CHECK(sin, out40, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
-    DD_CHECK(exp2, out40, sym4, ax::exp2_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::out_kmax<out40>>);
     DD_CHECK(
-        sinh, out40, sym4, ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::sinh, ax::out_kmax<out40>>);
+        sin, out40, sym4, engine::trig_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::trig::sin, 1>);
+    DD_CHECK(exp2,
+             out40,
+             sym4,
+             engine::exp2_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::out_kmax<out40>>);
     DD_CHECK(
-        cosh, out40, sym4, ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::cosh, ax::out_kmax<out40>>);
-    DD_CHECK(tanh, out40, sym4, ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::tanh, 1>);
-    DD_CHECK(atan, out40, symm4, ax::atan_core<ax::input_limbs<symm4>>);
-    DD_CHECK(asinh, out40, sym4, ax::ahyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::ahyp::asinh>);
-    DD_CHECK(log, out40, pos64, ax::log_core<ax::input_limbs<pos64>>);
-    DD_CHECK(log10, out40, posm8, ax::logb_core<ax::input_limbs<posm8>, 10>);
-    DD_CHECK(sqrt, out40, posm8, ax::sqrt_core<ax::input_limbs<posm8>>);
-    DD_CHECK(asin, out40, unit, ax::asin_core<ax::input_limbs<unit>>);
-    DD_CHECK(atanh, out40, open1, ax::ahyp_core<ax::input_limbs<open1>, ax::in_mag<open1>, ax::ahyp::atanh>);
-    DD_CHECK(acosh, out40, ge1, ax::ahyp_core<ax::input_limbs<ge1>, ax::in_mag<ge1>, ax::ahyp::acosh>);
-    EXPECT_EQ((tier_mismatches<
-                  out40,
-                  tan_in,
-                  ax::trig_core<ax::input_limbs<tan_in>, ax::in_mag<tan_in>, ax::trig::tan, ax::out_kmax<out40>>>(
+        sinh,
+        out40,
+        sym4,
+        engine::hyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::hyp::sinh, engine::out_kmax<out40>>);
+    DD_CHECK(
+        cosh,
+        out40,
+        sym4,
+        engine::hyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::hyp::cosh, engine::out_kmax<out40>>);
+    DD_CHECK(
+        tanh, out40, sym4, engine::hyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::hyp::tanh, 1>);
+    DD_CHECK(atan, out40, symm4, engine::atan_core<engine::input_limbs<symm4>>);
+    DD_CHECK(
+        asinh, out40, sym4, engine::ahyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::ahyp::asinh>);
+    DD_CHECK(log, out40, pos64, engine::log_core<engine::input_limbs<pos64>>);
+    DD_CHECK(log10, out40, posm8, engine::logb_core<engine::input_limbs<posm8>, 10>);
+    DD_CHECK(sqrt, out40, posm8, engine::sqrt_core<engine::input_limbs<posm8>>);
+    DD_CHECK(asin, out40, unit, engine::asin_core<engine::input_limbs<unit>>);
+    DD_CHECK(atanh,
+             out40,
+             open1,
+             engine::ahyp_core<engine::input_limbs<open1>, engine::in_mag<open1>, engine::ahyp::atanh>);
+    DD_CHECK(acosh, out40, ge1, engine::ahyp_core<engine::input_limbs<ge1>, engine::in_mag<ge1>, engine::ahyp::acosh>);
+    EXPECT_EQ((tier_mismatches<out40,
+                               tan_in,
+                               engine::trig_core<engine::input_limbs<tan_in>,
+                                                 engine::in_mag<tan_in>,
+                                                 engine::trig::tan,
+                                                 engine::out_kmax<out40>>>(
                   [](tan_in x) { return *am::tan_into<out40>(x); })),
               0);
-    DD_CHECK(exp, b44out, symm4, ax::exp_core<ax::input_limbs<symm4>, ax::in_mag<symm4>, ax::out_kmax<b44out>>);
+    DD_CHECK(exp,
+             b44out,
+             symm4,
+             engine::exp_core<engine::input_limbs<symm4>, engine::in_mag<symm4>, engine::out_kmax<b44out>>);
     using tanout = inside<{{-1024, 1024}, rational{1, umax{1} << 52}}, round_nearest>;
-    EXPECT_EQ((tier_mismatches<
-                  tanout,
-                  tan_in,
-                  ax::trig_core<ax::input_limbs<tan_in>, ax::in_mag<tan_in>, ax::trig::tan, ax::out_kmax<tanout>>>(
+    EXPECT_EQ((tier_mismatches<tanout,
+                               tan_in,
+                               engine::trig_core<engine::input_limbs<tan_in>,
+                                                 engine::in_mag<tan_in>,
+                                                 engine::trig::tan,
+                                                 engine::out_kmax<tanout>>>(
                   [](tan_in x) { return *am::tan_into<tanout>(x); })),
               0);
 
@@ -885,14 +986,14 @@ TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
     for (int i = -40; i <= 40; i += 3)
         for (int j = -40; j <= 40; j += 3) {
             const symm4 y{rational{i, 10}}, x{rational{j, 10}};
-            const auto  a2 = ax::evaluate<out52, ax::start_bits<out52>>(
-                ax::atan2_core<ax::input_limbs<symm4>>{ax::exact_input(y), ax::exact_input(x)});
+            const auto  a2 = engine::evaluate<out52, engine::start_bits<out52>>(
+                engine::atan2_core<engine::input_limbs<symm4>>{engine::exact_input(y), engine::exact_input(x)});
             if (am::atan2_into<out52>(y, x).raw() != a2.raw())
                 ++bad;
-            using F = detail::wide_rational<2 * ax::input_limbs<symm4> + 1>;
-            const F    fx{ax::exact_input(x)}, fy{ax::exact_input(y)};
-            const auto h2 = ax::evaluate<out46e, ax::start_bits<out46e>>(
-                ax::sqrt_core<2 * ax::input_limbs<symm4> + 1>{fx * fx + fy * fy});
+            using F = detail::wide_rational<2 * engine::input_limbs<symm4> + 1>;
+            const F    fx{engine::exact_input(x)}, fy{engine::exact_input(y)};
+            const auto h2 = engine::evaluate<out46e, engine::start_bits<out46e>>(
+                engine::sqrt_core<2 * engine::input_limbs<symm4> + 1>{fx * fx + fy * fy});
             if (am::hypot_into<out46e>(x, y).raw() != h2.raw())
                 ++bad;
         }
@@ -900,20 +1001,24 @@ TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
         for (int j = -300; j <= 300; j += 13) {
             const base b{i / 16.0};
             const expo e{rational{j, 100}};
-            const auto r = am::pow_into<tanout>(b, e);
-            using core =
-                ax::pow_core<ax::input_limbs<base>, ax::input_limbs<expo>, ax::in_mag<expo>, ax::out_kmax<tanout>>;
-            const auto r2 =
-                ax::evaluate_checked<tanout, ax::start_bits<tanout>>(core{ax::exact_input(b), ax::exact_input(e)});
+            const auto r  = am::pow_into<tanout>(b, e);
+            using core    = engine::pow_core<engine::input_limbs<base>,
+                                             engine::input_limbs<expo>,
+                                             engine::in_mag<expo>,
+                                             engine::out_kmax<tanout>>;
+            const auto r2 = engine::evaluate_checked<tanout, engine::start_bits<tanout>>(
+                core{engine::exact_input(b), engine::exact_input(e)});
             if (r.has_value() != r2.has_value() || (r && r->raw() != r2->raw()))
                 ++bad;
         }
     // pow_base<10> onto a 44-bit output, as the deduced pow10 of a dyadic grid.
     using p10out = inside<{{0, 1'000'000'000}, rational{1, 16384}}, round_nearest>;
     for (int j = -900; j <= 900; ++j) {
-        const auto e  = inside<{{-9, 9}, rational{1, 100}}, round_nearest>{rational{j, 100}};
-        using core    = ax::pow_core<2, ax::input_limbs<decltype(e)>, ax::in_mag<decltype(e)>, ax::out_kmax<p10out>>;
-        const auto r2 = ax::evaluate<p10out, ax::start_bits<p10out>>(core{ax::exact_of<2>(10), ax::exact_input(e)});
+        const auto e = inside<{{-9, 9}, rational{1, 100}}, round_nearest>{rational{j, 100}};
+        using core   = engine::
+            pow_core<2, engine::input_limbs<decltype(e)>, engine::in_mag<decltype(e)>, engine::out_kmax<p10out>>;
+        const auto r2 = engine::evaluate<p10out, engine::start_bits<p10out>>(
+            core{engine::exact_of<2>(10), engine::exact_input(e)});
         if ((am::pow_base_into<p10out, 10>(e)).raw() != r2.raw())
             ++bad;
     }
@@ -933,12 +1038,12 @@ double dd_worst_ratio(F kernel) {
     double          worst = 0;
     for (long long i = 0; i <= count; ++i) {
         const In      x     = In::from_raw(detail::raw_from_offset<In>(static_cast<umax>(i)));
-        const auto    a     = Core{ax::exact_input(x)}.template run<150>();
+        const auto    a     = Core{engine::exact_input(x)}.template run<150>();
         const ddk::dd ref   = ddk::of_fixed(a.Value, a.Scale);
         const ddk::dd v     = kernel(ddk::dd{static_cast<double>(x), 0});
         const double  err   = std::fabs(ddk::sub(v, ref).Hi);
         const double  xd    = std::fabs(static_cast<double>(x));
-        const double  bound = ax::dd_eval_bound(xd, ref.Hi);
+        const double  bound = engine::dd_eval_bound(xd, ref.Hi);
         worst               = std::max(worst, err / bound);
     }
     return worst;
@@ -951,26 +1056,28 @@ double dd_worst_ratio(F kernel) {
 TEST(MathAdaptiveTest, dd_kernels_stay_far_inside_their_bound) {
     using big   = inside<{{-600, 600}, rational{1, 8}}, round_nearest>;
     using turns = inside<{{-1'000'000, 1'000'000}, rational{64, 1}}, round_nearest>;
-    DD_ACCURACY(exp, sym4, ax::exp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, 8>);
-    DD_ACCURACY(exp, big, ax::exp_core<ax::input_limbs<big>, ax::in_mag<big>, 1000>);
-    DD_ACCURACY(exp2, sym4, ax::exp2_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, 8>);
-    DD_ACCURACY(sin, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
-    DD_ACCURACY(cos, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::cos, 1>);
-    DD_ACCURACY(sin, turns, ax::trig_core<ax::input_limbs<turns>, ax::in_mag<turns>, ax::trig::sin, 1>);
-    DD_ACCURACY(atan, sym4, ax::atan_core<ax::input_limbs<sym4>>);
-    DD_ACCURACY(sinh, sym4, ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::sinh, 8>);
-    DD_ACCURACY(cosh, sym4, ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::cosh, 8>);
-    DD_ACCURACY(tanh, sym4, ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::tanh, 1>);
-    DD_ACCURACY(asinh, sym4, ax::ahyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::ahyp::asinh>);
-    DD_ACCURACY(cbrt, sym4, ax::cbrt_core<ax::input_limbs<sym4>>);
-    DD_ACCURACY(log, pos64, ax::log_core<ax::input_limbs<pos64>>);
-    DD_ACCURACY(log2, pos64, ax::logb_core<ax::input_limbs<pos64>, 2>);
-    DD_ACCURACY(log10, pos64, ax::logb_core<ax::input_limbs<pos64>, 10>);
-    DD_ACCURACY(sqrt, pos64, ax::sqrt_core<ax::input_limbs<pos64>>);
-    DD_ACCURACY(asin, unit, ax::asin_core<ax::input_limbs<unit>>);
-    DD_ACCURACY(acos, unit, ax::acos_core<ax::input_limbs<unit>>);
-    DD_ACCURACY(atanh, open1, ax::ahyp_core<ax::input_limbs<open1>, ax::in_mag<open1>, ax::ahyp::atanh>);
-    DD_ACCURACY(acosh, ge1, ax::ahyp_core<ax::input_limbs<ge1>, ax::in_mag<ge1>, ax::ahyp::acosh>);
+    DD_ACCURACY(exp, sym4, engine::exp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, 8>);
+    DD_ACCURACY(exp, big, engine::exp_core<engine::input_limbs<big>, engine::in_mag<big>, 1000>);
+    DD_ACCURACY(exp2, sym4, engine::exp2_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, 8>);
+    DD_ACCURACY(sin, sym4, engine::trig_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::trig::sin, 1>);
+    DD_ACCURACY(cos, sym4, engine::trig_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::trig::cos, 1>);
+    DD_ACCURACY(
+        sin, turns, engine::trig_core<engine::input_limbs<turns>, engine::in_mag<turns>, engine::trig::sin, 1>);
+    DD_ACCURACY(atan, sym4, engine::atan_core<engine::input_limbs<sym4>>);
+    DD_ACCURACY(sinh, sym4, engine::hyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::hyp::sinh, 8>);
+    DD_ACCURACY(cosh, sym4, engine::hyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::hyp::cosh, 8>);
+    DD_ACCURACY(tanh, sym4, engine::hyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::hyp::tanh, 1>);
+    DD_ACCURACY(asinh, sym4, engine::ahyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::ahyp::asinh>);
+    DD_ACCURACY(cbrt, sym4, engine::cbrt_core<engine::input_limbs<sym4>>);
+    DD_ACCURACY(log, pos64, engine::log_core<engine::input_limbs<pos64>>);
+    DD_ACCURACY(log2, pos64, engine::logb_core<engine::input_limbs<pos64>, 2>);
+    DD_ACCURACY(log10, pos64, engine::logb_core<engine::input_limbs<pos64>, 10>);
+    DD_ACCURACY(sqrt, pos64, engine::sqrt_core<engine::input_limbs<pos64>>);
+    DD_ACCURACY(asin, unit, engine::asin_core<engine::input_limbs<unit>>);
+    DD_ACCURACY(acos, unit, engine::acos_core<engine::input_limbs<unit>>);
+    DD_ACCURACY(
+        atanh, open1, engine::ahyp_core<engine::input_limbs<open1>, engine::in_mag<open1>, engine::ahyp::atanh>);
+    DD_ACCURACY(acosh, ge1, engine::ahyp_core<engine::input_limbs<ge1>, engine::in_mag<ge1>, engine::ahyp::acosh>);
 }
     #undef DD_ACCURACY
 
@@ -984,13 +1091,13 @@ double lean_worst_ratio(F kernel) {
     double          worst = 0;
     for (long long i = 0; i <= count; ++i) {
         const In      x   = In::from_raw(detail::raw_from_offset<In>(static_cast<umax>(i)));
-        const auto    a   = Core{ax::exact_input(x)}.template run<150>();
+        const auto    a   = Core{engine::exact_input(x)}.template run<150>();
         const ddk::dd ref = ddk::of_fixed(a.Value, a.Scale);
-        const ddk::dd xd  = ax::dd_read(x);
+        const ddk::dd xd  = engine::dd_read(x);
         double        bound;
         const ddk::dd v   = kernel(xd, bound);
         const double  err = std::fabs(ddk::sub(v, ref).Hi);
-        bound += ax::dd_input_rel<In> * std::fabs(xd.Hi) * std::max(1.0, std::fabs(v.Hi)) * 1.0001;
+        bound += engine::dd_input_rel<In> * std::fabs(xd.Hi) * std::max(1.0, std::fabs(v.Hi)) * 1.0001;
         worst = std::max(worst, err / bound);
     }
     return worst;
@@ -1005,51 +1112,73 @@ TEST(MathAdaptiveTest, lean_dd_kernels_stay_within_their_proved_bounds) {
     using turns  = inside<{{-1'000'000, 1'000'000}, rational{64, 1}}, round_nearest>;
     using thirds = inside<{{-4, 4}, rational{1, 3 * 128}}, round_nearest>;
     using fine   = inside<{{rational{-1, 64}, rational{1, 64}}, rational{1, 1 << 20}}, round_nearest>;
-    LEAN_BOUND(sin_lean, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
-    LEAN_BOUND(cos_lean, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::cos, 1>);
-    LEAN_BOUND(sin_lean, turns, ax::trig_core<ax::input_limbs<turns>, ax::in_mag<turns>, ax::trig::sin, 1>);
-    LEAN_BOUND(cos_lean, turns, ax::trig_core<ax::input_limbs<turns>, ax::in_mag<turns>, ax::trig::cos, 1>);
-    LEAN_BOUND(sin_lean, thirds, ax::trig_core<ax::input_limbs<thirds>, ax::in_mag<thirds>, ax::trig::sin, 1>);
-    LEAN_BOUND(cos_lean, thirds, ax::trig_core<ax::input_limbs<thirds>, ax::in_mag<thirds>, ax::trig::cos, 1>);
-    LEAN_BOUND(sin_lean, fine, ax::trig_core<ax::input_limbs<fine>, ax::in_mag<fine>, ax::trig::sin, 1>);
-    LEAN_BOUND(cos_lean, fine, ax::trig_core<ax::input_limbs<fine>, ax::in_mag<fine>, ax::trig::cos, 1>);
-    LEAN_BOUND(exp_lean, sym4, ax::exp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, 8>);
-    LEAN_BOUND(exp_lean, big, ax::exp_core<ax::input_limbs<big>, ax::in_mag<big>, 1000>);
-    LEAN_BOUND(exp_lean, thirds, ax::exp_core<ax::input_limbs<thirds>, ax::in_mag<thirds>, 8>);
-    LEAN_BOUND(exp_lean, fine, ax::exp_core<ax::input_limbs<fine>, ax::in_mag<fine>, 1>);
-    LEAN_BOUND(exp2_lean, sym4, ax::exp2_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, 8>);
-    LEAN_BOUND(exp2_lean, big, ax::exp2_core<ax::input_limbs<big>, ax::in_mag<big>, 1000>);
+    LEAN_BOUND(
+        sin_lean, sym4, engine::trig_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::trig::sin, 1>);
+    LEAN_BOUND(
+        cos_lean, sym4, engine::trig_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::trig::cos, 1>);
+    LEAN_BOUND(
+        sin_lean, turns, engine::trig_core<engine::input_limbs<turns>, engine::in_mag<turns>, engine::trig::sin, 1>);
+    LEAN_BOUND(
+        cos_lean, turns, engine::trig_core<engine::input_limbs<turns>, engine::in_mag<turns>, engine::trig::cos, 1>);
+    LEAN_BOUND(sin_lean,
+               thirds,
+               engine::trig_core<engine::input_limbs<thirds>, engine::in_mag<thirds>, engine::trig::sin, 1>);
+    LEAN_BOUND(cos_lean,
+               thirds,
+               engine::trig_core<engine::input_limbs<thirds>, engine::in_mag<thirds>, engine::trig::cos, 1>);
+    LEAN_BOUND(
+        sin_lean, fine, engine::trig_core<engine::input_limbs<fine>, engine::in_mag<fine>, engine::trig::sin, 1>);
+    LEAN_BOUND(
+        cos_lean, fine, engine::trig_core<engine::input_limbs<fine>, engine::in_mag<fine>, engine::trig::cos, 1>);
+    LEAN_BOUND(exp_lean, sym4, engine::exp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, 8>);
+    LEAN_BOUND(exp_lean, big, engine::exp_core<engine::input_limbs<big>, engine::in_mag<big>, 1000>);
+    LEAN_BOUND(exp_lean, thirds, engine::exp_core<engine::input_limbs<thirds>, engine::in_mag<thirds>, 8>);
+    LEAN_BOUND(exp_lean, fine, engine::exp_core<engine::input_limbs<fine>, engine::in_mag<fine>, 1>);
+    LEAN_BOUND(exp2_lean, sym4, engine::exp2_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, 8>);
+    LEAN_BOUND(exp2_lean, big, engine::exp2_core<engine::input_limbs<big>, engine::in_mag<big>, 1000>);
     using near1 = inside<{{rational{63, 64}, rational{65, 64}}, rational{1, 1 << 20}}, round_nearest>;
     using huge  = inside<{{rational{1, 1 << 10}, 1LL << 36}, rational{1, 1 << 10}}, round_nearest>;
-    static_assert(ax::dd_input<huge>); // indices below 2^53: read exactly
-    LEAN_BOUND(log_lean, pos64, ax::log_core<ax::input_limbs<pos64>>);
-    LEAN_BOUND(log_lean, near1, ax::log_core<ax::input_limbs<near1>>);
-    LEAN_BOUND(log2_lean, pos64, ax::logb_core<ax::input_limbs<pos64>, 2>);
-    LEAN_BOUND(log10_lean, pos64, ax::logb_core<ax::input_limbs<pos64>, 10>);
-    LEAN_BOUND(tan_lean, tan_in, ax::trig_core<ax::input_limbs<tan_in>, ax::in_mag<tan_in>, ax::trig::tan, 12>);
-    LEAN_BOUND(sinh_lean, sym4, ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::sinh, 8>);
-    LEAN_BOUND(sinh_lean, fine, ax::hyp_core<ax::input_limbs<fine>, ax::in_mag<fine>, ax::hyp::sinh, 1>);
-    LEAN_BOUND(cosh_lean, sym4, ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::cosh, 8>);
-    LEAN_BOUND(tanh_lean, sym4, ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::tanh, 1>);
-    LEAN_BOUND(tanh_lean, fine, ax::hyp_core<ax::input_limbs<fine>, ax::in_mag<fine>, ax::hyp::tanh, 1>);
-    LEAN_BOUND(asinh_lean, sym4, ax::ahyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::ahyp::asinh>);
-    LEAN_BOUND(asinh_lean, fine, ax::ahyp_core<ax::input_limbs<fine>, ax::in_mag<fine>, ax::ahyp::asinh>);
-    LEAN_BOUND(acosh_lean, ge1, ax::ahyp_core<ax::input_limbs<ge1>, ax::in_mag<ge1>, ax::ahyp::acosh>);
+    static_assert(engine::dd_input<huge>); // indices below 2^53: read exactly
+    LEAN_BOUND(log_lean, pos64, engine::log_core<engine::input_limbs<pos64>>);
+    LEAN_BOUND(log_lean, near1, engine::log_core<engine::input_limbs<near1>>);
+    LEAN_BOUND(log2_lean, pos64, engine::logb_core<engine::input_limbs<pos64>, 2>);
+    LEAN_BOUND(log10_lean, pos64, engine::logb_core<engine::input_limbs<pos64>, 10>);
+    LEAN_BOUND(tan_lean,
+               tan_in,
+               engine::trig_core<engine::input_limbs<tan_in>, engine::in_mag<tan_in>, engine::trig::tan, 12>);
+    LEAN_BOUND(
+        sinh_lean, sym4, engine::hyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::hyp::sinh, 8>);
+    LEAN_BOUND(
+        sinh_lean, fine, engine::hyp_core<engine::input_limbs<fine>, engine::in_mag<fine>, engine::hyp::sinh, 1>);
+    LEAN_BOUND(
+        cosh_lean, sym4, engine::hyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::hyp::cosh, 8>);
+    LEAN_BOUND(
+        tanh_lean, sym4, engine::hyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::hyp::tanh, 1>);
+    LEAN_BOUND(
+        tanh_lean, fine, engine::hyp_core<engine::input_limbs<fine>, engine::in_mag<fine>, engine::hyp::tanh, 1>);
+    LEAN_BOUND(
+        asinh_lean, sym4, engine::ahyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::ahyp::asinh>);
+    LEAN_BOUND(
+        asinh_lean, fine, engine::ahyp_core<engine::input_limbs<fine>, engine::in_mag<fine>, engine::ahyp::asinh>);
+    LEAN_BOUND(acosh_lean, ge1, engine::ahyp_core<engine::input_limbs<ge1>, engine::in_mag<ge1>, engine::ahyp::acosh>);
     using above1 = inside<{{1, rational{65, 64}}, rational{1, 1 << 20}}, round_nearest>;
-    LEAN_BOUND(acosh_lean, above1, ax::ahyp_core<ax::input_limbs<above1>, ax::in_mag<above1>, ax::ahyp::acosh>);
-    LEAN_BOUND(atanh_lean, open1, ax::ahyp_core<ax::input_limbs<open1>, ax::in_mag<open1>, ax::ahyp::atanh>);
-    LEAN_BOUND(atan_lean, sym4, ax::atan_core<ax::input_limbs<sym4>>);
-    LEAN_BOUND(atan_lean, thirds, ax::atan_core<ax::input_limbs<thirds>>);
-    LEAN_BOUND(asin_lean, unit, ax::asin_core<ax::input_limbs<unit>>);
-    LEAN_BOUND(acos_lean, unit, ax::acos_core<ax::input_limbs<unit>>);
+    LEAN_BOUND(acosh_lean,
+               above1,
+               engine::ahyp_core<engine::input_limbs<above1>, engine::in_mag<above1>, engine::ahyp::acosh>);
+    LEAN_BOUND(
+        atanh_lean, open1, engine::ahyp_core<engine::input_limbs<open1>, engine::in_mag<open1>, engine::ahyp::atanh>);
+    LEAN_BOUND(atan_lean, sym4, engine::atan_core<engine::input_limbs<sym4>>);
+    LEAN_BOUND(atan_lean, thirds, engine::atan_core<engine::input_limbs<thirds>>);
+    LEAN_BOUND(asin_lean, unit, engine::asin_core<engine::input_limbs<unit>>);
+    LEAN_BOUND(acos_lean, unit, engine::acos_core<engine::input_limbs<unit>>);
     // A sparse sweep of a wide grid: 4096 points spread over it.
     const auto x     = [](long long i) { return huge::from_raw(detail::raw_from_offset<huge>(static_cast<umax>(i))); };
     double     worst = 0;
     const long long count = static_cast<long long>(grid_of<huge>.step_count());
     for (long long i = 1; i < count; i += count / 4096 + 1) {
-        const auto    a = ax::log_core<ax::input_limbs<huge>>{ax::exact_input(x(i))}.template run<150>();
+        const auto    a = engine::log_core<engine::input_limbs<huge>>{engine::exact_input(x(i))}.template run<150>();
         double        b = 0;
-        const ddk::dd v = ddk::log_lean(ax::dd_read(x(i)), b);
+        const ddk::dd v = ddk::log_lean(engine::dd_read(x(i)), b);
         worst           = std::max(worst, std::fabs(ddk::sub(v, ddk::of_fixed(a.Value, a.Scale)).Hi) / b);
     }
     EXPECT_LE(worst, 1.0) << "log_lean huge";
@@ -1061,31 +1190,31 @@ TEST(MathAdaptiveTest, lean_dd_kernels_stay_within_their_proved_bounds) {
 TEST(MathAdaptiveTest, lean_dd_kernels_decide_double_fine_outputs) {
     using amp52 = inside<{{-1, 1}, rational{1, 1LL << 52}}, round_nearest>;
     using exp40 = inside<{{0, 4096}, rational{1, 1LL << 40}}, round_nearest>;
-    static_assert(ax::dd_tier<amp52, sym4> && !ax::fp_tier<amp52, ax::fp_sin, sym4>);
-    static_assert(ax::dd_tier<exp40, sym4> && !ax::fp_tier<exp40, ax::fp_exp, sym4>);
+    static_assert(engine::dd_tier<amp52, sym4> && !engine::fp_tier<amp52, engine::fp_sin, sym4>);
+    static_assert(engine::dd_tier<exp40, sym4> && !engine::fp_tier<exp40, engine::fp_exp, sym4>);
     const long long count     = static_cast<long long>(grid_of<sym4>.step_count());
     long long       undecided = 0;
     for (long long i = 0; i <= count; ++i) {
-        const ddk::dd x = ax::dd_read(sym4::from_raw(detail::raw_from_offset<sym4>(static_cast<umax>(i))));
+        const ddk::dd x = engine::dd_read(sym4::from_raw(detail::raw_from_offset<sym4>(static_cast<umax>(i))));
         double        b;
         amp52         s;
         exp40         e;
         const ddk::dd sin_lean_v = ddk::sin_lean(x, b);
-        undecided += !ax::dd_decide(sin_lean_v, b, s);
+        undecided += !engine::dd_decide(sin_lean_v, b, s);
         const ddk::dd cos_lean_v = ddk::cos_lean(x, b);
-        undecided += !ax::dd_decide(cos_lean_v, b, s);
+        undecided += !engine::dd_decide(cos_lean_v, b, s);
         const ddk::dd exp_lean_v = ddk::exp_lean(x, b);
-        undecided += !ax::dd_decide(exp_lean_v, b, e);
+        undecided += !engine::dd_decide(exp_lean_v, b, e);
     }
     using log48 = inside<{{-8, 8}, rational{1, 1LL << 48}}, round_nearest>;
-    static_assert(ax::dd_tier<log48, pos64> && !ax::fp_tier<log48, ax::fp_log, pos64>);
+    static_assert(engine::dd_tier<log48, pos64> && !engine::fp_tier<log48, engine::fp_log, pos64>);
     const long long n = static_cast<long long>(grid_of<pos64>.step_count());
     for (long long i = 0; i <= n; ++i) {
-        const ddk::dd x = ax::dd_read(pos64::from_raw(detail::raw_from_offset<pos64>(static_cast<umax>(i))));
+        const ddk::dd x = engine::dd_read(pos64::from_raw(detail::raw_from_offset<pos64>(static_cast<umax>(i))));
         double        b;
         log48         l;
         const ddk::dd log_lean_v = ddk::log_lean(x, b);
-        undecided += !ax::dd_decide(log_lean_v, b, l);
+        undecided += !engine::dd_decide(log_lean_v, b, l);
     }
     EXPECT_LE(undecided, (3 * (count + 1) + n + 1) / 1000);
 }
@@ -1104,7 +1233,7 @@ double fp_worst_ratio(F kernel) {
     double          worst = 0;
     for (long long i = 0; i <= count; ++i) {
         const In      x     = In::from_raw(detail::raw_from_offset<In>(static_cast<umax>(i)));
-        const auto    a     = Core{ax::exact_input(x)}.template run<150>();
+        const auto    a     = Core{engine::exact_input(x)}.template run<150>();
         const ddk::dd ref   = ddk::of_fixed(a.Value, a.Scale);
         double        bound = 0;
         const double  v     = kernel(static_cast<double>(x), bound);
@@ -1129,53 +1258,75 @@ double fp_worst_ratio(F kernel) {
 TEST(MathAdaptiveTest, double_kernels_stay_within_their_proved_bounds) {
     using big   = inside<{{-600, 600}, rational{1, 8}}, round_nearest>;
     using turns = inside<{{-1'000'000, 1'000'000}, rational{64, 1}}, round_nearest>;
-    FP_BOUND(trig_k, sin, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
-    FP_BOUND(trig_k, cos, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::cos, 1>);
-    FP_BOUND(trig_k, sin, turns, ax::trig_core<ax::input_limbs<turns>, ax::in_mag<turns>, ax::trig::sin, 1>);
-    FP_BOUND(exp_k, exp, sym4, ax::exp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, 8>);
-    FP_BOUND(exp_k, exp, big, ax::exp_core<ax::input_limbs<big>, ax::in_mag<big>, 1000>);
-    FP_BOUND(exp_k, exp2, sym4, ax::exp2_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, 8>);
-    FP_BOUND(exp_k, sinh, sym4, ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::sinh, 8>);
-    FP_BOUND(exp_k, cosh, sym4, ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::cosh, 8>);
-    FP_BOUND(exp_k, tanh, sym4, ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::tanh, 1>);
-    FP_BOUND(atan_k, atan, sym4, ax::atan_core<ax::input_limbs<sym4>>);
-    FP_BOUND(atan_k, asin, unit, ax::asin_core<ax::input_limbs<unit>>);
-    FP_BOUND(atan_k, acos, unit, ax::acos_core<ax::input_limbs<unit>>);
-    FP_BOUND(log_k, log, pos64, ax::log_core<ax::input_limbs<pos64>>);
-    FP_BOUND(log_k, log2, pos64, ax::logb_core<ax::input_limbs<pos64>, 2>);
-    FP_BOUND(log_k, log10, pos64, ax::logb_core<ax::input_limbs<pos64>, 10>);
-    FP_BOUND(log_k, asinh, sym4, ax::ahyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::ahyp::asinh>);
-    FP_BOUND(log_k, acosh, ge1, ax::ahyp_core<ax::input_limbs<ge1>, ax::in_mag<ge1>, ax::ahyp::acosh>);
-    FP_BOUND(log_k, atanh, open1, ax::ahyp_core<ax::input_limbs<open1>, ax::in_mag<open1>, ax::ahyp::atanh>);
+    FP_BOUND(
+        trig_k, sin, sym4, engine::trig_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::trig::sin, 1>);
+    FP_BOUND(
+        trig_k, cos, sym4, engine::trig_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::trig::cos, 1>);
+    FP_BOUND(trig_k,
+             sin,
+             turns,
+             engine::trig_core<engine::input_limbs<turns>, engine::in_mag<turns>, engine::trig::sin, 1>);
+    FP_BOUND(exp_k, exp, sym4, engine::exp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, 8>);
+    FP_BOUND(exp_k, exp, big, engine::exp_core<engine::input_limbs<big>, engine::in_mag<big>, 1000>);
+    FP_BOUND(exp_k, exp2, sym4, engine::exp2_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, 8>);
+    FP_BOUND(
+        exp_k, sinh, sym4, engine::hyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::hyp::sinh, 8>);
+    FP_BOUND(
+        exp_k, cosh, sym4, engine::hyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::hyp::cosh, 8>);
+    FP_BOUND(
+        exp_k, tanh, sym4, engine::hyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::hyp::tanh, 1>);
+    FP_BOUND(atan_k, atan, sym4, engine::atan_core<engine::input_limbs<sym4>>);
+    FP_BOUND(atan_k, asin, unit, engine::asin_core<engine::input_limbs<unit>>);
+    FP_BOUND(atan_k, acos, unit, engine::acos_core<engine::input_limbs<unit>>);
+    FP_BOUND(log_k, log, pos64, engine::log_core<engine::input_limbs<pos64>>);
+    FP_BOUND(log_k, log2, pos64, engine::logb_core<engine::input_limbs<pos64>, 2>);
+    FP_BOUND(log_k, log10, pos64, engine::logb_core<engine::input_limbs<pos64>, 10>);
+    FP_BOUND(
+        log_k, asinh, sym4, engine::ahyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::ahyp::asinh>);
+    FP_BOUND(log_k, acosh, ge1, engine::ahyp_core<engine::input_limbs<ge1>, engine::in_mag<ge1>, engine::ahyp::acosh>);
+    FP_BOUND(log_k,
+             atanh,
+             open1,
+             engine::ahyp_core<engine::input_limbs<open1>, engine::in_mag<open1>, engine::ahyp::atanh>);
     // sinh, asinh and acosh near 0 (or 1) at a fine notch and over wide ranges.
     using fine  = inside<{{rational{-1, 64}, rational{1, 64}}, rational{1, 1 << 20}}, round_nearest>;
     using fine1 = inside<{{1, rational{65, 64}}, rational{1, 1 << 20}}, round_nearest>;
     using wide  = inside<{{-1'048'576, 1'048'576}, rational{64, 1}}, round_nearest>;
     using wide1 = inside<{{64, 1'048'576}, rational{64, 1}}, round_nearest>;
-    FP_BOUND(exp_k, sinh, fine, ax::hyp_core<ax::input_limbs<fine>, ax::in_mag<fine>, ax::hyp::sinh, 1>);
-    FP_BOUND(exp_k, sinh, big, ax::hyp_core<ax::input_limbs<big>, ax::in_mag<big>, ax::hyp::sinh, 1000>);
-    FP_BOUND(log_k, asinh, fine, ax::ahyp_core<ax::input_limbs<fine>, ax::in_mag<fine>, ax::ahyp::asinh>);
-    FP_BOUND(log_k, asinh, wide, ax::ahyp_core<ax::input_limbs<wide>, ax::in_mag<wide>, ax::ahyp::asinh>);
-    FP_BOUND(log_k, acosh, fine1, ax::ahyp_core<ax::input_limbs<fine1>, ax::in_mag<fine1>, ax::ahyp::acosh>);
-    FP_BOUND(log_k, acosh, wide1, ax::ahyp_core<ax::input_limbs<wide1>, ax::in_mag<wide1>, ax::ahyp::acosh>);
-    FP_BOUND(pow_k, cbrt, sym4, ax::cbrt_core<ax::input_limbs<sym4>>);
+    FP_BOUND(
+        exp_k, sinh, fine, engine::hyp_core<engine::input_limbs<fine>, engine::in_mag<fine>, engine::hyp::sinh, 1>);
+    FP_BOUND(
+        exp_k, sinh, big, engine::hyp_core<engine::input_limbs<big>, engine::in_mag<big>, engine::hyp::sinh, 1000>);
+    FP_BOUND(
+        log_k, asinh, fine, engine::ahyp_core<engine::input_limbs<fine>, engine::in_mag<fine>, engine::ahyp::asinh>);
+    FP_BOUND(
+        log_k, asinh, wide, engine::ahyp_core<engine::input_limbs<wide>, engine::in_mag<wide>, engine::ahyp::asinh>);
+    FP_BOUND(log_k,
+             acosh,
+             fine1,
+             engine::ahyp_core<engine::input_limbs<fine1>, engine::in_mag<fine1>, engine::ahyp::acosh>);
+    FP_BOUND(log_k,
+             acosh,
+             wide1,
+             engine::ahyp_core<engine::input_limbs<wide1>, engine::in_mag<wide1>, engine::ahyp::acosh>);
+    FP_BOUND(pow_k, cbrt, sym4, engine::cbrt_core<engine::input_limbs<sym4>>);
 
     // pow over |y| = |e·ln b| up to 16 (past 42 bits from the log's Hi + Lo).
     using base     = inside<{{rational{1, 64}, 64}, rational{1, 64}}, round_nearest>;
     using expo     = inside<{{-4, 4}, rational{1, 8}}, round_nearest>;
     auto pow_worst = []<int T>() {
-        using core   = ax::pow_core<ax::input_limbs<base>,
-                                    ax::input_limbs<expo>,
-                                    ax::in_mag<expo>,
-                                    ax::pow_kmax<base, expo>,
-                                    ax::input_bits<base>,
-                                    ax::input_bits<expo>>;
+        using core   = engine::pow_core<engine::input_limbs<base>,
+                                        engine::input_limbs<expo>,
+                                        engine::in_mag<expo>,
+                                        engine::pow_kmax<base, expo>,
+                                        engine::input_bits<base>,
+                                        engine::input_bits<expo>>;
         double worst = 0;
         for (umax i = 1; i <= static_cast<umax>(grid_of<base>.step_count()); i += 7)
             for (umax j = 0; j <= static_cast<umax>(grid_of<expo>.step_count()); ++j) {
                 const base b = base::from_raw(detail::raw_from_offset<base>(i));
                 const expo e = expo::from_raw(detail::raw_from_offset<expo>(j));
-                const auto a = core{ax::exact_input(b), ax::exact_input(e)}.template run<150>();
+                const auto a = core{engine::exact_input(b), engine::exact_input(e)}.template run<150>();
                 double     v, bound, y;
                 if (!fpk::pow_k<T>::pow(static_cast<double>(b), static_cast<double>(e), v, bound, y))
                     continue;
@@ -1189,10 +1340,10 @@ TEST(MathAdaptiveTest, double_kernels_stay_within_their_proved_bounds) {
     EXPECT_LE(pow_worst.template operator()<fpk::full_bits>(), 1.0) << "pow full";
 
     // Coarse outputs get smaller kernels.
-    static_assert(fpk::trig_k<ax::fp_target<out8, ax::fp_sin>>::NS < fpk::trig_k<fpk::full_bits>::NS);
-    static_assert(fpk::exp_k<ax::fp_target<outdec, ax::fp_exp>>::N < fpk::exp_k<fpk::full_bits>::N);
-    static_assert(fpk::log_k<ax::fp_target<out20, ax::fp_log>>::N < fpk::log_k<fpk::full_bits>::N);
-    static_assert(fpk::atan_k<ax::fp_target<out20, ax::fp_atan>>::N < fpk::atan_k<fpk::full_bits>::N);
+    static_assert(fpk::trig_k<engine::fp_target<out8, engine::fp_sin>>::NS < fpk::trig_k<fpk::full_bits>::NS);
+    static_assert(fpk::exp_k<engine::fp_target<outdec, engine::fp_exp>>::N < fpk::exp_k<fpk::full_bits>::N);
+    static_assert(fpk::log_k<engine::fp_target<out20, engine::fp_log>>::N < fpk::log_k<fpk::full_bits>::N);
+    static_assert(fpk::atan_k<engine::fp_target<out20, engine::fp_atan>>::N < fpk::atan_k<fpk::full_bits>::N);
 }
     #undef FP_BOUND
 #endif

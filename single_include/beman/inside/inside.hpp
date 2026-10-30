@@ -11165,7 +11165,7 @@ inline driver_probe driver;
 } // namespace beman::inside::math
 #endif
 
-namespace beman::inside::math::detail::ax {
+namespace beman::inside::math::detail::engine {
 using namespace ::beman::inside::detail;
 
 // Signed fixed point with at least Bits value bits (the word of a Q.W value
@@ -12079,7 +12079,7 @@ constexpr wide_rational<K> inverse(const wide_rational<K>& f) noexcept {
 // round those sums up generously.
 //---------------------------------------------------------------------------
 template <std::size_t K>
-struct fx {
+struct fixed_approx {
     wide_sint<K> Value;
     umax         Error;
 };
@@ -12169,18 +12169,18 @@ constexpr wide_sint<K> horner(const wide_sint<K>& x) noexcept {
 
 // e^r for |r| ≤ 0.36, r within dr units.
 template <int S, std::size_t K>
-constexpr fx<K> exp_series(const wide_sint<K>& r, umax dr) noexcept {
+constexpr fixed_approx<K> exp_series(const wide_sint<K>& r, umax dr) noexcept {
     return {horner<series::exp, S, false>(r), 2 * dr + 8};
 }
 
 // sin r and cos r for |r| ≤ 0.8, r within dr units.
 template <int S, std::size_t K>
-constexpr fx<K> sin_series(const wide_sint<K>& r, umax dr) noexcept {
+constexpr fixed_approx<K> sin_series(const wide_sint<K>& r, umax dr) noexcept {
     const wide_sint<K> z = mul_q(r, r, S);
     return {mul_q(r, horner<series::sin, S, false>(z), S), 3 * dr + 12};
 }
 template <int S, std::size_t K>
-constexpr fx<K> cos_series(const wide_sint<K>& r, umax dr) noexcept {
+constexpr fixed_approx<K> cos_series(const wide_sint<K>& r, umax dr) noexcept {
     return {horner<series::cos, S, false>(mul_q(r, r, S)), 4 * dr + 12};
 }
 
@@ -12215,7 +12215,7 @@ inline constexpr auto log_table = [] {
 // log m for m in [0.7, 1.42], m within dm units, with no division: j =
 // round(32m), u = m·(32/j) − 1 (|u| ≤ 1/44), log m = log(j/32) + log(1 + u).
 template <int S, std::size_t K>
-constexpr fx<K> log_series(const wide_sint<K>& m, umax dm) noexcept {
+constexpr fixed_approx<K> log_series(const wide_sint<K>& m, umax dm) noexcept {
     using I       = wide_sint<K>;
     int j         = static_cast<int>(static_cast<imax>(round_shift(m, S - 5)));
     j             = std::clamp(j, log_tab_lo, log_tab_hi);
@@ -12228,7 +12228,7 @@ constexpr fx<K> log_series(const wide_sint<K>& m, umax dm) noexcept {
 // atan u for |u| ≤ 1/16 (the atanh table, sized for 0.18, with
 // alternating signs), u within du units.
 template <int S, std::size_t K>
-constexpr fx<K> atan_series(const wide_sint<K>& u, umax du) noexcept {
+constexpr fixed_approx<K> atan_series(const wide_sint<K>& u, umax du) noexcept {
     return {mul_q(u, horner<series::atanh, S, true>(mul_q(u, u, S)), S), du + 6};
 }
 
@@ -12291,15 +12291,15 @@ inline constexpr auto atan_eighths = [] {
 // atan t for |t| ≤ 1, t within dt units: c = j/8 nearest t, then
 // atan t = atan c + atan((t − c)/(1 + t·c)) with |(t − c)/(1 + t·c)| ≤ 1/16.
 template <int S, std::size_t K>
-constexpr fx<K> atan_fixed(const wide_sint<K>& t, umax dt) noexcept {
-    using I          = wide_sint<K>;
-    const I     one  = one_q<K>(S);
-    const I     j    = round_shift(t, S - 3); // round(8t), in [−8, 8]
-    const int   jj   = static_cast<int>(static_cast<imax>(j));
-    const I     c    = j << (S - 3);                          // exact
-    const I     u    = div_q(t - c, one + mul_q(t, c, S), S); // within dt + 2
-    const fx<K> a    = atan_series<S>(u, dt + 2);
-    const I     base = static_cast<I>(atan_eighths<S>[static_cast<std::size_t>(jj < 0 ? -jj : jj)]);
+constexpr fixed_approx<K> atan_fixed(const wide_sint<K>& t, umax dt) noexcept {
+    using I                    = wide_sint<K>;
+    const I               one  = one_q<K>(S);
+    const I               j    = round_shift(t, S - 3); // round(8t), in [−8, 8]
+    const int             jj   = static_cast<int>(static_cast<imax>(j));
+    const I               c    = j << (S - 3);                          // exact
+    const I               u    = div_q(t - c, one + mul_q(t, c, S), S); // within dt + 2
+    const fixed_approx<K> a    = atan_series<S>(u, dt + 2);
+    const I               base = static_cast<I>(atan_eighths<S>[static_cast<std::size_t>(jj < 0 ? -jj : jj)]);
     return {(jj < 0 ? -base : base) + a.Value, a.Error + 1};
 }
 
@@ -12310,7 +12310,7 @@ inline constexpr fixed_t<S + 2> sqrt2_q = static_cast<fixed_t<S + 2>>(isqrt(fixe
 // log a for a ≥ 1 at scale S (so b ≥ 0), a within da units: a = m·2^b with
 // m in [0.7, 1.42], log a = log m + b·ln 2.
 template <int S, std::size_t K>
-constexpr fx<K> log_fixed(const wide_sint<K>& a, umax da) noexcept {
+constexpr fixed_approx<K> log_fixed(const wide_sint<K>& a, umax da) noexcept {
     using I = wide_sint<K>;
     int b   = bit_width_of(a) - 1 - S; // 2^b ≤ a/2^S < 2^(b+1)
     I   m   = b >= 0 ? a >> b : a << (-b);
@@ -12318,8 +12318,8 @@ constexpr fx<K> log_fixed(const wide_sint<K>& a, umax da) noexcept {
         ++b;
         m = b >= 0 ? a >> b : a << (-b);
     }
-    const umax  dm = shr_bound(da, b) + 1;
-    const fx<K> l  = log_series<S>(m, dm);
+    const umax            dm = shr_bound(da, b) + 1;
+    const fixed_approx<K> l  = log_series<S>(m, dm);
     return {l.Value + I{b} * static_cast<I>(ln2_q<S>), l.Error + static_cast<umax>(b < 0 ? -b : b) + 1};
 }
 
@@ -12349,12 +12349,12 @@ constexpr approx<K> exp_fixed(const wide_sint<K>& t, umax dt, int KMax) noexcept
         return approx<K>::beyond(false, KMax);
     if (k < I{-(S + 2)})
         return approx<K>::below(S);
-    const fx<K> e  = exp_series<S>(t - k * static_cast<I>(ln2_q<S>), 0);
-    const int   kk = static_cast<int>(static_cast<imax>(k));
-    const umax  ak = static_cast<umax>(kk < 0 ? -kk : kk);
+    const fixed_approx<K> e  = exp_series<S>(t - k * static_cast<I>(ln2_q<S>), 0);
+    const int             kk = static_cast<int>(static_cast<imax>(k));
+    const umax            ak = static_cast<umax>(kk < 0 ? -kk : kk);
     return {e.Value, S - kk, e.Error + 2 * (dt + ak + 1)};
 }
-} // namespace beman::inside::math::detail::ax
+} // namespace beman::inside::math::detail::engine
 
 
 
@@ -12366,7 +12366,7 @@ constexpr approx<K> exp_fixed(const wide_sint<K>& t, umax dt, int KMax) noexcept
 // detail/math_entry.hpp; the decision step and the driver in
 // detail/math_adaptive.hpp.
 //---------------------------------------------------------------------------
-namespace beman::inside::math::detail::ax {
+namespace beman::inside::math::detail::engine {
 //---------------------------------------------------------------------------
 // Inputs as exact values, in as few limbs as their grid needs.
 //---------------------------------------------------------------------------
@@ -12432,7 +12432,7 @@ constexpr wide_sint<K> sqrt_exact_q(const wide_rational<E>& f) noexcept {
 // log x for x > 0 at scale S: x = m·2^e exactly, m in [0.7, 1.42] rounded to
 // scale S, log x = log m + e·ln 2.
 template <int S, std::size_t K, int Bits, std::size_t E>
-constexpr fx<K> log_exact(const wide_rational<E>& x) noexcept {
+constexpr fixed_approx<K> log_exact(const wide_rational<E>& x) noexcept {
     using I                  = wide_sint<K>;
     constexpr std::size_t KI = limbs_for_bits(2 * Bits + S + 2);
     int                   e  = floor_log2(x);
@@ -12441,14 +12441,14 @@ constexpr fx<K> log_exact(const wide_rational<E>& x) noexcept {
         ++e;
         m = to_q_at<K, KI>(x, S - e);
     }
-    const fx<K> l   = log_series<S>(m, 1);
-    const I     ln2 = static_cast<I>(ln2_q<S>);
+    const fixed_approx<K> l   = log_series<S>(m, 1);
+    const I               ln2 = static_cast<I>(ln2_q<S>);
     return {l.Value + I{e} * ln2, l.Error + static_cast<umax>(e < 0 ? -e : e) + 1};
 }
 
 // An approx moved to scale A ≤ its own, rounding (error shrinks, plus ½).
 template <std::size_t K>
-constexpr fx<K> rescale(const approx<K>& a, int A) noexcept {
+constexpr fixed_approx<K> rescale(const approx<K>& a, int A) noexcept {
     const int sh = a.Scale - A;
     if (sh <= 0) // a bound past 64 bits saturates (never wraps small)
         return {a.Value << (-sh), -sh < 64 && a.Error <= (~umax{0} >> -sh) ? a.Error << (-sh) : ~umax{0}};
@@ -12459,7 +12459,7 @@ constexpr fx<K> rescale(const approx<K>& a, int A) noexcept {
 // in fixed point. The quotient is within dt units (|t| ≤ 0.58): 6 for a u
 // within ½ (1 − u² then within 1.5), 7 for one within 1 (within 2).
 template <int S, std::size_t K>
-constexpr fx<K> asin_q(const wide_sint<K>& u, umax dt) noexcept {
+constexpr fixed_approx<K> asin_q(const wide_sint<K>& u, umax dt) noexcept {
     return atan_fixed<S>(mul_q(u, rsqrt_q<S>(one_q<K>(S) - mul_q(u, u, S)), S), dt);
 }
 
@@ -12526,7 +12526,7 @@ struct exp2_core {
             r -= ln2;
             ++kk;
         }
-        const fx<K> e = exp_series<S>(r, 3);
+        const fixed_approx<K> e = exp_series<S>(r, 3);
         return approx<K>{e.Value, S - kk, e.Error};
     }
 };
@@ -12541,7 +12541,7 @@ struct log_core {
         constexpr int S         = W + 8 + std::bit_width(static_cast<unsigned>(Bits));
         using I                 = fixed_t<S + std::bit_width(static_cast<unsigned>(Bits)) + 8>;
         constexpr std::size_t K = limbs_of<I>;
-        const fx<K>           l = log_exact<S, K, Bits>(X);
+        const fixed_approx<K> l = log_exact<S, K, Bits>(X);
         return approx<K>{l.Value, S, l.Error};
     }
 };
@@ -12578,7 +12578,7 @@ struct logb_core {
         constexpr int S         = W + 10 + std::bit_width(static_cast<unsigned>(Bits));
         using I                 = fixed_t<S + std::bit_width(static_cast<unsigned>(Bits)) + 8>;
         constexpr std::size_t K = limbs_of<I>;
-        const fx<K>           l = log_exact<S, K, Bits>(X);
+        const fixed_approx<K> l = log_exact<S, K, Bits>(X);
         // log x · (1/ln B): within 1.45·error + 2 (the constant is within 1).
         const I inv = B == 2 ? static_cast<I>(log2e_q<S>) : static_cast<I>(log10e_q<S>);
         return approx<K>{mul_q(l.Value, inv, S), S, 2 * l.Error + 2 + static_cast<umax>(Bits)};
@@ -12690,14 +12690,14 @@ struct trig_core {
         // sin x and cos x by quadrant: (s, c), (c, −s), (−s, −c), (−c, s).
         // cos is sin one quadrant on.
         auto quad = [&](unsigned p) {
-            const fx<K> f = p & 1u ? cos_series<S>(r, 2) : sin_series<S>(r, 2);
-            return p & 2u ? fx<K>{-f.Value, f.Error} : f;
+            const fixed_approx<K> f = p & 1u ? cos_series<S>(r, 2) : sin_series<S>(r, 2);
+            return p & 2u ? fixed_approx<K>{-f.Value, f.Error} : f;
         };
         if constexpr (Fn != trig::tan) {
-            const fx<K> v = quad(Fn == trig::sin ? q : q + 1);
+            const fixed_approx<K> v = quad(Fn == trig::sin ? q : q + 1);
             return approx<K>{v.Value, S, v.Error};
         } else {
-            const fx<K> sn = quad(q), cs = quad(q + 1);
+            const fixed_approx<K> sn = quad(q), cs = quad(q + 1);
             // tan = sin/cos. The error bound, (δs + |t|·δc)/(|c| − δc) + 2 units,
             // and the test for a result past 2^KMax only need to be upper and
             // lower bounds: computed in doubles, widened by a hair.
@@ -12720,12 +12720,12 @@ struct trig_core {
 
 // atan x: |x| ≤ 1 directly, else ±π/2 − atan(1/x). Exact at 0.
 template <int S, std::size_t K, std::size_t E>
-constexpr fx<K> atan_exact(const wide_rational<E>& x) noexcept {
+constexpr fixed_approx<K> atan_exact(const wide_rational<E>& x) noexcept {
     using I = wide_sint<K>;
     if (!(exact_of<E>(1) < abs(x)))
         return atan_fixed<S>(to_q<S, K>(x), 1);
-    const fx<K> a  = atan_fixed<S>(to_q<S, K>(inverse(x)), 1);
-    const I     hp = static_cast<I>(pi_q<S - 1>);
+    const fixed_approx<K> a  = atan_fixed<S>(to_q<S, K>(inverse(x)), 1);
+    const I               hp = static_cast<I>(pi_q<S - 1>);
     return {(x.Num.negative() ? -hp : hp) - a.Value, a.Error + 1};
 }
 
@@ -12738,7 +12738,7 @@ struct atan_core {
         constexpr int S         = W + 10;
         using I                 = fixed_t<S + 3>; // |atan| < 2, 1 + t·c ≤ 2
         constexpr std::size_t K = limbs_of<I>;
-        const fx<K>           a = atan_exact<S, K>(X);
+        const fixed_approx<K> a = atan_exact<S, K>(X);
         return approx<K>{a.Value, S, a.Error};
     }
 };
@@ -12762,13 +12762,13 @@ struct atan2_core {
         const F y{Y}, x{X};
         const I pi_fixed = static_cast<I>(pi_q<S>);
         if (!(abs(x) < abs(y))) {
-            const fx<K> a = atan_exact<S, K>(y / x);
+            const fixed_approx<K> a = atan_exact<S, K>(y / x);
             if (!x.Num.negative())
                 return approx<K>{a.Value, S, a.Error};
             return approx<K>{a.Value + (y.Num.negative() ? -pi_fixed : pi_fixed), S, a.Error + 1};
         }
-        const fx<K> a  = atan_exact<S, K>(x / y);
-        const I     hp = static_cast<I>(pi_q<S - 1>);
+        const fixed_approx<K> a  = atan_exact<S, K>(x / y);
+        const I               hp = static_cast<I>(pi_q<S - 1>);
         return approx<K>{(y.Num.negative() ? -hp : hp) - a.Value, S, a.Error + 1};
     }
 };
@@ -12794,16 +12794,16 @@ struct arcsin_core {
         const I                hp = static_cast<I>(pi_q<S - 1>); // π/2
         const wide_rational<E> half{wide_sint<E>{1}, wide_sint<E>{2}};
         if (!(half < abs(X))) {
-            const fx<K> a = asin_q<S>(to_q<S, K>(X), 6);
+            const fixed_approx<K> a = asin_q<S>(to_q<S, K>(X), 6);
             if constexpr (Acos)
                 return approx<K>{hp - a.Value, S, a.Error + 1};
             else
                 return approx<K>{a.Value, S, a.Error};
         }
-        using F         = wide_rational<E + 1>;
-        const F     y   = (exact_of<E + 1>(1) + F{-abs(X)}) * F{half}; // (1 − |x|)/2
-        const fx<K> a   = asin_q<S>(sqrt_exact_q<S, K, Bits + 3>(y), 7);
-        const bool  neg = X.Num.negative();
+        using F                   = wide_rational<E + 1>;
+        const F               y   = (exact_of<E + 1>(1) + F{-abs(X)}) * F{half}; // (1 − |x|)/2
+        const fixed_approx<K> a   = asin_q<S>(sqrt_exact_q<S, K, Bits + 3>(y), 7);
+        const bool            neg = X.Num.negative();
         if constexpr (Acos) {
             if (!neg)
                 return approx<K>{a.Value << 1, S, 2 * a.Error};
@@ -12847,9 +12847,9 @@ struct hyp_core {
         const I               ax  = to_q<S, K>(abs(X)); // within ½
         if constexpr (Fn == hyp::tanh) {
             // tanh |x| = (1 − g)/(1 + g), g = e^(−2|x|) ≤ 1.
-            const fx<K> g   = rescale(exp_fixed<S>(-(ax << 1), 1, KM), A);
-            const I     one = one_q<K>(A);
-            const I     t   = div_q(one - g.Value, one + g.Value, A);
+            const fixed_approx<K> g   = rescale(exp_fixed<S>(-(ax << 1), 1, KM), A);
+            const I               one = one_q<K>(A);
+            const I               t   = div_q(one - g.Value, one + g.Value, A);
             return approx<K>{neg ? -t : t, A, 2 * g.Error + 2};
         } else {
             // One reduction |x| = k·ln 2 + r: e^r = E + O and e^−r = E − O from
@@ -12900,24 +12900,24 @@ struct ahyp_core {
         const F    a            = abs(F{X});
         if constexpr (Fn == ahyp::atanh) {
             // (1 + |x|)/(1 − |x|) = (d + |n|)/(d − |n|), d − |n| > 0.
-            const F     q{a.Num + a.Den, a.Den - a.Num};
-            const fx<K> l = log_exact<S, K, 2 * Bits + 2>(q);
+            const F               q{a.Num + a.Den, a.Den - a.Num};
+            const fixed_approx<K> l = log_exact<S, K, 2 * Bits + 2>(q);
             return approx<K>{neg ? -(l.Value >> 1) : (l.Value >> 1), S, l.Error / 2 + 1};
         } else if constexpr (Fn == ahyp::asinh) {
             // c = x² + 1 = m·4^h, m in [1, 4): √c = √m·2^h with √m = m·(1/√m);
             // log of v/2^h = (|x| + √c)/2^h, plus h·ln 2.
-            const I     aq = to_q<S, K>(a);                  // within ½
-            const I     c  = mul_q(aq, aq, S) + one_q<K>(S); // within |x| + 1
-            const int   h  = (bit_width_of(c) - 1 - S) / 2;
-            const I     m  = c >> (2 * h);                           // within 3
-            const I     v  = (aq >> h) + mul_q(m, rsqrt_q<S>(m), S); // in [1, 3), within 30
-            const fx<K> l  = log_fixed<S>(v, 30);
-            const I     lv = l.Value + I{h} * static_cast<I>(ln2_q<S>);
+            const I               aq = to_q<S, K>(a);                  // within ½
+            const I               c  = mul_q(aq, aq, S) + one_q<K>(S); // within |x| + 1
+            const int             h  = (bit_width_of(c) - 1 - S) / 2;
+            const I               m  = c >> (2 * h);                           // within 3
+            const I               v  = (aq >> h) + mul_q(m, rsqrt_q<S>(m), S); // in [1, 3), within 30
+            const fixed_approx<K> l  = log_fixed<S>(v, 30);
+            const I               lv = l.Value + I{h} * static_cast<I>(ln2_q<S>);
             return approx<K>{neg ? -lv : lv, S, l.Error + static_cast<umax>(h) + 1};
         } else {
-            const F     r{(a.Num - a.Den) * (a.Num + a.Den), a.Den * a.Den};     // x² − 1 = (n − d)(n + d)/d²
-            const I     v = to_q<S, K>(a) + sqrt_exact_q<S, K, 2 * Bits + 2>(r); // ≥ 1, within 2
-            const fx<K> l = log_fixed<S>(v, 2);
+            const F               r{(a.Num - a.Den) * (a.Num + a.Den), a.Den * a.Den}; // x² − 1 = (n − d)(n + d)/d²
+            const I               v = to_q<S, K>(a) + sqrt_exact_q<S, K, 2 * Bits + 2>(r); // ≥ 1, within 2
+            const fixed_approx<K> l = log_fixed<S>(v, 2);
             return approx<K>{l.Value, S, l.Error};
         }
     }
@@ -13001,9 +13001,9 @@ struct pow_core {
         constexpr int SL        = S + MagE + std::bit_width(static_cast<unsigned>(BitsB));
         using I                 = fixed_t<SL + MagE + std::bit_width(static_cast<unsigned>(BitsB)) + BitsE + 8>;
         constexpr std::size_t K = limbs_of<I>;
-        const fx<K>           l = [&] {
+        const fixed_approx<K> l = [&] {
             if constexpr (ConstBase != 0) {
-                constexpr fx<K> c = log_exact<SL, K, BitsB>(exact_of<EB>(ConstBase));
+                constexpr fixed_approx<K> c = log_exact<SL, K, BitsB>(exact_of<EB>(ConstBase));
                 return c;
             } else
                 return log_exact<SL, K, BitsB>(B);
@@ -13193,7 +13193,7 @@ inline constexpr int hypot_bits = 2 * (input_bits<InX> + input_bits<InY>)+2;
 template <insidable A, insidable B>
 inline constexpr grid_rational gcd_notch =
     !notched<A> || !notched<B> ? grid_rational{0} : gcd(grid_of<A>.value_unit(), grid_of<B>.value_unit());
-} // namespace beman::inside::math::detail::ax
+} // namespace beman::inside::math::detail::engine
 
 
 // ======================================================================
@@ -14045,8 +14045,8 @@ inline double        seed_cbrt(double x) {
 
 namespace beman::inside::math::detail::dd {
 using namespace ::beman::inside::detail;
-namespace ax  = ::beman::inside::math::detail::ax;
-namespace fpk = ::beman::inside::math::detail::fp;
+namespace engine = ::beman::inside::math::detail::engine;
+namespace fpk    = ::beman::inside::math::detail::fp;
 
 using dd = fpk::hilo;
 
@@ -14153,7 +14153,7 @@ constexpr dd of_fixed(const wide_sint<K>& y, int S) noexcept {
 }
 
 inline constexpr int scale_bits = 136; // the scale (bits after the point) of the constants
-using fixed                     = ax::fixed_t<2 * scale_bits + 16>;
+using fixed                     = engine::fixed_t<2 * scale_bits + 16>;
 
 // 1/n! and 1/n at full dd precision.
 template <int S>
@@ -14172,7 +14172,7 @@ constexpr dd inv_int(int n) noexcept {
 // then its powers at scale S (a unit lost per step).
 template <int S>
 constexpr std::array<dd, 64> exp2_table(int shift) noexcept {
-    const auto         a    = ax::exp_fixed<S>(static_cast<fixed>(ax::ln2_q<S>) >> shift, 1, 4);
+    const auto         a    = engine::exp_fixed<S>(static_cast<fixed>(engine::ln2_q<S>) >> shift, 1, 4);
     const fixed        root = a.Scale == S ? a.Value : a.Value << (S - a.Scale);
     std::array<dd, 64> t{};
     fixed              p = fixed{1} << S;
@@ -14188,8 +14188,8 @@ constexpr std::array<dd, 64> exp2_table(int shift) noexcept {
 template <int S>
 constexpr std::array<dd, 256> sin_table() noexcept {
     const fixed one  = fixed{1} << S;
-    auto        root = [](fixed v) { return ax::isqrt(v << S); }; // √(v·2^-S) at scale S
-    fixed       c    = root(one >> 1);                            // cos π/4
+    auto        root = [](fixed v) { return engine::isqrt(v << S); }; // √(v·2^-S) at scale S
+    fixed       c    = root(one >> 1);                                // cos π/4
     for (int i = 0; i < 4; ++i)
         c = root((one + c) >> 1);                                             // cos π/64
     const fixed         s1 = root((one - c) >> 1), c1 = root((one + c) >> 1); // π/128
@@ -14214,7 +14214,7 @@ constexpr std::array<dd, 256> sin_table() noexcept {
 // atan(j/32), j = 0 … 32, from the integer atan: one constant expression
 // per entry, so each has the compiler's whole evaluation budget.
 template <int S, int J>
-inline constexpr dd atan_entry = of_fixed(ax::atan_fixed<S>(fixed{J} << (S - 5), 0).Value, S);
+inline constexpr dd atan_entry = of_fixed(engine::atan_fixed<S>(fixed{J} << (S - 5), 0).Value, S);
 
 template <int S>
 constexpr std::array<dd, 33> atan_table() noexcept {
@@ -14230,7 +14230,7 @@ template <int S>
 constexpr std::array<dd, 97> log_table() noexcept {
     constexpr int W    = S + 16;
     auto          step = [](int i) {
-        const fixed s = ax::inverse_series<ax::limbs_of<fixed>>(2 * i - 1, +1, W);
+        const fixed s = engine::inverse_series<engine::limbs_of<fixed>>(2 * i - 1, +1, W);
         return s + s;
     };
     const auto         to_dd = [](const fixed& s) { return of_fixed(s, W); };
@@ -14255,15 +14255,15 @@ constexpr std::array<dd, 97> log_table() noexcept {
 // fold the initializers early). D is always dd.
 template <typename D, int S = scale_bits>
 struct consts {
-    static constexpr D Ln2    = of_fixed(ax::ln2_q<S>, S);
-    static constexpr D Log2e  = of_fixed(ax::log2e_q<S>, S);
-    static constexpr D Log10e = of_fixed(ax::log10e_q<S>, S);
-    static constexpr D Pi     = of_fixed(ax::pi_q<S>, S);
+    static constexpr D Ln2    = of_fixed(engine::ln2_q<S>, S);
+    static constexpr D Log2e  = of_fixed(engine::log2e_q<S>, S);
+    static constexpr D Log10e = of_fixed(engine::log10e_q<S>, S);
+    static constexpr D Pi     = of_fixed(engine::pi_q<S>, S);
     static constexpr D HalfPi = scale(Pi, -1);
     // ln 2/4096 in parts of 31 bits (|k| < 2^22: |x| ≤ 700 · 4096/ln 2), and
     // π/128 in parts of 27 bits (|n| < 2^26: |x| ≤ 2^20 · 128/π).
-    static constexpr std::array<double, 3> Ln2By4096  = parts<3>(ax::ln2_q<S>, S + 12, 31);
-    static constexpr std::array<double, 4> PiBy128    = parts<4>(ax::pi_q<S>, S + 7, 27);
+    static constexpr std::array<double, 3> Ln2By4096  = parts<3>(engine::ln2_q<S>, S + 12, 31);
+    static constexpr std::array<double, 4> PiBy128    = parts<4>(engine::pi_q<S>, S + 7, 27);
     static constexpr std::array<D, 64>     Exp2By64   = exp2_table<S>(6);
     static constexpr std::array<D, 64>     Exp2By4096 = exp2_table<S>(12);
     static constexpr std::array<D, 256>    Sin        = sin_table<S>();
@@ -14984,7 +14984,7 @@ inline D acos_lean(D x, double& bound) noexcept {
 // and cube roots, series in wide fixed point), which decides every result and is the only
 // tier at compile time and without an FPU.
 //---------------------------------------------------------------------------
-namespace beman::inside::math::detail::ax {
+namespace beman::inside::math::detail::engine {
 //---------------------------------------------------------------------------
 // The double tier. Where an FPU is present, the double kernels
 // (detail/math_fp.hpp) give the value first, with an error bound computed
@@ -15303,7 +15303,7 @@ inline constexpr int unbounded = 1024;
 struct fp_plain {
     static double dd_eval(double x, double v) { return dd_eval_bound(x, v); }
 };
-    #define BEMAN_INSIDE_AX_KERNEL_ON(base, fn, kernel, call, mag, limit, slope_expr)                        \
+    #define BEMAN_INSIDE_ENGINE_KERNEL_ON(base, fn, kernel, call, mag, limit, slope_expr)                    \
         struct fp_##fn : base {                                                                              \
             static constexpr int Mag   = mag;                                                                \
             static constexpr int Limit = limit;                                                              \
@@ -15317,44 +15317,44 @@ struct fp_plain {
             }                                                                                                \
             static double slope([[maybe_unused]] double x, [[maybe_unused]] double v) { return slope_expr; } \
         };
-    #define BEMAN_INSIDE_AX_KERNEL(...) BEMAN_INSIDE_AX_KERNEL_ON(fp_plain, __VA_ARGS__)
+    #define BEMAN_INSIDE_ENGINE_KERNEL(...) BEMAN_INSIDE_ENGINE_KERNEL_ON(fp_plain, __VA_ARGS__)
 using fp_full_trig = fpk::trig_k<fpk::full_bits>;
 using fp_full_exp  = fpk::exp_k<fpk::full_bits>;
 using fp_full_log  = fpk::log_k<fpk::full_bits>;
 using fp_full_atan = fpk::atan_k<fpk::full_bits>;
-BEMAN_INSIDE_AX_KERNEL(sin, trig_k, sin, 1, fp_limit(fp_full_trig::Rel), 1.0)
-BEMAN_INSIDE_AX_KERNEL(cos, trig_k, cos, 1, fp_limit(fp_full_trig::Rel), 1.0)
-BEMAN_INSIDE_AX_KERNEL(exp, exp_k, exp, unbounded, fp_limit(fp_full_exp::Rel), __builtin_fabs(v))
-BEMAN_INSIDE_AX_KERNEL(exp2, exp_k, exp2, unbounded, fp_limit(fp_full_exp::Rel2), __builtin_fabs(v))
-BEMAN_INSIDE_AX_KERNEL(sinh, exp_k, sinh, unbounded, fp_limit(fp_full_exp::SinhRel), __builtin_fabs(v) + 1)
-BEMAN_INSIDE_AX_KERNEL(cosh, exp_k, cosh, unbounded, fp_limit(fp_full_exp::CoshRel), __builtin_fabs(v) + 1)
-BEMAN_INSIDE_AX_KERNEL(tanh, exp_k, tanh, 1, fp_limit(fp_full_exp::TanhRel + fp_full_exp::TanhAbs), 1.0)
-BEMAN_INSIDE_AX_KERNEL(atan, atan_k, atan, 1, fp_limit(fp_full_atan::Rel + fp_full_atan::Abs), 1.0)
-BEMAN_INSIDE_AX_KERNEL(asin,
-                       atan_k,
-                       asin,
-                       1,
-                       fp_limit(fp_full_atan::AsinRel + fp_full_atan::AsinAbs),
-                       1.0 / fpk::fp_sqrt((1.0 - x) * (1.0 + x)))
-BEMAN_INSIDE_AX_KERNEL(acos,
-                       atan_k,
-                       acos,
-                       2,
-                       fp_limit(4 * fp_full_atan::AcosRel + fp_full_atan::AcosAbs),
-                       1.0 / fpk::fp_sqrt((1.0 - x) * (1.0 + x)))
-BEMAN_INSIDE_AX_KERNEL(log, log_k, log, unbounded, fp_limit(fp_full_log::Rel), 1.0 / __builtin_fabs(x))
-BEMAN_INSIDE_AX_KERNEL(log2, log_k, log2, unbounded, fp_limit(fp_full_log::Rel2), 1.5 / __builtin_fabs(x))
-BEMAN_INSIDE_AX_KERNEL(log10, log_k, log10, unbounded, fp_limit(fp_full_log::Rel10), 1.0 / __builtin_fabs(x))
-BEMAN_INSIDE_AX_KERNEL(asinh, log_k, asinh, unbounded, fp_limit(fp_full_log::AsinhRel), 1.0)
-BEMAN_INSIDE_AX_KERNEL(
+BEMAN_INSIDE_ENGINE_KERNEL(sin, trig_k, sin, 1, fp_limit(fp_full_trig::Rel), 1.0)
+BEMAN_INSIDE_ENGINE_KERNEL(cos, trig_k, cos, 1, fp_limit(fp_full_trig::Rel), 1.0)
+BEMAN_INSIDE_ENGINE_KERNEL(exp, exp_k, exp, unbounded, fp_limit(fp_full_exp::Rel), __builtin_fabs(v))
+BEMAN_INSIDE_ENGINE_KERNEL(exp2, exp_k, exp2, unbounded, fp_limit(fp_full_exp::Rel2), __builtin_fabs(v))
+BEMAN_INSIDE_ENGINE_KERNEL(sinh, exp_k, sinh, unbounded, fp_limit(fp_full_exp::SinhRel), __builtin_fabs(v) + 1)
+BEMAN_INSIDE_ENGINE_KERNEL(cosh, exp_k, cosh, unbounded, fp_limit(fp_full_exp::CoshRel), __builtin_fabs(v) + 1)
+BEMAN_INSIDE_ENGINE_KERNEL(tanh, exp_k, tanh, 1, fp_limit(fp_full_exp::TanhRel + fp_full_exp::TanhAbs), 1.0)
+BEMAN_INSIDE_ENGINE_KERNEL(atan, atan_k, atan, 1, fp_limit(fp_full_atan::Rel + fp_full_atan::Abs), 1.0)
+BEMAN_INSIDE_ENGINE_KERNEL(asin,
+                           atan_k,
+                           asin,
+                           1,
+                           fp_limit(fp_full_atan::AsinRel + fp_full_atan::AsinAbs),
+                           1.0 / fpk::fp_sqrt((1.0 - x) * (1.0 + x)))
+BEMAN_INSIDE_ENGINE_KERNEL(acos,
+                           atan_k,
+                           acos,
+                           2,
+                           fp_limit(4 * fp_full_atan::AcosRel + fp_full_atan::AcosAbs),
+                           1.0 / fpk::fp_sqrt((1.0 - x) * (1.0 + x)))
+BEMAN_INSIDE_ENGINE_KERNEL(log, log_k, log, unbounded, fp_limit(fp_full_log::Rel), 1.0 / __builtin_fabs(x))
+BEMAN_INSIDE_ENGINE_KERNEL(log2, log_k, log2, unbounded, fp_limit(fp_full_log::Rel2), 1.5 / __builtin_fabs(x))
+BEMAN_INSIDE_ENGINE_KERNEL(log10, log_k, log10, unbounded, fp_limit(fp_full_log::Rel10), 1.0 / __builtin_fabs(x))
+BEMAN_INSIDE_ENGINE_KERNEL(asinh, log_k, asinh, unbounded, fp_limit(fp_full_log::AsinhRel), 1.0)
+BEMAN_INSIDE_ENGINE_KERNEL(
     atanh, log_k, atanh, unbounded, fp_limit(fp_full_log::Rel + fp_full_log::AtanhAbs), 1.0 / ((1.0 - x) * (1.0 + x)))
 // cbrt = e^(ln|x|/3): the log's error grows with |ln|x||, up to 2^4.
-BEMAN_INSIDE_AX_KERNEL(cbrt,
-                       pow_k,
-                       cbrt,
-                       unbounded,
-                       fp_limit(fp_full_exp::Rel + 16 * fpk::pow_k<fpk::full_bits>::YRel),
-                       x == 0 ? 0.0 : __builtin_fabs(v / x))
+BEMAN_INSIDE_ENGINE_KERNEL(cbrt,
+                           pow_k,
+                           cbrt,
+                           unbounded,
+                           fp_limit(fp_full_exp::Rel + 16 * fpk::pow_k<fpk::full_bits>::YRel),
+                           x == 0 ? 0.0 : __builtin_fabs(v / x))
 
 // acosh: the dd kernel's bound grows near 1 as 2^-92/√(1 − 1/x²).
 struct fp_acosh_eval {
@@ -15362,15 +15362,15 @@ struct fp_acosh_eval {
         return dd_abs / fpk::fp_sqrt(1.0 - 1.0 / (x * x)) + dd_eval_bound(x, v);
     }
 };
-BEMAN_INSIDE_AX_KERNEL_ON(fp_acosh_eval,
-                          acosh,
-                          log_k,
-                          acosh,
-                          unbounded,
-                          fp_limit(fp_full_log::AcoshRel),
-                          1.0 / fpk::fp_sqrt((x - 1.0) * (x + 1.0)))
-    #undef BEMAN_INSIDE_AX_KERNEL_ON
-    #undef BEMAN_INSIDE_AX_KERNEL
+BEMAN_INSIDE_ENGINE_KERNEL_ON(fp_acosh_eval,
+                              acosh,
+                              log_k,
+                              acosh,
+                              unbounded,
+                              fp_limit(fp_full_log::AcoshRel),
+                              1.0 / fpk::fp_sqrt((x - 1.0) * (x + 1.0)))
+    #undef BEMAN_INSIDE_ENGINE_KERNEL_ON
+    #undef BEMAN_INSIDE_ENGINE_KERNEL
 
 // sqrt: correctly rounded.
 struct fp_sqrt : fp_plain {
@@ -15491,7 +15491,7 @@ inline bool fp_attempt_pow_base(const In& xi, Out& out) {
 // at x and its proved bound.
 template <typename K>
 struct dd_lean {};
-    #define BEMAN_INSIDE_AX_LEAN(fn)             \
+    #define BEMAN_INSIDE_ENGINE_LEAN(fn)         \
         template <>                              \
         struct dd_lean<fp_##fn> {                \
             template <typename D>                \
@@ -15499,23 +15499,23 @@ struct dd_lean {};
                 return ddk::fn##_lean(x, bound); \
             }                                    \
         };
-BEMAN_INSIDE_AX_LEAN(sin)
-BEMAN_INSIDE_AX_LEAN(cos)
-BEMAN_INSIDE_AX_LEAN(exp)
-BEMAN_INSIDE_AX_LEAN(exp2)
-BEMAN_INSIDE_AX_LEAN(log)
-BEMAN_INSIDE_AX_LEAN(log2)
-BEMAN_INSIDE_AX_LEAN(log10)
-BEMAN_INSIDE_AX_LEAN(sinh)
-BEMAN_INSIDE_AX_LEAN(cosh)
-BEMAN_INSIDE_AX_LEAN(tanh)
-BEMAN_INSIDE_AX_LEAN(asinh)
-BEMAN_INSIDE_AX_LEAN(acosh)
-BEMAN_INSIDE_AX_LEAN(atanh)
-BEMAN_INSIDE_AX_LEAN(atan)
-BEMAN_INSIDE_AX_LEAN(asin)
-BEMAN_INSIDE_AX_LEAN(acos)
-    #undef BEMAN_INSIDE_AX_LEAN
+BEMAN_INSIDE_ENGINE_LEAN(sin)
+BEMAN_INSIDE_ENGINE_LEAN(cos)
+BEMAN_INSIDE_ENGINE_LEAN(exp)
+BEMAN_INSIDE_ENGINE_LEAN(exp2)
+BEMAN_INSIDE_ENGINE_LEAN(log)
+BEMAN_INSIDE_ENGINE_LEAN(log2)
+BEMAN_INSIDE_ENGINE_LEAN(log10)
+BEMAN_INSIDE_ENGINE_LEAN(sinh)
+BEMAN_INSIDE_ENGINE_LEAN(cosh)
+BEMAN_INSIDE_ENGINE_LEAN(tanh)
+BEMAN_INSIDE_ENGINE_LEAN(asinh)
+BEMAN_INSIDE_ENGINE_LEAN(acosh)
+BEMAN_INSIDE_ENGINE_LEAN(atanh)
+BEMAN_INSIDE_ENGINE_LEAN(atan)
+BEMAN_INSIDE_ENGINE_LEAN(asin)
+BEMAN_INSIDE_ENGINE_LEAN(acos)
+    #undef BEMAN_INSIDE_ENGINE_LEAN
 template <typename K>
 concept has_dd_lean = requires(ddk::dd x, double& b) { dd_lean<K>::template value<ddk::dd>(x, b); };
 
@@ -15665,10 +15665,10 @@ template <insidable Out, insidable... Ins>
 inline constexpr bool dd_tier = false;
 #endif
 
-} // namespace beman::inside::math::detail::ax
+} // namespace beman::inside::math::detail::engine
 
 namespace beman::inside::math::adaptive {
-namespace ax = ::beman::inside::math::detail::ax;
+namespace engine = ::beman::inside::math::detail::engine;
 using ::beman::inside::detail::grid_rational;
 using ::beman::inside::detail::wide_valued;
 
@@ -15792,9 +15792,9 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
                            exact_of_grid<exact_min_limbs>(F);
         if constexpr (checked)
             return try_store<Out, flags_of<Out>>(
-                [&](Out& out, auto&& policy) { out = ax::store_exact<Out>(v, policy); });
+                [&](Out& out, auto&& policy) { out = engine::store_exact<Out>(v, policy); });
         else
-            return ax::store_exact<Out>(v, make_policy<flags_of<Out>>());
+            return engine::store_exact<Out>(v, make_policy<flags_of<Out>>());
     } else {
         const auto lo                   = fn.template operator()<bracket_t<Out, round_floor>>(anchored_input(xs)...);
         const auto hi                   = fn.template operator()<bracket_t<Out, round_ceil>>(anchored_input(xs)...);
@@ -15810,9 +15810,9 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
             if (!hi)
                 return R{std::unexpected{hi.error()}};
             return ::beman::inside::detail::try_store<Out, flags_of<Out>>(
-                [&](Out& out, auto&& policy) { out = ax::store_exact<Out>(mid(*lo, *hi), policy); });
+                [&](Out& out, auto&& policy) { out = engine::store_exact<Out>(mid(*lo, *hi), policy); });
         } else
-            return ax::store_exact<Out>(mid(lo, hi), make_policy<flags_of<Out>>());
+            return engine::store_exact<Out>(mid(lo, hi), make_policy<flags_of<Out>>());
     }
 }
 
@@ -15831,7 +15831,7 @@ template <insidable Out, bool FP, bool DD, typename F, typename D, typename I>
 tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integer_path) -> decltype(integer_path()) {
 #if BEMAN_INSIDE_MATH_INSTRUMENT
     const auto integer = [&] {
-        ax::note<ax::probe::integer_run>();
+        engine::note<engine::probe::integer_run>();
         return integer_path();
     };
 #else
@@ -15839,11 +15839,11 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
 #endif
     if constexpr (FP || DD)
         if !consteval {
-            if (!ax::integer_only()) {
+            if (!engine::integer_only()) {
                 if constexpr (FP) {
                     if (Out r; fp(r))
                         return r;
-                    return ax::cold_call([&]() -> decltype(integer()) {
+                    return engine::cold_call([&]() -> decltype(integer()) {
                         if constexpr (DD)
                             if (Out r; dd(r))
                                 return r;
@@ -15852,7 +15852,7 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
                 } else {
                     if (Out r; dd(r))
                         return r;
-                    return ax::cold_call(integer);
+                    return engine::cold_call(integer);
                 }
             }
         }
@@ -15863,128 +15863,153 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
 // dd attempts as expressions in r (nothing of them without an FPU). FP and
 // DD in parentheses.
 #ifndef BEMAN_INSIDE_MATH_NO_FP
-    #define BEMAN_INSIDE_AX_TIERS(Out, FP, DD, fp_call, dd_call, ...)                                        \
+    #define BEMAN_INSIDE_ENGINE_TIERS(Out, FP, DD, fp_call, dd_call, ...)                                    \
         return ::beman::inside::math::adaptive::tiers<Out, FP, DD>([&](auto& r) -> bool { return fp_call; }, \
                                                                    [&](auto& r) -> bool { return dd_call; }, \
                                                                    [&] { return __VA_ARGS__; });
 #else
-    #define BEMAN_INSIDE_AX_TIERS(Out, FP, DD, fp_call, dd_call, ...)                                     \
-        ::beman::inside::math::detail::ax::note<::beman::inside::math::detail::ax::probe::integer_run>(); \
+    #define BEMAN_INSIDE_ENGINE_TIERS(Out, FP, DD, fp_call, dd_call, ...)                                         \
+        ::beman::inside::math::detail::engine::note<::beman::inside::math::detail::engine::probe::integer_run>(); \
         return __VA_ARGS__;
 #endif
 
 // The tiers of a one-input kernel fn, where ok holds.
-#define BEMAN_INSIDE_AX_KERNEL_TIERS(Out, In, fn, x, ok, ...)          \
-    BEMAN_INSIDE_AX_TIERS(Out,                                         \
-                          (ax::fp_tier<Out, ax::fp_##fn, In> && (ok)), \
-                          (ax::dd_tier<Out, In> && (ok)),              \
-                          (ax::fp_attempt<Out, ax::fp_##fn>(x, r)),    \
-                          (ax::dd_attempt<Out, ax::fp_##fn>(x, r)),    \
-                          __VA_ARGS__)
+#define BEMAN_INSIDE_ENGINE_KERNEL_TIERS(Out, In, fn, x, ok, ...)                  \
+    BEMAN_INSIDE_ENGINE_TIERS(Out,                                                 \
+                              (engine::fp_tier<Out, engine::fp_##fn, In> && (ok)), \
+                              (engine::dd_tier<Out, In> && (ok)),                  \
+                              (engine::fp_attempt<Out, engine::fp_##fn>(x, r)),    \
+                              (engine::dd_attempt<Out, engine::fp_##fn>(x, r)),    \
+                              __VA_ARGS__)
 
 // The table tier's lookup, inside an _into form: In has few slots and every
 // result lies in Out's range.
-#define BEMAN_INSIDE_AX_TABLE(Out, In, x)                                                                            \
-    if constexpr (ax::table_input<In> && ax::table_output<Out>) {                                                    \
-        using table = ax::result_table<Out, In, ax::start_bits<Out>, [](In v) { return core{ax::exact_input(v)}; }>; \
-        if constexpr (table::Table.Valid)                                                                            \
-            return Out::from_raw(table::Table.Raw[ax::offset_of(x)]);                                                \
+#define BEMAN_INSIDE_ENGINE_TABLE(Out, In, x)                                           \
+    if constexpr (engine::table_input<In> && engine::table_output<Out>) {               \
+        using table = engine::result_table<Out, In, engine::start_bits<Out>, [](In v) { \
+            return core{engine::exact_input(v)};                                        \
+        }>;                                                                             \
+        if constexpr (table::Table.Valid)                                               \
+            return Out::from_raw(table::Table.Raw[engine::offset_of(x)]);               \
     }
 
 // Every transcendental rounds onto the output grid: Out's policy needs a
 // rounding mode, like any assignment that may round.
 template <insidable Out>
 consteval void require_rounding() noexcept {
-    static_assert(has_flag(flags_of<Out>, snap) || !ax::notched<Out>,
+    static_assert(has_flag(flags_of<Out>, snap) || !engine::notched<Out>,
                   "beman::inside::math: the result is rounded onto Out's grid - Out must permit rounding "
                   "(declare it with round_nearest, round_floor, ...)");
 }
 
 // One-input functions: the domain (checked on In's grid, `true` for none),
 // the double kernel's argument range (fp_ok), and the integer core.
-#define BEMAN_INSIDE_AX_UNARY(fn, domain, msg, fp_ok, ...)                                                 \
-    template <insidable In>                                                                                \
-    inline constexpr bool fn##_domain = domain;                                                            \
-    template <insidable Out, insidable In>                                                                 \
-    [[nodiscard]] constexpr Out fn##_into(In x) {                                                          \
-        static_assert(fn##_domain<In>, "beman::inside::math::" #fn ": " msg);                              \
-        require_rounding<Out>();                                                                           \
-        if constexpr (anchoring::unanchored_call<Out, In>)                                                 \
-            return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return fn##_into<O>(v); }, x);   \
-        else {                                                                                             \
-            using core = __VA_ARGS__;                                                                      \
-            BEMAN_INSIDE_AX_TABLE(Out, In, x)                                                              \
-            BEMAN_INSIDE_AX_KERNEL_TIERS(                                                                  \
-                Out, In, fn, x, (fp_ok), ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_input(x)})) \
-        }                                                                                                  \
+#define BEMAN_INSIDE_ENGINE_UNARY(fn, domain, msg, fp_ok, ...)                                           \
+    template <insidable In>                                                                              \
+    inline constexpr bool fn##_domain = domain;                                                          \
+    template <insidable Out, insidable In>                                                               \
+    [[nodiscard]] constexpr Out fn##_into(In x) {                                                        \
+        static_assert(fn##_domain<In>, "beman::inside::math::" #fn ": " msg);                            \
+        require_rounding<Out>();                                                                         \
+        if constexpr (anchoring::unanchored_call<Out, In>)                                               \
+            return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return fn##_into<O>(v); }, x); \
+        else {                                                                                           \
+            using core = __VA_ARGS__;                                                                    \
+            BEMAN_INSIDE_ENGINE_TABLE(Out, In, x)                                                        \
+            BEMAN_INSIDE_ENGINE_KERNEL_TIERS(                                                            \
+                Out,                                                                                     \
+                In,                                                                                      \
+                fn,                                                                                      \
+                x,                                                                                       \
+                (fp_ok),                                                                                 \
+                engine::evaluate<Out, engine::start_bits<Out>>(core{engine::exact_input(x)}))            \
+        }                                                                                                \
     }
 
-BEMAN_INSIDE_AX_UNARY(
-    exp, true, "", ax::in_max<In> <= 700, ax::exp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::exp_out_kmax<Out, In>>)
-BEMAN_INSIDE_AX_UNARY(exp2,
-                      true,
-                      "",
-                      ax::in_max<In> <= 1000,
-                      ax::exp2_core<ax::input_limbs<In>, ax::in_mag<In>, ax::exp_out_kmax<Out, In>>)
-BEMAN_INSIDE_AX_UNARY(
-    sin, true, "", ax::in_max<In> <= 0x1p20, ax::trig_core<ax::input_limbs<In>, ax::in_mag<In>, ax::trig::sin, 1>)
-BEMAN_INSIDE_AX_UNARY(
-    cos, true, "", ax::in_max<In> <= 0x1p20, ax::trig_core<ax::input_limbs<In>, ax::in_mag<In>, ax::trig::cos, 1>)
-BEMAN_INSIDE_AX_UNARY(atan, true, "", true, ax::atan_core<ax::input_limbs<In>>)
-BEMAN_INSIDE_AX_UNARY(sinh,
-                      true,
-                      "",
-                      ax::in_max<In> <= 700,
-                      ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::sinh, ax::exp_out_kmax<Out, In>>)
-BEMAN_INSIDE_AX_UNARY(cosh,
-                      true,
-                      "",
-                      ax::in_max<In> <= 700,
-                      ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::cosh, ax::exp_out_kmax<Out, In>>)
-BEMAN_INSIDE_AX_UNARY(
-    tanh, true, "", ax::in_max<In> <= 300, ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::tanh, 1>)
-BEMAN_INSIDE_AX_UNARY(asinh,
-                      true,
-                      "",
-                      ax::in_max<In> <= 0x1p500,
-                      ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::asinh, ax::input_bits<In>>)
-BEMAN_INSIDE_AX_UNARY(cbrt, true, "", true, ax::cbrt_core<ax::input_limbs<In>, ax::input_bits<In>>)
-BEMAN_INSIDE_AX_UNARY(log,
-                      (lower_of<In> > 0),
-                      "input must be strictly positive",
-                      true,
-                      ax::log_core<ax::input_limbs<In>, ax::input_bits<In>>)
-BEMAN_INSIDE_AX_UNARY(log2,
-                      (lower_of<In> > 0),
-                      "input must be strictly positive",
-                      true,
-                      ax::logb_core<ax::input_limbs<In>, 2, ax::input_bits<In>>)
-BEMAN_INSIDE_AX_UNARY(log10,
-                      (lower_of<In> > 0),
-                      "input must be strictly positive",
-                      true,
-                      ax::logb_core<ax::input_limbs<In>, 10, ax::input_bits<In>>)
-BEMAN_INSIDE_AX_UNARY(asin,
-                      (lower_of<In> >= -1 && upper_of<In> <= 1),
-                      "input must be in [-1, 1]",
-                      true,
-                      ax::asin_core<ax::input_limbs<In>, ax::input_bits<In>>)
-BEMAN_INSIDE_AX_UNARY(acos,
-                      (lower_of<In> >= -1 && upper_of<In> <= 1),
-                      "input must be in [-1, 1]",
-                      true,
-                      ax::acos_core<ax::input_limbs<In>, ax::input_bits<In>>)
-BEMAN_INSIDE_AX_UNARY(acosh,
-                      (lower_of<In> >= 1),
-                      "input must be at least 1",
-                      ax::in_max<In> <= 0x1p500,
-                      ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::acosh, ax::input_bits<In>>)
-BEMAN_INSIDE_AX_UNARY(atanh,
-                      (lower_of<In> > -1 && upper_of<In> < 1),
-                      "input must be in (-1, 1)",
-                      true,
-                      ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::atanh, ax::input_bits<In>>)
-#undef BEMAN_INSIDE_AX_UNARY
+BEMAN_INSIDE_ENGINE_UNARY(exp,
+                          true,
+                          "",
+                          engine::in_max<In> <= 700,
+                          engine::exp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_out_kmax<Out, In>>)
+BEMAN_INSIDE_ENGINE_UNARY(
+    exp2,
+    true,
+    "",
+    engine::in_max<In> <= 1000,
+    engine::exp2_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_out_kmax<Out, In>>)
+BEMAN_INSIDE_ENGINE_UNARY(sin,
+                          true,
+                          "",
+                          engine::in_max<In> <= 0x1p20,
+                          engine::trig_core<engine::input_limbs<In>, engine::in_mag<In>, engine::trig::sin, 1>)
+BEMAN_INSIDE_ENGINE_UNARY(cos,
+                          true,
+                          "",
+                          engine::in_max<In> <= 0x1p20,
+                          engine::trig_core<engine::input_limbs<In>, engine::in_mag<In>, engine::trig::cos, 1>)
+BEMAN_INSIDE_ENGINE_UNARY(atan, true, "", true, engine::atan_core<engine::input_limbs<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(
+    sinh,
+    true,
+    "",
+    engine::in_max<In> <= 700,
+    engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::sinh, engine::exp_out_kmax<Out, In>>)
+BEMAN_INSIDE_ENGINE_UNARY(
+    cosh,
+    true,
+    "",
+    engine::in_max<In> <= 700,
+    engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::cosh, engine::exp_out_kmax<Out, In>>)
+BEMAN_INSIDE_ENGINE_UNARY(tanh,
+                          true,
+                          "",
+                          engine::in_max<In> <= 300,
+                          engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::tanh, 1>)
+BEMAN_INSIDE_ENGINE_UNARY(
+    asinh,
+    true,
+    "",
+    engine::in_max<In> <= 0x1p500,
+    engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::asinh, engine::input_bits<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(cbrt, true, "", true, engine::cbrt_core<engine::input_limbs<In>, engine::input_bits<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(log,
+                          (lower_of<In> > 0),
+                          "input must be strictly positive",
+                          true,
+                          engine::log_core<engine::input_limbs<In>, engine::input_bits<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(log2,
+                          (lower_of<In> > 0),
+                          "input must be strictly positive",
+                          true,
+                          engine::logb_core<engine::input_limbs<In>, 2, engine::input_bits<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(log10,
+                          (lower_of<In> > 0),
+                          "input must be strictly positive",
+                          true,
+                          engine::logb_core<engine::input_limbs<In>, 10, engine::input_bits<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(asin,
+                          (lower_of<In> >= -1 && upper_of<In> <= 1),
+                          "input must be in [-1, 1]",
+                          true,
+                          engine::asin_core<engine::input_limbs<In>, engine::input_bits<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(acos,
+                          (lower_of<In> >= -1 && upper_of<In> <= 1),
+                          "input must be in [-1, 1]",
+                          true,
+                          engine::acos_core<engine::input_limbs<In>, engine::input_bits<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(
+    acosh,
+    (lower_of<In> >= 1),
+    "input must be at least 1",
+    engine::in_max<In> <= 0x1p500,
+    engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::acosh, engine::input_bits<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(
+    atanh,
+    (lower_of<In> > -1 && upper_of<In> < 1),
+    "input must be in (-1, 1)",
+    true,
+    engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::atanh, engine::input_bits<In>>)
+#undef BEMAN_INSIDE_ENGINE_UNARY
 
 // sqrt of a non-negative input.
 template <insidable Out, insidable In>
@@ -15994,13 +16019,14 @@ template <insidable Out, insidable In>
     if constexpr (anchoring::unanchored_call<Out, In>)
         return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return sqrt_into<O>(v); }, x);
     else {
-        BEMAN_INSIDE_AX_KERNEL_TIERS(Out,
-                                     In,
-                                     sqrt,
-                                     x,
-                                     true,
-                                     ax::evaluate<Out, ax::start_bits<Out>>(
-                                         ax::sqrt_core<ax::input_limbs<In>, ax::input_bits<In>>{ax::exact_input(x)}))
+        BEMAN_INSIDE_ENGINE_KERNEL_TIERS(
+            Out,
+            In,
+            sqrt,
+            x,
+            true,
+            engine::evaluate<Out, engine::start_bits<Out>>(
+                engine::sqrt_core<engine::input_limbs<In>, engine::input_bits<In>>{engine::exact_input(x)}))
     }
 }
 
@@ -16012,10 +16038,11 @@ template <insidable Out, insidable In>
     if constexpr (anchoring::unanchored_call<Out, In>)
         return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return sqrt_into<O>(v); }, x);
     else {
-        const auto v = ax::exact_input(x);
+        const auto v = engine::exact_input(x);
         if (v.Num.negative())
             return std::unexpected(errc::domain_error);
-        return ax::evaluate<Out, ax::start_bits<Out>>(ax::sqrt_core<ax::input_limbs<In>, ax::input_bits<In>>{v});
+        return engine::evaluate<Out, engine::start_bits<Out>>(
+            engine::sqrt_core<engine::input_limbs<In>, engine::input_bits<In>>{v});
     }
 }
 
@@ -16031,13 +16058,14 @@ template <insidable Out, insidable In>
     if constexpr (anchoring::unanchored_call<Out, In>)
         return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return tan_into<O>(v); }, x);
     else {
-        using core = ax::trig_core<ax::input_limbs<In>, ax::in_mag<In>, ax::trig::tan, ax::out_kmax<Out>>;
-        BEMAN_INSIDE_AX_TIERS(Out,
-                              (ax::fp_tier<Out, ax::fp_tan, In> && ax::in_max<In> <= 0x1p20),
-                              (ax::dd_tier<Out, In> && ax::in_max<In> <= 0x1p20),
-                              (ax::fp_attempt_tan<Out>(x, r)),
-                              (ax::dd_attempt_tan<Out>(x, r)),
-                              ax::evaluate_checked<Out, ax::start_bits<Out>>(core{ax::exact_input(x)}))
+        using core =
+            engine::trig_core<engine::input_limbs<In>, engine::in_mag<In>, engine::trig::tan, engine::out_kmax<Out>>;
+        BEMAN_INSIDE_ENGINE_TIERS(Out,
+                                  (engine::fp_tier<Out, engine::fp_tan, In> && engine::in_max<In> <= 0x1p20),
+                                  (engine::dd_tier<Out, In> && engine::in_max<In> <= 0x1p20),
+                                  (engine::fp_attempt_tan<Out>(x, r)),
+                                  (engine::dd_attempt_tan<Out>(x, r)),
+                                  engine::evaluate_checked<Out, engine::start_bits<Out>>(core{engine::exact_input(x)}))
     }
 }
 
@@ -16047,15 +16075,16 @@ template <insidable Out, insidable InY, insidable InX>
     if constexpr (anchoring::unanchored_call<Out, InY, InX>)
         return anchoring::via_anchored<Out>([]<insidable O>(auto a, auto b) { return atan2_into<O>(a, b); }, y, x);
     else {
-        constexpr std::size_t E = std::max(ax::input_limbs<InY>, ax::input_limbs<InX>);
+        constexpr std::size_t E = std::max(engine::input_limbs<InY>, engine::input_limbs<InX>);
         using F                 = ::beman::inside::detail::wide_rational<E>;
-        BEMAN_INSIDE_AX_TIERS(
-            Out,
-            (ax::fp_tier<Out, ax::fp_atan2, InY, InX> && ax::in_max<InY> <= 0x1p500 && ax::in_max<InX> <= 0x1p500),
-            (ax::dd_tier<Out, InY, InX>),
-            (ax::fp_attempt_atan2<Out>(y, x, r)),
-            (ax::dd_attempt_atan2<Out>(y, x, r)),
-            ax::evaluate<Out, ax::start_bits<Out>>(ax::atan2_core<E>{F{ax::exact_input(y)}, F{ax::exact_input(x)}}))
+        BEMAN_INSIDE_ENGINE_TIERS(Out,
+                                  (engine::fp_tier<Out, engine::fp_atan2, InY, InX> &&
+                                   engine::in_max<InY> <= 0x1p500 && engine::in_max<InX> <= 0x1p500),
+                                  (engine::dd_tier<Out, InY, InX>),
+                                  (engine::fp_attempt_atan2<Out>(y, x, r)),
+                                  (engine::dd_attempt_atan2<Out>(y, x, r)),
+                                  engine::evaluate<Out, engine::start_bits<Out>>(
+                                      engine::atan2_core<E>{F{engine::exact_input(y)}, F{engine::exact_input(x)}}))
     }
 }
 
@@ -16065,17 +16094,18 @@ template <insidable Out, insidable InX, insidable InY>
     if constexpr (anchoring::unanchored_call<Out, InX, InY>)
         return anchoring::via_anchored<Out>([]<insidable O>(auto a, auto b) { return hypot_into<O>(a, b); }, x, y);
     else {
-        constexpr int         Bits = ax::hypot_bits<InX, InY>;
+        constexpr int         Bits = engine::hypot_bits<InX, InY>;
         constexpr std::size_t E    = ::beman::inside::detail::limbs_for_bits(Bits);
         using F                    = ::beman::inside::detail::wide_rational<E>;
-        BEMAN_INSIDE_AX_TIERS(
-            Out,
-            (ax::fp_tier<Out, ax::fp_hypot, InX, InY> && ax::in_max<InX> <= 0x1p500 && ax::in_max<InY> <= 0x1p500),
-            (ax::dd_tier<Out, InX, InY>),
-            (ax::fp_attempt_hypot<Out>(x, y, r)),
-            (ax::dd_attempt_hypot<Out>(x, y, r)),
-            ax::evaluate<Out, ax::start_bits<Out>>(ax::sqrt_core<E, Bits>{
-                F{ax::exact_input(x)} * F{ax::exact_input(x)} + F{ax::exact_input(y)} * F{ax::exact_input(y)}}))
+        BEMAN_INSIDE_ENGINE_TIERS(Out,
+                                  (engine::fp_tier<Out, engine::fp_hypot, InX, InY> &&
+                                   engine::in_max<InX> <= 0x1p500 && engine::in_max<InY> <= 0x1p500),
+                                  (engine::dd_tier<Out, InX, InY>),
+                                  (engine::fp_attempt_hypot<Out>(x, y, r)),
+                                  (engine::dd_attempt_hypot<Out>(x, y, r)),
+                                  engine::evaluate<Out, engine::start_bits<Out>>(engine::sqrt_core<E, Bits>{
+                                      F{engine::exact_input(x)} * F{engine::exact_input(x)} +
+                                      F{engine::exact_input(y)} * F{engine::exact_input(y)}}))
     }
 }
 
@@ -16089,29 +16119,29 @@ template <insidable Out, insidable InB, insidable InE>
         return anchoring::via_anchored<Out>([]<insidable O>(auto a, auto b) { return pow_into<O>(a, b); }, base, exp);
     else {
         const auto integer = [&]() -> std::expected<Out, errc> {
-            const auto b = ax::exact_input(base);
+            const auto b = engine::exact_input(base);
             if (b.Num.negative())
                 return std::unexpected(errc::domain_error);
             if (b.Num.is_zero()) {
-                const auto e = ax::exact_input(exp);
+                const auto e = engine::exact_input(exp);
                 if (e.Num.negative())
                     return std::unexpected(errc::division_by_zero);
                 return Out::try_make(e.Num.is_zero() ? 1 : 0); // Out's policy: range, clamp
             }
-            using core = ax::pow_core<ax::input_limbs<InB>,
-                                      ax::input_limbs<InE>,
-                                      ax::in_mag<InE>,
-                                      ax::pow_out_kmax<Out, InB, InE>,
-                                      ax::input_bits<InB>,
-                                      ax::input_bits<InE>>;
-            return ax::evaluate_checked<Out, ax::start_bits<Out>>(core{b, ax::exact_input(exp)});
+            using core = engine::pow_core<engine::input_limbs<InB>,
+                                          engine::input_limbs<InE>,
+                                          engine::in_mag<InE>,
+                                          engine::pow_out_kmax<Out, InB, InE>,
+                                          engine::input_bits<InB>,
+                                          engine::input_bits<InE>>;
+            return engine::evaluate_checked<Out, engine::start_bits<Out>>(core{b, engine::exact_input(exp)});
         };
-        BEMAN_INSIDE_AX_TIERS(Out,
-                              (ax::fp_tier<Out, ax::fp_pow, InB, InE>),
-                              (ax::dd_tier<Out, InB, InE>),
-                              (ax::fp_attempt_pow<Out>(base, exp, r)),
-                              (ax::dd_attempt_pow<Out>(base, exp, r)),
-                              integer())
+        BEMAN_INSIDE_ENGINE_TIERS(Out,
+                                  (engine::fp_tier<Out, engine::fp_pow, InB, InE>),
+                                  (engine::dd_tier<Out, InB, InE>),
+                                  (engine::fp_attempt_pow<Out>(base, exp, r)),
+                                  (engine::dd_attempt_pow<Out>(base, exp, r)),
+                                  integer())
     }
 }
 
@@ -16123,19 +16153,20 @@ template <insidable Out, imax Base, insidable In>
     if constexpr (anchoring::unanchored_call<Out, In>)
         return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return pow_base_into<O, Base>(v); }, x);
     else {
-        using core = ax::pow_core<2,
-                                  ax::input_limbs<In>,
-                                  ax::in_mag<In>,
-                                  ax::pow_base_out_kmax<Out, In, Base>,
-                                  66,
-                                  ax::input_bits<In>,
-                                  Base>;
-        BEMAN_INSIDE_AX_TIERS(Out,
-                              (ax::fp_tier<Out, ax::fp_pow_base, In> && ax::in_max<In> <= 1000),
-                              (ax::dd_tier<Out, In> && ax::in_max<In> <= 700),
-                              (ax::fp_attempt_pow_base<Out, Base>(x, r)),
-                              (ax::dd_attempt_pow_base<Out, Base>(x, r)),
-                              ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_of<2>(Base), ax::exact_input(x)}))
+        using core = engine::pow_core<2,
+                                      engine::input_limbs<In>,
+                                      engine::in_mag<In>,
+                                      engine::pow_base_out_kmax<Out, In, Base>,
+                                      66,
+                                      engine::input_bits<In>,
+                                      Base>;
+        BEMAN_INSIDE_ENGINE_TIERS(
+            Out,
+            (engine::fp_tier<Out, engine::fp_pow_base, In> && engine::in_max<In> <= 1000),
+            (engine::dd_tier<Out, In> && engine::in_max<In> <= 700),
+            (engine::fp_attempt_pow_base<Out, Base>(x, r)),
+            (engine::dd_attempt_pow_base<Out, Base>(x, r)),
+            engine::evaluate<Out, engine::start_bits<Out>>(core{engine::exact_of<2>(Base), engine::exact_input(x)}))
     }
 }
 
@@ -16157,117 +16188,126 @@ consteval bool deducible() noexcept {
 
 namespace results {
 template <insidable In>
-using exp = ax::increasing_t<In, ax::exp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::exp_kmax<In>>>;
+using exp =
+    engine::increasing_t<In, engine::exp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_kmax<In>>>;
 template <insidable In>
-using exp2 = ax::increasing_t<In, ax::exp2_core<ax::input_limbs<In>, ax::in_mag<In>, ax::exp_kmax<In>>>;
+using exp2 =
+    engine::increasing_t<In, engine::exp2_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_kmax<In>>>;
 template <insidable In>
-using log = ax::increasing_t<In, ax::log_core<ax::input_limbs<In>, ax::input_bits<In>>>;
+using log = engine::increasing_t<In, engine::log_core<engine::input_limbs<In>, engine::input_bits<In>>>;
 template <insidable In>
-using log2 = ax::increasing_t<In, ax::logb_core<ax::input_limbs<In>, 2, ax::input_bits<In>>>;
+using log2 = engine::increasing_t<In, engine::logb_core<engine::input_limbs<In>, 2, engine::input_bits<In>>>;
 template <insidable In>
-using log10 = ax::increasing_t<In, ax::logb_core<ax::input_limbs<In>, 10, ax::input_bits<In>>>;
+using log10 = engine::increasing_t<In, engine::logb_core<engine::input_limbs<In>, 10, engine::input_bits<In>>>;
 template <insidable In>
-using sqrt = ax::increasing_t<In, ax::sqrt_core<ax::input_limbs<In>, ax::input_bits<In>>>;
+using sqrt = engine::increasing_t<In, engine::sqrt_core<engine::input_limbs<In>, engine::input_bits<In>>>;
 template <insidable In>
-using cbrt = ax::increasing_t<In, ax::cbrt_core<ax::input_limbs<In>, ax::input_bits<In>>>;
+using cbrt = engine::increasing_t<In, engine::cbrt_core<engine::input_limbs<In>, engine::input_bits<In>>>;
 template <insidable In>
-using atan = ax::increasing_t<In, ax::atan_core<ax::input_limbs<In>>>;
+using atan = engine::increasing_t<In, engine::atan_core<engine::input_limbs<In>>>;
 template <insidable In>
-using asin = ax::increasing_t<In, ax::asin_core<ax::input_limbs<In>, ax::input_bits<In>>>;
+using asin = engine::increasing_t<In, engine::asin_core<engine::input_limbs<In>, engine::input_bits<In>>>;
 template <insidable In>
-using acos = ax::decreasing_t<In, ax::acos_core<ax::input_limbs<In>, ax::input_bits<In>>>;
+using acos = engine::decreasing_t<In, engine::acos_core<engine::input_limbs<In>, engine::input_bits<In>>>;
 template <insidable In>
-using sinh = ax::increasing_t<In, ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::sinh, ax::exp_kmax<In>>>;
+using sinh = engine::increasing_t<
+    In,
+    engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::sinh, engine::exp_kmax<In>>>;
 template <insidable In>
-using tanh = ax::increasing_t<In, ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::tanh, 1>>;
+using tanh =
+    engine::increasing_t<In, engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::tanh, 1>>;
 template <insidable In>
-using asinh =
-    ax::increasing_t<In, ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::asinh, ax::input_bits<In>>>;
+using asinh = engine::increasing_t<
+    In,
+    engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::asinh, engine::input_bits<In>>>;
 template <insidable In>
-using acosh =
-    ax::increasing_t<In, ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::acosh, ax::input_bits<In>>>;
+using acosh = engine::increasing_t<
+    In,
+    engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::acosh, engine::input_bits<In>>>;
 template <insidable In>
-using atanh =
-    ax::increasing_t<In, ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::atanh, ax::input_bits<In>>>;
+using atanh = engine::increasing_t<
+    In,
+    engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::atanh, engine::input_bits<In>>>;
 template <insidable In>
-using sin = inside<{{-1, 1}, notch_of<In>}, ax::result_policy<In>>;
+using sin = inside<{{-1, 1}, notch_of<In>}, engine::result_policy<In>>;
 template <insidable In>
 using cos = sin<In>;
 template <insidable In>
-using tan = inside<{{-1024, 1024}, notch_of<In>}, ax::result_policy<In>>;
+using tan = inside<{{-1024, 1024}, notch_of<In>}, engine::result_policy<In>>;
 
 // cosh is even: its least value is 1 when In spans 0, else at the end
 // nearer 0.
 template <insidable In>
-using cosh_core = ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::cosh, ax::exp_kmax<In>>;
+using cosh_core =
+    engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::cosh, engine::exp_kmax<In>>;
 template <insidable In>
 inline constexpr grid_rational cosh_lo = (lower_of<In> <= 0 && upper_of<In> >= 0) ? grid_rational{1}
-                                         : (lower_of<In> > 0) ? ax::bound_at<In, cosh_core<In>, false, false>
-                                                              : ax::bound_at<In, cosh_core<In>, true, false>;
+                                         : (lower_of<In> > 0) ? engine::bound_at<In, cosh_core<In>, false, false>
+                                                              : engine::bound_at<In, cosh_core<In>, true, false>;
 template <insidable In>
 inline constexpr grid_rational cosh_hi =
-    std::max(ax::bound_at<In, cosh_core<In>, true, true>, ax::bound_at<In, cosh_core<In>, false, true>);
+    std::max(engine::bound_at<In, cosh_core<In>, true, true>, engine::bound_at<In, cosh_core<In>, false, true>);
 template <insidable In>
-using cosh = ax::result_grid_t<In, cosh_lo<In>, cosh_hi<In>>;
+using cosh = engine::result_grid_t<In, cosh_lo<In>, cosh_hi<In>>;
 
 // sqrt of a mixed-sign input: [0, √max(|Lower|, |Upper|)].
 template <insidable In>
 inline constexpr grid_rational max_abs = std::max(upper_of<In>, -lower_of<In>);
 template <insidable In>
-using sqrt_signed =
-    ax::result_grid_t<In,
-                      grid_rational{0},
-                      ax::lattice_bound<notch_of<In>, true>(
-                          ax::sqrt_core<ax::input_limbs<In>, ax::input_bits<In>>{ax::grid_input<In>(max_abs<In>)})>;
+using sqrt_signed = engine::result_grid_t<In,
+                                          grid_rational{0},
+                                          engine::lattice_bound<notch_of<In>, true>(
+                                              engine::sqrt_core<engine::input_limbs<In>, engine::input_bits<In>>{
+                                                  engine::grid_input<In>(max_abs<In>)})>;
 
 // pow_base: pow_core with the base bound.
 template <imax Base, std::size_t E, int Mag, int KMax>
-struct pow_base_core : ax::pow_core<2, E, Mag, KMax> {
+struct pow_base_core : engine::pow_core<2, E, Mag, KMax> {
     constexpr pow_base_core(::beman::inside::detail::wide_rational<E> x)
-        : ax::pow_core<2, E, Mag, KMax>{ax::exact_of<2>(Base), x} {}
+        : engine::pow_core<2, E, Mag, KMax>{engine::exact_of<2>(Base), x} {}
 };
 template <imax Base, insidable In>
-using pow_base_t = ax::increasing_t<
+using pow_base_t = engine::increasing_t<
     In,
     pow_base_core<Base,
-                  ax::input_limbs<In>,
-                  ax::in_mag<In>,
-                  static_cast<int>(ax::max_abs_int<In>) * std::bit_width(static_cast<umax>(Base)) + 2>>;
+                  engine::input_limbs<In>,
+                  engine::in_mag<In>,
+                  static_cast<int>(engine::max_abs_int<In>) * std::bit_width(static_cast<umax>(Base)) + 2>>;
 
 // atan2: [−π, π] rounded outward on the gcd notch (π = atan2(0, −1)).
 template <insidable A, insidable B>
-inline constexpr grid_rational pi_up =
-    ax::lattice_bound<ax::gcd_notch<A, B>, true>(ax::atan2_core<1>{ax::exact_of<1>(0), ax::exact_of<1>(-1)});
+inline constexpr grid_rational pi_up = engine::lattice_bound<engine::gcd_notch<A, B>, true>(
+    engine::atan2_core<1>{engine::exact_of<1>(0), engine::exact_of<1>(-1)});
 template <insidable InY, insidable InX>
-using atan2 = inside<{{-pi_up<InY, InX>, pi_up<InY, InX>}, ax::gcd_notch<InY, InX>}, ax::result_policy<InY>>;
+using atan2 = inside<{{-pi_up<InY, InX>, pi_up<InY, InX>}, engine::gcd_notch<InY, InX>}, engine::result_policy<InY>>;
 
 // hypot: [0, hypot of the largest magnitudes] on the gcd notch.
 template <insidable InX, insidable InY>
-inline constexpr std::size_t hypot_limbs = ::beman::inside::detail::limbs_for_bits(ax::hypot_bits<InX, InY>);
+inline constexpr std::size_t hypot_limbs = ::beman::inside::detail::limbs_for_bits(engine::hypot_bits<InX, InY>);
 template <insidable InX, insidable InY>
 inline constexpr grid_rational hypot_hi = [] {
     using F   = ::beman::inside::detail::wide_rational<hypot_limbs<InX, InY>>;
     const F a = ::beman::inside::detail::exact_of_grid<hypot_limbs<InX, InY>>(max_abs<InX>);
     const F b = ::beman::inside::detail::exact_of_grid<hypot_limbs<InX, InY>>(max_abs<InY>);
-    return ax::lattice_bound<ax::gcd_notch<InX, InY>, true>(
-        ax::sqrt_core<hypot_limbs<InX, InY>, ax::hypot_bits<InX, InY>>{a * a + b * b});
+    return engine::lattice_bound<engine::gcd_notch<InX, InY>, true>(
+        engine::sqrt_core<hypot_limbs<InX, InY>, engine::hypot_bits<InX, InY>>{a * a + b * b});
 }();
 template <insidable InX, insidable InY>
-using hypot = inside<{{0, hypot_hi<InX, InY>}, ax::gcd_notch<InX, InY>}, ax::result_policy<InX>>;
+using hypot = inside<{{0, hypot_hi<InX, InY>}, engine::gcd_notch<InX, InY>}, engine::result_policy<InX>>;
 
 // pow: b^e is monotone in each argument for b > 0, so the extremes are at
 // the corners of the input rectangle. Notch of the base.
 template <insidable InB, insidable InE>
-using pow_core = ax::pow_core<ax::input_limbs<InB>,
-                              ax::input_limbs<InE>,
-                              ax::in_mag<InE>,
-                              ax::pow_kmax<InB, InE>,
-                              ax::input_bits<InB>,
-                              ax::input_bits<InE>>;
+using pow_core = engine::pow_core<engine::input_limbs<InB>,
+                                  engine::input_limbs<InE>,
+                                  engine::in_mag<InE>,
+                                  engine::pow_kmax<InB, InE>,
+                                  engine::input_bits<InB>,
+                                  engine::input_bits<InE>>;
 template <insidable InB, insidable InE, bool BUp, bool EUp, bool Up>
-inline constexpr grid_rational pow_corner =
-    ax::lattice_bound<notch_of<InB>, Up>(pow_core<InB, InE>{ax::grid_input<InB>(BUp ? upper_of<InB> : lower_of<InB>),
-                                                            ax::grid_input<InE>(EUp ? upper_of<InE> : lower_of<InE>)});
+inline constexpr grid_rational pow_corner = engine::lattice_bound<notch_of<InB>, Up>(
+    pow_core<InB, InE>{engine::grid_input<InB>(BUp ? upper_of<InB> : lower_of<InB>),
+                       engine::grid_input<InE>(EUp ? upper_of<InE> : lower_of<InE>)});
 // The least (Up: greatest) bound over the four corners.
 template <insidable InB, insidable InE, bool Up>
 inline constexpr grid_rational pow_extreme = [] {
@@ -16279,10 +16319,10 @@ inline constexpr grid_rational pow_extreme = [] {
 }();
 template <insidable InB, insidable InE>
 using pow =
-    inside<{{pow_extreme<InB, InE, false>, pow_extreme<InB, InE, true>}, notch_of<InB>}, ax::result_policy<InB>>;
+    inside<{{pow_extreme<InB, InE, false>, pow_extreme<InB, InE, true>}, notch_of<InB>}, engine::result_policy<InB>>;
 } // namespace results
 
-#define BEMAN_INSIDE_AX_AUTO(fn)                                                               \
+#define BEMAN_INSIDE_ENGINE_AUTO(fn)                                                           \
     template <insidable In>                                                                    \
     [[nodiscard]] constexpr auto fn(In x) {                                                    \
         static_assert(deducible<In>());                                                        \
@@ -16292,25 +16332,25 @@ using pow =
             return fn##_into<inside<{0, 1}, round_nearest>>(x); /* the _into domain message */ \
     }
 
-BEMAN_INSIDE_AX_AUTO(exp)
-BEMAN_INSIDE_AX_AUTO(exp2)
-BEMAN_INSIDE_AX_AUTO(sin)
-BEMAN_INSIDE_AX_AUTO(cos)
-BEMAN_INSIDE_AX_AUTO(tan)
-BEMAN_INSIDE_AX_AUTO(atan)
-BEMAN_INSIDE_AX_AUTO(sinh)
-BEMAN_INSIDE_AX_AUTO(cosh)
-BEMAN_INSIDE_AX_AUTO(tanh)
-BEMAN_INSIDE_AX_AUTO(asinh)
-BEMAN_INSIDE_AX_AUTO(cbrt)
-BEMAN_INSIDE_AX_AUTO(log)
-BEMAN_INSIDE_AX_AUTO(log2)
-BEMAN_INSIDE_AX_AUTO(log10)
-BEMAN_INSIDE_AX_AUTO(asin)
-BEMAN_INSIDE_AX_AUTO(acos)
-BEMAN_INSIDE_AX_AUTO(acosh)
-BEMAN_INSIDE_AX_AUTO(atanh)
-#undef BEMAN_INSIDE_AX_AUTO
+BEMAN_INSIDE_ENGINE_AUTO(exp)
+BEMAN_INSIDE_ENGINE_AUTO(exp2)
+BEMAN_INSIDE_ENGINE_AUTO(sin)
+BEMAN_INSIDE_ENGINE_AUTO(cos)
+BEMAN_INSIDE_ENGINE_AUTO(tan)
+BEMAN_INSIDE_ENGINE_AUTO(atan)
+BEMAN_INSIDE_ENGINE_AUTO(sinh)
+BEMAN_INSIDE_ENGINE_AUTO(cosh)
+BEMAN_INSIDE_ENGINE_AUTO(tanh)
+BEMAN_INSIDE_ENGINE_AUTO(asinh)
+BEMAN_INSIDE_ENGINE_AUTO(cbrt)
+BEMAN_INSIDE_ENGINE_AUTO(log)
+BEMAN_INSIDE_ENGINE_AUTO(log2)
+BEMAN_INSIDE_ENGINE_AUTO(log10)
+BEMAN_INSIDE_ENGINE_AUTO(asin)
+BEMAN_INSIDE_ENGINE_AUTO(acos)
+BEMAN_INSIDE_ENGINE_AUTO(acosh)
+BEMAN_INSIDE_ENGINE_AUTO(atanh)
+#undef BEMAN_INSIDE_ENGINE_AUTO
 
 template <insidable In>
     requires(lower_of<In> >= 0)
@@ -16353,9 +16393,9 @@ template <insidable InB, insidable InE>
 }
 } // namespace beman::inside::math::adaptive
 
-#undef BEMAN_INSIDE_AX_TIERS
-#undef BEMAN_INSIDE_AX_KERNEL_TIERS
-#undef BEMAN_INSIDE_AX_TABLE
+#undef BEMAN_INSIDE_ENGINE_TIERS
+#undef BEMAN_INSIDE_ENGINE_KERNEL_TIERS
+#undef BEMAN_INSIDE_ENGINE_TABLE
 
 
 
@@ -16468,7 +16508,7 @@ inline constexpr bool any_wide_valued = (wide_valued<Bs> || ...);
 
 template <insidable Out, std::size_t E>
 constexpr Out store_exact(const wide_rational<E>& v) {
-    return ax::store_exact<Out>(v, make_policy<flags_of<Out>>());
+    return engine::store_exact<Out>(v, make_policy<flags_of<Out>>());
 }
 
 template <round_mode M, std::size_t E>
@@ -16497,7 +16537,7 @@ inline constexpr bool int_direct = [] {
 template <round_mode M, insidable Out, insidable In>
 constexpr Out integer_into(In x) {
     if constexpr (any_wide_valued<Out, In>)
-        return store_exact<Out>(exact_to_int<M>(ax::exact_input(x)));
+        return store_exact<Out>(exact_to_int<M>(engine::exact_input(x)));
     else if constexpr (int_direct<Out, integer_result_t<In, M>, In>) {
         constexpr imax p = static_cast<imax>(notch64<In>.Num);
         constexpr imax q = static_cast<imax>(abs_den(notch64<In>.Den));
@@ -16540,7 +16580,7 @@ template <insidable Out, insidable In>
     requires(detail::abs_into_ok<Out, In>())
 [[nodiscard]] constexpr Out abs_into(In x) {
     if constexpr (detail::any_wide_valued<Out, In>)
-        return detail::store_exact<Out>(detail::ax::abs(detail::ax::exact_input(x)));
+        return detail::store_exact<Out>(detail::engine::abs(detail::engine::exact_input(x)));
     else if constexpr (std::same_as<Out, detail::abs_result_t<In>> && detail::notched<In> && detail::anchored<In> &&
                        notch_of<Out> == notch_of<In>) {
         // The same lattice through 0: |x| is the value index's magnitude.
@@ -16561,7 +16601,7 @@ template <insidable Out, insidable In>
 template <insidable Out, insidable Mag, insidable Sgn>
 [[nodiscard]] constexpr Out copysign_into(Mag mag, Sgn sgn) {
     if constexpr (detail::any_wide_valued<Out, Mag>) {
-        const auto a = detail::ax::abs(detail::ax::exact_input(mag));
+        const auto a = detail::engine::abs(detail::engine::exact_input(mag));
         return detail::store_exact<Out>(sgn < 0 ? -a : a);
     } else if constexpr (std::same_as<Out, detail::copysign_result_t<Mag, Sgn>> && detail::notched<Mag> &&
                          detail::anchored<Mag> && notch_of<Out> == notch_of<Mag>) {
@@ -16641,11 +16681,11 @@ template <insidable Out, insidable InX, insidable InY>
 [[nodiscard]] constexpr Out fmod_nonzero(InX x, InY y) {
     // x − trunc(x/y)·y on exact values.
     auto exact = [&] {
-        constexpr std::size_t E =
-            2 * (detail::ax::input_limbs<InX> > detail::ax::input_limbs<InY> ? detail::ax::input_limbs<InX>
-                                                                             : detail::ax::input_limbs<InY>)+1;
-        using F = detail::wide_rational<E>;
-        const F    a{detail::ax::exact_input(x)}, b{detail::ax::exact_input(y)};
+        constexpr std::size_t E = 2 * (detail::engine::input_limbs<InX> > detail::engine::input_limbs<InY>
+                                           ? detail::engine::input_limbs<InX>
+                                           : detail::engine::input_limbs<InY>)+1;
+        using F                 = detail::wide_rational<E>;
+        const F    a{detail::engine::exact_input(x)}, b{detail::engine::exact_input(y)};
         const auto q = (a.Num * b.Den) / (a.Den * b.Num); // truncated
         return detail::store_exact<Out>(a + F{-(q * b.Num), b.Den});
     };
@@ -16796,7 +16836,7 @@ inline constexpr grid_rational fmod_bound =
 template <insidable InX, insidable InY>
 using fmod_result_t = inside<exact_out_grid({(lower_of<InX> < 0 ? -fmod_bound<InX, InY> : grid_rational{0}),
                                              (upper_of<InX> > 0 ? fmod_bound<InX, InY> : grid_rational{0})},
-                                            ax::gcd_notch<InX, InY>,
+                                            engine::gcd_notch<InX, InY>,
                                             den_bound(grid_of<InX>) * den_bound(grid_of<InY>)),
                              out_policy<InX> | round_nearest>;
 } // namespace detail
@@ -20502,7 +20542,7 @@ template <insidable B, std::uniform_random_bit_generator G>
 #include <cstdint>
 #include <type_traits>
 
-namespace beman::inside::math::detail::ax {
+namespace beman::inside::math::detail::engine {
 // x·(n/d)·π^P for P = ±1: π from pi_q at T = S + B bits, B covering |x·n/d|,
 // so its error adds at most one unit; the division truncates one more. The
 // factor is 64-bit (KF = 1), or KF limbs for a factor past 64 bits (ħ = h/2π
@@ -20584,20 +20624,20 @@ struct pi_trig_core {
         const J               k = nearest_div(two_num, den); // quarter turns
         // r = π·(2t − k)/2 at scale S, within 1 unit.
         const I r = static_cast<I>(nearest_div((two_num - k * den) * static_cast<J>(pi_q<P>), den << (P - S + 1)));
-        const unsigned q   = static_cast<unsigned>(k.Word[0] & 3u);
-        auto           neg = [](fx<K> f) { return fx<K>{-f.Value, f.Error}; };
-        const fx<K>    v   = Cos ? ((q == 0)   ? cos_series<S>(r, 2)
-                                    : (q == 1) ? neg(sin_series<S>(r, 2))
-                                    : (q == 2) ? neg(cos_series<S>(r, 2))
-                                               : sin_series<S>(r, 2))
-                                 : ((q == 0)   ? sin_series<S>(r, 2)
-                                    : (q == 1) ? cos_series<S>(r, 2)
-                                    : (q == 2) ? neg(sin_series<S>(r, 2))
-                                               : neg(cos_series<S>(r, 2)));
+        const unsigned        q   = static_cast<unsigned>(k.Word[0] & 3u);
+        auto                  neg = [](fixed_approx<K> f) { return fixed_approx<K>{-f.Value, f.Error}; };
+        const fixed_approx<K> v   = Cos ? ((q == 0)   ? cos_series<S>(r, 2)
+                                           : (q == 1) ? neg(sin_series<S>(r, 2))
+                                           : (q == 2) ? neg(cos_series<S>(r, 2))
+                                                      : sin_series<S>(r, 2))
+                                        : ((q == 0)   ? sin_series<S>(r, 2)
+                                           : (q == 1) ? cos_series<S>(r, 2)
+                                           : (q == 2) ? neg(sin_series<S>(r, 2))
+                                                      : neg(cos_series<S>(r, 2)));
         return approx<K>{v.Value, S, v.Error};
     }
 };
-} // namespace beman::inside::math::detail::ax
+} // namespace beman::inside::math::detail::engine
 
 namespace beman::inside::units {
 namespace detail {
@@ -20652,12 +20692,12 @@ inline constexpr bool pi_angle_v = dimension_of(R.U) == dim_one && magnitude_of(
 // sin_into / cos_into of a π-scaled angle: one rounding onto Out.
 template <insidable Out, bool Cos, reference R, class V>
 constexpr Out pi_trig_into(const quantity<R, V>& q) {
-    namespace ax = beman::inside::math::detail::ax;
+    namespace engine = beman::inside::math::detail::engine;
     beman::inside::math::adaptive::require_rounding<Out>();
     constexpr rational r = beman::inside::detail::to_rational(magnitude_of(R.U).Ratio);
-    using core           = ax::pi_trig_core<ax::input_limbs<V>, Cos>;
-    return ax::evaluate<Out, ax::start_bits<Out>>(
-        core{ax::exact_input(q.numerical_value()), r.Num, beman::inside::detail::abs_den(r.Den), r.Den < 0});
+    using core           = engine::pi_trig_core<engine::input_limbs<V>, Cos>;
+    return engine::evaluate<Out, engine::start_bits<Out>>(
+        core{engine::exact_input(q.numerical_value()), r.Num, beman::inside::detail::abs_den(r.Den), r.Den < 0});
 }
 } // namespace detail
 
@@ -20667,7 +20707,7 @@ template <auto U, insidable Out, reference R, class V>
     requires is_unit_tag_v<decltype(U)> &&
              (!detail::exact_factor_v<detail::conversion_factor<R.U, decltype(U)::value>>)
 [[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q) {
-    namespace ax            = beman::inside::math::detail::ax;
+    namespace engine        = beman::inside::math::detail::engine;
     constexpr units::unit u = decltype(U)::value;
     constexpr magnitude   f = detail::conversion_factor<R.U, u>;
     static_assert(dimension_of(u) == dimension_of(R.U), "units: value_cast - the unit has another dimension");
@@ -20684,10 +20724,10 @@ template <auto U, insidable Out, reference R, class V>
     constexpr std::size_t KF = beman::inside::detail::fits_rational(f.Ratio)
                                    ? 1
                                    : beman::inside::detail::limbs_for_bits(std::max(NB, d.bit_width()) + 1);
-    using core               = ax::pi_scale_core<ax::input_limbs<V>, ax::in_mag<V> + NB + 4, f.Pi, KF>;
+    using core               = engine::pi_scale_core<engine::input_limbs<V>, engine::in_mag<V> + NB + 4, f.Pi, KF>;
     using factor             = typename core::factor;
-    return quantity<to, Out>{ax::evaluate<Out, ax::start_bits<Out>>(
-        core{ax::exact_input(q.numerical_value()), static_cast<factor>(ng ? -n : n), static_cast<factor>(d), ng})};
+    return quantity<to, Out>{engine::evaluate<Out, engine::start_bits<Out>>(
+        core{engine::exact_input(q.numerical_value()), static_cast<factor>(ng ? -n : n), static_cast<factor>(d), ng})};
 }
 
 // The number's functions, in q's unit.

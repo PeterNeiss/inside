@@ -32,8 +32,8 @@
 
 namespace beman::inside::math::detail::dd {
 using namespace ::beman::inside::detail;
-namespace ax  = ::beman::inside::math::detail::ax;
-namespace fpk = ::beman::inside::math::detail::fp;
+namespace engine = ::beman::inside::math::detail::engine;
+namespace fpk    = ::beman::inside::math::detail::fp;
 
 using dd = fpk::hilo;
 
@@ -140,7 +140,7 @@ constexpr dd of_fixed(const wide_sint<K>& y, int S) noexcept {
 }
 
 inline constexpr int scale_bits = 136; // the scale (bits after the point) of the constants
-using fixed                     = ax::fixed_t<2 * scale_bits + 16>;
+using fixed                     = engine::fixed_t<2 * scale_bits + 16>;
 
 // 1/n! and 1/n at full dd precision.
 template <int S>
@@ -159,7 +159,7 @@ constexpr dd inv_int(int n) noexcept {
 // then its powers at scale S (a unit lost per step).
 template <int S>
 constexpr std::array<dd, 64> exp2_table(int shift) noexcept {
-    const auto         a    = ax::exp_fixed<S>(static_cast<fixed>(ax::ln2_q<S>) >> shift, 1, 4);
+    const auto         a    = engine::exp_fixed<S>(static_cast<fixed>(engine::ln2_q<S>) >> shift, 1, 4);
     const fixed        root = a.Scale == S ? a.Value : a.Value << (S - a.Scale);
     std::array<dd, 64> t{};
     fixed              p = fixed{1} << S;
@@ -175,8 +175,8 @@ constexpr std::array<dd, 64> exp2_table(int shift) noexcept {
 template <int S>
 constexpr std::array<dd, 256> sin_table() noexcept {
     const fixed one  = fixed{1} << S;
-    auto        root = [](fixed v) { return ax::isqrt(v << S); }; // √(v·2^-S) at scale S
-    fixed       c    = root(one >> 1);                            // cos π/4
+    auto        root = [](fixed v) { return engine::isqrt(v << S); }; // √(v·2^-S) at scale S
+    fixed       c    = root(one >> 1);                                // cos π/4
     for (int i = 0; i < 4; ++i)
         c = root((one + c) >> 1);                                             // cos π/64
     const fixed         s1 = root((one - c) >> 1), c1 = root((one + c) >> 1); // π/128
@@ -201,7 +201,7 @@ constexpr std::array<dd, 256> sin_table() noexcept {
 // atan(j/32), j = 0 … 32, from the integer atan: one constant expression
 // per entry, so each has the compiler's whole evaluation budget.
 template <int S, int J>
-inline constexpr dd atan_entry = of_fixed(ax::atan_fixed<S>(fixed{J} << (S - 5), 0).Value, S);
+inline constexpr dd atan_entry = of_fixed(engine::atan_fixed<S>(fixed{J} << (S - 5), 0).Value, S);
 
 template <int S>
 constexpr std::array<dd, 33> atan_table() noexcept {
@@ -217,7 +217,7 @@ template <int S>
 constexpr std::array<dd, 97> log_table() noexcept {
     constexpr int W    = S + 16;
     auto          step = [](int i) {
-        const fixed s = ax::inverse_series<ax::limbs_of<fixed>>(2 * i - 1, +1, W);
+        const fixed s = engine::inverse_series<engine::limbs_of<fixed>>(2 * i - 1, +1, W);
         return s + s;
     };
     const auto         to_dd = [](const fixed& s) { return of_fixed(s, W); };
@@ -242,15 +242,15 @@ constexpr std::array<dd, 97> log_table() noexcept {
 // fold the initializers early). D is always dd.
 template <typename D, int S = scale_bits>
 struct consts {
-    static constexpr D Ln2    = of_fixed(ax::ln2_q<S>, S);
-    static constexpr D Log2e  = of_fixed(ax::log2e_q<S>, S);
-    static constexpr D Log10e = of_fixed(ax::log10e_q<S>, S);
-    static constexpr D Pi     = of_fixed(ax::pi_q<S>, S);
+    static constexpr D Ln2    = of_fixed(engine::ln2_q<S>, S);
+    static constexpr D Log2e  = of_fixed(engine::log2e_q<S>, S);
+    static constexpr D Log10e = of_fixed(engine::log10e_q<S>, S);
+    static constexpr D Pi     = of_fixed(engine::pi_q<S>, S);
     static constexpr D HalfPi = scale(Pi, -1);
     // ln 2/4096 in parts of 31 bits (|k| < 2^22: |x| ≤ 700 · 4096/ln 2), and
     // π/128 in parts of 27 bits (|n| < 2^26: |x| ≤ 2^20 · 128/π).
-    static constexpr std::array<double, 3> Ln2By4096  = parts<3>(ax::ln2_q<S>, S + 12, 31);
-    static constexpr std::array<double, 4> PiBy128    = parts<4>(ax::pi_q<S>, S + 7, 27);
+    static constexpr std::array<double, 3> Ln2By4096  = parts<3>(engine::ln2_q<S>, S + 12, 31);
+    static constexpr std::array<double, 4> PiBy128    = parts<4>(engine::pi_q<S>, S + 7, 27);
     static constexpr std::array<D, 64>     Exp2By64   = exp2_table<S>(6);
     static constexpr std::array<D, 64>     Exp2By4096 = exp2_table<S>(12);
     static constexpr std::array<D, 256>    Sin        = sin_table<S>();

@@ -235,7 +235,9 @@ TEST(Audit20261012, tan_near_pole_overflows) {
 
 // The range gates of the math kernels read a grid's largest magnitude: one
 // reaching 2^63 wrapped to −1 and passed every gate.
-TEST(Audit20261012, math_gates_fail_closed_on_huge_grids) { static_assert(math::detail::ax::in_max<uint64> > 1e18); }
+TEST(Audit20261012, math_gates_fail_closed_on_huge_grids) {
+    static_assert(math::detail::engine::in_max<uint64> > 1e18);
+}
 
 // pow of an exact rational result with a non-integer exponent sat on a
 // rounding boundary and was guessed at the precision cap.

@@ -121,7 +121,7 @@ inline constexpr bool any_wide_valued = (wide_valued<Bs> || ...);
 
 template <insidable Out, std::size_t E>
 constexpr Out store_exact(const wide_rational<E>& v) {
-    return ax::store_exact<Out>(v, make_policy<flags_of<Out>>());
+    return engine::store_exact<Out>(v, make_policy<flags_of<Out>>());
 }
 
 template <round_mode M, std::size_t E>
@@ -150,7 +150,7 @@ inline constexpr bool int_direct = [] {
 template <round_mode M, insidable Out, insidable In>
 constexpr Out integer_into(In x) {
     if constexpr (any_wide_valued<Out, In>)
-        return store_exact<Out>(exact_to_int<M>(ax::exact_input(x)));
+        return store_exact<Out>(exact_to_int<M>(engine::exact_input(x)));
     else if constexpr (int_direct<Out, integer_result_t<In, M>, In>) {
         constexpr imax p = static_cast<imax>(notch64<In>.Num);
         constexpr imax q = static_cast<imax>(abs_den(notch64<In>.Den));
@@ -193,7 +193,7 @@ template <insidable Out, insidable In>
     requires(detail::abs_into_ok<Out, In>())
 [[nodiscard]] constexpr Out abs_into(In x) {
     if constexpr (detail::any_wide_valued<Out, In>)
-        return detail::store_exact<Out>(detail::ax::abs(detail::ax::exact_input(x)));
+        return detail::store_exact<Out>(detail::engine::abs(detail::engine::exact_input(x)));
     else if constexpr (std::same_as<Out, detail::abs_result_t<In>> && detail::notched<In> && detail::anchored<In> &&
                        notch_of<Out> == notch_of<In>) {
         // The same lattice through 0: |x| is the value index's magnitude.
@@ -214,7 +214,7 @@ template <insidable Out, insidable In>
 template <insidable Out, insidable Mag, insidable Sgn>
 [[nodiscard]] constexpr Out copysign_into(Mag mag, Sgn sgn) {
     if constexpr (detail::any_wide_valued<Out, Mag>) {
-        const auto a = detail::ax::abs(detail::ax::exact_input(mag));
+        const auto a = detail::engine::abs(detail::engine::exact_input(mag));
         return detail::store_exact<Out>(sgn < 0 ? -a : a);
     } else if constexpr (std::same_as<Out, detail::copysign_result_t<Mag, Sgn>> && detail::notched<Mag> &&
                          detail::anchored<Mag> && notch_of<Out> == notch_of<Mag>) {
@@ -294,11 +294,11 @@ template <insidable Out, insidable InX, insidable InY>
 [[nodiscard]] constexpr Out fmod_nonzero(InX x, InY y) {
     // x − trunc(x/y)·y on exact values.
     auto exact = [&] {
-        constexpr std::size_t E =
-            2 * (detail::ax::input_limbs<InX> > detail::ax::input_limbs<InY> ? detail::ax::input_limbs<InX>
-                                                                             : detail::ax::input_limbs<InY>)+1;
-        using F = detail::wide_rational<E>;
-        const F    a{detail::ax::exact_input(x)}, b{detail::ax::exact_input(y)};
+        constexpr std::size_t E = 2 * (detail::engine::input_limbs<InX> > detail::engine::input_limbs<InY>
+                                           ? detail::engine::input_limbs<InX>
+                                           : detail::engine::input_limbs<InY>)+1;
+        using F                 = detail::wide_rational<E>;
+        const F    a{detail::engine::exact_input(x)}, b{detail::engine::exact_input(y)};
         const auto q = (a.Num * b.Den) / (a.Den * b.Num); // truncated
         return detail::store_exact<Out>(a + F{-(q * b.Num), b.Den});
     };
@@ -449,7 +449,7 @@ inline constexpr grid_rational fmod_bound =
 template <insidable InX, insidable InY>
 using fmod_result_t = inside<exact_out_grid({(lower_of<InX> < 0 ? -fmod_bound<InX, InY> : grid_rational{0}),
                                              (upper_of<InX> > 0 ? fmod_bound<InX, InY> : grid_rational{0})},
-                                            ax::gcd_notch<InX, InY>,
+                                            engine::gcd_notch<InX, InY>,
                                             den_bound(grid_of<InX>) * den_bound(grid_of<InY>)),
                              out_policy<InX> | round_nearest>;
 } // namespace detail

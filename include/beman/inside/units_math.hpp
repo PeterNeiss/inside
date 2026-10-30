@@ -36,7 +36,7 @@
 #include <cstdint>
 #include <type_traits>
 
-namespace beman::inside::math::detail::ax {
+namespace beman::inside::math::detail::engine {
 // x·(n/d)·π^P for P = ±1: π from pi_q at T = S + B bits, B covering |x·n/d|,
 // so its error adds at most one unit; the division truncates one more. The
 // factor is 64-bit (KF = 1), or KF limbs for a factor past 64 bits (ħ = h/2π
@@ -118,20 +118,20 @@ struct pi_trig_core {
         const J               k = nearest_div(two_num, den); // quarter turns
         // r = π·(2t − k)/2 at scale S, within 1 unit.
         const I r = static_cast<I>(nearest_div((two_num - k * den) * static_cast<J>(pi_q<P>), den << (P - S + 1)));
-        const unsigned q   = static_cast<unsigned>(k.Word[0] & 3u);
-        auto           neg = [](fx<K> f) { return fx<K>{-f.Value, f.Error}; };
-        const fx<K>    v   = Cos ? ((q == 0)   ? cos_series<S>(r, 2)
-                                    : (q == 1) ? neg(sin_series<S>(r, 2))
-                                    : (q == 2) ? neg(cos_series<S>(r, 2))
-                                               : sin_series<S>(r, 2))
-                                 : ((q == 0)   ? sin_series<S>(r, 2)
-                                    : (q == 1) ? cos_series<S>(r, 2)
-                                    : (q == 2) ? neg(sin_series<S>(r, 2))
-                                               : neg(cos_series<S>(r, 2)));
+        const unsigned        q   = static_cast<unsigned>(k.Word[0] & 3u);
+        auto                  neg = [](fixed_approx<K> f) { return fixed_approx<K>{-f.Value, f.Error}; };
+        const fixed_approx<K> v   = Cos ? ((q == 0)   ? cos_series<S>(r, 2)
+                                           : (q == 1) ? neg(sin_series<S>(r, 2))
+                                           : (q == 2) ? neg(cos_series<S>(r, 2))
+                                                      : sin_series<S>(r, 2))
+                                        : ((q == 0)   ? sin_series<S>(r, 2)
+                                           : (q == 1) ? cos_series<S>(r, 2)
+                                           : (q == 2) ? neg(sin_series<S>(r, 2))
+                                                      : neg(cos_series<S>(r, 2)));
         return approx<K>{v.Value, S, v.Error};
     }
 };
-} // namespace beman::inside::math::detail::ax
+} // namespace beman::inside::math::detail::engine
 
 namespace beman::inside::units {
 namespace detail {
@@ -186,12 +186,12 @@ inline constexpr bool pi_angle_v = dimension_of(R.U) == dim_one && magnitude_of(
 // sin_into / cos_into of a π-scaled angle: one rounding onto Out.
 template <insidable Out, bool Cos, reference R, class V>
 constexpr Out pi_trig_into(const quantity<R, V>& q) {
-    namespace ax = beman::inside::math::detail::ax;
+    namespace engine = beman::inside::math::detail::engine;
     beman::inside::math::adaptive::require_rounding<Out>();
     constexpr rational r = beman::inside::detail::to_rational(magnitude_of(R.U).Ratio);
-    using core           = ax::pi_trig_core<ax::input_limbs<V>, Cos>;
-    return ax::evaluate<Out, ax::start_bits<Out>>(
-        core{ax::exact_input(q.numerical_value()), r.Num, beman::inside::detail::abs_den(r.Den), r.Den < 0});
+    using core           = engine::pi_trig_core<engine::input_limbs<V>, Cos>;
+    return engine::evaluate<Out, engine::start_bits<Out>>(
+        core{engine::exact_input(q.numerical_value()), r.Num, beman::inside::detail::abs_den(r.Den), r.Den < 0});
 }
 } // namespace detail
 
@@ -201,7 +201,7 @@ template <auto U, insidable Out, reference R, class V>
     requires is_unit_tag_v<decltype(U)> &&
              (!detail::exact_factor_v<detail::conversion_factor<R.U, decltype(U)::value>>)
 [[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q) {
-    namespace ax            = beman::inside::math::detail::ax;
+    namespace engine        = beman::inside::math::detail::engine;
     constexpr units::unit u = decltype(U)::value;
     constexpr magnitude   f = detail::conversion_factor<R.U, u>;
     static_assert(dimension_of(u) == dimension_of(R.U), "units: value_cast - the unit has another dimension");
@@ -218,10 +218,10 @@ template <auto U, insidable Out, reference R, class V>
     constexpr std::size_t KF = beman::inside::detail::fits_rational(f.Ratio)
                                    ? 1
                                    : beman::inside::detail::limbs_for_bits(std::max(NB, d.bit_width()) + 1);
-    using core               = ax::pi_scale_core<ax::input_limbs<V>, ax::in_mag<V> + NB + 4, f.Pi, KF>;
+    using core               = engine::pi_scale_core<engine::input_limbs<V>, engine::in_mag<V> + NB + 4, f.Pi, KF>;
     using factor             = typename core::factor;
-    return quantity<to, Out>{ax::evaluate<Out, ax::start_bits<Out>>(
-        core{ax::exact_input(q.numerical_value()), static_cast<factor>(ng ? -n : n), static_cast<factor>(d), ng})};
+    return quantity<to, Out>{engine::evaluate<Out, engine::start_bits<Out>>(
+        core{engine::exact_input(q.numerical_value()), static_cast<factor>(ng ? -n : n), static_cast<factor>(d), ng})};
 }
 
 // The number's functions, in q's unit.

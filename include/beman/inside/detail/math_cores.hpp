@@ -18,7 +18,7 @@
 // detail/math_entry.hpp; the decision step and the driver in
 // detail/math_adaptive.hpp.
 //---------------------------------------------------------------------------
-namespace beman::inside::math::detail::ax {
+namespace beman::inside::math::detail::engine {
 //---------------------------------------------------------------------------
 // Inputs as exact values, in as few limbs as their grid needs.
 //---------------------------------------------------------------------------
@@ -84,7 +84,7 @@ constexpr wide_sint<K> sqrt_exact_q(const wide_rational<E>& f) noexcept {
 // log x for x > 0 at scale S: x = m·2^e exactly, m in [0.7, 1.42] rounded to
 // scale S, log x = log m + e·ln 2.
 template <int S, std::size_t K, int Bits, std::size_t E>
-constexpr fx<K> log_exact(const wide_rational<E>& x) noexcept {
+constexpr fixed_approx<K> log_exact(const wide_rational<E>& x) noexcept {
     using I                  = wide_sint<K>;
     constexpr std::size_t KI = limbs_for_bits(2 * Bits + S + 2);
     int                   e  = floor_log2(x);
@@ -93,14 +93,14 @@ constexpr fx<K> log_exact(const wide_rational<E>& x) noexcept {
         ++e;
         m = to_q_at<K, KI>(x, S - e);
     }
-    const fx<K> l   = log_series<S>(m, 1);
-    const I     ln2 = static_cast<I>(ln2_q<S>);
+    const fixed_approx<K> l   = log_series<S>(m, 1);
+    const I               ln2 = static_cast<I>(ln2_q<S>);
     return {l.Value + I{e} * ln2, l.Error + static_cast<umax>(e < 0 ? -e : e) + 1};
 }
 
 // An approx moved to scale A ≤ its own, rounding (error shrinks, plus ½).
 template <std::size_t K>
-constexpr fx<K> rescale(const approx<K>& a, int A) noexcept {
+constexpr fixed_approx<K> rescale(const approx<K>& a, int A) noexcept {
     const int sh = a.Scale - A;
     if (sh <= 0) // a bound past 64 bits saturates (never wraps small)
         return {a.Value << (-sh), -sh < 64 && a.Error <= (~umax{0} >> -sh) ? a.Error << (-sh) : ~umax{0}};
@@ -111,7 +111,7 @@ constexpr fx<K> rescale(const approx<K>& a, int A) noexcept {
 // in fixed point. The quotient is within dt units (|t| ≤ 0.58): 6 for a u
 // within ½ (1 − u² then within 1.5), 7 for one within 1 (within 2).
 template <int S, std::size_t K>
-constexpr fx<K> asin_q(const wide_sint<K>& u, umax dt) noexcept {
+constexpr fixed_approx<K> asin_q(const wide_sint<K>& u, umax dt) noexcept {
     return atan_fixed<S>(mul_q(u, rsqrt_q<S>(one_q<K>(S) - mul_q(u, u, S)), S), dt);
 }
 
@@ -178,7 +178,7 @@ struct exp2_core {
             r -= ln2;
             ++kk;
         }
-        const fx<K> e = exp_series<S>(r, 3);
+        const fixed_approx<K> e = exp_series<S>(r, 3);
         return approx<K>{e.Value, S - kk, e.Error};
     }
 };
@@ -193,7 +193,7 @@ struct log_core {
         constexpr int S         = W + 8 + std::bit_width(static_cast<unsigned>(Bits));
         using I                 = fixed_t<S + std::bit_width(static_cast<unsigned>(Bits)) + 8>;
         constexpr std::size_t K = limbs_of<I>;
-        const fx<K>           l = log_exact<S, K, Bits>(X);
+        const fixed_approx<K> l = log_exact<S, K, Bits>(X);
         return approx<K>{l.Value, S, l.Error};
     }
 };
@@ -230,7 +230,7 @@ struct logb_core {
         constexpr int S         = W + 10 + std::bit_width(static_cast<unsigned>(Bits));
         using I                 = fixed_t<S + std::bit_width(static_cast<unsigned>(Bits)) + 8>;
         constexpr std::size_t K = limbs_of<I>;
-        const fx<K>           l = log_exact<S, K, Bits>(X);
+        const fixed_approx<K> l = log_exact<S, K, Bits>(X);
         // log x · (1/ln B): within 1.45·error + 2 (the constant is within 1).
         const I inv = B == 2 ? static_cast<I>(log2e_q<S>) : static_cast<I>(log10e_q<S>);
         return approx<K>{mul_q(l.Value, inv, S), S, 2 * l.Error + 2 + static_cast<umax>(Bits)};
@@ -342,14 +342,14 @@ struct trig_core {
         // sin x and cos x by quadrant: (s, c), (c, −s), (−s, −c), (−c, s).
         // cos is sin one quadrant on.
         auto quad = [&](unsigned p) {
-            const fx<K> f = p & 1u ? cos_series<S>(r, 2) : sin_series<S>(r, 2);
-            return p & 2u ? fx<K>{-f.Value, f.Error} : f;
+            const fixed_approx<K> f = p & 1u ? cos_series<S>(r, 2) : sin_series<S>(r, 2);
+            return p & 2u ? fixed_approx<K>{-f.Value, f.Error} : f;
         };
         if constexpr (Fn != trig::tan) {
-            const fx<K> v = quad(Fn == trig::sin ? q : q + 1);
+            const fixed_approx<K> v = quad(Fn == trig::sin ? q : q + 1);
             return approx<K>{v.Value, S, v.Error};
         } else {
-            const fx<K> sn = quad(q), cs = quad(q + 1);
+            const fixed_approx<K> sn = quad(q), cs = quad(q + 1);
             // tan = sin/cos. The error bound, (δs + |t|·δc)/(|c| − δc) + 2 units,
             // and the test for a result past 2^KMax only need to be upper and
             // lower bounds: computed in doubles, widened by a hair.
@@ -372,12 +372,12 @@ struct trig_core {
 
 // atan x: |x| ≤ 1 directly, else ±π/2 − atan(1/x). Exact at 0.
 template <int S, std::size_t K, std::size_t E>
-constexpr fx<K> atan_exact(const wide_rational<E>& x) noexcept {
+constexpr fixed_approx<K> atan_exact(const wide_rational<E>& x) noexcept {
     using I = wide_sint<K>;
     if (!(exact_of<E>(1) < abs(x)))
         return atan_fixed<S>(to_q<S, K>(x), 1);
-    const fx<K> a  = atan_fixed<S>(to_q<S, K>(inverse(x)), 1);
-    const I     hp = static_cast<I>(pi_q<S - 1>);
+    const fixed_approx<K> a  = atan_fixed<S>(to_q<S, K>(inverse(x)), 1);
+    const I               hp = static_cast<I>(pi_q<S - 1>);
     return {(x.Num.negative() ? -hp : hp) - a.Value, a.Error + 1};
 }
 
@@ -390,7 +390,7 @@ struct atan_core {
         constexpr int S         = W + 10;
         using I                 = fixed_t<S + 3>; // |atan| < 2, 1 + t·c ≤ 2
         constexpr std::size_t K = limbs_of<I>;
-        const fx<K>           a = atan_exact<S, K>(X);
+        const fixed_approx<K> a = atan_exact<S, K>(X);
         return approx<K>{a.Value, S, a.Error};
     }
 };
@@ -414,13 +414,13 @@ struct atan2_core {
         const F y{Y}, x{X};
         const I pi_fixed = static_cast<I>(pi_q<S>);
         if (!(abs(x) < abs(y))) {
-            const fx<K> a = atan_exact<S, K>(y / x);
+            const fixed_approx<K> a = atan_exact<S, K>(y / x);
             if (!x.Num.negative())
                 return approx<K>{a.Value, S, a.Error};
             return approx<K>{a.Value + (y.Num.negative() ? -pi_fixed : pi_fixed), S, a.Error + 1};
         }
-        const fx<K> a  = atan_exact<S, K>(x / y);
-        const I     hp = static_cast<I>(pi_q<S - 1>);
+        const fixed_approx<K> a  = atan_exact<S, K>(x / y);
+        const I               hp = static_cast<I>(pi_q<S - 1>);
         return approx<K>{(y.Num.negative() ? -hp : hp) - a.Value, S, a.Error + 1};
     }
 };
@@ -446,16 +446,16 @@ struct arcsin_core {
         const I                hp = static_cast<I>(pi_q<S - 1>); // π/2
         const wide_rational<E> half{wide_sint<E>{1}, wide_sint<E>{2}};
         if (!(half < abs(X))) {
-            const fx<K> a = asin_q<S>(to_q<S, K>(X), 6);
+            const fixed_approx<K> a = asin_q<S>(to_q<S, K>(X), 6);
             if constexpr (Acos)
                 return approx<K>{hp - a.Value, S, a.Error + 1};
             else
                 return approx<K>{a.Value, S, a.Error};
         }
-        using F         = wide_rational<E + 1>;
-        const F     y   = (exact_of<E + 1>(1) + F{-abs(X)}) * F{half}; // (1 − |x|)/2
-        const fx<K> a   = asin_q<S>(sqrt_exact_q<S, K, Bits + 3>(y), 7);
-        const bool  neg = X.Num.negative();
+        using F                   = wide_rational<E + 1>;
+        const F               y   = (exact_of<E + 1>(1) + F{-abs(X)}) * F{half}; // (1 − |x|)/2
+        const fixed_approx<K> a   = asin_q<S>(sqrt_exact_q<S, K, Bits + 3>(y), 7);
+        const bool            neg = X.Num.negative();
         if constexpr (Acos) {
             if (!neg)
                 return approx<K>{a.Value << 1, S, 2 * a.Error};
@@ -499,9 +499,9 @@ struct hyp_core {
         const I               ax  = to_q<S, K>(abs(X)); // within ½
         if constexpr (Fn == hyp::tanh) {
             // tanh |x| = (1 − g)/(1 + g), g = e^(−2|x|) ≤ 1.
-            const fx<K> g   = rescale(exp_fixed<S>(-(ax << 1), 1, KM), A);
-            const I     one = one_q<K>(A);
-            const I     t   = div_q(one - g.Value, one + g.Value, A);
+            const fixed_approx<K> g   = rescale(exp_fixed<S>(-(ax << 1), 1, KM), A);
+            const I               one = one_q<K>(A);
+            const I               t   = div_q(one - g.Value, one + g.Value, A);
             return approx<K>{neg ? -t : t, A, 2 * g.Error + 2};
         } else {
             // One reduction |x| = k·ln 2 + r: e^r = E + O and e^−r = E − O from
@@ -552,24 +552,24 @@ struct ahyp_core {
         const F    a            = abs(F{X});
         if constexpr (Fn == ahyp::atanh) {
             // (1 + |x|)/(1 − |x|) = (d + |n|)/(d − |n|), d − |n| > 0.
-            const F     q{a.Num + a.Den, a.Den - a.Num};
-            const fx<K> l = log_exact<S, K, 2 * Bits + 2>(q);
+            const F               q{a.Num + a.Den, a.Den - a.Num};
+            const fixed_approx<K> l = log_exact<S, K, 2 * Bits + 2>(q);
             return approx<K>{neg ? -(l.Value >> 1) : (l.Value >> 1), S, l.Error / 2 + 1};
         } else if constexpr (Fn == ahyp::asinh) {
             // c = x² + 1 = m·4^h, m in [1, 4): √c = √m·2^h with √m = m·(1/√m);
             // log of v/2^h = (|x| + √c)/2^h, plus h·ln 2.
-            const I     aq = to_q<S, K>(a);                  // within ½
-            const I     c  = mul_q(aq, aq, S) + one_q<K>(S); // within |x| + 1
-            const int   h  = (bit_width_of(c) - 1 - S) / 2;
-            const I     m  = c >> (2 * h);                           // within 3
-            const I     v  = (aq >> h) + mul_q(m, rsqrt_q<S>(m), S); // in [1, 3), within 30
-            const fx<K> l  = log_fixed<S>(v, 30);
-            const I     lv = l.Value + I{h} * static_cast<I>(ln2_q<S>);
+            const I               aq = to_q<S, K>(a);                  // within ½
+            const I               c  = mul_q(aq, aq, S) + one_q<K>(S); // within |x| + 1
+            const int             h  = (bit_width_of(c) - 1 - S) / 2;
+            const I               m  = c >> (2 * h);                           // within 3
+            const I               v  = (aq >> h) + mul_q(m, rsqrt_q<S>(m), S); // in [1, 3), within 30
+            const fixed_approx<K> l  = log_fixed<S>(v, 30);
+            const I               lv = l.Value + I{h} * static_cast<I>(ln2_q<S>);
             return approx<K>{neg ? -lv : lv, S, l.Error + static_cast<umax>(h) + 1};
         } else {
-            const F     r{(a.Num - a.Den) * (a.Num + a.Den), a.Den * a.Den};     // x² − 1 = (n − d)(n + d)/d²
-            const I     v = to_q<S, K>(a) + sqrt_exact_q<S, K, 2 * Bits + 2>(r); // ≥ 1, within 2
-            const fx<K> l = log_fixed<S>(v, 2);
+            const F               r{(a.Num - a.Den) * (a.Num + a.Den), a.Den * a.Den}; // x² − 1 = (n − d)(n + d)/d²
+            const I               v = to_q<S, K>(a) + sqrt_exact_q<S, K, 2 * Bits + 2>(r); // ≥ 1, within 2
+            const fixed_approx<K> l = log_fixed<S>(v, 2);
             return approx<K>{l.Value, S, l.Error};
         }
     }
@@ -653,9 +653,9 @@ struct pow_core {
         constexpr int SL        = S + MagE + std::bit_width(static_cast<unsigned>(BitsB));
         using I                 = fixed_t<SL + MagE + std::bit_width(static_cast<unsigned>(BitsB)) + BitsE + 8>;
         constexpr std::size_t K = limbs_of<I>;
-        const fx<K>           l = [&] {
+        const fixed_approx<K> l = [&] {
             if constexpr (ConstBase != 0) {
-                constexpr fx<K> c = log_exact<SL, K, BitsB>(exact_of<EB>(ConstBase));
+                constexpr fixed_approx<K> c = log_exact<SL, K, BitsB>(exact_of<EB>(ConstBase));
                 return c;
             } else
                 return log_exact<SL, K, BitsB>(B);
@@ -845,6 +845,6 @@ inline constexpr int hypot_bits = 2 * (input_bits<InX> + input_bits<InY>)+2;
 template <insidable A, insidable B>
 inline constexpr grid_rational gcd_notch =
     !notched<A> || !notched<B> ? grid_rational{0} : gcd(grid_of<A>.value_unit(), grid_of<B>.value_unit());
-} // namespace beman::inside::math::detail::ax
+} // namespace beman::inside::math::detail::engine
 
 #endif // BEMAN_INSIDE_DETAIL_MATH_CORES_HPP

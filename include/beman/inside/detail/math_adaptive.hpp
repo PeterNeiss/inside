@@ -55,7 +55,7 @@ inline driver_probe driver;
 } // namespace beman::inside::math
 #endif
 
-namespace beman::inside::math::detail::ax {
+namespace beman::inside::math::detail::engine {
 using namespace ::beman::inside::detail;
 
 // Signed fixed point with at least Bits value bits (the word of a Q.W value
@@ -969,7 +969,7 @@ constexpr wide_rational<K> inverse(const wide_rational<K>& f) noexcept {
 // round those sums up generously.
 //---------------------------------------------------------------------------
 template <std::size_t K>
-struct fx {
+struct fixed_approx {
     wide_sint<K> Value;
     umax         Error;
 };
@@ -1059,18 +1059,18 @@ constexpr wide_sint<K> horner(const wide_sint<K>& x) noexcept {
 
 // e^r for |r| ≤ 0.36, r within dr units.
 template <int S, std::size_t K>
-constexpr fx<K> exp_series(const wide_sint<K>& r, umax dr) noexcept {
+constexpr fixed_approx<K> exp_series(const wide_sint<K>& r, umax dr) noexcept {
     return {horner<series::exp, S, false>(r), 2 * dr + 8};
 }
 
 // sin r and cos r for |r| ≤ 0.8, r within dr units.
 template <int S, std::size_t K>
-constexpr fx<K> sin_series(const wide_sint<K>& r, umax dr) noexcept {
+constexpr fixed_approx<K> sin_series(const wide_sint<K>& r, umax dr) noexcept {
     const wide_sint<K> z = mul_q(r, r, S);
     return {mul_q(r, horner<series::sin, S, false>(z), S), 3 * dr + 12};
 }
 template <int S, std::size_t K>
-constexpr fx<K> cos_series(const wide_sint<K>& r, umax dr) noexcept {
+constexpr fixed_approx<K> cos_series(const wide_sint<K>& r, umax dr) noexcept {
     return {horner<series::cos, S, false>(mul_q(r, r, S)), 4 * dr + 12};
 }
 
@@ -1105,7 +1105,7 @@ inline constexpr auto log_table = [] {
 // log m for m in [0.7, 1.42], m within dm units, with no division: j =
 // round(32m), u = m·(32/j) − 1 (|u| ≤ 1/44), log m = log(j/32) + log(1 + u).
 template <int S, std::size_t K>
-constexpr fx<K> log_series(const wide_sint<K>& m, umax dm) noexcept {
+constexpr fixed_approx<K> log_series(const wide_sint<K>& m, umax dm) noexcept {
     using I       = wide_sint<K>;
     int j         = static_cast<int>(static_cast<imax>(round_shift(m, S - 5)));
     j             = std::clamp(j, log_tab_lo, log_tab_hi);
@@ -1118,7 +1118,7 @@ constexpr fx<K> log_series(const wide_sint<K>& m, umax dm) noexcept {
 // atan u for |u| ≤ 1/16 (the atanh table, sized for 0.18, with
 // alternating signs), u within du units.
 template <int S, std::size_t K>
-constexpr fx<K> atan_series(const wide_sint<K>& u, umax du) noexcept {
+constexpr fixed_approx<K> atan_series(const wide_sint<K>& u, umax du) noexcept {
     return {mul_q(u, horner<series::atanh, S, true>(mul_q(u, u, S)), S), du + 6};
 }
 
@@ -1181,15 +1181,15 @@ inline constexpr auto atan_eighths = [] {
 // atan t for |t| ≤ 1, t within dt units: c = j/8 nearest t, then
 // atan t = atan c + atan((t − c)/(1 + t·c)) with |(t − c)/(1 + t·c)| ≤ 1/16.
 template <int S, std::size_t K>
-constexpr fx<K> atan_fixed(const wide_sint<K>& t, umax dt) noexcept {
-    using I          = wide_sint<K>;
-    const I     one  = one_q<K>(S);
-    const I     j    = round_shift(t, S - 3); // round(8t), in [−8, 8]
-    const int   jj   = static_cast<int>(static_cast<imax>(j));
-    const I     c    = j << (S - 3);                          // exact
-    const I     u    = div_q(t - c, one + mul_q(t, c, S), S); // within dt + 2
-    const fx<K> a    = atan_series<S>(u, dt + 2);
-    const I     base = static_cast<I>(atan_eighths<S>[static_cast<std::size_t>(jj < 0 ? -jj : jj)]);
+constexpr fixed_approx<K> atan_fixed(const wide_sint<K>& t, umax dt) noexcept {
+    using I                    = wide_sint<K>;
+    const I               one  = one_q<K>(S);
+    const I               j    = round_shift(t, S - 3); // round(8t), in [−8, 8]
+    const int             jj   = static_cast<int>(static_cast<imax>(j));
+    const I               c    = j << (S - 3);                          // exact
+    const I               u    = div_q(t - c, one + mul_q(t, c, S), S); // within dt + 2
+    const fixed_approx<K> a    = atan_series<S>(u, dt + 2);
+    const I               base = static_cast<I>(atan_eighths<S>[static_cast<std::size_t>(jj < 0 ? -jj : jj)]);
     return {(jj < 0 ? -base : base) + a.Value, a.Error + 1};
 }
 
@@ -1200,7 +1200,7 @@ inline constexpr fixed_t<S + 2> sqrt2_q = static_cast<fixed_t<S + 2>>(isqrt(fixe
 // log a for a ≥ 1 at scale S (so b ≥ 0), a within da units: a = m·2^b with
 // m in [0.7, 1.42], log a = log m + b·ln 2.
 template <int S, std::size_t K>
-constexpr fx<K> log_fixed(const wide_sint<K>& a, umax da) noexcept {
+constexpr fixed_approx<K> log_fixed(const wide_sint<K>& a, umax da) noexcept {
     using I = wide_sint<K>;
     int b   = bit_width_of(a) - 1 - S; // 2^b ≤ a/2^S < 2^(b+1)
     I   m   = b >= 0 ? a >> b : a << (-b);
@@ -1208,8 +1208,8 @@ constexpr fx<K> log_fixed(const wide_sint<K>& a, umax da) noexcept {
         ++b;
         m = b >= 0 ? a >> b : a << (-b);
     }
-    const umax  dm = shr_bound(da, b) + 1;
-    const fx<K> l  = log_series<S>(m, dm);
+    const umax            dm = shr_bound(da, b) + 1;
+    const fixed_approx<K> l  = log_series<S>(m, dm);
     return {l.Value + I{b} * static_cast<I>(ln2_q<S>), l.Error + static_cast<umax>(b < 0 ? -b : b) + 1};
 }
 
@@ -1239,11 +1239,11 @@ constexpr approx<K> exp_fixed(const wide_sint<K>& t, umax dt, int KMax) noexcept
         return approx<K>::beyond(false, KMax);
     if (k < I{-(S + 2)})
         return approx<K>::below(S);
-    const fx<K> e  = exp_series<S>(t - k * static_cast<I>(ln2_q<S>), 0);
-    const int   kk = static_cast<int>(static_cast<imax>(k));
-    const umax  ak = static_cast<umax>(kk < 0 ? -kk : kk);
+    const fixed_approx<K> e  = exp_series<S>(t - k * static_cast<I>(ln2_q<S>), 0);
+    const int             kk = static_cast<int>(static_cast<imax>(k));
+    const umax            ak = static_cast<umax>(kk < 0 ? -kk : kk);
     return {e.Value, S - kk, e.Error + 2 * (dt + ak + 1)};
 }
-} // namespace beman::inside::math::detail::ax
+} // namespace beman::inside::math::detail::engine
 
 #endif // BEMAN_INSIDE_DETAIL_MATH_ADAPTIVE_HPP

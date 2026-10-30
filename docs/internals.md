@@ -439,7 +439,7 @@ the two magnitudes. `detail::rescale<M>(v)` multiplies an inside by the
 rational M as `v * just<M>`, which scales the grid and keeps the raw (§1, point
 operands), then re-wraps it in v's policy. So km → mm on `inside<{0, 10}>` is
 the same `uint8_t`. A factor with π has no exact grid; `in()` refuses it, and
-`value_cast` across π goes through `ax::pi_scale_core`, which multiplies by π
+`value_cast` across π goes through `engine::pi_scale_core`, which multiplies by π
 at the bits the output needs.
 
 **The common unit.** `+`, `-`, `%` and the comparisons convert both operands
@@ -465,7 +465,7 @@ the one rounding stays one. The hooks (`q.on_wrap(f)` …) return a
 `quantity_action_ref` around the inside's `policy_ref`; its stores take
 quantities, and `on_quantity` wraps `f` so that it sees the quantity.
 
-**Trig of π-scaled angles.** `units_math.hpp`'s `ax::pi_trig_core` takes an
+**Trig of π-scaled angles.** `units_math.hpp`'s `engine::pi_trig_core` takes an
 angle x in a unit of magnitude r·π. t = x·r half turns is exact, so
 k = round(2t) quarter turns is exact, and only r' = π·(t − k/2), at most π/4,
 is approximated, at the bits the output needs. The core's `exact()` returns
