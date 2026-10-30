@@ -40,16 +40,16 @@ grid instead (see [arithmetic.md](arithmetic.md)), so it cannot leave its range.
 | `round_nearest` | to the nearest notch, ties away from zero (includes `snap`) |
 | `round_floor`, `round_ceil` | toward −∞, toward +∞ (include `snap`) |
 | `round_half_even` | to the nearest notch, ties to the even point (includes `snap`) |
-| `ignore_zero` | no division-by-zero check: `a / 0` is undefined, `/= 0` does nothing |
-| `ignore_range` | no runtime range check |
-| `unsafe` | `ignore_range | snap | ignore_zero`: no runtime checks at all; a wrong value is undefined behaviour |
+| `unsafe` | the one opt-out: no runtime range or zero-divisor check, and an off-notch value truncates (`snap`). An out-of-range value or a zero divisor is undefined behaviour; `/= 0` does nothing |
 | `uninitialized` | a trivial default constructor: `T x;` leaves the value uninitialized, like a built-in scalar's, until a store. Without it `T x;` and `T{}` are 0, or Lower on a grid without 0 |
 
 - `clamp` and `wrap` exclude each other (a `static_assert`).
 - Every policy without `unsafe` checks: `inside<G>`, `inside<G, round_nearest>`
-  and `inside<G, ignore_zero>` all report a value outside the range. `clamp`
+  and `inside<G, clamp>` all report what their policy does not handle. `clamp`
   and `wrap` handle the range, the rounding modes handle the notch.
-- Spelling `checked` next to `unsafe` turns the checks back on.
+- `unsafe` wins wherever it appears: in the type, in an operand of `/` or `%`,
+  or in a store's policy (`x.policy<unsafe>() = v`). `checked`, the default
+  policy's own bit, does not turn the checks back on.
 - A rounding mode rounds **before** the range check. With
   `inside<{0, 9}, round_floor>`, 9.5 stores 9 and 10.0 is out of range. Without
   a rounding mode nothing rounds, so 9.5 into `inside<{0, 9}>` is out of range.
@@ -111,7 +111,7 @@ A hook you do not use costs nothing.
 
 Each acts on the store. `f` gets `x` by reference, so it can change the stored
 value. The arithmetic of a compound assignment cannot fail but for a zero
-divisor, which `on_error` takes (`ignore_zero` skips it). The free `add` … `divmod`
+divisor, which `on_error` takes (`unsafe` skips it). The free `add` … `divmod`
 take no hooks: they return a zero divisor as `unexpected(errc::division_by_zero)`,
 as `/` does.
 

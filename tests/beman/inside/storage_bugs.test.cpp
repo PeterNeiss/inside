@@ -385,13 +385,13 @@ TEST(StorageBugsTest, rational_to_checks_width) {
 }
 
 // A policy_ref compound /= or %= with a zero divisor reports (or, under
-// ignore_zero, no-ops) like the member operator, and never divides by zero.
+// unsafe, no-ops) like the member operator, and never divides by zero.
 TEST(StorageBugsTest, policy_ref_zero_divisor_does_not_divide) {
     using X = inside<{0, 10}, checked | snap>;
-    using Z = inside<{0, 10}, checked | snap | ignore_zero>;
+    using Z = inside<{0, 10}, unsafe>;
     X b{6};
-    b.policy<ignore_zero>() /= X{0};
-    b.policy<ignore_zero>() %= X{0};
+    b.policy<unsafe>() /= X{0};
+    b.policy<unsafe>() %= X{0};
     b.policy() /= Z{0};
     EXPECT_EQ(b, 6);
     EXPECT_THROW(b.policy() /= X{0}, inside_error);

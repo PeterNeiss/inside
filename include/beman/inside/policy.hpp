@@ -50,7 +50,7 @@ struct policy : E {
         if consteval {
             return true;
         }
-        return is_checked(F) && not test(ignore_range);
+        return is_checked(F);
     }
 
     static constexpr bool checks_rounding() {

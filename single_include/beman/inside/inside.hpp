@@ -3811,22 +3811,19 @@ struct diag_text {
 
 namespace beman::inside {
 //---------------------------------------------------------------------------
-// policy_flag — the policy bits of inside<G, P> (none, ignore_zero,
-// ignore_range, snap and the rounding modes, clamp, wrap, checked, unsafe,
-// uninitialized),
+// policy_flag — the policy bits of inside<G, P> (none, snap and the
+// rounding modes, clamp, wrap, checked, unsafe, uninitialized),
 // has_flag / is_checked, the rounding precedence (rounding_of), the hook
 // factories on_clamp / on_wrap / on_error with their is_*_action traits, and
 // the flags each hook implies.
 //---------------------------------------------------------------------------
 using policy_flag = unsigned long long;
 
-// Check model: compile-time checks always run. When success can't be proven
-// statically, compilation fails unless the matching ignore flag is set; else a
-// runtime check is inserted that throws (or reports through an errc& parameter).
-// Binary operations OR the flags of both operands.
+// Check model: compile-time checks always run. A store whose success can't be
+// proven statically gets a runtime check that throws (or reports through an
+// errc& parameter), unless `unsafe` appears: in the type, an operand, or the
+// call's policy.
 inline constexpr policy_flag none{0ull};
-inline constexpr policy_flag ignore_zero{1ull << 1};
-inline constexpr policy_flag ignore_range{1ull << 2};
 // `snap` — permission: an off-notch value is rounded to fit the grid instead
 // of rejected. Without it, an off-notch value is a compile/runtime error and
 // div/mod fall through to exact-rational results. Every round_* mode carries
@@ -3843,9 +3840,9 @@ inline constexpr policy_flag round_floor{(1ull << 6) | snap};
 inline constexpr policy_flag round_ceil{(1ull << 7) | snap};
 inline constexpr policy_flag round_half_even{(1ull << 8) | snap};
 
-// runtime checking — on unless the policy carries `unsafe` (see is_checked).
-// Spelling `checked` re-enables the checks alongside `unsafe`.
-inline constexpr policy_flag checked{1ull << 34}; // runtime range/notch/overflow checks
+// runtime checking — the default policy's name: every policy without
+// `unsafe` checks, and `unsafe` wins over it (see is_checked).
+inline constexpr policy_flag checked{1ull << 34}; // runtime range/notch/zero-divisor checks
 
 // unary — mutually exclusive
 inline constexpr policy_flag clamp{1ull << 32}; // saturate to boundary
@@ -3860,16 +3857,16 @@ inline constexpr policy_flag uninitialized{1ull << 37};
 // No flag picks the raw: storage follows the grid alone (grid.hpp
 // raw_for, docs/storage.md).
 
-// opt-out of `checked`: no domain/round/overflow/div-by-zero checks (reading
-// out-of-range or dividing by zero is UB; `/= 0` no-ops, `a / 0` skips the
-// check). Includes `snap` so notch-incompatible assigns compile.
+// The one opt-out of the runtime checks: no range or zero-divisor check
+// (reading an out-of-range value or dividing by zero is UB; `/= 0` no-ops,
+// `a / 0` skips the check). Includes `snap`, so an off-notch value truncates.
 namespace detail {
 inline constexpr policy_flag unsafe_marker{1ull << 36};
 // Marks a cursor (`cursor<T, Step>`): default construction starts at Lower,
 // and `end(t)` names its past-the-end value. Results never carry it.
 inline constexpr policy_flag cursor_marker{1ull << 50};
 } // namespace detail
-inline constexpr policy_flag unsafe{detail::unsafe_marker | ignore_range | snap | ignore_zero};
+inline constexpr policy_flag unsafe{detail::unsafe_marker | snap};
 
 //---------------------------------------------------------------------------
 // Flag-set membership predicates. `has_flag(set, flag)` is true iff EVERY bit
@@ -3884,17 +3881,16 @@ inline constexpr policy_flag unsafe{detail::unsafe_marker | ignore_range | snap 
     return (set & flags) != none;
 }
 
-// Runtime checks run unless the policy opts out with `unsafe`; an explicit
-// `checked` wins over `unsafe`. So `inside<G, round_nearest>` and
-// `inside<G, clamp>` are checked, exactly like the default `inside<G>`.
-[[nodiscard]] constexpr bool is_checked(policy_flag set) noexcept {
-    return has_flag(set, checked) || !has_flag(set, detail::unsafe_marker);
-}
+// Runtime checks run unless the flag set carries `unsafe`, which wins over
+// `checked` (the default policy's own bit, so `x.policy<unsafe>()` opts a
+// default inside out). `inside<G, round_nearest>` and `inside<G, clamp>` are
+// checked, exactly like the default `inside<G>`.
+[[nodiscard]] constexpr bool is_checked(policy_flag set) noexcept { return !has_flag(set, detail::unsafe_marker); }
 
 // Whether an out-of-range value does anything under a flag set: a clamp or
 // wrap bit stores it, a checked range reports it. False under `unsafe`.
 [[nodiscard]] constexpr bool range_handled(policy_flag set) noexcept {
-    return has_any_flag(set, clamp | wrap) || (is_checked(set) && !has_flag(set, ignore_range));
+    return has_any_flag(set, clamp | wrap) || is_checked(set);
 }
 
 namespace detail {
@@ -6343,7 +6339,7 @@ struct policy : E {
         if consteval {
             return true;
         }
-        return is_checked(F) && not test(ignore_range);
+        return is_checked(F);
     }
 
     static constexpr bool checks_rounding() {
@@ -8020,15 +8016,15 @@ struct policy_ref {
         return finalize_arith(mul(Ref, rhs, Policy), "policy_ref::operator*=");
     }
 
-    // A zero divisor is reported (on_error / ignore_zero) and leaves Ref
-    // unchanged, like inside::operator/=: div/mod under ignore_zero skip their
+    // A zero divisor is reported (on_error, unless `unsafe` appears) and leaves
+    // Ref unchanged, like inside::operator/=: div/mod under `unsafe` skip their
     // own check, so dividing here would be a division by zero.
     template <insidable C>
         requires requires(const B& b, const C& c, P& p) { div(b, c, p); } &&
                  stores_back<decltype(div(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator/=(const C& rhs) {
         if (rhs == 0) {
-            if constexpr (!has_flag(flags_of<C>, ignore_zero)) // either operand silences it
+            if constexpr (is_checked(flags_of<C>)) // either operand silences it
                 report_error(errc::division_by_zero, "policy_ref::operator/= division by zero");
             return Ref;
         }
@@ -8040,7 +8036,7 @@ struct policy_ref {
                  stores_back<decltype(mod(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator%=(const C& rhs) {
         if (rhs == 0) {
-            if constexpr (!has_flag(flags_of<C>, ignore_zero)) // either operand silences it
+            if constexpr (is_checked(flags_of<C>)) // either operand silences it
                 report_error(errc::division_by_zero, "policy_ref::operator%= division by zero");
             return Ref;
         }
@@ -8079,11 +8075,11 @@ struct policy_ref {
 
   private:
     // A failed op leaves Ref unchanged: on_error takes the failure, else the
-    // policy reports it — but ignore_zero skips a zero divisor.
+    // policy reports it — but `unsafe` skips a zero divisor.
     constexpr void report_error(errc code, const char* what) {
         if constexpr (has_action<is_error_action, As...>)
             pick_action_in<is_error_action>(Actions).Fn(Ref, code, what);
-        else if (code != errc::division_by_zero || !uses_flag<B, P, ignore_zero>)
+        else if (code != errc::division_by_zero || is_checked(flags_of<B> | plain_t<P>::Flags))
             Policy.report(code);
     }
 
@@ -8416,11 +8412,10 @@ using native_div_t = std::conditional_t<(lower_imax<L> > std::numeric_limits<std
                                         std::int32_t,
                                         imax>;
 
-// The zero-divisor check is skipped when R's grid excludes zero or
-// `ignore_zero` is set (a zero divisor is then UB, matching the `/= 0` no-op).
+// The zero-divisor check is skipped when R's grid excludes zero or `unsafe`
+// appears (a zero divisor is then UB, matching the `/= 0` no-op).
 template <insidable L, insidable R, policy_flag F, policy_flag G>
-inline constexpr bool divisor_unchecked =
-    divisor_excludes_zero<R> || ((G | F | flags_of<L> | flags_of<R>)&ignore_zero) != 0;
+inline constexpr bool divisor_unchecked = divisor_excludes_zero<R> || !is_checked(G | F | flags_of<L> | flags_of<R>);
 
 // Compile-time rounding of a quotient-interval endpoint to an integer index.
 // Under half_even the endpoint is bracketed by [floor, ceil] (Upper: ceil)
@@ -8600,7 +8595,7 @@ template <policy_flag G, typename E>
 constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy) -> return_t {
     // A zero divisor: reported through the policy's errc& (if any) and returned
     // as the error. Only reachable where return_t is expected (the divisor grid
-    // holds zero and ignore_zero is off).
+    // holds zero and no `unsafe` appears).
     [[maybe_unused]] auto zero = [&] { return report_or_unexpected<result>(policy, errc::division_by_zero); };
     [[maybe_unused]] constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
 
@@ -9602,11 +9597,11 @@ struct inside {
         return *this;
     }
 
-    // A zero divisor in /= or %=; ignore_zero on either operand silences it,
-    // as it does for div/mod.
+    // A zero divisor in /= or %=; `unsafe` on either operand silences it, as
+    // it does for div/mod.
     template <insidable R>
     constexpr inside& report_div_by_zero() {
-        if constexpr (!has_flag(P | flags_of<R>, ignore_zero))
+        if constexpr (is_checked(P | flags_of<R>))
             make_policy<P>().report(errc::division_by_zero);
         return *this;
     }

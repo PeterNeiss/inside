@@ -663,11 +663,11 @@ struct inside {
         return *this;
     }
 
-    // A zero divisor in /= or %=; ignore_zero on either operand silences it,
-    // as it does for div/mod.
+    // A zero divisor in /= or %=; `unsafe` on either operand silences it, as
+    // it does for div/mod.
     template <insidable R>
     constexpr inside& report_div_by_zero() {
-        if constexpr (!has_flag(P | flags_of<R>, ignore_zero))
+        if constexpr (is_checked(P | flags_of<R>))
             make_policy<P>().report(errc::division_by_zero);
         return *this;
     }

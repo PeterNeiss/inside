@@ -203,20 +203,21 @@ TEST(ConsistencyTest, compound_ops_report_errors_through_the_policy) {
     EXPECT_THROW(e *= E{q(1, 999)}, inside_error);
 }
 
-// The raw += fast path honours ignore_range like plain assignment does.
-TEST(ConsistencyTest, compound_fast_path_honours_ignore_domain) {
-    using X = inside<{0, 10}, checked | ignore_range>;
+// The raw += fast path honours unsafe like plain assignment does.
+TEST(ConsistencyTest, compound_fast_path_honours_unsafe) {
+    using X = inside<{0, 10}, unsafe>;
     X x{10};
     EXPECT_NO_THROW(x += 1_ins);
     X y{10};
     EXPECT_NO_THROW(y = y + 1_ins);
 }
 
-// ignore_zero on either operand silences a zero divisor in /= and %=, as in
-// div/mod; policy_ref /= routes a zero divisor through on_error / ignore_zero.
+// unsafe on either operand silences a zero divisor in /= and %=, as in
+// div/mod; policy_ref /= routes a zero divisor through on_error, or skips it
+// under unsafe.
 TEST(ConsistencyTest, zero_divisor_handling_agrees) {
     using X = inside<{0, 10}, checked | snap>;
-    using Z = inside<{0, 10}, checked | snap | ignore_zero>;
+    using Z = inside<{0, 10}, unsafe>;
     X x{6};
     EXPECT_NO_THROW(x /= Z{0});
     EXPECT_NO_THROW(x %= Z{0});
@@ -226,7 +227,27 @@ TEST(ConsistencyTest, zero_divisor_handling_agrees) {
     X    b{6};
     b.on_error([&](auto&, errc e, auto) { called = (e == errc::division_by_zero); }) /= X{0};
     EXPECT_TRUE(called);
-    EXPECT_NO_THROW(b.policy<ignore_zero>() /= X{0});
+    EXPECT_NO_THROW(b.policy<unsafe>() /= X{0});
+}
+
+// unsafe is the one opt-out of the runtime checks, and it wins over checked
+// (the default policy's own bit), so a per-call policy<unsafe>() opts a
+// default inside out.
+TEST(ConsistencyTest, unsafe_is_the_one_opt_out_and_wins_over_checked) {
+    static_assert(is_checked(none) && is_checked(checked) && is_checked(clamp | round_nearest));
+    static_assert(!is_checked(unsafe) && !is_checked(checked | unsafe));
+    static_assert(range_handled(checked) && range_handled(clamp | unsafe) && range_handled(wrap | unsafe));
+    static_assert(!range_handled(unsafe) && !range_handled(checked | unsafe));
+    static_assert(std::numeric_limits<inside<{0, 10}>>::traps);
+    static_assert(!std::numeric_limits<inside<{0, 10}, checked | unsafe>>::traps);
+
+    using D = inside<{0, 10}>;
+    D b{6};
+    EXPECT_NO_THROW(b.policy<unsafe>() /= D{0});
+    EXPECT_NO_THROW(b.policy<unsafe>() %= D{0});
+    EXPECT_EQ(b, 6);
+    EXPECT_THROW(b /= D{0}, inside_error);
+    EXPECT_THROW(b.policy() /= D{0}, inside_error);
 }
 
 // Assignment rounds, then range-checks: 8.25 into [0, 8] rounds to 8; 8.5

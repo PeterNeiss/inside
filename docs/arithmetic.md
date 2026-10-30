@@ -333,7 +333,7 @@ r *= 0.5_ins;    // 0.375, stored as 0.38
 `inside<{{0, 2}, per<4>}>`. A continuous grid has no `++`.
 
 `x /= 0` goes through the division-by-zero handling: a throw, an `errc`, or
-nothing under `ignore_zero`.
+nothing under `unsafe`.
 
 Under a policy with no checks, `+=`, `-=` and `*=` run at the raw type's width:
 a loop of byte-wide `b += 1_ins` vectorizes like native `uint8_t`.

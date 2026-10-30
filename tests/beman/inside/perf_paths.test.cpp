@@ -62,7 +62,7 @@ TEST(PerfPathsTest, wrap_policy_range_check_still_fires) {
 TEST(PerfPathsTest, q_format_division_native_div_qformat_matches_rational_arithmetic) {
     using fp = inside<{{0, 255}, 0x1p-8_r}>; // Q8.8; the `rounded_toward_zero` call policy
                                              // supplies snap for the native
-                                             // path, without unsafe's ignore_zero
+                                             // path, without unsafe's skipped zero check
 
     // Spot checks against expected Q-format integer-truncation values.
     auto q1 = div(fp{200}, fp{8}, rounded_toward_zero);

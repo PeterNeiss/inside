@@ -37,8 +37,6 @@ last the bound:
 
 | Bit | Decimal | Flag |
 |---|---:|---|
-| `1<<1` | 2 | `ignore_zero` |
-| `1<<2` | 4 | `ignore_range` |
 | `1<<4` | 16 | `snap`, alone also `round_toward_zero` |
 | `1<<5` | 32 | `round_nearest` (with `snap`: 48) |
 | `1<<6` | 64 | `round_floor` (with `snap`: 80) |
@@ -46,8 +44,9 @@ last the bound:
 | `1<<8` | 256 | `round_half_even` (with `snap`: 272) |
 | `1<<32` | 4294967296 | `clamp` |
 | `1<<33` | 8589934592 | `wrap` |
-| `1<<34` | 17179869184 | `checked`: the default policy; overrides `unsafe` |
-| `1<<36` | 68719476736 | the `unsafe` marker (`unsafe` adds `ignore_range`, `snap`, `ignore_zero`); the only bit that turns runtime checks off |
+| `1<<34` | 17179869184 | `checked`: the default policy |
+| `1<<36` | 68719476736 | the `unsafe` marker (`unsafe` adds `snap`: 68719476752); the only bit that turns runtime checks off, also beside `checked` |
+| `1<<37` | 137438953472 | `uninitialized` |
 | `1<<50` | 1125899906842624 | a `cursor<T, Step>` |
 
 The other bits are unused. So `17179869184` is plain `checked`, the default of

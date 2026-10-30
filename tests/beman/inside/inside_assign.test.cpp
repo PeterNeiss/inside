@@ -208,11 +208,11 @@ TEST(InsideAssignTest, unsafe_relaxes_domain_and_round_checks) {
     static_assert(!(std::is_same_v<typename decltype(q)::value_type::raw_type, rational>));
     ASSERT_EQ(*q, 6);
 
-    // Under unsafe (ignore_zero) the div-by-zero check is skipped entirely:
+    // Under unsafe the div-by-zero check is skipped entirely:
     // binary `a / 0` is undefined behavior, consistent with the compound
     // `/= zero-inside` no-op below. UB is not testable at runtime, so no assertion.
 
-    // Compound /= by a zero inside: unsafe implies ignore_zero -> silent no-op.
+    // Compound /= by a zero inside: unsafe skips the zero check -> silent no-op.
     u100u y{50};
     y /= u100u{0};
     ASSERT_EQ(y, 50);

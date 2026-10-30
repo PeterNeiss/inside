@@ -269,13 +269,14 @@ The hard default goes through the replaceable error handler
 throws `beman::inside::inside_error` (carrying the `errc`), or traps under
 `-fno-exceptions`. There is no `<system_error>` dependency.
 
-The flag bits are in `policy_flag.hpp`: `none`, `ignore_zero`,
-`ignore_range`, `snap`, `round_toward_zero` (the `snap` bit alone),
-`round_nearest`, `round_floor`, `round_ceil`, `round_half_even`, `clamp`,
-`wrap`, `checked`, `unsafe` (= `detail::unsafe_marker | ignore_range | snap | ignore_zero`),
-and the internal `detail::cursor_marker`. `is_checked(P)` decides whether step
-4 runs: true unless P carries `unsafe_marker`, and an explicit `checked`
-overrides that, so every policy is checked unless it says `unsafe`. The bit
+The flag bits are in `policy_flag.hpp`: `none`, `snap`, `round_toward_zero`
+(the `snap` bit alone), `round_nearest`, `round_floor`, `round_ceil`,
+`round_half_even`, `clamp`, `wrap`, `checked`, `unsafe`
+(= `detail::unsafe_marker | snap`), `uninitialized`, and the internal
+`detail::cursor_marker`. `is_checked(P)` decides whether step 4 runs, and
+whether a zero divisor is checked: true unless P carries `unsafe_marker`, so
+every policy is checked unless it says `unsafe`, and `unsafe` wins over
+`checked`. The bit
 values are listed in [diagnostics.md](diagnostics.md#decoding-an-inside).
 
 The cascade lives in `detail/assignment.hpp` and `detail/assign_exact.hpp`:

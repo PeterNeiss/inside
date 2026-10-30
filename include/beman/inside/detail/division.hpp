@@ -132,11 +132,10 @@ using native_div_t = std::conditional_t<(lower_imax<L> > std::numeric_limits<std
                                         std::int32_t,
                                         imax>;
 
-// The zero-divisor check is skipped when R's grid excludes zero or
-// `ignore_zero` is set (a zero divisor is then UB, matching the `/= 0` no-op).
+// The zero-divisor check is skipped when R's grid excludes zero or `unsafe`
+// appears (a zero divisor is then UB, matching the `/= 0` no-op).
 template <insidable L, insidable R, policy_flag F, policy_flag G>
-inline constexpr bool divisor_unchecked =
-    divisor_excludes_zero<R> || ((G | F | flags_of<L> | flags_of<R>)&ignore_zero) != 0;
+inline constexpr bool divisor_unchecked = divisor_excludes_zero<R> || !is_checked(G | F | flags_of<L> | flags_of<R>);
 
 // Compile-time rounding of a quotient-interval endpoint to an integer index.
 // Under half_even the endpoint is bracketed by [floor, ceil] (Upper: ceil)
@@ -316,7 +315,7 @@ template <policy_flag G, typename E>
 constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy) -> return_t {
     // A zero divisor: reported through the policy's errc& (if any) and returned
     // as the error. Only reachable where return_t is expected (the divisor grid
-    // holds zero and ignore_zero is off).
+    // holds zero and no `unsafe` appears).
     [[maybe_unused]] auto zero = [&] { return report_or_unexpected<result>(policy, errc::division_by_zero); };
     [[maybe_unused]] constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
 

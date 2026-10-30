@@ -151,15 +151,15 @@ struct policy_ref {
         return finalize_arith(mul(Ref, rhs, Policy), "policy_ref::operator*=");
     }
 
-    // A zero divisor is reported (on_error / ignore_zero) and leaves Ref
-    // unchanged, like inside::operator/=: div/mod under ignore_zero skip their
+    // A zero divisor is reported (on_error, unless `unsafe` appears) and leaves
+    // Ref unchanged, like inside::operator/=: div/mod under `unsafe` skip their
     // own check, so dividing here would be a division by zero.
     template <insidable C>
         requires requires(const B& b, const C& c, P& p) { div(b, c, p); } &&
                  stores_back<decltype(div(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator/=(const C& rhs) {
         if (rhs == 0) {
-            if constexpr (!has_flag(flags_of<C>, ignore_zero)) // either operand silences it
+            if constexpr (is_checked(flags_of<C>)) // either operand silences it
                 report_error(errc::division_by_zero, "policy_ref::operator/= division by zero");
             return Ref;
         }
@@ -171,7 +171,7 @@ struct policy_ref {
                  stores_back<decltype(mod(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator%=(const C& rhs) {
         if (rhs == 0) {
-            if constexpr (!has_flag(flags_of<C>, ignore_zero)) // either operand silences it
+            if constexpr (is_checked(flags_of<C>)) // either operand silences it
                 report_error(errc::division_by_zero, "policy_ref::operator%= division by zero");
             return Ref;
         }
@@ -210,11 +210,11 @@ struct policy_ref {
 
   private:
     // A failed op leaves Ref unchanged: on_error takes the failure, else the
-    // policy reports it — but ignore_zero skips a zero divisor.
+    // policy reports it — but `unsafe` skips a zero divisor.
     constexpr void report_error(errc code, const char* what) {
         if constexpr (has_action<is_error_action, As...>)
             pick_action_in<is_error_action>(Actions).Fn(Ref, code, what);
-        else if (code != errc::division_by_zero || !uses_flag<B, P, ignore_zero>)
+        else if (code != errc::division_by_zero || is_checked(flags_of<B> | plain_t<P>::Flags))
             Policy.report(code);
     }
 

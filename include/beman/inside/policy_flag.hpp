@@ -12,22 +12,19 @@
 
 namespace beman::inside {
 //---------------------------------------------------------------------------
-// policy_flag — the policy bits of inside<G, P> (none, ignore_zero,
-// ignore_range, snap and the rounding modes, clamp, wrap, checked, unsafe,
-// uninitialized),
+// policy_flag — the policy bits of inside<G, P> (none, snap and the
+// rounding modes, clamp, wrap, checked, unsafe, uninitialized),
 // has_flag / is_checked, the rounding precedence (rounding_of), the hook
 // factories on_clamp / on_wrap / on_error with their is_*_action traits, and
 // the flags each hook implies.
 //---------------------------------------------------------------------------
 using policy_flag = unsigned long long;
 
-// Check model: compile-time checks always run. When success can't be proven
-// statically, compilation fails unless the matching ignore flag is set; else a
-// runtime check is inserted that throws (or reports through an errc& parameter).
-// Binary operations OR the flags of both operands.
+// Check model: compile-time checks always run. A store whose success can't be
+// proven statically gets a runtime check that throws (or reports through an
+// errc& parameter), unless `unsafe` appears: in the type, an operand, or the
+// call's policy.
 inline constexpr policy_flag none{0ull};
-inline constexpr policy_flag ignore_zero{1ull << 1};
-inline constexpr policy_flag ignore_range{1ull << 2};
 // `snap` — permission: an off-notch value is rounded to fit the grid instead
 // of rejected. Without it, an off-notch value is a compile/runtime error and
 // div/mod fall through to exact-rational results. Every round_* mode carries
@@ -44,9 +41,9 @@ inline constexpr policy_flag round_floor{(1ull << 6) | snap};
 inline constexpr policy_flag round_ceil{(1ull << 7) | snap};
 inline constexpr policy_flag round_half_even{(1ull << 8) | snap};
 
-// runtime checking — on unless the policy carries `unsafe` (see is_checked).
-// Spelling `checked` re-enables the checks alongside `unsafe`.
-inline constexpr policy_flag checked{1ull << 34}; // runtime range/notch/overflow checks
+// runtime checking — the default policy's name: every policy without
+// `unsafe` checks, and `unsafe` wins over it (see is_checked).
+inline constexpr policy_flag checked{1ull << 34}; // runtime range/notch/zero-divisor checks
 
 // unary — mutually exclusive
 inline constexpr policy_flag clamp{1ull << 32}; // saturate to boundary
@@ -61,16 +58,16 @@ inline constexpr policy_flag uninitialized{1ull << 37};
 // No flag picks the raw: storage follows the grid alone (grid.hpp
 // raw_for, docs/storage.md).
 
-// opt-out of `checked`: no domain/round/overflow/div-by-zero checks (reading
-// out-of-range or dividing by zero is UB; `/= 0` no-ops, `a / 0` skips the
-// check). Includes `snap` so notch-incompatible assigns compile.
+// The one opt-out of the runtime checks: no range or zero-divisor check
+// (reading an out-of-range value or dividing by zero is UB; `/= 0` no-ops,
+// `a / 0` skips the check). Includes `snap`, so an off-notch value truncates.
 namespace detail {
 inline constexpr policy_flag unsafe_marker{1ull << 36};
 // Marks a cursor (`cursor<T, Step>`): default construction starts at Lower,
 // and `end(t)` names its past-the-end value. Results never carry it.
 inline constexpr policy_flag cursor_marker{1ull << 50};
 } // namespace detail
-inline constexpr policy_flag unsafe{detail::unsafe_marker | ignore_range | snap | ignore_zero};
+inline constexpr policy_flag unsafe{detail::unsafe_marker | snap};
 
 //---------------------------------------------------------------------------
 // Flag-set membership predicates. `has_flag(set, flag)` is true iff EVERY bit
@@ -85,17 +82,16 @@ inline constexpr policy_flag unsafe{detail::unsafe_marker | ignore_range | snap 
     return (set & flags) != none;
 }
 
-// Runtime checks run unless the policy opts out with `unsafe`; an explicit
-// `checked` wins over `unsafe`. So `inside<G, round_nearest>` and
-// `inside<G, clamp>` are checked, exactly like the default `inside<G>`.
-[[nodiscard]] constexpr bool is_checked(policy_flag set) noexcept {
-    return has_flag(set, checked) || !has_flag(set, detail::unsafe_marker);
-}
+// Runtime checks run unless the flag set carries `unsafe`, which wins over
+// `checked` (the default policy's own bit, so `x.policy<unsafe>()` opts a
+// default inside out). `inside<G, round_nearest>` and `inside<G, clamp>` are
+// checked, exactly like the default `inside<G>`.
+[[nodiscard]] constexpr bool is_checked(policy_flag set) noexcept { return !has_flag(set, detail::unsafe_marker); }
 
 // Whether an out-of-range value does anything under a flag set: a clamp or
 // wrap bit stores it, a checked range reports it. False under `unsafe`.
 [[nodiscard]] constexpr bool range_handled(policy_flag set) noexcept {
-    return has_any_flag(set, clamp | wrap) || (is_checked(set) && !has_flag(set, ignore_range));
+    return has_any_flag(set, clamp | wrap) || is_checked(set);
 }
 
 namespace detail {

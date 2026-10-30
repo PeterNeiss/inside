@@ -17,6 +17,8 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   `int i = b;` becomes `int i = b.as<int>();`, `vec[b]` becomes
   `vec[b.as<std::size_t>()]`, `static_cast<imax>(b)` becomes `b.as<imax>()`.
   A hook parameter typed `imax` takes `auto` and reads it with `as<imax>(c)`.
+- `ignore_range` and `ignore_zero` are gone: write `unsafe`, the one opt-out
+  of the runtime checks, or give a divisor a grid without 0.
 
 ### Changed
 
@@ -33,6 +35,10 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   the same way.
 - The error handler is atomic, with default visibility: one thread may install
   a handler while others raise, and shared libraries share it.
+- `unsafe` is the one opt-out of the runtime checks, and it wins over
+  `checked` wherever it appears (`unsafe` is now `unsafe_marker | snap`).
+  `unsafe | checked` was documented to turn the checks back on, but the range
+  check stayed off.
 
 ### Added
 
@@ -40,6 +46,8 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Removed
 
+- The flags `ignore_range` and `ignore_zero`: each turned a runtime check off
+  without saying `unsafe`. They compiled to the same code as `unsafe`.
 - The implicit `operator imax()`. It narrowed silently into smaller built-ins:
   `int i = b;` on a grid past `int` truncated, and `unsigned char c = b;` on
   `{-5, 5}` read −1 as 255, with no warning under `-Wall -Wextra`.
