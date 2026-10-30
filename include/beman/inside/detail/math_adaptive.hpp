@@ -192,7 +192,7 @@ constexpr wide_sint<K> to_q_at(const wide_rational<E>& x, int W) noexcept {
 // The same for a W known at compile time.
 template <int W, std::size_t K, std::size_t E>
 constexpr wide_sint<K> to_q(const wide_rational<E>& x) noexcept {
-    constexpr std::size_t KI = exact_max<E, K> + limbs_for_bits(W >= 0 ? W : -W) + 1;
+    constexpr std::size_t KI = std::max(E, K) + limbs_for_bits(W >= 0 ? W : -W) + 1;
     if constexpr (W >= 0 && E == 1) // the denominator fits a limb
         return static_cast<wide_sint<K>>(nearest_div(wide_sint<KI>{x.Num} << W, x.Den.Word[0]));
     else
@@ -221,7 +221,7 @@ inline constexpr int out_bits = [] {
         return 64;
     else {
         // notch = p/q: need 2^-b ≤ p/(2q), i.e. b ≥ log2(2q/p).
-        const grid_int p = wide_numerator(notch_of<Out>), q = wide_denominator(notch_of<Out>);
+        const grid_int p = grid_numerator(notch_of<Out>), q = grid_denominator(notch_of<Out>);
         return std::max(bit_width_of(q) - bit_width_of(p) + 2, 0);
     }
 }();
@@ -284,7 +284,7 @@ inline constexpr bool notch_fits64 = [] {
     if constexpr (!notched<Out>)
         return false;
     else {
-        const grid_int p = wide_numerator(notch_of<Out>), q = wide_denominator(notch_of<Out>);
+        const grid_int p = grid_numerator(notch_of<Out>), q = grid_denominator(notch_of<Out>);
         return p.fits_limb() && q.fits_limb();
     }
 }();
@@ -325,8 +325,8 @@ constexpr wide_sint<K + 2> fast_index(const wide_sint<K>& y, int S) noexcept {
     // below read as the half-unit bit (bit S−1) plus a sticky bit for the rest.
     using J                   = wide_sint<K + 2>;
     constexpr std::size_t N   = K + 1;
-    constexpr umax        p   = static_cast<umax>(wide_numerator(notch_of<Out>));
-    constexpr umax        q   = static_cast<umax>(wide_denominator(notch_of<Out>));
+    constexpr umax        p   = static_cast<umax>(grid_numerator(notch_of<Out>));
+    constexpr umax        q   = static_cast<umax>(grid_denominator(notch_of<Out>));
     const bool            neg = y.negative();
     const wide_uint<K>    mag{neg ? -y : y};
     umax                  a[N];
@@ -375,8 +375,8 @@ template <insidable Out, round_mode M, std::size_t K>
 constexpr bool decide_fast(const wide_sint<K>& y, umax e, int S, wide_sint<K + 2>& index) noexcept {
     using J                       = wide_sint<K + 2>;
     constexpr std::size_t N       = K + 1; // |y|·q fits K + 1 limbs
-    constexpr umax        p       = static_cast<umax>(wide_numerator(notch_of<Out>));
-    constexpr umax        q       = static_cast<umax>(wide_denominator(notch_of<Out>));
+    constexpr umax        p       = static_cast<umax>(grid_numerator(notch_of<Out>));
+    constexpr umax        q       = static_cast<umax>(grid_denominator(notch_of<Out>));
     constexpr bool        nearest = M == round_mode::nearest || M == round_mode::half_even;
     const bool            neg     = y.negative();
     const wide_uint<K>    mag{neg ? -y : y};
@@ -543,11 +543,11 @@ constexpr Out store(const wide_sint<K>& index, P&& policy) {
             return Out::from_raw(raw_of_slot<Out>(index));
     // Past Out's range: the grid point (index + Lower/Notch)·Notch, exact,
     // through Out's assignment (its policy clamps, wraps or reports).
-    constexpr std::size_t KK = exact_max<K, exact_limbs<Out>>;
+    constexpr std::size_t KK = std::max(K, exact_limbs<Out>);
     using J                  = wide_sint<KK>;
     return store_exact_into<Out>(
-        wide_rational<KK>{(J{index} + static_cast<J>(slot_base<Out>)) * static_cast<J>(wide_numerator(notch_of<Out>)),
-                          static_cast<J>(wide_denominator(notch_of<Out>))},
+        wide_rational<KK>{(J{index} + static_cast<J>(slot_base<Out>)) * static_cast<J>(grid_numerator(notch_of<Out>)),
+                          static_cast<J>(grid_denominator(notch_of<Out>))},
         policy);
 }
 
@@ -562,13 +562,13 @@ template <insidable Out, std::size_t K, typename P>
 constexpr Out store_exact(const wide_rational<K>& v, P&& policy) {
     // At least the exact paths' minimum width (try_rational's 64-bit bounds
     // need it).
-    return store_exact_into<Out>(wide_rational<exact_max<K, exact_min_limbs>>{v}, policy);
+    return store_exact_into<Out>(wide_rational<std::max(K, exact_min_limbs)>{v}, policy);
 }
 
 // An approx's midpoint as an exact value.
 template <std::size_t K>
 constexpr auto midpoint(const approx<K>& a) noexcept {
-    return scaled_rational<exact_max<K + 1, exact_min_limbs> + 8>(a.Value, a.Scale);
+    return scaled_rational<std::max(K + 1, exact_min_limbs) + 8>(a.Value, a.Scale);
 }
 
 //---------------------------------------------------------------------------

@@ -29,8 +29,8 @@ inline constexpr bool index_cmp_fits = [] {
     if constexpr (!notched<B> || !anchored<B> || !values_fit_imax<B>)
         return false;
     else
-        return index_lo64<B> && index_hi64<B> && std::in_range<imax>(index_lo64<B>->Num) &&
-               std::in_range<imax>(index_hi64<B>->Num);
+        return lower_index64<B> && upper_index64<B> && std::in_range<imax>(lower_index64<B>->Num) &&
+               std::in_range<imax>(upper_index64<B>->Num);
 }();
 
 // Signed value index of Raw == 0: Lower/Notch for offset (index) storage,
@@ -38,7 +38,7 @@ inline constexpr bool index_cmp_fits = [] {
 template <insidable B>
 inline constexpr imax index_cmp_bias = [] {
     if constexpr (index_storage<B>)
-        return signed_numerator(*index_lo64<B>);
+        return signed_numerator(*lower_index64<B>);
     else
         return imax{0};
 }();
@@ -128,7 +128,8 @@ inline constexpr bool scalar_index_cmp_fits = [] {
     else {
         constexpr umax notch_num = notch64<B>.Num;
         constexpr umax notch_den = static_cast<umax>(notch64<B>.Den); // Notch > 0
-        constexpr umax index_mag = index_lo64<B>->Num > index_hi64<B>->Num ? index_lo64<B>->Num : index_hi64<B>->Num;
+        constexpr umax index_mag =
+            lower_index64<B>->Num > upper_index64<B>->Num ? lower_index64<B>->Num : upper_index64<B>->Num;
         // The largest |c| of A: |min| = max + 1 for a signed type.
         constexpr umax scalar_mag = static_cast<umax>(std::numeric_limits<A>::max()) + std::signed_integral<A>;
         umax           product;

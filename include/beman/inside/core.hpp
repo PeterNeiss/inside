@@ -306,7 +306,7 @@ struct inside {
         // Q-format-with-integer-Lower fast path skips the generic path's three
         // rational ops. Falls through to the rational path when a value times
         // the notch's denominator could pass imax (e.g. a Q16.16 × Q16.16 result).
-        else if constexpr (detail::qformat_codec_fits<inside>)
+        else if constexpr (detail::q_format_fits<inside>)
             return detail::q_format_decode(*this);
         else {
             // Raw·Notch can pass 64 bits on the way to a value that fits.
@@ -402,7 +402,7 @@ struct inside {
     constexpr std::pair<imax, imax> fraction() const {
         if constexpr (detail::integer_storage<inside> && detail::integer_lattice<inside>)
             return {detail::to_value(*this), 1};
-        else if constexpr (detail::index_storage<inside> && detail::qformat_codec_fits<inside> &&
+        else if constexpr (detail::index_storage<inside> && detail::q_format_fits<inside> &&
                            std::has_single_bit(detail::abs_den(detail::notch64<inside>.Den))) {
             constexpr imax nd  = detail::abs_den(detail::notch64<inside>.Den);
             const imax     num = detail::raw_imax(*this) + detail::lower_imax<inside> * nd;
@@ -559,7 +559,7 @@ struct inside {
     static constexpr int raw_work_bits = [] {
         using W        = detail::grid_int;
         constexpr W lo = detail::raw_lo_exact<inside>, hi = detail::raw_hi_exact<inside>;
-        return detail::signed_value_bits_of({lo, hi, Dlo, Dhi, lo + Dlo, hi + Dhi, hi - lo + W{1}, hi - lo + Dhi});
+        return detail::signed_value_bits({lo, hi, Dlo, Dhi, lo + Dlo, hi + Dhi, hi - lo + W{1}, hi - lo + Dhi});
     }();
     template <detail::grid_int Dlo, detail::grid_int Dhi>
     using raw_work_t = detail::work_int_t<raw_work_bits<Dlo, Dhi>>;
@@ -568,16 +568,16 @@ struct inside {
     // their negations and the bias, so neither step overflows before the delta
     // (in raw_work_t's range) is formed.
     template <insidable R>
-    using delta_work_t = detail::work_int_t<detail::signed_value_bits_of({detail::raw_lo_exact<R>,
-                                                                          detail::raw_hi_exact<R>,
-                                                                          -detail::raw_lo_exact<R>,
-                                                                          -detail::raw_hi_exact<R>,
-                                                                          add_bias<R>,
-                                                                          -add_bias<R>,
-                                                                          detail::raw_lo_exact<R> + add_bias<R>,
-                                                                          detail::raw_hi_exact<R> + add_bias<R>,
-                                                                          -detail::raw_lo_exact<R> - add_bias<R>,
-                                                                          -detail::raw_hi_exact<R> - add_bias<R>})>;
+    using delta_work_t = detail::work_int_t<detail::signed_value_bits({detail::raw_lo_exact<R>,
+                                                                       detail::raw_hi_exact<R>,
+                                                                       -detail::raw_lo_exact<R>,
+                                                                       -detail::raw_hi_exact<R>,
+                                                                       add_bias<R>,
+                                                                       -add_bias<R>,
+                                                                       detail::raw_lo_exact<R> + add_bias<R>,
+                                                                       detail::raw_hi_exact<R> + add_bias<R>,
+                                                                       -detail::raw_lo_exact<R> - add_bias<R>,
+                                                                       -detail::raw_hi_exact<R> - add_bias<R>})>;
 
     // A compound op's constraint: its binary op's result (an expected's
     // value) assigns to this type, so `requires { x op= y; }` is honest.
@@ -662,7 +662,7 @@ struct inside {
 
     // A rational on a Q-format grid's lattice as a signed notch count (rhs·K
     // for notch 1/K), when it is a whole number of notches of moderate size.
-    static constexpr bool raw_delta_ok = detail::qformat_codec_fits<inside> && detail::values_fit_imax<inside>;
+    static constexpr bool raw_delta_ok = detail::q_format_fits<inside> && detail::values_fit_imax<inside>;
     // The largest count it takes: store_raw forms Raw ± n and, to wrap, its
     // offset from raw_lo, so n leaves room for the raws and their span in imax.
     static constexpr umax max_notch_delta = [] {
@@ -871,7 +871,7 @@ namespace detail {
 // value's stand-in. Out of line: the common parse stays small.
 template <insidable B, policy_flag F>
 [[gnu::cold]] [[gnu::noinline]] constexpr std::expected<B, errc> parse_wide(const char* first, const char* last) {
-    constexpr std::size_t K = exact_max<exact_limbs<B>, parse_limbs>;
+    constexpr std::size_t K = std::max(exact_limbs<B>, parse_limbs);
     auto                  w = parse_exact<K>(first, last);
     if (!w && w.error() == errc::overflow)
         if (const auto t = stand_in<B, K, static_cast<bool>((flags_of<B> | F) & wrap)>(first, last))
@@ -904,7 +904,7 @@ template <insidable B>
     }
     if (v.error() != errc::overflow)
         return std::unexpected{v.error()};
-    constexpr std::size_t K = detail::exact_max<detail::exact_limbs<B>, detail::parse_limbs>;
+    constexpr std::size_t K = std::max(detail::exact_limbs<B>, detail::parse_limbs);
     auto                  w = detail::parse_exact<K>(first, last);
     if (!w && w.error() == errc::overflow)
         if (const auto t = detail::stand_in<B, K>(first, last))
@@ -918,7 +918,7 @@ template <insidable B>
             return std::unexpected{errc::rounding_error};
     } else if constexpr (grid_of<B>.MaxDenominator != 0) {
         // A bounded continuous grid holds denominators up to its bound only.
-        if (static_cast<detail::wide_sint<K>>(detail::wide_numerator(grid_of<B>.MaxDenominator)) <
+        if (static_cast<detail::wide_sint<K>>(detail::grid_numerator(grid_of<B>.MaxDenominator)) <
             detail::reduced(*w).Den)
             return std::unexpected{errc::rounding_error};
     }

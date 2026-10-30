@@ -18,12 +18,6 @@
 //---------------------------------------------------------------------------
 namespace beman::inside {
 namespace detail {
-// Whether B's limits and notch are 64-bit rationals: the predicates' 64-bit
-// paths need them.
-template <insidable B>
-inline constexpr bool predicates_fit64 = fits_rational(grid_of<B>.Interval.Lower) &&
-                                         fits_rational(grid_of<B>.Interval.Upper) && fits_rational(grid_of<B>.Notch);
-
 // A double the 64-bit paths cannot take exactly: |d| ≥ 2^64, or finer than
 // 2^-62 (as_rational would truncate it).
 constexpr bool past_rational(double d) noexcept { return past_64_bits(d) || !abs_fraction_exact(d); }
@@ -37,7 +31,7 @@ struct lossy_result {
 };
 template <insidable B, std::size_t K>
 constexpr lossy_result exact_lossy(const wide_rational<K>& x) noexcept {
-    constexpr std::size_t   KK = exact_max<K, exact_limbs<B>>;
+    constexpr std::size_t   KK = std::max(K, exact_limbs<B>);
     const wide_rational<KK> v{x};
     const bool              in = !(v < exact_of_grid<KK>(lower_of<B>)) && !(exact_of_grid<KK>(upper_of<B>) < v);
     if constexpr (notched<B>) {
@@ -55,7 +49,7 @@ constexpr lossy_result exact_lossy(const wide_rational<K>& x) noexcept {
         constexpr bool bounded = grid_of<B>.MaxDenominator != 0;
         if (in) {
             if constexpr (bounded)
-                return {false, static_cast<wide_sint<KK>>(wide_numerator(grid_of<B>.MaxDenominator)) < reduced(v).Den};
+                return {false, static_cast<wide_sint<KK>>(grid_numerator(grid_of<B>.MaxDenominator)) < reduced(v).Den};
             else if constexpr (rational_storage<B>)
                 return {!try_rational(v).has_value(), false}; // the store reports what its raw cannot hold
             else
@@ -76,7 +70,7 @@ constexpr lossy_result exact_lossy(const wide_rational<K>& x) noexcept {
 template <typename A>
 concept wide_inside = insidable<A> && wide_valued<A>;
 template <insidable B, numeric A>
-inline constexpr bool predicates_exact_only = !predicates_fit64<B> || wide_inside<A>;
+inline constexpr bool exact_path_only = wide_grid_numbers<B> || wide_inside<A>;
 
 // exact_lossy for a value, when the 64-bit paths cannot take it.
 template <insidable B, numeric A>
@@ -86,14 +80,14 @@ constexpr std::optional<lossy_result> exact_lossy_of(A value) noexcept {
         const double d = static_cast<double>(value);
         if (static_cast<A>(d) != value)
             return exact_lossy<B>(exact_of_long_double(value));
-        if (!predicates_fit64<B> || past_rational(d))
+        if (wide_grid_numbers<B> || past_rational(d))
             return exact_lossy<B>(exact_of_double(d));
     } else if constexpr (std::floating_point<A>) {
-        if (!predicates_fit64<B> || past_rational(static_cast<double>(value)))
+        if (wide_grid_numbers<B> || past_rational(static_cast<double>(value)))
             return exact_lossy<B>(exact_of_double(static_cast<double>(value)));
     } else if constexpr (wide_inside<A>)
         return exact_lossy<B>(exact_of(value));
-    else if constexpr (!predicates_fit64<B>)
+    else if constexpr (wide_grid_numbers<B>)
         return exact_lossy<B>(exact_of(as_rational(value)));
     return std::nullopt;
 }
@@ -105,7 +99,7 @@ template <insidable B, numeric A>
         if (!detail::is_finite(value))
             return true; // NaN / ±inf fit no grid (and must not raise here)
     // The 64-bit paths below do not compile for a grid (or value) past them.
-    if constexpr (detail::predicates_exact_only<B, A>)
+    if constexpr (detail::exact_path_only<B, A>)
         return detail::exact_lossy_of<B>(value)->Overflows;
     else {
         if (const auto e = detail::exact_lossy_of<B>(value)) [[unlikely]]
@@ -126,7 +120,7 @@ template <insidable B, numeric A>
         if (!detail::is_finite(value))
             return false; // non-finite — overflow, not rounding
     // The 64-bit paths below do not compile for a grid (or value) past them.
-    if constexpr (detail::predicates_exact_only<B, A>)
+    if constexpr (detail::exact_path_only<B, A>)
         return detail::exact_lossy_of<B>(value)->Rounds;
     else {
         if (const auto e = detail::exact_lossy_of<B>(value)) [[unlikely]]

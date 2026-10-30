@@ -103,7 +103,7 @@ TEST(RationalTest, rational_comparison) {
     }
 
     {
-        SCOPED_TRACE("comparison cross-trims so big denominators don't always overflow");
+        SCOPED_TRACE("comparison cross-cancels so big denominators don't always overflow");
         constexpr imax half = static_cast<imax>(M / 2);
         rational       a{static_cast<umax>(half), half}; // -> 1
         rational       b{1u};
@@ -113,7 +113,7 @@ TEST(RationalTest, rational_comparison) {
     {
         SCOPED_TRACE("cross-multiplication uses 128-bit, never overflows");
         // M/2 vs (M-1)/3: numerators are consecutive (coprime) and denominators
-        // {2,3} are coprime, so cross-trim cannot reduce either pair and the 64-bit
+        // {2,3} are coprime, so cross-cancellation cannot reduce either pair and the 64-bit
         // products overflow umax — but the 128-bit cross-multiply compares them
         // exactly. a - b = (M+2)/6 > 0, so a > b.
         rational a{M, 2};
@@ -266,16 +266,16 @@ TEST(RationalTest, rational_overflow_detection) {
     }
 
     {
-        SCOPED_TRACE("cross-trim avoids spurious overflow on common factors");
+        SCOPED_TRACE("cross-cancellation avoids spurious overflow on common factors");
         // (M/5)/2 + (M/5)/2 — common denominator avoids cross-multiplication.
         auto small = rational{M / 5, 2};
         ASSERT_TRUE((small + small).has_value());
     }
 
     {
-        SCOPED_TRACE("add cross-trim on unequal denominators avoids spurious overflow");
-        // gcd(4, 6) = 2; lcm = 12. With cross-trim a_ad'=2, b_ad'=3, so
-        // (M/5) * b_ad' = (M/5)*3 fits, whereas (M/5)*6 (no cross-trim) would
+        SCOPED_TRACE("add cross-cancellation on unequal denominators avoids spurious overflow");
+        // gcd(4, 6) = 2; lcm = 12. With cross-cancellation a_ad'=2, b_ad'=3, so
+        // (M/5) * b_ad' = (M/5)*3 fits, whereas (M/5)*6 (no cross-cancellation) would
         // overflow.
         auto a = rational{M / 5, 4};
         auto b = rational{1u, 6};
@@ -304,10 +304,10 @@ TEST(RationalTest, rational_overflow_detection) {
     {
         SCOPED_TRACE("checked arithmetic rejects denominators exceeding imax_max");
         // 2^62 * 3 = 1.5 * 2^63 — fits in umax, exceeds imax_max.
-        // (Coprime denominators so the cross-trim cannot reduce the lcm.)
+        // (Coprime denominators so the cross-cancellation cannot reduce the lcm.)
         imax p62 = imax{1} << 62;
 
-        // mul: a_ad * b_ad after cross-trim still > imax_max.
+        // mul: a_ad * b_ad after cross-cancellation still > imax_max.
         ASSERT_FALSE(((rational{1u, p62} * rational{1u, 3}).has_value()));
 
         // add: lcm > imax_max.

@@ -76,9 +76,10 @@ namespace beman::inside::certify {
 // denominator), as a demangled symbol spells them: find_grids.py's form.
 constexpr grid
 grid_from(umax lo_n, imax lo_d, umax hi_n, imax hi_d, umax notch_n, imax notch_d, umax max_n = 0, imax max_d = 1) {
-    using detail::make_raw;
-    grid g{interval{make_raw(lo_n, lo_d), make_raw(hi_n, hi_d)}, make_raw(notch_n, notch_d)};
-    g.MaxDenominator = make_raw(max_n, max_d);
+    using detail::rational_from_parts;
+    grid g{interval{rational_from_parts(lo_n, lo_d), rational_from_parts(hi_n, hi_d)},
+           rational_from_parts(notch_n, notch_d)};
+    g.MaxDenominator = rational_from_parts(max_n, max_d);
     return g;
 }
 

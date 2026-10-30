@@ -206,7 +206,7 @@ TEST(PerfPathsTest, int32_native_div_mod_matches_wide_reference) {
 //---------------------------------------------------------------------------
 TEST(PerfPathsTest, fraction_and_to_value_fast_paths_match_rational) {
     using Q = inside<{-4, 4, just<1, 8>}>; // dyadic, negative Lower
-    static_assert(index_storage<Q> && qformat_codec_fits<Q>);
+    static_assert(index_storage<Q> && q_format_fits<Q>);
     for (imax k = 0; k <= 64; ++k) {
         Q              q = Q::from_raw(static_cast<Q::raw_type>(k));
         const rational r{q};

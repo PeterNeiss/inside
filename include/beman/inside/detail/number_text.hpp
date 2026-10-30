@@ -215,7 +215,7 @@ constexpr parsed_number parse_number(const char* first, const char* last) {
 
     // In lowest terms before the signed-denominator check (0.5e-18 is
     // 1/(2·10^18), though 10^19 itself is past imax).
-    trim(num, den);
+    cancel_gcd(num, den);
     if (!std::in_range<imax>(den))
         return fail(parse_fail::denominator_overflow);
     return parsed_number{rational{num, den}, parse_fail::none};

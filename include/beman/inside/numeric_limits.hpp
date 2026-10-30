@@ -86,7 +86,7 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
             return at(d::grid_rational{0});
         else if constexpr (G.Interval.Lower < d::grid_rational{0} && d::grid_rational{0} < G.Interval.Upper) {
             // Lower + ⌈−Lower/Notch⌉·Notch
-            constexpr d::grid_rational k = d::grid_to_int<d::round_mode::ceil>(-G.Interval.Lower / G.Notch);
+            constexpr d::grid_rational k = d::grid_round<d::round_mode::ceil>(-G.Interval.Lower / G.Notch);
             return at(G.Interval.Lower + k * G.Notch);
         } else
             return at(G.Interval.Lower);

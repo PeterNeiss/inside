@@ -160,7 +160,7 @@ independent of the encoding, and gate different fast paths:
 **Grid numbers.** `detail/grid_rational.hpp` names the vocabulary:
 `grid_rational` (the type of a grid's limits and notch, and of `lower_of`,
 `upper_of`, `notch_of`), `grid_int` (exact integers for index counts),
-`wide_numerator`, `wide_denominator`, `grid_divides_evenly`,
+`grid_numerator`, `grid_denominator`, `grid_divides_evenly`,
 `grid_same_lattice`, and `fits_rational` / `to_rational` for the 64-bit fast
 paths. They are `big_rational` and `big_int` (`detail/big_rational.hpp`),
 with their own `+ − × /` and `gcd`: canonical values whose magnitude past one limb is
@@ -206,7 +206,7 @@ wrapping arithmetic still yields the exact raw (`index_work_t`). Compound
 
 On a grid with an **integer Lower and a notch 1/nd** (1/256, 1/65536) whose
 values times nd fit `imax`, the conversion between value and raw is integer
-arithmetic. The gate is `qformat_codec_fits<B>` (`detail/storage.hpp`):
+arithmetic. The gate is `q_format_fits<B>` (`detail/storage.hpp`):
 
 ```cpp
 abs_den(lower64<B>.Den) == 1                 // an integer Lower

@@ -211,8 +211,8 @@ template <auto U, insidable Out, reference R, class V>
     // The factor n/d in one limb when it is a 64-bit rational, else in as
     // many as it needs (ħ = h/2π in J·s).
     using beman::inside::detail::grid_int;
-    constexpr grid_int    n  = beman::inside::detail::wide_numerator(f.Ratio);
-    constexpr grid_int    d  = beman::inside::detail::wide_denominator(f.Ratio);
+    constexpr grid_int    n  = beman::inside::detail::grid_numerator(f.Ratio);
+    constexpr grid_int    d  = beman::inside::detail::grid_denominator(f.Ratio);
     constexpr bool        ng = n.negative();
     constexpr int         NB = n.bit_width();
     constexpr std::size_t KF = beman::inside::detail::fits_rational(f.Ratio)

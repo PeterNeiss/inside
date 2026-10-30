@@ -341,7 +341,7 @@ template <insidable Target, std::ranges::input_range Rng>
         // The total in units of U, the value unit: the notch on an anchored
         // grid, so each value counts as its value index.
         constexpr detail::grid_rational U = grid_of<B>.value_unit();
-        constexpr int bits = detail::signed_value_bits_of({detail::units_lo<B, U>, detail::units_hi<B, U>}) + 64;
+        constexpr int bits = detail::signed_value_bits({detail::units_lo<B, U>, detail::units_hi<B, U>}) + 64;
         using I            = detail::wide_sint<detail::limbs_for_bits(bits)>;
         I total{0};
         if constexpr (!detail::wide_index_storage<B> && sizeof(detail::raw_t<B>) <= 4) {
@@ -387,8 +387,8 @@ template <insidable Target, std::ranges::input_range Rng>
         constexpr std::size_t K =
             detail::limbs_for_bits(I::bits + detail::exact_value_bits<B> + detail::exact_value_bits<Target>);
         using W = detail::wide_sint<K>;
-        const detail::wide_rational<K> v{static_cast<W>(total) * static_cast<W>(detail::wide_numerator(U)),
-                                         static_cast<W>(detail::wide_denominator(U))};
+        const detail::wide_rational<K> v{static_cast<W>(total) * static_cast<W>(detail::grid_numerator(U)),
+                                         static_cast<W>(detail::grid_denominator(U))};
         no_action                      no_op;
         detail::assign_exact<detail::rational>(out, v, policy, no_op);
     } else {

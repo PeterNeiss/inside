@@ -37,8 +37,8 @@ struct diag_text {
     }
     // A grid number: an integer, or N/D.
     constexpr diag_text& operator<<(const grid_rational& r) {
-        append(wide_numerator(r));
-        if (const grid_int d = wide_denominator(r); !(d == grid_int{1})) {
+        append(grid_numerator(r));
+        if (const grid_int d = grid_denominator(r); !(d == grid_int{1})) {
             push('/');
             append(d);
         }

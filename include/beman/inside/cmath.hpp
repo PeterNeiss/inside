@@ -67,7 +67,7 @@ inline constexpr grid_rational sym_floor = [] {
     else {
         const grid_rational n = sym_notch<In>, l = lower_of<In>;
         // l − n·⌊l/n⌋, with ⌊l/n⌋ from the rounding helper below
-        return l - (n * grid_to_int<round_mode::floor>(l / n));
+        return l - (n * grid_round<round_mode::floor>(l / n));
     }
 }();
 
@@ -103,7 +103,7 @@ using copysign_result_t = inside<exact_out_grid({lower_of<Sgn> < 0 ? -abs_result
                                  out_policy<Mag>>;
 
 template <insidable In, round_mode M>
-using integer_result_t = inside<{{grid_to_int<M>(lower_of<In>), grid_to_int<M>(upper_of<In>)}, 1}, out_policy<In>>;
+using integer_result_t = inside<{{grid_round<M>(lower_of<In>), grid_round<M>(upper_of<In>)}, 1}, out_policy<In>>;
 
 template <insidable In>
 using floor_result_t = integer_result_t<In, round_mode::floor>;
@@ -139,8 +139,8 @@ inline constexpr bool int_direct = [] {
                   !anchored<In> || wide_valued<In> || wide_valued<Out>)
         return false;
     else {
-        const umax m =
-            index_lo64<In>->Num > index_hi64<In>->Num ? index_lo64<In>->Num : index_hi64<In>->Num; // max |J|
+        const umax m = lower_index64<In>->Num > upper_index64<In>->Num ? lower_index64<In>->Num
+                                                                       : upper_index64<In>->Num; // max |J|
         return m <= static_cast<umax>(std::numeric_limits<imax>::max()) / notch64<In>.Num;
     }
 }();

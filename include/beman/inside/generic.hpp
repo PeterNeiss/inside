@@ -33,7 +33,7 @@ concept assign_notch_ok = !insidable<R> || has_flag(flags_of<L> | P, snap) || no
 
 // R's notch for a diagnostic (0 for a non-inside, which never fails there).
 template <typename R>
-consteval grid_rational notch_for_diag() {
+consteval grid_rational notch_or_zero() {
     if constexpr (insidable<R>)
         return notch_of<R>;
     else
@@ -74,7 +74,7 @@ struct inside_assignable_why {
     static_assert(notch_ok,
                   detail::diag_text{} << "inside_assignable: incompatible notches — use `with_snap()` or "
                                          "`policy<snap>()` to allow rounding (lhs notch "
-                                      << notch_of<L> << ", rhs notch " << detail::notch_for_diag<R>() << ")");
+                                      << notch_of<L> << ", rhs notch " << detail::notch_or_zero<R>() << ")");
     static constexpr bool value = inside_assignable<L, R, P>;
 };
 

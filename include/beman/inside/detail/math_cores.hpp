@@ -35,7 +35,7 @@ inline constexpr int input_bits = [] {
     else if constexpr (!notched<In>)
         return 130;
     else
-        return grid_magnitude_bits<In> + grid_bits(wide_denominator(notch_of<In>)) + 2;
+        return grid_magnitude_bits<In> + grid_bits(grid_denominator(notch_of<In>)) + 2;
 }();
 
 template <insidable In>
@@ -678,7 +678,7 @@ struct pow_core {
 //---------------------------------------------------------------------------
 template <grid_rational Notch>
 inline constexpr std::size_t notch_limbs =
-    limbs_for_bits(grid_bits(wide_numerator(Notch)) + grid_bits(wide_denominator(Notch)) + 2);
+    limbs_for_bits(grid_bits(grid_numerator(Notch)) + grid_bits(grid_denominator(Notch)) + 2);
 
 // k·Notch as a grid number.
 template <grid_rational Notch, std::size_t K>
@@ -690,7 +690,7 @@ constexpr grid_rational lattice_point(const wide_sint<K>& k) {
 template <grid_rational Notch, bool Up, std::size_t K>
 constexpr wide_sint<K + notch_limbs<Notch>> lattice_index(const wide_sint<K>& n, const wide_sint<K>& d) {
     using J   = wide_sint<K + notch_limbs<Notch>>;
-    const J p = static_cast<J>(wide_numerator(Notch)), q = static_cast<J>(wide_denominator(Notch));
+    const J p = static_cast<J>(grid_numerator(Notch)), q = static_cast<J>(grid_denominator(Notch));
     return rounded_div<Up ? round_mode::ceil : round_mode::floor>(J{n} * q, J{d} * p);
 }
 
@@ -735,7 +735,7 @@ constexpr wide_rational<input_limbs<In>> grid_input(const grid_rational& r) {
 // ⌈|r|⌉ as an int (deduction bounds), saturated at imax: a grid reaching
 // 2^63 must fail every range gate, not wrap past them.
 constexpr imax ceil_abs(const grid_rational& r) {
-    const grid_int n = wide_numerator(r), d = wide_denominator(r);
+    const grid_int n = grid_numerator(r), d = grid_denominator(r);
     const grid_int a = abs(n);
     const grid_int c = (a + d - grid_int{1}) / d;
     constexpr imax M = std::numeric_limits<imax>::max();

@@ -305,7 +305,7 @@ TEST(InsideAssignTest, checked_policy_throws_on_rounding_error) {
     using coarse = inside<{{0, 10}, 2}, checked>;
     coarse c;
 
-    // 3.0 doesn't land on notch 2 — round_check fires
+    // 3.0 doesn't land on notch 2 — checks_rounding fires
     ASSERT_THROW((void)((c = 3.0)), beman::inside::inside_error);
 
     // value on the notch is fine

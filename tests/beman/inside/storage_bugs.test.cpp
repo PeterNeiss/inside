@@ -64,8 +64,8 @@ TEST(StorageBugsTest, bug_b_signed_direct_multiplication_third_quadrant) {
 //---------------------------------------------------------------------------
 // Bug C — assignment<L, double> (assignment.hpp)
 //
-// `assign(insidable, double R)` checked for `has_policy<L, P, clamp>` but not
-// for `has_policy<L, P, wrap>`. An `inside<{...}, wrap>` constructed from a
+// `assign(insidable, double R)` checked for `uses_flag<L, P, clamp>` but not
+// for `uses_flag<L, P, wrap>`. An `inside<{...}, wrap>` constructed from a
 // double silently stores the unwrapped value (which may be out of range)
 // because it falls through `range_fail` without `checked` set.
 //

@@ -129,9 +129,9 @@ constexpr auto exact_of(const B& b); // wide_value.hpp
 // The value indices Lower/Notch and Upper/Notch, as 64-bit rationals (for
 // the 64-bit paths of a notched grid).
 template <insidable B>
-inline constexpr auto index_lo64 = lower64<B> / notch64<B>;
+inline constexpr auto lower_index64 = lower64<B> / notch64<B>;
 template <insidable B>
-inline constexpr auto index_hi64 = upper64<B> / notch64<B>;
+inline constexpr auto upper_index64 = upper64<B> / notch64<B>;
 
 // Index raw → double in one IEEE operation. On an anchored grid with Notch
 // p/q the value is J·p/q, J = raw + Lower/Notch. With |J·p| and q at most 2^53
@@ -151,7 +151,7 @@ inline constexpr index_double_codec index_double = [] {
     else {
         constexpr umax k53 = umax{1} << 53;
         const rational n   = notch64<B>;
-        const auto     lo = index_lo64<B>, hi = index_hi64<B>;
+        const auto     lo = lower_index64<B>, hi = upper_index64<B>;
         if (abs_den(n.Den) > k53)
             return index_double_codec{};
         const umax m = lo->Num > hi->Num ? lo->Num : hi->Num; // max |J|
@@ -228,7 +228,7 @@ inline constexpr bool fraction_fits_imax = [] {
 // Gates the implicit imax/size_t conversions.
 template <grid G>
 inline constexpr bool integer_notch =
-    wide_denominator(G.Notch) == grid_int{1} && G.Notch != 0 && wide_denominator(G.Interval.Lower) == grid_int{1};
+    grid_denominator(G.Notch) == grid_int{1} && G.Notch != 0 && grid_denominator(G.Interval.Lower) == grid_int{1};
 
 // ONLY type conversion, NO value representation conversion calculation
 template <insidable B>
@@ -252,7 +252,7 @@ constexpr imax raw_imax(B b) noexcept {
 // by operator rational(), from_value, and assignment::store.
 //-------------------------------------------------------------------------
 template <insidable B>
-inline constexpr bool qformat_codec_fits = [] {
+inline constexpr bool q_format_fits = [] {
     if constexpr (abs_den(lower64<B>.Den) != 1 || notch64<B>.Num != 1 || !values_fit_imax<B>)
         return false;
     else { // every value·nd (so Lower·nd and raw + Lower·nd) in imax
@@ -266,7 +266,7 @@ inline constexpr bool qformat_codec_fits = [] {
 
 // value → raw, integer math only.
 template <insidable B>
-    requires qformat_codec_fits<B>
+    requires q_format_fits<B>
 constexpr raw_t<B> q_format_encode(imax value) noexcept {
     constexpr imax nd = abs_den(notch64<B>.Den);
     return raw_cast<B>((value - lower_imax<B>)*nd);
@@ -274,7 +274,7 @@ constexpr raw_t<B> q_format_encode(imax value) noexcept {
 
 // raw → rational, integer math only.
 template <insidable B>
-    requires qformat_codec_fits<B>
+    requires q_format_fits<B>
 constexpr rational q_format_decode(B b) noexcept {
     constexpr imax nd = abs_den(notch64<B>.Den);
     const imax     n  = raw_imax(b) + lower_imax<B> * nd;
@@ -302,7 +302,7 @@ template <insidable B>
     else if constexpr (abs_den(notch64<B>.Den) == 1 && abs_den(lower64<B>.Den) == 1)
         // In umax: raw·Notch can pass imax although the value fits.
         return static_cast<imax>(static_cast<umax>(lower_imax<B>) + static_cast<umax>(raw_imax(b)) * notch64<B>.Num);
-    else if constexpr (qformat_codec_fits<B>) {
+    else if constexpr (q_format_fits<B>) {
         constexpr imax nd = abs_den(notch64<B>.Den);
         return (raw_imax(b) + lower_imax<B> * nd) / nd; // q_format_decode, truncated
     } else                                              // index storage, generic rational path
@@ -315,7 +315,7 @@ constexpr void from_value(B& b, imax val) {
         b = B::from_raw(raw_cast<B>(val));
     else if constexpr (abs_den(notch64<B>.Den) == 1 && abs_den(lower64<B>.Den) == 1)
         b = B::from_raw(raw_cast<B>((static_cast<umax>(val) - static_cast<umax>(lower_imax<B>)) / notch64<B>.Num));
-    else if constexpr (qformat_codec_fits<B>)
+    else if constexpr (q_format_fits<B>)
         b = B::from_raw(q_format_encode<B>(val));
     else // index storage, generic rational path
     {
@@ -338,12 +338,12 @@ inline constexpr imax raw_hi = integer_value_storage<B> ? upper_imax<B> : static
 // The exact raw range: 0 .. step count for index storage, Lower .. Upper
 // for value storage (integers there). Sizes the work types below.
 template <insidable B>
-inline constexpr grid_int raw_lo_exact = index_storage<B> ? grid_int{0} : wide_numerator(lower_of<B>);
+inline constexpr grid_int raw_lo_exact = index_storage<B> ? grid_int{0} : grid_numerator(lower_of<B>);
 template <insidable B>
-inline constexpr grid_int raw_hi_exact = index_storage<B> ? grid_of<B>.step_count() : wide_numerator(upper_of<B>);
+inline constexpr grid_int raw_hi_exact = index_storage<B> ? grid_of<B>.step_count() : grid_numerator(upper_of<B>);
 
 // Value bits for every value in a list (their min .. max).
-constexpr int signed_value_bits_of(std::initializer_list<grid_int> vals) noexcept {
+constexpr int signed_value_bits(std::initializer_list<grid_int> vals) noexcept {
     const auto [mn, mx] = std::minmax(vals);
     return signed_value_bits(mn, mx);
 }
@@ -416,29 +416,29 @@ constexpr raw_t<L> raw_of_lattice_value(rational v) {
 //-------------------------------------------------------------------------
 template <insidable B>
 inline constexpr bool integer_limits =
-    wide_denominator(lower_of<B>) == grid_int{1} && wide_denominator(upper_of<B>) == grid_int{1};
+    grid_denominator(lower_of<B>) == grid_int{1} && grid_denominator(upper_of<B>) == grid_int{1};
 
 template <insidable B>
 inline constexpr bool integer_lattice =
-    integer_notch<grid_of<B>> || (lower_of<B> == upper_of<B> && wide_denominator(lower_of<B>) == grid_int{1});
+    integer_notch<grid_of<B>> || (lower_of<B> == upper_of<B> && grid_denominator(lower_of<B>) == grid_int{1});
 
-// Policy test: checks both type-level and per-operation policy.
-// Composite flags (e.g. round_nearest = bit5 | snap) require all
+// Whether a store into B under the call policy P uses flag F: B's own flags
+// or P's. Composite flags (e.g. round_nearest = bit5 | snap) require all
 // their bits set — having a subset like just `snap` does NOT match.
 template <insidable B, typename P, policy_flag F>
-inline constexpr bool has_policy = has_flag(flags_of<B>, F) || plain_t<P>::test(F);
+inline constexpr bool uses_flag = has_flag(flags_of<B>, F) || plain_t<P>::test(F);
 
 // rounding_of (policy_flag.hpp) over L's type policy and the call's policy P.
 template <insidable L, typename P>
-inline constexpr round_mode rounding_for = has_policy<L, P, round_floor>       ? round_mode::floor
-                                           : has_policy<L, P, round_ceil>      ? round_mode::ceil
-                                           : has_policy<L, P, round_half_even> ? round_mode::half_even
-                                           : has_policy<L, P, round_nearest>   ? round_mode::nearest
-                                                                               : round_mode::trunc;
+inline constexpr round_mode rounding_for = uses_flag<L, P, round_floor>       ? round_mode::floor
+                                           : uses_flag<L, P, round_ceil>      ? round_mode::ceil
+                                           : uses_flag<L, P, round_half_even> ? round_mode::half_even
+                                           : uses_flag<L, P, round_nearest>   ? round_mode::nearest
+                                                                              : round_mode::trunc;
 
 // ⌊a / b⌋ for grid numbers (b > 0).
 constexpr grid_int floor_quotient(const grid_rational& a, const grid_rational& b) noexcept {
-    const grid_int n = wide_numerator(a) * wide_denominator(b), d = wide_denominator(a) * wide_numerator(b);
+    const grid_int n = grid_numerator(a) * grid_denominator(b), d = grid_denominator(a) * grid_numerator(b);
     const grid_int q = n / d;
     return (n % d != grid_int{0} && n.negative()) ? q - grid_int{1} : q;
 }
@@ -506,7 +506,7 @@ template <insidable L, typename P>
 // values, and fractions k/D lie 1/D apart.
 template <insidable L, typename P>
 inline constexpr bool rounds_before_range_check =
-    (notched<L> || grid_of<L>.MaxDenominator != 0) && has_policy<L, P, snap>;
+    (notched<L> || grid_of<L>.MaxDenominator != 0) && uses_flag<L, P, snap>;
 
 // rounds_into_range for a v whose rounding passes the 64-bit rational on the
 // way (v − Lower for a fine v's denominator), decided exactly (wide_value.hpp).
@@ -587,7 +587,7 @@ template <insidable L, typename P>
     constexpr round_mode m        = rounding_for<L, P>;
     bool                 negative = false;
     if constexpr (lower64<L> < 0) {
-        constexpr rational c = -*index_lo64<L>; // > 0
+        constexpr rational c = -*lower_index64<L>; // > 0
         using W              = wide_uint<2>;
         negative             = W{num} * W{abs_den(c.Den)} < W{c.Num} * W{den};
     }
@@ -681,7 +681,7 @@ inline constexpr bool notches_compatible = [] {
 // Cheap default — reports through the static category message (no string).
 template <typename P>
 constexpr bool range_fail(P&& policy) {
-    if (policy.range_check()) {
+    if (policy.checks_range()) {
         policy.report(errc::overflow);
         return true;
     }

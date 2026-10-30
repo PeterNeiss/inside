@@ -98,11 +98,11 @@ struct grid {
     // A bound is a positive integer at least the limits' denominators (each
     // limit is a value).
     static constexpr detail::grid_rational check_bound(const interval& iv, const detail::grid_rational& d) {
-        using detail::wide_denominator;
-        if (!(d > 0) || wide_denominator(d) != detail::grid_int{1})
+        using detail::grid_denominator;
+        if (!(d > 0) || grid_denominator(d) != detail::grid_int{1})
             detail::constexpr_error<"max_denominator: the bound must be a positive integer">();
-        if (detail::wide_numerator(d) < wide_denominator(iv.Lower) ||
-            detail::wide_numerator(d) < wide_denominator(iv.Upper))
+        if (detail::grid_numerator(d) < grid_denominator(iv.Lower) ||
+            detail::grid_numerator(d) < grid_denominator(iv.Upper))
             detail::constexpr_error<"max_denominator: the bound is below a limit's denominator">();
         return d;
     }
@@ -147,7 +147,7 @@ struct grid {
     static constexpr void check_short_binary([[maybe_unused]] T v) {
         if constexpr (std::floating_point<T>)
             if (std::is_constant_evaluated() &&
-                detail::grid_int{1024} < detail::wide_denominator(detail::grid_rational{v}))
+                detail::grid_int{1024} < detail::grid_denominator(detail::grid_rational{v}))
                 detail::constexpr_error<"float limit: use _r literal (0.1_r) or give a notch {{lo, hi}, per<D>}; "
                                         "grid{lo, hi} derives a notch from a floating-point limit only down to "
                                         "1/1024 (0.1 is not 1/10 in binary)">();
@@ -190,15 +190,15 @@ struct grid {
     // with Upper = a/b, Lower = c/d and Notch = e/f it is
     // (a·d − c·b)·f / (b·d·e), exact on a valid grid. 0 for a continuous grid.
     [[nodiscard]] constexpr detail::grid_int step_count() const noexcept {
-        using detail::wide_numerator, detail::wide_denominator;
+        using detail::grid_numerator, detail::grid_denominator;
         if (Notch == 0)
             return detail::grid_int{0};
         const auto&            U = Interval.Upper;
         const auto&            L = Interval.Lower;
         const detail::grid_int num =
-            (wide_numerator(U) * wide_denominator(L) - wide_numerator(L) * wide_denominator(U)) *
-            wide_denominator(Notch);
-        return num / (wide_denominator(U) * wide_denominator(L) * wide_numerator(Notch));
+            (grid_numerator(U) * grid_denominator(L) - grid_numerator(L) * grid_denominator(U)) *
+            grid_denominator(Notch);
+        return num / (grid_denominator(U) * grid_denominator(L) * grid_numerator(Notch));
     }
 
     // Bits needed to hold every slot index 0..step_count().
@@ -222,7 +222,7 @@ struct grid {
         if (!includes(Interval, v))
             return false;
         if (Notch == 0)
-            return MaxDenominator == 0 || !(detail::wide_numerator(MaxDenominator) < detail::wide_denominator(v));
+            return MaxDenominator == 0 || !(detail::grid_numerator(MaxDenominator) < detail::grid_denominator(v));
         // (Without forming (v − Lower)/Notch: on a fine notch it may leave
         // the 64-bit rational although v lies on the lattice.)
         return detail::grid_same_lattice(v, Interval.Lower, Notch);
@@ -292,17 +292,17 @@ constexpr bool continuous_grid(const grid& g) { return g.Notch == 0 && g.Interva
 
 constexpr grid_int den_bound(const grid& g) {
     if (continuous_grid(g))
-        return wide_numerator(g.MaxDenominator);
+        return grid_numerator(g.MaxDenominator);
     if (g.Notch == 0)
-        return wide_denominator(g.Interval.Lower);
+        return grid_denominator(g.Interval.Lower);
     // The value unit gcd(Lower, Notch) has denominator lcm(den Lower, den Notch).
-    const grid_int a = wide_denominator(g.Interval.Lower), b = wide_denominator(g.Notch);
+    const grid_int a = grid_denominator(g.Interval.Lower), b = grid_denominator(g.Notch);
     return a / gcd(a, b) * b;
 }
 
 // floor(max(|Lower|, |Upper|) · d): the largest numerator over denominator d.
 constexpr grid_int num_bound(const interval& iv, const grid_int& d) {
-    auto           mag = [&](const grid_rational& x) { return abs(wide_numerator(x)) * d / wide_denominator(x); };
+    auto           mag = [&](const grid_rational& x) { return abs(grid_numerator(x)) * d / grid_denominator(x); };
     const grid_int a = mag(iv.Lower), b = mag(iv.Upper);
     return a < b ? b : a;
 }
@@ -318,7 +318,7 @@ constexpr grid bounded_continuous(const interval& iv, grid_int d) {
         return g;
     // Each limit is a value of the result, but an operator's interval may be
     // wider than the values it reaches: cover the limits' denominators.
-    d                = std::max({d, wide_denominator(iv.Lower), wide_denominator(iv.Upper)});
+    d                = std::max({d, grid_denominator(iv.Lower), grid_denominator(iv.Upper)});
     const grid_int n = num_bound(iv, d);
     if (bit_width_of(n) + bit_width_of(d) > BEMAN_INSIDE_MAX_FRACTION_BITS)
         return g;
@@ -371,7 +371,7 @@ struct point_slot {
 // the value itself (value storage). {{0.5, 10.5}, 1} has notch 1 but not
 // integer values.
 constexpr bool unit_lattice(const grid& g) noexcept {
-    return g.Notch == 1 && wide_denominator(g.Interval.Lower) == grid_int{1};
+    return g.Notch == 1 && grid_denominator(g.Interval.Lower) == grid_int{1};
 }
 
 // Both endpoints lie in imax — the signed value raw candidates (and every
@@ -392,7 +392,7 @@ using index_raw_for_t = int_for_bits_t<G.slot_bits(), false>;
 
 // The value raw of a whole-number grid above 0: unsigned, holding Upper.
 template <grid G>
-using value_uint_for_t = int_for_bits_t<bit_width_of(wide_numerator(G.Interval.Upper)), false>;
+using value_uint_for_t = int_for_bits_t<bit_width_of(grid_numerator(G.Interval.Upper)), false>;
 
 // A whole-number grid stores the value itself where that is free: below
 // zero a signed value (within int64); from 0 the index is the value; above
@@ -430,8 +430,8 @@ inline constexpr std::size_t continuous_limbs = [] {
         return limbs_for_bits((n < d ? d : n) + 1);
     } else {
         auto bits = [](const grid_rational& r) {
-            const grid_int n = wide_numerator(r);
-            return bit_width_of(abs(n)) + bit_width_of(wide_denominator(r));
+            const grid_int n = grid_numerator(r);
+            return bit_width_of(abs(n)) + bit_width_of(grid_denominator(r));
         };
         const int b =
             bits(G.Interval.Lower) > bits(G.Interval.Upper) ? bits(G.Interval.Lower) : bits(G.Interval.Upper);
@@ -454,7 +454,7 @@ constexpr auto raw_for() {
     else if constexpr (!deduces_value<G>)
         return index_raw_for_t<G>{};
     else if constexpr (G.Interval.Lower < 0)
-        return int_for_bits_t<signed_value_bits(wide_numerator(G.Interval.Lower), wide_numerator(G.Interval.Upper)),
+        return int_for_bits_t<signed_value_bits(grid_numerator(G.Interval.Lower), grid_numerator(G.Interval.Upper)),
                               true>{};
     else if constexpr (G.Interval.Lower == 0)
         return index_raw_for_t<G>{};
@@ -475,15 +475,15 @@ constexpr bool is_pow2(const grid_int& v) noexcept {
 // on-grid value is a binary fraction (a double when it fits double_exact).
 template <grid G>
 inline constexpr bool dyadic_grid =
-    G.Notch != 0 && is_pow2(wide_denominator(G.Notch)) && is_pow2(wide_denominator(G.Interval.Lower));
+    G.Notch != 0 && is_pow2(grid_denominator(G.Notch)) && is_pow2(grid_denominator(G.Interval.Lower));
 
 // Bits of |r · 2^f| — an integer on a dyadic grid, where r's denominator is
 // a power of two dividing 2^f (0 for r == 0).
 constexpr int scaled_numerator_bits(const grid_rational& r, int f) noexcept {
-    const grid_int n = wide_numerator(r);
+    const grid_int n = grid_numerator(r);
     if (n == grid_int{0})
         return 0;
-    return bit_width_of(abs(n)) + f - (bit_width_of(wide_denominator(r)) - 1);
+    return bit_width_of(abs(n)) + f - (bit_width_of(grid_denominator(r)) - 1);
 }
 
 // `fp`-exactness of a dyadic grid: the IEEE-754 path equals the exact grid
@@ -499,7 +499,7 @@ constexpr bool compute_fp_exact() noexcept {
     else {
         // f: the finest power of two among the values — the notch's, or
         // Lower's on an unanchored grid ({{0.25, 4.25}, 1}: 2^-2).
-        constexpr int f = bit_width_of(wide_denominator(G.value_unit())) - 1;
+        constexpr int f = bit_width_of(grid_denominator(G.value_unit())) - 1;
         return f <= MaxF && scaled_numerator_bits(G.Interval.Lower, f) <= Digits &&
                scaled_numerator_bits(G.Interval.Upper, f) <= Digits;
     }

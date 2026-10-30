@@ -450,7 +450,7 @@ struct big_rational {
         if (!fits_rational())
             fail_hard<"grid number past 64 bits on a path that needs a 64-bit rational">(errc::overflow);
         const imax d = static_cast<imax>(Den.Small); // in lowest terms already
-        return make_raw(Num.Small, Num.negative() ? -d : d);
+        return rational_from_parts(Num.Small, Num.negative() ? -d : d);
     }
 
     friend constexpr std::strong_ordering operator<=>(const big_rational& a, const big_rational& b) {

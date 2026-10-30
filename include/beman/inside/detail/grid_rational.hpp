@@ -16,8 +16,8 @@
 //   grid_rational          the type of a grid's limits and notch
 //   grid_int               exact integers for grid computations (step counts,
 //                          value indices): wide enough for every grid
-//   wide_numerator(r) /    a grid number's signed numerator and positive
-//   wide_denominator(r)    denominator as grid_int (also for a rational)
+//   grid_numerator(r) /    a grid number's signed numerator and positive
+//   grid_denominator(r)    denominator as grid_int (also for a rational)
 //   grid_divides_evenly    a / n is an integer (true for n == 0)
 //   grid_same_lattice      (a − b) / n is an integer (true for n == 0)
 //   fits_rational(r) /     whether, and as which, 64-bit rational a grid
@@ -45,8 +45,8 @@ constexpr bool same_lattice64(const rational& a, const rational& b, const ration
 using grid_rational = big_rational;
 using grid_int      = big_int;
 
-constexpr grid_int wide_numerator(const big_rational& r) { return r.Num; }
-constexpr grid_int wide_denominator(const big_rational& r) { return r.Den; }
+constexpr grid_int grid_numerator(const big_rational& r) { return r.Num; }
+constexpr grid_int grid_denominator(const big_rational& r) { return r.Den; }
 
 // (a − b) / n is an integer (true for n == 0): b and a share n's lattice.
 // (No big value is formed, so the test runs at runtime too.)
@@ -67,11 +67,11 @@ constexpr bool grid_divides_evenly(const big_rational& a, const big_rational& n)
 constexpr bool     fits_rational(const big_rational& r) { return r.fits_rational(); }
 constexpr rational to_rational(const big_rational& r) { return r; }
 
-constexpr grid_int wide_numerator(const rational& r) noexcept {
+constexpr grid_int grid_numerator(const rational& r) noexcept {
     const grid_int n{r.Num};
     return r.Den < 0 ? -n : n;
 }
-constexpr grid_int wide_denominator(const rational& r) noexcept { return grid_int{abs_den(r.Den)}; }
+constexpr grid_int grid_denominator(const rational& r) noexcept { return grid_int{abs_den(r.Den)}; }
 
 // Value bits a signed integer needs to hold every value in [lo, hi].
 constexpr int signed_value_bits(const grid_int& lo, const grid_int& hi) noexcept {
@@ -82,8 +82,8 @@ constexpr int signed_value_bits(const grid_int& lo, const grid_int& hi) noexcept
 
 // r rounded to an integer by M (half away from zero for nearest).
 template <round_mode M>
-constexpr grid_rational grid_to_int(const grid_rational& r) {
-    const grid_int n = wide_numerator(r), d = wide_denominator(r);
+constexpr grid_rational grid_round(const grid_rational& r) {
+    const grid_int n = grid_numerator(r), d = grid_denominator(r);
     grid_int       q   = n / d;
     const grid_int rem = n - q * d;
     const bool     neg = n.negative();

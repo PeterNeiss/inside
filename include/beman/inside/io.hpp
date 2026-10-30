@@ -127,7 +127,7 @@ inline constexpr int fixed_decimals = [] {
     if constexpr (!notched<B>)
         return 0;
     else {
-        grid_int  q    = wide_denominator(grid_of<B>.value_unit());
+        grid_int  q    = grid_denominator(grid_of<B>.value_unit());
         const int two  = static_cast<int>(strip_factor(q, 2)); // ≤ the bit width
         const int five = static_cast<int>(strip_factor(q, 5));
         return q == grid_int{1} && five > 0 ? (two > five ? two : five) : 0;

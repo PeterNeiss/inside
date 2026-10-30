@@ -26,9 +26,9 @@ namespace beman::inside::detail {
 [[nodiscard]] constexpr umax abs_den(imax d) noexcept { return safe_abs(d); }
 
 //---------------------------------------------------------------------------
-// trim
+// cancel_gcd — divides both parts by their gcd (the denominator signed)
 //---------------------------------------------------------------------------
-inline constexpr void trim(umax& numerator, imax& denominator) {
+inline constexpr void cancel_gcd(umax& numerator, imax& denominator) {
     umax ad = abs_den(denominator);
     if (ad <= 1)
         return;
@@ -48,7 +48,7 @@ inline constexpr void trim(umax& numerator, imax& denominator) {
     denominator = static_cast<imax>((denominator < 0) ? umax{0} - ad : ad);
 }
 
-inline constexpr void trim(umax& a, umax& b) {
+inline constexpr void cancel_gcd(umax& a, umax& b) {
     if (a <= 1 || b <= 1)
         return;
     auto g = std::gcd(a, b);
@@ -181,7 +181,7 @@ struct rational {
         check_den(den);
         if (num == 0)
             den = 1;
-        trim(num, den);
+        cancel_gcd(num, den);
     }
 
     // Signed-encoded denominator for the signed ctor, validated BEFORE the
@@ -213,7 +213,7 @@ struct rational {
 
 // A rational from already-canonical parts (magnitude, signed denominator):
 // no gcd, no domain checks.
-[[nodiscard]] constexpr rational make_raw(umax num, imax den) noexcept {
+[[nodiscard]] constexpr rational rational_from_parts(umax num, imax den) noexcept {
     rational r;
     r.Num = num;
     r.Den = den;
@@ -266,7 +266,7 @@ struct rounded_integer {
 // Kept exact as a rational, for indices that may pass imax.
 [[nodiscard]] constexpr rational round_to_integral(rational v, round_mode m) {
     const auto [mag, neg] = round_magnitude(v, m);
-    return make_raw(mag, (neg && mag != 0) ? imax{-1} : imax{1});
+    return rational_from_parts(mag, (neg && mag != 0) ? imax{-1} : imax{1});
 }
 
 [[nodiscard]] constexpr imax trunc(rational v) { return round_to_int(v, round_mode::trunc); }
@@ -348,7 +348,7 @@ constexpr rational rational_of_wide_float(T v, bool& exact) {
         raise(errc::overflow, "beman::inside::detail::rational: |long double| >= 2^64");
     if (a < static_cast<T>(0x1p-62)) {
         exact = a == 0;
-        return make_raw(0, 1);
+        return rational_from_parts(0, 1);
     }
     const auto [m, tail] = scaled_magnitude(a);
     constexpr int drop   = wide_float_shift - 62; // keep bits down to 2^-62
@@ -359,7 +359,7 @@ constexpr rational rational_of_wide_float(T v, bool& exact) {
     if (bit_width_of(num) > 64)
         raise(errc::overflow, "beman::inside::detail::rational: long double past the 64-bit rational");
     const imax den = imax{1} << (62 - tz);
-    return make_raw(static_cast<umax>(num), v < 0 ? -den : den);
+    return rational_from_parts(static_cast<umax>(num), v < 0 ? -den : den);
 }
 
 //---------------------------------------------------------------------------
@@ -376,9 +376,9 @@ constexpr rational::rational(std::signed_integral auto num, imax den)
 constexpr rational rational_of_double(double value, bool& exact) {
     exact = true;
     if (value == 0.0)
-        return make_raw(0, 1);
+        return rational_from_parts(0, 1);
     const auto [num, den] = abs_fraction(value, exact);
-    return make_raw(num, value < 0 ? -static_cast<imax>(den) : static_cast<imax>(den));
+    return rational_from_parts(num, value < 0 ? -static_cast<imax>(den) : static_cast<imax>(den));
 }
 
 constexpr rational::rational(std::floating_point auto value) {
@@ -425,7 +425,7 @@ template <bool Loud>
     if (W{std::numeric_limits<umax>::max()} < mag || W{std::numeric_limits<imax>::max()} < den)
         return fail<"rational +: result out of the 64-bit range", Loud>(errc::overflow);
     const imax d = static_cast<imax>(static_cast<umax>(den));
-    return make_raw(static_cast<umax>(mag), neg ? -d : d);
+    return rational_from_parts(static_cast<umax>(mag), neg ? -d : d);
 }
 
 // Reduce n/d, the sum of two reduced fractions over d = lcm of their
@@ -471,7 +471,7 @@ inline constexpr auto rational::add_impl(const rational& a, const rational& b) {
             rational r;
             r.Num = numerator;
             r.Den = a.Den;
-            trim(r.Num, r.Den);
+            cancel_gcd(r.Num, r.Den);
             return ret_t{r};
         }
 
@@ -482,7 +482,7 @@ inline constexpr auto rational::add_impl(const rational& a, const rational& b) {
         rational r;
         r.Num = num;
         r.Den = static_cast<imax>(r_neg ? umax{0} - a_ad : a_ad);
-        trim(r.Num, r.Den);
+        cancel_gcd(r.Num, r.Den);
         return ret_t{r};
     }
 
@@ -514,7 +514,7 @@ inline constexpr auto rational::add_impl(const rational& a, const rational& b) {
                     rational r;
                     r.Num = big.Lo - small.Lo;
                     r.Den = static_cast<imax>((a_neg ? a_bigger : !a_bigger) ? umax{0} - denominator : denominator);
-                    trim(r.Num, r.Den);
+                    cancel_gcd(r.Num, r.Den);
                     return ret_t{r};
                 }
             }
@@ -538,7 +538,8 @@ inline constexpr auto rational::add_impl(const rational& a, const rational& b) {
         // num, den both > 0 here, so the ctor's domain/zero checks are dead;
         // assemble directly and reduce.
         reduce_sum(numerator, denominator, g);
-        return ret_t{make_raw(numerator, a_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator))};
+        return ret_t{
+            rational_from_parts(numerator, a_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator))};
     }
 
     // numerator == 0 (exact cancellation) is unreachable here: it would
@@ -547,7 +548,8 @@ inline constexpr auto rational::add_impl(const rational& a, const rational& b) {
     umax       numerator = (A > B) ? (A - B) : (B - A);
     const bool r_neg     = a_neg ? (A > B) : (B > A);
     reduce_sum(numerator, denominator, g);
-    return ret_t{make_raw(numerator, r_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator))};
+    return ret_t{
+        rational_from_parts(numerator, r_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator))};
 }
 
 template <bool Checked, bool Loud>
@@ -571,11 +573,11 @@ inline constexpr auto rational::mul_impl(const rational& a_in, const rational& b
         } else
             numerator = a.Num * b.Num;
 
-        return ret_t{make_raw(numerator, r_neg ? imax{-1} : imax{1})};
+        return ret_t{rational_from_parts(numerator, r_neg ? imax{-1} : imax{1})};
     }
 
-    trim(a.Num, b_ad);
-    trim(b.Num, a_ad);
+    cancel_gcd(a.Num, b_ad);
+    cancel_gcd(b.Num, a_ad);
 
     umax numerator;
     umax denominator;
@@ -589,16 +591,16 @@ inline constexpr auto rational::mul_impl(const rational& a_in, const rational& b
         denominator = a_ad * b_ad;
     }
 
-    // The cross-trims above guarantee gcd(numerator, denominator) == 1, so
-    // bypass rational(num, den) and skip its redundant trim.
-    return ret_t{make_raw(numerator, static_cast<imax>(r_neg ? umax{0} - denominator : denominator))};
+    // The cross-cancellations above guarantee gcd(numerator, denominator) == 1,
+    // so bypass rational(num, den) and skip its redundant cancel_gcd.
+    return ret_t{rational_from_parts(numerator, static_cast<imax>(r_neg ? umax{0} - denominator : denominator))};
 }
 
 //---------------------------------------------------------------------------
 // inv_impl — multiplicative inverse (1 / a)
 //---------------------------------------------------------------------------
-// a is already trimmed (Num and |Den| coprime), so the swapped
-// pair is also trimmed. Sign lives in the denominator and 1/(-x) has the same
+// a is already in lowest terms (Num and |Den| coprime), so the swapped
+// pair is too. Sign lives in the denominator and 1/(-x) has the same
 // sign as -x, so the sign bit moves with the (now) denominator unchanged.
 template <bool Checked, bool Loud>
 inline constexpr auto rational::inv_impl(const rational& a) {
@@ -615,7 +617,7 @@ inline constexpr auto rational::inv_impl(const rational& a) {
         }
     }
 
-    return ret_t{make_raw(abs_den(a.Den), signed_numerator(a))};
+    return ret_t{rational_from_parts(abs_den(a.Den), signed_numerator(a))};
 }
 
 // div(a, b) = a * inv(b). The checked path goes through inv_impl<true> so
@@ -639,7 +641,7 @@ inline constexpr auto rational::div_impl(const rational& a, const rational& b) {
             mul_overflow(abs_den(a.Den) / g2, b.Num / g1, &den) || !std::in_range<imax>(den))
             return ret_t{fail<"rational /: numerator or denominator overflow", Loud>(errc::overflow)};
         const bool neg = (a.Den < 0) != (b.Den < 0);
-        return ret_t{make_raw(num, neg ? -static_cast<imax>(den) : static_cast<imax>(den))};
+        return ret_t{rational_from_parts(num, neg ? -static_cast<imax>(den) : static_cast<imax>(den))};
     } else
         return mul_impl<false>(a, inv_impl<false>(b));
 }
@@ -666,8 +668,8 @@ inline constexpr std::expected<rational, errc> rational::inv(rational a) { retur
     if (Num == 0)
         return *this;
 
-    // Already trimmed; flip the sign-encoding directly without re-running trim.
-    return make_raw(Num, -Den);
+    // Already in lowest terms; flip the sign-encoding directly, no cancel_gcd.
+    return rational_from_parts(Num, -Den);
 }
 
 //---------------------------------------------------------------------------

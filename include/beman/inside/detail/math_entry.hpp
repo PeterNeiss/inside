@@ -54,7 +54,7 @@ inline constexpr bool fp_exact_input = [] {
     if constexpr (wide_valued<In> || !notched<In>)
         return false;
     else {
-        const grid_int q = wide_denominator(notch_of<In>), p = wide_numerator(notch_of<In>);
+        const grid_int q = grid_denominator(notch_of<In>), p = grid_numerator(notch_of<In>);
         return is_pow2(q) && grid_magnitude_bits<In> + grid_bits(q) + grid_bits(p) <= 53;
     }
 }();
@@ -95,18 +95,18 @@ inline constexpr bool fp_tier =
 // p and q, at any size), and whether it is a power of two, so that scaling
 // by it is exact.
 template <insidable Out>
-inline constexpr double notch_p = grid_double(wide_numerator(notch_of<Out>));
+inline constexpr double notch_p = grid_double(grid_numerator(notch_of<Out>));
 template <insidable Out>
-inline constexpr double notch_q = grid_double(wide_denominator(notch_of<Out>));
+inline constexpr double notch_q = grid_double(grid_denominator(notch_of<Out>));
 template <insidable Out>
 inline constexpr bool dyadic_notch =
-    is_pow2(wide_numerator(notch_of<Out>)) && is_pow2(wide_denominator(notch_of<Out>));
+    is_pow2(grid_numerator(notch_of<Out>)) && is_pow2(grid_denominator(notch_of<Out>));
 
 // Value indices of In below 2^53: exact as doubles.
 template <insidable In>
 inline constexpr bool small_index = !wide_valued<In> && notched<In> &&
-                                    grid_magnitude_bits<In> + grid_bits(wide_denominator(notch_of<In>)) -
-                                            grid_bits(wide_numerator(notch_of<In>)) + 1 <=
+                                    grid_magnitude_bits<In> + grid_bits(grid_denominator(notch_of<In>)) -
+                                            grid_bits(grid_numerator(notch_of<In>)) + 1 <=
                                         53;
 
 // An input's value as a double: exactly (its value index times the dyadic
@@ -758,14 +758,13 @@ inline constexpr grid_rational fine_unit = half_unit<Out> / grid_rational{1024};
 
 template <insidable Out>
 inline constexpr bool integer_bracket = [] {
-    using ::beman::inside::detail::signed_value_bits_of, ::beman::inside::detail::units_lo,
+    using ::beman::inside::detail::signed_value_bits, ::beman::inside::detail::units_lo,
         ::beman::inside::detail::units_hi;
     if constexpr (wide_valued<Out>)
         return false;
     else {
         using B = bracket_t<Out, round_floor, fine_unit<Out>>;
-        return !wide_valued<B> &&
-               signed_value_bits_of({units_lo<B, fine_unit<Out>>, units_hi<B, fine_unit<Out>>}) < 60;
+        return !wide_valued<B> && signed_value_bits({units_lo<B, fine_unit<Out>>, units_hi<B, fine_unit<Out>>}) < 60;
     }
 }();
 

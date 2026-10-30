@@ -51,10 +51,10 @@ constexpr bool dispatch_out_of_range(L& lhs, P&& policy, A&& action, DoClamp do_
     } else if constexpr (Wrappable && wrap_action<PA>) {
         do_wrap();
         return true;
-    } else if constexpr (has_policy<L, P, clamp>) {
+    } else if constexpr (uses_flag<L, P, clamp>) {
         do_clamp();
         return true;
-    } else if constexpr (has_policy<L, P, wrap>) {
+    } else if constexpr (uses_flag<L, P, wrap>) {
         do_wrap();
         return true;
     } else if constexpr (error_action<PA>) { // on_error replaces the failure, not a clamp or wrap
@@ -144,9 +144,9 @@ constexpr imax saturate_imax(const W& d) noexcept {
 //---------------------------------------------------------------------------
 template <insidable L, grid_int SrcLo, grid_int SrcHi>
 struct unit_fold {
-    static constexpr grid_int lo = wide_numerator(lower_of<L>);
-    static constexpr grid_int hi = wide_numerator(upper_of<L>);
-    using W = work_int_t<signed_value_bits_of({SrcLo, SrcHi, lo, hi, SrcLo - hi, SrcHi - lo, hi - lo + grid_int{1}})>;
+    static constexpr grid_int lo = grid_numerator(lower_of<L>);
+    static constexpr grid_int hi = grid_numerator(upper_of<L>);
+    using W = work_int_t<signed_value_bits({SrcLo, SrcHi, lo, hi, SrcLo - hi, SrcHi - lo, hi - lo + grid_int{1}})>;
 
     static constexpr W lower = static_cast<W>(lo);
     static constexpr W upper = static_cast<W>(hi);
@@ -185,11 +185,11 @@ inline constexpr grid_int source_hi = [] {
 // Upper]: a limit itself off the bound moves to the nearest fraction inside.
 // Empty when no fraction of the bound lies in range.
 template <insidable L, typename P, std::size_t K>
-constexpr std::optional<wide_rational<exact_max<K, exact_limbs<L>>>> onto_bound(const wide_rational<K>& v) noexcept {
-    constexpr std::size_t KK = exact_max<K, exact_limbs<L>>;
+constexpr std::optional<wide_rational<std::max(K, exact_limbs<L>)>> onto_bound(const wide_rational<K>& v) noexcept {
+    constexpr std::size_t KK = std::max(K, exact_limbs<L>);
     using F                  = wide_rational<KK>;
     using W                  = wide_sint<KK>;
-    const W D                = static_cast<W>(wide_numerator(grid_of<L>.MaxDenominator));
+    const W D                = static_cast<W>(grid_numerator(grid_of<L>.MaxDenominator));
     const F lo = exact_of_grid<KK>(lower_of<L>), hi = exact_of_grid<KK>(upper_of<L>);
     F       r = round_to_bound<L, P>(F{v});
     if (r < lo)
@@ -217,7 +217,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
         // lies within the limits and fits the raw's limbs.
         if constexpr (clamp_action<plain_t<A>> || wrap_action<plain_t<A>>)
             static_assert(false, "on_clamp / on_wrap: not supported on a continuous grid past 64 bits");
-        constexpr std::size_t   KK = exact_max<K, exact_limbs<L>>;
+        constexpr std::size_t   KK = std::max(K, exact_limbs<L>);
         const wide_rational<KK> lo = exact_of_grid<KK>(lower_of<L>), hi = exact_of_grid<KK>(upper_of<L>);
         auto                    store = [&](const wide_rational<KK>& x) {
             // A bounded grid: a denominator past its bound is off the grid —
@@ -225,7 +225,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
             if constexpr (grid_of<L>.MaxDenominator != 0) {
                 constexpr wide_rational<KK> bound = exact_of_grid<KK>(grid_of<L>.MaxDenominator);
                 if (bound.Num < reduced(x).Den) [[unlikely]] {
-                    if constexpr (has_policy<L, P, snap>) {
+                    if constexpr (uses_flag<L, P, snap>) {
                         const auto o = onto_bound<L, plain_t<P>>(x);
                         if (!o)
                             return fail(errc::rounding_error);
@@ -246,7 +246,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
         wide_rational<KK> x{v};
         // Round first, as the builtin stores do: a value just past a limit
         // may round onto it.
-        if constexpr (grid_of<L>.MaxDenominator != 0 && has_policy<L, P, snap>)
+        if constexpr (grid_of<L>.MaxDenominator != 0 && uses_flag<L, P, snap>)
             x = round_to_bound<L, plain_t<P>>(x);
         if (x < lo || hi < x) [[unlikely]] {
             dispatch_out_of_range<true>(
@@ -272,9 +272,9 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
         // (rounding_error) or does not fit (overflow).
         auto r = try_rational(v);
         if (!r) [[unlikely]] {
-            constexpr std::size_t   KK = exact_max<K, exact_limbs<L>>;
+            constexpr std::size_t   KK = std::max(K, exact_limbs<L>);
             const wide_rational<KK> x{v};
-            if constexpr (grid_of<L>.MaxDenominator != 0 && has_policy<L, P, snap>)
+            if constexpr (grid_of<L>.MaxDenominator != 0 && uses_flag<L, P, snap>)
                 r = try_rational(round_to_bound<L, plain_t<P>>(x));
             if (!r) {
                 const bool low = x < exact_of_grid<KK>(lower_of<L>);
@@ -282,7 +282,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
                     fail(grid_of<L>.MaxDenominator != 0 ? errc::rounding_error : errc::overflow);
                     return lhs;
                 }
-                if constexpr (!has_policy<L, P, clamp>) {
+                if constexpr (!uses_flag<L, P, clamp>) {
                     fail(errc::overflow);
                     return lhs;
                 } else
@@ -299,7 +299,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
             if constexpr (point_storage<L>) {
                 // One value and no lattice to divide by: the slot below it,
                 // its own, or the one above (the step count is 0).
-                constexpr std::size_t KP = exact_max<K, exact_limbs<L>>;
+                constexpr std::size_t KP = std::max(K, exact_limbs<L>);
                 using W                  = wide_sint<KP>;
                 const auto c             = wide_rational<KP>{v} <=> exact_of_grid<KP>(lower_of<L>);
                 return exact_index_result<KP>{c < 0 ? W{-1} : W{c > 0 ? 1 : 0}, true};
@@ -309,13 +309,13 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
         using I                       = decltype(slot.Index);
         constexpr std::size_t KK      = sizeof(I) / sizeof(umax);
         const I               index   = slot.Index;
-        const bool            inexact = !slot.Exact && !has_policy<L, P, snap> && policy.round_check();
+        const bool            inexact = !slot.Exact && !uses_flag<L, P, snap> && policy.checks_rounding();
         constexpr I           count   = static_cast<I>(grid_of<L>.step_count());
         // Without a rounding flag the range test reads the value itself,
         // before the notch, as the builtin stores do: an off-notch value past
         // a limit is out of range (it clamps, or reports overflow).
         bool low = index.negative(), out = low || index > count;
-        if constexpr (!has_policy<L, P, snap>)
+        if constexpr (!uses_flag<L, P, snap>)
             if (!slot.Exact) {
                 const wide_rational<KK> x{v};
                 low = x < exact_of_grid<KK>(lower_of<L>);
@@ -381,12 +381,12 @@ template <insidable L, insidable R>
 inline constexpr grid_int same_notch_shift =
     exact_quotient(lower_of<R> - lower_of<L>, notch_of<L>) + raw_lo_exact<L> - raw_lo_exact<R>;
 template <insidable L, insidable R>
-inline constexpr int same_notch_bits = signed_value_bits_of({raw_lo_exact<R>,
-                                                             raw_hi_exact<R>,
-                                                             raw_lo_exact<R> + same_notch_shift<L, R>,
-                                                             raw_hi_exact<R> + same_notch_shift<L, R>,
-                                                             raw_lo_exact<L>,
-                                                             raw_hi_exact<L>});
+inline constexpr int same_notch_bits = signed_value_bits({raw_lo_exact<R>,
+                                                          raw_hi_exact<R>,
+                                                          raw_lo_exact<R> + same_notch_shift<L, R>,
+                                                          raw_hi_exact<R> + same_notch_shift<L, R>,
+                                                          raw_lo_exact<L>,
+                                                          raw_hi_exact<L>});
 } // namespace beman::inside::detail
 
 #endif // BEMAN_INSIDE_DETAIL_ASSIGN_EXACT_HPP

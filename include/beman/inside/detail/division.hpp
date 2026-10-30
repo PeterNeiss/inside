@@ -203,8 +203,8 @@ struct division {
     // skip it — so an exact-valued operand returns before any is named.)
     static constexpr bool native_div_fixed = [] {
         if constexpr (wide_grid_numbers<L> || wide_grid_numbers<R> || !notched<L> || notch_of<L> != notch_of<R> ||
-                      !anchored<L> || !anchored<R> || wide_numerator(notch_of<L>) != grid_int{1} ||
-                      !(grid_int{1} < wide_denominator(notch_of<L>)) || !(grid_of<L> / grid_of<R>).has_value())
+                      !anchored<L> || !anchored<R> || grid_numerator(notch_of<L>) != grid_int{1} ||
+                      !(grid_int{1} < grid_denominator(notch_of<L>)) || !(grid_of<L> / grid_of<R>).has_value())
             return false;
         else
             return ((F | flags_of<L> | flags_of<R>)&snap) != 0;
@@ -245,7 +245,7 @@ struct division {
         };
         auto of = [](const grid_rational& g) {
             if constexpr (big)
-                return signed_mag{abs(wide_numerator(g)), wide_numerator(g).negative()};
+                return signed_mag{abs(grid_numerator(g)), grid_numerator(g).negative()};
             else {
                 const rational r = to_rational(g);
                 return signed_mag{r.Num, r.Den < 0 && r.Num != 0};
@@ -326,8 +326,8 @@ struct division {
                 const grid_int a = abs(lo), b = abs(hi);
                 return a < b ? b : a;
             };
-            const grid_int        a = wide_numerator(notch_of<L>) * wide_denominator(notch_of<R>);
-            const grid_int        b = wide_numerator(notch_of<R>) * wide_denominator(notch_of<L>);
+            const grid_int        a = grid_numerator(notch_of<L>) * grid_denominator(notch_of<R>);
+            const grid_int        b = grid_numerator(notch_of<R>) * grid_denominator(notch_of<L>);
             return max_j.template operator()<L>() * a < lim && max_j.template operator()<R>() * b < lim;
         }
     }();
@@ -395,13 +395,13 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         // them: a 32-bit divide where it fits (Q8.8, Q15, ...), else 64 bits,
         // else a wide_int. The quotient's magnitude is at most |ja·K|; −ja·K
         // is listed for the one it can reach past the type, min / −1.
-        constexpr grid_int K     = wide_denominator(notch_of<L>);
+        constexpr grid_int K     = grid_denominator(notch_of<L>);
         constexpr grid_int ja_lo = exact_quotient(lower_of<L>, notch_of<L>) * K;
-        constexpr int      bits  = signed_value_bits_of({ja_lo,
-                                                         -ja_lo,
-                                                         exact_quotient(upper_of<L>, notch_of<L>) * K,
-                                                         exact_quotient(lower_of<R>, notch_of<R>),
-                                                         exact_quotient(upper_of<R>, notch_of<R>)});
+        constexpr int      bits  = signed_value_bits({ja_lo,
+                                                      -ja_lo,
+                                                      exact_quotient(upper_of<L>, notch_of<L>) * K,
+                                                      exact_quotient(lower_of<R>, notch_of<R>),
+                                                      exact_quotient(upper_of<R>, notch_of<R>)});
         using W    = std::conditional_t<(bits <= 31), std::int32_t, work_int_t<bits>>; // bits: without the sign
         const W jb = value_index<W>(rhs);
         if constexpr (!zero_unchecked)

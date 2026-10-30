@@ -35,29 +35,29 @@ struct error_ref {
 };
 } // namespace detail
 
-template <policy_flag W = none, typename E = detail::empty_ref>
+template <policy_flag F = none, typename E = detail::empty_ref>
 struct policy : E {
     constexpr policy() = default;
     constexpr policy(errc& ec)
         requires std::same_as<E, detail::error_ref>
         : E(ec) {}
 
-    static constexpr policy_flag Flags = W;
+    static constexpr policy_flag Flags = F;
 
-    static constexpr bool test(policy_flag w) { return has_flag(W, w); }
+    static constexpr bool test(policy_flag flag) { return has_flag(F, flag); }
 
-    static constexpr bool range_check() {
+    static constexpr bool checks_range() {
         if consteval {
             return true;
         }
-        return is_checked(W) && not test(ignore_range);
+        return is_checked(F) && not test(ignore_range);
     }
 
-    static constexpr bool round_check() {
+    static constexpr bool checks_rounding() {
         if consteval {
             return true;
         }
-        return is_checked(W) && not test(snap);
+        return is_checked(F) && not test(snap);
     }
 
     // Cheap default report: no message construction. error_ref mode records the
@@ -257,7 +257,7 @@ struct policy_ref {
 
     // Value read-out: a one-shot policy ref converts to any inside the assignment
     // could satisfy, applying the target's own policy (range) plus this ref's
-    // carried flags (notch/rounding) via has_policy's merge. Makes
+    // carried flags (notch/rounding) via uses_flag's merge. Makes
     // `Target t = (a * b).with_snap();` / `return (a * b).with_snap();` compile.
     // Constrained so the proxy stays SFINAE-friendly (no over-broad convertibility).
     template <insidable Target>
@@ -372,7 +372,7 @@ struct policy_ref {
     constexpr void report_zero(errc code, const char* what) {
         if constexpr (has_action<is_error_action, As...>)
             pick_action_in<is_error_action>(Actions).Fn(Ref, code, what);
-        else if constexpr (!has_policy<B, P, ignore_zero>)
+        else if constexpr (!uses_flag<B, P, ignore_zero>)
             Policy.report(code);
     }
 
