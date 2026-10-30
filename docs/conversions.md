@@ -44,8 +44,9 @@ A grid past `int64` has no implicit `imax`: read it with `to<T>()`.
 
 `b.to<T>()` returns `std::expected<T, errc>`: `errc::overflow` when the value
 is outside `T`'s range, `errc::domain_error` for a negative value into an
-unsigned `T`. `b.as<T>()` is `to<T>().value()`: it throws, for a value you
-know is in range.
+unsigned `T`. `b.as<T>()` returns `T`, for a value you know converts: a
+failure is reported like a failed checked store (`inside_error` with the
+same code, or the installed handler).
 
 ```cpp
 inside<{0, 1000}> b{42};

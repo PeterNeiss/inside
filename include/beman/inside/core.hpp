@@ -367,15 +367,20 @@ struct inside {
             return static_cast<T>(detail::as_double(*this));
     }
 
-    // as<T>() — non-expected sibling of to<T>(): returns T directly, letting any
-    // error surface as bad_expected_access from `to<T>().value()`. For known-in-
-    // range sites (array indexing, capacity arithmetic). FP targets share operator
-    // double's policy gate, so a strict inside rejects `b.as<double>()` too.
+    // as<T>() — non-expected sibling of to<T>(): returns T directly. A value
+    // that does not convert is reported like a failed checked store
+    // (inside_error, or the installed handler), with to<T>()'s errc. For
+    // known-in-range sites (array indexing, capacity arithmetic). FP targets
+    // share operator double's policy gate, so a strict inside rejects
+    // `b.as<double>()` too.
     template <typename T>
     [[nodiscard]] constexpr T as() const
         requires(std::integral<T> || std::floating_point<T>) && (!std::floating_point<T> || has_flag(P, snap))
     {
-        return to<T>().value();
+        const auto r = to<T>();
+        if (!r) [[unlikely]]
+            detail::raise(r.error(), "as<T>: the value does not convert to T");
+        return *r;
     }
 
     // numerator() / denominator() — the exact value in lowest terms as an

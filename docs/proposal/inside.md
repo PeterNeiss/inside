@@ -356,7 +356,8 @@ overflow.
 Out of an `inside`, `to<T>()` returns `std::expected<T, errc>`. An integer `T`
 gets the value truncated toward zero, or `overflow` past `T`'s range
 (`domain_error` for a negative value into an unsigned `T`); a floating-point
-`T` gets the value rounded once. `as<T>()` is `to<T>().value()`, and requires
+`T` gets the value rounded once. `as<T>()` returns `T` and reports a failure
+like a checked store (`inside_error` with `to<T>()`'s code), and requires
 a rounding policy for a floating-point `T`. `numerator()` and `denominator()`
 give the exact value in lowest terms, the sign on the numerator, as integers
 wide enough for every value of the grid.
@@ -470,7 +471,7 @@ namespace std {
 
     // out of an inside
     template<class T> constexpr expected<T, errc> to() const;  // T arithmetic
-    template<class T> constexpr T as() const;                  // to<T>().value()
+    template<class T> constexpr T as() const;                  // to<T>(), failures throw
     constexpr @*integer*@ numerator() const;                     // lowest terms, the sign here
     constexpr @*integer*@ denominator() const;                   // > 0
 
@@ -563,7 +564,7 @@ namespace std {
 | `a += b` etc. | `a = a + b` | a store by `a`'s policy |
 | `a == b`, `a <=> b` | exact comparison of values | any two grids |
 | `b.to<T>()` | `expected<T, errc>` | integer `T`: truncated toward zero; `overflow` out of `T`'s range, `domain_error` for a negative value into an unsigned `T`. Floating-point `T`: rounded once |
-| `b.as<T>()` | `T` | `to<T>().value()`; a floating-point `T` needs a rounding policy |
+| `b.as<T>()` | `T` | a failure of `to<T>()` throws `inside_error`; a floating-point `T` needs a rounding policy |
 | `b.numerator()`, `b.denominator()` | the value in lowest terms | denominator `> 0` |
 | `clamp_cast<B, M>(v)` | `v` saturated into `B`, rounded by `M` | `M == none`: off the notch as `B`'s policy |
 | `wrap_cast<B>(v)` | `v` modulo `B`'s interval | |

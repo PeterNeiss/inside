@@ -222,3 +222,16 @@ TEST(InsideToTest, as_floating_shares_operator_double_s_policy_gate) {
     static_assert(has_member_as<rounded_b, double>);
     ASSERT_TRUE(rounded_b{42}.as<double>() == 42.0);
 }
+
+// as<T>() reports a failed conversion like a checked store: inside_error with
+// to<T>()'s code, through the replaceable handler.
+TEST(InsideToTest, as_reports_through_inside_error) {
+    using s = inside<{-5, 5}>;
+    try {
+        (void)s{-1}.as<unsigned>();
+        FAIL() << "as<unsigned>() of -1 did not report";
+    } catch (const inside_error& e) {
+        ASSERT_EQ(e.Code, errc::domain_error);
+    }
+    ASSERT_EQ(s{3}.as<int>(), 3);
+}

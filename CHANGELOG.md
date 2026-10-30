@@ -43,6 +43,10 @@ The library without pre-C++26 compatibility, kept in sync with main.
 - `std::common_type` (and `common_inside_t`, `min`, `max`) of two insides
   keeps the policy they share; only different policies give `checked`.
 
+- `as<T>()` reports a value that does not convert like a failed checked
+  store (`inside_error`, or the installed handler), not as
+  `std::bad_expected_access`.
+
 ### Removed
 
 - The compiler shims in `detail/config.hpp` (MSVC warnings, `_umul128`,
