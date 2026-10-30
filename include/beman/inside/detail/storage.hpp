@@ -207,20 +207,13 @@ inline constexpr bool values_fit_imax =
     !wide_valued<B> && fits_imax(interval_of<B>) && (value_storage<B> || std::in_range<imax>(max_index_of<B>));
 
 // Every value's reduced numerator and denominator fit imax too: a value
-// within int64 can still have a numerator past it ((2^63 + 1)/2). An
-// unbounded continuous grid bounds denominators by imax only, so its
-// numerators fit when no value passes 1 in magnitude.
+// within int64 can still have a numerator past it ((2^63 + 1)/2).
 template <insidable B>
 inline constexpr bool fraction_fits_imax = [] {
     if constexpr (!values_fit_imax<B>)
         return false;
-    else {
-        constexpr grid_int d = den_bound(grid_of<B>);
-        if constexpr (d == grid_int{0})
-            return !(grid_rational{1} < abs(lower_of<B>)) && !(grid_rational{1} < abs(upper_of<B>));
-        else
-            return !(grid_int{std::numeric_limits<imax>::max()} < num_bound(grid_of<B>));
-    }
+    else
+        return !(grid_int{std::numeric_limits<imax>::max()} < num_bound(grid_of<B>));
 }();
 
 // Notch a non-zero integer and Lower an integer — every value is an

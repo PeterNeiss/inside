@@ -406,7 +406,7 @@ math.
 | `storage.hpp` | the storage concepts, `as_double`, `to_value`/`from_value`, `raw_imax`, the Q-format codec, `max_index_of`, `round_quotient` |
 | `policy_ref.hpp` | `policy_ref`, `policy_buffer`: what `b.policy()`, `with_snap()` and `on_*()` return |
 | `lift.hpp` | `lift`, the combinator behind the lift operators; `is_expected_v`, `unwrap_t` |
-| `op_result.hpp` | what the result of `+`, `×` or `÷` needs: `exact_fits`, `lattice_op_checked` (whether it runs its overflow check), `point_scale` |
+| `op_result.hpp` | what the result of `+`, `×` or `÷` needs: `exact_fits`, `exact_path_fits` (an exact wide path where the 64-bit kernels' intermediates could overflow), `point_scale` |
 | `rounding.hpp` | `classify_remainder`, `rounds_up`, `rounds_away`: the one rounding decision every integer path shares |
 | `assignment.hpp`, `assign_exact.hpp` | stores for integral, fractional and inside sources; the exact and wide store, the out-of-range cascade, the `on_wrap` carry grid |
 | `addition.hpp`, `multiplication.hpp`, `division.hpp` | `addition<L, R>`, `multiplication<L, R>`, `division<L, R, F>`, `modulo<L, R, F>`, `divmod_result` |

@@ -425,13 +425,9 @@ constexpr std::expected<wide_rational<K>, errc> parse_exact(const char* first, c
 inline constexpr std::size_t parse_limbs = 64;
 
 // Bits of B's finest denominator: every grid value and every midpoint
-// between two lies 0 or at least 2^−(bits + 1) from 0. An unbounded
-// continuous grid is bounded by its storage.
+// between two lies 0 or at least 2^−(bits + 1) from 0.
 template <insidable B>
-inline constexpr int finest_den_bits = [] {
-    const grid_int d = den_bound(grid_of<B>);
-    return d == grid_int{0} ? 64 * static_cast<int>(exact_limbs<B>) : bit_width_of(d);
-}();
+inline constexpr int finest_den_bits = bit_width_of(den_bound(grid_of<B>));
 
 // Bounds on log2|v| of one number in the literal grammar (lo ≤ log2|v| < hi),
 // from its digits and exponent alone; empty for malformed text or zero.

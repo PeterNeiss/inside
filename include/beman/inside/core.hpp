@@ -947,7 +947,7 @@ template <insidable B>
         if (!detail::exact_index<B, detail::round_mode::trunc>(*w).Exact)
             return std::unexpected{errc::rounding_error};
     } else if constexpr (grid_of<B>.MaxDenominator != 0) {
-        // A bounded continuous grid holds denominators up to its bound only.
+        // A continuous grid holds denominators up to its bound only.
         if (static_cast<detail::wide_sint<K>>(detail::grid_numerator(grid_of<B>.MaxDenominator)) <
             detail::reduced(*w).Den)
             return std::unexpected{errc::rounding_error};

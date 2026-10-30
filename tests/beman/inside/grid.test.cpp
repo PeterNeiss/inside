@@ -41,8 +41,8 @@ TEST(GridTest, just_inside_values_work_as_grid_corners) {
 
 // grid raw_for selection
 TEST(GridTest, grid_storage_min_selection) {
-    // Notch 0 -> rational
-    static_assert(std::is_same_v<raw_for_t<grid{{0, 10}, 0}>, rational>);
+    // Notch 0 with a bound that fits 64 bits -> rational
+    static_assert(std::is_same_v<raw_for_t<grid{{0, 10}, max_denominator{1000}}>, rational>);
 
     // Notch 1, lower 0 -> smallest unsigned that fits Upper
     static_assert(std::is_same_v<raw_for_t<grid{0, 100, 1}>, std::uint8_t>);

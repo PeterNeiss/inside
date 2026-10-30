@@ -211,23 +211,21 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
         constexpr std::size_t   KK = std::max(K, exact_limbs<L>);
         const wide_rational<KK> lo = exact_of_grid<KK>(lower_of<L>), hi = exact_of_grid<KK>(upper_of<L>);
         auto                    store = [&](const wide_rational<KK>& x) {
-            // A bounded grid: a denominator past its bound is off the grid —
-            // rounded onto it under a rounding policy, else rounding_error.
-            if constexpr (grid_of<L>.MaxDenominator != 0) {
-                constexpr wide_rational<KK> bound = exact_of_grid<KK>(grid_of<L>.MaxDenominator);
-                if (bound.Num < reduced(x).Den) [[unlikely]] {
-                    if constexpr (uses_flag<L, P, snap>) {
-                        const auto o = onto_bound<L, plain_t<P>>(x);
-                        if (!o)
-                            return fail(errc::rounding_error);
-                        if (const auto r = continuous_raw_of<raw_t<L>>(*o)) [[likely]]
-                            lhs = L::from_raw(*r);
-                        else
-                            fail(errc::overflow);
-                        return;
-                    } else if (std::is_constant_evaluated() || is_checked(flags_of<L> | plain_t<P>::Flags))
+            // A denominator past the bound is off the grid — rounded onto it
+            // under a rounding policy, else rounding_error.
+            constexpr wide_rational<KK> bound = exact_of_grid<KK>(grid_of<L>.MaxDenominator);
+            if (bound.Num < reduced(x).Den) [[unlikely]] {
+                if constexpr (uses_flag<L, P, snap>) {
+                    const auto o = onto_bound<L, plain_t<P>>(x);
+                    if (!o)
                         return fail(errc::rounding_error);
-                }
+                    if (const auto r = continuous_raw_of<raw_t<L>>(*o)) [[likely]]
+                        lhs = L::from_raw(*r);
+                    else
+                        fail(errc::overflow);
+                    return;
+                } else if (std::is_constant_evaluated() || is_checked(flags_of<L> | plain_t<P>::Flags))
+                    return fail(errc::rounding_error);
             }
             if (const auto r = continuous_raw_of<raw_t<L>>(x)) [[likely]]
                 lhs = L::from_raw(*r);
@@ -237,7 +235,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
         wide_rational<KK> x{v};
         // Round first, as the builtin stores do: a value just past a limit
         // may round onto it.
-        if constexpr (grid_of<L>.MaxDenominator != 0 && uses_flag<L, P, snap>)
+        if constexpr (uses_flag<L, P, snap>)
             x = round_to_bound<L, plain_t<P>>(x);
         if (x < lo || hi < x) [[unlikely]] {
             dispatch_out_of_range<true>(
@@ -258,19 +256,19 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
     } else if constexpr (rational_storage<L>) {
         // L holds 64-bit values: narrow through the rational. A value that does
         // not fit (a double finer than 2^-62, an exact sum) may still lie
-        // within the limits: a bounded grid rounds it onto its bound first,
-        // clamp saturates it past a limit; else it is off a bounded grid
+        // within the limits: a rounding policy rounds it onto the bound first,
+        // clamp saturates it past a limit; else it is off the grid
         // (rounding_error) or does not fit (overflow).
         auto r = try_rational(v);
         if (!r) [[unlikely]] {
             constexpr std::size_t   KK = std::max(K, exact_limbs<L>);
             const wide_rational<KK> x{v};
-            if constexpr (grid_of<L>.MaxDenominator != 0 && uses_flag<L, P, snap>)
+            if constexpr (uses_flag<L, P, snap>)
                 r = try_rational(round_to_bound<L, plain_t<P>>(x));
             if (!r) {
                 const bool low = x < exact_of_grid<KK>(lower_of<L>);
                 if (!low && !(exact_of_grid<KK>(upper_of<L>) < x)) {
-                    fail(grid_of<L>.MaxDenominator != 0 ? errc::rounding_error : errc::overflow);
+                    fail(errc::rounding_error);
                     return lhs;
                 }
                 if constexpr (!uses_flag<L, P, clamp>) {

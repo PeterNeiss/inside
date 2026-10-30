@@ -4059,9 +4059,10 @@ enum class bounds : unsigned char {
     open,      // (Lower, Upper) — Lower + Notch .. Upper − Notch
 };
 
-// The largest maximum denominator a continuous grid can carry: past it a
-// bound would size fractions without limit along an expression chain, so it
-// is dropped (the grid is unbounded).
+// The largest fraction (numerator and denominator bits) a continuous grid's
+// bound may size: past it a bound would size fractions without limit along
+// an expression chain, so it is dropped. The grid is then unbounded, and no
+// inside has it (grid::validate): the operation that forms it is deleted.
 #ifndef BEMAN_INSIDE_MAX_FRACTION_BITS
     #define BEMAN_INSIDE_MAX_FRACTION_BITS 1024
 #endif
@@ -4079,8 +4080,9 @@ struct grid {
     interval              Interval;
     detail::grid_rational Notch;
     // A continuous grid's bound on its values' denominators; 0 is unbounded
-    // (any rational in range). Always 0 on a notched or point grid, whose
-    // lattice already bounds them — so a value set has one grid.
+    // (any rational in range), which an inside does not take. Always 0 on a
+    // notched or point grid, whose lattice already bounds them — so a value
+    // set has one grid.
     detail::grid_rational MaxDenominator{0};
 
     grid() = default;
@@ -4455,36 +4457,20 @@ inline constexpr bool deduces_value = [] {
 }();
 
 // A continuous grid stores its value as an exact fraction: the 64-bit
-// rational, or — past it — a reduced fraction of K-limb integers.
-// A bounded grid sizes K from its bounds, so every value fits; an unbounded
-// one from its limits, K holding twice the limits' bits, and a value that
-// needs more reports overflow, as one past the 64-bit rational does.
+// rational, or — past it — a reduced fraction of K-limb integers, K sized
+// from the bounds, so every value fits.
 template <grid G>
-inline constexpr bool bound_fits_rational =
-    G.MaxDenominator != 0 && !(grid_int{std::numeric_limits<imax>::max()} < den_bound(G)) &&
-    !(grid_int{std::numeric_limits<umax>::max()} < num_bound(G));
+inline constexpr bool bound_fits_rational = !(grid_int{std::numeric_limits<imax>::max()} < den_bound(G)) &&
+                                            !(grid_int{std::numeric_limits<umax>::max()} < num_bound(G));
 
 template <grid G>
 inline constexpr std::size_t continuous_limbs = [] {
-    if constexpr (G.MaxDenominator != 0) {
-        const int n = bit_width_of(num_bound(G)), d = bit_width_of(den_bound(G));
-        return limbs_for_bits((n < d ? d : n) + 1);
-    } else {
-        auto bits = [](const grid_rational& r) {
-            const grid_int n = grid_numerator(r);
-            return bit_width_of(abs(n)) + bit_width_of(grid_denominator(r));
-        };
-        const int b =
-            bits(G.Interval.Lower) > bits(G.Interval.Upper) ? bits(G.Interval.Lower) : bits(G.Interval.Upper);
-        return limbs_for_bits(2 * b + 2);
-    }
+    const int n = bit_width_of(num_bound(G)), d = bit_width_of(den_bound(G));
+    return limbs_for_bits((n < d ? d : n) + 1);
 }();
 template <grid G>
 using continuous_raw_t =
-    std::conditional_t<G.MaxDenominator != 0 ? bound_fits_rational<G>
-                                             : fits_rational(G.Interval.Lower) && fits_rational(G.Interval.Upper),
-                       detail::rational,
-                       wide_rational<continuous_limbs<G>>>;
+    std::conditional_t<bound_fits_rational<G>, detail::rational, wide_rational<continuous_limbs<G>>>;
 
 template <grid G>
 constexpr auto raw_for() {
@@ -5009,20 +4995,13 @@ inline constexpr bool values_fit_imax =
     !wide_valued<B> && fits_imax(interval_of<B>) && (value_storage<B> || std::in_range<imax>(max_index_of<B>));
 
 // Every value's reduced numerator and denominator fit imax too: a value
-// within int64 can still have a numerator past it ((2^63 + 1)/2). An
-// unbounded continuous grid bounds denominators by imax only, so its
-// numerators fit when no value passes 1 in magnitude.
+// within int64 can still have a numerator past it ((2^63 + 1)/2).
 template <insidable B>
 inline constexpr bool fraction_fits_imax = [] {
     if constexpr (!values_fit_imax<B>)
         return false;
-    else {
-        constexpr grid_int d = den_bound(grid_of<B>);
-        if constexpr (d == grid_int{0})
-            return !(grid_rational{1} < abs(lower_of<B>)) && !(grid_rational{1} < abs(upper_of<B>));
-        else
-            return !(grid_int{std::numeric_limits<imax>::max()} < num_bound(grid_of<B>));
-    }
+    else
+        return !(grid_int{std::numeric_limits<imax>::max()} < num_bound(grid_of<B>));
 }();
 
 // Notch a non-zero integer and Lower an integer — every value is an
@@ -5986,13 +5965,9 @@ constexpr std::expected<wide_rational<K>, errc> parse_exact(const char* first, c
 inline constexpr std::size_t parse_limbs = 64;
 
 // Bits of B's finest denominator: every grid value and every midpoint
-// between two lies 0 or at least 2^−(bits + 1) from 0. An unbounded
-// continuous grid is bounded by its storage.
+// between two lies 0 or at least 2^−(bits + 1) from 0.
 template <insidable B>
-inline constexpr int finest_den_bits = [] {
-    const grid_int d = den_bound(grid_of<B>);
-    return d == grid_int{0} ? 64 * static_cast<int>(exact_limbs<B>) : bit_width_of(d);
-}();
+inline constexpr int finest_den_bits = bit_width_of(den_bound(grid_of<B>));
 
 // Bounds on log2|v| of one number in the literal grammar (lo ≤ log2|v| < hi),
 // from its digits and exponent alone; empty for malformed text or zero.
@@ -6683,23 +6658,21 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
         constexpr std::size_t   KK = std::max(K, exact_limbs<L>);
         const wide_rational<KK> lo = exact_of_grid<KK>(lower_of<L>), hi = exact_of_grid<KK>(upper_of<L>);
         auto                    store = [&](const wide_rational<KK>& x) {
-            // A bounded grid: a denominator past its bound is off the grid —
-            // rounded onto it under a rounding policy, else rounding_error.
-            if constexpr (grid_of<L>.MaxDenominator != 0) {
-                constexpr wide_rational<KK> bound = exact_of_grid<KK>(grid_of<L>.MaxDenominator);
-                if (bound.Num < reduced(x).Den) [[unlikely]] {
-                    if constexpr (uses_flag<L, P, snap>) {
-                        const auto o = onto_bound<L, plain_t<P>>(x);
-                        if (!o)
-                            return fail(errc::rounding_error);
-                        if (const auto r = continuous_raw_of<raw_t<L>>(*o)) [[likely]]
-                            lhs = L::from_raw(*r);
-                        else
-                            fail(errc::overflow);
-                        return;
-                    } else if (std::is_constant_evaluated() || is_checked(flags_of<L> | plain_t<P>::Flags))
+            // A denominator past the bound is off the grid — rounded onto it
+            // under a rounding policy, else rounding_error.
+            constexpr wide_rational<KK> bound = exact_of_grid<KK>(grid_of<L>.MaxDenominator);
+            if (bound.Num < reduced(x).Den) [[unlikely]] {
+                if constexpr (uses_flag<L, P, snap>) {
+                    const auto o = onto_bound<L, plain_t<P>>(x);
+                    if (!o)
                         return fail(errc::rounding_error);
-                }
+                    if (const auto r = continuous_raw_of<raw_t<L>>(*o)) [[likely]]
+                        lhs = L::from_raw(*r);
+                    else
+                        fail(errc::overflow);
+                    return;
+                } else if (std::is_constant_evaluated() || is_checked(flags_of<L> | plain_t<P>::Flags))
+                    return fail(errc::rounding_error);
             }
             if (const auto r = continuous_raw_of<raw_t<L>>(x)) [[likely]]
                 lhs = L::from_raw(*r);
@@ -6709,7 +6682,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
         wide_rational<KK> x{v};
         // Round first, as the builtin stores do: a value just past a limit
         // may round onto it.
-        if constexpr (grid_of<L>.MaxDenominator != 0 && uses_flag<L, P, snap>)
+        if constexpr (uses_flag<L, P, snap>)
             x = round_to_bound<L, plain_t<P>>(x);
         if (x < lo || hi < x) [[unlikely]] {
             dispatch_out_of_range<true>(
@@ -6730,19 +6703,19 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
     } else if constexpr (rational_storage<L>) {
         // L holds 64-bit values: narrow through the rational. A value that does
         // not fit (a double finer than 2^-62, an exact sum) may still lie
-        // within the limits: a bounded grid rounds it onto its bound first,
-        // clamp saturates it past a limit; else it is off a bounded grid
+        // within the limits: a rounding policy rounds it onto the bound first,
+        // clamp saturates it past a limit; else it is off the grid
         // (rounding_error) or does not fit (overflow).
         auto r = try_rational(v);
         if (!r) [[unlikely]] {
             constexpr std::size_t   KK = std::max(K, exact_limbs<L>);
             const wide_rational<KK> x{v};
-            if constexpr (grid_of<L>.MaxDenominator != 0 && uses_flag<L, P, snap>)
+            if constexpr (uses_flag<L, P, snap>)
                 r = try_rational(round_to_bound<L, plain_t<P>>(x));
             if (!r) {
                 const bool low = x < exact_of_grid<KK>(lower_of<L>);
                 if (!low && !(exact_of_grid<KK>(upper_of<L>) < x)) {
-                    fail(grid_of<L>.MaxDenominator != 0 ? errc::rounding_error : errc::overflow);
+                    fail(errc::rounding_error);
                     return lhs;
                 }
                 if constexpr (!uses_flag<L, P, clamp>) {
@@ -7261,22 +7234,21 @@ struct assignment<L, R> {
             if constexpr (std::floating_point<R>)
                 if (!exact) [[unlikely]]
                     return store_fine_double(lhs, static_cast<double>(rhs), policy, action);
-            // Continuous: store verbatim. A bounded grid's values have
-            // denominators ≤ its bound: one past it is off the grid — rounded
-            // onto it under a rounding policy, else reported (but unsafe).
-            if constexpr (grid_of<L>.MaxDenominator != 0)
-                if (abs_den(rv.Den) > to_rational(grid_of<L>.MaxDenominator).Num) [[unlikely]] {
-                    if constexpr (uses_flag<L, P, snap>) {
-                        const auto o = onto_bound<L, plain_t<P>>(exact_of(rv));
-                        const auto r = o ? try_rational(*o)
-                                         : std::expected<rational, errc>{std::unexpected{errc::rounding_error}};
-                        if (!r)
-                            return report_failure(lhs, policy, action, errc::rounding_error);
-                        lhs = L::from_raw(*r);
-                        return;
-                    } else if (std::is_constant_evaluated() || is_checked(flags_of<L> | plain_t<P>::Flags))
+            // Continuous: store verbatim. The grid's values have denominators
+            // ≤ its bound: one past it is off the grid — rounded onto it under
+            // a rounding policy, else reported (but unsafe).
+            if (abs_den(rv.Den) > to_rational(grid_of<L>.MaxDenominator).Num) [[unlikely]] {
+                if constexpr (uses_flag<L, P, snap>) {
+                    const auto o = onto_bound<L, plain_t<P>>(exact_of(rv));
+                    const auto r =
+                        o ? try_rational(*o) : std::expected<rational, errc>{std::unexpected{errc::rounding_error}};
+                    if (!r)
                         return report_failure(lhs, policy, action, errc::rounding_error);
-                }
+                    lhs = L::from_raw(*r);
+                    return;
+                } else if (std::is_constant_evaluated() || is_checked(flags_of<L> | plain_t<P>::Flags))
+                    return report_failure(lhs, policy, action, errc::rounding_error);
+            }
             lhs = L::from_raw(rv);
         } else if constexpr (point_grid<L>)
             lhs = L::from_raw({}); // a point: its value is the type
@@ -8168,9 +8140,7 @@ enum class exact_op : unsigned char { add, mul, div };
 //   ÷: the divisor's numerator fits imax (1/r moves it to the denominator).
 template <exact_op Op, insidable Result, insidable L, insidable R>
 inline constexpr bool exact_fits = [] {
-    if constexpr (grid_of<Result>.MaxDenominator == 0)
-        return false;
-    else if constexpr (fraction_storage<Result>)
+    if constexpr (fraction_storage<Result>)
         return true;
     else if constexpr (!rational_storage<Result>)
         return false;
@@ -8185,25 +8155,13 @@ inline constexpr bool exact_fits = [] {
     }
 }();
 
-// Whether a + or × into Result runs its overflow check. The result grid
-// holds every result, so only a continuous result can overflow, and not one
-// whose denominator bound proves it fits (exact_fits): otherwise a fraction
-// raw always may (its denominator grows); a rational raw under a checked
-// policy (a continuous operand bounds no denominator).
-template <exact_op Op, insidable Result, insidable L, insidable R, policy_flag F>
-inline constexpr bool lattice_op_checked =
-    !exact_fits<Op, Result, L, R> && grid_of<Result>.MaxDenominator == 0 && // bounded: exact_path_fits
-    (fraction_storage<Result> ||
-     (rational_storage<Result> && (has_any_flag(F, checked) || is_checked(flags_of<L>) || is_checked(flags_of<R>))));
-
-// A bounded continuous Result holds every exact result of + and ×: its
-// raw is sized from its bound. Only the 64-bit kernels' intermediates (each
-// operand over the common denominator) may pass 64 bits, so where exact_fits
-// is false the op computes exactly in wide integers and stores that — no
-// check, no expected.
+// A continuous Result holds every exact result of + and ×: its raw is sized
+// from its bound. Only the 64-bit kernels' intermediates (each operand over
+// the common denominator) may pass 64 bits, so where exact_fits is false the
+// op computes exactly in wide integers and stores that — no check, no
+// expected.
 template <exact_op Op, insidable Result, insidable L, insidable R>
-inline constexpr bool exact_path_fits =
-    rational_storage<Result> && grid_of<Result>.MaxDenominator != 0 && !exact_fits<Op, Result, L, R>;
+inline constexpr bool exact_path_fits = rational_storage<Result> && !exact_fits<Op, Result, L, R>;
 
 // `x * just<c>` and `x / just<c>` (c != 0): the result lattice is x's lattice
 // scaled by c or 1/c (grid operator* / operator/), so the result offset IS x's
@@ -8226,9 +8184,10 @@ constexpr Result scale_by_point(const X& x) noexcept {
 //---------------------------------------------------------------------------
 // addition — `add(L, R, policy, action) -> inside<G>`, G = grid_of<L> + grid_of<R>.
 // The grid arithmetic is sound by construction (the result interval contains
-// every runtime sum), so overflow can only happen on continuous results.
-// Shapes: a continuous result (exact fraction, or a rational raw), a point,
-// or integer raws added as value counts in a common unit.
+// every runtime sum, and a continuous result's raw is sized from its
+// denominator bound), so a sum never fails. Shapes: a continuous result
+// (exact fraction, or a rational raw), a point, or integer raws added as
+// value counts in a common unit.
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
 template <insidable L, insidable R = L>
@@ -8237,34 +8196,16 @@ struct addition {
     // A result is checked, whatever its operands' policies.
     using result = inside<result_grid>;
 
-    template <policy_flag F>
-    static constexpr bool needs_overflow_check = lattice_op_checked<exact_op::add, result, L, R, F>;
-
-    // Plain result when an overflow action takes the failure or no check is
-    // needed; else std::expected<result, errc>.
-    template <policy_flag F, typename A>
-    using return_t = std::
-        conditional_t<overflow_action<plain_t<A>> || !needs_overflow_check<F>, result, std::expected<result, errc>>;
-
+    // Total: the policy and an on_overflow action have nothing to take.
     template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
-    static constexpr auto add(L lhs, R rhs, policy<F, E> policy = {}, A&& action = {}) -> return_t<F, A> {
-        if constexpr (fraction_storage<result>) {
-            const auto sum = continuous_raw_of<raw_t<result>>(exact_of(lhs) + exact_of(rhs));
-            if constexpr (needs_overflow_check<F>)
-                if (!sum) [[unlikely]]
-                    return report_or_unexpected<result>(action, policy, errc::overflow);
-            return result::from_raw(*sum);
-        } else if constexpr (exact_path_fits<exact_op::add, result, L, R>)
+    static constexpr result add(L lhs, R rhs, policy<F, E> = {}, A&& = {}) {
+        if constexpr (fraction_storage<result>)
+            return result::from_raw(*continuous_raw_of<raw_t<result>>(exact_of(lhs) + exact_of(rhs)));
+        else if constexpr (exact_path_fits<exact_op::add, result, L, R>)
             return result::from_raw(*try_rational(exact_of(lhs) + exact_of(rhs)));
-        else if constexpr (rational_storage<result>) {
-            if constexpr (needs_overflow_check<F>) {
-                auto sum = as_rational(lhs) + as_rational(rhs);
-                if (!sum) [[unlikely]]
-                    return report_or_unexpected<result>(action, policy, errc::overflow);
-                return result::from_raw(*sum);
-            } else
-                return result::from_raw(rational::add_unchecked(lhs, rhs));
-        } else if constexpr (point_storage<result>)
+        else if constexpr (rational_storage<result>)
+            return result::from_raw(rational::add_unchecked(lhs, rhs));
+        else if constexpr (point_storage<result>)
             return result::from_raw(raw_t<result>{}); // point + point: a point
         else {
             // Integer raws (a notched result has no continuous operand): add the
@@ -8319,38 +8260,20 @@ struct multiplication {
     // A result is checked, whatever its operands' policies.
     using result = inside<result_grid>;
 
-    template <policy_flag F>
-    static constexpr bool needs_overflow_check = lattice_op_checked<exact_op::mul, result, L, R, F>;
-
-    // Plain result when an overflow action takes the failure or no check is
-    // needed; else std::expected<result, errc>.
-    template <policy_flag F, typename A>
-    using return_t = std::
-        conditional_t<overflow_action<plain_t<A>> || !needs_overflow_check<F>, result, std::expected<result, errc>>;
-
+    // Total, as a sum: the policy and an on_overflow action have nothing to take.
     template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
-    static constexpr auto mul(L lhs, R rhs, policy<F, E> policy = {}, A&& action = {}) -> return_t<F, A> {
+    static constexpr result mul(L lhs, R rhs, policy<F, E> = {}, A&& = {}) {
         if constexpr (point_scale<R, L, result>) // x * just<c>: x's offset (see op_result.hpp)
             return scale_by_point<result, R>(lhs);
         else if constexpr (point_scale<L, R, result>)
             return scale_by_point<result, L>(rhs);
-        else if constexpr (fraction_storage<result>) {
-            const auto prod = continuous_raw_of<raw_t<result>>(exact_of(lhs) * exact_of(rhs));
-            if constexpr (needs_overflow_check<F>)
-                if (!prod) [[unlikely]]
-                    return report_or_unexpected<result>(action, policy, errc::overflow);
-            return result::from_raw(*prod);
-        } else if constexpr (exact_path_fits<exact_op::mul, result, L, R>)
+        else if constexpr (fraction_storage<result>)
+            return result::from_raw(*continuous_raw_of<raw_t<result>>(exact_of(lhs) * exact_of(rhs)));
+        else if constexpr (exact_path_fits<exact_op::mul, result, L, R>)
             return result::from_raw(*try_rational(exact_of(lhs) * exact_of(rhs)));
-        else if constexpr (rational_storage<result>) {
-            if constexpr (needs_overflow_check<F>) {
-                auto prod = as_rational(lhs) * as_rational(rhs);
-                if (!prod) [[unlikely]]
-                    return report_or_unexpected<result>(action, policy, errc::overflow);
-                return result::from_raw(*prod);
-            } else
-                return result::from_raw(rational::mul_unchecked(as_rational(lhs), as_rational(rhs)));
-        } else if constexpr (point_storage<result>) // point × point, or × 0: the grid's one value
+        else if constexpr (rational_storage<result>)
+            return result::from_raw(rational::mul_unchecked(as_rational(lhs), as_rational(rhs)));
+        else if constexpr (point_storage<result>) // point × point, or × 0: the grid's one value
             return result::from_raw(raw_t<result>{});
         else {
             // Integer raws (a notched result has no continuous operand): multiply the operands' values in their own
@@ -9040,10 +8963,8 @@ constexpr lossy_result exact_lossy(const wide_rational<K>& x) noexcept {
         if (in) {
             if constexpr (bounded)
                 return {false, static_cast<wide_sint<KK>>(grid_numerator(grid_of<B>.MaxDenominator)) < reduced(v).Den};
-            else if constexpr (rational_storage<B>)
-                return {!try_rational(v).has_value(), false}; // the store reports what its raw cannot hold
             else
-                return {false, false};
+                return {false, false}; // a point
         }
         if constexpr (!rounds_before_range_check<B, policy<>>)
             return {true, false};
@@ -9124,8 +9045,8 @@ template <insidable B, numeric A>
             return detail::rounds_into_range<B, policy<>>(r, rounded);
         }
         if constexpr (!detail::notched<B>) {
-            // Continuous: nothing to miss, unless the grid bounds denominators
-            // (an in-range value with a larger one is off the grid).
+            // A point: nothing to miss. Continuous: an in-range value with a
+            // denominator past the bound is off the grid.
             if constexpr (grid_of<B>.MaxDenominator == 0)
                 return false;
             else
@@ -10066,7 +9987,7 @@ template <insidable B>
         if (!detail::exact_index<B, detail::round_mode::trunc>(*w).Exact)
             return std::unexpected{errc::rounding_error};
     } else if constexpr (grid_of<B>.MaxDenominator != 0) {
-        // A bounded continuous grid holds denominators up to its bound only.
+        // A continuous grid holds denominators up to its bound only.
         if (static_cast<detail::wide_sint<K>>(detail::grid_numerator(grid_of<B>.MaxDenominator)) <
             detail::reduced(*w).Den)
             return std::unexpected{errc::rounding_error};

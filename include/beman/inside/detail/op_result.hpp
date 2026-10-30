@@ -20,9 +20,7 @@ enum class exact_op : unsigned char { add, mul, div };
 //   ÷: the divisor's numerator fits imax (1/r moves it to the denominator).
 template <exact_op Op, insidable Result, insidable L, insidable R>
 inline constexpr bool exact_fits = [] {
-    if constexpr (grid_of<Result>.MaxDenominator == 0)
-        return false;
-    else if constexpr (fraction_storage<Result>)
+    if constexpr (fraction_storage<Result>)
         return true;
     else if constexpr (!rational_storage<Result>)
         return false;
@@ -37,25 +35,13 @@ inline constexpr bool exact_fits = [] {
     }
 }();
 
-// Whether a + or × into Result runs its overflow check. The result grid
-// holds every result, so only a continuous result can overflow, and not one
-// whose denominator bound proves it fits (exact_fits): otherwise a fraction
-// raw always may (its denominator grows); a rational raw under a checked
-// policy (a continuous operand bounds no denominator).
-template <exact_op Op, insidable Result, insidable L, insidable R, policy_flag F>
-inline constexpr bool lattice_op_checked =
-    !exact_fits<Op, Result, L, R> && grid_of<Result>.MaxDenominator == 0 && // bounded: exact_path_fits
-    (fraction_storage<Result> ||
-     (rational_storage<Result> && (has_any_flag(F, checked) || is_checked(flags_of<L>) || is_checked(flags_of<R>))));
-
-// A bounded continuous Result holds every exact result of + and ×: its
-// raw is sized from its bound. Only the 64-bit kernels' intermediates (each
-// operand over the common denominator) may pass 64 bits, so where exact_fits
-// is false the op computes exactly in wide integers and stores that — no
-// check, no expected.
+// A continuous Result holds every exact result of + and ×: its raw is sized
+// from its bound. Only the 64-bit kernels' intermediates (each operand over
+// the common denominator) may pass 64 bits, so where exact_fits is false the
+// op computes exactly in wide integers and stores that — no check, no
+// expected.
 template <exact_op Op, insidable Result, insidable L, insidable R>
-inline constexpr bool exact_path_fits =
-    rational_storage<Result> && grid_of<Result>.MaxDenominator != 0 && !exact_fits<Op, Result, L, R>;
+inline constexpr bool exact_path_fits = rational_storage<Result> && !exact_fits<Op, Result, L, R>;
 
 // `x * just<c>` and `x / just<c>` (c != 0): the result lattice is x's lattice
 // scaled by c or 1/c (grid operator* / operator/), so the result offset IS x's

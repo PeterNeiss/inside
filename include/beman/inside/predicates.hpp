@@ -50,10 +50,8 @@ constexpr lossy_result exact_lossy(const wide_rational<K>& x) noexcept {
         if (in) {
             if constexpr (bounded)
                 return {false, static_cast<wide_sint<KK>>(grid_numerator(grid_of<B>.MaxDenominator)) < reduced(v).Den};
-            else if constexpr (rational_storage<B>)
-                return {!try_rational(v).has_value(), false}; // the store reports what its raw cannot hold
             else
-                return {false, false};
+                return {false, false}; // a point
         }
         if constexpr (!rounds_before_range_check<B, policy<>>)
             return {true, false};
@@ -134,8 +132,8 @@ template <insidable B, numeric A>
             return detail::rounds_into_range<B, policy<>>(r, rounded);
         }
         if constexpr (!detail::notched<B>) {
-            // Continuous: nothing to miss, unless the grid bounds denominators
-            // (an in-range value with a larger one is off the grid).
+            // A point: nothing to miss. Continuous: an in-range value with a
+            // denominator past the bound is off the grid.
             if constexpr (grid_of<B>.MaxDenominator == 0)
                 return false;
             else

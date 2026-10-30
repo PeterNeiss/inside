@@ -419,22 +419,21 @@ struct assignment<L, R> {
             if constexpr (std::floating_point<R>)
                 if (!exact) [[unlikely]]
                     return store_fine_double(lhs, static_cast<double>(rhs), policy, action);
-            // Continuous: store verbatim. A bounded grid's values have
-            // denominators ≤ its bound: one past it is off the grid — rounded
-            // onto it under a rounding policy, else reported (but unsafe).
-            if constexpr (grid_of<L>.MaxDenominator != 0)
-                if (abs_den(rv.Den) > to_rational(grid_of<L>.MaxDenominator).Num) [[unlikely]] {
-                    if constexpr (uses_flag<L, P, snap>) {
-                        const auto o = onto_bound<L, plain_t<P>>(exact_of(rv));
-                        const auto r = o ? try_rational(*o)
-                                         : std::expected<rational, errc>{std::unexpected{errc::rounding_error}};
-                        if (!r)
-                            return report_failure(lhs, policy, action, errc::rounding_error);
-                        lhs = L::from_raw(*r);
-                        return;
-                    } else if (std::is_constant_evaluated() || is_checked(flags_of<L> | plain_t<P>::Flags))
+            // Continuous: store verbatim. The grid's values have denominators
+            // ≤ its bound: one past it is off the grid — rounded onto it under
+            // a rounding policy, else reported (but unsafe).
+            if (abs_den(rv.Den) > to_rational(grid_of<L>.MaxDenominator).Num) [[unlikely]] {
+                if constexpr (uses_flag<L, P, snap>) {
+                    const auto o = onto_bound<L, plain_t<P>>(exact_of(rv));
+                    const auto r =
+                        o ? try_rational(*o) : std::expected<rational, errc>{std::unexpected{errc::rounding_error}};
+                    if (!r)
                         return report_failure(lhs, policy, action, errc::rounding_error);
-                }
+                    lhs = L::from_raw(*r);
+                    return;
+                } else if (std::is_constant_evaluated() || is_checked(flags_of<L> | plain_t<P>::Flags))
+                    return report_failure(lhs, policy, action, errc::rounding_error);
+            }
             lhs = L::from_raw(rv);
         } else if constexpr (point_grid<L>)
             lhs = L::from_raw({}); // a point: its value is the type

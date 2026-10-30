@@ -15,9 +15,10 @@
 //---------------------------------------------------------------------------
 // addition — `add(L, R, policy, action) -> inside<G>`, G = grid_of<L> + grid_of<R>.
 // The grid arithmetic is sound by construction (the result interval contains
-// every runtime sum), so overflow can only happen on continuous results.
-// Shapes: a continuous result (exact fraction, or a rational raw), a point,
-// or integer raws added as value counts in a common unit.
+// every runtime sum, and a continuous result's raw is sized from its
+// denominator bound), so a sum never fails. Shapes: a continuous result
+// (exact fraction, or a rational raw), a point, or integer raws added as
+// value counts in a common unit.
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
 template <insidable L, insidable R = L>
@@ -26,34 +27,16 @@ struct addition {
     // A result is checked, whatever its operands' policies.
     using result = inside<result_grid>;
 
-    template <policy_flag F>
-    static constexpr bool needs_overflow_check = lattice_op_checked<exact_op::add, result, L, R, F>;
-
-    // Plain result when an overflow action takes the failure or no check is
-    // needed; else std::expected<result, errc>.
-    template <policy_flag F, typename A>
-    using return_t = std::
-        conditional_t<overflow_action<plain_t<A>> || !needs_overflow_check<F>, result, std::expected<result, errc>>;
-
+    // Total: the policy and an on_overflow action have nothing to take.
     template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
-    static constexpr auto add(L lhs, R rhs, policy<F, E> policy = {}, A&& action = {}) -> return_t<F, A> {
-        if constexpr (fraction_storage<result>) {
-            const auto sum = continuous_raw_of<raw_t<result>>(exact_of(lhs) + exact_of(rhs));
-            if constexpr (needs_overflow_check<F>)
-                if (!sum) [[unlikely]]
-                    return report_or_unexpected<result>(action, policy, errc::overflow);
-            return result::from_raw(*sum);
-        } else if constexpr (exact_path_fits<exact_op::add, result, L, R>)
+    static constexpr result add(L lhs, R rhs, policy<F, E> = {}, A&& = {}) {
+        if constexpr (fraction_storage<result>)
+            return result::from_raw(*continuous_raw_of<raw_t<result>>(exact_of(lhs) + exact_of(rhs)));
+        else if constexpr (exact_path_fits<exact_op::add, result, L, R>)
             return result::from_raw(*try_rational(exact_of(lhs) + exact_of(rhs)));
-        else if constexpr (rational_storage<result>) {
-            if constexpr (needs_overflow_check<F>) {
-                auto sum = as_rational(lhs) + as_rational(rhs);
-                if (!sum) [[unlikely]]
-                    return report_or_unexpected<result>(action, policy, errc::overflow);
-                return result::from_raw(*sum);
-            } else
-                return result::from_raw(rational::add_unchecked(lhs, rhs));
-        } else if constexpr (point_storage<result>)
+        else if constexpr (rational_storage<result>)
+            return result::from_raw(rational::add_unchecked(lhs, rhs));
+        else if constexpr (point_storage<result>)
             return result::from_raw(raw_t<result>{}); // point + point: a point
         else {
             // Integer raws (a notched result has no continuous operand): add the

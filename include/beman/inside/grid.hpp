@@ -40,9 +40,10 @@ enum class bounds : unsigned char {
     open,      // (Lower, Upper) — Lower + Notch .. Upper − Notch
 };
 
-// The largest maximum denominator a continuous grid can carry: past it a
-// bound would size fractions without limit along an expression chain, so it
-// is dropped (the grid is unbounded).
+// The largest fraction (numerator and denominator bits) a continuous grid's
+// bound may size: past it a bound would size fractions without limit along
+// an expression chain, so it is dropped. The grid is then unbounded, and no
+// inside has it (grid::validate): the operation that forms it is deleted.
 #ifndef BEMAN_INSIDE_MAX_FRACTION_BITS
     #define BEMAN_INSIDE_MAX_FRACTION_BITS 1024
 #endif
@@ -60,8 +61,9 @@ struct grid {
     interval              Interval;
     detail::grid_rational Notch;
     // A continuous grid's bound on its values' denominators; 0 is unbounded
-    // (any rational in range). Always 0 on a notched or point grid, whose
-    // lattice already bounds them — so a value set has one grid.
+    // (any rational in range), which an inside does not take. Always 0 on a
+    // notched or point grid, whose lattice already bounds them — so a value
+    // set has one grid.
     detail::grid_rational MaxDenominator{0};
 
     grid() = default;
@@ -436,36 +438,20 @@ inline constexpr bool deduces_value = [] {
 }();
 
 // A continuous grid stores its value as an exact fraction: the 64-bit
-// rational, or — past it — a reduced fraction of K-limb integers.
-// A bounded grid sizes K from its bounds, so every value fits; an unbounded
-// one from its limits, K holding twice the limits' bits, and a value that
-// needs more reports overflow, as one past the 64-bit rational does.
+// rational, or — past it — a reduced fraction of K-limb integers, K sized
+// from the bounds, so every value fits.
 template <grid G>
-inline constexpr bool bound_fits_rational =
-    G.MaxDenominator != 0 && !(grid_int{std::numeric_limits<imax>::max()} < den_bound(G)) &&
-    !(grid_int{std::numeric_limits<umax>::max()} < num_bound(G));
+inline constexpr bool bound_fits_rational = !(grid_int{std::numeric_limits<imax>::max()} < den_bound(G)) &&
+                                            !(grid_int{std::numeric_limits<umax>::max()} < num_bound(G));
 
 template <grid G>
 inline constexpr std::size_t continuous_limbs = [] {
-    if constexpr (G.MaxDenominator != 0) {
-        const int n = bit_width_of(num_bound(G)), d = bit_width_of(den_bound(G));
-        return limbs_for_bits((n < d ? d : n) + 1);
-    } else {
-        auto bits = [](const grid_rational& r) {
-            const grid_int n = grid_numerator(r);
-            return bit_width_of(abs(n)) + bit_width_of(grid_denominator(r));
-        };
-        const int b =
-            bits(G.Interval.Lower) > bits(G.Interval.Upper) ? bits(G.Interval.Lower) : bits(G.Interval.Upper);
-        return limbs_for_bits(2 * b + 2);
-    }
+    const int n = bit_width_of(num_bound(G)), d = bit_width_of(den_bound(G));
+    return limbs_for_bits((n < d ? d : n) + 1);
 }();
 template <grid G>
 using continuous_raw_t =
-    std::conditional_t<G.MaxDenominator != 0 ? bound_fits_rational<G>
-                                             : fits_rational(G.Interval.Lower) && fits_rational(G.Interval.Upper),
-                       detail::rational,
-                       wide_rational<continuous_limbs<G>>>;
+    std::conditional_t<bound_fits_rational<G>, detail::rational, wide_rational<continuous_limbs<G>>>;
 
 template <grid G>
 constexpr auto raw_for() {
