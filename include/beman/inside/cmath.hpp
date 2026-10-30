@@ -349,9 +349,8 @@ template <insidable Out, insidable InX, insidable InY>
 // Repeated squaring in inside-space: every multiply widens the result grid
 // corner-correctly, so the result is exact for exact inputs and negative
 // bases are fine. No engine — works on any inside
-// (like abs/floor/fmod). Checked rational raws may return
-// std::expected<inside, errc> per the usual arithmetic vocabulary. Negative
-// exponents are deferred (they need the division error story).
+// (like abs/floor/fmod). Negative exponents are deferred (they need the
+// division error story).
 namespace detail {
 template <imax E, insidable In>
 constexpr auto pown_impl(In x) noexcept {
@@ -368,8 +367,8 @@ constexpr auto pown_impl(In x) noexcept {
     }
 }
 
-// pown<E>(x) exists when each squaring and multiply does: a checked
-// continuous product (an expected) does not multiply further.
+// pown<E>(x) exists when each squaring and multiply does: a continuous
+// product past BEMAN_INSIDE_MAX_FRACTION_BITS has no type.
 template <imax E, class In>
 inline constexpr bool pown_defined = [] {
     if constexpr (E < 0)

@@ -329,3 +329,15 @@ TEST(BigGrid, same_notch_store_between_unanchored_wide_grids) {
     l = r;
     EXPECT_EQ(to_string(l), "1.375");
 }
+
+// A point quotient is its type's one value: plain, even past 64 bits, and
+// expected only for a divisor grid that holds 0.
+TEST(BigGrid, point_quotients_are_plain) {
+    const auto q = just<1e30_g> / just<3>;
+    static_assert(!detail::is_expected_v<decltype(q)>);
+    EXPECT_EQ(to_string(q), "1000000000000000000000000000000/3");
+    const auto z = just<0> / inside<{-1, 1}>{1};
+    static_assert(detail::is_expected_v<decltype(z)>);
+    EXPECT_TRUE(z.has_value() && *z == 0);
+    EXPECT_EQ((just<0> / inside<{-1, 1}>{0}).error(), errc::division_by_zero);
+}
