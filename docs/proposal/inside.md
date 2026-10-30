@@ -175,7 +175,8 @@ auto near = clamp_cast<level, round_nearest>(6.5);       // 7: a tie goes away f
 using quarter = inside<{{0, 10}, per<4>}>;
 quarter q = 2.75_ins;
 auto num  = q.numerator();                               // 11: the value is 11/4
-auto i    = q.to<int>();                                 // 2: truncated toward zero
+auto i    = q.to<int>();                                 // unexpected(errc::rounding_error)
+auto down = q.to<int, round_floor>();                    // 2: rounding named in the call
 auto neg  = inside<{-5, 5}>{-1}.to<unsigned>();          // unexpected(errc::domain_error)
 ```
 
@@ -354,7 +355,10 @@ brings an out-of-range value onto the grid makes it a rounding, not an
 overflow.
 
 Out of an `inside`, `to<T>()` returns `std::expected<T, errc>`. An integer `T`
-gets the value truncated toward zero, or `overflow` past `T`'s range
+gets the value exactly; a fractional value needs permission to round, as a
+store does: it rounds by the call's mode (`to<int, round_floor>()`), else by
+the type's, and with neither it is `rounding_error`. `overflow` reports a value
+past `T`'s range
 (`domain_error` for a negative value into an unsigned `T`); a floating-point
 `T` gets the value rounded once. `as<T>()` returns `T` and reports a failure
 like a checked store (`inside_error` with `to<T>()`'s code), and requires
@@ -470,8 +474,9 @@ namespace std {
       static constexpr expected<inside, errc> try_make(A value);
 
     // out of an inside
-    template<class T> constexpr expected<T, errc> to() const;  // T arithmetic
-    template<class T> constexpr T as() const;                  // to<T>(), failures throw
+    template<class T, policy_flag Round = none>                // T arithmetic; Round: none or a mode
+      constexpr expected<T, errc> to() const;
+    template<class T, policy_flag Round = none> constexpr T as() const; // to<T, Round>(), failures throw
     constexpr @*integer*@ numerator() const;                     // lowest terms, the sign here
     constexpr @*integer*@ denominator() const;                   // > 0
 
@@ -518,8 +523,8 @@ namespace std {
   template<class B, class N> constexpr bool conversion_overflows(N v) noexcept;
   template<class B, class N> constexpr bool conversion_rounds(N v) noexcept;
   template<class B, class N> constexpr bool conversion_loses(N v) noexcept;  // either
-  template<class T, class B> constexpr expected<T, errc> to(const B&);
-  template<class T, class B> constexpr T as(const B&);
+  template<class T, policy_flag Round = none, class B> constexpr expected<T, errc> to(const B&);
+  template<class T, policy_flag Round = none, class B> constexpr T as(const B&);
 
   // a policy for one call
   template<policy_flag F = none, class E = @*unspecified*@> struct policy;
@@ -563,7 +568,7 @@ namespace std {
 | `++a`, `--a` | `a` moved by one notch | a store by `P` (wraps under `wrap`); absent on a continuous grid |
 | `a += b` etc. | `a = a + b` | a store by `a`'s policy |
 | `a == b`, `a <=> b` | exact comparison of values | any two grids |
-| `b.to<T>()` | `expected<T, errc>` | integer `T`: truncated toward zero; `overflow` out of `T`'s range, `domain_error` for a negative value into an unsigned `T`. Floating-point `T`: rounded once |
+| `b.to<T>()` | `expected<T, errc>` | integer `T`: exact, or rounded by `Round`, else by `P`'s mode; `rounding_error` for a fractional value when neither names one; `overflow` out of `T`'s range, `domain_error` for a negative value into an unsigned `T`. Floating-point `T`: rounded once |
 | `b.as<T>()` | `T` | a failure of `to<T>()` throws `inside_error`; a floating-point `T` needs a rounding policy |
 | `b.numerator()`, `b.denominator()` | the value in lowest terms | denominator `> 0` |
 | `clamp_cast<B, M>(v)` | `v` saturated into `B`, rounded by `M` | `M == none`: off the notch as `B`'s policy |
@@ -641,18 +646,16 @@ The repository's `docs/resources.md` compares their features.
    implementation's. The committee may prefer others (`bounded`, `ranged`). A
    standard literal suffix cannot begin with `_`, so `_ins` and `_g` need new
    names.
-2. **`to<T>()` truncates** a fractional value into an integer `T`. It could
-   instead report `rounding_error` unless the type names a rounding, as a store does.
-3. **Failure of a checked store.** An exception (`inside_error`, as proposed),
+2. **Failure of a checked store.** An exception (`inside_error`, as proposed),
    a contract violation ([@P2900R14]), or a replaceable handler (the
    implementation has one, which lets the core run without exceptions).
-4. **Bare scalars.** Rejecting `a + 1` is deliberate. Should mixed arithmetic
+3. **Bare scalars.** Rejecting `a + 1` is deliberate. Should mixed arithmetic
    with an integer of a stated range be allowed instead?
-5. **Unbounded continuous grids.** Their arithmetic is the only `+`, `-` and `*`
+4. **Unbounded continuous grids.** Their arithmetic is the only `+`, `-` and `*`
    that can fail. Should a continuous grid require a denominator bound, so that
    every `+`, `-` and `*` is total?
-6. **The per-call interface.** Trailing arguments on free functions for one
+5. **The per-call interface.** Trailing arguments on free functions for one
    call, and a proxy for one store, are the implementation's shape. The proxy
    type is left unspecified.
-7. **Interaction** with C++26 saturation arithmetic and with `std::linalg`
+6. **Interaction** with C++26 saturation arithmetic and with `std::linalg`
    element types.

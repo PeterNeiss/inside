@@ -38,16 +38,17 @@ TEST(InsideToTest, inside_to_unsigned_t) {
     }
 
     {
-        SCOPED_TRACE("fractional notch truncates silently (matches rational::to)");
+        SCOPED_TRACE("a fractional value needs permission to round");
         using B = inside<{{0, 1}, per<2>}>;
-        ASSERT_TRUE(B{0.5}.to<std::uint8_t>().value() == 0); // 0.5 -> 0
+        ASSERT_EQ(B{0.5}.to<std::uint8_t>().error(), errc::rounding_error);       // no rounding named
+        ASSERT_TRUE((B{0.5}.to<std::uint8_t, round_toward_zero>().value() == 0)); // 0.5 -> 0
         ASSERT_TRUE(B{1}.to<std::uint8_t>().value() == 1);
     }
 
     {
         SCOPED_TRACE("Q-format fast path");
         using B = inside<{{0, 255}, per<256>}, round_nearest>;
-        ASSERT_TRUE(B{42.5}.to<std::uint8_t>().value() == 42);
+        ASSERT_TRUE(B{42.5}.to<std::uint8_t>().value() == 43); // the type's mode: a tie away from zero
     }
 }
 
@@ -179,8 +180,8 @@ TEST(InsideToTest, as_t_is_a_non_expected_shortcut_for_to_t_value) {
     ASSERT_TRUE(narrow{42}.as<imax>() == 42);
     ASSERT_TRUE(narrow{42}.as<std::size_t>() == 42u);
 
-    // Fractional notch: extracting to imax truncates (matches to<imax>()).
-    ASSERT_TRUE(frac{7.5}.as<imax>() == 7);
+    // Fractional notch: extracting to imax rounds by the type's mode (matches to<imax>()).
+    ASSERT_TRUE(frac{7.5}.as<imax>() == 8);
 
     // Double target behaves the same as `to<T>().value()`; the inside -> rational
     // conversion is the implicit operator.
@@ -191,7 +192,8 @@ TEST(InsideToTest, as_t_is_a_non_expected_shortcut_for_to_t_value) {
     // found by ADL, same semantics as the members.
     ASSERT_TRUE(as<imax>(narrow{42}) == 42);
     ASSERT_TRUE(as<double>(frac{7.5}) == 7.5);
-    ASSERT_TRUE(to<imax>(frac{7.5}).value() == 7);
+    ASSERT_TRUE(to<imax>(frac{7.5}).value() == 8);
+    ASSERT_TRUE((to<imax, round_floor>(frac{7.5}).value() == 7));
     ASSERT_TRUE(to<double>(narrow{3}).value() == 3.0);
 }
 

@@ -21,12 +21,13 @@ int main() {
     using quarter = inside<{{0, 10}, per<4>}>;
     quarter q = 2.75_ins;
     auto num  = q.numerator();                               // 11: the value is 11/4
-    auto i    = q.to<int>();                                 // 2: truncated toward zero
+    auto i    = q.to<int>();                                 // unexpected(errc::rounding_error)
+    auto down = q.to<int, round_floor>();                    // 2: rounding named in the call
     auto neg  = inside<{-5, 5}>{-1}.to<unsigned>();          // unexpected(errc::domain_error)
     // [/listing]
     if (top != just<10> || deg != just<5> || fit != just<7> || near != just<7>)
         return 1;
-    if (num != 11 || q.denominator() != 4 || i != 2 || neg.has_value() || neg.error() != errc::domain_error)
+    if (num != 11 || q.denominator() != 4 || i.has_value() || i.error() != errc::rounding_error || down != 2 || neg.has_value() || neg.error() != errc::domain_error)
         return 1;
     return 0;
 }

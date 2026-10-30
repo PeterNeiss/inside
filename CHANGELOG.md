@@ -47,6 +47,11 @@ The library without pre-C++26 compatibility, kept in sync with main.
   store (`inside_error`, or the installed handler), not as
   `std::bad_expected_access`.
 
+- `to<T>()` / `as<T>()` into an integer `T` no longer truncate a fractional
+  value silently: they round by the call's mode (`to<int, round_floor>()`, also
+  on the free forms), else by the type's rounding mode, and with neither report
+  `errc::rounding_error`. A `round_nearest` type now rounds to nearest here.
+
 ### Removed
 
 - The compiler shims in `detail/config.hpp` (MSVC warnings, `_umul128`,

@@ -61,7 +61,8 @@ TEST(Audit20261012, far_qformat_grid) {
     static_assert([] {
         Q x{base};
         Q y{rational{base * 2 + 1, 2}};
-        return rational(x) == rational{base} && rational(y) == rational{base * 2 + 1, 2} && y.to<imax>() == base;
+        return rational(x) == rational{base} && rational(y) == rational{base * 2 + 1, 2} &&
+               y.to<imax, round_toward_zero>() == base && y.to<imax>().error() == errc::rounding_error;
     }());
 }
 
@@ -200,12 +201,16 @@ TEST(Audit20261012, index_grid_reaching_2_pow_63) {
     }());
 }
 
-// to<T>() truncates first, then range-checks ("fractional truncation is
-// silent"): 127.5 → int8 is 127, −0.5 → unsigned is 0.
+// to<T, round_toward_zero>() truncates first, then range-checks: 127.5 →
+// int8 is 127, −0.5 → unsigned is 0. Without a rounding a fractional value
+// is a rounding_error.
 TEST(Audit20261012, to_truncates_before_the_range_check) {
     using H = inside<{{-0.5, 200}, 0.5}>;
-    static_assert(*H{-0.5}.to<unsigned>() == 0u);
-    static_assert(*H{127.5}.to<std::int8_t>() == 127);
+    static_assert(*H{-0.5}.to<unsigned, round_toward_zero>() == 0u);
+    static_assert(*H{127.5}.to<std::int8_t, round_toward_zero>() == 127);
+    static_assert(H{127.5}.to<std::int8_t>().error() == errc::rounding_error);
+    static_assert(*H{127.5}.to<int, round_nearest>() == 128 && *H{127.5}.to<int, round_floor>() == 127);
+    static_assert(*inside<{{0, 10}, per<4>}, round_nearest>{2.75}.to<int>() == 3); // the type's own mode
     static_assert(H{128}.to<std::int8_t>().error() == errc::overflow);
     static_assert(inside<{-5, 5}>{-1}.to<unsigned>().error() == errc::domain_error);
 }

@@ -144,7 +144,7 @@ void check_decode() {
         EXPECT_EQ(b.raw(), static_cast<raw_t<B>>(k));
         EXPECT_EQ(b.numerator(), signed_numerator(want));
         EXPECT_EQ(b.denominator(), abs_den(want.Den));
-        EXPECT_EQ(b.template as<imax>(), trunc(want));
+        EXPECT_EQ((b.template as<imax, round_toward_zero>()), trunc(want));
         EXPECT_EQ(as_double(b), static_cast<double>(want));
         EXPECT_TRUE(b == want);
     }

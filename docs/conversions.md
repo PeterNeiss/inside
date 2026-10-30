@@ -44,7 +44,10 @@ A grid past `int64` has no implicit `imax`: read it with `to<T>()`.
 
 `b.to<T>()` returns `std::expected<T, errc>`: `errc::overflow` when the value
 is outside `T`'s range, `errc::domain_error` for a negative value into an
-unsigned `T`. `b.as<T>()` returns `T`, for a value you know converts: a
+unsigned `T`. A fractional value into an integer `T` needs permission to
+round, as a store does: it rounds by the call's mode
+(`b.to<int, round_floor>()`), else by the type's (`round_nearest` & co.), and
+with neither it is `errc::rounding_error`. `b.as<T>()` returns `T`, for a value you know converts: a
 failure is reported like a failed checked store (`inside_error` with the
 same code, or the installed handler).
 

@@ -9399,24 +9399,39 @@ struct inside {
 
     // to<T>() — typed-error scalar extraction (mirrors rational::to<T>, extended
     // to signed and floating point). Returns `errc::overflow` (out of T's range;
-    // `errc::domain_error` for a negative value into unsigned T); fractional
-    // truncation is silent. Bounds the grid already satisfies are not checked.
-    template <std::integral T>
+    // `errc::domain_error` for a negative value into unsigned T). Rounding needs
+    // permission, as for a store: a fractional value rounds by Round, else by
+    // this type's rounding mode; with neither it is `errc::rounding_error`.
+    // Bounds the grid already satisfies are not checked.
+    template <std::integral T, policy_flag Round = none>
+        requires(Round == none || Round == round_toward_zero || Round == round_nearest || Round == round_floor ||
+                 Round == round_ceil || Round == round_half_even)
     [[nodiscard]] constexpr std::expected<T, errc> to() const {
-        using lim               = std::numeric_limits<T>;
-        constexpr bool check_lo = lower_of<inside> < detail::rational{lim::min()};
-        constexpr bool check_hi = upper_of<inside> > detail::rational{lim::max()};
-        if constexpr (!check_lo && !check_hi && detail::values_fit_imax<inside>)
+        using lim                             = std::numeric_limits<T>;
+        constexpr bool               check_lo = lower_of<inside> < detail::rational{lim::min()};
+        constexpr bool               check_hi = upper_of<inside> > detail::rational{lim::max()};
+        constexpr bool               rounds   = Round != none || has_flag(P, snap);
+        constexpr detail::round_mode mode     = detail::rounding_of(Round != none ? Round : P);
+        if constexpr (detail::integer_lattice<inside> && !check_lo && !check_hi && detail::values_fit_imax<inside>)
             return static_cast<T>(detail::to_value(*this));
-        else if constexpr (detail::wide_valued<inside>) { // truncate first: -0.5 → unsigned is 0
-            const auto t = trunc(detail::exact_of(*this));
+        else if constexpr (detail::wide_valued<inside>) { // round first: -0.5 → unsigned is 0 when truncating
+            const auto f = detail::exact_of(*this);
+            const auto q = detail::rounded_div_exact<mode>(f.Num, f.Den);
+            if constexpr (!rounds && !detail::integer_lattice<inside>)
+                if (!q.Exact)
+                    return std::unexpected{errc::rounding_error};
+            const auto t = q.Quot;
             if (check_lo && t < decltype(t){lim::min()})
                 return std::unexpected{std::unsigned_integral<T> ? errc::domain_error : errc::overflow};
             if (check_hi && t > decltype(t){lim::max()})
                 return std::unexpected{errc::overflow};
             return static_cast<T>(t);
         } else {
-            const auto t = detail::round_to_integral(detail::as_rational(*this), detail::round_mode::trunc);
+            const auto v = detail::as_rational(*this);
+            const auto t = detail::round_to_integral(v, mode);
+            if constexpr (!rounds && !detail::integer_lattice<inside>)
+                if (t != v)
+                    return std::unexpected{errc::rounding_error};
             if (check_lo && t < detail::rational{lim::min()})
                 return std::unexpected{std::unsigned_integral<T> ? errc::domain_error : errc::overflow};
             if (check_hi && t > detail::rational{lim::max()})
@@ -9447,11 +9462,17 @@ struct inside {
     // known-in-range sites (array indexing, capacity arithmetic). FP targets
     // share operator double's policy gate, so a strict inside rejects
     // `b.as<double>()` too.
-    template <typename T>
+    template <typename T, policy_flag Round = none>
     [[nodiscard]] constexpr T as() const
-        requires(std::integral<T> || std::floating_point<T>) && (!std::floating_point<T> || has_flag(P, snap))
+        requires(std::integral<T> || (std::floating_point<T> && Round == none)) &&
+                (!std::floating_point<T> || has_flag(P, snap))
     {
-        const auto r = to<T>();
+        const auto r = [this] {
+            if constexpr (std::integral<T>)
+                return to<T, Round>();
+            else
+                return to<T>();
+        }();
         if (!r) [[unlikely]]
             detail::raise(r.error(), "as<T>: the value does not convert to T");
         return *r;
@@ -9921,18 +9942,21 @@ struct inside {
 // to<T>(b) / as<T>(b) — free-function forms, for generic code that would
 // otherwise need the `.template` disambiguator. Same semantics as the members.
 //---------------------------------------------------------------------------
-template <typename T, insidable B>
+template <typename T, policy_flag Round = none, insidable B>
 [[nodiscard]] constexpr auto to(const B& b)
-    requires requires { b.template to<T>(); }
+    requires(Round == none ? requires { b.template to<T>(); } : requires { b.template to<T, Round>(); })
 {
-    return b.template to<T>();
+    if constexpr (Round == none)
+        return b.template to<T>();
+    else
+        return b.template to<T, Round>();
 }
 
-template <typename T, insidable B>
+template <typename T, policy_flag Round = none, insidable B>
 [[nodiscard]] constexpr T as(const B& b)
-    requires requires { b.template as<T>(); }
+    requires requires { b.template as<T, Round>(); }
 {
-    return b.template as<T>();
+    return b.template as<T, Round>();
 }
 
 //---------------------------------------------------------------------------

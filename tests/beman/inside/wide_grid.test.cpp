@@ -155,9 +155,10 @@ TEST(WideGridTest, uint64_difference_widens) {
 
 TEST(WideGridTest, conversions) {
     fine a = 41.75;
-    EXPECT_EQ(a.to<int>().value(), 41);
+    EXPECT_EQ(a.to<int>().error(), errc::rounding_error); // 41.75: no rounding named
+    EXPECT_EQ((a.to<int, round_toward_zero>().value()), 41);
     EXPECT_EQ(a.to<double>().value(), 41.75);
-    EXPECT_EQ(a.to<std::uint8_t>().value(), 41);
+    EXPECT_EQ((a.to<std::uint8_t, round_nearest>().value()), 42);
     fine big = p34;
     EXPECT_EQ(big.to<std::int32_t>().error(), errc::overflow);
     EXPECT_EQ(fine_signed{-1}.to<unsigned>().error(), errc::domain_error);
