@@ -7,18 +7,9 @@
 #include <beman/inside/generic.hpp>
 #include <beman/inside/detail/wide_value.hpp>
 #include <beman/inside/grid.hpp>
+#include <beman/inside/policy.hpp>
 
 #include <optional>
-
-// policy.hpp includes this header: the recording policy of the fine-double
-// store (an errc& one) is named here and completed there.
-namespace beman::inside {
-namespace detail {
-struct error_ref;
-} // namespace detail
-template <policy_flag W, typename E>
-struct policy;
-} // namespace beman::inside
 
 namespace beman::inside::detail {
 //---------------------------------------------------------------------------

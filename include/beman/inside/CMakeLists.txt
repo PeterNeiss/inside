@@ -34,6 +34,7 @@ target_sources(
                 detail/multiplication.hpp
                 detail/number_text.hpp
                 detail/overflow.hpp
+                detail/policy_ref.hpp
                 detail/rational.hpp
                 detail/rep.hpp
                 detail/rounding.hpp

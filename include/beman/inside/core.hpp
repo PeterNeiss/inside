@@ -17,6 +17,7 @@
 #include <beman/inside/detail/wide_value.hpp>
 #include <beman/inside/lift.hpp>
 #include <beman/inside/policy.hpp>
+#include <beman/inside/detail/policy_ref.hpp>
 #include <beman/inside/detail/addition.hpp>
 #include <beman/inside/detail/multiplication.hpp>
 #include <beman/inside/detail/division.hpp>
@@ -66,8 +67,8 @@ constexpr auto abs(In x);
 // arithmetic (arithmetic.hpp), casts (casts.hpp) and `inside_range` (range.hpp)
 // follow in the umbrella. Heavy lifting is delegated to addition/multiplication/division.hpp
 // (per-operator code), assignment.hpp (narrowing/clamp/wrap), generic.hpp
-// (inside_assignable, over detail/introspection.hpp and detail/storage.hpp)
-// and policy.hpp.
+// (inside_assignable, over detail/introspection.hpp and detail/storage.hpp),
+// policy.hpp and detail/policy_ref.hpp (the proxies of b.policy() and on_*).
 //---------------------------------------------------------------------------
 namespace beman::inside {
 namespace detail {
