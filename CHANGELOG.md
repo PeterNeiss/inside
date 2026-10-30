@@ -40,6 +40,9 @@ The library without pre-C++26 compatibility, kept in sync with main.
   `/` (it reached `on_overflow` before, while `x.on_overflow(f) /= 0` sent it
   to `on_error`).
 
+- `std::common_type` (and `common_inside_t`, `min`, `max`) of two insides
+  keeps the policy they share; only different policies give `checked`.
+
 ### Removed
 
 - The compiler shims in `detail/config.hpp` (MSVC warnings, `_umul128`,

@@ -426,13 +426,17 @@ template <insidable Target, std::ranges::input_range Rng>
 
 //---------------------------------------------------------------------------
 // common_inside — the "hull" type able to hold every value of L and R exactly:
-// interval hull + notch gcd (grid `hull`), checked like arithmetic results.
-// Backs the std::common_type specialization and mixed-grid min/max below.
+// interval hull + notch gcd (grid `hull`), under the policy both share (a
+// cursor's marker aside), else checked like arithmetic results. Backs the
+// std::common_type specialization and mixed-grid min/max below.
 //---------------------------------------------------------------------------
 namespace detail {
 template <insidable Lhs, insidable Rhs>
+inline constexpr policy_flag common_flags = flags_of<Lhs> == flags_of<Rhs> ? flags_of<Lhs> & ~cursor_marker : checked;
+
+template <insidable Lhs, insidable Rhs>
 struct common_inside {
-    using type = inside<hull(grid_of<Lhs>, grid_of<Rhs>)>;
+    using type = inside<hull(grid_of<Lhs>, grid_of<Rhs>), common_flags<Lhs, Rhs>>;
 };
 
 // Same type stays itself (policy included) — mirrors std::common_type<T, T>.

@@ -400,8 +400,8 @@ kind; anything else is ill-formed. The arithmetic functions accept only
 
 `std::common_type` of two `inside` types is the *grid hull*: the smallest grid
 holding both (the interval hull, with the gcd of the notches refined by the
-offset between the lattices), under the default policy. Of a type with
-itself, it is that type. So `std::max<std::common_type_t<A, B>>(a, b)`, ranges
+offset between the lattices), under the policy both share, or the default
+policy when they differ. Of a type with itself, it is that type. So `std::max<std::common_type_t<A, B>>(a, b)`, ranges
 of mixed grids and other generic code compile.
 
 `std::numeric_limits<inside<G, P>>` describes the grid. `min()` and `lowest()`
@@ -574,7 +574,7 @@ namespace std {
 | `divmod(a, b, …)` | `{q, r}`, `q·b + r == a` | as `/` and `%` |
 | `b.with_clamp() = v` etc. | stores `v` into `b` under `P | F` | an rvalue's proxy converts to any `inside` the value fits |
 | `b.on_wrap(f) += v` etc. | `b += v`, `f` called when the policy acts | ill-formed: two of `on_clamp`, `on_wrap`, `on_error`, or two of one kind |
-| `common_type_t<A, B>` | `inside<hull(grid_of<A>, grid_of<B>)>` | `A` when `A == B` |
+| `common_type_t<A, B>` | `inside<hull(grid_of<A>, grid_of<B>), P>` | `P`: the shared policy, else `checked`; `A` when `A == B` |
 | `numeric_limits<B>::min()`, `max()` | `lower`, `upper` | `epsilon()`: 0 on the grid, else the first point above 0, else `lower` |
 
 # Future work
