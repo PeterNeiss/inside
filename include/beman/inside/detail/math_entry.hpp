@@ -751,6 +751,88 @@ template <insidable InB, insidable InE>
     static_assert(deducible<InB>() && deducible<InE>());
     return pow_into<results::pow<InB, InE>>(base, exp);
 }
+
+//---------------------------------------------------------------------------
+// fn<Mode>(x): the deduced form with the rounding mode named on the call, so
+// the input's type need not carry one. The input is read as the same grid
+// with Mode as its rounding (the same raw), the output deduced as for fn(x),
+// and that output rounds by exactly Mode.
+//---------------------------------------------------------------------------
+inline constexpr policy_flag rounding_bits = round_nearest | round_floor | round_ceil | round_half_even; // snap too
+
+template <policy_flag Mode>
+concept rounding_mode = Mode == round_toward_zero || Mode == round_nearest || Mode == round_floor ||
+                        Mode == round_ceil || Mode == round_half_even;
+
+template <policy_flag Mode, insidable In>
+[[nodiscard]] constexpr auto with_mode(const In& x) noexcept {
+    return inside<grid_of<In>, (flags_of<In> & ~(::beman::inside::detail::cursor_marker | rounding_bits)) | Mode>::
+        from_raw(x.raw());
+}
+
+// The deduced output D (an inside, or an expected of one) rounding by Mode.
+template <class D, policy_flag Mode>
+using moded_t = inside<grid_of<::beman::inside::detail::unwrap_t<D>>,
+                       (flags_of<::beman::inside::detail::unwrap_t<D>> & ~rounding_bits) | Mode>;
+
+#define BEMAN_INSIDE_ENGINE_MODED(fn)                        \
+    template <policy_flag Mode, insidable In>                \
+        requires rounding_mode<Mode>                         \
+    [[nodiscard]] constexpr auto fn(In x) {                  \
+        const auto v = with_mode<Mode>(x);                   \
+        return fn##_into<moded_t<decltype(fn(v)), Mode>>(v); \
+    }
+BEMAN_INSIDE_ENGINE_MODED(exp)
+BEMAN_INSIDE_ENGINE_MODED(exp2)
+BEMAN_INSIDE_ENGINE_MODED(sin)
+BEMAN_INSIDE_ENGINE_MODED(cos)
+BEMAN_INSIDE_ENGINE_MODED(tan)
+BEMAN_INSIDE_ENGINE_MODED(atan)
+BEMAN_INSIDE_ENGINE_MODED(sinh)
+BEMAN_INSIDE_ENGINE_MODED(cosh)
+BEMAN_INSIDE_ENGINE_MODED(tanh)
+BEMAN_INSIDE_ENGINE_MODED(asinh)
+BEMAN_INSIDE_ENGINE_MODED(cbrt)
+BEMAN_INSIDE_ENGINE_MODED(log)
+BEMAN_INSIDE_ENGINE_MODED(log2)
+BEMAN_INSIDE_ENGINE_MODED(log10)
+BEMAN_INSIDE_ENGINE_MODED(asin)
+BEMAN_INSIDE_ENGINE_MODED(acos)
+BEMAN_INSIDE_ENGINE_MODED(acosh)
+BEMAN_INSIDE_ENGINE_MODED(atanh)
+BEMAN_INSIDE_ENGINE_MODED(sqrt)
+#undef BEMAN_INSIDE_ENGINE_MODED
+
+template <imax Base, policy_flag Mode, insidable In>
+    requires rounding_mode<Mode>
+[[nodiscard]] constexpr auto pow_base(In x) {
+    const auto v = with_mode<Mode>(x);
+    return pow_base_into<moded_t<decltype(pow_base<Base>(v)), Mode>, Base>(v);
+}
+
+template <policy_flag Mode, insidable InY, insidable InX>
+    requires rounding_mode<Mode>
+[[nodiscard]] constexpr auto atan2(InY y, InX x) {
+    const auto vy = with_mode<Mode>(y);
+    const auto vx = with_mode<Mode>(x);
+    return atan2_into<moded_t<decltype(atan2(vy, vx)), Mode>>(vy, vx);
+}
+
+template <policy_flag Mode, insidable InX, insidable InY>
+    requires rounding_mode<Mode>
+[[nodiscard]] constexpr auto hypot(InX x, InY y) {
+    const auto vx = with_mode<Mode>(x);
+    const auto vy = with_mode<Mode>(y);
+    return hypot_into<moded_t<decltype(hypot(vx, vy)), Mode>>(vx, vy);
+}
+
+template <policy_flag Mode, insidable InB, insidable InE>
+    requires rounding_mode<Mode>
+[[nodiscard]] constexpr auto pow(InB base, InE exp) {
+    const auto vb = with_mode<Mode>(base);
+    const auto ve = with_mode<Mode>(exp);
+    return pow_into<moded_t<decltype(pow(vb, ve)), Mode>>(vb, ve);
+}
 } // namespace beman::inside::math::adaptive
 
 #undef BEMAN_INSIDE_ENGINE_TIERS

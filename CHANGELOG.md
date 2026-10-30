@@ -58,6 +58,12 @@ The library without pre-C++26 compatibility, kept in sync with main.
   exist only when 0 is a value of the grid (they returned an ad-hoc stand-in
   otherwise).
 
+### Added
+
+- `math::fn<mode>(x)` beside every deduced math form (`pow_base<B, mode>`,
+  `atan2<mode>`, and the `units::` forms): the rounding mode on the call, so
+  the input's type need not carry one.
+
 ### Removed
 
 - The compiler shims in `detail/config.hpp` (MSVC warnings, `_umul128`,

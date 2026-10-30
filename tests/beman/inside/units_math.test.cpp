@@ -102,3 +102,11 @@ TEST(UnitsMathTest, into_forms_take_checked_inputs) {
     EXPECT_EQ(to_string(units::hypot_into<out_t>(x, y)), "5.000 m");
     EXPECT_EQ(to_string(units::atan2_into<rad_out>(y, x)), "0.644 rad");
 }
+
+// The rounding mode on the deduced call works on quantities too.
+TEST(UnitsMathTest, mode_on_the_deduced_call) {
+    using area_t = quantity<square(si::metre), inside<{{0, 100}, per<1024>}>>; // no rounding policy
+    static_assert(units::sqrt<round_floor>(area_t{2}).numerical_value() == 1.4140625_ins);
+    static_assert(units::sin<round_nearest>(quantity<si::radian, inside<{{0, 4}, per<1024>}>>{1}) > 0);
+    static_assert(units::atan<round_nearest>(inside<{{0, 1}, per<64>}>{1}).numerical_value() > 0);
+}

@@ -244,16 +244,39 @@ template <reference R, class V>
                   "units: sin takes an angle in radians - sin_into<Out>(q) takes a unit with a factor of pi");
     return beman::inside::math::sin(q.numerical_value());
 }
+
+template <policy_flag Mode, reference R, class V>
+    requires beman::inside::math::adaptive::rounding_mode<Mode>
+[[nodiscard]] constexpr auto sin(const quantity<R, V>& q) {
+    static_assert(detail::radians_v<R>,
+                  "units: sin takes an angle in radians - sin_into<Out>(q) takes a unit with a factor of pi");
+    return beman::inside::math::sin<Mode>(q.numerical_value());
+}
 template <reference R, class V>
 [[nodiscard]] constexpr auto cos(const quantity<R, V>& q) {
     static_assert(detail::radians_v<R>,
                   "units: cos takes an angle in radians - cos_into<Out>(q) takes a unit with a factor of pi");
     return beman::inside::math::cos(q.numerical_value());
 }
+
+template <policy_flag Mode, reference R, class V>
+    requires beman::inside::math::adaptive::rounding_mode<Mode>
+[[nodiscard]] constexpr auto cos(const quantity<R, V>& q) {
+    static_assert(detail::radians_v<R>,
+                  "units: cos takes an angle in radians - cos_into<Out>(q) takes a unit with a factor of pi");
+    return beman::inside::math::cos<Mode>(q.numerical_value());
+}
 template <reference R, class V>
 [[nodiscard]] constexpr auto tan(const quantity<R, V>& q) {
     static_assert(detail::radians_v<R>, "units: tan takes an angle in radians - value_cast<si::radian, Out>(q) first");
     return beman::inside::math::tan(q.numerical_value());
+}
+
+template <policy_flag Mode, reference R, class V>
+    requires beman::inside::math::adaptive::rounding_mode<Mode>
+[[nodiscard]] constexpr auto tan(const quantity<R, V>& q) {
+    static_assert(detail::radians_v<R>, "units: tan takes an angle in radians - value_cast<si::radian, Out>(q) first");
+    return beman::inside::math::tan<Mode>(q.numerical_value());
 }
 
 // atan2(y, x) of two quantities of one dimension, in their common unit.
@@ -267,6 +290,17 @@ template <reference A, class VA, reference B, class VB>
         beman::inside::math::atan2(detail::in_common_unit<A, B>(y), detail::in_common_unit<A, B>(x)));
 }
 
+template <policy_flag Mode, reference A, class VA, reference B, class VB>
+    requires(detail::common_rescalable<A, VA, B, VB> &&
+             requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
+                 beman::inside::math::atan2<Mode>(x, y);
+             }) &&
+            beman::inside::math::adaptive::rounding_mode<Mode>
+[[nodiscard]] constexpr auto atan2(const quantity<A, VA>& y, const quantity<B, VB>& x) {
+    return detail::make_quantity<detail::radian_reference>(
+        beman::inside::math::atan2<Mode>(detail::in_common_unit<A, B>(y), detail::in_common_unit<A, B>(x)));
+}
+
 // hypot(x, y): √(x² + y²) in the common unit.
 template <reference A, class VA, reference B, class VB>
     requires(detail::common_rescalable<A, VA, B, VB> &&
@@ -277,6 +311,18 @@ template <reference A, class VA, reference B, class VB>
     constexpr reference C = detail::sum_reference<A, B>();
     return detail::make_quantity<C>(
         beman::inside::math::hypot(detail::in_common_unit<A, B>(x), detail::in_common_unit<A, B>(y)));
+}
+
+template <policy_flag Mode, reference A, class VA, reference B, class VB>
+    requires(detail::common_rescalable<A, VA, B, VB> &&
+             requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
+                 beman::inside::math::hypot<Mode>(x, y);
+             }) &&
+            beman::inside::math::adaptive::rounding_mode<Mode>
+[[nodiscard]] constexpr auto hypot(const quantity<A, VA>& x, const quantity<B, VB>& y) {
+    constexpr reference C = detail::sum_reference<A, B>();
+    return detail::make_quantity<C>(
+        beman::inside::math::hypot<Mode>(detail::in_common_unit<A, B>(x), detail::in_common_unit<A, B>(y)));
 }
 
 //---------------------------------------------------------------------------
@@ -304,6 +350,12 @@ constexpr auto number_of(const X& x) {
     template <reference R, class V>                                                                                 \
     [[nodiscard]] constexpr auto fn(const quantity<R, V>& q) {                                                      \
         return detail::make_quantity<detail::root_reference<R, n>()>(beman::inside::math::fn(q.numerical_value())); \
+    }                                                                                                               \
+    template <policy_flag Mode, reference R, class V>                                                               \
+        requires beman::inside::math::adaptive::rounding_mode<Mode>                                                 \
+    [[nodiscard]] constexpr auto fn(const quantity<R, V>& q) {                                                      \
+        return detail::make_quantity<detail::root_reference<R, n>()>(                                               \
+            beman::inside::math::fn<Mode>(q.numerical_value()));                                                    \
     }                                                                                                               \
     template <insidable Out, reference R, class V>                                                                  \
     [[nodiscard]] constexpr auto fn##_into(const quantity<R, V>& q) {                                               \
@@ -341,15 +393,20 @@ template <insidable Out, reference R, class V>
 }
 
 // Inverse trigonometry: an angle in radians.
-#define BEMAN_INSIDE_UNITS_ARC_FN(fn)                                                       \
-    template <insidable V>                                                                  \
-    [[nodiscard]] constexpr auto fn(const V& x) {                                           \
-        return detail::make_quantity<detail::radian_reference>(beman::inside::math::fn(x)); \
-    }                                                                                       \
-    template <insidable Out, class X>                                                       \
-    [[nodiscard]] constexpr auto fn##_into(const X& x) {                                    \
-        return detail::make_quantity<detail::radian_reference>(                             \
-            beman::inside::math::fn##_into<Out>(detail::number_of(x)));                     \
+#define BEMAN_INSIDE_UNITS_ARC_FN(fn)                                                             \
+    template <insidable V>                                                                        \
+    [[nodiscard]] constexpr auto fn(const V& x) {                                                 \
+        return detail::make_quantity<detail::radian_reference>(beman::inside::math::fn(x));       \
+    }                                                                                             \
+    template <policy_flag Mode, insidable V>                                                      \
+        requires beman::inside::math::adaptive::rounding_mode<Mode>                               \
+    [[nodiscard]] constexpr auto fn(const V& x) {                                                 \
+        return detail::make_quantity<detail::radian_reference>(beman::inside::math::fn<Mode>(x)); \
+    }                                                                                             \
+    template <insidable Out, class X>                                                             \
+    [[nodiscard]] constexpr auto fn##_into(const X& x) {                                          \
+        return detail::make_quantity<detail::radian_reference>(                                   \
+            beman::inside::math::fn##_into<Out>(detail::number_of(x)));                           \
     }
 BEMAN_INSIDE_UNITS_ARC_FN(asin)
 BEMAN_INSIDE_UNITS_ARC_FN(acos)

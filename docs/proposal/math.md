@@ -95,6 +95,8 @@ auto hi = math::sqrt_into<up>(x_t{2});           // 1.4150390625 = 1449/1024 ≥
 static_assert(math::sqrt_into<down>(x_t{2.25}) == math::sqrt_into<up>(x_t{2.25})); // 1.5 exactly
 static_assert(math::log2_into<down>(x_t{8}) == 3 && math::log2_into<up>(x_t{8}) == 3);
 
+using plain = inside<{{1, 16}, per<64>}>;           // no rounding in the type
+auto e = math::exp<round_floor>(plain{1.5});     // the mode named on the call
 constexpr auto at_compile_time = math::exp(x_t{1.5});
 auto           at_run_time     = math::exp(x_t{1.5});
 // at_compile_time == at_run_time, on every platform, with or without an FPU
@@ -131,18 +133,20 @@ The result does not depend on how it was computed. It is the same at compile
 time and at run time, on every platform, and with or without an FPU, so a
 constant expression and a run-time call agree by specification.
 
-## Two forms
+## Three forms
 
 `fn_into<Out>(x)` names the output. `fn(x)` deduces it: the input's notch and
 policy, and the function's range over the input's interval, computed at
-compile time and rounded outward. A few ranges are fixed instead: `sin` and
+compile time and rounded outward. `fn<mode>(x)` deduces it the same way and
+rounds by the mode named on the call, so the input's type need not carry a
+rounding policy (which would change every store into it). A few ranges are fixed instead: `sin` and
 `cos` give [−1, 1], `tan` [−1024, 1024] and `atan2` [−π, π]. `hypot` takes the
 gcd of both notches, `pow` the base's notch, and `floor` & co. notch 1.
 
 ## Rounding needs permission
 
-A transcendental result is never on a grid by accident, so `Out` (or, for
-`fn(x)`, the input) must name a rounding mode, as a store that rounds must in
+A transcendental result is never on a grid by accident, so `Out`, the call
+(`fn<round_floor>(x)`) or, for `fn(x)`, the input must name a rounding mode, as a store that rounds must in
 the number paper. A result past `Out`'s interval goes through `Out`'s policy:
 `clamp` saturates, `wrap` folds the true value, and the default reports.
 
@@ -211,7 +215,8 @@ Every function below except `pown` also has the form `fn_into<Out>(args)`,
 which returns `Out` (or `expected<Out, errc>` where the deduced form is
 fallible). Except for the grid operations, `Out` must be an `inside` whose
 policy names a rounding mode, and the deduced form `fn(args)` requires the
-same of its input.
+same of its input. Every deduced form also has the form `fn<mode>(args)`
+(`pow_base<B, mode>`), which names the rounding mode on the call instead.
 
 ```cpp
 namespace std::math {
@@ -268,6 +273,7 @@ namespace std::units {
 |---|---|---|
 | `fn_into<Out>(x)` | the true value rounded onto `Out`'s grid by `Out`'s mode, then stored by `Out`'s policy | ill-formed without a rounding mode in `Out`, except for a grid operation |
 | `fn(x)` | `fn_into<Out>(x)`, `Out` deduced from `x`'s grid and policy | ill-formed without a rounding mode in `x`'s policy, except for a grid operation |
+| `fn<mode>(x)` | as `fn(x)`, the output rounding by `mode` | `mode` one of the rounding modes |
 | `abs`, `sign`, `copysign`, `floor`, `ceil`, `round`, `trunc`, `pown<E>` | exact | none; `round` sends a half away from zero |
 | `fmod(x, y)` | `x − trunc(x/y)·y`, exact, the sign of `x` | `division_by_zero`, iff `y`'s grid holds 0 |
 | `sqrt(x)` | | `domain_error` for `x < 0`, iff `x`'s grid holds a negative |

@@ -100,6 +100,9 @@ costs, is in [internals.md](internals.md#10-the-math-engine).
 - **Rounding needs permission.** The input of a deduced form, or the `Out` of
   an `_into` form, must have a rounding mode (`round_nearest`, `round_floor`,
   `round_ceil`, `round_half_even` or `snap`). Without one it does not compile.
+  Or name the mode on the call: `math::exp<round_floor>(x)` deduces the output
+  as `math::exp(x)` does and rounds it by that mode, whatever `x`'s type says
+  (`pow_base<B, mode>(x)`; on quantities `units::sqrt<mode>(q)` & co.).
 - **`fn(x)` deduces its output** from the input: the input's notch and policy
   (plus `round_nearest`), and the function's range over the input's range,
   computed at compile time and rounded outward. The exceptions are fixed

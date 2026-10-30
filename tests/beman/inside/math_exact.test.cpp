@@ -168,3 +168,18 @@ TEST(MathExactTest, niven_angles_in_degrees) {
     expect_point<ints>([]<class O>() { return un::sin_into<O>(un::quantity<degree, deg>{180}); }, 0);
     expect_point<ints>([]<class O>() { return un::sin_into<O>(un::quantity<degree, deg>{-90}); }, -1);
 }
+
+// fn<Mode>(x): the rounding mode on the call, for an input whose type has
+// none. The output rounds by exactly Mode.
+TEST(MathExactTest, mode_on_the_deduced_call) {
+    using x_t = inside<{{1, 16}, per<64>}>; // no rounding policy
+    static_assert(math::sqrt<round_floor>(x_t{2}) == 1.40625_ins && math::sqrt<round_ceil>(x_t{2}) == 1.421875_ins);
+    static_assert(math::exp<round_floor>(x_t{1.5}) < math::exp<round_ceil>(x_t{1.5}));
+    static_assert(detail::rounding_of(flags_of<decltype(math::sqrt<round_toward_zero>(x_t{2}))>) ==
+                  detail::round_mode::trunc);
+    static_assert(math::pow_base<2, round_nearest>(x_t{3}) == 8);
+    static_assert(
+        math::atan2<round_nearest>(x_t{1}, x_t{1}) ==
+        math::atan2(inside<{{1, 16}, per<64>}, round_nearest>{1}, inside<{{1, 16}, per<64>}, round_nearest>{1}));
+    EXPECT_EQ(math::log2<round_floor>(x_t{8}), 3);
+}
