@@ -2,6 +2,7 @@
 // units.hpp: dimensions, units, conversions, quantity kinds, arithmetic, text.
 
 #include <beman/inside/units.hpp>
+#include <beman/inside/units_io.hpp>
 
 #include <gtest/gtest.h>
 

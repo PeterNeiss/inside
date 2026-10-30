@@ -16,6 +16,7 @@
 #include <beman/inside/io.hpp>
 #include <beman/inside/formats.hpp>
 #include <beman/inside/units.hpp>
+#include <beman/inside/units_io.hpp>
 
 using namespace beman::inside;
 using namespace beman::inside::units;

@@ -36,9 +36,6 @@ change, not an example workaround:
 - **The clamp overshoot as a quantity.** A quantity's `on_clamp` hook gets the
   inside's overshoot, a plain number in the quantity's unit.
 - **`std::hash` and `std::numeric_limits` for quantities.**
-- **Units on freestanding targets.** units.hpp includes io.hpp for its text;
-  splitting the printing out would make the rest freestanding
-  ([freestanding.md](freestanding.md)).
 - **`tan_into` of a π-scaled angle**, which would need an exact pole at 90°.
 - The [differences from mp-units](units.md#differences-from-mp-units): no
   representation other than an inside, no vector characters, no logarithmic

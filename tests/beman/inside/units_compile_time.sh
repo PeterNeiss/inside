@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Compile time of units.hpp: the best of three wall times for four TUs,
-#   base     inside.hpp + io.hpp (what units.hpp builds on)
+#   base     inside.hpp (what units.hpp builds on; its text is units_io.hpp)
 #   include  units.hpp, nothing used
 #   plain    the same N expressions' inside arithmetic without units (the
 #            grids each one instantiates): the part units.hpp does not add
@@ -18,7 +18,7 @@ read -r -a FLAGS <<< "${5:-}"
 DIR="$(mktemp -d)"
 trap 'rm -rf "$DIR"' EXIT
 
-printf '#include <beman/inside/inside.hpp>\n#include <beman/inside/io.hpp>\nint main() {}\n' > "$DIR/base.cpp"
+printf '#include <beman/inside/inside.hpp>\nint main() {}\n' > "$DIR/base.cpp"
 printf '#include <beman/inside/units.hpp>\nint main() {}\n' > "$DIR/include.cpp"
 {
   echo '#include <beman/inside/units.hpp>'

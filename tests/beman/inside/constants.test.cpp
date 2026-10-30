@@ -3,6 +3,7 @@
 // quantities (units::constants::), exact where the SI defines them.
 
 #include <beman/inside/constants.hpp>
+#include <beman/inside/units_io.hpp>
 #include <beman/inside/units_math.hpp>
 
 #include <gtest/gtest.h>

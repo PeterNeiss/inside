@@ -27,6 +27,11 @@ The library without pre-C++26 compatibility, kept in sync with main.
 - `rational`'s members are `Num` and `Den` (were `Numerator` and
   `Denominator`), as in every other fraction type of the library and in
   `std::ratio`.
+- Quantity text is in the new `units_io.hpp` (`to_string`, `<<`,
+  `std::format`, `unit_symbol`, `parse<Q>`), as `io.hpp` is for insides:
+  `units.hpp` no longer includes `io.hpp`, `<format>` or `<ostream>`, so it
+  parses in 0.72 s instead of 1.13 s, and `BEMAN_INSIDE_NO_STRING` keeps the
+  units. Code that prints a quantity includes `units_io.hpp`.
 - The umbrella `inside.hpp` includes `numeric_limits.hpp`: without it a TU
   silently got the primary `std::numeric_limits` for an inside, and an ODR
   violation beside a TU that had the specialization.

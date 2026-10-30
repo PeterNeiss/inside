@@ -13,6 +13,7 @@
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/units.hpp>
+#include <beman/inside/units_io.hpp>
 #include <beman/inside/units_math.hpp>
 
 using namespace beman::inside;

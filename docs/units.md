@@ -15,6 +15,7 @@ It is exact, it cannot fail, and it costs nothing at run time.
 
 ```cpp
 #include <beman/inside/units.hpp>
+#include <beman/inside/units_io.hpp> // printing
 using namespace beman::inside;
 using namespace beman::inside::units;
 
@@ -29,7 +30,9 @@ std::cout << v.in(km / si::hour);                        // 39.9 km/h
 ```
 
 `<beman/inside/units_math.hpp>` adds the functions that need the math engine
-(cmath.hpp). It is a separate header so that units.hpp alone compiles fast.
+(cmath.hpp), and `<beman/inside/units_io.hpp>` the text: `to_string`, `<<`,
+`std::format`, `unit_symbol` and `parse<Q>`, as io.hpp does for insides. They
+are separate headers so that units.hpp alone compiles fast.
 
 ## Examples
 
@@ -345,11 +348,12 @@ gives the ASCII spelling: `kg m^2/s^2`, `um`, `ohm`.
 Grid numbers have any size, so the prefixes past 10^±18, the eV, the Da and
 the SI constants h, e, k and N_A are exact; E = h·ν comes out exact.
 
-units.hpp includes io.hpp, `<ostream>` and `<string>`, so it needs a hosted
-standard library ([freestanding.md](freestanding.md)). In the single header
-the units sit inside the string guard: `BEMAN_INSIDE_NO_STRING` drops them
-along with io.hpp, and `BEMAN_INSIDE_NO_UNITS` drops only units.hpp,
-units_math.hpp and the physical constants. Under `BEMAN_INSIDE_MATH_NO_FP` on a hosted build, everything
+units.hpp needs no text support; units_io.hpp includes io.hpp, `<ostream>`
+and `<string>`, so printing needs a hosted standard library
+([freestanding.md](freestanding.md)). In the single header
+`BEMAN_INSIDE_NO_STRING` drops io.hpp and units_io.hpp, and
+`BEMAN_INSIDE_NO_UNITS` drops units.hpp, units_io.hpp, units_math.hpp and the
+physical constants. Under `BEMAN_INSIDE_MATH_NO_FP` on a hosted build, everything
 here works: neither header uses floating point.
 
 ## Compile time
@@ -357,13 +361,14 @@ here works: neither header uses floating point.
 `tests/beman/inside/units_compile_time.sh <cxx> include [<std>]` times four
 translation units (best of three). On the maintainer's machine:
 
-| Compiler | inside + io | units.hpp | 200 inside expressions | as quantities |
+| Compiler | inside | units.hpp | 200 inside expressions | as quantities |
 |---|---:|---:|---:|---:|
-| GCC 16, C++26 | 0.89 s | 1.13 s | 4.37 s | 6.70 s |
+| GCC 16, C++26 | 0.53 s | 0.72 s | 4.16 s | 5.83 s |
 
-The header adds about 0.25 s. Each of the 200 expressions uses its own grid,
-so most of the time is inside's arithmetic on those grids; units add about
-12 ms per expression.
+The header adds about 0.2 s; printing (units_io.hpp, through io.hpp) adds
+another 0.4 s. Each of the 200 expressions uses its own grid, so most of the
+time is inside's arithmetic on those grids; units add about 7 ms per
+expression.
 
 A one-off comparison with mp-units (master 5df0314, 2026-10-16, C++23 builds,
 a `double` representation, the same five expression shapes, one fixed grid on

@@ -113,6 +113,5 @@ not represented, so a result is only as good as the constant behind it.
 ## In the single header
 
 The math constants come with `cmath.hpp`, also freestanding. The physical
-constants sit inside the units guard, which is inside the string guard: both
-`BEMAN_INSIDE_NO_UNITS` and `BEMAN_INSIDE_NO_STRING` drop them
+constants sit inside the units guard: `BEMAN_INSIDE_NO_UNITS` drops them
 ([single-header.md](single-header.md)).

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // units_math.hpp: pi conversions and math on quantities.
 
+#include <beman/inside/units_io.hpp>
 #include <beman/inside/units_math.hpp>
 
 #include <gtest/gtest.h>

@@ -21,8 +21,8 @@ exceptions or floating point, and where the limits are. It is also the home of
 
 - compile with `-fno-exceptions`, and install a handler with
   `set_error_handler`;
-- don't include `io.hpp`, `units.hpp`, `constants.hpp` or `random.hpp` (with
-  the single header, define `BEMAN_INSIDE_NO_STRING`);
+- don't include `io.hpp`, `units_io.hpp` or `random.hpp` (with the single
+  header, define `BEMAN_INSIDE_NO_STRING`);
 - for the math without an FPU, build with `BEMAN_INSIDE_MATH_NO_FP`, and
   `<cmath>` is never included.
 
@@ -32,7 +32,7 @@ exceptions or floating point, and where the limits are. It is also the home of
 |---|---|
 | every header | `<meta>` (static reflection), hosted in libstdc++ 16 |
 | `io.hpp` | also `<string>`, `<ostream>`, `<format>` |
-| `units.hpp`, `units_math.hpp`, `constants.hpp` | also io.hpp |
+| `units_io.hpp` | also io.hpp |
 | `random.hpp` | also `<random>` |
 
 Beyond `<meta>`, no `<system_error>`, `<string>`, `<ostream>`, `<format>` or
@@ -134,8 +134,6 @@ g++-16 -std=c++26 -freflection -DBEMAN_INSIDE_MATH_NO_FP -I single_include my_ap
   that does not assume a hosted environment.
 - **Exceptions on, freestanding** does not work out of the box: the default
   handler needs `<stdexcept>`. Use `-fno-exceptions`, or replace the handler.
-- **Units are hosted only**, for now: units.hpp includes io.hpp for its text
-  output ([roadmap.md](roadmap.md)).
 
 ## A worked example
 

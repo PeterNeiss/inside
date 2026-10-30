@@ -55,5 +55,6 @@ target_sources(
                 random.hpp
                 range.hpp
                 units.hpp
+                units_io.hpp
                 units_math.hpp
 )

@@ -5,6 +5,7 @@
 // a unit with a factor of π.
 
 #include <beman/inside/units.hpp>
+#include <beman/inside/units_io.hpp>
 #include <beman/inside/units_math.hpp>
 
 #include <gtest/gtest.h>
