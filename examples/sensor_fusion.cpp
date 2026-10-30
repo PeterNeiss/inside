@@ -53,11 +53,11 @@ int main() {
     // (outdoor 1/16, indoor 1/80, ground 1/32) exactly, so the running sum stays
     // lossless; the weight accumulator keeps the weights' 1/8 notch.
     // The reference point is 0 ℃; each reading counts from it.
-    const auto ref = point<deg_C>(just<0>);
-    using acc_t    = quantity<deg_C, inside<{{-200, 200}, per<160>}, round_nearest>>;
-    using wsum_t   = inside<{{0, 8}, per<8>}, round_nearest>;
-    acc_t  weighted_sum{0};
-    wsum_t weight_sum{0};
+    const auto ref       = point<deg_C>(just<0>);
+    using weighted_sum_t = quantity<deg_C, inside<{{-200, 200}, per<160>}, round_nearest>>;
+    using weight_sum_t   = inside<{{0, 8}, per<8>}, round_nearest>;
+    weighted_sum_t weighted_sum{0};
+    weight_sum_t   weight_sum{0};
 
     auto accept = [&]<typename B>(std::type_identity<B>, double r, weight_t w, const char* tag) {
         const bool ok = !conversion_overflows<B>(r);

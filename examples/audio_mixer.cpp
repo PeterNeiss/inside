@@ -29,7 +29,7 @@ inline constexpr quantity_spec level_def{"level", isq::dimensionless, is_kind};
 inline constexpr named_unit    decibel_def{"dB", one, spec_c<level_def>};
 inline constexpr auto          dB = unit_c<decibel_def>;
 inline constexpr named_unit    turn_def{"tr", mag<2> * mag_pi * si::radian};
-inline constexpr auto          tr = unit_c<turn_def>;
+inline constexpr auto          turn = unit_c<turn_def>;
 } // namespace
 
 // Q1.14 signed samples in [-1, 1].
@@ -51,11 +51,11 @@ static gain_t db_to_linear(db_t db) { return units::pow_base_into<gain_t, 10>(db
 int main() {
     // Four channels — pre-gain levels: vocals hot, drums normal, bass quiet,
     // pad ducked.
-    db_t gain[4] = {db_t{2.5}, db_t{0.0}, db_t{-6.0}, db_t{-12.0}};
+    db_t level[4] = {db_t{2.5}, db_t{0.0}, db_t{-6.0}, db_t{-12.0}};
 
     // Hoist the per-channel gain computation out of the per-sample loop: the
     // linear gain (pow_base<10>) is constant across the buffer.
-    gain_t lin[4] = {db_to_linear(gain[0]), db_to_linear(gain[1]), db_to_linear(gain[2]), db_to_linear(gain[3])};
+    gain_t gain[4] = {db_to_linear(level[0]), db_to_linear(level[1]), db_to_linear(level[2]), db_to_linear(level[3])};
 
     // 16 sample frames of synthetic audio (sine waves at different phases).
     // All synthesis is exact arithmetic on quantities until sin_into's one
@@ -63,28 +63,28 @@ int main() {
     constexpr std::size_t N = 16;
     using frame_t           = inside<{0, N - 1}>;
 
-    using seconds_t = quantity<si::second, inside<{{0, 1}, per<N>}>>;
-    using cycles_t  = inside<{{0, 1}, per<N>}>;
-    using offset_t  = quantity<tr, inside<{{-1, 1}, per<24>}>>;
-    using amp_t     = math::unit_amplitude<16384>;
-    using gainfac_t = inside<{{0, 1}, per<1024>}, round_nearest>;
+    using seconds_t   = quantity<si::second, inside<{{0, 1}, per<N>}>>;
+    using cycles_t    = inside<{{0, 1}, per<N>}>;
+    using offset_t    = quantity<turn, inside<{{-1, 1}, per<24>}>>;
+    using sine_t      = math::unit_amplitude<16384>;
+    using amplitude_t = inside<{{0, 1}, per<1024>}, round_nearest>;
 
     constexpr auto     tone       = just<1> * si::hertz; // one cycle over the 1 s buffer
     constexpr offset_t offsets[4] = {
         offset_t{0},
-        just<1, 8> * tr,  // +π/4
-        just<-1, 6> * tr, // -π/3
-        just<-1, 4> * tr  // -π/2
+        just<1, 8> * turn,  // +π/4
+        just<-1, 6> * turn, // -π/3
+        just<-1, 4> * turn  // -π/2
     };
-    constexpr gainfac_t gains[4] = {0.9_ins, 0.7_ins, 0.6_ins, 0.4_ins};
+    constexpr amplitude_t amplitudes[4] = {0.9_ins, 0.7_ins, 0.6_ins, 0.4_ins};
 
     sample_t channels[4][N];
     for (frame_t i : values<frame_t>) {
         const seconds_t t = (i / just<N>)*si::second; // exact: N is a nonzero point
         const cycles_t  c = tone * t;                 // Hz · s is a plain number of cycles
         for (int ch = 0; ch < 4; ++ch) {
-            const auto a    = c * tr + offsets[ch]; // in turns, exact
-            channels[ch][i] = mul_into<sample_t>(gains[ch], units::sin_into<amp_t>(a));
+            const auto a    = c * turn + offsets[ch]; // in turns, exact
+            channels[ch][i] = mul_into<sample_t>(amplitudes[ch], units::sin_into<sine_t>(a));
         }
     }
 
@@ -96,8 +96,8 @@ int main() {
         // Each (gain × sample) widens to an inside on the product grid; the four-
         // way `+` chain widens further. Everything stays in int64 notch math —
         // no rational cross-multiply, no float in the hot loop.
-        auto mix = (lin[0] * channels[0][i]) + (lin[1] * channels[1][i]) + (lin[2] * channels[2][i]) +
-                   (lin[3] * channels[3][i]);
+        auto mix = (gain[0] * channels[0][i]) + (gain[1] * channels[1][i]) + (gain[2] * channels[2][i]) +
+                   (gain[3] * channels[3][i]);
 
         // `with(...)` packs two callbacks into a single write. on_overflow
         // fires for an integer-cast overflow on the way through assignment;
@@ -122,12 +122,12 @@ int main() {
 
     // `add_all` folds N inputs exactly (the grid widens); `clamp_cast` clips the
     // sum back into the bus — the audio-mix pipeline in one expression.
-    using bus_t = inside<{-3, 3}, clamp>;
-    using ch_t  = inside<{-1, 1}>;
+    using bus_t     = inside<{-3, 3}, clamp>;
+    using channel_t = inside<{-1, 1}>;
     std::cout << "clamp_cast<bus_t>(add_all(1,-1,1,1)) = "
-              << clamp_cast<bus_t>(add_all(ch_t{1}, ch_t{-1}, ch_t{1}, ch_t{1})) << "\n";
+              << clamp_cast<bus_t>(add_all(channel_t{1}, channel_t{-1}, channel_t{1}, channel_t{1})) << "\n";
 
-    if (clip_events != 10 || overflow_events != 0 || db_to_linear(gain[2]) != gain_t{rational{32846, 65536}})
+    if (clip_events != 10 || overflow_events != 0 || db_to_linear(level[2]) != gain_t{rational{32846, 65536}})
         return 1;
     return 0;
 }

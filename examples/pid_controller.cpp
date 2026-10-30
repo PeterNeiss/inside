@@ -26,7 +26,7 @@ using namespace beman::inside::units;
 using err_t = quantity<si::kelvin, inside<{{-10, 10}, per<16>}, round_nearest | clamp>>;
 
 // Integrator accumulates errors; clamp-saturating to prevent wind-up.
-using integ_t = quantity<si::kelvin, inside<{{-200, 200}, per<16>}, round_nearest | clamp>>;
+using integral_t = quantity<si::kelvin, inside<{{-200, 200}, per<16>}, round_nearest | clamp>>;
 
 // Gain coefficients: [0, 4] %/K with 1/256 step.
 using gain_t = quantity<percent / si::kelvin, inside<{{0, 4}, per<256>}, round_nearest>>;
@@ -41,7 +41,7 @@ struct pid {
     gain_t ki{0.125};
     gain_t kd{0.5};
 
-    integ_t                  integral{0};
+    integral_t               integral{0};
     err_t                    previous{0};
     clamp_counter<1'000'000> windup_events{0};
 

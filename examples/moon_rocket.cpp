@@ -90,10 +90,10 @@ int main() {
     //    kinetic energy by its recipe, so it converts implicitly (in GJ). A
     //    torque has the same dimension but another recipe:
     //      quantity<isq::torque[si::newton * si::metre], …> τ = m_final * v * v;   // does not compile
-    using gj_t   = inside<{{0, 10'000}, per<1000>}, round_nearest>;
+    using gigajoules_t = inside<{{0, 10'000}, per<1000>}, round_nearest>;
     const auto v = value_cast<km_s, inside<{{0, 20}, per<1000>}, round_nearest>>(quantity_cast<isq::speed>(v_peri));
-    const quantity<isq::kinetic_energy[si::giga(si::joule)], gj_t> ke =
-        value_cast<si::giga(si::joule), gj_t>(m_final * v * v);
+    const quantity<isq::kinetic_energy[si::giga(si::joule)], gigajoules_t> ke =
+        value_cast<si::giga(si::joule), gigajoules_t>(m_final * v * v);
     std::cout << "KE        = " << ke << '\n';
     if (to_string(ke) != "2331.271 GJ")
         return 1;

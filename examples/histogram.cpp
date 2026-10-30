@@ -30,11 +30,11 @@ constexpr auto ms = si::milli(si::second);
 using latency_t = quantity<ms, inside<{{0, 100}, per<10>}, round_nearest>>;
 
 // 10 bins: 0-9.9, 10-19.9, ..., 90-100 ms.
-using bin_id_t  = clamp_counter<9>;                    // saturating per-bin count (caps at bar height 9)
-using bin_idx_t = inside<{0, 9}, clamp | round_floor>; // bin index: floor; 100 ms → last bin
+using bin_count_t = clamp_counter<9>;                    // saturating per-bin count (caps at bar height 9)
+using bin_index_t = inside<{0, 9}, clamp | round_floor>; // bin index: floor; 100 ms → last bin
 
 int main() {
-    std::vector<bin_id_t> bins(10, bin_id_t{0});
+    std::vector<bin_count_t> bins(10, bin_count_t{0});
 
     // Mixed input in ms: in-range samples, out-of-range outliers, sub-notch values.
     double samples[] = {
@@ -69,19 +69,19 @@ int main() {
 
         const latency_t lat{s};
         // bin index = floor(lat / 10 ms), a plain number. div_into rounds by
-        // `bin_idx_t`'s `round_floor` (9.55 floors to 9 before the range check);
+        // `bin_index_t`'s `round_floor` (9.55 floors to 9 before the range check);
         // `clamp` folds 100 ms, whose quotient 10 floors to 10, into the last bin.
-        const auto bin = div_into<bin_idx_t>(lat, just<10> * ms);
+        const auto bin = div_into<bin_index_t>(lat, just<10> * ms);
         // `clamp_counter` saturates on `++`, so the bar caps at 9 — no manual guard.
         ++bins[bin];
     }
 
-    // values<bin_idx_t> iterates every bin index. The implicit `operator imax()`
+    // values<bin_index_t> iterates every bin index. The implicit `operator imax()`
     // (plus the standard imax → size_t conversion) lets `bins[b]` index the
     // vector without an explicit `.as<>()`.
     using bin_label_t = quantity<ms, inside<{0, 99}>>;
     std::cout << "bin          count\n";
-    for (bin_idx_t b : values<bin_idx_t>) {
+    for (bin_index_t b : values<bin_index_t>) {
         bin_label_t lo{b * (just<10> * ms)}; // {0,9}×{10,10} ms → {0,90} ms, fits statically
         bin_label_t hi{lo + just<9> * ms};   // widened then narrowed to bin_label_t
         std::cout << " " << lo << "-" << hi << "  " << bins[b] << "\n";
@@ -89,7 +89,8 @@ int main() {
 
     std::cout << "\nrejected outliers: " << rejected << "\n";
     std::cout << "lossy (off-notch): " << lossy << "\n";
-    std::cout << "bin capacity (numeric_limits<bin_id_t>::max()): " << std::numeric_limits<bin_id_t>::max() << "\n";
+    std::cout << "bin capacity (numeric_limits<bin_count_t>::max()): " << std::numeric_limits<bin_count_t>::max()
+              << "\n";
     if (rejected != 2 || lossy != 7 || bins[9] != 1)
         return 1;
     return 0;

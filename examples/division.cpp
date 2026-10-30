@@ -17,8 +17,8 @@
 using namespace beman::inside;
 
 int main() {
-    using val = inside<{0, 100}>;
-    const val a{7}, b{3};
+    using number = inside<{0, 100}>;
+    const number a{7}, b{3};
 
     // Exact rational quotient; b's grid holds 0, so it is an expected.
     const auto exact = a / b;
@@ -28,8 +28,8 @@ int main() {
 
     // Integer division, per call: truncates like C++ `/`, or rounds.
     const auto trunc   = div(a, b, rounded_toward_zero);
-    const auto nearest = div(val{22}, val{7}, rounded_nearest);
-    const auto ceil    = div(val{22}, val{7}, rounded_ceil);
+    const auto nearest = div(number{22}, number{7}, rounded_nearest);
+    const auto ceil    = div(number{22}, number{7}, rounded_ceil);
     std::cout << "7 / 3 (toward zero)    = " << *trunc << "\n"
               << "22 / 7 (nearest, ceil) = " << *nearest << ", " << *ceil << "\n";
     if (*trunc != 2 || *nearest != 3 || *ceil != 4)
@@ -45,25 +45,25 @@ int main() {
         return 1;
 
     // Division by zero is a value, not a crash.
-    const auto by_zero = val{10} / val{0};
+    const auto by_zero = number{10} / number{0};
     std::cout << "10 / 0                 = " << errc_message(by_zero.error()) << "\n";
     if (by_zero || by_zero.error() != errc::division_by_zero)
         return 1;
 
     // A divisor grid without 0 cannot fail: a plain inside, nothing to unwrap.
-    using pos        = inside<{1, 10}>;
-    const auto plain = val{42} / pos{4};
+    using positive   = inside<{1, 10}>;
+    const auto plain = number{42} / positive{4};
     static_assert(insidable<decltype(plain)>);
     std::cout << "42 / 4 (zero-free)     = " << plain << "\n";
     if (plain != just<21, 2>)
         return 1;
 
-    // The quotient's denominators are at most 1·max|pos| = 10 (x = p/a over
+    // The quotient's denominators are at most 1·max|positive| = 10 (x = p/a over
     // y = r/b is p·b/(a·r)): the type says so, and what is computed from it
     // knows its own bound — exact, and still nothing to unwrap.
-    using per_item       = decltype(val{} / pos{});
-    const per_item price = val{20} / pos{3}; // 20/3 per item
-    const auto     total = price * pos{7} + price / pos{2};
+    using per_item       = decltype(number{} / positive{});
+    const per_item price = number{20} / positive{3}; // 20/3 per item
+    const auto     total = price * positive{7} + price / positive{2};
     static_assert(grid_of<per_item>.MaxDenominator == 10);
     static_assert(insidable<decltype(total)>);
     std::cout << "20/3 * 7 + 20/3 / 2    = " << total << "\n"; // 140/3 + 10/3

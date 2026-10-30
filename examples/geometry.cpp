@@ -71,15 +71,15 @@ int main() {
 
     // lerp(a, b, t) = a + (b - a) * t. `t` is a [0, 1] fixed-point inside, so the
     // interpolation never leaves inside-space; dyadic t values are exact.
-    using axis = quantity<px, inside<{0, 100}>>;
-    using t_t  = inside<{{0, 1}, per<16>}, round_nearest>;
+    using axis    = quantity<px, inside<{0, 100}>>;
+    using param_t = inside<{{0, 1}, per<16>}, round_nearest>;
     axis x0{20}, x1{80};
     std::cout << "\nlerp x from " << x0 << " to " << x1 << ":\n";
-    for (cursor<t_t, per<4>> t; t != end(t); ++t) // 0, 0.25, …, 1
+    for (cursor<param_t, per<4>> t; t != end(t); ++t) // 0, 0.25, …, 1
         std::cout << "  t = " << t << "  ->  " << lerp(x0, x1, *t) << "\n";
 
     if (ab != zero_area || to_string(cross(ax, ay, bx, by)) != "-25 px²" ||
-        to_string(lerp(x0, x1, t_t{0.25})) != "35 px" || std::string{side(o, o, ten, o, five, up)} != "left")
+        to_string(lerp(x0, x1, param_t{0.25})) != "35 px" || std::string{side(o, o, ten, o, five, up)} != "left")
         return 1;
     return 0;
 }

@@ -35,15 +35,15 @@ using slot_id_t = inside<{0, 15}>;
 // Slot contents: relative offset from the playback base (0..63 pkt). Whether
 // a slot holds a packet is tracked separately, so the slot keeps its native
 // 8-bit storage.
-using packet_id_t = quantity<pkt, inside<{0, 63}>>;
+using packet_offset_t = quantity<pkt, inside<{0, 63}>>;
 
 // Timestamp in 1/8 ms — fixed-point precision tied to the audio frame.
-using ts_t = quantity<ms, inside<{{0, 8000}, per<8>}, round_nearest>>;
+using timestamp_t = quantity<ms, inside<{{0, 8000}, per<8>}, round_nearest>>;
 
 int main() {
-    constexpr std::size_t    window = values<slot_id_t>.size(); // 16
-    std::vector<packet_id_t> slots(window, packet_id_t{0});
-    std::vector<bool>        filled(window, false);
+    constexpr std::size_t        window = values<slot_id_t>.size(); // 16
+    std::vector<packet_offset_t> slots(window, packet_offset_t{0});
+    std::vector<bool>            filled(window, false);
 
     int dropped = 0;
 
@@ -81,8 +81,8 @@ int main() {
 
     // Companion timestamps live on a fractional notch so the API can interop
     // with sub-millisecond audio clocks without slipping into floating point.
-    ts_t arrival{125.375};
-    ts_t playback{125.5};
+    timestamp_t arrival{125.375};
+    timestamp_t playback{125.5};
     std::cout << "\nplayback - arrival (1/8 ms grid): " << (playback - arrival) << "\n";
 
     if (dropped != 2 || to_string(slots[slot_id_t{5}]) != "5 pkt" || to_string(playback - arrival) != "0.125 ms")
