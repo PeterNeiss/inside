@@ -359,7 +359,7 @@ struct assignment<L, R> {
 
     // Out of line, and by value (an empty action too): a reference to a
     // caller's local would make it escape the hot path's frame. lhs may be
-    // uninitialized (a trivial default ctor), so the store runs on a copy of
+    // uninitialized (the `uninitialized` flag), so the store runs on a copy of
     // the lower limit, and a failure is returned, not stored: a failed store
     // leaves lhs intact. The policy hears of it here; an on_error action,
     // which gets lhs, from store_fine_double.

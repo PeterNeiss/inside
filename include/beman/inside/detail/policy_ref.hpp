@@ -49,8 +49,8 @@ constexpr Dst& dispatch_assign(Dst& dst, const C& src, P& policy, std::tuple<As.
 }
 
 // The same into a fresh Target: the value read-out of policy_ref and
-// policy_buffer. A failed store (errc&, on_error) leaves it value-initialized,
-// not garbage.
+// policy_buffer. A failed store (errc&, on_error) leaves it at its default
+// value (0, or Lower), not garbage.
 template <insidable Target, numeric C, typename P, typename... As>
 constexpr Target dispatch_new(const C& src, P& policy, std::tuple<As...>& actions) {
     Target r{};

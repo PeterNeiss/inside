@@ -588,6 +588,27 @@ constexpr raw_t<L> raw_of_slot(const W& offset) noexcept {
     }
 }
 
+// The raw a default-constructed B holds: 0 when its grid holds 0, else
+// Lower. (A lattice holds 0 only when anchored: 0's slot offset −Lower/Notch
+// is then an integer.)
+template <insidable B>
+inline constexpr raw_t<B> default_raw = []() -> raw_t<B> {
+    constexpr bool zero = grid_of<B>.representable(grid_rational{0});
+    if constexpr (point_storage<B>)
+        return {};
+    else if constexpr (rational_storage<B>)
+        return zero ? rational{0} : lower64<B>;
+    else if constexpr (fraction_storage<B>) {
+        if constexpr (zero)
+            return {};
+        else
+            return raw_t<B>{exact_of_grid<continuous_limbs<grid_of<B>>>(lower_of<B>)};
+    } else if constexpr (zero)
+        return raw_of_slot<B>(-slot_base<B>);
+    else
+        return raw_of_slot<B>(grid_int{0});
+}();
+
 //---------------------------------------------------------------------------
 // Wrapping value-index arithmetic — the integer path of + and ×.
 //

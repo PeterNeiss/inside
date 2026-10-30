@@ -3800,7 +3800,8 @@ struct diag_text {
 namespace beman::inside {
 //---------------------------------------------------------------------------
 // policy_flag — the policy bits of inside<G, P> (none, ignore_zero,
-// ignore_range, snap and the rounding modes, clamp, wrap, checked, unsafe),
+// ignore_range, snap and the rounding modes, clamp, wrap, checked, unsafe,
+// uninitialized),
 // has_flag / is_checked, the rounding precedence (rounding_of), the hook
 // factories on_clamp / on_wrap / on_error with their is_*_action traits, and
 // the flags each hook implies.
@@ -3837,6 +3838,12 @@ inline constexpr policy_flag checked{1ull << 34}; // runtime range/notch/overflo
 // unary — mutually exclusive
 inline constexpr policy_flag clamp{1ull << 32}; // saturate to boundary
 inline constexpr policy_flag wrap{1ull << 33};  // modular arithmetic
+
+// `uninitialized` — default construction leaves the raw uninitialized, like a
+// built-in scalar (a trivial default ctor); reading it before a store is
+// undefined. Without it a default-constructed inside is 0, or Lower on a grid
+// without 0.
+inline constexpr policy_flag uninitialized{1ull << 37};
 
 // No flag picks the raw: storage follows the grid alone (grid.hpp
 // raw_for, docs/storage.md).
@@ -6106,6 +6113,27 @@ constexpr raw_t<L> raw_of_slot(const W& offset) noexcept {
     }
 }
 
+// The raw a default-constructed B holds: 0 when its grid holds 0, else
+// Lower. (A lattice holds 0 only when anchored: 0's slot offset −Lower/Notch
+// is then an integer.)
+template <insidable B>
+inline constexpr raw_t<B> default_raw = []() -> raw_t<B> {
+    constexpr bool zero = grid_of<B>.representable(grid_rational{0});
+    if constexpr (point_storage<B>)
+        return {};
+    else if constexpr (rational_storage<B>)
+        return zero ? rational{0} : lower64<B>;
+    else if constexpr (fraction_storage<B>) {
+        if constexpr (zero)
+            return {};
+        else
+            return raw_t<B>{exact_of_grid<continuous_limbs<grid_of<B>>>(lower_of<B>)};
+    } else if constexpr (zero)
+        return raw_of_slot<B>(-slot_base<B>);
+    else
+        return raw_of_slot<B>(grid_int{0});
+}();
+
 //---------------------------------------------------------------------------
 // Wrapping value-index arithmetic — the integer path of + and ×.
 //
@@ -7142,7 +7170,7 @@ struct assignment<L, R> {
 
     // Out of line, and by value (an empty action too): a reference to a
     // caller's local would make it escape the hot path's frame. lhs may be
-    // uninitialized (a trivial default ctor), so the store runs on a copy of
+    // uninitialized (the `uninitialized` flag), so the store runs on a copy of
     // the lower limit, and a failure is returned, not stored: a failed store
     // leaves lhs intact. The policy hears of it here; an on_error action,
     // which gets lhs, from store_fine_double.
@@ -7879,8 +7907,8 @@ constexpr Dst& dispatch_assign(Dst& dst, const C& src, P& policy, std::tuple<As.
 }
 
 // The same into a fresh Target: the value read-out of policy_ref and
-// policy_buffer. A failed store (errc&, on_error) leaves it value-initialized,
-// not garbage.
+// policy_buffer. A failed store (errc&, on_error) leaves it at its default
+// value (0, or Lower), not garbage.
 template <insidable Target, numeric C, typename P, typename... As>
 constexpr Target dispatch_new(const C& src, P& policy, std::tuple<As...>& actions) {
     Target r{};
@@ -8972,6 +9000,9 @@ constexpr auto abs(In x);
 //---------------------------------------------------------------------------
 namespace beman::inside {
 namespace detail {
+// Selects inside's raw constructor (from_raw).
+struct raw_tag {};
+
 // What `*t` yields for a cursor on G: G without its end point, no cursor — a
 // value of T, which assigns into T.
 template <grid G, policy_flag P>
@@ -9018,12 +9049,16 @@ struct inside {
         return Raw;
     }
 
-    // Trivial default ctor — Raw is left uninitialized, like a built-in scalar: a
-    // default-constructed inside has no value until assigned. (A zero raw would
-    // decode to an out-of-range value on grids without 0.) Value-init `inside{}`
-    // still zero-fills where a zero raw is genuinely wanted.
+    // A default-constructed inside is 0, or Lower on a grid without 0 — a
+    // value of the grid, as every other inside holds.
     constexpr inside()
-        requires(!has_flag(P, detail::cursor_marker))
+        requires(!has_flag(P, uninitialized) && !has_flag(P, detail::cursor_marker))
+        : Raw{detail::default_raw<inside>} {}
+
+    // `uninitialized`: a trivial default ctor — Raw is left uninitialized, like
+    // a built-in scalar, and has no value until assigned.
+    constexpr inside()
+        requires(has_flag(P, uninitialized) && !has_flag(P, detail::cursor_marker))
     = default;
 
     // A cursor starts at Lower: slot 0.
@@ -9032,6 +9067,9 @@ struct inside {
         : Raw{detail::raw_from_offset<inside>(umax{0})} {}
 
   private:
+    // from_raw's: the raw as given, without a default value first.
+    constexpr inside(detail::raw_tag, raw_type r) noexcept : Raw{r} {}
+
     // The one store every constructor and assignment goes through — the same
     // for every raw kind.
     template <numeric A, typename Pol>
@@ -9045,21 +9083,23 @@ struct inside {
     }
 
   public:
-    // (Raw starts zeroed: a store that rounds a fine double starts from the
+    // (Raw starts at the default value: a store that fails leaves its target
+    // unchanged, and a store that rounds a fine double starts from the
     // destination's value, which a constant expression may not read
     // uninitialized. The optimizer drops the dead store.)
     template <numeric A>
         requires inside_assignable<inside, A, P>
-    constexpr inside(A value) : Raw{} {
+    constexpr inside(A value) : Raw{detail::default_raw<inside>} {
         store_value(value);
     }
 
     // One-shot policy: `pol`'s flags widen the assignable check (a clamp/round
     // relaxes the interval/notch clause, e.g. clamp_cast<B, round_nearest>(some_inside)) and
-    // apply to this store. If it reports an error (ec mode), Raw is ill-defined.
+    // apply to this store. If it reports an error (ec mode), the inside keeps
+    // its default value.
     template <numeric A, typename Pol>
         requires inside_assignable<inside, A, P | flags_of<Pol>>
-    constexpr inside(A value, Pol&& pol) : Raw{} {
+    constexpr inside(A value, Pol&& pol) : Raw{detail::default_raw<inside>} {
         store_value(value, pol);
     }
 
@@ -9076,7 +9116,7 @@ struct inside {
     // std::bad_expected_access on an error.
     template <numeric A>
         requires inside_assignable<inside, A, P>
-    constexpr inside(const std::expected<A, errc>& value) : Raw{} {
+    constexpr inside(const std::expected<A, errc>& value) : Raw{detail::default_raw<inside>} {
         store_value(value.value());
     }
 
@@ -9084,11 +9124,11 @@ struct inside {
     // variable): checked like any store, since its interval is not part of
     // its type. (Exactly a grid number: templates, so nothing converts to one.)
     template <std::same_as<detail::grid_rational> V>
-    constexpr inside(const V& value) : Raw{} {
+    constexpr inside(const V& value) : Raw{detail::default_raw<inside>} {
         detail::assign_grid_number(*this, value, make_policy<P>());
     }
     template <std::same_as<detail::grid_rational> V, detail::policy_like Pol>
-    constexpr inside(const V& value, Pol&& pol) : Raw{} {
+    constexpr inside(const V& value, Pol&& pol) : Raw{detail::default_raw<inside>} {
         detail::assign_grid_number(*this, value, pol);
     }
     template <std::same_as<detail::grid_rational> V>
@@ -9158,11 +9198,7 @@ struct inside {
     // Trusted construction from a storage-layout raw — no validation; the caller
     // asserts `r` is a valid slot. Entry point for tests, fast paths, and same-grid
     // raw transfer (e.g. `unchecked_cast`).
-    [[nodiscard]] static constexpr inside from_raw(raw_type r) noexcept {
-        inside b;
-        b.Raw = r;
-        return b;
-    }
+    [[nodiscard]] static constexpr inside from_raw(raw_type r) noexcept { return inside{detail::raw_tag{}, r}; }
 
     // Conversion summary:
     //   operator imax     — implicit, when the values are integers or the policy

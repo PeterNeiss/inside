@@ -248,20 +248,22 @@ template <class T>
 constexpr bool is_trivial_type_v = std::is_trivially_default_constructible_v<T> && std::is_trivially_copyable_v<T>;
 
 TEST(InsideAssignTest, trivial_type_guarantees) {
-    static_assert(is_trivial_type_v<inside<{0, 0}, unsafe>>);
-    static_assert(is_trivial_type_v<inside<{0, 100}, unsafe>>);
-    static_assert(is_trivial_type_v<inside<{-100, 100}, unsafe>>);
-    static_assert(is_trivial_type_v<inside<{{0, 10}, rational{1u, 2}}, unsafe>>);
-    static_assert(is_trivial_type_v<inside<{{-10, 10}, max_denominator{1000}}, unsafe>>);
-    static_assert(is_trivial_type_v<inside<{0, 100}, clamp>>);
-    static_assert(is_trivial_type_v<inside<{0, 100}, wrap>>);
+    constexpr policy_flag u = uninitialized;
+    static_assert(is_trivial_type_v<inside<{0, 0}, unsafe | u>>);
+    static_assert(is_trivial_type_v<inside<{0, 100}, unsafe | u>>);
+    static_assert(is_trivial_type_v<inside<{-100, 100}, unsafe | u>>);
+    static_assert(is_trivial_type_v<inside<{{0, 10}, rational{1u, 2}}, unsafe | u>>);
+    static_assert(is_trivial_type_v<inside<{{-10, 10}, max_denominator{1000}}, unsafe | u>>);
+    static_assert(is_trivial_type_v<inside<{0, 100}, clamp | u>>);
+    static_assert(is_trivial_type_v<inside<{0, 100}, wrap | u>>);
+    static_assert(is_trivial_type_v<inside<{0, 100}, u>>);
 
+    // Every inside stays trivially copyable and destructible; without
+    // `uninitialized` the default ctor stores the default value.
     static_assert(std::is_trivially_copyable_v<inside<{0, 100}>>);
     static_assert(std::is_trivially_destructible_v<inside<{0, 100}>>);
-    // The default ctor is `= default` for every policy (no zero-fill), so even a
-    // `checked` inside is trivially default-constructible — and fully trivial.
-    static_assert(std::is_trivially_default_constructible_v<inside<{0, 100}>>);
-    static_assert(is_trivial_type_v<inside<{0, 100}>>);
+    static_assert(!std::is_trivially_default_constructible_v<inside<{0, 100}>>);
+    static_assert(!std::is_trivially_default_constructible_v<inside<{0, 100}, unsafe>>);
 }
 
 // type-alias smoke checks

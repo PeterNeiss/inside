@@ -243,8 +243,8 @@ for (cursor<time_t, 0.25_r> t = -2_ins; t <= 2_ins; ++t)  // any start, the clas
   rounding, so `--` below Lower and `++` past the end report like any store.
 - `Step` defaults to `T`'s notch. It must be positive, divide `T`'s range and
   be a whole number of `T`'s notches, all checked at compile time.
-- A default-constructed cursor is `T`'s Lower (a plain inside is left
-  uninitialized). `t != end(t)` is one integer compare.
+- A default-constructed cursor is `T`'s Lower (a plain inside is 0, or
+  Lower on a grid without 0). `t != end(t)` is one integer compare.
 - A cursor is its own bidirectional iterator, and `end(t)` its sentinel. `*t`
   is the value as a `T`, so range algorithms take a cursor directly:
 

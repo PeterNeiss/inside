@@ -13,7 +13,8 @@
 namespace beman::inside {
 //---------------------------------------------------------------------------
 // policy_flag — the policy bits of inside<G, P> (none, ignore_zero,
-// ignore_range, snap and the rounding modes, clamp, wrap, checked, unsafe),
+// ignore_range, snap and the rounding modes, clamp, wrap, checked, unsafe,
+// uninitialized),
 // has_flag / is_checked, the rounding precedence (rounding_of), the hook
 // factories on_clamp / on_wrap / on_error with their is_*_action traits, and
 // the flags each hook implies.
@@ -50,6 +51,12 @@ inline constexpr policy_flag checked{1ull << 34}; // runtime range/notch/overflo
 // unary — mutually exclusive
 inline constexpr policy_flag clamp{1ull << 32}; // saturate to boundary
 inline constexpr policy_flag wrap{1ull << 33};  // modular arithmetic
+
+// `uninitialized` — default construction leaves the raw uninitialized, like a
+// built-in scalar (a trivial default ctor); reading it before a store is
+// undefined. Without it a default-constructed inside is 0, or Lower on a grid
+// without 0.
+inline constexpr policy_flag uninitialized{1ull << 37};
 
 // No flag picks the raw: storage follows the grid alone (grid.hpp
 // raw_for, docs/storage.md).

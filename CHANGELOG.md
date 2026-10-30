@@ -4,6 +4,27 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
+## Unreleased
+
+### Upgrading from 0.6.0
+
+- A default-constructed inside is no longer uninitialized: `T x;` and `T{}`
+  are 0, or Lower on a grid without 0. Add the `uninitialized` flag where a
+  trivial default constructor matters (bulk buffers):
+  `inside<G, uninitialized>`.
+
+### Changed
+
+- Default construction stores a value of the grid: 0 when the grid holds 0,
+  else Lower. Before, `T x;` left the raw uninitialized and `T{}` zero-filled
+  it, which on `{5, 100}` read as 0, on a Q1.14 sample as −1, and on a
+  continuous grid as the fraction 0/0. A failed error-code construction,
+  `T x(v, make_policy(ec))`, now keeps that default value.
+
+### Added
+
+- `uninitialized`: the policy flag that keeps a trivial default constructor.
+
 ## 0.6.0 — 2026-10-30
 
 The first C++26-only release: it needs static reflection (GCC 16 with

@@ -43,6 +43,7 @@ grid instead (see [arithmetic.md](arithmetic.md)), so it cannot leave its range.
 | `ignore_zero` | no division-by-zero check: `a / 0` is undefined, `/= 0` does nothing |
 | `ignore_range` | no runtime range check |
 | `unsafe` | `ignore_range | snap | ignore_zero`: no runtime checks at all; a wrong value is undefined behaviour |
+| `uninitialized` | a trivial default constructor: `T x;` leaves the value uninitialized, like a built-in scalar's, until a store. Without it `T x;` and `T{}` are 0, or Lower on a grid without 0 |
 
 - `clamp` and `wrap` exclude each other (a `static_assert`).
 - Every policy without `unsafe` checks: `inside<G>`, `inside<G, round_nearest>`
