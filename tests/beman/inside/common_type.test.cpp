@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// std::common_type works with the umbrella header alone (no numeric_limits.hpp):
+// std::common_type works with the umbrella header alone:
 // mixed-grid insides meet in the grid hull, so generic code compiles.
 #include <beman/inside/inside.hpp>
 

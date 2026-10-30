@@ -17,7 +17,6 @@
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
 #include <beman/inside/formats.hpp>
-#include <beman/inside/numeric_limits.hpp>
 #include <beman/inside/predicates.hpp>
 #include <beman/inside/units.hpp>
 

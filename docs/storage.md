@@ -315,13 +315,11 @@ use the policy or `clamp_cast` ([conversions.md](conversions.md#free-function-ca
 
 ## `std::hash` and `std::numeric_limits`
 
-`<beman/inside/numeric_limits.hpp>` specialises `std::hash` (for
-`unordered_set` and `unordered_map`) and `std::numeric_limits`, whose `min()`,
+The umbrella header specialises `std::hash` (for `unordered_set` and
+`unordered_map`) and `std::numeric_limits`, whose `min()`,
 `max()`, `is_signed`, `is_integer` and `is_bounded` describe the grid:
 
 ```cpp
-#include <beman/inside/numeric_limits.hpp>
-
 std::unordered_set<inside<{0, 9}>> s;
 s.insert(inside<{0, 9}>{3});
 static_assert(std::numeric_limits<inside<{-40, 60}>>::is_signed);

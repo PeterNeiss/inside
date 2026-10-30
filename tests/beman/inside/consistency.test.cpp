@@ -6,7 +6,6 @@
 #include <beman/inside/inside.hpp>
 #include <beman/inside/cmath.hpp>
 #include <beman/inside/detail/rational.hpp>
-#include <beman/inside/numeric_limits.hpp>
 #include <beman/inside/predicates.hpp>
 
 #include <gtest/gtest.h>

@@ -4,13 +4,16 @@
 
 #include <beman/inside/detail/config.hpp>
 
-#include <beman/inside/inside.hpp>
+#include <beman/inside/core.hpp>
 
 #include <limits>
 #include <functional>
 
 //---------------------------------------------------------------------------
-// numeric_limits / hash — std:: specializations for inside<G, P>.
+// numeric_limits / hash — std:: specializations for inside<G, P>. Part of the
+// umbrella: a TU without them would silently get the primary numeric_limits
+// (is_specialized false, max() a zero raw), and an ODR violation beside one
+// that has them.
 // numeric_limits reports the *grid* bounds (Lower/Upper), not the raw type's
 // limits. std::hash hashes the Raw member (rational raw: Num+Den,
 // boost-style combine). (std::common_type lives in arithmetic.hpp, always on.)

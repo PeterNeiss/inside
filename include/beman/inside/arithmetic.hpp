@@ -551,8 +551,7 @@ BEMAN_INSIDE_NO_SCALAR(%)
 } // namespace beman::inside
 
 // std::common_type is the grid hull (beman::inside::common_inside_t above), so
-// mixed-grid insides work in generic code (std::max over two grids, ranges)
-// without opting into numeric_limits.hpp.
+// mixed-grid insides work in generic code (std::max over two grids, ranges).
 template <beman::inside::grid G1, beman::inside::policy_flag P1, beman::inside::grid G2, beman::inside::policy_flag P2>
 struct std::common_type<beman::inside::inside<G1, P1>, beman::inside::inside<G2, P2>>
     : beman::inside::detail::common_inside<beman::inside::inside<G1, P1>, beman::inside::inside<G2, P2>> {};

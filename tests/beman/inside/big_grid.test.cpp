@@ -7,7 +7,6 @@
 #include <beman/inside/cmath.hpp>
 #include <beman/inside/formats.hpp>
 #include <beman/inside/io.hpp>
-#include <beman/inside/numeric_limits.hpp>
 
 #include <gtest/gtest.h>
 

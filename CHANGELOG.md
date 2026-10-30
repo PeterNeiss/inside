@@ -27,12 +27,17 @@ The library without pre-C++26 compatibility, kept in sync with main.
 - `rational`'s members are `Num` and `Den` (were `Numerator` and
   `Denominator`), as in every other fraction type of the library and in
   `std::ratio`.
+- The umbrella `inside.hpp` includes `numeric_limits.hpp`: without it a TU
+  silently got the primary `std::numeric_limits` for an inside, and an ODR
+  violation beside a TU that had the specialization.
 
 ### Removed
 
 - The compiler shims in `detail/config.hpp` (MSVC warnings, `_umul128`,
   portable overflow checks, `BEMAN_INSIDE_DELETE`, the valued-diagnostic and
   `std::format` detection).
+- `<beman/inside/lift.hpp>`: it held only `detail::` names and is
+  `detail/lift.hpp`.
 
 ## Unreleased
 

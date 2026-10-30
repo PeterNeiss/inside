@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
-#include <beman/inside/numeric_limits.hpp>
 
 #include <gtest/gtest.h>
 

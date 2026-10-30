@@ -2,7 +2,7 @@
 // Bounded ID allocator backed by std::unordered_set<inside>.
 //
 // Demonstrates:
-//   - `std::hash<inside>` integration (via numeric_limits.hpp)
+//   - `std::hash<inside>` integration
 //   - `std::numeric_limits<inside>` bounds and `values<T>.size()` capacity
 //   - `try_make` for guarded construction from untrusted input
 //   - Conversion predicate `conversion_overflows` to fail fast
@@ -12,7 +12,6 @@
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
-#include <beman/inside/numeric_limits.hpp>
 #include <beman/inside/predicates.hpp>
 
 using namespace beman::inside;
