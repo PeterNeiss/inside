@@ -31,13 +31,13 @@ clamp, the carry of a wrap. Named conversions, `std::numeric_limits`,
 
 This is the first of three papers, and it stands alone. Two companion papers
 build on it: [*Quantities on
-`inside`*](https://github.com/PeterNeiss/inside/blob/pureCPP26/docs/proposal/quantity.md)
+`inside`*](https://github.com/PeterNeiss/inside/blob/main/docs/proposal/quantity.md)
 puts units on the number, and [*Correctly rounded math for `inside` and
-quantities*](https://github.com/PeterNeiss/inside/blob/pureCPP26/docs/proposal/math.md)
+quantities*](https://github.com/PeterNeiss/inside/blob/main/docs/proposal/math.md)
 adds the functions of `<cmath>`.
 
-The reference implementation is the `pureCPP26` branch of
-[beman.inside](https://github.com/PeterNeiss/inside/tree/pureCPP26). A
+The reference implementation is
+[beman.inside](https://github.com/PeterNeiss/inside). A
 long-form motivation with compiled exhibits is [*int considered
 harmful*](https://github.com/PeterNeiss/inside/blob/v0.5.0/docs/int-considered-harmful.pdf)
 (the *paper* below).

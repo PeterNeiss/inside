@@ -4,9 +4,10 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-## pureCPP26 branch
+## Unreleased: C++26 only
 
-The library without pre-C++26 compatibility, kept in sync with main.
+The library without pre-C++26 compatibility. The last C++23 version is the
+tag `preCPP26` (the section below).
 
 ### Changed
 
@@ -88,7 +89,7 @@ The library without pre-C++26 compatibility, kept in sync with main.
 - `<beman/inside/lift.hpp>`: it held only `detail::` names and is
   `detail/lift.hpp`.
 
-## Unreleased
+## preCPP26 (tag, after 0.5.0)
 
 ### Added
 

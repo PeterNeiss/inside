@@ -21,9 +21,9 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 We propose the functions of `<cmath>` for `inside`, the bounded number with an
 exact rational step proposed in [*`inside`: numbers whose range and step size
 are part of the
-type*](https://github.com/PeterNeiss/inside/blob/pureCPP26/docs/proposal/inside.md)
+type*](https://github.com/PeterNeiss/inside/blob/main/docs/proposal/inside.md)
 (*the number paper* below), and for the quantities of [*Quantities on
-`inside`*](https://github.com/PeterNeiss/inside/blob/pureCPP26/docs/proposal/quantity.md)
+`inside`*](https://github.com/PeterNeiss/inside/blob/main/docs/proposal/quantity.md)
 (*the quantity paper*).
 
 Each function returns the *correctly rounded* point of its output grid: the
@@ -36,8 +36,8 @@ follows the function: `sqrt` of an area is a length, and an angle in degrees is
 reduced exactly, so `cos` of 120° is exactly −1/2.
 
 This paper depends on the number paper; its section on quantities depends on
-the quantity paper. The reference implementation is the `pureCPP26` branch of
-[beman.inside](https://github.com/PeterNeiss/inside/tree/pureCPP26).
+the quantity paper. The reference implementation is
+[beman.inside](https://github.com/PeterNeiss/inside).
 
 # Motivation
 

@@ -22,7 +22,7 @@ We propose `std::units::quantity<reference, inside>`: physical quantities whose
 number is always an `inside`, the bounded number with an exact rational step
 proposed in the companion paper [*`inside`: numbers whose range and step size
 are part of the
-type*](https://github.com/PeterNeiss/inside/blob/pureCPP26/docs/proposal/inside.md)
+type*](https://github.com/PeterNeiss/inside/blob/main/docs/proposal/inside.md)
 (*the number paper* below). The model is that of mp-units [@P3045R9]:
 dimensions, units with exact magnitudes, the ISQ tree of quantity kinds, and
 quantity points with origins.
@@ -34,12 +34,11 @@ common unit, exactly, and cannot overflow. A conversion with a factor of π
 (degree to radian) has no exact rescale; it is ill-formed until it is rounded
 once onto a declared grid, which the third companion paper, [*Correctly
 rounded math for `inside` and
-quantities*](https://github.com/PeterNeiss/inside/blob/pureCPP26/docs/proposal/math.md),
+quantities*](https://github.com/PeterNeiss/inside/blob/main/docs/proposal/math.md),
 provides.
 
-This paper depends on the number paper. The reference implementation is the
-`pureCPP26` branch of
-[beman.inside](https://github.com/PeterNeiss/inside/tree/pureCPP26).
+This paper depends on the number paper. The reference implementation is
+[beman.inside](https://github.com/PeterNeiss/inside).
 
 # Motivation
 

@@ -6,7 +6,6 @@ on:
   push:
     branches:
       - main
-      - pureCPP26
   pull_request:
   workflow_dispatch:
   schedule:
@@ -94,12 +93,6 @@ jobs:
             }
           ]
         }
-
-  vcpkg-ci:
-    uses: bemanproject/infra-workflows/.github/workflows/reusable-beman-vcpkg-ci.yml@1.7.4
-    with:
-      port_name: beman-inside
-      container_image: ghcr.io/bemanproject/infra-containers-gcc:16
 
   create-issue-when-fault:
     needs: [preset-test, build-and-test, preset-test-full, build-and-test-full]
