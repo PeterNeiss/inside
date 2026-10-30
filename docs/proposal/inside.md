@@ -615,7 +615,7 @@ The companion papers propose quantities and the math functions.
 The reference implementation is header-only C++26 and needs static reflection:
 today GCC 16 with `-freflection`. It ships a single-header amalgamation, a
 CMake package and a vcpkg port, and follows the Beman Standard. Its test suite
-(868 tests) runs in CI in seven configurations on every change (a
+(878 tests) runs in CI in seven configurations on every change (a
 debug preset, release, debug with `-Werror`, coverage, the address, undefined
 and leak sanitizers, no floating point, strict SFINAE) and in four more every
 week (a release preset, debug, the thread sanitizer, and the full certification
