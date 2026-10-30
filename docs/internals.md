@@ -354,34 +354,38 @@ insides, and quantities (units.hpp specializes it).
 ## 8. Header layout
 
 The umbrella `inside.hpp` includes the core (`core.hpp`, then the casts,
-arithmetic, range and cursor layers, which need the complete type). The
-**opt-in** headers are included only on demand, which keeps the core free of
-`<string>`, `<ostream>`, `<format>` and `<cmath>`.
+arithmetic, range and cursor layers, which need the complete type) and the
+`std::numeric_limits` and `std::hash` specializations. The **opt-in** headers
+are included only on demand, which keeps the core free of `<ostream>`,
+`<format>` and `<cmath>`, and of `<string>` with exceptions off (with them on,
+`<stdexcept>` brings it, for `inside_error`). The units follow the same split:
+`units.hpp` holds no text, `units_io.hpp` prints, `units_math.hpp` holds the
+math.
 
 **Public headers**
 
 | Header | Holds |
 |---|---|
-| `inside.hpp` | the umbrella: `core.hpp`, `detail/compare.hpp`, `casts.hpp`, `arithmetic.hpp`, `range.hpp`, `cursor.hpp` |
+| `inside.hpp` | the umbrella: `core.hpp`, `detail/compare.hpp`, `casts.hpp`, `arithmetic.hpp`, `range.hpp`, `cursor.hpp`, `numeric_limits.hpp` |
 | `core.hpp` | `inside<G, P>`: construction, compound assignment, `++`/`--`, `to`/`as`, `parse(first, last)`, hooks, `just`, `_ins` |
 | `grid.hpp` | `grid`, `bounds`, `grid::try_make`, `raw_for`, the grid operators |
 | `interval.hpp` | `interval`, its operators, `includes`/`excludes`/`overlaps` |
-| `numbers.hpp` | `umax`/`imax`, `smallest_uint_for_t`/`smallest_int_for_t`, `plain_number`/`fractional`, `safe_abs` |
+| `numbers.hpp` | `umax`/`imax`, `add_overflow`/`sub_overflow`/`mul_overflow`, `plain_number`/`fractional`, `safe_abs` |
 | `policy_flag.hpp` | the flag bits, `has_flag`/`is_checked`, the rounding precedence, the `on_*` factories and `is_*_action` traits |
-| `policy.hpp` | `policy<F, E>`, `make_policy`, the named policies, `policy_ref` |
+| `policy.hpp` | `policy<F, E>`, `make_policy`, the named policies |
 | `casts.hpp` | `clamp_cast` (optionally rounding), `wrap_cast`, `checked_cast`, `unchecked_cast` |
 | `arithmetic.hpp` | `add`, `sub`, `mul`, `div`, `mod`, `divmod`, `mul_into`, `div_into`, `add_all`, `mul_all`, `sum`, `min`/`max`/`midpoint`, `dot`/`cross`/`lerp`, `common_inside_t`, the operators and the expected-lift overloads |
 | `range.hpp` | `inside_range<G, P>`, `values<T>` |
 | `cursor.hpp` | `cursor<T, Step>`, `end(t)` |
 | `predicates.hpp` | `conversion_overflows`, `conversion_rounds`, `conversion_loses` |
 | `generic.hpp` | the `inside_assignable` concept, `inside_assignable_why`, `explain_assignable` |
-| `detail/lift.hpp` | `detail::lift`, the combinator behind the lift operators |
-| `numeric_limits.hpp` | `std::numeric_limits` and `std::hash` for insides (opt-in) |
+| `numeric_limits.hpp` | `std::numeric_limits` and `std::hash` for insides (part of the umbrella) |
 | `formats.hpp` | the native aliases `uint8` … `q16_16`, `clamp_counter`, `wrap_counter` (opt-in) |
-| `io.hpp` | **all** text: `to_string`, `to_string_debug`, `<<`, `>>`, `parse(string_view)`, `std::formatter`, `type_name_of`. Opt-in; the only header that brings `<string>`, `<ostream>`, `<format>` |
+| `io.hpp` | the text of insides: `to_string`, `to_string_debug`, `<<`, `>>`, `parse(string_view)`, `std::formatter`, `type_name_of`. Opt-in; with `units_io.hpp` the only headers that bring `<ostream>` and `<format>` |
 | `cmath.hpp` | `beman::inside::math`: the math constants, the grid operations, `unit_amplitude<K>`, the transcendentals ([math.md](math.md)) |
 | `random.hpp` | `uniform<B>(rng)` (opt-in, `<random>`) |
 | `units.hpp` | quantities, points, units, dimensions, kinds, origins, the catalog, units of your own, and inside's algorithms on quantities (§9) |
+| `units_io.hpp` | the text of quantities: `unit_symbol`, `to_string`, `<<`, `std::formatter`, `parse<Q>` (opt-in, through io.hpp) |
 | `units_math.hpp` | math on quantities: roots, trig (with π-scaled angles), `atan2`, `hypot`, the number functions, `value_cast` across π |
 | `constants.hpp` | `math::` constants and `units::constants::` physical constants |
 
@@ -390,26 +394,30 @@ arithmetic, range and cursor layers, which need the complete type). The
 | Header | Holds |
 |---|---|
 | `config.hpp` | the build options and platform features (`__int128`, FMA, exceptions); the C++26-reflection `#error`; included first everywhere |
+| `error.hpp` | `errc`, `errc_message`, `inside_error`, the error handler, `raise`, `constexpr_error` |
 | `compare.hpp` | `<=>` and `==` across grids and against integers, floating points of any width and `rational` |
 | `introspection.hpp` | `grid_of`, `flags_of`, `interval_of`, `lower_of`, `upper_of`, `notch_of`, the `insidable` and `numeric` concepts, `raw_t`, `as_rational` |
 | `storage.hpp` | the storage concepts, `as_double`, `to_value`/`from_value`, `raw_imax`, the Q-format codec, `max_index_of`, `round_quotient` |
-| `op_result.hpp` | `lattice_op_checked`: whether `+` or `×` into a result runs its overflow check |
+| `policy_ref.hpp` | `policy_ref`, `policy_buffer`: what `b.policy()`, `with_snap()` and `on_*()` return |
+| `lift.hpp` | `lift`, the combinator behind the lift operators; `is_expected_v`, `unwrap_t` |
+| `op_result.hpp` | what the result of `+`, `×` or `÷` needs: `exact_fits`, `lattice_op_checked` (whether it runs its overflow check), `point_scale` |
 | `rounding.hpp` | `classify_remainder`, `rounds_up`, `rounds_away`: the one rounding decision every integer path shares |
 | `assignment.hpp`, `assign_exact.hpp` | stores for integral, fractional and inside sources; the exact and wide store, the out-of-range cascade, the `on_wrap` carry grid |
 | `addition.hpp`, `multiplication.hpp`, `division.hpp` | `addition<L, R>`, `multiplication<L, R>`, `division<L, R, F>`, `modulo<L, R, F>`, `divmod_result` |
-| `overflow.hpp`, `error.hpp` | `add_overflow` and kin; `errc`, `errc_message`, the error handler and `raise` |
 | `diag_text.hpp` | `diag_text`: `static_assert` messages with values |
 | `rational.hpp` | `rational` and its checked and unchecked arithmetic |
 | `number_text.hpp` | the literal and text grammar, and the `_r` literal |
 | `float_bits.hpp` | floating points from their IEEE-754 bits: `frexp`, `ldexp`, `is_finite`, `abs_fraction` |
 | `grid_rational.hpp` | the grid-number vocabulary (§2a) |
 | `big_rational.hpp` | `big_int`, `big_rational`: interned grid numbers of any size |
-| `wide_int.hpp`, `int_for_bits.hpp`, `wide_value.hpp` | `wide_int<N, Signed>` and its kernels; the width rule; exact values and wide value-index arithmetic |
+| `limb_algorithms.hpp` | the limb kernels behind `wide_int` and `big_int`: carries, schoolbook multiply, Knuth's division, shifts, `euclid_gcd` |
+| `wide_int.hpp`, `wide_value.hpp` | `wide_int<N, Signed>` and the width rule `int_for_bits_t`; exact values and wide value-index arithmetic |
 | `math_constants.hpp` | the 18 math constants as rationals below 2³¹ |
 | `math_adaptive.hpp` | the engine's foundation: the decision step, the Ziv driver, the stores, π / ln 2 / ln 10 at any precision, the series kernels |
 | `math_cores.hpp` | the integer path: one core per function |
-| `math_entry.hpp` | the entry points: `_into` and deduced forms, the table, `double` and double-double tiers |
 | `math_fp.hpp`, `math_dd.hpp` | the `double` and double-double kernels and their proved bounds; compiled out under `BEMAN_INSIDE_MATH_NO_FP` |
+| `math_tiers.hpp` | the `double` and double-double tiers: which kernel applies, the per-call error bound, the decision |
+| `math_entry.hpp` | the entry points: `_into` and deduced forms, the table, the unanchored grids |
 
 `single_include/beman/inside/inside.hpp` amalgamates the whole tree
 ([single-header.md](single-header.md)).
