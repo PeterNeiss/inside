@@ -9,6 +9,12 @@
 
 #include <gtest/gtest.h>
 
+// Whether numeric_limits<T> has epsilon() / round_error(): only where 0 is a value.
+template <class T>
+concept has_epsilon = requires { std::numeric_limits<T>::epsilon(); };
+template <class T>
+concept has_round_error = requires { std::numeric_limits<T>::round_error(); };
+
 using namespace beman::inside;
 
 namespace {
@@ -80,17 +86,16 @@ TEST(BugHuntRound4, numeric_limits_of_a_big_grid) {
     using far = inside<{1267650600228229401496703205376_g, 1267650600228229401496703205386_g}>;
     static_assert(std::numeric_limits<big>::lowest() < 0 && std::numeric_limits<big>::max() > 0);
     static_assert(std::numeric_limits<big>::epsilon() == 0);
-    static_assert(std::numeric_limits<far>::epsilon() == std::numeric_limits<far>::min());
+    static_assert(!has_epsilon<far>); // 0 is no value of far
     EXPECT_EQ(to_string(std::numeric_limits<big>::lowest()), "-1237940039285380274899124224");
     EXPECT_EQ(to_string(std::numeric_limits<far>::max()), "1267650600228229401496703205386");
     EXPECT_EQ(to_string(std::numeric_limits<big>::max()), "1237940039285380274899124224");
 }
 
-// epsilon of a lattice that spans 0 but misses it: its first point above 0.
+// epsilon of a lattice that spans 0 but misses it: none, 0 is no value.
 TEST(BugHuntRound4, numeric_limits_epsilon_off_zero) {
-    static_assert(std::numeric_limits<inside<{{-0.5, 0.5}, 1}>>::epsilon() == rational(1, 2));
-    static_assert(std::numeric_limits<inside<{{rational{-7, 3}, rational{5, 3}}, rational{2, 3}}>>::epsilon() ==
-                  rational(1, 3));
+    static_assert(!has_epsilon<inside<{{-0.5, 0.5}, 1}>>);
+    static_assert(!has_round_error<inside<{{rational{-7, 3}, rational{5, 3}}, rational{2, 3}}>>);
 }
 
 // A failed store of a double finer than 2^-62 through errc& or on_error

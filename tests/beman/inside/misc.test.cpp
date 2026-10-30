@@ -4,6 +4,12 @@
 
 #include <gtest/gtest.h>
 
+// Whether numeric_limits<T> has epsilon() / round_error(): only where 0 is a value.
+template <class T>
+concept has_epsilon = requires { std::numeric_limits<T>::epsilon(); };
+template <class T>
+concept has_round_error = requires { std::numeric_limits<T>::round_error(); };
+
 using namespace beman::inside;
 using namespace beman::inside::detail;
 
@@ -135,10 +141,18 @@ TEST(MiscTest, numeric_limits_epsilon_round_error_report_0_for_exact_types) {
     using r01 = inside<{{0_r, 1_r}, 0}>;
     static_assert(std::numeric_limits<r01>::epsilon() == 0);
 
-    // 0 is *outside* the interval — fall back to Lower (the closest representable).
+    // 0 is *outside* the interval: no epsilon, as 0 is no value.
     using above_zero = inside<{10, 100}>;
-    static_assert(std::numeric_limits<above_zero>::epsilon() == 10);
-    static_assert(std::numeric_limits<above_zero>::round_error() == 10);
+    static_assert(!has_epsilon<above_zero>);
+    static_assert(!has_round_error<above_zero>);
+
+    // digits from the grid: the narrowest integer numbering every value, less
+    // a sign bit for a grid with negatives — as for uint8_t / int8_t.
+    static_assert(std::numeric_limits<u8>::digits == 8 && std::numeric_limits<u8>::digits10 == 2);
+    static_assert(std::numeric_limits<inside<{-128, 127}>>::digits == 7);
+    static_assert(std::numeric_limits<inside<{0, 100}>>::digits == 6);
+    static_assert(std::numeric_limits<i8>::digits == 6);   // 201 values, signed
+    static_assert(std::numeric_limits<half>::digits == 6); // 201 values, signed
 }
 
 // errc_message stringifies every errc

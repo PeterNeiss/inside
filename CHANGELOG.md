@@ -52,6 +52,12 @@ The library without pre-C++26 compatibility, kept in sync with main.
   on the free forms), else by the type's rounding mode, and with neither report
   `errc::rounding_error`. A `round_nearest` type now rounds to nearest here.
 
+- `std::numeric_limits` of an inside: `digits` / `digits10` come from the grid
+  (the narrowest integer that numbers every value, less a sign bit for a grid
+  with negatives), not the storage; `epsilon()` and `round_error()` are 0 and
+  exist only when 0 is a value of the grid (they returned an ad-hoc stand-in
+  otherwise).
+
 ### Removed
 
 - The compiler shims in `detail/config.hpp` (MSVC warnings, `_umul128`,

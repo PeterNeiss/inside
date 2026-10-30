@@ -22,6 +22,12 @@
 #include <random>
 #include <vector>
 
+// Whether numeric_limits<T> has epsilon() / round_error(): only where 0 is a value.
+template <class T>
+concept has_epsilon = requires { std::numeric_limits<T>::epsilon(); };
+template <class T>
+concept has_round_error = requires { std::numeric_limits<T>::round_error(); };
+
 using namespace beman::inside;
 using namespace beman::inside::detail;
 
@@ -449,8 +455,9 @@ TEST(UnanchoredGrid, range_limits_random) {
     EXPECT_EQ(static_cast<rational>(lim::min()), 0.5_r);
     EXPECT_EQ(static_cast<rational>(lim::lowest()), 0.5_r);
     EXPECT_EQ(static_cast<rational>(lim::max()), 10.5_r);
-    EXPECT_EQ(static_cast<rational>(std::numeric_limits<inside<kQuarterOff>>::epsilon()), 0.25_r);
-    EXPECT_EQ(static_cast<rational>(std::numeric_limits<inside<kTenthOff>>::epsilon()), 0.1_r);
+    // Lattices that span 0 but miss it: 0 is no value, so there is no epsilon.
+    static_assert(!has_epsilon<inside<kQuarterOff>>);
+    static_assert(!has_epsilon<inside<kTenthOff>>);
     EXPECT_FALSE(std::numeric_limits<inside<kHalfOff>>::is_integer);
     static_assert(!std::is_convertible_v<inside<kHalfOff>, imax>); // no silent truncation
     static_assert(std::is_convertible_v<inside<{0, 10}>, imax>);

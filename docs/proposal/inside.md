@@ -414,9 +414,12 @@ are `lower`, `max()` is `upper`; `is_signed` holds when `lower < 0`, and
 `is_integer` when every value is an integer. `is_modulo` follows `wrap`,
 `traps` the checked policies, and `round_style` the policy's rounding mode.
 The type is exact and bounded, with no infinity and no NaN. An exact type has
-no rounding error, so `epsilon()` and `round_error()` are 0 when 0 is on the
-grid; otherwise the first point above 0 when the interval spans 0, and `lower`
-when it does not. `digits` and `digits10` describe the storage.
+no rounding error, so `epsilon()` and `round_error()` are 0, as for the integer
+types; they exist only where 0 is a value of the grid, so generic code on any
+other grid gets a compile error rather than a stand-in. `digits` counts the bits
+of the narrowest integer that numbers every value, less a sign bit when the grid
+holds negatives (8 for `{0, 255}`, 7 for `{-128, 127}`), independent of the
+storage.
 
 `std::hash<inside<G, P>>` hashes the value, so an `inside` is a key of the
 unordered containers.
@@ -581,7 +584,7 @@ namespace std {
 | `b.with_clamp() = v` etc. | stores `v` into `b` under `P | F` | an rvalue's proxy converts to any `inside` the value fits |
 | `b.on_wrap(f) += v` etc. | `b += v`, `f` called when the policy acts | ill-formed: two of `on_clamp`, `on_wrap`, `on_error`, or two of one kind |
 | `common_type_t<A, B>` | `inside<hull(grid_of<A>, grid_of<B>), P>` | `P`: the shared policy, else `checked`; `A` when `A == B` |
-| `numeric_limits<B>::min()`, `max()` | `lower`, `upper` | `epsilon()`: 0 on the grid, else the first point above 0, else `lower` |
+| `numeric_limits<B>::min()`, `max()` | `lower`, `upper` | `epsilon()`, `round_error()`: 0, only when 0 is on the grid; `digits` from the number of values |
 
 # Future work
 

@@ -52,11 +52,19 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
         }
     }();
 
-    // digits / digits10 forward to the raw type so generic algorithms see the
-    // storage size, not the rational interval count.
-    using deduced_raw             = beman::inside::detail::raw_t<B>;
-    static constexpr int digits   = std::numeric_limits<deduced_raw>::digits;
-    static constexpr int digits10 = std::numeric_limits<deduced_raw>::digits10;
+    // digits / digits10 from the grid, not its (unspecified) storage: the bits
+    // of the narrowest integer that numbers every value, less a sign bit when
+    // the grid holds negatives — 8 for {0, 255}, 7 for {-128, 127}, 6 for
+    // {0, 100}. A point or a continuous grid has no such count: 0.
+    static constexpr int digits = [] {
+        namespace d = ::beman::inside::detail;
+        if constexpr (G.Notch == 0)
+            return 0;
+        else
+            return d::bit_width_of(G.step_count() + d::grid_int{1}) - 1 -
+                   (G.Interval.Lower < d::grid_rational{0} ? 1 : 0);
+    }();
+    static constexpr int digits10 = digits * 30103 / 100000; // ⌊digits·log10 2⌋
 
   private:
     // The value v of B (on its grid). Past 64 bits through the exact store:
@@ -79,22 +87,19 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
     static constexpr B min() noexcept { return at(G.Interval.Lower); }
     static constexpr B max() noexcept { return at(G.Interval.Upper); }
     static constexpr B lowest() noexcept { return at(G.Interval.Lower); }
-    // Exact types have no rounding noise — epsilon and round_error are 0 when
-    // 0 is on the grid. A lattice that misses 0 but spans it gives its first
-    // point above 0; when 0 is outside the interval, the grid minimum — the
-    // closest representable stand-in for "no error" the type can express.
-    static constexpr B epsilon() noexcept {
-        namespace d = ::beman::inside::detail;
-        if constexpr (G.representable(d::grid_rational{0}))
-            return at(d::grid_rational{0});
-        else if constexpr (G.Interval.Lower < d::grid_rational{0} && d::grid_rational{0} < G.Interval.Upper) {
-            // Lower + ⌈−Lower/Notch⌉·Notch
-            constexpr d::grid_rational k = d::grid_round<d::round_mode::ceil>(-G.Interval.Lower / G.Notch);
-            return at(G.Interval.Lower + k * G.Notch);
-        } else
-            return at(G.Interval.Lower);
+    // An exact type has no rounding error: epsilon and round_error are 0, as
+    // for the integer types. They exist where 0 is a value of the grid; on
+    // any other grid generic code gets a compile error, not a stand-in.
+    static constexpr B epsilon() noexcept
+        requires(G.representable(::beman::inside::detail::grid_rational{0}))
+    {
+        return at(::beman::inside::detail::grid_rational{0});
     }
-    static constexpr B round_error() noexcept { return epsilon(); }
+    static constexpr B round_error() noexcept
+        requires(G.representable(::beman::inside::detail::grid_rational{0}))
+    {
+        return epsilon();
+    }
 };
 
 template <beman::inside::grid G, beman::inside::policy_flag P>
