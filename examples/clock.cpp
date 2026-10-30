@@ -164,7 +164,7 @@ int main() {
     constexpr std::array<const char*, 7> names{
         "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
     const auto our = (just<4> * si::day + dow) % (just<1> * week);
-    std::cout << "1970-01-01 + 14003 d is a " << names[our.numerical_value_in(si::day)] << "\n";
+    std::cout << "1970-01-01 + 14003 d is a " << names[our.numerical_value_in(si::day).as<std::size_t>()] << "\n";
     if (our != just<0> * si::day)
         return 1;
     return 0;

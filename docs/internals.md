@@ -289,9 +289,9 @@ which step takes a given set of hooks. A quantity's hooks wrap the inside's
 
 ## 5. Conversions
 
-The user-facing rules (one implicit `operator imax` on whole-number grids or
-under a rounding policy, an implicit lossless `operator rational`, an explicit
-`operator double` that needs a rounding mode) are in
+The user-facing rules (an implicit lossless `operator rational`, an explicit
+`operator double` that needs a rounding mode, no conversion to a built-in
+integer: `as<T>()` and `to<T>()` read one) are in
 [conversions.md](conversions.md). On `rational` itself every `operator T()` is
 explicit and truncates toward zero; `r.to<T>()` is the typed-error form, and
 `trunc`, `floor`, `ceil` and `round` name the integer reductions.

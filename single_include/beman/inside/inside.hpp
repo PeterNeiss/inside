@@ -4991,7 +4991,6 @@ inline constexpr bool fraction_fits_imax = [] {
 
 // Notch a non-zero integer and Lower an integer — every value is an
 // integer ({{0.5, 10.5}, 1} has an integer notch but not integer values).
-// Gates the implicit imax/size_t conversions.
 template <grid G>
 inline constexpr bool integer_notch =
     grid_denominator(G.Notch) == grid_int{1} && G.Notch != 0 && grid_denominator(G.Interval.Lower) == grid_int{1};
@@ -6511,8 +6510,8 @@ constexpr void report_failure(L& lhs, P& policy, A& action, errc code) {
 // The on_wrap carry is always an inside whose grid holds every carry the
 // source kind can produce: an inside source uses its own range, an
 // integral source its type's limits, a fractional (double / rational) source the whole imax range. So
-// `minutes += carry` compiles for every source, and a callback taking `imax`
-// still binds through the implicit operator imax(). A bound whose exact
+// `minutes += carry` compiles for every source, and `as<imax>(carry)` reads
+// it as a number. A bound whose exact
 // computation leaves imax falls back to that side of the imax range.
 //---------------------------------------------------------------------------
 template <insidable L, typename R>
@@ -7694,11 +7693,11 @@ struct assignment<L, R> {
                 action.Fn(lhs, make_wrap_carry<L, R>(excess)); // carry as an inside
         } else if constexpr (wrap_action<plain_t<A>>) {
             // Fractional destination with a wrap action: reuse the rational modular-wrap
-            // path for the store/rounding, but wrap its imax carry `q` into an inside before
-            // handing it to the user action.
+            // path for the store/rounding, but re-type its carry `q` (an inside on the
+            // rational source's carry grid) for R before handing it to the user action.
             assignment<L, rational>::apply_wrap(
-                lhs, as_rational(rhs), policy, beman::inside::on_wrap([&](auto& self, imax q) {
-                    action.Fn(self, make_wrap_carry<L, R>(q));
+                lhs, as_rational(rhs), policy, beman::inside::on_wrap([&](auto& self, const auto& q) {
+                    action.Fn(self, make_wrap_carry<L, R>(to_value(q)));
                 }));
         } else {
             // Fractional destination, no wrap action: delegate unchanged.
@@ -9201,11 +9200,6 @@ struct inside {
     [[nodiscard]] static constexpr inside from_raw(raw_type r) noexcept { return inside{detail::raw_tag{}, r}; }
 
     // Conversion summary:
-    //   operator imax     — implicit, when the values are integers or the policy
-    //                       may round (then rounded by its mode), and the interval
-    //                       fits int64 (else use `to<imax>()`). Also the `vec[b]`
-    //                       index path. No second implicit integer operator (would
-    //                       make `imax_var += b` ambiguous).
     //   operator rational — implicit; lossless and exact.
     //   operator double   — explicit, and gated on a rounding flag (a double
     //                       may round the value).
@@ -9213,18 +9207,12 @@ struct inside {
     //   to<T>()           — typed-error narrowing/widening → `expected<T, errc>`
     //                       (overflow / domain_error).
     //   as<T>()           — non-expected sibling; throws on error. For known-
-    //                       in-range sites (array indexing). FP shares the gate.
+    //                       in-range sites (array indexing: `vec[b.as<std::size_t>()]`);
+    //                       no check is left where T holds the whole grid.
     //   to<T>(b)/as<T>(b) — free-function forms, for generic code.
-    constexpr operator imax() const
-        requires((detail::integer_notch<G> || (has_flag(P, snap) && detail::rational_readable<inside>)) &&
-                 detail::fits_imax(G.Interval))
-    {
-        if constexpr (detail::integer_notch<G>)
-            return detail::to_value(*this);
-        else
-            return round_to_int(detail::as_rational(*this), detail::rounding_of(P));
-    }
-
+    // No implicit integer conversion: it would narrow silently into a smaller
+    // built-in (`int i = b;`, `unsigned char c = b;`), the range escaping
+    // the type.
     constexpr explicit operator double() const
         requires(has_flag(P, snap))
     {
@@ -10310,8 +10298,8 @@ struct divmod_op {
 } // namespace detail
 
 // A deleted overload takes each op's failing case: `requires { a + b; }` is
-// then false, and an integer inside cannot fall back on its imax conversion
-// and the built-in operator.
+// then false, and an inside cannot fall back on its rational conversion and
+// rational's operator.
 
 #define BEMAN_INSIDE_WHY_add                                                                                      \
     "addition: no result type - the exact sum's fractions pass BEMAN_INSIDE_MAX_FRACTION_BITS (store an operand " \
@@ -19574,8 +19562,8 @@ namespace beman::inside {
 using uint8  = inside<{0, 255}>;
 using uint16 = inside<{0, 65535}>;
 using uint32 = inside<{0, 4294967295}>;
-// uint64 reaches past int64, so it has no implicit `operator imax`; read it
-// with `to<std::uint64_t>()`. A difference of two uint64s spans 2^65 values and
+// uint64 reaches past int64: read it with `to<std::uint64_t>()` or
+// `as<std::uint64_t>()`. A difference of two uint64s spans 2^65 values and
 // gets a wide-integer index.
 using uint64 = inside<{0, 18446744073709551615u}>;
 

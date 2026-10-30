@@ -107,7 +107,7 @@ TEST(WideGridTest, assignment_between_insides) {
     fine                            b = 41.75;
     inside<{0, 100}, round_nearest> n = 0;
     n                                 = b;
-    EXPECT_EQ(static_cast<imax>(n), 42);
+    EXPECT_EQ(n.as<imax>(), 42);
     // wide → wide of another lattice.
     fine_signed s = b;
     EXPECT_TRUE(s == 41.75);
@@ -329,7 +329,7 @@ TEST(WideGridTest, clamp_and_wrap_actions) {
     fine w     = 0;
     imax carry = 0;
     // One turn is 2^34 + 2^-32, so 3·2^34 + 2 = 3 turns + (2 − 3·2^-32).
-    w.on_wrap([&](auto&, auto q) { carry = q; }) = 3 * p34 + 2;
+    w.on_wrap([&](auto&, auto q) { carry = as<imax>(q); }) = 3 * p34 + 2;
     EXPECT_EQ(carry, 3);
     EXPECT_TRUE(w == (rational{2} - (rational{3} * tick).value()).value());
 }

@@ -34,17 +34,17 @@ constexpr bool defaults_to(const rational& v) {
 } // namespace
 
 TEST(DefaultValue, zero_when_the_grid_holds_it_else_lower) {
-    static_assert(defaults_to<inside<{0, 100}>>(0));                                    // index from 0
-    static_assert(defaults_to<inside<{-100, 100}>>(0));                                 // signed value
-    static_assert(defaults_to<inside<{5, 100}>>(5));                                    // value raw, no 0
-    static_assert(defaults_to<inside<{200, 300}>>(200));                                // index, no 0
-    static_assert(defaults_to<inside<{-10, -5}>>(-10));                                 // below 0
-    static_assert(defaults_to<inside<{{-1, 1}, per<16384>}, round_nearest>>(0));        // Q1.14: not Lower
-    static_assert(defaults_to<inside<{{0.5, 10.5}, 1}>>(rational{1u, 2}));              // unanchored
-    static_assert(defaults_to<inside<{{-1, 1}, max_denominator{8}}>>(0));               // continuous
-    static_assert(defaults_to<inside<{{1, 2}, max_denominator{100}}>>(1));              // continuous, no 0
-    static_assert(defaults_to<inside<grid{7}>>(7));                                     // point
-    static_assert(defaults_to<inside<{0, 100}, clamp | round_nearest | unsafe>>(0));    // any policy
+    static_assert(defaults_to<inside<{0, 100}>>(0));                                 // index from 0
+    static_assert(defaults_to<inside<{-100, 100}>>(0));                              // signed value
+    static_assert(defaults_to<inside<{5, 100}>>(5));                                 // value raw, no 0
+    static_assert(defaults_to<inside<{200, 300}>>(200));                             // index, no 0
+    static_assert(defaults_to<inside<{-10, -5}>>(-10));                              // below 0
+    static_assert(defaults_to<inside<{{-1, 1}, per<16384>}, round_nearest>>(0));     // Q1.14: not Lower
+    static_assert(defaults_to<inside<{{0.5, 10.5}, 1}>>(rational{1u, 2}));           // unanchored
+    static_assert(defaults_to<inside<{{-1, 1}, max_denominator{8}}>>(0));            // continuous
+    static_assert(defaults_to<inside<{{1, 2}, max_denominator{100}}>>(1));           // continuous, no 0
+    static_assert(defaults_to<inside<grid{7}>>(7));                                  // point
+    static_assert(defaults_to<inside<{0, 100}, clamp | round_nearest | unsafe>>(0)); // any policy
     static_assert(value_init<inside<{{1, 2}, max_denominator{100}}>>().Den != 0);
 }
 
@@ -61,8 +61,8 @@ TEST(DefaultValue, wide_storage) {
 }
 
 TEST(DefaultValue, runtime_matches_compile_time) {
-    inside<{5, 100}> a;
-    inside<{-10, -5}> b{};
+    inside<{5, 100}>                             a;
+    inside<{-10, -5}>                            b{};
     inside<{{-1, 1}, per<16384>}, round_nearest> c;
     EXPECT_EQ(rational{a}, 5);
     EXPECT_EQ(rational{b}, -10);

@@ -394,7 +394,7 @@ TEST(ConstexprTest, constexpr_inside_range_iterates_the_full_grid) {
     constexpr imax sum = [] {
         imax s = 0;
         for (auto i : inside_range<{0, 9}>{})
-            s += imax{i};
+            s += i.as<imax>();
         return s;
     }();
     static_assert(sum == 45);
@@ -403,7 +403,7 @@ TEST(ConstexprTest, constexpr_inside_range_iterates_the_full_grid) {
     constexpr imax sum_from_5 = [] {
         imax s = 0;
         for (auto i : inside_range<{0, 9}>{inside<{0, 9}>{5}})
-            s += imax{i};
+            s += i.as<imax>();
         return s;
     }();
     static_assert(sum_from_5 == 45);

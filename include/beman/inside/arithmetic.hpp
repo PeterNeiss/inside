@@ -97,8 +97,8 @@ struct divmod_op {
 } // namespace detail
 
 // A deleted overload takes each op's failing case: `requires { a + b; }` is
-// then false, and an integer inside cannot fall back on its imax conversion
-// and the built-in operator.
+// then false, and an inside cannot fall back on its rational conversion and
+// rational's operator.
 
 #define BEMAN_INSIDE_WHY_add                                                                                      \
     "addition: no result type - the exact sum's fractions pass BEMAN_INSIDE_MAX_FRACTION_BITS (store an operand " \

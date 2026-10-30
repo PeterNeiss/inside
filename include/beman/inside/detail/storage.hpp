@@ -218,7 +218,6 @@ inline constexpr bool fraction_fits_imax = [] {
 
 // Notch a non-zero integer and Lower an integer — every value is an
 // integer ({{0.5, 10.5}, 1} has an integer notch but not integer values).
-// Gates the implicit imax/size_t conversions.
 template <grid G>
 inline constexpr bool integer_notch =
     grid_denominator(G.Notch) == grid_int{1} && G.Notch != 0 && grid_denominator(G.Interval.Lower) == grid_int{1};

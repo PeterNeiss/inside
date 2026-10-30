@@ -68,8 +68,8 @@ constexpr void report_failure(L& lhs, P& policy, A& action, errc code) {
 // The on_wrap carry is always an inside whose grid holds every carry the
 // source kind can produce: an inside source uses its own range, an
 // integral source its type's limits, a fractional (double / rational) source the whole imax range. So
-// `minutes += carry` compiles for every source, and a callback taking `imax`
-// still binds through the implicit operator imax(). A bound whose exact
+// `minutes += carry` compiles for every source, and `as<imax>(carry)` reads
+// it as a number. A bound whose exact
 // computation leaves imax falls back to that side of the imax range.
 //---------------------------------------------------------------------------
 template <insidable L, typename R>

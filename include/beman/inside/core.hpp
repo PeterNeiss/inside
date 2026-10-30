@@ -273,11 +273,6 @@ struct inside {
     [[nodiscard]] static constexpr inside from_raw(raw_type r) noexcept { return inside{detail::raw_tag{}, r}; }
 
     // Conversion summary:
-    //   operator imax     — implicit, when the values are integers or the policy
-    //                       may round (then rounded by its mode), and the interval
-    //                       fits int64 (else use `to<imax>()`). Also the `vec[b]`
-    //                       index path. No second implicit integer operator (would
-    //                       make `imax_var += b` ambiguous).
     //   operator rational — implicit; lossless and exact.
     //   operator double   — explicit, and gated on a rounding flag (a double
     //                       may round the value).
@@ -285,18 +280,12 @@ struct inside {
     //   to<T>()           — typed-error narrowing/widening → `expected<T, errc>`
     //                       (overflow / domain_error).
     //   as<T>()           — non-expected sibling; throws on error. For known-
-    //                       in-range sites (array indexing). FP shares the gate.
+    //                       in-range sites (array indexing: `vec[b.as<std::size_t>()]`);
+    //                       no check is left where T holds the whole grid.
     //   to<T>(b)/as<T>(b) — free-function forms, for generic code.
-    constexpr operator imax() const
-        requires((detail::integer_notch<G> || (has_flag(P, snap) && detail::rational_readable<inside>)) &&
-                 detail::fits_imax(G.Interval))
-    {
-        if constexpr (detail::integer_notch<G>)
-            return detail::to_value(*this);
-        else
-            return round_to_int(detail::as_rational(*this), detail::rounding_of(P));
-    }
-
+    // No implicit integer conversion: it would narrow silently into a smaller
+    // built-in (`int i = b;`, `unsigned char c = b;`), the range escaping
+    // the type.
     constexpr explicit operator double() const
         requires(has_flag(P, snap))
     {

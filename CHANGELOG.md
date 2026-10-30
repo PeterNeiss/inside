@@ -12,6 +12,11 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   are 0, or Lower on a grid without 0. Add the `uninitialized` flag where a
   trivial default constructor matters (bulk buffers):
   `inside<G, uninitialized>`.
+- An inside no longer converts to `imax` implicitly. Read an integer with
+  `as<T>()` (no check is left where `T` holds the grid) or `to<T>()`:
+  `int i = b;` becomes `int i = b.as<int>();`, `vec[b]` becomes
+  `vec[b.as<std::size_t>()]`, `static_cast<imax>(b)` becomes `b.as<imax>()`.
+  A hook parameter typed `imax` takes `auto` and reads it with `as<imax>(c)`.
 
 ### Changed
 
@@ -24,6 +29,12 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 ### Added
 
 - `uninitialized`: the policy flag that keeps a trivial default constructor.
+
+### Removed
+
+- The implicit `operator imax()`. It narrowed silently into smaller built-ins:
+  `int i = b;` on a grid past `int` truncated, and `unsigned char c = b;` on
+  `{-5, 5}` read −1 as 255, with no warning under `-Wall -Wextra`.
 
 ## 0.6.0 — 2026-10-30
 

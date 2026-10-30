@@ -69,13 +69,13 @@ int main() {
     using idx       = inside<{0, 9}>;
     std::cout << "from 5, wrapping:";
     for (idx i : inside_range<grid_of<idx>>{5})
-        std::cout << ' ' << arr[i];
+        std::cout << ' ' << arr[i.as<std::size_t>()];
     std::cout << "\nevery index:     ";
     for (idx i : values<idx>)
-        std::cout << ' ' << arr[i];
+        std::cout << ' ' << arr[i.as<std::size_t>()];
     std::cout << "\nevery third:     ";
     for (cursor<idx, 3> i; i != end(i); ++i)
-        std::cout << ' ' << arr[*i];
+        std::cout << ' ' << arr[(*i).as<std::size_t>()];
     std::cout << "\n";
     return 0;
 }

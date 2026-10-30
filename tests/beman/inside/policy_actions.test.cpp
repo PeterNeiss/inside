@@ -116,7 +116,7 @@ TEST(PolicyActionsTest, on_wrap_action_receives_inside_and_carry) {
     sec  s{0};
     imax carry = 0;
     s.on_wrap([&](auto& self, auto c) {
-        carry = c;
+        carry = as<imax>(c);
         (void)self;
     })         = 65;
     ASSERT_EQ(s, 5);
@@ -140,7 +140,7 @@ TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_an_inside_rhs) {
     w10            x{8};
     inside<{0, 5}> add{4}; // inside RHS
     imax           carry_val = -99;
-    x.on_wrap([&](auto&, auto carry) { carry_val = carry + just<0>; }) += add;
+    x.on_wrap([&](auto&, auto carry) { carry_val = as<imax>(carry + just<0>); }) += add;
     ASSERT_EQ(x, 2);         // 8 + 4 = 12 -> 12 mod 10
     ASSERT_EQ(carry_val, 1); // floor(12 / 10)
 
@@ -150,7 +150,7 @@ TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_an_inside_rhs) {
     pos                      p{2.5};
     inside<{{0, 2}, per<2>}> fadd{1.5};
     imax                     fcarry = -99;
-    p.on_wrap([&](auto&, auto carry) { fcarry = carry + just<0>; }) += fadd;
+    p.on_wrap([&](auto&, auto carry) { fcarry = as<imax>(carry + just<0>); }) += fadd;
     ASSERT_TRUE((p == just<1, 2>)); // 2.5 + 1.5 = 4.0 -> 4.0 - 3.5 = 0.5
     ASSERT_EQ(fcarry, 1);           // floor(4.0 / 3.5)
 }
@@ -171,13 +171,13 @@ TEST(PolicyActionsTest, on_clamp_action_receives_overshoot) {
 // on_clamp overshoot is an inside for an inside RHS
 TEST(PolicyActionsTest, on_clamp_overshoot_is_an_inside_for_an_inside_rhs) {
     // A insidable RHS routes clamp through inside arithmetic, so the overshoot is a
-    // inside<grid_of<R> - grid_of<L>> — `over` converts to imax implicitly (it would not
-    // compile against a raw expected<rational>).
+    // inside<grid_of<R> - grid_of<L>>, read with as<imax>() (it would not compile
+    // against a raw expected<rational>).
     using c100 = inside<{0, 100}, clamp>;
     c100             x{0};
     inside<{0, 200}> v{150}; // overlaps [0,100], runtime out of range
-    imax             ov                              = 0;
-    x.on_clamp([&](auto&, auto over) { ov = over; }) = v;
+    imax             ov                                        = 0;
+    x.on_clamp([&](auto&, auto over) { ov = as<imax>(over); }) = v;
     ASSERT_EQ(x, 100);
     ASSERT_EQ(ov, 50); // overshoot 150 - 100
 }
@@ -204,7 +204,7 @@ TEST(PolicyActionsTest, compound_op_fires_on_clamp_on_the_store_back) {
     imax over = 0;
     b.on_clamp([&](auto&, auto o) {
         cl   = true;
-        over = o;
+        over = as<imax>(o);
     }) += 200_ins; // 50+200=250 overshoots [0,100]
     ASSERT_TRUE(cl);
     ASSERT_EQ(over, 150);
@@ -342,7 +342,7 @@ TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_every_source) {
         static_assert(grid_of<decltype(carry)> == grid{-3, 2}); // signed char into {0, 59}
     }) = static_cast<signed char>(5);
 
-    imax c                                   = 0;
-    s.on_wrap([&](auto&, imax k) { c = k; }) = 130;
+    imax c                                             = 0;
+    s.on_wrap([&](auto&, auto k) { c = as<imax>(k); }) = 130;
     EXPECT_EQ(c, 2);
 }

@@ -883,11 +883,11 @@ struct assignment<L, R> {
                 action.Fn(lhs, make_wrap_carry<L, R>(excess)); // carry as an inside
         } else if constexpr (wrap_action<plain_t<A>>) {
             // Fractional destination with a wrap action: reuse the rational modular-wrap
-            // path for the store/rounding, but wrap its imax carry `q` into an inside before
-            // handing it to the user action.
+            // path for the store/rounding, but re-type its carry `q` (an inside on the
+            // rational source's carry grid) for R before handing it to the user action.
             assignment<L, rational>::apply_wrap(
-                lhs, as_rational(rhs), policy, beman::inside::on_wrap([&](auto& self, imax q) {
-                    action.Fn(self, make_wrap_carry<L, R>(q));
+                lhs, as_rational(rhs), policy, beman::inside::on_wrap([&](auto& self, const auto& q) {
+                    action.Fn(self, make_wrap_carry<L, R>(to_value(q)));
                 }));
         } else {
             // Fractional destination, no wrap action: delegate unchanged.

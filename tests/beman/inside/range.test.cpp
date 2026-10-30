@@ -159,7 +159,7 @@ TEST(RangeTest, inside_range_works_with_std_views_reverse) {
     small_grid        r; // 0,1,2,3,4
     std::vector<imax> seen;
     for (auto v : std::views::reverse(r))
-        seen.push_back(v);
+        seen.push_back(v.as<imax>());
     ASSERT_TRUE((seen == std::vector<imax>{4, 3, 2, 1, 0}));
 }
 
@@ -168,7 +168,7 @@ TEST(RangeTest, inside_range_with_std_views_enumerate) {
     small_grid                         r;
     std::vector<std::pair<imax, imax>> seen;
     for (auto [i, v] : std::views::enumerate(r))
-        seen.emplace_back(i, v);
+        seen.emplace_back(i, v.as<imax>());
     ASSERT_TRUE((seen == std::vector<std::pair<imax, imax>>{{0, 0}, {1, 1}, {2, 2}, {3, 3}, {4, 4}}));
 }
 
@@ -178,7 +178,7 @@ TEST(RangeTest, inside_range_with_std_views_stride) {
     auto       collect = [&](imax step) {
         std::vector<imax> seen;
         for (auto v : r | std::views::stride(step))
-            seen.push_back(v);
+            seen.push_back(v.as<imax>());
         return seen;
     };
     ASSERT_TRUE((collect(1) == std::vector<imax>{0, 1, 2, 3, 4}));

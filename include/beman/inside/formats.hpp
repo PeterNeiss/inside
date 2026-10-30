@@ -27,8 +27,8 @@ namespace beman::inside {
 using uint8  = inside<{0, 255}>;
 using uint16 = inside<{0, 65535}>;
 using uint32 = inside<{0, 4294967295}>;
-// uint64 reaches past int64, so it has no implicit `operator imax`; read it
-// with `to<std::uint64_t>()`. A difference of two uint64s spans 2^65 values and
+// uint64 reaches past int64: read it with `to<std::uint64_t>()` or
+// `as<std::uint64_t>()`. A difference of two uint64s spans 2^65 values and
 // gets a wide-integer index.
 using uint64 = inside<{0, 18446744073709551615u}>;
 

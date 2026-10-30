@@ -19,26 +19,25 @@ out with `numerator()` and `denominator()`.
 
 | Conversion | When | For |
 |---|---|---|
-| `operator imax()` (implicit) | the values are integers, or the policy rounds (then rounded by its mode); the range fits `int64` | integer contexts: `imax v = b`, comparisons, indexing (`vec[b]` goes imax → `size_t`) |
 | `operator rational()` (implicit) | the values fit a 64-bit fraction | exact use as a `rational` |
 | `operator double()` (explicit) | the policy has a rounding mode (`round_*` or `snap`) | floating point, `printf` |
 
-There is only one implicit integer conversion. A second one (`size_t`) would
-make `imax_var += b` ambiguous. With `-Wsign-conversion`, an index site warns
-about the imax → `size_t` step.
+There is no conversion to a built-in integer. An implicit one would narrow
+silently, `int i = b;` on a grid past `int`, and `unsigned char c = b;` on a
+grid below 0. Read an integer with `as<T>()` or `to<T>()`, which name `T` and
+check what `T` cannot hold. Where `T` holds the whole grid no check is left,
+so an index costs nothing:
 
 ```cpp
 inside<{0, 100}> b{42};
 if (b == 42) { /* … */ }      // compares with a scalar, exactly
-imax v = b;                   // implicit: integer grid
+imax v = b.as<imax>();        // every value fits: no check
 std::vector<int> vec(101);
-vec[b] = 0;                   // imax, then size_t
+vec[b.as<std::size_t>()] = 0; // an index, named
 
 inside<{{0, 1}, per<1024>}, round_nearest> g{0.25};
 double e = double(g);         // explicit: g's policy rounds
 ```
-
-A grid past `int64` has no implicit `imax`: read it with `to<T>()`.
 
 ## Named extraction: `to<T>()` and `as<T>()`
 

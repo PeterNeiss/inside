@@ -174,8 +174,8 @@ TEST(BugHunt20261012, wrap_folds_past_the_rational) {
 }
 
 // Operations are constrained on having a result: a probe sees the answer,
-// and an integer inside does not fall back on its imax conversion (or an
-// inside on its point-grid conversion) when its own operator is out.
+// and an inside does not fall back on its rational conversion (or on its
+// point-grid conversion) when its own operator is out.
 namespace {
 template <class A, class B>
 constexpr bool can_add = requires(A a, B b) { a + b; };

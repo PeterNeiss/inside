@@ -149,11 +149,11 @@ TEST(BugHuntRound7, to_value_on_a_coarse_int64_grid) {
     using A = inside<grid{{I64_MIN, I64_MAX - 1}, 2}>;
     static_assert([] {
         constexpr A x = I64_MAX - 1;
-        return static_cast<I64>(x) == I64_MAX - 1 && x.to<I64>() == I64_MAX - 1;
+        return x.as<I64>() == I64_MAX - 1 && x.to<I64>() == I64_MAX - 1;
     }());
     A y = I64_MIN;
     y   = I64_MAX - 1;
-    EXPECT_EQ(static_cast<I64>(y), I64_MAX - 1);
+    EXPECT_EQ(y.as<I64>(), I64_MAX - 1);
 }
 
 // The raw += / -= fast paths added R's raw and the bias before the delta

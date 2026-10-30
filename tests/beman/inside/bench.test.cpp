@@ -832,9 +832,9 @@ static void bench_store_convert() {
         int v = ni[i & kMask];
         doNotOptimizeAway(v);
     });
-    conv.run("static_cast<imax> (integer grid)", [&] {
+    conv.run("as<imax> (integer grid)", [&] {
         ++i;
-        doNotOptimizeAway(static_cast<imax>(bi[i & kMask]));
+        doNotOptimizeAway(bi[i & kMask].as<imax>());
     });
     conv.run("to<uint8_t> (expected)", [&] {
         ++i;

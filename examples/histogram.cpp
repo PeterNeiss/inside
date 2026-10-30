@@ -73,18 +73,17 @@ int main() {
         // `clamp` folds 100 ms, whose quotient 10 floors to 10, into the last bin.
         const auto bin = div_into<bin_index_t>(lat, just<10> * ms);
         // `clamp_counter` saturates on `++`, so the bar caps at 9 — no manual guard.
-        ++bins[bin];
+        ++bins[bin.as<std::size_t>()];
     }
 
-    // values<bin_index_t> iterates every bin index. The implicit `operator imax()`
-    // (plus the standard imax → size_t conversion) lets `bins[b]` index the
-    // vector without an explicit `.as<>()`.
+    // values<bin_index_t> iterates every bin index; `b.as<std::size_t>()` reads
+    // it as an index, with no check left (every bin index fits a size_t).
     using bin_label_t = quantity<ms, inside<{0, 99}>>;
     std::cout << "bin          count\n";
     for (bin_index_t b : values<bin_index_t>) {
         bin_label_t lo{b * (just<10> * ms)}; // {0,9}×{10,10} ms → {0,90} ms, fits statically
         bin_label_t hi{lo + just<9> * ms};   // widened then narrowed to bin_label_t
-        std::cout << " " << lo << "-" << hi << "  " << bins[b] << "\n";
+        std::cout << " " << lo << "-" << hi << "  " << bins[b.as<std::size_t>()] << "\n";
     }
 
     std::cout << "\nrejected outliers: " << rejected << "\n";
