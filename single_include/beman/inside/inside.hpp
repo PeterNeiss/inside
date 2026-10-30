@@ -3962,7 +3962,7 @@ concept error_action = is_error_action<std::remove_cvref_t<T>>::value;
 
 //---------------------------------------------------------------------------
 // implied_flags<A> — single source of truth for "this action requires these
-// policy bits". Used by inside::on_* and with(...).
+// policy bits". Used by inside::on_*.
 //---------------------------------------------------------------------------
 template <typename T>
 inline constexpr policy_flag implied_flags = none;
@@ -3981,14 +3981,6 @@ inline constexpr policy_flag implied_flags<on_error_t<F>> = checked;
 // True if any element of the pack matches the trait.
 template <template <typename> class Trait, typename... As>
 inline constexpr bool has_action = (Trait<std::remove_cvref_t<As>>::value || ... || false);
-
-// How many pack elements match.
-template <template <typename> class Trait, typename... As>
-inline constexpr unsigned count_action_matches = (0u + ... + (Trait<std::remove_cvref_t<As>>::value ? 1u : 0u));
-
-// OR of implied_flags<plain_t<A>> across the pack.
-template <typename... As>
-inline constexpr policy_flag merged_implied_flags = (none | ... | implied_flags<std::remove_cvref_t<As>>);
 
 // pick_action<Trait>(actions...) returns a reference to the first pack element
 // matching the trait, or to `fallback_action` if none does. Conflict
@@ -7858,9 +7850,9 @@ constexpr L& assign_grid_number(L& lhs, const big_rational& v, P&& policy) {
 //---------------------------------------------------------------------------
 namespace beman::inside {
 //---------------------------------------------------------------------------
-// policy_ref — variadic in actions (stores std::tuple<As...>). policy_ref
-// pre-picks the matching action per call path, so assignment keeps its
-// single-A signature.
+// policy_ref — variadic in actions (stores std::tuple<As...>; an on_* hook
+// gives one, a policy override none). policy_ref pre-picks the matching
+// action per call path, so assignment keeps its single-A signature.
 //---------------------------------------------------------------------------
 namespace detail {
 // The single assignment-time action among `actions` (at most one such tag is
@@ -7917,20 +7909,7 @@ struct policy_buffer {
 
 template <insidable B, typename P, typename... As>
 struct policy_ref {
-  private:
-    // Conflict diagnostics: at most one assignment-time tag (clamp / wrap /
-    // error), at most one of each kind, no clamp+wrap.
-    static constexpr unsigned ClampCount = count_action_matches<is_clamp_action, As...>;
-    static constexpr unsigned WrapCount  = count_action_matches<is_wrap_action, As...>;
-    static constexpr unsigned ErrorCount = count_action_matches<is_error_action, As...>;
-
-    static_assert(ClampCount + WrapCount + ErrorCount <= 1,
-                  "on_clamp / on_wrap / on_error are mutually exclusive in a single policy_ref");
-    static_assert(ClampCount <= 1, "duplicate on_clamp");
-    static_assert(WrapCount <= 1, "duplicate on_wrap");
-    static_assert(ErrorCount <= 1, "duplicate on_error");
-
-  public:
+    // (At most one action: each on_* hook makes a ref with its own.)
     B& Ref;
     P  Policy;
     // `[[no_unique_address]]` is load-bearing: each captureless action lambda
@@ -9454,17 +9433,6 @@ struct inside {
         return make_action_ref<on_error_t>(std::forward<A>(a));
     }
 
-    // Multi-action entry point: combine N tagged actions into one policy_ref.
-    // policy_ref rejects mutually exclusive combinations at compile time
-    // (on_clamp with on_wrap, two of one kind).
-    template <typename... Actions>
-    [[nodiscard]] constexpr auto with(Actions&&... actions) {
-        constexpr policy_flag merged = detail::merged_implied_flags<Actions...>;
-        auto                  pol    = make_policy<P | merged>();
-        return detail::policy_ref<inside, decltype(pol), std::remove_cvref_t<Actions>...>{
-            *this, pol, std::tuple<std::remove_cvref_t<Actions>...>{std::forward<Actions>(actions)...}};
-    }
-
   private:
     // Raw-space fast paths of += and -=. Each adds a delta to the raw: a
     // compile-time constant (point rhs), or ±rhs raw plus a constant bias.
@@ -10240,8 +10208,8 @@ namespace beman::inside {
 //   op(l, r, ec)          error-code form (checked, a zero divisor sets ec)
 // detail::arith normalizes the form to a policy for the op's core.
 //---------------------------------------------------------------------------
-#define BEMAN_INSIDE_WHY_arith_action                                                                                \
-    "add/sub/mul/div/mod take no hooks: on_clamp / on_wrap / on_error apply to a store - use them with b.with(...) " \
+#define BEMAN_INSIDE_WHY_arith_action                                                                             \
+    "add/sub/mul/div/mod take no hooks: on_clamp / on_wrap / on_error apply to a store - use b.on_clamp(f) etc. " \
     "or a cast"
 
 namespace detail {
@@ -10337,7 +10305,7 @@ inline constexpr policy_flag call_flags = [] {
     else if constexpr (std::same_as<Args...[0], errc&>)
         return checked;
     else
-        return merged_implied_flags<Args...>;
+        return none; // a hook: rejected below
 }();
 
 // Each op's well-formedness under flags F is detail::add_defined & co.

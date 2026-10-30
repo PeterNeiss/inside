@@ -195,16 +195,17 @@ TEST(PolicyActionsTest, on_error_action_receives_code_and_message) {
     ASSERT_EQ(e, 0);
 }
 
-// with(...): the sum overshoots the target, and the store back fires on_clamp.
-TEST(PolicyActionsTest, with_fires_on_clamp_on_the_store_back) {
+// A hook on a compound op: the sum overshoots the target, and the store back
+// fires on_clamp.
+TEST(PolicyActionsTest, compound_op_fires_on_clamp_on_the_store_back) {
     using c100 = inside<{0, 100}, checked>;
     c100 b{50};
     bool cl   = false;
     imax over = 0;
-    b.with(on_clamp([&](auto&, auto o) {
+    b.on_clamp([&](auto&, auto o) {
         cl   = true;
         over = o;
-    })) += 200_ins; // 50+200=250 overshoots [0,100]
+    }) += 200_ins; // 50+200=250 overshoots [0,100]
     ASSERT_TRUE(cl);
     ASSERT_EQ(over, 150);
     ASSERT_EQ(b, 100);

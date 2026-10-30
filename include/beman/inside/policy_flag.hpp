@@ -175,7 +175,7 @@ concept error_action = is_error_action<std::remove_cvref_t<T>>::value;
 
 //---------------------------------------------------------------------------
 // implied_flags<A> — single source of truth for "this action requires these
-// policy bits". Used by inside::on_* and with(...).
+// policy bits". Used by inside::on_*.
 //---------------------------------------------------------------------------
 template <typename T>
 inline constexpr policy_flag implied_flags = none;
@@ -194,14 +194,6 @@ inline constexpr policy_flag implied_flags<on_error_t<F>> = checked;
 // True if any element of the pack matches the trait.
 template <template <typename> class Trait, typename... As>
 inline constexpr bool has_action = (Trait<std::remove_cvref_t<As>>::value || ... || false);
-
-// How many pack elements match.
-template <template <typename> class Trait, typename... As>
-inline constexpr unsigned count_action_matches = (0u + ... + (Trait<std::remove_cvref_t<As>>::value ? 1u : 0u));
-
-// OR of implied_flags<plain_t<A>> across the pack.
-template <typename... As>
-inline constexpr policy_flag merged_implied_flags = (none | ... | implied_flags<std::remove_cvref_t<As>>);
 
 // pick_action<Trait>(actions...) returns a reference to the first pack element
 // matching the trait, or to `fallback_action` if none does. Conflict

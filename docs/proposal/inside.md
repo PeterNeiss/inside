@@ -398,10 +398,9 @@ what it did. `b.on_wrap(f) += x` stores into `b` with `f` wired in:
 
 `f` receives the destination by reference and may change it. An action implies
 its flag (`on_clamp` adds `clamp`, `on_wrap` adds `wrap`). A store takes one
-of the three paths, so one action is given at most; `b.with(a)` takes it as a
-value. The arithmetic functions take no actions: they cannot fail but for a
-zero divisor, which stays in the `expected`. An action that is not used costs
-nothing.
+of the three paths, so a proxy carries one action. The arithmetic functions
+take no actions: they cannot fail but for a zero divisor, which stays in the
+`expected`. An action that is not used costs nothing.
 
 ## Generic code
 
@@ -492,7 +491,6 @@ namespace std {
     constexpr @*store-proxy*@ with_clamp();
     constexpr @*store-proxy*@ with_wrap();
     template<class F> constexpr @*store-proxy*@ on_clamp(F f);  // also on_wrap, on_error
-    template<class A> constexpr @*store-proxy*@ with(A action);
 
     constexpr inside<-G, P> operator-() const;
     constexpr inside& operator++();                       // one notch
@@ -542,11 +540,6 @@ namespace std {
   template<class Q, class R> struct divmod_result { Q Quotient; R Remainder; };
   template<class L, class R, class... Args>
     constexpr auto divmod(const L&, const R&, Args&&...);     // divmod_result, or expected of it
-
-  // actions
-  template<class F> constexpr @*action*@ on_clamp(F f);           // f(inside&, overshoot)
-  template<class F> constexpr @*action*@ on_wrap(F f);            // f(inside&, carry)
-  template<class F> constexpr @*action*@ on_error(F f);           // f(inside&, errc, const char*)
 
   // generic code
   template<grid G, policy_flag P> struct numeric_limits<inside<G, P>>;

@@ -31,8 +31,8 @@ namespace beman::inside {
 //   op(l, r, ec)          error-code form (checked, a zero divisor sets ec)
 // detail::arith normalizes the form to a policy for the op's core.
 //---------------------------------------------------------------------------
-#define BEMAN_INSIDE_WHY_arith_action                                                                                \
-    "add/sub/mul/div/mod take no hooks: on_clamp / on_wrap / on_error apply to a store - use them with b.with(...) " \
+#define BEMAN_INSIDE_WHY_arith_action                                                                             \
+    "add/sub/mul/div/mod take no hooks: on_clamp / on_wrap / on_error apply to a store - use b.on_clamp(f) etc. " \
     "or a cast"
 
 namespace detail {
@@ -128,7 +128,7 @@ inline constexpr policy_flag call_flags = [] {
     else if constexpr (std::same_as<Args...[0], errc&>)
         return checked;
     else
-        return merged_implied_flags<Args...>;
+        return none; // a hook: rejected below
 }();
 
 // Each op's well-formedness under flags F is detail::add_defined & co.

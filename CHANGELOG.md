@@ -43,6 +43,8 @@ The library without pre-C++26 compatibility, kept in sync with main.
   right-hand side past 64 bits) goes to `on_error`, else the policy. `/` by a
   zero-free divisor is never `expected`: `just<1e30_g> / just<3>` is a plain
   point.
+- `x.with(hooks...)` is removed: a store takes one hook, so it repeated
+  `x.on_clamp(f)`, `x.on_wrap(f)` and `x.on_error(f)`.
 
 - `std::common_type` (and `common_inside_t`, `min`, `max`) of two insides
   keeps the policy they share; only different policies give `checked`.

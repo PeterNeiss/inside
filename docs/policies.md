@@ -141,16 +141,13 @@ p.on_wrap([&](auto&, auto) { ++wraps; }) += 65.5_ins;
 // p == 1.4375 (65.5 − 1025/16: the period is the span plus one notch), wraps == 1
 ```
 
-### A hook as a value: `with(...)`
-
-`x.with(hook)` takes the hook as a value (`on_clamp(f)`, `on_wrap(f)`,
-`on_error(f)`), for code that passes hooks around. The three are exclusive,
-so a store has at most one.
+A store takes one hook: clamping, wrapping and failing are different outcomes
+of the same store. On a compound assignment the hook acts on the store back:
 
 ```cpp
 inside<{0, 100}> acc{50};
 inside<{0, 1000}> big{900};
-acc.with(on_clamp([&](auto&, auto over) { log_overshoot(over); })) += big;
+acc.on_clamp([&](auto&, auto over) { log_overshoot(over); }) += big;
 // acc == 100, overshoot 850
 ```
 

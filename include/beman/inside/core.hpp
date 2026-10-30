@@ -533,17 +533,6 @@ struct inside {
         return make_action_ref<on_error_t>(std::forward<A>(a));
     }
 
-    // Multi-action entry point: combine N tagged actions into one policy_ref.
-    // policy_ref rejects mutually exclusive combinations at compile time
-    // (on_clamp with on_wrap, two of one kind).
-    template <typename... Actions>
-    [[nodiscard]] constexpr auto with(Actions&&... actions) {
-        constexpr policy_flag merged = detail::merged_implied_flags<Actions...>;
-        auto                  pol    = make_policy<P | merged>();
-        return detail::policy_ref<inside, decltype(pol), std::remove_cvref_t<Actions>...>{
-            *this, pol, std::tuple<std::remove_cvref_t<Actions>...>{std::forward<Actions>(actions)...}};
-    }
-
   private:
     // Raw-space fast paths of += and -=. Each adds a delta to the raw: a
     // compile-time constant (point rhs), or ±rhs raw plus a constant bias.

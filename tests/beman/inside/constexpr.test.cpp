@@ -436,8 +436,8 @@ TEST(ConstexprTest, constexpr_inside_range_on_fractional_notch_grid) {
 //---------------------------------------------------------------------------
 // policy machinery
 //---------------------------------------------------------------------------
-// constexpr: implied_flags / merged_implied_flags
-TEST(ConstexprTest, constexpr_implied_flags_merged_implied_flags) {
+// constexpr: implied_flags
+TEST(ConstexprTest, constexpr_implied_flags) {
     auto noop  = [](auto&, auto) {};
     auto noerr = [](auto&, errc) {};
 
@@ -448,9 +448,6 @@ TEST(ConstexprTest, constexpr_implied_flags_merged_implied_flags) {
     static_assert(implied_flags<clamp_tag> == clamp);
     static_assert(implied_flags<wrap_tag> == wrap);
     static_assert(implied_flags<error_tag> == checked);
-
-    // OR-merge across the pack
-    static_assert(merged_implied_flags<clamp_tag, error_tag> == (clamp | checked));
 }
 
 // constexpr: is_policy_v / uses_error_ref

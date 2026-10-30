@@ -20,9 +20,9 @@
 //---------------------------------------------------------------------------
 namespace beman::inside {
 //---------------------------------------------------------------------------
-// policy_ref — variadic in actions (stores std::tuple<As...>). policy_ref
-// pre-picks the matching action per call path, so assignment keeps its
-// single-A signature.
+// policy_ref — variadic in actions (stores std::tuple<As...>; an on_* hook
+// gives one, a policy override none). policy_ref pre-picks the matching
+// action per call path, so assignment keeps its single-A signature.
 //---------------------------------------------------------------------------
 namespace detail {
 // The single assignment-time action among `actions` (at most one such tag is
@@ -79,20 +79,7 @@ struct policy_buffer {
 
 template <insidable B, typename P, typename... As>
 struct policy_ref {
-  private:
-    // Conflict diagnostics: at most one assignment-time tag (clamp / wrap /
-    // error), at most one of each kind, no clamp+wrap.
-    static constexpr unsigned ClampCount = count_action_matches<is_clamp_action, As...>;
-    static constexpr unsigned WrapCount  = count_action_matches<is_wrap_action, As...>;
-    static constexpr unsigned ErrorCount = count_action_matches<is_error_action, As...>;
-
-    static_assert(ClampCount + WrapCount + ErrorCount <= 1,
-                  "on_clamp / on_wrap / on_error are mutually exclusive in a single policy_ref");
-    static_assert(ClampCount <= 1, "duplicate on_clamp");
-    static_assert(WrapCount <= 1, "duplicate on_wrap");
-    static_assert(ErrorCount <= 1, "duplicate on_error");
-
-  public:
+    // (At most one action: each on_* hook makes a ref with its own.)
     B& Ref;
     P  Policy;
     // `[[no_unique_address]]` is load-bearing: each captureless action lambda
