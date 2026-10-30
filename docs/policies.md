@@ -107,11 +107,14 @@ A hook you do not use costs nothing.
 | `on_clamp(f)` | a stored value leaves the range and is saturated | `f(x, overshoot)` |
 | `on_wrap(f)` | a stored value leaves the range and is folded back | `f(x, carry)`; the carry is an inside |
 | `on_error(f)` | a checked store fails (`overflow`, `rounding_error`); replaces the throw | `f(x, errc, const char* message)` |
-| `on_overflow(f)` | arithmetic fails: a division by 0, or a result past 64-bit numbers | `f(x, errc)` |
+| `on_overflow(f)` | an arithmetic result does not fit its storage | `f(x, errc)` |
 
 The first three act on the store. `on_overflow` acts on the arithmetic before
 it: the free `add`/`sub`/`mul`/`div`/`mod` and the operators inside a compound
-assignment. `f` gets `x` by reference, so it can change the stored value.
+assignment. `f` gets `x` by reference, so it can change the stored value. A
+division by zero is no overflow: the free functions return it as
+`unexpected(errc::division_by_zero)`, as `/` does, and a compound `/=` or `%=`
+reports it through `on_error` (or skips it under `ignore_zero`).
 
 ```cpp
 using sec = inside<{0, 59}, wrap>;
@@ -140,14 +143,13 @@ p.on_wrap([&](auto&, auto) { ++wraps; }) += 65.5_ins;
 // p == 1.4375 (65.5 − 1025/16: the period is the span plus one notch), wraps == 1
 ```
 
-The free functions take the same factories, to catch a division by zero
-without a throw:
+The free functions take `on_overflow` too, for a result that does not fit;
+a zero divisor stays in the `expected`:
 
 ```cpp
-auto q = div(d, z, on_overflow([&](auto& result, errc e) {
-    result = std::remove_cvref_t<decltype(result)>{0};
-    log(e);
-}));
+auto q = div(d, z, on_overflow([&](auto& result, errc e) { log(e); }));
+if (!q) // q.error() == errc::division_by_zero
+    ...
 ```
 
 ### Several hooks at once: `with(...)`

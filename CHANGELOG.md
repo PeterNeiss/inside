@@ -35,6 +35,10 @@ The library without pre-C++26 compatibility, kept in sync with main.
 - The umbrella `inside.hpp` includes `numeric_limits.hpp`: without it a TU
   silently got the primary `std::numeric_limits` for an inside, and an ODR
   violation beside a TU that had the specialization.
+- `on_overflow` takes only a result that does not fit. A zero divisor in
+  the free `div`, `mod` and `divmod` stays in the returned `expected`, as for
+  `/` (it reached `on_overflow` before, while `x.on_overflow(f) /= 0` sent it
+  to `on_error`).
 
 ### Removed
 

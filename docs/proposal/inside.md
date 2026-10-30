@@ -386,7 +386,7 @@ what it did. `b.on_wrap(f) += x` stores into `b` with `f` wired in:
 | `on_clamp(f)` | a stored value leaves the range and is saturated | `f(b, overshoot)` |
 | `on_wrap(f)` | a stored value leaves the range and is folded back | `f(b, carry)`; the carry is an `inside` whose grid holds every possible carry |
 | `on_error(f)` | a checked store fails; replaces the exception | `f(b, errc, message)` |
-| `on_overflow(f)` | an arithmetic operation fails | `f(b, errc)` |
+| `on_overflow(f)` | an arithmetic result does not fit its storage; a zero divisor is not such a failure | `f(b, errc)` |
 
 `f` receives the destination by reference and may change it. An action implies
 its flag (`on_clamp` adds `clamp`, `on_wrap` adds `wrap`), and several combine
@@ -570,7 +570,7 @@ namespace std {
 | `checked_cast<B>(v)` | `v` | throws `inside_error` (`overflow`, `rounding_error`) |
 | `unchecked_cast<B>(v)` | `v` | precondition: `v` fits |
 | `conversion_overflows<B>(v)`, `conversion_rounds<B>(v)` | what `B{v}` would report or round | a rounding that brings `v` in is a rounding |
-| `op(a, b, policy)` (`op` one of `add` … `mod`) | `a op b`, the store and the division under `P | F` | `errc&`: failures set it; `on_overflow(f)`: `f` takes them |
+| `op(a, b, policy)` (`op` one of `add` … `mod`) | `a op b`, the store and the division under `P | F` | `errc&`: failures set it; `on_overflow(f)`: `f` takes a result that does not fit (a zero divisor stays in the `expected`) |
 | `divmod(a, b, …)` | `{q, r}`, `q·b + r == a` | as `/` and `%` |
 | `b.with_clamp() = v` etc. | stores `v` into `b` under `P | F` | an rvalue's proxy converts to any `inside` the value fits |
 | `b.on_wrap(f) += v` etc. | `b += v`, `f` called when the policy acts | ill-formed: two of `on_clamp`, `on_wrap`, `on_error`, or two of one kind |

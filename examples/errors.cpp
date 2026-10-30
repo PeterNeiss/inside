@@ -54,8 +54,8 @@ int main() {
 
     // === Section 3: Every errc value gets a demo ===
     // overflow (out of range) already shown in Sections 1-2. Now: rounding_error (via
-    // on_error), overflow and division_by_zero (via on_overflow — the channel
-    // arithmetic operations use for these two codes).
+    // on_error) and division_by_zero (in the expected a division returns: a zero
+    // divisor is no overflow, so on_overflow does not take it).
 
     coarse c(0);
     c.on_error([](auto& self, errc code, std::string_view msg) {
@@ -64,10 +64,10 @@ int main() {
     }) = 3.0; // 3 doesn't land on the notch-2 grid
     std::cout << "          (c=" << c << ")" << "\n";
 
-    auto q = div(checked_100(10), checked_100(0), on_overflow([](auto& res, errc code) {
-                     std::cout << "div/0:    [" << errc_message(code) << "] -> recover to 0" << "\n";
-                     res = std::remove_cvref_t<decltype(res)>{0};
-                 }));
+    const auto quotient = div(checked_100(10), checked_100(0));
+    if (!quotient)
+        std::cout << "div/0:    [" << errc_message(quotient.error()) << "] -> recover to 0" << "\n";
+    const auto q = quotient.value_or(std::remove_cvref_t<decltype(*quotient)>{0});
     std::cout << "          (q=" << q << ")" << "\n";
 
     // === Section 4: Free-function errc& overload ===

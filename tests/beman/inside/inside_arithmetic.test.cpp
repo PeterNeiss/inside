@@ -297,10 +297,12 @@ TEST(InsideArithmeticTest, inside_action_first_arithmetic_overloads) {
                      seen  = c;
                      res   = std::remove_cvref_t<decltype(res)>{0};
                  }));
-    (void)q;
 
-    ASSERT_TRUE(fired);
-    ASSERT_EQ(seen, errc::division_by_zero);
+    // on_overflow means "does not fit": a zero divisor goes to the result.
+    ASSERT_FALSE(fired);
+    ASSERT_EQ(seen, errc{});
+    ASSERT_FALSE(q.has_value());
+    ASSERT_EQ(q.error(), errc::division_by_zero);
 
     // No-action default: errc::division_by_zero
     auto q_def = div(d, z);

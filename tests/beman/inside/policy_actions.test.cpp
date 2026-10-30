@@ -230,9 +230,11 @@ TEST(PolicyActionsTest, free_fn_pack_form) {
                      seen = c;
                      res  = std::remove_cvref_t<decltype(res)>{1};
                  }));
-    (void)q;
-    ASSERT_TRUE(of);
-    ASSERT_EQ(seen, errc::division_by_zero);
+    // A zero divisor is no overflow: the action stays silent and the result
+    // reports it, as `/` does.
+    ASSERT_FALSE(of);
+    ASSERT_FALSE(q.has_value());
+    ASSERT_EQ(q.error(), errc::division_by_zero);
 
     // SFINAE positive cases: pack with on_overflow must bind. The negative case
     // (pack without on_overflow) is enforced by the overload's `requires` clause
@@ -244,8 +246,8 @@ TEST(PolicyActionsTest, free_fn_pack_form) {
     // rejected (static_assert; see fail/arith_unused_action.cpp).
 }
 
-// mod free-fn with on_overflow recovers from div/0
-TEST(PolicyActionsTest, mod_free_fn_with_on_overflow_recovers_from_div_0) {
+// mod free-fn: on_overflow does not take a zero divisor, the result reports it
+TEST(PolicyActionsTest, mod_free_fn_on_overflow_leaves_div_0_to_the_result) {
     using u100ic = inside<{0, 100}, checked | snap>;
     u100ic l{7}, r{0};
     bool   fired = false;
@@ -253,8 +255,9 @@ TEST(PolicyActionsTest, mod_free_fn_with_on_overflow_recovers_from_div_0) {
                      fired = true;
                      res   = std::remove_cvref_t<decltype(res)>{0};
                        }));
-    (void)m;
-    ASSERT_TRUE(fired);
+    ASSERT_FALSE(fired);
+    ASSERT_FALSE(m.has_value());
+    ASSERT_EQ(m.error(), errc::division_by_zero);
 }
 
 // free-fn div with beman::inside::errc& sets ec on div/0 / success path leaves ec clear
