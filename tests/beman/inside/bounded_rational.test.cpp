@@ -140,3 +140,17 @@ TEST(BoundedRationalTest, abs_copysign_fmod_keep_the_bound) {
     static_assert(grid_of<std::remove_cvref_t<decltype(r)>>.MaxDenominator == 7);
     EXPECT_TRUE(lift_unwrap(r) == rational(-5, 3));
 }
+
+// A bounded continuous result holds every exact sum and product: where the
+// 64-bit kernels' intermediates pass 64 bits (each operand over D_L·D_R
+// here), the op computes exactly in wide integers. No check, no expected.
+TEST(BoundedRationalTest, bounded_results_are_total_past_64_bit_intermediates) {
+    using L = inside<{{1ull << 40, (1ull << 40) + 1}, max_denominator{4096}}>;
+    using R = inside<{{-((1ll << 40) + 1), -(1ll << 40)}, max_denominator{4096}}>;
+    constexpr L    a{(rational{1ull << 40} + rational{1, 3}).value()};
+    constexpr R    b{-(1ll << 40)};
+    constexpr auto s = a + b;
+    static_assert(insidable<decltype(s)>); // a plain value
+    static_assert(s == rational{1, 3});
+    EXPECT_EQ(static_cast<rational>(a - (-b)), (rational{1, 3}));
+}

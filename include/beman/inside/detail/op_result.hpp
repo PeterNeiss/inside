@@ -44,9 +44,18 @@ inline constexpr bool exact_fits = [] {
 // policy (a continuous operand bounds no denominator).
 template <exact_op Op, insidable Result, insidable L, insidable R, policy_flag F>
 inline constexpr bool lattice_op_checked =
-    !exact_fits<Op, Result, L, R> &&
+    !exact_fits<Op, Result, L, R> && grid_of<Result>.MaxDenominator == 0 && // bounded: exact_path_fits
     (fraction_storage<Result> ||
      (rational_storage<Result> && (has_any_flag(F, checked) || is_checked(flags_of<L>) || is_checked(flags_of<R>))));
+
+// A bounded continuous Result holds every exact result of + and ×: its
+// raw is sized from its bound. Only the 64-bit kernels' intermediates (each
+// operand over the common denominator) may pass 64 bits, so where exact_fits
+// is false the op computes exactly in wide integers and stores that — no
+// check, no expected.
+template <exact_op Op, insidable Result, insidable L, insidable R>
+inline constexpr bool exact_path_fits =
+    rational_storage<Result> && grid_of<Result>.MaxDenominator != 0 && !exact_fits<Op, Result, L, R>;
 
 // `x * just<c>` and `x / just<c>` (c != 0): the result lattice is x's lattice
 // scaled by c or 1/c (grid operator* / operator/), so the result offset IS x's

@@ -43,7 +43,9 @@ struct addition {
                 if (!sum) [[unlikely]]
                     return report_or_unexpected<result>(action, policy, errc::overflow);
             return result::from_raw(*sum);
-        } else if constexpr (rational_storage<result>) {
+        } else if constexpr (exact_path_fits<exact_op::add, result, L, R>)
+            return result::from_raw(*try_rational(exact_of(lhs) + exact_of(rhs)));
+        else if constexpr (rational_storage<result>) {
             if constexpr (needs_overflow_check<F>) {
                 auto sum = as_rational(lhs) + as_rational(rhs);
                 if (!sum) [[unlikely]]

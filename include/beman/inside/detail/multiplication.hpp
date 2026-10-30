@@ -44,7 +44,9 @@ struct multiplication {
                 if (!prod) [[unlikely]]
                     return report_or_unexpected<result>(action, policy, errc::overflow);
             return result::from_raw(*prod);
-        } else if constexpr (rational_storage<result>) {
+        } else if constexpr (exact_path_fits<exact_op::mul, result, L, R>)
+            return result::from_raw(*try_rational(exact_of(lhs) * exact_of(rhs)));
+        else if constexpr (rational_storage<result>) {
             if constexpr (needs_overflow_check<F>) {
                 auto prod = as_rational(lhs) * as_rational(rhs);
                 if (!prod) [[unlikely]]

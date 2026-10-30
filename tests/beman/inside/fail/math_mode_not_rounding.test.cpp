@@ -5,6 +5,4 @@
 
 using namespace beman::inside;
 
-int main() {
-    (void)math::exp<clamp>(inside<{{1, 16}, per<64>}>{2});
-}
+int main() { (void)math::exp<clamp>(inside<{{1, 16}, per<64>}>{2}); }

@@ -8170,9 +8170,18 @@ inline constexpr bool exact_fits = [] {
 // policy (a continuous operand bounds no denominator).
 template <exact_op Op, insidable Result, insidable L, insidable R, policy_flag F>
 inline constexpr bool lattice_op_checked =
-    !exact_fits<Op, Result, L, R> &&
+    !exact_fits<Op, Result, L, R> && grid_of<Result>.MaxDenominator == 0 && // bounded: exact_path_fits
     (fraction_storage<Result> ||
      (rational_storage<Result> && (has_any_flag(F, checked) || is_checked(flags_of<L>) || is_checked(flags_of<R>))));
+
+// A bounded continuous Result holds every exact result of + and ×: its
+// raw is sized from its bound. Only the 64-bit kernels' intermediates (each
+// operand over the common denominator) may pass 64 bits, so where exact_fits
+// is false the op computes exactly in wide integers and stores that — no
+// check, no expected.
+template <exact_op Op, insidable Result, insidable L, insidable R>
+inline constexpr bool exact_path_fits =
+    rational_storage<Result> && grid_of<Result>.MaxDenominator != 0 && !exact_fits<Op, Result, L, R>;
 
 // `x * just<c>` and `x / just<c>` (c != 0): the result lattice is x's lattice
 // scaled by c or 1/c (grid operator* / operator/), so the result offset IS x's
@@ -8223,7 +8232,9 @@ struct addition {
                 if (!sum) [[unlikely]]
                     return report_or_unexpected<result>(action, policy, errc::overflow);
             return result::from_raw(*sum);
-        } else if constexpr (rational_storage<result>) {
+        } else if constexpr (exact_path_fits<exact_op::add, result, L, R>)
+            return result::from_raw(*try_rational(exact_of(lhs) + exact_of(rhs)));
+        else if constexpr (rational_storage<result>) {
             if constexpr (needs_overflow_check<F>) {
                 auto sum = as_rational(lhs) + as_rational(rhs);
                 if (!sum) [[unlikely]]
@@ -8300,7 +8311,9 @@ struct multiplication {
                 if (!prod) [[unlikely]]
                     return report_or_unexpected<result>(action, policy, errc::overflow);
             return result::from_raw(*prod);
-        } else if constexpr (rational_storage<result>) {
+        } else if constexpr (exact_path_fits<exact_op::mul, result, L, R>)
+            return result::from_raw(*try_rational(exact_of(lhs) * exact_of(rhs)));
+        else if constexpr (rational_storage<result>) {
             if constexpr (needs_overflow_check<F>) {
                 auto prod = as_rational(lhs) * as_rational(rhs);
                 if (!prod) [[unlikely]]
