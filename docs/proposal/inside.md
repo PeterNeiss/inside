@@ -19,36 +19,33 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Abstract
 
 We propose a class template `inside<grid, policy>` for numbers whose interval
-and step size (*notch*, an exact rational) are compile-time properties of the
-type. Arithmetic computes its result grid at compile time, so `+`, `-` and `*`
-cannot overflow. Division is exact unless the type names a rounding, and it
-returns a failure value only where the operand grids allow one. What a store
-into a narrower grid does (check, clamp, wrap or round) is part of the
-declaration.
+and step size (the *notch*, an exact rational) are compile-time properties of
+the type. Arithmetic computes its result grid at compile time, so `+`, `-` and
+`*` on a lattice cannot overflow. Division is exact unless the type names a
+rounding, and it returns a failure value only where the operand grids allow
+one. What a store into a narrower grid does (check, clamp, wrap or round) is
+part of the declaration. A single call or a single store can name another
+policy, and an action can observe what the policy did: the overshoot of a
+clamp, the carry of a wrap. Named conversions, `std::numeric_limits`,
+`std::hash` and `std::common_type` complete the type for generic code.
 
-The proposal has three layers. The first is the number: the type, its grid,
-the policies and the operators. The second is quantities:
-`quantity<unit, inside>`, which follows the model of mp-units [@P3045R9] with
-an `inside` as the only representation. Because a grid is a compile-time
-value, a unit conversion rescales the grid and keeps the stored integer, so it
-is exact, cannot fail, and costs nothing at run time. The third is math: the
-functions of `<cmath>` on an `inside`, each returning the correctly rounded
-point of its output grid. The result is the same at compile time and at run
-time, on every platform, with or without an FPU. `sin(x)` deduces its output
-grid from the input; `sin_into<Out>(x)` names it. Text conversion and the
-convenience functions of the reference implementation are left to later
-papers ([Future work](#future-work)).
+This is the first of three papers, and it stands alone. Two companion papers
+build on it: [*Quantities on
+`inside`*](https://github.com/PeterNeiss/inside/blob/pureCPP26/docs/proposal/quantity.md)
+puts units on the number, and [*Correctly rounded math for `inside` and
+quantities*](https://github.com/PeterNeiss/inside/blob/pureCPP26/docs/proposal/math.md)
+adds the functions of `<cmath>`.
 
-The reference implementation is [beman.inside
-v0.5.0](https://github.com/PeterNeiss/inside/tree/v0.5.0). A long-form
-motivation with compiled exhibits is [*int considered
+The reference implementation is the `pureCPP26` branch of
+[beman.inside](https://github.com/PeterNeiss/inside/tree/pureCPP26). A
+long-form motivation with compiled exhibits is [*int considered
 harmful*](https://github.com/PeterNeiss/inside/blob/v0.5.0/docs/int-considered-harmful.pdf)
 (the *paper* below).
 
 # Motivation
 
-The built-in integer types carry no range, no unit and no failure value. The
-paper reproduces eleven consequences with compiled programs:
+The built-in integer types carry no range and no failure value. The paper
+reproduces eleven consequences with compiled programs:
 
 - signed overflow that lets the optimiser delete range checks, and in one
   exhibit the whole of `main`;
@@ -63,27 +60,18 @@ drift, non-associativity and `NaN`.
 
 Each existing defence recovers part of the missing information.
 
-- Sanitizers find overflow at runtime, in instrumented builds.
+- Sanitizers find overflow at run time, in instrumented builds.
 - `-fwrapv` makes the wrong answer reliable.
-- Checked-integer libraries detect overflow, but not units, rounding, or a range
+- Checked-integer libraries detect overflow, but not rounding, or a range
   narrower than the underlying type.
 - C++26 saturation arithmetic ([@P0543R3]) picks one edge policy for the full
   range of a built-in type.
-- Units libraries catch the dimension error (the Mars Climate Orbiter's
-  pound-force seconds read as newton seconds), but on an `int` or `double`
-  representation a conversion can overflow or round.
 
-What each of them lacks is the same: the range a value may occupy, its scale,
-the rounding rule and the edge behaviour. `inside` records all four in the type,
-where the compiler can act on them, and the unit layer adds the fifth: what the
-number counts.
-
-The same holds for functions. `std::sin` on a `double` is not required to be
-correctly rounded, so its result can differ between platforms, between
-compile time and run time, and between library versions, and its precision is
-the `double`'s, whatever the program needs. The math layer takes the precision
-from the output's grid and fixes the result to one value: the nearest point,
-or the one the output's rounding mode selects.
+What each of them lacks is the same: the range a value may occupy, its step,
+the rounding rule and the edge behaviour. `inside` records all four in the
+type, where the compiler can act on them. Because the compiler knows the range
+of every operand, it knows the range of every result, and most checks become
+proofs.
 
 # A tour
 
@@ -170,42 +158,64 @@ auto f = whole{7} / some{3};               // 2: rounding named in the type
 auto m = whole{7} % some{3};               // 1, consistent: 2·3 + 1 == 7
 ```
 
-**A quantity carries its unit, and a conversion rescales the grid.**
+**A conversion names what it does with a value that does not fit.**
 
-<!-- listing: units -->
+<!-- listing: convert -->
 ```cpp
-quantity<si::kilo(si::metre), inside<{{0, 500}, per<1000>}>> trip{12.5};
-auto m = trip.in(si::metre);                     // 12500 m: the same raw, grid × 1000
-static_assert(grid_of<decltype(m)::rep> == grid{0, 500'000});
+using level  = inside<{0, 10}>;
+using sensor = inside<{0, 1000}>;
+sensor raw   = 725;
 
-auto room = point<si::degree_Celsius>(inside<{{-50, 50}, per<10>}>{20});
-auto k    = room.point_for(si::absolute_zero).in(si::kelvin); // 293.15 K, exactly
+static_assert(conversion_overflows<level>(725));
+auto top  = clamp_cast<level>(raw);                      // 10: saturated
+auto deg  = wrap_cast<inside<{0, 359}>>(raw);            // 5: 725 mod 360
+auto fit  = checked_cast<level>(sensor{7});              // 7, or inside_error
+auto near = clamp_cast<level, round_nearest>(6.5);       // 7: a tie goes away from zero
 
-quantity<si::hertz, inside<{0, 1000}>>     f{50};
-quantity<si::becquerel, inside<{0, 1000}>> a{50};
-static_assert(!addable<decltype(f), decltype(a)>); // both 1/s, but not one kind
-
-quantity<isq::width[si::metre], inside<{1, 10}>>  w{3};
-quantity<isq::height[si::metre], inside<{1, 10}>> h{4};
-quantity<isq::area[square(si::metre)], inside<{1, 100}>> area = w * h;
-inside<{0, 10'000}, round_nearest> ratio = trip / w; // km / m: a plain number
+using quarter = inside<{{0, 10}, per<4>}>;
+quarter q = 2.75_ins;
+auto num  = q.numerator();                               // 11: the value is 11/4
+auto i    = q.to<int>();                                 // 2: truncated toward zero
+auto neg  = inside<{-5, 5}>{-1}.to<unsigned>();          // unexpected(errc::domain_error)
 ```
 
-**A function rounds once, onto the grid it returns.**
+**A call or a single store can take another policy, and an action sees what
+the policy did.**
 
-<!-- listing: math -->
+<!-- listing: per_call -->
 ```cpp
-using angle = inside<{{-8, 8}, per<16384>}, round_nearest>;
-auto s = math::sin(angle{1});                    // 0.84149169921875, the nearest 1/16384
-static_assert(grid_of<decltype(s)> == grid{{-1, 1}, per<16384>});
-auto c = math::cos_into<math::unit_amplitude<256>>(angle{1}); // 0.5390625: a coarser output, named
+using whole = inside<{0, 100}>;
+using step  = inside<{1, 10}>;                           // never zero
 
-using level = inside<{{-4, 4}, per<256>}, round_nearest>;
-auto r = math::sqrt(level{2.25});                // expected: the grid holds negative values
-auto n = math::sqrt(level{-1});                  // unexpected(errc::domain_error)
+auto down       = div(whole{7}, step{2}, rounded_floor); // 3: this call rounds down
+auto up         = div(whole{7}, step{2}, rounded_ceil);  // 4
+auto [quo, rem] = divmod(whole{17}, step{5});            // 3 and 2
 
-using down = inside<{{-1, 1}, per<16384>}, round_floor>;
-auto h = units::cos_into<down>(quantity<si::degree, inside<{0, 360}>>{120}); // exactly -1/2, even rounding down
+whole x = 50;
+x.with_clamp() = 150;                                    // 100: this store saturates
+
+using seconds = inside<{0, 59}, wrap>;
+using minutes = inside<{0, 59}>;
+seconds s = 50;
+minutes m = 0;
+s.on_wrap([&](auto&, auto carry) { m += carry; }) += 75_ins; // 125 s: s == 5, m == 2
+```
+
+**Generic code sees a numeric type.**
+
+<!-- listing: generic -->
+```cpp
+using small = inside<{0, 10}>;
+using wide  = inside<{-50, 50}>;
+
+using common = std::common_type_t<small, wide>;          // the hull of the two grids
+static_assert(std::is_same_v<common, inside<{-50, 50}>>);
+common hi = std::max<common>(small{7}, wide{-3});        // 7
+
+using limits = std::numeric_limits<small>;
+static_assert(limits::is_specialized && !limits::is_signed && limits::max() == 10);
+
+std::unordered_set<small> seen{small{3}, small{4}, small{3}};  // two elements
 ```
 
 # Design
@@ -215,10 +225,10 @@ auto h = units::cos_into<down>(quantity<si::degree, inside<{0, 360}>>{120}); // 
 A grid is an interval `[lower, upper]` and a notch `n ≥ 0`. Its values are
 `lower + k·n` for `k = 0, 1, …` up to `upper`, so `n` must divide
 `upper − lower`. A notch of zero gives a continuous grid: every rational in the
-interval. A grid with `lower == upper` is a point. Grid numbers are exact
-rationals: `per<100>` is 1/100. A floating-point literal is taken at its exact
-binary value; when the notch is derived from such a limit, one that is not a
-short binary fraction is rejected (`0.1` is not 1/10).
+interval, optionally with a bound on the denominators (`max_denominator`). A
+grid with `lower == upper` is a point. A floating-point limit is taken at its
+exact binary value; when the notch is derived from such a limit, one that is
+not a short binary fraction is rejected (`0.1` is not 1/10).
 
 `lower` need not be a multiple of `n`. Pixel centres `{{0.5, 255.5}, 1}` and
 sample midpoints are grids. Result grids track such lattices exactly.
@@ -227,23 +237,44 @@ A grid is always closed. An open limit is only a spelling that moves the limit
 in by one notch at construction: `{0, 360, bounds::half_open}` is the grid
 `{0, 359}`, and the same type.
 
+## Grid numbers
+
+The limits and the notch of a grid are exact rationals of any size: `per<100>`
+is 1/100, and `inside<{0, 1e30_g}>` holds the integers up to 10³⁰. A grid is a
+structural value, so it is a template argument. A grid number past 64 bits
+keeps its limbs in static storage through `std::define_static_array`
+([@P3491R3]), so equal numbers are the same template argument, and equal grids
+give the same type. This is why the proposal requires static reflection
+([@P2996R13]).
+
+With bounded grid numbers, result grids would themselves become a source of
+failure: `10¹⁸ · 10¹⁸` has no 64-bit grid, so the product would be ill-formed
+although every value of it is representable. Unbounded grid numbers make
+every result grid exist.
+
 ## Storage
 
 Storage follows from the grid alone: there are no storage flags. The reference
 implementation stores the narrowest integer that numbers every point, or holds
-the value itself for a whole-number grid when that is no wider. A continuous
-grid stores an exact fraction. We propose that the storage be unspecified, with
-this as recommended practice. Equal grids give the same type, so values of the
-same grid always share a representation.
+the value itself for a whole-number grid when that is no wider. Past 2⁶⁴ points
+it stores a multi-limb integer, and a continuous grid stores an exact fraction.
+We propose that the storage be unspecified, with this as recommended practice.
+Equal grids give the same type, so values of the same grid always share a
+representation.
 
 ## Arithmetic widens
 
 The result of `a + b`, `a - b`, `a * b` and `-a` is an `inside` whose grid holds
 every possible result. `[0, 100] + [0, 100]` is `[0, 200]`, and negation mirrors
-the interval. No operation produces a value outside its result type, so these
-operators need no overflow check: overflow cannot happen. A result grid that
-cannot be represented is a compile-time error (with 64-bit grid numbers, see
-[Grids past 64 bits](#grids-past-64-bits)).
+the interval. On a lattice (a notch above zero), and on a continuous grid with a
+denominator bound, no operation produces a value outside its result type, so
+these operators need no overflow check and return a plain `inside`.
+
+The one exception is a continuous operand without a denominator bound: the
+exact fraction of a result can outgrow any fixed storage, so the operator
+returns `std::expected<inside, errc>` with `errc::overflow` (under `unsafe`,
+fitting is a precondition). A program that needs total arithmetic on fractions
+names a bound, and division (below) produces one by itself.
 
 ## Division
 
@@ -274,6 +305,8 @@ A policy says what a store into a grid does with a value that is not on it.
 Flags combine (`clamp | round_nearest`). A store that can never succeed (a
 source interval disjoint from the target without `clamp` or `wrap`, or a source
 notch that does not land on the target's without a rounding) is ill-formed.
+`round_nearest` sends a tie away from zero; `round_half_even` to the even
+point, counted from the lattice's anchor.
 
 ## No bare scalars
 
@@ -290,144 +323,111 @@ the library therefore emits fewer checks than a hand-written checked integer,
 and is 21% faster than a native checked type in the paper's benchmark ("Where
 are the checks?").
 
-Fallible results are values only where failure is possible at runtime:
-`try_make`, `to<T>()`, and division by a divisor whose grid holds zero. A total
-operation returns a plain value, so the type says whether failure is possible.
-A failed checked store throws `inside_error`, which carries the `errc`.
+Fallible results are values only where failure is possible at run time:
+`try_make`, `to<T>()`, division by a divisor whose grid holds zero, and
+arithmetic on an unbounded continuous grid. A total operation returns a plain
+value, so the type says whether failure is possible. A failed checked store
+throws `inside_error`, which carries the `errc`.
 
 Fallible results chain. The operators also accept a `std::expected<inside,
 errc>` operand, so `a / b * gain + offset` stays one `expected` from end to
 end. The first error passes through with its cause, and an operation that fails
 later in the chain reports its own.
 
-## Grids past 64 bits
+## Conversions
 
-With C++26 static reflection (`std::define_static_array`) grid numbers have no
-size limit, and equal grids remain the same type: a grid from 0 to 10³⁰ in
-steps of 1 stores a two-limb integer. Without reflection, grid numbers are
-64-bit rationals and a grid past them is a compile-time error.
+A store applies the target's policy. A conversion names its own, so the reader
+sees at the call what happens to a value that does not fit:
 
-## Quantities
+- `clamp_cast<B>(v)` saturates into `B`'s interval; `clamp_cast<B,
+  round_nearest>(v)` (or another rounding mode) also rounds onto `B`'s notch.
+- `wrap_cast<B>(v)` folds `v` modulo `B`'s interval.
+- `checked_cast<B>(v)` reports `overflow` or `rounding_error` whatever `B`'s
+  policy is.
+- `unchecked_cast<B>(v)` makes the fit a precondition.
 
-The second layer puts a unit on the number. `quantity<R, Rep>` is a number
-`Rep`, always an `inside`, of a *reference* `R`: a unit, optionally with a
-quantity kind (`isq::height[si::metre]`). The model is that of mp-units
-[@P3045R9]: dimensions, units with exact magnitudes, the ISQ tree of quantity
-kinds, and quantity points with origins. What changes is that the number is a
-grid.
+Each is a store into `B`'s grid under a fixed policy, so each is ill-formed
+where that store could never succeed. The predicates `conversion_overflows<B>(v)`,
+`conversion_rounds<B>(v)` and `conversion_loses<B>(v)` say beforehand what a
+store of `v` into `B` would do under `B`'s own policy; a rounding policy that
+brings an out-of-range value onto the grid makes it a rounding, not an
+overflow.
 
-- **A conversion rescales the grid, not the number.** km to m multiplies the
-  interval and the notch by 1000 and keeps the stored integer. A conversion is
-  therefore exact and total, and at run time it is a copy.
-- **A sum runs in the common unit,** whose magnitude is the gcd of the two
-  magnitudes. Both sides are rescaled exactly, then the `inside` addition runs,
-  so a valid mixed-unit sum cannot overflow and its grid is the tight hull of
-  the operands. `*` and `/` multiply the units and the kinds, and the numbers
-  take `inside`'s result grids, including `expected` for a divisor whose grid
-  holds 0.
-- **Kinds separate quantities of one dimension.** A height is a length, and
-  width · height is an area, but hertz and becquerel (both s⁻¹) do not add. A
-  quotient of dimension one is a plain `inside`.
-- **Points change origin exactly.** A temperature point is counted from an
-  origin, and 20 ℃ becomes 293.15 K by an exact shift of the grid.
-- **π is never approximated.** A magnitude is an exact rational times a power
-  of π. A conversion with a factor of π (degree to radian) has no exact
-  rescale, so it is ill-formed until it is rounded once onto a declared grid
-  by the math layer's `value_cast` ([Correctly rounded
-  math](#correctly-rounded-math)).
-- **No bare scalars here either.** `42 * si::metre` and `q * 2` are ill-formed.
-  A quantity is made from a number in its unit
-  (`quantity<si::metre, inside<{0, 100}>>{42}`) or from an `inside` times a
-  unit (`just<42> * si::metre`).
+Out of an `inside`, `to<T>()` returns `std::expected<T, errc>`. An integer `T`
+gets the value truncated toward zero, or `overflow` past `T`'s range
+(`domain_error` for a negative value into an unsigned `T`); a floating-point
+`T` gets the value rounded once. `as<T>()` is `to<T>().value()`, and requires
+a rounding policy for a floating-point `T`. `numerator()` and `denominator()`
+give the exact value in lowest terms, the sign on the numerator, as integers
+wide enough for every value of the grid.
 
-Dimensions, magnitudes, units and kinds are structural values, combined by
-`consteval` functions. They are not type lists that the compiler must sort, so
-m·s and s·m are one unit. Users define their own units, kinds, origins and up
-to four base dimensions of their own (currency, information, pixels) as
-`inline constexpr` objects. An entry is identified by its content, not by its
-address.
+## Per-call policies and actions
 
-A unit operation that cannot happen is a constraint failure, so
-`requires { a + b; }` is false for a length and a duration. A call that is
-written anyway names its reason as a deleted overload, for example
-`units: adding or comparing quantities of different kinds`.
+A type's policy is the default for its stores. Two narrower scopes name
+another:
 
-## Correctly rounded math
+- **One call.** The functions `add`, `sub`, `mul`, `div`, `mod` and `divmod`
+  compute what the operators compute, with trailing arguments: a policy object
+  (`div(a, b, rounded_floor)`, or `make_policy<F>()`), an `errc&` that receives
+  a failure instead of an exception, or actions. `divmod` returns
+  `divmod_result{Quotient, Remainder}` from one division, consistent with the
+  rounding: `q·b + r == a`.
+- **One store.** `b.with_clamp()`, `b.with_wrap()`, `b.with_snap<M>()` and
+  `b.policy<F>()` return a proxy whose `=`, `+=`, `-=`, `*=`, `/=` and `%=` store
+  into `b` under `P | F`. `b.policy<F>(ec)` reports into `ec`. On a temporary,
+  the proxy owns the value, so `(a * b).with_snap()` converts to any `inside`
+  that the snapped value fits.
 
-The third layer is `<cmath>` on an `inside`. A function's result is a point of
-its output grid, and the contract is that it is the *correctly rounded* point:
-the one the output's rounding mode selects from the true value. Because the
-output grid is part of the type, so is the precision. A coarse output is cheap,
-a fine one costs more, and there is no ceiling: an output notch of 2⁻¹⁰⁰ gets a
-correctly rounded result too. The result does not depend on how it was
-computed, so it is the same at compile time and at run time, on every
-platform, with or without an FPU.
+An *action* is a callback that runs when the policy acts, so a program can see
+what it did. `b.on_wrap(f) += x` stores into `b` with `f` wired in:
 
-- **Two forms.** `fn_into<Out>(x)` names the output. `fn(x)` deduces it: the
-  input's notch and policy, and the function's range over the input's
-  interval, computed at compile time and rounded outward. A few ranges are
-  fixed instead: `sin` and `cos` give [−1, 1], `tan` [−1024, 1024] and `atan2`
-  [−π, π]. `hypot` takes the gcd of both notches, `pow` the base's notch and
-  `floor` & co. notch 1.
-- **Rounding needs permission.** A transcendental result is never on a grid by
-  accident, so `Out` (or, for `fn(x)`, the input) must name a rounding mode,
-  as a store that rounds must. A result past `Out`'s interval goes through
-  `Out`'s policy: `clamp` saturates, `wrap` folds the true value, and the
-  default reports.
-- **Errors follow the number layer.** A domain limit that the input's *type*
-  violates (`log` of a grid that reaches 0, `asin` of a grid past ±1) is
-  ill-formed. A failure that depends on the *value* returns
-  `expected<Out, errc>`: `sqrt` of a grid that crosses 0, `tan` near a pole,
-  and `pow`. A total function returns a plain `inside`.
-- **The grid operations are exact.** `abs`, `sign`, `copysign`, `floor`,
-  `ceil`, `round`, `trunc`, `fmod` and `pown<E>` need no rounding. Their
-  outputs are deduced exactly (`abs` of `[−3, 5]` is `[0, 5]`), and `fmod` is
-  `expected` only when the divisor's grid holds 0, as `%` is.
-- **Exact cases are exact.** `exp(0)`, `log(1)`, `sqrt(9/4)`, `log2(2^k)` and a
-  power with an integer exponent land on the grid point itself under every
-  rounding mode, as do the rational values of `sin` and `cos` (0, ±1/2, ±1) of
-  an angle in degrees or turns.
-- **On quantities the unit follows the function.** `sqrt` of an area is a
-  length, `atan2` and `hypot` take two quantities of one dimension, inverse
-  trigonometry returns radians, and `exp`, `log` and `pow` take a
-  dimensionless quantity (the decibel's 10^(L / 20 dB)). An angle in a unit
-  with a factor of π (degrees, turns) is reduced exactly by `sin_into` and
-  `cos_into`, so only a remainder of at most π/4 is approximated, and
-  `value_cast<si::radian, Out>(q)` rounds a degree-to-radian conversion once.
+| Action | Runs when | Called as |
+|---|---|---|
+| `on_clamp(f)` | a stored value leaves the range and is saturated | `f(b, overshoot)` |
+| `on_wrap(f)` | a stored value leaves the range and is folded back | `f(b, carry)`; the carry is an `inside` whose grid holds every possible carry |
+| `on_error(f)` | a checked store fails; replaces the exception | `f(b, errc, message)` |
+| `on_overflow(f)` | an arithmetic operation fails | `f(b, errc)` |
 
-How a result is found is recommended practice, not specification. The
-reference implementation evaluates in fixed point with an error bound and
-doubles the precision while the interval straddles a rounding boundary (Ziv's
-strategy). It reads a precomputed table for small inputs and uses
-floating-point kernels with proved bounds where an FPU is present, behind an
-integer path that always applies and gives the same results.
+`f` receives the destination by reference and may change it. An action implies
+its flag (`on_clamp` adds `clamp`, `on_wrap` adds `wrap`), and several combine
+in `b.with(on_overflow(f), on_clamp(g))`: the arithmetic fires `f`, the store
+back into `b` fires `g`. At most one of `on_clamp`, `on_wrap` and `on_error`
+may be given, since one store takes one of those paths, and at most one of each
+kind; anything else is ill-formed. The arithmetic functions accept only
+`on_overflow`. An action that is not used costs nothing.
 
-The requirement is met wherever that loop ends, and it ends for every input:
-a rounding boundary is rational, the rational results are exactly the exact
-cases above (Lindemann–Weierstrass, Niven's theorem and the rational root
-theorem leave no others), and every other result is irrational. How many
-doublings an input needs is not known in advance for an arbitrary grid, the
-table-maker's dilemma, so the reference implementation stops at four times
-its start precision (plus one deeper step for functions that approach a grid
-point, such as tanh x → 1). A result still undecided there, within about
-2^−4W of a boundary, is stored as the nearest point: the same in every build,
-but not proven correct. A tool certifies a type pair by exhaustion instead,
-computing every input and requiring that none is undecided
-([Implementation experience](#implementation-experience)).
+## Generic code
+
+`std::common_type` of two `inside` types is the *grid hull*: the smallest grid
+holding both (the interval hull, with the gcd of the notches refined by the
+offset between the lattices), under the default policy. Of a type with
+itself, it is that type. So `std::max<std::common_type_t<A, B>>(a, b)`, ranges
+of mixed grids and other generic code compile.
+
+`std::numeric_limits<inside<G, P>>` describes the grid. `min()` and `lowest()`
+are `lower`, `max()` is `upper`; `is_signed` holds when `lower < 0`, and
+`is_integer` when every value is an integer. `is_modulo` follows `wrap`,
+`traps` the checked policies, and `round_style` the policy's rounding mode.
+The type is exact and bounded, with no infinity and no NaN. An exact type has
+no rounding error, so `epsilon()` and `round_error()` are 0 when 0 is on the
+grid; otherwise the first point above 0 when the interval spans 0, and `lower`
+when it does not. `digits` and `digits10` describe the storage.
+
+`std::hash<inside<G, P>>` hashes the value, so an `inside` is a key of the
+unordered containers.
 
 # Proposed interface
 
 The names are the reference implementation's (see [Open
 questions](#open-questions)). `@*grid-number*@` is exposition-only: an exact
-rational, unbounded where static reflection is available and 64-bit otherwise.
-`@*number*@` is an arithmetic type or a `@*grid-number*@`.
-
-## The number
+rational of any size. `@*number*@` is an arithmetic type or a
+`@*grid-number*@`. `@*integer*@` is an integer type wide enough for the value.
 
 ```cpp
 namespace std {
   // grids
-  template<uintmax_t D> constexpr @*grid-number*@ per;         // 1/D
+  template<intmax_t D> constexpr @*grid-number*@ per;           // 1/D
+  template<char... Cs> consteval @*grid-number*@ operator""_g();   // exact: 1e30_g, 0.1_g; suffix to be renamed
   struct interval {
     @*grid-number*@ Lower, Upper;                                // Lower <= Upper
   };
@@ -467,7 +467,21 @@ namespace std {
     template<class A> constexpr inside(A value);          // A arithmetic or inside: a store by P
     template<policy_flag F = none, class A>               // the store by P | F
       static constexpr expected<inside, errc> try_make(A value);
-    template<class T> constexpr expected<T, errc> to() const;
+
+    // out of an inside
+    template<class T> constexpr expected<T, errc> to() const;  // T arithmetic
+    template<class T> constexpr T as() const;                  // to<T>().value()
+    constexpr @*integer*@ numerator() const;                     // lowest terms, the sign here
+    constexpr @*integer*@ denominator() const;                   // > 0
+
+    // a policy or actions for one store (the proxy owns the value of an rvalue)
+    template<policy_flag F = none> constexpr @*store-proxy*@ policy();
+    template<policy_flag F = none> constexpr @*store-proxy*@ policy(errc& ec);
+    template<policy_flag M = snap> constexpr @*store-proxy*@ with_snap(); // M: a rounding mode
+    constexpr @*store-proxy*@ with_clamp();
+    constexpr @*store-proxy*@ with_wrap();
+    template<class F> constexpr @*store-proxy*@ on_clamp(F f);  // also on_wrap, on_error, on_overflow
+    template<class... A> constexpr @*store-proxy*@ with(A... actions);
 
     constexpr inside<-G, P> operator-() const;
     constexpr inside& operator++();                       // one notch
@@ -494,292 +508,129 @@ namespace std {
   template<class L, class R> constexpr auto operator%(L, R);
   template<class L, class R> constexpr bool operator==(const L&, const R&);
   template<class L, class R> constexpr auto operator<=>(const L&, const R&);
+
+  // conversions
+  template<class B, policy_flag Round = none, class N> constexpr B clamp_cast(N v); // Round: none or a mode
+  template<class B, class N> constexpr B wrap_cast(N v);
+  template<class B, class N> constexpr B checked_cast(N v);
+  template<class B, class N> constexpr B unchecked_cast(N v);
+  template<class B, class N> constexpr bool conversion_overflows(N v) noexcept;
+  template<class B, class N> constexpr bool conversion_rounds(N v) noexcept;
+  template<class B, class N> constexpr bool conversion_loses(N v) noexcept;  // either
+  template<class T, class B> constexpr expected<T, errc> to(const B&);
+  template<class T, class B> constexpr T as(const B&);
+
+  // a policy for one call
+  template<policy_flag F = none, class E = @*unspecified*@> struct policy;
+  template<policy_flag F = none> constexpr policy<F> make_policy();
+  template<policy_flag F = none> constexpr policy<F, @*unspecified*@> make_policy(errc& ec);
+  inline constexpr policy<@*see below*@> rounded_toward_zero, rounded_nearest, rounded_floor,
+                                       rounded_ceil, rounded_half_even, clamped, wrapped;
+  template<class L, class R, class... Args>                   // Args: none, a policy, an errc&,
+    constexpr auto add(const L&, const R&, Args&&...);        // or on_overflow actions;
+                                                              // also sub, mul, div, mod
+  template<class Q, class R> struct divmod_result { Q Quotient; R Remainder; };
+  template<class L, class R, class... Args>
+    constexpr auto divmod(const L&, const R&, Args&&...);     // divmod_result, or expected of it
+
+  // actions
+  template<class F> constexpr @*action*@ on_clamp(F f);           // f(inside&, overshoot)
+  template<class F> constexpr @*action*@ on_wrap(F f);            // f(inside&, carry)
+  template<class F> constexpr @*action*@ on_error(F f);           // f(inside&, errc, const char*)
+  template<class F> constexpr @*action*@ on_overflow(F f);        // f(inside&, errc)
+
+  // generic code
+  template<grid G, policy_flag P> struct numeric_limits<inside<G, P>>;
+  template<grid G, policy_flag P> struct hash<inside<G, P>>;
+  template<grid G1, policy_flag P1, grid G2, policy_flag P2>
+    struct common_type<inside<G1, P1>, inside<G2, P2>>;       // the grid hull
 }
 ```
 
-### Semantics
+## Semantics
 
 | Expression | Result | Notes |
 |---|---|---|
 | `inside<G, P>{v}` | stores `v` by `P` | ill-formed when no value of `v`'s type can fit (disjoint intervals without `clamp`/`wrap`, incompatible notch without a rounding) |
 | `B::try_make<F>(v)` | `expected<B, errc>` | the store under `P | F`, reporting instead of throwing |
-| `b.to<T>()` | `expected<T, errc>` | `overflow` out of `T`'s range, `domain_error` for a negative value into an unsigned `T`; a fractional value truncates toward zero |
 | `-a` | `inside<-G, P>` | mirrored interval, same notch |
-| `a + b`, `a - b` | interval sum or difference; notch `gcd(n_a, n_b)` | continuous if either operand is, with denominator bound `D_a·D_b` |
-| `a * b` | interval product; notch `n_a·n_b`, refined by the operands' offsets | a point `c` scales the other notch by `|c|` |
+| `a + b`, `a - b` | interval sum or difference; notch `gcd(n_a, n_b)` | continuous if either operand is, with denominator bound `D_a·D_b`; `expected` iff an operand is continuous without a bound |
+| `a * b` | interval product; notch `n_a·n_b`, refined by the operands' offsets | a point `c` scales the other notch by `|c|`; `expected` as for `+` |
 | `a / b` | a point `c`: `a`'s notch scaled by `1/|c|`; else continuous with denominator bound `D_a·max|b|·D_b` | rounded onto the integers or the shared notch when a policy names a rounding; `expected` iff `b`'s grid holds 0 |
 | `a % b` | `[0, m]` or `[−m, m]`, `m = max|b| − 1` | integer grids required; `r = a − q·b` for `q` truncated or rounded by the policy |
 | `e op b`, `a op e` (`e` an `expected`) | `expected` of `a op b`'s result | the first error passes through |
 | `++a`, `--a` | `a` moved by one notch | a store by `P` (wraps under `wrap`); absent on a continuous grid |
 | `a += b` etc. | `a = a + b` | a store by `a`'s policy |
 | `a == b`, `a <=> b` | exact comparison of values | any two grids |
-
-## Quantities
-
-`@*unit*@`, `@*spec*@` and `@*origin*@` are exposition-only tag types: empty
-objects whose type carries a `unit`, a `quantity_spec` or a `point_origin` as a
-value.
-
-```cpp
-namespace std::units {
-  // dimensions and magnitudes
-  struct base_dimension { string_view Name; };                 // a dimension of your own
-  struct dimension;                                           // exponents of L M T I Θ N J and of base dimensions
-  struct magnitude;                                           // an exact rational times a power of π
-  template<@*grid-number*@ R> constexpr @*magnitude*@ mag;          // R
-  inline constexpr @*magnitude*@ mag_pi;                          // π
-
-  // units
-  struct unit;                                                // named units to integer powers, prefixes, a magnitude
-  struct unit_options { string_view ascii; @*spec*@ kind; @*origin*@ origin; bool space_before = true; };
-  struct named_unit {                                         // m, N, °C: a static object
-    constexpr named_unit(string_view symbol, @*spec*@ kind, unit_options = {});
-    constexpr named_unit(string_view symbol, @*magnitude*@, @*spec*@ kind, unit_options = {});
-    constexpr named_unit(string_view symbol, @*unit*@ definition, unit_options = {});
-    constexpr named_unit(string_view symbol, @*unit*@ definition, @*spec*@ kind, unit_options = {});
-  };
-  template<const named_unit& U> constexpr @*unit*@ unit_c;
-  inline constexpr @*unit*@ one;                                  // the unit 1
-  // @*unit*@ * @*unit*@, @*unit*@ / @*unit*@, @*magnitude*@ * @*unit*@, pow<N>(u), square(u), cubic(u), inverse(u)
-  // prefixes: kilo(u), milli(u), ... on a named unit
-
-  // quantity kinds
-  struct quantity_spec {                                      // isq::length, isq::height
-    constexpr quantity_spec(string_view name, dimension);             // a base quantity
-    constexpr quantity_spec(string_view name, const base_dimension&);
-    constexpr quantity_spec(string_view name, @*spec*@ parent [, is_kind]);  // a child
-    constexpr quantity_spec(string_view name, @*spec-expression*@ [, is_kind]); // a derived root
-    constexpr quantity_spec(string_view name, @*spec*@ parent, @*spec-expression*@ [, is_kind]);
-  };
-  template<const quantity_spec& S> constexpr @*spec*@ spec_c;
-  // @*spec*@ * @*spec*@, @*spec*@ / @*spec*@ (recipes); s[u] names a reference
-
-  // references and quantities
-  struct reference;                                           // a unit, a kind or recipe; a unit converts to one
-  template<reference R, class Rep>                            // Rep: an inside
-  class quantity {
-  public:
-    using rep = Rep;
-    static constexpr units::reference reference = R;
-    constexpr quantity() = default;
-    template<class V> constexpr explicit quantity(V&& number);     // a number in the unit R
-    template<reference R2, class V2>                               // implicit when R2's kind converts and
-      constexpr explicit(@*see below*@) quantity(const quantity<R2, V2>&); // the rescaled number does
-    constexpr const Rep& numerical_value() const noexcept;
-    template<@*unit*@ U> constexpr auto in(U) const;                 // Rep's grid rescaled; same raw
-    template<@*unit*@ U> constexpr auto numerical_value_in(U) const;
-    template<policy_flag F = none, class V> static constexpr auto try_make(const V&);
-    // ++, --, compound assignment: a store by Rep's policy
-  };
-  // quantity + - % <=> == quantity: in the common unit
-  // quantity * / quantity, inside * @*unit*@, quantity * @*unit*@: units and kinds multiply
-  // quantity * / inside: the number scales
-  template<class Spec, reference R, class V> constexpr auto quantity_cast(const quantity<R, V>&);
-  template<class Rep2, reference R, class V> constexpr quantity<R, Rep2> value_cast(const quantity<R, V>&);
-  template<auto U, class Rep2, reference R, class V> constexpr auto value_cast(const quantity<R, V>&);
-  template<class Q, reference R, class V> constexpr Q value_cast(const quantity<R, V>&);
-  // try_value_cast<...>(q): the same through Rep2::try_make, an expected
-
-  // points
-  struct point_origin {                                       // absolute, or at an exact offset from one
-    string_view Name; dimension Dim; @*origin*@ Absolute; @*grid-number*@ Offset;
-  };
-  template<const point_origin& O> constexpr @*origin*@ origin_c;
-  template<reference R, @*origin*@ O, class Rep>
-  class quantity_point {
-  public:
-    constexpr explicit quantity_point(const quantity<R, Rep>&);
-    constexpr const quantity<R, Rep>& quantity_from_origin() const noexcept;
-    constexpr auto quantity_from(@*origin*@) const;
-    constexpr auto quantity_from_zero() const;
-    constexpr auto point_for(@*origin*@) const;                     // the same point from another origin
-    template<@*unit*@ U> constexpr auto in(U) const;                 // keeps the origin
-    template<@*unit*@ U> constexpr auto point_in(U) const;           // from U's origin
-  };
-  template<auto U, class V> constexpr auto point(const V&);      // a point from U's origin
-  // point ± quantity: a point; point − point: a quantity
-
-  // the catalog: namespaces isq, si, international (contents in R1)
-}
-```
-
-### Semantics
-
-| Expression | Result | Notes |
-|---|---|---|
-| `quantity<R, Rep>{v}` | `v` stored in `Rep`, in the unit of `R` | explicit |
-| `n * u` (`n` an inside) | `quantity<u, decltype(n)>` | `42 * u` is ill-formed |
-| `q.in(u)` | `q` in `u`: `Rep`'s interval and notch times the conversion factor | the same raw; ill-formed for another dimension or a factor of π |
-| `quantity<R2, Rep2>{q}` | `q` in `R2`'s unit, stored by `Rep2` | implicit when `R`'s kind converts to `R2`'s and the rescaled number converts implicitly |
-| `a + b`, `a - b`, `a % b`, `a <=> b` | in the common unit (the gcd of the magnitudes); kind: the nearest common ancestor | ill-formed for different dimensions or kinds |
-| `a * b`, `a / b` | units, kinds and numbers multiply or divide | `expected` iff `b`'s grid holds 0; a result of dimension one converts to its `inside` |
-| `quantity_cast<S>(q)` | the same number, kind `S` | down or sideways within one kind; never across an `is_kind` boundary |
-| `value_cast<Rep2>(q)`, `value_cast<u, Rep2>(q)` | the exact value, stored by `Rep2` | `try_value_cast` reports through `expected` |
-| `point<u>(v)` | a point counted from `u`'s origin | |
-| `p.point_for(o)`, `p.quantity_from(o)` | the point or quantity from origin `o` | an exact shift of the grid |
-| `p - p`, `p ± q` | a quantity; a point | no difference between unrelated absolute origins |
-
-## Math
-
-Every function below except `pown` also has the form `fn_into<Out>(args)`,
-which returns `Out` (or `expected<Out, errc>` where the deduced form is
-fallible). Except for the grid operations, `Out` must be an `inside` whose
-policy names a rounding mode, and the deduced form `fn(args)` requires the
-same of its input.
-
-```cpp
-namespace std::math {
-  template<uint64_t K>                                        // [-1, 1] at resolution 1/K
-    using unit_amplitude = inside<{{-1, 1}, per<K>}, round_nearest>;
-
-  // grid operations: exact
-  template<class In> constexpr auto abs(In x);               // [0, max|x|]
-  template<class In> constexpr auto sign(In x);              // -1, 0, 1
-  template<class M, class S> constexpr auto copysign(M mag, S sgn);
-  template<class In> constexpr auto floor(In x);             // also ceil, round, trunc: notch 1
-  template<class X, class Y> constexpr auto fmod(X x, Y y);  // expected iff y's grid holds 0
-  template<intmax_t E, class In> constexpr auto pown(In x);  // E >= 0: widened at every multiply
-
-  // roots
-  template<class In> constexpr auto sqrt(In x);              // expected iff x's grid holds a negative
-  template<class In> constexpr auto cbrt(In x);
-  template<class X, class Y> constexpr auto hypot(X x, Y y);
-
-  // trigonometric, in radians
-  template<class In> constexpr auto sin(In x);               // also cos: [-1, 1]
-  template<class In> constexpr auto tan(In x);               // expected: [-1024, 1024]
-  template<class In> constexpr auto asin(In x);              // also acos; x's grid within [-1, 1]
-  template<class In> constexpr auto atan(In x);
-  template<class Y, class X> constexpr auto atan2(Y y, X x); // [-pi, pi]; atan2(0, 0) == 0
-
-  // hyperbolic
-  template<class In> constexpr auto sinh(In x);              // also cosh, tanh, asinh
-  template<class In> constexpr auto acosh(In x);             // x's grid within [1, inf)
-  template<class In> constexpr auto atanh(In x);             // x's grid within (-1, 1)
-
-  // exponential and logarithmic
-  template<class In> constexpr auto exp(In x);               // also exp2
-  template<class In> constexpr auto log(In x);               // also log2, log10; x's grid > 0
-  template<intmax_t B, class In> constexpr auto pow_base(In x); // B^x, B >= 2
-  template<class B, class E> constexpr auto pow(B base, E e);  // expected; deduced: base's grid > 0
-}
-
-namespace std::units {
-  // q's unit:              abs, floor, ceil, round, trunc
-  // the unit's root:       sqrt, cbrt (m² → m), and _into
-  // an angle in rad:       sin, cos, tan; sin_into, cos_into also take a unit with a factor of pi
-  // to rad:                asin, acos, atan of an inside or a dimensionless quantity; atan2
-  // the common unit:       hypot
-  // a dimensionless input: exp_into ... atanh_into, log10_into, pow_base_into<Out, B>, pow_into
-  template<auto U, class Out, reference R, class V>          // across a factor of pi: one rounding
-    constexpr auto value_cast(const quantity<R, V>&);
-}
-```
-
-### Semantics
-
-| Expression | Result | Errors |
-|---|---|---|
-| `fn_into<Out>(x)` | the true value rounded onto `Out`'s grid by `Out`'s mode, then stored by `Out`'s policy | ill-formed without a rounding mode in `Out`, except for a grid operation |
-| `fn(x)` | `fn_into<Out>(x)`, `Out` deduced from `x`'s grid and policy | ill-formed without a rounding mode in `x`'s policy, except for a grid operation |
-| `abs`, `sign`, `copysign`, `floor`, `ceil`, `round`, `trunc`, `pown<E>` | exact | none; `round` sends a half away from zero |
-| `fmod(x, y)` | `x − trunc(x/y)·y`, exact, the sign of `x` | `division_by_zero`, iff `y`'s grid holds 0 |
-| `sqrt(x)` | | `domain_error` for `x < 0`, iff `x`'s grid holds a negative |
-| `log`, `log2`, `log10`, `asin`, `acos`, `acosh`, `atanh` | | ill-formed unless `x`'s grid lies in the domain |
-| `tan(x)` | | `overflow` past `Out` (saturates under `clamp`) |
-| `pow(b, e)` | exact for an integer `e`, and for `p/q` when `b` is a perfect `q`-th power | `domain_error` for `b < 0`, `division_by_zero` for 0 to a negative power, `overflow` past `Out` |
-| `units::sin_into<Out>(q)` | `q` reduced exactly by quarter turns when its unit has a factor of π | as `sin_into` |
-| `value_cast<U, Out>(q)` | the exact `x·r·π^±1`, rounded once onto `Out` | ill-formed without a rounding mode in `Out` |
+| `b.to<T>()` | `expected<T, errc>` | integer `T`: truncated toward zero; `overflow` out of `T`'s range, `domain_error` for a negative value into an unsigned `T`. Floating-point `T`: rounded once |
+| `b.as<T>()` | `T` | `to<T>().value()`; a floating-point `T` needs a rounding policy |
+| `b.numerator()`, `b.denominator()` | the value in lowest terms | denominator `> 0` |
+| `clamp_cast<B, M>(v)` | `v` saturated into `B`, rounded by `M` | `M == none`: off the notch as `B`'s policy |
+| `wrap_cast<B>(v)` | `v` modulo `B`'s interval | |
+| `checked_cast<B>(v)` | `v` | throws `inside_error` (`overflow`, `rounding_error`) |
+| `unchecked_cast<B>(v)` | `v` | precondition: `v` fits |
+| `conversion_overflows<B>(v)`, `conversion_rounds<B>(v)` | what `B{v}` would report or round | a rounding that brings `v` in is a rounding |
+| `op(a, b, policy)` (`op` one of `add` … `mod`) | `a op b`, the store and the division under `P | F` | `errc&`: failures set it; `on_overflow(f)`: `f` takes them |
+| `divmod(a, b, …)` | `{q, r}`, `q·b + r == a` | as `/` and `%` |
+| `b.with_clamp() = v` etc. | stores `v` into `b` under `P | F` | an rvalue's proxy converts to any `inside` the value fits |
+| `b.on_wrap(f) += v` etc. | `b += v`, `f` called when the policy acts | ill-formed: two of `on_clamp`, `on_wrap`, `on_error`, or two of one kind |
+| `common_type_t<A, B>` | `inside<hull(grid_of<A>, grid_of<B>)>` | `A` when `A == B` |
+| `numeric_limits<B>::min()`, `max()` | `lower`, `upper` | `epsilon()`: 0 on the grid, else the first point above 0, else `lower` |
 
 # Future work
 
-The reference implementation provides more than these three layers. Each item
-below is in v0.5.0, and each is a candidate for a later paper:
+The reference implementation provides more than this paper proposes. Each item
+below is a candidate for a later paper:
 
-1. **Per-call policies and actions**: `div(a, b, rounded_floor)`, `mod`,
-   `divmod`, and callbacks that receive the overshoot (`on_clamp`, `on_wrap`,
-   `on_error`, `on_overflow`). With them a clock's seconds carry into minutes.
-2. **Conversions**: `clamp_cast`, `wrap_cast`, `checked_cast`, `as<T>()`,
-   `numerator()` and `denominator()`, and the predicates
-   `conversion_overflows`, `conversion_rounds` and `conversion_loses`.
-3. **Text**: `to_string`, `parse`, `parse_exact`, `std::formatter` and stream
-   operators, printing the exact value; quantities print the number, then the
-   symbol.
-4. **Algorithms and generic code**: `sum<Target>` with one deferred check,
-   `add_all`, `mul_all`, `mul_into<Out>` / `div_into<Out>` (one rounding, no
-   intermediate grid), `min`, `max`, `midpoint`, `lerp`, `dot`, `cross`, a
-   `std::common_type` that is the grid hull, `numeric_limits` and `hash`. All
-   of them work on quantities too.
-5. **Iterating a grid**: `cursor<T, Step>` for loops, the range
+1. **Text**: `to_string`, `parse`, `parse_exact`, `std::formatter` and stream
+   operators, printing and reading the exact value.
+2. **Algorithms**: `sum<Target>` with one deferred check, `add_all`,
+   `mul_all`, `mul_into<Out>` / `div_into<Out>` (one rounding, no intermediate
+   grid), `min`, `max`, `midpoint`, `lerp`, `dot` and `cross`.
+3. **Iterating a grid**: `cursor<T, Step>` for loops, the range
    `inside_range` and `values<T>` (every value of `T`), and `uniform<B>(rng)`,
    which samples a grid exactly.
-6. **Predefined types and constants**: `uint8` … `int64` on their full ranges,
-   `unorm8`/`unorm16` and the Q formats (`q8_8`), the mathematical constants
-   as point grids, and the physical constants as quantities of their kind.
-7. **A public exact rational type** and its literals.
-8. **The full unit catalog**: about 80 ISQ kinds, the SI units and prefixes
-   (quecto … quetta past 64 bits), the defining constants as units,
-   the international units, and `percent` and `per_mille`.
+4. **Predefined types**: `uint8` … `int64` on their full ranges,
+   `unorm8`/`unorm16`, the Q formats (`q8_8`), `clamp_counter` and
+   `wrap_counter`.
+5. **A public exact rational type** and its literals.
+
+The companion papers propose quantities and the math functions.
 
 # Implementation experience
 
-The reference implementation is header-only C++23 (GCC 14+, Clang 19+, Clang 18
-with libc++, AppleClang, MSVC 19.51+). Grids past 64 bits use C++26 static
-reflection (GCC 16 with `-freflection`). It ships a single-header amalgamation,
-a CMake package and a vcpkg port, and follows the Beman Standard. Its test
-suite (835 tests, 847 with C++26 reflection) runs in CI on 50 compiler,
-library and sanitizer configurations. It includes a check that the integer
-fast paths compile to call-free, vectorising code, a property fuzzer, and a
-differential oracle that recomputes random results exactly in Python.
+The reference implementation is header-only C++26 and needs static reflection:
+today GCC 16 with `-freflection`. It ships a single-header amalgamation, a
+CMake package and a vcpkg port, and follows the Beman Standard. Its test suite
+(860 tests) runs in CI in seven configurations on every change (a
+debug preset, release, debug with `-Werror`, coverage, the address, undefined
+and leak sanitizers, no floating point, strict SFINAE) and in four more every
+week (a release preset, debug, the thread sanitizer, and the full certification
+of the math functions). It
+includes a check that the integer fast paths compile to call-free, vectorising
+code, a property fuzzer, and a differential oracle that recomputes random
+results exactly in Python.
 
-The math layer is checked for every function on dyadic, decimal and 2⁻⁴⁰
-grids against a `long double` reference, and every maximum error is 0.5
-notch (the repository's `docs/accuracy.md`). 59 type pairs are certified
-by exhaustion: 39 covering every function, and the 20 pairs the examples use
-that are small enough to compute (up to about 10⁹ inputs). Every input is
-computed both through the floating-point kernels and through the integer
-path alone, with no difference and no result left undecided at the
-precision cap. A SHA-256 of each pair's results is committed
-(`docs/certified.md`), and CI reproduces it in every configuration (the
-largest pairs weekly). A tool finds the pairs a user's own build uses, from
-its symbols, and certifies them the same way. A build without floating point
-(`-ffreestanding`) computes every result on the integer path, and the results
-do not change. Onto the grid deduced from the input, the functions run from
-about 3× slower to 3× faster than `<cmath>`. Onto grids as fine as a `double`,
-correct rounding costs 4–9× (paper, "Performance").
-
-Integer-aligned arithmetic compiles to the same instructions as `int` (paper,
-"The fast path is byte-identical to native"). `inside<unsafe>` runs at native
-speed, and `inside<checked>` at 88% of the fastest hand-written
-range-enforcing code (paper, "The like-for-like comparison"). A unit conversion
-compiles to one `mov`. The unit layer is about 2700 lines, adds about 0.1 s to
-a translation unit, and parses in about a third of the time of mp-units' `si` and
-`isq` headers (the repository's `docs/units.md`, "Compile time"). 23 of the
-repository's examples use both layers.
+Release v0.5.0 is the same library with 64-bit grid numbers, for C++23
+compilers (GCC 14+, Clang 19+, Clang 18 with libc++, AppleClang, MSVC 19.51+),
+tested in 50 CI configurations. Its measurements carry over: integer-aligned
+arithmetic compiles to the same instructions as `int` (paper, "The fast path is
+byte-identical to native"), `inside<unsafe>` runs at native speed, and
+`inside<checked>` at 88% of the fastest hand-written range-enforcing code
+(paper, "The like-for-like comparison").
 
 # Prior art
 
-- **mp-units** (Mateusz Pusz) and its proposal [@P3045R9]: the model of the
-  unit layer. References, the ISQ tree of quantity kinds, quantity points with
-  origins, magnitudes with powers of π and `consteval` unit arithmetic all
-  follow mp-units. The unit layer here differs in that the representation is
-  always an `inside`, which makes conversions and mixed-unit sums exact and
-  gives every result an inferred grid. It has no logarithmic units and no
-  vector or tensor characters.
 - **bounded::integer** (David Stone): integer ranges in the type, with widening
   arithmetic. `inside` generalises the idea to rational grids.
+- **Ada** fixed-point and range types: a range and a step (`delta`) in the type
+  declaration, with the step a power of two unless specified.
 - **Boost.SafeNumerics** (Robert Ramey) and **SafeInt**: overflow detection for
   built-in integers.
 - **CNL** (John McFarlane) and its proposals: fixed-point numbers [@P0037R7],
   elastic integers [@P0828R0], composition of arithmetic types [@P0554R0].
 - **Intel safe-arithmetic**: interval unions and compile-time proofs.
-- **Boost.Units** and **Au** (Aurora): units libraries over a generic
-  representation.
 - Numerics work in progress [@P1889R1]; saturation arithmetic [@P0543R3].
-- **CRlibm** and **[CORE-MATH](https://core-math.gitlabpages.inria.fr/)**:
-  correctly rounded functions for the IEEE binary formats. C23 reserves the
-  `cr_` prefix for such functions. The math layer here rounds correctly onto
-  any grid, at the precision the grid needs, instead of onto a binary format.
 
 The repository's `docs/resources.md` compares their features.
 
@@ -787,34 +638,20 @@ The repository's `docs/resources.md` compares their features.
 
 1. **Naming.** `inside`, `grid`, `notch`, `per` and the policy names are the
    implementation's. The committee may prefer others (`bounded`, `ranged`). A
-   standard literal suffix cannot begin with `_`, so `_ins` needs a new name.
+   standard literal suffix cannot begin with `_`, so `_ins` and `_g` need new
+   names.
 2. **`to<T>()` truncates** a fractional value into an integer `T`. It could
    instead report `rounding_error` unless the type names a rounding, as a store does.
 3. **Failure of a checked store.** An exception (`inside_error`, as proposed),
    a contract violation ([@P2900R14]), or a replaceable handler (the
-   implementation has one, which lets the core run freestanding).
-4. **Reflection as a minimum.** Grids past 64 bits need static reflection. A
-   standard version could require it from the start and drop the 64-bit mode.
-5. **Bare scalars.** Rejecting `a + 1` is deliberate. Should mixed arithmetic
+   implementation has one, which lets the core run without exceptions).
+4. **Bare scalars.** Rejecting `a + 1` is deliberate. Should mixed arithmetic
    with an integer of a stated range be allowed instead?
-6. **The unit layer and P3045.** There are two ways to standardize quantities on
-   `inside`: (a) the `std::quantity` of [@P3045R9], with `inside` as one more
-   representation, or (b) the unit layer proposed here. The reference
-   implementation shows that (b) gives exact, free conversions and mixed-unit
-   sums that cannot overflow, which a generic representation cannot promise.
-   Should the unit layer be a separate paper, coordinated with P3045?
+5. **Unbounded continuous grids.** Their arithmetic is the only `+`, `-` and `*`
+   that can fail. Should a continuous grid require a denominator bound, so that
+   every `+`, `-` and `*` is total?
+6. **The per-call interface.** Trailing arguments on free functions for one
+   call, and a proxy for one store, are the implementation's shape. The proxy
+   type is left unspecified.
 7. **Interaction** with C++26 saturation arithmetic and with `std::linalg`
    element types.
-8. **Math naming.** A namespace `std::math`, as in the implementation, or
-   overloads of `std::sin` and the others, with `sin_into<Out>` beside them?
-9. **Correct rounding as a requirement.** The proposal requires the correctly
-   rounded point. The cost is small onto coarse grids and 4–9× at a `double`'s
-   resolution. Should implementations be allowed a faithful result (one of the
-   two neighbouring points) instead, at the price of results that differ
-   between platforms? And since no bound on the precision a result needs is
-   known for an arbitrary grid, may an implementation stop at a precision cap,
-   as the reference implementation does, provided the result it then returns
-   is the same on every platform?
-10. **Deduced outputs.** The deduced output's grid follows the input's notch,
-    with fixed ranges for `sin`, `cos`, `tan` and `atan2`. The fixed `tan`
-    range [−1024, 1024] is a choice; it could instead be required to be named.
