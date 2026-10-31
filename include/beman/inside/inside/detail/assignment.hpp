@@ -358,9 +358,8 @@ struct assignment<L, R> {
     using recording_policy = call_policy<P::Flags, error_ref>;
 
     // Out of line, and by value (an empty action too): a reference to a
-    // caller's local would make it escape the hot path's frame. lhs may be
-    // uninitialized (the `uninitialized` flag), so the store runs on a copy of
-    // the lower limit, and a failure is returned, not stored: a failed store
+    // caller's local would make it escape the hot path's frame. The store runs
+    // on a copy of the lower limit, and a failure is returned, not stored: a failed store
     // leaves lhs intact. The policy hears of it here; an on_error action,
     // which gets lhs, from store_fine_double.
     template <typename P, typename A>

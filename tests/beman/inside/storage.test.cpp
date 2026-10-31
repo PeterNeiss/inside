@@ -14,17 +14,13 @@
 using namespace beman::inside;
 
 // The default ctor stores a value of the grid (0, else Lower; see
-// default_value.test.cpp); only `uninitialized` keeps it trivial, with Raw
-// uninitialized like a built-in scalar's.
-TEST(StorageTest, default_ctor_is_trivial_only_when_uninitialized) {
+// default_value.test.cpp) on every storage.
+TEST(StorageTest, default_ctor_stores_a_grid_value) {
     static_assert(!std::is_trivially_default_constructible_v<inside<{0, 10}>>);    // index
     static_assert(!std::is_trivially_default_constructible_v<inside<{-100, -5}>>); // signed value
     static_assert(!std::is_trivially_default_constructible_v<inside<{{0, 10}, per<4>}, round_nearest>>);
     static_assert(!std::is_trivially_default_constructible_v<inside<{0, 10}, unsafe>>);
-    static_assert(std::is_trivially_default_constructible_v<inside<{0, 10}, uninitialized>>);
-    static_assert(std::is_trivially_default_constructible_v<inside<{-100, -5}, uninitialized>>);
-    static_assert(std::is_trivially_default_constructible_v<inside<grid{5}, uninitialized>>); // point grid
-    static_assert(std::is_trivially_default_constructible_v<inside<{{0, 10}, per<4>}, round_nearest | uninitialized>>);
+    static_assert(inside<{-100, -5}>{} == -100_ins && inside<grid{5}>{} == 5_ins);
 }
 
 // behaviour policies on a notched grid

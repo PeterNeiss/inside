@@ -243,24 +243,14 @@ TEST(InsideAssignTest, disjoint_interval_assignment_is_allowed_under_wrap_clamp)
     ASSERT_EQ(c, 9); // clamped to upper
 }
 
-// trivial-type guarantees (std::is_trivial is deprecated in C++26)
-template <class T>
-constexpr bool is_trivial_type_v = std::is_trivially_default_constructible_v<T> && std::is_trivially_copyable_v<T>;
-
-TEST(InsideAssignTest, trivial_type_guarantees) {
-    constexpr policy_flag u = uninitialized;
-    static_assert(is_trivial_type_v<inside<{0, 0}, unsafe | u>>);
-    static_assert(is_trivial_type_v<inside<{0, 100}, unsafe | u>>);
-    static_assert(is_trivial_type_v<inside<{-100, 100}, unsafe | u>>);
-    static_assert(is_trivial_type_v<inside<{{0, 10}, rational{1u, 2}}, unsafe | u>>);
-    static_assert(is_trivial_type_v<inside<{{-10, 10}, max_denominator{1000}}, unsafe | u>>);
-    static_assert(is_trivial_type_v<inside<{0, 100}, clamp | u>>);
-    static_assert(is_trivial_type_v<inside<{0, 100}, wrap | u>>);
-    static_assert(is_trivial_type_v<inside<{0, 100}, u>>);
-
-    // Every inside stays trivially copyable and destructible; without
-    // `uninitialized` the default ctor stores the default value.
+// Every inside is trivially copyable and destructible; its default ctor
+// stores the default value (0, else Lower), so none is trivially
+// default-constructible.
+TEST(InsideAssignTest, trivial_copy_guarantees) {
+    static_assert(std::is_trivially_copyable_v<inside<{0, 0}, unsafe>>);
     static_assert(std::is_trivially_copyable_v<inside<{0, 100}>>);
+    static_assert(std::is_trivially_copyable_v<inside<{{0, 10}, rational{1u, 2}}, unsafe>>);
+    static_assert(std::is_trivially_copyable_v<inside<{{-10, 10}, max_denominator{1000}}, unsafe>>);
     static_assert(std::is_trivially_destructible_v<inside<{0, 100}>>);
     static_assert(!std::is_trivially_default_constructible_v<inside<{0, 100}>>);
     static_assert(!std::is_trivially_default_constructible_v<inside<{0, 100}, unsafe>>);

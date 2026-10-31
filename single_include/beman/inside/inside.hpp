@@ -1656,11 +1656,15 @@ template <class T>
 //---------------------------------------------------------------------------
 // rational — structural type for NTTP (public members only). Sign is encoded
 // in the denominator (negative = negative rational); numerator is unsigned to
-// represent e.g. umax itself.
+// represent e.g. umax itself. Default-constructed it is 0 (0/1). Every
+// constructor stores the reduced form; writing Num/Den directly is unchecked
+// (like inside::from_raw), but == and <=> still compare values. (As a template
+// argument, a hand-built unreduced value is a different argument: template
+// identity compares the members.)
 //---------------------------------------------------------------------------
 struct rational {
-    umax Num;
-    imax Den;
+    umax Num{0};
+    imax Den{1};
 
     constexpr rational() = default;
     // Exact for every double of magnitude 2^-10 or more; one finer than
@@ -1690,8 +1694,11 @@ struct rational {
         requires std::same_as<std::remove_cvref_t<O>, std::expected<rational, errc>>
     constexpr rational(O&& o) : rational(value_or_raise(o)) {}
 
-    // operator== by default for structural type
-    [[nodiscard]] constexpr bool operator==(const rational&) const = default;
+    // The values, not the members: equal members (two reduced values) answer
+    // at once; anything else compares the fractions (a hand-built 2/2 equals 1).
+    [[nodiscard]] constexpr bool operator==(const rational& rhs) const {
+        return (Num == rhs.Num && Den == rhs.Den) || (*this <=> rhs) == 0;
+    }
     // Exact against a double too (rational{value} truncates one finer than
     // 2^-62): defined after compare_double.
     template <plain_number T>
@@ -3812,7 +3819,7 @@ struct diag_text {
 namespace beman::inside {
 //---------------------------------------------------------------------------
 // policy_flag — the policy bits of inside<G, P> (none, snap and the
-// rounding modes, clamp, wrap, checked, unsafe, uninitialized),
+// rounding modes, clamp, wrap, checked, unsafe),
 // has_flag / is_checked, the rounding precedence (rounding_of), the hook
 // factories on_clamp / on_wrap / on_error with their is_*_action traits, and
 // the flags each hook implies.
@@ -3872,12 +3879,6 @@ inline constexpr detail::flag<0ull> checked{};
 inline constexpr detail::flag<1ull << 32> clamp{}; // saturate to boundary
 inline constexpr detail::flag<1ull << 33> wrap{};  // modular arithmetic
 
-// `uninitialized` — default construction leaves the raw uninitialized, like a
-// built-in scalar (a trivial default ctor); reading it before a store is
-// undefined. Without it a default-constructed inside is 0, or Lower on a grid
-// without 0.
-inline constexpr detail::flag<1ull << 37> uninitialized{};
-
 // No flag picks the raw: storage follows the grid alone (grid.hpp
 // raw_for, docs/storage.md).
 
@@ -3896,8 +3897,7 @@ namespace detail {
 // The bits of the four explicit rounding modes (each also carries snap).
 inline constexpr policy_flag mode_bits = (1ull << 5) | (1ull << 6) | (1ull << 7) | (1ull << 8);
 // Every bit a flag names: a policy holds no other.
-inline constexpr policy_flag known_bits =
-    mode_bits | snap | clamp | wrap | unsafe_marker | uninitialized | cursor_marker;
+inline constexpr policy_flag known_bits = mode_bits | snap | clamp | wrap | unsafe_marker | cursor_marker;
 
 // How many explicit rounding modes a flag set names (an inside takes one).
 [[nodiscard]] constexpr int rounding_modes(policy_flag f) noexcept {
@@ -7226,9 +7226,8 @@ struct assignment<L, R> {
     using recording_policy = call_policy<P::Flags, error_ref>;
 
     // Out of line, and by value (an empty action too): a reference to a
-    // caller's local would make it escape the hot path's frame. lhs may be
-    // uninitialized (the `uninitialized` flag), so the store runs on a copy of
-    // the lower limit, and a failure is returned, not stored: a failed store
+    // caller's local would make it escape the hot path's frame. The store runs
+    // on a copy of the lower limit, and a failure is returned, not stored: a failed store
     // leaves lhs intact. The policy hears of it here; an on_error action,
     // which gets lhs, from store_fine_double.
     template <typename P, typename A>
@@ -9113,14 +9112,8 @@ struct inside {
     // A default-constructed inside is 0, or Lower on a grid without 0 — a
     // value of the grid, as every other inside holds.
     constexpr inside()
-        requires(!has_flag(P, uninitialized) && !has_flag(P, detail::cursor_marker))
+        requires(!has_flag(P, detail::cursor_marker))
         : Raw{detail::default_raw<inside>} {}
-
-    // `uninitialized`: a trivial default ctor — Raw is left uninitialized, like
-    // a built-in scalar, and has no value until assigned.
-    constexpr inside()
-        requires(has_flag(P, uninitialized) && !has_flag(P, detail::cursor_marker))
-    = default;
 
     // A cursor starts at Lower: slot 0.
     constexpr inside()

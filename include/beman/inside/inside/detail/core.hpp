@@ -129,14 +129,8 @@ struct inside {
     // A default-constructed inside is 0, or Lower on a grid without 0 — a
     // value of the grid, as every other inside holds.
     constexpr inside()
-        requires(!has_flag(P, uninitialized) && !has_flag(P, detail::cursor_marker))
+        requires(!has_flag(P, detail::cursor_marker))
         : Raw{detail::default_raw<inside>} {}
-
-    // `uninitialized`: a trivial default ctor — Raw is left uninitialized, like
-    // a built-in scalar, and has no value until assigned.
-    constexpr inside()
-        requires(has_flag(P, uninitialized) && !has_flag(P, detail::cursor_marker))
-    = default;
 
     // A cursor starts at Lower: slot 0.
     constexpr inside()

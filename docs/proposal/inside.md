@@ -269,8 +269,6 @@ representation.
 A default-constructed `inside` holds a value of its grid: 0 when the grid
 holds 0, else `Lower`. A zero-filled storage would not do: it decodes to
 `Lower` on an index, and to 0 (out of range) on `{5, 100}` stored by value.
-The flag `uninitialized` keeps a trivial default constructor for buffers,
-where a value is stored before it is read.
 
 ## Arithmetic widens
 
@@ -473,7 +471,7 @@ namespace std {
   using policy_flag = @*unsigned integer type*@;
   inline constexpr @*flag*@ none, checked, clamp, wrap, snap, round_toward_zero,
                           round_nearest, round_floor, round_ceil,
-                          round_half_even, unsafe, uninitialized;
+                          round_half_even, unsafe;
 
   // errors
   enum class errc { domain_error = 1, division_by_zero, overflow,
@@ -483,8 +481,7 @@ namespace std {
   // the type
   template<grid G, policy_flag P = checked>               // G continuous: MaxDenominator != 0
   struct inside {
-    constexpr inside();                                   // 0, or Lower on a grid without 0;
-                                                          // trivial under uninitialized
+    constexpr inside();                                   // 0, or Lower on a grid without 0
     template<class A> constexpr inside(A value);          // A arithmetic or inside: a store by P
     template<policy_flag F = none, class A>               // the store by P | F
       static constexpr expected<inside, errc> try_make(A value);

@@ -41,7 +41,6 @@ grid instead (see [arithmetic.md](arithmetic.md)), so it cannot leave its range.
 | `round_floor`, `round_ceil` | toward −∞, toward +∞ (include `snap`) |
 | `round_half_even` | to the nearest notch, ties to the even point (includes `snap`) |
 | `unsafe` | the one opt-out: no runtime range or zero-divisor check, and an off-notch value truncates (`snap`). An out-of-range value or a zero divisor is undefined behaviour; `/= 0` does nothing |
-| `uninitialized` | a trivial default constructor: `T x;` leaves the value uninitialized, like a built-in scalar's, until a store. Without it `T x;` and `T{}` are 0, or Lower on a grid without 0 |
 
 - `clamp` and `wrap` exclude each other (a `static_assert`).
 - Every policy without `unsafe` checks: `inside<G>`, `inside<G, round_nearest>`

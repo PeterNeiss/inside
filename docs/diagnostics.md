@@ -45,7 +45,6 @@ last the bound:
 | `1<<32` | 4294967296 | `clamp` |
 | `1<<33` | 8589934592 | `wrap` |
 | `1<<36` | 68719476736 | the `unsafe` marker (`unsafe` adds `snap`: 68719476752); the only bit that turns runtime checks off |
-| `1<<37` | 137438953472 | `uninitialized` |
 | `1<<50` | 1125899906842624 | a `cursor<T, Step>` |
 
 The other bits are unused, and an inside rejects a policy that holds one or

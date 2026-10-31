@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // The default value: a default-constructed or value-initialized inside is 0
 // when its grid holds 0, else Lower — a value of the grid on every storage.
-// `uninitialized` keeps the trivial default ctor (Raw uninitialized), and a
-// failed error-code construction keeps the default value.
+// A failed error-code construction keeps the default value.
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/units.hpp>
@@ -82,23 +81,35 @@ TEST(DefaultValue, failed_error_code_construction_keeps_the_default) {
     EXPECT_EQ(rational{x}, 5);
 }
 
-TEST(DefaultValue, uninitialized_keeps_a_trivial_default_ctor) {
-    static_assert(std::is_trivially_default_constructible_v<inside<{5, 100}, uninitialized>>);
-    static_assert(std::is_trivially_default_constructible_v<inside<{{1, 2}, max_denominator{100}}, uninitialized>>);
+TEST(DefaultValue, no_inside_is_trivially_default_constructible) {
     static_assert(!std::is_trivially_default_constructible_v<inside<{5, 100}>>);
     static_assert(!std::is_trivially_default_constructible_v<inside<{5, 100}, unsafe>>);
-    // a value still stores normally; a result takes the default policy, as
-    // for every other flag
-    using U = inside<{0, 10}, uninitialized>;
-    static_assert(U{4} == 4);
-    static_assert(!has_flag(flags_of<decltype(U{1} + U{2})>, uninitialized));
+    static_assert(!std::is_trivially_default_constructible_v<inside<{{1, 2}, max_denominator{100}}>>);
     // a cursor starts at Lower whatever T's flags
-    static_assert(rational{cursor<inside<{5, 100}, uninitialized>>{}} == 5);
+    static_assert(rational{cursor<inside<{5, 100}, unsafe>>{}} == 5);
+}
+
+// rational is 0 when default-constructed, and == compares values: a
+// hand-built unreduced fraction equals its reduced form.
+TEST(DefaultValue, rational_is_zero_and_compares_values) {
+    static_assert(rational{} == 0 && rational{}.Den == 1);
+    constexpr auto zero = [] {
+        rational r;
+        return r;
+    }();
+    static_assert(zero == 0);
+    constexpr auto two_halves = [] {
+        rational r;
+        r.Num = 2;
+        r.Den = 2;
+        return r;
+    }();
+    static_assert(two_halves == rational{1} && !(two_halves != rational{1}) && two_halves <=> rational{1} == 0);
+    static_assert(rational{1, 3} != rational{1, 2} && rational{-1, 2} == rational{1, -2});
 }
 
 TEST(DefaultValue, quantity) {
     using namespace beman::inside::units;
     static_assert(quantity<si::metre, inside<{5, 100}>>{}.numerical_value() == 5_ins);
     static_assert(quantity<si::metre, inside<{-5, 100}>>{}.numerical_value() == 0_ins);
-    static_assert(std::is_trivially_default_constructible_v<quantity<si::metre, inside<{5, 100}, uninitialized>>>);
 }

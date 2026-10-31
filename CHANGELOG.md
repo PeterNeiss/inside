@@ -27,9 +27,10 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   (the ISQ and SI catalog); units of your own need only `units/core.hpp`.
 
 - A default-constructed inside is no longer uninitialized: `T x;` and `T{}`
-  are 0, or Lower on a grid without 0. Add the `uninitialized` flag where a
-  trivial default constructor matters (bulk buffers):
-  `inside<G, uninitialized>`.
+  are 0, or Lower on a grid without 0, and no inside is trivially
+  default-constructible.
+- `rational{}` and `rational r;` are 0 (0/1), and `==` / `<=>` compare
+  values, so a `rational` written through `Num`/`Den` compares by its value.
 - An inside no longer converts to `imax` implicitly. Read an integer with
   `as<T>()` (no check is left where `T` holds the grid) or `to<T>()`:
   `int i = b;` becomes `int i = b.as<int>();`, `vec[b]` becomes
@@ -80,7 +81,6 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Added
 
-- `uninitialized`: the policy flag that keeps a trivial default constructor.
 - A flag is also a call's policy: each flag is a constant of its own type
   that converts to `policy_flag`, so `round_floor` is a template argument
   (`inside<G, round_floor>`), combines with `|`, and is the last argument of

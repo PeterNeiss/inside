@@ -273,7 +273,7 @@ The flags are in `policy_flag.hpp`, each a `detail::flag<V>` constant that
 converts to its bits: `none`, `snap`, `round_toward_zero` (the `snap` bit
 alone), `round_nearest`, `round_floor`, `round_ceil`, `round_half_even`,
 `clamp`, `wrap`, `checked` (no bits), `unsafe` (= `detail::unsafe_marker |
-snap`), `uninitialized`, and the internal `detail::cursor_marker`. An inside
+snap`), and the internal `detail::cursor_marker`. An inside
 accepts only `detail::known_bits` and one rounding mode. `is_checked(P)`
 decides whether step 4 runs, and whether a zero divisor is checked: true
 unless P carries `unsafe_marker`, so every policy is checked unless it says
