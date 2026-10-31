@@ -11,10 +11,10 @@
 // lattice's anchor.
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/cmath.hpp>
-#include <beman/inside/io.hpp>
-#include <beman/inside/random.hpp>
-#include <beman/inside/range.hpp>
+#include <beman/inside/math.hpp>
+#include <beman/inside/inside/io.hpp>
+#include <beman/inside/inside/random.hpp>
+#include <beman/inside/inside/range.hpp>
 
 #include <gtest/gtest.h>
 

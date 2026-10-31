@@ -7,8 +7,8 @@
 //             fast path. Verify numerical exactness vs the rational route.
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/detail/rational.hpp>
-#include <beman/inside/cmath.hpp>
+#include <beman/inside/inside/detail/rational.hpp>
+#include <beman/inside/math.hpp>
 
 #include <gtest/gtest.h>
 #include <stdexcept>

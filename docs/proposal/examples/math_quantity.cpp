@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Tour: on a quantity the unit follows the function, and π is reduced exactly.
-#include <beman/inside/units_math.hpp>
+#include <beman/inside/units/math.hpp>
 
 #include <type_traits>
 

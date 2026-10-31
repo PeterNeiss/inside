@@ -21,7 +21,7 @@ exceptions or floating point, and where the limits are. It is also the home of
 
 - compile with `-fno-exceptions`, and install a handler with
   `set_error_handler`;
-- don't include `io.hpp`, `units_io.hpp` or `random.hpp` (with the single
+- don't include `io.hpp`, `units/io.hpp` or `random.hpp` (with the single
   header, define `BEMAN_INSIDE_NO_STRING`);
 - for the math without an FPU, build with `BEMAN_INSIDE_MATH_NO_FP`, and
   `<cmath>` is never included.
@@ -32,7 +32,7 @@ exceptions or floating point, and where the limits are. It is also the home of
 |---|---|
 | every header | `<meta>` (static reflection), hosted in libstdc++ 16 |
 | `io.hpp` | also `<string>`, `<ostream>`, `<format>` |
-| `units_io.hpp` | also io.hpp |
+| `units/io.hpp` | also io.hpp |
 | `random.hpp` | also `<random>` |
 
 Beyond `<meta>`, no `<system_error>`, `<string>`, `<ostream>`, `<format>` or
@@ -103,7 +103,7 @@ Besides the handler, errors come back as values, without `std::error_code`:
 ## Math without `<cmath>` (`BEMAN_INSIDE_MATH_NO_FP`)
 
 The math functions (`math::sin`, `cos`, `exp`, `log`, `sqrt`, `pow`, `atan`, …
-in `cmath.hpp`) work without an FPU. Under `BEMAN_INSIDE_MATH_NO_FP`
+in `math.hpp`) work without an FPU. Under `BEMAN_INSIDE_MATH_NO_FP`
 the engine's `double` and double-double tiers, and their `#include <cmath>`,
 are compiled out **entirely**; the integer path computes every result. The
 interface, the output grids, the types **and the values** are unchanged:

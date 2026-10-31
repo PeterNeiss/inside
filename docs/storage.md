@@ -142,7 +142,7 @@ it back with `B{field}` or `B::try_make(field)`
 
 ## Predefined native formats
 
-`<beman/inside/formats.hpp>` names grids that fill a native width, so you can
+`<beman/inside/inside/formats.hpp>` names grids that fill a native width, so you can
 write `uint8`, `unorm16` or `q8_8` instead of the grid:
 
 | Types | Range, notch | Raw | Policy |
@@ -275,7 +275,7 @@ for (cursor<db_t::rep, 3> n; n != end(n); ++n) {
 
 ## Random sampling: `uniform<B>(rng)`
 
-`<beman/inside/random.hpp>` (opt-in: it includes `<random>`) adds
+`<beman/inside/inside/random.hpp>` (opt-in: it includes `<random>`) adds
 `uniform<B>(rng)`, which draws one of B's points uniformly, for any raw and any
 standard engine:
 

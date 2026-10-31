@@ -13,9 +13,9 @@
 //     dB → linear → dB recovers the input at every step.
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/io.hpp>
-#include <beman/inside/units_io.hpp>
-#include <beman/inside/units_math.hpp>
+#include <beman/inside/inside/io.hpp>
+#include <beman/inside/units/io.hpp>
+#include <beman/inside/units/math.hpp>
 
 #include <print>
 using std::println;
@@ -47,7 +47,7 @@ static constexpr gain_t db_to_linear(db_t db) { return units::pow_base_into<gain
 static constexpr db_t linear_to_db(gain_t amp) { return db_t{units::log10_into<db_div20_t>(amp) * (just<20> * dB)}; }
 
 int main() {
-    // `std::println` works on inside / rational because `beman/inside/io.hpp`
+    // `std::println` works on inside / rational because `beman/inside/inside/io.hpp`
     // ships `std::formatter` specializations for both. Empty `{}` keeps the
     // exact rational rendering — same string `operator<<` would produce.
     println("dB → linear → dB round-trip:");

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Tour: a function rounds once, onto the grid it returns.
-#include <beman/inside/cmath.hpp>
+#include <beman/inside/math.hpp>
 
 #include <type_traits>
 

@@ -4,11 +4,11 @@
 // wrong error, or ran into undefined behaviour.
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/casts.hpp>
-#include <beman/inside/cmath.hpp>
-#include <beman/inside/formats.hpp>
-#include <beman/inside/io.hpp>
-#include <beman/inside/predicates.hpp>
+#include <beman/inside/inside/casts.hpp>
+#include <beman/inside/math.hpp>
+#include <beman/inside/inside/formats.hpp>
+#include <beman/inside/inside/io.hpp>
+#include <beman/inside/inside/predicates.hpp>
 
 #include <gtest/gtest.h>
 

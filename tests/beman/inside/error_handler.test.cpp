@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// The replaceable failure handler (beman/inside/detail/error.hpp). A checked violation
+// The replaceable failure handler (beman/inside/inside/detail/error.hpp). A checked violation
 // funnels through beman::inside::detail::raise -> the installed handler. By default that
 // throws beman::inside::inside_error carrying the originating errc; set_error_handler swaps
 // in a user handler (e.g. a bare-metal reset/log) without any <system_error>
 // dependency. These tests cover both the default and a custom handler.
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/casts.hpp>
+#include <beman/inside/inside/casts.hpp>
 
 #include <gtest/gtest.h>
 #include <atomic>

@@ -3,9 +3,9 @@
 // bound (grid::MaxDenominator) holds every exact +, −, ×, ÷ result, so those
 // ops return plain values instead of std::expected.
 
-#include <beman/inside/cmath.hpp>
+#include <beman/inside/math.hpp>
 #include <beman/inside/inside.hpp>
-#include <beman/inside/io.hpp>
+#include <beman/inside/inside/io.hpp>
 
 #include <gtest/gtest.h>
 

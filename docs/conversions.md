@@ -188,7 +188,7 @@ as `printf` does with a `double`. A width alone keeps the exact text.
 | prints | `0.12`, `-0.13` | `0.13`, `-0.13` | `0.12`, `-0.13` | `0.13`, `-0.12` | `0.12`, `-0.12` |
 
 ```cpp
-#include <beman/inside/io.hpp>
+#include <beman/inside/inside/io.hpp>
 #include <print>
 
 inside<{0, 100}> hp{42};

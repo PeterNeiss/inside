@@ -15,9 +15,9 @@
 #include <vector>
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/io.hpp>
+#include <beman/inside/inside/io.hpp>
 #include <beman/inside/units.hpp>
-#include <beman/inside/units_io.hpp>
+#include <beman/inside/units/io.hpp>
 
 using namespace beman::inside;
 using namespace beman::inside::units;

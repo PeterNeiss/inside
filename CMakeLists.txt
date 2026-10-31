@@ -118,7 +118,7 @@ endif()
 # / traps under -fno-exceptions) with a static const-char* message — the core
 # never drags <string>/<system_error> into a translation unit. General-purpose
 # stringification (to_string / operator<< / std::formatter) lives in the opt-in
-# <beman/inside/io.hpp>; in the single header that block is wrapped in
+# <beman/inside/inside/io.hpp>; in the single header that block is wrapped in
 # BEMAN_INSIDE_NO_STRING so a freestanding consumer can drop it wholesale.
 
 add_subdirectory(include/beman/inside)

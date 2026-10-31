@@ -39,14 +39,14 @@
 #ifndef BEMAN_INSIDE_CERTIFY_HPP
 #define BEMAN_INSIDE_CERTIFY_HPP
 
-#if defined(BEMAN_INSIDE_DETAIL_CONFIG_HPP)
+#if defined(BEMAN_INSIDE_INSIDE_DETAIL_CONFIG_HPP)
     #error "certify.hpp must be included before every beman.inside header"
 #endif
 #define BEMAN_INSIDE_MATH_INSTRUMENT 1
 #define BEMAN_INSIDE_MATH_TABLE_SLOTS 0 // every call computes, so the integer path's counters see it
 
-#include <beman/inside/cmath.hpp>
-#include <beman/inside/io.hpp>
+#include <beman/inside/math.hpp>
+#include <beman/inside/inside/io.hpp>
 
 #include "sha256.hpp"
 

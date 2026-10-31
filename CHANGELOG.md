@@ -8,6 +8,21 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Upgrading from 0.6.0
 
+- The headers live in three components: `inside.hpp` and `inside/`,
+  `math.hpp` and `math/`, `units.hpp` and `units/`. The umbrellas
+  `<beman/inside/inside.hpp>` and `<beman/inside/units.hpp>` are unchanged;
+  other includes move:
+
+  | Before | Now |
+  |---|---|
+  | `beman/inside/cmath.hpp` | `beman/inside/math.hpp` |
+  | `beman/inside/io.hpp`, `random.hpp`, `formats.hpp` | `beman/inside/inside/io.hpp`, `inside/random.hpp`, `inside/formats.hpp` |
+  | `beman/inside/grid.hpp`, `interval.hpp`, `casts.hpp`, … | `beman/inside/inside/grid.hpp`, … |
+  | `beman/inside/units_io.hpp`, `units_math.hpp` | `beman/inside/units/io.hpp`, `units/math.hpp` |
+  | `beman/inside/constants.hpp` | `beman/inside/units/constants.hpp` (physical) and `beman/inside/math/constants.hpp` (`math::pi` & co., without units) |
+  | `beman/inside/detail/…` | `beman/inside/inside/detail/…`, `beman/inside/math/detail/…` (internal) |
+  | `beman/inside/core.hpp`, `numbers.hpp`, `policy.hpp` | internal: `inside/detail/core.hpp`, `numbers.hpp`, `call_policy.hpp` |
+
 - A default-constructed inside is no longer uninitialized: `T x;` and `T{}`
   are 0, or Lower on a grid without 0. Add the `uninitialized` flag where a
   trivial default constructor matters (bulk buffers):

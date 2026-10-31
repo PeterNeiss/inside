@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #include <gtest/gtest.h>
 
-#include <beman/inside/formats.hpp>
+#include <beman/inside/inside/formats.hpp>
 
 using namespace beman::inside;
 using namespace beman::inside::detail;

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // atanh(±1) is infinite: an input grid reaching ±1 is rejected at compile time.
 #include <beman/inside/inside.hpp>
-#include <beman/inside/cmath.hpp>
+#include <beman/inside/math.hpp>
 
 using namespace beman::inside;
 

@@ -20,8 +20,8 @@
 #include <vector>
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/io.hpp>
-#include <beman/inside/casts.hpp>
+#include <beman/inside/inside/io.hpp>
+#include <beman/inside/inside/casts.hpp>
 
 using namespace beman::inside;
 

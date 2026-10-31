@@ -20,7 +20,7 @@
 //
 // Magnitudes are exact rationals times a power of π. A π magnitude (degree ↔
 // radian) has no exact rescale: it rounds once, through value_cast with a
-// target representation and a rounding flag (units_math.hpp).
+// target representation and a rounding flag (units/math.hpp).
 //
 // Also here:
 //   quantity_point, point<U>(v), the origins     ℃ and ℉ points, exact shifts
@@ -33,16 +33,16 @@
 //   dot, cross, lerp                             inside's algorithms
 //   percent, per_mille                           dimensionless units
 // The catalog: isq, si, si2019, international. The derived physical
-// constants are in constants.hpp; text (to_string, <<, std::format,
-// parse<Q>) in units_io.hpp.
+// constants are in units/constants.hpp; text (to_string, <<, std::format,
+// parse<Q>) in units/io.hpp.
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_UNITS_HPP
 #define BEMAN_INSIDE_UNITS_HPP
 
-#include <beman/inside/detail/config.hpp>
+#include <beman/inside/inside/detail/config.hpp>
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/predicates.hpp>
+#include <beman/inside/inside/predicates.hpp>
 
 #include <algorithm>
 #include <compare>
@@ -58,7 +58,7 @@
 // The diagnostic of a π conversion asked to be exact (rescale, in()).
 #define BEMAN_INSIDE_UNITS_WHY_PI                                                                  \
     "units: this conversion multiplies by a power of pi, which has no exact grid - round it with " \
-    "value_cast<unit, Rep>(q) from <beman/inside/units_math.hpp>, Rep declared with a rounding mode"
+    "value_cast<unit, Rep>(q) from <beman/inside/units/math.hpp>, Rep declared with a rounding mode"
 
 namespace beman::inside::units {
 using beman::inside::detail::grid_rational;
@@ -1378,7 +1378,7 @@ template <insidable V, unit U>
 
 // A magnitude scales a quantity's unit, not its number: mag_pi * q is q
 // in [π·unit], exact and free (π is never rounded; value_cast to a plain
-// unit rounds it once, units_math.hpp). mag<2> * q, q / mag_pi likewise.
+// unit rounds it once, units/math.hpp). mag<2> * q, q / mag_pi likewise.
 namespace detail {
 consteval reference scaled_reference(reference r, const magnitude& m) {
     r.U = unit_scaled(r.U, m);
@@ -1643,7 +1643,7 @@ template <insidable Rep2, reference R, class V>
 }
 // value_cast<U, Rep2>(q) — in unit U with representation Rep2: the exact
 // value in U, stored by Rep2's constructor. (A pi factor, degree ↔ radian,
-// rounds once: units_math.hpp.)
+// rounds once: units/math.hpp.)
 template <auto U, insidable Rep2, reference R, class V>
     requires is_unit_tag_v<decltype(U)> && detail::exact_rescale_v<R.U, decltype(U)::value> &&
              requires(const quantity<R, V>& q) { Rep2(q.in(U).numerical_value()); }

@@ -2,7 +2,7 @@
 // Sanity checks for the overflow-detecting wrappers (GCC/Clang builtins):
 // boundary values per width, signedness, and use in constant evaluation.
 
-#include <beman/inside/numbers.hpp>
+#include <beman/inside/inside/detail/numbers.hpp>
 
 #include <gtest/gtest.h>
 

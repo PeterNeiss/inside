@@ -15,7 +15,7 @@ It is exact, it cannot fail, and it costs nothing at run time.
 
 ```cpp
 #include <beman/inside/units.hpp>
-#include <beman/inside/units_io.hpp> // printing
+#include <beman/inside/units/io.hpp> // printing
 using namespace beman::inside;
 using namespace beman::inside::units;
 
@@ -29,8 +29,8 @@ auto v     = total / quantity<si::minute, inside<{1, 600}>>{20};
 std::cout << v.in(km / si::hour);                        // 39.9 km/h
 ```
 
-`<beman/inside/units_math.hpp>` adds the functions that need the math engine
-(cmath.hpp), and `<beman/inside/units_io.hpp>` the text: `to_string`, `<<`,
+`<beman/inside/units/math.hpp>` adds the functions that need the math engine
+(math.hpp), and `<beman/inside/units/io.hpp>` the text: `to_string`, `<<`,
 `std::format`, `unit_symbol` and `parse<Q>`, as io.hpp does for insides. They
 are separate headers so that units.hpp alone compiles fast.
 
@@ -103,7 +103,7 @@ target's number: `quantity<si::joule, R>` takes an N·m quantity.
 ### Factors of π round once
 
 A degree is π/180 rad, so no grid can represent that conversion, and `.in()`
-refuses it with a message. `value_cast<si::radian, Out>(q)` (units_math.hpp)
+refuses it with a message. `value_cast<si::radian, Out>(q)` (units/math.hpp)
 computes the exact x·π/180 with π to as many bits as `Out` needs, and rounds
 once onto `Out`, which needs a rounding mode. Only factors of π and 1/π are
 supported.
@@ -254,7 +254,7 @@ dimension, magnitude, kind and origin. A unit holds at most 6 named units, a
 recipe at most 6 specs, and an exponent stays within ±127; past that is a
 compile error.
 
-## Math (units_math.hpp)
+## Math (units/math.hpp)
 
 | Function | Takes | Gives |
 |---|---|---|
@@ -348,11 +348,11 @@ gives the ASCII spelling: `kg m^2/s^2`, `um`, `ohm`.
 Grid numbers have any size, so the prefixes past 10^±18, the eV, the Da and
 the SI constants h, e, k and N_A are exact; E = h·ν comes out exact.
 
-units.hpp needs no text support; units_io.hpp includes io.hpp, `<ostream>`
+units.hpp needs no text support; units/io.hpp includes io.hpp, `<ostream>`
 and `<string>`, so printing needs a hosted standard library
 ([freestanding.md](freestanding.md)). In the single header
-`BEMAN_INSIDE_NO_STRING` drops io.hpp and units_io.hpp, and
-`BEMAN_INSIDE_NO_UNITS` drops units.hpp, units_io.hpp, units_math.hpp and the
+`BEMAN_INSIDE_NO_STRING` drops io.hpp and units/io.hpp, and
+`BEMAN_INSIDE_NO_UNITS` drops units.hpp, units/io.hpp, units/math.hpp and the
 physical constants. Under `BEMAN_INSIDE_MATH_NO_FP` on a hosted build, everything
 here works: neither header uses floating point.
 
@@ -365,7 +365,7 @@ translation units (best of three). On the maintainer's machine:
 |---|---:|---:|---:|---:|
 | GCC 16, C++26 | 0.53 s | 0.72 s | 4.16 s | 5.83 s |
 
-The header adds about 0.2 s; printing (units_io.hpp, through io.hpp) adds
+The header adds about 0.2 s; printing (units/io.hpp, through io.hpp) adds
 another 0.4 s. Each of the 200 expressions uses its own grid, so most of the
 time is inside's arithmetic on those grids; units add about 7 ms per
 expression.

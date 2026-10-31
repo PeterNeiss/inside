@@ -3,8 +3,8 @@
 // past its Upper, so the classic loop needs no value T cannot hold.
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/cmath.hpp>
-#include <beman/inside/io.hpp>
+#include <beman/inside/math.hpp>
+#include <beman/inside/inside/io.hpp>
 
 #include <gtest/gtest.h>
 

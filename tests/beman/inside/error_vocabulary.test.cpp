@@ -5,8 +5,8 @@
 //                           modulo, checked rational overflow), queries and math.
 // These tests cover the expected-lift operators that chain those results.
 
-#include <beman/inside/arithmetic.hpp>
-#include <beman/inside/cmath.hpp>
+#include <beman/inside/inside/arithmetic.hpp>
+#include <beman/inside/math.hpp>
 
 #include <gtest/gtest.h>
 

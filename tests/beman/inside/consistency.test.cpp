@@ -4,9 +4,9 @@
 // engine) handles it.
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/cmath.hpp>
-#include <beman/inside/detail/rational.hpp>
-#include <beman/inside/predicates.hpp>
+#include <beman/inside/math.hpp>
+#include <beman/inside/inside/detail/rational.hpp>
+#include <beman/inside/inside/predicates.hpp>
 
 #include <gtest/gtest.h>
 

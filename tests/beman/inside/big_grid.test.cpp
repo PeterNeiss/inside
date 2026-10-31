@@ -4,9 +4,9 @@
 // conversions and io.
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/cmath.hpp>
-#include <beman/inside/formats.hpp>
-#include <beman/inside/io.hpp>
+#include <beman/inside/math.hpp>
+#include <beman/inside/inside/formats.hpp>
+#include <beman/inside/inside/io.hpp>
 
 #include <gtest/gtest.h>
 

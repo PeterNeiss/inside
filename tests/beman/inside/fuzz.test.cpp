@@ -10,10 +10,10 @@
 //---------------------------------------------------------------------------
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/casts.hpp>
-#include <beman/inside/cmath.hpp>
-#include <beman/inside/predicates.hpp>
-#include <beman/inside/range.hpp>
+#include <beman/inside/inside/casts.hpp>
+#include <beman/inside/math.hpp>
+#include <beman/inside/inside/predicates.hpp>
+#include <beman/inside/inside/range.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -563,7 +563,7 @@ void prop_compound_div_mod_zero(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_compound_inside_overshoot(fuzz_state& s, long iters) {
-    // Targets inside::operator+= (core.hpp): the fast path's branch where the result
+    // Targets inside::operator+= (inside/detail/core.hpp): the fast path's branch where the result
     // overshoots and the policy lacks clamp/wrap. The catalogue's
     // grids already use the default `checked` policy, so the report path throws
     // overflow. Pick start values where adding `delta` lands outside the
@@ -759,7 +759,7 @@ void prop_expected_throws(fuzz_state& s) {
 
 template <insidable B>
 void prop_compound_add_same_inside(fuzz_state& s, long iters) {
-    // Targets the fallback path of inside::operator+=(insidable R) (core.hpp)
+    // Targets the fallback path of inside::operator+=(insidable R) (inside/detail/core.hpp)
     // when the fast path's encoding constraints don't hold (typically fractional
     // grids whose Lower != 0 on at least one side, or notches that mismatch).
     // For grids whose value ranges allow it, b += b should still produce 2*b

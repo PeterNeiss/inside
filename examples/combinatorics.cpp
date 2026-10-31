@@ -14,7 +14,7 @@
 #include <utility>
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/io.hpp>
+#include <beman/inside/inside/io.hpp>
 
 using namespace beman::inside;
 

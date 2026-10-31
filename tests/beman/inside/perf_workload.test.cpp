@@ -32,7 +32,7 @@
 // instruction count is byte-for-byte reproducible.
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/cmath.hpp>
+#include <beman/inside/math.hpp>
 
 #include <cstdint>
 #include <cstdio>

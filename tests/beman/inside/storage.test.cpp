@@ -2,9 +2,9 @@
 // Storage deduced from the grid, and how the behaviour policies act on it.
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/cmath.hpp>
-#include <beman/inside/formats.hpp> // beman::inside::byte
-#include <beman/inside/io.hpp>
+#include <beman/inside/math.hpp>
+#include <beman/inside/inside/formats.hpp> // beman::inside::byte
+#include <beman/inside/inside/io.hpp>
 
 #include <gtest/gtest.h>
 

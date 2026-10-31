@@ -8,7 +8,7 @@
 // consistent (`(a/b)*b + a%b == a`), and the result lands inside its grid.
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/io.hpp>
+#include <beman/inside/inside/io.hpp>
 
 #include <cstdlib>
 

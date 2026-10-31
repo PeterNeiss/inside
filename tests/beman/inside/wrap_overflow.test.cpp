@@ -11,7 +11,7 @@
 // pinned to magic constants.
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/io.hpp>
+#include <beman/inside/inside/io.hpp>
 
 #include <gtest/gtest.h>
 #include <cstdint>

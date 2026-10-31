@@ -11,8 +11,8 @@
 #include <unordered_set>
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/io.hpp>
-#include <beman/inside/predicates.hpp>
+#include <beman/inside/inside/io.hpp>
+#include <beman/inside/inside/predicates.hpp>
 
 using namespace beman::inside;
 

@@ -17,9 +17,9 @@
 #include <iostream>
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/io.hpp>
-#include <beman/inside/formats.hpp>
-#include <beman/inside/units_math.hpp>
+#include <beman/inside/inside/io.hpp>
+#include <beman/inside/inside/formats.hpp>
+#include <beman/inside/units/math.hpp>
 
 using namespace beman::inside;
 using namespace beman::inside::units;

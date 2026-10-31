@@ -20,8 +20,8 @@
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/units.hpp>
-#include <beman/inside/units_io.hpp>
-#include <beman/inside/units_math.hpp>
+#include <beman/inside/units/io.hpp>
+#include <beman/inside/units/math.hpp>
 
 using namespace beman::inside;
 using namespace beman::inside::units;

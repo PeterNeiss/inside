@@ -2,7 +2,7 @@
 // The adaptive math engine: fixed-point helpers, constants at any precision,
 // and the decision step that rounds a result onto the output grid correctly.
 
-#include <beman/inside/detail/math_adaptive.hpp>
+#include <beman/inside/math/detail/adaptive.hpp>
 
 #include <gtest/gtest.h>
 
@@ -136,7 +136,7 @@ TEST(MathAdaptiveTest, evaluate_escalates_until_decided) {
 // the nearest grid point (or the floor point, for round_floor). Results within
 // a hair of a rounding boundary are skipped (long double cannot tell).
 //---------------------------------------------------------------------------
-#include <beman/inside/detail/math_entry.hpp>
+#include <beman/inside/math/detail/entry.hpp>
 
 #include <cmath>
 #include <functional>

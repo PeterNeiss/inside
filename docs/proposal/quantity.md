@@ -381,7 +381,7 @@ below is a candidate for a later paper or revision:
 # Implementation experience
 
 The layer is `units.hpp`, about 2400 lines, with its text in a separate
-`units_io.hpp` (about 180 lines). A translation unit that includes it parses in
+`units/io.hpp` (about 180 lines). A translation unit that includes it parses in
 0.72 s with GCC 16, against 0.53 s for `inside` alone, and 200 distinct
 quantity expressions add about 7 ms each (the repository's `docs/units.md`,
 "Compile time"). Measured on v0.5.0's C++23 build, the layer parses in about a

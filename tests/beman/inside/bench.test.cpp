@@ -20,7 +20,7 @@
 #include <nanobench.h>
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/cmath.hpp>
+#include <beman/inside/math.hpp>
 
 #include <algorithm>
 #include <cmath>

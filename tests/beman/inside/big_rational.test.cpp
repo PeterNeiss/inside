@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // big_int / big_rational: grid numbers of any size.
 
-#include <beman/inside/detail/grid_rational.hpp>
+#include <beman/inside/inside/detail/grid_rational.hpp>
 
 #include <gtest/gtest.h>
 
