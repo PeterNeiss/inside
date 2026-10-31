@@ -10,6 +10,7 @@
 #include <limits>
 
 using namespace beman::inside;
+using namespace beman::inside::detail; // the overflow helpers are internal
 
 TEST(OverflowTest, signed_boundaries) {
     using L = std::numeric_limits<std::int64_t>;

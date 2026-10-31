@@ -350,14 +350,15 @@ template <fixed_string Msg>
 
 
 //---------------------------------------------------------------------------
-// numbers — primitive numeric utilities: umax/imax, the overflow-detecting
-// add/sub/mul, the plain_number / fractional concepts and safe_abs. The
-// floating-point bit helpers are in detail/float_bits.hpp.
+// numbers — primitive numeric utilities: umax/imax (public), and in detail
+// the overflow-detecting add/sub/mul, the plain_number / fractional concepts
+// and safe_abs. The floating-point bit helpers are in detail/float_bits.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 using umax = std::uint64_t;
 using imax = std::int64_t;
 
+namespace detail {
 // Overflow-detecting add/sub/mul for integers (derived from Peter Sommerlad's
 // odins.h, MIT license): GCC's __builtin_*_overflow intrinsics. Return true on
 // overflow; *result holds the wrapped value either way. Used by rational's
@@ -378,7 +379,6 @@ template <std::integral T>
     return __builtin_mul_overflow(l, r, result);
 }
 
-namespace detail {
 struct rational;
 
 // A plain number a grid-less value can be: integral, floating point, or the

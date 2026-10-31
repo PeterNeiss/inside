@@ -24,6 +24,8 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   prints as `0` instead of `17179869184`.
 - An inside rejects a policy with bits no flag names or with two rounding
   modes (`round_floor | round_ceil`); build policies from the flags.
+- `add_overflow`, `sub_overflow` and `mul_overflow` are internal
+  (`beman::inside::detail`); use `std::ckd_add` & co. or the builtins.
 - The class `policy<F, E>` is `detail::call_policy<F, E>`: write
   `make_policy<F>()` / `make_policy<F>(ec)`, or pass a flag.
 - `rounded_floor`, `rounded_nearest` & co., `clamped` and `wrapped` are gone:
