@@ -7,7 +7,7 @@
 #include <iostream>
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/io.hpp>
+#include <beman/inside/inside/io.hpp>
 
 using namespace beman::inside;
 
@@ -24,7 +24,7 @@ int main()
     std::cout << "7 / 3              = " << *exact << "   (exact, not 2)\n";
 
   // Opt in to C-style truncation explicitly, per call.
-  auto trunc = div(a, b, rounded_toward_zero);
+  auto trunc = div(a, b, round_toward_zero);
   if (trunc)
     std::cout << "div(7, 3, trunc)   = " << *trunc << "\n";
 

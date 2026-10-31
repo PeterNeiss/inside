@@ -1,7 +1,7 @@
 // EXPECT: takes two quantities that add
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // atan2 of a length and a duration: its arguments must add.
-#include <beman/inside/units_math.hpp>
+#include <beman/inside/units/math.hpp>
 
 int main() {
     using namespace beman::inside;

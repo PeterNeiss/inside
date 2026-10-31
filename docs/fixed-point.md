@@ -26,7 +26,7 @@ An unsigned Q8.8 register (8 integer bits, 8 fractional bits, every one of the
 using q8_8 = inside<{{0, rational{65535, 256}}, per<256>}, round_nearest>;   // == beman::inside::q8_8
 ```
 
-`<beman/inside/formats.hpp>` has the common ones ([storage.md](storage.md#predefined-native-formats)):
+`<beman/inside/inside/formats.hpp>` has the common ones ([storage.md](storage.md#predefined-native-formats)):
 
 | Alias | Format | Raw |
 |---|---|---|

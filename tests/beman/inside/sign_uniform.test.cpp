@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // math::sign / math::copysign (algebraic tier) and uniform<B>(rng) (random.hpp).
 #include <beman/inside/inside.hpp>
-#include <beman/inside/cmath.hpp>
-#include <beman/inside/random.hpp>
+#include <beman/inside/math.hpp>
+#include <beman/inside/inside/random.hpp>
 
 #include <gtest/gtest.h>
 

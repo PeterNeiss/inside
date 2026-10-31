@@ -4,9 +4,9 @@
 // arithmetic, conversions, io, hashing and sampling.
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/formats.hpp>
-#include <beman/inside/io.hpp>
-#include <beman/inside/random.hpp>
+#include <beman/inside/inside/formats.hpp>
+#include <beman/inside/inside/io.hpp>
+#include <beman/inside/inside/random.hpp>
 
 #include <gtest/gtest.h>
 
@@ -107,7 +107,7 @@ TEST(WideGridTest, assignment_between_insides) {
     fine                            b = 41.75;
     inside<{0, 100}, round_nearest> n = 0;
     n                                 = b;
-    EXPECT_EQ(static_cast<imax>(n), 42);
+    EXPECT_EQ(n.as<imax>(), 42);
     // wide → wide of another lattice.
     fine_signed s = b;
     EXPECT_TRUE(s == 41.75);
@@ -300,12 +300,12 @@ TEST(WideGridTest, modulo) {
     constexpr umax kUM = ~umax{0};
     auto           d   = uint64{kUM} - uint64{0};
     static_assert(detail::wide_index_storage<decltype(d)>);
-    auto m = mod(d, inside<{1, 1000}>{7}, policy<snap>{});
+    auto m = mod(d, inside<{1, 1000}>{7}, make_policy<snap>());
     EXPECT_TRUE(m == (kUM % 7));
-    auto n = mod(-d, inside<{1, 1000}>{7}, policy<snap>{}); // takes the dividend's sign
+    auto n = mod(-d, inside<{1, 1000}>{7}, make_policy<snap>()); // takes the dividend's sign
     EXPECT_TRUE(n == -static_cast<imax>(kUM % 7));
     // uint64 itself (a uint64 value raw past imax) now has a modulo too.
-    EXPECT_TRUE((mod(uint64{kUM}, inside<{1, 1000}>{10}, policy<snap>{}) == 5));
+    EXPECT_TRUE((mod(uint64{kUM}, inside<{1, 1000}>{10}, make_policy<snap>()) == 5));
 }
 
 TEST(WideGridTest, clamp_and_wrap_actions) {
@@ -329,7 +329,7 @@ TEST(WideGridTest, clamp_and_wrap_actions) {
     fine w     = 0;
     imax carry = 0;
     // One turn is 2^34 + 2^-32, so 3·2^34 + 2 = 3 turns + (2 − 3·2^-32).
-    w.on_wrap([&](auto&, auto q) { carry = q; }) = 3 * p34 + 2;
+    w.on_wrap([&](auto&, auto q) { carry = as<imax>(q); }) = 3 * p34 + 2;
     EXPECT_EQ(carry, 3);
     EXPECT_TRUE(w == (rational{2} - (rational{3} * tick).value()).value());
 }

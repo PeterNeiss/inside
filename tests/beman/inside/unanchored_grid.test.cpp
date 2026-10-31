@@ -11,10 +11,10 @@
 // lattice's anchor.
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/cmath.hpp>
-#include <beman/inside/io.hpp>
-#include <beman/inside/random.hpp>
-#include <beman/inside/range.hpp>
+#include <beman/inside/math.hpp>
+#include <beman/inside/inside/io.hpp>
+#include <beman/inside/inside/random.hpp>
+#include <beman/inside/inside/range.hpp>
 
 #include <gtest/gtest.h>
 
@@ -460,15 +460,15 @@ TEST(UnanchoredGrid, range_limits_random) {
     static_assert(!has_epsilon<inside<kTenthOff>>);
     EXPECT_FALSE(std::numeric_limits<inside<kHalfOff>>::is_integer);
     static_assert(!std::is_convertible_v<inside<kHalfOff>, imax>); // no silent truncation
-    static_assert(std::is_convertible_v<inside<{0, 10}>, imax>);
-    // with a rounding policy it converts, rounded by the policy's mode
-    EXPECT_EQ(static_cast<imax>(inside<kHalfOff, round_nearest>{2.5}), 3);
-    EXPECT_EQ(static_cast<imax>(inside<kHalfOff, round_floor>{2.5}), 2);
-    EXPECT_EQ(static_cast<imax>(inside<kHalfOff, snap>{2.5}), 2);
-    EXPECT_EQ(static_cast<imax>(inside<kQuarterOff, snap>{-1.75}), -1);
-    EXPECT_EQ(static_cast<imax>(inside<kHalfOff, round_half_even>{2.5}), 2);
-    EXPECT_EQ(static_cast<imax>(inside<kHalfOff, round_half_even>{3.5}), 4);
-    const imax i = inside<{{0, 4}, per<4>}, round_ceil>{1.25};
+    static_assert(!std::is_convertible_v<inside<{0, 10}>, imax>);
+    // as<imax>() rounds by the policy's mode
+    EXPECT_EQ((inside<kHalfOff, round_nearest>{2.5}.as<imax>()), 3);
+    EXPECT_EQ((inside<kHalfOff, round_floor>{2.5}.as<imax>()), 2);
+    EXPECT_EQ((inside<kHalfOff, snap>{2.5}.as<imax>()), 2);
+    EXPECT_EQ((inside<kQuarterOff, snap>{-1.75}.as<imax>()), -1);
+    EXPECT_EQ((inside<kHalfOff, round_half_even>{2.5}.as<imax>()), 2);
+    EXPECT_EQ((inside<kHalfOff, round_half_even>{3.5}.as<imax>()), 4);
+    const imax i = inside<{{0, 4}, per<4>}, round_ceil>{1.25}.as<imax>();
     EXPECT_EQ(i, 2);
 
     std::mt19937_64 rng{42};

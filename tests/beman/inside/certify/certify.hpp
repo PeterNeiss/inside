@@ -39,14 +39,14 @@
 #ifndef BEMAN_INSIDE_CERTIFY_HPP
 #define BEMAN_INSIDE_CERTIFY_HPP
 
-#if defined(BEMAN_INSIDE_DETAIL_CONFIG_HPP)
+#if defined(BEMAN_INSIDE_INSIDE_DETAIL_CONFIG_HPP)
     #error "certify.hpp must be included before every beman.inside header"
 #endif
 #define BEMAN_INSIDE_MATH_INSTRUMENT 1
 #define BEMAN_INSIDE_MATH_TABLE_SLOTS 0 // every call computes, so the integer path's counters see it
 
-#include <beman/inside/cmath.hpp>
-#include <beman/inside/io.hpp>
+#include <beman/inside/math.hpp>
+#include <beman/inside/inside/io.hpp>
 
 #include "sha256.hpp"
 
@@ -119,11 +119,8 @@ inline std::string flags_text(policy_flag f) {
     else if (has_flag(f, snap))
         add("round_toward_zero");
     f &= ~(round_half_even | round_ceil | round_floor | round_nearest | snap);
-    for (const auto& [flag, name] : {std::pair{clamp, "clamp"},
-                                     std::pair{wrap, "wrap"},
-                                     std::pair{checked, "checked"},
-                                     std::pair{ignore_zero, "ignore_zero"},
-                                     std::pair{ignore_range, "ignore_range"}})
+    using named = std::pair<policy_flag, const char*>;
+    for (const auto& [flag, name] : {named{clamp, "clamp"}, named{wrap, "wrap"}})
         if (has_flag(f, flag)) {
             add(name);
             f &= ~flag;
@@ -133,7 +130,7 @@ inline std::string flags_text(policy_flag f) {
         std::snprintf(hex, sizeof hex, "0x%llx", static_cast<unsigned long long>(f));
         add(hex);
     }
-    return out.empty() ? std::string{"none"} : out;
+    return out.empty() ? std::string{"checked"} : out; // the default policy has no bits
 }
 template <insidable T>
 std::string type_text() {

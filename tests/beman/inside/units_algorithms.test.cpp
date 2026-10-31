@@ -5,8 +5,8 @@
 // a unit with a factor of π.
 
 #include <beman/inside/units.hpp>
-#include <beman/inside/units_io.hpp>
-#include <beman/inside/units_math.hpp>
+#include <beman/inside/units/io.hpp>
+#include <beman/inside/units/math.hpp>
 
 #include <gtest/gtest.h>
 
@@ -43,12 +43,12 @@ TEST(UnitsAlgorithmsTest, hooks_take_quantities_and_see_the_quantity) {
     seconds_t s{50};
     int       carry = -1;
     s.on_wrap([&](seconds_t& self, auto c) {
-        carry = static_cast<int>(c);
+        carry = as<int>(c);
         EXPECT_EQ(&self, &s);
     }) += just<25> * si::second;
     EXPECT_EQ(to_string(s), "15 s");
     EXPECT_EQ(carry, 1);
-    s.on_wrap([&](auto&, auto c) { carry = static_cast<int>(c); }) += just<2> * si::minute; // in seconds, exactly
+    s.on_wrap([&](auto&, auto c) { carry = as<int>(c); }) += just<2> * si::minute; // in seconds, exactly
     EXPECT_EQ(to_string(s), "15 s");
     EXPECT_EQ(carry, 2);
     static_assert(!can_add_into<seconds_t, decltype(just<1> * si::metre)>);

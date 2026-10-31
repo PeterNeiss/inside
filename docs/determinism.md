@@ -19,7 +19,7 @@ build rules that the other pages link to.
 | units: conversions, mixed-unit sums, points | **always** | none: a conversion is an exact grid rescale |
 | conversions to and from `double` and `float` | **yes** | IEEE-754, round to nearest; fast-math and x87 excess precision are rejected at compile time |
 | conversions to and from `long double` | **per format** | one rounding to the platform's `long double` (x87 80-bit, IEEE quad, or `double`) |
-| `beman::inside::math`, `units_math.hpp`, `value_cast` across π | **yes** | the same build rules as `double`, for the floating-point tiers (none under `BEMAN_INSIDE_MATH_NO_FP`); see [the math engine](#the-math-engine) for what *correctly rounded* covers |
+| `beman::inside::math`, `units/math.hpp`, `value_cast` across π | **yes** | the same build rules as `double`, for the floating-point tiers (none under `BEMAN_INSIDE_MATH_NO_FP`); see [the math engine](#the-math-engine) for what *correctly rounded* covers |
 | compile-time constants and coefficient tables | **always** | `constexpr`, no external generators |
 | text: `to_string`, `parse`, `<<`, `>>`, `std::format` | **always** | none: integer digits, no locale |
 | `uniform<B>(rng)` | **always** | the same generator and seed |
@@ -41,15 +41,15 @@ There is no floating point on these paths, so nothing for a platform to round
 differently:
 
 - The widths are fixed: `umax` is `std::uint64_t` and `imax` is `std::int64_t`
-  (`numbers.hpp`); the value path is `imax` throughout, and wide raws are
+  (`inside/detail/numbers.hpp`); the value path is `imax` throughout, and wide raws are
   arrays of 64-bit limbs.
-- A fraction is a `beman::inside::rational` (`detail/rational.hpp`). Every
+- A fraction is a `beman::inside::rational` (`inside/detail/rational.hpp`). Every
   checked operation goes through overflow-detecting add, sub and mul
-  (`numbers.hpp`), so an overflow is a reported `errc::overflow`, not
+  (`inside/detail/numbers.hpp`), so an overflow is a reported `errc::overflow`, not
   a platform-dependent wrap.
 - `rational(double)` takes the value straight from its IEEE-754 bits: a finite
   `double` is exactly significand · 2^exponent, with no `<cmath>` and no FPU
-  rounding (`detail/float_bits.hpp`).
+  rounding (`inside/detail/float_bits.hpp`).
 
 Quantities add nothing that could differ: a unit conversion multiplies the
 grid by an exact rational at compile time, and a mixed-unit sum adds two exact

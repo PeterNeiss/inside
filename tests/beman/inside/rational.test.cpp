@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #include <beman/inside/inside.hpp>
-#include <beman/inside/io.hpp>
+#include <beman/inside/inside/io.hpp>
 
 #include <gtest/gtest.h>
 
@@ -240,12 +240,17 @@ TEST(RationalTest, rational_arithmetic) {
     }
 
     {
-        SCOPED_TRACE("compound-assign throws bad_expected_access on overflow");
+        SCOPED_TRACE("compound-assign raises overflow as an inside_error");
         constexpr auto mx = std::numeric_limits<imax>::max();
         // 1/M + 1/(M-1) — denominator product M*(M-1) overflows imax.
         rational a{1u, mx};
         rational b{1u, mx - 1};
-        ASSERT_THROW((void)(a += b), std::bad_expected_access<errc>);
+        try {
+            a += b;
+            FAIL() << "no error reported";
+        } catch (const beman::inside::inside_error& e) {
+            EXPECT_EQ(e.Code, errc::overflow);
+        }
     }
 }
 

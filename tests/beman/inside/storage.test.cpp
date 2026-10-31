@@ -2,9 +2,9 @@
 // Storage deduced from the grid, and how the behaviour policies act on it.
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/cmath.hpp>
-#include <beman/inside/formats.hpp> // beman::inside::byte
-#include <beman/inside/io.hpp>
+#include <beman/inside/math.hpp>
+#include <beman/inside/inside/formats.hpp> // beman::inside::byte
+#include <beman/inside/inside/io.hpp>
 
 #include <gtest/gtest.h>
 
@@ -13,15 +13,18 @@
 
 using namespace beman::inside;
 
-// default ctor is trivial (no zero-fill footgun)
-TEST(StorageTest, default_ctor_is_trivial_no_zero_fill_footgun) {
-    // The default ctor is `= default` for every policy — Raw is uninitialized,
-    // like a built-in scalar, rather than zero-filled to a possibly-invalid slot.
-    // checked is the default policy; rational/value/index storage all stay trivial.
-    static_assert(std::is_trivially_default_constructible_v<inside<{0, 10}>>);    // index
-    static_assert(std::is_trivially_default_constructible_v<inside<{-100, -5}>>); // signed value
-    static_assert(std::is_trivially_default_constructible_v<inside<grid{5}>>);    // point grid
-    static_assert(std::is_trivially_default_constructible_v<inside<{{0, 10}, per<4>}, round_nearest>>);
+// The default ctor stores a value of the grid (0, else Lower; see
+// default_value.test.cpp); only `uninitialized` keeps it trivial, with Raw
+// uninitialized like a built-in scalar's.
+TEST(StorageTest, default_ctor_is_trivial_only_when_uninitialized) {
+    static_assert(!std::is_trivially_default_constructible_v<inside<{0, 10}>>);    // index
+    static_assert(!std::is_trivially_default_constructible_v<inside<{-100, -5}>>); // signed value
+    static_assert(!std::is_trivially_default_constructible_v<inside<{{0, 10}, per<4>}, round_nearest>>);
+    static_assert(!std::is_trivially_default_constructible_v<inside<{0, 10}, unsafe>>);
+    static_assert(std::is_trivially_default_constructible_v<inside<{0, 10}, uninitialized>>);
+    static_assert(std::is_trivially_default_constructible_v<inside<{-100, -5}, uninitialized>>);
+    static_assert(std::is_trivially_default_constructible_v<inside<grid{5}, uninitialized>>); // point grid
+    static_assert(std::is_trivially_default_constructible_v<inside<{{0, 10}, per<4>}, round_nearest | uninitialized>>);
 }
 
 // behaviour policies on a notched grid

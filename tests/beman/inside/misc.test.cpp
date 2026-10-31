@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #include <beman/inside/inside.hpp>
-#include <beman/inside/io.hpp>
+#include <beman/inside/inside/io.hpp>
 
 #include <gtest/gtest.h>
 
@@ -13,23 +13,35 @@ concept has_round_error = requires { std::numeric_limits<T>::round_error(); };
 using namespace beman::inside;
 using namespace beman::inside::detail;
 
-// implicit cast to imax
-TEST(MiscTest, implicit_cast_to_imax) {
+// No implicit integer conversion: as<T>() reads the value, with no check
+// left where T holds the whole grid.
+template <class T>
+concept casts_to_imax = requires(T t) { static_cast<imax>(t); };
+template <class T>
+concept indexes_a_vector = requires(std::vector<int>& v, T t) { v[t]; };
+TEST(MiscTest, no_implicit_integer_conversion) {
     using idx = inside<{0, 9}>;
+    static_assert(!std::is_convertible_v<idx, imax>);
+    static_assert(!std::is_convertible_v<idx, int>);
+    static_assert(!std::is_constructible_v<int, idx>);
+    static_assert(!std::is_convertible_v<inside<{{0, 9}, per<2>}, round_nearest>, imax>);
+    static_assert(!std::is_convertible_v<inside<{0, 10'000'000'000}>, int>); // would narrow silently
+    static_assert(!casts_to_imax<idx>);
+    static_assert(!indexes_a_vector<idx>);
+
     idx  a{5};
-    imax val = a;
+    imax val = a.as<imax>();
     ASSERT_EQ(val, 5);
 
     using idx2 = inside<{1, 10}>;
     idx2 b{7};
-    imax val2 = b;
-    ASSERT_EQ(val2, 7);
+    ASSERT_EQ(b.as<int>(), 7);
 
-    // array subscript without explicit cast
+    // an array subscript names the index type
     int arr[] = {10, 20, 30, 40, 50};
     using ai  = inside<{0, 4}>;
     ai c{3};
-    ASSERT_EQ(arr[c], 40);
+    ASSERT_EQ(arr[c.as<std::size_t>()], 40);
 }
 
 // inside_range sequential
@@ -37,8 +49,7 @@ TEST(MiscTest, inside_range_sequential) {
     int  count = 0;
     imax sum   = 0;
     for (auto i : inside_range<{0, 9}>{}) {
-        imax v = i; // implicit inside -> imax (direct-init picks imax over size_t)
-        sum += v;
+        sum += i.as<imax>();
         ++count;
     }
     ASSERT_EQ(count, 10);
@@ -51,8 +62,8 @@ TEST(MiscTest, inside_range_wrapping_start) {
     imax first = -1, last = -1;
     for (auto i : inside_range<{0, 9}>{7}) {
         if (count == 0)
-            first = i;
-        last = i;
+            first = i.as<imax>();
+        last = i.as<imax>();
         ++count;
     }
     ASSERT_EQ(count, 10);
@@ -66,8 +77,8 @@ TEST(MiscTest, inside_range_over_signed_inside) {
     imax first = 0, last = 0;
     for (auto i : inside_range<{-2, 2}>{}) {
         if (count == 0)
-            first = i;
-        last = i;
+            first = i.as<imax>();
+        last = i.as<imax>();
         ++count;
     }
     ASSERT_EQ(count, 5);
@@ -100,14 +111,12 @@ TEST(MiscTest, inside_x_x_singleton_round_trips_its_value) {
     using point_pos = inside<{5, 5}>;
     point_pos a{5};
     ASSERT_EQ(a, 5);
-    imax av = a; // implicit
-    ASSERT_EQ(av, 5);
+    ASSERT_EQ(a.as<imax>(), 5);
 
     using point_neg = inside<{-3, -3}>;
     point_neg b{-3};
     ASSERT_EQ(b, -3);
-    imax bv = b;
-    ASSERT_EQ(bv, -3);
+    ASSERT_EQ(b.as<imax>(), -3);
 
     // Float assignment to single-value rational-storage grid (notch=0)
     using point_fp = inside<{2.5_r}>;

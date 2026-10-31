@@ -14,7 +14,7 @@
 #include <utility>
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/io.hpp>
+#include <beman/inside/inside/io.hpp>
 
 using namespace beman::inside;
 
@@ -29,12 +29,12 @@ using small = inside<{0, 60}>;
 using step  = inside<{1, 60}>; // a divisor that cannot be zero: no expected
 
 // C(n, k) for k ≤ n ≤ 60. After step i the running product is C(n, i), so
-// the division is exact; rounded_toward_zero asks for a whole quotient and divmod
+// the division is exact; round_toward_zero asks for a whole quotient and divmod
 // returns what remains, which is checked rather than assumed.
 constexpr count binomial(small n, small k) {
     count c{1};
     for (cursor<step> j; j <= k; ++j) {
-        const auto [q, r] = divmod(c * (n - j + 1_ins), j, rounded_toward_zero);
+        const auto [q, r] = divmod(c * (n - j + 1_ins), j, round_toward_zero);
         if (r != 0_ins)
             throw "not a whole number";
         c = q; // a checked store: past C(60, 30) it would report overflow

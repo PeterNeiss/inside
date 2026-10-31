@@ -4,7 +4,7 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-`<beman/inside/cmath.hpp>` is a `<cmath>`-shaped set of functions on insides.
+`<beman/inside/math.hpp>` is a `<cmath>`-shaped set of functions on insides.
 Every transcendental returns the **correctly rounded point of its output
 grid**, under the output's rounding mode, wherever the engine can decide it,
 and it works at whatever precision that grid needs. A result it cannot decide
@@ -19,7 +19,7 @@ guaranteed](#what-is-guaranteed) says when that can happen. So:
   ([storage.md](storage.md#grids-past-64-bits)).
 
 ```cpp
-#include <beman/inside/cmath.hpp>
+#include <beman/inside/math.hpp>
 using namespace beman::inside;
 
 using angle = inside<{{-8, 8}, per<16384>}, round_nearest>;
@@ -28,7 +28,7 @@ auto c = math::cos_into<math::unit_amplitude<256>>(angle{1});   // 0.5390625: a 
 auto h = math::hypot(s, s);                                // √(s² + s²), output grid deduced
 ```
 
-With units, `<beman/inside/units_math.hpp>` gives the same functions on
+With units, `<beman/inside/units/math.hpp>` gives the same functions on
 quantities, and trig on degrees and turns that is reduced exactly
 ([below](#quantities)).
 
@@ -72,7 +72,7 @@ costs, is in [internals.md](internals.md#10-the-math-engine).
   `log10(1000)`, `sqrt(9/4)`, `8^(2/3)`, `hypot(3/2, 2)`, sin 30° — are stored
   exactly, so a tie between two points or a point under directed rounding
   rounds correctly. The theorems that make the list complete are named in
-  `detail/math_cores.hpp`, and `tests/beman/inside/math_exact.test.cpp`
+  `math/detail/cores.hpp`, and `tests/beman/inside/math_exact.test.cpp`
   checks each kind.
 - **Correctly rounded, except within about 2^−4W of a boundary.** W is the
   start precision (the output's bits plus 8, at least 16). The engine doubles
@@ -204,7 +204,7 @@ once, and Niven's rational values (0, ±1/2, ±1) are exact under any rounding
 mode:
 
 ```cpp
-#include <beman/inside/units_math.hpp>
+#include <beman/inside/units/math.hpp>
 using namespace beman::inside::units;
 
 inline constexpr named_unit slot_def{"slot", mag<rational{1, 32768}> * mag_pi * si::radian};
@@ -246,7 +246,7 @@ auto s = math::sin_into<math::unit_amplitude<16384>>(angle_t{phase * math::two_p
 
 ## Quantities
 
-`<beman/inside/units_math.hpp>` gives each function the unit it should have
+`<beman/inside/units/math.hpp>` gives each function the unit it should have
 ([units.md](units.md#math-units_mathhpp)):
 
 | Function | Takes | Gives |

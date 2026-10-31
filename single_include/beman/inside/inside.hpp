@@ -5,13 +5,14 @@
 //   *** GENERATED FILE — DO NOT EDIT BY HAND ***
 //
 // Regenerate with:  cmake --build <build-dir> --target beman.inside.amalgamate
-// Source of truth:  include/beman/inside/*.hpp, include/beman/inside/detail/*.hpp
+// Source of truth:  include/beman/inside/ (inside.hpp, math.hpp, units.hpp and their folders)
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_SINGLE_HEADER_HPP
 #define BEMAN_INSIDE_SINGLE_HEADER_HPP
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <bit>
 #include <compare>
 #include <concepts>
@@ -37,16 +38,16 @@
 //  beman/inside/inside.hpp
 // ======================================================================
 // Public umbrella header. Include this to get the full `beman::inside::inside` API:
-// the core type (core.hpp) and its comparisons (detail/compare.hpp), plus the
+// the core type (inside/detail/core.hpp) and its comparisons (inside/detail/compare.hpp), plus the
 // free-function layers that depend on the complete type — casts, arithmetic
 // operators, inside_range and cursor, and the std::numeric_limits and
-// std::hash specializations. Those follow core.hpp because they need
+// std::hash specializations. Those follow inside/detail/core.hpp because they need
 // `inside<G, P>` fully defined.
 //---------------------------------------------------------------------------
 
 
 // ======================================================================
-//  beman/inside/detail/config.hpp
+//  beman/inside/inside/detail/config.hpp
 // ======================================================================
 
 //---------------------------------------------------------------------------
@@ -80,7 +81,7 @@
     #endif
 #endif
 
-// BEMAN_INSIDE_MATH_INSTRUMENT — 1 adds math::driver (detail/math_adaptive.hpp):
+// BEMAN_INSIDE_MATH_INSTRUMENT — 1 adds math::driver (math/detail/adaptive.hpp):
 // run-time counts of the math engine's integer path, its deep steps and its
 // guesses (results still undecided at the cap), and a switch that sends every
 // call to the integer path. The certify tool (tests/beman/inside/certify) is
@@ -135,7 +136,7 @@
 
 
 // ======================================================================
-//  beman/inside/core.hpp
+//  beman/inside/inside/detail/core.hpp
 // ======================================================================
 // Internal — include "beman/inside/inside.hpp" (the umbrella), not this directly.
 // The core type beman::inside::inside<G, P>: construction and try_make,
@@ -150,19 +151,19 @@
 
 
 // ======================================================================
-//  beman/inside/generic.hpp
+//  beman/inside/inside/generic.hpp
 // ======================================================================
 
 
 
 // ======================================================================
-//  beman/inside/detail/introspection.hpp
+//  beman/inside/inside/detail/introspection.hpp
 // ======================================================================
 
 
 
 // ======================================================================
-//  beman/inside/detail/error.hpp
+//  beman/inside/inside/detail/error.hpp
 // ======================================================================
 
 
@@ -171,7 +172,7 @@
 // freestanding / -fno-exceptions build never sees it and traps instead. Error
 // reporting otherwise stays on static const-char* messages — no <string>, no
 // <string_view>, no <system_error>. (General-purpose stringification lives in
-// the opt-in "beman/inside/io.hpp".)
+// the opt-in "beman/inside/inside/io.hpp".)
 #if BEMAN_INSIDE_HAS_EXCEPTIONS // (config.hpp)
     #include <stdexcept>
 #endif
@@ -249,21 +250,21 @@ namespace detail {
 #endif
 }
 
-// Header-only global: an inline variable, one per program. Mutating it is a
-// runtime-only act (constant evaluation never reads it), so constexpr paths
+// Header-only global: an inline variable, one per program. Atomic, so one
+// thread may install a handler while another raises; default visibility, so
+// shared libraries built with -fvisibility=hidden share it too. Mutating it is
+// a runtime-only act (constant evaluation never reads it), so constexpr paths
 // are unaffected.
-inline error_handler_t g_error_handler = &default_error_handler;
+[[gnu::visibility("default")]] inline std::atomic<error_handler_t> g_error_handler{&default_error_handler};
 } // namespace detail
 
 // Install a handler; returns the previous one. A null argument restores the
-// default. Never throws.
+// default. Never throws; safe to call while other threads raise.
 inline error_handler_t set_error_handler(error_handler_t h) noexcept {
-    error_handler_t prev    = detail::g_error_handler;
-    detail::g_error_handler = h ? h : &detail::default_error_handler;
-    return prev;
+    return detail::g_error_handler.exchange(h ? h : &detail::default_error_handler, std::memory_order_acq_rel);
 }
 
-inline error_handler_t get_error_handler() noexcept { return detail::g_error_handler; }
+inline error_handler_t get_error_handler() noexcept { return detail::g_error_handler.load(std::memory_order_acquire); }
 
 namespace detail {
 //-----------------------------------------------------------------------
@@ -279,7 +280,7 @@ namespace detail {
         throw inside_error(code, what);
     }
 #endif
-    g_error_handler(code, what ? what : errc_message(code));
+    g_error_handler.load(std::memory_order_acquire)(code, what ? what : errc_message(code));
     __builtin_trap(); // handler must not return; trap if it did
 }
 
@@ -331,32 +332,33 @@ template <fixed_string Msg>
 
 
 // ======================================================================
-//  beman/inside/grid.hpp
+//  beman/inside/inside/grid.hpp
 // ======================================================================
 
 
 
 // ======================================================================
-//  beman/inside/detail/rational.hpp
+//  beman/inside/inside/detail/rational.hpp
 // ======================================================================
 
 
 
 // ======================================================================
-//  beman/inside/numbers.hpp
+//  beman/inside/inside/detail/numbers.hpp
 // ======================================================================
 
 
 
 //---------------------------------------------------------------------------
-// numbers — primitive numeric utilities: umax/imax, the overflow-detecting
-// add/sub/mul, the plain_number / fractional concepts and safe_abs. The
-// floating-point bit helpers are in detail/float_bits.hpp.
+// numbers — primitive numeric utilities: umax/imax (public), and in detail
+// the overflow-detecting add/sub/mul, the plain_number / fractional concepts
+// and safe_abs. The floating-point bit helpers are in inside/detail/float_bits.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 using umax = std::uint64_t;
 using imax = std::int64_t;
 
+namespace detail {
 // Overflow-detecting add/sub/mul for integers (derived from Peter Sommerlad's
 // odins.h, MIT license): GCC's __builtin_*_overflow intrinsics. Return true on
 // overflow; *result holds the wrapped value either way. Used by rational's
@@ -377,7 +379,6 @@ template <std::integral T>
     return __builtin_mul_overflow(l, r, result);
 }
 
-namespace detail {
 struct rational;
 
 // A plain number a grid-less value can be: integral, floating point, or the
@@ -399,7 +400,7 @@ template <std::signed_integral V>
 
 
 // ======================================================================
-//  beman/inside/detail/float_bits.hpp
+//  beman/inside/inside/detail/float_bits.hpp
 // ======================================================================
 
 
@@ -661,7 +662,7 @@ constexpr T for_each_double_part(T v, F f) {
 
 
 // ======================================================================
-//  beman/inside/detail/lift.hpp
+//  beman/inside/inside/detail/lift.hpp
 // ======================================================================
 
 
@@ -740,13 +741,13 @@ template <class Op, class... Args>
 
 
 // ======================================================================
-//  beman/inside/detail/wide_int.hpp
+//  beman/inside/inside/detail/wide_int.hpp
 // ======================================================================
 
 
 
 // ======================================================================
-//  beman/inside/detail/limb_algorithms.hpp
+//  beman/inside/inside/detail/limb_algorithms.hpp
 // ======================================================================
 // Internal — include "beman/inside/inside.hpp" (the umbrella), not this directly.
 
@@ -1518,7 +1519,7 @@ struct std::numeric_limits<beman::inside::detail::wide_int<N, Signed, L>> {
 
 
 // ======================================================================
-//  beman/inside/detail/rounding.hpp
+//  beman/inside/inside/detail/rounding.hpp
 // ======================================================================
 
 
@@ -1642,6 +1643,16 @@ inline constexpr void cancel_gcd(umax& a, umax& b) {
 [[nodiscard]] constexpr std::expected<rational, errc> operator*(const rational&, const rational&);
 [[nodiscard]] constexpr auto                          operator<=>(rational, rational) -> std::strong_ordering;
 
+// The value of a checked result. An error is raised like a failed checked
+// store (inside_error, or the installed handler; a compile error in constant
+// evaluation), never std::bad_expected_access.
+template <class T>
+[[nodiscard]] constexpr T value_or_raise(const std::expected<T, errc>& e) {
+    if (!e) [[unlikely]]
+        raise(e.error());
+    return *e;
+}
+
 //---------------------------------------------------------------------------
 // rational — structural type for NTTP (public members only). Sign is encoded
 // in the denominator (negative = negative rational); numerator is unsigned to
@@ -1671,13 +1682,13 @@ struct rational {
 
     // Implicit unwrap of a checked result, so coefficient expressions read as
     // plain arithmetic (`rational two_pi = 2 * pi;`); an error (overflow) is a
-    // compile error in constant evaluation, a throw at runtime. same_as-constrained
+    // compile error in constant evaluation, else raised (value_or_raise). same_as-constrained
     // (not a plain `rational(expected<rational, errc>)`) because expected's own
     // converting ctor is gated on `is_constructible_v<rational, U>` — a
     // non-template overload would make that trait depend on itself.
     template <class O>
         requires std::same_as<std::remove_cvref_t<O>, std::expected<rational, errc>>
-    constexpr rational(O&& o) : rational(o.value()) {}
+    constexpr rational(O&& o) : rational(value_or_raise(o)) {}
 
     // operator== by default for structural type
     [[nodiscard]] constexpr bool operator==(const rational&) const = default;
@@ -1713,8 +1724,8 @@ struct rational {
     // allow unary+ for generic programming
     [[nodiscard]] constexpr rational operator+() const { return *this; }
 
-    // Compound-assign: forward to the checked binary op and unwrap via .value()
-    // — overflow surfaces as std::bad_expected_access (no error channel here).
+    // Compound-assign: forward to the checked binary op and unwrap it; an
+    // error (overflow, a zero divisor) is raised (value_or_raise).
     constexpr rational& operator+=(const rational& rhs);
     constexpr rational& operator-=(const rational& rhs);
     constexpr rational& operator*=(const rational& rhs);
@@ -2303,12 +2314,12 @@ inline constexpr std::expected<rational, errc> rational::inv(rational a) { retur
 
 template <plain_number T>
 [[nodiscard]] inline constexpr auto operator<=>(const std::expected<T, errc>& lhs, const rational& rhs) {
-    return rational{lhs.value()} <=> rhs;
+    return rational{value_or_raise(lhs)} <=> rhs;
 }
 
 template <plain_number T>
 [[nodiscard]] inline constexpr auto operator<=>(const rational& lhs, const std::expected<T, errc>& rhs) {
-    return lhs <=> rational{rhs.value()};
+    return lhs <=> rational{value_or_raise(rhs)};
 }
 
 // lhs against a finite double finer than 2^-62 (which rational{rhs}
@@ -2408,8 +2419,9 @@ concept rational_lift_operands =
 // Binary operators: the checked rational ⋈ rational cores, then per operator
 // the arithmetic-operand forms (direct construction, no lift overhead), the
 // expected-operand form (propagates via lift), and the compound assignments.
-// Compound assignments unwrap with .value() — std::bad_expected_access on
-// overflow; callers needing a non-throwing path use the binary operators.
+// Compound assignments unwrap with value_or_raise — an error is raised like
+// a failed checked store; callers needing a non-throwing path use the binary
+// operators.
 //---------------------------------------------------------------------------
 // add_impl fails on a 64-bit step's overflow; the sum may still fit once
 // reduced, which add_wide (cold) settles.
@@ -2470,7 +2482,7 @@ concept rational_lift_operands =
         return lift([](auto const& a, auto const& b) { return a op b; }, lhs, rhs);                         \
     }                                                                                                       \
     inline constexpr rational& rational::operator op## = (rational const& rhs) {                            \
-        *this = (*this op rhs).value();                                                                     \
+        *this = value_or_raise(*this op rhs);                                                               \
         return *this;                                                                                       \
     }                                                                                                       \
     template <plain_number T>                                                                               \
@@ -2478,7 +2490,7 @@ concept rational_lift_operands =
         return lhs op## = rational{rhs};                                                                    \
     }                                                                                                       \
     inline constexpr rational& operator op## = (rational & lhs, std::expected<rational, errc> const& rhs) { \
-        return lhs op## = rhs.value();                                                                      \
+        return lhs op## = value_or_raise(rhs);                                                              \
     }
 
 BEMAN_INSIDE_RATIONAL_OP(+)
@@ -2522,10 +2534,10 @@ using detail::rational;
 
 // The grid-building helpers:
 //   per<D>       the step 1/D — the common notch (per<256> is Q·8);
-// any other exact ratio is the point just<N, D> (core.hpp): a limit like
+// any other exact ratio is the point just<N, D> (inside/detail/core.hpp): a limit like
 // just<-6, 5> for -1.2, or another step like just<360, 4096>
 // (the _r literal, an exact decimal / hex value — 0.1_r is exactly 1/10 —
-// is in detail/number_text.hpp.)
+// is in inside/detail/number_text.hpp.)
 // Integer steps are plain integers ({{0, 100}, 5}); grid::validate rejects a
 // negative notch however it is spelled.
 template <umax D>
@@ -2535,19 +2547,19 @@ inline constexpr detail::rational per = detail::make_per<D>();
 
 
 // ======================================================================
-//  beman/inside/interval.hpp
+//  beman/inside/inside/interval.hpp
 // ======================================================================
 
 
 
 // ======================================================================
-//  beman/inside/detail/grid_rational.hpp
+//  beman/inside/inside/detail/grid_rational.hpp
 // ======================================================================
 
 
 
 // ======================================================================
-//  beman/inside/detail/number_text.hpp
+//  beman/inside/inside/detail/number_text.hpp
 // ======================================================================
 
 
@@ -2555,7 +2567,7 @@ inline constexpr detail::rational per = detail::make_per<D>();
 
 namespace beman::inside::detail {
 //---------------------------------------------------------------------------
-// _ins / _r literal parser — shared between core.hpp's `_ins` and `_r` below.
+// _ins / _r literal parser — shared between inside/detail/core.hpp's `_ins` and `_r` below.
 // Accepts:
 //   integer:           5, 1'000
 //   decimal:           1.25, .5
@@ -2861,7 +2873,7 @@ using detail::operator""_r;
 
 
 // ======================================================================
-//  beman/inside/detail/big_rational.hpp
+//  beman/inside/inside/detail/big_rational.hpp
 // ======================================================================
 
 
@@ -3728,7 +3740,7 @@ corner_hull(grid_rational a, grid_rational b, grid_rational c, grid_rational d) 
 
 
 // ======================================================================
-//  beman/inside/detail/diag_text.hpp
+//  beman/inside/inside/detail/diag_text.hpp
 // ======================================================================
 
 
@@ -3791,7 +3803,7 @@ struct diag_text {
 
 
 // ======================================================================
-//  beman/inside/policy_flag.hpp
+//  beman/inside/inside/policy_flag.hpp
 // ======================================================================
 
 
@@ -3799,58 +3811,108 @@ struct diag_text {
 
 namespace beman::inside {
 //---------------------------------------------------------------------------
-// policy_flag — the policy bits of inside<G, P> (none, ignore_zero,
-// ignore_range, snap and the rounding modes, clamp, wrap, checked, unsafe),
+// policy_flag — the policy bits of inside<G, P> (none, snap and the
+// rounding modes, clamp, wrap, checked, unsafe, uninitialized),
 // has_flag / is_checked, the rounding precedence (rounding_of), the hook
 // factories on_clamp / on_wrap / on_error with their is_*_action traits, and
 // the flags each hook implies.
 //---------------------------------------------------------------------------
 using policy_flag = unsigned long long;
 
-// Check model: compile-time checks always run. When success can't be proven
-// statically, compilation fails unless the matching ignore flag is set; else a
-// runtime check is inserted that throws (or reports through an errc& parameter).
-// Binary operations OR the flags of both operands.
-inline constexpr policy_flag none{0ull};
-inline constexpr policy_flag ignore_zero{1ull << 1};
-inline constexpr policy_flag ignore_range{1ull << 2};
+namespace detail {
+// A named flag is an object of its own type that converts to its bits: it is
+// a template argument (inside<G, round_floor>), combines with | (clamp |
+// round_floor stays a flag), and selects a call's policy (div(a, b,
+// round_floor)). A policy_flag value, its bits, is what every template
+// takes, so inside<G, round_floor> is inside<G, 48>.
+template <policy_flag V>
+struct flag {
+    static constexpr policy_flag value = V;
+    constexpr                    operator policy_flag() const noexcept { return V; }
+};
+template <policy_flag A, policy_flag B>
+constexpr flag<A | B> operator|(flag<A>, flag<B>) noexcept {
+    return {};
+}
+template <class T>
+inline constexpr bool is_flag_v = false;
+template <policy_flag V>
+inline constexpr bool is_flag_v<flag<V>> = true;
+template <class T>
+concept flag_like = is_flag_v<std::remove_cvref_t<T>>;
+} // namespace detail
+
+// Check model: compile-time checks always run. A store whose success can't be
+// proven statically gets a runtime check that throws (or reports through an
+// errc& parameter), unless `unsafe` appears: in the type, an operand, or the
+// call's policy.
+inline constexpr detail::flag<0ull> none{};
 // `snap` — permission: an off-notch value is rounded to fit the grid instead
 // of rejected. Without it, an off-notch value is a compile/runtime error and
 // div/mod fall through to exact-rational results. Every round_* mode carries
 // it; on its own it rounds toward zero.
-inline constexpr policy_flag snap{1ull << 4};
+inline constexpr detail::flag<1ull << 4> snap{};
 // `round_toward_zero` — the snap bit alone: truncate toward zero (IEEE 754
 // roundTowardZero). Last in dispatch, after every explicit mode.
-inline constexpr policy_flag round_toward_zero{snap};
-inline constexpr policy_flag round_nearest{(1ull << 5) | snap};
+inline constexpr detail::flag<snap>               round_toward_zero{};
+inline constexpr detail::flag<(1ull << 5) | snap> round_nearest{};
 // Rounding modes each pick a unique bit and OR in `snap`. Conceptually
 // exclusive; combining two is allowed but dispatch (storage.hpp) picks the
 // first match: floor → ceil → half_even → nearest → toward zero (rounding_of).
-inline constexpr policy_flag round_floor{(1ull << 6) | snap};
-inline constexpr policy_flag round_ceil{(1ull << 7) | snap};
-inline constexpr policy_flag round_half_even{(1ull << 8) | snap};
+inline constexpr detail::flag<(1ull << 6) | snap> round_floor{};
+inline constexpr detail::flag<(1ull << 7) | snap> round_ceil{};
+inline constexpr detail::flag<(1ull << 8) | snap> round_half_even{};
 
-// runtime checking — on unless the policy carries `unsafe` (see is_checked).
-// Spelling `checked` re-enables the checks alongside `unsafe`.
-inline constexpr policy_flag checked{1ull << 34}; // runtime range/notch/overflow checks
+// runtime checking — the default policy's name, no bits: every policy without
+// `unsafe` checks (see is_checked), so inside<G>, inside<G, none> and
+// inside<G, checked> are one type.
+inline constexpr detail::flag<0ull> checked{};
 
 // unary — mutually exclusive
-inline constexpr policy_flag clamp{1ull << 32}; // saturate to boundary
-inline constexpr policy_flag wrap{1ull << 33};  // modular arithmetic
+inline constexpr detail::flag<1ull << 32> clamp{}; // saturate to boundary
+inline constexpr detail::flag<1ull << 33> wrap{};  // modular arithmetic
+
+// `uninitialized` — default construction leaves the raw uninitialized, like a
+// built-in scalar (a trivial default ctor); reading it before a store is
+// undefined. Without it a default-constructed inside is 0, or Lower on a grid
+// without 0.
+inline constexpr detail::flag<1ull << 37> uninitialized{};
 
 // No flag picks the raw: storage follows the grid alone (grid.hpp
 // raw_for, docs/storage.md).
 
-// opt-out of `checked`: no domain/round/overflow/div-by-zero checks (reading
-// out-of-range or dividing by zero is UB; `/= 0` no-ops, `a / 0` skips the
-// check). Includes `snap` so notch-incompatible assigns compile.
+// The one opt-out of the runtime checks: no range or zero-divisor check
+// (reading an out-of-range value or dividing by zero is UB; `/= 0` no-ops,
+// `a / 0` skips the check). Includes `snap`, so an off-notch value truncates.
 namespace detail {
 inline constexpr policy_flag unsafe_marker{1ull << 36};
 // Marks a cursor (`cursor<T, Step>`): default construction starts at Lower,
 // and `end(t)` names its past-the-end value. Results never carry it.
 inline constexpr policy_flag cursor_marker{1ull << 50};
 } // namespace detail
-inline constexpr policy_flag unsafe{detail::unsafe_marker | ignore_range | snap | ignore_zero};
+inline constexpr detail::flag<detail::unsafe_marker | snap> unsafe{};
+
+namespace detail {
+// The bits of the four explicit rounding modes (each also carries snap).
+inline constexpr policy_flag mode_bits = (1ull << 5) | (1ull << 6) | (1ull << 7) | (1ull << 8);
+// Every bit a flag names: a policy holds no other.
+inline constexpr policy_flag known_bits =
+    mode_bits | snap | clamp | wrap | unsafe_marker | uninitialized | cursor_marker;
+
+// How many explicit rounding modes a flag set names (an inside takes one).
+[[nodiscard]] constexpr int rounding_modes(policy_flag f) noexcept {
+    int n = 0;
+    for (policy_flag bit = 1ull << 5; bit <= (1ull << 8); bit <<= 1)
+        n += (f & bit) != 0;
+    return n;
+}
+
+// f with round_nearest added unless it names a mode already, which would win
+// over round_nearest in rounding_of anyway: one mode either way.
+[[nodiscard]] constexpr policy_flag with_default_rounding(policy_flag f) noexcept {
+    return (f & mode_bits) != 0 ? f : f | round_nearest;
+}
+} // namespace detail
 
 //---------------------------------------------------------------------------
 // Flag-set membership predicates. `has_flag(set, flag)` is true iff EVERY bit
@@ -3865,17 +3927,16 @@ inline constexpr policy_flag unsafe{detail::unsafe_marker | ignore_range | snap 
     return (set & flags) != none;
 }
 
-// Runtime checks run unless the policy opts out with `unsafe`; an explicit
-// `checked` wins over `unsafe`. So `inside<G, round_nearest>` and
-// `inside<G, clamp>` are checked, exactly like the default `inside<G>`.
-[[nodiscard]] constexpr bool is_checked(policy_flag set) noexcept {
-    return has_flag(set, checked) || !has_flag(set, detail::unsafe_marker);
-}
+// Runtime checks run unless the flag set carries `unsafe`, which wins over
+// `checked` (the default policy's own bit, so `x.policy<unsafe>()` opts a
+// default inside out). `inside<G, round_nearest>` and `inside<G, clamp>` are
+// checked, exactly like the default `inside<G>`.
+[[nodiscard]] constexpr bool is_checked(policy_flag set) noexcept { return !has_flag(set, detail::unsafe_marker); }
 
 // Whether an out-of-range value does anything under a flag set: a clamp or
 // wrap bit stores it, a checked range reports it. False under `unsafe`.
 [[nodiscard]] constexpr bool range_handled(policy_flag set) noexcept {
-    return has_any_flag(set, clamp | wrap) || (is_checked(set) && !has_flag(set, ignore_range));
+    return has_any_flag(set, clamp | wrap) || is_checked(set);
 }
 
 namespace detail {
@@ -3883,7 +3944,7 @@ namespace detail {
 // path uses (integer and rational storage, division, math stores).
 // An explicit directional or half-even mode beats round_nearest; `snap` alone, or no
 // rounding flag at all, truncates toward zero. Ties of `nearest` go half
-// away from zero. round_mode and the shared decision: detail/rounding.hpp.
+// away from zero. round_mode and the shared decision: inside/detail/rounding.hpp.
 
 [[nodiscard]] constexpr round_mode rounding_of(policy_flag f) noexcept {
     if (has_flag(f, round_floor))
@@ -4291,7 +4352,7 @@ struct grid {
         return g;
     }
 
-    // (Raw → double decoding lives in `detail::as_double` (detail/storage.hpp): the
+    // (Raw → double decoding lives in `detail::as_double` (inside/detail/storage.hpp): the
     // decode depends on the storage KIND, not the raw type's signedness — a
     // whole-number grid above 0 has an unsigned raw that IS the value.)
 };
@@ -4652,7 +4713,7 @@ constexpr bool grid_quotient_fits(const grid& a, const grid& b) {
 // flags_of<B>, lower_of<B>, notch_of<B>, … and their 64-bit forms), the
 // insidable / numeric concepts, and the basic plumbing every layer uses
 // (plain_t, as_rational, raw_t). The storage shapes build
-// on it in detail/storage.hpp.
+// on it in inside/detail/storage.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 template <grid G = grid{{0, 0}, 0}, policy_flag P = checked>
@@ -4688,10 +4749,12 @@ template <typename T>
 inline constexpr policy_flag flags_of_impl = none;
 template <grid G, policy_flag P>
 inline constexpr policy_flag flags_of_impl<inside<G, P>> = P;
+template <policy_flag V>
+inline constexpr policy_flag flags_of_impl<flag<V>> = V;
 } // namespace detail
 
-// flags_of<X> — the policy flags of an inside, or of a one-shot `policy<F, E>`
-// (policy.hpp); `none` for anything else, such as an action.
+// flags_of<X> — the policy flags of an inside, of a one-shot `call_policy<F, E>`
+// (inside/detail/call_policy.hpp) or of a named flag; `none` for anything else, such as an action.
 template <typename X>
 inline constexpr policy_flag flags_of = detail::flags_of_impl<std::remove_cvref_t<X>>;
 
@@ -4746,7 +4809,7 @@ using plain_t = std::remove_cvref_t<T>;
 //   raw_cast<B>(x)         x     → raw_t<B>     TYPE cast only — no value arithmetic
 //   raw_imax(b)            raw   → imax         widen the raw bits (NOT the value for index storage)
 //   raw_from_offset<B>(o)  index → raw_t<B>     adds raw_lo (Lower for a value raw, 0 for an index)
-//   raw_of_slot<B>(o)      index → raw_t<B>     any storage, any width (detail/wide_value.hpp)
+//   raw_of_slot<B>(o)      index → raw_t<B>     any storage, any width (inside/detail/wide_value.hpp)
 //-------------------------------------------------------------------------
 
 // Uniform rational view of a scalar or inside (rational{v} / operator rational()).
@@ -4771,7 +4834,7 @@ using raw_t = raw_for_t<grid_of<B>>;
 
 
 // ======================================================================
-//  beman/inside/detail/storage.hpp
+//  beman/inside/inside/detail/storage.hpp
 // ======================================================================
 
 
@@ -4822,7 +4885,7 @@ concept integer_index_storage = insidable<B> && std::integral<raw_t<B>> && !inte
 template <typename B>
 concept point_storage = insidable<B> && std::same_as<raw_t<B>, point_slot>;
 
-// Its values need the exact wide paths (detail/wide_value.hpp): a 64-bit
+// Its values need the exact wide paths (inside/detail/wide_value.hpp): a 64-bit
 // rational or imax cannot hold them.
 template <typename B>
 concept wide_index_storage = insidable<B> && wide_integer<raw_t<B>>;
@@ -4850,7 +4913,7 @@ inline constexpr bool same_storage = std::is_same_v<raw_t<L>, raw_t<R>> && index
 //   wide_valued — values past 64 bits: a wide raw, or grid numbers (a limit
 //                 or the notch) past 64 bits even with few slots
 //                 (wide_grid_numbers). They take the
-//                 exact paths of detail/wide_value.hpp.
+//                 exact paths of inside/detail/wide_value.hpp.
 //-------------------------------------------------------------------------
 template <insidable B>
 inline constexpr bool notched = notch_of<B> != 0;
@@ -4946,7 +5009,7 @@ template <insidable B>
 }
 
 // True when R's interval cannot contain zero — so `a / b` can return a plain
-// `inside` instead of `expected<inside, errc>` (see detail/division.hpp). A point
+// `inside` instead of `expected<inside, errc>` (see inside/detail/division.hpp). A point
 // grid at 0 is *not* excluded.
 template <insidable R>
 inline constexpr bool divisor_excludes_zero = (lower_of<R> > 0) || (upper_of<R> < 0);
@@ -4984,7 +5047,6 @@ inline constexpr bool fraction_fits_imax = [] {
 
 // Notch a non-zero integer and Lower an integer — every value is an
 // integer ({{0.5, 10.5}, 1} has an integer notch but not integer values).
-// Gates the implicit imax/size_t conversions.
 template <grid G>
 inline constexpr bool integer_notch =
     grid_denominator(G.Notch) == grid_int{1} && G.Notch != 0 && grid_denominator(G.Interval.Lower) == grid_int{1};
@@ -5452,8 +5514,8 @@ constexpr bool range_fail(P&& policy) {
 
 //---------------------------------------------------------------------------
 // generic — the type-level layer every other header builds on: the public
-// introspection (detail/introspection.hpp), the storage shapes
-// (detail/storage.hpp), and here the inside_assignable concept with its
+// introspection (inside/detail/introspection.hpp), the storage shapes
+// (inside/detail/storage.hpp), and here the inside_assignable concept with its
 // diagnostics.
 //---------------------------------------------------------------------------
 namespace beman::inside {
@@ -5491,9 +5553,9 @@ template <typename L, typename R, policy_flag P = checked>
 concept inside_assignable = numeric<R> && detail::assign_intervals_ok<L, R, P> && detail::assign_notch_ok<L, R, P>;
 
 // Diagnostic helper: instantiating `inside_assignable_why<L,R,P>` fires a named
-// static_assert per failed clause, so a developer can see which tripped. Backs
-// both the default-build diagnostic fallbacks in `inside` (core.hpp, gated by
-// `BEMAN_INSIDE_STRICT_SFINAE`) and the public `explain_assignable` probe below.
+// static_assert per failed clause, with the two grids' intervals and notches.
+// Backs the public `explain_assignable` probe below; inside's deleted stores
+// (inside/detail/core.hpp) name only the clause, as a deletion's reason is a fixed string.
 template <typename L, typename R, policy_flag P = checked>
 struct inside_assignable_why {
     // Collapse each clause to a plain bool *before* the static_assert. Asserting on
@@ -5520,15 +5582,14 @@ struct inside_assignable_why {
 };
 
 // Public manual probe: `static_assert(beman::inside::explain_assignable<DstInside, decltype(src)>);`
-// emits the named per-clause reasons in any build — including a strict
-// (`BEMAN_INSIDE_STRICT_SFINAE`) build where the automatic in-`inside` fallbacks are absent.
+// emits the named per-clause reasons with the grids' numbers.
 template <typename Dst, typename Src, policy_flag P = flags_of<Dst>>
 inline constexpr bool explain_assignable = inside_assignable_why<Dst, std::remove_cvref_t<Src>, P>::value;
 } // namespace beman::inside
 
 
 // ======================================================================
-//  beman/inside/detail/wide_value.hpp
+//  beman/inside/inside/detail/wide_value.hpp
 // ======================================================================
 
 
@@ -6106,6 +6167,27 @@ constexpr raw_t<L> raw_of_slot(const W& offset) noexcept {
     }
 }
 
+// The raw a default-constructed B holds: 0 when its grid holds 0, else
+// Lower. (A lattice holds 0 only when anchored: 0's slot offset −Lower/Notch
+// is then an integer.)
+template <insidable B>
+inline constexpr raw_t<B> default_raw = []() -> raw_t<B> {
+    constexpr bool zero = grid_of<B>.representable(grid_rational{0});
+    if constexpr (point_storage<B>)
+        return {};
+    else if constexpr (rational_storage<B>)
+        return zero ? rational{0} : lower64<B>;
+    else if constexpr (fraction_storage<B>) {
+        if constexpr (zero)
+            return {};
+        else
+            return raw_t<B>{exact_of_grid<continuous_limbs<grid_of<B>>>(lower_of<B>)};
+    } else if constexpr (zero)
+        return raw_of_slot<B>(-slot_base<B>);
+    else
+        return raw_of_slot<B>(grid_int{0});
+}();
+
 //---------------------------------------------------------------------------
 // Wrapping value-index arithmetic — the integer path of + and ×.
 //
@@ -6259,7 +6341,7 @@ constexpr Result exact_result(const wide_rational<K>& v) noexcept {
 
 
 // ======================================================================
-//  beman/inside/policy.hpp
+//  beman/inside/inside/detail/call_policy.hpp
 // ======================================================================
 
 
@@ -6267,19 +6349,21 @@ constexpr Result exact_result(const wide_rational<K>& v) noexcept {
 
 //---------------------------------------------------------------------------
 // policy — the runtime policy carrier.
-//   policy<F, E>  — compile-time flags F plus an optional error_ref E holding a
+//   detail::call_policy<F, E> — compile-time flags F plus an optional error_ref E holding a
 //                   beman::inside::errc& (EBO so the no-error-code form is zero-sized).
-//   make_policy<F>() and the named policies rounded_toward_zero, rounded_nearest,
-//                   rounded_floor, rounded_ceil, rounded_half_even, clamped, wrapped.
+//   make_policy<F>(), and as_call_policy, which turns a named flag passed as a
+//                   call's policy (div(a, b, round_floor)) into make_policy<F>().
 // The proxies that b.policy(), with_snap() and on_*() return are in
-// detail/policy_ref.hpp.
+// inside/detail/policy_ref.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 //---------------------------------------------------------------------------
-// policy — derives from E for EBO: throwing form (E == empty_ref) is zero-sized;
-// `policy(ec)` makes E == error_ref carrying a `beman::inside::errc&`. No virtuals,
-// resolved at compile time. (The error-code channel reports `errc` directly —
-// there is no <system_error> dependency.)
+// call_policy — the policy of one call or store, what make_policy returns.
+// Derives from E for EBO: throwing form (E == empty_ref) is zero-sized;
+// `call_policy(ec)` makes E == error_ref carrying a `beman::inside::errc&`. No
+// virtuals, resolved at compile time. (The error-code channel reports `errc`
+// directly — there is no <system_error> dependency.) Users spell it through
+// make_policy<F>() / make_policy<F>(ec), or pass a flag.
 //---------------------------------------------------------------------------
 namespace detail {
 struct empty_ref {};
@@ -6287,13 +6371,12 @@ struct error_ref {
     constexpr error_ref(errc& ec) : Code{ec} {}
     errc& Code;
 };
-} // namespace detail
 
-template <policy_flag F = none, typename E = detail::empty_ref>
-struct policy : E {
-    constexpr policy() = default;
-    constexpr policy(errc& ec)
-        requires std::same_as<E, detail::error_ref>
+template <policy_flag F = none, typename E = empty_ref>
+struct call_policy : E {
+    constexpr call_policy() = default;
+    constexpr call_policy(errc& ec)
+        requires std::same_as<E, error_ref>
         : E(ec) {}
 
     static constexpr policy_flag Flags = F;
@@ -6304,7 +6387,7 @@ struct policy : E {
         if consteval {
             return true;
         }
-        return is_checked(F) && not test(ignore_range);
+        return is_checked(F);
     }
 
     static constexpr bool checks_rounding() {
@@ -6321,40 +6404,41 @@ struct policy : E {
     // helper; at compile time it throws, so the build fails with a text that
     // names the code and the fix.
     constexpr void report(errc code) const {
-        if constexpr (std::is_same_v<E, detail::error_ref>)
+        if constexpr (std::is_same_v<E, error_ref>)
             E::Code = E::Code != errc{} ? E::Code : code;
         else {
             if consteval {
-                detail::raise(code, detail::store_failure_message(code));
+                raise(code, store_failure_message(code));
             }
-            detail::raise(code);
+            raise(code);
         }
     }
 };
 
-policy(errc&) -> policy<none, detail::error_ref>;
+call_policy(errc&) -> call_policy<none, error_ref>;
+} // namespace detail
 
 //---------------------------------------------------------------------------
-// is_policy_v — true for policy<F,E> specializations, false otherwise.
+// is_policy_v — true for call_policy<F,E> specializations, false otherwise.
 // Used to gate free-fn overloads so they don't accidentally bind P = action tag.
 //---------------------------------------------------------------------------
 namespace detail {
 template <typename T>
 inline constexpr bool is_policy_v = false;
 template <policy_flag F, typename E>
-inline constexpr bool is_policy_v<policy<F, E>> = true;
+inline constexpr bool is_policy_v<call_policy<F, E>> = true;
 
 // Concept form of is_policy_v — pulls cvref off so the constraint matches
-// forwarded `policy<F,E>` references in template parameters.
+// forwarded `call_policy<F,E>` references in template parameters.
 template <typename T>
 concept policy_like = is_policy_v<std::remove_cvref_t<T>>;
 
-// flags_of<policy<F, E>> is F. Lets the value+policy constructor and
+// flags_of<call_policy<F, E>> is F. Lets the value+policy constructor and
 // policy_ref's conversion fold the per-call flags into their
 // `inside_assignable` check, so a one-shot clamp/round actually relaxes the
 // constraint it enables.
 template <policy_flag F, typename E>
-inline constexpr policy_flag flags_of_impl<policy<F, E>> = F;
+inline constexpr policy_flag flags_of_impl<call_policy<F, E>> = F;
 
 // True for policy specializations that carry a beman::inside::errc& reference.
 // Free-fn arithmetic uses this to decide whether to call policy.report on
@@ -6362,7 +6446,7 @@ inline constexpr policy_flag flags_of_impl<policy<F, E>> = F;
 template <typename T>
 inline constexpr bool uses_error_ref = false;
 template <policy_flag F>
-inline constexpr bool uses_error_ref<policy<F, error_ref>> = true;
+inline constexpr bool uses_error_ref<call_policy<F, error_ref>> = true;
 } // namespace detail
 
 //---------------------------------------------------------------------------
@@ -6370,12 +6454,12 @@ inline constexpr bool uses_error_ref<policy<F, error_ref>> = true;
 //---------------------------------------------------------------------------
 template <policy_flag F = none>
 [[nodiscard]] constexpr auto make_policy() {
-    return policy<F, detail::empty_ref>{};
+    return detail::call_policy<F, detail::empty_ref>{};
 }
 
 template <policy_flag F = none>
 [[nodiscard]] constexpr auto make_policy(errc& ec) {
-    return policy<F, detail::error_ref>{ec};
+    return detail::call_policy<F, detail::error_ref>{ec};
 }
 
 //---------------------------------------------------------------------------
@@ -6392,35 +6476,36 @@ constexpr std::expected<Result, errc> report_or_unexpected(P&& policy, errc code
 } // namespace detail
 
 //---------------------------------------------------------------------------
-// Named convenience policies — let user code skip `make_policy<F>()` entirely
-// for the per-call flag form on free arithmetic functions.
+// as_call_policy — a call's trailing policy argument as a policy object: a
+// named flag (div(a, b, round_floor), B{v, round_floor}) is make_policy<F>();
+// a policy passes through.
 //---------------------------------------------------------------------------
-// Each is named after its flag: rounded_* = round_*, clamped = clamp,
-// wrapped = wrap.
-inline constexpr auto rounded_toward_zero = make_policy<round_toward_zero>();
-inline constexpr auto rounded_nearest     = make_policy<round_nearest>();
-inline constexpr auto rounded_floor       = make_policy<round_floor>();
-inline constexpr auto rounded_ceil        = make_policy<round_ceil>();
-inline constexpr auto rounded_half_even   = make_policy<round_half_even>();
-inline constexpr auto clamped             = make_policy<clamp>();
-inline constexpr auto wrapped             = make_policy<wrap>();
+namespace detail {
+template <class Pol>
+constexpr decltype(auto) as_call_policy(Pol&& pol) {
+    if constexpr (flag_like<Pol>)
+        return make_policy<std::remove_cvref_t<Pol>::value>();
+    else
+        return std::forward<Pol>(pol);
+}
+} // namespace detail
 } // namespace beman::inside
 
 
 // ======================================================================
-//  beman/inside/detail/policy_ref.hpp
+//  beman/inside/inside/detail/policy_ref.hpp
 // ======================================================================
 
 
 
 // ======================================================================
-//  beman/inside/detail/assignment.hpp
+//  beman/inside/inside/detail/assignment.hpp
 // ======================================================================
 
 
 
 // ======================================================================
-//  beman/inside/detail/assign_exact.hpp
+//  beman/inside/inside/detail/assign_exact.hpp
 // ======================================================================
 
 
@@ -6483,8 +6568,8 @@ constexpr void report_failure(L& lhs, P& policy, A& action, errc code) {
 // The on_wrap carry is always an inside whose grid holds every carry the
 // source kind can produce: an inside source uses its own range, an
 // integral source its type's limits, a fractional (double / rational) source the whole imax range. So
-// `minutes += carry` compiles for every source, and a callback taking `imax`
-// still binds through the implicit operator imax(). A bound whose exact
+// `minutes += carry` compiles for every source, and `as<imax>(carry)` reads
+// it as a number. A bound whose exact
 // computation leaves imax falls back to that side of the imax range.
 //---------------------------------------------------------------------------
 template <insidable L, typename R>
@@ -7138,11 +7223,11 @@ struct assignment<L, R> {
 
     // P's flags, recording its first failure into an errc instead.
     template <typename P>
-    using recording_policy = ::beman::inside::policy<P::Flags, error_ref>;
+    using recording_policy = call_policy<P::Flags, error_ref>;
 
     // Out of line, and by value (an empty action too): a reference to a
     // caller's local would make it escape the hot path's frame. lhs may be
-    // uninitialized (a trivial default ctor), so the store runs on a copy of
+    // uninitialized (the `uninitialized` flag), so the store runs on a copy of
     // the lower limit, and a failure is returned, not stored: a failed store
     // leaves lhs intact. The policy hears of it here; an on_error action,
     // which gets lhs, from store_fine_double.
@@ -7666,11 +7751,11 @@ struct assignment<L, R> {
                 action.Fn(lhs, make_wrap_carry<L, R>(excess)); // carry as an inside
         } else if constexpr (wrap_action<plain_t<A>>) {
             // Fractional destination with a wrap action: reuse the rational modular-wrap
-            // path for the store/rounding, but wrap its imax carry `q` into an inside before
-            // handing it to the user action.
+            // path for the store/rounding, but re-type its carry `q` (an inside on the
+            // rational source's carry grid) for R before handing it to the user action.
             assignment<L, rational>::apply_wrap(
-                lhs, as_rational(rhs), policy, beman::inside::on_wrap([&](auto& self, imax q) {
-                    action.Fn(self, make_wrap_carry<L, R>(q));
+                lhs, as_rational(rhs), policy, beman::inside::on_wrap([&](auto& self, const auto& q) {
+                    action.Fn(self, make_wrap_carry<L, R>(to_value(q)));
                 }));
         } else {
             // Fractional destination, no wrap action: delegate unchanged.
@@ -7843,8 +7928,8 @@ constexpr L& assign_grid_number(L& lhs, const big_rational& v, P&& policy) {
 
 //---------------------------------------------------------------------------
 // policy_ref and policy_buffer — the proxies that b.policy(), with_snap(),
-// with_clamp(), with_wrap() and on_*() return (core.hpp): an inside (by
-// reference, or owned for a temporary) with a policy<...> and a tuple of on_*
+// with_clamp(), with_wrap() and on_*() return (inside/detail/core.hpp): an inside (by
+// reference, or owned for a temporary) with a call_policy<...> and a tuple of on_*
 // actions. Stores and compound ops flow through them, routing each action to
 // the right callback at the right pipeline stage.
 //---------------------------------------------------------------------------
@@ -7879,8 +7964,8 @@ constexpr Dst& dispatch_assign(Dst& dst, const C& src, P& policy, std::tuple<As.
 }
 
 // The same into a fresh Target: the value read-out of policy_ref and
-// policy_buffer. A failed store (errc&, on_error) leaves it value-initialized,
-// not garbage.
+// policy_buffer. A failed store (errc&, on_error) leaves it at its default
+// value (0, or Lower), not garbage.
 template <insidable Target, numeric C, typename P, typename... As>
 constexpr Target dispatch_new(const C& src, P& policy, std::tuple<As...>& actions) {
     Target r{};
@@ -7981,15 +8066,15 @@ struct policy_ref {
         return finalize_arith(mul(Ref, rhs, Policy), "policy_ref::operator*=");
     }
 
-    // A zero divisor is reported (on_error / ignore_zero) and leaves Ref
-    // unchanged, like inside::operator/=: div/mod under ignore_zero skip their
+    // A zero divisor is reported (on_error, unless `unsafe` appears) and leaves
+    // Ref unchanged, like inside::operator/=: div/mod under `unsafe` skip their
     // own check, so dividing here would be a division by zero.
     template <insidable C>
         requires requires(const B& b, const C& c, P& p) { div(b, c, p); } &&
                  stores_back<decltype(div(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator/=(const C& rhs) {
         if (rhs == 0) {
-            if constexpr (!has_flag(flags_of<C>, ignore_zero)) // either operand silences it
+            if constexpr (is_checked(flags_of<C>)) // either operand silences it
                 report_error(errc::division_by_zero, "policy_ref::operator/= division by zero");
             return Ref;
         }
@@ -8001,7 +8086,7 @@ struct policy_ref {
                  stores_back<decltype(mod(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator%=(const C& rhs) {
         if (rhs == 0) {
-            if constexpr (!has_flag(flags_of<C>, ignore_zero)) // either operand silences it
+            if constexpr (is_checked(flags_of<C>)) // either operand silences it
                 report_error(errc::division_by_zero, "policy_ref::operator%= division by zero");
             return Ref;
         }
@@ -8040,11 +8125,11 @@ struct policy_ref {
 
   private:
     // A failed op leaves Ref unchanged: on_error takes the failure, else the
-    // policy reports it — but ignore_zero skips a zero divisor.
+    // policy reports it — but `unsafe` skips a zero divisor.
     constexpr void report_error(errc code, const char* what) {
         if constexpr (has_action<is_error_action, As...>)
             pick_action_in<is_error_action>(Actions).Fn(Ref, code, what);
-        else if (code != errc::division_by_zero || !uses_flag<B, P, ignore_zero>)
+        else if (code != errc::division_by_zero || is_checked(flags_of<B> | plain_t<P>::Flags))
             Policy.report(code);
     }
 
@@ -8066,13 +8151,13 @@ struct policy_ref {
 
 
 // ======================================================================
-//  beman/inside/detail/addition.hpp
+//  beman/inside/inside/detail/addition.hpp
 // ======================================================================
 
 
 
 // ======================================================================
-//  beman/inside/detail/op_result.hpp
+//  beman/inside/inside/detail/op_result.hpp
 // ======================================================================
 
 
@@ -8147,7 +8232,7 @@ struct addition {
 
     // Total: the policy has nothing to decide.
     template <policy_flag F = none, typename E = empty_ref>
-    static constexpr result add(L lhs, R rhs, policy<F, E> = {}) {
+    static constexpr result add(L lhs, R rhs, call_policy<F, E> = {}) {
         if constexpr (fraction_storage<result>)
             return result::from_raw(*continuous_raw_of<raw_t<result>>(exact_of(lhs) + exact_of(rhs)));
         else if constexpr (exact_path_fits<exact_op::add, result, L, R>)
@@ -8191,7 +8276,7 @@ inline constexpr bool sub_defined = add_defined<L, decltype(-std::declval<const 
 
 
 // ======================================================================
-//  beman/inside/detail/multiplication.hpp
+//  beman/inside/inside/detail/multiplication.hpp
 // ======================================================================
 
 
@@ -8211,7 +8296,7 @@ struct multiplication {
 
     // Total, as a sum: the policy has nothing to decide.
     template <policy_flag F = none, typename E = empty_ref>
-    static constexpr result mul(L lhs, R rhs, policy<F, E> = {}) {
+    static constexpr result mul(L lhs, R rhs, call_policy<F, E> = {}) {
         if constexpr (point_scale<R, L, result>) // x * just<c>: x's offset (see op_result.hpp)
             return scale_by_point<result, R>(lhs);
         else if constexpr (point_scale<L, R, result>)
@@ -8253,7 +8338,7 @@ inline constexpr bool mul_defined = [] {
 
 
 // ======================================================================
-//  beman/inside/detail/division.hpp
+//  beman/inside/inside/detail/division.hpp
 // ======================================================================
 
 
@@ -8377,11 +8462,10 @@ using native_div_t = std::conditional_t<(lower_imax<L> > std::numeric_limits<std
                                         std::int32_t,
                                         imax>;
 
-// The zero-divisor check is skipped when R's grid excludes zero or
-// `ignore_zero` is set (a zero divisor is then UB, matching the `/= 0` no-op).
+// The zero-divisor check is skipped when R's grid excludes zero or `unsafe`
+// appears (a zero divisor is then UB, matching the `/= 0` no-op).
 template <insidable L, insidable R, policy_flag F, policy_flag G>
-inline constexpr bool divisor_unchecked =
-    divisor_excludes_zero<R> || ((G | F | flags_of<L> | flags_of<R>)&ignore_zero) != 0;
+inline constexpr bool divisor_unchecked = divisor_excludes_zero<R> || !is_checked(G | F | flags_of<L> | flags_of<R>);
 
 // Compile-time rounding of a quotient-interval endpoint to an integer index.
 // Under half_even the endpoint is bracketed by [floor, ceil] (Upper: ceil)
@@ -8550,7 +8634,7 @@ struct division {
     using return_t = std::conditional_t<divisor_excludes_zero<R>, result, std::expected<result, errc>>;
 
     template <policy_flag G = F, typename E = empty_ref>
-    static constexpr return_t div(L, R, policy<G, E> = {});
+    static constexpr return_t div(L, R, call_policy<G, E> = {});
 };
 
 //---------------------------------------------------------------------------
@@ -8558,10 +8642,10 @@ struct division {
 //---------------------------------------------------------------------------
 template <insidable L, insidable R, policy_flag F>
 template <policy_flag G, typename E>
-constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy) -> return_t {
+constexpr auto division<L, R, F>::div(L lhs, R rhs, call_policy<G, E> policy) -> return_t {
     // A zero divisor: reported through the policy's errc& (if any) and returned
     // as the error. Only reachable where return_t is expected (the divisor grid
-    // holds zero and ignore_zero is off).
+    // holds zero and no `unsafe` appears).
     [[maybe_unused]] auto zero = [&] { return report_or_unexpected<result>(policy, errc::division_by_zero); };
     [[maybe_unused]] constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
 
@@ -8684,12 +8768,12 @@ struct modulo {
     using return_t = std::conditional_t<divisor_excludes_zero<R>, result, std::expected<result, errc>>;
 
     template <policy_flag G = F, typename E = empty_ref>
-    static constexpr return_t mod(L, R, policy<G, E> = {});
+    static constexpr return_t mod(L, R, call_policy<G, E> = {});
 };
 
 template <insidable L, insidable R, policy_flag F>
 template <policy_flag G, typename E>
-constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy) -> return_t {
+constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, call_policy<G, E> policy) -> return_t {
     if constexpr (!native_mod) {
         // Integer values past imax: r = a − round(a/b)·b in exact wide integers.
         constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
@@ -8736,7 +8820,7 @@ struct quotient_remainder {
 
     // The only failure is a zero divisor.
     template <policy_flag G = F, typename E = empty_ref>
-    static constexpr return_t divmod(L lhs, R rhs, policy<G, E> policy = {}) {
+    static constexpr return_t divmod(L lhs, R rhs, call_policy<G, E> policy = {}) {
         // (Generic: its body is formed only where a zero divisor is possible.)
         auto fail = [&](auto code) -> return_t {
             if constexpr (uses_error_ref<std::remove_cvref_t<decltype(policy)>>)
@@ -8777,7 +8861,7 @@ struct quotient_remainder {
 
 
 // ======================================================================
-//  beman/inside/predicates.hpp
+//  beman/inside/inside/predicates.hpp
 // ======================================================================
 
 
@@ -8808,10 +8892,10 @@ constexpr lossy_result exact_lossy(const wide_rational<K>& x) noexcept {
     const wide_rational<KK> v{x};
     const bool              in = !(v < exact_of_grid<KK>(lower_of<B>)) && !(exact_of_grid<KK>(upper_of<B>) < v);
     if constexpr (notched<B>) {
-        const auto j = exact_index<B, rounding_for<B, policy<>>>(v);
+        const auto j = exact_index<B, rounding_for<B, call_policy<>>>(v);
         if (in)
             return {false, !j.Exact};
-        if constexpr (!rounds_before_range_check<B, policy<>>)
+        if constexpr (!rounds_before_range_check<B, call_policy<>>)
             return {true, false};
         else {
             using I         = std::remove_cvref_t<decltype(j.Index)>;
@@ -8826,10 +8910,10 @@ constexpr lossy_result exact_lossy(const wide_rational<K>& x) noexcept {
             else
                 return {false, false}; // a point
         }
-        if constexpr (!rounds_before_range_check<B, policy<>>)
+        if constexpr (!rounds_before_range_check<B, call_policy<>>)
             return {true, false};
         else {
-            const wide_rational<KK> r = round_to_bound<B, policy<>>(v);
+            const wide_rational<KK> r = round_to_bound<B, call_policy<>>(v);
             const bool fits           = !(r < exact_of_grid<KK>(lower_of<B>)) && !(exact_of_grid<KK>(upper_of<B>) < r);
             return {!fits, fits};
         }
@@ -8881,7 +8965,7 @@ template <insidable B, numeric A>
         // B's policy rounds before it range-checks: a value that rounds onto the
         // grid does not overflow.
         detail::rational rounded;
-        return !detail::rounds_into_range<B, policy<>>(r, rounded);
+        return !detail::rounds_into_range<B, detail::call_policy<>>(r, rounded);
     }
 }
 
@@ -8902,7 +8986,7 @@ template <insidable B, numeric A>
             // rounds (a grid rounds before the range check); anything else is
             // overflow, not rounding.
             detail::rational rounded;
-            return detail::rounds_into_range<B, policy<>>(r, rounded);
+            return detail::rounds_into_range<B, detail::call_policy<>>(r, rounded);
         }
         if constexpr (!detail::notched<B>) {
             // A point: nothing to miss. Continuous: an in-range value with a
@@ -8931,7 +9015,7 @@ template <insidable B, numeric A>
 
 
 // Forward-declare the `beman::inside::math` entry points used in-class, so the bodies
-// pass `-Wtemplate-body` without pulling cmath.hpp in unconditionally (its
+// pass `-Wtemplate-body` without pulling math.hpp in unconditionally (its
 // definitions live there).
 namespace beman::inside::math {
 template <insidable Out, insidable In>
@@ -8943,7 +9027,7 @@ constexpr Out round_into(In x);
 template <insidable Out, insidable In>
 constexpr Out trunc_into(In x);
 namespace detail {
-// abs_into's constraint (cmath.hpp): Out includes the smallest |x|.
+// abs_into's constraint (math.hpp): Out includes the smallest |x|.
 template <class Out, class In>
 consteval bool abs_into_ok();
 } // namespace detail
@@ -8967,11 +9051,14 @@ constexpr auto abs(In x);
 // arithmetic (arithmetic.hpp), casts (casts.hpp) and `inside_range` (range.hpp)
 // follow in the umbrella. Heavy lifting is delegated to addition/multiplication/division.hpp
 // (per-operator code), assignment.hpp (narrowing/clamp/wrap), generic.hpp
-// (inside_assignable, over detail/introspection.hpp and detail/storage.hpp),
-// policy.hpp and detail/policy_ref.hpp (the proxies of b.policy() and on_*).
+// (inside_assignable, over inside/detail/introspection.hpp and inside/detail/storage.hpp),
+// inside/detail/call_policy.hpp and inside/detail/policy_ref.hpp (the proxies of b.policy() and on_*).
 //---------------------------------------------------------------------------
 namespace beman::inside {
 namespace detail {
+// Selects inside's raw constructor (from_raw).
+struct raw_tag {};
+
 // What `*t` yields for a cursor on G: G without its end point, no cursor — a
 // value of T, which assigns into T.
 template <grid G, policy_flag P>
@@ -8997,6 +9084,11 @@ constexpr std::expected<B, errc> try_store(Store store) {
 template <grid G, policy_flag P>
 struct inside {
     static_assert(grid::validate<G>());
+    static_assert((P & ~detail::known_bits) == 0,
+                  "inside: the policy holds bits no flag names - build it from the flags (clamp | round_floor)");
+    static_assert(detail::rounding_modes(P) <= 1,
+                  "inside: the policy names two rounding modes - pick one (round_nearest, round_floor, round_ceil or "
+                  "round_half_even)");
     static_assert(!(P & clamp) || !(P & wrap), "clamp and wrap are mutually exclusive");
 
     using negated_type = inside<-G, P & ~detail::cursor_marker>; // −cursor is no cursor
@@ -9018,12 +9110,16 @@ struct inside {
         return Raw;
     }
 
-    // Trivial default ctor — Raw is left uninitialized, like a built-in scalar: a
-    // default-constructed inside has no value until assigned. (A zero raw would
-    // decode to an out-of-range value on grids without 0.) Value-init `inside{}`
-    // still zero-fills where a zero raw is genuinely wanted.
+    // A default-constructed inside is 0, or Lower on a grid without 0 — a
+    // value of the grid, as every other inside holds.
     constexpr inside()
-        requires(!has_flag(P, detail::cursor_marker))
+        requires(!has_flag(P, uninitialized) && !has_flag(P, detail::cursor_marker))
+        : Raw{detail::default_raw<inside>} {}
+
+    // `uninitialized`: a trivial default ctor — Raw is left uninitialized, like
+    // a built-in scalar, and has no value until assigned.
+    constexpr inside()
+        requires(has_flag(P, uninitialized) && !has_flag(P, detail::cursor_marker))
     = default;
 
     // A cursor starts at Lower: slot 0.
@@ -9032,6 +9128,9 @@ struct inside {
         : Raw{detail::raw_from_offset<inside>(umax{0})} {}
 
   private:
+    // from_raw's: the raw as given, without a default value first.
+    constexpr inside(detail::raw_tag, raw_type r) noexcept : Raw{r} {}
+
     // The one store every constructor and assignment goes through — the same
     // for every raw kind.
     template <numeric A, typename Pol>
@@ -9045,22 +9144,24 @@ struct inside {
     }
 
   public:
-    // (Raw starts zeroed: a store that rounds a fine double starts from the
+    // (Raw starts at the default value: a store that fails leaves its target
+    // unchanged, and a store that rounds a fine double starts from the
     // destination's value, which a constant expression may not read
     // uninitialized. The optimizer drops the dead store.)
     template <numeric A>
         requires inside_assignable<inside, A, P>
-    constexpr inside(A value) : Raw{} {
+    constexpr inside(A value) : Raw{detail::default_raw<inside>} {
         store_value(value);
     }
 
     // One-shot policy: `pol`'s flags widen the assignable check (a clamp/round
     // relaxes the interval/notch clause, e.g. clamp_cast<B, round_nearest>(some_inside)) and
-    // apply to this store. If it reports an error (ec mode), Raw is ill-defined.
+    // apply to this store. If it reports an error (ec mode), the inside keeps
+    // its default value.
     template <numeric A, typename Pol>
         requires inside_assignable<inside, A, P | flags_of<Pol>>
-    constexpr inside(A value, Pol&& pol) : Raw{} {
-        store_value(value, pol);
+    constexpr inside(A value, Pol&& pol) : Raw{detail::default_raw<inside>} {
+        store_value(value, detail::as_call_policy(pol));
     }
 
     // No error-code constructor: construction that can fail is `try_make(value)`,
@@ -9072,24 +9173,29 @@ struct inside {
                                "(expected<B, errc>), or `b.policy(ec) = value` to assign with an error code");
 
     // expected<A> sink — unwrap once at the construction boundary so callers can
-    // chain checked arithmetic without per-step `.value()`. Throws
-    // std::bad_expected_access on an error.
+    // chain checked arithmetic without per-step `.value()`. An error is
+    // reported through this type's policy, as a failed store is (inside_error
+    // or the installed handler; a compile error in a constant expression).
     template <numeric A>
         requires inside_assignable<inside, A, P>
-    constexpr inside(const std::expected<A, errc>& value) : Raw{} {
-        store_value(value.value());
+    constexpr inside(const std::expected<A, errc>& value) : Raw{detail::default_raw<inside>} {
+        if (!value) [[unlikely]]
+            report_error(value.error());
+        else
+            store_value(*value);
     }
 
     // A grid number at run time (`residue r = N - 1_g;`, a constexpr big
     // variable): checked like any store, since its interval is not part of
     // its type. (Exactly a grid number: templates, so nothing converts to one.)
     template <std::same_as<detail::grid_rational> V>
-    constexpr inside(const V& value) : Raw{} {
+    constexpr inside(const V& value) : Raw{detail::default_raw<inside>} {
         detail::assign_grid_number(*this, value, make_policy<P>());
     }
-    template <std::same_as<detail::grid_rational> V, detail::policy_like Pol>
-    constexpr inside(const V& value, Pol&& pol) : Raw{} {
-        detail::assign_grid_number(*this, value, pol);
+    template <std::same_as<detail::grid_rational> V, class Pol>
+        requires(detail::policy_like<Pol> || detail::flag_like<Pol>)
+    constexpr inside(const V& value, Pol&& pol) : Raw{detail::default_raw<inside>} {
+        detail::assign_grid_number(*this, value, detail::as_call_policy(pol));
     }
     template <std::same_as<detail::grid_rational> V>
     constexpr inside& operator=(const V& value) {
@@ -9104,72 +9210,55 @@ struct inside {
         return *this;
     }
 
+    // An error is reported through this type's policy; *this stays unchanged.
     template <numeric B>
         requires inside_assignable<inside, B, P>
     constexpr inside& operator=(const std::expected<B, errc>& other) {
-        store_value(other.value());
-        return *this;
+        return assign_op_result(other);
     }
 
-    // ---- Diagnostic fallbacks (default on; -DBEMAN_INSIDE_STRICT_SFINAE removes them) ----
-    // When a source is numeric but NOT assignable to this inside, every constrained
-    // sink above drops out of overload resolution and the compiler emits a bare
-    // "could not convert" — losing the reason. These complementary overloads (enabled
-    // exactly when `inside_assignable` is false) catch that case and turn it into the
-    // named per-clause notes from `inside_assignable_why` (interval-excludes /
-    // incompatible-notch). The trade: they make `inside` *appear* is_constructible /
-    // assignable from incompatible types (the static_assert is in the body, not the
-    // immediate context, so trait probes return true then hard-error only on real
-    // use). Define BEMAN_INSIDE_STRICT_SFINAE to drop them and restore SFINAE-pure traits for
-    // metaprogramming that probes convertibility (variant/expected/`if constexpr`).
-#ifndef BEMAN_INSIDE_STRICT_SFINAE
+    // A store that can never succeed is deleted, with the clause that fails:
+    // a trait or `requires` probe sees it as ill-formed, and the error names
+    // the fix. explain_assignable<To, From> prints the two grids.
+#define BEMAN_INSIDE_WHY_disjoint                                                                   \
+    "inside: the source's interval lies entirely outside this grid's, and the policy has no clamp " \
+    "or wrap - widen the grid, or store with clamp or wrap (explain_assignable<To, From> prints both)"
+#define BEMAN_INSIDE_WHY_notch                                                                    \
+    "inside: incompatible notches - the source's values miss this grid's notch; use with_snap() " \
+    "or a rounding policy (explain_assignable<To, From> prints both notches)"
     template <numeric A>
-        requires(!inside_assignable<inside, A, P>)
-    constexpr inside(A) {
-        static_assert(inside_assignable_why<inside, A, P>::value,
-                      "inside: cannot construct this inside from the value — see the per-clause notes above");
-    }
-
+        requires(!detail::assign_intervals_ok<inside, A, P>)
+    inside(A) = delete (BEMAN_INSIDE_WHY_disjoint);
     template <numeric A>
-        requires(!inside_assignable<inside, A, P>)
-    constexpr inside(const std::expected<A, errc>&) {
-        static_assert(
-            inside_assignable_why<inside, A, P>::value,
-            "inside: cannot construct this inside from the expected's value — see the per-clause notes above");
-    }
-
+        requires(detail::assign_intervals_ok<inside, A, P> && !detail::assign_notch_ok<inside, A, P>)
+    inside(A) = delete (BEMAN_INSIDE_WHY_notch);
+    template <numeric A>
+        requires(!detail::assign_intervals_ok<inside, A, P>)
+    inside(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_disjoint);
+    template <numeric A>
+        requires(detail::assign_intervals_ok<inside, A, P> && !detail::assign_notch_ok<inside, A, P>)
+    inside(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_notch);
     template <numeric B>
-        requires(!inside_assignable<inside, B, P>)
-    constexpr inside& operator=(const B&) {
-        static_assert(inside_assignable_why<inside, B, P>::value,
-                      "inside: cannot assign this value to this inside — see the per-clause notes above");
-        return *this;
-    }
-
+        requires(!detail::assign_intervals_ok<inside, B, P>)
+    inside& operator=(const B&) = delete (BEMAN_INSIDE_WHY_disjoint);
     template <numeric B>
-        requires(!inside_assignable<inside, B, P>)
-    constexpr inside& operator=(const std::expected<B, errc>&) {
-        static_assert(inside_assignable_why<inside, B, P>::value,
-                      "inside: cannot assign this expected's value to this inside — see the per-clause notes above");
-        return *this;
-    }
-#endif
+        requires(detail::assign_intervals_ok<inside, B, P> && !detail::assign_notch_ok<inside, B, P>)
+    inside& operator=(const B&) = delete (BEMAN_INSIDE_WHY_notch);
+    template <numeric B>
+        requires(!detail::assign_intervals_ok<inside, B, P>)
+    inside& operator=(const std::expected<B, errc>&) = delete (BEMAN_INSIDE_WHY_disjoint);
+    template <numeric B>
+        requires(detail::assign_intervals_ok<inside, B, P> && !detail::assign_notch_ok<inside, B, P>)
+    inside& operator=(const std::expected<B, errc>&) = delete (BEMAN_INSIDE_WHY_notch);
+#undef BEMAN_INSIDE_WHY_disjoint
+#undef BEMAN_INSIDE_WHY_notch
 
     // Trusted construction from a storage-layout raw — no validation; the caller
     // asserts `r` is a valid slot. Entry point for tests, fast paths, and same-grid
     // raw transfer (e.g. `unchecked_cast`).
-    [[nodiscard]] static constexpr inside from_raw(raw_type r) noexcept {
-        inside b;
-        b.Raw = r;
-        return b;
-    }
+    [[nodiscard]] static constexpr inside from_raw(raw_type r) noexcept { return inside{detail::raw_tag{}, r}; }
 
     // Conversion summary:
-    //   operator imax     — implicit, when the values are integers or the policy
-    //                       may round (then rounded by its mode), and the interval
-    //                       fits int64 (else use `to<imax>()`). Also the `vec[b]`
-    //                       index path. No second implicit integer operator (would
-    //                       make `imax_var += b` ambiguous).
     //   operator rational — implicit; lossless and exact.
     //   operator double   — explicit, and gated on a rounding flag (a double
     //                       may round the value).
@@ -9177,18 +9266,12 @@ struct inside {
     //   to<T>()           — typed-error narrowing/widening → `expected<T, errc>`
     //                       (overflow / domain_error).
     //   as<T>()           — non-expected sibling; throws on error. For known-
-    //                       in-range sites (array indexing). FP shares the gate.
+    //                       in-range sites (array indexing: `vec[b.as<std::size_t>()]`);
+    //                       no check is left where T holds the whole grid.
     //   to<T>(b)/as<T>(b) — free-function forms, for generic code.
-    constexpr operator imax() const
-        requires((detail::integer_notch<G> || (has_flag(P, snap) && detail::rational_readable<inside>)) &&
-                 detail::fits_imax(G.Interval))
-    {
-        if constexpr (detail::integer_notch<G>)
-            return detail::to_value(*this);
-        else
-            return round_to_int(detail::as_rational(*this), detail::rounding_of(P));
-    }
-
+    // No implicit integer conversion: it would narrow silently into a smaller
+    // built-in (`int i = b;`, `unsigned char c = b;`), the range escaping
+    // the type.
     constexpr explicit operator double() const
         requires(has_flag(P, snap))
     {
@@ -9345,7 +9428,7 @@ struct inside {
     // Integer reductions (floor/ceil/round/trunc) and abs live as free
     // functions in `beman::inside::math` — `beman::inside::math::floor(b)` etc. (auto-deduced Out)
     // or `beman::inside::math::floor_into<Out>(b)` for an explicit output grid. There is
-    // deliberately no member-syntax alias: one spelling, in `<beman/inside/cmath.hpp>`.
+    // deliberately no member-syntax alias: one spelling, in `<beman/inside/math.hpp>`.
 
     [[nodiscard]] constexpr negated_type operator-() const {
         negated_type neg;
@@ -9562,11 +9645,11 @@ struct inside {
         return *this;
     }
 
-    // A zero divisor in /= or %=; ignore_zero on either operand silences it,
-    // as it does for div/mod.
+    // A zero divisor in /= or %=; `unsafe` on either operand silences it, as
+    // it does for div/mod.
     template <insidable R>
     constexpr inside& report_div_by_zero() {
-        if constexpr (!has_flag(P | flags_of<R>, ignore_zero))
+        if constexpr (is_checked(P | flags_of<R>))
             make_policy<P>().report(errc::division_by_zero);
         return *this;
     }
@@ -9873,7 +9956,7 @@ inline constexpr auto just = detail::just_point<value, den>();
 //   1'000_ins       // inside<{1000}>            digit separator
 //
 // Parse is exact (no double round-trip); same parser backs `_r` in
-// detail/number_text.hpp. `-1.5_ins` parses as `-(1.5_ins)`.
+// inside/detail/number_text.hpp. `-1.5_ins` parses as `-(1.5_ins)`.
 //---------------------------------------------------------------------------
 template <char... Chars>
 constexpr auto operator""_ins() {
@@ -9899,7 +9982,7 @@ struct std::indirectly_readable_traits<beman::inside::inside<G, P>> {
 
 
 // ======================================================================
-//  beman/inside/detail/compare.hpp
+//  beman/inside/inside/detail/compare.hpp
 // ======================================================================
 // Internal — include "beman/inside/inside.hpp" (the umbrella), not this directly.
 
@@ -10098,7 +10181,7 @@ template <insidable B, detail::plain_number A>
 
 
 // ======================================================================
-//  beman/inside/casts.hpp
+//  beman/inside/inside/casts.hpp
 // ======================================================================
 
 
@@ -10183,7 +10266,7 @@ template <insidable B, numeric A>
 
 
 // ======================================================================
-//  beman/inside/arithmetic.hpp
+//  beman/inside/inside/arithmetic.hpp
 // ======================================================================
 
 
@@ -10204,7 +10287,8 @@ template <insidable B, numeric A>
 namespace beman::inside {
 //---------------------------------------------------------------------------
 // add / sub / mul / div / mod / divmod — each takes one of two trailing forms:
-//   op(l, r [, policy])   explicit per-call policy (the division's rounding)
+//   op(l, r [, policy])   explicit per-call policy (the division's rounding):
+//                         a named flag (round_floor) or make_policy<F>()
 //   op(l, r, ec)          error-code form (checked, a zero divisor sets ec)
 // detail::arith normalizes the form to a policy for the op's core.
 //---------------------------------------------------------------------------
@@ -10213,9 +10297,15 @@ namespace beman::inside {
     "or a cast"
 
 namespace detail {
-template <class Op, class L, class R, policy_like P = policy<>>
+template <class Op, class L, class R, policy_like P = call_policy<>>
 constexpr auto arith(Op op, const L& l, const R& r, P&& pol = {}) {
     return op(l, r, std::forward<P>(pol));
+}
+
+// A named flag as the policy: div(a, b, round_floor).
+template <class Op, class L, class R, policy_flag V>
+constexpr auto arith(Op op, const L& l, const R& r, flag<V>) {
+    return op(l, r, make_policy<V>());
 }
 
 template <class Op, class L, class R>
@@ -10224,16 +10314,11 @@ constexpr auto arith(Op op, const L& l, const R& r, errc& ec) {
 }
 
 // A hook would be silently ignored (arithmetic cannot fail but for a zero
-// divisor, which stays in the result): rejected with a message.
+// divisor, which stays in the result): rejected with a message (the deleted
+// overload in BEMAN_INSIDE_ARITH_FN).
 template <class A>
 inline constexpr bool is_action_tag_v =
     is_clamp_action<A>::value || is_wrap_action<A>::value || is_error_action<A>::value;
-
-template <class Op, class L, class R, class... Args>
-    requires(is_action_tag_v<std::remove_cvref_t<Args>> || ...)
-constexpr void arith(Op, const L&, const R&, Args&&...) {
-    static_assert(false, BEMAN_INSIDE_WHY_arith_action);
-}
 
 struct add_op {
     template <class L, class R, class P>
@@ -10274,8 +10359,8 @@ struct divmod_op {
 } // namespace detail
 
 // A deleted overload takes each op's failing case: `requires { a + b; }` is
-// then false, and an integer inside cannot fall back on its imax conversion
-// and the built-in operator.
+// then false, and an inside cannot fall back on its rational conversion and
+// rational's operator.
 
 #define BEMAN_INSIDE_WHY_add                                                                                      \
     "addition: no result type - the exact sum's fractions pass BEMAN_INSIDE_MAX_FRACTION_BITS (store an operand " \
@@ -10297,10 +10382,10 @@ namespace detail {
 // The policy flags a call's trailing arguments select, as arith normalizes
 // them: a policy's own, checked for an errc&, an action's implied flags.
 template <class... Args>
-inline constexpr policy_flag call_flags = [] {
+inline constexpr policy_flag call_flags = []() -> policy_flag {
     if constexpr (sizeof...(Args) == 0)
         return none;
-    else if constexpr (policy_like<std::remove_cvref_t<Args...[0]>>)
+    else if constexpr (policy_like<std::remove_cvref_t<Args...[0]>> || flag_like<Args...[0]>)
         return flags_of<Args...[0]>;
     else if constexpr (std::same_as<Args...[0], errc&>)
         return checked;
@@ -10309,7 +10394,7 @@ inline constexpr policy_flag call_flags = [] {
 }();
 
 // Each op's well-formedness under flags F is detail::add_defined & co.
-// (detail/addition.hpp, multiplication.hpp, division.hpp): the first
+// (inside/detail/addition.hpp, multiplication.hpp, division.hpp): the first
 // constraint of its function and operator, so a requires-expression or
 // `if constexpr` probe is false where the op cannot compile.
 } // namespace detail
@@ -10327,7 +10412,11 @@ inline constexpr policy_flag call_flags = [] {
     }                                                                               \
     template <insidable L, insidable R, class... Args>                              \
         requires(!detail::name##_defined<L, R, detail::call_flags<Args...>>)        \
-    auto name(L const&, R const&, Args&&...) = delete (BEMAN_INSIDE_WHY_##name);
+    auto name(L const&, R const&, Args&&...) = delete (BEMAN_INSIDE_WHY_##name);    \
+    template <insidable L, insidable R, class... Args>                              \
+        requires(detail::name##_defined<L, R, detail::call_flags<Args...>> &&       \
+                 (detail::is_action_tag_v<std::remove_cvref_t<Args>> || ...))       \
+    auto name(L const&, R const&, Args&&...) = delete (BEMAN_INSIDE_WHY_arith_action);
 
 BEMAN_INSIDE_ARITH_FN(add, add_op)
 BEMAN_INSIDE_ARITH_FN(sub, sub_op)
@@ -10692,9 +10781,8 @@ BEMAN_INSIDE_LIFT_OP(%)
 // Compound assignment with a raw scalar is rejected the same way; comparisons
 // with raw scalars are unaffected.
 //
-// Concrete (non-auto) return type on purpose: keeps these SFINAE-transparent,
-// so `requires { b + 1; }` stays well-formed and the static_assert fires only
-// on a call.
+// Deleted, with the fix as the reason: `requires { b + 1; }` is false, as
+// for every other operation that cannot compile.
 //---------------------------------------------------------------------------
 template <typename A>
 concept builtin_arithmetic = std::integral<A> || std::floating_point<A>;
@@ -10703,19 +10791,13 @@ concept builtin_arithmetic = std::integral<A> || std::floating_point<A>;
     "an inside cannot be combined with a raw scalar: give the scalar a grid — "     \
     "`1_ins`, `just<1>`, or `inside<{lo,hi}>{n}` for a runtime value with a known " \
     "range"
-#define BEMAN_INSIDE_NO_SCALAR(op)                     \
-    template <insidable B, builtin_arithmetic A>       \
-    B operator op(B const&, A) {                       \
-        static_assert(false, BEMAN_INSIDE_SCALAR_MSG); \
-    }                                                  \
-    template <builtin_arithmetic A, insidable B>       \
-    B operator op(A, B const&) {                       \
-        static_assert(false, BEMAN_INSIDE_SCALAR_MSG); \
-    }                                                  \
-    template <insidable B, builtin_arithmetic A>       \
-    B& operator op## = (B&, A) {                       \
-        static_assert(false, BEMAN_INSIDE_SCALAR_MSG); \
-    }
+#define BEMAN_INSIDE_NO_SCALAR(op)                                    \
+    template <insidable B, builtin_arithmetic A>                      \
+    void operator op(B const&, A) = delete (BEMAN_INSIDE_SCALAR_MSG); \
+    template <builtin_arithmetic A, insidable B>                      \
+    void operator op(A, B const&) = delete (BEMAN_INSIDE_SCALAR_MSG); \
+    template <insidable B, builtin_arithmetic A>                      \
+    void operator op## = (B&, A) = delete (BEMAN_INSIDE_SCALAR_MSG);
 
 BEMAN_INSIDE_NO_SCALAR(+)
 BEMAN_INSIDE_NO_SCALAR(-)
@@ -10735,7 +10817,7 @@ struct std::common_type<beman::inside::inside<G1, P1>, beman::inside::inside<G2,
 
 
 // ======================================================================
-//  beman/inside/range.hpp
+//  beman/inside/inside/range.hpp
 // ======================================================================
 
 
@@ -10858,7 +10940,7 @@ inline constexpr bool std::ranges::enable_borrowed_range<beman::inside::inside_r
 
 
 // ======================================================================
-//  beman/inside/cursor.hpp
+//  beman/inside/inside/cursor.hpp
 // ======================================================================
 
 
@@ -10904,7 +10986,7 @@ template <insidable B>
 
 
 // ======================================================================
-//  beman/inside/numeric_limits.hpp
+//  beman/inside/inside/numeric_limits.hpp
 // ======================================================================
 
 
@@ -11035,13 +11117,787 @@ struct std::hash<beman::inside::inside<G, P>> {
 
 
 // ======================================================================
-//  beman/inside/cmath.hpp
+//  beman/inside/inside/formats.hpp
+// ======================================================================
+
+
+
+//---------------------------------------------------------------------------
+// formats — predefined `inside` aliases mapping to hardware byte widths, so you
+// can write `beman::inside::uint8` / `beman::inside::unorm16` / `beman::inside::q8_8` directly.
+//
+// `uint8` … `uint64` and `int8` … `int64` are named after the std::uintN_t /
+// std::intN_t they are stored in, and each uses that type's full range:
+// `uint8` is [0, 255] in a std::uint8_t (save int64, which stops one short of
+// -2^63). Q-format types keep power-of-two notches.
+//
+// The integer widths are `checked`; unorm and the Q formats round to nearest.
+// For wraparound or saturation declare your own (`inside<{0, 255}, wrap>`),
+// or use the counters clamp_counter<Max> and wrap_counter<Max> below.
+//---------------------------------------------------------------------------
+namespace beman::inside {
+//-------------------------------------------------------------------------
+// Native integer widths — value storage (Raw == value), `checked`.
+// Full native range.
+//-------------------------------------------------------------------------
+using uint8  = inside<{0, 255}>;
+using uint16 = inside<{0, 65535}>;
+using uint32 = inside<{0, 4294967295}>;
+// uint64 reaches past int64: read it with `to<std::uint64_t>()` or
+// `as<std::uint64_t>()`. A difference of two uint64s spans 2^65 values and
+// gets a wide-integer index.
+using uint64 = inside<{0, 18446744073709551615u}>;
+
+using int8  = inside<{-128, 127}>;
+using int16 = inside<{-32768, 32767}>;
+using int32 = inside<{-2147483648, 2147483647}>;
+// int64 stays symmetric: the internal value path is `imax`, and -2^63
+// has no negation in int64.
+using int64 = inside<{-9223372036854775807, 9223372036854775807}>;
+
+//-------------------------------------------------------------------------
+// Unsigned normalized (UNORM) — [0, 1] at N-bit resolution, `round_nearest`.
+// The notch denominator is the type max, so the index 0..max fills the native
+// width; both endpoints (0 and 1) are exactly representable.
+//-------------------------------------------------------------------------
+using unorm8  = inside<{{0, 1}, per<255>}, round_nearest>;        // uint8
+using unorm16 = inside<{{0, 1}, per<65535>}, round_nearest>;      // uint16
+using unorm32 = inside<{{0, 1}, per<4294967295>}, round_nearest>; // uint32
+
+//-------------------------------------------------------------------------
+// Q-format fixed-point — unsigned integer.fraction, power-of-two notch,
+// full natural range. `round_nearest`.
+//-------------------------------------------------------------------------
+using q4_4   = inside<{{0, rational{255, 16}}, per<16>}, round_nearest>;                // uint8: [0, 15.9375]
+using q8_8   = inside<{{0, rational{65535, 256}}, per<256>}, round_nearest>;            // uint16
+using q16_16 = inside<{{0, rational{4294967295u, 65536u}}, per<65536>}, round_nearest>; // uint32
+
+//-------------------------------------------------------------------------
+// Counters — a counter is an inside over [0, Max] whose overflow policy says
+// what `++` does at the ceiling (the boundary behavior is in the type).
+//-------------------------------------------------------------------------
+// Saturating counter: `++` caps at Max (never throws or wraps) — the honest
+// "count up to a ceiling / ≥Max" tally. `--` saturates at 0.
+template <umax Max>
+using clamp_counter = inside<{0, Max}, clamp>;
+// Wrapping counter: `++` wraps Max → 0 (sequence numbers, epochs).
+template <umax Max>
+using wrap_counter = inside<{0, Max}, wrap>;
+
+} // namespace beman::inside
+
+
+#ifndef BEMAN_INSIDE_NO_STRING
+
+// ======================================================================
+//  beman/inside/inside/io.hpp
+// ======================================================================
+// io — ALL of the library's string / stream / std::format support, gathered
+// into one opt-in header. The core (inside.hpp and everything it pulls) never
+// includes this, so a freestanding / bare-metal build that never includes
+// "beman/inside/inside/io.hpp" pays zero <string>/<ostream>/<format> cost. In the single-
+// header amalgamation this whole region is wrapped in `#ifndef BEMAN_INSIDE_NO_STRING`,
+// so defining BEMAN_INSIDE_NO_STRING drops it (and its heavy includes) wholesale.
+//
+// Provides:
+//   * to_string(rational | interval | grid | insidable | arithmetic | errc)
+//   * to_string_debug(insidable)        — value + raw + raw type + grid
+//   * operator<< and operator>> (one token, failbit on error)
+//   * parse<B, F>(std::string_view), parse_exact<B>(std::string_view)
+//   * std::formatter<inside<G, P>>, std::formatter<rational> (with <format>)
+//   * type_name_of<B>                   — a readable name of an inside type
+// units.hpp builds on it (to_string and std::formatter of quantities).
+//---------------------------------------------------------------------------
+
+
+
+#include <algorithm>
+#include <format>
+#include <istream>
+#include <ostream>
+#include <string>
+#include <string_view>
+#include <type_traits>
+
+namespace beman::inside {
+namespace detail {
+// Decimal digits of a wide integer: 19 digits per division by 10^19.
+template <std::size_t N, bool S>
+std::string wide_to_decimal(wide_int<N, S> v) {
+    const bool         neg = v.negative();
+    wide_int<N, false> u(neg ? -v : v);
+    std::string        out;
+    do {
+        const auto [q, r] = divmod_small(u, 10'000'000'000'000'000'000ull);
+        std::string part  = std::to_string(r);
+        if (!q.is_zero())
+            part.insert(0, 19 - part.size(), '0');
+        out.insert(0, part);
+        u = q;
+    } while (!u.is_zero());
+    return neg ? "-" + out : out;
+}
+
+// Decimal digits of num/den (den > 0) on demand: the integer part, then the
+// fraction one chunk at a time. Tail() says whether anything nonzero is left,
+// which rounding needs to tell a tie from a value above it.
+template <std::size_t K>
+struct decimal_stream {
+    using W = wide_uint<K + 1>;
+    W Rem, Den;
+
+    decimal_stream(const wide_uint<K>& num, const wide_uint<K>& den) : Rem{num}, Den{den} {}
+
+    std::string whole() {
+        const auto [q, r] = W::divmod(Rem, Den);
+        Rem               = r;
+        return wide_to_decimal(q);
+    }
+    std::string next(int n) {
+        std::string out;
+        for (; n > 0; n -= 19) {
+            const int chunk = n < 19 ? n : 19;
+            umax      p     = 1;
+            for (int i = 0; i < chunk; ++i)
+                p *= 10;
+            const auto [q, r]      = W::divmod(Rem * W{p}, Den);
+            const std::string part = std::to_string(static_cast<umax>(q));
+            out.append(static_cast<std::size_t>(chunk) - part.size(), '0') += part;
+            Rem = r;
+        }
+        return out;
+    }
+    bool tail() const { return !Rem.is_zero(); }
+};
+
+// num/den (den > 0) in the forms parse reads: its exact decimal when the
+// reduced denominator is 2^a·5^b (however many digits, and at least
+// min_digits decimals), else "num/den".
+template <std::size_t K>
+std::string fraction_to_string(bool neg, wide_uint<K> num, wide_uint<K> den, int min_digits = 0) {
+    using U   = wide_uint<K>;
+    const U g = wide_gcd(den, num);
+    num /= g;
+    den /= g;
+    std::string str   = neg && !num.is_zero() ? "-" : "";
+    U           rest  = den;
+    const int   twos  = static_cast<int>(strip_factor(rest, 2)); // ≤ the bit width
+    const int   fives = static_cast<int>(strip_factor(rest, 5));
+    if (!(rest == U{1}))
+        return str += wide_to_decimal(num) + "/" + wide_to_decimal(den);
+    // num·10^digits/den is an integer: its decimals end there.
+    decimal_stream<K> ds{num, den};
+    str += ds.whole();
+    int digits = twos > fives ? twos : fives;
+    if (digits < min_digits)
+        digits = min_digits;
+    if (digits != 0)
+        str += '.' + ds.next(digits);
+    return str;
+}
+} // namespace detail
+
+//-------------------------------------------------------------------------
+// to_string — pretty-prints `rational`, `interval`, `grid`, plus a fallback
+// for plain arithmetic types and the exact form for insidables. A value
+// prints as its exact decimal when it has one, else as num/den.
+//-------------------------------------------------------------------------
+[[nodiscard]] inline std::string to_string(beman::inside::detail::rational r) {
+    return detail::fraction_to_string<1>(r.Den < 0, r.Num, detail::abs_den(r.Den));
+}
+
+namespace detail {
+// The decimals every value of B prints with: n for a decimal lattice — one
+// whose value unit (the notch, or gcd(Notch, Lower) off 0) has a
+// denominator 2^a·5^b with b ≥ 1 (per<100>, 0.05, 1e-18) — with
+// n = max(a, b); else 0 (the value decides).
+template <insidable B>
+inline constexpr int fixed_decimals = [] {
+    if constexpr (!notched<B>)
+        return 0;
+    else {
+        grid_int  q    = grid_denominator(grid_of<B>.value_unit());
+        const int two  = static_cast<int>(strip_factor(q, 2)); // ≤ the bit width
+        const int five = static_cast<int>(strip_factor(q, 5));
+        return q == grid_int{1} && five > 0 ? (two > five ? two : five) : 0;
+    }
+}();
+} // namespace detail
+
+// A grid number of any size, in the forms of to_string(rational).
+[[nodiscard]] inline std::string to_string(const detail::big_rational& r);
+
+[[nodiscard]] inline std::string to_string(interval ival) {
+    std::string str{"["};
+
+    str += beman::inside::to_string(ival.Lower);
+    str += "..";
+    str += beman::inside::to_string(ival.Upper);
+    str += "]";
+    return str;
+}
+
+[[nodiscard]] inline std::string to_string(grid g) {
+    std::string str{"{"};
+
+    str += beman::inside::to_string(g.Interval);
+    str += ", ";
+    str += beman::inside::to_string(g.Notch);
+    if (g.MaxDenominator != 0) {
+        str += ", den<=";
+        str += beman::inside::to_string(g.MaxDenominator);
+    }
+    str += "}";
+    return str;
+}
+
+// delegate to std::to_string
+template <typename V>
+    requires(std::integral<V> || std::floating_point<V>)
+[[nodiscard]] auto to_string(V value) {
+    return std::to_string(value);
+}
+
+//-------------------------------------------------------------------------
+// type_name_of<T> — short raw-type label for to_string_debug. Lives here (not
+// in inside/detail/numbers.hpp) so the core never pulls <string_view>.
+//-------------------------------------------------------------------------
+namespace detail {
+template <typename T>
+inline constexpr std::string_view type_name_of = wide_integer<T>         ? "wide_int"
+                                                 : wide_rational_like<T> ? "wide_rational"
+                                                                         : "unknown";
+template <>
+inline constexpr std::string_view type_name_of<std::uint8_t> = "uint8_t";
+template <>
+inline constexpr std::string_view type_name_of<std::uint16_t> = "uint16_t";
+template <>
+inline constexpr std::string_view type_name_of<std::uint32_t> = "uint32_t";
+template <>
+inline constexpr std::string_view type_name_of<std::uint64_t> = "uint64_t";
+template <>
+inline constexpr std::string_view type_name_of<std::int8_t> = "int8_t";
+template <>
+inline constexpr std::string_view type_name_of<std::int16_t> = "int16_t";
+template <>
+inline constexpr std::string_view type_name_of<std::int32_t> = "int32_t";
+template <>
+inline constexpr std::string_view type_name_of<std::int64_t> = "int64_t";
+template <>
+inline constexpr std::string_view type_name_of<rational> = "rational";
+template <>
+inline constexpr std::string_view type_name_of<point_slot> = "point";
+template <>
+inline constexpr std::string_view type_name_of<wide_uint<2>> = "wide_uint<2>";
+template <>
+inline constexpr std::string_view type_name_of<wide_uint<3>> = "wide_uint<3>";
+} // namespace detail
+
+//-------------------------------------------------------------------------
+// to_string / to_string_debug / operator<< for insidables and rational.
+// The debug form also prints the raw value, raw type, and grid — useful when
+// inspecting failing tests or storage choices.
+//-------------------------------------------------------------------------
+namespace detail {
+// An exact value, with at least min_digits decimals.
+template <std::size_t K>
+std::string exact_to_string(wide_rational<K> f, int min_digits = 0) {
+    const bool neg = f.Num.negative();
+    return fraction_to_string(neg, wide_uint<K>{neg ? -f.Num : f.Num}, wide_uint<K>{f.Den}, min_digits);
+}
+} // namespace detail
+
+template <std::size_t N, bool S>
+[[nodiscard]] inline std::string to_string(detail::wide_int<N, S> v) {
+    return detail::wide_to_decimal(v);
+}
+
+// A grid number of any size, in decimal (reads the interned limbs; no new
+// big values are formed at runtime).
+[[nodiscard]] inline std::string to_string(const detail::big_int& v) {
+    detail::big::mag m = v.magnitude();
+    std::string      out;
+    do {
+        // m /= 10^19, rem = m % 10^19
+        const umax rem = detail::limb::div_1(m.data(), m.data(), m.size(), umax{10'000'000'000'000'000'000ull});
+        detail::big::trim(m);
+        std::string part = std::to_string(rem);
+        if (!m.empty())
+            part.insert(0, 19 - part.size(), '0');
+        out.insert(0, part);
+    } while (!m.empty());
+    return v.negative() ? "-" + out : out;
+}
+
+namespace detail {
+template <std::size_t K>
+std::string big_fraction_to_string(const big_rational& r) {
+    const auto n = static_cast<wide_uint<K>>(r.Num); // two's complement
+    return fraction_to_string(r.Num.negative(), r.Num.negative() ? -n : n, static_cast<wide_uint<K>>(r.Den));
+}
+} // namespace detail
+
+[[nodiscard]] inline std::string to_string(const detail::big_rational& r) {
+    const int bits = r.Num.bit_width() > r.Den.bit_width() ? r.Num.bit_width() : r.Den.bit_width();
+    if (bits < 512)
+        return detail::big_fraction_to_string<8>(r);
+    if (bits < 4096)
+        return detail::big_fraction_to_string<64>(r);
+    const std::string num = beman::inside::to_string(r.Num);
+    return r.is_integer() ? num : num + "/" + beman::inside::to_string(r.Den);
+}
+
+// An inside's exact value: with a decimal notch, every value prints that
+// notch's decimals (19.90, 2.00); otherwise its shortest exact form — a
+// decimal when it has one, else N/D.
+template <insidable B>
+[[nodiscard]] inline std::string to_string(B b) {
+    constexpr int n = detail::fixed_decimals<B>;
+    if constexpr (detail::wide_valued<B>)
+        return detail::exact_to_string(detail::exact_of(b), n);
+    else {
+        const detail::rational r = detail::as_rational(b);
+        return detail::fraction_to_string<1>(r.Den < 0, r.Num, detail::abs_den(r.Den), n);
+    }
+}
+
+template <insidable B>
+[[nodiscard]] inline std::string to_string_debug(B b) {
+    std::string str;
+    str += beman::inside::to_string(b);
+    str += " {";
+    if constexpr (detail::fraction_storage<B>)
+        str += detail::exact_to_string(b.raw());
+    else
+        str += beman::inside::to_string(+b.raw());
+    str += "[" + std::string(detail::type_name_of<detail::raw_t<B>>);
+    constexpr auto slots = grid_of<B>.step_count();
+    str += " Max:" + beman::inside::to_string(slots) + "] ";
+    str += beman::inside::to_string(grid_of<B>);
+    str += "}";
+    return str;
+}
+
+inline std::ostream& operator<<(std::ostream& stream, beman::inside::detail::rational r) {
+    stream << beman::inside::to_string(r);
+    return stream;
+}
+
+// An error code as its message: "division by zero".
+[[nodiscard]] inline std::string to_string(errc e) { return errc_message(e); }
+
+inline std::ostream& operator<<(std::ostream& stream, errc e) { return stream << errc_message(e); }
+
+template <insidable B>
+inline std::ostream& operator<<(std::ostream& stream, B b) {
+    stream << beman::inside::to_string(b);
+    return stream;
+}
+
+// parse<B, F>(text) / parse_exact<B>(text) — the std::string_view
+// forms of the pointer-pair overloads.
+template <insidable B, policy_flag F = none>
+[[nodiscard]] constexpr std::expected<B, errc> parse(std::string_view text) {
+    return parse<B, F>(text.data(), text.data() + text.size());
+}
+template <insidable B>
+[[nodiscard]] constexpr std::expected<B, errc> parse_exact(std::string_view text) {
+    return parse_exact<B>(text.data(), text.data() + text.size());
+}
+
+// Reads one whitespace-delimited token and parses it with parse<B>. On an
+// error the stream's failbit is set and `b` is left unchanged.
+template <insidable B>
+inline std::istream& operator>>(std::istream& stream, B& b) {
+    std::string token;
+    if (!(stream >> token))
+        return stream;
+    if (const auto r = parse<B>(token); r)
+        b = *r;
+    else
+        stream.setstate(std::ios_base::failbit);
+    return stream;
+}
+
+} // namespace beman::inside
+
+//---------------------------------------------------------------------------
+// std::format integration
+//---------------------------------------------------------------------------
+namespace beman::inside::detail {
+// Shared spec handling: an empty `{}` is left to the derived format() (exact
+// to_string); a non-empty spec is parsed and applied by `Numeric`.
+template <class Inner>
+struct numeric_spec_formatter {
+    Inner Numeric{};
+    bool  HasSpec = false;
+
+    constexpr auto parse(std::format_parse_context& ctx) {
+        auto it = ctx.begin();
+        if (it != ctx.end() && *it != '}') {
+            HasSpec = true;
+            return Numeric.parse(ctx);
+        }
+        return it;
+    }
+};
+
+// Keep the first `keep` digits of the magnitude `d` (digits[keep..] and a
+// nonzero tail are what is cut), rounded by `mode` for a value of the given
+// sign. A carry out of the first digit prepends a '1'; returns whether it did.
+inline bool round_digits(std::string& d, std::size_t keep, bool tail, round_mode mode, bool negative) {
+    const bool more = tail || d.find_first_not_of('0', keep + 1) != std::string::npos;
+    const char cut  = keep < d.size() ? d[keep] : '0';
+    d.resize(keep);
+    const bool inexact = cut != '0' || more;
+    bool       up      = false;
+    switch (mode) {
+    case round_mode::trunc:
+        break;
+    case round_mode::floor:
+        up = negative && inexact;
+        break;
+    case round_mode::ceil:
+        up = !negative && inexact;
+        break;
+    case round_mode::nearest: // ties away from zero
+        up = cut >= '5';
+        break;
+    case round_mode::half_even:
+        up = cut > '5' || (cut == '5' && (more || (keep > 0 && (d[keep - 1] - '0') % 2 == 1)));
+        break;
+    }
+    if (!up)
+        return false;
+    for (std::size_t i = keep; i-- > 0;) {
+        if (d[i] != '9') {
+            ++d[i];
+            return false;
+        }
+        d[i] = '0';
+    }
+    d.insert(d.begin(), '1');
+    return true;
+}
+
+// A std::format spec for exact values: [[fill]align][sign][#][0][width]
+// [.precision][type], type one of f F e E g G (or none). The digits come from
+// the exact value, rounded once by the type's rounding mode (display_rounding),
+// so wide and big values print correctly.
+struct exact_format_spec {
+    char Fill = ' ', Align = 0, Sign = '-', Type = 0;
+    bool Alt = false, Zero = false;
+    int  Width = 0, Precision = -1;
+
+    constexpr auto parse(std::format_parse_context& ctx) {
+        auto       it       = ctx.begin();
+        const auto end      = ctx.end();
+        auto       is_align = [](char c) { return c == '<' || c == '>' || c == '^'; };
+        auto       number   = [&](int& v) {
+            for (v = 0; it != end && *it >= '0' && *it <= '9'; ++it)
+                v = v * 10 + (*it - '0');
+        };
+        if (it != end && it + 1 != end && is_align(it[1]) && *it != '{' && *it != '}') {
+            Fill  = *it;
+            Align = it[1];
+            it += 2;
+        } else if (it != end && is_align(*it))
+            Align = *it++;
+        if (it != end && (*it == '+' || *it == '-' || *it == ' '))
+            Sign = *it++;
+        if (it != end && *it == '#') {
+            Alt = true;
+            ++it;
+        }
+        if (it != end && *it == '0') {
+            Zero = true;
+            ++it;
+        }
+        number(Width);
+        if (it != end && *it == '.') {
+            ++it;
+            if (it == end || *it < '0' || *it > '9')
+                throw std::format_error("inside: precision needs digits");
+            number(Precision);
+        }
+        if (it != end && std::string_view{"fFeEgG"}.find(*it) != std::string_view::npos)
+            Type = *it++;
+        if (it != end && *it != '}')
+            throw std::format_error("inside: unsupported format spec (use f, e or g with fill, align, sign, #, 0, "
+                                    "width and precision)");
+        return it;
+    }
+
+    // v's shortest form (to_string) without its sign, which body() reads only
+    // without a type or precision (else empty).
+    template <class V>
+    std::string plain_text(const V& v) const {
+        if (Type != 0 || Precision >= 0)
+            return {};
+        std::string s = beman::inside::to_string(v);
+        if (!s.empty() && s[0] == '-')
+            s.erase(0, 1);
+        return s;
+    }
+
+    // An exact value's text by the spec, then written with its sign.
+    template <std::size_t K, typename Ctx>
+    auto write_exact(const wide_rational<K>& f, std::string_view plain, round_mode mode, Ctx& ctx) const {
+        const bool neg = f.Num.negative();
+        return write(neg, body(wide_uint<K>{abs(f.Num)}, wide_uint<K>{f.Den}, plain, neg, mode), ctx);
+    }
+
+    // The value's text: `plain` (to_string) for no type and no precision,
+    // else the digits the spec asks for.
+    template <std::size_t K>
+    std::string body(const wide_uint<K>& num,
+                     const wide_uint<K>& den,
+                     std::string_view    plain,
+                     bool                negative,
+                     round_mode          mode) const {
+        if (Type == 0 && Precision < 0)
+            return std::string{plain};
+        const char t     = Type == 0 ? 'g' : static_cast<char>(Type | 0x20); // lower case
+        const bool upper = Type == 'F' || Type == 'E' || Type == 'G';
+        int        p     = Precision < 0 ? 6 : Precision;
+        if (t == 'f')
+            return fixed(num, den, p, negative, mode);
+        if (t == 'g') {
+            p = p == 0 ? 1 : p;
+            // The exponent after rounding to p significant digits picks the form.
+            int         x = 0;
+            const auto  e = scientific(num, den, p - 1, x, negative, mode);
+            std::string out;
+            if (x < p && x >= -4)
+                out = fixed(num, den, p - 1 - x, negative, mode);
+            else
+                out = e;
+            if (!Alt && out.find('.') != std::string::npos) {
+                const std::size_t ep = out.find('e');
+                std::string       m = out.substr(0, ep), tail = ep == std::string::npos ? "" : out.substr(ep);
+                m.erase(m.find_last_not_of('0') + 1);
+                if (m.back() == '.')
+                    m.pop_back();
+                out = m + tail;
+            }
+            return upper ? to_upper(out) : out;
+        }
+        int               x   = 0;
+        const std::string out = scientific(num, den, p, x, negative, mode);
+        return upper ? to_upper(out) : out;
+    }
+
+    // Sign, then fill and alignment (numbers align right; `0` pads after the sign).
+    template <typename Ctx>
+    auto write(bool negative, std::string text, Ctx& ctx) const {
+        std::string sign = negative ? "-" : Sign == '+' ? "+" : Sign == ' ' ? " " : "";
+        std::size_t len  = sign.size() + text.size();
+        std::size_t pad  = static_cast<std::size_t>(Width) > len ? static_cast<std::size_t>(Width) - len : 0;
+        std::string out;
+        if (Zero && Align == 0)
+            out = sign + std::string(pad, '0') + text;
+        else if (Align == '<')
+            out = sign + text + std::string(pad, Fill);
+        else if (Align == '^')
+            out = std::string(pad / 2, Fill) + sign + text + std::string(pad - pad / 2, Fill);
+        else
+            out = std::string(pad, Fill) + sign + text;
+        return std::format_to(ctx.out(), "{}", out);
+    }
+
+  private:
+    static std::string to_upper(std::string s) {
+        std::ranges::replace(s, 'e', 'E');
+        return s;
+    }
+
+    template <std::size_t K>
+    std::string fixed(const wide_uint<K>& num, const wide_uint<K>& den, int p, bool negative, round_mode mode) const {
+        decimal_stream<K> ds{num, den};
+        const std::string whole = ds.whole();
+        std::string       d     = whole + ds.next(p + 1);
+        round_digits(d, whole.size() + static_cast<std::size_t>(p), ds.tail(), mode, negative); // a carry lengthens d
+        std::string out = d.substr(0, d.size() - static_cast<std::size_t>(p));
+        if (p > 0 || Alt)
+            out += '.';
+        return out + d.substr(d.size() - static_cast<std::size_t>(p));
+    }
+
+    // d.ddd…e±XX with p decimals; x receives the exponent.
+    template <std::size_t K>
+    std::string
+    scientific(const wide_uint<K>& num, const wide_uint<K>& den, int p, int& x, bool negative, round_mode mode) const {
+        decimal_stream<K> ds{num, den};
+        std::string       d = ds.whole(); // from the first significant digit on
+        x                   = static_cast<int>(d.size()) - 1;
+        if (d == "0" && !num.is_zero())
+            for (x = 0; d == "0"; --x) // the first nonzero digit of the fraction
+                d = ds.next(1);
+        if (static_cast<int>(d.size()) < p + 2)
+            d += ds.next(p + 2 - static_cast<int>(d.size()));
+        if (round_digits(d, static_cast<std::size_t>(p) + 1, ds.tail(), mode, negative)) {
+            ++x;
+            d.pop_back();
+        }
+        std::string out = d.substr(0, 1);
+        if (p > 0 || Alt)
+            out += '.';
+        out += d.substr(1);
+        const int ax = x < 0 ? -x : x;
+        return out + (x < 0 ? "e-" : "e+") + (ax < 10 ? "0" : "") + std::to_string(ax);
+    }
+};
+
+// The rounding a format spec applies to B: B's own mode when its policy
+// names one (as storing at that precision would round), else ties to even.
+template <insidable B>
+inline constexpr round_mode display_rounding =
+    has_any_flag(flags_of<B>, round_floor | round_ceil | round_nearest | round_half_even | snap)
+        ? rounding_of(flags_of<B>)
+        : round_mode::half_even;
+} // namespace beman::inside::detail
+
+// Empty `{}` prints to_string. A notched integer grid within imax takes the
+// integer specs (std::formatter<imax>: {:>4}, {:#x}); every other inside takes
+// the exact specs ({:.2f}, {:e}, {:g}, fill / align / sign / width), rounded
+// from the exact value by the type's rounding mode (ties to even without one).
+template <beman::inside::grid G, beman::inside::policy_flag P>
+struct std::formatter<beman::inside::inside<G, P>>
+    : beman::inside::detail::numeric_spec_formatter<
+          std::conditional_t<beman::inside::detail::integer_lattice<beman::inside::inside<G, P>> &&
+                                 beman::inside::detail::values_fit_imax<beman::inside::inside<G, P>>,
+                             std::formatter<beman::inside::imax>,
+                             beman::inside::detail::exact_format_spec>> {
+    using B = beman::inside::inside<G, P>;
+    // Integer formatting only for a notched integer grid: a continuous grid
+    // (notch 0) holds fractions even between integer bounds.
+    static constexpr bool integer_path =
+        beman::inside::detail::integer_lattice<B> && beman::inside::detail::values_fit_imax<B>;
+
+    template <typename Ctx>
+    auto format(const B& b, Ctx& ctx) const {
+        namespace d = beman::inside::detail;
+        if constexpr (integer_path)
+            return this->Numeric.format(d::to_value(b), ctx);
+        else if (!this->HasSpec)
+            return std::format_to(ctx.out(), "{}", beman::inside::to_string(b));
+        else
+            return this->Numeric.write_exact(d::exact_of(b), this->Numeric.plain_text(b), d::display_rounding<B>, ctx);
+    }
+};
+
+template <>
+struct std::formatter<beman::inside::detail::rational>
+    : beman::inside::detail::numeric_spec_formatter<beman::inside::detail::exact_format_spec> {
+    template <typename Ctx>
+    auto format(const beman::inside::detail::rational& r, Ctx& ctx) const {
+        namespace d = beman::inside::detail;
+        if (!HasSpec)
+            return std::format_to(ctx.out(), "{}", beman::inside::to_string(r));
+        return Numeric.write_exact(d::exact_of(r), Numeric.plain_text(r), d::round_mode::half_even, ctx);
+    }
+};
+
+
+#endif // BEMAN_INSIDE_NO_STRING
+
+#if __STDC_HOSTED__ && !defined(BEMAN_INSIDE_MATH_NO_FP)
+
+// ======================================================================
+//  beman/inside/inside/random.hpp
+// ======================================================================
+// Opt-in: uniform sampling over a grid. `uniform<B>(rng)` returns a B drawn
+// uniformly from the grid's slots (Lower, Lower + Notch, …, Upper) — exact, any
+// storage. The draw depends only on the generator's outputs, so a seed gives
+// the same B on every standard library (the std::*_distribution algorithms are
+// each library's own). Kept out of the umbrella because <random> is heavy,
+// hosted-only and pulls <cmath> (so the single header drops it under
+// BEMAN_INSIDE_MATH_NO_FP).
+//---------------------------------------------------------------------------
+
+
+
+#include <bit>
+#include <limits>
+#include <random>
+
+namespace beman::inside {
+namespace detail {
+// 64 uniform bits from g by a fixed recipe: one output when G spans 64 bits,
+// else b bits from each output, b the widest power of two G covers (outputs
+// past 2^b − 1 above G::min() are drawn again), high bits first.
+template <std::uniform_random_bit_generator G>
+constexpr umax random_word(G& g) {
+    static_assert(std::numeric_limits<std::invoke_result_t<G&>>::digits <= 64,
+                  "uniform<B>: a generator wider than 64 bits");
+    constexpr umax span = static_cast<umax>(G::max()) - static_cast<umax>(G::min());
+    if constexpr (span == std::numeric_limits<umax>::max())
+        return static_cast<umax>(g());
+    else {
+        constexpr int  bits = std::bit_width(span + 1) - 1;
+        constexpr umax mask = (umax{1} << bits) - 1;
+        umax           word = 0;
+        for (int got = 0; got < 64; got += bits) {
+            umax d;
+            do
+                d = static_cast<umax>(g()) - static_cast<umax>(G::min());
+            while (d > mask);
+            word = word << bits | d;
+        }
+        return word;
+    }
+}
+
+// An index in [0, N]: a word masked to N's bit width, drawn again past N
+// (accepts more than half of the draws). N = 0 draws nothing.
+template <umax N, std::uniform_random_bit_generator G>
+constexpr umax random_index(G& g) {
+    if constexpr (N == 0)
+        return 0;
+    else {
+        constexpr umax mask = std::numeric_limits<umax>::max() >> std::countl_zero(N);
+        for (;;)
+            if (const umax k = random_word(g) & mask; k <= N)
+                return k;
+    }
+}
+} // namespace detail
+
+template <insidable B, std::uniform_random_bit_generator G>
+[[nodiscard]] B uniform(G& g) {
+    static_assert(detail::notched<B> || detail::point_grid<B>,
+                  "uniform<B>: a continuous grid (notch 0) has no slots to choose from");
+    if constexpr (detail::wide_index_storage<B>) {
+        // More than 2^64 slots: the same recipe limb by limb, low limb first,
+        // the top limb masked to the step count's bit width.
+        using W                = detail::raw_t<B>;
+        constexpr W   count    = static_cast<W>(grid_of<B>.step_count());
+        constexpr int top_bits = grid_of<B>.slot_bits() - 64 * (static_cast<int>(sizeof(W) / 8) - 1);
+        for (;;) {
+            W k;
+            for (auto& w : k.Word)
+                w = detail::random_word(g);
+            if constexpr (top_bits < 64)
+                k.Word[sizeof(W) / 8 - 1] &= (umax{1} << top_bits) - 1;
+            if (!(k > count))
+                return B::from_raw(k);
+        }
+    } else
+        return B::from_raw(detail::raw_from_offset<B>(detail::random_index<detail::max_index_of<B>>(g)));
+}
+} // namespace beman::inside
+
+
+#endif // __STDC_HOSTED__ && !BEMAN_INSIDE_MATH_NO_FP
+
+// ======================================================================
+//  beman/inside/math.hpp
 // ======================================================================
 
 
 
 // ======================================================================
-//  beman/inside/detail/math_constants.hpp
+//  beman/inside/math/constants.hpp
 // ======================================================================
 
 
@@ -11052,8 +11908,8 @@ struct std::hash<beman::inside::inside<G, P>> {
 // keep 64-bit grid numbers (the fast paths). The comment gives
 // |rational − value|. They compose directly in inside-space
 // (`angle * math::pi`); for a correctly rounded value on a grid of your
-// choice, use the functions (math::sqrt_into<Out>(just<2>)). Public from
-// cmath.hpp and constants.hpp.
+// choice, use the functions (math::sqrt_into<Out>(just<2>)). Needs only the
+// number (inside.hpp); math.hpp includes it too.
 //---------------------------------------------------------------------------
 namespace beman::inside::math {
 inline constexpr auto pi          = just<rational{1068966896, 340262731}>;  // 2^-58.2
@@ -11078,25 +11934,25 @@ inline constexpr auto zeta3       = just<rational{461424925, 383862797}>;   // A
 
 
 // ======================================================================
-//  beman/inside/detail/math_entry.hpp
+//  beman/inside/math/detail/entry.hpp
 // ======================================================================
 
 
 
 // ======================================================================
-//  beman/inside/detail/math_tiers.hpp
+//  beman/inside/math/detail/tiers.hpp
 // ======================================================================
 
 
 
 // ======================================================================
-//  beman/inside/detail/math_cores.hpp
+//  beman/inside/math/detail/cores.hpp
 // ======================================================================
 
 
 
 // ======================================================================
-//  beman/inside/detail/math_adaptive.hpp
+//  beman/inside/math/detail/adaptive.hpp
 // ======================================================================
 
 
@@ -12342,8 +13198,8 @@ constexpr approx<K> exp_fixed(const wide_sint<K>& t, umax dt, int KMax) noexcept
 // helpers, and one core per function (exact square and cube roots, series in
 // wide fixed point), which decides every result and is the only tier at
 // compile time and without an FPU. The tiers and the entry points are in
-// detail/math_entry.hpp; the decision step and the driver in
-// detail/math_adaptive.hpp.
+// math/detail/entry.hpp; the decision step and the driver in
+// math/detail/adaptive.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside::math::detail::engine {
 //---------------------------------------------------------------------------
@@ -12639,7 +13495,7 @@ struct cbrt_core {
 
 // sin, cos and tan: x = k·π/2 + r, |r| ≤ π/4, then the series and the
 // quadrant. Exact at 0 (Lindemann–Weierstrass); the angles in degrees and
-// turns, exact at Niven's values, are units_math.hpp's.
+// turns, exact at Niven's values, are units/math.hpp's.
 enum class trig { sin, cos, tan };
 
 template <std::size_t E, int Mag, trig Fn, int KMax>
@@ -13072,9 +13928,10 @@ constexpr imax ceil_abs(const grid_rational& r) {
 template <insidable In>
 inline constexpr imax max_abs_int = std::max(ceil_abs(lower_of<In>), ceil_abs(upper_of<In>));
 
-// Policy of a deduced output: the input's (no cursor), rounding to nearest.
+// Policy of a deduced output: the input's (no cursor), rounding to nearest
+// unless the input names a mode.
 template <insidable In>
-inline constexpr policy_flag result_policy = (flags_of<In> & ~cursor_marker) | round_nearest;
+inline constexpr policy_flag result_policy = with_default_rounding(flags_of<In> & ~cursor_marker);
 
 template <insidable In, grid_rational Lo, grid_rational Hi>
 using result_grid_t = inside<{{Lo, Hi}, notch_of<In>}, result_policy<In>>;
@@ -13176,9 +14033,9 @@ inline constexpr grid_rational gcd_notch =
 
 
 // ======================================================================
-//  beman/inside/detail/math_fp.hpp
+//  beman/inside/math/detail/fp.hpp
 // ======================================================================
-// The double kernels of the math engine's double tier (detail/math_entry.hpp):
+// The double kernels of the math engine's double tier (math/detail/entry.hpp):
 // a small libm in `double` — Taylor polynomials in Horner form with explicit
 // std::fma, Cody-Waite range reduction, and only std::fma / sqrt / nearbyint
 // from <cmath>.
@@ -13994,14 +14851,14 @@ inline double        seed_cbrt(double x) {
 
 
 // ======================================================================
-//  beman/inside/detail/math_dd.hpp
+//  beman/inside/math/detail/dd.hpp
 // ======================================================================
-// The double-double kernels of the math engine's dd tier (detail/math_entry.hpp):
+// The double-double kernels of the math engine's dd tier (math/detail/entry.hpp):
 // values as an unevaluated sum Hi + Lo of two doubles (about 106 bits), with
 // error-free sums and products (std::fma), for outputs finer than the double
 // tier decides. Every constant — ln 2, π, the 2^(j/64), 2^(j/4096) and sin(jπ/128)
 // tables, the Taylor coefficients — comes at compile time from the integer
-// path's exact series (detail/math_adaptive.hpp), never from a generator.
+// path's exact series (math/detail/adaptive.hpp), never from a generator.
 // Results are within 2^-97 relative, 2^-99 absolute at worst (measured; the
 // dd tier in math_entry.hpp); the tier bounds them
 // generously and lets the integer path decide whenever the bound does not.
@@ -14556,7 +15413,7 @@ inline D hypot(D x, D y) noexcept {
 // 2^-70 decides nearly always, so these carry in double-double only the
 // terms that need it — the table values, the reduced argument and its
 // leading products, which are error-free — and the rest in double. Their
-// bounds are proved the way the double tier's are (detail/math_fp.hpp):
+// bounds are proved the way the double tier's are (math/detail/fp.hpp):
 // every rounding counted at its worst, up() for the second-order terms.
 // Results they leave undecided go to the full kernels above.
 //---------------------------------------------------------------------------
@@ -14951,7 +15808,7 @@ inline D acos_lean(D x, double& bound) noexcept {
 
 
 //---------------------------------------------------------------------------
-// The double and dd tiers of the math engine (detail/math_entry.hpp): which
+// The double and dd tiers of the math engine (math/detail/entry.hpp): which
 // kernel applies to an Out and its inputs, the per-call error bound, and the
 // decision that turns a kernel's value into a slot when that bound allows.
 // Without an FPU (BEMAN_INSIDE_MATH_NO_FP) both tiers are off.
@@ -14959,7 +15816,7 @@ inline D acos_lean(D x, double& bound) noexcept {
 namespace beman::inside::math::detail::engine {
 //---------------------------------------------------------------------------
 // The double tier. Where an FPU is present, the double kernels
-// (detail/math_fp.hpp) give the value first, with an error bound computed
+// (math/detail/fp.hpp) give the value first, with an error bound computed
 // per call: the kernel's own proved bound, plus, for an input that is not
 // a double exactly, its rounding (2^-50 of |x|, covering the conversion's
 // roundings) times the function's slope. Each kernel is sized to Out: its
@@ -15132,7 +15989,7 @@ namespace fpk = ::beman::inside::math::detail::fp;
 
 //---------------------------------------------------------------------------
 // The dd tier: outputs past 36 bits whose value indices stay below 2^62,
-// after the double tier where both apply. The double-double kernels (detail/math_dd.hpp) are within about
+// after the double tier where both apply. The double-double kernels (math/detail/dd.hpp) are within about
 // 2^-97 of their values (measured against the integer path at 150 bits:
 // 2^-97 relative at worst, 2^-99 absolute); the bound is 2^-88 of the
 // result plus 2^-92·max(1, |x|), the same structure as the double tier's
@@ -15459,7 +16316,7 @@ inline bool fp_attempt_pow_base(const In& xi, Out& out) {
         bound += v * input_rel<In> * __builtin_fabs(y);
     return fp_decide(v, bound, out);
 }
-// The lean dd kernel of K, where it has one (detail/math_dd.hpp): its value
+// The lean dd kernel of K, where it has one (math/detail/dd.hpp): its value
 // at x and its proved bound.
 template <typename K>
 struct dd_lean {};
@@ -15642,16 +16499,16 @@ inline constexpr bool dd_tier = false;
 
 
 //---------------------------------------------------------------------------
-// beman::inside::math::adaptive — the math engine behind cmath.hpp (which
+// beman::inside::math::adaptive — the math engine behind math.hpp (which
 // states the guarantee). The decision step and the driver are in
-// detail/math_adaptive.hpp. Domains are the mathematical ones; a result past
+// math/detail/adaptive.hpp. Domains are the mathematical ones; a result past
 // Out's range goes through Out's policy, as any assignment.
 //
 // Each call takes the first tier that applies: a compile-time table for
-// small inputs; the double kernels (detail/math_fp.hpp), then the dd kernels
-// (detail/math_dd.hpp), each returning a result only when its error bound
-// decides the slot (their glue: detail/math_tiers.hpp); and the integer path
-// (detail/math_cores.hpp: exact square and cube roots, series in wide fixed
+// small inputs; the double kernels (math/detail/fp.hpp), then the dd kernels
+// (math/detail/dd.hpp), each returning a result only when its error bound
+// decides the slot (their glue: math/detail/tiers.hpp); and the integer path
+// (math/detail/cores.hpp: exact square and cube roots, series in wide fixed
 // point), which decides every result and is the only tier at compile time and
 // without an FPU.
 //---------------------------------------------------------------------------
@@ -15717,7 +16574,7 @@ inline constexpr bool integer_bracket = [] {
 template <insidable Out, imax den>
 constexpr std::optional<imax> bracket_slot(imax num, bool negative) noexcept {
     using namespace ::beman::inside::detail;
-    constexpr round_mode m = rounding_for<Out, policy<none>>;
+    constexpr round_mode m = rounding_for<Out, call_policy<none>>;
     const auto [q, r]      = floor_divmod(num, den);
     const imax k           = q + rounds_up(m,
                                            negative,
@@ -16470,9 +17327,9 @@ template <policy_flag Mode, insidable InB, insidable InE>
 
 
 //---------------------------------------------------------------------------
-// beman::inside::math — the transcendental functions (detail/math_entry.hpp),
+// beman::inside::math — the transcendental functions (math/detail/entry.hpp),
 // the grid operations (abs, sign, copysign, floor, ceil, round, trunc, fmod,
-// pown), the constants (pi, e, … from detail/math_constants.hpp) and
+// pown), the constants (pi, e, … from math/constants.hpp) and
 // unit_amplitude<K>, the [-1, 1] output grid at resolution 1/K.
 //
 // Every transcendental returns the correctly rounded point of its output grid,
@@ -16907,7 +17764,7 @@ using fmod_result_t = inside<exact_out_grid({(lower_of<InX> < 0 ? -fmod_bound<In
                                              (upper_of<InX> > 0 ? fmod_bound<InX, InY> : grid_rational{0})},
                                             engine::gcd_notch<InX, InY>,
                                             den_bound(grid_of<InX>) * den_bound(grid_of<InY>)),
-                             out_policy<InX> | round_nearest>;
+                             with_default_rounding(out_policy<InX>)>;
 } // namespace detail
 
 template <insidable InX, insidable InY>
@@ -16979,12 +17836,6 @@ using adaptive::tanh_into;
 #ifndef BEMAN_INSIDE_NO_UNITS
 
 // ======================================================================
-//  beman/inside/constants.hpp
-// ======================================================================
-
-
-
-// ======================================================================
 //  beman/inside/units.hpp
 // ======================================================================
 // Opt-in: physical units and quantity kinds on inside — the main features of
@@ -17008,7 +17859,7 @@ using adaptive::tanh_into;
 //
 // Magnitudes are exact rationals times a power of π. A π magnitude (degree ↔
 // radian) has no exact rescale: it rounds once, through value_cast with a
-// target representation and a rounding flag (units_math.hpp).
+// target representation and a rounding flag (units/math.hpp).
 //
 // Also here:
 //   quantity_point, point<U>(v), the origins     ℃ and ℉ points, exact shifts
@@ -17021,9 +17872,34 @@ using adaptive::tanh_into;
 //   dot, cross, lerp                             inside's algorithms
 //   percent, per_mille                           dimensionless units
 // The catalog: isq, si, si2019, international. The derived physical
-// constants are in constants.hpp; text (to_string, <<, std::format,
-// parse<Q>) in units_io.hpp.
+// constants are in units/constants.hpp; text (to_string, <<, std::format,
+// parse<Q>) in units/io.hpp.
+//
+// This umbrella is units/core.hpp (the machinery: units/detail/algebra.hpp,
+// quantity.hpp, point.hpp) plus units/systems.hpp (the catalog). For units of
+// your own without the SI catalog, include units/core.hpp.
 //---------------------------------------------------------------------------
+
+
+
+// ======================================================================
+//  beman/inside/units/core.hpp
+// ======================================================================
+// The units machinery without the catalog: dimensions, magnitudes, specs,
+// units, references, quantity and quantity_point, and the tools for units
+// of your own (base_dimension, quantity_spec, named_unit, point_origin).
+// <beman/inside/units.hpp> adds the catalog (units/systems.hpp).
+
+
+
+// ======================================================================
+//  beman/inside/units/detail/algebra.hpp
+// ======================================================================
+// The compile-time algebra of units.hpp: dimensions, magnitudes, quantity
+// specs, point origins, units, named units, references and the exact unit
+// conversion of a number. Internal — include <beman/inside/units.hpp> or
+// <beman/inside/units/core.hpp>. Defines BEMAN_INSIDE_UNITS_WHY_PI, which
+// units/core.hpp undefines.
 
 
 
@@ -17041,7 +17917,7 @@ using adaptive::tanh_into;
 // The diagnostic of a π conversion asked to be exact (rescale, in()).
 #define BEMAN_INSIDE_UNITS_WHY_PI                                                                  \
     "units: this conversion multiplies by a power of pi, which has no exact grid - round it with " \
-    "value_cast<unit, Rep>(q) from <beman/inside/units_math.hpp>, Rep declared with a rounding mode"
+    "value_cast<unit, Rep>(q) from <beman/inside/units/math.hpp>, Rep declared with a rounding mode"
 
 namespace beman::inside::units {
 using beman::inside::detail::grid_rational;
@@ -18054,6 +18930,19 @@ consteval in_error in_error_of() {
     return in_error::none;
 }
 } // namespace detail
+} // namespace beman::inside::units
+
+
+// ======================================================================
+//  beman/inside/units/detail/quantity.hpp
+// ======================================================================
+// quantity<R, Rep>: construction, arithmetic, casts and inside's algorithms
+// on quantities. Internal — include <beman/inside/units.hpp> or
+// <beman/inside/units/core.hpp>.
+
+
+
+namespace beman::inside::units {
 
 //---------------------------------------------------------------------------
 // quantity<R, Rep> — a number Rep (an inside) of the reference R.
@@ -18361,7 +19250,7 @@ template <insidable V, unit U>
 
 // A magnitude scales a quantity's unit, not its number: mag_pi * q is q
 // in [π·unit], exact and free (π is never rounded; value_cast to a plain
-// unit rounds it once, units_math.hpp). mag<2> * q, q / mag_pi likewise.
+// unit rounds it once, units/math.hpp). mag<2> * q, q / mag_pi likewise.
 namespace detail {
 consteval reference scaled_reference(reference r, const magnitude& m) {
     r.U = unit_scaled(r.U, m);
@@ -18626,7 +19515,7 @@ template <insidable Rep2, reference R, class V>
 }
 // value_cast<U, Rep2>(q) — in unit U with representation Rep2: the exact
 // value in U, stored by Rep2's constructor. (A pi factor, degree ↔ radian,
-// rounds once: units_math.hpp.)
+// rounds once: units/math.hpp.)
 template <auto U, insidable Rep2, reference R, class V>
     requires is_unit_tag_v<decltype(U)> && detail::exact_rescale_v<R.U, decltype(U)::value> &&
              requires(const quantity<R, V>& q) { Rep2(q.in(U).numerical_value()); }
@@ -18881,6 +19770,19 @@ template <reference A, class VA, reference B, class VB, class... Args>
     return detail::quantity_divmod<C>(beman::inside::divmod(
         detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b), std::forward<Args>(args)...));
 }
+} // namespace beman::inside::units
+
+
+// ======================================================================
+//  beman/inside/units/detail/point.hpp
+// ======================================================================
+// quantity_point<R, O, Rep>: points counted from an origin, their exact
+// shifts and comparisons. Internal — include <beman/inside/units.hpp> or
+// <beman/inside/units/core.hpp>.
+
+
+
+namespace beman::inside::units {
 
 //---------------------------------------------------------------------------
 // quantity_point<R, O, Rep> — a point: a quantity of R counted from origin O
@@ -19100,6 +20002,22 @@ template <reference R, detail::origin_ref O, class V, reference R2, detail::orig
 [[nodiscard]] constexpr auto operator<=>(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
     return a.quantity_from_origin() <=> b.quantity_from(origin_t<O>{});
 }
+} // namespace beman::inside::units
+
+
+#undef BEMAN_INSIDE_UNITS_WHY_PI
+
+
+// ======================================================================
+//  beman/inside/units/systems.hpp
+// ======================================================================
+// The catalog: ISQ quantity specs, SI units and prefixes, si2019's defining
+// constants, international units, and the dimensionless percent and
+// per_mille. Part of <beman/inside/units.hpp>.
+
+
+
+namespace beman::inside::units {
 
 //---------------------------------------------------------------------------
 // The catalog: ISQ quantity specs, SI units and prefixes, international units.
@@ -19365,21 +20283,23 @@ inline constexpr auto per_mille = unit_c<dimensionless_defs::per_mille>;
 
 } // namespace beman::inside::units
 
-#undef BEMAN_INSIDE_UNITS_WHY_PI
+
+
+#endif // BEMAN_INSIDE_NO_UNITS
+
+#ifndef BEMAN_INSIDE_NO_UNITS
+
+// ======================================================================
+//  beman/inside/units/constants.hpp
+// ======================================================================
+
 
 
 //---------------------------------------------------------------------------
-// constants.hpp — mathematical and physical constants.
-//
-// beman::inside::math            mathematical constants as point insides:
-//                                 pi, e, sqrt2, ln2, phi, egamma, … as
-//                                 rationals within 2^-57 of the value
-//                                 (detail/math_constants.hpp; cmath.hpp has
-//                                 them too).
-// beman::inside::units::constants physical constants as quantities of their
-//                                 ISQ kind, each the number 1 of the
-//                                 constant's own unit, so products stay
-//                                 exact and .in(u) gives the SI number.
+// units/constants.hpp — physical constants in beman::inside::units::constants:
+// quantities of their ISQ kind, each the number 1 of the constant's own unit,
+// so products stay exact and .in(u) gives the SI number. The mathematical
+// constants (pi, e, …) are in <beman/inside/math/constants.hpp>, without units.
 //
 // Exact: the SI 2019 defining constants and what follows from them (ħ, R, F,
 // K_J, R_K, G₀, Φ₀, σ, c₁, c₂), standard gravity and the standard atmosphere.
@@ -19511,780 +20431,6 @@ inline constexpr auto vacuum_electric_permittivity = detail::one_of<codata2022::
 
 #endif // BEMAN_INSIDE_NO_UNITS
 
-// ======================================================================
-//  beman/inside/formats.hpp
-// ======================================================================
-
-
-
-//---------------------------------------------------------------------------
-// formats — predefined `inside` aliases mapping to hardware byte widths, so you
-// can write `beman::inside::uint8` / `beman::inside::unorm16` / `beman::inside::q8_8` directly.
-//
-// `uint8` … `uint64` and `int8` … `int64` are named after the std::uintN_t /
-// std::intN_t they are stored in, and each uses that type's full range:
-// `uint8` is [0, 255] in a std::uint8_t (save int64, which stops one short of
-// -2^63). Q-format types keep power-of-two notches.
-//
-// The integer widths are `checked`; unorm and the Q formats round to nearest.
-// For wraparound or saturation declare your own (`inside<{0, 255}, wrap>`),
-// or use the counters clamp_counter<Max> and wrap_counter<Max> below.
-//---------------------------------------------------------------------------
-namespace beman::inside {
-//-------------------------------------------------------------------------
-// Native integer widths — value storage (Raw == value), `checked`.
-// Full native range.
-//-------------------------------------------------------------------------
-using uint8  = inside<{0, 255}>;
-using uint16 = inside<{0, 65535}>;
-using uint32 = inside<{0, 4294967295}>;
-// uint64 reaches past int64, so it has no implicit `operator imax`; read it
-// with `to<std::uint64_t>()`. A difference of two uint64s spans 2^65 values and
-// gets a wide-integer index.
-using uint64 = inside<{0, 18446744073709551615u}>;
-
-using int8  = inside<{-128, 127}>;
-using int16 = inside<{-32768, 32767}>;
-using int32 = inside<{-2147483648, 2147483647}>;
-// int64 stays symmetric: the internal value path is `imax`, and -2^63
-// has no negation in int64.
-using int64 = inside<{-9223372036854775807, 9223372036854775807}>;
-
-//-------------------------------------------------------------------------
-// Unsigned normalized (UNORM) — [0, 1] at N-bit resolution, `round_nearest`.
-// The notch denominator is the type max, so the index 0..max fills the native
-// width; both endpoints (0 and 1) are exactly representable.
-//-------------------------------------------------------------------------
-using unorm8  = inside<{{0, 1}, per<255>}, round_nearest>;        // uint8
-using unorm16 = inside<{{0, 1}, per<65535>}, round_nearest>;      // uint16
-using unorm32 = inside<{{0, 1}, per<4294967295>}, round_nearest>; // uint32
-
-//-------------------------------------------------------------------------
-// Q-format fixed-point — unsigned integer.fraction, power-of-two notch,
-// full natural range. `round_nearest`.
-//-------------------------------------------------------------------------
-using q4_4   = inside<{{0, rational{255, 16}}, per<16>}, round_nearest>;                // uint8: [0, 15.9375]
-using q8_8   = inside<{{0, rational{65535, 256}}, per<256>}, round_nearest>;            // uint16
-using q16_16 = inside<{{0, rational{4294967295u, 65536u}}, per<65536>}, round_nearest>; // uint32
-
-//-------------------------------------------------------------------------
-// Counters — a counter is an inside over [0, Max] whose overflow policy says
-// what `++` does at the ceiling (the boundary behavior is in the type).
-//-------------------------------------------------------------------------
-// Saturating counter: `++` caps at Max (never throws or wraps) — the honest
-// "count up to a ceiling / ≥Max" tally. `--` saturates at 0.
-template <umax Max>
-using clamp_counter = inside<{0, Max}, clamp>;
-// Wrapping counter: `++` wraps Max → 0 (sequence numbers, epochs).
-template <umax Max>
-using wrap_counter = inside<{0, Max}, wrap>;
-
-} // namespace beman::inside
-
-
-#ifndef BEMAN_INSIDE_NO_STRING
-
-// ======================================================================
-//  beman/inside/io.hpp
-// ======================================================================
-// io — ALL of the library's string / stream / std::format support, gathered
-// into one opt-in header. The core (inside.hpp and everything it pulls) never
-// includes this, so a freestanding / bare-metal build that never includes
-// "beman/inside/io.hpp" pays zero <string>/<ostream>/<format> cost. In the single-
-// header amalgamation this whole region is wrapped in `#ifndef BEMAN_INSIDE_NO_STRING`,
-// so defining BEMAN_INSIDE_NO_STRING drops it (and its heavy includes) wholesale.
-//
-// Provides:
-//   * to_string(rational | interval | grid | insidable | arithmetic | errc)
-//   * to_string_debug(insidable)        — value + raw + raw type + grid
-//   * operator<< and operator>> (one token, failbit on error)
-//   * parse<B, F>(std::string_view), parse_exact<B>(std::string_view)
-//   * std::formatter<inside<G, P>>, std::formatter<rational> (with <format>)
-//   * type_name_of<B>                   — a readable name of an inside type
-// units.hpp builds on it (to_string and std::formatter of quantities).
-//---------------------------------------------------------------------------
-
-
-
-#include <algorithm>
-#include <format>
-#include <istream>
-#include <ostream>
-#include <string>
-#include <string_view>
-#include <type_traits>
-
-namespace beman::inside {
-namespace detail {
-// Decimal digits of a wide integer: 19 digits per division by 10^19.
-template <std::size_t N, bool S>
-std::string wide_to_decimal(wide_int<N, S> v) {
-    const bool         neg = v.negative();
-    wide_int<N, false> u(neg ? -v : v);
-    std::string        out;
-    do {
-        const auto [q, r] = divmod_small(u, 10'000'000'000'000'000'000ull);
-        std::string part  = std::to_string(r);
-        if (!q.is_zero())
-            part.insert(0, 19 - part.size(), '0');
-        out.insert(0, part);
-        u = q;
-    } while (!u.is_zero());
-    return neg ? "-" + out : out;
-}
-
-// Decimal digits of num/den (den > 0) on demand: the integer part, then the
-// fraction one chunk at a time. Tail() says whether anything nonzero is left,
-// which rounding needs to tell a tie from a value above it.
-template <std::size_t K>
-struct decimal_stream {
-    using W = wide_uint<K + 1>;
-    W Rem, Den;
-
-    decimal_stream(const wide_uint<K>& num, const wide_uint<K>& den) : Rem{num}, Den{den} {}
-
-    std::string whole() {
-        const auto [q, r] = W::divmod(Rem, Den);
-        Rem               = r;
-        return wide_to_decimal(q);
-    }
-    std::string next(int n) {
-        std::string out;
-        for (; n > 0; n -= 19) {
-            const int chunk = n < 19 ? n : 19;
-            umax      p     = 1;
-            for (int i = 0; i < chunk; ++i)
-                p *= 10;
-            const auto [q, r]      = W::divmod(Rem * W{p}, Den);
-            const std::string part = std::to_string(static_cast<umax>(q));
-            out.append(static_cast<std::size_t>(chunk) - part.size(), '0') += part;
-            Rem = r;
-        }
-        return out;
-    }
-    bool tail() const { return !Rem.is_zero(); }
-};
-
-// num/den (den > 0) in the forms parse reads: its exact decimal when the
-// reduced denominator is 2^a·5^b (however many digits, and at least
-// min_digits decimals), else "num/den".
-template <std::size_t K>
-std::string fraction_to_string(bool neg, wide_uint<K> num, wide_uint<K> den, int min_digits = 0) {
-    using U   = wide_uint<K>;
-    const U g = wide_gcd(den, num);
-    num /= g;
-    den /= g;
-    std::string str   = neg && !num.is_zero() ? "-" : "";
-    U           rest  = den;
-    const int   twos  = static_cast<int>(strip_factor(rest, 2)); // ≤ the bit width
-    const int   fives = static_cast<int>(strip_factor(rest, 5));
-    if (!(rest == U{1}))
-        return str += wide_to_decimal(num) + "/" + wide_to_decimal(den);
-    // num·10^digits/den is an integer: its decimals end there.
-    decimal_stream<K> ds{num, den};
-    str += ds.whole();
-    int digits = twos > fives ? twos : fives;
-    if (digits < min_digits)
-        digits = min_digits;
-    if (digits != 0)
-        str += '.' + ds.next(digits);
-    return str;
-}
-} // namespace detail
-
-//-------------------------------------------------------------------------
-// to_string — pretty-prints `rational`, `interval`, `grid`, plus a fallback
-// for plain arithmetic types and the exact form for insidables. A value
-// prints as its exact decimal when it has one, else as num/den.
-//-------------------------------------------------------------------------
-[[nodiscard]] inline std::string to_string(beman::inside::detail::rational r) {
-    return detail::fraction_to_string<1>(r.Den < 0, r.Num, detail::abs_den(r.Den));
-}
-
-namespace detail {
-// The decimals every value of B prints with: n for a decimal lattice — one
-// whose value unit (the notch, or gcd(Notch, Lower) off 0) has a
-// denominator 2^a·5^b with b ≥ 1 (per<100>, 0.05, 1e-18) — with
-// n = max(a, b); else 0 (the value decides).
-template <insidable B>
-inline constexpr int fixed_decimals = [] {
-    if constexpr (!notched<B>)
-        return 0;
-    else {
-        grid_int  q    = grid_denominator(grid_of<B>.value_unit());
-        const int two  = static_cast<int>(strip_factor(q, 2)); // ≤ the bit width
-        const int five = static_cast<int>(strip_factor(q, 5));
-        return q == grid_int{1} && five > 0 ? (two > five ? two : five) : 0;
-    }
-}();
-} // namespace detail
-
-// A grid number of any size, in the forms of to_string(rational).
-[[nodiscard]] inline std::string to_string(const detail::big_rational& r);
-
-[[nodiscard]] inline std::string to_string(interval ival) {
-    std::string str{"["};
-
-    str += beman::inside::to_string(ival.Lower);
-    str += "..";
-    str += beman::inside::to_string(ival.Upper);
-    str += "]";
-    return str;
-}
-
-[[nodiscard]] inline std::string to_string(grid g) {
-    std::string str{"{"};
-
-    str += beman::inside::to_string(g.Interval);
-    str += ", ";
-    str += beman::inside::to_string(g.Notch);
-    if (g.MaxDenominator != 0) {
-        str += ", den<=";
-        str += beman::inside::to_string(g.MaxDenominator);
-    }
-    str += "}";
-    return str;
-}
-
-// delegate to std::to_string
-template <typename V>
-    requires(std::integral<V> || std::floating_point<V>)
-[[nodiscard]] auto to_string(V value) {
-    return std::to_string(value);
-}
-
-//-------------------------------------------------------------------------
-// type_name_of<T> — short raw-type label for to_string_debug. Lives here (not
-// in numbers.hpp) so the core never pulls <string_view>.
-//-------------------------------------------------------------------------
-namespace detail {
-template <typename T>
-inline constexpr std::string_view type_name_of = wide_integer<T>         ? "wide_int"
-                                                 : wide_rational_like<T> ? "wide_rational"
-                                                                         : "unknown";
-template <>
-inline constexpr std::string_view type_name_of<std::uint8_t> = "uint8_t";
-template <>
-inline constexpr std::string_view type_name_of<std::uint16_t> = "uint16_t";
-template <>
-inline constexpr std::string_view type_name_of<std::uint32_t> = "uint32_t";
-template <>
-inline constexpr std::string_view type_name_of<std::uint64_t> = "uint64_t";
-template <>
-inline constexpr std::string_view type_name_of<std::int8_t> = "int8_t";
-template <>
-inline constexpr std::string_view type_name_of<std::int16_t> = "int16_t";
-template <>
-inline constexpr std::string_view type_name_of<std::int32_t> = "int32_t";
-template <>
-inline constexpr std::string_view type_name_of<std::int64_t> = "int64_t";
-template <>
-inline constexpr std::string_view type_name_of<rational> = "rational";
-template <>
-inline constexpr std::string_view type_name_of<point_slot> = "point";
-template <>
-inline constexpr std::string_view type_name_of<wide_uint<2>> = "wide_uint<2>";
-template <>
-inline constexpr std::string_view type_name_of<wide_uint<3>> = "wide_uint<3>";
-} // namespace detail
-
-//-------------------------------------------------------------------------
-// to_string / to_string_debug / operator<< for insidables and rational.
-// The debug form also prints the raw value, raw type, and grid — useful when
-// inspecting failing tests or storage choices.
-//-------------------------------------------------------------------------
-namespace detail {
-// An exact value, with at least min_digits decimals.
-template <std::size_t K>
-std::string exact_to_string(wide_rational<K> f, int min_digits = 0) {
-    const bool neg = f.Num.negative();
-    return fraction_to_string(neg, wide_uint<K>{neg ? -f.Num : f.Num}, wide_uint<K>{f.Den}, min_digits);
-}
-} // namespace detail
-
-template <std::size_t N, bool S>
-[[nodiscard]] inline std::string to_string(detail::wide_int<N, S> v) {
-    return detail::wide_to_decimal(v);
-}
-
-// A grid number of any size, in decimal (reads the interned limbs; no new
-// big values are formed at runtime).
-[[nodiscard]] inline std::string to_string(const detail::big_int& v) {
-    detail::big::mag m = v.magnitude();
-    std::string      out;
-    do {
-        // m /= 10^19, rem = m % 10^19
-        const umax rem = detail::limb::div_1(m.data(), m.data(), m.size(), umax{10'000'000'000'000'000'000ull});
-        detail::big::trim(m);
-        std::string part = std::to_string(rem);
-        if (!m.empty())
-            part.insert(0, 19 - part.size(), '0');
-        out.insert(0, part);
-    } while (!m.empty());
-    return v.negative() ? "-" + out : out;
-}
-
-namespace detail {
-template <std::size_t K>
-std::string big_fraction_to_string(const big_rational& r) {
-    const auto n = static_cast<wide_uint<K>>(r.Num); // two's complement
-    return fraction_to_string(r.Num.negative(), r.Num.negative() ? -n : n, static_cast<wide_uint<K>>(r.Den));
-}
-} // namespace detail
-
-[[nodiscard]] inline std::string to_string(const detail::big_rational& r) {
-    const int bits = r.Num.bit_width() > r.Den.bit_width() ? r.Num.bit_width() : r.Den.bit_width();
-    if (bits < 512)
-        return detail::big_fraction_to_string<8>(r);
-    if (bits < 4096)
-        return detail::big_fraction_to_string<64>(r);
-    const std::string num = beman::inside::to_string(r.Num);
-    return r.is_integer() ? num : num + "/" + beman::inside::to_string(r.Den);
-}
-
-// An inside's exact value: with a decimal notch, every value prints that
-// notch's decimals (19.90, 2.00); otherwise its shortest exact form — a
-// decimal when it has one, else N/D.
-template <insidable B>
-[[nodiscard]] inline std::string to_string(B b) {
-    constexpr int n = detail::fixed_decimals<B>;
-    if constexpr (detail::wide_valued<B>)
-        return detail::exact_to_string(detail::exact_of(b), n);
-    else {
-        const detail::rational r = detail::as_rational(b);
-        return detail::fraction_to_string<1>(r.Den < 0, r.Num, detail::abs_den(r.Den), n);
-    }
-}
-
-template <insidable B>
-[[nodiscard]] inline std::string to_string_debug(B b) {
-    std::string str;
-    str += beman::inside::to_string(b);
-    str += " {";
-    if constexpr (detail::fraction_storage<B>)
-        str += detail::exact_to_string(b.raw());
-    else
-        str += beman::inside::to_string(+b.raw());
-    str += "[" + std::string(detail::type_name_of<detail::raw_t<B>>);
-    constexpr auto slots = grid_of<B>.step_count();
-    str += " Max:" + beman::inside::to_string(slots) + "] ";
-    str += beman::inside::to_string(grid_of<B>);
-    str += "}";
-    return str;
-}
-
-inline std::ostream& operator<<(std::ostream& stream, beman::inside::detail::rational r) {
-    stream << beman::inside::to_string(r);
-    return stream;
-}
-
-// An error code as its message: "division by zero".
-[[nodiscard]] inline std::string to_string(errc e) { return errc_message(e); }
-
-inline std::ostream& operator<<(std::ostream& stream, errc e) { return stream << errc_message(e); }
-
-template <insidable B>
-inline std::ostream& operator<<(std::ostream& stream, B b) {
-    stream << beman::inside::to_string(b);
-    return stream;
-}
-
-// parse<B, F>(text) / parse_exact<B>(text) — the std::string_view
-// forms of the pointer-pair overloads.
-template <insidable B, policy_flag F = none>
-[[nodiscard]] constexpr std::expected<B, errc> parse(std::string_view text) {
-    return parse<B, F>(text.data(), text.data() + text.size());
-}
-template <insidable B>
-[[nodiscard]] constexpr std::expected<B, errc> parse_exact(std::string_view text) {
-    return parse_exact<B>(text.data(), text.data() + text.size());
-}
-
-// Reads one whitespace-delimited token and parses it with parse<B>. On an
-// error the stream's failbit is set and `b` is left unchanged.
-template <insidable B>
-inline std::istream& operator>>(std::istream& stream, B& b) {
-    std::string token;
-    if (!(stream >> token))
-        return stream;
-    if (const auto r = parse<B>(token); r)
-        b = *r;
-    else
-        stream.setstate(std::ios_base::failbit);
-    return stream;
-}
-
-} // namespace beman::inside
-
-//---------------------------------------------------------------------------
-// std::format integration
-//---------------------------------------------------------------------------
-namespace beman::inside::detail {
-// Shared spec handling: an empty `{}` is left to the derived format() (exact
-// to_string); a non-empty spec is parsed and applied by `Numeric`.
-template <class Inner>
-struct numeric_spec_formatter {
-    Inner Numeric{};
-    bool  HasSpec = false;
-
-    constexpr auto parse(std::format_parse_context& ctx) {
-        auto it = ctx.begin();
-        if (it != ctx.end() && *it != '}') {
-            HasSpec = true;
-            return Numeric.parse(ctx);
-        }
-        return it;
-    }
-};
-
-// Keep the first `keep` digits of the magnitude `d` (digits[keep..] and a
-// nonzero tail are what is cut), rounded by `mode` for a value of the given
-// sign. A carry out of the first digit prepends a '1'; returns whether it did.
-inline bool round_digits(std::string& d, std::size_t keep, bool tail, round_mode mode, bool negative) {
-    const bool more = tail || d.find_first_not_of('0', keep + 1) != std::string::npos;
-    const char cut  = keep < d.size() ? d[keep] : '0';
-    d.resize(keep);
-    const bool inexact = cut != '0' || more;
-    bool       up      = false;
-    switch (mode) {
-    case round_mode::trunc:
-        break;
-    case round_mode::floor:
-        up = negative && inexact;
-        break;
-    case round_mode::ceil:
-        up = !negative && inexact;
-        break;
-    case round_mode::nearest: // ties away from zero
-        up = cut >= '5';
-        break;
-    case round_mode::half_even:
-        up = cut > '5' || (cut == '5' && (more || (keep > 0 && (d[keep - 1] - '0') % 2 == 1)));
-        break;
-    }
-    if (!up)
-        return false;
-    for (std::size_t i = keep; i-- > 0;) {
-        if (d[i] != '9') {
-            ++d[i];
-            return false;
-        }
-        d[i] = '0';
-    }
-    d.insert(d.begin(), '1');
-    return true;
-}
-
-// A std::format spec for exact values: [[fill]align][sign][#][0][width]
-// [.precision][type], type one of f F e E g G (or none). The digits come from
-// the exact value, rounded once by the type's rounding mode (display_rounding),
-// so wide and big values print correctly.
-struct exact_format_spec {
-    char Fill = ' ', Align = 0, Sign = '-', Type = 0;
-    bool Alt = false, Zero = false;
-    int  Width = 0, Precision = -1;
-
-    constexpr auto parse(std::format_parse_context& ctx) {
-        auto       it       = ctx.begin();
-        const auto end      = ctx.end();
-        auto       is_align = [](char c) { return c == '<' || c == '>' || c == '^'; };
-        auto       number   = [&](int& v) {
-            for (v = 0; it != end && *it >= '0' && *it <= '9'; ++it)
-                v = v * 10 + (*it - '0');
-        };
-        if (it != end && it + 1 != end && is_align(it[1]) && *it != '{' && *it != '}') {
-            Fill  = *it;
-            Align = it[1];
-            it += 2;
-        } else if (it != end && is_align(*it))
-            Align = *it++;
-        if (it != end && (*it == '+' || *it == '-' || *it == ' '))
-            Sign = *it++;
-        if (it != end && *it == '#') {
-            Alt = true;
-            ++it;
-        }
-        if (it != end && *it == '0') {
-            Zero = true;
-            ++it;
-        }
-        number(Width);
-        if (it != end && *it == '.') {
-            ++it;
-            if (it == end || *it < '0' || *it > '9')
-                throw std::format_error("inside: precision needs digits");
-            number(Precision);
-        }
-        if (it != end && std::string_view{"fFeEgG"}.find(*it) != std::string_view::npos)
-            Type = *it++;
-        if (it != end && *it != '}')
-            throw std::format_error("inside: unsupported format spec (use f, e or g with fill, align, sign, #, 0, "
-                                    "width and precision)");
-        return it;
-    }
-
-    // v's shortest form (to_string) without its sign, which body() reads only
-    // without a type or precision (else empty).
-    template <class V>
-    std::string plain_text(const V& v) const {
-        if (Type != 0 || Precision >= 0)
-            return {};
-        std::string s = beman::inside::to_string(v);
-        if (!s.empty() && s[0] == '-')
-            s.erase(0, 1);
-        return s;
-    }
-
-    // An exact value's text by the spec, then written with its sign.
-    template <std::size_t K, typename Ctx>
-    auto write_exact(const wide_rational<K>& f, std::string_view plain, round_mode mode, Ctx& ctx) const {
-        const bool neg = f.Num.negative();
-        return write(neg, body(wide_uint<K>{abs(f.Num)}, wide_uint<K>{f.Den}, plain, neg, mode), ctx);
-    }
-
-    // The value's text: `plain` (to_string) for no type and no precision,
-    // else the digits the spec asks for.
-    template <std::size_t K>
-    std::string body(const wide_uint<K>& num,
-                     const wide_uint<K>& den,
-                     std::string_view    plain,
-                     bool                negative,
-                     round_mode          mode) const {
-        if (Type == 0 && Precision < 0)
-            return std::string{plain};
-        const char t     = Type == 0 ? 'g' : static_cast<char>(Type | 0x20); // lower case
-        const bool upper = Type == 'F' || Type == 'E' || Type == 'G';
-        int        p     = Precision < 0 ? 6 : Precision;
-        if (t == 'f')
-            return fixed(num, den, p, negative, mode);
-        if (t == 'g') {
-            p = p == 0 ? 1 : p;
-            // The exponent after rounding to p significant digits picks the form.
-            int         x = 0;
-            const auto  e = scientific(num, den, p - 1, x, negative, mode);
-            std::string out;
-            if (x < p && x >= -4)
-                out = fixed(num, den, p - 1 - x, negative, mode);
-            else
-                out = e;
-            if (!Alt && out.find('.') != std::string::npos) {
-                const std::size_t ep = out.find('e');
-                std::string       m = out.substr(0, ep), tail = ep == std::string::npos ? "" : out.substr(ep);
-                m.erase(m.find_last_not_of('0') + 1);
-                if (m.back() == '.')
-                    m.pop_back();
-                out = m + tail;
-            }
-            return upper ? to_upper(out) : out;
-        }
-        int               x   = 0;
-        const std::string out = scientific(num, den, p, x, negative, mode);
-        return upper ? to_upper(out) : out;
-    }
-
-    // Sign, then fill and alignment (numbers align right; `0` pads after the sign).
-    template <typename Ctx>
-    auto write(bool negative, std::string text, Ctx& ctx) const {
-        std::string sign = negative ? "-" : Sign == '+' ? "+" : Sign == ' ' ? " " : "";
-        std::size_t len  = sign.size() + text.size();
-        std::size_t pad  = static_cast<std::size_t>(Width) > len ? static_cast<std::size_t>(Width) - len : 0;
-        std::string out;
-        if (Zero && Align == 0)
-            out = sign + std::string(pad, '0') + text;
-        else if (Align == '<')
-            out = sign + text + std::string(pad, Fill);
-        else if (Align == '^')
-            out = std::string(pad / 2, Fill) + sign + text + std::string(pad - pad / 2, Fill);
-        else
-            out = std::string(pad, Fill) + sign + text;
-        return std::format_to(ctx.out(), "{}", out);
-    }
-
-  private:
-    static std::string to_upper(std::string s) {
-        std::ranges::replace(s, 'e', 'E');
-        return s;
-    }
-
-    template <std::size_t K>
-    std::string fixed(const wide_uint<K>& num, const wide_uint<K>& den, int p, bool negative, round_mode mode) const {
-        decimal_stream<K> ds{num, den};
-        const std::string whole = ds.whole();
-        std::string       d     = whole + ds.next(p + 1);
-        round_digits(d, whole.size() + static_cast<std::size_t>(p), ds.tail(), mode, negative); // a carry lengthens d
-        std::string out = d.substr(0, d.size() - static_cast<std::size_t>(p));
-        if (p > 0 || Alt)
-            out += '.';
-        return out + d.substr(d.size() - static_cast<std::size_t>(p));
-    }
-
-    // d.ddd…e±XX with p decimals; x receives the exponent.
-    template <std::size_t K>
-    std::string
-    scientific(const wide_uint<K>& num, const wide_uint<K>& den, int p, int& x, bool negative, round_mode mode) const {
-        decimal_stream<K> ds{num, den};
-        std::string       d = ds.whole(); // from the first significant digit on
-        x                   = static_cast<int>(d.size()) - 1;
-        if (d == "0" && !num.is_zero())
-            for (x = 0; d == "0"; --x) // the first nonzero digit of the fraction
-                d = ds.next(1);
-        if (static_cast<int>(d.size()) < p + 2)
-            d += ds.next(p + 2 - static_cast<int>(d.size()));
-        if (round_digits(d, static_cast<std::size_t>(p) + 1, ds.tail(), mode, negative)) {
-            ++x;
-            d.pop_back();
-        }
-        std::string out = d.substr(0, 1);
-        if (p > 0 || Alt)
-            out += '.';
-        out += d.substr(1);
-        const int ax = x < 0 ? -x : x;
-        return out + (x < 0 ? "e-" : "e+") + (ax < 10 ? "0" : "") + std::to_string(ax);
-    }
-};
-
-// The rounding a format spec applies to B: B's own mode when its policy
-// names one (as storing at that precision would round), else ties to even.
-template <insidable B>
-inline constexpr round_mode display_rounding =
-    has_any_flag(flags_of<B>, round_floor | round_ceil | round_nearest | round_half_even | snap)
-        ? rounding_of(flags_of<B>)
-        : round_mode::half_even;
-} // namespace beman::inside::detail
-
-// Empty `{}` prints to_string. A notched integer grid within imax takes the
-// integer specs (std::formatter<imax>: {:>4}, {:#x}); every other inside takes
-// the exact specs ({:.2f}, {:e}, {:g}, fill / align / sign / width), rounded
-// from the exact value by the type's rounding mode (ties to even without one).
-template <beman::inside::grid G, beman::inside::policy_flag P>
-struct std::formatter<beman::inside::inside<G, P>>
-    : beman::inside::detail::numeric_spec_formatter<
-          std::conditional_t<beman::inside::detail::integer_lattice<beman::inside::inside<G, P>> &&
-                                 beman::inside::detail::values_fit_imax<beman::inside::inside<G, P>>,
-                             std::formatter<beman::inside::imax>,
-                             beman::inside::detail::exact_format_spec>> {
-    using B = beman::inside::inside<G, P>;
-    // Integer formatting only for a notched integer grid: a continuous grid
-    // (notch 0) holds fractions even between integer bounds.
-    static constexpr bool integer_path =
-        beman::inside::detail::integer_lattice<B> && beman::inside::detail::values_fit_imax<B>;
-
-    template <typename Ctx>
-    auto format(const B& b, Ctx& ctx) const {
-        namespace d = beman::inside::detail;
-        if constexpr (integer_path)
-            return this->Numeric.format(d::to_value(b), ctx);
-        else if (!this->HasSpec)
-            return std::format_to(ctx.out(), "{}", beman::inside::to_string(b));
-        else
-            return this->Numeric.write_exact(d::exact_of(b), this->Numeric.plain_text(b), d::display_rounding<B>, ctx);
-    }
-};
-
-template <>
-struct std::formatter<beman::inside::detail::rational>
-    : beman::inside::detail::numeric_spec_formatter<beman::inside::detail::exact_format_spec> {
-    template <typename Ctx>
-    auto format(const beman::inside::detail::rational& r, Ctx& ctx) const {
-        namespace d = beman::inside::detail;
-        if (!HasSpec)
-            return std::format_to(ctx.out(), "{}", beman::inside::to_string(r));
-        return Numeric.write_exact(d::exact_of(r), Numeric.plain_text(r), d::round_mode::half_even, ctx);
-    }
-};
-
-
-#endif // BEMAN_INSIDE_NO_STRING
-
-#if __STDC_HOSTED__ && !defined(BEMAN_INSIDE_MATH_NO_FP)
-
-// ======================================================================
-//  beman/inside/random.hpp
-// ======================================================================
-// Opt-in: uniform sampling over a grid. `uniform<B>(rng)` returns a B drawn
-// uniformly from the grid's slots (Lower, Lower + Notch, …, Upper) — exact, any
-// storage. The draw depends only on the generator's outputs, so a seed gives
-// the same B on every standard library (the std::*_distribution algorithms are
-// each library's own). Kept out of the umbrella because <random> is heavy,
-// hosted-only and pulls <cmath> (so the single header drops it under
-// BEMAN_INSIDE_MATH_NO_FP).
-//---------------------------------------------------------------------------
-
-
-
-#include <bit>
-#include <limits>
-#include <random>
-
-namespace beman::inside {
-namespace detail {
-// 64 uniform bits from g by a fixed recipe: one output when G spans 64 bits,
-// else b bits from each output, b the widest power of two G covers (outputs
-// past 2^b − 1 above G::min() are drawn again), high bits first.
-template <std::uniform_random_bit_generator G>
-constexpr umax random_word(G& g) {
-    static_assert(std::numeric_limits<std::invoke_result_t<G&>>::digits <= 64,
-                  "uniform<B>: a generator wider than 64 bits");
-    constexpr umax span = static_cast<umax>(G::max()) - static_cast<umax>(G::min());
-    if constexpr (span == std::numeric_limits<umax>::max())
-        return static_cast<umax>(g());
-    else {
-        constexpr int  bits = std::bit_width(span + 1) - 1;
-        constexpr umax mask = (umax{1} << bits) - 1;
-        umax           word = 0;
-        for (int got = 0; got < 64; got += bits) {
-            umax d;
-            do
-                d = static_cast<umax>(g()) - static_cast<umax>(G::min());
-            while (d > mask);
-            word = word << bits | d;
-        }
-        return word;
-    }
-}
-
-// An index in [0, N]: a word masked to N's bit width, drawn again past N
-// (accepts more than half of the draws). N = 0 draws nothing.
-template <umax N, std::uniform_random_bit_generator G>
-constexpr umax random_index(G& g) {
-    if constexpr (N == 0)
-        return 0;
-    else {
-        constexpr umax mask = std::numeric_limits<umax>::max() >> std::countl_zero(N);
-        for (;;)
-            if (const umax k = random_word(g) & mask; k <= N)
-                return k;
-    }
-}
-} // namespace detail
-
-template <insidable B, std::uniform_random_bit_generator G>
-[[nodiscard]] B uniform(G& g) {
-    static_assert(detail::notched<B> || detail::point_grid<B>,
-                  "uniform<B>: a continuous grid (notch 0) has no slots to choose from");
-    if constexpr (detail::wide_index_storage<B>) {
-        // More than 2^64 slots: the same recipe limb by limb, low limb first,
-        // the top limb masked to the step count's bit width.
-        using W                = detail::raw_t<B>;
-        constexpr W   count    = static_cast<W>(grid_of<B>.step_count());
-        constexpr int top_bits = grid_of<B>.slot_bits() - 64 * (static_cast<int>(sizeof(W) / 8) - 1);
-        for (;;) {
-            W k;
-            for (auto& w : k.Word)
-                w = detail::random_word(g);
-            if constexpr (top_bits < 64)
-                k.Word[sizeof(W) / 8 - 1] &= (umax{1} << top_bits) - 1;
-            if (!(k > count))
-                return B::from_raw(k);
-        }
-    } else
-        return B::from_raw(detail::raw_from_offset<B>(detail::random_index<detail::max_index_of<B>>(g)));
-}
-} // namespace beman::inside
-
-
-#endif // __STDC_HOSTED__ && !BEMAN_INSIDE_MATH_NO_FP
-
 #ifndef BEMAN_INSIDE_NO_UNITS
 
 #endif // BEMAN_INSIDE_NO_UNITS
@@ -20292,7 +20438,7 @@ template <insidable B, std::uniform_random_bit_generator G>
 #if !defined(BEMAN_INSIDE_NO_STRING) && !defined(BEMAN_INSIDE_NO_UNITS)
 
 // ======================================================================
-//  beman/inside/units_io.hpp
+//  beman/inside/units/io.hpp
 // ======================================================================
 // Opt-in: text for quantities, as io.hpp is for insides — a unit's symbol
 // (unit_symbol), a quantity or point as "5 km" (to_string, <<, std::format)
@@ -20472,10 +20618,10 @@ struct std::formatter<beman::inside::units::quantity_point<R, O, V>>
 #ifndef BEMAN_INSIDE_NO_UNITS
 
 // ======================================================================
-//  beman/inside/units_math.hpp
+//  beman/inside/units/math.hpp
 // ======================================================================
 // Opt-in: math on units::quantity, over the correctly rounded engine
-// (cmath.hpp). Kept apart from units.hpp, which stays free of the engine's
+// (math.hpp). Kept apart from units.hpp, which stays free of the engine's
 // compile time.
 //
 //   value_cast<si::radian, Out>(q)   degree → radian (a pi factor): the exact
@@ -20949,6 +21095,10 @@ void hypot_into(const quantity<A, VA>&, const quantity<B, VB>&) =
     delete ("units: hypot takes two quantities that add - one dimension and kind, a common unit");
 } // namespace beman::inside::units
 
+
+#endif // BEMAN_INSIDE_NO_UNITS
+
+#ifndef BEMAN_INSIDE_NO_UNITS
 
 #endif // BEMAN_INSIDE_NO_UNITS
 

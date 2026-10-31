@@ -1,0 +1,158 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#ifndef BEMAN_INSIDE_INSIDE_PREDICATES_HPP
+#define BEMAN_INSIDE_INSIDE_PREDICATES_HPP
+
+#include <beman/inside/inside/detail/config.hpp>
+
+#include <beman/inside/inside/generic.hpp>
+#include <beman/inside/inside/grid.hpp>
+#include <beman/inside/inside/detail/call_policy.hpp>
+#include <beman/inside/inside/detail/wide_value.hpp>
+
+//---------------------------------------------------------------------------
+// predicates — pure inspection (no conversion, no state change) to branch
+// before a construction that might throw or report an error:
+//   conversion_overflows<B>(v) — v falls outside B's interval.
+//   conversion_rounds<B>(v)    — v is in-range but off-notch (would round).
+//   conversion_loses<B>(v)     — either of the two.
+//---------------------------------------------------------------------------
+namespace beman::inside {
+namespace detail {
+// A double the 64-bit paths cannot take exactly: |d| ≥ 2^64, or finer than
+// 2^-62 (as_rational would truncate it).
+constexpr bool past_rational(double d) noexcept { return past_64_bits(d) || !abs_fraction_exact(d); }
+
+// What converting the exact value x into B does: overflow (out of range,
+// and B's rounding does not bring it in) and rounding (in range off the
+// grid, or brought in by B's rounding). For values past the 64-bit paths.
+struct lossy_result {
+    bool Overflows;
+    bool Rounds;
+};
+template <insidable B, std::size_t K>
+constexpr lossy_result exact_lossy(const wide_rational<K>& x) noexcept {
+    constexpr std::size_t   KK = std::max(K, exact_limbs<B>);
+    const wide_rational<KK> v{x};
+    const bool              in = !(v < exact_of_grid<KK>(lower_of<B>)) && !(exact_of_grid<KK>(upper_of<B>) < v);
+    if constexpr (notched<B>) {
+        const auto j = exact_index<B, rounding_for<B, call_policy<>>>(v);
+        if (in)
+            return {false, !j.Exact};
+        if constexpr (!rounds_before_range_check<B, call_policy<>>)
+            return {true, false};
+        else {
+            using I         = std::remove_cvref_t<decltype(j.Index)>;
+            const bool fits = !j.Index.negative() && !(static_cast<I>(grid_of<B>.step_count()) < j.Index);
+            return {!fits, fits};
+        }
+    } else {
+        constexpr bool bounded = grid_of<B>.MaxDenominator != 0;
+        if (in) {
+            if constexpr (bounded)
+                return {false, static_cast<wide_sint<KK>>(grid_numerator(grid_of<B>.MaxDenominator)) < reduced(v).Den};
+            else
+                return {false, false}; // a point
+        }
+        if constexpr (!rounds_before_range_check<B, call_policy<>>)
+            return {true, false};
+        else {
+            const wide_rational<KK> r = round_to_bound<B, call_policy<>>(v);
+            const bool fits           = !(r < exact_of_grid<KK>(lower_of<B>)) && !(exact_of_grid<KK>(upper_of<B>) < r);
+            return {!fits, fits};
+        }
+    }
+}
+
+// Whether a value of A always takes the exact path: B past the 64-bit
+// paths, or an inside A whose values pass the 64-bit rational.
+template <typename A>
+concept wide_inside = insidable<A> && wide_valued<A>;
+template <insidable B, numeric A>
+inline constexpr bool exact_path_only = wide_grid_numbers<B> || wide_inside<A>;
+
+// exact_lossy for a value, when the 64-bit paths cannot take it.
+template <insidable B, numeric A>
+constexpr std::optional<lossy_result> exact_lossy_of(A value) noexcept {
+    if constexpr (wide_float<A>) {
+        // A long double that is no double has bits the 64-bit paths drop.
+        const double d = static_cast<double>(value);
+        if (static_cast<A>(d) != value)
+            return exact_lossy<B>(exact_of_long_double(value));
+        if (wide_grid_numbers<B> || past_rational(d))
+            return exact_lossy<B>(exact_of_double(d));
+    } else if constexpr (std::floating_point<A>) {
+        if (wide_grid_numbers<B> || past_rational(static_cast<double>(value)))
+            return exact_lossy<B>(exact_of_double(static_cast<double>(value)));
+    } else if constexpr (wide_inside<A>)
+        return exact_lossy<B>(exact_of(value));
+    else if constexpr (wide_grid_numbers<B>)
+        return exact_lossy<B>(exact_of(as_rational(value)));
+    return std::nullopt;
+}
+} // namespace detail
+
+template <insidable B, numeric A>
+[[nodiscard]] constexpr bool conversion_overflows(A value) noexcept {
+    if constexpr (std::floating_point<A>)
+        if (!detail::is_finite(value))
+            return true; // NaN / ±inf fit no grid (and must not raise here)
+    // The 64-bit paths below do not compile for a grid (or value) past them.
+    if constexpr (detail::exact_path_only<B, A>)
+        return detail::exact_lossy_of<B>(value)->Overflows;
+    else {
+        if (const auto e = detail::exact_lossy_of<B>(value)) [[unlikely]]
+            return e->Overflows;
+        const detail::rational r = detail::as_rational(value);
+        if (includes(interval_of<B>, r))
+            return false;
+        // B's policy rounds before it range-checks: a value that rounds onto the
+        // grid does not overflow.
+        detail::rational rounded;
+        return !detail::rounds_into_range<B, detail::call_policy<>>(r, rounded);
+    }
+}
+
+template <insidable B, numeric A>
+[[nodiscard]] constexpr bool conversion_rounds(A value) noexcept {
+    if constexpr (std::floating_point<A>)
+        if (!detail::is_finite(value))
+            return false; // non-finite — overflow, not rounding
+    // The 64-bit paths below do not compile for a grid (or value) past them.
+    if constexpr (detail::exact_path_only<B, A>)
+        return detail::exact_lossy_of<B>(value)->Rounds;
+    else {
+        if (const auto e = detail::exact_lossy_of<B>(value)) [[unlikely]]
+            return e->Rounds;
+        const detail::rational r = detail::as_rational(value);
+        if (!includes(interval_of<B>, r)) {
+            // Out of range: a rounding policy that brings it onto the grid
+            // rounds (a grid rounds before the range check); anything else is
+            // overflow, not rounding.
+            detail::rational rounded;
+            return detail::rounds_into_range<B, detail::call_policy<>>(r, rounded);
+        }
+        if constexpr (!detail::notched<B>) {
+            // A point: nothing to miss. Continuous: an in-range value with a
+            // denominator past the bound is off the grid.
+            if constexpr (grid_of<B>.MaxDenominator == 0)
+                return false;
+            else
+                return detail::abs_den(r.Den) > detail::to_rational(grid_of<B>.MaxDenominator).Num;
+        } else {
+            // In range: rounding occurs iff (value − Lower) / Notch is not an
+            // integer — exactly when the 64-bit steps overflow.
+            if (const auto d = try_sub(r, detail::lower64<B>))
+                if (const auto q = try_div(*d, detail::notch64<B>))
+                    return detail::abs_den(q->Den) != 1;
+            return !detail::exact_index<B, detail::round_mode::floor>(detail::exact_of(r)).Exact;
+        }
+    }
+}
+
+template <insidable B, numeric A>
+[[nodiscard]] constexpr bool conversion_loses(A value) noexcept {
+    return conversion_overflows<B>(value) || conversion_rounds<B>(value);
+}
+} // namespace beman::inside
+
+#endif // BEMAN_INSIDE_INSIDE_PREDICATES_HPP

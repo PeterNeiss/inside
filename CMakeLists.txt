@@ -61,20 +61,6 @@ option(
     OFF
 )
 
-# By default an incompatible assignment/conversion (`b = x;`, `inside{x}`, a
-# by-value inside argument) reports the *reason* at compile time via named
-# static_asserts. That makes `inside` advertise itself is_constructible /
-# convertible from incompatible types (the error surfaces on use, not on the
-# trait). BEMAN_INSIDE_STRICT_SFINAE=ON drops the diagnostic overloads so those
-# traits stay honest — for code that embeds `inside` in variant/optional or
-# otherwise probes convertibility. The free `beman::inside::explain_assignable`
-# probe still works in strict builds.
-option(
-    BEMAN_INSIDE_STRICT_SFINAE
-    "Drop assignment/conversion diagnostic hints to keep inside SFINAE-pure (honest is_constructible). Default: OFF. Values: { ON, OFF }."
-    OFF
-)
-
 # The double/float math engines evaluate their polynomials with std::fma, which
 # is what makes them bit-reproducible across platforms. Baseline x86-64 has no
 # FMA instruction, so without -mfma every std::fma is a software-emulated libm
@@ -109,12 +95,6 @@ target_compile_features(beman.inside INTERFACE cxx_std_26)
 if(BEMAN_INSIDE_MATH_NO_FP)
     target_compile_definitions(beman.inside INTERFACE BEMAN_INSIDE_MATH_NO_FP)
 endif()
-if(BEMAN_INSIDE_STRICT_SFINAE)
-    target_compile_definitions(
-        beman.inside
-        INTERFACE BEMAN_INSIDE_STRICT_SFINAE
-    )
-endif()
 # Static reflection (std::define_static_array) interns grid numbers of any
 # size. GCC 16 gates it behind -freflection, which it accepts only in C++26
 # mode: probe the two together (a consumer may not set CMAKE_CXX_STANDARD).
@@ -138,7 +118,7 @@ endif()
 # / traps under -fno-exceptions) with a static const-char* message — the core
 # never drags <string>/<system_error> into a translation unit. General-purpose
 # stringification (to_string / operator<< / std::formatter) lives in the opt-in
-# <beman/inside/io.hpp>; in the single header that block is wrapped in
+# <beman/inside/inside/io.hpp>; in the single header that block is wrapped in
 # BEMAN_INSIDE_NO_STRING so a freestanding consumer can drop it wholesale.
 
 add_subdirectory(include/beman/inside)

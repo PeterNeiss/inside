@@ -5,10 +5,10 @@
 // the wrong error or terminated.
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/casts.hpp>
-#include <beman/inside/cmath.hpp>
-#include <beman/inside/formats.hpp>
-#include <beman/inside/io.hpp>
+#include <beman/inside/inside/casts.hpp>
+#include <beman/inside/math.hpp>
+#include <beman/inside/inside/formats.hpp>
+#include <beman/inside/inside/io.hpp>
 
 #include <gtest/gtest.h>
 
@@ -107,11 +107,11 @@ TEST(BugHunt20261013, casts_and_math_are_constraint_friendly) {
     EXPECT_EQ(clamp_cast<digit>(small{-3}), 0_ins);
 }
 
-// A named policy (`clamped`, `rounded_floor`, a const policy(ec)) as the
-// constructor's one-shot policy did not compile: report() was non-const.
+// A flag (`clamp`, `round_floor`) or a const policy(ec) as the constructor's
+// one-shot policy did not compile: report() was non-const.
 TEST(BugHunt20261013, named_policy_in_constructor) {
-    static_assert(digit{12, clamped} == 9_ins && digit{12, wrapped} == 2_ins);
-    static_assert(halves{7, rounded_floor} == 6.5_ins);
+    static_assert(digit{12, clamp} == 9_ins && digit{12, wrap} == 2_ins);
+    static_assert(halves{7, round_floor} == 6.5_ins);
     errc       ec{};
     const auto pol = make_policy<checked>(ec);
     digit      y{12, pol};

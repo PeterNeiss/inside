@@ -29,7 +29,7 @@ g++-16 -std=c++26 -freflection -O2 -I ../../include b11_no_ceiling.cpp -o b11
 ```
 
 The committed single header (`../../single_include`) holds `io.hpp`,
-`cmath.hpp` and `units.hpp` as well; to build a program against it, keep only the
+`math.hpp` and `units.hpp` as well; to build a program against it, keep only the
 `#include <beman/inside/inside.hpp>` line and use `-I ../../single_include`.
 
 ## Programs that are meant to fail

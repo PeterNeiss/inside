@@ -14,7 +14,7 @@
 //     than the prior unconditional throw).
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/predicates.hpp>
+#include <beman/inside/inside/predicates.hpp>
 
 #include <gtest/gtest.h>
 
@@ -394,7 +394,7 @@ TEST(ConstexprTest, constexpr_inside_range_iterates_the_full_grid) {
     constexpr imax sum = [] {
         imax s = 0;
         for (auto i : inside_range<{0, 9}>{})
-            s += imax{i};
+            s += i.as<imax>();
         return s;
     }();
     static_assert(sum == 45);
@@ -403,7 +403,7 @@ TEST(ConstexprTest, constexpr_inside_range_iterates_the_full_grid) {
     constexpr imax sum_from_5 = [] {
         imax s = 0;
         for (auto i : inside_range<{0, 9}>{inside<{0, 9}>{5}})
-            s += imax{i};
+            s += i.as<imax>();
         return s;
     }();
     static_assert(sum_from_5 == 45);
@@ -452,12 +452,12 @@ TEST(ConstexprTest, constexpr_implied_flags) {
 
 // constexpr: is_policy_v / uses_error_ref
 TEST(ConstexprTest, constexpr_ispolicy_useserrorref) {
-    static_assert(is_policy_v<policy<checked>>);
-    static_assert(is_policy_v<policy<none, error_ref>>);
+    static_assert(is_policy_v<call_policy<checked>>);
+    static_assert(is_policy_v<call_policy<none, error_ref>>);
     static_assert(!(is_policy_v<int>));
 
-    static_assert(!(uses_error_ref<policy<checked>>));
-    static_assert(uses_error_ref<policy<checked, error_ref>>);
+    static_assert(!(uses_error_ref<call_policy<checked>>));
+    static_assert(uses_error_ref<call_policy<checked, error_ref>>);
 }
 
 //---------------------------------------------------------------------------

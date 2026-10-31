@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Physical units on insides (units.hpp, units_math.hpp): every conversion is
+// Physical units on insides (units.hpp, units/math.hpp): every conversion is
 // exact, and the grid of every result is known at compile time.
 //   1. A trip in legs of km and m: the total runs in the common unit (m),
 //      exactly; the average speed in km/h.
@@ -13,8 +13,8 @@
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/units.hpp>
-#include <beman/inside/units_io.hpp>
-#include <beman/inside/units_math.hpp>
+#include <beman/inside/units/io.hpp>
+#include <beman/inside/units/math.hpp>
 
 using namespace beman::inside;
 using namespace beman::inside::units;

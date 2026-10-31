@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #include <beman/inside/inside.hpp>
-#include <beman/inside/detail/rational.hpp>
+#include <beman/inside/inside/detail/rational.hpp>
 
 #include <gtest/gtest.h>
 
@@ -109,7 +109,14 @@ TEST(ExpectedArithmeticTest, inside_construction_from_expected_rational_sink_unw
     b_t v{good(0.5_r)};
     ASSERT_EQ(rational{v}, 0.5_r);
 
-    ASSERT_THROW((void)(b_t{bad()}), std::bad_expected_access<errc>);
+    // An error goes through the policy, as a failed store does: inside_error
+    // with the errc, never std::bad_expected_access.
+    try {
+        (void)b_t{bad(errc::division_by_zero)};
+        FAIL() << "no error reported";
+    } catch (const inside_error& e) {
+        EXPECT_EQ(e.Code, errc::division_by_zero);
+    }
 }
 
 // inside operator= from expected<rational>
@@ -120,7 +127,53 @@ TEST(ExpectedArithmeticTest, inside_operator_from_expected_rational) {
     v = good(0.25_r);
     ASSERT_EQ(rational{v}, 0.25_r);
 
-    ASSERT_THROW((void)(v = bad()), std::bad_expected_access<errc>);
+    // An error goes through the policy and leaves v unchanged.
+    try {
+        v = bad();
+        FAIL() << "no error reported";
+    } catch (const inside_error& e) {
+        EXPECT_EQ(e.Code, errc::overflow);
+    }
+    ASSERT_EQ(rational{v}, 0.25_r);
+}
+
+// A division whose divisor grid holds 0 stored into a clamp type: the zero
+// divisor is reported (clamp handles the range, not the error), whether the
+// expected is constructed from or assigned.
+TEST(ExpectedArithmeticTest, zero_divisor_into_a_clamp_type_is_reported) {
+    inside<{0, 10}> a{4};
+    inside<{0, 2}>  b{0};
+    using c_t = inside<{0, 100}, clamp | round_nearest>;
+    try {
+        c_t c = a / b;
+        (void)c;
+        FAIL() << "no error reported";
+    } catch (const inside_error& e) {
+        EXPECT_EQ(e.Code, errc::division_by_zero);
+    }
+    c_t d{7};
+    EXPECT_THROW(d = a / b, inside_error);
+    EXPECT_EQ(rational{d}, 7);
+    // a nonzero divisor stores (rounded and clamped by c_t)
+    b = 2;
+    d = a / b;
+    EXPECT_EQ(rational{d}, 2);
+}
+
+// rational's sinks raise too: the expected-converting ctor, the compound
+// assignments and a comparison against an expected.
+TEST(ExpectedArithmeticTest, rational_sinks_raise_inside_error) {
+    try {
+        const rational r = bad(errc::division_by_zero);
+        (void)r;
+        FAIL() << "no error reported";
+    } catch (const inside_error& e) {
+        EXPECT_EQ(e.Code, errc::division_by_zero);
+    }
+    rational a{1};
+    EXPECT_THROW(a += bad(), inside_error);
+    EXPECT_THROW((void)(a < bad()), inside_error);
+    EXPECT_EQ(a, 1);
 }
 
 // expected<inside> + rational propagates the error

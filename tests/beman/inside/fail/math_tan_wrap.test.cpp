@@ -3,7 +3,7 @@
 // tan has no bound near its poles, so a wrap output cannot be given the
 // folded true value: rejected (clamp and the default work).
 #include <beman/inside/inside.hpp>
-#include <beman/inside/cmath.hpp>
+#include <beman/inside/math.hpp>
 
 int main() {
     using namespace beman::inside;

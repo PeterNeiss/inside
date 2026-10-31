@@ -15,9 +15,9 @@
 #include <vector>
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/io.hpp>
+#include <beman/inside/inside/io.hpp>
 #include <beman/inside/units.hpp>
-#include <beman/inside/units_io.hpp>
+#include <beman/inside/units/io.hpp>
 
 using namespace beman::inside;
 using namespace beman::inside::units;
@@ -56,13 +56,13 @@ int main() {
         // The slot is seq modulo the window: wrap_cast folds it into slot_id_t.
         const auto idx = wrap_cast<slot_id_t>(seq);
 
-        bool stored = true;
-        slots[idx].on_error([&](auto&, errc, auto) {
+        bool stored                   = true;
+        slots[idx.as<std::size_t>()].on_error([&](auto&, errc, auto) {
             std::cout << "[dropped: offset " << offset << " too far past base " << base << "]\n";
             ++dropped;
             stored = false;
-        })          = offset;
-        filled[idx] = stored;
+        })                            = offset;
+        filled[idx.as<std::size_t>()] = stored;
     };
 
     // Insert 18 packets: most within window, two stragglers way past base.
@@ -72,10 +72,10 @@ int main() {
 
     std::cout << "\nplayback order:\n";
     for (slot_id_t slot : values<slot_id_t>) {
-        if (!filled[slot])
+        if (!filled[slot.as<std::size_t>()])
             std::cout << "  slot " << slot << "  <empty>\n";
         else
-            std::cout << "  slot " << slot << "  packet offset " << slots[slot] << "\n";
+            std::cout << "  slot " << slot << "  packet offset " << slots[slot.as<std::size_t>()] << "\n";
     }
 
     std::cout << "\ndrop events: " << dropped << "\n";
@@ -86,7 +86,7 @@ int main() {
     timestamp_t playback{125.5};
     std::cout << "\nplayback - arrival (1/8 ms grid): " << (playback - arrival) << "\n";
 
-    if (dropped != 2 || to_string(slots[slot_id_t{5}]) != "5 pkt" || to_string(playback - arrival) != "0.125 ms")
+    if (dropped != 2 || to_string(slots[5]) != "5 pkt" || to_string(playback - arrival) != "0.125 ms")
         return 1;
     return 0;
 }

@@ -4,7 +4,7 @@
 // and then rounded; wrap would fold that wider grid differently, so it is
 // rejected (clamp and the default work).
 #include <beman/inside/inside.hpp>
-#include <beman/inside/cmath.hpp>
+#include <beman/inside/math.hpp>
 
 int main() {
     using namespace beman::inside;

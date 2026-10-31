@@ -4,12 +4,14 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-`<beman/inside/constants.hpp>` gives the common mathematical constants, as
-one-point insides, and the physical constants, each a [quantity](units.md) of
-its ISQ kind. Products of constants are exact.
+`<beman/inside/math/constants.hpp>` gives the common mathematical constants, as
+one-point insides, without units. `<beman/inside/units/constants.hpp>` gives the
+physical constants, each a [quantity](units.md) of its ISQ kind. Products of
+constants are exact.
 
 ```cpp
-#include <beman/inside/constants.hpp>
+#include <beman/inside/math/constants.hpp>
+#include <beman/inside/units/constants.hpp>
 using namespace beman::inside;
 using namespace beman::inside::units;
 namespace pc = units::constants;
@@ -32,8 +34,8 @@ std::format("{:.9e}", E.in(si::joule));                             // 3.5780778
 
 Each constant is a point `inside`, `just<r>`, where `r` is the best rational
 whose numerator and denominator stay below 2³¹. The numbers stay small, so
-products of a few constants keep 64-bit grid numbers. `cmath.hpp` defines them
-too.
+products of a few constants keep 64-bit grid numbers. They need only the
+number (`inside.hpp`); `math.hpp` includes them too.
 
 | Name | Value | Error |
 |---|---|---|
@@ -60,7 +62,7 @@ Each constant is the number 1 of a named unit whose magnitude is the
 constant, under the constant's ISQ kind where one fits. Products therefore
 stay exact: `R`, `F` and `E = h·ν` are exact rationals. `.in(u)` gives the
 number in unit `u`, and `std::format` with `{:e}` prints it compactly. A
-factor of π, as in ħ or σ, rounds once, through `value_cast` (units_math.hpp).
+factor of π, as in ħ or σ, rounds once, through `value_cast` (units/math.hpp).
 
 The constant's unit is in `si2019::` or `codata2022::`, under the same name.
 
@@ -112,6 +114,6 @@ not represented, so a result is only as good as the constant behind it.
 
 ## In the single header
 
-The math constants come with `cmath.hpp`, also freestanding. The physical
+The math constants come with `math.hpp`, also freestanding. The physical
 constants sit inside the units guard: `BEMAN_INSIDE_NO_UNITS` drops them
 ([single-header.md](single-header.md)).

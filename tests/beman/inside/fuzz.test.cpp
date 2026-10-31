@@ -10,10 +10,10 @@
 //---------------------------------------------------------------------------
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/casts.hpp>
-#include <beman/inside/cmath.hpp>
-#include <beman/inside/predicates.hpp>
-#include <beman/inside/range.hpp>
+#include <beman/inside/inside/casts.hpp>
+#include <beman/inside/math.hpp>
+#include <beman/inside/inside/predicates.hpp>
+#include <beman/inside/inside/range.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -405,7 +405,7 @@ void prop_modulo(fuzz_state& s, long iters) {
                 BI b   = BI::from_raw(random_in_range_raw<BI>(s.rng));
                 if (b == 0)
                     continue; // possible if hi <= 0 and zero is in range
-                auto r        = mod(a, b, rounded_toward_zero);
+                auto r        = mod(a, b, round_toward_zero);
                 imax expected = as<imax>(a) % as<imax>(b);
                 // mod returns a plain inside when B's grid excludes zero, else expected.
                 if constexpr (is_expected_v<decltype(r)>) {
@@ -423,7 +423,7 @@ void prop_modulo(fuzz_state& s, long iters) {
                 do {
                     b = BI::from_raw(random_in_range_raw<BI>(s.rng));
                 } while (b == 0);
-                auto r        = mod(a, b, rounded_toward_zero);
+                auto r        = mod(a, b, round_toward_zero);
                 imax expected = as<imax>(a) % as<imax>(b);
                 // mod returns a plain inside when B's grid excludes zero, else expected.
                 if constexpr (is_expected_v<decltype(r)>) {
@@ -563,7 +563,7 @@ void prop_compound_div_mod_zero(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_compound_inside_overshoot(fuzz_state& s, long iters) {
-    // Targets inside::operator+= (core.hpp): the fast path's branch where the result
+    // Targets inside::operator+= (inside/detail/core.hpp): the fast path's branch where the result
     // overshoots and the policy lacks clamp/wrap. The catalogue's
     // grids already use the default `checked` policy, so the report path throws
     // overflow. Pick start values where adding `delta` lands outside the
@@ -725,7 +725,8 @@ void prop_interval_eq(fuzz_state& s) {
 
 void prop_expected_throws(fuzz_state& s) {
     // A fallible result holding an error throws std::bad_expected_access from
-    // .value() and from the inside sink constructor.
+    // .value() (std::expected's own), and inside_error with its errc from the
+    // inside sink constructor (the policy's report).
     s.current_prop        = "expected_throws";
     s.iter                = 0;
     using B               = inside<{0, 100}>;
@@ -742,14 +743,15 @@ void prop_expected_throws(fuzz_state& s) {
     FUZZ_REQUIRE(s, got_throw);
     FUZZ_REQUIRE(s, !what.empty());
 
-    // The inside sink unwraps with .value(), so an error result throws too.
+    // The inside sink reports an error result through its policy.
     bool sink_throw = false;
     try {
         using Q = std::remove_cvref_t<decltype(*(B{7} / B{1}))>;
         Q q{B{7} / B{0}};
         (void)q;
-    } catch (const std::bad_expected_access<errc>&) {
+    } catch (const inside_error& e) {
         sink_throw = true;
+        FUZZ_REQUIRE(s, e.Code == errc::division_by_zero);
     } catch (...) {
     } // NOLINT(bugprone-empty-catch): deliberate — the assert below verifies the expected throw fired
     FUZZ_REQUIRE(s, sink_throw);
@@ -757,7 +759,7 @@ void prop_expected_throws(fuzz_state& s) {
 
 template <insidable B>
 void prop_compound_add_same_inside(fuzz_state& s, long iters) {
-    // Targets the fallback path of inside::operator+=(insidable R) (core.hpp)
+    // Targets the fallback path of inside::operator+=(insidable R) (inside/detail/core.hpp)
     // when the fast path's encoding constraints don't hold (typically fractional
     // grids whose Lower != 0 on at least one side, or notches that mismatch).
     // For grids whose value ranges allow it, b += b should still produce 2*b

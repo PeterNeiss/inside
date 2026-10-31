@@ -10,9 +10,9 @@
 #include <iostream>
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/io.hpp>
+#include <beman/inside/inside/io.hpp>
 #include <beman/inside/units.hpp>
-#include <beman/inside/units_io.hpp>
+#include <beman/inside/units/io.hpp>
 
 using namespace beman::inside;
 using namespace beman::inside::units;
@@ -69,13 +69,13 @@ int main() {
     using idx       = inside<{0, 9}>;
     std::cout << "from 5, wrapping:";
     for (idx i : inside_range<grid_of<idx>>{5})
-        std::cout << ' ' << arr[i];
+        std::cout << ' ' << arr[i.as<std::size_t>()];
     std::cout << "\nevery index:     ";
     for (idx i : values<idx>)
-        std::cout << ' ' << arr[i];
+        std::cout << ' ' << arr[i.as<std::size_t>()];
     std::cout << "\nevery third:     ";
     for (cursor<idx, 3> i; i != end(i); ++i)
-        std::cout << ' ' << arr[*i];
+        std::cout << ' ' << arr[(*i).as<std::size_t>()];
     std::cout << "\n";
     return 0;
 }

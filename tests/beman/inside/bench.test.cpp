@@ -20,7 +20,7 @@
 #include <nanobench.h>
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/cmath.hpp>
+#include <beman/inside/math.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -210,10 +210,10 @@ static void bench_scalar_u8() {
         u200 a(din.a[i & kMask]), b(din.b[i & kMask]);
         doNotOptimizeAway((a / b)->raw());
     });
-    dv.run("inside div(a, b, rounded_toward_zero)", [&] {
+    dv.run("inside div(a, b, round_toward_zero)", [&] {
         ++i;
         u200 a(din.a[i & kMask]), b(din.b[i & kMask]);
-        doNotOptimizeAway(div(a, b, rounded_toward_zero)->raw());
+        doNotOptimizeAway(div(a, b, round_toward_zero)->raw());
     });
     using q16 = inside<{{0, 200}, per<16>}, round_nearest>;
     dv.run("inside div_into<1/16> (divisor excludes 0)", [&] {
@@ -244,10 +244,10 @@ static void bench_scalar_u8() {
         d9   b(din.b[i & kMask]);
         doNotOptimizeAway((a % b).raw());
     });
-    md.run("inside mod(a, b, rounded_toward_zero) (zero-checked)", [&] {
+    md.run("inside mod(a, b, round_toward_zero) (zero-checked)", [&] {
         ++i;
         u200 a(din.a[i & kMask]), b(din.b[i & kMask]);
-        doNotOptimizeAway(mod(a, b, rounded_toward_zero)->raw());
+        doNotOptimizeAway(mod(a, b, round_toward_zero)->raw());
     });
     finish(md);
 }
@@ -591,10 +591,10 @@ static void bench_fixed_point() {
         std::int32_t a = din.a[i & kMask] << 8, b = din.b[i & kMask] << 8;
         doNotOptimizeAway((a << 8) / b);
     });
-    dv.run("inside div(a, b, rounded_toward_zero)", [&] {
+    dv.run("inside div(a, b, round_toward_zero)", [&] {
         ++i;
         fp a(din.a[i & kMask]), b(din.b[i & kMask]);
-        doNotOptimizeAway(div(a, b, rounded_toward_zero)->raw());
+        doNotOptimizeAway(div(a, b, round_toward_zero)->raw());
     });
     finish(dv);
 
@@ -832,9 +832,9 @@ static void bench_store_convert() {
         int v = ni[i & kMask];
         doNotOptimizeAway(v);
     });
-    conv.run("static_cast<imax> (integer grid)", [&] {
+    conv.run("as<imax> (integer grid)", [&] {
         ++i;
-        doNotOptimizeAway(static_cast<imax>(bi[i & kMask]));
+        doNotOptimizeAway(bi[i & kMask].as<imax>());
     });
     conv.run("to<uint8_t> (expected)", [&] {
         ++i;

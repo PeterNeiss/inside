@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// P: value_cast across a factor of π (units_math.hpp), rounded once onto
+// P: value_cast across a factor of π (units/math.hpp), rounded once onto
 //    the output grid by its mode: degrees → radians and back.
 //    P <mode> <factor> <out_notch> <in> <out>
 //    factor is "deg2rad" (x·π/180) or "rad2deg" (x·180/π).
 
 #include "dump.hpp"
 
-#include <beman/inside/units_math.hpp>
+#include <beman/inside/units/math.hpp>
 
 namespace diff {
 namespace {
