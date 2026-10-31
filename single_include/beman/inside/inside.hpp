@@ -3819,40 +3819,63 @@ namespace beman::inside {
 //---------------------------------------------------------------------------
 using policy_flag = unsigned long long;
 
+namespace detail {
+// A named flag is an object of its own type that converts to its bits: it is
+// a template argument (inside<G, round_floor>), combines with | (clamp |
+// round_floor stays a flag), and selects a call's policy (div(a, b,
+// round_floor)). A policy_flag value, its bits, is what every template
+// takes, so inside<G, round_floor> is inside<G, 48>.
+template <policy_flag V>
+struct flag {
+    static constexpr policy_flag value = V;
+    constexpr                    operator policy_flag() const noexcept { return V; }
+};
+template <policy_flag A, policy_flag B>
+constexpr flag<A | B> operator|(flag<A>, flag<B>) noexcept {
+    return {};
+}
+template <class T>
+inline constexpr bool is_flag_v = false;
+template <policy_flag V>
+inline constexpr bool is_flag_v<flag<V>> = true;
+template <class T>
+concept flag_like = is_flag_v<std::remove_cvref_t<T>>;
+} // namespace detail
+
 // Check model: compile-time checks always run. A store whose success can't be
 // proven statically gets a runtime check that throws (or reports through an
 // errc& parameter), unless `unsafe` appears: in the type, an operand, or the
 // call's policy.
-inline constexpr policy_flag none{0ull};
+inline constexpr detail::flag<0ull> none{};
 // `snap` — permission: an off-notch value is rounded to fit the grid instead
 // of rejected. Without it, an off-notch value is a compile/runtime error and
 // div/mod fall through to exact-rational results. Every round_* mode carries
 // it; on its own it rounds toward zero.
-inline constexpr policy_flag snap{1ull << 4};
+inline constexpr detail::flag<1ull << 4> snap{};
 // `round_toward_zero` — the snap bit alone: truncate toward zero (IEEE 754
 // roundTowardZero). Last in dispatch, after every explicit mode.
-inline constexpr policy_flag round_toward_zero{snap};
-inline constexpr policy_flag round_nearest{(1ull << 5) | snap};
+inline constexpr detail::flag<snap>               round_toward_zero{};
+inline constexpr detail::flag<(1ull << 5) | snap> round_nearest{};
 // Rounding modes each pick a unique bit and OR in `snap`. Conceptually
 // exclusive; combining two is allowed but dispatch (storage.hpp) picks the
 // first match: floor → ceil → half_even → nearest → toward zero (rounding_of).
-inline constexpr policy_flag round_floor{(1ull << 6) | snap};
-inline constexpr policy_flag round_ceil{(1ull << 7) | snap};
-inline constexpr policy_flag round_half_even{(1ull << 8) | snap};
+inline constexpr detail::flag<(1ull << 6) | snap> round_floor{};
+inline constexpr detail::flag<(1ull << 7) | snap> round_ceil{};
+inline constexpr detail::flag<(1ull << 8) | snap> round_half_even{};
 
 // runtime checking — the default policy's name: every policy without
 // `unsafe` checks, and `unsafe` wins over it (see is_checked).
-inline constexpr policy_flag checked{1ull << 34}; // runtime range/notch/zero-divisor checks
+inline constexpr detail::flag<1ull << 34> checked{}; // runtime range/notch/zero-divisor checks
 
 // unary — mutually exclusive
-inline constexpr policy_flag clamp{1ull << 32}; // saturate to boundary
-inline constexpr policy_flag wrap{1ull << 33};  // modular arithmetic
+inline constexpr detail::flag<1ull << 32> clamp{}; // saturate to boundary
+inline constexpr detail::flag<1ull << 33> wrap{};  // modular arithmetic
 
 // `uninitialized` — default construction leaves the raw uninitialized, like a
 // built-in scalar (a trivial default ctor); reading it before a store is
 // undefined. Without it a default-constructed inside is 0, or Lower on a grid
 // without 0.
-inline constexpr policy_flag uninitialized{1ull << 37};
+inline constexpr detail::flag<1ull << 37> uninitialized{};
 
 // No flag picks the raw: storage follows the grid alone (grid.hpp
 // raw_for, docs/storage.md).
@@ -3866,7 +3889,7 @@ inline constexpr policy_flag unsafe_marker{1ull << 36};
 // and `end(t)` names its past-the-end value. Results never carry it.
 inline constexpr policy_flag cursor_marker{1ull << 50};
 } // namespace detail
-inline constexpr policy_flag unsafe{detail::unsafe_marker | snap};
+inline constexpr detail::flag<detail::unsafe_marker | snap> unsafe{};
 
 //---------------------------------------------------------------------------
 // Flag-set membership predicates. `has_flag(set, flag)` is true iff EVERY bit
@@ -4703,10 +4726,12 @@ template <typename T>
 inline constexpr policy_flag flags_of_impl = none;
 template <grid G, policy_flag P>
 inline constexpr policy_flag flags_of_impl<inside<G, P>> = P;
+template <policy_flag V>
+inline constexpr policy_flag flags_of_impl<flag<V>> = V;
 } // namespace detail
 
-// flags_of<X> — the policy flags of an inside, or of a one-shot `policy<F, E>`
-// (policy.hpp); `none` for anything else, such as an action.
+// flags_of<X> — the policy flags of an inside, of a one-shot `policy<F, E>`
+// (policy.hpp) or of a named flag; `none` for anything else, such as an action.
 template <typename X>
 inline constexpr policy_flag flags_of = detail::flags_of_impl<std::remove_cvref_t<X>>;
 
@@ -6303,8 +6328,8 @@ constexpr Result exact_result(const wide_rational<K>& v) noexcept {
 // policy — the runtime policy carrier.
 //   policy<F, E>  — compile-time flags F plus an optional error_ref E holding a
 //                   beman::inside::errc& (EBO so the no-error-code form is zero-sized).
-//   make_policy<F>() and the named policies rounded_toward_zero, rounded_nearest,
-//                   rounded_floor, rounded_ceil, rounded_half_even, clamped, wrapped.
+//   make_policy<F>(), and as_call_policy, which turns a named flag passed as a
+//                   call's policy (div(a, b, round_floor)) into make_policy<F>().
 // The proxies that b.policy(), with_snap() and on_*() return are in
 // detail/policy_ref.hpp.
 //---------------------------------------------------------------------------
@@ -6426,18 +6451,19 @@ constexpr std::expected<Result, errc> report_or_unexpected(P&& policy, errc code
 } // namespace detail
 
 //---------------------------------------------------------------------------
-// Named convenience policies — let user code skip `make_policy<F>()` entirely
-// for the per-call flag form on free arithmetic functions.
+// as_call_policy — a call's trailing policy argument as a policy object: a
+// named flag (div(a, b, round_floor), B{v, round_floor}) is make_policy<F>();
+// a policy passes through.
 //---------------------------------------------------------------------------
-// Each is named after its flag: rounded_* = round_*, clamped = clamp,
-// wrapped = wrap.
-inline constexpr auto rounded_toward_zero = make_policy<round_toward_zero>();
-inline constexpr auto rounded_nearest     = make_policy<round_nearest>();
-inline constexpr auto rounded_floor       = make_policy<round_floor>();
-inline constexpr auto rounded_ceil        = make_policy<round_ceil>();
-inline constexpr auto rounded_half_even   = make_policy<round_half_even>();
-inline constexpr auto clamped             = make_policy<clamp>();
-inline constexpr auto wrapped             = make_policy<wrap>();
+namespace detail {
+template <class Pol>
+constexpr decltype(auto) as_call_policy(Pol&& pol) {
+    if constexpr (flag_like<Pol>)
+        return make_policy<std::remove_cvref_t<Pol>::value>();
+    else
+        return std::forward<Pol>(pol);
+}
+} // namespace detail
 } // namespace beman::inside
 
 
@@ -9105,7 +9131,7 @@ struct inside {
     template <numeric A, typename Pol>
         requires inside_assignable<inside, A, P | flags_of<Pol>>
     constexpr inside(A value, Pol&& pol) : Raw{detail::default_raw<inside>} {
-        store_value(value, pol);
+        store_value(value, detail::as_call_policy(pol));
     }
 
     // No error-code constructor: construction that can fail is `try_make(value)`,
@@ -9136,9 +9162,10 @@ struct inside {
     constexpr inside(const V& value) : Raw{detail::default_raw<inside>} {
         detail::assign_grid_number(*this, value, make_policy<P>());
     }
-    template <std::same_as<detail::grid_rational> V, detail::policy_like Pol>
+    template <std::same_as<detail::grid_rational> V, class Pol>
+        requires(detail::policy_like<Pol> || detail::flag_like<Pol>)
     constexpr inside(const V& value, Pol&& pol) : Raw{detail::default_raw<inside>} {
-        detail::assign_grid_number(*this, value, pol);
+        detail::assign_grid_number(*this, value, detail::as_call_policy(pol));
     }
     template <std::same_as<detail::grid_rational> V>
     constexpr inside& operator=(const V& value) {
@@ -10230,7 +10257,8 @@ template <insidable B, numeric A>
 namespace beman::inside {
 //---------------------------------------------------------------------------
 // add / sub / mul / div / mod / divmod — each takes one of two trailing forms:
-//   op(l, r [, policy])   explicit per-call policy (the division's rounding)
+//   op(l, r [, policy])   explicit per-call policy (the division's rounding):
+//                         a named flag (round_floor) or make_policy<F>()
 //   op(l, r, ec)          error-code form (checked, a zero divisor sets ec)
 // detail::arith normalizes the form to a policy for the op's core.
 //---------------------------------------------------------------------------
@@ -10242,6 +10270,12 @@ namespace detail {
 template <class Op, class L, class R, policy_like P = policy<>>
 constexpr auto arith(Op op, const L& l, const R& r, P&& pol = {}) {
     return op(l, r, std::forward<P>(pol));
+}
+
+// A named flag as the policy: div(a, b, round_floor).
+template <class Op, class L, class R, policy_flag V>
+constexpr auto arith(Op op, const L& l, const R& r, flag<V>) {
+    return op(l, r, make_policy<V>());
 }
 
 template <class Op, class L, class R>
@@ -10318,10 +10352,10 @@ namespace detail {
 // The policy flags a call's trailing arguments select, as arith normalizes
 // them: a policy's own, checked for an errc&, an action's implied flags.
 template <class... Args>
-inline constexpr policy_flag call_flags = [] {
+inline constexpr policy_flag call_flags = []() -> policy_flag {
     if constexpr (sizeof...(Args) == 0)
         return none;
-    else if constexpr (policy_like<std::remove_cvref_t<Args...[0]>>)
+    else if constexpr (policy_like<std::remove_cvref_t<Args...[0]>> || flag_like<Args...[0]>)
         return flags_of<Args...[0]>;
     else if constexpr (std::same_as<Args...[0], errc&>)
         return checked;

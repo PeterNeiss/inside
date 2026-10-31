@@ -8,7 +8,7 @@
 //   - `wrap` policy for modular-2^N arithmetic
 //   - `on_wrap` callback feeding a wrap-epoch counter (cascade pattern)
 //   - `_ins` integer literal times a unit: `100_ins * pkt`
-//   - `divmod(s, 256_ins * pkt, rounded_toward_zero)` for the ring-buffer lap and slot
+//   - `divmod(s, 256_ins * pkt, round_toward_zero)` for the ring-buffer lap and slot
 
 #include <iostream>
 
@@ -59,7 +59,7 @@ int main() {
 
     std::cout << "\nepoch count after burst: " << epoch << "\n";
 
-    // Ring-buffer indexing — one integer division (`rounded_toward_zero`, per call) gives
+    // Ring-buffer indexing — one integer division (`round_toward_zero`, per call) gives
     // the lap through the 256-slot ring and the slot in it. 256 pkt excludes
     // zero, so the result is plain, not an expected: the lap a number, the
     // slot in packets.
@@ -67,7 +67,7 @@ int main() {
     seq_t s{65500};
     for (int i = 0; i < 6; ++i) {
         s += window;
-        const auto [lap, slot] = divmod(s, 256_ins * pkt, rounded_toward_zero);
+        const auto [lap, slot] = divmod(s, 256_ins * pkt, round_toward_zero);
         std::cout << "  seq=" << s << "  ->  lap " << lap << ", slot " << slot << "\n";
         if (i == 5 && (lap != 2 || slot != 52_ins * pkt))
             return 1;

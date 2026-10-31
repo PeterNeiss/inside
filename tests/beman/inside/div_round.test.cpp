@@ -190,7 +190,7 @@ TEST(DivRoundTest, divmod_types_and_errors) {
     // A per-call rounding policy picks the quotient; the remainder follows it.
     using num          = inside<{-100, 100}>;
     using den          = inside<{1, 10}>;
-    const auto [f, fr] = divmod(num{-8}, den{3}, rounded_floor);
+    const auto [f, fr] = divmod(num{-8}, den{3}, round_floor);
     ASSERT_TRUE(f == -3_ins);
     ASSERT_TRUE(fr == 1_ins);
 
@@ -223,7 +223,7 @@ TEST(DivRoundTest, modulo_and_divmod_without_snap_truncate) {
     static_assert(std::same_as<decltype(digit{7} % 2_ins), inside<{0, 1}>>);
     static_assert(digit{7} % 2_ins == 1_ins);
     static_assert(signed_digit{-7} % 2_ins == -1_ins);
-    static_assert(mod(signed_digit{-7}, 2_ins, rounded_floor) == 1_ins);
+    static_assert(mod(signed_digit{-7}, 2_ins, round_floor) == 1_ins);
     static_assert(digit{7} / 2_ins == 3.5_ins); // `/` is unchanged: exact
 
     const auto [q, r] = divmod(signed_digit{-7}, 2_ins);

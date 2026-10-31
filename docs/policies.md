@@ -81,20 +81,22 @@ g.with_snap<round_half_even>() = 5.0;   // 4: the tie goes to the even point
 
 `x.policy<F>()` adds any flags `F` the same way.
 
-## Named policies
+## A flag as a call's policy
 
-The free arithmetic functions (`add`, `sub`, `mul`, `div`, `mod`, `divmod`)
-take a policy object as a last argument:
-
-| Name | Flag |
-|---|---|
-| `rounded_toward_zero` | `round_toward_zero` |
-| `rounded_nearest`, `rounded_floor`, `rounded_ceil`, `rounded_half_even` | the rounding mode of that name |
-| `clamped`, `wrapped` | `clamp`, `wrap` |
+A flag is also the policy of one call. The free arithmetic functions (`add`,
+`sub`, `mul`, `div`, `mod`, `divmod`) take one as a last argument, and so
+does a constructor's second argument:
 
 ```cpp
-auto q = div(a, b, rounded_floor);      // the same as div(a, b, make_policy<round_floor>())
+auto q = div(a, b, round_floor);              // the same as div(a, b, make_policy<round_floor>())
+auto r = mod(a, b, round_nearest);
+inside<{0, 10}> h{3.5, round_floor};          // 3: this store rounds down
+auto e = div(a, b, make_policy<round_floor>(ec));   // a flag and an errc&
 ```
+
+Each flag is a constant of its own type that converts to `policy_flag`, so
+the same name is a template argument (`inside<G, round_floor>`), a part of a
+combination (`clamp | round_floor`) and a call's policy.
 
 ## Hooks: `on_wrap`, `on_clamp`, `on_error`
 

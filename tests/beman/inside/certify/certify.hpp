@@ -119,8 +119,8 @@ inline std::string flags_text(policy_flag f) {
     else if (has_flag(f, snap))
         add("round_toward_zero");
     f &= ~(round_half_even | round_ceil | round_floor | round_nearest | snap);
-    for (const auto& [flag, name] :
-         {std::pair{clamp, "clamp"}, std::pair{wrap, "wrap"}, std::pair{checked, "checked"}})
+    using named = std::pair<policy_flag, const char*>;
+    for (const auto& [flag, name] : {named{clamp, "clamp"}, named{wrap, "wrap"}, named{checked, "checked"}})
         if (has_flag(f, flag)) {
             add(name);
             f &= ~flag;

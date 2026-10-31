@@ -34,7 +34,7 @@ with one of two trailing forms:
 
 | Form | Meaning |
 |---|---|
-| `op(l, r, policy)` | a named policy (`rounded_floor`, … or `make_policy<F>()`): how a division rounds |
+| `op(l, r, policy)` | a flag (`round_floor`, …) or `make_policy<F>()`: how a division rounds |
 | `op(l, r, ec)` | an `errc&` that receives a zero divisor |
 
 They take no hooks ([policies.md](policies.md#hooks-on_wrap-on_clamp-on_error)):
@@ -104,11 +104,11 @@ small grids run at native speed.
 using val = inside<{0, 100}>;
 val a{7}, b{3};
 auto exact = a / b;                            // path C: expected, 7/3
-auto quot  = div(a, b, rounded_toward_zero);   // path B, per call: expected, 2
+auto quot  = div(a, b, round_toward_zero);   // path B, per call: expected, 2
 using fast = inside<{0, 100}, snap>;
 auto q     = fast{7} / fast{3};                // path B, from the type: expected, 2
 using fp   = inside<{{0, 255}, per<256>}, unsafe>;     // Q8.8 (unsafe includes snap)
-auto qfp   = div(fp{200}, fp{3}, rounded_toward_zero); // path A: raw 17066, about 66.664
+auto qfp   = div(fp{200}, fp{3}, round_toward_zero); // path A: raw 17066, about 66.664
 ```
 
 Path A multiplies before it divides: (51200 × 256) / 768 = 17066, that is
@@ -262,7 +262,7 @@ trailing forms as `div`, and every value must fit `imax`:
 ```cpp
 using pos = inside<{1, 10}, snap>;
 auto [q, rem] = divmod(val{17}, pos{5});                            // 3, 2
-auto [f, m]   = divmod(inside<{-100, 100}>{-8}, pos{3}, rounded_floor);   // -3, 1
+auto [f, m]   = divmod(inside<{-100, 100}>{-8}, pos{3}, round_floor);   // -3, 1
 ```
 
 ## Folds and sums

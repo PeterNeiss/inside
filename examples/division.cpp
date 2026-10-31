@@ -2,8 +2,8 @@
 // Division: exact by default, integer division on request, and std::expected
 // only when the divisor's grid holds zero.
 //   - `a / b` is the exact rational quotient.
-//   - `snap` (per call, `div(a, b, rounded_toward_zero)`, or in the type) divides natively;
-//     a rounding flag picks the direction (`rounded_nearest`, `rounded_floor`, ...).
+//   - `snap` (per call, `div(a, b, round_toward_zero)`, or in the type) divides natively;
+//     a rounding flag picks the direction (`round_nearest`, `round_floor`, ...).
 //   - A divisor grid that holds 0 makes the result std::expected<inside, errc>
 //     (errc::division_by_zero); a zero-free divisor gives a plain value.
 //   - A quotient's type bounds its denominators, so arithmetic on it stays
@@ -27,9 +27,9 @@ int main() {
         return 1;
 
     // Integer division, per call: truncates like C++ `/`, or rounds.
-    const auto trunc   = div(a, b, rounded_toward_zero);
-    const auto nearest = div(number{22}, number{7}, rounded_nearest);
-    const auto ceil    = div(number{22}, number{7}, rounded_ceil);
+    const auto trunc   = div(a, b, round_toward_zero);
+    const auto nearest = div(number{22}, number{7}, round_nearest);
+    const auto ceil    = div(number{22}, number{7}, round_ceil);
     std::cout << "7 / 3 (toward zero)    = " << *trunc << "\n"
               << "22 / 7 (nearest, ceil) = " << *nearest << ", " << *ceil << "\n";
     if (*trunc != 2 || *nearest != 3 || *ceil != 4)

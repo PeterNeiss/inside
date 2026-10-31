@@ -27,7 +27,8 @@
 namespace beman::inside {
 //---------------------------------------------------------------------------
 // add / sub / mul / div / mod / divmod — each takes one of two trailing forms:
-//   op(l, r [, policy])   explicit per-call policy (the division's rounding)
+//   op(l, r [, policy])   explicit per-call policy (the division's rounding):
+//                         a named flag (round_floor) or make_policy<F>()
 //   op(l, r, ec)          error-code form (checked, a zero divisor sets ec)
 // detail::arith normalizes the form to a policy for the op's core.
 //---------------------------------------------------------------------------
@@ -39,6 +40,12 @@ namespace detail {
 template <class Op, class L, class R, policy_like P = policy<>>
 constexpr auto arith(Op op, const L& l, const R& r, P&& pol = {}) {
     return op(l, r, std::forward<P>(pol));
+}
+
+// A named flag as the policy: div(a, b, round_floor).
+template <class Op, class L, class R, policy_flag V>
+constexpr auto arith(Op op, const L& l, const R& r, flag<V>) {
+    return op(l, r, make_policy<V>());
 }
 
 template <class Op, class L, class R>
@@ -115,10 +122,10 @@ namespace detail {
 // The policy flags a call's trailing arguments select, as arith normalizes
 // them: a policy's own, checked for an errc&, an action's implied flags.
 template <class... Args>
-inline constexpr policy_flag call_flags = [] {
+inline constexpr policy_flag call_flags = []() -> policy_flag {
     if constexpr (sizeof...(Args) == 0)
         return none;
-    else if constexpr (policy_like<std::remove_cvref_t<Args...[0]>>)
+    else if constexpr (policy_like<std::remove_cvref_t<Args...[0]>> || flag_like<Args...[0]>)
         return flags_of<Args...[0]>;
     else if constexpr (std::same_as<Args...[0], errc&>)
         return checked;

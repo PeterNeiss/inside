@@ -15,8 +15,8 @@
 // policy — the runtime policy carrier.
 //   policy<F, E>  — compile-time flags F plus an optional error_ref E holding a
 //                   beman::inside::errc& (EBO so the no-error-code form is zero-sized).
-//   make_policy<F>() and the named policies rounded_toward_zero, rounded_nearest,
-//                   rounded_floor, rounded_ceil, rounded_half_even, clamped, wrapped.
+//   make_policy<F>(), and as_call_policy, which turns a named flag passed as a
+//                   call's policy (div(a, b, round_floor)) into make_policy<F>().
 // The proxies that b.policy(), with_snap() and on_*() return are in
 // detail/policy_ref.hpp.
 //---------------------------------------------------------------------------
@@ -138,18 +138,19 @@ constexpr std::expected<Result, errc> report_or_unexpected(P&& policy, errc code
 } // namespace detail
 
 //---------------------------------------------------------------------------
-// Named convenience policies — let user code skip `make_policy<F>()` entirely
-// for the per-call flag form on free arithmetic functions.
+// as_call_policy — a call's trailing policy argument as a policy object: a
+// named flag (div(a, b, round_floor), B{v, round_floor}) is make_policy<F>();
+// a policy passes through.
 //---------------------------------------------------------------------------
-// Each is named after its flag: rounded_* = round_*, clamped = clamp,
-// wrapped = wrap.
-inline constexpr auto rounded_toward_zero = make_policy<round_toward_zero>();
-inline constexpr auto rounded_nearest     = make_policy<round_nearest>();
-inline constexpr auto rounded_floor       = make_policy<round_floor>();
-inline constexpr auto rounded_ceil        = make_policy<round_ceil>();
-inline constexpr auto rounded_half_even   = make_policy<round_half_even>();
-inline constexpr auto clamped             = make_policy<clamp>();
-inline constexpr auto wrapped             = make_policy<wrap>();
+namespace detail {
+template <class Pol>
+constexpr decltype(auto) as_call_policy(Pol&& pol) {
+    if constexpr (flag_like<Pol>)
+        return make_policy<std::remove_cvref_t<Pol>::value>();
+    else
+        return std::forward<Pol>(pol);
+}
+} // namespace detail
 } // namespace beman::inside
 
 #endif // BEMAN_INSIDE_POLICY_HPP

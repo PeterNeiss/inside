@@ -20,40 +20,63 @@ namespace beman::inside {
 //---------------------------------------------------------------------------
 using policy_flag = unsigned long long;
 
+namespace detail {
+// A named flag is an object of its own type that converts to its bits: it is
+// a template argument (inside<G, round_floor>), combines with | (clamp |
+// round_floor stays a flag), and selects a call's policy (div(a, b,
+// round_floor)). A policy_flag value, its bits, is what every template
+// takes, so inside<G, round_floor> is inside<G, 48>.
+template <policy_flag V>
+struct flag {
+    static constexpr policy_flag value = V;
+    constexpr                    operator policy_flag() const noexcept { return V; }
+};
+template <policy_flag A, policy_flag B>
+constexpr flag<A | B> operator|(flag<A>, flag<B>) noexcept {
+    return {};
+}
+template <class T>
+inline constexpr bool is_flag_v = false;
+template <policy_flag V>
+inline constexpr bool is_flag_v<flag<V>> = true;
+template <class T>
+concept flag_like = is_flag_v<std::remove_cvref_t<T>>;
+} // namespace detail
+
 // Check model: compile-time checks always run. A store whose success can't be
 // proven statically gets a runtime check that throws (or reports through an
 // errc& parameter), unless `unsafe` appears: in the type, an operand, or the
 // call's policy.
-inline constexpr policy_flag none{0ull};
+inline constexpr detail::flag<0ull> none{};
 // `snap` — permission: an off-notch value is rounded to fit the grid instead
 // of rejected. Without it, an off-notch value is a compile/runtime error and
 // div/mod fall through to exact-rational results. Every round_* mode carries
 // it; on its own it rounds toward zero.
-inline constexpr policy_flag snap{1ull << 4};
+inline constexpr detail::flag<1ull << 4> snap{};
 // `round_toward_zero` — the snap bit alone: truncate toward zero (IEEE 754
 // roundTowardZero). Last in dispatch, after every explicit mode.
-inline constexpr policy_flag round_toward_zero{snap};
-inline constexpr policy_flag round_nearest{(1ull << 5) | snap};
+inline constexpr detail::flag<snap>               round_toward_zero{};
+inline constexpr detail::flag<(1ull << 5) | snap> round_nearest{};
 // Rounding modes each pick a unique bit and OR in `snap`. Conceptually
 // exclusive; combining two is allowed but dispatch (storage.hpp) picks the
 // first match: floor → ceil → half_even → nearest → toward zero (rounding_of).
-inline constexpr policy_flag round_floor{(1ull << 6) | snap};
-inline constexpr policy_flag round_ceil{(1ull << 7) | snap};
-inline constexpr policy_flag round_half_even{(1ull << 8) | snap};
+inline constexpr detail::flag<(1ull << 6) | snap> round_floor{};
+inline constexpr detail::flag<(1ull << 7) | snap> round_ceil{};
+inline constexpr detail::flag<(1ull << 8) | snap> round_half_even{};
 
 // runtime checking — the default policy's name: every policy without
 // `unsafe` checks, and `unsafe` wins over it (see is_checked).
-inline constexpr policy_flag checked{1ull << 34}; // runtime range/notch/zero-divisor checks
+inline constexpr detail::flag<1ull << 34> checked{}; // runtime range/notch/zero-divisor checks
 
 // unary — mutually exclusive
-inline constexpr policy_flag clamp{1ull << 32}; // saturate to boundary
-inline constexpr policy_flag wrap{1ull << 33};  // modular arithmetic
+inline constexpr detail::flag<1ull << 32> clamp{}; // saturate to boundary
+inline constexpr detail::flag<1ull << 33> wrap{};  // modular arithmetic
 
 // `uninitialized` — default construction leaves the raw uninitialized, like a
 // built-in scalar (a trivial default ctor); reading it before a store is
 // undefined. Without it a default-constructed inside is 0, or Lower on a grid
 // without 0.
-inline constexpr policy_flag uninitialized{1ull << 37};
+inline constexpr detail::flag<1ull << 37> uninitialized{};
 
 // No flag picks the raw: storage follows the grid alone (grid.hpp
 // raw_for, docs/storage.md).
@@ -67,7 +90,7 @@ inline constexpr policy_flag unsafe_marker{1ull << 36};
 // and `end(t)` names its past-the-end value. Results never carry it.
 inline constexpr policy_flag cursor_marker{1ull << 50};
 } // namespace detail
-inline constexpr policy_flag unsafe{detail::unsafe_marker | snap};
+inline constexpr detail::flag<detail::unsafe_marker | snap> unsafe{};
 
 //---------------------------------------------------------------------------
 // Flag-set membership predicates. `has_flag(set, flag)` is true iff EVERY bit

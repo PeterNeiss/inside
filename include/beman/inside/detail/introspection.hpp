@@ -49,10 +49,12 @@ template <typename T>
 inline constexpr policy_flag flags_of_impl = none;
 template <grid G, policy_flag P>
 inline constexpr policy_flag flags_of_impl<inside<G, P>> = P;
+template <policy_flag V>
+inline constexpr policy_flag flags_of_impl<flag<V>> = V;
 } // namespace detail
 
-// flags_of<X> — the policy flags of an inside, or of a one-shot `policy<F, E>`
-// (policy.hpp); `none` for anything else, such as an action.
+// flags_of<X> — the policy flags of an inside, of a one-shot `policy<F, E>`
+// (policy.hpp) or of a named flag; `none` for anything else, such as an action.
 template <typename X>
 inline constexpr policy_flag flags_of = detail::flags_of_impl<std::remove_cvref_t<X>>;
 

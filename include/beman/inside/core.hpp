@@ -172,7 +172,7 @@ struct inside {
     template <numeric A, typename Pol>
         requires inside_assignable<inside, A, P | flags_of<Pol>>
     constexpr inside(A value, Pol&& pol) : Raw{detail::default_raw<inside>} {
-        store_value(value, pol);
+        store_value(value, detail::as_call_policy(pol));
     }
 
     // No error-code constructor: construction that can fail is `try_make(value)`,
@@ -203,9 +203,10 @@ struct inside {
     constexpr inside(const V& value) : Raw{detail::default_raw<inside>} {
         detail::assign_grid_number(*this, value, make_policy<P>());
     }
-    template <std::same_as<detail::grid_rational> V, detail::policy_like Pol>
+    template <std::same_as<detail::grid_rational> V, class Pol>
+        requires(detail::policy_like<Pol> || detail::flag_like<Pol>)
     constexpr inside(const V& value, Pol&& pol) : Raw{detail::default_raw<inside>} {
-        detail::assign_grid_number(*this, value, pol);
+        detail::assign_grid_number(*this, value, detail::as_call_policy(pol));
     }
     template <std::same_as<detail::grid_rational> V>
     constexpr inside& operator=(const V& value) {

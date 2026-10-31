@@ -196,11 +196,11 @@ TEST(BigGridTest, division) {
     EXPECT_TRUE(*t == 1.5);
     // Under a rounding policy the integer quotient rounds, as on 64-bit grids
     // (it was the exact 3.5).
-    const auto f = div(huge{7}, huge{2}, rounded_floor);
+    const auto f = div(huge{7}, huge{2}, round_floor);
     ASSERT_TRUE(f.has_value());
     EXPECT_TRUE(*f == 3);
     static_assert(grid_of<decltype(f)::value_type>.Notch == 1);
-    EXPECT_TRUE(div(huge{7}, inside<{2, 2}>{}, rounded_ceil) == 4);
+    EXPECT_TRUE(div(huge{7}, inside<{2, 2}>{}, round_ceil) == 4);
     using micro  = inside<{{0, 1}, 1e-30_g}>;
     const auto u = micro{0.5} / micro{0.25};
     ASSERT_TRUE(u.has_value());
@@ -217,11 +217,11 @@ TEST(BigGridTest, divmod_past_64_bits) {
     const auto [q, r] = divmod(a, seven{}); // a point divisor: no zero, a plain result
     EXPECT_TRUE(q * seven{} + r == a);
     EXPECT_TRUE(r == a % seven{});
-    EXPECT_TRUE(q == div(a, seven{}, rounded_toward_zero));
+    EXPECT_TRUE(q == div(a, seven{}, round_toward_zero));
     EXPECT_TRUE(r == 5); // (2^100 + 3) mod 7
     using signed_huge    = inside<{-g(pow2(100)), g(pow2(100))}>;
     const signed_huge n  = -signed_huge{huge::from_raw(raw_2_100)}; // −2^100
-    const auto        fl = divmod(n, digits{3}, rounded_floor);
+    const auto        fl = divmod(n, digits{3}, round_floor);
     ASSERT_TRUE(fl.has_value());
     EXPECT_TRUE(fl->Remainder == 2); // floored: −2^100 mod 3 = 2
     EXPECT_TRUE(fl->Quotient * three{} + fl->Remainder == n);
@@ -252,15 +252,15 @@ TEST(BigGridTest, grid_number_at_run_time) {
     EXPECT_TRUE(small{grid_rational{-3}} == -3); // a value within 64 bits
     // Out of range: checked throws, clamp saturates, try_make reports.
     EXPECT_THROW(small{two_100}, inside_error);
-    EXPECT_TRUE((small{two_100, clamped}) == 5);
-    EXPECT_TRUE((small{-far_out, clamped}) == -5);
+    EXPECT_TRUE((small{two_100, clamp}) == 5);
+    EXPECT_TRUE((small{-far_out, clamp}) == -5);
     EXPECT_EQ(huge::try_make(above).error(), errc::overflow);
     EXPECT_EQ(huge::try_make(far_out).error(), errc::overflow);
     EXPECT_EQ(huge::try_make(-two_100).error(), errc::overflow);
     // Off the lattice: rounds under a rounding policy, else rejected.
     EXPECT_FALSE(huge::try_make(half_past).has_value());
-    EXPECT_TRUE((huge{half_past, rounded_floor}) == huge{below});
-    EXPECT_TRUE((huge{half_past, rounded_ceil}) == huge{two_100});
+    EXPECT_TRUE((huge{half_past, round_floor}) == huge{below});
+    EXPECT_TRUE((huge{half_past, round_ceil}) == huge{two_100});
     EXPECT_EQ(huge::try_make(far_frac).error(), errc::overflow);
     // A fine big grid takes its own notch.
     constexpr grid_rational three_notches = grid_rational{big_int{3}, pow2(80)};

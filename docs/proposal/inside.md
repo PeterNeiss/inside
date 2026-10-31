@@ -188,8 +188,8 @@ the policy did.**
 using whole = inside<{0, 100}>;
 using step  = inside<{1, 10}>;                           // never zero
 
-auto down       = div(whole{7}, step{2}, rounded_floor); // 3: this call rounds down
-auto up         = div(whole{7}, step{2}, rounded_ceil);  // 4
+auto down       = div(whole{7}, step{2}, round_floor); // 3: this call rounds down
+auto up         = div(whole{7}, step{2}, round_ceil);  // 4
 auto [quo, rem] = divmod(whole{17}, step{5});            // 3 and 2
 
 whole x = 50;
@@ -386,8 +386,8 @@ A type's policy is the default for its stores. Two narrower scopes name
 another:
 
 - **One call.** The functions `add`, `sub`, `mul`, `div`, `mod` and `divmod`
-  compute what the operators compute, with trailing arguments: a policy object
-  (`div(a, b, rounded_floor)`, or `make_policy<F>()`), an `errc&` that receives
+  compute what the operators compute, with trailing arguments: a flag or a
+  policy (`div(a, b, round_floor)`, or `make_policy<F>(ec)`), an `errc&` that receives
   a failure instead of an exception, or actions. `divmod` returns
   `divmod_result{Quotient, Remainder}` from one division, consistent with the
   rounding: `q·b + r == a`.
@@ -468,11 +468,12 @@ namespace std {
     constexpr grid(interval, max_denominator);                  // continuous, bounded
   };
 
-  // policies
+  // policies: each flag a constant of its own type that converts to policy_flag,
+  // so it is a template argument, combines with |, and is a call's policy
   using policy_flag = @*unsigned integer type*@;
-  inline constexpr policy_flag none, checked, clamp, wrap, snap, round_toward_zero,
-                               round_nearest, round_floor, round_ceil,
-                               round_half_even, unsafe, uninitialized;
+  inline constexpr @*flag*@ none, checked, clamp, wrap, snap, round_toward_zero,
+                          round_nearest, round_floor, round_ceil,
+                          round_half_even, unsafe, uninitialized;
 
   // errors
   enum class errc { domain_error = 1, division_by_zero, overflow,
@@ -540,13 +541,10 @@ namespace std {
   template<class T, policy_flag Round = none, class B> constexpr expected<T, errc> to(const B&);
   template<class T, policy_flag Round = none, class B> constexpr T as(const B&);
 
-  // a policy for one call
-  template<policy_flag F = none, class E = @*unspecified*@> struct policy;
-  template<policy_flag F = none> constexpr policy<F> make_policy();
-  template<policy_flag F = none> constexpr policy<F, @*unspecified*@> make_policy(errc& ec);
-  inline constexpr policy<@*see below*@> rounded_toward_zero, rounded_nearest, rounded_floor,
-                                       rounded_ceil, rounded_half_even, clamped, wrapped;
-  template<class L, class R, class... Args>                   // Args: none, a policy or an errc&;
+  // a policy for one call: a flag, or make_policy (with an errc&)
+  template<policy_flag F = none> constexpr @*call-policy*@ make_policy();
+  template<policy_flag F = none> constexpr @*call-policy*@ make_policy(errc& ec);
+  template<class L, class R, class... Args>                   // Args: none, a flag, a policy or an errc&;
     constexpr auto add(const L&, const R&, Args&&...);        // also sub, mul, div, mod
   template<class Q, class R> struct divmod_result { Q Quotient; R Remainder; };
   template<class L, class R, class... Args>

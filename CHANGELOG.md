@@ -19,6 +19,8 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   A hook parameter typed `imax` takes `auto` and reads it with `as<imax>(c)`.
 - `ignore_range` and `ignore_zero` are gone: write `unsafe`, the one opt-out
   of the runtime checks, or give a divisor a grid without 0.
+- `rounded_floor`, `rounded_nearest` & co., `clamped` and `wrapped` are gone:
+  pass the flag itself, `div(a, b, round_floor)`, `B{v, clamp}`.
 - The CMake option `BEMAN_INSIDE_STRICT_SFINAE` is gone: its behaviour, honest
   traits, is now the only one. An impossible store's message names the
   failing clause; `explain_assignable<To, From>` prints the grids' numbers.
@@ -52,9 +54,16 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 ### Added
 
 - `uninitialized`: the policy flag that keeps a trivial default constructor.
+- A flag is also a call's policy: each flag is a constant of its own type
+  that converts to `policy_flag`, so `round_floor` is a template argument
+  (`inside<G, round_floor>`), combines with `|`, and is the last argument of
+  `add` … `divmod` or a constructor's second argument.
 
 ### Removed
 
+- The named policies `rounded_toward_zero`, `rounded_nearest`, `rounded_floor`,
+  `rounded_ceil`, `rounded_half_even`, `clamped` and `wrapped`: they repeated
+  the flags under a second name.
 - The option `BEMAN_INSIDE_STRICT_SFINAE` and its CI cells.
 - The flags `ignore_range` and `ignore_zero`: each turned a runtime check off
   without saying `unsafe`. They compiled to the same code as `unsafe`.

@@ -231,20 +231,20 @@ TEST(BugHuntRound7, on_clamp_hears_of_infinities) {
 TEST(BugHuntRound7, integer_division_past_int64_rounds) {
     using u64 = inside<{0, UINT64_MAX}, snap>;
     EXPECT_EQ(u64{7u} / u64{2u}, 3);
-    EXPECT_EQ(div(uint64{7u}, uint64{2u}, rounded_floor), 3);
-    EXPECT_EQ(div(uint64{UINT64_MAX}, inside<{-3, -1}>{-2}, rounded_ceil), rational(-I64_MAX));
+    EXPECT_EQ(div(uint64{7u}, uint64{2u}, round_floor), 3);
+    EXPECT_EQ(div(uint64{UINT64_MAX}, inside<{-3, -1}>{-2}, round_ceil), rational(-I64_MAX));
     using i64     = inside<{I64_MIN, I64_MAX}, snap>;
     const auto q1 = i64{-7} / i64{-1};
     using small   = inside<{1, 10}, snap>;
     EXPECT_EQ(q1.value() / small{2}, 3);
     const auto d = uint64{0} - uint64{UINT64_MAX};
-    EXPECT_EQ(div(d, inside<{1, 1000}>{7}, rounded_floor), rational(-2635249153387078803));
+    EXPECT_EQ(div(d, inside<{1, 1000}>{7}, round_floor), rational(-2635249153387078803));
     using around_zero = inside<{-2, 3}, snap>;
     EXPECT_EQ((u64{5u} / around_zero{0}).error(), errc::division_by_zero);
     // (a / b)·b + a % b == a, as for the native widths.
     const uint64                  a{18446744073709551557u};
     const inside<{1, 1000}, snap> b{1000};
-    const auto                    quot = div(a, b, rounded_floor);
+    const auto                    quot = div(a, b, round_floor);
     EXPECT_EQ(rational(quot) * 1000 + rational(a % b), rational(a));
 }
 

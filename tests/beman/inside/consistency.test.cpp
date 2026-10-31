@@ -273,6 +273,26 @@ TEST(ConsistencyTest, constraints_are_honest) {
     static_assert(!adds_with<I, decltype(on_error([](auto&, auto, auto) {}))>);
 }
 
+// A flag is a template argument, combines with |, and is a call's policy:
+// div(a, b, round_floor), B{v, round_floor}. inside<G, flag> is the same type
+// as inside<G, bits>.
+TEST(ConsistencyTest, flags_are_call_policies) {
+    static_assert(std::is_same_v<inside<{0, 10}, clamp | round_floor>,
+                                 inside<{0, 10}, (1ull << 32) | (1ull << 6) | (1ull << 4)>>);
+    static_assert(policy_flag{round_toward_zero} == policy_flag{snap});
+    using W = inside<{0, 10}>;
+    using D = inside<{1, 4}>;
+    static_assert(div(W{7}, D{2}, round_floor) == 3_ins && div(W{7}, D{2}, round_ceil) == 4_ins);
+    static_assert(div(W{7}, D{2}, round_floor) == div(W{7}, D{2}, make_policy<round_floor>()));
+    static_assert(divmod(W{7}, D{2}, round_floor).Remainder == 1_ins);
+    using halves = inside<{{0, 10}, per<2>}>;
+    static_assert(W{halves{3.5}, round_floor} == 3_ins && W{halves{3.5}, round_ceil} == 4_ins);
+    static_assert(inside<{0, 10}, clamp>{20, round_floor} == 10_ins);
+    errc ec{};
+    EXPECT_EQ(div(W{7}, inside<{0, 4}>{0}, make_policy<round_floor>(ec)).error(), errc::division_by_zero);
+    EXPECT_EQ(ec, errc::division_by_zero);
+}
+
 // Assignment rounds, then range-checks: 8.25 into [0, 8] rounds to 8; 8.5
 // rounds to 9 and is out of range.
 TEST(ConsistencyTest, store_rounds_before_the_range_check) {

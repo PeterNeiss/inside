@@ -48,13 +48,13 @@ TEST(BugHunt20261012, full_int64_into_fine_grid) {
 TEST(BugHunt20261012, integer_division_by_int64_min_divisor) {
     using small = inside<{-7, 5}>;
     static_assert([] {
-        auto q  = div(small{-7}, full{2}, rounded_toward_zero);
+        auto q  = div(small{-7}, full{2}, round_toward_zero);
         auto qr = divmod(small{-7}, full{i64_min});
         return *q == -3_ins && qr->Quotient == 0_ins && qr->Remainder == -7_ins &&
                grid_of<decltype(*q)> == grid{-7, 7};
     }());
     // The range is the rounded corners, as the exact quotient grid gave it.
-    static_assert(grid_of<decltype(div(small{}, std::declval<inside<{-3, 4}>>(), rounded_ceil))::value_type> ==
+    static_assert(grid_of<decltype(div(small{}, std::declval<inside<{-3, 4}>>(), round_ceil))::value_type> ==
                   grid{-7, 7});
 }
 
@@ -62,11 +62,11 @@ TEST(BugHunt20261012, integer_division_by_int64_min_divisor) {
 // non-negative quotient wrapped through from_value's imax (10 / 2 gave
 // 3.4e38), and INT64_MIN / −1 came back as INT64_MIN.
 TEST(BugHunt20261012, integer_quotient_past_int64) {
-    static_assert(*div(full{10}, full{2}, rounded_toward_zero) == 5_ins);
-    EXPECT_EQ(to_string(*div(full{i64_max}, full{1}, rounded_toward_zero)), "9223372036854775807");
-    EXPECT_EQ(to_string(*div(full{i64_min}, full{-1}, rounded_floor)), "9223372036854775808");
-    EXPECT_EQ(to_string(*div(full{i64_min}, inside<{-1, 1}>{-1}, rounded_toward_zero)), "9223372036854775808");
-    const auto qr = divmod(full{i64_min}, full{-1}, rounded_ceil);
+    static_assert(*div(full{10}, full{2}, round_toward_zero) == 5_ins);
+    EXPECT_EQ(to_string(*div(full{i64_max}, full{1}, round_toward_zero)), "9223372036854775807");
+    EXPECT_EQ(to_string(*div(full{i64_min}, full{-1}, round_floor)), "9223372036854775808");
+    EXPECT_EQ(to_string(*div(full{i64_min}, inside<{-1, 1}>{-1}, round_toward_zero)), "9223372036854775808");
+    const auto qr = divmod(full{i64_min}, full{-1}, round_ceil);
     EXPECT_EQ(to_string(qr->Quotient), "9223372036854775808");
     EXPECT_EQ(qr->Remainder, 0_ins);
 }
@@ -74,7 +74,7 @@ TEST(BugHunt20261012, integer_quotient_past_int64) {
 // The Q-format path's 32-bit work type wrapped on its minimum over −Notch.
 TEST(BugHunt20261012, qformat_division_min_by_minus_notch) {
     using q15_8  = inside<{{-32768, 32767}, per<256>}>;
-    const auto r = div(q15_8{-32768}, q15_8{rational{-1, 256}}, rounded_toward_zero);
+    const auto r = div(q15_8{-32768}, q15_8{rational{-1, 256}}, round_toward_zero);
     EXPECT_EQ(to_string(*r), "8388608");
 }
 
