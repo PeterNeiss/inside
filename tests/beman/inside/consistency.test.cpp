@@ -297,6 +297,19 @@ TEST(ConsistencyTest, flags_are_call_policies) {
     EXPECT_EQ(ec, errc::division_by_zero);
 }
 
+// A result keeps the policy its operands share (a default-policy point is
+// neutral; mixed policies give the default), so a rounding mode survives an
+// intermediate step.
+TEST(ConsistencyTest, results_keep_the_shared_policy) {
+    constexpr inside<{0, 10}, round_floor> a{7};
+    static_assert(a / 2_ins == 3_ins && (a + 0_ins) / 2_ins == 3_ins && (a * 1_ins) / 2_ins == 3_ins);
+    static_assert(flags_of<decltype(a + a)> == round_floor && flags_of<decltype(a - a)> == round_floor);
+    static_assert(flags_of<decltype(a + inside<{0, 10}>{1})> == 0); // mixed: the default
+    static_assert(flags_of<decltype(a + inside<{0, 10}, clamp>{1})> == 0);
+    static_assert(flags_of<decltype(cursor<inside<{0, 10}, clamp>>{} + 1_ins)> == clamp); // no cursor marker
+    static_assert(flags_of<std::common_type_t<decltype(a), inside<{0, 20}, round_floor>>> == round_floor);
+}
+
 // Assignment rounds, then range-checks: 8.25 into [0, 8] rounds to 8; 8.5
 // rounds to 9 and is out of range.
 TEST(ConsistencyTest, store_rounds_before_the_range_check) {

@@ -280,5 +280,10 @@ TEST(WithMethodsTest, with_snap_proxy_converts_to_a_value_rhs_return_position) {
                                  policy_buffer<big, call_policy<flags_of<big> | snap>>>);
     static_assert(std::is_convertible_v<decltype(std::declval<big&>().with_snap()), small>);
     static_assert(std::is_convertible_v<decltype(std::declval<big>().with_snap()), small>);
-    static_assert(!std::is_convertible_v<decltype(std::declval<big&>().with_snap()), inside<{{1000, 2000}, 1}>>);
+    // big keeps small's clamp (a result keeps its operands' shared policy), so it
+    // clamps into any target; a checked product stays constrained.
+    static_assert(std::is_convertible_v<decltype(std::declval<big&>().with_snap()), inside<{{1000, 2000}, 1}>>);
+    using checked_big = decltype(inside<{0, 10}>{} * inside<{0, 10}>{});
+    static_assert(
+        !std::is_convertible_v<decltype(std::declval<checked_big&>().with_snap()), inside<{{1000, 2000}, 1}>>);
 }

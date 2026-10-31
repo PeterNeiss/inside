@@ -58,6 +58,24 @@ inline constexpr policy_flag flags_of_impl<flag<V>> = V;
 template <typename X>
 inline constexpr policy_flag flags_of = detail::flags_of_impl<std::remove_cvref_t<X>>;
 
+namespace detail {
+// The policy of an arithmetic result (and of the common type): the one both
+// operands share, where a default-policy point (just<…>, 0_ins) is neutral,
+// so (a + 0_ins) / 2_ins rounds as a / 2_ins does. Different policies give
+// the default. A cursor's marker never carries over.
+template <insidable L, insidable R>
+inline constexpr policy_flag result_flags = [] {
+    constexpr auto neutral = []<class B>(std::type_identity<B>) {
+        return grid_of<B>.Interval.Lower == grid_of<B>.Interval.Upper && flags_of<B> == 0;
+    };
+    constexpr policy_flag f = neutral(std::type_identity<L>{})   ? flags_of<R>
+                              : neutral(std::type_identity<R>{}) ? flags_of<L>
+                              : flags_of<L> == flags_of<R>       ? flags_of<L>
+                                                                 : policy_flag{0};
+    return f & ~cursor_marker;
+}();
+} // namespace detail
+
 template <typename T>
 inline constexpr interval interval_of = {0, 0};
 

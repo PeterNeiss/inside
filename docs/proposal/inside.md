@@ -278,6 +278,10 @@ the interval. A continuous result's denominator bound follows from the
 operands': `D_a·D_b` for `+`, `-` and `*`, where `D` of a lattice is its
 notch's denominator. So no operation produces a value outside its result type,
 and these operators need no overflow check and always return a plain `inside`.
+The result keeps the policy its operands share, a point of the default policy
+counting as neutral; different policies give the default. A rounding mode,
+which `/` and `%` read from their operands, therefore survives an intermediate
+step.
 
 A chain of exact operations on fractions multiplies the bounds. The reference
 implementation gives a result whose fractions would need more than 1024 bits

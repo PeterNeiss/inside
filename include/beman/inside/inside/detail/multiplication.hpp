@@ -20,8 +20,7 @@ namespace beman::inside::detail {
 template <insidable L, insidable R = L>
 struct multiplication {
     static constexpr grid result_grid = grid_of<L> * grid_of<R>;
-    // A result is checked, whatever its operands' policies.
-    using result = inside<result_grid>;
+    using result                      = inside<result_grid, result_flags<L, R>>; // the operands' shared policy
 
     // Total, as a sum: the policy has nothing to decide.
     template <policy_flag F = none, typename E = empty_ref>

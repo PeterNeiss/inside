@@ -84,7 +84,7 @@ more inputs than exhaustion can compute.
 
 | function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
 |:--|:--|:--|--:|--:|--:|:--|:--|
-| `exp` | `{[-4, 4], 1/1024} checked` | `{[0, 100], 1/16384} round_nearest` | 8193 | 0 | 0 | `8be94bf2017946d52914e3b2cf11dc8e8802fad740cb1fa0211b2c8cb13cd0a8` | certified |
+| `exp` | `{[-4, 4], 1/1024} round_nearest` | `{[0, 100], 1/16384} round_nearest` | 8193 | 0 | 0 | `8be94bf2017946d52914e3b2cf11dc8e8802fad740cb1fa0211b2c8cb13cd0a8` | certified |
 | `exp2` | `{[0, 4], 1/2} round_nearest` | `{[0, 16], 1/16384} round_nearest` | 9 | 0 | 0 | `02c1498e58196a42851514085cb2763c43082b6e4c6646ce41fe30a7993a8c63` | certified |
 | `exp2` | `{[0, 4], 1/1024} round_nearest` | `{[0, 16], 1/16384} round_nearest` | 4097 | 0 | 0 | `5433cd272cdfb76e8afc5321f3d2c79f49f5bd7facbe37c27fb0a228728c2fe9` | certified |
 | `tanh` | `{[-4, 4], 1/2048} round_nearest` | `{[-2047/2048, 2047/2048], 1/2048} round_nearest` | 16385 | 0 | 0 | `bf8bcb44db70b7fa12ce3703eae15034fbf86962549086756ca910afcf6cd3e6` | certified |
@@ -105,13 +105,13 @@ more inputs than exhaustion can compute.
 | function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
 |:--|:--|:--|--:|--:|--:|:--|:--|
 | `log10` | `{[1/256, 4], 1/65536} round_nearest` | `{[-5/2, 1], 1/40} round_nearest` | 261889 | 0 | 0 | `cab0a8a7196c52b2fe919a6a61710bf86fa341bcaadb9403953dde31d9168621` | certified |
-| `pow_base<10>` | `{[-6/5, 3/5], 1/40} checked` | `{[1/256, 4], 1/65536} round_nearest` | 73 | 0 | 0 | `95e86dcdd0125a5279739d77f143b4940caaedd20ab3cc7f1c2dae5572d6f96d` | certified |
+| `pow_base<10>` | `{[-6/5, 3/5], 1/40} round_nearest` | `{[1/256, 4], 1/65536} round_nearest` | 73 | 0 | 0 | `95e86dcdd0125a5279739d77f143b4940caaedd20ab3cc7f1c2dae5572d6f96d` | certified |
 
 ### audio_mixer.cpp
 
 | function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
 |:--|:--|:--|--:|--:|--:|:--|:--|
-| `pow_base<10>` | `{[-6/5, 3/5], 1/40} checked` | `{[0, 4], 1/65536} round_nearest` | 73 | 0 | 0 | `95e86dcdd0125a5279739d77f143b4940caaedd20ab3cc7f1c2dae5572d6f96d` | certified |
+| `pow_base<10>` | `{[-6/5, 3/5], 1/40} round_nearest` | `{[0, 4], 1/65536} round_nearest` | 73 | 0 | 0 | `95e86dcdd0125a5279739d77f143b4940caaedd20ab3cc7f1c2dae5572d6f96d` | certified |
 
 ### moon_rocket.cpp
 

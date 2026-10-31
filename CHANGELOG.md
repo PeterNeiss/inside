@@ -68,6 +68,11 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   the same way.
 - The error handler is atomic, with default visibility: one thread may install
   a handler while others raise, and shared libraries share it.
+- A result of an operator keeps the policy its operands share (a point with
+  the default policy, such as `2_ins`, counts as neutral; different policies
+  give the default). Before, `+ - *` returned the default policy, so with
+  `inside<{0, 10}, round_floor> a{7}`, `a / 2_ins` was 3 but
+  `(a + 0_ins) / 2_ins` was 7/2; both are 3 now.
 - A store, operator or free function that cannot compile is a deleted
   overload with the reason, everywhere: an impossible store (a disjoint
   interval, an off-notch source), an inside with a raw scalar (`x + 1`), and

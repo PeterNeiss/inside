@@ -20,6 +20,12 @@ auto prod = a * b;   // inside<{0, 65025}>: 20000
 auto quot = a / b;   // std::expected (b's grid holds 0): the exact 0.5
 ```
 
+A result keeps the policy its operands share; a point with the default policy
+(`just<2>`, `2_ins`) counts as neutral, and operands with different policies
+give the default. So a rounding mode survives an intermediate step: with
+`inside<{0, 10}, round_floor> a{7}`, both `a / 2_ins` and `(a + 0_ins) / 2_ins`
+are 3.
+
 On this page: [scalars](#scalars-need-a-grid) · [division](#division) ·
 [rounding](#rounding) · [rounding straight into a type](#rounding-straight-into-a-type-mul_into-and-div_into) ·
 [modulo and divmod](#modulo-and-divmod) · [folds and sums](#folds-and-sums) ·

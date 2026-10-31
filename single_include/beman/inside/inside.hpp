@@ -4758,6 +4758,24 @@ inline constexpr policy_flag flags_of_impl<flag<V>> = V;
 template <typename X>
 inline constexpr policy_flag flags_of = detail::flags_of_impl<std::remove_cvref_t<X>>;
 
+namespace detail {
+// The policy of an arithmetic result (and of the common type): the one both
+// operands share, where a default-policy point (just<…>, 0_ins) is neutral,
+// so (a + 0_ins) / 2_ins rounds as a / 2_ins does. Different policies give
+// the default. A cursor's marker never carries over.
+template <insidable L, insidable R>
+inline constexpr policy_flag result_flags = [] {
+    constexpr auto neutral = []<class B>(std::type_identity<B>) {
+        return grid_of<B>.Interval.Lower == grid_of<B>.Interval.Upper && flags_of<B> == 0;
+    };
+    constexpr policy_flag f = neutral(std::type_identity<L>{})   ? flags_of<R>
+                              : neutral(std::type_identity<R>{}) ? flags_of<L>
+                              : flags_of<L> == flags_of<R>       ? flags_of<L>
+                                                                 : policy_flag{0};
+    return f & ~cursor_marker;
+}();
+} // namespace detail
+
 template <typename T>
 inline constexpr interval interval_of = {0, 0};
 
@@ -8226,8 +8244,8 @@ namespace beman::inside::detail {
 template <insidable L, insidable R = L>
 struct addition {
     static constexpr grid result_grid = grid_of<L> + grid_of<R>;
-    // A result is checked, whatever its operands' policies.
-    using result = inside<result_grid>;
+    // The operands' shared policy (result_flags).
+    using result = inside<result_grid, result_flags<L, R>>;
 
     // Total: the policy has nothing to decide.
     template <policy_flag F = none, typename E = empty_ref>
@@ -8290,8 +8308,7 @@ namespace beman::inside::detail {
 template <insidable L, insidable R = L>
 struct multiplication {
     static constexpr grid result_grid = grid_of<L> * grid_of<R>;
-    // A result is checked, whatever its operands' policies.
-    using result = inside<result_grid>;
+    using result                      = inside<result_grid, result_flags<L, R>>; // the operands' shared policy
 
     // Total, as a sum: the policy has nothing to decide.
     template <policy_flag F = none, typename E = empty_ref>
@@ -8596,8 +8613,7 @@ struct division {
             return *(grid_of<L> / grid_of<R>);
     }();
 
-    // A result is checked, whatever its operands' policies.
-    using result = inside<result_grid>;
+    using result = inside<result_grid, result_flags<L, R>>; // the operands' shared policy
 
     // The exact quotient of two anchored integer raws as one 64-bit fraction:
     // |J_L|·p_L·q_R and |J_R|·p_R·q_L bounded by 2^62 for every value.
@@ -8760,7 +8776,7 @@ struct modulo {
     static constexpr grid result_grid =
         (rmode == round_mode::trunc && lower_of<L> >= 0) ? grid{grid_rational{0}, max_rem} : grid{-max_rem, max_rem};
 
-    using result = inside<result_grid>;
+    using result = inside<result_grid, result_flags<L, R>>; // the operands' shared policy
 
     // Modulo never overflows (the remainder fits result_grid), so the only
     // failure is a zero divisor — excluded by the grid → plain `result`.
@@ -10681,17 +10697,14 @@ template <insidable Target, std::ranges::input_range Rng>
 
 //---------------------------------------------------------------------------
 // common_inside — the "hull" type able to hold every value of L and R exactly:
-// interval hull + notch gcd (grid `hull`), under the policy both share (a
-// cursor's marker aside), else checked like arithmetic results. Backs the
-// std::common_type specialization and mixed-grid min/max below.
+// interval hull + notch gcd (grid `hull`), under the policy both share, as
+// for arithmetic results (result_flags). Backs the std::common_type
+// specialization and mixed-grid min/max below.
 //---------------------------------------------------------------------------
 namespace detail {
 template <insidable Lhs, insidable Rhs>
-inline constexpr policy_flag common_flags = flags_of<Lhs> == flags_of<Rhs> ? flags_of<Lhs> & ~cursor_marker : checked;
-
-template <insidable Lhs, insidable Rhs>
 struct common_inside {
-    using type = inside<hull(grid_of<Lhs>, grid_of<Rhs>), common_flags<Lhs, Rhs>>;
+    using type = inside<hull(grid_of<Lhs>, grid_of<Rhs>), result_flags<Lhs, Rhs>>;
 };
 
 // Same type stays itself (policy included) — mirrors std::common_type<T, T>.

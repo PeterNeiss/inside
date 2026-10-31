@@ -24,8 +24,8 @@ namespace beman::inside::detail {
 template <insidable L, insidable R = L>
 struct addition {
     static constexpr grid result_grid = grid_of<L> + grid_of<R>;
-    // A result is checked, whatever its operands' policies.
-    using result = inside<result_grid>;
+    // The operands' shared policy (result_flags).
+    using result = inside<result_grid, result_flags<L, R>>;
 
     // Total: the policy has nothing to decide.
     template <policy_flag F = none, typename E = empty_ref>
