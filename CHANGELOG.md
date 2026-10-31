@@ -19,6 +19,9 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   A hook parameter typed `imax` takes `auto` and reads it with `as<imax>(c)`.
 - `ignore_range` and `ignore_zero` are gone: write `unsafe`, the one opt-out
   of the runtime checks, or give a divisor a grid without 0.
+- The CMake option `BEMAN_INSIDE_STRICT_SFINAE` is gone: its behaviour, honest
+  traits, is now the only one. An impossible store's message names the
+  failing clause; `explain_assignable<To, From>` prints the grids' numbers.
 
 ### Changed
 
@@ -35,6 +38,12 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   the same way.
 - The error handler is atomic, with default visibility: one thread may install
   a handler while others raise, and shared libraries share it.
+- A store, operator or free function that cannot compile is a deleted
+  overload with the reason, everywhere: an impossible store (a disjoint
+  interval, an off-notch source), an inside with a raw scalar (`x + 1`), and
+  a hook given to `add` … `divmod`. `std::is_constructible`,
+  `std::convertible_to` and `requires` probes now answer `false` for them; a
+  `static_assert` body made them answer `true` and fail on use.
 - `unsafe` is the one opt-out of the runtime checks, and it wins over
   `checked` wherever it appears (`unsafe` is now `unsafe_marker | snap`).
   `unsafe | checked` was documented to turn the checks back on, but the range
@@ -46,6 +55,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Removed
 
+- The option `BEMAN_INSIDE_STRICT_SFINAE` and its CI cells.
 - The flags `ignore_range` and `ignore_zero`: each turned a runtime check off
   without saying `unsafe`. They compiled to the same code as `unsafe`.
 - The implicit `operator imax()`. It narrowed silently into smaller built-ins:

@@ -103,21 +103,23 @@ auto square(inside<G, P> x) { return x * x; }
 
 ## Named reasons for a store
 
-An impossible store or conversion gives a **named** message instead of the
-compiler's bare "could not convert":
+An impossible store or conversion is a deleted overload whose message names
+the failing clause, instead of the compiler's bare "could not convert":
 
 ```text
-error: static assertion failed: inside_assignable: rhs interval lies entirely outside
-       lhs interval and the policy (not wrap/clamp) cannot bring it into range …
+error: use of deleted function '…': inside: the source's interval lies entirely
+       outside this grid's, and the policy has no clamp or wrap - widen the grid, …
 ```
 
-The two clauses you will see are *interval lies entirely outside* (the value
-cannot fit the range) and *incompatible notches* (the value is off the grid's
-step: allow rounding with `policy<snap>()` or `with_snap()`). You can ask for
-the reasons anywhere:
+The two clauses are *interval lies entirely outside* (the value cannot fit
+the range) and *incompatible notches* (the value is off the grid's step:
+allow rounding with `policy<snap>()` or `with_snap()`). Because the overload
+is deleted, `std::is_constructible`, `std::convertible_to` and `requires`
+probes answer `false`, so insides work in `std::variant`, `std::optional` and
+other code that probes convertibility. For the two grids' numbers, ask:
 
 ```cpp
-static_assert(beman::inside::explain_assignable<Dst, decltype(src)>);   // prints the reasons
+static_assert(beman::inside::explain_assignable<Dst, decltype(src)>);   // prints the intervals and notches
 ```
 
 ## Named reasons for a unit mismatch
@@ -142,8 +144,9 @@ cases pin each message.
 ## Probing operations: honest `requires`
 
 Every operator, `add`, `sub`, `mul`, `div`, `mod`, `divmod`, the compound
-assignments and `try_make` are constrained on whether the operation has a
-result, and so are the quantity operations. A requires-expression or
+assignments, the stores and `try_make` are constrained on whether the
+operation has a result, and so are the quantity operations. An inside with a
+raw scalar (`x + 1`) and a free function given a hook are deleted too. A requires-expression or
 `if constexpr` probe answers truthfully:
 
 ```cpp
@@ -158,13 +161,3 @@ static_assert(!can_add<decltype(just<1> * si::metre), decltype(just<1> * si::sec
 
 An impossible operator is a deleted overload whose message names the reason
 (`use of deleted function …: division: no result type - …`).
-
-## `BEMAN_INSIDE_STRICT_SFINAE`: turning the hints off
-
-The named store messages come from a diagnostic overload for incompatible
-types. That overload makes `std::is_constructible` and `std::convertible_to`
-report `true` for them: the error appears on *use*, not in the trait. If you
-put insides in `std::variant`, `std::optional` or other code that *probes*
-convertibility, configure with `-DBEMAN_INSIDE_STRICT_SFINAE=ON`. That drops
-the diagnostic overloads, so the traits are honest, at the cost of the bare
-"could not convert" message. `explain_assignable` still works.

@@ -5505,9 +5505,9 @@ template <typename L, typename R, policy_flag P = checked>
 concept inside_assignable = numeric<R> && detail::assign_intervals_ok<L, R, P> && detail::assign_notch_ok<L, R, P>;
 
 // Diagnostic helper: instantiating `inside_assignable_why<L,R,P>` fires a named
-// static_assert per failed clause, so a developer can see which tripped. Backs
-// both the default-build diagnostic fallbacks in `inside` (core.hpp, gated by
-// `BEMAN_INSIDE_STRICT_SFINAE`) and the public `explain_assignable` probe below.
+// static_assert per failed clause, with the two grids' intervals and notches.
+// Backs the public `explain_assignable` probe below; inside's deleted stores
+// (core.hpp) name only the clause, as a deletion's reason is a fixed string.
 template <typename L, typename R, policy_flag P = checked>
 struct inside_assignable_why {
     // Collapse each clause to a plain bool *before* the static_assert. Asserting on
@@ -5534,8 +5534,7 @@ struct inside_assignable_why {
 };
 
 // Public manual probe: `static_assert(beman::inside::explain_assignable<DstInside, decltype(src)>);`
-// emits the named per-clause reasons in any build — including a strict
-// (`BEMAN_INSIDE_STRICT_SFINAE`) build where the automatic in-`inside` fallbacks are absent.
+// emits the named per-clause reasons with the grids' numbers.
 template <typename Dst, typename Src, policy_flag P = flags_of<Dst>>
 inline constexpr bool explain_assignable = inside_assignable_why<Dst, std::remove_cvref_t<Src>, P>::value;
 } // namespace beman::inside
@@ -9161,49 +9160,41 @@ struct inside {
         return assign_op_result(other);
     }
 
-    // ---- Diagnostic fallbacks (default on; -DBEMAN_INSIDE_STRICT_SFINAE removes them) ----
-    // When a source is numeric but NOT assignable to this inside, every constrained
-    // sink above drops out of overload resolution and the compiler emits a bare
-    // "could not convert" — losing the reason. These complementary overloads (enabled
-    // exactly when `inside_assignable` is false) catch that case and turn it into the
-    // named per-clause notes from `inside_assignable_why` (interval-excludes /
-    // incompatible-notch). The trade: they make `inside` *appear* is_constructible /
-    // assignable from incompatible types (the static_assert is in the body, not the
-    // immediate context, so trait probes return true then hard-error only on real
-    // use). Define BEMAN_INSIDE_STRICT_SFINAE to drop them and restore SFINAE-pure traits for
-    // metaprogramming that probes convertibility (variant/expected/`if constexpr`).
-#ifndef BEMAN_INSIDE_STRICT_SFINAE
+    // A store that can never succeed is deleted, with the clause that fails:
+    // a trait or `requires` probe sees it as ill-formed, and the error names
+    // the fix. explain_assignable<To, From> prints the two grids.
+#define BEMAN_INSIDE_WHY_disjoint                                                                   \
+    "inside: the source's interval lies entirely outside this grid's, and the policy has no clamp " \
+    "or wrap - widen the grid, or store with clamp or wrap (explain_assignable<To, From> prints both)"
+#define BEMAN_INSIDE_WHY_notch                                                                    \
+    "inside: incompatible notches - the source's values miss this grid's notch; use with_snap() " \
+    "or a rounding policy (explain_assignable<To, From> prints both notches)"
     template <numeric A>
-        requires(!inside_assignable<inside, A, P>)
-    constexpr inside(A) {
-        static_assert(inside_assignable_why<inside, A, P>::value,
-                      "inside: cannot construct this inside from the value — see the per-clause notes above");
-    }
-
+        requires(!detail::assign_intervals_ok<inside, A, P>)
+    inside(A) = delete (BEMAN_INSIDE_WHY_disjoint);
     template <numeric A>
-        requires(!inside_assignable<inside, A, P>)
-    constexpr inside(const std::expected<A, errc>&) {
-        static_assert(
-            inside_assignable_why<inside, A, P>::value,
-            "inside: cannot construct this inside from the expected's value — see the per-clause notes above");
-    }
-
+        requires(detail::assign_intervals_ok<inside, A, P> && !detail::assign_notch_ok<inside, A, P>)
+    inside(A) = delete (BEMAN_INSIDE_WHY_notch);
+    template <numeric A>
+        requires(!detail::assign_intervals_ok<inside, A, P>)
+    inside(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_disjoint);
+    template <numeric A>
+        requires(detail::assign_intervals_ok<inside, A, P> && !detail::assign_notch_ok<inside, A, P>)
+    inside(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_notch);
     template <numeric B>
-        requires(!inside_assignable<inside, B, P>)
-    constexpr inside& operator=(const B&) {
-        static_assert(inside_assignable_why<inside, B, P>::value,
-                      "inside: cannot assign this value to this inside — see the per-clause notes above");
-        return *this;
-    }
-
+        requires(!detail::assign_intervals_ok<inside, B, P>)
+    inside& operator=(const B&) = delete (BEMAN_INSIDE_WHY_disjoint);
     template <numeric B>
-        requires(!inside_assignable<inside, B, P>)
-    constexpr inside& operator=(const std::expected<B, errc>&) {
-        static_assert(inside_assignable_why<inside, B, P>::value,
-                      "inside: cannot assign this expected's value to this inside — see the per-clause notes above");
-        return *this;
-    }
-#endif
+        requires(detail::assign_intervals_ok<inside, B, P> && !detail::assign_notch_ok<inside, B, P>)
+    inside& operator=(const B&) = delete (BEMAN_INSIDE_WHY_notch);
+    template <numeric B>
+        requires(!detail::assign_intervals_ok<inside, B, P>)
+    inside& operator=(const std::expected<B, errc>&) = delete (BEMAN_INSIDE_WHY_disjoint);
+    template <numeric B>
+        requires(detail::assign_intervals_ok<inside, B, P> && !detail::assign_notch_ok<inside, B, P>)
+    inside& operator=(const std::expected<B, errc>&) = delete (BEMAN_INSIDE_WHY_notch);
+#undef BEMAN_INSIDE_WHY_disjoint
+#undef BEMAN_INSIDE_WHY_notch
 
     // Trusted construction from a storage-layout raw — no validation; the caller
     // asserts `r` is a valid slot. Entry point for tests, fast paths, and same-grid
@@ -10259,16 +10250,11 @@ constexpr auto arith(Op op, const L& l, const R& r, errc& ec) {
 }
 
 // A hook would be silently ignored (arithmetic cannot fail but for a zero
-// divisor, which stays in the result): rejected with a message.
+// divisor, which stays in the result): rejected with a message (the deleted
+// overload in BEMAN_INSIDE_ARITH_FN).
 template <class A>
 inline constexpr bool is_action_tag_v =
     is_clamp_action<A>::value || is_wrap_action<A>::value || is_error_action<A>::value;
-
-template <class Op, class L, class R, class... Args>
-    requires(is_action_tag_v<std::remove_cvref_t<Args>> || ...)
-constexpr void arith(Op, const L&, const R&, Args&&...) {
-    static_assert(false, BEMAN_INSIDE_WHY_arith_action);
-}
 
 struct add_op {
     template <class L, class R, class P>
@@ -10362,7 +10348,11 @@ inline constexpr policy_flag call_flags = [] {
     }                                                                               \
     template <insidable L, insidable R, class... Args>                              \
         requires(!detail::name##_defined<L, R, detail::call_flags<Args...>>)        \
-    auto name(L const&, R const&, Args&&...) = delete (BEMAN_INSIDE_WHY_##name);
+    auto name(L const&, R const&, Args&&...) = delete (BEMAN_INSIDE_WHY_##name);    \
+    template <insidable L, insidable R, class... Args>                              \
+        requires(detail::name##_defined<L, R, detail::call_flags<Args...>> &&       \
+                 (detail::is_action_tag_v<std::remove_cvref_t<Args>> || ...))       \
+    auto name(L const&, R const&, Args&&...) = delete (BEMAN_INSIDE_WHY_arith_action);
 
 BEMAN_INSIDE_ARITH_FN(add, add_op)
 BEMAN_INSIDE_ARITH_FN(sub, sub_op)
@@ -10727,9 +10717,8 @@ BEMAN_INSIDE_LIFT_OP(%)
 // Compound assignment with a raw scalar is rejected the same way; comparisons
 // with raw scalars are unaffected.
 //
-// Concrete (non-auto) return type on purpose: keeps these SFINAE-transparent,
-// so `requires { b + 1; }` stays well-formed and the static_assert fires only
-// on a call.
+// Deleted, with the fix as the reason: `requires { b + 1; }` is false, as
+// for every other operation that cannot compile.
 //---------------------------------------------------------------------------
 template <typename A>
 concept builtin_arithmetic = std::integral<A> || std::floating_point<A>;
@@ -10738,19 +10727,13 @@ concept builtin_arithmetic = std::integral<A> || std::floating_point<A>;
     "an inside cannot be combined with a raw scalar: give the scalar a grid — "     \
     "`1_ins`, `just<1>`, or `inside<{lo,hi}>{n}` for a runtime value with a known " \
     "range"
-#define BEMAN_INSIDE_NO_SCALAR(op)                     \
-    template <insidable B, builtin_arithmetic A>       \
-    B operator op(B const&, A) {                       \
-        static_assert(false, BEMAN_INSIDE_SCALAR_MSG); \
-    }                                                  \
-    template <builtin_arithmetic A, insidable B>       \
-    B operator op(A, B const&) {                       \
-        static_assert(false, BEMAN_INSIDE_SCALAR_MSG); \
-    }                                                  \
-    template <insidable B, builtin_arithmetic A>       \
-    B& operator op## = (B&, A) {                       \
-        static_assert(false, BEMAN_INSIDE_SCALAR_MSG); \
-    }
+#define BEMAN_INSIDE_NO_SCALAR(op)                                    \
+    template <insidable B, builtin_arithmetic A>                      \
+    void operator op(B const&, A) = delete (BEMAN_INSIDE_SCALAR_MSG); \
+    template <builtin_arithmetic A, insidable B>                      \
+    void operator op(A, B const&) = delete (BEMAN_INSIDE_SCALAR_MSG); \
+    template <insidable B, builtin_arithmetic A>                      \
+    void operator op## = (B&, A) = delete (BEMAN_INSIDE_SCALAR_MSG);
 
 BEMAN_INSIDE_NO_SCALAR(+)
 BEMAN_INSIDE_NO_SCALAR(-)

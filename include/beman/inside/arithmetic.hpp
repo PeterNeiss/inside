@@ -47,16 +47,11 @@ constexpr auto arith(Op op, const L& l, const R& r, errc& ec) {
 }
 
 // A hook would be silently ignored (arithmetic cannot fail but for a zero
-// divisor, which stays in the result): rejected with a message.
+// divisor, which stays in the result): rejected with a message (the deleted
+// overload in BEMAN_INSIDE_ARITH_FN).
 template <class A>
 inline constexpr bool is_action_tag_v =
     is_clamp_action<A>::value || is_wrap_action<A>::value || is_error_action<A>::value;
-
-template <class Op, class L, class R, class... Args>
-    requires(is_action_tag_v<std::remove_cvref_t<Args>> || ...)
-constexpr void arith(Op, const L&, const R&, Args&&...) {
-    static_assert(false, BEMAN_INSIDE_WHY_arith_action);
-}
 
 struct add_op {
     template <class L, class R, class P>
@@ -150,7 +145,11 @@ inline constexpr policy_flag call_flags = [] {
     }                                                                               \
     template <insidable L, insidable R, class... Args>                              \
         requires(!detail::name##_defined<L, R, detail::call_flags<Args...>>)        \
-    auto name(L const&, R const&, Args&&...) = delete (BEMAN_INSIDE_WHY_##name);
+    auto name(L const&, R const&, Args&&...) = delete (BEMAN_INSIDE_WHY_##name);    \
+    template <insidable L, insidable R, class... Args>                              \
+        requires(detail::name##_defined<L, R, detail::call_flags<Args...>> &&       \
+                 (detail::is_action_tag_v<std::remove_cvref_t<Args>> || ...))       \
+    auto name(L const&, R const&, Args&&...) = delete (BEMAN_INSIDE_WHY_arith_action);
 
 BEMAN_INSIDE_ARITH_FN(add, add_op)
 BEMAN_INSIDE_ARITH_FN(sub, sub_op)
@@ -515,9 +514,8 @@ BEMAN_INSIDE_LIFT_OP(%)
 // Compound assignment with a raw scalar is rejected the same way; comparisons
 // with raw scalars are unaffected.
 //
-// Concrete (non-auto) return type on purpose: keeps these SFINAE-transparent,
-// so `requires { b + 1; }` stays well-formed and the static_assert fires only
-// on a call.
+// Deleted, with the fix as the reason: `requires { b + 1; }` is false, as
+// for every other operation that cannot compile.
 //---------------------------------------------------------------------------
 template <typename A>
 concept builtin_arithmetic = std::integral<A> || std::floating_point<A>;
@@ -526,19 +524,13 @@ concept builtin_arithmetic = std::integral<A> || std::floating_point<A>;
     "an inside cannot be combined with a raw scalar: give the scalar a grid — "     \
     "`1_ins`, `just<1>`, or `inside<{lo,hi}>{n}` for a runtime value with a known " \
     "range"
-#define BEMAN_INSIDE_NO_SCALAR(op)                     \
-    template <insidable B, builtin_arithmetic A>       \
-    B operator op(B const&, A) {                       \
-        static_assert(false, BEMAN_INSIDE_SCALAR_MSG); \
-    }                                                  \
-    template <builtin_arithmetic A, insidable B>       \
-    B operator op(A, B const&) {                       \
-        static_assert(false, BEMAN_INSIDE_SCALAR_MSG); \
-    }                                                  \
-    template <insidable B, builtin_arithmetic A>       \
-    B& operator op## = (B&, A) {                       \
-        static_assert(false, BEMAN_INSIDE_SCALAR_MSG); \
-    }
+#define BEMAN_INSIDE_NO_SCALAR(op)                                    \
+    template <insidable B, builtin_arithmetic A>                      \
+    void operator op(B const&, A) = delete (BEMAN_INSIDE_SCALAR_MSG); \
+    template <builtin_arithmetic A, insidable B>                      \
+    void operator op(A, B const&) = delete (BEMAN_INSIDE_SCALAR_MSG); \
+    template <insidable B, builtin_arithmetic A>                      \
+    void operator op## = (B&, A) = delete (BEMAN_INSIDE_SCALAR_MSG);
 
 BEMAN_INSIDE_NO_SCALAR(+)
 BEMAN_INSIDE_NO_SCALAR(-)

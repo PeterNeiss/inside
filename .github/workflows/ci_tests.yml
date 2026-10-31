@@ -46,8 +46,7 @@ jobs:
                     { "stdlibs": ["libstdc++"],
                       "tests": [
                         "Release.Default", "Release.MaxSan", "Debug.Werror",
-                        "Debug.Coverage", "Release.-DBEMAN_INSIDE_MATH_NO_FP=ON",
-                        "Debug.-DBEMAN_INSIDE_STRICT_SFINAE=ON"
+                        "Debug.Coverage", "Release.-DBEMAN_INSIDE_MATH_NO_FP=ON"
                       ]
                     }
                   ]
@@ -83,7 +82,6 @@ jobs:
                         "Debug.Default", "Release.Default", "Release.TSan",
                         "Release.MaxSan", "Debug.Werror", "Debug.Coverage",
                         "Release.-DBEMAN_INSIDE_MATH_NO_FP=ON",
-                        "Debug.-DBEMAN_INSIDE_STRICT_SFINAE=ON",
                         "Release.-DBEMAN_INSIDE_CERTIFY_FULL=ON"
                       ]
                     }

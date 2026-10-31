@@ -250,6 +250,29 @@ TEST(ConsistencyTest, unsafe_is_the_one_opt_out_and_wins_over_checked) {
     EXPECT_THROW(b.policy() /= D{0}, inside_error);
 }
 
+// Every store, operator and free function that cannot compile is deleted, so
+// traits and requires probes answer false: a raw scalar operand, a disjoint
+// or off-notch store, and a hook passed to free arithmetic.
+template <class A, class B>
+concept adds = requires(A a, B b) { a + b; };
+template <class A, class B>
+concept add_assigns = requires(A& a, B b) { a += b; };
+template <class A, class H>
+concept adds_with = requires(A a, H h) { add(a, a, h); };
+TEST(ConsistencyTest, constraints_are_honest) {
+    using I = inside<{0, 10}>;
+    static_assert(!adds<I, int> && !adds<int, I> && !adds<I, double> && !add_assigns<I, int>);
+    static_assert(adds<I, I> && add_assigns<inside<{0, 20}, clamp>, I>);
+    static_assert(!std::is_constructible_v<I, inside<{20, 30}>>); // disjoint
+    static_assert(!std::is_convertible_v<inside<{20, 30}>, I>);
+    static_assert(!std::is_assignable_v<I&, inside<{{0, 1}, per<2>}>>); // off the notch
+    static_assert(!std::is_constructible_v<I, std::expected<inside<{20, 30}>, errc>>);
+    static_assert(std::is_constructible_v<inside<{0, 10}, clamp>, inside<{20, 30}>>);
+    static_assert(std::is_assignable_v<inside<{0, 10}, round_nearest>&, inside<{{0, 1}, per<2>}>>);
+    static_assert(adds_with<I, decltype(make_policy<round_floor>())>);
+    static_assert(!adds_with<I, decltype(on_error([](auto&, auto, auto) {}))>);
+}
+
 // Assignment rounds, then range-checks: 8.25 into [0, 8] rounds to 8; 8.5
 // rounds to 9 and is out of range.
 TEST(ConsistencyTest, store_rounds_before_the_range_check) {

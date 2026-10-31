@@ -227,49 +227,41 @@ struct inside {
         return assign_op_result(other);
     }
 
-    // ---- Diagnostic fallbacks (default on; -DBEMAN_INSIDE_STRICT_SFINAE removes them) ----
-    // When a source is numeric but NOT assignable to this inside, every constrained
-    // sink above drops out of overload resolution and the compiler emits a bare
-    // "could not convert" — losing the reason. These complementary overloads (enabled
-    // exactly when `inside_assignable` is false) catch that case and turn it into the
-    // named per-clause notes from `inside_assignable_why` (interval-excludes /
-    // incompatible-notch). The trade: they make `inside` *appear* is_constructible /
-    // assignable from incompatible types (the static_assert is in the body, not the
-    // immediate context, so trait probes return true then hard-error only on real
-    // use). Define BEMAN_INSIDE_STRICT_SFINAE to drop them and restore SFINAE-pure traits for
-    // metaprogramming that probes convertibility (variant/expected/`if constexpr`).
-#ifndef BEMAN_INSIDE_STRICT_SFINAE
+    // A store that can never succeed is deleted, with the clause that fails:
+    // a trait or `requires` probe sees it as ill-formed, and the error names
+    // the fix. explain_assignable<To, From> prints the two grids.
+#define BEMAN_INSIDE_WHY_disjoint                                                                   \
+    "inside: the source's interval lies entirely outside this grid's, and the policy has no clamp " \
+    "or wrap - widen the grid, or store with clamp or wrap (explain_assignable<To, From> prints both)"
+#define BEMAN_INSIDE_WHY_notch                                                                    \
+    "inside: incompatible notches - the source's values miss this grid's notch; use with_snap() " \
+    "or a rounding policy (explain_assignable<To, From> prints both notches)"
     template <numeric A>
-        requires(!inside_assignable<inside, A, P>)
-    constexpr inside(A) {
-        static_assert(inside_assignable_why<inside, A, P>::value,
-                      "inside: cannot construct this inside from the value — see the per-clause notes above");
-    }
-
+        requires(!detail::assign_intervals_ok<inside, A, P>)
+    inside(A) = delete (BEMAN_INSIDE_WHY_disjoint);
     template <numeric A>
-        requires(!inside_assignable<inside, A, P>)
-    constexpr inside(const std::expected<A, errc>&) {
-        static_assert(
-            inside_assignable_why<inside, A, P>::value,
-            "inside: cannot construct this inside from the expected's value — see the per-clause notes above");
-    }
-
+        requires(detail::assign_intervals_ok<inside, A, P> && !detail::assign_notch_ok<inside, A, P>)
+    inside(A) = delete (BEMAN_INSIDE_WHY_notch);
+    template <numeric A>
+        requires(!detail::assign_intervals_ok<inside, A, P>)
+    inside(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_disjoint);
+    template <numeric A>
+        requires(detail::assign_intervals_ok<inside, A, P> && !detail::assign_notch_ok<inside, A, P>)
+    inside(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_notch);
     template <numeric B>
-        requires(!inside_assignable<inside, B, P>)
-    constexpr inside& operator=(const B&) {
-        static_assert(inside_assignable_why<inside, B, P>::value,
-                      "inside: cannot assign this value to this inside — see the per-clause notes above");
-        return *this;
-    }
-
+        requires(!detail::assign_intervals_ok<inside, B, P>)
+    inside& operator=(const B&) = delete (BEMAN_INSIDE_WHY_disjoint);
     template <numeric B>
-        requires(!inside_assignable<inside, B, P>)
-    constexpr inside& operator=(const std::expected<B, errc>&) {
-        static_assert(inside_assignable_why<inside, B, P>::value,
-                      "inside: cannot assign this expected's value to this inside — see the per-clause notes above");
-        return *this;
-    }
-#endif
+        requires(detail::assign_intervals_ok<inside, B, P> && !detail::assign_notch_ok<inside, B, P>)
+    inside& operator=(const B&) = delete (BEMAN_INSIDE_WHY_notch);
+    template <numeric B>
+        requires(!detail::assign_intervals_ok<inside, B, P>)
+    inside& operator=(const std::expected<B, errc>&) = delete (BEMAN_INSIDE_WHY_disjoint);
+    template <numeric B>
+        requires(detail::assign_intervals_ok<inside, B, P> && !detail::assign_notch_ok<inside, B, P>)
+    inside& operator=(const std::expected<B, errc>&) = delete (BEMAN_INSIDE_WHY_notch);
+#undef BEMAN_INSIDE_WHY_disjoint
+#undef BEMAN_INSIDE_WHY_notch
 
     // Trusted construction from a storage-layout raw — no validation; the caller
     // asserts `r` is a valid slot. Entry point for tests, fast paths, and same-grid

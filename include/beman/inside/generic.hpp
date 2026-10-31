@@ -50,9 +50,9 @@ template <typename L, typename R, policy_flag P = checked>
 concept inside_assignable = numeric<R> && detail::assign_intervals_ok<L, R, P> && detail::assign_notch_ok<L, R, P>;
 
 // Diagnostic helper: instantiating `inside_assignable_why<L,R,P>` fires a named
-// static_assert per failed clause, so a developer can see which tripped. Backs
-// both the default-build diagnostic fallbacks in `inside` (core.hpp, gated by
-// `BEMAN_INSIDE_STRICT_SFINAE`) and the public `explain_assignable` probe below.
+// static_assert per failed clause, with the two grids' intervals and notches.
+// Backs the public `explain_assignable` probe below; inside's deleted stores
+// (core.hpp) name only the clause, as a deletion's reason is a fixed string.
 template <typename L, typename R, policy_flag P = checked>
 struct inside_assignable_why {
     // Collapse each clause to a plain bool *before* the static_assert. Asserting on
@@ -79,8 +79,7 @@ struct inside_assignable_why {
 };
 
 // Public manual probe: `static_assert(beman::inside::explain_assignable<DstInside, decltype(src)>);`
-// emits the named per-clause reasons in any build — including a strict
-// (`BEMAN_INSIDE_STRICT_SFINAE`) build where the automatic in-`inside` fallbacks are absent.
+// emits the named per-clause reasons with the grids' numbers.
 template <typename Dst, typename Src, policy_flag P = flags_of<Dst>>
 inline constexpr bool explain_assignable = inside_assignable_why<Dst, std::remove_cvref_t<Src>, P>::value;
 } // namespace beman::inside

@@ -425,28 +425,24 @@ TEST(InsideArithmeticTest, beman_inside_sum_bulk_reduction_with_one_deferred_che
 }
 
 // Issue #7 closure (user decision 2026-06-12): `inside op raw-scalar` is the
-// DESIGNED ban — `1_ins` / `just<V>` / `inside<{lo,hi}>{n}` are the API. These
-// pins guard the mechanism: the guidance overloads stay SFINAE-transparent
-// (probing compiles; the assert fires only on real instantiation), and they
-// stay the ONLY match — their `B` return type distinguishes them from any
-// accidentally-introduced real widening overload, whose result grid would be
-// a different type.
+// DESIGNED ban — `1_ins` / `just<V>` / `inside<{lo,hi}>{n}` are the API. Since
+// 2026-10-31 the guidance overloads are deleted (their reason is the fix), so
+// probes answer false like for every operation that cannot compile. An
+// accidentally-introduced real widening overload would make a probe true.
+template <class A, class B>
+concept plus_ok = requires(A a, B b) { a + b; };
+template <class A, class B>
+concept minus_ok = requires(A a, B b) { a - b; };
+template <class A, class B>
+concept times_ok = requires(A a, B b) { a * b; };
+template <class A, class B>
+concept over_ok = requires(A a, B b) { a / b; };
 // scalar-operand ban: guidance overloads pinned
 TEST(InsideArithmeticTest, scalar_operand_ban_guidance_overloads_pinned) {
     using pct = inside<{0, 100}>;
 
-    // SFINAE-transparent: the probes are well-formed...
-    static_assert(requires(pct b) { b + 1; });
-    static_assert(requires(pct b) { b - 1; });
-    static_assert(requires(pct b) { b * 2; });
-    static_assert(requires(pct b) { b / 2; });
-    static_assert(requires(pct b) { 1 + b; });
-
-    // ...and resolve to the guidance overloads (return type B), not to a double
-    // widening operator (whose result grid would be a different inside type).
-    static_assert(std::same_as<decltype(std::declval<pct>() + 1), pct>);
-    static_assert(std::same_as<decltype(std::declval<pct>() * 2), pct>);
-    static_assert(std::same_as<decltype(2.5 * std::declval<pct>()), pct>);
+    static_assert(!plus_ok<pct, int> && !minus_ok<pct, int> && !times_ok<pct, int> && !over_ok<pct, int>);
+    static_assert(!plus_ok<int, pct> && !times_ok<double, pct> && !times_ok<pct, double>);
 
     // The sanctioned spellings stay open: literals widen, compound narrows,
     // comparisons are free.
