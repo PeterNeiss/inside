@@ -17874,7 +17874,32 @@ using adaptive::tanh_into;
 // The catalog: isq, si, si2019, international. The derived physical
 // constants are in units/constants.hpp; text (to_string, <<, std::format,
 // parse<Q>) in units/io.hpp.
+//
+// This umbrella is units/core.hpp (the machinery: units/detail/algebra.hpp,
+// quantity.hpp, point.hpp) plus units/systems.hpp (the catalog). For units of
+// your own without the SI catalog, include units/core.hpp.
 //---------------------------------------------------------------------------
+
+
+
+// ======================================================================
+//  beman/inside/units/core.hpp
+// ======================================================================
+// The units machinery without the catalog: dimensions, magnitudes, specs,
+// units, references, quantity and quantity_point, and the tools for units
+// of your own (base_dimension, quantity_spec, named_unit, point_origin).
+// <beman/inside/units.hpp> adds the catalog (units/systems.hpp).
+
+
+
+// ======================================================================
+//  beman/inside/units/detail/algebra.hpp
+// ======================================================================
+// The compile-time algebra of units.hpp: dimensions, magnitudes, quantity
+// specs, point origins, units, named units, references and the exact unit
+// conversion of a number. Internal — include <beman/inside/units.hpp> or
+// <beman/inside/units/core.hpp>. Defines BEMAN_INSIDE_UNITS_WHY_PI, which
+// units/core.hpp undefines.
 
 
 
@@ -18905,6 +18930,19 @@ consteval in_error in_error_of() {
     return in_error::none;
 }
 } // namespace detail
+} // namespace beman::inside::units
+
+
+// ======================================================================
+//  beman/inside/units/detail/quantity.hpp
+// ======================================================================
+// quantity<R, Rep>: construction, arithmetic, casts and inside's algorithms
+// on quantities. Internal — include <beman/inside/units.hpp> or
+// <beman/inside/units/core.hpp>.
+
+
+
+namespace beman::inside::units {
 
 //---------------------------------------------------------------------------
 // quantity<R, Rep> — a number Rep (an inside) of the reference R.
@@ -19732,6 +19770,19 @@ template <reference A, class VA, reference B, class VB, class... Args>
     return detail::quantity_divmod<C>(beman::inside::divmod(
         detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b), std::forward<Args>(args)...));
 }
+} // namespace beman::inside::units
+
+
+// ======================================================================
+//  beman/inside/units/detail/point.hpp
+// ======================================================================
+// quantity_point<R, O, Rep>: points counted from an origin, their exact
+// shifts and comparisons. Internal — include <beman/inside/units.hpp> or
+// <beman/inside/units/core.hpp>.
+
+
+
+namespace beman::inside::units {
 
 //---------------------------------------------------------------------------
 // quantity_point<R, O, Rep> — a point: a quantity of R counted from origin O
@@ -19951,6 +20002,22 @@ template <reference R, detail::origin_ref O, class V, reference R2, detail::orig
 [[nodiscard]] constexpr auto operator<=>(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
     return a.quantity_from_origin() <=> b.quantity_from(origin_t<O>{});
 }
+} // namespace beman::inside::units
+
+
+#undef BEMAN_INSIDE_UNITS_WHY_PI
+
+
+// ======================================================================
+//  beman/inside/units/systems.hpp
+// ======================================================================
+// The catalog: ISQ quantity specs, SI units and prefixes, si2019's defining
+// constants, international units, and the dimensionless percent and
+// per_mille. Part of <beman/inside/units.hpp>.
+
+
+
+namespace beman::inside::units {
 
 //---------------------------------------------------------------------------
 // The catalog: ISQ quantity specs, SI units and prefixes, international units.
@@ -20216,7 +20283,6 @@ inline constexpr auto per_mille = unit_c<dimensionless_defs::per_mille>;
 
 } // namespace beman::inside::units
 
-#undef BEMAN_INSIDE_UNITS_WHY_PI
 
 
 #endif // BEMAN_INSIDE_NO_UNITS
@@ -20362,6 +20428,10 @@ inline constexpr auto vacuum_electric_permittivity = detail::one_of<codata2022::
 } // namespace constants
 } // namespace beman::inside::units
 
+
+#endif // BEMAN_INSIDE_NO_UNITS
+
+#ifndef BEMAN_INSIDE_NO_UNITS
 
 #endif // BEMAN_INSIDE_NO_UNITS
 
@@ -21025,6 +21095,10 @@ void hypot_into(const quantity<A, VA>&, const quantity<B, VB>&) =
     delete ("units: hypot takes two quantities that add - one dimension and kind, a common unit");
 } // namespace beman::inside::units
 
+
+#endif // BEMAN_INSIDE_NO_UNITS
+
+#ifndef BEMAN_INSIDE_NO_UNITS
 
 #endif // BEMAN_INSIDE_NO_UNITS
 

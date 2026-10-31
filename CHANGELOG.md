@@ -23,6 +23,9 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   | `beman/inside/detail/…` | `beman/inside/inside/detail/…`, `beman/inside/math/detail/…` (internal) |
   | `beman/inside/core.hpp`, `numbers.hpp`, `policy.hpp` | internal: `inside/detail/core.hpp`, `numbers.hpp`, `call_policy.hpp` |
 
+  `units.hpp` is now `units/core.hpp` (the machinery) plus `units/systems.hpp`
+  (the ISQ and SI catalog); units of your own need only `units/core.hpp`.
+
 - A default-constructed inside is no longer uninitialized: `T x;` and `T{}`
   are 0, or Lower on a grid without 0. Add the `uninitialized` flag where a
   trivial default constructor matters (bulk buffers):

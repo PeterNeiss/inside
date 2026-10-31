@@ -213,7 +213,8 @@ list(INSERT roots 0 "beman/inside/inside.hpp")
 # beman/inside/inside/random.hpp needs <random> — hosted-only, and it pulls <cmath> — so
 # it sits inside a guard the same way: a freestanding or FP-free
 # (BEMAN_INSIDE_MATH_NO_FP, resolved earlier in the header) build drops it.
-# beman/inside/units.hpp, units/math.hpp and units/constants.hpp sit inside a
+# beman/inside/units.hpp (units/core.hpp and units/systems.hpp), units/math.hpp
+# and units/constants.hpp sit inside a
 # BEMAN_INSIDE_NO_UNITS guard, which drops them (and their compile time);
 # units/io.hpp prints through inside/io.hpp, so it needs both guards. The math
 # constants come in earlier, through math.hpp and math/constants.hpp.
@@ -225,6 +226,8 @@ foreach(r IN LISTS roots)
         set(_guard_close "#endif // BEMAN_INSIDE_NO_STRING")
     elseif(
         r STREQUAL "beman/inside/units.hpp"
+        OR r STREQUAL "beman/inside/units/core.hpp"
+        OR r STREQUAL "beman/inside/units/systems.hpp"
         OR r STREQUAL "beman/inside/units/math.hpp"
         OR r STREQUAL "beman/inside/units/constants.hpp"
     )

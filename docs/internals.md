@@ -397,7 +397,9 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 | `inside/random.hpp` | `uniform<B>(rng)` (opt-in, `<random>`) |
 | `math.hpp` | `beman::inside::math`: the grid operations, `unit_amplitude<K>`, the transcendentals ([math.md](math.md)); includes `math/constants.hpp` |
 | `math/constants.hpp` | the 18 math constants as rationals below 2³¹; needs only `inside.hpp` |
-| `units.hpp` | the umbrella of the units: `units/core.hpp` and the catalog |
+| `units.hpp` | the umbrella of the units: `units/core.hpp` and `units/systems.hpp` |
+| `units/core.hpp` | the machinery without the catalog: `units/detail/algebra.hpp`, `quantity.hpp`, `point.hpp`; enough for units of your own |
+| `units/systems.hpp` | the catalog: `isq`, `si`, `si2019`, `international`, `percent`, `per_mille` |
 | `units/io.hpp` | the text of quantities: `unit_symbol`, `to_string`, `<<`, `std::formatter`, `parse<Q>` (opt-in, through `inside/io.hpp`) |
 | `units/math.hpp` | math on quantities: roots, trig (with π-scaled angles), `atan2`, `hypot`, the number functions, `value_cast` across π |
 | `units/constants.hpp` | `units::constants::`, the physical constants |
@@ -433,6 +435,9 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 | `math/detail/fp.hpp`, `dd.hpp` | the `double` and double-double kernels and their proved bounds; compiled out under `BEMAN_INSIDE_MATH_NO_FP` |
 | `math/detail/tiers.hpp` | the `double` and double-double tiers: which kernel applies, the per-call error bound, the decision |
 | `math/detail/entry.hpp` | the entry points: `_into` and deduced forms, the table, the unanchored grids |
+| `units/detail/algebra.hpp` | dimensions, magnitudes, quantity specs, point origins, units, named units, references, the exact unit conversion |
+| `units/detail/quantity.hpp` | `quantity<R, Rep>`: construction, arithmetic, casts, inside's algorithms on quantities |
+| `units/detail/point.hpp` | `quantity_point<R, O, Rep>`: points from an origin, their shifts and comparisons |
 
 `single_include/beman/inside/inside.hpp` amalgamates the whole tree
 ([single-header.md](single-header.md)).
@@ -442,7 +447,9 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 ## 9. The units layer
 
 `units.hpp` builds quantities on top of insides, with no type-list
-metaprogramming.
+metaprogramming. Its parts are in `units/`: the algebra, `quantity` and
+`quantity_point` in `units/detail/` (together `units/core.hpp`), and the
+catalog in `units/systems.hpp`.
 
 **Values, not type lists.** A dimension (seven SI exponents plus up to four
 `base_dimension`s), a magnitude (an exact rational × π^k), a unit (up to six

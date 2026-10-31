@@ -55,6 +55,11 @@ target_sources(
                 math/detail/tiers.hpp
                 units.hpp
                 units/constants.hpp
+                units/core.hpp
+                units/detail/algebra.hpp
+                units/detail/point.hpp
+                units/detail/quantity.hpp
                 units/io.hpp
                 units/math.hpp
+                units/systems.hpp
 )

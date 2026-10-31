@@ -365,8 +365,10 @@ translation units (best of three). On the maintainer's machine:
 |---|---:|---:|---:|---:|
 | GCC 16, C++26 | 0.53 s | 0.72 s | 4.16 s | 5.83 s |
 
-The header adds about 0.2 s; printing (units/io.hpp, through io.hpp) adds
-another 0.4 s. Each of the 200 expressions uses its own grid, so most of the
+The header adds about 0.2 s; printing (units/io.hpp, through inside/io.hpp)
+adds another 0.4 s. Units of your own need only `units/core.hpp`, the
+machinery without the SI and ISQ catalog (`units/systems.hpp`), which saves
+about 0.14 s of it. Each of the 200 expressions uses its own grid, so most of the
 time is inside's arithmetic on those grids; units add about 7 ms per
 expression.
 
