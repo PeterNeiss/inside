@@ -304,7 +304,7 @@ struct division {
     using return_t = std::conditional_t<divisor_excludes_zero<R>, result, std::expected<result, errc>>;
 
     template <policy_flag G = F, typename E = empty_ref>
-    static constexpr return_t div(L, R, policy<G, E> = {});
+    static constexpr return_t div(L, R, call_policy<G, E> = {});
 };
 
 //---------------------------------------------------------------------------
@@ -312,7 +312,7 @@ struct division {
 //---------------------------------------------------------------------------
 template <insidable L, insidable R, policy_flag F>
 template <policy_flag G, typename E>
-constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy) -> return_t {
+constexpr auto division<L, R, F>::div(L lhs, R rhs, call_policy<G, E> policy) -> return_t {
     // A zero divisor: reported through the policy's errc& (if any) and returned
     // as the error. Only reachable where return_t is expected (the divisor grid
     // holds zero and no `unsafe` appears).
@@ -438,12 +438,12 @@ struct modulo {
     using return_t = std::conditional_t<divisor_excludes_zero<R>, result, std::expected<result, errc>>;
 
     template <policy_flag G = F, typename E = empty_ref>
-    static constexpr return_t mod(L, R, policy<G, E> = {});
+    static constexpr return_t mod(L, R, call_policy<G, E> = {});
 };
 
 template <insidable L, insidable R, policy_flag F>
 template <policy_flag G, typename E>
-constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy) -> return_t {
+constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, call_policy<G, E> policy) -> return_t {
     if constexpr (!native_mod) {
         // Integer values past imax: r = a − round(a/b)·b in exact wide integers.
         constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
@@ -490,7 +490,7 @@ struct quotient_remainder {
 
     // The only failure is a zero divisor.
     template <policy_flag G = F, typename E = empty_ref>
-    static constexpr return_t divmod(L lhs, R rhs, policy<G, E> policy = {}) {
+    static constexpr return_t divmod(L lhs, R rhs, call_policy<G, E> policy = {}) {
         // (Generic: its body is formed only where a zero divisor is possible.)
         auto fail = [&](auto code) -> return_t {
             if constexpr (uses_error_ref<std::remove_cvref_t<decltype(policy)>>)

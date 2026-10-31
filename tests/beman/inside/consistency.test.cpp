@@ -277,6 +277,10 @@ TEST(ConsistencyTest, constraints_are_honest) {
 // div(a, b, round_floor), B{v, round_floor}. inside<G, flag> is the same type
 // as inside<G, bits>.
 TEST(ConsistencyTest, flags_are_call_policies) {
+    // checked has no bits: the default policy has one spelling and one type.
+    static_assert(std::is_same_v<inside<{0, 10}, none>, inside<{0, 10}>>);
+    static_assert(std::is_same_v<inside<{0, 10}, checked>, inside<{0, 10}>>);
+    static_assert(flags_of<inside<{0, 10}>> == 0);
     static_assert(std::is_same_v<inside<{0, 10}, clamp | round_floor>,
                                  inside<{0, 10}, (1ull << 32) | (1ull << 6) | (1ull << 4)>>);
     static_assert(policy_flag{round_toward_zero} == policy_flag{snap});

@@ -100,6 +100,11 @@ constexpr std::expected<B, errc> try_store(Store store) {
 template <grid G, policy_flag P>
 struct inside {
     static_assert(grid::validate<G>());
+    static_assert((P & ~detail::known_bits) == 0,
+                  "inside: the policy holds bits no flag names - build it from the flags (clamp | round_floor)");
+    static_assert(detail::rounding_modes(P) <= 1,
+                  "inside: the policy names two rounding modes - pick one (round_nearest, round_floor, round_ceil or "
+                  "round_half_even)");
     static_assert(!(P & clamp) || !(P & wrap), "clamp and wrap are mutually exclusive");
 
     using negated_type = inside<-G, P & ~detail::cursor_marker>; // −cursor is no cursor

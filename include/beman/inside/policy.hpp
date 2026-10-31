@@ -13,7 +13,7 @@
 
 //---------------------------------------------------------------------------
 // policy — the runtime policy carrier.
-//   policy<F, E>  — compile-time flags F plus an optional error_ref E holding a
+//   detail::call_policy<F, E> — compile-time flags F plus an optional error_ref E holding a
 //                   beman::inside::errc& (EBO so the no-error-code form is zero-sized).
 //   make_policy<F>(), and as_call_policy, which turns a named flag passed as a
 //                   call's policy (div(a, b, round_floor)) into make_policy<F>().
@@ -22,10 +22,12 @@
 //---------------------------------------------------------------------------
 namespace beman::inside {
 //---------------------------------------------------------------------------
-// policy — derives from E for EBO: throwing form (E == empty_ref) is zero-sized;
-// `policy(ec)` makes E == error_ref carrying a `beman::inside::errc&`. No virtuals,
-// resolved at compile time. (The error-code channel reports `errc` directly —
-// there is no <system_error> dependency.)
+// call_policy — the policy of one call or store, what make_policy returns.
+// Derives from E for EBO: throwing form (E == empty_ref) is zero-sized;
+// `call_policy(ec)` makes E == error_ref carrying a `beman::inside::errc&`. No
+// virtuals, resolved at compile time. (The error-code channel reports `errc`
+// directly — there is no <system_error> dependency.) Users spell it through
+// make_policy<F>() / make_policy<F>(ec), or pass a flag.
 //---------------------------------------------------------------------------
 namespace detail {
 struct empty_ref {};
@@ -33,13 +35,12 @@ struct error_ref {
     constexpr error_ref(errc& ec) : Code{ec} {}
     errc& Code;
 };
-} // namespace detail
 
-template <policy_flag F = none, typename E = detail::empty_ref>
-struct policy : E {
-    constexpr policy() = default;
-    constexpr policy(errc& ec)
-        requires std::same_as<E, detail::error_ref>
+template <policy_flag F = none, typename E = empty_ref>
+struct call_policy : E {
+    constexpr call_policy() = default;
+    constexpr call_policy(errc& ec)
+        requires std::same_as<E, error_ref>
         : E(ec) {}
 
     static constexpr policy_flag Flags = F;
@@ -67,40 +68,41 @@ struct policy : E {
     // helper; at compile time it throws, so the build fails with a text that
     // names the code and the fix.
     constexpr void report(errc code) const {
-        if constexpr (std::is_same_v<E, detail::error_ref>)
+        if constexpr (std::is_same_v<E, error_ref>)
             E::Code = E::Code != errc{} ? E::Code : code;
         else {
             if consteval {
-                detail::raise(code, detail::store_failure_message(code));
+                raise(code, store_failure_message(code));
             }
-            detail::raise(code);
+            raise(code);
         }
     }
 };
 
-policy(errc&) -> policy<none, detail::error_ref>;
+call_policy(errc&) -> call_policy<none, error_ref>;
+} // namespace detail
 
 //---------------------------------------------------------------------------
-// is_policy_v — true for policy<F,E> specializations, false otherwise.
+// is_policy_v — true for call_policy<F,E> specializations, false otherwise.
 // Used to gate free-fn overloads so they don't accidentally bind P = action tag.
 //---------------------------------------------------------------------------
 namespace detail {
 template <typename T>
 inline constexpr bool is_policy_v = false;
 template <policy_flag F, typename E>
-inline constexpr bool is_policy_v<policy<F, E>> = true;
+inline constexpr bool is_policy_v<call_policy<F, E>> = true;
 
 // Concept form of is_policy_v — pulls cvref off so the constraint matches
-// forwarded `policy<F,E>` references in template parameters.
+// forwarded `call_policy<F,E>` references in template parameters.
 template <typename T>
 concept policy_like = is_policy_v<std::remove_cvref_t<T>>;
 
-// flags_of<policy<F, E>> is F. Lets the value+policy constructor and
+// flags_of<call_policy<F, E>> is F. Lets the value+policy constructor and
 // policy_ref's conversion fold the per-call flags into their
 // `inside_assignable` check, so a one-shot clamp/round actually relaxes the
 // constraint it enables.
 template <policy_flag F, typename E>
-inline constexpr policy_flag flags_of_impl<policy<F, E>> = F;
+inline constexpr policy_flag flags_of_impl<call_policy<F, E>> = F;
 
 // True for policy specializations that carry a beman::inside::errc& reference.
 // Free-fn arithmetic uses this to decide whether to call policy.report on
@@ -108,7 +110,7 @@ inline constexpr policy_flag flags_of_impl<policy<F, E>> = F;
 template <typename T>
 inline constexpr bool uses_error_ref = false;
 template <policy_flag F>
-inline constexpr bool uses_error_ref<policy<F, error_ref>> = true;
+inline constexpr bool uses_error_ref<call_policy<F, error_ref>> = true;
 } // namespace detail
 
 //---------------------------------------------------------------------------
@@ -116,12 +118,12 @@ inline constexpr bool uses_error_ref<policy<F, error_ref>> = true;
 //---------------------------------------------------------------------------
 template <policy_flag F = none>
 [[nodiscard]] constexpr auto make_policy() {
-    return policy<F, detail::empty_ref>{};
+    return detail::call_policy<F, detail::empty_ref>{};
 }
 
 template <policy_flag F = none>
 [[nodiscard]] constexpr auto make_policy(errc& ec) {
-    return policy<F, detail::error_ref>{ec};
+    return detail::call_policy<F, detail::error_ref>{ec};
 }
 
 //---------------------------------------------------------------------------

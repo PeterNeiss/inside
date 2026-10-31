@@ -745,9 +745,10 @@ constexpr imax ceil_abs(const grid_rational& r) {
 template <insidable In>
 inline constexpr imax max_abs_int = std::max(ceil_abs(lower_of<In>), ceil_abs(upper_of<In>));
 
-// Policy of a deduced output: the input's (no cursor), rounding to nearest.
+// Policy of a deduced output: the input's (no cursor), rounding to nearest
+// unless the input names a mode.
 template <insidable In>
-inline constexpr policy_flag result_policy = (flags_of<In> & ~cursor_marker) | round_nearest;
+inline constexpr policy_flag result_policy = with_default_rounding(flags_of<In> & ~cursor_marker);
 
 template <insidable In, grid_rational Lo, grid_rational Hi>
 using result_grid_t = inside<{{Lo, Hi}, notch_of<In>}, result_policy<In>>;

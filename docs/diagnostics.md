@@ -19,7 +19,7 @@ GCC spells every name out. The point `3_ins`:
 inside<grid{interval{grid_rational{big_int{3, 0, 0, false}, big_int{1, 0, 0, false}},
                      grid_rational{big_int{3, 0, 0, false}, big_int{1, 0, 0, false}}},
             grid_rational{big_int{0, 0, 0, false}, big_int{1, 0, 0, false}},
-            grid_rational{big_int{0, 0, 0, false}, big_int{1, 0, 0, false}}}, 17179869184>
+            grid_rational{big_int{0, 0, 0, false}, big_int{1, 0, 0, false}}}, 0>
 ```
 
 GCC also prefixes `beman::inside::` and `beman::inside::detail::`, shortened
@@ -44,15 +44,14 @@ last the bound:
 | `1<<8` | 256 | `round_half_even` (with `snap`: 272) |
 | `1<<32` | 4294967296 | `clamp` |
 | `1<<33` | 8589934592 | `wrap` |
-| `1<<34` | 17179869184 | `checked`: the default policy |
-| `1<<36` | 68719476736 | the `unsafe` marker (`unsafe` adds `snap`: 68719476752); the only bit that turns runtime checks off, also beside `checked` |
+| `1<<36` | 68719476736 | the `unsafe` marker (`unsafe` adds `snap`: 68719476752); the only bit that turns runtime checks off |
 | `1<<37` | 137438953472 | `uninitialized` |
 | `1<<50` | 1125899906842624 | a `cursor<T, Step>` |
 
-The other bits are unused. So `17179869184` is plain `checked`, the default of
-`inside<G>`, and `17179869232` is `checked | round_nearest`. Every policy
-without the `unsafe` bit is checked. (The definitions are in
-`include/beman/inside/policy_flag.hpp`.)
+The other bits are unused, and an inside rejects a policy that holds one or
+names two rounding modes. `checked`, the default, has no bits: `0` is
+`inside<G>`, and `48` is `round_nearest`. Every policy without the `unsafe`
+bit is checked. (The definitions are in `include/beman/inside/policy_flag.hpp`.)
 
 ## Decoding a quantity
 

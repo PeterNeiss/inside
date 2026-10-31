@@ -14,7 +14,7 @@
 //---------------------------------------------------------------------------
 // policy_ref and policy_buffer — the proxies that b.policy(), with_snap(),
 // with_clamp(), with_wrap() and on_*() return (core.hpp): an inside (by
-// reference, or owned for a temporary) with a policy<...> and a tuple of on_*
+// reference, or owned for a temporary) with a call_policy<...> and a tuple of on_*
 // actions. Stores and compound ops flow through them, routing each action to
 // the right callback at the right pipeline stage.
 //---------------------------------------------------------------------------

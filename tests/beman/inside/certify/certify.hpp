@@ -120,7 +120,7 @@ inline std::string flags_text(policy_flag f) {
         add("round_toward_zero");
     f &= ~(round_half_even | round_ceil | round_floor | round_nearest | snap);
     using named = std::pair<policy_flag, const char*>;
-    for (const auto& [flag, name] : {named{clamp, "clamp"}, named{wrap, "wrap"}, named{checked, "checked"}})
+    for (const auto& [flag, name] : {named{clamp, "clamp"}, named{wrap, "wrap"}})
         if (has_flag(f, flag)) {
             add(name);
             f &= ~flag;
@@ -130,7 +130,7 @@ inline std::string flags_text(policy_flag f) {
         std::snprintf(hex, sizeof hex, "0x%llx", static_cast<unsigned long long>(f));
         add(hex);
     }
-    return out.empty() ? std::string{"none"} : out;
+    return out.empty() ? std::string{"checked"} : out; // the default policy has no bits
 }
 template <insidable T>
 std::string type_text() {

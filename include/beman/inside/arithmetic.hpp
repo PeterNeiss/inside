@@ -37,7 +37,7 @@ namespace beman::inside {
     "or a cast"
 
 namespace detail {
-template <class Op, class L, class R, policy_like P = policy<>>
+template <class Op, class L, class R, policy_like P = call_policy<>>
 constexpr auto arith(Op op, const L& l, const R& r, P&& pol = {}) {
     return op(l, r, std::forward<P>(pol));
 }

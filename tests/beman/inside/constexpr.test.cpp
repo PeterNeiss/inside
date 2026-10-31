@@ -452,12 +452,12 @@ TEST(ConstexprTest, constexpr_implied_flags) {
 
 // constexpr: is_policy_v / uses_error_ref
 TEST(ConstexprTest, constexpr_ispolicy_useserrorref) {
-    static_assert(is_policy_v<policy<checked>>);
-    static_assert(is_policy_v<policy<none, error_ref>>);
+    static_assert(is_policy_v<call_policy<checked>>);
+    static_assert(is_policy_v<call_policy<none, error_ref>>);
     static_assert(!(is_policy_v<int>));
 
-    static_assert(!(uses_error_ref<policy<checked>>));
-    static_assert(uses_error_ref<policy<checked, error_ref>>);
+    static_assert(!(uses_error_ref<call_policy<checked>>));
+    static_assert(uses_error_ref<call_policy<checked, error_ref>>);
 }
 
 //---------------------------------------------------------------------------

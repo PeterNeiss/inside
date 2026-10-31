@@ -19,6 +19,13 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   A hook parameter typed `imax` takes `auto` and reads it with `as<imax>(c)`.
 - `ignore_range` and `ignore_zero` are gone: write `unsafe`, the one opt-out
   of the runtime checks, or give a divisor a grid without 0.
+- `checked` has no bits: `inside<G>`, `inside<G, none>` and
+  `inside<G, checked>` are one type, so mangled names change and a policy
+  prints as `0` instead of `17179869184`.
+- An inside rejects a policy with bits no flag names or with two rounding
+  modes (`round_floor | round_ceil`); build policies from the flags.
+- The class `policy<F, E>` is `detail::call_policy<F, E>`: write
+  `make_policy<F>()` / `make_policy<F>(ec)`, or pass a flag.
 - `rounded_floor`, `rounded_nearest` & co., `clamped` and `wrapped` are gone:
   pass the flag itself, `div(a, b, round_floor)`, `B{v, clamp}`.
 - The CMake option `BEMAN_INSIDE_STRICT_SFINAE` is gone: its behaviour, honest

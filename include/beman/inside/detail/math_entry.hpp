@@ -89,7 +89,7 @@ inline constexpr bool integer_bracket = [] {
 template <insidable Out, imax den>
 constexpr std::optional<imax> bracket_slot(imax num, bool negative) noexcept {
     using namespace ::beman::inside::detail;
-    constexpr round_mode m = rounding_for<Out, policy<none>>;
+    constexpr round_mode m = rounding_for<Out, call_policy<none>>;
     const auto [q, r]      = floor_divmod(num, den);
     const imax k           = q + rounds_up(m,
                                            negative,

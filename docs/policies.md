@@ -48,8 +48,11 @@ grid instead (see [arithmetic.md](arithmetic.md)), so it cannot leave its range.
   and `inside<G, clamp>` all report what their policy does not handle. `clamp`
   and `wrap` handle the range, the rounding modes handle the notch.
 - `unsafe` wins wherever it appears: in the type, in an operand of `/` or `%`,
-  or in a store's policy (`x.policy<unsafe>() = v`). `checked`, the default
-  policy's own bit, does not turn the checks back on.
+  or in a store's policy (`x.policy<unsafe>() = v`). `checked`, the default,
+  has no bits: `inside<G>`, `inside<G, none>` and `inside<G, checked>` are one
+  type, and `checked` does not turn the checks back on.
+- A policy takes one rounding mode, and only bits that a flag names: an
+  inside rejects `round_floor | round_ceil` and a raw bit pattern.
 - A rounding mode rounds **before** the range check. With
   `inside<{0, 9}, round_floor>`, 9.5 stores 9 and 10.0 is out of range. Without
   a rounding mode nothing rounds, so 9.5 into `inside<{0, 9}>` is out of range.

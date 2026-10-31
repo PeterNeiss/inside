@@ -300,12 +300,12 @@ TEST(WideGridTest, modulo) {
     constexpr umax kUM = ~umax{0};
     auto           d   = uint64{kUM} - uint64{0};
     static_assert(detail::wide_index_storage<decltype(d)>);
-    auto m = mod(d, inside<{1, 1000}>{7}, policy<snap>{});
+    auto m = mod(d, inside<{1, 1000}>{7}, make_policy<snap>());
     EXPECT_TRUE(m == (kUM % 7));
-    auto n = mod(-d, inside<{1, 1000}>{7}, policy<snap>{}); // takes the dividend's sign
+    auto n = mod(-d, inside<{1, 1000}>{7}, make_policy<snap>()); // takes the dividend's sign
     EXPECT_TRUE(n == -static_cast<imax>(kUM % 7));
     // uint64 itself (a uint64 value raw past imax) now has a modulo too.
-    EXPECT_TRUE((mod(uint64{kUM}, inside<{1, 1000}>{10}, policy<snap>{}) == 5));
+    EXPECT_TRUE((mod(uint64{kUM}, inside<{1, 1000}>{10}, make_policy<snap>()) == 5));
 }
 
 TEST(WideGridTest, clamp_and_wrap_actions) {

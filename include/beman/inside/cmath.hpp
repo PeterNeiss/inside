@@ -450,7 +450,7 @@ using fmod_result_t = inside<exact_out_grid({(lower_of<InX> < 0 ? -fmod_bound<In
                                              (upper_of<InX> > 0 ? fmod_bound<InX, InY> : grid_rational{0})},
                                             engine::gcd_notch<InX, InY>,
                                             den_bound(grid_of<InX>) * den_bound(grid_of<InY>)),
-                             out_policy<InX> | round_nearest>;
+                             with_default_rounding(out_policy<InX>)>;
 } // namespace detail
 
 template <insidable InX, insidable InY>

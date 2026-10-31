@@ -355,7 +355,7 @@ struct assignment<L, R> {
 
     // P's flags, recording its first failure into an errc instead.
     template <typename P>
-    using recording_policy = ::beman::inside::policy<P::Flags, error_ref>;
+    using recording_policy = call_policy<P::Flags, error_ref>;
 
     // Out of line, and by value (an empty action too): a reference to a
     // caller's local would make it escape the hot path's frame. lhs may be

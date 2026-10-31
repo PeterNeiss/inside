@@ -156,7 +156,7 @@ def slots(t):
     return int((hi - lo) / notch) + 1
 
 
-FLAG_NAMES = [(1 << 34, "checked"), (1 << 32, "clamp"), (1 << 33, "wrap")]
+FLAG_NAMES = [(1 << 32, "clamp"), (1 << 33, "wrap")]
 ROUNDING = [((1 << 8) | 16, "round_half_even"), ((1 << 7) | 16, "round_ceil"), ((1 << 6) | 16, "round_floor"),
             ((1 << 5) | 16, "round_nearest"), (16, "round_toward_zero")]
 
@@ -179,7 +179,7 @@ def flags_text(f):
             f &= ~bits
     if f:
         names.append(hex(f))
-    return ", ".join(names) or "none"
+    return ", ".join(names) or "checked"  # the default policy has no bits
 
 
 def grid_text(t):

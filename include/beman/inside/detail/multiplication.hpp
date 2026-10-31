@@ -25,7 +25,7 @@ struct multiplication {
 
     // Total, as a sum: the policy has nothing to decide.
     template <policy_flag F = none, typename E = empty_ref>
-    static constexpr result mul(L lhs, R rhs, policy<F, E> = {}) {
+    static constexpr result mul(L lhs, R rhs, call_policy<F, E> = {}) {
         if constexpr (point_scale<R, L, result>) // x * just<c>: x's offset (see op_result.hpp)
             return scale_by_point<result, R>(lhs);
         else if constexpr (point_scale<L, R, result>)

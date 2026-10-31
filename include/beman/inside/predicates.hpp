@@ -35,10 +35,10 @@ constexpr lossy_result exact_lossy(const wide_rational<K>& x) noexcept {
     const wide_rational<KK> v{x};
     const bool              in = !(v < exact_of_grid<KK>(lower_of<B>)) && !(exact_of_grid<KK>(upper_of<B>) < v);
     if constexpr (notched<B>) {
-        const auto j = exact_index<B, rounding_for<B, policy<>>>(v);
+        const auto j = exact_index<B, rounding_for<B, call_policy<>>>(v);
         if (in)
             return {false, !j.Exact};
-        if constexpr (!rounds_before_range_check<B, policy<>>)
+        if constexpr (!rounds_before_range_check<B, call_policy<>>)
             return {true, false};
         else {
             using I         = std::remove_cvref_t<decltype(j.Index)>;
@@ -53,10 +53,10 @@ constexpr lossy_result exact_lossy(const wide_rational<K>& x) noexcept {
             else
                 return {false, false}; // a point
         }
-        if constexpr (!rounds_before_range_check<B, policy<>>)
+        if constexpr (!rounds_before_range_check<B, call_policy<>>)
             return {true, false};
         else {
-            const wide_rational<KK> r = round_to_bound<B, policy<>>(v);
+            const wide_rational<KK> r = round_to_bound<B, call_policy<>>(v);
             const bool fits           = !(r < exact_of_grid<KK>(lower_of<B>)) && !(exact_of_grid<KK>(upper_of<B>) < r);
             return {!fits, fits};
         }
@@ -108,7 +108,7 @@ template <insidable B, numeric A>
         // B's policy rounds before it range-checks: a value that rounds onto the
         // grid does not overflow.
         detail::rational rounded;
-        return !detail::rounds_into_range<B, policy<>>(r, rounded);
+        return !detail::rounds_into_range<B, detail::call_policy<>>(r, rounded);
     }
 }
 
@@ -129,7 +129,7 @@ template <insidable B, numeric A>
             // rounds (a grid rounds before the range check); anything else is
             // overflow, not rounding.
             detail::rational rounded;
-            return detail::rounds_into_range<B, policy<>>(r, rounded);
+            return detail::rounds_into_range<B, detail::call_policy<>>(r, rounded);
         }
         if constexpr (!detail::notched<B>) {
             // A point: nothing to miss. Continuous: an in-range value with a

@@ -3863,9 +3863,10 @@ inline constexpr detail::flag<(1ull << 6) | snap> round_floor{};
 inline constexpr detail::flag<(1ull << 7) | snap> round_ceil{};
 inline constexpr detail::flag<(1ull << 8) | snap> round_half_even{};
 
-// runtime checking — the default policy's name: every policy without
-// `unsafe` checks, and `unsafe` wins over it (see is_checked).
-inline constexpr detail::flag<1ull << 34> checked{}; // runtime range/notch/zero-divisor checks
+// runtime checking — the default policy's name, no bits: every policy without
+// `unsafe` checks (see is_checked), so inside<G>, inside<G, none> and
+// inside<G, checked> are one type.
+inline constexpr detail::flag<0ull> checked{};
 
 // unary — mutually exclusive
 inline constexpr detail::flag<1ull << 32> clamp{}; // saturate to boundary
@@ -3890,6 +3891,28 @@ inline constexpr policy_flag unsafe_marker{1ull << 36};
 inline constexpr policy_flag cursor_marker{1ull << 50};
 } // namespace detail
 inline constexpr detail::flag<detail::unsafe_marker | snap> unsafe{};
+
+namespace detail {
+// The bits of the four explicit rounding modes (each also carries snap).
+inline constexpr policy_flag mode_bits = (1ull << 5) | (1ull << 6) | (1ull << 7) | (1ull << 8);
+// Every bit a flag names: a policy holds no other.
+inline constexpr policy_flag known_bits =
+    mode_bits | snap | clamp | wrap | unsafe_marker | uninitialized | cursor_marker;
+
+// How many explicit rounding modes a flag set names (an inside takes one).
+[[nodiscard]] constexpr int rounding_modes(policy_flag f) noexcept {
+    int n = 0;
+    for (policy_flag bit = 1ull << 5; bit <= (1ull << 8); bit <<= 1)
+        n += (f & bit) != 0;
+    return n;
+}
+
+// f with round_nearest added unless it names a mode already, which would win
+// over round_nearest in rounding_of anyway: one mode either way.
+[[nodiscard]] constexpr policy_flag with_default_rounding(policy_flag f) noexcept {
+    return (f & mode_bits) != 0 ? f : f | round_nearest;
+}
+} // namespace detail
 
 //---------------------------------------------------------------------------
 // Flag-set membership predicates. `has_flag(set, flag)` is true iff EVERY bit
@@ -4730,7 +4753,7 @@ template <policy_flag V>
 inline constexpr policy_flag flags_of_impl<flag<V>> = V;
 } // namespace detail
 
-// flags_of<X> — the policy flags of an inside, of a one-shot `policy<F, E>`
+// flags_of<X> — the policy flags of an inside, of a one-shot `call_policy<F, E>`
 // (policy.hpp) or of a named flag; `none` for anything else, such as an action.
 template <typename X>
 inline constexpr policy_flag flags_of = detail::flags_of_impl<std::remove_cvref_t<X>>;
@@ -6326,7 +6349,7 @@ constexpr Result exact_result(const wide_rational<K>& v) noexcept {
 
 //---------------------------------------------------------------------------
 // policy — the runtime policy carrier.
-//   policy<F, E>  — compile-time flags F plus an optional error_ref E holding a
+//   detail::call_policy<F, E> — compile-time flags F plus an optional error_ref E holding a
 //                   beman::inside::errc& (EBO so the no-error-code form is zero-sized).
 //   make_policy<F>(), and as_call_policy, which turns a named flag passed as a
 //                   call's policy (div(a, b, round_floor)) into make_policy<F>().
@@ -6335,10 +6358,12 @@ constexpr Result exact_result(const wide_rational<K>& v) noexcept {
 //---------------------------------------------------------------------------
 namespace beman::inside {
 //---------------------------------------------------------------------------
-// policy — derives from E for EBO: throwing form (E == empty_ref) is zero-sized;
-// `policy(ec)` makes E == error_ref carrying a `beman::inside::errc&`. No virtuals,
-// resolved at compile time. (The error-code channel reports `errc` directly —
-// there is no <system_error> dependency.)
+// call_policy — the policy of one call or store, what make_policy returns.
+// Derives from E for EBO: throwing form (E == empty_ref) is zero-sized;
+// `call_policy(ec)` makes E == error_ref carrying a `beman::inside::errc&`. No
+// virtuals, resolved at compile time. (The error-code channel reports `errc`
+// directly — there is no <system_error> dependency.) Users spell it through
+// make_policy<F>() / make_policy<F>(ec), or pass a flag.
 //---------------------------------------------------------------------------
 namespace detail {
 struct empty_ref {};
@@ -6346,13 +6371,12 @@ struct error_ref {
     constexpr error_ref(errc& ec) : Code{ec} {}
     errc& Code;
 };
-} // namespace detail
 
-template <policy_flag F = none, typename E = detail::empty_ref>
-struct policy : E {
-    constexpr policy() = default;
-    constexpr policy(errc& ec)
-        requires std::same_as<E, detail::error_ref>
+template <policy_flag F = none, typename E = empty_ref>
+struct call_policy : E {
+    constexpr call_policy() = default;
+    constexpr call_policy(errc& ec)
+        requires std::same_as<E, error_ref>
         : E(ec) {}
 
     static constexpr policy_flag Flags = F;
@@ -6380,40 +6404,41 @@ struct policy : E {
     // helper; at compile time it throws, so the build fails with a text that
     // names the code and the fix.
     constexpr void report(errc code) const {
-        if constexpr (std::is_same_v<E, detail::error_ref>)
+        if constexpr (std::is_same_v<E, error_ref>)
             E::Code = E::Code != errc{} ? E::Code : code;
         else {
             if consteval {
-                detail::raise(code, detail::store_failure_message(code));
+                raise(code, store_failure_message(code));
             }
-            detail::raise(code);
+            raise(code);
         }
     }
 };
 
-policy(errc&) -> policy<none, detail::error_ref>;
+call_policy(errc&) -> call_policy<none, error_ref>;
+} // namespace detail
 
 //---------------------------------------------------------------------------
-// is_policy_v — true for policy<F,E> specializations, false otherwise.
+// is_policy_v — true for call_policy<F,E> specializations, false otherwise.
 // Used to gate free-fn overloads so they don't accidentally bind P = action tag.
 //---------------------------------------------------------------------------
 namespace detail {
 template <typename T>
 inline constexpr bool is_policy_v = false;
 template <policy_flag F, typename E>
-inline constexpr bool is_policy_v<policy<F, E>> = true;
+inline constexpr bool is_policy_v<call_policy<F, E>> = true;
 
 // Concept form of is_policy_v — pulls cvref off so the constraint matches
-// forwarded `policy<F,E>` references in template parameters.
+// forwarded `call_policy<F,E>` references in template parameters.
 template <typename T>
 concept policy_like = is_policy_v<std::remove_cvref_t<T>>;
 
-// flags_of<policy<F, E>> is F. Lets the value+policy constructor and
+// flags_of<call_policy<F, E>> is F. Lets the value+policy constructor and
 // policy_ref's conversion fold the per-call flags into their
 // `inside_assignable` check, so a one-shot clamp/round actually relaxes the
 // constraint it enables.
 template <policy_flag F, typename E>
-inline constexpr policy_flag flags_of_impl<policy<F, E>> = F;
+inline constexpr policy_flag flags_of_impl<call_policy<F, E>> = F;
 
 // True for policy specializations that carry a beman::inside::errc& reference.
 // Free-fn arithmetic uses this to decide whether to call policy.report on
@@ -6421,7 +6446,7 @@ inline constexpr policy_flag flags_of_impl<policy<F, E>> = F;
 template <typename T>
 inline constexpr bool uses_error_ref = false;
 template <policy_flag F>
-inline constexpr bool uses_error_ref<policy<F, error_ref>> = true;
+inline constexpr bool uses_error_ref<call_policy<F, error_ref>> = true;
 } // namespace detail
 
 //---------------------------------------------------------------------------
@@ -6429,12 +6454,12 @@ inline constexpr bool uses_error_ref<policy<F, error_ref>> = true;
 //---------------------------------------------------------------------------
 template <policy_flag F = none>
 [[nodiscard]] constexpr auto make_policy() {
-    return policy<F, detail::empty_ref>{};
+    return detail::call_policy<F, detail::empty_ref>{};
 }
 
 template <policy_flag F = none>
 [[nodiscard]] constexpr auto make_policy(errc& ec) {
-    return policy<F, detail::error_ref>{ec};
+    return detail::call_policy<F, detail::error_ref>{ec};
 }
 
 //---------------------------------------------------------------------------
@@ -7198,7 +7223,7 @@ struct assignment<L, R> {
 
     // P's flags, recording its first failure into an errc instead.
     template <typename P>
-    using recording_policy = ::beman::inside::policy<P::Flags, error_ref>;
+    using recording_policy = call_policy<P::Flags, error_ref>;
 
     // Out of line, and by value (an empty action too): a reference to a
     // caller's local would make it escape the hot path's frame. lhs may be
@@ -7904,7 +7929,7 @@ constexpr L& assign_grid_number(L& lhs, const big_rational& v, P&& policy) {
 //---------------------------------------------------------------------------
 // policy_ref and policy_buffer — the proxies that b.policy(), with_snap(),
 // with_clamp(), with_wrap() and on_*() return (core.hpp): an inside (by
-// reference, or owned for a temporary) with a policy<...> and a tuple of on_*
+// reference, or owned for a temporary) with a call_policy<...> and a tuple of on_*
 // actions. Stores and compound ops flow through them, routing each action to
 // the right callback at the right pipeline stage.
 //---------------------------------------------------------------------------
@@ -8207,7 +8232,7 @@ struct addition {
 
     // Total: the policy has nothing to decide.
     template <policy_flag F = none, typename E = empty_ref>
-    static constexpr result add(L lhs, R rhs, policy<F, E> = {}) {
+    static constexpr result add(L lhs, R rhs, call_policy<F, E> = {}) {
         if constexpr (fraction_storage<result>)
             return result::from_raw(*continuous_raw_of<raw_t<result>>(exact_of(lhs) + exact_of(rhs)));
         else if constexpr (exact_path_fits<exact_op::add, result, L, R>)
@@ -8271,7 +8296,7 @@ struct multiplication {
 
     // Total, as a sum: the policy has nothing to decide.
     template <policy_flag F = none, typename E = empty_ref>
-    static constexpr result mul(L lhs, R rhs, policy<F, E> = {}) {
+    static constexpr result mul(L lhs, R rhs, call_policy<F, E> = {}) {
         if constexpr (point_scale<R, L, result>) // x * just<c>: x's offset (see op_result.hpp)
             return scale_by_point<result, R>(lhs);
         else if constexpr (point_scale<L, R, result>)
@@ -8609,7 +8634,7 @@ struct division {
     using return_t = std::conditional_t<divisor_excludes_zero<R>, result, std::expected<result, errc>>;
 
     template <policy_flag G = F, typename E = empty_ref>
-    static constexpr return_t div(L, R, policy<G, E> = {});
+    static constexpr return_t div(L, R, call_policy<G, E> = {});
 };
 
 //---------------------------------------------------------------------------
@@ -8617,7 +8642,7 @@ struct division {
 //---------------------------------------------------------------------------
 template <insidable L, insidable R, policy_flag F>
 template <policy_flag G, typename E>
-constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy) -> return_t {
+constexpr auto division<L, R, F>::div(L lhs, R rhs, call_policy<G, E> policy) -> return_t {
     // A zero divisor: reported through the policy's errc& (if any) and returned
     // as the error. Only reachable where return_t is expected (the divisor grid
     // holds zero and no `unsafe` appears).
@@ -8743,12 +8768,12 @@ struct modulo {
     using return_t = std::conditional_t<divisor_excludes_zero<R>, result, std::expected<result, errc>>;
 
     template <policy_flag G = F, typename E = empty_ref>
-    static constexpr return_t mod(L, R, policy<G, E> = {});
+    static constexpr return_t mod(L, R, call_policy<G, E> = {});
 };
 
 template <insidable L, insidable R, policy_flag F>
 template <policy_flag G, typename E>
-constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy) -> return_t {
+constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, call_policy<G, E> policy) -> return_t {
     if constexpr (!native_mod) {
         // Integer values past imax: r = a − round(a/b)·b in exact wide integers.
         constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
@@ -8795,7 +8820,7 @@ struct quotient_remainder {
 
     // The only failure is a zero divisor.
     template <policy_flag G = F, typename E = empty_ref>
-    static constexpr return_t divmod(L lhs, R rhs, policy<G, E> policy = {}) {
+    static constexpr return_t divmod(L lhs, R rhs, call_policy<G, E> policy = {}) {
         // (Generic: its body is formed only where a zero divisor is possible.)
         auto fail = [&](auto code) -> return_t {
             if constexpr (uses_error_ref<std::remove_cvref_t<decltype(policy)>>)
@@ -8867,10 +8892,10 @@ constexpr lossy_result exact_lossy(const wide_rational<K>& x) noexcept {
     const wide_rational<KK> v{x};
     const bool              in = !(v < exact_of_grid<KK>(lower_of<B>)) && !(exact_of_grid<KK>(upper_of<B>) < v);
     if constexpr (notched<B>) {
-        const auto j = exact_index<B, rounding_for<B, policy<>>>(v);
+        const auto j = exact_index<B, rounding_for<B, call_policy<>>>(v);
         if (in)
             return {false, !j.Exact};
-        if constexpr (!rounds_before_range_check<B, policy<>>)
+        if constexpr (!rounds_before_range_check<B, call_policy<>>)
             return {true, false};
         else {
             using I         = std::remove_cvref_t<decltype(j.Index)>;
@@ -8885,10 +8910,10 @@ constexpr lossy_result exact_lossy(const wide_rational<K>& x) noexcept {
             else
                 return {false, false}; // a point
         }
-        if constexpr (!rounds_before_range_check<B, policy<>>)
+        if constexpr (!rounds_before_range_check<B, call_policy<>>)
             return {true, false};
         else {
-            const wide_rational<KK> r = round_to_bound<B, policy<>>(v);
+            const wide_rational<KK> r = round_to_bound<B, call_policy<>>(v);
             const bool fits           = !(r < exact_of_grid<KK>(lower_of<B>)) && !(exact_of_grid<KK>(upper_of<B>) < r);
             return {!fits, fits};
         }
@@ -8940,7 +8965,7 @@ template <insidable B, numeric A>
         // B's policy rounds before it range-checks: a value that rounds onto the
         // grid does not overflow.
         detail::rational rounded;
-        return !detail::rounds_into_range<B, policy<>>(r, rounded);
+        return !detail::rounds_into_range<B, detail::call_policy<>>(r, rounded);
     }
 }
 
@@ -8961,7 +8986,7 @@ template <insidable B, numeric A>
             // rounds (a grid rounds before the range check); anything else is
             // overflow, not rounding.
             detail::rational rounded;
-            return detail::rounds_into_range<B, policy<>>(r, rounded);
+            return detail::rounds_into_range<B, detail::call_policy<>>(r, rounded);
         }
         if constexpr (!detail::notched<B>) {
             // A point: nothing to miss. Continuous: an in-range value with a
@@ -9059,6 +9084,11 @@ constexpr std::expected<B, errc> try_store(Store store) {
 template <grid G, policy_flag P>
 struct inside {
     static_assert(grid::validate<G>());
+    static_assert((P & ~detail::known_bits) == 0,
+                  "inside: the policy holds bits no flag names - build it from the flags (clamp | round_floor)");
+    static_assert(detail::rounding_modes(P) <= 1,
+                  "inside: the policy names two rounding modes - pick one (round_nearest, round_floor, round_ceil or "
+                  "round_half_even)");
     static_assert(!(P & clamp) || !(P & wrap), "clamp and wrap are mutually exclusive");
 
     using negated_type = inside<-G, P & ~detail::cursor_marker>; // −cursor is no cursor
@@ -10267,7 +10297,7 @@ namespace beman::inside {
     "or a cast"
 
 namespace detail {
-template <class Op, class L, class R, policy_like P = policy<>>
+template <class Op, class L, class R, policy_like P = call_policy<>>
 constexpr auto arith(Op op, const L& l, const R& r, P&& pol = {}) {
     return op(l, r, std::forward<P>(pol));
 }
@@ -13124,9 +13154,10 @@ constexpr imax ceil_abs(const grid_rational& r) {
 template <insidable In>
 inline constexpr imax max_abs_int = std::max(ceil_abs(lower_of<In>), ceil_abs(upper_of<In>));
 
-// Policy of a deduced output: the input's (no cursor), rounding to nearest.
+// Policy of a deduced output: the input's (no cursor), rounding to nearest
+// unless the input names a mode.
 template <insidable In>
-inline constexpr policy_flag result_policy = (flags_of<In> & ~cursor_marker) | round_nearest;
+inline constexpr policy_flag result_policy = with_default_rounding(flags_of<In> & ~cursor_marker);
 
 template <insidable In, grid_rational Lo, grid_rational Hi>
 using result_grid_t = inside<{{Lo, Hi}, notch_of<In>}, result_policy<In>>;
@@ -15769,7 +15800,7 @@ inline constexpr bool integer_bracket = [] {
 template <insidable Out, imax den>
 constexpr std::optional<imax> bracket_slot(imax num, bool negative) noexcept {
     using namespace ::beman::inside::detail;
-    constexpr round_mode m = rounding_for<Out, policy<none>>;
+    constexpr round_mode m = rounding_for<Out, call_policy<none>>;
     const auto [q, r]      = floor_divmod(num, den);
     const imax k           = q + rounds_up(m,
                                            negative,
@@ -16959,7 +16990,7 @@ using fmod_result_t = inside<exact_out_grid({(lower_of<InX> < 0 ? -fmod_bound<In
                                              (upper_of<InX> > 0 ? fmod_bound<InX, InY> : grid_rational{0})},
                                             engine::gcd_notch<InX, InY>,
                                             den_bound(grid_of<InX>) * den_bound(grid_of<InY>)),
-                             out_policy<InX> | round_nearest>;
+                             with_default_rounding(out_policy<InX>)>;
 } // namespace detail
 
 template <insidable InX, insidable InY>
