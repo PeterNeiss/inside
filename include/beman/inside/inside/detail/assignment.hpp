@@ -444,12 +444,13 @@ struct assignment<L, R> {
             // The slot onum/den when it is exact or P rounds; false otherwise
             // (strict policy, off-notch: the rational path below reports it).
             auto try_slot = [&](umax onum, umax den) {
-                if (onum % den == 0) {
-                    store_slot(onum / den);
+                const umax q = onum / den, r = onum % den; // one division
+                if (r == 0) {
+                    store_slot(q);
                     return true;
                 }
                 if constexpr (has_round_flag) {
-                    store_slot(round_quotient<L, P>(onum, den));
+                    store_slot(round_split<L, P>(q, r, den));
                     return true;
                 }
                 return false;
