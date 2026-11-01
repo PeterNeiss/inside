@@ -229,7 +229,7 @@ void prop_on_clamp(fuzz_state& s, long iters) {
             imax overshoot_seen = 0;
             c.on_clamp([&](auto&, auto over) {
                 fired          = true;
-                overshoot_seen = static_cast<imax>(over);
+                overshoot_seen = as<imax>(over);
             })                  = v;
 
             // Library convention (assignment.hpp apply_clamp): overshoot = rhs - clamped.

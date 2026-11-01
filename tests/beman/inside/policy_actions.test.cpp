@@ -161,7 +161,7 @@ TEST(PolicyActionsTest, on_clamp_action_receives_overshoot) {
     u100 x{0};
     imax overshoot = 0;
     x.on_clamp([&](auto& self, auto over) {
-        overshoot = over; // integer RHS: over is imax
+        overshoot = as<imax>(over); // an inside for every source
         (void)self;
     })             = 150;
     ASSERT_EQ(x, 100);
@@ -345,4 +345,43 @@ TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_every_source) {
     imax c                                             = 0;
     s.on_wrap([&](auto&, auto k) { c = as<imax>(k); }) = 130;
     EXPECT_EQ(c, 2);
+}
+
+// The on_clamp overshoot is an inside for every source kind, as the wrap carry
+// is: the source minus the limit. Exact from an inside or an integer; from a
+// double or a rational, rounded toward zero onto the target's value unit.
+TEST(PolicyActionsTest, on_clamp_overshoot_is_an_inside_for_every_source) {
+    using pct = inside<{0, 100}>;
+    auto run  = [](auto src, imax expected) {
+        pct  x{0};
+        imax got = -1;
+        x.on_clamp([&](auto&, auto over) {
+            static_assert(insidable<decltype(over)>);
+            got = as<imax>(over);
+        })       = src;
+        EXPECT_EQ(x, 100);
+        EXPECT_EQ(got, expected);
+    };
+    run(150, 50);
+    run(std::uint8_t{200}, 100);
+    run(150.0, 50);
+    run(rational{150}, 50);
+    run(150_ins, 50);
+
+    // An integer source's overshoot grid is its type's limits minus the target's.
+    pct y{0};
+    y.on_clamp([](auto&, auto over) {
+        static_assert(grid_of<decltype(over)> == grid{-100, 255}); // uint8_t into {0, 100}
+    }) = std::uint8_t{101};
+
+    // Below the range the overshoot is negative; on a fine grid it keeps the notch.
+    using q4 = inside<{{0, 10}, per<4>}>;
+    q4       f{0};
+    rational fo{0};
+    f.on_clamp([&](auto&, auto over) { fo = over; }) = 12.25;
+    EXPECT_EQ(f, 10);
+    EXPECT_EQ(fo, (rational{9, 4}));
+    f.on_clamp([&](auto&, auto over) { fo = over; }) = -0.5;
+    EXPECT_EQ(f, 0);
+    EXPECT_EQ(fo, (rational{-1, 2}));
 }

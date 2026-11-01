@@ -303,14 +303,16 @@ TEST(StorageBugsTest, uint64_source_above_int64_max) {
     static_assert(inside<{{5, 9}, 1}>{big, wrap}.as<long>() == static_cast<long>((big - 5) % 5) + 5);
     static_assert(inside<{{5, 9}, 1}>{-7, wrap}.as<int>() == 8);
 
-    // The on_clamp overshoot saturates instead of overflowing.
+    // The on_clamp overshoot is an inside over the source type's limits minus
+    // the target's, so it is exact (it saturated at imax before).
     inside<{{-10, 10}, 1}> c{0};
-    imax                   overshoot                  = 0;
-    c.on_clamp([&](auto&, imax o) { overshoot = o; }) = big;
+    bool                   exact                                = false;
+    c.on_clamp([&](auto&, auto o) { exact = (o == big - 10); }) = big;
     EXPECT_EQ(c.as<int>(), 10);
-    EXPECT_EQ(overshoot, std::numeric_limits<imax>::max());
-    c.on_clamp([&](auto&, imax o) { overshoot = o; }) = std::numeric_limits<imax>::max();
-    EXPECT_EQ(overshoot, std::numeric_limits<imax>::max() - 10);
+    EXPECT_TRUE(exact);
+    c.on_clamp([&](auto&, auto o) { exact = (o == std::numeric_limits<imax>::max() - 10); }) =
+        std::numeric_limits<imax>::max();
+    EXPECT_TRUE(exact);
 }
 
 //---------------------------------------------------------------------------

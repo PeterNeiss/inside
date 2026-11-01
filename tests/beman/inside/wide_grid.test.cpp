@@ -309,17 +309,17 @@ TEST(WideGridTest, modulo) {
 }
 
 TEST(WideGridTest, clamp_and_wrap_actions) {
-    // on_clamp: the overshoot is shaped like the builtin paths' (imax for an
-    // integral source, an inside for an inside source).
-    fine c                                       = 0;
-    imax over                                    = 0;
-    c.on_clamp([&](auto&, imax o) { over = o; }) = p34 + 5;
+    // on_clamp: the overshoot is an inside for every source, as on the builtin
+    // paths.
+    fine c                                                 = 0;
+    imax over                                              = 0;
+    c.on_clamp([&](auto&, auto o) { over = as<imax>(o); }) = p34 + 5;
     EXPECT_TRUE(c == p34);
     EXPECT_EQ(over, 5);
-    rational frac_over{0};
-    c.on_clamp([&](auto&, rational o) { frac_over = o; }) = rational{-1, 2};
+    bool frac_ok                                                         = false;
+    c.on_clamp([&](auto&, auto o) { frac_ok = (o == rational{-1, 2}); }) = rational{-1, 2};
     EXPECT_TRUE(c == 0);
-    EXPECT_TRUE((frac_over == rational{-1, 2}));
+    EXPECT_TRUE(frac_ok);
     bool got_inside = false;
     c.on_clamp([&](auto&, auto o) { got_inside = insidable<decltype(o)> && o == 6; }) =
         inside<{0, umax{1} << 40}>{p34 + 6};

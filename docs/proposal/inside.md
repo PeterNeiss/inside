@@ -404,7 +404,7 @@ what it did. `b.on_wrap(f) += x` stores into `b` with `f` wired in:
 
 | Action | Runs when | Called as |
 |---|---|---|
-| `on_clamp(f)` | a stored value leaves the range and is saturated | `f(b, overshoot)` |
+| `on_clamp(f)` | a stored value leaves the range and is saturated | `f(b, overshoot)`; the overshoot is an `inside`, the source minus the limit |
 | `on_wrap(f)` | a stored value leaves the range and is folded back | `f(b, carry)`; the carry is an `inside` whose grid holds every possible carry |
 | `on_error(f)` | a checked store fails, or a compound assignment does (a zero divisor in `/=`); replaces the exception | `f(b, errc, message)` |
 

@@ -117,6 +117,57 @@ constexpr auto make_wrap_carry(imax q) {
     return carry;
 }
 
+//---------------------------------------------------------------------------
+// The on_clamp overshoot (the source minus the limit it was clamped to) is an
+// inside for every source kind, as the wrap carry is. Its grid: an inside
+// source's interval minus L's (grid_of<R> − grid_of<L>); an integral source's
+// type limits minus L's, exact; a floating or rational source the imax range
+// on L's value unit (a continuous L: its denominator bound), the overshoot
+// rounded toward zero onto it and saturated.
+//---------------------------------------------------------------------------
+template <insidable L, typename R>
+constexpr grid clamp_overshoot_grid() {
+    constexpr grid G = grid_of<L>;
+    if constexpr (insidable<R>)
+        return grid_of<R> - G;
+    else if constexpr (std::integral<R>)
+        return grid{grid_rational{std::numeric_limits<R>::min()}, grid_rational{std::numeric_limits<R>::max()}} - G;
+    else {
+        constexpr grid_rational lo{std::numeric_limits<imax>::min()}, hi{std::numeric_limits<imax>::max()};
+        if constexpr (continuous_grid(G))
+            return grid{interval{lo, hi}, max_denominator{G.MaxDenominator}};
+        else {
+            constexpr grid_rational u =
+                G.Notch == 0 ? grid_rational{1} / grid_rational{grid_denominator(G.Interval.Lower)} : G.value_unit();
+            return grid{interval{lo * u, hi * u}, u};
+        }
+    }
+}
+
+// The overshoot of a floating or rational source, or an exact one from the
+// wide paths, onto its grid: rounded toward zero and saturated.
+template <insidable L, typename R, class V>
+constexpr auto make_clamp_overshoot(const V& over) {
+    constexpr grid OG = clamp_overshoot_grid<L, R>();
+    using T           = beman::inside::inside<OG, clamp | snap>;
+    if constexpr (wide_rational_like<V>) {
+        T t;
+        assign_exact<rational>(t, over, make_policy<clamp | snap>(), no_action{});
+        return beman::inside::inside<OG>::from_raw(t.raw());
+    } else
+        return beman::inside::inside<OG>::from_raw(T{over}.raw());
+}
+
+// An integral source's overshoot, exact: the source as an inside over its
+// type's limits, minus the clamped value (inside arithmetic sizes the grid).
+template <insidable L, std::integral R>
+constexpr auto integral_overshoot(R rhs, const L& clamped) {
+    const auto d = beman::inside::inside<grid{grid_rational{std::numeric_limits<R>::min()},
+                                              grid_rational{std::numeric_limits<R>::max()}}>{rhs} -
+                   clamped;
+    return beman::inside::inside<grid_of<decltype(d)>>::from_raw(d.raw());
+}
+
 // d saturated to imax: a clamp overshoot or a wrap carry, from a work type W
 // (imax or a wide integer).
 template <typename W>
@@ -321,14 +372,11 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
                             // The overshoot rhs − bound, shaped like the builtin paths'.
                             const auto over = v + wide_rational<KK>{I{-1}, I{1}} *
                                                       exact_of_grid<KK>(low ? lower_of<L> : upper_of<L>);
-                            if constexpr (insidable<R>) {
-                                action.Fn(lhs, exact_result<beman::inside::inside<grid_of<R> - grid_of<L>>>(over));
-                            } else if constexpr (std::integral<R>)
-                                action.Fn(lhs, saturate_imax(trunc(over)));
-                            else if constexpr (std::floating_point<R>)
-                                action.Fn(lhs, static_cast<R>(static_cast<double>(over)));
+                            if constexpr (insidable<R> || std::integral<R>) // exact on its grid
+                                action.Fn(lhs,
+                                          exact_result<beman::inside::inside<clamp_overshoot_grid<L, R>()>>(over));
                             else
-                                action.Fn(lhs, try_rational(over).value_or(rational{0}));
+                                action.Fn(lhs, make_clamp_overshoot<L, R>(over));
                         }
                     },
                     [&] {

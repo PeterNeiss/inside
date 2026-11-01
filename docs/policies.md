@@ -114,7 +114,7 @@ A hook you do not use costs nothing.
 
 | Hook | Fires when | Called as |
 |---|---|---|
-| `on_clamp(f)` | a stored value leaves the range and is saturated | `f(x, overshoot)` |
+| `on_clamp(f)` | a stored value leaves the range and is saturated | `f(x, overshoot)`; the overshoot is an inside |
 | `on_wrap(f)` | a stored value leaves the range and is folded back | `f(x, carry)`; the carry is an inside |
 | `on_error(f)` | a checked store fails (`overflow`, `rounding_error`), or a compound op does (a zero divisor in `/=` or `%=`, a `rational` right-hand side past 64 bits); replaces the throw | `f(x, errc, const char* message)` |
 
@@ -138,6 +138,12 @@ The carry is an inside, so it adds straight into another inside. Its grid holds
 every carry the source can produce: for `125_ins`, `[2, 2]`; for an `int`,
 that type's limits divided by the period. A hook that takes `imax` instead of
 `auto` works too.
+
+The overshoot is an inside too: the source minus the limit it was clamped to.
+From an inside or an integer it is exact, and its grid is the source's range
+minus the target's. From a `double` or a `rational` it is rounded toward zero
+onto the target's value unit and saturates at the `imax` range, since such a
+source has no range to subtract.
 
 The right-hand side of a hook's `+=` is an inside, a quantity or a `rational`.
 A raw `int` or `double` is rejected, as for plain compound assignment: give it

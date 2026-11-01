@@ -59,7 +59,7 @@ struct assignment<L, R> {
         const bool low = v < fold::lower;
         lhs            = L::from_raw(raw_of_slot<L>(low ? W{0} : fold::span));
         if constexpr (clamp_action<plain_t<A>>)
-            action.Fn(lhs, saturate_imax(v - (low ? fold::lower : fold::upper)));
+            action.Fn(lhs, integral_overshoot(rhs, lhs)); // an inside, exact
     }
 
     template <typename A>
@@ -226,7 +226,7 @@ struct assignment<L, R> {
         lhs = L::from_raw(endpoint_raw<L>(low));
 
         if constexpr (clamp_action<plain_t<A>>)
-            action.Fn(lhs, overshoot);
+            action.Fn(lhs, make_clamp_overshoot<L, R>(overshoot)); // an inside
     }
 
   public:
