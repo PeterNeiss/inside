@@ -95,11 +95,14 @@ constexpr std::array inside_only{
     exception{"_r", "a rational literal"},
 };
 
-// Member functions of an inside without a quantity counterpart: a quantity's
-// number is numerical_value(), whose raw() and from_raw() are the inside's.
+// Member functions of an inside without a quantity counterpart: properties of
+// the number in one unit (5 km and 5000 m have other raws and numerators). A
+// quantity's number is numerical_value(), and these are its members.
 constexpr std::array member_only{
     std::string_view{"raw"},
     std::string_view{"from_raw"},
+    std::string_view{"numerator"},
+    std::string_view{"denominator"},
 };
 
 template <class Q>
