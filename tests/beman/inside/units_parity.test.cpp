@@ -47,6 +47,7 @@ constexpr std::array with_quantity_form{
     std::string_view{"div_into"},
     std::string_view{"divmod"},
     std::string_view{"dot"},
+    std::string_view{"end"},
     std::string_view{"lerp"},
     std::string_view{"max"},
     std::string_view{"midpoint"},
@@ -70,8 +71,6 @@ struct exception {
     std::string_view Reason;
 };
 constexpr std::array inside_only{
-    // A cursor walks an inside's grid; values<Q> and cursor<Q> are on the roadmap.
-    exception{"end", "cursor over an inside"},
     // Grids and intervals, not values.
     exception{"hull", "grid algebra"},
     exception{"includes", "grid algebra"},
@@ -200,6 +199,7 @@ TEST(UnitsParityTest, the_quantity_forms_compile) {
     static_assert(requires { parse_exact<metres>("5"); });
     static_assert(requires { to_string(m); });
     static_assert(requires { uniform<metres>(rng); });
+    static_assert(requires(cursor<metres, 10> c) { end(c); });
 }
 
 // The new forms do what the inside forms do.
