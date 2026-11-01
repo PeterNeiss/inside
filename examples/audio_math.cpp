@@ -26,7 +26,7 @@ int main() {
     using amp_t        = inside<{{0, 100}, per<16384>}, round_nearest>;
     constexpr auto tau = just<1> * si::second;
     std::cout << "t     exp(t / 1 s)\n";
-    for (cursor<seconds_t::rep, per<4>> n; n != end(n); ++n) {
+    for (cursor<seconds_t, per<4>> n; n != end(n); ++n) {
         const seconds_t t{*n};
         std::cout << t << "\t" << units::exp_into<amp_t>(t / tau) << "\n";
     }

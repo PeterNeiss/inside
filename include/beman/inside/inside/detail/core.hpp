@@ -81,6 +81,24 @@ template <grid G, policy_flag P>
 using cursor_value_t =
     inside<grid{interval{G.Interval.Lower, G.Interval.Upper - G.Notch}, G.Notch}, P & ~cursor_marker>;
 
+// The number a type steps over in cursor<T>, values<T> and end(t): an inside
+// itself, or a quantity's number (units specializes it); rebind<N> wraps a
+// number N back into the type's kind.
+template <class T>
+struct stepping {};
+template <insidable T>
+struct stepping<T> {
+    using number = T;
+    template <class N>
+    using rebind = N;
+};
+template <class T>
+concept steppable = requires { typename stepping<T>::number; };
+template <class T>
+using step_number_t = typename stepping<T>::number;
+template <class T, class N>
+using step_rebind_t = typename stepping<T>::template rebind<N>;
+
 // A store into a fresh B through store(b, policy) under B's flags F with an
 // errc& policy: b, or the error it reported.
 template <class B, policy_flag F, class Store>

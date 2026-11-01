@@ -289,7 +289,7 @@ class quantity {
         return *this;
     }
 
-    // One unit up or down: ++q is q += 1·unit, under Rep's policy.
+    // One notch of the number up or down, as on an inside, under Rep's policy.
     constexpr quantity& operator++()
         requires requires(Rep& n) { ++n; }
     {
@@ -315,6 +315,14 @@ class quantity {
         auto old = *this;
         --Value;
         return old;
+    }
+
+    // *t of a quantity cursor (cursor<Q, Step>): its value as a quantity of Q's
+    // grid without the end, as on an inside cursor.
+    [[nodiscard]] constexpr auto operator*() const
+        requires requires(const Rep& n) { *n; }
+    {
+        return detail::make_quantity<R>(*Value);
     }
 
     // A store with a hook, as on inside: q.on_wrap(f) += d calls f(q, carry)
@@ -358,6 +366,14 @@ class quantity {
 namespace beman::inside::detail {
 template <units::reference R, class Rep>
 inline constexpr bool lift_operand_v<units::quantity<R, Rep>> = true;
+
+// cursor<Q, Step>, values<Q> and end(t) step over Q's number in Q's unit.
+template <units::reference R, class Rep>
+struct stepping<units::quantity<R, Rep>> {
+    using number = Rep;
+    template <class N>
+    using rebind = units::quantity<R, N>;
+};
 } // namespace beman::inside::detail
 namespace beman::inside::units {
 

@@ -260,15 +260,17 @@ for (cursor<time_t, 0.25_r> t = -2_ins; t <= 2_ins; ++t)  // any start, the clas
 
 ### Iterating quantities
 
-`values` and `cursor` take insides only. For quantities, loop over the
-number's grid and attach the unit:
+`values` and `cursor` take quantities too. They step over the number's grid,
+and each value is a quantity; a cursor's step is a number in the quantity's
+unit:
 
 ```cpp
 using db_t = quantity<dB, inside<{{-24, 12}, per<2>}, round_nearest>>;   // dB: a unit of your own
-for (cursor<db_t::rep, 3> n; n != end(n); ++n) {
+for (cursor<db_t, 3> n; n != end(n); ++n) {
     const db_t level{*n};                                                 // −24 dB, −21 dB, …, 12 dB
     /* … */
 }
+for (db_t level : values<db_t>) { /* −24 dB, −23.5 dB, …, 12 dB */ }
 ```
 
 [`decibels.cpp`](../examples/decibels.cpp) and

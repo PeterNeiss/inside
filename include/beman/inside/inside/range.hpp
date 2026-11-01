@@ -14,7 +14,8 @@
 
 //---------------------------------------------------------------------------
 // inside_range — random-access range over a grid, and values<T>, the same
-// range named by a type (every value of T). Walks by notch index (any
+// range named by a type (every value of T; of a quantity type, its values as
+// quantities). Walks by notch index (any
 // non-zero notch), each `*it` computing the exact `Lower + index·Notch`; the
 // iterator wraps modulo the slot count so a mid-range start visits every slot
 // once. A random-access sized view (view_interface adds [], front, back,
@@ -24,20 +25,21 @@
 // carries the random-access capability.
 //---------------------------------------------------------------------------
 namespace beman::inside {
-template <grid G, policy_flag P = checked>
+template <grid G, policy_flag P = checked, class V = inside<G, P>>
     requires(G.Notch != 0)
-struct inside_range : std::ranges::view_interface<inside_range<G, P>> {
-    using value_type = inside<G, P>;
+struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
+    using number_type = inside<G, P>;
+    using value_type  = V; // number_type, or a quantity on it
     // The iterator's difference is an imax: end() − begin() must be the count.
     static_assert(G.max_index_representable() &&
-                      detail::max_index_of<value_type> < static_cast<umax>(std::numeric_limits<imax>::max()),
+                      detail::max_index_of<number_type> < static_cast<umax>(std::numeric_limits<imax>::max()),
                   "inside_range: the grid has more points than an iterator difference (int64) can count");
-    static constexpr umax slot_count = detail::max_index_of<value_type> + 1;
+    static constexpr umax slot_count = detail::max_index_of<number_type> + 1;
 
     struct iterator {
         using iterator_concept  = std::random_access_iterator_tag;
         using iterator_category = std::input_iterator_tag;
-        using value_type        = inside<G, P>;
+        using value_type        = V;
         using difference_type   = imax;
 
         umax Start{0}; // slot of the first element (the range wraps past the top)
@@ -55,7 +57,11 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P>> {
         [[nodiscard]] constexpr value_type operator*() const {
             // value = Lower + index * Notch: an integer raw (a range needs a
             // notch), slot() for an index raw, Lower + slot() for a value raw.
-            return value_type::from_raw(detail::raw_from_offset<value_type>(slot()));
+            const auto n = number_type::from_raw(detail::raw_from_offset<number_type>(slot()));
+            if constexpr (std::same_as<V, number_type>)
+                return n;
+            else
+                return V{n};
         }
 
         [[nodiscard]] constexpr value_type operator[](difference_type n) const { return *(*this + n); }
@@ -108,7 +114,7 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P>> {
 
     constexpr inside_range() = default;
     // A grid value's notch index: its raw's offset.
-    constexpr inside_range(value_type start) : StartIndex{detail::raw_offset<value_type>(start.raw())} {}
+    constexpr inside_range(number_type start) : StartIndex{detail::raw_offset<number_type>(start.raw())} {}
 
     constexpr iterator begin() const { return {StartIndex, 0}; }
     constexpr iterator end() const { return {StartIndex, static_cast<imax>(slot_count)}; }
@@ -116,15 +122,17 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P>> {
     constexpr std::size_t size() const { return slot_count; }
 };
 
-// values<T>: every value of T, Lower to Upper, as a random-access sized range.
-// A cursor has none: its grid ends past T's Upper.
-template <insidable T>
-    requires(notch_of<T> != 0 && !has_flag(flags_of<T>, detail::cursor_marker))
-inline constexpr inside_range<grid_of<T>, flags_of<T>> values{};
+// values<T>: every value of T, Lower to Upper, as a random-access sized range;
+// of a quantity type, its number's values as quantities. A cursor has none:
+// its grid ends past T's Upper.
+template <detail::steppable T>
+    requires(notch_of<detail::step_number_t<T>> != 0 &&
+             !has_flag(flags_of<detail::step_number_t<T>>, detail::cursor_marker))
+inline constexpr inside_range<grid_of<detail::step_number_t<T>>, flags_of<detail::step_number_t<T>>, T> values{};
 
 } // namespace beman::inside
 
-template <beman::inside::grid G, beman::inside::policy_flag P>
-inline constexpr bool std::ranges::enable_borrowed_range<beman::inside::inside_range<G, P>> = true;
+template <beman::inside::grid G, beman::inside::policy_flag P, class V>
+inline constexpr bool std::ranges::enable_borrowed_range<beman::inside::inside_range<G, P, V>> = true;
 
 #endif // BEMAN_INSIDE_INSIDE_RANGE_HPP

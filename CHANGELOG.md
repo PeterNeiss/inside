@@ -130,6 +130,11 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   policy, a flag or an `errc&` as on insides: `div(d, t, round_floor)`. Sums
   run in the common unit; products and quotients multiply the units, and a
   number scales. A hook is a deleted overload with the reason.
+- `cursor<Q, Step>`, `values<Q>` and `end(t)` take quantities: they step over
+  the number's grid and yield quantities, Step a number in Q's unit
+  (`for (cursor<db_t, 3> n; n != end(n); ++n)`). One trait,
+  `detail::stepping`, serves both kinds, so no twin in `units::` collides
+  under two using-directives.
 
 - `on_clamp` and `on_wrap` work on a continuous grid past 64 bits and for a
   source past 64 bits (such as a wide inside) into a continuous inside; both
@@ -166,6 +171,8 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Fixed
 
+- The docs said a quantity's `++` adds one unit; it steps one notch of the
+  number, as on an inside, and now say so.
 - A `double` past the magnitude of a grid past 64 bits stood in as a value
   just past the grid, which a wrap then folded: `inside<{-0x1p70, 0x1p70},
   wrap>{-0x1p72}` was 4 instead of 2. A wrap, and an `on_clamp` overshoot, now

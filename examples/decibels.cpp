@@ -54,7 +54,7 @@ int main() {
     println("    dB       linear         round-trip dB");
 
     // Sweep dB at 3 dB steps over the full range.
-    for (cursor<db_t::rep, 3> n; n != end(n); ++n) {
+    for (cursor<db_t, 3> n; n != end(n); ++n) {
         const db_t   db{*n};
         const gain_t lin          = db_to_linear(db);
         const db_t   db_recovered = linear_to_db(lin);

@@ -9161,6 +9161,24 @@ template <grid G, policy_flag P>
 using cursor_value_t =
     inside<grid{interval{G.Interval.Lower, G.Interval.Upper - G.Notch}, G.Notch}, P & ~cursor_marker>;
 
+// The number a type steps over in cursor<T>, values<T> and end(t): an inside
+// itself, or a quantity's number (units specializes it); rebind<N> wraps a
+// number N back into the type's kind.
+template <class T>
+struct stepping {};
+template <insidable T>
+struct stepping<T> {
+    using number = T;
+    template <class N>
+    using rebind = N;
+};
+template <class T>
+concept steppable = requires { typename stepping<T>::number; };
+template <class T>
+using step_number_t = typename stepping<T>::number;
+template <class T, class N>
+using step_rebind_t = typename stepping<T>::template rebind<N>;
+
 // A store into a fresh B through store(b, policy) under B's flags F with an
 // errc& policy: b, or the error it reported.
 template <class B, policy_flag F, class Store>
@@ -10806,7 +10824,8 @@ struct std::common_type<beman::inside::inside<G1, P1>, beman::inside::inside<G2,
 
 //---------------------------------------------------------------------------
 // inside_range — random-access range over a grid, and values<T>, the same
-// range named by a type (every value of T). Walks by notch index (any
+// range named by a type (every value of T; of a quantity type, its values as
+// quantities). Walks by notch index (any
 // non-zero notch), each `*it` computing the exact `Lower + index·Notch`; the
 // iterator wraps modulo the slot count so a mid-range start visits every slot
 // once. A random-access sized view (view_interface adds [], front, back,
@@ -10816,20 +10835,21 @@ struct std::common_type<beman::inside::inside<G1, P1>, beman::inside::inside<G2,
 // carries the random-access capability.
 //---------------------------------------------------------------------------
 namespace beman::inside {
-template <grid G, policy_flag P = checked>
+template <grid G, policy_flag P = checked, class V = inside<G, P>>
     requires(G.Notch != 0)
-struct inside_range : std::ranges::view_interface<inside_range<G, P>> {
-    using value_type = inside<G, P>;
+struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
+    using number_type = inside<G, P>;
+    using value_type  = V; // number_type, or a quantity on it
     // The iterator's difference is an imax: end() − begin() must be the count.
     static_assert(G.max_index_representable() &&
-                      detail::max_index_of<value_type> < static_cast<umax>(std::numeric_limits<imax>::max()),
+                      detail::max_index_of<number_type> < static_cast<umax>(std::numeric_limits<imax>::max()),
                   "inside_range: the grid has more points than an iterator difference (int64) can count");
-    static constexpr umax slot_count = detail::max_index_of<value_type> + 1;
+    static constexpr umax slot_count = detail::max_index_of<number_type> + 1;
 
     struct iterator {
         using iterator_concept  = std::random_access_iterator_tag;
         using iterator_category = std::input_iterator_tag;
-        using value_type        = inside<G, P>;
+        using value_type        = V;
         using difference_type   = imax;
 
         umax Start{0}; // slot of the first element (the range wraps past the top)
@@ -10847,7 +10867,11 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P>> {
         [[nodiscard]] constexpr value_type operator*() const {
             // value = Lower + index * Notch: an integer raw (a range needs a
             // notch), slot() for an index raw, Lower + slot() for a value raw.
-            return value_type::from_raw(detail::raw_from_offset<value_type>(slot()));
+            const auto n = number_type::from_raw(detail::raw_from_offset<number_type>(slot()));
+            if constexpr (std::same_as<V, number_type>)
+                return n;
+            else
+                return V{n};
         }
 
         [[nodiscard]] constexpr value_type operator[](difference_type n) const { return *(*this + n); }
@@ -10900,7 +10924,7 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P>> {
 
     constexpr inside_range() = default;
     // A grid value's notch index: its raw's offset.
-    constexpr inside_range(value_type start) : StartIndex{detail::raw_offset<value_type>(start.raw())} {}
+    constexpr inside_range(number_type start) : StartIndex{detail::raw_offset<number_type>(start.raw())} {}
 
     constexpr iterator begin() const { return {StartIndex, 0}; }
     constexpr iterator end() const { return {StartIndex, static_cast<imax>(slot_count)}; }
@@ -10908,16 +10932,18 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P>> {
     constexpr std::size_t size() const { return slot_count; }
 };
 
-// values<T>: every value of T, Lower to Upper, as a random-access sized range.
-// A cursor has none: its grid ends past T's Upper.
-template <insidable T>
-    requires(notch_of<T> != 0 && !has_flag(flags_of<T>, detail::cursor_marker))
-inline constexpr inside_range<grid_of<T>, flags_of<T>> values{};
+// values<T>: every value of T, Lower to Upper, as a random-access sized range;
+// of a quantity type, its number's values as quantities. A cursor has none:
+// its grid ends past T's Upper.
+template <detail::steppable T>
+    requires(notch_of<detail::step_number_t<T>> != 0 &&
+             !has_flag(flags_of<detail::step_number_t<T>>, detail::cursor_marker))
+inline constexpr inside_range<grid_of<detail::step_number_t<T>>, flags_of<detail::step_number_t<T>>, T> values{};
 
 } // namespace beman::inside
 
-template <beman::inside::grid G, beman::inside::policy_flag P>
-inline constexpr bool std::ranges::enable_borrowed_range<beman::inside::inside_range<G, P>> = true;
+template <beman::inside::grid G, beman::inside::policy_flag P, class V>
+inline constexpr bool std::ranges::enable_borrowed_range<beman::inside::inside_range<G, P, V>> = true;
 
 
 // ======================================================================
@@ -10934,7 +10960,8 @@ namespace beman::inside {
 // Lower, and it carries cursor_marker, which gives it
 // `end(t)`. Step is a number (an integer, `rational`, `per<N>`), T's notch by
 // default: a positive whole number of notches of T dividing its range, so
-// every value but the end is a value of T.
+// every value but the end is a value of T. T may be a quantity: the cursor is
+// then a quantity on a cursor number, Step a number in T's unit.
 //   for (cursor<time_t, per<4>> t; t != end(t); ++t) …
 //---------------------------------------------------------------------------
 namespace detail {
@@ -10953,15 +10980,18 @@ consteval grid cursor_grid(const auto& step) {
 }
 } // namespace detail
 
-template <insidable T, auto Step = notch_of<T>>
-using cursor = inside<detail::cursor_grid<T>(Step), flags_of<T> | detail::cursor_marker>;
+template <detail::steppable T, auto Step = notch_of<detail::step_number_t<T>>>
+using cursor = detail::step_rebind_t<T,
+                                     inside<detail::cursor_grid<detail::step_number_t<T>>(Step),
+                                            flags_of<detail::step_number_t<T>> | detail::cursor_marker>>;
 
 // end(t): a cursor's past-the-end value, one step past T's Upper. Only a
 // cursor has one — on any other inside its Upper is a value, not an end.
-template <insidable B>
-    requires(has_flag(flags_of<B>, detail::cursor_marker))
+template <detail::steppable B>
+    requires(has_flag(flags_of<detail::step_number_t<B>>, detail::cursor_marker))
 [[nodiscard]] constexpr auto end(const B&) noexcept {
-    return just<upper_of<B>>;
+    constexpr auto top = just<upper_of<detail::step_number_t<B>>>;
+    return detail::step_rebind_t<B, std::remove_cvref_t<decltype(top)>>{top};
 }
 } // namespace beman::inside
 
@@ -19203,7 +19233,7 @@ class quantity {
         return *this;
     }
 
-    // One unit up or down: ++q is q += 1·unit, under Rep's policy.
+    // One notch of the number up or down, as on an inside, under Rep's policy.
     constexpr quantity& operator++()
         requires requires(Rep& n) { ++n; }
     {
@@ -19229,6 +19259,14 @@ class quantity {
         auto old = *this;
         --Value;
         return old;
+    }
+
+    // *t of a quantity cursor (cursor<Q, Step>): its value as a quantity of Q's
+    // grid without the end, as on an inside cursor.
+    [[nodiscard]] constexpr auto operator*() const
+        requires requires(const Rep& n) { *n; }
+    {
+        return detail::make_quantity<R>(*Value);
     }
 
     // A store with a hook, as on inside: q.on_wrap(f) += d calls f(q, carry)
@@ -19272,6 +19310,14 @@ class quantity {
 namespace beman::inside::detail {
 template <units::reference R, class Rep>
 inline constexpr bool lift_operand_v<units::quantity<R, Rep>> = true;
+
+// cursor<Q, Step>, values<Q> and end(t) step over Q's number in Q's unit.
+template <units::reference R, class Rep>
+struct stepping<units::quantity<R, Rep>> {
+    using number = Rep;
+    template <class N>
+    using rebind = units::quantity<R, N>;
+};
 } // namespace beman::inside::detail
 namespace beman::inside::units {
 

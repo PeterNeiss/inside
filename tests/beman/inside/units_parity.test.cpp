@@ -266,3 +266,28 @@ TEST(UnitsParityTest, per_call_arithmetic) {
 
     static_assert(!add_with<metres, km, decltype(on_clamp([](auto&, auto) {}))>);
 }
+
+// cursor<Q, Step>, values<Q> and end(t) on a quantity: the number's grid,
+// yielding quantities; Step is a number in Q's unit.
+TEST(UnitsParityTest, cursors_and_values_over_quantities) {
+    using s_t = quantity<si::second, inside<{{0, 2}, per<4>}, round_nearest>>;
+    std::vector<s_t> seen;
+    for (cursor<s_t, rational{1, 2}> t; t != end(t); ++t)
+        seen.push_back(*t);
+    ASSERT_EQ(seen.size(), 5u);
+    EXPECT_TRUE(seen.front() == just<0> * si::second);
+    EXPECT_TRUE(seen.back() == just<2> * si::second);
+    EXPECT_TRUE((seen[1] == just<1, 2> * si::second));
+
+    static_assert(std::ranges::random_access_range<decltype(values<s_t>)>);
+    static_assert(std::ranges::borrowed_range<decltype(values<s_t>)>);
+    static_assert(std::same_as<std::ranges::range_value_t<decltype(values<s_t>)>, s_t>);
+    EXPECT_EQ(values<s_t>.size(), 9u);
+    EXPECT_TRUE(values<s_t>.back() == just<2> * si::second);
+    EXPECT_EQ(std::ranges::find(values<s_t>, s_t{rational{3, 4}}) - values<s_t>.begin(), 3);
+
+    // A quantity's ++ steps one notch of its number, as an inside's does.
+    s_t q{0};
+    ++q;
+    EXPECT_TRUE((q == just<1, 4> * si::second));
+}

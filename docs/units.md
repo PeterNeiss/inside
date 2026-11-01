@@ -304,7 +304,7 @@ numbers, so it still rounds once and checks once.
 | `checked_cast<Q>(x)` | a number in Q's unit, or a quantity converted to it first, stored exactly or reported |
 | `q.as<T>()`, `q.to<T>()` | a dimensionless quantity's number as a built-in |
 | `uniform<Q>(rng)` | units/random.hpp: a number drawn from Q's grid, in Q's unit |
-| `++q`, `q--` | one unit up or down, under the number's policy |
+| `++q`, `q--` | one notch of the number up or down, under its policy |
 | `Q::try_make<F>(v)` | the number's `try_make`, of a number in Q's unit |
 | `mul_into<Out, F>(a, b)`, `div_into<Out, F>(a, b)` | a·b or a/b rounded once into `Out`, a quantity type (or a plain inside for a dimensionless result); the factor between units folds into the exact product |
 | `add_all(…)`, `mul_all(…)`, `sum<Q>(range)` | the folds; `sum<Q>` takes quantities in any unit that converts to Q's |
@@ -324,10 +324,10 @@ auto [h, rest] = divmod(quantity<si::second, inside<{0, 86399}>>{3725}, just<1> 
 An `expected` quantity, from a division by a grid that holds 0, chains through
 `+ - * / %` as an `expected` inside does; the first error wins.
 
-`values<T>` and `cursor<T, Step>` take insides only: loop over the number's
-grid and attach the unit ([storage.md](storage.md#iterating-quantities)). A
-quantity has no `std::hash` or `std::numeric_limits` of its own; use its
-`numerical_value()`.
+`values<Q>` and `cursor<Q, Step>` step over the number's grid and yield
+quantities; Step is a number in Q's unit
+([storage.md](storage.md#iterating-quantities)). A quantity has no
+`std::hash` or `std::numeric_limits` of its own; use its `numerical_value()`.
 
 ## Text
 
