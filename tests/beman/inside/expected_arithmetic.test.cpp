@@ -176,22 +176,26 @@ TEST(ExpectedArithmeticTest, rational_sinks_raise_inside_error) {
     EXPECT_EQ(a, 1);
 }
 
-// expected<inside> + rational propagates the error
-TEST(ExpectedArithmeticTest, expected_inside_plus_rational_propagates_error) {
+// expected<inside> + a point propagates the error. (An inside or an
+// expected<inside> with a rational is deleted: it would leave the grid.)
+template <class A, class B>
+concept adds_to = requires(A a, B b) { a + b; };
+TEST(ExpectedArithmeticTest, expected_inside_plus_point_propagates_error) {
     using b_t    = inside<{{0, 1}, per<16>}, round_nearest>;
     auto some    = []() -> std::expected<b_t, errc> { return b_t{0.5_r}; };
     auto failing = []() -> std::expected<b_t, errc> { return std::unexpected{errc::division_by_zero}; };
+    static_assert(!adds_to<std::expected<b_t, errc>, rational> && !adds_to<b_t, rational> && !adds_to<rational, b_t>);
 
-    auto r = some() + 0.25_r;
+    auto r = some() + 0.25_ins;
     ASSERT_TRUE(r.has_value());
     ASSERT_EQ(*r, 0.75_r);
 
-    ASSERT_FALSE((failing() + 0.25_r).has_value());
-    ASSERT_FALSE((0.25_r + failing()).has_value());
-    ASSERT_FALSE((failing() - 0.25_r).has_value());
-    ASSERT_FALSE((failing() * 0.25_r).has_value());
-    ASSERT_FALSE((failing() / 0.25_r).has_value());
-    ASSERT_EQ((failing() * 0.25_r).error(), errc::division_by_zero);
+    ASSERT_FALSE((failing() + 0.25_ins).has_value());
+    ASSERT_FALSE((0.25_ins + failing()).has_value());
+    ASSERT_FALSE((failing() - 0.25_ins).has_value());
+    ASSERT_FALSE((failing() * 0.25_ins).has_value());
+    ASSERT_FALSE((failing() / 0.25_ins).has_value());
+    ASSERT_EQ((failing() * 0.25_ins).error(), errc::division_by_zero);
 }
 
 // expected<rational> value_or

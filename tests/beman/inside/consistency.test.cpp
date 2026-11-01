@@ -310,6 +310,24 @@ TEST(ConsistencyTest, results_keep_the_shared_policy) {
     static_assert(flags_of<std::common_type_t<decltype(a), inside<{0, 20}, round_floor>>> == round_floor);
 }
 
+// An inside with a rational would leave the grid (operator rational() and
+// rational arithmetic): deleted. A point keeps the grid; compound assignment
+// with a rational stores back into the inside's grid and stays.
+template <class A, class B>
+concept rational_mix = requires(A a, B b) { a + b; } || requires(A a, B b) { b - a; } ||
+                       requires(A a, B b) { a * b; } || requires(A a, B b) { a / b; } || requires(A a, B b) { a % b; };
+template <class A, class B>
+concept rational_compound = requires(A& a, B b) { a += b; };
+TEST(ConsistencyTest, no_arithmetic_with_a_rational) {
+    using I = inside<{{0, 10}, per<4>}>;
+    static_assert(!rational_mix<I, rational> && !rational_mix<inside<{0, 10}>, rational>);
+    static_assert(rational_compound<I, rational>);
+    static_assert(I{2} + just<1, 2> == 2.5_r);
+    I x{2};
+    x += 0.5_r;
+    EXPECT_EQ(x, 2.5_r);
+}
+
 // Assignment rounds, then range-checks: 8.25 into [0, 8] rounds to 8; 8.5
 // rounds to 9 and is out of range.
 TEST(ConsistencyTest, store_rounds_before_the_range_check) {

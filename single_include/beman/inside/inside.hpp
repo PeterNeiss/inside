@@ -10791,6 +10791,27 @@ BEMAN_INSIDE_NO_SCALAR(%)
 #undef BEMAN_INSIDE_NO_SCALAR
 #undef BEMAN_INSIDE_SCALAR_MSG
 
+// An inside with a rational: through the implicit operator rational() it
+// would become rational arithmetic, an expected<rational, errc> without a
+// grid. Deleted, with the spelling that keeps the grid. Compound assignment
+// with a rational (b += 0.5_r) stays: it stores back into b's grid.
+#define BEMAN_INSIDE_RATIONAL_MSG                                                                \
+    "an inside cannot be combined with a rational: write the constant as just<1, 2> or 0.5_ins " \
+    "(a grid), or store the rational into an inside first"
+#define BEMAN_INSIDE_NO_RATIONAL(op)                                           \
+    template <insidable B, std::same_as<rational> Q>                           \
+    void operator op(B const&, Q const&) = delete (BEMAN_INSIDE_RATIONAL_MSG); \
+    template <std::same_as<rational> Q, insidable B>                           \
+    void operator op(Q const&, B const&) = delete (BEMAN_INSIDE_RATIONAL_MSG);
+
+BEMAN_INSIDE_NO_RATIONAL(+)
+BEMAN_INSIDE_NO_RATIONAL(-)
+BEMAN_INSIDE_NO_RATIONAL(*)
+BEMAN_INSIDE_NO_RATIONAL(/)
+BEMAN_INSIDE_NO_RATIONAL(%)
+#undef BEMAN_INSIDE_NO_RATIONAL
+#undef BEMAN_INSIDE_RATIONAL_MSG
+
 } // namespace beman::inside
 
 // std::common_type is the grid hull (beman::inside::common_inside_t above), so
