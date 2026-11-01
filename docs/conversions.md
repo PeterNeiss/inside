@@ -279,14 +279,18 @@ A JSON or wire format holds the bare number: write
 
 ## Comparing
 
-An inside compares with native numbers and with other insides directly,
-exactly, and without narrowing either side:
+An inside compares with integers, rationals and other insides directly,
+exactly, and without narrowing either side. It does not compare with a
+floating-point value: 0.1 is not 1/10 in binary, so an inside holding 1/10
+would compare unequal to 0.1. Compare with `0.1_r`, `just<1, 10>` or an
+inside instead.
 
 ```cpp
 inside<{0, 100}> a{42}, b{58};
 a == 42;          // true
-a < 50.5;         // true: the double is compared at full precision
+a < 50.5_r;       // true: exact
 a + b == 100;     // true
+// a < 50.5;      // does not compile: no comparison with a double
 ```
 
 Two quantities compare in their common unit (`just<1> * si::kilo(si::metre) == just<1000> * si::metre`);

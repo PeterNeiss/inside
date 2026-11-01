@@ -47,12 +47,12 @@ TEST(BigGridTest, storage) {
 TEST(BigGridTest, construction_and_comparison) {
     huge h = 5;
     EXPECT_TRUE(h == 5);
-    EXPECT_TRUE(h < 6 && h > 4.5);
+    EXPECT_TRUE(h < 6 && h > 4.5_r);
     far f{huge::from_raw(raw_2_100_3)};
     EXPECT_TRUE(f > h);
     EXPECT_TRUE(f.raw() == 3);
     fine x = 0.5;
-    EXPECT_TRUE(x == 0.5);
+    EXPECT_TRUE(x == 0.5_r);
     EXPECT_TRUE(x.raw() == (detail::wide_uint<2>{1} << 79));
     // Values past 64 bits compare exactly.
     EXPECT_TRUE(f == huge::from_raw(raw_2_100_3));
@@ -116,7 +116,7 @@ TEST(BigGridTest, grid_number_literal) {
     using micro30 = inside<{{0, 1}, 1e-30_g}>;          // a 10^-30 notch
     static_assert(grid_of<micro30>.slot_bits() == 100); // 10^30 slots
     micro30 m = 0.5;
-    EXPECT_TRUE(m == 0.5);
+    EXPECT_TRUE(m == 0.5_r);
     static_assert(123'456'789'012'345'678'901'234'567'890_g ==
                   grid_rational{big_int{123'456'789'012'345'678ull} * big_int{1'000'000'000'000ull} +
                                 big_int{901'234'567'890ull}});
@@ -138,15 +138,15 @@ TEST(BigGridTest, math_grid_ops) {
     using hpos   = inside<{1, g(pow2(100))}>;
     const fine_r x{-2.75};
     const hsym   h{-7};
-    EXPECT_EQ(math::abs(x), 2.75);
+    EXPECT_EQ(math::abs(x), 2.75_r);
     EXPECT_EQ(math::abs(h), 7);
     EXPECT_EQ(math::sign(x), -1);
-    EXPECT_EQ(math::copysign(fine_r{1.5}, x), -1.5);
+    EXPECT_EQ(math::copysign(fine_r{1.5_r}, x), -1.5_r);
     EXPECT_EQ(math::floor(x), -3);
     EXPECT_EQ(math::ceil(x), -2);
     EXPECT_EQ(math::round(x), -3);
     EXPECT_EQ(math::trunc(x), -2);
-    EXPECT_EQ(math::fmod(x, fpos{1.5}), -1.25);
+    EXPECT_EQ(math::fmod(x, fpos{1.5}), -1.25_r);
     EXPECT_EQ(math::fmod(h, hpos{3}), -1);
     static_assert(upper_of<decltype(math::abs(h))> == g(pow2(100)));
     static_assert(lower_of<decltype(math::floor(x))> == -4);
@@ -193,7 +193,7 @@ TEST(BigGridTest, division) {
     EXPECT_TRUE(*s == huge::from_raw(raw_2_98));
     const auto t = huge{12} / huge{8};
     ASSERT_TRUE(t.has_value());
-    EXPECT_TRUE(*t == 1.5);
+    EXPECT_TRUE(*t == 1.5_r);
     // Under a rounding policy the integer quotient rounds, as on 64-bit grids
     // (it was the exact 3.5).
     const auto f = div(huge{7}, huge{2}, round_floor);
@@ -277,7 +277,7 @@ TEST(BigGridTest, continuous_past_64_bits) {
     const auto   ratio    = universe / planck;
     static_assert(detail::fraction_storage<std::remove_cvref_t<decltype(ratio)>>);
     EXPECT_EQ(to_string(ratio), "17600000000000000000000000000000000000000000000000000000000000000000/323251");
-    EXPECT_TRUE(ratio > 5.4e61 && ratio < 5.5e61);
+    EXPECT_TRUE(ratio > just<5.4e61_g> && ratio < just<5.5e61_g>);
     EXPECT_EQ(std::format("{:.6e}", ratio), "5.444685e+61");
     using decade = inside<{{-100, 100}, per<1 << 20>}, round_nearest>;
     EXPECT_EQ(math::log10_into<decade>(ratio), (decade{rational{64'734'859, 1 << 20}})); // 61.7359724…

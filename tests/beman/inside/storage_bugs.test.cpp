@@ -247,10 +247,10 @@ TEST(StorageBugsTest, scalar_comparison_does_not_truncate_the_scalar) {
     using namespace beman::inside;
     inside<{-10, 10}> one{1}, minus_one{-1};
     static_assert(detail::integer_value_storage<decltype(one)>);
-    EXPECT_FALSE(one == 1.5);
-    EXPECT_TRUE(one < 1.5);
-    EXPECT_TRUE(minus_one > -1.5);
-    EXPECT_TRUE(one == 1.0);
+    EXPECT_FALSE(one == 1.5_r);
+    EXPECT_TRUE(one < 1.5_r);
+    EXPECT_TRUE(minus_one > -1.5_r);
+    EXPECT_TRUE(one == 1.0_r);
     EXPECT_TRUE(one < std::numeric_limits<std::uint64_t>::max());
 }
 
@@ -344,7 +344,8 @@ TEST(StorageBugsTest, huge_double_source) {
     static_assert(rational{third{-1e300}} == 0);
 
     constexpr inside<{{0, 10}, per<4>}> x{1};
-    static_assert(x < 0x1p64 && x > -0x1p64 && x < 1e300 && !(x == 1e300));
+    static_assert(x < just<18446744073709551616_g> && x > -just<18446744073709551616_g> && x < just<1e300_g> &&
+                  !(x == just<1e300_g>));
     static_assert(conversion_overflows<inside<{0, 10}>>(0x1p64));
     static_assert(!conversion_rounds<inside<{0, 10}>>(0x1p64));
 

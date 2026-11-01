@@ -267,7 +267,7 @@ TEST(BugHuntRound7, asinh_of_a_large_argument) {
     static_assert([] {
         using P      = inside<{{0, 64}, 0x1p-20}, round_nearest>;
         const auto c = math::asinh_into<P>(inside<{0, I64{1} << 40}>{I64{1} << 40});
-        return c > 28.41 && c < 28.43; // asinh(2^40) = 28.4190…; log(2^40) is 27.7
+        return c > 28.41_r && c < 28.43_r; // asinh(2^40) = 28.4190_r…; log(2^40) is 27.7_r
     }());
 }
 

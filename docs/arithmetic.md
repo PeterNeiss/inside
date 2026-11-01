@@ -69,9 +69,10 @@ auto d = sub * just<2>;  // ✅ inside × inside
 
 `1_ins` and `just<N>` give a constant a one-point grid; `inside<{lo, hi}>{n}`
 gives a runtime value its range. Compound assignment follows the same rule:
-`b += 1_ins`, not `b += 1`. Comparisons with raw scalars are fine
-(`b == 5`, `b < 1.5`): they make no new value, and they are exact, so a
-`double` is compared at full precision.
+`b += 1_ins`, not `b += 1`. Comparisons with integers and rationals are fine
+(`b == 5`, `b < 1.5_r`): they make no new value, and they are exact. A
+floating-point value does not compare with an inside: 0.1 is not 1/10 in
+binary ([conversions.md](conversions.md#comparing)).
 
 ### Scaling by an exact fraction
 

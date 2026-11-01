@@ -51,7 +51,7 @@ TEST(WideGridTest, construction_from_scalars) {
     EXPECT_TRUE(a == 5);
     EXPECT_TRUE(a.raw() == detail::wide_uint<2>{5 * p32});
     fine b = 0.5;
-    EXPECT_TRUE(b == 0.5);
+    EXPECT_TRUE(b == 0.5_r);
     fine c = tick; // the first notch
     EXPECT_TRUE(c == tick);
     EXPECT_TRUE(c.raw() == detail::wide_uint<2>{1});
@@ -60,7 +60,7 @@ TEST(WideGridTest, construction_from_scalars) {
     EXPECT_TRUE(top.raw() == (detail::wide_uint<2>{1} << 66));
 
     fine_signed s = -3.25;
-    EXPECT_TRUE(s == -3.25);
+    EXPECT_TRUE(s == -3.25_r);
     EXPECT_TRUE(s < 0);
 }
 
@@ -110,14 +110,14 @@ TEST(WideGridTest, assignment_between_insides) {
     EXPECT_EQ(n.as<imax>(), 42);
     // wide → wide of another lattice.
     fine_signed s = b;
-    EXPECT_TRUE(s == 41.75);
+    EXPECT_TRUE(s == 41.75_r);
 }
 
 TEST(WideGridTest, comparisons) {
     fine a = 1.5, b = 2;
     EXPECT_TRUE(a < b && b > a && a != b);
-    EXPECT_TRUE((a == 1.5 && a == rational{3, 2}));
-    EXPECT_TRUE(a > 1 && a < 2u && a < 1e30 && a > -1e30);
+    EXPECT_TRUE((a == 1.5_r && a == rational{3, 2}));
+    EXPECT_TRUE(a > 1 && a < 2u && a < just<1e30_g> && a > -just<1e30_g>);
     EXPECT_TRUE((a == inside<{{0, 10}, per<2>}>{1.5}));
     EXPECT_TRUE((a < inside<{0, 10}>{2}));
     fine_signed s = -1.5;
@@ -134,13 +134,13 @@ TEST(WideGridTest, arithmetic) {
     auto diff = a - b; // {−2^34, 2^34}
     EXPECT_TRUE(diff == (rational{1, 2} - tick).value());
     auto neg = -a;
-    EXPECT_TRUE(neg == -1.5);
+    EXPECT_TRUE(neg == -1.5_r);
     auto prod = a * inside<{0, 3}>{3}; // {0, 3·2^34}, notch 2^-32
     static_assert(detail::wide_index_storage<decltype(prod)>);
-    EXPECT_TRUE(prod == 4.5);
+    EXPECT_TRUE(prod == 4.5_r);
     // narrow + wide and back.
     auto mixed = inside<{0, 100}>{7} + a;
-    EXPECT_TRUE(mixed == 8.5);
+    EXPECT_TRUE(mixed == 8.5_r);
 }
 
 TEST(WideGridTest, uint64_difference_widens) {
@@ -186,11 +186,11 @@ TEST(WideGridTest, exact_read_out) {
 TEST(WideGridTest, same_notch_assignment) {
     // A wider sum maps back by a raw shift; out of range runs the policy.
     fine f = fine{1.5} + fine{2.25};
-    EXPECT_TRUE(f == 3.75);
+    EXPECT_TRUE(f == 3.75_r);
     fine_signed g = fine{1.5} + fine{2.25}; // offset raw (Lower ≠ 0)
-    EXPECT_TRUE(g == 3.75);
+    EXPECT_TRUE(g == 3.75_r);
     g = fine_signed{-1.5} - fine{2.25};
-    EXPECT_TRUE(g == -3.75);
+    EXPECT_TRUE(g == -3.75_r);
     const auto over = fine{rational{p34}} + fine{tick};
     EXPECT_THROW(f = over, inside_error);
     fine_clamp c = 0;
@@ -229,7 +229,7 @@ TEST(WideGridTest, to_string) {
 }
 
 TEST(WideGridTest, parse) {
-    EXPECT_TRUE(parse<fine>("1.5").value() == 1.5);
+    EXPECT_TRUE(parse<fine>("1.5").value() == 1.5_r);
     // 2^33 + 2^-32 needs a 66-bit numerator: the exact fallback parses it.
     const fine odd = fine::from_raw((detail::wide_uint<2>{1} << 65) + detail::wide_uint<2>{1});
     EXPECT_TRUE(parse<fine>("36893488147419103233/4294967296").value() == odd);
@@ -401,7 +401,7 @@ TEST(WideGridTest, qformat_division_past_64_bits) {
 
 // The wide paths are constexpr.
 namespace {
-static_assert(fine{1.5} + fine{2} == 3.5);
+static_assert(fine{1.5_r} + fine{2} == 3.5_r);
 static_assert(fine{1.5} < fine_signed{2});
 static_assert(-fine{1} == -1);
 static_assert([] {

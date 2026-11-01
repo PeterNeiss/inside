@@ -68,6 +68,9 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   the same way.
 - The error handler is atomic, with default visibility: one thread may install
   a handler while others raise, and shared libraries share it.
+- An inside no longer compares with a floating-point value (`x == 0.1`,
+  `x < 1.5`): 0.1 is not 1/10 in binary, so an inside holding 1/10 compared
+  unequal to 0.1. Compare with `0.1_r`, `just<1, 10>` or an inside.
 - A result of an operator keeps the policy its operands share (a point with
   the default policy, such as `2_ins`, counts as neutral; different policies
   give the default). Before, `+ - *` returned the default policy, so with
