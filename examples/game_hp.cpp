@@ -69,7 +69,7 @@ int main() {
     // Pile on more damage to trigger the downed callback.
     hp.on_clamp([&](auto& self, auto overshoot) {
         if (self == just<0> * HP) {
-            std::cout << "[downed — overshoot " << overshoot << " HP]\n";
+            std::cout << "[downed — overshoot " << overshoot << "]\n"; // a quantity: "-163 HP"
             downed = true;
         }
     }) -= just<200> * HP;

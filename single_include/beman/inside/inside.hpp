@@ -19055,6 +19055,15 @@ constexpr auto on_quantity(Q& q, F&& f) {
     };
 }
 
+// q.on_clamp(f): f(q, overshoot), the inside's overshoot as a quantity in q's
+// unit and kind.
+template <reference R, class F, class Q>
+constexpr auto on_quantity_clamp(Q& q, F&& f) {
+    return [&q, f = std::forward<F>(f)](auto&, auto&& over) mutable -> decltype(auto) {
+        return f(q, quantity<R, std::remove_cvref_t<decltype(over)>>{std::forward<decltype(over)>(over)});
+    };
+}
+
 template <reference R, class Q, class Ref>
 struct quantity_action_ref {
     Q&  Self;
@@ -19270,14 +19279,16 @@ class quantity {
     }
 
     // A store with a hook, as on inside: q.on_wrap(f) += d calls f(q, carry)
-    // when the sum wraps. Stores take quantities; f gets the quantity.
+    // when the sum wraps. Stores take quantities; f gets the quantity, then
+    // the carry (a count of periods), the overshoot (a quantity) or the errc.
     template <class F>
     [[nodiscard]] constexpr auto on_wrap(F&& f) {
         return detail::make_action_ref<R>(*this, Value.on_wrap(detail::on_quantity(*this, std::forward<F>(f))));
     }
     template <class F>
     [[nodiscard]] constexpr auto on_clamp(F&& f) {
-        return detail::make_action_ref<R>(*this, Value.on_clamp(detail::on_quantity(*this, std::forward<F>(f))));
+        return detail::make_action_ref<R>(*this,
+                                          Value.on_clamp(detail::on_quantity_clamp<R>(*this, std::forward<F>(f))));
     }
     template <class F>
     [[nodiscard]] constexpr auto on_error(F&& f) {

@@ -173,8 +173,8 @@ acc.on_clamp([&](auto&, auto over) { log_overshoot(over); }) += big;
 
 A quantity (see [units.md](units.md)) has the same three hooks. The handle's
 `=`, `+=` and `-=` take a quantity in any unit of the same kind and convert it
-exactly first. The hook gets the **quantity**, then the inside's carry,
-overshoot or errc:
+exactly first. The hook gets the **quantity**, then the inside's carry (a
+count of periods) or errc, or the overshoot as a quantity in the same unit:
 
 ```cpp
 quantity<si::second, inside<{0, 60, bounds::half_open}, wrap>> s{50};

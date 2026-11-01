@@ -308,3 +308,25 @@ TEST(UnitsParityTest, hash_and_numeric_limits) {
     EXPECT_TRUE(lim::epsilon() == just<0> * si::metre);
     EXPECT_EQ(lim::digits, std::numeric_limits<num>::digits);
 }
+
+// A quantity's on_clamp passes the overshoot as a quantity in its unit and
+// kind, exactly; on_wrap's carry stays a count of periods.
+TEST(UnitsParityTest, clamp_overshoot_is_a_quantity) {
+    metres m{40};
+    bool   exact = false;
+    m.on_clamp([&](metres& self, auto over) {
+        static_assert(quantity_like<decltype(over)>);
+        static_assert(decltype(over)::reference == metres::reference);
+        exact = &self == &m && over == just<900> * si::metre; // 1 km is 1000 m: 900 m past 100 m
+    })           = km{1};
+    EXPECT_TRUE(exact);
+    EXPECT_TRUE(m == just<100> * si::metre);
+
+    using turn = quantity<si::second, inside<{0, 59}, wrap>>;
+    turn t{0};
+    t.on_wrap([&](auto&, auto carry) {
+        static_assert(!quantity_like<decltype(carry)>);
+        exact = carry == 2_ins;
+    }) = just<125> * si::second;
+    EXPECT_TRUE(exact);
+}

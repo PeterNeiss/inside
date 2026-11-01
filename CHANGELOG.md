@@ -89,6 +89,9 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   is a deleted overload: through `operator rational()` it silently became an
   `expected<rational, errc>` without a grid. Write the constant as
   `just<1, 2>` or `0.5_ins`; `x += 0.5_r` still stores into `x`'s grid.
+- A quantity's `on_clamp` hook gets the overshoot as a quantity in its unit
+  and kind (it was the bare number): `f(q, over)` with `over` printing as
+  "-163 HP". `on_wrap`'s carry stays a count of periods.
 - A result of an operator keeps the policy its operands share (a point with
   the default policy, such as `2_ins`, counts as neutral; different policies
   give the default). Before, `+ - *` returned the default policy, so with
