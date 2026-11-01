@@ -213,14 +213,14 @@ TEST(BugHuntRound7, wrap_rounds_first_on_a_bounded_grid) {
 TEST(BugHuntRound7, on_clamp_hears_of_infinities) {
     inside<{0, 100}> x{50};
     int              fired = 0;
-    imax             over  = 0;
-    x.on_clamp([&](auto&, auto o) { // an inside: the overshoot saturates at the top of its grid
+    bool             top   = false;
+    x.on_clamp([&](auto&, auto o) { // an inside: ±∞ reports the end of its grid
         ++fired;
-        over = as<imax>(o);
+        top = o == just<upper_of<decltype(o)>>;
     })                     = std::numeric_limits<double>::infinity();
     EXPECT_EQ(x, 100);
     EXPECT_EQ(fired, 1);
-    EXPECT_EQ(over, std::numeric_limits<imax>::max());
+    EXPECT_TRUE(top);
     x.on_clamp([&](auto&, auto) { ++fired; }) = -std::numeric_limits<double>::infinity();
     EXPECT_EQ(x, 0);
     EXPECT_EQ(fired, 2);

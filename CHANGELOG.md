@@ -95,11 +95,13 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   `inside<{0, 10}, round_floor> a{7}`, `a / 2_ins` was 3 but
   `(a + 0_ins) / 2_ins` was 7/2; both are 3 now.
 - The `on_clamp` overshoot is an inside for every source kind, as the
-  `on_wrap` carry already was. Before, it was an `imax` from an integer, a
-  `double` from a `double`, a `rational` from a `rational`, and an inside only
-  from an inside. From an integer it is now exact past the `imax` range; from
-  a `double` or a `rational` it is rounded toward zero onto the target's value
-  unit. A hook typed `imax` reads it with `as<imax>(over)`.
+  `on_wrap` carry already was, and exact: the source minus the limit. Before,
+  it was an `imax` from an integer (saturated), a `double` from a `double`
+  (computed in floating point), a `rational` from a `rational` (0 when the
+  difference left 64 bits), and an inside only from an inside. Its grid holds
+  every value of the source kind minus either limit; from a `double` that is
+  an inside of about 2100 bits. ±∞ reports the end of that grid. A hook typed
+  `imax` reads it with `as<imax>(over)`.
 - A store, operator or free function that cannot compile is a deleted
   overload with the reason, everywhere: an impossible store (a disjoint
   interval, an off-notch source), an inside with a raw scalar (`x + 1`), and

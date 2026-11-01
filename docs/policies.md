@@ -139,11 +139,13 @@ every carry the source can produce: for `125_ins`, `[2, 2]`; for an `int`,
 that type's limits divided by the period. A hook that takes `imax` instead of
 `auto` works too.
 
-The overshoot is an inside too: the source minus the limit it was clamped to.
-From an inside or an integer it is exact, and its grid is the source's range
-minus the target's. From a `double` or a `rational` it is rounded toward zero
-onto the target's value unit and saturates at the `imax` range, since such a
-source has no range to subtract.
+The overshoot is an inside too: the source minus the limit it was clamped to,
+exactly. Its grid holds every value of the source kind minus either limit: an
+integer type's range, an inside's grid, a `rational`'s 64-bit values, or a
+`double`'s whole range down to its least subnormal (an inside of about 2100
+bits, built only when the hook runs). 150.7 into `{0, 100}` reports the double
+150.7 minus 100, not 50. A `long double` is exact below 2^1024, the range the
+library stores exactly; ±∞ reports the end of the overshoot's grid.
 
 The right-hand side of a hook's `+=` is an inside, a quantity or a `rational`.
 A raw `int` or `double` is rejected, as for plain compound assignment: give it

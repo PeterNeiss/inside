@@ -58,8 +58,8 @@ struct assignment<L, R> {
         const W    v   = static_cast<W>(rhs);
         const bool low = v < fold::lower;
         lhs            = L::from_raw(raw_of_slot<L>(low ? W{0} : fold::span));
-        if constexpr (clamp_action<plain_t<A>>)
-            action.Fn(lhs, integral_overshoot(rhs, lhs)); // an inside, exact
+        if constexpr (clamp_action<plain_t<A>>) // the source minus the limit, exact
+            action.Fn(lhs, make_clamp_overshoot<L, R>(exact_of_source(rhs) + -exact_of(lhs)));
     }
 
     template <typename A>
@@ -214,19 +214,18 @@ struct assignment<L, R> {
 
     template <typename P, typename A>
     static constexpr void apply_clamp(L& lhs, R rhs, P&&, A&& action) {
-        const bool low   = below_lower(rhs);
-        R          bound = low ? static_cast<R>(lower64<L>) : static_cast<R>(upper64<L>);
-        R          overshoot;
-        if constexpr (std::same_as<R, rational>)
-            overshoot = try_sub(rhs, bound).value_or(rational{0});
-        else
-            overshoot = rhs - bound;
-
+        const bool low = below_lower(rhs);
         // The clamp target is an interval endpoint — a grid point, no rounding.
         lhs = L::from_raw(endpoint_raw<L>(low));
 
-        if constexpr (clamp_action<plain_t<A>>)
-            action.Fn(lhs, make_clamp_overshoot<L, R>(overshoot)); // an inside
+        if constexpr (clamp_action<plain_t<A>>) { // the source minus the limit, exact
+            if constexpr (std::floating_point<R>)
+                if (!is_finite(rhs)) {
+                    action.Fn(lhs, infinite_clamp_overshoot<L, R>(low));
+                    return;
+                }
+            action.Fn(lhs, make_clamp_overshoot<L, R>(exact_of_source(rhs) + -exact_of(lhs)));
+        }
     }
 
   public:
@@ -670,6 +669,13 @@ struct assignment<L, R> {
                         report_failure(lhs, policy, action, errc::not_finite);
                         return lhs;
                     }
+                    // ±∞ clamps by its stand-in and reports the overshoot grid's end.
+                    if constexpr (clamp_action<plain_t<A>>)
+                        if (!is_finite(rhs)) {
+                            assign_exact<R>(lhs, exact_of_large<L>(static_cast<double>(rhs)), policy, no_action{});
+                            action.Fn(lhs, infinite_clamp_overshoot<L, R>(rhs < 0));
+                            return lhs;
+                        }
                     // A fold and an overshoot need the exact value, not the stand-in.
                     if constexpr (uses_flag<L, P, wrap> || clamp_action<plain_t<A>> || wrap_action<plain_t<A>>)
                         if (is_finite(rhs))
@@ -859,14 +865,9 @@ struct assignment<L, R> {
     template <typename A>
     static constexpr void apply_clamp(L& lhs, const R& rhs, A&& action) {
         lhs = L::from_raw(endpoint_raw<L>(as_rational(rhs) < lower64<L>));
-        // Overshoot (rhs − clamped) as an inside, via the result-grid inference of normal
-        // inside arithmetic: both operands are insides, so the overshoot is too. It is always
-        // in-grid and on-notch for grid_of<R> − grid_of<L>, so the construction is exact.
-        if constexpr (clamp_action<plain_t<A>>) {
-            constexpr grid            OG = grid_of<R> - grid_of<L>;
-            beman::inside::inside<OG> overshoot{(as_rational(rhs) - as_rational(lhs)).value()};
-            action.Fn(lhs, overshoot);
-        }
+        // The overshoot rhs − clamped, exact on its grid (assign_exact.hpp).
+        if constexpr (clamp_action<plain_t<A>>)
+            action.Fn(lhs, make_clamp_overshoot<L, R>(exact_of(rhs) + -exact_of(lhs)));
     }
 
     template <typename P, typename A>

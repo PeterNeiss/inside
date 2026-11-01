@@ -6638,54 +6638,76 @@ constexpr auto make_wrap_carry(imax q) {
 }
 
 //---------------------------------------------------------------------------
-// The on_clamp overshoot (the source minus the limit it was clamped to) is an
-// inside for every source kind, as the wrap carry is. Its grid: an inside
-// source's interval minus L's (grid_of<R> − grid_of<L>); an integral source's
-// type limits minus L's, exact; a floating or rational source the imax range
-// on L's value unit (a continuous L: its denominator bound), the overshoot
-// rounded toward zero onto it and saturated.
+// The on_clamp overshoot: the source minus the limit it was clamped to,
+// exactly, as an inside for every source kind (as the wrap carry is). Its
+// grid holds every value of the source kind minus either limit: the source's
+// grid minus L's limits as a two-point grid {Lower, Upper} (so a floating
+// source minus a continuous L stays a lattice). The source's grid: an
+// inside's own, an integer type's limits, a float or double's whole range on
+// its least subnormal (about 2100 bits for a double), a long double's
+// stand-in range (exact_of_long_double: ±2^1100 on 2^-1130), a rational's
+// 64-bit range with denominators up to 2^63. ±∞ reports the grid's end.
 //---------------------------------------------------------------------------
-template <insidable L, typename R>
-constexpr grid clamp_overshoot_grid() {
-    constexpr grid G = grid_of<L>;
+template <typename R>
+constexpr grid overshoot_source_grid() {
     if constexpr (insidable<R>)
-        return grid_of<R> - G;
+        return grid_of<R>;
     else if constexpr (std::integral<R>)
-        return grid{grid_rational{std::numeric_limits<R>::min()}, grid_rational{std::numeric_limits<R>::max()}} - G;
-    else {
-        constexpr grid_rational lo{std::numeric_limits<imax>::min()}, hi{std::numeric_limits<imax>::max()};
-        if constexpr (continuous_grid(G))
-            return grid{interval{lo, hi}, max_denominator{G.MaxDenominator}};
-        else {
-            constexpr grid_rational u =
-                G.Notch == 0 ? grid_rational{1} / grid_rational{grid_denominator(G.Interval.Lower)} : G.value_unit();
-            return grid{interval{lo * u, hi * u}, u};
-        }
+        return grid{grid_rational{std::numeric_limits<R>::min()}, grid_rational{std::numeric_limits<R>::max()}};
+    else if constexpr (wide_float<R>) {
+        const grid_rational big{grid_int{1} << 1100}, tiny = grid_rational{1} / grid_rational{grid_int{1} << 1130};
+        return grid{interval{-big, big}, tiny};
+    } else if constexpr (std::floating_point<R>) {
+        const grid_rational top{static_cast<double>(std::numeric_limits<R>::max())};
+        return grid{interval{-top, top}, grid_rational{static_cast<double>(std::numeric_limits<R>::denorm_min())}};
+    } else { // rational: |Num| < 2^64, |Den| ≤ 2^63
+        const grid_rational top{grid_int{~umax{0}}};
+        return grid{interval{-top, top}, max_denominator{grid_rational{grid_int{1} << 63}}};
     }
 }
 
-// The overshoot of a floating or rational source, or an exact one from the
-// wide paths, onto its grid: rounded toward zero and saturated.
-template <insidable L, typename R, class V>
-constexpr auto make_clamp_overshoot(const V& over) {
-    constexpr grid OG = clamp_overshoot_grid<L, R>();
-    using T           = beman::inside::inside<OG, clamp | snap>;
-    if constexpr (wide_rational_like<V>) {
-        T t;
-        assign_exact<rational>(t, over, make_policy<clamp | snap>(), no_action{});
-        return beman::inside::inside<OG>::from_raw(t.raw());
-    } else
-        return beman::inside::inside<OG>::from_raw(T{over}.raw());
+template <insidable L, typename R>
+constexpr grid clamp_overshoot_grid() {
+    constexpr grid limits = lower_of<L> == upper_of<L>
+                                ? grid{lower_of<L>}
+                                : grid{interval{lower_of<L>, upper_of<L>}, upper_of<L> - lower_of<L>};
+    return overshoot_source_grid<R>() - limits;
+}
+template <insidable L, typename R>
+using clamp_overshoot_t = beman::inside::inside<clamp_overshoot_grid<L, R>()>;
+
+// An exact value of Result's grid as Result, for any storage.
+template <insidable Result, std::size_t K>
+constexpr Result exact_value_result(const wide_rational<K>& v) noexcept {
+    if constexpr (fraction_storage<Result>)
+        return Result::from_raw(*continuous_raw_of<raw_t<Result>>(v));
+    else if constexpr (rational_storage<Result>)
+        return Result::from_raw(*try_rational(v));
+    else if constexpr (point_storage<Result>)
+        return Result::from_raw(raw_t<Result>{});
+    else
+        return exact_result<Result>(v);
 }
 
-// An integral source's overshoot, exact: the source as an inside over its
-// type's limits, minus the clamped value (inside arithmetic sizes the grid).
-template <insidable L, std::integral R>
-constexpr auto integral_overshoot(R rhs, const L& clamped) {
-    const auto d = beman::inside::inside<grid{grid_rational{std::numeric_limits<R>::min()},
-                                              grid_rational{std::numeric_limits<R>::max()}}>{rhs} -
-                   clamped;
-    return beman::inside::inside<grid_of<decltype(d)>>::from_raw(d.raw());
+// The overshoot from its exact value (the source minus the limit).
+template <insidable L, typename R, std::size_t K>
+constexpr auto make_clamp_overshoot(const wide_rational<K>& over) {
+    return exact_value_result<clamp_overshoot_t<L, R>>(over);
+}
+// The overshoot of ±∞: the grid's end of that sign.
+template <insidable L, typename R>
+constexpr auto infinite_clamp_overshoot(bool negative) {
+    using T = clamp_overshoot_t<L, R>;
+    return exact_value_result<T>(exact_of_grid<exact_limbs<T>>(negative ? lower_of<T> : upper_of<T>));
+}
+
+// The exact value of a scalar source.
+template <typename R>
+constexpr auto exact_of_source(const R& rhs) {
+    if constexpr (std::floating_point<R>)
+        return exact_of_double(static_cast<double>(rhs)); // a float or double: exact
+    else
+        return exact_of(rational{rhs});
 }
 
 // d saturated to imax: a clamp overshoot or a wrap carry, from a work type W
@@ -6914,11 +6936,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
                             // The overshoot rhs − bound, shaped like the builtin paths'.
                             const auto over = v + wide_rational<KK>{I{-1}, I{1}} *
                                                       exact_of_grid<KK>(low ? lower_of<L> : upper_of<L>);
-                            if constexpr (insidable<R> || std::integral<R>) // exact on its grid
-                                action.Fn(lhs,
-                                          exact_result<beman::inside::inside<clamp_overshoot_grid<L, R>()>>(over));
-                            else
-                                action.Fn(lhs, make_clamp_overshoot<L, R>(over));
+                            action.Fn(lhs, make_clamp_overshoot<L, R>(over));
                         }
                     },
                     [&] {
@@ -7016,8 +7034,8 @@ struct assignment<L, R> {
         const W    v   = static_cast<W>(rhs);
         const bool low = v < fold::lower;
         lhs            = L::from_raw(raw_of_slot<L>(low ? W{0} : fold::span));
-        if constexpr (clamp_action<plain_t<A>>)
-            action.Fn(lhs, integral_overshoot(rhs, lhs)); // an inside, exact
+        if constexpr (clamp_action<plain_t<A>>) // the source minus the limit, exact
+            action.Fn(lhs, make_clamp_overshoot<L, R>(exact_of_source(rhs) + -exact_of(lhs)));
     }
 
     template <typename A>
@@ -7172,19 +7190,18 @@ struct assignment<L, R> {
 
     template <typename P, typename A>
     static constexpr void apply_clamp(L& lhs, R rhs, P&&, A&& action) {
-        const bool low   = below_lower(rhs);
-        R          bound = low ? static_cast<R>(lower64<L>) : static_cast<R>(upper64<L>);
-        R          overshoot;
-        if constexpr (std::same_as<R, rational>)
-            overshoot = try_sub(rhs, bound).value_or(rational{0});
-        else
-            overshoot = rhs - bound;
-
+        const bool low = below_lower(rhs);
         // The clamp target is an interval endpoint — a grid point, no rounding.
         lhs = L::from_raw(endpoint_raw<L>(low));
 
-        if constexpr (clamp_action<plain_t<A>>)
-            action.Fn(lhs, make_clamp_overshoot<L, R>(overshoot)); // an inside
+        if constexpr (clamp_action<plain_t<A>>) { // the source minus the limit, exact
+            if constexpr (std::floating_point<R>)
+                if (!is_finite(rhs)) {
+                    action.Fn(lhs, infinite_clamp_overshoot<L, R>(low));
+                    return;
+                }
+            action.Fn(lhs, make_clamp_overshoot<L, R>(exact_of_source(rhs) + -exact_of(lhs)));
+        }
     }
 
   public:
@@ -7628,6 +7645,13 @@ struct assignment<L, R> {
                         report_failure(lhs, policy, action, errc::not_finite);
                         return lhs;
                     }
+                    // ±∞ clamps by its stand-in and reports the overshoot grid's end.
+                    if constexpr (clamp_action<plain_t<A>>)
+                        if (!is_finite(rhs)) {
+                            assign_exact<R>(lhs, exact_of_large<L>(static_cast<double>(rhs)), policy, no_action{});
+                            action.Fn(lhs, infinite_clamp_overshoot<L, R>(rhs < 0));
+                            return lhs;
+                        }
                     // A fold and an overshoot need the exact value, not the stand-in.
                     if constexpr (uses_flag<L, P, wrap> || clamp_action<plain_t<A>> || wrap_action<plain_t<A>>)
                         if (is_finite(rhs))
@@ -7817,14 +7841,9 @@ struct assignment<L, R> {
     template <typename A>
     static constexpr void apply_clamp(L& lhs, const R& rhs, A&& action) {
         lhs = L::from_raw(endpoint_raw<L>(as_rational(rhs) < lower64<L>));
-        // Overshoot (rhs − clamped) as an inside, via the result-grid inference of normal
-        // inside arithmetic: both operands are insides, so the overshoot is too. It is always
-        // in-grid and on-notch for grid_of<R> − grid_of<L>, so the construction is exact.
-        if constexpr (clamp_action<plain_t<A>>) {
-            constexpr grid            OG = grid_of<R> - grid_of<L>;
-            beman::inside::inside<OG> overshoot{(as_rational(rhs) - as_rational(lhs)).value()};
-            action.Fn(lhs, overshoot);
-        }
+        // The overshoot rhs − clamped, exact on its grid (assign_exact.hpp).
+        if constexpr (clamp_action<plain_t<A>>)
+            action.Fn(lhs, make_clamp_overshoot<L, R>(exact_of(rhs) + -exact_of(lhs)));
     }
 
     template <typename P, typename A>

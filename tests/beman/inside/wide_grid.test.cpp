@@ -352,11 +352,11 @@ TEST(WideGridTest, hooks_on_a_wide_continuous_grid) {
     EXPECT_TRUE(exact);
     EXPECT_TRUE(x == B{0x1p70});
 
-    // From a double it saturates at the imax range.
-    imax over                                              = 0;
-    x.on_clamp([&](auto&, auto o) { over = as<imax>(o); }) = -0x1p71;
+    // From a double it is exact too, past the imax range.
+    bool from_double                                                  = false;
+    x.on_clamp([&](auto&, auto o) { from_double = o == B{-0x1p70}; }) = -0x1p71;
     EXPECT_TRUE(x == B{-0x1p70});
-    EXPECT_EQ(over, std::numeric_limits<imax>::min());
+    EXPECT_TRUE(from_double);
 
     // The period is the span, 2^71.
     imax carry = 7;
