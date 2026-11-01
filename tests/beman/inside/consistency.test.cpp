@@ -4,9 +4,9 @@
 // engine) handles it.
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/cmath.hpp>
-#include <beman/inside/detail/rational.hpp>
-#include <beman/inside/predicates.hpp>
+#include <beman/inside/math.hpp>
+#include <beman/inside/inside/detail/rational.hpp>
+#include <beman/inside/inside/predicates.hpp>
 
 #include <gtest/gtest.h>
 
@@ -203,20 +203,21 @@ TEST(ConsistencyTest, compound_ops_report_errors_through_the_policy) {
     EXPECT_THROW(e *= E{q(1, 999)}, inside_error);
 }
 
-// The raw += fast path honours ignore_range like plain assignment does.
-TEST(ConsistencyTest, compound_fast_path_honours_ignore_domain) {
-    using X = inside<{0, 10}, checked | ignore_range>;
+// The raw += fast path honours unsafe like plain assignment does.
+TEST(ConsistencyTest, compound_fast_path_honours_unsafe) {
+    using X = inside<{0, 10}, unsafe>;
     X x{10};
     EXPECT_NO_THROW(x += 1_ins);
     X y{10};
     EXPECT_NO_THROW(y = y + 1_ins);
 }
 
-// ignore_zero on either operand silences a zero divisor in /= and %=, as in
-// div/mod; policy_ref /= routes a zero divisor through on_error / ignore_zero.
+// unsafe on either operand silences a zero divisor in /= and %=, as in
+// div/mod; policy_ref /= routes a zero divisor through on_error, or skips it
+// under unsafe.
 TEST(ConsistencyTest, zero_divisor_handling_agrees) {
     using X = inside<{0, 10}, checked | snap>;
-    using Z = inside<{0, 10}, checked | snap | ignore_zero>;
+    using Z = inside<{0, 10}, unsafe>;
     X x{6};
     EXPECT_NO_THROW(x /= Z{0});
     EXPECT_NO_THROW(x %= Z{0});
@@ -226,7 +227,74 @@ TEST(ConsistencyTest, zero_divisor_handling_agrees) {
     X    b{6};
     b.on_error([&](auto&, errc e, auto) { called = (e == errc::division_by_zero); }) /= X{0};
     EXPECT_TRUE(called);
-    EXPECT_NO_THROW(b.policy<ignore_zero>() /= X{0});
+    EXPECT_NO_THROW(b.policy<unsafe>() /= X{0});
+}
+
+// unsafe is the one opt-out of the runtime checks, and it wins over checked
+// (the default policy's own bit), so a per-call policy<unsafe>() opts a
+// default inside out.
+TEST(ConsistencyTest, unsafe_is_the_one_opt_out_and_wins_over_checked) {
+    static_assert(is_checked(none) && is_checked(checked) && is_checked(clamp | round_nearest));
+    static_assert(!is_checked(unsafe) && !is_checked(checked | unsafe));
+    static_assert(range_handled(checked) && range_handled(clamp | unsafe) && range_handled(wrap | unsafe));
+    static_assert(!range_handled(unsafe) && !range_handled(checked | unsafe));
+    static_assert(std::numeric_limits<inside<{0, 10}>>::traps);
+    static_assert(!std::numeric_limits<inside<{0, 10}, checked | unsafe>>::traps);
+
+    using D = inside<{0, 10}>;
+    D b{6};
+    EXPECT_NO_THROW(b.policy<unsafe>() /= D{0});
+    EXPECT_NO_THROW(b.policy<unsafe>() %= D{0});
+    EXPECT_EQ(b, 6);
+    EXPECT_THROW(b /= D{0}, inside_error);
+    EXPECT_THROW(b.policy() /= D{0}, inside_error);
+}
+
+// Every store, operator and free function that cannot compile is deleted, so
+// traits and requires probes answer false: a raw scalar operand, a disjoint
+// or off-notch store, and a hook passed to free arithmetic.
+template <class A, class B>
+concept adds = requires(A a, B b) { a + b; };
+template <class A, class B>
+concept add_assigns = requires(A& a, B b) { a += b; };
+template <class A, class H>
+concept adds_with = requires(A a, H h) { add(a, a, h); };
+TEST(ConsistencyTest, constraints_are_honest) {
+    using I = inside<{0, 10}>;
+    static_assert(!adds<I, int> && !adds<int, I> && !adds<I, double> && !add_assigns<I, int>);
+    static_assert(adds<I, I> && add_assigns<inside<{0, 20}, clamp>, I>);
+    static_assert(!std::is_constructible_v<I, inside<{20, 30}>>); // disjoint
+    static_assert(!std::is_convertible_v<inside<{20, 30}>, I>);
+    static_assert(!std::is_assignable_v<I&, inside<{{0, 1}, per<2>}>>); // off the notch
+    static_assert(!std::is_constructible_v<I, std::expected<inside<{20, 30}>, errc>>);
+    static_assert(std::is_constructible_v<inside<{0, 10}, clamp>, inside<{20, 30}>>);
+    static_assert(std::is_assignable_v<inside<{0, 10}, round_nearest>&, inside<{{0, 1}, per<2>}>>);
+    static_assert(adds_with<I, decltype(make_policy<round_floor>())>);
+    static_assert(!adds_with<I, decltype(on_error([](auto&, auto, auto) {}))>);
+}
+
+// A flag is a template argument, combines with |, and is a call's policy:
+// div(a, b, round_floor), B{v, round_floor}. inside<G, flag> is the same type
+// as inside<G, bits>.
+TEST(ConsistencyTest, flags_are_call_policies) {
+    // checked has no bits: the default policy has one spelling and one type.
+    static_assert(std::is_same_v<inside<{0, 10}, none>, inside<{0, 10}>>);
+    static_assert(std::is_same_v<inside<{0, 10}, checked>, inside<{0, 10}>>);
+    static_assert(flags_of<inside<{0, 10}>> == 0);
+    static_assert(std::is_same_v<inside<{0, 10}, clamp | round_floor>,
+                                 inside<{0, 10}, (1ull << 32) | (1ull << 6) | (1ull << 4)>>);
+    static_assert(policy_flag{round_toward_zero} == policy_flag{snap});
+    using W = inside<{0, 10}>;
+    using D = inside<{1, 4}>;
+    static_assert(div(W{7}, D{2}, round_floor) == 3_ins && div(W{7}, D{2}, round_ceil) == 4_ins);
+    static_assert(div(W{7}, D{2}, round_floor) == div(W{7}, D{2}, make_policy<round_floor>()));
+    static_assert(divmod(W{7}, D{2}, round_floor).Remainder == 1_ins);
+    using halves = inside<{{0, 10}, per<2>}>;
+    static_assert(W{halves{3.5}, round_floor} == 3_ins && W{halves{3.5}, round_ceil} == 4_ins);
+    static_assert(inside<{0, 10}, clamp>{20, round_floor} == 10_ins);
+    errc ec{};
+    EXPECT_EQ(div(W{7}, inside<{0, 4}>{0}, make_policy<round_floor>(ec)).error(), errc::division_by_zero);
+    EXPECT_EQ(ec, errc::division_by_zero);
 }
 
 // Assignment rounds, then range-checks: 8.25 into [0, 8] rounds to 8; 8.5

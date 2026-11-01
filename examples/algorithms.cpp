@@ -8,7 +8,7 @@
 #include <vector>
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/io.hpp>
+#include <beman/inside/inside/io.hpp>
 
 namespace rng = std::ranges;
 using namespace beman::inside;

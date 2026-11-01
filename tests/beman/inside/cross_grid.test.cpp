@@ -10,7 +10,7 @@
 // result grid; comparison is order-exact).
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/io.hpp>
+#include <beman/inside/inside/io.hpp>
 
 #include <gtest/gtest.h>
 

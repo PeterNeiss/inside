@@ -55,12 +55,12 @@ file(WRITE "${BODY_FILE}" "")
 set_property(GLOBAL PROPERTY AMALG_EMITTED "")
 set_property(GLOBAL PROPERTY AMALG_SYS "")
 # When TRUE, a header's depth-0 system includes are kept inline rather than
-# hoisted to the top — used for beman/inside/io.hpp so its <string>/<ostream>/<format>
+# hoisted to the top — used for beman/inside/inside/io.hpp so its <string>/<ostream>/<format>
 # stay inside the BEMAN_INSIDE_NO_STRING guard and vanish when the block is dropped.
 set_property(GLOBAL PROPERTY AMALG_INLINE_SYS FALSE)
 
 #---------------------------------------------------------------------------
-# amalg_process(<rel>) — inline the header at <INC>/<rel> (e.g. "beman/inside/core.hpp")
+# amalg_process(<rel>) — inline the header at <INC>/<rel> (e.g. "beman/inside/inside/detail/core.hpp")
 # into BODY_FILE, recursing into its internal includes.
 #---------------------------------------------------------------------------
 function(amalg_process rel)
@@ -191,51 +191,56 @@ function(amalg_process rel)
 endfunction()
 
 #---------------------------------------------------------------------------
-# Roots: every public header, inside.hpp first.
+# Roots: every public header - the umbrellas (inside.hpp, math.hpp,
+# units.hpp) and the public headers of their folders, not detail/ - with
+# inside.hpp first.
 #---------------------------------------------------------------------------
-file(GLOB root_abs "${INC}/beman/inside/*.hpp")
+file(GLOB root_abs "${INC}/beman/inside/*.hpp" "${INC}/beman/inside/*/*.hpp")
 list(SORT root_abs)
 set(roots "")
 foreach(r IN LISTS root_abs)
-    get_filename_component(name "${r}" NAME)
-    list(APPEND roots "beman/inside/${name}")
+    file(RELATIVE_PATH rel "${INC}" "${r}")
+    list(APPEND roots "${rel}")
 endforeach()
 list(REMOVE_ITEM roots "beman/inside/inside.hpp")
 list(INSERT roots 0 "beman/inside/inside.hpp")
 
-# beman/inside/io.hpp gathers all <string>/<ostream>/<format> support; wrap its inlined
+# beman/inside/inside/io.hpp gathers all <string>/<ostream>/<format> support; wrap its inlined
 # body in BEMAN_INSIDE_NO_STRING so a freestanding single-header user can drop it (and its
 # heavy system includes) by defining the macro. Processed like any root, but its
 # depth-0 system includes are kept inline (see AMALG_INLINE_SYS) so they sit
 # inside the guard.
-# beman/inside/random.hpp needs <random> — hosted-only, and it pulls <cmath> — so
+# beman/inside/inside/random.hpp needs <random> — hosted-only, and it pulls <cmath> — so
 # it sits inside a guard the same way: a freestanding or FP-free
 # (BEMAN_INSIDE_MATH_NO_FP, resolved earlier in the header) build drops it.
-# beman/inside/units.hpp, units_math.hpp and constants.hpp sit inside a
+# beman/inside/units.hpp (units/core.hpp and units/systems.hpp), units/math.hpp
+# and units/constants.hpp sit inside a
 # BEMAN_INSIDE_NO_UNITS guard, which drops them (and their compile time);
-# units_io.hpp prints through io.hpp, so it needs both guards. The math constants
-# come in earlier, through cmath.hpp.
+# units/io.hpp prints through inside/io.hpp, so it needs both guards. The math
+# constants come in earlier, through math.hpp and math/constants.hpp.
 foreach(r IN LISTS roots)
     set(_guard_open "")
     set(_guard_close "")
-    if(r STREQUAL "beman/inside/io.hpp")
+    if(r STREQUAL "beman/inside/inside/io.hpp")
         set(_guard_open "#ifndef BEMAN_INSIDE_NO_STRING")
         set(_guard_close "#endif // BEMAN_INSIDE_NO_STRING")
     elseif(
         r STREQUAL "beman/inside/units.hpp"
-        OR r STREQUAL "beman/inside/units_math.hpp"
-        OR r STREQUAL "beman/inside/constants.hpp"
+        OR r STREQUAL "beman/inside/units/core.hpp"
+        OR r STREQUAL "beman/inside/units/systems.hpp"
+        OR r STREQUAL "beman/inside/units/math.hpp"
+        OR r STREQUAL "beman/inside/units/constants.hpp"
     )
         set(_guard_open "#ifndef BEMAN_INSIDE_NO_UNITS")
         set(_guard_close "#endif // BEMAN_INSIDE_NO_UNITS")
-    elseif(r STREQUAL "beman/inside/units_io.hpp")
+    elseif(r STREQUAL "beman/inside/units/io.hpp")
         set(_guard_open
             "#if !defined(BEMAN_INSIDE_NO_STRING) && !defined(BEMAN_INSIDE_NO_UNITS)"
         )
         set(_guard_close
             "#endif // !BEMAN_INSIDE_NO_STRING && !BEMAN_INSIDE_NO_UNITS"
         )
-    elseif(r STREQUAL "beman/inside/random.hpp")
+    elseif(r STREQUAL "beman/inside/inside/random.hpp")
         set(_guard_open
             "#if __STDC_HOSTED__ && !defined(BEMAN_INSIDE_MATH_NO_FP)"
         )
@@ -273,7 +278,7 @@ set(banner
 //   *** GENERATED FILE — DO NOT EDIT BY HAND ***
 //
 // Regenerate with:  cmake --build <build-dir> --target beman.inside.amalgamate
-// Source of truth:  include/beman/inside/*.hpp, include/beman/inside/detail/*.hpp
+// Source of truth:  include/beman/inside/ (inside.hpp, math.hpp, units.hpp and their folders)
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_SINGLE_HEADER_HPP
 #define BEMAN_INSIDE_SINGLE_HEADER_HPP

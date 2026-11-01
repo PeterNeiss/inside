@@ -4,7 +4,7 @@
 // operator bodies, not false.
 
 #include <beman/inside/units.hpp>
-#include <beman/inside/units_math.hpp>
+#include <beman/inside/units/math.hpp>
 
 #include <gtest/gtest.h>
 

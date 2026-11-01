@@ -17,7 +17,7 @@
 #include <string_view>
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/io.hpp>
+#include <beman/inside/inside/io.hpp>
 
 using namespace beman::inside;
 
@@ -53,7 +53,7 @@ constexpr Residue powmod(Residue b, Exponent e) {
         if (e % two{} == 1)
             r = r * b % Modulus{}; // a 2048-bit product, back onto [0, M - 1]
         b = b * b % Modulus{};
-        e = div(e, two{}, rounded_toward_zero);
+        e = div(e, two{}, round_toward_zero);
     }
     return r;
 }
@@ -75,7 +75,7 @@ exponent inverse_mod_phi() {
     }
     if (r0 != 1)
         throw std::logic_error("e is not invertible mod phi");
-    return checked_cast<exponent>(mod(t0, inside<{Phi, Phi}>{}, rounded_floor));
+    return checked_cast<exponent>(mod(t0, inside<{Phi, Phi}>{}, round_floor));
 }
 
 // Bytes in, big-endian: m = m * 256 + byte, checked to stay below n.
@@ -137,7 +137,7 @@ int main() {
     const residue_p qinv   = powmod<residue_p, modulus_p>(modulus_q{} % modulus_p{}, exponent_p{fermat});
     const residue_p mp     = powmod<residue_p, modulus_p>(c % modulus_p{}, dp);
     const residue_q mq     = powmod<residue_q, modulus_q>(c % modulus_q{}, dq);
-    const residue_p h      = checked_cast<residue_p>(mod((mp - mq) * qinv, modulus_p{}, rounded_floor));
+    const residue_p h      = checked_cast<residue_p>(mod((mp - mq) * qinv, modulus_p{}, round_floor));
     const auto      crt    = mq + modulus_q{} * h; // on [0, q - 1 + q * (p - 1)] = [0, n - 1]
     static_assert(grid_of<decltype(crt)> == grid_of<residue>);
     std::cout << "CRT agrees = " << std::boolalpha << (crt == back) << "\n";

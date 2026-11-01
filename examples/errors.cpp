@@ -6,7 +6,7 @@
 #include <iostream>
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/io.hpp>
+#include <beman/inside/inside/io.hpp>
 
 using namespace beman::inside;
 
@@ -49,8 +49,8 @@ int main() {
     std::cout << "          (r=" << r << ")" << "\n";
 
     inside<{0, 100}> w(50);
-    w.policy<ignore_range>() = 200;
-    std::cout << "ignored:  value=" << w << " (range check skipped)" << "\n";
+    w.with_clamp() = 200;
+    std::cout << "clamped:  value=" << w << " (this store saturates)" << "\n";
 
     // === Section 3: Every errc value gets a demo ===
     // overflow (out of range) already shown in Sections 1-2. Now: rounding_error (via

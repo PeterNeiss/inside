@@ -19,7 +19,7 @@ GCC spells every name out. The point `3_ins`:
 inside<grid{interval{grid_rational{big_int{3, 0, 0, false}, big_int{1, 0, 0, false}},
                      grid_rational{big_int{3, 0, 0, false}, big_int{1, 0, 0, false}}},
             grid_rational{big_int{0, 0, 0, false}, big_int{1, 0, 0, false}},
-            grid_rational{big_int{0, 0, 0, false}, big_int{1, 0, 0, false}}}, 17179869184>
+            grid_rational{big_int{0, 0, 0, false}, big_int{1, 0, 0, false}}}, 0>
 ```
 
 GCC also prefixes `beman::inside::` and `beman::inside::detail::`, shortened
@@ -37,8 +37,6 @@ last the bound:
 
 | Bit | Decimal | Flag |
 |---|---:|---|
-| `1<<1` | 2 | `ignore_zero` |
-| `1<<2` | 4 | `ignore_range` |
 | `1<<4` | 16 | `snap`, alone also `round_toward_zero` |
 | `1<<5` | 32 | `round_nearest` (with `snap`: 48) |
 | `1<<6` | 64 | `round_floor` (with `snap`: 80) |
@@ -46,14 +44,14 @@ last the bound:
 | `1<<8` | 256 | `round_half_even` (with `snap`: 272) |
 | `1<<32` | 4294967296 | `clamp` |
 | `1<<33` | 8589934592 | `wrap` |
-| `1<<34` | 17179869184 | `checked`: the default policy; overrides `unsafe` |
-| `1<<36` | 68719476736 | the `unsafe` marker (`unsafe` adds `ignore_range`, `snap`, `ignore_zero`); the only bit that turns runtime checks off |
+| `1<<36` | 68719476736 | the `unsafe` marker (`unsafe` adds `snap`: 68719476752); the only bit that turns runtime checks off |
+| `1<<37` | 137438953472 | `uninitialized` |
 | `1<<50` | 1125899906842624 | a `cursor<T, Step>` |
 
-The other bits are unused. So `17179869184` is plain `checked`, the default of
-`inside<G>`, and `17179869232` is `checked | round_nearest`. Every policy
-without the `unsafe` bit is checked. (The definitions are in
-`include/beman/inside/policy_flag.hpp`.)
+The other bits are unused, and an inside rejects a policy that holds one or
+names two rounding modes. `checked`, the default, has no bits: `0` is
+`inside<G>`, and `48` is `round_nearest`. Every policy without the `unsafe`
+bit is checked. (The definitions are in `include/beman/inside/inside/policy_flag.hpp`.)
 
 ## Decoding a quantity
 
@@ -104,21 +102,23 @@ auto square(inside<G, P> x) { return x * x; }
 
 ## Named reasons for a store
 
-An impossible store or conversion gives a **named** message instead of the
-compiler's bare "could not convert":
+An impossible store or conversion is a deleted overload whose message names
+the failing clause, instead of the compiler's bare "could not convert":
 
 ```text
-error: static assertion failed: inside_assignable: rhs interval lies entirely outside
-       lhs interval and the policy (not wrap/clamp) cannot bring it into range …
+error: use of deleted function '…': inside: the source's interval lies entirely
+       outside this grid's, and the policy has no clamp or wrap - widen the grid, …
 ```
 
-The two clauses you will see are *interval lies entirely outside* (the value
-cannot fit the range) and *incompatible notches* (the value is off the grid's
-step: allow rounding with `policy<snap>()` or `with_snap()`). You can ask for
-the reasons anywhere:
+The two clauses are *interval lies entirely outside* (the value cannot fit
+the range) and *incompatible notches* (the value is off the grid's step:
+allow rounding with `policy<snap>()` or `with_snap()`). Because the overload
+is deleted, `std::is_constructible`, `std::convertible_to` and `requires`
+probes answer `false`, so insides work in `std::variant`, `std::optional` and
+other code that probes convertibility. For the two grids' numbers, ask:
 
 ```cpp
-static_assert(beman::inside::explain_assignable<Dst, decltype(src)>);   // prints the reasons
+static_assert(beman::inside::explain_assignable<Dst, decltype(src)>);   // prints the intervals and notches
 ```
 
 ## Named reasons for a unit mismatch
@@ -132,8 +132,8 @@ instead (`= delete("…")`):
 | `42 * si::metre` | `units: a raw number has no grid - write just<42> * unit, or quantity<unit, inside<…>>{42}` |
 | `q * 2` | `units: a raw number has no grid - scale by just<2>, not 2` |
 | `length.in(si::second)` | `units: in() - the unit has another dimension` |
-| `degrees.in(si::radian)` | `units: this conversion multiplies by a power of pi, which has no exact grid - round it with value_cast<unit, Rep>(q) from <beman/inside/units_math.hpp>, Rep declared with a rounding mode` |
-| `int x = angle;` | `units: an angle (an is_kind quantity) or a pi-scaled ratio is no plain number - read numerical_value(), or value_cast it first` |
+| `degrees.in(si::radian)` | `units: this conversion multiplies by a power of pi, which has no exact grid - round it with value_cast<unit, Rep>(q) from <beman/inside/units/math.hpp>, Rep declared with a rounding mode` |
+| `inside<{0, 7}> x = angle;` | `units: an angle (an is_kind quantity) or a pi-scaled ratio is no plain number - read numerical_value(), or value_cast it first` |
 | `units::sin(degrees)` (the deduced form) | `units: sin takes an angle in radians - sin_into<Out>(q) takes a unit with a factor of pi` |
 
 Kinds that never mix (Hz and Bq, Gy and Sv), and the kind boundaries of
@@ -143,8 +143,9 @@ cases pin each message.
 ## Probing operations: honest `requires`
 
 Every operator, `add`, `sub`, `mul`, `div`, `mod`, `divmod`, the compound
-assignments and `try_make` are constrained on whether the operation has a
-result, and so are the quantity operations. A requires-expression or
+assignments, the stores and `try_make` are constrained on whether the
+operation has a result, and so are the quantity operations. An inside with a
+raw scalar (`x + 1`) and a free function given a hook are deleted too. A requires-expression or
 `if constexpr` probe answers truthfully:
 
 ```cpp
@@ -159,13 +160,3 @@ static_assert(!can_add<decltype(just<1> * si::metre), decltype(just<1> * si::sec
 
 An impossible operator is a deleted overload whose message names the reason
 (`use of deleted function …: division: no result type - …`).
-
-## `BEMAN_INSIDE_STRICT_SFINAE`: turning the hints off
-
-The named store messages come from a diagnostic overload for incompatible
-types. That overload makes `std::is_constructible` and `std::convertible_to`
-report `true` for them: the error appears on *use*, not in the trait. If you
-put insides in `std::variant`, `std::optional` or other code that *probes*
-convertibility, configure with `-DBEMAN_INSIDE_STRICT_SFINAE=ON`. That drops
-the diagnostic overloads, so the traits are honest, at the cost of the bare
-"could not convert" message. `explain_assignable` still works.

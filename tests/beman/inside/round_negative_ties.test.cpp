@@ -13,7 +13,7 @@
 // The fix rounds in value space, so assignment and division now agree.
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/io.hpp>
+#include <beman/inside/inside/io.hpp>
 
 #include <gtest/gtest.h>
 

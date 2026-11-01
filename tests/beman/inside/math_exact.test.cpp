@@ -25,7 +25,7 @@
 //   sin, cos of a degree or a turn        sin, cos ∈ {0, ±1/2, ±1}    Niven
 
 #define BEMAN_INSIDE_MATH_TABLE_SLOTS 0
-#include <beman/inside/units_math.hpp>
+#include <beman/inside/units/math.hpp>
 
 #include <gtest/gtest.h>
 

@@ -133,8 +133,8 @@ sink's type names the unit it wants.
 | From an inside | Gives |
 |---|---|
 | `x.to<T>()` | a native `T`, as `std::expected<T, errc>` (fails if it does not fit) |
+| `x.as<T>()` | a native `T`, reporting a value that does not fit: `arr[i.as<std::size_t>()]` |
 | `x.numerator()`, `x.denominator()` | the exact value as a fraction |
-| implicit `imax` | on whole-number grids, or a grid with a rounding mode: `arr[i]` works |
 | `double(x)` | explicit, on a grid with a rounding mode |
 
 | From a quantity | Gives |

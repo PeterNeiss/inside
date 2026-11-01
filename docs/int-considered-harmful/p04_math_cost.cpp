@@ -15,7 +15,7 @@
 #include <vector>
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/cmath.hpp>
+#include <beman/inside/math.hpp>
 
 using namespace beman::inside;
 

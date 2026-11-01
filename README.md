@@ -214,7 +214,6 @@ Library options:
 | Option | Default | Effect |
 |--------|---------|--------|
 | `BEMAN_INSIDE_MATH_NO_FP` | `OFF` | Build without hardware floating point: no `<cmath>`, the math engine's integer path computes every result; results do not change |
-| `BEMAN_INSIDE_STRICT_SFINAE` | `OFF` | Drop the assignment diagnostic overloads so `is_constructible` stays honest |
 | `BEMAN_INSIDE_FMA` | `ON` | Add `-mfma` on x86-64 so the math engine's `std::fma` is one instruction (see below) |
 | `BEMAN_INSIDE_BUILD_TOOLS` | `OFF` | Build the benchmarks, property fuzzer, accuracy sweep and perf workload |
 
@@ -286,7 +285,10 @@ This will generate the following directory structure:
 ├── include
 │   └── beman
 │       └── inside
-│           ├── inside.hpp
+│           ├── inside.hpp      (the number)
+│           ├── math.hpp        (correctly rounded math)
+│           ├── units.hpp       (quantities)
+│           ├── inside/  math/  units/
 │           └── ...
 ├── lib
 │   └── cmake
@@ -330,5 +332,9 @@ include an appropriate `beman.inside` header from your source code.
 #include <beman/inside/inside.hpp>
 ```
 
-Units are in `<beman/inside/units.hpp>`, and their math functions in
-`<beman/inside/units_math.hpp>`; the single header holds both.
+The math is in `<beman/inside/math.hpp>` and the units in
+`<beman/inside/units.hpp>`. Opt-in parts live in their component's folder:
+text in `<beman/inside/inside/io.hpp>` and `<beman/inside/units/io.hpp>`, the
+math of quantities in `<beman/inside/units/math.hpp>`, the constants in
+`<beman/inside/math/constants.hpp>` and `<beman/inside/units/constants.hpp>`.
+The single header holds all of them.

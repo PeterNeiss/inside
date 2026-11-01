@@ -1,7 +1,7 @@
 // EXPECT: rounding_mode
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // The mode on a deduced math call must be a rounding mode.
-#include <beman/inside/cmath.hpp>
+#include <beman/inside/math.hpp>
 
 using namespace beman::inside;
 

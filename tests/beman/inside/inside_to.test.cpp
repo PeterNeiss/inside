@@ -108,50 +108,29 @@ TEST(InsideToTest, inside_to_rational_conversion) {
     }
 }
 
-// operator imax is gated on fit-in-imax
-TEST(InsideToTest, operator_imax_is_gated_on_fit_in_imax) {
+// No implicit integer conversion, whatever the grid: as<T>() / to<T>() read it.
+TEST(InsideToTest, integers_are_read_with_as_or_to) {
     using narrow = inside<{0, 100}>;
     using wide   = inside<{0, std::numeric_limits<std::uint64_t>::max()}>;
-
-    // Narrow grids still convert implicitly.
-    static_assert(std::is_convertible_v<narrow, imax>);
-    imax i = narrow{42};
-    ASSERT_EQ(i, 42);
-
-    // Wide grids (max > INT64_MAX) lose the implicit imax conversion. The
-    // implicit operator size_t() is also gated on Upper <= imax_max, so wide
-    // bounds don't sneak in via size_t -> imax integer conversion.
-    static_assert(!(std::is_convertible_v<wide, imax>));
-    static_assert(!(std::is_convertible_v<wide, std::size_t>));
-
-    // The typed-error path is what wide grids should use instead. (We do not
-    // construct a `wide` instance here: assignment-side overflow checks on
-    // grids spanning the full uint64 range are out of scope for this test.)
+    static_assert(!std::is_convertible_v<narrow, imax>);
+    static_assert(!std::is_convertible_v<narrow, std::size_t>);
+    static_assert(!std::is_convertible_v<wide, imax>);
+    static_assert(!std::is_convertible_v<wide, std::size_t>);
+    ASSERT_EQ(narrow{42}.as<imax>(), 42);
+    // A grid past T's range reports the value that does not fit.
+    ASSERT_EQ(narrow{42}.to<std::int8_t>(), std::int8_t{42});
+    ASSERT_EQ((inside<{0, 300}>{300}.to<std::uint8_t>()), std::unexpected{errc::overflow});
 }
 
-// operator size_t for index-shaped bounds
-TEST(InsideToTest, operator_size_t_for_index_shaped_bounds) {
-    using idx_t  = inside<{0, 9}>;  // notch 1, Lower 0 — index shape
-    using offset = inside<{5, 10}>; // notch 1, Lower > 0 — also OK
-
-    // Index-shaped bounds convert implicitly to size_t (silences
-    // -Wsign-conversion at the `vec[inside_idx]` call sites in examples).
-    static_assert(std::is_convertible_v<idx_t, std::size_t>);
-    static_assert(std::is_convertible_v<offset, std::size_t>);
-
-    // (Bounds with Lower < 0 don't get the direct size_t conversion, but
-    // they're still convertible via the imax -> size_t standard step; the
-    // inside shape that we *want* to remain non-convertible is the wide one,
-    // verified in the test case above.)
-
-    // Use the conversion to index a vector — no `.as<>()` needed.
+// An index reads as a size_t: as<std::size_t>() keeps no check on an
+// index-shaped grid.
+TEST(InsideToTest, as_size_t_indexes_a_container) {
+    using idx_t = inside<{0, 9}>;
     std::vector<int> v{0, 10, 20, 30, 40, 50, 60, 70, 80, 90};
     idx_t            i{3};
-    ASSERT_EQ(v[i], 30);
-
-    // Direct-init to size_t picks operator size_t() unambiguously.
-    std::size_t s = i;
-    ASSERT_EQ(s, 3);
+    ASSERT_EQ(v[i.as<std::size_t>()], 30);
+    std::size_t s = i.as<std::size_t>();
+    ASSERT_EQ(s, 3u);
 }
 
 // operator double is gated on rounding policy

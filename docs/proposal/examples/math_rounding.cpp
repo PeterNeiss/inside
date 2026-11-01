@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Tour: the output's rounding mode picks the point; exact values are exact;
 // compile time and run time agree.
-#include <beman/inside/cmath.hpp>
+#include <beman/inside/math.hpp>
 
 using namespace beman::inside;
 

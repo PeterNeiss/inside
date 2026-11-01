@@ -142,7 +142,7 @@ it back with `B{field}` or `B::try_make(field)`
 
 ## Predefined native formats
 
-`<beman/inside/formats.hpp>` names grids that fill a native width, so you can
+`<beman/inside/inside/formats.hpp>` names grids that fill a native width, so you can
 write `uint8`, `unorm16` or `q8_8` instead of the grid:
 
 | Types | Range, notch | Raw | Policy |
@@ -158,8 +158,8 @@ write `uint8`, `unorm16` or `q8_8` instead of the grid:
   time, so non-power-of-two notches cost nothing there.
 - `int64` is symmetric: the internal value path is `imax`, and −2⁶³ has no
   negation in `int64`.
-- `uint64` passes `int64`, so it has no implicit `imax`; read it with
-  `to<std::uint64_t>()`. A difference of two `uint64`s spans 2⁶⁵ values and
+- `uint64` passes `int64`: read it with `to<std::uint64_t>()` or
+  `as<std::uint64_t>()`. A difference of two `uint64`s spans 2⁶⁵ values and
   gets a wide raw; a sum has a big upper limit ([grids past 64 bits](#grids-past-64-bits)).
 - For register-style wrapping, declare your own: `inside<{0, 255}, wrap>`.
 
@@ -197,7 +197,8 @@ A unit conversion keeps the raw: km → mm on `inside<{0, 10}>` is the same
 
 `inside_range<G>` walks every point of a grid, from Lower or from a start
 point, wrapping once past Upper. `values<T>` is the same range named by a
-type. Both yield insides, so `vec[i]` works without a cast:
+type. Both yield insides; `i.as<std::size_t>()` indexes a container with no
+check left:
 
 ```cpp
 for (auto i : inside_range<{0, 9}>{})  std::cout << i;    // 0 1 2 … 9
@@ -205,7 +206,7 @@ for (auto i : inside_range<{0, 9}>{5}) std::cout << i;    // 5 6 7 8 9 0 1 2 3 4
 
 using bin = inside<{0, 9}>;
 std::vector<int> bins(10);
-for (bin b : values<bin>) bins[b] = 0;
+for (bin b : values<bin>) bins[b.as<std::size_t>()] = 0;
 auto it = std::ranges::find_if(values<bin>, is_full);
 ```
 
@@ -243,8 +244,8 @@ for (cursor<time_t, 0.25_r> t = -2_ins; t <= 2_ins; ++t)  // any start, the clas
   rounding, so `--` below Lower and `++` past the end report like any store.
 - `Step` defaults to `T`'s notch. It must be positive, divide `T`'s range and
   be a whole number of `T`'s notches, all checked at compile time.
-- A default-constructed cursor is `T`'s Lower (a plain inside is left
-  uninitialized). `t != end(t)` is one integer compare.
+- A default-constructed cursor is `T`'s Lower (a plain inside is 0, or
+  Lower on a grid without 0). `t != end(t)` is one integer compare.
 - A cursor is its own bidirectional iterator, and `end(t)` its sentinel. `*t`
   is the value as a `T`, so range algorithms take a cursor directly:
 
@@ -274,7 +275,7 @@ for (cursor<db_t::rep, 3> n; n != end(n); ++n) {
 
 ## Random sampling: `uniform<B>(rng)`
 
-`<beman/inside/random.hpp>` (opt-in: it includes `<random>`) adds
+`<beman/inside/inside/random.hpp>` (opt-in: it includes `<random>`) adds
 `uniform<B>(rng)`, which draws one of B's points uniformly, for any raw and any
 standard engine:
 

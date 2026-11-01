@@ -8,7 +8,7 @@
 #define BEMAN_INSIDE_TESTS_DIFFERENTIAL_DUMP_HPP
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/io.hpp>
+#include <beman/inside/inside/io.hpp>
 
 #include <cstdint>
 #include <iostream>

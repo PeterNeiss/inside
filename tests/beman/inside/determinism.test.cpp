@@ -13,7 +13,7 @@
 // The double and CORDIC engines agree on every pin here.
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/cmath.hpp>
+#include <beman/inside/math.hpp>
 
 #include <gtest/gtest.h>
 

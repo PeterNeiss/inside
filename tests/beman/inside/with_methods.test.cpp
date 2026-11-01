@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #include <beman/inside/inside.hpp>
-#include <beman/inside/io.hpp>
+#include <beman/inside/inside/io.hpp>
 
 #include <gtest/gtest.h>
 #include <type_traits>
@@ -274,10 +274,10 @@ TEST(WithMethodsTest, with_snap_proxy_converts_to_a_value_rhs_return_position) {
     // rvalue → policy_buffer (owns the value). Both convert to small; neither to a
     // target whose interval the value can never enter (conversion stays constrained).
     using big = decltype(small{} * small{});
-    static_assert(
-        std::is_same_v<decltype(std::declval<big&>().with_snap()), policy_ref<big, policy<flags_of<big> | snap>>>);
-    static_assert(
-        std::is_same_v<decltype(std::declval<big>().with_snap()), policy_buffer<big, policy<flags_of<big> | snap>>>);
+    static_assert(std::is_same_v<decltype(std::declval<big&>().with_snap()),
+                                 policy_ref<big, call_policy<flags_of<big> | snap>>>);
+    static_assert(std::is_same_v<decltype(std::declval<big>().with_snap()),
+                                 policy_buffer<big, call_policy<flags_of<big> | snap>>>);
     static_assert(std::is_convertible_v<decltype(std::declval<big&>().with_snap()), small>);
     static_assert(std::is_convertible_v<decltype(std::declval<big>().with_snap()), small>);
     static_assert(!std::is_convertible_v<decltype(std::declval<big&>().with_snap()), inside<{{1000, 2000}, 1}>>);

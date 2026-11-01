@@ -2,7 +2,7 @@
 // math::asinh / acosh / atanh: shared domains, auto output grids, exact anchors,
 // and agreement with <cmath> within one output notch on every engine.
 #include <beman/inside/inside.hpp>
-#include <beman/inside/cmath.hpp>
+#include <beman/inside/math.hpp>
 
 #include <gtest/gtest.h>
 

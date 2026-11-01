@@ -3,7 +3,7 @@
 // span + notch (not 2π); an unwrapped radians angle and a turn phase converted
 // at the call do not drift.
 #include <beman/inside/inside.hpp>
-#include <beman/inside/cmath.hpp>
+#include <beman/inside/math.hpp>
 
 #include <gtest/gtest.h>
 

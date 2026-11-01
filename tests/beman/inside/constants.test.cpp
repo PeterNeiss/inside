@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// constants.hpp: mathematical constants (math::) and physical constants as
+// math/constants.hpp and units/constants.hpp: mathematical constants (math::) and physical constants as
 // quantities (units::constants::), exact where the SI defines them.
 
-#include <beman/inside/constants.hpp>
-#include <beman/inside/units_io.hpp>
-#include <beman/inside/units_math.hpp>
+#include <beman/inside/units/constants.hpp>
+#include <beman/inside/units/io.hpp>
+#include <beman/inside/units/math.hpp>
 
 #include <gtest/gtest.h>
 

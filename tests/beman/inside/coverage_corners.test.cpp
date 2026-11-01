@@ -8,12 +8,12 @@
 // (plain ASSERT_*) to drive the instrumented code.
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/cmath.hpp>
-#include <beman/inside/casts.hpp>
-#include <beman/inside/predicates.hpp>
-#include <beman/inside/io.hpp>
-#include <beman/inside/numbers.hpp>
-#include <beman/inside/detail/rational.hpp>
+#include <beman/inside/math.hpp>
+#include <beman/inside/inside/casts.hpp>
+#include <beman/inside/inside/predicates.hpp>
+#include <beman/inside/inside/io.hpp>
+#include <beman/inside/inside/detail/numbers.hpp>
+#include <beman/inside/inside/detail/rational.hpp>
 
 #include <gtest/gtest.h>
 
@@ -64,8 +64,8 @@ double fp_atan2(double y, double x) {
 } // namespace d
 
 //---------------------------------------------------------------------------
-// detail/math_fp.hpp — cbrt's negative branch
-// detail/math_fp.hpp — atan2 on the axes (x == 0)
+// math/detail/fp.hpp — cbrt's negative branch
+// math/detail/fp.hpp — atan2 on the axes (x == 0)
 //---------------------------------------------------------------------------
 // dbl: cbrt of negatives and atan2 on the axes
 TEST(CoverageCornersTest, dbl_cbrt_of_negatives_and_atan2_on_the_axes) {
@@ -87,7 +87,7 @@ TEST(CoverageCornersTest, dbl_cbrt_of_negatives_and_atan2_on_the_axes) {
 #endif // !BEMAN_INSIDE_MATH_NO_FP
 
 //---------------------------------------------------------------------------
-// lift (detail/lift.hpp) — the binary expected-lift short-circuits on a RIGHT-side
+// lift (inside/detail/lift.hpp) — the binary expected-lift short-circuits on a RIGHT-side
 // error (the left-error short-circuit was already covered).
 //---------------------------------------------------------------------------
 // expected-lift propagates a right-hand-side error
@@ -198,7 +198,7 @@ TEST(CoverageCornersTest, rational_from_subnormal_and_very_small_doubles) {
 }
 
 //---------------------------------------------------------------------------
-// inside::operator/= and operator%= (core.hpp) with an inside rhs
+// inside::operator/= and operator%= (inside/detail/core.hpp) with an inside rhs
 //---------------------------------------------------------------------------
 // compound /= and %= with a snap inside rhs (runtime)
 TEST(CoverageCornersTest, compound_and_with_a_snap_inside_rhs_runtime) {
@@ -256,7 +256,7 @@ TEST(CoverageCornersTest, on_error_fires_for_an_out_of_range_double_assignment) 
 }
 
 //---------------------------------------------------------------------------
-// policy.hpp — action-decorated operator-=(insidable) on the path that does
+// inside/detail/call_policy.hpp — action-decorated operator-=(insidable) on the path that does
 // not fail (existing tests only exercise the failing arm).
 //---------------------------------------------------------------------------
 // on_error compound subtract that does not fail
@@ -317,8 +317,8 @@ TEST(CoverageCornersTest, clamp_policy_truncates_an_in_range_off_notch_fractiona
 }
 
 //---------------------------------------------------------------------------
-// raw_from_offset (detail/storage.hpp) with a signed offset, reached from the
-// integer fast path of math::fmod (fmod_int_fast, cmath.hpp). Needs non-rational integer grids and a divisor
+// raw_from_offset (inside/detail/storage.hpp) with a signed offset, reached from the
+// integer fast path of math::fmod (fmod_int_fast, math.hpp). Needs non-rational integer grids and a divisor
 // that excludes zero. math::fmod was otherwise only static_assert-tested.
 //---------------------------------------------------------------------------
 // math::fmod integer fast path (raw_from_offset imax)
@@ -365,15 +365,15 @@ TEST(CoverageCornersTest, round_to_lattice_keeps_notch_indices_past_imax) {
     using L       = inside<grid{{0, 1ll << 61}, per<8>}>;
     const auto v  = rational{(1ull << 61) - 1, 1};
     const auto nv = rational{(1ull << 61) - 1, -1};
-    ASSERT_TRUE((*try_round_to_lattice<L, policy<round_half_even>>(v) == v));
-    ASSERT_TRUE((*try_round_to_lattice<L, policy<round_floor>>(v) == v));
-    ASSERT_TRUE((*try_round_to_lattice<L, policy<round_floor>>(nv) == nv));
-    ASSERT_TRUE((*try_round_to_lattice<L, policy<round_ceil>>(nv) == nv));
+    ASSERT_TRUE((*try_round_to_lattice<L, call_policy<round_half_even>>(v) == v));
+    ASSERT_TRUE((*try_round_to_lattice<L, call_policy<round_floor>>(v) == v));
+    ASSERT_TRUE((*try_round_to_lattice<L, call_policy<round_floor>>(nv) == nv));
+    ASSERT_TRUE((*try_round_to_lattice<L, call_policy<round_ceil>>(nv) == nv));
     const auto off = rational{(1ull << 63) - 1, 4}; // a lattice point: index 2^64 − 2
-    ASSERT_TRUE((*try_round_to_lattice<L, policy<round_nearest>>(off) == off));
+    ASSERT_TRUE((*try_round_to_lattice<L, call_policy<round_nearest>>(off) == off));
     // ceil(umax) on the 1/8 lattice is umax itself, but its index 8·umax is
     // past every rational: reported, not wrapped.
-    ASSERT_TRUE((try_round_to_lattice<L, policy<round_ceil>>(rational{~0ull, 1}).error() == errc::overflow));
+    ASSERT_TRUE((try_round_to_lattice<L, call_policy<round_ceil>>(rational{~0ull, 1}).error() == errc::overflow));
 }
 
 // The unanchored branch (Lower 1/16 off the 1/8 notch's multiples): small
@@ -382,10 +382,11 @@ TEST(CoverageCornersTest, round_to_lattice_keeps_notch_indices_past_imax) {
 // of a wrapped index.
 TEST(CoverageCornersTest, round_to_lattice_unanchored_rounds_and_reports_overflow) {
     using U = inside<grid{{rational{1, 16}, rational{17, 16}}, per<8>}>;
-    ASSERT_TRUE((*try_round_to_lattice<U, policy<round_floor>>(rational{5, 1}) == rational{79, 16}));
-    ASSERT_TRUE((*try_round_to_lattice<U, policy<round_ceil>>(rational{5, 1}) == rational{81, 16}));
-    ASSERT_TRUE((*try_round_to_lattice<U, policy<round_nearest>>(rational{5, -1}) == rational{81, -16}));
-    ASSERT_TRUE((*try_round_to_lattice<U, policy<round_half_even>>(rational{5, 1}) == rational{81, 16})); // index 40
+    ASSERT_TRUE((*try_round_to_lattice<U, call_policy<round_floor>>(rational{5, 1}) == rational{79, 16}));
+    ASSERT_TRUE((*try_round_to_lattice<U, call_policy<round_ceil>>(rational{5, 1}) == rational{81, 16}));
+    ASSERT_TRUE((*try_round_to_lattice<U, call_policy<round_nearest>>(rational{5, -1}) == rational{81, -16}));
     ASSERT_TRUE(
-        (try_round_to_lattice<U, policy<round_floor>>(rational{(1ull << 61) - 1, 1}).error() == errc::overflow));
+        (*try_round_to_lattice<U, call_policy<round_half_even>>(rational{5, 1}) == rational{81, 16})); // index 40
+    ASSERT_TRUE(
+        (try_round_to_lattice<U, call_policy<round_floor>>(rational{(1ull << 61) - 1, 1}).error() == errc::overflow));
 }

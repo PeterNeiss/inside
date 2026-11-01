@@ -4,6 +4,100 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
+## Unreleased
+
+### Upgrading from 0.6.0
+
+- The headers live in three components: `inside.hpp` and `inside/`,
+  `math.hpp` and `math/`, `units.hpp` and `units/`. The umbrellas
+  `<beman/inside/inside.hpp>` and `<beman/inside/units.hpp>` are unchanged;
+  other includes move:
+
+  | Before | Now |
+  |---|---|
+  | `beman/inside/cmath.hpp` | `beman/inside/math.hpp` |
+  | `beman/inside/io.hpp`, `random.hpp`, `formats.hpp` | `beman/inside/inside/io.hpp`, `inside/random.hpp`, `inside/formats.hpp` |
+  | `beman/inside/grid.hpp`, `interval.hpp`, `casts.hpp`, … | `beman/inside/inside/grid.hpp`, … |
+  | `beman/inside/units_io.hpp`, `units_math.hpp` | `beman/inside/units/io.hpp`, `units/math.hpp` |
+  | `beman/inside/constants.hpp` | `beman/inside/units/constants.hpp` (physical) and `beman/inside/math/constants.hpp` (`math::pi` & co., without units) |
+  | `beman/inside/detail/…` | `beman/inside/inside/detail/…`, `beman/inside/math/detail/…` (internal) |
+  | `beman/inside/core.hpp`, `numbers.hpp`, `policy.hpp` | internal: `inside/detail/core.hpp`, `numbers.hpp`, `call_policy.hpp` |
+
+  `units.hpp` is now `units/core.hpp` (the machinery) plus `units/systems.hpp`
+  (the ISQ and SI catalog); units of your own need only `units/core.hpp`.
+
+- A default-constructed inside is no longer uninitialized: `T x;` and `T{}`
+  are 0, or Lower on a grid without 0. Add the `uninitialized` flag where a
+  trivial default constructor matters (bulk buffers):
+  `inside<G, uninitialized>`.
+- An inside no longer converts to `imax` implicitly. Read an integer with
+  `as<T>()` (no check is left where `T` holds the grid) or `to<T>()`:
+  `int i = b;` becomes `int i = b.as<int>();`, `vec[b]` becomes
+  `vec[b.as<std::size_t>()]`, `static_cast<imax>(b)` becomes `b.as<imax>()`.
+  A hook parameter typed `imax` takes `auto` and reads it with `as<imax>(c)`.
+- `ignore_range` and `ignore_zero` are gone: write `unsafe`, the one opt-out
+  of the runtime checks, or give a divisor a grid without 0.
+- `checked` has no bits: `inside<G>`, `inside<G, none>` and
+  `inside<G, checked>` are one type, so mangled names change and a policy
+  prints as `0` instead of `17179869184`.
+- An inside rejects a policy with bits no flag names or with two rounding
+  modes (`round_floor | round_ceil`); build policies from the flags.
+- `add_overflow`, `sub_overflow` and `mul_overflow` are internal
+  (`beman::inside::detail`); use `std::ckd_add` & co. or the builtins.
+- The class `policy<F, E>` is `detail::call_policy<F, E>`: write
+  `make_policy<F>()` / `make_policy<F>(ec)`, or pass a flag.
+- `rounded_floor`, `rounded_nearest` & co., `clamped` and `wrapped` are gone:
+  pass the flag itself, `div(a, b, round_floor)`, `B{v, clamp}`.
+- The CMake option `BEMAN_INSIDE_STRICT_SFINAE` is gone: its behaviour, honest
+  traits, is now the only one. An impossible store's message names the
+  failing clause; `explain_assignable<To, From>` prints the grids' numbers.
+
+### Changed
+
+- Default construction stores a value of the grid: 0 when the grid holds 0,
+  else Lower. Before, `T x;` left the raw uninitialized and `T{}` zero-filled
+  it, which on `{5, 100}` read as 0, on a Q1.14 sample as −1, and on a
+  continuous grid as the fraction 0/0. A failed error-code construction,
+  `T x(v, make_policy(ec))`, now keeps that default value.
+- Storing a `std::expected` that holds an error (`T x = a / b;`, `x = a / b;`)
+  reports it through `T`'s policy, as a failed store does: `inside_error` with
+  the errc, or the installed handler. It threw `std::bad_expected_access`,
+  past the handler and with no errc in its message. `rational`'s sinks (the
+  converting constructor, `+= -= *= /=`, `<=>` against an `expected`) raise
+  the same way.
+- The error handler is atomic, with default visibility: one thread may install
+  a handler while others raise, and shared libraries share it.
+- A store, operator or free function that cannot compile is a deleted
+  overload with the reason, everywhere: an impossible store (a disjoint
+  interval, an off-notch source), an inside with a raw scalar (`x + 1`), and
+  a hook given to `add` … `divmod`. `std::is_constructible`,
+  `std::convertible_to` and `requires` probes now answer `false` for them; a
+  `static_assert` body made them answer `true` and fail on use.
+- `unsafe` is the one opt-out of the runtime checks, and it wins over
+  `checked` wherever it appears (`unsafe` is now `unsafe_marker | snap`).
+  `unsafe | checked` was documented to turn the checks back on, but the range
+  check stayed off.
+
+### Added
+
+- `uninitialized`: the policy flag that keeps a trivial default constructor.
+- A flag is also a call's policy: each flag is a constant of its own type
+  that converts to `policy_flag`, so `round_floor` is a template argument
+  (`inside<G, round_floor>`), combines with `|`, and is the last argument of
+  `add` … `divmod` or a constructor's second argument.
+
+### Removed
+
+- The named policies `rounded_toward_zero`, `rounded_nearest`, `rounded_floor`,
+  `rounded_ceil`, `rounded_half_even`, `clamped` and `wrapped`: they repeated
+  the flags under a second name.
+- The option `BEMAN_INSIDE_STRICT_SFINAE` and its CI cells.
+- The flags `ignore_range` and `ignore_zero`: each turned a runtime check off
+  without saying `unsafe`. They compiled to the same code as `unsafe`.
+- The implicit `operator imax()`. It narrowed silently into smaller built-ins:
+  `int i = b;` on a grid past `int` truncated, and `unsigned char c = b;` on
+  `{-5, 5}` read −1 as 255, with no warning under `-Wall -Wextra`.
+
 ## 0.6.0 — 2026-10-30
 
 The first C++26-only release: it needs static reflection (GCC 16 with

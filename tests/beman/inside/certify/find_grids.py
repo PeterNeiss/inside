@@ -156,8 +156,7 @@ def slots(t):
     return int((hi - lo) / notch) + 1
 
 
-FLAG_NAMES = [(1 << 34, "checked"), (1 << 32, "clamp"), (1 << 33, "wrap"), (1 << 1, "ignore_zero"),
-              (1 << 2, "ignore_range")]
+FLAG_NAMES = [(1 << 32, "clamp"), (1 << 33, "wrap")]
 ROUNDING = [((1 << 8) | 16, "round_half_even"), ((1 << 7) | 16, "round_ceil"), ((1 << 6) | 16, "round_floor"),
             ((1 << 5) | 16, "round_nearest"), (16, "round_toward_zero")]
 
@@ -165,7 +164,7 @@ ROUNDING = [((1 << 8) | 16, "round_half_even"), ((1 << 7) | 16, "round_ceil"), (
 def flags_text(f):
     """The policy by name, as certify.hpp prints it."""
     names = []
-    unsafe = (1 << 36) | (1 << 2) | 16 | (1 << 1)
+    unsafe = (1 << 36) | 16
     if f & (1 << 36):
         names.append("unsafe")
         f &= ~unsafe
@@ -180,7 +179,7 @@ def flags_text(f):
             f &= ~bits
     if f:
         names.append(hex(f))
-    return ", ".join(names) or "none"
+    return ", ".join(names) or "checked"  # the default policy has no bits
 
 
 def grid_text(t):

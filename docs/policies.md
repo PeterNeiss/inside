@@ -40,15 +40,19 @@ grid instead (see [arithmetic.md](arithmetic.md)), so it cannot leave its range.
 | `round_nearest` | to the nearest notch, ties away from zero (includes `snap`) |
 | `round_floor`, `round_ceil` | toward −∞, toward +∞ (include `snap`) |
 | `round_half_even` | to the nearest notch, ties to the even point (includes `snap`) |
-| `ignore_zero` | no division-by-zero check: `a / 0` is undefined, `/= 0` does nothing |
-| `ignore_range` | no runtime range check |
-| `unsafe` | `ignore_range | snap | ignore_zero`: no runtime checks at all; a wrong value is undefined behaviour |
+| `unsafe` | the one opt-out: no runtime range or zero-divisor check, and an off-notch value truncates (`snap`). An out-of-range value or a zero divisor is undefined behaviour; `/= 0` does nothing |
+| `uninitialized` | a trivial default constructor: `T x;` leaves the value uninitialized, like a built-in scalar's, until a store. Without it `T x;` and `T{}` are 0, or Lower on a grid without 0 |
 
 - `clamp` and `wrap` exclude each other (a `static_assert`).
 - Every policy without `unsafe` checks: `inside<G>`, `inside<G, round_nearest>`
-  and `inside<G, ignore_zero>` all report a value outside the range. `clamp`
+  and `inside<G, clamp>` all report what their policy does not handle. `clamp`
   and `wrap` handle the range, the rounding modes handle the notch.
-- Spelling `checked` next to `unsafe` turns the checks back on.
+- `unsafe` wins wherever it appears: in the type, in an operand of `/` or `%`,
+  or in a store's policy (`x.policy<unsafe>() = v`). `checked`, the default,
+  has no bits: `inside<G>`, `inside<G, none>` and `inside<G, checked>` are one
+  type, and `checked` does not turn the checks back on.
+- A policy takes one rounding mode, and only bits that a flag names: an
+  inside rejects `round_floor | round_ceil` and a raw bit pattern.
 - A rounding mode rounds **before** the range check. With
   `inside<{0, 9}, round_floor>`, 9.5 stores 9 and 10.0 is out of range. Without
   a rounding mode nothing rounds, so 9.5 into `inside<{0, 9}>` is out of range.
@@ -80,20 +84,22 @@ g.with_snap<round_half_even>() = 5.0;   // 4: the tie goes to the even point
 
 `x.policy<F>()` adds any flags `F` the same way.
 
-## Named policies
+## A flag as a call's policy
 
-The free arithmetic functions (`add`, `sub`, `mul`, `div`, `mod`, `divmod`)
-take a policy object as a last argument:
-
-| Name | Flag |
-|---|---|
-| `rounded_toward_zero` | `round_toward_zero` |
-| `rounded_nearest`, `rounded_floor`, `rounded_ceil`, `rounded_half_even` | the rounding mode of that name |
-| `clamped`, `wrapped` | `clamp`, `wrap` |
+A flag is also the policy of one call. The free arithmetic functions (`add`,
+`sub`, `mul`, `div`, `mod`, `divmod`) take one as a last argument, and so
+does a constructor's second argument:
 
 ```cpp
-auto q = div(a, b, rounded_floor);      // the same as div(a, b, make_policy<round_floor>())
+auto q = div(a, b, round_floor);              // the same as div(a, b, make_policy<round_floor>())
+auto r = mod(a, b, round_nearest);
+inside<{0, 10}> h{3.5, round_floor};          // 3: this store rounds down
+auto e = div(a, b, make_policy<round_floor>(ec));   // a flag and an errc&
 ```
+
+Each flag is a constant of its own type that converts to `policy_flag`, so
+the same name is a template argument (`inside<G, round_floor>`), a part of a
+combination (`clamp | round_floor`) and a call's policy.
 
 ## Hooks: `on_wrap`, `on_clamp`, `on_error`
 
@@ -110,7 +116,7 @@ A hook you do not use costs nothing.
 
 Each acts on the store. `f` gets `x` by reference, so it can change the stored
 value. The arithmetic of a compound assignment cannot fail but for a zero
-divisor, which `on_error` takes (`ignore_zero` skips it). The free `add` … `divmod`
+divisor, which `on_error` takes (`unsafe` skips it). The free `add` … `divmod`
 take no hooks: they return a zero divisor as `unexpected(errc::division_by_zero)`,
 as `/` does.
 
@@ -230,9 +236,27 @@ auto a = metres::try_make(1200);        // !a: overflow
 auto b = try_value_cast<metres>(leg);   // !b: 2000 m does not fit
 ```
 
+## Which channel reports a failure
+
+Each operation reports through one channel:
+
+| Operation | A failure goes to |
+|---|---|
+| a store: construction, `=`, `+=` and the other compound ops, `as<T>()`, `checked_cast` | the hook (`on_error`, or `on_clamp` / `on_wrap` where they apply), else the policy's `errc&`, else the handler |
+| `try_make`, `parse`, `to<T>()`, `grid::try_make` | the returned `std::expected` |
+| `/` and `%` by a grid that holds 0, `rational` arithmetic | the returned `std::expected` |
+| a store from a `std::expected`: `T x = a / b;`, `x = a / b;`, `rational r = p / q;` | the error is reported like a failed store: the hook, the `errc&`, else the handler |
+
+No path throws `std::bad_expected_access`; only calling `.value()` on an
+`expected` yourself does.
+
 ## Replacing the throw handler
 
 Every checked failure that is not caught by a hook or an `errc&` goes through
 one handler. By default it throws `beman::inside::inside_error`; under
 `-fno-exceptions` it traps. `set_error_handler` installs your own (see
 [freestanding.md](freestanding.md#1-exceptions-off-install-a-handler)).
+
+There is one handler per program. It is atomic, so one thread may install a
+handler while others raise, and it has default visibility, so shared libraries
+built with `-fvisibility=hidden` see the same one.

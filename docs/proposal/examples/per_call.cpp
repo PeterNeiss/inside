@@ -9,8 +9,8 @@ int main() {
     using whole = inside<{0, 100}>;
     using step  = inside<{1, 10}>;                           // never zero
 
-    auto down       = div(whole{7}, step{2}, rounded_floor); // 3: this call rounds down
-    auto up         = div(whole{7}, step{2}, rounded_ceil);  // 4
+    auto down       = div(whole{7}, step{2}, round_floor); // 3: this call rounds down
+    auto up         = div(whole{7}, step{2}, round_ceil);  // 4
     auto [quo, rem] = divmod(whole{17}, step{5});            // 3 and 2
 
     whole x = 50;

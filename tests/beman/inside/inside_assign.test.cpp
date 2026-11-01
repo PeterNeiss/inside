@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #include <beman/inside/inside.hpp>
-#include <beman/inside/io.hpp>
+#include <beman/inside/inside/io.hpp>
 
 #include <gtest/gtest.h>
 
@@ -208,11 +208,11 @@ TEST(InsideAssignTest, unsafe_relaxes_domain_and_round_checks) {
     static_assert(!(std::is_same_v<typename decltype(q)::value_type::raw_type, rational>));
     ASSERT_EQ(*q, 6);
 
-    // Under unsafe (ignore_zero) the div-by-zero check is skipped entirely:
+    // Under unsafe the div-by-zero check is skipped entirely:
     // binary `a / 0` is undefined behavior, consistent with the compound
     // `/= zero-inside` no-op below. UB is not testable at runtime, so no assertion.
 
-    // Compound /= by a zero inside: unsafe implies ignore_zero -> silent no-op.
+    // Compound /= by a zero inside: unsafe skips the zero check -> silent no-op.
     u100u y{50};
     y /= u100u{0};
     ASSERT_EQ(y, 50);
@@ -248,20 +248,22 @@ template <class T>
 constexpr bool is_trivial_type_v = std::is_trivially_default_constructible_v<T> && std::is_trivially_copyable_v<T>;
 
 TEST(InsideAssignTest, trivial_type_guarantees) {
-    static_assert(is_trivial_type_v<inside<{0, 0}, unsafe>>);
-    static_assert(is_trivial_type_v<inside<{0, 100}, unsafe>>);
-    static_assert(is_trivial_type_v<inside<{-100, 100}, unsafe>>);
-    static_assert(is_trivial_type_v<inside<{{0, 10}, rational{1u, 2}}, unsafe>>);
-    static_assert(is_trivial_type_v<inside<{{-10, 10}, max_denominator{1000}}, unsafe>>);
-    static_assert(is_trivial_type_v<inside<{0, 100}, clamp>>);
-    static_assert(is_trivial_type_v<inside<{0, 100}, wrap>>);
+    constexpr policy_flag u = uninitialized;
+    static_assert(is_trivial_type_v<inside<{0, 0}, unsafe | u>>);
+    static_assert(is_trivial_type_v<inside<{0, 100}, unsafe | u>>);
+    static_assert(is_trivial_type_v<inside<{-100, 100}, unsafe | u>>);
+    static_assert(is_trivial_type_v<inside<{{0, 10}, rational{1u, 2}}, unsafe | u>>);
+    static_assert(is_trivial_type_v<inside<{{-10, 10}, max_denominator{1000}}, unsafe | u>>);
+    static_assert(is_trivial_type_v<inside<{0, 100}, clamp | u>>);
+    static_assert(is_trivial_type_v<inside<{0, 100}, wrap | u>>);
+    static_assert(is_trivial_type_v<inside<{0, 100}, u>>);
 
+    // Every inside stays trivially copyable and destructible; without
+    // `uninitialized` the default ctor stores the default value.
     static_assert(std::is_trivially_copyable_v<inside<{0, 100}>>);
     static_assert(std::is_trivially_destructible_v<inside<{0, 100}>>);
-    // The default ctor is `= default` for every policy (no zero-fill), so even a
-    // `checked` inside is trivially default-constructible — and fully trivial.
-    static_assert(std::is_trivially_default_constructible_v<inside<{0, 100}>>);
-    static_assert(is_trivial_type_v<inside<{0, 100}>>);
+    static_assert(!std::is_trivially_default_constructible_v<inside<{0, 100}>>);
+    static_assert(!std::is_trivially_default_constructible_v<inside<{0, 100}, unsafe>>);
 }
 
 // type-alias smoke checks

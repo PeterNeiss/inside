@@ -17,9 +17,9 @@
 #include <iostream>
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/io.hpp>
-#include <beman/inside/formats.hpp>
-#include <beman/inside/units_math.hpp>
+#include <beman/inside/inside/io.hpp>
+#include <beman/inside/inside/formats.hpp>
+#include <beman/inside/units/math.hpp>
 
 using namespace beman::inside;
 using namespace beman::inside::units;
@@ -83,8 +83,8 @@ int main() {
         const seconds_t t = (i / just<N>)*si::second; // exact: N is a nonzero point
         const cycles_t  c = tone * t;                 // Hz · s is a plain number of cycles
         for (int ch = 0; ch < 4; ++ch) {
-            const auto a    = c * turn + offsets[ch]; // in turns, exact
-            channels[ch][i] = mul_into<sample_t>(amplitudes[ch], units::sin_into<sine_t>(a));
+            const auto a                      = c * turn + offsets[ch]; // in turns, exact
+            channels[ch][i.as<std::size_t>()] = mul_into<sample_t>(amplitudes[ch], units::sin_into<sine_t>(a));
         }
     }
 
@@ -92,17 +92,18 @@ int main() {
 
     std::cout << "frame  c0      c1      c2      c3      mix    \n";
     for (frame_t i : values<frame_t>) {
+        const auto k = i.as<std::size_t>(); // an index: every frame_t fits
         // Each (gain × sample) widens to an inside on the product grid; the four-
         // way `+` chain widens further. Everything stays in int64 notch math —
         // no rational cross-multiply, no float in the hot loop.
-        auto mix = (gain[0] * channels[0][i]) + (gain[1] * channels[1][i]) + (gain[2] * channels[2][i]) +
-                   (gain[3] * channels[3][i]);
+        auto mix = (gain[0] * channels[0][k]) + (gain[1] * channels[1][k]) + (gain[2] * channels[2][k]) +
+                   (gain[3] * channels[3][k]);
 
         // on_clamp fires when the value lands outside [-1, 1] and is clipped.
         sample_t bus{0};
         bus.on_clamp([&](auto&, auto) { ++clip_events; }) = mix;
 
-        std::cout << channels[0][i] << "   " << channels[1][i] << "   " << channels[2][i] << "   " << channels[3][i]
+        std::cout << channels[0][k] << "   " << channels[1][k] << "   " << channels[2][k] << "   " << channels[3][k]
                   << "   " << bus << "\n";
     }
 

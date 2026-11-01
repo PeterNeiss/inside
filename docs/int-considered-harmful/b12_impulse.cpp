@@ -6,7 +6,7 @@
 
 #include <iostream>
 
-#include <beman/inside/io.hpp>
+#include <beman/inside/inside/io.hpp>
 #include <beman/inside/units.hpp>
 
 using namespace beman::inside;

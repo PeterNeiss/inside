@@ -4,7 +4,7 @@
 // error a clamp should have absorbed, or terminated.
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/formats.hpp>
+#include <beman/inside/inside/formats.hpp>
 
 #include <gtest/gtest.h>
 

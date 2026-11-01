@@ -4,7 +4,7 @@
 // across limbs — reachable with exhaustive or dense sweeps whose results a
 // builtin integer can check exactly.
 
-#include <beman/inside/detail/wide_int.hpp>
+#include <beman/inside/inside/detail/wide_int.hpp>
 
 #include <gtest/gtest.h>
 

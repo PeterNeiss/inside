@@ -14,5 +14,5 @@ int main() {
     inside<{0, 100}> b{8};
     auto             sum = a + b; // result grid {0, 200}, unit integer
 
-    return (static_cast<int>(sum) == 50) ? 0 : 1;
+    return (sum.as<int>() == 50) ? 0 : 1;
 }

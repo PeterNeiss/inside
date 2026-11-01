@@ -4,11 +4,11 @@
 // wrong error, or ran into undefined behaviour.
 
 #include <beman/inside/inside.hpp>
-#include <beman/inside/casts.hpp>
-#include <beman/inside/cmath.hpp>
-#include <beman/inside/formats.hpp>
-#include <beman/inside/io.hpp>
-#include <beman/inside/predicates.hpp>
+#include <beman/inside/inside/casts.hpp>
+#include <beman/inside/math.hpp>
+#include <beman/inside/inside/formats.hpp>
+#include <beman/inside/inside/io.hpp>
+#include <beman/inside/inside/predicates.hpp>
 
 #include <gtest/gtest.h>
 
@@ -149,11 +149,11 @@ TEST(BugHuntRound7, to_value_on_a_coarse_int64_grid) {
     using A = inside<grid{{I64_MIN, I64_MAX - 1}, 2}>;
     static_assert([] {
         constexpr A x = I64_MAX - 1;
-        return static_cast<I64>(x) == I64_MAX - 1 && x.to<I64>() == I64_MAX - 1;
+        return x.as<I64>() == I64_MAX - 1 && x.to<I64>() == I64_MAX - 1;
     }());
     A y = I64_MIN;
     y   = I64_MAX - 1;
-    EXPECT_EQ(static_cast<I64>(y), I64_MAX - 1);
+    EXPECT_EQ(y.as<I64>(), I64_MAX - 1);
 }
 
 // The raw += / -= fast paths added R's raw and the bias before the delta
@@ -231,20 +231,20 @@ TEST(BugHuntRound7, on_clamp_hears_of_infinities) {
 TEST(BugHuntRound7, integer_division_past_int64_rounds) {
     using u64 = inside<{0, UINT64_MAX}, snap>;
     EXPECT_EQ(u64{7u} / u64{2u}, 3);
-    EXPECT_EQ(div(uint64{7u}, uint64{2u}, rounded_floor), 3);
-    EXPECT_EQ(div(uint64{UINT64_MAX}, inside<{-3, -1}>{-2}, rounded_ceil), rational(-I64_MAX));
+    EXPECT_EQ(div(uint64{7u}, uint64{2u}, round_floor), 3);
+    EXPECT_EQ(div(uint64{UINT64_MAX}, inside<{-3, -1}>{-2}, round_ceil), rational(-I64_MAX));
     using i64     = inside<{I64_MIN, I64_MAX}, snap>;
     const auto q1 = i64{-7} / i64{-1};
     using small   = inside<{1, 10}, snap>;
     EXPECT_EQ(q1.value() / small{2}, 3);
     const auto d = uint64{0} - uint64{UINT64_MAX};
-    EXPECT_EQ(div(d, inside<{1, 1000}>{7}, rounded_floor), rational(-2635249153387078803));
+    EXPECT_EQ(div(d, inside<{1, 1000}>{7}, round_floor), rational(-2635249153387078803));
     using around_zero = inside<{-2, 3}, snap>;
     EXPECT_EQ((u64{5u} / around_zero{0}).error(), errc::division_by_zero);
     // (a / b)·b + a % b == a, as for the native widths.
     const uint64                  a{18446744073709551557u};
     const inside<{1, 1000}, snap> b{1000};
-    const auto                    quot = div(a, b, rounded_floor);
+    const auto                    quot = div(a, b, round_floor);
     EXPECT_EQ(rational(quot) * 1000 + rational(a % b), rational(a));
 }
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #include <beman/inside/inside.hpp>
-#include <beman/inside/io.hpp>
+#include <beman/inside/inside/io.hpp>
 
 #include <gtest/gtest.h>
 
@@ -104,17 +104,17 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
         SCOPED_TRACE("per-call snap");
         using u100 = inside<{0, 100}>;
         constexpr u100 a{51}, b{8};
-        constexpr auto d = div(a, b, rounded_toward_zero);
+        constexpr auto d = div(a, b, round_toward_zero);
         static_assert(!(std::is_same_v<typename decltype(d)::value_type::raw_type, rational>));
         static_assert(*d == 6);
     }
 
     {
-        SCOPED_TRACE("rounded_toward_zero truncates both signs; round_toward_zero is snap");
+        SCOPED_TRACE("round_toward_zero truncates both signs; round_toward_zero is snap");
         using s100 = inside<{-100, 100}>;
         using pos  = inside<{1, 100}>;
-        static_assert(div(s100{-7}, pos{2}, rounded_toward_zero) == -3);
-        static_assert(div(s100{7}, pos{2}, rounded_toward_zero) == 3);
+        static_assert(div(s100{-7}, pos{2}, round_toward_zero) == -3);
+        static_assert(div(s100{7}, pos{2}, round_toward_zero) == 3);
         static_assert(round_toward_zero == snap);
         using t = inside<{0, 10}, round_toward_zero>;
         static_assert(t{rational{29, 10}} == 2);
@@ -135,7 +135,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
         static_assert(index_storage<off>);
 
         constexpr off  a{300}, b{200};
-        constexpr auto q = div(a, b, rounded_toward_zero);
+        constexpr auto q = div(a, b, round_toward_zero);
         // off's grid {200,300} excludes zero, so div returns a plain inside (no expected).
         static_assert(!(std::is_same_v<typename decltype(q)::raw_type, rational>));
         static_assert(q == 1);
@@ -145,7 +145,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
         SCOPED_TRACE("non-unit notch trunc");
         using step2 = inside<{{0, 10}, 2}>;
         constexpr step2 a{10}, b{6};
-        constexpr auto  q = div(a, b, rounded_toward_zero);
+        constexpr auto  q = div(a, b, round_toward_zero);
         static_assert(*q == 1);
     }
 
@@ -153,7 +153,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
         SCOPED_TRACE("offset + non-unit notch");
         using step5 = inside<{{5, 15}, 5}>;
         constexpr step5 a{15}, b{5};
-        constexpr auto  q = div(a, b, rounded_toward_zero);
+        constexpr auto  q = div(a, b, round_toward_zero);
         // {5,15} excludes zero → plain inside result.
         static_assert(q == 3);
     }
@@ -228,7 +228,7 @@ TEST(InsideArithmeticTest, inside_modulo) {
 
     using u50 = inside<{0, 50}>;
     constexpr u50  e{23}, f{7};
-    constexpr auto r = mod(e, f, rounded_toward_zero);
+    constexpr auto r = mod(e, f, round_toward_zero);
     static_assert(*r == 2);
 }
 
@@ -425,28 +425,24 @@ TEST(InsideArithmeticTest, beman_inside_sum_bulk_reduction_with_one_deferred_che
 }
 
 // Issue #7 closure (user decision 2026-06-12): `inside op raw-scalar` is the
-// DESIGNED ban — `1_ins` / `just<V>` / `inside<{lo,hi}>{n}` are the API. These
-// pins guard the mechanism: the guidance overloads stay SFINAE-transparent
-// (probing compiles; the assert fires only on real instantiation), and they
-// stay the ONLY match — their `B` return type distinguishes them from any
-// accidentally-introduced real widening overload, whose result grid would be
-// a different type.
+// DESIGNED ban — `1_ins` / `just<V>` / `inside<{lo,hi}>{n}` are the API. Since
+// 2026-10-31 the guidance overloads are deleted (their reason is the fix), so
+// probes answer false like for every operation that cannot compile. An
+// accidentally-introduced real widening overload would make a probe true.
+template <class A, class B>
+concept plus_ok = requires(A a, B b) { a + b; };
+template <class A, class B>
+concept minus_ok = requires(A a, B b) { a - b; };
+template <class A, class B>
+concept times_ok = requires(A a, B b) { a * b; };
+template <class A, class B>
+concept over_ok = requires(A a, B b) { a / b; };
 // scalar-operand ban: guidance overloads pinned
 TEST(InsideArithmeticTest, scalar_operand_ban_guidance_overloads_pinned) {
     using pct = inside<{0, 100}>;
 
-    // SFINAE-transparent: the probes are well-formed...
-    static_assert(requires(pct b) { b + 1; });
-    static_assert(requires(pct b) { b - 1; });
-    static_assert(requires(pct b) { b * 2; });
-    static_assert(requires(pct b) { b / 2; });
-    static_assert(requires(pct b) { 1 + b; });
-
-    // ...and resolve to the guidance overloads (return type B), not to a double
-    // widening operator (whose result grid would be a different inside type).
-    static_assert(std::same_as<decltype(std::declval<pct>() + 1), pct>);
-    static_assert(std::same_as<decltype(std::declval<pct>() * 2), pct>);
-    static_assert(std::same_as<decltype(2.5 * std::declval<pct>()), pct>);
+    static_assert(!plus_ok<pct, int> && !minus_ok<pct, int> && !times_ok<pct, int> && !over_ok<pct, int>);
+    static_assert(!plus_ok<int, pct> && !times_ok<double, pct> && !times_ok<pct, double>);
 
     // The sanctioned spellings stay open: literals widen, compound narrows,
     // comparisons are free.

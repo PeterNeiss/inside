@@ -11,7 +11,7 @@
 // The `beman.inside.accuracy_report` CMake target regenerates docs/accuracy.md with it.
 //---------------------------------------------------------------------------
 #include <beman/inside/inside.hpp>
-#include <beman/inside/cmath.hpp>
+#include <beman/inside/math.hpp>
 
 #include <cfloat>
 #include <cmath>

@@ -1,7 +1,7 @@
-// EXPECT: entirely outside lhs interval
+// EXPECT: lies entirely outside this grid
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Assigning from an inside whose interval cannot overlap the target is rejected
-// at compile time (inside_assignable_why names the failing clause).
+// Assigning from an inside whose interval cannot overlap the target is a
+// deleted store whose message names the failing clause.
 #include <beman/inside/inside.hpp>
 
 int main() {

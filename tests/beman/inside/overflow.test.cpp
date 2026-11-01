@@ -2,7 +2,7 @@
 // Sanity checks for the overflow-detecting wrappers (GCC/Clang builtins):
 // boundary values per width, signedness, and use in constant evaluation.
 
-#include <beman/inside/numbers.hpp>
+#include <beman/inside/inside/detail/numbers.hpp>
 
 #include <gtest/gtest.h>
 
@@ -10,6 +10,7 @@
 #include <limits>
 
 using namespace beman::inside;
+using namespace beman::inside::detail; // the overflow helpers are internal
 
 TEST(OverflowTest, signed_boundaries) {
     using L = std::numeric_limits<std::int64_t>;

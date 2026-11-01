@@ -635,7 +635,7 @@ and its edge policy:
 
 \begin{lstlisting}
 template<grid G, policy_flag P>
-struct inside;                        // include/beman/inside/core.hpp:98
+struct inside;                        // include/beman/inside/inside/detail/core.hpp:98
 \end{lstlisting}
 
 \noindent
@@ -754,10 +754,10 @@ process in \S2.4 becomes a value you can test.
 \lstinputlisting[firstline=16,lastline=30]{int-considered-harmful/b07_rounding.cpp}
 \begin{lstlisting}[style=term]
 n / d               = -3.5   (exact)
-rounded_nearest     = -4
-rounded_floor       = -4
-rounded_ceil        = -3
-rounded_toward_zero = -3
+round_nearest     = -4
+round_floor       = -4
+round_ceil        = -3
+round_toward_zero = -3
 \end{lstlisting}
 
 \begin{sloppypar}
@@ -824,7 +824,7 @@ grid it belongs to. The diagnostic says so:
 \begin{lstlisting}[style=term]
 $ g++ -std=c++26 -I ../../include x01_bare_int_rejected.cpp
    16 |   auto bad = x + 1;      // error: no grid for the literal
-include/beman/inside/arithmetic.hpp:552:31: error: static assertion failed:
+include/beman/inside/inside/arithmetic.hpp:552:31: error: static assertion failed:
    an inside cannot be combined with a raw scalar: give the scalar a grid --
    `1_ins`, `just<1>`, or `inside<{lo,hi}>{n}` for a runtime value with a
    known range
@@ -926,7 +926,7 @@ rejected with a message naming the C++26 big-grid requirement.
 
 Big grids also complete the unit catalogue: the SI prefixes past
 $10^{\pm18}$, the eV, and the physical constants. Since 2019 the SI defines
-$h$, $e$, $k$ and $N_A$ as exact numbers. \file{constants.hpp} holds each of
+$h$, $e$, $k$ and $N_A$ as exact numbers. \file{units/constants.hpp} holds each of
 them as a quantity of its kind: $h$ is an action and $e$ an electric charge.
 It also holds the constants that follow from them, the CODATA 2022 measured
 values, and the common mathematical constants (\file{docs/constants.md}):
