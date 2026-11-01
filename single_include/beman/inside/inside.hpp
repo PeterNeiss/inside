@@ -8039,14 +8039,12 @@ struct policy_ref {
         return dispatch_new<Target>(Ref, Policy, Actions);
     }
 
-    // expected<C> sink — unwrap once at the proxy boundary so callers can chain
-    // checked arithmetic into `.with_clamp() = ...` without per-step `.value()`.
-    // An error goes to on_error, else through this ref's policy (or the errc&
-    // sink), as an arithmetic result's does.
+    // A std::expected is never stored implicitly, through a proxy either:
+    // check it and store *e, or use B::try_make(e).
     template <numeric C>
-    constexpr B& operator=(const std::expected<C, errc>& other) {
-        return finalize_arith(other, "policy_ref::operator= of an expected without a value");
-    }
+    B& operator=(const std::expected<C, errc>&) = delete ("inside: a std::expected is not stored implicitly - "
+                                                          "check it and store *e, or use T::try_make(e), "
+                                                          "which passes its error on");
 
   private:
     // The value an op's result holds (an expected's value type) assigns back.
@@ -9181,18 +9179,27 @@ struct inside {
     inside(A, errc&) = delete ("inside(value, errc&) was removed: use `auto r = B::try_make(value);` "
                                "(expected<B, errc>), or `b.policy(ec) = value` to assign with an error code");
 
-    // expected<A> sink — unwrap once at the construction boundary so callers can
-    // chain checked arithmetic without per-step `.value()`. An error is
-    // reported through this type's policy, as a failed store is (inside_error
-    // or the installed handler; a compile error in a constant expression).
+    // A std::expected is never stored implicitly: check it and store *e, or
+    // use try_make(e), which passes its error on. Construction, assignment and
+    // the compound assignments from an expected are deleted with that reason.
+#define BEMAN_INSIDE_WHY_expected                                                                       \
+    "inside: a std::expected is not stored implicitly - check it and store *e, or use T::try_make(e), " \
+    "which passes its error on"
     template <numeric A>
-        requires inside_assignable<inside, A, P>
-    constexpr inside(const std::expected<A, errc>& value) : Raw{detail::default_raw<inside>} {
-        if (!value) [[unlikely]]
-            report_error(value.error());
-        else
-            store_value(*value);
-    }
+    inside(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
+    template <numeric A>
+    inside& operator=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
+    template <numeric A>
+    inside& operator+=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
+    template <numeric A>
+    inside& operator-=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
+    template <numeric A>
+    inside& operator*=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
+    template <numeric A>
+    inside& operator/=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
+    template <numeric A>
+    inside& operator%=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
+#undef BEMAN_INSIDE_WHY_expected
 
     // A grid number at run time (`residue r = N - 1_g;`, a constexpr big
     // variable): checked like any store, since its interval is not part of
@@ -9219,13 +9226,6 @@ struct inside {
         return *this;
     }
 
-    // An error is reported through this type's policy; *this stays unchanged.
-    template <numeric B>
-        requires inside_assignable<inside, B, P>
-    constexpr inside& operator=(const std::expected<B, errc>& other) {
-        return assign_op_result(other);
-    }
-
     // A store that can never succeed is deleted, with the clause that fails:
     // a trait or `requires` probe sees it as ill-formed, and the error names
     // the fix. explain_assignable<To, From> prints the two grids.
@@ -9241,24 +9241,12 @@ struct inside {
     template <numeric A>
         requires(detail::assign_intervals_ok<inside, A, P> && !detail::assign_notch_ok<inside, A, P>)
     inside(A) = delete (BEMAN_INSIDE_WHY_notch);
-    template <numeric A>
-        requires(!detail::assign_intervals_ok<inside, A, P>)
-    inside(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_disjoint);
-    template <numeric A>
-        requires(detail::assign_intervals_ok<inside, A, P> && !detail::assign_notch_ok<inside, A, P>)
-    inside(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_notch);
     template <numeric B>
         requires(!detail::assign_intervals_ok<inside, B, P>)
     inside& operator=(const B&) = delete (BEMAN_INSIDE_WHY_disjoint);
     template <numeric B>
         requires(detail::assign_intervals_ok<inside, B, P> && !detail::assign_notch_ok<inside, B, P>)
     inside& operator=(const B&) = delete (BEMAN_INSIDE_WHY_notch);
-    template <numeric B>
-        requires(!detail::assign_intervals_ok<inside, B, P>)
-    inside& operator=(const std::expected<B, errc>&) = delete (BEMAN_INSIDE_WHY_disjoint);
-    template <numeric B>
-        requires(detail::assign_intervals_ok<inside, B, P> && !detail::assign_notch_ok<inside, B, P>)
-    inside& operator=(const std::expected<B, errc>&) = delete (BEMAN_INSIDE_WHY_notch);
 #undef BEMAN_INSIDE_WHY_disjoint
 #undef BEMAN_INSIDE_WHY_notch
 
@@ -9755,34 +9743,6 @@ struct inside {
         if (detail::is_canonical_zero(rhs))
             return report_div_by_zero<inside>();
         return assign_op_result(detail::rational{*this} / rhs);
-    }
-
-    // expected<inside> RHS (e.g. `x += a / b`): unwrap once, reporting an error
-    // through this type's policy like any other failed compound op.
-    template <insidable R>
-        requires requires(inside& self, const R& r) { self += r; }
-    constexpr inside& operator+=(const std::expected<R, errc>& rhs) {
-        return rhs ? (*this += *rhs) : report_error(rhs.error());
-    }
-    template <insidable R>
-        requires requires(inside& self, const R& r) { self -= r; }
-    constexpr inside& operator-=(const std::expected<R, errc>& rhs) {
-        return rhs ? (*this -= *rhs) : report_error(rhs.error());
-    }
-    template <insidable R>
-        requires requires(inside& self, const R& r) { self *= r; }
-    constexpr inside& operator*=(const std::expected<R, errc>& rhs) {
-        return rhs ? (*this *= *rhs) : report_error(rhs.error());
-    }
-    template <insidable R>
-        requires requires(inside& self, const R& r) { self /= r; }
-    constexpr inside& operator/=(const std::expected<R, errc>& rhs) {
-        return rhs ? (*this /= *rhs) : report_error(rhs.error());
-    }
-    template <insidable R>
-        requires requires(inside& self, const R& r) { self %= r; }
-    constexpr inside& operator%=(const std::expected<R, errc>& rhs) {
-        return rhs ? (*this %= *rhs) : report_error(rhs.error());
     }
 
     // ++/-- move one notch: they add the point inside of ±Notch through the

@@ -19,14 +19,14 @@
 using namespace beman::inside;
 
 // The expected sink of a policy ref unwrapped with .value(): an error threw
-// bad_expected_access instead of going to the ref's errc&.
+// bad_expected_access instead of going to the ref's errc&. Since 2026-11 no
+// store takes a std::expected: the proxy's sink is deleted.
+template <class Ref, class E>
+concept stores_expected = requires(Ref r, E e) { r = e; };
 TEST(BugHuntRound6, policy_ref_expected_sink_reports_into_errc) {
-    inside<{0, 100}>                    x{5};
-    errc                                ec{};
-    const std::expected<rational, errc> bad{std::unexpected{errc::overflow}};
-    x.policy(ec) = bad;
-    EXPECT_EQ(ec, errc::overflow);
-    EXPECT_EQ(x, 5);
+    using ref = decltype(std::declval<inside<{0, 100}>&>().policy(std::declval<errc&>()));
+    static_assert(!stores_expected<ref, std::expected<rational, errc>>);
+    static_assert(stores_expected<ref, rational>);
 }
 
 // A failed read-out through the errc& proxy returned an uninitialized

@@ -725,8 +725,7 @@ void prop_interval_eq(fuzz_state& s) {
 
 void prop_expected_throws(fuzz_state& s) {
     // A fallible result holding an error throws std::bad_expected_access from
-    // .value() (std::expected's own), and inside_error with its errc from the
-    // inside sink constructor (the policy's report).
+    // .value() (std::expected's own); an inside does not store it.
     s.current_prop        = "expected_throws";
     s.iter                = 0;
     using B               = inside<{0, 100}>;
@@ -743,18 +742,10 @@ void prop_expected_throws(fuzz_state& s) {
     FUZZ_REQUIRE(s, got_throw);
     FUZZ_REQUIRE(s, !what.empty());
 
-    // The inside sink reports an error result through its policy.
-    bool sink_throw = false;
-    try {
-        using Q = std::remove_cvref_t<decltype(*(B{7} / B{1}))>;
-        Q q{B{7} / B{0}};
-        (void)q;
-    } catch (const inside_error& e) {
-        sink_throw = true;
-        FUZZ_REQUIRE(s, e.Code == errc::division_by_zero);
-    } catch (...) {
-    } // NOLINT(bugprone-empty-catch): deliberate — the assert below verifies the expected throw fired
-    FUZZ_REQUIRE(s, sink_throw);
+    // No inside stores an expected; try_make passes its error on.
+    using Q = std::remove_cvref_t<decltype(*(B{7} / B{1}))>;
+    static_assert(!std::is_constructible_v<Q, decltype(B{7} / B{0})>);
+    FUZZ_REQUIRE(s, Q::try_make(B{7} / B{0}).error() == errc::division_by_zero);
 }
 
 template <insidable B>

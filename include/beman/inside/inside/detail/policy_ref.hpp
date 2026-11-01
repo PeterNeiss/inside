@@ -107,14 +107,12 @@ struct policy_ref {
         return dispatch_new<Target>(Ref, Policy, Actions);
     }
 
-    // expected<C> sink — unwrap once at the proxy boundary so callers can chain
-    // checked arithmetic into `.with_clamp() = ...` without per-step `.value()`.
-    // An error goes to on_error, else through this ref's policy (or the errc&
-    // sink), as an arithmetic result's does.
+    // A std::expected is never stored implicitly, through a proxy either:
+    // check it and store *e, or use B::try_make(e).
     template <numeric C>
-    constexpr B& operator=(const std::expected<C, errc>& other) {
-        return finalize_arith(other, "policy_ref::operator= of an expected without a value");
-    }
+    B& operator=(const std::expected<C, errc>&) = delete ("inside: a std::expected is not stored implicitly - "
+                                                          "check it and store *e, or use T::try_make(e), "
+                                                          "which passes its error on");
 
   private:
     // The value an op's result holds (an expected's value type) assigns back.

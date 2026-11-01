@@ -142,19 +142,10 @@ TEST(ErrorHandlerTest, set_error_handler_redirects_failures_and_is_restorable) {
     ASSERT_EQ(get_error_handler(), before);
 }
 
-// A failed expected sink reaches the installed handler like any failed store.
+// A failed rational sink reaches the installed handler like any failed store.
+// (No inside stores a std::expected.)
 TEST(ErrorHandlerTest, expected_sinks_reach_the_handler) {
-    inside<{0, 10}> a{4};
-    inside<{0, 2}>  b{0};
-    scoped_handler  guard{&recording_handler};
-    g_seen = errc{};
-    try {
-        inside<{0, 100}, round_nearest> c = a / b;
-        (void)c;
-    } catch (const handler_fired& f) {
-        EXPECT_EQ(f.code, errc::division_by_zero);
-    }
-    EXPECT_EQ(g_seen, errc::division_by_zero);
+    scoped_handler guard{&recording_handler};
     g_seen = errc{};
     try {
         rational r = rational{1} / rational{0};

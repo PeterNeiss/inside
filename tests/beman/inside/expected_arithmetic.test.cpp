@@ -102,62 +102,32 @@ TEST(ExpectedArithmeticTest, rational_overflow_reports_overflow) {
     ASSERT_EQ(r.error(), errc::overflow);
 }
 
-// inside construction from expected<rational> - sink unwrap
-TEST(ExpectedArithmeticTest, inside_construction_from_expected_rational_sink_unwrap) {
+// No inside stores a std::expected - not by construction, =, or a compound
+// op: check it and store *e, or use try_make(e), which passes the error on.
+TEST(ExpectedArithmeticTest, inside_does_not_store_an_expected) {
     using b_t = inside<{{0, 1}, per<16>}, round_nearest>;
+    static_assert(!std::is_constructible_v<b_t, exp_r> && !std::is_convertible_v<exp_r, b_t>);
+    static_assert(!std::is_assignable_v<b_t&, exp_r>);
+    static_assert(!std::is_constructible_v<b_t, std::expected<b_t, errc>>);
 
-    b_t v{good(0.5_r)};
+    const auto g = good(0.5_r);
+    ASSERT_TRUE(g.has_value());
+    b_t v{*g};
     ASSERT_EQ(rational{v}, 0.5_r);
-
-    // An error goes through the policy, as a failed store does: inside_error
-    // with the errc, never std::bad_expected_access.
-    try {
-        (void)b_t{bad(errc::division_by_zero)};
-        FAIL() << "no error reported";
-    } catch (const inside_error& e) {
-        EXPECT_EQ(e.Code, errc::division_by_zero);
-    }
+    ASSERT_EQ(*b_t::try_make(good(0.25_r)), 0.25_r);
+    ASSERT_EQ(b_t::try_make(bad(errc::division_by_zero)).error(), errc::division_by_zero);
 }
 
-// inside operator= from expected<rational>
-TEST(ExpectedArithmeticTest, inside_operator_from_expected_rational) {
-    using b_t = inside<{{0, 1}, per<16>}, round_nearest>;
-
-    b_t v{0};
-    v = good(0.25_r);
-    ASSERT_EQ(rational{v}, 0.25_r);
-
-    // An error goes through the policy and leaves v unchanged.
-    try {
-        v = bad();
-        FAIL() << "no error reported";
-    } catch (const inside_error& e) {
-        EXPECT_EQ(e.Code, errc::overflow);
-    }
-    ASSERT_EQ(rational{v}, 0.25_r);
-}
-
-// A division whose divisor grid holds 0 stored into a clamp type: the zero
-// divisor is reported (clamp handles the range, not the error), whether the
-// expected is constructed from or assigned.
+// A division whose divisor grid holds 0, into a clamp type: try_make passes
+// the zero divisor on (clamp handles the range, not the error); a nonzero
+// divisor stores, rounded and clamped by the type.
 TEST(ExpectedArithmeticTest, zero_divisor_into_a_clamp_type_is_reported) {
     inside<{0, 10}> a{4};
     inside<{0, 2}>  b{0};
     using c_t = inside<{0, 100}, clamp | round_nearest>;
-    try {
-        c_t c = a / b;
-        (void)c;
-        FAIL() << "no error reported";
-    } catch (const inside_error& e) {
-        EXPECT_EQ(e.Code, errc::division_by_zero);
-    }
-    c_t d{7};
-    EXPECT_THROW(d = a / b, inside_error);
-    EXPECT_EQ(rational{d}, 7);
-    // a nonzero divisor stores (rounded and clamped by c_t)
+    EXPECT_EQ(c_t::try_make(a / b).error(), errc::division_by_zero);
     b = 2;
-    d = a / b;
-    EXPECT_EQ(rational{d}, 2);
+    EXPECT_EQ(rational{*c_t::try_make(a / b)}, 2);
 }
 
 // rational's sinks raise too: the expected-converting ctor, the compound

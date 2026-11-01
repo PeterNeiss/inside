@@ -127,7 +127,7 @@ TEST(WideGridTest, comparisons) {
 }
 
 TEST(WideGridTest, arithmetic) {
-    fine a = 1.5, b = rational{1} + tick;
+    fine a = 1.5, b = *(rational{1} + tick);
     auto sum = a + b; // {0, 2^35}, notch 2^-32
     static_assert(detail::wide_index_storage<decltype(sum)>);
     EXPECT_TRUE(sum == (rational{5, 2} + tick).value());

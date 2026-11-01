@@ -399,13 +399,22 @@ TEST(ConsistencyTest, two_input_math_is_symmetric_in_its_types) {
     static_assert(std::same_as<decltype(math::hypot(A{0}, B{0})), decltype(math::hypot(B{0}, A{0}))>);
 }
 
-TEST(ConsistencyTest, compound_ops_accept_expected_rhs) {
+// No store takes a std::expected (construction, =, compound ops): the
+// expected is checked and unwrapped explicitly.
+template <class X, class E>
+concept compound_takes = requires(X& x, E e) { x += e; } || requires(X& x, E e) { x *= e; };
+TEST(ConsistencyTest, compound_ops_reject_expected_rhs) {
     using X = inside<{1, 10}, checked | snap>;
     using Y = inside<{0, 10}, checked | snap>; // divisor may be 0
-    X x{2};
-    x += Y{6} / Y{2}; // expected<inside>
+    static_assert(!compound_takes<X, decltype(Y{6} / Y{2})>);
+    static_assert(!std::is_constructible_v<X, decltype(Y{6} / Y{2})>);
+    static_assert(!std::is_assignable_v<X&, decltype(Y{6} / Y{2})>);
+    X    x{2};
+    auto q3 = Y{6} / Y{2};
+    ASSERT_TRUE(q3.has_value());
+    x += *q3;
     EXPECT_EQ(rational{x}, q(5));
-    EXPECT_THROW(x += Y{6} / Y{0}, inside_error); // the error is reported
+    EXPECT_FALSE(X::try_make(Y{6} / Y{0}).has_value()); // try_make passes the error on
 }
 
 TEST(ConsistencyTest, casts_take_inside_sources) {

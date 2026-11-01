@@ -365,9 +365,9 @@ auto r3 = math::sqrt(signed_in{v}) * gain + offset;   // fragment: an expected f
 ```
 
 An operation that fails inside the chain reports its own cause. See
-[internals.md](internals.md#7-error-vocabulary) for the full rule. Storing an
-`expected` into an inside (`lvl x = a / z;`) reports its error through the
-target's policy, as any failed store
+[internals.md](internals.md#7-error-vocabulary) for the full rule. An inside
+does not store an `expected` (`lvl x = a / z;` does not compile): check it and
+store `*e`, or call `lvl::try_make(a / z)`, which passes the error on
 ([policies.md](policies.md#which-channel-reports-a-failure)).
 
 ### Bounded continuous grids

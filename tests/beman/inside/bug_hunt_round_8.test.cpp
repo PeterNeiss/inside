@@ -146,9 +146,9 @@ TEST(BugHuntRound8, to_long_double_is_rounded_once) {
 #if WIDE_LONG_DOUBLE
     using F = inside<{{-2, 2}, per<(I64{1} << 62)>}>;
     using T = inside<{{-1, 1}, per<3>}>;
-    static_assert(F{rational{1} + rational{1, I64{1} << 60}}.to<long double>().value() == 1.0L + 0x1p-60L);
+    static_assert(F{*(rational{1} + rational{1, I64{1} << 60})}.to<long double>().value() == 1.0L + 0x1p-60L);
     static_assert(T{rational{1, 3}}.to<long double>().value() == 1.0L / 3);
-    const F f{rational{-1} - rational{1, I64{1} << 62}};
+    const F f{*(rational{-1} - rational{1, I64{1} << 62})};
     EXPECT_EQ(f.to<long double>().value(), -1.0L - 0x1p-62L);
     using Q = inside<{{-1000000, 1000000}, per<1000000007>}>;
     const Q q{rational{1, 1000000007}};

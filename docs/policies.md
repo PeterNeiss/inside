@@ -244,10 +244,13 @@ Each operation reports through one channel:
 | a store: construction, `=`, `+=` and the other compound ops, `as<T>()`, `checked_cast` | the hook (`on_error`, or `on_clamp` / `on_wrap` where they apply), else the policy's `errc&`, else the handler |
 | `try_make`, `parse`, `to<T>()`, `grid::try_make` | the returned `std::expected` |
 | `/` and `%` by a grid that holds 0, `rational` arithmetic | the returned `std::expected` |
-| a store from a `std::expected`: `T x = a / b;`, `x = a / b;`, `rational r = p / q;` | the error is reported like a failed store: the hook, the `errc&`, else the handler |
+| `rational r = p / q;` (a `rational` from an `expected`) | the handler, like a failed store |
 
-No path throws `std::bad_expected_access`; only calling `.value()` on an
-`expected` yourself does.
+An inside never stores a `std::expected`: `T x = a / b;`, `x = a / b;`,
+`x += a / b;` and the policy proxies' `=` are deleted. Check the `expected` and
+store `*e`, or call `T::try_make(e)`, which passes its error on. No path
+throws `std::bad_expected_access`; only calling `.value()` on an `expected`
+yourself does.
 
 ## Replacing the throw handler
 

@@ -60,12 +60,12 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   it, which on `{5, 100}` read as 0, on a Q1.14 sample as −1, and on a
   continuous grid as the fraction 0/0. A failed error-code construction,
   `T x(v, make_policy(ec))`, now keeps that default value.
-- Storing a `std::expected` that holds an error (`T x = a / b;`, `x = a / b;`)
-  reports it through `T`'s policy, as a failed store does: `inside_error` with
-  the errc, or the installed handler. It threw `std::bad_expected_access`,
-  past the handler and with no errc in its message. `rational`'s sinks (the
-  converting constructor, `+= -= *= /=`, `<=>` against an `expected`) raise
-  the same way.
+- An inside no longer stores a `std::expected`: `T x = a / b;`, `x = a / b;`,
+  `x += a / b;` and `x.policy(ec) = a / b;` are deleted overloads (they threw
+  `std::bad_expected_access` before). Check the `expected` and store `*e`, or
+  call `T::try_make(a / b)`, which passes the error on. `rational`'s sinks
+  (the converting constructor, `+= -= *= /=`, `<=>` against an `expected`)
+  raise through the error handler instead of `std::bad_expected_access`.
 - The error handler is atomic, with default visibility: one thread may install
   a handler while others raise, and shared libraries share it.
 - An inside no longer compares with a floating-point value (`x == 0.1`,
