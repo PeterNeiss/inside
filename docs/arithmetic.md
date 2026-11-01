@@ -288,8 +288,9 @@ auto capped = v{add_all(a, b, c, v{90}), clamp};   // 100 (150 clamped)
 `sum<Target>(range)` adds a whole range with **one** check. A `target += x`
 loop checks the running total at every step, a compare and branch that also
 blocks vectorization. `sum` adds exactly and checks or clamps only the total,
-against `Target`'s policy, and runs within a few percent of a native loop
-([performance.md](performance.md)). Wide elements, and totals past 64 bits,
+against `Target`'s policy. It runs at about half the speed of a native loop,
+where a checked `+=` loop runs at a fifth; an `unsafe` loop matches the native
+one ([performance.md](performance.md)). Wide elements, and totals past 64 bits,
 are added in a wide integer and rounded into `Target` once.
 
 ```cpp

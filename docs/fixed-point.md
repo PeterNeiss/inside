@@ -86,10 +86,10 @@ element.
 [performance.md](performance.md) has the measured tables for Q8.8 and Q16.16
 construct, add, sub, mul, div, store and accumulate, and for the math
 functions, each against a native baseline with hardware counters (built by the
-`beman.inside.perf_report` target). On the reference machine Q8.8 construction
-and accumulation run faster than the hand-written native code, division
-matches it, and a product or an add costs a few instructions more (about
-70–90% of native speed). A checked store adds a compare and branch; `unsafe`
+`beman.inside.perf_report` target). On the reference machine Q8.8 accumulation
+runs faster than the hand-written native code; construction, division and a
+product match it; an add or a subtraction costs a few instructions more (about
+65–85% of native speed). A checked store adds a compare and branch; `unsafe`
 or `sum` removes it from a proven-safe inner loop.
 
 ## Q formats with units
