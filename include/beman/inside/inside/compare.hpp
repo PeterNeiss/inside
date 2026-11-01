@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Internal — include "beman/inside/inside.hpp" (the umbrella), not this directly.
-#ifndef BEMAN_INSIDE_INSIDE_DETAIL_COMPARE_HPP
-#define BEMAN_INSIDE_INSIDE_DETAIL_COMPARE_HPP
+#ifndef BEMAN_INSIDE_INSIDE_COMPARE_HPP
+#define BEMAN_INSIDE_INSIDE_COMPARE_HPP
 
 #include <beman/inside/inside/detail/config.hpp>
 
@@ -13,8 +12,9 @@
 
 //---------------------------------------------------------------------------
 // Comparisons of insides: across grids (by value index when both fit imax,
-// else exactly) and against scalars (integers, floating points of any width,
-// rationals).
+// else exactly) and against integers and rationals. A floating point is a
+// deleted overload (0.1 is not 1/10 in binary). The inside type itself comes
+// with it, so this is the smallest public header that declares an inside.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 //---------------------------------------------------------------------------
@@ -179,4 +179,4 @@ bool operator==(const B&, A) = delete (BEMAN_INSIDE_WHY_float_compare);
 #undef BEMAN_INSIDE_WHY_float_compare
 } // namespace beman::inside
 
-#endif // BEMAN_INSIDE_INSIDE_DETAIL_COMPARE_HPP
+#endif // BEMAN_INSIDE_INSIDE_COMPARE_HPP

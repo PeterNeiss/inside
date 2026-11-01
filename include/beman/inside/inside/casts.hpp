@@ -4,7 +4,7 @@
 
 #include <beman/inside/inside/detail/config.hpp>
 
-#include <beman/inside/inside/detail/compare.hpp> // the inside type and its comparisons
+#include <beman/inside/inside/compare.hpp> // the inside type and its comparisons
 
 //---------------------------------------------------------------------------
 // checked_cast<B>(v): v stored into B exactly, or a report - whatever B's

@@ -4,7 +4,7 @@
 
 #include <beman/inside/inside/detail/config.hpp>
 
-#include <beman/inside/inside/detail/compare.hpp> // the inside type and its comparisons
+#include <beman/inside/inside/compare.hpp> // the inside type and its comparisons
 
 #include <compare>
 #include <cstddef>

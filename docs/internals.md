@@ -413,7 +413,7 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 | `inside/detail/numbers.hpp` | `umax`/`imax` (public names), the internal `add_overflow`/`sub_overflow`/`mul_overflow`, `plain_number`/`fractional`, `safe_abs` |
 | `inside/detail/call_policy.hpp` | `call_policy<F, E>`, `make_policy`, `as_call_policy` (a flag as a call's policy) |
 | `inside/detail/error.hpp` | `errc`, `errc_message`, `inside_error`, the error handler, `raise`, `constexpr_error` |
-| `inside/detail/compare.hpp` | `<=>` and `==` across grids and against integers, floating points of any width and `rational` |
+| `inside/compare.hpp` | `<=>` and `==` across grids and against integers and `rational` (a floating point is a deleted overload) |
 | `inside/detail/introspection.hpp` | `grid_of`, `flags_of`, `interval_of`, `lower_of`, `upper_of`, `notch_of`, the `insidable` and `numeric` concepts, `raw_t`, `as_rational` |
 | `inside/detail/storage.hpp` | the storage concepts, `as_double`, `to_value`/`from_value`, `raw_imax`, the Q-format codec, `max_index_of`, `round_quotient` |
 | `inside/detail/policy_ref.hpp` | `policy_ref`, `policy_buffer`: what `b.policy<F>()`, `b.policy(ec)` and `on_*()` return |

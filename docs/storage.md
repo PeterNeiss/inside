@@ -89,8 +89,9 @@ auto p = h * h;                           // a grid up to 2²⁰⁰; exact, no e
 auto q = uint64{~0ull} + uint64{~0ull};   // 2⁶⁵ − 2 needs a big upper limit
 ```
 
-The `_g` literal spells a grid number exactly from decimal digits, a point and
-an exponent: `inside<{0, 1267650600228229401496703205376_g}>` is
+A grid number is a `grid_number`, an exact rational of any size: the type of
+a grid's limits and notch and of `lower_of<T>`. The `_g` literal spells one
+exactly from decimal digits, a point and an exponent: `inside<{0, 1267650600228229401496703205376_g}>` is
 `inside<{0, 0x1p100}>`, and `inside<{{0, 1}, 1e-30_g}>` has an exact decimal
 notch of 10⁻³⁰. `per<D>`, `just<N, D>`, `_r` and `_ins` stay 64-bit.
 

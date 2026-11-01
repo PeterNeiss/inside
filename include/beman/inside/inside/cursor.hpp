@@ -4,7 +4,7 @@
 
 #include <beman/inside/inside/detail/config.hpp>
 
-#include <beman/inside/inside/detail/compare.hpp>
+#include <beman/inside/inside/compare.hpp>
 
 namespace beman::inside {
 //---------------------------------------------------------------------------

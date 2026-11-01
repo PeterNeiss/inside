@@ -38,7 +38,7 @@
 //  beman/inside/inside.hpp
 // ======================================================================
 // Public umbrella header. Include this to get the full `beman::inside::inside` API:
-// the core type (inside/detail/core.hpp) and its comparisons (inside/detail/compare.hpp), plus the
+// the core type (inside/detail/core.hpp) and its comparisons (inside/compare.hpp), plus the
 // free-function layers that depend on the complete type — casts, arithmetic
 // operators, inside_range and cursor, and the std::numeric_limits and
 // std::hash specializations. Those follow inside/detail/core.hpp because they need
@@ -4096,11 +4096,16 @@ namespace beman::inside {
 // Also here: bounds (closed, half_open, open), grid::try_make for runtime
 // checks, max_denominator, and raw_for (the storage a grid deduces).
 //---------------------------------------------------------------------------
+// A grid number: an exact rational of any size, and a structural type - the
+// type of a grid's limits, notch and bound, of `_g` and of lower_of /
+// upper_of / notch_of. One past 64 bits exists only at compile time.
+using grid_number = detail::grid_rational;
+
 // A grid corner: a number (int / float / rational / grid number), or
 // anything that converts to the 64-bit rational, such as an inside (the grid
 // number takes that one conversion).
 template <typename T>
-concept grid_number_like = std::convertible_to<T, detail::grid_rational>;
+concept grid_number_like = std::convertible_to<T, grid_number>;
 
 // Which limits of a grid are values. A grid is always stored closed; an open
 // limit is a spelling, moved in by one notch at construction, so
@@ -10000,17 +10005,17 @@ struct std::indirectly_readable_traits<beman::inside::inside<G, P>> {
 
 
 // ======================================================================
-//  beman/inside/inside/detail/compare.hpp
+//  beman/inside/inside/compare.hpp
 // ======================================================================
-// Internal — include "beman/inside/inside.hpp" (the umbrella), not this directly.
 
 
 
 
 //---------------------------------------------------------------------------
 // Comparisons of insides: across grids (by value index when both fit imax,
-// else exactly) and against scalars (integers, floating points of any width,
-// rationals).
+// else exactly) and against integers and rationals. A floating point is a
+// deleted overload (0.1 is not 1/10 in binary). The inside type itself comes
+// with it, so this is the smallest public header that declares an inside.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 //---------------------------------------------------------------------------

@@ -25,11 +25,16 @@ namespace beman::inside {
 // Also here: bounds (closed, half_open, open), grid::try_make for runtime
 // checks, max_denominator, and raw_for (the storage a grid deduces).
 //---------------------------------------------------------------------------
+// A grid number: an exact rational of any size, and a structural type - the
+// type of a grid's limits, notch and bound, of `_g` and of lower_of /
+// upper_of / notch_of. One past 64 bits exists only at compile time.
+using grid_number = detail::grid_rational;
+
 // A grid corner: a number (int / float / rational / grid number), or
 // anything that converts to the 64-bit rational, such as an inside (the grid
 // number takes that one conversion).
 template <typename T>
-concept grid_number_like = std::convertible_to<T, detail::grid_rational>;
+concept grid_number_like = std::convertible_to<T, grid_number>;
 
 // Which limits of a grid are values. A grid is always stored closed; an open
 // limit is a spelling, moved in by one notch at construction, so

@@ -440,33 +440,34 @@ unordered containers.
 # Proposed interface
 
 The names are the reference implementation's (see [Open
-questions](#open-questions)). `@*grid-number*@` is exposition-only: an exact
-rational of any size. `@*number*@` is an arithmetic type or a
-`@*grid-number*@`. `@*integer*@` is an integer type wide enough for the value.
+questions](#open-questions)). `grid_number` is an exact rational of any size
+and a structural type. `@*number*@` is an arithmetic type or a `grid_number`.
+`@*integer*@` is an integer type wide enough for the value.
 
 ```cpp
 namespace std {
   // grids
-  template<intmax_t D> constexpr @*grid-number*@ per;           // 1/D
-  template<char... Cs> consteval @*grid-number*@ operator""_g();   // exact: 1e30_g, 0.1_g; suffix to be renamed
+  using grid_number = @*unspecified*@;                           // exact, any size, structural
+  template<intmax_t D> constexpr grid_number per;               // 1/D
+  template<char... Cs> consteval grid_number operator""_g();       // exact: 1e30_g, 0.1_g; suffix to be renamed
   struct interval {
-    @*grid-number*@ Lower, Upper;                                // Lower <= Upper
+    grid_number Lower, Upper;                                    // Lower <= Upper
   };
   enum class bounds { closed, half_open, open };               // a spelling: grids stay closed
   struct max_denominator {
-    @*grid-number*@ Value;                                       // a positive integer
+    grid_number Value;                                           // a positive integer
     constexpr explicit max_denominator(@*number*@ v);
   };
   struct grid {
     interval Interval;
-    @*grid-number*@ Notch;                                       // >= 0, divides Upper - Lower
-    @*grid-number*@ MaxDenominator;                              // a continuous grid's bound, else 0
+    grid_number Notch;                                           // >= 0, divides Upper - Lower
+    grid_number MaxDenominator;                                  // a continuous grid's bound, else 0
     constexpr grid(@*number*@ lower, @*number*@ upper, @*number*@ notch);
     constexpr grid(@*number*@ lower, @*number*@ upper);          // notch gcd(1, lower, upper)
     constexpr grid(@*number*@ lower, @*number*@ upper, @*number*@ notch, bounds);
     constexpr grid(@*number*@ lower, @*number*@ upper, bounds);
     constexpr grid(@*number*@ point);                            // notch 0, lower == upper
-    constexpr grid(interval, @*grid-number*@ notch);
+    constexpr grid(interval, grid_number notch);
     constexpr grid(interval, max_denominator);                  // continuous, bounded
   };
 
@@ -515,7 +516,7 @@ namespace std {
   // observers
   template<class B> constexpr grid grid_of;
   template<class B> constexpr policy_flag flags_of;
-  template<class B> constexpr @*grid-number*@ lower_of, upper_of, notch_of;
+  template<class B> constexpr grid_number lower_of, upper_of, notch_of;
 
   // constants
   template<auto N, auto D = 1> constexpr inside<grid{N/D}> just; // the point N/D

@@ -22,6 +22,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   | `beman/inside/constants.hpp` | `beman/inside/units/constants.hpp` (physical) and `beman/inside/math/constants.hpp` (`math::pi` & co., without units) |
   | `beman/inside/detail/…` | `beman/inside/inside/detail/…`, `beman/inside/math/detail/…` (internal) |
   | `beman/inside/core.hpp`, `numbers.hpp`, `policy.hpp` | internal: `inside/detail/core.hpp`, `numbers.hpp`, `call_policy.hpp` |
+  | `beman/inside/detail/compare.hpp` | `beman/inside/inside/compare.hpp` (public) |
 
   `units.hpp` is now `units/core.hpp` (the machinery) plus `units/systems.hpp`
   (the ISQ and SI catalog); units of your own need only `units/core.hpp`.
@@ -106,6 +107,10 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   check stayed off.
 
 ### Added
+
+- `beman::inside::grid_number`, the type of a grid's limits, notch and bound,
+  of `_g` and of `lower_of<T>`: it was reachable only as
+  `detail::grid_rational`.
 
 - Quantities catch up with insides: `q.policy<F>()` and `q.policy(ec)` (their
   handles, and the hooks', take `*=` and `/=` too), `checked_cast<Q>(x)`,
