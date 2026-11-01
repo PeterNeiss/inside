@@ -9518,7 +9518,9 @@ struct inside {
     // The reduced exact value as {numerator, positive denominator}. Integer
     // grids need no division; dyadic Q-format grids reduce by shifting out
     // common factors of two instead of a gcd.
-    constexpr std::pair<imax, imax> fraction() const {
+    constexpr std::pair<imax, imax> fraction() const
+        requires detail::fraction_fits_imax<inside>
+    {
         if constexpr (detail::integer_storage<inside> && detail::integer_lattice<inside>)
             return {detail::to_value(*this), 1};
         else if constexpr (detail::index_storage<inside> && detail::q_format_fits<inside> &&
@@ -9538,6 +9540,9 @@ struct inside {
     // functions in `beman::inside::math` — `beman::inside::math::floor(b)` etc. (auto-deduced Out)
     // or `beman::inside::math::floor_into<Out>(b)` for an explicit output grid. There is
     // deliberately no member-syntax alias: one spelling, in `<beman/inside/math.hpp>`.
+
+    // +x is x, as for a built-in number (and a quantity's +q).
+    [[nodiscard]] constexpr inside operator+() const noexcept { return *this; }
 
     [[nodiscard]] constexpr negated_type operator-() const {
         negated_type neg;
@@ -9845,27 +9850,47 @@ struct inside {
     // rational round-trip (~30× the instructions on an integer grid). On a
     // notch-1 grid that is ±1; on a cursor, one step. `just` itself is declared
     // after the class, so spell the point inside directly.
-    constexpr inside& operator++() {
-        static_assert(G.Notch != 0, "inside: ++ steps one notch - a grid without a notch has none to step");
+    constexpr inside& operator++()
+        requires(G.Notch != 0)
+    {
         // constexpr local: the point inside is materialized at compile time.
         constexpr auto notch_step = inside<grid{G.Notch}>::from_raw({});
         return *this += notch_step;
     }
-    constexpr inside operator++(int) {
+    constexpr inside operator++(int)
+        requires(G.Notch != 0)
+    {
         inside t = *this;
         ++*this;
         return t;
     }
-    constexpr inside& operator--() {
-        static_assert(G.Notch != 0, "inside: -- steps one notch - a grid without a notch has none to step");
+    constexpr inside& operator--()
+        requires(G.Notch != 0)
+    {
         constexpr auto notch_step = inside<grid{-G.Notch}>::from_raw({});
         return *this += notch_step;
     }
-    constexpr inside operator--(int) {
+    constexpr inside operator--(int)
+        requires(G.Notch != 0)
+    {
         inside t = *this;
         --*this;
         return t;
     }
+#define BEMAN_INSIDE_WHY_step "inside: ++ and -- step one notch - a grid without a notch has none to step"
+    inside& operator++()
+        requires(G.Notch == 0)
+    = delete (BEMAN_INSIDE_WHY_step);
+    inside operator++(int)
+        requires(G.Notch == 0)
+    = delete (BEMAN_INSIDE_WHY_step);
+    inside& operator--()
+        requires(G.Notch == 0)
+    = delete (BEMAN_INSIDE_WHY_step);
+    inside operator--(int)
+        requires(G.Notch == 0)
+    = delete (BEMAN_INSIDE_WHY_step);
+#undef BEMAN_INSIDE_WHY_step
 
     // *t: a cursor's value without the end, so a cursor is its own iterator
     // and end(t) its sentinel. At the end it reports out of range.

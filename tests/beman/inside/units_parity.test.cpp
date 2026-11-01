@@ -207,6 +207,11 @@ TEST(UnitsParityTest, the_new_forms_work) {
     metres m{40};
     km     k{1};
 
+    // Unary + on a quantity and on an inside: the value itself.
+    static_assert(std::same_as<decltype(+m), metres>);
+    EXPECT_TRUE(+m == m);
+    EXPECT_TRUE(+num{7} == num{7});
+
     m.policy<clamp>() = k; // 1 km is 1000 m: clamped to 100 m
     EXPECT_TRUE(m == just<100> * si::metre);
     m.policy<clamp>() *= just<0>;

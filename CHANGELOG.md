@@ -186,6 +186,13 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 - The docs said a quantity's `++` adds one unit; it steps one notch of the
   number, as on an inside, and now say so.
+- An inside had no unary `+`, so `+q` on a quantity did not compile (its
+  `operator+()` was ill-formed for every number). `+x` is now `x`, for both.
+- `++` and `--` on a grid without a notch were a `static_assert` body, so a
+  `requires` probe said they existed. They are deleted overloads with the
+  reason now. A new test instantiates the class templates explicitly, which
+  compiles every member whose constraints hold, as some compilers do while
+  reflecting on a class.
 - A `double` past the magnitude of a grid past 64 bits stood in as a value
   just past the grid, which a wrap then folded: `inside<{-0x1p70, 0x1p70},
   wrap>{-0x1p72}` was 4 instead of 2. A wrap, and an `on_clamp` overshoot, now
