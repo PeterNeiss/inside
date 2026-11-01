@@ -180,7 +180,7 @@ struct division {
     // no exact quotient grid (below).
     static_assert(div_defined<L, R, F>,
                   "division: no result type - the divisor grid is the point 0, or the exact quotient's fractions "
-                  "pass BEMAN_INSIDE_MAX_FRACTION_BITS");
+                  "pass 1024 bits");
 
     // The native integer quotient's range: the corner quotients rounded by
     // the runtime's mode (half_even: the low end by floor, the high by ceil,

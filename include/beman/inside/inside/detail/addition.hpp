@@ -54,7 +54,7 @@ struct addition {
 // Whether `l + r` has a result, as a constraint of add / + / += (so a
 // requires-expression or `if constexpr` probe gets the answer instead of a
 // hard error): a result grid with a bound (its fractions within
-// BEMAN_INSIDE_MAX_FRACTION_BITS). (F, the call's flags, is taken for
+// detail::max_fraction_bits). (F, the call's flags, is taken for
 // symmetry with div_defined; a sum ignores it.)
 template <insidable L, insidable R, policy_flag = none>
 inline constexpr bool add_defined = bounded_grid(grid_of<typename addition<L, R>::result>);

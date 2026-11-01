@@ -42,8 +42,7 @@
 #if defined(BEMAN_INSIDE_INSIDE_DETAIL_CONFIG_HPP)
     #error "certify.hpp must be included before every beman.inside header"
 #endif
-#define BEMAN_INSIDE_MATH_INSTRUMENT 1
-#define BEMAN_INSIDE_MATH_TABLE_SLOTS 0 // every call computes, so the integer path's counters see it
+#define BEMAN_INSIDE_MATH_INSTRUMENT 1 // the counters; every call computes (no table tier)
 
 #include <beman/inside/math.hpp>
 #include <beman/inside/inside/io.hpp>

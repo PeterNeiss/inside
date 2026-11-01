@@ -4111,13 +4111,14 @@ enum class bounds : unsigned char {
     open,      // (Lower, Upper) — Lower + Notch .. Upper − Notch
 };
 
+namespace detail {
 // The largest fraction (numerator and denominator bits) a continuous grid's
 // bound may size: past it a bound would size fractions without limit along
 // an expression chain, so it is dropped. The grid is then unbounded, and no
 // inside has it (grid::validate): the operation that forms it is deleted.
-#ifndef BEMAN_INSIDE_MAX_FRACTION_BITS
-    #define BEMAN_INSIDE_MAX_FRACTION_BITS 1024
-#endif
+// Fixed, so that every translation unit forms the same types.
+inline constexpr int max_fraction_bits = 1024;
+} // namespace detail
 
 // A continuous grid whose values have denominators of at most Value:
 // inside<{{0, 1}, max_denominator{1000}}>. The bound makes exact arithmetic
@@ -4250,7 +4251,7 @@ struct grid {
         // A bound sizes every value's fraction, so + - * on it are exact and total.
         static_assert(G.Notch != 0 || G.Interval.Lower == G.Interval.Upper || G.MaxDenominator != 0,
                       "grid: a continuous grid (notch 0) needs a denominator bound - write {{lower, upper}, "
-                      "max_denominator{D}}; an exact result whose fractions pass BEMAN_INSIDE_MAX_FRACTION_BITS "
+                      "max_denominator{D}}; an exact result whose fractions pass 1024 bits "
                       "has none - store an operand in a coarser grid first");
 
         return true;
@@ -4382,7 +4383,7 @@ constexpr bool continuous_grid(const grid& g) { return g.Notch == 0 && g.Interva
 
 // Whether an inside on g exists (grid::validate): a lattice, a point, or a
 // continuous grid with a bound. An exact result whose fractions would pass
-// BEMAN_INSIDE_MAX_FRACTION_BITS has none.
+// 1024 bits (detail::max_fraction_bits) has none.
 constexpr bool bounded_grid(const grid& g) { return !continuous_grid(g) || g.MaxDenominator != 0; }
 
 constexpr grid_int den_bound(const grid& g) {
@@ -4405,7 +4406,7 @@ constexpr grid_int num_bound(const grid& g) { return num_bound(g.Interval, den_b
 
 // The result grid of an exact op whose values are continuous on `iv` with
 // denominators ≤ d (0: unbounded). The bound is kept while it can size a
-// fraction within BEMAN_INSIDE_MAX_FRACTION_BITS — else the grid is
+// fraction within detail::max_fraction_bits — else the grid is
 // unbounded.
 constexpr grid bounded_continuous(const interval& iv, grid_int d) {
     grid g{iv, grid_rational{0}};
@@ -4415,7 +4416,7 @@ constexpr grid bounded_continuous(const interval& iv, grid_int d) {
     // wider than the values it reaches: cover the limits' denominators.
     d                = std::max({d, grid_denominator(iv.Lower), grid_denominator(iv.Upper)});
     const grid_int n = num_bound(iv, d);
-    if (bit_width_of(n) + bit_width_of(d) > BEMAN_INSIDE_MAX_FRACTION_BITS)
+    if (bit_width_of(n) + bit_width_of(d) > detail::max_fraction_bits)
         return g;
     g.MaxDenominator = grid_rational{d};
     return g;
@@ -4686,7 +4687,7 @@ template <std::same_as<grid> G>
 
 namespace detail {
 // Whether a / b has a result type: the divisor is not the point 0, and the
-// quotient's fractions stay within BEMAN_INSIDE_MAX_FRACTION_BITS.
+// quotient's fractions stay within max_fraction_bits.
 constexpr bool grid_quotient_fits(const grid& a, const grid& b) {
     const auto q = a / b;
     return q.has_value() && bounded_grid(*q);
@@ -8344,7 +8345,7 @@ struct addition {
 // Whether `l + r` has a result, as a constraint of add / + / += (so a
 // requires-expression or `if constexpr` probe gets the answer instead of a
 // hard error): a result grid with a bound (its fractions within
-// BEMAN_INSIDE_MAX_FRACTION_BITS). (F, the call's flags, is taken for
+// detail::max_fraction_bits). (F, the call's flags, is taken for
 // symmetry with div_defined; a sum ignores it.)
 template <insidable L, insidable R, policy_flag = none>
 inline constexpr bool add_defined = bounded_grid(grid_of<typename addition<L, R>::result>);
@@ -8582,7 +8583,7 @@ struct division {
     // no exact quotient grid (below).
     static_assert(div_defined<L, R, F>,
                   "division: no result type - the divisor grid is the point 0, or the exact quotient's fractions "
-                  "pass BEMAN_INSIDE_MAX_FRACTION_BITS");
+                  "pass 1024 bits");
 
     // The native integer quotient's range: the corner quotients rounded by
     // the runtime's mode (half_even: the low end by floor, the high by ceil,
@@ -10301,18 +10302,18 @@ struct divmod_op {
 // then false, and an inside cannot fall back on its rational conversion and
 // rational's operator.
 
-#define BEMAN_INSIDE_WHY_add                                                                                      \
-    "addition: no result type - the exact sum's fractions pass BEMAN_INSIDE_MAX_FRACTION_BITS (store an operand " \
-    "into a coarser type first)"
-#define BEMAN_INSIDE_WHY_sub                                                                                     \
-    "subtraction: no result type - the exact difference's fractions pass BEMAN_INSIDE_MAX_FRACTION_BITS (store " \
-    "an operand into a coarser type first)"
-#define BEMAN_INSIDE_WHY_mul                                                                                      \
-    "multiplication: no result type - the exact product's fractions pass BEMAN_INSIDE_MAX_FRACTION_BITS - round " \
-    "the product into a coarser type with mul_into<Out>(a, b)"
+#define BEMAN_INSIDE_WHY_add                                                                                     \
+    "addition: no result type - the exact sum's fractions pass 1024 bits (store an operand into a coarser type " \
+    "first)"
+#define BEMAN_INSIDE_WHY_sub                                                                                  \
+    "subtraction: no result type - the exact difference's fractions pass 1024 bits (store an operand into a " \
+    "coarser type first)"
+#define BEMAN_INSIDE_WHY_mul                                                                                    \
+    "multiplication: no result type - the exact product's fractions pass 1024 bits - round the product into a " \
+    "coarser type with mul_into<Out>(a, b)"
 #define BEMAN_INSIDE_WHY_div                                                                              \
     "division: no result type - the divisor grid is the point 0, or the exact quotient's fractions pass " \
-    "BEMAN_INSIDE_MAX_FRACTION_BITS"
+    "1024 bits"
 #define BEMAN_INSIDE_WHY_mod "modulo requires integer-valued grids"
 #define BEMAN_INSIDE_WHY_divmod "divmod requires integer-valued grids"
 
@@ -12571,12 +12572,12 @@ constexpr Out evaluate(const Core& core, P&& policy) {
 // call is one load. Only when every result lands inside Out's range — a
 // result the policy would clamp, wrap or report keeps the computed path, as
 // does one that needs the deep step (too costly per slot at compile time) or
-// stays undecided at the cap (so that the run-time counters see it).
-// BEMAN_INSIDE_MATH_TABLE_SLOTS sets the largest input (0 turns tables off).
+// stays undecided at the cap (so that the run-time counters see it). An
+// input of up to 256 slots takes it, but not in an instrumented build
+// (BEMAN_INSIDE_MATH_INSTRUMENT), where every call computes so that the
+// counters, and the certify tool comparing the tiers, see it.
 //---------------------------------------------------------------------------
-#ifndef BEMAN_INSIDE_MATH_TABLE_SLOTS
-    #define BEMAN_INSIDE_MATH_TABLE_SLOTS 256
-#endif
+inline constexpr int table_slots = BEMAN_INSIDE_MATH_INSTRUMENT ? 0 : 256;
 
 // A slot offset i of Out, or −1 when it falls outside Out's range.
 template <insidable Out, typename I>
@@ -12598,7 +12599,7 @@ constexpr imax slot_of(const Core& core) {
 
 template <insidable In>
 inline constexpr bool table_input =
-    !wide_valued<In> && notched<In> && grid_of<In>.step_count() < grid_int{BEMAN_INSIDE_MATH_TABLE_SLOTS};
+    !wide_valued<In> && notched<In> && grid_of<In>.step_count() < grid_int{table_slots};
 
 // Outputs whose raw a table can hold: an integer index or value.
 template <insidable Out>
@@ -17638,7 +17639,7 @@ constexpr auto pown_impl(In x) noexcept {
 }
 
 // pown<E>(x) exists when each squaring and multiply does: a continuous
-// product past BEMAN_INSIDE_MAX_FRACTION_BITS has no type.
+// product past detail::max_fraction_bits has no type.
 template <imax E, class In>
 inline constexpr bool pown_defined = [] {
     if constexpr (E < 0)

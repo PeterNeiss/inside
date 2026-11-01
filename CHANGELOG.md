@@ -138,6 +138,12 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 - The option `BEMAN_INSIDE_STRICT_SFINAE` and its CI cells.
 - The flags `ignore_range` and `ignore_zero`: each turned a runtime check off
   without saying `unsafe`. They compiled to the same code as `unsafe`.
+- The macros `BEMAN_INSIDE_MAX_FRACTION_BITS` and
+  `BEMAN_INSIDE_MATH_TABLE_SLOTS`: the limits are fixed at 1024 bits and 256
+  slots, so translation units built with different values can no longer form
+  different types and tables in one program. An instrumented build
+  (`BEMAN_INSIDE_MATH_INSTRUMENT`) has no table path, so its counters, and
+  the certify tool, see every call.
 - The implicit `operator imax()`. It narrowed silently into smaller built-ins:
   `int i = b;` on a grid past `int` truncated, and `unsigned char c = b;` on
   `{-5, 5}` read −1 as 255, with no warning under `-Wall -Wextra`.

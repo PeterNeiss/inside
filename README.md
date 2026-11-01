@@ -219,6 +219,10 @@ Library options:
 
 The math engine and bare-metal builds are covered in
 [docs/freestanding.md](docs/freestanding.md) and [docs/math.md](docs/math.md).
+The macros `BEMAN_INSIDE_MATH_NO_FP` and `BEMAN_INSIDE_MATH_INSTRUMENT` change
+the math functions' inline code, so every translation unit of a program needs
+the same value; `BEMAN_INSIDE_NO_STRING` and `BEMAN_INSIDE_NO_UNITS` only drop
+parts of the single header and may differ.
 
 **FMA on x86-64.** The math engine's kernels use `std::fma`; baseline x86-64
 emulates it in software, several times slower (results don't change).

@@ -102,18 +102,18 @@ struct divmod_op {
 // then false, and an inside cannot fall back on its rational conversion and
 // rational's operator.
 
-#define BEMAN_INSIDE_WHY_add                                                                                      \
-    "addition: no result type - the exact sum's fractions pass BEMAN_INSIDE_MAX_FRACTION_BITS (store an operand " \
-    "into a coarser type first)"
-#define BEMAN_INSIDE_WHY_sub                                                                                     \
-    "subtraction: no result type - the exact difference's fractions pass BEMAN_INSIDE_MAX_FRACTION_BITS (store " \
-    "an operand into a coarser type first)"
-#define BEMAN_INSIDE_WHY_mul                                                                                      \
-    "multiplication: no result type - the exact product's fractions pass BEMAN_INSIDE_MAX_FRACTION_BITS - round " \
-    "the product into a coarser type with mul_into<Out>(a, b)"
+#define BEMAN_INSIDE_WHY_add                                                                                     \
+    "addition: no result type - the exact sum's fractions pass 1024 bits (store an operand into a coarser type " \
+    "first)"
+#define BEMAN_INSIDE_WHY_sub                                                                                  \
+    "subtraction: no result type - the exact difference's fractions pass 1024 bits (store an operand into a " \
+    "coarser type first)"
+#define BEMAN_INSIDE_WHY_mul                                                                                    \
+    "multiplication: no result type - the exact product's fractions pass 1024 bits - round the product into a " \
+    "coarser type with mul_into<Out>(a, b)"
 #define BEMAN_INSIDE_WHY_div                                                                              \
     "division: no result type - the divisor grid is the point 0, or the exact quotient's fractions pass " \
-    "BEMAN_INSIDE_MAX_FRACTION_BITS"
+    "1024 bits"
 #define BEMAN_INSIDE_WHY_mod "modulo requires integer-valued grids"
 #define BEMAN_INSIDE_WHY_divmod "divmod requires integer-valued grids"
 

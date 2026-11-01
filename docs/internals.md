@@ -42,7 +42,7 @@ checks these when the type is instantiated:
   (`{{0, 1}, max_denominator{1000}}`); the storage changes accordingly (§2).
   An inside needs the bound: it sizes every exact result's fraction, so
   `+ − ×` are total. A grid *value* may lack it (`grid{{0, 1}, 0}`, or a
-  result whose fractions would pass `BEMAN_INSIDE_MAX_FRACTION_BITS`), and
+  result whose fractions would pass 1024 bits), and
   `inside<G>` then does not compile.
 - **Notch ≥ 0.** Decoding is Lower + raw·Notch, so a negative notch would
   count downward; `per<D>` is positive by construction, and any other negative

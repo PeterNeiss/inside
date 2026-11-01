@@ -8,7 +8,7 @@
 // on a tie or a grid point and check every rounding mode, at compile time
 // (the integer path) and at run time (the double and dd tiers first). A
 // missed rational result shows up here as a wrong tie or a wrong side.
-// Tables are off: an input with few slots would otherwise be a compile-time
+// Every input has at least 256 slots: a smaller one would be a compile-time
 // table at run time too, and never reach the double and dd tiers.
 //
 // The lists, with the theorem that makes them complete (rational x):
@@ -24,7 +24,6 @@
 //   pow(b, p/q)                           b^p a q-th power  rational root theorem
 //   sin, cos of a degree or a turn        sin, cos ∈ {0, ±1/2, ±1}    Niven
 
-#define BEMAN_INSIDE_MATH_TABLE_SLOTS 0
 #include <beman/inside/units/math.hpp>
 
 #include <gtest/gtest.h>
@@ -83,13 +82,18 @@ void expect_point(F f, rational v) {
     expect_modes<G>(f, {v, v, v, v, v});
 }
 
-using q4  = inside<{{-4, 4}, per<4>}>;
-using q8  = inside<{{-4, 4}, per<8>}>;
-using i8  = inside<{-8, 8}>;
+// The inputs, named by the values the tests store, on notches fine enough for
+// at least 256 slots (no table).
+using q4  = inside<{{-4, 4}, per<64>}>;
+using q8  = inside<{{-4, 4}, per<64>}>;
+using i8  = inside<{{-8, 8}, per<16>}>;
 using pos = inside<{{rational{1, 100}, 1024}, per<100>}>;
-using pq4 = inside<{{rational{1, 4}, 4}, per<4>}>;
-using u4  = inside<{{-1, 1}, per<4>}>;
+using pq4 = inside<{{rational{1, 4}, 4}, per<128>}>;
+using u4  = inside<{{-1, 1}, per<128>}>;
 using deg = inside<{-360, 360}>;
+template <class... In>
+inline constexpr bool no_table = (!math::detail::engine::table_input<In> && ...);
+static_assert(no_table<q4, q8, i8, pos, pq4, u4, deg>);
 } // namespace
 
 TEST(MathExactTest, roots_of_squares_and_cubes_are_ties) {
@@ -98,7 +102,7 @@ TEST(MathExactTest, roots_of_squares_and_cubes_are_ties) {
     expect_modes<ints>([]<class O>() { return am::cbrt_into<O>(q8{3.375}); }, {2, 2, 1, 2, 1});
     expect_modes<ints>([]<class O>() { return am::cbrt_into<O>(q8{-3.375}); }, {-2, -2, -2, -1, -1});
     // √(25/4) = 5/2: the even neighbour is 2.
-    expect_modes<ints>([]<class O>() { return am::sqrt_into<O>(inside<{{0, 8}, per<4>}>{6.25}); }, {3, 2, 2, 3, 2});
+    expect_modes<ints>([]<class O>() { return am::sqrt_into<O>(inside<{{0, 8}, per<32>}>{6.25}); }, {3, 2, 2, 3, 2});
     // hypot(3/2, 2) = 5/2, hypot(−3/2, −2) too.
     expect_modes<ints>([]<class O>() { return am::hypot_into<O>(q4{1.5}, q4{2}); }, {3, 2, 2, 3, 2});
     expect_modes<ints>([]<class O>() { return am::hypot_into<O>(q4{-1.5}, q4{-2}); }, {3, 2, 2, 3, 2});
@@ -151,9 +155,9 @@ TEST(MathExactTest, zero_and_one_are_exact) {
     expect_point<ints>([]<class O>() { return am::cosh_into<O>(i8{0}); }, 1);
     expect_point<ints>([]<class O>() { return am::tanh_into<O>(i8{0}); }, 0);
     expect_point<ints>([]<class O>() { return am::asinh_into<O>(i8{0}); }, 0);
-    expect_point<ints>([]<class O>() { return am::acosh_into<O>(inside<{1, 8}>{1}); }, 0);
+    expect_point<ints>([]<class O>() { return am::acosh_into<O>(inside<{{1, 8}, per<64>}>{1}); }, 0);
     expect_point<ints>(
-        []<class O>() { return am::atanh_into<O>(inside<{{rational{-3, 4}, rational{3, 4}}, per<4>}>{0}); }, 0);
+        []<class O>() { return am::atanh_into<O>(inside<{{rational{-3, 4}, rational{3, 4}}, per<256>}>{0}); }, 0);
 }
 
 TEST(MathExactTest, niven_angles_in_degrees) {

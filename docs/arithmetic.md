@@ -146,7 +146,7 @@ No path can overflow. For path C, x = p/a and y = r/b give x/y = p·b/(a·r),
 so the quotient's denominator is at most the dividend's largest denominator
 times the divisor's largest numerator. The result grid records that bound
 ([below](#bounded-continuous-grids)), and the result's fraction is sized for
-it, up to `BEMAN_INSIDE_MAX_FRACTION_BITS`. Past that the quotient has no
+it, up to 1024 bits. Past that the quotient has no
 type: `/` does not compile, and `div_into` rounds the quotient instead.
 
 ```cpp
@@ -405,8 +405,8 @@ auto p = a * a;                       // plain: ≤ 10^6
 a = rational{1, 1001};                // rounding_error: off the grid
 ```
 
-Any bound works while a value's numerator and denominator together fit
-`BEMAN_INSIDE_MAX_FRACTION_BITS` (default 1024). An operation whose exact
+Any bound works while a value's numerator and denominator together fit 1024
+bits. An operation whose exact
 result would need more has no result type: the operator is deleted, and its
 message names the fix (store an operand into a coarser type first, or round
 the result once with `mul_into` or `div_into`). A stored value whose

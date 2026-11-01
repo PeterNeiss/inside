@@ -53,7 +53,7 @@ grid point:
 
 | Path | When | Cost |
 |---|---|---|
-| table | the input has at most `BEMAN_INSIDE_MATH_TABLE_SLOTS` points (default 256), the output has an integer raw, and every result is in range | one load; the table is computed at compile time |
+| table | the input has at most 256 points, the output has an integer raw, and every result is in range (none in an instrumented build) | one load; the table is computed at compile time |
 | double tier | an FPU is present, the output's value indices stay within ±2⁵², and it needs at most 45–49 bits (by function) | the library's own `double` kernels with a proved error bound |
 | double-double tier | an FPU is present, the output needs more than 36 bits, indices within ±2⁶² | kernels of about 106 bits, behind a lean kernel with a proved bound of about 2⁻⁷⁰ |
 | integer path | always; the only path at compile time and without an FPU | Taylor series on compile-time coefficient tables, in wide fixed point |
@@ -87,7 +87,8 @@ costs, is in [internals.md](internals.md#10-the-math-engine).
   hashes all its results. [certify.md](certify.md) shows how to find and
   certify the pairs your own program uses; [certified.md](certified.md)
   lists the library's and the examples', with their hashes. `BEMAN_INSIDE_MATH_INSTRUMENT=1`
-  gives a program of your own the counters (`math::driver`).
+  gives a program of your own the counters (`math::driver`); such a build has
+  no table path, so the counters see every call.
 - **Inverse trigonometry into degrees rounds twice.** `asin`, `acos`, `atan`
   and `atan2` return radians; `value_cast` to degrees then rounds a second
   time, so the angle in degrees is not correctly rounded
@@ -288,8 +289,8 @@ notch (exact on a dyadic grid) and stores integer outputs as raws.
 Onto the grid deduced from the input, the functions run from about 3× slower
 to 3× faster than `<cmath>` (the `math:` tables in
 [performance.md](performance.md)). Inputs of up to 256 points use the table
-path and cost one load; each table adds about 0.13 s of compile time on GCC,
-and `BEMAN_INSIDE_MATH_TABLE_SLOTS=0` turns tables off. Onto grids as fine as a
+path and cost one load; each table adds about 0.13 s of compile time on GCC.
+Onto grids as fine as a
 `double`, correct rounding costs 4–9× `<cmath>`: `sin` onto 2⁻⁵² in 14.6 ns,
 `exp` onto 2⁻⁴⁰ in 12.5 ns, `log` onto 2⁻⁴⁸ in 17.4 ns (x86-64, `-O3 -mfma`).
 

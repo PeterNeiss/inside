@@ -40,13 +40,14 @@ enum class bounds : unsigned char {
     open,      // (Lower, Upper) — Lower + Notch .. Upper − Notch
 };
 
+namespace detail {
 // The largest fraction (numerator and denominator bits) a continuous grid's
 // bound may size: past it a bound would size fractions without limit along
 // an expression chain, so it is dropped. The grid is then unbounded, and no
 // inside has it (grid::validate): the operation that forms it is deleted.
-#ifndef BEMAN_INSIDE_MAX_FRACTION_BITS
-    #define BEMAN_INSIDE_MAX_FRACTION_BITS 1024
-#endif
+// Fixed, so that every translation unit forms the same types.
+inline constexpr int max_fraction_bits = 1024;
+} // namespace detail
 
 // A continuous grid whose values have denominators of at most Value:
 // inside<{{0, 1}, max_denominator{1000}}>. The bound makes exact arithmetic
@@ -179,7 +180,7 @@ struct grid {
         // A bound sizes every value's fraction, so + - * on it are exact and total.
         static_assert(G.Notch != 0 || G.Interval.Lower == G.Interval.Upper || G.MaxDenominator != 0,
                       "grid: a continuous grid (notch 0) needs a denominator bound - write {{lower, upper}, "
-                      "max_denominator{D}}; an exact result whose fractions pass BEMAN_INSIDE_MAX_FRACTION_BITS "
+                      "max_denominator{D}}; an exact result whose fractions pass 1024 bits "
                       "has none - store an operand in a coarser grid first");
 
         return true;
@@ -311,7 +312,7 @@ constexpr bool continuous_grid(const grid& g) { return g.Notch == 0 && g.Interva
 
 // Whether an inside on g exists (grid::validate): a lattice, a point, or a
 // continuous grid with a bound. An exact result whose fractions would pass
-// BEMAN_INSIDE_MAX_FRACTION_BITS has none.
+// 1024 bits (detail::max_fraction_bits) has none.
 constexpr bool bounded_grid(const grid& g) { return !continuous_grid(g) || g.MaxDenominator != 0; }
 
 constexpr grid_int den_bound(const grid& g) {
@@ -334,7 +335,7 @@ constexpr grid_int num_bound(const grid& g) { return num_bound(g.Interval, den_b
 
 // The result grid of an exact op whose values are continuous on `iv` with
 // denominators ≤ d (0: unbounded). The bound is kept while it can size a
-// fraction within BEMAN_INSIDE_MAX_FRACTION_BITS — else the grid is
+// fraction within detail::max_fraction_bits — else the grid is
 // unbounded.
 constexpr grid bounded_continuous(const interval& iv, grid_int d) {
     grid g{iv, grid_rational{0}};
@@ -344,7 +345,7 @@ constexpr grid bounded_continuous(const interval& iv, grid_int d) {
     // wider than the values it reaches: cover the limits' denominators.
     d                = std::max({d, grid_denominator(iv.Lower), grid_denominator(iv.Upper)});
     const grid_int n = num_bound(iv, d);
-    if (bit_width_of(n) + bit_width_of(d) > BEMAN_INSIDE_MAX_FRACTION_BITS)
+    if (bit_width_of(n) + bit_width_of(d) > detail::max_fraction_bits)
         return g;
     g.MaxDenominator = grid_rational{d};
     return g;
@@ -615,7 +616,7 @@ template <std::same_as<grid> G>
 
 namespace detail {
 // Whether a / b has a result type: the divisor is not the point 0, and the
-// quotient's fractions stay within BEMAN_INSIDE_MAX_FRACTION_BITS.
+// quotient's fractions stay within max_fraction_bits.
 constexpr bool grid_quotient_fits(const grid& a, const grid& b) {
     const auto q = a / b;
     return q.has_value() && bounded_grid(*q);

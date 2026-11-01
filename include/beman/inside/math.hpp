@@ -368,7 +368,7 @@ constexpr auto pown_impl(In x) noexcept {
 }
 
 // pown<E>(x) exists when each squaring and multiply does: a continuous
-// product past BEMAN_INSIDE_MAX_FRACTION_BITS has no type.
+// product past detail::max_fraction_bits has no type.
 template <imax E, class In>
 inline constexpr bool pown_defined = [] {
     if constexpr (E < 0)

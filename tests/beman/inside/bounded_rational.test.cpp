@@ -148,7 +148,7 @@ TEST(BoundedRationalTest, bounded_results_are_total_past_64_bit_intermediates) {
     EXPECT_EQ(static_cast<rational>(a - (-b)), (rational{1, 3}));
 }
 
-// Fractions past BEMAN_INSIDE_MAX_FRACTION_BITS have no type: the operator
+// Fractions past 1024 bits (detail::max_fraction_bits) have no type: the operator
 // is deleted, so a probe answers, and mul_into rounds the product instead.
 template <class A, class B>
 constexpr bool can_mul = requires(A a, B b) { a * b; };

@@ -357,7 +357,7 @@ TEST(GridTest, bounds_past_their_storage_are_dropped) {
     constexpr grid billionths{interval{0, 1}, max_denominator{1'000'000'000}};
     constexpr grid b2 = billionths * billionths;
     static_assert(b2.MaxDenominator == 1'000'000'000'000'000'000);
-    // Kept until num + den need more than BEMAN_INSIDE_MAX_FRACTION_BITS
+    // Kept until num + den need more than detail::max_fraction_bits
     constexpr grid b4 = b2 * b2, b8 = b4 * b4, b16 = b8 * b8, b32 = b16 * b16;
     static_assert(b16.MaxDenominator != 0 && b32.MaxDenominator == 0); // 10^144 kept, 10^288 dropped
 }

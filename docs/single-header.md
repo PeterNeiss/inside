@@ -15,8 +15,9 @@ include path and use it exactly as the full tree:
 ```
 
 It behaves exactly like the separate headers. `BEMAN_INSIDE_MATH_NO_FP` and
-`BEMAN_INSIDE_MATH_TABLE_SLOTS` work the same way, as compiler flags. Three
-guards drop parts of it:
+`BEMAN_INSIDE_MATH_INSTRUMENT` work the same way, as compiler flags, with one
+value in every translation unit of a program. Three guards drop parts of it
+(they may differ between translation units):
 
 | Define | Drops | For |
 |---|---|---|
