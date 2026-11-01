@@ -120,6 +120,10 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   were a `static_assert`. The `on_wrap` carry grid is computed on grid
   numbers, so a notched grid past 64 bits takes `on_wrap` too (it did not
   compile).
+- `+`, `-` and `*` of an operand past 64 bits whose result is a continuous
+  grid within 64 bits (`{2^64, 2^64 + 4}` plus a continuous
+  `{-2^64, -2^64 + 4}`): it was a deleted overload, now the wide kernels
+  compute it.
 
 - A flag is also a call's policy: each flag is a constant of its own type
   that converts to `policy_flag`, so `round_floor` is a template argument

@@ -8277,11 +8277,12 @@ inline constexpr bool exact_fits = [] {
 
 // A continuous Result holds every exact result of + and ×: its raw is sized
 // from its bound. Only the 64-bit kernels' intermediates (each operand over
-// the common denominator) may pass 64 bits, so where exact_fits is false the
-// op computes exactly in wide integers and stores that — no check, no
-// expected.
+// the common denominator) may pass 64 bits, and only the wide kernels read an
+// operand past 64 bits, so there the op computes exactly in wide integers and
+// stores that — no check, no expected.
 template <exact_op Op, insidable Result, insidable L, insidable R>
-inline constexpr bool exact_path_fits = rational_storage<Result> && !exact_fits<Op, Result, L, R>;
+inline constexpr bool exact_path_fits =
+    rational_storage<Result> && (!exact_fits<Op, Result, L, R> || wide_valued<L> || wide_valued<R>);
 
 // `x * just<c>` and `x / just<c>` (c != 0): the result lattice is x's lattice
 // scaled by c or 1/c (grid operator* / operator/), so the result offset IS x's
@@ -8343,17 +8344,10 @@ struct addition {
 // Whether `l + r` has a result, as a constraint of add / + / += (so a
 // requires-expression or `if constexpr` probe gets the answer instead of a
 // hard error): a result grid with a bound (its fractions within
-// BEMAN_INSIDE_MAX_FRACTION_BITS), and no wide-index operand with a
-// continuous result. (F, the call's flags, is taken for symmetry with
-// div_defined; a sum ignores it.)
+// BEMAN_INSIDE_MAX_FRACTION_BITS). (F, the call's flags, is taken for
+// symmetry with div_defined; a sum ignores it.)
 template <insidable L, insidable R, policy_flag = none>
-inline constexpr bool add_defined = [] {
-    using result = typename addition<L, R>::result;
-    if constexpr (!bounded_grid(grid_of<result>))
-        return false;
-    else
-        return !rational_storage<result> || (!wide_valued<L> && !wide_valued<R>);
-}();
+inline constexpr bool add_defined = bounded_grid(grid_of<typename addition<L, R>::result>);
 
 // The same for `l - r` (l + (−r)).
 template <insidable L, insidable R, policy_flag = none>
@@ -8409,16 +8403,9 @@ struct multiplication {
 };
 
 // Whether `l * r` has a result, as a constraint of mul / * / *=: a result
-// grid with a bound, and no wide-index operand with a continuous result.
+// grid with a bound.
 template <insidable L, insidable R, policy_flag = none>
-inline constexpr bool mul_defined = [] {
-    using result = typename multiplication<L, R>::result;
-    if constexpr (!bounded_grid(grid_of<result>))
-        return false;
-    else
-        return point_scale<R, L, result> || point_scale<L, R, result> || !rational_storage<result> ||
-               (!wide_valued<L> && !wide_valued<R>);
-}();
+inline constexpr bool mul_defined = bounded_grid(grid_of<typename multiplication<L, R>::result>);
 } // namespace beman::inside::detail
 
 

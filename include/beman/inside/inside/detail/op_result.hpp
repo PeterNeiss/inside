@@ -37,11 +37,12 @@ inline constexpr bool exact_fits = [] {
 
 // A continuous Result holds every exact result of + and ×: its raw is sized
 // from its bound. Only the 64-bit kernels' intermediates (each operand over
-// the common denominator) may pass 64 bits, so where exact_fits is false the
-// op computes exactly in wide integers and stores that — no check, no
-// expected.
+// the common denominator) may pass 64 bits, and only the wide kernels read an
+// operand past 64 bits, so there the op computes exactly in wide integers and
+// stores that — no check, no expected.
 template <exact_op Op, insidable Result, insidable L, insidable R>
-inline constexpr bool exact_path_fits = rational_storage<Result> && !exact_fits<Op, Result, L, R>;
+inline constexpr bool exact_path_fits =
+    rational_storage<Result> && (!exact_fits<Op, Result, L, R> || wide_valued<L> || wide_valued<R>);
 
 // `x * just<c>` and `x / just<c>` (c != 0): the result lattice is x's lattice
 // scaled by c or 1/c (grid operator* / operator/), so the result offset IS x's

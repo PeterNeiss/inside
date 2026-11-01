@@ -422,6 +422,20 @@ TEST(WideGridTest, wrap_of_a_huge_double_folds_its_exact_value) {
     EXPECT_TRUE(C{0x1p72 + 0x1p70} == B{-0x1p70});
 }
 
+// An operand past 64 bits whose sum with a continuous operand fits a 64-bit
+// rational: the wide kernels add, and the sum stores as a rational.
+TEST(WideGridTest, wide_operand_into_a_rational_sum) {
+    using L = inside<{18446744073709551616_g, 18446744073709551620_g}>; // 2^64 … 2^64 + 4
+    using R = inside<{{-18446744073709551616_g, -18446744073709551612_g}, max_denominator{3}}>;
+    static_assert(detail::wide_valued<L>);
+    static_assert(detail::rational_storage<decltype(L{} + R{})>);
+    const L l{18446744073709551617_g};
+    const R r{-18446744073709551616_g};
+    EXPECT_TRUE(l + r == 1);
+    EXPECT_TRUE(r + l == 1);
+    EXPECT_TRUE(l - (-r) == 1);
+}
+
 // Limb boundaries, where the removed 128-bit helpers kept their edge cases:
 // slot counts 2^64 − 1 (the last uint64 index) and 2^64 (the first two-limb
 // one), a 128-bit count, and arithmetic that crosses from one to the other.
