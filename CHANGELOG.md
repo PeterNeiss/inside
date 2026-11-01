@@ -107,6 +107,12 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Added
 
+- `on_clamp` and `on_wrap` work on a continuous grid past 64 bits and for a
+  source past 64 bits (such as a wide inside) into a continuous inside; both
+  were a `static_assert`. The `on_wrap` carry grid is computed on grid
+  numbers, so a notched grid past 64 bits takes `on_wrap` too (it did not
+  compile).
+
 - A flag is also a call's policy: each flag is a constant of its own type
   that converts to `policy_flag`, so `round_floor` is a template argument
   (`inside<G, round_floor>`), combines with `|`, and is the last argument of
@@ -123,6 +129,13 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 - The implicit `operator imax()`. It narrowed silently into smaller built-ins:
   `int i = b;` on a grid past `int` truncated, and `unsigned char c = b;` on
   `{-5, 5}` read −1 as 255, with no warning under `-Wall -Wextra`.
+
+### Fixed
+
+- A `double` past the magnitude of a grid past 64 bits stood in as a value
+  just past the grid, which a wrap then folded: `inside<{-0x1p70, 0x1p70},
+  wrap>{-0x1p72}` was 4 instead of 2. A wrap, and an `on_clamp` overshoot, now
+  use the double's exact value.
 
 ## 0.6.0 — 2026-10-30
 

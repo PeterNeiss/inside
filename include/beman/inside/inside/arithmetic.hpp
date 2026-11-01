@@ -104,14 +104,13 @@ struct divmod_op {
 
 #define BEMAN_INSIDE_WHY_add                                                                                      \
     "addition: no result type - the exact sum's fractions pass BEMAN_INSIDE_MAX_FRACTION_BITS (store an operand " \
-    "into a coarser type first), or a wide-index operand meets a continuous result (not supported yet)"
+    "into a coarser type first)"
 #define BEMAN_INSIDE_WHY_sub                                                                                     \
     "subtraction: no result type - the exact difference's fractions pass BEMAN_INSIDE_MAX_FRACTION_BITS (store " \
-    "an operand into a coarser type first), or a wide-index operand meets a continuous result (not supported yet)"
-#define BEMAN_INSIDE_WHY_mul                                                                                    \
-    "multiplication: no result type - the exact product's fractions pass BEMAN_INSIDE_MAX_FRACTION_BITS, or a " \
-    "wide-index operand meets a continuous result (not supported yet) - round the product into a coarser type " \
-    "with mul_into<Out>(a, b)"
+    "an operand into a coarser type first)"
+#define BEMAN_INSIDE_WHY_mul                                                                                      \
+    "multiplication: no result type - the exact product's fractions pass BEMAN_INSIDE_MAX_FRACTION_BITS - round " \
+    "the product into a coarser type with mul_into<Out>(a, b)"
 #define BEMAN_INSIDE_WHY_div                                                                              \
     "division: no result type - the divisor grid is the point 0, or the exact quotient's fractions pass " \
     "BEMAN_INSIDE_MAX_FRACTION_BITS"

@@ -66,46 +66,29 @@ constexpr void report_failure(L& lhs, P& policy, A& action, errc code) {
 
 //---------------------------------------------------------------------------
 // The on_wrap carry is always an inside whose grid holds every carry the
-// source kind can produce: an inside source uses its own range, an
-// integral source its type's limits, a fractional (double / rational) source the whole imax range. So
-// `minutes += carry` compiles for every source, and `as<imax>(carry)` reads
-// it as a number. A bound whose exact
-// computation leaves imax falls back to that side of the imax range.
+// source kind can produce: an inside source uses its own range, an integral
+// source its type's limits, a fractional (double / rational) source the whole
+// imax range. So `minutes += carry` compiles for every source, and
+// `as<imax>(carry)` reads it as a number. The carries are computed on grid
+// numbers, so a grid past 64 bits has them too; each saturates at the imax
+// range, as the carry itself does.
 //---------------------------------------------------------------------------
 template <insidable L, typename R>
 constexpr grid wrap_carry_grid() {
-    constexpr imax imax_lo = std::numeric_limits<imax>::min();
-    constexpr imax imax_hi = std::numeric_limits<imax>::max();
-    // A range past the rational range (a grid spanning 2^64 or more) has
-    // carries in {−1, 0, 1} at most: the full imax grid holds them.
-    constexpr auto span_r = try_sub(upper64<L>, lower64<L>);
-    if constexpr (!span_r || !try_add(*span_r, notch64<L>))
-        return grid{imax_lo, imax_hi};
-    else if constexpr (std::integral<R> || insidable<R>) {
-        // An integral source spans its type's limits, an inside its interval.
-        constexpr rational src_lo = [] {
-            if constexpr (insidable<R>)
-                return lower64<R>;
-            else
-                return rational{std::numeric_limits<R>::min()};
-        }();
-        constexpr rational src_hi = [] {
-            if constexpr (insidable<R>)
-                return upper64<R>;
-            else
-                return rational{std::numeric_limits<R>::max()};
-        }();
-        const rational range    = *try_add(*span_r, notch64<L>);
-        auto           carry_of = [&](rational v, imax fallback) -> imax {
-            const auto off = try_sub(v, lower64<L>);
-            if (!off)
-                return fallback;
-            const auto q = try_div(*off, range);
-            if (!q || *q < rational{imax_lo} || *q > rational{imax_hi})
-                return fallback;
-            return floor(*q);
+    constexpr grid_rational imax_lo{std::numeric_limits<imax>::min()}, imax_hi{std::numeric_limits<imax>::max()};
+    constexpr grid          G = grid_of<L>;
+    // The period: the span plus one notch, the span alone on a continuous grid.
+    constexpr grid_rational period = G.Interval.Upper - G.Interval.Lower + G.Notch;
+    if constexpr ((std::integral<R> || insidable<R>) && period != grid_rational{0}) {
+        const auto carry_of = [&](const grid_rational& v) {
+            const grid_rational q = grid_round<round_mode::floor>((v - G.Interval.Lower) / period);
+            return q < imax_lo ? imax_lo : imax_hi < q ? imax_hi : q;
         };
-        return grid{carry_of(src_lo, imax_lo), carry_of(src_hi, imax_hi)};
+        if constexpr (insidable<R>)
+            return grid{carry_of(lower_of<R>), carry_of(upper_of<R>)};
+        else
+            return grid{carry_of(grid_rational{std::numeric_limits<R>::min()}),
+                        carry_of(grid_rational{std::numeric_limits<R>::max()})};
     } else
         return grid{imax_lo, imax_hi};
 }
@@ -257,8 +240,6 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
     if constexpr (fraction_storage<L>) {
         // A continuous grid past 64 bits: the value itself, reduced, when it
         // lies within the limits and fits the raw's limbs.
-        if constexpr (clamp_action<plain_t<A>> || wrap_action<plain_t<A>>)
-            static_assert(false, "on_clamp / on_wrap: not supported on a continuous grid past 64 bits");
         constexpr std::size_t   KK = std::max(K, exact_limbs<L>);
         const wide_rational<KK> lo = exact_of_grid<KK>(lower_of<L>), hi = exact_of_grid<KK>(upper_of<L>);
         auto                    store = [&](const wide_rational<KK>& x) {
@@ -289,16 +270,23 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
         if constexpr (uses_flag<L, P, snap>)
             x = round_to_bound<L, plain_t<P>>(x);
         if (x < lo || hi < x) [[unlikely]] {
+            const bool low = x < lo;
             dispatch_out_of_range<true>(
                 lhs,
                 policy,
                 action,
-                [&] { store(x < lo ? lo : hi); },
+                [&] {
+                    store(low ? lo : hi);
+                    if constexpr (clamp_action<plain_t<A>>) // the source minus the limit
+                        action.Fn(lhs, make_clamp_overshoot<L, R>(wide_rational<KK>{v} + -(low ? lo : hi)));
+                },
                 [&] {
                     // x − q·span with q = ⌊(x − lo)/span⌋: into [lo, hi).
                     const wide_rational<KK> span = hi + -lo, t = (x + -lo) / span;
                     const auto              q = floor_divmod(t.Num, t.Den).Quot;
                     store(x + -(wide_rational<KK>{q, wide_sint<KK>{1}} * span));
+                    if constexpr (wrap_action<plain_t<A>>)
+                        action.Fn(lhs, make_wrap_carry<L, R>(saturate_imax(q)));
                 });
             return lhs;
         }
@@ -307,32 +295,49 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
     } else if constexpr (rational_storage<L>) {
         // L holds 64-bit values: narrow through the rational. A value that does
         // not fit (a double finer than 2^-62, an exact sum) may still lie
-        // within the limits: a rounding policy rounds it onto the bound first,
-        // clamp saturates it past a limit; else it is off the grid
+        // within the limits: a rounding policy rounds it onto the bound first.
+        // Past a limit it runs the policy cascade on the wide value: clamp
+        // stores the limit, wrap folds by the span; else it is off the grid
         // (rounding_error) or does not fit (overflow).
         auto r = try_rational(v);
         if (!r) [[unlikely]] {
-            constexpr std::size_t   KK = std::max(K, exact_limbs<L>);
-            const wide_rational<KK> x{v};
-            if constexpr (uses_flag<L, P, snap>)
-                r = try_rational(round_to_bound<L, plain_t<P>>(x));
+            constexpr std::size_t KK = std::max(K, exact_limbs<L>);
+            wide_rational<KK>     x{v};
+            if constexpr (uses_flag<L, P, snap>) {
+                x = round_to_bound<L, plain_t<P>>(x);
+                r = try_rational(x);
+            }
             if (!r) {
-                const bool low = x < exact_of_grid<KK>(lower_of<L>);
-                if (!low && !(exact_of_grid<KK>(upper_of<L>) < x)) {
+                const wide_rational<KK> lo = exact_of_grid<KK>(lower_of<L>), hi = exact_of_grid<KK>(upper_of<L>);
+                const bool              low = x < lo;
+                if (!low && !(hi < x)) {
                     fail(errc::rounding_error);
                     return lhs;
                 }
-                if constexpr (!uses_flag<L, P, clamp>) {
-                    fail(errc::overflow);
-                    return lhs;
-                } else
-                    r = low ? lower64<L> : upper64<L>;
+                dispatch_out_of_range<true>(
+                    lhs,
+                    policy,
+                    action,
+                    [&] {
+                        assignment<L, rational>::assign(lhs, low ? lower64<L> : upper64<L>, policy, no_action{});
+                        if constexpr (clamp_action<plain_t<A>>) // the source minus the limit
+                            action.Fn(lhs, make_clamp_overshoot<L, R>(wide_rational<KK>{v} + -(low ? lo : hi)));
+                    },
+                    [&] {
+                        // x − q·span with q = ⌊(x − lo)/span⌋: into [lo, hi),
+                        // within 64 bits unless x is off the bound.
+                        const wide_rational<KK> span = hi + -lo, t = (x + -lo) / span;
+                        const auto              q = floor_divmod(t.Num, t.Den).Quot;
+                        const auto              f = try_rational(x + -(wide_rational<KK>{q, wide_sint<KK>{1}} * span));
+                        if (!f)
+                            return fail(errc::rounding_error);
+                        assignment<L, rational>::assign(lhs, *f, policy, no_action{});
+                        if constexpr (wrap_action<plain_t<A>>)
+                            action.Fn(lhs, make_wrap_carry<L, R>(saturate_imax(q)));
+                    });
+                return lhs;
             }
         }
-        if constexpr (clamp_action<plain_t<A>> || wrap_action<plain_t<A>>)
-            static_assert(
-                false,
-                "on_clamp / on_wrap: a source past the 64-bit rational into a rational inside is not supported");
         return assignment<L, rational>::assign(lhs, *r, policy, std::forward<A>(action));
     } else {
         const auto slot = [&] {

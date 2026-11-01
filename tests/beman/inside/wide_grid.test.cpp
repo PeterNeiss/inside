@@ -334,6 +334,94 @@ TEST(WideGridTest, clamp_and_wrap_actions) {
     EXPECT_TRUE(w == (rational{2} - (rational{3} * tick).value()).value());
 }
 
+// on_clamp and on_wrap on a continuous grid past 64 bits (fraction storage):
+// clamp stores the limit and reports the overshoot, wrap folds by the span
+// and reports the carry.
+TEST(WideGridTest, hooks_on_a_wide_continuous_grid) {
+    using C = inside<{{-0x1p70, 0x1p70}, max_denominator{3}}>;
+    using B = inside<{{-0x1p80, 0x1p80}, max_denominator{3}}>;
+    static_assert(detail::fraction_storage<C>);
+
+    // From an inside the overshoot is exact.
+    C    x{0};
+    bool exact = false;
+    x.on_clamp([&](auto&, auto o) {
+        static_assert(insidable<decltype(o)>);
+        exact = (o == B{0x1p70} + B{rational{1, 3}});
+    })         = B{0x1p71} + B{rational{1, 3}};
+    EXPECT_TRUE(exact);
+    EXPECT_TRUE(x == B{0x1p70});
+
+    // From a double it saturates at the imax range.
+    imax over                                              = 0;
+    x.on_clamp([&](auto&, auto o) { over = as<imax>(o); }) = -0x1p71;
+    EXPECT_TRUE(x == B{-0x1p70});
+    EXPECT_EQ(over, std::numeric_limits<imax>::min());
+
+    // The period is the span, 2^71.
+    imax carry = 7;
+    x.on_wrap([&](auto&, auto k) {
+        static_assert(insidable<decltype(k)>);
+        carry = as<imax>(k);
+    })         = B{0x1p71} + B{rational{1, 3}};
+    EXPECT_EQ(carry, 1);
+    EXPECT_TRUE((x == B{rational{1, 3}}));
+    x.on_wrap([&](auto&, auto k) { carry = as<imax>(k); }) = -0x1p72;
+    EXPECT_EQ(carry, -2);
+    EXPECT_TRUE(x == B{0});
+    x.on_wrap([&](auto&, auto k) { carry = as<imax>(k); }) = 0x1p72 + 0x1p70;
+    EXPECT_EQ(carry, 3);
+    EXPECT_TRUE(x == B{-0x1p70});
+}
+
+// A source past the 64-bit rational into a rational inside: both hooks.
+TEST(WideGridTest, hooks_on_a_rational_inside_from_a_wide_source) {
+    using R = inside<{{-10, 10}, max_denominator{4}}>;
+    using B = inside<{{-0x1p80, 0x1p80}, max_denominator{3}}>;
+    static_assert(detail::rational_storage<R>);
+    R    r{0};
+    bool exact = false;
+    r.on_clamp([&](auto&, auto o) {
+        static_assert(insidable<decltype(o)>);
+        exact = (o == B{0x1p70} - B{10});
+    })         = B{0x1p70};
+    EXPECT_TRUE(exact);
+    EXPECT_TRUE(r == 10);
+
+    // (2^70 + 1/3 + 10) / 20 turns: the carry saturates at the imax range.
+    imax carry                                             = 0;
+    r.on_wrap([&](auto&, auto k) { carry = as<imax>(k); }) = B{0x1p70} + B{rational{1, 3}};
+    EXPECT_EQ(carry, std::numeric_limits<imax>::max());
+    EXPECT_TRUE((r == rational(13, 3)));
+}
+
+// The wrap carry grid is computed on grid numbers, so a grid past 64 bits has
+// one: an int never leaves {-2^70, 2^70}, so its carry is always 0.
+TEST(WideGridTest, wrap_carry_grid_past_64_bits) {
+    using W = inside<{-0x1p70, 0x1p70}, wrap>;
+    W    w{0};
+    imax c = 7;
+    w.on_wrap([&](auto&, auto k) {
+        static_assert(grid_of<decltype(k)> == grid{0, 0});
+        c = as<imax>(k);
+    })     = 3;
+    EXPECT_EQ(c, 7); // in range: no wrap
+    EXPECT_TRUE(w == 3);
+}
+
+// A double past a wide grid's magnitude folds by its exact value, not a
+// stand-in just past the grid (which gave 4 for -2^72 below).
+TEST(WideGridTest, wrap_of_a_huge_double_folds_its_exact_value) {
+    using N = inside<{-0x1p70, 0x1p70}, wrap>; // period 2^71 + 1
+    EXPECT_TRUE(N{-0x1p72} == 2);
+    EXPECT_TRUE(N{-0x1p71} == 1);
+    EXPECT_TRUE(N{0x1p71} == -1);
+    EXPECT_TRUE(N{0x1p72} == -2);
+    using C = inside<{{-0x1p70, 0x1p70}, max_denominator{3}}, wrap>; // period 2^71
+    using B = inside<{{-0x1p80, 0x1p80}, max_denominator{3}}>;
+    EXPECT_TRUE(C{0x1p72 + 0x1p70} == B{-0x1p70});
+}
+
 // Limb boundaries, where the removed 128-bit helpers kept their edge cases:
 // slot counts 2^64 − 1 (the last uint64 index) and 2^64 (the first two-limb
 // one), a 128-bit count, and arithmetic that crosses from one to the other.

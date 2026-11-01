@@ -670,6 +670,11 @@ struct assignment<L, R> {
                         report_failure(lhs, policy, action, errc::not_finite);
                         return lhs;
                     }
+                    // A fold and an overshoot need the exact value, not the stand-in.
+                    if constexpr (uses_flag<L, P, wrap> || clamp_action<plain_t<A>> || wrap_action<plain_t<A>>)
+                        if (is_finite(rhs))
+                            return assign_exact<R>(
+                                lhs, exact_of_double(static_cast<double>(rhs)), policy, std::forward<A>(action));
                     return assign_exact<R>(
                         lhs, exact_of_large<L>(static_cast<double>(rhs)), policy, std::forward<A>(action));
                 }
