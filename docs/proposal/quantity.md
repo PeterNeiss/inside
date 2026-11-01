@@ -237,17 +237,21 @@ comparing quantities of different kinds`.
 A quantity's stores are its number's stores: `++q`, `q += r` and the
 construction from a number apply `Rep`'s policy, and `q.on_wrap(f)`,
 `q.on_clamp(f)` and `q.on_error(f)` attach the number paper's actions.
+`q.policy<F>()` and `q.policy(ec)` store under `Rep`'s policy plus `F`.
 `Q::try_make(v)`, the flag constructor `Q{x, clamp}` (a flag or
 `make_policy<F>(ec)` for one store, `x` a number or a quantity converted
-exactly), `value_cast` and `try_value_cast` convert into a quantity type, and
-`conversion_overflows<Q>(v)` and its siblings answer for a number `v` in `Q`'s
-unit.
+exactly), `checked_cast<Q>(x)`, `value_cast` and `try_value_cast` convert into
+a quantity type, and `conversion_overflows<Q>(v)` and its siblings answer for
+a number `v` in `Q`'s unit. `min`, `max` and `midpoint` run in the common unit,
+as `+` does. Every function of the number paper has a quantity form, but for
+the free arithmetic with a per-call policy (`div(a, b, round_floor)`), which a
+quantity spells with its operators.
 
 # Proposed interface
 
 The names are the reference implementation's. `@*unit*@`, `@*spec*@` and
 `@*origin*@` are exposition-only tag types: empty objects whose type carries a
-`unit`, a `quantity_spec` or a `point_origin` as a value. `@*grid-number*@` is
+`unit`, a `quantity_spec` or a `point_origin` as a value. `grid_number` is
 the number paper's.
 
 ```cpp
@@ -256,7 +260,7 @@ namespace std::units {
   struct base_dimension { string_view Name; };                 // a dimension of your own
   struct dimension;                                           // exponents of L M T I Θ N J and of base dimensions
   struct magnitude;                                           // an exact rational times a power of π
-  template<@*grid-number*@ R> constexpr @*magnitude*@ mag;          // R
+  template<grid_number R> constexpr @*magnitude*@ mag;              // R
   inline constexpr @*magnitude*@ mag_pi;                          // π
 
   // units
@@ -299,11 +303,14 @@ namespace std::units {
     template<@*unit*@ U> constexpr auto in(U) const;                 // Rep's grid rescaled; same raw
     template<@*unit*@ U> constexpr auto numerical_value_in(U) const;
     template<class T> constexpr explicit(@*see below*@) operator T() const; // dimension one: its number
+    template<class T, policy_flag Round = none> constexpr T as() const;     // dimension one; also to<T>()
     template<policy_flag F = none, class V> static constexpr auto try_make(const V&);
+    template<class X, class Pol> constexpr quantity(const X& x, Pol p);     // x in R's unit, or a quantity
+    template<policy_flag F = none> constexpr auto policy();       // also policy(errc&)
     template<class F> constexpr auto on_clamp(F f);               // also on_wrap, on_error
     // ++, --, compound assignment: a store by Rep's policy
   };
-  // quantity + - % <=> == quantity: in the common unit
+  // quantity + - % <=> == quantity, min, max, midpoint: in the common unit
   // quantity * / quantity, inside * @*unit*@, quantity * @*unit*@: units and kinds multiply
   // quantity * / inside: the number scales
   template<class Spec, reference R, class V> constexpr auto quantity_cast(const quantity<R, V>&);
@@ -311,6 +318,7 @@ namespace std::units {
   template<auto U, class Rep2, reference R, class V> constexpr auto value_cast(const quantity<R, V>&);
   template<class Q, reference R, class V> constexpr Q value_cast(const quantity<R, V>&);
   // try_value_cast<...>(q): the same through Rep2::try_make, an expected
+  template<class Q, class X> constexpr Q checked_cast(const X& x);  // x in Q's unit, or a quantity
   template<class Q, class N> constexpr bool conversion_overflows(N v) noexcept; // v in Q's unit; also
                                                                 // conversion_rounds, conversion_loses
   template<reference A, class VA, reference B, class VB, class... Args>
@@ -318,7 +326,7 @@ namespace std::units {
 
   // points
   struct point_origin {                                       // absolute, or at an exact offset from one
-    string_view Name; dimension Dim; @*origin*@ Absolute; @*grid-number*@ Offset;
+    string_view Name; dimension Dim; @*origin*@ Absolute; grid_number Offset;
   };
   template<const point_origin& O> constexpr @*origin*@ origin_c;
   template<reference R, @*origin*@ O, class Rep>

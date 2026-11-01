@@ -377,11 +377,11 @@ TEST(PolicyActionsTest, on_clamp_overshoot_is_an_inside_for_every_source) {
     // Below the range the overshoot is negative; on a fine grid it keeps the notch.
     using q4 = inside<{{0, 10}, per<4>}>;
     q4       f{0};
-    rational fo{0};
-    f.on_clamp([&](auto&, auto over) { fo = over; }) = 12.25;
+    rational fine_over{0};
+    f.on_clamp([&](auto&, auto over) { fine_over = over; }) = 12.25;
     EXPECT_EQ(f, 10);
-    EXPECT_EQ(fo, (rational{9, 4}));
-    f.on_clamp([&](auto&, auto over) { fo = over; }) = -0.5;
+    EXPECT_EQ(fine_over, (rational{9, 4}));
+    f.on_clamp([&](auto&, auto over) { fine_over = over; }) = -0.5;
     EXPECT_EQ(f, 0);
-    EXPECT_EQ(fo, (rational{-1, 2}));
+    EXPECT_EQ(fine_over, (rational{-1, 2}));
 }
