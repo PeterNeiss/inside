@@ -920,6 +920,84 @@ template <reference A, class VA, reference B, class VB, class... Args>
     return detail::quantity_divmod<C>(beman::inside::divmod(
         detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b), std::forward<Args>(args)...));
 }
+
+// add / sub / mod(a, b, args...) of two quantities of one kind, in their
+// common unit as + takes it, and mul / div of two quantities (units multiply)
+// or of a quantity and a number (the number scales): inside's free arithmetic
+// on the numbers, with its per-call policy, flag or errc&.
+#define BEMAN_INSIDE_UNITS_SUM_FN(name)                                                                      \
+    template <reference A, class VA, reference B, class VB, class... Args>                                   \
+        requires detail::common_rescalable<A, VA, B, VB> &&                                                  \
+                 requires(const detail::common_number_t<A, VA, B>& x,                                        \
+                          const detail::common_number_t<B, VB, A>& y,                                        \
+                          Args&&... args) { beman::inside::name(x, y, std::forward<Args>(args)...); }        \
+    [[nodiscard]] constexpr auto name(const quantity<A, VA>& a, const quantity<B, VB>& b, Args&&... args) {  \
+        constexpr reference C = detail::sum_reference<A, B>();                                               \
+        return detail::make_quantity<C>(beman::inside::name(                                                 \
+            detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b), std::forward<Args>(args)...)); \
+    }
+BEMAN_INSIDE_UNITS_SUM_FN(add)
+BEMAN_INSIDE_UNITS_SUM_FN(sub)
+BEMAN_INSIDE_UNITS_SUM_FN(mod)
+#undef BEMAN_INSIDE_UNITS_SUM_FN
+
+#define BEMAN_INSIDE_UNITS_PRODUCT_FN(name, sign)                                                                  \
+    template <reference A, class VA, reference B, class VB, class... Args>                                         \
+        requires requires(const VA& x, const VB& y, Args&&... args) {                                              \
+            beman::inside::name(x, y, std::forward<Args>(args)...);                                                \
+        }                                                                                                          \
+    [[nodiscard]] constexpr auto name(const quantity<A, VA>& a, const quantity<B, VB>& b, Args&&... args) {        \
+        return detail::make_quantity<detail::product_reference<A, B, sign>()>(                                     \
+            beman::inside::name(a.numerical_value(), b.numerical_value(), std::forward<Args>(args)...));           \
+    }                                                                                                              \
+    template <reference A, class VA, insidable V, class... Args>                                                   \
+        requires requires(const VA& x, const V& y, Args&&... args) {                                               \
+            beman::inside::name(x, y, std::forward<Args>(args)...);                                                \
+        }                                                                                                          \
+    [[nodiscard]] constexpr auto name(const quantity<A, VA>& a, const V& v, Args&&... args) {                      \
+        return detail::make_quantity<A>(beman::inside::name(a.numerical_value(), v, std::forward<Args>(args)...)); \
+    }
+BEMAN_INSIDE_UNITS_PRODUCT_FN(mul, 1)
+BEMAN_INSIDE_UNITS_PRODUCT_FN(div, -1)
+#undef BEMAN_INSIDE_UNITS_PRODUCT_FN
+
+// A number times or over a quantity, as the operators.
+template <insidable V, reference A, class VA, class... Args>
+    requires requires(const V& x, const VA& y, Args&&... args) {
+        beman::inside::mul(x, y, std::forward<Args>(args)...);
+    }
+[[nodiscard]] constexpr auto mul(const V& v, const quantity<A, VA>& a, Args&&... args) {
+    return detail::make_quantity<A>(beman::inside::mul(v, a.numerical_value(), std::forward<Args>(args)...));
+}
+template <insidable V, reference A, class VA, class... Args>
+    requires requires(const V& x, const VA& y, Args&&... args) {
+        beman::inside::div(x, y, std::forward<Args>(args)...);
+    }
+[[nodiscard]] constexpr auto div(const V& v, const quantity<A, VA>& a, Args&&... args) {
+    constexpr reference R = detail::product_reference<reference{nullptr, true, {}, unit{}}, A, -1>();
+    return detail::make_quantity<R>(beman::inside::div(v, a.numerical_value(), std::forward<Args>(args)...));
+}
+
+// A hook to add ... divmod would be ignored, as on an inside: a deleted
+// overload with the reason.
+namespace detail {
+template <class L, class R, class... Args>
+concept arith_with_hook = (quantity_like<L> || quantity_like<R>) &&
+                          (beman::inside::detail::is_action_tag_v<std::remove_cvref_t<Args>> || ...);
+}
+#define BEMAN_INSIDE_UNITS_HOOK_DELETED(name)                                                                    \
+    template <class L, class R, class... Args>                                                                   \
+        requires detail::arith_with_hook<L, R, Args...>                                                          \
+    auto name(const L&, const R&, Args&&...) = delete (                                                          \
+        "units: add/sub/mul/div/mod/divmod take no hooks: on_clamp / on_wrap / on_error apply to a store - use " \
+        "q.on_clamp(f) etc.");
+BEMAN_INSIDE_UNITS_HOOK_DELETED(add)
+BEMAN_INSIDE_UNITS_HOOK_DELETED(sub)
+BEMAN_INSIDE_UNITS_HOOK_DELETED(mul)
+BEMAN_INSIDE_UNITS_HOOK_DELETED(div)
+BEMAN_INSIDE_UNITS_HOOK_DELETED(mod)
+BEMAN_INSIDE_UNITS_HOOK_DELETED(divmod)
+#undef BEMAN_INSIDE_UNITS_HOOK_DELETED
 } // namespace beman::inside::units
 
 #endif // BEMAN_INSIDE_UNITS_DETAIL_QUANTITY_HPP

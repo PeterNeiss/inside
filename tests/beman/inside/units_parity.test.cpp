@@ -34,6 +34,7 @@ using ratio   = quantity<percent, inside<{0, 100}>>;
 
 // Functions with a quantity form, each checked by a requires-expression.
 constexpr std::array with_quantity_form{
+    std::string_view{"add"},
     std::string_view{"add_all"},
     std::string_view{"as"},
     std::string_view{"checked_cast"},
@@ -41,6 +42,7 @@ constexpr std::array with_quantity_form{
     std::string_view{"conversion_overflows"},
     std::string_view{"conversion_rounds"},
     std::string_view{"cross"},
+    std::string_view{"div"},
     std::string_view{"div_into"},
     std::string_view{"divmod"},
     std::string_view{"dot"},
@@ -48,10 +50,13 @@ constexpr std::array with_quantity_form{
     std::string_view{"max"},
     std::string_view{"midpoint"},
     std::string_view{"min"},
+    std::string_view{"mod"},
+    std::string_view{"mul"},
     std::string_view{"mul_all"},
     std::string_view{"mul_into"},
     std::string_view{"parse"},
     std::string_view{"parse_exact"},
+    std::string_view{"sub"},
     std::string_view{"sum"},
     std::string_view{"to"},
     std::string_view{"to_string"},
@@ -64,13 +69,6 @@ struct exception {
     std::string_view Reason;
 };
 constexpr std::array inside_only{
-    // A quantity takes the operators; a per-call policy on its sum, product or
-    // quotient is not offered yet (store the number with a policy instead).
-    exception{"add", "operators only"},
-    exception{"sub", "operators only"},
-    exception{"mul", "operators only"},
-    exception{"div", "operators only"},
-    exception{"mod", "operators only"},
     // A cursor walks an inside's grid; values<Q> and cursor<Q> are on the roadmap.
     exception{"end", "cursor over an inside"},
     // Grids and intervals, not values.
@@ -184,6 +182,16 @@ TEST(UnitsParityTest, the_quantity_forms_compile) {
     static_assert(requires { mul_into<metres>(m, just<2>); });
     static_assert(requires { div_into<metres>(m, just<2>); });
     static_assert(requires { divmod(m, k); });
+    static_assert(requires { add(m, k); });
+    static_assert(requires { sub(k, m, round_floor); });
+    static_assert(requires { mod(k, m); });
+    static_assert(requires(seconds s) { mul(m, s); });
+    static_assert(requires { mul(m, just<2>); });
+    static_assert(requires { mul(just<2>, m); });
+    static_assert(requires(seconds s) { div(m, s, round_floor); });
+    static_assert(requires(seconds s) { div(m, s, ec); });
+    static_assert(requires { div(m, just<2>, round_floor); });
+    static_assert(requires(seconds s) { div(just<2>, s, round_floor); });
     static_assert(requires { dot(m, m, m, m); });
     static_assert(requires { cross(m, m, m, m); });
     static_assert(requires { lerp(m, k, just<1, 2>); });
@@ -228,4 +236,33 @@ TEST(UnitsParityTest, the_new_forms_work) {
         const auto u = uniform<metres>(rng);
         EXPECT_TRUE(u >= just<0> * si::metre && u <= just<100> * si::metre);
     }
+}
+
+// add ... mod with a per-call policy: sums in the common unit, products and
+// quotients with the units multiplied, a number scaling; a hook is rejected.
+template <class A, class B, class H>
+concept add_with = requires(const A& a, const B& b, H h) { add(a, b, h); };
+
+TEST(UnitsParityTest, per_call_arithmetic) {
+    const metres m{40};
+    const km     k{1};
+    using per_s = quantity<si::second, inside<{1, 10}>>;
+    const per_s s{3};
+
+    EXPECT_TRUE(add(m, k) == just<1040> * si::metre);
+    EXPECT_TRUE(sub(k, m) == just<960> * si::metre);
+    EXPECT_TRUE(mod(k, m) == just<0> * si::metre);
+    EXPECT_TRUE(mul(m, s) == just<120> * si::metre * si::second);
+    EXPECT_TRUE(mul(just<2>, m) == just<80> * si::metre);
+    EXPECT_TRUE(div(m, s, round_floor) == just<13> * si::metre / si::second);
+    EXPECT_TRUE(div(m, s, round_ceil) == just<14> * si::metre / si::second);
+    EXPECT_TRUE(div(m, inside<{1, 10}>{3}, round_floor) == just<13> * si::metre);
+    EXPECT_TRUE(div(just<30>, s, round_floor) == just<10> / si::second);
+
+    errc       ec{};
+    const auto z = div(m, quantity<si::second, inside<{0, 10}>>{0}, ec);
+    EXPECT_EQ(ec, errc::division_by_zero);
+    (void)z;
+
+    static_assert(!add_with<metres, km, decltype(on_clamp([](auto&, auto) {}))>);
 }

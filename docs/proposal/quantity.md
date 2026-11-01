@@ -243,9 +243,9 @@ construction from a number apply `Rep`'s policy, and `q.on_wrap(f)`,
 exactly), `checked_cast<Q>(x)`, `value_cast` and `try_value_cast` convert into
 a quantity type, and `conversion_overflows<Q>(v)` and its siblings answer for
 a number `v` in `Q`'s unit. `min`, `max` and `midpoint` run in the common unit,
-as `+` does. Every function of the number paper has a quantity form, but for
-the free arithmetic with a per-call policy (`div(a, b, round_floor)`), which a
-quantity spells with its operators.
+as `+` does, and the free arithmetic takes a per-call policy as in the number
+paper (`div(d, t, round_floor)`). Every function of the number paper has a
+quantity form.
 
 # Proposed interface
 
@@ -323,6 +323,8 @@ namespace std::units {
                                                                 // conversion_rounds, conversion_loses
   template<reference A, class VA, reference B, class VB, class... Args>
     constexpr auto divmod(const quantity<A, VA>&, const quantity<B, VB>&, Args&&...); // in the common unit
+  // add, sub, mod (common unit), mul, div (units multiply; or a quantity and a number):
+  // the number paper's free arithmetic, Args a flag, a policy or an errc&
 
   // points
   struct point_origin {                                       // absolute, or at an exact offset from one

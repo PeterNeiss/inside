@@ -126,6 +126,10 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   `uniform<Q>(rng)` in the new opt-in `<beman/inside/units/random.hpp>`. A
   test lists every inside function by reflection, so a new one needs a
   quantity form or a reason.
+- `add`, `sub`, `mul`, `div` and `mod` take quantities, with a per-call
+  policy, a flag or an `errc&` as on insides: `div(d, t, round_floor)`. Sums
+  run in the common unit; products and quotients multiply the units, and a
+  number scales. A hook is a deleted overload with the reason.
 
 - `on_clamp` and `on_wrap` work on a continuous grid past 64 bits and for a
   source past 64 bits (such as a wide inside) into a continuous inside; both

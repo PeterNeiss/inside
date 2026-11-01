@@ -308,6 +308,7 @@ numbers, so it still rounds once and checks once.
 | `Q::try_make<F>(v)` | the number's `try_make`, of a number in Q's unit |
 | `mul_into<Out, F>(a, b)`, `div_into<Out, F>(a, b)` | a·b or a/b rounded once into `Out`, a quantity type (or a plain inside for a dimensionless result); the factor between units folds into the exact product |
 | `add_all(…)`, `mul_all(…)`, `sum<Q>(range)` | the folds; `sum<Q>` takes quantities in any unit that converts to Q's |
+| `add(a, b, args…)`, `sub`, `mod`, `mul`, `div` | inside's free arithmetic with a per-call policy, a flag or an `errc&` (`div(d, t, round_floor)`): sums in the common unit, products and quotients with the units multiplied, a number scaling |
 | `divmod(a, b, args…)` | in the common unit: the quotient a number, the remainder a quantity |
 | `parse<Q, F>(text)`, `parse_exact<Q>(text)` | the number, read in Q's unit |
 | `conversion_overflows<Q>(v)`, `conversion_rounds<Q>`, `conversion_loses<Q>` | a number in Q's unit against Q's grid |
