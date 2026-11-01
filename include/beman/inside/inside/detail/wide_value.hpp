@@ -68,7 +68,7 @@ constexpr wide_rational<K> operator-(const wide_rational<K>& a) noexcept {
 }
 
 template <std::size_t K = exact_min_limbs>
-constexpr wide_rational<K> exact_of(const rational& r) noexcept {
+constexpr wide_rational<K> exact_of(rational r) noexcept {
     return {static_cast<wide_sint<K>>(grid_numerator(r)), static_cast<wide_sint<K>>(grid_denominator(r))};
 }
 

@@ -1636,12 +1636,12 @@ inline constexpr void cancel_gcd(umax& a, umax& b) {
     b /= g;
 }
 
-[[nodiscard]] constexpr std::expected<rational, errc> operator+(const rational&, const rational&);
-[[nodiscard]] constexpr std::expected<rational, errc> operator/(const rational&, const rational&);
-[[nodiscard]] constexpr std::expected<rational, errc> operator-(const rational&, const rational&);
+[[nodiscard]] constexpr std::expected<rational, errc> operator+(rational, rational);
+[[nodiscard]] constexpr std::expected<rational, errc> operator/(rational, rational);
+[[nodiscard]] constexpr std::expected<rational, errc> operator-(rational, rational);
 
-[[nodiscard]] constexpr std::expected<rational, errc> operator*(const rational&, const rational&);
-[[nodiscard]] constexpr auto                          operator<=>(rational, rational) -> std::strong_ordering;
+[[nodiscard]] constexpr std::expected<rational, errc> operator*(rational, rational);
+[[nodiscard]] constexpr auto operator<=>(rational, rational) -> std::strong_ordering;
 
 // The value of a checked result. An error is raised like a failed checked
 // store (inside_error, or the installed handler; a compile error in constant
@@ -1696,7 +1696,7 @@ struct rational {
 
     // The values, not the members: equal members (two reduced values) answer
     // at once; anything else compares the fractions (a hand-built 2/2 equals 1).
-    [[nodiscard]] constexpr bool operator==(const rational& rhs) const {
+    [[nodiscard]] constexpr bool operator==(rational rhs) const {
         return (Num == rhs.Num && Den == rhs.Den) || (*this <=> rhs) == 0;
     }
     // Exact against a double too (rational{value} truncates one finer than
@@ -1733,10 +1733,10 @@ struct rational {
 
     // Compound-assign: forward to the checked binary op and unwrap it; an
     // error (overflow, a zero divisor) is raised (value_or_raise).
-    constexpr rational& operator+=(const rational& rhs);
-    constexpr rational& operator-=(const rational& rhs);
-    constexpr rational& operator*=(const rational& rhs);
-    constexpr rational& operator/=(const rational& rhs);
+    constexpr rational& operator+=(rational rhs);
+    constexpr rational& operator-=(rational rhs);
+    constexpr rational& operator*=(rational rhs);
+    constexpr rational& operator/=(rational rhs);
 
     // Unchecked arithmetic — caller takes responsibility for non-overflow
     // (and non-zero operand for div_unchecked / inv_unchecked).
@@ -1752,13 +1752,13 @@ struct rational {
     // std::unexpected at runtime); Checked=false
     // silently overflows — the caller must guarantee its absence.
     template <bool Checked, bool Loud = true>
-    static constexpr auto add_impl(const rational&, const rational&);
+    static constexpr auto add_impl(rational, rational);
     template <bool Checked, bool Loud = true>
-    static constexpr auto mul_impl(const rational&, const rational&);
+    static constexpr auto mul_impl(rational, rational);
     template <bool Checked, bool Loud = true>
-    static constexpr auto div_impl(const rational&, const rational&);
+    static constexpr auto div_impl(rational, rational);
     template <bool Checked, bool Loud = true>
-    static constexpr auto inv_impl(const rational&);
+    static constexpr auto inv_impl(rational);
 
   private:
     // The two domain errors of a denominator: 0 (undefined) and imax_min
@@ -1787,10 +1787,10 @@ struct rational {
     }
 };
 
-[[nodiscard]] constexpr std::expected<rational, errc> gcd(const rational&, const rational&);
+[[nodiscard]] constexpr std::expected<rational, errc> gcd(rational, rational);
 [[nodiscard]] constexpr rational                      abs(rational);
 
-[[nodiscard]] constexpr bool divides_evenly(const rational&, const rational&);
+[[nodiscard]] constexpr bool divides_evenly(rational, rational);
 
 //---------------------------------------------------------------------------
 // sign / named integer reductions — free functions over the public
@@ -1884,7 +1884,7 @@ struct rounded_integer {
 // Returns errc::overflow if the combined denominator lcm = (a/gcd)·b would exceed
 // imax_max (sign-bit reservation) — traps the mul_overflow then range-checks.
 //---------------------------------------------------------------------------
-[[nodiscard]] constexpr std::expected<rational, errc> gcd(const rational& lhs, const rational& rhs) {
+[[nodiscard]] constexpr std::expected<rational, errc> gcd(rational lhs, rational rhs) {
     umax a = abs_den(lhs.Den);
     umax b = abs_den(rhs.Den);
     umax g = std::gcd(a, b);
@@ -2039,7 +2039,7 @@ constexpr void reduce_sum(umax& n, umax& d, umax g) noexcept {
 // add_impl / mul_impl / div_impl — shared bodies (Checked toggles overflow)
 //---------------------------------------------------------------------------
 template <bool Checked, bool Loud>
-inline constexpr auto rational::add_impl(const rational& a, const rational& b) {
+inline constexpr auto rational::add_impl(rational a, rational b) {
     using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
 
     // (a == −b needs no test: equal denominators, opposite signs → num == 0 below.)
@@ -2148,9 +2148,8 @@ inline constexpr auto rational::add_impl(const rational& a, const rational& b) {
 }
 
 template <bool Checked, bool Loud>
-inline constexpr auto rational::mul_impl(const rational& a_in, const rational& b_in) {
+inline constexpr auto rational::mul_impl(rational a, rational b) {
     using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
-    rational a = a_in, b = b_in;
 
     if (a.Num == 0 || b.Num == 0)
         return ret_t{rational{0}};
@@ -2198,7 +2197,7 @@ inline constexpr auto rational::mul_impl(const rational& a_in, const rational& b
 // pair is too. Sign lives in the denominator and 1/(-x) has the same
 // sign as -x, so the sign bit moves with the (now) denominator unchanged.
 template <bool Checked, bool Loud>
-inline constexpr auto rational::inv_impl(const rational& a) {
+inline constexpr auto rational::inv_impl(rational a) {
     using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
 
     if constexpr (Checked) {
@@ -2219,7 +2218,7 @@ inline constexpr auto rational::inv_impl(const rational& a) {
 // the b.Num-fits-in-imax check (added there) propagates here too;
 // the unchecked path skips it (caller's contract).
 template <bool Checked, bool Loud>
-inline constexpr auto rational::div_impl(const rational& a, const rational& b) {
+inline constexpr auto rational::div_impl(rational a, rational b) {
     using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
 
     if constexpr (Checked) {
@@ -2320,12 +2319,12 @@ inline constexpr std::expected<rational, errc> rational::inv(rational a) { retur
 }
 
 template <plain_number T>
-[[nodiscard]] inline constexpr auto operator<=>(const std::expected<T, errc>& lhs, const rational& rhs) {
+[[nodiscard]] inline constexpr auto operator<=>(const std::expected<T, errc>& lhs, rational rhs) {
     return rational{value_or_raise(lhs)} <=> rhs;
 }
 
 template <plain_number T>
-[[nodiscard]] inline constexpr auto operator<=>(const rational& lhs, const std::expected<T, errc>& rhs) {
+[[nodiscard]] inline constexpr auto operator<=>(rational lhs, const std::expected<T, errc>& rhs) {
     return lhs <=> rational{value_or_raise(rhs)};
 }
 
@@ -2333,8 +2332,8 @@ template <plain_number T>
 // truncates): |lhs| = N/D against |rhs| = s·2^-k (k > 62) as N·2^k against
 // s·D, which stays within two 64-bit factors. Cold and out of line: the
 // stores compare doubles with their limits.
-[[nodiscard]] [[gnu::cold]] [[gnu::noinline]] constexpr std::strong_ordering compare_fine_double(const rational& lhs,
-                                                                                                 double          rhs) {
+[[nodiscard]] [[gnu::cold]] [[gnu::noinline]] constexpr std::strong_ordering compare_fine_double(rational lhs,
+                                                                                                 double   rhs) {
     const int ls = sign(lhs), rs = rhs < 0 ? -1 : 1;
     if (ls != rs)
         return ls <=> rs;
@@ -2350,7 +2349,7 @@ template <plain_number T>
 
 // lhs against a double, exactly (non-finite raises, as rational{rhs}). Every
 // rational lies strictly inside ±2^64, so a larger double is decided by its sign.
-[[nodiscard]] inline constexpr std::strong_ordering compare_double(const rational& lhs, double rhs) {
+[[nodiscard]] inline constexpr std::strong_ordering compare_double(rational lhs, double rhs) {
     if (is_finite(rhs) && past_64_bits(rhs)) [[unlikely]]
         return rhs < 0 ? std::strong_ordering::greater : std::strong_ordering::less;
     if (abs_fraction_exact(rhs) || not is_finite(rhs)) [[likely]]
@@ -2362,7 +2361,7 @@ template <plain_number T>
 // (long double) with bits past the double's compares as N·2^180 against its
 // scaled magnitude times D.
 template <std::floating_point T>
-[[nodiscard]] constexpr std::strong_ordering compare_float(const rational& lhs, T rhs) {
+[[nodiscard]] constexpr std::strong_ordering compare_float(rational lhs, T rhs) {
     if constexpr (wide_float<T>)
         if (is_finite(rhs) && !is_double_value(rhs)) [[unlikely]] {
             const int ls = sign(lhs), rs = rhs < 0 ? -1 : 1;
@@ -2395,7 +2394,7 @@ template <plain_number T>
 }
 
 template <plain_number T>
-[[nodiscard]] inline constexpr auto operator<=>(T lhs, const rational& rhs) {
+[[nodiscard]] inline constexpr auto operator<=>(T lhs, rational rhs) {
     if constexpr (std::floating_point<T>)
         return 0 <=> compare_float(rhs, lhs);
     else
@@ -2403,7 +2402,7 @@ template <plain_number T>
 }
 
 template <plain_number T>
-[[nodiscard]] inline constexpr auto operator<=>(const rational& lhs, T rhs) {
+[[nodiscard]] inline constexpr auto operator<=>(rational lhs, T rhs) {
     if constexpr (std::floating_point<T>)
         return compare_float(lhs, rhs);
     else
@@ -2432,41 +2431,39 @@ concept rational_lift_operands =
 //---------------------------------------------------------------------------
 // add_impl fails on a 64-bit step's overflow; the sum may still fit once
 // reduced, which add_wide (cold) settles.
-[[nodiscard]] inline constexpr std::expected<rational, errc> operator+(const rational& lhs, const rational& rhs) {
+[[nodiscard]] inline constexpr std::expected<rational, errc> operator+(rational lhs, rational rhs) {
     const auto r = rational::add_impl<true, false>(lhs, rhs);
     if (!r) [[unlikely]]
         return add_wide<true>(lhs, rhs);
     return r;
 }
 
-[[nodiscard]] inline constexpr std::expected<rational, errc> operator-(const rational& lhs, const rational& rhs) {
+[[nodiscard]] inline constexpr std::expected<rational, errc> operator-(rational lhs, rational rhs) {
     return operator+(lhs, -rhs);
 }
 
-[[nodiscard]] inline constexpr std::expected<rational, errc> operator*(const rational& lhs, const rational& rhs) {
+[[nodiscard]] inline constexpr std::expected<rational, errc> operator*(rational lhs, rational rhs) {
     return rational::mul_impl<true>(lhs, rhs);
 }
 
-[[nodiscard]] inline constexpr std::expected<rational, errc> operator/(const rational& lhs, const rational& rhs) {
+[[nodiscard]] inline constexpr std::expected<rational, errc> operator/(rational lhs, rational rhs) {
     return rational::div_impl<true>(lhs, rhs);
 }
 
 // Quiet checked ops: like the operators, but an overflow is an error value
 // even in constant evaluation (the operators make it a compile error there).
 // For compile-time code that asks whether a result fits.
-[[nodiscard]] inline constexpr std::expected<rational, errc> try_add(const rational& a, const rational& b) {
+[[nodiscard]] inline constexpr std::expected<rational, errc> try_add(rational a, rational b) {
     const auto r = rational::add_impl<true, false>(a, b);
     if (!r) [[unlikely]]
         return add_wide<false>(a, b);
     return r;
 }
-[[nodiscard]] inline constexpr std::expected<rational, errc> try_sub(const rational& a, const rational& b) {
-    return try_add(a, -b);
-}
-[[nodiscard]] inline constexpr std::expected<rational, errc> try_mul(const rational& a, const rational& b) {
+[[nodiscard]] inline constexpr std::expected<rational, errc> try_sub(rational a, rational b) { return try_add(a, -b); }
+[[nodiscard]] inline constexpr std::expected<rational, errc> try_mul(rational a, rational b) {
     return rational::mul_impl<true, false>(a, b);
 }
-[[nodiscard]] inline constexpr std::expected<rational, errc> try_div(const rational& a, const rational& b) {
+[[nodiscard]] inline constexpr std::expected<rational, errc> try_div(rational a, rational b) {
     return rational::div_impl<true, false>(a, b);
 }
 
@@ -2476,11 +2473,11 @@ concept rational_lift_operands =
 
 #define BEMAN_INSIDE_RATIONAL_OP(op)                                                                        \
     template <plain_number T>                                                                               \
-    [[nodiscard]] inline constexpr auto operator op(T lhs, rational const& rhs) {                           \
+    [[nodiscard]] inline constexpr auto operator op(T lhs, rational rhs) {                                  \
         return rational{lhs} op rhs;                                                                        \
     }                                                                                                       \
     template <plain_number T>                                                                               \
-    [[nodiscard]] inline constexpr auto operator op(rational const& lhs, T rhs) {                           \
+    [[nodiscard]] inline constexpr auto operator op(rational lhs, T rhs) {                                  \
         return lhs op rational{rhs};                                                                        \
     }                                                                                                       \
     template <class L, class R>                                                                             \
@@ -2488,7 +2485,7 @@ concept rational_lift_operands =
     [[nodiscard]] inline constexpr auto operator op(L const& lhs, R const& rhs) {                           \
         return lift([](auto const& a, auto const& b) { return a op b; }, lhs, rhs);                         \
     }                                                                                                       \
-    inline constexpr rational& rational::operator op## = (rational const& rhs) {                            \
+    inline constexpr rational& rational::operator op## = (rational rhs) {                                   \
         *this = value_or_raise(*this op rhs);                                                               \
         return *this;                                                                                       \
     }                                                                                                       \
@@ -2509,7 +2506,7 @@ BEMAN_INSIDE_RATIONAL_OP(/)
 //---------------------------------------------------------------------------
 // divides_evenly
 //---------------------------------------------------------------------------
-[[nodiscard]] inline constexpr bool divides_evenly(const rational& dividend, const rational& divisor) {
+[[nodiscard]] inline constexpr bool divides_evenly(rational dividend, rational divisor) {
     if (divisor == 0)
         return true; // convention: everything divides 0 evenly
     if (dividend.Num == 0)
@@ -5684,7 +5681,7 @@ constexpr wide_rational<K> operator-(const wide_rational<K>& a) noexcept {
 }
 
 template <std::size_t K = exact_min_limbs>
-constexpr wide_rational<K> exact_of(const rational& r) noexcept {
+constexpr wide_rational<K> exact_of(rational r) noexcept {
     return {static_cast<wide_sint<K>>(grid_numerator(r)), static_cast<wide_sint<K>>(grid_denominator(r))};
 }
 
@@ -7297,7 +7294,7 @@ struct assignment<L, R> {
         bool Exact;
     };
     template <typename P>
-    [[gnu::cold]] [[gnu::noinline]] static constexpr wide_slot_result wide_slot(const rational& v) {
+    [[gnu::cold]] [[gnu::noinline]] static constexpr wide_slot_result wide_slot(rational v) {
         const exact_index_result r = exact_index<L, rounding_for<L, P>>(exact_of(v));
         return {static_cast<umax>(r.Index), r.Exact}; // in range: fits 64 bits
     }
@@ -7510,41 +7507,45 @@ struct assignment<L, R> {
                 }
             }
 
-            // The exact quotient can overflow the 64-bit rational range (huge
-            // source denominator × fine notch): take the slot from the exact wide
-            // index instead (rhs is in range, so it fits L's raw). Rounding is
-            // the value-space rule, as everywhere else.
-            const auto rel      = try_sub(rv, lower64<L>);
-            const auto quotient = rel ? try_div(*rel, notch64<L>) : rel;
-            if (!quotient.has_value()) [[unlikely]] {
-                const wide_slot_result slot = wide_slot<P>(rv);
-                if constexpr (!has_round_flag)
-                    if (!slot.Exact && policy.checks_rounding()) [[unlikely]]
-                        return report_failure(lhs, policy, action, errc::rounding_error);
-                store_slot(slot.Slot);
-                return;
-            }
-            rational raw = *quotient;
-            umax     den = static_cast<umax>(raw.Den);
-            if (den == 1) {
-                store_slot(raw.Num);
-                return;
-            }
-
+            // The general slot: out of line and cold behind a shortcut above
+            // (it is then rare), inline where it is the store's only path.
+            constexpr bool         shortcut = (q_format_fits<L> && notched<L>) || unanchored_codec<L>.Ok;
+            const wide_slot_result slot     = shortcut ? rational_slot_cold<P>(rv) : rational_slot<P>(rv);
             if constexpr (!has_round_flag)
-                if (policy.checks_rounding()) [[unlikely]]
+                if (!slot.Exact && policy.checks_rounding()) [[unlikely]]
                     return report_failure(lhs, policy, action, errc::rounding_error);
-            store_slot(round_quotient<L, P>(raw.Num, den));
+            store_slot(slot.Slot);
         }
     }
 
   private:
+    // The slot of v by 64-bit rationals, (v − Lower)/Notch rounded. The
+    // exact quotient can overflow that range (huge source denominator × fine
+    // notch): the slot then comes from the exact wide index (v is in range,
+    // so it fits L's raw). Rounding is the value-space rule, as everywhere
+    // else. The 16-byte result returns in registers; the expected rationals
+    // stay inside.
+    template <typename P>
+    static constexpr wide_slot_result rational_slot(rational v) {
+        const auto rel      = try_sub(v, lower64<L>);
+        const auto quotient = rel ? try_div(*rel, notch64<L>) : rel;
+        if (!quotient.has_value()) [[unlikely]]
+            return wide_slot<P>(v);
+        if (quotient->Den == 1)
+            return {quotient->Num, true};
+        return {round_quotient<L, P>(quotient->Num, static_cast<umax>(quotient->Den)), false};
+    }
+    template <typename P>
+    [[gnu::cold]] [[gnu::noinline]] static constexpr wide_slot_result rational_slot_cold(rational v) {
+        return rational_slot<P>(v);
+    }
+
     // Range test for the source value. A floating source compares in double when
     // both endpoints are exact doubles (then the comparison is exact), instead of
     // converting the value to a rational first.
     // (A limit near 2^64 rounds to a double of 2^64, which no rational holds:
     // it is no exact double.)
-    static constexpr bool exact_double(const rational& r) {
+    static constexpr bool exact_double(rational r) {
         const double d = static_cast<double>(r);
         return !past_64_bits(d) && rational{d} == r;
     }
@@ -9759,6 +9760,14 @@ struct inside {
         const W     room = W{std::numeric_limits<imax>::max()} - (hi - lo + W{1}) - mag;
         return room.negative() ? umax{0} : static_cast<umax>(room);
     }();
+    // The exact sum when the notch count does not apply: out of line, and by
+    // value in and out, so the fast path keeps *this in registers.
+    [[gnu::cold]] [[gnu::noinline]] static constexpr inside add_rational_cold(inside x, detail::rational rhs)
+        requires raw_delta_ok
+    {
+        x.assign_op_result(detail::rational{x} + rhs);
+        return x;
+    }
     // A bool and an out-parameter, not an optional<imax>: GCC 16 kept the
     // optional in memory, 12 more instructions on every += / -= of a rational.
     static constexpr bool notch_delta(const detail::rational& r, imax& delta) noexcept {
@@ -9779,10 +9788,12 @@ struct inside {
 
     template <std::same_as<detail::rational> A>
     constexpr inside& operator+=(const A& rhs) {
-        if constexpr (raw_delta_ok)
+        if constexpr (raw_delta_ok) {
             if (imax n; notch_delta(rhs, n)) [[likely]]
                 return store_raw<imax>(static_cast<imax>(Raw) + n);
-        return assign_op_result(detail::rational{*this} + rhs);
+            return *this = add_rational_cold(*this, rhs);
+        } else
+            return assign_op_result(detail::rational{*this} + rhs);
     }
 
     template <insidable R>
@@ -9801,10 +9812,12 @@ struct inside {
 
     template <std::same_as<detail::rational> A>
     constexpr inside& operator-=(const A& rhs) {
-        if constexpr (raw_delta_ok)
+        if constexpr (raw_delta_ok) {
             if (imax n; notch_delta(rhs, n)) [[likely]]
                 return store_raw<imax>(static_cast<imax>(Raw) - n);
-        return assign_op_result(detail::rational{*this} - rhs);
+            return *this = add_rational_cold(*this, -rhs);
+        } else
+            return assign_op_result(detail::rational{*this} - rhs);
     }
 
     template <insidable R>
@@ -16018,9 +16031,11 @@ template <insidable In>
 inline constexpr double in_max = static_cast<double>(max_abs_int<In>);
 
 // What follows a fast tier or a lean kernel: rarely taken, so out of line,
-// which keeps its frame off the fast path.
+// which keeps its frame off the fast path. By value, and its callers capture
+// by value: a reference would put the inputs in memory, and their address in
+// a noinline call brings the stack protector into the fast path.
 template <std::invocable<> F>
-[[gnu::cold]] [[gnu::noinline]] constexpr auto cold_call(const F& f) {
+[[gnu::cold]] [[gnu::noinline]] constexpr auto cold_call(F f) {
     return f();
 }
 
@@ -16398,14 +16413,30 @@ inline bool dd_full_attempt(const ddk::dd& x, Out& out) {
     return dd_decide(v, bound, out);
 }
 
-// A lean attempt (its value, setting the bound) first, then the full one.
+// A full attempt's result, returned in registers from the cold call.
+template <insidable Out>
+struct full_result {
+    Out  Value;
+    bool Ok;
+};
+
+// A lean attempt (its value, setting the bound) first, then the full one
+// out of line. full fills the slot it is given and captures by value, so
+// neither the inputs nor out leave registers on the fast path.
 template <insidable Out, typename Lean, typename Full>
 [[gnu::always_inline]] inline bool dd_lean_first(const Lean& lean, const Full& full, Out& out) {
     double        bound;
     const ddk::dd v = lean(bound);
     if (dd_decide(v, bound, out))
         return true;
-    return cold_call(full);
+    const auto r = cold_call([full] {
+        full_result<Out> f{};
+        f.Ok = full(f.Value);
+        return f;
+    });
+    if (r.Ok)
+        out = r.Value;
+    return r.Ok;
 }
 
 // The lean kernel first where K has one, then the full one.
@@ -16420,7 +16451,7 @@ inline bool dd_attempt(const In& in, Out& out) {
                     bound += dd_input_rel<In> * __builtin_fabs(x.Hi) * K::slope(x.Hi, v.Hi);
                 return v;
             },
-            [&] { return dd_full_attempt<Out, K, In>(x, out); },
+            [=](Out& o) { return dd_full_attempt<Out, K, In>(x, o); },
             out);
     else
         return dd_full_attempt<Out, K, In>(x, out);
@@ -16436,9 +16467,9 @@ inline bool dd_attempt_atan2(const InY& yi, const InX& xi, Out& out) {
             bound += input;
             return v;
         },
-        [&] {
+        [=](Out& o) {
             const ddk::dd v = ddk::atan2(y, x);
-            return dd_decide(v, dd_eval_bound(1.0, v.Hi) + input, out);
+            return dd_decide(v, dd_eval_bound(1.0, v.Hi) + input, o);
         },
         out);
 }
@@ -16456,17 +16487,17 @@ inline bool dd_attempt_hypot(const InX& xi, const InY& yi, Out& out) {
 template <insidable Out, insidable In>
 inline bool dd_attempt_tan(const In& in, Out& out) {
     const ddk::dd x     = dd_read(in);
-    auto          input = [&](double t) { return dd_input_rel<In> * __builtin_fabs(x.Hi) * (1 + t * t); };
+    auto          input = [=](double t) { return dd_input_rel<In> * __builtin_fabs(x.Hi) * (1 + t * t); };
     return dd_lean_first(
         [&](double& bound) {
             const ddk::dd t = ddk::tan_lean(x, bound);
             bound += input(t.Hi);
             return t;
         },
-        [&] {
+        [=](Out& o) {
             const ddk::dd t    = ddk::tan(x);
             const double  sec2 = 1 + t.Hi * t.Hi, mx = std::max(1.0, __builtin_fabs(x.Hi));
-            return dd_decide(t, dd_rel * sec2 * mx + dd_abs * mx + input(t.Hi), out);
+            return dd_decide(t, dd_rel * sec2 * mx + dd_abs * mx + input(t.Hi), o);
         },
         out);
 }
@@ -16480,7 +16511,7 @@ inline bool dd_attempt_pow(const InB& bi, const InE& ei, Out& out) {
     const ddk::dd b = dd_read(bi), e = dd_read(ei);
     if (!(b.Hi > 0))
         return false;
-    auto input = [&](double L) { return dd_input_rel<InB> * __builtin_fabs(e.Hi) + dd_input_rel<InE> * L; };
+    auto input = [=](double L) { return dd_input_rel<InB> * __builtin_fabs(e.Hi) + dd_input_rel<InE> * L; };
     return dd_lean_first(
         [&](double& bound) {
             const ddk::dd y = ddk::mul(ddk::log_lean(b, bound), e);
@@ -16495,13 +16526,13 @@ inline bool dd_attempt_pow(const InB& bi, const InE& ei, Out& out) {
                     fpk::tiny;
             return v;
         },
-        [&] {
+        [=](Out& o) {
             const ddk::dd y = ddk::mul(ddk::log(b), e);
             const double  L = __builtin_fabs(y.Hi);
             if (!(L <= 700))
                 return false;
             const ddk::dd v = ddk::exp(y);
-            return dd_decide(v, __builtin_fabs(v.Hi) * (dd_rel * (1 + L) + input(L)) + dd_abs, out);
+            return dd_decide(v, __builtin_fabs(v.Hi) * (dd_rel * (1 + L) + input(L)) + dd_abs, o);
         },
         out);
 }
@@ -16523,9 +16554,9 @@ inline bool dd_attempt_pow_base(const In& xi, Out& out) {
                     fpk::tiny;
             return v;
         },
-        [&] {
+        [=](Out& o) {
             const ddk::dd v = ddk::exp(y);
-            return dd_decide(v, __builtin_fabs(v.Hi) * (dd_rel * (1 + L) + dd_input_rel<In> * L) + dd_abs, out);
+            return dd_decide(v, __builtin_fabs(v.Hi) * (dd_rel * (1 + L) + dd_input_rel<In> * L) + dd_abs, o);
         },
         out);
 }
@@ -16728,7 +16759,7 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
                 if constexpr (FP) {
                     if (Out r; fp(r))
                         return r;
-                    return engine::cold_call([&]() -> decltype(integer()) {
+                    return engine::cold_call([=]() -> decltype(integer()) {
                         if constexpr (DD)
                             if (Out r; dd(r))
                                 return r;
@@ -16749,9 +16780,9 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
 // DD in parentheses.
 #ifndef BEMAN_INSIDE_MATH_NO_FP
     #define BEMAN_INSIDE_ENGINE_TIERS(Out, FP, DD, fp_call, dd_call, ...)                                    \
-        return ::beman::inside::math::adaptive::tiers<Out, FP, DD>([&](auto& r) -> bool { return fp_call; }, \
-                                                                   [&](auto& r) -> bool { return dd_call; }, \
-                                                                   [&] { return __VA_ARGS__; });
+        return ::beman::inside::math::adaptive::tiers<Out, FP, DD>([=](auto& r) -> bool { return fp_call; }, \
+                                                                   [=](auto& r) -> bool { return dd_call; }, \
+                                                                   [=] { return __VA_ARGS__; });
 #else
     #define BEMAN_INSIDE_ENGINE_TIERS(Out, FP, DD, fp_call, dd_call, ...)                                         \
         ::beman::inside::math::detail::engine::note<::beman::inside::math::detail::engine::probe::integer_run>(); \
@@ -17003,7 +17034,7 @@ template <insidable Out, insidable InB, insidable InE>
     if constexpr (anchoring::unanchored_call<Out, InB, InE>)
         return anchoring::via_anchored<Out>([]<insidable O>(auto a, auto b) { return pow_into<O>(a, b); }, base, exp);
     else {
-        const auto integer = [&]() -> std::expected<Out, errc> {
+        const auto integer = [=]() -> std::expected<Out, errc> {
             const auto b = engine::exact_input(base);
             if (b.Num.negative())
                 return std::unexpected(errc::domain_error);

@@ -203,7 +203,7 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
                 if constexpr (FP) {
                     if (Out r; fp(r))
                         return r;
-                    return engine::cold_call([&]() -> decltype(integer()) {
+                    return engine::cold_call([=]() -> decltype(integer()) {
                         if constexpr (DD)
                             if (Out r; dd(r))
                                 return r;
@@ -224,9 +224,9 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
 // DD in parentheses.
 #ifndef BEMAN_INSIDE_MATH_NO_FP
     #define BEMAN_INSIDE_ENGINE_TIERS(Out, FP, DD, fp_call, dd_call, ...)                                    \
-        return ::beman::inside::math::adaptive::tiers<Out, FP, DD>([&](auto& r) -> bool { return fp_call; }, \
-                                                                   [&](auto& r) -> bool { return dd_call; }, \
-                                                                   [&] { return __VA_ARGS__; });
+        return ::beman::inside::math::adaptive::tiers<Out, FP, DD>([=](auto& r) -> bool { return fp_call; }, \
+                                                                   [=](auto& r) -> bool { return dd_call; }, \
+                                                                   [=] { return __VA_ARGS__; });
 #else
     #define BEMAN_INSIDE_ENGINE_TIERS(Out, FP, DD, fp_call, dd_call, ...)                                         \
         ::beman::inside::math::detail::engine::note<::beman::inside::math::detail::engine::probe::integer_run>(); \
@@ -478,7 +478,7 @@ template <insidable Out, insidable InB, insidable InE>
     if constexpr (anchoring::unanchored_call<Out, InB, InE>)
         return anchoring::via_anchored<Out>([]<insidable O>(auto a, auto b) { return pow_into<O>(a, b); }, base, exp);
     else {
-        const auto integer = [&]() -> std::expected<Out, errc> {
+        const auto integer = [=]() -> std::expected<Out, errc> {
             const auto b = engine::exact_input(base);
             if (b.Num.negative())
                 return std::unexpected(errc::domain_error);

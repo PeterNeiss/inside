@@ -679,6 +679,14 @@ struct inside {
         const W     room = W{std::numeric_limits<imax>::max()} - (hi - lo + W{1}) - mag;
         return room.negative() ? umax{0} : static_cast<umax>(room);
     }();
+    // The exact sum when the notch count does not apply: out of line, and by
+    // value in and out, so the fast path keeps *this in registers.
+    [[gnu::cold]] [[gnu::noinline]] static constexpr inside add_rational_cold(inside x, detail::rational rhs)
+        requires raw_delta_ok
+    {
+        x.assign_op_result(detail::rational{x} + rhs);
+        return x;
+    }
     // A bool and an out-parameter, not an optional<imax>: GCC 16 kept the
     // optional in memory, 12 more instructions on every += / -= of a rational.
     static constexpr bool notch_delta(const detail::rational& r, imax& delta) noexcept {
@@ -699,10 +707,12 @@ struct inside {
 
     template <std::same_as<detail::rational> A>
     constexpr inside& operator+=(const A& rhs) {
-        if constexpr (raw_delta_ok)
+        if constexpr (raw_delta_ok) {
             if (imax n; notch_delta(rhs, n)) [[likely]]
                 return store_raw<imax>(static_cast<imax>(Raw) + n);
-        return assign_op_result(detail::rational{*this} + rhs);
+            return *this = add_rational_cold(*this, rhs);
+        } else
+            return assign_op_result(detail::rational{*this} + rhs);
     }
 
     template <insidable R>
@@ -721,10 +731,12 @@ struct inside {
 
     template <std::same_as<detail::rational> A>
     constexpr inside& operator-=(const A& rhs) {
-        if constexpr (raw_delta_ok)
+        if constexpr (raw_delta_ok) {
             if (imax n; notch_delta(rhs, n)) [[likely]]
                 return store_raw<imax>(static_cast<imax>(Raw) - n);
-        return assign_op_result(detail::rational{*this} - rhs);
+            return *this = add_rational_cold(*this, -rhs);
+        } else
+            return assign_op_result(detail::rational{*this} - rhs);
     }
 
     template <insidable R>

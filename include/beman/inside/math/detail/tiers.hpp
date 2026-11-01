@@ -184,9 +184,11 @@ template <insidable In>
 inline constexpr double in_max = static_cast<double>(max_abs_int<In>);
 
 // What follows a fast tier or a lean kernel: rarely taken, so out of line,
-// which keeps its frame off the fast path.
+// which keeps its frame off the fast path. By value, and its callers capture
+// by value: a reference would put the inputs in memory, and their address in
+// a noinline call brings the stack protector into the fast path.
 template <std::invocable<> F>
-[[gnu::cold]] [[gnu::noinline]] constexpr auto cold_call(const F& f) {
+[[gnu::cold]] [[gnu::noinline]] constexpr auto cold_call(F f) {
     return f();
 }
 
@@ -564,14 +566,30 @@ inline bool dd_full_attempt(const ddk::dd& x, Out& out) {
     return dd_decide(v, bound, out);
 }
 
-// A lean attempt (its value, setting the bound) first, then the full one.
+// A full attempt's result, returned in registers from the cold call.
+template <insidable Out>
+struct full_result {
+    Out  Value;
+    bool Ok;
+};
+
+// A lean attempt (its value, setting the bound) first, then the full one
+// out of line. full fills the slot it is given and captures by value, so
+// neither the inputs nor out leave registers on the fast path.
 template <insidable Out, typename Lean, typename Full>
 [[gnu::always_inline]] inline bool dd_lean_first(const Lean& lean, const Full& full, Out& out) {
     double        bound;
     const ddk::dd v = lean(bound);
     if (dd_decide(v, bound, out))
         return true;
-    return cold_call(full);
+    const auto r = cold_call([full] {
+        full_result<Out> f{};
+        f.Ok = full(f.Value);
+        return f;
+    });
+    if (r.Ok)
+        out = r.Value;
+    return r.Ok;
 }
 
 // The lean kernel first where K has one, then the full one.
@@ -586,7 +604,7 @@ inline bool dd_attempt(const In& in, Out& out) {
                     bound += dd_input_rel<In> * __builtin_fabs(x.Hi) * K::slope(x.Hi, v.Hi);
                 return v;
             },
-            [&] { return dd_full_attempt<Out, K, In>(x, out); },
+            [=](Out& o) { return dd_full_attempt<Out, K, In>(x, o); },
             out);
     else
         return dd_full_attempt<Out, K, In>(x, out);
@@ -602,9 +620,9 @@ inline bool dd_attempt_atan2(const InY& yi, const InX& xi, Out& out) {
             bound += input;
             return v;
         },
-        [&] {
+        [=](Out& o) {
             const ddk::dd v = ddk::atan2(y, x);
-            return dd_decide(v, dd_eval_bound(1.0, v.Hi) + input, out);
+            return dd_decide(v, dd_eval_bound(1.0, v.Hi) + input, o);
         },
         out);
 }
@@ -622,17 +640,17 @@ inline bool dd_attempt_hypot(const InX& xi, const InY& yi, Out& out) {
 template <insidable Out, insidable In>
 inline bool dd_attempt_tan(const In& in, Out& out) {
     const ddk::dd x     = dd_read(in);
-    auto          input = [&](double t) { return dd_input_rel<In> * __builtin_fabs(x.Hi) * (1 + t * t); };
+    auto          input = [=](double t) { return dd_input_rel<In> * __builtin_fabs(x.Hi) * (1 + t * t); };
     return dd_lean_first(
         [&](double& bound) {
             const ddk::dd t = ddk::tan_lean(x, bound);
             bound += input(t.Hi);
             return t;
         },
-        [&] {
+        [=](Out& o) {
             const ddk::dd t    = ddk::tan(x);
             const double  sec2 = 1 + t.Hi * t.Hi, mx = std::max(1.0, __builtin_fabs(x.Hi));
-            return dd_decide(t, dd_rel * sec2 * mx + dd_abs * mx + input(t.Hi), out);
+            return dd_decide(t, dd_rel * sec2 * mx + dd_abs * mx + input(t.Hi), o);
         },
         out);
 }
@@ -646,7 +664,7 @@ inline bool dd_attempt_pow(const InB& bi, const InE& ei, Out& out) {
     const ddk::dd b = dd_read(bi), e = dd_read(ei);
     if (!(b.Hi > 0))
         return false;
-    auto input = [&](double L) { return dd_input_rel<InB> * __builtin_fabs(e.Hi) + dd_input_rel<InE> * L; };
+    auto input = [=](double L) { return dd_input_rel<InB> * __builtin_fabs(e.Hi) + dd_input_rel<InE> * L; };
     return dd_lean_first(
         [&](double& bound) {
             const ddk::dd y = ddk::mul(ddk::log_lean(b, bound), e);
@@ -661,13 +679,13 @@ inline bool dd_attempt_pow(const InB& bi, const InE& ei, Out& out) {
                     fpk::tiny;
             return v;
         },
-        [&] {
+        [=](Out& o) {
             const ddk::dd y = ddk::mul(ddk::log(b), e);
             const double  L = __builtin_fabs(y.Hi);
             if (!(L <= 700))
                 return false;
             const ddk::dd v = ddk::exp(y);
-            return dd_decide(v, __builtin_fabs(v.Hi) * (dd_rel * (1 + L) + input(L)) + dd_abs, out);
+            return dd_decide(v, __builtin_fabs(v.Hi) * (dd_rel * (1 + L) + input(L)) + dd_abs, o);
         },
         out);
 }
@@ -689,9 +707,9 @@ inline bool dd_attempt_pow_base(const In& xi, Out& out) {
                     fpk::tiny;
             return v;
         },
-        [&] {
+        [=](Out& o) {
             const ddk::dd v = ddk::exp(y);
-            return dd_decide(v, __builtin_fabs(v.Hi) * (dd_rel * (1 + L) + dd_input_rel<In> * L) + dd_abs, out);
+            return dd_decide(v, __builtin_fabs(v.Hi) * (dd_rel * (1 + L) + dd_input_rel<In> * L) + dd_abs, o);
         },
         out);
 }
