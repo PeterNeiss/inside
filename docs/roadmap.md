@@ -27,15 +27,8 @@ C++20's transient [P0784]) has stalled.
 The gaps found while moving the examples to units. Each one is a library
 change, not an example workaround:
 
-- **`values<Q>` and `cursor<Q, Step>` for quantities.** Both are constrained
-  templates over insides, and a twin in `units::` would be ambiguous under the
-  usual two using-directives. Today a loop runs over `Q::rep` and attaches the
-  unit ([storage.md](storage.md#iterating-quantities)).
 - **`atan2` and `asin` straight into degrees or turns,** with one rounding. Today
   the angle rounds onto a fine radian grid, then `value_cast` rounds again.
-- **The clamp overshoot as a quantity.** A quantity's `on_clamp` hook gets the
-  inside's overshoot, a plain number in the quantity's unit.
-- **`std::hash` and `std::numeric_limits` for quantities.**
 - **`tan_into` of a π-scaled angle**, which would need an exact pole at 90°.
 - The [differences from mp-units](units.md#differences-from-mp-units): no
   representation other than an inside, no vector characters, no logarithmic

@@ -4,7 +4,7 @@
 
 #include <beman/inside/inside/detail/config.hpp>
 
-#include <beman/inside/inside/detail/compare.hpp> // the inside type and its comparisons
+#include <beman/inside/inside/compare.hpp> // the inside type and its comparisons
 #include <beman/inside/inside/casts.hpp>
 #include <beman/inside/inside/detail/op_result.hpp>
 
@@ -102,19 +102,18 @@ struct divmod_op {
 // then false, and an inside cannot fall back on its rational conversion and
 // rational's operator.
 
-#define BEMAN_INSIDE_WHY_add                                                                                      \
-    "addition: no result type - the exact sum's fractions pass BEMAN_INSIDE_MAX_FRACTION_BITS (store an operand " \
-    "into a coarser type first), or a wide-index operand meets a continuous result (not supported yet)"
-#define BEMAN_INSIDE_WHY_sub                                                                                     \
-    "subtraction: no result type - the exact difference's fractions pass BEMAN_INSIDE_MAX_FRACTION_BITS (store " \
-    "an operand into a coarser type first), or a wide-index operand meets a continuous result (not supported yet)"
+#define BEMAN_INSIDE_WHY_add                                                                                     \
+    "addition: no result type - the exact sum's fractions pass 1024 bits (store an operand into a coarser type " \
+    "first)"
+#define BEMAN_INSIDE_WHY_sub                                                                                  \
+    "subtraction: no result type - the exact difference's fractions pass 1024 bits (store an operand into a " \
+    "coarser type first)"
 #define BEMAN_INSIDE_WHY_mul                                                                                    \
-    "multiplication: no result type - the exact product's fractions pass BEMAN_INSIDE_MAX_FRACTION_BITS, or a " \
-    "wide-index operand meets a continuous result (not supported yet) - round the product into a coarser type " \
-    "with mul_into<Out>(a, b)"
+    "multiplication: no result type - the exact product's fractions pass 1024 bits - round the product into a " \
+    "coarser type with mul_into<Out>(a, b)"
 #define BEMAN_INSIDE_WHY_div                                                                              \
     "division: no result type - the divisor grid is the point 0, or the exact quotient's fractions pass " \
-    "BEMAN_INSIDE_MAX_FRACTION_BITS"
+    "1024 bits"
 #define BEMAN_INSIDE_WHY_mod "modulo requires integer-valued grids"
 #define BEMAN_INSIDE_WHY_divmod "divmod requires integer-valued grids"
 
@@ -169,8 +168,8 @@ BEMAN_INSIDE_ARITH_FN(divmod, divmod_op)
 //---------------------------------------------------------------------------
 // mul_into<Out> / div_into<Out> — the exact product or quotient, rounded once
 // onto Out by Out's policy (plus the per-call flags F). Neither forms the
-// product or quotient grid, so they work where `a * b` would meet a wide index
-// with a continuous result, or a quotient past the 64-bit fraction. A store that
+// product or quotient grid, so they work where that grid's fractions would pass
+// the fraction limit, or a quotient past the 64-bit fraction. A store that
 // fails is reported through the policy (it throws under `checked`).
 // div_into returns std::expected<Out, errc> when the divisor's grid holds 0 —
 // then every failure, a zero divisor or a failed store, is the error — else Out.
@@ -428,17 +427,14 @@ template <insidable Target, std::ranges::input_range Rng>
 
 //---------------------------------------------------------------------------
 // common_inside — the "hull" type able to hold every value of L and R exactly:
-// interval hull + notch gcd (grid `hull`), under the policy both share (a
-// cursor's marker aside), else checked like arithmetic results. Backs the
-// std::common_type specialization and mixed-grid min/max below.
+// interval hull + notch gcd (grid `hull`), under the policy both share, as
+// for arithmetic results (result_flags). Backs the std::common_type
+// specialization and mixed-grid min/max below.
 //---------------------------------------------------------------------------
 namespace detail {
 template <insidable Lhs, insidable Rhs>
-inline constexpr policy_flag common_flags = flags_of<Lhs> == flags_of<Rhs> ? flags_of<Lhs> & ~cursor_marker : checked;
-
-template <insidable Lhs, insidable Rhs>
 struct common_inside {
-    using type = inside<hull(grid_of<Lhs>, grid_of<Rhs>), common_flags<Lhs, Rhs>>;
+    using type = inside<hull(grid_of<Lhs>, grid_of<Rhs>), result_flags<Lhs, Rhs>>;
 };
 
 // Same type stays itself (policy included) — mirrors std::common_type<T, T>.
@@ -455,7 +451,7 @@ using common_inside_t = typename detail::common_inside<Lhs, Rhs>::type;
 // std-vocabulary helpers — ADL-found `min` / `max` / `midpoint` for generic
 // code. min/max mirror std; midpoint returns the *exact* average on a refined
 // grid (so, unlike std::midpoint, it neither rounds nor overflows). There is
-// no free `beman::inside::clamp` (the name is the policy flag — use clamp_cast<Target>).
+// no free `beman::inside::clamp` (the name is the policy flag — use Target{v, clamp}).
 //---------------------------------------------------------------------------
 // Both return the common type: the operand type itself for one type, else
 // the hull, which holds each operand exactly.
@@ -546,6 +542,27 @@ BEMAN_INSIDE_NO_SCALAR(/)
 BEMAN_INSIDE_NO_SCALAR(%)
 #undef BEMAN_INSIDE_NO_SCALAR
 #undef BEMAN_INSIDE_SCALAR_MSG
+
+// An inside with a rational: through the implicit operator rational() it
+// would become rational arithmetic, an expected<rational, errc> without a
+// grid. Deleted, with the spelling that keeps the grid. Compound assignment
+// with a rational (b += 0.5_r) stays: it stores back into b's grid.
+#define BEMAN_INSIDE_RATIONAL_MSG                                                                \
+    "an inside cannot be combined with a rational: write the constant as just<1, 2> or 0.5_ins " \
+    "(a grid), or store the rational into an inside first"
+#define BEMAN_INSIDE_NO_RATIONAL(op)                                           \
+    template <insidable B, std::same_as<rational> Q>                           \
+    void operator op(B const&, Q const&) = delete (BEMAN_INSIDE_RATIONAL_MSG); \
+    template <std::same_as<rational> Q, insidable B>                           \
+    void operator op(Q const&, B const&) = delete (BEMAN_INSIDE_RATIONAL_MSG);
+
+BEMAN_INSIDE_NO_RATIONAL(+)
+BEMAN_INSIDE_NO_RATIONAL(-)
+BEMAN_INSIDE_NO_RATIONAL(*)
+BEMAN_INSIDE_NO_RATIONAL(/)
+BEMAN_INSIDE_NO_RATIONAL(%)
+#undef BEMAN_INSIDE_NO_RATIONAL
+#undef BEMAN_INSIDE_RATIONAL_MSG
 
 } // namespace beman::inside
 

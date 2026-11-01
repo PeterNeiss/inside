@@ -341,8 +341,8 @@ TEST(UnanchoredGrid, point_operands) {
         EXPECT_EQ(static_cast<rational>(a * -0.5_ins), *(x * -0.5_r));
         EXPECT_EQ(static_cast<rational>(1_ins - a), *(rational{1} - x));
         EXPECT_EQ(a <=> 3, x <=> rational{3});
-        EXPECT_EQ(a == 2.5, x == 2.5_r);
-        EXPECT_EQ(a < 4.75, x < 4.75_r);
+        EXPECT_EQ(a == 2.5_r, x == 2.5_r);
+        EXPECT_EQ(a < 4.75_r, x < 4.75_r);
     }
 }
 

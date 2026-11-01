@@ -30,9 +30,10 @@ std::cout << v.in(km / si::hour);                        // 39.9 km/h
 ```
 
 `<beman/inside/units/math.hpp>` adds the functions that need the math engine
-(math.hpp), and `<beman/inside/units/io.hpp>` the text: `to_string`, `<<`,
-`std::format`, `unit_symbol` and `parse<Q>`, as io.hpp does for insides. They
-are separate headers so that units.hpp alone compiles fast.
+(math.hpp), `<beman/inside/units/io.hpp>` the text: `to_string`, `<<`,
+`std::format`, `unit_symbol` and `parse<Q>`, as io.hpp does for insides, and
+`<beman/inside/units/random.hpp>` `uniform<Q>(rng)`, as inside/random.hpp
+does. They are separate headers so that units.hpp alone compiles fast.
 
 ## Examples
 
@@ -119,7 +120,8 @@ product.
 
 A quantity of dimension one converts to an inside: implicitly when its number
 does, explicitly when the target must round. The number is its value in unit
-one: (21 kg) / (6 kg) is 3.5, (3 km) / (2 m) is 1500, and 8 % is 2/25. An
+one: (21 kg) / (6 kg) is 3.5, (3 km) / (2 m) is 1500, and 8 % is 2/25;
+`q.as<T>()` and `q.to<T>()` read it as a built-in, as on an inside. An
 angle stays a quantity: radians and steradians are `is_kind` quantities, and
 so is a π-scaled ratio; read their number with `numerical_value()`. A
 dimensionless kind of your own works the same way: a level in dB is no plain
@@ -296,15 +298,21 @@ numbers, so it still rounds once and checks once.
 
 | Spelling | Does |
 |---|---|
-| `q.on_wrap(f) += d`, `on_clamp`, `on_error` | a store with a hook: `d` is a quantity, converted as `+=` does; `f` gets the quantity, then the carry, overshoot or errc |
-| `++q`, `q--` | one unit up or down, under the number's policy |
+| `q.on_wrap(f) += d`, `on_clamp`, `on_error` | a store with a hook: `d` is a quantity, converted as `+=` does; `f` gets the quantity, then the carry (a count of periods), the overshoot (a quantity in Q's unit) or the errc |
+| `q.policy<F>() = d`, `q.policy(ec) += d` | a store under the number's policy plus `F`, or setting `ec` instead of raising; `=`, `+=` and `-=` take quantities, `*=` and `/=` numbers |
+| `min(a, b)`, `max(a, b)`, `midpoint(a, b)` | in the common unit, as `+`; `midpoint` is exact |
+| `checked_cast<Q>(x)` | a number in Q's unit, or a quantity converted to it first, stored exactly or reported |
+| `q.as<T>()`, `q.to<T>()` | a dimensionless quantity's number as a built-in |
+| `uniform<Q>(rng)` | units/random.hpp: a number drawn from Q's grid, in Q's unit |
+| `++q`, `q--` | one notch of the number up or down, under its policy |
 | `Q::try_make<F>(v)` | the number's `try_make`, of a number in Q's unit |
 | `mul_into<Out, F>(a, b)`, `div_into<Out, F>(a, b)` | a·b or a/b rounded once into `Out`, a quantity type (or a plain inside for a dimensionless result); the factor between units folds into the exact product |
 | `add_all(…)`, `mul_all(…)`, `sum<Q>(range)` | the folds; `sum<Q>` takes quantities in any unit that converts to Q's |
+| `add(a, b, args…)`, `sub`, `mod`, `mul`, `div` | inside's free arithmetic with a per-call policy, a flag or an `errc&` (`div(d, t, round_floor)`): sums in the common unit, products and quotients with the units multiplied, a number scaling |
 | `divmod(a, b, args…)` | in the common unit: the quotient a number, the remainder a quantity |
 | `parse<Q, F>(text)`, `parse_exact<Q>(text)` | the number, read in Q's unit |
 | `conversion_overflows<Q>(v)`, `conversion_rounds<Q>`, `conversion_loses<Q>` | a number in Q's unit against Q's grid |
-| `clamp_cast<Q, Round>(x)`, `wrap_cast<Q>(x)` | a number in Q's unit, or a quantity converted to it first |
+| `Q{x, clamp | Round}`, `Q{x, wrap}` | a number in Q's unit, or a quantity converted to it first |
 | `dot`, `cross`, `lerp` | on quantity components: `dot` of two px vectors is px²; `lerp`'s t is a number |
 
 ```cpp
@@ -316,10 +324,10 @@ auto [h, rest] = divmod(quantity<si::second, inside<{0, 86399}>>{3725}, just<1> 
 An `expected` quantity, from a division by a grid that holds 0, chains through
 `+ - * / %` as an `expected` inside does; the first error wins.
 
-`values<T>` and `cursor<T, Step>` take insides only: loop over the number's
-grid and attach the unit ([storage.md](storage.md#iterating-quantities)). A
-quantity has no `std::hash` or `std::numeric_limits` of its own; use its
-`numerical_value()`.
+`values<Q>` and `cursor<Q, Step>` step over the number's grid and yield
+quantities; Step is a number in Q's unit
+([storage.md](storage.md#iterating-quantities)). `std::hash<Q>` and
+`std::numeric_limits<Q>` are the number's, with the limits as quantities.
 
 ## Text
 
@@ -352,8 +360,9 @@ units.hpp needs no text support; units/io.hpp includes io.hpp, `<ostream>`
 and `<string>`, so printing needs a hosted standard library
 ([freestanding.md](freestanding.md)). In the single header
 `BEMAN_INSIDE_NO_STRING` drops io.hpp and units/io.hpp, and
-`BEMAN_INSIDE_NO_UNITS` drops units.hpp, units/io.hpp, units/math.hpp and the
-physical constants. Under `BEMAN_INSIDE_MATH_NO_FP` on a hosted build, everything
+`BEMAN_INSIDE_NO_UNITS` drops units.hpp, units/io.hpp, units/math.hpp,
+units/random.hpp and the physical constants; units/random.hpp also needs a
+hosted build without `BEMAN_INSIDE_MATH_NO_FP`, as inside/random.hpp does. Under `BEMAN_INSIDE_MATH_NO_FP` on a hosted build, everything
 here works: neither header uses floating point.
 
 ## Compile time

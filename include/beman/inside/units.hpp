@@ -29,7 +29,7 @@
 //   base_dimension, unit_c / spec_c / origin_c   dimensions of your own
 //   q.on_wrap / on_clamp / on_error, ++q, Q::try_make
 //   mul_into, div_into, add_all, mul_all, sum<Q>, divmod,
-//   conversion_overflows / rounds / loses<Q>, clamp_cast / wrap_cast<Q>,
+//   conversion_overflows / rounds / loses<Q>, Q{x, clamp} / Q{x, wrap},
 //   dot, cross, lerp                             inside's algorithms
 //   percent, per_mille                           dimensionless units
 // The catalog: isq, si, si2019, international. The derived physical

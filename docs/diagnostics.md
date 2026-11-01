@@ -45,7 +45,6 @@ last the bound:
 | `1<<32` | 4294967296 | `clamp` |
 | `1<<33` | 8589934592 | `wrap` |
 | `1<<36` | 68719476736 | the `unsafe` marker (`unsafe` adds `snap`: 68719476752); the only bit that turns runtime checks off |
-| `1<<37` | 137438953472 | `uninitialized` |
 | `1<<50` | 1125899906842624 | a `cursor<T, Step>` |
 
 The other bits are unused, and an inside rejects a policy that holds one or
@@ -79,7 +78,7 @@ assignment checks print the numbers that failed:
 error: static assertion failed: grid: the notch must divide Upper − Lower evenly
        (notch 3, Upper − Lower 10)
 error: static assertion failed: inside_assignable: incompatible notches — use
-       `with_snap()` or `policy<snap>()` to allow rounding (lhs notch 1, rhs notch 1/2)
+       `policy<snap>()` or a rounding policy to allow rounding (lhs notch 1, rhs notch 1/2)
 error: static assertion failed: inside_assignable: rhs interval lies entirely outside
        lhs interval … (lhs [0, 3], rhs [5, 10])
 ```
@@ -112,7 +111,7 @@ error: use of deleted function '…': inside: the source's interval lies entirel
 
 The two clauses are *interval lies entirely outside* (the value cannot fit
 the range) and *incompatible notches* (the value is off the grid's step:
-allow rounding with `policy<snap>()` or `with_snap()`). Because the overload
+allow rounding with `policy<snap>()` or a rounding policy). Because the overload
 is deleted, `std::is_constructible`, `std::convertible_to` and `requires`
 probes answer `false`, so insides work in `std::variant`, `std::optional` and
 other code that probes convertibility. For the two grids' numbers, ask:

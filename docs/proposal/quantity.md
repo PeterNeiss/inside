@@ -237,16 +237,21 @@ comparing quantities of different kinds`.
 A quantity's stores are its number's stores: `++q`, `q += r` and the
 construction from a number apply `Rep`'s policy, and `q.on_wrap(f)`,
 `q.on_clamp(f)` and `q.on_error(f)` attach the number paper's actions.
-`Q::try_make(v)`, `clamp_cast<Q>`, `wrap_cast<Q>`, `value_cast` and
-`try_value_cast` convert into a quantity type, and
-`conversion_overflows<Q>(v)` and its siblings answer for a number `v` in `Q`'s
-unit.
+`q.policy<F>()` and `q.policy(ec)` store under `Rep`'s policy plus `F`.
+`Q::try_make(v)`, the flag constructor `Q{x, clamp}` (a flag or
+`make_policy<F>(ec)` for one store, `x` a number or a quantity converted
+exactly), `checked_cast<Q>(x)`, `value_cast` and `try_value_cast` convert into
+a quantity type, and `conversion_overflows<Q>(v)` and its siblings answer for
+a number `v` in `Q`'s unit. `min`, `max` and `midpoint` run in the common unit,
+as `+` does, and the free arithmetic takes a per-call policy as in the number
+paper (`div(d, t, round_floor)`). Every function of the number paper has a
+quantity form.
 
 # Proposed interface
 
 The names are the reference implementation's. `@*unit*@`, `@*spec*@` and
 `@*origin*@` are exposition-only tag types: empty objects whose type carries a
-`unit`, a `quantity_spec` or a `point_origin` as a value. `@*grid-number*@` is
+`unit`, a `quantity_spec` or a `point_origin` as a value. `grid_number` is
 the number paper's.
 
 ```cpp
@@ -255,7 +260,7 @@ namespace std::units {
   struct base_dimension { string_view Name; };                 // a dimension of your own
   struct dimension;                                           // exponents of L M T I Θ N J and of base dimensions
   struct magnitude;                                           // an exact rational times a power of π
-  template<@*grid-number*@ R> constexpr @*magnitude*@ mag;          // R
+  template<grid_number R> constexpr @*magnitude*@ mag;              // R
   inline constexpr @*magnitude*@ mag_pi;                          // π
 
   // units
@@ -298,11 +303,14 @@ namespace std::units {
     template<@*unit*@ U> constexpr auto in(U) const;                 // Rep's grid rescaled; same raw
     template<@*unit*@ U> constexpr auto numerical_value_in(U) const;
     template<class T> constexpr explicit(@*see below*@) operator T() const; // dimension one: its number
+    template<class T, policy_flag Round = none> constexpr T as() const;     // dimension one; also to<T>()
     template<policy_flag F = none, class V> static constexpr auto try_make(const V&);
+    template<class X, class Pol> constexpr quantity(const X& x, Pol p);     // x in R's unit, or a quantity
+    template<policy_flag F = none> constexpr auto policy();       // also policy(errc&)
     template<class F> constexpr auto on_clamp(F f);               // also on_wrap, on_error
     // ++, --, compound assignment: a store by Rep's policy
   };
-  // quantity + - % <=> == quantity: in the common unit
+  // quantity + - % <=> == quantity, min, max, midpoint: in the common unit
   // quantity * / quantity, inside * @*unit*@, quantity * @*unit*@: units and kinds multiply
   // quantity * / inside: the number scales
   template<class Spec, reference R, class V> constexpr auto quantity_cast(const quantity<R, V>&);
@@ -310,15 +318,17 @@ namespace std::units {
   template<auto U, class Rep2, reference R, class V> constexpr auto value_cast(const quantity<R, V>&);
   template<class Q, reference R, class V> constexpr Q value_cast(const quantity<R, V>&);
   // try_value_cast<...>(q): the same through Rep2::try_make, an expected
-  template<class Q, class X> constexpr Q clamp_cast(const X&);  // also wrap_cast
+  template<class Q, class X> constexpr Q checked_cast(const X& x);  // x in Q's unit, or a quantity
   template<class Q, class N> constexpr bool conversion_overflows(N v) noexcept; // v in Q's unit; also
                                                                 // conversion_rounds, conversion_loses
   template<reference A, class VA, reference B, class VB, class... Args>
     constexpr auto divmod(const quantity<A, VA>&, const quantity<B, VB>&, Args&&...); // in the common unit
+  // add, sub, mod (common unit), mul, div (units multiply; or a quantity and a number):
+  // the number paper's free arithmetic, Args a flag, a policy or an errc&
 
   // points
   struct point_origin {                                       // absolute, or at an exact offset from one
-    string_view Name; dimension Dim; @*origin*@ Absolute; @*grid-number*@ Offset;
+    string_view Name; dimension Dim; @*origin*@ Absolute; grid_number Offset;
   };
   template<const point_origin& O> constexpr @*origin*@ origin_c;
   template<reference R, @*origin*@ O, class Rep>
@@ -338,6 +348,10 @@ namespace std::units {
 
   // the catalog: namespaces isq, si, international (contents in R1)
 }
+namespace std {
+  template<units::reference R, class Rep> struct hash<units::quantity<R, Rep>>;           // the number's
+  template<units::reference R, class Rep> struct numeric_limits<units::quantity<R, Rep>>; // limits as quantities
+}
 ```
 
 ## Semantics
@@ -352,7 +366,7 @@ namespace std::units {
 | `a * b`, `a / b` | units, kinds and numbers multiply or divide | `expected` iff `b`'s grid holds 0; a result of dimension one converts to its `inside` |
 | `quantity_cast<S>(q)` | the same number, kind `S` | down or sideways within one kind; never across an `is_kind` boundary |
 | `value_cast<Rep2>(q)`, `value_cast<u, Rep2>(q)` | the exact value, stored by `Rep2` | `try_value_cast` reports through `expected` |
-| `clamp_cast<Q>(x)`, `wrap_cast<Q>(x)` | `x` in `Q`'s unit, saturated or folded into `Q`'s number | `x` a quantity of `Q`'s dimension, or a number in `Q`'s unit |
+| `Q{x, clamp}`, `Q{x, wrap}` | `x` in `Q`'s unit, saturated or folded into `Q`'s number | `x` a quantity of `Q`'s dimension, or a number in `Q`'s unit |
 | `Q::try_make<F>(v)`, `q.on_wrap(f) += r` etc. | as for `Q::rep` | the number paper's policies and actions |
 | `divmod(a, b, …)` | `{q, r}` in the common unit | as the number paper's `divmod` |
 | `point<u>(v)` | a point counted from `u`'s origin | |

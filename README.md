@@ -219,6 +219,10 @@ Library options:
 
 The math engine and bare-metal builds are covered in
 [docs/freestanding.md](docs/freestanding.md) and [docs/math.md](docs/math.md).
+The macros `BEMAN_INSIDE_MATH_NO_FP` and `BEMAN_INSIDE_MATH_INSTRUMENT` change
+the math functions' inline code, so every translation unit of a program needs
+the same value; `BEMAN_INSIDE_NO_STRING` and `BEMAN_INSIDE_NO_UNITS` only drop
+parts of the single header and may differ.
 
 **FMA on x86-64.** The math engine's kernels use `std::fma`; baseline x86-64
 emulates it in software, several times slower (results don't change).
@@ -334,7 +338,9 @@ include an appropriate `beman.inside` header from your source code.
 
 The math is in `<beman/inside/math.hpp>` and the units in
 `<beman/inside/units.hpp>`. Opt-in parts live in their component's folder:
-text in `<beman/inside/inside/io.hpp>` and `<beman/inside/units/io.hpp>`, the
-math of quantities in `<beman/inside/units/math.hpp>`, the constants in
+text in `<beman/inside/inside/io.hpp>` and `<beman/inside/units/io.hpp>`,
+sampling in `<beman/inside/inside/random.hpp>` and
+`<beman/inside/units/random.hpp>`, the math of quantities in
+`<beman/inside/units/math.hpp>`, the constants in
 `<beman/inside/math/constants.hpp>` and `<beman/inside/units/constants.hpp>`.
 The single header holds all of them.

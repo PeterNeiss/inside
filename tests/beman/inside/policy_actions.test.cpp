@@ -161,7 +161,7 @@ TEST(PolicyActionsTest, on_clamp_action_receives_overshoot) {
     u100 x{0};
     imax overshoot = 0;
     x.on_clamp([&](auto& self, auto over) {
-        overshoot = over; // integer RHS: over is imax
+        overshoot = as<imax>(over); // an inside for every source
         (void)self;
     })             = 150;
     ASSERT_EQ(x, 100);
@@ -345,4 +345,80 @@ TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_every_source) {
     imax c                                             = 0;
     s.on_wrap([&](auto&, auto k) { c = as<imax>(k); }) = 130;
     EXPECT_EQ(c, 2);
+}
+
+// The on_clamp overshoot is an inside for every source kind, as the wrap carry
+// is: the source minus the limit, exactly. Its grid holds every value of the
+// source kind minus either limit.
+TEST(PolicyActionsTest, on_clamp_overshoot_is_an_inside_for_every_source) {
+    using pct = inside<{0, 100}>;
+    auto run  = [](auto src, imax expected) {
+        pct  x{0};
+        imax got = -1;
+        x.on_clamp([&](auto&, auto over) {
+            static_assert(insidable<decltype(over)>);
+            got = as<imax>(over);
+        })       = src;
+        EXPECT_EQ(x, 100);
+        EXPECT_EQ(got, expected);
+    };
+    run(150, 50);
+    run(std::uint8_t{200}, 100);
+    run(150.0, 50);
+    run(rational{150}, 50);
+    run(150_ins, 50);
+
+    // An integer source's overshoot grid is its type's limits minus the limits.
+    pct y{0};
+    y.on_clamp([](auto&, auto over) {
+        static_assert(grid_of<decltype(over)> == grid{-100, 255}); // uint8_t into {0, 100}
+    }) = std::uint8_t{101};
+
+    // Below the range the overshoot is negative; it keeps the source's fraction.
+    using q4 = inside<{{0, 10}, per<4>}>;
+    q4   f{0};
+    bool exact                                                      = false;
+    f.on_clamp([&](auto&, auto over) { exact = over == 2.25_ins; }) = 12.25;
+    EXPECT_EQ(f, 10);
+    EXPECT_TRUE(exact);
+    f.on_clamp([&](auto&, auto over) { exact = over == -0.5_ins; }) = -0.5;
+    EXPECT_EQ(f, 0);
+    EXPECT_TRUE(exact);
+}
+
+// The overshoot is exact for every source: a double's fraction below the
+// target's notch, a rational's, a long double's past a double's precision, and
+// a double past the imax range. ±∞ reports the overshoot grid's end.
+TEST(PolicyActionsTest, on_clamp_overshoot_is_exact) {
+    using pct = inside<{0, 100}>;
+    pct  x{0};
+    bool exact = false;
+    // 150.7 is not 1507/10 in binary: the overshoot is the double minus 100.
+    x.on_clamp([&](auto&, auto over) { exact = over == inside<{{0, 64}, 0x1p-45}>{150.7 - 100.0}; }) = 150.7;
+    EXPECT_TRUE(exact);
+
+    inside<{0, 100}, round_nearest> r{0};
+    r.on_clamp([&](auto&, auto over) { exact = over == inside<{{0, 64}, per<6>}>{rational{301, 6}}; }) =
+        rational{901, 6};
+    EXPECT_TRUE(exact);
+
+    if constexpr (std::numeric_limits<long double>::digits > 53) {
+        const long double ld = 150.25L + 0x1p-55L; // past a double's precision at 150
+        x.on_clamp([&](auto&, auto over) { exact = over == inside<{{0, 64}, 0x1p-55}>{50.25L + 0x1p-55L}; }) = ld;
+        EXPECT_TRUE(exact);
+    }
+
+    using wide = inside<{{-0x1p70, 0x1p70}, max_denominator{3}}>;
+    wide w{0};
+    w.on_clamp([&](auto&, auto over) { exact = over == inside<{-0x1p71, 0}>{-0x1p70}; }) = -0x1p71;
+    EXPECT_TRUE(exact);
+
+    x.on_clamp([&](auto&, auto over) { exact = over == just<upper_of<decltype(over)>>; }) =
+        std::numeric_limits<double>::infinity();
+    EXPECT_TRUE(exact);
+    EXPECT_EQ(x, 100);
+    x.on_clamp([&](auto&, auto over) { exact = over == just<lower_of<decltype(over)>>; }) =
+        -std::numeric_limits<double>::infinity();
+    EXPECT_TRUE(exact);
+    EXPECT_EQ(x, 0);
 }

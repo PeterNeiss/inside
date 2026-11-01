@@ -15,9 +15,9 @@
 // policy — the runtime policy carrier.
 //   detail::call_policy<F, E> — compile-time flags F plus an optional error_ref E holding a
 //                   beman::inside::errc& (EBO so the no-error-code form is zero-sized).
-//   make_policy<F>(), and as_call_policy, which turns a named flag passed as a
-//                   call's policy (div(a, b, round_floor)) into make_policy<F>().
-// The proxies that b.policy(), with_snap() and on_*() return are in
+//   make_policy<F>(), and with_flags<O>(pol), a call's policy (a flag or a
+//                   call_policy) under the flags O, keeping its errc&.
+// The proxies that b.policy<F>(), b.policy(ec) and on_*() return are in
 // inside/detail/policy_ref.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {
@@ -140,17 +140,17 @@ constexpr std::expected<Result, errc> report_or_unexpected(P&& policy, errc code
 } // namespace detail
 
 //---------------------------------------------------------------------------
-// as_call_policy — a call's trailing policy argument as a policy object: a
-// named flag (div(a, b, round_floor), B{v, round_floor}) is make_policy<F>();
-// a policy passes through.
+// with_flags<O>(pol) — a call's one-shot policy (a named flag, or a
+// call_policy from make_policy<F>() / make_policy<F>(ec)) as a call_policy
+// with the flags O, keeping its errc& if it has one.
 //---------------------------------------------------------------------------
 namespace detail {
-template <class Pol>
-constexpr decltype(auto) as_call_policy(Pol&& pol) {
-    if constexpr (flag_like<Pol>)
-        return make_policy<std::remove_cvref_t<Pol>::value>();
+template <policy_flag O, class Pol>
+constexpr auto with_flags(Pol&& pol) {
+    if constexpr (uses_error_ref<std::remove_cvref_t<Pol>>)
+        return call_policy<O, error_ref>{pol.Code};
     else
-        return std::forward<Pol>(pol);
+        return call_policy<O, empty_ref>{};
 }
 } // namespace detail
 } // namespace beman::inside

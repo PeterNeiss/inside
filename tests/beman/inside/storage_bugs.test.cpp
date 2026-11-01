@@ -214,22 +214,22 @@ using Int10     = beman::inside::inside<{0, 10}>;
 TEST(StorageBugsTest, dyadic_source_into_integer_grid_reads_the_value) {
     using namespace beman::inside;
     const RealWide half = RealWide{2.5};
-    EXPECT_EQ(detail::to_value(clamp_cast<Int10, round_nearest>(half)), 3);
+    EXPECT_EQ(detail::to_value(Int10{half, clamp | round_nearest}), 3);
     Int10 i{0};
-    i.with_snap<round_nearest>() = half;
+    i.policy<round_nearest>() = half;
     EXPECT_EQ(detail::to_value(i), 3);
-    Int10 j = (half * just<2>).with_snap();
+    Int10 j = (half * just<2>).policy<snap>();
     EXPECT_EQ(detail::to_value(j), 5);
 }
 
 TEST(StorageBugsTest, one_shot_policy_applies_to_dyadic_target) {
     using namespace beman::inside;
     const RealWide big = RealWide{7.5}, low = RealWide{-1.0};
-    EXPECT_EQ(rational{clamp_cast<RealSmall>(big)}, rational{4.0});
-    EXPECT_EQ(rational{clamp_cast<RealSmall>(low)}, rational{0.0});
-    EXPECT_EQ(rational{wrap_cast<RealSmall>(big)}, rational{7.5 - 4.25});
-    RealSmall r    = RealSmall{1.0};
-    r.with_clamp() = big;
+    EXPECT_EQ(rational{(RealSmall{big, clamp})}, rational{4.0});
+    EXPECT_EQ(rational{(RealSmall{low, clamp})}, rational{0.0});
+    EXPECT_EQ(rational{(RealSmall{big, wrap})}, rational{7.5 - 4.25});
+    RealSmall r       = RealSmall{1.0};
+    r.policy<clamp>() = big;
     EXPECT_EQ(rational{r}, rational{4.0});
 }
 
@@ -247,10 +247,10 @@ TEST(StorageBugsTest, scalar_comparison_does_not_truncate_the_scalar) {
     using namespace beman::inside;
     inside<{-10, 10}> one{1}, minus_one{-1};
     static_assert(detail::integer_value_storage<decltype(one)>);
-    EXPECT_FALSE(one == 1.5);
-    EXPECT_TRUE(one < 1.5);
-    EXPECT_TRUE(minus_one > -1.5);
-    EXPECT_TRUE(one == 1.0);
+    EXPECT_FALSE(one == 1.5_r);
+    EXPECT_TRUE(one < 1.5_r);
+    EXPECT_TRUE(minus_one > -1.5_r);
+    EXPECT_TRUE(one == 1.0_r);
     EXPECT_TRUE(one < std::numeric_limits<std::uint64_t>::max());
 }
 
@@ -295,22 +295,24 @@ TEST(StorageBugsTest, uint64_source_above_int64_max) {
     }();
     static_assert(checked_ok.first == 3 && checked_ok.second == errc::overflow);
 
-    static_assert(clamp_cast<inside<{{0, 10}, 1}>>(1ull << 63).as<int>() == 10);
-    static_assert(clamp_cast<inside<{{-10, 10}, 1}>>(big).as<int>() == 10);
+    static_assert(inside<{{0, 10}, 1}>{1ull << 63, clamp}.as<int>() == 10);
+    static_assert(inside<{{-10, 10}, 1}>{big, clamp}.as<int>() == 10);
 
     // (2^64 − 1 − Lower) mod 21 + Lower
-    static_assert(wrap_cast<inside<{{-10, 10}, 1}>>(big).as<long>() == static_cast<long>((big % 21 + 10) % 21) - 10);
-    static_assert(wrap_cast<inside<{{5, 9}, 1}>>(big).as<long>() == static_cast<long>((big - 5) % 5) + 5);
-    static_assert(wrap_cast<inside<{{5, 9}, 1}>>(-7).as<int>() == 8);
+    static_assert(inside<{{-10, 10}, 1}>{big, wrap}.as<long>() == static_cast<long>((big % 21 + 10) % 21) - 10);
+    static_assert(inside<{{5, 9}, 1}>{big, wrap}.as<long>() == static_cast<long>((big - 5) % 5) + 5);
+    static_assert(inside<{{5, 9}, 1}>{-7, wrap}.as<int>() == 8);
 
-    // The on_clamp overshoot saturates instead of overflowing.
+    // The on_clamp overshoot is an inside over the source type's limits minus
+    // the target's, so it is exact (it saturated at imax before).
     inside<{{-10, 10}, 1}> c{0};
-    imax                   overshoot                  = 0;
-    c.on_clamp([&](auto&, imax o) { overshoot = o; }) = big;
+    bool                   exact                                = false;
+    c.on_clamp([&](auto&, auto o) { exact = (o == big - 10); }) = big;
     EXPECT_EQ(c.as<int>(), 10);
-    EXPECT_EQ(overshoot, std::numeric_limits<imax>::max());
-    c.on_clamp([&](auto&, imax o) { overshoot = o; }) = std::numeric_limits<imax>::max();
-    EXPECT_EQ(overshoot, std::numeric_limits<imax>::max() - 10);
+    EXPECT_TRUE(exact);
+    c.on_clamp([&](auto&, auto o) { exact = (o == std::numeric_limits<imax>::max() - 10); }) =
+        std::numeric_limits<imax>::max();
+    EXPECT_TRUE(exact);
 }
 
 //---------------------------------------------------------------------------
@@ -344,7 +346,8 @@ TEST(StorageBugsTest, huge_double_source) {
     static_assert(rational{third{-1e300}} == 0);
 
     constexpr inside<{{0, 10}, per<4>}> x{1};
-    static_assert(x < 0x1p64 && x > -0x1p64 && x < 1e300 && !(x == 1e300));
+    static_assert(x < just<18446744073709551616_g> && x > -just<18446744073709551616_g> && x < just<1e300_g> &&
+                  !(x == just<1e300_g>));
     static_assert(conversion_overflows<inside<{0, 10}>>(0x1p64));
     static_assert(!conversion_rounds<inside<{0, 10}>>(0x1p64));
 
@@ -358,7 +361,7 @@ TEST(StorageBugsTest, huge_double_source) {
 TEST(StorageBugsTest, clamp_wrap_from_disjoint_integral_type) {
     static_assert(inside<{{1000, 2000}, 1}, clamp>{std::uint8_t{5}}.as<int>() == 1000);
     static_assert(inside<{{1000, 1009}, 1}, wrap>{std::uint8_t{5}}.as<int>() == 1005);
-    static_assert(clamp_cast<inside<{1000, 2000}>>(std::uint8_t{5}).as<int>() == 1000);
+    static_assert(inside<{1000, 2000}>{std::uint8_t{5}, clamp}.as<int>() == 1000);
 }
 
 //---------------------------------------------------------------------------
@@ -429,7 +432,7 @@ TEST(StorageBugsTest, grid_past_int64_constructs_compares_and_converts) {
     static_assert(U64{kUM}.to<unsigned long long>().value() == kUM);
     static_assert(U64{3}.to<int>().value() == 3);
     static_assert(U64{kUM}.to<long long>().error() == errc::overflow);
-    static_assert(clamp_cast<Small>(U64{kUM}) == 10);
+    static_assert(Small{U64{kUM}, clamp} == 10);
 
     constexpr auto narrowed = [] {
         errc  ec{};

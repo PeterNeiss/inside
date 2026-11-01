@@ -51,7 +51,7 @@ TEST(WideGridTest, construction_from_scalars) {
     EXPECT_TRUE(a == 5);
     EXPECT_TRUE(a.raw() == detail::wide_uint<2>{5 * p32});
     fine b = 0.5;
-    EXPECT_TRUE(b == 0.5);
+    EXPECT_TRUE(b == 0.5_r);
     fine c = tick; // the first notch
     EXPECT_TRUE(c == tick);
     EXPECT_TRUE(c.raw() == detail::wide_uint<2>{1});
@@ -60,7 +60,7 @@ TEST(WideGridTest, construction_from_scalars) {
     EXPECT_TRUE(top.raw() == (detail::wide_uint<2>{1} << 66));
 
     fine_signed s = -3.25;
-    EXPECT_TRUE(s == -3.25);
+    EXPECT_TRUE(s == -3.25_r);
     EXPECT_TRUE(s < 0);
 }
 
@@ -110,14 +110,14 @@ TEST(WideGridTest, assignment_between_insides) {
     EXPECT_EQ(n.as<imax>(), 42);
     // wide → wide of another lattice.
     fine_signed s = b;
-    EXPECT_TRUE(s == 41.75);
+    EXPECT_TRUE(s == 41.75_r);
 }
 
 TEST(WideGridTest, comparisons) {
     fine a = 1.5, b = 2;
     EXPECT_TRUE(a < b && b > a && a != b);
-    EXPECT_TRUE((a == 1.5 && a == rational{3, 2}));
-    EXPECT_TRUE(a > 1 && a < 2u && a < 1e30 && a > -1e30);
+    EXPECT_TRUE((a == 1.5_r && a == rational{3, 2}));
+    EXPECT_TRUE(a > 1 && a < 2u && a < just<1e30_g> && a > -just<1e30_g>);
     EXPECT_TRUE((a == inside<{{0, 10}, per<2>}>{1.5}));
     EXPECT_TRUE((a < inside<{0, 10}>{2}));
     fine_signed s = -1.5;
@@ -127,20 +127,20 @@ TEST(WideGridTest, comparisons) {
 }
 
 TEST(WideGridTest, arithmetic) {
-    fine a = 1.5, b = rational{1} + tick;
+    fine a = 1.5, b = *(rational{1} + tick);
     auto sum = a + b; // {0, 2^35}, notch 2^-32
     static_assert(detail::wide_index_storage<decltype(sum)>);
     EXPECT_TRUE(sum == (rational{5, 2} + tick).value());
     auto diff = a - b; // {−2^34, 2^34}
     EXPECT_TRUE(diff == (rational{1, 2} - tick).value());
     auto neg = -a;
-    EXPECT_TRUE(neg == -1.5);
+    EXPECT_TRUE(neg == -1.5_r);
     auto prod = a * inside<{0, 3}>{3}; // {0, 3·2^34}, notch 2^-32
     static_assert(detail::wide_index_storage<decltype(prod)>);
-    EXPECT_TRUE(prod == 4.5);
+    EXPECT_TRUE(prod == 4.5_r);
     // narrow + wide and back.
     auto mixed = inside<{0, 100}>{7} + a;
-    EXPECT_TRUE(mixed == 8.5);
+    EXPECT_TRUE(mixed == 8.5_r);
 }
 
 TEST(WideGridTest, uint64_difference_widens) {
@@ -186,11 +186,11 @@ TEST(WideGridTest, exact_read_out) {
 TEST(WideGridTest, same_notch_assignment) {
     // A wider sum maps back by a raw shift; out of range runs the policy.
     fine f = fine{1.5} + fine{2.25};
-    EXPECT_TRUE(f == 3.75);
+    EXPECT_TRUE(f == 3.75_r);
     fine_signed g = fine{1.5} + fine{2.25}; // offset raw (Lower ≠ 0)
-    EXPECT_TRUE(g == 3.75);
+    EXPECT_TRUE(g == 3.75_r);
     g = fine_signed{-1.5} - fine{2.25};
-    EXPECT_TRUE(g == -3.75);
+    EXPECT_TRUE(g == -3.75_r);
     const auto over = fine{rational{p34}} + fine{tick};
     EXPECT_THROW(f = over, inside_error);
     fine_clamp c = 0;
@@ -229,7 +229,7 @@ TEST(WideGridTest, to_string) {
 }
 
 TEST(WideGridTest, parse) {
-    EXPECT_TRUE(parse<fine>("1.5").value() == 1.5);
+    EXPECT_TRUE(parse<fine>("1.5").value() == 1.5_r);
     // 2^33 + 2^-32 needs a 66-bit numerator: the exact fallback parses it.
     const fine odd = fine::from_raw((detail::wide_uint<2>{1} << 65) + detail::wide_uint<2>{1});
     EXPECT_TRUE(parse<fine>("36893488147419103233/4294967296").value() == odd);
@@ -309,17 +309,17 @@ TEST(WideGridTest, modulo) {
 }
 
 TEST(WideGridTest, clamp_and_wrap_actions) {
-    // on_clamp: the overshoot is shaped like the builtin paths' (imax for an
-    // integral source, an inside for an inside source).
-    fine c                                       = 0;
-    imax over                                    = 0;
-    c.on_clamp([&](auto&, imax o) { over = o; }) = p34 + 5;
+    // on_clamp: the overshoot is an inside for every source, as on the builtin
+    // paths.
+    fine c                                                 = 0;
+    imax over                                              = 0;
+    c.on_clamp([&](auto&, auto o) { over = as<imax>(o); }) = p34 + 5;
     EXPECT_TRUE(c == p34);
     EXPECT_EQ(over, 5);
-    rational frac_over{0};
-    c.on_clamp([&](auto&, rational o) { frac_over = o; }) = rational{-1, 2};
+    bool frac_ok                                                         = false;
+    c.on_clamp([&](auto&, auto o) { frac_ok = (o == rational{-1, 2}); }) = rational{-1, 2};
     EXPECT_TRUE(c == 0);
-    EXPECT_TRUE((frac_over == rational{-1, 2}));
+    EXPECT_TRUE(frac_ok);
     bool got_inside = false;
     c.on_clamp([&](auto&, auto o) { got_inside = insidable<decltype(o)> && o == 6; }) =
         inside<{0, umax{1} << 40}>{p34 + 6};
@@ -332,6 +332,108 @@ TEST(WideGridTest, clamp_and_wrap_actions) {
     w.on_wrap([&](auto&, auto q) { carry = as<imax>(q); }) = 3 * p34 + 2;
     EXPECT_EQ(carry, 3);
     EXPECT_TRUE(w == (rational{2} - (rational{3} * tick).value()).value());
+}
+
+// on_clamp and on_wrap on a continuous grid past 64 bits (fraction storage):
+// clamp stores the limit and reports the overshoot, wrap folds by the span
+// and reports the carry.
+TEST(WideGridTest, hooks_on_a_wide_continuous_grid) {
+    using C = inside<{{-0x1p70, 0x1p70}, max_denominator{3}}>;
+    using B = inside<{{-0x1p80, 0x1p80}, max_denominator{3}}>;
+    static_assert(detail::fraction_storage<C>);
+
+    // From an inside the overshoot is exact.
+    C    x{0};
+    bool exact = false;
+    x.on_clamp([&](auto&, auto o) {
+        static_assert(insidable<decltype(o)>);
+        exact = (o == B{0x1p70} + B{rational{1, 3}});
+    })         = B{0x1p71} + B{rational{1, 3}};
+    EXPECT_TRUE(exact);
+    EXPECT_TRUE(x == B{0x1p70});
+
+    // From a double it is exact too, past the imax range.
+    bool from_double                                                  = false;
+    x.on_clamp([&](auto&, auto o) { from_double = o == B{-0x1p70}; }) = -0x1p71;
+    EXPECT_TRUE(x == B{-0x1p70});
+    EXPECT_TRUE(from_double);
+
+    // The period is the span, 2^71.
+    imax carry = 7;
+    x.on_wrap([&](auto&, auto k) {
+        static_assert(insidable<decltype(k)>);
+        carry = as<imax>(k);
+    })         = B{0x1p71} + B{rational{1, 3}};
+    EXPECT_EQ(carry, 1);
+    EXPECT_TRUE((x == B{rational{1, 3}}));
+    x.on_wrap([&](auto&, auto k) { carry = as<imax>(k); }) = -0x1p72;
+    EXPECT_EQ(carry, -2);
+    EXPECT_TRUE(x == B{0});
+    x.on_wrap([&](auto&, auto k) { carry = as<imax>(k); }) = 0x1p72 + 0x1p70;
+    EXPECT_EQ(carry, 3);
+    EXPECT_TRUE(x == B{-0x1p70});
+}
+
+// A source past the 64-bit rational into a rational inside: both hooks.
+TEST(WideGridTest, hooks_on_a_rational_inside_from_a_wide_source) {
+    using R = inside<{{-10, 10}, max_denominator{4}}>;
+    using B = inside<{{-0x1p80, 0x1p80}, max_denominator{3}}>;
+    static_assert(detail::rational_storage<R>);
+    R    r{0};
+    bool exact = false;
+    r.on_clamp([&](auto&, auto o) {
+        static_assert(insidable<decltype(o)>);
+        exact = (o == B{0x1p70} - B{10});
+    })         = B{0x1p70};
+    EXPECT_TRUE(exact);
+    EXPECT_TRUE(r == 10);
+
+    // (2^70 + 1/3 + 10) / 20 turns: the carry saturates at the imax range.
+    imax carry                                             = 0;
+    r.on_wrap([&](auto&, auto k) { carry = as<imax>(k); }) = B{0x1p70} + B{rational{1, 3}};
+    EXPECT_EQ(carry, std::numeric_limits<imax>::max());
+    EXPECT_TRUE((r == rational(13, 3)));
+}
+
+// The wrap carry grid is computed on grid numbers, so a grid past 64 bits has
+// one: an int never leaves {-2^70, 2^70}, so its carry is always 0.
+TEST(WideGridTest, wrap_carry_grid_past_64_bits) {
+    using W = inside<{-0x1p70, 0x1p70}, wrap>;
+    W    w{0};
+    imax c = 7;
+    w.on_wrap([&](auto&, auto k) {
+        static_assert(grid_of<decltype(k)> == grid{0, 0});
+        c = as<imax>(k);
+    })     = 3;
+    EXPECT_EQ(c, 7); // in range: no wrap
+    EXPECT_TRUE(w == 3);
+}
+
+// A double past a wide grid's magnitude folds by its exact value, not a
+// stand-in just past the grid (which gave 4 for -2^72 below).
+TEST(WideGridTest, wrap_of_a_huge_double_folds_its_exact_value) {
+    using N = inside<{-0x1p70, 0x1p70}, wrap>; // period 2^71 + 1
+    EXPECT_TRUE(N{-0x1p72} == 2);
+    EXPECT_TRUE(N{-0x1p71} == 1);
+    EXPECT_TRUE(N{0x1p71} == -1);
+    EXPECT_TRUE(N{0x1p72} == -2);
+    using C = inside<{{-0x1p70, 0x1p70}, max_denominator{3}}, wrap>; // period 2^71
+    using B = inside<{{-0x1p80, 0x1p80}, max_denominator{3}}>;
+    EXPECT_TRUE(C{0x1p72 + 0x1p70} == B{-0x1p70});
+}
+
+// An operand past 64 bits whose sum with a continuous operand fits a 64-bit
+// rational: the wide kernels add, and the sum stores as a rational.
+TEST(WideGridTest, wide_operand_into_a_rational_sum) {
+    using L = inside<{18446744073709551616_g, 18446744073709551620_g}>; // 2^64 … 2^64 + 4
+    using R = inside<{{-18446744073709551616_g, -18446744073709551612_g}, max_denominator{3}}>;
+    static_assert(detail::wide_valued<L>);
+    static_assert(detail::rational_storage<decltype(L{} + R{})>);
+    const L l{18446744073709551617_g};
+    const R r{-18446744073709551616_g};
+    EXPECT_TRUE(l + r == 1);
+    EXPECT_TRUE(r + l == 1);
+    EXPECT_TRUE(l - (-r) == 1);
 }
 
 // Limb boundaries, where the removed 128-bit helpers kept their edge cases:
@@ -401,7 +503,7 @@ TEST(WideGridTest, qformat_division_past_64_bits) {
 
 // The wide paths are constexpr.
 namespace {
-static_assert(fine{1.5} + fine{2} == 3.5);
+static_assert(fine{1.5_r} + fine{2} == 3.5_r);
 static_assert(fine{1.5} < fine_signed{2});
 static_assert(-fine{1} == -1);
 static_assert([] {

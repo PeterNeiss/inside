@@ -42,8 +42,8 @@ int main()
 
   // Per-operation override on an otherwise-checked value.
   checked_100 p{50};
-  p.with_clamp() = 150;
-  std::cout << "with_clamp() 150 -> " << p << "\n";
+  p.policy<clamp>() = 150;
+  std::cout << "policy<clamp>() 150 -> " << p << "\n";
 
   return 0;
 }

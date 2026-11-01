@@ -87,7 +87,7 @@ TEST(BugHunt20261013, value_index_past_int64_raw) {
 // so a requires-probe answers whether the call compiles.
 namespace {
 template <class B, class S>
-constexpr bool can_clamp_cast = requires(S s) { clamp_cast<B>(s); };
+constexpr bool can_clamp_cast = requires(S s) { B{s, clamp}; };
 template <class B, class S>
 constexpr bool can_checked_cast = requires(S s) { checked_cast<B>(s); };
 template <class O, class I>
@@ -104,7 +104,7 @@ TEST(BugHunt20261013, casts_and_math_are_constraint_friendly) {
     static_assert(can_abs_into<digit, small> && !can_abs_into<inside<{1, 10}>, small>);
     static_assert(can_pown<5, digit> && can_pown<0, inside<{{-2, 2}, max_denominator{1000}}>>);
     EXPECT_EQ(math::pown<3>(small{-2}), -8_ins);
-    EXPECT_EQ(clamp_cast<digit>(small{-3}), 0_ins);
+    EXPECT_EQ((digit{small{-3}, clamp}), 0_ins);
 }
 
 // A flag (`clamp`, `round_floor`) or a const policy(ec) as the constructor's

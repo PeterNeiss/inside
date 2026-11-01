@@ -5,7 +5,7 @@
 //   - Signed Q1.14 sample storage (1/16384 notch)
 //   - Q-format gain inside; per-frame mix runs entirely in integer notch math
 //   - an `on_clamp` hook for peak metering
-//   - `clamp_cast` to push the mixed value back into the sample grid
+//   - `sample_t{v, clamp}` to push the mixed value back into the sample grid
 //   - `units::pow_base_into` / `mul_into`: one rounding straight into the
 //     target type, never a wide product narrowed afterwards
 //   - Units: channel gains in dB (a level unit of our own, as in
@@ -109,19 +109,19 @@ int main() {
 
     std::cout << "\nclip events:     " << clip_events << "\n";
 
-    // Standalone: clamp_cast pushes a wider-grid inside into sample_t.
+    // Standalone: the clamp flag pushes a wider-grid inside into sample_t.
     // Common idiom inside std::transform over a sum bus.
     using mixbus_t = inside<{{-4, 4}, per<16384>}, round_nearest>;
     mixbus_t hot;
-    hot.with_clamp() = 2.5;
-    std::cout << "\nclamp_cast<sample_t>(mixbus 2.5) = " << clamp_cast<sample_t>(hot) << "\n";
+    hot.policy<clamp>() = 2.5;
+    std::cout << "\nsample_t{mixbus 2.5, clamp} = " << sample_t{hot, clamp} << "\n";
 
-    // `add_all` folds N inputs exactly (the grid widens); `clamp_cast` clips the
+    // `add_all` folds N inputs exactly (the grid widens); the clamp flag clips the
     // sum back into the bus — the audio-mix pipeline in one expression.
     using bus_t     = inside<{-3, 3}, clamp>;
     using channel_t = inside<{-1, 1}>;
-    std::cout << "clamp_cast<bus_t>(add_all(1,-1,1,1)) = "
-              << clamp_cast<bus_t>(add_all(channel_t{1}, channel_t{-1}, channel_t{1}, channel_t{1})) << "\n";
+    std::cout << "bus_t{add_all(1,-1,1,1), clamp} = "
+              << bus_t{add_all(channel_t{1}, channel_t{-1}, channel_t{1}, channel_t{1}), clamp} << "\n";
 
     if (clip_events != 10 || db_to_linear(level[2]) != gain_t{rational{32846, 65536}})
         return 1;

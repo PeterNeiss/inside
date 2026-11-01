@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Internal — include "beman/inside/inside.hpp" (the umbrella), not this directly.
-#ifndef BEMAN_INSIDE_INSIDE_DETAIL_COMPARE_HPP
-#define BEMAN_INSIDE_INSIDE_DETAIL_COMPARE_HPP
+#ifndef BEMAN_INSIDE_INSIDE_COMPARE_HPP
+#define BEMAN_INSIDE_INSIDE_COMPARE_HPP
 
 #include <beman/inside/inside/detail/config.hpp>
 
@@ -13,8 +12,9 @@
 
 //---------------------------------------------------------------------------
 // Comparisons of insides: across grids (by value index when both fit imax,
-// else exactly) and against scalars (integers, floating points of any width,
-// rationals).
+// else exactly) and against integers and rationals. A floating point is a
+// deleted overload (0.1 is not 1/10 in binary). The inside type itself comes
+// with it, so this is the smallest public header that declares an inside.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 //---------------------------------------------------------------------------
@@ -44,9 +44,8 @@ inline constexpr imax index_cmp_bias = [] {
 }();
 
 // Inside values are finite and exact, so they are always ordered: <=> of two
-// insides, or of an inside and an integer, is a strong_ordering whatever the
-// storage; against a floating scalar it is a partial_ordering (NaN is
-// unordered), three_way_partial.
+// insides, or of an inside and an integer or rational, is a strong_ordering
+// whatever the storage.
 // Integers of mixed signedness compare by value (std::cmp_*), not by the
 // usual arithmetic conversions; same-signed pairs keep the plain operator.
 template <typename A, typename B>
@@ -59,9 +58,6 @@ inline constexpr auto three_way = [](const auto& a, const auto& b) -> std::stron
                                       : std::strong_ordering::greater;
     else
         return a <=> b;
-};
-inline constexpr auto three_way_partial = [](const auto& a, const auto& b) -> std::partial_ordering {
-    return a <=> b;
 };
 inline constexpr auto equal_to = [](const auto& a, const auto& b) {
     if constexpr (mixed_sign_integers<decltype(a), decltype(b)>)
@@ -138,67 +134,49 @@ inline constexpr bool scalar_index_cmp_fits = [] {
     }
 }();
 
-// inside ⋈ arithmetic scalar. Integer storage compares as integers when the
-// scalar's type fits imax, and in double when it is floating point and the
-// grid's values are exact in double; everything else goes through rational.
-template <insidable B, plain_number A, class Cmp>
+// inside ⋈ integer or rational. Integer storage compares as integers when
+// the scalar's type fits imax; everything else goes through rational.
+template <insidable B, class A, class Cmp>
+    requires(std::integral<A> || std::same_as<A, rational>)
 constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
     constexpr bool imax_scalar = std::signed_integral<A> || (std::unsigned_integral<A> && sizeof(A) < sizeof(imax));
-    constexpr bool double_exact_values =
-        lower_of<B> >= rational{-(imax{1} << 53)} && upper_of<B> <= rational{imax{1} << 53};
-    // A long double with bits past the double's: the paths below read a double.
-    if constexpr (wide_float<A>)
-        if (is_finite(rhs) && !is_double_value(rhs)) [[unlikely]]
-            return cmp(exact_of(lhs), exact_of_long_double(rhs));
-    if constexpr (wide_valued<B>) {
-        if constexpr (std::floating_point<A>) {
-            if (rhs != rhs) // NaN: unordered, as the double comparison says
-                return cmp(0.0, static_cast<double>(rhs));
-            if (!is_finite(rhs)) // ±inf lies past every grid
-                return cmp(exact_of(0), exact_of(rhs < 0 ? -1 : 1));
-            return cmp(exact_of(lhs), exact_of_double(static_cast<double>(rhs)));
-        } else
-            return cmp(exact_of(lhs), exact_of(as_rational(rhs)));
-    } else if constexpr (integer_value_storage<B> && values_fit_imax<B> && imax_scalar)
+    if constexpr (wide_valued<B>)
+        return cmp(exact_of(lhs), exact_of(as_rational(rhs)));
+    else if constexpr (integer_value_storage<B> && values_fit_imax<B> && imax_scalar)
         return cmp(raw_imax(lhs), static_cast<imax>(rhs));
     else if constexpr (integer_value_storage<B> && values_fit_imax<B> && std::unsigned_integral<A>)
         return cmp(raw_imax(lhs), rhs); // a 64-bit unsigned: sign-safe, by the cmp_* forms
-    else if constexpr (integer_value_storage<B> && values_fit_imax<B> && std::floating_point<A> && double_exact_values)
-        return cmp(static_cast<double>(raw_imax(lhs)), static_cast<double>(rhs));
-    else if constexpr (integer_index_storage<B> && std::floating_point<A> && double_exact<grid_of<B>> &&
-                       index_double<B>.Ok)
-        return cmp(as_double(lhs), static_cast<double>(rhs)); // exact: every value is a double
     else if constexpr (scalar_index_cmp_fits<B, A>)
         return cmp((index_cmp_bias<B> + raw_imax(lhs)) * static_cast<imax>(notch64<B>.Num),
                    static_cast<imax>(rhs) * notch64<B>.Den);
-    else {
-        // |rhs| ≥ 2^64 (or infinite) has no rational form, and every grid value
-        // lies strictly inside ±2^64: the sign of rhs decides.
-        if constexpr (std::floating_point<A>) {
-            if (rhs != rhs) // NaN: unordered, as the double comparison says
-                return cmp(0.0, static_cast<double>(rhs));
-            if (past_64_bits(rhs))
-                return cmp(rational{0}, rational{rhs < 0 ? -1 : 1});
-            if (!abs_fraction_exact(static_cast<double>(rhs))) [[unlikely]] // finer than 2^-62
-                return cmp(exact_of(lhs), exact_of_double(static_cast<double>(rhs)));
-        }
+    else
         return cmp(as_rational(lhs), rational{rhs});
-    }
 }
 } // namespace detail
 
-template <insidable B, detail::plain_number A>
+template <insidable B, class A>
+    requires(std::integral<A> || std::same_as<A, rational>)
 [[nodiscard]] constexpr auto operator<=>(const B& lhs, A rhs) {
-    if constexpr (std::floating_point<A>)
-        return detail::compare_scalar(lhs, rhs, detail::three_way_partial);
-    else
-        return detail::compare_scalar(lhs, rhs, detail::three_way);
+    return detail::compare_scalar(lhs, rhs, detail::three_way);
 }
 
-template <insidable B, detail::plain_number A>
+template <insidable B, class A>
+    requires(std::integral<A> || std::same_as<A, rational>)
 [[nodiscard]] constexpr bool operator==(const B& lhs, A rhs) {
     return detail::compare_scalar(lhs, rhs, detail::equal_to);
 }
+
+// No comparison with a floating-point value: 0.1 is not 1/10 in binary, so
+// an inside holding 1/10 would compare unequal to 0.1. Compare with a
+// rational (0.1_r), a point (just<1, 10>) or an inside.
+#define BEMAN_INSIDE_WHY_float_compare                                                                    \
+    "inside: no comparison with a floating-point value - 0.1 is not 1/10 in binary; compare with 0.1_r, " \
+    "just<1, 10> or an inside"
+template <insidable B, std::floating_point A>
+auto operator<=>(const B&, A) = delete (BEMAN_INSIDE_WHY_float_compare);
+template <insidable B, std::floating_point A>
+bool operator==(const B&, A) = delete (BEMAN_INSIDE_WHY_float_compare);
+#undef BEMAN_INSIDE_WHY_float_compare
 } // namespace beman::inside
 
-#endif // BEMAN_INSIDE_INSIDE_DETAIL_COMPARE_HPP
+#endif // BEMAN_INSIDE_INSIDE_COMPARE_HPP

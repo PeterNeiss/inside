@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// The named-cast family — explicit "double in, bounded out" conversions whose
-// intent (clamp / wrap / trust, and the rounding direction) reads at the call
-// site. Their canonical home is inside a `std::ranges::transform` lambda, where
-// a bare `B{v}` constructor would obscure what happens at the boundary.
+// One-shot stores — explicit "double in, bounded out" conversions whose intent
+// (clamp / wrap / trust, and the rounding direction) reads at the call site:
+// the flag constructor B{v, F}, whose flags replace B's own of the same kind.
+// Their canonical home is inside a `std::ranges::transform` lambda, where a
+// bare `B{v}` would obscure what happens at the boundary.
 //
 // Demonstrates:
-//   - `clamp_cast<B, round_floor>` (and round_ceil / round_nearest) — saturate + a rounding
-//     direction, applied across a buffer with std::ranges::transform
-//   - `wrap_cast`   — modular reduction into the target interval
-//   - `clamp_cast`  — saturate to [Lower, Upper]
-//   - `unchecked_cast` — trust the caller (UB if out of range)
-//   - the per-operation `with_snap<Mode>()` (Mode = snap / round_nearest /
-//     round_floor / round_ceil / round_half_even), `with_clamp()`, `with_wrap()`
-//     overrides on a strict (throwing) inside — the same intents, fluent form
+//   - `B{v, clamp | round_floor}` (and round_ceil / round_nearest) — saturate + a
+//     rounding direction, applied across a buffer with std::ranges::transform
+//   - `B{v, wrap}`   — modular reduction into the target interval
+//   - `B{v, clamp}`  — saturate to [Lower, Upper]
+//   - `B{v, unsafe}` — trust the caller (UB if out of range)
+//   - the per-store `x.policy<F>()` (F = snap / round_nearest / round_floor /
+//     round_ceil / round_half_even / clamp / wrap) on a strict (throwing)
+//     inside — the same intents, for one assignment
 
 #include <algorithm>
 #include <iostream>
@@ -33,46 +34,44 @@ int main() {
     std::vector<double> raw = {-1.0, 2.4, 3.5, 7.9, 12.0};
     std::vector<level>  down(raw.size()), up(raw.size()), nearest(raw.size());
 
-    // Same inputs, three rounding directions — clamp_cast with a rounding mode in transform.
-    std::ranges::transform(raw, down.begin(), [](double v) { return clamp_cast<level, round_floor>(v); });
-    std::ranges::transform(raw, up.begin(), [](double v) { return clamp_cast<level, round_ceil>(v); });
-    std::ranges::transform(raw, nearest.begin(), [](double v) { return clamp_cast<level, round_nearest>(v); });
+    // Same inputs, three rounding directions — clamp with a rounding mode, in transform.
+    std::ranges::transform(raw, down.begin(), [](double v) { return level{v, clamp | round_floor}; });
+    std::ranges::transform(raw, up.begin(), [](double v) { return level{v, clamp | round_ceil}; });
+    std::ranges::transform(raw, nearest.begin(), [](double v) { return level{v, clamp | round_nearest}; });
 
-    std::cout << "clamp_cast<B, round_*> into inside<{{0,10},2}> (out-of-range saturates):\n";
+    std::cout << "level{v, clamp | round_*} into inside<{{0,10},2}> (out-of-range saturates):\n";
     std::cout << "   raw     floor   ceil    round\n";
     for (std::size_t i = 0; i < raw.size(); ++i)
         std::cout << "  " << raw[i] << "\t " << down[i] << "\t " << up[i] << "\t " << nearest[i] << "\n";
 
-    // wrap_cast: modular reduction — a hue angle folded back into [0, 359].
+    // wrap: modular reduction — a hue angle folded back into [0, 359].
     using hue = inside<{0, 359}>;
-    std::cout << "\nwrap_cast<hue>(370) = " << wrap_cast<hue>(370)
-              << "   wrap_cast<hue>(-30) = " << wrap_cast<hue>(-30) << "\n";
+    std::cout << "\nhue{370, wrap} = " << hue{370, wrap} << "   hue{-30, wrap} = " << hue{-30, wrap} << "\n";
 
-    // clamp_cast: saturate regardless of the target's declared policy.
+    // clamp: saturate regardless of the target's declared policy.
     using pct = inside<{0, 100}>;
-    std::cout << "clamp_cast<pct>(150) = " << clamp_cast<pct>(150)
-              << "   clamp_cast<pct>(-5) = " << clamp_cast<pct>(-5) << "\n";
+    std::cout << "pct{150, clamp} = " << pct{150, clamp} << "   pct{-5, clamp} = " << pct{-5, clamp} << "\n";
 
-    // unchecked_cast: caller asserts in-range; skips every check (UB otherwise).
-    std::cout << "unchecked_cast<pct>(42) = " << unchecked_cast<pct>(42) << "   (trusted — no runtime check)\n";
+    // unsafe: caller asserts in-range; skips every check (UB otherwise).
+    std::cout << "pct{42, unsafe} = " << pct{42, unsafe} << "   (trusted — no runtime check)\n";
 
     // Per-operation overrides on a strict inside: same intents, fluent form. The
     // base type carries no rounding/clamp policy, so each write opts in for that
     // one operation.
     std::cout << "\nper-operation overrides on a strict inside<{0,100}>:\n";
     inside<{0, 100}> q{0};
-    q.with_snap<round_floor>() = 3.7;
-    std::cout << "  with_snap<round_floor>()     = 3.7  -> " << q << "\n";
-    q.with_snap<round_ceil>() = 3.2;
-    std::cout << "  with_snap<round_ceil>()      = 3.2  -> " << q << "\n";
-    q.with_snap() = 9.9;
-    std::cout << "  with_snap()                  = 9.9  -> " << q << "\n";
-    q.with_snap<round_half_even>() = 2.5;
-    std::cout << "  with_snap<round_half_even>() = 2.5  -> " << q << "\n";
+    q.policy<round_floor>() = 3.7;
+    std::cout << "  policy<round_floor>()     = 3.7  -> " << q << "\n";
+    q.policy<round_ceil>() = 3.2;
+    std::cout << "  policy<round_ceil>()      = 3.2  -> " << q << "\n";
+    q.policy<snap>() = 9.9;
+    std::cout << "  policy<snap>()            = 9.9  -> " << q << "\n";
+    q.policy<round_half_even>() = 2.5;
+    std::cout << "  policy<round_half_even>() = 2.5  -> " << q << "\n";
 
     inside<{0, 359}> angle{0};
-    angle.with_wrap() = 400;
-    std::cout << "  with_wrap()            = 400  -> " << angle << "\n";
+    angle.policy<wrap>() = 400;
+    std::cout << "  policy<wrap>()            = 400  -> " << angle << "\n";
 
     return 0;
 }

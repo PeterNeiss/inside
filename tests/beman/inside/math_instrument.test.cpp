@@ -4,7 +4,6 @@
 // sends every call to the integer path.
 
 #define BEMAN_INSIDE_MATH_INSTRUMENT 1
-#define BEMAN_INSIDE_MATH_TABLE_SLOTS 0
 #include <beman/inside/math.hpp>
 
 #include <gtest/gtest.h>

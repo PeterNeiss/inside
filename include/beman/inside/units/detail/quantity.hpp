@@ -68,6 +68,21 @@ constexpr auto number_in_unit(const quantity<R, V>& q) {
     return rescale<conversion_factor<R.U, U>>(q.numerical_value());
 }
 
+// A one-shot store's source (Q{x, clamp}, checked_cast<Q>(x)): x a number in
+// Q's unit, or a quantity converted to it exactly first.
+template <class Q, class X>
+constexpr decltype(auto) number_in(const X& x) {
+    if constexpr (quantity_like<X>)
+        return number_in_unit<Q::reference.U>(x);
+    else
+        return (x);
+}
+template <class Q, class X>
+concept castable_quantity =
+    quantity_like<X> && implicit_v<X::reference, Q::reference> && exact_rescale_v<X::reference.U, Q::reference.U>;
+template <class Q, class X>
+concept castable_from = quantity_like<Q> && (castable_quantity<Q, X> || (!quantity_like<X> && numeric<X>));
+
 using beman::inside::detail::is_expected_v;
 
 // Q from v, or an expected Q from an expected v (its error passed on).
@@ -96,6 +111,15 @@ constexpr auto on_quantity(Q& q, F&& f) {
     };
 }
 
+// q.on_clamp(f): f(q, overshoot), the inside's overshoot as a quantity in q's
+// unit and kind.
+template <reference R, class F, class Q>
+constexpr auto on_quantity_clamp(Q& q, F&& f) {
+    return [&q, f = std::forward<F>(f)](auto&, auto&& over) mutable -> decltype(auto) {
+        return f(q, quantity<R, std::remove_cvref_t<decltype(over)>>{std::forward<decltype(over)>(over)});
+    };
+}
+
 template <reference R, class Q, class Ref>
 struct quantity_action_ref {
     Q&  Self;
@@ -117,6 +141,18 @@ struct quantity_action_ref {
         requires implicit_rescalable<R2, R, V2> && requires(Ref& r, const rescaled_t<R2, R, V2>& v) { r -= v; }
     constexpr Q& operator-=(const quantity<R2, V2>& q) {
         NumRef -= number_in_unit<R.U>(q);
+        return Self;
+    }
+    template <insidable V>
+        requires requires(Ref& r, const V& v) { r *= v; }
+    constexpr Q& operator*=(const V& v) {
+        NumRef *= v;
+        return Self;
+    }
+    template <insidable V>
+        requires requires(Ref& r, const V& v) { r /= v; }
+    constexpr Q& operator/=(const V& v) {
+        NumRef /= v;
         return Self;
     }
 };
@@ -150,6 +186,15 @@ class quantity {
     template <class V>
         requires std::constructible_from<Rep, V> && (!quantity_like<V>)
     constexpr explicit quantity(V&& v) : Value(std::forward<V>(v)) {}
+
+    // A one-shot policy for this store, as for an inside: a flag or
+    // make_policy<F>(ec) (Q{v, clamp}, Q{v, round_floor}). x is a number in R's
+    // unit, or a quantity converted to it exactly first.
+    template <class X, class Pol>
+        requires(beman::inside::detail::flag_like<Pol> || beman::inside::detail::policy_like<Pol>) &&
+                detail::castable_from<quantity, X> &&
+                std::constructible_from<Rep, decltype(detail::number_in<quantity>(std::declval<const X&>())), Pol>
+    constexpr quantity(const X& x, Pol&& pol) : Value(detail::number_in<quantity>(x), std::forward<Pol>(pol)) {}
 
     // From another quantity: implicit when the spec converts implicitly and
     // the number, in R's unit, converts implicitly into Rep.
@@ -205,6 +250,22 @@ class quantity {
     operator T() const = delete ("units: an angle (an is_kind quantity) or a pi-scaled ratio is no plain "
                                  "number - read numerical_value(), or value_cast it first");
 
+    // A dimensionless quantity's number as a built-in, as inside's as<T>() and
+    // to<T>(): its value in unit one (5 % is 1/20), under the same rule as the
+    // conversion above.
+    template <typename T, policy_flag Round = none>
+        requires detail::number_like_v<R> &&
+                 requires(const detail::number_t<R, Rep>& n) { beman::inside::as<T, Round>(n); }
+    [[nodiscard]] constexpr T as() const {
+        return beman::inside::as<T, Round>(detail::rescale<detail::conversion_factor<R.U, units::unit{}>>(Value));
+    }
+    template <typename T, policy_flag Round = none>
+        requires detail::number_like_v<R> &&
+                 requires(const detail::number_t<R, Rep>& n) { beman::inside::to<T, Round>(n); }
+    [[nodiscard]] constexpr auto to() const {
+        return beman::inside::to<T, Round>(detail::rescale<detail::conversion_factor<R.U, units::unit{}>>(Value));
+    }
+
     [[nodiscard]] constexpr auto operator+() const { return detail::make_quantity<R>(+Value); }
     [[nodiscard]] constexpr auto operator-() const { return detail::make_quantity<R>(-Value); }
 
@@ -237,7 +298,7 @@ class quantity {
         return *this;
     }
 
-    // One unit up or down: ++q is q += 1·unit, under Rep's policy.
+    // One notch of the number up or down, as on an inside, under Rep's policy.
     constexpr quantity& operator++()
         requires requires(Rep& n) { ++n; }
     {
@@ -265,19 +326,41 @@ class quantity {
         return old;
     }
 
+    // *t of a quantity cursor (cursor<Q, Step>): its value as a quantity of Q's
+    // grid without the end, as on an inside cursor.
+    [[nodiscard]] constexpr auto operator*() const
+        requires requires(const Rep& n) { *n; }
+    {
+        return detail::make_quantity<R>(*Value);
+    }
+
     // A store with a hook, as on inside: q.on_wrap(f) += d calls f(q, carry)
-    // when the sum wraps. Stores take quantities; f gets the quantity.
+    // when the sum wraps. Stores take quantities; f gets the quantity, then
+    // the carry (a count of periods), the overshoot (a quantity) or the errc.
     template <class F>
     [[nodiscard]] constexpr auto on_wrap(F&& f) {
         return detail::make_action_ref<R>(*this, Value.on_wrap(detail::on_quantity(*this, std::forward<F>(f))));
     }
     template <class F>
     [[nodiscard]] constexpr auto on_clamp(F&& f) {
-        return detail::make_action_ref<R>(*this, Value.on_clamp(detail::on_quantity(*this, std::forward<F>(f))));
+        return detail::make_action_ref<R>(*this,
+                                          Value.on_clamp(detail::on_quantity_clamp<R>(*this, std::forward<F>(f))));
     }
     template <class F>
     [[nodiscard]] constexpr auto on_error(F&& f) {
         return detail::make_action_ref<R>(*this, Value.on_error(detail::on_quantity(*this, std::forward<F>(f))));
+    }
+
+    // A store under Rep's policy plus F, as inside's policy<F>(): its =, +=
+    // and -= take quantities, *= and /= numbers. policy(ec) sets ec on a
+    // failure instead of raising.
+    template <policy_flag F = none>
+    [[nodiscard]] constexpr auto policy() & {
+        return detail::make_action_ref<R>(*this, Value.template policy<F>());
+    }
+    template <policy_flag F = none>
+    [[nodiscard]] constexpr auto policy(errc& ec) {
+        return detail::make_action_ref<R>(*this, Value.template policy<F>(ec));
     }
 
     // Rep's try_make in the unit R: quantity<si::metre, M>::try_make(12.5).
@@ -294,6 +377,14 @@ class quantity {
 namespace beman::inside::detail {
 template <units::reference R, class Rep>
 inline constexpr bool lift_operand_v<units::quantity<R, Rep>> = true;
+
+// cursor<Q, Step>, values<Q> and end(t) step over Q's number in Q's unit.
+template <units::reference R, class Rep>
+struct stepping<units::quantity<R, Rep>> {
+    using number = Rep;
+    template <class N>
+    using rebind = units::quantity<R, N>;
+};
 } // namespace beman::inside::detail
 namespace beman::inside::units {
 
@@ -438,6 +529,30 @@ template <reference A, class VA, reference B, class VB>
     return detail::in_common_unit<A, B>(a) <=> detail::in_common_unit<A, B>(b);
 }
 
+// min, max and midpoint of two quantities of one kind, in their common unit
+// as + takes it; the number is inside's min, max or midpoint (exact).
+template <reference A, class VA, reference B, class VB>
+    requires detail::summable<A, VA, B, VB, '<'>
+[[nodiscard]] constexpr auto min(const quantity<A, VA>& a, const quantity<B, VB>& b) {
+    constexpr reference C = detail::sum_reference<A, B>();
+    return detail::make_quantity<C>(
+        beman::inside::min(detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b)));
+}
+template <reference A, class VA, reference B, class VB>
+    requires detail::summable<A, VA, B, VB, '<'>
+[[nodiscard]] constexpr auto max(const quantity<A, VA>& a, const quantity<B, VB>& b) {
+    constexpr reference C = detail::sum_reference<A, B>();
+    return detail::make_quantity<C>(
+        beman::inside::max(detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b)));
+}
+template <reference A, class VA, reference B, class VB>
+    requires detail::summable<A, VA, B, VB, '+'>
+[[nodiscard]] constexpr auto midpoint(const quantity<A, VA>& a, const quantity<B, VB>& b) {
+    constexpr reference C = detail::sum_reference<A, B>();
+    return detail::make_quantity<C>(
+        beman::inside::midpoint(detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b)));
+}
+
 // A sum, difference, remainder or comparison of two units that cannot meet:
 // a deleted overload per reason, so a requires-test is false and a call says
 // why.
@@ -459,6 +574,9 @@ BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator-)
 BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator%)
 BEMAN_INSIDE_UNITS_SUM_DELETED(bool, operator==)
 BEMAN_INSIDE_UNITS_SUM_DELETED(std::strong_ordering, operator<=>)
+BEMAN_INSIDE_UNITS_SUM_DELETED(void, min)
+BEMAN_INSIDE_UNITS_SUM_DELETED(void, max)
+BEMAN_INSIDE_UNITS_SUM_DELETED(void, midpoint)
 #undef BEMAN_INSIDE_UNITS_SUM_DELETED
 
 template <reference A, class VA, reference B, class VB>
@@ -761,33 +879,25 @@ template <class Q, numeric A>
     return beman::inside::conversion_loses<typename Q::rep>(value);
 }
 
-// clamp_cast<Q, Round>(x) / wrap_cast<Q>(x): x a number in Q's unit, or a
-// quantity converted to it exactly first.
-namespace detail {
-template <class Q, class X>
-constexpr decltype(auto) number_in(const X& x) {
-    if constexpr (quantity_like<X>)
-        return number_in_unit<Q::reference.U>(x);
-    else
-        return (x);
-}
-template <class Q, class X>
-concept castable_quantity =
-    quantity_like<X> && implicit_v<X::reference, Q::reference> && exact_rescale_v<X::reference.U, Q::reference.U>;
-template <class Q, class X>
-concept castable_from = quantity_like<Q> && (castable_quantity<Q, X> || (!quantity_like<X> && numeric<X>));
-} // namespace detail
-template <class Q, policy_flag Round = none, class X>
-    requires detail::castable_from<Q, X> &&
-             requires(const X& x) { beman::inside::clamp_cast<typename Q::rep, Round>(detail::number_in<Q>(x)); }
-[[nodiscard]] constexpr Q clamp_cast(const X& x) {
-    return Q{beman::inside::clamp_cast<typename Q::rep, Round>(detail::number_in<Q>(x))};
-}
+// checked_cast<Q>(x): x, a number in Q's unit or a quantity converted to it
+// exactly, stored into Q exactly, or a report - as inside's checked_cast.
 template <class Q, class X>
     requires detail::castable_from<Q, X> &&
-             requires(const X& x) { beman::inside::wrap_cast<typename Q::rep>(detail::number_in<Q>(x)); }
-[[nodiscard]] constexpr Q wrap_cast(const X& x) {
-    return Q{beman::inside::wrap_cast<typename Q::rep>(detail::number_in<Q>(x))};
+             requires(const X& x) { beman::inside::checked_cast<typename Q::rep>(detail::number_in<Q>(x)); }
+[[nodiscard]] constexpr Q checked_cast(const X& x) {
+    return Q{beman::inside::checked_cast<typename Q::rep>(detail::number_in<Q>(x))};
+}
+
+// as<T>(q) / to<T>(q): the member forms, free, as for an inside.
+template <typename T, policy_flag Round = none, quantity_like Q>
+    requires requires(const Q& q) { q.template as<T, Round>(); }
+[[nodiscard]] constexpr T as(const Q& q) {
+    return q.template as<T, Round>();
+}
+template <typename T, policy_flag Round = none, quantity_like Q>
+    requires requires(const Q& q) { q.template to<T, Round>(); }
+[[nodiscard]] constexpr auto to(const Q& q) {
+    return q.template to<T, Round>();
 }
 
 // dot, cross, lerp on quantity components (lerp's t is a plain number).
@@ -837,6 +947,115 @@ template <reference A, class VA, reference B, class VB, class... Args>
     return detail::quantity_divmod<C>(beman::inside::divmod(
         detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b), std::forward<Args>(args)...));
 }
+
+// add / sub / mod(a, b, args...) of two quantities of one kind, in their
+// common unit as + takes it, and mul / div of two quantities (units multiply)
+// or of a quantity and a number (the number scales): inside's free arithmetic
+// on the numbers, with its per-call policy, flag or errc&.
+#define BEMAN_INSIDE_UNITS_SUM_FN(name)                                                                      \
+    template <reference A, class VA, reference B, class VB, class... Args>                                   \
+        requires detail::common_rescalable<A, VA, B, VB> &&                                                  \
+                 requires(const detail::common_number_t<A, VA, B>& x,                                        \
+                          const detail::common_number_t<B, VB, A>& y,                                        \
+                          Args&&... args) { beman::inside::name(x, y, std::forward<Args>(args)...); }        \
+    [[nodiscard]] constexpr auto name(const quantity<A, VA>& a, const quantity<B, VB>& b, Args&&... args) {  \
+        constexpr reference C = detail::sum_reference<A, B>();                                               \
+        return detail::make_quantity<C>(beman::inside::name(                                                 \
+            detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b), std::forward<Args>(args)...)); \
+    }
+BEMAN_INSIDE_UNITS_SUM_FN(add)
+BEMAN_INSIDE_UNITS_SUM_FN(sub)
+BEMAN_INSIDE_UNITS_SUM_FN(mod)
+#undef BEMAN_INSIDE_UNITS_SUM_FN
+
+#define BEMAN_INSIDE_UNITS_PRODUCT_FN(name, sign)                                                                  \
+    template <reference A, class VA, reference B, class VB, class... Args>                                         \
+        requires requires(const VA& x, const VB& y, Args&&... args) {                                              \
+            beman::inside::name(x, y, std::forward<Args>(args)...);                                                \
+        }                                                                                                          \
+    [[nodiscard]] constexpr auto name(const quantity<A, VA>& a, const quantity<B, VB>& b, Args&&... args) {        \
+        return detail::make_quantity<detail::product_reference<A, B, sign>()>(                                     \
+            beman::inside::name(a.numerical_value(), b.numerical_value(), std::forward<Args>(args)...));           \
+    }                                                                                                              \
+    template <reference A, class VA, insidable V, class... Args>                                                   \
+        requires requires(const VA& x, const V& y, Args&&... args) {                                               \
+            beman::inside::name(x, y, std::forward<Args>(args)...);                                                \
+        }                                                                                                          \
+    [[nodiscard]] constexpr auto name(const quantity<A, VA>& a, const V& v, Args&&... args) {                      \
+        return detail::make_quantity<A>(beman::inside::name(a.numerical_value(), v, std::forward<Args>(args)...)); \
+    }
+BEMAN_INSIDE_UNITS_PRODUCT_FN(mul, 1)
+BEMAN_INSIDE_UNITS_PRODUCT_FN(div, -1)
+#undef BEMAN_INSIDE_UNITS_PRODUCT_FN
+
+// A number times or over a quantity, as the operators.
+template <insidable V, reference A, class VA, class... Args>
+    requires requires(const V& x, const VA& y, Args&&... args) {
+        beman::inside::mul(x, y, std::forward<Args>(args)...);
+    }
+[[nodiscard]] constexpr auto mul(const V& v, const quantity<A, VA>& a, Args&&... args) {
+    return detail::make_quantity<A>(beman::inside::mul(v, a.numerical_value(), std::forward<Args>(args)...));
+}
+template <insidable V, reference A, class VA, class... Args>
+    requires requires(const V& x, const VA& y, Args&&... args) {
+        beman::inside::div(x, y, std::forward<Args>(args)...);
+    }
+[[nodiscard]] constexpr auto div(const V& v, const quantity<A, VA>& a, Args&&... args) {
+    constexpr reference R = detail::product_reference<reference{nullptr, true, {}, unit{}}, A, -1>();
+    return detail::make_quantity<R>(beman::inside::div(v, a.numerical_value(), std::forward<Args>(args)...));
+}
+
+// A hook to add ... divmod would be ignored, as on an inside: a deleted
+// overload with the reason.
+namespace detail {
+template <class L, class R, class... Args>
+concept arith_with_hook = (quantity_like<L> || quantity_like<R>) &&
+                          (beman::inside::detail::is_action_tag_v<std::remove_cvref_t<Args>> || ...);
+}
+#define BEMAN_INSIDE_UNITS_HOOK_DELETED(name)                                                                    \
+    template <class L, class R, class... Args>                                                                   \
+        requires detail::arith_with_hook<L, R, Args...>                                                          \
+    auto name(const L&, const R&, Args&&...) = delete (                                                          \
+        "units: add/sub/mul/div/mod/divmod take no hooks: on_clamp / on_wrap / on_error apply to a store - use " \
+        "q.on_clamp(f) etc.");
+BEMAN_INSIDE_UNITS_HOOK_DELETED(add)
+BEMAN_INSIDE_UNITS_HOOK_DELETED(sub)
+BEMAN_INSIDE_UNITS_HOOK_DELETED(mul)
+BEMAN_INSIDE_UNITS_HOOK_DELETED(div)
+BEMAN_INSIDE_UNITS_HOOK_DELETED(mod)
+BEMAN_INSIDE_UNITS_HOOK_DELETED(divmod)
+#undef BEMAN_INSIDE_UNITS_HOOK_DELETED
 } // namespace beman::inside::units
+
+// std::hash and std::numeric_limits of a quantity: its number's, the limits
+// as quantities in its unit.
+template <beman::inside::units::reference R, class Rep>
+struct std::hash<beman::inside::units::quantity<R, Rep>> {
+    constexpr std::size_t operator()(const beman::inside::units::quantity<R, Rep>& q) const noexcept {
+        return std::hash<Rep>{}(q.numerical_value());
+    }
+};
+
+template <beman::inside::units::reference R, class Rep>
+struct std::numeric_limits<beman::inside::units::quantity<R, Rep>> : std::numeric_limits<Rep> {
+  private:
+    using Q = beman::inside::units::quantity<R, Rep>;
+    using N = std::numeric_limits<Rep>;
+
+  public:
+    static constexpr Q min() noexcept { return Q{N::min()}; }
+    static constexpr Q max() noexcept { return Q{N::max()}; }
+    static constexpr Q lowest() noexcept { return Q{N::lowest()}; }
+    static constexpr Q epsilon() noexcept
+        requires requires { N::epsilon(); }
+    {
+        return Q{N::epsilon()};
+    }
+    static constexpr Q round_error() noexcept
+        requires requires { N::round_error(); }
+    {
+        return Q{N::round_error()};
+    }
+};
 
 #endif // BEMAN_INSIDE_UNITS_DETAIL_QUANTITY_HPP

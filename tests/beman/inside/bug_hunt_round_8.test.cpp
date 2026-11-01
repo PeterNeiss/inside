@@ -52,17 +52,14 @@ TEST(BugHuntRound8, rational_and_long_double) {
 #endif
 }
 
-// inside ⋈ long double read the long double as a double.
+// inside ⋈ long double read the long double as a double. Comparisons with a
+// floating-point value are gone since: a long double is stored, not compared
+// (its exact value, as the store tests above show).
+template <class T, class F>
+concept compares_with_fp = requires(T t, F f) { t == f; } || requires(T t, F f) { t <=> f; };
 TEST(BugHuntRound8, inside_against_long_double) {
-#if WIDE_LONG_DOUBLE
     using Q = inside<{{-100, 100}, per<4>}>;
-    using C = inside<{{-1, 2}, max_denominator{I64{1} << 62}}>;
-    static_assert(Q{1} != 1.0L + 0x1p-60L && Q{1} < 1.0L + 0x1p-60L && Q{1} == 1.0L);
-    EXPECT_TRUE(Q{1} < launder(1.0L + 0x1p-60L));
-    EXPECT_FALSE(C{1} == launder(1.0L + 0x1p-63L));
-    EXPECT_TRUE(C{1} > launder(1.0L - 0x1p-64L));
-    EXPECT_TRUE(Q{100} < launder(1e4000L));
-#endif
+    static_assert(!compares_with_fp<Q, long double> && !compares_with_fp<Q, double>);
 }
 
 // includes(interval, long double) and grid::representable(long double)
@@ -149,9 +146,9 @@ TEST(BugHuntRound8, to_long_double_is_rounded_once) {
 #if WIDE_LONG_DOUBLE
     using F = inside<{{-2, 2}, per<(I64{1} << 62)>}>;
     using T = inside<{{-1, 1}, per<3>}>;
-    static_assert(F{rational{1} + rational{1, I64{1} << 60}}.to<long double>().value() == 1.0L + 0x1p-60L);
+    static_assert(F{*(rational{1} + rational{1, I64{1} << 60})}.to<long double>().value() == 1.0L + 0x1p-60L);
     static_assert(T{rational{1, 3}}.to<long double>().value() == 1.0L / 3);
-    const F f{rational{-1} - rational{1, I64{1} << 62}};
+    const F f{*(rational{-1} - rational{1, I64{1} << 62})};
     EXPECT_EQ(f.to<long double>().value(), -1.0L - 0x1p-62L);
     using Q = inside<{{-1000000, 1000000}, per<1000000007>}>;
     const Q q{rational{1, 1000000007}};

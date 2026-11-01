@@ -139,7 +139,7 @@ TEST(CrossGridTest, integer_paths_stay_engaged_and_fp_stays_excluded) {
     using whole    = inside<{0, 100}>;
     using quarters = inside<{{0, 1}, per<4>}>;
     static_assert(!detail::rational_storage<decltype(whole{} + quarters{})>);
-    static_assert(whole{3} + quarters{0.75} == 3.75);
+    static_assert(whole{3} + quarters{0.75_r} == 3.75_r);
 
     using tenths       = inside<{{0, 100}, per<10>}>;
     using quarter_grid = inside<{{0, 100}, per<4>}, round_nearest>;
@@ -148,7 +148,7 @@ TEST(CrossGridTest, integer_paths_stay_engaged_and_fp_stays_excluded) {
     // fp-backed operands: the sum is exact either way.
     using coarse_real = inside<{{0, (umax{1} << 40)}, per<2>}>;
     using fine_real   = inside<{{0, 1}, per<(1u << 20)>}>;
-    EXPECT_TRUE(coarse_real{1.5} + fine_real{0.25} == 1.75);
+    EXPECT_TRUE(coarse_real{1.5_r} + fine_real{0.25_r} == 1.75_r);
 
     // value check across a negative Lower, at compile time (constexpr path).
     using signed_whole = inside<{-50, 50}>;

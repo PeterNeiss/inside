@@ -13,7 +13,7 @@
 namespace beman::inside {
 //---------------------------------------------------------------------------
 // policy_flag — the policy bits of inside<G, P> (none, snap and the
-// rounding modes, clamp, wrap, checked, unsafe, uninitialized),
+// rounding modes, clamp, wrap, checked, unsafe),
 // has_flag / is_checked, the rounding precedence (rounding_of), the hook
 // factories on_clamp / on_wrap / on_error with their is_*_action traits, and
 // the flags each hook implies.
@@ -73,12 +73,6 @@ inline constexpr detail::flag<0ull> checked{};
 inline constexpr detail::flag<1ull << 32> clamp{}; // saturate to boundary
 inline constexpr detail::flag<1ull << 33> wrap{};  // modular arithmetic
 
-// `uninitialized` — default construction leaves the raw uninitialized, like a
-// built-in scalar (a trivial default ctor); reading it before a store is
-// undefined. Without it a default-constructed inside is 0, or Lower on a grid
-// without 0.
-inline constexpr detail::flag<1ull << 37> uninitialized{};
-
 // No flag picks the raw: storage follows the grid alone (grid.hpp
 // raw_for, docs/storage.md).
 
@@ -97,8 +91,7 @@ namespace detail {
 // The bits of the four explicit rounding modes (each also carries snap).
 inline constexpr policy_flag mode_bits = (1ull << 5) | (1ull << 6) | (1ull << 7) | (1ull << 8);
 // Every bit a flag names: a policy holds no other.
-inline constexpr policy_flag known_bits =
-    mode_bits | snap | clamp | wrap | unsafe_marker | uninitialized | cursor_marker;
+inline constexpr policy_flag known_bits = mode_bits | snap | clamp | wrap | unsafe_marker | cursor_marker;
 
 // How many explicit rounding modes a flag set names (an inside takes one).
 [[nodiscard]] constexpr int rounding_modes(policy_flag f) noexcept {
@@ -106,6 +99,19 @@ inline constexpr policy_flag known_bits =
     for (policy_flag bit = 1ull << 5; bit <= (1ull << 8); bit <<= 1)
         n += (f & bit) != 0;
     return n;
+}
+
+// A one-shot policy over a type's: the call's rounding mode replaces the
+// type's (snap with it), and its clamp or wrap replaces the type's range
+// handling; other flags join. T{v, clamp | round_ceil} rounds up on a
+// round_floor type, and clamps on a wrap type.
+[[nodiscard]] constexpr policy_flag override_flags(policy_flag type, policy_flag call) noexcept {
+    policy_flag replaced = 0;
+    if ((call & (mode_bits | snap)) != 0)
+        replaced |= mode_bits | snap;
+    if ((call & (clamp | wrap)) != 0)
+        replaced |= clamp | wrap;
+    return (type & ~replaced) | call;
 }
 
 // f with round_nearest added unless it names a mode already, which would win

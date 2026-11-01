@@ -6,7 +6,7 @@
 //   - `conversion_overflows` predicate as a soft outlier filter
 //   - A fixed-point weighted sum that stays exact until the one rounding
 //   - `div_into` with `clamp | round_nearest` on the output type: the average
-//     saturates and rounds once (no explicit `clamp_cast<B, round_nearest>`)
+//     saturates and rounds once (no explicit `B{v, clamp | round_nearest}`)
 //   - Readings as ℃ points: a point has no sum and no product, so the
 //     weighted mean is the affine one, ref + Σ w·(p − ref) / Σ w, with each
 //     p − ref a temperature difference in ℃
@@ -33,7 +33,7 @@ using ground_t  = inside<{{-10, 30}, per<4>}, round_nearest>; // 0.25 °C
 
 // Output: a coarse fused grid, whole ℃ above the reference. `clamp |
 // round_nearest` lets `div_into<fused_t>` saturate AND round the quotient in
-// one step — no explicit `clamp_cast<fused_t, round_nearest>(...)` cast needed.
+// one step — no explicit `fused_t{..., clamp | round_nearest}` cast needed.
 using fused_t = quantity<deg_C, inside<{-40, 60}, clamp | round_nearest>>;
 
 int main() {

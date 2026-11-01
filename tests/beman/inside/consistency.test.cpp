@@ -82,8 +82,8 @@ TEST(ConsistencyTest, integer_source_snaps_on_every_path) {
 //---------------------------------------------------------------------------
 TEST(ConsistencyTest, integer_wrap_uses_span_plus_notch) {
     using H = inside<{{0, 10}, per<2>}>; // span 10, notch 1/2 → modulus 10.5
-    EXPECT_EQ(rational{wrap_cast<H>(12)}, rational{wrap_cast<H>(q(12))});
-    EXPECT_EQ(rational{wrap_cast<H>(12)}, q(3, 2));
+    EXPECT_EQ(rational{(H{12, wrap})}, rational{(H{q(12), wrap})});
+    EXPECT_EQ(rational{(H{12, wrap})}, q(3, 2));
     using N2 = inside<{{0, 10}, 2}, wrap>; // modulus 12
     EXPECT_EQ(rational{N2{22}}, rational{N2{q(22)}});
     EXPECT_EQ(rational{N2{22}}, q(10));
@@ -119,12 +119,12 @@ TEST(ConsistencyTest, inside_source_wrap_rounds_first) {
     EXPECT_EQ(rational{a}, q(2)); // 12.5 → 13 ≡ 2
 }
 
-// unchecked_cast keeps the target's storage layout.
+// the unsafe constructor keeps the target's storage layout.
 TEST(ConsistencyTest, unchecked_cast_keeps_the_storage_layout) {
     using D = inside<{5, 100}>;
-    EXPECT_EQ(rational{unchecked_cast<D>(7)}, q(7));
+    EXPECT_EQ(rational{(D{7, unsafe})}, q(7));
     using F = inside<{{0, 4}, per<2>}>;
-    EXPECT_EQ(rational{unchecked_cast<F>(1.5)}, rational{1.5});
+    EXPECT_EQ(rational{(F{1.5, unsafe})}, rational{1.5});
 }
 
 // Products and quotients deduce their own storage from the result grid.
@@ -297,6 +297,37 @@ TEST(ConsistencyTest, flags_are_call_policies) {
     EXPECT_EQ(ec, errc::division_by_zero);
 }
 
+// A result keeps the policy its operands share (a default-policy point is
+// neutral; mixed policies give the default), so a rounding mode survives an
+// intermediate step.
+TEST(ConsistencyTest, results_keep_the_shared_policy) {
+    constexpr inside<{0, 10}, round_floor> a{7};
+    static_assert(a / 2_ins == 3_ins && (a + 0_ins) / 2_ins == 3_ins && (a * 1_ins) / 2_ins == 3_ins);
+    static_assert(flags_of<decltype(a + a)> == round_floor && flags_of<decltype(a - a)> == round_floor);
+    static_assert(flags_of<decltype(a + inside<{0, 10}>{1})> == 0); // mixed: the default
+    static_assert(flags_of<decltype(a + inside<{0, 10}, clamp>{1})> == 0);
+    static_assert(flags_of<decltype(cursor<inside<{0, 10}, clamp>>{} + 1_ins)> == clamp); // no cursor marker
+    static_assert(flags_of<std::common_type_t<decltype(a), inside<{0, 20}, round_floor>>> == round_floor);
+}
+
+// An inside with a rational would leave the grid (operator rational() and
+// rational arithmetic): deleted. A point keeps the grid; compound assignment
+// with a rational stores back into the inside's grid and stays.
+template <class A, class B>
+concept rational_mix = requires(A a, B b) { a + b; } || requires(A a, B b) { b - a; } ||
+                       requires(A a, B b) { a * b; } || requires(A a, B b) { a / b; } || requires(A a, B b) { a % b; };
+template <class A, class B>
+concept rational_compound = requires(A& a, B b) { a += b; };
+TEST(ConsistencyTest, no_arithmetic_with_a_rational) {
+    using I = inside<{{0, 10}, per<4>}>;
+    static_assert(!rational_mix<I, rational> && !rational_mix<inside<{0, 10}>, rational>);
+    static_assert(rational_compound<I, rational>);
+    static_assert(I{2} + just<1, 2> == 2.5_r);
+    I x{2};
+    x += 0.5_r;
+    EXPECT_EQ(x, 2.5_r);
+}
+
 // Assignment rounds, then range-checks: 8.25 into [0, 8] rounds to 8; 8.5
 // rounds to 9 and is out of range.
 TEST(ConsistencyTest, store_rounds_before_the_range_check) {
@@ -368,13 +399,22 @@ TEST(ConsistencyTest, two_input_math_is_symmetric_in_its_types) {
     static_assert(std::same_as<decltype(math::hypot(A{0}, B{0})), decltype(math::hypot(B{0}, A{0}))>);
 }
 
-TEST(ConsistencyTest, compound_ops_accept_expected_rhs) {
+// No store takes a std::expected (construction, =, compound ops): the
+// expected is checked and unwrapped explicitly.
+template <class X, class E>
+concept compound_takes = requires(X& x, E e) { x += e; } || requires(X& x, E e) { x *= e; };
+TEST(ConsistencyTest, compound_ops_reject_expected_rhs) {
     using X = inside<{1, 10}, checked | snap>;
     using Y = inside<{0, 10}, checked | snap>; // divisor may be 0
-    X x{2};
-    x += Y{6} / Y{2}; // expected<inside>
+    static_assert(!compound_takes<X, decltype(Y{6} / Y{2})>);
+    static_assert(!std::is_constructible_v<X, decltype(Y{6} / Y{2})>);
+    static_assert(!std::is_assignable_v<X&, decltype(Y{6} / Y{2})>);
+    X    x{2};
+    auto q3 = Y{6} / Y{2};
+    ASSERT_TRUE(q3.has_value());
+    x += *q3;
     EXPECT_EQ(rational{x}, q(5));
-    EXPECT_THROW(x += Y{6} / Y{0}, inside_error); // the error is reported
+    EXPECT_FALSE(X::try_make(Y{6} / Y{0}).has_value()); // try_make passes the error on
 }
 
 TEST(ConsistencyTest, casts_take_inside_sources) {
@@ -388,7 +428,7 @@ TEST(ConsistencyTest, casts_take_inside_sources) {
     } catch (const inside_error& e) {
         EXPECT_EQ(e.Code, errc::overflow);
     } // out of range
-    EXPECT_EQ(rational{unchecked_cast<Dst>(Src{q(4)})}, q(4));
+    EXPECT_EQ((rational{Dst{Src{q(4)}, unsafe}}), q(4));
 }
 
 TEST(ConsistencyTest, midpoint_across_grids) {

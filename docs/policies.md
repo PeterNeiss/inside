@@ -41,7 +41,6 @@ grid instead (see [arithmetic.md](arithmetic.md)), so it cannot leave its range.
 | `round_floor`, `round_ceil` | toward −∞, toward +∞ (include `snap`) |
 | `round_half_even` | to the nearest notch, ties to the even point (includes `snap`) |
 | `unsafe` | the one opt-out: no runtime range or zero-divisor check, and an off-notch value truncates (`snap`). An out-of-range value or a zero divisor is undefined behaviour; `/= 0` does nothing |
-| `uninitialized` | a trivial default constructor: `T x;` leaves the value uninitialized, like a built-in scalar's, until a store. Without it `T x;` and `T{}` are 0, or Lower on a grid without 0 |
 
 - `clamp` and `wrap` exclude each other (a `static_assert`).
 - Every policy without `unsafe` checks: `inside<G>`, `inside<G, round_nearest>`
@@ -69,20 +68,25 @@ No flag picks the raw storage: it follows from the grid alone
 ## Per-store override
 
 A type without a clamp, wrap or rounding policy can still get one for a
-single store:
+single store, with `x.policy<F>()`, or `T{v, F}` when the value is new (the
+call's rounding mode, clamp or wrap then replaces the type's own):
 
 ```cpp
 inside<{0, 100}> x{50};
-x.with_clamp() = 150;                   // 100
-x.with_wrap()  = 103;                   // 2
+x.policy<clamp>() = 150;                   // 100
+x.policy<wrap>()  = 103;                   // 2
 
 inside<{{0, 10}, 2}> g{0};
-g.with_snap<round_floor>()     = 3.0;   // 2
-g.with_snap<round_ceil>()      = 3.0;   // 4
-g.with_snap<round_half_even>() = 5.0;   // 4: the tie goes to the even point
+g.policy<round_floor>()     = 3.0;   // 2
+g.policy<round_ceil>()      = 3.0;   // 4
+g.policy<round_half_even>() = 5.0;   // 4: the tie goes to the even point
+
+using pct = inside<{0, 100}>;
+pct{150, clamp};                      // 100: a new value under clamp
 ```
 
-`x.policy<F>()` adds any flags `F` the same way.
+`x.policy<F>()` adds any flags `F` the same way; `x.policy(ec)` reports into
+an `errc&`.
 
 ## A flag as a call's policy
 
@@ -110,7 +114,7 @@ A hook you do not use costs nothing.
 
 | Hook | Fires when | Called as |
 |---|---|---|
-| `on_clamp(f)` | a stored value leaves the range and is saturated | `f(x, overshoot)` |
+| `on_clamp(f)` | a stored value leaves the range and is saturated | `f(x, overshoot)`; the overshoot is an inside |
 | `on_wrap(f)` | a stored value leaves the range and is folded back | `f(x, carry)`; the carry is an inside |
 | `on_error(f)` | a checked store fails (`overflow`, `rounding_error`), or a compound op does (a zero divisor in `/=` or `%=`, a `rational` right-hand side past 64 bits); replaces the throw | `f(x, errc, const char* message)` |
 
@@ -134,6 +138,14 @@ The carry is an inside, so it adds straight into another inside. Its grid holds
 every carry the source can produce: for `125_ins`, `[2, 2]`; for an `int`,
 that type's limits divided by the period. A hook that takes `imax` instead of
 `auto` works too.
+
+The overshoot is an inside too: the source minus the limit it was clamped to,
+exactly. Its grid holds every value of the source kind minus either limit: an
+integer type's range, an inside's grid, a `rational`'s 64-bit values, or a
+`double`'s whole range down to its least subnormal (an inside of about 2100
+bits, built only when the hook runs). 150.7 into `{0, 100}` reports the double
+150.7 minus 100, not 50. A `long double` is exact below 2^1024, the range the
+library stores exactly; ±∞ reports the end of the overshoot's grid.
 
 The right-hand side of a hook's `+=` is an inside, a quantity or a `rational`.
 A raw `int` or `double` is rejected, as for plain compound assignment: give it
@@ -161,8 +173,8 @@ acc.on_clamp([&](auto&, auto over) { log_overshoot(over); }) += big;
 
 A quantity (see [units.md](units.md)) has the same three hooks. The handle's
 `=`, `+=` and `-=` take a quantity in any unit of the same kind and convert it
-exactly first. The hook gets the **quantity**, then the inside's carry,
-overshoot or errc:
+exactly first. The hook gets the **quantity**, then the inside's carry (a
+count of periods) or errc, or the overshoot as a quantity in the same unit:
 
 ```cpp
 quantity<si::second, inside<{0, 60, bounds::half_open}, wrap>> s{50};
@@ -245,10 +257,13 @@ Each operation reports through one channel:
 | a store: construction, `=`, `+=` and the other compound ops, `as<T>()`, `checked_cast` | the hook (`on_error`, or `on_clamp` / `on_wrap` where they apply), else the policy's `errc&`, else the handler |
 | `try_make`, `parse`, `to<T>()`, `grid::try_make` | the returned `std::expected` |
 | `/` and `%` by a grid that holds 0, `rational` arithmetic | the returned `std::expected` |
-| a store from a `std::expected`: `T x = a / b;`, `x = a / b;`, `rational r = p / q;` | the error is reported like a failed store: the hook, the `errc&`, else the handler |
+| `rational r = p / q;` (a `rational` from an `expected`) | the handler, like a failed store |
 
-No path throws `std::bad_expected_access`; only calling `.value()` on an
-`expected` yourself does.
+An inside never stores a `std::expected`: `T x = a / b;`, `x = a / b;`,
+`x += a / b;` and the policy proxies' `=` are deleted. Check the `expected` and
+store `*e`, or call `T::try_make(e)`, which passes its error on. No path
+throws `std::bad_expected_access`; only calling `.value()` on an `expected`
+yourself does.
 
 ## Replacing the throw handler
 

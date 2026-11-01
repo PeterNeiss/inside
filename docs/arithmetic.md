@@ -20,6 +20,12 @@ auto prod = a * b;   // inside<{0, 65025}>: 20000
 auto quot = a / b;   // std::expected (b's grid holds 0): the exact 0.5
 ```
 
+A result keeps the policy its operands share; a point with the default policy
+(`just<2>`, `2_ins`) counts as neutral, and operands with different policies
+give the default. So a rounding mode survives an intermediate step: with
+`inside<{0, 10}, round_floor> a{7}`, both `a / 2_ins` and `(a + 0_ins) / 2_ins`
+are 3.
+
 On this page: [scalars](#scalars-need-a-grid) · [division](#division) ·
 [rounding](#rounding) · [rounding straight into a type](#rounding-straight-into-a-type-mul_into-and-div_into) ·
 [modulo and divmod](#modulo-and-divmod) · [folds and sums](#folds-and-sums) ·
@@ -63,9 +69,10 @@ auto d = sub * just<2>;  // ✅ inside × inside
 
 `1_ins` and `just<N>` give a constant a one-point grid; `inside<{lo, hi}>{n}`
 gives a runtime value its range. Compound assignment follows the same rule:
-`b += 1_ins`, not `b += 1`. Comparisons with raw scalars are fine
-(`b == 5`, `b < 1.5`): they make no new value, and they are exact, so a
-`double` is compared at full precision.
+`b += 1_ins`, not `b += 1`. Comparisons with integers and rationals are fine
+(`b == 5`, `b < 1.5_r`): they make no new value, and they are exact. A
+floating-point value does not compare with an inside: 0.1 is not 1/10 in
+binary ([conversions.md](conversions.md#comparing)).
 
 ### Scaling by an exact fraction
 
@@ -139,7 +146,7 @@ No path can overflow. For path C, x = p/a and y = r/b give x/y = p·b/(a·r),
 so the quotient's denominator is at most the dividend's largest denominator
 times the divisor's largest numerator. The result grid records that bound
 ([below](#bounded-continuous-grids)), and the result's fraction is sized for
-it, up to `BEMAN_INSIDE_MAX_FRACTION_BITS`. Past that the quotient has no
+it, up to 1024 bits. Past that the quotient has no
 type: `/` does not compile, and `div_into` rounds the quotient instead.
 
 ```cpp
@@ -172,16 +179,16 @@ Two notches are compatible when the target's notch is a whole multiple of
 the source's: notch 2 → 1 is always exact, 1 → 2 may round. To round, say so:
 
 ```cpp
-c.with_snap() = f;                       // this store: toward zero, 2
-c.with_snap<round_nearest>() = f;        // this store: to nearest, 4
+c.policy<snap>() = f;                       // this store: toward zero, 2
+c.policy<round_nearest>() = f;        // this store: to nearest, 4
 using coarse_r = inside<{{0, 10}, 2}, round_nearest>;
 coarse_r r = f;                          // every store of this type: 4
-coarse half(fine x) { return x.with_snap(); }   // as a value: round at the return
+coarse half(fine x) { return x.policy<snap>(); }   // as a value: round at the return
 ```
 
-`.with_snap()` on a temporary, `(a * a).with_snap()`, holds the value, so it is
+`.policy<snap>()` on a temporary, `(a * a).policy<snap>()`, holds the value, so it is
 safe to return. The target's own policy still applies: into a `clamp` type the
-range clamps while `with_snap` handles the notch.
+range clamps while `policy<snap>()` handles the notch.
 
 **How each mode rounds.** Rounding is in value space, on every grid, also on
 one whose points are offset from multiples of the notch (`{{0.5, 10.5}, 1}`):
@@ -204,7 +211,7 @@ consistent with it, so `(a / b) * b + a % b == a` for every mode: under
 Without `snap`, `/` is exact and `%` truncates.
 
 For the same fine → coarse conversion as a function, use
-`clamp_cast<B, round_nearest>(v)` ([conversions.md](conversions.md#free-function-casts)).
+`B{v, clamp | round_nearest}` ([conversions.md](conversions.md#one-shot-stores-bv-f-and-checked_cast)).
 
 ## Rounding straight into a type: `mul_into` and `div_into`
 
@@ -275,14 +282,15 @@ using v = inside<{0, 100}>;
 v a{10}, b{20}, c{30};
 auto s = add_all(a, b, c);                              // inside<{0, 300}>: 60
 auto p = mul_all(a, b);                                 // inside<{0, 10000}>: 200
-auto capped = clamp_cast<v>(add_all(a, b, c, v{90}));   // 100 (150 clamped)
+auto capped = v{add_all(a, b, c, v{90}), clamp};   // 100 (150 clamped)
 ```
 
 `sum<Target>(range)` adds a whole range with **one** check. A `target += x`
 loop checks the running total at every step, a compare and branch that also
 blocks vectorization. `sum` adds exactly and checks or clamps only the total,
-against `Target`'s policy, and runs within a few percent of a native loop
-([performance.md](performance.md)). Wide elements, and totals past 64 bits,
+against `Target`'s policy. It runs at about half the speed of a native loop,
+where a checked `+=` loop runs at a fifth; an `unsafe` loop matches the native
+one ([performance.md](performance.md)). Wide elements, and totals past 64 bits,
 are added in a wide integer and rounded into `Target` once.
 
 ```cpp
@@ -358,9 +366,9 @@ auto r3 = math::sqrt(signed_in{v}) * gain + offset;   // fragment: an expected f
 ```
 
 An operation that fails inside the chain reports its own cause. See
-[internals.md](internals.md#7-error-vocabulary) for the full rule. Storing an
-`expected` into an inside (`lvl x = a / z;`) reports its error through the
-target's policy, as any failed store
+[internals.md](internals.md#7-error-vocabulary) for the full rule. An inside
+does not store an `expected` (`lvl x = a / z;` does not compile): check it and
+store `*e`, or call `lvl::try_make(a / z)`, which passes the error on
 ([policies.md](policies.md#which-channel-reports-a-failure)).
 
 ### Bounded continuous grids
@@ -398,8 +406,8 @@ auto p = a * a;                       // plain: ≤ 10^6
 a = rational{1, 1001};                // rounding_error: off the grid
 ```
 
-Any bound works while a value's numerator and denominator together fit
-`BEMAN_INSIDE_MAX_FRACTION_BITS` (default 1024). An operation whose exact
+Any bound works while a value's numerator and denominator together fit 1024
+bits. An operation whose exact
 result would need more has no result type: the operator is deleted, and its
 message names the fix (store an operand into a coarser type first, or round
 the result once with `mul_into` or `div_into`). A stored value whose

@@ -69,7 +69,7 @@ int main() {
     // Pile on more damage to trigger the downed callback.
     hp.on_clamp([&](auto& self, auto overshoot) {
         if (self == just<0> * HP) {
-            std::cout << "[downed — overshoot " << overshoot << " HP]\n";
+            std::cout << "[downed — overshoot " << overshoot << "]\n"; // a quantity: "-163 HP"
             downed = true;
         }
     }) -= just<200> * HP;
@@ -81,7 +81,7 @@ int main() {
 
     // Level-scaled max-HP buff — could exceed hp_t. Because `hp_t` carries a
     // `clamp` policy, the implicit quantity→quantity conversion already clips at the
-    // boundary: no `clamp_cast` needed when the target type already says
+    // boundary: no clamp flag needed when the target type already says
     // what to do with out-of-range values.
     big_pool_t bonus{180};
     hp_t       capped = bonus;

@@ -21,9 +21,9 @@ int main()
   static_assert(!conversion_overflows<pct>(50));
 
   // Saturating and wrapping casts are constant-evaluable.
-  static_assert(clamp_cast<pct>(150) == 100);
-  static_assert(wrap_cast<angle>(370) == 10);
-  static_assert(wrap_cast<angle>(-10) == 350);
+  static_assert(pct{150, clamp} == 100);
+  static_assert(angle{370, wrap} == 10);
+  static_assert(angle{-10, wrap} == 350);
 
   // Arithmetic results are exact and checkable at compile time.
   constexpr pct a{60};
@@ -32,7 +32,7 @@ int main()
 
   std::cout << "every check in this file ran at compile time\n";
   std::cout << "a + b              = " << (a + b) << "\n";
-  std::cout << "clamp_cast<pct>(150) = " << clamp_cast<pct>(150) << "\n";
-  std::cout << "wrap_cast<angle>(370) = " << wrap_cast<angle>(370) << "\n";
+  std::cout << "pct{150, clamp} = " << pct{150, clamp} << "\n";
+  std::cout << "angle{370, wrap} = " << angle{370, wrap} << "\n";
   return 0;
 }

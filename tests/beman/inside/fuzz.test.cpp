@@ -229,7 +229,7 @@ void prop_on_clamp(fuzz_state& s, long iters) {
             imax overshoot_seen = 0;
             c.on_clamp([&](auto&, auto over) {
                 fired          = true;
-                overshoot_seen = static_cast<imax>(over);
+                overshoot_seen = as<imax>(over);
             })                  = v;
 
             // Library convention (assignment.hpp apply_clamp): overshoot = rhs - clamped.
@@ -725,8 +725,7 @@ void prop_interval_eq(fuzz_state& s) {
 
 void prop_expected_throws(fuzz_state& s) {
     // A fallible result holding an error throws std::bad_expected_access from
-    // .value() (std::expected's own), and inside_error with its errc from the
-    // inside sink constructor (the policy's report).
+    // .value() (std::expected's own); an inside does not store it.
     s.current_prop        = "expected_throws";
     s.iter                = 0;
     using B               = inside<{0, 100}>;
@@ -743,18 +742,10 @@ void prop_expected_throws(fuzz_state& s) {
     FUZZ_REQUIRE(s, got_throw);
     FUZZ_REQUIRE(s, !what.empty());
 
-    // The inside sink reports an error result through its policy.
-    bool sink_throw = false;
-    try {
-        using Q = std::remove_cvref_t<decltype(*(B{7} / B{1}))>;
-        Q q{B{7} / B{0}};
-        (void)q;
-    } catch (const inside_error& e) {
-        sink_throw = true;
-        FUZZ_REQUIRE(s, e.Code == errc::division_by_zero);
-    } catch (...) {
-    } // NOLINT(bugprone-empty-catch): deliberate — the assert below verifies the expected throw fired
-    FUZZ_REQUIRE(s, sink_throw);
+    // No inside stores an expected; try_make passes its error on.
+    using Q = std::remove_cvref_t<decltype(*(B{7} / B{1}))>;
+    static_assert(!std::is_constructible_v<Q, decltype(B{7} / B{0})>);
+    FUZZ_REQUIRE(s, Q::try_make(B{7} / B{0}).error() == errc::division_by_zero);
 }
 
 template <insidable B>
@@ -863,16 +854,16 @@ void prop_casts(fuzz_state& s, long iters) {
             s.iter  = i;
             imax v  = lo + random_wide_int(s.rng, span);
             imax cl = std::clamp<imax>(v, lo, hi);
-            FUZZ_REQUIRE(s, clamp_cast<B>(v) == cl);
+            FUZZ_REQUIRE(s, B{v, clamp} == cl);
             imax wexpect = ((v - lo) % range + range) % range + lo;
-            FUZZ_REQUIRE(s, wrap_cast<B>(v) == wexpect);
+            FUZZ_REQUIRE(s, B{v, wrap} == wexpect);
             // notch == 1, so floor/ceil/round are no-ops after the clamp.
-            FUZZ_REQUIRE(s, clamp_cast<B, round_floor>(v) == cl);
-            FUZZ_REQUIRE(s, clamp_cast<B, round_ceil>(v) == cl);
-            FUZZ_REQUIRE(s, clamp_cast<B, round_nearest>(v) == cl);
+            FUZZ_REQUIRE(s, B{v, clamp | round_floor} == cl);
+            FUZZ_REQUIRE(s, B{v, clamp | round_ceil} == cl);
+            FUZZ_REQUIRE(s, B{v, clamp | round_nearest} == cl);
             if (v >= lo && v <= hi) {
                 FUZZ_REQUIRE(s, checked_cast<B>(v) == v);
-                FUZZ_REQUIRE(s, unchecked_cast<B>(v) == v);
+                FUZZ_REQUIRE(s, B{v, unsafe} == v);
             } else
                 FUZZ_REQUIRE(s, throws_with(errc::overflow, [&] { (void)checked_cast<B>(v); }));
         }
@@ -881,7 +872,7 @@ void prop_casts(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_casts_fixed(fuzz_state& s, long iters) {
-    // clamp_cast<B, round_floor / round_ceil> on dyadic fixed-point grids: a half-notch
+    // the clamp constructor<B, round_floor / round_ceil> on dyadic fixed-point grids: a half-notch
     // midpoint floors to the notch below and ceils to the notch above.
     if constexpr (DyadicNotch<B>) {
         s.current_prop = "casts_fixed";
@@ -895,8 +886,8 @@ void prop_casts_fixed(fuzz_state& s, long iters) {
             rational                            on_notch = (lo + (rational{k} * notch).value()).value();
             rational                            next     = (on_notch + notch).value();
             double                              mid      = static_cast<double>((on_notch + half).value());
-            FUZZ_REQUIRE(s, to_rational(clamp_cast<B, round_floor>(mid)) == on_notch);
-            FUZZ_REQUIRE(s, to_rational(clamp_cast<B, round_ceil>(mid)) == next);
+            FUZZ_REQUIRE(s, to_rational(B{mid, clamp | round_floor}) == on_notch);
+            FUZZ_REQUIRE(s, to_rational(B{mid, clamp | round_ceil}) == next);
         }
     }
 }

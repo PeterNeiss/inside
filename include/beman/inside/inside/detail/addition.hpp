@@ -24,8 +24,8 @@ namespace beman::inside::detail {
 template <insidable L, insidable R = L>
 struct addition {
     static constexpr grid result_grid = grid_of<L> + grid_of<R>;
-    // A result is checked, whatever its operands' policies.
-    using result = inside<result_grid>;
+    // The operands' shared policy (result_flags).
+    using result = inside<result_grid, result_flags<L, R>>;
 
     // Total: the policy has nothing to decide.
     template <policy_flag F = none, typename E = empty_ref>
@@ -54,17 +54,10 @@ struct addition {
 // Whether `l + r` has a result, as a constraint of add / + / += (so a
 // requires-expression or `if constexpr` probe gets the answer instead of a
 // hard error): a result grid with a bound (its fractions within
-// BEMAN_INSIDE_MAX_FRACTION_BITS), and no wide-index operand with a
-// continuous result. (F, the call's flags, is taken for symmetry with
-// div_defined; a sum ignores it.)
+// detail::max_fraction_bits). (F, the call's flags, is taken for
+// symmetry with div_defined; a sum ignores it.)
 template <insidable L, insidable R, policy_flag = none>
-inline constexpr bool add_defined = [] {
-    using result = typename addition<L, R>::result;
-    if constexpr (!bounded_grid(grid_of<result>))
-        return false;
-    else
-        return !rational_storage<result> || (!wide_valued<L> && !wide_valued<R>);
-}();
+inline constexpr bool add_defined = bounded_grid(grid_of<typename addition<L, R>::result>);
 
 // The same for `l - r` (l + (−r)).
 template <insidable L, insidable R, policy_flag = none>

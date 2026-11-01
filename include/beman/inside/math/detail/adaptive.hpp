@@ -670,12 +670,12 @@ constexpr Out evaluate(const Core& core, P&& policy) {
 // call is one load. Only when every result lands inside Out's range — a
 // result the policy would clamp, wrap or report keeps the computed path, as
 // does one that needs the deep step (too costly per slot at compile time) or
-// stays undecided at the cap (so that the run-time counters see it).
-// BEMAN_INSIDE_MATH_TABLE_SLOTS sets the largest input (0 turns tables off).
+// stays undecided at the cap (so that the run-time counters see it). An
+// input of up to 256 slots takes it, but not in an instrumented build
+// (BEMAN_INSIDE_MATH_INSTRUMENT), where every call computes so that the
+// counters, and the certify tool comparing the tiers, see it.
 //---------------------------------------------------------------------------
-#ifndef BEMAN_INSIDE_MATH_TABLE_SLOTS
-    #define BEMAN_INSIDE_MATH_TABLE_SLOTS 256
-#endif
+inline constexpr int table_slots = BEMAN_INSIDE_MATH_INSTRUMENT ? 0 : 256;
 
 // A slot offset i of Out, or −1 when it falls outside Out's range.
 template <insidable Out, typename I>
@@ -697,7 +697,7 @@ constexpr imax slot_of(const Core& core) {
 
 template <insidable In>
 inline constexpr bool table_input =
-    !wide_valued<In> && notched<In> && grid_of<In>.step_count() < grid_int{BEMAN_INSIDE_MATH_TABLE_SLOTS};
+    !wide_valued<In> && notched<In> && grid_of<In>.step_count() < grid_int{table_slots};
 
 // Outputs whose raw a table can hold: an integer index or value.
 template <insidable Out>

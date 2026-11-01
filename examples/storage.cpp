@@ -38,8 +38,8 @@ int main() {
     static_assert(sizeof(uint8) == 1 && sizeof(int16) == 2 && sizeof(unorm16) == 2 && sizeof(q8_8) == 2 &&
                   sizeof(q16_16) == 4);
     int16 mixed{0};
-    mixed.with_clamp() = int16{30000} + int16{20000};                                    // PCM mix: 50000 saturates
-    const int16 out    = mul_into<int16, round_nearest>(unorm16{0.5_ins}, int16{10001}); // gain, rounded once
+    mixed.policy<clamp>() = int16{30000} + int16{20000};                                    // PCM mix: 50000 saturates
+    const int16 out       = mul_into<int16, round_nearest>(unorm16{0.5_ins}, int16{10001}); // gain, rounded once
     std::cout << "mix " << mixed << ", gain " << out << "\n";
     if (mixed != 32767 || out != 5001)
         return 1;

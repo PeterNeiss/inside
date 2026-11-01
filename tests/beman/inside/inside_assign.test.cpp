@@ -40,7 +40,7 @@ TEST(InsideAssignTest, rounding_requires_opt_in__policy_snap_rounds_truncates_to
     }
 }
 
-// rounding requires opt-in / with_snap() is the alias
+// rounding requires opt-in / policy<snap>() is the alias
 TEST(InsideAssignTest, rounding_requires_opt_in__with_snap_is_the_alias) {
     using f30t40 = inside<{{30, 40}, 2}>;
     using f20t50 = inside<{interval{20, 50}, 1}>;
@@ -48,14 +48,14 @@ TEST(InsideAssignTest, rounding_requires_opt_in__with_snap_is_the_alias) {
     [[maybe_unused]] f30t40 smaller;
 
     {
-        SCOPED_TRACE("with_snap() is the alias");
-        bigger              = 30;
-        smaller.with_snap() = bigger;
+        SCOPED_TRACE("policy<snap>() is the alias");
+        bigger                 = 30;
+        smaller.policy<snap>() = bigger;
         ASSERT_EQ(smaller, 30);
     }
 }
 
-// rounding requires opt-in / with_snap<round_nearest>() rounds half up to grid
+// rounding requires opt-in / policy<round_nearest>() rounds half up to grid
 TEST(InsideAssignTest, rounding_requires_opt_in__with_snap_round_nearest_rounds_half_up_to_grid) {
     using f30t40 = inside<{{30, 40}, 2}>;
     using f20t50 = inside<{interval{20, 50}, 1}>;
@@ -63,7 +63,7 @@ TEST(InsideAssignTest, rounding_requires_opt_in__with_snap_round_nearest_rounds_
     [[maybe_unused]] f30t40 smaller;
 
     {
-        SCOPED_TRACE("with_snap<round_nearest>() rounds half up to grid");
+        SCOPED_TRACE("policy<round_nearest>() rounds half up to grid");
         using celsius = inside<{{-40, 60}, 0.5}, round_nearest>;
         celsius room  = 21.4;
         ASSERT_EQ(room, 21.5_r);
@@ -76,10 +76,10 @@ TEST(InsideAssignTest, rounding_requires_opt_in__with_snap_round_nearest_rounds_
 
         using half = inside<{{0, 10}, 0.5}>;
         half h;
-        h.with_snap<round_nearest>() = 3.3;
+        h.policy<round_nearest>() = 3.3;
         ASSERT_EQ(h, 3.5_r);
 
-        h.with_snap<round_nearest>() = 3.2;
+        h.policy<round_nearest>() = 3.2;
         ASSERT_EQ(h, 3);
     }
 }
@@ -169,15 +169,15 @@ TEST(InsideAssignTest, rounding_requires_opt_in__wide_compatible_interval_needs_
     }
 }
 
-// with_clamp / with_wrap per-operation
+// policy<clamp> / policy<wrap> per-operation
 TEST(InsideAssignTest, with_clamp_with_wrap_per_operation) {
     using u100 = inside<{0, 100}>;
     u100 x{50};
 
-    x.with_clamp() = 150;
+    x.policy<clamp>() = 150;
     ASSERT_EQ(x, 100);
 
-    x.with_wrap() = 103;
+    x.policy<wrap>() = 103;
     ASSERT_EQ(x, 2);
 }
 
@@ -243,24 +243,14 @@ TEST(InsideAssignTest, disjoint_interval_assignment_is_allowed_under_wrap_clamp)
     ASSERT_EQ(c, 9); // clamped to upper
 }
 
-// trivial-type guarantees (std::is_trivial is deprecated in C++26)
-template <class T>
-constexpr bool is_trivial_type_v = std::is_trivially_default_constructible_v<T> && std::is_trivially_copyable_v<T>;
-
-TEST(InsideAssignTest, trivial_type_guarantees) {
-    constexpr policy_flag u = uninitialized;
-    static_assert(is_trivial_type_v<inside<{0, 0}, unsafe | u>>);
-    static_assert(is_trivial_type_v<inside<{0, 100}, unsafe | u>>);
-    static_assert(is_trivial_type_v<inside<{-100, 100}, unsafe | u>>);
-    static_assert(is_trivial_type_v<inside<{{0, 10}, rational{1u, 2}}, unsafe | u>>);
-    static_assert(is_trivial_type_v<inside<{{-10, 10}, max_denominator{1000}}, unsafe | u>>);
-    static_assert(is_trivial_type_v<inside<{0, 100}, clamp | u>>);
-    static_assert(is_trivial_type_v<inside<{0, 100}, wrap | u>>);
-    static_assert(is_trivial_type_v<inside<{0, 100}, u>>);
-
-    // Every inside stays trivially copyable and destructible; without
-    // `uninitialized` the default ctor stores the default value.
+// Every inside is trivially copyable and destructible; its default ctor
+// stores the default value (0, else Lower), so none is trivially
+// default-constructible.
+TEST(InsideAssignTest, trivial_copy_guarantees) {
+    static_assert(std::is_trivially_copyable_v<inside<{0, 0}, unsafe>>);
     static_assert(std::is_trivially_copyable_v<inside<{0, 100}>>);
+    static_assert(std::is_trivially_copyable_v<inside<{{0, 10}, rational{1u, 2}}, unsafe>>);
+    static_assert(std::is_trivially_copyable_v<inside<{{-10, 10}, max_denominator{1000}}, unsafe>>);
     static_assert(std::is_trivially_destructible_v<inside<{0, 100}>>);
     static_assert(!std::is_trivially_default_constructible_v<inside<{0, 100}>>);
     static_assert(!std::is_trivially_default_constructible_v<inside<{0, 100}, unsafe>>);

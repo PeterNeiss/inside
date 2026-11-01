@@ -61,7 +61,7 @@ using position = inside<{{-1024, 1024}, per<256>}, round_nearest>;            //
 using fine     = inside<{{-4, 4}, per<1 << 20>}, round_nearest>;              // fine_t
 using range    = inside<{{0, rational{46341, 32}}, per<256>}, round_nearest>; // units::hypot(pos_t, pos_t)
 // audio_math.cpp
-using t_tau    = inside<{{-4, 4}, per<1024>}>;                  // seconds_t / tau
+using t_tau    = inside<{{-4, 4}, per<1024>}, round_nearest>;   // seconds_t / tau (keeps the shared policy)
 using amp      = inside<{{0, 100}, per<16384>}, round_nearest>; // amp_t
 using exponent = inside<{{0, 4}, per<1024>}, round_nearest>;    // exponent_t
 using half     = inside<{{0, 4}, per<2>}, round_nearest>;       // the half-octave cursor
@@ -78,10 +78,10 @@ using cbrt_r   = inside<{{0, 4}, per<256>}, round_nearest>;
 using rad  = inside<{{0, 7}, rational{1, 1'000'000}}, round_nearest>; // angle
 using trig = inside<{{-1, 1}, rational{1, 1'000'000}}, round_nearest>;
 // decibels.cpp, audio_mixer.cpp
-using gain    = inside<{{rational{1, 256}, 4}, per<65536>}, round_nearest>; // decibels gain_t
-using gain0   = inside<{{0, 4}, per<65536>}, round_nearest>;                // audio_mixer gain_t
-using db20    = inside<{{rational{-5, 2}, 1}, per<40>}, round_nearest>;     // db_div20_t
-using db_by20 = inside<{{rational{-6, 5}, rational{3, 5}}, per<40>}>;       // db_t / 20 dB
+using gain    = inside<{{rational{1, 256}, 4}, per<65536>}, round_nearest>;          // decibels gain_t
+using gain0   = inside<{{0, 4}, per<65536>}, round_nearest>;                         // audio_mixer gain_t
+using db20    = inside<{{rational{-5, 2}, 1}, per<40>}, round_nearest>;              // db_div20_t
+using db_by20 = inside<{{rational{-6, 5}, rational{3, 5}}, per<40>}, round_nearest>; // db_t / 20 dB
 // moon_rocket.cpp: sqrt of the exhaust-velocity ratio, onto fine<10^9>
 using v_ratio = inside<{{rational{977'000'000, 1'993'002'209}, rational{979'500'000, 1'993'002'209}},
                         rational{2500, 1'993'002'209}}>;

@@ -45,9 +45,8 @@ TEST(Cursor, type) {
     static_assert(std::is_same_v<cursor<time_t_, 0.25_r>, cur>);
     static_assert(std::is_same_v<cursor<inside<{0, 10}>, 2>, cursor<inside<{0, 10}>, rational{2}>>);
     static_assert(grid_of<cursor<inside<{0, 10}>>> == grid{{0, 11}, 1});
-    // a cursor over an `uninitialized` T still starts at Lower
-    static_assert(rational{cursor<inside<{5, 100}, uninitialized>>{}} == 5);
-    static_assert(!std::is_trivially_default_constructible_v<cursor<inside<{5, 100}, uninitialized>>>);
+    // a cursor over an unsafe T still starts at Lower
+    static_assert(rational{cursor<inside<{5, 100}, unsafe>>{}} == 5);
 }
 
 TEST(Cursor, three_loop_forms) {

@@ -281,12 +281,12 @@ TEST(ConstexprTest, constexpr_add_all_mul_all_folds) {
 //---------------------------------------------------------------------------
 // casts
 //---------------------------------------------------------------------------
-// constexpr: unchecked_cast preserves in-range values
+// constexpr: the unsafe constructor preserves in-range values
 TEST(ConstexprTest, constexpr_unchecked_cast_preserves_in_range_values) {
     using pct = inside<{0, 100}>;
-    static_assert(unchecked_cast<pct>(42) == 42);
-    static_assert(unchecked_cast<pct>(0) == 0);
-    static_assert(unchecked_cast<pct>(100) == 100);
+    static_assert(pct{42, unsafe} == 42);
+    static_assert(pct{0, unsafe} == 0);
+    static_assert(pct{100, unsafe} == 100);
 }
 
 // constexpr: checked_cast with in-range values
@@ -297,48 +297,48 @@ TEST(ConstexprTest, constexpr_checked_cast_with_in_range_values) {
     static_assert(checked_cast<pct>(0) == 0);
 }
 
-// constexpr: clamp_cast clamps out-of-range
+// constexpr: the clamp constructor clamps out-of-range
 TEST(ConstexprTest, constexpr_clamp_cast_clamps_out_of_range) {
     using pct = inside<{0, 100}>;
-    static_assert(clamp_cast<pct>(150) == 100);
-    static_assert(clamp_cast<pct>(-5) == 0);
-    static_assert(clamp_cast<pct>(42) == 42);
+    static_assert(pct{150, clamp} == 100);
+    static_assert(pct{-5, clamp} == 0);
+    static_assert(pct{42, clamp} == 42);
 }
 
-// constexpr: wrap_cast wraps modulo the grid
+// constexpr: the wrap constructor wraps modulo the grid
 TEST(ConstexprTest, constexpr_wrap_cast_wraps_modulo_the_grid) {
     using angle = inside<{0, 359}>;
-    static_assert(wrap_cast<angle>(370) == 10);
-    static_assert(wrap_cast<angle>(-10) == 350);
-    static_assert(wrap_cast<angle>(180) == 180);
+    static_assert(angle{370, wrap} == 10);
+    static_assert(angle{-10, wrap} == 350);
+    static_assert(angle{180, wrap} == 180);
 }
 
-// constexpr: a fold clipped into a target grid with clamp_cast
+// constexpr: a fold clipped into a target grid with the clamp constructor
 TEST(ConstexprTest, constexpr_fold_clipped_to_target_grid) {
     using bus = inside<{-100, 100}, clamp>;
     using ch  = inside<{-50, 50}>;
     constexpr ch a{30}, b{40}, c{45};
 
-    // The widened sum is 115; clamp_cast clips it to bus's interval.
-    static_assert(clamp_cast<bus>(add_all(a, b, c)) == 100);
-    static_assert(clamp_cast<bus>(add_all(ch{10}, ch{-5}, ch{3})) == 8);
+    // The widened sum is 115; the clamp constructor clips it to bus's interval.
+    static_assert(bus{add_all(a, b, c), clamp} == 100);
+    static_assert(bus{add_all(ch{10}, ch{-5}, ch{3}), clamp} == 8);
 
     using small = inside<{0, 50}, clamp>;
     using v     = inside<{0, 10}>;
-    static_assert(clamp_cast<small>(mul_all(v{4}, v{5})) == 20);
-    static_assert(clamp_cast<small>(mul_all(v{6}, v{10})) == 50); // 60 clamped
+    static_assert(small{mul_all(v{4}, v{5}), clamp} == 20);
+    static_assert(small{mul_all(v{6}, v{10}), clamp} == 50); // 60 clamped
 }
 
-// constexpr: clamp_cast with a rounding mode
+// constexpr: the clamp constructor with a rounding mode
 TEST(ConstexprTest, constexpr_clamp_cast_with_rounding) {
     using coarse = inside<{{0, 10}, 2}>;
-    static_assert(clamp_cast<coarse, round_floor>(3.0) == 2);
-    static_assert(clamp_cast<coarse, round_ceil>(3.0) == 4);
-    static_assert(clamp_cast<coarse, round_nearest>(3.0) == 4);
+    static_assert(coarse{3.0, clamp | round_floor} == 2);
+    static_assert(coarse{3.0, clamp | round_ceil} == 4);
+    static_assert(coarse{3.0, clamp | round_nearest} == 4);
 
     // out of range clamps to boundary
-    static_assert(clamp_cast<coarse, round_floor>(15.0) == 10);
-    static_assert(clamp_cast<coarse, round_floor>(-3.0) == 0);
+    static_assert(coarse{15.0, clamp | round_floor} == 10);
+    static_assert(coarse{-3.0, clamp | round_floor} == 0);
 }
 
 // constexpr: conversion predicates

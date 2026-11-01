@@ -89,8 +89,9 @@ auto p = h * h;                           // a grid up to 2²⁰⁰; exact, no e
 auto q = uint64{~0ull} + uint64{~0ull};   // 2⁶⁵ − 2 needs a big upper limit
 ```
 
-The `_g` literal spells a grid number exactly from decimal digits, a point and
-an exponent: `inside<{0, 1267650600228229401496703205376_g}>` is
+A grid number is a `grid_number`, an exact rational of any size: the type of
+a grid's limits and notch and of `lower_of<T>`. The `_g` literal spells one
+exactly from decimal digits, a point and an exponent: `inside<{0, 1267650600228229401496703205376_g}>` is
 `inside<{0, 0x1p100}>`, and `inside<{{0, 1}, 1e-30_g}>` has an exact decimal
 notch of 10⁻³⁰. `per<D>`, `just<N, D>`, `_r` and `_ins` stay 64-bit.
 
@@ -259,15 +260,17 @@ for (cursor<time_t, 0.25_r> t = -2_ins; t <= 2_ins; ++t)  // any start, the clas
 
 ### Iterating quantities
 
-`values` and `cursor` take insides only. For quantities, loop over the
-number's grid and attach the unit:
+`values` and `cursor` take quantities too. They step over the number's grid,
+and each value is a quantity; a cursor's step is a number in the quantity's
+unit:
 
 ```cpp
 using db_t = quantity<dB, inside<{{-24, 12}, per<2>}, round_nearest>>;   // dB: a unit of your own
-for (cursor<db_t::rep, 3> n; n != end(n); ++n) {
+for (cursor<db_t, 3> n; n != end(n); ++n) {
     const db_t level{*n};                                                 // −24 dB, −21 dB, …, 12 dB
     /* … */
 }
+for (db_t level : values<db_t>) { /* −24 dB, −23.5 dB, …, 12 dB */ }
 ```
 
 [`decibels.cpp`](../examples/decibels.cpp) and
@@ -312,7 +315,7 @@ auto mid = midpoint(a, b);      // exactly 50.5
 ```
 
 There is no `clamp` function: the name is the policy flag. To clamp a value,
-use the policy or `clamp_cast` ([conversions.md](conversions.md#free-function-casts)).
+use the policy or the flag constructor `B{v, clamp}` ([conversions.md](conversions.md#one-shot-stores-bv-f-and-checked_cast)).
 
 ## `std::hash` and `std::numeric_limits`
 

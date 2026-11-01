@@ -119,7 +119,7 @@ TEST(Audit20261012, tiny_double_is_exact) {
     EXPECT_EQ((inside<{{0, 1}, per<100>}, round_ceil>{-1e-20}), 0);
     EXPECT_FALSE((inside<grid{interval{0, 1}, max_denominator{1000}}>::try_make(1e-20).has_value())); // off the grid
     constexpr inside<grid{interval{0, 1}, max_denominator{1000}}> zero{0};
-    static_assert(zero < 1e-20 && zero != 1e-20);
+    static_assert(zero < just<1e-20_g> && zero != just<1e-20_g>);
 }
 
 TEST(Audit20261012, tiny_double_predicates) {
@@ -173,19 +173,17 @@ TEST(Audit20261012, quotient_grid_reaches_2_pow_63) {
 
 // Comparing with NaN threw (rational{NaN} raises not_finite) on grids
 // without an integer or double fast path; it is unordered.
-TEST(Audit20261012, nan_compares_unordered) {
-    const double nan = std::numeric_limits<double>::quiet_NaN();
-    using C          = inside<grid{interval{0, 1}, max_denominator{1000}}>;
-    using thirds     = inside<{{0, 1}, rational{1, 3}}>;
-    const C      c{rational{1, 2}};
-    const thirds t{rational{1, 3}};
-    EXPECT_FALSE(c == nan);
-    EXPECT_TRUE(c != nan);
-    EXPECT_FALSE(c < nan);
-    EXPECT_TRUE((c <=> nan) == std::partial_ordering::unordered);
-    EXPECT_FALSE(t == nan);
-    EXPECT_TRUE((t <=> nan) == std::partial_ordering::unordered);
-    EXPECT_TRUE(c < std::numeric_limits<double>::infinity());
+// An inside does not compare with a floating-point value (0.1 is not 1/10 in
+// binary), NaN and infinities included: the comparison is a deleted overload.
+template <class T, class F>
+concept compares_with = requires(T t, F f) { t == f; } || requires(T t, F f) { t <=> f; } ||
+                        requires(T t, F f) { f == t; } || requires(T t, F f) { f < t; };
+TEST(Audit20261012, no_comparison_with_floating_point) {
+    using C      = inside<grid{interval{0, 1}, max_denominator{1000}}>;
+    using thirds = inside<{{0, 1}, rational{1, 3}}>;
+    static_assert(!compares_with<C, double> && !compares_with<thirds, float> && !compares_with<C, long double>);
+    static_assert(compares_with<C, int> && compares_with<C, rational>);
+    static_assert(C{rational{1, 2}} == 0.5_r && thirds{rational{1, 3}} == just<1, 3>);
 }
 
 // An index grid reaching 2^63: Raw·Notch passes 64 bits on the way to a
@@ -253,9 +251,9 @@ TEST(Audit20261012, pow_rational_exponent_is_exact) {
     using down4  = inside<{{0, 4}, per<4>}, round_floor>;
     using up8    = inside<{{0, 4}, per<8>}, round_ceil>;
     using down16 = inside<{0, 16}, round_floor>;
-    EXPECT_EQ(*math::pow_into<up4>(qtr{2.25}, half{0.5}), 1.5);
-    EXPECT_EQ(*math::pow_into<down4>(qtr{2.25}, half{0.5}), 1.5);
-    EXPECT_EQ(*math::pow_into<up8>(qtr{2.25}, half{1.5}), 3.375);
+    EXPECT_EQ(*math::pow_into<up4>(qtr{2.25_r}, half{0.5_r}), 1.5_r);
+    EXPECT_EQ(*math::pow_into<down4>(qtr{2.25_r}, half{0.5_r}), 1.5_r);
+    EXPECT_EQ(*math::pow_into<up8>(qtr{2.25_r}, half{1.5_r}), 3.375_r);
     EXPECT_EQ(*math::pow_into<down16>(inside<{0, 16}>{4}, half{0.5}), 2);
 }
 

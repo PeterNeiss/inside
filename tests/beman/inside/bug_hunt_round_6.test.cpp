@@ -19,14 +19,14 @@
 using namespace beman::inside;
 
 // The expected sink of a policy ref unwrapped with .value(): an error threw
-// bad_expected_access instead of going to the ref's errc&.
+// bad_expected_access instead of going to the ref's errc&. Since 2026-11 no
+// store takes a std::expected: the proxy's sink is deleted.
+template <class Ref, class E>
+concept stores_expected = requires(Ref r, E e) { r = e; };
 TEST(BugHuntRound6, policy_ref_expected_sink_reports_into_errc) {
-    inside<{0, 100}>                    x{5};
-    errc                                ec{};
-    const std::expected<rational, errc> bad{std::unexpected{errc::overflow}};
-    x.policy(ec) = bad;
-    EXPECT_EQ(ec, errc::overflow);
-    EXPECT_EQ(x, 5);
+    using ref = decltype(std::declval<inside<{0, 100}>&>().policy(std::declval<errc&>()));
+    static_assert(!stores_expected<ref, std::expected<rational, errc>>);
+    static_assert(stores_expected<ref, rational>);
 }
 
 // A failed read-out through the errc& proxy returned an uninitialized
@@ -69,11 +69,11 @@ TEST(BugHuntRound6, math_wrap_output_folds_the_true_value) {
     int bad    = 0;
     for (imax k = -320; k <= 320; k += 3) {
         const In x{rational{k, 16}};
-        bad += !(wrap_cast<Wrap>(math::exp_into<Wide>(x)) == math::exp_into<Wrap>(x));
-        bad += !(wrap_cast<Wrap>(math::exp2_into<Wide>(x)) == math::exp2_into<Wrap>(x));
-        bad += !(wrap_cast<Wrap>(math::sinh_into<Wide>(x)) == math::sinh_into<Wrap>(x));
-        bad += !(wrap_cast<Wrap>(math::cosh_into<Wide>(x)) == math::cosh_into<Wrap>(x));
-        bad += !(wrap_cast<Wrap>(math::pow_base_into<Wide, 3>(x)) == math::pow_base_into<Wrap, 3>(x));
+        bad += !(Wrap{math::exp_into<Wide>(x), wrap} == math::exp_into<Wrap>(x));
+        bad += !(Wrap{math::exp2_into<Wide>(x), wrap} == math::exp2_into<Wrap>(x));
+        bad += !(Wrap{math::sinh_into<Wide>(x), wrap} == math::sinh_into<Wrap>(x));
+        bad += !(Wrap{math::cosh_into<Wide>(x), wrap} == math::cosh_into<Wrap>(x));
+        bad += !(Wrap{math::pow_base_into<Wide, 3>(x), wrap} == math::pow_base_into<Wrap, 3>(x));
     }
     EXPECT_EQ(bad, 0);
     // pow, with a base reaching 0 (bounded: the exponent is not negative).
@@ -83,7 +83,7 @@ TEST(BugHuntRound6, math_wrap_output_folds_the_true_value) {
         for (int e = 0; e <= 12; ++e) {
             const B b{rational{i, 4}};
             const P p{rational{e, 2}};
-            bad += !(wrap_cast<Wrap>(*math::pow_into<Wide>(b, p)) == *math::pow_into<Wrap>(b, p));
+            bad += !(Wrap{*math::pow_into<Wide>(b, p), wrap} == *math::pow_into<Wrap>(b, p));
         }
     EXPECT_EQ(bad, 0);
 }

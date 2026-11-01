@@ -13,10 +13,10 @@ int main() {
     sensor raw   = 725;
 
     static_assert(conversion_overflows<level>(725));
-    auto top  = clamp_cast<level>(raw);                      // 10: saturated
-    auto deg  = wrap_cast<inside<{0, 359}>>(raw);            // 5: 725 mod 360
+    auto top  = level{raw, clamp};                      // 10: saturated
+    auto deg  = inside<{0, 359}>{raw, wrap};            // 5: 725 mod 360
     auto fit  = checked_cast<level>(sensor{7});              // 7, or inside_error
-    auto near = clamp_cast<level, round_nearest>(6.5);       // 7: a tie goes away from zero
+    auto near = level{6.5, clamp | round_nearest};       // 7: a tie goes away from zero
 
     using quarter = inside<{{0, 10}, per<4>}>;
     quarter q = 2.75_ins;

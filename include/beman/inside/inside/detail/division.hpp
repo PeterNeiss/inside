@@ -180,7 +180,7 @@ struct division {
     // no exact quotient grid (below).
     static_assert(div_defined<L, R, F>,
                   "division: no result type - the divisor grid is the point 0, or the exact quotient's fractions "
-                  "pass BEMAN_INSIDE_MAX_FRACTION_BITS");
+                  "pass 1024 bits");
 
     // The native integer quotient's range: the corner quotients rounded by
     // the runtime's mode (half_even: the low end by floor, the high by ceil,
@@ -267,8 +267,7 @@ struct division {
             return *(grid_of<L> / grid_of<R>);
     }();
 
-    // A result is checked, whatever its operands' policies.
-    using result = inside<result_grid>;
+    using result = inside<result_grid, result_flags<L, R>>; // the operands' shared policy
 
     // The exact quotient of two anchored integer raws as one 64-bit fraction:
     // |J_L|·p_L·q_R and |J_R|·p_R·q_L bounded by 2^62 for every value.
@@ -431,7 +430,7 @@ struct modulo {
     static constexpr grid result_grid =
         (rmode == round_mode::trunc && lower_of<L> >= 0) ? grid{grid_rational{0}, max_rem} : grid{-max_rem, max_rem};
 
-    using result = inside<result_grid>;
+    using result = inside<result_grid, result_flags<L, R>>; // the operands' shared policy
 
     // Modulo never overflows (the remainder fits result_grid), so the only
     // failure is a zero divisor — excluded by the grid → plain `result`.

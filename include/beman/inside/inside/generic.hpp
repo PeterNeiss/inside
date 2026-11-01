@@ -72,8 +72,8 @@ struct inside_assignable_why {
                             << interval_of<L>.Lower << ", " << interval_of<L>.Upper << "], rhs ["
                             << interval_of<R>.Lower << ", " << interval_of<R>.Upper << "])");
     static_assert(notch_ok,
-                  detail::diag_text{} << "inside_assignable: incompatible notches — use `with_snap()` or "
-                                         "`policy<snap>()` to allow rounding (lhs notch "
+                  detail::diag_text{} << "inside_assignable: incompatible notches — use `policy<snap>()` or a "
+                                         "rounding policy to allow rounding (lhs notch "
                                       << notch_of<L> << ", rhs notch " << detail::notch_or_zero<R>() << ")");
     static constexpr bool value = inside_assignable<L, R, P>;
 };

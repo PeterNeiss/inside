@@ -22,14 +22,16 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   | `beman/inside/constants.hpp` | `beman/inside/units/constants.hpp` (physical) and `beman/inside/math/constants.hpp` (`math::pi` & co., without units) |
   | `beman/inside/detail/…` | `beman/inside/inside/detail/…`, `beman/inside/math/detail/…` (internal) |
   | `beman/inside/core.hpp`, `numbers.hpp`, `policy.hpp` | internal: `inside/detail/core.hpp`, `numbers.hpp`, `call_policy.hpp` |
+  | `beman/inside/detail/compare.hpp` | `beman/inside/inside/compare.hpp` (public) |
 
   `units.hpp` is now `units/core.hpp` (the machinery) plus `units/systems.hpp`
   (the ISQ and SI catalog); units of your own need only `units/core.hpp`.
 
 - A default-constructed inside is no longer uninitialized: `T x;` and `T{}`
-  are 0, or Lower on a grid without 0. Add the `uninitialized` flag where a
-  trivial default constructor matters (bulk buffers):
-  `inside<G, uninitialized>`.
+  are 0, or Lower on a grid without 0, and no inside is trivially
+  default-constructible.
+- `rational{}` and `rational r;` are 0 (0/1), and `==` / `<=>` compare
+  values, so a `rational` written through `Num`/`Den` compares by its value.
 - An inside no longer converts to `imax` implicitly. Read an integer with
   `as<T>()` (no check is left where `T` holds the grid) or `to<T>()`:
   `int i = b;` becomes `int i = b.as<int>();`, `vec[b]` becomes
@@ -46,8 +48,21 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   (`beman::inside::detail`); use `std::ckd_add` & co. or the builtins.
 - The class `policy<F, E>` is `detail::call_policy<F, E>`: write
   `make_policy<F>()` / `make_policy<F>(ec)`, or pass a flag.
-- `rounded_floor`, `rounded_nearest` & co., `clamped` and `wrapped` are gone:
-  pass the flag itself, `div(a, b, round_floor)`, `B{v, clamp}`.
+- Fewer ways to store a value. The removed spellings and their replacements:
+
+  | Before | Now |
+  |---|---|
+  | `x.with_clamp()`, `x.with_wrap()` | `x.policy<clamp>()`, `x.policy<wrap>()` |
+  | `x.with_snap<M>()`, `x.with_snap()` | `x.policy<M>()`, `x.policy<snap>()` |
+  | `clamp_cast<T>(v)`, `clamp_cast<T, R>(v)` | `T{v, clamp}`, `T{v, clamp \| R}` |
+  | `wrap_cast<T>(v)` | `T{v, wrap}` |
+  | `unchecked_cast<T>(v)` | `T{v, unsafe}` |
+  | `clamp_cast<Q>(x)`, `wrap_cast<Q>(x)` (quantities) | `Q{x, clamp}`, `Q{x, wrap}` |
+  | `T x = a / b;`, `x = a / b;`, `x += a / b;` (an `expected`) | `T::try_make(a / b)`, or check it and store `*e` |
+  | `div(a, b, rounded_floor)`, `B{v, clamped}` & co. | `div(a, b, round_floor)`, `B{v, clamp}` |
+
+  The flags of the constructor `T{v, F}` replace `T`'s own of the same kind
+  (a rounding mode, clamp or wrap). `checked_cast<T>(v)` stays.
 - The CMake option `BEMAN_INSIDE_STRICT_SFINAE` is gone: its behaviour, honest
   traits, is now the only one. An impossible store's message names the
   failing clause; `explain_assignable<To, From>` prints the grids' numbers.
@@ -59,14 +74,37 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   it, which on `{5, 100}` read as 0, on a Q1.14 sample as −1, and on a
   continuous grid as the fraction 0/0. A failed error-code construction,
   `T x(v, make_policy(ec))`, now keeps that default value.
-- Storing a `std::expected` that holds an error (`T x = a / b;`, `x = a / b;`)
-  reports it through `T`'s policy, as a failed store does: `inside_error` with
-  the errc, or the installed handler. It threw `std::bad_expected_access`,
-  past the handler and with no errc in its message. `rational`'s sinks (the
-  converting constructor, `+= -= *= /=`, `<=>` against an `expected`) raise
-  the same way.
+- An inside no longer stores a `std::expected`: `T x = a / b;`, `x = a / b;`,
+  `x += a / b;` and `x.policy(ec) = a / b;` are deleted overloads (they threw
+  `std::bad_expected_access` before). Check the `expected` and store `*e`, or
+  call `T::try_make(a / b)`, which passes the error on. `rational`'s sinks
+  (the converting constructor, `+= -= *= /=`, `<=>` against an `expected`)
+  raise through the error handler instead of `std::bad_expected_access`.
 - The error handler is atomic, with default visibility: one thread may install
   a handler while others raise, and shared libraries share it.
+- An inside no longer compares with a floating-point value (`x == 0.1`,
+  `x < 1.5`): 0.1 is not 1/10 in binary, so an inside holding 1/10 compared
+  unequal to 0.1. Compare with `0.1_r`, `just<1, 10>` or an inside.
+- An inside (or an `expected` of one) combined with a `rational` by `+ - * / %`
+  is a deleted overload: through `operator rational()` it silently became an
+  `expected<rational, errc>` without a grid. Write the constant as
+  `just<1, 2>` or `0.5_ins`; `x += 0.5_r` still stores into `x`'s grid.
+- A quantity's `on_clamp` hook gets the overshoot as a quantity in its unit
+  and kind (it was the bare number): `f(q, over)` with `over` printing as
+  "-163 HP". `on_wrap`'s carry stays a count of periods.
+- A result of an operator keeps the policy its operands share (a point with
+  the default policy, such as `2_ins`, counts as neutral; different policies
+  give the default). Before, `+ - *` returned the default policy, so with
+  `inside<{0, 10}, round_floor> a{7}`, `a / 2_ins` was 3 but
+  `(a + 0_ins) / 2_ins` was 7/2; both are 3 now.
+- The `on_clamp` overshoot is an inside for every source kind, as the
+  `on_wrap` carry already was, and exact: the source minus the limit. Before,
+  it was an `imax` from an integer (saturated), a `double` from a `double`
+  (computed in floating point), a `rational` from a `rational` (0 when the
+  difference left 64 bits), and an inside only from an inside. Its grid holds
+  every value of the source kind minus either limit; from a `double` that is
+  an inside of about 2100 bits. ±∞ reports the end of that grid. A hook typed
+  `imax` reads it with `as<imax>(over)`.
 - A store, operator or free function that cannot compile is a deleted
   overload with the reason, everywhere: an impossible store (a disjoint
   interval, an off-notch source), an inside with a raw scalar (`x + 1`), and
@@ -80,11 +118,51 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Added
 
-- `uninitialized`: the policy flag that keeps a trivial default constructor.
+- `beman::inside::grid_number`, the type of a grid's limits, notch and bound,
+  of `_g` and of `lower_of<T>`: it was reachable only as
+  `detail::grid_rational`.
+
+- Quantities catch up with insides: `q.policy<F>()` and `q.policy(ec)` (their
+  handles, and the hooks', take `*=` and `/=` too), `checked_cast<Q>(x)`,
+  `min`, `max` and `midpoint` in the common unit, `q.as<T>()` / `q.to<T>()`
+  and the free `as<T>(q)` / `to<T>(q)` for a dimensionless quantity, and
+  `uniform<Q>(rng)` in the new opt-in `<beman/inside/units/random.hpp>`. A
+  test lists every inside function by reflection, so a new one needs a
+  quantity form or a reason.
+- `add`, `sub`, `mul`, `div` and `mod` take quantities, with a per-call
+  policy, a flag or an `errc&` as on insides: `div(d, t, round_floor)`. Sums
+  run in the common unit; products and quotients multiply the units, and a
+  number scales. A hook is a deleted overload with the reason.
+- `cursor<Q, Step>`, `values<Q>` and `end(t)` take quantities: they step over
+  the number's grid and yield quantities, Step a number in Q's unit
+  (`for (cursor<db_t, 3> n; n != end(n); ++n)`). One trait,
+  `detail::stepping`, serves both kinds, so no twin in `units::` collides
+  under two using-directives.
+- `std::hash<Q>` and `std::numeric_limits<Q>` for quantities: the number's,
+  with `min()`, `max()`, `lowest()`, `epsilon()` and `round_error()` as
+  quantities in Q's unit.
+
+- `on_clamp` and `on_wrap` work on a continuous grid past 64 bits and for a
+  source past 64 bits (such as a wide inside) into a continuous inside; both
+  were a `static_assert`. The `on_wrap` carry grid is computed on grid
+  numbers, so a notched grid past 64 bits takes `on_wrap` too (it did not
+  compile).
+- `+`, `-` and `*` of an operand past 64 bits whose result is a continuous
+  grid within 64 bits (`{2^64, 2^64 + 4}` plus a continuous
+  `{-2^64, -2^64 + 4}`): it was a deleted overload, now the wide kernels
+  compute it.
+
 - A flag is also a call's policy: each flag is a constant of its own type
   that converts to `policy_flag`, so `round_floor` is a template argument
   (`inside<G, round_floor>`), combines with `|`, and is the last argument of
   `add` … `divmod` or a constructor's second argument.
+
+### Performance
+
+- `x += r` and `x -= r` with a `rational` on a Q-format grid: 12 fewer
+  instructions per call (`+= rational{k, 256}` on Q8.8: 41.8 → 28.8 ins/op).
+  The notch count came back as an `optional<imax>`, which GCC 16 kept in
+  memory; it is now a bool and an out-parameter, with a branchless sign.
 
 ### Removed
 
@@ -94,9 +172,31 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 - The option `BEMAN_INSIDE_STRICT_SFINAE` and its CI cells.
 - The flags `ignore_range` and `ignore_zero`: each turned a runtime check off
   without saying `unsafe`. They compiled to the same code as `unsafe`.
+- The macros `BEMAN_INSIDE_MAX_FRACTION_BITS` and
+  `BEMAN_INSIDE_MATH_TABLE_SLOTS`: the limits are fixed at 1024 bits and 256
+  slots, so translation units built with different values can no longer form
+  different types and tables in one program. An instrumented build
+  (`BEMAN_INSIDE_MATH_INSTRUMENT`) has no table path, so its counters, and
+  the certify tool, see every call.
 - The implicit `operator imax()`. It narrowed silently into smaller built-ins:
   `int i = b;` on a grid past `int` truncated, and `unsigned char c = b;` on
   `{-5, 5}` read −1 as 255, with no warning under `-Wall -Wextra`.
+
+### Fixed
+
+- The docs said a quantity's `++` adds one unit; it steps one notch of the
+  number, as on an inside, and now say so.
+- An inside had no unary `+`, so `+q` on a quantity did not compile (its
+  `operator+()` was ill-formed for every number). `+x` is now `x`, for both.
+- `++` and `--` on a grid without a notch were a `static_assert` body, so a
+  `requires` probe said they existed. They are deleted overloads with the
+  reason now. A new test instantiates the class templates explicitly, which
+  compiles every member whose constraints hold, as some compilers do while
+  reflecting on a class.
+- A `double` past the magnitude of a grid past 64 bits stood in as a value
+  just past the grid, which a wrap then folded: `inside<{-0x1p70, 0x1p70},
+  wrap>{-0x1p72}` was 4 instead of 2. A wrap, and an `on_clamp` overshoot, now
+  use the double's exact value.
 
 ## 0.6.0 — 2026-10-30
 

@@ -49,7 +49,7 @@ int main() {
     std::cout << "          (r=" << r << ")" << "\n";
 
     inside<{0, 100}> w(50);
-    w.with_clamp() = 200;
+    w.policy<clamp>() = 200;
     std::cout << "clamped:  value=" << w << " (this store saturates)" << "\n";
 
     // === Section 3: Every errc value gets a demo ===

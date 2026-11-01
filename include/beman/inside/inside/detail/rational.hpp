@@ -77,11 +77,15 @@ template <class T>
 //---------------------------------------------------------------------------
 // rational — structural type for NTTP (public members only). Sign is encoded
 // in the denominator (negative = negative rational); numerator is unsigned to
-// represent e.g. umax itself.
+// represent e.g. umax itself. Default-constructed it is 0 (0/1). Every
+// constructor stores the reduced form; writing Num/Den directly is unchecked
+// (like inside::from_raw), but == and <=> still compare values. (As a template
+// argument, a hand-built unreduced value is a different argument: template
+// identity compares the members.)
 //---------------------------------------------------------------------------
 struct rational {
-    umax Num;
-    imax Den;
+    umax Num{0};
+    imax Den{1};
 
     constexpr rational() = default;
     // Exact for every double of magnitude 2^-10 or more; one finer than
@@ -111,8 +115,11 @@ struct rational {
         requires std::same_as<std::remove_cvref_t<O>, std::expected<rational, errc>>
     constexpr rational(O&& o) : rational(value_or_raise(o)) {}
 
-    // operator== by default for structural type
-    [[nodiscard]] constexpr bool operator==(const rational&) const = default;
+    // The values, not the members: equal members (two reduced values) answer
+    // at once; anything else compares the fractions (a hand-built 2/2 equals 1).
+    [[nodiscard]] constexpr bool operator==(const rational& rhs) const {
+        return (Num == rhs.Num && Den == rhs.Den) || (*this <=> rhs) == 0;
+    }
     // Exact against a double too (rational{value} truncates one finer than
     // 2^-62): defined after compare_double.
     template <plain_number T>

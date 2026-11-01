@@ -3,7 +3,7 @@
 // The core type beman::inside::inside<G, P>: construction and try_make,
 // compound assignment, ++/--, the conversions (imax, rational, double,
 // to<T>/as<T>), numerator()/denominator(), raw()/from_raw, the per-store
-// overrides (with_clamp, with_snap, policy<F>) and hooks (on_wrap, on_clamp,
+// overrides (policy<F>(), policy(ec)) and hooks (on_wrap, on_clamp,
 // on_error), parse(first, last), just<…> and the _ins literal.
 // The umbrella adds the casts, arithmetic, range and cursor layers, which
 // need this complete type.
@@ -81,6 +81,24 @@ template <grid G, policy_flag P>
 using cursor_value_t =
     inside<grid{interval{G.Interval.Lower, G.Interval.Upper - G.Notch}, G.Notch}, P & ~cursor_marker>;
 
+// The number a type steps over in cursor<T>, values<T> and end(t): an inside
+// itself, or a quantity's number (units specializes it); rebind<N> wraps a
+// number N back into the type's kind.
+template <class T>
+struct stepping {};
+template <insidable T>
+struct stepping<T> {
+    using number = T;
+    template <class N>
+    using rebind = N;
+};
+template <class T>
+concept steppable = requires { typename stepping<T>::number; };
+template <class T>
+using step_number_t = typename stepping<T>::number;
+template <class T, class N>
+using step_rebind_t = typename stepping<T>::template rebind<N>;
+
 // A store into a fresh B through store(b, policy) under B's flags F with an
 // errc& policy: b, or the error it reported.
 template <class B, policy_flag F, class Store>
@@ -129,14 +147,8 @@ struct inside {
     // A default-constructed inside is 0, or Lower on a grid without 0 — a
     // value of the grid, as every other inside holds.
     constexpr inside()
-        requires(!has_flag(P, uninitialized) && !has_flag(P, detail::cursor_marker))
+        requires(!has_flag(P, detail::cursor_marker))
         : Raw{detail::default_raw<inside>} {}
-
-    // `uninitialized`: a trivial default ctor — Raw is left uninitialized, like
-    // a built-in scalar, and has no value until assigned.
-    constexpr inside()
-        requires(has_flag(P, uninitialized) && !has_flag(P, detail::cursor_marker))
-    = default;
 
     // A cursor starts at Lower: slot 0.
     constexpr inside()
@@ -170,14 +182,22 @@ struct inside {
         store_value(value);
     }
 
-    // One-shot policy: `pol`'s flags widen the assignable check (a clamp/round
-    // relaxes the interval/notch clause, e.g. clamp_cast<B, round_nearest>(some_inside)) and
-    // apply to this store. If it reports an error (ec mode), the inside keeps
-    // its default value.
+    // One-shot policy: a flag or make_policy<F>(ec) for this store. Its
+    // rounding mode replaces the type's and its clamp or wrap the type's range
+    // handling (detail::override_flags): T{v, clamp | round_ceil} saturates
+    // and rounds up whatever T declares. The store runs on the twin of this
+    // type under those flags (the same grid, so the raw carries over). If it
+    // reports an error (ec mode), the inside keeps its default value.
     template <numeric A, typename Pol>
-        requires inside_assignable<inside, A, P | flags_of<Pol>>
+        requires(detail::flag_like<Pol> || detail::policy_like<Pol>) &&
+                inside_assignable<inside<G, detail::override_flags(P, flags_of<Pol>)>,
+                                  A,
+                                  detail::override_flags(P, flags_of<Pol>)>
     constexpr inside(A value, Pol&& pol) : Raw{detail::default_raw<inside>} {
-        store_value(value, detail::as_call_policy(pol));
+        constexpr policy_flag O = detail::override_flags(P, flags_of<Pol>);
+        inside<G, O>          twin;
+        detail::assignment<inside<G, O>, A>::assign(twin, value, detail::with_flags<O>(pol));
+        Raw = twin.raw();
     }
 
     // No error-code constructor: construction that can fail is `try_make(value)`,
@@ -188,18 +208,27 @@ struct inside {
     inside(A, errc&) = delete ("inside(value, errc&) was removed: use `auto r = B::try_make(value);` "
                                "(expected<B, errc>), or `b.policy(ec) = value` to assign with an error code");
 
-    // expected<A> sink — unwrap once at the construction boundary so callers can
-    // chain checked arithmetic without per-step `.value()`. An error is
-    // reported through this type's policy, as a failed store is (inside_error
-    // or the installed handler; a compile error in a constant expression).
+    // A std::expected is never stored implicitly: check it and store *e, or
+    // use try_make(e), which passes its error on. Construction, assignment and
+    // the compound assignments from an expected are deleted with that reason.
+#define BEMAN_INSIDE_WHY_expected                                                                       \
+    "inside: a std::expected is not stored implicitly - check it and store *e, or use T::try_make(e), " \
+    "which passes its error on"
     template <numeric A>
-        requires inside_assignable<inside, A, P>
-    constexpr inside(const std::expected<A, errc>& value) : Raw{detail::default_raw<inside>} {
-        if (!value) [[unlikely]]
-            report_error(value.error());
-        else
-            store_value(*value);
-    }
+    inside(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
+    template <numeric A>
+    inside& operator=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
+    template <numeric A>
+    inside& operator+=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
+    template <numeric A>
+    inside& operator-=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
+    template <numeric A>
+    inside& operator*=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
+    template <numeric A>
+    inside& operator/=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
+    template <numeric A>
+    inside& operator%=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
+#undef BEMAN_INSIDE_WHY_expected
 
     // A grid number at run time (`residue r = N - 1_g;`, a constexpr big
     // variable): checked like any store, since its interval is not part of
@@ -211,7 +240,10 @@ struct inside {
     template <std::same_as<detail::grid_rational> V, class Pol>
         requires(detail::policy_like<Pol> || detail::flag_like<Pol>)
     constexpr inside(const V& value, Pol&& pol) : Raw{detail::default_raw<inside>} {
-        detail::assign_grid_number(*this, value, detail::as_call_policy(pol));
+        constexpr policy_flag O = detail::override_flags(P, flags_of<Pol>);
+        inside<G, O>          twin;
+        detail::assign_grid_number(twin, value, detail::with_flags<O>(pol));
+        Raw = twin.raw();
     }
     template <std::same_as<detail::grid_rational> V>
     constexpr inside& operator=(const V& value) {
@@ -226,21 +258,14 @@ struct inside {
         return *this;
     }
 
-    // An error is reported through this type's policy; *this stays unchanged.
-    template <numeric B>
-        requires inside_assignable<inside, B, P>
-    constexpr inside& operator=(const std::expected<B, errc>& other) {
-        return assign_op_result(other);
-    }
-
     // A store that can never succeed is deleted, with the clause that fails:
     // a trait or `requires` probe sees it as ill-formed, and the error names
     // the fix. explain_assignable<To, From> prints the two grids.
 #define BEMAN_INSIDE_WHY_disjoint                                                                   \
     "inside: the source's interval lies entirely outside this grid's, and the policy has no clamp " \
     "or wrap - widen the grid, or store with clamp or wrap (explain_assignable<To, From> prints both)"
-#define BEMAN_INSIDE_WHY_notch                                                                    \
-    "inside: incompatible notches - the source's values miss this grid's notch; use with_snap() " \
+#define BEMAN_INSIDE_WHY_notch                                                                       \
+    "inside: incompatible notches - the source's values miss this grid's notch; use policy<snap>() " \
     "or a rounding policy (explain_assignable<To, From> prints both notches)"
     template <numeric A>
         requires(!detail::assign_intervals_ok<inside, A, P>)
@@ -248,30 +273,18 @@ struct inside {
     template <numeric A>
         requires(detail::assign_intervals_ok<inside, A, P> && !detail::assign_notch_ok<inside, A, P>)
     inside(A) = delete (BEMAN_INSIDE_WHY_notch);
-    template <numeric A>
-        requires(!detail::assign_intervals_ok<inside, A, P>)
-    inside(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_disjoint);
-    template <numeric A>
-        requires(detail::assign_intervals_ok<inside, A, P> && !detail::assign_notch_ok<inside, A, P>)
-    inside(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_notch);
     template <numeric B>
         requires(!detail::assign_intervals_ok<inside, B, P>)
     inside& operator=(const B&) = delete (BEMAN_INSIDE_WHY_disjoint);
     template <numeric B>
         requires(detail::assign_intervals_ok<inside, B, P> && !detail::assign_notch_ok<inside, B, P>)
     inside& operator=(const B&) = delete (BEMAN_INSIDE_WHY_notch);
-    template <numeric B>
-        requires(!detail::assign_intervals_ok<inside, B, P>)
-    inside& operator=(const std::expected<B, errc>&) = delete (BEMAN_INSIDE_WHY_disjoint);
-    template <numeric B>
-        requires(detail::assign_intervals_ok<inside, B, P> && !detail::assign_notch_ok<inside, B, P>)
-    inside& operator=(const std::expected<B, errc>&) = delete (BEMAN_INSIDE_WHY_notch);
 #undef BEMAN_INSIDE_WHY_disjoint
 #undef BEMAN_INSIDE_WHY_notch
 
     // Trusted construction from a storage-layout raw — no validation; the caller
     // asserts `r` is a valid slot. Entry point for tests, fast paths, and same-grid
-    // raw transfer (e.g. `unchecked_cast`).
+    // raw transfer.
     [[nodiscard]] static constexpr inside from_raw(raw_type r) noexcept { return inside{detail::raw_tag{}, r}; }
 
     // Conversion summary:
@@ -425,7 +438,9 @@ struct inside {
     // The reduced exact value as {numerator, positive denominator}. Integer
     // grids need no division; dyadic Q-format grids reduce by shifting out
     // common factors of two instead of a gcd.
-    constexpr std::pair<imax, imax> fraction() const {
+    constexpr std::pair<imax, imax> fraction() const
+        requires detail::fraction_fits_imax<inside>
+    {
         if constexpr (detail::integer_storage<inside> && detail::integer_lattice<inside>)
             return {detail::to_value(*this), 1};
         else if constexpr (detail::index_storage<inside> && detail::q_format_fits<inside> &&
@@ -445,6 +460,9 @@ struct inside {
     // functions in `beman::inside::math` — `beman::inside::math::floor(b)` etc. (auto-deduced Out)
     // or `beman::inside::math::floor_into<Out>(b)` for an explicit output grid. There is
     // deliberately no member-syntax alias: one spelling, in `<beman/inside/math.hpp>`.
+
+    // +x is x, as for a built-in number (and a quantity's +q).
+    [[nodiscard]] constexpr inside operator+() const noexcept { return *this; }
 
     [[nodiscard]] constexpr negated_type operator-() const {
         negated_type neg;
@@ -470,7 +488,7 @@ struct inside {
     // policy_ref holding `*this` by reference (needed so `b.policy<…>() = x` writes
     // back into b, and cheap for the common immediate use). On an *rvalue* receiver
     // it returns a policy_buffer that OWNS the moved-in value, so a snapped temporary
-    // survives being returned/stored (`return (a*b).with_snap();`) — no dangling.
+    // survives being returned/stored (`return (a*b).policy<snap>();`) — no dangling.
     template <policy_flag F = none, typename Self>
     [[nodiscard]] constexpr auto policy(this Self&& self) {
         auto pol = make_policy<P | F>();
@@ -484,27 +502,6 @@ struct inside {
     [[nodiscard]] constexpr auto policy(errc& ec) {
         auto pol = make_policy<P | F>(ec);
         return detail::policy_ref<inside, decltype(pol)>{*this, pol, {}};
-    }
-
-    // with_snap<Mode>() — opt this assignment into snapping with the given rounding
-    // mode. Bare `with_snap()` is truncate-toward-zero (Mode == snap); pass an
-    // explicit mode for the others: with_snap<round_nearest>(), <round_floor>,
-    // <round_ceil>, <round_half_even>. Like policy<F>(), a temporary receiver
-    // yields a value-owning policy_buffer.
-    template <policy_flag Mode = snap, typename Self>
-    [[nodiscard]] constexpr auto with_snap(this Self&& self) {
-        static_assert(has_flag(Mode, snap),
-                      "with_snap<Mode>: Mode must be a snapping mode — snap (truncate), round_nearest, "
-                      "round_floor, round_ceil, or round_half_even");
-        return std::forward<Self>(self).template policy<Mode>();
-    }
-    template <typename Self>
-    [[nodiscard]] constexpr auto with_clamp(this Self&& self) {
-        return std::forward<Self>(self).template policy<clamp>();
-    }
-    template <typename Self>
-    [[nodiscard]] constexpr auto with_wrap(this Self&& self) {
-        return std::forward<Self>(self).template policy<wrap>();
     }
 
   private:
@@ -682,13 +679,17 @@ struct inside {
         const W     room = W{std::numeric_limits<imax>::max()} - (hi - lo + W{1}) - mag;
         return room.negative() ? umax{0} : static_cast<umax>(room);
     }();
-    static constexpr std::optional<imax> notch_delta(const detail::rational& r) noexcept {
+    // A bool and an out-parameter, not an optional<imax>: GCC 16 kept the
+    // optional in memory, 12 more instructions on every += / -= of a rational.
+    static constexpr bool notch_delta(const detail::rational& r, imax& delta) noexcept {
         constexpr umax K = detail::abs_den(detail::notch64<inside>.Den);
         const umax     d = detail::abs_den(r.Den);
         if (K % d != 0 || r.Num > max_notch_delta / (K / d))
-            return std::nullopt;
-        const imax n = static_cast<imax>(r.Num * (K / d));
-        return r.Den < 0 ? -n : n;
+            return false;
+        const imax n    = static_cast<imax>(r.Num * (K / d));
+        const imax sign = r.Den >> 63; // 0, or −1 for a negative value
+        delta           = (n ^ sign) - sign;
+        return true;
     }
 
   public:
@@ -699,8 +700,8 @@ struct inside {
     template <std::same_as<detail::rational> A>
     constexpr inside& operator+=(const A& rhs) {
         if constexpr (raw_delta_ok)
-            if (const auto n = notch_delta(rhs)) [[likely]]
-                return store_raw<imax>(static_cast<imax>(Raw) + *n);
+            if (imax n; notch_delta(rhs, n)) [[likely]]
+                return store_raw<imax>(static_cast<imax>(Raw) + n);
         return assign_op_result(detail::rational{*this} + rhs);
     }
 
@@ -721,8 +722,8 @@ struct inside {
     template <std::same_as<detail::rational> A>
     constexpr inside& operator-=(const A& rhs) {
         if constexpr (raw_delta_ok)
-            if (const auto n = notch_delta(rhs)) [[likely]]
-                return store_raw<imax>(static_cast<imax>(Raw) - *n);
+            if (imax n; notch_delta(rhs, n)) [[likely]]
+                return store_raw<imax>(static_cast<imax>(Raw) - n);
         return assign_op_result(detail::rational{*this} - rhs);
     }
 
@@ -764,60 +765,52 @@ struct inside {
         return assign_op_result(detail::rational{*this} / rhs);
     }
 
-    // expected<inside> RHS (e.g. `x += a / b`): unwrap once, reporting an error
-    // through this type's policy like any other failed compound op.
-    template <insidable R>
-        requires requires(inside& self, const R& r) { self += r; }
-    constexpr inside& operator+=(const std::expected<R, errc>& rhs) {
-        return rhs ? (*this += *rhs) : report_error(rhs.error());
-    }
-    template <insidable R>
-        requires requires(inside& self, const R& r) { self -= r; }
-    constexpr inside& operator-=(const std::expected<R, errc>& rhs) {
-        return rhs ? (*this -= *rhs) : report_error(rhs.error());
-    }
-    template <insidable R>
-        requires requires(inside& self, const R& r) { self *= r; }
-    constexpr inside& operator*=(const std::expected<R, errc>& rhs) {
-        return rhs ? (*this *= *rhs) : report_error(rhs.error());
-    }
-    template <insidable R>
-        requires requires(inside& self, const R& r) { self /= r; }
-    constexpr inside& operator/=(const std::expected<R, errc>& rhs) {
-        return rhs ? (*this /= *rhs) : report_error(rhs.error());
-    }
-    template <insidable R>
-        requires requires(inside& self, const R& r) { self %= r; }
-    constexpr inside& operator%=(const std::expected<R, errc>& rhs) {
-        return rhs ? (*this %= *rhs) : report_error(rhs.error());
-    }
-
     // ++/-- move one notch: they add the point inside of ±Notch through the
     // insidable += (which has the raw-level integer fast path) instead of the
     // rational round-trip (~30× the instructions on an integer grid). On a
     // notch-1 grid that is ±1; on a cursor, one step. `just` itself is declared
     // after the class, so spell the point inside directly.
-    constexpr inside& operator++() {
-        static_assert(G.Notch != 0, "inside: ++ steps one notch - a grid without a notch has none to step");
+    constexpr inside& operator++()
+        requires(G.Notch != 0)
+    {
         // constexpr local: the point inside is materialized at compile time.
         constexpr auto notch_step = inside<grid{G.Notch}>::from_raw({});
         return *this += notch_step;
     }
-    constexpr inside operator++(int) {
+    constexpr inside operator++(int)
+        requires(G.Notch != 0)
+    {
         inside t = *this;
         ++*this;
         return t;
     }
-    constexpr inside& operator--() {
-        static_assert(G.Notch != 0, "inside: -- steps one notch - a grid without a notch has none to step");
+    constexpr inside& operator--()
+        requires(G.Notch != 0)
+    {
         constexpr auto notch_step = inside<grid{-G.Notch}>::from_raw({});
         return *this += notch_step;
     }
-    constexpr inside operator--(int) {
+    constexpr inside operator--(int)
+        requires(G.Notch != 0)
+    {
         inside t = *this;
         --*this;
         return t;
     }
+#define BEMAN_INSIDE_WHY_step "inside: ++ and -- step one notch - a grid without a notch has none to step"
+    inside& operator++()
+        requires(G.Notch == 0)
+    = delete (BEMAN_INSIDE_WHY_step);
+    inside operator++(int)
+        requires(G.Notch == 0)
+    = delete (BEMAN_INSIDE_WHY_step);
+    inside& operator--()
+        requires(G.Notch == 0)
+    = delete (BEMAN_INSIDE_WHY_step);
+    inside operator--(int)
+        requires(G.Notch == 0)
+    = delete (BEMAN_INSIDE_WHY_step);
+#undef BEMAN_INSIDE_WHY_step
 
     // *t: a cursor's value without the end, so a cursor is its own iterator
     // and end(t) its sentinel. At the end it reports out of range.

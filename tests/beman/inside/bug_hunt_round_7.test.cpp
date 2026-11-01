@@ -189,13 +189,13 @@ TEST(BugHuntRound7, unanchored_cross_grid_comparison) {
 // The one-shot casts OR-ed their flags with the type's, so the type's
 // rounding mode or clamp won.
 TEST(BugHuntRound7, casts_override_the_declared_policy) {
-    EXPECT_EQ((clamp_cast<inside<{0, 100}, round_floor>, round_nearest>(2.5)), 3);
-    EXPECT_EQ((clamp_cast<inside<{0, 100}, round_half_even>, round_nearest>(2.5)), 3);
-    EXPECT_EQ((clamp_cast<inside<{0, 100}, round_floor>, round_ceil>(2.5)), 3);
-    EXPECT_EQ((clamp_cast<inside<{0, 100}, round_ceil>, round_nearest>(2.2)), 2);
-    EXPECT_EQ((wrap_cast<inside<{0, 100}, clamp>>(150)), 49);
-    EXPECT_EQ((clamp_cast<inside<{0, 100}, wrap>>(150)), 100);
-    EXPECT_EQ((clamp_cast<inside<{0, 100}, round_floor>>(7.9)), 7); // the type's rounding stays
+    EXPECT_EQ((inside<{0, 100}, round_floor>{2.5, clamp | round_nearest}), 3);
+    EXPECT_EQ((inside<{0, 100}, round_half_even>{2.5, clamp | round_nearest}), 3);
+    EXPECT_EQ((inside<{0, 100}, round_floor>{2.5, clamp | round_ceil}), 3);
+    EXPECT_EQ((inside<{0, 100}, round_ceil>{2.2, clamp | round_nearest}), 2);
+    EXPECT_EQ((inside<{0, 100}, clamp>{150, wrap}), 49);
+    EXPECT_EQ((inside<{0, 100}, wrap>{150, clamp}), 100);
+    EXPECT_EQ((inside<{0, 100}, round_floor>{7.9, clamp}), 7); // the type's rounding stays
 }
 
 // wrap on a bounded continuous grid folded before it rounded.
@@ -213,14 +213,14 @@ TEST(BugHuntRound7, wrap_rounds_first_on_a_bounded_grid) {
 TEST(BugHuntRound7, on_clamp_hears_of_infinities) {
     inside<{0, 100}> x{50};
     int              fired = 0;
-    double           over  = 0;
-    x.on_clamp([&](auto&, auto o) {
+    bool             top   = false;
+    x.on_clamp([&](auto&, auto o) { // an inside: ±∞ reports the end of its grid
         ++fired;
-        over = static_cast<double>(o);
+        top = o == just<upper_of<decltype(o)>>;
     })                     = std::numeric_limits<double>::infinity();
     EXPECT_EQ(x, 100);
     EXPECT_EQ(fired, 1);
-    EXPECT_EQ(over, std::numeric_limits<double>::infinity());
+    EXPECT_TRUE(top);
     x.on_clamp([&](auto&, auto) { ++fired; }) = -std::numeric_limits<double>::infinity();
     EXPECT_EQ(x, 0);
     EXPECT_EQ(fired, 2);
@@ -267,7 +267,7 @@ TEST(BugHuntRound7, asinh_of_a_large_argument) {
     static_assert([] {
         using P      = inside<{{0, 64}, 0x1p-20}, round_nearest>;
         const auto c = math::asinh_into<P>(inside<{0, I64{1} << 40}>{I64{1} << 40});
-        return c > 28.41 && c < 28.43; // asinh(2^40) = 28.4190…; log(2^40) is 27.7
+        return c > 28.41_r && c < 28.43_r; // asinh(2^40) = 28.4190_r…; log(2^40) is 27.7_r
     }());
 }
 

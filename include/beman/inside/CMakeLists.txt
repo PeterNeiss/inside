@@ -8,13 +8,13 @@ target_sources(
                 inside.hpp
                 inside/arithmetic.hpp
                 inside/casts.hpp
+                inside/compare.hpp
                 inside/cursor.hpp
                 inside/detail/addition.hpp
                 inside/detail/assign_exact.hpp
                 inside/detail/assignment.hpp
                 inside/detail/big_rational.hpp
                 inside/detail/call_policy.hpp
-                inside/detail/compare.hpp
                 inside/detail/config.hpp
                 inside/detail/core.hpp
                 inside/detail/diag_text.hpp
@@ -61,5 +61,6 @@ target_sources(
                 units/detail/quantity.hpp
                 units/io.hpp
                 units/math.hpp
+                units/random.hpp
                 units/systems.hpp
 )

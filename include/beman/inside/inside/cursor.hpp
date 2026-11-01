@@ -4,7 +4,7 @@
 
 #include <beman/inside/inside/detail/config.hpp>
 
-#include <beman/inside/inside/detail/compare.hpp>
+#include <beman/inside/inside/compare.hpp>
 
 namespace beman::inside {
 //---------------------------------------------------------------------------
@@ -14,7 +14,8 @@ namespace beman::inside {
 // Lower, and it carries cursor_marker, which gives it
 // `end(t)`. Step is a number (an integer, `rational`, `per<N>`), T's notch by
 // default: a positive whole number of notches of T dividing its range, so
-// every value but the end is a value of T.
+// every value but the end is a value of T. T may be a quantity: the cursor is
+// then a quantity on a cursor number, Step a number in T's unit.
 //   for (cursor<time_t, per<4>> t; t != end(t); ++t) …
 //---------------------------------------------------------------------------
 namespace detail {
@@ -33,15 +34,18 @@ consteval grid cursor_grid(const auto& step) {
 }
 } // namespace detail
 
-template <insidable T, auto Step = notch_of<T>>
-using cursor = inside<detail::cursor_grid<T>(Step), flags_of<T> | detail::cursor_marker>;
+template <detail::steppable T, auto Step = notch_of<detail::step_number_t<T>>>
+using cursor = detail::step_rebind_t<T,
+                                     inside<detail::cursor_grid<detail::step_number_t<T>>(Step),
+                                            flags_of<detail::step_number_t<T>> | detail::cursor_marker>>;
 
 // end(t): a cursor's past-the-end value, one step past T's Upper. Only a
 // cursor has one — on any other inside its Upper is a value, not an end.
-template <insidable B>
-    requires(has_flag(flags_of<B>, detail::cursor_marker))
+template <detail::steppable B>
+    requires(has_flag(flags_of<detail::step_number_t<B>>, detail::cursor_marker))
 [[nodiscard]] constexpr auto end(const B&) noexcept {
-    return just<upper_of<B>>;
+    constexpr auto top = just<upper_of<detail::step_number_t<B>>>;
+    return detail::step_rebind_t<B, std::remove_cvref_t<decltype(top)>>{top};
 }
 } // namespace beman::inside
 

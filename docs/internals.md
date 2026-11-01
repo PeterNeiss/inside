@@ -42,7 +42,7 @@ checks these when the type is instantiated:
   (`{{0, 1}, max_denominator{1000}}`); the storage changes accordingly (§2).
   An inside needs the bound: it sizes every exact result's fraction, so
   `+ − ×` are total. A grid *value* may lack it (`grid{{0, 1}, 0}`, or a
-  result whose fractions would pass `BEMAN_INSIDE_MAX_FRACTION_BITS`), and
+  result whose fractions would pass 1024 bits), and
   `inside<G>` then does not compile.
 - **Notch ≥ 0.** Decoding is Lower + raw·Notch, so a negative notch would
   count downward; `per<D>` is positive by construction, and any other negative
@@ -253,7 +253,7 @@ four-level cascade:
 │ 1. a hook on this store          x.on_clamp(f), x.on_wrap(f), …  │
 │                                       │ no hook                  │
 │                                       ▼                          │
-│ 2. a policy for this store       x.with_clamp() = …              │
+│ 2. a policy for this store       x.policy<clamp>() = …              │
 │                                  x.policy<F>() = …               │
 │                                       │ none                     │
 │                                       ▼                          │
@@ -273,7 +273,7 @@ The flags are in `policy_flag.hpp`, each a `detail::flag<V>` constant that
 converts to its bits: `none`, `snap`, `round_toward_zero` (the `snap` bit
 alone), `round_nearest`, `round_floor`, `round_ceil`, `round_half_even`,
 `clamp`, `wrap`, `checked` (no bits), `unsafe` (= `detail::unsafe_marker |
-snap`), `uninitialized`, and the internal `detail::cursor_marker`. An inside
+snap`), and the internal `detail::cursor_marker`. An inside
 accepts only `detail::known_bits` and one rounding mode. `is_checked(P)`
 decides whether step 4 runs, and whether a zero divisor is checked: true
 unless P carries `unsafe_marker`, so every policy is checked unless it says
@@ -385,7 +385,7 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 | `inside/grid.hpp` | `grid`, `bounds`, `grid::try_make`, `raw_for`, the grid operators |
 | `inside/interval.hpp` | `interval`, its operators, `includes`/`excludes`/`overlaps` |
 | `inside/policy_flag.hpp` | the flags (each a `detail::flag<V>`), `has_flag`/`is_checked`, the policy validation bits, the rounding precedence, the `on_*` factories and `is_*_action` traits |
-| `inside/casts.hpp` | `clamp_cast` (optionally rounding), `wrap_cast`, `checked_cast`, `unchecked_cast` |
+| `inside/casts.hpp` | `checked_cast` (the other one-shot stores are the flag constructor, `B{v, clamp}`) |
 | `inside/arithmetic.hpp` | `add`, `sub`, `mul`, `div`, `mod`, `divmod`, `mul_into`, `div_into`, `add_all`, `mul_all`, `sum`, `min`/`max`/`midpoint`, `dot`/`cross`/`lerp`, `common_inside_t`, the operators and the expected-lift overloads |
 | `inside/range.hpp` | `inside_range<G, P>`, `values<T>` |
 | `inside/cursor.hpp` | `cursor<T, Step>`, `end(t)` |
@@ -413,10 +413,10 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 | `inside/detail/numbers.hpp` | `umax`/`imax` (public names), the internal `add_overflow`/`sub_overflow`/`mul_overflow`, `plain_number`/`fractional`, `safe_abs` |
 | `inside/detail/call_policy.hpp` | `call_policy<F, E>`, `make_policy`, `as_call_policy` (a flag as a call's policy) |
 | `inside/detail/error.hpp` | `errc`, `errc_message`, `inside_error`, the error handler, `raise`, `constexpr_error` |
-| `inside/detail/compare.hpp` | `<=>` and `==` across grids and against integers, floating points of any width and `rational` |
+| `inside/compare.hpp` | `<=>` and `==` across grids and against integers and `rational` (a floating point is a deleted overload) |
 | `inside/detail/introspection.hpp` | `grid_of`, `flags_of`, `interval_of`, `lower_of`, `upper_of`, `notch_of`, the `insidable` and `numeric` concepts, `raw_t`, `as_rational` |
 | `inside/detail/storage.hpp` | the storage concepts, `as_double`, `to_value`/`from_value`, `raw_imax`, the Q-format codec, `max_index_of`, `round_quotient` |
-| `inside/detail/policy_ref.hpp` | `policy_ref`, `policy_buffer`: what `b.policy()`, `with_snap()` and `on_*()` return |
+| `inside/detail/policy_ref.hpp` | `policy_ref`, `policy_buffer`: what `b.policy<F>()`, `b.policy(ec)` and `on_*()` return |
 | `inside/detail/lift.hpp` | `lift`, the combinator behind the lift operators; `is_expected_v`, `unwrap_t` |
 | `inside/detail/op_result.hpp` | what the result of `+`, `×` or `÷` needs: `exact_fits`, `exact_path_fits` (an exact wide path where the 64-bit kernels' intermediates could overflow), `point_scale` |
 | `inside/detail/rounding.hpp` | `classify_remainder`, `rounds_up`, `rounds_away`: the one rounding decision every integer path shares |

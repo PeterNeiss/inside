@@ -14,17 +14,13 @@
 using namespace beman::inside;
 
 // The default ctor stores a value of the grid (0, else Lower; see
-// default_value.test.cpp); only `uninitialized` keeps it trivial, with Raw
-// uninitialized like a built-in scalar's.
-TEST(StorageTest, default_ctor_is_trivial_only_when_uninitialized) {
+// default_value.test.cpp) on every storage.
+TEST(StorageTest, default_ctor_stores_a_grid_value) {
     static_assert(!std::is_trivially_default_constructible_v<inside<{0, 10}>>);    // index
     static_assert(!std::is_trivially_default_constructible_v<inside<{-100, -5}>>); // signed value
     static_assert(!std::is_trivially_default_constructible_v<inside<{{0, 10}, per<4>}, round_nearest>>);
     static_assert(!std::is_trivially_default_constructible_v<inside<{0, 10}, unsafe>>);
-    static_assert(std::is_trivially_default_constructible_v<inside<{0, 10}, uninitialized>>);
-    static_assert(std::is_trivially_default_constructible_v<inside<{-100, -5}, uninitialized>>);
-    static_assert(std::is_trivially_default_constructible_v<inside<grid{5}, uninitialized>>); // point grid
-    static_assert(std::is_trivially_default_constructible_v<inside<{{0, 10}, per<4>}, round_nearest | uninitialized>>);
+    static_assert(inside<{-100, -5}>{} == -100_ins && inside<grid{5}>{} == 5_ins);
 }
 
 // behaviour policies on a notched grid
@@ -125,9 +121,9 @@ TEST(StorageTest, per_operation_policies_work_on_dyadic_bounds) {
     using R = inside<{{1, 4}, per<256>}, round_nearest>; // Lower != 0
 
     R a{2.0};
-    a.with_clamp() = 9.5;
+    a.policy<clamp>() = 9.5;
     ASSERT_TRUE(static_cast<double>(rational{a}) == 4.0);
-    a.with_clamp() = 0.25;
+    a.policy<clamp>() = 0.25;
     ASSERT_TRUE(static_cast<double>(rational{a}) == 1.0);
 
     R   b{2.0};
@@ -151,13 +147,13 @@ TEST(StorageTest, per_operation_policies_work_on_dyadic_bounds) {
     // inside rhs through the per-operation clamp.
     using S = inside<{0, 100}>;
     R e{2.0};
-    e.with_clamp() = S{50};
+    e.policy<clamp>() = S{50};
     ASSERT_TRUE(static_cast<double>(rational{e}) == 4.0);
 
     // wrap override.
     using W = inside<{{0, 359}, 1}, round_nearest>;
     W w{0.0};
-    w.with_wrap() = 370.0;
+    w.policy<wrap>() = 370.0;
     ASSERT_TRUE(static_cast<double>(rational{w}) == 10.0);
 }
 

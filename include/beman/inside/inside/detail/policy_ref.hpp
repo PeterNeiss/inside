@@ -12,8 +12,8 @@
 #include <utility>
 
 //---------------------------------------------------------------------------
-// policy_ref and policy_buffer — the proxies that b.policy(), with_snap(),
-// with_clamp(), with_wrap() and on_*() return (inside/detail/core.hpp): an inside (by
+// policy_ref and policy_buffer — the proxies that b.policy<F>(), b.policy(ec)
+// and on_*() return (inside/detail/core.hpp): an inside (by
 // reference, or owned for a temporary) with a call_policy<...> and a tuple of on_*
 // actions. Stores and compound ops flow through them, routing each action to
 // the right callback at the right pipeline stage.
@@ -58,10 +58,10 @@ constexpr Target dispatch_new(const C& src, P& policy, std::tuple<As...>& action
     return r;
 }
 
-// policy_buffer — the rvalue-receiver sibling of policy_ref. `with_snap()` etc.
+// policy_buffer — the rvalue-receiver sibling of policy_ref. `policy<F>()`
 // on a *temporary* return this instead: it OWNS the inside by value (the temporary
 // is moved in), so the snapped value can be returned/stored without dangling —
-// `auto square(small n){ return (n*n).with_snap(); }` is safe. Value read-out only
+// `auto square(small n){ return (n*n).policy<snap>(); }` is safe. Value read-out only
 // (no operator=: assigning into a throwaway is meaningless). Same constrained
 // conversion as policy_ref, so it stays SFINAE-friendly.
 template <insidable B, typename P, typename... As>
@@ -90,7 +90,7 @@ struct policy_ref {
 
     // Stores go through dispatch_assign under this ref's Policy and actions:
     // into Ref for `operator=`, into a fresh target for the conversion below,
-    // so a one-shot snap can be read out as a value (`(a * b).with_snap()`).
+    // so a one-shot snap can be read out as a value (`(a * b).policy<snap>()`).
     template <numeric C>
     constexpr B& operator=(const C& other) {
         return dispatch_assign(Ref, other, Policy, Actions);
@@ -99,7 +99,7 @@ struct policy_ref {
     // Value read-out: a one-shot policy ref converts to any inside the assignment
     // could satisfy, applying the target's own policy (range) plus this ref's
     // carried flags (notch/rounding) via uses_flag's merge. Makes
-    // `Target t = (a * b).with_snap();` / `return (a * b).with_snap();` compile.
+    // `Target t = (a * b).policy<snap>();` / `return (a * b).policy<snap>();` compile.
     // Constrained so the proxy stays SFINAE-friendly (no over-broad convertibility).
     template <insidable Target>
         requires inside_assignable<Target, B, flags_of<Target> | flags_of<P>>
@@ -107,14 +107,12 @@ struct policy_ref {
         return dispatch_new<Target>(Ref, Policy, Actions);
     }
 
-    // expected<C> sink — unwrap once at the proxy boundary so callers can chain
-    // checked arithmetic into `.with_clamp() = ...` without per-step `.value()`.
-    // An error goes to on_error, else through this ref's policy (or the errc&
-    // sink), as an arithmetic result's does.
+    // A std::expected is never stored implicitly, through a proxy either:
+    // check it and store *e, or use B::try_make(e).
     template <numeric C>
-    constexpr B& operator=(const std::expected<C, errc>& other) {
-        return finalize_arith(other, "policy_ref::operator= of an expected without a value");
-    }
+    B& operator=(const std::expected<C, errc>&) = delete ("inside: a std::expected is not stored implicitly - "
+                                                          "check it and store *e, or use T::try_make(e), "
+                                                          "which passes its error on");
 
   private:
     // The value an op's result holds (an expected's value type) assigns back.
