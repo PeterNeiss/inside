@@ -312,7 +312,7 @@ auto mid = midpoint(a, b);      // exactly 50.5
 ```
 
 There is no `clamp` function: the name is the policy flag. To clamp a value,
-use the policy or `clamp_cast` ([conversions.md](conversions.md#free-function-casts)).
+use the policy or the flag constructor `B{v, clamp}` ([conversions.md](conversions.md#one-shot-stores-bv-f-and-checked_cast)).
 
 ## `std::hash` and `std::numeric_limits`
 

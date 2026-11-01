@@ -179,16 +179,16 @@ Two notches are compatible when the target's notch is a whole multiple of
 the source's: notch 2 → 1 is always exact, 1 → 2 may round. To round, say so:
 
 ```cpp
-c.with_snap() = f;                       // this store: toward zero, 2
-c.with_snap<round_nearest>() = f;        // this store: to nearest, 4
+c.policy<snap>() = f;                       // this store: toward zero, 2
+c.policy<round_nearest>() = f;        // this store: to nearest, 4
 using coarse_r = inside<{{0, 10}, 2}, round_nearest>;
 coarse_r r = f;                          // every store of this type: 4
-coarse half(fine x) { return x.with_snap(); }   // as a value: round at the return
+coarse half(fine x) { return x.policy<snap>(); }   // as a value: round at the return
 ```
 
-`.with_snap()` on a temporary, `(a * a).with_snap()`, holds the value, so it is
+`.policy<snap>()` on a temporary, `(a * a).policy<snap>()`, holds the value, so it is
 safe to return. The target's own policy still applies: into a `clamp` type the
-range clamps while `with_snap` handles the notch.
+range clamps while `policy<snap>()` handles the notch.
 
 **How each mode rounds.** Rounding is in value space, on every grid, also on
 one whose points are offset from multiples of the notch (`{{0.5, 10.5}, 1}`):
@@ -211,7 +211,7 @@ consistent with it, so `(a / b) * b + a % b == a` for every mode: under
 Without `snap`, `/` is exact and `%` truncates.
 
 For the same fine → coarse conversion as a function, use
-`clamp_cast<B, round_nearest>(v)` ([conversions.md](conversions.md#free-function-casts)).
+`B{v, clamp | round_nearest}` ([conversions.md](conversions.md#one-shot-stores-bv-f-and-checked_cast)).
 
 ## Rounding straight into a type: `mul_into` and `div_into`
 
@@ -282,7 +282,7 @@ using v = inside<{0, 100}>;
 v a{10}, b{20}, c{30};
 auto s = add_all(a, b, c);                              // inside<{0, 300}>: 60
 auto p = mul_all(a, b);                                 // inside<{0, 10000}>: 200
-auto capped = clamp_cast<v>(add_all(a, b, c, v{90}));   // 100 (150 clamped)
+auto capped = v{add_all(a, b, c, v{90}), clamp};   // 100 (150 clamped)
 ```
 
 `sum<Target>(range)` adds a whole range with **one** check. A `target += x`

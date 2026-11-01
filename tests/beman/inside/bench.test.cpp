@@ -717,7 +717,7 @@ static void bench_store_convert() {
     cga.run("non-integer snap (1/10 -> 1/4 grid)", [&] {
         ++i;
         tenths   a = rational{static_cast<imax>(i % 1000), 10};
-        quarters b = a.with_snap();
+        quarters b = a.policy<snap>();
         doNotOptimizeAway(b.raw());
     });
     finish(cga);
@@ -791,10 +791,10 @@ static void bench_store_convert() {
         auto c = static_cast<std::uint8_t>(std::clamp(v, 0, 200));
         doNotOptimizeAway(c);
     });
-    casts.run("clamp_cast", [&] {
+    casts.run("the clamp constructor", [&] {
         ++i;
         s9k v(static_cast<int>(i % 9000) - 500);
-        doNotOptimizeAway(clamp_cast<u200>(v).raw());
+        doNotOptimizeAway(u200{v, clamp}.raw());
     });
     casts.run("checked construction (in range)", [&] {
         ++i;
@@ -804,17 +804,17 @@ static void bench_store_convert() {
     });
     finish(casts);
 
-    auto wrp = group("wrap_cast (s9k value into u200)");
+    auto wrp = group("the wrap constructor (s9k value into u200)");
     wrp.run("native euclidean mod", [&] {
         ++i;
         int  v = static_cast<int>(i % 9000) - 500;
         auto c = static_cast<std::uint8_t>((v % 201 + 201) % 201);
         doNotOptimizeAway(c);
     });
-    wrp.run("wrap_cast", [&] {
+    wrp.run("the wrap constructor", [&] {
         ++i;
         s9k v(static_cast<int>(i % 9000) - 500);
-        doNotOptimizeAway(wrap_cast<u200>(v).raw());
+        doNotOptimizeAway(u200{v, wrap}.raw());
     });
     finish(wrp);
 

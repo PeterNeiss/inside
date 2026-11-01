@@ -78,7 +78,7 @@ assignment checks print the numbers that failed:
 error: static assertion failed: grid: the notch must divide Upper − Lower evenly
        (notch 3, Upper − Lower 10)
 error: static assertion failed: inside_assignable: incompatible notches — use
-       `with_snap()` or `policy<snap>()` to allow rounding (lhs notch 1, rhs notch 1/2)
+       `policy<snap>()` or a rounding policy to allow rounding (lhs notch 1, rhs notch 1/2)
 error: static assertion failed: inside_assignable: rhs interval lies entirely outside
        lhs interval … (lhs [0, 3], rhs [5, 10])
 ```
@@ -111,7 +111,7 @@ error: use of deleted function '…': inside: the source's interval lies entirel
 
 The two clauses are *interval lies entirely outside* (the value cannot fit
 the range) and *incompatible notches* (the value is off the grid's step:
-allow rounding with `policy<snap>()` or `with_snap()`). Because the overload
+allow rounding with `policy<snap>()` or a rounding policy). Because the overload
 is deleted, `std::is_constructible`, `std::convertible_to` and `requires`
 probes answer `false`, so insides work in `std::variant`, `std::optional` and
 other code that probes convertibility. For the two grids' numbers, ask:

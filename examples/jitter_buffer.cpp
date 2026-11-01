@@ -7,7 +7,7 @@
 //
 // Demonstrates:
 //   - `on_error` callback (per-write hook) on a checked inside
-//   - `wrap_cast` to fold a sequence number into its slot
+//   - `slot_id_t{seq, wrap}` to fold a sequence number into its slot
 //   - `values<T>` to size the window and walk every slot in playback order
 //   - Fixed-point packet timestamps (1/8 ms resolution)
 
@@ -53,8 +53,8 @@ int main() {
     auto insert = [&](int seq, int base) {
         const quantity<pkt, inside<{-1024, 1024}>> offset{seq - base};
 
-        // The slot is seq modulo the window: wrap_cast folds it into slot_id_t.
-        const auto idx = wrap_cast<slot_id_t>(seq);
+        // The slot is seq modulo the window: the wrap flag folds it into slot_id_t.
+        const auto idx = slot_id_t{seq, wrap};
 
         bool stored                   = true;
         slots[idx.as<std::size_t>()].on_error([&](auto&, errc, auto) {

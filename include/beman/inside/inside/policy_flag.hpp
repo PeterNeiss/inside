@@ -101,6 +101,19 @@ inline constexpr policy_flag known_bits = mode_bits | snap | clamp | wrap | unsa
     return n;
 }
 
+// A one-shot policy over a type's: the call's rounding mode replaces the
+// type's (snap with it), and its clamp or wrap replaces the type's range
+// handling; other flags join. T{v, clamp | round_ceil} rounds up on a
+// round_floor type, and clamps on a wrap type.
+[[nodiscard]] constexpr policy_flag override_flags(policy_flag type, policy_flag call) noexcept {
+    policy_flag replaced = 0;
+    if ((call & (mode_bits | snap)) != 0)
+        replaced |= mode_bits | snap;
+    if ((call & (clamp | wrap)) != 0)
+        replaced |= clamp | wrap;
+    return (type & ~replaced) | call;
+}
+
 // f with round_nearest added unless it names a mode already, which would win
 // over round_nearest in rounding_of anyway: one mode either way.
 [[nodiscard]] constexpr policy_flag with_default_rounding(policy_flag f) noexcept {

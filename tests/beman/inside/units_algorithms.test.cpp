@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // inside's algorithms on quantities: policy hooks, ++/--, try_make,
 // mul_into/div_into, add_all/mul_all/sum, parse, the conversion predicates,
-// clamp_cast/wrap_cast, dot/cross/lerp, and sin_into/cos_into of an angle in
+// the clamp constructor/the wrap constructor, dot/cross/lerp, and sin_into/cos_into of an angle in
 // a unit with a factor of π.
 
 #include <beman/inside/units.hpp>
@@ -34,7 +34,7 @@ using usd_t     = quantity<HP, inside<{{0, 1000}, per<100>}, round_nearest>>;
 template <class Out, class A, class B>
 concept can_mul_into = requires(const A& a, const B& b) { mul_into<Out>(a, b); };
 template <class Q, class X>
-concept can_wrap_cast = requires(const X& x) { wrap_cast<Q>(x); };
+concept can_wrap_cast = requires(const X& x) { Q{x, wrap}; };
 template <class A, class B>
 concept can_add_into = requires(A& a, const B& b) { a.on_wrap([](auto&, auto) {}) += b; };
 } // namespace
@@ -113,9 +113,9 @@ TEST(UnitsAlgorithmsTest, predicates_and_casts) {
     EXPECT_TRUE(conversion_rounds<usd_t>(0.125));
     EXPECT_TRUE(conversion_loses<usd_t>(-1));
 
-    EXPECT_EQ(to_string(clamp_cast<usd_t>(5000)), "1000.00 HP");
-    EXPECT_EQ(to_string(wrap_cast<seconds_t>(130)), "10 s");
-    EXPECT_EQ(to_string(wrap_cast<seconds_t>(just<3> * si::minute + just<5> * si::second)), "5 s");
+    EXPECT_EQ(to_string(usd_t{5000, clamp}), "1000.00 HP");
+    EXPECT_EQ(to_string(seconds_t{130, wrap}), "10 s");
+    EXPECT_EQ(to_string(seconds_t{just<3> * si::minute + just<5> * si::second, wrap}), "5 s");
     static_assert(!can_wrap_cast<seconds_t, decltype(just<1> * si::metre)>);
 }
 

@@ -854,16 +854,16 @@ void prop_casts(fuzz_state& s, long iters) {
             s.iter  = i;
             imax v  = lo + random_wide_int(s.rng, span);
             imax cl = std::clamp<imax>(v, lo, hi);
-            FUZZ_REQUIRE(s, clamp_cast<B>(v) == cl);
+            FUZZ_REQUIRE(s, B{v, clamp} == cl);
             imax wexpect = ((v - lo) % range + range) % range + lo;
-            FUZZ_REQUIRE(s, wrap_cast<B>(v) == wexpect);
+            FUZZ_REQUIRE(s, B{v, wrap} == wexpect);
             // notch == 1, so floor/ceil/round are no-ops after the clamp.
-            FUZZ_REQUIRE(s, clamp_cast<B, round_floor>(v) == cl);
-            FUZZ_REQUIRE(s, clamp_cast<B, round_ceil>(v) == cl);
-            FUZZ_REQUIRE(s, clamp_cast<B, round_nearest>(v) == cl);
+            FUZZ_REQUIRE(s, B{v, clamp | round_floor} == cl);
+            FUZZ_REQUIRE(s, B{v, clamp | round_ceil} == cl);
+            FUZZ_REQUIRE(s, B{v, clamp | round_nearest} == cl);
             if (v >= lo && v <= hi) {
                 FUZZ_REQUIRE(s, checked_cast<B>(v) == v);
-                FUZZ_REQUIRE(s, unchecked_cast<B>(v) == v);
+                FUZZ_REQUIRE(s, B{v, unsafe} == v);
             } else
                 FUZZ_REQUIRE(s, throws_with(errc::overflow, [&] { (void)checked_cast<B>(v); }));
         }
@@ -872,7 +872,7 @@ void prop_casts(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_casts_fixed(fuzz_state& s, long iters) {
-    // clamp_cast<B, round_floor / round_ceil> on dyadic fixed-point grids: a half-notch
+    // the clamp constructor<B, round_floor / round_ceil> on dyadic fixed-point grids: a half-notch
     // midpoint floors to the notch below and ceils to the notch above.
     if constexpr (DyadicNotch<B>) {
         s.current_prop = "casts_fixed";
@@ -886,8 +886,8 @@ void prop_casts_fixed(fuzz_state& s, long iters) {
             rational                            on_notch = (lo + (rational{k} * notch).value()).value();
             rational                            next     = (on_notch + notch).value();
             double                              mid      = static_cast<double>((on_notch + half).value());
-            FUZZ_REQUIRE(s, to_rational(clamp_cast<B, round_floor>(mid)) == on_notch);
-            FUZZ_REQUIRE(s, to_rational(clamp_cast<B, round_ceil>(mid)) == next);
+            FUZZ_REQUIRE(s, to_rational(B{mid, clamp | round_floor}) == on_notch);
+            FUZZ_REQUIRE(s, to_rational(B{mid, clamp | round_ceil}) == next);
         }
     }
 }

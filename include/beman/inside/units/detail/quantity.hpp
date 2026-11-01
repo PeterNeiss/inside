@@ -68,6 +68,21 @@ constexpr auto number_in_unit(const quantity<R, V>& q) {
     return rescale<conversion_factor<R.U, U>>(q.numerical_value());
 }
 
+// A one-shot store's source (Q{x, clamp}, checked_cast<Q>(x)): x a number in
+// Q's unit, or a quantity converted to it exactly first.
+template <class Q, class X>
+constexpr decltype(auto) number_in(const X& x) {
+    if constexpr (quantity_like<X>)
+        return number_in_unit<Q::reference.U>(x);
+    else
+        return (x);
+}
+template <class Q, class X>
+concept castable_quantity =
+    quantity_like<X> && implicit_v<X::reference, Q::reference> && exact_rescale_v<X::reference.U, Q::reference.U>;
+template <class Q, class X>
+concept castable_from = quantity_like<Q> && (castable_quantity<Q, X> || (!quantity_like<X> && numeric<X>));
+
 using beman::inside::detail::is_expected_v;
 
 // Q from v, or an expected Q from an expected v (its error passed on).
@@ -150,6 +165,15 @@ class quantity {
     template <class V>
         requires std::constructible_from<Rep, V> && (!quantity_like<V>)
     constexpr explicit quantity(V&& v) : Value(std::forward<V>(v)) {}
+
+    // A one-shot policy for this store, as for an inside: a flag or
+    // make_policy<F>(ec) (Q{v, clamp}, Q{v, round_floor}). x is a number in R's
+    // unit, or a quantity converted to it exactly first.
+    template <class X, class Pol>
+        requires(beman::inside::detail::flag_like<Pol> || beman::inside::detail::policy_like<Pol>) &&
+                detail::castable_from<quantity, X> &&
+                std::constructible_from<Rep, decltype(detail::number_in<quantity>(std::declval<const X&>())), Pol>
+    constexpr quantity(const X& x, Pol&& pol) : Value(detail::number_in<quantity>(x), std::forward<Pol>(pol)) {}
 
     // From another quantity: implicit when the spec converts implicitly and
     // the number, in R's unit, converts implicitly into Rep.
@@ -759,35 +783,6 @@ template <class Q, numeric A>
     requires quantity_like<Q>
 [[nodiscard]] constexpr bool conversion_loses(A value) noexcept {
     return beman::inside::conversion_loses<typename Q::rep>(value);
-}
-
-// clamp_cast<Q, Round>(x) / wrap_cast<Q>(x): x a number in Q's unit, or a
-// quantity converted to it exactly first.
-namespace detail {
-template <class Q, class X>
-constexpr decltype(auto) number_in(const X& x) {
-    if constexpr (quantity_like<X>)
-        return number_in_unit<Q::reference.U>(x);
-    else
-        return (x);
-}
-template <class Q, class X>
-concept castable_quantity =
-    quantity_like<X> && implicit_v<X::reference, Q::reference> && exact_rescale_v<X::reference.U, Q::reference.U>;
-template <class Q, class X>
-concept castable_from = quantity_like<Q> && (castable_quantity<Q, X> || (!quantity_like<X> && numeric<X>));
-} // namespace detail
-template <class Q, policy_flag Round = none, class X>
-    requires detail::castable_from<Q, X> &&
-             requires(const X& x) { beman::inside::clamp_cast<typename Q::rep, Round>(detail::number_in<Q>(x)); }
-[[nodiscard]] constexpr Q clamp_cast(const X& x) {
-    return Q{beman::inside::clamp_cast<typename Q::rep, Round>(detail::number_in<Q>(x))};
-}
-template <class Q, class X>
-    requires detail::castable_from<Q, X> &&
-             requires(const X& x) { beman::inside::wrap_cast<typename Q::rep>(detail::number_in<Q>(x)); }
-[[nodiscard]] constexpr Q wrap_cast(const X& x) {
-    return Q{beman::inside::wrap_cast<typename Q::rep>(detail::number_in<Q>(x))};
 }
 
 // dot, cross, lerp on quantity components (lerp's t is a plain number).

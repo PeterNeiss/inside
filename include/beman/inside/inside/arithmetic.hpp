@@ -452,7 +452,7 @@ using common_inside_t = typename detail::common_inside<Lhs, Rhs>::type;
 // std-vocabulary helpers — ADL-found `min` / `max` / `midpoint` for generic
 // code. min/max mirror std; midpoint returns the *exact* average on a refined
 // grid (so, unlike std::midpoint, it neither rounds nor overflows). There is
-// no free `beman::inside::clamp` (the name is the policy flag — use clamp_cast<Target>).
+// no free `beman::inside::clamp` (the name is the policy flag — use Target{v, clamp}).
 //---------------------------------------------------------------------------
 // Both return the common type: the operand type itself for one type, else
 // the hull, which holds each operand exactly.

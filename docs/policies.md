@@ -68,20 +68,25 @@ No flag picks the raw storage: it follows from the grid alone
 ## Per-store override
 
 A type without a clamp, wrap or rounding policy can still get one for a
-single store:
+single store, with `x.policy<F>()`, or `T{v, F}` when the value is new (the
+call's rounding mode, clamp or wrap then replaces the type's own):
 
 ```cpp
 inside<{0, 100}> x{50};
-x.with_clamp() = 150;                   // 100
-x.with_wrap()  = 103;                   // 2
+x.policy<clamp>() = 150;                   // 100
+x.policy<wrap>()  = 103;                   // 2
 
 inside<{{0, 10}, 2}> g{0};
-g.with_snap<round_floor>()     = 3.0;   // 2
-g.with_snap<round_ceil>()      = 3.0;   // 4
-g.with_snap<round_half_even>() = 5.0;   // 4: the tie goes to the even point
+g.policy<round_floor>()     = 3.0;   // 2
+g.policy<round_ceil>()      = 3.0;   // 4
+g.policy<round_half_even>() = 5.0;   // 4: the tie goes to the even point
+
+using pct = inside<{0, 100}>;
+pct{150, clamp};                      // 100: a new value under clamp
 ```
 
-`x.policy<F>()` adds any flags `F` the same way.
+`x.policy<F>()` adds any flags `F` the same way; `x.policy(ec)` reports into
+an `errc&`.
 
 ## A flag as a call's policy
 

@@ -142,7 +142,7 @@
 // The core type beman::inside::inside<G, P>: construction and try_make,
 // compound assignment, ++/--, the conversions (imax, rational, double,
 // to<T>/as<T>), numerator()/denominator(), raw()/from_raw, the per-store
-// overrides (with_clamp, with_snap, policy<F>) and hooks (on_wrap, on_clamp,
+// overrides (policy<F>(), policy(ec)) and hooks (on_wrap, on_clamp,
 // on_error), parse(first, last), just<…> and the _ins literal.
 // The umbrella adds the casts, arithmetic, range and cursor layers, which
 // need this complete type.
@@ -3907,6 +3907,19 @@ inline constexpr policy_flag known_bits = mode_bits | snap | clamp | wrap | unsa
     return n;
 }
 
+// A one-shot policy over a type's: the call's rounding mode replaces the
+// type's (snap with it), and its clamp or wrap replaces the type's range
+// handling; other flags join. T{v, clamp | round_ceil} rounds up on a
+// round_floor type, and clamps on a wrap type.
+[[nodiscard]] constexpr policy_flag override_flags(policy_flag type, policy_flag call) noexcept {
+    policy_flag replaced = 0;
+    if ((call & (mode_bits | snap)) != 0)
+        replaced |= mode_bits | snap;
+    if ((call & (clamp | wrap)) != 0)
+        replaced |= clamp | wrap;
+    return (type & ~replaced) | call;
+}
+
 // f with round_nearest added unless it names a mode already, which would win
 // over round_nearest in rounding_of anyway: one mode either way.
 [[nodiscard]] constexpr policy_flag with_default_rounding(policy_flag f) noexcept {
@@ -5593,8 +5606,8 @@ struct inside_assignable_why {
                             << interval_of<L>.Lower << ", " << interval_of<L>.Upper << "], rhs ["
                             << interval_of<R>.Lower << ", " << interval_of<R>.Upper << "])");
     static_assert(notch_ok,
-                  detail::diag_text{} << "inside_assignable: incompatible notches — use `with_snap()` or "
-                                         "`policy<snap>()` to allow rounding (lhs notch "
+                  detail::diag_text{} << "inside_assignable: incompatible notches — use `policy<snap>()` or a "
+                                         "rounding policy to allow rounding (lhs notch "
                                       << notch_of<L> << ", rhs notch " << detail::notch_or_zero<R>() << ")");
     static constexpr bool value = inside_assignable<L, R, P>;
 };
@@ -6369,9 +6382,9 @@ constexpr Result exact_result(const wide_rational<K>& v) noexcept {
 // policy — the runtime policy carrier.
 //   detail::call_policy<F, E> — compile-time flags F plus an optional error_ref E holding a
 //                   beman::inside::errc& (EBO so the no-error-code form is zero-sized).
-//   make_policy<F>(), and as_call_policy, which turns a named flag passed as a
-//                   call's policy (div(a, b, round_floor)) into make_policy<F>().
-// The proxies that b.policy(), with_snap() and on_*() return are in
+//   make_policy<F>(), and with_flags<O>(pol), a call's policy (a flag or a
+//                   call_policy) under the flags O, keeping its errc&.
+// The proxies that b.policy<F>(), b.policy(ec) and on_*() return are in
 // inside/detail/policy_ref.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {
@@ -6494,17 +6507,17 @@ constexpr std::expected<Result, errc> report_or_unexpected(P&& policy, errc code
 } // namespace detail
 
 //---------------------------------------------------------------------------
-// as_call_policy — a call's trailing policy argument as a policy object: a
-// named flag (div(a, b, round_floor), B{v, round_floor}) is make_policy<F>();
-// a policy passes through.
+// with_flags<O>(pol) — a call's one-shot policy (a named flag, or a
+// call_policy from make_policy<F>() / make_policy<F>(ec)) as a call_policy
+// with the flags O, keeping its errc& if it has one.
 //---------------------------------------------------------------------------
 namespace detail {
-template <class Pol>
-constexpr decltype(auto) as_call_policy(Pol&& pol) {
-    if constexpr (flag_like<Pol>)
-        return make_policy<std::remove_cvref_t<Pol>::value>();
+template <policy_flag O, class Pol>
+constexpr auto with_flags(Pol&& pol) {
+    if constexpr (uses_error_ref<std::remove_cvref_t<Pol>>)
+        return call_policy<O, error_ref>{pol.Code};
     else
-        return std::forward<Pol>(pol);
+        return call_policy<O, empty_ref>{};
 }
 } // namespace detail
 } // namespace beman::inside
@@ -7881,7 +7894,7 @@ struct assignment<L, R> {
         static_assert(uses_flag<L, P, wrap> || uses_flag<L, P, clamp> || not excludes(interval_of<L>, interval_of<R>),
                       "rhs interval lies entirely outside lhs interval and the policy cannot bring it into range");
         static_assert(notches_compatible<L, R> || uses_flag<L, P, snap>,
-                      "incompatible notches: use with_snap() or policy<snap>() to allow rounding");
+                      "incompatible notches: use policy<snap>() or a rounding policy to allow rounding");
     }
 
     template <typename P, typename A>
@@ -7944,8 +7957,8 @@ constexpr L& assign_grid_number(L& lhs, const big_rational& v, P&& policy) {
 
 
 //---------------------------------------------------------------------------
-// policy_ref and policy_buffer — the proxies that b.policy(), with_snap(),
-// with_clamp(), with_wrap() and on_*() return (inside/detail/core.hpp): an inside (by
+// policy_ref and policy_buffer — the proxies that b.policy<F>(), b.policy(ec)
+// and on_*() return (inside/detail/core.hpp): an inside (by
 // reference, or owned for a temporary) with a call_policy<...> and a tuple of on_*
 // actions. Stores and compound ops flow through them, routing each action to
 // the right callback at the right pipeline stage.
@@ -7990,10 +8003,10 @@ constexpr Target dispatch_new(const C& src, P& policy, std::tuple<As...>& action
     return r;
 }
 
-// policy_buffer — the rvalue-receiver sibling of policy_ref. `with_snap()` etc.
+// policy_buffer — the rvalue-receiver sibling of policy_ref. `policy<F>()`
 // on a *temporary* return this instead: it OWNS the inside by value (the temporary
 // is moved in), so the snapped value can be returned/stored without dangling —
-// `auto square(small n){ return (n*n).with_snap(); }` is safe. Value read-out only
+// `auto square(small n){ return (n*n).policy<snap>(); }` is safe. Value read-out only
 // (no operator=: assigning into a throwaway is meaningless). Same constrained
 // conversion as policy_ref, so it stays SFINAE-friendly.
 template <insidable B, typename P, typename... As>
@@ -8022,7 +8035,7 @@ struct policy_ref {
 
     // Stores go through dispatch_assign under this ref's Policy and actions:
     // into Ref for `operator=`, into a fresh target for the conversion below,
-    // so a one-shot snap can be read out as a value (`(a * b).with_snap()`).
+    // so a one-shot snap can be read out as a value (`(a * b).policy<snap>()`).
     template <numeric C>
     constexpr B& operator=(const C& other) {
         return dispatch_assign(Ref, other, Policy, Actions);
@@ -8031,7 +8044,7 @@ struct policy_ref {
     // Value read-out: a one-shot policy ref converts to any inside the assignment
     // could satisfy, applying the target's own policy (range) plus this ref's
     // carried flags (notch/rounding) via uses_flag's merge. Makes
-    // `Target t = (a * b).with_snap();` / `return (a * b).with_snap();` compile.
+    // `Target t = (a * b).policy<snap>();` / `return (a * b).policy<snap>();` compile.
     // Constrained so the proxy stays SFINAE-friendly (no over-broad convertibility).
     template <insidable Target>
         requires inside_assignable<Target, B, flags_of<Target> | flags_of<P>>
@@ -9161,14 +9174,22 @@ struct inside {
         store_value(value);
     }
 
-    // One-shot policy: `pol`'s flags widen the assignable check (a clamp/round
-    // relaxes the interval/notch clause, e.g. clamp_cast<B, round_nearest>(some_inside)) and
-    // apply to this store. If it reports an error (ec mode), the inside keeps
-    // its default value.
+    // One-shot policy: a flag or make_policy<F>(ec) for this store. Its
+    // rounding mode replaces the type's and its clamp or wrap the type's range
+    // handling (detail::override_flags): T{v, clamp | round_ceil} saturates
+    // and rounds up whatever T declares. The store runs on the twin of this
+    // type under those flags (the same grid, so the raw carries over). If it
+    // reports an error (ec mode), the inside keeps its default value.
     template <numeric A, typename Pol>
-        requires inside_assignable<inside, A, P | flags_of<Pol>>
+        requires(detail::flag_like<Pol> || detail::policy_like<Pol>) &&
+                inside_assignable<inside<G, detail::override_flags(P, flags_of<Pol>)>,
+                                  A,
+                                  detail::override_flags(P, flags_of<Pol>)>
     constexpr inside(A value, Pol&& pol) : Raw{detail::default_raw<inside>} {
-        store_value(value, detail::as_call_policy(pol));
+        constexpr policy_flag O = detail::override_flags(P, flags_of<Pol>);
+        inside<G, O>          twin;
+        detail::assignment<inside<G, O>, A>::assign(twin, value, detail::with_flags<O>(pol));
+        Raw = twin.raw();
     }
 
     // No error-code constructor: construction that can fail is `try_make(value)`,
@@ -9211,7 +9232,10 @@ struct inside {
     template <std::same_as<detail::grid_rational> V, class Pol>
         requires(detail::policy_like<Pol> || detail::flag_like<Pol>)
     constexpr inside(const V& value, Pol&& pol) : Raw{detail::default_raw<inside>} {
-        detail::assign_grid_number(*this, value, detail::as_call_policy(pol));
+        constexpr policy_flag O = detail::override_flags(P, flags_of<Pol>);
+        inside<G, O>          twin;
+        detail::assign_grid_number(twin, value, detail::with_flags<O>(pol));
+        Raw = twin.raw();
     }
     template <std::same_as<detail::grid_rational> V>
     constexpr inside& operator=(const V& value) {
@@ -9232,8 +9256,8 @@ struct inside {
 #define BEMAN_INSIDE_WHY_disjoint                                                                   \
     "inside: the source's interval lies entirely outside this grid's, and the policy has no clamp " \
     "or wrap - widen the grid, or store with clamp or wrap (explain_assignable<To, From> prints both)"
-#define BEMAN_INSIDE_WHY_notch                                                                    \
-    "inside: incompatible notches - the source's values miss this grid's notch; use with_snap() " \
+#define BEMAN_INSIDE_WHY_notch                                                                       \
+    "inside: incompatible notches - the source's values miss this grid's notch; use policy<snap>() " \
     "or a rounding policy (explain_assignable<To, From> prints both notches)"
     template <numeric A>
         requires(!detail::assign_intervals_ok<inside, A, P>)
@@ -9252,7 +9276,7 @@ struct inside {
 
     // Trusted construction from a storage-layout raw — no validation; the caller
     // asserts `r` is a valid slot. Entry point for tests, fast paths, and same-grid
-    // raw transfer (e.g. `unchecked_cast`).
+    // raw transfer.
     [[nodiscard]] static constexpr inside from_raw(raw_type r) noexcept { return inside{detail::raw_tag{}, r}; }
 
     // Conversion summary:
@@ -9451,7 +9475,7 @@ struct inside {
     // policy_ref holding `*this` by reference (needed so `b.policy<…>() = x` writes
     // back into b, and cheap for the common immediate use). On an *rvalue* receiver
     // it returns a policy_buffer that OWNS the moved-in value, so a snapped temporary
-    // survives being returned/stored (`return (a*b).with_snap();`) — no dangling.
+    // survives being returned/stored (`return (a*b).policy<snap>();`) — no dangling.
     template <policy_flag F = none, typename Self>
     [[nodiscard]] constexpr auto policy(this Self&& self) {
         auto pol = make_policy<P | F>();
@@ -9465,27 +9489,6 @@ struct inside {
     [[nodiscard]] constexpr auto policy(errc& ec) {
         auto pol = make_policy<P | F>(ec);
         return detail::policy_ref<inside, decltype(pol)>{*this, pol, {}};
-    }
-
-    // with_snap<Mode>() — opt this assignment into snapping with the given rounding
-    // mode. Bare `with_snap()` is truncate-toward-zero (Mode == snap); pass an
-    // explicit mode for the others: with_snap<round_nearest>(), <round_floor>,
-    // <round_ceil>, <round_half_even>. Like policy<F>(), a temporary receiver
-    // yields a value-owning policy_buffer.
-    template <policy_flag Mode = snap, typename Self>
-    [[nodiscard]] constexpr auto with_snap(this Self&& self) {
-        static_assert(has_flag(Mode, snap),
-                      "with_snap<Mode>: Mode must be a snapping mode — snap (truncate), round_nearest, "
-                      "round_floor, round_ceil, or round_half_even");
-        return std::forward<Self>(self).template policy<Mode>();
-    }
-    template <typename Self>
-    [[nodiscard]] constexpr auto with_clamp(this Self&& self) {
-        return std::forward<Self>(self).template policy<clamp>();
-    }
-    template <typename Self>
-    [[nodiscard]] constexpr auto with_wrap(this Self&& self) {
-        return std::forward<Self>(self).template policy<wrap>();
     }
 
   private:
@@ -10134,58 +10137,11 @@ bool operator==(const B&, A) = delete (BEMAN_INSIDE_WHY_float_compare);
 
 
 //---------------------------------------------------------------------------
-// Free-function casts next to the constructors: clamp_cast<B> (optionally
-// clamp_cast<B, round_floor> & co.), wrap_cast<B>, checked_cast<B> and
-// unchecked_cast<B>. Unlike B{value} they name the intent (clamp, wrap,
-// report, trust) at the call site, which reads well in algorithm callbacks.
+// checked_cast<B>(v): v stored into B exactly, or a report - whatever B's
+// policy says about rounding or the range. (The other one-shot stores are the
+// flag constructor: B{v, clamp}, B{v, wrap | round_floor}, B{v, unsafe}.)
 //---------------------------------------------------------------------------
 namespace beman::inside {
-namespace detail {
-inline constexpr policy_flag rounding_flags = round_nearest | round_floor | round_ceil | round_half_even;
-inline constexpr policy_flag range_flags    = clamp | wrap;
-
-// B's grid under B's flags with the `Replaced` ones swapped for `Cast`: a
-// one-shot flag overrides the declared one of its kind (OR-ing them would
-// let the type's rounding mode outrank the cast's, or its clamp the cast's
-// wrap). Same grid, so the raw carries over.
-template <insidable B, policy_flag Cast, policy_flag Replaced>
-using cast_twin = inside<grid_of<B>, (flags_of<B> & ~Replaced) | Cast>;
-
-// Each cast constructs through such a twin of B — its policy overrides B's
-// declared one for this conversion only — and is constrained like that
-// constructor, so a probe sees whether it compiles.
-
-// clamp, and with a rounding mode, that mode in place of B's own:
-// clamp_cast<B, round_floor> is the "double in, bounded integer out, never
-// throw" pipeline.
-template <insidable B, policy_flag Round>
-using clamp_twin = std::conditional_t<Round == none,
-                                      cast_twin<B, clamp, range_flags>,
-                                      cast_twin<B, clamp | Round, range_flags | rounding_flags>>;
-
-template <insidable B>
-using wrap_twin = cast_twin<B, wrap, range_flags>;
-
-template <policy_flag Round>
-concept cast_rounding =
-    Round == none || Round == round_nearest || Round == round_floor || Round == round_ceil || Round == round_half_even;
-} // namespace detail
-
-template <insidable B, policy_flag Round = none, numeric N>
-    requires detail::cast_rounding<Round> &&
-             inside_assignable<detail::clamp_twin<B, Round>, N, flags_of<detail::clamp_twin<B, Round>>>
-[[nodiscard]] constexpr B clamp_cast(N value) {
-    return B::from_raw(detail::clamp_twin<B, Round>{value}.raw());
-}
-
-// `wrap_cast` — modular semantics: the input is reduced into the target grid's
-// interval rather than clipped. For integer-style wraparound (angles, indices).
-template <insidable B, numeric N>
-    requires inside_assignable<detail::wrap_twin<B>, N, flags_of<detail::wrap_twin<B>>>
-[[nodiscard]] constexpr B wrap_cast(N value) {
-    return B::from_raw(detail::wrap_twin<B>{value}.raw());
-}
-
 // `checked_cast` — throws (via the installed handler) when the value would not
 // fit exactly: errc::overflow out of the interval (as to<T> and the predicate
 // name it), errc::rounding_error off the notch. Any numeric source, insides
@@ -10198,15 +10154,6 @@ template <insidable B, numeric A>
     if (conversion_rounds<B>(value))
         detail::raise(errc::rounding_error, "checked_cast: value does not land on notch");
     return B{value, make_policy<snap>()};
-}
-
-// `unchecked_cast` routes through `inside<G, unsafe>` so the compiler elides
-// every domain/round check. UB if the value is actually out of range.
-template <insidable B, numeric A>
-    requires inside_assignable<inside<grid_of<B>, unsafe>, A, unsafe>
-[[nodiscard]] constexpr B unchecked_cast(A value) {
-    using twin = inside<grid_of<B>, unsafe>;
-    return B::from_raw(twin{value}.raw()); // same grid → identical raw layout
 }
 
 } // namespace beman::inside
@@ -10659,7 +10606,7 @@ using common_inside_t = typename detail::common_inside<Lhs, Rhs>::type;
 // std-vocabulary helpers — ADL-found `min` / `max` / `midpoint` for generic
 // code. min/max mirror std; midpoint returns the *exact* average on a refined
 // grid (so, unlike std::midpoint, it neither rounds nor overflows). There is
-// no free `beman::inside::clamp` (the name is the policy flag — use clamp_cast<Target>).
+// no free `beman::inside::clamp` (the name is the policy flag — use Target{v, clamp}).
 //---------------------------------------------------------------------------
 // Both return the common type: the operand type itself for one type, else
 // the hull, which holds each operand exactly.
@@ -17833,7 +17780,7 @@ using adaptive::tanh_into;
 //   base_dimension, unit_c / spec_c / origin_c   dimensions of your own
 //   q.on_wrap / on_clamp / on_error, ++q, Q::try_make
 //   mul_into, div_into, add_all, mul_all, sum<Q>, divmod,
-//   conversion_overflows / rounds / loses<Q>, clamp_cast / wrap_cast<Q>,
+//   conversion_overflows / rounds / loses<Q>, Q{x, clamp} / Q{x, wrap},
 //   dot, cross, lerp                             inside's algorithms
 //   percent, per_mille                           dimensionless units
 // The catalog: isq, si, si2019, international. The derived physical
@@ -18966,6 +18913,21 @@ constexpr auto number_in_unit(const quantity<R, V>& q) {
     return rescale<conversion_factor<R.U, U>>(q.numerical_value());
 }
 
+// A one-shot store's source (Q{x, clamp}, checked_cast<Q>(x)): x a number in
+// Q's unit, or a quantity converted to it exactly first.
+template <class Q, class X>
+constexpr decltype(auto) number_in(const X& x) {
+    if constexpr (quantity_like<X>)
+        return number_in_unit<Q::reference.U>(x);
+    else
+        return (x);
+}
+template <class Q, class X>
+concept castable_quantity =
+    quantity_like<X> && implicit_v<X::reference, Q::reference> && exact_rescale_v<X::reference.U, Q::reference.U>;
+template <class Q, class X>
+concept castable_from = quantity_like<Q> && (castable_quantity<Q, X> || (!quantity_like<X> && numeric<X>));
+
 using beman::inside::detail::is_expected_v;
 
 // Q from v, or an expected Q from an expected v (its error passed on).
@@ -19048,6 +19010,15 @@ class quantity {
     template <class V>
         requires std::constructible_from<Rep, V> && (!quantity_like<V>)
     constexpr explicit quantity(V&& v) : Value(std::forward<V>(v)) {}
+
+    // A one-shot policy for this store, as for an inside: a flag or
+    // make_policy<F>(ec) (Q{v, clamp}, Q{v, round_floor}). x is a number in R's
+    // unit, or a quantity converted to it exactly first.
+    template <class X, class Pol>
+        requires(beman::inside::detail::flag_like<Pol> || beman::inside::detail::policy_like<Pol>) &&
+                detail::castable_from<quantity, X> &&
+                std::constructible_from<Rep, decltype(detail::number_in<quantity>(std::declval<const X&>())), Pol>
+    constexpr quantity(const X& x, Pol&& pol) : Value(detail::number_in<quantity>(x), std::forward<Pol>(pol)) {}
 
     // From another quantity: implicit when the spec converts implicitly and
     // the number, in R's unit, converts implicitly into Rep.
@@ -19657,35 +19628,6 @@ template <class Q, numeric A>
     requires quantity_like<Q>
 [[nodiscard]] constexpr bool conversion_loses(A value) noexcept {
     return beman::inside::conversion_loses<typename Q::rep>(value);
-}
-
-// clamp_cast<Q, Round>(x) / wrap_cast<Q>(x): x a number in Q's unit, or a
-// quantity converted to it exactly first.
-namespace detail {
-template <class Q, class X>
-constexpr decltype(auto) number_in(const X& x) {
-    if constexpr (quantity_like<X>)
-        return number_in_unit<Q::reference.U>(x);
-    else
-        return (x);
-}
-template <class Q, class X>
-concept castable_quantity =
-    quantity_like<X> && implicit_v<X::reference, Q::reference> && exact_rescale_v<X::reference.U, Q::reference.U>;
-template <class Q, class X>
-concept castable_from = quantity_like<Q> && (castable_quantity<Q, X> || (!quantity_like<X> && numeric<X>));
-} // namespace detail
-template <class Q, policy_flag Round = none, class X>
-    requires detail::castable_from<Q, X> &&
-             requires(const X& x) { beman::inside::clamp_cast<typename Q::rep, Round>(detail::number_in<Q>(x)); }
-[[nodiscard]] constexpr Q clamp_cast(const X& x) {
-    return Q{beman::inside::clamp_cast<typename Q::rep, Round>(detail::number_in<Q>(x))};
-}
-template <class Q, class X>
-    requires detail::castable_from<Q, X> &&
-             requires(const X& x) { beman::inside::wrap_cast<typename Q::rep>(detail::number_in<Q>(x)); }
-[[nodiscard]] constexpr Q wrap_cast(const X& x) {
-    return Q{beman::inside::wrap_cast<typename Q::rep>(detail::number_in<Q>(x))};
 }
 
 // dot, cross, lerp on quantity components (lerp's t is a plain number).

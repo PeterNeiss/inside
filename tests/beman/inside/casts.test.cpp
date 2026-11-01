@@ -90,15 +90,15 @@ TEST(CastsTest, conversion_is_lossy_combines_both) {
 }
 
 //---------------------------------------------------------------------------
-// clamp_cast / checked_cast / unchecked_cast
+// the clamp constructor / checked_cast / the unsafe constructor
 //---------------------------------------------------------------------------
-// clamp_cast clamps to boundary
+// the clamp constructor clamps to boundary
 TEST(CastsTest, clamp_cast_clamps_to_boundary) {
     using pct = inside<{0, 100}>;
 
-    ASSERT_TRUE(clamp_cast<pct>(150) == pct{100});
-    ASSERT_TRUE(clamp_cast<pct>(-5) == pct{0});
-    ASSERT_TRUE(clamp_cast<pct>(42) == pct{42});
+    ASSERT_TRUE((pct{150, clamp} == pct{100}));
+    ASSERT_TRUE((pct{-5, clamp} == pct{0}));
+    ASSERT_TRUE((pct{42, clamp} == pct{42}));
 }
 
 // checked_cast throws on out-of-range
@@ -118,13 +118,13 @@ TEST(CastsTest, checked_cast_throws_on_truncation) {
     ASSERT_THROW((void)(checked_cast<coarse>(3)), beman::inside::inside_error);
 }
 
-// unchecked_cast bypasses runtime checks
+// the unsafe constructor bypasses runtime checks
 TEST(CastsTest, unchecked_cast_bypasses_runtime_checks) {
     using pct = inside<{0, 100}>;
 
     // In-range value: same result as checked_cast.
-    static_assert(unchecked_cast<pct>(42) == pct{42});
-    static_assert(unchecked_cast<pct>(0) == pct{0});
+    static_assert(pct{42, unsafe} == pct{42});
+    static_assert(pct{0, unsafe} == pct{0});
 }
 
 //---------------------------------------------------------------------------
@@ -156,81 +156,81 @@ TEST(CastsTest, add_all_mul_all_fold_variadically) {
 }
 
 //---------------------------------------------------------------------------
-// rounding modes (with_snap<round_floor> / with_snap<round_ceil> / with_snap<round_half_even>)
+// rounding modes (policy<round_floor> / policy<round_ceil> / policy<round_half_even>)
 //---------------------------------------------------------------------------
 // Rounding modes apply when rhs is fractional (float, double, rational).
 // Integer rhs takes the truncation fast path which is *intentionally*
 // rounding-policy-agnostic — see assignment.hpp:store(integral).
-// with_snap<round_floor> rounds toward -inf for double rhs
+// policy<round_floor> rounds toward -inf for double rhs
 TEST(CastsTest, with_snap_round_floor_rounds_toward_inf_for_double_rhs) {
     using coarse = inside<{{0, 10}, 2}>;
     coarse c{0};
 
-    c.with_snap<round_floor>() = 3.0;
+    c.policy<round_floor>() = 3.0;
     ASSERT_EQ(c, 2);
 
-    c.with_snap<round_floor>() = 4.0;
+    c.policy<round_floor>() = 4.0;
     ASSERT_EQ(c, 4);
 
-    c.with_snap<round_floor>() = 5.0;
+    c.policy<round_floor>() = 5.0;
     ASSERT_EQ(c, 4);
 }
 
-// with_snap<round_ceil> rounds toward +inf for double rhs
+// policy<round_ceil> rounds toward +inf for double rhs
 TEST(CastsTest, with_snap_round_ceil_rounds_toward_plus_inf_for_double_rhs) {
     using coarse = inside<{{0, 10}, 2}>;
     coarse c{0};
 
-    c.with_snap<round_ceil>() = 3.0;
+    c.policy<round_ceil>() = 3.0;
     ASSERT_EQ(c, 4);
 
-    c.with_snap<round_ceil>() = 4.0;
+    c.policy<round_ceil>() = 4.0;
     ASSERT_EQ(c, 4);
 
-    c.with_snap<round_ceil>() = 5.0;
+    c.policy<round_ceil>() = 5.0;
     ASSERT_EQ(c, 6);
 }
 
-// with_snap<round_half_even> applies banker's rounding
+// policy<round_half_even> applies banker's rounding
 TEST(CastsTest, with_snap_round_half_even_applies_banker_s_rounding) {
     using coarse = inside<{{0, 10}, 2}>;
     coarse c{0};
 
     // 1.0 is the half-way point between notch 0 and notch 2 → even wins (0).
-    c.with_snap<round_half_even>() = 1.0;
+    c.policy<round_half_even>() = 1.0;
     ASSERT_EQ(c, 0);
 
     // 3.0 is half-way between 2 and 4 → even wins (4).
-    c.with_snap<round_half_even>() = 3.0;
+    c.policy<round_half_even>() = 3.0;
     ASSERT_EQ(c, 4);
 
     // 5.0 is halfway between 4 and 6 → even wins (4).
-    c.with_snap<round_half_even>() = 5.0;
+    c.policy<round_half_even>() = 5.0;
     ASSERT_EQ(c, 4);
 
     // 7.0 is halfway between 6 and 8 → even wins (8).
-    c.with_snap<round_half_even>() = 7.0;
+    c.policy<round_half_even>() = 7.0;
     ASSERT_EQ(c, 8);
 }
 
 //---------------------------------------------------------------------------
-// clamp_cast with a rounding mode
+// the clamp constructor with a rounding mode
 //---------------------------------------------------------------------------
-// clamp_cast with a rounding mode compose clamp + round
+// the clamp constructor with a rounding mode compose clamp + round
 TEST(CastsTest, clamp_cast_with_rounding_compose_clamp_plus_round) {
     using coarse = inside<{{0, 10}, 2}>;
 
     // In-range, off-notch: round per mode.
-    ASSERT_TRUE((clamp_cast<coarse, round_floor>(3.0) == coarse{2}));
-    ASSERT_TRUE((clamp_cast<coarse, round_ceil>(3.0) == coarse{4}));
-    ASSERT_TRUE((clamp_cast<coarse, round_nearest>(3.0) == coarse{4}));
+    ASSERT_TRUE((coarse{3.0, clamp | round_floor} == coarse{2}));
+    ASSERT_TRUE((coarse{3.0, clamp | round_ceil} == coarse{4}));
+    ASSERT_TRUE((coarse{3.0, clamp | round_nearest} == coarse{4}));
 
     // Out-of-range: clamp to boundary.
-    ASSERT_TRUE((clamp_cast<coarse, round_floor>(15.0) == coarse{10}));
-    ASSERT_TRUE((clamp_cast<coarse, round_ceil>(15.0) == coarse{10}));
-    ASSERT_TRUE((clamp_cast<coarse, round_nearest>(15.0) == coarse{10}));
+    ASSERT_TRUE((coarse{15.0, clamp | round_floor} == coarse{10}));
+    ASSERT_TRUE((coarse{15.0, clamp | round_ceil} == coarse{10}));
+    ASSERT_TRUE((coarse{15.0, clamp | round_nearest} == coarse{10}));
 
-    ASSERT_TRUE((clamp_cast<coarse, round_floor>(-3.0) == coarse{0}));
+    ASSERT_TRUE((coarse{-3.0, clamp | round_floor} == coarse{0}));
 }
 
 //---------------------------------------------------------------------------
@@ -238,18 +238,18 @@ TEST(CastsTest, clamp_cast_with_rounding_compose_clamp_plus_round) {
 // policy widens the value+policy constructor's assignable check, so a finer
 // grid rounds onto the target (not just arithmetic sources).
 //---------------------------------------------------------------------------
-// clamp_cast with a rounding mode accept an inside source
+// the clamp constructor with a rounding mode accept an inside source
 TEST(CastsTest, clamp_cast_with_rounding_accept_an_inside_source) {
     using small = inside<{{0, 10}, per<10>}, clamp>; // 1/10 grid
     small a     = 2.5;                               // exact on the 1/10 grid
     auto  sq    = a * a;                             // exact 6.25 on the 1/100 grid
 
-    ASSERT_TRUE((clamp_cast<small, round_floor>(sq) == 6.2_r));   // toward −∞
-    ASSERT_TRUE((clamp_cast<small, round_ceil>(sq) == 6.3_r));    // toward +∞
-    ASSERT_TRUE((clamp_cast<small, round_nearest>(sq) == 6.3_r)); // 6.25 tie → half away → 6.3
+    ASSERT_TRUE((small{sq, clamp | round_floor} == 6.2_r));   // toward −∞
+    ASSERT_TRUE((small{sq, clamp | round_ceil} == 6.3_r));    // toward +∞
+    ASSERT_TRUE((small{sq, clamp | round_nearest} == 6.3_r)); // 6.25 tie → half away → 6.3
 
-    small four = 4;                                                     // 16 is out of range
-    ASSERT_TRUE((clamp_cast<small, round_nearest>(four * four) == 10)); // clamp to boundary
+    small four = 4;                                                 // 16 is out of range
+    ASSERT_TRUE((small{four * four, clamp | round_nearest} == 10)); // clamp to boundary
 
-    ASSERT_TRUE((clamp_cast<small, round_nearest>(150.0) == 10)); // arithmetic source: no regression
+    ASSERT_TRUE((small{150.0, clamp | round_nearest} == 10)); // arithmetic source: no regression
 }

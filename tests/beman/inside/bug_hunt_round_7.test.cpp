@@ -189,13 +189,13 @@ TEST(BugHuntRound7, unanchored_cross_grid_comparison) {
 // The one-shot casts OR-ed their flags with the type's, so the type's
 // rounding mode or clamp won.
 TEST(BugHuntRound7, casts_override_the_declared_policy) {
-    EXPECT_EQ((clamp_cast<inside<{0, 100}, round_floor>, round_nearest>(2.5)), 3);
-    EXPECT_EQ((clamp_cast<inside<{0, 100}, round_half_even>, round_nearest>(2.5)), 3);
-    EXPECT_EQ((clamp_cast<inside<{0, 100}, round_floor>, round_ceil>(2.5)), 3);
-    EXPECT_EQ((clamp_cast<inside<{0, 100}, round_ceil>, round_nearest>(2.2)), 2);
-    EXPECT_EQ((wrap_cast<inside<{0, 100}, clamp>>(150)), 49);
-    EXPECT_EQ((clamp_cast<inside<{0, 100}, wrap>>(150)), 100);
-    EXPECT_EQ((clamp_cast<inside<{0, 100}, round_floor>>(7.9)), 7); // the type's rounding stays
+    EXPECT_EQ((inside<{0, 100}, round_floor>{2.5, clamp | round_nearest}), 3);
+    EXPECT_EQ((inside<{0, 100}, round_half_even>{2.5, clamp | round_nearest}), 3);
+    EXPECT_EQ((inside<{0, 100}, round_floor>{2.5, clamp | round_ceil}), 3);
+    EXPECT_EQ((inside<{0, 100}, round_ceil>{2.2, clamp | round_nearest}), 2);
+    EXPECT_EQ((inside<{0, 100}, clamp>{150, wrap}), 49);
+    EXPECT_EQ((inside<{0, 100}, wrap>{150, clamp}), 100);
+    EXPECT_EQ((inside<{0, 100}, round_floor>{7.9, clamp}), 7); // the type's rounding stays
 }
 
 // wrap on a bounded continuous grid folded before it rounded.

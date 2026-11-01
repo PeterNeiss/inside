@@ -304,7 +304,7 @@ numbers, so it still rounds once and checks once.
 | `divmod(a, b, args…)` | in the common unit: the quotient a number, the remainder a quantity |
 | `parse<Q, F>(text)`, `parse_exact<Q>(text)` | the number, read in Q's unit |
 | `conversion_overflows<Q>(v)`, `conversion_rounds<Q>`, `conversion_loses<Q>` | a number in Q's unit against Q's grid |
-| `clamp_cast<Q, Round>(x)`, `wrap_cast<Q>(x)` | a number in Q's unit, or a quantity converted to it first |
+| `Q{x, clamp | Round}`, `Q{x, wrap}` | a number in Q's unit, or a quantity converted to it first |
 | `dot`, `cross`, `lerp` | on quantity components: `dot` of two px vectors is px²; `lerp`'s t is a number |
 
 ```cpp

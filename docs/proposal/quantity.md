@@ -237,8 +237,9 @@ comparing quantities of different kinds`.
 A quantity's stores are its number's stores: `++q`, `q += r` and the
 construction from a number apply `Rep`'s policy, and `q.on_wrap(f)`,
 `q.on_clamp(f)` and `q.on_error(f)` attach the number paper's actions.
-`Q::try_make(v)`, `clamp_cast<Q>`, `wrap_cast<Q>`, `value_cast` and
-`try_value_cast` convert into a quantity type, and
+`Q::try_make(v)`, the flag constructor `Q{x, clamp}` (a flag or
+`make_policy<F>(ec)` for one store, `x` a number or a quantity converted
+exactly), `value_cast` and `try_value_cast` convert into a quantity type, and
 `conversion_overflows<Q>(v)` and its siblings answer for a number `v` in `Q`'s
 unit.
 
@@ -310,7 +311,6 @@ namespace std::units {
   template<auto U, class Rep2, reference R, class V> constexpr auto value_cast(const quantity<R, V>&);
   template<class Q, reference R, class V> constexpr Q value_cast(const quantity<R, V>&);
   // try_value_cast<...>(q): the same through Rep2::try_make, an expected
-  template<class Q, class X> constexpr Q clamp_cast(const X&);  // also wrap_cast
   template<class Q, class N> constexpr bool conversion_overflows(N v) noexcept; // v in Q's unit; also
                                                                 // conversion_rounds, conversion_loses
   template<reference A, class VA, reference B, class VB, class... Args>
@@ -352,7 +352,7 @@ namespace std::units {
 | `a * b`, `a / b` | units, kinds and numbers multiply or divide | `expected` iff `b`'s grid holds 0; a result of dimension one converts to its `inside` |
 | `quantity_cast<S>(q)` | the same number, kind `S` | down or sideways within one kind; never across an `is_kind` boundary |
 | `value_cast<Rep2>(q)`, `value_cast<u, Rep2>(q)` | the exact value, stored by `Rep2` | `try_value_cast` reports through `expected` |
-| `clamp_cast<Q>(x)`, `wrap_cast<Q>(x)` | `x` in `Q`'s unit, saturated or folded into `Q`'s number | `x` a quantity of `Q`'s dimension, or a number in `Q`'s unit |
+| `Q{x, clamp}`, `Q{x, wrap}` | `x` in `Q`'s unit, saturated or folded into `Q`'s number | `x` a quantity of `Q`'s dimension, or a number in `Q`'s unit |
 | `Q::try_make<F>(v)`, `q.on_wrap(f) += r` etc. | as for `Q::rep` | the number paper's policies and actions |
 | `divmod(a, b, …)` | `{q, r}` in the common unit | as the number paper's `divmod` |
 | `point<u>(v)` | a point counted from `u`'s origin | |

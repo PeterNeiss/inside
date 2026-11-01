@@ -40,9 +40,9 @@ int main() {
     pct brightness = 120;   // 100
     brightness += -200_ins; // 0
     std::cout << "brightness " << brightness << "\n";
-    inside<{0, 100}> strict{50}; // checked by default …
-    strict.with_clamp() = 200;   // … clamped for this one store
-    std::cout << "with_clamp " << strict << "\n";
+    inside<{0, 100}> strict{50};  // checked by default …
+    strict.policy<clamp>() = 200; // … clamped for this one store
+    std::cout << "policy<clamp> " << strict << "\n";
     if (brightness != 0 || strict != 100)
         return 1;
 

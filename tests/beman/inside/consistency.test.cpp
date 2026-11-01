@@ -82,8 +82,8 @@ TEST(ConsistencyTest, integer_source_snaps_on_every_path) {
 //---------------------------------------------------------------------------
 TEST(ConsistencyTest, integer_wrap_uses_span_plus_notch) {
     using H = inside<{{0, 10}, per<2>}>; // span 10, notch 1/2 → modulus 10.5
-    EXPECT_EQ(rational{wrap_cast<H>(12)}, rational{wrap_cast<H>(q(12))});
-    EXPECT_EQ(rational{wrap_cast<H>(12)}, q(3, 2));
+    EXPECT_EQ(rational{(H{12, wrap})}, rational{(H{q(12), wrap})});
+    EXPECT_EQ(rational{(H{12, wrap})}, q(3, 2));
     using N2 = inside<{{0, 10}, 2}, wrap>; // modulus 12
     EXPECT_EQ(rational{N2{22}}, rational{N2{q(22)}});
     EXPECT_EQ(rational{N2{22}}, q(10));
@@ -119,12 +119,12 @@ TEST(ConsistencyTest, inside_source_wrap_rounds_first) {
     EXPECT_EQ(rational{a}, q(2)); // 12.5 → 13 ≡ 2
 }
 
-// unchecked_cast keeps the target's storage layout.
+// the unsafe constructor keeps the target's storage layout.
 TEST(ConsistencyTest, unchecked_cast_keeps_the_storage_layout) {
     using D = inside<{5, 100}>;
-    EXPECT_EQ(rational{unchecked_cast<D>(7)}, q(7));
+    EXPECT_EQ(rational{(D{7, unsafe})}, q(7));
     using F = inside<{{0, 4}, per<2>}>;
-    EXPECT_EQ(rational{unchecked_cast<F>(1.5)}, rational{1.5});
+    EXPECT_EQ(rational{(F{1.5, unsafe})}, rational{1.5});
 }
 
 // Products and quotients deduce their own storage from the result grid.
@@ -428,7 +428,7 @@ TEST(ConsistencyTest, casts_take_inside_sources) {
     } catch (const inside_error& e) {
         EXPECT_EQ(e.Code, errc::overflow);
     } // out of range
-    EXPECT_EQ(rational{unchecked_cast<Dst>(Src{q(4)})}, q(4));
+    EXPECT_EQ((rational{Dst{Src{q(4)}, unsafe}}), q(4));
 }
 
 TEST(ConsistencyTest, midpoint_across_grids) {

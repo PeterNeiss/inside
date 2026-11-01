@@ -995,7 +995,7 @@ struct assignment<L, R> {
         static_assert(uses_flag<L, P, wrap> || uses_flag<L, P, clamp> || not excludes(interval_of<L>, interval_of<R>),
                       "rhs interval lies entirely outside lhs interval and the policy cannot bring it into range");
         static_assert(notches_compatible<L, R> || uses_flag<L, P, snap>,
-                      "incompatible notches: use with_snap() or policy<snap>() to allow rounding");
+                      "incompatible notches: use policy<snap>() or a rounding policy to allow rounding");
     }
 
     template <typename P, typename A>

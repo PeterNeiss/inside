@@ -81,40 +81,44 @@ g.denominator();   // 16: exactly 3/16
 These are the only *exact* read-out. For an approximate number use
 `to<double>()` or a rounded `to<intN>()`.
 
-## Free-function casts
+## One-shot stores: `B{v, F}` and `checked_cast`
 
-Five casts name what happens at the boundary. They read well inside a
-`std::ranges::transform` lambda, where `B{v}` would hide the intent:
+The flag constructor `B{v, F}` stores `v` under the flags `F`, which replace
+B's own flags of the same kind: a rounding mode replaces B's rounding mode,
+`clamp` or `wrap` B's range handling. It names what happens at the boundary,
+and reads well inside a `std::ranges::transform` lambda, where `B{v}` would
+hide the intent:
 
-| Cast | Does |
+| Store | Does |
 |---|---|
-| `clamp_cast<B>(v)` | saturate to B's range, whatever B's policy |
-| `clamp_cast<B, Round>(v)` | the same, rounding by `Round` (`round_floor`, `round_ceil`, `round_nearest`, `round_half_even`) |
-| `wrap_cast<B>(v)` | fold v into B's range modulo its period |
+| `B{v, clamp}` | saturate to B's range, whatever B's policy |
+| `B{v, clamp | Round}` | the same, rounding by `Round` (`round_floor`, `round_ceil`, `round_nearest`, `round_half_even`) |
+| `B{v, wrap}` | fold v into B's range modulo its period |
 | `checked_cast<B>(v)` | report through the checked policy (throw by default): `overflow` or `rounding_error` |
-| `unchecked_cast<B>(v)` | trust the caller; out of range is undefined |
+| `B{v, unsafe}` | trust the caller; out of range is undefined |
 
 ```cpp
 using pct = inside<{0, 100}>;
-clamp_cast<pct>(150);        // 100
-wrap_cast<pct>(105);         // 4: the period of [0, 100] is 101
-checked_cast<pct>(42);       // 42
-unchecked_cast<pct>(42);     // 42
+pct{150, clamp};        // 100
+pct{105, wrap};         // 4: the period of [0, 100] is 101
+checked_cast<pct>(42);  // 42
+pct{42, unsafe};        // 42
 
 using coarse = inside<{{0, 10}, 2}>;
-clamp_cast<coarse, round_floor>(3.0);     // 2
-clamp_cast<coarse, round_ceil>(3.0);      // 4
-clamp_cast<coarse, round_nearest>(3.0);   // 4
-clamp_cast<coarse, round_floor>(15.0);    // 10: clamped
+coarse{3.0, clamp | round_floor};     // 2
+coarse{3.0, clamp | round_ceil};      // 4
+coarse{3.0, clamp | round_nearest};   // 4
+coarse{15.0, clamp | round_floor};    // 10: clamped
 
 using small = inside<{{0, 10}, per<10>}, clamp>;
 small a = 2.5;
-clamp_cast<small, round_nearest>(a * a);  // 6.3: 6.25 rounded onto 1/10
+small{a * a, clamp | round_nearest};  // 6.3: 6.25 rounded onto 1/10
 ```
 
 The source can be a native number or an inside on any grid; the rounding
-mode relaxes the notch check, so a finer value rounds onto the target. The
-fluent forms do the same: `b.with_clamp() = r`, `(a * a).with_snap<round_nearest>()`
+mode relaxes the notch check, so a finer value rounds onto the target. For
+one assignment to an existing inside, `b.policy<F>()` does the same:
+`b.policy<clamp>() = r`, `(a * a).policy<round_nearest>()`
 ([arithmetic.md](arithmetic.md#rounding)).
 
 ### API boundary: `clamp | round_nearest`
@@ -124,11 +128,11 @@ output, put `clamp | round_nearest` on the type and write `T{value}`:
 
 ```cpp
 using output_t = inside<{-100, 100}, clamp | round_nearest>;
-return output_t{raw};   // saturates and rounds; no clamp_cast<output_t, round_nearest>(raw)
+return output_t{raw};   // saturates and rounds; no output_t{raw, clamp | round_nearest}
 ```
 
-`clamp_cast<B, Round>` remains the tool when one call site must override the
-type's policy. [`pid_controller.cpp`](../examples/pid_controller.cpp) (a % command)
+`B{v, clamp | Round}` is the tool when one call site must override the type's
+policy: its flags replace the type's own of the same kind. [`pid_controller.cpp`](../examples/pid_controller.cpp) (a % command)
 and [`sensor_fusion.cpp`](../examples/sensor_fusion.cpp) (a ℃ reading) use this
 form on quantities.
 
@@ -260,13 +264,13 @@ A quantity converts like its number, with its unit spelled out
 | Into a quantity | Spelling |
 |---|---|
 | a number in Q's unit | `Q{v}`, `Q::try_make<F>(v)`, `just<5> * si::metre` |
-| a cast | `clamp_cast<Q, Round>(x)`, `wrap_cast<Q>(x)`: `x` a number in Q's unit, or a quantity converted to it first |
+| a cast | `Q{x, clamp | Round}`, `Q{x, wrap}`: `x` a number in Q's unit, or a quantity converted to it first |
 | a test | `conversion_overflows<Q>(v)`, `conversion_rounds<Q>(v)`, `conversion_loses<Q>(v)` |
 | text | `parse<Q, F>(text)`, `parse_exact<Q>(text)`: the number, read in Q's unit |
 
 ```cpp
 using metres = quantity<si::metre, inside<{0, 1000}>>;
-wrap_cast<quantity<si::second, inside<{0, 60, bounds::half_open}, wrap>>>(just<3> * si::minute + just<5> * si::second);   // 5 s
+quantity<si::second, inside<{0, 60, bounds::half_open}, wrap>>{just<3> * si::minute + just<5> * si::second, wrap};   // 5 s
 *parse<metres>("12");             // 12 m
 conversion_overflows<metres>(2000.0);   // true
 ```

@@ -3,7 +3,7 @@
 // The core type beman::inside::inside<G, P>: construction and try_make,
 // compound assignment, ++/--, the conversions (imax, rational, double,
 // to<T>/as<T>), numerator()/denominator(), raw()/from_raw, the per-store
-// overrides (with_clamp, with_snap, policy<F>) and hooks (on_wrap, on_clamp,
+// overrides (policy<F>(), policy(ec)) and hooks (on_wrap, on_clamp,
 // on_error), parse(first, last), just<…> and the _ins literal.
 // The umbrella adds the casts, arithmetic, range and cursor layers, which
 // need this complete type.
@@ -164,14 +164,22 @@ struct inside {
         store_value(value);
     }
 
-    // One-shot policy: `pol`'s flags widen the assignable check (a clamp/round
-    // relaxes the interval/notch clause, e.g. clamp_cast<B, round_nearest>(some_inside)) and
-    // apply to this store. If it reports an error (ec mode), the inside keeps
-    // its default value.
+    // One-shot policy: a flag or make_policy<F>(ec) for this store. Its
+    // rounding mode replaces the type's and its clamp or wrap the type's range
+    // handling (detail::override_flags): T{v, clamp | round_ceil} saturates
+    // and rounds up whatever T declares. The store runs on the twin of this
+    // type under those flags (the same grid, so the raw carries over). If it
+    // reports an error (ec mode), the inside keeps its default value.
     template <numeric A, typename Pol>
-        requires inside_assignable<inside, A, P | flags_of<Pol>>
+        requires(detail::flag_like<Pol> || detail::policy_like<Pol>) &&
+                inside_assignable<inside<G, detail::override_flags(P, flags_of<Pol>)>,
+                                  A,
+                                  detail::override_flags(P, flags_of<Pol>)>
     constexpr inside(A value, Pol&& pol) : Raw{detail::default_raw<inside>} {
-        store_value(value, detail::as_call_policy(pol));
+        constexpr policy_flag O = detail::override_flags(P, flags_of<Pol>);
+        inside<G, O>          twin;
+        detail::assignment<inside<G, O>, A>::assign(twin, value, detail::with_flags<O>(pol));
+        Raw = twin.raw();
     }
 
     // No error-code constructor: construction that can fail is `try_make(value)`,
@@ -214,7 +222,10 @@ struct inside {
     template <std::same_as<detail::grid_rational> V, class Pol>
         requires(detail::policy_like<Pol> || detail::flag_like<Pol>)
     constexpr inside(const V& value, Pol&& pol) : Raw{detail::default_raw<inside>} {
-        detail::assign_grid_number(*this, value, detail::as_call_policy(pol));
+        constexpr policy_flag O = detail::override_flags(P, flags_of<Pol>);
+        inside<G, O>          twin;
+        detail::assign_grid_number(twin, value, detail::with_flags<O>(pol));
+        Raw = twin.raw();
     }
     template <std::same_as<detail::grid_rational> V>
     constexpr inside& operator=(const V& value) {
@@ -235,8 +246,8 @@ struct inside {
 #define BEMAN_INSIDE_WHY_disjoint                                                                   \
     "inside: the source's interval lies entirely outside this grid's, and the policy has no clamp " \
     "or wrap - widen the grid, or store with clamp or wrap (explain_assignable<To, From> prints both)"
-#define BEMAN_INSIDE_WHY_notch                                                                    \
-    "inside: incompatible notches - the source's values miss this grid's notch; use with_snap() " \
+#define BEMAN_INSIDE_WHY_notch                                                                       \
+    "inside: incompatible notches - the source's values miss this grid's notch; use policy<snap>() " \
     "or a rounding policy (explain_assignable<To, From> prints both notches)"
     template <numeric A>
         requires(!detail::assign_intervals_ok<inside, A, P>)
@@ -255,7 +266,7 @@ struct inside {
 
     // Trusted construction from a storage-layout raw — no validation; the caller
     // asserts `r` is a valid slot. Entry point for tests, fast paths, and same-grid
-    // raw transfer (e.g. `unchecked_cast`).
+    // raw transfer.
     [[nodiscard]] static constexpr inside from_raw(raw_type r) noexcept { return inside{detail::raw_tag{}, r}; }
 
     // Conversion summary:
@@ -454,7 +465,7 @@ struct inside {
     // policy_ref holding `*this` by reference (needed so `b.policy<…>() = x` writes
     // back into b, and cheap for the common immediate use). On an *rvalue* receiver
     // it returns a policy_buffer that OWNS the moved-in value, so a snapped temporary
-    // survives being returned/stored (`return (a*b).with_snap();`) — no dangling.
+    // survives being returned/stored (`return (a*b).policy<snap>();`) — no dangling.
     template <policy_flag F = none, typename Self>
     [[nodiscard]] constexpr auto policy(this Self&& self) {
         auto pol = make_policy<P | F>();
@@ -468,27 +479,6 @@ struct inside {
     [[nodiscard]] constexpr auto policy(errc& ec) {
         auto pol = make_policy<P | F>(ec);
         return detail::policy_ref<inside, decltype(pol)>{*this, pol, {}};
-    }
-
-    // with_snap<Mode>() — opt this assignment into snapping with the given rounding
-    // mode. Bare `with_snap()` is truncate-toward-zero (Mode == snap); pass an
-    // explicit mode for the others: with_snap<round_nearest>(), <round_floor>,
-    // <round_ceil>, <round_half_even>. Like policy<F>(), a temporary receiver
-    // yields a value-owning policy_buffer.
-    template <policy_flag Mode = snap, typename Self>
-    [[nodiscard]] constexpr auto with_snap(this Self&& self) {
-        static_assert(has_flag(Mode, snap),
-                      "with_snap<Mode>: Mode must be a snapping mode — snap (truncate), round_nearest, "
-                      "round_floor, round_ceil, or round_half_even");
-        return std::forward<Self>(self).template policy<Mode>();
-    }
-    template <typename Self>
-    [[nodiscard]] constexpr auto with_clamp(this Self&& self) {
-        return std::forward<Self>(self).template policy<clamp>();
-    }
-    template <typename Self>
-    [[nodiscard]] constexpr auto with_wrap(this Self&& self) {
-        return std::forward<Self>(self).template policy<wrap>();
     }
 
   private:

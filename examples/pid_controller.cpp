@@ -34,7 +34,7 @@ using gain_t = quantity<percent / si::kelvin, inside<{{0, 4}, per<256>}, round_n
 
 // Actuator command in [-100, 100] % integer steps. `clamp | round_nearest`
 // lets `output_t{raw}` saturate AND round the wider input in one step — no
-// explicit `clamp_cast<output_t, round_nearest>(...)` cast needed.
+// explicit `output_t{..., clamp | round_nearest}` cast needed.
 using output_t = quantity<percent, inside<{-100, 100}, clamp | round_nearest>>;
 
 struct pid {

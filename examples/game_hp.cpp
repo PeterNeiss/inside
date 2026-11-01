@@ -81,7 +81,7 @@ int main() {
 
     // Level-scaled max-HP buff — could exceed hp_t. Because `hp_t` carries a
     // `clamp` policy, the implicit quantity→quantity conversion already clips at the
-    // boundary: no `clamp_cast` needed when the target type already says
+    // boundary: no clamp flag needed when the target type already says
     // what to do with out-of-range values.
     big_pool_t bonus{180};
     hp_t       capped = bonus;

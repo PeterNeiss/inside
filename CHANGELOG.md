@@ -47,6 +47,14 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   (`beman::inside::detail`); use `std::ckd_add` & co. or the builtins.
 - The class `policy<F, E>` is `detail::call_policy<F, E>`: write
   `make_policy<F>()` / `make_policy<F>(ec)`, or pass a flag.
+- `with_snap<M>()`, `with_clamp()` and `with_wrap()` are gone: write
+  `x.policy<M>()`, `x.policy<clamp>()`, `x.policy<wrap>()` (`with_snap()` is
+  `x.policy<snap>()`).
+- `clamp_cast<T>(v)`, `clamp_cast<T, R>(v)`, `wrap_cast<T>(v)` and
+  `unchecked_cast<T>(v)` are gone: write `T{v, clamp}`, `T{v, clamp | R}`,
+  `T{v, wrap}`, `T{v, unsafe}`; the flags of the constructor replace `T`'s
+  own of the same kind. `checked_cast<T>(v)` stays. For quantities,
+  `clamp_cast<Q>(x)` and `wrap_cast<Q>(x)` become `Q{x, clamp}` and `Q{x, wrap}`.
 - `rounded_floor`, `rounded_nearest` & co., `clamped` and `wrapped` are gone:
   pass the flag itself, `div(a, b, round_floor)`, `B{v, clamp}`.
 - The CMake option `BEMAN_INSIDE_STRICT_SFINAE` is gone: its behaviour, honest

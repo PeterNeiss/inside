@@ -121,9 +121,9 @@ TEST(StorageTest, per_operation_policies_work_on_dyadic_bounds) {
     using R = inside<{{1, 4}, per<256>}, round_nearest>; // Lower != 0
 
     R a{2.0};
-    a.with_clamp() = 9.5;
+    a.policy<clamp>() = 9.5;
     ASSERT_TRUE(static_cast<double>(rational{a}) == 4.0);
-    a.with_clamp() = 0.25;
+    a.policy<clamp>() = 0.25;
     ASSERT_TRUE(static_cast<double>(rational{a}) == 1.0);
 
     R   b{2.0};
@@ -147,13 +147,13 @@ TEST(StorageTest, per_operation_policies_work_on_dyadic_bounds) {
     // inside rhs through the per-operation clamp.
     using S = inside<{0, 100}>;
     R e{2.0};
-    e.with_clamp() = S{50};
+    e.policy<clamp>() = S{50};
     ASSERT_TRUE(static_cast<double>(rational{e}) == 4.0);
 
     // wrap override.
     using W = inside<{{0, 359}, 1}, round_nearest>;
     W w{0.0};
-    w.with_wrap() = 370.0;
+    w.policy<wrap>() = 370.0;
     ASSERT_TRUE(static_cast<double>(rational{w}) == 10.0);
 }
 

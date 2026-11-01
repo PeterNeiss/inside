@@ -69,11 +69,11 @@ TEST(BugHuntRound6, math_wrap_output_folds_the_true_value) {
     int bad    = 0;
     for (imax k = -320; k <= 320; k += 3) {
         const In x{rational{k, 16}};
-        bad += !(wrap_cast<Wrap>(math::exp_into<Wide>(x)) == math::exp_into<Wrap>(x));
-        bad += !(wrap_cast<Wrap>(math::exp2_into<Wide>(x)) == math::exp2_into<Wrap>(x));
-        bad += !(wrap_cast<Wrap>(math::sinh_into<Wide>(x)) == math::sinh_into<Wrap>(x));
-        bad += !(wrap_cast<Wrap>(math::cosh_into<Wide>(x)) == math::cosh_into<Wrap>(x));
-        bad += !(wrap_cast<Wrap>(math::pow_base_into<Wide, 3>(x)) == math::pow_base_into<Wrap, 3>(x));
+        bad += !(Wrap{math::exp_into<Wide>(x), wrap} == math::exp_into<Wrap>(x));
+        bad += !(Wrap{math::exp2_into<Wide>(x), wrap} == math::exp2_into<Wrap>(x));
+        bad += !(Wrap{math::sinh_into<Wide>(x), wrap} == math::sinh_into<Wrap>(x));
+        bad += !(Wrap{math::cosh_into<Wide>(x), wrap} == math::cosh_into<Wrap>(x));
+        bad += !(Wrap{math::pow_base_into<Wide, 3>(x), wrap} == math::pow_base_into<Wrap, 3>(x));
     }
     EXPECT_EQ(bad, 0);
     // pow, with a base reaching 0 (bounded: the exponent is not negative).
@@ -83,7 +83,7 @@ TEST(BugHuntRound6, math_wrap_output_folds_the_true_value) {
         for (int e = 0; e <= 12; ++e) {
             const B b{rational{i, 4}};
             const P p{rational{e, 2}};
-            bad += !(wrap_cast<Wrap>(*math::pow_into<Wide>(b, p)) == *math::pow_into<Wrap>(b, p));
+            bad += !(Wrap{*math::pow_into<Wide>(b, p), wrap} == *math::pow_into<Wrap>(b, p));
         }
     EXPECT_EQ(bad, 0);
 }
