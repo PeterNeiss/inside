@@ -674,13 +674,17 @@ struct inside {
         const W     room = W{std::numeric_limits<imax>::max()} - (hi - lo + W{1}) - mag;
         return room.negative() ? umax{0} : static_cast<umax>(room);
     }();
-    static constexpr std::optional<imax> notch_delta(const detail::rational& r) noexcept {
+    // A bool and an out-parameter, not an optional<imax>: GCC 16 kept the
+    // optional in memory, 12 more instructions on every += / -= of a rational.
+    static constexpr bool notch_delta(const detail::rational& r, imax& delta) noexcept {
         constexpr umax K = detail::abs_den(detail::notch64<inside>.Den);
         const umax     d = detail::abs_den(r.Den);
         if (K % d != 0 || r.Num > max_notch_delta / (K / d))
-            return std::nullopt;
-        const imax n = static_cast<imax>(r.Num * (K / d));
-        return r.Den < 0 ? -n : n;
+            return false;
+        const imax n    = static_cast<imax>(r.Num * (K / d));
+        const imax sign = r.Den >> 63; // 0, or −1 for a negative value
+        delta           = (n ^ sign) - sign;
+        return true;
     }
 
   public:
@@ -691,8 +695,8 @@ struct inside {
     template <std::same_as<detail::rational> A>
     constexpr inside& operator+=(const A& rhs) {
         if constexpr (raw_delta_ok)
-            if (const auto n = notch_delta(rhs)) [[likely]]
-                return store_raw<imax>(static_cast<imax>(Raw) + *n);
+            if (imax n; notch_delta(rhs, n)) [[likely]]
+                return store_raw<imax>(static_cast<imax>(Raw) + n);
         return assign_op_result(detail::rational{*this} + rhs);
     }
 
@@ -713,8 +717,8 @@ struct inside {
     template <std::same_as<detail::rational> A>
     constexpr inside& operator-=(const A& rhs) {
         if constexpr (raw_delta_ok)
-            if (const auto n = notch_delta(rhs)) [[likely]]
-                return store_raw<imax>(static_cast<imax>(Raw) - *n);
+            if (imax n; notch_delta(rhs, n)) [[likely]]
+                return store_raw<imax>(static_cast<imax>(Raw) - n);
         return assign_op_result(detail::rational{*this} - rhs);
     }
 

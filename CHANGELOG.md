@@ -157,6 +157,13 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   (`inside<G, round_floor>`), combines with `|`, and is the last argument of
   `add` … `divmod` or a constructor's second argument.
 
+### Performance
+
+- `x += r` and `x -= r` with a `rational` on a Q-format grid: 12 fewer
+  instructions per call (`+= rational{k, 256}` on Q8.8: 41.8 → 28.8 ins/op).
+  The notch count came back as an `optional<imax>`, which GCC 16 kept in
+  memory; it is now a bool and an out-parameter, with a branchless sign.
+
 ### Removed
 
 - The named policies `rounded_toward_zero`, `rounded_nearest`, `rounded_floor`,
