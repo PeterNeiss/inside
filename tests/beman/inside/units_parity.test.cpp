@@ -20,6 +20,7 @@
 #include <random>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 using namespace beman::inside;
@@ -290,4 +291,20 @@ TEST(UnitsParityTest, cursors_and_values_over_quantities) {
     s_t q{0};
     ++q;
     EXPECT_TRUE((q == just<1, 4> * si::second));
+}
+
+// std::hash and std::numeric_limits of a quantity: its number's, the limits
+// as quantities.
+TEST(UnitsParityTest, hash_and_numeric_limits) {
+    std::unordered_set<metres> set{metres{3}, metres{4}, metres{3}};
+    EXPECT_EQ(set.size(), 2u);
+    EXPECT_EQ(std::hash<metres>{}(metres{7}), std::hash<num>{}(num{7}));
+
+    using lim = std::numeric_limits<metres>;
+    static_assert(lim::is_specialized && lim::is_integer && lim::is_exact && !lim::is_signed);
+    static_assert(std::same_as<decltype(lim::max()), metres>);
+    EXPECT_TRUE(lim::max() == just<100> * si::metre);
+    EXPECT_TRUE(lim::lowest() == just<0> * si::metre);
+    EXPECT_TRUE(lim::epsilon() == just<0> * si::metre);
+    EXPECT_EQ(lim::digits, std::numeric_limits<num>::digits);
 }

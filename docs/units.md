@@ -326,8 +326,8 @@ An `expected` quantity, from a division by a grid that holds 0, chains through
 
 `values<Q>` and `cursor<Q, Step>` step over the number's grid and yield
 quantities; Step is a number in Q's unit
-([storage.md](storage.md#iterating-quantities)). A quantity has no
-`std::hash` or `std::numeric_limits` of its own; use its `numerical_value()`.
+([storage.md](storage.md#iterating-quantities)). `std::hash<Q>` and
+`std::numeric_limits<Q>` are the number's, with the limits as quantities.
 
 ## Text
 

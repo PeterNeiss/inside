@@ -348,6 +348,10 @@ namespace std::units {
 
   // the catalog: namespaces isq, si, international (contents in R1)
 }
+namespace std {
+  template<units::reference R, class Rep> struct hash<units::quantity<R, Rep>>;           // the number's
+  template<units::reference R, class Rep> struct numeric_limits<units::quantity<R, Rep>>; // limits as quantities
+}
 ```
 
 ## Semantics

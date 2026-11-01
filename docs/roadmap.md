@@ -31,7 +31,6 @@ change, not an example workaround:
   the angle rounds onto a fine radian grid, then `value_cast` rounds again.
 - **The clamp overshoot as a quantity.** A quantity's `on_clamp` hook gets the
   inside's overshoot, an inside in the quantity's unit without the unit.
-- **`std::hash` and `std::numeric_limits` for quantities.**
 - **`tan_into` of a π-scaled angle**, which would need an exact pole at 90°.
 - The [differences from mp-units](units.md#differences-from-mp-units): no
   representation other than an inside, no vector characters, no logarithmic

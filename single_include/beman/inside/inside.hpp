@@ -19960,6 +19960,37 @@ BEMAN_INSIDE_UNITS_HOOK_DELETED(divmod)
 #undef BEMAN_INSIDE_UNITS_HOOK_DELETED
 } // namespace beman::inside::units
 
+// std::hash and std::numeric_limits of a quantity: its number's, the limits
+// as quantities in its unit.
+template <beman::inside::units::reference R, class Rep>
+struct std::hash<beman::inside::units::quantity<R, Rep>> {
+    constexpr std::size_t operator()(const beman::inside::units::quantity<R, Rep>& q) const noexcept {
+        return std::hash<Rep>{}(q.numerical_value());
+    }
+};
+
+template <beman::inside::units::reference R, class Rep>
+struct std::numeric_limits<beman::inside::units::quantity<R, Rep>> : std::numeric_limits<Rep> {
+  private:
+    using Q = beman::inside::units::quantity<R, Rep>;
+    using N = std::numeric_limits<Rep>;
+
+  public:
+    static constexpr Q min() noexcept { return Q{N::min()}; }
+    static constexpr Q max() noexcept { return Q{N::max()}; }
+    static constexpr Q lowest() noexcept { return Q{N::lowest()}; }
+    static constexpr Q epsilon() noexcept
+        requires requires { N::epsilon(); }
+    {
+        return Q{N::epsilon()};
+    }
+    static constexpr Q round_error() noexcept
+        requires requires { N::round_error(); }
+    {
+        return Q{N::round_error()};
+    }
+};
+
 
 // ======================================================================
 //  beman/inside/units/detail/point.hpp

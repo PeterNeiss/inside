@@ -135,6 +135,9 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   (`for (cursor<db_t, 3> n; n != end(n); ++n)`). One trait,
   `detail::stepping`, serves both kinds, so no twin in `units::` collides
   under two using-directives.
+- `std::hash<Q>` and `std::numeric_limits<Q>` for quantities: the number's,
+  with `min()`, `max()`, `lowest()`, `epsilon()` and `round_error()` as
+  quantities in Q's unit.
 
 - `on_clamp` and `on_wrap` work on a continuous grid past 64 bits and for a
   source past 64 bits (such as a wide inside) into a continuous inside; both
