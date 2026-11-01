@@ -61,5 +61,6 @@ target_sources(
                 units/detail/quantity.hpp
                 units/io.hpp
                 units/math.hpp
+                units/random.hpp
                 units/systems.hpp
 )

@@ -168,8 +168,8 @@ BEMAN_INSIDE_ARITH_FN(divmod, divmod_op)
 //---------------------------------------------------------------------------
 // mul_into<Out> / div_into<Out> — the exact product or quotient, rounded once
 // onto Out by Out's policy (plus the per-call flags F). Neither forms the
-// product or quotient grid, so they work where `a * b` would meet a wide index
-// with a continuous result, or a quotient past the 64-bit fraction. A store that
+// product or quotient grid, so they work where that grid's fractions would pass
+// the fraction limit, or a quotient past the 64-bit fraction. A store that
 // fails is reported through the policy (it throws under `checked`).
 // div_into returns std::expected<Out, errc> when the divisor's grid holds 0 —
 // then every failure, a zero divisor or a failed store, is the error — else Out.

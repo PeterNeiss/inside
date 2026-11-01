@@ -216,7 +216,9 @@ list(INSERT roots 0 "beman/inside/inside.hpp")
 # beman/inside/units.hpp (units/core.hpp and units/systems.hpp), units/math.hpp
 # and units/constants.hpp sit inside a
 # BEMAN_INSIDE_NO_UNITS guard, which drops them (and their compile time);
-# units/io.hpp prints through inside/io.hpp, so it needs both guards. The math
+# units/io.hpp prints through inside/io.hpp, so it needs both guards, and
+# units/random.hpp samples through inside/random.hpp, so it needs its guard
+# and BEMAN_INSIDE_NO_UNITS. The math
 # constants come in earlier, through math.hpp and math/constants.hpp.
 foreach(r IN LISTS roots)
     set(_guard_open "")
@@ -239,6 +241,13 @@ foreach(r IN LISTS roots)
         )
         set(_guard_close
             "#endif // !BEMAN_INSIDE_NO_STRING && !BEMAN_INSIDE_NO_UNITS"
+        )
+    elseif(r STREQUAL "beman/inside/units/random.hpp")
+        set(_guard_open
+            "#if __STDC_HOSTED__ && !defined(BEMAN_INSIDE_MATH_NO_FP) && !defined(BEMAN_INSIDE_NO_UNITS)"
+        )
+        set(_guard_close
+            "#endif // __STDC_HOSTED__ && !BEMAN_INSIDE_MATH_NO_FP && !BEMAN_INSIDE_NO_UNITS"
         )
     elseif(r STREQUAL "beman/inside/inside/random.hpp")
         set(_guard_open

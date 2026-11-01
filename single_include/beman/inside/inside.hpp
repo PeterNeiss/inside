@@ -10380,8 +10380,8 @@ BEMAN_INSIDE_ARITH_FN(divmod, divmod_op)
 //---------------------------------------------------------------------------
 // mul_into<Out> / div_into<Out> — the exact product or quotient, rounded once
 // onto Out by Out's policy (plus the per-call flags F). Neither forms the
-// product or quotient grid, so they work where `a * b` would meet a wide index
-// with a continuous result, or a quotient past the 64-bit fraction. A store that
+// product or quotient grid, so they work where that grid's fractions would pass
+// the fraction limit, or a quotient past the 64-bit fraction. A store that
 // fails is reported through the policy (it throws under `checked`).
 // div_into returns std::expected<Out, errc> when the divisor's grid holds 0 —
 // then every failure, a zero divisor or a failed store, is the error — else Out.
@@ -19036,6 +19036,18 @@ struct quantity_action_ref {
         NumRef -= number_in_unit<R.U>(q);
         return Self;
     }
+    template <insidable V>
+        requires requires(Ref& r, const V& v) { r *= v; }
+    constexpr Q& operator*=(const V& v) {
+        NumRef *= v;
+        return Self;
+    }
+    template <insidable V>
+        requires requires(Ref& r, const V& v) { r /= v; }
+    constexpr Q& operator/=(const V& v) {
+        NumRef /= v;
+        return Self;
+    }
 };
 template <reference R, class Q, class Ref>
 constexpr auto make_action_ref(Q& q, Ref&& r) {
@@ -19131,6 +19143,22 @@ class quantity {
     operator T() const = delete ("units: an angle (an is_kind quantity) or a pi-scaled ratio is no plain "
                                  "number - read numerical_value(), or value_cast it first");
 
+    // A dimensionless quantity's number as a built-in, as inside's as<T>() and
+    // to<T>(): its value in unit one (5 % is 1/20), under the same rule as the
+    // conversion above.
+    template <typename T, policy_flag Round = none>
+        requires detail::number_like_v<R> &&
+                 requires(const detail::number_t<R, Rep>& n) { beman::inside::as<T, Round>(n); }
+    [[nodiscard]] constexpr T as() const {
+        return beman::inside::as<T, Round>(detail::rescale<detail::conversion_factor<R.U, units::unit{}>>(Value));
+    }
+    template <typename T, policy_flag Round = none>
+        requires detail::number_like_v<R> &&
+                 requires(const detail::number_t<R, Rep>& n) { beman::inside::to<T, Round>(n); }
+    [[nodiscard]] constexpr auto to() const {
+        return beman::inside::to<T, Round>(detail::rescale<detail::conversion_factor<R.U, units::unit{}>>(Value));
+    }
+
     [[nodiscard]] constexpr auto operator+() const { return detail::make_quantity<R>(+Value); }
     [[nodiscard]] constexpr auto operator-() const { return detail::make_quantity<R>(-Value); }
 
@@ -19204,6 +19232,18 @@ class quantity {
     template <class F>
     [[nodiscard]] constexpr auto on_error(F&& f) {
         return detail::make_action_ref<R>(*this, Value.on_error(detail::on_quantity(*this, std::forward<F>(f))));
+    }
+
+    // A store under Rep's policy plus F, as inside's policy<F>(): its =, +=
+    // and -= take quantities, *= and /= numbers. policy(ec) sets ec on a
+    // failure instead of raising.
+    template <policy_flag F = none>
+    [[nodiscard]] constexpr auto policy() & {
+        return detail::make_action_ref<R>(*this, Value.template policy<F>());
+    }
+    template <policy_flag F = none>
+    [[nodiscard]] constexpr auto policy(errc& ec) {
+        return detail::make_action_ref<R>(*this, Value.template policy<F>(ec));
     }
 
     // Rep's try_make in the unit R: quantity<si::metre, M>::try_make(12.5).
@@ -19364,6 +19404,30 @@ template <reference A, class VA, reference B, class VB>
     return detail::in_common_unit<A, B>(a) <=> detail::in_common_unit<A, B>(b);
 }
 
+// min, max and midpoint of two quantities of one kind, in their common unit
+// as + takes it; the number is inside's min, max or midpoint (exact).
+template <reference A, class VA, reference B, class VB>
+    requires detail::summable<A, VA, B, VB, '<'>
+[[nodiscard]] constexpr auto min(const quantity<A, VA>& a, const quantity<B, VB>& b) {
+    constexpr reference C = detail::sum_reference<A, B>();
+    return detail::make_quantity<C>(
+        beman::inside::min(detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b)));
+}
+template <reference A, class VA, reference B, class VB>
+    requires detail::summable<A, VA, B, VB, '<'>
+[[nodiscard]] constexpr auto max(const quantity<A, VA>& a, const quantity<B, VB>& b) {
+    constexpr reference C = detail::sum_reference<A, B>();
+    return detail::make_quantity<C>(
+        beman::inside::max(detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b)));
+}
+template <reference A, class VA, reference B, class VB>
+    requires detail::summable<A, VA, B, VB, '+'>
+[[nodiscard]] constexpr auto midpoint(const quantity<A, VA>& a, const quantity<B, VB>& b) {
+    constexpr reference C = detail::sum_reference<A, B>();
+    return detail::make_quantity<C>(
+        beman::inside::midpoint(detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b)));
+}
+
 // A sum, difference, remainder or comparison of two units that cannot meet:
 // a deleted overload per reason, so a requires-test is false and a call says
 // why.
@@ -19385,6 +19449,9 @@ BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator-)
 BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator%)
 BEMAN_INSIDE_UNITS_SUM_DELETED(bool, operator==)
 BEMAN_INSIDE_UNITS_SUM_DELETED(std::strong_ordering, operator<=>)
+BEMAN_INSIDE_UNITS_SUM_DELETED(void, min)
+BEMAN_INSIDE_UNITS_SUM_DELETED(void, max)
+BEMAN_INSIDE_UNITS_SUM_DELETED(void, midpoint)
 #undef BEMAN_INSIDE_UNITS_SUM_DELETED
 
 template <reference A, class VA, reference B, class VB>
@@ -19685,6 +19752,27 @@ template <class Q, numeric A>
     requires quantity_like<Q>
 [[nodiscard]] constexpr bool conversion_loses(A value) noexcept {
     return beman::inside::conversion_loses<typename Q::rep>(value);
+}
+
+// checked_cast<Q>(x): x, a number in Q's unit or a quantity converted to it
+// exactly, stored into Q exactly, or a report - as inside's checked_cast.
+template <class Q, class X>
+    requires detail::castable_from<Q, X> &&
+             requires(const X& x) { beman::inside::checked_cast<typename Q::rep>(detail::number_in<Q>(x)); }
+[[nodiscard]] constexpr Q checked_cast(const X& x) {
+    return Q{beman::inside::checked_cast<typename Q::rep>(detail::number_in<Q>(x))};
+}
+
+// as<T>(q) / to<T>(q): the member forms, free, as for an inside.
+template <typename T, policy_flag Round = none, quantity_like Q>
+    requires requires(const Q& q) { q.template as<T, Round>(); }
+[[nodiscard]] constexpr T as(const Q& q) {
+    return q.template as<T, Round>();
+}
+template <typename T, policy_flag Round = none, quantity_like Q>
+    requires requires(const Q& q) { q.template to<T, Round>(); }
+[[nodiscard]] constexpr auto to(const Q& q) {
+    return q.template to<T, Round>();
 }
 
 // dot, cross, lerp on quantity components (lerp's t is a plain number).
@@ -21061,6 +21149,32 @@ void hypot_into(const quantity<A, VA>&, const quantity<B, VB>&) =
 
 
 #endif // BEMAN_INSIDE_NO_UNITS
+
+#if __STDC_HOSTED__ && !defined(BEMAN_INSIDE_MATH_NO_FP) && !defined(BEMAN_INSIDE_NO_UNITS)
+
+// ======================================================================
+//  beman/inside/units/random.hpp
+// ======================================================================
+// Opt-in: uniform sampling of quantities, as inside/random.hpp is for
+// insides. `uniform<Q>(rng)` draws Q's number uniformly from its grid's
+// slots, in Q's unit. Brings <random> through inside/random.hpp; units.hpp
+// alone does not.
+//---------------------------------------------------------------------------
+
+
+
+#include <random>
+
+namespace beman::inside::units {
+template <class Q, std::uniform_random_bit_generator G>
+    requires quantity_like<Q>
+[[nodiscard]] Q uniform(G& g) {
+    return Q{beman::inside::uniform<typename Q::rep>(g)};
+}
+} // namespace beman::inside::units
+
+
+#endif // __STDC_HOSTED__ && !BEMAN_INSIDE_MATH_NO_FP && !BEMAN_INSIDE_NO_UNITS
 
 #ifndef BEMAN_INSIDE_NO_UNITS
 

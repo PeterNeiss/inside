@@ -21,8 +21,8 @@ guards drop parts of it:
 | Define | Drops | For |
 |---|---|---|
 | `BEMAN_INSIDE_NO_STRING` | inside/io.hpp (`to_string`, `<<`, `>>`, `std::format`, `parse` of a `string_view`) with `<string>`, `<ostream>` and `<format>`; and with it units/io.hpp, the text of quantities | freestanding builds ([freestanding.md](freestanding.md)) |
-| `BEMAN_INSIDE_NO_UNITS` | units.hpp, units/io.hpp, units/math.hpp and units/constants.hpp (the physical constants), and their compile time | builds without units |
-| (automatic) | inside/random.hpp, when `__STDC_HOSTED__` is 0 or `BEMAN_INSIDE_MATH_NO_FP` is set | freestanding and no-FP builds |
+| `BEMAN_INSIDE_NO_UNITS` | units.hpp, units/io.hpp, units/math.hpp, units/random.hpp and units/constants.hpp (the physical constants), and their compile time | builds without units |
+| (automatic) | inside/random.hpp and units/random.hpp, when `__STDC_HOSTED__` is 0 or `BEMAN_INSIDE_MATH_NO_FP` is set | freestanding and no-FP builds |
 
 The mathematical constants (`math::pi`, …, math/constants.hpp) come with the
 math and stay in every configuration.

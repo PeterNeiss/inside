@@ -107,6 +107,14 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Added
 
+- Quantities catch up with insides: `q.policy<F>()` and `q.policy(ec)` (their
+  handles, and the hooks', take `*=` and `/=` too), `checked_cast<Q>(x)`,
+  `min`, `max` and `midpoint` in the common unit, `q.as<T>()` / `q.to<T>()`
+  and the free `as<T>(q)` / `to<T>(q)` for a dimensionless quantity, and
+  `uniform<Q>(rng)` in the new opt-in `<beman/inside/units/random.hpp>`. A
+  test lists every inside function by reflection, so a new one needs a
+  quantity form or a reason.
+
 - `on_clamp` and `on_wrap` work on a continuous grid past 64 bits and for a
   source past 64 bits (such as a wide inside) into a continuous inside; both
   were a `static_assert`. The `on_wrap` carry grid is computed on grid

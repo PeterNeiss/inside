@@ -334,7 +334,9 @@ include an appropriate `beman.inside` header from your source code.
 
 The math is in `<beman/inside/math.hpp>` and the units in
 `<beman/inside/units.hpp>`. Opt-in parts live in their component's folder:
-text in `<beman/inside/inside/io.hpp>` and `<beman/inside/units/io.hpp>`, the
-math of quantities in `<beman/inside/units/math.hpp>`, the constants in
+text in `<beman/inside/inside/io.hpp>` and `<beman/inside/units/io.hpp>`,
+sampling in `<beman/inside/inside/random.hpp>` and
+`<beman/inside/units/random.hpp>`, the math of quantities in
+`<beman/inside/units/math.hpp>`, the constants in
 `<beman/inside/math/constants.hpp>` and `<beman/inside/units/constants.hpp>`.
 The single header holds all of them.
