@@ -31,60 +31,272 @@ inline constexpr fit<N> asin_fit{};
 template <>
 inline constexpr fit<2> asin_fit<2>{{0x1.825be155a4c85p-3, 0x1.ff9fea902c828p-1}, 0x1.8058a7f3e2a6bp-11};
 template <>
-inline constexpr fit<3> asin_fit<3>{{0x1.892af3f9d0abp-4, 0x1.50f9b8eb10e29p-3, 0x1.00020917b0ae3p0}, 0x1.048dd12fb33b8p-15};
+inline constexpr fit<3> asin_fit<3>{{0x1.892af3f9d0abp-4, 0x1.50f9b8eb10e29p-3, 0x1.00020917b0ae3p0},
+                                    0x1.048dd12fb33b8p-15};
 template <>
-inline constexpr fit<4> asin_fit<4>{{0x1.0a844c609d247p-4, 0x1.24cc691008951p-4, 0x1.55b69a968f3efp-3, 0x1.ffffcd5a20bd7p-1}, 0x1.9532a401acbbbp-20};
+inline constexpr fit<4> asin_fit<4>{
+    {0x1.0a844c609d247p-4, 0x1.24cc691008951p-4, 0x1.55b69a968f3efp-3, 0x1.ffffcd5a20bd7p-1}, 0x1.9532a401acbbbp-20};
 template <>
-inline constexpr fit<5> asin_fit<5>{{0x1.9e732acd0f855p-5, 0x1.450a9250ee54bp-5, 0x1.3521a36c5dd22p-4, 0x1.554d47173464ap-3, 0x1.000001557966p0}, 0x1.557bfb9df5a56p-24};
+inline constexpr fit<5> asin_fit<5>{
+    {0x1.9e732acd0f855p-5, 0x1.450a9250ee54bp-5, 0x1.3521a36c5dd22p-4, 0x1.554d47173464ap-3, 0x1.000001557966p0},
+    0x1.557bfb9df5a56p-24};
 template <>
-inline constexpr fit<6> asin_fit<6>{{0x1.5d456c461b1d4p-5, 0x1.86e46a094bdbbp-6, 0x1.7525a995a25b7p-5, 0x1.32f8d81e695bp-4, 0x1.5555fb040849ep-3, 0x1.ffffffda11fc6p-1}, 0x1.2f726995f97ecp-28};
+inline constexpr fit<6> asin_fit<6>{{0x1.5d456c461b1d4p-5,
+                                     0x1.86e46a094bdbbp-6,
+                                     0x1.7525a995a25b7p-5,
+                                     0x1.32f8d81e695bp-4,
+                                     0x1.5555fb040849ep-3,
+                                     0x1.ffffffda11fc6p-1},
+                                    0x1.2f726995f97ecp-28};
 template <>
-inline constexpr fit<7> asin_fit<7>{{0x1.365bebfe788e2p-5, 0x1.cf525bfedbdbcp-7, 0x1.0554db2cea9b6p-5, 0x1.6c91bbfc1b648p-5, 0x1.333988d617221p-4, 0x1.55554848e38f7p-3, 0x1.0000000117f17p0}, 0x1.17f38e94895e8p-32};
+inline constexpr fit<7> asin_fit<7>{{0x1.365bebfe788e2p-5,
+                                     0x1.cf525bfedbdbcp-7,
+                                     0x1.0554db2cea9b6p-5,
+                                     0x1.6c91bbfc1b648p-5,
+                                     0x1.333988d617221p-4,
+                                     0x1.55554848e38f7p-3,
+                                     0x1.0000000117f17p0},
+                                    0x1.17f38e94895e8p-32};
 template <>
-inline constexpr fit<8> asin_fit<8>{{0x1.1e52c89298dcep-5, 0x1.d96b4d8aa7838p-8, 0x1.94dfc2257f592p-6, 0x1.ed07de22aed64p-6, 0x1.6ddf13d1df11fp-5, 0x1.33328d4d9255fp-4, 0x1.55555658c08b7p-3, 0x1.ffffffffdecd3p-1}, 0x1.0998829357ff9p-36};
+inline constexpr fit<8> asin_fit<8>{{0x1.1e52c89298dcep-5,
+                                     0x1.d96b4d8aa7838p-8,
+                                     0x1.94dfc2257f592p-6,
+                                     0x1.ed07de22aed64p-6,
+                                     0x1.6ddf13d1df11fp-5,
+                                     0x1.33328d4d9255fp-4,
+                                     0x1.55555658c08b7p-3,
+                                     0x1.ffffffffdecd3p-1},
+                                    0x1.0998829357ff9p-36};
 template <>
-inline constexpr fit<9> asin_fit<9>{{0x1.0fa3089f9294fp-5, 0x1.c1919d63ad018p-10, 0x1.542c911d6be5bp-6, 0x1.65cdcdbd68342p-6, 0x1.f29129714771cp-6, 0x1.6db1c8c40974bp-5, 0x1.3333436fd1a2fp-4, 0x1.555555416504ap-3, 0x1.0000000001018p0}, 0x1.0181f2e7bfff9p-40};
+inline constexpr fit<9> asin_fit<9>{{0x1.0fa3089f9294fp-5,
+                                     0x1.c1919d63ad018p-10,
+                                     0x1.542c911d6be5bp-6,
+                                     0x1.65cdcdbd68342p-6,
+                                     0x1.f29129714771cp-6,
+                                     0x1.6db1c8c40974bp-5,
+                                     0x1.3333436fd1a2fp-4,
+                                     0x1.555555416504ap-3,
+                                     0x1.0000000001018p0},
+                                    0x1.0181f2e7bfff9p-40};
 template <>
-inline constexpr fit<10> asin_fit<10>{{0x1.0756d87284c9p-5, -0x1.94160c9a287e6p-9, 0x1.331bcd4de0cdp-6, 0x1.0d73bc6d0adcep-6, 0x1.70417823ad8cfp-6, 0x1.f1a8c3bb24a27p-6, 0x1.6db77504b4814p-5, 0x1.333331aa1fe05p-4, 0x1.55555556da86p-3, 0x1.ffffffffffe04p-1}, 0x1.fc03d83fbfff9p-45};
+inline constexpr fit<10> asin_fit<10>{{0x1.0756d87284c9p-5,
+                                       -0x1.94160c9a287e6p-9,
+                                       0x1.331bcd4de0cdp-6,
+                                       0x1.0d73bc6d0adcep-6,
+                                       0x1.70417823ad8cfp-6,
+                                       0x1.f1a8c3bb24a27p-6,
+                                       0x1.6db77504b4814p-5,
+                                       0x1.333331aa1fe05p-4,
+                                       0x1.55555556da86p-3,
+                                       0x1.ffffffffffe04p-1},
+                                      0x1.fc03d83fbfff9p-45};
 template <>
-inline constexpr fit<11> asin_fit<11>{{0x1.03bef815fb7d9p-5, -0x1.efe17964b1f8dp-8, 0x1.27e84d0bccd7bp-6, 0x1.99f060037c852p-7, 0x1.1fa801cc53228p-6, 0x1.6e3f37421b905p-6, 0x1.f1cb538d38257p-6, 0x1.6db6ca26869f2p-5, 0x1.3333335769342p-4, 0x1.5555555537c71p-3, 0x1.000000000001p0}, 0x1.0001efffdfffdp-48};
+inline constexpr fit<11> asin_fit<11>{{0x1.03bef815fb7d9p-5,
+                                       -0x1.efe17964b1f8dp-8,
+                                       0x1.27e84d0bccd7bp-6,
+                                       0x1.99f060037c852p-7,
+                                       0x1.1fa801cc53228p-6,
+                                       0x1.6e3f37421b905p-6,
+                                       0x1.f1cb538d38257p-6,
+                                       0x1.6db6ca26869f2p-5,
+                                       0x1.3333335769342p-4,
+                                       0x1.5555555537c71p-3,
+                                       0x1.000000000001p0},
+                                      0x1.0001efffdfffdp-48};
 template <>
-inline constexpr fit<12> asin_fit<12>{{0x1.03cca53d06c84p-5, -0x1.88922b273830ep-7, 0x1.2de51f5ff7a3fp-6, 0x1.3162db527bd14p-7, 0x1.d5c3659807512p-7, 0x1.1ba452fded368p-6, 0x1.6e97d183195a8p-6, 0x1.f1c68febaa971p-6, 0x1.6db6dd4a1cf35p-5, 0x1.3333332ff3062p-4, 0x1.55555555578d8p-3, 0x1.ffffffffffffep-1}, 0x1.0124ab72c6eb1p-52};
+inline constexpr fit<12> asin_fit<12>{{0x1.03cca53d06c84p-5,
+                                       -0x1.88922b273830ep-7,
+                                       0x1.2de51f5ff7a3fp-6,
+                                       0x1.3162db527bd14p-7,
+                                       0x1.d5c3659807512p-7,
+                                       0x1.1ba452fded368p-6,
+                                       0x1.6e97d183195a8p-6,
+                                       0x1.f1c68febaa971p-6,
+                                       0x1.6db6dd4a1cf35p-5,
+                                       0x1.3333332ff3062p-4,
+                                       0x1.55555555578d8p-3,
+                                       0x1.ffffffffffffep-1},
+                                      0x1.0124ab72c6eb1p-52};
 template <>
-inline constexpr fit<13> asin_fit<13>{{0x1.05985ad7bf3c2p-5, -0x1.0a5a39d4657a9p-6, 0x1.405214c3268a3p-6, 0x1.ab3a07d4c022dp-8, 0x1.8ed60a5b283c2p-7, 0x1.c6fa84b21e97dp-7, 0x1.1c6c111e009cfp-6, 0x1.6e89f0a0ab5b8p-6, 0x1.f1c72c668971cp-6, 0x1.6db6db41ce4bcp-5, 0x1.333333336fd5bp-4, 0x1.555555555538p-3, 0x1p0}, 0x1.1ffe995d9012cp-56};
+inline constexpr fit<13> asin_fit<13>{{0x1.05985ad7bf3c2p-5,
+                                       -0x1.0a5a39d4657a9p-6,
+                                       0x1.405214c3268a3p-6,
+                                       0x1.ab3a07d4c022dp-8,
+                                       0x1.8ed60a5b283c2p-7,
+                                       0x1.c6fa84b21e97dp-7,
+                                       0x1.1c6c111e009cfp-6,
+                                       0x1.6e89f0a0ab5b8p-6,
+                                       0x1.f1c72c668971cp-6,
+                                       0x1.6db6db41ce4bcp-5,
+                                       0x1.333333336fd5bp-4,
+                                       0x1.555555555538p-3,
+                                       0x1p0},
+                                      0x1.1ffe995d9012cp-56};
 template <>
-inline constexpr fit<14> asin_fit<14>{{0x1.0b65010e90052p-5, -0x1.586522731ef7ep-6, 0x1.63eb4f666f769p-6, 0x1.e4dc8ec3a44c5p-9, 0x1.6150d94ea3b38p-7, 0x1.75818c926cfabp-7, 0x1.ca201858409b8p-7, 0x1.1c49e9d404feep-6, 0x1.6e8bdf4b14631p-6, 0x1.f1c71a907ff6fp-6, 0x1.6db6db7220c98p-5, 0x1.333333332dfa8p-4, 0x1.5555555555578p-3, 0x1p0}, 0x1.2408e83e79bbfp-60};
+inline constexpr fit<14> asin_fit<14>{{0x1.0b65010e90052p-5,
+                                       -0x1.586522731ef7ep-6,
+                                       0x1.63eb4f666f769p-6,
+                                       0x1.e4dc8ec3a44c5p-9,
+                                       0x1.6150d94ea3b38p-7,
+                                       0x1.75818c926cfabp-7,
+                                       0x1.ca201858409b8p-7,
+                                       0x1.1c49e9d404feep-6,
+                                       0x1.6e8bdf4b14631p-6,
+                                       0x1.f1c71a907ff6fp-6,
+                                       0x1.6db6db7220c98p-5,
+                                       0x1.333333332dfa8p-4,
+                                       0x1.5555555555578p-3,
+                                       0x1p0},
+                                      0x1.2408e83e79bbfp-60};
 template <>
-inline constexpr fit<15> asin_fit<15>{{0x1.1321fda543436p-5, -0x1.aabb40caa7196p-6, 0x1.95660f01f1785p-6, 0x1.7a127f9d53ed2p-11, 0x1.479b5d146b4a1p-7, 0x1.36da51780c649p-7, 0x1.7ba0b8a29f7a8p-7, 0x1.c9813f1cbf895p-7, 0x1.1c4f81fad816p-6, 0x1.6e8b9b1f262d6p-6, 0x1.f1c71ca6b705cp-6, 0x1.6db6db6d4ca47p-5, 0x1.33333333339e4p-4, 0x1.5555555555553p-3, 0x1p0}, 0x1.284f38f72615ep-64};
-inline constexpr std::array<double, 14> asin_err{0x1.8058a7f3e2a6bp-11, 0x1.048dd12fb33b8p-15, 0x1.9532a401acbbbp-20, 0x1.557bfb9df5a56p-24, 0x1.2f726995f97ecp-28, 0x1.17f38e94895e8p-32, 0x1.0998829357ff9p-36, 0x1.0181f2e7bfff9p-40, 0x1.fc03d83fbfff9p-45, 0x1.0001efffdfffdp-48, 0x1.0124ab72c6eb1p-52, 0x1.1ffe995d9012cp-56, 0x1.2408e83e79bbfp-60, 0x1.284f38f72615ep-64}; // index terms − min
+inline constexpr fit<15>                asin_fit<15>{{0x1.1321fda543436p-5,
+                                                      -0x1.aabb40caa7196p-6,
+                                                      0x1.95660f01f1785p-6,
+                                                      0x1.7a127f9d53ed2p-11,
+                                                      0x1.479b5d146b4a1p-7,
+                                                      0x1.36da51780c649p-7,
+                                                      0x1.7ba0b8a29f7a8p-7,
+                                                      0x1.c9813f1cbf895p-7,
+                                                      0x1.1c4f81fad816p-6,
+                                                      0x1.6e8b9b1f262d6p-6,
+                                                      0x1.f1c71ca6b705cp-6,
+                                                      0x1.6db6db6d4ca47p-5,
+                                                      0x1.33333333339e4p-4,
+                                                      0x1.5555555555553p-3,
+                                                      0x1p0},
+                                                     0x1.284f38f72615ep-64};
+inline constexpr std::array<double, 14> asin_err{0x1.8058a7f3e2a6bp-11,
+                                                 0x1.048dd12fb33b8p-15,
+                                                 0x1.9532a401acbbbp-20,
+                                                 0x1.557bfb9df5a56p-24,
+                                                 0x1.2f726995f97ecp-28,
+                                                 0x1.17f38e94895e8p-32,
+                                                 0x1.0998829357ff9p-36,
+                                                 0x1.0181f2e7bfff9p-40,
+                                                 0x1.fc03d83fbfff9p-45,
+                                                 0x1.0001efffdfffdp-48,
+                                                 0x1.0124ab72c6eb1p-52,
+                                                 0x1.1ffe995d9012cp-56,
+                                                 0x1.2408e83e79bbfp-60,
+                                                 0x1.284f38f72615ep-64}; // index terms − min
 
 // e^r ≈ q(r) on |r| ≤ r_exp: 3 to 13 terms.
 inline constexpr int exp_min = 3, exp_max = 13;
 template <int N>
 inline constexpr fit<N> exp_fit{};
 template <>
-inline constexpr fit<3> exp_fit<3>{{0x1.fc2aa2ae5131fp-2, 0x1.03ce84afb0d1ep0, 0x1.001d13932591ep0}, 0x1.c490ea4c231c6p-10};
+inline constexpr fit<3> exp_fit<3>{{0x1.fc2aa2ae5131fp-2, 0x1.03ce84afb0d1ep0, 0x1.001d13932591ep0},
+                                   0x1.c490ea4c231c6p-10};
 template <>
-inline constexpr fit<4> exp_fit<4>{{0x1.5349a592197cep-3, 0x1.028af0a473249p-1, 0x1.000ac5f16d3fap0, 0x1.fff68fa83f751p-1}, 0x1.3a0c77888cb8bp-14};
+inline constexpr fit<4> exp_fit<4>{
+    {0x1.5349a592197cep-3, 0x1.028af0a473249p-1, 0x1.000ac5f16d3fap0, 0x1.fff68fa83f751p-1}, 0x1.3a0c77888cb8bp-14};
 template <>
-inline constexpr fit<5> exp_fit<5>{{0x1.53a0bc8cb6e2dp-5, 0x1.57e11b9163795p-3, 0x1.0005b84f8b477p-1, 0x1.fffb329614b3ep-1, 0x1.ffffe72c46aadp-1}, 0x1.5c9e6d5c573e2p-19};
+inline constexpr fit<5> exp_fit<5>{
+    {0x1.53a0bc8cb6e2dp-5, 0x1.57e11b9163795p-3, 0x1.0005b84f8b477p-1, 0x1.fffb329614b3ep-1, 0x1.ffffe72c46aadp-1},
+    0x1.5c9e6d5c573e2p-19};
 template <>
-inline constexpr fit<6> exp_fit<6>{{0x1.0fe597ced0779p-7, 0x1.575f3ea00b289p-5, 0x1.555a199a5422cp-3, 0x1.fffd197296823p-2, 0x1.fffff5a56219cp-1, 0x1.000001344f9cp0}, 0x1.42733dab4d128p-24};
+inline constexpr fit<6> exp_fit<6>{{0x1.0fe597ced0779p-7,
+                                    0x1.575f3ea00b289p-5,
+                                    0x1.555a199a5422cp-3,
+                                    0x1.fffd197296823p-2,
+                                    0x1.fffff5a56219cp-1,
+                                    0x1.000001344f9cp0},
+                                   0x1.42733dab4d128p-24};
 template <>
-inline constexpr fit<7> exp_fit<7>{{0x1.6ab949bc49acap-10, 0x1.126d42403a00cp-7, 0x1.55589b4941c77p-5, 0x1.55540a16bfca6p-3, 0x1.fffffaacd43ebp-2, 0x1.0000009c4a54bp0, 0x1.0000000262ccap0}, 0x1.ff3a129bc5036p-30};
+inline constexpr fit<7> exp_fit<7>{{0x1.6ab949bc49acap-10,
+                                    0x1.126d42403a00cp-7,
+                                    0x1.55589b4941c77p-5,
+                                    0x1.55540a16bfca6p-3,
+                                    0x1.fffffaacd43ebp-2,
+                                    0x1.0000009c4a54bp0,
+                                    0x1.0000000262ccap0},
+                                   0x1.ff3a129bc5036p-30};
 template <>
-inline constexpr fit<8> exp_fit<8>{{0x1.9eb6ed55a251bp-13, 0x1.6da4ea93f5d8ep-10, 0x1.1112fac4dc68ep-7, 0x1.55546827cf8fap-5, 0x1.555553430a735p-3, 0x1.00000059f5a1bp-1, 0x1.000000010bf0dp0, 0x1.ffffffffab88ap-1}, 0x1.6293c2ba1645fp-35};
+inline constexpr fit<8> exp_fit<8>{{0x1.9eb6ed55a251bp-13,
+                                    0x1.6da4ea93f5d8ep-10,
+                                    0x1.1112fac4dc68ep-7,
+                                    0x1.55546827cf8fap-5,
+                                    0x1.555553430a735p-3,
+                                    0x1.00000059f5a1bp-1,
+                                    0x1.000000010bf0dp0,
+                                    0x1.ffffffffab88ap-1},
+                                   0x1.6293c2ba1645fp-35};
 template <>
-inline constexpr fit<9> exp_fit<9>{{0x1.9eda661357619p-16, 0x1.a1a859d406ac4p-13, 0x1.6c18b3d1428f9p-10, 0x1.1110828306626p-7, 0x1.555554047694ap-5, 0x1.555555a0a4a97p-3, 0x1.0000000088474p-1, 0x1.ffffffffd5493p-1, 0x1.ffffffffff79dp-1}, 0x1.b52fc430e302ep-41};
+inline constexpr fit<9> exp_fit<9>{{0x1.9eda661357619p-16,
+                                    0x1.a1a859d406ac4p-13,
+                                    0x1.6c18b3d1428f9p-10,
+                                    0x1.1110828306626p-7,
+                                    0x1.555554047694ap-5,
+                                    0x1.555555a0a4a97p-3,
+                                    0x1.0000000088474p-1,
+                                    0x1.ffffffffd5493p-1,
+                                    0x1.ffffffffff79dp-1},
+                                   0x1.b52fc430e302ep-41};
 template <>
-inline constexpr fit<10> exp_fit<10>{{0x1.70dc8ce9a1226p-19, 0x1.a17c45eab548bp-16, 0x1.a01bc251544c3p-13, 0x1.6c162d57270aep-10, 0x1.1111105b449ebp-7, 0x1.55555587bc95cp-5, 0x1.55555555bb863p-3, 0x1.ffffffffe8109p-2, 0x1.ffffffffffc38p-1, 0x1.000000000003ap0}, 0x1.e7db898933289p-47};
+inline constexpr fit<10> exp_fit<10>{{0x1.70dc8ce9a1226p-19,
+                                      0x1.a17c45eab548bp-16,
+                                      0x1.a01bc251544c3p-13,
+                                      0x1.6c162d57270aep-10,
+                                      0x1.1111105b449ebp-7,
+                                      0x1.55555587bc95cp-5,
+                                      0x1.55555555bb863p-3,
+                                      0x1.ffffffffe8109p-2,
+                                      0x1.ffffffffffc38p-1,
+                                      0x1.000000000003ap0},
+                                     0x1.e7db898933289p-47};
 template <>
-inline constexpr fit<11> exp_fit<11>{{0x1.2766a8cc5b622p-22, 0x1.72f9a0cffd3dfp-19, 0x1.a01b193b4eb35p-16, 0x1.a0197a37658e5p-13, 0x1.6c16c0e92fdb7p-10, 0x1.1111112d4f43ep-7, 0x1.5555555581ffap-5, 0x1.555555554bbf1p-3, 0x1.ffffffffffed8p-2, 0x1.000000000001dp0, 0x1p0}, 0x1.1f9df47d520b1p-52};
+inline constexpr fit<11> exp_fit<11>{{0x1.2766a8cc5b622p-22,
+                                      0x1.72f9a0cffd3dfp-19,
+                                      0x1.a01b193b4eb35p-16,
+                                      0x1.a0197a37658e5p-13,
+                                      0x1.6c16c0e92fdb7p-10,
+                                      0x1.1111112d4f43ep-7,
+                                      0x1.5555555581ffap-5,
+                                      0x1.555555554bbf1p-3,
+                                      0x1.ffffffffffed8p-2,
+                                      0x1.000000000001dp0,
+                                      0x1p0},
+                                     0x1.1f9df47d520b1p-52};
 template <>
-inline constexpr fit<12> exp_fit<12>{{0x1.ae07dd0100e57p-26, 0x1.28b0ad2414f0cp-22, 0x1.71dece4ded2ap-19, 0x1.a0199608775d5p-16, 0x1.a01a0151c5454p-13, 0x1.6c16c185ed047p-10, 0x1.111111112058dp-7, 0x1.555555554fe5dp-5, 0x1.5555555555518p-3, 0x1.000000000000cp-1, 0x1p0, 0x1p0}, 0x1.4de2cf3b4c2cp-58};
+inline constexpr fit<12> exp_fit<12>{{0x1.ae07dd0100e57p-26,
+                                      0x1.28b0ad2414f0cp-22,
+                                      0x1.71dece4ded2ap-19,
+                                      0x1.a0199608775d5p-16,
+                                      0x1.a01a0151c5454p-13,
+                                      0x1.6c16c185ed047p-10,
+                                      0x1.111111112058dp-7,
+                                      0x1.555555554fe5dp-5,
+                                      0x1.5555555555518p-3,
+                                      0x1.000000000000cp-1,
+                                      0x1p0,
+                                      0x1p0},
+                                     0x1.4de2cf3b4c2cp-58};
 template <>
-inline constexpr fit<13> exp_fit<13>{{0x1.1eda1ddb34747p-29, 0x1.af6e6b5598decp-26, 0x1.27e540754c758p-22, 0x1.71ddee7e78a92p-19, 0x1.a01a0177038ccp-16, 0x1.a01a01b440953p-13, 0x1.6c16c16c1fa7p-10, 0x1.111111110ea02p-7, 0x1.5555555555541p-5, 0x1.555555555555cp-3, 0x1p-1, 0x1p0, 0x1p0}, 0x1.6e809bd10e1ebp-64};
-inline constexpr std::array<double, 11> exp_err{0x1.c490ea4c231c6p-10, 0x1.3a0c77888cb8bp-14, 0x1.5c9e6d5c573e2p-19, 0x1.42733dab4d128p-24, 0x1.ff3a129bc5036p-30, 0x1.6293c2ba1645fp-35, 0x1.b52fc430e302ep-41, 0x1.e7db898933289p-47, 0x1.1f9df47d520b1p-52, 0x1.4de2cf3b4c2cp-58, 0x1.6e809bd10e1ebp-64}; // index terms − min
+inline constexpr fit<13>                exp_fit<13>{{0x1.1eda1ddb34747p-29,
+                                                     0x1.af6e6b5598decp-26,
+                                                     0x1.27e540754c758p-22,
+                                                     0x1.71ddee7e78a92p-19,
+                                                     0x1.a01a0177038ccp-16,
+                                                     0x1.a01a01b440953p-13,
+                                                     0x1.6c16c16c1fa7p-10,
+                                                     0x1.111111110ea02p-7,
+                                                     0x1.5555555555541p-5,
+                                                     0x1.555555555555cp-3,
+                                                     0x1p-1,
+                                                     0x1p0,
+                                                     0x1p0},
+                                                    0x1.6e809bd10e1ebp-64};
+inline constexpr std::array<double, 11> exp_err{0x1.c490ea4c231c6p-10,
+                                                0x1.3a0c77888cb8bp-14,
+                                                0x1.5c9e6d5c573e2p-19,
+                                                0x1.42733dab4d128p-24,
+                                                0x1.ff3a129bc5036p-30,
+                                                0x1.6293c2ba1645fp-35,
+                                                0x1.b52fc430e302ep-41,
+                                                0x1.e7db898933289p-47,
+                                                0x1.1f9df47d520b1p-52,
+                                                0x1.4de2cf3b4c2cp-58,
+                                                0x1.6e809bd10e1ebp-64}; // index terms − min
 
 // atanh f ≈ f·q(f²) on |f| ≤ f_max (log): 2 to 9 terms.
 inline constexpr int atanh_min = 2, atanh_max = 9;
@@ -93,20 +305,61 @@ inline constexpr fit<N> atanh_fit{};
 template <>
 inline constexpr fit<2> atanh_fit<2>{{0x1.5b7c6f2e4be77p-2, 0x1.fffd14c1a8c2bp-1}, 0x1.75a1ff82e4832p-16};
 template <>
-inline constexpr fit<3> atanh_fit<3>{{0x1.a6e1116205a7ap-3, 0x1.554263f4c18f7p-2, 0x1.000001fe3f50ap0}, 0x1.fe432d4c2c57fp-24};
+inline constexpr fit<3> atanh_fit<3>{{0x1.a6e1116205a7ap-3, 0x1.554263f4c18f7p-2, 0x1.000001fe3f50ap0},
+                                     0x1.fe432d4c2c57fp-24};
 template <>
-inline constexpr fit<4> atanh_fit<4>{{0x1.327175bbaa44fp-3, 0x1.99577bcf07f97p-3, 0x1.55558779221b5p-2, 0x1.fffffffa12317p-1}, 0x1.7b76e1ea45477p-31};
+inline constexpr fit<4> atanh_fit<4>{
+    {0x1.327175bbaa44fp-3, 0x1.99577bcf07f97p-3, 0x1.55558779221b5p-2, 0x1.fffffffa12317p-1}, 0x1.7b76e1ea45477p-31};
 template <>
-inline constexpr fit<5> atanh_fit<5>{{0x1.e3b1f3ef74854p-4, 0x1.2432b0f92b6c5p-3, 0x1.999a9ccdbfeb5p-3, 0x1.555554daaa158p-2, 0x1.0000000004a38p0}, 0x1.28e23f31bfff9p-38};
+inline constexpr fit<5> atanh_fit<5>{
+    {0x1.e3b1f3ef74854p-4, 0x1.2432b0f92b6c5p-3, 0x1.999a9ccdbfeb5p-3, 0x1.555554daaa158p-2, 0x1.0000000004a38p0},
+    0x1.28e23f31bfff9p-38};
 template <>
-inline constexpr fit<6> atanh_fit<6>{{0x1.919a7405aebcp-4, 0x1.c62064e97f598p-4, 0x1.249439d39e49bp-3, 0x1.999996279df1bp-3, 0x1.5555555673427p-2, 0x1.fffffffffff1p-1}, 0x1.e07c4da4caca5p-46};
+inline constexpr fit<6> atanh_fit<6>{{0x1.919a7405aebcp-4,
+                                      0x1.c62064e97f598p-4,
+                                      0x1.249439d39e49bp-3,
+                                      0x1.999996279df1bp-3,
+                                      0x1.5555555673427p-2,
+                                      0x1.fffffffffff1p-1},
+                                     0x1.e07c4da4caca5p-46};
 template <>
-inline constexpr fit<7> atanh_fit<7>{{0x1.58f62f4cf18c8p-4, 0x1.73201ac1d36bap-4, 0x1.c722e8a9a4a67p-4, 0x1.2492407ba4d55p-3, 0x1.999999a4b5e58p-3, 0x1.55555555529afp-2, 0x1.0000000000001p0}, 0x1.0001efffdfffdp-52};
+inline constexpr fit<7> atanh_fit<7>{{0x1.58f62f4cf18c8p-4,
+                                      0x1.73201ac1d36bap-4,
+                                      0x1.c722e8a9a4a67p-4,
+                                      0x1.2492407ba4d55p-3,
+                                      0x1.999999a4b5e58p-3,
+                                      0x1.55555555529afp-2,
+                                      0x1.0000000000001p0},
+                                     0x1.0001efffdfffdp-52};
 template <>
-inline constexpr fit<8> atanh_fit<8>{{0x1.2f0edc7587e42p-4, 0x1.39a0bb5f6a888p-4, 0x1.74664992e5112p-4, 0x1.c71c51d01b16cp-4, 0x1.249249424137p-3, 0x1.999999997f6f8p-3, 0x1.5555555555594p-2, 0x1p0}, 0x1.79b4007eb7239p-60};
+inline constexpr fit<8> atanh_fit<8>{{0x1.2f0edc7587e42p-4,
+                                      0x1.39a0bb5f6a888p-4,
+                                      0x1.74664992e5112p-4,
+                                      0x1.c71c51d01b16cp-4,
+                                      0x1.249249424137p-3,
+                                      0x1.999999997f6f8p-3,
+                                      0x1.5555555555594p-2,
+                                      0x1p0},
+                                     0x1.79b4007eb7239p-60};
 template <>
-inline constexpr fit<9> atanh_fit<9>{{0x1.0f06fb5b1db9dp-4, 0x1.0f6810080bc8bp-4, 0x1.3b201afa8f7ap-4, 0x1.745ce202ec9dfp-4, 0x1.c71c724aa99p-4, 0x1.249249243a198p-3, 0x1.9999999999d0bp-3, 0x1.5555555555555p-2, 0x1p0}, 0x1.55ba6bd02e1c4p-67};
-inline constexpr std::array<double, 8> atanh_err{0x1.75a1ff82e4832p-16, 0x1.fe432d4c2c57fp-24, 0x1.7b76e1ea45477p-31, 0x1.28e23f31bfff9p-38, 0x1.e07c4da4caca5p-46, 0x1.0001efffdfffdp-52, 0x1.79b4007eb7239p-60, 0x1.55ba6bd02e1c4p-67}; // index terms − min
+inline constexpr fit<9>                atanh_fit<9>{{0x1.0f06fb5b1db9dp-4,
+                                                     0x1.0f6810080bc8bp-4,
+                                                     0x1.3b201afa8f7ap-4,
+                                                     0x1.745ce202ec9dfp-4,
+                                                     0x1.c71c724aa99p-4,
+                                                     0x1.249249243a198p-3,
+                                                     0x1.9999999999d0bp-3,
+                                                     0x1.5555555555555p-2,
+                                                     0x1p0},
+                                                    0x1.55ba6bd02e1c4p-67};
+inline constexpr std::array<double, 8> atanh_err{0x1.75a1ff82e4832p-16,
+                                                 0x1.fe432d4c2c57fp-24,
+                                                 0x1.7b76e1ea45477p-31,
+                                                 0x1.28e23f31bfff9p-38,
+                                                 0x1.e07c4da4caca5p-46,
+                                                 0x1.0001efffdfffdp-52,
+                                                 0x1.79b4007eb7239p-60,
+                                                 0x1.55ba6bd02e1c4p-67}; // index terms − min
 
 // atan t ≈ t·q(t²) on |t| ≤ t_max: 2 to 11 terms.
 inline constexpr int atan_min = 2, atan_max = 11;
@@ -115,24 +368,88 @@ inline constexpr fit<N> atan_fit{};
 template <>
 inline constexpr fit<2> atan_fit<2>{{-0x1.4749fa4a7a38cp-2, 0x1.fff01c00cee56p-1}, 0x1.fc83bf5b0de45p-14};
 template <>
-inline constexpr fit<3> atan_fit<3>{{0x1.7c00117830691p-3, -0x1.54f16b7f2c87ap-2, 0x1.ffffcd868369fp-1}, 0x1.93cef3120b229p-20};
+inline constexpr fit<3> atan_fit<3>{{0x1.7c00117830691p-3, -0x1.54f16b7f2c87ap-2, 0x1.ffffcd868369fp-1},
+                                    0x1.93cef3120b229p-20};
 template <>
-inline constexpr fit<4> atan_fit<4>{{-0x1.0662c4e371612p-3, 0x1.9847e7f645f5ap-3, -0x1.5552f0bd22e14p-2, 0x1.ffffff517e7c8p-1}, 0x1.5d05f803725d3p-26};
+inline constexpr fit<4> atan_fit<4>{
+    {-0x1.0662c4e371612p-3, 0x1.9847e7f645f5ap-3, -0x1.5552f0bd22e14p-2, 0x1.ffffff517e7c8p-1}, 0x1.5d05f803725d3p-26};
 template <>
-inline constexpr fit<5> atan_fit<5>{{0x1.8a65b28a0e347p-4, -0x1.22b999a56a501p-3, 0x1.998dabc559293p-3, -0x1.555547c2638eep-2, 0x1.fffffffd857a1p-1}, 0x1.3d4562f308be7p-32};
+inline constexpr fit<5> atan_fit<5>{
+    {0x1.8a65b28a0e347p-4, -0x1.22b999a56a501p-3, 0x1.998dabc559293p-3, -0x1.555547c2638eep-2, 0x1.fffffffd857a1p-1},
+    0x1.3d4562f308be7p-32};
 template <>
-inline constexpr fit<6> atan_fit<6>{{-0x1.37be25d4483c6p-4, 0x1.c265fd167d69ep-4, -0x1.247c3f678e2a5p-3, 0x1.99993bb683f34p-3, -0x1.5555550bebb98p-2, 0x1.fffffffff6ae4p-1}, 0x1.2a3a873c06871p-38};
+inline constexpr fit<6> atan_fit<6>{{-0x1.37be25d4483c6p-4,
+                                     0x1.c265fd167d69ep-4,
+                                     -0x1.247c3f678e2a5p-3,
+                                     0x1.99993bb683f34p-3,
+                                     -0x1.5555550bebb98p-2,
+                                     0x1.fffffffff6ae4p-1},
+                                    0x1.2a3a873c06871p-38};
 template <>
-inline constexpr fit<7> atan_fit<7>{{0x1.fd9a2ee33d7c2p-5, -0x1.6eabac1075814p-4, 0x1.c6d6a3a5525a2p-4, -0x1.24916b79e52cbp-3, 0x1.999996f841596p-3, -0x1.55555553d4e83p-2, 0x1.ffffffffffdc2p-1}, 0x1.1f1b97aa401b7p-44};
+inline constexpr fit<7> atan_fit<7>{{0x1.fd9a2ee33d7c2p-5,
+                                     -0x1.6eabac1075814p-4,
+                                     0x1.c6d6a3a5525a2p-4,
+                                     -0x1.24916b79e52cbp-3,
+                                     0x1.999996f841596p-3,
+                                     -0x1.55555553d4e83p-2,
+                                     0x1.ffffffffffdc2p-1},
+                                    0x1.1f1b97aa401b7p-44};
 template <>
-inline constexpr fit<8> atan_fit<8>{{-0x1.aa8f6c47f36f3p-5, 0x1.34711ca5792p-4, -0x1.73f8650c700a6p-4, 0x1.c7191a586cb9p-4, -0x1.24924164daf8ap-3, 0x1.99999987e3e9p-3, -0x1.555555554d98ap-2, 0x1.ffffffffffff7p-1}, 0x1.20022dffbfff9p-50};
+inline constexpr fit<8> atan_fit<8>{{-0x1.aa8f6c47f36f3p-5,
+                                     0x1.34711ca5792p-4,
+                                     -0x1.73f8650c700a6p-4,
+                                     0x1.c7191a586cb9p-4,
+                                     -0x1.24924164daf8ap-3,
+                                     0x1.99999987e3e9p-3,
+                                     -0x1.555555554d98ap-2,
+                                     0x1.ffffffffffff7p-1},
+                                    0x1.20022dffbfff9p-50};
 template <>
-inline constexpr fit<9> atan_fit<9>{{0x1.6c31316c8abafp-5, -0x1.09a36129cdc3ap-4, 0x1.3a8edf8218b3ep-4, -0x1.7457a52f6add7p-4, 0x1.c71c5040a7db8p-4, -0x1.249248eb37de3p-3, 0x1.999999993a447p-3, -0x1.55555555553a1p-2, 0x1p0}, 0x1.3b7a990068329p-56};
+inline constexpr fit<9> atan_fit<9>{{0x1.6c31316c8abafp-5,
+                                     -0x1.09a36129cdc3ap-4,
+                                     0x1.3a8edf8218b3ep-4,
+                                     -0x1.7457a52f6add7p-4,
+                                     0x1.c71c5040a7db8p-4,
+                                     -0x1.249248eb37de3p-3,
+                                     0x1.999999993a447p-3,
+                                     -0x1.55555555553a1p-2,
+                                     0x1p0},
+                                    0x1.3b7a990068329p-56};
 template <>
-inline constexpr fit<10> atan_fit<10>{{-0x1.3aabca60ff059p-5, 0x1.d14b23cbe6e22p-5, -0x1.1064a56048206p-4, 0x1.3b0b25b24604bp-4, -0x1.745cd40ae4cf5p-4, 0x1.c71c70865582dp-4, -0x1.24924922e001bp-3, 0x1.9999999997573p-3, -0x1.555555555554dp-2, 0x1p0}, 0x1.372588bf28f75p-62};
+inline constexpr fit<10> atan_fit<10>{{-0x1.3aabca60ff059p-5,
+                                       0x1.d14b23cbe6e22p-5,
+                                       -0x1.1064a56048206p-4,
+                                       0x1.3b0b25b24604bp-4,
+                                       -0x1.745cd40ae4cf5p-4,
+                                       0x1.c71c70865582dp-4,
+                                       -0x1.24924922e001bp-3,
+                                       0x1.9999999997573p-3,
+                                       -0x1.555555555554dp-2,
+                                       0x1p0},
+                                      0x1.372588bf28f75p-62};
 template <>
-inline constexpr fit<11> atan_fit<11>{{0x1.109f856507578p-5, -0x1.9c1021880a1f6p-5, 0x1.e00f2d1d6329bp-5, -0x1.1102f90079ed8p-4, 0x1.3b1323771f976p-4, -0x1.745d13a7e9814p-4, 0x1.c71c71b837cb8p-4, -0x1.24924924802fdp-3, 0x1.999999999982ep-3, -0x1.5555555555555p-2, 0x1p0}, 0x1.a029c383109dp-67};
-inline constexpr std::array<double, 10> atan_err{0x1.fc83bf5b0de45p-14, 0x1.93cef3120b229p-20, 0x1.5d05f803725d3p-26, 0x1.3d4562f308be7p-32, 0x1.2a3a873c06871p-38, 0x1.1f1b97aa401b7p-44, 0x1.20022dffbfff9p-50, 0x1.3b7a990068329p-56, 0x1.372588bf28f75p-62, 0x1.a029c383109dp-67}; // index terms − min
+inline constexpr fit<11>                atan_fit<11>{{0x1.109f856507578p-5,
+                                                      -0x1.9c1021880a1f6p-5,
+                                                      0x1.e00f2d1d6329bp-5,
+                                                      -0x1.1102f90079ed8p-4,
+                                                      0x1.3b1323771f976p-4,
+                                                      -0x1.745d13a7e9814p-4,
+                                                      0x1.c71c71b837cb8p-4,
+                                                      -0x1.24924924802fdp-3,
+                                                      0x1.999999999982ep-3,
+                                                      -0x1.5555555555555p-2,
+                                                      0x1p0},
+                                                     0x1.a029c383109dp-67};
+inline constexpr std::array<double, 10> atan_err{0x1.fc83bf5b0de45p-14,
+                                                 0x1.93cef3120b229p-20,
+                                                 0x1.5d05f803725d3p-26,
+                                                 0x1.3d4562f308be7p-32,
+                                                 0x1.2a3a873c06871p-38,
+                                                 0x1.1f1b97aa401b7p-44,
+                                                 0x1.20022dffbfff9p-50,
+                                                 0x1.3b7a990068329p-56,
+                                                 0x1.372588bf28f75p-62,
+                                                 0x1.a029c383109dp-67}; // index terms − min
 
 } // namespace beman::inside::math::detail::fp::minimax
 // clang-format on

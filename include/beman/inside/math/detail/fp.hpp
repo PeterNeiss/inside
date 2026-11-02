@@ -202,6 +202,25 @@ consteval int terms_for(int T, int Max, F trunc) {
     return Max;
 }
 
+// The fewest terms of a minimax fit (math/detail/minimax.hpp) whose
+// certified error is at most 2^-T, from its errors by terms − min; the most
+// it has past them.
+template <std::size_t M>
+consteval int fit_terms(int T, int min, const std::array<double, M>& errs) {
+    for (std::size_t i = 0; i + 1 < M; ++i)
+        if (errs[i] <= pow_n(0.5, T))
+            return min + static_cast<int>(i);
+    return min + static_cast<int>(M) - 1;
+}
+// A fit as a poly for horner_error: its coefficients are the doubles
+// themselves, exact (Err 0); the fit's own Err is the approximation term.
+template <std::size_t N>
+consteval poly<N> exact_poly(const minimax::fit<N>& f) {
+    poly<N> p{};
+    p.C = f.C;
+    return p;
+}
+
 // The target of the full kernels: truncation below 2^-58, a thirty-second
 // of their rounding error.
 inline constexpr int full_bits = 58;
@@ -321,27 +340,25 @@ struct trig_k {
 };
 
 //---------------------------------------------------------------------------
-// e^r on |r| ≤ r_exp: Σ r^k/k!, whose tail is at most r^n/n!·e^|r|.
+// e^r on |r| ≤ r_exp: the minimax fit of N terms (math/detail/minimax.hpp),
+// within its certified Err of e^r, relatively.
 //---------------------------------------------------------------------------
-inline constexpr double r_exp   = 0x1.63p-2; // 0.34668 ≥ ln2/2 + 2^-40
+inline constexpr double r_exp   = 0x1.63p-2; // 0.34668 ≥ ln2/2 + 2^-40 (the fit's interval)
 inline constexpr double exp_max = 1.4144;    // ≥ e^r_exp
-constexpr double        exp_trunc(int n) { return pow_n(r_exp, n) / factorial(n) * exp_max * exp_max; }
 template <int T>
-inline constexpr int exp_terms = terms_for(T, 15, exp_trunc);
+inline constexpr int exp_terms = fit_terms(T, minimax::exp_min, minimax::exp_err);
 
-template <int N>
-inline constexpr poly<N> exp_c = series<N>([](int k) { return term{1.0, factorial(k)}; });
-
-// Relative error of exp_poly at the r it is given (e^r ≥ 1/exp_max).
+// Relative error of exp_poly at the r it is given: Horner's, absolute, over
+// e^r ≥ 1/exp_max, and the fit's Err.
 template <int N>
 inline constexpr double exp_poly_rel = [] {
-    const horner_bound h = horner_error(exp_c<N>, r_exp, 0);
-    return up(h.Err * exp_max + exp_trunc(N));
+    const horner_bound h = horner_error(exact_poly(minimax::exp_fit<N>), r_exp, 0);
+    return up(h.Err * exp_max + minimax::exp_fit<N>.Err);
 }();
 
 template <int N>
 [[gnu::always_inline]] inline double exp_poly(double r) {
-    return horner(r, exp_c<N>.C);
+    return horner(r, minimax::exp_fit<N>.C);
 }
 
 // sinh a = a + a·z·P(z) for 0 ≤ a < ln 2, z = a² ≤ z_sinh, P = Σ z^k/(2k+3)!.
@@ -457,18 +474,18 @@ struct exp_k {
 
 //---------------------------------------------------------------------------
 // ln x for x > 0: frexp to m ∈ [√½, √2), ln x = e·ln2 + 2·atanh f with
-// f = (m − 1)/(m + 1), |f| ≤ f_max, and 2·atanh f = 2f·Σ f^2k/(2k+1),
-// whose tail is at most f^2n/((2n+1)(1 − f²)) of the sum (which is ≥ 1).
+// f = (m − 1)/(m + 1), |f| ≤ f_max: 2·atanh f ≈ 2f·q(f²), the minimax fit
+// over |f| ≤ f_max. The Hi + Lo form (value_hl) keeps the series
+// 2f·Σ f^2k/(2k+1), whose tail is at most f^2n/((2n+1)(1 − f²)) of the sum
+// (which is ≥ 1).
 //---------------------------------------------------------------------------
-inline constexpr double f_max = 0.1716; // ≥ (√2 − 1)/(√2 + 1) = 0.171573
+inline constexpr double f_max = 0.1716; // ≥ (√2 − 1)/(√2 + 1) = 0.171573 (the fit's interval)
 inline constexpr double z_log = f_max * f_max;
 constexpr double        log_trunc(int n) { return pow_n(z_log, n) / ((2 * n + 1) * (1 - z_log)); }
 template <int T>
 inline constexpr int log_terms = terms_for(T, 11, log_trunc);
 
-template <int N>
-inline constexpr poly<N> log_c = series<N>([](int k) { return term{1.0, 2.0 * k + 1}; });
-// log_c without its constant term, over z: Σ z^k/(2k+3).
+// The series without its constant term, over z: Σ z^k/(2k+3).
 template <int N>
 inline constexpr poly<N> log_tail_c = series<N>([](int k) { return term{1.0, 2.0 * k + 3}; });
 
@@ -478,12 +495,16 @@ inline constexpr poly<N> log_tail_c = series<N>([](int k) { return term{1.0, 2.0
 // e·Hi is exact and the two fmas round once each, relative to |v|: for
 // e ≠ 0, |v| ≥ ln2/2 ≥ |2 atanh f|, and |e|·ln2_res ≤ 3·ln2_res·|v|;
 // for e = 0 both fmas return 2f·p exactly.
+// value's polynomial is the minimax fit of atanh f / f (math/detail/minimax.hpp)
+// of N terms, within its certified Err; value_hl's is the series' tail of NT
+// terms (log_tail_c), whose truncation is log_trunc(NT).
 template <int T>
 struct log_k {
-    static constexpr int    N    = log_terms<T>;
+    static constexpr int    N    = fit_terms(T, minimax::atanh_min, minimax::atanh_err);
+    static constexpr int    NT   = log_terms<T>;
     static constexpr double MRel = [] {
-        const horner_bound h = horner_error(log_c<N>, z_log, unit_roundoff);
-        return h.Err + log_trunc(N) + unit_roundoff + 2 * unit_roundoff / (1 - z_log);
+        const horner_bound h = horner_error(exact_poly(minimax::atanh_fit<N>), z_log, unit_roundoff);
+        return h.Err + minimax::atanh_fit<N>.Err + unit_roundoff + 2 * unit_roundoff / (1 - z_log);
     }();
     static constexpr double Rel   = up(MRel + 2 * unit_roundoff + 3 * ln2_res);
     static constexpr double Rel2  = up(Rel + unit_roundoff + log2e_err);
@@ -503,7 +524,7 @@ struct log_k {
         int          e;
         const double m    = mantissa(x, e);
         const double f    = (m - 1.0) / (m + 1.0);
-        const double logm = 2.0 * f * horner(f * f, log_c<N>.C);
+        const double logm = 2.0 * f * horner(f * f, minimax::atanh_fit<N>.C);
         const double r    = fma(static_cast<double>(e), ln2_hi, logm);
         return fma(static_cast<double>(e), ln2_lo, r);
     }
@@ -521,9 +542,9 @@ struct log_k {
     // - e ≠ 0 (|ln x| ≥ 0.3466·|e|, |2f| ≤ 0.3432): that, plus the two
     //   additions of the low parts, e·Lo's rounding and ln2_res, per |e|.
     static constexpr double HlRel = [] {
-        const horner_bound h = horner_error(log_tail_c<N - 1>, z_log, unit_roundoff);
+        const horner_bound h = horner_error(log_tail_c<NT - 1>, z_log, unit_roundoff);
         const double       t = z_log * h.Mag + 2 * unit_roundoff; // |T|/|2f|
-        const double a2f = 2 * unit_roundoff * z_log / (1 - z_log) + 4 * unit_roundoff2 / (1 - z_log) + log_trunc(N) +
+        const double a2f = 2 * unit_roundoff * z_log / (1 - z_log) + 4 * unit_roundoff2 / (1 - z_log) + log_trunc(NT) +
                            z_log * (h.Err + unit_roundoff * h.Mag) + unit_roundoff * t;
         const double per_e = 2 * unit_roundoff * (0.7 * unit_roundoff + ln2_lo) + unit_roundoff * ln2_lo + ln2_res;
         const double rest  = 2 * unit_roundoff * (0.35 * unit_roundoff + 0.3432 * t);
@@ -538,7 +559,7 @@ struct log_k {
         const double fl = fma(-f, bl, fma(-f, b, a)) / b;
         const double z  = f * f;
         const double f2 = f + f;
-        const double t  = fma(fenced(f2 * z), horner(z, log_tail_c<N - 1>.C), fl + fl);
+        const double t  = fma(fenced(f2 * z), horner(z, log_tail_c<NT - 1>.C), fl + fl);
         const double ed = static_cast<double>(e);
         const hilo   h  = two_sum(ed * ln2_hi, f2);
         const hilo   v  = fast_two_sum(h.Hi, (h.Lo + ed * ln2_lo) + t);
@@ -642,18 +663,12 @@ struct log_k {
 
 //---------------------------------------------------------------------------
 // atan: |x| > 1 through π/2 − atan(1/x); then a > tan(π/12) through the
-// π/6 addition formula, so |t| ≤ t_max; atan t = t·Σ (−1)^k t^2k/(2k+1),
-// alternating with falling terms.
+// π/6 addition formula, so |t| ≤ t_max; atan t ≈ t·q(t²), the minimax fit
+// over |t| ≤ t_max.
 //---------------------------------------------------------------------------
-inline constexpr double t_max    = 0.2681; // ≥ tan(π/12) = 0.267949
+inline constexpr double t_max    = 0.2681; // ≥ tan(π/12) = 0.267949 (the fit's interval)
 inline constexpr double z_atan   = t_max * t_max;
 inline constexpr double atan_min = 1 - z_atan / 3; // ≤ atan t / t
-constexpr double        atan_trunc(int n) { return pow_n(z_atan, n) / (2 * n + 1) / atan_min; }
-template <int T>
-inline constexpr int atan_terms = terms_for(T, 15, atan_trunc);
-
-template <int N>
-inline constexpr poly<N> atan_c = series<N>([](int k) { return term{k % 2 ? -1.0 : 1.0, 2.0 * k + 1}; });
 
 // atan(n/d), n, d ≥ 0, with at most one division: n ≤ d after a swap (the
 // swap is π/2 − r), and where n/d > tan(π/12) the π/6 step folds into the
@@ -668,19 +683,23 @@ inline constexpr poly<N> atan_c = series<N>([](int k) { return term{k % 2 ? -1.0
 // π/4; ½ more for a quotient rounded before the step (none is now, so this
 // is slack); π/2 − r by 0.56 (the constant) and π/2 (the rounding); and
 // t·(Horner + truncation) of the polynomial itself.
+// The polynomial is the minimax fit of atan t / t (math/detail/minimax.hpp)
+// of N terms: within Err·(atan t / t) ≤ Err of it, absolutely.
 template <int T>
 struct atan_k {
-    static constexpr int    N       = atan_terms<T>;
+    static constexpr int    N       = fit_terms(T, minimax::atan_min, minimax::atan_err);
     static constexpr double PolyAbs = [] {
-        const horner_bound h = horner_error(atan_c<N>, z_atan, unit_roundoff);
-        return h.Err + atan_trunc(N) * atan_min;
+        const horner_bound h = horner_error(exact_poly(minimax::atan_fit<N>), z_atan, unit_roundoff);
+        return h.Err + minimax::atan_fit<N>.Err;
     }();
     static constexpr double Rel = up(PolyAbs / atan_min + unit_roundoff);
     static constexpr double Abs =
         up(t_max * PolyAbs + 3 * t_max * unit_roundoff + inv_sqrt3_err * 0.75 + pi_sixth_err + r_trig * unit_roundoff +
            0.5 * unit_roundoff + pi_half_err + 1.5708 * unit_roundoff);
 
-    [[gnu::always_inline]] static double core(double t, double off) { return fma(t, horner(t * t, atan_c<N>.C), off); }
+    [[gnu::always_inline]] static double core(double t, double off) {
+        return fma(t, horner(t * t, minimax::atan_fit<N>.C), off);
+    }
     // atan(lo/hi), 0 ≤ lo ≤ hi, hi > 0.
     [[gnu::always_inline]] static double reduced(double lo, double hi) {
         if (lo > tan_pi12 * hi)
@@ -737,19 +756,8 @@ struct atan_k {
 // exact) and s = √u, and asin s = s·q(u): u is s² exactly, so q takes it
 // without a rounded square.
 //---------------------------------------------------------------------------
-template <int T>
-consteval int asin_terms() {
-    for (int n = minimax::asin_min; n < minimax::asin_max; ++n)
-        if (minimax::asin_err[n - minimax::asin_min] <= pow_n(0.5, T))
-            return n;
-    return minimax::asin_max;
-}
 template <int N>
-inline constexpr poly<N> asin_q = [] {
-    poly<N> p{};
-    p.C = minimax::asin_fit<N>.C; // exact doubles: Err is the fit's
-    return p;
-}();
+inline constexpr poly<N> asin_q = exact_poly(minimax::asin_fit<N>);
 
 // Relative errors, in units of the value:
 // - |x| ≤ ½ (Lo): q at fl(x²) (Horner's error over q ≥ 1, with the
@@ -763,7 +771,7 @@ inline constexpr poly<N> asin_q = [] {
 // W/2, the fma, π's constant over 2π/3).
 template <int T>
 struct asin_k {
-    static constexpr int    N     = asin_terms<T>();
+    static constexpr int    N     = fit_terms(T, minimax::asin_min, minimax::asin_err);
     static constexpr double Err   = minimax::asin_fit<N>.Err;
     static constexpr double LoRel = up(horner_error(asin_q<N>, 0.25, unit_roundoff).Err + Err + unit_roundoff);
     static constexpr double W     = up(horner_error(asin_q<N>, 0.25, 0).Err + Err + 2 * unit_roundoff);

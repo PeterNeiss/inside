@@ -14178,60 +14178,272 @@ inline constexpr fit<N> asin_fit{};
 template <>
 inline constexpr fit<2> asin_fit<2>{{0x1.825be155a4c85p-3, 0x1.ff9fea902c828p-1}, 0x1.8058a7f3e2a6bp-11};
 template <>
-inline constexpr fit<3> asin_fit<3>{{0x1.892af3f9d0abp-4, 0x1.50f9b8eb10e29p-3, 0x1.00020917b0ae3p0}, 0x1.048dd12fb33b8p-15};
+inline constexpr fit<3> asin_fit<3>{{0x1.892af3f9d0abp-4, 0x1.50f9b8eb10e29p-3, 0x1.00020917b0ae3p0},
+                                    0x1.048dd12fb33b8p-15};
 template <>
-inline constexpr fit<4> asin_fit<4>{{0x1.0a844c609d247p-4, 0x1.24cc691008951p-4, 0x1.55b69a968f3efp-3, 0x1.ffffcd5a20bd7p-1}, 0x1.9532a401acbbbp-20};
+inline constexpr fit<4> asin_fit<4>{
+    {0x1.0a844c609d247p-4, 0x1.24cc691008951p-4, 0x1.55b69a968f3efp-3, 0x1.ffffcd5a20bd7p-1}, 0x1.9532a401acbbbp-20};
 template <>
-inline constexpr fit<5> asin_fit<5>{{0x1.9e732acd0f855p-5, 0x1.450a9250ee54bp-5, 0x1.3521a36c5dd22p-4, 0x1.554d47173464ap-3, 0x1.000001557966p0}, 0x1.557bfb9df5a56p-24};
+inline constexpr fit<5> asin_fit<5>{
+    {0x1.9e732acd0f855p-5, 0x1.450a9250ee54bp-5, 0x1.3521a36c5dd22p-4, 0x1.554d47173464ap-3, 0x1.000001557966p0},
+    0x1.557bfb9df5a56p-24};
 template <>
-inline constexpr fit<6> asin_fit<6>{{0x1.5d456c461b1d4p-5, 0x1.86e46a094bdbbp-6, 0x1.7525a995a25b7p-5, 0x1.32f8d81e695bp-4, 0x1.5555fb040849ep-3, 0x1.ffffffda11fc6p-1}, 0x1.2f726995f97ecp-28};
+inline constexpr fit<6> asin_fit<6>{{0x1.5d456c461b1d4p-5,
+                                     0x1.86e46a094bdbbp-6,
+                                     0x1.7525a995a25b7p-5,
+                                     0x1.32f8d81e695bp-4,
+                                     0x1.5555fb040849ep-3,
+                                     0x1.ffffffda11fc6p-1},
+                                    0x1.2f726995f97ecp-28};
 template <>
-inline constexpr fit<7> asin_fit<7>{{0x1.365bebfe788e2p-5, 0x1.cf525bfedbdbcp-7, 0x1.0554db2cea9b6p-5, 0x1.6c91bbfc1b648p-5, 0x1.333988d617221p-4, 0x1.55554848e38f7p-3, 0x1.0000000117f17p0}, 0x1.17f38e94895e8p-32};
+inline constexpr fit<7> asin_fit<7>{{0x1.365bebfe788e2p-5,
+                                     0x1.cf525bfedbdbcp-7,
+                                     0x1.0554db2cea9b6p-5,
+                                     0x1.6c91bbfc1b648p-5,
+                                     0x1.333988d617221p-4,
+                                     0x1.55554848e38f7p-3,
+                                     0x1.0000000117f17p0},
+                                    0x1.17f38e94895e8p-32};
 template <>
-inline constexpr fit<8> asin_fit<8>{{0x1.1e52c89298dcep-5, 0x1.d96b4d8aa7838p-8, 0x1.94dfc2257f592p-6, 0x1.ed07de22aed64p-6, 0x1.6ddf13d1df11fp-5, 0x1.33328d4d9255fp-4, 0x1.55555658c08b7p-3, 0x1.ffffffffdecd3p-1}, 0x1.0998829357ff9p-36};
+inline constexpr fit<8> asin_fit<8>{{0x1.1e52c89298dcep-5,
+                                     0x1.d96b4d8aa7838p-8,
+                                     0x1.94dfc2257f592p-6,
+                                     0x1.ed07de22aed64p-6,
+                                     0x1.6ddf13d1df11fp-5,
+                                     0x1.33328d4d9255fp-4,
+                                     0x1.55555658c08b7p-3,
+                                     0x1.ffffffffdecd3p-1},
+                                    0x1.0998829357ff9p-36};
 template <>
-inline constexpr fit<9> asin_fit<9>{{0x1.0fa3089f9294fp-5, 0x1.c1919d63ad018p-10, 0x1.542c911d6be5bp-6, 0x1.65cdcdbd68342p-6, 0x1.f29129714771cp-6, 0x1.6db1c8c40974bp-5, 0x1.3333436fd1a2fp-4, 0x1.555555416504ap-3, 0x1.0000000001018p0}, 0x1.0181f2e7bfff9p-40};
+inline constexpr fit<9> asin_fit<9>{{0x1.0fa3089f9294fp-5,
+                                     0x1.c1919d63ad018p-10,
+                                     0x1.542c911d6be5bp-6,
+                                     0x1.65cdcdbd68342p-6,
+                                     0x1.f29129714771cp-6,
+                                     0x1.6db1c8c40974bp-5,
+                                     0x1.3333436fd1a2fp-4,
+                                     0x1.555555416504ap-3,
+                                     0x1.0000000001018p0},
+                                    0x1.0181f2e7bfff9p-40};
 template <>
-inline constexpr fit<10> asin_fit<10>{{0x1.0756d87284c9p-5, -0x1.94160c9a287e6p-9, 0x1.331bcd4de0cdp-6, 0x1.0d73bc6d0adcep-6, 0x1.70417823ad8cfp-6, 0x1.f1a8c3bb24a27p-6, 0x1.6db77504b4814p-5, 0x1.333331aa1fe05p-4, 0x1.55555556da86p-3, 0x1.ffffffffffe04p-1}, 0x1.fc03d83fbfff9p-45};
+inline constexpr fit<10> asin_fit<10>{{0x1.0756d87284c9p-5,
+                                       -0x1.94160c9a287e6p-9,
+                                       0x1.331bcd4de0cdp-6,
+                                       0x1.0d73bc6d0adcep-6,
+                                       0x1.70417823ad8cfp-6,
+                                       0x1.f1a8c3bb24a27p-6,
+                                       0x1.6db77504b4814p-5,
+                                       0x1.333331aa1fe05p-4,
+                                       0x1.55555556da86p-3,
+                                       0x1.ffffffffffe04p-1},
+                                      0x1.fc03d83fbfff9p-45};
 template <>
-inline constexpr fit<11> asin_fit<11>{{0x1.03bef815fb7d9p-5, -0x1.efe17964b1f8dp-8, 0x1.27e84d0bccd7bp-6, 0x1.99f060037c852p-7, 0x1.1fa801cc53228p-6, 0x1.6e3f37421b905p-6, 0x1.f1cb538d38257p-6, 0x1.6db6ca26869f2p-5, 0x1.3333335769342p-4, 0x1.5555555537c71p-3, 0x1.000000000001p0}, 0x1.0001efffdfffdp-48};
+inline constexpr fit<11> asin_fit<11>{{0x1.03bef815fb7d9p-5,
+                                       -0x1.efe17964b1f8dp-8,
+                                       0x1.27e84d0bccd7bp-6,
+                                       0x1.99f060037c852p-7,
+                                       0x1.1fa801cc53228p-6,
+                                       0x1.6e3f37421b905p-6,
+                                       0x1.f1cb538d38257p-6,
+                                       0x1.6db6ca26869f2p-5,
+                                       0x1.3333335769342p-4,
+                                       0x1.5555555537c71p-3,
+                                       0x1.000000000001p0},
+                                      0x1.0001efffdfffdp-48};
 template <>
-inline constexpr fit<12> asin_fit<12>{{0x1.03cca53d06c84p-5, -0x1.88922b273830ep-7, 0x1.2de51f5ff7a3fp-6, 0x1.3162db527bd14p-7, 0x1.d5c3659807512p-7, 0x1.1ba452fded368p-6, 0x1.6e97d183195a8p-6, 0x1.f1c68febaa971p-6, 0x1.6db6dd4a1cf35p-5, 0x1.3333332ff3062p-4, 0x1.55555555578d8p-3, 0x1.ffffffffffffep-1}, 0x1.0124ab72c6eb1p-52};
+inline constexpr fit<12> asin_fit<12>{{0x1.03cca53d06c84p-5,
+                                       -0x1.88922b273830ep-7,
+                                       0x1.2de51f5ff7a3fp-6,
+                                       0x1.3162db527bd14p-7,
+                                       0x1.d5c3659807512p-7,
+                                       0x1.1ba452fded368p-6,
+                                       0x1.6e97d183195a8p-6,
+                                       0x1.f1c68febaa971p-6,
+                                       0x1.6db6dd4a1cf35p-5,
+                                       0x1.3333332ff3062p-4,
+                                       0x1.55555555578d8p-3,
+                                       0x1.ffffffffffffep-1},
+                                      0x1.0124ab72c6eb1p-52};
 template <>
-inline constexpr fit<13> asin_fit<13>{{0x1.05985ad7bf3c2p-5, -0x1.0a5a39d4657a9p-6, 0x1.405214c3268a3p-6, 0x1.ab3a07d4c022dp-8, 0x1.8ed60a5b283c2p-7, 0x1.c6fa84b21e97dp-7, 0x1.1c6c111e009cfp-6, 0x1.6e89f0a0ab5b8p-6, 0x1.f1c72c668971cp-6, 0x1.6db6db41ce4bcp-5, 0x1.333333336fd5bp-4, 0x1.555555555538p-3, 0x1p0}, 0x1.1ffe995d9012cp-56};
+inline constexpr fit<13> asin_fit<13>{{0x1.05985ad7bf3c2p-5,
+                                       -0x1.0a5a39d4657a9p-6,
+                                       0x1.405214c3268a3p-6,
+                                       0x1.ab3a07d4c022dp-8,
+                                       0x1.8ed60a5b283c2p-7,
+                                       0x1.c6fa84b21e97dp-7,
+                                       0x1.1c6c111e009cfp-6,
+                                       0x1.6e89f0a0ab5b8p-6,
+                                       0x1.f1c72c668971cp-6,
+                                       0x1.6db6db41ce4bcp-5,
+                                       0x1.333333336fd5bp-4,
+                                       0x1.555555555538p-3,
+                                       0x1p0},
+                                      0x1.1ffe995d9012cp-56};
 template <>
-inline constexpr fit<14> asin_fit<14>{{0x1.0b65010e90052p-5, -0x1.586522731ef7ep-6, 0x1.63eb4f666f769p-6, 0x1.e4dc8ec3a44c5p-9, 0x1.6150d94ea3b38p-7, 0x1.75818c926cfabp-7, 0x1.ca201858409b8p-7, 0x1.1c49e9d404feep-6, 0x1.6e8bdf4b14631p-6, 0x1.f1c71a907ff6fp-6, 0x1.6db6db7220c98p-5, 0x1.333333332dfa8p-4, 0x1.5555555555578p-3, 0x1p0}, 0x1.2408e83e79bbfp-60};
+inline constexpr fit<14> asin_fit<14>{{0x1.0b65010e90052p-5,
+                                       -0x1.586522731ef7ep-6,
+                                       0x1.63eb4f666f769p-6,
+                                       0x1.e4dc8ec3a44c5p-9,
+                                       0x1.6150d94ea3b38p-7,
+                                       0x1.75818c926cfabp-7,
+                                       0x1.ca201858409b8p-7,
+                                       0x1.1c49e9d404feep-6,
+                                       0x1.6e8bdf4b14631p-6,
+                                       0x1.f1c71a907ff6fp-6,
+                                       0x1.6db6db7220c98p-5,
+                                       0x1.333333332dfa8p-4,
+                                       0x1.5555555555578p-3,
+                                       0x1p0},
+                                      0x1.2408e83e79bbfp-60};
 template <>
-inline constexpr fit<15> asin_fit<15>{{0x1.1321fda543436p-5, -0x1.aabb40caa7196p-6, 0x1.95660f01f1785p-6, 0x1.7a127f9d53ed2p-11, 0x1.479b5d146b4a1p-7, 0x1.36da51780c649p-7, 0x1.7ba0b8a29f7a8p-7, 0x1.c9813f1cbf895p-7, 0x1.1c4f81fad816p-6, 0x1.6e8b9b1f262d6p-6, 0x1.f1c71ca6b705cp-6, 0x1.6db6db6d4ca47p-5, 0x1.33333333339e4p-4, 0x1.5555555555553p-3, 0x1p0}, 0x1.284f38f72615ep-64};
-inline constexpr std::array<double, 14> asin_err{0x1.8058a7f3e2a6bp-11, 0x1.048dd12fb33b8p-15, 0x1.9532a401acbbbp-20, 0x1.557bfb9df5a56p-24, 0x1.2f726995f97ecp-28, 0x1.17f38e94895e8p-32, 0x1.0998829357ff9p-36, 0x1.0181f2e7bfff9p-40, 0x1.fc03d83fbfff9p-45, 0x1.0001efffdfffdp-48, 0x1.0124ab72c6eb1p-52, 0x1.1ffe995d9012cp-56, 0x1.2408e83e79bbfp-60, 0x1.284f38f72615ep-64}; // index terms − min
+inline constexpr fit<15>                asin_fit<15>{{0x1.1321fda543436p-5,
+                                                      -0x1.aabb40caa7196p-6,
+                                                      0x1.95660f01f1785p-6,
+                                                      0x1.7a127f9d53ed2p-11,
+                                                      0x1.479b5d146b4a1p-7,
+                                                      0x1.36da51780c649p-7,
+                                                      0x1.7ba0b8a29f7a8p-7,
+                                                      0x1.c9813f1cbf895p-7,
+                                                      0x1.1c4f81fad816p-6,
+                                                      0x1.6e8b9b1f262d6p-6,
+                                                      0x1.f1c71ca6b705cp-6,
+                                                      0x1.6db6db6d4ca47p-5,
+                                                      0x1.33333333339e4p-4,
+                                                      0x1.5555555555553p-3,
+                                                      0x1p0},
+                                                     0x1.284f38f72615ep-64};
+inline constexpr std::array<double, 14> asin_err{0x1.8058a7f3e2a6bp-11,
+                                                 0x1.048dd12fb33b8p-15,
+                                                 0x1.9532a401acbbbp-20,
+                                                 0x1.557bfb9df5a56p-24,
+                                                 0x1.2f726995f97ecp-28,
+                                                 0x1.17f38e94895e8p-32,
+                                                 0x1.0998829357ff9p-36,
+                                                 0x1.0181f2e7bfff9p-40,
+                                                 0x1.fc03d83fbfff9p-45,
+                                                 0x1.0001efffdfffdp-48,
+                                                 0x1.0124ab72c6eb1p-52,
+                                                 0x1.1ffe995d9012cp-56,
+                                                 0x1.2408e83e79bbfp-60,
+                                                 0x1.284f38f72615ep-64}; // index terms − min
 
 // e^r ≈ q(r) on |r| ≤ r_exp: 3 to 13 terms.
 inline constexpr int exp_min = 3, exp_max = 13;
 template <int N>
 inline constexpr fit<N> exp_fit{};
 template <>
-inline constexpr fit<3> exp_fit<3>{{0x1.fc2aa2ae5131fp-2, 0x1.03ce84afb0d1ep0, 0x1.001d13932591ep0}, 0x1.c490ea4c231c6p-10};
+inline constexpr fit<3> exp_fit<3>{{0x1.fc2aa2ae5131fp-2, 0x1.03ce84afb0d1ep0, 0x1.001d13932591ep0},
+                                   0x1.c490ea4c231c6p-10};
 template <>
-inline constexpr fit<4> exp_fit<4>{{0x1.5349a592197cep-3, 0x1.028af0a473249p-1, 0x1.000ac5f16d3fap0, 0x1.fff68fa83f751p-1}, 0x1.3a0c77888cb8bp-14};
+inline constexpr fit<4> exp_fit<4>{
+    {0x1.5349a592197cep-3, 0x1.028af0a473249p-1, 0x1.000ac5f16d3fap0, 0x1.fff68fa83f751p-1}, 0x1.3a0c77888cb8bp-14};
 template <>
-inline constexpr fit<5> exp_fit<5>{{0x1.53a0bc8cb6e2dp-5, 0x1.57e11b9163795p-3, 0x1.0005b84f8b477p-1, 0x1.fffb329614b3ep-1, 0x1.ffffe72c46aadp-1}, 0x1.5c9e6d5c573e2p-19};
+inline constexpr fit<5> exp_fit<5>{
+    {0x1.53a0bc8cb6e2dp-5, 0x1.57e11b9163795p-3, 0x1.0005b84f8b477p-1, 0x1.fffb329614b3ep-1, 0x1.ffffe72c46aadp-1},
+    0x1.5c9e6d5c573e2p-19};
 template <>
-inline constexpr fit<6> exp_fit<6>{{0x1.0fe597ced0779p-7, 0x1.575f3ea00b289p-5, 0x1.555a199a5422cp-3, 0x1.fffd197296823p-2, 0x1.fffff5a56219cp-1, 0x1.000001344f9cp0}, 0x1.42733dab4d128p-24};
+inline constexpr fit<6> exp_fit<6>{{0x1.0fe597ced0779p-7,
+                                    0x1.575f3ea00b289p-5,
+                                    0x1.555a199a5422cp-3,
+                                    0x1.fffd197296823p-2,
+                                    0x1.fffff5a56219cp-1,
+                                    0x1.000001344f9cp0},
+                                   0x1.42733dab4d128p-24};
 template <>
-inline constexpr fit<7> exp_fit<7>{{0x1.6ab949bc49acap-10, 0x1.126d42403a00cp-7, 0x1.55589b4941c77p-5, 0x1.55540a16bfca6p-3, 0x1.fffffaacd43ebp-2, 0x1.0000009c4a54bp0, 0x1.0000000262ccap0}, 0x1.ff3a129bc5036p-30};
+inline constexpr fit<7> exp_fit<7>{{0x1.6ab949bc49acap-10,
+                                    0x1.126d42403a00cp-7,
+                                    0x1.55589b4941c77p-5,
+                                    0x1.55540a16bfca6p-3,
+                                    0x1.fffffaacd43ebp-2,
+                                    0x1.0000009c4a54bp0,
+                                    0x1.0000000262ccap0},
+                                   0x1.ff3a129bc5036p-30};
 template <>
-inline constexpr fit<8> exp_fit<8>{{0x1.9eb6ed55a251bp-13, 0x1.6da4ea93f5d8ep-10, 0x1.1112fac4dc68ep-7, 0x1.55546827cf8fap-5, 0x1.555553430a735p-3, 0x1.00000059f5a1bp-1, 0x1.000000010bf0dp0, 0x1.ffffffffab88ap-1}, 0x1.6293c2ba1645fp-35};
+inline constexpr fit<8> exp_fit<8>{{0x1.9eb6ed55a251bp-13,
+                                    0x1.6da4ea93f5d8ep-10,
+                                    0x1.1112fac4dc68ep-7,
+                                    0x1.55546827cf8fap-5,
+                                    0x1.555553430a735p-3,
+                                    0x1.00000059f5a1bp-1,
+                                    0x1.000000010bf0dp0,
+                                    0x1.ffffffffab88ap-1},
+                                   0x1.6293c2ba1645fp-35};
 template <>
-inline constexpr fit<9> exp_fit<9>{{0x1.9eda661357619p-16, 0x1.a1a859d406ac4p-13, 0x1.6c18b3d1428f9p-10, 0x1.1110828306626p-7, 0x1.555554047694ap-5, 0x1.555555a0a4a97p-3, 0x1.0000000088474p-1, 0x1.ffffffffd5493p-1, 0x1.ffffffffff79dp-1}, 0x1.b52fc430e302ep-41};
+inline constexpr fit<9> exp_fit<9>{{0x1.9eda661357619p-16,
+                                    0x1.a1a859d406ac4p-13,
+                                    0x1.6c18b3d1428f9p-10,
+                                    0x1.1110828306626p-7,
+                                    0x1.555554047694ap-5,
+                                    0x1.555555a0a4a97p-3,
+                                    0x1.0000000088474p-1,
+                                    0x1.ffffffffd5493p-1,
+                                    0x1.ffffffffff79dp-1},
+                                   0x1.b52fc430e302ep-41};
 template <>
-inline constexpr fit<10> exp_fit<10>{{0x1.70dc8ce9a1226p-19, 0x1.a17c45eab548bp-16, 0x1.a01bc251544c3p-13, 0x1.6c162d57270aep-10, 0x1.1111105b449ebp-7, 0x1.55555587bc95cp-5, 0x1.55555555bb863p-3, 0x1.ffffffffe8109p-2, 0x1.ffffffffffc38p-1, 0x1.000000000003ap0}, 0x1.e7db898933289p-47};
+inline constexpr fit<10> exp_fit<10>{{0x1.70dc8ce9a1226p-19,
+                                      0x1.a17c45eab548bp-16,
+                                      0x1.a01bc251544c3p-13,
+                                      0x1.6c162d57270aep-10,
+                                      0x1.1111105b449ebp-7,
+                                      0x1.55555587bc95cp-5,
+                                      0x1.55555555bb863p-3,
+                                      0x1.ffffffffe8109p-2,
+                                      0x1.ffffffffffc38p-1,
+                                      0x1.000000000003ap0},
+                                     0x1.e7db898933289p-47};
 template <>
-inline constexpr fit<11> exp_fit<11>{{0x1.2766a8cc5b622p-22, 0x1.72f9a0cffd3dfp-19, 0x1.a01b193b4eb35p-16, 0x1.a0197a37658e5p-13, 0x1.6c16c0e92fdb7p-10, 0x1.1111112d4f43ep-7, 0x1.5555555581ffap-5, 0x1.555555554bbf1p-3, 0x1.ffffffffffed8p-2, 0x1.000000000001dp0, 0x1p0}, 0x1.1f9df47d520b1p-52};
+inline constexpr fit<11> exp_fit<11>{{0x1.2766a8cc5b622p-22,
+                                      0x1.72f9a0cffd3dfp-19,
+                                      0x1.a01b193b4eb35p-16,
+                                      0x1.a0197a37658e5p-13,
+                                      0x1.6c16c0e92fdb7p-10,
+                                      0x1.1111112d4f43ep-7,
+                                      0x1.5555555581ffap-5,
+                                      0x1.555555554bbf1p-3,
+                                      0x1.ffffffffffed8p-2,
+                                      0x1.000000000001dp0,
+                                      0x1p0},
+                                     0x1.1f9df47d520b1p-52};
 template <>
-inline constexpr fit<12> exp_fit<12>{{0x1.ae07dd0100e57p-26, 0x1.28b0ad2414f0cp-22, 0x1.71dece4ded2ap-19, 0x1.a0199608775d5p-16, 0x1.a01a0151c5454p-13, 0x1.6c16c185ed047p-10, 0x1.111111112058dp-7, 0x1.555555554fe5dp-5, 0x1.5555555555518p-3, 0x1.000000000000cp-1, 0x1p0, 0x1p0}, 0x1.4de2cf3b4c2cp-58};
+inline constexpr fit<12> exp_fit<12>{{0x1.ae07dd0100e57p-26,
+                                      0x1.28b0ad2414f0cp-22,
+                                      0x1.71dece4ded2ap-19,
+                                      0x1.a0199608775d5p-16,
+                                      0x1.a01a0151c5454p-13,
+                                      0x1.6c16c185ed047p-10,
+                                      0x1.111111112058dp-7,
+                                      0x1.555555554fe5dp-5,
+                                      0x1.5555555555518p-3,
+                                      0x1.000000000000cp-1,
+                                      0x1p0,
+                                      0x1p0},
+                                     0x1.4de2cf3b4c2cp-58};
 template <>
-inline constexpr fit<13> exp_fit<13>{{0x1.1eda1ddb34747p-29, 0x1.af6e6b5598decp-26, 0x1.27e540754c758p-22, 0x1.71ddee7e78a92p-19, 0x1.a01a0177038ccp-16, 0x1.a01a01b440953p-13, 0x1.6c16c16c1fa7p-10, 0x1.111111110ea02p-7, 0x1.5555555555541p-5, 0x1.555555555555cp-3, 0x1p-1, 0x1p0, 0x1p0}, 0x1.6e809bd10e1ebp-64};
-inline constexpr std::array<double, 11> exp_err{0x1.c490ea4c231c6p-10, 0x1.3a0c77888cb8bp-14, 0x1.5c9e6d5c573e2p-19, 0x1.42733dab4d128p-24, 0x1.ff3a129bc5036p-30, 0x1.6293c2ba1645fp-35, 0x1.b52fc430e302ep-41, 0x1.e7db898933289p-47, 0x1.1f9df47d520b1p-52, 0x1.4de2cf3b4c2cp-58, 0x1.6e809bd10e1ebp-64}; // index terms − min
+inline constexpr fit<13>                exp_fit<13>{{0x1.1eda1ddb34747p-29,
+                                                     0x1.af6e6b5598decp-26,
+                                                     0x1.27e540754c758p-22,
+                                                     0x1.71ddee7e78a92p-19,
+                                                     0x1.a01a0177038ccp-16,
+                                                     0x1.a01a01b440953p-13,
+                                                     0x1.6c16c16c1fa7p-10,
+                                                     0x1.111111110ea02p-7,
+                                                     0x1.5555555555541p-5,
+                                                     0x1.555555555555cp-3,
+                                                     0x1p-1,
+                                                     0x1p0,
+                                                     0x1p0},
+                                                    0x1.6e809bd10e1ebp-64};
+inline constexpr std::array<double, 11> exp_err{0x1.c490ea4c231c6p-10,
+                                                0x1.3a0c77888cb8bp-14,
+                                                0x1.5c9e6d5c573e2p-19,
+                                                0x1.42733dab4d128p-24,
+                                                0x1.ff3a129bc5036p-30,
+                                                0x1.6293c2ba1645fp-35,
+                                                0x1.b52fc430e302ep-41,
+                                                0x1.e7db898933289p-47,
+                                                0x1.1f9df47d520b1p-52,
+                                                0x1.4de2cf3b4c2cp-58,
+                                                0x1.6e809bd10e1ebp-64}; // index terms − min
 
 // atanh f ≈ f·q(f²) on |f| ≤ f_max (log): 2 to 9 terms.
 inline constexpr int atanh_min = 2, atanh_max = 9;
@@ -14240,20 +14452,61 @@ inline constexpr fit<N> atanh_fit{};
 template <>
 inline constexpr fit<2> atanh_fit<2>{{0x1.5b7c6f2e4be77p-2, 0x1.fffd14c1a8c2bp-1}, 0x1.75a1ff82e4832p-16};
 template <>
-inline constexpr fit<3> atanh_fit<3>{{0x1.a6e1116205a7ap-3, 0x1.554263f4c18f7p-2, 0x1.000001fe3f50ap0}, 0x1.fe432d4c2c57fp-24};
+inline constexpr fit<3> atanh_fit<3>{{0x1.a6e1116205a7ap-3, 0x1.554263f4c18f7p-2, 0x1.000001fe3f50ap0},
+                                     0x1.fe432d4c2c57fp-24};
 template <>
-inline constexpr fit<4> atanh_fit<4>{{0x1.327175bbaa44fp-3, 0x1.99577bcf07f97p-3, 0x1.55558779221b5p-2, 0x1.fffffffa12317p-1}, 0x1.7b76e1ea45477p-31};
+inline constexpr fit<4> atanh_fit<4>{
+    {0x1.327175bbaa44fp-3, 0x1.99577bcf07f97p-3, 0x1.55558779221b5p-2, 0x1.fffffffa12317p-1}, 0x1.7b76e1ea45477p-31};
 template <>
-inline constexpr fit<5> atanh_fit<5>{{0x1.e3b1f3ef74854p-4, 0x1.2432b0f92b6c5p-3, 0x1.999a9ccdbfeb5p-3, 0x1.555554daaa158p-2, 0x1.0000000004a38p0}, 0x1.28e23f31bfff9p-38};
+inline constexpr fit<5> atanh_fit<5>{
+    {0x1.e3b1f3ef74854p-4, 0x1.2432b0f92b6c5p-3, 0x1.999a9ccdbfeb5p-3, 0x1.555554daaa158p-2, 0x1.0000000004a38p0},
+    0x1.28e23f31bfff9p-38};
 template <>
-inline constexpr fit<6> atanh_fit<6>{{0x1.919a7405aebcp-4, 0x1.c62064e97f598p-4, 0x1.249439d39e49bp-3, 0x1.999996279df1bp-3, 0x1.5555555673427p-2, 0x1.fffffffffff1p-1}, 0x1.e07c4da4caca5p-46};
+inline constexpr fit<6> atanh_fit<6>{{0x1.919a7405aebcp-4,
+                                      0x1.c62064e97f598p-4,
+                                      0x1.249439d39e49bp-3,
+                                      0x1.999996279df1bp-3,
+                                      0x1.5555555673427p-2,
+                                      0x1.fffffffffff1p-1},
+                                     0x1.e07c4da4caca5p-46};
 template <>
-inline constexpr fit<7> atanh_fit<7>{{0x1.58f62f4cf18c8p-4, 0x1.73201ac1d36bap-4, 0x1.c722e8a9a4a67p-4, 0x1.2492407ba4d55p-3, 0x1.999999a4b5e58p-3, 0x1.55555555529afp-2, 0x1.0000000000001p0}, 0x1.0001efffdfffdp-52};
+inline constexpr fit<7> atanh_fit<7>{{0x1.58f62f4cf18c8p-4,
+                                      0x1.73201ac1d36bap-4,
+                                      0x1.c722e8a9a4a67p-4,
+                                      0x1.2492407ba4d55p-3,
+                                      0x1.999999a4b5e58p-3,
+                                      0x1.55555555529afp-2,
+                                      0x1.0000000000001p0},
+                                     0x1.0001efffdfffdp-52};
 template <>
-inline constexpr fit<8> atanh_fit<8>{{0x1.2f0edc7587e42p-4, 0x1.39a0bb5f6a888p-4, 0x1.74664992e5112p-4, 0x1.c71c51d01b16cp-4, 0x1.249249424137p-3, 0x1.999999997f6f8p-3, 0x1.5555555555594p-2, 0x1p0}, 0x1.79b4007eb7239p-60};
+inline constexpr fit<8> atanh_fit<8>{{0x1.2f0edc7587e42p-4,
+                                      0x1.39a0bb5f6a888p-4,
+                                      0x1.74664992e5112p-4,
+                                      0x1.c71c51d01b16cp-4,
+                                      0x1.249249424137p-3,
+                                      0x1.999999997f6f8p-3,
+                                      0x1.5555555555594p-2,
+                                      0x1p0},
+                                     0x1.79b4007eb7239p-60};
 template <>
-inline constexpr fit<9> atanh_fit<9>{{0x1.0f06fb5b1db9dp-4, 0x1.0f6810080bc8bp-4, 0x1.3b201afa8f7ap-4, 0x1.745ce202ec9dfp-4, 0x1.c71c724aa99p-4, 0x1.249249243a198p-3, 0x1.9999999999d0bp-3, 0x1.5555555555555p-2, 0x1p0}, 0x1.55ba6bd02e1c4p-67};
-inline constexpr std::array<double, 8> atanh_err{0x1.75a1ff82e4832p-16, 0x1.fe432d4c2c57fp-24, 0x1.7b76e1ea45477p-31, 0x1.28e23f31bfff9p-38, 0x1.e07c4da4caca5p-46, 0x1.0001efffdfffdp-52, 0x1.79b4007eb7239p-60, 0x1.55ba6bd02e1c4p-67}; // index terms − min
+inline constexpr fit<9>                atanh_fit<9>{{0x1.0f06fb5b1db9dp-4,
+                                                     0x1.0f6810080bc8bp-4,
+                                                     0x1.3b201afa8f7ap-4,
+                                                     0x1.745ce202ec9dfp-4,
+                                                     0x1.c71c724aa99p-4,
+                                                     0x1.249249243a198p-3,
+                                                     0x1.9999999999d0bp-3,
+                                                     0x1.5555555555555p-2,
+                                                     0x1p0},
+                                                    0x1.55ba6bd02e1c4p-67};
+inline constexpr std::array<double, 8> atanh_err{0x1.75a1ff82e4832p-16,
+                                                 0x1.fe432d4c2c57fp-24,
+                                                 0x1.7b76e1ea45477p-31,
+                                                 0x1.28e23f31bfff9p-38,
+                                                 0x1.e07c4da4caca5p-46,
+                                                 0x1.0001efffdfffdp-52,
+                                                 0x1.79b4007eb7239p-60,
+                                                 0x1.55ba6bd02e1c4p-67}; // index terms − min
 
 // atan t ≈ t·q(t²) on |t| ≤ t_max: 2 to 11 terms.
 inline constexpr int atan_min = 2, atan_max = 11;
@@ -14262,24 +14515,88 @@ inline constexpr fit<N> atan_fit{};
 template <>
 inline constexpr fit<2> atan_fit<2>{{-0x1.4749fa4a7a38cp-2, 0x1.fff01c00cee56p-1}, 0x1.fc83bf5b0de45p-14};
 template <>
-inline constexpr fit<3> atan_fit<3>{{0x1.7c00117830691p-3, -0x1.54f16b7f2c87ap-2, 0x1.ffffcd868369fp-1}, 0x1.93cef3120b229p-20};
+inline constexpr fit<3> atan_fit<3>{{0x1.7c00117830691p-3, -0x1.54f16b7f2c87ap-2, 0x1.ffffcd868369fp-1},
+                                    0x1.93cef3120b229p-20};
 template <>
-inline constexpr fit<4> atan_fit<4>{{-0x1.0662c4e371612p-3, 0x1.9847e7f645f5ap-3, -0x1.5552f0bd22e14p-2, 0x1.ffffff517e7c8p-1}, 0x1.5d05f803725d3p-26};
+inline constexpr fit<4> atan_fit<4>{
+    {-0x1.0662c4e371612p-3, 0x1.9847e7f645f5ap-3, -0x1.5552f0bd22e14p-2, 0x1.ffffff517e7c8p-1}, 0x1.5d05f803725d3p-26};
 template <>
-inline constexpr fit<5> atan_fit<5>{{0x1.8a65b28a0e347p-4, -0x1.22b999a56a501p-3, 0x1.998dabc559293p-3, -0x1.555547c2638eep-2, 0x1.fffffffd857a1p-1}, 0x1.3d4562f308be7p-32};
+inline constexpr fit<5> atan_fit<5>{
+    {0x1.8a65b28a0e347p-4, -0x1.22b999a56a501p-3, 0x1.998dabc559293p-3, -0x1.555547c2638eep-2, 0x1.fffffffd857a1p-1},
+    0x1.3d4562f308be7p-32};
 template <>
-inline constexpr fit<6> atan_fit<6>{{-0x1.37be25d4483c6p-4, 0x1.c265fd167d69ep-4, -0x1.247c3f678e2a5p-3, 0x1.99993bb683f34p-3, -0x1.5555550bebb98p-2, 0x1.fffffffff6ae4p-1}, 0x1.2a3a873c06871p-38};
+inline constexpr fit<6> atan_fit<6>{{-0x1.37be25d4483c6p-4,
+                                     0x1.c265fd167d69ep-4,
+                                     -0x1.247c3f678e2a5p-3,
+                                     0x1.99993bb683f34p-3,
+                                     -0x1.5555550bebb98p-2,
+                                     0x1.fffffffff6ae4p-1},
+                                    0x1.2a3a873c06871p-38};
 template <>
-inline constexpr fit<7> atan_fit<7>{{0x1.fd9a2ee33d7c2p-5, -0x1.6eabac1075814p-4, 0x1.c6d6a3a5525a2p-4, -0x1.24916b79e52cbp-3, 0x1.999996f841596p-3, -0x1.55555553d4e83p-2, 0x1.ffffffffffdc2p-1}, 0x1.1f1b97aa401b7p-44};
+inline constexpr fit<7> atan_fit<7>{{0x1.fd9a2ee33d7c2p-5,
+                                     -0x1.6eabac1075814p-4,
+                                     0x1.c6d6a3a5525a2p-4,
+                                     -0x1.24916b79e52cbp-3,
+                                     0x1.999996f841596p-3,
+                                     -0x1.55555553d4e83p-2,
+                                     0x1.ffffffffffdc2p-1},
+                                    0x1.1f1b97aa401b7p-44};
 template <>
-inline constexpr fit<8> atan_fit<8>{{-0x1.aa8f6c47f36f3p-5, 0x1.34711ca5792p-4, -0x1.73f8650c700a6p-4, 0x1.c7191a586cb9p-4, -0x1.24924164daf8ap-3, 0x1.99999987e3e9p-3, -0x1.555555554d98ap-2, 0x1.ffffffffffff7p-1}, 0x1.20022dffbfff9p-50};
+inline constexpr fit<8> atan_fit<8>{{-0x1.aa8f6c47f36f3p-5,
+                                     0x1.34711ca5792p-4,
+                                     -0x1.73f8650c700a6p-4,
+                                     0x1.c7191a586cb9p-4,
+                                     -0x1.24924164daf8ap-3,
+                                     0x1.99999987e3e9p-3,
+                                     -0x1.555555554d98ap-2,
+                                     0x1.ffffffffffff7p-1},
+                                    0x1.20022dffbfff9p-50};
 template <>
-inline constexpr fit<9> atan_fit<9>{{0x1.6c31316c8abafp-5, -0x1.09a36129cdc3ap-4, 0x1.3a8edf8218b3ep-4, -0x1.7457a52f6add7p-4, 0x1.c71c5040a7db8p-4, -0x1.249248eb37de3p-3, 0x1.999999993a447p-3, -0x1.55555555553a1p-2, 0x1p0}, 0x1.3b7a990068329p-56};
+inline constexpr fit<9> atan_fit<9>{{0x1.6c31316c8abafp-5,
+                                     -0x1.09a36129cdc3ap-4,
+                                     0x1.3a8edf8218b3ep-4,
+                                     -0x1.7457a52f6add7p-4,
+                                     0x1.c71c5040a7db8p-4,
+                                     -0x1.249248eb37de3p-3,
+                                     0x1.999999993a447p-3,
+                                     -0x1.55555555553a1p-2,
+                                     0x1p0},
+                                    0x1.3b7a990068329p-56};
 template <>
-inline constexpr fit<10> atan_fit<10>{{-0x1.3aabca60ff059p-5, 0x1.d14b23cbe6e22p-5, -0x1.1064a56048206p-4, 0x1.3b0b25b24604bp-4, -0x1.745cd40ae4cf5p-4, 0x1.c71c70865582dp-4, -0x1.24924922e001bp-3, 0x1.9999999997573p-3, -0x1.555555555554dp-2, 0x1p0}, 0x1.372588bf28f75p-62};
+inline constexpr fit<10> atan_fit<10>{{-0x1.3aabca60ff059p-5,
+                                       0x1.d14b23cbe6e22p-5,
+                                       -0x1.1064a56048206p-4,
+                                       0x1.3b0b25b24604bp-4,
+                                       -0x1.745cd40ae4cf5p-4,
+                                       0x1.c71c70865582dp-4,
+                                       -0x1.24924922e001bp-3,
+                                       0x1.9999999997573p-3,
+                                       -0x1.555555555554dp-2,
+                                       0x1p0},
+                                      0x1.372588bf28f75p-62};
 template <>
-inline constexpr fit<11> atan_fit<11>{{0x1.109f856507578p-5, -0x1.9c1021880a1f6p-5, 0x1.e00f2d1d6329bp-5, -0x1.1102f90079ed8p-4, 0x1.3b1323771f976p-4, -0x1.745d13a7e9814p-4, 0x1.c71c71b837cb8p-4, -0x1.24924924802fdp-3, 0x1.999999999982ep-3, -0x1.5555555555555p-2, 0x1p0}, 0x1.a029c383109dp-67};
-inline constexpr std::array<double, 10> atan_err{0x1.fc83bf5b0de45p-14, 0x1.93cef3120b229p-20, 0x1.5d05f803725d3p-26, 0x1.3d4562f308be7p-32, 0x1.2a3a873c06871p-38, 0x1.1f1b97aa401b7p-44, 0x1.20022dffbfff9p-50, 0x1.3b7a990068329p-56, 0x1.372588bf28f75p-62, 0x1.a029c383109dp-67}; // index terms − min
+inline constexpr fit<11>                atan_fit<11>{{0x1.109f856507578p-5,
+                                                      -0x1.9c1021880a1f6p-5,
+                                                      0x1.e00f2d1d6329bp-5,
+                                                      -0x1.1102f90079ed8p-4,
+                                                      0x1.3b1323771f976p-4,
+                                                      -0x1.745d13a7e9814p-4,
+                                                      0x1.c71c71b837cb8p-4,
+                                                      -0x1.24924924802fdp-3,
+                                                      0x1.999999999982ep-3,
+                                                      -0x1.5555555555555p-2,
+                                                      0x1p0},
+                                                     0x1.a029c383109dp-67};
+inline constexpr std::array<double, 10> atan_err{0x1.fc83bf5b0de45p-14,
+                                                 0x1.93cef3120b229p-20,
+                                                 0x1.5d05f803725d3p-26,
+                                                 0x1.3d4562f308be7p-32,
+                                                 0x1.2a3a873c06871p-38,
+                                                 0x1.1f1b97aa401b7p-44,
+                                                 0x1.20022dffbfff9p-50,
+                                                 0x1.3b7a990068329p-56,
+                                                 0x1.372588bf28f75p-62,
+                                                 0x1.a029c383109dp-67}; // index terms − min
 
 } // namespace beman::inside::math::detail::fp::minimax
 // clang-format on
@@ -14467,6 +14784,25 @@ consteval int terms_for(int T, int Max, F trunc) {
     return Max;
 }
 
+// The fewest terms of a minimax fit (math/detail/minimax.hpp) whose
+// certified error is at most 2^-T, from its errors by terms − min; the most
+// it has past them.
+template <std::size_t M>
+consteval int fit_terms(int T, int min, const std::array<double, M>& errs) {
+    for (std::size_t i = 0; i + 1 < M; ++i)
+        if (errs[i] <= pow_n(0.5, T))
+            return min + static_cast<int>(i);
+    return min + static_cast<int>(M) - 1;
+}
+// A fit as a poly for horner_error: its coefficients are the doubles
+// themselves, exact (Err 0); the fit's own Err is the approximation term.
+template <std::size_t N>
+consteval poly<N> exact_poly(const minimax::fit<N>& f) {
+    poly<N> p{};
+    p.C = f.C;
+    return p;
+}
+
 // The target of the full kernels: truncation below 2^-58, a thirty-second
 // of their rounding error.
 inline constexpr int full_bits = 58;
@@ -14586,27 +14922,25 @@ struct trig_k {
 };
 
 //---------------------------------------------------------------------------
-// e^r on |r| ≤ r_exp: Σ r^k/k!, whose tail is at most r^n/n!·e^|r|.
+// e^r on |r| ≤ r_exp: the minimax fit of N terms (math/detail/minimax.hpp),
+// within its certified Err of e^r, relatively.
 //---------------------------------------------------------------------------
-inline constexpr double r_exp   = 0x1.63p-2; // 0.34668 ≥ ln2/2 + 2^-40
+inline constexpr double r_exp   = 0x1.63p-2; // 0.34668 ≥ ln2/2 + 2^-40 (the fit's interval)
 inline constexpr double exp_max = 1.4144;    // ≥ e^r_exp
-constexpr double        exp_trunc(int n) { return pow_n(r_exp, n) / factorial(n) * exp_max * exp_max; }
 template <int T>
-inline constexpr int exp_terms = terms_for(T, 15, exp_trunc);
+inline constexpr int exp_terms = fit_terms(T, minimax::exp_min, minimax::exp_err);
 
-template <int N>
-inline constexpr poly<N> exp_c = series<N>([](int k) { return term{1.0, factorial(k)}; });
-
-// Relative error of exp_poly at the r it is given (e^r ≥ 1/exp_max).
+// Relative error of exp_poly at the r it is given: Horner's, absolute, over
+// e^r ≥ 1/exp_max, and the fit's Err.
 template <int N>
 inline constexpr double exp_poly_rel = [] {
-    const horner_bound h = horner_error(exp_c<N>, r_exp, 0);
-    return up(h.Err * exp_max + exp_trunc(N));
+    const horner_bound h = horner_error(exact_poly(minimax::exp_fit<N>), r_exp, 0);
+    return up(h.Err * exp_max + minimax::exp_fit<N>.Err);
 }();
 
 template <int N>
 [[gnu::always_inline]] inline double exp_poly(double r) {
-    return horner(r, exp_c<N>.C);
+    return horner(r, minimax::exp_fit<N>.C);
 }
 
 // sinh a = a + a·z·P(z) for 0 ≤ a < ln 2, z = a² ≤ z_sinh, P = Σ z^k/(2k+3)!.
@@ -14722,18 +15056,18 @@ struct exp_k {
 
 //---------------------------------------------------------------------------
 // ln x for x > 0: frexp to m ∈ [√½, √2), ln x = e·ln2 + 2·atanh f with
-// f = (m − 1)/(m + 1), |f| ≤ f_max, and 2·atanh f = 2f·Σ f^2k/(2k+1),
-// whose tail is at most f^2n/((2n+1)(1 − f²)) of the sum (which is ≥ 1).
+// f = (m − 1)/(m + 1), |f| ≤ f_max: 2·atanh f ≈ 2f·q(f²), the minimax fit
+// over |f| ≤ f_max. The Hi + Lo form (value_hl) keeps the series
+// 2f·Σ f^2k/(2k+1), whose tail is at most f^2n/((2n+1)(1 − f²)) of the sum
+// (which is ≥ 1).
 //---------------------------------------------------------------------------
-inline constexpr double f_max = 0.1716; // ≥ (√2 − 1)/(√2 + 1) = 0.171573
+inline constexpr double f_max = 0.1716; // ≥ (√2 − 1)/(√2 + 1) = 0.171573 (the fit's interval)
 inline constexpr double z_log = f_max * f_max;
 constexpr double        log_trunc(int n) { return pow_n(z_log, n) / ((2 * n + 1) * (1 - z_log)); }
 template <int T>
 inline constexpr int log_terms = terms_for(T, 11, log_trunc);
 
-template <int N>
-inline constexpr poly<N> log_c = series<N>([](int k) { return term{1.0, 2.0 * k + 1}; });
-// log_c without its constant term, over z: Σ z^k/(2k+3).
+// The series without its constant term, over z: Σ z^k/(2k+3).
 template <int N>
 inline constexpr poly<N> log_tail_c = series<N>([](int k) { return term{1.0, 2.0 * k + 3}; });
 
@@ -14743,12 +15077,16 @@ inline constexpr poly<N> log_tail_c = series<N>([](int k) { return term{1.0, 2.0
 // e·Hi is exact and the two fmas round once each, relative to |v|: for
 // e ≠ 0, |v| ≥ ln2/2 ≥ |2 atanh f|, and |e|·ln2_res ≤ 3·ln2_res·|v|;
 // for e = 0 both fmas return 2f·p exactly.
+// value's polynomial is the minimax fit of atanh f / f (math/detail/minimax.hpp)
+// of N terms, within its certified Err; value_hl's is the series' tail of NT
+// terms (log_tail_c), whose truncation is log_trunc(NT).
 template <int T>
 struct log_k {
-    static constexpr int    N    = log_terms<T>;
+    static constexpr int    N    = fit_terms(T, minimax::atanh_min, minimax::atanh_err);
+    static constexpr int    NT   = log_terms<T>;
     static constexpr double MRel = [] {
-        const horner_bound h = horner_error(log_c<N>, z_log, unit_roundoff);
-        return h.Err + log_trunc(N) + unit_roundoff + 2 * unit_roundoff / (1 - z_log);
+        const horner_bound h = horner_error(exact_poly(minimax::atanh_fit<N>), z_log, unit_roundoff);
+        return h.Err + minimax::atanh_fit<N>.Err + unit_roundoff + 2 * unit_roundoff / (1 - z_log);
     }();
     static constexpr double Rel   = up(MRel + 2 * unit_roundoff + 3 * ln2_res);
     static constexpr double Rel2  = up(Rel + unit_roundoff + log2e_err);
@@ -14768,7 +15106,7 @@ struct log_k {
         int          e;
         const double m    = mantissa(x, e);
         const double f    = (m - 1.0) / (m + 1.0);
-        const double logm = 2.0 * f * horner(f * f, log_c<N>.C);
+        const double logm = 2.0 * f * horner(f * f, minimax::atanh_fit<N>.C);
         const double r    = fma(static_cast<double>(e), ln2_hi, logm);
         return fma(static_cast<double>(e), ln2_lo, r);
     }
@@ -14786,9 +15124,9 @@ struct log_k {
     // - e ≠ 0 (|ln x| ≥ 0.3466·|e|, |2f| ≤ 0.3432): that, plus the two
     //   additions of the low parts, e·Lo's rounding and ln2_res, per |e|.
     static constexpr double HlRel = [] {
-        const horner_bound h = horner_error(log_tail_c<N - 1>, z_log, unit_roundoff);
+        const horner_bound h = horner_error(log_tail_c<NT - 1>, z_log, unit_roundoff);
         const double       t = z_log * h.Mag + 2 * unit_roundoff; // |T|/|2f|
-        const double a2f = 2 * unit_roundoff * z_log / (1 - z_log) + 4 * unit_roundoff2 / (1 - z_log) + log_trunc(N) +
+        const double a2f = 2 * unit_roundoff * z_log / (1 - z_log) + 4 * unit_roundoff2 / (1 - z_log) + log_trunc(NT) +
                            z_log * (h.Err + unit_roundoff * h.Mag) + unit_roundoff * t;
         const double per_e = 2 * unit_roundoff * (0.7 * unit_roundoff + ln2_lo) + unit_roundoff * ln2_lo + ln2_res;
         const double rest  = 2 * unit_roundoff * (0.35 * unit_roundoff + 0.3432 * t);
@@ -14803,7 +15141,7 @@ struct log_k {
         const double fl = fma(-f, bl, fma(-f, b, a)) / b;
         const double z  = f * f;
         const double f2 = f + f;
-        const double t  = fma(fenced(f2 * z), horner(z, log_tail_c<N - 1>.C), fl + fl);
+        const double t  = fma(fenced(f2 * z), horner(z, log_tail_c<NT - 1>.C), fl + fl);
         const double ed = static_cast<double>(e);
         const hilo   h  = two_sum(ed * ln2_hi, f2);
         const hilo   v  = fast_two_sum(h.Hi, (h.Lo + ed * ln2_lo) + t);
@@ -14907,18 +15245,12 @@ struct log_k {
 
 //---------------------------------------------------------------------------
 // atan: |x| > 1 through π/2 − atan(1/x); then a > tan(π/12) through the
-// π/6 addition formula, so |t| ≤ t_max; atan t = t·Σ (−1)^k t^2k/(2k+1),
-// alternating with falling terms.
+// π/6 addition formula, so |t| ≤ t_max; atan t ≈ t·q(t²), the minimax fit
+// over |t| ≤ t_max.
 //---------------------------------------------------------------------------
-inline constexpr double t_max    = 0.2681; // ≥ tan(π/12) = 0.267949
+inline constexpr double t_max    = 0.2681; // ≥ tan(π/12) = 0.267949 (the fit's interval)
 inline constexpr double z_atan   = t_max * t_max;
 inline constexpr double atan_min = 1 - z_atan / 3; // ≤ atan t / t
-constexpr double        atan_trunc(int n) { return pow_n(z_atan, n) / (2 * n + 1) / atan_min; }
-template <int T>
-inline constexpr int atan_terms = terms_for(T, 15, atan_trunc);
-
-template <int N>
-inline constexpr poly<N> atan_c = series<N>([](int k) { return term{k % 2 ? -1.0 : 1.0, 2.0 * k + 1}; });
 
 // atan(n/d), n, d ≥ 0, with at most one division: n ≤ d after a swap (the
 // swap is π/2 − r), and where n/d > tan(π/12) the π/6 step folds into the
@@ -14933,19 +15265,23 @@ inline constexpr poly<N> atan_c = series<N>([](int k) { return term{k % 2 ? -1.0
 // π/4; ½ more for a quotient rounded before the step (none is now, so this
 // is slack); π/2 − r by 0.56 (the constant) and π/2 (the rounding); and
 // t·(Horner + truncation) of the polynomial itself.
+// The polynomial is the minimax fit of atan t / t (math/detail/minimax.hpp)
+// of N terms: within Err·(atan t / t) ≤ Err of it, absolutely.
 template <int T>
 struct atan_k {
-    static constexpr int    N       = atan_terms<T>;
+    static constexpr int    N       = fit_terms(T, minimax::atan_min, minimax::atan_err);
     static constexpr double PolyAbs = [] {
-        const horner_bound h = horner_error(atan_c<N>, z_atan, unit_roundoff);
-        return h.Err + atan_trunc(N) * atan_min;
+        const horner_bound h = horner_error(exact_poly(minimax::atan_fit<N>), z_atan, unit_roundoff);
+        return h.Err + minimax::atan_fit<N>.Err;
     }();
     static constexpr double Rel = up(PolyAbs / atan_min + unit_roundoff);
     static constexpr double Abs =
         up(t_max * PolyAbs + 3 * t_max * unit_roundoff + inv_sqrt3_err * 0.75 + pi_sixth_err + r_trig * unit_roundoff +
            0.5 * unit_roundoff + pi_half_err + 1.5708 * unit_roundoff);
 
-    [[gnu::always_inline]] static double core(double t, double off) { return fma(t, horner(t * t, atan_c<N>.C), off); }
+    [[gnu::always_inline]] static double core(double t, double off) {
+        return fma(t, horner(t * t, minimax::atan_fit<N>.C), off);
+    }
     // atan(lo/hi), 0 ≤ lo ≤ hi, hi > 0.
     [[gnu::always_inline]] static double reduced(double lo, double hi) {
         if (lo > tan_pi12 * hi)
@@ -15002,19 +15338,8 @@ struct atan_k {
 // exact) and s = √u, and asin s = s·q(u): u is s² exactly, so q takes it
 // without a rounded square.
 //---------------------------------------------------------------------------
-template <int T>
-consteval int asin_terms() {
-    for (int n = minimax::asin_min; n < minimax::asin_max; ++n)
-        if (minimax::asin_err[n - minimax::asin_min] <= pow_n(0.5, T))
-            return n;
-    return minimax::asin_max;
-}
 template <int N>
-inline constexpr poly<N> asin_q = [] {
-    poly<N> p{};
-    p.C = minimax::asin_fit<N>.C; // exact doubles: Err is the fit's
-    return p;
-}();
+inline constexpr poly<N> asin_q = exact_poly(minimax::asin_fit<N>);
 
 // Relative errors, in units of the value:
 // - |x| ≤ ½ (Lo): q at fl(x²) (Horner's error over q ≥ 1, with the
@@ -15028,7 +15353,7 @@ inline constexpr poly<N> asin_q = [] {
 // W/2, the fma, π's constant over 2π/3).
 template <int T>
 struct asin_k {
-    static constexpr int    N     = asin_terms<T>();
+    static constexpr int    N     = fit_terms(T, minimax::asin_min, minimax::asin_err);
     static constexpr double Err   = minimax::asin_fit<N>.Err;
     static constexpr double LoRel = up(horner_error(asin_q<N>, 0.25, unit_roundoff).Err + Err + unit_roundoff);
     static constexpr double W     = up(horner_error(asin_q<N>, 0.25, 0).Err + Err + 2 * unit_roundoff);
