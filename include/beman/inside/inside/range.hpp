@@ -36,22 +36,32 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
                   "inside_range: the grid has more points than an iterator difference (int64) can count");
     static constexpr umax slot_count = detail::max_index_of<number_type> + 1;
 
+  private:
+    // The slot and position in 32 bits where the slot count fits: a loop over
+    // the range then vectorizes in 32-bit lanes, as a native counting loop
+    // does (64-bit ones hold half as many).
+    static constexpr bool narrow = slot_count <= umax{0x7fff'ffff};
+    using slot_t                 = std::conditional_t<narrow, std::uint32_t, umax>;
+    using pos_t                  = std::conditional_t<narrow, std::int32_t, imax>;
+
+  public:
     struct iterator {
         using iterator_concept  = std::random_access_iterator_tag;
         using iterator_category = std::input_iterator_tag;
         using value_type        = V;
         using difference_type   = imax;
 
-        umax Start{0}; // slot of the first element (the range wraps past the top)
-        imax Pos{0};   // position in [0, slot_count]; the loop variable
+        slot_t Start{0}; // slot of the first element (the range wraps past the top)
+        pos_t  Pos{0};   // position in [0, slot_count]; the loop variable
 
         constexpr iterator() = default;
-        constexpr iterator(umax s, imax p) : Start{s}, Pos{p} {}
+        constexpr iterator(umax s, imax p) : Start{static_cast<slot_t>(s)}, Pos{static_cast<pos_t>(p)} {}
 
         // Grid slot of this position: Start + Pos, wrapped once (no overflow).
         constexpr umax slot() const {
-            const umax p = static_cast<umax>(Pos);
-            return p < slot_count - Start ? Start + p : p - (slot_count - Start);
+            constexpr slot_t count = static_cast<slot_t>(slot_count);
+            const slot_t     p     = static_cast<slot_t>(Pos);
+            return p < count - Start ? Start + p : p - (count - Start);
         }
 
         [[nodiscard]] constexpr value_type operator*() const {
@@ -85,11 +95,11 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
             return t;
         }
         constexpr iterator& operator+=(difference_type n) {
-            Pos += n;
+            Pos = static_cast<pos_t>(Pos + n);
             return *this;
         }
         constexpr iterator& operator-=(difference_type n) {
-            Pos -= n;
+            Pos = static_cast<pos_t>(Pos - n);
             return *this;
         }
 
@@ -105,9 +115,11 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
         }
         [[nodiscard]] friend constexpr iterator operator+(difference_type n, iterator it) { return it + n; }
 
-        [[nodiscard]] constexpr difference_type operator-(iterator o) const { return Pos - o.Pos; }
-        [[nodiscard]] constexpr bool            operator==(iterator o) const { return Pos == o.Pos; }
-        [[nodiscard]] constexpr auto            operator<=>(iterator o) const { return Pos <=> o.Pos; }
+        [[nodiscard]] constexpr difference_type operator-(iterator o) const {
+            return static_cast<difference_type>(Pos) - o.Pos;
+        }
+        [[nodiscard]] constexpr bool operator==(iterator o) const { return Pos == o.Pos; }
+        [[nodiscard]] constexpr auto operator<=>(iterator o) const { return Pos <=> o.Pos; }
     };
 
     umax StartIndex{0};

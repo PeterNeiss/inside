@@ -352,6 +352,22 @@ template <insidable First, insidable... Rest>
     return (first * ... * rest);
 }
 
+namespace detail {
+// How many raws of B a 32-bit accumulator sums without overflow (unsigned
+// for raws ≥ 0, else signed), at most 2^30: 32-bit lanes are twice as many
+// per vector register as imax ones. 0 when a raw passes the lane.
+template <insidable B>
+inline constexpr imax lane32_block = [] {
+    const grid_int lo = raw_lo_exact<B>, hi = raw_hi_exact<B>;
+    const grid_int mag   = lo.negative() && hi < -lo ? -lo : hi;
+    const umax     limit = lo.negative() ? umax{0x7fff'ffff} : umax{0xffff'ffff};
+    if (grid_int{limit} < mag)
+        return imax{0};
+    const umax m = static_cast<umax>(mag);
+    return m == 0 ? imax{1} << 30 : static_cast<imax>(std::min<umax>(limit / m, umax{1} << 30));
+}();
+} // namespace detail
+
 //---------------------------------------------------------------------------
 // sum<Target> — bulk reduction with ONE deferred range check. Per-element
 // `target += b` re-validates every step (blocks vectorization); this computes
@@ -359,7 +375,8 @@ template <insidable First, insidable... Rest>
 // (semantic difference: the *total* is validated, not every prefix).
 // Notched integer raws (wide ones too) sum value indices exactly — Σvalue =
 // Notch·ΣJ — in a wide integer with 64 bits of headroom for the count; ≤32-bit
-// raws add in imax blocks of 2^30 elements, the loop that vectorizes.
+// raws add in blocks, the loop that vectorizes: in 32-bit lanes where a
+// block of at least 64 fits them, else in imax blocks of 2^30 elements.
 // Continuous elements add as 64-bit
 // rationals; a total past that reports overflow through Target's policy.
 //---------------------------------------------------------------------------
@@ -390,11 +407,22 @@ template <insidable Target, std::ranges::input_range Rng>
                 // reachable iterator, has no distance to it: the loop below.)
                 if constexpr (std::ranges::random_access_range<Rng> &&
                               std::sized_sentinel_for<std::ranges::sentinel_t<Rng>, std::ranges::iterator_t<Rng>>) {
-                    const imax block = std::min<imax>(end - it, imax{1} << 30);
-                    for (imax j = 0; j < block; ++j)
-                        acc += detail::raw_imax(it[j]);
-                    it += block;
-                    cnt = block;
+                    if constexpr (constexpr imax lanes = detail::lane32_block<B>; lanes >= 64) {
+                        using L = std::conditional_t<detail::raw_lo_exact<B>.negative(), std::int32_t, std::uint32_t>;
+                        const imax block = std::min<imax>(end - it, lanes);
+                        L          a     = 0;
+                        for (imax j = 0; j < block; ++j)
+                            a += static_cast<L>(it[j].raw());
+                        acc = static_cast<imax>(a);
+                        it += block;
+                        cnt = block;
+                    } else {
+                        const imax block = std::min<imax>(end - it, imax{1} << 30);
+                        for (imax j = 0; j < block; ++j)
+                            acc += detail::raw_imax(it[j]);
+                        it += block;
+                        cnt = block;
+                    }
                 } else {
                     for (; it != end && cnt < (imax{1} << 30); ++it, ++cnt)
                         acc += detail::raw_imax(*it);

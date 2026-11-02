@@ -422,6 +422,32 @@ TEST(InsideArithmeticTest, beman_inside_sum_bulk_reduction_with_one_deferred_che
     using cont = inside<{{0, 1}, max_denominator{10}}>;
     std::vector<cont> c{cont{rational{3, 5}}, cont{rational{7, 10}}};
     ASSERT_THROW((void)beman::inside::sum<cont>(c), inside_error);
+
+    // Blocks: 32-bit lanes take ⌊(2^32 − 1)/max raw⌋ elements (unsigned)
+    // or ⌊(2^31 − 1)/max |raw|⌋ (signed) at a time; ranges longer than a
+    // block, at every raw's maximum, add exactly.
+    using u200k = inside<{0, 200'000}>;
+    static_assert(detail::lane32_block<u200k> == 21474);
+    std::vector<u200k> hi(50'000, u200k{200'000});
+    using total_t = inside<{0, 20'000'000'000}>;
+    ASSERT_TRUE(beman::inside::sum<total_t>(hi) == 10'000'000'000);
+    using s100k = inside<{-100'000, 100'000}>;
+    static_assert(detail::lane32_block<s100k> == 21474);
+    std::vector<s100k> lo(50'001, s100k{-100'000});
+    lo.back()          = 7;
+    using signed_total = inside<{-10'000'000'000, 10'000'000'000}>;
+    ASSERT_TRUE(beman::inside::sum<signed_total>(lo) == -4'999'999'993);
+    // Q-format index raws (offsets from Lower) in lanes too.
+    using qi = inside<{{-8, 8}, per<16384>}>;
+    std::vector<qi> qv(40'000, qi{rational{-3, 16384}});
+    using qtotal = inside<{{-200'000, 200'000}, per<16384>}>;
+    ASSERT_EQ(rational{beman::inside::sum<qtotal>(qv)}, (rational{-120'000, 16384}));
+    // Raws near 2^31: a 32-bit lane holds two, too few, so imax blocks.
+    using near = inside<{0, 0x7fff'fff0}>;
+    static_assert(detail::lane32_block<near> == 2);
+    std::vector<near> nv(5, near{0x7fff'fff0});
+    using ntotal = inside<{0, 0x7'ffff'ffff}>;
+    ASSERT_TRUE(beman::inside::sum<ntotal>(nv) == 5 * imax{0x7fff'fff0});
 }
 
 // Issue #7 closure (user decision 2026-06-12): `inside op raw-scalar` is the

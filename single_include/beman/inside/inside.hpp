@@ -10607,6 +10607,22 @@ template <insidable First, insidable... Rest>
     return (first * ... * rest);
 }
 
+namespace detail {
+// How many raws of B a 32-bit accumulator sums without overflow (unsigned
+// for raws ≥ 0, else signed), at most 2^30: 32-bit lanes are twice as many
+// per vector register as imax ones. 0 when a raw passes the lane.
+template <insidable B>
+inline constexpr imax lane32_block = [] {
+    const grid_int lo = raw_lo_exact<B>, hi = raw_hi_exact<B>;
+    const grid_int mag   = lo.negative() && hi < -lo ? -lo : hi;
+    const umax     limit = lo.negative() ? umax{0x7fff'ffff} : umax{0xffff'ffff};
+    if (grid_int{limit} < mag)
+        return imax{0};
+    const umax m = static_cast<umax>(mag);
+    return m == 0 ? imax{1} << 30 : static_cast<imax>(std::min<umax>(limit / m, umax{1} << 30));
+}();
+} // namespace detail
+
 //---------------------------------------------------------------------------
 // sum<Target> — bulk reduction with ONE deferred range check. Per-element
 // `target += b` re-validates every step (blocks vectorization); this computes
@@ -10614,7 +10630,8 @@ template <insidable First, insidable... Rest>
 // (semantic difference: the *total* is validated, not every prefix).
 // Notched integer raws (wide ones too) sum value indices exactly — Σvalue =
 // Notch·ΣJ — in a wide integer with 64 bits of headroom for the count; ≤32-bit
-// raws add in imax blocks of 2^30 elements, the loop that vectorizes.
+// raws add in blocks, the loop that vectorizes: in 32-bit lanes where a
+// block of at least 64 fits them, else in imax blocks of 2^30 elements.
 // Continuous elements add as 64-bit
 // rationals; a total past that reports overflow through Target's policy.
 //---------------------------------------------------------------------------
@@ -10645,11 +10662,22 @@ template <insidable Target, std::ranges::input_range Rng>
                 // reachable iterator, has no distance to it: the loop below.)
                 if constexpr (std::ranges::random_access_range<Rng> &&
                               std::sized_sentinel_for<std::ranges::sentinel_t<Rng>, std::ranges::iterator_t<Rng>>) {
-                    const imax block = std::min<imax>(end - it, imax{1} << 30);
-                    for (imax j = 0; j < block; ++j)
-                        acc += detail::raw_imax(it[j]);
-                    it += block;
-                    cnt = block;
+                    if constexpr (constexpr imax lanes = detail::lane32_block<B>; lanes >= 64) {
+                        using L = std::conditional_t<detail::raw_lo_exact<B>.negative(), std::int32_t, std::uint32_t>;
+                        const imax block = std::min<imax>(end - it, lanes);
+                        L          a     = 0;
+                        for (imax j = 0; j < block; ++j)
+                            a += static_cast<L>(it[j].raw());
+                        acc = static_cast<imax>(a);
+                        it += block;
+                        cnt = block;
+                    } else {
+                        const imax block = std::min<imax>(end - it, imax{1} << 30);
+                        for (imax j = 0; j < block; ++j)
+                            acc += detail::raw_imax(it[j]);
+                        it += block;
+                        cnt = block;
+                    }
                 } else {
                     for (; it != end && cnt < (imax{1} << 30); ++it, ++cnt)
                         acc += detail::raw_imax(*it);
@@ -10891,22 +10919,32 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
                   "inside_range: the grid has more points than an iterator difference (int64) can count");
     static constexpr umax slot_count = detail::max_index_of<number_type> + 1;
 
+  private:
+    // The slot and position in 32 bits where the slot count fits: a loop over
+    // the range then vectorizes in 32-bit lanes, as a native counting loop
+    // does (64-bit ones hold half as many).
+    static constexpr bool narrow = slot_count <= umax{0x7fff'ffff};
+    using slot_t                 = std::conditional_t<narrow, std::uint32_t, umax>;
+    using pos_t                  = std::conditional_t<narrow, std::int32_t, imax>;
+
+  public:
     struct iterator {
         using iterator_concept  = std::random_access_iterator_tag;
         using iterator_category = std::input_iterator_tag;
         using value_type        = V;
         using difference_type   = imax;
 
-        umax Start{0}; // slot of the first element (the range wraps past the top)
-        imax Pos{0};   // position in [0, slot_count]; the loop variable
+        slot_t Start{0}; // slot of the first element (the range wraps past the top)
+        pos_t  Pos{0};   // position in [0, slot_count]; the loop variable
 
         constexpr iterator() = default;
-        constexpr iterator(umax s, imax p) : Start{s}, Pos{p} {}
+        constexpr iterator(umax s, imax p) : Start{static_cast<slot_t>(s)}, Pos{static_cast<pos_t>(p)} {}
 
         // Grid slot of this position: Start + Pos, wrapped once (no overflow).
         constexpr umax slot() const {
-            const umax p = static_cast<umax>(Pos);
-            return p < slot_count - Start ? Start + p : p - (slot_count - Start);
+            constexpr slot_t count = static_cast<slot_t>(slot_count);
+            const slot_t     p     = static_cast<slot_t>(Pos);
+            return p < count - Start ? Start + p : p - (count - Start);
         }
 
         [[nodiscard]] constexpr value_type operator*() const {
@@ -10940,11 +10978,11 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
             return t;
         }
         constexpr iterator& operator+=(difference_type n) {
-            Pos += n;
+            Pos = static_cast<pos_t>(Pos + n);
             return *this;
         }
         constexpr iterator& operator-=(difference_type n) {
-            Pos -= n;
+            Pos = static_cast<pos_t>(Pos - n);
             return *this;
         }
 
@@ -10960,9 +10998,11 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
         }
         [[nodiscard]] friend constexpr iterator operator+(difference_type n, iterator it) { return it + n; }
 
-        [[nodiscard]] constexpr difference_type operator-(iterator o) const { return Pos - o.Pos; }
-        [[nodiscard]] constexpr bool            operator==(iterator o) const { return Pos == o.Pos; }
-        [[nodiscard]] constexpr auto            operator<=>(iterator o) const { return Pos <=> o.Pos; }
+        [[nodiscard]] constexpr difference_type operator-(iterator o) const {
+            return static_cast<difference_type>(Pos) - o.Pos;
+        }
+        [[nodiscard]] constexpr bool operator==(iterator o) const { return Pos == o.Pos; }
+        [[nodiscard]] constexpr auto operator<=>(iterator o) const { return Pos <=> o.Pos; }
     };
 
     umax StartIndex{0};
