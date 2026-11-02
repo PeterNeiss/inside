@@ -256,19 +256,29 @@ static void bench_scalar_u8() {
 // compound ops — ++/-- and /= (Tier-1 optimization targets).
 //---------------------------------------------------------------------------
 static void bench_compound() {
-    auto inc = group("increment (u32 [0,200000])");
+    // A counter in a register, 1000 steps per run from a pool start: a
+    // static counter measured how its stores forward through memory, which
+    // depended on how GCC laid out each lambda, not on ++.
+    static const scalar_inputs cin{0, 199'999, 0, 0};
+    std::size_t                ci  = 0;
+    auto                       inc = group("increment 1000 (u32 [0,200000], per step)", 300);
+    inc.batch(1000);
     inc.run("native ++", [&] {
-        static std::uint32_t v = 0;
-        ++v;
-        if (v > 199'999)
-            v = 0;
+        auto v = static_cast<std::uint32_t>(cin.a[++ci & kMask]);
+        for (int k = 0; k < 1000; ++k) {
+            ++v;
+            if (v > 199'999)
+                v = 0;
+        }
         doNotOptimizeAway(v);
     });
     inc.run("inside ++", [&] {
-        static u200k v{0};
-        ++v;
-        if (v.raw() > 199'999)
-            v = 0;
+        u200k v{cin.a[++ci & kMask]};
+        for (int k = 0; k < 1000; ++k) {
+            ++v;
+            if (v.raw() > 199'999)
+                v = 0;
+        }
         doNotOptimizeAway(v.raw());
     });
     finish(inc);
@@ -714,10 +724,14 @@ static void bench_store_convert() {
         s9k    b = a;
         doNotOptimizeAway(b.raw());
     });
+    // The sources are built beforehand: constructing each from a rational
+    // cost more than the snap measured.
+    std::vector<tenths> tv(kMask + 1);
+    for (std::size_t j = 0; j <= kMask; ++j)
+        tv[j] = rational{static_cast<imax>((j * 7) % 1000), 10};
     cga.run("non-integer snap (1/10 -> 1/4 grid)", [&] {
         ++i;
-        tenths   a = rational{static_cast<imax>(i % 1000), 10};
-        quarters b = a.policy<snap>();
+        quarters b = tv[i & kMask].policy<snap>();
         doNotOptimizeAway(b.raw());
     });
     finish(cga);
@@ -1533,7 +1547,8 @@ int main(int argc, char** argv) {
                   "tables against a hand-rolled reduced int64 fraction (the mixed\n"
                   "integer/notch-offset add and cross-grid non-integer stores have folded\n"
                   "integer fast paths, gated on imax-safe spans); a rational RHS in a\n"
-                  "compound assign takes the same exact branch; `inside<checked>`\n"
+                  "compound assign adds to the raw when it is a whole number of notches,\n"
+                  "else takes the same exact branch; `inside<checked>`\n"
                   "element-wise loops keep a per-element range check — prefer `beman::inside::sum`'s\n"
                   "bulk check, which validates the total instead.\n\n";
 

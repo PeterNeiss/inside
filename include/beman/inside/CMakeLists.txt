@@ -52,6 +52,7 @@ target_sources(
                 math/detail/dd.hpp
                 math/detail/entry.hpp
                 math/detail/fp.hpp
+                math/detail/minimax.hpp
                 math/detail/tiers.hpp
                 units.hpp
                 units/constants.hpp

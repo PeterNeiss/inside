@@ -1629,6 +1629,14 @@ inline constexpr void cancel_gcd(umax& numerator, imax& denominator) {
 inline constexpr void cancel_gcd(umax& a, umax& b) {
     if (a <= 1 || b <= 1)
         return;
+    if (std::has_single_bit(a) || std::has_single_bit(b)) {
+        // A power of two on either side (every dyadic denominator):
+        // gcd = 2^ctz(a | b), no loop, no division.
+        const int s = std::countr_zero(a | b);
+        a >>= s;
+        b >>= s;
+        return;
+    }
     auto g = std::gcd(a, b);
     if (g <= 1)
         return;
@@ -1636,12 +1644,12 @@ inline constexpr void cancel_gcd(umax& a, umax& b) {
     b /= g;
 }
 
-[[nodiscard]] constexpr std::expected<rational, errc> operator+(const rational&, const rational&);
-[[nodiscard]] constexpr std::expected<rational, errc> operator/(const rational&, const rational&);
-[[nodiscard]] constexpr std::expected<rational, errc> operator-(const rational&, const rational&);
+[[nodiscard]] constexpr std::expected<rational, errc> operator+(rational, rational);
+[[nodiscard]] constexpr std::expected<rational, errc> operator/(rational, rational);
+[[nodiscard]] constexpr std::expected<rational, errc> operator-(rational, rational);
 
-[[nodiscard]] constexpr std::expected<rational, errc> operator*(const rational&, const rational&);
-[[nodiscard]] constexpr auto                          operator<=>(rational, rational) -> std::strong_ordering;
+[[nodiscard]] constexpr std::expected<rational, errc> operator*(rational, rational);
+[[nodiscard]] constexpr auto operator<=>(rational, rational) -> std::strong_ordering;
 
 // The value of a checked result. An error is raised like a failed checked
 // store (inside_error, or the installed handler; a compile error in constant
@@ -1696,7 +1704,7 @@ struct rational {
 
     // The values, not the members: equal members (two reduced values) answer
     // at once; anything else compares the fractions (a hand-built 2/2 equals 1).
-    [[nodiscard]] constexpr bool operator==(const rational& rhs) const {
+    [[nodiscard]] constexpr bool operator==(rational rhs) const {
         return (Num == rhs.Num && Den == rhs.Den) || (*this <=> rhs) == 0;
     }
     // Exact against a double too (rational{value} truncates one finer than
@@ -1733,10 +1741,10 @@ struct rational {
 
     // Compound-assign: forward to the checked binary op and unwrap it; an
     // error (overflow, a zero divisor) is raised (value_or_raise).
-    constexpr rational& operator+=(const rational& rhs);
-    constexpr rational& operator-=(const rational& rhs);
-    constexpr rational& operator*=(const rational& rhs);
-    constexpr rational& operator/=(const rational& rhs);
+    constexpr rational& operator+=(rational rhs);
+    constexpr rational& operator-=(rational rhs);
+    constexpr rational& operator*=(rational rhs);
+    constexpr rational& operator/=(rational rhs);
 
     // Unchecked arithmetic — caller takes responsibility for non-overflow
     // (and non-zero operand for div_unchecked / inv_unchecked).
@@ -1752,13 +1760,13 @@ struct rational {
     // std::unexpected at runtime); Checked=false
     // silently overflows — the caller must guarantee its absence.
     template <bool Checked, bool Loud = true>
-    static constexpr auto add_impl(const rational&, const rational&);
+    static constexpr auto add_impl(rational, rational);
     template <bool Checked, bool Loud = true>
-    static constexpr auto mul_impl(const rational&, const rational&);
+    static constexpr auto mul_impl(rational, rational);
     template <bool Checked, bool Loud = true>
-    static constexpr auto div_impl(const rational&, const rational&);
+    static constexpr auto div_impl(rational, rational);
     template <bool Checked, bool Loud = true>
-    static constexpr auto inv_impl(const rational&);
+    static constexpr auto inv_impl(rational);
 
   private:
     // The two domain errors of a denominator: 0 (undefined) and imax_min
@@ -1787,10 +1795,10 @@ struct rational {
     }
 };
 
-[[nodiscard]] constexpr std::expected<rational, errc> gcd(const rational&, const rational&);
+[[nodiscard]] constexpr std::expected<rational, errc> gcd(rational, rational);
 [[nodiscard]] constexpr rational                      abs(rational);
 
-[[nodiscard]] constexpr bool divides_evenly(const rational&, const rational&);
+[[nodiscard]] constexpr bool divides_evenly(rational, rational);
 
 //---------------------------------------------------------------------------
 // sign / named integer reductions — free functions over the public
@@ -1884,7 +1892,7 @@ struct rounded_integer {
 // Returns errc::overflow if the combined denominator lcm = (a/gcd)·b would exceed
 // imax_max (sign-bit reservation) — traps the mul_overflow then range-checks.
 //---------------------------------------------------------------------------
-[[nodiscard]] constexpr std::expected<rational, errc> gcd(const rational& lhs, const rational& rhs) {
+[[nodiscard]] constexpr std::expected<rational, errc> gcd(rational lhs, rational rhs) {
     umax a = abs_den(lhs.Den);
     umax b = abs_den(rhs.Den);
     umax g = std::gcd(a, b);
@@ -2039,7 +2047,7 @@ constexpr void reduce_sum(umax& n, umax& d, umax g) noexcept {
 // add_impl / mul_impl / div_impl — shared bodies (Checked toggles overflow)
 //---------------------------------------------------------------------------
 template <bool Checked, bool Loud>
-inline constexpr auto rational::add_impl(const rational& a, const rational& b) {
+inline constexpr auto rational::add_impl(rational a, rational b) {
     using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
 
     // (a == −b needs no test: equal denominators, opposite signs → num == 0 below.)
@@ -2148,9 +2156,8 @@ inline constexpr auto rational::add_impl(const rational& a, const rational& b) {
 }
 
 template <bool Checked, bool Loud>
-inline constexpr auto rational::mul_impl(const rational& a_in, const rational& b_in) {
+inline constexpr auto rational::mul_impl(rational a, rational b) {
     using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
-    rational a = a_in, b = b_in;
 
     if (a.Num == 0 || b.Num == 0)
         return ret_t{rational{0}};
@@ -2198,7 +2205,7 @@ inline constexpr auto rational::mul_impl(const rational& a_in, const rational& b
 // pair is too. Sign lives in the denominator and 1/(-x) has the same
 // sign as -x, so the sign bit moves with the (now) denominator unchanged.
 template <bool Checked, bool Loud>
-inline constexpr auto rational::inv_impl(const rational& a) {
+inline constexpr auto rational::inv_impl(rational a) {
     using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
 
     if constexpr (Checked) {
@@ -2219,7 +2226,7 @@ inline constexpr auto rational::inv_impl(const rational& a) {
 // the b.Num-fits-in-imax check (added there) propagates here too;
 // the unchecked path skips it (caller's contract).
 template <bool Checked, bool Loud>
-inline constexpr auto rational::div_impl(const rational& a, const rational& b) {
+inline constexpr auto rational::div_impl(rational a, rational b) {
     using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
 
     if constexpr (Checked) {
@@ -2271,61 +2278,25 @@ inline constexpr std::expected<rational, errc> rational::inv(rational a) { retur
 // operator<=>
 //---------------------------------------------------------------------------
 [[nodiscard]] inline constexpr auto operator<=>(rational lhs, rational rhs) -> std::strong_ordering {
-    int lhs_sign = sign(lhs);
-    int rhs_sign = sign(rhs);
-
+    const int lhs_sign = sign(lhs), rhs_sign = sign(rhs);
     if (lhs_sign != rhs_sign)
         return lhs_sign <=> rhs_sign;
-
-    if (lhs_sign == 0)
-        return std::strong_ordering::equal;
-
-    // signs are equal here (the `lhs_sign != rhs_sign` branch returned above)
-    bool lhs_neg = lhs_sign < 0;
-
-    umax lhs_ad = abs_den(lhs.Den);
-    umax rhs_ad = abs_den(rhs.Den);
-
-    // integer comparison: skip cross-multiply entirely
-    if (lhs_ad == 1 && rhs_ad == 1) {
-        if (lhs_neg)
-            return rhs.Num <=> lhs.Num;
-        else
-            return lhs.Num <=> rhs.Num;
-    }
-
-    // One side is an integer: compare via divmod instead of cross-multiply.
-    // Cross-multiplying would otherwise overflow when the non-integer side
-    // has a huge denominator (e.g. doubles like 19.99 stored as N/2^48).
-    if (rhs_ad == 1) {
-        umax q = lhs.Num / lhs_ad;
-        umax r = lhs.Num % lhs_ad;
-        auto cmp =
-            (q == rhs.Num) ? (r == 0 ? std::strong_ordering::equal : std::strong_ordering::greater) : (q <=> rhs.Num);
-        return lhs_neg ? (0 <=> cmp) : cmp;
-    }
-    if (lhs_ad == 1) {
-        umax q = rhs.Num / rhs_ad;
-        umax r = rhs.Num % rhs_ad;
-        auto cmp =
-            (q == lhs.Num) ? (r == 0 ? std::strong_ordering::equal : std::strong_ordering::less) : (lhs.Num <=> q);
-        return lhs_neg ? (0 <=> cmp) : cmp;
-    }
-
-    // Cross-multiply in 128-bit: |numerator| and |denominator| are each ≤ 2^64−1,
-    // so the products fit exactly in 128 bits — the comparison can never overflow,
-    // so no trap is needed.
-    return lhs_neg ? limb::mul_compare(rhs.Num, lhs_ad, lhs.Num, rhs_ad)
-                   : limb::mul_compare(lhs.Num, rhs_ad, rhs.Num, lhs_ad);
+    // Equal signs: the magnitudes cross-multiplied in 128 bits, reversed for
+    // negative values. Each factor is below 2^64, so the products are exact
+    // for every pair: no integer special case, no division. Two zeros give
+    // two zero products: equal.
+    const umax lhs_ad = abs_den(lhs.Den), rhs_ad = abs_den(rhs.Den);
+    return lhs_sign < 0 ? limb::mul_compare(rhs.Num, lhs_ad, lhs.Num, rhs_ad)
+                        : limb::mul_compare(lhs.Num, rhs_ad, rhs.Num, lhs_ad);
 }
 
 template <plain_number T>
-[[nodiscard]] inline constexpr auto operator<=>(const std::expected<T, errc>& lhs, const rational& rhs) {
+[[nodiscard]] inline constexpr auto operator<=>(const std::expected<T, errc>& lhs, rational rhs) {
     return rational{value_or_raise(lhs)} <=> rhs;
 }
 
 template <plain_number T>
-[[nodiscard]] inline constexpr auto operator<=>(const rational& lhs, const std::expected<T, errc>& rhs) {
+[[nodiscard]] inline constexpr auto operator<=>(rational lhs, const std::expected<T, errc>& rhs) {
     return lhs <=> rational{value_or_raise(rhs)};
 }
 
@@ -2333,8 +2304,8 @@ template <plain_number T>
 // truncates): |lhs| = N/D against |rhs| = s·2^-k (k > 62) as N·2^k against
 // s·D, which stays within two 64-bit factors. Cold and out of line: the
 // stores compare doubles with their limits.
-[[nodiscard]] [[gnu::cold]] [[gnu::noinline]] constexpr std::strong_ordering compare_fine_double(const rational& lhs,
-                                                                                                 double          rhs) {
+[[nodiscard]] [[gnu::cold]] [[gnu::noinline]] constexpr std::strong_ordering compare_fine_double(rational lhs,
+                                                                                                 double   rhs) {
     const int ls = sign(lhs), rs = rhs < 0 ? -1 : 1;
     if (ls != rs)
         return ls <=> rs;
@@ -2350,7 +2321,7 @@ template <plain_number T>
 
 // lhs against a double, exactly (non-finite raises, as rational{rhs}). Every
 // rational lies strictly inside ±2^64, so a larger double is decided by its sign.
-[[nodiscard]] inline constexpr std::strong_ordering compare_double(const rational& lhs, double rhs) {
+[[nodiscard]] inline constexpr std::strong_ordering compare_double(rational lhs, double rhs) {
     if (is_finite(rhs) && past_64_bits(rhs)) [[unlikely]]
         return rhs < 0 ? std::strong_ordering::greater : std::strong_ordering::less;
     if (abs_fraction_exact(rhs) || not is_finite(rhs)) [[likely]]
@@ -2362,7 +2333,7 @@ template <plain_number T>
 // (long double) with bits past the double's compares as N·2^180 against its
 // scaled magnitude times D.
 template <std::floating_point T>
-[[nodiscard]] constexpr std::strong_ordering compare_float(const rational& lhs, T rhs) {
+[[nodiscard]] constexpr std::strong_ordering compare_float(rational lhs, T rhs) {
     if constexpr (wide_float<T>)
         if (is_finite(rhs) && !is_double_value(rhs)) [[unlikely]] {
             const int ls = sign(lhs), rs = rhs < 0 ? -1 : 1;
@@ -2395,7 +2366,7 @@ template <plain_number T>
 }
 
 template <plain_number T>
-[[nodiscard]] inline constexpr auto operator<=>(T lhs, const rational& rhs) {
+[[nodiscard]] inline constexpr auto operator<=>(T lhs, rational rhs) {
     if constexpr (std::floating_point<T>)
         return 0 <=> compare_float(rhs, lhs);
     else
@@ -2403,7 +2374,7 @@ template <plain_number T>
 }
 
 template <plain_number T>
-[[nodiscard]] inline constexpr auto operator<=>(const rational& lhs, T rhs) {
+[[nodiscard]] inline constexpr auto operator<=>(rational lhs, T rhs) {
     if constexpr (std::floating_point<T>)
         return compare_float(lhs, rhs);
     else
@@ -2432,41 +2403,39 @@ concept rational_lift_operands =
 //---------------------------------------------------------------------------
 // add_impl fails on a 64-bit step's overflow; the sum may still fit once
 // reduced, which add_wide (cold) settles.
-[[nodiscard]] inline constexpr std::expected<rational, errc> operator+(const rational& lhs, const rational& rhs) {
+[[nodiscard]] inline constexpr std::expected<rational, errc> operator+(rational lhs, rational rhs) {
     const auto r = rational::add_impl<true, false>(lhs, rhs);
     if (!r) [[unlikely]]
         return add_wide<true>(lhs, rhs);
     return r;
 }
 
-[[nodiscard]] inline constexpr std::expected<rational, errc> operator-(const rational& lhs, const rational& rhs) {
+[[nodiscard]] inline constexpr std::expected<rational, errc> operator-(rational lhs, rational rhs) {
     return operator+(lhs, -rhs);
 }
 
-[[nodiscard]] inline constexpr std::expected<rational, errc> operator*(const rational& lhs, const rational& rhs) {
+[[nodiscard]] inline constexpr std::expected<rational, errc> operator*(rational lhs, rational rhs) {
     return rational::mul_impl<true>(lhs, rhs);
 }
 
-[[nodiscard]] inline constexpr std::expected<rational, errc> operator/(const rational& lhs, const rational& rhs) {
+[[nodiscard]] inline constexpr std::expected<rational, errc> operator/(rational lhs, rational rhs) {
     return rational::div_impl<true>(lhs, rhs);
 }
 
 // Quiet checked ops: like the operators, but an overflow is an error value
 // even in constant evaluation (the operators make it a compile error there).
 // For compile-time code that asks whether a result fits.
-[[nodiscard]] inline constexpr std::expected<rational, errc> try_add(const rational& a, const rational& b) {
+[[nodiscard]] inline constexpr std::expected<rational, errc> try_add(rational a, rational b) {
     const auto r = rational::add_impl<true, false>(a, b);
     if (!r) [[unlikely]]
         return add_wide<false>(a, b);
     return r;
 }
-[[nodiscard]] inline constexpr std::expected<rational, errc> try_sub(const rational& a, const rational& b) {
-    return try_add(a, -b);
-}
-[[nodiscard]] inline constexpr std::expected<rational, errc> try_mul(const rational& a, const rational& b) {
+[[nodiscard]] inline constexpr std::expected<rational, errc> try_sub(rational a, rational b) { return try_add(a, -b); }
+[[nodiscard]] inline constexpr std::expected<rational, errc> try_mul(rational a, rational b) {
     return rational::mul_impl<true, false>(a, b);
 }
-[[nodiscard]] inline constexpr std::expected<rational, errc> try_div(const rational& a, const rational& b) {
+[[nodiscard]] inline constexpr std::expected<rational, errc> try_div(rational a, rational b) {
     return rational::div_impl<true, false>(a, b);
 }
 
@@ -2476,11 +2445,11 @@ concept rational_lift_operands =
 
 #define BEMAN_INSIDE_RATIONAL_OP(op)                                                                        \
     template <plain_number T>                                                                               \
-    [[nodiscard]] inline constexpr auto operator op(T lhs, rational const& rhs) {                           \
+    [[nodiscard]] inline constexpr auto operator op(T lhs, rational rhs) {                                  \
         return rational{lhs} op rhs;                                                                        \
     }                                                                                                       \
     template <plain_number T>                                                                               \
-    [[nodiscard]] inline constexpr auto operator op(rational const& lhs, T rhs) {                           \
+    [[nodiscard]] inline constexpr auto operator op(rational lhs, T rhs) {                                  \
         return lhs op rational{rhs};                                                                        \
     }                                                                                                       \
     template <class L, class R>                                                                             \
@@ -2488,7 +2457,7 @@ concept rational_lift_operands =
     [[nodiscard]] inline constexpr auto operator op(L const& lhs, R const& rhs) {                           \
         return lift([](auto const& a, auto const& b) { return a op b; }, lhs, rhs);                         \
     }                                                                                                       \
-    inline constexpr rational& rational::operator op## = (rational const& rhs) {                            \
+    inline constexpr rational& rational::operator op## = (rational rhs) {                                   \
         *this = value_or_raise(*this op rhs);                                                               \
         return *this;                                                                                       \
     }                                                                                                       \
@@ -2509,7 +2478,7 @@ BEMAN_INSIDE_RATIONAL_OP(/)
 //---------------------------------------------------------------------------
 // divides_evenly
 //---------------------------------------------------------------------------
-[[nodiscard]] inline constexpr bool divides_evenly(const rational& dividend, const rational& divisor) {
+[[nodiscard]] inline constexpr bool divides_evenly(rational dividend, rational divisor) {
     if (divisor == 0)
         return true; // convention: everything divides 0 evenly
     if (dividend.Num == 0)
@@ -5436,33 +5405,35 @@ template <insidable L, typename P>
     return q + rounds_away(m, false, classify_remainder(m, r, den), (q & 1) != 0);
 }
 
-// The offset quotient num/den (den ≥ 1) of an unanchored grid rounded in
-// value space: the value Lower + (num/den)·Notch is below zero exactly when
-// num/den < −Lower/Notch, compared without overflow in 128 bits.
+// The split offset quotient q + r/den of an unanchored grid rounded in
+// value space: the value Lower + (q + r/den)·Notch is below zero exactly
+// when the offset num = q·den + r is below −Lower/Notch·den, compared
+// without overflow in 128 bits.
 template <insidable L, typename P>
-[[nodiscard]] constexpr umax round_offset_unanchored(umax num, umax den) noexcept {
-    const umax           q = num / den, r = num % den;
+[[nodiscard]] constexpr umax round_offset_unanchored(umax q, umax r, umax den) noexcept {
     constexpr round_mode m        = rounding_for<L, P>;
     bool                 negative = false;
     if constexpr (lower64<L> < 0) {
         constexpr rational c = -*lower_index64<L>; // > 0
         using W              = wide_uint<2>;
-        negative             = W{num} * W{abs_den(c.Den)} < W{c.Num} * W{den};
+        negative             = W{q * den + r} * W{abs_den(c.Den)} < W{c.Num} * W{den};
     }
     return q + rounds_up(m, negative, classify_remainder(m, r, den), ((q & 1) != 0) != lower_index_odd<L>);
 }
 
-// Round the non-negative offset quotient num/den (den >= 1) to an integer
-// notch index per L's rounding policy.
+// Round the non-negative offset quotient q + r/den (q, r from one division
+// of the offset by den ≥ 1, r < den) to an integer notch index per L's
+// rounding policy.
 //
 // Tie/sign rules are in VALUE space, not offset space, so assigning a value
 // rounds it the same way dividing down to it does (div_rounded is the
-// reference). The offset num/den is >= 0 (sign lost by subtracting Lower), so
-// we rebuild the signed value-index NUM = m·den + num (m = Lower/Notch), round
-// it like div_rounded, and return the offset J - m. m is integral on every
-// anchored grid; an unanchored one rounds the offset against the value's sign.
+// reference). The offset is >= 0 (sign lost by subtracting Lower); with m =
+// Lower/Notch, the floor's value index is F = m + q, the value is below zero
+// exactly when F is, and the rounding moves F up by one or not: no second,
+// signed division. m is integral on every anchored grid; an unanchored one
+// rounds the offset against the value's sign.
 template <insidable L, typename P>
-[[nodiscard]] constexpr umax round_quotient(umax num, umax den) noexcept {
+[[nodiscard]] constexpr umax round_split(umax q, umax r, umax den) noexcept {
     // Lower/Notch past 64 bits (a far-off grid with a fine notch) has no imax
     // value index: round the offset as for a non-integral m.
     constexpr auto zq = (!notched<L>) ? std::expected<rational, errc>{rational{0}} : try_div(lower64<L>, notch64<L>);
@@ -5471,35 +5442,20 @@ template <insidable L, typename P>
     constexpr imax m = vidx ? signed_numerator(*zq) : imax{0};
 
     if constexpr (!anchored<L>)
-        return round_offset_unanchored<L, P>(num, den);
+        return round_offset_unanchored<L, P>(q, r, den);
     else if constexpr (!vidx)
-        return round_offset<L, P>(num / den, num % den, den);
+        return round_offset<L, P>(q, r, den);
     else {
-        // Round the signed value-index NUM/di exactly like div_rounded.
-        // A numerator or m·di beyond imax (fine-denominator sources on grids
-        // with large |Lower·count|) cannot rebuild the signed index: round the
-        // offset's floor q instead, in value space — the value is below zero
-        // exactly when the floor's value index m + q is.
-        const imax di = static_cast<imax>(den);
-        imax       mdi, NUM;
-        if (!std::in_range<imax>(num) || mul_overflow(m, di, &mdi) || add_overflow(mdi, static_cast<imax>(num), &NUM))
-            [[unlikely]] {
-            constexpr round_mode mode = rounding_for<L, P>;
-            const umax           q = num / den, r = num % den;
-            const bool           negative = m < 0 && q < umax{0} - static_cast<umax>(m);
-            return q +
-                   rounds_up(mode, negative, classify_remainder(mode, r, den), ((q ^ static_cast<umax>(m)) & 1) != 0);
-        }
-        const imax           t    = NUM / di; // C++ truncation toward zero
-        const imax           rr   = NUM % di; // sign of NUM, |rr| < di
-        const bool           neg  = NUM < 0;
-        const umax           ar   = (rr < 0) ? ~static_cast<umax>(rr) + 1u : static_cast<umax>(rr);
-        constexpr round_mode mode = rounding_for<L, P>;
-        const imax J = rounds_away(mode, neg, classify_remainder(mode, ar, static_cast<umax>(di)), (t & 1) != 0)
-                           ? (neg ? t - 1 : t + 1)
-                           : t;
-        return static_cast<umax>(J - m); // offset index k = J - m (>= 0)
+        constexpr round_mode mode     = rounding_for<L, P>;
+        const bool           negative = m < 0 && q < umax{0} - static_cast<umax>(m);
+        return q + rounds_up(mode, negative, classify_remainder(mode, r, den), ((q ^ static_cast<umax>(m)) & 1) != 0);
     }
+}
+
+// The offset quotient num/den rounded: round_split of its one division.
+template <insidable L, typename P>
+[[nodiscard]] constexpr umax round_quotient(umax num, umax den) noexcept {
+    return round_split<L, P>(num / den, num % den, den);
 }
 
 // Forward decl — defined in assignment.hpp
@@ -5684,7 +5640,7 @@ constexpr wide_rational<K> operator-(const wide_rational<K>& a) noexcept {
 }
 
 template <std::size_t K = exact_min_limbs>
-constexpr wide_rational<K> exact_of(const rational& r) noexcept {
+constexpr wide_rational<K> exact_of(rational r) noexcept {
     return {static_cast<wide_sint<K>>(grid_numerator(r)), static_cast<wide_sint<K>>(grid_denominator(r))};
 }
 
@@ -7297,7 +7253,7 @@ struct assignment<L, R> {
         bool Exact;
     };
     template <typename P>
-    [[gnu::cold]] [[gnu::noinline]] static constexpr wide_slot_result wide_slot(const rational& v) {
+    [[gnu::cold]] [[gnu::noinline]] static constexpr wide_slot_result wide_slot(rational v) {
         const exact_index_result r = exact_index<L, rounding_for<L, P>>(exact_of(v));
         return {static_cast<umax>(r.Index), r.Exact}; // in range: fits 64 bits
     }
@@ -7420,12 +7376,13 @@ struct assignment<L, R> {
             // The slot onum/den when it is exact or P rounds; false otherwise
             // (strict policy, off-notch: the rational path below reports it).
             auto try_slot = [&](umax onum, umax den) {
-                if (onum % den == 0) {
-                    store_slot(onum / den);
+                const umax q = onum / den, r = onum % den; // one division
+                if (r == 0) {
+                    store_slot(q);
                     return true;
                 }
                 if constexpr (has_round_flag) {
-                    store_slot(round_quotient<L, P>(onum, den));
+                    store_slot(round_split<L, P>(q, r, den));
                     return true;
                 }
                 return false;
@@ -7510,41 +7467,45 @@ struct assignment<L, R> {
                 }
             }
 
-            // The exact quotient can overflow the 64-bit rational range (huge
-            // source denominator × fine notch): take the slot from the exact wide
-            // index instead (rhs is in range, so it fits L's raw). Rounding is
-            // the value-space rule, as everywhere else.
-            const auto rel      = try_sub(rv, lower64<L>);
-            const auto quotient = rel ? try_div(*rel, notch64<L>) : rel;
-            if (!quotient.has_value()) [[unlikely]] {
-                const wide_slot_result slot = wide_slot<P>(rv);
-                if constexpr (!has_round_flag)
-                    if (!slot.Exact && policy.checks_rounding()) [[unlikely]]
-                        return report_failure(lhs, policy, action, errc::rounding_error);
-                store_slot(slot.Slot);
-                return;
-            }
-            rational raw = *quotient;
-            umax     den = static_cast<umax>(raw.Den);
-            if (den == 1) {
-                store_slot(raw.Num);
-                return;
-            }
-
+            // The general slot: out of line and cold behind a shortcut above
+            // (it is then rare), inline where it is the store's only path.
+            constexpr bool         shortcut = (q_format_fits<L> && notched<L>) || unanchored_codec<L>.Ok;
+            const wide_slot_result slot     = shortcut ? rational_slot_cold<P>(rv) : rational_slot<P>(rv);
             if constexpr (!has_round_flag)
-                if (policy.checks_rounding()) [[unlikely]]
+                if (!slot.Exact && policy.checks_rounding()) [[unlikely]]
                     return report_failure(lhs, policy, action, errc::rounding_error);
-            store_slot(round_quotient<L, P>(raw.Num, den));
+            store_slot(slot.Slot);
         }
     }
 
   private:
+    // The slot of v by 64-bit rationals, (v − Lower)/Notch rounded. The
+    // exact quotient can overflow that range (huge source denominator × fine
+    // notch): the slot then comes from the exact wide index (v is in range,
+    // so it fits L's raw). Rounding is the value-space rule, as everywhere
+    // else. The 16-byte result returns in registers; the expected rationals
+    // stay inside.
+    template <typename P>
+    static constexpr wide_slot_result rational_slot(rational v) {
+        const auto rel      = try_sub(v, lower64<L>);
+        const auto quotient = rel ? try_div(*rel, notch64<L>) : rel;
+        if (!quotient.has_value()) [[unlikely]]
+            return wide_slot<P>(v);
+        if (quotient->Den == 1)
+            return {quotient->Num, true};
+        return {round_quotient<L, P>(quotient->Num, static_cast<umax>(quotient->Den)), false};
+    }
+    template <typename P>
+    [[gnu::cold]] [[gnu::noinline]] static constexpr wide_slot_result rational_slot_cold(rational v) {
+        return rational_slot<P>(v);
+    }
+
     // Range test for the source value. A floating source compares in double when
     // both endpoints are exact doubles (then the comparison is exact), instead of
     // converting the value to a rational first.
     // (A limit near 2^64 rounds to a double of 2^64, which no rational holds:
     // it is no exact double.)
-    static constexpr bool exact_double(const rational& r) {
+    static constexpr bool exact_double(rational r) {
         const double d = static_cast<double>(r);
         return !past_64_bits(d) && rational{d} == r;
     }
@@ -9759,16 +9720,35 @@ struct inside {
         const W     room = W{std::numeric_limits<imax>::max()} - (hi - lo + W{1}) - mag;
         return room.negative() ? umax{0} : static_cast<umax>(room);
     }();
+    // The exact sum when the notch count does not apply: out of line, and by
+    // value in and out, so the fast path keeps *this in registers.
+    [[gnu::cold]] [[gnu::noinline]] static constexpr inside add_rational_cold(inside x, detail::rational rhs)
+        requires raw_delta_ok
+    {
+        x.assign_op_result(detail::rational{x} + rhs);
+        return x;
+    }
     // A bool and an out-parameter, not an optional<imax>: GCC 16 kept the
     // optional in memory, 12 more instructions on every += / -= of a rational.
-    static constexpr bool notch_delta(const detail::rational& r, imax& delta) noexcept {
+    // No division where K is a power of two (every binary Q format): d
+    // divides K exactly when d is a power of two no larger (d − 1 < K also
+    // rules out 0), and the count r.Num·K/d is a shift, sized by a shift.
+    static constexpr bool notch_delta(detail::rational r, imax& delta) noexcept {
         constexpr umax K = detail::abs_den(detail::notch64<inside>.Den);
         const umax     d = detail::abs_den(r.Den);
-        if (K % d != 0 || r.Num > max_notch_delta / (K / d))
+        umax           n; // the count of notches, r.Num·K/d
+        if constexpr (std::has_single_bit(K)) {
+            if (d - 1 >= K || (d & (d - 1)) != 0)
+                return false;
+            // K/d = 2^shift; the builtin, as d ≠ 0 (countr_zero guards 0).
+            const int shift = std::countr_zero(K) - __builtin_ctzll(d);
+            if (r.Num > (max_notch_delta >> shift))
+                return false;
+            n = r.Num << shift;
+        } else if (d == 0 || K % d != 0 || detail::mul_overflow(r.Num, K / d, &n) || n > max_notch_delta)
             return false;
-        const imax n    = static_cast<imax>(r.Num * (K / d));
         const imax sign = r.Den >> 63; // 0, or −1 for a negative value
-        delta           = (n ^ sign) - sign;
+        delta           = (static_cast<imax>(n) ^ sign) - sign;
         return true;
     }
 
@@ -9779,10 +9759,12 @@ struct inside {
 
     template <std::same_as<detail::rational> A>
     constexpr inside& operator+=(const A& rhs) {
-        if constexpr (raw_delta_ok)
+        if constexpr (raw_delta_ok) {
             if (imax n; notch_delta(rhs, n)) [[likely]]
                 return store_raw<imax>(static_cast<imax>(Raw) + n);
-        return assign_op_result(detail::rational{*this} + rhs);
+            return *this = add_rational_cold(*this, rhs);
+        } else
+            return assign_op_result(detail::rational{*this} + rhs);
     }
 
     template <insidable R>
@@ -9801,10 +9783,12 @@ struct inside {
 
     template <std::same_as<detail::rational> A>
     constexpr inside& operator-=(const A& rhs) {
-        if constexpr (raw_delta_ok)
+        if constexpr (raw_delta_ok) {
             if (imax n; notch_delta(rhs, n)) [[likely]]
                 return store_raw<imax>(static_cast<imax>(Raw) - n);
-        return assign_op_result(detail::rational{*this} - rhs);
+            return *this = add_rational_cold(*this, -rhs);
+        } else
+            return assign_op_result(detail::rational{*this} - rhs);
     }
 
     template <insidable R>
@@ -10479,6 +10463,21 @@ inline constexpr bool native_product = [] {
 template <insidable A, insidable B>
 inline constexpr bool rational_operands = rational_readable<A> && rational_readable<B>;
 
+// A Q-format store rounds a fraction as its reduced form would (one
+// division of the offset), so a quotient for it needs no gcd: x/y as the
+// unreduced (xn·yd)/(xd·yn). Den 0 when y is 0 or a part passes 64 bits;
+// try_div decides then.
+template <insidable Out>
+inline constexpr bool unreduced_store = q_format_fits<Out> && notched<Out>;
+constexpr rational    unreduced_quotient(rational x, rational y) noexcept {
+    umax num, den;
+    if (y.Num == 0 || mul_overflow(x.Num, abs_den(y.Den), &num) || mul_overflow(abs_den(x.Den), y.Num, &den) ||
+        !std::in_range<imax>(den))
+        return rational_from_parts(0, 0);
+    const imax d = static_cast<imax>(den);
+    return rational_from_parts(num, (x.Den < 0) != (y.Den < 0) ? -d : d);
+}
+
 template <insidable Out, insidable A, insidable B, typename P>
 constexpr Out mul_into_wide(const A& a, const B& b, P&& policy) {
     using E = wide_rational<exact_limbs<A, B, Out>>;
@@ -10488,6 +10487,20 @@ template <insidable Out, insidable A, insidable B, typename P>
 constexpr Out div_into_wide(const A& a, const B& b, P&& policy) {
     using E = wide_rational<exact_limbs<A, B, Out>>;
     return store_exact_into<Out>(E{exact_of(a)} / E{exact_of(b)}, policy);
+}
+// The quotient as a reduced 64-bit rational, else wide.
+template <insidable Out, insidable A, insidable B, typename P>
+constexpr Out div_into_reduced(A a, B b, P policy) {
+    if constexpr (rational_operands<A, B>)
+        if (const auto q = try_div(as_rational(a), as_rational(b)))
+            return store_into<Out>(*q, policy);
+    return div_into_wide<Out>(a, b, policy);
+}
+// The same out of line, behind the unreduced quotient (by value, so the fast
+// path's operands stay in registers).
+template <insidable Out, insidable A, insidable B, typename P>
+[[gnu::cold]] [[gnu::noinline]] constexpr Out div_into_reduced_cold(A a, B b, P policy) {
+    return div_into_reduced<Out>(a, b, policy);
 }
 } // namespace detail
 
@@ -10508,10 +10521,13 @@ template <insidable Out, policy_flag F = none, insidable A, insidable B>
 [[nodiscard]] constexpr auto div_into(const A& a, const B& b)
     -> std::conditional_t<detail::divisor_excludes_zero<B>, Out, std::expected<Out, errc>> {
     const auto quotient = [&](auto&& policy) {
-        if constexpr (detail::rational_operands<A, B>)
-            if (const auto q = detail::try_div(detail::as_rational(a), detail::as_rational(b)))
-                return detail::store_into<Out>(*q, policy);
-        return detail::div_into_wide<Out>(a, b, policy);
+        if constexpr (detail::rational_operands<A, B> && detail::unreduced_store<Out>) {
+            if (const auto q = detail::unreduced_quotient(detail::as_rational(a), detail::as_rational(b)); q.Den != 0)
+                [[likely]]
+                return detail::store_into<Out>(q, policy);
+            return detail::div_into_reduced_cold<Out>(a, b, policy);
+        } else
+            return detail::div_into_reduced<Out>(a, b, policy);
     };
     if constexpr (detail::divisor_excludes_zero<B>)
         return quotient(make_policy<flags_of<Out> | F>());
@@ -10591,6 +10607,22 @@ template <insidable First, insidable... Rest>
     return (first * ... * rest);
 }
 
+namespace detail {
+// How many raws of B a 32-bit accumulator sums without overflow (unsigned
+// for raws ≥ 0, else signed), at most 2^30: 32-bit lanes are twice as many
+// per vector register as imax ones. 0 when a raw passes the lane.
+template <insidable B>
+inline constexpr imax lane32_block = [] {
+    const grid_int lo = raw_lo_exact<B>, hi = raw_hi_exact<B>;
+    const grid_int mag   = lo.negative() && hi < -lo ? -lo : hi;
+    const umax     limit = lo.negative() ? umax{0x7fff'ffff} : umax{0xffff'ffff};
+    if (grid_int{limit} < mag)
+        return imax{0};
+    const umax m = static_cast<umax>(mag);
+    return m == 0 ? imax{1} << 30 : static_cast<imax>(std::min<umax>(limit / m, umax{1} << 30));
+}();
+} // namespace detail
+
 //---------------------------------------------------------------------------
 // sum<Target> — bulk reduction with ONE deferred range check. Per-element
 // `target += b` re-validates every step (blocks vectorization); this computes
@@ -10598,7 +10630,8 @@ template <insidable First, insidable... Rest>
 // (semantic difference: the *total* is validated, not every prefix).
 // Notched integer raws (wide ones too) sum value indices exactly — Σvalue =
 // Notch·ΣJ — in a wide integer with 64 bits of headroom for the count; ≤32-bit
-// raws add in imax blocks of 2^30 elements, the loop that vectorizes.
+// raws add in blocks, the loop that vectorizes: in 32-bit lanes where a
+// block of at least 64 fits them, else in imax blocks of 2^30 elements.
 // Continuous elements add as 64-bit
 // rationals; a total past that reports overflow through Target's policy.
 //---------------------------------------------------------------------------
@@ -10629,11 +10662,22 @@ template <insidable Target, std::ranges::input_range Rng>
                 // reachable iterator, has no distance to it: the loop below.)
                 if constexpr (std::ranges::random_access_range<Rng> &&
                               std::sized_sentinel_for<std::ranges::sentinel_t<Rng>, std::ranges::iterator_t<Rng>>) {
-                    const imax block = std::min<imax>(end - it, imax{1} << 30);
-                    for (imax j = 0; j < block; ++j)
-                        acc += detail::raw_imax(it[j]);
-                    it += block;
-                    cnt = block;
+                    if constexpr (constexpr imax lanes = detail::lane32_block<B>; lanes >= 64) {
+                        using L = std::conditional_t<detail::raw_lo_exact<B>.negative(), std::int32_t, std::uint32_t>;
+                        const imax block = std::min<imax>(end - it, lanes);
+                        L          a     = 0;
+                        for (imax j = 0; j < block; ++j)
+                            a += static_cast<L>(it[j].raw());
+                        acc = static_cast<imax>(a);
+                        it += block;
+                        cnt = block;
+                    } else {
+                        const imax block = std::min<imax>(end - it, imax{1} << 30);
+                        for (imax j = 0; j < block; ++j)
+                            acc += detail::raw_imax(it[j]);
+                        it += block;
+                        cnt = block;
+                    }
                 } else {
                     for (; it != end && cnt < (imax{1} << 30); ++it, ++cnt)
                         acc += detail::raw_imax(*it);
@@ -10875,22 +10919,32 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
                   "inside_range: the grid has more points than an iterator difference (int64) can count");
     static constexpr umax slot_count = detail::max_index_of<number_type> + 1;
 
+  private:
+    // The slot and position in 32 bits where the slot count fits: a loop over
+    // the range then vectorizes in 32-bit lanes, as a native counting loop
+    // does (64-bit ones hold half as many).
+    static constexpr bool narrow = slot_count <= umax{0x7fff'ffff};
+    using slot_t                 = std::conditional_t<narrow, std::uint32_t, umax>;
+    using pos_t                  = std::conditional_t<narrow, std::int32_t, imax>;
+
+  public:
     struct iterator {
         using iterator_concept  = std::random_access_iterator_tag;
         using iterator_category = std::input_iterator_tag;
         using value_type        = V;
         using difference_type   = imax;
 
-        umax Start{0}; // slot of the first element (the range wraps past the top)
-        imax Pos{0};   // position in [0, slot_count]; the loop variable
+        slot_t Start{0}; // slot of the first element (the range wraps past the top)
+        pos_t  Pos{0};   // position in [0, slot_count]; the loop variable
 
         constexpr iterator() = default;
-        constexpr iterator(umax s, imax p) : Start{s}, Pos{p} {}
+        constexpr iterator(umax s, imax p) : Start{static_cast<slot_t>(s)}, Pos{static_cast<pos_t>(p)} {}
 
         // Grid slot of this position: Start + Pos, wrapped once (no overflow).
         constexpr umax slot() const {
-            const umax p = static_cast<umax>(Pos);
-            return p < slot_count - Start ? Start + p : p - (slot_count - Start);
+            constexpr slot_t count = static_cast<slot_t>(slot_count);
+            const slot_t     p     = static_cast<slot_t>(Pos);
+            return p < count - Start ? Start + p : p - (count - Start);
         }
 
         [[nodiscard]] constexpr value_type operator*() const {
@@ -10924,11 +10978,11 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
             return t;
         }
         constexpr iterator& operator+=(difference_type n) {
-            Pos += n;
+            Pos = static_cast<pos_t>(Pos + n);
             return *this;
         }
         constexpr iterator& operator-=(difference_type n) {
-            Pos -= n;
+            Pos = static_cast<pos_t>(Pos - n);
             return *this;
         }
 
@@ -10944,9 +10998,11 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
         }
         [[nodiscard]] friend constexpr iterator operator+(difference_type n, iterator it) { return it + n; }
 
-        [[nodiscard]] constexpr difference_type operator-(iterator o) const { return Pos - o.Pos; }
-        [[nodiscard]] constexpr bool            operator==(iterator o) const { return Pos == o.Pos; }
-        [[nodiscard]] constexpr auto            operator<=>(iterator o) const { return Pos <=> o.Pos; }
+        [[nodiscard]] constexpr difference_type operator-(iterator o) const {
+            return static_cast<difference_type>(Pos) - o.Pos;
+        }
+        [[nodiscard]] constexpr bool operator==(iterator o) const { return Pos == o.Pos; }
+        [[nodiscard]] constexpr auto operator<=>(iterator o) const { return Pos <=> o.Pos; }
     };
 
     umax StartIndex{0};
@@ -14076,19 +14132,160 @@ inline constexpr grid_rational gcd_notch =
 //  beman/inside/math/detail/fp.hpp
 // ======================================================================
 // The double kernels of the math engine's double tier (math/detail/entry.hpp):
-// a small libm in `double` — Taylor polynomials in Horner form with explicit
+// a small libm in `double` — polynomials in Horner form with explicit
 // std::fma, Cody-Waite range reduction, and only std::fma / sqrt / nearbyint
-// from <cmath>.
+// from <cmath>. sin, cos and sinh evaluate Taylor series; exp, log, atan and
+// asin minimax fits (math/detail/minimax.hpp, generated with Sollya, each with
+// a certified bound of its relative error).
 //
 // A kernel takes a target T in bits: its polynomials get the fewest terms
-// whose truncation stays below 2^-T relative, and its error bound for that
-// size is proved at compile time from the coefficients and argument range —
-// the first omitted term, each Horner step's rounding, the constants' and the
-// reduction's roundings. These are first-order bounds of IEEE round-to-nearest
+// whose approximation error stays below 2^-T relative, and its error bound
+// for that size is proved at compile time from the coefficients and argument
+// range — the first omitted term or the fit's certified bound, each Horner
+// step's rounding, the constants' and the reduction's roundings. These are first-order bounds of IEEE round-to-nearest
 // (each operation within U = unit_roundoff = 2^-53, relatively); up() widens each by 2^-30 of
 // itself for the second-order terms and the bound arithmetic's roundings.
 //---------------------------------------------------------------------------
 
+
+
+// ======================================================================
+//  beman/inside/math/detail/minimax.hpp
+// ======================================================================
+// GENERATED by tests/beman/inside/minimax/gen.py from minimax.sollya — do not edit.
+// Sollya 8.0.
+//
+// The double tier's minimax polynomials (math/detail/fp.hpp). Each fit holds
+// the coefficients of a polynomial with double coefficients (highest degree
+// first) and Err, an upper bound of its relative error |p/f − 1| over the
+// interval, certified by Sollya's supnorm (interval arithmetic and Taylor
+// models) and rounded up. The kernels prove their bounds with Err as the
+// approximation term, as with the Taylor series' first omitted term.
+//---------------------------------------------------------------------------
+
+
+// Generated: the fits stay one per line.
+// clang-format off
+namespace beman::inside::math::detail::fp::minimax {
+
+template <std::size_t N>
+struct fit {
+    std::array<double, N> C; // highest degree first
+    double                Err;
+};
+
+// asin x ≈ x·q(x²) on [0, ½]: 2 to 15 terms.
+inline constexpr int asin_min = 2, asin_max = 15;
+template <int N>
+inline constexpr fit<N> asin_fit{};
+template <>
+inline constexpr fit<2> asin_fit<2>{{0x1.825be155a4c85p-3, 0x1.ff9fea902c828p-1}, 0x1.8058a7f3e2a6bp-11};
+template <>
+inline constexpr fit<3> asin_fit<3>{{0x1.892af3f9d0abp-4, 0x1.50f9b8eb10e29p-3, 0x1.00020917b0ae3p0}, 0x1.048dd12fb33b8p-15};
+template <>
+inline constexpr fit<4> asin_fit<4>{{0x1.0a844c609d247p-4, 0x1.24cc691008951p-4, 0x1.55b69a968f3efp-3, 0x1.ffffcd5a20bd7p-1}, 0x1.9532a401acbbbp-20};
+template <>
+inline constexpr fit<5> asin_fit<5>{{0x1.9e732acd0f855p-5, 0x1.450a9250ee54bp-5, 0x1.3521a36c5dd22p-4, 0x1.554d47173464ap-3, 0x1.000001557966p0}, 0x1.557bfb9df5a56p-24};
+template <>
+inline constexpr fit<6> asin_fit<6>{{0x1.5d456c461b1d4p-5, 0x1.86e46a094bdbbp-6, 0x1.7525a995a25b7p-5, 0x1.32f8d81e695bp-4, 0x1.5555fb040849ep-3, 0x1.ffffffda11fc6p-1}, 0x1.2f726995f97ecp-28};
+template <>
+inline constexpr fit<7> asin_fit<7>{{0x1.365bebfe788e2p-5, 0x1.cf525bfedbdbcp-7, 0x1.0554db2cea9b6p-5, 0x1.6c91bbfc1b648p-5, 0x1.333988d617221p-4, 0x1.55554848e38f7p-3, 0x1.0000000117f17p0}, 0x1.17f38e94895e8p-32};
+template <>
+inline constexpr fit<8> asin_fit<8>{{0x1.1e52c89298dcep-5, 0x1.d96b4d8aa7838p-8, 0x1.94dfc2257f592p-6, 0x1.ed07de22aed64p-6, 0x1.6ddf13d1df11fp-5, 0x1.33328d4d9255fp-4, 0x1.55555658c08b7p-3, 0x1.ffffffffdecd3p-1}, 0x1.0998829357ff9p-36};
+template <>
+inline constexpr fit<9> asin_fit<9>{{0x1.0fa3089f9294fp-5, 0x1.c1919d63ad018p-10, 0x1.542c911d6be5bp-6, 0x1.65cdcdbd68342p-6, 0x1.f29129714771cp-6, 0x1.6db1c8c40974bp-5, 0x1.3333436fd1a2fp-4, 0x1.555555416504ap-3, 0x1.0000000001018p0}, 0x1.0181f2e7bfff9p-40};
+template <>
+inline constexpr fit<10> asin_fit<10>{{0x1.0756d87284c9p-5, -0x1.94160c9a287e6p-9, 0x1.331bcd4de0cdp-6, 0x1.0d73bc6d0adcep-6, 0x1.70417823ad8cfp-6, 0x1.f1a8c3bb24a27p-6, 0x1.6db77504b4814p-5, 0x1.333331aa1fe05p-4, 0x1.55555556da86p-3, 0x1.ffffffffffe04p-1}, 0x1.fc03d83fbfff9p-45};
+template <>
+inline constexpr fit<11> asin_fit<11>{{0x1.03bef815fb7d9p-5, -0x1.efe17964b1f8dp-8, 0x1.27e84d0bccd7bp-6, 0x1.99f060037c852p-7, 0x1.1fa801cc53228p-6, 0x1.6e3f37421b905p-6, 0x1.f1cb538d38257p-6, 0x1.6db6ca26869f2p-5, 0x1.3333335769342p-4, 0x1.5555555537c71p-3, 0x1.000000000001p0}, 0x1.0001efffdfffdp-48};
+template <>
+inline constexpr fit<12> asin_fit<12>{{0x1.03cca53d06c84p-5, -0x1.88922b273830ep-7, 0x1.2de51f5ff7a3fp-6, 0x1.3162db527bd14p-7, 0x1.d5c3659807512p-7, 0x1.1ba452fded368p-6, 0x1.6e97d183195a8p-6, 0x1.f1c68febaa971p-6, 0x1.6db6dd4a1cf35p-5, 0x1.3333332ff3062p-4, 0x1.55555555578d8p-3, 0x1.ffffffffffffep-1}, 0x1.0124ab72c6eb1p-52};
+template <>
+inline constexpr fit<13> asin_fit<13>{{0x1.05985ad7bf3c2p-5, -0x1.0a5a39d4657a9p-6, 0x1.405214c3268a3p-6, 0x1.ab3a07d4c022dp-8, 0x1.8ed60a5b283c2p-7, 0x1.c6fa84b21e97dp-7, 0x1.1c6c111e009cfp-6, 0x1.6e89f0a0ab5b8p-6, 0x1.f1c72c668971cp-6, 0x1.6db6db41ce4bcp-5, 0x1.333333336fd5bp-4, 0x1.555555555538p-3, 0x1p0}, 0x1.1ffe995d9012cp-56};
+template <>
+inline constexpr fit<14> asin_fit<14>{{0x1.0b65010e90052p-5, -0x1.586522731ef7ep-6, 0x1.63eb4f666f769p-6, 0x1.e4dc8ec3a44c5p-9, 0x1.6150d94ea3b38p-7, 0x1.75818c926cfabp-7, 0x1.ca201858409b8p-7, 0x1.1c49e9d404feep-6, 0x1.6e8bdf4b14631p-6, 0x1.f1c71a907ff6fp-6, 0x1.6db6db7220c98p-5, 0x1.333333332dfa8p-4, 0x1.5555555555578p-3, 0x1p0}, 0x1.2408e83e79bbfp-60};
+template <>
+inline constexpr fit<15> asin_fit<15>{{0x1.1321fda543436p-5, -0x1.aabb40caa7196p-6, 0x1.95660f01f1785p-6, 0x1.7a127f9d53ed2p-11, 0x1.479b5d146b4a1p-7, 0x1.36da51780c649p-7, 0x1.7ba0b8a29f7a8p-7, 0x1.c9813f1cbf895p-7, 0x1.1c4f81fad816p-6, 0x1.6e8b9b1f262d6p-6, 0x1.f1c71ca6b705cp-6, 0x1.6db6db6d4ca47p-5, 0x1.33333333339e4p-4, 0x1.5555555555553p-3, 0x1p0}, 0x1.284f38f72615ep-64};
+inline constexpr std::array<double, 14> asin_err{0x1.8058a7f3e2a6bp-11, 0x1.048dd12fb33b8p-15, 0x1.9532a401acbbbp-20, 0x1.557bfb9df5a56p-24, 0x1.2f726995f97ecp-28, 0x1.17f38e94895e8p-32, 0x1.0998829357ff9p-36, 0x1.0181f2e7bfff9p-40, 0x1.fc03d83fbfff9p-45, 0x1.0001efffdfffdp-48, 0x1.0124ab72c6eb1p-52, 0x1.1ffe995d9012cp-56, 0x1.2408e83e79bbfp-60, 0x1.284f38f72615ep-64}; // index terms − min
+
+// e^r ≈ q(r) on |r| ≤ r_exp: 3 to 13 terms.
+inline constexpr int exp_min = 3, exp_max = 13;
+template <int N>
+inline constexpr fit<N> exp_fit{};
+template <>
+inline constexpr fit<3> exp_fit<3>{{0x1.fc2aa2ae5131fp-2, 0x1.03ce84afb0d1ep0, 0x1.001d13932591ep0}, 0x1.c490ea4c231c6p-10};
+template <>
+inline constexpr fit<4> exp_fit<4>{{0x1.5349a592197cep-3, 0x1.028af0a473249p-1, 0x1.000ac5f16d3fap0, 0x1.fff68fa83f751p-1}, 0x1.3a0c77888cb8bp-14};
+template <>
+inline constexpr fit<5> exp_fit<5>{{0x1.53a0bc8cb6e2dp-5, 0x1.57e11b9163795p-3, 0x1.0005b84f8b477p-1, 0x1.fffb329614b3ep-1, 0x1.ffffe72c46aadp-1}, 0x1.5c9e6d5c573e2p-19};
+template <>
+inline constexpr fit<6> exp_fit<6>{{0x1.0fe597ced0779p-7, 0x1.575f3ea00b289p-5, 0x1.555a199a5422cp-3, 0x1.fffd197296823p-2, 0x1.fffff5a56219cp-1, 0x1.000001344f9cp0}, 0x1.42733dab4d128p-24};
+template <>
+inline constexpr fit<7> exp_fit<7>{{0x1.6ab949bc49acap-10, 0x1.126d42403a00cp-7, 0x1.55589b4941c77p-5, 0x1.55540a16bfca6p-3, 0x1.fffffaacd43ebp-2, 0x1.0000009c4a54bp0, 0x1.0000000262ccap0}, 0x1.ff3a129bc5036p-30};
+template <>
+inline constexpr fit<8> exp_fit<8>{{0x1.9eb6ed55a251bp-13, 0x1.6da4ea93f5d8ep-10, 0x1.1112fac4dc68ep-7, 0x1.55546827cf8fap-5, 0x1.555553430a735p-3, 0x1.00000059f5a1bp-1, 0x1.000000010bf0dp0, 0x1.ffffffffab88ap-1}, 0x1.6293c2ba1645fp-35};
+template <>
+inline constexpr fit<9> exp_fit<9>{{0x1.9eda661357619p-16, 0x1.a1a859d406ac4p-13, 0x1.6c18b3d1428f9p-10, 0x1.1110828306626p-7, 0x1.555554047694ap-5, 0x1.555555a0a4a97p-3, 0x1.0000000088474p-1, 0x1.ffffffffd5493p-1, 0x1.ffffffffff79dp-1}, 0x1.b52fc430e302ep-41};
+template <>
+inline constexpr fit<10> exp_fit<10>{{0x1.70dc8ce9a1226p-19, 0x1.a17c45eab548bp-16, 0x1.a01bc251544c3p-13, 0x1.6c162d57270aep-10, 0x1.1111105b449ebp-7, 0x1.55555587bc95cp-5, 0x1.55555555bb863p-3, 0x1.ffffffffe8109p-2, 0x1.ffffffffffc38p-1, 0x1.000000000003ap0}, 0x1.e7db898933289p-47};
+template <>
+inline constexpr fit<11> exp_fit<11>{{0x1.2766a8cc5b622p-22, 0x1.72f9a0cffd3dfp-19, 0x1.a01b193b4eb35p-16, 0x1.a0197a37658e5p-13, 0x1.6c16c0e92fdb7p-10, 0x1.1111112d4f43ep-7, 0x1.5555555581ffap-5, 0x1.555555554bbf1p-3, 0x1.ffffffffffed8p-2, 0x1.000000000001dp0, 0x1p0}, 0x1.1f9df47d520b1p-52};
+template <>
+inline constexpr fit<12> exp_fit<12>{{0x1.ae07dd0100e57p-26, 0x1.28b0ad2414f0cp-22, 0x1.71dece4ded2ap-19, 0x1.a0199608775d5p-16, 0x1.a01a0151c5454p-13, 0x1.6c16c185ed047p-10, 0x1.111111112058dp-7, 0x1.555555554fe5dp-5, 0x1.5555555555518p-3, 0x1.000000000000cp-1, 0x1p0, 0x1p0}, 0x1.4de2cf3b4c2cp-58};
+template <>
+inline constexpr fit<13> exp_fit<13>{{0x1.1eda1ddb34747p-29, 0x1.af6e6b5598decp-26, 0x1.27e540754c758p-22, 0x1.71ddee7e78a92p-19, 0x1.a01a0177038ccp-16, 0x1.a01a01b440953p-13, 0x1.6c16c16c1fa7p-10, 0x1.111111110ea02p-7, 0x1.5555555555541p-5, 0x1.555555555555cp-3, 0x1p-1, 0x1p0, 0x1p0}, 0x1.6e809bd10e1ebp-64};
+inline constexpr std::array<double, 11> exp_err{0x1.c490ea4c231c6p-10, 0x1.3a0c77888cb8bp-14, 0x1.5c9e6d5c573e2p-19, 0x1.42733dab4d128p-24, 0x1.ff3a129bc5036p-30, 0x1.6293c2ba1645fp-35, 0x1.b52fc430e302ep-41, 0x1.e7db898933289p-47, 0x1.1f9df47d520b1p-52, 0x1.4de2cf3b4c2cp-58, 0x1.6e809bd10e1ebp-64}; // index terms − min
+
+// atanh f ≈ f·q(f²) on |f| ≤ f_max (log): 2 to 9 terms.
+inline constexpr int atanh_min = 2, atanh_max = 9;
+template <int N>
+inline constexpr fit<N> atanh_fit{};
+template <>
+inline constexpr fit<2> atanh_fit<2>{{0x1.5b7c6f2e4be77p-2, 0x1.fffd14c1a8c2bp-1}, 0x1.75a1ff82e4832p-16};
+template <>
+inline constexpr fit<3> atanh_fit<3>{{0x1.a6e1116205a7ap-3, 0x1.554263f4c18f7p-2, 0x1.000001fe3f50ap0}, 0x1.fe432d4c2c57fp-24};
+template <>
+inline constexpr fit<4> atanh_fit<4>{{0x1.327175bbaa44fp-3, 0x1.99577bcf07f97p-3, 0x1.55558779221b5p-2, 0x1.fffffffa12317p-1}, 0x1.7b76e1ea45477p-31};
+template <>
+inline constexpr fit<5> atanh_fit<5>{{0x1.e3b1f3ef74854p-4, 0x1.2432b0f92b6c5p-3, 0x1.999a9ccdbfeb5p-3, 0x1.555554daaa158p-2, 0x1.0000000004a38p0}, 0x1.28e23f31bfff9p-38};
+template <>
+inline constexpr fit<6> atanh_fit<6>{{0x1.919a7405aebcp-4, 0x1.c62064e97f598p-4, 0x1.249439d39e49bp-3, 0x1.999996279df1bp-3, 0x1.5555555673427p-2, 0x1.fffffffffff1p-1}, 0x1.e07c4da4caca5p-46};
+template <>
+inline constexpr fit<7> atanh_fit<7>{{0x1.58f62f4cf18c8p-4, 0x1.73201ac1d36bap-4, 0x1.c722e8a9a4a67p-4, 0x1.2492407ba4d55p-3, 0x1.999999a4b5e58p-3, 0x1.55555555529afp-2, 0x1.0000000000001p0}, 0x1.0001efffdfffdp-52};
+template <>
+inline constexpr fit<8> atanh_fit<8>{{0x1.2f0edc7587e42p-4, 0x1.39a0bb5f6a888p-4, 0x1.74664992e5112p-4, 0x1.c71c51d01b16cp-4, 0x1.249249424137p-3, 0x1.999999997f6f8p-3, 0x1.5555555555594p-2, 0x1p0}, 0x1.79b4007eb7239p-60};
+template <>
+inline constexpr fit<9> atanh_fit<9>{{0x1.0f06fb5b1db9dp-4, 0x1.0f6810080bc8bp-4, 0x1.3b201afa8f7ap-4, 0x1.745ce202ec9dfp-4, 0x1.c71c724aa99p-4, 0x1.249249243a198p-3, 0x1.9999999999d0bp-3, 0x1.5555555555555p-2, 0x1p0}, 0x1.55ba6bd02e1c4p-67};
+inline constexpr std::array<double, 8> atanh_err{0x1.75a1ff82e4832p-16, 0x1.fe432d4c2c57fp-24, 0x1.7b76e1ea45477p-31, 0x1.28e23f31bfff9p-38, 0x1.e07c4da4caca5p-46, 0x1.0001efffdfffdp-52, 0x1.79b4007eb7239p-60, 0x1.55ba6bd02e1c4p-67}; // index terms − min
+
+// atan t ≈ t·q(t²) on |t| ≤ t_max: 2 to 11 terms.
+inline constexpr int atan_min = 2, atan_max = 11;
+template <int N>
+inline constexpr fit<N> atan_fit{};
+template <>
+inline constexpr fit<2> atan_fit<2>{{-0x1.4749fa4a7a38cp-2, 0x1.fff01c00cee56p-1}, 0x1.fc83bf5b0de45p-14};
+template <>
+inline constexpr fit<3> atan_fit<3>{{0x1.7c00117830691p-3, -0x1.54f16b7f2c87ap-2, 0x1.ffffcd868369fp-1}, 0x1.93cef3120b229p-20};
+template <>
+inline constexpr fit<4> atan_fit<4>{{-0x1.0662c4e371612p-3, 0x1.9847e7f645f5ap-3, -0x1.5552f0bd22e14p-2, 0x1.ffffff517e7c8p-1}, 0x1.5d05f803725d3p-26};
+template <>
+inline constexpr fit<5> atan_fit<5>{{0x1.8a65b28a0e347p-4, -0x1.22b999a56a501p-3, 0x1.998dabc559293p-3, -0x1.555547c2638eep-2, 0x1.fffffffd857a1p-1}, 0x1.3d4562f308be7p-32};
+template <>
+inline constexpr fit<6> atan_fit<6>{{-0x1.37be25d4483c6p-4, 0x1.c265fd167d69ep-4, -0x1.247c3f678e2a5p-3, 0x1.99993bb683f34p-3, -0x1.5555550bebb98p-2, 0x1.fffffffff6ae4p-1}, 0x1.2a3a873c06871p-38};
+template <>
+inline constexpr fit<7> atan_fit<7>{{0x1.fd9a2ee33d7c2p-5, -0x1.6eabac1075814p-4, 0x1.c6d6a3a5525a2p-4, -0x1.24916b79e52cbp-3, 0x1.999996f841596p-3, -0x1.55555553d4e83p-2, 0x1.ffffffffffdc2p-1}, 0x1.1f1b97aa401b7p-44};
+template <>
+inline constexpr fit<8> atan_fit<8>{{-0x1.aa8f6c47f36f3p-5, 0x1.34711ca5792p-4, -0x1.73f8650c700a6p-4, 0x1.c7191a586cb9p-4, -0x1.24924164daf8ap-3, 0x1.99999987e3e9p-3, -0x1.555555554d98ap-2, 0x1.ffffffffffff7p-1}, 0x1.20022dffbfff9p-50};
+template <>
+inline constexpr fit<9> atan_fit<9>{{0x1.6c31316c8abafp-5, -0x1.09a36129cdc3ap-4, 0x1.3a8edf8218b3ep-4, -0x1.7457a52f6add7p-4, 0x1.c71c5040a7db8p-4, -0x1.249248eb37de3p-3, 0x1.999999993a447p-3, -0x1.55555555553a1p-2, 0x1p0}, 0x1.3b7a990068329p-56};
+template <>
+inline constexpr fit<10> atan_fit<10>{{-0x1.3aabca60ff059p-5, 0x1.d14b23cbe6e22p-5, -0x1.1064a56048206p-4, 0x1.3b0b25b24604bp-4, -0x1.745cd40ae4cf5p-4, 0x1.c71c70865582dp-4, -0x1.24924922e001bp-3, 0x1.9999999997573p-3, -0x1.555555555554dp-2, 0x1p0}, 0x1.372588bf28f75p-62};
+template <>
+inline constexpr fit<11> atan_fit<11>{{0x1.109f856507578p-5, -0x1.9c1021880a1f6p-5, 0x1.e00f2d1d6329bp-5, -0x1.1102f90079ed8p-4, 0x1.3b1323771f976p-4, -0x1.745d13a7e9814p-4, 0x1.c71c71b837cb8p-4, -0x1.24924924802fdp-3, 0x1.999999999982ep-3, -0x1.5555555555555p-2, 0x1p0}, 0x1.a029c383109dp-67};
+inline constexpr std::array<double, 10> atan_err{0x1.fc83bf5b0de45p-14, 0x1.93cef3120b229p-20, 0x1.5d05f803725d3p-26, 0x1.3d4562f308be7p-32, 0x1.2a3a873c06871p-38, 0x1.1f1b97aa401b7p-44, 0x1.20022dffbfff9p-50, 0x1.3b7a990068329p-56, 0x1.372588bf28f75p-62, 0x1.a029c383109dp-67}; // index terms − min
+
+} // namespace beman::inside::math::detail::fp::minimax
+// clang-format on
 
 
 #ifndef BEMAN_INSIDE_MATH_NO_FP // ===== FP engine present (needs <cmath> + an FPU) =====
@@ -14273,6 +14470,25 @@ consteval int terms_for(int T, int Max, F trunc) {
     return Max;
 }
 
+// The fewest terms of a minimax fit (math/detail/minimax.hpp) whose
+// certified error is at most 2^-T, from its errors by terms − min; the most
+// it has past them.
+template <std::size_t M>
+consteval int fit_terms(int T, int min, const std::array<double, M>& errs) {
+    for (std::size_t i = 0; i + 1 < M; ++i)
+        if (errs[i] <= pow_n(0.5, T))
+            return min + static_cast<int>(i);
+    return min + static_cast<int>(M) - 1;
+}
+// A fit as a poly for horner_error: its coefficients are the doubles
+// themselves, exact (Err 0); the fit's own Err is the approximation term.
+template <std::size_t N>
+consteval poly<N> exact_poly(const minimax::fit<N>& f) {
+    poly<N> p{};
+    p.C = f.C;
+    return p;
+}
+
 // The target of the full kernels: truncation below 2^-58, a thirty-second
 // of their rounding error.
 inline constexpr int full_bits = 58;
@@ -14392,27 +14608,25 @@ struct trig_k {
 };
 
 //---------------------------------------------------------------------------
-// e^r on |r| ≤ r_exp: Σ r^k/k!, whose tail is at most r^n/n!·e^|r|.
+// e^r on |r| ≤ r_exp: the minimax fit of N terms (math/detail/minimax.hpp),
+// within its certified Err of e^r, relatively.
 //---------------------------------------------------------------------------
-inline constexpr double r_exp   = 0x1.63p-2; // 0.34668 ≥ ln2/2 + 2^-40
+inline constexpr double r_exp   = 0x1.63p-2; // 0.34668 ≥ ln2/2 + 2^-40 (the fit's interval)
 inline constexpr double exp_max = 1.4144;    // ≥ e^r_exp
-constexpr double        exp_trunc(int n) { return pow_n(r_exp, n) / factorial(n) * exp_max * exp_max; }
 template <int T>
-inline constexpr int exp_terms = terms_for(T, 15, exp_trunc);
+inline constexpr int exp_terms = fit_terms(T, minimax::exp_min, minimax::exp_err);
 
-template <int N>
-inline constexpr poly<N> exp_c = series<N>([](int k) { return term{1.0, factorial(k)}; });
-
-// Relative error of exp_poly at the r it is given (e^r ≥ 1/exp_max).
+// Relative error of exp_poly at the r it is given: Horner's, absolute, over
+// e^r ≥ 1/exp_max, and the fit's Err.
 template <int N>
 inline constexpr double exp_poly_rel = [] {
-    const horner_bound h = horner_error(exp_c<N>, r_exp, 0);
-    return up(h.Err * exp_max + exp_trunc(N));
+    const horner_bound h = horner_error(exact_poly(minimax::exp_fit<N>), r_exp, 0);
+    return up(h.Err * exp_max + minimax::exp_fit<N>.Err);
 }();
 
 template <int N>
 [[gnu::always_inline]] inline double exp_poly(double r) {
-    return horner(r, exp_c<N>.C);
+    return horner(r, minimax::exp_fit<N>.C);
 }
 
 // sinh a = a + a·z·P(z) for 0 ≤ a < ln 2, z = a² ≤ z_sinh, P = Σ z^k/(2k+3)!.
@@ -14528,18 +14742,18 @@ struct exp_k {
 
 //---------------------------------------------------------------------------
 // ln x for x > 0: frexp to m ∈ [√½, √2), ln x = e·ln2 + 2·atanh f with
-// f = (m − 1)/(m + 1), |f| ≤ f_max, and 2·atanh f = 2f·Σ f^2k/(2k+1),
-// whose tail is at most f^2n/((2n+1)(1 − f²)) of the sum (which is ≥ 1).
+// f = (m − 1)/(m + 1), |f| ≤ f_max: 2·atanh f ≈ 2f·q(f²), the minimax fit
+// over |f| ≤ f_max. The Hi + Lo form (value_hl) keeps the series
+// 2f·Σ f^2k/(2k+1), whose tail is at most f^2n/((2n+1)(1 − f²)) of the sum
+// (which is ≥ 1).
 //---------------------------------------------------------------------------
-inline constexpr double f_max = 0.1716; // ≥ (√2 − 1)/(√2 + 1) = 0.171573
+inline constexpr double f_max = 0.1716; // ≥ (√2 − 1)/(√2 + 1) = 0.171573 (the fit's interval)
 inline constexpr double z_log = f_max * f_max;
 constexpr double        log_trunc(int n) { return pow_n(z_log, n) / ((2 * n + 1) * (1 - z_log)); }
 template <int T>
 inline constexpr int log_terms = terms_for(T, 11, log_trunc);
 
-template <int N>
-inline constexpr poly<N> log_c = series<N>([](int k) { return term{1.0, 2.0 * k + 1}; });
-// log_c without its constant term, over z: Σ z^k/(2k+3).
+// The series without its constant term, over z: Σ z^k/(2k+3).
 template <int N>
 inline constexpr poly<N> log_tail_c = series<N>([](int k) { return term{1.0, 2.0 * k + 3}; });
 
@@ -14549,12 +14763,16 @@ inline constexpr poly<N> log_tail_c = series<N>([](int k) { return term{1.0, 2.0
 // e·Hi is exact and the two fmas round once each, relative to |v|: for
 // e ≠ 0, |v| ≥ ln2/2 ≥ |2 atanh f|, and |e|·ln2_res ≤ 3·ln2_res·|v|;
 // for e = 0 both fmas return 2f·p exactly.
+// value's polynomial is the minimax fit of atanh f / f (math/detail/minimax.hpp)
+// of N terms, within its certified Err; value_hl's is the series' tail of NT
+// terms (log_tail_c), whose truncation is log_trunc(NT).
 template <int T>
 struct log_k {
-    static constexpr int    N    = log_terms<T>;
+    static constexpr int    N    = fit_terms(T, minimax::atanh_min, minimax::atanh_err);
+    static constexpr int    NT   = log_terms<T>;
     static constexpr double MRel = [] {
-        const horner_bound h = horner_error(log_c<N>, z_log, unit_roundoff);
-        return h.Err + log_trunc(N) + unit_roundoff + 2 * unit_roundoff / (1 - z_log);
+        const horner_bound h = horner_error(exact_poly(minimax::atanh_fit<N>), z_log, unit_roundoff);
+        return h.Err + minimax::atanh_fit<N>.Err + unit_roundoff + 2 * unit_roundoff / (1 - z_log);
     }();
     static constexpr double Rel   = up(MRel + 2 * unit_roundoff + 3 * ln2_res);
     static constexpr double Rel2  = up(Rel + unit_roundoff + log2e_err);
@@ -14574,7 +14792,7 @@ struct log_k {
         int          e;
         const double m    = mantissa(x, e);
         const double f    = (m - 1.0) / (m + 1.0);
-        const double logm = 2.0 * f * horner(f * f, log_c<N>.C);
+        const double logm = 2.0 * f * horner(f * f, minimax::atanh_fit<N>.C);
         const double r    = fma(static_cast<double>(e), ln2_hi, logm);
         return fma(static_cast<double>(e), ln2_lo, r);
     }
@@ -14592,9 +14810,9 @@ struct log_k {
     // - e ≠ 0 (|ln x| ≥ 0.3466·|e|, |2f| ≤ 0.3432): that, plus the two
     //   additions of the low parts, e·Lo's rounding and ln2_res, per |e|.
     static constexpr double HlRel = [] {
-        const horner_bound h = horner_error(log_tail_c<N - 1>, z_log, unit_roundoff);
+        const horner_bound h = horner_error(log_tail_c<NT - 1>, z_log, unit_roundoff);
         const double       t = z_log * h.Mag + 2 * unit_roundoff; // |T|/|2f|
-        const double a2f = 2 * unit_roundoff * z_log / (1 - z_log) + 4 * unit_roundoff2 / (1 - z_log) + log_trunc(N) +
+        const double a2f = 2 * unit_roundoff * z_log / (1 - z_log) + 4 * unit_roundoff2 / (1 - z_log) + log_trunc(NT) +
                            z_log * (h.Err + unit_roundoff * h.Mag) + unit_roundoff * t;
         const double per_e = 2 * unit_roundoff * (0.7 * unit_roundoff + ln2_lo) + unit_roundoff * ln2_lo + ln2_res;
         const double rest  = 2 * unit_roundoff * (0.35 * unit_roundoff + 0.3432 * t);
@@ -14609,7 +14827,7 @@ struct log_k {
         const double fl = fma(-f, bl, fma(-f, b, a)) / b;
         const double z  = f * f;
         const double f2 = f + f;
-        const double t  = fma(fenced(f2 * z), horner(z, log_tail_c<N - 1>.C), fl + fl);
+        const double t  = fma(fenced(f2 * z), horner(z, log_tail_c<NT - 1>.C), fl + fl);
         const double ed = static_cast<double>(e);
         const hilo   h  = two_sum(ed * ln2_hi, f2);
         const hilo   v  = fast_two_sum(h.Hi, (h.Lo + ed * ln2_lo) + t);
@@ -14713,53 +14931,65 @@ struct log_k {
 
 //---------------------------------------------------------------------------
 // atan: |x| > 1 through π/2 − atan(1/x); then a > tan(π/12) through the
-// π/6 addition formula, so |t| ≤ t_max; atan t = t·Σ (−1)^k t^2k/(2k+1),
-// alternating with falling terms.
+// π/6 addition formula, so |t| ≤ t_max; atan t ≈ t·q(t²), the minimax fit
+// over |t| ≤ t_max.
 //---------------------------------------------------------------------------
-inline constexpr double t_max    = 0.2681; // ≥ tan(π/12) = 0.267949
+inline constexpr double t_max    = 0.2681; // ≥ tan(π/12) = 0.267949 (the fit's interval)
 inline constexpr double z_atan   = t_max * t_max;
 inline constexpr double atan_min = 1 - z_atan / 3; // ≤ atan t / t
-constexpr double        atan_trunc(int n) { return pow_n(z_atan, n) / (2 * n + 1) / atan_min; }
-template <int T>
-inline constexpr int atan_terms = terms_for(T, 15, atan_trunc);
 
-template <int N>
-inline constexpr poly<N> atan_c = series<N>([](int k) { return term{k % 2 ? -1.0 : 1.0, 2.0 * k + 1}; });
-
+// atan(n/d), n, d ≥ 0, with at most one division: n ≤ d after a swap (the
+// swap is π/2 − r), and where n/d > tan(π/12) the π/6 step folds into the
+// quotient, t = (n − c·d)/(d + c·n) = tan(atan(n/d) − atan c), chosen by
+// n > tan(π/12)·d without dividing first.
 // Unreduced (|x| ≤ tan(π/12), the only case where |v| can be small):
 // the Horner error and truncation over atan t / t, and fma(t, p, 0)'s
 // rounding — relative. Every other path adds absolute errors, in units of
-// U: t's three roundings (a − c, the fma, the quotient) move atan by
-// 3·t_max; the constants c and π/6 by 0.23 and 0.5 (atan(c̃) is within
-// |c̃ − c|·¾ of π/6); fma(t, p, π/6) rounds by π/4; 1/a moves atan by ½;
-// π/2 − r by 0.56 (the constant) and π/2 (the rounding); and t·(Horner +
-// truncation) of the polynomial itself.
+// U: t's roundings (at most three: the two fmas and the quotient, or the
+// quotient alone) move atan by 3·t_max; the constants c and π/6 by 0.23
+// and 0.5 (atan(c̃) is within |c̃ − c|·¾ of π/6); fma(t, p, π/6) rounds by
+// π/4; ½ more for a quotient rounded before the step (none is now, so this
+// is slack); π/2 − r by 0.56 (the constant) and π/2 (the rounding); and
+// t·(Horner + truncation) of the polynomial itself.
+// The polynomial is the minimax fit of atan t / t (math/detail/minimax.hpp)
+// of N terms: within Err·(atan t / t) ≤ Err of it, absolutely.
 template <int T>
 struct atan_k {
-    static constexpr int    N       = atan_terms<T>;
+    static constexpr int    N       = fit_terms(T, minimax::atan_min, minimax::atan_err);
     static constexpr double PolyAbs = [] {
-        const horner_bound h = horner_error(atan_c<N>, z_atan, unit_roundoff);
-        return h.Err + atan_trunc(N) * atan_min;
+        const horner_bound h = horner_error(exact_poly(minimax::atan_fit<N>), z_atan, unit_roundoff);
+        return h.Err + minimax::atan_fit<N>.Err;
     }();
     static constexpr double Rel = up(PolyAbs / atan_min + unit_roundoff);
     static constexpr double Abs =
         up(t_max * PolyAbs + 3 * t_max * unit_roundoff + inv_sqrt3_err * 0.75 + pi_sixth_err + r_trig * unit_roundoff +
            0.5 * unit_roundoff + pi_half_err + 1.5708 * unit_roundoff);
 
+    [[gnu::always_inline]] static double core(double t, double off) {
+        return fma(t, horner(t * t, minimax::atan_fit<N>.C), off);
+    }
+    // atan(lo/hi), 0 ≤ lo ≤ hi, hi > 0.
+    [[gnu::always_inline]] static double reduced(double lo, double hi) {
+        if (lo > tan_pi12 * hi)
+            return core(fma(-inv_sqrt3, hi, lo) / fma(inv_sqrt3, lo, hi), pi_sixth);
+        return core(lo / hi, 0.0);
+    }
+    // atan(n/d), n, d ≥ 0, not both 0.
+    [[gnu::always_inline]] static double ratio(double n, double d) {
+        if (n > d)
+            return pi_half - reduced(d, n);
+        return reduced(n, d);
+    }
     [[gnu::always_inline]] static double value(double x) {
-        const bool neg = x < 0;
-        double     a   = neg ? -x : x;
-        const bool inv = a > 1.0;
-        if (inv)
-            a = 1.0 / a;
-        double off = 0.0;
-        if (a > tan_pi12) {
-            a   = (a - inv_sqrt3) / fma(a, inv_sqrt3, 1.0);
-            off = pi_sixth;
-        }
-        double r = fma(a, horner(a * a, atan_c<N>.C), off);
-        if (inv)
-            r = pi_half - r;
+        const bool   neg = x < 0;
+        const double a   = neg ? -x : x;
+        double       r;
+        if (a > 1.0)
+            r = pi_half - reduced(1.0, a);
+        else if (a > tan_pi12)
+            r = core(fma(-inv_sqrt3, 1.0, a) / fma(inv_sqrt3, a, 1.0), pi_sixth);
+        else
+            r = core(a, 0.0); // no division
         return neg ? -r : r;
     }
     static double atan(double x, double& bound) {
@@ -14768,34 +14998,77 @@ struct atan_k {
         return v;
     }
 
-    // atan2: y/x rounds (½U on the angle); x < 0 adds ±π (its constant
-    // and one rounding).
+    // atan2: atan(|y|/|x|) by ratio, which takes |y| and |x| as they are
+    // (the ½U of a rounded y/x is slack now); x < 0 takes π − r (its
+    // constant and one rounding).
     static constexpr double Atan2Rel = up(Rel + unit_roundoff), Atan2Abs = up(Abs + 0.5 * unit_roundoff + pi_err);
     static double           atan2(double y, double x, double& bound) {
         double v;
-        if (x > 0.0)
-            v = value(y / x);
-        else if (x < 0.0)
-            v = value(y / x) + (y >= 0.0 ? pi_double : -pi_double);
-        else
+        if (x == 0.0)
             v = y > 0.0 ? pi_half : y < 0.0 ? -pi_half : 0.0;
+        else {
+            const double r = ratio(y < 0.0 ? -y : y, x < 0.0 ? -x : x);
+            const double q = x < 0.0 ? pi_double - r : r;
+            v              = y < 0.0 ? -q : q;
+        }
         bound = Atan2Rel * __builtin_fabs(v) + Atan2Abs + tiny;
         return v;
     }
+};
 
-    // asin = atan(x/√((1 − x)(1 + x))): the quotient within 3.5U, which
-    // moves atan by 3.5U of itself at most. acos = π/2 − asin: absolute.
-    static constexpr double AsinRel = up(Rel + 3.5 * unit_roundoff), AsinAbs = Abs;
-    static constexpr double AcosRel = unit_roundoff, AcosAbs = up(AsinRel * 1.5708 + AsinAbs + pi_half_err);
-    [[gnu::always_inline]] static double asin_value(double x) { return value(x / std::sqrt((1.0 - x) * (1.0 + x))); }
-    static double                        asin(double x, double& bound) {
-        const double v = asin_value(x);
-        bound          = AsinRel * __builtin_fabs(v) + AsinAbs + tiny;
-        return v;
+//---------------------------------------------------------------------------
+// asin and acos without a division: on |x| ≤ ½, asin x = x·q(x²) with q the
+// minimax fit (math/detail/minimax.hpp) of N terms, within Err of asin x / x
+// (≥ 1) relatively, Err certified by Sollya. Above ½, asin x = π/2 −
+// 2·asin s with u = (1 − x)/2 ≤ ¼ (1 − x exact by Sterbenz, the halving
+// exact) and s = √u, and asin s = s·q(u): u is s² exactly, so q takes it
+// without a rounded square.
+//---------------------------------------------------------------------------
+template <int N>
+inline constexpr poly<N> asin_q = exact_poly(minimax::asin_fit<N>);
+
+// Relative errors, in units of the value:
+// - |x| ≤ ½ (Lo): q at fl(x²) (Horner's error over q ≥ 1, with the
+//   argument's U), Err, and the product x·q;
+// - w = s·q(u) (W): the root's U, Horner at the exact u, Err, the product;
+// - π/2 − 2w above ½ (Hi): v ≥ π/6 and 2w ≤ π/3 within W of itself, so
+//   2W of v, the fma's rounding, and π/2's constant over π/6.
+// acos: π/2 − asin x on |x| ≤ ½ (v ≥ π/3, |asin x| ≤ π/6: Lo/2, the
+// subtraction, π/2's constant over π/3); 2w above ½ (W: the doubling is
+// exact, and nothing cancels near 1); π − 2w below −½ (v ≥ 2π/3, 2w ≤ π/3:
+// W/2, the fma, π's constant over 2π/3).
+template <int T>
+struct asin_k {
+    static constexpr int    N     = fit_terms(T, minimax::asin_min, minimax::asin_err);
+    static constexpr double Err   = minimax::asin_fit<N>.Err;
+    static constexpr double LoRel = up(horner_error(asin_q<N>, 0.25, unit_roundoff).Err + Err + unit_roundoff);
+    static constexpr double W     = up(horner_error(asin_q<N>, 0.25, 0).Err + Err + 2 * unit_roundoff);
+    static constexpr double HiRel = up(2 * W + unit_roundoff + pi_half_err / 0.5235);
+    static constexpr double Rel   = std::max(LoRel, HiRel);
+    static constexpr double AcosRel =
+        up(std::max({LoRel / 2 + unit_roundoff + pi_half_err / 1.0471, W, W / 2 + unit_roundoff + pi_err / 2.0943}));
+
+    [[gnu::always_inline]] static double q(double z) { return horner(z, minimax::asin_fit<N>.C); }
+    // 2·asin s for a = |x| > ½, as w (asin s).
+    [[gnu::always_inline]] static double w(double a) {
+        const double u = (1.0 - a) * 0.5;
+        return std::sqrt(u) * q(u);
     }
-    static double acos(double x, double& bound) {
-        const double v = pi_half - asin_value(x);
-        bound          = AcosRel * __builtin_fabs(v) + AcosAbs + tiny;
+    [[gnu::always_inline]] static double asin(double x, double& bound) {
+        const double a = x < 0 ? -x : x;
+        const double r = a <= 0.5 ? a * q(a * a) : fma(-2.0, w(a), pi_half);
+        bound          = Rel * r + tiny;
+        return x < 0 ? -r : r;
+    }
+    [[gnu::always_inline]] static double acos(double x, double& bound) {
+        const double a = x < 0 ? -x : x;
+        double       v;
+        if (a <= 0.5) {
+            const double r = a * q(a * a);
+            v              = pi_half - (x < 0 ? -r : r);
+        } else
+            v = x > 0 ? 2.0 * w(a) : fma(-2.0, w(a), pi_double);
+        bound = AcosRel * v + tiny;
         return v;
     }
 };
@@ -16018,9 +16291,11 @@ template <insidable In>
 inline constexpr double in_max = static_cast<double>(max_abs_int<In>);
 
 // What follows a fast tier or a lean kernel: rarely taken, so out of line,
-// which keeps its frame off the fast path.
+// which keeps its frame off the fast path. By value, and its callers capture
+// by value: a reference would put the inputs in memory, and their address in
+// a noinline call brings the stack protector into the fast path.
 template <std::invocable<> F>
-[[gnu::cold]] [[gnu::noinline]] constexpr auto cold_call(const F& f) {
+[[gnu::cold]] [[gnu::noinline]] constexpr auto cold_call(F f) {
     return f();
 }
 
@@ -16191,6 +16466,7 @@ using fp_full_trig = fpk::trig_k<fpk::full_bits>;
 using fp_full_exp  = fpk::exp_k<fpk::full_bits>;
 using fp_full_log  = fpk::log_k<fpk::full_bits>;
 using fp_full_atan = fpk::atan_k<fpk::full_bits>;
+using fp_full_asin = fpk::asin_k<fpk::full_bits>;
 BEMAN_INSIDE_ENGINE_KERNEL(sin, trig_k, sin, 1, fp_limit(fp_full_trig::Rel), 1.0)
 BEMAN_INSIDE_ENGINE_KERNEL(cos, trig_k, cos, 1, fp_limit(fp_full_trig::Rel), 1.0)
 BEMAN_INSIDE_ENGINE_KERNEL(exp, exp_k, exp, unbounded, fp_limit(fp_full_exp::Rel), __builtin_fabs(v))
@@ -16199,18 +16475,10 @@ BEMAN_INSIDE_ENGINE_KERNEL(sinh, exp_k, sinh, unbounded, fp_limit(fp_full_exp::S
 BEMAN_INSIDE_ENGINE_KERNEL(cosh, exp_k, cosh, unbounded, fp_limit(fp_full_exp::CoshRel), __builtin_fabs(v) + 1)
 BEMAN_INSIDE_ENGINE_KERNEL(tanh, exp_k, tanh, 1, fp_limit(fp_full_exp::TanhRel + fp_full_exp::TanhAbs), 1.0)
 BEMAN_INSIDE_ENGINE_KERNEL(atan, atan_k, atan, 1, fp_limit(fp_full_atan::Rel + fp_full_atan::Abs), 1.0)
-BEMAN_INSIDE_ENGINE_KERNEL(asin,
-                           atan_k,
-                           asin,
-                           1,
-                           fp_limit(fp_full_atan::AsinRel + fp_full_atan::AsinAbs),
-                           1.0 / fpk::fp_sqrt((1.0 - x) * (1.0 + x)))
-BEMAN_INSIDE_ENGINE_KERNEL(acos,
-                           atan_k,
-                           acos,
-                           2,
-                           fp_limit(4 * fp_full_atan::AcosRel + fp_full_atan::AcosAbs),
-                           1.0 / fpk::fp_sqrt((1.0 - x) * (1.0 + x)))
+BEMAN_INSIDE_ENGINE_KERNEL(
+    asin, asin_k, asin, 1, fp_limit(fp_full_asin::Rel), 1.0 / fpk::fp_sqrt((1.0 - x) * (1.0 + x)))
+BEMAN_INSIDE_ENGINE_KERNEL(
+    acos, asin_k, acos, 2, fp_limit(4 * fp_full_asin::AcosRel), 1.0 / fpk::fp_sqrt((1.0 - x) * (1.0 + x)))
 BEMAN_INSIDE_ENGINE_KERNEL(log, log_k, log, unbounded, fp_limit(fp_full_log::Rel), 1.0 / __builtin_fabs(x))
 BEMAN_INSIDE_ENGINE_KERNEL(log2, log_k, log2, unbounded, fp_limit(fp_full_log::Rel2), 1.5 / __builtin_fabs(x))
 BEMAN_INSIDE_ENGINE_KERNEL(log10, log_k, log10, unbounded, fp_limit(fp_full_log::Rel10), 1.0 / __builtin_fabs(x))
@@ -16398,14 +16666,30 @@ inline bool dd_full_attempt(const ddk::dd& x, Out& out) {
     return dd_decide(v, bound, out);
 }
 
-// A lean attempt (its value, setting the bound) first, then the full one.
+// A full attempt's result, returned in registers from the cold call.
+template <insidable Out>
+struct full_result {
+    Out  Value;
+    bool Ok;
+};
+
+// A lean attempt (its value, setting the bound) first, then the full one
+// out of line. full fills the slot it is given and captures by value, so
+// neither the inputs nor out leave registers on the fast path.
 template <insidable Out, typename Lean, typename Full>
 [[gnu::always_inline]] inline bool dd_lean_first(const Lean& lean, const Full& full, Out& out) {
     double        bound;
     const ddk::dd v = lean(bound);
     if (dd_decide(v, bound, out))
         return true;
-    return cold_call(full);
+    const auto r = cold_call([full] {
+        full_result<Out> f{};
+        f.Ok = full(f.Value);
+        return f;
+    });
+    if (r.Ok)
+        out = r.Value;
+    return r.Ok;
 }
 
 // The lean kernel first where K has one, then the full one.
@@ -16420,7 +16704,7 @@ inline bool dd_attempt(const In& in, Out& out) {
                     bound += dd_input_rel<In> * __builtin_fabs(x.Hi) * K::slope(x.Hi, v.Hi);
                 return v;
             },
-            [&] { return dd_full_attempt<Out, K, In>(x, out); },
+            [=](Out& o) { return dd_full_attempt<Out, K, In>(x, o); },
             out);
     else
         return dd_full_attempt<Out, K, In>(x, out);
@@ -16436,9 +16720,9 @@ inline bool dd_attempt_atan2(const InY& yi, const InX& xi, Out& out) {
             bound += input;
             return v;
         },
-        [&] {
+        [=](Out& o) {
             const ddk::dd v = ddk::atan2(y, x);
-            return dd_decide(v, dd_eval_bound(1.0, v.Hi) + input, out);
+            return dd_decide(v, dd_eval_bound(1.0, v.Hi) + input, o);
         },
         out);
 }
@@ -16456,17 +16740,17 @@ inline bool dd_attempt_hypot(const InX& xi, const InY& yi, Out& out) {
 template <insidable Out, insidable In>
 inline bool dd_attempt_tan(const In& in, Out& out) {
     const ddk::dd x     = dd_read(in);
-    auto          input = [&](double t) { return dd_input_rel<In> * __builtin_fabs(x.Hi) * (1 + t * t); };
+    auto          input = [=](double t) { return dd_input_rel<In> * __builtin_fabs(x.Hi) * (1 + t * t); };
     return dd_lean_first(
         [&](double& bound) {
             const ddk::dd t = ddk::tan_lean(x, bound);
             bound += input(t.Hi);
             return t;
         },
-        [&] {
+        [=](Out& o) {
             const ddk::dd t    = ddk::tan(x);
             const double  sec2 = 1 + t.Hi * t.Hi, mx = std::max(1.0, __builtin_fabs(x.Hi));
-            return dd_decide(t, dd_rel * sec2 * mx + dd_abs * mx + input(t.Hi), out);
+            return dd_decide(t, dd_rel * sec2 * mx + dd_abs * mx + input(t.Hi), o);
         },
         out);
 }
@@ -16480,7 +16764,7 @@ inline bool dd_attempt_pow(const InB& bi, const InE& ei, Out& out) {
     const ddk::dd b = dd_read(bi), e = dd_read(ei);
     if (!(b.Hi > 0))
         return false;
-    auto input = [&](double L) { return dd_input_rel<InB> * __builtin_fabs(e.Hi) + dd_input_rel<InE> * L; };
+    auto input = [=](double L) { return dd_input_rel<InB> * __builtin_fabs(e.Hi) + dd_input_rel<InE> * L; };
     return dd_lean_first(
         [&](double& bound) {
             const ddk::dd y = ddk::mul(ddk::log_lean(b, bound), e);
@@ -16495,13 +16779,13 @@ inline bool dd_attempt_pow(const InB& bi, const InE& ei, Out& out) {
                     fpk::tiny;
             return v;
         },
-        [&] {
+        [=](Out& o) {
             const ddk::dd y = ddk::mul(ddk::log(b), e);
             const double  L = __builtin_fabs(y.Hi);
             if (!(L <= 700))
                 return false;
             const ddk::dd v = ddk::exp(y);
-            return dd_decide(v, __builtin_fabs(v.Hi) * (dd_rel * (1 + L) + input(L)) + dd_abs, out);
+            return dd_decide(v, __builtin_fabs(v.Hi) * (dd_rel * (1 + L) + input(L)) + dd_abs, o);
         },
         out);
 }
@@ -16523,9 +16807,9 @@ inline bool dd_attempt_pow_base(const In& xi, Out& out) {
                     fpk::tiny;
             return v;
         },
-        [&] {
+        [=](Out& o) {
             const ddk::dd v = ddk::exp(y);
-            return dd_decide(v, __builtin_fabs(v.Hi) * (dd_rel * (1 + L) + dd_input_rel<In> * L) + dd_abs, out);
+            return dd_decide(v, __builtin_fabs(v.Hi) * (dd_rel * (1 + L) + dd_input_rel<In> * L) + dd_abs, o);
         },
         out);
 }
@@ -16728,7 +17012,7 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
                 if constexpr (FP) {
                     if (Out r; fp(r))
                         return r;
-                    return engine::cold_call([&]() -> decltype(integer()) {
+                    return engine::cold_call([=]() -> decltype(integer()) {
                         if constexpr (DD)
                             if (Out r; dd(r))
                                 return r;
@@ -16749,9 +17033,9 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
 // DD in parentheses.
 #ifndef BEMAN_INSIDE_MATH_NO_FP
     #define BEMAN_INSIDE_ENGINE_TIERS(Out, FP, DD, fp_call, dd_call, ...)                                    \
-        return ::beman::inside::math::adaptive::tiers<Out, FP, DD>([&](auto& r) -> bool { return fp_call; }, \
-                                                                   [&](auto& r) -> bool { return dd_call; }, \
-                                                                   [&] { return __VA_ARGS__; });
+        return ::beman::inside::math::adaptive::tiers<Out, FP, DD>([=](auto& r) -> bool { return fp_call; }, \
+                                                                   [=](auto& r) -> bool { return dd_call; }, \
+                                                                   [=] { return __VA_ARGS__; });
 #else
     #define BEMAN_INSIDE_ENGINE_TIERS(Out, FP, DD, fp_call, dd_call, ...)                                         \
         ::beman::inside::math::detail::engine::note<::beman::inside::math::detail::engine::probe::integer_run>(); \
@@ -17003,7 +17287,7 @@ template <insidable Out, insidable InB, insidable InE>
     if constexpr (anchoring::unanchored_call<Out, InB, InE>)
         return anchoring::via_anchored<Out>([]<insidable O>(auto a, auto b) { return pow_into<O>(a, b); }, base, exp);
     else {
-        const auto integer = [&]() -> std::expected<Out, errc> {
+        const auto integer = [=]() -> std::expected<Out, errc> {
             const auto b = engine::exact_input(base);
             if (b.Num.negative())
                 return std::unexpected(errc::domain_error);

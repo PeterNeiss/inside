@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// The double tier's minimax polynomials (math/detail/minimax.hpp), run by
+// gen.py: for each function and each number of terms, fpminimax gives the
+// polynomial with double coefficients closest in relative error over the
+// interval, and supnorm a certified enclosure of that error (interval
+// arithmetic and Taylor models), whose upper end, rounded up to a double,
+// is the bound the kernels prove with. Output, one line per fit:
+//   FIT <name> <terms> <bound> <coefficients, highest degree first>
+// For an odd fit (odd = 1) the coefficients are those of q in f(x) ≈ x·q(x²).
+
+prec = 300!;
+display = hexadecimal!;
+
+procedure fit(name, f, odd, a, b, nmin, nmax) {
+    var n, k, m, p, e, d;
+    for n from nmin to nmax do {
+        m = [||];
+        for k from 0 to n - 1 do {
+            if odd == 1 then d = 2 * k + 1 else d = k;
+            m = m :. d;
+        };
+        p = fpminimax(f, m, [|D...|], [a; b], floating, relative);
+        e = supnorm(p, f, [a; b], relative, 2^(-15));
+        write("FIT ", name, " ", n, " ", round(sup(e), D, RU));
+        for k from n - 1 to 0 by -1 do {
+            if odd == 1 then d = 2 * k + 1 else d = k;
+            write(" ", coeff(p, d));
+        };
+        write("\n");
+    };
+};

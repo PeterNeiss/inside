@@ -679,16 +679,35 @@ struct inside {
         const W     room = W{std::numeric_limits<imax>::max()} - (hi - lo + W{1}) - mag;
         return room.negative() ? umax{0} : static_cast<umax>(room);
     }();
+    // The exact sum when the notch count does not apply: out of line, and by
+    // value in and out, so the fast path keeps *this in registers.
+    [[gnu::cold]] [[gnu::noinline]] static constexpr inside add_rational_cold(inside x, detail::rational rhs)
+        requires raw_delta_ok
+    {
+        x.assign_op_result(detail::rational{x} + rhs);
+        return x;
+    }
     // A bool and an out-parameter, not an optional<imax>: GCC 16 kept the
     // optional in memory, 12 more instructions on every += / -= of a rational.
-    static constexpr bool notch_delta(const detail::rational& r, imax& delta) noexcept {
+    // No division where K is a power of two (every binary Q format): d
+    // divides K exactly when d is a power of two no larger (d − 1 < K also
+    // rules out 0), and the count r.Num·K/d is a shift, sized by a shift.
+    static constexpr bool notch_delta(detail::rational r, imax& delta) noexcept {
         constexpr umax K = detail::abs_den(detail::notch64<inside>.Den);
         const umax     d = detail::abs_den(r.Den);
-        if (K % d != 0 || r.Num > max_notch_delta / (K / d))
+        umax           n; // the count of notches, r.Num·K/d
+        if constexpr (std::has_single_bit(K)) {
+            if (d - 1 >= K || (d & (d - 1)) != 0)
+                return false;
+            // K/d = 2^shift; the builtin, as d ≠ 0 (countr_zero guards 0).
+            const int shift = std::countr_zero(K) - __builtin_ctzll(d);
+            if (r.Num > (max_notch_delta >> shift))
+                return false;
+            n = r.Num << shift;
+        } else if (d == 0 || K % d != 0 || detail::mul_overflow(r.Num, K / d, &n) || n > max_notch_delta)
             return false;
-        const imax n    = static_cast<imax>(r.Num * (K / d));
         const imax sign = r.Den >> 63; // 0, or −1 for a negative value
-        delta           = (n ^ sign) - sign;
+        delta           = (static_cast<imax>(n) ^ sign) - sign;
         return true;
     }
 
@@ -699,10 +718,12 @@ struct inside {
 
     template <std::same_as<detail::rational> A>
     constexpr inside& operator+=(const A& rhs) {
-        if constexpr (raw_delta_ok)
+        if constexpr (raw_delta_ok) {
             if (imax n; notch_delta(rhs, n)) [[likely]]
                 return store_raw<imax>(static_cast<imax>(Raw) + n);
-        return assign_op_result(detail::rational{*this} + rhs);
+            return *this = add_rational_cold(*this, rhs);
+        } else
+            return assign_op_result(detail::rational{*this} + rhs);
     }
 
     template <insidable R>
@@ -721,10 +742,12 @@ struct inside {
 
     template <std::same_as<detail::rational> A>
     constexpr inside& operator-=(const A& rhs) {
-        if constexpr (raw_delta_ok)
+        if constexpr (raw_delta_ok) {
             if (imax n; notch_delta(rhs, n)) [[likely]]
                 return store_raw<imax>(static_cast<imax>(Raw) - n);
-        return assign_op_result(detail::rational{*this} - rhs);
+            return *this = add_rational_cold(*this, -rhs);
+        } else
+            return assign_op_result(detail::rational{*this} - rhs);
     }
 
     template <insidable R>

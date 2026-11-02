@@ -208,6 +208,21 @@ inline constexpr bool native_product = [] {
 template <insidable A, insidable B>
 inline constexpr bool rational_operands = rational_readable<A> && rational_readable<B>;
 
+// A Q-format store rounds a fraction as its reduced form would (one
+// division of the offset), so a quotient for it needs no gcd: x/y as the
+// unreduced (xn·yd)/(xd·yn). Den 0 when y is 0 or a part passes 64 bits;
+// try_div decides then.
+template <insidable Out>
+inline constexpr bool unreduced_store = q_format_fits<Out> && notched<Out>;
+constexpr rational    unreduced_quotient(rational x, rational y) noexcept {
+    umax num, den;
+    if (y.Num == 0 || mul_overflow(x.Num, abs_den(y.Den), &num) || mul_overflow(abs_den(x.Den), y.Num, &den) ||
+        !std::in_range<imax>(den))
+        return rational_from_parts(0, 0);
+    const imax d = static_cast<imax>(den);
+    return rational_from_parts(num, (x.Den < 0) != (y.Den < 0) ? -d : d);
+}
+
 template <insidable Out, insidable A, insidable B, typename P>
 constexpr Out mul_into_wide(const A& a, const B& b, P&& policy) {
     using E = wide_rational<exact_limbs<A, B, Out>>;
@@ -217,6 +232,20 @@ template <insidable Out, insidable A, insidable B, typename P>
 constexpr Out div_into_wide(const A& a, const B& b, P&& policy) {
     using E = wide_rational<exact_limbs<A, B, Out>>;
     return store_exact_into<Out>(E{exact_of(a)} / E{exact_of(b)}, policy);
+}
+// The quotient as a reduced 64-bit rational, else wide.
+template <insidable Out, insidable A, insidable B, typename P>
+constexpr Out div_into_reduced(A a, B b, P policy) {
+    if constexpr (rational_operands<A, B>)
+        if (const auto q = try_div(as_rational(a), as_rational(b)))
+            return store_into<Out>(*q, policy);
+    return div_into_wide<Out>(a, b, policy);
+}
+// The same out of line, behind the unreduced quotient (by value, so the fast
+// path's operands stay in registers).
+template <insidable Out, insidable A, insidable B, typename P>
+[[gnu::cold]] [[gnu::noinline]] constexpr Out div_into_reduced_cold(A a, B b, P policy) {
+    return div_into_reduced<Out>(a, b, policy);
 }
 } // namespace detail
 
@@ -237,10 +266,13 @@ template <insidable Out, policy_flag F = none, insidable A, insidable B>
 [[nodiscard]] constexpr auto div_into(const A& a, const B& b)
     -> std::conditional_t<detail::divisor_excludes_zero<B>, Out, std::expected<Out, errc>> {
     const auto quotient = [&](auto&& policy) {
-        if constexpr (detail::rational_operands<A, B>)
-            if (const auto q = detail::try_div(detail::as_rational(a), detail::as_rational(b)))
-                return detail::store_into<Out>(*q, policy);
-        return detail::div_into_wide<Out>(a, b, policy);
+        if constexpr (detail::rational_operands<A, B> && detail::unreduced_store<Out>) {
+            if (const auto q = detail::unreduced_quotient(detail::as_rational(a), detail::as_rational(b)); q.Den != 0)
+                [[likely]]
+                return detail::store_into<Out>(q, policy);
+            return detail::div_into_reduced_cold<Out>(a, b, policy);
+        } else
+            return detail::div_into_reduced<Out>(a, b, policy);
     };
     if constexpr (detail::divisor_excludes_zero<B>)
         return quotient(make_policy<flags_of<Out> | F>());
@@ -320,6 +352,22 @@ template <insidable First, insidable... Rest>
     return (first * ... * rest);
 }
 
+namespace detail {
+// How many raws of B a 32-bit accumulator sums without overflow (unsigned
+// for raws ≥ 0, else signed), at most 2^30: 32-bit lanes are twice as many
+// per vector register as imax ones. 0 when a raw passes the lane.
+template <insidable B>
+inline constexpr imax lane32_block = [] {
+    const grid_int lo = raw_lo_exact<B>, hi = raw_hi_exact<B>;
+    const grid_int mag   = lo.negative() && hi < -lo ? -lo : hi;
+    const umax     limit = lo.negative() ? umax{0x7fff'ffff} : umax{0xffff'ffff};
+    if (grid_int{limit} < mag)
+        return imax{0};
+    const umax m = static_cast<umax>(mag);
+    return m == 0 ? imax{1} << 30 : static_cast<imax>(std::min<umax>(limit / m, umax{1} << 30));
+}();
+} // namespace detail
+
 //---------------------------------------------------------------------------
 // sum<Target> — bulk reduction with ONE deferred range check. Per-element
 // `target += b` re-validates every step (blocks vectorization); this computes
@@ -327,7 +375,8 @@ template <insidable First, insidable... Rest>
 // (semantic difference: the *total* is validated, not every prefix).
 // Notched integer raws (wide ones too) sum value indices exactly — Σvalue =
 // Notch·ΣJ — in a wide integer with 64 bits of headroom for the count; ≤32-bit
-// raws add in imax blocks of 2^30 elements, the loop that vectorizes.
+// raws add in blocks, the loop that vectorizes: in 32-bit lanes where a
+// block of at least 64 fits them, else in imax blocks of 2^30 elements.
 // Continuous elements add as 64-bit
 // rationals; a total past that reports overflow through Target's policy.
 //---------------------------------------------------------------------------
@@ -358,11 +407,22 @@ template <insidable Target, std::ranges::input_range Rng>
                 // reachable iterator, has no distance to it: the loop below.)
                 if constexpr (std::ranges::random_access_range<Rng> &&
                               std::sized_sentinel_for<std::ranges::sentinel_t<Rng>, std::ranges::iterator_t<Rng>>) {
-                    const imax block = std::min<imax>(end - it, imax{1} << 30);
-                    for (imax j = 0; j < block; ++j)
-                        acc += detail::raw_imax(it[j]);
-                    it += block;
-                    cnt = block;
+                    if constexpr (constexpr imax lanes = detail::lane32_block<B>; lanes >= 64) {
+                        using L = std::conditional_t<detail::raw_lo_exact<B>.negative(), std::int32_t, std::uint32_t>;
+                        const imax block = std::min<imax>(end - it, lanes);
+                        L          a     = 0;
+                        for (imax j = 0; j < block; ++j)
+                            a += static_cast<L>(it[j].raw());
+                        acc = static_cast<imax>(a);
+                        it += block;
+                        cnt = block;
+                    } else {
+                        const imax block = std::min<imax>(end - it, imax{1} << 30);
+                        for (imax j = 0; j < block; ++j)
+                            acc += detail::raw_imax(it[j]);
+                        it += block;
+                        cnt = block;
+                    }
                 } else {
                     for (; it != end && cnt < (imax{1} << 30); ++it, ++cnt)
                         acc += detail::raw_imax(*it);

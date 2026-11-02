@@ -570,33 +570,35 @@ template <insidable L, typename P>
     return q + rounds_away(m, false, classify_remainder(m, r, den), (q & 1) != 0);
 }
 
-// The offset quotient num/den (den ≥ 1) of an unanchored grid rounded in
-// value space: the value Lower + (num/den)·Notch is below zero exactly when
-// num/den < −Lower/Notch, compared without overflow in 128 bits.
+// The split offset quotient q + r/den of an unanchored grid rounded in
+// value space: the value Lower + (q + r/den)·Notch is below zero exactly
+// when the offset num = q·den + r is below −Lower/Notch·den, compared
+// without overflow in 128 bits.
 template <insidable L, typename P>
-[[nodiscard]] constexpr umax round_offset_unanchored(umax num, umax den) noexcept {
-    const umax           q = num / den, r = num % den;
+[[nodiscard]] constexpr umax round_offset_unanchored(umax q, umax r, umax den) noexcept {
     constexpr round_mode m        = rounding_for<L, P>;
     bool                 negative = false;
     if constexpr (lower64<L> < 0) {
         constexpr rational c = -*lower_index64<L>; // > 0
         using W              = wide_uint<2>;
-        negative             = W{num} * W{abs_den(c.Den)} < W{c.Num} * W{den};
+        negative             = W{q * den + r} * W{abs_den(c.Den)} < W{c.Num} * W{den};
     }
     return q + rounds_up(m, negative, classify_remainder(m, r, den), ((q & 1) != 0) != lower_index_odd<L>);
 }
 
-// Round the non-negative offset quotient num/den (den >= 1) to an integer
-// notch index per L's rounding policy.
+// Round the non-negative offset quotient q + r/den (q, r from one division
+// of the offset by den ≥ 1, r < den) to an integer notch index per L's
+// rounding policy.
 //
 // Tie/sign rules are in VALUE space, not offset space, so assigning a value
 // rounds it the same way dividing down to it does (div_rounded is the
-// reference). The offset num/den is >= 0 (sign lost by subtracting Lower), so
-// we rebuild the signed value-index NUM = m·den + num (m = Lower/Notch), round
-// it like div_rounded, and return the offset J - m. m is integral on every
-// anchored grid; an unanchored one rounds the offset against the value's sign.
+// reference). The offset is >= 0 (sign lost by subtracting Lower); with m =
+// Lower/Notch, the floor's value index is F = m + q, the value is below zero
+// exactly when F is, and the rounding moves F up by one or not: no second,
+// signed division. m is integral on every anchored grid; an unanchored one
+// rounds the offset against the value's sign.
 template <insidable L, typename P>
-[[nodiscard]] constexpr umax round_quotient(umax num, umax den) noexcept {
+[[nodiscard]] constexpr umax round_split(umax q, umax r, umax den) noexcept {
     // Lower/Notch past 64 bits (a far-off grid with a fine notch) has no imax
     // value index: round the offset as for a non-integral m.
     constexpr auto zq = (!notched<L>) ? std::expected<rational, errc>{rational{0}} : try_div(lower64<L>, notch64<L>);
@@ -605,35 +607,20 @@ template <insidable L, typename P>
     constexpr imax m = vidx ? signed_numerator(*zq) : imax{0};
 
     if constexpr (!anchored<L>)
-        return round_offset_unanchored<L, P>(num, den);
+        return round_offset_unanchored<L, P>(q, r, den);
     else if constexpr (!vidx)
-        return round_offset<L, P>(num / den, num % den, den);
+        return round_offset<L, P>(q, r, den);
     else {
-        // Round the signed value-index NUM/di exactly like div_rounded.
-        // A numerator or m·di beyond imax (fine-denominator sources on grids
-        // with large |Lower·count|) cannot rebuild the signed index: round the
-        // offset's floor q instead, in value space — the value is below zero
-        // exactly when the floor's value index m + q is.
-        const imax di = static_cast<imax>(den);
-        imax       mdi, NUM;
-        if (!std::in_range<imax>(num) || mul_overflow(m, di, &mdi) || add_overflow(mdi, static_cast<imax>(num), &NUM))
-            [[unlikely]] {
-            constexpr round_mode mode = rounding_for<L, P>;
-            const umax           q = num / den, r = num % den;
-            const bool           negative = m < 0 && q < umax{0} - static_cast<umax>(m);
-            return q +
-                   rounds_up(mode, negative, classify_remainder(mode, r, den), ((q ^ static_cast<umax>(m)) & 1) != 0);
-        }
-        const imax           t    = NUM / di; // C++ truncation toward zero
-        const imax           rr   = NUM % di; // sign of NUM, |rr| < di
-        const bool           neg  = NUM < 0;
-        const umax           ar   = (rr < 0) ? ~static_cast<umax>(rr) + 1u : static_cast<umax>(rr);
-        constexpr round_mode mode = rounding_for<L, P>;
-        const imax J = rounds_away(mode, neg, classify_remainder(mode, ar, static_cast<umax>(di)), (t & 1) != 0)
-                           ? (neg ? t - 1 : t + 1)
-                           : t;
-        return static_cast<umax>(J - m); // offset index k = J - m (>= 0)
+        constexpr round_mode mode     = rounding_for<L, P>;
+        const bool           negative = m < 0 && q < umax{0} - static_cast<umax>(m);
+        return q + rounds_up(mode, negative, classify_remainder(mode, r, den), ((q ^ static_cast<umax>(m)) & 1) != 0);
     }
+}
+
+// The offset quotient num/den rounded: round_split of its one division.
+template <insidable L, typename P>
+[[nodiscard]] constexpr umax round_quotient(umax num, umax den) noexcept {
+    return round_split<L, P>(num / den, num % den, den);
 }
 
 // Forward decl — defined in assignment.hpp

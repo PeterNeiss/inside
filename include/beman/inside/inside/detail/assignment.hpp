@@ -321,7 +321,7 @@ struct assignment<L, R> {
         bool Exact;
     };
     template <typename P>
-    [[gnu::cold]] [[gnu::noinline]] static constexpr wide_slot_result wide_slot(const rational& v) {
+    [[gnu::cold]] [[gnu::noinline]] static constexpr wide_slot_result wide_slot(rational v) {
         const exact_index_result r = exact_index<L, rounding_for<L, P>>(exact_of(v));
         return {static_cast<umax>(r.Index), r.Exact}; // in range: fits 64 bits
     }
@@ -444,12 +444,13 @@ struct assignment<L, R> {
             // The slot onum/den when it is exact or P rounds; false otherwise
             // (strict policy, off-notch: the rational path below reports it).
             auto try_slot = [&](umax onum, umax den) {
-                if (onum % den == 0) {
-                    store_slot(onum / den);
+                const umax q = onum / den, r = onum % den; // one division
+                if (r == 0) {
+                    store_slot(q);
                     return true;
                 }
                 if constexpr (has_round_flag) {
-                    store_slot(round_quotient<L, P>(onum, den));
+                    store_slot(round_split<L, P>(q, r, den));
                     return true;
                 }
                 return false;
@@ -534,41 +535,45 @@ struct assignment<L, R> {
                 }
             }
 
-            // The exact quotient can overflow the 64-bit rational range (huge
-            // source denominator × fine notch): take the slot from the exact wide
-            // index instead (rhs is in range, so it fits L's raw). Rounding is
-            // the value-space rule, as everywhere else.
-            const auto rel      = try_sub(rv, lower64<L>);
-            const auto quotient = rel ? try_div(*rel, notch64<L>) : rel;
-            if (!quotient.has_value()) [[unlikely]] {
-                const wide_slot_result slot = wide_slot<P>(rv);
-                if constexpr (!has_round_flag)
-                    if (!slot.Exact && policy.checks_rounding()) [[unlikely]]
-                        return report_failure(lhs, policy, action, errc::rounding_error);
-                store_slot(slot.Slot);
-                return;
-            }
-            rational raw = *quotient;
-            umax     den = static_cast<umax>(raw.Den);
-            if (den == 1) {
-                store_slot(raw.Num);
-                return;
-            }
-
+            // The general slot: out of line and cold behind a shortcut above
+            // (it is then rare), inline where it is the store's only path.
+            constexpr bool         shortcut = (q_format_fits<L> && notched<L>) || unanchored_codec<L>.Ok;
+            const wide_slot_result slot     = shortcut ? rational_slot_cold<P>(rv) : rational_slot<P>(rv);
             if constexpr (!has_round_flag)
-                if (policy.checks_rounding()) [[unlikely]]
+                if (!slot.Exact && policy.checks_rounding()) [[unlikely]]
                     return report_failure(lhs, policy, action, errc::rounding_error);
-            store_slot(round_quotient<L, P>(raw.Num, den));
+            store_slot(slot.Slot);
         }
     }
 
   private:
+    // The slot of v by 64-bit rationals, (v − Lower)/Notch rounded. The
+    // exact quotient can overflow that range (huge source denominator × fine
+    // notch): the slot then comes from the exact wide index (v is in range,
+    // so it fits L's raw). Rounding is the value-space rule, as everywhere
+    // else. The 16-byte result returns in registers; the expected rationals
+    // stay inside.
+    template <typename P>
+    static constexpr wide_slot_result rational_slot(rational v) {
+        const auto rel      = try_sub(v, lower64<L>);
+        const auto quotient = rel ? try_div(*rel, notch64<L>) : rel;
+        if (!quotient.has_value()) [[unlikely]]
+            return wide_slot<P>(v);
+        if (quotient->Den == 1)
+            return {quotient->Num, true};
+        return {round_quotient<L, P>(quotient->Num, static_cast<umax>(quotient->Den)), false};
+    }
+    template <typename P>
+    [[gnu::cold]] [[gnu::noinline]] static constexpr wide_slot_result rational_slot_cold(rational v) {
+        return rational_slot<P>(v);
+    }
+
     // Range test for the source value. A floating source compares in double when
     // both endpoints are exact doubles (then the comparison is exact), instead of
     // converting the value to a rational first.
     // (A limit near 2^64 rounds to a double of 2^64, which no rational holds:
     // it is no exact double.)
-    static constexpr bool exact_double(const rational& r) {
+    static constexpr bool exact_double(rational r) {
         const double d = static_cast<double>(r);
         return !past_64_bits(d) && rational{d} == r;
     }
