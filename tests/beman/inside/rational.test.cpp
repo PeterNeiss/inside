@@ -125,6 +125,27 @@ TEST(RationalTest, rational_comparison) {
 }
 
 // rational arithmetic
+// Cross-multiplying in 128 bits is exact for every pair: an integer against
+// a fraction with a huge denominator (a double's 19.99 is N/2^48), and
+// magnitudes near 2^64, compare by value; zero against anything by sign.
+TEST(RationalTest, rational_comparison_by_cross_multiplication) {
+    const rational almost20{19.99};
+    ASSERT_TRUE(almost20 < rational{20});
+    ASSERT_TRUE(rational{19} < almost20);
+    ASSERT_TRUE(-almost20 > rational{-20});
+    ASSERT_TRUE(rational{-19} > -almost20);
+    constexpr umax big  = std::numeric_limits<umax>::max();
+    const rational huge = rational_from_parts(big, 1), huge_half = rational_from_parts(big, 2);
+    ASSERT_TRUE(huge_half < huge);
+    ASSERT_TRUE(rational_from_parts(big - 1, 1) < huge);
+    ASSERT_TRUE(rational_from_parts(big, 3) < rational_from_parts(big - 1, 2));
+    ASSERT_TRUE(rational_from_parts(big, -3) > rational_from_parts(big - 1, -2));
+    ASSERT_TRUE((rational_from_parts(6, 4) <=> rational{3, 2}) == 0); // unreduced, same value
+    ASSERT_TRUE((rational{0} <=> rational_from_parts(0, -5)) == 0);
+    ASSERT_TRUE((rational{0} < rational{1, std::numeric_limits<imax>::max()}));
+    ASSERT_TRUE((rational{0} > rational{-1, std::numeric_limits<imax>::max()}));
+}
+
 TEST(RationalTest, rational_arithmetic) {
     {
         SCOPED_TRACE("add / sub / mul / div basic");

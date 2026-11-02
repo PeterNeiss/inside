@@ -2270,52 +2270,16 @@ inline constexpr std::expected<rational, errc> rational::inv(rational a) { retur
 // operator<=>
 //---------------------------------------------------------------------------
 [[nodiscard]] inline constexpr auto operator<=>(rational lhs, rational rhs) -> std::strong_ordering {
-    int lhs_sign = sign(lhs);
-    int rhs_sign = sign(rhs);
-
+    const int lhs_sign = sign(lhs), rhs_sign = sign(rhs);
     if (lhs_sign != rhs_sign)
         return lhs_sign <=> rhs_sign;
-
-    if (lhs_sign == 0)
-        return std::strong_ordering::equal;
-
-    // signs are equal here (the `lhs_sign != rhs_sign` branch returned above)
-    bool lhs_neg = lhs_sign < 0;
-
-    umax lhs_ad = abs_den(lhs.Den);
-    umax rhs_ad = abs_den(rhs.Den);
-
-    // integer comparison: skip cross-multiply entirely
-    if (lhs_ad == 1 && rhs_ad == 1) {
-        if (lhs_neg)
-            return rhs.Num <=> lhs.Num;
-        else
-            return lhs.Num <=> rhs.Num;
-    }
-
-    // One side is an integer: compare via divmod instead of cross-multiply.
-    // Cross-multiplying would otherwise overflow when the non-integer side
-    // has a huge denominator (e.g. doubles like 19.99 stored as N/2^48).
-    if (rhs_ad == 1) {
-        umax q = lhs.Num / lhs_ad;
-        umax r = lhs.Num % lhs_ad;
-        auto cmp =
-            (q == rhs.Num) ? (r == 0 ? std::strong_ordering::equal : std::strong_ordering::greater) : (q <=> rhs.Num);
-        return lhs_neg ? (0 <=> cmp) : cmp;
-    }
-    if (lhs_ad == 1) {
-        umax q = rhs.Num / rhs_ad;
-        umax r = rhs.Num % rhs_ad;
-        auto cmp =
-            (q == lhs.Num) ? (r == 0 ? std::strong_ordering::equal : std::strong_ordering::less) : (lhs.Num <=> q);
-        return lhs_neg ? (0 <=> cmp) : cmp;
-    }
-
-    // Cross-multiply in 128-bit: |numerator| and |denominator| are each ≤ 2^64−1,
-    // so the products fit exactly in 128 bits — the comparison can never overflow,
-    // so no trap is needed.
-    return lhs_neg ? limb::mul_compare(rhs.Num, lhs_ad, lhs.Num, rhs_ad)
-                   : limb::mul_compare(lhs.Num, rhs_ad, rhs.Num, lhs_ad);
+    // Equal signs: the magnitudes cross-multiplied in 128 bits, reversed for
+    // negative values. Each factor is below 2^64, so the products are exact
+    // for every pair: no integer special case, no division. Two zeros give
+    // two zero products: equal.
+    const umax lhs_ad = abs_den(lhs.Den), rhs_ad = abs_den(rhs.Den);
+    return lhs_sign < 0 ? limb::mul_compare(rhs.Num, lhs_ad, lhs.Num, rhs_ad)
+                        : limb::mul_compare(lhs.Num, rhs_ad, rhs.Num, lhs_ad);
 }
 
 template <plain_number T>
