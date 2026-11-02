@@ -1250,6 +1250,8 @@ double fp_worst_ratio(F kernel) {
             << #call " 20";                                                                                           \
         EXPECT_LE((fp_worst_ratio<In, __VA_ARGS__>([](double x, double& b) { return fpk::K<36>::call(x, b); })), 1.0) \
             << #call " 36";                                                                                           \
+        EXPECT_LE((fp_worst_ratio<In, __VA_ARGS__>([](double x, double& b) { return fpk::K<46>::call(x, b); })), 1.0) \
+            << #call " 46";                                                                                           \
         EXPECT_LE((fp_worst_ratio<In, __VA_ARGS__>(                                                                   \
                       [](double x, double& b) { return fpk::K<fpk::full_bits>::call(x, b); })),                       \
                   1.0)                                                                                                \
@@ -1338,6 +1340,33 @@ TEST(MathAdaptiveTest, double_kernels_stay_within_their_proved_bounds) {
     EXPECT_LE(pow_worst.template operator()<20>(), 1.0) << "pow 20";
     EXPECT_LE(pow_worst.template operator()<52>(), 1.0) << "pow 52";
     EXPECT_LE(pow_worst.template operator()<fpk::full_bits>(), 1.0) << "pow full";
+
+    // atan2 over every pair of a symmetric grid, all four quadrants, the
+    // axes and the swapped (|y| > |x|) and π/6-step cases.
+    using sq         = inside<{{-2, 2}, rational{1, 16}}, round_nearest>;
+    auto atan2_worst = []<int T>() {
+        double     worst = 0;
+        const umax n     = static_cast<umax>(grid_of<sq>.step_count());
+        for (umax i = 0; i <= n; ++i)
+            for (umax j = 0; j <= n; ++j) {
+                const sq y = sq::from_raw(detail::raw_from_offset<sq>(i));
+                const sq x = sq::from_raw(detail::raw_from_offset<sq>(j));
+                if (y == 0 && x == 0)
+                    continue;
+                const auto a =
+                    engine::atan2_core<engine::input_limbs<sq>>{engine::exact_input(y), engine::exact_input(x)}
+                        .template run<150>();
+                double       bound = 0;
+                const double v     = fpk::atan_k<T>::atan2(static_cast<double>(y), static_cast<double>(x), bound);
+                worst =
+                    std::max(worst, std::fabs(ddk::sub(ddk::dd{v, 0}, ddk::of_fixed(a.Value, a.Scale)).Hi) / bound);
+            }
+        return worst;
+    };
+    EXPECT_LE(atan2_worst.template operator()<20>(), 1.0) << "atan2 20";
+    EXPECT_LE(atan2_worst.template operator()<36>(), 1.0) << "atan2 36";
+    EXPECT_LE(atan2_worst.template operator()<46>(), 1.0) << "atan2 46";
+    EXPECT_LE(atan2_worst.template operator()<fpk::full_bits>(), 1.0) << "atan2 full";
 
     // Coarse outputs get smaller kernels.
     static_assert(fpk::trig_k<engine::fp_target<out8, engine::fp_sin>>::NS < fpk::trig_k<fpk::full_bits>::NS);

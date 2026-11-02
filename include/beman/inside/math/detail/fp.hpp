@@ -654,14 +654,19 @@ inline constexpr int atan_terms = terms_for(T, 15, atan_trunc);
 template <int N>
 inline constexpr poly<N> atan_c = series<N>([](int k) { return term{k % 2 ? -1.0 : 1.0, 2.0 * k + 1}; });
 
+// atan(n/d), n, d ≥ 0, with at most one division: n ≤ d after a swap (the
+// swap is π/2 − r), and where n/d > tan(π/12) the π/6 step folds into the
+// quotient, t = (n − c·d)/(d + c·n) = tan(atan(n/d) − atan c), chosen by
+// n > tan(π/12)·d without dividing first.
 // Unreduced (|x| ≤ tan(π/12), the only case where |v| can be small):
 // the Horner error and truncation over atan t / t, and fma(t, p, 0)'s
 // rounding — relative. Every other path adds absolute errors, in units of
-// U: t's three roundings (a − c, the fma, the quotient) move atan by
-// 3·t_max; the constants c and π/6 by 0.23 and 0.5 (atan(c̃) is within
-// |c̃ − c|·¾ of π/6); fma(t, p, π/6) rounds by π/4; 1/a moves atan by ½;
-// π/2 − r by 0.56 (the constant) and π/2 (the rounding); and t·(Horner +
-// truncation) of the polynomial itself.
+// U: t's roundings (at most three: the two fmas and the quotient, or the
+// quotient alone) move atan by 3·t_max; the constants c and π/6 by 0.23
+// and 0.5 (atan(c̃) is within |c̃ − c|·¾ of π/6); fma(t, p, π/6) rounds by
+// π/4; ½ more for a quotient rounded before the step (none is now, so this
+// is slack); π/2 − r by 0.56 (the constant) and π/2 (the rounding); and
+// t·(Horner + truncation) of the polynomial itself.
 template <int T>
 struct atan_k {
     static constexpr int    N       = atan_terms<T>;
@@ -674,20 +679,29 @@ struct atan_k {
         up(t_max * PolyAbs + 3 * t_max * unit_roundoff + inv_sqrt3_err * 0.75 + pi_sixth_err + r_trig * unit_roundoff +
            0.5 * unit_roundoff + pi_half_err + 1.5708 * unit_roundoff);
 
+    [[gnu::always_inline]] static double core(double t, double off) { return fma(t, horner(t * t, atan_c<N>.C), off); }
+    // atan(lo/hi), 0 ≤ lo ≤ hi, hi > 0.
+    [[gnu::always_inline]] static double reduced(double lo, double hi) {
+        if (lo > tan_pi12 * hi)
+            return core(fma(-inv_sqrt3, hi, lo) / fma(inv_sqrt3, lo, hi), pi_sixth);
+        return core(lo / hi, 0.0);
+    }
+    // atan(n/d), n, d ≥ 0, not both 0.
+    [[gnu::always_inline]] static double ratio(double n, double d) {
+        if (n > d)
+            return pi_half - reduced(d, n);
+        return reduced(n, d);
+    }
     [[gnu::always_inline]] static double value(double x) {
-        const bool neg = x < 0;
-        double     a   = neg ? -x : x;
-        const bool inv = a > 1.0;
-        if (inv)
-            a = 1.0 / a;
-        double off = 0.0;
-        if (a > tan_pi12) {
-            a   = (a - inv_sqrt3) / fma(a, inv_sqrt3, 1.0);
-            off = pi_sixth;
-        }
-        double r = fma(a, horner(a * a, atan_c<N>.C), off);
-        if (inv)
-            r = pi_half - r;
+        const bool   neg = x < 0;
+        const double a   = neg ? -x : x;
+        double       r;
+        if (a > 1.0)
+            r = pi_half - reduced(1.0, a);
+        else if (a > tan_pi12)
+            r = core(fma(-inv_sqrt3, 1.0, a) / fma(inv_sqrt3, a, 1.0), pi_sixth);
+        else
+            r = core(a, 0.0); // no division
         return neg ? -r : r;
     }
     static double atan(double x, double& bound) {
@@ -696,27 +710,37 @@ struct atan_k {
         return v;
     }
 
-    // atan2: y/x rounds (½U on the angle); x < 0 adds ±π (its constant
-    // and one rounding).
+    // atan2: atan(|y|/|x|) by ratio, which takes |y| and |x| as they are
+    // (the ½U of a rounded y/x is slack now); x < 0 takes π − r (its
+    // constant and one rounding).
     static constexpr double Atan2Rel = up(Rel + unit_roundoff), Atan2Abs = up(Abs + 0.5 * unit_roundoff + pi_err);
     static double           atan2(double y, double x, double& bound) {
         double v;
-        if (x > 0.0)
-            v = value(y / x);
-        else if (x < 0.0)
-            v = value(y / x) + (y >= 0.0 ? pi_double : -pi_double);
-        else
+        if (x == 0.0)
             v = y > 0.0 ? pi_half : y < 0.0 ? -pi_half : 0.0;
+        else {
+            const double r = ratio(y < 0.0 ? -y : y, x < 0.0 ? -x : x);
+            const double q = x < 0.0 ? pi_double - r : r;
+            v              = y < 0.0 ? -q : q;
+        }
         bound = Atan2Rel * __builtin_fabs(v) + Atan2Abs + tiny;
         return v;
     }
 
-    // asin = atan(x/√((1 − x)(1 + x))): the quotient within 3.5U, which
-    // moves atan by 3.5U of itself at most. acos = π/2 − asin: absolute.
+    // asin |x| = atan(|x|/s), s = √((1 − |x|)(1 + |x|)) within 2.5U, by
+    // ratio: one sqrt, one division. s's error moves the angle θ of the
+    // pair by at most 2.5U·sin(2θ)/2 ≤ 2.5U·θ, and θ ≤ |v| (θ is asin |x|,
+    // or below π/4 ≤ |v| when the pair is swapped); with the quotient's
+    // own rounding inside ratio's bound, 3.5U of |v| is slack.
+    // acos = π/2 − asin: absolute.
     static constexpr double AsinRel = up(Rel + 3.5 * unit_roundoff), AsinAbs = Abs;
     static constexpr double AcosRel = unit_roundoff, AcosAbs = up(AsinRel * 1.5708 + AsinAbs + pi_half_err);
-    [[gnu::always_inline]] static double asin_value(double x) { return value(x / std::sqrt((1.0 - x) * (1.0 + x))); }
-    static double                        asin(double x, double& bound) {
+    [[gnu::always_inline]] static double asin_value(double x) {
+        const double a = x < 0 ? -x : x;
+        const double r = ratio(a, std::sqrt((1.0 - a) * (1.0 + a)));
+        return x < 0 ? -r : r;
+    }
+    static double asin(double x, double& bound) {
         const double v = asin_value(x);
         bound          = AsinRel * __builtin_fabs(v) + AsinAbs + tiny;
         return v;

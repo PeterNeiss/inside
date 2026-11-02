@@ -173,6 +173,9 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 - `sum` adds 32-bit raws in 32-bit lanes and `inside_range` counts in 32
   bits where they fit: both run at native speed (`sum<checked>` 2.47 → 1.22
   instructions per element).
+- `asin`, `acos`, `atan` and `atan2` reduce with at most one division (a
+  sqrt and one division for `asin`/`acos`, which took up to three): `asin`
+  8.9 → 6.8 ns, `acos` 8.7 → 6.8 ns, `atan2` 7.7 → 6.7 ns on 2^-14 grids.
 - The fast paths of the math functions, of rational stores and of `+=` with
   a rational keep their inputs in registers: no stack canary under
   `-fstack-protector-strong` (the default of Ubuntu's GCC), 1–5 fewer
