@@ -14132,15 +14132,17 @@ inline constexpr grid_rational gcd_notch =
 //  beman/inside/math/detail/fp.hpp
 // ======================================================================
 // The double kernels of the math engine's double tier (math/detail/entry.hpp):
-// a small libm in `double` — Taylor polynomials in Horner form with explicit
+// a small libm in `double` — polynomials in Horner form with explicit
 // std::fma, Cody-Waite range reduction, and only std::fma / sqrt / nearbyint
-// from <cmath>.
+// from <cmath>. sin, cos and sinh evaluate Taylor series; exp, log, atan and
+// asin minimax fits (math/detail/minimax.hpp, generated with Sollya, each with
+// a certified bound of its relative error).
 //
 // A kernel takes a target T in bits: its polynomials get the fewest terms
-// whose truncation stays below 2^-T relative, and its error bound for that
-// size is proved at compile time from the coefficients and argument range —
-// the first omitted term, each Horner step's rounding, the constants' and the
-// reduction's roundings. These are first-order bounds of IEEE round-to-nearest
+// whose approximation error stays below 2^-T relative, and its error bound
+// for that size is proved at compile time from the coefficients and argument
+// range — the first omitted term or the fit's certified bound, each Horner
+// step's rounding, the constants' and the reduction's roundings. These are first-order bounds of IEEE round-to-nearest
 // (each operation within U = unit_roundoff = 2^-53, relatively); up() widens each by 2^-30 of
 // itself for the second-order terms and the bound arithmetic's roundings.
 //---------------------------------------------------------------------------
