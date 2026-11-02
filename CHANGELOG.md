@@ -159,6 +159,24 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Performance
 
+- A store that rounds a rational onto a notch divides once (it divided
+  twice): a Q8.8 store from a rational takes 2.1 ns instead of 4.1.
+- `div_into` onto a Q-format grid needs no gcd and one division:
+  `div_into<1/16>` of two integers 90 → 30 ins/op (8.3 → 2.1 ns), its
+  `std::expected` form 197 → 34.
+- `x += r` and `x -= r` with a `rational` on a binary Q format divide no
+  more (two divisions became shifts): 2.0 → 1.3 ns on Q8.8.
+- Products and quotients of dyadic rationals cancel by shifts, without a
+  gcd: rational `*` 195 → 78 ins/op, a continuous-grid product 9.2 → 2.2 ns,
+  a quotient 19.4 → 9.7 ns. A rational comparison is one 128-bit
+  cross-multiplication, with no division against an integer.
+- `sum` adds 32-bit raws in 32-bit lanes and `inside_range` counts in 32
+  bits where they fit: both run at native speed (`sum<checked>` 2.47 → 1.22
+  instructions per element).
+- The fast paths of the math functions, of rational stores and of `+=` with
+  a rational keep their inputs in registers: no stack canary under
+  `-fstack-protector-strong` (the default of Ubuntu's GCC), 1–5 fewer
+  instructions on every math function.
 - `x += r` and `x -= r` with a `rational` on a Q-format grid: 12 fewer
   instructions per call (`+= rational{k, 256}` on Q8.8: 41.8 → 28.8 ins/op).
   The notch count came back as an `optional<imax>`, which GCC 16 kept in
