@@ -9758,14 +9758,25 @@ struct inside {
     }
     // A bool and an out-parameter, not an optional<imax>: GCC 16 kept the
     // optional in memory, 12 more instructions on every += / -= of a rational.
-    static constexpr bool notch_delta(const detail::rational& r, imax& delta) noexcept {
+    // No division where K is a power of two (every binary Q format): d
+    // divides K exactly when d is a power of two no larger (d − 1 < K also
+    // rules out 0), and the count r.Num·K/d is a shift, sized by a shift.
+    static constexpr bool notch_delta(detail::rational r, imax& delta) noexcept {
         constexpr umax K = detail::abs_den(detail::notch64<inside>.Den);
         const umax     d = detail::abs_den(r.Den);
-        if (K % d != 0 || r.Num > max_notch_delta / (K / d))
+        umax           n; // the count of notches, r.Num·K/d
+        if constexpr (std::has_single_bit(K)) {
+            if (d - 1 >= K || (d & (d - 1)) != 0)
+                return false;
+            // K/d = 2^shift; the builtin, as d ≠ 0 (countr_zero guards 0).
+            const int shift = std::countr_zero(K) - __builtin_ctzll(d);
+            if (r.Num > (max_notch_delta >> shift))
+                return false;
+            n = r.Num << shift;
+        } else if (d == 0 || K % d != 0 || detail::mul_overflow(r.Num, K / d, &n) || n > max_notch_delta)
             return false;
-        const imax n    = static_cast<imax>(r.Num * (K / d));
         const imax sign = r.Den >> 63; // 0, or −1 for a negative value
-        delta           = (n ^ sign) - sign;
+        delta           = (static_cast<imax>(n) ^ sign) - sign;
         return true;
     }
 
