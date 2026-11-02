@@ -114,6 +114,7 @@ TEST(IntoTest, native_paths_agree_with_the_wide_path) {
     using floor_out = inside<{-40, 40}, round_floor>;
     using clamp_out = inside<{{-5, 5}, per<2>}, clamp | round_ceil>;
     using check_out = inside<{{-20, 20}, per<2>}>;
+    using wrap_out  = inside<{{-3, 3}, per<4>}, wrap | round_half_even>;
     // Both native paths are taken: the product inside, and the rational
     // product where the store would reject the product type at compile time.
     static_assert(detail::native_product<round_out, none, int_g, quart>);
@@ -130,4 +131,10 @@ TEST(IntoTest, native_paths_agree_with_the_wide_path) {
     expect_mul_div_agree<check_out, none, thirds, thirds>();
     expect_mul_div_agree<check_out, round_nearest, quart, int_g>();
     expect_mul_div_agree<int_g, round_floor, quart, quart>();
+    // div_into's unreduced quotient (Q-format targets): wrap, and a floor
+    // target fed by unanchored and negative operands.
+    static_assert(detail::unreduced_store<wrap_out> && detail::unreduced_store<floor_out>);
+    expect_mul_div_agree<wrap_out, none, int_g, quart>();
+    expect_mul_div_agree<wrap_out, none, thirds, neg>();
+    expect_mul_div_agree<floor_out, round_ceil, neg, thirds>();
 }

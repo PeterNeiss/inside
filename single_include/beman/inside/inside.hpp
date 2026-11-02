@@ -10480,6 +10480,21 @@ inline constexpr bool native_product = [] {
 template <insidable A, insidable B>
 inline constexpr bool rational_operands = rational_readable<A> && rational_readable<B>;
 
+// A Q-format store rounds a fraction as its reduced form would (one
+// division of the offset), so a quotient for it needs no gcd: x/y as the
+// unreduced (xn·yd)/(xd·yn). Den 0 when y is 0 or a part passes 64 bits;
+// try_div decides then.
+template <insidable Out>
+inline constexpr bool unreduced_store = q_format_fits<Out> && notched<Out>;
+constexpr rational    unreduced_quotient(rational x, rational y) noexcept {
+    umax num, den;
+    if (y.Num == 0 || mul_overflow(x.Num, abs_den(y.Den), &num) || mul_overflow(abs_den(x.Den), y.Num, &den) ||
+        !std::in_range<imax>(den))
+        return rational_from_parts(0, 0);
+    const imax d = static_cast<imax>(den);
+    return rational_from_parts(num, (x.Den < 0) != (y.Den < 0) ? -d : d);
+}
+
 template <insidable Out, insidable A, insidable B, typename P>
 constexpr Out mul_into_wide(const A& a, const B& b, P&& policy) {
     using E = wide_rational<exact_limbs<A, B, Out>>;
@@ -10489,6 +10504,20 @@ template <insidable Out, insidable A, insidable B, typename P>
 constexpr Out div_into_wide(const A& a, const B& b, P&& policy) {
     using E = wide_rational<exact_limbs<A, B, Out>>;
     return store_exact_into<Out>(E{exact_of(a)} / E{exact_of(b)}, policy);
+}
+// The quotient as a reduced 64-bit rational, else wide.
+template <insidable Out, insidable A, insidable B, typename P>
+constexpr Out div_into_reduced(A a, B b, P policy) {
+    if constexpr (rational_operands<A, B>)
+        if (const auto q = try_div(as_rational(a), as_rational(b)))
+            return store_into<Out>(*q, policy);
+    return div_into_wide<Out>(a, b, policy);
+}
+// The same out of line, behind the unreduced quotient (by value, so the fast
+// path's operands stay in registers).
+template <insidable Out, insidable A, insidable B, typename P>
+[[gnu::cold]] [[gnu::noinline]] constexpr Out div_into_reduced_cold(A a, B b, P policy) {
+    return div_into_reduced<Out>(a, b, policy);
 }
 } // namespace detail
 
@@ -10509,10 +10538,13 @@ template <insidable Out, policy_flag F = none, insidable A, insidable B>
 [[nodiscard]] constexpr auto div_into(const A& a, const B& b)
     -> std::conditional_t<detail::divisor_excludes_zero<B>, Out, std::expected<Out, errc>> {
     const auto quotient = [&](auto&& policy) {
-        if constexpr (detail::rational_operands<A, B>)
-            if (const auto q = detail::try_div(detail::as_rational(a), detail::as_rational(b)))
-                return detail::store_into<Out>(*q, policy);
-        return detail::div_into_wide<Out>(a, b, policy);
+        if constexpr (detail::rational_operands<A, B> && detail::unreduced_store<Out>) {
+            if (const auto q = detail::unreduced_quotient(detail::as_rational(a), detail::as_rational(b)); q.Den != 0)
+                [[likely]]
+                return detail::store_into<Out>(q, policy);
+            return detail::div_into_reduced_cold<Out>(a, b, policy);
+        } else
+            return detail::div_into_reduced<Out>(a, b, policy);
     };
     if constexpr (detail::divisor_excludes_zero<B>)
         return quotient(make_policy<flags_of<Out> | F>());

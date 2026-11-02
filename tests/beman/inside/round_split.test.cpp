@@ -39,7 +39,8 @@ umax reference_round_quotient(umax num, umax den) {
     else {
         const imax di = static_cast<imax>(den);
         imax       mdi, NUM;
-        if (!std::in_range<imax>(num) || mul_overflow(m, di, &mdi) || add_overflow(mdi, static_cast<imax>(num), &NUM)) {
+        if (!std::in_range<imax>(num) || mul_overflow(m, di, &mdi) ||
+            add_overflow(mdi, static_cast<imax>(num), &NUM)) {
             const umax q = num / den, r = num % den;
             const bool negative = m < 0 && q < umax{0} - static_cast<umax>(m);
             return q +
