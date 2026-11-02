@@ -1629,6 +1629,14 @@ inline constexpr void cancel_gcd(umax& numerator, imax& denominator) {
 inline constexpr void cancel_gcd(umax& a, umax& b) {
     if (a <= 1 || b <= 1)
         return;
+    if (std::has_single_bit(a) || std::has_single_bit(b)) {
+        // A power of two on either side (every dyadic denominator):
+        // gcd = 2^ctz(a | b), no loop, no division.
+        const int s = std::countr_zero(a | b);
+        a >>= s;
+        b >>= s;
+        return;
+    }
     auto g = std::gcd(a, b);
     if (g <= 1)
         return;
