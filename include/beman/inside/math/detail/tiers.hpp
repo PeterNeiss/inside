@@ -359,6 +359,7 @@ using fp_full_trig = fpk::trig_k<fpk::full_bits>;
 using fp_full_exp  = fpk::exp_k<fpk::full_bits>;
 using fp_full_log  = fpk::log_k<fpk::full_bits>;
 using fp_full_atan = fpk::atan_k<fpk::full_bits>;
+using fp_full_asin = fpk::asin_k<fpk::full_bits>;
 BEMAN_INSIDE_ENGINE_KERNEL(sin, trig_k, sin, 1, fp_limit(fp_full_trig::Rel), 1.0)
 BEMAN_INSIDE_ENGINE_KERNEL(cos, trig_k, cos, 1, fp_limit(fp_full_trig::Rel), 1.0)
 BEMAN_INSIDE_ENGINE_KERNEL(exp, exp_k, exp, unbounded, fp_limit(fp_full_exp::Rel), __builtin_fabs(v))
@@ -367,18 +368,10 @@ BEMAN_INSIDE_ENGINE_KERNEL(sinh, exp_k, sinh, unbounded, fp_limit(fp_full_exp::S
 BEMAN_INSIDE_ENGINE_KERNEL(cosh, exp_k, cosh, unbounded, fp_limit(fp_full_exp::CoshRel), __builtin_fabs(v) + 1)
 BEMAN_INSIDE_ENGINE_KERNEL(tanh, exp_k, tanh, 1, fp_limit(fp_full_exp::TanhRel + fp_full_exp::TanhAbs), 1.0)
 BEMAN_INSIDE_ENGINE_KERNEL(atan, atan_k, atan, 1, fp_limit(fp_full_atan::Rel + fp_full_atan::Abs), 1.0)
-BEMAN_INSIDE_ENGINE_KERNEL(asin,
-                           atan_k,
-                           asin,
-                           1,
-                           fp_limit(fp_full_atan::AsinRel + fp_full_atan::AsinAbs),
-                           1.0 / fpk::fp_sqrt((1.0 - x) * (1.0 + x)))
-BEMAN_INSIDE_ENGINE_KERNEL(acos,
-                           atan_k,
-                           acos,
-                           2,
-                           fp_limit(4 * fp_full_atan::AcosRel + fp_full_atan::AcosAbs),
-                           1.0 / fpk::fp_sqrt((1.0 - x) * (1.0 + x)))
+BEMAN_INSIDE_ENGINE_KERNEL(
+    asin, asin_k, asin, 1, fp_limit(fp_full_asin::Rel), 1.0 / fpk::fp_sqrt((1.0 - x) * (1.0 + x)))
+BEMAN_INSIDE_ENGINE_KERNEL(
+    acos, asin_k, acos, 2, fp_limit(4 * fp_full_asin::AcosRel), 1.0 / fpk::fp_sqrt((1.0 - x) * (1.0 + x)))
 BEMAN_INSIDE_ENGINE_KERNEL(log, log_k, log, unbounded, fp_limit(fp_full_log::Rel), 1.0 / __builtin_fabs(x))
 BEMAN_INSIDE_ENGINE_KERNEL(log2, log_k, log2, unbounded, fp_limit(fp_full_log::Rel2), 1.5 / __builtin_fabs(x))
 BEMAN_INSIDE_ENGINE_KERNEL(log10, log_k, log10, unbounded, fp_limit(fp_full_log::Rel10), 1.0 / __builtin_fabs(x))

@@ -1278,8 +1278,8 @@ TEST(MathAdaptiveTest, double_kernels_stay_within_their_proved_bounds) {
     FP_BOUND(
         exp_k, tanh, sym4, engine::hyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::hyp::tanh, 1>);
     FP_BOUND(atan_k, atan, sym4, engine::atan_core<engine::input_limbs<sym4>>);
-    FP_BOUND(atan_k, asin, unit, engine::asin_core<engine::input_limbs<unit>>);
-    FP_BOUND(atan_k, acos, unit, engine::acos_core<engine::input_limbs<unit>>);
+    FP_BOUND(asin_k, asin, unit, engine::asin_core<engine::input_limbs<unit>>);
+    FP_BOUND(asin_k, acos, unit, engine::acos_core<engine::input_limbs<unit>>);
     FP_BOUND(log_k, log, pos64, engine::log_core<engine::input_limbs<pos64>>);
     FP_BOUND(log_k, log2, pos64, engine::logb_core<engine::input_limbs<pos64>, 2>);
     FP_BOUND(log_k, log10, pos64, engine::logb_core<engine::input_limbs<pos64>, 10>);

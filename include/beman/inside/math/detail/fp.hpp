@@ -18,6 +18,7 @@
 #include <beman/inside/inside/detail/config.hpp>
 
 #include <beman/inside/inside/detail/float_bits.hpp> // frexp, scale_pow2 (constexpr, reproducible)
+#include <beman/inside/math/detail/minimax.hpp>      // the certified minimax fits
 
 #ifndef BEMAN_INSIDE_MATH_NO_FP // ===== FP engine present (needs <cmath> + an FPU) =====
 
@@ -726,28 +727,72 @@ struct atan_k {
         bound = Atan2Rel * __builtin_fabs(v) + Atan2Abs + tiny;
         return v;
     }
+};
 
-    // asin |x| = atan(|x|/s), s = √((1 − |x|)(1 + |x|)) within 2.5U, by
-    // ratio: one sqrt, one division. s's error moves the angle θ of the
-    // pair by at most 2.5U·sin(2θ)/2 ≤ 2.5U·θ, and θ ≤ |v| (θ is asin |x|,
-    // or below π/4 ≤ |v| when the pair is swapped); with the quotient's
-    // own rounding inside ratio's bound, 3.5U of |v| is slack.
-    // acos = π/2 − asin: absolute.
-    static constexpr double AsinRel = up(Rel + 3.5 * unit_roundoff), AsinAbs = Abs;
-    static constexpr double AcosRel = unit_roundoff, AcosAbs = up(AsinRel * 1.5708 + AsinAbs + pi_half_err);
-    [[gnu::always_inline]] static double asin_value(double x) {
+//---------------------------------------------------------------------------
+// asin and acos without a division: on |x| ≤ ½, asin x = x·q(x²) with q the
+// minimax fit (math/detail/minimax.hpp) of N terms, within Err of asin x / x
+// (≥ 1) relatively, Err certified by Sollya. Above ½, asin x = π/2 −
+// 2·asin s with u = (1 − x)/2 ≤ ¼ (1 − x exact by Sterbenz, the halving
+// exact) and s = √u, and asin s = s·q(u): u is s² exactly, so q takes it
+// without a rounded square.
+//---------------------------------------------------------------------------
+template <int T>
+consteval int asin_terms() {
+    for (int n = minimax::asin_min; n < minimax::asin_max; ++n)
+        if (minimax::asin_err[n - minimax::asin_min] <= pow_n(0.5, T))
+            return n;
+    return minimax::asin_max;
+}
+template <int N>
+inline constexpr poly<N> asin_q = [] {
+    poly<N> p{};
+    p.C = minimax::asin_fit<N>.C; // exact doubles: Err is the fit's
+    return p;
+}();
+
+// Relative errors, in units of the value:
+// - |x| ≤ ½ (Lo): q at fl(x²) (Horner's error over q ≥ 1, with the
+//   argument's U), Err, and the product x·q;
+// - w = s·q(u) (W): the root's U, Horner at the exact u, Err, the product;
+// - π/2 − 2w above ½ (Hi): v ≥ π/6 and 2w ≤ π/3 within W of itself, so
+//   2W of v, the fma's rounding, and π/2's constant over π/6.
+// acos: π/2 − asin x on |x| ≤ ½ (v ≥ π/3, |asin x| ≤ π/6: Lo/2, the
+// subtraction, π/2's constant over π/3); 2w above ½ (W: the doubling is
+// exact, and nothing cancels near 1); π − 2w below −½ (v ≥ 2π/3, 2w ≤ π/3:
+// W/2, the fma, π's constant over 2π/3).
+template <int T>
+struct asin_k {
+    static constexpr int    N     = asin_terms<T>();
+    static constexpr double Err   = minimax::asin_fit<N>.Err;
+    static constexpr double LoRel = up(horner_error(asin_q<N>, 0.25, unit_roundoff).Err + Err + unit_roundoff);
+    static constexpr double W     = up(horner_error(asin_q<N>, 0.25, 0).Err + Err + 2 * unit_roundoff);
+    static constexpr double HiRel = up(2 * W + unit_roundoff + pi_half_err / 0.5235);
+    static constexpr double Rel   = std::max(LoRel, HiRel);
+    static constexpr double AcosRel =
+        up(std::max({LoRel / 2 + unit_roundoff + pi_half_err / 1.0471, W, W / 2 + unit_roundoff + pi_err / 2.0943}));
+
+    [[gnu::always_inline]] static double q(double z) { return horner(z, minimax::asin_fit<N>.C); }
+    // 2·asin s for a = |x| > ½, as w (asin s).
+    [[gnu::always_inline]] static double w(double a) {
+        const double u = (1.0 - a) * 0.5;
+        return std::sqrt(u) * q(u);
+    }
+    [[gnu::always_inline]] static double asin(double x, double& bound) {
         const double a = x < 0 ? -x : x;
-        const double r = ratio(a, std::sqrt((1.0 - a) * (1.0 + a)));
+        const double r = a <= 0.5 ? a * q(a * a) : fma(-2.0, w(a), pi_half);
+        bound          = Rel * r + tiny;
         return x < 0 ? -r : r;
     }
-    static double asin(double x, double& bound) {
-        const double v = asin_value(x);
-        bound          = AsinRel * __builtin_fabs(v) + AsinAbs + tiny;
-        return v;
-    }
-    static double acos(double x, double& bound) {
-        const double v = pi_half - asin_value(x);
-        bound          = AcosRel * __builtin_fabs(v) + AcosAbs + tiny;
+    [[gnu::always_inline]] static double acos(double x, double& bound) {
+        const double a = x < 0 ? -x : x;
+        double       v;
+        if (a <= 0.5) {
+            const double r = a * q(a * a);
+            v              = pi_half - (x < 0 ? -r : r);
+        } else
+            v = x > 0 ? 2.0 * w(a) : fma(-2.0, w(a), pi_double);
+        bound = AcosRel * v + tiny;
         return v;
     }
 };
