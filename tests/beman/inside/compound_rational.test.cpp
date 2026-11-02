@@ -27,37 +27,34 @@ std::expected<T, errc> outcome(Fn&& f) {
 }
 
 template <class T>
+T added(T y, rational r) {
+    y += r;
+    return y;
+}
+template <class T>
+T subtracted(T y, rational r) {
+    y -= r;
+    return y;
+}
+
+template <class T>
 void expect_compound_matches_exact_sum() {
     const imax dens[] = {1, 2, 3, 4, 5, 8, 10, 12, 16, 20, 24, 64, 256, 512, 1000};
     for (const T x : values<T>)
         for (const imax d : dens)
             for (imax n = -3 * d; n <= 3 * d; n += (d > 24 ? d / 8 : 1)) {
                 const rational r{n, d};
-                const auto     add = outcome<T>([&] {
-                    T y = x;
-                    y += r;
-                    return y;
-                });
-                const auto     add_exact = outcome<T>([&] { return T{*(rational{x} + r)}; });
-                ASSERT_EQ(add, add_exact) << "raw " << x.raw() << " + " << n << "/" << d;
-                const auto sub = outcome<T>([&] {
-                    T y = x;
-                    y -= r;
-                    return y;
-                });
-                const auto sub_exact = outcome<T>([&] { return T{*(rational{x} - r)}; });
-                ASSERT_EQ(sub, sub_exact) << "raw " << x.raw() << " - " << n << "/" << d;
+                ASSERT_EQ(outcome<T>([&] { return added(x, r); }), outcome<T>([&] { return T{*(rational{x} + r)}; }))
+                    << "raw " << x.raw() << " + " << n << "/" << d;
+                ASSERT_EQ(outcome<T>([&] { return subtracted(x, r); }),
+                          outcome<T>([&] { return T{*(rational{x} - r)}; }))
+                    << "raw " << x.raw() << " - " << n << "/" << d;
             }
     // A hand-built rational that is not in lowest terms: 2/512 is 1/256.
-    for (const T x : values<T>) {
-        const rational r = rational_from_parts(2, 512);
-        const auto     a = outcome<T>([&] {
-            T y = x;
-            y += r;
-            return y;
-        });
-        ASSERT_EQ(a, (outcome<T>([&] { return T{*(rational{x} + rational{1, 256})}; }))) << "raw " << x.raw();
-    }
+    for (const T x : values<T>)
+        ASSERT_EQ(outcome<T>([&] { return added(x, rational_from_parts(2, 512)); }),
+                  outcome<T>([&] { return T{*(rational{x} + rational{1, 256})}; }))
+            << "raw " << x.raw();
 }
 
 template <grid G>
