@@ -312,7 +312,7 @@ A policy says what a store into a grid does with a value that is not on it.
 | `checked` (default) | reports `errc::overflow` | reports `errc::rounding_error` |
 | `clamp` | the nearest limit | (as checked) |
 | `wrap` | modulo the interval | (as checked) |
-| `snap` (= `round_toward_zero`), `round_nearest`, `round_floor`, `round_ceil`, `round_half_even` | (as checked) | rounds |
+| `round_toward_zero`, `round_nearest`, `round_floor`, `round_ceil`, `round_half_even` | (as checked) | rounds |
 | `unsafe` | precondition | truncates |
 
 Flags combine (`clamp | round_nearest`). A store that can never succeed (a
@@ -396,8 +396,8 @@ another:
   rounding: `q·b + r == a`.
 - **One store.** `b.policy<F>()` returns a proxy whose `=`, `+=`, `-=`, `*=`,
   `/=` and `%=` store into `b` under `P | F` (`b.policy<clamp>() = v`). `b.policy<F>(ec)` reports into `ec`. On a temporary,
-  the proxy owns the value, so `(a * b).policy<snap>()` converts to any `inside`
-  that the snapped value fits.
+  the proxy owns the value, so `(a * b).policy<round_toward_zero>()` converts to any
+  `inside` that the rounded value fits.
 
 An *action* is a callback that runs when the policy acts, so a program can see
 what it did. `b.on_wrap(f) += x` stores into `b` with `f` wired in:
@@ -474,7 +474,7 @@ namespace std {
   // policies: each flag a constant of its own type that converts to policy_flag,
   // so it is a template argument, combines with |, and is a call's policy
   using policy_flag = @*unsigned integer type*@;
-  inline constexpr @*flag*@ none, checked, clamp, wrap, snap, round_toward_zero,
+  inline constexpr @*flag*@ checked, clamp, wrap, round_toward_zero,
                           round_nearest, round_floor, round_ceil,
                           round_half_even, unsafe;
 
@@ -490,19 +490,19 @@ namespace std {
     template<class A> constexpr inside(A value);          // A arithmetic or inside: a store by P
     template<class A, class Pol> constexpr inside(A value, Pol p); // p a flag or make_policy<F>(ec):
                                                           // its rounding mode / clamp / wrap replace P's
-    template<policy_flag F = none, class A>               // the store by P | F
+    template<policy_flag F = checked, class A>               // the store by P | F
       static constexpr expected<inside, errc> try_make(A value);
 
     // out of an inside
-    template<class T, policy_flag Round = none>                // T arithmetic; Round: none or a mode
+    template<class T, policy_flag Round = checked>                // T arithmetic; Round: checked or a mode
       constexpr expected<T, errc> to() const;
-    template<class T, policy_flag Round = none> constexpr T as() const; // to<T, Round>(), failures throw
+    template<class T, policy_flag Round = checked> constexpr T as() const; // to<T, Round>(), failures throw
     constexpr @*integer*@ numerator() const;                     // lowest terms, the sign here
     constexpr @*integer*@ denominator() const;                   // > 0
 
     // a policy or actions for one store (the proxy owns the value of an rvalue)
-    template<policy_flag F = none> constexpr @*store-proxy*@ policy();
-    template<policy_flag F = none> constexpr @*store-proxy*@ policy(errc& ec);
+    template<policy_flag F = checked> constexpr @*store-proxy*@ policy();
+    template<policy_flag F = checked> constexpr @*store-proxy*@ policy(errc& ec);
     template<class F> constexpr @*store-proxy*@ on_clamp(F f);  // also on_wrap, on_error
 
     constexpr inside<-G, P> operator-() const;
@@ -536,12 +536,12 @@ namespace std {
   template<class B, class N> constexpr bool conversion_overflows(N v) noexcept;
   template<class B, class N> constexpr bool conversion_rounds(N v) noexcept;
   template<class B, class N> constexpr bool conversion_loses(N v) noexcept;  // either
-  template<class T, policy_flag Round = none, class B> constexpr expected<T, errc> to(const B&);
-  template<class T, policy_flag Round = none, class B> constexpr T as(const B&);
+  template<class T, policy_flag Round = checked, class B> constexpr expected<T, errc> to(const B&);
+  template<class T, policy_flag Round = checked, class B> constexpr T as(const B&);
 
   // a policy for one call: a flag, or make_policy (with an errc&)
-  template<policy_flag F = none> constexpr @*call-policy*@ make_policy();
-  template<policy_flag F = none> constexpr @*call-policy*@ make_policy(errc& ec);
+  template<policy_flag F = checked> constexpr @*call-policy*@ make_policy();
+  template<policy_flag F = checked> constexpr @*call-policy*@ make_policy(errc& ec);
   template<class L, class R, class... Args>                   // Args: none, a flag, a policy or an errc&;
     constexpr auto add(const L&, const R&, Args&&...);        // also sub, mul, div, mod
   template<class Q, class R> struct divmod_result { Q Quotient; R Remainder; };
@@ -574,7 +574,7 @@ namespace std {
 | `b.to<T>()` | `expected<T, errc>` | integer `T`: exact, or rounded by `Round`, else by `P`'s mode; `rounding_error` for a fractional value when neither names one; `overflow` out of `T`'s range, `domain_error` for a negative value into an unsigned `T`. Floating-point `T`: rounded once |
 | `b.as<T>()` | `T` | a failure of `to<T>()` throws `inside_error`; a floating-point `T` needs a rounding policy |
 | `b.numerator()`, `b.denominator()` | the value in lowest terms | denominator `> 0` |
-| `B{v, clamp | M}` | `v` saturated into `B`, rounded by `M` | `M == none`: off the notch as `B`'s policy |
+| `B{v, clamp | M}` | `v` saturated into `B`, rounded by `M` | `M == checked`: off the notch as `B`'s policy |
 | `B{v, wrap}` | `v` modulo `B`'s interval | |
 | `checked_cast<B>(v)` | `v` | throws `inside_error` (`overflow`, `rounding_error`) |
 | `B{v, unsafe}` | `v` | precondition: `v` fits |

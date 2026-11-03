@@ -104,14 +104,14 @@ using finer  = inside<{{0, 10}, 1}>;   // 0, 1, 2, …, 10
 coarse c{0};
 finer  f{3};
 // c = f;                              // does not compile: 3 is between notches
-c.policy<snap>() = f;                  // 2: this store rounds toward zero
+c.policy<round_toward_zero>() = f;                  // 2: this store rounds toward zero
 c.policy<round_nearest>() = f;         // 4: this store rounds to nearest
-auto half = [](finer x) -> coarse { return x.policy<snap>(); };   // round at the return
+auto half = [](finer x) -> coarse { return x.policy<round_toward_zero>(); };   // round at the return
 ```
 
-`.policy<snap>()` on a temporary, `(a * a).policy<snap>()`, holds the value,
+`.policy<round_toward_zero>()` on a temporary, `(a * a).policy<round_toward_zero>()`, holds the value,
 so it is safe to return. The target's own policy still applies: into a
-`clamp` type the range clamps while `policy<snap>()` handles the notch.
+`clamp` type the range clamps while `policy<round_toward_zero>()` handles the notch.
 
 ### How each mode rounds
 
@@ -120,7 +120,7 @@ offset from the multiples of the notch (`{{0.5, 10.5}, 1}`):
 
 | Mode | Rounds |
 |---|---|
-| `snap`, `round_toward_zero` | toward zero: down at or above 0, up below 0 |
+| `round_toward_zero` | toward zero: down at or above 0, up below 0 |
 | `round_nearest` | to the nearest point; a tie away from zero |
 | `round_floor`, `round_ceil` | toward −∞, toward +∞ |
 | `round_half_even` | to the nearest point; a tie to the even point, counted from the grid's anchor (…, −1.5, 0.5, 2.5, … on `{{-2.5, 2.5}, 1}`) |

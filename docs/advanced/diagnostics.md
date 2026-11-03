@@ -37,14 +37,14 @@ last the bound:
 
 | Bit | Decimal | Flag |
 |---|---:|---|
-| `1<<4` | 16 | `snap`, alone also `round_toward_zero` |
-| `1<<5` | 32 | `round_nearest` (with `snap`: 48) |
-| `1<<6` | 64 | `round_floor` (with `snap`: 80) |
-| `1<<7` | 128 | `round_ceil` (with `snap`: 144) |
-| `1<<8` | 256 | `round_half_even` (with `snap`: 272) |
+| `1<<4` | 16 | `round_toward_zero`: the rounding bit, which every rounding mode carries |
+| `1<<5` | 32 | `round_nearest` (with the rounding bit: 48) |
+| `1<<6` | 64 | `round_floor` (with the rounding bit: 80) |
+| `1<<7` | 128 | `round_ceil` (with the rounding bit: 144) |
+| `1<<8` | 256 | `round_half_even` (with the rounding bit: 272) |
 | `1<<32` | 4294967296 | `clamp` |
 | `1<<33` | 8589934592 | `wrap` |
-| `1<<36` | 68719476736 | the `unsafe` marker (`unsafe` adds `snap`: 68719476752); the only bit that turns runtime checks off |
+| `1<<36` | 68719476736 | the `unsafe` marker (`unsafe` adds the rounding bit: 68719476752); the only bit that turns runtime checks off |
 | `1<<50` | 1125899906842624 | a `cursor<T, Step>` |
 
 The other bits are unused, and an inside rejects a policy that holds one or
@@ -78,7 +78,7 @@ assignment checks print the numbers that failed:
 error: static assertion failed: grid: the notch must divide Upper − Lower evenly
        (notch 3, Upper − Lower 10)
 error: static assertion failed: inside_assignable: incompatible notches — use
-       `policy<snap>()` or a rounding policy to allow rounding (lhs notch 1, rhs notch 1/2)
+       `policy<round_toward_zero>()` or a rounding policy to allow rounding (lhs notch 1, rhs notch 1/2)
 error: static assertion failed: inside_assignable: rhs interval lies entirely outside
        lhs interval … (lhs [0, 3], rhs [5, 10])
 ```
@@ -111,7 +111,7 @@ error: use of deleted function '…': inside: the source's interval lies entirel
 
 The two clauses are *interval lies entirely outside* (the value cannot fit
 the range) and *incompatible notches* (the value is off the grid's step:
-allow rounding with `policy<snap>()` or a rounding policy). Because the overload
+allow rounding with `policy<round_toward_zero>()` or a rounding policy). Because the overload
 is deleted, `std::is_constructible`, `std::convertible_to` and `requires`
 probes answer `false`, so insides work in `std::variant`, `std::optional` and
 other code that probes convertibility. For the two grids' numbers, ask:

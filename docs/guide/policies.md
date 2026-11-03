@@ -30,7 +30,7 @@ this way, because its result type is wide enough
 | `round_nearest` | between notches: the nearest notch, a tie away from zero |
 | `round_half_even` | between notches: the nearest notch, a tie to the even one |
 | `round_floor`, `round_ceil` | between notches: toward −∞, toward +∞ |
-| `round_toward_zero` | between notches: toward zero (also spelled `snap`) |
+| `round_toward_zero` | between notches: toward zero |
 | `unsafe` | no checks at all: out of range is undefined behaviour, and a value between notches truncates |
 
 Combine a range flag and a rounding flag with `|`:

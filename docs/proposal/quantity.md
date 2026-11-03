@@ -303,10 +303,10 @@ namespace std::units {
     template<@*unit*@ U> constexpr auto in(U) const;                 // Rep's grid rescaled; same raw
     template<@*unit*@ U> constexpr auto numerical_value_in(U) const;
     template<class T> constexpr explicit(@*see below*@) operator T() const; // dimension one: its number
-    template<class T, policy_flag Round = none> constexpr T as() const;     // dimension one; also to<T>()
-    template<policy_flag F = none, class V> static constexpr auto try_make(const V&);
+    template<class T, policy_flag Round = checked> constexpr T as() const;     // dimension one; also to<T>()
+    template<policy_flag F = checked, class V> static constexpr auto try_make(const V&);
     template<class X, class Pol> constexpr quantity(const X& x, Pol p);     // x in R's unit, or a quantity
-    template<policy_flag F = none> constexpr auto policy();       // also policy(errc&)
+    template<policy_flag F = checked> constexpr auto policy();       // also policy(errc&)
     template<class F> constexpr auto on_clamp(F f);               // also on_wrap, on_error
     // ++, --, compound assignment: a store by Rep's policy
   };

@@ -270,11 +270,13 @@ throws `beman::inside::inside_error` (carrying the `errc`), or traps under
 `-fno-exceptions`. There is no `<system_error>` dependency.
 
 The flags are in `policy_flag.hpp`, each a `detail::flag<V>` constant that
-converts to its bits: `none`, `snap`, `round_toward_zero` (the `snap` bit
-alone), `round_nearest`, `round_floor`, `round_ceil`, `round_half_even`,
-`clamp`, `wrap`, `checked` (no bits), `unsafe` (= `detail::unsafe_marker |
-snap`), and the internal `detail::cursor_marker`. An inside
-accepts only `detail::known_bits` and one rounding mode. `is_checked(P)`
+converts to its bits: `round_toward_zero` (the rounding bit `detail::snap`
+alone), `round_nearest`, `round_floor`, `round_ceil`, `round_half_even`
+(each a mode bit plus `detail::snap`), `clamp`, `wrap`, `checked` (no bits),
+`unsafe` (= `detail::unsafe_marker | detail::snap`), and the internal
+`detail::none` (no bits, the default of a parameter that adds flags) and
+`detail::cursor_marker`. An inside accepts only `detail::known_bits` and one
+rounding mode. `detail::is_checked(P)`
 decides whether step 4 runs, and whether a zero divisor is checked: true
 unless P carries `unsafe_marker`, so every policy is checked unless it says
 `unsafe`. A call's policy is a `detail::call_policy<F, E>` (inside/detail/call_policy.hpp), from
@@ -386,13 +388,13 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 | `inside/compare.hpp` | `<=>` and `==` across grids and against integers and `rational` (a floating point is a deleted overload) |
 | `inside/grid.hpp` | `grid`, `bounds`, `grid::try_make`, `raw_for`, the grid operators |
 | `inside/interval.hpp` | `interval`, its operators, `includes`/`excludes`/`overlaps` |
-| `inside/policy_flag.hpp` | the flags (each a `detail::flag<V>`), `has_flag`/`is_checked`, the policy validation bits, the rounding precedence, the `on_*` factories and `is_*_action` traits |
+| `inside/policy_flag.hpp` | the flags (each a `detail::flag<V>`), `has_flag` (and `detail::is_checked`, `detail::has_any_flag`), the policy validation bits, the rounding precedence, the internal `on_*` factories and `is_*_action` traits |
 | `inside/casts.hpp` | `checked_cast` (the other one-shot stores are the flag constructor, `B{v, clamp}`) |
 | `inside/arithmetic.hpp` | `add`, `sub`, `mul`, `div`, `mod`, `divmod`, `mul_into`, `div_into`, `add_all`, `mul_all`, `sum`, `min`/`max`/`midpoint`, `dot`/`cross`/`lerp`, `common_inside_t`, the operators and the expected-lift overloads |
 | `inside/range.hpp` | `inside_range<G, P>`, `values<T>` |
 | `inside/cursor.hpp` | `cursor<T, Step>`, `end(t)` |
 | `inside/predicates.hpp` | `conversion_overflows`, `conversion_rounds`, `conversion_loses` |
-| `inside/generic.hpp` | the `inside_assignable` concept, `inside_assignable_why`, `explain_assignable` |
+| `inside/generic.hpp` | the `inside_assignable` concept, `explain_assignable` (and `detail::inside_assignable_why` behind it) |
 | `inside/numeric_limits.hpp` | `std::numeric_limits` and `std::hash` for insides (part of the umbrella) |
 | `inside/formats.hpp` | the native aliases `uint8` … `q16_16`, `clamp_counter`, `wrap_counter` (opt-in) |
 | `inside/io.hpp` | the text of insides: `to_string`, `to_string_debug`, `<<`, `>>`, `parse(string_view)`, `std::formatter`, `type_name_of`. Opt-in; with `units/io.hpp` the only headers that bring `<ostream>` and `<format>` |
@@ -415,7 +417,7 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 | `inside/detail/numbers.hpp` | `umax`/`imax` (public names), the internal `add_overflow`/`sub_overflow`/`mul_overflow`, `plain_number`/`fractional`, `safe_abs` |
 | `inside/detail/call_policy.hpp` | `call_policy<F, E>`, `make_policy`, `with_flags<O>(pol)` (a flag as a call's policy) |
 | `inside/detail/error.hpp` | `errc`, `errc_message`, `inside_error`, the error handler, `raise`, `constexpr_error` |
-| `inside/detail/introspection.hpp` | `grid_of`, `flags_of`, `interval_of`, `lower_of`, `upper_of`, `notch_of`, the `insidable` and `numeric` concepts, `raw_t`, `as_rational` |
+| `inside/detail/introspection.hpp` | `grid_of`, `flags_of`, `interval_of`, `lower_of`, `upper_of`, `notch_of`, the `insidable` concept (and `detail::numeric`), `raw_t`, `as_rational` |
 | `inside/detail/storage.hpp` | the storage concepts, `as_double`, `to_value`/`from_value`, `raw_imax`, the Q-format codec, `max_index_of`, `round_quotient` |
 | `inside/detail/policy_ref.hpp` | `policy_ref`, `policy_buffer`: what `b.policy<F>()`, `b.policy(ec)` and `on_*()` return |
 | `inside/detail/lift.hpp` | `lift`, the combinator behind the lift operators; `is_expected_v`, `unwrap_t` |
@@ -436,7 +438,7 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 | `math/detail/fp.hpp`, `dd.hpp` | the `double` and double-double kernels and their proved bounds; compiled out under `BEMAN_INSIDE_MATH_NO_FP` |
 | `math/detail/minimax.hpp` | the double tier's minimax polynomials and their certified error bounds; generated by `tests/beman/inside/minimax/gen.py` (Sollya), not edited by hand |
 | `math/detail/tiers.hpp` | the `double` and double-double tiers: which kernel applies, the per-call error bound, the decision |
-| `math/detail/entry.hpp` | the entry points: `_into` and deduced forms, the table, the unanchored grids |
+| `math/detail/entry.hpp` | the entry points in `math::detail::entry`, re-exported into `math`: `_into` and deduced forms, the table, the unanchored grids |
 | `units/detail/algebra.hpp` | dimensions, magnitudes, quantity specs, point origins, units, named units, references, the exact unit conversion |
 | `units/detail/quantity.hpp` | `quantity<R, Rep>`: construction, arithmetic, casts, inside's algorithms on quantities |
 | `units/detail/point.hpp` | `quantity_point<R, O, Rep>`: points from an origin, their shifts and comparisons |

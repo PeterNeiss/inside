@@ -127,7 +127,7 @@ y.policy(ec) = 200;               // ec == errc::overflow; y keeps 50
 
 inside<{{0, 10}, 2}> coarse{0};
 inside<{{0, 10}, 1}> fine{3};
-coarse.policy<snap>(ec) = fine;   // snap rounds; ec only sees a range error
+coarse.policy<round_toward_zero>(ec) = fine;   // rounds; ec only sees a range error
 ```
 
 The first error is kept; later ones do not overwrite it. A failed store
