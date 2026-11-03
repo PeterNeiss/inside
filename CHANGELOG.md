@@ -4,7 +4,12 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-## Unreleased
+## 0.7.0 — 2026-11-03
+
+Safer defaults (every store checked unless `unsafe`, a defined default value,
+no implicit narrowing), the headers in three components (`inside`, `math`,
+`units`), constraints that answer honestly, quantities on a par with insides,
+faster division and math kernels, and the docs in three levels.
 
 ### Upgrading from 0.6.0
 
