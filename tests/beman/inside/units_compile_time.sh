@@ -7,7 +7,7 @@
 #            grids each one instantiates): the part units.hpp does not add
 #   exprs    units.hpp and N distinct quantity expressions (mixed-unit sums,
 #            products, conversions, kinds), each its own instantiations
-# Not a ctest gate (wall time is noisy); docs/units.md records a run.
+# Not a ctest gate (wall time is noisy); docs/advanced/units-model.md records a run.
 #
 # Usage: units_compile_time.sh <cxx> <include-dir> [<std> [<N> [<flags>]]]
 set -euo pipefail

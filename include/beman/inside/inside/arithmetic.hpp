@@ -283,8 +283,9 @@ template <insidable Out, policy_flag F = none, insidable A, insidable B>
     }
 }
 
-// Binary operators: +, -, * use the default policy; / and % carry the
-// operands' own policies (snap/rounding select the native integer paths).
+// Binary operators: each result keeps the policy its operands share
+// (detail::result_flags); / and % also divide under the operands' flags
+// (snap/rounding select the native integer paths).
 // Each is constrained on its op's well-formedness, like the named forms.
 template <insidable L, insidable R>
     requires detail::add_defined<L, R>

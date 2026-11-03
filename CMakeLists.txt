@@ -178,8 +178,9 @@ if(BEMAN_INSIDE_BUILD_TESTS OR BEMAN_INSIDE_BUILD_EXAMPLES)
             -Wold-style-cast
             -Woverloaded-virtual
             -Wnull-dereference
-            # inside's default constructor is intentionally trivial (Raw left
-            # uninitialised) so the type stays trivial for NTTP / memcpy use.
+            # GCC's -Wmaybe-uninitialized, which this also turns off, flags an
+            # out-parameter that a function sets only when it returns true
+            # (quick_slot's index in math/detail/adaptive.hpp) at -O2.
             -Wno-uninitialized
             -Wno-missing-field-initializers
             -Wformat=2
