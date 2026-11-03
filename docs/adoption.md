@@ -164,23 +164,24 @@ pain of knowing.
   ```
 
   `parse` and `try_make` turn untrusted input into a value or an error, at the
-  boundary, once ([conversions.md](conversions.md)).
+  boundary, once ([conversions](guide/conversions.md)).
 - **Checked by default.** Every store is checked unless you write `unsafe`, so
   you are never silently opted out of the information
-  ([policies.md](policies.md)). When two types can never fit, the compiler says
+  ([policies](guide/policies.md)). When two types can never fit, the compiler says
   so before the program runs.
 - **Errors that explain themselves.** A rejected store names the clause that
-  failed, and the values involved ([diagnostics.md](diagnostics.md)). Reading
-  the information should not require decoding template noise.
+  failed, and `explain_assignable` prints the values involved
+  ([reading compiler errors](advanced/diagnostics.md)). Reading the
+  information should not require decoding template noise.
 - **No price on the fast path.** Where the range proves a result fits, the
   generated code is the same as the `int` it replaces
   ([performance.md](performance.md)). Knowing does not cost cycles.
-- **Try it without asking anyone.** The [single header](single-header.md)
+- **Try it without asking anyone.** The [single header](advanced/single-header.md)
   works on Compiler Explorer. You can find out what your formula really does in
   five minutes, privately, before you raise it with anyone.
-- **Bring what you know.** If you think in Q formats, [fixed-point.md](fixed-point.md)
+- **Bring what you know.** If you think in Q formats, [the fixed-point page](advanced/fixed-point.md)
   maps them to grids. If you think in physical quantities,
-  [units.md](units.md) puts the unit in the type, so the Mars Climate Orbiter
+  [units](guide/units.md) put the unit in the type, so the Mars Climate Orbiter
   mistake is a compile error.
 
 ## Changing the rewards

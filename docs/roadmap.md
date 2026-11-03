@@ -4,8 +4,8 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-What is deliberately *not* implemented, as of v0.6.0
-(October 2026), and what would unblock each item. Nothing here is a promise of
+What is deliberately *not* implemented, as of November 2026, and what would
+unblock each item. Nothing here is a promise of
 a date; the [changelog](../CHANGELOG.md) records what has shipped.
 
 ## Gated on the C++ standard
@@ -13,7 +13,7 @@ a date; the [changelog](../CHANGELOG.md) records what has shipped.
 ### A heap-backed, unbounded grid number
 
 Grids past 64 bits already work by interning limbs in static
-storage ([storage.md](storage.md#grids-past-64-bits)). A *heap-backed*
+storage ([Storage](advanced/storage.md#grids-past-64-bits)). A *heap-backed*
 bignum as a template argument stays impossible: a class template argument must
 be structural, with public members only ([temp.param]/7), so `std::vector`
 cannot qualify; a pointer argument must point to static storage
@@ -30,7 +30,7 @@ change, not an example workaround:
 - **`atan2` and `asin` straight into degrees or turns,** with one rounding. Today
   the angle rounds onto a fine radian grid, then `value_cast` rounds again.
 - **`tan_into` of a π-scaled angle**, which would need an exact pole at 90°.
-- The [differences from mp-units](units.md#differences-from-mp-units): no
+- The [differences from mp-units](advanced/units-model.md#differences-from-mp-units): no
   representation other than an inside, no vector characters, no logarithmic
   units.
 

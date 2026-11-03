@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 The math engine returns the correctly rounded point of the output grid
 wherever it can decide it, and a deterministic guess where it cannot
-([math.md](math.md#what-is-guaranteed)). No bound known today rules the guess
+([the math engine](math-engine.md#what-is-guaranteed)). No bound known today rules the guess
 out for an arbitrary grid: this is the table-maker's dilemma. For a grid
 your program actually uses, though, the question has a definite answer, and
 a machine can find it by computing every input. That is what the certify
@@ -30,7 +30,7 @@ that pair:
   mode, not a guess; and
 - it is the **same in every build**: at compile time, at run time, with and
   without an FPU, at any optimisation level (under the build rules of
-  [determinism.md](determinism.md)).
+  [determinism](determinism.md)).
 
 It also prints a **SHA-256 hash of all the results**. Two machines that print
 the same hash for a pair computed the same bits for every input. Run the tool
@@ -39,8 +39,8 @@ build, and compare. That is a determinism check you can run yourself, on the
 grids you ship.
 
 The library's own certified pairs, with their hashes, are in
-[certified.md](certified.md): pairs picked to cover every function, and every
-pair the [examples](../examples) use. Every CI configuration (optimized,
+[certified.md](../certified.md): pairs picked to cover every function, and every
+pair the [examples](../../examples) use. Every CI configuration (optimized,
 debug, sanitized, the FP-free build) recomputes the pairs up to 2²⁰ inputs and
 must match; the weekly run recomputes all of them. A test also scans the examples' build and fails if one of their
 pairs has no row.
@@ -163,7 +163,7 @@ int main(int argc, char** argv) { return certify::main(argc, argv, pairs); }
 
 Compile it optimized (`-O2 -DNDEBUG`) with `-I tests/beman/inside/certify` and
 the beman.inside include directory. The repository's own list,
-[`certify.test.cpp`](../tests/beman/inside/certify.test.cpp), is written the
+[`certify.test.cpp`](../../tests/beman/inside/certify.test.cpp), is written the
 same way.
 
 ## Limits
@@ -172,7 +172,7 @@ same way.
   million results a second per pair, so pairs up to about 2³² inputs (hours)
   are practical. Larger ones are skipped with their estimated time. A grid of
   2⁶⁰ points cannot be certified this way. For it, the guarantee is the one in
-  [math.md](math.md#what-is-guaranteed): correctly rounded except within about
+  [the math engine](math-engine.md#what-is-guaranteed): correctly rounded except within about
   2^−4W of a boundary, and the same in every build.
 - **What the scanner cannot see.**
   - Calls inlined away by an optimized build, and calls evaluated only at
@@ -184,5 +184,5 @@ same way.
     reported as not certifiable. So is a pair with a grid number past the
     64-bit rational, which the certify program cannot spell.
 - **Inverse trigonometry into degrees.** `value_cast` of a radian result
-  rounds a second time ([math.md](math.md#what-is-guaranteed)). A certified
+  rounds a second time ([the math engine](math-engine.md#what-is-guaranteed)). A certified
   `asin` pair covers the radian result, not the conversion.
