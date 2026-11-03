@@ -33,8 +33,10 @@ using grid_number = detail::grid_rational;
 // A grid corner: a number (int / float / rational / grid number), or
 // anything that converts to the 64-bit rational, such as an inside (the grid
 // number takes that one conversion).
+namespace detail {
 template <typename T>
 concept grid_number_like = std::convertible_to<T, grid_number>;
+} // namespace detail
 
 // Which limits of a grid are values. A grid is always stored closed; an open
 // limit is a spelling, moved in by one notch at construction, so
@@ -59,7 +61,7 @@ inline constexpr int max_fraction_bits = 1024;
 // predictable — the result type knows how large every fraction can get.
 struct max_denominator {
     detail::grid_rational Value;
-    constexpr explicit max_denominator(grid_number_like auto v) : Value{detail::grid_rational{v}} {}
+    constexpr explicit max_denominator(detail::grid_number_like auto v) : Value{detail::grid_rational{v}} {}
     constexpr explicit max_denominator(const detail::grid_rational& v) : Value{v} {}
 };
 
@@ -79,22 +81,27 @@ struct grid {
     // braced `{lo, hi}` can't deduce to a template parameter, so the `grid{{lo,hi}, notch}`
     // spelling unambiguously picks `grid(interval, rational)` below. The conversion is
     // resolved at the call site, so grid.hpp needs no dependency on `inside`.
-    constexpr grid(grid_number_like auto lower, grid_number_like auto upper, grid_number_like auto notch)
+    constexpr grid(detail::grid_number_like auto lower,
+                   detail::grid_number_like auto upper,
+                   detail::grid_number_like auto notch)
         : grid{interval{to_number(lower), to_number(upper)}, to_number(notch)} {}
     // Two limits: the notch is derived — gcd(1, Lower, Upper), the coarsest
     // step 1/k that keeps every integer and both limits on the lattice. Integer
     // limits give 1; {0.5, 10} gives 1/2; {just<-6, 5>, just<3, 5>} gives 1/5.
-    constexpr grid(grid_number_like auto lower, grid_number_like auto upper)
+    constexpr grid(detail::grid_number_like auto lower, detail::grid_number_like auto upper)
         : grid{interval{to_number(lower), to_number(upper)}, derive_notch(lower, upper)} {}
-    constexpr grid(grid_number_like auto lower)
+    constexpr grid(detail::grid_number_like auto lower)
         : grid{interval{to_number(lower), to_number(lower)}, detail::grid_rational{0}} {}
     constexpr grid(interval val, detail::grid_rational notch) : Interval{val}, Notch{notch} {}
     // The same with open limits: {{0, 64}, per<16>, bounds::half_open} is
     // {{0, 63.9375}, per<16>}, and {0, 360, bounds::half_open} — notch derived
     // from the limits as written — is {0, 359}.
-    constexpr grid(grid_number_like auto lower, grid_number_like auto upper, grid_number_like auto notch, bounds b)
+    constexpr grid(detail::grid_number_like auto lower,
+                   detail::grid_number_like auto upper,
+                   detail::grid_number_like auto notch,
+                   bounds                        b)
         : grid{interval{to_number(lower), to_number(upper)}, to_number(notch), b} {}
-    constexpr grid(grid_number_like auto lower, grid_number_like auto upper, bounds b)
+    constexpr grid(detail::grid_number_like auto lower, detail::grid_number_like auto upper, bounds b)
         : grid{interval{to_number(lower), to_number(upper)}, derive_notch(lower, upper), b} {}
     constexpr grid(interval val, detail::grid_rational notch, bounds b)
         : Interval{close_bounds(val, notch, b)}, Notch{notch} {}
@@ -142,13 +149,14 @@ struct grid {
         return iv;
     }
 
-    template <grid_number_like T>
+    template <detail::grid_number_like T>
     static constexpr detail::grid_rational to_number(const T& v) {
         return detail::grid_rational{v};
     }
 
     // The notch gcd(1, lower, upper).
-    static constexpr detail::grid_rational derive_notch(grid_number_like auto lower, grid_number_like auto upper) {
+    static constexpr detail::grid_rational derive_notch(detail::grid_number_like auto lower,
+                                                        detail::grid_number_like auto upper) {
         check_short_binary(lower);
         check_short_binary(upper);
         return gcd(gcd(detail::grid_rational{1}, to_number(lower)), to_number(upper));
@@ -157,7 +165,7 @@ struct grid {
     // A floating-point limit is taken as its exact binary value, so 0.1 would
     // derive a 2^-55 notch. Past 1/1024 the literal almost surely meant a
     // decimal: reject it at compile time and point to the exact spellings.
-    template <grid_number_like T>
+    template <detail::grid_number_like T>
     static constexpr void check_short_binary([[maybe_unused]] T v) {
         if constexpr (std::floating_point<T>)
             if (std::is_constant_evaluated() &&

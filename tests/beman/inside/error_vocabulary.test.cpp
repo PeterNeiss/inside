@@ -75,9 +75,9 @@ TEST(ErrorVocabularyTest, division_inside_an_expected_chain_reports_its_cause) {
 // operator% chains through expected
 TEST(ErrorVocabularyTest, modulo_chains_through_expected) {
     // mod requires snap in the merged policy (integer-valued grids).
-    using mnum = inside<{0, 100}, snap>;
-    using nz   = inside<{1, 5}, snap>;  // divisor grid excludes zero
-    using span = inside<{-5, 5}, snap>; // divisor grid spans zero
+    using mnum = inside<{0, 100}, round_toward_zero>;
+    using nz   = inside<{1, 5}, round_toward_zero>;  // divisor grid excludes zero
+    using span = inside<{-5, 5}, round_toward_zero>; // divisor grid spans zero
     auto en    = []() -> std::expected<mnum, errc> { return mnum{17}; };
 
     auto m = en() % nz{5};

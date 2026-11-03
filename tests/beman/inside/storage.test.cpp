@@ -134,7 +134,7 @@ TEST(StorageTest, per_operation_policies_work_on_dyadic_bounds) {
 
     // In-range per-operation store snaps onto the grid.
     R c{1.0};
-    c.policy<snap>() = 2.5;
+    c.policy<round_toward_zero>() = 2.5;
     ASSERT_TRUE(static_cast<double>(rational{c}) == 2.5);
 
     // errc mode: out-of-range reports, value unchanged.

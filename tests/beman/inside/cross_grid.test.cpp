@@ -172,7 +172,7 @@ TEST(CrossGridTest, cross_grid_assign_keeps_the_value) {
     from_exact = wide_thirds{rational{5, 3}};
     ASSERT_EQ(rational{from_exact}, (rational{5, 3}));
 
-    using value_src = inside<{0, 4}, snap>;
+    using value_src = inside<{0, 4}, round_toward_zero>;
     thirds from_value_raw;
     from_value_raw = value_src{3};
     ASSERT_EQ(rational{from_value_raw}, rational{3});

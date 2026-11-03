@@ -16,14 +16,14 @@ namespace beman::inside {
 // fit exactly: errc::overflow out of the interval (as to<T> and the predicate
 // name it), errc::rounding_error off the notch. Any numeric source, insides
 // included; once both checks pass the store is exact.
-template <insidable B, numeric A>
-    requires inside_assignable<B, A, flags_of<B> | snap>
+template <insidable B, detail::numeric A>
+    requires inside_assignable<B, A, flags_of<B> | detail::snap>
 [[nodiscard]] constexpr B checked_cast(A value) {
     if (conversion_overflows<B>(value))
         detail::raise(errc::overflow, "checked_cast: value out of inside interval");
     if (conversion_rounds<B>(value))
         detail::raise(errc::rounding_error, "checked_cast: value does not land on notch");
-    return B{value, make_policy<snap>()};
+    return B{value, make_policy<detail::snap>()};
 }
 
 } // namespace beman::inside

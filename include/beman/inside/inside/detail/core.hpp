@@ -161,12 +161,12 @@ struct inside {
 
     // The one store every constructor and assignment goes through — the same
     // for every raw kind.
-    template <numeric A, typename Pol>
+    template <detail::numeric A, typename Pol>
     constexpr void store_value(const A& value, Pol&& pol) {
         detail::assignment<inside, A>::assign(*this, value, pol);
     }
 
-    template <numeric A>
+    template <detail::numeric A>
     constexpr void store_value(const A& value) {
         store_value(value, make_policy<P>());
     }
@@ -176,7 +176,7 @@ struct inside {
     // unchanged, and a store that rounds a fine double starts from the
     // destination's value, which a constant expression may not read
     // uninitialized. The optimizer drops the dead store.)
-    template <numeric A>
+    template <detail::numeric A>
         requires inside_assignable<inside, A, P>
     constexpr inside(A value) : Raw{detail::default_raw<inside>} {
         store_value(value);
@@ -188,7 +188,7 @@ struct inside {
     // and rounds up whatever T declares. The store runs on the twin of this
     // type under those flags (the same grid, so the raw carries over). If it
     // reports an error (ec mode), the inside keeps its default value.
-    template <numeric A, typename Pol>
+    template <detail::numeric A, typename Pol>
         requires(detail::flag_like<Pol> || detail::policy_like<Pol>) &&
                 inside_assignable<inside<G, detail::override_flags(P, flags_of<Pol>)>,
                                   A,
@@ -204,7 +204,7 @@ struct inside {
     // which returns expected<inside, errc>. This overload only turns
     // `inside x(value, ec)` into a readable error (an errc& would otherwise bind
     // the Pol&& constructor above).
-    template <numeric A>
+    template <detail::numeric A>
     inside(A, errc&) = delete ("inside(value, errc&) was removed: use `auto r = B::try_make(value);` "
                                "(expected<B, errc>), or `b.policy(ec) = value` to assign with an error code");
 
@@ -214,19 +214,19 @@ struct inside {
 #define BEMAN_INSIDE_WHY_expected                                                                       \
     "inside: a std::expected is not stored implicitly - check it and store *e, or use T::try_make(e), " \
     "which passes its error on"
-    template <numeric A>
+    template <detail::numeric A>
     inside(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
-    template <numeric A>
+    template <detail::numeric A>
     inside& operator=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
-    template <numeric A>
+    template <detail::numeric A>
     inside& operator+=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
-    template <numeric A>
+    template <detail::numeric A>
     inside& operator-=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
-    template <numeric A>
+    template <detail::numeric A>
     inside& operator*=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
-    template <numeric A>
+    template <detail::numeric A>
     inside& operator/=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
-    template <numeric A>
+    template <detail::numeric A>
     inside& operator%=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
 #undef BEMAN_INSIDE_WHY_expected
 
@@ -251,7 +251,7 @@ struct inside {
         return *this;
     }
 
-    template <numeric B>
+    template <detail::numeric B>
         requires inside_assignable<inside, B, P>
     constexpr inside& operator=(const B& other) {
         store_value(other);
@@ -264,19 +264,19 @@ struct inside {
 #define BEMAN_INSIDE_WHY_disjoint                                                                   \
     "inside: the source's interval lies entirely outside this grid's, and the policy has no clamp " \
     "or wrap - widen the grid, or store with clamp or wrap (explain_assignable<To, From> prints both)"
-#define BEMAN_INSIDE_WHY_notch                                                                       \
-    "inside: incompatible notches - the source's values miss this grid's notch; use policy<snap>() " \
+#define BEMAN_INSIDE_WHY_notch                                                                                    \
+    "inside: incompatible notches - the source's values miss this grid's notch; use policy<round_toward_zero>() " \
     "or a rounding policy (explain_assignable<To, From> prints both notches)"
-    template <numeric A>
+    template <detail::numeric A>
         requires(!detail::assign_intervals_ok<inside, A, P>)
     inside(A) = delete (BEMAN_INSIDE_WHY_disjoint);
-    template <numeric A>
+    template <detail::numeric A>
         requires(detail::assign_intervals_ok<inside, A, P> && !detail::assign_notch_ok<inside, A, P>)
     inside(A) = delete (BEMAN_INSIDE_WHY_notch);
-    template <numeric B>
+    template <detail::numeric B>
         requires(!detail::assign_intervals_ok<inside, B, P>)
     inside& operator=(const B&) = delete (BEMAN_INSIDE_WHY_disjoint);
-    template <numeric B>
+    template <detail::numeric B>
         requires(detail::assign_intervals_ok<inside, B, P> && !detail::assign_notch_ok<inside, B, P>)
     inside& operator=(const B&) = delete (BEMAN_INSIDE_WHY_notch);
 #undef BEMAN_INSIDE_WHY_disjoint
@@ -302,7 +302,7 @@ struct inside {
     // built-in (`int i = b;`, `unsigned char c = b;`), the range escaping
     // the type.
     constexpr explicit operator double() const
-        requires(has_flag(P, snap))
+        requires(has_flag(P, detail::snap))
     {
         return detail::as_double(*this);
     }
@@ -341,15 +341,15 @@ struct inside {
     // permission, as for a store: a fractional value rounds by Round, else by
     // this type's rounding mode; with neither it is `errc::rounding_error`.
     // Bounds the grid already satisfies are not checked.
-    template <std::integral T, policy_flag Round = none>
-        requires(Round == none || Round == round_toward_zero || Round == round_nearest || Round == round_floor ||
-                 Round == round_ceil || Round == round_half_even)
+    template <std::integral T, policy_flag Round = detail::none>
+        requires(Round == detail::none || Round == round_toward_zero || Round == round_nearest ||
+                 Round == round_floor || Round == round_ceil || Round == round_half_even)
     [[nodiscard]] constexpr std::expected<T, errc> to() const {
         using lim                             = std::numeric_limits<T>;
         constexpr bool               check_lo = lower_of<inside> < detail::rational{lim::min()};
         constexpr bool               check_hi = upper_of<inside> > detail::rational{lim::max()};
-        constexpr bool               rounds   = Round != none || has_flag(P, snap);
-        constexpr detail::round_mode mode     = detail::rounding_of(Round != none ? Round : P);
+        constexpr bool               rounds   = Round != detail::none || has_flag(P, detail::snap);
+        constexpr detail::round_mode mode     = detail::rounding_of(Round != detail::none ? Round : P);
         if constexpr (detail::integer_lattice<inside> && !check_lo && !check_hi && detail::values_fit_imax<inside>)
             return static_cast<T>(detail::to_value(*this));
         else if constexpr (detail::wide_valued<inside>) { // round first: -0.5 → unsigned is 0 when truncating
@@ -400,10 +400,10 @@ struct inside {
     // known-in-range sites (array indexing, capacity arithmetic). FP targets
     // share operator double's policy gate, so a strict inside rejects
     // `b.as<double>()` too.
-    template <typename T, policy_flag Round = none>
+    template <typename T, policy_flag Round = detail::none>
     [[nodiscard]] constexpr T as() const
-        requires(std::integral<T> || (std::floating_point<T> && Round == none)) &&
-                (!std::floating_point<T> || has_flag(P, snap))
+        requires(std::integral<T> || (std::floating_point<T> && Round == detail::none)) &&
+                (!std::floating_point<T> || has_flag(P, detail::snap))
     {
         const auto r = [this] {
             if constexpr (std::integral<T>)
@@ -488,8 +488,8 @@ struct inside {
     // policy_ref holding `*this` by reference (needed so `b.policy<…>() = x` writes
     // back into b, and cheap for the common immediate use). On an *rvalue* receiver
     // it returns a policy_buffer that OWNS the moved-in value, so a snapped temporary
-    // survives being returned/stored (`return (a*b).policy<snap>();`) — no dangling.
-    template <policy_flag F = none, typename Self>
+    // survives being returned/stored (`return (a*b).policy<round_toward_zero>();`) — no dangling.
+    template <policy_flag F = detail::none, typename Self>
     [[nodiscard]] constexpr auto policy(this Self&& self) {
         auto pol = make_policy<P | F>();
         if constexpr (std::is_lvalue_reference_v<Self>)
@@ -498,7 +498,7 @@ struct inside {
             return detail::policy_buffer<inside, decltype(pol)>{std::move(self), pol, {}};
     }
 
-    template <policy_flag F = none>
+    template <policy_flag F = detail::none>
     [[nodiscard]] constexpr auto policy(errc& ec) {
         auto pol = make_policy<P | F>(ec);
         return detail::policy_ref<inside, decltype(pol)>{*this, pol, {}};
@@ -518,15 +518,15 @@ struct inside {
   public:
     template <typename A>
     [[nodiscard]] constexpr auto on_wrap(A&& a) {
-        return make_action_ref<on_wrap_t>(std::forward<A>(a));
+        return make_action_ref<detail::on_wrap_t>(std::forward<A>(a));
     }
     template <typename A>
     [[nodiscard]] constexpr auto on_clamp(A&& a) {
-        return make_action_ref<on_clamp_t>(std::forward<A>(a));
+        return make_action_ref<detail::on_clamp_t>(std::forward<A>(a));
     }
     template <typename A>
     [[nodiscard]] constexpr auto on_error(A&& a) {
-        return make_action_ref<on_error_t>(std::forward<A>(a));
+        return make_action_ref<detail::on_error_t>(std::forward<A>(a));
     }
 
   private:
@@ -621,7 +621,7 @@ struct inside {
     constexpr inside& store_raw(W new_raw) {
         constexpr W lo = static_cast<W>(detail::raw_lo_exact<inside>);
         constexpr W hi = static_cast<W>(detail::raw_hi_exact<inside>);
-        if constexpr (range_handled(P))
+        if constexpr (detail::range_handled(P))
             if (new_raw < lo || new_raw > hi) {
                 if constexpr (P & clamp)
                     new_raw = new_raw < lo ? lo : hi;
@@ -662,7 +662,7 @@ struct inside {
     // it does for div/mod.
     template <insidable R>
     constexpr inside& report_div_by_zero() {
-        if constexpr (is_checked(P | flags_of<R>))
+        if constexpr (detail::is_checked(P | flags_of<R>))
             make_policy<P>().report(errc::division_by_zero);
         return *this;
     }
@@ -846,17 +846,17 @@ struct inside {
     // try_make<F>(value): the constructors' store under this type's policy plus
     // the flags F, with the failure as the error. An expected value passes its
     // error on, so fallible steps chain.
-    template <policy_flag F = none, numeric A>
+    template <policy_flag F = detail::none, detail::numeric A>
         requires inside_assignable<inside, A, P | F>
     [[nodiscard]] static constexpr std::expected<inside, errc> try_make(A value) {
         return detail::try_store<inside, P | F>([&](inside& r, auto&& pol) { r.store_value(value, pol); });
     }
-    template <policy_flag F = none, numeric A>
+    template <policy_flag F = detail::none, detail::numeric A>
         requires inside_assignable<inside, A, P | F>
     [[nodiscard]] static constexpr std::expected<inside, errc> try_make(const std::expected<A, errc>& value) {
         return value.and_then([](const A& a) { return try_make<F>(a); });
     }
-    template <policy_flag F = none, std::same_as<detail::grid_rational> V>
+    template <policy_flag F = detail::none, std::same_as<detail::grid_rational> V>
     [[nodiscard]] static constexpr std::expected<inside, errc> try_make(const V& value) {
         return detail::try_store<inside, P | F>(
             [&](inside& r, auto&& pol) { detail::assign_grid_number(r, value, pol); });
@@ -867,17 +867,17 @@ struct inside {
 // to<T>(b) / as<T>(b) — free-function forms, for generic code that would
 // otherwise need the `.template` disambiguator. Same semantics as the members.
 //---------------------------------------------------------------------------
-template <typename T, policy_flag Round = none, insidable B>
+template <typename T, policy_flag Round = detail::none, insidable B>
 [[nodiscard]] constexpr auto to(const B& b)
-    requires(Round == none ? requires { b.template to<T>(); } : requires { b.template to<T, Round>(); })
+    requires(Round == detail::none ? requires { b.template to<T>(); } : requires { b.template to<T, Round>(); })
 {
-    if constexpr (Round == none)
+    if constexpr (Round == detail::none)
         return b.template to<T>();
     else
         return b.template to<T, Round>();
 }
 
-template <typename T, policy_flag Round = none, insidable B>
+template <typename T, policy_flag Round = detail::none, insidable B>
 [[nodiscard]] constexpr T as(const B& b)
     requires requires { b.template as<T, Round>(); }
 {
@@ -911,7 +911,7 @@ template <insidable B, policy_flag F>
 }
 } // namespace detail
 
-template <insidable B, policy_flag F = none>
+template <insidable B, policy_flag F = detail::none>
 [[nodiscard]] constexpr std::expected<B, errc> parse(const char* first, const char* last) {
     const auto v = detail::parse_text(first, last);
     if (!v && v.error() == errc::overflow) [[unlikely]]
@@ -929,7 +929,7 @@ template <insidable B>
             return std::unexpected{errc::overflow};
         if (conversion_rounds<B>(*v))
             return std::unexpected{errc::rounding_error};
-        return B::template try_make<snap>(*v); // on the grid: nothing rounds
+        return B::template try_make<detail::snap>(*v); // on the grid: nothing rounds
     }
     if (v.error() != errc::overflow)
         return std::unexpected{v.error()};
@@ -952,7 +952,7 @@ template <insidable B>
             return std::unexpected{errc::rounding_error};
     }
     return detail::try_store<B, flags_of<B>>(
-        [&](B& b, auto&& pol) { detail::assign_exact<detail::rational>(b, *w, pol, no_action{}); });
+        [&](B& b, auto&& pol) { detail::assign_exact<detail::rational>(b, *w, pol, detail::no_action{}); });
 }
 
 //---------------------------------------------------------------------------
@@ -990,10 +990,12 @@ inline constexpr auto just = detail::just_point<value, den>();
 // Parse is exact (no double round-trip); same parser backs `_r` in
 // inside/detail/number_text.hpp. `-1.5_ins` parses as `-(1.5_ins)`.
 //---------------------------------------------------------------------------
+inline namespace literals {
 template <char... Chars>
 constexpr auto operator""_ins() {
     return just<detail::parse_ins_literal<Chars...>()>;
 }
+} // namespace literals
 
 } // namespace beman::inside
 

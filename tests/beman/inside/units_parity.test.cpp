@@ -81,18 +81,9 @@ constexpr std::array inside_only{
     exception{"get_error_handler", "shared vocabulary"},
     exception{"set_error_handler", "shared vocabulary"},
     exception{"has_flag", "shared vocabulary"},
-    exception{"has_any_flag", "shared vocabulary"},
-    exception{"is_checked", "shared vocabulary"},
-    exception{"range_handled", "shared vocabulary"},
     exception{"make_policy", "shared vocabulary"},
-    exception{"on_clamp", "shared vocabulary"},
-    exception{"on_error", "shared vocabulary"},
-    exception{"on_wrap", "shared vocabulary"},
     // The raw and the grid of an inside; a quantity's is its number's.
     exception{"to_string_debug", "an inside's raw and grid"},
-    exception{"_g", "a grid number literal"},
-    exception{"_ins", "an inside literal"},
-    exception{"_r", "a rational literal"},
 };
 
 // Member functions of an inside without a quantity counterpart: properties of
@@ -273,7 +264,7 @@ TEST(UnitsParityTest, per_call_arithmetic) {
     EXPECT_EQ(ec, errc::division_by_zero);
     (void)z;
 
-    static_assert(!add_with<metres, km, decltype(on_clamp([](auto&, auto) {}))>);
+    static_assert(!add_with<metres, km, decltype(beman::inside::detail::on_clamp([](auto&, auto) {}))>);
 }
 
 // cursor<Q, Step>, values<Q> and end(t) on a quantity: the number's grid,

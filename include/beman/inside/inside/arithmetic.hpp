@@ -249,7 +249,7 @@ template <insidable Out, insidable A, insidable B, typename P>
 }
 } // namespace detail
 
-template <insidable Out, policy_flag F = none, insidable A, insidable B>
+template <insidable Out, policy_flag F = detail::none, insidable A, insidable B>
 [[nodiscard]] constexpr Out mul_into(const A& a, const B& b) {
     auto policy = make_policy<flags_of<Out> | F>();
     if constexpr (detail::native_product<Out, F, A, B>)
@@ -262,7 +262,7 @@ template <insidable Out, policy_flag F = none, insidable A, insidable B>
     }
 }
 
-template <insidable Out, policy_flag F = none, insidable A, insidable B>
+template <insidable Out, policy_flag F = detail::none, insidable A, insidable B>
 [[nodiscard]] constexpr auto div_into(const A& a, const B& b)
     -> std::conditional_t<detail::divisor_excludes_zero<B>, Out, std::expected<Out, errc>> {
     const auto quotient = [&](auto&& policy) {
@@ -442,7 +442,7 @@ template <insidable Target, std::ranges::input_range Rng>
             if (!(total < I{lo}) && !(I{hi} < total))
                 if (const auto v =
                         detail::try_mul(detail::rational{static_cast<imax>(total)}, detail::to_rational(U))) {
-                    detail::assignment<Target, detail::rational>::assign(out, *v, policy, no_action{});
+                    detail::assignment<Target, detail::rational>::assign(out, *v, policy, detail::no_action{});
                     return out;
                 }
         }
@@ -451,20 +451,20 @@ template <insidable Target, std::ranges::input_range Rng>
         using W = detail::wide_sint<K>;
         const detail::wide_rational<K> v{static_cast<W>(total) * static_cast<W>(detail::grid_numerator(U)),
                                          static_cast<W>(detail::grid_denominator(U))};
-        no_action                      no_op;
+        detail::no_action              no_op;
         detail::assign_exact<detail::rational>(out, v, policy, no_op);
     } else {
         detail::rational total{0};
         for (const auto& b : r) {
             const auto s = total + detail::as_rational(b);
             if (!s) [[unlikely]] {
-                no_action no_op;
+                detail::no_action no_op;
                 detail::report_failure(out, policy, no_op, s.error());
                 return out;
             }
             total = *s;
         }
-        detail::assignment<Target, detail::rational>::assign(out, total, policy, no_action{});
+        detail::assignment<Target, detail::rational>::assign(out, total, policy, detail::no_action{});
     }
     return out;
 }
@@ -581,19 +581,21 @@ BEMAN_INSIDE_LIFT_OP(%)
 // Deleted, with the fix as the reason: `requires { b + 1; }` is false, as
 // for every other operation that cannot compile.
 //---------------------------------------------------------------------------
+namespace detail {
 template <typename A>
 concept builtin_arithmetic = std::integral<A> || std::floating_point<A>;
+} // namespace detail
 
 #define BEMAN_INSIDE_SCALAR_MSG                                                     \
     "an inside cannot be combined with a raw scalar: give the scalar a grid — "     \
     "`1_ins`, `just<1>`, or `inside<{lo,hi}>{n}` for a runtime value with a known " \
     "range"
 #define BEMAN_INSIDE_NO_SCALAR(op)                                    \
-    template <insidable B, builtin_arithmetic A>                      \
+    template <insidable B, detail::builtin_arithmetic A>              \
     void operator op(B const&, A) = delete (BEMAN_INSIDE_SCALAR_MSG); \
-    template <builtin_arithmetic A, insidable B>                      \
+    template <detail::builtin_arithmetic A, insidable B>              \
     void operator op(A, B const&) = delete (BEMAN_INSIDE_SCALAR_MSG); \
-    template <insidable B, builtin_arithmetic A>                      \
+    template <insidable B, detail::builtin_arithmetic A>              \
     void operator op## = (B&, A) = delete (BEMAN_INSIDE_SCALAR_MSG);
 
 BEMAN_INSIDE_NO_SCALAR(+)

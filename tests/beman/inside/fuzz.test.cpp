@@ -393,7 +393,7 @@ void prop_modulo(fuzz_state& s, long iters) {
     // mod requires `snap` per the README, so derive a typed alias.
     if constexpr (integer_lattice<B> && !rational_storage<B>) {
         s.current_prop = "modulo";
-        using BI       = inside<grid_of<B>, snap>;
+        using BI       = inside<grid_of<B>, round_toward_zero>;
         auto lo        = trunc(detail::lower64<B>);
         auto hi        = trunc(detail::upper64<B>);
         if (lo > 0 || hi <= 0) {
@@ -602,9 +602,9 @@ void prop_non_notch_assign(fuzz_state& s, long iters) {
         s.current_prop = "non_notch_assign";
         // The catalogue's B already uses the default `checked` policy, so a non-
         // notch-aligned assignment to B must throw rounding_error.
-        using BIR      = inside<grid_of<B>, snap>;          // silent floor
-        using BRN      = inside<grid_of<B>, round_nearest>; // nearest
-        using BNONE    = inside<grid_of<B>, unsafe>;        // unchecked (unsafe carries snap)
+        using BIR      = inside<grid_of<B>, round_toward_zero>; // silent floor
+        using BRN      = inside<grid_of<B>, round_nearest>;     // nearest
+        using BNONE    = inside<grid_of<B>, unsafe>;            // unchecked (unsafe carries snap)
         rational notch = detail::notch64<B>;
         rational lo    = detail::lower64<B>;
         rational hi    = detail::upper64<B>;
@@ -680,7 +680,7 @@ void prop_subnormal_construct(fuzz_state& s, long iters) {
     // that bits-exponent > 62. Any double in (0, 2^-62) qualifies.
     if constexpr (!integer_lattice<B> && !rational_storage<B>) {
         s.current_prop         = "subnormal_construct";
-        using BIR              = inside<grid_of<B>, snap>;
+        using BIR              = inside<grid_of<B>, round_toward_zero>;
         rational lo            = detail::lower64<B>;
         rational hi            = detail::upper64<B>;
         bool     zero_in_range = (lo <= 0) && (hi >= 0);
@@ -1417,7 +1417,7 @@ int main(int argc, char** argv) {
     // through the overflow-checked rational arithmetic; the `none` variant
     // exercises rational::add_unchecked / mul_unchecked.
     run_props<inside<{{-1000, 1000}, max_denominator{1000}}>>(s, iters, "raw_rat");
-    run_props<inside<{{-1000, 1000}, max_denominator{1000}}, none>>(s, iters, "raw_rat_unck");
+    run_props<inside<{{-1000, 1000}, max_denominator{1000}}, checked>>(s, iters, "raw_rat_unck");
     // Unanchored lattices (Lower off the notch's multiples): offset storage
     // whose values are not whole notches.
     run_props<inside<{{0.5_r, 100.5_r}, 1}>>(s, iters, "half_off");

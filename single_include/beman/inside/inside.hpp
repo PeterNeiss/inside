@@ -2844,7 +2844,11 @@ constexpr rational operator""_r() {
 
 namespace beman::inside {
 //   _r literal   an exact decimal / hex value, e.g. 0.1_r is exactly 1/10.
+// The literals (_r, _ins, _g) live in the inline namespace literals:
+// `using namespace beman::inside::literals;` brings only them.
+inline namespace literals {
 using detail::operator""_r;
+} // namespace literals
 } // namespace beman::inside
 
 
@@ -3553,10 +3557,12 @@ consteval grid_rational parse_grid_literal() {
 namespace beman::inside {
 // A grid number: `inside<{0, 1267650600228229401496703205376_g}>`, or an
 // exact decimal notch `{{0, 1}, 1e-30_g}`. Any size.
+inline namespace literals {
 template <char... Chars>
 consteval detail::grid_rational operator""_g() {
     return detail::parse_grid_literal<Chars...>();
 }
+} // namespace literals
 } // namespace beman::inside
 
 
@@ -3787,8 +3793,8 @@ struct diag_text {
 
 namespace beman::inside {
 //---------------------------------------------------------------------------
-// policy_flag — the policy bits of inside<G, P> (none, snap and the
-// rounding modes, clamp, wrap, checked, unsafe),
+// policy_flag — the policy bits of inside<G, P> (the rounding modes, clamp,
+// wrap, checked, unsafe),
 // has_flag / is_checked, the rounding precedence (rounding_of), the hook
 // factories on_clamp / on_wrap / on_error with their is_*_action traits, and
 // the flags each hook implies.
@@ -3822,26 +3828,30 @@ concept flag_like = is_flag_v<std::remove_cvref_t<T>>;
 // proven statically gets a runtime check that throws (or reports through an
 // errc& parameter), unless `unsafe` appears: in the type, an operand, or the
 // call's policy.
-inline constexpr detail::flag<0ull> none{};
+namespace detail {
+// No bits: the default of a template parameter that adds flags.
+inline constexpr flag<0ull> none{};
 // `snap` — permission: an off-notch value is rounded to fit the grid instead
 // of rejected. Without it, an off-notch value is a compile/runtime error and
 // div/mod fall through to exact-rational results. Every round_* mode carries
-// it; on its own it rounds toward zero.
-inline constexpr detail::flag<1ull << 4> snap{};
+// it; on its own it is round_toward_zero, the public name.
+inline constexpr flag<1ull << 4> snap{};
+} // namespace detail
+
 // `round_toward_zero` — the snap bit alone: truncate toward zero (IEEE 754
 // roundTowardZero). Last in dispatch, after every explicit mode.
-inline constexpr detail::flag<snap>               round_toward_zero{};
-inline constexpr detail::flag<(1ull << 5) | snap> round_nearest{};
+inline constexpr detail::flag<detail::snap>               round_toward_zero{};
+inline constexpr detail::flag<(1ull << 5) | detail::snap> round_nearest{};
 // Rounding modes each pick a unique bit and OR in `snap`. Conceptually
 // exclusive; combining two is allowed but dispatch (storage.hpp) picks the
 // first match: floor → ceil → half_even → nearest → toward zero (rounding_of).
-inline constexpr detail::flag<(1ull << 6) | snap> round_floor{};
-inline constexpr detail::flag<(1ull << 7) | snap> round_ceil{};
-inline constexpr detail::flag<(1ull << 8) | snap> round_half_even{};
+inline constexpr detail::flag<(1ull << 6) | detail::snap> round_floor{};
+inline constexpr detail::flag<(1ull << 7) | detail::snap> round_ceil{};
+inline constexpr detail::flag<(1ull << 8) | detail::snap> round_half_even{};
 
 // runtime checking — the default policy's name, no bits: every policy without
-// `unsafe` checks (see is_checked), so inside<G>, inside<G, none> and
-// inside<G, checked> are one type.
+// `unsafe` checks (see is_checked), so inside<G> and inside<G, checked> are
+// one type.
 inline constexpr detail::flag<0ull> checked{};
 
 // unary — mutually exclusive
@@ -3860,7 +3870,7 @@ inline constexpr policy_flag unsafe_marker{1ull << 36};
 // and `end(t)` names its past-the-end value. Results never carry it.
 inline constexpr policy_flag cursor_marker{1ull << 50};
 } // namespace detail
-inline constexpr detail::flag<detail::unsafe_marker | snap> unsafe{};
+inline constexpr detail::flag<detail::unsafe_marker | detail::snap> unsafe{};
 
 namespace detail {
 // The bits of the four explicit rounding modes (each also carries snap).
@@ -3905,6 +3915,7 @@ inline constexpr policy_flag known_bits = mode_bits | snap | clamp | wrap | unsa
 //---------------------------------------------------------------------------
 [[nodiscard]] constexpr bool has_flag(policy_flag set, policy_flag flag) noexcept { return (set & flag) == flag; }
 
+namespace detail {
 [[nodiscard]] constexpr bool has_any_flag(policy_flag set, policy_flag flags) noexcept {
     return (set & flags) != none;
 }
@@ -3913,13 +3924,14 @@ inline constexpr policy_flag known_bits = mode_bits | snap | clamp | wrap | unsa
 // `checked` (the default policy's own bit, so `x.policy<unsafe>()` opts a
 // default inside out). `inside<G, round_nearest>` and `inside<G, clamp>` are
 // checked, exactly like the default `inside<G>`.
-[[nodiscard]] constexpr bool is_checked(policy_flag set) noexcept { return !has_flag(set, detail::unsafe_marker); }
+[[nodiscard]] constexpr bool is_checked(policy_flag set) noexcept { return !has_flag(set, unsafe_marker); }
 
 // Whether an out-of-range value does anything under a flag set: a clamp or
 // wrap bit stores it, a checked range reports it. False under `unsafe`.
 [[nodiscard]] constexpr bool range_handled(policy_flag set) noexcept {
     return has_any_flag(set, clamp | wrap) || is_checked(set);
 }
+} // namespace detail
 
 namespace detail {
 // The rounding mode a flag set selects — the ONE precedence every rounding
@@ -3941,6 +3953,7 @@ namespace detail {
 }
 } // namespace detail
 
+namespace detail {
 //---------------------------------------------------------------------------
 // no_action — zero-overhead default: a store without a hook
 //---------------------------------------------------------------------------
@@ -3965,7 +3978,7 @@ struct on_error_t {
 };
 
 //---------------------------------------------------------------------------
-// CTAD-style factories — drop the on_error_t{lambda} brace-init.
+// Factories behind x.on_clamp(f), x.on_wrap(f), x.on_error(f).
 //---------------------------------------------------------------------------
 template <typename F>
 [[nodiscard]] constexpr auto on_clamp(F&& fn) {
@@ -3980,7 +3993,6 @@ template <typename F>
     return on_error_t<std::remove_cvref_t<F>>{std::forward<F>(fn)};
 }
 
-namespace detail {
 // Action detection: the `is_*_action` trait is the primary detector (the
 // pack helpers below take it as a template-template parameter); the concept
 // derives from it and strips cvref so the ref form matches the value form.
@@ -4073,8 +4085,10 @@ using grid_number = detail::grid_rational;
 // A grid corner: a number (int / float / rational / grid number), or
 // anything that converts to the 64-bit rational, such as an inside (the grid
 // number takes that one conversion).
+namespace detail {
 template <typename T>
 concept grid_number_like = std::convertible_to<T, grid_number>;
+} // namespace detail
 
 // Which limits of a grid are values. A grid is always stored closed; an open
 // limit is a spelling, moved in by one notch at construction, so
@@ -4099,7 +4113,7 @@ inline constexpr int max_fraction_bits = 1024;
 // predictable — the result type knows how large every fraction can get.
 struct max_denominator {
     detail::grid_rational Value;
-    constexpr explicit max_denominator(grid_number_like auto v) : Value{detail::grid_rational{v}} {}
+    constexpr explicit max_denominator(detail::grid_number_like auto v) : Value{detail::grid_rational{v}} {}
     constexpr explicit max_denominator(const detail::grid_rational& v) : Value{v} {}
 };
 
@@ -4119,22 +4133,27 @@ struct grid {
     // braced `{lo, hi}` can't deduce to a template parameter, so the `grid{{lo,hi}, notch}`
     // spelling unambiguously picks `grid(interval, rational)` below. The conversion is
     // resolved at the call site, so grid.hpp needs no dependency on `inside`.
-    constexpr grid(grid_number_like auto lower, grid_number_like auto upper, grid_number_like auto notch)
+    constexpr grid(detail::grid_number_like auto lower,
+                   detail::grid_number_like auto upper,
+                   detail::grid_number_like auto notch)
         : grid{interval{to_number(lower), to_number(upper)}, to_number(notch)} {}
     // Two limits: the notch is derived — gcd(1, Lower, Upper), the coarsest
     // step 1/k that keeps every integer and both limits on the lattice. Integer
     // limits give 1; {0.5, 10} gives 1/2; {just<-6, 5>, just<3, 5>} gives 1/5.
-    constexpr grid(grid_number_like auto lower, grid_number_like auto upper)
+    constexpr grid(detail::grid_number_like auto lower, detail::grid_number_like auto upper)
         : grid{interval{to_number(lower), to_number(upper)}, derive_notch(lower, upper)} {}
-    constexpr grid(grid_number_like auto lower)
+    constexpr grid(detail::grid_number_like auto lower)
         : grid{interval{to_number(lower), to_number(lower)}, detail::grid_rational{0}} {}
     constexpr grid(interval val, detail::grid_rational notch) : Interval{val}, Notch{notch} {}
     // The same with open limits: {{0, 64}, per<16>, bounds::half_open} is
     // {{0, 63.9375}, per<16>}, and {0, 360, bounds::half_open} — notch derived
     // from the limits as written — is {0, 359}.
-    constexpr grid(grid_number_like auto lower, grid_number_like auto upper, grid_number_like auto notch, bounds b)
+    constexpr grid(detail::grid_number_like auto lower,
+                   detail::grid_number_like auto upper,
+                   detail::grid_number_like auto notch,
+                   bounds                        b)
         : grid{interval{to_number(lower), to_number(upper)}, to_number(notch), b} {}
-    constexpr grid(grid_number_like auto lower, grid_number_like auto upper, bounds b)
+    constexpr grid(detail::grid_number_like auto lower, detail::grid_number_like auto upper, bounds b)
         : grid{interval{to_number(lower), to_number(upper)}, derive_notch(lower, upper), b} {}
     constexpr grid(interval val, detail::grid_rational notch, bounds b)
         : Interval{close_bounds(val, notch, b)}, Notch{notch} {}
@@ -4182,13 +4201,14 @@ struct grid {
         return iv;
     }
 
-    template <grid_number_like T>
+    template <detail::grid_number_like T>
     static constexpr detail::grid_rational to_number(const T& v) {
         return detail::grid_rational{v};
     }
 
     // The notch gcd(1, lower, upper).
-    static constexpr detail::grid_rational derive_notch(grid_number_like auto lower, grid_number_like auto upper) {
+    static constexpr detail::grid_rational derive_notch(detail::grid_number_like auto lower,
+                                                        detail::grid_number_like auto upper) {
         check_short_binary(lower);
         check_short_binary(upper);
         return gcd(gcd(detail::grid_rational{1}, to_number(lower)), to_number(upper));
@@ -4197,7 +4217,7 @@ struct grid {
     // A floating-point limit is taken as its exact binary value, so 0.1 would
     // derive a 2^-55 notch. Past 1/1024 the literal almost surely meant a
     // decimal: reject it at compile time and point to the exact spellings.
-    template <grid_number_like T>
+    template <detail::grid_number_like T>
     static constexpr void check_short_binary([[maybe_unused]] T v) {
         if constexpr (std::floating_point<T>)
             if (std::is_constant_evaluated() &&
@@ -4707,13 +4727,15 @@ namespace beman::inside {
 template <grid G = grid{{0, 0}, 0}, policy_flag P = checked>
 struct inside;
 
+namespace detail {
 template <class>
 inline constexpr bool is_inside_v = false;
 template <grid G, policy_flag P>
 inline constexpr bool is_inside_v<inside<G, P>> = true;
+} // namespace detail
 
 template <typename B>
-concept insidable = is_inside_v<std::remove_cvref_t<B>>;
+concept insidable = detail::is_inside_v<std::remove_cvref_t<B>>;
 
 //---------------------------------------------------------------------------
 // Public grid/policy introspection — extract an inside's template parameters.
@@ -4790,10 +4812,11 @@ template <insidable B>
 inline constexpr rational upper64 = to_rational(upper_of<B>);
 template <insidable B>
 inline constexpr rational notch64 = to_rational(notch_of<B>);
-} // namespace detail
 
+// An inside or a plain number (integer, floating point, rational).
 template <typename N>
-concept numeric = insidable<N> or detail::plain_number<N>;
+concept numeric = insidable<N> or plain_number<N>;
+} // namespace detail
 
 //---------------------------------------------------------------------------
 // Internal plumbing — storage shape, raw/value conversion, dispatch.
@@ -5543,12 +5566,14 @@ consteval grid_rational notch_or_zero() {
 // notch ratio or snap set (else R's notch doesn't divide L's; opt into
 // rounding). Named `inside_assignable` to avoid shadowing std::assignable_from.
 template <typename L, typename R, policy_flag P = checked>
-concept inside_assignable = numeric<R> && detail::assign_intervals_ok<L, R, P> && detail::assign_notch_ok<L, R, P>;
+concept inside_assignable =
+    detail::numeric<R> && detail::assign_intervals_ok<L, R, P> && detail::assign_notch_ok<L, R, P>;
 
 // Diagnostic helper: instantiating `inside_assignable_why<L,R,P>` fires a named
 // static_assert per failed clause, with the two grids' intervals and notches.
 // Backs the public `explain_assignable` probe below; inside's deleted stores
 // (inside/detail/core.hpp) name only the clause, as a deletion's reason is a fixed string.
+namespace detail {
 template <typename L, typename R, policy_flag P = checked>
 struct inside_assignable_why {
     // Collapse each clause to a plain bool *before* the static_assert. Asserting on
@@ -5567,17 +5592,19 @@ struct inside_assignable_why {
                                "(not wrap/clamp) cannot bring it into range — assignment can never succeed (lhs ["
                             << interval_of<L>.Lower << ", " << interval_of<L>.Upper << "], rhs ["
                             << interval_of<R>.Lower << ", " << interval_of<R>.Upper << "])");
-    static_assert(notch_ok,
-                  detail::diag_text{} << "inside_assignable: incompatible notches — use `policy<snap>()` or a "
-                                         "rounding policy to allow rounding (lhs notch "
-                                      << notch_of<L> << ", rhs notch " << detail::notch_or_zero<R>() << ")");
+    static_assert(
+        notch_ok,
+        detail::diag_text{} << "inside_assignable: incompatible notches — use `policy<round_toward_zero>()` or a "
+                               "rounding policy to allow rounding (lhs notch "
+                            << notch_of<L> << ", rhs notch " << detail::notch_or_zero<R>() << ")");
     static constexpr bool value = inside_assignable<L, R, P>;
 };
+} // namespace detail
 
 // Public manual probe: `static_assert(beman::inside::explain_assignable<DstInside, decltype(src)>);`
 // emits the named per-clause reasons with the grids' numbers.
 template <typename Dst, typename Src, policy_flag P = flags_of<Dst>>
-inline constexpr bool explain_assignable = inside_assignable_why<Dst, std::remove_cvref_t<Src>, P>::value;
+inline constexpr bool explain_assignable = detail::inside_assignable_why<Dst, std::remove_cvref_t<Src>, P>::value;
 } // namespace beman::inside
 
 
@@ -6445,12 +6472,12 @@ inline constexpr bool uses_error_ref<call_policy<F, error_ref>> = true;
 //---------------------------------------------------------------------------
 // make_policy
 //---------------------------------------------------------------------------
-template <policy_flag F = none>
+template <policy_flag F = detail::none>
 [[nodiscard]] constexpr auto make_policy() {
     return detail::call_policy<F, detail::empty_ref>{};
 }
 
-template <policy_flag F = none>
+template <policy_flag F = detail::none>
 [[nodiscard]] constexpr auto make_policy(errc& ec) {
     return detail::call_policy<F, detail::error_ref>{ec};
 }
@@ -7828,7 +7855,7 @@ struct assignment<L, R> {
             // path for the store/rounding, but re-type its carry `q` (an inside on the
             // rational source's carry grid) for R before handing it to the user action.
             assignment<L, rational>::apply_wrap(
-                lhs, as_rational(rhs), policy, beman::inside::on_wrap([&](auto& self, const auto& q) {
+                lhs, as_rational(rhs), policy, beman::inside::detail::on_wrap([&](auto& self, const auto& q) {
                     action.Fn(self, make_wrap_carry<L, R>(to_value(q)));
                 }));
         } else {
@@ -7938,7 +7965,7 @@ struct assignment<L, R> {
         static_assert(uses_flag<L, P, wrap> || uses_flag<L, P, clamp> || not excludes(interval_of<L>, interval_of<R>),
                       "rhs interval lies entirely outside lhs interval and the policy cannot bring it into range");
         static_assert(notches_compatible<L, R> || uses_flag<L, P, snap>,
-                      "incompatible notches: use policy<snap>() or a rounding policy to allow rounding");
+                      "incompatible notches: use policy<round_toward_zero>() or a rounding policy to allow rounding");
     }
 
     template <typename P, typename A>
@@ -8050,7 +8077,7 @@ constexpr Target dispatch_new(const C& src, P& policy, std::tuple<As...>& action
 // policy_buffer — the rvalue-receiver sibling of policy_ref. `policy<F>()`
 // on a *temporary* return this instead: it OWNS the inside by value (the temporary
 // is moved in), so the snapped value can be returned/stored without dangling —
-// `auto square(small n){ return (n*n).policy<snap>(); }` is safe. Value read-out only
+// `auto square(small n){ return (n*n).policy<round_toward_zero>(); }` is safe. Value read-out only
 // (no operator=: assigning into a throwaway is meaningless). Same constrained
 // conversion as policy_ref, so it stays SFINAE-friendly.
 template <insidable B, typename P, typename... As>
@@ -8079,7 +8106,7 @@ struct policy_ref {
 
     // Stores go through dispatch_assign under this ref's Policy and actions:
     // into Ref for `operator=`, into a fresh target for the conversion below,
-    // so a one-shot snap can be read out as a value (`(a * b).policy<snap>()`).
+    // so a one-shot snap can be read out as a value (`(a * b).policy<round_toward_zero>()`).
     template <numeric C>
     constexpr B& operator=(const C& other) {
         return dispatch_assign(Ref, other, Policy, Actions);
@@ -8088,7 +8115,7 @@ struct policy_ref {
     // Value read-out: a one-shot policy ref converts to any inside the assignment
     // could satisfy, applying the target's own policy (range) plus this ref's
     // carried flags (notch/rounding) via uses_flag's merge. Makes
-    // `Target t = (a * b).policy<snap>();` / `return (a * b).policy<snap>();` compile.
+    // `Target t = (a * b).policy<round_toward_zero>();` / `return (a * b).policy<round_toward_zero>();` compile.
     // Constrained so the proxy stays SFINAE-friendly (no over-broad convertibility).
     template <insidable Target>
         requires inside_assignable<Target, B, flags_of<Target> | flags_of<P>>
@@ -9005,7 +9032,7 @@ constexpr std::optional<lossy_result> exact_lossy_of(A value) noexcept {
 }
 } // namespace detail
 
-template <insidable B, numeric A>
+template <insidable B, detail::numeric A>
 [[nodiscard]] constexpr bool conversion_overflows(A value) noexcept {
     if constexpr (std::floating_point<A>)
         if (!detail::is_finite(value))
@@ -9026,7 +9053,7 @@ template <insidable B, numeric A>
     }
 }
 
-template <insidable B, numeric A>
+template <insidable B, detail::numeric A>
 [[nodiscard]] constexpr bool conversion_rounds(A value) noexcept {
     if constexpr (std::floating_point<A>)
         if (!detail::is_finite(value))
@@ -9063,7 +9090,7 @@ template <insidable B, numeric A>
     }
 }
 
-template <insidable B, numeric A>
+template <insidable B, detail::numeric A>
 [[nodiscard]] constexpr bool conversion_loses(A value) noexcept {
     return conversion_overflows<B>(value) || conversion_rounds<B>(value);
 }
@@ -9202,12 +9229,12 @@ struct inside {
 
     // The one store every constructor and assignment goes through — the same
     // for every raw kind.
-    template <numeric A, typename Pol>
+    template <detail::numeric A, typename Pol>
     constexpr void store_value(const A& value, Pol&& pol) {
         detail::assignment<inside, A>::assign(*this, value, pol);
     }
 
-    template <numeric A>
+    template <detail::numeric A>
     constexpr void store_value(const A& value) {
         store_value(value, make_policy<P>());
     }
@@ -9217,7 +9244,7 @@ struct inside {
     // unchanged, and a store that rounds a fine double starts from the
     // destination's value, which a constant expression may not read
     // uninitialized. The optimizer drops the dead store.)
-    template <numeric A>
+    template <detail::numeric A>
         requires inside_assignable<inside, A, P>
     constexpr inside(A value) : Raw{detail::default_raw<inside>} {
         store_value(value);
@@ -9229,7 +9256,7 @@ struct inside {
     // and rounds up whatever T declares. The store runs on the twin of this
     // type under those flags (the same grid, so the raw carries over). If it
     // reports an error (ec mode), the inside keeps its default value.
-    template <numeric A, typename Pol>
+    template <detail::numeric A, typename Pol>
         requires(detail::flag_like<Pol> || detail::policy_like<Pol>) &&
                 inside_assignable<inside<G, detail::override_flags(P, flags_of<Pol>)>,
                                   A,
@@ -9245,7 +9272,7 @@ struct inside {
     // which returns expected<inside, errc>. This overload only turns
     // `inside x(value, ec)` into a readable error (an errc& would otherwise bind
     // the Pol&& constructor above).
-    template <numeric A>
+    template <detail::numeric A>
     inside(A, errc&) = delete ("inside(value, errc&) was removed: use `auto r = B::try_make(value);` "
                                "(expected<B, errc>), or `b.policy(ec) = value` to assign with an error code");
 
@@ -9255,19 +9282,19 @@ struct inside {
 #define BEMAN_INSIDE_WHY_expected                                                                       \
     "inside: a std::expected is not stored implicitly - check it and store *e, or use T::try_make(e), " \
     "which passes its error on"
-    template <numeric A>
+    template <detail::numeric A>
     inside(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
-    template <numeric A>
+    template <detail::numeric A>
     inside& operator=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
-    template <numeric A>
+    template <detail::numeric A>
     inside& operator+=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
-    template <numeric A>
+    template <detail::numeric A>
     inside& operator-=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
-    template <numeric A>
+    template <detail::numeric A>
     inside& operator*=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
-    template <numeric A>
+    template <detail::numeric A>
     inside& operator/=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
-    template <numeric A>
+    template <detail::numeric A>
     inside& operator%=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
 #undef BEMAN_INSIDE_WHY_expected
 
@@ -9292,7 +9319,7 @@ struct inside {
         return *this;
     }
 
-    template <numeric B>
+    template <detail::numeric B>
         requires inside_assignable<inside, B, P>
     constexpr inside& operator=(const B& other) {
         store_value(other);
@@ -9305,19 +9332,19 @@ struct inside {
 #define BEMAN_INSIDE_WHY_disjoint                                                                   \
     "inside: the source's interval lies entirely outside this grid's, and the policy has no clamp " \
     "or wrap - widen the grid, or store with clamp or wrap (explain_assignable<To, From> prints both)"
-#define BEMAN_INSIDE_WHY_notch                                                                       \
-    "inside: incompatible notches - the source's values miss this grid's notch; use policy<snap>() " \
+#define BEMAN_INSIDE_WHY_notch                                                                                    \
+    "inside: incompatible notches - the source's values miss this grid's notch; use policy<round_toward_zero>() " \
     "or a rounding policy (explain_assignable<To, From> prints both notches)"
-    template <numeric A>
+    template <detail::numeric A>
         requires(!detail::assign_intervals_ok<inside, A, P>)
     inside(A) = delete (BEMAN_INSIDE_WHY_disjoint);
-    template <numeric A>
+    template <detail::numeric A>
         requires(detail::assign_intervals_ok<inside, A, P> && !detail::assign_notch_ok<inside, A, P>)
     inside(A) = delete (BEMAN_INSIDE_WHY_notch);
-    template <numeric B>
+    template <detail::numeric B>
         requires(!detail::assign_intervals_ok<inside, B, P>)
     inside& operator=(const B&) = delete (BEMAN_INSIDE_WHY_disjoint);
-    template <numeric B>
+    template <detail::numeric B>
         requires(detail::assign_intervals_ok<inside, B, P> && !detail::assign_notch_ok<inside, B, P>)
     inside& operator=(const B&) = delete (BEMAN_INSIDE_WHY_notch);
 #undef BEMAN_INSIDE_WHY_disjoint
@@ -9343,7 +9370,7 @@ struct inside {
     // built-in (`int i = b;`, `unsigned char c = b;`), the range escaping
     // the type.
     constexpr explicit operator double() const
-        requires(has_flag(P, snap))
+        requires(has_flag(P, detail::snap))
     {
         return detail::as_double(*this);
     }
@@ -9382,15 +9409,15 @@ struct inside {
     // permission, as for a store: a fractional value rounds by Round, else by
     // this type's rounding mode; with neither it is `errc::rounding_error`.
     // Bounds the grid already satisfies are not checked.
-    template <std::integral T, policy_flag Round = none>
-        requires(Round == none || Round == round_toward_zero || Round == round_nearest || Round == round_floor ||
-                 Round == round_ceil || Round == round_half_even)
+    template <std::integral T, policy_flag Round = detail::none>
+        requires(Round == detail::none || Round == round_toward_zero || Round == round_nearest ||
+                 Round == round_floor || Round == round_ceil || Round == round_half_even)
     [[nodiscard]] constexpr std::expected<T, errc> to() const {
         using lim                             = std::numeric_limits<T>;
         constexpr bool               check_lo = lower_of<inside> < detail::rational{lim::min()};
         constexpr bool               check_hi = upper_of<inside> > detail::rational{lim::max()};
-        constexpr bool               rounds   = Round != none || has_flag(P, snap);
-        constexpr detail::round_mode mode     = detail::rounding_of(Round != none ? Round : P);
+        constexpr bool               rounds   = Round != detail::none || has_flag(P, detail::snap);
+        constexpr detail::round_mode mode     = detail::rounding_of(Round != detail::none ? Round : P);
         if constexpr (detail::integer_lattice<inside> && !check_lo && !check_hi && detail::values_fit_imax<inside>)
             return static_cast<T>(detail::to_value(*this));
         else if constexpr (detail::wide_valued<inside>) { // round first: -0.5 → unsigned is 0 when truncating
@@ -9441,10 +9468,10 @@ struct inside {
     // known-in-range sites (array indexing, capacity arithmetic). FP targets
     // share operator double's policy gate, so a strict inside rejects
     // `b.as<double>()` too.
-    template <typename T, policy_flag Round = none>
+    template <typename T, policy_flag Round = detail::none>
     [[nodiscard]] constexpr T as() const
-        requires(std::integral<T> || (std::floating_point<T> && Round == none)) &&
-                (!std::floating_point<T> || has_flag(P, snap))
+        requires(std::integral<T> || (std::floating_point<T> && Round == detail::none)) &&
+                (!std::floating_point<T> || has_flag(P, detail::snap))
     {
         const auto r = [this] {
             if constexpr (std::integral<T>)
@@ -9529,8 +9556,8 @@ struct inside {
     // policy_ref holding `*this` by reference (needed so `b.policy<…>() = x` writes
     // back into b, and cheap for the common immediate use). On an *rvalue* receiver
     // it returns a policy_buffer that OWNS the moved-in value, so a snapped temporary
-    // survives being returned/stored (`return (a*b).policy<snap>();`) — no dangling.
-    template <policy_flag F = none, typename Self>
+    // survives being returned/stored (`return (a*b).policy<round_toward_zero>();`) — no dangling.
+    template <policy_flag F = detail::none, typename Self>
     [[nodiscard]] constexpr auto policy(this Self&& self) {
         auto pol = make_policy<P | F>();
         if constexpr (std::is_lvalue_reference_v<Self>)
@@ -9539,7 +9566,7 @@ struct inside {
             return detail::policy_buffer<inside, decltype(pol)>{std::move(self), pol, {}};
     }
 
-    template <policy_flag F = none>
+    template <policy_flag F = detail::none>
     [[nodiscard]] constexpr auto policy(errc& ec) {
         auto pol = make_policy<P | F>(ec);
         return detail::policy_ref<inside, decltype(pol)>{*this, pol, {}};
@@ -9559,15 +9586,15 @@ struct inside {
   public:
     template <typename A>
     [[nodiscard]] constexpr auto on_wrap(A&& a) {
-        return make_action_ref<on_wrap_t>(std::forward<A>(a));
+        return make_action_ref<detail::on_wrap_t>(std::forward<A>(a));
     }
     template <typename A>
     [[nodiscard]] constexpr auto on_clamp(A&& a) {
-        return make_action_ref<on_clamp_t>(std::forward<A>(a));
+        return make_action_ref<detail::on_clamp_t>(std::forward<A>(a));
     }
     template <typename A>
     [[nodiscard]] constexpr auto on_error(A&& a) {
-        return make_action_ref<on_error_t>(std::forward<A>(a));
+        return make_action_ref<detail::on_error_t>(std::forward<A>(a));
     }
 
   private:
@@ -9662,7 +9689,7 @@ struct inside {
     constexpr inside& store_raw(W new_raw) {
         constexpr W lo = static_cast<W>(detail::raw_lo_exact<inside>);
         constexpr W hi = static_cast<W>(detail::raw_hi_exact<inside>);
-        if constexpr (range_handled(P))
+        if constexpr (detail::range_handled(P))
             if (new_raw < lo || new_raw > hi) {
                 if constexpr (P & clamp)
                     new_raw = new_raw < lo ? lo : hi;
@@ -9703,7 +9730,7 @@ struct inside {
     // it does for div/mod.
     template <insidable R>
     constexpr inside& report_div_by_zero() {
-        if constexpr (is_checked(P | flags_of<R>))
+        if constexpr (detail::is_checked(P | flags_of<R>))
             make_policy<P>().report(errc::division_by_zero);
         return *this;
     }
@@ -9887,17 +9914,17 @@ struct inside {
     // try_make<F>(value): the constructors' store under this type's policy plus
     // the flags F, with the failure as the error. An expected value passes its
     // error on, so fallible steps chain.
-    template <policy_flag F = none, numeric A>
+    template <policy_flag F = detail::none, detail::numeric A>
         requires inside_assignable<inside, A, P | F>
     [[nodiscard]] static constexpr std::expected<inside, errc> try_make(A value) {
         return detail::try_store<inside, P | F>([&](inside& r, auto&& pol) { r.store_value(value, pol); });
     }
-    template <policy_flag F = none, numeric A>
+    template <policy_flag F = detail::none, detail::numeric A>
         requires inside_assignable<inside, A, P | F>
     [[nodiscard]] static constexpr std::expected<inside, errc> try_make(const std::expected<A, errc>& value) {
         return value.and_then([](const A& a) { return try_make<F>(a); });
     }
-    template <policy_flag F = none, std::same_as<detail::grid_rational> V>
+    template <policy_flag F = detail::none, std::same_as<detail::grid_rational> V>
     [[nodiscard]] static constexpr std::expected<inside, errc> try_make(const V& value) {
         return detail::try_store<inside, P | F>(
             [&](inside& r, auto&& pol) { detail::assign_grid_number(r, value, pol); });
@@ -9908,17 +9935,17 @@ struct inside {
 // to<T>(b) / as<T>(b) — free-function forms, for generic code that would
 // otherwise need the `.template` disambiguator. Same semantics as the members.
 //---------------------------------------------------------------------------
-template <typename T, policy_flag Round = none, insidable B>
+template <typename T, policy_flag Round = detail::none, insidable B>
 [[nodiscard]] constexpr auto to(const B& b)
-    requires(Round == none ? requires { b.template to<T>(); } : requires { b.template to<T, Round>(); })
+    requires(Round == detail::none ? requires { b.template to<T>(); } : requires { b.template to<T, Round>(); })
 {
-    if constexpr (Round == none)
+    if constexpr (Round == detail::none)
         return b.template to<T>();
     else
         return b.template to<T, Round>();
 }
 
-template <typename T, policy_flag Round = none, insidable B>
+template <typename T, policy_flag Round = detail::none, insidable B>
 [[nodiscard]] constexpr T as(const B& b)
     requires requires { b.template as<T, Round>(); }
 {
@@ -9952,7 +9979,7 @@ template <insidable B, policy_flag F>
 }
 } // namespace detail
 
-template <insidable B, policy_flag F = none>
+template <insidable B, policy_flag F = detail::none>
 [[nodiscard]] constexpr std::expected<B, errc> parse(const char* first, const char* last) {
     const auto v = detail::parse_text(first, last);
     if (!v && v.error() == errc::overflow) [[unlikely]]
@@ -9970,7 +9997,7 @@ template <insidable B>
             return std::unexpected{errc::overflow};
         if (conversion_rounds<B>(*v))
             return std::unexpected{errc::rounding_error};
-        return B::template try_make<snap>(*v); // on the grid: nothing rounds
+        return B::template try_make<detail::snap>(*v); // on the grid: nothing rounds
     }
     if (v.error() != errc::overflow)
         return std::unexpected{v.error()};
@@ -9993,7 +10020,7 @@ template <insidable B>
             return std::unexpected{errc::rounding_error};
     }
     return detail::try_store<B, flags_of<B>>(
-        [&](B& b, auto&& pol) { detail::assign_exact<detail::rational>(b, *w, pol, no_action{}); });
+        [&](B& b, auto&& pol) { detail::assign_exact<detail::rational>(b, *w, pol, detail::no_action{}); });
 }
 
 //---------------------------------------------------------------------------
@@ -10031,10 +10058,12 @@ inline constexpr auto just = detail::just_point<value, den>();
 // Parse is exact (no double round-trip); same parser backs `_r` in
 // inside/detail/number_text.hpp. `-1.5_ins` parses as `-(1.5_ins)`.
 //---------------------------------------------------------------------------
+inline namespace literals {
 template <char... Chars>
 constexpr auto operator""_ins() {
     return just<detail::parse_ins_literal<Chars...>()>;
 }
+} // namespace literals
 
 } // namespace beman::inside
 
@@ -10247,14 +10276,14 @@ namespace beman::inside {
 // fit exactly: errc::overflow out of the interval (as to<T> and the predicate
 // name it), errc::rounding_error off the notch. Any numeric source, insides
 // included; once both checks pass the store is exact.
-template <insidable B, numeric A>
-    requires inside_assignable<B, A, flags_of<B> | snap>
+template <insidable B, detail::numeric A>
+    requires inside_assignable<B, A, flags_of<B> | detail::snap>
 [[nodiscard]] constexpr B checked_cast(A value) {
     if (conversion_overflows<B>(value))
         detail::raise(errc::overflow, "checked_cast: value out of inside interval");
     if (conversion_rounds<B>(value))
         detail::raise(errc::rounding_error, "checked_cast: value does not land on notch");
-    return B{value, make_policy<snap>()};
+    return B{value, make_policy<detail::snap>()};
 }
 
 } // namespace beman::inside
@@ -10504,7 +10533,7 @@ template <insidable Out, insidable A, insidable B, typename P>
 }
 } // namespace detail
 
-template <insidable Out, policy_flag F = none, insidable A, insidable B>
+template <insidable Out, policy_flag F = detail::none, insidable A, insidable B>
 [[nodiscard]] constexpr Out mul_into(const A& a, const B& b) {
     auto policy = make_policy<flags_of<Out> | F>();
     if constexpr (detail::native_product<Out, F, A, B>)
@@ -10517,7 +10546,7 @@ template <insidable Out, policy_flag F = none, insidable A, insidable B>
     }
 }
 
-template <insidable Out, policy_flag F = none, insidable A, insidable B>
+template <insidable Out, policy_flag F = detail::none, insidable A, insidable B>
 [[nodiscard]] constexpr auto div_into(const A& a, const B& b)
     -> std::conditional_t<detail::divisor_excludes_zero<B>, Out, std::expected<Out, errc>> {
     const auto quotient = [&](auto&& policy) {
@@ -10697,7 +10726,7 @@ template <insidable Target, std::ranges::input_range Rng>
             if (!(total < I{lo}) && !(I{hi} < total))
                 if (const auto v =
                         detail::try_mul(detail::rational{static_cast<imax>(total)}, detail::to_rational(U))) {
-                    detail::assignment<Target, detail::rational>::assign(out, *v, policy, no_action{});
+                    detail::assignment<Target, detail::rational>::assign(out, *v, policy, detail::no_action{});
                     return out;
                 }
         }
@@ -10706,20 +10735,20 @@ template <insidable Target, std::ranges::input_range Rng>
         using W = detail::wide_sint<K>;
         const detail::wide_rational<K> v{static_cast<W>(total) * static_cast<W>(detail::grid_numerator(U)),
                                          static_cast<W>(detail::grid_denominator(U))};
-        no_action                      no_op;
+        detail::no_action              no_op;
         detail::assign_exact<detail::rational>(out, v, policy, no_op);
     } else {
         detail::rational total{0};
         for (const auto& b : r) {
             const auto s = total + detail::as_rational(b);
             if (!s) [[unlikely]] {
-                no_action no_op;
+                detail::no_action no_op;
                 detail::report_failure(out, policy, no_op, s.error());
                 return out;
             }
             total = *s;
         }
-        detail::assignment<Target, detail::rational>::assign(out, total, policy, no_action{});
+        detail::assignment<Target, detail::rational>::assign(out, total, policy, detail::no_action{});
     }
     return out;
 }
@@ -10836,19 +10865,21 @@ BEMAN_INSIDE_LIFT_OP(%)
 // Deleted, with the fix as the reason: `requires { b + 1; }` is false, as
 // for every other operation that cannot compile.
 //---------------------------------------------------------------------------
+namespace detail {
 template <typename A>
 concept builtin_arithmetic = std::integral<A> || std::floating_point<A>;
+} // namespace detail
 
 #define BEMAN_INSIDE_SCALAR_MSG                                                     \
     "an inside cannot be combined with a raw scalar: give the scalar a grid — "     \
     "`1_ins`, `just<1>`, or `inside<{lo,hi}>{n}` for a runtime value with a known " \
     "range"
 #define BEMAN_INSIDE_NO_SCALAR(op)                                    \
-    template <insidable B, builtin_arithmetic A>                      \
+    template <insidable B, detail::builtin_arithmetic A>              \
     void operator op(B const&, A) = delete (BEMAN_INSIDE_SCALAR_MSG); \
-    template <builtin_arithmetic A, insidable B>                      \
+    template <detail::builtin_arithmetic A, insidable B>              \
     void operator op(A, B const&) = delete (BEMAN_INSIDE_SCALAR_MSG); \
-    template <insidable B, builtin_arithmetic A>                      \
+    template <insidable B, detail::builtin_arithmetic A>              \
     void operator op## = (B&, A) = delete (BEMAN_INSIDE_SCALAR_MSG);
 
 BEMAN_INSIDE_NO_SCALAR(+)
@@ -11113,7 +11144,7 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
     static constexpr bool has_infinity      = false;
     static constexpr bool has_quiet_NaN     = false;
     static constexpr bool has_signaling_NaN = false;
-    static constexpr bool traps             = beman::inside::is_checked(P);
+    static constexpr bool traps             = beman::inside::detail::is_checked(P);
     static constexpr bool is_iec559         = false;
     static constexpr int  radix             = 2;
     // The mode stores round by (rounding_of, the one precedence every path uses).
@@ -11157,7 +11188,7 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
             d::assign_exact<d::rational>(b,
                                          d::exact_of_grid<d::exact_limbs<B>>(v),
                                          beman::inside::make_policy<P>(ec),
-                                         beman::inside::no_action{});
+                                         beman::inside::detail::no_action{});
             return b;
         } else
             return B{d::to_rational(v)};
@@ -11593,7 +11624,7 @@ inline std::ostream& operator<<(std::ostream& stream, B b) {
 
 // parse<B, F>(text) / parse_exact<B>(text) — the std::string_view
 // forms of the pointer-pair overloads.
-template <insidable B, policy_flag F = none>
+template <insidable B, policy_flag F = detail::none>
 [[nodiscard]] constexpr std::expected<B, errc> parse(std::string_view text) {
     return parse<B, F>(text.data(), text.data() + text.size());
 }
@@ -16824,7 +16855,7 @@ inline constexpr bool dd_tier = false;
 
 
 //---------------------------------------------------------------------------
-// beman::inside::math::adaptive — the math engine behind math.hpp (which
+// beman::inside::math::detail::entry — the math engine behind math.hpp (which
 // states the guarantee). The decision step and the driver are in
 // math/detail/adaptive.hpp. Domains are the mathematical ones; a result past
 // Out's range goes through Out's policy, as any assignment.
@@ -16837,7 +16868,7 @@ inline constexpr bool dd_tier = false;
 // point), which decides every result and is the only tier at compile time and
 // without an FPU.
 //---------------------------------------------------------------------------
-namespace beman::inside::math::adaptive {
+namespace beman::inside::math::detail::entry {
 namespace engine = ::beman::inside::math::detail::engine;
 using ::beman::inside::detail::grid_rational;
 using ::beman::inside::detail::wide_valued;
@@ -17033,10 +17064,10 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
 // dd attempts as expressions in r (nothing of them without an FPU). FP and
 // DD in parentheses.
 #ifndef BEMAN_INSIDE_MATH_NO_FP
-    #define BEMAN_INSIDE_ENGINE_TIERS(Out, FP, DD, fp_call, dd_call, ...)                                    \
-        return ::beman::inside::math::adaptive::tiers<Out, FP, DD>([=](auto& r) -> bool { return fp_call; }, \
-                                                                   [=](auto& r) -> bool { return dd_call; }, \
-                                                                   [=] { return __VA_ARGS__; });
+    #define BEMAN_INSIDE_ENGINE_TIERS(Out, FP, DD, fp_call, dd_call, ...)                                         \
+        return ::beman::inside::math::detail::entry::tiers<Out, FP, DD>([=](auto& r) -> bool { return fp_call; }, \
+                                                                        [=](auto& r) -> bool { return dd_call; }, \
+                                                                        [=] { return __VA_ARGS__; });
 #else
     #define BEMAN_INSIDE_ENGINE_TIERS(Out, FP, DD, fp_call, dd_call, ...)                                         \
         ::beman::inside::math::detail::engine::note<::beman::inside::math::detail::engine::probe::integer_run>(); \
@@ -17067,7 +17098,7 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
 // rounding mode, like any assignment that may round.
 template <insidable Out>
 consteval void require_rounding() noexcept {
-    static_assert(has_flag(flags_of<Out>, snap) || !engine::notched<Out>,
+    static_assert(has_flag(flags_of<Out>, beman::inside::detail::snap) || !engine::notched<Out>,
                   "beman::inside::math: the result is rounded onto Out's grid - Out must permit rounding "
                   "(declare it with round_nearest, round_floor, ...)");
 }
@@ -17348,7 +17379,7 @@ template <insidable Out, imax Base, insidable In>
 //---------------------------------------------------------------------------
 template <insidable In>
 consteval bool deducible() noexcept {
-    static_assert(has_flag(flags_of<In>, snap),
+    static_assert(has_flag(flags_of<In>, beman::inside::detail::snap),
                   "beman::inside::math: a deduced result is rounded onto the input's grid - its operand "
                   "must permit rounding (declare it with round_nearest, round_floor, ...)");
     static_assert(::beman::inside::detail::notched<In>,
@@ -17643,7 +17674,7 @@ template <policy_flag Mode, insidable InB, insidable InE>
     const auto ve = with_mode<Mode>(exp);
     return pow_into<moded_t<decltype(pow(vb, ve)), Mode>>(vb, ve);
 }
-} // namespace beman::inside::math::adaptive
+} // namespace beman::inside::math::detail::entry
 
 #undef BEMAN_INSIDE_ENGINE_TIERS
 #undef BEMAN_INSIDE_ENGINE_KERNEL_TIERS
@@ -17927,6 +17958,7 @@ inline constexpr bool fmod_int_fast = [] {
 }();
 } // namespace detail
 
+namespace detail {
 // x mod y = x − trunc(x/y)·y (truncated division, matching std::fmod).
 // Result has the sign of x. Pre: y != 0 (fmod_into checks it).
 template <insidable Out, insidable InX, insidable InY>
@@ -17968,17 +18000,18 @@ template <insidable Out, insidable InX, insidable InY>
         return exact();
     }
 }
+} // namespace detail
 
 // Like `/`: a plain Out when y's grid excludes 0, else expected<Out, errc>
 // with division_by_zero for y == 0.
 template <insidable Out, insidable InX, insidable InY>
 [[nodiscard]] constexpr auto fmod_into(InX x, InY y) {
     if constexpr (beman::inside::detail::divisor_excludes_zero<InY>)
-        return fmod_nonzero<Out>(x, y);
+        return detail::fmod_nonzero<Out>(x, y);
     else {
         if (y == 0)
             return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
-        return std::expected<Out, errc>{fmod_nonzero<Out>(x, y)};
+        return std::expected<Out, errc>{detail::fmod_nonzero<Out>(x, y)};
     }
 }
 
@@ -18109,52 +18142,52 @@ using unit_amplitude = inside<{{rational{-1}, rational{1}}, per<K>}, round_neare
 //---------------------------------------------------------------------------
 // The transcendentals: the adaptive engine.
 //---------------------------------------------------------------------------
-using adaptive::acos;
-using adaptive::acos_into;
-using adaptive::acosh;
-using adaptive::acosh_into;
-using adaptive::asin;
-using adaptive::asin_into;
-using adaptive::asinh;
-using adaptive::asinh_into;
-using adaptive::atan;
-using adaptive::atan2;
-using adaptive::atan2_into;
-using adaptive::atan_into;
-using adaptive::atanh;
-using adaptive::atanh_into;
-using adaptive::cbrt;
-using adaptive::cbrt_into;
-using adaptive::cos;
-using adaptive::cos_into;
-using adaptive::cosh;
-using adaptive::cosh_into;
-using adaptive::exp;
-using adaptive::exp2;
-using adaptive::exp2_into;
-using adaptive::exp_into;
-using adaptive::hypot;
-using adaptive::hypot_into;
-using adaptive::log;
-using adaptive::log10;
-using adaptive::log10_into;
-using adaptive::log2;
-using adaptive::log2_into;
-using adaptive::log_into;
-using adaptive::pow;
-using adaptive::pow_base;
-using adaptive::pow_base_into;
-using adaptive::pow_into;
-using adaptive::sin;
-using adaptive::sin_into;
-using adaptive::sinh;
-using adaptive::sinh_into;
-using adaptive::sqrt;
-using adaptive::sqrt_into;
-using adaptive::tan;
-using adaptive::tan_into;
-using adaptive::tanh;
-using adaptive::tanh_into;
+using detail::entry::acos;
+using detail::entry::acos_into;
+using detail::entry::acosh;
+using detail::entry::acosh_into;
+using detail::entry::asin;
+using detail::entry::asin_into;
+using detail::entry::asinh;
+using detail::entry::asinh_into;
+using detail::entry::atan;
+using detail::entry::atan2;
+using detail::entry::atan2_into;
+using detail::entry::atan_into;
+using detail::entry::atanh;
+using detail::entry::atanh_into;
+using detail::entry::cbrt;
+using detail::entry::cbrt_into;
+using detail::entry::cos;
+using detail::entry::cos_into;
+using detail::entry::cosh;
+using detail::entry::cosh_into;
+using detail::entry::exp;
+using detail::entry::exp2;
+using detail::entry::exp2_into;
+using detail::entry::exp_into;
+using detail::entry::hypot;
+using detail::entry::hypot_into;
+using detail::entry::log;
+using detail::entry::log10;
+using detail::entry::log10_into;
+using detail::entry::log2;
+using detail::entry::log2_into;
+using detail::entry::log_into;
+using detail::entry::pow;
+using detail::entry::pow_base;
+using detail::entry::pow_base_into;
+using detail::entry::pow_into;
+using detail::entry::sin;
+using detail::entry::sin_into;
+using detail::entry::sinh;
+using detail::entry::sinh_into;
+using detail::entry::sqrt;
+using detail::entry::sqrt_into;
+using detail::entry::tan;
+using detail::entry::tan_into;
+using detail::entry::tanh;
+using detail::entry::tanh_into;
 } // namespace beman::inside::math
 
 
@@ -18628,20 +18661,20 @@ struct spec_t {
     consteval auto operator[](U) const;
 };
 
+namespace detail {
 // Spec algebra for recipes: length / time, pow<2>(length), inverse(radius).
 template <const quantity_spec* S>
-consteval detail::spec_expr expr_of(spec_t<S>) {
-    detail::spec_expr e{};
-    detail::recipe_add(e.Recipe, S, 1);
+consteval spec_expr expr_of(spec_t<S>) {
+    spec_expr e{};
+    recipe_add(e.Recipe, S, 1);
     e.Dim = S->Dim;
     return e;
 }
-consteval detail::spec_expr expr_of(const detail::spec_expr& e) { return e; }
+consteval spec_expr expr_of(const spec_expr& e) { return e; }
 
 template <class T>
 concept spec_operand = requires(T t) { expr_of(t); };
 
-namespace detail {
 consteval spec_expr spec_combine(const spec_expr& a, const spec_expr& b, int sign) {
     spec_expr r = a;
     if (!recipe_merge(r.Recipe, b.Recipe, sign))
@@ -18651,32 +18684,32 @@ consteval spec_expr spec_combine(const spec_expr& a, const spec_expr& b, int sig
 }
 } // namespace detail
 
-template <spec_operand A, spec_operand B>
+template <detail::spec_operand A, detail::spec_operand B>
 consteval detail::spec_expr operator*(A a, B b) {
-    return detail::spec_combine(expr_of(a), expr_of(b), 1);
+    return detail::spec_combine(detail::expr_of(a), detail::expr_of(b), 1);
 }
-template <spec_operand A, spec_operand B>
+template <detail::spec_operand A, detail::spec_operand B>
 consteval detail::spec_expr operator/(A a, B b) {
-    return detail::spec_combine(expr_of(a), expr_of(b), -1);
+    return detail::spec_combine(detail::expr_of(a), detail::expr_of(b), -1);
 }
 // Two specs are equal when their expressions are: one named spec, or one
 // recipe of named specs (isq::length / isq::duration == isq::length / isq::time).
-template <spec_operand A, spec_operand B>
+template <detail::spec_operand A, detail::spec_operand B>
 consteval bool operator==(A a, B b) {
-    const detail::spec_expr x = expr_of(a), y = expr_of(b);
+    const detail::spec_expr x = detail::expr_of(a), y = detail::expr_of(b);
     return x.Recipe == y.Recipe && x.Dim == y.Dim;
 }
 
-template <int N, spec_operand A>
+template <int N, detail::spec_operand A>
 consteval detail::spec_expr pow(A a) {
     detail::spec_expr r{};
     for (int i = 0; i < (N < 0 ? -N : N); ++i)
-        r = detail::spec_combine(r, expr_of(a), N < 0 ? -1 : 1);
+        r = detail::spec_combine(r, detail::expr_of(a), N < 0 ? -1 : 1);
     return r;
 }
-template <spec_operand A>
+template <detail::spec_operand A>
 consteval detail::spec_expr inverse(A a) {
-    return detail::spec_combine(detail::spec_expr{}, expr_of(a), -1);
+    return detail::spec_combine(detail::spec_expr{}, detail::expr_of(a), -1);
 }
 
 struct named_unit;
@@ -19014,6 +19047,7 @@ struct reference_t {
     constexpr                  operator reference() const { return R; }
 };
 
+namespace detail {
 template <class T>
 inline constexpr bool is_unit_tag_v = false;
 template <unit U>
@@ -19025,6 +19059,7 @@ template <unit U>
 inline constexpr bool is_reference_tag_v<unit_t<U>> = true;
 template <reference R>
 inline constexpr bool is_reference_tag_v<reference_t<R>> = true;
+} // namespace detail
 
 // The reference of a tag: a unit_t is the unit with its kind.
 template <unit U>
@@ -19039,7 +19074,7 @@ consteval reference reference_of(reference_t<R>) {
 template <const quantity_spec* S>
 template <class U>
 consteval auto spec_t<S>::operator[](U) const {
-    static_assert(is_reference_tag_v<U> && requires { U::value.Size; }, "units: spec[unit] takes a unit");
+    static_assert(detail::is_reference_tag_v<U> && requires { U::value.Size; }, "units: spec[unit] takes a unit");
     constexpr unit u = U::value;
     static_assert(dimension_of(u) == S->Dim, "units: spec[unit] - the unit has another dimension than the spec");
     constexpr detail::spec_ref k = kind_of(u);
@@ -19275,13 +19310,15 @@ namespace beman::inside::units {
 template <reference R, insidable Rep>
 class quantity;
 
+namespace detail {
 template <class T>
 inline constexpr bool is_quantity_v = false;
 template <reference R, class Rep>
 inline constexpr bool is_quantity_v<quantity<R, Rep>> = true;
+} // namespace detail
 
 template <class T>
-concept quantity_like = is_quantity_v<std::remove_cvref_t<T>>;
+concept quantity_like = detail::is_quantity_v<std::remove_cvref_t<T>>;
 
 namespace detail {
 // An exact conversion factor from unit From to unit To: it holds no π.
@@ -19339,7 +19376,8 @@ template <class Q, class X>
 concept castable_quantity =
     quantity_like<X> && implicit_v<X::reference, Q::reference> && exact_rescale_v<X::reference.U, Q::reference.U>;
 template <class Q, class X>
-concept castable_from = quantity_like<Q> && (castable_quantity<Q, X> || (!quantity_like<X> && numeric<X>));
+concept castable_from =
+    quantity_like<Q> && (castable_quantity<Q, X> || (!quantity_like<X> && beman::inside::detail::numeric<X>));
 
 using beman::inside::detail::is_expected_v;
 
@@ -19511,13 +19549,13 @@ class quantity {
     // A dimensionless quantity's number as a built-in, as inside's as<T>() and
     // to<T>(): its value in unit one (5 % is 1/20), under the same rule as the
     // conversion above.
-    template <typename T, policy_flag Round = none>
+    template <typename T, policy_flag Round = beman::inside::detail::none>
         requires detail::number_like_v<R> &&
                  requires(const detail::number_t<R, Rep>& n) { beman::inside::as<T, Round>(n); }
     [[nodiscard]] constexpr T as() const {
         return beman::inside::as<T, Round>(detail::rescale<detail::conversion_factor<R.U, units::unit{}>>(Value));
     }
-    template <typename T, policy_flag Round = none>
+    template <typename T, policy_flag Round = beman::inside::detail::none>
         requires detail::number_like_v<R> &&
                  requires(const detail::number_t<R, Rep>& n) { beman::inside::to<T, Round>(n); }
     [[nodiscard]] constexpr auto to() const {
@@ -19612,17 +19650,17 @@ class quantity {
     // A store under Rep's policy plus F, as inside's policy<F>(): its =, +=
     // and -= take quantities, *= and /= numbers. policy(ec) sets ec on a
     // failure instead of raising.
-    template <policy_flag F = none>
+    template <policy_flag F = beman::inside::detail::none>
     [[nodiscard]] constexpr auto policy() & {
         return detail::make_action_ref<R>(*this, Value.template policy<F>());
     }
-    template <policy_flag F = none>
+    template <policy_flag F = beman::inside::detail::none>
     [[nodiscard]] constexpr auto policy(errc& ec) {
         return detail::make_action_ref<R>(*this, Value.template policy<F>(ec));
     }
 
     // Rep's try_make in the unit R: quantity<si::metre, M>::try_make(12.5).
-    template <policy_flag F = none, class V>
+    template <policy_flag F = beman::inside::detail::none, class V>
         requires requires(const V& v) { Rep::template try_make<F>(v); }
     [[nodiscard]] static constexpr auto try_make(const V& v) {
         return detail::make_quantity<R>(Rep::template try_make<F>(v));
@@ -19650,12 +19688,12 @@ namespace beman::inside::units {
 // Construction: number * unit, number * spec[unit]. A raw scalar has no grid.
 //---------------------------------------------------------------------------
 template <insidable V, class Tag>
-    requires is_reference_tag_v<Tag>
+    requires detail::is_reference_tag_v<Tag>
 [[nodiscard]] constexpr auto operator*(const V& v, Tag t) {
     return quantity<reference_of(t), V>{v};
 }
 template <class N, class Tag>
-    requires is_reference_tag_v<Tag> && std::is_arithmetic_v<N>
+    requires detail::is_reference_tag_v<Tag> && std::is_arithmetic_v<N>
 void operator*(N, Tag) =
     delete ("units: a raw number has no grid - write just<42> * unit, or quantity<unit, inside<…>>{42}");
 // number / unit: 5 / s.
@@ -19872,12 +19910,12 @@ template <insidable V, reference A, class VA>
 }
 // A quantity times a unit: (5 * m) / s.
 template <reference A, class VA, class Tag>
-    requires is_reference_tag_v<Tag>
+    requires detail::is_reference_tag_v<Tag>
 [[nodiscard]] constexpr auto operator*(const quantity<A, VA>& a, Tag t) {
     return detail::make_quantity<detail::product_reference<A, reference_of(t), 1>()>(a.numerical_value());
 }
 template <reference A, class VA, class Tag>
-    requires is_reference_tag_v<Tag>
+    requires detail::is_reference_tag_v<Tag>
 [[nodiscard]] constexpr auto operator/(const quantity<A, VA>& a, Tag t) {
     return detail::make_quantity<detail::product_reference<A, reference_of(t), -1>()>(a.numerical_value());
 }
@@ -19960,7 +19998,7 @@ template <insidable Rep2, reference R, class V>
 // value in U, stored by Rep2's constructor. (A pi factor, degree ↔ radian,
 // rounds once: units/math.hpp.)
 template <auto U, insidable Rep2, reference R, class V>
-    requires is_unit_tag_v<decltype(U)> && detail::exact_rescale_v<R.U, decltype(U)::value> &&
+    requires detail::is_unit_tag_v<decltype(U)> && detail::exact_rescale_v<R.U, decltype(U)::value> &&
              requires(const quantity<R, V>& q) { Rep2(q.in(U).numerical_value()); }
 [[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q) {
     constexpr units::unit u = decltype(U)::value;
@@ -19985,7 +20023,7 @@ template <class Q, reference R, class V>
     return Q{static_cast<typename Q::rep>(q.template in<Q::reference.U>().numerical_value())};
 }
 // try_value_cast<Q, F>(q) — the same through Q's Rep2::try_make<F>.
-template <class Q, policy_flag F = none, reference R, class V>
+template <class Q, policy_flag F = beman::inside::detail::none, reference R, class V>
     requires detail::value_castable_to<Q, R> && requires(const quantity<R, V>& q) {
         Q::rep::template try_make<F>(q.template in<Q::reference.U>().numerical_value());
     }
@@ -19994,15 +20032,15 @@ template <class Q, policy_flag F = none, reference R, class V>
 }
 
 // try_value_cast<Rep2, F>(q) — as Rep2::try_make<F>: an expected.
-template <insidable Rep2, policy_flag F = none, reference R, class V>
+template <insidable Rep2, policy_flag F = beman::inside::detail::none, reference R, class V>
     requires requires(const V& v) { Rep2::template try_make<F>(v); }
 [[nodiscard]] constexpr std::expected<quantity<R, Rep2>, errc> try_value_cast(const quantity<R, V>& q) {
     return detail::lift_to<quantity<R, Rep2>>(Rep2::template try_make<F>(q.numerical_value()));
 }
 
 // try_value_cast<U, Rep2, F>(q) — in unit U, as Rep2::try_make<F>.
-template <auto U, insidable Rep2, policy_flag F = none, reference R, class V>
-    requires is_unit_tag_v<decltype(U)> && detail::exact_rescale_v<R.U, decltype(U)::value> &&
+template <auto U, insidable Rep2, policy_flag F = beman::inside::detail::none, reference R, class V>
+    requires detail::is_unit_tag_v<decltype(U)> && detail::exact_rescale_v<R.U, decltype(U)::value> &&
              requires(const quantity<R, V>& q) { Rep2::template try_make<F>(q.in(U).numerical_value()); }
 [[nodiscard]] constexpr auto try_value_cast(const quantity<R, V>& q) {
     constexpr reference to{R.Spec, R.KindOf, R.Derived, decltype(U)::value};
@@ -20075,7 +20113,7 @@ constexpr auto into_scaled(const A& a, const auto& b) {
 // mul_into<Out, F>(a, b) / div_into<Out, F>(a, b): a·b or a/b rounded once
 // into Out, a quantity type (or a plain inside for a dimensionless result).
 // The unit factor is folded into the exact product: mul_into<usd>(eth, usd/eth).
-template <class Out, policy_flag F = none, class A, class B>
+template <class Out, policy_flag F = beman::inside::detail::none, class A, class B>
     requires detail::into_operands<Out, 1, A, B> && requires(const A& a, const B& b) {
         beman::inside::mul_into<typename detail::out_rep<Out>::type, F>(detail::into_scaled<Out, 1>(a, b),
                                                                         detail::as_quantity(b).numerical_value());
@@ -20084,7 +20122,7 @@ template <class Out, policy_flag F = none, class A, class B>
     return detail::wrap_out<Out>(beman::inside::mul_into<typename detail::out_rep<Out>::type, F>(
         detail::into_scaled<Out, 1>(a, b), detail::as_quantity(b).numerical_value()));
 }
-template <class Out, policy_flag F = none, class A, class B>
+template <class Out, policy_flag F = beman::inside::detail::none, class A, class B>
     requires detail::into_operands<Out, -1, A, B> && requires(const A& a, const B& b) {
         beman::inside::div_into<typename detail::out_rep<Out>::type, F>(detail::into_scaled<Out, -1>(a, b),
                                                                         detail::as_quantity(b).numerical_value());
@@ -20121,17 +20159,17 @@ template <class Q, std::ranges::input_range Rng>
 
 // conversion_overflows<Q>(v) / conversion_rounds / conversion_loses: v, a
 // number in Q's unit, against Q's grid.
-template <class Q, numeric A>
+template <class Q, beman::inside::detail::numeric A>
     requires quantity_like<Q>
 [[nodiscard]] constexpr bool conversion_overflows(A value) noexcept {
     return beman::inside::conversion_overflows<typename Q::rep>(value);
 }
-template <class Q, numeric A>
+template <class Q, beman::inside::detail::numeric A>
     requires quantity_like<Q>
 [[nodiscard]] constexpr bool conversion_rounds(A value) noexcept {
     return beman::inside::conversion_rounds<typename Q::rep>(value);
 }
-template <class Q, numeric A>
+template <class Q, beman::inside::detail::numeric A>
     requires quantity_like<Q>
 [[nodiscard]] constexpr bool conversion_loses(A value) noexcept {
     return beman::inside::conversion_loses<typename Q::rep>(value);
@@ -20147,12 +20185,12 @@ template <class Q, class X>
 }
 
 // as<T>(q) / to<T>(q): the member forms, free, as for an inside.
-template <typename T, policy_flag Round = none, quantity_like Q>
+template <typename T, policy_flag Round = beman::inside::detail::none, quantity_like Q>
     requires requires(const Q& q) { q.template as<T, Round>(); }
 [[nodiscard]] constexpr T as(const Q& q) {
     return q.template as<T, Round>();
 }
-template <typename T, policy_flag Round = none, quantity_like Q>
+template <typename T, policy_flag Round = beman::inside::detail::none, quantity_like Q>
     requires requires(const Q& q) { q.template to<T, Round>(); }
 [[nodiscard]] constexpr auto to(const Q& q) {
     return q.template to<T, Round>();
@@ -20339,10 +20377,12 @@ namespace beman::inside::units {
 template <reference R, detail::origin_ref O, insidable Rep>
 class quantity_point;
 
+namespace detail {
 template <class T>
 inline constexpr bool is_quantity_point_v = false;
-template <reference R, detail::origin_ref O, class Rep>
+template <reference R, origin_ref O, class Rep>
 inline constexpr bool is_quantity_point_v<quantity_point<R, O, Rep>> = true;
+} // namespace detail
 
 namespace detail {
 // The number, in unit U, that takes a quantity from origin From to origin To:
@@ -21002,7 +21042,7 @@ inline constexpr auto vacuum_electric_permittivity = detail::one_of<codata2022::
 
 namespace beman::inside::units {
 // parse<Q, F>(text) / parse_exact<Q>(text): the number, in Q's unit.
-template <class Q, policy_flag F = none>
+template <class Q, policy_flag F = beman::inside::detail::none>
     requires quantity_like<Q>
 [[nodiscard]] constexpr std::expected<Q, errc> parse(std::string_view text) {
     return detail::wrap_out<Q>(beman::inside::parse<typename Q::rep, F>(text));
@@ -21347,7 +21387,7 @@ inline constexpr bool pi_angle_v = dimension_of(R.U) == dim_one && magnitude_of(
 template <insidable Out, bool Cos, reference R, class V>
 constexpr Out pi_trig_into(const quantity<R, V>& q) {
     namespace engine = beman::inside::math::detail::engine;
-    beman::inside::math::adaptive::require_rounding<Out>();
+    beman::inside::math::detail::entry::require_rounding<Out>();
     constexpr rational r = beman::inside::detail::to_rational(magnitude_of(R.U).Ratio);
     using core           = engine::pi_trig_core<engine::input_limbs<V>, Cos>;
     return engine::evaluate<Out, engine::start_bits<Out>>(
@@ -21358,7 +21398,7 @@ constexpr Out pi_trig_into(const quantity<R, V>& q) {
 // value_cast<U, Out>(q) across a pi factor (degree ↔ radian): the exact
 // x·r·π^±1, rounded once onto Out's grid under its rounding mode.
 template <auto U, insidable Out, reference R, class V>
-    requires is_unit_tag_v<decltype(U)> &&
+    requires detail::is_unit_tag_v<decltype(U)> &&
              (!detail::exact_factor_v<detail::conversion_factor<R.U, decltype(U)::value>>)
 [[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q) {
     namespace engine        = beman::inside::math::detail::engine;
@@ -21366,7 +21406,7 @@ template <auto U, insidable Out, reference R, class V>
     constexpr magnitude   f = detail::conversion_factor<R.U, u>;
     static_assert(dimension_of(u) == dimension_of(R.U), "units: value_cast - the unit has another dimension");
     static_assert(f.Pi == 1 || f.Pi == -1, "units: value_cast - only a factor of pi or 1/pi rounds");
-    beman::inside::math::adaptive::require_rounding<Out>();
+    beman::inside::math::detail::entry::require_rounding<Out>();
     constexpr reference to{R.Spec, R.KindOf, R.Derived, u};
     // The factor n/d in one limb when it is a 64-bit rational, else in as
     // many as it needs (ħ = h/2π in J·s).
@@ -21406,7 +21446,7 @@ template <reference R, class V>
 }
 
 template <policy_flag Mode, reference R, class V>
-    requires beman::inside::math::adaptive::rounding_mode<Mode>
+    requires beman::inside::math::detail::entry::rounding_mode<Mode>
 [[nodiscard]] constexpr auto sin(const quantity<R, V>& q) {
     static_assert(detail::radians_v<R>,
                   "units: sin takes an angle in radians - sin_into<Out>(q) takes a unit with a factor of pi");
@@ -21420,7 +21460,7 @@ template <reference R, class V>
 }
 
 template <policy_flag Mode, reference R, class V>
-    requires beman::inside::math::adaptive::rounding_mode<Mode>
+    requires beman::inside::math::detail::entry::rounding_mode<Mode>
 [[nodiscard]] constexpr auto cos(const quantity<R, V>& q) {
     static_assert(detail::radians_v<R>,
                   "units: cos takes an angle in radians - cos_into<Out>(q) takes a unit with a factor of pi");
@@ -21433,7 +21473,7 @@ template <reference R, class V>
 }
 
 template <policy_flag Mode, reference R, class V>
-    requires beman::inside::math::adaptive::rounding_mode<Mode>
+    requires beman::inside::math::detail::entry::rounding_mode<Mode>
 [[nodiscard]] constexpr auto tan(const quantity<R, V>& q) {
     static_assert(detail::radians_v<R>, "units: tan takes an angle in radians - value_cast<si::radian, Out>(q) first");
     return beman::inside::math::tan<Mode>(q.numerical_value());
@@ -21455,7 +21495,7 @@ template <policy_flag Mode, reference A, class VA, reference B, class VB>
              requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
                  beman::inside::math::atan2<Mode>(x, y);
              }) &&
-            beman::inside::math::adaptive::rounding_mode<Mode>
+            beman::inside::math::detail::entry::rounding_mode<Mode>
 [[nodiscard]] constexpr auto atan2(const quantity<A, VA>& y, const quantity<B, VB>& x) {
     return detail::make_quantity<detail::radian_reference>(
         beman::inside::math::atan2<Mode>(detail::in_common_unit<A, B>(y), detail::in_common_unit<A, B>(x)));
@@ -21478,7 +21518,7 @@ template <policy_flag Mode, reference A, class VA, reference B, class VB>
              requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
                  beman::inside::math::hypot<Mode>(x, y);
              }) &&
-            beman::inside::math::adaptive::rounding_mode<Mode>
+            beman::inside::math::detail::entry::rounding_mode<Mode>
 [[nodiscard]] constexpr auto hypot(const quantity<A, VA>& x, const quantity<B, VB>& y) {
     constexpr reference C = detail::sum_reference<A, B>();
     return detail::make_quantity<C>(
@@ -21512,7 +21552,7 @@ constexpr auto number_of(const X& x) {
         return detail::make_quantity<detail::root_reference<R, n>()>(beman::inside::math::fn(q.numerical_value())); \
     }                                                                                                               \
     template <policy_flag Mode, reference R, class V>                                                               \
-        requires beman::inside::math::adaptive::rounding_mode<Mode>                                                 \
+        requires beman::inside::math::detail::entry::rounding_mode<Mode>                                            \
     [[nodiscard]] constexpr auto fn(const quantity<R, V>& q) {                                                      \
         return detail::make_quantity<detail::root_reference<R, n>()>(                                               \
             beman::inside::math::fn<Mode>(q.numerical_value()));                                                    \
@@ -21559,7 +21599,7 @@ template <insidable Out, reference R, class V>
         return detail::make_quantity<detail::radian_reference>(beman::inside::math::fn(x));       \
     }                                                                                             \
     template <policy_flag Mode, insidable V>                                                      \
-        requires beman::inside::math::adaptive::rounding_mode<Mode>                               \
+        requires beman::inside::math::detail::entry::rounding_mode<Mode>                          \
     [[nodiscard]] constexpr auto fn(const V& x) {                                                 \
         return detail::make_quantity<detail::radian_reference>(beman::inside::math::fn<Mode>(x)); \
     }                                                                                             \

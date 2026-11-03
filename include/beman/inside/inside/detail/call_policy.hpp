@@ -116,12 +116,12 @@ inline constexpr bool uses_error_ref<call_policy<F, error_ref>> = true;
 //---------------------------------------------------------------------------
 // make_policy
 //---------------------------------------------------------------------------
-template <policy_flag F = none>
+template <policy_flag F = detail::none>
 [[nodiscard]] constexpr auto make_policy() {
     return detail::call_policy<F, detail::empty_ref>{};
 }
 
-template <policy_flag F = none>
+template <policy_flag F = detail::none>
 [[nodiscard]] constexpr auto make_policy(errc& ec) {
     return detail::call_policy<F, detail::error_ref>{ec};
 }

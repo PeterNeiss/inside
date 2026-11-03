@@ -56,7 +56,7 @@ int main() {
     std::cout << "\nSwept-frequency oscillator (increment grows each step):\n";
     std::cout << "  i   inc        phase        sin\n";
     {
-        using increment_t = quantity<slot, inside<{1, 65535}, snap>>; // snap: increment / 4 truncates
+        using increment_t = quantity<slot, inside<{1, 65535}, round_toward_zero>>; // snap: increment / 4 truncates
         phase_t     phase{0};
         increment_t increment{256}; // start at 1/256 turn
         for (int i = 0; i < 12; ++i) {

@@ -91,7 +91,7 @@ TEST(BugHunt20261012, unanchored_sum_near_int64) {
 TEST(BugHunt20261012, lattice_past_the_rational) {
     const auto p = neg{rational{-7, 2}} * thirds{(3ll << 60) - 3};
     EXPECT_EQ(to_string(p), "-12105675798371893237.5");
-    using clamped = inside<grid_of<neg>, clamp | snap>;
+    using clamped = inside<grid_of<neg>, clamp | round_toward_zero>;
     using wrapped = inside<grid_of<neg>, wrap | round_floor>;
     EXPECT_EQ(*clamped::try_make(p), -3.5_ins);
     EXPECT_EQ(to_string(*wrapped::try_make(p)), "-1.5");
@@ -103,7 +103,7 @@ TEST(BugHunt20261012, wide_store_from_offset_lattice) {
     constexpr grid wide{{-0x1p63, 0x1p63}, 1};
     using ceil_t    = inside<wide, round_ceil>;
     using nearest_t = inside<wide, round_nearest>;
-    using trunc_t   = inside<wide, snap>;
+    using trunc_t   = inside<wide, round_toward_zero>;
     EXPECT_EQ(*ceil_t::try_make(halves{rational{3, 2}}), 2_ins);
     EXPECT_EQ(*nearest_t::try_make(halves{rational{3, 2}}), 2_ins);
     EXPECT_EQ(*trunc_t::try_make(neg{rational{-5, 2}}), -2_ins);
@@ -208,8 +208,8 @@ TEST(BugHunt20261012, operations_are_constraint_friendly) {
     static_assert(can_add<digit, fourths> && can_mul<fourths, fourths>);
     static_assert(can_add<uint64, uint64> && can_mul<full, full>);
     static_assert(can_make<digit, int> && can_make<digit, inside<{5, 20}>> && !can_make<digit, inside<{20, 30}>>);
-    static_assert(!can_make<digit, fourths> && can_make<inside<{0, 9}, snap>, fourths>);
+    static_assert(!can_make<digit, fourths> && can_make<inside<{0, 9}, round_toward_zero>, fourths>);
     static_assert(can_add_assign<digit, digit> && can_add_assign<digit, inside<{10}>> &&
                   !can_add_assign<digit, fourths>);
-    static_assert(!can_div_assign<digit, inside<{0}>> && can_div_assign<inside<{0, 9}, snap>, digit>);
+    static_assert(!can_div_assign<digit, inside<{0}>> && can_div_assign<inside<{0, 9}, round_toward_zero>, digit>);
 }

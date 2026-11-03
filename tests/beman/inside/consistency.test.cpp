@@ -216,7 +216,7 @@ TEST(ConsistencyTest, compound_fast_path_honours_unsafe) {
 // div/mod; policy_ref /= routes a zero divisor through on_error, or skips it
 // under unsafe.
 TEST(ConsistencyTest, zero_divisor_handling_agrees) {
-    using X = inside<{0, 10}, checked | snap>;
+    using X = inside<{0, 10}, checked | round_toward_zero>;
     using Z = inside<{0, 10}, unsafe>;
     X x{6};
     EXPECT_NO_THROW(x /= Z{0});
@@ -234,7 +234,8 @@ TEST(ConsistencyTest, zero_divisor_handling_agrees) {
 // (the default policy's own bit), so a per-call policy<unsafe>() opts a
 // default inside out.
 TEST(ConsistencyTest, unsafe_is_the_one_opt_out_and_wins_over_checked) {
-    static_assert(is_checked(none) && is_checked(checked) && is_checked(clamp | round_nearest));
+    static_assert(detail::is_checked(checked) && detail::is_checked(clamp | round_nearest) &&
+                  !detail::is_checked(unsafe));
     static_assert(!is_checked(unsafe) && !is_checked(checked | unsafe));
     static_assert(range_handled(checked) && range_handled(clamp | unsafe) && range_handled(wrap | unsafe));
     static_assert(!range_handled(unsafe) && !range_handled(checked | unsafe));
@@ -278,12 +279,12 @@ TEST(ConsistencyTest, constraints_are_honest) {
 // as inside<G, bits>.
 TEST(ConsistencyTest, flags_are_call_policies) {
     // checked has no bits: the default policy has one spelling and one type.
-    static_assert(std::is_same_v<inside<{0, 10}, none>, inside<{0, 10}>>);
+    static_assert(std::is_same_v<inside<{0, 10}, checked>, inside<{0, 10}>>);
     static_assert(std::is_same_v<inside<{0, 10}, checked>, inside<{0, 10}>>);
     static_assert(flags_of<inside<{0, 10}>> == 0);
     static_assert(std::is_same_v<inside<{0, 10}, clamp | round_floor>,
                                  inside<{0, 10}, (1ull << 32) | (1ull << 6) | (1ull << 4)>>);
-    static_assert(policy_flag{round_toward_zero} == policy_flag{snap});
+    static_assert(policy_flag{round_toward_zero} == policy_flag{round_toward_zero});
     using W = inside<{0, 10}>;
     using D = inside<{1, 4}>;
     static_assert(div(W{7}, D{2}, round_floor) == 3_ins && div(W{7}, D{2}, round_ceil) == 4_ins);
@@ -382,7 +383,7 @@ TEST(ConsistencyTest, numeric_limits_round_style_and_is_integer) {
     static_assert(std::numeric_limits<inside<{0, 10}, round_floor>>::round_style == std::round_toward_neg_infinity);
     static_assert(std::numeric_limits<inside<{0, 10}, round_ceil>>::round_style == std::round_toward_infinity);
     static_assert(std::numeric_limits<inside<{0, 10}, round_nearest>>::round_style == std::round_to_nearest);
-    static_assert(std::numeric_limits<inside<{0, 10}, snap>>::round_style == std::round_toward_zero);
+    static_assert(std::numeric_limits<inside<{0, 10}, round_toward_zero>>::round_style == std::round_toward_zero);
     static_assert(std::numeric_limits<inside<{{0, 10}, 2}>>::is_integer);
     static_assert(!std::numeric_limits<inside<{{0, 10}, per<2>}>>::is_integer);
     SUCCEED();
@@ -404,8 +405,8 @@ TEST(ConsistencyTest, two_input_math_is_symmetric_in_its_types) {
 template <class X, class E>
 concept compound_takes = requires(X& x, E e) { x += e; } || requires(X& x, E e) { x *= e; };
 TEST(ConsistencyTest, compound_ops_reject_expected_rhs) {
-    using X = inside<{1, 10}, checked | snap>;
-    using Y = inside<{0, 10}, checked | snap>; // divisor may be 0
+    using X = inside<{1, 10}, checked | round_toward_zero>;
+    using Y = inside<{0, 10}, checked | round_toward_zero>; // divisor may be 0
     static_assert(!compound_takes<X, decltype(Y{6} / Y{2})>);
     static_assert(!std::is_constructible_v<X, decltype(Y{6} / Y{2})>);
     static_assert(!std::is_assignable_v<X&, decltype(Y{6} / Y{2})>);
@@ -501,7 +502,7 @@ TEST(ConsistencyTest, point_insides_store_nothing) {
     static_assert(inside_assignable<inside<{{0, 9}, 3}>, decltype(3_ins)>);
     static_assert(!inside_assignable<inside<{{0, 9}, 3}>, decltype(1_ins)>);
 
-    using val = inside<{0, 100}, snap>;
+    using val = inside<{0, 100}, round_toward_zero>;
     auto r    = val{17} % 5_ins; // divisor excludes 0: plain
     static_assert(!is_expected_v<decltype(r)>);
     static_assert(grid_of<decltype(r)> == grid{0, 4});
@@ -562,7 +563,7 @@ TEST(ConsistencyTest, double_store_into_integer_storage_matches_rational) {
     expect_double_store_exact<inside<{{-8, 8}, per<16384>}, round_floor>>();
     expect_double_store_exact<inside<{{-8, 8}, per<16384>}, round_ceil>>();
     expect_double_store_exact<inside<{{-8, 8}, per<16384>}, round_half_even>>();
-    expect_double_store_exact<inside<{{-8, 8}, per<16384>}, snap>>();
+    expect_double_store_exact<inside<{{-8, 8}, per<16384>}, round_toward_zero>>();
     expect_double_store_exact<inside<{{0, 4}, per<65536>}, round_nearest>>();
     expect_double_store_exact<inside<{{-4, 4}, per<2>}, round_half_even>>();
     expect_double_store_exact<inside<{{-100, 100}, per<1000>}, round_nearest>>();             // not dyadic
@@ -587,7 +588,7 @@ TEST(ConsistencyTest, integer_storage_decodes_to_the_nearest_double) {
 // A fine-denominator source whose signed value index overflows imax rounds in
 // value space too: `snap` alone truncates toward zero, also below zero.
 TEST(ConsistencyTest, snap_truncates_fine_negative_rationals_toward_zero) {
-    using T              = inside<{{-8, 8}, per<16384>}, snap>;
+    using T              = inside<{{-8, 8}, per<16384>}, round_toward_zero>;
     constexpr imax k2_61 = imax{1} << 61;
     EXPECT_EQ((rational{T{rational{-55 * (imax{1} << 47) + 1, k2_61}}}), q(-54, 16384));
     EXPECT_EQ((rational{T{rational{-55 * (imax{1} << 47) - 1, k2_61}}}), q(-55, 16384));

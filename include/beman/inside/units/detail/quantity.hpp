@@ -17,13 +17,15 @@ namespace beman::inside::units {
 template <reference R, insidable Rep>
 class quantity;
 
+namespace detail {
 template <class T>
 inline constexpr bool is_quantity_v = false;
 template <reference R, class Rep>
 inline constexpr bool is_quantity_v<quantity<R, Rep>> = true;
+} // namespace detail
 
 template <class T>
-concept quantity_like = is_quantity_v<std::remove_cvref_t<T>>;
+concept quantity_like = detail::is_quantity_v<std::remove_cvref_t<T>>;
 
 namespace detail {
 // An exact conversion factor from unit From to unit To: it holds no π.
@@ -81,7 +83,8 @@ template <class Q, class X>
 concept castable_quantity =
     quantity_like<X> && implicit_v<X::reference, Q::reference> && exact_rescale_v<X::reference.U, Q::reference.U>;
 template <class Q, class X>
-concept castable_from = quantity_like<Q> && (castable_quantity<Q, X> || (!quantity_like<X> && numeric<X>));
+concept castable_from =
+    quantity_like<Q> && (castable_quantity<Q, X> || (!quantity_like<X> && beman::inside::detail::numeric<X>));
 
 using beman::inside::detail::is_expected_v;
 
@@ -253,13 +256,13 @@ class quantity {
     // A dimensionless quantity's number as a built-in, as inside's as<T>() and
     // to<T>(): its value in unit one (5 % is 1/20), under the same rule as the
     // conversion above.
-    template <typename T, policy_flag Round = none>
+    template <typename T, policy_flag Round = beman::inside::detail::none>
         requires detail::number_like_v<R> &&
                  requires(const detail::number_t<R, Rep>& n) { beman::inside::as<T, Round>(n); }
     [[nodiscard]] constexpr T as() const {
         return beman::inside::as<T, Round>(detail::rescale<detail::conversion_factor<R.U, units::unit{}>>(Value));
     }
-    template <typename T, policy_flag Round = none>
+    template <typename T, policy_flag Round = beman::inside::detail::none>
         requires detail::number_like_v<R> &&
                  requires(const detail::number_t<R, Rep>& n) { beman::inside::to<T, Round>(n); }
     [[nodiscard]] constexpr auto to() const {
@@ -354,17 +357,17 @@ class quantity {
     // A store under Rep's policy plus F, as inside's policy<F>(): its =, +=
     // and -= take quantities, *= and /= numbers. policy(ec) sets ec on a
     // failure instead of raising.
-    template <policy_flag F = none>
+    template <policy_flag F = beman::inside::detail::none>
     [[nodiscard]] constexpr auto policy() & {
         return detail::make_action_ref<R>(*this, Value.template policy<F>());
     }
-    template <policy_flag F = none>
+    template <policy_flag F = beman::inside::detail::none>
     [[nodiscard]] constexpr auto policy(errc& ec) {
         return detail::make_action_ref<R>(*this, Value.template policy<F>(ec));
     }
 
     // Rep's try_make in the unit R: quantity<si::metre, M>::try_make(12.5).
-    template <policy_flag F = none, class V>
+    template <policy_flag F = beman::inside::detail::none, class V>
         requires requires(const V& v) { Rep::template try_make<F>(v); }
     [[nodiscard]] static constexpr auto try_make(const V& v) {
         return detail::make_quantity<R>(Rep::template try_make<F>(v));
@@ -392,12 +395,12 @@ namespace beman::inside::units {
 // Construction: number * unit, number * spec[unit]. A raw scalar has no grid.
 //---------------------------------------------------------------------------
 template <insidable V, class Tag>
-    requires is_reference_tag_v<Tag>
+    requires detail::is_reference_tag_v<Tag>
 [[nodiscard]] constexpr auto operator*(const V& v, Tag t) {
     return quantity<reference_of(t), V>{v};
 }
 template <class N, class Tag>
-    requires is_reference_tag_v<Tag> && std::is_arithmetic_v<N>
+    requires detail::is_reference_tag_v<Tag> && std::is_arithmetic_v<N>
 void operator*(N, Tag) =
     delete ("units: a raw number has no grid - write just<42> * unit, or quantity<unit, inside<…>>{42}");
 // number / unit: 5 / s.
@@ -614,12 +617,12 @@ template <insidable V, reference A, class VA>
 }
 // A quantity times a unit: (5 * m) / s.
 template <reference A, class VA, class Tag>
-    requires is_reference_tag_v<Tag>
+    requires detail::is_reference_tag_v<Tag>
 [[nodiscard]] constexpr auto operator*(const quantity<A, VA>& a, Tag t) {
     return detail::make_quantity<detail::product_reference<A, reference_of(t), 1>()>(a.numerical_value());
 }
 template <reference A, class VA, class Tag>
-    requires is_reference_tag_v<Tag>
+    requires detail::is_reference_tag_v<Tag>
 [[nodiscard]] constexpr auto operator/(const quantity<A, VA>& a, Tag t) {
     return detail::make_quantity<detail::product_reference<A, reference_of(t), -1>()>(a.numerical_value());
 }
@@ -702,7 +705,7 @@ template <insidable Rep2, reference R, class V>
 // value in U, stored by Rep2's constructor. (A pi factor, degree ↔ radian,
 // rounds once: units/math.hpp.)
 template <auto U, insidable Rep2, reference R, class V>
-    requires is_unit_tag_v<decltype(U)> && detail::exact_rescale_v<R.U, decltype(U)::value> &&
+    requires detail::is_unit_tag_v<decltype(U)> && detail::exact_rescale_v<R.U, decltype(U)::value> &&
              requires(const quantity<R, V>& q) { Rep2(q.in(U).numerical_value()); }
 [[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q) {
     constexpr units::unit u = decltype(U)::value;
@@ -727,7 +730,7 @@ template <class Q, reference R, class V>
     return Q{static_cast<typename Q::rep>(q.template in<Q::reference.U>().numerical_value())};
 }
 // try_value_cast<Q, F>(q) — the same through Q's Rep2::try_make<F>.
-template <class Q, policy_flag F = none, reference R, class V>
+template <class Q, policy_flag F = beman::inside::detail::none, reference R, class V>
     requires detail::value_castable_to<Q, R> && requires(const quantity<R, V>& q) {
         Q::rep::template try_make<F>(q.template in<Q::reference.U>().numerical_value());
     }
@@ -736,15 +739,15 @@ template <class Q, policy_flag F = none, reference R, class V>
 }
 
 // try_value_cast<Rep2, F>(q) — as Rep2::try_make<F>: an expected.
-template <insidable Rep2, policy_flag F = none, reference R, class V>
+template <insidable Rep2, policy_flag F = beman::inside::detail::none, reference R, class V>
     requires requires(const V& v) { Rep2::template try_make<F>(v); }
 [[nodiscard]] constexpr std::expected<quantity<R, Rep2>, errc> try_value_cast(const quantity<R, V>& q) {
     return detail::lift_to<quantity<R, Rep2>>(Rep2::template try_make<F>(q.numerical_value()));
 }
 
 // try_value_cast<U, Rep2, F>(q) — in unit U, as Rep2::try_make<F>.
-template <auto U, insidable Rep2, policy_flag F = none, reference R, class V>
-    requires is_unit_tag_v<decltype(U)> && detail::exact_rescale_v<R.U, decltype(U)::value> &&
+template <auto U, insidable Rep2, policy_flag F = beman::inside::detail::none, reference R, class V>
+    requires detail::is_unit_tag_v<decltype(U)> && detail::exact_rescale_v<R.U, decltype(U)::value> &&
              requires(const quantity<R, V>& q) { Rep2::template try_make<F>(q.in(U).numerical_value()); }
 [[nodiscard]] constexpr auto try_value_cast(const quantity<R, V>& q) {
     constexpr reference to{R.Spec, R.KindOf, R.Derived, decltype(U)::value};
@@ -817,7 +820,7 @@ constexpr auto into_scaled(const A& a, const auto& b) {
 // mul_into<Out, F>(a, b) / div_into<Out, F>(a, b): a·b or a/b rounded once
 // into Out, a quantity type (or a plain inside for a dimensionless result).
 // The unit factor is folded into the exact product: mul_into<usd>(eth, usd/eth).
-template <class Out, policy_flag F = none, class A, class B>
+template <class Out, policy_flag F = beman::inside::detail::none, class A, class B>
     requires detail::into_operands<Out, 1, A, B> && requires(const A& a, const B& b) {
         beman::inside::mul_into<typename detail::out_rep<Out>::type, F>(detail::into_scaled<Out, 1>(a, b),
                                                                         detail::as_quantity(b).numerical_value());
@@ -826,7 +829,7 @@ template <class Out, policy_flag F = none, class A, class B>
     return detail::wrap_out<Out>(beman::inside::mul_into<typename detail::out_rep<Out>::type, F>(
         detail::into_scaled<Out, 1>(a, b), detail::as_quantity(b).numerical_value()));
 }
-template <class Out, policy_flag F = none, class A, class B>
+template <class Out, policy_flag F = beman::inside::detail::none, class A, class B>
     requires detail::into_operands<Out, -1, A, B> && requires(const A& a, const B& b) {
         beman::inside::div_into<typename detail::out_rep<Out>::type, F>(detail::into_scaled<Out, -1>(a, b),
                                                                         detail::as_quantity(b).numerical_value());
@@ -863,17 +866,17 @@ template <class Q, std::ranges::input_range Rng>
 
 // conversion_overflows<Q>(v) / conversion_rounds / conversion_loses: v, a
 // number in Q's unit, against Q's grid.
-template <class Q, numeric A>
+template <class Q, beman::inside::detail::numeric A>
     requires quantity_like<Q>
 [[nodiscard]] constexpr bool conversion_overflows(A value) noexcept {
     return beman::inside::conversion_overflows<typename Q::rep>(value);
 }
-template <class Q, numeric A>
+template <class Q, beman::inside::detail::numeric A>
     requires quantity_like<Q>
 [[nodiscard]] constexpr bool conversion_rounds(A value) noexcept {
     return beman::inside::conversion_rounds<typename Q::rep>(value);
 }
-template <class Q, numeric A>
+template <class Q, beman::inside::detail::numeric A>
     requires quantity_like<Q>
 [[nodiscard]] constexpr bool conversion_loses(A value) noexcept {
     return beman::inside::conversion_loses<typename Q::rep>(value);
@@ -889,12 +892,12 @@ template <class Q, class X>
 }
 
 // as<T>(q) / to<T>(q): the member forms, free, as for an inside.
-template <typename T, policy_flag Round = none, quantity_like Q>
+template <typename T, policy_flag Round = beman::inside::detail::none, quantity_like Q>
     requires requires(const Q& q) { q.template as<T, Round>(); }
 [[nodiscard]] constexpr T as(const Q& q) {
     return q.template as<T, Round>();
 }
-template <typename T, policy_flag Round = none, quantity_like Q>
+template <typename T, policy_flag Round = beman::inside::detail::none, quantity_like Q>
     requires requires(const Q& q) { q.template to<T, Round>(); }
 [[nodiscard]] constexpr auto to(const Q& q) {
     return q.template to<T, Round>();

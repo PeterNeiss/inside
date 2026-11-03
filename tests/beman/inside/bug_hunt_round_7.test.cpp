@@ -200,7 +200,7 @@ TEST(BugHuntRound7, casts_override_the_declared_policy) {
 
 // wrap on a bounded continuous grid folded before it rounded.
 TEST(BugHuntRound7, wrap_rounds_first_on_a_bounded_grid) {
-    using S = inside<{{0, 1}, max_denominator{2}}, wrap | snap>;
+    using S = inside<{{0, 1}, max_denominator{2}}, wrap | round_toward_zero>;
     using N = inside<{{0, 1}, max_denominator{2}}, wrap | round_nearest>;
     using C = inside<{{0, 1}, max_denominator{7}}, wrap | round_ceil>;
     EXPECT_EQ(S{-1.3}, 0);
@@ -229,22 +229,22 @@ TEST(BugHuntRound7, on_clamp_hears_of_infinities) {
 // An integer division past int64 ignored snap and the rounding mode (the
 // exact path returned a continuous quotient).
 TEST(BugHuntRound7, integer_division_past_int64_rounds) {
-    using u64 = inside<{0, UINT64_MAX}, snap>;
+    using u64 = inside<{0, UINT64_MAX}, round_toward_zero>;
     EXPECT_EQ(u64{7u} / u64{2u}, 3);
     EXPECT_EQ(div(uint64{7u}, uint64{2u}, round_floor), 3);
     EXPECT_EQ(div(uint64{UINT64_MAX}, inside<{-3, -1}>{-2}, round_ceil), rational(-I64_MAX));
-    using i64     = inside<{I64_MIN, I64_MAX}, snap>;
+    using i64     = inside<{I64_MIN, I64_MAX}, round_toward_zero>;
     const auto q1 = i64{-7} / i64{-1};
-    using small   = inside<{1, 10}, snap>;
+    using small   = inside<{1, 10}, round_toward_zero>;
     EXPECT_EQ(q1.value() / small{2}, 3);
     const auto d = uint64{0} - uint64{UINT64_MAX};
     EXPECT_EQ(div(d, inside<{1, 1000}>{7}, round_floor), rational(-2635249153387078803));
-    using around_zero = inside<{-2, 3}, snap>;
+    using around_zero = inside<{-2, 3}, round_toward_zero>;
     EXPECT_EQ((u64{5u} / around_zero{0}).error(), errc::division_by_zero);
     // (a / b)·b + a % b == a, as for the native widths.
-    const uint64                  a{18446744073709551557u};
-    const inside<{1, 1000}, snap> b{1000};
-    const auto                    quot = div(a, b, round_floor);
+    const uint64                               a{18446744073709551557u};
+    const inside<{1, 1000}, round_toward_zero> b{1000};
+    const auto                                 quot = div(a, b, round_floor);
     EXPECT_EQ(rational(quot) * 1000 + rational(a % b), rational(a));
 }
 

@@ -412,20 +412,20 @@ struct spec_t {
     consteval auto operator[](U) const;
 };
 
+namespace detail {
 // Spec algebra for recipes: length / time, pow<2>(length), inverse(radius).
 template <const quantity_spec* S>
-consteval detail::spec_expr expr_of(spec_t<S>) {
-    detail::spec_expr e{};
-    detail::recipe_add(e.Recipe, S, 1);
+consteval spec_expr expr_of(spec_t<S>) {
+    spec_expr e{};
+    recipe_add(e.Recipe, S, 1);
     e.Dim = S->Dim;
     return e;
 }
-consteval detail::spec_expr expr_of(const detail::spec_expr& e) { return e; }
+consteval spec_expr expr_of(const spec_expr& e) { return e; }
 
 template <class T>
 concept spec_operand = requires(T t) { expr_of(t); };
 
-namespace detail {
 consteval spec_expr spec_combine(const spec_expr& a, const spec_expr& b, int sign) {
     spec_expr r = a;
     if (!recipe_merge(r.Recipe, b.Recipe, sign))
@@ -435,32 +435,32 @@ consteval spec_expr spec_combine(const spec_expr& a, const spec_expr& b, int sig
 }
 } // namespace detail
 
-template <spec_operand A, spec_operand B>
+template <detail::spec_operand A, detail::spec_operand B>
 consteval detail::spec_expr operator*(A a, B b) {
-    return detail::spec_combine(expr_of(a), expr_of(b), 1);
+    return detail::spec_combine(detail::expr_of(a), detail::expr_of(b), 1);
 }
-template <spec_operand A, spec_operand B>
+template <detail::spec_operand A, detail::spec_operand B>
 consteval detail::spec_expr operator/(A a, B b) {
-    return detail::spec_combine(expr_of(a), expr_of(b), -1);
+    return detail::spec_combine(detail::expr_of(a), detail::expr_of(b), -1);
 }
 // Two specs are equal when their expressions are: one named spec, or one
 // recipe of named specs (isq::length / isq::duration == isq::length / isq::time).
-template <spec_operand A, spec_operand B>
+template <detail::spec_operand A, detail::spec_operand B>
 consteval bool operator==(A a, B b) {
-    const detail::spec_expr x = expr_of(a), y = expr_of(b);
+    const detail::spec_expr x = detail::expr_of(a), y = detail::expr_of(b);
     return x.Recipe == y.Recipe && x.Dim == y.Dim;
 }
 
-template <int N, spec_operand A>
+template <int N, detail::spec_operand A>
 consteval detail::spec_expr pow(A a) {
     detail::spec_expr r{};
     for (int i = 0; i < (N < 0 ? -N : N); ++i)
-        r = detail::spec_combine(r, expr_of(a), N < 0 ? -1 : 1);
+        r = detail::spec_combine(r, detail::expr_of(a), N < 0 ? -1 : 1);
     return r;
 }
-template <spec_operand A>
+template <detail::spec_operand A>
 consteval detail::spec_expr inverse(A a) {
-    return detail::spec_combine(detail::spec_expr{}, expr_of(a), -1);
+    return detail::spec_combine(detail::spec_expr{}, detail::expr_of(a), -1);
 }
 
 struct named_unit;
@@ -798,6 +798,7 @@ struct reference_t {
     constexpr                  operator reference() const { return R; }
 };
 
+namespace detail {
 template <class T>
 inline constexpr bool is_unit_tag_v = false;
 template <unit U>
@@ -809,6 +810,7 @@ template <unit U>
 inline constexpr bool is_reference_tag_v<unit_t<U>> = true;
 template <reference R>
 inline constexpr bool is_reference_tag_v<reference_t<R>> = true;
+} // namespace detail
 
 // The reference of a tag: a unit_t is the unit with its kind.
 template <unit U>
@@ -823,7 +825,7 @@ consteval reference reference_of(reference_t<R>) {
 template <const quantity_spec* S>
 template <class U>
 consteval auto spec_t<S>::operator[](U) const {
-    static_assert(is_reference_tag_v<U> && requires { U::value.Size; }, "units: spec[unit] takes a unit");
+    static_assert(detail::is_reference_tag_v<U> && requires { U::value.Size; }, "units: spec[unit] takes a unit");
     constexpr unit u = U::value;
     static_assert(dimension_of(u) == S->Dim, "units: spec[unit] - the unit has another dimension than the spec");
     constexpr detail::spec_ref k = kind_of(u);

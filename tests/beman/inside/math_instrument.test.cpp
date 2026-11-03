@@ -10,7 +10,7 @@
 
 using namespace beman::inside;
 namespace engine = beman::inside::math::detail::engine;
-namespace am     = beman::inside::math::adaptive;
+namespace am     = beman::inside::math::detail::entry;
 using beman::inside::math::driver;
 using detail::wide_rational;
 using detail::wide_sint;

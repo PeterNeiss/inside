@@ -218,7 +218,7 @@ TEST(StorageBugsTest, dyadic_source_into_integer_grid_reads_the_value) {
     Int10 i{0};
     i.policy<round_nearest>() = half;
     EXPECT_EQ(detail::to_value(i), 3);
-    Int10 j = (half * just<2>).policy<snap>();
+    Int10 j = (half * just<2>).policy<round_toward_zero>();
     EXPECT_EQ(detail::to_value(j), 5);
 }
 
@@ -390,7 +390,7 @@ TEST(StorageBugsTest, rational_to_checks_width) {
 // A policy_ref compound /= or %= with a zero divisor reports (or, under
 // unsafe, no-ops) like the member operator, and never divides by zero.
 TEST(StorageBugsTest, policy_ref_zero_divisor_does_not_divide) {
-    using X = inside<{0, 10}, checked | snap>;
+    using X = inside<{0, 10}, checked | round_toward_zero>;
     using Z = inside<{0, 10}, unsafe>;
     X b{6};
     b.policy<unsafe>() /= X{0};

@@ -203,7 +203,7 @@ TEST(FormatTest, std_format_specs_follow_the_rounding_policy) {
     EXPECT_EQ(row.template operator()<round_nearest>(), "0.13 0.13 -0.13 -0.13");
     EXPECT_EQ(row.template operator()<round_floor>(), "0.12 0.12 -0.13 -0.13");
     EXPECT_EQ(row.template operator()<round_ceil>(), "0.13 0.13 -0.12 -0.12");
-    EXPECT_EQ(row.template operator()<snap>(), "0.12 0.12 -0.12 -0.12");
+    EXPECT_EQ(row.template operator()<round_toward_zero>(), "0.12 0.12 -0.12 -0.12");
     using floor_t = inside<{{-2, 2}, per<1000>}, round_floor>;
     EXPECT_EQ(std::format("{:.1e}", floor_t{rational{135, 1000}}), "1.3e-01");
     // The same digits a store at that precision gives.

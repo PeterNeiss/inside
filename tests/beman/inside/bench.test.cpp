@@ -674,10 +674,10 @@ static void bench_fixed_point() {
 static void bench_store_convert() {
     std::size_t i = 0;
 
-    using celsius_trunc = inside<{{-40, 60}, 0.5}, snap>;
+    using celsius_trunc = inside<{{-40, 60}, 0.5}, round_toward_zero>;
     using celsius_round = inside<{{-40, 60}, 0.5}, round_nearest>;
     auto assign         = group("assign from double ([-40,60] step 0.5)");
-    assign.run("truncate (snap)", [&] {
+    assign.run("truncate (round_toward_zero)", [&] {
         ++i;
         double        val = -40.0 + static_cast<double>(i % 200) * 0.5 + 0.3;
         celsius_trunc c   = val;
@@ -729,9 +729,9 @@ static void bench_store_convert() {
     std::vector<tenths> tv(kMask + 1);
     for (std::size_t j = 0; j <= kMask; ++j)
         tv[j] = rational{static_cast<imax>((j * 7) % 1000), 10};
-    cga.run("non-integer snap (1/10 -> 1/4 grid)", [&] {
+    cga.run("non-integer round_toward_zero (1/10 -> 1/4 grid)", [&] {
         ++i;
-        quarters b = tv[i & kMask].policy<snap>();
+        quarters b = tv[i & kMask].policy<round_toward_zero>();
         doNotOptimizeAway(b.raw());
     });
     finish(cga);

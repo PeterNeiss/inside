@@ -178,7 +178,7 @@ TEST(BugHuntRound4, fine_double_into_an_uninitialized_inside) {
 // A bound of 2^63 or more: the range prefilter's step 1/MaxDenominator
 // narrowed to imax and did not compile.
 TEST(BugHuntRound4, bound_past_imax) {
-    using B = inside<{{0, 1}, max_denominator{rational{umax{1} << 63}}}, snap>;
+    using B = inside<{{0, 1}, max_denominator{rational{umax{1} << 63}}}, round_toward_zero>;
     B x{};
     x = 0.3;
     EXPECT_EQ(x, rational(0.3));

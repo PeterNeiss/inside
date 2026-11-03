@@ -70,8 +70,8 @@ TEST(DivRoundTest, integer_division_honours_each_rounding_mode) {
     ASSERT_TRUE(static_cast<rational>(Cc{8} / Ccd{3}) == 3);   // ceil(2.667)
     ASSERT_TRUE(static_cast<rational>(Cc{-8} / Ccd{3}) == -2); // ceil(-2.667)
 
-    using Tt  = inside<{-100, 100}, snap>;
-    using Ttd = inside<{1, 10}, snap>;
+    using Tt  = inside<{-100, 100}, round_toward_zero>;
+    using Ttd = inside<{1, 10}, round_toward_zero>;
     ASSERT_TRUE(static_cast<rational>(Tt{-8} / Ttd{3}) == -2); // bare snap = truncate
     ASSERT_TRUE(static_cast<rational>(Tt{8} / Ttd{3}) == 2);
 }
@@ -100,15 +100,15 @@ TEST(DivRoundTest, modulo_remainder_stays_consistent_with_the_rounded_quotient) 
     ASSERT_TRUE(static_cast<rational>(F{-8} % Fd{3}) == 1); // floored remainder ≥ 0 for b>0
     ASSERT_TRUE(static_cast<rational>(F{8} % Fd{3}) == 2);
 
-    using T  = inside<{-100, 100}, snap>;
-    using Td = inside<{1, 10}, snap>;
+    using T  = inside<{-100, 100}, round_toward_zero>;
+    using Td = inside<{1, 10}, round_toward_zero>;
     ASSERT_TRUE(static_cast<rational>(T{-8} % Td{3}) == -2); // truncated remainder (sign of dividend)
 }
 
 // Q-format division honours the rounding mode
 TEST(DivRoundTest, q_format_division_honours_the_rounding_mode) {
     using Qn = inside<{{0, 255}, per<256>}, round_nearest>;
-    using Qt = inside<{{0, 255}, per<256>}, snap>;
+    using Qt = inside<{{0, 255}, per<256>}, round_toward_zero>;
     // 200/3 = 66.6667 → on the 1/256 grid: nearest = 17067/256, truncate = 17066/256.
     ASSERT_TRUE((static_cast<rational>(*(Qn{200.0} / Qn{3.0})) == rational{17067u, 256}));
     ASSERT_TRUE((static_cast<rational>(*(Qt{200.0} / Qt{3.0})) == rational{17066u, 256}));
@@ -169,17 +169,17 @@ TEST(DivRoundTest, div_mod_property_sweep_vs_reference_every_mode) {
     using HD = inside<{1, 7}, round_half_even>;
     sweep_div_mod<HA, HD, ref_heven>();
 
-    using TA  = inside<{-40, 40}, snap>;
-    using TD  = inside<{1, 7}, snap>;
-    using TDn = inside<{-7, -1}, snap>;
+    using TA  = inside<{-40, 40}, round_toward_zero>;
+    using TD  = inside<{1, 7}, round_toward_zero>;
+    using TDn = inside<{-7, -1}, round_toward_zero>;
     sweep_div_mod<TA, TD, ref_trunc>();
     sweep_div_mod<TA, TDn, ref_trunc>();
 }
 
 // divmod: the grids of / and %, expected only when the divisor may be zero
 TEST(DivRoundTest, divmod_types_and_errors) {
-    using val = inside<{0, 100}, snap>;
-    using pos = inside<{1, 10}, snap>;
+    using val = inside<{0, 100}, round_toward_zero>;
+    using pos = inside<{1, 10}, round_toward_zero>;
 
     const auto [q, r] = divmod(val{17}, pos{5});
     static_assert(std::same_as<decltype(q), const decltype(val{} / pos{1})>);

@@ -22,10 +22,12 @@ namespace beman::inside::units {
 template <reference R, detail::origin_ref O, insidable Rep>
 class quantity_point;
 
+namespace detail {
 template <class T>
 inline constexpr bool is_quantity_point_v = false;
-template <reference R, detail::origin_ref O, class Rep>
+template <reference R, origin_ref O, class Rep>
 inline constexpr bool is_quantity_point_v<quantity_point<R, O, Rep>> = true;
+} // namespace detail
 
 namespace detail {
 // The number, in unit U, that takes a quantity from origin From to origin To:

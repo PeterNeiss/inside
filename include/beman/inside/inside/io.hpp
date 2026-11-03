@@ -307,7 +307,7 @@ inline std::ostream& operator<<(std::ostream& stream, B b) {
 
 // parse<B, F>(text) / parse_exact<B>(text) — the std::string_view
 // forms of the pointer-pair overloads.
-template <insidable B, policy_flag F = none>
+template <insidable B, policy_flag F = detail::none>
 [[nodiscard]] constexpr std::expected<B, errc> parse(std::string_view text) {
     return parse<B, F>(text.data(), text.data() + text.size());
 }

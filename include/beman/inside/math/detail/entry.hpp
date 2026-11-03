@@ -14,7 +14,7 @@
 #include <utility>
 
 //---------------------------------------------------------------------------
-// beman::inside::math::adaptive — the math engine behind math.hpp (which
+// beman::inside::math::detail::entry — the math engine behind math.hpp (which
 // states the guarantee). The decision step and the driver are in
 // math/detail/adaptive.hpp. Domains are the mathematical ones; a result past
 // Out's range goes through Out's policy, as any assignment.
@@ -27,7 +27,7 @@
 // point), which decides every result and is the only tier at compile time and
 // without an FPU.
 //---------------------------------------------------------------------------
-namespace beman::inside::math::adaptive {
+namespace beman::inside::math::detail::entry {
 namespace engine = ::beman::inside::math::detail::engine;
 using ::beman::inside::detail::grid_rational;
 using ::beman::inside::detail::wide_valued;
@@ -223,10 +223,10 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
 // dd attempts as expressions in r (nothing of them without an FPU). FP and
 // DD in parentheses.
 #ifndef BEMAN_INSIDE_MATH_NO_FP
-    #define BEMAN_INSIDE_ENGINE_TIERS(Out, FP, DD, fp_call, dd_call, ...)                                    \
-        return ::beman::inside::math::adaptive::tiers<Out, FP, DD>([=](auto& r) -> bool { return fp_call; }, \
-                                                                   [=](auto& r) -> bool { return dd_call; }, \
-                                                                   [=] { return __VA_ARGS__; });
+    #define BEMAN_INSIDE_ENGINE_TIERS(Out, FP, DD, fp_call, dd_call, ...)                                         \
+        return ::beman::inside::math::detail::entry::tiers<Out, FP, DD>([=](auto& r) -> bool { return fp_call; }, \
+                                                                        [=](auto& r) -> bool { return dd_call; }, \
+                                                                        [=] { return __VA_ARGS__; });
 #else
     #define BEMAN_INSIDE_ENGINE_TIERS(Out, FP, DD, fp_call, dd_call, ...)                                         \
         ::beman::inside::math::detail::engine::note<::beman::inside::math::detail::engine::probe::integer_run>(); \
@@ -257,7 +257,7 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
 // rounding mode, like any assignment that may round.
 template <insidable Out>
 consteval void require_rounding() noexcept {
-    static_assert(has_flag(flags_of<Out>, snap) || !engine::notched<Out>,
+    static_assert(has_flag(flags_of<Out>, beman::inside::detail::snap) || !engine::notched<Out>,
                   "beman::inside::math: the result is rounded onto Out's grid - Out must permit rounding "
                   "(declare it with round_nearest, round_floor, ...)");
 }
@@ -538,7 +538,7 @@ template <insidable Out, imax Base, insidable In>
 //---------------------------------------------------------------------------
 template <insidable In>
 consteval bool deducible() noexcept {
-    static_assert(has_flag(flags_of<In>, snap),
+    static_assert(has_flag(flags_of<In>, beman::inside::detail::snap),
                   "beman::inside::math: a deduced result is rounded onto the input's grid - its operand "
                   "must permit rounding (declare it with round_nearest, round_floor, ...)");
     static_assert(::beman::inside::detail::notched<In>,
@@ -833,7 +833,7 @@ template <policy_flag Mode, insidable InB, insidable InE>
     const auto ve = with_mode<Mode>(exp);
     return pow_into<moded_t<decltype(pow(vb, ve)), Mode>>(vb, ve);
 }
-} // namespace beman::inside::math::adaptive
+} // namespace beman::inside::math::detail::entry
 
 #undef BEMAN_INSIDE_ENGINE_TIERS
 #undef BEMAN_INSIDE_ENGINE_KERNEL_TIERS

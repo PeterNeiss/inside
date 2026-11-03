@@ -56,7 +56,7 @@ TEST(RoundNegativeTiesTest, round_half_even_assignment_ties_to_even_value_regard
 
 // bare snap assignment truncates toward zero on negatives
 TEST(RoundNegativeTiesTest, bare_snap_assignment_truncates_toward_zero_on_negatives) {
-    using S = inside<{{-100, 100}, per<4>}, snap>;
+    using S = inside<{{-100, 100}, per<4>}, round_toward_zero>;
     // 1/8-off values truncate toward zero (not toward -inf).
     ASSERT_TRUE((static_cast<rational>(S(rational{7, 8})) == rational{3, 4}));   //  0.875 ->  0.75
     ASSERT_TRUE((static_cast<rational>(S(rational{-7, 8})) == rational{-3, 4})); // -0.875 -> -0.75 (was -1)
