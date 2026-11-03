@@ -2,138 +2,130 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-# Development
+# Contributing
 
-## Configure and Build the Project Using CMake Presets
+How to build and test the library, what to run before a pull request, and
+how the generated files are made. The library needs **GCC 16** in C++26 mode
+with static reflection (`-freflection`); no other compiler has it yet.
 
-The simplest way of configuring and building the project is to use [CMake
-Presets](https://cmake.org/cmake/help/latest/manual/cmake-presets.7.html). The
-library needs C++26 static reflection, so the presets are GCC 16 only: `gcc-*`
-with the `g++` on the path, `gcc16-*` with `g++-16`. You can use `cmake
---list-presets=workflow` to see all available presets.
+## Build and test
 
-Here is an example of invoking the `gcc-debug` preset:
-
-```shell
-cmake --workflow --preset gcc-debug
-```
-
-Generally, there are two kinds of presets, `debug` and `release`.
-
-The `debug` presets are designed to aid development, so they have debuginfo and sanitizers
-enabled.
-
-> [!NOTE]
->
-> The sanitizers that are enabled vary from compiler to compiler.  See the toolchain files
-> under ([`infra/cmake`](infra/cmake/)) to determine the exact configuration used for each
-> preset.
-
-The `release` presets are designed for production use, and
-consequently have the highest optimization turned on (e.g. `O3`).
-
-## Configure and Build Manually
-
-If the presets are not suitable for your use case, a traditional CMake invocation will
-provide more configurability.
-
-To configure, build and test the project manually, you can run this set of commands. Note
-that this requires GoogleTest to be installed.
+The CMake workflow presets configure, build and test in one step:
 
 ```bash
-cmake \
-  -B build \
-  -S . \
-  -DCMAKE_CXX_COMPILER=g++-16 \
-  -DCMAKE_CXX_STANDARD=26 \
-  # Your extra arguments here.
-cmake --build build
-ctest --test-dir build
+cmake --workflow --preset gcc-debug      # Debug with sanitizers
+cmake --workflow --preset gcc-release    # RelWithDebInfo
 ```
 
-> [!IMPORTANT]
->
-> Beman projects are [passive projects](
-> https://github.com/bemanproject/beman/blob/main/docs/beman_standard.md#cmakepassive_projects),
-> so you need to specify the C++ version via `CMAKE_CXX_STANDARD` when manually
-> configuring the project.
+The `gcc-*` presets use the `g++` on the path, which must be GCC 16; the
+`gcc16-*` presets name `g++-16` (their build directory is then
+`build/gcc16-debug`, …). `cmake --list-presets=workflow` lists them. The
+presets fetch GoogleTest with FetchContent
+(`infra/cmake/use-fetch-content.cmake`, versions in `lockfile.json`).
 
-## Dependency Management
-
-### vcpkg
-
-The best way to install the project's dependencies is to use the vcpkg workflow.
-
-To do so, make sure vcpkg is installed and `VCPKG_ROOT` is defined in your environment,
-then specify
-`-DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"`. Vcpkg will handle
-the project's dependencies, including GoogleTest.
-
-Example commands:
-
-```shell
-cmake \
-  -B build \
-  -S . \
-  -DCMAKE_CXX_COMPILER=g++-16 \
-  -DCMAKE_CXX_STANDARD=26 \
-  -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
-cmake --build build
-ctest --test-dir build
-```
-
-The file `./vcpkg.json` configures the list of dependencies that will be configured by
-vcpkg.
-
-### FetchContent
-
-Instead of installing the project's dependencies via a package manager, you can optionally
-configure beman.inside to fetch them automatically via CMake FetchContent.
-
-To do so, specify
-`-DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=./infra/cmake/use-fetch-content.cmake`. This will
-bring in GoogleTest automatically along with any other dependency the project may require.
-
-Example commands:
-
-```shell
-cmake \
-  -B build \
-  -S . \
-  -DCMAKE_CXX_COMPILER=g++-16 \
-  -DCMAKE_CXX_STANDARD=26 \
-  -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=./infra/cmake/use-fetch-content.cmake
-cmake --build build
-ctest --test-dir build
-```
-
-The file `./lockfile.json` configures the list of dependencies and versions that will be
-acquired by FetchContent.
-
-## Project-specific configure arguments
-
-Project-specific options are prefixed with `BEMAN_INSIDE`.
-You can see the list of available options with:
+Configured by hand, with GoogleTest installed:
 
 ```bash
-cmake -LH -S . -B build | grep "BEMAN_INSIDE" -C 2
+cmake -B build -S . -DCMAKE_CXX_COMPILER=g++-16 -DCMAKE_CXX_STANDARD=26
+cmake --build build
+ctest --test-dir build
 ```
 
-The library options are in the [README's table](README.md#build-environment).
-The project's own: `BEMAN_INSIDE_BUILD_TESTS` and `BEMAN_INSIDE_BUILD_EXAMPLES`
-(both `ON`), and `BEMAN_INSIDE_INSTALL_CONFIG_FILE_PACKAGE` (`ON`, needed for
-`find_package(beman.inside)`). `BEMAN_INSIDE_BUILD_TOOLS` also adds the
-`beman.inside.perf_report` and `beman.inside.accuracy_report` targets, which
-regenerate `docs/performance.md` and `docs/accuracy.md`.
+### Options
 
-## Maintenance targets
+| Option | Default | Effect |
+|---|---|---|
+| `BEMAN_INSIDE_BUILD_TESTS` | `ON` at top level | the tests |
+| `BEMAN_INSIDE_BUILD_EXAMPLES` | `ON` at top level | the examples, each also a test |
+| `BEMAN_INSIDE_BUILD_TOOLS` | `OFF` | the benchmarks, the perf workload and the targets that regenerate `docs/performance.md` and `docs/accuracy.md` |
+| `BEMAN_INSIDE_CERTIFY_FULL` | `OFF` | the certify test checks every pair of `docs/certified.md` (up to 2³² inputs, minutes), not only those up to 2²⁰ |
+| `BEMAN_INSIDE_WARNINGS_AS_ERRORS` | `OFF` | `-Werror` for the tests and examples |
+| `BEMAN_INSIDE_MATH_NO_FP` | `OFF` | build without hardware floating point: the math engine's integer path computes every result |
+| `BEMAN_INSIDE_FMA` | `ON` | add `-mfma` on x86-64 to everything that links `beman::inside` |
+| `BEMAN_INSIDE_INSTALL_CONFIG_FILE_PACKAGE` | `ON` | install the files `find_package(beman.inside)` needs |
 
-- `beman.inside.amalgamate` regenerates the committed single header
-  `single_include/beman/inside/inside.hpp`. The
-  `beman.inside.tests.amalgamate_up_to_date` test fails when it is stale.
-- The compile-fail suite (`tests/beman/inside/fail/`, ctest label
-  `compile-fail`) checks that ill-formed uses keep their diagnostics; each case
-  names the expected message on its first line (`// EXPECT: ...`).
-- `tests/beman/inside/check_perf.py` runs the cachegrind instruction-count gate
-  against `tests/beman/inside/perf_baseline.json` (needs valgrind and
-  `BEMAN_INSIDE_BUILD_TOOLS=ON`).
+`BEMAN_INSIDE_FMA` needs a Haswell/Piledriver (2013) or later CPU; turn it
+off for older ones. The results do not depend on it, only the speed of the
+math functions.
+
+### Test labels
+
+`ctest -L <label>` runs one group:
+
+| Label | Runs |
+|---|---|
+| `example` | the 39 programs in `examples/` |
+| `compile-fail` | `tests/beman/inside/fail/`: ill-formed uses that must keep their diagnostics; each case names the expected message on its first line (`// EXPECT: …`) |
+| `fuzz` | the property fuzzer and the differential oracle (`tests/beman/inside/differential`), which recomputes arithmetic, stores and conversions exactly in Python |
+| `accuracy` | the math accuracy sweep |
+| `certify` | the certified math pairs of `docs/certified.md` |
+| `tooling` | the single header is up to date, and no pre-C++26 compatibility code came back |
+| `perf` | the perf workload (with `BEMAN_INSIDE_BUILD_TOOLS=ON`) |
+
+## Before a pull request
+
+1. **Format** with the pinned tools: `pre-commit run --all-files`. It runs
+   clang-format 22, gersemi for CMake and codespell. Use it rather than a
+   system clang-format, whose version formats differently.
+2. **Regenerate the single header** if a header under `include/` changed
+   ([below](#the-single-header)), after formatting, since it copies the text.
+3. **Run the configurations CI runs**: Debug with sanitizers
+   (`gcc-debug`), Release, `-DBEMAN_INSIDE_MATH_NO_FP=ON`, and Debug with
+   `-DBEMAN_INSIDE_WARNINGS_AS_ERRORS=ON`. A weekly CI run adds
+   `-DBEMAN_INSIDE_CERTIFY_FULL=ON`.
+4. **Update the docs and the changelog.** A user-visible change gets an entry
+   under *Unreleased* in [CHANGELOG.md](CHANGELOG.md), and the pages that
+   describe it change with it ([below](#documentation)).
+
+## The single header
+
+`single_include/beman/inside/inside.hpp` is generated from `include/` by a
+pure-CMake amalgamator (`cmake/amalgamate.cmake`) and committed; it is never
+edited by hand.
+
+```bash
+pre-commit run --all-files                             # clang-format first: the header copies its text
+cmake --build build --target beman.inside.amalgamate   # rewrites single_include/beman/inside/inside.hpp
+ctest --test-dir build -L tooling                      # amalgamate_up_to_date fails if it drifted
+ctest --test-dir build -R single_header                # translation units that see only single_include/
+```
+
+CI also builds `single_header_freestanding_smoke` (exceptions off,
+`BEMAN_INSIDE_NO_STRING`) and `single_header_nofp_smoke`, which puts a poisoned
+`<cmath>` first on the include path to prove that `BEMAN_INSIDE_MATH_NO_FP`
+pulls in no floating-point header.
+
+## Generated files
+
+| File | Made by | Regenerate |
+|---|---|---|
+| `docs/performance.md` | `beman.inside.bench` | `cmake --build <dir> --target beman.inside.perf_report` (`BEMAN_INSIDE_BUILD_TOOLS=ON`, a Release build) |
+| `docs/accuracy.md` | `beman.inside.accuracy` | `cmake --build <dir> --target beman.inside.accuracy_report` (`BEMAN_INSIDE_BUILD_TOOLS=ON`) |
+| `docs/certified.md` | `beman.inside.certify` | `cmake --build <dir> --target beman.inside.certify_report` (an optimized build) |
+| `include/beman/inside/math/detail/minimax.hpp` | Sollya 8.0 | `python3 tests/beman/inside/minimax/gen.py` (about a minute) |
+
+The certify test compares every result hash with `docs/certified.md`, so a
+change to a math result shows up there;
+[advanced/certify.md](docs/advanced/certify.md) explains the tool.
+
+### The instruction-count gate
+
+`tests/beman/inside/check_perf.py` runs the perf workload under cachegrind
+and compares its instruction count with `tests/beman/inside/perf_baseline.json`
+(needs valgrind and `BEMAN_INSIDE_BUILD_TOOLS=ON`). Instruction counts do not
+depend on the machine's load; compare before and after on the same build, or
+refresh the baseline with `--update`.
+
+## Documentation
+
+The docs are in three levels, mapped in [docs/README.md](docs/README.md):
+[Getting started](docs/getting-started.md), the everyday guides in
+`docs/guide/`, and the details in `docs/advanced/`. A guide stays short and
+links into the advanced pages for the rest.
+
+- Every C++ block compiles against the current headers, and a value in a
+  comment is the value the code produces.
+- Links are relative, so they work on GitHub and in a checkout.
+- The three draft papers are in `docs/proposal`: `make -C docs/proposal`
+  builds them, and `make -C docs/proposal check` checks that their listings
+  equal `docs/proposal/examples/*.cpp`.

@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 This page explains *why* the library is shaped the way it is, for
 contributors: adding an operator, debugging a storage edge case, reasoning
 about performance or about the units layer. For the user's view start with
-the [tutorial](tutorial.md).
+[Getting started](getting-started.md).
 
 The exact-fraction type is `beman::inside::rational` (defined in `detail`,
 public through a using-declaration). It is the raw of continuous grids and
@@ -125,7 +125,7 @@ policy flag changes it, so two insides on one grid share their encoding:
 ```
 
 `raw_for_t<G>` picks the smallest integer type that holds every index, using
-each type's full range ([storage.md](storage.md)).
+each type's full range ([Storage](advanced/storage.md)).
 
 The storage **concepts** in `inside/detail/storage.hpp` partition every inside by what
 its raw holds. The leaves are disjoint; the raw type alone decides all but the
@@ -265,7 +265,7 @@ four-level cascade:
 ```
 
 The hard default goes through the replaceable error handler
-([policies.md](policies.md#replacing-the-throw-handler)). The default handler
+([Hooks and errors](advanced/hooks-and-errors.md#the-error-handler)). The default handler
 throws `beman::inside::inside_error` (carrying the `errc`), or traps under
 `-fno-exceptions`. There is no `<system_error>` dependency.
 
@@ -279,7 +279,7 @@ decides whether step 4 runs, and whether a zero divisor is checked: true
 unless P carries `unsafe_marker`, so every policy is checked unless it says
 `unsafe`. A call's policy is a `detail::call_policy<F, E>` (inside/detail/call_policy.hpp), from
 a flag or `make_policy<F>(ec)`. The bit
-values are listed in [diagnostics.md](diagnostics.md#decoding-an-inside).
+values are listed in [Reading compiler errors](advanced/diagnostics.md#decoding-an-inside).
 
 The cascade lives in `inside/detail/assignment.hpp` and `inside/detail/assign_exact.hpp`:
 `dispatch_out_of_range` (shared by every source kind), `try_clamp_or_fail` (an
@@ -295,7 +295,7 @@ which step takes a given set of hooks. A quantity's hooks wrap the inside's
 The user-facing rules (an implicit lossless `operator rational`, an explicit
 `operator double` that needs a rounding mode, no conversion to a built-in
 integer: `as<T>()` and `to<T>()` read one) are in
-[conversions.md](conversions.md). On `rational` itself every `operator T()` is
+[Conversions](guide/conversions.md). On `rational` itself every `operator T()` is
 explicit and truncates toward zero; `r.to<T>()` is the typed-error form, and
 `trunc`, `floor`, `ceil` and `round` name the integer reductions.
 
@@ -369,7 +369,8 @@ folder of the same name: `inside.hpp` and `inside/` (the number),
 included through the public headers.
 
 The umbrella `inside.hpp` includes the core (`inside/detail/core.hpp`, then
-the casts, arithmetic, range and cursor layers, which need the complete type)
+the comparisons, casts, arithmetic, range and cursor layers, which need the
+complete type)
 and the `std::numeric_limits` and `std::hash` specializations. The **opt-in**
 headers are included only on demand, which keeps the core free of
 `<ostream>`, `<format>` and `<cmath>`, and of `<string>` with exceptions off
@@ -381,7 +382,8 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 
 | Header | Holds |
 |---|---|
-| `inside.hpp` | the umbrella of the number: the core and `inside/casts.hpp`, `arithmetic.hpp`, `range.hpp`, `cursor.hpp`, `numeric_limits.hpp` |
+| `inside.hpp` | the umbrella of the number: the core and `inside/compare.hpp`, `casts.hpp`, `arithmetic.hpp`, `range.hpp`, `cursor.hpp`, `numeric_limits.hpp` |
+| `inside/compare.hpp` | `<=>` and `==` across grids and against integers and `rational` (a floating point is a deleted overload) |
 | `inside/grid.hpp` | `grid`, `bounds`, `grid::try_make`, `raw_for`, the grid operators |
 | `inside/interval.hpp` | `interval`, its operators, `includes`/`excludes`/`overlaps` |
 | `inside/policy_flag.hpp` | the flags (each a `detail::flag<V>`), `has_flag`/`is_checked`, the policy validation bits, the rounding precedence, the `on_*` factories and `is_*_action` traits |
@@ -395,7 +397,7 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 | `inside/formats.hpp` | the native aliases `uint8` … `q16_16`, `clamp_counter`, `wrap_counter` (opt-in) |
 | `inside/io.hpp` | the text of insides: `to_string`, `to_string_debug`, `<<`, `>>`, `parse(string_view)`, `std::formatter`, `type_name_of`. Opt-in; with `units/io.hpp` the only headers that bring `<ostream>` and `<format>` |
 | `inside/random.hpp` | `uniform<B>(rng)` (opt-in, `<random>`) |
-| `math.hpp` | `beman::inside::math`: the grid operations, `unit_amplitude<K>`, the transcendentals ([math.md](math.md)); includes `math/constants.hpp` |
+| `math.hpp` | `beman::inside::math`: the grid operations, `unit_amplitude<K>`, the transcendentals ([Math](guide/math.md)); includes `math/constants.hpp` |
 | `math/constants.hpp` | the 18 math constants as rationals below 2³¹; needs only `inside.hpp` |
 | `units.hpp` | the umbrella of the units: `units/core.hpp` and `units/systems.hpp` |
 | `units/core.hpp` | the machinery without the catalog: `units/detail/algebra.hpp`, `quantity.hpp`, `point.hpp`; enough for units of your own |
@@ -411,9 +413,8 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 | `inside/detail/config.hpp` | the build options and platform features (`__int128`, FMA, exceptions); the C++26-reflection `#error`; included first everywhere |
 | `inside/detail/core.hpp` | `inside<G, P>`: construction, compound assignment, `++`/`--`, `to`/`as`, `parse(first, last)`, hooks, `just`, `_ins` |
 | `inside/detail/numbers.hpp` | `umax`/`imax` (public names), the internal `add_overflow`/`sub_overflow`/`mul_overflow`, `plain_number`/`fractional`, `safe_abs` |
-| `inside/detail/call_policy.hpp` | `call_policy<F, E>`, `make_policy`, `as_call_policy` (a flag as a call's policy) |
+| `inside/detail/call_policy.hpp` | `call_policy<F, E>`, `make_policy`, `with_flags<O>(pol)` (a flag as a call's policy) |
 | `inside/detail/error.hpp` | `errc`, `errc_message`, `inside_error`, the error handler, `raise`, `constexpr_error` |
-| `inside/compare.hpp` | `<=>` and `==` across grids and against integers and `rational` (a floating point is a deleted overload) |
 | `inside/detail/introspection.hpp` | `grid_of`, `flags_of`, `interval_of`, `lower_of`, `upper_of`, `notch_of`, the `insidable` and `numeric` concepts, `raw_t`, `as_rational` |
 | `inside/detail/storage.hpp` | the storage concepts, `as_double`, `to_value`/`from_value`, `raw_imax`, the Q-format codec, `max_index_of`, `round_quotient` |
 | `inside/detail/policy_ref.hpp` | `policy_ref`, `policy_buffer`: what `b.policy<F>()`, `b.policy(ec)` and `on_*()` return |
@@ -433,6 +434,7 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 | `math/detail/adaptive.hpp` | the engine's foundation: the decision step, the Ziv driver, the stores, π / ln 2 / ln 10 at any precision, the series kernels |
 | `math/detail/cores.hpp` | the integer path: one core per function |
 | `math/detail/fp.hpp`, `dd.hpp` | the `double` and double-double kernels and their proved bounds; compiled out under `BEMAN_INSIDE_MATH_NO_FP` |
+| `math/detail/minimax.hpp` | the double tier's minimax polynomials and their certified error bounds; generated by `tests/beman/inside/minimax/gen.py` (Sollya), not edited by hand |
 | `math/detail/tiers.hpp` | the `double` and double-double tiers: which kernel applies, the per-call error bound, the decision |
 | `math/detail/entry.hpp` | the entry points: `_into` and deduced forms, the table, the unanchored grids |
 | `units/detail/algebra.hpp` | dimensions, magnitudes, quantity specs, point origins, units, named units, references, the exact unit conversion |
@@ -440,7 +442,7 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 | `units/detail/point.hpp` | `quantity_point<R, O, Rep>`: points from an origin, their shifts and comparisons |
 
 `single_include/beman/inside/inside.hpp` amalgamates the whole tree
-([single-header.md](single-header.md)).
+([the single header](advanced/single-header.md)).
 
 ---
 
@@ -510,7 +512,7 @@ unit symbol.
 
 ## 10. The math engine
 
-[math.md](math.md#how-it-works) describes the engine from the user's side:
+[The math engine](advanced/math-engine.md#how-it-works) describes it from the user's side:
 the four paths, the precision that follows the output grid, Ziv's strategy.
 This section has the details of the floating-point tiers and the guards that
 keep them equal to the integer path.

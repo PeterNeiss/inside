@@ -21,8 +21,10 @@ exceptions or floating point, and where the limits are. It is also the home of
 
 - compile with `-fno-exceptions`, and install a handler with
   `set_error_handler`;
-- don't include `io.hpp`, `units/io.hpp` or `random.hpp` (with the single
-  header, define `BEMAN_INSIDE_NO_STRING`);
+- don't include `inside/io.hpp`, `units/io.hpp`, `inside/random.hpp` or
+  `units/random.hpp` (with the single header, define `BEMAN_INSIDE_NO_STRING`;
+  it leaves the random headers out of a freestanding or
+  `BEMAN_INSIDE_MATH_NO_FP` build by itself);
 - for the math without an FPU, build with `BEMAN_INSIDE_MATH_NO_FP`, and
   `<cmath>` is never included.
 
@@ -31,9 +33,9 @@ exceptions or floating point, and where the limits are. It is also the home of
 | Header | Needs |
 |---|---|
 | every header | `<meta>` (static reflection), hosted in libstdc++ 16 |
-| `io.hpp` | also `<string>`, `<ostream>`, `<format>` |
-| `units/io.hpp` | also io.hpp |
-| `random.hpp` | also `<random>` |
+| `inside/io.hpp` | also `<string>`, `<ostream>`, `<format>` |
+| `units/io.hpp` | also `inside/io.hpp` |
+| `inside/random.hpp`, `units/random.hpp` | also `<random>` |
 
 Beyond `<meta>`, no `<system_error>`, `<string>`, `<ostream>`, `<format>` or
 `<stdexcept>` reaches the core with exceptions off. Under
@@ -75,11 +77,11 @@ no allocation, no `<string>`.
 ### 2. Drop the text layer
 
 `to_string`, `operator<<`, `operator>>` and the `std::formatter`
-specializations live in `io.hpp`, the only header that pulls in `<string>`,
-`<ostream>` and `<format>`. Don't include it. With the
+specializations live in `inside/io.hpp` and `units/io.hpp`, the only headers
+that pull in `<string>`, `<ostream>` and `<format>`. Don't include them. With the
 [single header](single-header.md), define `BEMAN_INSIDE_NO_STRING` before the
-include; it drops the text layer, and with it the units and the physical
-constants:
+include; it drops `inside/io.hpp` and `units/io.hpp`, the text of insides and
+quantities (`BEMAN_INSIDE_NO_UNITS` drops the units as well):
 
 ```cpp
 #define BEMAN_INSIDE_NO_STRING
@@ -98,7 +100,7 @@ Besides the handler, errors come back as values, without `std::error_code`:
 - `std::expected` results of division and math. Test `has_value()` and read
   `error()`; don't call `.value()`, which would throw.
 
-[policies.md](policies.md#error-codes-instead-of-exceptions) shows the surface.
+[Hooks and errors](hooks-and-errors.md#error-codes) shows the surface.
 
 ## Math without `<cmath>` (`BEMAN_INSIDE_MATH_NO_FP`)
 
@@ -108,7 +110,7 @@ the engine's `double` and double-double tiers, and their `#include <cmath>`,
 are compiled out **entirely**; the integer path computes every result. The
 interface, the output grids, the types **and the values** are unchanged:
 the floating-point tiers only ever return the integer path's point
-([math.md](math.md#what-is-guaranteed)).
+([the math engine](math-engine.md#what-is-guaranteed)).
 
 - It turns on by itself when `__STDC_HOSTED__ == 0` (`-ffreestanding`), or set
   the CMake option `BEMAN_INSIDE_MATH_NO_FP=ON`, or define the macro.

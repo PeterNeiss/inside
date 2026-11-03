@@ -74,7 +74,7 @@ inline constexpr detail::flag<1ull << 32> clamp{}; // saturate to boundary
 inline constexpr detail::flag<1ull << 33> wrap{};  // modular arithmetic
 
 // No flag picks the raw: storage follows the grid alone (grid.hpp
-// raw_for, docs/storage.md).
+// raw_for, docs/advanced/storage.md).
 
 // The one opt-out of the runtime checks: no range or zero-divisor check
 // (reading an out-of-range value or dividing by zero is UB; `/= 0` no-ops,

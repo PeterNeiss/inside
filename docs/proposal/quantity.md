@@ -399,8 +399,8 @@ The layer is `units.hpp` and its folder, about 2400 lines: the machinery
 (`units/systems.hpp`, about 280), with its text in a separate `units/io.hpp`
 (about 180 lines). A translation unit that includes it parses in
 0.72 s with GCC 16, against 0.53 s for `inside` alone, and 200 distinct
-quantity expressions add about 7 ms each (the repository's `docs/units.md`,
-"Compile time"). Measured on v0.5.0's C++23 build, the layer parses in about a
+quantity expressions add about 7 ms each (the repository's
+`docs/advanced/units-model.md`, "Compile time"). Measured on v0.5.0's C++23 build, the layer parses in about a
 third of the time of mp-units' `si` and `isq` headers (0.61 s against 1.90 s on
 GCC 15, 0.92 s against 3.39 s on Clang 20), and per expression the two are
 about the same on GCC.

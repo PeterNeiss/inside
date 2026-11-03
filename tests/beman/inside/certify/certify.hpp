@@ -447,7 +447,8 @@ inline const char* page_header =
     "rounded point, the same in every build. The hash covers every result, so a build on another compiler,\n"
     "platform or FPU reproduces it exactly. Every CI configuration checks the pairs up to 2^20 inputs, and\n"
     "the weekly run all of them.\n"
-    "[certify.md](certify.md) explains the tool, the hash, and how to certify the grids of your own program.\n"
+    "[advanced/certify.md](advanced/certify.md) explains the tool, the hash, and how to certify the grids of your own "
+    "program.\n"
     "\n";
 
 inline int main(int argc, char** argv, void (*pairs)(runner&)) {

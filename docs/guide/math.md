@@ -1,0 +1,139 @@
+# Math
+
+<!--
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
+
+`<beman/inside/math.hpp>` has the functions of `<cmath>` for insides, in
+`beman::inside::math`. Each result is the **correctly rounded** point of its
+output grid, so it is the same on every platform, at compile time and
+without an FPU.
+
+```cpp
+#include <beman/inside/math.hpp>
+using namespace beman::inside;
+
+using angle = inside<{{-8, 8}, per<16384>}, round_nearest>;
+auto s = math::sin(angle{1});                                    // 0.84149169921875
+auto c = math::cos_into<math::unit_amplitude<256>>(angle{1});    // 0.5390625: an output grid you name
+auto h = math::hypot(s, s);                                      // √(s² + s²)
+```
+
+## Rounding needs permission
+
+A result such as sin 1 lies between two points of any grid, so it must be
+rounded, and an inside rounds only where its type allows it. Give the
+permission in one of three places:
+
+- on the input's type: `math::sin(angle{1})`, where `angle` has `round_nearest`;
+- on the output's type: `math::sin_into<Out>(x)`, where `Out` has a rounding mode;
+- on the call: `math::exp<round_floor>(x)`.
+
+Without one, the call does not compile. The rounding mode decides the
+result: `round_nearest` gives the nearest point, `round_floor` the one below,
+and so on.
+
+## Choosing the output grid
+
+`fn(x)` **deduces** its output from the input: the input's notch and policy,
+and the function's range over the input's range, computed at compile time.
+`sin` and `cos` give [−1, 1], `exp` of [0, 3] gives [1, e³] rounded outward.
+
+`fn_into<Out>(x)` **names** the output. Use it for a coarser result, which is
+cheaper, or a range you know. A value past `Out`'s range goes through `Out`'s
+policy, like any store. `math::unit_amplitude<K>` is [−1, 1] in steps of 1/K,
+ready for `sin` and `cos`.
+
+## The functions
+
+| Group | Functions |
+|---|---|
+| exact | `abs`, `sign`, `copysign`, `floor`, `ceil`, `round`, `trunc`, `fmod`, `pown<E>` |
+| roots | `sqrt`, `cbrt`, `hypot` |
+| trigonometric (radians) | `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2` |
+| hyperbolic | `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh` |
+| exponential | `exp`, `exp2`, `log`, `log2`, `log10`, `pow`, `pow_base<B>` |
+
+Each function but the exact ones has the forms `fn(x)`, `fn_into<Out>(x)`
+and `fn<mode>(x)`; `pow_base<10>(x)` is 10ˣ, and `pow_base_into<Out, 10>(x)`
+names its output. The exact functions have `fn(x)` and `fn_into<Out>(x)`, and
+need no rounding mode.
+
+## Errors
+
+A domain limit that the input's *type* shows is a compile error: `log` of a
+grid that reaches 0, `asin` of a grid past [−1, 1]. A failure that depends on
+the *value* returns a `std::expected`:
+
+| Function | Returns `std::expected` when |
+|---|---|
+| `sqrt` | the input's grid reaches below 0 |
+| `tan` | always: near a pole the value does not fit the output (an output with `clamp` saturates instead) |
+| `pow` | always: a negative base, 0 to a negative power, or a result past the output |
+| `fmod` | the divisor's grid holds 0 |
+
+Everything else returns a plain inside.
+
+## Angles
+
+Angles are in radians, as in `<cmath>`. With `<beman/inside/units/math.hpp>`
+an angle can be a quantity in degrees, in turns, or in any unit that is a
+rational multiple of π. Then the reduction is exact, and only the remainder,
+at most π/4, is approximated, so exact values come out exact:
+
+```cpp
+#include <beman/inside/units/math.hpp>
+using namespace beman::inside::units;
+
+quantity<si::degree, inside<{0, 360}>> deg{120};
+units::cos_into<inside<{{-1, 1}, per<16384>}, round_floor>>(deg);   // exactly −1/2, even rounding down
+```
+
+Do not `wrap` an angle in radians: a grid's period is never exactly 2π, so
+each turn would shift the angle. Carry a wrapping phase in degrees, turns or
+steps of 2π/2ⁿ, as [`oscillator.cpp`](../../examples/oscillator.cpp) does.
+
+## Quantities
+
+`<beman/inside/units/math.hpp>` gives each function the unit it should have:
+
+| Function | Takes | Gives |
+|---|---|---|
+| `abs`, `floor`, `ceil`, `round`, `trunc` | any quantity | the same unit |
+| `sqrt`, `cbrt` | a unit with that root | the root of the unit: m² → m |
+| `sin`, `cos`, `tan` | an angle in rad | a plain inside |
+| `sin_into`, `cos_into` | an angle in rad, degrees, or any unit with a factor of π | a plain inside, reduced exactly |
+| `asin`, `acos`, `atan` | an inside or a dimensionless quantity | rad |
+| `atan2(y, x)`, `hypot(x, y)` | two quantities of one dimension | rad; their common unit |
+| `exp_into`, `log_into`, `log10_into`, `sinh_into`, …, `pow_base_into<Out, B>`, `pow_into<Out>` | an inside or a dimensionless quantity | a plain inside |
+| `value_cast<si::radian, Out>(q)` | an angle in degrees or turns | rad, rounded once |
+
+A level in dB converts to a gain with
+`units::pow_base_into<gain_t, 10>(level / (just<20> * dB))`
+([`decibels.cpp`](../../examples/decibels.cpp)).
+
+## Constants
+
+`math::pi`, `math::two_pi`, `math::e`, `math::ln2`, `math::sqrt2` and 13 more
+are one-point insides within 2⁻⁵⁷ of the true value, so they compose in
+arithmetic: `radius * math::two_pi`. For a correctly rounded constant on a
+grid you choose, call the function: `math::sqrt_into<Out>(just<2>)`. The
+physical constants are quantities in `units::constants`
+([Constants](../advanced/constants.md)).
+
+## Speed
+
+Onto the grid deduced from the input, the functions run between about 3×
+slower and 3× faster than `<cmath>`; an input of at most 256 points is a
+table lookup. Onto grids as fine as a `double`, correct rounding costs a few
+times `<cmath>`. The [performance page](../performance.md) has the numbers.
+
+## Details
+
+- [The math engine](../advanced/math-engine.md): how a result is rounded
+  correctly, what is guaranteed, the paths, angles over many turns, building
+  without floating point.
+- [Certifying math](../advanced/certify.md): proving the results for the grids
+  your program uses.
+- [Determinism](../advanced/determinism.md): the build rules behind "the same
+  bits everywhere".

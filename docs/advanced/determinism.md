@@ -20,7 +20,7 @@ build rules that the other pages link to.
 | conversions to and from `double` and `float` | **yes** | IEEE-754, round to nearest; fast-math and x87 excess precision are rejected at compile time |
 | conversions to and from `long double` | **per format** | one rounding to the platform's `long double` (x87 80-bit, IEEE quad, or `double`) |
 | `beman::inside::math`, `units/math.hpp`, `value_cast` across π | **yes** | the same build rules as `double`, for the floating-point tiers (none under `BEMAN_INSIDE_MATH_NO_FP`); see [the math engine](#the-math-engine) for what *correctly rounded* covers |
-| compile-time constants and coefficient tables | **always** | `constexpr`, no external generators |
+| compile-time constants and coefficient tables | **always** | `constexpr` series; the minimax coefficients are committed hex literals |
 | text: `to_string`, `parse`, `<<`, `>>`, `std::format` | **always** | none: integer digits, no locale |
 | `uniform<B>(rng)` | **always** | the same generator and seed |
 | `std::hash` values | **per standard library** | built on `std::hash` of the raw's integers |
@@ -82,7 +82,7 @@ nearest even (the default), binary64, and no rewrites that change values:
 
 `beman::inside::math` and the units math return the **correctly rounded point
 of the output grid**, under the output's rounding mode
-([math.md](math.md#how-it-works)), for every result the engine decides (the
+([the math engine](math-engine.md#how-it-works)), for every result the engine decides (the
 exception is [below](#when-is-a-result-decided)). Such a result depends only
 on the input value and the output grid, so it cannot depend on how it was
 computed. The fast paths (tables, `double` and double-double kernels) return a
@@ -102,7 +102,7 @@ The floating-point tiers rely on the build rules above, plus:
 the tiers' bounds hold. The `double` tier's and the lean double-double
 kernels' bounds are proved; the full double-double kernels' are measured,
 with a margin of about 2⁹ over the worst error seen
-([internals.md](internals.md#10-the-math-engine), which lists each place where
+([internals.md](../internals.md#10-the-math-engine), which lists each place where
 the engine chose correctness over speed). `beman.inside.certify`, below, checks
 the tiers against the integer path on every input of its pairs.
 
@@ -137,7 +137,7 @@ million points, exhaustion settles the question. The certify tool
 public call and through the integer path alone, counts the guesses, and
 certifies the pair when no result differs and none was guessed. It also
 hashes all the results, so another machine or build can show it computed
-the same bits. The library's pairs are all certified ([certified.md](certified.md)):
+the same bits. The library's pairs are all certified ([certified.md](../certified.md)):
 every function, on coarse 4-bit outputs (a cap of only 64 bits), fine and
 decimal ones, and outputs on the double-double tier. So is every pair the
 examples use, short of five with too many inputs (up to 10¹⁹): the grids of
@@ -155,7 +155,7 @@ real programs, such as 2⁻¹⁴ coordinates, 1/4096 ratios and decibel steps.
   the platform's `long double`. That type is 80-bit x87 on x86 Linux, IEEE
   quad on AArch64 Linux, and `double` on some other platforms, so the bits match
   between machines with the same format, not across formats.
-- **Text.** `to_string`, `parse`, `from_chars`, `operator<<`/`>>` and the
+- **Text.** `to_string`, `parse`, `operator<<`/`>>` and the
   `std::formatter`s write and read the digits themselves: no `printf`,
   `to_chars`, `strtod` or locale. Only an integer spec that the formatter
   forwards to `std::formatter<std::int64_t>` and that asks for the locale
@@ -180,7 +180,7 @@ real programs, such as 2⁻¹⁴ coordinates, 1/4096 ratios and decibel steps.
   random seed and twenty times the cases.
 - `beman.inside.certify` sweeps every input of its math pairs, as
   [above](#when-is-a-result-decided), and checks every result hash against
-  [certified.md](certified.md): the pairs up to 2²⁰ inputs in an optimized
+  [certified.md](../certified.md): the pairs up to 2²⁰ inputs in an optimized
   build, the small ones in a debug build. Each configuration (optimized,
   debug, the FP-free build) has to reproduce the same hashes. The weekly run
   recomputes every pair, up to 2³² inputs. A debug build also scans the
@@ -206,9 +206,15 @@ an upgrade.
 
 ## Compile-time determinism
 
-Coefficients and constants (π, ln 2, ln 10, the series tables) come from exact
-integer series in `constexpr` code, with **no external code generator**:
-nothing is baked by a tool that could drift from the source. Every math
+Constants and series tables (π, ln 2, ln 10, the Taylor coefficients, the
+double-double tier's tables) come from exact integer series in `constexpr`
+code. The one generated file is `math/detail/minimax.hpp`: the double tier's
+minimax polynomials for `exp`, `log`, `atan` and `asin`, fitted offline with
+Sollya (`tests/beman/inside/minimax/gen.py`) and committed as exact hex
+literals, each with a certified error bound that the kernel's proof uses.
+Sollya is needed only to regenerate the file, and `math_minimax.test.cpp`
+checks every fit against its bound. These kernels only decide when a result
+is safe to return early; the value is always the integer path's. Every math
 function is `constexpr`, and a result computed at compile time equals the run
 time one.
 
@@ -233,7 +239,7 @@ time one.
 
 | You want | Read |
 |---|---|
-| sin, cos, sqrt, … | [math.md](math.md) |
-| the storage rules | [storage.md](storage.md) |
-| fast grids for fixed point | [fixed-point.md](fixed-point.md) |
-| *why* it is shaped this way | [internals.md](internals.md) |
+| sin, cos, sqrt, … | [Math](../guide/math.md), [the math engine](math-engine.md) |
+| the storage rules | [Storage](storage.md) |
+| fast grids for fixed point | [For fixed-point users](fixed-point.md) |
+| *why* it is shaped this way | [internals.md](../internals.md) |

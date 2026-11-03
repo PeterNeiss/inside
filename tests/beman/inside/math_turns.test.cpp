@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// docs/math.md "Angles over many turns": a wrapping radians grid folds modulo
+// docs/advanced/math-engine.md "Angles over many turns": a wrapping radians grid folds modulo
 // span + notch (not 2π); an unwrapped radians angle and a turn phase converted
 // at the call do not drift.
 #include <beman/inside/inside.hpp>

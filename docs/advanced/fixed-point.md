@@ -26,7 +26,7 @@ An unsigned Q8.8 register (8 integer bits, 8 fractional bits, every one of the
 using q8_8 = inside<{{0, rational{65535, 256}}, per<256>}, round_nearest>;   // == beman::inside::q8_8
 ```
 
-`<beman/inside/inside/formats.hpp>` has the common ones ([storage.md](storage.md#predefined-native-formats)):
+`<beman/inside/inside/formats.hpp>` has the common ones ([Grids](../guide/grids.md#predefined-formats)):
 
 | Alias | Format | Raw |
 |---|---|---|
@@ -64,7 +64,7 @@ Any other format is one line: a signed Q1.14 sample is
 | an exact fraction (continuous grids) | a `rational` | a gcd per operation | exact quotients |
 
 Integer raws are cheap. **The fraction is the slow one**: keep continuous grids
-out of hot loops ([storage.md](storage.md#storage-selection)).
+out of hot loops ([Storage](storage.md#which-raw-a-grid-gets)).
 
 ## Which grids are fast
 
@@ -74,7 +74,7 @@ out of hot loops ([storage.md](storage.md#storage-selection)).
    count.
 2. **Q-format grids** (notch 1/N, Lower 0): a power-of-two N makes scaling a
    shift. Two same-notch operands divide as `(a·N) / b`, a shift and a divide
-   for a power-of-two N ([arithmetic.md](arithmetic.md#division)).
+   for a power-of-two N ([exact arithmetic](exact-arithmetic.md#division)).
 3. **Continuous grids** (notch 0): avoid in hot loops.
 
 For a bulk sum use `sum<Target>`, which checks the total once and keeps the
@@ -83,18 +83,18 @@ element.
 
 ## Performance
 
-[performance.md](performance.md) has the measured tables for Q8.8 and Q16.16
+[performance.md](../performance.md) has the measured tables for Q8.8 and Q16.16
 construct, add, sub, mul, div, store and accumulate, and for the math
 functions, each against a native baseline with hardware counters (built by the
 `beman.inside.perf_report` target). On the reference machine Q8.8 accumulation
-runs faster than the hand-written native code; construction, division and a
-product match it; an add or a subtraction costs a few instructions more (about
-65–85% of native speed). A checked store adds a compare and branch; `unsafe`
+runs faster than the hand-written native code; construction and division
+match it; an add, a subtraction or a product costs a few instructions more
+(about 70–85% of native speed). A checked store adds a compare and branch; `unsafe`
 or `sum` removes it from a proven-safe inner loop.
 
 ## Q formats with units
 
-A unit puts a meaning on the same raw at no cost (see [units.md](units.md)):
+A unit puts a meaning on the same raw at no cost (see [Units](../guide/units.md)):
 
 ```cpp
 #include <beman/inside/units.hpp>
@@ -116,9 +116,9 @@ auto mm = d.in(si::milli(si::metre));                        // 7000000 mm: the 
   rounding: `mul_into<usd>(subtotal, just<8> * percent)`.
 - A sensor count can be a dimension of its own: an ADC reading in `cts`
   never adds to a voltage, and a calibrated gain in cts/V turns it into volts
-  with one exact division ([`adc_calibration.cpp`](../examples/adc_calibration.cpp)).
+  with one exact division ([`adc_calibration.cpp`](../../examples/adc_calibration.cpp)).
 
-[`fixed_point.cpp`](../examples/fixed_point.cpp) shows the formats table, exact
+[`fixed_point.cpp`](../../examples/fixed_point.cpp) shows the formats table, exact
 products, `mul_into` onto Q8.8, and the 0.5 °C grid as ℃ points.
 
 ## Choosing a grid
@@ -127,7 +127,7 @@ products, `mul_into` onto Q8.8, and the 0.5 °C grid as ℃ points.
   `unsafe` in the proven-safe inner loop, then store the result into a checked
   type.
 - **Transcendentals:** any grid; integer outputs are the fast ones
-  ([math.md](math.md#storage)).
+  ([the math engine](math-engine.md#storage)).
 - **No rounding allowed:** choose a notch that holds every value (thirds:
   `per<3>`); only a continuous grid pays for fractions.
 - **SIMD byte and halfword loops:** keep the range within the native type (the
@@ -137,9 +137,9 @@ products, `mul_into` onto Q8.8, and the 0.5 °C grid as ℃ points.
 
 | You want | Read |
 |---|---|
-| the full storage rules | [storage.md](storage.md) |
-| the result grid of each operation | [arithmetic.md](arithmetic.md) |
-| policies and errors | [policies.md](policies.md) |
-| reproducibility | [determinism.md](determinism.md) |
-| sin, cos, sqrt, … | [math.md](math.md) |
-| units on your formats | [units.md](units.md) |
+| the full storage rules | [Storage](storage.md) |
+| the result grid of each operation | [Exact arithmetic](exact-arithmetic.md) |
+| policies and errors | [Policies](../guide/policies.md) |
+| reproducibility | [Determinism](determinism.md) |
+| sin, cos, sqrt, … | [Math](../guide/math.md) |
+| units on your formats | [Units](../guide/units.md) |

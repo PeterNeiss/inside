@@ -143,7 +143,7 @@ int main(int argc, char** argv) {
                  "Error is measured against a long-double `<cmath>` reference, in units of\n"
                  "the **output grid notch**: max < 0.5 means every sampled result is the\n"
                  "correctly rounded grid point. The engine rounds correctly wherever it\n"
-                 "decides a result ([math.md](math.md#what-is-guaranteed)); this table\n"
+                 "decides a result ([the math engine](advanced/math-engine.md#what-is-guaranteed)); this table\n"
                  "checks it on three kinds of grid:\n"
                  "`dyadic 2^-14` (dyadic inputs, deduced outputs),\n"
                  "`decimal` (inputs in steps of 1/1000, deduced outputs) and `out 2^-40`\n"

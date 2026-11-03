@@ -228,6 +228,35 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   wrap>{-0x1p72}` was 4 instead of 2. A wrap, and an `on_clamp` overshoot, now
   use the double's exact value.
 
+### Documentation
+
+- The docs are rewritten in three levels: [Getting started](docs/getting-started.md),
+  seven short guides in `docs/guide/`, and the details in `docs/advanced/`.
+  [docs/README.md](docs/README.md) maps every page, header and example. The
+  README and CONTRIBUTING.md no longer follow the Beman exemplar template.
+- The [Compiler Explorer example](https://godbolt.org/z/MafnPMMxh) uses the
+  number, the math and the units together, with the single header from `main`.
+- Pages that moved:
+
+  | Before | Now |
+  |---|---|
+  | `docs/tutorial.md` | `docs/getting-started.md` |
+  | `docs/policies.md` | `docs/guide/policies.md`, `docs/advanced/hooks-and-errors.md` |
+  | `docs/arithmetic.md` | `docs/guide/arithmetic.md`, `docs/advanced/exact-arithmetic.md` |
+  | `docs/conversions.md` | `docs/guide/conversions.md`, `docs/advanced/text.md` |
+  | `docs/storage.md` | `docs/guide/grids.md`, `docs/guide/ranges.md`, `docs/advanced/storage.md` |
+  | `docs/units.md` | `docs/guide/units.md`, `docs/advanced/units-model.md` |
+  | `docs/math.md` | `docs/guide/math.md`, `docs/advanced/math-engine.md` |
+  | `docs/constants.md`, `fixed-point.md`, `determinism.md`, `certify.md`, `freestanding.md`, `diagnostics.md`, `single-header.md` | the same names in `docs/advanced/` |
+
+- Corrected: quantities have `std::hash` and `std::numeric_limits`; a quotient
+  never reports `errc::overflow` (past 1024 bits it has no type); `%` on a
+  grid of non-integers and a compound assignment from a `std::expected` are
+  deleted overloads; `divmod` takes values past `imax`; a hook reads its carry
+  with `as<imax>(c)`; `BEMAN_INSIDE_NO_STRING` drops only the text headers;
+  the double tier's minimax coefficients are generated offline (Sollya); the
+  fine-grid math speeds are measured again.
+
 ## 0.6.0 — 2026-10-30
 
 The first C++26-only release: it needs static reflection (GCC 16 with
@@ -253,7 +282,7 @@ The first C++26-only release: it needs static reflection (GCC 16 with
 - Requires C++26 with static reflection: GCC 16 with `-freflection` (the
   CMake target adds it; configuring fails without it). C++23, Clang,
   AppleClang and MSVC are no longer supported, and `-ffreestanding` waits
-  for a freestanding `<meta>` ([freestanding.md](docs/freestanding.md)).
+  for a freestanding `<meta>` ([freestanding.md](docs/advanced/freestanding.md)).
 - Grid numbers have any size, always: the 64-bit grid fallback,
   `BEMAN_INSIDE_BIG_GRIDS` and `BEMAN_INSIDE_REFLECTION` are gone, and so
   are the diagnostics for results past the 64-bit grid numbers.
@@ -365,7 +394,7 @@ The first C++26-only release: it needs static reflection (GCC 16 with
 
 ### Added
 
-- The certify tool ([certify.md](docs/certify.md)): for an In → Out pair of
+- The certify tool ([certify.md](docs/advanced/certify.md)): for an In → Out pair of
   a math function it computes every input as a run-time call and on the
   integer path alone, fails on any difference or any result left undecided
   at the precision cap, and hashes every result. `find_grids.py` finds the
@@ -396,12 +425,12 @@ The first C++26-only release: it needs static reflection (GCC 16 with
 - The math docs say exactly what holds. Results are the same in every build
   and correctly rounded wherever the engine decides them. A result still
   undecided at the precision cap (within about 2^−4W of a rounding boundary)
-  is a deterministic guess ([math.md](docs/math.md#what-is-guaranteed),
-  [determinism.md](docs/determinism.md#when-is-a-result-decided)). Before,
+  is a deterministic guess ([math.md](docs/advanced/math-engine.md#what-is-guaranteed),
+  [determinism.md](docs/advanced/determinism.md#when-is-a-result-decided)). Before,
   they claimed correct rounding always.
 - The math tables tier skips an input whose result is a guess, so the
   run-time counters see it. The results are unchanged.
-- [determinism.md](docs/determinism.md) covers `float`, `long double`,
+- [determinism.md](docs/advanced/determinism.md) covers `float`, `long double`,
   text, random sampling, hashing, MSVC's `/fp` modes and how the guarantee
   is tested.
 
@@ -415,7 +444,7 @@ The first C++26-only release: it needs static reflection (GCC 16 with
 
 ### Added
 
-- inside's algorithms on quantities ([units.md](docs/units.md#insides-algorithms-on-quantities)):
+- inside's algorithms on quantities ([units.md](docs/advanced/units-model.md#insides-algorithms-on-quantities)):
   the hooks `q.on_wrap/on_clamp/on_error/on_overflow` (stores take
   quantities, the hook gets the quantity), `++`/`--` by one unit,
   `Q::try_make`, `mul_into`/`div_into` into a quantity type (the unit
@@ -439,14 +468,14 @@ The first C++26-only release: it needs static reflection (GCC 16 with
   failed (P2741 static_assert messages): `grid: the notch must divide
   Upper − Lower evenly (notch 3, Upper − Lower 10)`, the two notches of an
   incompatible assignment, the two intervals of a disjoint one
-  ([diagnostics.md](docs/diagnostics.md)).
+  ([diagnostics.md](docs/advanced/diagnostics.md)).
 - MSVC 19.51 (Visual Studio 2026) and later is supported, /W4 clean, with
   three CI cells. `just<N, D>` spells the ratio `just<N>.per<D>`; on MSVC
   only `just<N, D>` works, because of a compiler bug.
 - Example [`adc_calibration.cpp`](examples/adc_calibration.cpp): ADC counts
   as a base dimension of their own, and a two-point calibration whose gain
   is checked once, after which no division can fail.
-- `<beman/inside/constants.hpp>` ([constants.md](docs/constants.md)):
+- `<beman/inside/constants.hpp>` ([constants.md](docs/advanced/constants.md)):
   mathematical constants in `math::` (π, e, √2, ln 2, φ, γ, Catalan's G,
   ζ(3), … as point insides within 2^-57), and physical constants in
   `units::constants::` as quantities of their ISQ kind. The SI 2019 defining
@@ -535,7 +564,7 @@ The first C++26-only release: it needs static reflection (GCC 16 with
 
 - `<beman/inside/units.hpp>`: physical quantities with an inside as the
   number — the main features of mp-units, without depending on it
-  ([docs/units.md](docs/units.md)). Units, dimensions, ISQ quantity kinds
+  ([docs/units.md](docs/guide/units.md)). Units, dimensions, ISQ quantity kinds
   and references are compile-time values: `quantity<si::metre, inside<…>>`,
   `isq::height[si::metre]`. A unit conversion rescales the grid and keeps
   the raw (km → mm is a `mov`), and a sum of mixed units runs in their

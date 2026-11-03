@@ -13,7 +13,7 @@ the two differ and no result left undecided at the engine's precision cap: every
 rounded point, the same in every build. The hash covers every result, so a build on another compiler,
 platform or FPU reproduces it exactly. Every CI configuration checks the pairs up to 2^20 inputs, and
 the weekly run all of them.
-[certify.md](certify.md) explains the tool, the hash, and how to certify the grids of your own program.
+[advanced/certify.md](advanced/certify.md) explains the tool, the hash, and how to certify the grids of your own program.
 
 ## Library pairs
 

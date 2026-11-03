@@ -32,7 +32,7 @@ last the bound:
 | `big_int{small, limbs, size, negative}` | an integer: `small` is the magnitude while it fits 64 bits (`limbs` 0, `size` 0); past that `limbs` points to `size` interned 64-bit limbs, least significant first. −3 is `big_int{3, 0, 0, true}` |
 | interval | the range, both limits included |
 | notch | the step. 0 is a *continuous* grid or a point, not a missing value |
-| bound | `MaxDenominator`, the denominator bound of a bounded continuous grid ([arithmetic.md](arithmetic.md#bounded-continuous-grids)); 0 otherwise |
+| bound | `MaxDenominator`, the denominator bound of a bounded continuous grid ([exact arithmetic](exact-arithmetic.md#bounded-continuous-grids)); 0 otherwise |
 | the policy `P` | a bitset, printed as an integer: decode it with the table below |
 
 | Bit | Decimal | Flag |

@@ -313,12 +313,12 @@ weekly, and the tool certifies any other pair the same way. A build without
 floating point (`BEMAN_INSIDE_MATH_NO_FP`, one of the CI configurations)
 computes every result on the integer path, and the results do not change.
 
-Onto the grid deduced from the input, the functions run from about 3× slower to
+Onto the grid deduced from the input, the functions run from about 2× slower to
 3× faster than `<cmath>`. Inputs of up to 256 points use a table, one load per
 call, at about 0.13 s of compile time per table. Onto grids as fine as a
-`double`, correct rounding costs 4–9× `<cmath>`: `sin` onto 2⁻⁵² in 14.6 ns,
-`exp` onto 2⁻⁴⁰ in 12.5 ns, `log` onto 2⁻⁴⁸ in 17.4 ns (x86-64, `-O3 -mfma`;
-the repository's `docs/math.md`, "Speed"). 11 of the repository's 39 examples
+`double`, correct rounding costs 1.2–7× `<cmath>`: `sin` onto 2⁻⁵² in about
+14 ns, `exp` onto 2⁻⁴⁰ in about 6 ns, `log` onto 2⁻⁴⁸ in about 17 ns (x86-64,
+`-O3 -mfma`; the repository's `docs/advanced/math-engine.md`, "Speed"). 11 of the repository's 39 examples
 use the functions, among them an oscillator, range and bearing from `hypot` and
 `atan2`, audio gain in decibels and a rocket equation.
 

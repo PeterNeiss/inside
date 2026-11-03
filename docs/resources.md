@@ -58,7 +58,7 @@ Notes:
 7. `Trigonometric` / `ExpLog` / `Root` mix-ins delegate to `<cmath>` on the wrapped type.
 8. implemented as C++20 modules, so not header-only in the classic sense.
 9. a *generated* amalgamation of the multi-file source (`single_include/beman/inside/inside.hpp`, standard-library-only), rebuilt by a CMake target — SafeInt (`SafeInt.hpp`) and PSsst (`pssst.h`) are instead authored as a single file; the rest ship a multi-header tree (fpm, e.g., splits `fixed.hpp` / `math.hpp` / `ios.hpp`).
-10. core compiles `-fno-exceptions` (no `<system_error>`; a replaceable `error_handler`; strings/printing in the opt-in `beman/inside/inside/io.hpp`, droppable via `BEMAN_INSIDE_NO_STRING`). `BEMAN_INSIDE_MATH_NO_FP` compiles the `<cmath>` dependency out of `beman::inside::math` entirely; `-ffreestanding` waits for a freestanding `<meta>` — see [freestanding.md](freestanding.md). The units' text (`units/io.hpp`) needs a hosted library.
+10. core compiles `-fno-exceptions` (no `<system_error>`; a replaceable `error_handler`; strings/printing in the opt-in `beman/inside/inside/io.hpp`, droppable via `BEMAN_INSIDE_NO_STRING`). `BEMAN_INSIDE_MATH_NO_FP` compiles the `<cmath>` dependency out of `beman::inside::math` entirely; `-ffreestanding` waits for a freestanding `<meta>` — see [freestanding.md](advanced/freestanding.md). The units' text (`units/io.hpp`) needs a hosted library.
 11. C++20 modules (clang-only) with throwing policies; no documented freestanding / no-exceptions path.
 12. `-fno-exceptions` via the compile-time `trap` exception policy; the default policy throws.
 13. non-throwing overflow tags (`native` / `saturated` / `undefined`) and no `<cmath>`, but no explicit `-ffreestanding` guarantee.
@@ -69,7 +69,7 @@ Notes:
 18. strong-typedef only — no overflow checks, so nothing to throw, but no numeric-safety story either.
 19. also models disjoint interval *unions* (e.g. `ival<-1000,-1> || ival<1,1000>` to exclude zero), not just a single `[lo,hi]`; arithmetic propagates ranges via the Cartesian product of the operand intervals.
 20. no documented freestanding / `-fno-exceptions` path; integer-only (no `<cmath>`).
-21. `<beman/inside/units.hpp>`, an opt-in header: quantities, kinds, points and units of your own on an inside, in the style of mp-units ([units.md](units.md)). The libraries above have no units; the dedicated units libraries are listed [below](#units-libraries).
+21. `<beman/inside/units.hpp>`, an opt-in header: quantities, kinds, points and units of your own on an inside, in the style of mp-units ([Units](guide/units.md)). The libraries above have no units; the dedicated units libraries are listed [below](#units-libraries).
 
 Freestanding marks are best-effort from each project's docs as of June 2026 — corrections welcome.
 
@@ -128,7 +128,7 @@ column. Pick the tool that fits: if you need overflow-safe plain integers,
   fixed-point math with a `<cmath>`-shaped API (trig, pow, log, …) implemented in
   pure integer arithmetic. A direct point of comparison for `inside`'s math
   engine, whose integer path is FPU-free and rounds correctly where it decides — see
-  [docs/math.md](math.md).
+  [Math](guide/math.md).
 - **[type_safe](https://github.com/foonathan/type_safe)** (Jonathan Müller) —
   zero-overhead vocabulary types that use the type system to prevent bugs,
   including constrained and bounded integer wrappers.
@@ -157,7 +157,7 @@ number, and are far more mature.
   [P3045](https://wg21.link/p3045) "Quantities and units library": dimensions,
   units, the ISQ quantity kinds and quantity points. `units.hpp` copies its
   model (kinds, the ISQ tree, points and origins); the differences are listed
-  in [units.md](units.md#differences-from-mp-units).
+  in [the units model](advanced/units-model.md#differences-from-mp-units).
   [[documentation](https://mpusz.github.io/mp-units/)]
 - **[Au](https://github.com/aurora-opensource/au)** (Aurora Innovation) — a
   C++14 units library with a strong focus on safe conversions of integer
@@ -184,7 +184,7 @@ number, and are far more mature.
 - **["Cross-Platform Floating-Point Determinism Out of the Box"](https://www.youtube.com/watch?v=7MatbTHGG6Q)**
   — Sherry Ignatchenko, CppCon 2024. Why cross-platform floating-point
   reproducibility is hard and how to get it — directly relevant to `inside`'s
-  bit-exact guarantees in [docs/determinism.md](determinism.md).
+  bit-exact guarantees in [Determinism](advanced/determinism.md).
 - **["Simplest Strong Typing instead of Language Proposal (P0109)"](https://www.youtube.com/watch?v=ABkxMSbejZI)**
   — Peter Sommerlad, C++Now 2021. The design behind PSsst and the case for
   strong numeric types as a library, not a language feature.

@@ -18,7 +18,7 @@ Arguments after `--` go to the certify program (certify.hpp lists them:
 --estimate, --max-slots N, --max-seconds S, --markdown FILE, --check FILE, ...).
 
 Build the project with -O0 (a Debug build) or -fkeep-inline-functions first:
-an inlined call leaves no symbol. docs/certify.md has the whole workflow.
+an inlined call leaves no symbol. docs/advanced/certify.md has the whole workflow.
 """
 
 import argparse

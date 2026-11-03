@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 `<beman/inside/math/constants.hpp>` gives the common mathematical constants, as
 one-point insides, without units. `<beman/inside/units/constants.hpp>` gives the
-physical constants, each a [quantity](units.md) of its ISQ kind. Products of
+physical constants, each a [quantity](../guide/units.md) of its ISQ kind. Products of
 constants are exact.
 
 ```cpp
@@ -52,9 +52,9 @@ number (`inside.hpp`); `math.hpp` includes them too.
 For a correctly rounded value on a grid you choose, call the function:
 `math::sqrt_into<Out>(just<2>)`, `math::exp_into<Out>(just<1>)`. Two ways
 avoid approximating π at all: scale a unit with `mag_pi`
-([units.md](units.md#factors-of-π-round-once)), and take the sine of an angle
+([the units model](units-model.md#factors-of-π-round-once)), and take the sine of an angle
 in degrees or turns, which `units::sin_into` reduces exactly
-([math.md](math.md#angles-over-many-turns)).
+([the math engine](math-engine.md#angles-over-many-turns)).
 
 ## Physical constants: `units::constants::`
 
@@ -116,4 +116,4 @@ not represented, so a result is only as good as the constant behind it.
 
 The math constants come with `math.hpp`, also freestanding. The physical
 constants sit inside the units guard: `BEMAN_INSIDE_NO_UNITS` drops them
-([single-header.md](single-header.md)).
+([the single header](single-header.md)).
