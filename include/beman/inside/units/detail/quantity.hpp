@@ -914,9 +914,15 @@ template <quantity_like AX, quantity_like AY, quantity_like BX, quantity_like BY
     -> decltype(ax * by - ay * bx) {
     return ax * by - ay * bx;
 }
-template <quantity_like A, quantity_like B, insidable T>
-[[nodiscard]] constexpr auto lerp(const A& a, const B& b, const T& t) -> decltype(a + (b - a) * t) {
-    return a + (b - a) * t;
+// lerp in a and b's common unit, as + takes it: inside's lerp on the numbers,
+// so with t in [0, 1] the result's range is that of a and b together.
+template <reference A, class VA, reference B, class VB, insidable T>
+    requires detail::summable<A, VA, B, VB, '+'> &&
+             requires(const quantity<A, VA>& a, const quantity<B, VB>& b, T t) { a + (b - a) * t; }
+[[nodiscard]] constexpr auto lerp(const quantity<A, VA>& a, const quantity<B, VB>& b, const T& t) {
+    constexpr reference C = detail::sum_reference<A, B>();
+    return detail::make_quantity<C>(
+        beman::inside::lerp(detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b), t));
 }
 
 // divmod(a, b, args...) of two quantities of one dimension, in their common

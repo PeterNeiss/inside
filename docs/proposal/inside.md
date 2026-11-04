@@ -566,7 +566,7 @@ namespace std {
 | `a + b`, `a - b` | interval sum or difference; notch `gcd(n_a, n_b)` | continuous if either operand is, with denominator bound `D_a·D_b` |
 | `a * b` | interval product; notch `n_a·n_b`, refined by the operands' offsets | a point `c` scales the other notch by `|c|`; continuous as for `+` |
 | `a / b` | a point `c`: `a`'s notch scaled by `1/|c|`; else continuous with denominator bound `D_a·max|b|·D_b` | rounded onto the integers or the shared notch when a policy names a rounding; `expected` iff `b`'s grid holds 0 |
-| `a % b` | `[0, m]` or `[−m, m]`, `m = max|b| − 1` | integer grids required; `r = a − q·b` for `q` truncated or rounded by the policy |
+| `a % b` | the values `r` can take: truncation `r` has `a`'s sign, `|r| ≤ min(m, max|a|)`; floor `b`'s sign, ceil the opposite, `|r| ≤ m`; nearest `|r| ≤ min(⌊max|b|/2⌋, max|a|)`; `m = max|b| − 1` | integer grids required; `r = a − q·b` for `q` truncated or rounded by the policy |
 | `e op b`, `a op e` (`e` an `expected`) | `expected` of `a op b`'s result | the first error passes through |
 | `++a`, `--a` | `a` moved by one notch | a store by `P` (wraps under `wrap`); absent on a continuous grid |
 | `a += b` etc. | `a = a + b` | a store by `a`'s policy |
@@ -611,7 +611,7 @@ The companion papers propose quantities and the math functions.
 The reference implementation is header-only C++26 and needs static reflection:
 today GCC 16 with `-freflection`. It ships a single-header amalgamation, a
 CMake package and a vcpkg port, and follows the Beman Standard. Its test suite
-(916 tests) runs in CI in six configurations on every change (a
+(923 tests) runs in CI in six configurations on every change (a
 debug preset, release, debug with `-Werror`, coverage, the address, undefined
 and leak sanitizers, no floating point) and in four more every
 week (a release preset, debug, the thread sanitizer, and the full certification

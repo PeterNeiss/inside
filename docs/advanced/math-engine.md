@@ -117,12 +117,12 @@ and the speed each guard costs, are in
 
 | Function | Output | Notes |
 |---|---|---|
-| `abs(x)` | `[0, max \|x\|]` | exact |
+| `abs(x)` | `[min \|x\|, max \|x\|]` | exact |
 | `floor`, `ceil`, `round`, `trunc` | notch 1 | exact; `round` sends a half away from zero |
 | `sign(x)` | −1, 0 or 1 | by exact comparison |
 | `copysign(mag, sgn)` | `±\|mag\|` for the signs `sgn` can take | `sgn == 0` counts as positive |
 | `fmod(x, y)` | the sign of `x` | truncated division, exact; `expected` when `y`'s grid holds 0 |
-| `pown<E>(x)` | widened at every multiply | `E ≥ 0`, known at compile time: repeated squaring |
+| `pown<E>(x)` | widened at every multiply; an even power from the least \|x\|^E, never below 0 | `E ≥ 0`, known at compile time: repeated squaring |
 
 These work on grids past 64 bits too, and need no rounding mode.
 

@@ -125,9 +125,9 @@ auto clipped = sum<inside<{0, 100}, clamp>>(v);  // 100: the total, clamped once
 A `total += x` loop checks at every step, which also stops the compiler from
 vectorizing it; `sum` runs at about half the speed of a native loop.
 
-For 2-D geometry, `dot(ax, ay, bx, by)`, `cross(ax, ay, bx, by)` and
-`lerp(a, b, t)` widen the same way. A squared distance is
-`dot(dx, dy, dx, dy)`.
+For 2-D geometry, `dot(ax, ay, bx, by)` and `cross(ax, ay, bx, by)` widen
+the same way. A squared distance is `dot(dx, dy, dx, dy)`. `lerp(a, b, t)`
+with `t` in [0, 1] lies between `a` and `b`, and its type says so.
 
 ## Compound assignment
 

@@ -7,7 +7,8 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 ## Unreleased
 
 The API freeze review before 1.0: one spelling per flag, implementation names
-out of the public namespaces.
+out of the public namespaces, and result types that hold exactly the values
+an operation can produce (result types are frozen from 1.0 on).
 
 ### Upgrading from 0.7.0
 
@@ -26,6 +27,26 @@ out of the public namespaces.
 - In `units`, moved into `units::detail`: `is_quantity_v` (use
   `quantity_like`), `is_quantity_point_v`, `is_reference_tag_v`,
   `is_unit_tag_v`, `spec_operand` and `expr_of`.
+
+### Changed
+
+Result types are narrower where the old ones held values the operation can
+never produce; the values are unchanged, and the new types convert to the old
+ones implicitly.
+
+- `a % b` and `divmod`'s remainder: bounded by the dividend too, with the sign
+  the rounding mode allows. `inside<{0, 3}> % inside<{1, 100}>` is
+  `inside<{0, 3}>` (was `{0, 99}`); under `round_floor` with a positive
+  divisor the remainder is never negative.
+- `min(a, b)` and `max(a, b)` of two grids: `[min of the lowers, min of the
+  uppers]` and `[max of the lowers, max of the uppers]` instead of the hull.
+  `std::common_type` is still the hull.
+- `math::abs` of a grid without 0 starts at the least magnitude
+  (`abs` of `[5, 10]` is `[5, 10]`, was `[0, 10]`); an even `math::pown`
+  is never below 0 (`pown<2>` of `[−10, 10]` is `[0, 100]`, was `[−100, 100]`).
+- `lerp(a, b, t)` with `t` in [0, 1]: the hull of `a`'s and `b`'s ranges
+  (was the interval of `a + (b − a)·t`, wider on both sides). On quantities
+  it runs in the common unit, like `min` and `max`.
 
 ### Added
 

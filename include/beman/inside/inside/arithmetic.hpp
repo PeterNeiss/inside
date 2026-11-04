@@ -482,15 +482,48 @@ template <insidable Target, std::ranges::input_range Rng>
     return ax * by - ay * bx;
 }
 
+namespace detail {
+// lerp's type: a + (b - a)·t's lattice; when t's grid lies in [0, 1] the
+// result lies between a and b, so the interval narrows to the hull of a's and
+// b's ranges, snapped inward onto that lattice.
+template <insidable W, insidable A, insidable B, insidable T>
+consteval grid lerp_grid() {
+    grid g = grid_of<W>;
+    if constexpr (lower_of<T> >= 0 && upper_of<T> <= 1) {
+        grid_rational lo = lower_of<A> < lower_of<B> ? lower_of<A> : lower_of<B>;
+        grid_rational hi = upper_of<A> < upper_of<B> ? upper_of<B> : upper_of<A>;
+        if (g.Notch != 0) { // onto the lattice, inward
+            const grid_rational base = g.Interval.Lower, n = g.Notch;
+            lo = base + n * grid_round<round_mode::ceil>((lo - base) / n);
+            hi = base + n * grid_round<round_mode::floor>((hi - base) / n);
+        }
+        // Only ever narrower: a point (the lerp of constants) stays a point.
+        g.Interval =
+            interval{g.Interval.Lower < lo ? lo : g.Interval.Lower, hi < g.Interval.Upper ? hi : g.Interval.Upper};
+    }
+    return g;
+}
+} // namespace detail
+
 // lerp(a, b, t) = a + (b - a) * t. `t` is itself an inside (typically a
-// [0, 1] fixed-point grid), so the interpolation never leaves inside-space.
-[[nodiscard]] constexpr auto lerp(insidable auto a, insidable auto b, insidable auto t) { return a + (b - a) * t; }
+// [0, 1] fixed-point grid), so the interpolation never leaves inside-space;
+// with t in [0, 1] the result's range is that of a and b together.
+template <insidable A, insidable B, insidable T>
+[[nodiscard]] constexpr auto lerp(A a, B b, T t) {
+    const auto w = a + (b - a) * t;
+    using W      = std::remove_cvref_t<decltype(w)>;
+    using R      = inside<detail::lerp_grid<W, A, B, T>(), flags_of<W>>;
+    if constexpr (std::is_same_v<R, W>)
+        return w;
+    else
+        return R{w, unsafe}; // within R by the bound above
+}
 
 //---------------------------------------------------------------------------
 // common_inside — the "hull" type able to hold every value of L and R exactly:
 // interval hull + notch gcd (grid `hull`), under the policy both share, as
 // for arithmetic results (result_flags). Backs the std::common_type
-// specialization and mixed-grid min/max below.
+// specialization.
 //---------------------------------------------------------------------------
 namespace detail {
 template <insidable Lhs, insidable Rhs>
@@ -514,18 +547,58 @@ using common_inside_t = typename detail::common_inside<Lhs, Rhs>::type;
 // grid (so, unlike std::midpoint, it neither rounds nor overflows). There is
 // no free `beman::inside::clamp` (the name is the policy flag — use Target{v, clamp}).
 //---------------------------------------------------------------------------
-// Both return the common type: the operand type itself for one type, else
-// the hull, which holds each operand exactly.
+namespace detail {
+// The type of min(a, b) or max(a, b): the hull's lattice over the values the
+// result can take, [min(lowers), min(uppers)] or [max(lowers), max(uppers)].
+// One type stays itself, as for the common type.
+template <insidable Lhs, insidable Rhs, bool Max>
+consteval grid extreme_grid() {
+    grid           h = hull(grid_of<Lhs>, grid_of<Rhs>);
+    const interval a = grid_of<Lhs>.Interval, b = grid_of<Rhs>.Interval;
+    if constexpr (Max)
+        h.Interval = interval{a.Lower < b.Lower ? b.Lower : a.Lower, h.Interval.Upper};
+    else
+        h.Interval = interval{h.Interval.Lower, a.Upper < b.Upper ? a.Upper : b.Upper};
+    return h;
+}
+template <insidable Lhs, insidable Rhs, bool Max>
+struct extreme_type {
+    using type = inside<extreme_grid<Lhs, Rhs, Max>(), result_flags<Lhs, Rhs>>;
+};
+template <insidable Same, bool Max>
+struct extreme_type<Same, Same, Max> {
+    using type = Same;
+};
+} // namespace detail
+
+// The smaller and the larger operand, typed by the values they can take: the
+// winner always fits, so it is stored without a run-time check.
+// An operand whose range never reaches the other's is decided at compile time
+// (its store into R would be ill-formed: the ranges are disjoint).
 template <insidable Lhs, insidable Rhs>
-[[nodiscard]] constexpr auto min(Lhs a, Rhs b) -> common_inside_t<Lhs, Rhs> {
-    common_inside_t<Lhs, Rhs> ca{a}, cb{b};
-    return (cb < ca) ? cb : ca;
+[[nodiscard]] constexpr auto min(Lhs a, Rhs b) -> typename detail::extreme_type<Lhs, Rhs, false>::type {
+    using R = typename detail::extreme_type<Lhs, Rhs, false>::type;
+    if constexpr (std::is_same_v<Lhs, Rhs>)
+        return (b < a) ? b : a;
+    else if constexpr (upper_of<Lhs> <= lower_of<Rhs>) // a always wins (a tie keeps a)
+        return R{a, unsafe};
+    else if constexpr (upper_of<Rhs> < lower_of<Lhs>) // b always wins
+        return R{b, unsafe};
+    else
+        return (b < a) ? R{b, unsafe} : R{a, unsafe};
 }
 
 template <insidable Lhs, insidable Rhs>
-[[nodiscard]] constexpr auto max(Lhs a, Rhs b) -> common_inside_t<Lhs, Rhs> {
-    common_inside_t<Lhs, Rhs> ca{a}, cb{b};
-    return (ca < cb) ? cb : ca;
+[[nodiscard]] constexpr auto max(Lhs a, Rhs b) -> typename detail::extreme_type<Lhs, Rhs, true>::type {
+    using R = typename detail::extreme_type<Lhs, Rhs, true>::type;
+    if constexpr (std::is_same_v<Lhs, Rhs>)
+        return (a < b) ? b : a;
+    else if constexpr (upper_of<Rhs> <= lower_of<Lhs>) // a always wins (a tie keeps a)
+        return R{a, unsafe};
+    else if constexpr (upper_of<Lhs> < lower_of<Rhs>) // b always wins
+        return R{b, unsafe};
+    else
+        return (a < b) ? R{b, unsafe} : R{a, unsafe};
 }
 
 // The exact average, on the refined sum grid.

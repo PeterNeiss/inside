@@ -78,9 +78,17 @@ consteval grid exact_out_grid(const interval& iv, const grid_rational& notch, co
     return notch == 0 ? bounded_continuous(iv, d) : grid{iv, notch};
 }
 
+// The smallest |x|: the lattice's lowest non-negative point when x's range
+// spans 0, else the limit nearer 0.
+template <insidable Mag>
+inline constexpr grid_rational abs_result_lower = (lower_of<Mag> <= 0 && upper_of<Mag> >= 0)  ? sym_floor<Mag>
+                                                  : (abs(lower_of<Mag>) < abs(upper_of<Mag>)) ? abs(lower_of<Mag>)
+                                                                                              : abs(upper_of<Mag>);
+
+// |x| ranges over [smallest |x|, largest |x|].
 template <insidable In>
 using abs_result_t =
-    inside<exact_out_grid({sym_floor<In>, abs_result_upper<In>}, sym_notch<In>, den_bound(grid_of<In>)),
+    inside<exact_out_grid({abs_result_lower<In>, abs_result_upper<In>}, sym_notch<In>, den_bound(grid_of<In>)),
            out_policy<In>>;
 
 // sign(x) ∈ {sign(Lower) … sign(Upper)}, integer notch.
@@ -88,12 +96,8 @@ template <insidable In>
 using sign_result_t = inside<{grid_sign(lower_of<In>), grid_sign(upper_of<In>)}, out_policy<In>>;
 
 // copysign(mag, sgn): |mag| with sgn's possible signs. |mag| ranges over
-// [m_lo, m_hi] (m_lo = 0 when mag's interval spans 0); ±|mag| lies on
+// [m_lo, m_hi] (abs_result_lower, abs_result_upper); ±|mag| lies on
 // sym_notch's lattice (mag's own when it passes through 0).
-template <insidable Mag>
-inline constexpr grid_rational abs_result_lower = (lower_of<Mag> <= 0 && upper_of<Mag> >= 0)  ? sym_floor<Mag>
-                                                  : (abs(lower_of<Mag>) < abs(upper_of<Mag>)) ? abs(lower_of<Mag>)
-                                                                                              : abs(upper_of<Mag>);
 
 template <insidable Mag, insidable Sgn>
 using copysign_result_t = inside<exact_out_grid({lower_of<Sgn> < 0 ? -abs_result_upper<Mag> : abs_result_lower<Mag>,
@@ -391,10 +395,22 @@ inline constexpr bool pown_defined = [] {
 }();
 } // namespace detail
 
+namespace detail {
+// An even power of a base that reaches below 0 squares |x| instead, so the
+// result's range starts at the smallest |x|^E, never below 0.
 template <imax E, insidable In>
-    requires detail::pown_defined<E, In>
+inline constexpr bool pown_via_abs = E > 0 && E % 2 == 0 && lower_of<In> < 0;
+template <imax E, insidable In>
+using pown_base_t = std::conditional_t<pown_via_abs<E, In>, abs_result_t<In>, In>;
+} // namespace detail
+
+template <imax E, insidable In>
+    requires detail::pown_defined<E, detail::pown_base_t<E, In>>
 [[nodiscard]] constexpr auto pown(In x) noexcept {
-    return detail::pown_impl<E>(x);
+    if constexpr (detail::pown_via_abs<E, In>)
+        return detail::pown_impl<E>(abs_into<detail::abs_result_t<In>>(x));
+    else
+        return detail::pown_impl<E>(x);
 }
 
 //---------------------------------------------------------------------------

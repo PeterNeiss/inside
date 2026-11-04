@@ -161,7 +161,7 @@ A domain limit that the input's *type* violates (`log` of a grid that reaches
 
 `abs`, `sign`, `copysign`, `floor`, `ceil`, `round`, `trunc`, `fmod` and
 `pown<E>` need no rounding. Their outputs are deduced exactly (`abs` of
-`[−3, 5]` is `[0, 5]`), they need no rounding mode, and `fmod` is
+`[−3, 5]` is `[0, 5]`, of `[2, 5]` is `[2, 5]`; an even power is never below 0), they need no rounding mode, and `fmod` is
 `std::expected` only when the divisor's grid holds 0, as `%` is.
 
 ## Exact cases are exact
@@ -229,7 +229,7 @@ namespace std::math {
   template<class M, class S> constexpr auto copysign(M mag, S sgn);
   template<class In> constexpr auto floor(In x);             // also ceil, round, trunc: notch 1
   template<class X, class Y> constexpr auto fmod(X x, Y y);  // expected iff y's grid holds 0
-  template<intmax_t E, class In> constexpr auto pown(In x);  // E >= 0: widened at every multiply
+  template<intmax_t E, class In> constexpr auto pown(In x);  // E >= 0: widened at every multiply; even E >= 0
 
   // roots
   template<class In> constexpr auto sqrt(In x);              // expected iff x's grid holds a negative
