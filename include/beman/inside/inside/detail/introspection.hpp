@@ -19,13 +19,15 @@ namespace beman::inside {
 template <grid G = grid{{0, 0}, 0}, policy_flag P = checked>
 struct inside;
 
+namespace detail {
 template <class>
 inline constexpr bool is_inside_v = false;
 template <grid G, policy_flag P>
 inline constexpr bool is_inside_v<inside<G, P>> = true;
+} // namespace detail
 
 template <typename B>
-concept insidable = is_inside_v<std::remove_cvref_t<B>>;
+concept insidable = detail::is_inside_v<std::remove_cvref_t<B>>;
 
 //---------------------------------------------------------------------------
 // Public grid/policy introspection — extract an inside's template parameters.
@@ -102,10 +104,11 @@ template <insidable B>
 inline constexpr rational upper64 = to_rational(upper_of<B>);
 template <insidable B>
 inline constexpr rational notch64 = to_rational(notch_of<B>);
-} // namespace detail
 
+// An inside or a plain number (integer, floating point, rational).
 template <typename N>
-concept numeric = insidable<N> or detail::plain_number<N>;
+concept numeric = insidable<N> or plain_number<N>;
+} // namespace detail
 
 //---------------------------------------------------------------------------
 // Internal plumbing — storage shape, raw/value conversion, dispatch.

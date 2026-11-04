@@ -93,7 +93,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
 
     {
         SCOPED_TRACE("snap selects integer-storage div path");
-        using ui = inside<{0, 100}, snap>;
+        using ui = inside<{0, 100}, round_toward_zero>;
         constexpr ui   a{51}, b{8};
         constexpr auto e = a / b;
         static_assert(!(std::is_same_v<typename decltype(e)::value_type::raw_type, rational>));
@@ -115,14 +115,14 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
         using pos  = inside<{1, 100}>;
         static_assert(div(s100{-7}, pos{2}, round_toward_zero) == -3);
         static_assert(div(s100{7}, pos{2}, round_toward_zero) == 3);
-        static_assert(round_toward_zero == snap);
+        static_assert(round_toward_zero == round_toward_zero);
         using t = inside<{0, 10}, round_toward_zero>;
         static_assert(t{rational{29, 10}} == 2);
     }
 
     {
         SCOPED_TRACE("division by zero -> errc::division_by_zero");
-        using ui = inside<{0, 100}, snap>;
+        using ui = inside<{0, 100}, round_toward_zero>;
         ui a{51}, zero{0};
         ASSERT_FALSE((a / zero).has_value());
         ASSERT_EQ((a / zero).error(), errc::division_by_zero);
@@ -160,7 +160,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
 
     {
         SCOPED_TRACE("signed integer division truncates toward zero");
-        using si = inside<{-100, 100}, snap>;
+        using si = inside<{-100, 100}, round_toward_zero>;
         constexpr si   a{-7}, b{2};
         constexpr auto q = a / b;
         static_assert(*q == -3);
@@ -168,9 +168,9 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
 
     {
         SCOPED_TRACE("divisor grid excluding zero yields a non-expected result");
-        using num   = inside<{0, 100}, snap>;
-        using pos   = inside<{1, 10}, snap>;  // grid excludes zero
-        using spanz = inside<{-5, 10}, snap>; // grid straddles zero
+        using num   = inside<{0, 100}, round_toward_zero>;
+        using pos   = inside<{1, 10}, round_toward_zero>;  // grid excludes zero
+        using spanz = inside<{-5, 10}, round_toward_zero>; // grid straddles zero
 
         constexpr num   a{42};
         constexpr pos   p{3};
@@ -210,7 +210,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
 
 // inside modulo
 TEST(InsideArithmeticTest, inside_modulo) {
-    using ui = inside<{0, 100}, snap>;
+    using ui = inside<{0, 100}, round_toward_zero>;
     constexpr ui a{17}, b{5};
     static_assert(*(a % b) == 2);
 
@@ -222,7 +222,7 @@ TEST(InsideArithmeticTest, inside_modulo) {
     ASSERT_FALSE((a_rt % zero).has_value());
     ASSERT_EQ((a_rt % zero).error(), errc::division_by_zero);
 
-    using si = inside<{-100, 100}, snap>;
+    using si = inside<{-100, 100}, round_toward_zero>;
     constexpr si sa{-17}, sb{5};
     static_assert(*(sa % sb) == -2);
 

@@ -137,10 +137,12 @@ consteval grid_rational parse_grid_literal() {
 namespace beman::inside {
 // A grid number: `inside<{0, 1267650600228229401496703205376_g}>`, or an
 // exact decimal notch `{{0, 1}, 1e-30_g}`. Any size.
+inline namespace literals {
 template <char... Chars>
 consteval detail::grid_rational operator""_g() {
     return detail::parse_grid_literal<Chars...>();
 }
+} // namespace literals
 } // namespace beman::inside
 
 #endif // BEMAN_INSIDE_INSIDE_DETAIL_GRID_RATIONAL_HPP

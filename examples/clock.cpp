@@ -154,7 +154,7 @@ int main() {
 
     // Weeks and day of the week from one division: a week's grid excludes 0,
     // so divmod cannot fail.
-    using ordinal_t         = quantity<si::day, inside<{0, 1'000'000}, snap>>;
+    using ordinal_t         = quantity<si::day, inside<{0, 1'000'000}, round_toward_zero>>;
     const auto [weeks, dow] = divmod(ordinal_t{14003}, just<1> * week);
     std::cout << "day 14003 is " << weeks << " weeks + " << dow << " (0 d = the reference day's weekday)\n";
     if (weeks != 2000 || dow != just<3> * si::day)

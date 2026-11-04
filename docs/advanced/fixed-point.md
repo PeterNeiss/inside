@@ -47,7 +47,7 @@ Any other format is one line: a signed Q1.14 sample is
   analysis. Scaling by a constant point (`x * just<c>`) keeps integer storage
   on a scaled lattice.
 - **Storing back is a policy.** Onto a coarser grid a store truncates
-  (`snap`), rounds (`round_nearest`, …), saturates (`clamp`), wraps, or
+  (`round_toward_zero`), rounds (`round_nearest`, …), saturates (`clamp`), wraps, or
   reports (checked), chosen per type or per store.
 - **Round once.** `mul_into<Out>(a, b)` rounds the exact product straight onto
   `Out`, the fixed-point "multiply, then shift with rounding" in one step,
@@ -69,7 +69,7 @@ out of hot loops ([Storage](storage.md#which-raw-a-grid-gets)).
 ## Which grids are fast
 
 1. **Whole-number grids** (`inside<{0, N}>`, `inside<{a, b}>`): `+ − ×` run on
-   the raw integers, a product is one `imul`, and a division under `snap` is a
+   the raw integers, a product is one `imul`, and a division under a rounding mode is a
    native `a / b`. Byte-wide loops without checks vectorize at the native lane
    count.
 2. **Q-format grids** (notch 1/N, Lower 0): a power-of-two N makes scaling a

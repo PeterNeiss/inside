@@ -169,7 +169,7 @@ TEST(UnanchoredGrid, decode) {
 //---------------------------------------------------------------------------
 // Stores: a rational, a double, an integer, rounded by every mode
 //---------------------------------------------------------------------------
-template <grid G, policy_flag F, policy_flag S = none>
+template <grid G, policy_flag F, policy_flag S = checked>
 void check_store_rational() {
     using B = inside<G, F | S>;
     for (const rational v : sweep(G)) {
@@ -195,7 +195,7 @@ void check_store_all_modes() {
     check_store_rational<G, round_floor>();
     check_store_rational<G, round_ceil>();
     check_store_rational<G, round_half_even>();
-    check_store_rational<G, snap>();
+    check_store_rational<G, round_toward_zero>();
 }
 
 TEST(UnanchoredGrid, store_rounds_in_value_space) {
@@ -212,15 +212,15 @@ TEST(UnanchoredGrid, store_rounds_dyadic_offsets) {
     check_store_rational<kQuarterOff, round_floor>();
     check_store_rational<kQuarterOff, round_ceil>();
     check_store_rational<kQuarterOff, round_half_even>();
-    check_store_rational<kQuarterOff, snap>();
+    check_store_rational<kQuarterOff, round_toward_zero>();
     check_store_rational<kSymOff, round_nearest>();
-    check_store_rational<kSymOff, snap>();
+    check_store_rational<kSymOff, round_toward_zero>();
     check_store_rational<kHalfOff, round_half_even>();
 }
 
 TEST(UnanchoredGrid, store_rounds_with_exact_storage) {
     check_store_rational<kQuarterOff, round_nearest>();
-    check_store_rational<kSymOff, snap>();
+    check_store_rational<kSymOff, round_toward_zero>();
     check_store_rational<kThirdOff, round_half_even>();
 }
 
@@ -256,7 +256,7 @@ void check_convert_all_modes() {
     check_convert<To, round_floor, From>();
     check_convert<To, round_ceil, From>();
     check_convert<To, round_half_even, From>();
-    check_convert<To, snap, From>();
+    check_convert<To, round_toward_zero, From>();
 }
 
 TEST(UnanchoredGrid, convert) {
@@ -464,8 +464,8 @@ TEST(UnanchoredGrid, range_limits_random) {
     // as<imax>() rounds by the policy's mode
     EXPECT_EQ((inside<kHalfOff, round_nearest>{2.5}.as<imax>()), 3);
     EXPECT_EQ((inside<kHalfOff, round_floor>{2.5}.as<imax>()), 2);
-    EXPECT_EQ((inside<kHalfOff, snap>{2.5}.as<imax>()), 2);
-    EXPECT_EQ((inside<kQuarterOff, snap>{-1.75}.as<imax>()), -1);
+    EXPECT_EQ((inside<kHalfOff, round_toward_zero>{2.5}.as<imax>()), 2);
+    EXPECT_EQ((inside<kQuarterOff, round_toward_zero>{-1.75}.as<imax>()), -1);
     EXPECT_EQ((inside<kHalfOff, round_half_even>{2.5}.as<imax>()), 2);
     EXPECT_EQ((inside<kHalfOff, round_half_even>{3.5}.as<imax>()), 4);
     const imax i = inside<{{0, 4}, per<4>}, round_ceil>{1.25}.as<imax>();
@@ -571,7 +571,7 @@ TEST(UnanchoredGrid, math_rounds_correctly) {
     check_math_mode<round_floor>();
     check_math_mode<round_ceil>();
     check_math_mode<round_half_even>();
-    check_math_mode<snap>();
+    check_math_mode<round_toward_zero>();
 }
 
 TEST(UnanchoredGrid, math) {

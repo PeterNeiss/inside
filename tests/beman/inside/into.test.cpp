@@ -117,24 +117,24 @@ TEST(IntoTest, native_paths_agree_with_the_wide_path) {
     using wrap_out  = inside<{{-3, 3}, per<4>}, wrap | round_half_even>;
     // Both native paths are taken: the product inside, and the rational
     // product where the store would reject the product type at compile time.
-    static_assert(detail::native_product<round_out, none, int_g, quart>);
-    static_assert(detail::native_product<clamp_out, none, int_g, int_g>);
-    static_assert(!detail::native_product<check_out, none, int_g, quart>);
+    static_assert(detail::native_product<round_out, checked, int_g, quart>);
+    static_assert(detail::native_product<clamp_out, checked, int_g, int_g>);
+    static_assert(!detail::native_product<check_out, checked, int_g, quart>);
     static_assert(detail::rational_operands<int_g, quart>);
-    expect_mul_div_agree<round_out, none, int_g, quart>();
-    expect_mul_div_agree<round_out, none, quart, thirds>();
-    expect_mul_div_agree<floor_out, none, thirds, int_g>();
-    expect_mul_div_agree<floor_out, none, neg, quart>();
-    expect_mul_div_agree<clamp_out, none, int_g, int_g>();
-    expect_mul_div_agree<clamp_out, none, quart, thirds>();
-    expect_mul_div_agree<check_out, none, int_g, quart>();
-    expect_mul_div_agree<check_out, none, thirds, thirds>();
+    expect_mul_div_agree<round_out, checked, int_g, quart>();
+    expect_mul_div_agree<round_out, checked, quart, thirds>();
+    expect_mul_div_agree<floor_out, checked, thirds, int_g>();
+    expect_mul_div_agree<floor_out, checked, neg, quart>();
+    expect_mul_div_agree<clamp_out, checked, int_g, int_g>();
+    expect_mul_div_agree<clamp_out, checked, quart, thirds>();
+    expect_mul_div_agree<check_out, checked, int_g, quart>();
+    expect_mul_div_agree<check_out, checked, thirds, thirds>();
     expect_mul_div_agree<check_out, round_nearest, quart, int_g>();
     expect_mul_div_agree<int_g, round_floor, quart, quart>();
     // div_into's unreduced quotient (Q-format targets): wrap, and a floor
     // target fed by unanchored and negative operands.
     static_assert(detail::unreduced_store<wrap_out> && detail::unreduced_store<floor_out>);
-    expect_mul_div_agree<wrap_out, none, int_g, quart>();
-    expect_mul_div_agree<wrap_out, none, thirds, neg>();
+    expect_mul_div_agree<wrap_out, checked, int_g, quart>();
+    expect_mul_div_agree<wrap_out, checked, thirds, neg>();
     expect_mul_div_agree<floor_out, round_ceil, neg, thirds>();
 }

@@ -61,7 +61,7 @@ constexpr Target dispatch_new(const C& src, P& policy, std::tuple<As...>& action
 // policy_buffer — the rvalue-receiver sibling of policy_ref. `policy<F>()`
 // on a *temporary* return this instead: it OWNS the inside by value (the temporary
 // is moved in), so the snapped value can be returned/stored without dangling —
-// `auto square(small n){ return (n*n).policy<snap>(); }` is safe. Value read-out only
+// `auto square(small n){ return (n*n).policy<round_toward_zero>(); }` is safe. Value read-out only
 // (no operator=: assigning into a throwaway is meaningless). Same constrained
 // conversion as policy_ref, so it stays SFINAE-friendly.
 template <insidable B, typename P, typename... As>
@@ -90,7 +90,7 @@ struct policy_ref {
 
     // Stores go through dispatch_assign under this ref's Policy and actions:
     // into Ref for `operator=`, into a fresh target for the conversion below,
-    // so a one-shot snap can be read out as a value (`(a * b).policy<snap>()`).
+    // so a one-shot snap can be read out as a value (`(a * b).policy<round_toward_zero>()`).
     template <numeric C>
     constexpr B& operator=(const C& other) {
         return dispatch_assign(Ref, other, Policy, Actions);
@@ -99,7 +99,7 @@ struct policy_ref {
     // Value read-out: a one-shot policy ref converts to any inside the assignment
     // could satisfy, applying the target's own policy (range) plus this ref's
     // carried flags (notch/rounding) via uses_flag's merge. Makes
-    // `Target t = (a * b).policy<snap>();` / `return (a * b).policy<snap>();` compile.
+    // `Target t = (a * b).policy<round_toward_zero>();` / `return (a * b).policy<round_toward_zero>();` compile.
     // Constrained so the proxy stays SFINAE-friendly (no over-broad convertibility).
     template <insidable Target>
         requires inside_assignable<Target, B, flags_of<Target> | flags_of<P>>

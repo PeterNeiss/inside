@@ -41,6 +41,9 @@ Every number in a grid, and every constant in an expression, is exact:
 | `0.1_r` | the exact decimal 1/10, as a `rational` |
 | `5_ins` | the integer 5, as an inside of one point |
 
+The literals `_ins`, `_r` and `_g` are also in `beman::inside::literals`:
+`using namespace beman::inside::literals;` brings only them.
+
 `0.1` is not 1/10 in binary, so a grid or a constant that needs 1/10 says
 `0.1_r`, `per<10>` or `just<1, 10>`. A value at run time can be a `double`:
 `inside<{{0, 1}, per<10>}, round_nearest>{0.1}` rounds it to the nearest notch,

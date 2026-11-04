@@ -205,7 +205,7 @@ TEST(CoverageCornersTest, compound_and_with_a_snap_inside_rhs_runtime) {
     // Integer division/modulo now flow through the insidable path; `snap`
     // gives the same C++ trunc-toward-zero / dividend-signed-remainder semantics
     // the old raw-int compound assigns had.
-    using sb = inside<{-100, 100}, snap>;
+    using sb = inside<{-100, 100}, round_toward_zero>;
 
     sb a{20};
     a /= sb{3}; // integer division, truncates toward zero
@@ -307,7 +307,7 @@ TEST(CoverageCornersTest, clamp_policy_truncates_an_in_range_off_notch_fractiona
     using strict = inside<{{0, 10}, per<2>}, clamp>;
     ASSERT_EQ(strict::try_make(0.3).error(), errc::rounding_error);
 
-    using b = inside<{{0, 10}, per<2>}, clamp | snap>; // notch 1/2
+    using b = inside<{{0, 10}, per<2>}, clamp | round_toward_zero>; // notch 1/2
     b x{0};
     x = 0.3; // in range, off the 1/2 grid → truncates to 0
     ASSERT_EQ(x, 0);
@@ -343,7 +343,7 @@ TEST(CoverageCornersTest, cross_grid_conversion_of_a_negative_off_notch_value) {
     // so the rational store path runs; the negative value drives the
     // negative-denominator branch.
     using src_t = inside<{{-4, 4}, per<2>}>;
-    using dst_t = inside<{{-4, 4}, per<3>}, snap>;
+    using dst_t = inside<{{-4, 4}, per<3>}, round_toward_zero>;
 
     src_t s{-1.5};
     dst_t d = s;

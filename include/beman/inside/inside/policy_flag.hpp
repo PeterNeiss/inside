@@ -12,8 +12,8 @@
 
 namespace beman::inside {
 //---------------------------------------------------------------------------
-// policy_flag — the policy bits of inside<G, P> (none, snap and the
-// rounding modes, clamp, wrap, checked, unsafe),
+// policy_flag — the policy bits of inside<G, P> (the rounding modes, clamp,
+// wrap, checked, unsafe),
 // has_flag / is_checked, the rounding precedence (rounding_of), the hook
 // factories on_clamp / on_wrap / on_error with their is_*_action traits, and
 // the flags each hook implies.
@@ -47,26 +47,30 @@ concept flag_like = is_flag_v<std::remove_cvref_t<T>>;
 // proven statically gets a runtime check that throws (or reports through an
 // errc& parameter), unless `unsafe` appears: in the type, an operand, or the
 // call's policy.
-inline constexpr detail::flag<0ull> none{};
+namespace detail {
+// No bits: the default of a template parameter that adds flags.
+inline constexpr flag<0ull> none{};
 // `snap` — permission: an off-notch value is rounded to fit the grid instead
 // of rejected. Without it, an off-notch value is a compile/runtime error and
 // div/mod fall through to exact-rational results. Every round_* mode carries
-// it; on its own it rounds toward zero.
-inline constexpr detail::flag<1ull << 4> snap{};
+// it; on its own it is round_toward_zero, the public name.
+inline constexpr flag<1ull << 4> snap{};
+} // namespace detail
+
 // `round_toward_zero` — the snap bit alone: truncate toward zero (IEEE 754
 // roundTowardZero). Last in dispatch, after every explicit mode.
-inline constexpr detail::flag<snap>               round_toward_zero{};
-inline constexpr detail::flag<(1ull << 5) | snap> round_nearest{};
+inline constexpr detail::flag<detail::snap>               round_toward_zero{};
+inline constexpr detail::flag<(1ull << 5) | detail::snap> round_nearest{};
 // Rounding modes each pick a unique bit and OR in `snap`. Conceptually
 // exclusive; combining two is allowed but dispatch (storage.hpp) picks the
 // first match: floor → ceil → half_even → nearest → toward zero (rounding_of).
-inline constexpr detail::flag<(1ull << 6) | snap> round_floor{};
-inline constexpr detail::flag<(1ull << 7) | snap> round_ceil{};
-inline constexpr detail::flag<(1ull << 8) | snap> round_half_even{};
+inline constexpr detail::flag<(1ull << 6) | detail::snap> round_floor{};
+inline constexpr detail::flag<(1ull << 7) | detail::snap> round_ceil{};
+inline constexpr detail::flag<(1ull << 8) | detail::snap> round_half_even{};
 
 // runtime checking — the default policy's name, no bits: every policy without
-// `unsafe` checks (see is_checked), so inside<G>, inside<G, none> and
-// inside<G, checked> are one type.
+// `unsafe` checks (see is_checked), so inside<G> and inside<G, checked> are
+// one type.
 inline constexpr detail::flag<0ull> checked{};
 
 // unary — mutually exclusive
@@ -85,7 +89,7 @@ inline constexpr policy_flag unsafe_marker{1ull << 36};
 // and `end(t)` names its past-the-end value. Results never carry it.
 inline constexpr policy_flag cursor_marker{1ull << 50};
 } // namespace detail
-inline constexpr detail::flag<detail::unsafe_marker | snap> unsafe{};
+inline constexpr detail::flag<detail::unsafe_marker | detail::snap> unsafe{};
 
 namespace detail {
 // The bits of the four explicit rounding modes (each also carries snap).
@@ -130,6 +134,7 @@ inline constexpr policy_flag known_bits = mode_bits | snap | clamp | wrap | unsa
 //---------------------------------------------------------------------------
 [[nodiscard]] constexpr bool has_flag(policy_flag set, policy_flag flag) noexcept { return (set & flag) == flag; }
 
+namespace detail {
 [[nodiscard]] constexpr bool has_any_flag(policy_flag set, policy_flag flags) noexcept {
     return (set & flags) != none;
 }
@@ -138,13 +143,14 @@ inline constexpr policy_flag known_bits = mode_bits | snap | clamp | wrap | unsa
 // `checked` (the default policy's own bit, so `x.policy<unsafe>()` opts a
 // default inside out). `inside<G, round_nearest>` and `inside<G, clamp>` are
 // checked, exactly like the default `inside<G>`.
-[[nodiscard]] constexpr bool is_checked(policy_flag set) noexcept { return !has_flag(set, detail::unsafe_marker); }
+[[nodiscard]] constexpr bool is_checked(policy_flag set) noexcept { return !has_flag(set, unsafe_marker); }
 
 // Whether an out-of-range value does anything under a flag set: a clamp or
 // wrap bit stores it, a checked range reports it. False under `unsafe`.
 [[nodiscard]] constexpr bool range_handled(policy_flag set) noexcept {
     return has_any_flag(set, clamp | wrap) || is_checked(set);
 }
+} // namespace detail
 
 namespace detail {
 // The rounding mode a flag set selects — the ONE precedence every rounding
@@ -166,6 +172,7 @@ namespace detail {
 }
 } // namespace detail
 
+namespace detail {
 //---------------------------------------------------------------------------
 // no_action — zero-overhead default: a store without a hook
 //---------------------------------------------------------------------------
@@ -190,7 +197,7 @@ struct on_error_t {
 };
 
 //---------------------------------------------------------------------------
-// CTAD-style factories — drop the on_error_t{lambda} brace-init.
+// Factories behind x.on_clamp(f), x.on_wrap(f), x.on_error(f).
 //---------------------------------------------------------------------------
 template <typename F>
 [[nodiscard]] constexpr auto on_clamp(F&& fn) {
@@ -205,7 +212,6 @@ template <typename F>
     return on_error_t<std::remove_cvref_t<F>>{std::forward<F>(fn)};
 }
 
-namespace detail {
 // Action detection: the `is_*_action` trait is the primary detector (the
 // pack helpers below take it as a template-template parameter); the concept
 // derives from it and strips cvref so the ref form matches the value form.

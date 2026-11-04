@@ -2,7 +2,7 @@
 // Division: exact by default, integer division on request, and std::expected
 // only when the divisor's grid holds zero.
 //   - `a / b` is the exact rational quotient.
-//   - `snap` (per call, `div(a, b, round_toward_zero)`, or in the type) divides natively;
+//   - a rounding mode (per call, `div(a, b, round_toward_zero)`, or in the type) divides natively;
 //     a rounding flag picks the direction (`round_nearest`, `round_floor`, ...).
 //   - A divisor grid that holds 0 makes the result std::expected<inside, errc>
 //     (errc::division_by_zero); a zero-free divisor gives a plain value.

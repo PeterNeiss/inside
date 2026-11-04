@@ -896,7 +896,7 @@ struct assignment<L, R> {
             // path for the store/rounding, but re-type its carry `q` (an inside on the
             // rational source's carry grid) for R before handing it to the user action.
             assignment<L, rational>::apply_wrap(
-                lhs, as_rational(rhs), policy, beman::inside::on_wrap([&](auto& self, const auto& q) {
+                lhs, as_rational(rhs), policy, beman::inside::detail::on_wrap([&](auto& self, const auto& q) {
                     action.Fn(self, make_wrap_carry<L, R>(to_value(q)));
                 }));
         } else {
@@ -1006,7 +1006,7 @@ struct assignment<L, R> {
         static_assert(uses_flag<L, P, wrap> || uses_flag<L, P, clamp> || not excludes(interval_of<L>, interval_of<R>),
                       "rhs interval lies entirely outside lhs interval and the policy cannot bring it into range");
         static_assert(notches_compatible<L, R> || uses_flag<L, P, snap>,
-                      "incompatible notches: use policy<snap>() or a rounding policy to allow rounding");
+                      "incompatible notches: use policy<round_toward_zero>() or a rounding policy to allow rounding");
     }
 
     template <typename P, typename A>

@@ -65,7 +65,7 @@ void modes(rng_t& g, int n) {
     store<inside<G, round_floor>>(g, n, "floor", false, Ties);
     store<inside<G, round_ceil>>(g, n, "ceil", false, Ties);
     store<inside<G, round_half_even>>(g, n, "even", false, Ties);
-    store<inside<G, snap>>(g, n, "trunc", false, Ties);
+    store<inside<G, round_toward_zero>>(g, n, "trunc", false, Ties);
     store<inside<G, round_nearest | clamp>>(g, n, "nearest", true, Ties);
     store<inside<G, round_floor | clamp>>(g, n, "floor", true, Ties);
 }

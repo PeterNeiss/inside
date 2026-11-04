@@ -91,7 +91,7 @@ constexpr std::optional<lossy_result> exact_lossy_of(A value) noexcept {
 }
 } // namespace detail
 
-template <insidable B, numeric A>
+template <insidable B, detail::numeric A>
 [[nodiscard]] constexpr bool conversion_overflows(A value) noexcept {
     if constexpr (std::floating_point<A>)
         if (!detail::is_finite(value))
@@ -112,7 +112,7 @@ template <insidable B, numeric A>
     }
 }
 
-template <insidable B, numeric A>
+template <insidable B, detail::numeric A>
 [[nodiscard]] constexpr bool conversion_rounds(A value) noexcept {
     if constexpr (std::floating_point<A>)
         if (!detail::is_finite(value))
@@ -149,7 +149,7 @@ template <insidable B, numeric A>
     }
 }
 
-template <insidable B, numeric A>
+template <insidable B, detail::numeric A>
 [[nodiscard]] constexpr bool conversion_loses(A value) noexcept {
     return conversion_overflows<B>(value) || conversion_rounds<B>(value);
 }

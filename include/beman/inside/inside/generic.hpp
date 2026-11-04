@@ -47,12 +47,14 @@ consteval grid_rational notch_or_zero() {
 // notch ratio or snap set (else R's notch doesn't divide L's; opt into
 // rounding). Named `inside_assignable` to avoid shadowing std::assignable_from.
 template <typename L, typename R, policy_flag P = checked>
-concept inside_assignable = numeric<R> && detail::assign_intervals_ok<L, R, P> && detail::assign_notch_ok<L, R, P>;
+concept inside_assignable =
+    detail::numeric<R> && detail::assign_intervals_ok<L, R, P> && detail::assign_notch_ok<L, R, P>;
 
 // Diagnostic helper: instantiating `inside_assignable_why<L,R,P>` fires a named
 // static_assert per failed clause, with the two grids' intervals and notches.
 // Backs the public `explain_assignable` probe below; inside's deleted stores
 // (inside/detail/core.hpp) name only the clause, as a deletion's reason is a fixed string.
+namespace detail {
 template <typename L, typename R, policy_flag P = checked>
 struct inside_assignable_why {
     // Collapse each clause to a plain bool *before* the static_assert. Asserting on
@@ -71,17 +73,19 @@ struct inside_assignable_why {
                                "(not wrap/clamp) cannot bring it into range — assignment can never succeed (lhs ["
                             << interval_of<L>.Lower << ", " << interval_of<L>.Upper << "], rhs ["
                             << interval_of<R>.Lower << ", " << interval_of<R>.Upper << "])");
-    static_assert(notch_ok,
-                  detail::diag_text{} << "inside_assignable: incompatible notches — use `policy<snap>()` or a "
-                                         "rounding policy to allow rounding (lhs notch "
-                                      << notch_of<L> << ", rhs notch " << detail::notch_or_zero<R>() << ")");
+    static_assert(
+        notch_ok,
+        detail::diag_text{} << "inside_assignable: incompatible notches — use `policy<round_toward_zero>()` or a "
+                               "rounding policy to allow rounding (lhs notch "
+                            << notch_of<L> << ", rhs notch " << detail::notch_or_zero<R>() << ")");
     static constexpr bool value = inside_assignable<L, R, P>;
 };
+} // namespace detail
 
 // Public manual probe: `static_assert(beman::inside::explain_assignable<DstInside, decltype(src)>);`
 // emits the named per-clause reasons with the grids' numbers.
 template <typename Dst, typename Src, policy_flag P = flags_of<Dst>>
-inline constexpr bool explain_assignable = inside_assignable_why<Dst, std::remove_cvref_t<Src>, P>::value;
+inline constexpr bool explain_assignable = detail::inside_assignable_why<Dst, std::remove_cvref_t<Src>, P>::value;
 } // namespace beman::inside
 
 #endif // BEMAN_INSIDE_INSIDE_GENERIC_HPP

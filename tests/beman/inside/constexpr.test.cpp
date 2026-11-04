@@ -252,7 +252,7 @@ TEST(ConstexprTest, constexpr_division_returns_exact_value) {
     static_assert(q == *(51_r / 8));
 
     // snap selects native integer division — result has integer raw
-    using vi = inside<{0, 100}, snap>;
+    using vi = inside<{0, 100}, round_toward_zero>;
     constexpr vi   p{51}, r{8};
     constexpr auto qi = p / r;
     static_assert(!(std::is_same_v<typename decltype(qi)::value_type::raw_type, rational>));
@@ -261,7 +261,7 @@ TEST(ConstexprTest, constexpr_division_returns_exact_value) {
 
 // constexpr: modulo under snap
 TEST(ConstexprTest, constexpr_modulo_under_snap) {
-    using v = inside<{0, 100}, snap>;
+    using v = inside<{0, 100}, round_toward_zero>;
     constexpr v    a{17}, b{5};
     constexpr auto m = a % b;
     static_assert(m.has_value());
@@ -453,7 +453,7 @@ TEST(ConstexprTest, constexpr_implied_flags) {
 // constexpr: is_policy_v / uses_error_ref
 TEST(ConstexprTest, constexpr_ispolicy_useserrorref) {
     static_assert(is_policy_v<call_policy<checked>>);
-    static_assert(is_policy_v<call_policy<none, error_ref>>);
+    static_assert(is_policy_v<call_policy<checked, error_ref>>);
     static_assert(!(is_policy_v<int>));
 
     static_assert(!(uses_error_ref<call_policy<checked>>));

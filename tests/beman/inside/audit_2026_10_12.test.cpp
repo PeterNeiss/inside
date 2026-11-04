@@ -163,10 +163,10 @@ TEST(Audit20261012, rational_ops_reduce_before_overflow) {
 // INT64_MIN / -1 reaches 2^63: the quotient grid's endpoint wrapped in imax.
 TEST(Audit20261012, quotient_grid_reaches_2_pow_63) {
     static_assert([] {
-        inside<{i64_min, 0}, snap> a{i64_min};
-        inside<{-2, -1}>           b{-1};
-        auto                       q = a / b;
-        using Q                      = decltype(q);
+        inside<{i64_min, 0}, round_toward_zero> a{i64_min};
+        inside<{-2, -1}>                        b{-1};
+        auto                                    q = a / b;
+        using Q                                   = decltype(q);
         return rational(q) == rational{umax{1} << 63} && upper_of<Q> == rational{umax{1} << 63};
     }());
 }

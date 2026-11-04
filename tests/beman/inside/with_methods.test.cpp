@@ -111,34 +111,34 @@ TEST(WithMethodsTest, with_wrap_inside_rhs) {
 }
 
 //---------------------------------------------------------------------------
-// policy<snap> (truncates toward zero)
+// policy<round_toward_zero> (truncates toward zero)
 //---------------------------------------------------------------------------
-// policy<snap>: inside rhs with finer notch
+// policy<round_toward_zero>: inside rhs with finer notch
 TEST(WithMethodsTest, with_snap_inside_rhs_with_finer_notch) {
     using coarse = inside<{{0, 10}, 2}>;
     using fine   = inside<{{0, 10}, 1}>;
 
     coarse c{0};
-    c.policy<snap>() = fine{3};
+    c.policy<round_toward_zero>() = fine{3};
     ASSERT_EQ(c, 2); // 3 truncates toward zero -> 2
-    c.policy<snap>() = fine{4};
+    c.policy<round_toward_zero>() = fine{4};
     ASSERT_EQ(c, 4); // exact
-    c.policy<snap>() = fine{5};
+    c.policy<round_toward_zero>() = fine{5};
     ASSERT_EQ(c, 4); // 5 -> 4
-    c.policy<snap>() = fine{7};
+    c.policy<round_toward_zero>() = fine{7};
     ASSERT_EQ(c, 6); // 7 -> 6
 }
 
-// policy<snap>: float rhs not on notch
+// policy<round_toward_zero>: float rhs not on notch
 TEST(WithMethodsTest, with_snap_float_rhs_not_on_notch) {
     using coarse = inside<{{0, 10}, 2}>;
     coarse c{0};
 
-    c.policy<snap>() = 3.0;
+    c.policy<round_toward_zero>() = 3.0;
     ASSERT_EQ(c, 2); // 3 truncates to 2
-    c.policy<snap>() = 3.99;
+    c.policy<round_toward_zero>() = 3.99;
     ASSERT_EQ(c, 2);
-    c.policy<snap>() = 4.0;
+    c.policy<round_toward_zero>() = 4.0;
     ASSERT_EQ(c, 4); // exact
 }
 
@@ -182,14 +182,14 @@ TEST(WithMethodsTest, with_snap_round_nearest_inside_rhs_incompatible_notches) {
 }
 
 //---------------------------------------------------------------------------
-// policy<snap> vs policy<round_nearest> divergence
+// policy<round_toward_zero> vs policy<round_nearest> divergence
 //---------------------------------------------------------------------------
-// policy<snap> vs policy<round_nearest> disagree on halfway
+// policy<round_toward_zero> vs policy<round_nearest> disagree on halfway
 TEST(WithMethodsTest, with_snap_vs_with_snap_round_nearest_disagree_on_halfway) {
     using coarse = inside<{{0, 10}, 2}>;
     coarse c{0};
 
-    c.policy<snap>() = 3.0;
+    c.policy<round_toward_zero>() = 3.0;
     ASSERT_EQ(c, 2); // toward zero
     c.policy<round_nearest>() = 3.0;
     ASSERT_EQ(c, 4); // half away from zero
@@ -206,9 +206,9 @@ TEST(WithMethodsTest, with_snap_mode_selects_the_rounding_mode) {
     coarse c{0};
 
     // +3 is halfway between 2 and 4.
-    c.policy<snap>() = 3.0;
+    c.policy<round_toward_zero>() = 3.0;
     ASSERT_EQ(c, 2); // default == truncate toward zero
-    c.policy<snap>() = 3.0;
+    c.policy<round_toward_zero>() = 3.0;
     ASSERT_EQ(c, 2); // explicit snap == the default
     c.policy<round_floor>() = 3.0;
     ASSERT_EQ(c, 2); // toward −∞
@@ -220,7 +220,7 @@ TEST(WithMethodsTest, with_snap_mode_selects_the_rounding_mode) {
     ASSERT_EQ(c, 4); // tie → even quotient
 
     // −3 is halfway between −4 and −2: floor / ceil / truncate now disagree.
-    c.policy<snap>() = -3.0;
+    c.policy<round_toward_zero>() = -3.0;
     ASSERT_EQ(c, -2); // truncate toward zero
     c.policy<round_floor>() = -3.0;
     ASSERT_EQ(c, -4); // toward −∞
@@ -232,38 +232,38 @@ TEST(WithMethodsTest, with_snap_mode_selects_the_rounding_mode) {
     ASSERT_EQ(c, -4); // tie → even quotient
 }
 
-// A snapped temporary returned by value: policy<snap>() on an rvalue yields a
+// A snapped temporary returned by value: policy<round_toward_zero>() on an rvalue yields a
 // value-owning policy_buffer (moves the product in), so this is safe — the buffer
 // outlives the `num*num` temporary. Defined at namespace scope so the temporary is
 // truly gone by the time the caller reads the result.
 namespace {
 using small_t = beman::inside::inside<{{0, 10}, per<10>}, clamp>;
-auto square(small_t n) { return (n * n).policy<snap>(); }
+auto square(small_t n) { return (n * n).policy<round_toward_zero>(); }
 } // namespace
 
 //---------------------------------------------------------------------------
-// policy<snap>() as a value. On an lvalue it converts through a (reference) policy_ref;
+// policy<round_toward_zero>() as a value. On an lvalue it converts through a (reference) policy_ref;
 // on a *temporary* it returns a value-owning policy_buffer, so the snapped result can
 // be returned/stored without dangling. Either way the target's own policy (clamp) and
 // the proxy's snap merge via uses_flag.
 //---------------------------------------------------------------------------
-// policy<snap>() proxy converts to a value (RHS / return position)
+// policy<round_toward_zero>() proxy converts to a value (RHS / return position)
 TEST(WithMethodsTest, with_snap_proxy_converts_to_a_value_rhs_return_position) {
     using small = small_t;
     small a     = 2.5; // exact (dyadic) on the 1/10 grid
 
     // a*a is 6.25 on the finer 1/100 grid — off small's notch. These compile because
     // the proxy converts to `small`, applying clamp (range) + snap (notch).
-    small trunc   = (a * a).policy<snap>();          // 6.25 → 6.2 (truncate)
-    small nearest = (a * a).policy<round_nearest>(); // 6.25 → 6.3 (nearest)
+    small trunc   = (a * a).policy<round_toward_zero>(); // 6.25 → 6.2 (truncate)
+    small nearest = (a * a).policy<round_nearest>();     // 6.25 → 6.3 (nearest)
     ASSERT_EQ(trunc, 6.2_r);
     ASSERT_EQ(nearest, 6.3_r);
 
     // Out-of-range still clamps, via small's own policy merged in at conversion.
     small four = 4;
-    ASSERT_EQ(small((four * four).policy<snap>()), 10); // 16 → clamp → 10
+    ASSERT_EQ(small((four * four).policy<round_toward_zero>()), 10); // 16 → clamp → 10
 
-    // Safety: `auto square(){ return (n*n).policy<snap>(); }` returns the value-owning
+    // Safety: `auto square(){ return (n*n).policy<round_toward_zero>(); }` returns the value-owning
     // buffer; converting it to `small` after the temporary is gone is well-defined.
     small from_temp = square(small{2.5});
     small sq        = square(small{4});
@@ -274,16 +274,17 @@ TEST(WithMethodsTest, with_snap_proxy_converts_to_a_value_rhs_return_position) {
     // rvalue → policy_buffer (owns the value). Both convert to small; neither to a
     // target whose interval the value can never enter (conversion stays constrained).
     using big = decltype(small{} * small{});
-    static_assert(std::is_same_v<decltype(std::declval<big&>().policy<snap>()),
-                                 policy_ref<big, call_policy<flags_of<big> | snap>>>);
-    static_assert(std::is_same_v<decltype(std::declval<big>().policy<snap>()),
-                                 policy_buffer<big, call_policy<flags_of<big> | snap>>>);
-    static_assert(std::is_convertible_v<decltype(std::declval<big&>().policy<snap>()), small>);
-    static_assert(std::is_convertible_v<decltype(std::declval<big>().policy<snap>()), small>);
+    static_assert(std::is_same_v<decltype(std::declval<big&>().policy<round_toward_zero>()),
+                                 policy_ref<big, call_policy<flags_of<big> | round_toward_zero>>>);
+    static_assert(std::is_same_v<decltype(std::declval<big>().policy<round_toward_zero>()),
+                                 policy_buffer<big, call_policy<flags_of<big> | round_toward_zero>>>);
+    static_assert(std::is_convertible_v<decltype(std::declval<big&>().policy<round_toward_zero>()), small>);
+    static_assert(std::is_convertible_v<decltype(std::declval<big>().policy<round_toward_zero>()), small>);
     // big keeps small's clamp (a result keeps its operands' shared policy), so it
     // clamps into any target; a checked product stays constrained.
-    static_assert(std::is_convertible_v<decltype(std::declval<big&>().policy<snap>()), inside<{{1000, 2000}, 1}>>);
-    using checked_big = decltype(inside<{0, 10}>{} * inside<{0, 10}>{});
     static_assert(
-        !std::is_convertible_v<decltype(std::declval<checked_big&>().policy<snap>()), inside<{{1000, 2000}, 1}>>);
+        std::is_convertible_v<decltype(std::declval<big&>().policy<round_toward_zero>()), inside<{{1000, 2000}, 1}>>);
+    using checked_big = decltype(inside<{0, 10}>{} * inside<{0, 10}>{});
+    static_assert(!std::is_convertible_v<decltype(std::declval<checked_big&>().policy<round_toward_zero>()),
+                                         inside<{{1000, 2000}, 1}>>);
 }

@@ -64,8 +64,8 @@ int main() {
     std::cout << "  policy<round_floor>()     = 3.7  -> " << q << "\n";
     q.policy<round_ceil>() = 3.2;
     std::cout << "  policy<round_ceil>()      = 3.2  -> " << q << "\n";
-    q.policy<snap>() = 9.9;
-    std::cout << "  policy<snap>()            = 9.9  -> " << q << "\n";
+    q.policy<round_toward_zero>() = 9.9;
+    std::cout << "  policy<round_toward_zero>()            = 9.9  -> " << q << "\n";
     q.policy<round_half_even>() = 2.5;
     std::cout << "  policy<round_half_even>() = 2.5  -> " << q << "\n";
 

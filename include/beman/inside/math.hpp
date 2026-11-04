@@ -288,6 +288,7 @@ inline constexpr bool fmod_int_fast = [] {
 }();
 } // namespace detail
 
+namespace detail {
 // x mod y = x − trunc(x/y)·y (truncated division, matching std::fmod).
 // Result has the sign of x. Pre: y != 0 (fmod_into checks it).
 template <insidable Out, insidable InX, insidable InY>
@@ -329,17 +330,18 @@ template <insidable Out, insidable InX, insidable InY>
         return exact();
     }
 }
+} // namespace detail
 
 // Like `/`: a plain Out when y's grid excludes 0, else expected<Out, errc>
 // with division_by_zero for y == 0.
 template <insidable Out, insidable InX, insidable InY>
 [[nodiscard]] constexpr auto fmod_into(InX x, InY y) {
     if constexpr (beman::inside::detail::divisor_excludes_zero<InY>)
-        return fmod_nonzero<Out>(x, y);
+        return detail::fmod_nonzero<Out>(x, y);
     else {
         if (y == 0)
             return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
-        return std::expected<Out, errc>{fmod_nonzero<Out>(x, y)};
+        return std::expected<Out, errc>{detail::fmod_nonzero<Out>(x, y)};
     }
 }
 
@@ -470,52 +472,52 @@ using unit_amplitude = inside<{{rational{-1}, rational{1}}, per<K>}, round_neare
 //---------------------------------------------------------------------------
 // The transcendentals: the adaptive engine.
 //---------------------------------------------------------------------------
-using adaptive::acos;
-using adaptive::acos_into;
-using adaptive::acosh;
-using adaptive::acosh_into;
-using adaptive::asin;
-using adaptive::asin_into;
-using adaptive::asinh;
-using adaptive::asinh_into;
-using adaptive::atan;
-using adaptive::atan2;
-using adaptive::atan2_into;
-using adaptive::atan_into;
-using adaptive::atanh;
-using adaptive::atanh_into;
-using adaptive::cbrt;
-using adaptive::cbrt_into;
-using adaptive::cos;
-using adaptive::cos_into;
-using adaptive::cosh;
-using adaptive::cosh_into;
-using adaptive::exp;
-using adaptive::exp2;
-using adaptive::exp2_into;
-using adaptive::exp_into;
-using adaptive::hypot;
-using adaptive::hypot_into;
-using adaptive::log;
-using adaptive::log10;
-using adaptive::log10_into;
-using adaptive::log2;
-using adaptive::log2_into;
-using adaptive::log_into;
-using adaptive::pow;
-using adaptive::pow_base;
-using adaptive::pow_base_into;
-using adaptive::pow_into;
-using adaptive::sin;
-using adaptive::sin_into;
-using adaptive::sinh;
-using adaptive::sinh_into;
-using adaptive::sqrt;
-using adaptive::sqrt_into;
-using adaptive::tan;
-using adaptive::tan_into;
-using adaptive::tanh;
-using adaptive::tanh_into;
+using detail::entry::acos;
+using detail::entry::acos_into;
+using detail::entry::acosh;
+using detail::entry::acosh_into;
+using detail::entry::asin;
+using detail::entry::asin_into;
+using detail::entry::asinh;
+using detail::entry::asinh_into;
+using detail::entry::atan;
+using detail::entry::atan2;
+using detail::entry::atan2_into;
+using detail::entry::atan_into;
+using detail::entry::atanh;
+using detail::entry::atanh_into;
+using detail::entry::cbrt;
+using detail::entry::cbrt_into;
+using detail::entry::cos;
+using detail::entry::cos_into;
+using detail::entry::cosh;
+using detail::entry::cosh_into;
+using detail::entry::exp;
+using detail::entry::exp2;
+using detail::entry::exp2_into;
+using detail::entry::exp_into;
+using detail::entry::hypot;
+using detail::entry::hypot_into;
+using detail::entry::log;
+using detail::entry::log10;
+using detail::entry::log10_into;
+using detail::entry::log2;
+using detail::entry::log2_into;
+using detail::entry::log_into;
+using detail::entry::pow;
+using detail::entry::pow_base;
+using detail::entry::pow_base_into;
+using detail::entry::pow_into;
+using detail::entry::sin;
+using detail::entry::sin_into;
+using detail::entry::sinh;
+using detail::entry::sinh_into;
+using detail::entry::sqrt;
+using detail::entry::sqrt_into;
+using detail::entry::tan;
+using detail::entry::tan_into;
+using detail::entry::tanh;
+using detail::entry::tanh_into;
 } // namespace beman::inside::math
 
 #endif // BEMAN_INSIDE_MATH_HPP

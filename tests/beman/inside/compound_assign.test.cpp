@@ -29,7 +29,7 @@ TEST(CompoundAssignTest, compound_assignment_insidable_rhs) {
         return a.as<imax>();
     }() == 30);
 
-    using ui = inside<{0, 100}, snap>;
+    using ui = inside<{0, 100}, round_toward_zero>;
     static_assert([] {
         ui d{50}, two{2};
         d *= two;
@@ -53,7 +53,7 @@ TEST(CompoundAssignTest, compound_and_by_a_zero_inside_report_by_default) {
     u100 a{50};
     ASSERT_THROW((void)(([&] { a /= u100{0}; }())), beman::inside::inside_error);
 
-    using ui = inside<{0, 100}, snap>;
+    using ui = inside<{0, 100}, round_toward_zero>;
     ui s{50};
     ASSERT_THROW((void)(([&] { s %= ui{0}; }())), beman::inside::inside_error);
 }
@@ -150,7 +150,7 @@ TEST(CompoundAssignTest, increment_decrement) {
 // compound -=: raw fast path agrees with binary subtraction
 TEST(CompoundAssignTest, compound_raw_fast_path_agrees_with_binary_subtraction) {
     // Q8.8 — index storage both sides, bias 0.
-    using q88 = inside<{{0, 255}, per<256>}, snap>;
+    using q88 = inside<{{0, 255}, per<256>}, round_toward_zero>;
     for (int whole : {0, 1, 100, 255})
         for (int sub : {0, 1, 55, 100}) {
             if (whole - sub < 0)
@@ -166,16 +166,16 @@ TEST(CompoundAssignTest, compound_raw_fast_path_agrees_with_binary_subtraction) 
     ASSERT_EQ(rational{frac_lhs}, rational{1});
 
     // offset index grid (negative Lower): bias = Lower/Notch = -8.
-    using off = inside<{{-2, 2}, per<4>}, snap>;
+    using off = inside<{{-2, 2}, per<4>}, round_toward_zero>;
     off offset_lhs{rational{3, 4}};
     offset_lhs -= off{rational{-1, 2}}; // 3/4 − (−1/2) = 5/4
     ASSERT_EQ(rational{offset_lhs}, (rational{5, 4}));
 
     // mixed storages on the same unit notch: [1000,2000] stores an unsigned
     // index (Lower-relative raw), [-3000,3000] stores the value directly.
-    using hi   = inside<{1000, 2000}, snap>;
-    using lo   = inside<{0, 500}, snap>;
-    using wide = inside<{-3000, 3000}, snap>;
+    using hi   = inside<{1000, 2000}, round_toward_zero>;
+    using lo   = inside<{0, 500}, round_toward_zero>;
+    using wide = inside<{-3000, 3000}, round_toward_zero>;
     hi index_lhs{1500}; // index-raw lhs, value-raw rhs
     index_lhs -= lo{300};
     ASSERT_EQ(rational{index_lhs}, rational{1200});
@@ -186,12 +186,12 @@ TEST(CompoundAssignTest, compound_raw_fast_path_agrees_with_binary_subtraction) 
 
 // compound -=: policy tail at the raw edges
 TEST(CompoundAssignTest, compound_policy_tail_at_the_raw_edges) {
-    using q_clamp = inside<{{0, 255}, per<256>}, clamp | snap>;
+    using q_clamp = inside<{{0, 255}, per<256>}, clamp | round_toward_zero>;
     q_clamp c{1};
     c -= q_clamp{100}; // 1 − 100 < 0 -> clamps to Lower
     ASSERT_EQ(rational{c}, rational{0});
 
-    using q_wrap = inside<{{0, 3}, per<4>}, wrap | snap>;
+    using q_wrap = inside<{{0, 3}, per<4>}, wrap | round_toward_zero>;
     q_wrap w{0};
     w -= q_wrap{rational{1, 4}}; // 0 − 1/4 wraps to Upper − ... = 3
     ASSERT_EQ(rational{w}, rational{3});

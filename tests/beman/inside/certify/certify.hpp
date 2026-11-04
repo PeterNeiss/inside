@@ -115,9 +115,9 @@ inline std::string flags_text(policy_flag f) {
         add("round_floor");
     else if (has_flag(f, round_nearest))
         add("round_nearest");
-    else if (has_flag(f, snap))
+    else if (has_flag(f, round_toward_zero))
         add("round_toward_zero");
-    f &= ~(round_half_even | round_ceil | round_floor | round_nearest | snap);
+    f &= ~(round_half_even | round_ceil | round_floor | round_nearest | round_toward_zero);
     using named = std::pair<policy_flag, const char*>;
     for (const auto& [flag, name] : {named{clamp, "clamp"}, named{wrap, "wrap"}})
         if (has_flag(f, flag)) {

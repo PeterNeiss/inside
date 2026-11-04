@@ -21,7 +21,7 @@ partial / related · **○** no · **—** not applicable.
 
 | Library | Domain | Range in type `[lo,hi]` | Auto-widening result | Out-of-range handling | Fixed-point | Rational / exact | Transcendental math | Determinism / FPU-free | Freestanding / `-fno-exceptions` | Physical units |
 |---|---|---|---|---|---|---|---|---|---|---|
-| **inside** | bounded rational grids | ● | ● | clamp / wrap / round / snap / throw / `errc` / `std::expected` | ● | ● | ● (correctly rounded on any grid where decided) | ● | ◐ ¹⁰ | ● ²¹ |
+| **inside** | bounded rational grids | ● | ● | clamp / wrap / round / throw / `errc` / `std::expected` | ● | ● | ● (correctly rounded on any grid where decided) | ● | ◐ ¹⁰ | ● ²¹ |
 | **bounded::integer** | integers | ● | ● | policy on narrowing (clamp / modulo / throw / assume) | ○ | ○ | ○ | — | ○ ¹¹ | ○ |
 | **Intel safe-arithmetic** | integers | ● ¹⁹ | ● | compile-time proof (reject) / runtime `safe::function` | ○ | ○ | ○ | — | ○ ²⁰ | ○ |
 | **Boost.SafeNumerics** | integers | ◐ ¹ | ◐ ² | detect → exception (custom exception / trap policy) | ○ | ○ | ○ | — | ◐ ¹² | ○ |

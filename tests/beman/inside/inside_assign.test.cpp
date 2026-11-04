@@ -26,7 +26,7 @@ TEST(InsideAssignTest, conversion_between_bounds_with_compatible_grids) {
     bigger = 39;
 }
 
-// rounding requires opt-in / policy<snap>() rounds (truncates toward zero on positive)
+// rounding requires opt-in / policy<round_toward_zero>() rounds (truncates toward zero on positive)
 TEST(InsideAssignTest, rounding_requires_opt_in__policy_snap_rounds_truncates_toward_zero_on_positive) {
     using f30t40 = inside<{{30, 40}, 2}>;
     using f20t50 = inside<{interval{20, 50}, 1}>;
@@ -34,13 +34,13 @@ TEST(InsideAssignTest, rounding_requires_opt_in__policy_snap_rounds_truncates_to
     [[maybe_unused]] f30t40 smaller;
 
     {
-        SCOPED_TRACE("policy<snap>() rounds (truncates toward zero on positive)");
-        smaller.policy<snap>() = bigger;
+        SCOPED_TRACE("policy<round_toward_zero>() rounds (truncates toward zero on positive)");
+        smaller.policy<round_toward_zero>() = bigger;
         ASSERT_EQ(smaller, 38);
     }
 }
 
-// rounding requires opt-in / policy<snap>() is the alias
+// rounding requires opt-in / policy<round_toward_zero>() is the alias
 TEST(InsideAssignTest, rounding_requires_opt_in__with_snap_is_the_alias) {
     using f30t40 = inside<{{30, 40}, 2}>;
     using f20t50 = inside<{interval{20, 50}, 1}>;
@@ -48,9 +48,9 @@ TEST(InsideAssignTest, rounding_requires_opt_in__with_snap_is_the_alias) {
     [[maybe_unused]] f30t40 smaller;
 
     {
-        SCOPED_TRACE("policy<snap>() is the alias");
-        bigger                 = 30;
-        smaller.policy<snap>() = bigger;
+        SCOPED_TRACE("policy<round_toward_zero>() is the alias");
+        bigger                              = 30;
+        smaller.policy<round_toward_zero>() = bigger;
         ASSERT_EQ(smaller, 30);
     }
 }
@@ -93,7 +93,7 @@ TEST(InsideAssignTest, rounding_requires_opt_in__type_level_snap) {
 
     {
         SCOPED_TRACE("type-level snap");
-        using n2_round = inside<{{0, 10}, 2}, snap>;
+        using n2_round = inside<{{0, 10}, 2}, round_toward_zero>;
         using n1       = inside<{{0, 10}, 1}>;
         n2_round c;
         c = n1{3};
@@ -307,7 +307,7 @@ TEST(InsideAssignTest, checked_policy_throws_on_rounding_error) {
 
 // snap truncates non-notch float at runtime
 TEST(InsideAssignTest, snap_truncates_non_notch_float_at_runtime) {
-    using coarse = inside<{{0, 10}, 2}, snap>;
+    using coarse = inside<{{0, 10}, 2}, round_toward_zero>;
     coarse c;
     c = 3.0;
     ASSERT_EQ(c, 2); // truncates toward zero
@@ -329,15 +329,15 @@ TEST(InsideAssignTest, non_integer_mapping_inside_to_inside_clamp_domain_fail) {
     // Source has notch 1 to a destination with notch 1/3 — Factor=3, integer.
     // To force the non-integer-mapping path we use a fractional-notch source
     // with a destination that doesn't cleanly align: notch 1/2 -> notch 1/3.
-    using src = inside<{{0, 5}, rational{1u, 2}}, snap>;
-    using dst = inside<{{0, 5}, rational{1u, 3}}, snap | clamp>;
+    using src = inside<{{0, 5}, rational{1u, 2}}, round_toward_zero>;
+    using dst = inside<{{0, 5}, rational{1u, 3}}, round_toward_zero | clamp>;
 
     src s{4}; // value 4 -> dst aligns
     dst d{s};
     ASSERT_EQ(d, 4);
 
     // src[0,5] dst[0,4] — value 5 in src is out of dst, exercises clamp path
-    using dst2 = inside<{{0, 4}, rational{1u, 3}}, snap | clamp>;
+    using dst2 = inside<{{0, 4}, rational{1u, 3}}, round_toward_zero | clamp>;
     src  s2{5};
     dst2 d2{s2};
     ASSERT_EQ(d2, 4);

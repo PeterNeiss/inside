@@ -136,7 +136,7 @@ TEST(InsideToTest, as_size_t_indexes_a_container) {
 // operator double is gated on rounding policy
 TEST(InsideToTest, operator_double_is_gated_on_rounding_policy) {
     using B_round  = inside<{{0, 1}, per<2>}, round_nearest>;
-    using B_ignore = inside<{{0, 1}, per<2>}, snap>;
+    using B_ignore = inside<{{0, 1}, per<2>}, round_toward_zero>;
     using B_strict = inside<{{0, 1}, per<2>}, checked>;
     using B_floor  = inside<{{0, 1}, per<2>}, round_floor>;
 

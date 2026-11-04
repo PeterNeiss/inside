@@ -33,7 +33,7 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
     static constexpr bool has_infinity      = false;
     static constexpr bool has_quiet_NaN     = false;
     static constexpr bool has_signaling_NaN = false;
-    static constexpr bool traps             = beman::inside::is_checked(P);
+    static constexpr bool traps             = beman::inside::detail::is_checked(P);
     static constexpr bool is_iec559         = false;
     static constexpr int  radix             = 2;
     // The mode stores round by (rounding_of, the one precedence every path uses).
@@ -77,7 +77,7 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
             d::assign_exact<d::rational>(b,
                                          d::exact_of_grid<d::exact_limbs<B>>(v),
                                          beman::inside::make_policy<P>(ec),
-                                         beman::inside::no_action{});
+                                         beman::inside::detail::no_action{});
             return b;
         } else
             return B{d::to_rational(v)};

@@ -143,7 +143,7 @@ TEST(MathAdaptiveTest, evaluate_escalates_until_decided) {
 #include <vector>
 
 namespace {
-namespace am = beman::inside::math::adaptive;
+namespace am = beman::inside::math::detail::entry;
 using ld     = long double;
 
 template <typename Out>
@@ -566,7 +566,7 @@ TEST(MathAdaptiveTest, one_pass_decision_matches_both_ends) {
     check_decide_fast<round_nearest>();
     check_decide_fast<round_floor>();
     check_decide_fast<round_ceil>();
-    check_decide_fast<snap>();
+    check_decide_fast<round_toward_zero>();
     check_decide_fast<round_half_even>();
 }
 
@@ -599,9 +599,9 @@ int tier_mismatches(Fn fn) {
 using out8    = inside<{{-64, 64}, rational{1, 8}}, round_nearest>;
 using out8f   = inside<{{-64, 64}, rational{1, 8}}, round_floor>;
 using out16c  = inside<{{-64, 64}, rational{1, 1 << 16}}, round_ceil>;
-using out8t   = inside<{{-64, 64}, rational{1, 8}}, snap>;
+using out8t   = inside<{{-64, 64}, rational{1, 8}}, round_toward_zero>;
 using out16e  = inside<{{-64, 64}, rational{1, 1 << 16}}, round_half_even>;
-using outdect = inside<{{-64, 64}, rational{1, 1000}}, snap>;
+using outdect = inside<{{-64, 64}, rational{1, 1000}}, round_toward_zero>;
 } // namespace
 
 #define TIER_CHECK(fn, Out, In, ...) \
@@ -664,7 +664,7 @@ TEST(MathAdaptiveTest, double_tier_agrees_with_the_integer_path) {
     // Floating-point outputs: the slot decided in double arithmetic.
     using b14out  = inside<{{-64, 64}, per<16384>}, round_nearest>;
     using b14outf = inside<{{-64, 64}, per<16384>}, round_floor>;
-    using b14outt = inside<{{-64, 64}, per<16384>}, snap>;
+    using b14outt = inside<{{-64, 64}, per<16384>}, round_toward_zero>;
     TIER_CHECK(
         sin, b14out, sym4, engine::trig_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::trig::sin, 1>);
     TIER_CHECK(exp,
@@ -853,7 +853,7 @@ namespace {
 using out52    = inside<{{-1024, 1024}, rational{1, umax{1} << 52}}, round_nearest>; // indices ±2^62
 using out44f   = inside<{{-64, 64}, rational{1, umax{1} << 44}}, round_floor>;
 using out48c   = inside<{{-64, 64}, rational{1, umax{1} << 48}}, round_ceil>;
-using out50t   = inside<{{-64, 64}, rational{1, umax{1} << 50}}, snap>;
+using out50t   = inside<{{-64, 64}, rational{1, umax{1} << 50}}, round_toward_zero>;
 using out46e   = inside<{{-64, 64}, rational{1, umax{1} << 46}}, round_half_even>;
 using outdec15 = inside<{{-64, 64}, rational{1, 1'000'000'000'000'000}}, round_nearest>;
 using b44out   = inside<{{-64, 64}, rational{1, umax{1} << 44}}, round_nearest>;

@@ -4,6 +4,35 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
+## Unreleased
+
+The API freeze review before 1.0: one spelling per flag, implementation names
+out of the public namespaces.
+
+### Upgrading from 0.7.0
+
+- `snap` is gone: write `round_toward_zero`, its other name. The flag and its
+  bit are unchanged, so `inside<G, snap>` becomes `inside<G, round_toward_zero>`
+  and `x.policy<snap>()` becomes `x.policy<round_toward_zero>()`; diagnostics
+  name `policy<round_toward_zero>()`.
+- `none` is gone: write `checked`, the default policy (both were 0).
+- Moved into `detail`, as implementation: `math::adaptive` (the math functions
+  stay in `math`), `math::fmod_nonzero` (call `math::fmod_into`), the free hook
+  factories `on_clamp`, `on_wrap`, `on_error` with `on_clamp_t`, `on_wrap_t`,
+  `on_error_t` and `no_action` (the members `x.on_clamp(f)`, `x.on_wrap(f)`,
+  `x.on_error(f)` stay), `is_inside_v` (use `insidable`), `numeric`,
+  `builtin_arithmetic`, `grid_number_like`, `has_any_flag`, `is_checked`,
+  `range_handled` and `inside_assignable_why` (use `explain_assignable`).
+- In `units`, moved into `units::detail`: `is_quantity_v` (use
+  `quantity_like`), `is_quantity_point_v`, `is_reference_tag_v`,
+  `is_unit_tag_v`, `spec_operand` and `expr_of`.
+
+### Added
+
+- The literals `_ins`, `_r` and `_g` live in the inline namespace
+  `beman::inside::literals`, so `using namespace beman::inside::literals;`
+  brings only them; `using namespace beman::inside;` still brings them too.
+
 ## 0.7.0 — 2026-11-03
 
 Safer defaults (every store checked unless `unsafe`, a defined default value,

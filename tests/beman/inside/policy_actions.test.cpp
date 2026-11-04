@@ -216,7 +216,7 @@ TEST(PolicyActionsTest, compound_op_fires_on_clamp_on_the_store_back) {
 // fail/arith_unused_action).
 TEST(PolicyActionsTest, free_div_and_mod_return_a_zero_divisor) {
     using c100   = inside<{0, 100}, checked>;
-    using u100ic = inside<{0, 100}, checked | snap>;
+    using u100ic = inside<{0, 100}, checked | round_toward_zero>;
     c100 d{50}, z{0};
     auto q = div(d, z, make_policy<round_nearest>());
     ASSERT_FALSE(q.has_value());
@@ -257,7 +257,7 @@ TEST(PolicyActionsTest, free_fn_div_with_beman_inside_errc_sets_ec_on_div_0__suc
 
 // free-fn mod with beman::inside::errc& sets ec on div/0
 TEST(PolicyActionsTest, free_fn_mod_with_beman_inside_errc_sets_ec_on_div_0) {
-    using u100ic = inside<{0, 100}, checked | snap>;
+    using u100ic = inside<{0, 100}, checked | round_toward_zero>;
     beman::inside::errc ec{};
     auto                m = mod(u100ic{7}, u100ic{0}, ec);
     ASSERT_EQ(ec, errc::division_by_zero);

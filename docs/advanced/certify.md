@@ -49,7 +49,7 @@ pairs has no row.
 
 **1. Build your program unoptimized**: a Debug build, or
 add `-O0` (or `-fkeep-inline-functions`). Each math call instantiates
-`beman::inside::math::adaptive::<fn>_into<Out, In>`, and an unoptimized build
+`beman::inside::math::detail::entry::<fn>_into<Out, In>`, and an unoptimized build
 keeps that instantiation as a symbol whose demangled name spells both grids
 exactly. That includes outputs deduced by `math::sin(x)`, aliases, and the
 numbers inside quantities.

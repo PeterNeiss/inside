@@ -151,7 +151,8 @@ TEST(UnitsAlgorithmsTest, divmod_in_the_common_unit_and_percent) {
     const auto [h, rest] = divmod(s, just<1> * si::hour);
     EXPECT_EQ(h, 1);
     EXPECT_EQ(to_string(rest), "125 s");
-    const auto [q, r] = divmod(quantity<si::day, inside<{0, 100}, snap>>{17}, just<1, 1> * si::day * just<7>);
+    const auto [q, r] =
+        divmod(quantity<si::day, inside<{0, 100}, round_toward_zero>>{17}, just<1, 1> * si::day * just<7>);
     EXPECT_EQ(q, 2);
     EXPECT_EQ(to_string(r), "3 d");
 

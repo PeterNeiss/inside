@@ -1,7 +1,7 @@
 // EXPECT: incompatible notches
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // A source lattice that does not land on the target lattice needs explicit
-// rounding permission (`policy<snap>()` / `policy<snap>()`); without it the
+// rounding permission (`policy<round_toward_zero>()` / `policy<round_toward_zero>()`); without it the
 // assignment is ill-formed.
 #include <beman/inside/inside.hpp>
 
