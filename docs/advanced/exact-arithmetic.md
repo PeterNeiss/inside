@@ -18,9 +18,11 @@ grids, so that it holds every value the operation can produce:
 | `a + b`, `a - b` | the sum or difference of the intervals | the gcd of the two notches |
 | `a * b` | the extremes of the four corner products | the product of the notches |
 | `-a` | the interval mirrored | the same |
+| `min(a, b)`, `max(a, b)` | [min of the lowers, min of the uppers], [max of the lowers, max of the uppers] | the gcd, as for the hull |
+| `lerp(a, b, t)` | the hull of `a`'s and `b`'s ranges, when `t`'s grid lies in [0, 1] | that of `a + (b − a)·t` |
 | `a * c`, `a / c` (c a nonzero point) | scaled by c | N·\|c\|, N/\|c\|: the raw number is reused |
 | `a / b` | see [division](#division) | |
-| `a % b` | [0, m] for a dividend ≥ 0 under truncation, else [−m, m], m = largest divisor magnitude − 1 | 1 |
+| `a % b` | what the rounding mode allows: under truncation the dividend's sign and \|r\| ≤ min(m, max\|a\|); under `round_floor` the divisor's sign, `round_ceil` the opposite; to nearest \|r\| ≤ min(⌊max\|b\|/2⌋, max\|a\|); m = max\|b\| − 1 | 1 |
 
 On grids whose lower limit is not a multiple of the notch, the result finds
 its own lattice: the sum of two copies of `{{0.5, 255.5}, 1}` is on the

@@ -77,14 +77,16 @@ which checks the total once, rather than `std::accumulate` into a wider type.
 ## `min`, `max`, `midpoint`
 
 `min`, `max` and `midpoint` are found by argument-dependent lookup, so
-unqualified calls in generic code work. On two different grids they return a
-type that holds both. `midpoint` is the **exact** mean, on a grid with half
-the notch: unlike `std::midpoint` on integers, it neither rounds nor
-overflows.
+unqualified calls in generic code work. On two different grids, the result
+type holds exactly the values the result can take: `min` of
+`inside<{0, 100}>` and `inside<{0, 10}>` is an `inside<{0, 10}>`. `midpoint` is
+the **exact** mean, on a grid with half the notch: unlike `std::midpoint` on
+integers, it neither rounds nor overflows.
 
 ```cpp
 inside<{0, 100}> a = 30, b = 71;
-auto lo  = min(a, b);           // 30
+inside<{0, 10}>  c = 4;
+auto lo  = min(a, c);           // 4, an inside<{0, 10}>
 auto mid = midpoint(a, b);      // 50.5, exactly
 ```
 

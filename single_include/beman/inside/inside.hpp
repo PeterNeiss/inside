@@ -8833,17 +8833,63 @@ struct modulo {
     // Builtin division when every value fits imax; else exact wide integers.
     static constexpr bool native_mod = integer_native_ops<L, R, FS>;
 
-    static constexpr grid_rational max_rem =
-        (abs(lower_of<R>) > abs(upper_of<R>) ? abs(lower_of<R>) : abs(upper_of<R>)) - grid_rational{1};
-
     static constexpr round_mode rmode = rounding_of(F | flags_of<L> | flags_of<R>);
 
-    // Remainder consistent with the rounded quotient: r = a − round(a/b)·b. Under
-    // truncation it takes the dividend's sign (non-negative for a non-negative
-    // dividend grid); any directional mode can flip the sign, so the grid widens
-    // to the symmetric ±max_rem (|r| ≤ max_rem for every mode).
-    static constexpr grid result_grid =
-        (rmode == round_mode::trunc && lower_of<L> >= 0) ? grid{grid_rational{0}, max_rem} : grid{-max_rem, max_rem};
+    // Remainder consistent with the rounded quotient: r = a − round(a/b)·b,
+    // with the tightest bounds every mode allows (the values r can take):
+    //   trunc    the dividend's sign, |r| ≤ min(|b| − 1, |a|)
+    //   floor    the divisor's sign, |r| ≤ |b| − 1; ≤ |a| when a and b agree
+    //   ceil     the divisor's opposite sign, the same bounds
+    //   nearest  either sign (also half_even), |r| ≤ min(⌊|b|/2⌋, |a|)
+    // (|r| ≤ |a| holds wherever round(a/b) = 0 is the only way to keep r = a.)
+    static constexpr grid result_grid = [] {
+        using G = grid_rational;
+        const G one{1}, zero{0};
+        const G a_lo = lower_of<L>, a_hi = upper_of<L>, b_lo = lower_of<R>, b_hi = upper_of<R>;
+        const G b_max  = abs(b_lo) > abs(b_hi) ? abs(b_lo) : abs(b_hi);
+        const G a_max  = abs(a_lo) > abs(a_hi) ? abs(a_lo) : abs(a_hi);
+        auto    lesser = [](const G& x, const G& y) { return x < y ? x : y; };
+        G       lo = zero, hi = zero;
+        switch (rmode) {
+        case round_mode::trunc:
+            if (zero < a_hi)
+                hi = lesser(b_max - one, a_hi);
+            if (a_lo < zero)
+                lo = -lesser(b_max - one, -a_lo);
+            break;
+        case round_mode::floor:
+        case round_mode::ceil: {
+            // floor: r follows b's sign; ceil: the opposite. A divisor part of
+            // one sign bounds |r| by its magnitude − 1, and by |a| where the
+            // dividend's sign is r's (round(a/b) is then 0 or a's own multiple).
+            const bool floor_mode = rmode == round_mode::floor;
+            if (zero < b_hi) { // positive divisors: r ≥ 0 (floor) or r ≤ 0 (ceil)
+                const G m = b_hi - one;
+                if (floor_mode)
+                    hi = zero <= a_lo ? lesser(m, a_hi) : m;
+                else
+                    lo = a_hi <= zero ? -lesser(m, -a_lo) : -m;
+            }
+            if (b_lo < zero) { // negative divisors: the mirror
+                const G m = -b_lo - one;
+                if (floor_mode)
+                    lo = lesser(lo, a_hi <= zero ? -lesser(m, -a_lo) : -m);
+                else {
+                    const G h = zero <= a_lo ? lesser(m, a_hi) : m;
+                    hi        = hi < h ? h : hi;
+                }
+            }
+            break;
+        }
+        default: {                                             // nearest, half_even: |r| ≤ |b|/2, either sign
+            const G half{grid_numerator(b_max) / grid_int{2}}; // b_max is a whole number ≥ 0
+            hi = lesser(half, a_max);
+            lo = -hi;
+            break;
+        }
+        }
+        return grid{lo, hi};
+    }();
 
     using result = inside<result_grid, result_flags<L, R>>; // the operands' shared policy
 
@@ -10766,15 +10812,48 @@ template <insidable Target, std::ranges::input_range Rng>
     return ax * by - ay * bx;
 }
 
+namespace detail {
+// lerp's type: a + (b - a)·t's lattice; when t's grid lies in [0, 1] the
+// result lies between a and b, so the interval narrows to the hull of a's and
+// b's ranges, snapped inward onto that lattice.
+template <insidable W, insidable A, insidable B, insidable T>
+consteval grid lerp_grid() {
+    grid g = grid_of<W>;
+    if constexpr (lower_of<T> >= 0 && upper_of<T> <= 1) {
+        grid_rational lo = lower_of<A> < lower_of<B> ? lower_of<A> : lower_of<B>;
+        grid_rational hi = upper_of<A> < upper_of<B> ? upper_of<B> : upper_of<A>;
+        if (g.Notch != 0) { // onto the lattice, inward
+            const grid_rational base = g.Interval.Lower, n = g.Notch;
+            lo = base + n * grid_round<round_mode::ceil>((lo - base) / n);
+            hi = base + n * grid_round<round_mode::floor>((hi - base) / n);
+        }
+        // Only ever narrower: a point (the lerp of constants) stays a point.
+        g.Interval =
+            interval{g.Interval.Lower < lo ? lo : g.Interval.Lower, hi < g.Interval.Upper ? hi : g.Interval.Upper};
+    }
+    return g;
+}
+} // namespace detail
+
 // lerp(a, b, t) = a + (b - a) * t. `t` is itself an inside (typically a
-// [0, 1] fixed-point grid), so the interpolation never leaves inside-space.
-[[nodiscard]] constexpr auto lerp(insidable auto a, insidable auto b, insidable auto t) { return a + (b - a) * t; }
+// [0, 1] fixed-point grid), so the interpolation never leaves inside-space;
+// with t in [0, 1] the result's range is that of a and b together.
+template <insidable A, insidable B, insidable T>
+[[nodiscard]] constexpr auto lerp(A a, B b, T t) {
+    const auto w = a + (b - a) * t;
+    using W      = std::remove_cvref_t<decltype(w)>;
+    using R      = inside<detail::lerp_grid<W, A, B, T>(), flags_of<W>>;
+    if constexpr (std::is_same_v<R, W>)
+        return w;
+    else
+        return R{w, unsafe}; // within R by the bound above
+}
 
 //---------------------------------------------------------------------------
 // common_inside — the "hull" type able to hold every value of L and R exactly:
 // interval hull + notch gcd (grid `hull`), under the policy both share, as
 // for arithmetic results (result_flags). Backs the std::common_type
-// specialization and mixed-grid min/max below.
+// specialization.
 //---------------------------------------------------------------------------
 namespace detail {
 template <insidable Lhs, insidable Rhs>
@@ -10798,18 +10877,58 @@ using common_inside_t = typename detail::common_inside<Lhs, Rhs>::type;
 // grid (so, unlike std::midpoint, it neither rounds nor overflows). There is
 // no free `beman::inside::clamp` (the name is the policy flag — use Target{v, clamp}).
 //---------------------------------------------------------------------------
-// Both return the common type: the operand type itself for one type, else
-// the hull, which holds each operand exactly.
+namespace detail {
+// The type of min(a, b) or max(a, b): the hull's lattice over the values the
+// result can take, [min(lowers), min(uppers)] or [max(lowers), max(uppers)].
+// One type stays itself, as for the common type.
+template <insidable Lhs, insidable Rhs, bool Max>
+consteval grid extreme_grid() {
+    grid           h = hull(grid_of<Lhs>, grid_of<Rhs>);
+    const interval a = grid_of<Lhs>.Interval, b = grid_of<Rhs>.Interval;
+    if constexpr (Max)
+        h.Interval = interval{a.Lower < b.Lower ? b.Lower : a.Lower, h.Interval.Upper};
+    else
+        h.Interval = interval{h.Interval.Lower, a.Upper < b.Upper ? a.Upper : b.Upper};
+    return h;
+}
+template <insidable Lhs, insidable Rhs, bool Max>
+struct extreme_type {
+    using type = inside<extreme_grid<Lhs, Rhs, Max>(), result_flags<Lhs, Rhs>>;
+};
+template <insidable Same, bool Max>
+struct extreme_type<Same, Same, Max> {
+    using type = Same;
+};
+} // namespace detail
+
+// The smaller and the larger operand, typed by the values they can take: the
+// winner always fits, so it is stored without a run-time check.
+// An operand whose range never reaches the other's is decided at compile time
+// (its store into R would be ill-formed: the ranges are disjoint).
 template <insidable Lhs, insidable Rhs>
-[[nodiscard]] constexpr auto min(Lhs a, Rhs b) -> common_inside_t<Lhs, Rhs> {
-    common_inside_t<Lhs, Rhs> ca{a}, cb{b};
-    return (cb < ca) ? cb : ca;
+[[nodiscard]] constexpr auto min(Lhs a, Rhs b) -> typename detail::extreme_type<Lhs, Rhs, false>::type {
+    using R = typename detail::extreme_type<Lhs, Rhs, false>::type;
+    if constexpr (std::is_same_v<Lhs, Rhs>)
+        return (b < a) ? b : a;
+    else if constexpr (upper_of<Lhs> <= lower_of<Rhs>) // a always wins (a tie keeps a)
+        return R{a, unsafe};
+    else if constexpr (upper_of<Rhs> < lower_of<Lhs>) // b always wins
+        return R{b, unsafe};
+    else
+        return (b < a) ? R{b, unsafe} : R{a, unsafe};
 }
 
 template <insidable Lhs, insidable Rhs>
-[[nodiscard]] constexpr auto max(Lhs a, Rhs b) -> common_inside_t<Lhs, Rhs> {
-    common_inside_t<Lhs, Rhs> ca{a}, cb{b};
-    return (ca < cb) ? cb : ca;
+[[nodiscard]] constexpr auto max(Lhs a, Rhs b) -> typename detail::extreme_type<Lhs, Rhs, true>::type {
+    using R = typename detail::extreme_type<Lhs, Rhs, true>::type;
+    if constexpr (std::is_same_v<Lhs, Rhs>)
+        return (a < b) ? b : a;
+    else if constexpr (upper_of<Rhs> <= lower_of<Lhs>) // a always wins (a tie keeps a)
+        return R{a, unsafe};
+    else if constexpr (upper_of<Lhs> < lower_of<Rhs>) // b always wins
+        return R{b, unsafe};
+    else
+        return (a < b) ? R{b, unsafe} : R{a, unsafe};
 }
 
 // The exact average, on the refined sum grid.
@@ -17748,9 +17867,17 @@ consteval grid exact_out_grid(const interval& iv, const grid_rational& notch, co
     return notch == 0 ? bounded_continuous(iv, d) : grid{iv, notch};
 }
 
+// The smallest |x|: the lattice's lowest non-negative point when x's range
+// spans 0, else the limit nearer 0.
+template <insidable Mag>
+inline constexpr grid_rational abs_result_lower = (lower_of<Mag> <= 0 && upper_of<Mag> >= 0)  ? sym_floor<Mag>
+                                                  : (abs(lower_of<Mag>) < abs(upper_of<Mag>)) ? abs(lower_of<Mag>)
+                                                                                              : abs(upper_of<Mag>);
+
+// |x| ranges over [smallest |x|, largest |x|].
 template <insidable In>
 using abs_result_t =
-    inside<exact_out_grid({sym_floor<In>, abs_result_upper<In>}, sym_notch<In>, den_bound(grid_of<In>)),
+    inside<exact_out_grid({abs_result_lower<In>, abs_result_upper<In>}, sym_notch<In>, den_bound(grid_of<In>)),
            out_policy<In>>;
 
 // sign(x) ∈ {sign(Lower) … sign(Upper)}, integer notch.
@@ -17758,12 +17885,8 @@ template <insidable In>
 using sign_result_t = inside<{grid_sign(lower_of<In>), grid_sign(upper_of<In>)}, out_policy<In>>;
 
 // copysign(mag, sgn): |mag| with sgn's possible signs. |mag| ranges over
-// [m_lo, m_hi] (m_lo = 0 when mag's interval spans 0); ±|mag| lies on
+// [m_lo, m_hi] (abs_result_lower, abs_result_upper); ±|mag| lies on
 // sym_notch's lattice (mag's own when it passes through 0).
-template <insidable Mag>
-inline constexpr grid_rational abs_result_lower = (lower_of<Mag> <= 0 && upper_of<Mag> >= 0)  ? sym_floor<Mag>
-                                                  : (abs(lower_of<Mag>) < abs(upper_of<Mag>)) ? abs(lower_of<Mag>)
-                                                                                              : abs(upper_of<Mag>);
 
 template <insidable Mag, insidable Sgn>
 using copysign_result_t = inside<exact_out_grid({lower_of<Sgn> < 0 ? -abs_result_upper<Mag> : abs_result_lower<Mag>,
@@ -18061,10 +18184,22 @@ inline constexpr bool pown_defined = [] {
 }();
 } // namespace detail
 
+namespace detail {
+// An even power of a base that reaches below 0 squares |x| instead, so the
+// result's range starts at the smallest |x|^E, never below 0.
 template <imax E, insidable In>
-    requires detail::pown_defined<E, In>
+inline constexpr bool pown_via_abs = E > 0 && E % 2 == 0 && lower_of<In> < 0;
+template <imax E, insidable In>
+using pown_base_t = std::conditional_t<pown_via_abs<E, In>, abs_result_t<In>, In>;
+} // namespace detail
+
+template <imax E, insidable In>
+    requires detail::pown_defined<E, detail::pown_base_t<E, In>>
 [[nodiscard]] constexpr auto pown(In x) noexcept {
-    return detail::pown_impl<E>(x);
+    if constexpr (detail::pown_via_abs<E, In>)
+        return detail::pown_impl<E>(abs_into<detail::abs_result_t<In>>(x));
+    else
+        return detail::pown_impl<E>(x);
 }
 
 //---------------------------------------------------------------------------
@@ -20207,9 +20342,15 @@ template <quantity_like AX, quantity_like AY, quantity_like BX, quantity_like BY
     -> decltype(ax * by - ay * bx) {
     return ax * by - ay * bx;
 }
-template <quantity_like A, quantity_like B, insidable T>
-[[nodiscard]] constexpr auto lerp(const A& a, const B& b, const T& t) -> decltype(a + (b - a) * t) {
-    return a + (b - a) * t;
+// lerp in a and b's common unit, as + takes it: inside's lerp on the numbers,
+// so with t in [0, 1] the result's range is that of a and b together.
+template <reference A, class VA, reference B, class VB, insidable T>
+    requires detail::summable<A, VA, B, VB, '+'> &&
+             requires(const quantity<A, VA>& a, const quantity<B, VB>& b, T t) { a + (b - a) * t; }
+[[nodiscard]] constexpr auto lerp(const quantity<A, VA>& a, const quantity<B, VB>& b, const T& t) {
+    constexpr reference C = detail::sum_reference<A, B>();
+    return detail::make_quantity<C>(
+        beman::inside::lerp(detail::in_common_unit<A, B>(a), detail::in_common_unit<A, B>(b), t));
 }
 
 // divmod(a, b, args...) of two quantities of one dimension, in their common

@@ -418,17 +418,63 @@ struct modulo {
     // Builtin division when every value fits imax; else exact wide integers.
     static constexpr bool native_mod = integer_native_ops<L, R, FS>;
 
-    static constexpr grid_rational max_rem =
-        (abs(lower_of<R>) > abs(upper_of<R>) ? abs(lower_of<R>) : abs(upper_of<R>)) - grid_rational{1};
-
     static constexpr round_mode rmode = rounding_of(F | flags_of<L> | flags_of<R>);
 
-    // Remainder consistent with the rounded quotient: r = a − round(a/b)·b. Under
-    // truncation it takes the dividend's sign (non-negative for a non-negative
-    // dividend grid); any directional mode can flip the sign, so the grid widens
-    // to the symmetric ±max_rem (|r| ≤ max_rem for every mode).
-    static constexpr grid result_grid =
-        (rmode == round_mode::trunc && lower_of<L> >= 0) ? grid{grid_rational{0}, max_rem} : grid{-max_rem, max_rem};
+    // Remainder consistent with the rounded quotient: r = a − round(a/b)·b,
+    // with the tightest bounds every mode allows (the values r can take):
+    //   trunc    the dividend's sign, |r| ≤ min(|b| − 1, |a|)
+    //   floor    the divisor's sign, |r| ≤ |b| − 1; ≤ |a| when a and b agree
+    //   ceil     the divisor's opposite sign, the same bounds
+    //   nearest  either sign (also half_even), |r| ≤ min(⌊|b|/2⌋, |a|)
+    // (|r| ≤ |a| holds wherever round(a/b) = 0 is the only way to keep r = a.)
+    static constexpr grid result_grid = [] {
+        using G = grid_rational;
+        const G one{1}, zero{0};
+        const G a_lo = lower_of<L>, a_hi = upper_of<L>, b_lo = lower_of<R>, b_hi = upper_of<R>;
+        const G b_max  = abs(b_lo) > abs(b_hi) ? abs(b_lo) : abs(b_hi);
+        const G a_max  = abs(a_lo) > abs(a_hi) ? abs(a_lo) : abs(a_hi);
+        auto    lesser = [](const G& x, const G& y) { return x < y ? x : y; };
+        G       lo = zero, hi = zero;
+        switch (rmode) {
+        case round_mode::trunc:
+            if (zero < a_hi)
+                hi = lesser(b_max - one, a_hi);
+            if (a_lo < zero)
+                lo = -lesser(b_max - one, -a_lo);
+            break;
+        case round_mode::floor:
+        case round_mode::ceil: {
+            // floor: r follows b's sign; ceil: the opposite. A divisor part of
+            // one sign bounds |r| by its magnitude − 1, and by |a| where the
+            // dividend's sign is r's (round(a/b) is then 0 or a's own multiple).
+            const bool floor_mode = rmode == round_mode::floor;
+            if (zero < b_hi) { // positive divisors: r ≥ 0 (floor) or r ≤ 0 (ceil)
+                const G m = b_hi - one;
+                if (floor_mode)
+                    hi = zero <= a_lo ? lesser(m, a_hi) : m;
+                else
+                    lo = a_hi <= zero ? -lesser(m, -a_lo) : -m;
+            }
+            if (b_lo < zero) { // negative divisors: the mirror
+                const G m = -b_lo - one;
+                if (floor_mode)
+                    lo = lesser(lo, a_hi <= zero ? -lesser(m, -a_lo) : -m);
+                else {
+                    const G h = zero <= a_lo ? lesser(m, a_hi) : m;
+                    hi        = hi < h ? h : hi;
+                }
+            }
+            break;
+        }
+        default: {                                             // nearest, half_even: |r| ≤ |b|/2, either sign
+            const G half{grid_numerator(b_max) / grid_int{2}}; // b_max is a whole number ≥ 0
+            hi = lesser(half, a_max);
+            lo = -hi;
+            break;
+        }
+        }
+        return grid{lo, hi};
+    }();
 
     using result = inside<result_grid, result_flags<L, R>>; // the operands' shared policy
 
