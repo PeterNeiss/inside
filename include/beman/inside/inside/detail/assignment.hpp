@@ -759,27 +759,19 @@ struct assignment<L, R> {
     // path instead (both 0, unused), and a point L holds one value (both 0).
     static constexpr bool integer_raws = integer_storage<L> && integer_storage<R>;
 
-    static constexpr std::expected<rational, errc> try_offset() {
-        if constexpr (!integer_raws || !notched<L>)
-            return rational{0};
-        else
-            return try_sub(lower64<R>, lower64<L>).and_then([](const rational& d) { return try_div(d, notch64<L>); });
-    }
-
-    static constexpr std::expected<rational, errc> try_factor() {
-        if constexpr (!integer_raws || !notched<L> || point_storage<R>)
-            return rational{0}; // a point R's raw is always 0: the mapping is Offset alone
-        else
-            return try_div(notch64<R>, notch64<L>);
-    }
+    // Exactly; a point R's raw is always 0: the mapping is Offset alone.
+    static constexpr grid_rational offset_exact =
+        integer_raws && notched<L> ? (lower_of<R> - lower_of<L>) / notch_of<L> : grid_rational{0};
+    static constexpr grid_rational factor_exact =
+        integer_raws && notched<L> && !point_storage<R> ? notch_of<R> / notch_of<L> : grid_rational{0};
 
     // A mapping past the 64-bit rational (a full-int64 source into a fine
     // grid) stores through the rational path, as a continuous side does.
-    static constexpr bool maps_raws = integer_raws && try_offset().has_value() && try_factor().has_value();
+    static constexpr bool maps_raws = integer_raws && fits_rational(offset_exact) && fits_rational(factor_exact);
 
   public:
-    static constexpr rational Offset = try_offset().value_or(rational{0});
-    static constexpr rational Factor = try_factor().value_or(rational{0});
+    static constexpr rational Offset = maps_raws ? to_rational(offset_exact) : rational{0};
+    static constexpr rational Factor = maps_raws ? to_rational(factor_exact) : rational{0};
 
     // Raw-space integer-only mapping — requires integer raw storage on both
     // sides (not rational).
@@ -835,11 +827,10 @@ struct assignment<L, R> {
             // its value-index-vs-offset branch CHOICE keys on m·di + num fitting
             // imax — mirror those checks for the unreduced den so both forms
             // take the same branch (ties on negatives differ across branches).
-            constexpr auto zl = try_div(lower64<L>, notch64<L>).value_or(rational{0});
-            if (abs_den(zl.Den) == 1) {
-                if (!std::in_range<imax>(zl.Num))
+            if constexpr (grid_denominator(lower_index_of<L>) == grid_int{1}) {
+                if (!lower_index_fits_imax<L>)
                     return no;
-                const imax mbias = signed_numerator(zl);
+                const imax mbias = signed_numerator(to_rational(lower_index_of<L>));
                 imax       mdi, total;
                 if (mul_overflow(mbias, m.Den, &mdi) || add_overflow(mdi, num, &total))
                     return no;

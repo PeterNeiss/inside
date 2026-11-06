@@ -138,6 +138,11 @@ inline constexpr bool value_indices_fit64 =
     notched<B> && fits_rational(lower_index_of<B>) && fits_rational(upper_index_of<B>);
 template <insidable B>
 inline constexpr rational lower_index64 = to_rational(lower_index_of<B>);
+// Lower/Notch as an imax value index: an integer within imax.
+template <insidable B>
+inline constexpr bool lower_index_fits_imax = notched<B> && grid_denominator(lower_index_of<B>) == grid_int{1} &&
+                                              !(lower_index_of<B> < grid_rational{std::numeric_limits<imax>::min()}) &&
+                                              !(grid_rational{std::numeric_limits<imax>::max()} < lower_index_of<B>);
 template <insidable B>
 inline constexpr rational upper_index64 = to_rational(upper_index_of<B>);
 
@@ -256,11 +261,9 @@ inline constexpr bool q_format_fits = [] {
     if constexpr (abs_den(lower64<B>.Den) != 1 || notch64<B>.Num != 1 || !values_fit_imax<B>)
         return false;
     else { // every value·nd (so Lower·nd and raw + Lower·nd) in imax
-        constexpr imax nd = abs_den(notch64<B>.Den);
-        constexpr auto lo = try_mul(lower64<B>, rational{nd});
-        constexpr auto hi = try_mul(upper64<B>, rational{nd});
-        return lo.has_value() && hi.has_value() && *lo >= rational{std::numeric_limits<imax>::min()} &&
-               *hi <= rational{std::numeric_limits<imax>::max()};
+        constexpr grid_rational nd{grid_denominator(notch_of<B>)};
+        return !(lower_of<B> * nd < grid_rational{std::numeric_limits<imax>::min()}) &&
+               !(grid_rational{std::numeric_limits<imax>::max()} < upper_of<B> * nd);
     }
 }();
 
@@ -588,12 +591,10 @@ template <insidable L, typename P>
 // rounds the offset against the value's sign.
 template <insidable L, typename P>
 [[nodiscard]] constexpr umax round_split(umax q, umax r, umax den) noexcept {
-    // Lower/Notch past 64 bits (a far-off grid with a fine notch) has no imax
+    // Lower/Notch past imax (a far-off grid with a fine notch) has no imax
     // value index: round the offset as for a non-integral m.
-    constexpr auto zq = (!notched<L>) ? std::expected<rational, errc>{rational{0}} : try_div(lower64<L>, notch64<L>);
-    constexpr bool vidx =
-        zq.has_value() && abs_den(zq->Den) == 1 && zq->Num <= static_cast<umax>(std::numeric_limits<imax>::max()) + 1;
-    constexpr imax m = vidx ? signed_numerator(*zq) : imax{0};
+    constexpr bool vidx = lower_index_fits_imax<L>;
+    constexpr imax m    = vidx ? signed_numerator(to_rational(lower_index_of<L>)) : imax{0};
 
     if constexpr (!anchored<L>)
         return round_offset_unanchored<L, P>(q, r, den);
@@ -633,15 +634,11 @@ inline constexpr bool notches_compatible = [] {
         // A continuous target holds every value; a continuous source is
         // checked when stored, like a rational scalar.
         return true;
-    else if constexpr (wide_valued<L> || wide_valued<R>)
+    else
         // Every R value on L's lattice: R's notch a multiple of L's, and R's
         // lattice anchored on L's.
         return grid_divides_evenly(notch_of<R>, notch_of<L>) &&
                grid_same_lattice(lower_of<R>, lower_of<L>, notch_of<L>);
-    else
-        // R's notch a whole number of L's, and R's lattice on L's (a given
-        // when both pass through 0).
-        return abs_den(assignment<L, R>::Factor.Den) == 1 && grid_same_lattice(lower_of<R>, lower_of<L>, notch_of<L>);
 }();
 
 // Tail of the policy cascade: checked reports.
