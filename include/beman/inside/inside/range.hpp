@@ -31,7 +31,7 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
     using number_type = inside<G, P>;
     using value_type  = V; // number_type, or a quantity on it
     // The iterator's difference is an imax: end() − begin() must be the count.
-    static_assert(G.max_index_representable() &&
+    static_assert(detail::max_index_representable(G) &&
                       detail::max_index_of<number_type> < static_cast<umax>(std::numeric_limits<imax>::max()),
                   "inside_range: the grid has more points than an iterator difference (int64) can count");
     static constexpr umax slot_count = detail::max_index_of<number_type> + 1;

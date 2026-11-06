@@ -21,11 +21,12 @@ TEST(GridTest, grid_structured_binding) {
     ASSERT_EQ(max_den, 0); // a lattice bounds its denominators itself
 }
 
-// grid construction and max_index
+// grid construction and step_count
 TEST(GridTest, grid_construction_and_max_notch) {
-    static_assert(grid{{0, 100}, 1}.max_index() == 100);
-    static_assert(grid{{1, 5}, 0.25}.max_index() == 16);
-    static_assert(grid{{0, std::numeric_limits<umax>::max()}, 1}.max_index() == std::numeric_limits<umax>::max());
+    static_assert(grid{{0, 100}, 1}.step_count() == detail::grid_int{100});
+    static_assert(grid{{1, 5}, 0.25}.step_count() == detail::grid_int{16});
+    static_assert(grid{{0, std::numeric_limits<umax>::max()}, 1}.step_count() ==
+                  detail::grid_int{std::numeric_limits<umax>::max()});
 }
 
 // just<>/inside values work as grid corners
@@ -215,7 +216,7 @@ constexpr bool derived_notch_is_coarsest() {
 template <grid G>
 constexpr bool max_index_matches() {
     const rational span = (detail::to_rational(G.Interval.Upper) - detail::to_rational(G.Interval.Lower)).value();
-    return rational{G.max_index()} == (span / detail::to_rational(G.Notch)).value();
+    return rational{detail::max_index(G)} == (span / detail::to_rational(G.Notch)).value();
 }
 } // namespace
 
@@ -225,7 +226,7 @@ TEST(GridTest, derived_notch_of_fraction_pairs) {
     // {13/16, 3/10} in valid order: lcm(16, 10) = 80 → slots 24/80 .. 65/80.
     constexpr grid a{just<3, 10>, just<13, 16>};
     static_assert(a.Notch == rational{1, 80});
-    static_assert(a.max_index() == 41);
+    static_assert(a.step_count() == detail::grid_int{41});
     static_assert(grid::validate<a>() && derived_notch_is_coarsest<a>() && max_index_matches<a>());
 
     // Reversed order is not an interval: the notch still derives, the grid is invalid.
@@ -240,7 +241,7 @@ TEST(GridTest, derived_notch_of_fraction_pairs) {
     // Mixed signs, coprime denominators: lcm(7, 9) = 63.
     constexpr grid c{just<-5, 7>, just<4, 9>};
     static_assert(c.Notch == rational{1, 63});
-    static_assert(c.max_index() == 73); // (4/9 + 5/7)·63 = 28 + 45
+    static_assert(c.step_count() == detail::grid_int{73}); // (4/9 + 5/7)·63 = 28 + 45
     static_assert(grid::validate<c>() && derived_notch_is_coarsest<c>() && max_index_matches<c>());
 
     // Both negative.
@@ -251,7 +252,7 @@ TEST(GridTest, derived_notch_of_fraction_pairs) {
     // Integer and fraction: the integer contributes nothing finer.
     constexpr grid e{-3, just<7, 3>};
     static_assert(e.Notch == rational{1, 3});
-    static_assert(e.max_index() == 16);
+    static_assert(e.step_count() == detail::grid_int{16});
     static_assert(derived_notch_is_coarsest<e>() && max_index_matches<e>());
 
     // One denominator divides the other: lcm(4, 12) = 12.
@@ -267,12 +268,12 @@ TEST(GridTest, derived_notch_of_fraction_pairs) {
     // Equal limits: a point; the two-limit form still derives a valid notch.
     constexpr grid h{just<3, 10>, just<3, 10>};
     static_assert(h.Notch == rational{1, 10});
-    static_assert(grid::validate<h>() && h.max_index() == 0);
+    static_assert(grid::validate<h>() && h.step_count() == detail::grid_int{0});
 
     // Large coprime denominators that still fit: lcm(1009, 1013) = 1022117.
     constexpr grid i{just<1, 1013>, just<1, 1009>};
     static_assert(i.Notch == rational{1, 1022117});
-    static_assert(i.max_index() == 4); // 1013 − 1009
+    static_assert(i.step_count() == detail::grid_int{4}); // 1013 − 1009
     static_assert(grid::validate<i>() && derived_notch_is_coarsest<i>() && max_index_matches<i>());
 
     // inside on derived fractional grids: storage, exact values, assignment.

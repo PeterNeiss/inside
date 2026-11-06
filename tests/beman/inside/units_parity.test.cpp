@@ -87,13 +87,17 @@ constexpr std::array inside_only{
 };
 
 // Member functions of an inside without a quantity counterpart: properties of
-// the number in one unit (5 km and 5000 m have other raws and numerators). A
-// quantity's number is numerical_value(), and these are its members.
+// the number in one unit (5 km and 5000 m have other raws, numerators and
+// notch indices). A quantity's number is numerical_value(), and these are its
+// members.
 constexpr std::array member_only{
     std::string_view{"raw"},
     std::string_view{"from_raw"},
     std::string_view{"numerator"},
     std::string_view{"denominator"},
+    std::string_view{"index"},
+    std::string_view{"from_index"},
+    std::string_view{"try_from_index"},
 };
 
 template <class Q>

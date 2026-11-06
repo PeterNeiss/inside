@@ -237,17 +237,6 @@ struct grid {
     // Bits needed to hold every slot index 0..step_count().
     [[nodiscard]] constexpr int slot_bits() const noexcept { return bit_width_of(step_count()); }
 
-    // True when the step count fits umax (a builtin index). False ⇒ the grid is
-    // still valid and stores a wide index.
-    [[nodiscard]] constexpr bool max_index_representable() const {
-        return !(detail::grid_int{std::numeric_limits<umax>::max()} < step_count());
-    }
-
-    // step_count() as a builtin index (0 on overflow: such grids store a wide index).
-    [[nodiscard]] constexpr umax max_index() const {
-        return max_index_representable() ? static_cast<umax>(step_count()) : umax{0};
-    }
-
     // True when `v` is an *exact* slot: in the interval AND on a notch (notch-0
     // grids store verbatim, so any in-range value qualifies). Used to admit a
     // single representable value (e.g. `0_ins`) regardless of whole-range mapping.
@@ -322,6 +311,16 @@ namespace detail {
 // too, so an exact result can be sized from its operands' bounds.
 //---------------------------------------------------------------------------
 constexpr bool continuous_grid(const grid& g) { return g.Notch == 0 && g.Interval.Lower != g.Interval.Upper; }
+
+// Whether g's step count fits umax: a builtin index (else g stores a wide
+// one), and that count as the builtin (0 when it does not fit). Internal:
+// the public counts are step_count_of<T> and index_t<T>, insides of any size.
+constexpr bool max_index_representable(const grid& g) {
+    return !(grid_int{std::numeric_limits<umax>::max()} < g.step_count());
+}
+constexpr umax max_index(const grid& g) {
+    return max_index_representable(g) ? static_cast<umax>(g.step_count()) : umax{0};
+}
 
 // Whether an inside on g exists (grid::validate): a lattice, a point, or a
 // continuous grid with a bound. An exact result whose fractions would pass
@@ -439,7 +438,7 @@ using value_uint_for_t = int_for_bits_t<bit_width_of(grid_numerator(G.Interval.U
 // bits).
 template <grid G>
 inline constexpr bool deduces_value = [] {
-    if constexpr (G.Interval.Lower == G.Interval.Upper || !unit_lattice(G) || !G.max_index_representable())
+    if constexpr (G.Interval.Lower == G.Interval.Upper || !unit_lattice(G) || !max_index_representable(G))
         return false;
     else if constexpr (G.Interval.Lower < 0)
         return fits_imax(G.Interval);

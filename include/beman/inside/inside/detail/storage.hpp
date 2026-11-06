@@ -193,10 +193,10 @@ inline constexpr imax lower_imax = trunc(lower64<B>);
 template <insidable B>
 inline constexpr imax upper_imax = trunc(upper64<B>);
 
-// The largest index, grid::max_index (overflow-safe: 0 when it doesn't fit umax,
+// The largest index, detail::max_index (overflow-safe: 0 when it doesn't fit umax,
 // for grids with a wide index, which take the exact wide paths).
 template <insidable B>
-inline constexpr umax max_index_of = grid_of<B>.max_index();
+inline constexpr umax max_index_of = max_index(grid_of<B>);
 
 // Every value — and, for index storage, every slot — fits imax. Gates the
 // integer fast paths that work in imax (raw_imax / to_value / raw_lo /

@@ -165,22 +165,28 @@ TEST(WideGridTest, conversions) {
 }
 
 TEST(WideGridTest, exact_read_out) {
-    // 2^33 + 2^-32 = (2^65 + 1) / 2^32, in lowest terms.
+    // 2^33 + 2^-32 = (2^65 + 1) / 2^32, in lowest terms: insides on the
+    // numerator and denominator grids, wide where they must be.
+    using detail::big_int, detail::grid_rational;
     const fine odd = fine::from_raw((detail::wide_uint<2>{1} << 65) + detail::wide_uint<2>{1});
     using N        = decltype(odd.numerator());
-    static_assert(detail::is_wide_int_v<N>);
-    EXPECT_TRUE(odd.numerator() == (N{1} << 65) + N{1});
-    EXPECT_TRUE(odd.denominator() == N{1} << 32);
+    static_assert(detail::wide_index_storage<N>);
+    static_assert(grid_of<N> == grid{{0, grid_rational{big_int{1} << 66}}, 1}); // 2^34 · 2^32
+    static_assert(grid_of<decltype(odd.denominator())> == grid{{1, std::int64_t{1} << 32}, 1});
+    EXPECT_TRUE(odd.numerator() == just<grid_rational{(big_int{1} << 65) + big_int{1}}>);
+    EXPECT_TRUE(odd.denominator() == std::int64_t{1} << 32);
     const fine half{0.5};
-    EXPECT_TRUE(half.numerator() == N{1} && half.denominator() == N{2});
+    EXPECT_TRUE(half.numerator() == 1 && half.denominator() == 2);
     const fine_signed neg{-0.75};
-    EXPECT_TRUE(neg.numerator() == -decltype(neg.numerator()){3});
-    // A 64-bit grid whose values pass imax reads out wide too.
+    EXPECT_TRUE(neg.numerator() == -3 && neg.denominator() == 4);
+    // A 64-bit grid whose values pass imax reads out exactly too.
     using big64     = inside<{0, std::numeric_limits<umax>::max()}>;
     const big64 top = std::numeric_limits<umax>::max();
-    EXPECT_TRUE(top.numerator() == decltype(top.numerator()){std::numeric_limits<umax>::max()});
-    // A grid whose values fit imax keeps imax.
-    static_assert(std::is_same_v<decltype(std::declval<inside<{0, 100}>>().numerator()), imax>);
+    EXPECT_TRUE(top.numerator() == std::numeric_limits<umax>::max());
+    // On an integer grid the numerator is the value, on the same grid.
+    static_assert(std::is_same_v<decltype(std::declval<inside<{0, 100}>>().numerator()), inside<{0, 100}>>);
+    static_assert(std::is_same_v<decltype(std::declval<inside<{0, 100}>>().denominator()),
+                                 std::remove_cvref_t<decltype(just<1>)>>);
 }
 
 TEST(WideGridTest, same_notch_assignment) {
