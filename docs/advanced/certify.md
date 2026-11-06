@@ -42,8 +42,9 @@ The library's own certified pairs, with their hashes, are in
 [certified.md](../certified.md): pairs picked to cover every function, and every
 pair the [examples](../../examples) use. Every CI configuration (optimized,
 debug, sanitized, the FP-free build) recomputes the pairs up to 2²⁰ inputs and
-must match; the weekly run recomputes all of them. A test also scans the examples' build and fails if one of their
-pairs has no row.
+must match; the weekly run recomputes all of them. A weekly test also scans
+the examples' unoptimized build and fails if one of their pairs has no row
+(`find_grids`, with `-DBEMAN_INSIDE_SLOW_TESTS=ON`).
 
 ## Certify your program's grids
 

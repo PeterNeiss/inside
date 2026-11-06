@@ -88,6 +88,21 @@ ones implicitly.
   `beman::inside::literals`, so `using namespace beman::inside::literals;`
   brings only them; `using namespace beman::inside;` still brings them too.
 
+### Tests
+
+- The suite is organized by topic: 21 GTest executables instead of 78
+  (grid, storage, assignment, policies, arithmetic, division, conversions,
+  text, ranges, big_grids, internals, math_engine, math, units, mdspan, …).
+  The cases of the former audit and bug-hunt files live with the topic
+  they test, named after the behaviour they pin.
+- The compile-fail cases run the compiler directly and in parallel, and
+  the exhaustive sweeps (the math kernels' proved bounds, wide_int's
+  exhaustive division, the Q-format compound sweeps) run in optimized
+  builds only: a Debug `ctest` takes about 9 s instead of 88 s.
+- `find_grids` (the examples' certified pairs) needs an unoptimized build
+  and about 20 s: it runs with `-DBEMAN_INSIDE_SLOW_TESTS=ON`, in the
+  weekly CI run.
+
 ## 0.7.0 — 2026-11-03
 
 Safer defaults (every store checked unless `unsafe`, a defined default value,

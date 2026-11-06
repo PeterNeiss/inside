@@ -1200,19 +1200,6 @@ namespace pinned_tests {
 using namespace beman::inside;
 using namespace beman::inside::detail;
 
-namespace fpk = beman::inside::math::detail::fp;
-namespace d {
-// The full kernels' values.
-double fp_cbrt(double x) {
-    double b;
-    return fpk::pow_k<fpk::full_bits>::cbrt(x, b);
-}
-double fp_atan2(double y, double x) {
-    double b;
-    return fpk::atan_k<fpk::full_bits>::atan2(y, x, b);
-}
-} // namespace d
-
 // Integer raw mapping into a full-width int64 target: the old map_raw added
 // trunc(Offset) (up to 2^63) before raw_lo<L>, overflowing on the way.
 TEST(AssignmentTest, raw_map_into_a_full_int64_grid) {

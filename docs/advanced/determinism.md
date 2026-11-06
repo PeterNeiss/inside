@@ -114,7 +114,7 @@ rational input the rational results are few and known: `exp(0)`, `log(1)`,
 `2^−1`, `log2(8)`, `sqrt(9/4)`, `8^(2/3)`, `hypot(3/2, 2)`, sin 30°, and the
 like. Lindemann–Weierstrass, Niven's theorem and the rational root theorem
 leave no others, and the engine stores each one exactly
-(`tests/beman/inside/math_exact.test.cpp` puts every kind on a tie, under
+(`tests/beman/inside/math.test.cpp` puts every kind on a tie, under
 every rounding mode). Every other result is irrational, so doubling the
 precision decides it at some point.
 
@@ -163,7 +163,7 @@ real programs, such as 2⁻¹⁴ coordinates, 1/4096 ratios and decibel steps.
 - **Random sampling.** `uniform<B>(rng)` draws from the generator's raw
   outputs by a fixed recipe, not through `std::uniform_int_distribution`,
   whose algorithm each standard library picks for itself. A seeded
-  `std::mt19937_64` gives the same B on every standard library (pinned in `sign_uniform.test.cpp` and `wide_grid.test.cpp`).
+  `std::mt19937_64` gives the same B on every standard library (pinned in `ranges.test.cpp` and `big_grids.test.cpp`).
 - **Hashing.** `std::hash<inside>` hashes its raw with `std::hash` of the
   raw's integers (and combines them for a fraction or wide raw), which each
   standard library defines for itself. Hash values, and so the iteration order of unordered containers, are
@@ -197,7 +197,7 @@ release to the next, so stored results, golden files and replay logs survive
 an upgrade.
 
 - The transcendental values are pinned by exact-value tests
-  (`determinism.test.cpp`, `math_adaptive.test.cpp`, `constexpr.test.cpp`).
+  (`math_engine.test.cpp`, `constexpr.test.cpp`).
   They are the contract: a change to any of them does not merge silently.
 - Values change only on purpose, in a release that re-pins the tests and lists
   the change by function. Algebraic results (`+ − × ÷`, conversions, rounding)
@@ -212,7 +212,7 @@ code. The one generated file is `math/detail/minimax.hpp`: the double tier's
 minimax polynomials for `exp`, `log`, `atan` and `asin`, fitted offline with
 Sollya (`tests/beman/inside/minimax/gen.py`) and committed as exact hex
 literals, each with a certified error bound that the kernel's proof uses.
-Sollya is needed only to regenerate the file, and `math_minimax.test.cpp`
+Sollya is needed only to regenerate the file, and `math_engine.test.cpp`
 checks every fit against its bound. These kernels only decide when a result
 is safe to return early; the value is always the integer path's. Every math
 function is `constexpr`, and a result computed at compile time equals the run

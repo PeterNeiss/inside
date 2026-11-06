@@ -278,7 +278,7 @@ inline dd reduce(dd x, double k, double c0, double c1, double c2, double c3) noe
 //---------------------------------------------------------------------------
 // Kernels. Each is within about 2^-97 of its value (relative, plus an
 // absolute 2^-99 where a subtraction cancels; dd_kernels_stay_far_inside_
-// their_bound in math_adaptive.test.cpp checks it). Horner steps add a
+// their_bound in math_engine.test.cpp checks it). Horner steps add a
 // small product to a larger coefficient, so they use add_dominant. They are
 // templates on D = dd only so that consts<D> is instantiated on first use.
 //---------------------------------------------------------------------------

@@ -1731,19 +1731,6 @@ namespace pinned_tests {
 using namespace beman::inside;
 using namespace beman::inside::detail;
 
-namespace fpk = beman::inside::math::detail::fp;
-namespace d {
-// The full kernels' values.
-double fp_cbrt(double x) {
-    double b;
-    return fpk::pow_k<fpk::full_bits>::cbrt(x, b);
-}
-double fp_atan2(double y, double x) {
-    double b;
-    return fpk::atan_k<fpk::full_bits>::atan2(y, x, b);
-}
-} // namespace d
-
 // Directed rounding of a result that nears a grid point beyond the precision
 // cap: the deep step decides it (tanh(50) floor gave 1).
 TEST(MathEngineTest, deep_step_at_the_cap) {
@@ -1758,6 +1745,20 @@ TEST(MathEngineTest, deep_step_at_the_cap) {
     using SF = inside<{{0, 1}, per<(std::uint64_t{1} << 40)>}, round_floor>;
     EXPECT_EQ(math::sin_into<SF>(X{rational{3u, std::uint64_t{1} << 40}}).raw(), 2u);
 }
+
+#ifndef BEMAN_INSIDE_MATH_NO_FP // the double kernels
+namespace fpk = beman::inside::math::detail::fp;
+namespace d {
+// The full kernels' values.
+double fp_cbrt(double x) {
+    double b;
+    return fpk::pow_k<fpk::full_bits>::cbrt(x, b);
+}
+double fp_atan2(double y, double x) {
+    double b;
+    return fpk::atan_k<fpk::full_bits>::atan2(y, x, b);
+}
+} // namespace d
 
 //---------------------------------------------------------------------------
 // math/detail/fp.hpp — cbrt's negative branch
@@ -1780,5 +1781,6 @@ TEST(MathEngineTest, double_kernels_cbrt_of_negatives_and_atan2_on_the_axes) {
     ASSERT_EQ((d::fp_atan2(1.0, -1.0)), 0x1.2d97c7f3321d2p+1);   //  3pi/4
     ASSERT_EQ((d::fp_atan2(-1.0, -1.0)), -0x1.2d97c7f3321d2p+1); // -3pi/4
 }
+#endif // !BEMAN_INSIDE_MATH_NO_FP
 
 } // namespace pinned_tests
