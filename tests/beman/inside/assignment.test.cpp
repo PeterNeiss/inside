@@ -49,7 +49,7 @@ TEST(InsideAssignTest, conversion_between_bounds_with_compatible_grids) {
 }
 
 // rounding requires opt-in / policy<round_toward_zero>() rounds (truncates toward zero on positive)
-TEST(InsideAssignTest, rounding_requires_opt_in__policy_snap_rounds_truncates_toward_zero_on_positive) {
+TEST(InsideAssignTest, rounding_requires_opt_in__round_toward_zero_truncates_a_positive_value) {
     using f30t40 = inside<{{30, 40}, 2}>;
     using f20t50 = inside<{interval{20, 50}, 1}>;
     [[maybe_unused]] f20t50 bigger{39};
@@ -63,7 +63,7 @@ TEST(InsideAssignTest, rounding_requires_opt_in__policy_snap_rounds_truncates_to
 }
 
 // rounding requires opt-in / policy<round_toward_zero>() is the alias
-TEST(InsideAssignTest, rounding_requires_opt_in__with_snap_is_the_alias) {
+TEST(InsideAssignTest, rounding_requires_opt_in__a_value_on_the_grid_stores_exactly) {
     using f30t40 = inside<{{30, 40}, 2}>;
     using f20t50 = inside<{interval{20, 50}, 1}>;
     [[maybe_unused]] f20t50 bigger{39};
@@ -78,7 +78,7 @@ TEST(InsideAssignTest, rounding_requires_opt_in__with_snap_is_the_alias) {
 }
 
 // rounding requires opt-in / policy<round_nearest>() rounds half up to grid
-TEST(InsideAssignTest, rounding_requires_opt_in__with_snap_round_nearest_rounds_half_up_to_grid) {
+TEST(InsideAssignTest, rounding_requires_opt_in__round_nearest_rounds_a_tie_up) {
     using f30t40 = inside<{{30, 40}, 2}>;
     using f20t50 = inside<{interval{20, 50}, 1}>;
     [[maybe_unused]] f20t50 bigger{39};
@@ -106,15 +106,15 @@ TEST(InsideAssignTest, rounding_requires_opt_in__with_snap_round_nearest_rounds_
     }
 }
 
-// rounding requires opt-in / type-level snap
-TEST(InsideAssignTest, rounding_requires_opt_in__type_level_snap) {
+// rounding requires opt-in / type-level round_toward_zero
+TEST(InsideAssignTest, rounding_requires_opt_in__type_level_round_toward_zero) {
     using f30t40 = inside<{{30, 40}, 2}>;
     using f20t50 = inside<{interval{20, 50}, 1}>;
     [[maybe_unused]] f20t50 bigger{39};
     [[maybe_unused]] f30t40 smaller;
 
     {
-        SCOPED_TRACE("type-level snap");
+        SCOPED_TRACE("type-level round_toward_zero");
         using n2_round = inside<{{0, 10}, 2}, round_toward_zero>;
         using n1       = inside<{{0, 10}, 1}>;
         n2_round c;
@@ -132,7 +132,7 @@ TEST(InsideAssignTest, rounding_requires_opt_in__type_level_round_nearest) {
 
     {
         SCOPED_TRACE("type-level round_nearest");
-        // Same cross-grid, off-notch assignment as `type-level snap`, but the
+        // Same cross-grid, off-notch assignment as `type-level round_toward_zero`, but the
         // coarse grid rounds to the nearest slot instead of truncating toward zero
         // (the `num * num` finer→coarser case). Grid points are 0,4,8,12,16,20.
         using n4_round = inside<{{0, 20}, 4}, round_nearest>;
@@ -140,7 +140,7 @@ TEST(InsideAssignTest, rounding_requires_opt_in__type_level_round_nearest) {
         n4_round c;
 
         c = n1{3};
-        ASSERT_EQ(c, 4); // nearer 4 than 0 (snap would give 0)
+        ASSERT_EQ(c, 4); // nearer 4 than 0 (round_toward_zero would give 0)
         c = n1{5};
         ASSERT_EQ(c, 4); // nearer 4 than 8
         c = n1{1};
@@ -327,8 +327,8 @@ TEST(InsideAssignTest, checked_policy_throws_on_rounding_error) {
     ASSERT_EQ(c, 4);
 }
 
-// snap truncates non-notch float at runtime
-TEST(InsideAssignTest, snap_truncates_non_notch_float_at_runtime) {
+// round_toward_zero truncates an off-notch double at run time
+TEST(InsideAssignTest, round_toward_zero_truncates_an_off_notch_double) {
     using coarse = inside<{{0, 10}, 2}, round_toward_zero>;
     coarse c;
     c = 3.0;
@@ -596,7 +596,7 @@ TEST(CastsTest, unchecked_cast_bypasses_runtime_checks) {
 // Integer rhs takes the truncation fast path which is *intentionally*
 // rounding-policy-agnostic — see assignment.hpp:store(integral).
 // policy<round_floor> rounds toward -inf for double rhs
-TEST(CastsTest, with_snap_round_floor_rounds_toward_inf_for_double_rhs) {
+TEST(CastsTest, policy_round_floor_rounds_a_double_down) {
     using coarse = inside<{{0, 10}, 2}>;
     coarse c{0};
 
@@ -611,7 +611,7 @@ TEST(CastsTest, with_snap_round_floor_rounds_toward_inf_for_double_rhs) {
 }
 
 // policy<round_ceil> rounds toward +inf for double rhs
-TEST(CastsTest, with_snap_round_ceil_rounds_toward_plus_inf_for_double_rhs) {
+TEST(CastsTest, policy_round_ceil_rounds_a_double_up) {
     using coarse = inside<{{0, 10}, 2}>;
     coarse c{0};
 
@@ -626,7 +626,7 @@ TEST(CastsTest, with_snap_round_ceil_rounds_toward_plus_inf_for_double_rhs) {
 }
 
 // policy<round_half_even> applies banker's rounding
-TEST(CastsTest, with_snap_round_half_even_applies_banker_s_rounding) {
+TEST(CastsTest, policy_round_half_even_rounds_a_tie_to_even) {
     using coarse = inside<{{0, 10}, 2}>;
     coarse c{0};
 
@@ -801,7 +801,7 @@ TEST(WrapOverflowTest, wrap_still_correct_on_a_small_symmetric_grid) {
 //     disagreed with division (assigning -2.5 gave -2 while x/y == -2.5 gave -3);
 //   * round_half_even broke ties to an even OFFSET INDEX, giving an odd VALUE
 //     whenever Lower was odd (Lower=-9: -2.5 -> -3 instead of -2);
-//   * bare snap truncated toward -inf instead of toward zero.
+//   * round_toward_zero truncated toward -inf instead of toward zero.
 // The fix rounds in value space, so assignment and division now agree.
 namespace round_negative_ties_tests {
 using namespace beman::inside;
@@ -841,8 +841,8 @@ TEST(RoundNegativeTiesTest, round_half_even_assignment_ties_to_even_value_regard
     ASSERT_TRUE((static_cast<rational>(Ho(rational{-7, 2})) == -4)); // -3.5 -> -4
 }
 
-// bare snap assignment truncates toward zero on negatives
-TEST(RoundNegativeTiesTest, bare_snap_assignment_truncates_toward_zero_on_negatives) {
+// round_toward_zero truncates negative values toward zero
+TEST(RoundNegativeTiesTest, round_toward_zero_truncates_a_negative_value) {
     using S = inside<{{-100, 100}, per<4>}, round_toward_zero>;
     // 1/8-off values truncate toward zero (not toward -inf).
     ASSERT_TRUE((static_cast<rational>(S(rational{7, 8})) == rational{3, 4}));   //  0.875 ->  0.75
@@ -1544,7 +1544,7 @@ TEST(AssignmentTest, point_into_a_fine_or_full_width_grid) {
 }
 
 //---------------------------------------------------------------------------
-// 2026-07: fp-derived rational store on a snap grid with |Lower| ≫ 1. The
+// A double stored on a rounding grid with |Lower| ≫ 1. The
 // cold store path forms (rhs − Lower)/Notch exactly; with a full-mantissa
 // double source (den 2^54) that once dereferenced an empty result (terminate
 // through the noexcept math engines). Now: offsets that fit 64 bits go
@@ -1685,43 +1685,43 @@ TEST(AssignmentTest, huge_double_source) {
 
 // += / -= / ++ on the full int64 range: the raw add must not overflow imax.
 TEST(AssignmentTest, full_int64_grid_compound_ops) {
-    constexpr umax kUM   = std::numeric_limits<umax>::max();
-    constexpr imax kIMin = std::numeric_limits<imax>::min();
-    constexpr imax kIMax = std::numeric_limits<imax>::max();
-    using I64            = inside<{{kIMin, kIMax}, 1}>;
-    using I64W           = inside<{{kIMin, kIMax}, 1}, wrap>;
-    using I64C           = inside<{{kIMin, kIMax}, 1}, clamp>;
-    constexpr auto a     = [] {
-        I64W x{kIMax};
+    constexpr umax u64_max = std::numeric_limits<umax>::max();
+    constexpr imax i64_min = std::numeric_limits<imax>::min();
+    constexpr imax i64_max = std::numeric_limits<imax>::max();
+    using I64              = inside<{{i64_min, i64_max}, 1}>;
+    using I64W             = inside<{{i64_min, i64_max}, 1}, wrap>;
+    using I64C             = inside<{{i64_min, i64_max}, 1}, clamp>;
+    constexpr auto a       = [] {
+        I64W x{i64_max};
         ++x;
         return x.raw();
     }();
     constexpr auto b = [] {
-        I64W x{kIMin};
+        I64W x{i64_min};
         --x;
         return x.raw();
     }();
     constexpr auto c = [] {
-        I64C x{kIMax};
+        I64C x{i64_max};
         ++x;
         return x.raw();
     }();
     constexpr auto d = [] {
-        I64W x{kIMax};
+        I64W x{i64_max};
         x += I64{5};
         return x.raw();
     }();
     constexpr auto e = [] {
-        I64W x{kIMin};
+        I64W x{i64_min};
         x -= I64{1};
         return x.raw();
     }();
-    static_assert(a == kIMin && b == kIMax && c == kIMax && d == kIMin + 4 && e == kIMax);
-    static_assert(I64W{kUM} == -1);
+    static_assert(a == i64_min && b == i64_max && c == i64_max && d == i64_min + 4 && e == i64_max);
+    static_assert(I64W{u64_max} == -1);
 
-    I64 y{kIMax};
+    I64 y{i64_max};
     EXPECT_THROW(++y, inside_error);
-    EXPECT_EQ(y, kIMax);
+    EXPECT_EQ(y, i64_max);
 }
 
 // A value-raw source with Lower ≠ 0 mapped onto a coarser notch: the affine
@@ -1770,9 +1770,9 @@ TEST(AssignmentTest, store_rounds_the_exact_value_not_its_double) {
 //---------------------------------------------------------------------------
 // inside::operator/= and operator%= (inside/detail/core.hpp) with an inside rhs
 //---------------------------------------------------------------------------
-// compound /= and %= with a snap inside rhs (runtime)
+// compound /= and %= with a rounding inside rhs (run time)
 TEST(AssignmentTest, compound_and_policy_handle_with_a_rounding_inside) {
-    // Integer division/modulo now flow through the insidable path; `snap`
+    // Integer division/modulo now flow through the insidable path; `round_toward_zero`
     // gives the same C++ trunc-toward-zero / dividend-signed-remainder semantics
     // the old raw-int compound assigns had.
     using sb = inside<{-100, 100}, round_toward_zero>;
@@ -1819,7 +1819,7 @@ TEST(AssignmentTest, cross_grid_conversion_of_a_negative_off_notch_value) {
 
     src_t s{-1.5};
     dst_t d = s;
-    // snap truncates toward ZERO in value space (matching the scalar store
+    // round_toward_zero truncates toward ZERO in value space (matching the scalar store
     // path and div_rounded): -1.5 on the 1/3 grid → -4/3. (Was -5/3 when the old
     // path truncated the non-negative offset — i.e. toward -inf in value space.)
     ASSERT_TRUE((static_cast<rational>(d) == rational{4, -3}));

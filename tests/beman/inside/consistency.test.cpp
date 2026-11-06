@@ -68,7 +68,7 @@ TEST(ConsistencyTest, integer_source_off_notch_rounds_like_rational_source) {
     EXPECT_THROW((void)Strict{3}, inside_error);
 }
 
-TEST(ConsistencyTest, integer_source_snaps_on_every_path) {
+TEST(ConsistencyTest, integer_source_rounds_on_every_path) {
     using F = inside<{{0, 10}, 2}, round_nearest>;
     EXPECT_EQ(rational{F{3}}, q(4));
     EXPECT_EQ(rational{*F::try_make(3)}, q(4));
@@ -486,7 +486,7 @@ TEST(ConsistencyTest, predicates_round_before_the_range_check) {
 
 // A point inside's value is its type: its raw is empty (1 byte standalone, 0 as
 // a [[no_unique_address]] member), and an integer point is integer-stored, so
-// `%` and snap `/` with a literal take the native integer paths.
+// `%` and rounding `/` with a literal take the native integer paths.
 namespace {
 struct with_point {
     [[no_unique_address]] decltype(just<440>) Pitch;
@@ -586,8 +586,8 @@ TEST(ConsistencyTest, integer_storage_decodes_to_the_nearest_double) {
 }
 
 // A fine-denominator source whose signed value index overflows imax rounds in
-// value space too: `snap` alone truncates toward zero, also below zero.
-TEST(ConsistencyTest, snap_truncates_fine_negative_rationals_toward_zero) {
+// value space too: `round_toward_zero` truncates toward zero, also below zero.
+TEST(ConsistencyTest, round_toward_zero_truncates_fine_negative_rationals) {
     using T              = inside<{{-8, 8}, per<16384>}, round_toward_zero>;
     constexpr imax k2_61 = imax{1} << 61;
     EXPECT_EQ((rational{T{rational{-55 * (imax{1} << 47) + 1, k2_61}}}), q(-54, 16384));
@@ -632,7 +632,7 @@ TEST(ConsistencyTest, clamp_into_continuous_stores_the_endpoint) {
     EXPECT_EQ(rational{c}, q(1, 2));
 }
 
-// Notched → continuous needs no snap; continuous → notched is checked on store.
+// Notched → continuous needs no rounding mode; continuous → notched is checked on store.
 TEST(ConsistencyTest, continuous_sides_are_assignable) {
     inside<{{0, 1}, max_denominator{10}}> c{0};
     c = inside<{{0, 1}, per<10>}>{q(3, 10)};
@@ -650,7 +650,7 @@ TEST(ConsistencyTest, hash_covers_every_storage) {
     EXPECT_EQ(std::hash<C>{}(C{q(1, 3)}), std::hash<C>{}(C{q(1, 3)}));
 }
 
-// Signed fixed-point division under snap stays on the operands' notch, rounded
+// Signed fixed-point division under round_toward_zero stays on the operands' notch, rounded
 // like the exact quotient (signed Q15: -1..1 in steps of 2^-15).
 TEST(ConsistencyTest, signed_qformat_division_stays_on_the_notch) {
     using q15 = inside<{{-1, 1}, per<32768>}, round_nearest>;

@@ -337,42 +337,42 @@ TEST(GridTest, half_open_wrap_has_the_written_period) {
 // large its values' denominators can get.
 //---------------------------------------------------------------------------
 namespace {
-constexpr grid kHundred{0, 100}, kOneToSeven{1, 7};
-constexpr grid kThousandths{interval{0, 1}, max_denominator{1000}};
-constexpr grid kUnbounded{{0, 10}, 0};
+constexpr grid hundred{0, 100}, one_to_seven{1, 7};
+constexpr grid thousandths{interval{0, 1}, max_denominator{1000}};
+constexpr grid unbounded{{0, 10}, 0};
 } // namespace
 
 TEST(GridTest, quotients_and_their_results_bound_denominators) {
     // x/y = p·b/(a·r): den ≤ den_bound(x)·num_bound(y) = 1·7
-    constexpr grid q = *(kHundred / kOneToSeven);
+    constexpr grid q = *(hundred / one_to_seven);
     static_assert(q.Notch == 0 && q.MaxDenominator == 7);
-    static_assert((q + grid{32}).MaxDenominator == 7);              // a point adds den 1
-    static_assert((q * q).MaxDenominator == 49);                    // products multiply
-    static_assert((q - q).MaxDenominator == 49);                    // sums too
-    static_assert((-q).MaxDenominator == 7);                        // negation keeps it
-    static_assert((*(kHundred / grid{-7, 7})).MaxDenominator == 7); // a divisor spanning 0 too
-    static_assert((q + kUnbounded).MaxDenominator == 0);            // unbounded stays unbounded
-    static_assert((*(kHundred / grid{{1, 10}, 0})).MaxDenominator == 0);
+    static_assert((q + grid{32}).MaxDenominator == 7);             // a point adds den 1
+    static_assert((q * q).MaxDenominator == 49);                   // products multiply
+    static_assert((q - q).MaxDenominator == 49);                   // sums too
+    static_assert((-q).MaxDenominator == 7);                       // negation keeps it
+    static_assert((*(hundred / grid{-7, 7})).MaxDenominator == 7); // a divisor spanning 0 too
+    static_assert((q + unbounded).MaxDenominator == 0);            // unbounded stays unbounded
+    static_assert((*(hundred / grid{{1, 10}, 0})).MaxDenominator == 0);
     // an unbounded divisor reaching 0 comes arbitrarily close to it: no bounded quotient
-    static_assert((kHundred / kUnbounded).error() == errc::overflow);
+    static_assert((hundred / unbounded).error() == errc::overflow);
     // hull: the larger bound; a lattice bounds by its value unit's denominator
-    static_assert(hull(kThousandths, grid{{0, 2}, rational{1, 4}}).MaxDenominator == 1000);
-    static_assert(hull(kThousandths, kUnbounded).MaxDenominator == 0);
+    static_assert(hull(thousandths, grid{{0, 2}, rational{1, 4}}).MaxDenominator == 1000);
+    static_assert(hull(thousandths, unbounded).MaxDenominator == 0);
     // a quotient that is a point, or lands on a lattice, carries no bound
     static_assert((*(grid{3} / grid{4})).MaxDenominator == 0);
-    static_assert((*(kHundred / grid{4})).MaxDenominator == 0);
+    static_assert((*(hundred / grid{4})).MaxDenominator == 0);
     static_assert(grid::validate<q>());
 }
 
 TEST(GridTest, max_denominator_spelling_and_representable) {
-    static_assert(kThousandths.MaxDenominator == 1000 && kThousandths.Notch == 0);
-    static_assert(kThousandths.representable(rational{1, 1000}));
-    static_assert(!kThousandths.representable(rational{1, 1001}));
-    static_assert(kUnbounded.representable(rational{1, 1001}));
-    static_assert(kThousandths != grid{{0, 1}, 0}); // a bound is part of the type
-    static_assert(den_bound(kThousandths) == grid_int{1000});
+    static_assert(thousandths.MaxDenominator == 1000 && thousandths.Notch == 0);
+    static_assert(thousandths.representable(rational{1, 1000}));
+    static_assert(!thousandths.representable(rational{1, 1001}));
+    static_assert(unbounded.representable(rational{1, 1001}));
+    static_assert(thousandths != grid{{0, 1}, 0}); // a bound is part of the type
+    static_assert(den_bound(thousandths) == grid_int{1000});
     static_assert(den_bound(grid{{0.5_r, 10.5_r}, 1}) == grid_int{2});
-    static_assert(num_bound(kThousandths) == grid_int{1000});
+    static_assert(num_bound(thousandths) == grid_int{1000});
 }
 
 TEST(GridTest, bounds_past_their_storage_are_dropped) {
@@ -386,8 +386,8 @@ TEST(GridTest, bounds_past_their_storage_are_dropped) {
 
 TEST(GridTest, bounded_storage_holds_every_value) {
     // Within the 64-bit rational a bounded grid stores a rational, as before.
-    static_assert(std::same_as<raw_for_t<kThousandths>, rational>);
-    static_assert(std::same_as<raw_for_t<*(kHundred / kOneToSeven)>, rational>);
+    static_assert(std::same_as<raw_for_t<thousandths>, rational>);
+    static_assert(std::same_as<raw_for_t<*(hundred / one_to_seven)>, rational>);
     // Past it, a fraction sized from the bounds — here 10^36 needs 120 bits.
     constexpr grid billionths{interval{0, 1}, max_denominator{1'000'000'000}};
     constexpr grid b2 = billionths * billionths, b4 = b2 * b2;
@@ -787,7 +787,7 @@ TEST(GridTest, representable_fine_double_at_runtime) {
 }
 
 //---------------------------------------------------------------------------
-// Bug D — gcd(rational, rational) (rational.hpp)
+// gcd(rational, rational) (rational.hpp)
 //
 // `gcd(rational, rational)` calls `std::lcm` on |Den|s without an
 // overflow check and casts the result to imax via static_cast. Large
@@ -798,7 +798,6 @@ TEST(GridTest, representable_fine_double_at_runtime) {
 // exceeds imax_max (≈9.22e18). After the cast to imax it goes negative,
 // producing a bogus rational.
 //---------------------------------------------------------------------------
-// Bug D: gcd lcm overflow propagates to grid::operator+
 TEST(GridTest, grid_plus_reports_gcd_lcm_overflow) {
     // Use grid arithmetic since gcd's return type changes — the error
     // surfaces at grid::operator+ which already returns expected<grid, errc>.

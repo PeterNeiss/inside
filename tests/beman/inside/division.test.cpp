@@ -26,11 +26,9 @@
 
 // Integer / Q-format division and modulo honour the rounding-mode policy.
 //
-// Historically the native div/mod paths gated only on the `snap` bit and
-// always truncated toward zero, silently discarding the round mode (a
-// `round_nearest` grid divided like C++ `/`). These pin the corrected
-// behaviour: each mode rounds the quotient accordingly, the remainder stays
-// consistent (`(a/b)*b + a%b == a`), and the result lands inside its grid.
+// The native div/mod paths once truncated toward zero whatever the mode
+// (a `round_nearest` grid divided like C++ `/`). These pin the behaviour: each mode rounds the quotient accordingly,
+// the remainder stays consistent (`(a/b)*b + a%b == a`), and the result lands inside its grid.
 namespace div_round_tests {
 using namespace beman::inside;
 using namespace beman::inside::detail;
@@ -90,7 +88,7 @@ TEST(DivRoundTest, integer_division_honours_each_rounding_mode) {
 
     using Tt  = inside<{-100, 100}, round_toward_zero>;
     using Ttd = inside<{1, 10}, round_toward_zero>;
-    ASSERT_TRUE(static_cast<rational>(Tt{-8} / Ttd{3}) == -2); // bare snap = truncate
+    ASSERT_TRUE(static_cast<rational>(Tt{-8} / Ttd{3}) == -2); // round_toward_zero truncates
     ASSERT_TRUE(static_cast<rational>(Tt{8} / Ttd{3}) == 2);
 }
 
@@ -232,9 +230,9 @@ TEST(DivRoundTest, divmod_types_and_errors) {
     }());
 }
 
-// Without snap `/` stays exact, but `%` and divmod still round: truncation
+// Without a rounding mode `/` stays exact, but `%` and divmod still round: truncation
 // (C++ `%`) unless the policy names a mode.
-TEST(DivRoundTest, modulo_and_divmod_without_snap_truncate) {
+TEST(DivRoundTest, modulo_and_divmod_without_a_rounding_mode_truncate) {
     using digit        = inside<{0, 9}>;
     using signed_digit = inside<{-9, 9}>;
 
@@ -446,7 +444,7 @@ TEST(DivisionTest, q_format_division_of_the_minimum_by_minus_a_notch) {
     EXPECT_EQ(to_string(*r), "8388608");
 }
 
-// An integer division past int64 ignored snap and the rounding mode (the
+// An integer division past int64 ignored the rounding mode (the
 // exact path returned a continuous quotient).
 TEST(DivisionTest, integer_division_past_int64_rounds) {
     using I64             = std::int64_t;
@@ -478,14 +476,13 @@ TEST(DivisionTest, modulo_by_a_zero_grid_is_constrained) {
 }
 
 //---------------------------------------------------------------------------
-// Bug F — division by zero.
+// division by zero.
 //
 // `÷0` reports through the error vocabulary: the return widens to
 // expected<result, errc> when the divisor grid can be zero
 // (errc::division_by_zero on a zero divisor), and the expected-lift carries
 // that cause on through a chain.
 //---------------------------------------------------------------------------
-// Bug F: div-by-zero is reported, not a silent inf
 TEST(DivisionTest, division_by_zero_is_reported) {
     using N  = inside<{{1, 4}, per<1024>}>;
     using Dz = inside<{{0, 4}, per<1024>}>; // divisor grid spans zero
@@ -506,7 +503,7 @@ TEST(DivisionTest, division_by_zero_is_reported) {
 // Q-format division: native_div_qformat matches rational arithmetic
 TEST(DivisionTest, q_format_division_matches_rationals) {
     using fp = inside<{{0, 255}, 0x1p-8_r}>; // Q8.8; the `round_toward_zero` call policy
-                                             // supplies snap for the native
+                                             // supplies the rounding for the native
                                              // path, without unsafe's skipped zero check
 
     // Spot checks against expected Q-format integer-truncation values.

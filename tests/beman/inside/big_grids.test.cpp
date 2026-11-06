@@ -104,8 +104,8 @@ TEST(BigGridTest, arithmetic_past_64_bits) {
     auto n = -a;
     EXPECT_TRUE(n == -7);
     // uint64 + uint64: its upper bound 2^65 − 2 needs big grid numbers.
-    constexpr umax kUM = ~umax{0};
-    auto           q   = uint64{kUM} + uint64{kUM};
+    constexpr umax u64_max = ~umax{0};
+    auto           q       = uint64{u64_max} + uint64{u64_max};
     EXPECT_TRUE(q == huge::from_raw(raw_2_65_2));
 }
 
@@ -180,8 +180,8 @@ TEST(BigGridTest, just_big_and_small_grid_numbers) {
     static_assert(five == 5);
     static_assert(big > five && tiny < five && tiny > 0);
     EXPECT_TRUE(big == huge::from_raw(raw_2_100));
-    EXPECT_DOUBLE_EQ(detail::as_double(big), 0x1p100);
-    EXPECT_DOUBLE_EQ(detail::as_double(tiny), 1.616255e-35);
+    EXPECT_DOUBLE_EQ(big.to<double>().value(), 0x1p100);
+    EXPECT_DOUBLE_EQ(tiny.to<double>().value(), 1.616255e-35);
     EXPECT_EQ(to_string(tiny), "0.00000000000000000000000000000000001616255");
     // Stored into a grid; added as a point delta.
     huge h = big;
@@ -452,7 +452,7 @@ TEST(WideGridTest, assignment_policies) {
 TEST(WideGridTest, assignment_between_insides) {
     fine a = inside<{0, 100}>{42};
     EXPECT_TRUE(a == 42);
-    // wide → narrow: the narrow grid's notch is coarser, so it rounds under snap.
+    // wide → narrow: the narrow grid's notch is coarser, so it rounds toward zero.
     fine                            b = 41.75;
     inside<{0, 100}, round_nearest> n = 0;
     n                                 = b;
@@ -493,13 +493,13 @@ TEST(WideGridTest, arithmetic) {
 }
 
 TEST(WideGridTest, uint64_difference_widens) {
-    constexpr umax kUM = ~umax{0};
-    uint64         x{kUM}, y{3};
+    constexpr umax u64_max = ~umax{0};
+    uint64         x{u64_max}, y{3};
     auto           d = x - y; // spans 2^65 values
     static_assert(detail::wide_index_storage<decltype(d)>);
-    EXPECT_TRUE(d == kUM - 3);
-    EXPECT_TRUE(y - x == -rational{kUM - 3});
-    EXPECT_EQ(x.to<std::uint64_t>().value(), kUM);
+    EXPECT_TRUE(d == u64_max - 3);
+    EXPECT_TRUE(y - x == -rational{u64_max - 3});
+    EXPECT_EQ(x.to<std::uint64_t>().value(), u64_max);
 }
 
 TEST(WideGridTest, conversions) {
@@ -652,15 +652,15 @@ TEST(WideGridTest, division) {
 
 TEST(WideGridTest, modulo) {
     // uint64 differences span 2^65 values: integers past imax.
-    constexpr umax kUM = ~umax{0};
-    auto           d   = uint64{kUM} - uint64{0};
+    constexpr umax u64_max = ~umax{0};
+    auto           d       = uint64{u64_max} - uint64{0};
     static_assert(detail::wide_index_storage<decltype(d)>);
     auto m = mod(d, inside<{1, 1000}>{7}, make_policy<round_toward_zero>());
-    EXPECT_TRUE(m == (kUM % 7));
+    EXPECT_TRUE(m == (u64_max % 7));
     auto n = mod(-d, inside<{1, 1000}>{7}, make_policy<round_toward_zero>()); // takes the dividend's sign
-    EXPECT_TRUE(n == -static_cast<imax>(kUM % 7));
+    EXPECT_TRUE(n == -static_cast<imax>(u64_max % 7));
     // uint64 itself (a uint64 value raw past imax) now has a modulo too.
-    EXPECT_TRUE((mod(uint64{kUM}, inside<{1, 1000}>{10}, make_policy<round_toward_zero>()) == 5));
+    EXPECT_TRUE((mod(uint64{u64_max}, inside<{1, 1000}>{10}, make_policy<round_toward_zero>()) == 5));
 }
 
 TEST(WideGridTest, clamp_and_wrap_actions) {
@@ -795,25 +795,25 @@ TEST(WideGridTest, wide_operand_into_a_rational_sum) {
 // slot counts 2^64 − 1 (the last uint64 index) and 2^64 (the first two-limb
 // one), a 128-bit count, and arithmetic that crosses from one to the other.
 TEST(WideGridTest, limb_edges) {
-    constexpr umax kUM = ~umax{0};
+    constexpr umax u64_max = ~umax{0};
     const rational q1{1, 4};                                                 // one notch
-    using top64  = inside<{{rational{0}, rational{kUM, 4}}, per<4>}>;        // 2^64 − 1 slots
+    using top64  = inside<{{rational{0}, rational{u64_max, 4}}, per<4>}>;    // 2^64 − 1 slots
     using over64 = inside<{{rational{0}, rational{umax{1} << 62}}, per<4>}>; // 2^64 slots
     static_assert(std::is_same_v<top64::raw_type, std::uint64_t>);
     static_assert(std::is_same_v<over64::raw_type, detail::wide_uint<2>>);
     static_assert(grid_of<over64>.slot_bits() == 65);
 
     // The top slot of each round-trips.
-    top64 t = rational{kUM, 4};
-    EXPECT_EQ(t.raw(), kUM);
+    top64 t = rational{u64_max, 4};
+    EXPECT_EQ(t.raw(), u64_max);
     over64 o = rational{umax{1} << 62};
     EXPECT_TRUE(o.raw() == (detail::wide_uint<2>{1} << 64));
-    EXPECT_TRUE((-t == -rational{kUM, 4}));
+    EXPECT_TRUE((-t == -rational{u64_max, 4}));
     EXPECT_TRUE(-o == -rational{umax{1} << 62});
 
     // += across the 64-bit index boundary, by a point delta and by a raw.
-    over64 c = rational{kUM, 4}; // index 2^64 − 1
-    c += just<1, 4>;             // index 2^64
+    over64 c = rational{u64_max, 4}; // index 2^64 − 1
+    c += just<1, 4>;                 // index 2^64
     EXPECT_TRUE(c.raw() == (detail::wide_uint<2>{1} << 64));
     EXPECT_THROW((c += just<1, 4>), inside_error); // past the top
     inside<{{rational{0}, rational{umax{1} << 62}}, per<4>}, wrap> w = rational{umax{1} << 62};
@@ -826,16 +826,16 @@ TEST(WideGridTest, limb_edges) {
     EXPECT_TRUE((s == rational{(umax{1} << 62) + 1}));
     // (2^64 − 1)/4 + (2^64 − 1)/4: a big grid number.
     auto tt = t + t; // 2^65 − 1 slots
-    EXPECT_TRUE((tt == rational{kUM, 2}));
+    EXPECT_TRUE((tt == rational{u64_max, 2}));
     auto d = top64{0} - t;
-    EXPECT_TRUE((d == -rational{kUM, 4}));
-    EXPECT_TRUE(t - top64{q1} == (rational{kUM, 4} - q1).value());
+    EXPECT_TRUE((d == -rational{u64_max, 4}));
+    EXPECT_TRUE(t - top64{q1} == (rational{u64_max, 4} - q1).value());
 
     // A 128-bit slot count: {−(2^64 − 1), 2^64 − 1} in steps of 1/(2^63 − 1).
-    using full = inside<{{rational{kUM, imax{-1}}, rational{kUM}}, per<(umax{1} << 63) - 1>}>;
+    using full = inside<{{rational{u64_max, imax{-1}}, rational{u64_max}}, per<(umax{1} << 63) - 1>}>;
     static_assert(std::is_same_v<full::raw_type, detail::wide_uint<2>>);
     static_assert(grid_of<full>.slot_bits() == 128);
-    full lo = rational{kUM, imax{-1}}, hi = rational{kUM};
+    full lo = rational{u64_max, imax{-1}}, hi = rational{u64_max};
     EXPECT_TRUE(lo.raw() == detail::wide_uint<2>{0});
     constexpr auto full_top = static_cast<detail::wide_uint<2>>(grid_of<full>.step_count());
     EXPECT_TRUE(hi.raw() == full_top);
@@ -879,8 +879,8 @@ concept has_epsilon = requires { std::numeric_limits<T>::epsilon(); };
 // The same-notch fast path of a wide store took any equal notch, so an
 // offset lattice (0.5 + k) shifted by a truncated 0.5: every mode floored.
 TEST(BigGridTest, wide_store_from_an_offset_lattice) {
-    using halves  = inside<{{0.5, 10.5}, 1}>;  // Lower off the notch's multiples
-    using neg     = inside<{{-3.5, -0.5}, 1}>; // ditto, below 0
+    using halves = inside<{{0.5, 10.5}, 1}>;  // Lower off the notch's multiples
+    using neg    = inside<{{-3.5, -0.5}, 1}>; // ditto, below 0
     constexpr grid wide{{-0x1p63, 0x1p63}, 1};
     using ceil_t    = inside<wide, round_ceil>;
     using nearest_t = inside<wide, round_nearest>;

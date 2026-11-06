@@ -725,7 +725,7 @@ static void bench_store_convert() {
         doNotOptimizeAway(b.raw());
     });
     // The sources are built beforehand: constructing each from a rational
-    // cost more than the snap measured.
+    // cost more than the rounding measured.
     std::vector<tenths> tv(kMask + 1);
     for (std::size_t j = 0; j <= kMask; ++j)
         tv[j] = rational{static_cast<imax>((j * 7) % 1000), 10};

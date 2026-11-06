@@ -116,7 +116,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
     }
 
     {
-        SCOPED_TRACE("snap selects integer-storage div path");
+        SCOPED_TRACE("round_toward_zero selects the integer-storage division");
         using ui = inside<{0, 100}, round_toward_zero>;
         constexpr ui   a{51}, b{8};
         constexpr auto e = a / b;
@@ -125,7 +125,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
     }
 
     {
-        SCOPED_TRACE("per-call snap");
+        SCOPED_TRACE("per-call round_toward_zero");
         using u100 = inside<{0, 100}>;
         constexpr u100 a{51}, b{8};
         constexpr auto d = div(a, b, round_toward_zero);
@@ -134,7 +134,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
     }
 
     {
-        SCOPED_TRACE("round_toward_zero truncates both signs; round_toward_zero is snap");
+        SCOPED_TRACE("round_toward_zero truncates both signs");
         using s100 = inside<{-100, 100}>;
         using pos  = inside<{1, 100}>;
         static_assert(div(s100{-7}, pos{2}, round_toward_zero) == -3);
@@ -1568,7 +1568,7 @@ TEST(BoundedRationalTest, store_past_the_bound_reports_rounding_error) {
     q      = num{3} / den{7};
     EXPECT_TRUE(q == rational(3, 7));
 
-    // unsafe: nothing reported; its snap truncates onto the bound, as it
+    // unsafe: nothing reported; its rounding truncates onto the bound, as it
     // truncates onto a notch.
     inside<{interval{0, 1}, max_denominator{1000}}, unsafe> u{rational{1, 1001}};
     EXPECT_TRUE(u == 0);
@@ -1750,14 +1750,13 @@ TEST(ArithmeticTest, unanchored_cross_grid_comparison) {
 }
 
 //---------------------------------------------------------------------------
-// Bug A — addition<L, R>::add (addition.hpp)
+// addition<L, R>::add (addition.hpp)
 //
 // The rational-mixed `add` branch stores `((sum - lower_of<result>) / notch_of<result>)`
 // directly into `res.Raw`. That's the L-offset, but when the result type is
 // value_storage<result> the Raw must hold the *value*. Same encoding-
 // mismatch class as the previously-fixed assignment paths.
 //---------------------------------------------------------------------------
-// Bug A: rational-mixed add into value-storage result
 TEST(ArithmeticTest, rational_mixed_add_into_a_value_raw) {
     using L = inside<{-5, 5}>;                            // signed value-storage
     using R = inside<{{-10, 10}, max_denominator{1000}}>; // rational raw
@@ -1769,7 +1768,7 @@ TEST(ArithmeticTest, rational_mixed_add_into_a_value_raw) {
 }
 
 //---------------------------------------------------------------------------
-// Bug B — multiplication<L, R>::mul (multiplication.hpp)
+// multiplication<L, R>::mul (multiplication.hpp)
 //
 // The third-quadrant case (lower_of<result> == upper_of<L> * lower_of<R>) computes
 // `negRaw = max_index_of<L> - lhs.Raw`. That formula treats lhs.Raw as a
@@ -1781,7 +1780,6 @@ TEST(ArithmeticTest, rational_mixed_add_into_a_value_raw) {
 // fractional notch (which forces the result to be non-integer-aligned and
 // skips the fast path). L keeps value storage (Notch_L = 1, signed lower).
 //---------------------------------------------------------------------------
-// Bug B: signed value-storage multiplication third quadrant
 TEST(ArithmeticTest, signed_multiplication_in_the_third_quadrant) {
     using L = inside<{-5, 5}>;                      // signed value-storage, integer-aligned
     using R = inside<{{-10, 10}, rational{1u, 2}}>; // notch 1/2, not value storage, not integer-aligned
@@ -1794,12 +1792,11 @@ TEST(ArithmeticTest, signed_multiplication_in_the_third_quadrant) {
 }
 
 //---------------------------------------------------------------------------
-// Bug E — arithmetic past double's 53-bit significand.
+// arithmetic past double's 53-bit significand.
 //
 // A `×` whose product grid outgrows 2^53 (notch = N_L·N_R) keeps every
 // bit: the result equals the exact rational product.
 //---------------------------------------------------------------------------
-// Bug E: * stays exact when the product exceeds 2^53
 TEST(ArithmeticTest, product_stays_exact_past_2_53) {
     using U = inside<{{0, 4}, per<(1u << 26)>}>; // f=26
 

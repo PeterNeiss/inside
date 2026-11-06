@@ -656,7 +656,7 @@ TEST(PolicyHandleTest, the_handle_selects_the_rounding_mode) {
     c.policy<round_toward_zero>() = 3.0;
     ASSERT_EQ(c, 2); // default == truncate toward zero
     c.policy<round_toward_zero>() = 3.0;
-    ASSERT_EQ(c, 2); // explicit snap == the default
+    ASSERT_EQ(c, 2); // explicit round_toward_zero == the default
     c.policy<round_floor>() = 3.0;
     ASSERT_EQ(c, 2); // toward −∞
     c.policy<round_ceil>() = 3.0;
@@ -692,7 +692,7 @@ auto square(small_t n) { return (n * n).policy<round_toward_zero>(); }
 // policy<round_toward_zero>() as a value. On an lvalue it converts through a (reference) policy_ref;
 // on a *temporary* it returns a value-owning policy_buffer, so the snapped result can
 // be returned/stored without dangling. Either way the target's own policy (clamp) and
-// the proxy's snap merge via uses_flag.
+// the handle's rounding merge via uses_flag.
 //---------------------------------------------------------------------------
 // policy<round_toward_zero>() proxy converts to a value (RHS / return position)
 TEST(PolicyHandleTest, the_handle_converts_to_a_value) {
@@ -700,7 +700,7 @@ TEST(PolicyHandleTest, the_handle_converts_to_a_value) {
     small a     = 2.5; // exact (dyadic) on the 1/10 grid
 
     // a*a is 6.25 on the finer 1/100 grid — off small's notch. These compile because
-    // the proxy converts to `small`, applying clamp (range) + snap (notch).
+    // the proxy converts to `small`, applying clamp (range) + round_toward_zero (notch).
     small trunc   = (a * a).policy<round_toward_zero>(); // 6.25 → 6.2 (truncate)
     small nearest = (a * a).policy<round_nearest>();     // 6.25 → 6.3 (nearest)
     ASSERT_EQ(trunc, 6.2_r);
@@ -984,7 +984,7 @@ TEST(ErrorVocabularyTest, division_inside_an_expected_chain_reports_its_cause) {
 
 // operator% chains through expected
 TEST(ErrorVocabularyTest, modulo_chains_through_expected) {
-    // mod requires snap in the merged policy (integer-valued grids).
+    // mod requires a rounding mode in the merged policy (integer-valued grids).
     using mnum = inside<{0, 100}, round_toward_zero>;
     using nz   = inside<{1, 5}, round_toward_zero>;  // divisor grid excludes zero
     using span = inside<{-5, 5}, round_toward_zero>; // divisor grid spans zero
@@ -1165,7 +1165,7 @@ TEST(PolicyTest, on_error_does_not_preempt_clamp_or_wrap) {
 }
 
 //---------------------------------------------------------------------------
-// Bug C — assignment<L, double> (assignment.hpp)
+// assignment<L, double> (assignment.hpp)
 //
 // `assign(insidable, double R)` checked for `uses_flag<L, P, clamp>` but not
 // for `uses_flag<L, P, wrap>`. An `inside<{...}, wrap>` constructed from a
@@ -1176,7 +1176,6 @@ TEST(PolicyTest, on_error_does_not_preempt_clamp_or_wrap) {
 // `is_constant_evaluated()` throw in assignment::assign fires before the
 // policy machinery can react).
 //---------------------------------------------------------------------------
-// Bug C: wrap policy fires for a double rhs
 TEST(PolicyTest, wrap_fires_for_a_double) {
     using L = inside<{0, 100}, wrap>;
 
@@ -1281,10 +1280,10 @@ TEST(PolicyTest, on_error_compound_subtract_that_does_not_fail) {
 
 //---------------------------------------------------------------------------
 // an off-notch fractional store (assignment.hpp) on a policy with `clamp`:
-// clamp handles only the range, so without `snap` the value is a rounding
-// error; `clamp | snap` truncates an in-range off-notch value.
+// clamp handles only the range, so without a rounding mode the value is a rounding
+// error; `clamp | round_toward_zero` truncates an in-range off-notch value.
 //---------------------------------------------------------------------------
-// clamp | snap truncates an in-range off-notch fractional assignment; clamp
+// clamp | round_toward_zero truncates an in-range off-notch value; clamp
 // alone handles only the range, so the off-notch value is a rounding error.
 TEST(PolicyTest, clamp_truncates_an_off_notch_value_in_range) {
     using strict = inside<{{0, 10}, per<2>}, clamp>;

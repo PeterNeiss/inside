@@ -226,14 +226,14 @@ namespace inverse_hyperbolic_tests {
 using namespace beman::inside;
 
 namespace {
-using A                 = inside<{{-64, 64}, per<1024>}, round_nearest>;
-using C                 = inside<{{1, 64}, per<1024>}, round_nearest>;
-using T                 = inside<{{-0.9990234375, 0.9990234375}, per<1024>}, round_nearest>;
-constexpr double kNotch = 1.0 / 1024;
+using A                     = inside<{{-64, 64}, per<1024>}, round_nearest>;
+using C                     = inside<{{1, 64}, per<1024>}, round_nearest>;
+using T                     = inside<{{-0.9990234375, 0.9990234375}, per<1024>}, round_nearest>;
+constexpr double notch_size = 1.0 / 1024;
 
 template <class R>
 double value(const R& r) {
-    return detail::as_double(r);
+    return r.template to<double>().value();
 }
 } // namespace
 
@@ -257,16 +257,16 @@ TEST(InverseHyperbolicTest, auto_output_grids_hold_the_endpoint_images) {
 
 TEST(InverseHyperbolicTest, every_engine_matches_cmath_within_one_notch) {
     for (double x = -64; x <= 64; x += 0.5) {
-        EXPECT_NEAR(value(math::asinh(A{x})), std::asinh(x), kNotch) << x;
+        EXPECT_NEAR(value(math::asinh(A{x})), std::asinh(x), notch_size) << x;
     }
     for (double x = 1; x <= 64; x += 0.25) {
-        EXPECT_NEAR(value(math::acosh(C{x})), std::acosh(x), kNotch) << x;
+        EXPECT_NEAR(value(math::acosh(C{x})), std::acosh(x), notch_size) << x;
     }
     for (double x = -0.9990234375; x <= 0.9990234375; x += 0.0625) {
-        EXPECT_NEAR(value(math::atanh(T{x})), std::atanh(x), kNotch) << x;
+        EXPECT_NEAR(value(math::atanh(T{x})), std::atanh(x), notch_size) << x;
     }
     // Near the poles of atanh the ratio form keeps full precision.
-    EXPECT_NEAR(value(math::atanh(T{0.9990234375})), std::atanh(0.9990234375), kNotch);
+    EXPECT_NEAR(value(math::atanh(T{0.9990234375})), std::atanh(0.9990234375), notch_size);
 }
 
 TEST(InverseHyperbolicTest, explicit_output_and_decimal_grids) {
@@ -277,17 +277,17 @@ TEST(InverseHyperbolicTest, explicit_output_and_decimal_grids) {
 }
 } // namespace inverse_hyperbolic_tests
 
-// Transcendentals are gated on `snap` (rounding permission). This exercises
-// `beman::inside::math` on snap grids: integer-index storage and non-dyadic
+// Transcendentals need rounding permission. This exercises
+// `beman::inside::math` on rounding grids: integer-index storage and non-dyadic
 // (1/100) grids — using exact
 // special values that are bit-exact on both engines and any grid containing them.
 namespace math_snap_grids_tests {
 using namespace beman::inside;
 using namespace beman::inside::detail;
 
-// snap-gated transcendentals on integer and 1/100 grids
-TEST(MathSnapGridsTest, snap_gated_transcendentals_on_integer_and_1_100_grids) {
-    // round_nearest implies snap.
+// transcendentals on integer and 1/100 grids
+TEST(MathRoundingTest, transcendentals_on_integer_and_hundredth_grids) {
+    // round_nearest is a rounding mode.
     using Ang = inside<{{-8, 8}, per<16384>}, round_nearest>; // integer-index storage
     ASSERT_EQ(rational{math::sin(Ang{0})}, 0);
     ASSERT_EQ(rational{math::cos(Ang{0})}, 1);

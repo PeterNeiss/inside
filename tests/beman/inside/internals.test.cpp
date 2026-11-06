@@ -500,7 +500,7 @@ TEST(RationalTest, rational_trunc_floor_round) {
 }
 
 //---------------------------------------------------------------------------
-// 2026-07: mixed-sign addition rescued in 128-bit. `1024 − m/2^54` forms the
+// Mixed-sign addition rescued in 128-bit. `1024 − m/2^54` forms the
 // cross-product 1024·2^54 == 2^64 (one past umax) before the subtraction
 // brings the numerator back into range — the dbl-engine store path hit
 // exactly this via `rhs - Lower` and terminated through noexcept.

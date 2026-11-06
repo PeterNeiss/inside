@@ -90,7 +90,7 @@ TEST(StorageTest, dyadic_grid_runs_the_full_out_of_range_policy_cascade) {
 
 // non-finite doubles are rejected, both engines
 TEST(StorageTest, non_finite_doubles_are_rejected_both_engines) {
-    // Default engine: store_real guards before the grid snap; fixed engine:
+    // Default engine: store_real guards before rounding onto the grid; fixed engine:
     // the integer-backed path throws in rational(double). Same observable.
     using R          = inside<{{0, 4}, per<256>}, round_nearest>;
     const double nan = std::numeric_limits<double>::quiet_NaN();
@@ -120,7 +120,7 @@ TEST(StorageTest, atan_atan2_accept_magnitudes_beyond_1) {
 
     // Determinism: pin the exact grid output (a multiple of 1/16384, exactly
     // representable in double). These values are bit-identical on both math engines
-    // and every platform; the comments give the true atan they snap to.
+    // and every platform; the comments give the true atan they round from.
     ASSERT_EQ(val(math::atan(wide_t{2})), 0x1.1b7p+0);                // ~1.1071488
     ASSERT_EQ(val(math::atan(wide_t{-3})), -0x1.3fcp+0);              // ~-1.2490234
     ASSERT_EQ(val(math::atan(wide_t{16})), 0x1.8224p+0);              // ~1.5083618
@@ -647,75 +647,75 @@ TEST(StorageTest, point_grid_stores_nothing) {
 }
 
 TEST(StorageTest, grid_past_int64_constructs_compares_and_converts) {
-    constexpr umax kUM = std::numeric_limits<umax>::max();
-    using U64          = inside<{{0, rational{kUM}}, 1}>;
-    using Small        = inside<{0, 10}>;
+    constexpr umax u64_max = std::numeric_limits<umax>::max();
+    using U64              = inside<{{0, rational{u64_max}}, 1}>;
+    using Small            = inside<{0, 10}>;
     static_assert(U64{5} == 5 && U64{5} < 6 && U64{5} > 4); // signed source
-    static_assert(U64{kUM} > 5 && U64{kUM} == kUM && U64{kUM} > Small{3});
-    static_assert(U64{1ull << 63} < U64{kUM});
+    static_assert(U64{u64_max} > 5 && U64{u64_max} == u64_max && U64{u64_max} > Small{3});
+    static_assert(U64{1ull << 63} < U64{u64_max});
     static_assert(U64{Small{7}} == 7);
-    static_assert(U64{kUM}.to<unsigned long long>().value() == kUM);
+    static_assert(U64{u64_max}.to<unsigned long long>().value() == u64_max);
     static_assert(U64{3}.to<int>().value() == 3);
-    static_assert(U64{kUM}.to<long long>().error() == errc::overflow);
-    static_assert(Small{U64{kUM}, clamp} == 10);
+    static_assert(U64{u64_max}.to<long long>().error() == errc::overflow);
+    static_assert(Small{U64{u64_max}, clamp} == 10);
 
     constexpr auto narrowed = [] {
         errc  ec{};
         Small s{1};
-        s.policy(ec) = U64{kUM};
+        s.policy(ec) = U64{u64_max};
         return std::pair{s == 1, ec};
     }();
     static_assert(narrowed.first && narrowed.second == errc::overflow);
 
-    U64 big{kUM};
+    U64 big{u64_max};
     EXPECT_GT(big, Small{10});
-    EXPECT_EQ(big, kUM);
+    EXPECT_EQ(big, u64_max);
 }
 
 TEST(StorageTest, grid_past_int64_increments_and_negates) {
-    constexpr umax kUM = std::numeric_limits<umax>::max();
-    using U64          = inside<{{0, rational{kUM}}, 1}>;
-    using U64W         = inside<{{0, rational{kUM}}, 1}, wrap>;
-    using Small        = inside<{0, 10}>;
-    constexpr auto inc = [] {
-        U64 w{kUM - 1};
+    constexpr umax u64_max = std::numeric_limits<umax>::max();
+    using U64              = inside<{{0, rational{u64_max}}, 1}>;
+    using U64W             = inside<{{0, rational{u64_max}}, 1}, wrap>;
+    using Small            = inside<{0, 10}>;
+    constexpr auto inc     = [] {
+        U64 w{u64_max - 1};
         ++w;
-        return w == kUM;
+        return w == u64_max;
     }();
     static_assert(inc);
     constexpr auto wrap_up = [] {
-        U64W w{kUM};
+        U64W w{u64_max};
         ++w;
         return w == 0;
     }();
     constexpr auto wrap_down = [] {
         U64W w{0};
         --w;
-        return w == kUM;
+        return w == u64_max;
     }();
     constexpr auto wrap_sub = [] {
-        U64W w{kUM};
+        U64W w{u64_max};
         w -= Small{10};
-        return w == kUM - 10;
+        return w == u64_max - 10;
     }();
     constexpr auto wrap_neg = [] {
         U64W w{5};
         w = inside<{-20, 20}>{-1};
-        return w == kUM;
+        return w == u64_max;
     }();
     static_assert(wrap_up && wrap_down && wrap_sub && wrap_neg);
 
     using N = U64::negated_type;             // {−(2^64−1), 0}
     static_assert(sizeof(N::raw_type) == 8); // was int8: trunc(Lower) wrapped
-    static_assert(-U64{5} == -5 && -U64{kUM} == -rational{kUM});
-    static_assert(-(-U64{kUM}) == U64{kUM});
+    static_assert(-U64{5} == -5 && -U64{u64_max} == -rational{u64_max});
+    static_assert(-(-U64{u64_max}) == U64{u64_max});
 
-    static_assert(U64{kUM} - U64{kUM - 3} == 3); // result grid spans 2^65
-    static_assert(U64{kUM} * just<1> == kUM);
+    static_assert(U64{u64_max} - U64{u64_max - 3} == 3); // result grid spans 2^65
+    static_assert(U64{u64_max} * just<1> == u64_max);
 
-    U64 x{kUM};
+    U64 x{u64_max};
     EXPECT_THROW(++x, inside_error);
-    EXPECT_EQ(x, kUM);
+    EXPECT_EQ(x, u64_max);
 }
 
 // inside<{x,x}> singleton round-trips its value
