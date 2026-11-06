@@ -390,7 +390,7 @@ void prop_compound_add_inside(fuzz_state& s, long iters) {
 template <insidable B>
 void prop_modulo(fuzz_state& s, long iters) {
     // Only applies to integer-aligned grids; result is expected<inside, errc>.
-    // mod requires `snap` per the README, so derive a typed alias.
+    // mod requires a rounding mode, so derive a typed alias.
     if constexpr (integer_lattice<B> && !rational_storage<B>) {
         s.current_prop = "modulo";
         using BI       = inside<grid_of<B>, round_toward_zero>;
@@ -540,8 +540,8 @@ template <insidable B>
 void prop_compound_div_mod_zero(fuzz_state& s, long iters) {
     // `b /= 0_r` (rational zero) routes through the rational compound-assign's
     // zero guard → report → throws division_by_zero. (Raw `b /= 0` is now ill-
-    // formed; the insidable `%= zero-inside` path needs a snap integer divisor
-    // and is covered for snap bounds in test_compound_assign.)
+    // formed; the insidable `%= zero-inside` path needs a rounding integer divisor
+    // and is covered for rounding bounds in test_compound_assign.)
     if constexpr (integer_lattice<B> && !rational_storage<B>) {
         s.current_prop = "compound_div_zero";
         // The divisor is the constant 0_r, so any in-range dividend throws; pick
@@ -595,7 +595,7 @@ void prop_compound_inside_overshoot(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_non_notch_assign(fuzz_state& s, long iters) {
-    // Targets the off-notch store in assignment.hpp: round_nearest, snap's
+    // Targets the off-notch store in assignment.hpp: round_nearest, round_toward_zero's
     // silent floor, the checked rounding_error report (throws), and the silent
     // floor under unsafe. Only meaningful for fixed-point grids (notch != 1).
     if constexpr (!integer_lattice<B> && !rational_storage<B>) {
@@ -604,7 +604,7 @@ void prop_non_notch_assign(fuzz_state& s, long iters) {
         // notch-aligned assignment to B must throw rounding_error.
         using BIR      = inside<grid_of<B>, round_toward_zero>; // silent floor
         using BRN      = inside<grid_of<B>, round_nearest>;     // nearest
-        using BNONE    = inside<grid_of<B>, unsafe>;            // unchecked (unsafe carries snap)
+        using BNONE    = inside<grid_of<B>, unsafe>;            // unchecked (unsafe carries the rounding)
         rational notch = detail::notch64<B>;
         rational lo    = detail::lower64<B>;
         rational hi    = detail::upper64<B>;
@@ -624,14 +624,14 @@ void prop_non_notch_assign(fuzz_state& s, long iters) {
                 continue;
 
             // `mid` is an exact half between on_notch (lower) and next_notch (higher).
-            // The library rounds in VALUE space (storage.hpp round_quotient): snap
+            // The library rounds in VALUE space (storage.hpp round_quotient): round_toward_zero
             // and `none` truncate TOWARD ZERO (not floor — that's round_floor), and
             // round_nearest rounds HALF AWAY FROM ZERO. So the expected notch is the
-            // smaller-|·| candidate for snap/none and the larger-|·| candidate for
+            // smaller-|·| candidate for round_toward_zero and the larger-|·| candidate for
             // round_nearest. For mid >= 0 these are on_notch / next_notch; for mid < 0
             // they swap — which is what the negative-Lower grids exercise.
             const bool on_smaller  = beman::inside::detail::abs(on_notch) <= beman::inside::detail::abs(next_notch);
-            rational   toward_zero = on_smaller ? on_notch : next_notch; // snap / none
+            rational   toward_zero = on_smaller ? on_notch : next_notch; // round_toward_zero, or none
             rational   away_zero   = on_smaller ? next_notch : on_notch; // round_nearest
             const bool tz_in       = toward_zero >= lo && toward_zero <= hi;
             const bool az_in       = away_zero >= lo && away_zero <= hi;
@@ -642,7 +642,7 @@ void prop_non_notch_assign(fuzz_state& s, long iters) {
                              b = mid;
                          }));
 
-            // snap: silent truncate toward zero.
+            // round_toward_zero: silent truncate toward zero.
             if (tz_in)
                 FUZZ_REQUIRE(s, !throws_with(errc::rounding_error, [&] {
                                  BIR b;
@@ -695,7 +695,7 @@ void prop_subnormal_construct(fuzz_state& s, long iters) {
         for (long i = 0; i < iters; ++i) {
             s.iter   = i;
             double v = mantissa(s.rng) * std::pow(2.0, exp_dist(s.rng));
-            // snap → silent floor; should not throw and should land on 0.
+            // round_toward_zero → silent floor; should not throw and should land on 0.
             FUZZ_REQUIRE(s, !throws_with(errc::rounding_error, [&] {
                              BIR b;
                              b            = v;

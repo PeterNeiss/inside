@@ -21,10 +21,12 @@ set_tests_properties(
     PROPERTIES LABELS "certify"
 )
 
-# Only where the examples are built unoptimized.
+# Only where the examples are built unoptimized, and slow (about 20 s):
+# with BEMAN_INSIDE_SLOW_TESTS (the weekly CI run).
 string(TOUPPER "${CMAKE_BUILD_TYPE}" build_type)
 if(
-    BEMAN_INSIDE_BUILD_EXAMPLES
+    BEMAN_INSIDE_SLOW_TESTS
+    AND BEMAN_INSIDE_BUILD_EXAMPLES
     AND CMAKE_NM
     AND (build_type STREQUAL "" OR build_type STREQUAL "DEBUG")
 )

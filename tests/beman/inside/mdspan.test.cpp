@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// std::mdspan with insides (inside/mdspan.hpp): extents from index types,
-// indices, inside_mdspan's indexing by type and by policy, the value and raw
-// accessors, exact sum / dot / matrix products, and transform_into.
+// std::mdspan with insides and quantities (inside/mdspan.hpp,
+// units/mdspan.hpp).
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/inside/formats.hpp>
 #include <beman/inside/inside/io.hpp>
 #include <beman/inside/inside/mdspan.hpp>
 #include <beman/inside/math.hpp>
+#include <beman/inside/units/io.hpp>
+#include <beman/inside/units/mdspan.hpp>
 
 #include <gtest/gtest.h>
 
@@ -17,6 +18,10 @@
 #include <type_traits>
 #include <vector>
 
+// std::mdspan with insides (inside/mdspan.hpp): extents from index types,
+// indices, inside_mdspan's indexing by type and by policy, the value and raw
+// accessors, exact sum / dot / matrix products, and transform_into.
+namespace mdspan_tests {
 using namespace beman::inside;
 
 namespace {
@@ -41,7 +46,7 @@ std::array<pixel, 20> ramp() {
 }
 } // namespace
 
-TEST(Mdspan, extents_and_index_types) {
+TEST(MdspanTest, extents_and_index_types) {
     static_assert(std::is_same_v<extents_of<row, col>, std::extents<std::size_t, 4, 5>>);
     static_assert(std::is_same_v<extents_of<inside<{0, 0}>>, std::extents<std::size_t, 1>>);
     using E = std::extents<std::size_t, 4, std::dynamic_extent, 1>;
@@ -50,7 +55,7 @@ TEST(Mdspan, extents_and_index_types) {
     static_assert(!has_extent_index<E, 1>); // dynamic
 }
 
-TEST(Mdspan, indices_order_and_types) {
+TEST(MdspanTest, indices_order_and_types) {
     std::array<pixel, 20> a = ramp();
     const img_t           img{a.data()};
     int                   n = 0;
@@ -73,7 +78,7 @@ TEST(Mdspan, indices_order_and_types) {
     EXPECT_EQ(m, 6);
 }
 
-TEST(Mdspan, indexing_by_type_and_policy) {
+TEST(MdspanTest, indexing_by_type_and_policy) {
     std::array<pixel, 20> a = ramp();
     const img_t           img{a.data()};
     // Proven: the grids lie within the extents.
@@ -103,7 +108,7 @@ TEST(Mdspan, indexing_by_type_and_policy) {
     EXPECT_THROW(((void)dyn[inside<{0, 9}>{at_run_time(2)}, inside<{0, 2}>{0}]), inside_error);
 }
 
-TEST(Mdspan, wrapper_is_an_mdspan) {
+TEST(MdspanTest, wrapper_is_an_mdspan) {
     std::array<pixel, 20>                           a = ramp();
     const img_t                                     img{a.data()};
     const std::mdspan<pixel, extents_of<row, col>>& base = img;
@@ -116,7 +121,7 @@ TEST(Mdspan, wrapper_is_an_mdspan) {
     EXPECT_EQ(img.size(), 20u);
 }
 
-TEST(Mdspan, value_accessor) {
+TEST(MdspanTest, value_accessor) {
     using tenth = inside<{{-10, 10}, per<10>}, round_nearest>;
     const std::array<double, 4> d{0.44, 1.56, 2.5, -0.7};
     const inside_mdspan<tenth, std::extents<std::size_t, 4>, std::layout_right, value_accessor<tenth, const double>> v{
@@ -143,7 +148,7 @@ TEST(Mdspan, value_accessor) {
     EXPECT_EQ(st[1], 42);
 }
 
-TEST(Mdspan, raw_accessor) {
+TEST(MdspanTest, raw_accessor) {
     using adc = inside<{0, 4095}>; // 12 bits in a uint16_t: spare raws
     const std::array<std::uint16_t, 3> raw{100, 4095, 5000};
     const inside_mdspan<adc, std::extents<std::size_t, 3>, std::layout_right, raw_accessor<adc, const std::uint16_t>>
@@ -172,7 +177,7 @@ TEST(Mdspan, raw_accessor) {
     EXPECT_EQ(q[1], 576);
 }
 
-TEST(Mdspan, sum) {
+TEST(MdspanTest, sum) {
     std::array<pixel, 20> a = ramp();
     const img_t           img{a.data()};
     const auto            s = sum(img);
@@ -194,7 +199,7 @@ TEST(Mdspan, sum) {
     EXPECT_TRUE((sum<inside<{0, 2000}>>(std::mdspan{a.data(), 4, 5}) == 1900));
 }
 
-TEST(Mdspan, dot_and_matrix_products) {
+TEST(MdspanTest, dot_and_matrix_products) {
     using v_t             = inside<{-10, 10}>;
     std::array<v_t, 3> x  = {1, 2, 3};
     std::array<v_t, 3> y  = {4, -5, 6};
@@ -230,7 +235,7 @@ TEST(Mdspan, dot_and_matrix_products) {
     EXPECT_EQ(to_string(dp), "3626777458843887524118528"); // 3·2^80
 }
 
-TEST(Mdspan, transform_into) {
+TEST(MdspanTest, transform_into) {
     using in_t  = inside<{0, 100}>;
     using out_t = inside<{{0, 10}, per<1000>}, round_nearest>;
     std::array<in_t, 4>  in{1, 4, 9, 2};
@@ -253,3 +258,78 @@ TEST(Mdspan, transform_into) {
     EXPECT_THROW(transform_into(std::mdspan{in.data(), 4}, std::mdspan{out.data(), 3}, [](in_t v) { return v; }),
                  inside_error);
 }
+} // namespace mdspan_tests
+
+// std::mdspan with quantities (units/mdspan.hpp): the value and raw accessors
+// over plain buffers, view_in (the same raws read in another unit), and sum,
+// dot and the matrix products in the elements' and products' units.
+namespace units_mdspan_tests {
+using namespace beman::inside;
+using namespace beman::inside::units;
+
+namespace {
+using metres = quantity<si::metre, inside<{0, 100}>>;
+using km     = quantity<si::kilo(si::metre), inside<{0, 10}>>;
+using kelvin = quantity<si::kelvin, inside<{{200, 400}, per<10>}>>;
+} // namespace
+
+TEST(UnitsMdspanTest, accessors) {
+    // Deci-kelvin codes from a sensor, read as kelvin: raw 731 is 273.1 K.
+    const std::array<std::uint16_t, 3> codes{0, 731, 2000};
+    const inside_mdspan<kelvin,
+                        std::extents<std::size_t, 3>,
+                        std::layout_right,
+                        raw_accessor<kelvin, const std::uint16_t>>
+        t{codes.data()};
+    EXPECT_EQ(to_string(t[1]), "273.1 K");
+    const auto total = sum(t);
+    static_assert(
+        std::is_same_v<std::remove_const_t<decltype(total)>, quantity<si::kelvin, inside<{{600, 1200}, per<10>}>>>);
+    EXPECT_EQ(to_string(total), "873.1 K");
+    // Plain metres from an int array, written back through the quantity.
+    std::array<int, 2> raw{3, 0};
+    const inside_mdspan<metres, std::extents<std::size_t, 2>, std::layout_right, value_accessor<metres, int>> m{
+        raw.data()};
+    EXPECT_EQ(to_string(m[0].get()), "3 m");
+    m[1] = metres{42};
+    EXPECT_EQ(raw[1], 42);
+}
+
+TEST(UnitsMdspanTest, view_in_keeps_the_raw) {
+    std::array<km, 2> k{km{1}, km{3}};
+    const auto        mm = view_in(std::mdspan{k.data(), std::extents<std::size_t, 2>{}}, si::milli(si::metre));
+    EXPECT_EQ(to_string(mm[0].get()), "1000000 mm");
+    static_assert(sizeof(km) == 1);
+    mm[1] = mm[0];
+    EXPECT_EQ(to_string(k[1]), "1 km");
+    // A read-only view gives quantities by value.
+    const std::array<km, 2> ck{km{2}, km{5}};
+    const auto              cm = view_in(std::mdspan{ck.data(), std::extents<std::size_t, 2>{}}, si::metre);
+    EXPECT_EQ(to_string(cm[1]), "5000 m");
+}
+
+TEST(UnitsMdspanTest, sums_and_products_carry_units) {
+    std::array<metres, 4> a{metres{1}, metres{2}, metres{3}, metres{4}};
+    const std::mdspan     v{a.data(), std::extents<std::size_t, 4>{}};
+    EXPECT_EQ(to_string(sum(v)), "10 m");
+    // A target in another unit: the exact total in metres, converted once.
+    EXPECT_EQ(to_string(sum<quantity<si::kilo(si::metre), inside<{{0, 1}, per<1000>}>>>(v)), "0.010 km");
+    EXPECT_EQ(to_string(dot(v, v)), "30 m²");
+    // A matrix of lengths times itself: areas.
+    const std::mdspan                                                   m{a.data(), std::extents<std::size_t, 2, 2>{}};
+    std::array<quantity<si::metre * si::metre, inside<{0, 100000}>>, 4> c{};
+    matrix_product(m, m, std::mdspan{c.data(), std::extents<std::size_t, 2, 2>{}});
+    EXPECT_EQ(to_string(c[0]), "7 m²");
+    EXPECT_EQ(to_string(c[3]), "22 m²");
+    // Lengths times plain numbers stay lengths.
+    std::array<inside<{0, 10}>, 2> n{inside<{0, 10}>{2}, inside<{0, 10}>{5}};
+    std::array<metres, 2>          w{metres{3}, metres{4}};
+    EXPECT_EQ(to_string(dot(std::mdspan{n.data(), std::extents<std::size_t, 2>{}},
+                            std::mdspan{w.data(), std::extents<std::size_t, 2>{}})),
+              "26 m");
+    // Elementwise: m → m², each stored by the output's policy.
+    std::array<quantity<si::metre * si::metre, inside<{0, 100}, clamp>>, 4> sq{};
+    transform_into(v, std::mdspan{sq.data(), std::extents<std::size_t, 4>{}}, [](metres x) { return x * x; });
+    EXPECT_EQ(to_string(sq[3]), "16 m²");
+}
+} // namespace units_mdspan_tests

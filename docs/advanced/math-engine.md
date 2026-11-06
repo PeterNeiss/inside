@@ -61,7 +61,7 @@ and the speed each guard costs, are in
   `log10(1000)`, `sqrt(9/4)`, `8^(2/3)`, `hypot(3/2, 2)`, sin 30° — are stored
   exactly, so a tie between two points or a point under directed rounding
   rounds correctly. The theorems that make the list complete are named in
-  `math/detail/cores.hpp`, and `tests/beman/inside/math_exact.test.cpp`
+  `math/detail/cores.hpp`, and `tests/beman/inside/math.test.cpp`
   checks each kind.
 - **Correctly rounded, except within about 2^−4W of a boundary.** W is the
   start precision (the output's bits plus 8, at least 16). The engine doubles

@@ -251,7 +251,7 @@ TEST(ConstexprTest, constexpr_division_returns_exact_value) {
     static_assert(!is_expected_v<decltype(q)>);
     static_assert(q == *(51_r / 8));
 
-    // snap selects native integer division — result has integer raw
+    // round_toward_zero selects native integer division — result has integer raw
     using vi = inside<{0, 100}, round_toward_zero>;
     constexpr vi   p{51}, r{8};
     constexpr auto qi = p / r;
@@ -259,8 +259,8 @@ TEST(ConstexprTest, constexpr_division_returns_exact_value) {
     static_assert(*qi == 6);
 }
 
-// constexpr: modulo under snap
-TEST(ConstexprTest, constexpr_modulo_under_snap) {
+// constexpr: modulo rounding toward zero
+TEST(ConstexprTest, constexpr_modulo_rounding_toward_zero) {
     using v = inside<{0, 100}, round_toward_zero>;
     constexpr v    a{17}, b{5};
     constexpr auto m = a % b;

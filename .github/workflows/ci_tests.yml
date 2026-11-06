@@ -21,8 +21,9 @@ jobs:
 
   # inside requires C++26 with static reflection, which GCC 16 alone provides
   # (-freflection). PRs and pushes run every build option once; the weekly run
-  # (and workflow_dispatch) adds Debug, TSan and the certify test over every
-  # certified pair (BEMAN_INSIDE_CERTIFY_FULL).
+  # (and workflow_dispatch) adds Debug with the slow tests
+  # (BEMAN_INSIDE_SLOW_TESTS), TSan and the certify test over every certified
+  # pair (BEMAN_INSIDE_CERTIFY_FULL).
   preset-test:
     if: github.event_name == 'push' || github.event_name == 'pull_request'
     uses: bemanproject/infra-workflows/.github/workflows/reusable-beman-preset-test.yml@1.7.4
@@ -79,7 +80,7 @@ jobs:
                   "tests": [
                     { "stdlibs": ["libstdc++"],
                       "tests": [
-                        "Debug.Default", "Release.Default", "Release.TSan",
+                        "Debug.-DBEMAN_INSIDE_SLOW_TESTS=ON", "Release.Default", "Release.TSan",
                         "Release.MaxSan", "Debug.Werror", "Debug.Coverage",
                         "Release.-DBEMAN_INSIDE_MATH_NO_FP=ON",
                         "Release.-DBEMAN_INSIDE_CERTIFY_FULL=ON"

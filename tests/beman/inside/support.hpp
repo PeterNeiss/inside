@@ -1,0 +1,25 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// Helpers shared by the test files.
+#ifndef BEMAN_INSIDE_TESTS_SUPPORT_HPP
+#define BEMAN_INSIDE_TESTS_SUPPORT_HPP
+
+#include <gtest/gtest.h>
+
+namespace beman::inside::test {
+// v, hidden from the optimizer: what follows computes at run time.
+template <class T>
+T at_run_time(T v) {
+    volatile T x = v;
+    return x;
+}
+} // namespace beman::inside::test
+
+// An exhaustive sweep runs in optimized builds; an unoptimized one skips it
+// (the release cells of every CI run cover it).
+#ifdef __OPTIMIZE__
+    #define BEMAN_INSIDE_RELEASE_ONLY() static_cast<void>(0)
+#else
+    #define BEMAN_INSIDE_RELEASE_ONLY() GTEST_SKIP() << "an exhaustive sweep: runs in optimized builds"
+#endif
+
+#endif // BEMAN_INSIDE_TESTS_SUPPORT_HPP

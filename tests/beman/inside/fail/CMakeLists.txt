@@ -4,14 +4,49 @@
 # Compile-fail diagnostics suite — each *.cpp here is deliberately ill-formed
 # and must FAIL to compile with the message named on its first line
 # (`// EXPECT: <substring>`; keep it free of regex metacharacters). An
-# optional second line `// FLAGS: <options>` adds compile options. The test invokes the build for the object target;
-# PASS_REGULAR_EXPRESSION passes the test only when the build output contains
-# the expected diagnostic — a TU that wrongly compiles produces no diagnostic
-# and fails the test. RUN_SERIAL keeps concurrent `cmake --build` invocations
-# out of each other's way.
+# optional second line `// FLAGS: <options>` adds compile options. The test
+# runs the compiler on the case directly (syntax only, with the library's
+# interface and the build's flags), not a build of the tree, so the cases run
+# in parallel. PASS_REGULAR_EXPRESSION passes the test only when the output
+# contains the expected diagnostic — a TU that wrongly compiles produces no
+# diagnostic and fails the test.
 # control_compiles.test.cpp is the harness control: valid code that must build.
 #---------------------------------------------------------------------------
 file(GLOB BEMAN_INSIDE_FAIL_SOURCES CONFIGURE_DEPENDS *.test.cpp)
+
+# The compile line every case shares: C++26, the library's include directory,
+# compile options and definitions (-freflection, BEMAN_INSIDE_MATH_NO_FP, …),
+# and the build's own flags.
+string(TOUPPER "${CMAKE_BUILD_TYPE}" fail_build_type)
+separate_arguments(
+    fail_build_flags
+    UNIX_COMMAND
+    "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${fail_build_type}}"
+)
+if(CMAKE_CXX_EXTENSIONS)
+    set(fail_std ${CMAKE_CXX26_EXTENSION_COMPILE_OPTION})
+else()
+    set(fail_std ${CMAKE_CXX26_STANDARD_COMPILE_OPTION})
+endif()
+get_target_property(fail_options beman.inside INTERFACE_COMPILE_OPTIONS)
+get_target_property(fail_definitions beman.inside INTERFACE_COMPILE_DEFINITIONS)
+if(NOT fail_options)
+    set(fail_options "")
+endif()
+if(fail_definitions)
+    list(TRANSFORM fail_definitions PREPEND -D)
+else()
+    set(fail_definitions "")
+endif()
+set(fail_compile
+    ${CMAKE_CXX_COMPILER}
+    ${fail_std}
+    -I${PROJECT_SOURCE_DIR}/include
+    ${fail_options}
+    ${fail_definitions}
+    ${fail_build_flags}
+    -fsyntax-only
+)
 
 foreach(src ${BEMAN_INSIDE_FAIL_SOURCES})
     get_filename_component(case_name ${src} NAME_WE)
@@ -37,47 +72,28 @@ foreach(src ${BEMAN_INSIDE_FAIL_SOURCES})
         )
     endif()
 
-    set(fail_target beman.inside.tests.fail.${case_name})
-    add_library(${fail_target} OBJECT EXCLUDE_FROM_ALL ${src})
-    target_link_libraries(${fail_target} PRIVATE beman::inside)
+    set(extra_flags "")
     if(flags_line)
         string(REGEX REPLACE "^// FLAGS: *" "" extra_flags "${flags_line}")
         separate_arguments(extra_flags)
-        target_compile_options(${fail_target} PRIVATE ${extra_flags})
     endif()
 
-    add_test(
-        NAME ${fail_target}
-        COMMAND
-            ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target ${fail_target}
-            --config $<CONFIG>
-    )
+    set(fail_target beman.inside.tests.fail.${case_name})
+    add_test(NAME ${fail_target} COMMAND ${fail_compile} ${extra_flags} ${src})
     set_tests_properties(
         ${fail_target}
         PROPERTIES
             PASS_REGULAR_EXPRESSION "${expected_message}"
-            RUN_SERIAL TRUE
             LABELS "compile-fail"
     )
 endforeach()
 
-add_library(
-    beman.inside.tests.fail.control_compiles
-    OBJECT
-    EXCLUDE_FROM_ALL
-    control_compiles.test.cpp
-)
-target_link_libraries(
-    beman.inside.tests.fail.control_compiles
-    PRIVATE beman::inside
-)
 add_test(
     NAME beman.inside.tests.fail.control_compiles
     COMMAND
-        ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target
-        beman.inside.tests.fail.control_compiles --config $<CONFIG>
+        ${fail_compile} ${CMAKE_CURRENT_SOURCE_DIR}/control_compiles.test.cpp
 )
 set_tests_properties(
     beman.inside.tests.fail.control_compiles
-    PROPERTIES RUN_SERIAL TRUE LABELS "compile-fail"
+    PROPERTIES LABELS "compile-fail"
 )
