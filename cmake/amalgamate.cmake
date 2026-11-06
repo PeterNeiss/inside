@@ -220,6 +220,8 @@ list(INSERT roots 0 "beman/inside/inside.hpp")
 # units/random.hpp samples through inside/random.hpp, so it needs its guard
 # and BEMAN_INSIDE_NO_UNITS. The math
 # constants come in earlier, through math.hpp and math/constants.hpp.
+# beman/inside/inside/mdspan.hpp (<mdspan>, <ranges>: hosted only) sits inside a
+# BEMAN_INSIDE_NO_MDSPAN guard, and units/mdspan.hpp also inside BEMAN_INSIDE_NO_UNITS.
 foreach(r IN LISTS roots)
     set(_guard_open "")
     set(_guard_close "")
@@ -248,6 +250,18 @@ foreach(r IN LISTS roots)
         )
         set(_guard_close
             "#endif // __STDC_HOSTED__ && !BEMAN_INSIDE_MATH_NO_FP && !BEMAN_INSIDE_NO_UNITS"
+        )
+    elseif(r STREQUAL "beman/inside/inside/mdspan.hpp")
+        set(_guard_open
+            "#if __STDC_HOSTED__ && !defined(BEMAN_INSIDE_NO_MDSPAN)"
+        )
+        set(_guard_close "#endif // __STDC_HOSTED__ && !BEMAN_INSIDE_NO_MDSPAN")
+    elseif(r STREQUAL "beman/inside/units/mdspan.hpp")
+        set(_guard_open
+            "#if __STDC_HOSTED__ && !defined(BEMAN_INSIDE_NO_MDSPAN) && !defined(BEMAN_INSIDE_NO_UNITS)"
+        )
+        set(_guard_close
+            "#endif // __STDC_HOSTED__ && !BEMAN_INSIDE_NO_MDSPAN && !BEMAN_INSIDE_NO_UNITS"
         )
     elseif(r STREQUAL "beman/inside/inside/random.hpp")
         set(_guard_open

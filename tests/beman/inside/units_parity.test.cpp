@@ -7,9 +7,11 @@
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/inside/io.hpp>
+#include <beman/inside/inside/mdspan.hpp>
 #include <beman/inside/inside/random.hpp>
 #include <beman/inside/units.hpp>
 #include <beman/inside/units/io.hpp>
+#include <beman/inside/units/mdspan.hpp>
 #include <beman/inside/units/random.hpp>
 
 #include <gtest/gtest.h>
@@ -49,6 +51,8 @@ constexpr std::array with_quantity_form{
     std::string_view{"dot"},
     std::string_view{"end"},
     std::string_view{"lerp"},
+    std::string_view{"matrix_product"},
+    std::string_view{"matrix_vector_product"},
     std::string_view{"max"},
     std::string_view{"midpoint"},
     std::string_view{"min"},
@@ -62,6 +66,7 @@ constexpr std::array with_quantity_form{
     std::string_view{"sum"},
     std::string_view{"to"},
     std::string_view{"to_string"},
+    std::string_view{"transform_into"},
     std::string_view{"uniform"},
 };
 
@@ -84,6 +89,8 @@ constexpr std::array inside_only{
     exception{"make_policy", "shared vocabulary"},
     // The raw and the grid of an inside; a quantity's is its number's.
     exception{"to_string_debug", "an inside's raw and grid"},
+    // Index tuples of an mdspan's extents: no values.
+    exception{"indices", "index tuples, no values"},
 };
 
 // Member functions of an inside without a quantity counterpart: properties of
@@ -121,7 +128,10 @@ std::vector<std::string> function_names() {
         if constexpr ((std::meta::is_function_template(m) || std::meta::is_function(m)) &&
                       std::meta::has_identifier(m))
             if constexpr (!Members || std::meta::is_public(m))
-                names.emplace_back(std::meta::identifier_of(m));
+                // (Reserved names are the compiler's: GCC lists deduction
+                // guides as __dguide_<class>.)
+                if (!std::meta::identifier_of(m).starts_with("__"))
+                    names.emplace_back(std::meta::identifier_of(m));
     }
     std::ranges::sort(names);
     names.erase(std::ranges::unique(names).begin(), names.end());
@@ -198,6 +208,17 @@ TEST(UnitsParityTest, the_quantity_forms_compile) {
     static_assert(requires { to_string(m); });
     static_assert(requires { uniform<metres>(rng); });
     static_assert(requires(cursor<metres, 10> c) { end(c); });
+
+    // mdspan: the algorithms take quantity elements (units/mdspan.hpp).
+    using vec   = std::mdspan<metres, std::extents<std::size_t, 2>>;
+    using mat   = std::mdspan<metres, std::extents<std::size_t, 2, 2>>;
+    using area  = std::mdspan<quantity<si::metre * si::metre, inside<{0, 100000}>>, std::extents<std::size_t, 2>>;
+    using areas = std::mdspan<quantity<si::metre * si::metre, inside<{0, 100000}>>, std::extents<std::size_t, 2, 2>>;
+    static_assert(requires(vec v) { sum(v); });
+    static_assert(requires(vec v) { dot(v, v); });
+    static_assert(requires(mat a, vec v, area y) { matrix_vector_product(a, v, y); });
+    static_assert(requires(mat a, areas c) { matrix_product(a, a, c); });
+    static_assert(requires(vec v) { transform_into(v, v, [](metres x) { return x; }); });
 }
 
 // The new forms do what the inside forms do.

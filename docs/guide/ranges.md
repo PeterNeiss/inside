@@ -74,6 +74,11 @@ auto [lo, hi] = std::ranges::minmax_element(temps);
 To add up a range, use [`sum<Target>`](arithmetic.md#sums-of-many-values),
 which checks the total once, rather than `std::accumulate` into a wider type.
 
+For arrays of more than one dimension, `std::mdspan` holds insides too, and
+[`<beman/inside/inside/mdspan.hpp>`](../advanced/mdspan.md) adds indices
+whose types prove them in bounds, views of raw buffers, and exact sums and
+matrix products.
+
 ## `min`, `max`, `midpoint`
 
 `min`, `max` and `midpoint` are found by argument-dependent lookup, so
