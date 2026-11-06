@@ -107,8 +107,7 @@ template <insidable B, detail::numeric A>
             return false;
         // B's policy rounds before it range-checks: a value that rounds onto the
         // grid does not overflow.
-        detail::rational rounded;
-        return !detail::rounds_into_range<B, detail::call_policy<>>(r, rounded);
+        return !detail::round_into_range<B, detail::call_policy<>>(r).Ok;
     }
 }
 
@@ -128,8 +127,7 @@ template <insidable B, detail::numeric A>
             // Out of range: a rounding policy that brings it onto the grid
             // rounds (a grid rounds before the range check); anything else is
             // overflow, not rounding.
-            detail::rational rounded;
-            return detail::rounds_into_range<B, detail::call_policy<>>(r, rounded);
+            return detail::round_into_range<B, detail::call_policy<>>(r).Ok;
         }
         if constexpr (!detail::notched<B>) {
             // A point: nothing to miss. Continuous: an in-range value with a

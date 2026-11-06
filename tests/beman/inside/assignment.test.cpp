@@ -1852,4 +1852,19 @@ TEST(AssignmentTest, round_to_lattice_unanchored_rounds_and_reports_overflow) {
         (try_round_to_lattice<U, call_policy<round_floor>>(rational{(1ull << 61) - 1, 1}).error() == errc::overflow));
 }
 
+// A value just past Upper rounding onto a 64-bit-raw grid whose span passes
+// 2^64: its slot came from (v − Lower)/Notch in 64-bit rationals, unwrapped
+// with .value(), and std::bad_expected_access escaped the store.
+TEST(AssignmentTest, rounding_onto_a_span_past_two_to_the_64) {
+    using wide_span = inside<{{-(just<3> * just<(1ll << 62)>), just<2> * just<(1ll << 62)>}, 4}, round_nearest>;
+    static_assert(sizeof(wide_span::raw_type) == 8);
+    wide_span w{0};
+    w = rational{(umax{1} << 63) + 1}; // 2^63 + 1 rounds to Upper, 2^63
+    EXPECT_TRUE(w == upper_of<wide_span>);
+    w = rational{(umax{1} << 63) - 1}; // in range: rounds to 2^63 too
+    EXPECT_TRUE(w == upper_of<wide_span>);
+    EXPECT_TRUE(conversion_rounds<wide_span>(rational{(umax{1} << 63) + 1}));
+    EXPECT_FALSE(conversion_overflows<wide_span>(rational{(umax{1} << 63) + 1}));
+}
+
 } // namespace pinned_tests

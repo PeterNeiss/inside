@@ -301,6 +301,12 @@ template <insidable B>
         return trunc(as_rational(b));
 }
 
+// The B of an integer val on B's lattice, exactly (wide_value.hpp): the
+// offset (val − Lower)/Notch through wide integers, as its 64-bit steps may
+// pass 2^64 on a wide span.
+template <insidable B>
+constexpr B exact_integer_value(imax val) noexcept;
+
 template <insidable B>
 constexpr void from_value(B& b, imax val) {
     if constexpr (value_storage<B>)
@@ -309,11 +315,8 @@ constexpr void from_value(B& b, imax val) {
         b = B::from_raw(raw_cast<B>((static_cast<umax>(val) - static_cast<umax>(lower_imax<B>)) / notch64<B>.Num));
     else if constexpr (q_format_fits<B>)
         b = B::from_raw(q_format_encode<B>(val));
-    else // index storage, generic rational path
-    {
-        auto offset = (rational{val} - lower64<B>) / notch64<B>;
-        b           = B::from_raw(raw_cast<B>(offset.value().Num));
-    }
+    else // index storage on a fractional lattice
+        b = exact_integer_value<B>(val);
 }
 
 //-------------------------------------------------------------------------
@@ -391,13 +394,6 @@ constexpr raw_t<L> endpoint_raw(bool low) noexcept {
         return raw_from_offset<L>(low ? umax{0} : max_index_of<L>);
 }
 
-// The raw of a value v on L's lattice within [Lower, Upper], through its
-// exact offset (v − Lower)/Notch.
-template <insidable L>
-constexpr raw_t<L> raw_of_lattice_value(rational v) {
-    return raw_from_offset<L>(((v - lower64<L>).value() / notch64<L>).value().Num);
-}
-
 //-------------------------------------------------------------------------
 // integer_limits vs integer_lattice — easy to confuse, both needed.
 //   integer_limits<B>: Lower and Upper integer (Notch may be fractional,
@@ -457,11 +453,10 @@ template <insidable L, typename P>
         return {round_to_integral(q, m), false}; // the value index's own sign rules
     else {
         const rational k = round_to_integral(q, round_mode::floor);
-        const rational f = (q - k).value(); // in [0, 1): no overflow
-        return {
-            k,
-            rounds_up(
-                m, negative, classify_remainder(m, f.Num, abs_den(f.Den)), ((k.Num & 1) != 0) != lower_index_odd<L>)};
+        // q − k = r/d in [0, 1): the remainder of q's numerator, by integers.
+        const umax d = abs_den(q.Den), t = q.Num % d;
+        const umax r = q.Den < 0 && t != 0 ? d - t : t;
+        return {k, rounds_up(m, negative, classify_remainder(m, r, d), ((k.Num & 1) != 0) != lower_index_odd<L>)};
     }
 }
 
@@ -490,25 +485,31 @@ template <insidable L, typename P>
 
 // Round, then range-check. Lower and Upper are lattice points, so rounding
 // an in-range value keeps it in range; only an out-of-range value can change
-// outcome. When the policy may round (snap), rounds_into_range rounds such a
-// value and reports whether it lands inside the interval (`out` = the
-// rounded value). Only values within one notch of the interval can, which
-// also keeps try_round_to_lattice's division bounded for huge sources. A
-// bounded continuous grid rounds onto its bound the same way: its limits are
-// values, and fractions k/D lie 1/D apart.
+// outcome. When the policy may round (snap), round_into_range rounds such a
+// value and, when it lands inside the interval, returns its raw. Only values
+// within one notch of the interval can, so the exact rounding there stays
+// small for huge sources. A bounded continuous grid rounds onto its bound the
+// same way: its limits are values, and fractions k/D lie 1/D apart.
 template <insidable L, typename P>
 inline constexpr bool rounds_before_range_check =
     (notched<L> || grid_of<L>.MaxDenominator != 0) && uses_flag<L, P, snap>;
 
-// rounds_into_range for a v whose rounding passes the 64-bit rational on the
-// way (v − Lower for a fine v's denominator), decided exactly (wide_value.hpp).
+// The raw a value rounds to, when it rounds inside the limits (Ok).
+template <insidable L>
+struct rounded_raw {
+    raw_t<L> Raw;
+    bool     Ok;
+};
+
+// The rounding itself, exact (wide_value.hpp): the slot of a notched L, or
+// the fraction on a continuous L's bound.
 template <insidable L, typename P>
-constexpr bool exact_rounds_into_range(const rational& v, rational& out);
+constexpr rounded_raw<L> exact_round_into_range(const rational& v);
 
 template <insidable L, typename P>
-[[nodiscard]] constexpr bool rounds_into_range(rational v, rational& out) {
+[[nodiscard]] constexpr rounded_raw<L> round_into_range(rational v) {
     if constexpr (!rounds_before_range_check<L, P>)
-        return false;
+        return {raw_t<L>{}, false};
     else {
         // A bound past imax: 1/imax still widens the limits by at least a
         // step (only a prefilter: the exact rounding decides).
@@ -524,41 +525,21 @@ template <insidable L, typename P>
         constexpr rational lo = try_sub(lower64<L>, step).value_or(lower64<L>);
         constexpr rational hi = try_add(upper64<L>, step).value_or(upper64<L>);
         if (v <= lo || v >= hi)
-            return false;
-        if constexpr (!notched<L>)
-            return exact_rounds_into_range<L, P>(v, out);
-        // Within one notch of the limits the rounded value fits; the steps
-        // there may not, for a fine v.
-        const auto r = try_round_to_lattice<L, P>(v);
-        if (!r) [[unlikely]]
-            return exact_rounds_into_range<L, P>(v, out);
-        out = *r;
-        return includes(interval_of<L>, out);
+            return {raw_t<L>{}, false};
+        return exact_round_into_range<L, P>(v);
     }
 }
 
 // Store-side form for the assignment paths: when v rounds inside, the raw of
-// the rounded lattice point (an exact in-range point: an index or rational
-// raw, no further rounding). Cold and out of line, and it returns the
-// raw in registers instead of writing through the caller's inside:
+// the rounded value (an index or rational raw, no further rounding). Cold and
+// out of line, and it returns the raw in registers instead of writing
+// through the caller's inside:
 //   - a second call site of the large store functions stops GCC inlining
 //     them into the hot path (~40 instructions per in-range store);
 //   - an escaping `lhs` address turns on the stack protector there (~3).
-template <insidable L>
-struct rounded_raw {
-    raw_t<L> Raw;
-    bool     Ok;
-};
-
 template <insidable L, typename P>
 [[gnu::cold]] [[gnu::noinline]] constexpr rounded_raw<L> raw_if_rounds_inside(rational v) {
-    rational r;
-    if (!rounds_into_range<L, P>(v, r))
-        return {raw_t<L>{}, false};
-    if constexpr (rational_storage<L>)
-        return {r, true};
-    else
-        return {raw_of_lattice_value<L>(r), true};
+    return round_into_range<L, P>(v);
 }
 
 // Rounds the split offset quotient q + r/den (r < den ≤ imax_max) per L's
