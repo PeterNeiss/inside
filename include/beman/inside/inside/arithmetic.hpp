@@ -114,8 +114,8 @@ struct divmod_op {
 #define BEMAN_INSIDE_WHY_div                                                                              \
     "division: no result type - the divisor grid is the point 0, or the exact quotient's fractions pass " \
     "1024 bits"
-#define BEMAN_INSIDE_WHY_mod "modulo requires integer-valued grids"
-#define BEMAN_INSIDE_WHY_divmod "divmod requires integer-valued grids"
+#define BEMAN_INSIDE_WHY_mod "modulo requires notched grids (a continuous grid has no lattice)"
+#define BEMAN_INSIDE_WHY_divmod "divmod requires notched grids (a continuous grid has no lattice)"
 
 namespace detail {
 // The policy flags a call's trailing arguments select, as arith normalizes

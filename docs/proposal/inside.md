@@ -298,9 +298,9 @@ largest denominator times the divisor's largest numerator. That bound travels
 with the type through `+`, `-` and `*`, so exact arithmetic on quotients stays
 plain and its precision is known at compile time. When either operand's policy
 names a rounding, an integer division rounds onto the integers, and a division
-of two values on the same notch `1/K` rounds onto that notch. `a % b` requires
-integer grids; its remainder belongs to the quotient truncated, or rounded by
-the policy's mode. Either operator returns `std::expected<inside, errc>` when the
+of two values on the same notch `1/K` rounds onto that notch. `a % b` takes
+two lattices; its remainder belongs to the quotient truncated, or rounded by
+the policy's mode, and lies on the lattice of the gcd of the two steps. Either operator returns `std::expected<inside, errc>` when the
 divisor's grid holds zero, and a plain `inside` when it does not.
 
 ## Policies
@@ -582,7 +582,7 @@ namespace std {
 | `a + b`, `a - b` | interval sum or difference; notch `gcd(n_a, n_b)` | continuous if either operand is, with denominator bound `D_a·D_b` |
 | `a * b` | interval product; notch `n_a·n_b`, refined by the operands' offsets | a point `c` scales the other notch by `|c|`; continuous as for `+` |
 | `a / b` | a point `c`: `a`'s notch scaled by `1/|c|`; else continuous with denominator bound `D_a·max|b|·D_b` | rounded onto the integers or the shared notch when a policy names a rounding; `expected` iff `b`'s grid holds 0 |
-| `a % b` | the values `r` can take: truncation `r` has `a`'s sign, `|r| ≤ min(m, max|a|)`; floor `b`'s sign, ceil the opposite, `|r| ≤ m`; nearest `|r| ≤ min(⌊max|b|/2⌋, max|a|)`; `m = max|b| − 1` | integer grids required; `r = a − q·b` for `q` truncated or rounded by the policy |
+| `a % b` | on the lattice of `u`, the gcd of the two value units (1 on integers), the values `r` can take: truncation `r` has `a`'s sign, `|r| ≤ min(m, max|a|)`; floor `b`'s sign, ceil the opposite, `|r| ≤ m`; nearest `|r| ≤ min(⌊max|b|/2u⌋·u, max|a|)`; `m = max|b| − u` | notched grids required; `r = a − q·b` for the integer `q` truncated or rounded by the policy |
 | `e op b`, `a op e` (`e` an `expected`) | `expected` of `a op b`'s result | the first error passes through |
 | `++a`, `--a` | `a` moved by one notch | a store by `P` (wraps under `wrap`); absent on a continuous grid |
 | `a += b` etc. | `a = a + b` | a store by `a`'s policy |

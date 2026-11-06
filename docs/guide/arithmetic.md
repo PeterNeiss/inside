@@ -96,7 +96,7 @@ notch of 10⁻²⁰; `mul_into` never forms it. `div_into` returns a
 
 ## Remainder and `divmod`
 
-`%` works on grids of whole numbers:
+`%` works on any two lattices, whole numbers or fractions:
 
 ```cpp
 val n{17};
@@ -104,10 +104,13 @@ auto r1 = n % 5_ins;                  // inside<{0, 4}>: 2
 auto r2 = n % inside<{1, 10}>{5};     // inside<{0, 9}>: 2
 auto r3 = n % val{5};                 // std::expected: val's grid holds 0
 auto [q, rest] = divmod(n, inside<{1, 10}>{5});   // 3 and 2, from one division
+auto r4 = inside<{{0, 8}, per<2>}>{7.5} % inside<{{1, 4}, per<3>}>{rational{4, 3}};  // 7.5 − 5·4/3 = 5/6
 ```
 
 The remainder belongs to the rounded quotient: under `round_floor`,
-`divmod(-8, 3)` is −3 and 1.
+`divmod(-8, 3)` is −3 and 1. On fractional grids it lies on the lattice of
+the gcd of their steps (1/6 for halves and thirds), and the quotient is a
+whole number; a continuous grid has no lattice, so `%` does not take one.
 
 ## Sums of many values
 

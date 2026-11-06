@@ -139,8 +139,9 @@ rounding mode rounds the quotient instead, and `%` stays consistent with it,
 so `(a / b) * b + a % b == a` for every mode: under `round_floor`,
 `-8 / 3 == -3` and `-8 % 3 == 1`; under `round_toward_zero`, `-2` and `-2`.
 Without a rounding mode, `/` is exact and `%` truncates. `%` and `divmod` need
-whole-number grids; on others they are deleted overloads, so a `requires`
-probe answers false.
+a lattice on both sides, whole numbers or fractions (then the remainder lies
+on the lattice of the gcd of the two steps); on a continuous grid they are
+deleted overloads, so a `requires` probe answers false.
 
 ## Compound assignment
 

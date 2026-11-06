@@ -1676,8 +1676,8 @@ TEST(ArithmeticTest, operations_are_constraint_friendly) {
     static_assert(can_div<digit, digit> && can_div<reals, digit>);
     static_assert(can_div<digit, reals>);        // a bounded divisor stays 1/1000 from 0
     static_assert(!can_div<digit, inside<{0}>>); // the point 0
-    static_assert(can_mod<digit, digit> && !can_mod<fourths, digit>);
-    static_assert(can_divmod<digit, inside<{1, 3}>> && !can_divmod<fourths, digit>);
+    static_assert(can_mod<digit, digit> && can_mod<fourths, digit> && !can_mod<reals, digit>); // a lattice each
+    static_assert(can_divmod<digit, inside<{1, 3}>> && can_divmod<fourths, digit> && !can_divmod<reals, digit>);
     static_assert(can_add<digit, fourths> && can_mul<fourths, fourths>);
     static_assert(can_add<uint64, uint64> && can_mul<full, full>);
     static_assert(can_make<digit, int> && can_make<digit, inside<{5, 20}>> && !can_make<digit, inside<{20, 30}>>);

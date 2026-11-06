@@ -345,6 +345,63 @@ TEST(RoundSplitTest, unanchored_lower_above_zero) { check_modes<grid{{0.5_r, 20.
 TEST(RoundSplitTest, unanchored_lower_below_zero) { check_modes<grid{{-7.25_r, 3.75_r}, 0.5_r}>(); }
 } // namespace round_split_tests
 
+// `%` and divmod on fractional lattices: a and b are whole numbers of g, the
+// gcd of their value units, and the remainder a − round(a/b)·b lies on g·ℤ,
+// exactly, under every rounding mode; q·b + r == a.
+namespace lattice_modulo_tests {
+using namespace beman::inside;
+
+namespace {
+template <class A, class B>
+void check_all() {
+    for (const A a : inside_range<grid_of<A>, flags_of<A>>{})
+        for (const B b : inside_range<grid_of<B>, flags_of<B>>{}) {
+            if (b == 0)
+                continue;
+            const exact ea{a}, eb{b};
+            const auto  r     = a % b;
+            const auto [q, m] = [&] {
+                if constexpr (detail::expected_like<decltype(divmod(a, b))>)
+                    return *divmod(a, b);
+                else
+                    return divmod(a, b);
+            }();
+            const exact got = [&] {
+                if constexpr (detail::expected_like<decltype(r)>)
+                    return exact{*r};
+                else
+                    return exact{r};
+            }();
+            constexpr auto mode = detail::rounding_of(flags_of<A> | flags_of<B> | detail::snap);
+            const exact    t    = ea / eb;
+            const exact    k    = mode == detail::round_mode::floor ? floor(t) : trunc(t); // the modes below
+            ASSERT_EQ(got, ea - k * eb) << to_string(a) << " % " << to_string(b);
+            ASSERT_EQ(exact{m}, got);
+            ASSERT_EQ(exact{q} * eb + exact{m}, ea);
+        }
+}
+} // namespace
+
+TEST(LatticeModuloTest, remainders_are_exact) {
+    using halves  = inside<{{0, 8}, per<2>}>;
+    using thirds  = inside<{{1, 4}, per<3>}>;
+    using fourths = inside<{{-3, 3}, per<4>}>;
+    using shifted = inside<{{rational{-11, 4}, rational{9, 4}}, per<2>}>; // ±1/4 + k/2: unanchored
+    check_all<halves, thirds>();
+    check_all<fourths, thirds>();
+    check_all<shifted, halves>();
+    check_all<inside<{{-3, 3}, per<4>}, round_floor>, inside<{{-2, 2}, per<3>}, round_floor>>();
+    // The remainder grid is the lattice g·ℤ, bounded as on integer grids.
+    using r_t = decltype(inside<{{-3, 3}, per<4>}, round_floor>{} % thirds{1});
+    static_assert(grid_of<r_t> == grid{{0, rational{47, 12}}, rational{1, 12}});
+    using floored = inside<{{-3, 3}, per<4>}, round_floor>;
+    EXPECT_EQ((rational{floored{-1.25} % thirds{rational{4, 3}}}), (rational{1, 12}));
+    // A divisor grid holding 0: an expected, division_by_zero for 0.
+    EXPECT_EQ((halves{2.5} % fourths{0}).error(), errc::division_by_zero);
+    EXPECT_EQ(rational{*(halves{2.5} % fourths{0.75})}, (rational{1, 4}));
+}
+} // namespace lattice_modulo_tests
+
 // Pinned defects: each case failed before its fix.
 namespace pinned_tests {
 using namespace beman::inside;
