@@ -5,9 +5,8 @@
 // execution.
 //
 // Library quirks to respect:
-//   - `try_inv(0)` and division-by-zero `throw` under
-//     `is_constant_evaluated()` and hard-fail the build — they cannot appear
-//     in a constant expression.
+//   - A rational division by zero is a compile error (the operators are
+//     consteval) — it cannot appear in a constant expression.
 //   - The unhandled-`checked` path (out-of-range value, no clamp/wrap)
 //     still aborts constant evaluation via the
 //     `is_constant_evaluated()` guard inside `policy::report` (clearer
@@ -78,9 +77,9 @@ TEST(ConstexprTest, constexpr_rational_rounding_helpers) {
 
 // constexpr: rational inv and divides_evenly
 TEST(ConstexprTest, constexpr_rational_inv_and_divides_evenly) {
-    static_assert(*try_inv(rational{3u, 4}) == rational{4u, 3});
-    static_assert(*try_inv(rational{2u, 7}) == rational{7u, 2});
-    // `try_inv(0_r)` is a compile error here — see file header.
+    static_assert(*(1 / rational{3u, 4}) == rational{4u, 3});
+    static_assert(*(1 / rational{2u, 7}) == rational{7u, 2});
+    // `1 / 0_r` is a compile error here — see file header.
 
     static_assert(divides_evenly(6_r, 2_r));
     static_assert(!(divides_evenly(7_r, 2_r)));

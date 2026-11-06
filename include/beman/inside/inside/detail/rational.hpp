@@ -444,7 +444,7 @@ constexpr void reduce_sum(umax& n, umax& d, umax g) noexcept {
 }
 
 //---------------------------------------------------------------------------
-// rational_add / rational_mul / rational_div / rational_inv — the arithmetic
+// rational_add / rational_mul / rational_div — the arithmetic
 // bodies, library-internal (the public operators are consteval: a rational is
 // compile-time vocabulary, run-time values are insides). Checked=true returns
 // expected<rational, errc>, reporting overflow / division_by_zero (Loud: a
@@ -609,27 +609,10 @@ inline constexpr auto rational_mul(rational a, rational b) {
 // a is already in lowest terms (Num and |Den| coprime), so the swapped
 // pair is too. Sign lives in the denominator and 1/(-x) has the same
 // sign as -x, so the sign bit moves with the (now) denominator unchanged.
-template <bool Checked, bool Loud = true>
-inline constexpr auto rational_inv(rational a) {
-    using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
+// Caller's contract: a != 0 and a's numerator fits imax.
+inline constexpr rational rational_inv(rational a) { return rational_from_parts(abs_den(a.Den), signed_numerator(a)); }
 
-    if constexpr (Checked) {
-        // a.Num goes into the result's Den slot, so it must fit in
-        // imax (else the umax→imax conversion wraps and a later -Den is UB).
-        if (a.Num == 0) {
-            return ret_t{fail<"rational inv: division by zero", Loud>(errc::division_by_zero)};
-        }
-        if (!std::in_range<imax>(a.Num)) {
-            return ret_t{fail<"rational inv: numerator out of denominator range", Loud>(errc::overflow)};
-        }
-    }
-
-    return ret_t{rational_from_parts(abs_den(a.Den), signed_numerator(a))};
-}
-
-// div(a, b) = a * inv(b). The checked path goes through rational_inv<true> so
-// the b.Num-fits-in-imax check (added there) propagates here too;
-// the unchecked path skips it (caller's contract).
+// div(a, b): checked, cross-reduced; unchecked, a * inv(b) (caller's contract).
 template <bool Checked, bool Loud = true>
 inline constexpr auto rational_div(rational a, rational b) {
     using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
@@ -650,7 +633,7 @@ inline constexpr auto rational_div(rational a, rational b) {
         const bool neg = (a.Den < 0) != (b.Den < 0);
         return ret_t{rational_from_parts(num, neg ? -static_cast<imax>(den) : static_cast<imax>(den))};
     } else
-        return rational_mul<false>(a, rational_inv<false>(b));
+        return rational_mul<false>(a, rational_inv(b));
 }
 
 //---------------------------------------------------------------------------
@@ -663,10 +646,6 @@ inline constexpr rational add_unchecked(rational a, rational b) { return rationa
 inline constexpr rational mul_unchecked(rational a, rational b) { return rational_mul<false>(a, b); }
 
 inline constexpr rational div_unchecked(rational a, rational b) { return rational_div<false>(a, b); }
-
-inline constexpr rational inv_unchecked(rational a) { return rational_inv<false>(a); }
-
-inline constexpr std::expected<rational, errc> try_inv(rational a) { return rational_inv<true>(a); }
 
 //---------------------------------------------------------------------------
 // operator-

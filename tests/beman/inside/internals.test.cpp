@@ -214,7 +214,7 @@ TEST(RationalTest, rational_arithmetic) {
         static_assert(add_unchecked(2_r, 3_r) == 5_r);
         static_assert(mul_unchecked(2_r, 3_r) == 6_r);
         static_assert(div_unchecked(6_r, 3_r) == 2_r);
-        static_assert(inv_unchecked(rational{2u, 3}) == rational{3u, 2});
+        static_assert(rational_inv(rational{2u, 3}) == rational{3u, 2});
     }
 
     // The checked operators return std::expected<rational, errc>; an implicit
@@ -241,22 +241,20 @@ TEST(RationalTest, rational_arithmetic) {
 
     {
         SCOPED_TRACE("inv basic");
-        static_assert(*try_inv(rational{3u, 2}) == rational{2u, 3});
-        static_assert(*try_inv(rational{1u, 5}) == 5_r);
-        static_assert(*try_inv(5_r) == rational{1u, 5});
+        static_assert(rational_inv(rational{3u, 2}) == rational{2u, 3});
+        static_assert(rational_inv(rational{1u, 5}) == 5_r);
+        static_assert(rational_inv(5_r) == rational{1u, 5});
 
         // Sign preservation (denominator carries the sign)
-        static_assert(*try_inv(rational{-3, 2}) == rational{-2, 3});
-        static_assert(*try_inv(rational{3, -2}) == rational{-2, 3});
+        static_assert(rational_inv(rational{-3, 2}) == rational{-2, 3});
+        static_assert(rational_inv(rational{3, -2}) == rational{-2, 3});
 
         // Involutive
-        static_assert(*try_inv(*try_inv(rational{7u, 11})) == rational{7u, 11});
+        static_assert(rational_inv(rational_inv(rational{7u, 11})) == rational{7u, 11});
     }
 
     {
-        SCOPED_TRACE("inv of zero -> division_by_zero");
-        ASSERT_FALSE(try_inv(0_r).has_value());
-        ASSERT_EQ(try_inv(0_r).error(), errc::division_by_zero);
+        SCOPED_TRACE("division by zero -> division_by_zero");
         ASSERT_EQ(try_div(1_r, 0_r).error(), errc::division_by_zero);
     }
 
@@ -364,10 +362,7 @@ TEST(RationalTest, rational_overflow_detection) {
         // add: lcm > imax_max.
         ASSERT_FALSE(try_add(rational{1u, p62}, rational{1u, 3}).has_value());
 
-        // inv of M (M > imax_max) would land M in the result's Den slot.
-        ASSERT_FALSE((try_inv(rational{M, 1}).has_value()));
-
-        // div via the checked path inherits the inv range check.
+        // 1/M (M > imax_max) would land M in the result's Den slot.
         ASSERT_FALSE(try_div(rational{1u, 1}, rational{M, 1}).has_value());
     }
 
