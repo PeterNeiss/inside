@@ -1076,6 +1076,8 @@ template <insidable B, policy_flag F>
 
 template <insidable B, policy_flag F = detail::none>
 [[nodiscard]] constexpr std::expected<B, errc> parse(const char* first, const char* last) {
+    if (detail::fraction_text(first, last))
+        return detail::parse_wide<B, F>(first, last);
     const auto v = detail::parse_text(first, last);
     if (!v && v.error() == errc::overflow) [[unlikely]]
         return detail::parse_wide<B, F>(first, last);
@@ -1086,16 +1088,19 @@ template <insidable B, policy_flag F = detail::none>
 
 template <insidable B>
 [[nodiscard]] constexpr std::expected<B, errc> parse_exact(const char* first, const char* last) {
-    const auto v = detail::parse_text(first, last);
-    if (v) {
-        if (conversion_overflows<B>(*v))
-            return std::unexpected{errc::overflow};
-        if (conversion_rounds<B>(*v))
-            return std::unexpected{errc::rounding_error};
-        return B::template try_make<detail::snap>(*v); // on the grid: nothing rounds
+    if (!detail::fraction_text(first, last)) {
+        const auto v = detail::parse_text(first, last);
+        if (v) {
+            if (conversion_overflows<B>(*v))
+                return std::unexpected{errc::overflow};
+            if (conversion_rounds<B>(*v))
+                return std::unexpected{errc::rounding_error};
+            return B::template try_make<detail::snap>(*v); // on the grid: nothing rounds
+        }
+        if (v.error() != errc::overflow)
+            return std::unexpected{v.error()};
     }
-    if (v.error() != errc::overflow)
-        return std::unexpected{v.error()};
+    // A fraction, or a value past the 64-bit rational: exactly.
     constexpr std::size_t K = std::max(detail::exact_limbs<B>, detail::parse_limbs);
     auto                  w = detail::parse_exact<K>(first, last);
     if (!w && w.error() == errc::overflow)
