@@ -66,6 +66,9 @@ an operation can produce (result types are frozen from 1.0 on).
   floating-point `T`): drop the `.value()` or `*` there.
 - A zero denominator is `errc::division_by_zero` everywhere (`rational{1, 0}`
   was `domain_error`); a denominator of `INT64_MIN` is `overflow`.
+- `grid::try_make` is removed: a grid is a compile-time value (an inside's
+  template argument, never built at run time), and a malformed grid is a
+  compile error that names the broken rule.
 
 ### Changed
 

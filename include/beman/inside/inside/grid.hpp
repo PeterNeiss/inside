@@ -22,8 +22,8 @@ namespace beman::inside {
 // every rational in it), optionally with a MaxDenominator bound. Its + - * /
 // are the engine of compile-time result-grid inference: every inside operator
 // computes its result grid here, so the result holds every reachable value.
-// Also here: bounds (closed, half_open, open), grid::try_make for runtime
-// checks, max_denominator, and raw_for (the storage a grid deduces).
+// Also here: bounds (closed, half_open, open), max_denominator, and raw_for
+// (the storage a grid deduces).
 //---------------------------------------------------------------------------
 // A grid number: an exact rational of any size, and a structural type - the
 // type of a grid's limits, notch and bound, of `_g` and of lower_of /
@@ -110,41 +110,29 @@ struct grid {
         : Interval{val}, Notch{0}, MaxDenominator{check_bound(val, d.Value)} {}
 
   private:
-    static constexpr bool positive_integer(const detail::grid_rational& d) {
-        return d > 0 && detail::grid_denominator(d) == detail::grid_int{1};
-    }
-    // Each limit is a value, so the bound covers their denominators.
-    static constexpr bool bound_covers_limits(const interval& iv, const detail::grid_rational& d) {
-        using detail::grid_denominator;
-        return !(detail::grid_numerator(d) < grid_denominator(iv.Lower) ||
-                 detail::grid_numerator(d) < grid_denominator(iv.Upper));
-    }
-    // A bound is a positive integer at least the limits' denominators.
+    // A bound is a positive integer at least the limits' denominators (each
+    // limit is a value).
     static constexpr detail::grid_rational check_bound(const interval& iv, const detail::grid_rational& d) {
-        if (!positive_integer(d))
+        using detail::grid_denominator;
+        if (!(d > 0) || grid_denominator(d) != detail::grid_int{1})
             detail::constexpr_error<"max_denominator: the bound must be a positive integer">();
-        if (!bound_covers_limits(iv, d))
+        if (detail::grid_numerator(d) < grid_denominator(iv.Lower) ||
+            detail::grid_numerator(d) < grid_denominator(iv.Upper))
             detail::constexpr_error<"max_denominator: the bound is below a limit's denominator">();
         return d;
     }
 
-    // Moves iv's open limits in by one notch; false when the notch is 0 (no
-    // next point) or no grid point is left between them.
-    static constexpr bool move_in(interval& iv, const detail::grid_rational& notch, bounds b) {
+    // Moves iv's open limits in by one notch. (By name: the ctors are
+    // constexpr, and the grid-number operators consteval.)
+    static constexpr interval close_bounds(interval iv, const detail::grid_rational& notch, bounds b) {
         if (b == bounds::closed)
-            return true;
+            return iv;
         if (notch == 0)
-            return false;
-        if (b == bounds::open) // (by name: grid::try_make runs at run time)
+            detail::constexpr_error<"bounds: an open limit needs a notch - a continuous grid has no next point">();
+        if (b == bounds::open)
             iv.Lower = detail::grid_rational::add(iv.Lower, notch);
         iv.Upper = detail::grid_rational::sub(iv.Upper, notch);
-        return !(iv.Lower > iv.Upper);
-    }
-
-    static constexpr interval close_bounds(interval iv, const detail::grid_rational& notch, bounds b) {
-        if (b != bounds::closed && notch == 0)
-            detail::constexpr_error<"bounds: an open limit needs a notch - a continuous grid has no next point">();
-        if (!move_in(iv, notch, b))
+        if (iv.Lower > iv.Upper)
             detail::constexpr_error<"bounds: no grid point lies between the limits">();
         return iv;
     }
@@ -197,25 +185,6 @@ struct grid {
                       "has none - store an operand in a coarser grid first");
 
         return true;
-    }
-
-    // Runtime sibling of validate<G>(): same invariants, but returns a typed
-    // error instead of failing a static_assert — for grids built from runtime
-    // config. A value, so it can't be an inside<G,P> template argument.
-    // An open limit (`bounds`) moves in by one notch first, as in the ctors.
-    // Notch 0 makes a point; a continuous grid takes a max_denominator.
-    [[nodiscard]] static constexpr std::expected<grid, errc>
-    try_make(interval iv, detail::grid_rational notch, bounds b = bounds::closed) {
-        if (iv.Lower > iv.Upper || notch < 0 || (notch == 0 && iv.Lower != iv.Upper) || !move_in(iv, notch, b))
-            return std::unexpected{errc::domain_error};
-        if (!iv.divides_evenly(notch))
-            return std::unexpected{errc::rounding_error};
-        return grid{iv, notch};
-    }
-    [[nodiscard]] static constexpr std::expected<grid, errc> try_make(interval iv, max_denominator d) {
-        if (!(iv.Lower < iv.Upper) || !positive_integer(d.Value) || !bound_covers_limits(iv, d.Value))
-            return std::unexpected{errc::domain_error};
-        return grid{iv, d};
     }
 
     // The steps of one notch from Lower to Upper, (Upper − Lower)/Notch: the

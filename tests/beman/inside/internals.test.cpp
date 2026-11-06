@@ -579,7 +579,7 @@ static_assert(1 / big_rational{2} == big_rational{rational{1, 2}} && fine / -2 =
 
 TEST(BigRationalTest, runtime_small_values) {
     // The operators are consteval; the same arithmetic by name computes small
-    // values at runtime without allocation (grid::try_make, printing).
+    // values at runtime without allocation (the grid constructors, printing).
     volatile int  x = 7;
     const big_int a{static_cast<int>(x)}, b{-3};
     EXPECT_TRUE(big_int::mul(a, b) == big_int{-21});
