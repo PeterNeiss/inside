@@ -89,7 +89,7 @@ std::vector<rational> sweep(const grid& g) {
 template <grid G>
 std::vector<rational> slots() {
     std::vector<rational> v;
-    for (umax k = 0; k <= G.max_index(); ++k)
+    for (umax k = 0; k <= detail::max_index(G); ++k)
         v.push_back((to_rational(G.Interval.Lower) + (rational{k} * to_rational(G.Notch)).value()).value());
     return v;
 }
@@ -143,7 +143,7 @@ TEST(UnanchoredGrid, storage) {
 template <grid G>
 void check_decode() {
     using B = inside<G>;
-    for (umax k = 0; k <= G.max_index(); ++k) {
+    for (umax k = 0; k <= detail::max_index(G); ++k) {
         const rational want = (to_rational(G.Interval.Lower) + (rational{k} * to_rational(G.Notch)).value()).value();
         const B        b{want};
         EXPECT_EQ(static_cast<rational>(b), want) << to_string(want);

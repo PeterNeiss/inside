@@ -59,7 +59,7 @@ division by a point, which scales the dividend's lattice).
 policy and hook, `sum`, print, parse, hash and sample, all exact. `+=` and a
 same-notch store are a raw add of the limbs. Their values can outgrow the
 64-bit fraction, so a wide inside has no implicit `rational` conversion: read
-it with `numerator()`/`denominator()` (wide integers) or `to<T>()`.
+it with `numerator()`/`denominator()` (insides on wide raws) or `to<T>()`.
 [`wei.cpp`](../../examples/wei.cpp) (10²⁷ points of 10⁻¹⁸ ETH) and
 [`solar_system.cpp`](../../examples/solar_system.cpp) (nanometres across
 ±10¹³ m) use wide raws, as quantities.
@@ -87,14 +87,40 @@ and `inside<{{0, 1}, 1e-30_g}>` has an exact decimal notch of 10⁻³⁰.
 
 Grid numbers past 64 bits exist only at compile time; the raw of such an
 inside is a fixed-width integer sized from them. A grid can hold huge values
-in few points (`{2¹⁰⁰, 2¹⁰⁰ + 10}` is a `uint8_t`). Call grid helpers that
-form big values, like `grid_of<B>.step_count()`, in a constant expression; at
-run time a result past 64 bits reports `errc::overflow`.
+in few points (`{2¹⁰⁰, 2¹⁰⁰ + 10}` is a `uint8_t`). So grid numbers are
+formed during compilation only: their operators, and the grid queries that
+return one (`grid_of<B>.step_count()`, `value_unit()`), are `consteval`.
+`residue r = N - 1;` in run-time code works, since `N - 1` is evaluated while
+compiling; `N - n` with a run-time `n` does not compile. An inside takes a
+grid number at run time, checked like any store; `B::try_make(N - 1)` reports
+instead of throwing.
 
-An inside takes a grid number at run time, checked like any store, once the
-number exists: name a big one as a constant first (`constexpr auto top = N - 1;`
-then `residue r = top;`), since `N - 1` evaluated at run time would have to
-form it. `B::try_make(top)` reports instead of throwing.
+### At run time
+
+Run-time values are insides. The type fixes the grid, and the raw holds any of
+its values, past 2⁶⁴ points too, so everything a program computes while it
+runs stays exact:
+
+| Spelling | Gives |
+|---|---|
+| `x + y`, `x * y`, `x % m`, `divmod(x, m)`, … | exact results on wide raws; the result types are sized at compile time |
+| `x.index()` | the notch index (x − Lower)/Notch as an `index_t<T>` = `inside<{0, step_count}>`, with T's raw type |
+| `T::from_index(i)` | the value Lower + i·Notch: plain when `i`'s grid lies within the indices, else checked by T's policy (or `from_index(i, clamp)`, `try_from_index(i)`) |
+| `step_count_of<T>` | (Upper − Lower)/Notch as a point inside: 0 bytes, printable |
+| `x.numerator()`, `x.denominator()` | the value in lowest terms, as insides on the integers |
+| `std::numeric_limits<T>::min()`, `max()`, `just<lower_of<T>>` | the limits as insides |
+
+```cpp
+using huge = inside<{0, 0x1p100}>;
+huge h      = huge::from_index(step_count_of<huge>);         // 2¹⁰⁰
+auto half   = div(h.index(), 2_ins, round_floor);              // 2⁹⁹, at run time
+huge middle = huge::from_index(half);                          // a raw copy
+auto steps  = h.index() - middle.index();                      // inside<{-2¹⁰⁰, 2¹⁰⁰}>
+```
+
+`cursor<T>` steps through a big grid one notch at a time. `values<T>` is a
+sized random-access range, so it takes grids of fewer than 2⁶³ points; walk
+larger ones with a cursor, or jump with `index()` and `from_index`.
 
 A continuous grid past 64 bits stores an exact fraction of fixed-width
 integers, sized from its denominator bound

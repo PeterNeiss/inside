@@ -84,7 +84,7 @@ constexpr wide_rational<K> exact_of_grid(const grid_rational& r) noexcept {
 }
 
 // a / b for grid numbers, known at compile time to be an integer.
-constexpr grid_int exact_quotient(const grid_rational& a, const grid_rational& b) noexcept {
+consteval grid_int exact_quotient(const grid_rational& a, const grid_rational& b) {
     return grid_numerator(a) * grid_denominator(b) / (grid_denominator(a) * grid_numerator(b));
 }
 

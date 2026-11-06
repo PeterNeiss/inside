@@ -110,6 +110,63 @@ constexpr std::expected<B, errc> try_store(Store store) {
         return std::unexpected{ec};
     return b;
 }
+
+// The grids of the counts and exact parts an inside reports at run time, as
+// insides: a grid number past 64 bits exists only at compile time, an inside
+// holds any value of its grid in a raw sized from it.
+// index_grid: the notch indices 0 … step_count (a point's is the point 0).
+consteval grid index_grid(const grid& g) {
+    const grid_int s = g.step_count();
+    if (s == grid_int{0})
+        return grid{grid_rational{0}};
+    return grid{interval{grid_rational{0}, grid_rational{s}}, grid_rational{1}};
+}
+
+// numerator_grid / denominator_grid: the parts of g's values in lowest
+// terms. Every denominator d is at most D = den_bound(g), so a numerator
+// v·d lies in [⌈Lower⌉, …] for Lower ≥ 0, else [⌈Lower·D⌉, …], and up to
+// ⌊Upper⌋ for Upper ≤ 0, else ⌊Upper·D⌋. On an integer lattice (D = 1) that
+// is g's interval. A point's parts are points.
+consteval grid denominator_grid(const grid& g) {
+    if (g.Interval.Lower == g.Interval.Upper)
+        return grid{grid_rational{grid_denominator(g.Interval.Lower)}};
+    const grid_int d = den_bound(g);
+    if (d == grid_int{1})
+        return grid{grid_rational{1}};
+    return grid{interval{grid_rational{1}, grid_rational{d}}, grid_rational{1}};
+}
+consteval grid numerator_grid(const grid& g) {
+    const grid_rational& lo = g.Interval.Lower;
+    const grid_rational& hi = g.Interval.Upper;
+    if (lo == hi)
+        return grid{grid_rational{grid_numerator(lo)}};
+    const grid_rational d{den_bound(g)};
+    const grid_rational a = grid_round<round_mode::ceil>(lo >= 0 ? lo : lo * d);
+    const grid_rational b = grid_round<round_mode::floor>(hi <= 0 ? hi : hi * d);
+    return grid{interval{a, b}, grid_rational{1}};
+}
+
+// Whether I's raw is its value, an integer: a value raw, or an index raw
+// counting from 0 in steps of 1.
+template <insidable I>
+inline constexpr bool raw_holds_value =
+    integer_value_storage<I> || (index_storage<I> && !point_storage<I> && lower_of<I> == 0 && notch_of<I> == 1);
+
+// The inside of N (a notch-1 integer grid) that holds the integer n, which
+// the caller proves lies in N: n itself on a value raw, n − Lower on an
+// index raw.
+template <insidable N, typename I>
+constexpr N integer_inside(const I& n) noexcept {
+    if constexpr (point_storage<N>)
+        return N::from_raw({});
+    else if constexpr (value_storage<N>)
+        return N::from_raw(raw_cast<N>(n));
+    else if constexpr (wide_integer<I>) {
+        constexpr I lo = static_cast<I>(grid_numerator(lower_of<N>));
+        return N::from_raw(raw_cast<N>(n - lo));
+    } else
+        return N::from_raw(raw_cast<N>(static_cast<umax>(n) - static_cast<umax>(lower_imax<N>)));
+}
 } // namespace detail
 
 //---------------------------------------------------------------------------
@@ -230,9 +287,10 @@ struct inside {
     inside& operator%=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
 #undef BEMAN_INSIDE_WHY_expected
 
-    // A grid number at run time (`residue r = N - 1_g;`, a constexpr big
-    // variable): checked like any store, since its interval is not part of
-    // its type. (Exactly a grid number: templates, so nothing converts to one.)
+    // A grid number, read at run time (`residue r = N - 1;`: N - 1 is formed
+    // during compilation): checked like any store, since its interval is not
+    // part of its type. (Exactly a grid number: templates, so nothing
+    // converts to one.)
     template <std::same_as<detail::grid_rational> V>
     constexpr inside(const V& value) : Raw{detail::default_raw<inside>} {
         detail::assign_grid_number(*this, value, make_policy<P>());
@@ -416,22 +474,127 @@ struct inside {
         return *r;
     }
 
-    // numerator() / denominator() — the exact value in lowest terms as an
-    // integer pair (sign on the numerator, denominator positive). The supported
-    // exact read-out that keeps callers in plain integers. Integer-notch ⇒ den == 1.
-    // imax when every value fits it, else a wide integer that holds every value
-    // (a wide grid, a grid past int64).
+    // numerator() / denominator() — the exact value in lowest terms (sign on
+    // the numerator, denominator positive), each an inside on the integers
+    // that holds every such part of this grid's values (numerator_grid,
+    // denominator_grid): 3 and 16 for 0.1875 on {{0, 1}, per<16>}. On an
+    // integer lattice the numerator is the value and the denominator the
+    // point 1. Read a builtin with .as<T>() or .to<T>().
     [[nodiscard]] constexpr auto numerator() const {
-        if constexpr (detail::fraction_fits_imax<inside>)
-            return fraction().first;
+        using N = inside<detail::numerator_grid(G)>;
+        if constexpr (detail::point_storage<N>)
+            return N::from_raw({});
+        else if constexpr (detail::numerator_grid(G) == G)
+            return N::from_raw(Raw); // the value itself, on the same grid
+        else if constexpr (detail::fraction_fits_imax<inside>)
+            return detail::integer_inside<N>(fraction().first);
         else
-            return detail::reduced_exact(*this).Num;
+            return detail::integer_inside<N>(detail::reduced_exact(*this).Num);
     }
     [[nodiscard]] constexpr auto denominator() const {
-        if constexpr (detail::fraction_fits_imax<inside>)
-            return fraction().second;
+        using D = inside<detail::denominator_grid(G)>;
+        if constexpr (detail::point_storage<D>)
+            return D::from_raw({});
+        else if constexpr (detail::fraction_fits_imax<inside>)
+            return detail::integer_inside<D>(fraction().second);
         else
-            return detail::reduced_exact(*this).Den;
+            return detail::integer_inside<D>(detail::reduced_exact(*this).Den);
+    }
+
+    // index() — the notch index (value − Lower)/Notch, 0 … step_count_of<T>,
+    // as an index_t<T>: run-time counting on any grid, past 2^64 points too.
+    // Its raw has this raw's type, so on an index raw it is a copy; on a value
+    // raw, one subtraction. T::from_index(i) goes back.
+    [[nodiscard]] constexpr auto index() const noexcept
+        requires(G.Notch != 0 || G.Interval.Lower == G.Interval.Upper)
+    {
+        using I = inside<detail::index_grid(G)>;
+        if constexpr (detail::point_storage<inside>)
+            return I::from_raw({});
+        else if constexpr (detail::index_storage<inside>) {
+            static_assert(std::same_as<typename I::raw_type, raw_type>);
+            return I::from_raw(Raw);
+        } else
+            return I::from_raw(detail::raw_cast<I>(detail::raw_offset<inside>(Raw)));
+    }
+
+#define BEMAN_INSIDE_WHY_index "inside: index() counts notches - a continuous grid has none to count"
+    auto index() const
+        requires(G.Notch == 0 && G.Interval.Lower != G.Interval.Upper)
+    = delete (BEMAN_INSIDE_WHY_index);
+#undef BEMAN_INSIDE_WHY_index
+
+  private:
+    // Lower + i·Notch, exactly, as an inside (a point counts in steps of 1,
+    // so only index 0 lands on it).
+    template <insidable I>
+    static constexpr auto index_value(const I& i) {
+        constexpr detail::grid_rational unit  = G.Notch != 0 ? G.Notch : detail::grid_rational{1};
+        constexpr auto                  lower = inside<grid{G.Interval.Lower}>::from_raw({});
+        constexpr auto                  step  = inside<grid{unit}>::from_raw({});
+        return lower + i * step;
+    }
+    // A builtin index as the inside on its type's range.
+    template <std::integral T>
+    static constexpr auto as_index_inside(T n) {
+        return inside<grid{interval_of<T>, detail::grid_rational{1}}>{n};
+    }
+
+  public:
+    // from_index(i) — the value with notch index i, Lower + i·Notch: index()'s
+    // inverse. i is an inside on the integers (or a builtin integer). Plain
+    // when every value of i is an index of T (0 … step_count_of<T>), a raw
+    // copy; else a store checked by T's policy, or by a one-shot policy
+    // (clamp saturates at the ends, wrap folds onto the indices).
+    // try_from_index reports the failure instead.
+    template <insidable I>
+        requires detail::integer_lattice<I> && (G.Notch != 0 || G.Interval.Lower == G.Interval.Upper)
+    [[nodiscard]] static constexpr inside from_index(const I& i) {
+        constexpr bool within = lower_of<I> >= 0 && upper_of<I> <= G.step_count();
+        if constexpr (within && detail::point_storage<inside>)
+            return from_raw({});
+        else if constexpr (within && detail::index_storage<inside> && detail::raw_holds_value<I>)
+            return from_raw(detail::raw_cast<inside>(i.raw()));
+        else if constexpr (within && !detail::wide_index_storage<inside> && detail::values_fit_imax<I>)
+            return from_raw(detail::raw_from_offset<inside>(detail::to_value(i)));
+        else
+            return inside{index_value(i)};
+    }
+    template <insidable I, typename Pol>
+        requires detail::integer_lattice<I> && (G.Notch != 0 || G.Interval.Lower == G.Interval.Upper) &&
+                 (detail::flag_like<Pol> || detail::policy_like<Pol>)
+    [[nodiscard]] static constexpr inside from_index(const I& i, Pol&& pol) {
+        return inside{index_value(i), std::forward<Pol>(pol)};
+    }
+    template <policy_flag F = detail::none, insidable I>
+        requires detail::integer_lattice<I> && (G.Notch != 0 || G.Interval.Lower == G.Interval.Upper)
+    [[nodiscard]] static constexpr std::expected<inside, errc> try_from_index(const I& i) {
+        return try_make<F>(index_value(i));
+    }
+#define BEMAN_INSIDE_WHY_from_index \
+    "inside: from_index(i) takes a notch index - an inside on the integers (index_t<T>, 3_ins) or a builtin integer"
+    template <insidable I>
+        requires(!detail::integer_lattice<I>)
+    static inside from_index(const I&) = delete (BEMAN_INSIDE_WHY_from_index);
+    template <insidable I, typename Pol>
+        requires(!detail::integer_lattice<I>)
+    static inside from_index(const I&, Pol&&) = delete (BEMAN_INSIDE_WHY_from_index);
+#undef BEMAN_INSIDE_WHY_from_index
+    template <std::integral T>
+        requires(G.Notch != 0 || G.Interval.Lower == G.Interval.Upper)
+    [[nodiscard]] static constexpr inside from_index(T i) {
+        return from_index(as_index_inside(i));
+    }
+    template <std::integral T, typename Pol>
+        requires(G.Notch != 0 || G.Interval.Lower == G.Interval.Upper) &&
+                (detail::flag_like<Pol> || detail::policy_like<Pol>)
+    [[nodiscard]] static constexpr inside from_index(T i, Pol&& pol) {
+        return from_index(as_index_inside(i), std::forward<Pol>(pol));
+    }
+    template <policy_flag F = detail::none, std::integral T>
+        requires(G.Notch != 0 || G.Interval.Lower == G.Interval.Upper)
+    [[nodiscard]] static constexpr std::expected<inside, errc> try_from_index(T i) {
+        return try_from_index<F>(as_index_inside(i));
     }
 
   private:
@@ -974,6 +1137,22 @@ consteval auto just_point() {
 } // namespace detail
 template <auto value, auto den = 1>
 inline constexpr auto just = detail::just_point<value, den>();
+
+//---------------------------------------------------------------------------
+// index_t<T>, step_count_of<T> — a grid's counts as insides, for run time
+// (a grid number past 64 bits exists only at compile time):
+//   index_t<T>        inside<{0, step_count}>: what t.index() returns and
+//                     T::from_index(i) takes back; same raw type as T's index
+//   step_count_of<T>  (Upper − Lower)/Notch as a point: 0 bytes, the largest
+//                     index, one less than the number of values
+//---------------------------------------------------------------------------
+template <insidable T>
+    requires(notch_of<T> != 0 || lower_of<T> == upper_of<T>)
+using index_t = inside<detail::index_grid(grid_of<T>)>;
+
+template <insidable T>
+    requires(notch_of<T> != 0 || lower_of<T> == upper_of<T>)
+inline constexpr auto step_count_of = just<detail::grid_rational{grid_of<T>.step_count()}>;
 
 //---------------------------------------------------------------------------
 // _ins literal — compile-time `inside<{V, V}>` from a numeric literal.

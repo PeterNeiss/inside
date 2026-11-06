@@ -66,10 +66,11 @@ static_assert(1 / big_rational{2} == big_rational{rational{1, 2}} && fine / -2 =
 } // namespace
 
 TEST(BigRationalTest, runtime_small_values) {
-    // Small values compute at runtime without allocation.
+    // The operators are consteval; the same arithmetic by name computes small
+    // values at runtime without allocation (grid::try_make, printing).
     volatile int  x = 7;
     const big_int a{static_cast<int>(x)}, b{-3};
-    EXPECT_TRUE(a * b == big_int{-21});
+    EXPECT_TRUE(big_int::mul(a, b) == big_int{-21});
     EXPECT_TRUE((big_rational{a, big_int{14}} == big_rational{rational{1, 2}}));
     EXPECT_TRUE(static_cast<rational>(big_rational{a}) == rational{7});
 }
@@ -82,13 +83,13 @@ TEST(BigRationalTest, runtime_comparison_of_small_values_forms_no_big_value) {
     const big_rational a{rational{static_cast<umax>(top), 4}};
     const big_rational b{rational{1, 3}};
     EXPECT_TRUE(b < a);
-    EXPECT_TRUE(-a < b);
+    EXPECT_TRUE(big_rational::neg(a) < b);
     EXPECT_FALSE(a < a);
     EXPECT_TRUE(a > 5);
 }
 
 TEST(BigRationalTest, runtime_overflow_is_reported) {
     volatile umax big = ~umax{0};
-    EXPECT_THROW((void)(big_int{static_cast<umax>(big)} * big_int{static_cast<umax>(big)}),
+    EXPECT_THROW((void)big_int::mul(big_int{static_cast<umax>(big)}, big_int{static_cast<umax>(big)}),
                  beman::inside::inside_error);
 }

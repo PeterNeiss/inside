@@ -1041,9 +1041,9 @@ struct assignment<L, R> {
 };
 
 //---------------------------------------------------------------------------
-// assign_grid_number — store a grid number at run time (a constexpr
-// variable, `N - 1_g`). Forming a value past 64 bits is compile-time only, but
-// reading one is not: its limbs live in static storage. The exact value then
+// assign_grid_number — store a grid number at run time (a constant, `N - 1`).
+// Forming one is compile-time only (its operators are consteval), but reading
+// one is not: its limbs live in static storage. The exact value then
 // stores like any exact value. A number too wide for L's exact type lies far
 // outside L when it is an integer, so a stand-in just past the near limit
 // takes the out-of-range path; a fraction that wide is overflow.

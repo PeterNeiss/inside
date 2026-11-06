@@ -27,6 +27,18 @@ an operation can produce (result types are frozen from 1.0 on).
 - In `units`, moved into `units::detail`: `is_quantity_v` (use
   `quantity_like`), `is_quantity_point_v`, `is_reference_tag_v`,
   `is_unit_tag_v`, `spec_operand` and `expr_of`.
+- `x.numerator()` and `x.denominator()` return insides on the integers
+  (`numerator_grid`, `denominator_grid`) instead of `imax` or a wide integer;
+  on an integer grid the numerator is the value itself. `.as<imax>()` reads
+  the old value; comparisons with integers are unchanged.
+- Grid-number arithmetic is `consteval`: the operators of `grid_number`, the
+  grid and interval operators, and `grid::step_count()`, `slot_bits()`,
+  `value_unit()`. `N - 1` with a constant `N` is evaluated while compiling
+  wherever it appears; with a run-time operand it no longer compiles (it
+  could only fail at run time past 64 bits). Count at run time with insides:
+  `step_count_of<T>`, `x.index()`, `T::from_index(i)`.
+- `grid::max_index()` and `grid::max_index_representable()` moved into
+  `detail` (they read 0 past 2⁶⁴): use `step_count_of<T>`.
 
 ### Changed
 
@@ -50,6 +62,11 @@ ones implicitly.
 
 ### Added
 
+- Run-time counting on any grid, past 2⁶⁴ points too: `x.index()` gives the
+  notch index as an `index_t<T>` = `inside<{0, step_count}>` (T's raw type,
+  a copy); `T::from_index(i)`, `from_index(i, policy)` and
+  `try_from_index(i)` go back; `step_count_of<T>` is the step count as a
+  point inside.
 - The literals `_ins`, `_r` and `_g` live in the inline namespace
   `beman::inside::literals`, so `using namespace beman::inside::literals;`
   brings only them; `using namespace beman::inside;` still brings them too.

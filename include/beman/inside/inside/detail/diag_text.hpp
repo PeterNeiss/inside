@@ -49,14 +49,14 @@ struct diag_text {
     constexpr void append(grid_int v) {
         if (v < grid_int{0}) {
             push('-');
-            v = -v;
+            v = big_int::neg(v);
         }
         char        digits[160]{};
         std::size_t n = 0;
         do {
-            const grid_int q = v / grid_int{10};
-            digits[n++]      = static_cast<char>('0' + static_cast<int>(v - q * grid_int{10}));
-            v                = q;
+            const auto [q, r] = big_int::divmod(v, grid_int{10});
+            digits[n++]       = static_cast<char>('0' + static_cast<int>(r));
+            v                 = q;
         } while (!(v == grid_int{0}) && n < sizeof digits);
         while (n > 0)
             push(digits[--n]);

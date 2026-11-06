@@ -127,21 +127,23 @@ TEST(BugHuntRound7, long_double_is_taken_exactly) {
 }
 
 // numerator() returned imax whenever the values fit it, and wrapped a
-// reduced numerator past it.
+// reduced numerator past it. It is an inside on the numerators' grid now.
 TEST(BugHuntRound7, numerator_past_int64) {
+    using detail::big_int, detail::grid_rational;
     using X      = inside<grid{{I64{1} << 62, (I64{1} << 62) + 1}, rational{1, 2}}>;
     const X    x = rational{(std::uint64_t{1} << 63) + 1, 2};
     const auto n = x.numerator();
-    using N      = std::remove_cvref_t<decltype(n)>;
-    static_assert(!std::same_as<N, I64>);
-    EXPECT_TRUE(n == N{std::uint64_t{1} << 63} + N{1});
+    EXPECT_TRUE(n == (std::uint64_t{1} << 63) + 1);
     using Z      = inside<grid{{-I64_MAX, -I64_MAX + 1}, rational{1, 2}}>;
     const Z    z = rational{UINT64_MAX - 2, -2};
     const auto m = z.numerator();
-    EXPECT_TRUE(m == -std::remove_cvref_t<decltype(m)>{UINT64_MAX - 2});
-    // A grid whose numerators fit keeps imax.
-    static_assert(std::same_as<decltype(std::declval<inside<{{0, 10}, rational{1, 4}}>>().numerator()), I64>);
-    static_assert(std::same_as<decltype(std::declval<inside<{{0, 1}, max_denominator{1000}}>>().numerator()), I64>);
+    EXPECT_TRUE(m == -just<grid_rational{big_int{UINT64_MAX - 2}}>);
+    // Numerators and denominators get the tightest integer grids.
+    static_assert(grid_of<decltype(std::declval<inside<{{0, 10}, rational{1, 4}}>>().numerator())> == grid{0, 40});
+    static_assert(grid_of<decltype(std::declval<inside<{{0, 1}, max_denominator{1000}}>>().numerator())> ==
+                  grid{0, 1000});
+    static_assert(grid_of<decltype(std::declval<inside<{{0, 1}, max_denominator{1000}}>>().denominator())> ==
+                  grid{1, 1000});
 }
 
 // raw·notch passed imax in to_value although the value fits.

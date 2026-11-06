@@ -48,7 +48,8 @@ conversion_loses<pct>(150);       // true: either of the two
 | `x.to<int, round_floor>()` | the same, rounding a fraction by the given mode |
 | `double(x)`, `x.as<double>()` | a `double`, on a type with a rounding mode |
 | `x.to<double>()` | a `double`, on any type |
-| `x.numerator()`, `x.denominator()` | the exact value in lowest terms: `3` and `16` for 0.1875 |
+| `x.numerator()`, `x.denominator()` | the exact value in lowest terms, as insides on the integers: `3` and `16` for 0.1875 (`.as<int>()` reads them) |
+| `x.index()` | the notch index, an `index_t<T>`; `T::from_index(i)` goes back |
 | `rational r = x;` | the exact value as a 64-bit fraction, where it fits one |
 
 An inside has no implicit conversion to an integer: `int i = x;` would narrow

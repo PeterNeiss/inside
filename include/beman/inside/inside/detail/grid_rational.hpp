@@ -69,13 +69,15 @@ constexpr rational to_rational(const big_rational& r) { return r; }
 
 constexpr grid_int grid_numerator(const rational& r) noexcept {
     const grid_int n{r.Num};
-    return r.Den < 0 ? -n : n;
+    return r.Den < 0 ? big_int::neg(n) : n;
 }
 constexpr grid_int grid_denominator(const rational& r) noexcept { return grid_int{abs_den(r.Den)}; }
 
 // Value bits a signed integer needs to hold every value in [lo, hi].
 constexpr int signed_value_bits(const grid_int& lo, const grid_int& hi) noexcept {
-    auto      mag = [](const grid_int& v) { return bit_width_of(v.negative() ? -(v + grid_int{1}) : v); };
+    auto mag = [](const grid_int& v) {
+        return bit_width_of(v.negative() ? big_int::neg(big_int::add(v, grid_int{1})) : v);
+    };
     const int a = mag(lo), b = mag(hi);
     return a > b ? a : b;
 }

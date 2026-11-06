@@ -67,7 +67,10 @@ TEST(GridTryMakeTest, grid_try_make_accepts_an_unanchored_lattice) {
     auto g = grid::try_make(interval{1, 11}, 2_r);
     ASSERT_TRUE(g.has_value());
     EXPECT_FALSE(g->anchored());
-    EXPECT_EQ(g->step_count(), detail::grid_int{5});
+    // A run-time grid is a value to compare with the grids of types; its
+    // numbers are grid numbers, which are formed at compile time.
+    EXPECT_TRUE(*g == (grid{interval{1, 11}, 2_r}));
+    static_assert(grid{interval{1, 11}, 2_r}.step_count() == detail::grid_int{5});
 }
 
 // grid::try_make rejects a negative notch (decoding would count downward)

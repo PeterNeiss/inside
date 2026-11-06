@@ -110,7 +110,7 @@ An inside does not turn into an `int` by itself. Name the type you want:
 | `x.as<int>()` | an `int`; no check where `int` holds the whole grid |
 | `x.to<std::uint8_t>()` | a `std::expected<std::uint8_t, errc>`: fails if the value does not fit |
 | `double(x)` | a `double`, on a type with a rounding mode |
-| `x.numerator()`, `x.denominator()` | the exact value as a fraction |
+| `x.numerator()`, `x.denominator()` | the exact value as a fraction, two insides |
 | `std::cout << x`, `std::format("{}", x)` | the exact value as text |
 
 An index is `v[x.as<std::size_t>()]`.

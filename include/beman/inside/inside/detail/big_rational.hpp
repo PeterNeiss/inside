@@ -18,9 +18,12 @@
 // fits), so equal values are the same template argument.
 //
 // Interning is consteval: a value past 64 bits exists only at compile time.
-// Small values compute without allocation and work at runtime as well (for
-// grid::try_make); a runtime operation whose result would need more than one
-// limb reports errc::overflow.
+// So the operators are consteval too: a grid number is formed during
+// compilation, `N - 1` folds wherever N is a constant, and run-time code
+// computes with insides, which hold any value of their grid. The same
+// arithmetic by name (big_int::add, big_rational::mul, …) is constexpr for
+// the few run-time paths on one-limb values (grid::try_make, printing a
+// grid); there a result past one limb reports errc::overflow.
 //
 // Arithmetic on large values runs on transient std::vector<umax> magnitudes
 // with the wide_int limb kernels, during constant evaluation only.
@@ -273,12 +276,12 @@ struct big_int {
         return a.Negative ? 0 <=> m : m;
     }
 
-    friend constexpr big_int operator-(big_int a) {
+    // The arithmetic by name, for run-time paths on one-limb values.
+    static constexpr big_int neg(big_int a) {
         a.Negative = !a.Negative && !a.is_zero();
         return a;
     }
-
-    friend constexpr big_int operator+(const big_int& a, const big_int& b) {
+    static constexpr big_int add(const big_int& a, const big_int& b) {
         if (a.Size == 0 && b.Size == 0) {
             if (a.Negative == b.Negative) {
                 umax       c = 0;
@@ -292,9 +295,8 @@ struct big_int {
         auto [m, neg] = big::add_signed(a.magnitude(), a.Negative, b.magnitude(), b.Negative);
         return from_mag(std::move(m), neg);
     }
-    friend constexpr big_int operator-(const big_int& a, const big_int& b) { return a + (-b); }
-
-    friend constexpr big_int operator*(const big_int& a, const big_int& b) {
+    static constexpr big_int sub(const big_int& a, const big_int& b) { return add(a, neg(b)); }
+    static constexpr big_int mul(const big_int& a, const big_int& b) {
         if (a.Size == 0 && b.Size == 0) {
             const limb::pair<umax> p = limb::mul(a.Small, b.Small);
             if (p.Hi == 0)
@@ -308,15 +310,13 @@ struct big_int {
         }
         return from_mag(big::mul(a.magnitude(), b.magnitude()), a.Negative != b.Negative);
     }
-
     // Truncating division, as the builtin operators. Pre: b ≠ 0.
     struct divmod_result;
     static constexpr divmod_result divmod(const big_int& a, const big_int& b);
-    friend constexpr big_int       operator/(const big_int& a, const big_int& b);
-    friend constexpr big_int       operator%(const big_int& a, const big_int& b);
-
+    static constexpr big_int       quot(const big_int& a, const big_int& b);
+    static constexpr big_int       rem(const big_int& a, const big_int& b);
     // a · 2^k (k ≥ 0).
-    friend constexpr big_int operator<<(const big_int& a, int k) {
+    static constexpr big_int shl(const big_int& a, int k) {
         if (a.Size == 0 && k < 64 && std::countl_zero(a.Small) >= k) {
             big_int r = a;
             r.Small   = a.Small << k;
@@ -324,6 +324,14 @@ struct big_int {
         }
         return from_mag(big::shl(a.magnitude(), k), a.Negative);
     }
+
+    friend consteval big_int operator-(const big_int& a) { return neg(a); }
+    friend consteval big_int operator+(const big_int& a, const big_int& b) { return add(a, b); }
+    friend consteval big_int operator-(const big_int& a, const big_int& b) { return sub(a, b); }
+    friend consteval big_int operator*(const big_int& a, const big_int& b) { return mul(a, b); }
+    friend consteval big_int operator/(const big_int& a, const big_int& b) { return quot(a, b); }
+    friend consteval big_int operator%(const big_int& a, const big_int& b) { return rem(a, b); }
+    friend consteval big_int operator<<(const big_int& a, int k) { return shl(a, k); }
 };
 
 struct big_int::divmod_result {
@@ -350,18 +358,20 @@ constexpr auto big_int::divmod(const big_int& a, const big_int& b) -> divmod_res
     big::divmod_result m = big::divmod(a.magnitude(), b.magnitude());
     return {from_mag(std::move(m.Quotient), a.Negative != b.Negative), from_mag(std::move(m.Remainder), a.Negative)};
 }
-constexpr big_int operator/(const big_int& a, const big_int& b) { return big_int::divmod(a, b).Quotient; }
-constexpr big_int operator%(const big_int& a, const big_int& b) {
+constexpr big_int big_int::quot(const big_int& a, const big_int& b) { return divmod(a, b).Quotient; }
+constexpr big_int big_int::rem(const big_int& a, const big_int& b) {
     if (b.Size == 0 && a.Size != 0 && !b.is_zero()) { // a one-limb divisor: the remainder alone
         umax r = 0;
         for (std::size_t i = a.Size; i-- > 0;)
             r = limb::div(r, a.Limbs[i], b.Small).Lo;
-        return big_int::of_limb(r, a.Negative);
+        return of_limb(r, a.Negative);
     }
-    return big_int::divmod(a, b).Remainder;
+    return divmod(a, b).Remainder;
 }
 
-constexpr big_int gcd(const big_int& a, const big_int& b) { return euclid_gcd(abs(a), abs(b)); }
+constexpr big_int gcd(const big_int& a, const big_int& b) {
+    return euclid_gcd(abs(a), abs(b), [](const big_int& x, const big_int& y) { return big_int::rem(x, y); });
+}
 
 constexpr int bit_width_of(const big_int& v) { return v.bit_width(); }
 
@@ -425,8 +435,8 @@ struct big_rational {
         if (Den.is_zero())
             fail_hard<"big_rational: zero denominator">(errc::division_by_zero);
         if (Den.negative()) {
-            Num = -Num;
-            Den = -Den;
+            Num = big_int::neg(Num);
+            Den = big_int::neg(Den);
         }
         if (Num.is_zero()) {
             Den = big_int{1};
@@ -434,8 +444,8 @@ struct big_rational {
         }
         const big_int g = gcd(Num, Den);
         if (g != big_int{1}) {
-            Num = Num / g;
-            Den = Den / g;
+            Num = big_int::quot(Num, g);
+            Den = big_int::quot(Den, g);
         }
     }
 
@@ -473,21 +483,28 @@ struct big_rational {
         return big::compare(fraction_of(a), fraction_of(b));
     }
 
-    friend constexpr big_rational operator-(big_rational a) {
-        a.Num = -a.Num;
+    // The arithmetic by name, for run-time paths on one-limb values.
+    static constexpr big_rational neg(big_rational a) {
+        a.Num = big_int::neg(a.Num);
         return a;
     }
-    friend constexpr big_rational operator+(const big_rational& a, const big_rational& b) {
-        return {a.Num * b.Den + b.Num * a.Den, a.Den * b.Den};
+    static constexpr big_rational add(const big_rational& a, const big_rational& b) {
+        return {big_int::add(big_int::mul(a.Num, b.Den), big_int::mul(b.Num, a.Den)), big_int::mul(a.Den, b.Den)};
     }
-    friend constexpr big_rational operator-(const big_rational& a, const big_rational& b) { return a + (-b); }
-    friend constexpr big_rational operator*(const big_rational& a, const big_rational& b) {
-        return {a.Num * b.Num, a.Den * b.Den};
+    static constexpr big_rational sub(const big_rational& a, const big_rational& b) { return add(a, neg(b)); }
+    static constexpr big_rational mul(const big_rational& a, const big_rational& b) {
+        return {big_int::mul(a.Num, b.Num), big_int::mul(a.Den, b.Den)};
     }
     // Pre: b ≠ 0.
-    friend constexpr big_rational operator/(const big_rational& a, const big_rational& b) {
-        return {a.Num * b.Den, a.Den * b.Num};
+    static constexpr big_rational div(const big_rational& a, const big_rational& b) {
+        return {big_int::mul(a.Num, b.Den), big_int::mul(a.Den, b.Num)};
     }
+
+    friend consteval big_rational operator-(const big_rational& a) { return neg(a); }
+    friend consteval big_rational operator+(const big_rational& a, const big_rational& b) { return add(a, b); }
+    friend consteval big_rational operator-(const big_rational& a, const big_rational& b) { return sub(a, b); }
+    friend consteval big_rational operator*(const big_rational& a, const big_rational& b) { return mul(a, b); }
+    friend consteval big_rational operator/(const big_rational& a, const big_rational& b) { return div(a, b); }
 
     [[nodiscard]] constexpr bool is_integer() const noexcept { return Den == big_int{1}; }
 
@@ -503,35 +520,35 @@ struct big_rational {
         return a <=> big_rational{b};
     }
     template <big_operand T>
-    friend constexpr big_rational operator+(const big_rational& a, const T& b) {
+    friend consteval big_rational operator+(const big_rational& a, const T& b) {
         return a + big_rational{b};
     }
     template <big_operand T>
-    friend constexpr big_rational operator+(const T& a, const big_rational& b) {
+    friend consteval big_rational operator+(const T& a, const big_rational& b) {
         return big_rational{a} + b;
     }
     template <big_operand T>
-    friend constexpr big_rational operator-(const big_rational& a, const T& b) {
+    friend consteval big_rational operator-(const big_rational& a, const T& b) {
         return a - big_rational{b};
     }
     template <big_operand T>
-    friend constexpr big_rational operator-(const T& a, const big_rational& b) {
+    friend consteval big_rational operator-(const T& a, const big_rational& b) {
         return big_rational{a} - b;
     }
     template <big_operand T>
-    friend constexpr big_rational operator*(const big_rational& a, const T& b) {
+    friend consteval big_rational operator*(const big_rational& a, const T& b) {
         return a * big_rational{b};
     }
     template <big_operand T>
-    friend constexpr big_rational operator*(const T& a, const big_rational& b) {
+    friend consteval big_rational operator*(const T& a, const big_rational& b) {
         return big_rational{a} * b;
     }
     template <big_operand T>
-    friend constexpr big_rational operator/(const big_rational& a, const T& b) {
+    friend consteval big_rational operator/(const big_rational& a, const T& b) {
         return a / big_rational{b};
     }
     template <big_operand T>
-    friend constexpr big_rational operator/(const T& a, const big_rational& b) {
+    friend consteval big_rational operator/(const T& a, const big_rational& b) {
         return big_rational{a} / b;
     }
 
@@ -578,7 +595,7 @@ constexpr big_rational abs(big_rational a) {
 // gcd of two fractions: gcd of numerators over lcm of denominators.
 constexpr big_rational gcd(const big_rational& a, const big_rational& b) {
     const big_int dg = gcd(a.Den, b.Den);
-    return {gcd(a.Num, b.Num), a.Den / dg * b.Den};
+    return {gcd(a.Num, b.Num), big_int::mul(big_int::quot(a.Den, dg), b.Den)};
 }
 } // namespace beman::inside::detail
 

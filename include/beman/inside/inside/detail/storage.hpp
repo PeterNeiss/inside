@@ -193,10 +193,10 @@ inline constexpr imax lower_imax = trunc(lower64<B>);
 template <insidable B>
 inline constexpr imax upper_imax = trunc(upper64<B>);
 
-// The largest index, grid::max_index (overflow-safe: 0 when it doesn't fit umax,
+// The largest index, detail::max_index (overflow-safe: 0 when it doesn't fit umax,
 // for grids with a wide index, which take the exact wide paths).
 template <insidable B>
-inline constexpr umax max_index_of = grid_of<B>.max_index();
+inline constexpr umax max_index_of = max_index(grid_of<B>);
 
 // Every value — and, for index storage, every slot — fits imax. Gates the
 // integer fast paths that work in imax (raw_imax / to_value / raw_lo /
@@ -429,7 +429,7 @@ inline constexpr round_mode rounding_for = uses_flag<L, P, round_floor>       ? 
                                                                               : round_mode::trunc;
 
 // ⌊a / b⌋ for grid numbers (b > 0).
-constexpr grid_int floor_quotient(const grid_rational& a, const grid_rational& b) noexcept {
+consteval grid_int floor_quotient(const grid_rational& a, const grid_rational& b) {
     const grid_int n = grid_numerator(a) * grid_denominator(b), d = grid_denominator(a) * grid_numerator(b);
     const grid_int q = n / d;
     return (n % d != grid_int{0} && n.negative()) ? q - grid_int{1} : q;
