@@ -150,9 +150,9 @@ using clamp_overshoot_t = beman::inside::inside<clamp_overshoot_grid<L, R>()>;
 template <insidable Result, std::size_t K>
 constexpr Result exact_value_result(const wide_rational<K>& v) noexcept {
     if constexpr (fraction_storage<Result>)
-        return Result::from_raw(*continuous_raw_of<raw_t<Result>>(v));
+        return Result::from_raw(fraction_raw_of<raw_t<Result>>(v));
     else if constexpr (rational_storage<Result>)
-        return Result::from_raw(*try_rational(v));
+        return Result::from_raw(rational_of(v));
     else if constexpr (point_storage<Result>)
         return Result::from_raw(raw_t<Result>{});
     else
