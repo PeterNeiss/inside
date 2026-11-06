@@ -352,12 +352,11 @@ constexpr void times_binomial(W& r, umax s, umax k) noexcept {
 }
 
 // The inside of R (an integer lattice) holding the integer v, which the
-// caller proves lies in R.
+// caller proves lies in R. (Every caller returns a point result itself.)
 template <insidable R, class W>
 constexpr R lattice_inside(const W& v) noexcept {
-    if constexpr (point_storage<R>)
-        return R::from_raw({});
-    else if constexpr (notch_of<R> == 1)
+    static_assert(!point_storage<R>);
+    if constexpr (notch_of<R> == 1)
         return integer_inside<R>(v);
     else if constexpr (wide_integer<W>) {
         constexpr W lo = static_cast<W>(grid_numerator(lower_of<R>));

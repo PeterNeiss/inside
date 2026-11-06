@@ -257,21 +257,17 @@ template <template <typename> class Trait, typename... As>
 inline constexpr bool has_action = (Trait<std::remove_cvref_t<As>>::value || ... || false);
 
 // pick_action<Trait>(actions...) returns a reference to the first pack element
-// matching the trait, or to `fallback_action` if none does. Conflict
-// diagnostics elsewhere ensure at most one match.
-inline no_action fallback_action;
-
+// matching the trait; the callers ask only when has_action says one does.
+// Conflict diagnostics elsewhere ensure at most one match.
 template <template <typename> class Trait, typename... As>
 constexpr auto& pick_action(As&... as) {
-    constexpr std::size_t i = [] { // the first match, or sizeof...(As)
+    constexpr std::size_t i = [] { // the first match
         std::size_t k = 0;
         (void)((Trait<std::remove_cvref_t<As>>::value || (++k, false)) || ...);
         return k;
     }();
-    if constexpr (i < sizeof...(As))
-        return as...[i];
-    else
-        return fallback_action;
+    static_assert(i < sizeof...(As));
+    return as...[i];
 }
 
 // Same, but operating on a tuple.
