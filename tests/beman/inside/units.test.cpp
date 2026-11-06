@@ -880,3 +880,25 @@ TEST(ConstantsTest, derived_constants_are_exact_products) {
     EXPECT_EQ(std::format("{:.9e}", pc::second_radiation_constant.in(si::metre * si::kelvin)), "1.438776878e-02 K m");
 }
 } // namespace constants_tests
+
+// Arms no other test reaches, found by the reachability audit (gcov and an
+// `if constexpr` probe over the suite).
+namespace reached_arms_tests {
+using namespace beman::inside;
+using namespace beman::inside::units;
+
+// A conversion keeps the number's policy; pow<3>, q-- and a prefix without
+// a symbol.
+TEST(UnitsArmTest, conversion_policy_pow_decrement_and_unnamed_prefix) {
+    const quantity<si::metre, inside<{0, 100}, clamp>> q{5};
+    const auto                                         cm = q.in(si::centi(si::metre));
+    static_assert(has_flag(flags_of<std::remove_cvref_t<decltype(cm.numerical_value())>>, clamp));
+    EXPECT_EQ(to_string(cm), "500 cm");
+    EXPECT_EQ(to_string(pow<3>(q)), "125 m³");
+    auto       r   = q;
+    const auto old = r--;
+    EXPECT_EQ(to_string(r), "4 m");
+    EXPECT_EQ(to_string(old), "5 m");
+    EXPECT_EQ(unit_symbol(prefix_t<4>{}(si::metre)), "?m");
+}
+} // namespace reached_arms_tests

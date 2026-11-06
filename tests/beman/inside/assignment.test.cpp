@@ -1853,3 +1853,16 @@ TEST(AssignmentArmTest, wrap_of_an_exact_value_off_the_grid) {
               errc::rounding_error); // 2^71 + 1/2
 }
 } // namespace reached_arms_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+using detail::rational;
+
+// round_half_even onto a bound: a tie goes to the even numerator (1/4 → 0),
+// else the smaller denominator (3/4 → 1).
+TEST(AssignmentArmTest, half_even_tie_onto_a_bound) {
+    using C = inside<{{0, 1}, max_denominator{2}}, round_half_even>;
+    EXPECT_TRUE((C{rational{test::at_run_time(1), 4}} == 0));
+    EXPECT_TRUE((C{rational{test::at_run_time(3), 4}} == 1));
+}
+} // namespace reached_arms_tests

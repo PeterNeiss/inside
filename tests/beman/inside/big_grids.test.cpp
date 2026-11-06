@@ -7,6 +7,7 @@
 #include <beman/inside/inside/casts.hpp>
 #include <beman/inside/inside/formats.hpp>
 #include <beman/inside/inside/io.hpp>
+#include <beman/inside/inside/numeric_limits.hpp>
 #include <beman/inside/inside/predicates.hpp>
 #include <beman/inside/inside/random.hpp>
 #include <beman/inside/math.hpp>
@@ -930,3 +931,26 @@ TEST(BigGridTest, predicates_at_run_time) {
 }
 
 } // namespace pinned_tests
+
+// Arms no other test reaches, found by the reachability audit (gcov and an
+// `if constexpr` probe over the suite).
+namespace reached_arms_tests {
+using namespace beman::inside;
+
+// A fraction raw past 64 bits hashes and prints its reduced parts.
+TEST(BigGridsArmTest, hash_and_debug_string_of_a_fraction_raw) {
+    using F = inside<{{0, 2}, max_denominator{1180591620717411303424_g}}>; // bound 2^70
+    static_assert(detail::fraction_storage<F>);
+    const F third = *parse_exact<F>("1/3");
+    EXPECT_EQ(std::hash<F>{}(third), std::hash<F>{}(*parse_exact<F>("2/6")));
+    EXPECT_EQ(to_string_debug(third).substr(0, 9), "1/3 {1/3[");
+}
+
+// uniform over 2^128 slots: the top limb is a whole word.
+TEST(BigGridsArmTest, uniform_over_two_full_limbs) {
+    using U = inside<{0, 340282366920938463463374607431768211455_g}>; // 2^128 − 1
+    std::mt19937_64 g{1};
+    const U         u = uniform<U>(g);
+    EXPECT_TRUE(u >= 0);
+}
+} // namespace reached_arms_tests

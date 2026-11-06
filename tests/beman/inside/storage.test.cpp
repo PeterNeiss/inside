@@ -800,3 +800,12 @@ TEST(StorageArmTest, postfix_increment) {
     EXPECT_TRUE(x == 4 && y == 3);
 }
 } // namespace reached_arms_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+
+// A continuous grid has no binary digits to count.
+TEST(StorageArmTest, digits_of_a_continuous_grid) {
+    static_assert(std::numeric_limits<inside<{{0, 1}, max_denominator{10}}>>::digits == 0);
+}
+} // namespace reached_arms_tests
