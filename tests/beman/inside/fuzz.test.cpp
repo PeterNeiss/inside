@@ -1014,19 +1014,16 @@ void prop_sqrt(fuzz_state& s, long iters) {
         FUZZ_REQUIRE(s, approx_le(rr, rational{oracle}, tol));
     }
 
-    // Mixed-sign overload returns std::expected (domain_error for negatives).
-    s.current_prop = "sqrt_signed";
-    using SIn      = inside<{{-1, 1}, per<65536>}, round_nearest>;
+    // A second grid, [0, 1] (one reaching below 0 is a compile error:
+    // fail/sqrt_domain).
+    s.current_prop = "sqrt_unit";
+    using SIn      = inside<{{0, 1}, per<65536>}, round_nearest>;
     for (long i = 0; i < iters; ++i) {
-        s.iter       = i;
-        SIn      x   = SIn::from_raw(random_in_range_raw<SIn>(s.rng));
-        rational xr  = x;
-        auto     exp = math::sqrt(x);
-        FUZZ_REQUIRE(s, exp.has_value() == (xr >= 0));
-        if (exp.has_value())
-            FUZZ_REQUIRE(s, approx_le(rational{*exp}, rational{std::sqrt(static_cast<double>(xr))}, tol));
-        else
-            FUZZ_REQUIRE(s, exp.error() == errc::domain_error);
+        s.iter        = i;
+        SIn        x  = SIn::from_raw(random_in_range_raw<SIn>(s.rng));
+        rational   xr = x;
+        const auto r  = math::sqrt(x);
+        FUZZ_REQUIRE(s, approx_le(rational{r}, rational{std::sqrt(static_cast<double>(xr))}, tol));
     }
 }
 
@@ -1050,23 +1047,20 @@ void prop_sin_cos(fuzz_state& s, long iters) {
 }
 
 void prop_tan(fuzz_state& s, long iters) {
-    using A        = inside<{{-8, 8}, per<16384>}, round_nearest>;
+    using A        = inside<{{rational{-3, 2}, rational{3, 2}}, per<16384>}, round_nearest>; // one branch
     s.current_grid = "cmath";
     s.current_prop = "tan";
     const rational tol{16, 1024};
     for (long i = 0; i < iters; ++i) {
-        s.iter    = i;
-        A      a  = A::from_raw(random_in_range_raw<A>(s.rng));
-        double ad = static_cast<double>(a);
-        auto   t  = math::tan(a);
-        if (t.has_value()) {
-            double o = std::tan(ad);
-            // Skip the near-pole region where the fixed-point approximation diverges
-            // faster than the tolerance; the in-range result there is still valid.
-            if (std::abs(o) <= 8.0)
-                FUZZ_REQUIRE(s, approx_le(rational{*t}, rational{o}, tol));
-        } else
-            FUZZ_REQUIRE(s, t.error() == errc::division_by_zero || t.error() == errc::overflow);
+        s.iter        = i;
+        A          a  = A::from_raw(random_in_range_raw<A>(s.rng));
+        double     ad = static_cast<double>(a);
+        const auto t  = math::tan(a); // plain: the branch holds no pole
+        double     o  = std::tan(ad);
+        // Skip the steep region where the double oracle diverges faster than
+        // the tolerance; the result there is still valid.
+        if (std::abs(o) <= 8.0)
+            FUZZ_REQUIRE(s, approx_le(rational{t}, rational{o}, tol));
     }
 }
 
@@ -1231,15 +1225,15 @@ void prop_extended_math(fuzz_state& s, long iters) {
         using E        = inside<{{-4, 8}, per<65536>}, round_nearest>;
         s.current_prop = "pow";
         for (long i = 0; i < iters; ++i) {
-            s.iter    = i;
-            B      b  = B::from_raw(random_in_range_raw<B>(s.rng));
-            E      e  = E::from_raw(random_in_range_raw<E>(s.rng));
-            double bd = static_cast<double>(b);
-            double ed = static_cast<double>(e);
-            double o  = std::pow(bd, ed);
-            auto   r  = math::pow(b, e);
-            if (r.has_value() && o < 1e6)
-                FUZZ_REQUIRE(s, approx_rel(rational{*r}, o, 0.02, rational{8, 256}));
+            s.iter        = i;
+            B          b  = B::from_raw(random_in_range_raw<B>(s.rng));
+            E          e  = E::from_raw(random_in_range_raw<E>(s.rng));
+            double     bd = static_cast<double>(b);
+            double     ed = static_cast<double>(e);
+            double     o  = std::pow(bd, ed);
+            const auto r  = math::pow(b, e); // plain: a positive base, the deduced range
+            if (o < 1e6)
+                FUZZ_REQUIRE(s, approx_rel(rational{r}, o, 0.02, rational{8, 256}));
         }
     }
 }

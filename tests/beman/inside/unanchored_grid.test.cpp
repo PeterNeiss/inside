@@ -535,7 +535,8 @@ void expect_rounded(rational got, double value, round_mode m) {
 template <policy_flag F>
 void check_math_mode() {
     using in_t             = inside<{{-2.75_r, 2.25_r}, 0.5_r}, round_nearest>;
-    using pos_t            = inside<{{0.3_r, 9.9_r}, 0.4_r}, round_nearest>; // 0.3, 0.7, …
+    using tan_t            = inside<{{-1.25_r, 1.25_r}, 0.5_r}, round_nearest>; // in_t's values on tan's branch
+    using pos_t            = inside<{{0.3_r, 9.9_r}, 0.4_r}, round_nearest>;    // 0.3, 0.7, …
     using out_t            = inside<{{-20.0625_r, 20.0625_r}, rational{1, 8}}, F>;
     using dec_t            = inside<{{-4.05_r, 4.05_r}, 0.1_r}, F>;
     constexpr round_mode m = mode_of<F>;
@@ -549,19 +550,19 @@ void check_math_mode() {
         expect_rounded<dec_t>(static_cast<rational>(math::atan_into<dec_t>(x)), std::atan(d), m);
         expect_rounded<dec_t>(static_cast<rational>(math::tanh_into<dec_t>(x)), std::tanh(d), m);
         expect_rounded<dec_t>(static_cast<rational>(math::cbrt_into<dec_t>(x)), std::cbrt(d), m);
-        const auto t = math::tan_into<out_t>(x);
-        if (t)
-            expect_rounded<out_t>(static_cast<rational>(*t), std::tan(d), m);
+        if (includes(grid_of<tan_t>.Interval, r)) // tan on one branch
+            expect_rounded<out_t>(static_cast<rational>(math::tan_into<out_t>(tan_t{r})), std::tan(d), m);
         for (const rational s : slots<grid_of<pos_t>>()) {
             const pos_t  y{s};
             const double e = static_cast<double>(s);
             expect_rounded<out_t>(static_cast<rational>(math::atan2_into<out_t>(x, y)), std::atan2(d, e), m);
             expect_rounded<out_t>(static_cast<rational>(math::hypot_into<out_t>(x, y)), std::hypot(d, e), m);
-            const auto p = math::pow_into<out_t>(y, x);
-            if (p)
-                expect_rounded<out_t>(static_cast<rational>(*p), std::pow(e, d), m);
-            else
-                EXPECT_GT(std::pow(e, d), 20.0); // past Out: overflow
+            try {
+                expect_rounded<out_t>(static_cast<rational>(math::pow_into<out_t>(y, x)), std::pow(e, d), m);
+            } catch (const inside_error& err) { // past Out: its store reports overflow
+                EXPECT_EQ(err.Code, errc::overflow);
+                EXPECT_GT(std::pow(e, d), 20.0);
+            }
         }
     }
     for (const rational s : slots<grid_of<pos_t>>()) {

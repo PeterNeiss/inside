@@ -126,14 +126,16 @@ using pos = inside<{{rational{1, 100}, 1024}, per<100>}>;
 using pq4 = inside<{{rational{1, 4}, 4}, per<128>}>;
 using u4  = inside<{{-1, 1}, per<128>}>;
 using deg = inside<{-360, 360}>;
+using nq4 = inside<{{0, 4}, per<64>}>; // sqrt's and pow's base domain: no negative values
+using n8  = inside<{{0, 8}, per<32>}>;
 template <class... In>
 inline constexpr bool no_table = (!math::detail::engine::table_input<In> && ...);
-static_assert(no_table<q4, q8, i8, pos, pq4, u4, deg>);
+static_assert(no_table<q4, q8, i8, pos, pq4, u4, deg, nq4, n8>);
 } // namespace
 
 TEST(MathExactTest, roots_of_squares_and_cubes_are_ties) {
     // √(9/4) = 3/2 and ∛(27/8) = 3/2, between 1 and 2.
-    expect_modes<ints>([]<class O>() { return am::sqrt_into<O>(q4{2.25}); }, {2, 2, 1, 2, 1});
+    expect_modes<ints>([]<class O>() { return am::sqrt_into<O>(nq4{2.25}); }, {2, 2, 1, 2, 1});
     expect_modes<ints>([]<class O>() { return am::cbrt_into<O>(q8{3.375}); }, {2, 2, 1, 2, 1});
     expect_modes<ints>([]<class O>() { return am::cbrt_into<O>(q8{-3.375}); }, {-2, -2, -2, -1, -1});
     // √(25/4) = 5/2: the even neighbour is 2.
@@ -142,7 +144,7 @@ TEST(MathExactTest, roots_of_squares_and_cubes_are_ties) {
     expect_modes<ints>([]<class O>() { return am::hypot_into<O>(q4{1.5}, q4{2}); }, {3, 2, 2, 3, 2});
     expect_modes<ints>([]<class O>() { return am::hypot_into<O>(q4{-1.5}, q4{-2}); }, {3, 2, 2, 3, 2});
     // √4 = 2 and ∛(−8) = −2: grid points.
-    expect_point<ints>([]<class O>() { return am::sqrt_into<O>(q4{4}); }, 2);
+    expect_point<ints>([]<class O>() { return am::sqrt_into<O>(nq4{4}); }, 2);
     expect_point<ints>([]<class O>() { return am::cbrt_into<O>(i8{-8}); }, -2);
 }
 
@@ -167,13 +169,13 @@ TEST(MathExactTest, pow_with_a_rational_exponent) {
     using thirds     = inside<{{-3, 3}, per<3>}>;
     using half_steps = inside<{{-3, 3}, per<2>}>;
     // (1/4)^(1/2) = 1/2: a tie between 0 and 1.
-    expect_modes<ints>([]<class O>() { return am::pow_into<O>(q4{0.25}, half_steps{0.5}); }, {1, 0, 0, 1, 0});
+    expect_modes<ints>([]<class O>() { return am::pow_into<O>(nq4{0.25}, half_steps{0.5}); }, {1, 0, 0, 1, 0});
     // (9/4)^(3/2) = 27/8: a tie between 13/4 and 14/4.
-    expect_modes<quarters>([]<class O>() { return am::pow_into<O>(q4{2.25}, half_steps{1.5}); },
+    expect_modes<quarters>([]<class O>() { return am::pow_into<O>(nq4{2.25}, half_steps{1.5}); },
                            {rational{7, 2}, rational{7, 2}, rational{13, 4}, rational{7, 2}, rational{13, 4}});
     // 8^(2/3) = 4 and 8^(−2/3) = 1/4.
-    expect_point<ints>([]<class O>() { return am::pow_into<O>(i8{8}, thirds{rational{2, 3}}); }, 4);
-    expect_modes<halves>([]<class O>() { return am::pow_into<O>(i8{8}, thirds{rational{-2, 3}}); },
+    expect_point<ints>([]<class O>() { return am::pow_into<O>(n8{8}, thirds{rational{2, 3}}); }, 4);
+    expect_modes<halves>([]<class O>() { return am::pow_into<O>(n8{8}, thirds{rational{-2, 3}}); },
                          {rational{1, 2}, 0, 0, rational{1, 2}, 0});
 }
 
@@ -318,12 +320,11 @@ TEST(MathRoundingTest, transcendentals_on_integer_and_hundredth_grids) {
     using Ex = inside<{{-4, 4}, per<100>}, round_nearest>;
     ASSERT_EQ(rational{math::exp(Ex{0})}, 1);
 
-    // pow returns expected; 2^4 snaps exactly onto the 1/100 grid.
+    // pow of a positive base: plain; 2^4 snaps exactly onto the 1/100 grid.
     using B = inside<{{1, 16}, per<100>}, round_nearest>;
     using E = inside<{{-4, 8}, per<100>}, round_nearest>;
     auto p  = math::pow(B{2}, E{4});
-    ASSERT_TRUE(p.has_value());
-    ASSERT_EQ(rational{*p}, 16);
+    ASSERT_EQ(rational{p}, 16);
 }
 } // namespace math_snap_grids_tests
 
@@ -546,6 +547,7 @@ TEST(MathIntegerTest, into_forms) {
     EXPECT_TRUE((math::falling_factorial_into<inside<{0, 100}>>(n10{at_run_time(5)}, n10{at_run_time(2)})) == 20);
     EXPECT_TRUE((math::rising_factorial_into<inside<{0, 100}>>(n10{at_run_time(5)}, n10{at_run_time(2)})) == 30);
 }
+
 } // namespace math_integer_tests
 
 // Pinned defects: each case failed before its fix.
@@ -583,15 +585,34 @@ void expect_algebraic_matches_rational() {
 
 // tan at a pole on a one-limb output: the "unresolved" error ~0 read as −1,
 // inverted the interval, and decided 0.
+// (The input's branch now ends just below π/2: a grid holding the pole is a
+// compile error, fail/tan_pole.)
 TEST(MathTest, tan_near_a_pole_overflows) {
-    using In  = inside<{{0, 2}, per<(std::uint64_t{1} << 40)>}, round_nearest>;
-    using Out = inside<{{-4, 4}, per<8>}, round_nearest>;
-    const In x{1.5707963267948966};
-    for (int d = -2; d <= 2; ++d) {
-        const auto r = math::tan_into<Out>(In::from_raw(x.raw() + d));
-        ASSERT_FALSE(r.has_value());
-        EXPECT_EQ(r.error(), errc::overflow);
+    constexpr imax top = 1727108826178; // ⌊2^40·π/2⌋: the last point below the pole
+    using In           = inside<{{0, rational{top, imax{1} << 40}}, per<(std::uint64_t{1} << 40)>}, round_nearest>;
+    using Out          = inside<{{-4, 4}, per<8>}, round_nearest>;
+    using Clamped      = inside<{{-4, 4}, per<8>}, round_nearest | clamp>;
+    for (int d = 0; d <= 2; ++d) {
+        const auto x = In::from_raw(static_cast<In::raw_type>(top - d));
+        try {
+            (void)math::tan_into<Out>(x);
+            ADD_FAILURE() << "no error reported";
+        } catch (const inside_error& e) {
+            EXPECT_EQ(e.Code, errc::overflow);
+        }
+        EXPECT_EQ(math::tan_into<Clamped>(x), 4);
     }
+}
+
+// A deduced result needs no rounding mode on its input: it rounds by the
+// input's mode, else to nearest, and its type carries that mode.
+TEST(MathTest, deduced_output_rounds_to_nearest_by_default) {
+    const inside<{0, 3}> plain{1}; // checked, no rounding mode
+    const auto           s = math::sin(plain);
+    static_assert(has_flag(flags_of<decltype(s)>, round_nearest));
+    EXPECT_EQ(s, 1);                                         // sin 1 ≈ 0.84: the nearest integer
+    EXPECT_EQ(math::sin(inside<{0, 3}, round_floor>{1}), 0); // the input's own mode
+    EXPECT_EQ(math::sqrt(inside<{0, 9}>{2}), 1);             // √2 ≈ 1.41
 }
 
 // The range gates of the math kernels read a grid's largest magnitude: one
@@ -607,10 +628,10 @@ TEST(MathTest, pow_with_a_rational_exponent_is_exact) {
     using down4  = inside<{{0, 4}, per<4>}, round_floor>;
     using up8    = inside<{{0, 4}, per<8>}, round_ceil>;
     using down16 = inside<{0, 16}, round_floor>;
-    EXPECT_EQ(*math::pow_into<up4>(qtr{2.25_r}, half{0.5_r}), 1.5_r);
-    EXPECT_EQ(*math::pow_into<down4>(qtr{2.25_r}, half{0.5_r}), 1.5_r);
-    EXPECT_EQ(*math::pow_into<up8>(qtr{2.25_r}, half{1.5_r}), 3.375_r);
-    EXPECT_EQ(*math::pow_into<down16>(inside<{0, 16}>{4}, half{0.5}), 2);
+    EXPECT_EQ(math::pow_into<up4>(qtr{2.25_r}, half{0.5_r}), 1.5_r);
+    EXPECT_EQ(math::pow_into<down4>(qtr{2.25_r}, half{0.5_r}), 1.5_r);
+    EXPECT_EQ(math::pow_into<up8>(qtr{2.25_r}, half{1.5_r}), 3.375_r);
+    EXPECT_EQ(math::pow_into<down16>(inside<{0, 16}>{4}, half{0.5}), 2);
 }
 
 // A second exponent sign was accepted ("1e-+5" read as 1e5).
@@ -630,8 +651,7 @@ TEST(MathTest, pow_of_a_zero_base) {
     EXPECT_EQ(*math::pow_into<Out>(B{0}, E{0}), 1);
     EXPECT_EQ(math::pow_into<Out>(B{0}, E{-1}).error(), errc::division_by_zero);
     EXPECT_EQ(*math::pow_into<Out>(B{2}, E{2}), 4);
-    using SB = inside<{{-4, 4}, per<4>}>;
-    EXPECT_EQ(math::pow_into<Out>(SB{-2}, E{2}).error(), errc::domain_error);
+    // (A base grid reaching below 0 is a compile error: fail/pow_negative_base.)
 }
 
 // floor / ceil / round / trunc of a value past INT64_MAX narrowed through
@@ -677,7 +697,7 @@ TEST(MathTest, wrap_output_folds_the_true_value) {
         for (int e = 0; e <= 12; ++e) {
             const B b{rational{i, 4}};
             const P p{rational{e, 2}};
-            bad += !(Wrap{*math::pow_into<Wide>(b, p), wrap} == *math::pow_into<Wrap>(b, p));
+            bad += !(Wrap{math::pow_into<Wide>(b, p), wrap} == math::pow_into<Wrap>(b, p));
         }
     EXPECT_EQ(bad, 0);
 }

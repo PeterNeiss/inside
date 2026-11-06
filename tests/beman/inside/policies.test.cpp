@@ -920,15 +920,13 @@ TEST(ErrorHandlerTest, handler_swaps_while_other_threads_raise) {
 
 // The error vocabulary has two shapes, each by role (see docs/internals.md):
 //   policy cascade        — narrowing INTO an inside,
-//   std::expected<T,errc> — every fallible result: inside arithmetic (division,
-//                           modulo, checked rational overflow), queries and math.
+//   std::expected<T,errc> — every fallible result: division and modulo by a
+//                           grid that holds 0, pow at its pole, queries.
 // These tests cover the expected-lift operators that chain those results.
 namespace error_vocabulary_tests {
 using namespace beman::inside;
 
 namespace {
-// Mixed-sign sqrt: deterministic expected results under both engines.
-using sq_in = inside<{{-4, 4}, per<256>}, round_nearest>;
 using num_t = inside<{0, 100}>;
 using den_t = inside<{-5, 5}>; // spans zero → division returns expected
 
@@ -939,16 +937,16 @@ std::expected<num_t, errc> num_err(errc e) { return std::unexpected{e}; }
 // expected-lift operators keep the cause end to end
 TEST(ErrorVocabularyTest, expected_lift_operators_keep_the_cause_end_to_end) {
     // Value path: identical to the manual unwrap.
-    auto r = math::sqrt(sq_in{1}) + num_t{4};
+    auto r = num_t{3} / den_t{3} + num_t{4};
     static_assert(detail::expected_like<decltype(r)>);
     ASSERT_TRUE(r.has_value());
-    ASSERT_EQ(*r, *math::sqrt(sq_in{1}) + num_t{4});
+    ASSERT_EQ(*r, *(num_t{3} / den_t{3}) + num_t{4});
     ASSERT_EQ(*r, 5);
 
     // Error path: the errc propagates through the whole chain.
-    auto e = (math::sqrt(sq_in{-1}) + num_t{4}) * num_t{2};
+    auto e = (num_t{3} / den_t{0} + num_t{4}) * num_t{2};
     ASSERT_TRUE(!e.has_value());
-    ASSERT_EQ(e.error(), errc::domain_error);
+    ASSERT_EQ(e.error(), errc::division_by_zero);
 
     // First (left) error wins when two errors meet.
     auto both = num_err(errc::domain_error) + num_err(errc::overflow);

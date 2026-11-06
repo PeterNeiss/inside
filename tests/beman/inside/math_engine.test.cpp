@@ -288,11 +288,7 @@ TEST(MathAdaptiveTest, roots_round_correctly) {
     EXPECT_EQ((check_rounding<out20, sym4>([](sym4 x) { return am::cbrt_into<out20>(x); },
                                            [](ld v) { return std::cbrt(v); })),
               0);
-    EXPECT_EQ((check_rounding<out20, sym4>([](sym4 x) { return am::sqrt_into<out20>(x).value_or(out20{0}); },
-                                           [](ld v) { return v < 0 ? 0 : std::sqrt(v); },
-                                           3)),
-              0);
-    EXPECT_EQ(am::sqrt_into<out20>(sym4{-1}).error(), errc::domain_error);
+    // (sqrt of a grid that reaches below 0 is a compile error: fail/sqrt_domain.)
     // Exact roots of rationals, including ties: √(1/4) = 1/2 exactly.
     using quarters = inside<{{0, 4}, rational{1, 4}}, round_nearest>;
     using halves   = inside<{{0, 4}, rational{1, 2}}, round_floor>;
@@ -313,7 +309,7 @@ TEST(MathAdaptiveTest, trig_rounds_correctly) {
     EXPECT_EQ((check_rounding<out40, sym4>(
                   [](sym4 x) { return am::sin_into<out40>(x); }, [](ld v) { return std::sin(v); }, 5)),
               0);
-    EXPECT_EQ((check_rounding<wide20, tan_in>([](tan_in x) { return *am::tan_into<wide20>(x); },
+    EXPECT_EQ((check_rounding<wide20, tan_in>([](tan_in x) { return am::tan_into<wide20>(x); },
                                               [](ld v) { return std::tan(v); })),
               0);
     EXPECT_EQ((check_rounding<out20, sym4>([](sym4 x) { return am::atan_into<out20>(x); },
@@ -346,7 +342,7 @@ TEST(MathAdaptiveTest, two_argument_functions_round_correctly) {
     for (int i = 1; i <= 128; i += 3)
         for (int j = -24; j <= 24; ++j) {
             const ld   want = std::pow(static_cast<ld>(i) / 16, static_cast<ld>(j) / 8);
-            const auto r    = am::pow_into<wide20>(base{i / 16.0}, expo{j / 8.0});
+            const auto r    = test::caught([&] { return am::pow_into<wide20>(base{i / 16.0}, expo{j / 8.0}); });
             if (want > 1024.5L) {
                 EXPECT_FALSE(r.has_value());
                 continue;
@@ -361,11 +357,11 @@ TEST(MathAdaptiveTest, two_argument_functions_round_correctly) {
     EXPECT_EQ(bad, 0);
     // Exact powers, including ties on the output grid.
     using halves = inside<{{0, 64}, rational{1, 2}}, round_nearest>;
-    EXPECT_EQ(*am::pow_into<halves>(base{1.5}, expo{2}), halves{2.5}); // 2.25 → 2.5 (half away)
+    EXPECT_EQ(am::pow_into<halves>(base{1.5}, expo{2}), halves{2.5}); // 2.25 → 2.5 (half away)
     EXPECT_EQ((am::pow_base_into<out20, 10>(expo{1})), out20{10});
     EXPECT_EQ((am::pow_base_into<out20, 2>(expo{-3})), out20{0.125});
-    EXPECT_EQ((am::pow_base_into<out20, 10>(expo{-1})), (out20{rational{1, 10}})); // 1/10 rounded
-    EXPECT_FALSE((am::pow_into<out20>(base{8}, expo{3})).has_value());             // 512 is past 64
+    EXPECT_EQ((am::pow_base_into<out20, 10>(expo{-1})), (out20{rational{1, 10}}));                // 1/10 rounded
+    EXPECT_FALSE(test::caught([] { return am::pow_into<out20>(base{8}, expo{3}); }).has_value()); // 512: past 64
 }
 
 //---------------------------------------------------------------------------
@@ -466,14 +462,16 @@ TEST(MathAdaptiveTest, deduced_outputs) {
     using T = decltype(am::atan2(out20{0}, out20{1}));
     static_assert(upper_of<T> == rational{3294199, 1 << 20} && lower_of<T> == -rational{3294199, 1 << 20});
     EXPECT_EQ(am::atan2(out20{1}, out20{-1}), (am::atan2_into<T>(out20{1}, out20{-1})));
-    // Expected-returning forms.
-    EXPECT_TRUE(am::tan(sym4{1}).has_value());
-    EXPECT_EQ(am::sqrt(sym4{-1}).error(), errc::domain_error);
+    // tan is its range over the input's branch; pow over a positive base
+    // the corners of the input rectangle: plain values, no expected.
+    using Tn = decltype(am::tan(tan_in{1}));
+    static_assert(!beman::inside::detail::expected_like<Tn>);
+    static_assert(lower_of<Tn> == -upper_of<Tn> && upper_of<Tn> > 14 && upper_of<Tn> < 15);
     using base = inside<{{rational{1, 2}, 4}, rational{1, 16}}, round_nearest>;
     using expo = inside<{{-2, 2}, rational{1, 4}}, round_nearest>;
-    using P    = decltype(am::pow(base{1}, expo{1}))::value_type;
+    using P    = decltype(am::pow(base{1}, expo{1}));
     static_assert(lower_of<P> == rational{1, 16} && upper_of<P> == 16); // 4^-2 and 4^2 (1/2)^±2 inside
-    EXPECT_EQ(*am::pow(base{2}, expo{2}), P{4});
+    EXPECT_EQ(am::pow(base{2}, expo{2}), P{4});
     EXPECT_EQ((am::pow_base<10>(expo{1})), (am::pow_base_into<decltype(am::pow_base<10>(expo{1})), 10>(expo{1})));
 }
 
@@ -820,7 +818,7 @@ TEST(MathAdaptiveTest, double_tier_agrees_on_decimal_inputs_and_checked_forms) {
                                                  engine::in_mag<tan_in>,
                                                  engine::trig::tan,
                                                  engine::out_kmax<tanout>>>(
-                  [](tan_in x) { return *am::tan_into<tanout>(x); })),
+                  [](tan_in x) { return am::tan_into<tanout>(x); })),
               0);
 
     // Two inputs: atan2, hypot and pow against their cores on a grid of pairs.
@@ -846,7 +844,7 @@ TEST(MathAdaptiveTest, double_tier_agrees_on_decimal_inputs_and_checked_forms) {
         for (int j = -300; j <= 300; j += 13) {
             const base b{i / 16.0};
             const expo e{rational{j, 100}};
-            const auto r  = am::pow_into<tanout>(b, e);
+            const auto r  = test::caught([&] { return am::pow_into<tanout>(b, e); });
             using core    = engine::pow_core<engine::input_limbs<base>,
                                              engine::input_limbs<expo>,
                                              engine::in_mag<expo>,
@@ -979,14 +977,14 @@ TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
              open1,
              engine::ahyp_core<engine::input_limbs<open1>, engine::in_mag<open1>, engine::ahyp::atanh>);
     DD_CHECK(acosh, out40, ge1, engine::ahyp_core<engine::input_limbs<ge1>, engine::in_mag<ge1>, engine::ahyp::acosh>);
-    EXPECT_EQ((tier_mismatches<out40,
-                               tan_in,
-                               engine::trig_core<engine::input_limbs<tan_in>,
-                                                 engine::in_mag<tan_in>,
-                                                 engine::trig::tan,
-                                                 engine::out_kmax<out40>>>(
-                  [](tan_in x) { return *am::tan_into<out40>(x); })),
-              0);
+    EXPECT_EQ(
+        (tier_mismatches<out40,
+                         tan_in,
+                         engine::trig_core<engine::input_limbs<tan_in>,
+                                           engine::in_mag<tan_in>,
+                                           engine::trig::tan,
+                                           engine::out_kmax<out40>>>([](tan_in x) { return am::tan_into<out40>(x); })),
+        0);
     DD_CHECK(exp,
              b44out,
              symm4,
@@ -998,7 +996,7 @@ TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
                                                  engine::in_mag<tan_in>,
                                                  engine::trig::tan,
                                                  engine::out_kmax<tanout>>>(
-                  [](tan_in x) { return *am::tan_into<tanout>(x); })),
+                  [](tan_in x) { return am::tan_into<tanout>(x); })),
               0);
 
     // Two inputs.
@@ -1023,7 +1021,7 @@ TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
         for (int j = -300; j <= 300; j += 13) {
             const base b{i / 16.0};
             const expo e{rational{j, 100}};
-            const auto r  = am::pow_into<tanout>(b, e);
+            const auto r  = test::caught([&] { return am::pow_into<tanout>(b, e); });
             using core    = engine::pow_core<engine::input_limbs<base>,
                                              engine::input_limbs<expo>,
                                              engine::in_mag<expo>,
@@ -1532,18 +1530,6 @@ using namespace beman::inside::detail;
 
 // rational{expr} == rational{N, D}  (sign carried in D, as the library encodes it)
 #define EXACT(expr, N, D) ASSERT_EQ(rational{(expr)}, (rational{N, D}))
-#define EXACT_OK(expr, N, D)                        \
-    do {                                            \
-        auto _r = (expr);                           \
-        ASSERT_TRUE(_r.has_value());                \
-        ASSERT_EQ(rational{*_r}, (rational{N, D})); \
-    } while (0)
-#define EXACT_ERR(expr)                            \
-    do {                                           \
-        auto _r = (expr);                          \
-        ASSERT_FALSE(_r.has_value());              \
-        ASSERT_EQ(_r.error(), errc::domain_error); \
-    } while (0)
 
 // These pins are the correctly rounded values: the same in every build.
 
@@ -1652,28 +1638,25 @@ TEST(DeterminismTest, determinism_pow_across_grids_and_corners) {
     using PB2 = inside<{{1, 4}, per<4096>}, round_nearest>;
     using PE2 = inside<{{0, 4}, per<4096>}, round_nearest>;
 
-    EXACT_OK(math::pow(PB1{2}, PE1{0}), 1, 1);  // b^0 = 1
-    EXACT_OK(math::pow(PB1{2}, PE1{1}), 2, 1);  // b^1 = b
-    EXACT_OK(math::pow(PB1{2}, PE1{4}), 16, 1); // 2^4 = 16
-    EXACT_OK(math::pow(PB1{1}, PE1{3}), 1, 1);  // 1^e = 1
-    EXACT_OK(math::pow(PB1{2}, PE1{-1}), 1, 2); // 2^-1 = 0.5
-    EXACT_OK(math::pow(PB2{4}, PE2{2}), 16, 1); // 4^2 = 16 (coarse grid)
-    EXACT_OK(math::pow(PB2{3}, PE2{0}), 1, 1);
+    EXACT(math::pow(PB1{2}, PE1{0}), 1, 1);  // b^0 = 1
+    EXACT(math::pow(PB1{2}, PE1{1}), 2, 1);  // b^1 = b
+    EXACT(math::pow(PB1{2}, PE1{4}), 16, 1); // 2^4 = 16
+    EXACT(math::pow(PB1{1}, PE1{3}), 1, 1);  // 1^e = 1
+    EXACT(math::pow(PB1{2}, PE1{-1}), 1, 2); // 2^-1 = 0.5
+    EXACT(math::pow(PB2{4}, PE2{2}), 16, 1); // 4^2 = 16 (coarse grid)
+    EXACT(math::pow(PB2{3}, PE2{0}), 1, 1);
 }
 
-// determinism: sqrt across grids, corners, and the error path
-TEST(DeterminismTest, determinism_sqrt_across_grids_corners_and_the_error_path) {
-    using S1   = inside<{{0, 4}, per<65536>}, round_nearest>;
-    using S2   = inside<{{0, 256}, per<256>}, round_nearest>;
-    using Smix = inside<{{-4, 9}, per<65536>}, round_nearest>;
+// determinism: sqrt across grids and corners
+TEST(DeterminismTest, determinism_sqrt_across_grids_and_corners) {
+    using S1 = inside<{{0, 4}, per<65536>}, round_nearest>;
+    using S2 = inside<{{0, 256}, per<256>}, round_nearest>;
 
     EXACT(math::sqrt(S1{0}), 0, 1);
     EXACT(math::sqrt(S1{1}), 1, 1);
     EXACT(math::sqrt(S1{4}), 2, 1);
     EXACT(math::sqrt(S2{9}), 3, 1);
     EXACT(math::sqrt(S2{256}), 16, 1);
-    EXACT_OK(math::sqrt(Smix{9}), 3, 1); // mixed-sign grid → expected
-    EXACT_ERR(math::sqrt(Smix{-1}));     // determinism of the error path
 }
 
 // determinism: cbrt across grids and corners
@@ -1719,10 +1702,11 @@ TEST(DeterminismTest, determinism_sin_cos_tan_radian_corners) {
 
     EXACT(math::sin(RAD{0}), 0, 1);
     EXACT(math::cos(RAD{0}), 1, 1);
-    EXACT(math::sin(RAD{1}), 13787, 16384); // ~0.8415
-    EXACT(math::cos(RAD{1}), 2213, 4096);   // ~0.5403
-    EXACT_OK(math::tan(RAD{0}), 0, 1);
-    EXACT_OK(math::tan(RAD{1}), 25517, 16384); // ~1.5574
+    EXACT(math::sin(RAD{1}), 13787, 16384);                                                // ~0.8415
+    EXACT(math::cos(RAD{1}), 2213, 4096);                                                  // ~0.5403
+    using BRANCH = inside<{{rational{-3, 2}, rational{3, 2}}, per<16384>}, round_nearest>; // tan's
+    EXACT(math::tan(BRANCH{0}), 0, 1);
+    EXACT(math::tan(BRANCH{1}), 25517, 16384); // ~1.5574
 }
 } // namespace determinism_tests
 

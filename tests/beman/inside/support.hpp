@@ -5,6 +5,9 @@
 
 #include <gtest/gtest.h>
 
+#include <expected>
+#include <type_traits>
+
 #include "exact.hpp"
 
 namespace beman::inside::test {
@@ -13,6 +16,17 @@ template <class T>
 T at_run_time(T v) {
     volatile T x = v;
     return x;
+}
+
+// f(), or the errc of the inside_error it throws (a failed store under the
+// default handler), as an expected.
+template <class F>
+auto caught(F&& f) -> std::expected<std::invoke_result_t<F&>, errc> {
+    try {
+        return f();
+    } catch (const inside_error& e) {
+        return std::unexpected{e.Code};
+    }
 }
 } // namespace beman::inside::test
 

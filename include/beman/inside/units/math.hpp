@@ -328,8 +328,8 @@ template <policy_flag Mode, reference A, class VA, reference B, class VB>
 //---------------------------------------------------------------------------
 // The _into forms: Out names the result's number (an inside with a rounding
 // mode); the input needs no rounding mode — an arithmetic result (checked)
-// goes straight in. As math::fn_into, a result may be an expected (sqrt of a
-// grid that reaches below 0, tan).
+// goes straight in. As math::fn_into, a result is an expected only for pow
+// at its pole (0 to a negative power).
 //---------------------------------------------------------------------------
 namespace detail {
 // x's number as an inside: an inside itself, or a dimensionless quantity's.

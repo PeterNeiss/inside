@@ -76,9 +76,10 @@ auto s = math::sin(angle{1});                    // 0.84149169921875, the neares
 static_assert(grid_of<decltype(s)> == grid{{-1, 1}, per<16384>});
 auto c = math::cos_into<math::unit_amplitude<256>>(angle{1}); // 0.5390625: a coarser output, named
 
-using level = inside<{{-4, 4}, per<256>}, round_nearest>;
-auto r = math::sqrt(level{2.25});                // expected: the grid holds negative values
-auto n = math::sqrt(level{-1});                  // unexpected(errc::domain_error)
+using level = inside<{{0, 4}, per<256>}, round_nearest>;
+auto r = math::sqrt(level{2.25});                // 1.5, on [0, 2]
+// math::sqrt(inside<{{-4, 4}, per<256>}, round_nearest>{2.25}) does not compile:
+// the grid reaches below 0, so take abs(x) or store x into a non-negative grid first
 ```
 
 **The output's rounding mode picks the point; exact values are exact; compile
@@ -140,22 +141,27 @@ policy, and the function's range over the input's interval, computed at
 compile time and rounded outward. `fn<mode>(x)` deduces it the same way and
 rounds by the mode named on the call, so the input's type need not carry a
 rounding policy (which would change every store into it). A few ranges are fixed instead: `sin` and
-`cos` give [−1, 1], `tan` [−1024, 1024] and `atan2` [−π, π]. `hypot` takes the
+`cos` give [−1, 1] and `atan2` [−π, π]; `tan` takes its range over the input's branch. `hypot` takes the
 gcd of both notches, `pow` the base's notch, and `floor` & co. notch 1.
 
 ## Rounding needs permission
 
-A transcendental result is never on a grid by accident, so `Out`, the call
-(`fn<round_floor>(x)`) or, for `fn(x)`, the input must name a rounding mode, as a store that rounds must in
-the number paper. A result past `Out`'s interval goes through `Out`'s policy:
+A transcendental result is never on a grid by accident, so it rounds once:
+by `Out`'s mode, which a named `Out` must have, as a store that rounds must in
+the number paper; by the call's (`fn<round_floor>(x)`); or, for `fn(x)`, by
+the input type's mode, else to nearest, which the deduced output carries. A result past `Out`'s interval goes through `Out`'s policy:
 `clamp` saturates, `wrap` folds the true value, and the default reports.
 
 ## Errors follow the number paper
 
-A domain limit that the input's *type* violates (`log` of a grid that reaches
-0, `asin` of a grid past ±1) is ill-formed. A failure that depends on the
-*value* returns `std::expected<Out, errc>`: `sqrt` of a grid that crosses 0,
-`tan` near a pole, and `pow`. A total function returns a plain `inside`.
+A domain limit that the input's *type* violates is ill-formed: `log` of a grid
+that reaches 0, `asin` of a grid past ±1, `sqrt` of a grid that reaches below
+0, `tan` of an interval that holds a pole, `pow` of a base grid below 0. The
+one failure that depends on the *value* is `pow`'s pole, 0 to a negative
+power: `pow` returns `std::expected<Out, errc>` with `division_by_zero` only
+when the base grid holds 0 and the exponent grid a negative, as a division by
+a grid that holds 0 does. Every other function returns a plain `inside`, and a
+result past a named `Out` is a store into `Out`, as the number paper's are.
 
 ## The grid operations are exact
 
@@ -212,11 +218,12 @@ experience](#implementation-experience)).
 # Proposed interface
 
 Every function below except `pown` also has the form `fn_into<Out>(args)`,
-which returns `Out` (or `expected<Out, errc>` where the deduced form is
-fallible). Except for the grid operations, `Out` must be an `inside` whose
-policy names a rounding mode, and the deduced form `fn(args)` requires the
-same of its input. Every deduced form also has the form `fn<mode>(args)`
-(`pow_base<B, mode>`), which names the rounding mode on the call instead.
+which returns `Out` (or `expected<Out, errc>` for `pow` where its pole is
+possible). Except for the grid operations, `Out` must be an `inside` whose
+policy names a rounding mode; the deduced form `fn(args)` rounds by its
+input's mode, else to nearest. Every deduced form also has the form
+`fn<mode>(args)` (`pow_base<B, mode>`), which names the rounding mode on the
+call instead.
 
 ```cpp
 namespace std::math {
@@ -241,13 +248,13 @@ namespace std::math {
   template<class A, class B> constexpr auto lcm(A a, B b);              // as std::lcm
 
   // roots
-  template<class In> constexpr auto sqrt(In x);              // expected iff x's grid holds a negative
+  template<class In> constexpr auto sqrt(In x);              // ill-formed if x's grid holds a negative
   template<class In> constexpr auto cbrt(In x);
   template<class X, class Y> constexpr auto hypot(X x, Y y);
 
   // trigonometric, in radians
   template<class In> constexpr auto sin(In x);               // also cos: [-1, 1]
-  template<class In> constexpr auto tan(In x);               // expected: [-1024, 1024]
+  template<class In> constexpr auto tan(In x);               // ill-formed if x's interval holds a pole
   template<class In> constexpr auto asin(In x);              // also acos; x's grid within [-1, 1]
   template<class In> constexpr auto atan(In x);
   template<class Y, class X> constexpr auto atan2(Y y, X x); // [-pi, pi]; atan2(0, 0) == 0
@@ -261,7 +268,7 @@ namespace std::math {
   template<class In> constexpr auto exp(In x);               // also exp2
   template<class In> constexpr auto log(In x);               // also log2, log10; x's grid > 0
   template<intmax_t B, class In> constexpr auto pow_base(In x); // B^x, B >= 2
-  template<class B, class E> constexpr auto pow(B base, E e);  // expected; deduced: base's grid > 0
+  template<class B, class E> constexpr auto pow(B base, E e);  // deduced: base's grid > 0
 }
 
 namespace std::units {
@@ -281,7 +288,7 @@ namespace std::units {
 | Expression | Result | Errors |
 |---|---|---|
 | `fn_into<Out>(x)` | the true value rounded onto `Out`'s grid by `Out`'s mode, then stored by `Out`'s policy | ill-formed without a rounding mode in `Out`, except for a grid operation |
-| `fn(x)` | `fn_into<Out>(x)`, `Out` deduced from `x`'s grid and policy | ill-formed without a rounding mode in `x`'s policy, except for a grid operation |
+| `fn(x)` | `fn_into<Out>(x)`, `Out` deduced from `x`'s grid and policy, rounding to nearest unless the policy names a mode | none beyond the function's |
 | `fn<mode>(x)` | as `fn(x)`, the output rounding by `mode` | `mode` one of the rounding modes |
 | `abs`, `sign`, `copysign`, `floor`, `ceil`, `round`, `trunc`, `pown<E>` | exact | none; `round` sends a half away from zero |
 | `fmod(x, y)` | `x − trunc(x/y)·y`, exact, the sign of `x` | `division_by_zero`, iff `y`'s grid holds 0 |
@@ -289,8 +296,8 @@ namespace std::units {
 | `gcd`, `lcm` | exact, `>= 0`, as `std::gcd` and `std::lcm`; the result keeps the operands' common lattice | ill-formed unless the operands are integer grids |
 | `sqrt(x)` | | `domain_error` for `x < 0`, iff `x`'s grid holds a negative |
 | `log`, `log2`, `log10`, `asin`, `acos`, `acosh`, `atanh` | | ill-formed unless `x`'s grid lies in the domain |
-| `tan(x)` | | `overflow` past `Out` (saturates under `clamp`) |
-| `pow(b, e)` | exact for an integer `e`, and for `p/q` when `b` is a perfect `q`-th power | `domain_error` for `b < 0`, `division_by_zero` for 0 to a negative power, `overflow` past `Out` |
+| `tan(x)` | | ill-formed unless `x`'s interval lies on one branch; `overflow` past `Out` (saturates under `clamp`) |
+| `pow(b, e)` | exact for an integer `e`, and for `p/q` when `b` is a perfect `q`-th power | ill-formed unless `b`'s grid is non-negative; `division_by_zero` for 0 to a negative power (an `expected` iff the grids allow it), `overflow` past `Out` |
 | `units::sqrt(q)` | `sqrt` of the number, in the unit's root | ill-formed when the unit has no such root |
 | `units::sin_into<Out>(q)` | `q` reduced exactly by quarter turns when its unit has a factor of π | as `sin_into` |
 | `value_cast<U, Out>(q)` | the exact `x·r·π^±1`, rounded once onto `Out` | ill-formed without a rounding mode in `Out` |
@@ -364,8 +371,9 @@ math functions.
    as the reference implementation does, provided the result it then returns
    is the same on every platform?
 3. **Deduced outputs.** The deduced output's grid follows the input's notch,
-   with fixed ranges for `sin`, `cos`, `tan` and `atan2`. The fixed `tan`
-   range [−1024, 1024] is a choice; it could instead be required to be named.
+   with fixed ranges for `sin`, `cos` and `atan2`. `tan`'s range over the
+   input's branch grows without bound as the branch nears a pole; should it
+   be capped, or required to be named?
 4. **The grid operations.** `abs`, `floor`, `round`, `fmod` and `pown` are
    exact and need no rounding. Should they move to the number paper, leaving
    this one to the functions that round?

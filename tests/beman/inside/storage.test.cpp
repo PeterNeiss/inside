@@ -237,18 +237,21 @@ TEST(StorageTest, pown_e_exact_compile_time_integer_powers_on_any_inside) {
 TEST(StorageTest, tan_saturates_instead_of_erroring_when_out_carries_clamp) {
     // Explicit-Out spelling is the impl form (`tan<T>(x)` would bind T as the
     // INPUT of the auto form).
-    using in_t  = inside<{{-2, 2}, per<16384>}, round_nearest>;
+    using in_t  = inside<{{rational{-3, 2}, rational{3, 2}}, per<16384>}, round_nearest>; // one branch
     using sat_t = inside<{{-1, 1}, per<16384>}, round_nearest | clamp>;
     using err_t = inside<{{-1, 1}, per<16384>}, round_nearest>;
 
     // tan(1.2) ≈ 2.57 — beyond [-1, 1].
-    auto sat = math::tan_into<sat_t>(in_t{1.2});
-    ASSERT_TRUE(sat.has_value());
-    ASSERT_TRUE(static_cast<double>(rational{*sat}) == 1.0); // clamped to Upper
+    const auto sat = math::tan_into<sat_t>(in_t{1.2});
+    ASSERT_TRUE(static_cast<double>(rational{sat}) == 1.0); // clamped to Upper
 
-    auto err = math::tan_into<err_t>(in_t{1.2});
-    ASSERT_TRUE(!err.has_value());
-    ASSERT_EQ(err.error(), errc::overflow);
+    // Without clamp the store into Out reports it, like any store.
+    try {
+        (void)math::tan_into<err_t>(in_t{1.2});
+        FAIL() << "no error reported";
+    } catch (const inside_error& e) {
+        ASSERT_EQ(e.Code, errc::overflow);
+    }
 }
 } // namespace storage_tests
 

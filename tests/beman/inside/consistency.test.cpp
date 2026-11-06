@@ -10,6 +10,8 @@
 
 #include <gtest/gtest.h>
 
+#include "support.hpp"
+
 #include <bit>
 #include <cstdint>
 #include <limits>
@@ -44,10 +46,11 @@ TEST(ConsistencyTest, store_honours_rounding_mode) {
 
 // A math result exactly on a tie rounds like the assignment path.
 TEST(ConsistencyTest, math_tie_rule_matches_assignment) {
-    using O  = inside<{-10, 10}, round_nearest>;
-    using In = inside<{{-1, 1}, per<64>}, round_nearest>;
-    EXPECT_EQ(rational{math::sqrt_into<O>(In{q(1, 4)}).value()}, rational{O{q(1, 2)}}); // √(1/4) = 1/2 → 1
-    EXPECT_EQ(rational{math::cbrt_into<O>(In{q(-1, 8)})}, rational{O{q(-1, 2)}});       // ∛(−1/8) = −1/2 → −1
+    using O   = inside<{-10, 10}, round_nearest>;
+    using In  = inside<{{-1, 1}, per<64>}, round_nearest>;
+    using Pos = inside<{{0, 1}, per<64>}, round_nearest>;
+    EXPECT_EQ(rational{math::sqrt_into<O>(Pos{q(1, 4)})}, rational{O{q(1, 2)}});  // √(1/4) = 1/2 → 1
+    EXPECT_EQ(rational{math::cbrt_into<O>(In{q(-1, 8)})}, rational{O{q(-1, 2)}}); // ∛(−1/8) = −1/2 → −1
     EXPECT_EQ(rational{math::cbrt_into<O>(In{q(-1, 8)})}, q(-1));
 }
 
@@ -363,10 +366,11 @@ TEST(ConsistencyTest, pow_past_the_output_range) {
     using E           = inside<{0, 20}, round_nearest>;
     using small       = inside<{0, 1000}, round_nearest>;
     using small_clamp = inside<{0, 1000}, round_nearest | clamp>;
-    EXPECT_EQ(math::pow_into<small>(B{4}, E{20}).error(), errc::overflow); // 2^40
-    EXPECT_EQ(rational{*math::pow_into<small_clamp>(B{4}, E{20})}, q(1000));
+    // Past Out: its store reports overflow (the handler throws).
+    EXPECT_EQ(test::caught([] { return math::pow_into<small>(B{4}, E{20}); }).error(), errc::overflow); // 2^40
+    EXPECT_EQ(rational{math::pow_into<small_clamp>(B{4}, E{20})}, q(1000));
     // The deduced output covers every corner: 4^20 fits it.
-    EXPECT_EQ(rational{*math::pow(B{4}, E{20})}, q(1) * (umax{1} << 40));
+    EXPECT_EQ(rational{math::pow(B{4}, E{20})}, rational{umax{1} << 40});
 }
 
 // conversion_rounds sees the notch of a non-dyadic notched grid.
