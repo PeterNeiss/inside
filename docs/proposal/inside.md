@@ -380,8 +380,13 @@ past `T`'s range
 `T` gets the value rounded once. `as<T>()` returns `T` and reports a failure
 like a checked store (`inside_error` with `to<T>()`'s code), and requires
 a rounding policy for a floating-point `T`. `numerator()` and `denominator()`
-give the exact value in lowest terms, the sign on the numerator, as integers
-wide enough for every value of the grid.
+give the exact value in lowest terms, the sign on the numerator, as insides on
+the integers that hold those parts of every value of the grid. `index()` gives
+a value's notch index, an `index_t<B>` = `inside<{0, step_count}>` with `B`'s
+storage, and `B::from_index(i)` goes back. Run-time values are insides: a
+`grid_number` is a compile-time value, its arithmetic `consteval`, so `N - 1`
+with a constant `N` is evaluated while compiling wherever it appears, and
+counting at run time stays exact on any grid, past 2⁶⁴ points too.
 
 ## Per-call policies and actions
 
@@ -441,8 +446,8 @@ unordered containers.
 
 The names are the reference implementation's (see [Open
 questions](#open-questions)). `grid_number` is an exact rational of any size
-and a structural type. `@*number*@` is an arithmetic type or a `grid_number`.
-`@*integer*@` is an integer type wide enough for the value.
+and a structural type, formed at compile time (its operators are `consteval`).
+`@*number*@` is an arithmetic type or a `grid_number`.
 
 ```cpp
 namespace std {
@@ -469,6 +474,7 @@ namespace std {
     constexpr grid(@*number*@ point);                            // notch 0, lower == upper
     constexpr grid(interval, grid_number notch);
     constexpr grid(interval, max_denominator);                  // continuous, bounded
+    consteval grid_number step_count() const;                   // (Upper - Lower) / Notch
   };
 
   // policies: each flag a constant of its own type that converts to policy_flag,
@@ -497,8 +503,13 @@ namespace std {
     template<class T, policy_flag Round = checked>                // T arithmetic; Round: checked or a mode
       constexpr expected<T, errc> to() const;
     template<class T, policy_flag Round = checked> constexpr T as() const; // to<T, Round>(), failures throw
-    constexpr @*integer*@ numerator() const;                     // lowest terms, the sign here
-    constexpr @*integer*@ denominator() const;                   // > 0
+    constexpr inside<@*numerator grid*@> numerator() const;      // lowest terms, the sign here
+    constexpr inside<@*denominator grid*@> denominator() const;  // > 0
+    constexpr index_t<inside> index() const noexcept;            // (value - Lower) / Notch
+    template<class I> static constexpr inside from_index(const I& i);  // Lower + i·Notch, a store by P
+    template<class I, class Pol> static constexpr inside from_index(const I& i, Pol p);
+    template<policy_flag F = checked, class I>
+      static constexpr expected<inside, errc> try_from_index(const I& i);
 
     // a policy or actions for one store (the proxy owns the value of an rvalue)
     template<policy_flag F = checked> constexpr @*store-proxy*@ policy();
@@ -517,6 +528,8 @@ namespace std {
   template<class B> constexpr grid grid_of;
   template<class B> constexpr policy_flag flags_of;
   template<class B> constexpr grid_number lower_of, upper_of, notch_of;
+  template<class B> using index_t = inside<grid{0, grid_of<B>.step_count()}>;  // a point when 0
+  template<class B> constexpr inside<grid{grid_of<B>.step_count()}> step_count_of;
 
   // constants
   template<auto N, auto D = 1> constexpr inside<grid{N/D}> just; // the point N/D
@@ -573,7 +586,8 @@ namespace std {
 | `a == b`, `a <=> b` | exact comparison of values | any two grids, or an inside and an integer or a rational; no floating-point operand (0.1 is not 1/10) |
 | `b.to<T>()` | `expected<T, errc>` | integer `T`: exact, or rounded by `Round`, else by `P`'s mode; `rounding_error` for a fractional value when neither names one; `overflow` out of `T`'s range, `domain_error` for a negative value into an unsigned `T`. Floating-point `T`: rounded once |
 | `b.as<T>()` | `T` | a failure of `to<T>()` throws `inside_error`; a floating-point `T` needs a rounding policy |
-| `b.numerator()`, `b.denominator()` | the value in lowest terms | denominator `> 0` |
+| `b.numerator()`, `b.denominator()` | the value in lowest terms, as insides | with `D` the grid's largest denominator: numerator in `[⌈L⌉, ⌊U·D⌋]` (`⌈L·D⌉` for `L < 0`, `⌊U⌋` for `U ≤ 0`), denominator in `[1, D]` |
+| `b.index()`, `B::from_index(i)` | `(b − L)/n` as an `index_t<B>`; `L + i·n` | `from_index` is plain when `i`'s grid lies in `[0, step_count]`, else a store by `P` (or the call's policy) |
 | `B{v, clamp | M}` | `v` saturated into `B`, rounded by `M` | `M == checked`: off the notch as `B`'s policy |
 | `B{v, wrap}` | `v` modulo `B`'s interval | |
 | `checked_cast<B>(v)` | `v` | throws `inside_error` (`overflow`, `rounding_error`) |
@@ -611,7 +625,7 @@ The companion papers propose quantities and the math functions.
 The reference implementation is header-only C++26 and needs static reflection:
 today GCC 16 with `-freflection`. It ships a single-header amalgamation, a
 CMake package and a vcpkg port, and follows the Beman Standard. Its test suite
-(923 tests) runs in CI in six configurations on every change (a
+(931 tests) runs in CI in six configurations on every change (a
 debug preset, release, debug with `-Werror`, coverage, the address, undefined
 and leak sanitizers, no floating point) and in four more every
 week (a release preset, debug, the thread sanitizer, and the full certification

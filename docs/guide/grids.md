@@ -124,6 +124,14 @@ A grid's numbers have no size limit: `inside<{0, 0x1p100}>` and a notch of
 | Spelling | Gives |
 |---|---|
 | `grid_of<T>` | the grid, as a value |
-| `lower_of<T>`, `upper_of<T>`, `notch_of<T>` | its numbers |
+| `lower_of<T>`, `upper_of<T>`, `notch_of<T>` | its numbers, grid numbers for spelling other grids (`inside<{lower_of<T>, 2 * upper_of<T>}>`) |
 | `flags_of<T>` | the policy |
 | `std::numeric_limits<T>::min()`, `max()` | the limits, as insides |
+| `step_count_of<T>` | (Upper − Lower)/Notch, as a point inside |
+| `x.index()`, `T::from_index(i)` | a value's notch index as an `index_t<T>` = `inside<{0, step_count}>`, and back |
+
+Grid numbers are compile-time values: their arithmetic is `consteval`, so
+`N - 1` with a constant `N` is evaluated while compiling, wherever it appears.
+At run time every count and index is an inside, which holds any value of its
+grid, past 2⁶⁴ points too
+([at run time](../advanced/storage.md#at-run-time)).
