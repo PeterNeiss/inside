@@ -145,9 +145,9 @@ probe answers false.
 ## Compound assignment
 
 `x op= y` computes `x op y` exactly and stores the result back through `x`'s
-policy, so it rounds and checks once. The right-hand side is an inside or a
-`rational` (`x += 0.5_r`); a plain `int`, a `double` and a `std::expected`
-are rejected. A zero divisor in `/=` or `%=` goes to `on_error`, the `errc&`
+policy, so it rounds and checks once. The right-hand side is an inside
+(`x += 0.5_ins`); a plain `int`, a `double`, a `rational` and a
+`std::expected` are rejected. A zero divisor in `/=` or `%=` goes to `on_error`, the `errc&`
 or the handler like any failed store; under `unsafe` it is undefined.
 
 Under `unsafe`, `+=`, `-=` and `*=` run at the raw type's width: a loop of

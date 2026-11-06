@@ -197,9 +197,8 @@ TEST(ConsistencyTest, continuous_arithmetic_is_total) {
 TEST(ConsistencyTest, compound_ops_report_errors_through_the_policy) {
     using E = inside<{{0, 1}, max_denominator{1000}}, checked>;
     E e{q(1, 1000)};
-    EXPECT_THROW(e += q(1, 999), inside_error);    // rational RHS: 1999/999000 is off the grid
+    EXPECT_THROW(e += E{q(1, 999)}, inside_error); // 1999/999000 is off the grid
     EXPECT_EQ(rational{e}, q(1, 1000));            // left unchanged
-    EXPECT_THROW(e += E{q(1, 999)}, inside_error); // inside RHS: the same sum
     EXPECT_THROW(e *= E{q(1, 999)}, inside_error);
 }
 
@@ -312,8 +311,8 @@ TEST(ConsistencyTest, results_keep_the_shared_policy) {
 }
 
 // An inside with a rational would leave the grid (operator rational() and
-// rational arithmetic): deleted. A point keeps the grid; compound assignment
-// with a rational stores back into the inside's grid and stays.
+// rational arithmetic): deleted, compound assignment too. A point keeps the
+// grid.
 template <class A, class B>
 concept rational_mix = requires(A a, B b) { a + b; } || requires(A a, B b) { b - a; } ||
                        requires(A a, B b) { a * b; } || requires(A a, B b) { a / b; } || requires(A a, B b) { a % b; };
@@ -322,10 +321,10 @@ concept rational_compound = requires(A& a, B b) { a += b; };
 TEST(ConsistencyTest, no_arithmetic_with_a_rational) {
     using I = inside<{{0, 10}, per<4>}>;
     static_assert(!rational_mix<I, rational> && !rational_mix<inside<{0, 10}>, rational>);
-    static_assert(rational_compound<I, rational>);
+    static_assert(!rational_compound<I, rational>);
     static_assert(I{2} + just<1, 2> == 2.5_r);
     I x{2};
-    x += 0.5_r;
+    x += 0.5_ins;
     EXPECT_EQ(x, 2.5_r);
 }
 

@@ -538,13 +538,13 @@ bool throws_with_any(std::initializer_list<errc> codes, Fn&& fn) {
 
 template <insidable B>
 void prop_compound_div_mod_zero(fuzz_state& s, long iters) {
-    // `b /= 0_r` (rational zero) routes through the rational compound-assign's
-    // zero guard → report → throws division_by_zero. (Raw `b /= 0` is now ill-
-    // formed; the insidable `%= zero-inside` path needs a rounding integer divisor
-    // and is covered for rounding bounds in test_compound_assign.)
+    // `b /= zero` (an inside holding 0) takes the compound op's zero guard →
+    // report → throws division_by_zero. (Raw `b /= 0` is ill-formed; the
+    // insidable `%= zero-inside` path needs a rounding integer divisor and is
+    // covered for rounding bounds in test_compound_assign.)
     if constexpr (integer_lattice<B> && !rational_storage<B>) {
         s.current_prop = "compound_div_zero";
-        // The divisor is the constant 0_r, so any in-range dividend throws; pick
+        // The divisor is always 0, so any in-range dividend throws; pick
         // `start` from the grid's actual [lo, hi] (a fully-negative grid has hi < 1,
         // so the old std::max(1, lo) built an inverted, UB distribution range).
         const imax                          lo = trunc(detail::lower64<B>);
@@ -554,8 +554,9 @@ void prop_compound_div_mod_zero(fuzz_state& s, long iters) {
             s.iter     = i;
             imax start = dist(s.rng);
             FUZZ_REQUIRE(s, throws_with(errc::division_by_zero, [&] {
-                             B b{start};
-                             b /= 0_r;
+                             B                    b{start};
+                             const inside<{0, 1}> zero{0};
+                             b /= zero;
                          }));
         }
     }

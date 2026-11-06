@@ -253,14 +253,14 @@ TEST(PolicyActionsTest, free_div_and_mod_return_a_zero_divisor) {
     ASSERT_EQ(m.error(), errc::division_by_zero);
 }
 
-// A rational right-hand side past the 64-bit rational fails like a store:
+// A compound op whose exact result is off the grid fails like a store:
 // on_error takes it, and the value is unchanged.
-TEST(PolicyActionsTest, rational_rhs_overflow_reaches_on_error) {
+TEST(PolicyActionsTest, compound_store_failure_reaches_on_error) {
     using frac = inside<{{0, 1}, max_denominator{imax{1} << 62}}>;
     frac f{rational{1, (imax{1} << 62) - 1}};
     errc seen{};
-    f.on_error([&](auto&, errc c, const char*) { seen = c; }) += rational{1, (imax{1} << 62) - 3};
-    ASSERT_EQ(seen, errc::overflow);
+    f.on_error([&](auto&, errc c, const char*) { seen = c; }) += frac{rational{1, (imax{1} << 62) - 3}};
+    ASSERT_EQ(seen, errc::rounding_error); // the sum's denominator passes the bound
     ASSERT_EQ(f, (rational{1, (imax{1} << 62) - 1}));
 }
 

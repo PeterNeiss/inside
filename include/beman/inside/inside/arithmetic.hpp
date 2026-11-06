@@ -742,8 +742,8 @@ BEMAN_INSIDE_NO_SCALAR(%)
 
 // An inside with a rational: through the implicit operator rational() it
 // would become rational arithmetic, an expected<rational, errc> without a
-// grid. Deleted, with the spelling that keeps the grid. Compound assignment
-// with a rational (b += 0.5_r) stays: it stores back into b's grid.
+// grid. Deleted, with the spelling that keeps the grid; so are the compound
+// assignments (inside/detail/core.hpp, policy_ref.hpp).
 #define BEMAN_INSIDE_RATIONAL_MSG                                                                \
     "an inside cannot be combined with a rational: write the constant as just<1, 2> or 0.5_ins " \
     "(a grid), or store the rational into an inside first"

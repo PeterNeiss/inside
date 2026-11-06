@@ -142,8 +142,9 @@ p /= 3_ins;      // 33: 100/3, rounded toward zero
 ++p;             // 34: one notch up
 ```
 
-The right-hand side is an inside or a `rational` (`p += 0.5_r`), never a
-plain `int` or `double`. `++` and `--` move one notch: ±1/4 on
+The right-hand side is an inside (`p += 0.5_ins`, `p += just<1, 2>`), never a
+plain `int`, `double` or `rational`: like the binary operators, a compound
+assignment needs a grid on both sides. `++` and `--` move one notch: ±1/4 on
 `inside<{{0, 2}, per<4>}>`.
 
 ## Results that are `std::expected`
