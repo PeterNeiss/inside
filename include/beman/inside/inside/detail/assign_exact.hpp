@@ -36,6 +36,13 @@ inline constexpr bool needs_runtime_range_check =
 template <bool Wrappable, insidable L, typename P, typename A, typename DoClamp, typename DoWrap>
 constexpr bool dispatch_out_of_range(L& lhs, P&& policy, A&& action, DoClamp do_clamp, DoWrap do_wrap) {
     using PA = plain_t<A>;
+    // A store that may leave a point grid cannot wrap: the period, Upper −
+    // Lower + Notch, is 0. (A point type with wrap still comes out of
+    // arithmetic, `x * 0_ins`; storing the point itself needs no range check.)
+    static_assert(!point_grid<L> || clamp_action<PA> ||
+                      !(wrap_action<PA> || (uses_flag<L, P, wrap> && !uses_flag<L, P, clamp>)),
+                  "inside: wrap onto a point grid - a point has no period to fold by; store the point itself, or "
+                  "use clamp or the default policy");
     if constexpr (clamp_action<PA>) {
         do_clamp();
         return true;
@@ -403,9 +410,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
                         }
                     },
                     [&] {
-                        if constexpr (point_storage<L>)
-                            fail(errc::overflow); // a point has no period to fold by
-                        else if (inexact)
+                        if (inexact)
                             fail(errc::rounding_error); // folds off the notch too
                         else {
                             const auto [q, w] = floor_divmod(index, count + I{1});

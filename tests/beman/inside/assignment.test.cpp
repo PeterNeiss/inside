@@ -1352,8 +1352,8 @@ TEST(AssignmentTest, point_grid_checks_the_value) {
 
 // A source the exact path stores (a fine or wide value) into a point grid
 // divided by the point's zero notch inside noexcept code: std::terminate.
-// wrap onto a point (no period) terminated the same way since the exact wrap
-// fold; it reports overflow, as before.
+// wrap onto a point (no period) is a compile error (fail/wrap_point); a point
+// type with wrap, as arithmetic makes one, still takes its own point.
 TEST(AssignmentTest, point_grid_on_the_exact_path) {
     using three = inside<{3}>; // a point grid
     using fine  = inside<{{0, 1}, per<(1ll << 62)>}>;
@@ -1361,9 +1361,11 @@ TEST(AssignmentTest, point_grid_on_the_exact_path) {
     EXPECT_THROW((x += fine{rational{1, 2}}), inside_error);
     EXPECT_EQ(three::try_make(fine{rational{1, 2}} + 2_ins).error(), errc::overflow);
     using wrapped = inside<{3}, wrap>;
-    EXPECT_EQ(wrapped::try_make(5).error(), errc::overflow);
-    EXPECT_EQ(wrapped::try_make(3.5).error(), errc::overflow);
-    EXPECT_EQ(*wrapped::try_make(3), 3_ins);
+    EXPECT_EQ(*wrapped::try_make(3_ins), 3_ins);
+    const inside<{1, 9}, wrap | round_nearest> a{3};
+    const auto                                 zero = a * 0_ins; // a point type that keeps wrap
+    static_assert(has_flag(flags_of<decltype(zero)>, wrap));
+    EXPECT_EQ(zero, 0_ins);
 }
 
 // The exact store (mul_into, div_into, wide sums) tested the notch before the
