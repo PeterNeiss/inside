@@ -1804,3 +1804,43 @@ TEST(ArithmeticTest, continuous_sum_is_exact) {
 }
 
 } // namespace pinned_tests
+
+// Arms no other test reaches, found by the reachability audit (gcov and an
+// `if constexpr` probe over the suite).
+namespace reached_arms_tests {
+using namespace beman::inside;
+using detail::rational;
+
+// Disjoint operand ranges decide min and max at compile time, either order.
+TEST(ArithmeticArmTest, min_and_max_of_disjoint_ranges) {
+    const inside<{0, 5}>   lo{3};
+    const inside<{10, 20}> hi{15};
+    EXPECT_TRUE(min(lo, hi) == 3 && min(hi, lo) == 3);
+    EXPECT_TRUE(max(lo, hi) == 15 && max(hi, lo) == 15);
+}
+
+// div_into on rational raws: when the unreduced quotient passes 64 bits, the
+// cross-reduced one (2^59/1023 ÷ 2^59/1021 = 1021/1023) or else the exact
+// wide one is stored, as the exact quotient rounds.
+TEST(ArithmeticArmTest, div_into_past_the_unreduced_quotient) {
+    using C   = inside<{{1, 1125899906842624_g}, max_denominator{1024}}>; // [1, 2^50]
+    using Out = inside<{{0, 2}, per<1024>}, round_nearest>;
+    static_assert(std::is_same_v<detail::raw_t<C>, rational>);
+    const C x{rational{umax{1} << 59, 1023}}, y{rational{umax{1} << 59, 1021}};
+    const C u{rational{(umax{1} << 59) + 1, 1023}}, v{rational{(umax{1} << 59) + 3, 1021}};
+    EXPECT_TRUE(div_into<Out>(x, y) == Out{x / y});
+    EXPECT_TRUE(div_into<Out>(u, v) == Out{u / v});
+}
+
+// sum of continuous elements re-reduces a raw built unreduced (2/8), whose
+// denominator does not divide lcm(1..D).
+TEST(ArithmeticArmTest, sum_reduces_an_unreduced_raw) {
+    using T = inside<{{0, 1}, max_denominator{4}}>;
+    rational quarter;
+    quarter.Num = 2;
+    quarter.Den = 8;
+    const std::vector<T> v{T::from_raw(quarter), T{rational{1, 4}}};
+    using total = inside<{{0, 2}, max_denominator{4}}>;
+    EXPECT_EQ(rational{beman::inside::sum<total>(v)}, (rational{1, 2}));
+}
+} // namespace reached_arms_tests

@@ -780,3 +780,23 @@ TEST(StorageTest, numeric_limits_epsilon_and_round_error_of_exact_types) {
 }
 
 } // namespace pinned_tests
+
+// Arms no other test reaches, found by the reachability audit (gcov and an
+// `if constexpr` probe over the suite).
+namespace reached_arms_tests {
+using namespace beman::inside;
+
+// A point's index is 0; its numerator and denominator are its own.
+TEST(StorageArmTest, index_and_parts_of_a_point) {
+    const inside<{5, 5}> p;
+    EXPECT_TRUE(p.index() == 0 && p.numerator() == 5 && p.denominator() == 1);
+}
+
+// x++ returns the old value.
+TEST(StorageArmTest, postfix_increment) {
+    volatile int    three = 3;
+    inside<{0, 10}> x{static_cast<int>(three)};
+    const auto      y = x++;
+    EXPECT_TRUE(x == 4 && y == 3);
+}
+} // namespace reached_arms_tests

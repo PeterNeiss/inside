@@ -524,3 +524,18 @@ TEST(TextTest, rational_to_string_zero_pads_short_decimal_fractions) {
 }
 
 } // namespace pinned_tests
+
+// Arms no other test reaches, found by the reachability audit (gcov and an
+// `if constexpr` probe over the suite).
+namespace reached_arms_tests {
+using namespace beman::inside;
+using detail::rational;
+
+// parse_exact takes a fraction exactly: onto a lattice, onto a point, and
+// N/0 is a zero denominator.
+TEST(TextArmTest, parse_exact_of_a_fraction) {
+    EXPECT_EQ((rational{*parse_exact<inside<{{0, 1}, per<4>}>>("1/2")}), (rational{1, 2}));
+    EXPECT_TRUE((*parse_exact<inside<{5, 5}>>("10/2") == 5));
+    EXPECT_EQ((parse_exact<inside<{{0, 1}, per<4>}>>("1/0").error()), errc::division_by_zero);
+}
+} // namespace reached_arms_tests

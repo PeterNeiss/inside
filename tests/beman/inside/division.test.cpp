@@ -653,3 +653,30 @@ TEST(DivisionTest, int32_native_div_mod_matches_wide_reference) {
 }
 
 } // namespace pinned_tests
+
+// Arms no other test reaches, found by the reachability audit (gcov and an
+// `if constexpr` probe over the suite).
+namespace reached_arms_tests {
+using namespace beman::inside;
+using detail::rational;
+
+// % and divmod on a lattice past imax units (2^64 quarters) compute in wide
+// integers; a divisor grid that holds 0 reports it.
+TEST(DivisionArmTest, remainder_on_a_lattice_past_imax_units) {
+    using L = inside<{{0, 4611686018427387904_g}, per<4>}>; // [0, 2^62]
+    using Z = inside<{{0, 10}, per<2>}>;
+    const L a{rational{(umax{1} << 61) + 1, 4}}; // 2^59 + 1/4
+    EXPECT_EQ((rational{a % inside<{{1, 10}, per<2>}>{1.5}}), (rational{3, 4}));
+    EXPECT_EQ(rational{*(a % Z{test::at_run_time(1.5)})}, (rational{3, 4}));
+    EXPECT_EQ((a % Z{test::at_run_time(0)}).error(), errc::division_by_zero);
+    EXPECT_EQ(divmod(a, Z{test::at_run_time(0)}).error(), errc::division_by_zero);
+}
+
+// % on integers past imax with a divisor grid that holds 0.
+TEST(DivisionArmTest, remainder_of_wide_integers_by_a_grid_with_zero) {
+    const inside<{0, 1180591620717411303424_g}> c{1000};
+    using Z = inside<{0, 10}>;
+    EXPECT_TRUE(*(c % Z{test::at_run_time(7)}) == 6);
+    EXPECT_EQ((c % Z{test::at_run_time(0)}).error(), errc::division_by_zero);
+}
+} // namespace reached_arms_tests

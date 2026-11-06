@@ -728,3 +728,42 @@ TEST(ConversionTest, fraction_and_to_value_fast_paths_match_rational) {
 }
 
 } // namespace pinned_tests
+
+// Arms no other test reaches, found by the reachability audit (gcov and an
+// `if constexpr` probe over the suite).
+namespace reached_arms_tests {
+using namespace beman::inside;
+using detail::rational;
+
+// The exact paths of the conversion predicates: a double past the 64-bit
+// rationals, a long double that is no double, grid numbers past 64 bits.
+TEST(ConversionsArmTest, predicates_on_the_exact_paths) {
+    using I = inside<{0, 10}>;
+    EXPECT_TRUE(conversion_overflows<I>(1e30) && !conversion_rounds<I>(1e30));
+    EXPECT_TRUE(conversion_overflows<I>(1e30L));
+    // Just past Upper, onto the bound by the grid's rounding: rounds.
+    using C = inside<{{0, 1}, max_denominator{10}}, round_nearest>;
+    EXPECT_TRUE(!conversion_overflows<C>(1.0L + 0x1p-63L) && conversion_rounds<C>(1.0L + 0x1p-63L));
+    using P = inside<{1180591620717411303424_g, 1180591620717411303424_g}>; // the point 2^70
+    EXPECT_TRUE(!conversion_overflows<P>(0x1p70) && !conversion_rounds<P>(0x1p70));
+    using W = inside<{0, 1180591620717411303424_g}>;
+    EXPECT_TRUE(!conversion_overflows<W>(5) && !conversion_rounds<W>(5));
+}
+
+// A point rounds nothing; on a fine lattice an in-range value whose 64-bit
+// steps overflow is decided exactly.
+TEST(ConversionsArmTest, rounds_on_a_point_and_past_the_64_bit_steps) {
+    EXPECT_FALSE((conversion_rounds<inside<{5, 5}>>(5)));
+    EXPECT_FALSE((conversion_rounds<inside<{5, 5}>>(rational{5})));
+    EXPECT_TRUE((conversion_rounds<inside<{{0, 4}, per<3>}>>(rational{(umax{1} << 63) + 1, imax{1} << 62})));
+}
+
+// A lattice past the 64-bit rationals converts the values that fit; one
+// past them is reported.
+TEST(ConversionsArmTest, rational_of_a_value_past_64_bits) {
+    using T = inside<{{-12000000000000000000_g, 12000000000000000000_g}, just<3, 2>}>;
+    static_assert(detail::rational_readable<T>);
+    const T t = T::from_index(15333333333333333333_ins); // 10999999999999999999.5
+    EXPECT_THROW((void)rational{t}, inside_error);
+}
+} // namespace reached_arms_tests
