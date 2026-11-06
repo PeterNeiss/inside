@@ -62,6 +62,16 @@ ones implicitly.
 
 ### Added
 
+- `std::mdspan` support (opt-in `<beman/inside/inside/mdspan.hpp>` and
+  `<beman/inside/units/mdspan.hpp>`): `inside_mdspan`, a `std::mdspan` that
+  takes inside indices (no check when the index type lies within a static
+  extent, else the index's policy: `clamp` pads, `wrap` is periodic);
+  `extents_of<I...>`, `extent_index_t` and `indices(m)`; `value_accessor`
+  and `raw_accessor`, views of plain or raw buffers; exact `sum`, `dot`,
+  `matrix_vector_product`, `matrix_product` and `transform_into`, each output
+  stored once by its policy; quantities and `units::view_in`. Examples
+  `image.cpp` and `matrix.cpp`. The single header guards them with
+  `BEMAN_INSIDE_NO_MDSPAN`.
 - Counting and number theory in `math` (`<beman/inside/math/integer.hpp>`):
   `factorial`, `binomial`, `falling_factorial`, `rising_factorial`,
   `multinomial`, `gcd` and `lcm`, each with an `_into<Out>` form. Results are

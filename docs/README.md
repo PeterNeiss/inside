@@ -35,6 +35,7 @@ The details behind the guides, and topics most programs never need.
 | [The math engine](advanced/math-engine.md) | how results are rounded correctly, what is guaranteed, speed, angles over many turns |
 | [Constants](advanced/constants.md) | the mathematical and physical constants |
 | [For fixed-point users](advanced/fixed-point.md) | Qm.n formats as grids, which grids are fast |
+| [mdspan](advanced/mdspan.md) | indices proven in bounds, views of raw buffers, exact sums and matrix products, quantities |
 | [Determinism](advanced/determinism.md) | which results are bit-identical across platforms, and the build rules |
 | [Certifying math](advanced/certify.md) | proving the math of your own grids correct by exhaustion |
 | [Freestanding and bare metal](advanced/freestanding.md) | no exceptions, no FPU, no text |
@@ -63,6 +64,7 @@ and the [certified math pairs](certified.md).
 | `<beman/inside/inside/io.hpp>` | text: `to_string`, `<<`, `>>`, `std::format`, `parse` of a `string_view` |
 | `<beman/inside/inside/formats.hpp>` | the native formats `uint8` … `int64`, `unorm8` …, `q8_8` …, and the counters |
 | `<beman/inside/inside/random.hpp>` | `uniform<B>(rng)` |
+| `<beman/inside/inside/mdspan.hpp>` | `std::mdspan` support: `inside_mdspan`, `extents_of`, `indices`, the accessors, `sum`, `dot`, the matrix products |
 | `<beman/inside/math.hpp>` | `beman::inside::math`: the functions and the constants |
 | `<beman/inside/math/constants.hpp>` | the constants alone (`math::pi`, …), with only the number |
 | `<beman/inside/units.hpp>` | `beman::inside::units`: the machinery and the SI and ISQ catalog |
@@ -70,13 +72,14 @@ and the [certified math pairs](certified.md).
 | `<beman/inside/units/io.hpp>` | text of quantities: `to_string`, `<<`, `std::format`, `parse<Q>` |
 | `<beman/inside/units/math.hpp>` | math on quantities: roots of units, angles in degrees, `value_cast` across π |
 | `<beman/inside/units/random.hpp>` | `uniform<Q>(rng)` |
+| `<beman/inside/units/mdspan.hpp>` | `std::mdspan` of quantities, `units::view_in` |
 | `<beman/inside/units/constants.hpp>` | the physical constants as quantities |
 
 The [single header](advanced/single-header.md) holds all of them.
 
 ## Examples
 
-Each of the 39 programs in [`examples/`](../examples/) checks its own output
+Each of the 41 programs in [`examples/`](../examples/) checks its own output
 and runs as a test (`ctest --preset gcc-debug -L example`).
 
 | Theme | Programs |
@@ -88,4 +91,5 @@ and runs as a test (`ctest --preset gcc-debug -L example`).
 | wrap, clamp and hooks | [`clock`](../examples/clock.cpp) (s → min → h → months), [`game_hp`](../examples/game_hp.cpp) (hit points), [`rifle`](../examples/rifle.cpp) (rounds), [`torus_map`](../examples/torus_map.cpp) (pixels), [`sequence_number`](../examples/sequence_number.cpp) and [`jitter_buffer`](../examples/jitter_buffer.cpp) (packets) |
 | signal and control | [`audio_mixer`](../examples/audio_mixer.cpp), [`oscillator`](../examples/oscillator.cpp) (a phase counter), [`decibels`](../examples/decibels.cpp), [`pid_controller`](../examples/pid_controller.cpp), [`sensor_fusion`](../examples/sensor_fusion.cpp) (a mean of ℃ points), [`histogram`](../examples/histogram.cpp), [`fixed_point`](../examples/fixed_point.cpp) (Q formats) |
 | math | [`navigation`](../examples/navigation.cpp) (range and bearing), [`audio_math`](../examples/audio_math.cpp), [`huge_angles`](../examples/huge_angles.cpp) (the sine of 10¹⁸ rad), [`geometry`](../examples/geometry.cpp) (`dot`, `cross`, `lerp`), [`expected_pipeline`](../examples/expected_pipeline.cpp) (errors with their cause) |
+| arrays | [`image`](../examples/image.cpp) (a blur with indices proven in bounds, a heat map from raw codes), [`matrix`](../examples/matrix.cpp) (exact rotations in Q1.14, Fibonacci by matrix powers) |
 | big numbers | [`solar_system`](../examples/solar_system.cpp) (nanometres across ±10¹³ m), [`planck_to_cosmos`](../examples/planck_to_cosmos.cpp) (10⁻⁴¹ m to 10²⁷ m), [`combinatorics`](../examples/combinatorics.cpp) (factorials, binomials, odds as exact fractions), [`rsa`](../examples/rsa.cpp) (RSA-1024 on residues) |

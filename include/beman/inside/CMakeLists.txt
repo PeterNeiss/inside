@@ -40,6 +40,7 @@ target_sources(
                 inside/grid.hpp
                 inside/interval.hpp
                 inside/io.hpp
+                inside/mdspan.hpp
                 inside/numeric_limits.hpp
                 inside/policy_flag.hpp
                 inside/predicates.hpp
@@ -62,6 +63,7 @@ target_sources(
                 units/detail/point.hpp
                 units/detail/quantity.hpp
                 units/io.hpp
+                units/mdspan.hpp
                 units/math.hpp
                 units/random.hpp
                 units/systems.hpp
