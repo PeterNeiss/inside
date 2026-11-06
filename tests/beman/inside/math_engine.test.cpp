@@ -1,14 +1,39 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// The adaptive math engine: fixed-point helpers, constants at any precision,
-// and the decision step that rounds a result onto the output grid correctly.
+// The math engine: fixed-point helpers, constants at any precision, the
+// decision step, the double and dd kernels with their proved bounds, the
+// minimax fits, and golden values pinned for determinism.
 
+#include <beman/inside/inside.hpp>
+#include <beman/inside/inside/casts.hpp>
+#include <beman/inside/inside/detail/numbers.hpp>
+#include <beman/inside/inside/detail/rational.hpp>
+#include <beman/inside/inside/formats.hpp>
+#include <beman/inside/inside/io.hpp>
+#include <beman/inside/inside/predicates.hpp>
+#include <beman/inside/math.hpp>
 #include <beman/inside/math/detail/adaptive.hpp>
+#include <beman/inside/math/detail/entry.hpp>
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cmath>
+#include <compare>
+#include <cstdint>
+#include <functional>
+#include <limits>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
 #include "support.hpp"
 
+// The adaptive math engine: fixed-point helpers, constants at any precision,
+// and the decision step that rounds a result onto the output grid correctly.
+namespace math_adaptive_tests {
 using namespace beman::inside;
+
 namespace engine = beman::inside::math::detail::engine;
 using beman::inside::umax;
 using detail::wide_rational;
@@ -138,11 +163,6 @@ TEST(MathAdaptiveTest, evaluate_escalates_until_decided) {
 // the nearest grid point (or the floor point, for round_floor). Results within
 // a hair of a rounding boundary are skipped (long double cannot tell).
 //---------------------------------------------------------------------------
-#include <beman/inside/math/detail/entry.hpp>
-
-#include <cmath>
-#include <functional>
-#include <vector>
 
 namespace {
 namespace am = beman::inside::math::detail::entry;
@@ -1407,3 +1427,358 @@ TEST(MathAdaptiveTest, hypot_on_mixed_grids_at_fine_outputs) {
     EXPECT_EQ(bad, 0);
 }
 #endif
+} // namespace math_adaptive_tests
+
+// The generated minimax fits (math/detail/minimax.hpp, from Sollya): every
+// fit's sampled relative error stays below its certified bound Err and comes
+// close to it (a minimax error equioscillates, so its maximum over a fine
+// sample is near the supremum). That ties each coefficient set to its own
+// bound. The polynomial runs in binary128 from the double coefficients; the
+// reference is the dd tier's function (within about 2^-97).
+namespace math_minimax_tests {
+
+#ifndef BEMAN_INSIDE_MATH_NO_FP
+namespace fpk = beman::inside::math::detail::fp;
+namespace mm  = fpk::minimax;
+namespace ddk = beman::inside::math::detail::dd;
+
+namespace {
+using quad = __float128;
+
+template <std::size_t N>
+quad horner(quad z, const std::array<double, N>& c) {
+    quad p = c[0];
+    for (std::size_t k = 1; k < N; ++k)
+        p = p * z + c[k];
+    return p;
+}
+quad of(ddk::dd v) { return static_cast<quad>(v.Hi) + v.Lo; }
+
+// The worst |p/f − 1| over [a, b], in units of the fit's Err.
+template <std::size_t N, typename F>
+double worst_ratio(const mm::fit<N>& fit, bool odd, double a, double b, F f) {
+    constexpr int steps = 4096;
+    double        worst = 0;
+    for (int i = 0; i <= steps; ++i) {
+        const double x = a + (b - a) * i / steps;
+        if (x == 0)
+            continue;
+        const quad p   = odd ? x * horner(static_cast<quad>(x) * x, fit.C) : horner(static_cast<quad>(x), fit.C);
+        const quad ref = of(f(ddk::dd{x, 0}));
+        const quad rel = (p - ref) / ref;
+        worst          = std::max(worst, std::fabs(static_cast<double>(rel)) / fit.Err);
+    }
+    return worst;
+}
+
+template <auto& Fit, typename F>
+void expect_fit(const char* name, int n, bool odd, double a, double b, F f) {
+    const double r = worst_ratio(Fit, odd, a, b, f);
+    EXPECT_LE(r, 1.0) << name << " " << n;
+    EXPECT_GE(r, 0.5) << name << " " << n; // the bound belongs to these coefficients
+}
+
+template <int Min, int Max, template <int> class Var, typename F>
+void expect_fits(const char* name, bool odd, double a, double b, F f) {
+    [&]<int... I>(std::integer_sequence<int, I...>) {
+        (expect_fit<Var<Min + I>::value>(name, Min + I, odd, a, b, f), ...);
+    }(std::make_integer_sequence<int, Max - Min + 1>{});
+}
+template <int N>
+struct asin_of {
+    static constexpr const auto& value = mm::asin_fit<N>;
+};
+template <int N>
+struct exp_of {
+    static constexpr const auto& value = mm::exp_fit<N>;
+};
+template <int N>
+struct atanh_of {
+    static constexpr const auto& value = mm::atanh_fit<N>;
+};
+template <int N>
+struct atan_of {
+    static constexpr const auto& value = mm::atan_fit<N>;
+};
+} // namespace
+
+TEST(MathMinimaxTest, every_fit_stays_within_and_near_its_certified_bound) {
+    expect_fits<mm::asin_min, mm::asin_max, asin_of>("asin", true, 0, 0.5, [](ddk::dd x) { return ddk::asin(x); });
+    expect_fits<mm::exp_min, mm::exp_max, exp_of>(
+        "exp", false, -fpk::r_exp, fpk::r_exp, [](ddk::dd x) { return ddk::exp(x); });
+    expect_fits<mm::atanh_min, mm::atanh_max, atanh_of>(
+        "atanh", true, 0, fpk::f_max, [](ddk::dd x) { return ddk::atanh(x); });
+    expect_fits<mm::atan_min, mm::atan_max, atan_of>(
+        "atan", true, 0, fpk::t_max, [](ddk::dd x) { return ddk::atan(x); });
+}
+#endif
+} // namespace math_minimax_tests
+
+// Determinism golden pins for the transcendental functions.
+//
+// The library advertises bit-exact reproducibility. Accuracy-vs-std tolerances do
+// NOT verify that — they would pass a sub-tolerance cross-platform drift. These
+// tests instead pin each function's EXACT output (`==`) at representative and
+// corner inputs, across a VARIETY of grids (notch resolution, interval, storage),
+// so the multi-arch CI (x64 + ARM64 × GCC/Clang/AppleClang, both engines)
+// locks the values bit-for-bit.
+//
+// Values were captured from the library itself; comments give the approximate true
+// result. Grid snapping makes many of them exact (e.g. log10(1000)=3, hypot(3,4)=5).
+// The double and CORDIC engines agree on every pin here.
+namespace determinism_tests {
+using namespace beman::inside;
+using namespace beman::inside::detail;
+
+// rational{expr} == rational{N, D}  (sign carried in D, as the library encodes it)
+#define EXACT(expr, N, D) ASSERT_EQ(rational{(expr)}, (rational{N, D}))
+#define EXACT_OK(expr, N, D)                        \
+    do {                                            \
+        auto _r = (expr);                           \
+        ASSERT_TRUE(_r.has_value());                \
+        ASSERT_EQ(rational{*_r}, (rational{N, D})); \
+    } while (0)
+#define EXACT_ERR(expr)                            \
+    do {                                           \
+        auto _r = (expr);                          \
+        ASSERT_FALSE(_r.has_value());              \
+        ASSERT_EQ(_r.error(), errc::domain_error); \
+    } while (0)
+
+// These pins are the correctly rounded values: the same in every build.
+
+// determinism: asin / acos across grids and domain corners
+TEST(DeterminismTest, determinism_asin_acos_across_grids_and_domain_corners) {
+    using A1 = inside<{{-1, 1}, per<65536>}, round_nearest>;
+    using A2 = inside<{{-1, 1}, per<4096>}, round_nearest>;
+
+    EXACT(math::asin(A1{-1}), 3217, -2048);   // -pi/2
+    EXACT(math::acos(A1{-1}), 205887, 65536); //  pi
+    EXACT(math::asin(A2{-1}), 3217, -2048);
+    EXACT(math::acos(A2{-1}), 3217, 1024);
+    EXACT(math::asin(A1{rational{-1, 2}}), 34315, -65536);
+    EXACT(math::acos(A1{rational{-1, 2}}), 68629, 32768);
+    EXACT(math::asin(A2{rational{-1, 2}}), 2145, -4096);
+    EXACT(math::acos(A2{rational{-1, 2}}), 8579, 4096);
+    EXACT(math::asin(A1{0}), 0, 1);       //  0
+    EXACT(math::acos(A1{0}), 3217, 2048); //  pi/2
+    EXACT(math::asin(A2{0}), 0, 1);
+    EXACT(math::acos(A2{0}), 3217, 2048);
+    EXACT(math::asin(A1{rational{1, 2}}), 34315, 65536);
+    EXACT(math::acos(A1{rational{1, 2}}), 68629, 65536);
+    EXACT(math::asin(A2{rational{1, 2}}), 2145, 4096);
+    EXACT(math::acos(A2{rational{1, 2}}), 4289, 4096);
+    EXACT(math::asin(A1{1}), 3217, 2048); //  pi/2
+    EXACT(math::acos(A1{1}), 0, 1);       //  0
+    EXACT(math::asin(A2{1}), 3217, 2048);
+    EXACT(math::acos(A2{1}), 0, 1);
+    EXACT(math::asin(A1{rational{65535, 65536}}), 51291, 32768); // near +1
+    EXACT(math::acos(A1{rational{65535, 65536}}), 181, 32768);
+    EXACT(math::asin(A2{rational{65535, 65536}}), 3217, 2048); // snaps to 1
+    EXACT(math::acos(A2{rational{65535, 65536}}), 0, 1);
+}
+
+// determinism: sinh / cosh / tanh across grids and corners
+TEST(DeterminismTest, determinism_sinh_cosh_tanh_across_grids_and_corners) {
+    using H1 = inside<{{-10, 10}, per<65536>}, round_nearest>;
+    using H2 = inside<{{-4, 4}, per<4096>}, round_nearest>;
+
+    EXACT(math::sinh(H1{0}), 0, 1);
+    EXACT(math::cosh(H1{0}), 1, 1);
+    EXACT(math::tanh(H1{0}), 0, 1);
+    EXACT(math::sinh(H1{1}), 38509, 32768);
+    EXACT(math::cosh(H1{1}), 101127, 65536);
+    EXACT(math::tanh(H1{1}), 6239, 8192);
+    EXACT(math::sinh(H1{-1}), 38509, -32768);
+    EXACT(math::cosh(H1{-1}), 101127, 65536);
+    EXACT(math::tanh(H1{-1}), 6239, -8192);
+    EXACT(math::sinh(H1{5}), 2431491, 32768); // ~74.2
+    EXACT(math::cosh(H1{5}), 4863423, 65536);
+    EXACT(math::tanh(H1{5}), 32765, 32768); // ~0.9999
+    EXACT(math::sinh(H1{-5}), 2431491, -32768);
+    EXACT(math::cosh(H1{-5}), 4863423, 65536);
+    EXACT(math::tanh(H1{-5}), 32765, -32768);
+
+    EXACT(math::sinh(H2{0}), 0, 1);
+    EXACT(math::cosh(H2{0}), 1, 1);
+    EXACT(math::tanh(H2{0}), 0, 1);
+    EXACT(math::sinh(H2{1}), 2407, 2048);
+    EXACT(math::cosh(H2{1}), 395, 256);
+    EXACT(math::tanh(H2{1}), 3119, 4096);
+    EXACT(math::sinh(H2{-1}), 2407, -2048);
+    EXACT(math::cosh(H2{-1}), 395, 256);
+    EXACT(math::tanh(H2{-1}), 3119, -4096);
+    // sinh(4)·4096 = 111779.502…: a near-tie the engines now both round up.
+    EXACT(math::sinh(H2{4}), 27945, 1024);
+    EXACT(math::cosh(H2{4}), 111855, 4096);
+    EXACT(math::tanh(H2{4}), 4093, 4096);
+}
+
+// determinism: log10 across grids and corners
+TEST(DeterminismTest, determinism_log10_across_grids_and_corners) {
+    using L1 = inside<{{1, 1024}, per<65536>}, round_nearest>;
+    using L2 = inside<{{1, 256}, per<4096>}, round_nearest>;
+
+    EXACT(math::log10(L1{1}), 0, 1); // log10(1)   = 0
+    EXACT(math::log10(L2{1}), 0, 1);
+    EXACT(math::log10(L1{10}), 1, 1); // log10(10)  = 1
+    EXACT(math::log10(L2{10}), 1, 1);
+    EXACT(math::log10(L1{100}), 2, 1); // log10(100) = 2
+    EXACT(math::log10(L2{100}), 2, 1);
+    EXACT(math::log10(L1{1000}), 3, 1);          // log10(1000)= 3
+    EXACT(math::log10(L1{1024}), 197283, 65536); // ~3.0103, upper edge
+    EXACT(math::log10(L2{256}), 1233, 512);      // ~2.4082, upper edge
+}
+
+// determinism: hypot across grids and corners
+TEST(DeterminismTest, determinism_hypot_across_grids_and_corners) {
+    using P1 = inside<{{-16, 16}, per<65536>}, round_nearest>;
+    using P2 = inside<{{-4, 4}, per<4096>}, round_nearest>;
+
+    EXACT(math::hypot(P1{0}, P1{0}), 0, 1);              // origin
+    EXACT(math::hypot(P1{3}, P1{4}), 5, 1);              // 3-4-5
+    EXACT(math::hypot(P1{5}, P1{0}), 5, 1);              // x-axis
+    EXACT(math::hypot(P1{0}, P1{7}), 7, 1);              // y-axis
+    EXACT(math::hypot(P1{16}, P1{16}), 741455, 32768);   // ~22.627, max magnitude
+    EXACT(math::hypot(P1{-16}, P1{-16}), 741455, 32768); // sign-symmetric
+    EXACT(math::hypot(P2{3}, P2{4}), 5, 1);
+    EXACT(math::hypot(P2{rational{1, 2}}, P2{rational{1, 2}}), 181, 256); // ~0.7071
+}
+
+// determinism: pow across grids and corners
+TEST(DeterminismTest, determinism_pow_across_grids_and_corners) {
+    using PB1 = inside<{{1, 16}, per<65536>}, round_nearest>;
+    using PE1 = inside<{{-4, 8}, per<65536>}, round_nearest>;
+    using PB2 = inside<{{1, 4}, per<4096>}, round_nearest>;
+    using PE2 = inside<{{0, 4}, per<4096>}, round_nearest>;
+
+    EXACT_OK(math::pow(PB1{2}, PE1{0}), 1, 1);  // b^0 = 1
+    EXACT_OK(math::pow(PB1{2}, PE1{1}), 2, 1);  // b^1 = b
+    EXACT_OK(math::pow(PB1{2}, PE1{4}), 16, 1); // 2^4 = 16
+    EXACT_OK(math::pow(PB1{1}, PE1{3}), 1, 1);  // 1^e = 1
+    EXACT_OK(math::pow(PB1{2}, PE1{-1}), 1, 2); // 2^-1 = 0.5
+    EXACT_OK(math::pow(PB2{4}, PE2{2}), 16, 1); // 4^2 = 16 (coarse grid)
+    EXACT_OK(math::pow(PB2{3}, PE2{0}), 1, 1);
+}
+
+// determinism: sqrt across grids, corners, and the error path
+TEST(DeterminismTest, determinism_sqrt_across_grids_corners_and_the_error_path) {
+    using S1   = inside<{{0, 4}, per<65536>}, round_nearest>;
+    using S2   = inside<{{0, 256}, per<256>}, round_nearest>;
+    using Smix = inside<{{-4, 9}, per<65536>}, round_nearest>;
+
+    EXACT(math::sqrt(S1{0}), 0, 1);
+    EXACT(math::sqrt(S1{1}), 1, 1);
+    EXACT(math::sqrt(S1{4}), 2, 1);
+    EXACT(math::sqrt(S2{9}), 3, 1);
+    EXACT(math::sqrt(S2{256}), 16, 1);
+    EXACT_OK(math::sqrt(Smix{9}), 3, 1); // mixed-sign grid → expected
+    EXACT_ERR(math::sqrt(Smix{-1}));     // determinism of the error path
+}
+
+// determinism: cbrt across grids and corners
+TEST(DeterminismTest, determinism_cbrt_across_grids_and_corners) {
+    using C1 = inside<{{-16, 16}, per<65536>}, round_nearest>;
+    using C2 = inside<{{-8, 8}, per<1024>}, round_nearest>;
+
+    EXACT(math::cbrt(C1{0}), 0, 1);
+    EXACT(math::cbrt(C2{0}), 0, 1);
+    EXACT(math::cbrt(C1{1}), 1, 1);
+    EXACT(math::cbrt(C2{1}), 1, 1);
+    EXACT(math::cbrt(C1{-1}), 1, -1);
+    EXACT(math::cbrt(C2{-1}), 1, -1); // -1
+    EXACT(math::cbrt(C1{8}), 2, 1);
+    EXACT(math::cbrt(C2{8}), 2, 1); //  2
+    EXACT(math::cbrt(C1{-8}), 2, -1);
+    EXACT(math::cbrt(C2{-8}), 2, -1); // -2
+}
+
+// determinism: atan / atan2 corners across quadrants and axes
+TEST(DeterminismTest, determinism_atan_atan2_corners_across_quadrants_and_axes) {
+    using AT1 = inside<{{-16, 16}, per<16384>}, round_nearest>;
+    using AT2 = inside<{{-1, 1}, per<65536>}, round_nearest>;
+
+    EXACT(math::atan(AT1{0}), 0, 1);
+    EXACT(math::atan(AT1{1}), 3217, 4096);    //  pi/4
+    EXACT(math::atan(AT1{-1}), 3217, -4096);  // -pi/4
+    EXACT(math::atan(AT1{16}), 24713, 16384); // ~1.5083
+    EXACT(math::atan(AT1{-16}), 24713, -16384);
+    EXACT(math::atan(AT2{rational{1, 2}}), 15193, 32768); // ~0.4636
+
+    EXACT(math::atan2(AT1{3}, AT1{1}), 1279, 1024);    // Q1
+    EXACT(math::atan2(AT1{1}, AT1{-5}), 24119, 8192);  // Q2
+    EXACT(math::atan2(AT1{-7}, AT1{-2}), 3787, -2048); // Q3
+    EXACT(math::atan2(AT1{-7}, AT1{2}), 2647, -2048);  // Q4
+    EXACT(math::atan2(AT1{0}, AT1{4}), 0, 1);          // +x axis
+    EXACT(math::atan2(AT1{4}, AT1{0}), 3217, 2048);    // +y axis (pi/2)
+}
+
+// determinism: sin / cos / tan radian corners
+TEST(DeterminismTest, determinism_sin_cos_tan_radian_corners) {
+    using RAD = inside<{{-8, 8}, per<16384>}, round_nearest>;
+
+    EXACT(math::sin(RAD{0}), 0, 1);
+    EXACT(math::cos(RAD{0}), 1, 1);
+    EXACT(math::sin(RAD{1}), 13787, 16384); // ~0.8415
+    EXACT(math::cos(RAD{1}), 2213, 4096);   // ~0.5403
+    EXACT_OK(math::tan(RAD{0}), 0, 1);
+    EXACT_OK(math::tan(RAD{1}), 25517, 16384); // ~1.5574
+}
+} // namespace determinism_tests
+
+// Pinned defects: each case failed before its fix.
+namespace pinned_tests {
+using namespace beman::inside;
+using namespace beman::inside::detail;
+
+namespace fpk = beman::inside::math::detail::fp;
+namespace d {
+// The full kernels' values.
+double fp_cbrt(double x) {
+    double b;
+    return fpk::pow_k<fpk::full_bits>::cbrt(x, b);
+}
+double fp_atan2(double y, double x) {
+    double b;
+    return fpk::atan_k<fpk::full_bits>::atan2(y, x, b);
+}
+} // namespace d
+
+// Directed rounding of a result that nears a grid point beyond the precision
+// cap: the deep step decides it (tanh(50) floor gave 1).
+TEST(MathEngineTest, deep_step_at_the_cap) {
+    using F  = inside<{{-1, 1}, per<65536>}, round_floor>;
+    using C  = inside<{{-1, 1}, per<65536>}, round_ceil>;
+    using In = inside<{-100, 100}>;
+    EXPECT_EQ(math::tanh_into<F>(In{50}), rational(65535, 65536));
+    EXPECT_EQ(math::tanh_into<C>(In{-50}), rational(-65535, 65536));
+    using EC = inside<{{0, 1}, per<1024>}, round_ceil>;
+    EXPECT_EQ(math::exp_into<EC>(inside<{-100, 0}>{-60}), rational(1, 1024));
+    using X  = inside<{{0, 1}, per<(std::uint64_t{1} << 40)>}>;
+    using SF = inside<{{0, 1}, per<(std::uint64_t{1} << 40)>}, round_floor>;
+    EXPECT_EQ(math::sin_into<SF>(X{rational{3u, std::uint64_t{1} << 40}}).raw(), 2u);
+}
+
+//---------------------------------------------------------------------------
+// math/detail/fp.hpp — cbrt's negative branch
+// math/detail/fp.hpp — atan2 on the axes (x == 0)
+//---------------------------------------------------------------------------
+// dbl: cbrt of negatives and atan2 on the axes
+TEST(MathEngineTest, double_kernels_cbrt_of_negatives_and_atan2_on_the_axes) {
+    // cbrt(x<0) = -cbrt(-x). Determinism: exact golden outputs (the engine's own
+    // polynomial is bit-identical across platforms; the full kernel's log as
+    // Hi + Lo lands these cube roots exactly).
+    ASSERT_EQ(d::fp_cbrt(-8.0), -2.0);
+    ASSERT_EQ(d::fp_cbrt(-27.0), -3.0);
+    ASSERT_EQ(d::fp_cbrt(27.0), 3.0);
+
+    // atan2 with x == 0: the y>0 / y<0 / y==0 axis cases (exact constants).
+    ASSERT_EQ((d::fp_atan2(1.0, 0.0)), 0x1.921fb54442d18p+0);   // +pi/2
+    ASSERT_EQ((d::fp_atan2(-1.0, 0.0)), -0x1.921fb54442d18p+0); // -pi/2
+    ASSERT_EQ((d::fp_atan2(0.0, 0.0)), 0.0);                    //  0
+    // and the x<0 reflective branch for good measure
+    ASSERT_EQ((d::fp_atan2(1.0, -1.0)), 0x1.2d97c7f3321d2p+1);   //  3pi/4
+    ASSERT_EQ((d::fp_atan2(-1.0, -1.0)), -0x1.2d97c7f3321d2p+1); // -3pi/4
+}
+
+} // namespace pinned_tests
