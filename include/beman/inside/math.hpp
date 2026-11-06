@@ -6,6 +6,7 @@
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/math/constants.hpp>
+#include <beman/inside/math/integer.hpp>      // factorial, binomial, …, gcd, lcm
 #include <beman/inside/math/detail/entry.hpp> // the math engine
 
 #include <bit>
@@ -15,7 +16,8 @@
 //---------------------------------------------------------------------------
 // beman::inside::math — the transcendental functions (math/detail/entry.hpp),
 // the grid operations (abs, sign, copysign, floor, ceil, round, trunc, fmod,
-// pown), the constants (pi, e, … from math/constants.hpp) and
+// pown), the counting functions (factorial, binomial, …, gcd, lcm from
+// math/integer.hpp), the constants (pi, e, … from math/constants.hpp) and
 // unit_amplitude<K>, the [-1, 1] output grid at resolution 1/K.
 //
 // Every transcendental returns the correctly rounded point of its output grid,

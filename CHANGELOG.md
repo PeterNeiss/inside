@@ -62,6 +62,13 @@ ones implicitly.
 
 ### Added
 
+- Counting and number theory in `math` (`<beman/inside/math/integer.hpp>`):
+  `factorial`, `binomial`, `falling_factorial`, `rising_factorial`,
+  `multinomial`, `gcd` and `lcm`, each with an `_into<Out>` form. Results are
+  exact, and each result type is the range the inputs can produce
+  (`factorial` of `inside<{0, 20}>` is `inside<{1, 20!}>`), past 64 bits too;
+  a result past 16384 bits does not compile. `examples/combinatorics.cpp`
+  uses them instead of its hand-written factorial and binomial.
 - Run-time counting on any grid, past 2⁶⁴ points too: `x.index()` gives the
   notch index as an `index_t<T>` = `inside<{0, step_count}>` (T's raw type,
   a copy); `T::from_index(i)`, `from_index(i, policy)` and
