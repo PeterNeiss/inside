@@ -517,7 +517,7 @@ template <insidable Target, std::ranges::input_range Rng>
         for (const auto& b : r) {
             auto e  = detail::exact_of(b); // Den > 0
             auto qr = detail::divmod_small(L, static_cast<umax>(e.Den));
-            if (qr.Remainder != 0 || detail::bit_width_of(e.Den) > 64) [[unlikely]] {
+            if (qr.Remainder != 0 || bit_width_of(e.Den) > 64) [[unlikely]] { // (ADL: wide_int's friend)
                 e  = detail::reduced(e); // a raw built unreduced: its reduced Den ≤ D divides L
                 qr = detail::divmod_small(L, static_cast<umax>(e.Den));
             }

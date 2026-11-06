@@ -13,6 +13,10 @@
 
 #include <gtest/gtest.h>
 
+#include "support.hpp"
+
+using beman::inside::test::exact;
+
 #include <cfloat>
 #include <cmath>
 #include <compare>
@@ -466,7 +470,7 @@ TEST(DivisionTest, integer_division_past_int64_rounds) {
     const uint64                               a{18446744073709551557u};
     const inside<{1, 1000}, round_toward_zero> b{1000};
     const auto                                 quot = div(a, b, round_floor);
-    EXPECT_EQ(rational(quot) * 1000 + rational(a % b), rational(a));
+    EXPECT_EQ(exact{quot} * exact{1000} + exact{a % b}, exact{a});
 }
 
 TEST(DivisionTest, modulo_by_a_zero_grid_is_constrained) {
@@ -558,9 +562,9 @@ TEST(DivisionTest, divide_by_point_keeps_integer_storage) {
 TEST(DivisionTest, divide_by_point_matches_exact_quotient) {
     for (int v : {-100, -7, 0, 1, 99, 100}) {
         inside<{-100, 100}> x{v};
-        EXPECT_EQ(rational{x / just<3>}, (rational{v} / rational{3}).value());
-        EXPECT_EQ(rational{x / just<-4>}, (rational{v} / rational{-4}).value());
-        EXPECT_EQ((rational{x / just<-3, 2>}), (rational{v} * rational(-2, 3)).value());
+        EXPECT_EQ(exact{x / just<3>}, exact{v} / exact{3});
+        EXPECT_EQ(exact{x / just<-4>}, exact{v} / exact{-4});
+        EXPECT_EQ((exact{x / just<-3, 2>}), (exact{v} * exact{rational{-2, 3}}));
         EXPECT_EQ(rational{x / just<3> * just<3>}, rational{v});
     }
 }

@@ -398,7 +398,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, call_policy<G, E> policy) ->
         if constexpr (!zero_unchecked)
             if (rhs_r.Num == 0)
                 return zero();
-        return result::from_raw(rational::div_unchecked(as_rational(lhs), rhs_r));
+        return result::from_raw(div_unchecked(as_rational(lhs), rhs_r));
     }
 }
 //---------------------------------------------------------------------------

@@ -34,7 +34,7 @@ struct multiplication {
         else if constexpr (exact_path_fits<exact_op::mul, result, L, R>)
             return result::from_raw(*try_rational(exact_of(lhs) * exact_of(rhs)));
         else if constexpr (rational_storage<result>)
-            return result::from_raw(rational::mul_unchecked(as_rational(lhs), as_rational(rhs)));
+            return result::from_raw(mul_unchecked(as_rational(lhs), as_rational(rhs)));
         else if constexpr (point_storage<result>) // point × point, or × 0: the grid's one value
             return result::from_raw(raw_t<result>{});
         else {

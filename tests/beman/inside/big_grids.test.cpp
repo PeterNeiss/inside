@@ -795,8 +795,8 @@ TEST(WideGridTest, wide_operand_into_a_rational_sum) {
 // slot counts 2^64 − 1 (the last uint64 index) and 2^64 (the first two-limb
 // one), a 128-bit count, and arithmetic that crosses from one to the other.
 TEST(WideGridTest, limb_edges) {
-    constexpr umax u64_max = ~umax{0};
-    const rational q1{1, 4};                                                 // one notch
+    constexpr umax     u64_max = ~umax{0};
+    constexpr rational q1{1, 4};                                             // one notch
     using top64  = inside<{{rational{0}, rational{u64_max, 4}}, per<4>}>;    // 2^64 − 1 slots
     using over64 = inside<{{rational{0}, rational{umax{1} << 62}}, per<4>}>; // 2^64 slots
     static_assert(std::is_same_v<top64::raw_type, std::uint64_t>);

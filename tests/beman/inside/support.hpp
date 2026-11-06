@@ -5,6 +5,8 @@
 
 #include <gtest/gtest.h>
 
+#include "exact.hpp"
+
 namespace beman::inside::test {
 // v, hidden from the optimizer: what follows computes at run time.
 template <class T>

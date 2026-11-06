@@ -19,7 +19,7 @@ using namespace beman::inside;
 using namespace beman::inside::detail;
 
 namespace {
-rational q(imax n, imax d = 1) { return rational{n, d}; }
+constexpr rational q(imax n, imax d = 1) { return rational{n, d}; }
 } // namespace
 
 //---------------------------------------------------------------------------

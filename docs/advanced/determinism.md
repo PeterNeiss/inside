@@ -43,10 +43,10 @@ differently:
 - The widths are fixed: `umax` is `std::uint64_t` and `imax` is `std::int64_t`
   (`inside/detail/numbers.hpp`); the value path is `imax` throughout, and wide raws are
   arrays of 64-bit limbs.
-- A fraction is a `beman::inside::rational` (`inside/detail/rational.hpp`). Every
-  checked operation goes through overflow-detecting add, sub and mul
-  (`inside/detail/numbers.hpp`), so an overflow is a reported `errc::overflow`, not
-  a platform-dependent wrap.
+- A fraction is a `beman::inside::rational` (`inside/detail/rational.hpp`). Its
+  arithmetic is compile time only; the library's own 64-bit steps on rational
+  raws are overflow-detecting (`inside/detail/numbers.hpp`) and fall back to
+  exact wide integers, or a grid bound proves they fit, so no step wraps.
 - `rational(double)` takes the value straight from its IEEE-754 bits: a finite
   `double` is exactly significand · 2^exponent, with no `<cmath>` and no FPU
   rounding (`inside/detail/float_bits.hpp`).

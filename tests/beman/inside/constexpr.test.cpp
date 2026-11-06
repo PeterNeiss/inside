@@ -5,7 +5,7 @@
 // execution.
 //
 // Library quirks to respect:
-//   - `rational::inv(0)` and division-by-zero `throw` under
+//   - `try_inv(0)` and division-by-zero `throw` under
 //     `is_constant_evaluated()` and hard-fail the build — they cannot appear
 //     in a constant expression.
 //   - The unhandled-`checked` path (out-of-range value, no clamp/wrap)
@@ -78,9 +78,9 @@ TEST(ConstexprTest, constexpr_rational_rounding_helpers) {
 
 // constexpr: rational inv and divides_evenly
 TEST(ConstexprTest, constexpr_rational_inv_and_divides_evenly) {
-    static_assert(*rational::inv(rational{3u, 4}) == rational{4u, 3});
-    static_assert(*rational::inv(rational{2u, 7}) == rational{7u, 2});
-    // `rational::inv(0_r)` is runtime-only — see file header.
+    static_assert(*try_inv(rational{3u, 4}) == rational{4u, 3});
+    static_assert(*try_inv(rational{2u, 7}) == rational{7u, 2});
+    // `try_inv(0_r)` is a compile error here — see file header.
 
     static_assert(divides_evenly(6_r, 2_r));
     static_assert(!(divides_evenly(7_r, 2_r)));

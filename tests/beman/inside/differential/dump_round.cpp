@@ -43,7 +43,7 @@ void store(rng_t& g, int n, const char* mode, bool clamped, bool ties) {
         const A a = pick<A>(g);
         const D e = pick<D>(g);
         std::cout << "S " << mode << ' ' << clamped << ' ' << lower_of<B> << ' ' << upper_of<B> << ' '
-                  << notch_of<B> << ' ' << rational{a} * rational{e} << ' ';
+                  << notch_of<B> << ' ' << rational{a * e} << ' ';
         try {
             std::cout << mul_into<B>(a, e);
         } catch (const inside_error& err) {
@@ -52,7 +52,7 @@ void store(rng_t& g, int n, const char* mode, bool clamped, bool ties) {
         std::cout << '\n';
         if (e != 0) {
             std::cout << "S " << mode << ' ' << clamped << ' ' << lower_of<B> << ' ' << upper_of<B> << ' '
-                      << notch_of<B> << ' ' << rational{a} / rational{e} << ' ';
+                      << notch_of<B> << ' ' << rational{*(a / e)} << ' ';
             out(div_into<B>(a, e));
             std::cout << '\n';
         }

@@ -870,14 +870,16 @@ TEST(ErrorHandlerTest, set_error_handler_redirects_failures_and_is_restorable) {
     ASSERT_EQ(get_error_handler(), before);
 }
 
-// A failed rational sink reaches the installed handler like any failed store.
-// (No inside stores a std::expected.)
-TEST(ErrorHandlerTest, expected_sinks_reach_the_handler) {
+// A zero divisor in a compound division reaches the installed handler like
+// any failed store. (No inside stores a std::expected; a rational's
+// arithmetic, whose zero divisor is a compile error, runs only at compile time.)
+TEST(ErrorHandlerTest, compound_zero_divisor_reaches_the_handler) {
     scoped_handler guard{&recording_handler};
     g_seen = errc{};
     try {
-        rational r = rational{1} / rational{0};
-        (void)r;
+        inside<{0, 10}>      x{5};
+        const inside<{0, 1}> zero{0};
+        x /= zero;
     } catch (const handler_fired& f) {
         EXPECT_EQ(f.code, errc::division_by_zero);
     }

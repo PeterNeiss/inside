@@ -16,6 +16,10 @@
 
 #include <gtest/gtest.h>
 
+#include "support.hpp"
+
+using beman::inside::test::exact;
+
 #include <cfloat>
 #include <cmath>
 #include <compare>
@@ -556,12 +560,12 @@ void expect_copysign_fmod_match_rational() {
             const rational rx{x}, ry{y};
             EXPECT_EQ(rational{math::copysign(x, y)}, ry < 0 ? -abs(rx) : abs(rx));
             if (ry != 0) {
-                const auto     r    = math::fmod(x, y);
-                const rational want = (rx - (rational{trunc((rx / ry).value())} * ry).value()).value();
+                const auto  r    = math::fmod(x, y);
+                const exact want = exact{rx} - trunc(exact{rx} / exact{ry}) * exact{ry};
                 if constexpr (is_expected_v<decltype(r)>)
-                    EXPECT_EQ(rational{*r}, want);
+                    EXPECT_EQ(exact{*r}, want);
                 else
-                    EXPECT_EQ(rational{r}, want);
+                    EXPECT_EQ(exact{r}, want);
             }
         }
 }

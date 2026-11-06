@@ -1148,7 +1148,8 @@ static void bench_rational() {
     });
     finish(mx);
 
-    // rational directly — the primitive every slow path sits on.
+    // rational directly — the primitive every slow path sits on (the library's
+    // run-time 64-bit steps; a rational's operators are compile time only).
     auto ra = group("rational engine add", kIters);
     ra.run("native fraction", [&] {
         ++i;
@@ -1156,7 +1157,7 @@ static void bench_rational() {
     });
     ra.run("rational", [&] {
         ++i;
-        doNotOptimizeAway((qa[i & kMask] + qb[i & kMask])->Num);
+        doNotOptimizeAway(beman::inside::detail::try_add(qa[i & kMask], qb[i & kMask])->Num);
     });
     finish(ra);
 
@@ -1167,7 +1168,7 @@ static void bench_rational() {
     });
     rm.run("rational", [&] {
         ++i;
-        doNotOptimizeAway((qa[i & kMask] * qb[i & kMask])->Num);
+        doNotOptimizeAway(beman::inside::detail::try_mul(qa[i & kMask], qb[i & kMask])->Num);
     });
     finish(rm);
 
