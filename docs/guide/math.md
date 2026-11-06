@@ -53,11 +53,40 @@ ready for `sin` and `cos`.
 | trigonometric (radians) | `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2` |
 | hyperbolic | `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh` |
 | exponential | `exp`, `exp2`, `log`, `log2`, `log10`, `pow`, `pow_base<B>` |
+| counting | `factorial`, `binomial`, `falling_factorial`, `rising_factorial`, `multinomial` |
+| number theory | `gcd`, `lcm` |
 
 Each function but the exact ones has the forms `fn(x)`, `fn_into<Out>(x)`
 and `fn<mode>(x)`; `pow_base<10>(x)` is 10ˣ, and `pow_base_into<Out, 10>(x)`
 names its output. The exact functions have `fn(x)` and `fn_into<Out>(x)`, and
-need no rounding mode.
+need no rounding mode. So do the counting and number-theory functions.
+
+## Counting
+
+`factorial`, `binomial`, `falling_factorial` (the k-permutations),
+`rising_factorial` and `multinomial` take counts: insides on the integers
+from 0, below 2⁶⁴. Their results are exact, and each result type is the range
+the inputs can produce, worked out while compiling:
+
+```cpp
+inside<{0, 20}> n = 20;
+auto f = math::factorial(n);                    // inside<{1, 2432902008176640000}>: 8 bytes
+using small = inside<{0, 60}>;
+auto c = math::binomial(small{49}, small{6});   // 13983816, on [0, C(60, 30)]
+auto p = math::falling_factorial(just<8>, just<3>);        // 336: podium orders
+auto m = math::multinomial(1_ins, 4_ins, 4_ins, 2_ins);    // 34650: MISSISSIPPI
+auto big = math::factorial(inside<{0, 100}>{100});         // 100!, on a wide raw
+```
+
+`binomial(n, k)` and `falling_factorial(n, k)` are 0 for k > n, and
+`rising_factorial(n, 0)` is 1. A result whose limit would pass 16384 bits
+(past 1754!) does not compile: its limit is computed while compiling.
+`gcd(a, b)` and `lcm(a, b)` take integer grids of any sign and size and
+follow `std::gcd` and `std::lcm`: never negative, `gcd(0, 0)` and `lcm(0, b)`
+are 0. Their result types keep the lattice the operands share (the gcd of two
+even grids is even). Each function has the forms `fn(…)` and `fn_into<Out>(…)`;
+[`combinatorics.cpp`](../../examples/combinatorics.cpp) uses them for
+odds as exact fractions.
 
 ## Errors
 

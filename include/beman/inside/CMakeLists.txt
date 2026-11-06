@@ -47,6 +47,7 @@ target_sources(
                 inside/range.hpp
                 math.hpp
                 math/constants.hpp
+                math/integer.hpp
                 math/detail/adaptive.hpp
                 math/detail/cores.hpp
                 math/detail/dd.hpp

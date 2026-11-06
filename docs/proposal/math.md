@@ -231,6 +231,15 @@ namespace std::math {
   template<class X, class Y> constexpr auto fmod(X x, Y y);  // expected iff y's grid holds 0
   template<intmax_t E, class In> constexpr auto pown(In x);  // E >= 0: widened at every multiply; even E >= 0
 
+  // counting and number theory: exact, on integer grids
+  template<class N> constexpr auto factorial(N n);                       // [lo!, hi!]
+  template<class N, class K> constexpr auto binomial(N n, K k);          // 0 for k > n
+  template<class N, class K> constexpr auto falling_factorial(N n, K k); // n!/(n-k)!, 0 for k > n
+  template<class N, class K> constexpr auto rising_factorial(N n, K k);  // n(n+1)...(n+k-1)
+  template<class... Ks> constexpr auto multinomial(Ks... ks);            // (sum k)! / prod k!
+  template<class A, class B> constexpr auto gcd(A a, B b);              // as std::gcd
+  template<class A, class B> constexpr auto lcm(A a, B b);              // as std::lcm
+
   // roots
   template<class In> constexpr auto sqrt(In x);              // expected iff x's grid holds a negative
   template<class In> constexpr auto cbrt(In x);
@@ -276,6 +285,8 @@ namespace std::units {
 | `fn<mode>(x)` | as `fn(x)`, the output rounding by `mode` | `mode` one of the rounding modes |
 | `abs`, `sign`, `copysign`, `floor`, `ceil`, `round`, `trunc`, `pown<E>` | exact | none; `round` sends a half away from zero |
 | `fmod(x, y)` | `x − trunc(x/y)·y`, exact, the sign of `x` | `division_by_zero`, iff `y`'s grid holds 0 |
+| `factorial`, `binomial`, `falling_factorial`, `rising_factorial`, `multinomial` | exact; the result grid is the range over the inputs' grids | ill-formed unless the inputs are integer grids from 0, or when the result's limit would pass an implementation limit (the reference implementation: 16384 bits) |
+| `gcd`, `lcm` | exact, `>= 0`, as `std::gcd` and `std::lcm`; the result keeps the operands' common lattice | ill-formed unless the operands are integer grids |
 | `sqrt(x)` | | `domain_error` for `x < 0`, iff `x`'s grid holds a negative |
 | `log`, `log2`, `log10`, `asin`, `acos`, `acosh`, `atanh` | | ill-formed unless `x`'s grid lies in the domain |
 | `tan(x)` | | `overflow` past `Out` (saturates under `clamp`) |
