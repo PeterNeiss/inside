@@ -227,27 +227,12 @@ constexpr wide_rational<K> round_to_denominator(const wide_rational<K>& x, const
     return {static_cast<wide_sint<K>>(neg ? -p : p), static_cast<wide_sint<K>>(q)};
 }
 
-// A reduced fraction as the fraction raw F (it fits F's limbs).
-template <typename F, std::size_t K>
-constexpr F narrow_fraction(const wide_rational<K>& r) noexcept {
-    using I = decltype(F::Num);
-    return F{static_cast<I>(r.Num), static_cast<I>(r.Den)};
-}
-
 // v in lowest terms as the fraction raw F, when F's grid proves it fits.
 template <typename F, std::size_t K>
 constexpr F fraction_raw_of(const wide_rational<K>& v) noexcept {
-    return narrow_fraction<F>(reduced(v));
-}
-
-// The same, or nothing when it needs more limbs than F has.
-template <typename F, std::size_t K>
-constexpr std::optional<F> continuous_raw_of(const wide_rational<K>& v) noexcept {
-    const auto    r   = reduced(v);
-    constexpr int cap = decltype(F::Num)::bits - 1; // magnitude bits
-    if (bit_width_of(abs(r.Num)) > cap || bit_width_of(r.Den) > cap)
-        return std::nullopt;
-    return narrow_fraction<F>(r);
+    const auto r = reduced(v);
+    using I      = decltype(F::Num);
+    return F{static_cast<I>(r.Num), static_cast<I>(r.Den)};
 }
 
 // b's value in lowest terms, in the fewest limbs that hold every value of B.
@@ -506,10 +491,11 @@ constexpr std::optional<wide_rational<K>> stand_in(const char* first, const char
         b = log2_bounds{b->Lo - d->Hi, b->Hi - d->Lo};
     }
     using I = wide_sint<K>;
-    if constexpr (G < 64 * static_cast<int>(K) - 2)
-        if (b->Hi <= -G)
-            return wide_rational<K>{neg ? I{-1} : I{1}, I{1} << G};
-    if constexpr (!Wrap && H < 64 * static_cast<int>(K) - 2)
+    // K ≥ exact_limbs<B> holds 3·exact_value_bits<B> + 8 bits: both stand-ins fit.
+    static_assert(G < 64 * static_cast<int>(K) - 2 && H < 64 * static_cast<int>(K) - 2);
+    if (b->Hi <= -G)
+        return wide_rational<K>{neg ? I{-1} : I{1}, I{1} << G};
+    if constexpr (!Wrap)
         if (b->Lo >= H)
             return wide_rational<K>{neg ? -(I{1} << H) : I{1} << H, I{1}};
     return std::nullopt;
@@ -784,10 +770,6 @@ constexpr Result exact_result(const wide_rational<K>& v) noexcept {
     return Result::from_raw(raw_of_slot<Result>(exact_index<Result, round_mode::trunc>(v).Index));
 }
 
-template <insidable B>
-constexpr B exact_integer_value(imax val) noexcept {
-    return exact_result<B>(exact_of(val));
-}
 } // namespace beman::inside::detail
 
 #endif // BEMAN_INSIDE_INSIDE_DETAIL_WIDE_VALUE_HPP

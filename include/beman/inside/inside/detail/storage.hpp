@@ -312,22 +312,16 @@ template <insidable B>
         return trunc(as_rational(b));
 }
 
-// The B of an integer val on B's lattice, exactly (wide_value.hpp): the
-// offset (val − Lower)/Notch through wide integers, as its 64-bit steps may
-// pass 2^64 on a wide span.
-template <insidable B>
-constexpr B exact_integer_value(imax val) noexcept;
-
+// The callers store an integer of B (a fold count, a native quotient or
+// remainder) on an integer lattice with a nonzero notch (a carry point
+// {2, 2} has notch 1).
 template <insidable B>
 constexpr void from_value(B& b, imax val) {
+    static_assert(notch64<B>.Num != 0 && abs_den(notch64<B>.Den) == 1 && abs_den(lower64<B>.Den) == 1);
     if constexpr (value_storage<B>)
         b = B::from_raw(raw_cast<B>(val));
-    else if constexpr (abs_den(notch64<B>.Den) == 1 && abs_den(lower64<B>.Den) == 1)
+    else
         b = B::from_raw(raw_cast<B>((static_cast<umax>(val) - static_cast<umax>(lower_imax<B>)) / notch64<B>.Num));
-    else if constexpr (q_format_fits<B>)
-        b = B::from_raw(q_format_encode<B>(val));
-    else // index storage on a fractional lattice
-        b = exact_integer_value<B>(val);
 }
 
 //-------------------------------------------------------------------------
@@ -477,21 +471,18 @@ template <insidable L, typename P>
 // result or step past the rational range is errc::overflow.
 template <insidable L, typename P>
 [[nodiscard]] constexpr std::expected<rational, errc> try_round_to_lattice(rational v) {
-    if constexpr (!notched<L>)
-        return v;
-    else {
-        const auto q = anchored<L>
-                           ? try_div(v, notch64<L>)
-                           : try_sub(v, lower64<L>).and_then([](rational off) { return try_div(off, notch64<L>); });
-        if (!q)
-            return q;
-        const auto [base, step] = lattice_step_of<L, P>(*q, v < 0);
-        const auto j            = step ? try_add(base, rational{1}) : std::expected<rational, errc>{base};
-        if (!j)
-            return j;
-        const auto rel = try_mul(*j, notch64<L>);
-        return (rel && !anchored<L>) ? try_add(lower64<L>, *rel) : rel;
-    }
+    static_assert(notched<L>);
+    const auto q = anchored<L>
+                       ? try_div(v, notch64<L>)
+                       : try_sub(v, lower64<L>).and_then([](rational off) { return try_div(off, notch64<L>); });
+    if (!q)
+        return q;
+    const auto [base, step] = lattice_step_of<L, P>(*q, v < 0);
+    const auto j            = step ? try_add(base, rational{1}) : std::expected<rational, errc>{base};
+    if (!j)
+        return j;
+    const auto rel = try_mul(*j, notch64<L>);
+    return (rel && !anchored<L>) ? try_add(lower64<L>, *rel) : rel;
 }
 
 // Round, then range-check. Lower and Upper are lattice points, so rounding

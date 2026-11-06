@@ -253,10 +253,9 @@ struct assignment<L, R> {
         if constexpr (!notched<L> && grid_of<L>.MaxDenominator != 0 && uses_flag<L, P, snap>) {
             // A bounded continuous grid rounds onto its bound first, too: a
             // fold keeps the denominator, so the folded value stays on it.
-            const auto r = try_rational(round_to_bound<L, plain_t<P>>(exact_of(rhs_r)));
-            if (!r) [[unlikely]]
-                return wrap_exact(lhs, exact_of(rhs_r), policy, action);
-            rhs_r = *r;
+            // (L's bound fits imax, and a Farey neighbour p/q of N/d with
+            // q ≤ bound < d has p ≤ N: a 64-bit rational.)
+            rhs_r = rational_of(round_to_bound<L, plain_t<P>>(exact_of(rhs_r)));
         } else if constexpr (uses_flag<L, P, snap>) {
             const auto r = try_round_to_lattice<L, P>(rhs_r);
             if (!r) [[unlikely]]
@@ -426,12 +425,7 @@ struct assignment<L, R> {
             // a rounding policy, else reported (but unsafe).
             if (abs_den(rv.Den) > to_rational(grid_of<L>.MaxDenominator).Num) [[unlikely]] {
                 if constexpr (uses_flag<L, P, snap>) {
-                    const auto o = onto_bound<L, plain_t<P>>(exact_of(rv));
-                    const auto r =
-                        o ? try_rational(*o) : std::expected<rational, errc>{std::unexpected{errc::rounding_error}};
-                    if (!r)
-                        return report_failure(lhs, policy, action, errc::rounding_error);
-                    lhs = L::from_raw(*r);
+                    lhs = L::from_raw(rational_of(onto_bound<L, plain_t<P>>(exact_of(rv))));
                     return;
                 } else if (std::is_constant_evaluated() || is_checked(flags_of<L> | plain_t<P>::Flags))
                     return report_failure(lhs, policy, action, errc::rounding_error);
@@ -841,12 +835,7 @@ struct assignment<L, R> {
 
     // L's raw for R's offset 0: Offset + raw_lo<L>, which is_integer_mapping
     // proves fits imax (Offset alone may not, e.g. 2^63 into a full int64).
-    static constexpr imax map_bias = [] {
-        if constexpr (is_integer_mapping)
-            return signed_numerator(Offset + (index_storage<L> ? rational{0} : lower64<L>));
-        else
-            return imax{0};
-    }();
+    static constexpr imax map_bias = signed_numerator(Offset + (index_storage<L> ? rational{0} : lower64<L>));
 
     // Map rhs.Raw into L's raw space (requires is_integer_mapping): Factor
     // scales R's 0-based offset, map_bias adds L's raw for offset 0. Every

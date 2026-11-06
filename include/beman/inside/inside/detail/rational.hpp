@@ -397,8 +397,7 @@ template <bool Loud>
     const umax ad = abs_den(a.Den), bd = abs_den(b.Den), g = std::gcd(ad, bd);
     W          num = signed_numerator<W>(a) * W{bd / g} + signed_numerator<W>(b) * W{ad / g};
     W          den = W{ad} * W{bd / g};
-    if (num.is_zero())
-        return rational{0};
+    // (num is nonzero: a + b == 0 needs equal denominators, a 64-bit step.)
     const W x      = wide_gcd(abs(num), den);
     num            = num / x;
     den            = den / x;
@@ -805,8 +804,6 @@ BEMAN_INSIDE_RATIONAL_OP(/)
 [[nodiscard]] inline constexpr bool divides_evenly(rational dividend, rational divisor) {
     if (divisor == 0)
         return true; // convention: everything divides 0 evenly
-    if (dividend.Num == 0)
-        return true; // 0 / anything is the integer 0
 
     // dividend/divisor ∈ ℤ without forming the (possibly umax-overflowing)
     // quotient numerator. In lowest terms dividend = p/q, divisor = r/s; the

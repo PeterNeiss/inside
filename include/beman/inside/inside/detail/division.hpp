@@ -391,10 +391,10 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, call_policy<G, E> policy) ->
         if constexpr (!zero_unchecked)
             if (d.Num.is_zero())
                 return zero();
-        if constexpr (fraction_storage<result>)
-            return result::from_raw(fraction_raw_of<raw_t<result>>(exact_of(lhs) / d));
-        else
-            return result::from_raw(rational_of(exact_of(lhs) / d));
+        // (A wide operand puts the quotient's numerator or denominator bound
+        // past 64 bits: a fraction raw.)
+        static_assert(fraction_storage<result>);
+        return result::from_raw(fraction_raw_of<raw_t<result>>(exact_of(lhs) / d));
     } else if constexpr (int_quotient_fits) {
         // Two integer raws: J_L·Notch_L / (J_R·Notch_R) as one fraction of
         // value indices, reduced once — no operand decodes, no checked divide.

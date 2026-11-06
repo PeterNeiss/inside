@@ -234,25 +234,13 @@ inline constexpr grid_int source_hi = [] {
         return grid_int{1} << 64;
 }();
 
-// A value off a bounded continuous grid (its reduced denominator past
-// MaxDenominator) rounded onto it by P's rounding, kept within [Lower,
-// Upper]: a limit itself off the bound moves to the nearest fraction inside.
-// Empty when no fraction of the bound lies in range.
+// A value of [Lower, Upper] off a bounded continuous grid (its reduced
+// denominator past MaxDenominator) rounded onto it by P's rounding. The
+// limits are on the bound (grid validation), so the Farey neighbours of a
+// value between them are too: the result stays in range.
 template <insidable L, typename P, std::size_t K>
-constexpr std::optional<wide_rational<std::max(K, exact_limbs<L>)>> onto_bound(const wide_rational<K>& v) noexcept {
-    constexpr std::size_t KK = std::max(K, exact_limbs<L>);
-    using F                  = wide_rational<KK>;
-    using W                  = wide_sint<KK>;
-    const W D                = static_cast<W>(grid_numerator(grid_of<L>.MaxDenominator));
-    const F lo = exact_of_grid<KK>(lower_of<L>), hi = exact_of_grid<KK>(upper_of<L>);
-    F       r = round_to_bound<L, P>(F{v});
-    if (r < lo)
-        r = round_to_denominator<round_mode::ceil>(lo, D);
-    else if (hi < r)
-        r = round_to_denominator<round_mode::floor>(hi, D);
-    if (r < lo || hi < r)
-        return std::nullopt;
-    return r;
+constexpr wide_rational<std::max(K, exact_limbs<L>)> onto_bound(const wide_rational<K>& v) noexcept {
+    return round_to_bound<L, P>(wide_rational<std::max(K, exact_limbs<L>)>{v});
 }
 
 //---------------------------------------------------------------------------
@@ -268,9 +256,8 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
     auto fail = [&](errc code) { report_failure(lhs, policy, action, code); };
     if constexpr (fraction_storage<L>) {
         // A continuous grid past 64 bits: the value itself, reduced, when it
-        // lies within the limits and fits the raw's limbs. (The raw is sized
-        // from the limits and the bound, so an in-range value on the bound
-        // always fits; the overflows below guard that invariant.)
+        // lies within the limits. (The raw is sized from the limits and the
+        // bound, so an in-range value on the bound always fits.)
         constexpr std::size_t   KK = std::max(K, exact_limbs<L>);
         const wide_rational<KK> lo = exact_of_grid<KK>(lower_of<L>), hi = exact_of_grid<KK>(upper_of<L>);
         auto                    store = [&](const wide_rational<KK>& x) {
@@ -279,21 +266,12 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
             constexpr wide_rational<KK> bound = exact_of_grid<KK>(grid_of<L>.MaxDenominator);
             if (bound.Num < reduced(x).Den) [[unlikely]] {
                 if constexpr (uses_flag<L, P, snap>) {
-                    const auto o = onto_bound<L, plain_t<P>>(x);
-                    if (!o)
-                        return fail(errc::rounding_error);
-                    if (const auto r = continuous_raw_of<raw_t<L>>(*o)) [[likely]]
-                        lhs = L::from_raw(*r);
-                    else
-                        fail(errc::overflow);
+                    lhs = L::from_raw(fraction_raw_of<raw_t<L>>(onto_bound<L, plain_t<P>>(x)));
                     return;
                 } else if (std::is_constant_evaluated() || is_checked(flags_of<L> | plain_t<P>::Flags))
                     return fail(errc::rounding_error);
             }
-            if (const auto r = continuous_raw_of<raw_t<L>>(x)) [[likely]]
-                lhs = L::from_raw(*r);
-            else
-                fail(errc::overflow);
+            lhs = L::from_raw(fraction_raw_of<raw_t<L>>(x));
         };
         wide_rational<KK> x{v};
         // Round first, as the builtin stores do: a value just past a limit

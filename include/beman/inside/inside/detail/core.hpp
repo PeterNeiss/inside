@@ -822,21 +822,14 @@ struct inside {
     // Compound assignment private helpers — extracted to keep each
     // `operator*=` body focused on its own arithmetic shape.
     //-----------------------------------------------------------------------
+    // An expected result (/ and % by a grid that holds 0) holds a value here:
+    // its only error is the zero divisor, which /= and %= report first.
     template <typename Result>
     constexpr inside& assign_op_result(const Result& r) {
-        if constexpr (detail::expected_like<Result>) {
-            // A failed op is reported through this type's policy (throw / handler);
-            // *this stays unchanged. `*r` (not value()): no bad_expected_access.
-            if (!r.has_value())
-                return report_error(r.error());
+        if constexpr (detail::expected_like<Result>)
             *this = *r;
-        } else
+        else
             *this = r;
-        return *this;
-    }
-
-    constexpr inside& report_error(errc e) {
-        make_policy<P>().report(e);
         return *this;
     }
 
