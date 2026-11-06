@@ -1875,4 +1875,29 @@ TEST(ArithmeticTest, multiply_by_point_matches_exact_product) {
     EXPECT_EQ(rational{midpoint(a, b)}, (rational{7, 2}));
 }
 
+// sum<Target> of continuous elements added 64-bit rationals: a partial sum
+// whose denominator passed 64 bits reported overflow, however small the
+// total. It adds exactly over lcm(1..D) now; n copies of a point are n·value.
+TEST(ArithmeticTest, continuous_sum_is_exact) {
+    using fine = inside<{{0, 1}, max_denominator{2000}}>;
+    // Six primes: the reduced sum's denominator, their product, passes 2^64.
+    const std::array<fine, 6> r{fine{rational{1, 1999}},
+                                fine{rational{1, 1997}},
+                                fine{rational{1, 1993}},
+                                fine{rational{1, 1987}},
+                                fine{rational{1, 1979}},
+                                fine{rational{1, 1973}}};
+    using total  = inside<{{0, 6}, per<(1ll << 40)>}, round_nearest>;
+    const auto s = beman::inside::sum<total>(r); // Σ 1/p, rounded once
+    EXPECT_EQ(s.raw(), 3318520424);              // round(2^40 · Σ 1/p)
+    using sixths = inside<{{-1, 1}, max_denominator{6}}>;
+    const std::array<sixths, 4> h{
+        sixths{rational{1, 2}}, sixths{rational{1, 3}}, sixths{rational{1, 6}}, sixths{rational{-5, 6}}};
+    using sixths_total = inside<{{-4, 4}, max_denominator{6}}>;
+    EXPECT_EQ(rational{beman::inside::sum<sixths_total>(h)}, (rational{1, 6}));
+    const std::array<std::remove_cvref_t<decltype(just<1, 3>)>, 5> p{}; // a point grid: 5 copies of 1/3
+    using thirds_total = inside<{{0, 2}, max_denominator{3}}>;
+    EXPECT_EQ(rational{beman::inside::sum<thirds_total>(p)}, (rational{5, 3}));
+}
+
 } // namespace pinned_tests
