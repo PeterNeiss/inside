@@ -190,14 +190,15 @@ struct rational {
     static constexpr auto inv_impl(rational);
 
   private:
-    // The two domain errors of a denominator: 0 (undefined) and imax_min
-    // (cannot be negated without UB, which every sign-flip in the file
-    // assumes is well-defined).
+    // The two invalid denominators: 0 (n/0 is a division by zero, as in
+    // parse and big_rational) and imax_min (does not fit: it cannot be
+    // negated without UB, which every sign-flip in the file assumes is
+    // well-defined).
     static constexpr void check_den(imax den) {
         if (den == 0)
-            raise(errc::domain_error, "Denominator of Zero is invalid");
+            raise(errc::division_by_zero, "rational: zero denominator");
         if (den == std::numeric_limits<imax>::min())
-            raise(errc::domain_error, "Denominator imax_min is invalid (cannot be negated)");
+            raise(errc::overflow, "rational: denominator imax_min (cannot be negated)");
     }
 
     // Domain check + canonical-zero + gcd reduction; used by the integral ctors.

@@ -111,7 +111,7 @@ library does not use `std::error_code` or `<system_error>`.
 |---|---|
 | `overflow` | the value does not fit its destination: an inside's range, a native type (`to<T>()`), a 64-bit rational |
 | `rounding_error` | the value is between two notches, and the policy does not round |
-| `division_by_zero` | the divisor is 0 |
+| `division_by_zero` | the divisor is 0, or a fraction's denominator is (`rational{1, 0}`, `parse("1/0")`) |
 | `domain_error` | the argument is outside the function's mathematical domain: `sqrt` of a negative, `pow` of a negative base, a negative value into an unsigned `to<T>()`, bad `grid::try_make` parameters |
 | `not_finite` | a NaN or an infinity came in from a `double` |
 | `invalid_format` | text that is not a number (`parse`, `operator>>`) |

@@ -67,9 +67,14 @@ TEST(RationalTest, rational_construction_normalises) {
     }
 
     {
-        SCOPED_TRACE("denominator zero throws");
+        SCOPED_TRACE("denominator zero: division_by_zero, as parse(\"1/0\")");
         ASSERT_THROW((void)((rational{1u, 0})), beman::inside::inside_error);
         ASSERT_THROW((void)((rational{1, 0})), beman::inside::inside_error);
+        try {
+            (void)rational{1, 0};
+        } catch (const beman::inside::inside_error& e) {
+            EXPECT_EQ(e.Code, errc::division_by_zero);
+        }
     }
 
     {
