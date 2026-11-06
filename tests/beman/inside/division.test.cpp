@@ -280,7 +280,7 @@ umax reference_round_quotient(umax num, umax den) {
         const umax q = num / den, r = num % den;
         bool       negative = false;
         if constexpr (lower64<L> < 0) {
-            constexpr rational c = -*lower_index64<L>;
+            constexpr rational c = -lower_index64<L>;
             using W              = wide_uint<2>;
             negative             = W{num} * W{abs_den(c.Den)} < W{c.Num} * W{den};
         }

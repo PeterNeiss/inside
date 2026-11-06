@@ -167,10 +167,10 @@ Each operation reports through one channel:
 | `try_make`, `parse`, `to<T>()` where it can fail | the returned `std::expected` |
 | `/` and `%` by a grid that holds 0 | the returned `std::expected` |
 
-A `rational`'s own arithmetic (`p + q`, `rational r = p / q;`) is compile time
-only, like a grid number's: an overflow or a zero divisor there is a compile
-error. At run time an exact value is an inside, whose grid bounds every
-result.
+A `rational`'s own arithmetic (`p + q`, `p / q`) is compile time only, like
+a grid number's: an overflow or a zero divisor there is a compile error, so
+the result is a plain `rational`. At run time an exact value is an inside,
+whose grid bounds every result.
 
 An inside never stores a `std::expected`: `T x = a / b;`, `x = a / b;`,
 `x += a / b;` and the policy handles' `=` are deleted. Check the `expected`

@@ -606,7 +606,7 @@ void prop_non_notch_assign(fuzz_state& s, long iters) {
         constexpr rational notch = detail::notch64<B>;
         constexpr rational lo    = detail::lower64<B>;
         constexpr rational hi    = detail::upper64<B>;
-        constexpr rational half  = *(notch / 2_r);
+        constexpr rational half  = (notch / 2_r);
 
         for (long i = 0; i < iters; ++i) {
             s.iter = i;
@@ -687,7 +687,7 @@ void prop_subnormal_construct(fuzz_state& s, long iters) {
         // The floor of a tiny positive value: 0, or on a lattice that misses 0
         // the point just below it.
         constexpr rational                     n     = detail::notch64<B>;
-        constexpr rational                     below = *(lo + *(rational{floor(*(-lo / n))} * n));
+        constexpr rational                     below = lo + rational{floor(-lo / n)} * n;
         std::uniform_real_distribution<double> mantissa(1.0, 2.0);
         std::uniform_int_distribution<int>     exp_dist(-300, -70);
         for (long i = 0; i < iters; ++i) {
@@ -872,7 +872,7 @@ void prop_casts_fixed(fuzz_state& s, long iters) {
         s.current_prop           = "casts_fixed";
         constexpr rational notch = detail::notch64<B>;
         constexpr rational lo    = detail::lower64<B>;
-        constexpr rational half  = *(notch / 2_r);
+        constexpr rational half  = (notch / 2_r);
         for (long i = 0; i < iters; ++i) {
             s.iter = i;
             std::uniform_int_distribution<umax> dist(0, max_index_of<B> - 1);
@@ -910,7 +910,7 @@ void prop_predicates(fuzz_state& s, long iters) {
         constexpr rational notch = detail::notch64<B>;
         constexpr rational lo    = detail::lower64<B>;
         constexpr rational hi    = detail::upper64<B>;
-        constexpr rational half  = *(notch / 2_r);
+        constexpr rational half  = (notch / 2_r);
         for (long i = 0; i < iters; ++i) {
             s.iter = i;
             std::uniform_int_distribution<umax> dist(0, max_index_of<B>);
@@ -929,7 +929,7 @@ void prop_predicates(fuzz_state& s, long iters) {
                 FUZZ_REQUIRE(s, throws_with(errc::rounding_error, [&] { (void)checked_cast<B>(mid); }));
             }
             // Above the top notch: overflow (lossy).
-            constexpr double over = static_cast<double>(*(hi + notch));
+            constexpr double over = static_cast<double>((hi + notch));
             FUZZ_REQUIRE(s, conversion_overflows<B>(over));
             FUZZ_REQUIRE(s, conversion_loses<B>(over));
         }

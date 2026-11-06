@@ -126,12 +126,20 @@ inline constexpr bool rational_readable = !wide_valued<B> || (lattice_past_ratio
 template <insidable B>
 constexpr auto exact_of(const B& b); // wide_value.hpp
 
-// The value indices Lower/Notch and Upper/Notch, as 64-bit rationals (for
-// the 64-bit paths of a notched grid).
+// The value indices Lower/Notch and Upper/Notch of a notched grid (0 on a
+// continuous one), exactly, and as 64-bit rationals (for the 64-bit paths)
+// where both fit.
 template <insidable B>
-inline constexpr auto lower_index64 = lower64<B> / notch64<B>;
+inline constexpr grid_rational lower_index_of = notched<B> ? lower_of<B> / notch_of<B> : grid_rational{0};
 template <insidable B>
-inline constexpr auto upper_index64 = upper64<B> / notch64<B>;
+inline constexpr grid_rational upper_index_of = notched<B> ? upper_of<B> / notch_of<B> : grid_rational{0};
+template <insidable B>
+inline constexpr bool value_indices_fit64 =
+    notched<B> && fits_rational(lower_index_of<B>) && fits_rational(upper_index_of<B>);
+template <insidable B>
+inline constexpr rational lower_index64 = to_rational(lower_index_of<B>);
+template <insidable B>
+inline constexpr rational upper_index64 = to_rational(upper_index_of<B>);
 
 // Index raw → double in one IEEE operation. On an anchored grid with Notch
 // p/q the value is J·p/q, J = raw + Lower/Notch. With |J·p| and q at most 2^53
@@ -146,7 +154,7 @@ struct index_double_codec {
 };
 template <insidable B>
 inline constexpr index_double_codec index_double = [] {
-    if constexpr (!integer_index_storage<B> || !anchored<B> || wide_valued<B>)
+    if constexpr (!integer_index_storage<B> || !anchored<B> || wide_valued<B> || !value_indices_fit64<B>)
         return index_double_codec{};
     else {
         constexpr umax k53 = umax{1} << 53;
@@ -154,11 +162,11 @@ inline constexpr index_double_codec index_double = [] {
         const auto     lo = lower_index64<B>, hi = upper_index64<B>;
         if (abs_den(n.Den) > k53)
             return index_double_codec{};
-        const umax m = lo->Num > hi->Num ? lo->Num : hi->Num; // max |J|
+        const umax m = lo.Num > hi.Num ? lo.Num : hi.Num; // max |J|
         if (m > k53 / n.Num)
             return index_double_codec{};
         return index_double_codec{
-            true, signed_numerator(*lo), static_cast<imax>(n.Num), static_cast<double>(abs_den(n.Den))};
+            true, signed_numerator(lo), static_cast<imax>(n.Num), static_cast<double>(abs_den(n.Den))};
     }
 }();
 
@@ -560,7 +568,7 @@ template <insidable L, typename P>
     constexpr round_mode m        = rounding_for<L, P>;
     bool                 negative = false;
     if constexpr (lower64<L> < 0) {
-        constexpr rational c = -*lower_index64<L>; // > 0
+        constexpr rational c = -lower_index64<L>; // > 0
         using W              = wide_uint<2>;
         negative             = W{q * den + r} * W{abs_den(c.Den)} < W{c.Num} * W{den};
     }

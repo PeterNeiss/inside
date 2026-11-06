@@ -104,8 +104,8 @@ TEST(RationalTest, rational_construction_normalises) {
     {
         SCOPED_TRACE("user-defined literals");
         ASSERT_EQ(1_r, (rational{1u, 1}));
-        ASSERT_EQ(*(3_r / 2), (rational{3u, 2}));
-        ASSERT_EQ(*(-6_r / 16), (rational{-3, 8}));
+        ASSERT_EQ((3_r / 2), (rational{3u, 2}));
+        ASSERT_EQ((-6_r / 16), (rational{-3, 8}));
         ASSERT_EQ(2.5_r, (rational{5u, 2}));
     }
 }
@@ -184,15 +184,15 @@ TEST(RationalTest, rational_arithmetic) {
         static_assert(rational{3, 2} + rational{1, 5} == rational{17u, 10});
         static_assert(rational{3, 2} - rational{1, 5} == rational{13u, 10});
         static_assert(rational{3, 2} / rational{1, 2} == 3_r);
-        static_assert(*(rational{3, 2} * rational{1, 2}) == rational{3u, 4});
+        static_assert((rational{3, 2} * rational{1, 2}) == rational{3u, 4});
     }
 
     {
         SCOPED_TRACE("zero arms");
-        ASSERT_EQ((*(rational{3u, 2} + 0_r)), (rational{3u, 2}));
-        ASSERT_EQ((*(0_r + rational{3u, 2})), (rational{3u, 2}));
-        ASSERT_EQ((*(rational{3u, 2} * 0_r)), 0_r);
-        ASSERT_EQ((*(0_r / rational{3u, 2})), 0_r);
+        ASSERT_EQ(((rational{3u, 2} + 0_r)), (rational{3u, 2}));
+        ASSERT_EQ(((0_r + rational{3u, 2})), (rational{3u, 2}));
+        ASSERT_EQ(((rational{3u, 2} * 0_r)), 0_r);
+        ASSERT_EQ(((0_r / rational{3u, 2})), 0_r);
     }
 
     {
@@ -205,8 +205,8 @@ TEST(RationalTest, rational_arithmetic) {
     {
         SCOPED_TRACE("self-cancel returns zero");
         constexpr rational a{3u, 7};
-        static_assert(*(a + (-a)) == 0_r);
-        static_assert(*(a - a) == 0_r);
+        static_assert((a + (-a)) == 0_r);
+        static_assert((a - a) == 0_r);
     }
 
     {
@@ -318,7 +318,7 @@ TEST(RationalTest, rational_overflow_detection) {
         SCOPED_TRACE("cross-cancellation avoids spurious overflow on common factors");
         // (M/5)/2 + (M/5)/2 — common denominator avoids cross-multiplication.
         constexpr auto small = rational{M / 5, 2};
-        static_assert((small + small).has_value());
+        static_assert(small + small == rational{M / 5});
     }
 
     {
@@ -328,20 +328,20 @@ TEST(RationalTest, rational_overflow_detection) {
         // overflow.
         constexpr auto a = rational{M / 5, 4};
         constexpr auto b = rational{1u, 6};
-        static_assert((a + b).has_value());
+        static_assert(a + b == rational{3 * (M / 5) + 2, 12});
     }
 
     {
         SCOPED_TRACE("add unequal-denominator value correctness");
         // Catches regressions in the lcm-based common-denominator computation.
         // 1/4 + 1/6 = 3/12 + 2/12 = 5/12         (gcd=2, lcm=12)
-        static_assert(*(rational{1u, 4} + rational{1u, 6}) == rational{5u, 12});
+        static_assert((rational{1u, 4} + rational{1u, 6}) == rational{5u, 12});
         // 1/2 + 1/3 = 3/6 + 2/6 = 5/6            (gcd=1, lcm=6)
-        static_assert(*(rational{1u, 2} + rational{1u, 3}) == rational{5u, 6});
+        static_assert((rational{1u, 2} + rational{1u, 3}) == rational{5u, 6});
         // 3/8 + 5/12 = 9/24 + 10/24 = 19/24      (gcd=4, lcm=24)
-        static_assert(*(rational{3u, 8} + rational{5u, 12}) == rational{19u, 24});
+        static_assert((rational{3u, 8} + rational{5u, 12}) == rational{19u, 24});
         // mixed signs: 5/6 - 1/4 = 10/12 - 3/12 = 7/12
-        static_assert(*(rational{5u, 6} + rational{1, -4}) == rational{7u, 12});
+        static_assert((rational{5u, 6} + rational{1, -4}) == rational{7u, 12});
     }
 
     {
@@ -1190,8 +1190,8 @@ TEST(InternalsTest, rational_of_two_unsigned_rejects_a_large_denominator) {
 // Checked rational / and + reported overflow for results that fit.
 TEST(InternalsTest, rational_ops_reduce_before_overflowing) {
     constexpr umax big = (umax{1} << 63) + 2;
-    static_assert(*(rational{big} / rational{big}) == rational{1});
-    static_assert(*(rational{big} / rational{big, 3u}) == rational{3});
+    static_assert((rational{big} / rational{big}) == rational{1});
+    static_assert((rational{big} / rational{big, 3u}) == rational{3});
     static_assert(*detail::try_add(rational{(umax{1} << 63) + 1, 2u}, rational{1, 6}) ==
                   rational{3 * (umax{1} << 62) + 2, 3u});
     static_assert(*detail::try_add(rational{~umax{0}, 2u}, rational{1u, 2u}) == rational{umax{1} << 63});
@@ -1228,11 +1228,11 @@ TEST(InternalsTest, rational_and_long_double) {
 #if WIDE_LONG_DOUBLE
     static_assert(rational{0} != 1e-30L && rational{0} < 1e-30L);
     static_assert(rational{1} < 1.0L + 0x1p-63L && !(rational{1} == 1.0L + 0x1p-63L));
-    static_assert(rational{1.0L + 0x1p-60L} == (rational{1} + rational{1, I64{1} << 60}).value());
+    static_assert(rational{1.0L + 0x1p-60L} == (rational{1} + rational{1, I64{1} << 60}));
     static_assert(rational{3} < 1e4000L && rational{3} > -1e4000L);
     EXPECT_TRUE(rational{1} < test::at_run_time(1.0L + 0x1p-63L));
     EXPECT_TRUE((rational{1, 3} < test::at_run_time(1.0L / 3))); // 1/3 rounds up in 64 bits
-    EXPECT_EQ(rational{test::at_run_time(0.5L + 0x1p-60L)}, (rational{1, 2} + rational{1, I64{1} << 60}).value());
+    EXPECT_EQ(rational{test::at_run_time(0.5L + 0x1p-60L)}, (rational{1, 2} + rational{1, I64{1} << 60}));
 #endif
 }
 

@@ -95,13 +95,13 @@ TEST(InsideArithmeticTest, inside_mul) {
     u4   d{3};
     u4   e{3.25};
     auto f = d * e;
-    ASSERT_EQ(f, *(39_r / 4));
+    ASSERT_EQ(f, (39_r / 4));
 
     using n4 = u4::negated_type;
     n4   g{-2};
     n4   h{-2.25};
     auto i = g * h;
-    ASSERT_EQ(i, *(9_r / 2));
+    ASSERT_EQ(i, (9_r / 2));
 
     // Mixed signs
     ASSERT_EQ(d * g, -6);
@@ -116,7 +116,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
         constexpr r    a{102};
         constexpr r    b{16};
         constexpr auto c = a / b; // zero-free divisor: a plain value
-        static_assert(c == *(51_r / 8));
+        static_assert(c == (51_r / 8));
     }
 
     {
@@ -294,8 +294,8 @@ TEST(InsideArithmeticTest, inside_expected_ops_propagate_error) {
 // inside rational-storage expected ops do not double-wrap
 TEST(InsideArithmeticTest, inside_rational_storage_expected_ops_do_not_double_wrap) {
     using frac   = inside<{{-10, 10}, max_denominator{100}}>;
-    frac f1      = *(2_r / 3);
-    frac f2      = *(1_r / 3);
+    frac f1      = (2_r / 3);
+    frac f2      = (1_r / 3);
     auto ok      = [](frac v) -> std::expected<frac, errc> { return v; };
     auto failing = []() -> std::expected<frac, errc> { return std::unexpected{errc::overflow}; };
 
@@ -305,13 +305,13 @@ TEST(InsideArithmeticTest, inside_rational_storage_expected_ops_do_not_double_wr
     static_assert(std::is_same_v<decltype(ok(f1) + f2), std::expected<decltype(f1 + f2), errc>>);
     static_assert(std::is_same_v<decltype(ok(f1) / f2), decltype(f1 / f2)>); // already expected
 
-    ASSERT_EQ(*(ok(f1) - f2), *(1_r / 3));
-    ASSERT_EQ(*(ok(f1) * f2), *(2_r / 9));
+    ASSERT_EQ(*(ok(f1) - f2), (1_r / 3));
+    ASSERT_EQ(*(ok(f1) * f2), (2_r / 9));
 
     using pfrac = inside<{{1, 10}, max_denominator{100}}>;
     pfrac p1 = 3, p2 = 2;
     auto  pok = [](pfrac v) -> std::expected<pfrac, errc> { return v; };
-    ASSERT_EQ(*(pok(p1) / p2), *(3_r / 2));
+    ASSERT_EQ(*(pok(p1) / p2), (3_r / 2));
 }
 
 // The free div reports a zero divisor in its result, and into an errc&.
@@ -1088,84 +1088,6 @@ constexpr exp_r good(rational r) { return r; }
 constexpr exp_r bad(errc e = errc::overflow) { return std::unexpected{e}; }
 } // namespace
 
-// expected<rational> * expected<rational>
-TEST(ExpectedArithmeticTest, expected_rational_times_expected_rational) {
-    auto r = good(0.75_r) * good(rational{2, 3});
-    ASSERT_TRUE(r.has_value());
-    ASSERT_EQ(*r, 0.5_r);
-
-    ASSERT_FALSE((bad() * good(1_r)).has_value());
-    ASSERT_FALSE((good(1_r) * bad()).has_value());
-    ASSERT_FALSE((bad() * bad()).has_value());
-}
-
-// expected<rational> + expected<rational>
-TEST(ExpectedArithmeticTest, expected_rational_plus_expected_rational) {
-    auto r = good(0.25_r) + good(0.5_r);
-    ASSERT_TRUE(r.has_value());
-    ASSERT_EQ(*r, 0.75_r);
-
-    ASSERT_FALSE((bad() + good(0.25_r)).has_value());
-    ASSERT_FALSE((good(0.25_r) + bad()).has_value());
-}
-
-// expected<rational> - expected<rational>
-TEST(ExpectedArithmeticTest, expected_rational_minus_expected_rational) {
-    auto r = good(0.75_r) - good(0.5_r);
-    ASSERT_TRUE(r.has_value());
-    ASSERT_EQ(*r, 0.25_r);
-}
-
-// expected<rational> / expected<rational>, with the division_by_zero cause.
-// (A rational's arithmetic is compile time only: dividing by 0 there is a
-// compile error, so the cause comes from an operand.)
-TEST(ExpectedArithmeticTest, expected_rational_div_expected_rational) {
-    auto r = good(0.75_r) / good(0.5_r);
-    ASSERT_TRUE(r.has_value());
-    ASSERT_EQ(*r, 1.5_r);
-
-    auto z = good(0.75_r) / bad(errc::division_by_zero);
-    ASSERT_FALSE(z.has_value());
-    ASSERT_EQ(z.error(), errc::division_by_zero);
-}
-
-// The first error short-circuits and keeps its cause.
-TEST(ExpectedArithmeticTest, first_error_keeps_its_cause) {
-    auto r = bad(errc::division_by_zero) + bad(errc::overflow);
-    ASSERT_FALSE(r.has_value());
-    ASSERT_EQ(r.error(), errc::division_by_zero);
-
-    auto chained = (good(1_r) / bad(errc::division_by_zero)) * good(2_r) + good(3_r);
-    ASSERT_FALSE(chained.has_value());
-    ASSERT_EQ(chained.error(), errc::division_by_zero);
-}
-
-// expected<rational> op arithmetic and symmetric
-TEST(ExpectedArithmeticTest, expected_rational_op_arithmetic_and_symmetric) {
-    ASSERT_EQ(*(good(0.5_r) + 1), 1.5_r);
-    ASSERT_EQ(*(1 + good(0.5_r)), 1.5_r);
-    ASSERT_EQ(*(good(0.5_r) - 1), -0.5_r);
-    ASSERT_EQ(*(1 - good(0.5_r)), 0.5_r);
-    ASSERT_EQ(*(good(0.5_r) * 2), (rational{1, 1}));
-    ASSERT_EQ(*(2 * good(0.5_r)), (rational{1, 1}));
-    ASSERT_EQ(*(good(0.5_r) / 2), 0.25_r);
-    ASSERT_EQ(*(2 / good(0.5_r)), (rational{4, 1}));
-
-    ASSERT_FALSE((bad() + 1).has_value());
-    ASSERT_FALSE((1 + bad()).has_value());
-}
-
-// unary -expected<rational>
-TEST(ExpectedArithmeticTest, unary_expected_rational) {
-    auto r = -good(0.75_r);
-    ASSERT_TRUE(r.has_value());
-    ASSERT_EQ(*r, -0.75_r);
-
-    auto e = -bad(errc::division_by_zero);
-    ASSERT_FALSE(e.has_value());
-    ASSERT_EQ(e.error(), errc::division_by_zero);
-}
-
 // No inside stores a std::expected - not by construction, =, or a compound
 // op: check it and store *e, or use try_make(e), which passes the error on.
 TEST(ExpectedArithmeticTest, inside_does_not_store_an_expected) {
@@ -1589,7 +1511,7 @@ TEST(BoundedRationalTest, abs_copysign_fmod_keep_the_bound) {
 TEST(BoundedRationalTest, bounded_results_are_total_past_64_bit_intermediates) {
     using L = inside<{{1ull << 40, (1ull << 40) + 1}, max_denominator{4096}}>;
     using R = inside<{{-((1ll << 40) + 1), -(1ll << 40)}, max_denominator{4096}}>;
-    constexpr L    a{(rational{1ull << 40} + rational{1, 3}).value()};
+    constexpr L    a{(rational{1ull << 40} + rational{1, 3})};
     constexpr R    b{-(1ll << 40)};
     constexpr auto s = a + b;
     static_assert(insidable<decltype(s)>); // a plain value

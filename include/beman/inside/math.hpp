@@ -142,11 +142,11 @@ constexpr wide_rational<E> exact_to_int(const wide_rational<E>& v) noexcept {
 template <insidable Out, insidable AutoOut, insidable In>
 inline constexpr bool int_direct = [] {
     if constexpr (!std::same_as<Out, AutoOut> || !integer_storage<In> || !integer_storage<Out> || !notched<In> ||
-                  !anchored<In> || wide_valued<In> || wide_valued<Out>)
+                  !anchored<In> || wide_valued<In> || wide_valued<Out> || !value_indices_fit64<In>)
         return false;
     else {
-        const umax m = lower_index64<In>->Num > upper_index64<In>->Num ? lower_index64<In>->Num
-                                                                       : upper_index64<In>->Num; // max |J|
+        const umax m =
+            lower_index64<In>.Num > upper_index64<In>.Num ? lower_index64<In>.Num : upper_index64<In>.Num; // max |J|
         return m <= static_cast<umax>(std::numeric_limits<imax>::max()) / notch64<In>.Num;
     }
 }();
@@ -314,12 +314,12 @@ template <insidable Out, insidable InX, insidable InY>
     else if constexpr (detail::fmod_int_fast<Out, InX, InY>) {
         // One integer remainder in g-units; bit-identical to the rational path.
         constexpr rational g   = *detail::gcd(detail::notch64<InX>, detail::notch64<InY>);
-        constexpr imax     wx  = trunc((detail::notch64<InX> / g).value());
-        constexpr imax     wy  = trunc((detail::notch64<InY> / g).value());
-        constexpr imax     wo  = trunc((g / detail::notch64<Out>).value());
-        constexpr imax     lox = trunc((detail::lower64<InX> / g).value()); // exact: grid invariant
-        constexpr imax     loy = trunc((detail::lower64<InY> / g).value());
-        constexpr imax     loo = trunc((detail::lower64<Out> / detail::notch64<Out>).value());
+        constexpr imax     wx  = trunc(detail::notch64<InX> / g);
+        constexpr imax     wy  = trunc(detail::notch64<InY> / g);
+        constexpr imax     wo  = trunc(g / detail::notch64<Out>);
+        constexpr imax     lox = trunc(detail::lower64<InX> / g); // exact: grid invariant
+        constexpr imax     loy = trunc(detail::lower64<InY> / g);
+        constexpr imax     loo = trunc(detail::lower64<Out> / detail::notch64<Out>);
         const imax         a   = detail::raw_imax(x) * wx + (detail::index_storage<InX> ? lox : 0);
         const imax         b   = detail::raw_imax(y) * wy + (detail::index_storage<InY> ? loy : 0);
         const imax         r   = a % b; // |r| < |b|, in Out's range

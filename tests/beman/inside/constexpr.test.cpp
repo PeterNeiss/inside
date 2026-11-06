@@ -50,10 +50,10 @@ TEST(ConstexprTest, constexpr_rational_identities) {
 TEST(ConstexprTest, constexpr_rational_arithmetic) {
     // +/-/*//  return std::expected<rational, errc>; the * deref is the canonical
     // form used elsewhere in the codebase (mirrors `2_r/3` literal pattern).
-    static_assert(*(rational{3u, 2} + rational{1u, 5}) == rational{17u, 10});
-    static_assert(*(rational{3u, 4} - rational{1u, 4}) == rational{1u, 2});
-    static_assert(*(rational{2u, 3} * rational{3u, 4}) == rational{1u, 2});
-    static_assert(*(rational{1u, 2} / rational{1u, 4}) == rational{2u, 1});
+    static_assert((rational{3u, 2} + rational{1u, 5}) == rational{17u, 10});
+    static_assert((rational{3u, 4} - rational{1u, 4}) == rational{1u, 2});
+    static_assert((rational{2u, 3} * rational{3u, 4}) == rational{1u, 2});
+    static_assert((rational{1u, 2} / rational{1u, 4}) == rational{2u, 1});
 
     // gcd is also expected-returning
     static_assert(*gcd(rational{2u, 3}, rational{1u, 6}) == rational{1u, 6});
@@ -77,8 +77,8 @@ TEST(ConstexprTest, constexpr_rational_rounding_helpers) {
 
 // constexpr: rational inv and divides_evenly
 TEST(ConstexprTest, constexpr_rational_inv_and_divides_evenly) {
-    static_assert(*(1 / rational{3u, 4}) == rational{4u, 3});
-    static_assert(*(1 / rational{2u, 7}) == rational{7u, 2});
+    static_assert((1 / rational{3u, 4}) == rational{4u, 3});
+    static_assert((1 / rational{2u, 7}) == rational{7u, 2});
     // `1 / 0_r` is a compile error here — see file header.
 
     static_assert(divides_evenly(6_r, 2_r));
@@ -248,7 +248,7 @@ TEST(ConstexprTest, constexpr_division_returns_exact_value) {
     constexpr v    b{16};
     constexpr auto q = a / b;
     static_assert(!is_expected_v<decltype(q)>);
-    static_assert(q == *(51_r / 8));
+    static_assert(q == (51_r / 8));
 
     // round_toward_zero selects native integer division — result has integer raw
     using vi = inside<{0, 100}, round_toward_zero>;

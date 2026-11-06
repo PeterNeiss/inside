@@ -86,9 +86,8 @@ TEST(BigGridTest, assignment_policies) {
     c                                  = 1e31;
     EXPECT_TRUE(c == huge::from_raw(raw_2_100));
     inside<{{0, 1}, grid_rational{big_int{1}, pow2(80)}}, round_nearest> r = 0;
-    r = rational{1, 3}; // rounds to the nearest 2^-80
-    const bool close =
-        r > (rational{1, 3} - rational{1, 1 << 30}).value() && r < (rational{1, 3} + rational{1, 1 << 30}).value();
+    r                = rational{1, 3}; // rounds to the nearest 2^-80
+    const bool close = r > (rational{1, 3} - rational{1, 1 << 30}) && r < (rational{1, 3} + rational{1, 1 << 30});
     EXPECT_TRUE(close);
 }
 
@@ -434,7 +433,7 @@ TEST(WideGridTest, assignment_policies) {
     EXPECT_TRUE(c == 0);
     fine_wrap w = 0;
     w           = p34 + 1; // one past the top: 2^32 notches past it
-    EXPECT_TRUE(w == (rational{1} - tick).value());
+    EXPECT_TRUE(w == (rational{1} - tick));
 
     // errc-reporting policy.
     errc e{};
@@ -476,12 +475,12 @@ TEST(WideGridTest, comparisons) {
 }
 
 TEST(WideGridTest, arithmetic) {
-    fine a = 1.5, b = *(rational{1} + tick);
+    fine a = 1.5, b = (rational{1} + tick);
     auto sum = a + b; // {0, 2^35}, notch 2^-32
     static_assert(detail::wide_index_storage<decltype(sum)>);
-    EXPECT_TRUE(sum == (rational{5, 2} + tick).value());
+    EXPECT_TRUE(sum == (rational{5, 2} + tick));
     auto diff = a - b; // {−2^34, 2^34}
-    EXPECT_TRUE(diff == (rational{1, 2} - tick).value());
+    EXPECT_TRUE(diff == (rational{1, 2} - tick));
     auto neg = -a;
     EXPECT_TRUE(neg == -1.5_r);
     auto prod = a * inside<{0, 3}>{3}; // {0, 3·2^34}, notch 2^-32
@@ -565,7 +564,7 @@ TEST(WideGridTest, sum) {
     EXPECT_TRUE(beman::inside::sum<total>(v) == total::from_raw(detail::wide_uint<2>{1000} * e.raw()));
     // Offset (index raw, Lower ≠ 0) wide elements.
     std::vector<fine_signed> s{fine_signed{-1.5}, fine_signed{0.25}, fine_signed{tick}};
-    EXPECT_TRUE(beman::inside::sum<fine_signed>(s) == fine_signed{(rational{-5, 4} + tick).value()});
+    EXPECT_TRUE(beman::inside::sum<fine_signed>(s) == fine_signed{(rational{-5, 4} + tick)});
     // Into a 64-bit target, by its policy: the total is checked once.
     using coarse = inside<{0, 100}, round_nearest>;
     EXPECT_TRUE(beman::inside::sum<coarse>(std::vector<fine>(3, fine{2.25})) == 7);
@@ -686,7 +685,7 @@ TEST(WideGridTest, clamp_and_wrap_actions) {
     // One turn is 2^34 + 2^-32, so 3·2^34 + 2 = 3 turns + (2 − 3·2^-32).
     w.on_wrap([&](auto&, auto q) { carry = as<imax>(q); }) = 3 * p34 + 2;
     EXPECT_EQ(carry, 3);
-    EXPECT_TRUE(w == (rational{2} - (rational{3} * tick).value()).value());
+    EXPECT_TRUE(w == rational{2} - rational{3} * tick);
 }
 
 // on_clamp and on_wrap on a continuous grid past 64 bits (fraction storage):
@@ -829,7 +828,7 @@ TEST(WideGridTest, limb_edges) {
     EXPECT_TRUE((tt == rational{u64_max, 2}));
     auto d = top64{0} - t;
     EXPECT_TRUE((d == -rational{u64_max, 4}));
-    EXPECT_TRUE(t - top64{q1} == (rational{u64_max, 4} - q1).value());
+    EXPECT_TRUE(t - top64{q1} == (rational{u64_max, 4} - q1));
 
     // A 128-bit slot count: {−(2^64 − 1), 2^64 − 1} in steps of 1/(2^63 − 1).
     using full = inside<{{rational{u64_max, imax{-1}}, rational{u64_max}}, per<(umax{1} << 63) - 1>}>;

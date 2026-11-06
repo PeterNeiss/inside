@@ -466,7 +466,7 @@ struct assignment<L, R> {
             // value index. No rational round trip.
             if constexpr (std::floating_point<R> && anchored<L> && double_exact<grid_of<L>> &&
                           std::has_single_bit(notch64<L>.Num)) {
-                constexpr imax lo = signed_numerator(*lower_index64<L>);
+                constexpr imax lo = signed_numerator(lower_index64<L>);
                 const double   v  = static_cast<double>(rhs);
                 const imax     j  = snap_double_index<grid_of<L>, rounding_for<L, P>>(v);
                 if constexpr (!has_round_flag)
@@ -790,14 +790,10 @@ struct assignment<L, R> {
                       !values_fit_imax<R>)
             return false;
         else {
-            const rational base = index_storage<L> ? rational{0} : lower64<L>;
-            const auto     lo   = Offset + base;
-            const auto     span = Factor * rational{max_index_of<R>};
-            if (!lo || !span)
-                return false;
-            const auto hi = *lo + *span;
-            return hi.has_value() && *lo >= rational{std::numeric_limits<imax>::min()} &&
-                   *hi <= rational{std::numeric_limits<imax>::max()};
+            const rational lo = Offset + (index_storage<L> ? rational{0} : lower64<L>);
+            const rational hi = lo + Factor * rational{max_index_of<R>};
+            return lo >= rational{std::numeric_limits<imax>::min()} &&
+                   hi <= rational{std::numeric_limits<imax>::max()};
         }
     }();
 
@@ -856,7 +852,7 @@ struct assignment<L, R> {
     // proves fits imax (Offset alone may not, e.g. 2^63 into a full int64).
     static constexpr imax map_bias = [] {
         if constexpr (is_integer_mapping)
-            return signed_numerator((Offset + (index_storage<L> ? rational{0} : lower64<L>)).value());
+            return signed_numerator(Offset + (index_storage<L> ? rational{0} : lower64<L>));
         else
             return imax{0};
     }();

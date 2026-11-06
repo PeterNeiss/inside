@@ -236,8 +236,8 @@ constexpr bool derived_notch_is_coarsest() {
 
 template <grid G>
 constexpr bool max_index_matches() {
-    const rational span = (detail::to_rational(G.Interval.Upper) - detail::to_rational(G.Interval.Lower)).value();
-    return rational{detail::max_index(G)} == (span / detail::to_rational(G.Notch)).value();
+    const rational span = (detail::to_rational(G.Interval.Upper) - detail::to_rational(G.Interval.Lower));
+    return rational{detail::max_index(G)} == (span / detail::to_rational(G.Notch));
 }
 } // namespace
 
@@ -446,9 +446,9 @@ TEST(IntervalTest, interval_structured_binding) {
 TEST(IntervalTest, interval_construction_and_predicates) {
     {
         SCOPED_TRACE("point interval");
-        constexpr interval p{*(3_r / 4), *(3_r / 4)};
+        constexpr interval p{(3_r / 4), (3_r / 4)};
         static_assert(p.Lower == p.Upper);
-        static_assert(includes(p, *(3_r / 4)));
+        static_assert(includes(p, (3_r / 4)));
         static_assert(!(includes(p, 0)));
     }
 

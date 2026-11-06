@@ -42,10 +42,13 @@ an operation can produce (result types are frozen from 1.0 on).
 - A run-time error is now a zero divisor, a store that does not fit, or input
   from outside the type system (an `int`, a `double`, text); the rest moved
   to compile time:
-  - `rational`'s arithmetic is `consteval`, like a grid number's: `+ − * /`,
-    its compound assignments, the conversion from an
-    `expected<rational, errc>` and the comparisons with one. An overflow is a
-    compile error. At run time an exact value is an inside. `add_unchecked`,
+  - `rational`'s arithmetic is `consteval`, like a grid number's: `+ − * /`
+    and its compound assignments. An overflow is a compile error, so the
+    result is a plain `rational` (it was an `expected` that could hold no
+    error): drop the `*` or `.value()` on `p / q`. The conversion from an
+    `expected<rational, errc>`, the comparisons with one and `+ − * /` on
+    `expected<rational, errc>` operands are gone. At run time an exact value
+    is an inside. `add_unchecked`,
     `mul_unchecked`, `div_unchecked`, `inv_unchecked` and `inv` are no
     longer members of `rational` (they are library-internal).
   - An inside's compound assignment takes no `rational`: write

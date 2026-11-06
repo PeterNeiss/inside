@@ -271,11 +271,10 @@ struct division {
         else if constexpr (native_div_fixed) {
             constexpr interval q = (*(grid_of<L> / grid_of<R>)).Interval;
             // An endpoint on the notch stays; one off it rounds onto it.
-            constexpr rational n = notch64<L>, k = (rational{1} / n).value();
+            constexpr rational n = notch64<L>, k = rational{1} / n;
             auto               on = [&](const grid_rational& x, bool up) {
-                return grid_divides_evenly(x, notch_of<L>)
-                           ? to_rational(x)
-                           : (round_rat((to_rational(x) * k).value(), rmode, up) * n).value();
+                return grid_divides_evenly(x, notch_of<L>) ? to_rational(x)
+                                                           : round_rat(to_rational(x) * k, rmode, up) * n;
             };
             return grid{interval{on(q.Lower, false), on(q.Upper, true)}, n};
         } else
