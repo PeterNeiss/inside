@@ -268,7 +268,9 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
     auto fail = [&](errc code) { report_failure(lhs, policy, action, code); };
     if constexpr (fraction_storage<L>) {
         // A continuous grid past 64 bits: the value itself, reduced, when it
-        // lies within the limits and fits the raw's limbs.
+        // lies within the limits and fits the raw's limbs. (The raw is sized
+        // from the limits and the bound, so an in-range value on the bound
+        // always fits; the overflows below guard that invariant.)
         constexpr std::size_t   KK = std::max(K, exact_limbs<L>);
         const wide_rational<KK> lo = exact_of_grid<KK>(lower_of<L>), hi = exact_of_grid<KK>(upper_of<L>);
         auto                    store = [&](const wide_rational<KK>& x) {
