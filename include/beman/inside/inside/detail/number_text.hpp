@@ -293,18 +293,23 @@ constexpr auto parse_fraction(const char* first, const char* last, One one, IsZe
     return v;
 }
 
-// Runtime text → exact value: an optional sign, then a number in the literal
-// grammar, or a fraction `N/D` of two such numbers (the form to_string prints
-// for a non-terminating value). Malformed text is errc::invalid_format; a value
-// past the 64-bit fields is errc::overflow; `N/0` is errc::division_by_zero.
+// Whether text is a fraction N/D (the form to_string prints for a
+// non-terminating value): parse reads one with the exact parser
+// (wide_value.hpp), as the quotient has no 64-bit step.
+constexpr bool fraction_text(const char* first, const char* last) noexcept {
+    return std::find(first, last, '/') != last;
+}
+
+// Runtime text → exact value, the 64-bit fast path for a number (not a
+// fraction): an optional sign, then the literal grammar. Malformed text is
+// errc::invalid_format; a value past the 64-bit fields is errc::overflow,
+// which sends parse to the exact parser too.
 constexpr std::expected<rational, errc> parse_text(const char* first, const char* last) {
-    auto one = [](const char* f, const char* l) -> std::expected<rational, errc> {
-        const parsed_number r = parse_number(f, l);
-        if (r.Fail == parse_fail::none)
-            return r.Value;
+    const auto [neg, f, slash] = split_fraction(first, last);
+    const parsed_number r      = parse_number(f, slash);
+    if (r.Fail != parse_fail::none || slash != last)
         return std::unexpected{r.Fail >= parse_fail::numerator_overflow ? errc::overflow : errc::invalid_format};
-    };
-    return parse_fraction(first, last, one, [](const rational& d) { return d.Num == 0; });
+    return neg ? -r.Value : r.Value;
 }
 
 template <char... Chars>

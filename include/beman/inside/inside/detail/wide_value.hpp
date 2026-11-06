@@ -554,22 +554,24 @@ constexpr wide_rational<K> round_to_bound(const wide_rational<K>& x) {
         x, static_cast<wide_sint<K>>(grid_numerator(grid_of<L>.MaxDenominator)));
 }
 
+// v (within one step of L's limits) rounded by P onto L, exactly: a notched
+// L's slot straight from the exact index (no value in between, which for a
+// span past 2^64 has no 64-bit rational), a continuous L's fraction on its
+// bound.
 template <insidable L, typename P>
-constexpr bool exact_rounds_into_range(const rational& v, rational& out) {
+constexpr rounded_raw<L> exact_round_into_range(const rational& v) {
     if constexpr (!notched<L>) { // a bounded continuous grid: onto its bound
         // Near a limit it fits, unless the bound itself is past imax.
         const auto r = try_rational(round_to_bound<L, P>(exact_of(v)));
-        if (!r)
-            return false;
-        out = *r;
-        return includes(interval_of<L>, out);
+        if (!r || !includes(interval_of<L>, *r))
+            return {raw_t<L>{}, false};
+        return {*r, true};
     } else {
         const auto j = exact_index<L, rounding_for<L, P>>(exact_of(v)).Index; // L's slot offset
         using I      = std::remove_cvref_t<decltype(j)>;
         if (j.negative() || I{max_index_of<L>} < j)
-            return false;
-        out = (lower64<L> + (rational{static_cast<umax>(j)} * notch64<L>).value()).value(); // L's point
-        return true;
+            return {raw_t<L>{}, false};
+        return {raw_of_slot<L>(j), true};
     }
 }
 
@@ -757,6 +759,11 @@ constexpr Result from_value_in_units(const W& j) noexcept {
 template <insidable Result, std::size_t K>
 constexpr Result exact_result(const wide_rational<K>& v) noexcept {
     return Result::from_raw(raw_of_slot<Result>(exact_index<Result, round_mode::trunc>(v).Index));
+}
+
+template <insidable B>
+constexpr B exact_integer_value(imax val) noexcept {
+    return exact_result<B>(exact_of(val));
 }
 } // namespace beman::inside::detail
 

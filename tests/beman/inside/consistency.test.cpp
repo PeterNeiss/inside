@@ -10,6 +10,8 @@
 
 #include <gtest/gtest.h>
 
+#include "support.hpp"
+
 #include <bit>
 #include <cstdint>
 #include <limits>
@@ -19,7 +21,7 @@ using namespace beman::inside;
 using namespace beman::inside::detail;
 
 namespace {
-rational q(imax n, imax d = 1) { return rational{n, d}; }
+constexpr rational q(imax n, imax d = 1) { return rational{n, d}; }
 } // namespace
 
 //---------------------------------------------------------------------------
@@ -44,10 +46,11 @@ TEST(ConsistencyTest, store_honours_rounding_mode) {
 
 // A math result exactly on a tie rounds like the assignment path.
 TEST(ConsistencyTest, math_tie_rule_matches_assignment) {
-    using O  = inside<{-10, 10}, round_nearest>;
-    using In = inside<{{-1, 1}, per<64>}, round_nearest>;
-    EXPECT_EQ(rational{math::sqrt_into<O>(In{q(1, 4)}).value()}, rational{O{q(1, 2)}}); // √(1/4) = 1/2 → 1
-    EXPECT_EQ(rational{math::cbrt_into<O>(In{q(-1, 8)})}, rational{O{q(-1, 2)}});       // ∛(−1/8) = −1/2 → −1
+    using O   = inside<{-10, 10}, round_nearest>;
+    using In  = inside<{{-1, 1}, per<64>}, round_nearest>;
+    using Pos = inside<{{0, 1}, per<64>}, round_nearest>;
+    EXPECT_EQ(rational{math::sqrt_into<O>(Pos{q(1, 4)})}, rational{O{q(1, 2)}});  // √(1/4) = 1/2 → 1
+    EXPECT_EQ(rational{math::cbrt_into<O>(In{q(-1, 8)})}, rational{O{q(-1, 2)}}); // ∛(−1/8) = −1/2 → −1
     EXPECT_EQ(rational{math::cbrt_into<O>(In{q(-1, 8)})}, q(-1));
 }
 
@@ -197,9 +200,8 @@ TEST(ConsistencyTest, continuous_arithmetic_is_total) {
 TEST(ConsistencyTest, compound_ops_report_errors_through_the_policy) {
     using E = inside<{{0, 1}, max_denominator{1000}}, checked>;
     E e{q(1, 1000)};
-    EXPECT_THROW(e += q(1, 999), inside_error);    // rational RHS: 1999/999000 is off the grid
+    EXPECT_THROW(e += E{q(1, 999)}, inside_error); // 1999/999000 is off the grid
     EXPECT_EQ(rational{e}, q(1, 1000));            // left unchanged
-    EXPECT_THROW(e += E{q(1, 999)}, inside_error); // inside RHS: the same sum
     EXPECT_THROW(e *= E{q(1, 999)}, inside_error);
 }
 
@@ -312,8 +314,8 @@ TEST(ConsistencyTest, results_keep_the_shared_policy) {
 }
 
 // An inside with a rational would leave the grid (operator rational() and
-// rational arithmetic): deleted. A point keeps the grid; compound assignment
-// with a rational stores back into the inside's grid and stays.
+// rational arithmetic): deleted, compound assignment too. A point keeps the
+// grid.
 template <class A, class B>
 concept rational_mix = requires(A a, B b) { a + b; } || requires(A a, B b) { b - a; } ||
                        requires(A a, B b) { a * b; } || requires(A a, B b) { a / b; } || requires(A a, B b) { a % b; };
@@ -322,10 +324,10 @@ concept rational_compound = requires(A& a, B b) { a += b; };
 TEST(ConsistencyTest, no_arithmetic_with_a_rational) {
     using I = inside<{{0, 10}, per<4>}>;
     static_assert(!rational_mix<I, rational> && !rational_mix<inside<{0, 10}>, rational>);
-    static_assert(rational_compound<I, rational>);
+    static_assert(!rational_compound<I, rational>);
     static_assert(I{2} + just<1, 2> == 2.5_r);
     I x{2};
-    x += 0.5_r;
+    x += 0.5_ins;
     EXPECT_EQ(x, 2.5_r);
 }
 
@@ -364,10 +366,11 @@ TEST(ConsistencyTest, pow_past_the_output_range) {
     using E           = inside<{0, 20}, round_nearest>;
     using small       = inside<{0, 1000}, round_nearest>;
     using small_clamp = inside<{0, 1000}, round_nearest | clamp>;
-    EXPECT_EQ(math::pow_into<small>(B{4}, E{20}).error(), errc::overflow); // 2^40
-    EXPECT_EQ(rational{*math::pow_into<small_clamp>(B{4}, E{20})}, q(1000));
+    // Past Out: its store reports overflow (the handler throws).
+    EXPECT_EQ(test::caught([] { return math::pow_into<small>(B{4}, E{20}); }).error(), errc::overflow); // 2^40
+    EXPECT_EQ(rational{math::pow_into<small_clamp>(B{4}, E{20})}, q(1000));
     // The deduced output covers every corner: 4^20 fits it.
-    EXPECT_EQ(rational{*math::pow(B{4}, E{20})}, q(1) * (umax{1} << 40));
+    EXPECT_EQ(rational{math::pow(B{4}, E{20})}, rational{umax{1} << 40});
 }
 
 // conversion_rounds sees the notch of a non-dyadic notched grid.

@@ -45,6 +45,10 @@ using d3t  = inside<{{-64, 64}, rational{1, 1000}}, round_toward_zero | clamp>;
 using dd52 = inside<{{-4, 4}, rational{1, umax{1} << 52}}, round_nearest | clamp>;
 using big  = inside<{{0, 1 << 20}, per<16>}, round_floor | clamp>;  // exp, cosh of sym8
 using wide = inside<{{-1 << 20, 1 << 20}, per<16>}, round_nearest>; // tan, pow: overflow reported
+// tan's inputs: one branch each (an interval holding a pole is a compile
+// error), the one around 0 and the next, (π/2, 3π/2).
+using branch0 = inside<{{rational{-25, 16}, rational{25, 16}}, per<1 << 18>}, round_nearest>; // 819 201
+using branch1 = inside<{{rational{51, 32}, rational{75, 16}}, per<1 << 18>}, round_nearest>;  // 811 009
 
 // The examples' pairs, spelled as the number grids each math call sees
 // (find_grids.py over a debug build lists them; its test fails when an
@@ -107,8 +111,8 @@ void pairs(certify::runner& r) {
     CERTIFY(sin, d3t, symdec);
     CERTIFY(cos, c4c, sym4);
     CERTIFY(cos, d3n, sym4);
-    CERTIFY(tan, c4n, sym4);
-    CERTIFY(tan, wide, sym8);
+    CERTIFY(tan, c4n, branch0);
+    CERTIFY(tan, wide, branch1);
     CERTIFY(atan, c4n, sym4);
     CERTIFY(atan, f20e, sym4);
 
@@ -126,7 +130,6 @@ void pairs(certify::runner& r) {
     CERTIFY(log10, d3n, pos);
     CERTIFY(sqrt, c4n, pos);
     CERTIFY(sqrt, f20e, pos);
-    CERTIFY(sqrt, c4f, sym4); // a grid that crosses 0: errc below it
     CERTIFY(cbrt, c4f, sym4);
     CERTIFY(cbrt, dd52, sym4);
 

@@ -44,8 +44,8 @@ conversion_loses<pct>(150);       // true: either of the two
 | Write | Gives |
 |---|---|
 | `x.as<T>()` | a `T`; a value that does not fit is reported like a failed store |
-| `x.to<T>()` | a `std::expected<T, errc>`: `overflow` when it does not fit, `domain_error` for a negative value into an unsigned type |
-| `x.to<int, round_floor>()` | the same, rounding a fraction by the given mode |
+| `x.to<T>()` | a `T` where it cannot fail (every value of the grid is an integer that fits `T`); else a `std::expected<T, errc>`: `overflow` when it does not fit, `domain_error` for a negative value into an unsigned type, `rounding_error` for a fraction |
+| `x.to<int, round_floor>()` | the same, rounding a fraction by the given mode: a plain `int` when the grid fits |
 | `double(x)`, `x.as<double>()` | a `double`, on a type with a rounding mode |
 | `x.to<double>()` | a `double`, on any type |
 | `x.numerator()`, `x.denominator()` | the exact value in lowest terms, as insides on the integers: `3` and `16` for 0.1875 (`.as<int>()` reads them) |

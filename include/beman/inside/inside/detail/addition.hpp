@@ -35,7 +35,7 @@ struct addition {
         else if constexpr (exact_path_fits<exact_op::add, result, L, R>)
             return result::from_raw(*try_rational(exact_of(lhs) + exact_of(rhs)));
         else if constexpr (rational_storage<result>)
-            return result::from_raw(rational::add_unchecked(lhs, rhs));
+            return result::from_raw(add_unchecked(lhs, rhs));
         else if constexpr (point_storage<result>)
             return result::from_raw(raw_t<result>{}); // point + point: a point
         else {

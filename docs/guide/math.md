@@ -19,19 +19,19 @@ auto c = math::cos_into<math::unit_amplitude<256>>(angle{1});    // 0.5390625: a
 auto h = math::hypot(s, s);                                      // √(s² + s²)
 ```
 
-## Rounding needs permission
+## The rounding mode
 
-A result such as sin 1 lies between two points of any grid, so it must be
-rounded, and an inside rounds only where its type allows it. Give the
-permission in one of three places:
+A result such as sin 1 lies between two points of any grid, so it is
+rounded once, by one rounding mode:
 
-- on the input's type: `math::sin(angle{1})`, where `angle` has `round_nearest`;
-- on the output's type: `math::sin_into<Out>(x)`, where `Out` has a rounding mode;
-- on the call: `math::exp<round_floor>(x)`.
+- a named output's: `math::sin_into<Out>(x)`, where `Out` must have a rounding
+  mode (it is your type, and its policy forbids rounding without one);
+- the call's: `math::exp<round_floor>(x)`;
+- for the deduced `math::sin(x)`, the input type's mode, or `round_nearest`
+  when it names none. The deduced output carries that mode.
 
-Without one, the call does not compile. The rounding mode decides the
-result: `round_nearest` gives the nearest point, `round_floor` the one below,
-and so on.
+The rounding mode decides the result: `round_nearest` gives the nearest
+point, `round_floor` the one below, and so on.
 
 ## Choosing the output grid
 
@@ -81,27 +81,31 @@ auto big = math::factorial(inside<{0, 100}>{100});         // 100!, on a wide ra
 `binomial(n, k)` and `falling_factorial(n, k)` are 0 for k > n, and
 `rising_factorial(n, 0)` is 1. A result whose limit would pass 16384 bits
 (past 1754!) does not compile: its limit is computed while compiling.
-`gcd(a, b)` and `lcm(a, b)` take integer grids of any sign and size and
-follow `std::gcd` and `std::lcm`: never negative, `gcd(0, 0)` and `lcm(0, b)`
-are 0. Their result types keep the lattice the operands share (the gcd of two
-even grids is even). Each function has the forms `fn(…)` and `fn_into<Out>(…)`;
+`gcd(a, b)` and `lcm(a, b)` take lattices of any sign and size, integer or
+fractional, and follow `std::gcd` and `std::lcm`: never negative, `gcd(0, 0)`
+and `lcm(0, b)` are 0. Their result types keep the lattice the operands share
+(the gcd of two even grids is even; of halves and thirds a multiple of 1/6:
+`gcd(3/2, 4/3)` is 1/6, `lcm(3/2, 4/3)` is 12). Each function has the forms `fn(…)` and `fn_into<Out>(…)`;
 [`combinatorics.cpp`](../../examples/combinatorics.cpp) uses them for
 odds as exact fractions.
 
 ## Errors
 
 A domain limit that the input's *type* shows is a compile error: `log` of a
-grid that reaches 0, `asin` of a grid past [−1, 1]. A failure that depends on
-the *value* returns a `std::expected`:
+grid that reaches 0, `asin` of a grid past [−1, 1], `sqrt` of a grid that
+reaches below 0 (take `abs(x)`, or store `x` into a non-negative grid first),
+`tan` of an interval that holds a pole (an odd multiple of π/2), `pow` of a
+base grid below 0 (`pown<E>` takes a negative base). Only a zero divisor
+depends on the *value*, and returns a `std::expected`:
 
 | Function | Returns `std::expected` when |
 |---|---|
-| `sqrt` | the input's grid reaches below 0 |
-| `tan` | always: near a pole the value does not fit the output (an output with `clamp` saturates instead) |
-| `pow` | always: a negative base, 0 to a negative power, or a result past the output |
+| `pow` | the base's grid holds 0 and the exponent's a negative: 0 to a negative power |
 | `fmod` | the divisor's grid holds 0 |
 
-Everything else returns a plain inside.
+Everything else returns a plain inside. A result past a named output
+(`fn_into<Out>`) is a store into `Out`: its policy clamps, wraps or reports
+it, as any store does.
 
 ## Angles
 

@@ -335,24 +335,6 @@ static void bench_compound() {
     });
     finish(mla);
 
-    // rational rhs takes the exact rational branch by design (see the
-    // known-slow-paths note); this row documents its cost.
-    static const scalar_inputs qin{0, 90, 0, 90};
-    auto                       rga = group("compound += rational (Q8.8)");
-    rga.run("native int32 += k", [&] {
-        ++i;
-        std::int32_t a = qin.a[i & kMask] << 8;
-        a += static_cast<std::int32_t>(i & 63);
-        doNotOptimizeAway(a);
-    });
-    rga.run("inside += rational{k, 256}", [&] {
-        ++i;
-        fp88 a(qin.a[i & kMask]);
-        a += rational{static_cast<imax>(i & 63), 256};
-        doNotOptimizeAway(a.raw());
-    });
-    finish(rga);
-
     static const scalar_inputs din{20, 200, 2, 9};
     auto                       dva = group("compound /= (u8 [0,200])");
     dva.run("native /=", [&] {
@@ -1166,7 +1148,8 @@ static void bench_rational() {
     });
     finish(mx);
 
-    // rational directly — the primitive every slow path sits on.
+    // rational directly — the primitive every slow path sits on (the library's
+    // run-time 64-bit steps; a rational's operators are compile time only).
     auto ra = group("rational engine add", kIters);
     ra.run("native fraction", [&] {
         ++i;
@@ -1174,7 +1157,7 @@ static void bench_rational() {
     });
     ra.run("rational", [&] {
         ++i;
-        doNotOptimizeAway((qa[i & kMask] + qb[i & kMask])->Num);
+        doNotOptimizeAway(beman::inside::detail::try_add(qa[i & kMask], qb[i & kMask])->Num);
     });
     finish(ra);
 
@@ -1185,7 +1168,7 @@ static void bench_rational() {
     });
     rm.run("rational", [&] {
         ++i;
-        doNotOptimizeAway((qa[i & kMask] * qb[i & kMask])->Num);
+        doNotOptimizeAway(beman::inside::detail::try_mul(qa[i & kMask], qb[i & kMask])->Num);
     });
     finish(rm);
 

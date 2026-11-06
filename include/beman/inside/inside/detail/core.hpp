@@ -350,8 +350,8 @@ struct inside {
     //   operator double   — explicit, and gated on a rounding flag (a double
     //                       may round the value).
     //                       A strict inside opts in via `to<double>().value()`.
-    //   to<T>()           — typed-error narrowing/widening → `expected<T, errc>`
-    //                       (overflow / domain_error).
+    //   to<T>()           — narrowing/widening: T where the grid proves it total,
+    //                       else `expected<T, errc>` (overflow / domain_error).
     //   as<T>()           — non-expected sibling; throws on error. For known-
     //                       in-range sites (array indexing: `vec[b.as<std::size_t>()]`);
     //                       no check is left where T holds the whole grid.
@@ -393,16 +393,28 @@ struct inside {
         }
     }
 
-    // to<T>() — typed-error scalar extraction (mirrors rational::to<T>, extended
-    // to signed and floating point). Returns `errc::overflow` (out of T's range;
-    // `errc::domain_error` for a negative value into unsigned T). Rounding needs
-    // permission, as for a store: a fractional value rounds by Round, else by
-    // this type's rounding mode; with neither it is `errc::rounding_error`.
+  private:
+    // to<T, Round>() cannot fail: the grid lies within T's limits, and every
+    // value is an integer or the call may round.
+    template <std::integral T, policy_flag Round>
+    static constexpr bool total_to =
+        !(lower_of<inside> < detail::rational{std::numeric_limits<T>::min()}) &&
+        !(upper_of<inside> > detail::rational{std::numeric_limits<T>::max()}) &&
+        (detail::integer_lattice<inside> || Round != detail::none || has_flag(P, detail::snap));
+
+  public:
+    // to<T>() — scalar extraction (mirrors rational::to<T>, extended to signed
+    // and floating point). Like `/`, the type says whether it can fail: a plain
+    // T where the grid proves the conversion total (total_to, and every
+    // floating T), else std::expected<T, errc> with `errc::overflow` (out of
+    // T's range; `errc::domain_error` for a negative value into unsigned T)
+    // or `errc::rounding_error`. Rounding needs permission, as for a store: a
+    // fractional value rounds by Round, else by this type's rounding mode.
     // Bounds the grid already satisfies are not checked.
     template <std::integral T, policy_flag Round = detail::none>
         requires(Round == detail::none || Round == round_toward_zero || Round == round_nearest ||
                  Round == round_floor || Round == round_ceil || Round == round_half_even)
-    [[nodiscard]] constexpr std::expected<T, errc> to() const {
+    [[nodiscard]] constexpr std::conditional_t<total_to<T, Round>, T, std::expected<T, errc>> to() const {
         using lim                             = std::numeric_limits<T>;
         constexpr bool               check_lo = lower_of<inside> < detail::rational{lim::min()};
         constexpr bool               check_hi = upper_of<inside> > detail::rational{lim::max()};
@@ -417,10 +429,12 @@ struct inside {
                 if (!q.Exact)
                     return std::unexpected{errc::rounding_error};
             const auto t = q.Quot;
-            if (check_lo && t < decltype(t){lim::min()})
-                return std::unexpected{std::unsigned_integral<T> ? errc::domain_error : errc::overflow};
-            if (check_hi && t > decltype(t){lim::max()})
-                return std::unexpected{errc::overflow};
+            if constexpr (check_lo)
+                if (t < decltype(t){lim::min()})
+                    return std::unexpected{std::unsigned_integral<T> ? errc::domain_error : errc::overflow};
+            if constexpr (check_hi)
+                if (t > decltype(t){lim::max()})
+                    return std::unexpected{errc::overflow};
             return static_cast<T>(t);
         } else {
             const auto v = detail::as_rational(*this);
@@ -428,19 +442,21 @@ struct inside {
             if constexpr (!rounds && !detail::integer_lattice<inside>)
                 if (t != v)
                     return std::unexpected{errc::rounding_error};
-            if (check_lo && t < detail::rational{lim::min()})
-                return std::unexpected{std::unsigned_integral<T> ? errc::domain_error : errc::overflow};
-            if (check_hi && t > detail::rational{lim::max()})
-                return std::unexpected{errc::overflow};
+            if constexpr (check_lo)
+                if (t < detail::rational{lim::min()})
+                    return std::unexpected{std::unsigned_integral<T> ? errc::domain_error : errc::overflow};
+            if constexpr (check_hi)
+                if (t > detail::rational{lim::max()})
+                    return std::unexpected{errc::overflow};
             return static_cast<T>(detail::signed_numerator(t));
         }
     }
 
     // Rounded once to T's digits: a floating point wider than double (long
     // double) from the exact value; a narrower one (float) through the double,
-    // unless that double is a tie between two Ts.
+    // unless that double is a tie between two Ts. Total: a plain T.
     template <std::floating_point T>
-    [[nodiscard]] constexpr std::expected<T, errc> to() const {
+    [[nodiscard]] constexpr T to() const {
         if constexpr (detail::wide_float<T>)
             return detail::nearest_float<T>(detail::exact_of(*this));
         else if constexpr (sizeof(T) < sizeof(double)) {
@@ -469,9 +485,12 @@ struct inside {
             else
                 return to<T>();
         }();
-        if (!r) [[unlikely]]
-            detail::raise(r.error(), "as<T>: the value does not convert to T");
-        return *r;
+        if constexpr (detail::expected_like<decltype(r)>) {
+            if (!r) [[unlikely]]
+                detail::raise(r.error(), "as<T>: the value does not convert to T");
+            return *r;
+        } else
+            return r; // total: no check left
     }
 
     // numerator() / denominator() — the exact value in lowest terms (sign on
@@ -830,64 +849,21 @@ struct inside {
         return *this;
     }
 
-    // A rational on a Q-format grid's lattice as a signed notch count (rhs·K
-    // for notch 1/K), when it is a whole number of notches of moderate size.
-    static constexpr bool raw_delta_ok = detail::q_format_fits<inside> && detail::values_fit_imax<inside>;
-    // The largest count it takes: store_raw forms Raw ± n and, to wrap, its
-    // offset from raw_lo, so n leaves room for the raws and their span in imax.
-    static constexpr umax max_notch_delta = [] {
-        using W        = detail::grid_int;
-        constexpr W lo = detail::raw_lo_exact<inside>, hi = detail::raw_hi_exact<inside>;
-        const W     mag  = lo.negative() && hi < -lo ? -lo : hi;
-        const W     room = W{std::numeric_limits<imax>::max()} - (hi - lo + W{1}) - mag;
-        return room.negative() ? umax{0} : static_cast<umax>(room);
-    }();
-    // The exact sum when the notch count does not apply: out of line, and by
-    // value in and out, so the fast path keeps *this in registers.
-    [[gnu::cold]] [[gnu::noinline]] static constexpr inside add_rational_cold(inside x, detail::rational rhs)
-        requires raw_delta_ok
-    {
-        x.assign_op_result(detail::rational{x} + rhs);
-        return x;
-    }
-    // A bool and an out-parameter, not an optional<imax>: GCC 16 kept the
-    // optional in memory, 12 more instructions on every += / -= of a rational.
-    // No division where K is a power of two (every binary Q format): d
-    // divides K exactly when d is a power of two no larger (d − 1 < K also
-    // rules out 0), and the count r.Num·K/d is a shift, sized by a shift.
-    static constexpr bool notch_delta(detail::rational r, imax& delta) noexcept {
-        constexpr umax K = detail::abs_den(detail::notch64<inside>.Den);
-        const umax     d = detail::abs_den(r.Den);
-        umax           n; // the count of notches, r.Num·K/d
-        if constexpr (std::has_single_bit(K)) {
-            if (d - 1 >= K || (d & (d - 1)) != 0)
-                return false;
-            // K/d = 2^shift; the builtin, as d ≠ 0 (countr_zero guards 0).
-            const int shift = std::countr_zero(K) - __builtin_ctzll(d);
-            if (r.Num > (max_notch_delta >> shift))
-                return false;
-            n = r.Num << shift;
-        } else if (d == 0 || K % d != 0 || detail::mul_overflow(r.Num, K / d, &n) || n > max_notch_delta)
-            return false;
-        const imax sign = r.Den >> 63; // 0, or −1 for a negative value
-        delta           = (static_cast<imax>(n) ^ sign) - sign;
-        return true;
-    }
-
   public:
-    // Only a `rational` (a library type) may join an inside in a compound assign;
-    // raw int/float/double are ill-formed — give the scalar a grid (`1_ins` /
-    // `just<1>` / `inside<{lo,hi}>{n}`), mirroring the binary operators.
-
-    template <std::same_as<detail::rational> A>
-    constexpr inside& operator+=(const A& rhs) {
-        if constexpr (raw_delta_ok) {
-            if (imax n; notch_delta(rhs, n)) [[likely]]
-                return store_raw<imax>(static_cast<imax>(Raw) + n);
-            return *this = add_rational_cold(*this, rhs);
-        } else
-            return assign_op_result(detail::rational{*this} + rhs);
-    }
+    // A rational has no grid, like an int or a double: a compound assign
+    // takes an inside (`x += 0.5_ins`, `x += just<1, 2>`), as the binary
+    // operators do (arithmetic.hpp deletes inside ⋈ rational the same way).
+#define BEMAN_INSIDE_NO_RATIONAL_ASSIGN(op)                                                                     \
+    template <std::same_as<detail::rational> A>                                                                 \
+    inside& operator op(const A&) = delete ("an inside cannot be combined with a rational: write the constant " \
+                                            "as just<1, 2> or 0.5_ins (a grid), or store the rational into an " \
+                                            "inside first");
+    BEMAN_INSIDE_NO_RATIONAL_ASSIGN(+=)
+    BEMAN_INSIDE_NO_RATIONAL_ASSIGN(-=)
+    BEMAN_INSIDE_NO_RATIONAL_ASSIGN(*=)
+    BEMAN_INSIDE_NO_RATIONAL_ASSIGN(/=)
+    BEMAN_INSIDE_NO_RATIONAL_ASSIGN(%=)
+#undef BEMAN_INSIDE_NO_RATIONAL_ASSIGN
 
     template <insidable R>
         requires(raw_add_ok<R> ||
@@ -901,16 +877,6 @@ struct inside {
             return store_raw<W>(static_cast<W>(Raw) + static_cast<W>(-static_cast<D>(rhs.raw()) - bias));
         } else
             return *this += (-rhs);
-    }
-
-    template <std::same_as<detail::rational> A>
-    constexpr inside& operator-=(const A& rhs) {
-        if constexpr (raw_delta_ok) {
-            if (imax n; notch_delta(rhs, n)) [[likely]]
-                return store_raw<imax>(static_cast<imax>(Raw) - n);
-            return *this = add_rational_cold(*this, -rhs);
-        } else
-            return assign_op_result(detail::rational{*this} - rhs);
     }
 
     template <insidable R>
@@ -937,18 +903,6 @@ struct inside {
         if (rhs == 0)
             return report_div_by_zero<R>();
         return assign_op_result(mod(*this, rhs, make_policy<P>()));
-    }
-
-    template <std::same_as<detail::rational> A>
-    constexpr inside& operator*=(const A& rhs) {
-        return assign_op_result(detail::rational{*this} * rhs);
-    }
-
-    template <std::same_as<detail::rational> A>
-    constexpr inside& operator/=(const A& rhs) {
-        if (detail::is_canonical_zero(rhs))
-            return report_div_by_zero<inside>();
-        return assign_op_result(detail::rational{*this} / rhs);
     }
 
     // ++/-- move one notch: they add the point inside of ±Notch through the
@@ -1076,6 +1030,8 @@ template <insidable B, policy_flag F>
 
 template <insidable B, policy_flag F = detail::none>
 [[nodiscard]] constexpr std::expected<B, errc> parse(const char* first, const char* last) {
+    if (detail::fraction_text(first, last))
+        return detail::parse_wide<B, F>(first, last);
     const auto v = detail::parse_text(first, last);
     if (!v && v.error() == errc::overflow) [[unlikely]]
         return detail::parse_wide<B, F>(first, last);
@@ -1086,16 +1042,19 @@ template <insidable B, policy_flag F = detail::none>
 
 template <insidable B>
 [[nodiscard]] constexpr std::expected<B, errc> parse_exact(const char* first, const char* last) {
-    const auto v = detail::parse_text(first, last);
-    if (v) {
-        if (conversion_overflows<B>(*v))
-            return std::unexpected{errc::overflow};
-        if (conversion_rounds<B>(*v))
-            return std::unexpected{errc::rounding_error};
-        return B::template try_make<detail::snap>(*v); // on the grid: nothing rounds
+    if (!detail::fraction_text(first, last)) {
+        const auto v = detail::parse_text(first, last);
+        if (v) {
+            if (conversion_overflows<B>(*v))
+                return std::unexpected{errc::overflow};
+            if (conversion_rounds<B>(*v))
+                return std::unexpected{errc::rounding_error};
+            return B::template try_make<detail::snap>(*v); // on the grid: nothing rounds
+        }
+        if (v.error() != errc::overflow)
+            return std::unexpected{v.error()};
     }
-    if (v.error() != errc::overflow)
-        return std::unexpected{v.error()};
+    // A fraction, or a value past the 64-bit rational: exactly.
     constexpr std::size_t K = std::max(detail::exact_limbs<B>, detail::parse_limbs);
     auto                  w = detail::parse_exact<K>(first, last);
     if (!w && w.error() == errc::overflow)

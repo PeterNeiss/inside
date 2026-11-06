@@ -278,8 +278,22 @@ consteval grid gcd_grid_of() {
 }
 template <insidable A, insidable B>
 inline constexpr grid gcd_grid = gcd_grid_of<A, B>();
+// A lattice (a notch) or a point: what gcd and lcm take. Every value is a
+// whole number of gcd_unit, the gcd of the two value units (1 or more on
+// integer grids, a fraction on fractional ones).
+template <insidable X>
+inline constexpr bool has_lattice = notched<X> || point_grid<X>;
 template <insidable A, insidable B>
-inline constexpr grid_rational lcm_upper = largest_magnitude<A>() * largest_magnitude<B>();
+inline constexpr grid_rational gcd_unit = gcd(unit_of_values<A>(), unit_of_values<B>());
+template <insidable A, insidable B>
+inline constexpr bool integer_operands = integer_lattice<A> && integer_lattice<B>;
+
+// lcm(x, y) = |x·y| / gcd(x, y), and gcd(x, y) is a positive multiple of
+// gcd_unit: at most |x·y| on integers, |x·y| / gcd_unit on fractions.
+template <insidable A, insidable B>
+inline constexpr grid_rational lcm_upper =
+    integer_operands<A, B> ? largest_magnitude<A>() * largest_magnitude<B>()
+                           : largest_magnitude<A>() * largest_magnitude<B>() / gcd_unit<A, B>;
 template <insidable A, insidable B>
 consteval grid lcm_grid_of() {
     const grid_rational ua = unit_of_values<A>(), ub = unit_of_values<B>();
@@ -541,15 +555,53 @@ template <insidable Out, insidable... Ks>
 //---------------------------------------------------------------------------
 // gcd, lcm
 //---------------------------------------------------------------------------
-#define BEMAN_INSIDE_WHY_integers(fn) "beman::inside::math::" #fn ": the operands are insides on the integers"
+#define BEMAN_INSIDE_WHY_integers(fn) \
+    "beman::inside::math::" #fn ": the operands need a lattice (a notch or a point); a continuous grid has none"
 
+namespace detail {
+// x's value in units of U, as magnitudes in one unsigned type that holds
+// both operands' (on integers U is 1: the values themselves).
+template <insidable A, insidable B, int Bits, class X>
+constexpr auto magnitude_in_units(const X& x) {
+    using S = int_for_bits_t<Bits, true>;
+    using U = count_work_t<Bits>;
+    S v;
+    if constexpr (integer_operands<A, B>)
+        v = integer_value<S>(x);
+    else
+        v = value_in_units<S, gcd_unit<A, B>>(x);
+    return static_cast<U>(v < S{0} ? -v : v);
+}
+// The R of n units (integers: of value n).
+template <insidable R, insidable A, insidable B, class W>
+constexpr R from_units(const W& n) {
+    if constexpr (integer_operands<A, B>)
+        return lattice_inside<R>(n);
+    else
+        return from_value_in_units<R, gcd_unit<A, B>>(n);
+}
+} // namespace detail
+
+// gcd and lcm of two lattices: of integers as std::gcd and std::lcm; of
+// fractions x = a·u, y = b·u (u the gcd of the value units) u·gcd(a, b) and
+// u·lcm(a, b), the largest common divisor and the least common multiple on
+// the lattice uℤ.
 template <insidable A, insidable B>
-    requires detail::integer_lattice<A> && detail::integer_lattice<B>
+    requires detail::has_lattice<A> && detail::has_lattice<B>
 [[nodiscard]] constexpr auto gcd(A a, B b) noexcept {
     using R = inside<detail::gcd_grid<A, B>>;
     if constexpr (detail::point_grid<R>) {
         (void)a, (void)b;
         return R::from_raw({});
+    } else if constexpr (!detail::integer_operands<A, B>) {
+        constexpr detail::grid_rational u = detail::gcd_unit<A, B>;
+        constexpr int bits                = std::max(bit_width_of(grid_numerator(detail::largest_magnitude<A>() / u)),
+                                                     bit_width_of(grid_numerator(detail::largest_magnitude<B>() / u)));
+        const auto    ux = detail::magnitude_in_units<A, B, bits>(a), uy = detail::magnitude_in_units<A, B, bits>(b);
+        if constexpr (detail::wide_integer<decltype(ux)>)
+            return detail::from_units<R, A, B>(detail::wide_gcd(ux, uy));
+        else
+            return detail::from_units<R, A, B>(std::gcd(ux, uy));
     } else {
         // Magnitudes in one unsigned type that holds both.
         constexpr int bits = std::max(bit_width_of(grid_numerator(detail::largest_magnitude<A>())),
@@ -565,7 +617,7 @@ template <insidable A, insidable B>
     }
 }
 template <insidable A, insidable B>
-    requires(!detail::integer_lattice<A> || !detail::integer_lattice<B>)
+    requires(!detail::has_lattice<A> || !detail::has_lattice<B>)
 auto gcd(A, B) = delete (BEMAN_INSIDE_WHY_integers(gcd));
 
 template <insidable Out, insidable A, insidable B>
@@ -575,12 +627,23 @@ template <insidable Out, insidable A, insidable B>
 }
 
 template <insidable A, insidable B>
-    requires detail::integer_lattice<A> && detail::integer_lattice<B> && detail::lcm_fits<A, B>
+    requires detail::has_lattice<A> && detail::has_lattice<B> && detail::lcm_fits<A, B>
 [[nodiscard]] constexpr auto lcm(A a, B b) noexcept {
     using R = inside<detail::lcm_grid<A, B>>;
     if constexpr (detail::point_grid<R>) {
         (void)a, (void)b;
         return R::from_raw({});
+    } else if constexpr (!detail::integer_operands<A, B>) {
+        // |a| / gcd · |b| in units of u, in a type that holds the limit's units.
+        constexpr int bits = bit_width_of(grid_numerator(detail::lcm_upper<A, B> / detail::gcd_unit<A, B>));
+        const auto    ux = detail::magnitude_in_units<A, B, bits>(a), uy = detail::magnitude_in_units<A, B, bits>(b);
+        using U = decltype(ux);
+        if (ux == U{0} || uy == U{0})
+            return detail::from_units<R, A, B>(U{0});
+        if constexpr (detail::wide_integer<U>)
+            return detail::from_units<R, A, B>(ux / detail::wide_gcd(ux, uy) * uy);
+        else
+            return detail::from_units<R, A, B>(std::lcm(ux, uy));
     } else {
         // |a| / gcd · |b|, in a type that holds the product's limit.
         constexpr int bits = bit_width_of(grid_numerator(detail::lcm_upper<A, B>));
@@ -597,10 +660,10 @@ template <insidable A, insidable B>
     }
 }
 template <insidable A, insidable B>
-    requires(!detail::integer_lattice<A> || !detail::integer_lattice<B>)
+    requires(!detail::has_lattice<A> || !detail::has_lattice<B>)
 auto lcm(A, B) = delete (BEMAN_INSIDE_WHY_integers(lcm));
 template <insidable A, insidable B>
-    requires detail::integer_lattice<A> && detail::integer_lattice<B> && (!detail::lcm_fits<A, B>)
+    requires detail::has_lattice<A> && detail::has_lattice<B> && (!detail::lcm_fits<A, B>)
 auto lcm(A, B) = delete (BEMAN_INSIDE_WHY_too_large(lcm));
 
 template <insidable Out, insidable A, insidable B>

@@ -176,35 +176,19 @@ struct policy_ref {
         return finalize_arith(mod(Ref, rhs, Policy), "policy_ref::operator%= division by zero");
     }
 
-    //-------------------------------------------------------------------------
-    // rational RHS overloads — the only non-inside operand a compound assign
-    // accepts. Lets callers write `b += rational{1,3}`. Raw int/float/double are
-    // ill-formed: give the scalar a grid (`1_ins` / `just<1>` / `inside<{lo,hi}>{n}`).
-    // Ref as a rational, checked op, finalize_arith.
-    //-------------------------------------------------------------------------
-    template <std::same_as<rational> C>
-    constexpr B& operator+=(const C& rhs) {
-        return finalize_arith(rational{Ref} + rhs, "policy_ref::operator+= overflow");
-    }
-
-    template <std::same_as<rational> C>
-    constexpr B& operator-=(const C& rhs) {
-        return finalize_arith(rational{Ref} - rhs, "policy_ref::operator-= overflow");
-    }
-
-    template <std::same_as<rational> C>
-    constexpr B& operator*=(const C& rhs) {
-        return finalize_arith(rational{Ref} * rhs, "policy_ref::operator*= overflow");
-    }
-
-    template <std::same_as<rational> C>
-    constexpr B& operator/=(const C& rhs) {
-        if (is_canonical_zero(rhs)) {
-            report_error(errc::division_by_zero, "policy_ref::operator/= division by zero");
-            return Ref;
-        }
-        return finalize_arith(rational{Ref} / rhs, "policy_ref::operator/= overflow");
-    }
+    // A rational has no grid: as on the inside itself, a compound assign
+    // takes an inside (0.5_ins, just<1, 2>).
+#define BEMAN_INSIDE_NO_RATIONAL_ASSIGN(op)                                                                \
+    template <std::same_as<rational> C>                                                                    \
+    B& operator op(const C&) = delete ("an inside cannot be combined with a rational: write the constant " \
+                                       "as just<1, 2> or 0.5_ins (a grid), or store the rational into an " \
+                                       "inside first");
+    BEMAN_INSIDE_NO_RATIONAL_ASSIGN(+=)
+    BEMAN_INSIDE_NO_RATIONAL_ASSIGN(-=)
+    BEMAN_INSIDE_NO_RATIONAL_ASSIGN(*=)
+    BEMAN_INSIDE_NO_RATIONAL_ASSIGN(/=)
+    BEMAN_INSIDE_NO_RATIONAL_ASSIGN(%=)
+#undef BEMAN_INSIDE_NO_RATIONAL_ASSIGN
 
   private:
     // A failed op leaves Ref unchanged: on_error takes the failure, else the
@@ -216,7 +200,7 @@ struct policy_ref {
             Policy.report(code);
     }
 
-    // A zero divisor, or a rational right-hand side past the 64-bit rational.
+    // A zero divisor: the op's expected holds it.
     template <typename R>
     constexpr B& finalize_arith(R&& result, [[maybe_unused]] const char* msg) {
         if constexpr (expected_like<R>) {
@@ -224,7 +208,7 @@ struct policy_ref {
                 report_error(result.error(), msg);
                 return Ref;
             }
-            return dispatch_assign(Ref, result.value(), Policy, Actions);
+            return dispatch_assign(Ref, *result, Policy, Actions);
         } else
             return dispatch_assign(Ref, std::forward<R>(result), Policy, Actions);
     }

@@ -77,7 +77,7 @@ TEST(PolicyActionsTest, try_make_on_fixed_point_grids) {
         // notch-aligned in-range value
         auto ok = fp::try_make(42.5);
         ASSERT_TRUE(ok.has_value());
-        ASSERT_TRUE(ok->to<double>().value() == 42.5);
+        ASSERT_TRUE(ok->to<double>() == 42.5);
 
         // out-of-range produces errc::overflow
         auto high = fp::try_make(300.0);
@@ -99,7 +99,7 @@ TEST(PolicyActionsTest, try_make_on_fixed_point_grids) {
 
         auto s = sensor::try_make(23.5);
         ASSERT_TRUE(s.has_value());
-        ASSERT_TRUE(s->to<double>().value() == 23.5);
+        ASSERT_TRUE(s->to<double>() == 23.5);
 
         ASSERT_FALSE(sensor::try_make(50.5).has_value());
         ASSERT_FALSE(sensor::try_make(-1.0).has_value());
@@ -129,7 +129,7 @@ TEST(PolicyActionsTest, try_make_on_fixed_point_grids) {
 
         auto v = fp::try_make(1000.125);
         ASSERT_TRUE(v.has_value());
-        ASSERT_TRUE(v->to<double>().value() == 1000.125);
+        ASSERT_TRUE(v->to<double>() == 1000.125);
 
         ASSERT_FALSE(fp::try_make(-0.001).has_value());
         ASSERT_FALSE(fp::try_make(70000.0).has_value());
@@ -253,14 +253,14 @@ TEST(PolicyActionsTest, free_div_and_mod_return_a_zero_divisor) {
     ASSERT_EQ(m.error(), errc::division_by_zero);
 }
 
-// A rational right-hand side past the 64-bit rational fails like a store:
+// A compound op whose exact result is off the grid fails like a store:
 // on_error takes it, and the value is unchanged.
-TEST(PolicyActionsTest, rational_rhs_overflow_reaches_on_error) {
+TEST(PolicyActionsTest, compound_store_failure_reaches_on_error) {
     using frac = inside<{{0, 1}, max_denominator{imax{1} << 62}}>;
     frac f{rational{1, (imax{1} << 62) - 1}};
     errc seen{};
-    f.on_error([&](auto&, errc c, const char*) { seen = c; }) += rational{1, (imax{1} << 62) - 3};
-    ASSERT_EQ(seen, errc::overflow);
+    f.on_error([&](auto&, errc c, const char*) { seen = c; }) += frac{rational{1, (imax{1} << 62) - 3}};
+    ASSERT_EQ(seen, errc::rounding_error); // the sum's denominator passes the bound
     ASSERT_EQ(f, (rational{1, (imax{1} << 62) - 1}));
 }
 
@@ -870,14 +870,16 @@ TEST(ErrorHandlerTest, set_error_handler_redirects_failures_and_is_restorable) {
     ASSERT_EQ(get_error_handler(), before);
 }
 
-// A failed rational sink reaches the installed handler like any failed store.
-// (No inside stores a std::expected.)
-TEST(ErrorHandlerTest, expected_sinks_reach_the_handler) {
+// A zero divisor in a compound division reaches the installed handler like
+// any failed store. (No inside stores a std::expected; a rational's
+// arithmetic, whose zero divisor is a compile error, runs only at compile time.)
+TEST(ErrorHandlerTest, compound_zero_divisor_reaches_the_handler) {
     scoped_handler guard{&recording_handler};
     g_seen = errc{};
     try {
-        rational r = rational{1} / rational{0};
-        (void)r;
+        inside<{0, 10}>      x{5};
+        const inside<{0, 1}> zero{0};
+        x /= zero;
     } catch (const handler_fired& f) {
         EXPECT_EQ(f.code, errc::division_by_zero);
     }
@@ -918,15 +920,13 @@ TEST(ErrorHandlerTest, handler_swaps_while_other_threads_raise) {
 
 // The error vocabulary has two shapes, each by role (see docs/internals.md):
 //   policy cascade        — narrowing INTO an inside,
-//   std::expected<T,errc> — every fallible result: inside arithmetic (division,
-//                           modulo, checked rational overflow), queries and math.
+//   std::expected<T,errc> — every fallible result: division and modulo by a
+//                           grid that holds 0, pow at its pole, queries.
 // These tests cover the expected-lift operators that chain those results.
 namespace error_vocabulary_tests {
 using namespace beman::inside;
 
 namespace {
-// Mixed-sign sqrt: deterministic expected results under both engines.
-using sq_in = inside<{{-4, 4}, per<256>}, round_nearest>;
 using num_t = inside<{0, 100}>;
 using den_t = inside<{-5, 5}>; // spans zero → division returns expected
 
@@ -937,16 +937,16 @@ std::expected<num_t, errc> num_err(errc e) { return std::unexpected{e}; }
 // expected-lift operators keep the cause end to end
 TEST(ErrorVocabularyTest, expected_lift_operators_keep_the_cause_end_to_end) {
     // Value path: identical to the manual unwrap.
-    auto r = math::sqrt(sq_in{1}) + num_t{4};
+    auto r = num_t{3} / den_t{3} + num_t{4};
     static_assert(detail::expected_like<decltype(r)>);
     ASSERT_TRUE(r.has_value());
-    ASSERT_EQ(*r, *math::sqrt(sq_in{1}) + num_t{4});
+    ASSERT_EQ(*r, *(num_t{3} / den_t{3}) + num_t{4});
     ASSERT_EQ(*r, 5);
 
     // Error path: the errc propagates through the whole chain.
-    auto e = (math::sqrt(sq_in{-1}) + num_t{4}) * num_t{2};
+    auto e = (num_t{3} / den_t{0} + num_t{4}) * num_t{2};
     ASSERT_TRUE(!e.has_value());
-    ASSERT_EQ(e.error(), errc::domain_error);
+    ASSERT_EQ(e.error(), errc::division_by_zero);
 
     // First (left) error wins when two errors meet.
     auto both = num_err(errc::domain_error) + num_err(errc::overflow);

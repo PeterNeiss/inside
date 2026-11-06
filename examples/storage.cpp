@@ -49,7 +49,7 @@ int main() {
         std::uint16_t level; // 0..65535
     };
     using level = inside<{0, 1000}>;
-    const packet p{*level{750}.to<std::uint16_t>()};
+    const packet p{level{750}.to<std::uint16_t>()};
     std::cout << "packet level " << p.level << "\n";
     if (p.level != 750)
         return 1;

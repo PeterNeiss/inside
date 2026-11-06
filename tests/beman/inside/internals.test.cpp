@@ -67,9 +67,14 @@ TEST(RationalTest, rational_construction_normalises) {
     }
 
     {
-        SCOPED_TRACE("denominator zero throws");
+        SCOPED_TRACE("denominator zero: division_by_zero, as parse(\"1/0\")");
         ASSERT_THROW((void)((rational{1u, 0})), beman::inside::inside_error);
         ASSERT_THROW((void)((rational{1, 0})), beman::inside::inside_error);
+        try {
+            (void)rational{1, 0};
+        } catch (const beman::inside::inside_error& e) {
+            EXPECT_EQ(e.Code, errc::division_by_zero);
+        }
     }
 
     {
@@ -199,17 +204,17 @@ TEST(RationalTest, rational_arithmetic) {
 
     {
         SCOPED_TRACE("self-cancel returns zero");
-        rational a{3u, 7};
-        ASSERT_EQ(*(a + (-a)), 0_r);
-        ASSERT_EQ(*(a - a), 0_r);
+        constexpr rational a{3u, 7};
+        static_assert(*(a + (-a)) == 0_r);
+        static_assert(*(a - a) == 0_r);
     }
 
     {
         SCOPED_TRACE("unchecked variants");
-        static_assert(rational::add_unchecked(2_r, 3_r) == 5_r);
-        static_assert(rational::mul_unchecked(2_r, 3_r) == 6_r);
-        static_assert(rational::div_unchecked(6_r, 3_r) == 2_r);
-        static_assert(rational::inv_unchecked(rational{2u, 3}) == rational{3u, 2});
+        static_assert(add_unchecked(2_r, 3_r) == 5_r);
+        static_assert(mul_unchecked(2_r, 3_r) == 6_r);
+        static_assert(div_unchecked(6_r, 3_r) == 2_r);
+        static_assert(inv_unchecked(rational{2u, 3}) == rational{3u, 2});
     }
 
     // The checked operators return std::expected<rational, errc>; an implicit
@@ -226,7 +231,7 @@ TEST(RationalTest, rational_arithmetic) {
         static_assert(chained == rational{13u, 10});
 
         // Bit-identical to the prior mul_unchecked form it replaces.
-        static_assert(half == rational::mul_unchecked(rational{3}, rational{1, 2}));
+        static_assert(half == mul_unchecked(rational{3}, rational{1, 2}));
 
         // Assignment (not just copy-init) also unwraps.
         rational acc{0u, 1};
@@ -236,93 +241,86 @@ TEST(RationalTest, rational_arithmetic) {
 
     {
         SCOPED_TRACE("inv basic");
-        static_assert(*rational::inv(rational{3u, 2}) == rational{2u, 3});
-        static_assert(*rational::inv(rational{1u, 5}) == 5_r);
-        static_assert(*rational::inv(5_r) == rational{1u, 5});
+        static_assert(*try_inv(rational{3u, 2}) == rational{2u, 3});
+        static_assert(*try_inv(rational{1u, 5}) == 5_r);
+        static_assert(*try_inv(5_r) == rational{1u, 5});
 
         // Sign preservation (denominator carries the sign)
-        static_assert(*rational::inv(rational{-3, 2}) == rational{-2, 3});
-        static_assert(*rational::inv(rational{3, -2}) == rational{-2, 3});
+        static_assert(*try_inv(rational{-3, 2}) == rational{-2, 3});
+        static_assert(*try_inv(rational{3, -2}) == rational{-2, 3});
 
         // Involutive
-        static_assert(*rational::inv(*rational::inv(rational{7u, 11})) == rational{7u, 11});
+        static_assert(*try_inv(*try_inv(rational{7u, 11})) == rational{7u, 11});
     }
 
     {
         SCOPED_TRACE("inv of zero -> division_by_zero");
-        ASSERT_FALSE(rational::inv(0_r).has_value());
-        ASSERT_EQ(rational::inv(0_r).error(), errc::division_by_zero);
-        ASSERT_EQ((1_r / 0_r).error(), errc::division_by_zero);
+        ASSERT_FALSE(try_inv(0_r).has_value());
+        ASSERT_EQ(try_inv(0_r).error(), errc::division_by_zero);
+        ASSERT_EQ(try_div(1_r, 0_r).error(), errc::division_by_zero);
     }
 
     {
-        SCOPED_TRACE("compound-assign: rational RHS");
-        rational a{3, 2};
-        a += rational{1, 5};
-        ASSERT_EQ(a, (rational{17u, 10}));
-        a -= rational{1, 5};
-        ASSERT_EQ(a, (rational{3u, 2}));
-        a *= rational{1, 2};
-        ASSERT_EQ(a, (rational{3u, 4}));
-        a /= rational{1, 2};
-        ASSERT_EQ(a, (rational{3u, 2}));
+        SCOPED_TRACE("compound-assign: rational RHS (compile time)");
+        static_assert([] {
+            rational a{3, 2};
+            a += rational{1, 5};
+            const bool add = a == rational{17u, 10};
+            a -= rational{1, 5};
+            const bool sub = a == rational{3u, 2};
+            a *= rational{1, 2};
+            const bool mul = a == rational{3u, 4};
+            a /= rational{1, 2};
+            return add && sub && mul && a == rational{3u, 2};
+        }());
     }
 
     {
-        SCOPED_TRACE("compound-assign: arithmetic RHS");
-        rational a{3, 2};
-        a += 1;
-        ASSERT_EQ(a, (rational{5u, 2}));
-        a *= 2;
-        ASSERT_EQ(a, 5_r);
-        a /= 5;
-        ASSERT_EQ(a, 1_r);
+        SCOPED_TRACE("compound-assign: arithmetic RHS (compile time)");
+        static_assert([] {
+            rational a{3, 2};
+            a += 1;
+            const bool add = a == rational{5u, 2};
+            a *= 2;
+            const bool mul = a == 5_r;
+            a /= 5;
+            return add && mul && a == 1_r;
+        }());
     }
 
     {
         SCOPED_TRACE("compound-assign: expected<rational> RHS unwraps the checked op");
-        rational a{1, 2};
         // rational * rational returns expected<rational>; += on that unwraps.
-        a += rational{1, 3} * rational{6, 1};
-        ASSERT_EQ(a, (rational{5u, 2}));
-    }
-
-    {
-        SCOPED_TRACE("compound-assign raises overflow as an inside_error");
-        constexpr auto mx = std::numeric_limits<imax>::max();
-        // 1/M + 1/(M-1) — denominator product M*(M-1) overflows imax.
-        rational a{1u, mx};
-        rational b{1u, mx - 1};
-        try {
-            a += b;
-            FAIL() << "no error reported";
-        } catch (const beman::inside::inside_error& e) {
-            EXPECT_EQ(e.Code, errc::overflow);
-        }
+        static_assert([] {
+            rational a{1, 2};
+            a += rational{1, 3} * rational{6, 1};
+            return a == rational{5u, 2};
+        }());
+        // An overflow is a compile error (fail/rational_overflow).
     }
 }
 
 // rational overflow detection
 TEST(RationalTest, rational_overflow_detection) {
     {
-        SCOPED_TRACE("checked operators return errc::overflow at runtime");
-        ASSERT_FALSE((rational{M} + 1_r).has_value());
-        ASSERT_EQ((rational{M} + 1_r).error(), errc::overflow);
-        ASSERT_FALSE((rational{M} * 2_r).has_value());
-        ASSERT_FALSE(((rational{M} / rational{1u, 2}).has_value()));
+        SCOPED_TRACE("the checked steps return errc::overflow");
+        ASSERT_FALSE(try_add(rational{M}, 1_r).has_value());
+        ASSERT_EQ(try_add(rational{M}, 1_r).error(), errc::overflow);
+        ASSERT_FALSE(try_mul(rational{M}, 2_r).has_value());
+        ASSERT_FALSE(try_div(rational{M}, rational{1u, 2}).has_value());
     }
 
     {
         SCOPED_TRACE("subtraction goes through add(-rhs)");
         // M - (-1) = M+1 -> overflow
-        ASSERT_FALSE(((rational{M} - rational{1, -1}).has_value()));
+        ASSERT_FALSE(try_sub(rational{M}, rational{1, -1}).has_value());
     }
 
     {
         SCOPED_TRACE("cross-cancellation avoids spurious overflow on common factors");
         // (M/5)/2 + (M/5)/2 — common denominator avoids cross-multiplication.
-        auto small = rational{M / 5, 2};
-        ASSERT_TRUE((small + small).has_value());
+        constexpr auto small = rational{M / 5, 2};
+        static_assert((small + small).has_value());
     }
 
     {
@@ -330,9 +328,9 @@ TEST(RationalTest, rational_overflow_detection) {
         // gcd(4, 6) = 2; lcm = 12. With cross-cancellation a_ad'=2, b_ad'=3, so
         // (M/5) * b_ad' = (M/5)*3 fits, whereas (M/5)*6 (no cross-cancellation) would
         // overflow.
-        auto a = rational{M / 5, 4};
-        auto b = rational{1u, 6};
-        ASSERT_TRUE((a + b).has_value());
+        constexpr auto a = rational{M / 5, 4};
+        constexpr auto b = rational{1u, 6};
+        static_assert((a + b).has_value());
     }
 
     {
@@ -351,7 +349,7 @@ TEST(RationalTest, rational_overflow_detection) {
     {
         SCOPED_TRACE("sub overflow returning errc::overflow");
         // -M - 1 would overflow on the negative side
-        ASSERT_FALSE(((rational{M, -1} - 1_r).has_value()));
+        ASSERT_FALSE(try_sub(rational{M, -1}, 1_r).has_value());
     }
 
     {
@@ -361,16 +359,16 @@ TEST(RationalTest, rational_overflow_detection) {
         imax p62 = imax{1} << 62;
 
         // mul: a_ad * b_ad after cross-cancellation still > imax_max.
-        ASSERT_FALSE(((rational{1u, p62} * rational{1u, 3}).has_value()));
+        ASSERT_FALSE(try_mul(rational{1u, p62}, rational{1u, 3}).has_value());
 
         // add: lcm > imax_max.
-        ASSERT_FALSE(((rational{1u, p62} + rational{1u, 3}).has_value()));
+        ASSERT_FALSE(try_add(rational{1u, p62}, rational{1u, 3}).has_value());
 
         // inv of M (M > imax_max) would land M in the result's Den slot.
-        ASSERT_FALSE((rational::inv(rational{M, 1}).has_value()));
+        ASSERT_FALSE((try_inv(rational{M, 1}).has_value()));
 
         // div via the checked path inherits the inv range check.
-        ASSERT_FALSE(((rational{1u, 1} / rational{M, 1}).has_value()));
+        ASSERT_FALSE(try_div(rational{1u, 1}, rational{M, 1}).has_value());
     }
 
     {
@@ -391,8 +389,8 @@ TEST(RationalTest, rational_helpers) {
 
     {
         SCOPED_TRACE("gcd");
-        ASSERT_EQ((gcd(rational{6u, 1}, rational{8u, 1})), (rational{2u, 1}));
-        ASSERT_EQ((gcd(rational{1u, 2}, rational{1u, 3})), (rational{1u, 6}));
+        ASSERT_EQ((*gcd(rational{6u, 1}, rational{8u, 1})), (rational{2u, 1}));
+        ASSERT_EQ((*gcd(rational{1u, 2}, rational{1u, 3})), (rational{1u, 6}));
 
         // Denominator-lcm overflow: lcm(2^62, 3) = 3 * 2^62 > imax_max.
         ASSERT_FALSE((gcd(rational{1u, imax{1} << 62}, rational{1u, 3}).has_value()));
@@ -510,14 +508,14 @@ TEST(RationalTest, mixed_sign_add_rescues_a_cross_product_overflow_when_the_diff
     // -0.49996929771979287 as an exact double fraction: den 2^54.
     const rational fp_value{umax{9006646171630191}, imax{-18014398509481984}};
 
-    const auto offset = fp_value + rational{1024};
+    const auto offset = try_add(fp_value, rational{1024});
     ASSERT_TRUE(offset.has_value());
     ASSERT_TRUE(offset->Num == umax{18437737427537921425u});
     ASSERT_TRUE(offset->Den == imax{18014398509481984});
 
     // Same-sign sums past umax stay an error (the result truly needs > 64 bits).
     const rational positive{umax{9006646171630191}, imax{18014398509481984}};
-    ASSERT_FALSE((positive + rational{1024}).has_value());
+    ASSERT_FALSE(try_add(positive, rational{1024}).has_value());
 }
 } // namespace rational_tests
 
@@ -1297,9 +1295,9 @@ TEST(InternalsTest, rational_add_numerator_sum_overflow_on_unequal_denominators)
     // 2^64 — the sum reduces back by 2: 18999999999999999994/6.
     rational a{5999999999999999999u, 2}; // odd numerator -> stays /2
     rational b{999999999999999997u, 6};  // coprime to 6   -> stays /6
-    ASSERT_EQ(*(a + b), (rational{9499999999999999997u, 3}));
+    ASSERT_EQ(*try_add(a, b), (rational{9499999999999999997u, 3}));
     // One that stays past 2^64: (2^64 − 1)/2 + 2^63/3 = (5·2^63 − 3)/6.
-    ASSERT_FALSE((rational{18446744073709551615u, 2} + rational{9223372036854775808u, 3}).has_value());
+    ASSERT_FALSE(try_add(rational{18446744073709551615u, 2}, rational{9223372036854775808u, 3}).has_value());
 }
 
 //---------------------------------------------------------------------------

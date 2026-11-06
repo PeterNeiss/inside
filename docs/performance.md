@@ -17,9 +17,7 @@ arithmetic with a rational-raw operand takes the exact rational path —
 its cost is measured directly in the continuous-grid / rational-engine
 tables against a hand-rolled reduced int64 fraction (the mixed
 integer/notch-offset add and cross-grid non-integer stores have folded
-integer fast paths, gated on imax-safe spans); a rational RHS in a
-compound assign adds to the raw when it is a whole number of notches,
-else takes the same exact branch; `inside<checked>`
+integer fast paths, gated on imax-safe spans); `inside<checked>`
 element-wise loops keep a per-element range check — prefer `beman::inside::sum`'s
 bulk check, which validates the total instead.
 
@@ -83,11 +81,6 @@ bulk check, which validates the total instead.
 |---------:|--------------------:|--------------------:|--------:|----------------:|----------------:|-------:|---------------:|--------:|----------:|:-------------------------
 |   100.0% |                0.41 |    2,431,981,368.67 |    0.5% |           11.00 |            1.48 |  7.418 |           0.00 |    0.0% |      0.01 | `native *=`
 |   100.2% |                0.41 |    2,436,306,722.78 |    0.4% |           11.00 |            1.48 |  7.431 |           0.00 |    0.0% |      0.01 | `inside *=`
-
-| relative |               ns/op |                op/s |    err% |          ins/op |          cyc/op |    IPC |         bra/op |   miss% |     total | compound += rational (Q8.8)
-|---------:|--------------------:|--------------------:|--------:|----------------:|----------------:|-------:|---------------:|--------:|----------:|:----------------------------
-|   100.0% |                0.41 |    2,443,183,742.00 |    0.1% |           12.00 |            1.48 |  8.128 |           0.00 |    0.0% |      0.01 | `native int32 += k`
-|    32.4% |                1.26 |      792,188,347.41 |    0.5% |           29.78 |            4.55 |  6.545 |           2.00 |    0.5% |      0.01 | `inside += rational{k, 256}`
 
 | relative |               ns/op |                op/s |    err% |          ins/op |          cyc/op |    IPC |         bra/op |   miss% |     total | compound /= (u8 [0,200])
 |---------:|--------------------:|--------------------:|--------:|----------------:|----------------:|-------:|---------------:|--------:|----------:|:-------------------------

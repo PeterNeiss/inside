@@ -61,9 +61,9 @@ acc.on_clamp([&](auto&, auto over) { /* over == 850 */ }) += big;   // acc == 10
 
 ### The right-hand side
 
-The right-hand side of a hook's `+=` is an inside, a quantity or a
-`rational`. A raw `int` or `double` is rejected, as for plain compound
-assignment: give it a grid (`5_ins`, `just<5>`, or an inside over its range).
+The right-hand side of a hook's `+=` is an inside or a quantity. A raw
+`int`, `double` or `rational` is rejected, as for plain compound assignment:
+give it a grid (`5_ins`, `just<5>`, or an inside over its range).
 
 ### Hooks on quantities
 
@@ -109,9 +109,9 @@ library does not use `std::error_code` or `<system_error>`.
 
 | Code | Means |
 |---|---|
-| `overflow` | the value does not fit its destination: an inside's range, a native type (`to<T>()`), a 64-bit rational |
+| `overflow` | the value does not fit its destination: an inside's range, a native type (`to<T>()`), a 64-bit rational (`rational{1e30}`) |
 | `rounding_error` | the value is between two notches, and the policy does not round |
-| `division_by_zero` | the divisor is 0 |
+| `division_by_zero` | the divisor is 0, or a fraction's denominator is (`rational{1, 0}`, `parse("1/0")`) |
 | `domain_error` | the argument is outside the function's mathematical domain: `sqrt` of a negative, `pow` of a negative base, a negative value into an unsigned `to<T>()`, bad `grid::try_make` parameters |
 | `not_finite` | a NaN or an infinity came in from a `double` |
 | `invalid_format` | text that is not a number (`parse`, `operator>>`) |
@@ -164,9 +164,13 @@ Each operation reports through one channel:
 | Operation | A failure goes to |
 |---|---|
 | a store: construction, `=`, `+=` and the other compound ops, `as<T>()`, `checked_cast` | the hook (`on_error`, or `on_clamp` / `on_wrap` where they apply), else the store's `errc&`, else the handler |
-| `try_make`, `parse`, `to<T>()`, `grid::try_make` | the returned `std::expected` |
-| `/` and `%` by a grid that holds 0, `rational` arithmetic | the returned `std::expected` |
-| `rational r = p / q;` (a `rational` from an `expected`) | the handler, like a failed store |
+| `try_make`, `parse`, `to<T>()` where it can fail, `grid::try_make` | the returned `std::expected` |
+| `/` and `%` by a grid that holds 0 | the returned `std::expected` |
+
+A `rational`'s own arithmetic (`p + q`, `rational r = p / q;`) is compile time
+only, like a grid number's: an overflow or a zero divisor there is a compile
+error. At run time an exact value is an inside, whose grid bounds every
+result.
 
 An inside never stores a `std::expected`: `T x = a / b;`, `x = a / b;`,
 `x += a / b;` and the policy handles' `=` are deleted. Check the `expected`

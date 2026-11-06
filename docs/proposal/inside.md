@@ -298,9 +298,9 @@ largest denominator times the divisor's largest numerator. That bound travels
 with the type through `+`, `-` and `*`, so exact arithmetic on quotients stays
 plain and its precision is known at compile time. When either operand's policy
 names a rounding, an integer division rounds onto the integers, and a division
-of two values on the same notch `1/K` rounds onto that notch. `a % b` requires
-integer grids; its remainder belongs to the quotient truncated, or rounded by
-the policy's mode. Either operator returns `std::expected<inside, errc>` when the
+of two values on the same notch `1/K` rounds onto that notch. `a % b` takes
+two lattices; its remainder belongs to the quotient truncated, or rounded by
+the policy's mode, and lies on the lattice of the gcd of the two steps. Either operator returns `std::expected<inside, errc>` when the
 divisor's grid holds zero, and a plain `inside` when it does not.
 
 ## Policies
@@ -337,7 +337,8 @@ and is 21% faster than a native checked type in the paper's benchmark ("Where
 are the checks?").
 
 Fallible results are values only where failure is possible at run time:
-`try_make`, `to<T>()`, and division by a divisor whose grid holds zero. A
+`try_make`, `to<T>()` where `T` cannot hold every value, and division by a
+divisor whose grid holds zero. A
 total operation returns a plain
 value, so the type says whether failure is possible. A failed checked store
 throws `inside_error`, which carries the `errc`.
@@ -371,7 +372,9 @@ store of `v` into `B` would do under `B`'s own policy; a rounding policy that
 brings an out-of-range value onto the grid makes it a rounding, not an
 overflow.
 
-Out of an `inside`, `to<T>()` returns `std::expected<T, errc>`. An integer `T`
+Out of an `inside`, `to<T>()` returns `T` where the grid proves the
+conversion total (every value an integer in `T`'s range, or a rounding named;
+every floating-point `T`), else `std::expected<T, errc>`. An integer `T`
 gets the value exactly; a fractional value needs permission to round, as a
 store does: it rounds by the call's mode (`to<int, round_floor>()`), else by
 the type's, and with neither it is `rounding_error`. `overflow` reports a value
@@ -579,12 +582,12 @@ namespace std {
 | `a + b`, `a - b` | interval sum or difference; notch `gcd(n_a, n_b)` | continuous if either operand is, with denominator bound `D_a·D_b` |
 | `a * b` | interval product; notch `n_a·n_b`, refined by the operands' offsets | a point `c` scales the other notch by `|c|`; continuous as for `+` |
 | `a / b` | a point `c`: `a`'s notch scaled by `1/|c|`; else continuous with denominator bound `D_a·max|b|·D_b` | rounded onto the integers or the shared notch when a policy names a rounding; `expected` iff `b`'s grid holds 0 |
-| `a % b` | the values `r` can take: truncation `r` has `a`'s sign, `|r| ≤ min(m, max|a|)`; floor `b`'s sign, ceil the opposite, `|r| ≤ m`; nearest `|r| ≤ min(⌊max|b|/2⌋, max|a|)`; `m = max|b| − 1` | integer grids required; `r = a − q·b` for `q` truncated or rounded by the policy |
+| `a % b` | on the lattice of `u`, the gcd of the two value units (1 on integers), the values `r` can take: truncation `r` has `a`'s sign, `|r| ≤ min(m, max|a|)`; floor `b`'s sign, ceil the opposite, `|r| ≤ m`; nearest `|r| ≤ min(⌊max|b|/2u⌋·u, max|a|)`; `m = max|b| − u` | notched grids required; `r = a − q·b` for the integer `q` truncated or rounded by the policy |
 | `e op b`, `a op e` (`e` an `expected`) | `expected` of `a op b`'s result | the first error passes through |
 | `++a`, `--a` | `a` moved by one notch | a store by `P` (wraps under `wrap`); absent on a continuous grid |
 | `a += b` etc. | `a = a + b` | a store by `a`'s policy |
 | `a == b`, `a <=> b` | exact comparison of values | any two grids, or an inside and an integer or a rational; no floating-point operand (0.1 is not 1/10) |
-| `b.to<T>()` | `expected<T, errc>` | integer `T`: exact, or rounded by `Round`, else by `P`'s mode; `rounding_error` for a fractional value when neither names one; `overflow` out of `T`'s range, `domain_error` for a negative value into an unsigned `T`. Floating-point `T`: rounded once |
+| `b.to<T>()` | `T` where total, else `expected<T, errc>` | integer `T`: exact, or rounded by `Round`, else by `P`'s mode; `rounding_error` for a fractional value when neither names one; `overflow` out of `T`'s range, `domain_error` for a negative value into an unsigned `T`. Floating-point `T`: rounded once |
 | `b.as<T>()` | `T` | a failure of `to<T>()` throws `inside_error`; a floating-point `T` needs a rounding policy |
 | `b.numerator()`, `b.denominator()` | the value in lowest terms, as insides | with `D` the grid's largest denominator: numerator in `[⌈L⌉, ⌊U·D⌋]` (`⌈L·D⌉` for `L < 0`, `⌊U⌋` for `U ≤ 0`), denominator in `[1, D]` |
 | `b.index()`, `B::from_index(i)` | `(b − L)/n` as an `index_t<B>`; `L + i·n` | `from_index` is plain when `i`'s grid lies in `[0, step_count]`, else a store by `P` (or the call's policy) |
@@ -625,7 +628,7 @@ The companion papers propose quantities and the math functions.
 The reference implementation is header-only C++26 and needs static reflection:
 today GCC 16 with `-freflection`. It ships a single-header amalgamation, a
 CMake package and a vcpkg port, and follows the Beman Standard. Its test suite
-(950 tests) runs in CI in six configurations on every change (a
+(953 tests) runs in CI in six configurations on every change (a
 debug preset, release, debug with `-Werror`, coverage, the address, undefined
 and leak sanitizers, no floating point) and in four more every
 week (a release preset, debug, the thread sanitizer, and the full certification

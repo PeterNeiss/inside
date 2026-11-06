@@ -57,10 +57,10 @@ int main() {
     for (const auto& p : {std::array<coord, 2>{10, 0}, std::array<coord, 2>{0, 10}, std::array<coord, 2>{3, 4}}) {
         std::array<coord, 2> q{};
         matrix_vector_product(rot, std::mdspan{p.data(), vector2{}}, std::mdspan{q.data(), vector2{}});
-        const double x = *p[0].to<double>(), y = *p[1].to<double>();
+        const double x = p[0].to<double>(), y = p[1].to<double>();
         const double c = std::cos(std::numbers::pi / 6), s = std::sin(std::numbers::pi / 6);
         const double ex = c * x - s * y, ey = s * x + c * y;
-        worst = std::max({worst, std::abs(*q[0].to<double>() - ex), std::abs(*q[1].to<double>() - ey)});
+        worst = std::max({worst, std::abs(q[0].to<double>() - ex), std::abs(q[1].to<double>() - ey)});
         std::cout << "(" << p[0] << ", " << p[1] << ") -> (" << q[0] << ", " << q[1] << ")  double (" << ex << ", "
                   << ey << ")\n";
     }

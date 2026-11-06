@@ -92,8 +92,9 @@ and the speed each guard costs, are in
 
 - **`fn(x)` deduces its output** from the input: the input's notch and policy
   (plus `round_nearest`), and the function's range over the input's range,
-  computed at compile time and rounded outward. The exceptions are fixed
-  ranges: `sin`/`cos` [−1, 1], `tan` [−1024, 1024], `atan2` [−π, π]; `hypot`
+  computed at compile time and rounded outward (`tan` over the input's
+  branch). The exceptions are fixed ranges: `sin`/`cos` [−1, 1], `atan2`
+  [−π, π]; `hypot`
   uses the gcd of both notches, `pow` the base's notch, `floor` & co. notch 1.
   A fine input gives a fine, slower output; name a coarser one with `fn_into`.
 - **`fn_into<Out>(x)` names the output.** The result rounds under `Out`'s
@@ -130,8 +131,7 @@ These work on grids past 64 bits too, and need no rounding mode.
 
 | Function | Domain | Errors | Notes |
 |---|---|---|---|
-| `sqrt(x)` on a grid with Lower ≥ 0 | x ≥ 0 | none | exact integer square root |
-| `sqrt(x)` on a grid that crosses 0 | all | `expected`: `domain_error` for x < 0 | |
+| `sqrt(x)` | x ≥ 0: a grid reaching below 0 does not compile | none | exact integer square root |
 | `cbrt(x)` | all | none | exact integer cube root |
 | `hypot(x, y)` | all | none | √(x² + y²), the sum formed exactly |
 
@@ -140,7 +140,7 @@ These work on grids past 64 bits too, and need no rounding mode.
 | Function | Domain | Deduced output | Errors |
 |---|---|---|---|
 | `sin`, `cos` | all | [−1, 1] | none |
-| `tan` | all | [−1024, 1024] | `expected`: `overflow` past `Out` (saturates when `Out` has `clamp`) |
+| `tan` | one branch (kπ − π/2, kπ + π/2): an interval holding a pole does not compile | its range over the branch | `overflow` past `Out` (saturates when `Out` has `clamp`) |
 | `atan` | all | (−π/2, π/2), rounded out | none |
 | `asin`, `acos` | [−1, 1] | [−π/2, π/2], [0, π], rounded out | none |
 | `atan2(y, x)` | all; `atan2(0, 0)` is 0 | [−π, π], rounded out | none |
@@ -161,10 +161,11 @@ These work on grids past 64 bits too, and need no rounding mode.
 | `exp`, `exp2` | all (deduced forms: \|x\| ≤ 4096) | none | |
 | `log`, `log2`, `log10` | x > 0 | none | `log2`, `log10` of an exact power are exact |
 | `pow_base<B>(x)` | `B` an integer ≥ 2, known at compile time | none | |
-| `pow(base, e)` | deduced form: Lower(base) > 0 | `expected`: `domain_error` for a negative base, `division_by_zero` for 0 to a negative power, `overflow` past `Out` | exact for integer exponents, and for p/q when the base is a perfect q-th power |
+| `pow(base, e)` | base ≥ 0 (a base grid below 0 does not compile); deduced form: Lower(base) > 0 | `expected` only when 0 to a negative power is possible: `division_by_zero`; `overflow` past `Out` | exact for integer exponents, and for p/q when the base is a perfect q-th power |
 
-A domain limit visible in the input's *type* is a compile error; a failure
-that depends on the *value* comes back in the `std::expected`.
+A domain limit visible in the input's *type* is a compile error; the one
+failure that depends on the *value*, `pow`'s pole, comes back in the
+`std::expected`.
 
 ## Storage
 

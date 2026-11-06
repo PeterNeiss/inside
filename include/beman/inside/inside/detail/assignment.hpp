@@ -85,10 +85,13 @@ struct assignment<L, R> {
             lhs = L::from_raw(0); // a point grid: 0 is the only offset
         else if constexpr (q_format_fits<L>)
             lhs = L::from_raw(q_format_encode<L>(static_cast<imax>(rhs)));
-        else // index storage on a notch 1/K grid: the offset is an exact integer
-        {
-            rational raw = ((rhs - lower64<L>) / notch64<L>).value();
-            lhs          = L::from_raw(raw_cast<L>(raw.Num));
+        else {
+            // Index storage on a notch 1/K grid over an integer Lower: the
+            // offset (rhs − Lower)·K of an in-range rhs is below 2^64, so umax
+            // steps, exact modulo 2^64, give it exactly.
+            constexpr umax K  = static_cast<umax>(abs_den(notch64<L>.Den));
+            constexpr umax lo = lower64<L>.Den < 0 ? umax{0} - lower64<L>.Num : lower64<L>.Num; // Lower mod 2^64
+            lhs               = L::from_raw(raw_from_offset<L>((static_cast<umax>(rhs) - lo) * K));
         }
     }
 
@@ -302,11 +305,12 @@ struct assignment<L, R> {
     // 2^63, a far value on a fine grid): the exact store's wrap, which rounds
     // by the policy and folds the wide lattice index (a wrap action's carry
     // saturates, as on the wide paths). A continuous L has no lattice to
-    // fold in wide integers, and a point no period: still overflow.
+    // fold in wide integers: still overflow. (A point cannot wrap at all:
+    // dispatch_out_of_range rejects it.)
     template <typename P, typename A, std::size_t K>
     [[gnu::cold]] [[gnu::noinline]] static constexpr void
     wrap_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& action) {
-        if constexpr (integer_storage<L> && !point_storage<L>)
+        if constexpr (integer_storage<L>)
             assign_exact<R>(lhs, v, policy, action);
         else
             report_failure(lhs, policy, action, errc::overflow);

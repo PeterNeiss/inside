@@ -113,7 +113,7 @@ TEST(BigGridTest, conversions_and_io) {
     far f{huge::from_raw(raw_2_100_3)};
     EXPECT_EQ(to_string(f), "1267650600228229401496703205379");
     EXPECT_EQ(f.to<int>().error(), errc::overflow);
-    EXPECT_DOUBLE_EQ(f.to<double>().value(), 0x1p100);
+    EXPECT_DOUBLE_EQ(f.to<double>(), 0x1p100);
     EXPECT_TRUE(parse<huge>("1267650600228229401496703205376").value() == huge::from_raw(raw_2_100));
     fine x = 0.25;
     EXPECT_EQ(to_string(x), to_string(rational{1, 4}));
@@ -180,8 +180,8 @@ TEST(BigGridTest, just_big_and_small_grid_numbers) {
     static_assert(five == 5);
     static_assert(big > five && tiny < five && tiny > 0);
     EXPECT_TRUE(big == huge::from_raw(raw_2_100));
-    EXPECT_DOUBLE_EQ(big.to<double>().value(), 0x1p100);
-    EXPECT_DOUBLE_EQ(tiny.to<double>().value(), 1.616255e-35);
+    EXPECT_DOUBLE_EQ(big.to<double>(), 0x1p100);
+    EXPECT_DOUBLE_EQ(tiny.to<double>(), 1.616255e-35);
     EXPECT_EQ(to_string(tiny), "0.00000000000000000000000000000000001616255");
     // Stored into a grid; added as a point delta.
     huge h = big;
@@ -499,14 +499,14 @@ TEST(WideGridTest, uint64_difference_widens) {
     static_assert(detail::wide_index_storage<decltype(d)>);
     EXPECT_TRUE(d == u64_max - 3);
     EXPECT_TRUE(y - x == -rational{u64_max - 3});
-    EXPECT_EQ(x.to<std::uint64_t>().value(), u64_max);
+    EXPECT_EQ(x.to<std::uint64_t>(), u64_max);
 }
 
 TEST(WideGridTest, conversions) {
     fine a = 41.75;
     EXPECT_EQ(a.to<int>().error(), errc::rounding_error); // 41.75: no rounding named
     EXPECT_EQ((a.to<int, round_toward_zero>().value()), 41);
-    EXPECT_EQ(a.to<double>().value(), 41.75);
+    EXPECT_EQ(a.to<double>(), 41.75);
     EXPECT_EQ((a.to<std::uint8_t, round_nearest>().value()), 42);
     fine big = p34;
     EXPECT_EQ(big.to<std::int32_t>().error(), errc::overflow);
@@ -795,8 +795,8 @@ TEST(WideGridTest, wide_operand_into_a_rational_sum) {
 // slot counts 2^64 − 1 (the last uint64 index) and 2^64 (the first two-limb
 // one), a 128-bit count, and arithmetic that crosses from one to the other.
 TEST(WideGridTest, limb_edges) {
-    constexpr umax u64_max = ~umax{0};
-    const rational q1{1, 4};                                                 // one notch
+    constexpr umax     u64_max = ~umax{0};
+    constexpr rational q1{1, 4};                                             // one notch
     using top64  = inside<{{rational{0}, rational{u64_max, 4}}, per<4>}>;    // 2^64 − 1 slots
     using over64 = inside<{{rational{0}, rational{umax{1} << 62}}, per<4>}>; // 2^64 slots
     static_assert(std::is_same_v<top64::raw_type, std::uint64_t>);

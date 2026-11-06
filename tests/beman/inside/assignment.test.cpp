@@ -894,16 +894,15 @@ using namespace beman::inside;
 using namespace beman::inside::detail;
 
 // Raw int/float/double are no longer arithmetic-mutation operands: `b += 1`,
-// `b *= 2.0` are ill-formed (guidance static_assert in arithmetic.hpp). The only
-// non-inside operand a compound assign accepts is a `rational`. As with the binary
-// operators, the guidance overloads are SFINAE-transparent (the static_assert
-// fires only on a call), so the ill-formedness can't be probed with
-// `requires` — only the sanctioned spellings are positively testable.
+// `b *= 2.0` are ill-formed (guidance static_assert in arithmetic.hpp). As with
+// the binary operators, those guidance overloads are SFINAE-transparent (the
+// static_assert fires only on a call), so their ill-formedness can't be probed
+// with `requires`. A rational, which has no grid either, is a deleted overload
+// (consistency.test.cpp, no_arithmetic_with_a_rational).
 // compound assignment: sanctioned RHS compiles
 TEST(CompoundAssignTest, compound_assignment_sanctioned_rhs_compiles) {
     using u100 = inside<{0, 100}>;
-    static_assert(requires(u100 b) { b += 1_ins; });       // an inside
-    static_assert(requires(u100 b) { b += rational{1}; }); // a rational
+    static_assert(requires(u100 b) { b += 1_ins; }); // an inside
 }
 
 // compound assignment: insidable RHS
@@ -944,48 +943,40 @@ TEST(CompoundAssignTest, compound_and_by_a_zero_inside_report_by_default) {
     ASSERT_THROW((void)(([&] { s %= ui{0}; }())), beman::inside::inside_error);
 }
 
-// compound assignment: rational RHS
-TEST(CompoundAssignTest, compound_assignment_rational_rhs) {
-    // round_nearest required so the inside's rational assignment path is available.
+// compound assignment: constant RHS (a point inside)
+TEST(CompoundAssignTest, compound_assignment_constant_rhs) {
     using rn = inside<{{0, 100}, per<100>}, round_nearest>;
 
     rn a{0.5_r};
-    a += 0.25_r; // 0.50 + 0.25 = 0.75
+    a += 0.25_ins; // 0.50 + 0.25 = 0.75
     ASSERT_EQ(a, rn{0.75_r});
 
-    a -= 0.25_r; // 0.75 − 0.25 = 0.50
+    a -= 0.25_ins; // 0.75 − 0.25 = 0.50
     ASSERT_EQ(a, rn{0.5_r});
 
-    a *= 4_r; // 0.50 × 4 = 2
+    a *= 4_ins; // 0.50 × 4 = 2
     ASSERT_EQ(a, rn{2_r});
 
-    a /= 2_r; // 2 / 2 = 1
+    a /= 2_ins; // 2 / 2 = 1
     ASSERT_EQ(a, rn{1_r});
 }
 
-// compound assignment: fractional RHS via rational
-TEST(CompoundAssignTest, compound_assignment_fractional_rhs_via_rational) {
+// compound assignment: fractional constant RHS
+TEST(CompoundAssignTest, compound_assignment_fractional_constant_rhs) {
     using rn = inside<{{-100, 100}, per<16>}, round_nearest>;
 
     rn a{1.0}; // construction from a double is unchanged
-    a += 2.5_r;
+    a += 2.5_ins;
     ASSERT_EQ(a, rn{3.5});
 
-    a -= 1.5_r;
+    a -= 1.5_ins;
     ASSERT_EQ(a, rn{2.0});
 
-    a *= 1.5_r;
+    a *= 1.5_ins;
     ASSERT_EQ(a, rn{3.0});
 
-    a /= 2_r;
+    a /= 2_ins;
     ASSERT_EQ(a, rn{1.5});
-}
-
-// compound /= 0_r (rational zero) reports error
-TEST(CompoundAssignTest, compound_0_r_rational_zero_reports_error) {
-    using rn = inside<{{0, 100}, per<100>}, round_nearest>;
-    rn a{0.5_r};
-    ASSERT_THROW((void)(([&] { a /= 0_r; }())), beman::inside::inside_error);
 }
 
 // increment / decrement
@@ -1115,86 +1106,6 @@ TEST(CompoundAssignTest, compound_non_fast_storages_still_route_through_plus_rhs
 }
 } // namespace compound_assign_tests
 
-// x += r and x -= r with a rational r: on a Q-format grid (notch 1/K) a
-// whole number of notches adds to the raw directly, without the exact sum.
-// That count needs no division where K is a power of two. Whatever path a
-// value takes, the result is the exact sum rational{x} ± r stored by x's
-// policy: the same value, or the same error. Checked here for every value
-// of small grids (K a power of two, 10, 12), every policy kind, and
-// denominators that do and do not divide K, including unreduced ones.
-namespace compound_rational_tests {
-using namespace beman::inside;
-using namespace beman::inside::detail;
-
-namespace {
-template <class T, class Fn>
-std::expected<T, errc> outcome(Fn&& f) {
-    try {
-        return f();
-    } catch (const inside_error& e) {
-        return std::unexpected{e.Code};
-    }
-}
-
-template <class T>
-T added(T y, rational r) {
-    y += r;
-    return y;
-}
-template <class T>
-T subtracted(T y, rational r) {
-    y -= r;
-    return y;
-}
-
-template <class T>
-void expect_compound_matches_exact_sum() {
-    const imax dens[] = {1, 2, 3, 4, 5, 8, 10, 12, 16, 20, 24, 64, 256, 512, 1000};
-    for (const T x : values<T>)
-        for (const imax d : dens)
-            for (imax n = -3 * d; n <= 3 * d; n += (d > 24 ? d / 8 : 1)) {
-                const rational r{n, d};
-                ASSERT_EQ(outcome<T>([&] { return added(x, r); }), outcome<T>([&] { return T{*(rational{x} + r)}; }))
-                    << "raw " << x.raw() << " + " << n << "/" << d;
-                ASSERT_EQ(outcome<T>([&] { return subtracted(x, r); }),
-                          outcome<T>([&] { return T{*(rational{x} - r)}; }))
-                    << "raw " << x.raw() << " - " << n << "/" << d;
-            }
-    // A hand-built rational that is not in lowest terms: 2/512 is 1/256.
-    for (const T x : values<T>)
-        ASSERT_EQ(outcome<T>([&] { return added(x, rational_from_parts(2, 512)); }),
-                  outcome<T>([&] { return T{*(rational{x} + rational{1, 256})}; }))
-            << "raw " << x.raw();
-}
-
-template <grid G>
-void expect_all_policies() {
-    expect_compound_matches_exact_sum<inside<G>>();
-    expect_compound_matches_exact_sum<inside<G, clamp>>();
-    expect_compound_matches_exact_sum<inside<G, wrap>>();
-    expect_compound_matches_exact_sum<inside<G, round_nearest>>();
-    expect_compound_matches_exact_sum<inside<G, clamp | round_floor>>();
-}
-} // namespace
-
-TEST(CompoundRationalTest, binary_q_format) {
-    BEMAN_INSIDE_RELEASE_ONLY();
-    expect_all_policies<grid{{-2, 2}, per<16>}>();
-}
-TEST(CompoundRationalTest, binary_q_format_unsigned) {
-    BEMAN_INSIDE_RELEASE_ONLY();
-    expect_all_policies<grid{{0, 0.25_r}, per<256>}>();
-}
-TEST(CompoundRationalTest, decimal_q_format) {
-    BEMAN_INSIDE_RELEASE_ONLY();
-    expect_all_policies<grid{{-3, 3}, per<10>}>();
-}
-TEST(CompoundRationalTest, duodecimal_q_format) {
-    BEMAN_INSIDE_RELEASE_ONLY();
-    expect_all_policies<grid{{0, 5}, per<12>}>();
-}
-} // namespace compound_rational_tests
-
 // Pinned defects: each case failed before its fix.
 namespace pinned_tests {
 using namespace beman::inside;
@@ -1229,7 +1140,7 @@ TEST(AssignmentTest, scalar_store_into_a_full_int64_grid) {
         int64 a{2.0};
         int64 b{rational{-7}};
         full  c{rational{-3}};
-        c += rational{1};
+        c += 1_ins;
         full d{-9.0e18};
         return a == 2 && b == -7 && c == -2 && d == -9'000'000'000'000'000'000;
     }());
@@ -1325,13 +1236,14 @@ TEST(AssignmentTest, fine_rational_rounds_onto_the_grid) {
     EXPECT_TRUE(conversion_rounds<A>(top));
 }
 
-// += of a rational on a large Q-format grid: the raw add passed imax (UB).
-TEST(AssignmentTest, add_rational_on_a_large_q_format_grid) {
+// += of a large constant on a large Q-format grid: the raw add passed imax
+// (UB). (Found with a rational right-hand side, which += no longer takes.)
+TEST(AssignmentTest, add_a_large_constant_on_a_large_q_format_grid) {
     inside<{{0, 1ll << 60}, per<4>}, clamp> c{rational{1ll << 60}};
-    c += rational{1ll << 60};
+    c += just<(1ll << 60)>;
     EXPECT_EQ(to_string(c), "1152921504606846976");
     inside<{{0, 1ll << 60}, per<4>}, wrap> w{rational{1ll << 60}};
-    w += rational{1ll << 60};
+    w += just<(1ll << 60)>;
     EXPECT_EQ(to_string(w), "1152921504606846975.75");
 }
 
@@ -1352,8 +1264,8 @@ TEST(AssignmentTest, point_grid_checks_the_value) {
 
 // A source the exact path stores (a fine or wide value) into a point grid
 // divided by the point's zero notch inside noexcept code: std::terminate.
-// wrap onto a point (no period) terminated the same way since the exact wrap
-// fold; it reports overflow, as before.
+// wrap onto a point (no period) is a compile error (fail/wrap_point); a point
+// type with wrap, as arithmetic makes one, still takes its own point.
 TEST(AssignmentTest, point_grid_on_the_exact_path) {
     using three = inside<{3}>; // a point grid
     using fine  = inside<{{0, 1}, per<(1ll << 62)>}>;
@@ -1361,9 +1273,11 @@ TEST(AssignmentTest, point_grid_on_the_exact_path) {
     EXPECT_THROW((x += fine{rational{1, 2}}), inside_error);
     EXPECT_EQ(three::try_make(fine{rational{1, 2}} + 2_ins).error(), errc::overflow);
     using wrapped = inside<{3}, wrap>;
-    EXPECT_EQ(wrapped::try_make(5).error(), errc::overflow);
-    EXPECT_EQ(wrapped::try_make(3.5).error(), errc::overflow);
-    EXPECT_EQ(*wrapped::try_make(3), 3_ins);
+    EXPECT_EQ(*wrapped::try_make(3_ins), 3_ins);
+    const inside<{1, 9}, wrap | round_nearest> a{3};
+    const auto                                 zero = a * 0_ins; // a point type that keeps wrap
+    static_assert(has_flag(flags_of<decltype(zero)>, wrap));
+    EXPECT_EQ(zero, 0_ins);
 }
 
 // The exact store (mul_into, div_into, wide sums) tested the notch before the
@@ -1401,7 +1315,7 @@ TEST(AssignmentTest, bounded_grid_rounds_before_the_range_check) {
     static_assert(inside<sevenths, round_ceil>::try_make(rational{22, 21}).error() == errc::overflow);
     EXPECT_EQ((*inside<wholes, round_floor>::try_make(9.5)), 9);
     inside<sevenths, round_nearest> x{rational{5, 7}};
-    x += rational{1, 3}; // 22/21
+    x += just<1, 3>; // 22/21
     EXPECT_EQ(x, 1);
 }
 
@@ -1848,6 +1762,21 @@ TEST(AssignmentTest, round_to_lattice_unanchored_rounds_and_reports_overflow) {
         (*try_round_to_lattice<U, call_policy<round_half_even>>(rational{5, 1}) == rational{81, 16})); // index 40
     ASSERT_TRUE(
         (try_round_to_lattice<U, call_policy<round_floor>>(rational{(1ull << 61) - 1, 1}).error() == errc::overflow));
+}
+
+// A value just past Upper rounding onto a 64-bit-raw grid whose span passes
+// 2^64: its slot came from (v − Lower)/Notch in 64-bit rationals, unwrapped
+// with .value(), and std::bad_expected_access escaped the store.
+TEST(AssignmentTest, rounding_onto_a_span_past_two_to_the_64) {
+    using wide_span = inside<{{-(just<3> * just<(1ll << 62)>), just<2> * just<(1ll << 62)>}, 4}, round_nearest>;
+    static_assert(sizeof(wide_span::raw_type) == 8);
+    wide_span w{0};
+    w = rational{(umax{1} << 63) + 1}; // 2^63 + 1 rounds to Upper, 2^63
+    EXPECT_TRUE(w == upper_of<wide_span>);
+    w = rational{(umax{1} << 63) - 1}; // in range: rounds to 2^63 too
+    EXPECT_TRUE(w == upper_of<wide_span>);
+    EXPECT_TRUE(conversion_rounds<wide_span>(rational{(umax{1} << 63) + 1}));
+    EXPECT_FALSE(conversion_overflows<wide_span>(rational{(umax{1} << 63) + 1}));
 }
 
 } // namespace pinned_tests

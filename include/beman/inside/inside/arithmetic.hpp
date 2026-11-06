@@ -114,8 +114,8 @@ struct divmod_op {
 #define BEMAN_INSIDE_WHY_div                                                                              \
     "division: no result type - the divisor grid is the point 0, or the exact quotient's fractions pass " \
     "1024 bits"
-#define BEMAN_INSIDE_WHY_mod "modulo requires integer-valued grids"
-#define BEMAN_INSIDE_WHY_divmod "divmod requires integer-valued grids"
+#define BEMAN_INSIDE_WHY_mod "modulo requires notched grids (a continuous grid has no lattice)"
+#define BEMAN_INSIDE_WHY_divmod "divmod requires notched grids (a continuous grid has no lattice)"
 
 namespace detail {
 // The policy flags a call's trailing arguments select, as arith normalizes
@@ -369,6 +369,42 @@ inline constexpr imax lane32_block = [] {
 }();
 } // namespace detail
 
+namespace detail {
+// A sum of fractions p/q with q ≤ D is a whole number of 1/lcm(1, …, D):
+// continuous elements add exactly as numerators over that denominator. Its
+// bits are capped (D up to about 2800); lcm(1..D) ≥ 2^D for D ≥ 7, so a
+// bound past twice the cap is past it without forming the lcm.
+inline constexpr int max_continuous_sum_bits = 4096;
+
+// lcm(1, …, d): the largest power of each prime up to d.
+consteval grid_int lcm_up_to(umax d) {
+    grid_int l{1};
+    for (umax p = 2; p <= d; ++p) {
+        bool prime = true;
+        for (umax f = 2; f * f <= p && prime; ++f)
+            prime = p % f != 0;
+        if (prime) {
+            umax pk = p;
+            while (pk <= d / p)
+                pk *= p;
+            l = l * grid_int{pk};
+        }
+    }
+    return l;
+}
+
+// The bits of lcm(1..D) for B's bound D (past the cap: cap + 1).
+template <insidable B>
+consteval int continuous_sum_bits_of() {
+    const grid_int d = grid_numerator(grid_of<B>.MaxDenominator);
+    if (grid_int{2 * max_continuous_sum_bits} < d)
+        return max_continuous_sum_bits + 1;
+    return bit_width_of(lcm_up_to(static_cast<umax>(d)));
+}
+template <insidable B>
+inline constexpr int continuous_sum_bits = continuous_sum_bits_of<B>();
+} // namespace detail
+
 //---------------------------------------------------------------------------
 // sum<Target> — bulk reduction with ONE deferred range check. Per-element
 // `target += b` re-validates every step (blocks vectorization); this computes
@@ -378,8 +414,8 @@ inline constexpr imax lane32_block = [] {
 // Notch·ΣJ — in a wide integer with 64 bits of headroom for the count; ≤32-bit
 // raws add in blocks, the loop that vectorizes: in 32-bit lanes where a
 // block of at least 64 fits them, else in imax blocks of 2^30 elements.
-// Continuous elements add as 64-bit
-// rationals; a total past that reports overflow through Target's policy.
+// Continuous elements add exactly over lcm(1..D), D their denominator bound
+// (lcm(1..D) at most 4096 bits); n copies of a point are n·value.
 //---------------------------------------------------------------------------
 template <insidable Target, std::ranges::input_range Rng>
     requires insidable<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>>
@@ -453,18 +489,43 @@ template <insidable Target, std::ranges::input_range Rng>
                                          static_cast<W>(detail::grid_denominator(U))};
         detail::no_action              no_op;
         detail::assign_exact<detail::rational>(out, v, policy, no_op);
+    } else if constexpr (detail::point_storage<B>) {
+        // n copies of the one value: n·value.
+        umax n = 0;
+        for ([[maybe_unused]] const auto& b : r)
+            ++n;
+        constexpr std::size_t K = detail::limbs_for_bits(detail::exact_value_bits<B> + 66);
+        using W                 = detail::wide_sint<K>;
+        const detail::wide_rational<K> v =
+            detail::exact_of_grid<K>(lower_of<B>) * detail::wide_rational<K>{W{n}, W{1}};
+        detail::no_action no_op;
+        detail::assign_exact<detail::rational>(out, v, policy, no_op);
     } else {
-        detail::rational total{0};
+        // Continuous elements: each value p/q has q ≤ D, B's bound, so the
+        // total is a whole number of 1/L, L = lcm(1..D); the numerators p·(L/q)
+        // add exactly, with 64 bits of headroom for the count.
+        static_assert(detail::continuous_sum_bits<B> <= detail::max_continuous_sum_bits,
+                      "sum: the elements' denominator bound is too large for an exact total (lcm(1..D) passes "
+                      "4096 bits) - store them onto a notched grid first");
+        constexpr int bits = detail::continuous_sum_bits<B>;
+        using N            = detail::wide_uint<detail::limbs_for_bits(bits)>;
+        constexpr N L =
+            static_cast<N>(detail::lcm_up_to(static_cast<umax>(detail::grid_numerator(grid_of<B>.MaxDenominator))));
+        constexpr std::size_t K = detail::limbs_for_bits(bits + detail::exact_value_bits<B> + 66);
+        using I                 = detail::wide_sint<K>;
+        I total{0};
         for (const auto& b : r) {
-            const auto s = total + detail::as_rational(b);
-            if (!s) [[unlikely]] {
-                detail::no_action no_op;
-                detail::report_failure(out, policy, no_op, s.error());
-                return out;
+            auto e  = detail::exact_of(b); // Den > 0
+            auto qr = detail::divmod_small(L, static_cast<umax>(e.Den));
+            if (qr.Remainder != 0 || bit_width_of(e.Den) > 64) [[unlikely]] { // (ADL: wide_int's friend)
+                e  = detail::reduced(e); // a raw built unreduced: its reduced Den ≤ D divides L
+                qr = detail::divmod_small(L, static_cast<umax>(e.Den));
             }
-            total = *s;
+            total += static_cast<I>(e.Num) * static_cast<I>(qr.Quotient);
         }
-        detail::assignment<Target, detail::rational>::assign(out, total, policy, detail::no_action{});
+        const detail::wide_rational<K> v{total, static_cast<I>(L)};
+        detail::no_action              no_op;
+        detail::assign_exact<detail::rational>(out, v, policy, no_op);
     }
     return out;
 }
@@ -681,8 +742,8 @@ BEMAN_INSIDE_NO_SCALAR(%)
 
 // An inside with a rational: through the implicit operator rational() it
 // would become rational arithmetic, an expected<rational, errc> without a
-// grid. Deleted, with the spelling that keeps the grid. Compound assignment
-// with a rational (b += 0.5_r) stays: it stores back into b's grid.
+// grid. Deleted, with the spelling that keeps the grid; so are the compound
+// assignments (inside/detail/core.hpp, policy_ref.hpp).
 #define BEMAN_INSIDE_RATIONAL_MSG                                                                \
     "an inside cannot be combined with a rational: write the constant as just<1, 2> or 0.5_ins " \
     "(a grid), or store the rational into an inside first"

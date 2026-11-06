@@ -94,7 +94,7 @@ int main() {
     constexpr auto shared23 = just<1> - math::falling_factorial(just<365>, just<23>) / math::pown<23>(just<365>);
     constexpr auto shared22 = just<1> - math::falling_factorial(just<365>, just<22>) / math::pown<22>(just<365>);
     static_assert(shared23 > just<1, 2> && shared22 < just<1, 2>);
-    std::cout << "birthday 23 " << std::format("{:.6f}", *shared23.to<double>()) << " (" << to_string(shared23).size()
+    std::cout << "birthday 23 " << std::format("{:.6f}", shared23.to<double>()) << " (" << to_string(shared23).size()
               << " characters exactly)\n";
 
     // De Méré: P(at least one six in four rolls) = 1 − (5/6)^4.

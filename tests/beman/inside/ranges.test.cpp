@@ -11,6 +11,10 @@
 
 #include <gtest/gtest.h>
 
+#include "support.hpp"
+
+using beman::inside::test::exact;
+
 #include <algorithm>
 #include <expected>
 #include <iterator>
@@ -266,9 +270,9 @@ void require_decodes_analytically() {
     RangeType   r;
     std::size_t position = 0;
     for (auto b : r) {
-        rational expected =
-            (detail::lower64<value_type> + (rational{position} * detail::notch64<value_type>).value()).value();
-        ASSERT_EQ(as_rational(b), expected);
+        const exact expected =
+            exact{detail::lower64<value_type>} + exact{position} * exact{detail::notch64<value_type>};
+        ASSERT_EQ(exact{as_rational(b)}, expected);
         ++position;
     }
     ASSERT_EQ(position, r.size());
@@ -519,15 +523,7 @@ namespace rng = std::ranges;
 namespace {
 using cell  = beman::inside::inside<{0, 100, 0.5}>;
 using accum = beman::inside::inside<{0, 1000, 0.5}>;
-
-std::expected<rational, errc> checked_div_zero() { return 1_r / 0; }
 } // namespace
-
-// algo: expected rational from div by zero
-TEST(AlgoTest, algo_expected_rational_from_div_by_zero) {
-    ASSERT_FALSE(checked_div_zero().has_value());
-    ASSERT_EQ(checked_div_zero().error(), errc::division_by_zero);
-}
 
 // algo: ranges algorithms over vector<inside>
 TEST(AlgoTest, algo_ranges_algorithms_over_vector_inside) {
@@ -883,8 +879,8 @@ TEST(RangeTest, uniform_covers_every_slot_and_stays_on_the_grid) {
     const auto q = sample<quarter>(2000);
     EXPECT_EQ(q.size(), 9u);
     for (auto v : q) {
-        const rational slots = ((v + 1).value() / rational{1, 4}).value();
-        EXPECT_EQ(detail::abs_den(slots.Den), 1u); // on the 1/4 lattice
+        const exact slots = (exact{v} + exact{1}) / exact{rational{1, 4}};
+        EXPECT_EQ(slots, floor(slots)); // on the 1/4 lattice
     }
     EXPECT_EQ(sample<thirds>(2000).size(), 4u);
     EXPECT_EQ(sample<decltype(5_ins)>(10).size(), 1u); // a point

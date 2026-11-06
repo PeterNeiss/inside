@@ -13,13 +13,14 @@ int main() {
     static_assert(grid_of<decltype(s)> == grid{{-1, 1}, per<16384>});
     auto c = math::cos_into<math::unit_amplitude<256>>(angle{1}); // 0.5390625: a coarser output, named
 
-    using level = inside<{{-4, 4}, per<256>}, round_nearest>;
-    auto r = math::sqrt(level{2.25});                // expected: the grid holds negative values
-    auto n = math::sqrt(level{-1});                  // unexpected(errc::domain_error)
+    using level = inside<{{0, 4}, per<256>}, round_nearest>;
+    auto r = math::sqrt(level{2.25});                // 1.5, on [0, 2]
+    // math::sqrt(inside<{{-4, 4}, per<256>}, round_nearest>{2.25}) does not compile:
+    // the grid reaches below 0, so take abs(x) or store x into a non-negative grid first
     // [/listing]
     if (s != 0.84149169921875_ins || c != 0.5390625_ins)
         return 1;
-    if (!r || *r != 1.5_ins || n || n.error() != errc::domain_error)
+    if (r != 1.5_ins)
         return 1;
     return 0;
 }

@@ -756,11 +756,7 @@ TEST(UnitsMathTest, into_forms_take_checked_inputs) {
     static_assert(std::remove_cvref_t<decltype(s)>::unit == si::metre.value);
     EXPECT_EQ(to_string(s), "2.000 m");
     EXPECT_EQ(units::cbrt_into<out_t>(quantity<cubic(si::metre), inside<{0, 100}>>{27}).numerical_value(), 3);
-    // A grid that reaches below 0: an expected, domain_error on a negative value.
-    const quantity<square(si::metre), inside<{-10, 10}>> neg{-4};
-    const auto                                           e = units::sqrt_into<out_t>(neg);
-    EXPECT_EQ(e.error(), errc::domain_error);
-    EXPECT_EQ(units::sqrt_into<out_t>(quantity<square(si::metre), inside<{-10, 10}>>{9})->numerical_value(), 3);
+    // (A grid that reaches below 0 is a compile error: fail/sqrt_domain.)
 
     using unit_t = inside<{{-1, 1}, per<1'000'000>}, round_nearest>;
     const quantity<si::radian, inside<{0, 3}>> one_rad{1};

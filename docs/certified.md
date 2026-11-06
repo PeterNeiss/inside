@@ -28,8 +28,8 @@ notches and the double-double tier.
 | `sin` | `{[-4, 4], 1/100000} round_nearest` | `{[-64, 64], 1/1000} round_toward_zero, clamp` | 800001 | 0 | 0 | `ff7aa51509c5dec45e6e196abafc7543fab2d3317b31ba73794e1f1f884cadbe` | certified |
 | `cos` | `{[-4, 4], 1/262144} round_nearest` | `{[-64, 64], 1/16} round_ceil, clamp` | 2097153 | 0 | 0 | `6bd771ca03ab8d4e86cd5513b6f32aeddef61ea0649ca3606bc248b918808aa7` | certified |
 | `cos` | `{[-4, 4], 1/262144} round_nearest` | `{[-64, 64], 1/1000} round_nearest, clamp` | 2097153 | 0 | 0 | `8bb00c8dee9f252a9e9921fe0f4529e3e7ad4cf1ba6da6ad4a1ff3f7825a9a3e` | certified |
-| `tan` | `{[-4, 4], 1/262144} round_nearest` | `{[-64, 64], 1/16} round_nearest, clamp` | 2097153 | 0 | 0 | `7cb1ab84d646be84d900e89a96f536bdb9e981094379e075b1cf7cc06a5a3037` | certified |
-| `tan` | `{[-8, 8], 1/65536} round_nearest` | `{[-1048576, 1048576], 1/16} round_nearest` | 1048577 | 0 | 0 | `539faa6f11aeed825de8cac75e00d82315156ea50a884560fa7f5989e2cac1af` | certified |
+| `tan` | `{[-25/16, 25/16], 1/262144} round_nearest` | `{[-64, 64], 1/16} round_nearest, clamp` | 819201 | 0 | 0 | `e3dd67d6795db26f350044bd25690afc57e44c92a55ee59553c82059c4087067` | certified |
+| `tan` | `{[51/32, 75/16], 1/262144} round_nearest` | `{[-1048576, 1048576], 1/16} round_nearest` | 811009 | 0 | 0 | `1e2c11d15c7bd3744feb8e77caaea99e51f54f2e74871ef217e0f05fe38b207f` | certified |
 | `atan` | `{[-4, 4], 1/262144} round_nearest` | `{[-64, 64], 1/16} round_nearest, clamp` | 2097153 | 0 | 0 | `840cd9b5e943beba09737e3db75cfd62b384b6bb155f2b76961715b822051084` | certified |
 | `atan` | `{[-4, 4], 1/262144} round_nearest` | `{[-64, 64], 1/1048576} round_half_even, clamp` | 2097153 | 0 | 0 | `1a93f532747ff8114ddacf8f67d2919523826212c9403e969b693212dac88efb` | certified |
 | `exp` | `{[-8, 8], 1/65536} round_nearest` | `{[0, 1048576], 1/16} round_floor, clamp` | 1048577 | 0 | 0 | `cc0a7cc76475f2e929eac09dc840c3336ffb79aae48c47f8fbb9b3b70efce45a` | certified |
@@ -45,7 +45,6 @@ notches and the double-double tier.
 | `log10` | `{[1/1024, 1024], 1/1024} round_nearest` | `{[-64, 64], 1/1000} round_nearest, clamp` | 1048576 | 0 | 0 | `ff0ab3fb6734e26856067066ce1636bbb8332639e4bbf93b786083563402d6eb` | certified |
 | `sqrt` | `{[1/1024, 1024], 1/1024} round_nearest` | `{[-64, 64], 1/16} round_nearest, clamp` | 1048576 | 0 | 0 | `21ecde5056e8c8b771cade2ba6b19fe08cec0b9690ca461702c4d934d1855a1f` | certified |
 | `sqrt` | `{[1/1024, 1024], 1/1024} round_nearest` | `{[-64, 64], 1/1048576} round_half_even, clamp` | 1048576 | 0 | 0 | `35a409a13dc7ab7bba6687c8376df8eed0c48f9da2ee44845a1d3fb5ceba44e6` | certified |
-| `sqrt` | `{[-4, 4], 1/262144} round_nearest` | `{[-64, 64], 1/16} round_floor, clamp` | 2097153 | 0 | 0 | `0cf276db61bcc7d32697f306c00000d9f1901e924f8a730a8e56560cffce01ae` | certified |
 | `cbrt` | `{[-4, 4], 1/262144} round_nearest` | `{[-64, 64], 1/16} round_floor, clamp` | 2097153 | 0 | 0 | `5bd20249adeaefdbf5c3e9745f9807df5c12d079f0dbd89845a982ea266ea307` | certified |
 | `cbrt` | `{[-4, 4], 1/262144} round_nearest` | `{[-4, 4], 1/4503599627370496} round_nearest, clamp` | 2097153 | 0 | 0 | `ac91d7574d759af9cb5a9a55cf6585fcd69a24aa4699bae649d3d9cc6631e1f4` | certified |
 | `asin` | `{[-1, 1], 1/524288} round_nearest` | `{[-64, 64], 1/16} round_floor, clamp` | 1048577 | 0 | 0 | `3efbb25efbdfb5e8333788b8c386a33c2f1a03dd61487ec3079cc5b14b15e781` | certified |
@@ -77,8 +76,8 @@ more inputs than exhaustion can compute.
 | `acos` | `{[-1, 1], 1/4096} round_nearest` | `{[0, 3217/1024], 1/4096} round_nearest` | 8193 | 0 | 0 | `810c89e56e31b187e823abde7186179ad08f700097c20a5686f720de16b86e4f` | certified |
 | `atan2` | `{[-1, 1], 1/16384} round_nearest × {[-1, 1], 1/16384} round_nearest` | `{[-4, 4], 1/16384} round_nearest` | 1073807361 | 0 | 0 | `0ea93bb107289163a5a711080b2cd223197ba1d0cdefe478bf4ac1af66f1191d` | certified |
 | `hypot` | `{[-1, 1], 1/16384} round_nearest × {[-1, 1], 1/16384} round_nearest` | `{[0, 23171/16384], 1/16384} round_nearest` | 1073807361 | 0 | 0 | `5e3d50b8cd3b9da832a977a3aa1faae71d5e4b55ac1bf466c46344bd276fcd70` | certified |
-| `atan2` | `{[-1024, 1024], 1/256} round_nearest × {[-1024, 1024], 1/256} round_nearest` | `{[-4, 4], 1/1048576} round_nearest` | 274878955521 | – | – | – | skipped: 274.9 G inputs, over --max-slots (~11 h 52 min) |
-| `hypot` | `{[-1024, 1024], 1/256} round_nearest × {[-1024, 1024], 1/256} round_nearest` | `{[0, 46341/32], 1/256} round_nearest` | 274878955521 | – | – | – | skipped: 274.9 G inputs, over --max-slots (~12 h 41 min) |
+| `atan2` | `{[-1024, 1024], 1/256} round_nearest × {[-1024, 1024], 1/256} round_nearest` | `{[-4, 4], 1/1048576} round_nearest` | 274878955521 | – | – | – | skipped: 274.9 G inputs, over --max-slots (~11 h 00 min) |
+| `hypot` | `{[-1024, 1024], 1/256} round_nearest × {[-1024, 1024], 1/256} round_nearest` | `{[0, 46341/32], 1/256} round_nearest` | 274878955521 | – | – | – | skipped: 274.9 G inputs, over --max-slots (~12 h 23 min) |
 
 ### audio_math.cpp
 
@@ -123,11 +122,11 @@ more inputs than exhaustion can compute.
 
 | function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
 |:--|:--|:--|--:|--:|--:|:--|:--|
-| `sin` | `{[0, 4611686018427387903], 1} checked` | `{[-1, 1], 1/4503599627370496} round_nearest` | 4611686018427387904 | – | – | – | skipped: 4.6e+18 inputs, over --max-slots (~6.8e+04 years) |
-| `cos` | `{[0, 4611686018427387903], 1} checked` | `{[-1, 1], 1/4503599627370496} round_nearest` | 4611686018427387904 | – | – | – | skipped: 4.6e+18 inputs, over --max-slots (~6.7e+04 years) |
+| `sin` | `{[0, 4611686018427387903], 1} checked` | `{[-1, 1], 1/4503599627370496} round_nearest` | 4611686018427387904 | – | – | – | skipped: 4.6e+18 inputs, over --max-slots (~8e+04 years) |
+| `cos` | `{[0, 4611686018427387903], 1} checked` | `{[-1, 1], 1/4503599627370496} round_nearest` | 4611686018427387904 | – | – | – | skipped: 4.6e+18 inputs, over --max-slots (~8.1e+04 years) |
 
 ### solar_system.cpp
 
 | function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
 |:--|:--|:--|--:|--:|--:|:--|:--|
-| `hypot` | `{[-10000000000000, 10000000000000], 1/1000000000} checked × {[-10000000000000, 10000000000000], 1/1000000000} checked` | `{[0, 100000000000000], 1/1000} round_nearest` | > 1.8e+19 | – | – | – | skipped: > 1.8e+19 inputs, over --max-slots (~9.2e+05 years) |
+| `hypot` | `{[-10000000000000, 10000000000000], 1/1000000000} checked × {[-10000000000000, 10000000000000], 1/1000000000} checked` | `{[0, 100000000000000], 1/1000} round_nearest` | > 1.8e+19 | – | – | – | skipped: > 1.8e+19 inputs, over --max-slots (~1e+06 years) |

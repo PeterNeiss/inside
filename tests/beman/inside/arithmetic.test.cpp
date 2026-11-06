@@ -16,6 +16,10 @@
 
 #include <gtest/gtest.h>
 
+#include "support.hpp"
+
+using beman::inside::test::exact;
+
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
@@ -579,15 +583,15 @@ void check_cross(const std::vector<double>& va, const std::vector<double>& vb) {
             // --- arithmetic: exact on the widened result grid ---
             if constexpr (requires { a + b; }) {
                 SCOPED_TRACE(::testing::Message() << "+ a=" << to_string(ar) << " b=" << to_string(br));
-                ASSERT_TRUE(static_cast<rational>(a + b) == *(ar + br));
+                ASSERT_TRUE(exact{a + b} == exact{ar} + exact{br});
             }
             if constexpr (requires { a - b; }) {
                 SCOPED_TRACE(::testing::Message() << "- a=" << to_string(ar) << " b=" << to_string(br));
-                ASSERT_TRUE(static_cast<rational>(a - b) == *(ar - br));
+                ASSERT_TRUE(exact{a - b} == exact{ar} - exact{br});
             }
             if constexpr (requires { a * b; }) {
                 SCOPED_TRACE(::testing::Message() << "* a=" << to_string(ar) << " b=" << to_string(br));
-                ASSERT_TRUE(static_cast<rational>(a * b) == *(ar * br));
+                ASSERT_TRUE(exact{a * b} == exact{ar} * exact{br});
             }
         }
 }
@@ -1112,13 +1116,15 @@ TEST(ExpectedArithmeticTest, expected_rational_minus_expected_rational) {
     ASSERT_EQ(*r, 0.25_r);
 }
 
-// expected<rational> / expected<rational>, with the division_by_zero cause
+// expected<rational> / expected<rational>, with the division_by_zero cause.
+// (A rational's arithmetic is compile time only: dividing by 0 there is a
+// compile error, so the cause comes from an operand.)
 TEST(ExpectedArithmeticTest, expected_rational_div_expected_rational) {
     auto r = good(0.75_r) / good(0.5_r);
     ASSERT_TRUE(r.has_value());
     ASSERT_EQ(*r, 1.5_r);
 
-    auto z = good(0.75_r) / good(rational{0});
+    auto z = good(0.75_r) / bad(errc::division_by_zero);
     ASSERT_FALSE(z.has_value());
     ASSERT_EQ(z.error(), errc::division_by_zero);
 }
@@ -1129,7 +1135,7 @@ TEST(ExpectedArithmeticTest, first_error_keeps_its_cause) {
     ASSERT_FALSE(r.has_value());
     ASSERT_EQ(r.error(), errc::division_by_zero);
 
-    auto chained = (good(1_r) / good(rational{0})) * good(2_r) + good(3_r);
+    auto chained = (good(1_r) / bad(errc::division_by_zero)) * good(2_r) + good(3_r);
     ASSERT_FALSE(chained.has_value());
     ASSERT_EQ(chained.error(), errc::division_by_zero);
 }
@@ -1160,14 +1166,6 @@ TEST(ExpectedArithmeticTest, unary_expected_rational) {
     ASSERT_EQ(e.error(), errc::division_by_zero);
 }
 
-// rational overflow reports errc::overflow
-TEST(ExpectedArithmeticTest, rational_overflow_reports_overflow) {
-    const rational huge{std::numeric_limits<umax>::max()};
-    auto           r = huge * huge;
-    ASSERT_FALSE(r.has_value());
-    ASSERT_EQ(r.error(), errc::overflow);
-}
-
 // No inside stores a std::expected - not by construction, =, or a compound
 // op: check it and store *e, or use try_make(e), which passes the error on.
 TEST(ExpectedArithmeticTest, inside_does_not_store_an_expected) {
@@ -1194,22 +1192,6 @@ TEST(ExpectedArithmeticTest, zero_divisor_into_a_clamp_type_is_reported) {
     EXPECT_EQ(c_t::try_make(a / b).error(), errc::division_by_zero);
     b = 2;
     EXPECT_EQ(rational{*c_t::try_make(a / b)}, 2);
-}
-
-// rational's sinks raise too: the expected-converting ctor, the compound
-// assignments and a comparison against an expected.
-TEST(ExpectedArithmeticTest, rational_sinks_raise_inside_error) {
-    try {
-        const rational r = bad(errc::division_by_zero);
-        (void)r;
-        FAIL() << "no error reported";
-    } catch (const inside_error& e) {
-        EXPECT_EQ(e.Code, errc::division_by_zero);
-    }
-    rational a{1};
-    EXPECT_THROW(a += bad(), inside_error);
-    EXPECT_THROW((void)(a < bad()), inside_error);
-    EXPECT_EQ(a, 1);
 }
 
 // expected<inside> + a point propagates the error. (An inside or an
@@ -1528,22 +1510,21 @@ TEST(BoundedRationalTest, bounds_past_storage_report_in_cxx23_and_fit_in_cxx26) 
     EXPECT_TRUE(x3 == lift_unwrap(x * (x * x)));
 }
 
-// Every value of small grids against the checked 64-bit rational: the
-// unchecked kernels the bound selects give the exact result.
+// Every value of small grids against exact arithmetic: the unchecked 64-bit
+// kernels the bound selects give the exact result.
 TEST(BoundedRationalTest, sweep_matches_checked_rational) {
     using q_t = decltype(half{} / small{});
     static_assert(grid_of<q_t>.MaxDenominator == 10 && !is_expected_v<q_t>);
     for (auto x : values<half>)
         for (auto y : values<small>) {
-            const q_t      q  = x / y;
-            const rational qr = (rational{x} / rational{y}).value();
-            ASSERT_EQ(rational{q}, qr);
-            ASSERT_EQ(rational{q + q}, (qr + qr).value());
-            ASSERT_EQ(rational{q - x}, (qr - rational{x}).value());
-            ASSERT_EQ(rational{q * q}, (qr * qr).value());
-            ASSERT_EQ(rational{q / y}, (qr / rational{y}).value());
-            ASSERT_EQ(rational{(q + q) * q - q / y},
-                      (((qr + qr).value() * qr).value() - (qr / rational{y}).value()).value());
+            const q_t   q  = x / y;
+            const exact qr = exact{x} / exact{y};
+            ASSERT_EQ(exact{q}, qr);
+            ASSERT_EQ(exact{q + q}, qr + qr);
+            ASSERT_EQ(exact{q - x}, qr - exact{x});
+            ASSERT_EQ(exact{q * q}, qr * qr);
+            ASSERT_EQ(exact{q / y}, qr / exact{y});
+            ASSERT_EQ(exact{(q + q) * q - q / y}, (qr + qr) * qr - qr / exact{y});
         }
 }
 
@@ -1695,8 +1676,8 @@ TEST(ArithmeticTest, operations_are_constraint_friendly) {
     static_assert(can_div<digit, digit> && can_div<reals, digit>);
     static_assert(can_div<digit, reals>);        // a bounded divisor stays 1/1000 from 0
     static_assert(!can_div<digit, inside<{0}>>); // the point 0
-    static_assert(can_mod<digit, digit> && !can_mod<fourths, digit>);
-    static_assert(can_divmod<digit, inside<{1, 3}>> && !can_divmod<fourths, digit>);
+    static_assert(can_mod<digit, digit> && can_mod<fourths, digit> && !can_mod<reals, digit>); // a lattice each
+    static_assert(can_divmod<digit, inside<{1, 3}>> && can_divmod<fourths, digit> && !can_divmod<reals, digit>);
     static_assert(can_add<digit, fourths> && can_mul<fourths, fourths>);
     static_assert(can_add<uint64, uint64> && can_mul<full, full>);
     static_assert(can_make<digit, int> && can_make<digit, inside<{5, 20}>> && !can_make<digit, inside<{20, 30}>>);
@@ -1803,7 +1784,7 @@ TEST(ArithmeticTest, product_stays_exact_past_2_53) {
     const U        a  = 4.0 - std::ldexp(1.0, -26); // index 2^28-1, exact
     auto           p  = a * a;                      // product grid f=52 > 53 bits
     const rational ar = static_cast<rational>(a);
-    ASSERT_TRUE(static_cast<rational>(p) == *(ar * ar));
+    ASSERT_TRUE(exact{p} == exact{ar} * exact{ar});
 }
 
 //---------------------------------------------------------------------------
@@ -1869,10 +1850,35 @@ TEST(ArithmeticTest, multiply_by_point_matches_exact_product) {
         EXPECT_EQ(rational{x * just<3>}, rational{3 * v});
         EXPECT_EQ(rational{just<3> * x}, rational{3 * v});
         EXPECT_EQ(rational{x * just<-2>}, rational{-2 * v});
-        EXPECT_EQ((rational{x * just<-1, 4>}), (rational{v} * rational(-1, 4)).value());
+        EXPECT_EQ((exact{x * just<-1, 4>}), (exact{v} * exact{rational{-1, 4}}));
     }
     inside<{0, 200}> a{3}, b{4};
     EXPECT_EQ(rational{midpoint(a, b)}, (rational{7, 2}));
+}
+
+// sum<Target> of continuous elements added 64-bit rationals: a partial sum
+// whose denominator passed 64 bits reported overflow, however small the
+// total. It adds exactly over lcm(1..D) now; n copies of a point are n·value.
+TEST(ArithmeticTest, continuous_sum_is_exact) {
+    using fine = inside<{{0, 1}, max_denominator{2000}}>;
+    // Six primes: the reduced sum's denominator, their product, passes 2^64.
+    const std::array<fine, 6> r{fine{rational{1, 1999}},
+                                fine{rational{1, 1997}},
+                                fine{rational{1, 1993}},
+                                fine{rational{1, 1987}},
+                                fine{rational{1, 1979}},
+                                fine{rational{1, 1973}}};
+    using total  = inside<{{0, 6}, per<(1ll << 40)>}, round_nearest>;
+    const auto s = beman::inside::sum<total>(r); // Σ 1/p, rounded once
+    EXPECT_EQ(s.raw(), 3318520424);              // round(2^40 · Σ 1/p)
+    using sixths = inside<{{-1, 1}, max_denominator{6}}>;
+    const std::array<sixths, 4> h{
+        sixths{rational{1, 2}}, sixths{rational{1, 3}}, sixths{rational{1, 6}}, sixths{rational{-5, 6}}};
+    using sixths_total = inside<{{-4, 4}, max_denominator{6}}>;
+    EXPECT_EQ(rational{beman::inside::sum<sixths_total>(h)}, (rational{1, 6}));
+    const std::array<std::remove_cvref_t<decltype(just<1, 3>)>, 5> p{}; // a point grid: 5 copies of 1/3
+    using thirds_total = inside<{{0, 2}, max_denominator{3}}>;
+    EXPECT_EQ(rational{beman::inside::sum<thirds_total>(p)}, (rational{5, 3}));
 }
 
 } // namespace pinned_tests

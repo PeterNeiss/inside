@@ -11,6 +11,7 @@
 #include <beman/inside/inside/detail/call_policy.hpp>
 
 #include <limits>
+#include <type_traits> // std::type_identity
 #include <numeric>
 #include <utility>
 
@@ -59,12 +60,26 @@ inline constexpr bool div_defined =
     (integer_native_ops<L, R, F> || integer_wide_ops<L, R, F>) ? lower_of<R> != 0 || upper_of<R> != 0
                                                                : grid_quotient_fits(grid_of<L>, grid_of<R>);
 
+// The remainder on notched grids that are not both integer: every value of
+// either is a whole number of g, the gcd of their value units, so `%` and
+// divmod take the integer rules in units of g, and the remainder lies on g·ℤ
+// (a continuous grid has no lattice, and stays rejected).
+template <insidable L, insidable R>
+inline constexpr bool lattice_mod_ops = notched<L> && notched<R> && !(integer_lattice<L> && integer_lattice<R>);
+
+template <insidable L, insidable R>
+inline constexpr grid_rational mod_unit =
+    lattice_mod_ops<L, R> ? gcd(grid_of<L>.value_unit(), grid_of<R>.value_unit()) : grid_rational{1};
+
 // (A zero divisor grid has no remainder grid: |r| < |b| holds no value.)
 template <insidable L, insidable R, policy_flag F>
-inline constexpr bool mod_defined = integer_ops<L, R, F | snap> && (lower_of<R> != 0 || upper_of<R> != 0);
+inline constexpr bool mod_defined =
+    (integer_ops<L, R, F | snap> || lattice_mod_ops<L, R>) && (lower_of<R> != 0 || upper_of<R> != 0);
 
 template <insidable L, insidable R, policy_flag F>
-inline constexpr bool divmod_defined = integer_ops<L, R, F | snap> && div_defined<L, R, F | snap>;
+inline constexpr bool divmod_defined =
+    integer_ops<L, R, F | snap> ? div_defined<L, R, F | snap>
+                                : lattice_mod_ops<L, R> && (lower_of<R> != 0 || upper_of<R> != 0);
 
 //---------------------------------------------------------------------------
 // Rounding mode for the native div & mod paths (fire when `snap` is set).
@@ -398,11 +413,12 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, call_policy<G, E> policy) ->
         if constexpr (!zero_unchecked)
             if (rhs_r.Num == 0)
                 return zero();
-        return result::from_raw(rational::div_unchecked(as_rational(lhs), rhs_r));
+        return result::from_raw(div_unchecked(as_rational(lhs), rhs_r));
     }
 }
 //---------------------------------------------------------------------------
-// modulo (requires integer-valued grids)
+// modulo (requires notched grids: integer-valued, or a lattice in units of
+// mod_unit)
 //---------------------------------------------------------------------------
 template <insidable L, insidable R, policy_flag F = none>
 struct modulo {
@@ -411,12 +427,20 @@ struct modulo {
     // `snap`, which only decides whether `/` rounds.
     static constexpr policy_flag FS = F | snap;
 
-    // Hard requirement, not a fallback: `a mod b` is only defined for integer
-    // operands, so the grid must be integer-aligned.
-    static_assert(integer_ops<L, R, FS>, "modulo requires integer-valued grids");
+    // Hard requirement, not a fallback: `a mod b` needs a lattice on both
+    // sides (integer values, or whole numbers of mod_unit).
+    static_assert(integer_ops<L, R, FS> || lattice_mod_ops<L, R>, "modulo requires notched grids");
 
     // Builtin division when every value fits imax; else exact wide integers.
     static constexpr bool native_mod = integer_native_ops<L, R, FS>;
+
+    // The values' unit: 1 on integer grids, else the gcd of the value units.
+    static constexpr grid_rational unit = mod_unit<L, R>;
+    // A lattice remainder in builtin integers when both operands' unit counts
+    // fit imax.
+    static constexpr bool lattice_native = lattice_mod_ops<L, R> &&
+                                           signed_value_bits({units_lo<L, unit>, units_hi<L, unit>}) < 63 &&
+                                           signed_value_bits({units_lo<R, unit>, units_hi<R, unit>}) < 63;
 
     static constexpr round_mode rmode = rounding_of(F | flags_of<L> | flags_of<R>);
 
@@ -427,9 +451,11 @@ struct modulo {
     //   ceil     the divisor's opposite sign, the same bounds
     //   nearest  either sign (also half_even), |r| ≤ min(⌊|b|/2⌋, |a|)
     // (|r| ≤ |a| holds wherever round(a/b) = 0 is the only way to keep r = a.)
+    // In units of `unit` (1 on integer grids): b_max − 1 is b_max − unit, and
+    // ⌊|b|/2⌋ counts units.
     static constexpr grid result_grid = [] {
-        using G = grid_rational;
-        const G one{1}, zero{0};
+        using G      = grid_rational;
+        const G one  = unit, zero{0};
         const G a_lo = lower_of<L>, a_hi = upper_of<L>, b_lo = lower_of<R>, b_hi = upper_of<R>;
         const G b_max  = abs(b_lo) > abs(b_hi) ? abs(b_lo) : abs(b_hi);
         const G a_max  = abs(a_lo) > abs(a_hi) ? abs(a_lo) : abs(a_hi);
@@ -466,14 +492,17 @@ struct modulo {
             }
             break;
         }
-        default: {                                             // nearest, half_even: |r| ≤ |b|/2, either sign
-            const G half{grid_numerator(b_max) / grid_int{2}}; // b_max is a whole number ≥ 0
-            hi = lesser(half, a_max);
-            lo = -hi;
+        default: { // nearest, half_even: |r| ≤ |b|/2, either sign
+            const G half = G{grid_numerator(b_max / one) / grid_int{2}} * one; // b_max: whole units ≥ 0
+            hi           = lesser(half, a_max);
+            lo           = -hi;
             break;
         }
         }
-        return grid{lo, hi};
+        if constexpr (lattice_mod_ops<L, R>)
+            return grid{{lo, hi}, one};
+        else
+            return grid{lo, hi};
     }();
 
     using result = inside<result_grid, result_flags<L, R>>; // the operands' shared policy
@@ -489,20 +518,38 @@ struct modulo {
 template <insidable L, insidable R, policy_flag F>
 template <policy_flag G, typename E>
 constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, call_policy<G, E> policy) -> return_t {
-    if constexpr (!native_mod) {
+    constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
+    if constexpr (lattice_native) {
+        // A lattice: the integer remainder of the unit counts, scaled back.
+        const imax b = value_in_units<imax, unit>(rhs);
+        if constexpr (!zero_unchecked)
+            if (b == 0)
+                return report_or_unexpected<result>(policy, errc::division_by_zero);
+        return from_value_in_units<result, unit>(div_rem_rounded(value_in_units<imax, unit>(lhs), b, rmode).Remainder);
+    } else if constexpr (lattice_mod_ops<L, R>) {
+        // A lattice past imax units: the same in exact wide integers.
+        constexpr std::size_t K = exact_limbs<L, R, result>;
+        using I                 = wide_sint<K>;
+        const I b               = value_in_units<I, unit>(rhs);
+        if constexpr (!zero_unchecked)
+            if (b.is_zero())
+                return report_or_unexpected<result>(policy, errc::division_by_zero);
+        const I a = value_in_units<I, unit>(lhs);
+        return exact_result<result>(
+            wide_rational<K>{(a - rounded_div<rmode>(a, b) * b) * static_cast<I>(grid_numerator(unit)),
+                             static_cast<I>(grid_denominator(unit))});
+    } else if constexpr (!native_mod) {
         // Integer values past imax: r = a − round(a/b)·b in exact wide integers.
-        constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
-        using I                       = wide_sint<exact_limbs<L, R, result>>;
-        const I b                     = value_in_units<I, grid_rational{1}>(rhs); // integer values: no division
+        using I   = wide_sint<exact_limbs<L, R, result>>;
+        const I b = value_in_units<I, grid_rational{1}>(rhs); // integer values: no division
         if constexpr (!zero_unchecked)
             if (b.is_zero())
                 return report_or_unexpected<result>(policy, errc::division_by_zero);
         const I a = value_in_units<I, grid_rational{1}>(lhs);
         return exact_result<result>(wide_rational<exact_limbs<L, R, result>>{a - rounded_div<rmode>(a, b) * b, I{1}});
     } else {
-        using T                       = native_div_t<L, R>;
-        const T        rhs_val        = static_cast<T>(to_value(rhs));
-        constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
+        using T         = native_div_t<L, R>;
+        const T rhs_val = static_cast<T>(to_value(rhs));
         if constexpr (!zero_unchecked)
             if (rhs_val == 0)
                 return report_or_unexpected<result>(policy, errc::division_by_zero);
@@ -525,11 +572,28 @@ struct quotient_remainder {
     // Rounds like `%`, so like `%` it needs no `snap`.
     static constexpr policy_flag FS = F | snap;
 
-    static_assert(integer_ops<L, R, FS>, "divmod requires integer-valued grids");
+    static_assert(integer_ops<L, R, FS> || lattice_mod_ops<L, R>, "divmod requires notched grids");
 
     static constexpr round_mode rmode = rounding_of(FS | flags_of<L> | flags_of<R>);
 
-    using result = divmod_result<typename division<L, R, FS>::result, typename modulo<L, R, FS>::result>;
+    // On a lattice the quotient is the integer round(a/b): its grid holds the
+    // quotient interval's limits rounded the same way (rounding is monotone).
+    // (A consteval function, not an immediately invoked lambda: GCC 16 takes
+    // the address of an immediate lambda's invoker.)
+    static consteval grid lattice_quotient_grid_of() {
+        const interval q = (*(grid_of<L> / grid_of<R>)).Interval;
+        return grid{grid_round<rmode>(q.Lower), grid_round<rmode>(q.Upper)};
+    }
+    static constexpr grid lattice_quotient_grid = lattice_quotient_grid_of();
+    static constexpr auto quotient_tag() {
+        if constexpr (integer_ops<L, R, FS>)
+            return std::type_identity<typename division<L, R, FS>::result>{};
+        else
+            return std::type_identity<inside<lattice_quotient_grid, result_flags<L, R>>>{};
+    }
+    using quotient = typename decltype(quotient_tag())::type;
+
+    using result = divmod_result<quotient, typename modulo<L, R, FS>::result>;
 
     using return_t = std::conditional_t<divisor_excludes_zero<R>, result, std::expected<result, errc>>;
 
@@ -542,7 +606,22 @@ struct quotient_remainder {
                 policy.report(code);
             return std::unexpected{code};
         };
-        if constexpr (!integer_native_ops<L, R, FS>) {
+        if constexpr (lattice_mod_ops<L, R>) {
+            // A lattice: q and r = a − q·b on the unit counts, exactly.
+            using M                   = typename modulo<L, R, FS>::result;
+            constexpr grid_rational u = mod_unit<L, R>;
+            constexpr std::size_t   K = exact_limbs<L, R, quotient, M>;
+            using I                   = wide_sint<K>;
+            const I b                 = value_in_units<I, u>(rhs);
+            if constexpr (!divisor_unchecked<L, R, F, G>)
+                if (b.is_zero())
+                    return fail(errc::division_by_zero);
+            const I a = value_in_units<I, u>(lhs);
+            const I q = rounded_div<rmode>(a, b);
+            return result{exact_result<quotient>(wide_rational<K>{q, I{1}}),
+                          exact_result<M>(wide_rational<K>{(a - q * b) * static_cast<I>(grid_numerator(u)),
+                                                           static_cast<I>(grid_denominator(u))})};
+        } else if constexpr (!integer_native_ops<L, R, FS>) {
             // Integer values past imax: q and r = a − q·b in exact wide
             // integers, as `/` and `%` do.
             using Q                 = typename division<L, R, FS>::result;

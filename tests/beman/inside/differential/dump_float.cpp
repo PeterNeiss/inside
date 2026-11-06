@@ -19,7 +19,7 @@ void floats(rng_t& g, int n) {
         T x = pick<T>(g);
         if (i % 2 == 1) {
             // A float midpoint near x, onto T's lattice, then a slot either way.
-            const float  f   = static_cast<float>(*x.template to<double>());
+            const float  f   = static_cast<float>(x.template to<double>());
             const double mid = (static_cast<double>(f) + static_cast<double>(std::nextafter(f, 1e30f))) / 2;
             if (const auto y = T::template try_make<round_floor>(mid)) {
                 std::uint64_t k  = static_cast<std::uint64_t>(y->raw()) -
@@ -32,8 +32,8 @@ void floats(rng_t& g, int n) {
                 x = T::from_raw(beman::inside::detail::raw_from_offset<T>(k));
             }
         }
-        const float   f = *x.template to<float>();
-        const double  d = *x.template to<double>();
+        const float   f = x.template to<float>();
+        const double  d = x.template to<double>();
         std::uint32_t bits;
         std::memcpy(&bits, &f, sizeof bits);
         char hex[64];

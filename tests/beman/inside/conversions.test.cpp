@@ -38,13 +38,28 @@ using namespace beman::inside;
 using namespace beman::inside::detail;
 
 // inside::to<unsigned T>
+// to<T>() is an expected only where it can fail: a grid of integers within
+// T's limits, a requested rounding, and every floating T give a plain T.
+TEST(InsideToTest, to_is_plain_where_it_cannot_fail) {
+    using digits = inside<{0, 9}>;
+    using money  = inside<{{0, 100}, per<100>}>;
+    static_assert(std::same_as<decltype(digits{}.to<std::uint8_t>()), std::uint8_t>);
+    static_assert(std::same_as<decltype(inside<{0, 1000}>{}.to<std::uint8_t>()), std::expected<std::uint8_t, errc>>);
+    static_assert(std::same_as<decltype(inside<{-5, 5}>{}.to<unsigned>()), std::expected<unsigned, errc>>);
+    static_assert(std::same_as<decltype(money{}.to<int>()), std::expected<int, errc>>); // 0.25 does not round
+    static_assert(std::same_as<decltype(money{}.to<int, round_floor>()), int>);
+    static_assert(std::same_as<decltype(money{}.to<double>()), double>);
+    EXPECT_EQ((money{2.75}.to<int, round_floor>()), 2);
+    EXPECT_EQ(digits{7}.as<int>(), 7);
+}
+
 TEST(InsideToTest, inside_to_unsigned_t) {
     {
         SCOPED_TRACE("trivially-fits grid takes the fast path");
         using B = inside<{0, 100}>;
-        ASSERT_TRUE(B{42}.to<std::uint8_t>().value() == 42);
-        ASSERT_TRUE(B{0}.to<std::uint32_t>().value() == 0);
-        ASSERT_TRUE(B{100}.to<std::size_t>().value() == 100);
+        ASSERT_TRUE(B{42}.to<std::uint8_t>() == 42);
+        ASSERT_TRUE(B{0}.to<std::uint32_t>() == 0);
+        ASSERT_TRUE(B{100}.to<std::size_t>() == 100);
     }
 
     {
@@ -66,15 +81,15 @@ TEST(InsideToTest, inside_to_unsigned_t) {
     {
         SCOPED_TRACE("a fractional value needs permission to round");
         using B = inside<{{0, 1}, per<2>}>;
-        ASSERT_EQ(B{0.5}.to<std::uint8_t>().error(), errc::rounding_error);       // no rounding named
-        ASSERT_TRUE((B{0.5}.to<std::uint8_t, round_toward_zero>().value() == 0)); // 0.5 -> 0
+        ASSERT_EQ(B{0.5}.to<std::uint8_t>().error(), errc::rounding_error); // no rounding named
+        ASSERT_TRUE((B{0.5}.to<std::uint8_t, round_toward_zero>() == 0));   // 0.5 -> 0
         ASSERT_TRUE(B{1}.to<std::uint8_t>().value() == 1);
     }
 
     {
         SCOPED_TRACE("Q-format fast path");
         using B = inside<{{0, 255}, per<256>}, round_nearest>;
-        ASSERT_TRUE(B{42.5}.to<std::uint8_t>().value() == 43); // the type's mode: a tie away from zero
+        ASSERT_TRUE(B{42.5}.to<std::uint8_t>() == 43); // the type's mode: a tie away from zero
     }
 }
 
@@ -83,8 +98,8 @@ TEST(InsideToTest, inside_to_signed_t) {
     {
         SCOPED_TRACE("trivially-fits grid takes the fast path");
         using B = inside<{-50, 50}>;
-        ASSERT_TRUE(B{-7}.to<std::int8_t>().value() == -7);
-        ASSERT_TRUE(B{42}.to<std::int32_t>().value() == 42);
+        ASSERT_TRUE(B{-7}.to<std::int8_t>() == -7);
+        ASSERT_TRUE(B{42}.to<std::int32_t>() == 42);
     }
 
     {
@@ -109,13 +124,13 @@ TEST(InsideToTest, inside_to_floating_t) {
     {
         SCOPED_TRACE("ordinary value");
         using B = inside<{{0, 1}, per<2>}>;
-        ASSERT_TRUE(B{0.5}.to<double>().value() == 0.5);
+        ASSERT_TRUE(B{0.5}.to<double>() == 0.5);
     }
 
     {
         SCOPED_TRACE("to<double> works even on a strict-policy inside (no policy gate)");
         using B = inside<{0, 10}, checked>;
-        ASSERT_TRUE(B{3}.to<double>().value() == 3.0);
+        ASSERT_TRUE(B{3}.to<double>() == 3.0);
     }
 }
 
@@ -173,7 +188,7 @@ TEST(InsideToTest, operator_double_is_gated_on_rounding_policy) {
     static_assert(!(std::is_constructible_v<double, B_strict>));
 
     // The typed-error path is always available.
-    ASSERT_TRUE(B_strict{0.5}.to<double>().value() == 0.5);
+    ASSERT_TRUE(B_strict{0.5}.to<double>() == 0.5);
 }
 
 // as<T>() is a non-expected shortcut for to<T>().value()
@@ -197,9 +212,9 @@ TEST(InsideToTest, as_t_is_a_non_expected_shortcut_for_to_t_value) {
     // found by ADL, same semantics as the members.
     ASSERT_TRUE(as<imax>(narrow{42}) == 42);
     ASSERT_TRUE(as<double>(frac{7.5}) == 7.5);
-    ASSERT_TRUE(to<imax>(frac{7.5}).value() == 8);
-    ASSERT_TRUE((to<imax, round_floor>(frac{7.5}).value() == 7));
-    ASSERT_TRUE(to<double>(narrow{3}).value() == 3.0);
+    ASSERT_TRUE(to<imax>(frac{7.5}) == 8);
+    ASSERT_TRUE((to<imax, round_floor>(frac{7.5}) == 7));
+    ASSERT_TRUE(to<double>(narrow{3}) == 3.0);
 }
 
 // Probes must stay dependent so a gated call yields `false` instead of a
@@ -444,8 +459,8 @@ TEST(ConversionTest, to_rounds_before_the_range_check) {
     static_assert(*H{-0.5}.to<unsigned, round_toward_zero>() == 0u);
     static_assert(*H{127.5}.to<std::int8_t, round_toward_zero>() == 127);
     static_assert(H{127.5}.to<std::int8_t>().error() == errc::rounding_error);
-    static_assert(*H{127.5}.to<int, round_nearest>() == 128 && *H{127.5}.to<int, round_floor>() == 127);
-    static_assert(*inside<{{0, 10}, per<4>}, round_nearest>{2.75}.to<int>() == 3); // the type's own mode
+    static_assert(H{127.5}.to<int, round_nearest>() == 128 && H{127.5}.to<int, round_floor>() == 127);
+    static_assert(inside<{{0, 10}, per<4>}, round_nearest>{2.75}.to<int>() == 3); // the type's own mode
     static_assert(H{128}.to<std::int8_t>().error() == errc::overflow);
     static_assert(inside<{-5, 5}>{-1}.to<unsigned>().error() == errc::domain_error);
 }
@@ -552,15 +567,15 @@ TEST(ConversionTest, to_long_double_is_rounded_once) {
 #if WIDE_LONG_DOUBLE
     using F = inside<{{-2, 2}, per<(I64{1} << 62)>}>;
     using T = inside<{{-1, 1}, per<3>}>;
-    static_assert(F{*(rational{1} + rational{1, I64{1} << 60})}.to<long double>().value() == 1.0L + 0x1p-60L);
-    static_assert(T{rational{1, 3}}.to<long double>().value() == 1.0L / 3);
+    static_assert(F{*(rational{1} + rational{1, I64{1} << 60})}.to<long double>() == 1.0L + 0x1p-60L);
+    static_assert(T{rational{1, 3}}.to<long double>() == 1.0L / 3);
     const F f{*(rational{-1} - rational{1, I64{1} << 62})};
-    EXPECT_EQ(f.to<long double>().value(), -1.0L - 0x1p-62L);
+    EXPECT_EQ(f.to<long double>(), -1.0L - 0x1p-62L);
     using Q = inside<{{-1000000, 1000000}, per<1000000007>}>;
     const Q q{rational{1, 1000000007}};
-    EXPECT_EQ(q.to<long double>().value(), 1.0L / 1000000007);
+    EXPECT_EQ(q.to<long double>(), 1.0L / 1000000007);
     using S = inside<{{-9223372036854775807, 9223372036854775807}, 1}>;
-    EXPECT_EQ(S{test::at_run_time(I64{9223372036854775807})}.to<long double>().value(), 9223372036854775807.0L);
+    EXPECT_EQ(S{test::at_run_time(I64{9223372036854775807})}.to<long double>(), 9223372036854775807.0L);
 #endif
 }
 
@@ -571,11 +586,10 @@ TEST(ConversionTest, to_float_rounds_once) {
     const T x   = T::from_raw(test::at_run_time((std::uint64_t{1} << 60) + (std::uint64_t{1} << 36) + 1));
     const T low = T::from_raw(test::at_run_time((std::uint64_t{1} << 60) + (std::uint64_t{1} << 36) - 1));
     const T tie = T::from_raw(test::at_run_time((std::uint64_t{1} << 60) + (std::uint64_t{1} << 36)));
-    EXPECT_EQ(*x.to<float>(), 1.0f + 0x1p-23f);
-    EXPECT_EQ(*low.to<float>(), 1.0f);
-    EXPECT_EQ(*tie.to<float>(), 1.0f); // a true tie: to even
-    static_assert(*T::from_raw((std::uint64_t{1} << 60) + (std::uint64_t{1} << 36) + 1).to<float>() ==
-                  1.0f + 0x1p-23f);
+    EXPECT_EQ(x.to<float>(), 1.0f + 0x1p-23f);
+    EXPECT_EQ(low.to<float>(), 1.0f);
+    EXPECT_EQ(tie.to<float>(), 1.0f); // a true tie: to even
+    static_assert(T::from_raw((std::uint64_t{1} << 60) + (std::uint64_t{1} << 36) + 1).to<float>() == 1.0f + 0x1p-23f);
 }
 
 // The noexcept conversion predicates classify non-finite input instead of raising.

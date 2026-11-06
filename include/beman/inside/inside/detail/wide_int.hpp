@@ -164,8 +164,9 @@ struct wide_int {
 
     struct divmod_result;
     // Truncating division, as the builtin operators. Division by zero fails
-    // the build in constant evaluation and reports errc::division_by_zero at
-    // runtime.
+    // the build in constant evaluation; at run time it is a broken invariant
+    // (every caller excludes a zero divisor first: a grid, or a check that
+    // returns division_by_zero), and its report inside noexcept terminates.
     [[nodiscard]] static constexpr divmod_result divmod(const wide_int& a, const wide_int& b) noexcept;
 
     friend constexpr wide_int operator/(const wide_int& a, const wide_int& b) noexcept {
