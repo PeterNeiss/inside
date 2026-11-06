@@ -320,8 +320,8 @@ namespace std::units {
 
 Every function is checked on dyadic, decimal and 2⁻⁴⁰ grids against a
 `long double` reference, and every maximum error is 0.5 notch (the
-repository's `docs/accuracy.md`). 59 type pairs are certified by exhaustion:
-39 covering every function, and the 20 pairs the repository's examples use
+repository's `docs/accuracy.md`). 58 type pairs are certified by exhaustion:
+38 covering every function, and the 20 pairs the repository's examples use
 that are small enough to compute (up to about 10⁹ inputs). Every input is
 computed both through the floating-point kernels and through the integer path
 alone, with no difference and no result left undecided at the precision cap.

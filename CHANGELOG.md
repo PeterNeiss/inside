@@ -39,6 +39,33 @@ an operation can produce (result types are frozen from 1.0 on).
   `step_count_of<T>`, `x.index()`, `T::from_index(i)`.
 - `grid::max_index()` and `grid::max_index_representable()` moved into
   `detail` (they read 0 past 2⁶⁴): use `step_count_of<T>`.
+- A run-time error is now a zero divisor, a store that does not fit, or input
+  from outside the type system (an `int`, a `double`, text); the rest moved
+  to compile time:
+  - `rational`'s arithmetic is `consteval`, like a grid number's: `+ − * /`,
+    its compound assignments, the conversion from an
+    `expected<rational, errc>` and the comparisons with one. An overflow is a
+    compile error. At run time an exact value is an inside. `add_unchecked`,
+    `mul_unchecked`, `div_unchecked`, `inv_unchecked` and `inv` are no
+    longer members of `rational` (they are library-internal).
+  - An inside's compound assignment takes no `rational`: write
+    `x += 0.5_ins` or `x += just<1, 2>`, as the binary operators already
+    required.
+  - `math::sqrt` and `sqrt_into` of a grid that reaches below 0 do not
+    compile (take `abs(x)`, or store `x` into a non-negative grid first);
+    neither does `math::pow` with a base grid below 0 (`pown<E>` takes a
+    negative base) or `math::tan` of an interval that holds a pole.
+  - `math::tan` returns a plain inside, its range over the input's branch
+    (was an `expected` on [−1024, 1024]); `math::pow` returns an `expected`
+    only when 0 to a negative power is possible. `tan_into<Out>` and
+    `pow_into<Out>` report a result past `Out` through `Out`'s policy, as
+    every `_into` form does (the default throws `inside_error`).
+  - `wrap` onto a one-point grid does not compile: a point has no period.
+- `to<T>()` returns a plain `T` where it cannot fail (every value of the grid
+  is an integer within `T`'s limits, or the call names a rounding; every
+  floating-point `T`): drop the `.value()` or `*` there.
+- A zero denominator is `errc::division_by_zero` everywhere (`rational{1, 0}`
+  was `domain_error`); a denominator of `INT64_MIN` is `overflow`.
 
 ### Changed
 
@@ -60,8 +87,16 @@ ones implicitly.
   (was the interval of `a + (b − a)·t`, wider on both sides). On quantities
   it runs in the common unit, like `min` and `max`.
 
+- The deduced math functions round to nearest when the input names no
+  rounding mode (they did not compile); the output type carries the mode.
+
 ### Added
 
+- `%`, `mod` and `divmod` on fractional grids: on two lattices the
+  remainder lies on the lattice of the gcd of their steps, exactly, under
+  every rounding mode (`7.5 % (4/3)` is 5/6). `math::gcd` and `math::lcm` on
+  fractional lattices too (`gcd(3/2, 4/3)` is 1/6, `lcm` 12). Continuous
+  grids stay rejected.
 - `std::mdspan` support (opt-in `<beman/inside/inside/mdspan.hpp>` and
   `<beman/inside/units/mdspan.hpp>`): `inside_mdspan`, a `std::mdspan` that
   takes inside indices (no check when the index type lies within a static
@@ -102,6 +137,23 @@ ones implicitly.
 - `find_grids` (the examples' certified pairs) needs an unoptimized build
   and about 20 s: it runs with `-DBEMAN_INSIDE_SLOW_TESTS=ON`, in the
   weekly CI run.
+- Run-time oracles compute with `test::exact` (tests/beman/inside/exact.hpp),
+  fractions of 2048-bit integers that do not overflow, so two fuzz properties
+  no longer skip cases where the old 64-bit oracle overflowed.
+- The certified `tan` pairs moved to two branch grids, and the `sqrt` pair
+  over a grid that crosses 0 went: 58 certified pairs (every other hash is
+  unchanged).
+
+### Fixed
+
+- A store that rounds a value just past Upper onto a 64-bit-raw grid whose
+  span passes 2⁶⁴ threw `std::bad_expected_access`.
+- `sum<Target>` of continuous elements reported overflow when a partial
+  sum's denominator passed 64 bits, however small the total; it adds exactly
+  now, over lcm(1..D) for the elements' bound D (at most 4096 bits; a larger
+  bound does not compile).
+- `x += rational{1, 3}` on a fine grid reported overflow where the exact sum
+  rounds onto the grid (now removed, see above).
 
 ## 0.7.0 — 2026-11-03
 
