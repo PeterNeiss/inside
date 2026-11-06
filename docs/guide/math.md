@@ -81,10 +81,11 @@ auto big = math::factorial(inside<{0, 100}>{100});         // 100!, on a wide ra
 `binomial(n, k)` and `falling_factorial(n, k)` are 0 for k > n, and
 `rising_factorial(n, 0)` is 1. A result whose limit would pass 16384 bits
 (past 1754!) does not compile: its limit is computed while compiling.
-`gcd(a, b)` and `lcm(a, b)` take integer grids of any sign and size and
-follow `std::gcd` and `std::lcm`: never negative, `gcd(0, 0)` and `lcm(0, b)`
-are 0. Their result types keep the lattice the operands share (the gcd of two
-even grids is even). Each function has the forms `fn(…)` and `fn_into<Out>(…)`;
+`gcd(a, b)` and `lcm(a, b)` take lattices of any sign and size, integer or
+fractional, and follow `std::gcd` and `std::lcm`: never negative, `gcd(0, 0)`
+and `lcm(0, b)` are 0. Their result types keep the lattice the operands share
+(the gcd of two even grids is even; of halves and thirds a multiple of 1/6:
+`gcd(3/2, 4/3)` is 1/6, `lcm(3/2, 4/3)` is 12). Each function has the forms `fn(…)` and `fn_into<Out>(…)`;
 [`combinatorics.cpp`](../../examples/combinatorics.cpp) uses them for
 odds as exact fractions.
 

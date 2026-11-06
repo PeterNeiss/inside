@@ -293,8 +293,8 @@ namespace std::units {
 | `abs`, `sign`, `copysign`, `floor`, `ceil`, `round`, `trunc`, `pown<E>` | exact | none; `round` sends a half away from zero |
 | `fmod(x, y)` | `x − trunc(x/y)·y`, exact, the sign of `x` | `division_by_zero`, iff `y`'s grid holds 0 |
 | `factorial`, `binomial`, `falling_factorial`, `rising_factorial`, `multinomial` | exact; the result grid is the range over the inputs' grids | ill-formed unless the inputs are integer grids from 0, or when the result's limit would pass an implementation limit (the reference implementation: 16384 bits) |
-| `gcd`, `lcm` | exact, `>= 0`, as `std::gcd` and `std::lcm`; the result keeps the operands' common lattice | ill-formed unless the operands are integer grids |
-| `sqrt(x)` | | `domain_error` for `x < 0`, iff `x`'s grid holds a negative |
+| `gcd`, `lcm` | exact, `>= 0`, as `std::gcd` and `std::lcm`; of fractions `x = a·u`, `y = b·u` (`u` the gcd of the value units) `u·gcd(a, b)` and `u·lcm(a, b)`; the result keeps the operands' common lattice | ill-formed unless both operands have a lattice (a notch or a point) |
+| `sqrt(x)` | | ill-formed unless `x`'s grid is non-negative |
 | `log`, `log2`, `log10`, `asin`, `acos`, `acosh`, `atanh` | | ill-formed unless `x`'s grid lies in the domain |
 | `tan(x)` | | ill-formed unless `x`'s interval lies on one branch; `overflow` past `Out` (saturates under `clamp`) |
 | `pow(b, e)` | exact for an integer `e`, and for `p/q` when `b` is a perfect `q`-th power | ill-formed unless `b`'s grid is non-negative; `division_by_zero` for 0 to a negative power (an `expected` iff the grids allow it), `overflow` past `Out` |

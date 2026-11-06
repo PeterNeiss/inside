@@ -548,6 +548,25 @@ TEST(MathIntegerTest, into_forms) {
     EXPECT_TRUE((math::rising_factorial_into<inside<{0, 100}>>(n10{at_run_time(5)}, n10{at_run_time(2)})) == 30);
 }
 
+// gcd and lcm of fractional lattices: x = a·u, y = b·u for u the gcd of the
+// value units (1/6 for halves and thirds), so gcd(x, y) = u·gcd(a, b) and
+// lcm(x, y) = u·lcm(a, b), on the lattices uℤ and lcm(1/2, 1/3)ℤ = ℤ.
+TEST(MathIntegerTest, fractional_lattices) {
+    using halves = inside<{{-4, 4}, per<2>}>;
+    using thirds = inside<{{0, 3}, per<3>}>;
+    static_assert(grid_of<decltype(math::gcd(halves{}, thirds{}))> == grid{{0, 4}, rational{1, 6}});
+    static_assert(grid_of<decltype(math::lcm(halves{}, thirds{}))> == grid{0, 72}); // |x·y| / (1/6)
+    for (int i = 0; i <= 16; ++i)
+        for (int j = 0; j <= 9; ++j) {
+            const auto x = halves::from_raw(static_cast<halves::raw_type>(i));
+            const auto y = thirds::from_raw(static_cast<thirds::raw_type>(j));
+            const long a = 3 * std::abs(i - 8), b = 2 * j; // x = ±a/6, y = b/6
+            EXPECT_EQ(rational{math::gcd(x, y)}, (rational{std::gcd(a, b), 6})) << i << " " << j;
+            EXPECT_EQ(rational{math::lcm(x, y)}, (rational{std::lcm(a, b), 6})) << i << " " << j;
+        }
+    EXPECT_EQ(rational{math::gcd(just<3, 2>, just<4, 3>)}, (rational{1, 6}));
+    EXPECT_EQ(rational{math::lcm(just<3, 2>, just<4, 3>)}, 12);
+}
 } // namespace math_integer_tests
 
 // Pinned defects: each case failed before its fix.
