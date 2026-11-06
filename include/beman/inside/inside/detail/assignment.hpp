@@ -447,7 +447,7 @@ struct assignment<L, R> {
             constexpr bool has_round_flag = uses_flag<L, P, snap>; // every round_* flag contains snap
             // The slot onum/den when it is exact or P rounds; false otherwise
             // (strict policy, off-notch: the rational path below reports it).
-            auto try_slot = [&](umax onum, umax den) {
+            auto stores_slot = [&](umax onum, umax den) {
                 const umax q = onum / den, r = onum % den; // one division
                 if (r == 0) {
                     store_slot(q);
@@ -515,7 +515,7 @@ struct assignment<L, R> {
                     const imax num  = signed_numerator(rv);
                     const umax onum = // ≥ 0: rhs ≥ Lower (in range)
                         static_cast<umax>((num - Lo * static_cast<imax>(aden)) * K);
-                    if (try_slot(onum, aden))
+                    if (stores_slot(onum, aden))
                         return;
                 }
             }
@@ -534,7 +534,7 @@ struct assignment<L, R> {
                     const umax onum = // ≥ 0: rhs ≥ Lower (in range)
                         static_cast<umax>(num * c.K - c.M * static_cast<imax>(aden));
                     const umax den2 = aden * static_cast<umax>(c.S);
-                    if (try_slot(onum, den2))
+                    if (stores_slot(onum, den2))
                         return;
                 }
             }
@@ -910,7 +910,7 @@ struct assignment<L, R> {
     }
 
     template <typename P, typename A>
-    static constexpr bool try_clamp_or_fail(L& lhs, const R& rhs, P&& policy, A&& action) {
+    static constexpr bool clamp_or_fail(L& lhs, const R& rhs, P&& policy, A&& action) {
         return dispatch_out_of_range<true>(
             lhs,
             policy,
@@ -1023,7 +1023,7 @@ struct assignment<L, R> {
                 // tells whether it is in range.)
                 if constexpr (is_integer_mapping && !point_storage<L>) {
                     if (imax mapped = map_raw(rhs.raw()); mapped < raw_lo<L> || mapped > raw_hi<L>)
-                        if (try_clamp_or_fail(lhs, rhs, policy, action))
+                        if (clamp_or_fail(lhs, rhs, policy, action))
                             return lhs;
                 } else if (out_of_interval(rhs)) {
                     // Round first: a value just outside may round onto an endpoint.
@@ -1033,7 +1033,7 @@ struct assignment<L, R> {
                             lhs = L::from_raw(rr.Raw);
                             return lhs;
                         }
-                    if (try_clamp_or_fail(lhs, rhs, policy, action))
+                    if (clamp_or_fail(lhs, rhs, policy, action))
                         return lhs;
                 }
             }
