@@ -6,6 +6,8 @@
 
 #include <gtest/gtest.h>
 
+#include "support.hpp"
+
 using namespace beman::inside;
 namespace engine = beman::inside::math::detail::engine;
 using beman::inside::umax;
@@ -1054,6 +1056,7 @@ double dd_worst_ratio(F kernel) {
         EXPECT_LE((dd_worst_ratio<In, __VA_ARGS__>([](ddk::dd x) { return ddk::fn(x); })), 0x1p-8) << #fn
 
 TEST(MathAdaptiveTest, dd_kernels_stay_far_inside_their_bound) {
+    BEMAN_INSIDE_RELEASE_ONLY();
     using big   = inside<{{-600, 600}, rational{1, 8}}, round_nearest>;
     using turns = inside<{{-1'000'000, 1'000'000}, rational{64, 1}}, round_nearest>;
     DD_ACCURACY(exp, sym4, engine::exp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, 8>);
@@ -1108,6 +1111,7 @@ double lean_worst_ratio(F kernel) {
         EXPECT_LE((lean_worst_ratio<In, __VA_ARGS__>([](ddk::dd x, double& b) { return ddk::fn(x, b); })), 1.0) << #fn
 
 TEST(MathAdaptiveTest, lean_dd_kernels_stay_within_their_proved_bounds) {
+    BEMAN_INSIDE_RELEASE_ONLY();
     using big    = inside<{{-600, 600}, rational{1, 8}}, round_nearest>;
     using turns  = inside<{{-1'000'000, 1'000'000}, rational{64, 1}}, round_nearest>;
     using thirds = inside<{{-4, 4}, rational{1, 3 * 128}}, round_nearest>;
@@ -1258,6 +1262,7 @@ double fp_worst_ratio(F kernel) {
             << #call " full"
 
 TEST(MathAdaptiveTest, double_kernels_stay_within_their_proved_bounds) {
+    BEMAN_INSIDE_RELEASE_ONLY();
     using big   = inside<{{-600, 600}, rational{1, 8}}, round_nearest>;
     using turns = inside<{{-1'000'000, 1'000'000}, rational{64, 1}}, round_nearest>;
     FP_BOUND(

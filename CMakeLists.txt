@@ -51,6 +51,16 @@ option(
     OFF
 )
 
+# Tests too slow for every run, and unable to run in an optimized build:
+# find_grids reads the math instantiations of the unoptimized examples. The
+# weekly CI run turns them on. (The exhaustive sweeps that can run optimized
+# do so in every release build instead, see tests/beman/inside/support.hpp.)
+option(
+    BEMAN_INSIDE_SLOW_TESTS
+    "Run the slow debug-only tests (find_grids). Default: OFF. Values: { ON, OFF }."
+    OFF
+)
+
 # BEMAN_INSIDE_MATH_NO_FP=ON builds with no hardware floating point: the math
 # engine's double and dd tiers compile out (its integer path computes every
 # result; results do not change).

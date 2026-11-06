@@ -8,6 +8,8 @@
 
 #include <gtest/gtest.h>
 
+#include "support.hpp"
+
 #include <cstdint>
 #include <limits>
 #include <vector>
@@ -96,6 +98,7 @@ TEST(WideIntTest, four_uint8_limbs_against_uint32) {
 }
 
 TEST(WideIntTest, four_uint16_limbs_against_uint64) {
+    BEMAN_INSIDE_RELEASE_ONLY();
     check_against<wide_uint<4, std::uint16_t>, wide_sint<4, std::uint16_t>, std::uint64_t, std::int64_t>(
         probe_values<std::uint64_t>());
 }
@@ -103,6 +106,7 @@ TEST(WideIntTest, four_uint16_limbs_against_uint64) {
 // Exhaustive 16-bit division over uint8_t limbs: every dividend against a
 // dense divisor set covers each q̂ correction and add-back case.
 TEST(WideIntTest, exhaustive_division_two_uint8_limbs) {
+    BEMAN_INSIDE_RELEASE_ONLY();
     using W = wide_uint<2, std::uint8_t>;
     for (unsigned b = 1; b <= 0xffff; b += (b < 1024 ? 1 : 97))
         for (unsigned a = 0; a <= 0xffff; ++a) {

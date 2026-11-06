@@ -11,6 +11,8 @@
 
 #include <gtest/gtest.h>
 
+#include "support.hpp"
+
 #include <expected>
 
 using namespace beman::inside;
@@ -67,7 +69,19 @@ void expect_all_policies() {
 }
 } // namespace
 
-TEST(CompoundRationalTest, binary_q_format) { expect_all_policies<grid{{-2, 2}, per<16>}>(); }
-TEST(CompoundRationalTest, binary_q_format_unsigned) { expect_all_policies<grid{{0, 0.25_r}, per<256>}>(); }
-TEST(CompoundRationalTest, decimal_q_format) { expect_all_policies<grid{{-3, 3}, per<10>}>(); }
-TEST(CompoundRationalTest, duodecimal_q_format) { expect_all_policies<grid{{0, 5}, per<12>}>(); }
+TEST(CompoundRationalTest, binary_q_format) {
+    BEMAN_INSIDE_RELEASE_ONLY();
+    expect_all_policies<grid{{-2, 2}, per<16>}>();
+}
+TEST(CompoundRationalTest, binary_q_format_unsigned) {
+    BEMAN_INSIDE_RELEASE_ONLY();
+    expect_all_policies<grid{{0, 0.25_r}, per<256>}>();
+}
+TEST(CompoundRationalTest, decimal_q_format) {
+    BEMAN_INSIDE_RELEASE_ONLY();
+    expect_all_policies<grid{{-3, 3}, per<10>}>();
+}
+TEST(CompoundRationalTest, duodecimal_q_format) {
+    BEMAN_INSIDE_RELEASE_ONLY();
+    expect_all_policies<grid{{0, 5}, per<12>}>();
+}
