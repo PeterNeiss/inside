@@ -306,7 +306,7 @@ constexpr T write_stored(const E& e) {
     if constexpr (K == storage_kind::raw)
         return n.raw();
     else if constexpr (std::floating_point<T>)
-        return *n.template to<T>(); // rounded once
+        return n.template to<T>(); // rounded once
     else
         return n.template as<T>(); // checked: a value past T is reported
 }

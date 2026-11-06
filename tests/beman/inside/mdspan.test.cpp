@@ -333,3 +333,39 @@ TEST(UnitsMdspanTest, sums_and_products_carry_units) {
     EXPECT_EQ(to_string(sq[3]), "16 m²");
 }
 } // namespace units_mdspan_tests
+
+// Arms no other test reaches, found by the reachability audit (gcov and an
+// `if constexpr` probe over the suite).
+namespace reached_arms_tests {
+using namespace beman::inside;
+using detail::rational;
+
+// A writable value accessor over doubles writes each value rounded once.
+TEST(MdspanArmTest, value_accessor_writes_doubles) {
+    using tenth = inside<{{-10, 10}, per<10>}, round_nearest>;
+    std::array<double, 2>                                                                                      d{0, 0};
+    const inside_mdspan<tenth, std::extents<std::size_t, 2>, std::layout_right, value_accessor<tenth, double>> w{
+        d.data()};
+    w[1] = tenth{rational{-7, 10}};
+    EXPECT_EQ(d[1], -0.7);
+}
+
+// unsafe passes an out-of-grid raw and an out-of-extent index through
+// unchecked (the caller's promise).
+TEST(MdspanArmTest, unsafe_raws_and_indices_pass_through) {
+    using adc = inside<{0, 4095}, unsafe>;
+    const std::array<std::uint16_t, 1> raw{5000};
+    const inside_mdspan<adc, std::extents<std::size_t, 1>, std::layout_right, raw_accessor<adc, const std::uint16_t>>
+        v{raw.data()};
+    EXPECT_EQ(adc{v[0]}.raw(), 5000);
+    const std::dextents<std::size_t, 1> e{3};
+    EXPECT_EQ((detail::extent_index<0>(e, inside<{0, 10}, unsafe>{7})), 7u);
+}
+
+// Extents of different ranks are not compatible; a non-index type has no
+// static extent.
+TEST(MdspanArmTest, extent_traits) {
+    static_assert(!detail::extents_compatible<std::extents<std::size_t, 2>, std::extents<std::size_t, 2, 2>>);
+    static_assert(detail::extent_of_index<int> == 0);
+}
+} // namespace reached_arms_tests
