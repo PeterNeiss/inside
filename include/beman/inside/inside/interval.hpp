@@ -32,14 +32,15 @@ struct interval {
     }
 
     [[nodiscard]] constexpr bool     operator==(const interval& rhs) const = default;
-    [[nodiscard]] constexpr interval operator-() const { return interval{-Upper, -Lower}; }
+    [[nodiscard]] consteval interval operator-() const { return interval{-Upper, -Lower}; }
 
+    // (Without forming Upper − Lower, so grid::try_make runs at run time.)
     [[nodiscard]] constexpr bool divides_evenly(const detail::grid_rational& notch) const {
-        return detail::grid_divides_evenly(Upper - Lower, notch);
+        return detail::grid_same_lattice(Upper, Lower, notch);
     }
 
     // The span in units of `notch` (the step count of a grid).
-    [[nodiscard]] constexpr std::expected<detail::grid_rational, errc>
+    [[nodiscard]] consteval std::expected<detail::grid_rational, errc>
     operator/(const detail::grid_rational& notch) const {
         if (notch == 0)
             return std::unexpected{errc::division_by_zero};
@@ -113,21 +114,19 @@ corner_hull(grid_rational a, grid_rational b, grid_rational c, grid_rational d) 
 //---------------------------------------------------------------------------
 // operator+
 //---------------------------------------------------------------------------
-[[nodiscard]] inline constexpr interval operator+(const interval& lhs, const interval& rhs) {
+[[nodiscard]] consteval interval operator+(const interval& lhs, const interval& rhs) {
     return interval{lhs.Lower + rhs.Lower, lhs.Upper + rhs.Upper};
 }
 
 //---------------------------------------------------------------------------
 // operator-
 //---------------------------------------------------------------------------
-[[nodiscard]] inline constexpr interval operator-(const interval& lhs, const interval& rhs) {
-    return operator+(lhs, -rhs);
-}
+[[nodiscard]] consteval interval operator-(const interval& lhs, const interval& rhs) { return operator+(lhs, -rhs); }
 
 //---------------------------------------------------------------------------
 // operator*
 //---------------------------------------------------------------------------
-[[nodiscard]] inline constexpr interval operator*(const interval& lhs, const interval& rhs) {
+[[nodiscard]] consteval interval operator*(const interval& lhs, const interval& rhs) {
     return detail::corner_hull(
         lhs.Lower * rhs.Lower, lhs.Lower * rhs.Upper, lhs.Upper * rhs.Lower, lhs.Upper * rhs.Upper);
 }
@@ -135,7 +134,7 @@ corner_hull(grid_rational a, grid_rational b, grid_rational c, grid_rational d) 
 //---------------------------------------------------------------------------
 // operator/
 //---------------------------------------------------------------------------
-[[nodiscard]] inline constexpr std::expected<interval, errc> operator/(const interval& lhs, const interval& rhs) {
+[[nodiscard]] consteval std::expected<interval, errc> operator/(const interval& lhs, const interval& rhs) {
     if (includes(rhs, 0))
         return std::unexpected{errc::division_by_zero};
 

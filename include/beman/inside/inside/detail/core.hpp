@@ -287,9 +287,10 @@ struct inside {
     inside& operator%=(const std::expected<A, errc>&) = delete (BEMAN_INSIDE_WHY_expected);
 #undef BEMAN_INSIDE_WHY_expected
 
-    // A grid number at run time (`residue r = N - 1_g;`, a constexpr big
-    // variable): checked like any store, since its interval is not part of
-    // its type. (Exactly a grid number: templates, so nothing converts to one.)
+    // A grid number, read at run time (`residue r = N - 1;`: N - 1 is formed
+    // during compilation): checked like any store, since its interval is not
+    // part of its type. (Exactly a grid number: templates, so nothing
+    // converts to one.)
     template <std::same_as<detail::grid_rational> V>
     constexpr inside(const V& value) : Raw{detail::default_raw<inside>} {
         detail::assign_grid_number(*this, value, make_policy<P>());
@@ -517,6 +518,12 @@ struct inside {
             return I::from_raw(detail::raw_cast<I>(detail::raw_offset<inside>(Raw)));
     }
 
+#define BEMAN_INSIDE_WHY_index "inside: index() counts notches - a continuous grid has none to count"
+    auto index() const
+        requires(G.Notch == 0 && G.Interval.Lower != G.Interval.Upper)
+    = delete (BEMAN_INSIDE_WHY_index);
+#undef BEMAN_INSIDE_WHY_index
+
   private:
     // Lower + i·Notch, exactly, as an inside (a point counts in steps of 1,
     // so only index 0 lands on it).
@@ -564,6 +571,15 @@ struct inside {
     [[nodiscard]] static constexpr std::expected<inside, errc> try_from_index(const I& i) {
         return try_make<F>(index_value(i));
     }
+#define BEMAN_INSIDE_WHY_from_index \
+    "inside: from_index(i) takes a notch index - an inside on the integers (index_t<T>, 3_ins) or a builtin integer"
+    template <insidable I>
+        requires(!detail::integer_lattice<I>)
+    static inside from_index(const I&) = delete (BEMAN_INSIDE_WHY_from_index);
+    template <insidable I, typename Pol>
+        requires(!detail::integer_lattice<I>)
+    static inside from_index(const I&, Pol&&) = delete (BEMAN_INSIDE_WHY_from_index);
+#undef BEMAN_INSIDE_WHY_from_index
     template <std::integral T>
         requires(G.Notch != 0 || G.Interval.Lower == G.Interval.Upper)
     [[nodiscard]] static constexpr inside from_index(T i) {

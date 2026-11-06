@@ -644,14 +644,18 @@ using atan2 = inside<{{-pi_up<InY, InX>, pi_up<InY, InX>}, engine::gcd_notch<InY
 // hypot: [0, hypot of the largest magnitudes] on the gcd notch.
 template <insidable InX, insidable InY>
 inline constexpr std::size_t hypot_limbs = ::beman::inside::detail::limbs_for_bits(engine::hypot_bits<InX, InY>);
+// (A consteval function, not an immediately invoked lambda: the lambda would
+// become immediate, and GCC 16 then takes the address of its invoker.)
 template <insidable InX, insidable InY>
-inline constexpr grid_rational hypot_hi = [] {
+consteval grid_rational hypot_upper() {
     using F   = ::beman::inside::detail::wide_rational<hypot_limbs<InX, InY>>;
     const F a = ::beman::inside::detail::exact_of_grid<hypot_limbs<InX, InY>>(max_abs<InX>);
     const F b = ::beman::inside::detail::exact_of_grid<hypot_limbs<InX, InY>>(max_abs<InY>);
     return engine::lattice_bound<engine::gcd_notch<InX, InY>, true>(
         engine::sqrt_core<hypot_limbs<InX, InY>, engine::hypot_bits<InX, InY>>{a * a + b * b});
-}();
+}
+template <insidable InX, insidable InY>
+inline constexpr grid_rational hypot_hi = hypot_upper<InX, InY>();
 template <insidable InX, insidable InY>
 using hypot = inside<{{0, hypot_hi<InX, InY>}, engine::gcd_notch<InX, InY>}, engine::result_policy<InX>>;
 

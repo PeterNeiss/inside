@@ -734,7 +734,7 @@ constexpr wide_rational<input_limbs<In>> grid_input(const grid_rational& r) {
 
 // ⌈|r|⌉ as an int (deduction bounds), saturated at imax: a grid reaching
 // 2^63 must fail every range gate, not wrap past them.
-constexpr imax ceil_abs(const grid_rational& r) {
+consteval imax ceil_abs(const grid_rational& r) {
     const grid_int n = grid_numerator(r), d = grid_denominator(r);
     const grid_int a = abs(n);
     const grid_int c = (a + d - grid_int{1}) / d;

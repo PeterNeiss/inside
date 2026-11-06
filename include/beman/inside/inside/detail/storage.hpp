@@ -429,7 +429,7 @@ inline constexpr round_mode rounding_for = uses_flag<L, P, round_floor>       ? 
                                                                               : round_mode::trunc;
 
 // ⌊a / b⌋ for grid numbers (b > 0).
-constexpr grid_int floor_quotient(const grid_rational& a, const grid_rational& b) noexcept {
+consteval grid_int floor_quotient(const grid_rational& a, const grid_rational& b) {
     const grid_int n = grid_numerator(a) * grid_denominator(b), d = grid_denominator(a) * grid_numerator(b);
     const grid_int q = n / d;
     return (n % d != grid_int{0} && n.negative()) ? q - grid_int{1} : q;

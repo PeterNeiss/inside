@@ -68,9 +68,9 @@ TEST(GridTest, grid_storage_min_selection) {
 TEST(GridTest, grid_arithmetic) {
     {
         SCOPED_TRACE("add aligns notches via gcd");
-        grid a{{0, 10}, 1};
-        grid b{{0, 5}, 1};
-        auto r = a + b;
+        constexpr grid a{{0, 10}, 1};
+        constexpr grid b{{0, 5}, 1};
+        constexpr auto r = a + b;
         ASSERT_TRUE(r.Interval.Lower == 0);
         ASSERT_TRUE(r.Interval.Upper == 15);
         ASSERT_TRUE(r.Notch == 1);
@@ -78,35 +78,35 @@ TEST(GridTest, grid_arithmetic) {
 
     {
         SCOPED_TRACE("multiply takes bounding box and lcm-ish notch");
-        grid a{{0, 10}, 1};
-        grid b{{0, 5}, 1};
-        auto r = a * b;
+        constexpr grid a{{0, 10}, 1};
+        constexpr grid b{{0, 5}, 1};
+        constexpr auto r = a * b;
         ASSERT_TRUE(r.Interval.Lower == 0);
         ASSERT_TRUE(r.Interval.Upper == 50);
     }
 
     {
         SCOPED_TRACE("divide by zero-only interval yields division_by_zero");
-        grid a{{0, 10}, 1};
-        grid zero{{0, 0}, 0}; // pure zero-point grid
-        auto r = a / zero;
+        constexpr grid a{{0, 10}, 1};
+        constexpr grid zero{{0, 0}, 0}; // pure zero-point grid
+        constexpr auto r = a / zero;
         ASSERT_FALSE(r.has_value());
         ASSERT_EQ(r.error(), errc::division_by_zero);
     }
 
     {
         SCOPED_TRACE("divide by positive interval excluding zero");
-        grid a{{0, 10}, 1};
-        grid b{{2, 5}, 1};
-        auto r = a / b;
+        constexpr grid a{{0, 10}, 1};
+        constexpr grid b{{2, 5}, 1};
+        constexpr auto r = a / b;
         ASSERT_TRUE(r.has_value());
     }
 
     {
         SCOPED_TRACE("divide by interval [0, U] excludes zero from divisor by stepping in by notch");
-        grid a{{0, 10}, 1};
-        grid b{{0, 5}, 1}; // includes zero, positive upper
-        auto r = a / b;
+        constexpr grid a{{0, 10}, 1};
+        constexpr grid b{{0, 5}, 1}; // includes zero, positive upper
+        constexpr auto r = a / b;
         ASSERT_TRUE(r.has_value());
         ASSERT_TRUE(r->Interval.Lower == 0);
         ASSERT_TRUE(r->Interval.Upper == 10); // 10 / 1 = 10
@@ -115,9 +115,9 @@ TEST(GridTest, grid_arithmetic) {
 
     {
         SCOPED_TRACE("divide by interval [L, 0] (negative side only)");
-        grid a{{0, 10}, 1};
-        grid b{{-5, 0}, 1}; // includes zero, negative lower
-        auto r = a / b;
+        constexpr grid a{{0, 10}, 1};
+        constexpr grid b{{-5, 0}, 1}; // includes zero, negative lower
+        constexpr auto r = a / b;
         ASSERT_TRUE(r.has_value());
         // dividing positives by negatives gives non-positive result
         ASSERT_TRUE(r->Interval.Upper <= 0);
@@ -126,9 +126,9 @@ TEST(GridTest, grid_arithmetic) {
 
     {
         SCOPED_TRACE("divide by interval that straddles zero");
-        grid a{{1, 10}, 1};
-        grid b{{-5, 5}, 1}; // straddles zero
-        auto r = a / b;
+        constexpr grid a{{1, 10}, 1};
+        constexpr grid b{{-5, 5}, 1}; // straddles zero
+        constexpr auto r = a / b;
         ASSERT_TRUE(r.has_value());
         // result must span both signs once we exclude zero
         ASSERT_TRUE(r->Interval.Lower < 0);
@@ -138,11 +138,11 @@ TEST(GridTest, grid_arithmetic) {
 
     {
         SCOPED_TRACE("divide by zero-notch interval that straddles zero");
-        grid a{{1, 10}, 1};
-        grid b{{-5, 5}, 0}; // unbounded: its values come arbitrarily close to 0
-        ASSERT_EQ((a / b).error(), errc::overflow);
-        grid c{{-5, 5}, max_denominator{4}}; // nonzero values are at least 1/4 in magnitude
-        auto r = a / c;
+        constexpr grid a{{1, 10}, 1};
+        constexpr grid b{{-5, 5}, 0}; // unbounded: its values come arbitrarily close to 0
+        static_assert((a / b).error() == errc::overflow);
+        constexpr grid c{{-5, 5}, max_denominator{4}}; // nonzero values are at least 1/4 in magnitude
+        constexpr auto r = a / c;
         ASSERT_TRUE(r.has_value());
         ASSERT_TRUE(r->Interval.Lower == -40);
         ASSERT_TRUE(r->Interval.Upper == 40);

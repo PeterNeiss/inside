@@ -131,14 +131,12 @@ int main() {
     using exponent_q    = inside<{0, Q - 2}>;
     const exponent_p dp = d % inside<{P - 1, P - 1}>{};
     const exponent_q dq = d % inside<{Q - 1, Q - 1}>{};
-    // q^-1 mod p by Fermat: q^(p - 2). (A big value forms at compile time
-    // only, so p - 2 is a constant; an inside reads it at run time.)
-    constexpr auto  fermat = P - 2;
-    const residue_p qinv   = powmod<residue_p, modulus_p>(modulus_q{} % modulus_p{}, exponent_p{fermat});
-    const residue_p mp     = powmod<residue_p, modulus_p>(c % modulus_p{}, dp);
-    const residue_q mq     = powmod<residue_q, modulus_q>(c % modulus_q{}, dq);
-    const residue_p h      = checked_cast<residue_p>(mod((mp - mq) * qinv, modulus_p{}, round_floor));
-    const auto      crt    = mq + modulus_q{} * h; // on [0, q - 1 + q * (p - 1)] = [0, n - 1]
+    // q^-1 mod p by Fermat: q^(p - 2). (P - 2 is formed during compilation.)
+    const residue_p qinv = powmod<residue_p, modulus_p>(modulus_q{} % modulus_p{}, exponent_p{P - 2});
+    const residue_p mp   = powmod<residue_p, modulus_p>(c % modulus_p{}, dp);
+    const residue_q mq   = powmod<residue_q, modulus_q>(c % modulus_q{}, dq);
+    const residue_p h    = checked_cast<residue_p>(mod((mp - mq) * qinv, modulus_p{}, round_floor));
+    const auto      crt  = mq + modulus_q{} * h; // on [0, q - 1 + q * (p - 1)] = [0, n - 1]
     static_assert(grid_of<decltype(crt)> == grid_of<residue>);
     std::cout << "CRT agrees = " << std::boolalpha << (crt == back) << "\n";
     if (crt != back)
