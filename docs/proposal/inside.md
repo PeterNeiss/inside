@@ -337,7 +337,8 @@ and is 21% faster than a native checked type in the paper's benchmark ("Where
 are the checks?").
 
 Fallible results are values only where failure is possible at run time:
-`try_make`, `to<T>()`, and division by a divisor whose grid holds zero. A
+`try_make`, `to<T>()` where `T` cannot hold every value, and division by a
+divisor whose grid holds zero. A
 total operation returns a plain
 value, so the type says whether failure is possible. A failed checked store
 throws `inside_error`, which carries the `errc`.
@@ -371,7 +372,9 @@ store of `v` into `B` would do under `B`'s own policy; a rounding policy that
 brings an out-of-range value onto the grid makes it a rounding, not an
 overflow.
 
-Out of an `inside`, `to<T>()` returns `std::expected<T, errc>`. An integer `T`
+Out of an `inside`, `to<T>()` returns `T` where the grid proves the
+conversion total (every value an integer in `T`'s range, or a rounding named;
+every floating-point `T`), else `std::expected<T, errc>`. An integer `T`
 gets the value exactly; a fractional value needs permission to round, as a
 store does: it rounds by the call's mode (`to<int, round_floor>()`), else by
 the type's, and with neither it is `rounding_error`. `overflow` reports a value
@@ -584,7 +587,7 @@ namespace std {
 | `++a`, `--a` | `a` moved by one notch | a store by `P` (wraps under `wrap`); absent on a continuous grid |
 | `a += b` etc. | `a = a + b` | a store by `a`'s policy |
 | `a == b`, `a <=> b` | exact comparison of values | any two grids, or an inside and an integer or a rational; no floating-point operand (0.1 is not 1/10) |
-| `b.to<T>()` | `expected<T, errc>` | integer `T`: exact, or rounded by `Round`, else by `P`'s mode; `rounding_error` for a fractional value when neither names one; `overflow` out of `T`'s range, `domain_error` for a negative value into an unsigned `T`. Floating-point `T`: rounded once |
+| `b.to<T>()` | `T` where total, else `expected<T, errc>` | integer `T`: exact, or rounded by `Round`, else by `P`'s mode; `rounding_error` for a fractional value when neither names one; `overflow` out of `T`'s range, `domain_error` for a negative value into an unsigned `T`. Floating-point `T`: rounded once |
 | `b.as<T>()` | `T` | a failure of `to<T>()` throws `inside_error`; a floating-point `T` needs a rounding policy |
 | `b.numerator()`, `b.denominator()` | the value in lowest terms, as insides | with `D` the grid's largest denominator: numerator in `[⌈L⌉, ⌊U·D⌋]` (`⌈L·D⌉` for `L < 0`, `⌊U⌋` for `U ≤ 0`), denominator in `[1, D]` |
 | `b.index()`, `B::from_index(i)` | `(b − L)/n` as an `index_t<B>`; `L + i·n` | `from_index` is plain when `i`'s grid lies in `[0, step_count]`, else a store by `P` (or the call's policy) |

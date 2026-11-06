@@ -350,8 +350,8 @@ struct inside {
     //   operator double   — explicit, and gated on a rounding flag (a double
     //                       may round the value).
     //                       A strict inside opts in via `to<double>().value()`.
-    //   to<T>()           — typed-error narrowing/widening → `expected<T, errc>`
-    //                       (overflow / domain_error).
+    //   to<T>()           — narrowing/widening: T where the grid proves it total,
+    //                       else `expected<T, errc>` (overflow / domain_error).
     //   as<T>()           — non-expected sibling; throws on error. For known-
     //                       in-range sites (array indexing: `vec[b.as<std::size_t>()]`);
     //                       no check is left where T holds the whole grid.
@@ -393,16 +393,28 @@ struct inside {
         }
     }
 
-    // to<T>() — typed-error scalar extraction (mirrors rational::to<T>, extended
-    // to signed and floating point). Returns `errc::overflow` (out of T's range;
-    // `errc::domain_error` for a negative value into unsigned T). Rounding needs
-    // permission, as for a store: a fractional value rounds by Round, else by
-    // this type's rounding mode; with neither it is `errc::rounding_error`.
+  private:
+    // to<T, Round>() cannot fail: the grid lies within T's limits, and every
+    // value is an integer or the call may round.
+    template <std::integral T, policy_flag Round>
+    static constexpr bool total_to =
+        !(lower_of<inside> < detail::rational{std::numeric_limits<T>::min()}) &&
+        !(upper_of<inside> > detail::rational{std::numeric_limits<T>::max()}) &&
+        (detail::integer_lattice<inside> || Round != detail::none || has_flag(P, detail::snap));
+
+  public:
+    // to<T>() — scalar extraction (mirrors rational::to<T>, extended to signed
+    // and floating point). Like `/`, the type says whether it can fail: a plain
+    // T where the grid proves the conversion total (total_to, and every
+    // floating T), else std::expected<T, errc> with `errc::overflow` (out of
+    // T's range; `errc::domain_error` for a negative value into unsigned T)
+    // or `errc::rounding_error`. Rounding needs permission, as for a store: a
+    // fractional value rounds by Round, else by this type's rounding mode.
     // Bounds the grid already satisfies are not checked.
     template <std::integral T, policy_flag Round = detail::none>
         requires(Round == detail::none || Round == round_toward_zero || Round == round_nearest ||
                  Round == round_floor || Round == round_ceil || Round == round_half_even)
-    [[nodiscard]] constexpr std::expected<T, errc> to() const {
+    [[nodiscard]] constexpr std::conditional_t<total_to<T, Round>, T, std::expected<T, errc>> to() const {
         using lim                             = std::numeric_limits<T>;
         constexpr bool               check_lo = lower_of<inside> < detail::rational{lim::min()};
         constexpr bool               check_hi = upper_of<inside> > detail::rational{lim::max()};
@@ -417,10 +429,12 @@ struct inside {
                 if (!q.Exact)
                     return std::unexpected{errc::rounding_error};
             const auto t = q.Quot;
-            if (check_lo && t < decltype(t){lim::min()})
-                return std::unexpected{std::unsigned_integral<T> ? errc::domain_error : errc::overflow};
-            if (check_hi && t > decltype(t){lim::max()})
-                return std::unexpected{errc::overflow};
+            if constexpr (check_lo)
+                if (t < decltype(t){lim::min()})
+                    return std::unexpected{std::unsigned_integral<T> ? errc::domain_error : errc::overflow};
+            if constexpr (check_hi)
+                if (t > decltype(t){lim::max()})
+                    return std::unexpected{errc::overflow};
             return static_cast<T>(t);
         } else {
             const auto v = detail::as_rational(*this);
@@ -428,19 +442,21 @@ struct inside {
             if constexpr (!rounds && !detail::integer_lattice<inside>)
                 if (t != v)
                     return std::unexpected{errc::rounding_error};
-            if (check_lo && t < detail::rational{lim::min()})
-                return std::unexpected{std::unsigned_integral<T> ? errc::domain_error : errc::overflow};
-            if (check_hi && t > detail::rational{lim::max()})
-                return std::unexpected{errc::overflow};
+            if constexpr (check_lo)
+                if (t < detail::rational{lim::min()})
+                    return std::unexpected{std::unsigned_integral<T> ? errc::domain_error : errc::overflow};
+            if constexpr (check_hi)
+                if (t > detail::rational{lim::max()})
+                    return std::unexpected{errc::overflow};
             return static_cast<T>(detail::signed_numerator(t));
         }
     }
 
     // Rounded once to T's digits: a floating point wider than double (long
     // double) from the exact value; a narrower one (float) through the double,
-    // unless that double is a tie between two Ts.
+    // unless that double is a tie between two Ts. Total: a plain T.
     template <std::floating_point T>
-    [[nodiscard]] constexpr std::expected<T, errc> to() const {
+    [[nodiscard]] constexpr T to() const {
         if constexpr (detail::wide_float<T>)
             return detail::nearest_float<T>(detail::exact_of(*this));
         else if constexpr (sizeof(T) < sizeof(double)) {
@@ -469,9 +485,12 @@ struct inside {
             else
                 return to<T>();
         }();
-        if (!r) [[unlikely]]
-            detail::raise(r.error(), "as<T>: the value does not convert to T");
-        return *r;
+        if constexpr (detail::expected_like<decltype(r)>) {
+            if (!r) [[unlikely]]
+                detail::raise(r.error(), "as<T>: the value does not convert to T");
+            return *r;
+        } else
+            return r; // total: no check left
     }
 
     // numerator() / denominator() — the exact value in lowest terms (sign on

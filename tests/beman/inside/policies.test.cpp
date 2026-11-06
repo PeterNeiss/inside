@@ -77,7 +77,7 @@ TEST(PolicyActionsTest, try_make_on_fixed_point_grids) {
         // notch-aligned in-range value
         auto ok = fp::try_make(42.5);
         ASSERT_TRUE(ok.has_value());
-        ASSERT_TRUE(ok->to<double>().value() == 42.5);
+        ASSERT_TRUE(ok->to<double>() == 42.5);
 
         // out-of-range produces errc::overflow
         auto high = fp::try_make(300.0);
@@ -99,7 +99,7 @@ TEST(PolicyActionsTest, try_make_on_fixed_point_grids) {
 
         auto s = sensor::try_make(23.5);
         ASSERT_TRUE(s.has_value());
-        ASSERT_TRUE(s->to<double>().value() == 23.5);
+        ASSERT_TRUE(s->to<double>() == 23.5);
 
         ASSERT_FALSE(sensor::try_make(50.5).has_value());
         ASSERT_FALSE(sensor::try_make(-1.0).has_value());
@@ -129,7 +129,7 @@ TEST(PolicyActionsTest, try_make_on_fixed_point_grids) {
 
         auto v = fp::try_make(1000.125);
         ASSERT_TRUE(v.has_value());
-        ASSERT_TRUE(v->to<double>().value() == 1000.125);
+        ASSERT_TRUE(v->to<double>() == 1000.125);
 
         ASSERT_FALSE(fp::try_make(-0.001).has_value());
         ASSERT_FALSE(fp::try_make(70000.0).has_value());

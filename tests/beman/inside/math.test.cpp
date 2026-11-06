@@ -239,7 +239,7 @@ constexpr double notch_size = 1.0 / 1024;
 
 template <class R>
 double value(const R& r) {
-    return r.template to<double>().value();
+    return r.template to<double>();
 }
 } // namespace
 

@@ -251,7 +251,7 @@ TEST(UnitsParityTest, the_new_forms_work) {
     EXPECT_TRUE(midpoint(m, k) == just<502> * si::metre);
 
     const ratio r{25}; // 25 %: the number 1/4
-    EXPECT_EQ(r.to<double>().value(), 0.25);
+    EXPECT_EQ(r.to<double>(), 0.25);
     EXPECT_EQ((r.as<int, round_nearest>()), 0);
     EXPECT_EQ((as<int, round_ceil>(r)), 1);
     EXPECT_EQ(r.to<int>().error(), errc::rounding_error); // 1/4 is no int without a rounding

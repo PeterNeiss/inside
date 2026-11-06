@@ -657,7 +657,7 @@ TEST(StorageTest, grid_past_int64_constructs_compares_and_converts) {
     static_assert(U64{u64_max} > 5 && U64{u64_max} == u64_max && U64{u64_max} > Small{3});
     static_assert(U64{1ull << 63} < U64{u64_max});
     static_assert(U64{Small{7}} == 7);
-    static_assert(U64{u64_max}.to<unsigned long long>().value() == u64_max);
+    static_assert(U64{u64_max}.to<unsigned long long>() == u64_max);
     static_assert(U64{3}.to<int>().value() == 3);
     static_assert(U64{u64_max}.to<long long>().error() == errc::overflow);
     static_assert(Small{U64{u64_max}, clamp} == 10);

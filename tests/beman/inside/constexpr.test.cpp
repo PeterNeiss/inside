@@ -427,7 +427,7 @@ TEST(ConstexprTest, constexpr_inside_range_on_fractional_notch_grid) {
     constexpr imax twice_sum = [] {
         imax s = 0;
         for (auto v : inside_range<{{-1, 1}, per<2>}>{})
-            s += static_cast<imax>(2 * v.to<double>().value());
+            s += static_cast<imax>(2 * v.to<double>());
         return s;
     }();
     static_assert(twice_sum == 0);

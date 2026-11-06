@@ -120,7 +120,7 @@ down, because `a` does. A constant such as `2_ins` counts as neutral.
 | Operation | A failure goes to |
 |---|---|
 | a store: construction, `=`, `+=`, …, `as<T>()`, `checked_cast` | the store's hook or `errc&` if it has one, else the throw |
-| `try_make`, `to<T>()`, `parse` | the returned `std::expected` |
+| `try_make`, `to<T>()` where it can fail, `parse` | the returned `std::expected` |
 | `/` and `%` by a grid that holds 0 | the returned `std::expected` |
 
 An inside never stores a `std::expected`: check it and store `*e`, or pass it

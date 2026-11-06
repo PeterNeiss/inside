@@ -164,7 +164,7 @@ Each operation reports through one channel:
 | Operation | A failure goes to |
 |---|---|
 | a store: construction, `=`, `+=` and the other compound ops, `as<T>()`, `checked_cast` | the hook (`on_error`, or `on_clamp` / `on_wrap` where they apply), else the store's `errc&`, else the handler |
-| `try_make`, `parse`, `to<T>()`, `grid::try_make` | the returned `std::expected` |
+| `try_make`, `parse`, `to<T>()` where it can fail, `grid::try_make` | the returned `std::expected` |
 | `/` and `%` by a grid that holds 0 | the returned `std::expected` |
 
 A `rational`'s own arithmetic (`p + q`, `rational r = p / q;`) is compile time
