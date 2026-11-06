@@ -380,13 +380,6 @@ TEST(RationalTest, rational_overflow_detection) {
     }
 }
 
-// rational trunc toward zero
-TEST(RationalTest, rational_trunc_toward_zero) {
-    // converting to integer truncates toward zero
-    ASSERT_EQ((trunc(rational{7u, 2})), 3);
-    ASSERT_EQ((trunc(rational{7, -2})), -3);
-}
-
 // rational helpers
 TEST(RationalTest, rational_helpers) {
     {

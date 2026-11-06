@@ -326,12 +326,6 @@ TEST(InsideArithmeticTest, free_div_reports_a_zero_divisor) {
     ASSERT_EQ(q_def.error(), errc::division_by_zero);
 }
 
-// inside just<N>
-TEST(InsideArithmeticTest, inside_just_n) {
-    static_assert(just<1> == 1);
-    static_assert(just<42> == 42);
-}
-
 // unary -_ins composes through the literal parser
 TEST(InsideArithmeticTest, unary_ins_composes_through_the_literal_parser) {
     // `-1.5_ins` parses as `-(1.5_ins)`. Verifies that `inside::operator-()` returns

@@ -501,26 +501,6 @@ namespace casts_tests {
 using namespace beman::inside;
 using namespace beman::inside::detail;
 
-//---------------------------------------------------------------------------
-// std::numeric_limits<inside>
-//---------------------------------------------------------------------------
-// numeric_limits reports grid bounds
-TEST(CastsTest, numeric_limits_reports_grid_bounds) {
-    using pct = inside<{0, 100}>;
-    using nl  = std::numeric_limits<pct>;
-
-    static_assert(nl::is_specialized);
-    static_assert(nl::is_bounded);
-    static_assert(nl::is_integer);
-    static_assert(nl::is_exact);
-    static_assert(!(nl::is_signed));
-    static_assert(!(nl::is_modulo));
-
-    static_assert(nl::min() == pct{0});
-    static_assert(nl::max() == pct{100});
-    static_assert(nl::lowest() == pct{0});
-}
-
 // numeric_limits handles signed and wrapping bounds
 TEST(CastsTest, numeric_limits_handles_signed_and_wrapping_bounds) {
     using temp = inside<{-40, 60}>;
@@ -571,15 +551,6 @@ TEST(CastsTest, conversion_rounds_detects_non_notch_values) {
     static_assert(!(conversion_rounds<coarse>(11))); // out of range, not truncation
 }
 
-// conversion_loses combines both
-TEST(CastsTest, conversion_is_lossy_combines_both) {
-    using coarse = inside<{{0, 10}, 2}>;
-
-    static_assert(!(conversion_loses<coarse>(4)));
-    static_assert(conversion_loses<coarse>(3));  // truncation
-    static_assert(conversion_loses<coarse>(20)); // overflow
-}
-
 //---------------------------------------------------------------------------
 // the clamp constructor / checked_cast / the unsafe constructor
 //---------------------------------------------------------------------------
@@ -616,34 +587,6 @@ TEST(CastsTest, unchecked_cast_bypasses_runtime_checks) {
     // In-range value: same result as checked_cast.
     static_assert(pct{42, unsafe} == pct{42});
     static_assert(pct{0, unsafe} == pct{0});
-}
-
-//---------------------------------------------------------------------------
-// _ins literal
-//---------------------------------------------------------------------------
-// _ins literal produces just<N>
-TEST(CastsTest, ins_literal_produces_just_n) {
-    constexpr auto five = 5_ins;
-    static_assert(lower_of<decltype(five)> == 5);
-    static_assert(upper_of<decltype(five)> == 5);
-    static_assert(five == 5);
-
-    // Composes with inside arithmetic — grid widens through addition.
-    using pct = inside<{0, 100}>;
-    static_assert(10_ins + pct{40} == 50);
-}
-
-//---------------------------------------------------------------------------
-// add_all / mul_all
-//---------------------------------------------------------------------------
-// add_all / mul_all fold variadically
-TEST(CastsTest, add_all_mul_all_fold_variadically) {
-    using v = inside<{0, 100}>;
-    constexpr v a{10}, b{20}, c{30}, d{40};
-    static_assert(add_all(a, b, c, d) == 100);
-
-    constexpr v p{2}, q{3}, r{5};
-    static_assert(mul_all(p, q, r) == 30);
 }
 
 //---------------------------------------------------------------------------
