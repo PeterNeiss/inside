@@ -892,3 +892,39 @@ TEST(MathArmTest, fallible_function_into_an_unanchored_output) {
     EXPECT_EQ(math::pow_into<Ow>(B{0}, X{-1}).error(), errc::division_by_zero);
 }
 } // namespace reached_arms_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+using detail::rational;
+
+// A wrap output of pow over a base grid above 0 (3^2 = 9 folds to 1); a
+// function into a wide unanchored Out and into a wide-index Out.
+TEST(MathArmTest, wrap_and_wide_outputs) {
+    EXPECT_TRUE((math::pow_into<inside<{0, 7}, wrap | round_nearest>>(inside<{1, 4}>{3}, inside<{0, 3}>{2}) == 1));
+    using Ow = inside<{{0.5_r, 2361183241434822606849_g / 2}, 1}, round_nearest>; // to 2^70 + 1/2
+    EXPECT_TRUE((math::sqrt_into<Ow>(inside<{0, 100}>{50}) == just<15, 2>));      // √50 ≈ 7.07
+    using Wn = inside<{{0, 2}, 1_g / 1180591620717411303424_g}, round_nearest>;   // notch 2^-70
+    static_assert(detail::wide_index_storage<Wn>);
+    EXPECT_TRUE((math::sqrt_into<Wn>(inside<{0, 4}>{4}) == 2));
+}
+
+// pown is undefined past the fraction cap: from x^64 on a continuous base,
+// so x^128 and x^129 through their halves.
+TEST(MathArmTest, pown_past_the_fraction_cap) {
+    using C = inside<{{0, 1}, max_denominator{1000}}>;
+    static_assert(math::detail::pown_defined<32, C> && !math::detail::pown_defined<64, C>);
+    static_assert(!math::detail::pown_defined<128, C> && !math::detail::pown_defined<129, C>);
+}
+
+// The integer functions past 64 bits: gcd on a wide even lattice, a
+// multinomial past 2^64, gcd and lcm on a wide fractional lattice.
+TEST(MathArmTest, integer_functions_past_64_bits) {
+    using E = inside<{{0, 2361183241434822606848_g}, 2}>;
+    EXPECT_TRUE((math::gcd(E{just<1180591620717411303424_g>}, E{12}) == 4));
+    EXPECT_TRUE((math::multinomial(inside<{0, 40}>{40}, inside<{0, 40}>{40}) == just<107507208733336176461620_g>));
+    using A = inside<{{0, 1180591620717411303424_g}, per<2>}>;
+    const A a{just<1180591620717411303425_g / 2>}, b{rational{3, 2}}; // (2^70 + 1)/2, 3/2
+    EXPECT_TRUE((math::gcd(a, b) == just<1, 2>));
+    EXPECT_TRUE((math::lcm(a, b) == just<3541774862152233910275_g / 2>));
+}
+} // namespace reached_arms_tests

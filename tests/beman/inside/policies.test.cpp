@@ -1349,3 +1349,18 @@ TEST(PolicyTest, wrap_range_check_fires) {
 }
 
 } // namespace pinned_tests
+
+// Arms no other test reaches, found by the reachability audit (gcov and an
+// `if constexpr` probe over the suite).
+namespace reached_arms_tests {
+using namespace beman::inside;
+
+// policy_ref %= by an unsafe zero divisor reports nothing and leaves the value.
+TEST(PoliciesArmTest, policy_ref_remainder_by_an_unsafe_zero) {
+    inside<{0, 10}>         b{7};
+    volatile int            zero = 0;
+    inside<{0, 10}, unsafe> z{static_cast<int>(zero)};
+    b.policy<wrap>() %= z;
+    EXPECT_TRUE(b == 7);
+}
+} // namespace reached_arms_tests

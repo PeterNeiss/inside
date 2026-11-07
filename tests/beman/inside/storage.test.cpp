@@ -809,3 +809,10 @@ TEST(StorageArmTest, digits_of_a_continuous_grid) {
     static_assert(std::numeric_limits<inside<{{0, 1}, max_denominator{10}}>>::digits == 0);
 }
 } // namespace reached_arms_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+
+// A notch-0 point's numerator is its value.
+TEST(StorageArmTest, numerator_of_a_notch_zero_point) { EXPECT_TRUE((inside<grid{5}>{}.numerator() == 5)); }
+} // namespace reached_arms_tests

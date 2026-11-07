@@ -604,3 +604,10 @@ TEST(TextArmTest, numbers_past_the_wide_parse) {
     EXPECT_EQ(parse<I>("1e5000").error(), errc::overflow);
 }
 } // namespace reached_arms_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+
+// parse_exact of a fraction onto a notch-0 point.
+TEST(TextArmTest, parse_exact_onto_a_notch_zero_point) { EXPECT_TRUE((*parse_exact<inside<grid{5}>>("10/2") == 5)); }
+} // namespace reached_arms_tests

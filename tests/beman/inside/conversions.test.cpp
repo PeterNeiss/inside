@@ -812,3 +812,18 @@ TEST(ConversionsArmTest, rational_of_a_long_double) {
     EXPECT_EQ(rational{test::at_run_time(0.0)}, 0);
 }
 } // namespace reached_arms_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+using detail::rational;
+
+// A notch-0 point (inside<grid{5}>; {5, 5} derives notch 1) rounds nothing,
+// on the 64-bit path and the exact one; an integer compares on the left.
+TEST(ConversionsArmTest, notch_zero_point_and_reversed_comparison) {
+    using P = inside<grid{5}>;
+    static_assert(grid_of<P>.Notch == 0);
+    EXPECT_FALSE(conversion_rounds<P>(5));
+    EXPECT_FALSE(conversion_rounds<P>(inside<{0, 1180591620717411303424_g}>{5}));
+    EXPECT_TRUE((5 < rational{test::at_run_time(11), 2}));
+}
+} // namespace reached_arms_tests
