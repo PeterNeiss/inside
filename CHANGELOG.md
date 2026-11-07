@@ -73,6 +73,21 @@ an operation can produce (result types are frozen from 1.0 on).
   template argument, never built at run time), and a malformed grid is a
   compile error that names the broken rule.
 
+- The mathematical constants (`math::pi`, `math::e`, … 18 of them) are no
+  longer points on 64-bit rationals but `math::constant` objects, computed
+  while compiling at the precision each use needs: `Out o = math::pi` rounds
+  π correctly onto `Out` (which needs a rounding mode), `x * math::pi` takes
+  π to `x`'s resolution, `x < math::pi` compares exactly, and
+  `math::pi.within<eps>` is the point within `eps`. `rational{math::pi}`
+  and `decltype(math::pi)` as a grid no longer compile: store the constant
+  into an inside.
+- The `int64` alias is `std::int64_t`'s whole range, [−2⁶³, 2⁶³ − 1] (it
+  stopped at −(2⁶³ − 1)); its negation's type reaches 2⁶³ and stores a wider
+  raw.
+- The on_wrap carry is exact: its grid spans every carry of the source kind
+  (a double's whole range divided by the period: an inside past 64 bits), so
+  its type may be wider than before; nothing saturates at `imax`.
+
 ### Changed
 
 Result types are narrower where the old ones held values the operation can
@@ -95,6 +110,24 @@ ones implicitly.
 
 - The deduced math functions round to nearest when the input names no
   rounding mode (they did not compile); the output type carries the mode.
+
+- No 64-bit limit is left at run time or in a spelling (only `rational` and
+  `_r`, a 64-bit fraction by definition, stay 64-bit):
+  - `per<D>` and `just<N, D>` take a grid-number `D` of any size; `_g` reads
+    the whole literal grammar (`0x1p-70_g`, `0b1010_g`, `0x1.8p3_g`), and
+    `_ins` is its point (`18446744073709551616_ins`).
+  - `pow_base<Base>` takes a grid-number base of any size (one past 64 bits
+    takes the integer engine); `clamp_counter`, `wrap_counter` and
+    `unit_amplitude` take any limit.
+  - `factorial`, `binomial`, `falling_factorial`, `rising_factorial` and
+    `multinomial` take counts of any size (the 16384-bit result cap stays).
+  - `values<T>` over a grid of more than 2⁶³ values (`uint64`, `int64`, a
+    grid past 64 bits) is a bidirectional range without a size.
+  - The integer format types (`{:x}`, `{:#b}`, `{:o}`, `{:d}`) work on
+    integer grids past `int64`.
+  - `raw_accessor` views `uint64` raws and wide raws.
+  - `pow` detects exact results of any root degree, sized from the output
+    (`(2^128)^(1/128)` is 2 exactly, decided, not a capped guess).
 
 ### Added
 
@@ -172,6 +205,17 @@ ones implicitly.
   the exact path.
 - Writing through a `value_accessor<N, double>` (or any floating-point
   element) did not compile.
+
+- A builtin integer past 64 bits (`__int128` under the GNU dialects, where
+  it is `std::integral`) was truncated: `inside<{0, 100}>{2^70 + 5}` stored
+  5, `inside{5} == 2^70 + 5` held, and `to<__int128>()` of a negative value
+  failed. Stores, comparisons, `to`/`as`, `from_index` and grid numbers take
+  it exactly; `rational` reports it as overflow; `uniform` takes a
+  generator wider than 64 bits.
+- The on_wrap carry saturated at `imax`: wrapping 2⁷⁰ into `{0, 9}` reported
+  2⁶³ − 1 (see Upgrading).
+- A cursor over an index raw whose grid numbers pass 64 bits did not
+  compile.
 
 ## 0.7.0 — 2026-11-03
 
