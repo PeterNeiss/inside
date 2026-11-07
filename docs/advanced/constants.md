@@ -4,10 +4,11 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-`<beman/inside/math/constants.hpp>` gives the common mathematical constants, as
-one-point insides, without units. `<beman/inside/units/constants.hpp>` gives the
-physical constants, each a [quantity](../guide/units.md) of its ISQ kind. Products of
-constants are exact.
+`<beman/inside/math/constants.hpp>` gives the common mathematical constants,
+without units, computed while compiling at the precision each use needs.
+`<beman/inside/units/constants.hpp>` gives the physical constants, each a
+[quantity](../guide/units.md) of its ISQ kind. Products of physical constants
+are exact.
 
 ```cpp
 #include <beman/inside/math/constants.hpp>
@@ -17,7 +18,7 @@ using namespace beman::inside::units;
 namespace pc = units::constants;
 
 using angle_t = inside<{{0, 4}, per<1024>}>;
-auto x = angle_t{1.5} * math::pi;                                   // an exact product with π's rational
+auto x = angle_t{1.5} * math::pi;                                   // π to angle_t's resolution
 auto d = pc::speed_of_light_in_vacuum * quantity<si::second, inside<{0, 10}>>{2};
 d.in(si::metre);                                                    // 599584916 m, exact
 auto w = pc::standard_gravity * quantity<si::kilogram, inside<{0, 100}>>{70};
@@ -32,26 +33,29 @@ std::format("{:.9e}", E.in(si::joule));                             // 3.5780778
 
 ## Mathematical constants: `math::`
 
-Each constant is a point `inside`, `just<r>`, where `r` is the best rational
-whose numerator and denominator stay below 2³¹. The numbers stay small, so
-products of a few constants keep 64-bit grid numbers. They need only the
-number (`inside.hpp`); `math.hpp` includes them too.
+A constant has no fixed width: each use computes it, while compiling, to the
+precision it needs.
 
-| Name | Value | Error |
-|---|---|---|
-| `pi`, `two_pi`, `half_pi` | π, 2π, π/2 | 2^-58.2, 2^-57.2, 2^-60.2 |
-| `inv_pi`, `inv_sqrt_pi` | 1/π, 1/√π | 2^-61.5, 2^-58.0 |
-| `e`, `log2e`, `log10e` | e, log₂e, log₁₀e | 2^-60.5, 2^-61.6, 2^-66.1 |
-| `ln2`, `ln10` | ln 2, ln 10 | 2^-62.6, 2^-63.7 |
-| `sqrt2`, `sqrt3`, `inv_sqrt2`, `inv_sqrt3` | √2, √3, 1/√2, 1/√3 | 2^-62.1, 2^-60.9, 2^-63.1, 2^-62.5 |
-| `phi` | golden ratio φ | 2^-61.3 |
-| `egamma` | Euler–Mascheroni γ | 2^-62.2 |
-| `catalan` | Catalan's constant G | 2^-59.4 |
-| `zeta3` | Apéry's constant ζ(3) | 2^-60.6 |
+| Use | What you get |
+|---|---|
+| `Out o = math::pi;` | π correctly rounded onto `Out` by `Out`'s rounding mode (one is required) |
+| `x * math::pi`, `x + math::e`, `x / math::ln2` | the constant as its simplest fraction (a continued-fraction convergent) within 2⁻³² of `x`'s resolution — its notch, or 1/MaxDenominator: a coarse `x` keeps 64-bit grid numbers, a fine one gets a precise point |
+| `x < math::pi`, `x == math::e` | exact: no value of `x`'s grid equals the constant |
+| `math::pi.within<1e-40_g>` | the point within 10⁻⁴⁰ (`pi.within<1e-6_g>` is 355/113) |
 
-For a correctly rounded value on a grid you choose, call the function:
-`math::sqrt_into<Out>(just<2>)`, `math::exp_into<Out>(just<1>)`. Two ways
-avoid approximating π at all: scale a unit with `mag_pi`
+| Name | Value |
+|---|---|
+| `pi`, `two_pi`, `half_pi` | π, 2π, π/2 |
+| `inv_pi`, `inv_sqrt_pi` | 1/π, 1/√π |
+| `e`, `log2e`, `log10e` | e, log₂e, log₁₀e |
+| `ln2`, `ln10` | ln 2, ln 10 |
+| `sqrt2`, `sqrt3`, `inv_sqrt2`, `inv_sqrt3` | √2, √3, 1/√2, 1/√3 |
+| `phi` | golden ratio φ |
+| `egamma` | Euler–Mascheroni γ |
+| `catalan` | Catalan's constant G |
+| `zeta3` | Apéry's constant ζ(3) |
+
+Two ways avoid approximating π at all: scale a unit with `mag_pi`
 ([the units model](units-model.md#factors-of-π-round-once)), and take the sine of an angle
 in degrees or turns, which `units::sin_into` reduces exactly
 ([the math engine](math-engine.md#angles-over-many-turns)).

@@ -991,3 +991,74 @@ TEST(MathTest, pow_base_past_64_bits) {
     EXPECT_TRUE((math::pow_base_into<Out, 2_g>(x1) == 2)); // within imax: the imax path
 }
 } // namespace big_base_tests
+
+// Mathematical constants, computed at the precision each use needs: stored
+// correctly rounded onto a 2^-200 grid (references: Python's decimal at 140
+// digits, Chudnovsky's π, Brent–McMillan's γ); in arithmetic the simplest
+// point x's resolution needs; compared exactly.
+namespace constant_tests {
+using namespace beman::inside;
+using detail::grid_rational;
+using detail::rational;
+constexpr grid_rational two_200 = 1606938044258990275541962092341162602522202993782792835301376_g;
+
+TEST(MathConstantsTest, stored_correctly_rounded_at_any_precision) {
+    using F = inside<{{0, 8}, per<two_200>}, round_nearest>;
+    static_assert(F{math::pi} == just<5048344754617993871973410141242436836214643421488662971535368_g / two_200>);
+    static_assert(F{math::two_pi} == just<10096689509235987743946820282484873672429286842977325943070736_g / two_200>);
+    static_assert(F{math::half_pi} == just<2524172377308996935986705070621218418107321710744331485767684_g / two_200>);
+    static_assert(F{math::inv_pi} == just<511504265972482371356817160047419747232591328621101924753663_g / two_200>);
+    static_assert(F{math::inv_sqrt_pi} ==
+                  just<906617705977525684037987767013953819926238329207982090688314_g / two_200>);
+    static_assert(F{math::e} == just<4368110485168730244370696643561179479687259917244808728041128_g / two_200>);
+    static_assert(F{math::log2e} == just<2318321547468254865173387471183990171487108758923299108729110_g / two_200>);
+    static_assert(F{math::log10e} == just<697884325382082936699607079697809990657056068469105515102493_g / two_200>);
+    static_assert(F{math::ln2} == just<1113844574712631719546256151097547306333272293549090750737802_g / two_200>);
+    static_assert(F{math::ln10} == just<3700111586075757022815855548858213034251116522195805159045647_g / two_200>);
+    static_assert(F{math::sqrt2} == just<2272553576084360916141657902949647315979581976043234410928602_g / two_200>);
+    static_assert(F{math::sqrt3} == just<2783298337271936389241949975737560737185386000295576744728775_g / two_200>);
+    static_assert(F{math::inv_sqrt2} ==
+                  just<1136276788042180458070828951474823657989790988021617205464301_g / two_200>);
+    static_assert(F{math::inv_sqrt3} ==
+                  just<927766112423978796413983325245853579061795333431858914909592_g / two_200>);
+    static_assert(F{math::phi} == just<2600080373426329101162150938423269861479326810487021552947704_g / two_200>);
+    static_assert(F{math::egamma} == just<927549811672521911724738044671514915956439037055195146098956_g / two_200>);
+    static_assert(F{math::catalan} == just<1471899960515664295034366106857992861643864167491633818861717_g / two_200>);
+    static_assert(F{math::zeta3} == just<1931630969051296909380253966584984193389744056520922139483601_g / two_200>);
+    // Every rounding mode, on a coarse grid: π·2^20 = 3294198.99…
+    static_assert(inside<{{0, 4}, per<(1 << 20)>}, round_floor>{math::pi} == rational{3294198, 1 << 20});
+    static_assert(inside<{{0, 4}, per<(1 << 20)>}, round_ceil>{math::pi} == rational{3294199, 1 << 20});
+    const inside<{{0, 4}, per<1024>}, round_nearest> p = math::pi;
+    EXPECT_EQ(rational{p}, (rational{3217, 1024}));
+}
+
+TEST(MathConstantsTest, arithmetic_takes_the_point_its_operand_needs) {
+    static_assert(lower_of<decltype(math::pi.within<1e-6_g>)> == grid_rational{rational{355, 113}});
+    static_assert(lower_of<decltype(math::pi.within<1e-2_g>)> == grid_rational{rational{22, 7}});
+    using X      = inside<{0, 10}>;
+    const auto y = test::at_run_time(2) == 2 ? X{2} * math::pi : X{} * math::pi;
+    static_assert(!detail::wide_grid_numbers<std::remove_cvref_t<decltype(y)>>); // a coarse x: 64 bits
+    EXPECT_LT(std::abs(y.to<double>() - 6.283185307179586), 1e-9);
+    using Fine = inside<{{0, 1}, 1_g / 1267650600228229401496703205376_g}>; // 2^-100
+    static_assert(detail::wide_grid_numbers<decltype(Fine{1} * math::pi)>); // a fine x: a precise point
+    EXPECT_LT(std::abs((X{1} + math::e).to<double>() - 3.718281828459045), 1e-9);
+    EXPECT_LT(std::abs((math::e - X{1}).to<double>() - 1.718281828459045), 1e-9);
+    EXPECT_LT(std::abs((X{6} / math::pi).to<double>() - 1.909859317102744), 1e-9);
+    EXPECT_LT(std::abs((math::pi / inside<{1, 10}>{2}).to<double>() - 1.570796326794897), 1e-9);
+}
+
+TEST(MathConstantsTest, compared_exactly) {
+    using X = inside<{0, 10}>;
+    EXPECT_TRUE(X{test::at_run_time(3)} < math::pi);
+    EXPECT_TRUE(X{test::at_run_time(4)} > math::pi);
+    EXPECT_FALSE(X{test::at_run_time(3)} == math::pi);
+    EXPECT_TRUE(math::pi < X{4} && math::pi > X{3});
+    using C = inside<{{0, 4}, max_denominator{1000}}>; // 355/113 and 22/7 lie above π, 311/99 below
+    EXPECT_TRUE(
+        (C{rational{355, 113}} > math::pi && C{rational{22, 7}} > math::pi && C{rational{311, 99}} < math::pi));
+    using Q = inside<{{0, 4}, per<1024>}>; // π·1024 = 3216.99…
+    EXPECT_TRUE((Q{rational{3217, 1024}} > math::pi && Q{rational{3216, 1024}} < math::pi));
+    EXPECT_TRUE((just<3> < math::pi && just<22, 7> > math::pi));
+    EXPECT_TRUE((inside<{0, 2}>{1} > math::egamma));
+}
+} // namespace constant_tests
