@@ -743,10 +743,10 @@ TEST(WideGridTest, hooks_on_a_rational_inside_from_a_wide_source) {
     EXPECT_TRUE(exact);
     EXPECT_TRUE(r == 10);
 
-    // (2^70 + 1/3 + 10) / 20 turns: the carry saturates at the imax range.
-    imax carry                                             = 0;
-    r.on_wrap([&](auto&, auto k) { carry = as<imax>(k); }) = B{0x1p70} + B{rational{1, 3}};
-    EXPECT_EQ(carry, std::numeric_limits<imax>::max());
+    // (2^70 + 1/3 + 10) / 20 turns: the carry past imax, exactly.
+    bool carry                                                                   = false;
+    r.on_wrap([&](auto&, auto k) { carry = k == just<59029581035870565171_g>; }) = B{0x1p70} + B{rational{1, 3}};
+    EXPECT_TRUE(carry);
     EXPECT_TRUE((r == rational(13, 3)));
 }
 
