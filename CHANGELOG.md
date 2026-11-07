@@ -149,6 +149,11 @@ ones implicitly.
 - The certified `tan` pairs moved to two branch grids, and the `sqrt` pair
   over a grid that crosses 0 went: 58 certified pairs (every other hash is
   unchanged).
+- A reachability audit (run-time coverage over the suite, and a probe of
+  which `if constexpr` arms any test instantiates) removed the arms no input
+  can reach and added a test for each reachable arm no test reached
+  (`reached_arms_tests` in the topic files, and compile-fail cases for each
+  literal error).
 
 ### Fixed
 
@@ -160,6 +165,13 @@ ones implicitly.
   bound does not compile).
 - `x += rational{1, 3}` on a fine grid reported overflow where the exact sum
   rounds onto the grid (now removed, see above).
+- `conversion_rounds`, `conversion_overflows` and `parse_exact` on a
+  continuous grid whose bound passes 64 bits but whose limits do not
+  (`{{0, 1}, max_denominator{2^70}}`) terminated: the 64-bit path read the
+  bound as a 64-bit rational inside a `noexcept` function. Such a grid takes
+  the exact path.
+- Writing through a `value_accessor<N, double>` (or any floating-point
+  element) did not compile.
 
 ## 0.7.0 — 2026-11-03
 
