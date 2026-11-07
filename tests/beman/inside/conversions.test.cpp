@@ -767,3 +767,21 @@ TEST(ConversionsArmTest, rational_of_a_value_past_64_bits) {
     EXPECT_THROW((void)rational{t}, inside_error);
 }
 } // namespace reached_arms_tests
+
+namespace pinned_tests {
+using namespace beman::inside;
+
+// A continuous grid whose bound passes 64 bits (small limits, a fraction raw)
+// takes the predicates' exact path: the 64-bit one read the bound as a 64-bit
+// rational and raised inside the noexcept predicates (terminate), also under
+// parse_exact.
+TEST(ConversionsPinnedTest, predicates_on_a_bound_past_64_bits) {
+    using F = inside<{{0, 1}, max_denominator{1180591620717411303424_g}}>; // bound 2^70
+    static_assert(detail::fraction_storage<F>);
+    EXPECT_FALSE(conversion_rounds<F>(test::at_run_time(0)));
+    EXPECT_TRUE(conversion_overflows<F>(test::at_run_time(2)));
+    EXPECT_FALSE(conversion_rounds<F>(test::at_run_time(0.5)));
+    EXPECT_TRUE(parse_exact<F>("0").has_value());
+    EXPECT_TRUE(parse_exact<F>("0.5").has_value());
+}
+} // namespace pinned_tests
