@@ -154,12 +154,11 @@ inline constexpr bool raw_holds_value =
 
 // The inside of N (a notch-1 integer grid) that holds the integer n, which
 // the caller proves lies in N: n itself on a value raw, n − Lower on an
-// index raw.
+// index raw. (Every caller returns a point result itself.)
 template <insidable N, typename I>
 constexpr N integer_inside(const I& n) noexcept {
-    if constexpr (point_storage<N>)
-        return N::from_raw({});
-    else if constexpr (value_storage<N>)
+    static_assert(!point_storage<N>);
+    if constexpr (value_storage<N>)
         return N::from_raw(raw_cast<N>(n));
     else if constexpr (wide_integer<I>) {
         constexpr I lo = static_cast<I>(grid_numerator(lower_of<N>));

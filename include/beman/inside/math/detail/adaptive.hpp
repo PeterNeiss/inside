@@ -534,9 +534,9 @@ constexpr bool in_slots(const I& i) noexcept {
 
 template <insidable Out, std::size_t K, typename P>
 constexpr Out store(const wide_sint<K>& index, P&& policy) {
-    if constexpr (integer_storage<Out>)
-        if (in_slots<Out>(index)) [[likely]]
-            return Out::from_raw(raw_of_slot<Out>(index));
+    static_assert(integer_storage<Out>); // slots: a lattice
+    if (in_slots<Out>(index)) [[likely]]
+        return Out::from_raw(raw_of_slot<Out>(index));
     // Past Out's range: the grid point (index + Lower/Notch)·Notch, exact,
     // through Out's assignment (its policy clamps, wraps or reports).
     constexpr std::size_t KK = std::max(K, exact_limbs<Out>);

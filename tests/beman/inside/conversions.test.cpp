@@ -712,7 +712,6 @@ TEST(ConversionTest, fraction_and_to_value_fast_paths_match_rational) {
         const imax     num = static_cast<imax>((r.Den < 0) ? umax{0} - r.Num : r.Num);
         EXPECT_EQ(q.numerator(), num);
         EXPECT_EQ(q.denominator(), static_cast<imax>(abs_den(r.Den)));
-        EXPECT_EQ(to_value(q), trunc(r));
     }
     using I = inside<{-30, 90, 3}>; // integer notch 3, index storage
     static_assert(index_storage<I> && integer_lattice<I>);

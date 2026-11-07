@@ -4895,6 +4895,12 @@ template <grid G>
 inline constexpr bool integer_notch =
     grid_denominator(G.Notch) == grid_int{1} && G.Notch != 0 && grid_denominator(G.Interval.Lower) == grid_int{1};
 
+// Every value an integer: an integer lattice or an integer point (see
+// integer_limits below).
+template <insidable B>
+inline constexpr bool integer_lattice =
+    integer_notch<grid_of<B>> || (lower_of<B> == upper_of<B> && grid_denominator(lower_of<B>) == grid_int{1});
+
 // ONLY type conversion, NO value representation conversion calculation
 template <insidable B>
 [[nodiscard]] constexpr raw_t<B> raw_cast(auto value) noexcept {
@@ -4954,22 +4960,15 @@ constexpr rational q_format_decode(B b) noexcept {
         return rational{n, nd};
 }
 
-// Library-internal extraction helper. Always succeeds (returns `imax`
-// unconditionally) but does not check the value fits in any narrower
-// target. User code should prefer `b.to<T>()`, which carries a typed
-// overflow error.
+// The value of an inside on an integer lattice as imax, which the caller
+// proves holds it (user code reads b.to<T>(), which reports overflow).
 template <insidable B>
+    requires integer_lattice<B>
 [[nodiscard]] constexpr imax to_value(B b) noexcept {
     if constexpr (value_storage<B>)
         return raw_imax(b);
-    else if constexpr (abs_den(notch64<B>.Den) == 1 && abs_den(lower64<B>.Den) == 1)
-        // In umax: raw·Notch can pass imax although the value fits.
+    else // in umax: raw·Notch can pass imax although the value fits
         return static_cast<imax>(static_cast<umax>(lower_imax<B>) + static_cast<umax>(raw_imax(b)) * notch64<B>.Num);
-    else if constexpr (q_format_fits<B>) {
-        constexpr imax nd = abs_den(notch64<B>.Den);
-        return (raw_imax(b) + lower_imax<B> * nd) / nd; // q_format_decode, truncated
-    } else                                              // index storage, generic rational path
-        return trunc(as_rational(b));
 }
 
 // The callers store an integer of B (a fold count, a native quotient or
@@ -5070,10 +5069,6 @@ constexpr raw_t<L> endpoint_raw(bool low) noexcept {
 template <insidable B>
 inline constexpr bool integer_limits =
     grid_denominator(lower_of<B>) == grid_int{1} && grid_denominator(upper_of<B>) == grid_int{1};
-
-template <insidable B>
-inline constexpr bool integer_lattice =
-    integer_notch<grid_of<B>> || (lower_of<B> == upper_of<B> && grid_denominator(lower_of<B>) == grid_int{1});
 
 // Whether a store into B under the call policy P uses flag F: B's own flags
 // or P's. Composite flags (e.g. round_nearest = bit5 | snap) require all
@@ -9165,12 +9160,11 @@ inline constexpr bool raw_holds_value =
 
 // The inside of N (a notch-1 integer grid) that holds the integer n, which
 // the caller proves lies in N: n itself on a value raw, n − Lower on an
-// index raw.
+// index raw. (Every caller returns a point result itself.)
 template <insidable N, typename I>
 constexpr N integer_inside(const I& n) noexcept {
-    if constexpr (point_storage<N>)
-        return N::from_raw({});
-    else if constexpr (value_storage<N>)
+    static_assert(!point_storage<N>);
+    if constexpr (value_storage<N>)
         return N::from_raw(raw_cast<N>(n));
     else if constexpr (wide_integer<I>) {
         constexpr I lo = static_cast<I>(grid_numerator(lower_of<N>));
@@ -14069,9 +14063,9 @@ constexpr bool in_slots(const I& i) noexcept {
 
 template <insidable Out, std::size_t K, typename P>
 constexpr Out store(const wide_sint<K>& index, P&& policy) {
-    if constexpr (integer_storage<Out>)
-        if (in_slots<Out>(index)) [[likely]]
-            return Out::from_raw(raw_of_slot<Out>(index));
+    static_assert(integer_storage<Out>); // slots: a lattice
+    if (in_slots<Out>(index)) [[likely]]
+        return Out::from_raw(raw_of_slot<Out>(index));
     // Past Out's range: the grid point (index + Lower/Notch)·Notch, exact,
     // through Out's assignment (its policy clamps, wraps or reports).
     constexpr std::size_t KK = std::max(K, exact_limbs<Out>);
