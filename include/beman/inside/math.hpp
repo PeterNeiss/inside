@@ -200,7 +200,7 @@ template <insidable Out, insidable In>
 [[nodiscard]] constexpr Out abs_into(In x) {
     if constexpr (detail::any_wide_valued<Out, In>)
         return detail::store_exact<Out>(detail::engine::abs(detail::engine::exact_input(x)));
-    else if constexpr (std::same_as<Out, detail::abs_result_t<In>> && detail::notched<In> && detail::anchored<In> &&
+    else if constexpr (std::same_as<Out, detail::abs_result_t<In>> && detail::value_indices_fit_imax<In> &&
                        notch_of<Out> == notch_of<In>) {
         // The same lattice through 0: |x| is the value index's magnitude.
         // In umax: |INT64_MIN| = 2^63 is past imax (Out then reaches it).
@@ -222,12 +222,13 @@ template <insidable Out, insidable Mag, insidable Sgn>
     if constexpr (detail::any_wide_valued<Out, Mag>) {
         const auto a = detail::engine::abs(detail::engine::exact_input(mag));
         return detail::store_exact<Out>(sgn < 0 ? -a : a);
-    } else if constexpr (std::same_as<Out, detail::copysign_result_t<Mag, Sgn>> && detail::notched<Mag> &&
-                         detail::anchored<Mag> && notch_of<Out> == notch_of<Mag>) {
-        // The same lattice through 0: ±|value index|. j is never INT64_MIN:
-        // then Out, symmetric, would hold 2^64 slots and be wide (above).
-        const imax j = detail::value_index<imax>(mag), a = j < 0 ? -j : j;
-        return detail::from_value_index<Out>(sgn < 0 ? -a : a);
+    } else if constexpr (std::same_as<Out, detail::copysign_result_t<Mag, Sgn>> &&
+                         detail::value_indices_fit_imax<Mag> && notch_of<Out> == notch_of<Mag>) {
+        // The same lattice through 0: ±|value index|, in umax (|INT64_MIN| =
+        // 2^63 when sgn is never negative); the raw follows modulo 2^64.
+        const imax j = detail::value_index<imax>(mag);
+        const umax a = j < 0 ? umax{0} - static_cast<umax>(j) : static_cast<umax>(j);
+        return detail::from_value_index<Out>(sgn < 0 ? umax{0} - a : a);
     } else {
         const rational a = beman::inside::detail::abs(rational{mag});
         return detail::store_value<Out>(sgn < 0 ? -a : a);

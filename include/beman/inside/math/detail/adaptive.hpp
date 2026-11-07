@@ -484,11 +484,10 @@ constexpr decision<Out, K> decide(const approx<K>& a) noexcept {
     };
     if (a.Error == 0)
         return {true, index(a.Value)};
-    // An error past wide_sint<K>'s range (~umax{0}: "unresolved" at K = 1)
-    // would come out negative and invert the interval: undecided.
-    if constexpr (K == 1)
-        if (!std::in_range<imax>(a.Error)) [[unlikely]]
-            return {false, I{}};
+    // "unresolved" (~umax{0}) at every width, and an error past wide_sint<1>'s
+    // range, which would come out negative and invert the interval: undecided.
+    if (a.Error == ~umax{0} || (K == 1 && !std::in_range<imax>(a.Error))) [[unlikely]]
+        return {false, I{}};
     const I lo = index(a.Value - e), hi = index(a.Value + e);
     // Both ends past the same end of Out's range also decide: the policy
     // (clamp, or an overflow report) sees the same thing for every value there.
@@ -506,7 +505,8 @@ constexpr decision<Out, K> decide(const approx<K>& a) noexcept {
 template <insidable Out, std::size_t K>
 constexpr bool quick_slot(const approx<K>& a, wide_sint<K + 2>& index) noexcept {
     if constexpr (notch_fits64<Out>)
-        return a.Scale >= 1 && a.Error != 0 && decide_fast<Out, out_rounding<Out>>(a.Value, a.Error, a.Scale, index);
+        return a.Scale >= 1 && a.Error != 0 && a.Error != ~umax{0} &&
+               decide_fast<Out, out_rounding<Out>>(a.Value, a.Error, a.Scale, index);
     else
         return false;
 }
@@ -699,10 +699,11 @@ inline constexpr bool table_input =
 template <insidable Out>
 inline constexpr bool table_output = notched<Out> && !wide_valued<Out>;
 
-// The slot offset of an input value (0 … step count).
+// The slot offset of an input value (0 … step count), modulo 2^64: exact
+// whatever the signs (an input straddling 2^63 has both).
 template <insidable In>
 constexpr std::size_t offset_of(const In& x) noexcept {
-    return static_cast<std::size_t>(value_index<imax>(x) - static_cast<imax>(slot_base<In>));
+    return static_cast<std::size_t>(static_cast<umax>(value_index<imax>(x)) - static_cast<umax>(slot_base<In>));
 }
 
 // T's grid point at slot offset k (a notched, integer raw).

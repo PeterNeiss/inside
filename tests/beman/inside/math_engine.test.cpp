@@ -1730,6 +1730,44 @@ TEST(MathEngineTest, deep_step_at_the_cap) {
     EXPECT_EQ(math::sin_into<SF>(X{rational{3u, std::uint64_t{1} << 40}}).raw(), 2u);
 }
 
+// The table tier's slot offset subtracted signed 64-bit value indices: an
+// input straddling 2^63 overflowed (not a constant expression; UB at run time).
+TEST(MathEngineTest, table_lookup_on_an_input_straddling_two_to_the_63) {
+    using X  = inside<{9223372036854775806u, 9223372036854775908u}>; // 103 slots: a table
+    using Xl = inside<{9223372036854775806u, 9223372036854776908u}>; // too many: computed
+    using O  = inside<{{0, 2}, per<1024>}, round_nearest>;
+    static_assert(math::detail::engine::table_input<X> && !math::detail::engine::table_input<Xl>);
+    static_assert(math::atan_into<O>(X{9223372036854775900u}) == math::atan_into<O>(Xl{9223372036854775900u}));
+    EXPECT_EQ(math::atan_into<O>(X{test::at_run_time(std::uint64_t{9223372036854775900u})}),
+              math::atan_into<O>(Xl{9223372036854775900u}));
+    EXPECT_EQ(math::atan_into<O>(X{test::at_run_time(std::uint64_t{9223372036854775806u})}),
+              math::atan_into<O>(Xl{9223372036854775806u}));
+}
+
+// tan's error bound grows as tan²: past 2^62 units (|tan| past 2^31) it
+// saturated to the 64-bit word, smaller than the real bound, and decide took
+// a slot up to 13 off. Near the pole on both sides, against values computed
+// exactly (Python Fraction, π to 200 digits).
+TEST(MathEngineTest, tan_near_its_pole_with_a_bound_past_64_bits) {
+    constexpr std::uint64_t j0 = 7244019458077122842u; // ⌊π/2 · 2^62⌋
+    constexpr std::uint64_t p  = std::uint64_t{1} << 62;
+    using Lo                   = inside<{{1, rational{j0, p}}, per<p>}>;
+    using Hi                   = inside<{{rational{j0 + 1, p}, 2}, per<p>}>;
+    using O                    = inside<{{-1099511627776, 1099511627776}, 1}, round_nearest | clamp>; // ±2^40
+    struct row {
+        std::uint64_t M; // x = (j0 − M)/2^62 below π/2, (j0 + 1 + M)/2^62 above
+        std::int64_t  Below, Above;
+    };
+    for (const row r : {row{4194304, 1099511527027, -1099511466381},
+                        row{5461829, 844348238277, -844348202513},
+                        row{12517207, 368427707302, -368427700492},
+                        row{354172375, 13021021228, -13021021220}}) {
+        const auto m = test::at_run_time(r.M);
+        EXPECT_EQ(math::tan_into<O>(Lo::from_raw(j0 - m - p)), r.Below) << r.M;
+        EXPECT_EQ(math::tan_into<O>(Hi::from_raw(m)), r.Above) << r.M;
+    }
+}
+
 #ifndef BEMAN_INSIDE_MATH_NO_FP // the double kernels
 namespace fpk = beman::inside::math::detail::fp;
 namespace d {

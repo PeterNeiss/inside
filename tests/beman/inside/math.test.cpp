@@ -753,6 +753,47 @@ TEST(MathTest, abs_of_int64_min) {
     EXPECT_EQ(math::abs(X{-5}), 5);
 }
 
+// abs and copysign read uint64's value index (up to 2^64 − 1) as an int64:
+// abs(2^64 − 1) was 1. copysign of INT64_MIN with a sign never negative
+// negated it in int64 (an overflow).
+TEST(MathTest, abs_and_copysign_past_int64) {
+    using I64                       = std::int64_t;
+    constexpr I64           I64_MIN = std::numeric_limits<I64>::min();
+    constexpr std::uint64_t U64_MAX = std::numeric_limits<std::uint64_t>::max();
+    using Pos                       = inside<{0, 1}>;
+    using Neg                       = inside<{-1, 0}>;
+    static_assert(math::abs(uint64{U64_MAX}) == U64_MAX);
+    static_assert(math::copysign(uint64{U64_MAX}, Pos{1}) == U64_MAX);
+    static_assert(math::copysign(uint64{U64_MAX}, Neg{-1}) == just<-18446744073709551615_g>);
+    static_assert(math::copysign(int64{I64_MIN}, Pos{1}) == std::uint64_t{1} << 63);
+    static_assert(math::copysign(int64{I64_MIN}, Neg{-1}) == I64_MIN);
+    EXPECT_EQ(math::abs(uint64{test::at_run_time((std::uint64_t{1} << 63) + 5)}), (std::uint64_t{1} << 63) + 5);
+    EXPECT_EQ(math::copysign(uint64{test::at_run_time(U64_MAX - 2)}, Pos{0}), U64_MAX - 2);
+    EXPECT_EQ(math::copysign(int64{test::at_run_time(I64_MIN)}, Pos{1}), std::uint64_t{1} << 63);
+}
+
+// pow_base with a builtin Base past int64 passed it to the double and dd
+// tiers as an int64 template argument (a narrowing error), and an __int128
+// Base's bit width was its low limb's.
+TEST(MathTest, pow_base_with_a_builtin_base_past_int64) {
+    using O = inside<{{0, 1}, per<1024>}, round_nearest>;
+    using X = inside<{{-1, 0}, per<64>}>;
+    using Y = inside<{0, 2}>;
+    static_assert(math::pow_base_into<O, 9223372036854775809ull>(X{-1}) == 0);
+    static_assert(math::pow_base_into<O, 18446744073709551615ull>(X{rational{-1, 64}}) ==
+                  math::pow_base_into<O, 18446744073709551615_g>(X{rational{-1, 64}}));
+    static_assert(math::pow_base<9223372036854775809ull>(Y{2}) == just<85070591730234615884290395931651604481_g>);
+    EXPECT_EQ((math::pow_base_into<O, 9223372036854775809ull>(X{test::at_run_time(-1)})), 0);
+    []<class W>(std::type_identity<W>) {
+        if constexpr (std::integral<W>) { // __int128 under the GNU dialects
+            constexpr W base = W{1} << 100;
+            static_assert(math::pow_base<base>(Y{2}) ==
+                          just<1606938044258990275541962092341162602522202993782792835301376_g>);
+            static_assert(math::pow_base_into<O, base>(X{-1}) == 0);
+        }
+    }(std::type_identity<__int128>{});
+}
+
 //---------------------------------------------------------------------------
 // raw_from_offset (inside/detail/storage.hpp) with a signed offset, reached from the
 // integer fast path of math::fmod (fmod_int_fast, math.hpp). Needs non-rational integer grids and a divisor

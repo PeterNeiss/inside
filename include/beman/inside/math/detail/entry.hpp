@@ -579,6 +579,9 @@ template <insidable Out, auto Base, insidable In>
     require_rounding<Out>();
     if constexpr (grid_base<Base> && ::beman::inside::detail::fits_imax(interval{Base, Base}))
         return pow_base_into<Out, static_cast<imax>(::beman::inside::detail::grid_numerator(Base))>(x);
+    else if constexpr (std::integral<decltype(Base)> &&
+                       !::beman::inside::detail::fits_imax(interval{grid_rational{Base}, grid_rational{Base}}))
+        return pow_base_into<Out, grid_rational{Base}>(x); // a builtin past imax: the grid integer's path
     else if constexpr (anchoring::unanchored_call<Out, In>)
         return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return pow_base_into<O, Base>(v); }, x);
     else {
@@ -694,12 +697,16 @@ struct pow_base_core : engine::pow_core<engine::base_limbs<Base>, E, Mag, KMax> 
         : engine::pow_core<engine::base_limbs<Base>, E, Mag, KMax>{engine::exact_base<Base>(), x} {}
 };
 template <auto Base, insidable In>
+inline constexpr int pow_base_kmax = [] {
+    static_assert(engine::max_abs_int<In> <= (std::numeric_limits<int>::max() - 2) / engine::base_bits<Base>,
+                  "beman::inside::math::pow_base: the deduced output needs |x|·bit_width(Base) below 2^31 - name an "
+                  "output grid with pow_base_into<Out> instead");
+    return static_cast<int>(engine::max_abs_int<In>) * engine::base_bits<Base> + 2;
+}();
+template <auto Base, insidable In>
 using pow_base_t =
     engine::increasing_t<In,
-                         pow_base_core<Base,
-                                       engine::input_limbs<In>,
-                                       engine::in_mag<In>,
-                                       static_cast<int>(engine::max_abs_int<In>) * engine::base_bits<Base> + 2>>;
+                         pow_base_core<Base, engine::input_limbs<In>, engine::in_mag<In>, pow_base_kmax<Base, In>>>;
 
 // atan2: [−π, π] rounded outward on the gcd notch (π = atan2(0, −1)).
 template <insidable A, insidable B>

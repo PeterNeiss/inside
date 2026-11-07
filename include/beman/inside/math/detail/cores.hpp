@@ -356,16 +356,27 @@ struct trig_core {
             const double cd = static_cast<double>(cs.Value), sd = static_cast<double>(sn.Value);
             const double ac = cd < 0 ? -cd : cd, as = sd < 0 ? -sd : sd;
             const double ec = static_cast<double>(cs.Error), es = static_cast<double>(sn.Error);
+            // Past 2^KMax wherever cos's sign is known (the sign of the result),
+            // also while cos is within twice its error of 0.
+            if (ec < ac && (as - es) / (ac + ec) * (1 - 0x1p-40) > ::beman::inside::detail::ldexp(1.0, KMax))
+                return approx<K>::beyond(sn.Value.negative() != cs.Value.negative(), KMax);
             if (!(2 * ec < ac))
                 return approx<K>::unresolved(S); // cos unresolved
             const double unit = ::beman::inside::detail::ldexp(1.0, S);
-            if ((as - es) / (ac + ec) * (1 - 0x1p-40) > ::beman::inside::detail::ldexp(1.0, KMax))
-                return approx<K>::beyond(sn.Value.negative() != cs.Value.negative(), KMax);
-            const I      t   = div_q(sn.Value, cs.Value, S);
-            const double at  = (as + es) / (ac - ec);
-            const double err = ((es + at * ec) / (ac - ec) * unit + 2) * (1 + 0x1p-40) + 1;
-            const umax   e   = err < 0x1p62 ? static_cast<umax>(err) : ~umax{0};
-            return approx<K>{t, S, e};
+            const I      t    = div_q(sn.Value, cs.Value, S);
+            const double at   = (as + es) / (ac - ec);
+            double       err  = ((es + at * ec) / (ac - ec) * unit + 2) * (1 + 0x1p-40) + 1;
+            // The bound grows as tan²: past 2^62 units (|tan| past 2^31) the
+            // result moves to a coarser scale until it fits one word (halving
+            // a double is exact; the shift rounds within ½).
+            int sh = 0;
+            while (!(err < 0x1p62)) {
+                err *= 0.5;
+                ++sh;
+            }
+            if (sh == 0)
+                return approx<K>{t, S, static_cast<umax>(err)};
+            return approx<K>{round_shift(t, sh), S - sh, static_cast<umax>(err) + 2};
         }
     }
 };
@@ -636,11 +647,12 @@ constexpr std::optional<wide_rational<PL>> exact_pow(const wide_rational<EB>& b,
     return k.negative() ? inverse(wide_rational<PL>{n, d}) : wide_rational<PL>{n, d};
 }
 
-// A pow_base base: an imax, or a grid integer of any size.
+// A pow_base base: a builtin integer (an __int128 too), or a grid integer
+// of any size.
 template <auto Base>
 inline constexpr int base_bits = [] {
     if constexpr (std::integral<decltype(Base)>)
-        return std::bit_width(static_cast<umax>(Base));
+        return bit_width_of(grid_int{Base});
     else
         return bit_width_of(grid_numerator(Base));
 }();
