@@ -1,4 +1,4 @@
-// EXPECT: _g literal: a leading 0 makes an octal literal
+// EXPECT: _g/_ins literal: a leading 0 makes an octal literal
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // A leading 0 would make an octal literal: the _g literal rejects it.
 #include <beman/inside/inside.hpp>

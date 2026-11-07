@@ -96,49 +96,91 @@ constexpr grid_rational grid_round(const grid_rational& r) {
 }
 
 //---------------------------------------------------------------------------
-// parse_grid_literal — the _g literal: the decimal forms of the literal
-// grammar (scan_number: digits with ' separators, an optional point, an
-// optional e±n exponent), taken exactly, of any size.
+// parse_grid_literal — the exact literal: the whole literal grammar
+// (scan_number: 0x / 0b prefixes, ' separators, a point, an e±n or p±n
+// exponent), taken exactly, of any size. The _g literal, and _ins (its
+// point); _r parses the same grammar into the 64-bit rational.
 //---------------------------------------------------------------------------
 template <char... Chars>
 consteval grid_rational parse_grid_literal() {
     if constexpr (octal_literal<Chars...>())
-        constexpr_error<"_g literal: a leading 0 makes an octal literal; write the number without it">();
+        constexpr_error<"_g/_ins literal: a leading 0 makes an octal literal; write the number without it">();
     constexpr char text[] = {Chars...};
-    const grid_int ten{10};
-    // The value is m·10^e10. Zero digits are held back (`zeros`) and only
-    // multiplied in before a later nonzero digit, so trailing zeros
-    // (1.000…) never grow m.
+    // The value is m·B^e (B the radix), times 2^±n or 10^±n. Zero digits are
+    // held back (`zeros`) and only multiplied in before a later nonzero
+    // digit, so trailing zeros (1.000…) never grow m.
     grid_int             m{0};
-    int                  e10 = 0, zeros = 0;
-    const scanned_number sc = scan_number(text, text + sizeof(text), [&](int d, bool in_frac, int) {
+    int                  e = 0, zeros = 0;
+    const scanned_number sc = scan_number(text, text + sizeof(text), [&](int d, bool in_frac, int b) {
         if (d == 0)
             ++zeros;
         else {
             for (; zeros > 0; --zeros)
-                m = m * ten;
-            m = m * ten + grid_int{d};
+                m = m * grid_int{b};
+            m = m * grid_int{b} + grid_int{d};
         }
-        e10 -= in_frac;
+        e -= in_frac;
         return true;
     });
     if (sc.Fail == parse_fail::empty)
-        constexpr_error<"_g literal: expected decimal digits">();
-    if (sc.Fail != parse_fail::none || sc.Base != 10)
-        constexpr_error<"_g literal: decimal digits, a point and e±n only">();
+        constexpr_error<"_g/_ins literal: expected digits">();
+    if (sc.Fail != parse_fail::none)
+        constexpr_error<"_g/_ins literal: digits, a point and an exponent only">();
     if (sc.Exp > 10000)
-        constexpr_error<"_g literal: exponent too large">();
+        constexpr_error<"_g/_ins literal: exponent too large">();
     if (m == grid_int{0})
         return big_rational{0};
-    e10 += zeros + (sc.ExpNeg ? -sc.Exp : sc.Exp);
-    const grid_int p = pow_by_squaring(ten, static_cast<unsigned>(e10 < 0 ? -e10 : e10));
-    return e10 < 0 ? big_rational{m, p} : big_rational{m * p, grid_int{1}};
+    grid_int   num   = m, den{1};
+    const auto scale = [&](int x, int k) { // ·x^k
+        const grid_int p    = pow_by_squaring(grid_int{x}, static_cast<unsigned>(k < 0 ? -k : k));
+        (k < 0 ? den : num) = (k < 0 ? den : num) * p;
+    };
+    scale(sc.Base, e + zeros);
+    if (sc.HasP || sc.HasE)
+        scale(sc.HasP ? 2 : 10, sc.ExpNeg ? -sc.Exp : sc.Exp);
+    return big_rational{num, den};
+}
+} // namespace beman::inside::detail
+
+namespace beman::inside::detail {
+// Checked builder for per<D> below: a static_assert here fires at the user's
+// spelling. D is an integer of at least 1, a builtin or a grid number of any
+// size: 1/D as the 64-bit rational where it fits one, else a grid number.
+template <auto D>
+consteval auto make_per() {
+    if constexpr (std::integral<decltype(D)>) {
+        static_assert(D >= 1, "per<D> is the positive step 1/D; a continuous grid is spelled 0");
+        if constexpr (std::in_range<imax>(D))
+            return rational{imax{1}, static_cast<imax>(D)};
+        else
+            return grid_rational{1} / grid_rational{D};
+    } else {
+        static_assert(std::same_as<decltype(D), grid_rational>, "per<D>: D is an integer");
+        static_assert(D >= 1 && grid_denominator(D) == grid_int{1},
+                      "per<D> is the positive step 1/D for an integer D; a continuous grid is spelled 0");
+        if constexpr (fits_rational(grid_rational{1} / D))
+            return to_rational(grid_rational{1} / D);
+        else
+            return grid_rational{1} / D;
+    }
 }
 } // namespace beman::inside::detail
 
 namespace beman::inside {
-// A grid number: `inside<{0, 1267650600228229401496703205376_g}>`, or an
-// exact decimal notch `{{0, 1}, 1e-30_g}`. Any size.
+// The grid-building helpers:
+//   per<D>       the step 1/D — the common notch (per<256> is Q·8; per<2^70>,
+//                with D a grid number, is a notch past 64 bits);
+// any other exact ratio is the point just<N, D> (inside/detail/core.hpp): a limit like
+// just<-6, 5> for -1.2, or another step like just<360, 4096>
+// (the _r literal, an exact decimal / hex value — 0.1_r is exactly 1/10 —
+// is in inside/detail/number_text.hpp.)
+// Integer steps are plain integers ({{0, 100}, 5}); grid::validate rejects a
+// negative notch however it is spelled.
+template <auto D>
+inline constexpr auto per = detail::make_per<D>();
+
+// A grid number: `inside<{0, 1267650600228229401496703205376_g}>`, an exact
+// decimal notch `{{0, 1}, 1e-30_g}`, or a binary one `0x1p-100_g`. Any size.
 inline namespace literals {
 template <char... Chars>
 consteval detail::grid_rational operator""_g() {

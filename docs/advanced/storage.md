@@ -80,10 +80,13 @@ auto p = h * h;                           // a grid up to 2²⁰⁰; exact, no e
 
 A grid number is a `grid_number`, an exact rational of any size: the type of a
 grid's limits and notch and of `lower_of<T>`. The `_g` literal spells one
-exactly from decimal digits, a point and an exponent:
+exactly in any form of the literal grammar (decimal, `0x`, `0b`, a point, an
+`e` or `p` exponent):
 `inside<{0, 1267650600228229401496703205376_g}>` is `inside<{0, 0x1p100}>`,
 and `inside<{{0, 1}, 1e-30_g}>` has an exact decimal notch of 10⁻³⁰.
-`per<D>`, `just<N, D>`, `_r` and `_ins` stay 64-bit.
+`per<D>`, `just<N, D>` and `_ins` take grid numbers of any size too
+(`per<0x1p70_g>`, `18446744073709551616_ins`); only `rational` and `_r`, a
+64-bit fraction by definition, stay 64-bit.
 
 Grid numbers past 64 bits exist only at compile time; the raw of such an
 inside is a fixed-width integer sized from them. A grid can hold huge values

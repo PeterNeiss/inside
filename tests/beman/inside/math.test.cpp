@@ -974,3 +974,20 @@ TEST(MathIntegerTest, counts_past_64_bits) {
     static_assert(!binomial_defined<N>);
 }
 } // namespace big_count_tests
+
+// pow_base with a base past 64 bits: the integer engine (the double and dd
+// tiers hold ln Base in 64 bits), exact where the power is.
+namespace big_base_tests {
+using namespace beman::inside;
+
+TEST(MathTest, pow_base_past_64_bits) {
+    using X           = inside<{{0, 1}, per<70>}>;
+    using Out         = inside<{{0, 4}, per<1024>}, round_nearest>;
+    volatile bool yes = true; // the inputs at run time
+    const X       x1  = yes ? X{1} : X{};
+    const X       x70 = yes ? X{detail::rational{1, 70}} : X{};
+    EXPECT_TRUE((math::pow_base_into<Out, 1180591620717411303424_g>(x70) == 2)); // (2^70)^(1/70)
+    EXPECT_TRUE((math::pow_base<1180591620717411303424_g>(x1) == just<1180591620717411303424_g>));
+    EXPECT_TRUE((math::pow_base_into<Out, 2_g>(x1) == 2)); // within imax: the imax path
+}
+} // namespace big_base_tests

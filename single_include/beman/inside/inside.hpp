@@ -2344,15 +2344,6 @@ BEMAN_INSIDE_RATIONAL_OP(/)
     const umax r = divisor.Num, s = abs_den(divisor.Den);
     return (s % q == 0) && (p % r == 0);
 }
-
-// Checked builder for per<D> below: a static_assert here fires at the user's
-// spelling (also through just<N, D>, which is N · per<D>).
-template <umax D>
-consteval rational make_per() {
-    static_assert(D >= 1, "per<D> is the positive step 1/D; a continuous grid is spelled 0");
-    static_assert(std::in_range<imax>(D), "per<D>: denominator too large");
-    return rational{umax{1}, D};
-}
 } // namespace beman::inside::detail
 
 namespace beman::inside {
@@ -2360,17 +2351,6 @@ namespace beman::inside {
 // continuous inside's raw, and a value read out of an inside. Its arithmetic
 // is compile time only; at run time an exact value is an inside.
 using detail::rational;
-
-// The grid-building helpers:
-//   per<D>       the step 1/D — the common notch (per<256> is Q·8);
-// any other exact ratio is the point just<N, D> (inside/detail/core.hpp): a limit like
-// just<-6, 5> for -1.2, or another step like just<360, 4096>
-// (the _r literal, an exact decimal / hex value — 0.1_r is exactly 1/10 —
-// is in inside/detail/number_text.hpp.)
-// Integer steps are plain integers ({{0, 100}, 5}); grid::validate rejects a
-// negative notch however it is spelled.
-template <umax D>
-inline constexpr detail::rational per = detail::make_per<D>();
 
 } // namespace beman::inside
 
@@ -2445,7 +2425,7 @@ struct parsed_number {
     parse_fail Fail;
 };
 
-// An unsigned number in the grammar of the _ins / _r literals, scanned in
+// An unsigned number in the grammar of the _ins / _r / _g literals, scanned in
 // one pass: the radix and the exponent come back, and each mantissa digit
 // goes to on_digit(d, in_frac, base) (false stops the scan: the builder's
 // overflow). parse_number (64-bit), parse_exact (wide, wide_value.hpp),
@@ -2612,26 +2592,26 @@ consteval bool octal_literal() {
 }
 
 template <char... Chars>
-consteval rational parse_ins_literal() {
+consteval rational parse_rational_literal() {
     constexpr char          src[] = {Chars..., '\0'};
     constexpr parsed_number r     = parse_number(src, src + sizeof...(Chars));
     if constexpr (octal_literal<Chars...>())
-        constexpr_error<"_ins/_r literal: a leading 0 makes an octal literal; write the number without it">();
+        constexpr_error<"_r literal: a leading 0 makes an octal literal; write the number without it">();
     // (A malformed number is no literal token: only a value can fail.)
     else if constexpr (r.Fail == parse_fail::numerator_overflow)
-        constexpr_error<"_ins/_r literal: numerator overflow">();
+        constexpr_error<"_r literal: numerator overflow">();
     else if constexpr (r.Fail == parse_fail::denominator_overflow)
-        constexpr_error<"_ins/_r literal: denominator overflow">();
+        constexpr_error<"_r literal: denominator overflow">();
     else if constexpr (r.Fail == parse_fail::hex_fraction_too_long)
-        constexpr_error<"_ins/_r literal: hex fraction too long">();
+        constexpr_error<"_r literal: hex fraction too long">();
     else if constexpr (r.Fail == parse_fail::p_exponent_too_large)
-        constexpr_error<"_ins/_r literal: p exponent too large">();
+        constexpr_error<"_r literal: p exponent too large">();
     else if constexpr (r.Fail == parse_fail::p_exponent_denominator_overflow)
-        constexpr_error<"_ins/_r literal: p exponent denominator overflow">();
+        constexpr_error<"_r literal: p exponent denominator overflow">();
     else if constexpr (r.Fail == parse_fail::e_exponent_numerator_overflow)
-        constexpr_error<"_ins/_r literal: e exponent numerator overflow">();
+        constexpr_error<"_r literal: e exponent numerator overflow">();
     else if constexpr (r.Fail == parse_fail::e_exponent_denominator_overflow)
-        constexpr_error<"_ins/_r literal: e exponent denominator overflow">();
+        constexpr_error<"_r literal: e exponent denominator overflow">();
     return r.Value;
 }
 
@@ -2689,7 +2669,7 @@ constexpr std::expected<rational, errc> parse_text(const char* first, const char
 
 template <char... Chars>
 constexpr rational operator""_r() {
-    return parse_ins_literal<Chars...>();
+    return parse_rational_literal<Chars...>();
 }
 } // namespace beman::inside::detail
 
@@ -3404,49 +3384,91 @@ constexpr grid_rational grid_round(const grid_rational& r) {
 }
 
 //---------------------------------------------------------------------------
-// parse_grid_literal — the _g literal: the decimal forms of the literal
-// grammar (scan_number: digits with ' separators, an optional point, an
-// optional e±n exponent), taken exactly, of any size.
+// parse_grid_literal — the exact literal: the whole literal grammar
+// (scan_number: 0x / 0b prefixes, ' separators, a point, an e±n or p±n
+// exponent), taken exactly, of any size. The _g literal, and _ins (its
+// point); _r parses the same grammar into the 64-bit rational.
 //---------------------------------------------------------------------------
 template <char... Chars>
 consteval grid_rational parse_grid_literal() {
     if constexpr (octal_literal<Chars...>())
-        constexpr_error<"_g literal: a leading 0 makes an octal literal; write the number without it">();
+        constexpr_error<"_g/_ins literal: a leading 0 makes an octal literal; write the number without it">();
     constexpr char text[] = {Chars...};
-    const grid_int ten{10};
-    // The value is m·10^e10. Zero digits are held back (`zeros`) and only
-    // multiplied in before a later nonzero digit, so trailing zeros
-    // (1.000…) never grow m.
+    // The value is m·B^e (B the radix), times 2^±n or 10^±n. Zero digits are
+    // held back (`zeros`) and only multiplied in before a later nonzero
+    // digit, so trailing zeros (1.000…) never grow m.
     grid_int             m{0};
-    int                  e10 = 0, zeros = 0;
-    const scanned_number sc = scan_number(text, text + sizeof(text), [&](int d, bool in_frac, int) {
+    int                  e = 0, zeros = 0;
+    const scanned_number sc = scan_number(text, text + sizeof(text), [&](int d, bool in_frac, int b) {
         if (d == 0)
             ++zeros;
         else {
             for (; zeros > 0; --zeros)
-                m = m * ten;
-            m = m * ten + grid_int{d};
+                m = m * grid_int{b};
+            m = m * grid_int{b} + grid_int{d};
         }
-        e10 -= in_frac;
+        e -= in_frac;
         return true;
     });
     if (sc.Fail == parse_fail::empty)
-        constexpr_error<"_g literal: expected decimal digits">();
-    if (sc.Fail != parse_fail::none || sc.Base != 10)
-        constexpr_error<"_g literal: decimal digits, a point and e±n only">();
+        constexpr_error<"_g/_ins literal: expected digits">();
+    if (sc.Fail != parse_fail::none)
+        constexpr_error<"_g/_ins literal: digits, a point and an exponent only">();
     if (sc.Exp > 10000)
-        constexpr_error<"_g literal: exponent too large">();
+        constexpr_error<"_g/_ins literal: exponent too large">();
     if (m == grid_int{0})
         return big_rational{0};
-    e10 += zeros + (sc.ExpNeg ? -sc.Exp : sc.Exp);
-    const grid_int p = pow_by_squaring(ten, static_cast<unsigned>(e10 < 0 ? -e10 : e10));
-    return e10 < 0 ? big_rational{m, p} : big_rational{m * p, grid_int{1}};
+    grid_int   num   = m, den{1};
+    const auto scale = [&](int x, int k) { // ·x^k
+        const grid_int p    = pow_by_squaring(grid_int{x}, static_cast<unsigned>(k < 0 ? -k : k));
+        (k < 0 ? den : num) = (k < 0 ? den : num) * p;
+    };
+    scale(sc.Base, e + zeros);
+    if (sc.HasP || sc.HasE)
+        scale(sc.HasP ? 2 : 10, sc.ExpNeg ? -sc.Exp : sc.Exp);
+    return big_rational{num, den};
+}
+} // namespace beman::inside::detail
+
+namespace beman::inside::detail {
+// Checked builder for per<D> below: a static_assert here fires at the user's
+// spelling. D is an integer of at least 1, a builtin or a grid number of any
+// size: 1/D as the 64-bit rational where it fits one, else a grid number.
+template <auto D>
+consteval auto make_per() {
+    if constexpr (std::integral<decltype(D)>) {
+        static_assert(D >= 1, "per<D> is the positive step 1/D; a continuous grid is spelled 0");
+        if constexpr (std::in_range<imax>(D))
+            return rational{imax{1}, static_cast<imax>(D)};
+        else
+            return grid_rational{1} / grid_rational{D};
+    } else {
+        static_assert(std::same_as<decltype(D), grid_rational>, "per<D>: D is an integer");
+        static_assert(D >= 1 && grid_denominator(D) == grid_int{1},
+                      "per<D> is the positive step 1/D for an integer D; a continuous grid is spelled 0");
+        if constexpr (fits_rational(grid_rational{1} / D))
+            return to_rational(grid_rational{1} / D);
+        else
+            return grid_rational{1} / D;
+    }
 }
 } // namespace beman::inside::detail
 
 namespace beman::inside {
-// A grid number: `inside<{0, 1267650600228229401496703205376_g}>`, or an
-// exact decimal notch `{{0, 1}, 1e-30_g}`. Any size.
+// The grid-building helpers:
+//   per<D>       the step 1/D — the common notch (per<256> is Q·8; per<2^70>,
+//                with D a grid number, is a notch past 64 bits);
+// any other exact ratio is the point just<N, D> (inside/detail/core.hpp): a limit like
+// just<-6, 5> for -1.2, or another step like just<360, 4096>
+// (the _r literal, an exact decimal / hex value — 0.1_r is exactly 1/10 —
+// is in inside/detail/number_text.hpp.)
+// Integer steps are plain integers ({{0, 100}, 5}); grid::validate rejects a
+// negative notch however it is spelled.
+template <auto D>
+inline constexpr auto per = detail::make_per<D>();
+
+// A grid number: `inside<{0, 1267650600228229401496703205376_g}>`, an exact
+// decimal notch `{{0, 1}, 1e-30_g}`, or a binary one `0x1p-100_g`. Any size.
 inline namespace literals {
 template <char... Chars>
 consteval detail::grid_rational operator""_g() {
@@ -10134,14 +10156,24 @@ template <insidable B>
 //---------------------------------------------------------------------------
 // The point grid holds the value, so no value constructor is needed: grid
 // numbers past 64 bits (`_g`) work too. just<N, D> is the point N/D
-// for an integer D ≥ 1: just<1, 3>, just<-6, 5> for -1.2.
+// for an integer D ≥ 1, a builtin or a grid number: just<1, 3>, just<-6, 5>
+// for -1.2, just<1, 0x1p70_g>.
 namespace detail {
+template <auto den>
+consteval bool integer_den() {
+    if constexpr (std::integral<decltype(den)>)
+        return den >= 1;
+    else if constexpr (std::same_as<decltype(den), grid_rational>)
+        return den >= 1 && grid_denominator(den) == grid_int{1};
+    else
+        return false;
+}
 template <auto value, auto den>
 consteval auto just_point() {
     if constexpr (std::integral<decltype(den)> && den == 1)
         return inside<grid{value}>::from_raw({});
     else {
-        static_assert(std::integral<decltype(den)> && den >= 1, "just<N, D>: D is an integer of at least 1");
+        static_assert(integer_den<den>(), "just<N, D>: D is an integer of at least 1");
         return inside<grid{grid_rational{value} / grid_rational{den}}>::from_raw({});
     }
 }
@@ -10177,13 +10209,14 @@ inline constexpr auto step_count_of = just<detail::grid_rational{grid_of<T>.step
 //   0x1.8p3_ins     // inside<{12}>              hex float
 //   1'000_ins       // inside<{1000}>            digit separator
 //
-// Parse is exact (no double round-trip); same parser backs `_r` in
-// inside/detail/number_text.hpp. `-1.5_ins` parses as `-(1.5_ins)`.
+// Parse is exact (no double round-trip) and of any size, as `_g` reads it
+// (inside/detail/grid_rational.hpp): 18446744073709551616_ins is the point
+// 2^64. `-1.5_ins` parses as `-(1.5_ins)`.
 //---------------------------------------------------------------------------
 inline namespace literals {
 template <char... Chars>
 constexpr auto operator""_ins() {
-    return just<detail::parse_ins_literal<Chars...>()>;
+    return just<detail::parse_grid_literal<Chars...>()>;
 }
 } // namespace literals
 
@@ -11632,10 +11665,10 @@ using q16_16 = inside<{{0, rational{4294967295u, 65536u}}, per<65536>}, round_ne
 //-------------------------------------------------------------------------
 // Saturating counter: `++` caps at Max (never throws or wraps) — the honest
 // "count up to a ceiling / ≥Max" tally. `--` saturates at 0.
-template <umax Max>
+template <auto Max> // a builtin or a grid number of any size
 using clamp_counter = inside<{0, Max}, clamp>;
 // Wrapping counter: `++` wraps Max → 0 (sequence numbers, epochs).
-template <umax Max>
+template <auto Max>
 using wrap_counter = inside<{0, Max}, wrap>;
 
 } // namespace beman::inside
@@ -15624,6 +15657,24 @@ constexpr std::optional<wide_rational<PL>> exact_pow(const wide_rational<EB>& b,
     return k.negative() ? inverse(wide_rational<PL>{n, d}) : wide_rational<PL>{n, d};
 }
 
+// A pow_base base: an imax, or a grid integer of any size.
+template <auto Base>
+inline constexpr int base_bits = [] {
+    if constexpr (std::integral<decltype(Base)>)
+        return std::bit_width(static_cast<umax>(Base));
+    else
+        return bit_width_of(grid_numerator(Base));
+}();
+template <auto Base>
+inline constexpr std::size_t base_limbs = std::max<std::size_t>(2, limbs_for_bits(base_bits<Base> + 1));
+template <auto Base>
+constexpr wide_rational<base_limbs<Base>> exact_base() {
+    if constexpr (std::integral<decltype(Base)>)
+        return exact_of<base_limbs<Base>>(Base);
+    else
+        return exact_of_grid<base_limbs<Base>>(Base);
+}
+
 // ConstBase, when nonzero, is the base known at compile time (pow_base): its
 // log is then a constant of each precision.
 template <std::size_t EB,
@@ -15632,7 +15683,7 @@ template <std::size_t EB,
           int         KMax,
           int         BitsB     = fraction_bits<EB>,
           int         BitsE     = fraction_bits<EE>,
-          imax        ConstBase = 0,
+          auto        ConstBase = 0,
           std::size_t PL        = pow_limbs>
 struct pow_core {
     wide_rational<EB>                          B;
@@ -15648,7 +15699,7 @@ struct pow_core {
         constexpr std::size_t K = limbs_of<I>;
         const fixed_approx<K> l = [&] {
             if constexpr (ConstBase != 0) {
-                constexpr fixed_approx<K> c = log_exact<SL, K, BitsB>(exact_of<EB>(ConstBase));
+                constexpr fixed_approx<K> c = log_exact<SL, K, BitsB>(wide_rational<EB>{exact_base<ConstBase>()});
                 return c;
             } else
                 return log_exact<SL, K, BitsB>(B);
@@ -15814,18 +15865,18 @@ struct pow_grow {
         }
     }();
 };
-template <insidable In, imax Base>
+template <insidable In, auto Base>
 struct pow_base_grow {
-    static_assert(max_abs_int<In> * std::bit_width(static_cast<umax>(Base)) <= 1 << 16,
+    static_assert(max_abs_int<In> * base_bits<Base> <= 1 << 16,
                   "beman::inside::math::pow_base: a wrap output needs the whole result, which would pass "
                   "2^65536");
-    static constexpr int bits = static_cast<int>(max_abs_int<In>) * std::bit_width(static_cast<umax>(Base)) + 2;
+    static constexpr int bits = static_cast<int>(max_abs_int<In>) * base_bits<Base> + 2;
 };
 template <insidable Out, insidable In>
 inline constexpr int exp_out_kmax = grow_kmax<Out, exp_grow<In>>;
 template <insidable Out, insidable InB, insidable InE>
 inline constexpr int pow_out_kmax = grow_kmax<Out, pow_grow<InB, InE>>;
-template <insidable Out, insidable In, imax Base>
+template <insidable Out, insidable In, auto Base>
 inline constexpr int pow_base_out_kmax = grow_kmax<Out, pow_base_grow<In, Base>>;
 
 // Bits of x² + y² as one fraction: each square doubles its input's bits,
@@ -19082,30 +19133,45 @@ template <insidable Out, insidable InB, insidable InE>
     }
 }
 
-// Base^x for a compile-time integer Base ≥ 2.
-template <insidable Out, imax Base, insidable In>
+// Base^x for a compile-time integer Base ≥ 2: an imax, or a grid integer of
+// any size (one within imax takes the imax path; one past it skips the
+// double and dd tiers, whose ln Base is a 64-bit table).
+template <auto Base>
+inline constexpr bool grid_base = std::same_as<decltype(Base), grid_rational>;
+template <auto Base>
+inline constexpr bool base_ok = [] {
+    if constexpr (std::integral<decltype(Base)>)
+        return Base >= 2;
+    else if constexpr (grid_base<Base>)
+        return Base >= 2 && grid_denominator(Base) == grid_int{1};
+    else
+        return false;
+}();
+template <insidable Out, auto Base, insidable In>
 [[nodiscard]] constexpr Out pow_base_into(In x) {
-    static_assert(Base >= 2, "beman::inside::math::pow_base: Base must be at least 2");
+    static_assert(base_ok<Base>, "beman::inside::math::pow_base: Base must be an integer of at least 2");
     require_rounding<Out>();
-    if constexpr (anchoring::unanchored_call<Out, In>)
+    if constexpr (grid_base<Base> && fits_imax(interval{Base, Base}))
+        return pow_base_into<Out, static_cast<imax>(grid_numerator(Base))>(x);
+    else if constexpr (anchoring::unanchored_call<Out, In>)
         return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return pow_base_into<O, Base>(v); }, x);
     else {
         constexpr int KMax = engine::pow_base_out_kmax<Out, In, Base>;
-        using core         = engine::pow_core<2,
+        using core         = engine::pow_core<engine::base_limbs<Base>,
                                               engine::input_limbs<In>,
                                               engine::in_mag<In>,
                                               KMax,
-                                              66,
+                                              grid_base<Base> ? engine::base_bits<Base> + 2 : 66,
                                               engine::input_bits<In>,
                                               Base,
                                               engine::pow_exact_limbs<Out, KMax>>;
         BEMAN_INSIDE_ENGINE_TIERS(
             Out,
-            (engine::fp_tier<Out, engine::fp_pow_base, In> && engine::in_max<In> <= 1000),
-            (engine::dd_tier<Out, In> && engine::in_max<In> <= 700),
+            (!grid_base<Base> && engine::fp_tier<Out, engine::fp_pow_base, In> && engine::in_max<In> <= 1000),
+            (!grid_base<Base> && engine::dd_tier<Out, In> && engine::in_max<In> <= 700),
             (engine::fp_attempt_pow_base<Out, Base>(x, r)),
             (engine::dd_attempt_pow_base<Out, Base>(x, r)),
-            engine::evaluate<Out, engine::start_bits<Out>>(core{engine::exact_of<2>(Base), engine::exact_input(x)}))
+            engine::evaluate<Out, engine::start_bits<Out>>(core{engine::exact_base<Base>(), engine::exact_input(x)}))
     }
 }
 
@@ -19196,18 +19262,18 @@ template <insidable In>
 inline constexpr grid_rational max_abs = std::max(upper_of<In>, -lower_of<In>);
 
 // pow_base: pow_core with the base bound.
-template <imax Base, std::size_t E, int Mag, int KMax>
-struct pow_base_core : engine::pow_core<2, E, Mag, KMax> {
+template <auto Base, std::size_t E, int Mag, int KMax>
+struct pow_base_core : engine::pow_core<engine::base_limbs<Base>, E, Mag, KMax> {
     constexpr pow_base_core(::beman::inside::detail::wide_rational<E> x)
-        : engine::pow_core<2, E, Mag, KMax>{engine::exact_of<2>(Base), x} {}
+        : engine::pow_core<engine::base_limbs<Base>, E, Mag, KMax>{engine::exact_base<Base>(), x} {}
 };
-template <imax Base, insidable In>
-using pow_base_t = engine::increasing_t<
-    In,
-    pow_base_core<Base,
-                  engine::input_limbs<In>,
-                  engine::in_mag<In>,
-                  static_cast<int>(engine::max_abs_int<In>) * std::bit_width(static_cast<umax>(Base)) + 2>>;
+template <auto Base, insidable In>
+using pow_base_t =
+    engine::increasing_t<In,
+                         pow_base_core<Base,
+                                       engine::input_limbs<In>,
+                                       engine::in_mag<In>,
+                                       static_cast<int>(engine::max_abs_int<In>) * engine::base_bits<Base> + 2>>;
 
 // atan2: [−π, π] rounded outward on the gcd notch (π = atan2(0, −1)).
 template <insidable A, insidable B>
@@ -19300,10 +19366,10 @@ template <insidable In>
         return sqrt_into<inside<{0, 1}, round_nearest>>(x); // the _into domain message
 }
 
-template <imax Base, insidable In>
+template <auto Base, insidable In>
 [[nodiscard]] constexpr auto pow_base(In x) {
     static_assert(deducible<In>());
-    static_assert(Base >= 2, "beman::inside::math::pow_base: Base must be at least 2");
+    static_assert(base_ok<Base>, "beman::inside::math::pow_base: Base must be an integer of at least 2");
     return pow_base_into<results::pow_base_t<Base, In>, Base>(x);
 }
 
@@ -19377,7 +19443,7 @@ BEMAN_INSIDE_ENGINE_MODED(atanh)
 BEMAN_INSIDE_ENGINE_MODED(sqrt)
 #undef BEMAN_INSIDE_ENGINE_MODED
 
-template <imax Base, policy_flag Mode, insidable In>
+template <auto Base, policy_flag Mode, insidable In>
     requires rounding_mode<Mode>
 [[nodiscard]] constexpr auto pow_base(In x) {
     const auto v = with_mode<Mode>(x);
@@ -19883,7 +19949,7 @@ template <insidable InX, insidable InY>
 // the output precision from the angle's grid; results round to nearest. All
 // angles are radians, as in <cmath>.
 //---------------------------------------------------------------------------
-template <std::uint64_t K>
+template <auto K> // a builtin or a grid number of any size
 using unit_amplitude = inside<{{rational{-1}, rational{1}}, per<K>}, round_nearest>;
 
 //---------------------------------------------------------------------------
@@ -23385,7 +23451,7 @@ BEMAN_INSIDE_UNITS_NUMBER_FN(asinh)
 BEMAN_INSIDE_UNITS_NUMBER_FN(acosh)
 BEMAN_INSIDE_UNITS_NUMBER_FN(atanh)
 #undef BEMAN_INSIDE_UNITS_NUMBER_FN
-template <insidable Out, imax Base, class X>
+template <insidable Out, auto Base, class X>
 [[nodiscard]] constexpr auto pow_base_into(const X& x) {
     return beman::inside::math::pow_base_into<Out, Base>(detail::number_of(x));
 }

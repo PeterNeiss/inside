@@ -827,15 +827,6 @@ BEMAN_INSIDE_RATIONAL_OP(/)
     const umax r = divisor.Num, s = abs_den(divisor.Den);
     return (s % q == 0) && (p % r == 0);
 }
-
-// Checked builder for per<D> below: a static_assert here fires at the user's
-// spelling (also through just<N, D>, which is N · per<D>).
-template <umax D>
-consteval rational make_per() {
-    static_assert(D >= 1, "per<D> is the positive step 1/D; a continuous grid is spelled 0");
-    static_assert(std::in_range<imax>(D), "per<D>: denominator too large");
-    return rational{umax{1}, D};
-}
 } // namespace beman::inside::detail
 
 namespace beman::inside {
@@ -843,17 +834,6 @@ namespace beman::inside {
 // continuous inside's raw, and a value read out of an inside. Its arithmetic
 // is compile time only; at run time an exact value is an inside.
 using detail::rational;
-
-// The grid-building helpers:
-//   per<D>       the step 1/D — the common notch (per<256> is Q·8);
-// any other exact ratio is the point just<N, D> (inside/detail/core.hpp): a limit like
-// just<-6, 5> for -1.2, or another step like just<360, 4096>
-// (the _r literal, an exact decimal / hex value — 0.1_r is exactly 1/10 —
-// is in inside/detail/number_text.hpp.)
-// Integer steps are plain integers ({{0, 100}, 5}); grid::validate rejects a
-// negative notch however it is spelled.
-template <umax D>
-inline constexpr detail::rational per = detail::make_per<D>();
 
 } // namespace beman::inside
 

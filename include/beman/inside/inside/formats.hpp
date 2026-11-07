@@ -62,10 +62,10 @@ using q16_16 = inside<{{0, rational{4294967295u, 65536u}}, per<65536>}, round_ne
 //-------------------------------------------------------------------------
 // Saturating counter: `++` caps at Max (never throws or wraps) — the honest
 // "count up to a ceiling / ≥Max" tally. `--` saturates at 0.
-template <umax Max>
+template <auto Max> // a builtin or a grid number of any size
 using clamp_counter = inside<{0, Max}, clamp>;
 // Wrapping counter: `++` wraps Max → 0 (sequence numbers, epochs).
-template <umax Max>
+template <auto Max>
 using wrap_counter = inside<{0, Max}, wrap>;
 
 } // namespace beman::inside

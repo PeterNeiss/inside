@@ -160,7 +160,7 @@ These work on grids past 64 bits too, and need no rounding mode.
 |---|---|---|---|
 | `exp`, `exp2` | all (deduced forms: \|x\| ≤ 4096) | none | |
 | `log`, `log2`, `log10` | x > 0 | none | `log2`, `log10` of an exact power are exact |
-| `pow_base<B>(x)` | `B` an integer ≥ 2, known at compile time | none | |
+| `pow_base<B>(x)` | `B` an integer ≥ 2, known at compile time (a builtin, or a grid number of any size) | none | |
 | `pow(base, e)` | base ≥ 0 (a base grid below 0 does not compile); deduced form: Lower(base) > 0 | `expected` only when 0 to a negative power is possible: `division_by_zero`; `overflow` past `Out` | exact for integer exponents, and for p/q when the base is a perfect q-th power |
 
 A domain limit visible in the input's *type* is a compile error; the one

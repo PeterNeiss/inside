@@ -636,6 +636,24 @@ constexpr std::optional<wide_rational<PL>> exact_pow(const wide_rational<EB>& b,
     return k.negative() ? inverse(wide_rational<PL>{n, d}) : wide_rational<PL>{n, d};
 }
 
+// A pow_base base: an imax, or a grid integer of any size.
+template <auto Base>
+inline constexpr int base_bits = [] {
+    if constexpr (std::integral<decltype(Base)>)
+        return std::bit_width(static_cast<umax>(Base));
+    else
+        return bit_width_of(grid_numerator(Base));
+}();
+template <auto Base>
+inline constexpr std::size_t base_limbs = std::max<std::size_t>(2, limbs_for_bits(base_bits<Base> + 1));
+template <auto Base>
+constexpr wide_rational<base_limbs<Base>> exact_base() {
+    if constexpr (std::integral<decltype(Base)>)
+        return exact_of<base_limbs<Base>>(Base);
+    else
+        return exact_of_grid<base_limbs<Base>>(Base);
+}
+
 // ConstBase, when nonzero, is the base known at compile time (pow_base): its
 // log is then a constant of each precision.
 template <std::size_t EB,
@@ -644,7 +662,7 @@ template <std::size_t EB,
           int         KMax,
           int         BitsB     = fraction_bits<EB>,
           int         BitsE     = fraction_bits<EE>,
-          imax        ConstBase = 0,
+          auto        ConstBase = 0,
           std::size_t PL        = pow_limbs>
 struct pow_core {
     wide_rational<EB>                          B;
@@ -660,7 +678,7 @@ struct pow_core {
         constexpr std::size_t K = limbs_of<I>;
         const fixed_approx<K> l = [&] {
             if constexpr (ConstBase != 0) {
-                constexpr fixed_approx<K> c = log_exact<SL, K, BitsB>(exact_of<EB>(ConstBase));
+                constexpr fixed_approx<K> c = log_exact<SL, K, BitsB>(wide_rational<EB>{exact_base<ConstBase>()});
                 return c;
             } else
                 return log_exact<SL, K, BitsB>(B);
@@ -826,18 +844,18 @@ struct pow_grow {
         }
     }();
 };
-template <insidable In, imax Base>
+template <insidable In, auto Base>
 struct pow_base_grow {
-    static_assert(max_abs_int<In> * std::bit_width(static_cast<umax>(Base)) <= 1 << 16,
+    static_assert(max_abs_int<In> * base_bits<Base> <= 1 << 16,
                   "beman::inside::math::pow_base: a wrap output needs the whole result, which would pass "
                   "2^65536");
-    static constexpr int bits = static_cast<int>(max_abs_int<In>) * std::bit_width(static_cast<umax>(Base)) + 2;
+    static constexpr int bits = static_cast<int>(max_abs_int<In>) * base_bits<Base> + 2;
 };
 template <insidable Out, insidable In>
 inline constexpr int exp_out_kmax = grow_kmax<Out, exp_grow<In>>;
 template <insidable Out, insidable InB, insidable InE>
 inline constexpr int pow_out_kmax = grow_kmax<Out, pow_grow<InB, InE>>;
-template <insidable Out, insidable In, imax Base>
+template <insidable Out, insidable In, auto Base>
 inline constexpr int pow_base_out_kmax = grow_kmax<Out, pow_base_grow<In, Base>>;
 
 // Bits of x² + y² as one fraction: each square doubles its input's bits,
