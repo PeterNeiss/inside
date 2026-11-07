@@ -611,3 +611,15 @@ using namespace beman::inside;
 // parse_exact of a fraction onto a notch-0 point.
 TEST(TextArmTest, parse_exact_onto_a_notch_zero_point) { EXPECT_TRUE((*parse_exact<inside<grid{5}>>("10/2") == 5)); }
 } // namespace reached_arms_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+
+// 1e-19 reduces to a denominator past imax: taken exactly, off a small bound;
+// a grid number of 512 to 4096 bits prints in full.
+TEST(TextArmTest, denominator_past_imax_and_a_kilobit_grid_number) {
+    EXPECT_EQ((parse<inside<{{0, 1}, max_denominator{1000}}>>("1e-19").error()), errc::rounding_error);
+    constexpr auto g = detail::grid_rational{detail::grid_int{1} << 1000} / 7;
+    EXPECT_EQ(to_string(g).substr(0, 12), "107150860718");
+}
+} // namespace reached_arms_tests

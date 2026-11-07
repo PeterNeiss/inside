@@ -827,3 +827,16 @@ TEST(ConversionsArmTest, notch_zero_point_and_reversed_comparison) {
     EXPECT_TRUE((5 < rational{test::at_run_time(11), 2}));
 }
 } // namespace reached_arms_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+using detail::rational;
+
+// A rational against a long double finer than a double.
+TEST(ConversionsArmTest, rational_against_a_long_double) {
+    const long double up = test::at_run_time(1.0L + 0x1p-63L);
+    EXPECT_TRUE(rational{1} < up);
+    EXPECT_TRUE(rational{-1} > -up);
+    EXPECT_FALSE(rational{2} < up);
+}
+} // namespace reached_arms_tests

@@ -1866,3 +1866,31 @@ TEST(AssignmentArmTest, half_even_tie_onto_a_bound) {
     EXPECT_TRUE((C{rational{test::at_run_time(3), 4}} == 1));
 }
 } // namespace reached_arms_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+using detail::rational;
+
+// A fraction raw past 64 bits rounds an exact value off its bound onto it
+// (1/(2^71 + 1) → 0 on the bound 2^70).
+TEST(AssignmentArmTest, fraction_raw_rounds_onto_its_bound) {
+    using F = inside<{{0, 2}, max_denominator{1180591620717411303424_g}}, round_nearest>;
+    EXPECT_TRUE((*parse<F>("1/2361183241434822606849") == 0));
+}
+
+// A double finer than 2^-62 past a notch-0 point reports overflow.
+TEST(AssignmentArmTest, fine_double_past_a_point) {
+    EXPECT_EQ((inside<grid{5}>::try_make(test::at_run_time(0x1p-70)).error()), errc::overflow);
+}
+
+// The raw mapping 7/5 · raw past 64 bits takes the exact store; a value just
+// off a bound that rounds past it (16/15 → 10/9) is out of range.
+TEST(AssignmentArmTest, raw_mapping_past_64_bits_and_rounding_past_a_limit) {
+    using L   = inside<{{0, 1152921504606846976_g}, per<7>}, round_nearest>; // [0, 2^60] by 1/7
+    using R   = inside<{{0, 1152921504606846976_g}, per<5>}>;
+    const R r = R::from_index(5764607523034234879_ins); // 2^60 − 1/5
+    EXPECT_TRUE((L{r} == L{rational{5764607523034234879u, 5}}));
+    using C = inside<{{0, 1}, max_denominator{10}}, round_nearest>;
+    EXPECT_EQ(C::try_make(rational{test::at_run_time(16), 15}).error(), errc::overflow);
+}
+} // namespace reached_arms_tests

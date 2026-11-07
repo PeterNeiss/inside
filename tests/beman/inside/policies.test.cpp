@@ -1364,3 +1364,15 @@ TEST(PoliciesArmTest, policy_ref_remainder_by_an_unsafe_zero) {
     EXPECT_TRUE(b == 7);
 }
 } // namespace reached_arms_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+
+// policy_ref %= by a nonzero divisor stores the remainder.
+TEST(PoliciesArmTest, policy_ref_remainder) {
+    inside<{0, 10}> b{7};
+    volatile int    four = 4;
+    b.policy<wrap>() %= inside<{1, 10}>{static_cast<int>(four)};
+    EXPECT_TRUE(b == 3);
+}
+} // namespace reached_arms_tests
