@@ -925,7 +925,7 @@ TEST(SignedTest, comparison_across_grids) {
 
 // Result grids that hold exactly the values an operation can produce: the
 // remainder by every rounding mode, min/max, |x|, even powers and lerp.
-// Result types freeze at 1.0, so these pin the tight forms.
+// Result types are part of the API, so these pin the tight forms.
 namespace result_grids_tests {
 using namespace beman::inside;
 

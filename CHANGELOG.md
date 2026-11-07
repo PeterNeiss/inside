@@ -6,10 +6,9 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ## 0.8.0 — 2026-11-07
 
-The last breaking release before 1.0. The API freeze review: one spelling per
-flag, implementation names out of the public namespaces, and result types that
-hold exactly the values an operation can produce (result types are frozen
-from 1.0 on). No 64-bit limit is left, at run time or in a spelling, and the
+The API freeze review: one spelling per flag, implementation names out of the
+public namespaces, and result types that hold exactly the values an operation
+can produce. No 64-bit limit is left, at run time or in a spelling, and the
 `imax`/`umax` names went with them; a run-time error is a zero divisor, a store
 that does not fit, or input text; `std::mdspan` support and counting and number
 theory in `math`.
