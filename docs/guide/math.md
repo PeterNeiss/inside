@@ -65,8 +65,9 @@ need no rounding mode. So do the counting and number-theory functions.
 
 `factorial`, `binomial`, `falling_factorial` (the k-permutations),
 `rising_factorial` and `multinomial` take counts: insides on the integers
-from 0, below 2⁶⁴. Their results are exact, and each result type is the range
-the inputs can produce, worked out while compiling:
+from 0, of any size (`binomial` of an n past 2⁶⁴ and a small k works). Their
+results are exact, and each result type is the range the inputs can produce,
+worked out while compiling:
 
 ```cpp
 inside<{0, 20}> n = 20;

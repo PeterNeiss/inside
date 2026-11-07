@@ -946,3 +946,31 @@ TEST(MathArmTest, dd_tier_reads_a_rational_input) {
     EXPECT_EQ(math::exp_into<Out>(In{rational{1, 3}}).as<double>(), std::round(std::exp(1.0 / 3) * 0x1p40) / 0x1p40);
 }
 } // namespace reached_arms_tests
+
+// Counts of any size: n past 2^64 with a small k, and a count range past
+// 2^64 whose results stay small.
+namespace big_count_tests {
+using namespace beman::inside;
+
+template <class N>
+constexpr bool binomial_defined = requires(N a) { math::binomial(a, a); };
+
+TEST(MathIntegerTest, counts_past_64_bits) {
+    using N  = inside<{0, 1180591620717411303424_g}>; // [0, 2^70]
+    using K2 = inside<{0, 2}>;
+    constexpr N   n0{1180591620717411303424_g};
+    volatile bool yes = true; // n at run time
+    const N       n   = yes ? n0 : N{};
+    EXPECT_TRUE(math::binomial(n, K2{2}) == just<696898287454081973172400900209902591410176_g>);
+    EXPECT_TRUE(math::binomial(n, K2{1}) == n);
+    EXPECT_TRUE(math::binomial(n, K2{0}) == 1);
+    EXPECT_TRUE(math::falling_factorial(n, K2{2}) == just<1393796574908163946344801800419805182820352_g>);
+    EXPECT_TRUE(math::rising_factorial(n, K2{2}) == just<1393796574908163946347162983661240005427200_g>);
+    EXPECT_TRUE(math::multinomial(N{1180591620717411303423_g}, inside<{0, 1}>{1}) == n);
+    // k past n: 0, and k = 0 of a huge n: 1.
+    EXPECT_TRUE(math::falling_factorial(inside<{0, 3}>{2}, N{1180591620717411303424_g}) == 0);
+    static_assert(upper_of<decltype(math::falling_factorial(inside<{0, 3}>{}, N{}))> == 6);
+    // A result past the cap has no type, even from a huge range.
+    static_assert(!binomial_defined<N>);
+}
+} // namespace big_count_tests

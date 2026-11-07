@@ -12983,8 +12983,8 @@ inline constexpr auto zeta3       = just<rational{461424925, 383862797}>;   // A
 // Each result type holds exactly the values its inputs can produce, worked
 // out at compile time: factorial of inside<{0, 20}> is inside<{1, 20!}>, of
 // inside<{0, 100}> a wide raw. fn_into<Out>(…) stores the result into Out by
-// Out's policy. A count (n, k) is an inside on the integers from 0, below
-// 2^64; gcd and lcm take integer grids of any sign and size. A result whose
+// Out's policy. A count (n, k) is an inside on the integers from 0, of any
+// size; gcd and lcm take integer grids of any sign and size. A result whose
 // limit would pass max_count_bits has no type: its grid number is computed
 // while compiling.
 //---------------------------------------------------------------------------
@@ -12995,15 +12995,19 @@ using namespace beman::inside::detail;
 // The bits a counting result's limit may have (16384: 1754!, C(16000, 8000)).
 inline constexpr int max_count_bits = 16384;
 
-// A count: an inside on the integers from 0, below 2^64.
+// A count: an inside on the integers from 0, of any size.
 template <class N>
-concept count = insidable<N> && integer_lattice<N> && lower_of<N> >= 0 &&
-                upper_of<N> <= grid_rational{std::numeric_limits<umax>::max()};
+concept count = insidable<N> && integer_lattice<N> && lower_of<N> >= 0;
 
 template <insidable N>
-inline constexpr umax count_lower = static_cast<umax>(grid_numerator(lower_of<N>));
+inline constexpr grid_int count_lower = grid_numerator(lower_of<N>);
 template <insidable N>
-inline constexpr umax count_upper = static_cast<umax>(grid_numerator(upper_of<N>));
+inline constexpr grid_int count_upper = grid_numerator(upper_of<N>);
+// A count's values at run time: a builtin up to 64 bits, else a wide integer.
+template <int Bits>
+using count_work_t = std::conditional_t<(Bits <= 64), umax, wide_uint<limbs_for_bits(Bits)>>;
+template <insidable N>
+using count_t = count_work_t<bit_width_of(count_upper<N>)>;
 
 // The value of an integer-lattice inside as the integer type W (a builtin
 // or a wide_int wide enough for it).
@@ -13018,11 +13022,11 @@ constexpr W integer_value(const X& x) {
 }
 
 template <insidable N>
-constexpr umax count_value(const N& n) {
+constexpr count_t<N> count_value(const N& n) {
     if constexpr (values_fit_imax<N>)
         return static_cast<umax>(to_value(n));
     else
-        return static_cast<umax>(integer_value<wide_sint<2>>(n));
+        return static_cast<count_t<N>>(integer_value<wide_sint<limbs_for_bits(bit_width_of(count_upper<N>) + 1)>>(n));
 }
 
 //---------------------------------------------------------------------------
@@ -13039,62 +13043,74 @@ constexpr void check_fits(counted& c) {
     if (big::bit_width(c.Value) > max_count_bits)
         c.Fits = false;
 }
-constexpr void times(counted& c, umax q) {
-    if (q == 0 || c.Value.empty()) {
+// The counts are magnitudes of any size; a one-limb factor takes the short
+// multiply.
+constexpr void times(counted& c, const big::mag& q) {
+    if (q.empty() || c.Value.empty()) {
         c.Value.clear();
         return;
     }
-    if (const umax carry = limb::mul_1(c.Value.data(), c.Value.data(), c.Value.size(), q))
-        c.Value.push_back(carry);
+    if (q.size() == 1) {
+        if (const umax carry = limb::mul_1(c.Value.data(), c.Value.data(), c.Value.size(), q[0]))
+            c.Value.push_back(carry);
+    } else
+        c.Value = big::mul(c.Value, q);
     check_fits(c);
 }
 constexpr void divided_by(counted& c, umax q) {
     limb::div_1(c.Value.data(), c.Value.data(), c.Value.size(), q);
     big::trim(c.Value);
 }
+constexpr big::mag mag_of(umax v) { return v == 0 ? big::mag{} : big::mag{v}; }
+constexpr big::mag plus(const big::mag& a, umax b) { return big::add(a, mag_of(b)); }
+constexpr bool     less(const big::mag& a, const big::mag& b) { return big::compare(a, b) < 0; }
 
-// lo · (lo + 1) ··· (lo + count − 1), 1 for count 0.
-constexpr counted product(umax lo, umax count) {
+// lo · (lo + 1) ··· (lo + count − 1), 1 for count 0 (lo ≥ 1). It stops once
+// past max_count_bits, after at most that many factors.
+constexpr counted product(const big::mag& lo, const big::mag& count) {
     counted c;
-    for (umax i = 0; i < count && c.Fits; ++i)
-        times(c, lo + i);
+    for (umax i = 0; less(mag_of(i), count) && c.Fits; ++i)
+        times(c, plus(lo, i));
     return c;
 }
-constexpr counted factorial_count(umax n) { return n < 2 ? counted{} : product(2, n - 1); }
-constexpr counted falling_count(umax n, umax k) {
-    if (k > n)
-        return counted{big::mag{}, true};
-    return product(n - k + 1, k);
+constexpr counted factorial_count(const big::mag& n) {
+    return less(n, big::mag{2}) ? counted{} : product(big::mag{2}, big::sub(n, big::mag{1}));
 }
-constexpr counted rising_count(umax n, umax k) {
-    if (k == 0)
+constexpr counted falling_count(const big::mag& n, const big::mag& k) {
+    if (less(n, k))
+        return counted{big::mag{}, true};
+    return product(plus(big::sub(n, k), 1), k);
+}
+constexpr counted rising_count(const big::mag& n, const big::mag& k) {
+    if (k.empty())
         return counted{};
-    if (n == 0)
+    if (n.empty())
         return counted{big::mag{}, true};
     return product(n, k);
 }
 // r · C(s, k), by the multiplicative rule over t = min(k, s − k) steps: each
-// intermediate r·C(s − t + i − 1, i − 1)·(s − t + i) is a multiple of i.
-constexpr void times_binomial(counted& r, umax s, umax k) {
-    const umax t = std::min(k, s - k);
-    for (umax i = 1; i <= t && r.Fits; ++i) {
-        times(r, s - t + i);
+// intermediate r·C(s − t + i − 1, i − 1)·(s − t + i) is a multiple of i. Past
+// max_count_bits it stops: the intermediates grow toward C(s, t).
+constexpr void times_binomial(counted& r, const big::mag& s, const big::mag& k) {
+    const big::mag rest = big::sub(s, k), t = less(rest, k) ? rest : k, base = big::sub(s, t);
+    for (umax i = 1; !less(t, mag_of(i)) && r.Fits; ++i) {
+        times(r, plus(base, i));
         divided_by(r, i);
     }
 }
-constexpr counted binomial_count(umax n, umax k) {
-    if (k > n)
+constexpr counted binomial_count(const big::mag& n, const big::mag& k) {
+    if (less(n, k))
         return counted{big::mag{}, true};
     counted c;
     times_binomial(c, n, k);
     return c;
 }
 template <std::size_t M>
-constexpr counted multinomial_count(const std::array<umax, M>& ks) {
-    counted r;
-    umax    s = 0;
-    for (const umax k : ks) {
-        s += k;
+constexpr counted multinomial_count(const std::array<big::mag, M>& ks) {
+    counted  r;
+    big::mag s;
+    for (const big::mag& k : ks) {
+        s = big::add(s, k);
         times_binomial(r, s, k);
     }
     return r;
@@ -13119,15 +13135,15 @@ consteval count_grid make_count_grid(const counted& lo, const counted& hi) {
 // factorial is increasing in n.
 template <count N>
 inline constexpr count_grid factorial_grid =
-    make_count_grid(factorial_count(count_lower<N>), factorial_count(count_upper<N>));
+    make_count_grid(factorial_count(count_lower<N>.magnitude()), factorial_count(count_upper<N>.magnitude()));
 
 // falling_factorial is increasing in n and, while k ≤ n, in k; the corner
 // (lowest n, highest k) is 0 when k can pass n there.
 // (consteval functions, not immediately invoked lambdas: such a lambda
 // becomes immediate, and GCC 16 then takes the address of its invoker.)
-consteval count_grid falling_grid_of(umax a, umax b, umax c, umax d) {
-    const counted hi = c > b ? counted{big::mag{}, true} : falling_count(b, std::min(d, b));
-    const counted lo = d > a ? counted{big::mag{}, true} : falling_count(a, c);
+consteval count_grid falling_grid_of(const grid_int& a, const grid_int& b, const grid_int& c, const grid_int& d) {
+    const counted hi = b < c ? counted{big::mag{}, true} : falling_count(b.magnitude(), std::min(d, b).magnitude());
+    const counted lo = a < d ? counted{big::mag{}, true} : falling_count(a.magnitude(), c.magnitude());
     return make_count_grid(lo, hi);
 }
 template <count N, count K>
@@ -13135,13 +13151,12 @@ inline constexpr count_grid falling_grid =
     falling_grid_of(count_lower<N>, count_upper<N>, count_lower<K>, count_upper<K>);
 
 // rising_factorial is increasing in both for n ≥ 1; rising(0, k ≥ 1) is 0.
-// Its largest factor n + k − 1 must fit the 64-bit loop.
-template <count N, count K>
-inline constexpr bool rising_factors_fit =
-    count_upper<K> == 0 || count_upper<N> <= std::numeric_limits<umax>::max() - (count_upper<K> - 1);
-consteval count_grid rising_grid_of(umax a, umax b, umax c, umax d) {
-    const counted lo = a == 0 && d >= 1 ? counted{big::mag{}, true} : rising_count(a, c);
-    const counted hi = b >= 1 ? rising_count(b, d) : c == 0 ? counted{} : counted{big::mag{}, true};
+consteval count_grid rising_grid_of(const grid_int& a, const grid_int& b, const grid_int& c, const grid_int& d) {
+    const grid_int zero{0};
+    const counted  lo = a == zero && zero < d ? counted{big::mag{}, true} : rising_count(a.magnitude(), c.magnitude());
+    const counted  hi = zero < b    ? rising_count(b.magnitude(), d.magnitude())
+                        : c == zero ? counted{}
+                                    : counted{big::mag{}, true};
     return make_count_grid(lo, hi);
 }
 template <count N, count K>
@@ -13151,14 +13166,15 @@ inline constexpr count_grid rising_grid =
 // binomial is increasing in n for k ≤ n, and in k unimodal with its peak at
 // n/2: the largest at the highest n and the k nearest it, the smallest at
 // the lowest n and an end of k's range (0 when k can pass n).
-consteval count_grid binomial_grid_of(umax a, umax b, umax c, umax d) {
+consteval count_grid binomial_grid_of(const grid_int& a, const grid_int& b, const grid_int& c, const grid_int& d) {
     counted hi{big::mag{}, true};
     if (c <= b)
-        hi = binomial_count(b, std::clamp(b / 2, c, std::min(d, b)));
+        hi = binomial_count(b.magnitude(), std::clamp(b / grid_int{2}, c, std::min(d, b)).magnitude());
     counted lo{big::mag{}, true};
     if (d <= a) {
-        const counted x = binomial_count(a, c), y = binomial_count(a, d);
-        lo = big::compare(x.Value, y.Value) <= 0 ? x : y;
+        const counted x = binomial_count(a.magnitude(), c.magnitude()),
+                      y = binomial_count(a.magnitude(), d.magnitude());
+        lo              = big::compare(x.Value, y.Value) <= 0 ? x : y;
     }
     return make_count_grid(lo, hi);
 }
@@ -13166,21 +13182,14 @@ template <count N, count K>
 inline constexpr count_grid binomial_grid =
     binomial_grid_of(count_lower<N>, count_upper<N>, count_lower<K>, count_upper<K>);
 
-// multinomial is increasing in each count; their sum must fit 64 bits.
-template <count... Ks>
-inline constexpr bool sum_fits = [] {
-    umax s = 0;
-    for (const umax u : {count_upper<Ks>...}) {
-        if (u > std::numeric_limits<umax>::max() - s)
-            return false;
-        s += u;
-    }
-    return true;
-}();
+// multinomial is increasing in each count.
 template <count... Ks>
 inline constexpr count_grid multinomial_grid =
-    make_count_grid(multinomial_count(std::array<umax, sizeof...(Ks)>{count_lower<Ks>...}),
-                    multinomial_count(std::array<umax, sizeof...(Ks)>{count_upper<Ks>...}));
+    make_count_grid(multinomial_count(std::array<big::mag, sizeof...(Ks)>{count_lower<Ks>.magnitude()...}),
+                    multinomial_count(std::array<big::mag, sizeof...(Ks)>{count_upper<Ks>.magnitude()...}));
+// The sum of the counts' limits: the run-time sum's width.
+template <count... Ks>
+inline constexpr int sum_bits = bit_width_of((count_upper<Ks> + ...));
 
 //---------------------------------------------------------------------------
 // gcd and lcm: the result lattices. Every value of X is a multiple of its
@@ -13274,17 +13283,18 @@ inline constexpr bool lcm_fits = bit_width_of(grid_numerator(lcm_upper<A, B>)) <
 
 //---------------------------------------------------------------------------
 // Run time: the counts in a work integer W, sized at compile time from the
-// result's limit (plus a factor's bits where a step multiplies first).
+// result's limit (plus a factor's bits where a step multiplies first). A
+// count C (count_t) may be wide; the number of factors never is: a result
+// within max_count_bits has at most that many factors of 2 or more.
 //---------------------------------------------------------------------------
-template <int Bits>
-using count_work_t = std::conditional_t<(Bits <= 64), umax, wide_uint<limbs_for_bits(Bits)>>;
-
-template <class W>
-constexpr void times(W& w, umax q) noexcept {
-    if constexpr (wide_integer<W>)
+template <class W, class Q>
+constexpr void times(W& w, const Q& q) noexcept {
+    if constexpr (wide_integer<W> && std::integral<Q>)
         limb::mul_1(w.Word, w.Word, std::size(w.Word), q);
+    else if constexpr (wide_integer<W>)
+        w = w * static_cast<W>(q);
     else
-        w *= q;
+        w *= static_cast<umax>(q); // a factor of a 64-bit result fits 64 bits
 }
 template <class W>
 constexpr void divided_by(W& w, umax q) noexcept {
@@ -13293,18 +13303,18 @@ constexpr void divided_by(W& w, umax q) noexcept {
     else
         w /= q;
 }
-template <class W>
-constexpr W product(umax lo, umax count) noexcept {
+template <class W, class C>
+constexpr W product(const C& lo, umax count) noexcept {
     W w{1};
     for (umax i = 0; i < count; ++i)
-        times(w, lo + i);
+        times(w, lo + static_cast<C>(i));
     return w;
 }
-template <class W>
-constexpr void times_binomial(W& r, umax s, umax k) noexcept {
-    const umax t = std::min(k, s - k);
+template <class W, class C>
+constexpr void times_binomial(W& r, const C& s, const C& k) noexcept {
+    const umax t = static_cast<umax>(std::min(k, s - k));
     for (umax i = 1; i <= t; ++i) {
-        times(r, s - t + i);
+        times(r, s - static_cast<C>(t) + static_cast<C>(i));
         divided_by(r, i);
     }
 }
@@ -13341,7 +13351,7 @@ inline constexpr auto factorial_table = [] {
 }();
 
 #define BEMAN_INSIDE_WHY_count(fn) \
-    "beman::inside::math::" #fn ": the counts are insides on the integers from 0, below 2^64 (inside<{0, 20}>)"
+    "beman::inside::math::" #fn ": the counts are insides on the integers from 0 (inside<{0, 20}>)"
 #define BEMAN_INSIDE_WHY_too_large(fn)                                                                            \
     "beman::inside::math::" #fn ": the result would pass 16384 bits (math::detail::max_count_bits) - narrow the " \
     "input grids"
@@ -13358,12 +13368,13 @@ template <insidable N>
         (void)n;
         return R::from_raw({});
     } else {
-        const umax v = detail::count_value(n);
+        // A result within max_count_bits has n ≤ 1754: a builtin count.
+        const umax v = static_cast<umax>(detail::count_value(n));
         if constexpr (detail::result_bits<R> <= 64)
-            return detail::lattice_inside<R>(detail::factorial_table<detail::count_upper<N>>[v]);
+            return detail::lattice_inside<R>(detail::factorial_table<static_cast<umax>(detail::count_upper<N>)>[v]);
         else {
             using W = detail::count_work_t<detail::result_bits<R>>;
-            return detail::lattice_inside<R>(v < 2 ? W{1} : detail::product<W>(2, v - 1));
+            return detail::lattice_inside<R>(v < 2 ? W{1} : detail::product<W>(umax{2}, v - 1));
         }
     }
 }
@@ -13391,9 +13402,12 @@ template <insidable N, insidable K>
         (void)n, (void)k;
         return R::from_raw({});
     } else {
-        using W      = detail::count_work_t<detail::result_bits<R>>;
-        const umax a = detail::count_value(n), b = detail::count_value(k);
-        return detail::lattice_inside<R>(b > a ? W{0} : detail::product<W>(a - b + 1, b));
+        using W = detail::count_work_t<detail::result_bits<R>>;
+        using C =
+            detail::count_work_t<std::max(bit_width_of(detail::count_upper<N>), bit_width_of(detail::count_upper<K>))>;
+        const C a{detail::count_value(n)}, b{detail::count_value(k)};
+        // b ≤ a: a nonzero result within max_count_bits has few factors.
+        return detail::lattice_inside<R>(b > a ? W{0} : detail::product<W>(a - b + C{1}, static_cast<umax>(b)));
     }
 }
 template <insidable N, insidable K>
@@ -13410,25 +13424,28 @@ template <insidable Out, insidable N, insidable K>
 }
 
 template <insidable N, insidable K>
-    requires detail::count<N> && detail::count<K> && detail::rising_factors_fit<N, K> &&
-             (detail::rising_grid<N, K>.Fits)
+    requires detail::count<N> && detail::count<K> && (detail::rising_grid<N, K>.Fits)
 [[nodiscard]] constexpr auto rising_factorial(N n, K k) noexcept {
     using R = inside<detail::rising_grid<N, K>.Grid>;
     if constexpr (detail::point_grid<R>) {
         (void)n, (void)k;
         return R::from_raw({});
     } else {
-        using W      = detail::count_work_t<detail::result_bits<R>>;
-        const umax a = detail::count_value(n), b = detail::count_value(k);
-        return detail::lattice_inside<R>(b == 0 ? W{1} : a == 0 ? W{0} : detail::product<W>(a, b));
+        using W = detail::count_work_t<detail::result_bits<R>>;
+        using C = detail::count_t<N>;
+        const C    a{detail::count_value(n)};
+        const auto b = detail::count_value(k);
+        // a ≥ 1 and b ≥ 1: a result within max_count_bits has few factors.
+        return detail::lattice_inside<R>(b == decltype(b){0} ? W{1}
+                                         : a == C{0}         ? W{0}
+                                                             : detail::product<W>(a, static_cast<umax>(b)));
     }
 }
 template <insidable N, insidable K>
     requires(!detail::count<N> || !detail::count<K>)
 auto rising_factorial(N, K) = delete (BEMAN_INSIDE_WHY_count(rising_factorial));
 template <insidable N, insidable K>
-    requires detail::count<N> && detail::count<K> &&
-                 (!detail::rising_factors_fit<N, K> || !detail::rising_grid<N, K>.Fits)
+    requires detail::count<N> && detail::count<K> && (!detail::rising_grid<N, K>.Fits)
 auto rising_factorial(N, K) = delete (BEMAN_INSIDE_WHY_too_large(rising_factorial));
 
 template <insidable Out, insidable N, insidable K>
@@ -13449,9 +13466,11 @@ template <insidable N, insidable K>
         return R::from_raw({});
     } else {
         // c·(n − t + i) before the division by i: the limit times a factor.
-        using W      = detail::count_work_t<detail::result_bits<R> + std::bit_width(detail::count_upper<N>)>;
-        const umax a = detail::count_value(n), b = detail::count_value(k);
-        W          c{static_cast<umax>(b > a ? 0 : 1)};
+        using W = detail::count_work_t<detail::result_bits<R> + bit_width_of(detail::count_upper<N>)>;
+        using C =
+            detail::count_work_t<std::max(bit_width_of(detail::count_upper<N>), bit_width_of(detail::count_upper<K>))>;
+        const C a{detail::count_value(n)}, b{detail::count_value(k)};
+        W       c{static_cast<umax>(b > a ? 0 : 1)};
         if (b <= a)
             detail::times_binomial(c, a, b);
         if constexpr (detail::wide_integer<W> && detail::result_bits<R> <= 64)
@@ -13474,19 +13493,20 @@ template <insidable Out, insidable N, insidable K>
 }
 
 template <insidable... Ks>
-    requires(sizeof...(Ks) >= 1) && (detail::count<Ks> && ...) && detail::sum_fits<Ks...> &&
-            (detail::multinomial_grid<Ks...>.Fits)
+    requires(sizeof...(Ks) >= 1) && (detail::count<Ks> && ...) && (detail::multinomial_grid<Ks...>.Fits)
 [[nodiscard]] constexpr auto multinomial(Ks... ks) noexcept {
     using R = inside<detail::multinomial_grid<Ks...>.Grid>;
     if constexpr (detail::point_grid<R>) {
         ((void)ks, ...);
         return R::from_raw({});
     } else {
-        using W = detail::count_work_t<detail::result_bits<R> + 64>;
-        W    r{1};
-        umax s = 0;
-        for (const umax k : {detail::count_value(ks)...}) {
-            s += k;
+        // r·(s − t + i) before the division by i: the limit times a partial sum.
+        using W = detail::count_work_t<detail::result_bits<R> + detail::sum_bits<Ks...>>;
+        using C = detail::count_work_t<detail::sum_bits<Ks...>>;
+        W r{1};
+        C s{0};
+        for (const C k : {static_cast<C>(detail::count_value(ks))...}) {
+            s = s + k;
             detail::times_binomial(r, s, k);
         }
         if constexpr (detail::wide_integer<W> && detail::result_bits<R> <= 64)
@@ -13499,8 +13519,7 @@ template <insidable... Ks>
     requires(sizeof...(Ks) >= 1) && (!(detail::count<Ks> && ...))
 auto multinomial(Ks...) = delete (BEMAN_INSIDE_WHY_count(multinomial));
 template <insidable... Ks>
-    requires(sizeof...(Ks) >= 1) && (detail::count<Ks> && ...) &&
-                (!detail::sum_fits<Ks...> || !detail::multinomial_grid<Ks...>.Fits)
+    requires(sizeof...(Ks) >= 1) && (detail::count<Ks> && ...) && (!detail::multinomial_grid<Ks...>.Fits)
 auto multinomial(Ks...) = delete (BEMAN_INSIDE_WHY_too_large(multinomial));
 
 template <insidable Out, insidable... Ks>
