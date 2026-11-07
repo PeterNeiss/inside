@@ -12,8 +12,8 @@
 //
 // `uint8` … `uint64` and `int8` … `int64` are named after the std::uintN_t /
 // std::intN_t they are stored in, and each uses that type's full range:
-// `uint8` is [0, 255] in a std::uint8_t (save int64, which stops one short of
-// -2^63). Q-format types keep power-of-two notches.
+// `uint8` is [0, 255] in a std::uint8_t. Q-format types keep power-of-two
+// notches.
 //
 // The integer widths are `checked`; unorm and the Q formats round to nearest.
 // For wraparound or saturation declare your own (`inside<{0, 255}, wrap>`),
@@ -35,9 +35,9 @@ using uint64 = inside<{0, 18446744073709551615u}>;
 using int8  = inside<{-128, 127}>;
 using int16 = inside<{-32768, 32767}>;
 using int32 = inside<{-2147483648, 2147483647}>;
-// int64 stays symmetric: the internal value path is `imax`, and -2^63
-// has no negation in int64.
-using int64 = inside<{-9223372036854775807, 9223372036854775807}>;
+// int64 is std::int64_t's whole range: its negation's type reaches 2^63,
+// past int64, and takes a wider raw (exact, as every result type).
+using int64 = inside<{-9223372036854775807 - 1, 9223372036854775807}>;
 
 //-------------------------------------------------------------------------
 // Unsigned normalized (UNORM) — [0, 1] at N-bit resolution, `round_nearest`.

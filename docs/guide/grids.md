@@ -92,8 +92,7 @@ explains the bound.
 | Types | Range, notch | Stored as | Policy |
 |---|---|---|---|
 | `uint8`, `uint16`, `uint32`, `uint64` | [0, 2ᴺ − 1], 1 | `uintN_t` | checked |
-| `int8`, `int16`, `int32` | [−2ᴺ⁻¹, 2ᴺ⁻¹ − 1], 1 | `intN_t` | checked |
-| `int64` | [−(2⁶³ − 1), 2⁶³ − 1], 1 | `int64_t` | checked |
+| `int8`, `int16`, `int32`, `int64` | [−2ᴺ⁻¹, 2ᴺ⁻¹ − 1], 1 | `intN_t` | checked |
 | `unorm8`, `unorm16`, `unorm32` | [0, 1], 1/(2ᴺ − 1) | `uintN_t` | `round_nearest` |
 | `q4_4`, `q8_8`, `q16_16` | [0, 2ᴹ − 2⁻ᴹ], 2⁻ᴹ: every bit pattern | `uint8_t`, `uint16_t`, `uint32_t` | `round_nearest` |
 | `clamp_counter<Max>` | `inside<{0, Max}, clamp>`: `++` stops at Max | the smallest that fits | `clamp` |
@@ -105,7 +104,8 @@ wrap_counter<255> seq{255};
 ++seq;                       // 0
 ```
 
-`int64` leaves out −2⁶³, which has no negation in 64 bits.
+`-x` of an `int64` reaches 2⁶³, past `int64_t`: its type stores a wider
+integer, as every result type holds every result.
 
 ## How a grid is stored
 

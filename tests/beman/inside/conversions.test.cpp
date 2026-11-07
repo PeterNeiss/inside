@@ -928,3 +928,20 @@ TEST(ConversionTest, uniform_from_a_generator_past_64_bits) {
 }
 } // namespace wide_builtin_tests
 #endif
+
+// int64 is std::int64_t's whole range; its negation and |x| reach 2^63.
+namespace int64_tests {
+using namespace beman::inside;
+TEST(ConversionTest, int64_full_range) {
+    static_assert(lower_of<int64> == -9223372036854775808_g && upper_of<int64> == 9223372036854775807_g);
+    static_assert(std::is_same_v<int64::raw_type, std::int64_t>);
+    const int64 lo{test::at_run_time(std::numeric_limits<std::int64_t>::min())};
+    EXPECT_EQ(lo.to<std::int64_t>(), std::numeric_limits<std::int64_t>::min());
+    const auto neg = -lo;
+    static_assert(upper_of<decltype(neg)> == 9223372036854775808_g);
+    EXPECT_TRUE(neg == just<9223372036854775808_g>);
+    EXPECT_TRUE(math::abs(lo) == just<9223372036854775808_g>);
+    EXPECT_EQ(math::abs(lo).to<std::uint64_t>(), std::uint64_t{1} << 63);
+    EXPECT_EQ(to_string(lo), "-9223372036854775808");
+}
+} // namespace int64_tests
