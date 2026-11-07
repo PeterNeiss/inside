@@ -180,18 +180,27 @@ inline constexpr reference radian_reference = reference{si::radian};
 
 // An angle in a unit with a factor of π (°, a turn): sin and cos reduce it exactly.
 template <reference R>
-inline constexpr bool pi_angle_v = dimension_of(R.U) == dim_one && magnitude_of(R.U).Pi == 1 &&
-                                   beman::inside::detail::fits_rational(magnitude_of(R.U).Ratio);
+inline constexpr bool pi_angle_v = dimension_of(R.U) == dim_one && magnitude_of(R.U).Pi == 1;
 
-// sin_into / cos_into of a π-scaled angle: one rounding onto Out.
+// sin_into / cos_into of a π-scaled angle: one rounding onto Out. The
+// factor n/d in one limb when it is a 64-bit rational, else in as many as
+// it needs.
 template <insidable Out, bool Cos, reference R, class V>
 constexpr Out pi_trig_into(const quantity<R, V>& q) {
     namespace engine = beman::inside::math::detail::engine;
+    using beman::inside::detail::grid_int;
     beman::inside::math::detail::entry::require_rounding<Out>();
-    constexpr rational r = beman::inside::detail::to_rational(magnitude_of(R.U).Ratio);
-    using core           = engine::pi_trig_core<engine::input_limbs<V>, Cos>;
+    constexpr auto        f  = magnitude_of(R.U).Ratio;
+    constexpr grid_int    n  = beman::inside::detail::grid_numerator(f);
+    constexpr grid_int    d  = beman::inside::detail::grid_denominator(f);
+    constexpr bool        ng = n.negative();
+    constexpr std::size_t KF = beman::inside::detail::fits_rational(f)
+                                   ? 1
+                                   : beman::inside::detail::limbs_for_bits(std::max(n.bit_width(), d.bit_width()) + 1);
+    using core               = engine::pi_trig_core<engine::input_limbs<V>, Cos, KF>;
+    using factor             = typename core::factor;
     return engine::evaluate<Out, engine::start_bits<Out>>(
-        core{engine::exact_input(q.numerical_value()), r.Num, beman::inside::detail::abs_den(r.Den), r.Den < 0});
+        core{engine::exact_input(q.numerical_value()), static_cast<factor>(ng ? -n : n), static_cast<factor>(d), ng});
 }
 } // namespace detail
 

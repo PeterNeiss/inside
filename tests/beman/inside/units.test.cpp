@@ -523,6 +523,9 @@ inline constexpr named_unit     hp_def{"HP", spec_c<health_def>};
 inline constexpr auto           HP = unit_c<hp_def>;
 inline constexpr named_unit     slot_def{"slot", mag<rational{1, 32768}> * mag_pi * si::radian};
 inline constexpr auto           slot = unit_c<slot_def>;
+// π/2^70 rad: a factor past the 64-bit rational.
+inline constexpr named_unit fine_turn_def{"ft", mag<1_g / 1180591620717411303424_g> * mag_pi * si::radian};
+inline constexpr auto       fine_turn = unit_c<fine_turn_def>;
 
 constexpr auto ms = si::milli(si::second);
 
@@ -643,6 +646,17 @@ TEST(UnitsAlgorithmsTest, trig_of_a_pi_scaled_angle_reduces_exactly) {
     const quantity<slot, inside<{0, 65535}, wrap>> p{16384};
     EXPECT_EQ(units::sin_into<amp>(p), 1);
     EXPECT_EQ(units::cos_into<amp>(p), 0);
+}
+
+// A π unit whose factor is no 64-bit rational took no sin or cos (the
+// factor was one limb).
+TEST(UnitsAlgorithmsTest, trig_of_a_pi_angle_with_a_factor_past_64_bits) {
+    using amp = inside<{{-1, 1}, per<16384>}, round_nearest>;
+    using a70 = quantity<fine_turn, inside<{0, 2361183241434822606848_g}>>; // up to 2π
+    EXPECT_EQ(units::sin_into<amp>(a70{590295810358705651712_g}), 1);       // 2^69: π/2
+    EXPECT_EQ(units::cos_into<amp>(a70{590295810358705651712_g}), 0);
+    EXPECT_EQ(units::cos_into<amp>(a70{295147905179352825856_g}), (just<11585, 16384>)); // π/4
+    EXPECT_EQ(units::sin_into<amp>(a70{1}), 0);
 }
 
 TEST(UnitsAlgorithmsTest, divmod_in_the_common_unit_and_percent) {
