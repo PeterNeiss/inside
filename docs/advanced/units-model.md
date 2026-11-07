@@ -70,8 +70,8 @@ supported.
 number. `mag_pi * just<2> * si::second` is the number 2 in the unit [π s], so
 π is never approximated, and a later `value_cast<si::hour, Out>(…)` rounds
 once, with the true π. That is how to write π·a·√(a/μ) or 1/(2πRC):
-`math::pi` is a rational within 2⁻⁵⁸, and would make the grid numbers grow
-with every product.
+`x * math::pi` approximates π to `x`'s resolution, and the grid numbers would
+grow with every product.
 
 ### Dimensionless quantities are numbers
 

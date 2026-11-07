@@ -10,6 +10,7 @@
 #include <beman/inside/inside/grid.hpp>
 #include <beman/inside/inside/io.hpp>
 #include <beman/inside/inside/predicates.hpp>
+#include <beman/inside/inside/random.hpp>
 #include <beman/inside/math.hpp>
 #include <beman/inside/units.hpp>
 #include <beman/inside/units/math.hpp>
@@ -839,3 +840,108 @@ TEST(ConversionsArmTest, rational_against_a_long_double) {
     EXPECT_FALSE(rational{2} < up);
 }
 } // namespace reached_arms_tests
+
+//---------------------------------------------------------------------------
+// Builtin integers past 64 bits (__int128 under the GNU dialects, where it is
+// std::integral): stored, compared and read exactly, never through imax or
+// the 64-bit rational.
+//---------------------------------------------------------------------------
+#if BEMAN_INSIDE_HAS_INT128
+namespace wide_builtin_tests {
+using namespace beman::inside;
+using detail::rational;
+
+template <class S, class U>
+void check_wide_builtins() {
+    const S big  = (S{1} << 70) | 5; // 2^70 + 5
+    const U ubig = (U{1} << 100) | 3;
+    using W      = inside<{0, 1180591620717411303424_g * 4}>;                     // [0, 2^72]
+    using WS     = inside<{-1180591620717411303424_g, 1180591620717411303424_g}>; // [-2^70, 2^70]
+    using u64    = inside<{0, 18446744073709551615_g}>;
+
+    // Grid numbers and the type's interval.
+    static_assert(detail::grid_rational{S{1} << 100} == 1267650600228229401496703205376_g);
+    static_assert(detail::grid_rational{-(S{1} << 100)} == -1267650600228229401496703205376_g);
+    static_assert(interval_of<S>.Lower == -170141183460469231731687303715884105728_g); // −2^127
+    static_assert(interval_of<U>.Upper == 340282366920938463463374607431768211455_g);  // 2^128 − 1
+    static_assert(static_cast<S>(detail::big_int{-big}) == -big && static_cast<U>(detail::big_int{ubig}) == ubig);
+
+    // Stores: out of a 64-bit grid by the policy, never truncated.
+    EXPECT_TRUE((inside<{0, 100}, clamp>{big} == 100));
+    EXPECT_TRUE((inside<{0, 100}, clamp>{-big} == 0));
+    EXPECT_TRUE((inside<{0, 9}, wrap>{big} == 9)); // 2^70 ≡ 4 (mod 10)
+    EXPECT_THROW(((void)inside<{0, 100}>{test::at_run_time(big)}), inside_error);
+    EXPECT_THROW(((void)inside<{0, 100}>{test::at_run_time(ubig)}), inside_error);
+    EXPECT_TRUE((inside<{{0, 10}, per<4>}, clamp>{big} == 10));
+    EXPECT_TRUE((inside<{{rational{1, 2}, rational{21, 2}}, 1}, clamp>{big} == rational{21, 2}));
+    EXPECT_TRUE((inside<{{0, 10}, max_denominator{3}}, clamp>{big} == 10));
+    EXPECT_TRUE((inside<{{0, 10}, per<4>}>{S{7}} == 7));
+    EXPECT_TRUE(W{test::at_run_time(big)} == big);
+
+    // Comparisons.
+    EXPECT_FALSE((inside<{0, 100}>{5} == test::at_run_time(big)));
+    EXPECT_TRUE((inside<{0, 100}>{5} < big));
+    EXPECT_TRUE((inside<{0, 100}>{5} > -big));
+    EXPECT_TRUE((inside<{0, 100}>{5} == S{5}));
+    EXPECT_TRUE((inside<{0, 100}>{5} < ubig));
+    EXPECT_TRUE(WS{-(big - 10)} == -(big - 10));
+    EXPECT_TRUE(WS{-(big - 10)} < -(big - 11));
+
+    // Reads.
+    EXPECT_TRUE((inside<{-5, 5}>{-3}.template to<S>() == S{-3}));
+    EXPECT_TRUE((inside<{-5, 5}>{-3}.template as<S>() == S{-3}));
+    EXPECT_FALSE((inside<{-5, 5}>{-3}.template to<U>().has_value()));
+    EXPECT_TRUE(W{big}.template to<S>() == big);
+    EXPECT_TRUE(u64{18446744073709551615u}.template to<U>() == U{18446744073709551615u});
+    EXPECT_TRUE(W::from_index(big) == W{big});
+
+    // A 64-bit rational has no such integer.
+    EXPECT_THROW((void)rational{test::at_run_time(big)}, inside_error);
+    EXPECT_FALSE((conversion_overflows<inside<{0, 2361183241434822606848_g}>>(big)));
+    EXPECT_TRUE((conversion_overflows<inside<{0, 100}>>(big)));
+}
+
+TEST(ConversionTest, builtin_integers_past_64_bits) {
+    []<class S>() {
+        if constexpr (std::integral<S>)
+            check_wide_builtins<S, std::make_unsigned_t<S>>();
+    }.template operator()<__int128>();
+}
+
+// A generator wider than 64 bits: each draw takes one output's low 64 bits.
+struct wide_generator {
+    using result_type                  = unsigned __int128;
+    unsigned __int128            State = 0;
+    static constexpr result_type min() { return 0; }
+    static constexpr result_type max() { return ~result_type{0}; }
+    constexpr result_type        operator()() { return State = (State << 1) | ((result_type{1} << 64) + 7); }
+};
+TEST(ConversionTest, uniform_from_a_generator_past_64_bits) {
+    []<class G>() {
+        if constexpr (std::uniform_random_bit_generator<G>) {
+            G g;
+            EXPECT_EQ(detail::random_word(g), umax{7}); // (2^64 + 7) mod 2^64
+            const auto v = uniform<inside<{0, 100}>>(g);
+            EXPECT_TRUE(v >= 0 && v <= 100);
+        }
+    }.template operator()<wide_generator>();
+}
+} // namespace wide_builtin_tests
+#endif
+
+// int64 is std::int64_t's whole range; its negation and |x| reach 2^63.
+namespace int64_tests {
+using namespace beman::inside;
+TEST(ConversionTest, int64_full_range) {
+    static_assert(lower_of<int64> == -9223372036854775808_g && upper_of<int64> == 9223372036854775807_g);
+    static_assert(std::is_same_v<int64::raw_type, std::int64_t>);
+    const int64 lo{test::at_run_time(std::numeric_limits<std::int64_t>::min())};
+    EXPECT_EQ(lo.to<std::int64_t>(), std::numeric_limits<std::int64_t>::min());
+    const auto neg = -lo;
+    static_assert(upper_of<decltype(neg)> == 9223372036854775808_g);
+    EXPECT_TRUE(neg == just<9223372036854775808_g>);
+    EXPECT_TRUE(math::abs(lo) == just<9223372036854775808_g>);
+    EXPECT_EQ(math::abs(lo).to<std::uint64_t>(), std::uint64_t{1} << 63);
+    EXPECT_EQ(to_string(lo), "-9223372036854775808");
+}
+} // namespace int64_tests

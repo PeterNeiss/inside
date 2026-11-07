@@ -751,3 +751,36 @@ TEST(GridTest, grid_plus_reports_gcd_lcm_overflow) {
 }
 
 } // namespace pinned_tests
+
+// Every spelling of a grid number takes values past 64 bits: per<D>,
+// just<N, D>, _g and _ins in every form, the counters and unit_amplitude.
+namespace big_spelling_tests {
+using namespace beman::inside;
+using detail::grid_rational;
+constexpr grid_rational two_70 = 1180591620717411303424_g;
+
+TEST(GridTest, spellings_past_64_bits) {
+    // per<D>: a 64-bit rational where 1/D fits one, else a grid number.
+    static_assert(std::is_same_v<decltype(per<4>), const detail::rational>);
+    static_assert(per<two_70> == grid_rational{1} / two_70 && per<1024_g> == detail::rational{1, 1024});
+    static_assert(per<(1ull << 63)> == grid_rational{1} / 9223372036854775808_g);
+    static_assert(notch_of<inside<{{0, 1}, per<two_70>}>> == grid_rational{1} / two_70);
+    // just<N, D> with a grid-number D.
+    static_assert(lower_of<decltype(just<1, two_70>)> == grid_rational{1} / two_70);
+    static_assert(lower_of<decltype(just<3, 6_g>)> == grid_rational{detail::rational{1, 2}});
+    // _g in every form of the literal grammar, of any size.
+    static_assert(0x1p100_g == 1267650600228229401496703205376_g && 0x1p-70_g == grid_rational{1} / two_70);
+    static_assert(0xffff'ffff'ffff'ffff'ffff_g == 1208925819614629174706175_g);
+    static_assert(0b1'0000'0000_g == 256_g && 0x1.8p3_g == 12_g && 1.5e3_g == 1500_g);
+    // _ins past 64 bits, and the same types as before within them.
+    static_assert(upper_of<decltype(18446744073709551616_ins)> == 18446744073709551616_g);
+    static_assert(lower_of<decltype(0x1p-70_ins)> == grid_rational{1} / two_70);
+    static_assert(std::is_same_v<std::remove_cvref_t<decltype(1.25_ins)>, std::remove_cvref_t<decltype(just<5, 4>)>>);
+    // Counters and the amplitude grid past 64 bits.
+    static_assert(upper_of<wrap_counter<two_70>> == two_70 && upper_of<clamp_counter<255>> == 255);
+    static_assert(notch_of<math::unit_amplitude<two_70>> == grid_rational{1} / two_70);
+    wrap_counter<two_70> c{two_70};
+    ++c;
+    EXPECT_TRUE(c == 0);
+}
+} // namespace big_spelling_tests

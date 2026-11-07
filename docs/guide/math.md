@@ -65,8 +65,9 @@ need no rounding mode. So do the counting and number-theory functions.
 
 `factorial`, `binomial`, `falling_factorial` (the k-permutations),
 `rising_factorial` and `multinomial` take counts: insides on the integers
-from 0, below 2⁶⁴. Their results are exact, and each result type is the range
-the inputs can produce, worked out while compiling:
+from 0, of any size (`binomial` of an n past 2⁶⁴ and a small k works). Their
+results are exact, and each result type is the range the inputs can produce,
+worked out while compiling:
 
 ```cpp
 inside<{0, 20}> n = 20;
@@ -148,10 +149,10 @@ A level in dB converts to a gain with
 ## Constants
 
 `math::pi`, `math::two_pi`, `math::e`, `math::ln2`, `math::sqrt2` and 13 more
-are one-point insides within 2⁻⁵⁷ of the true value, so they compose in
-arithmetic: `radius * math::two_pi`. For a correctly rounded constant on a
-grid you choose, call the function: `math::sqrt_into<Out>(just<2>)`. The
-physical constants are quantities in `units::constants`
+are computed while compiling at the precision each use needs: `Out o =
+math::pi` rounds π correctly onto `Out`, `radius * math::two_pi` takes 2π to
+`radius`'s resolution, and `x < math::pi` compares exactly. The physical
+constants are quantities in `units::constants`
 ([Constants](../advanced/constants.md)).
 
 ## Speed

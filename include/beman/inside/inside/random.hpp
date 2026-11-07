@@ -20,27 +20,37 @@
 
 namespace beman::inside {
 namespace detail {
-// 64 uniform bits from g by a fixed recipe: one output when G spans 64 bits,
-// else b bits from each output, b the widest power of two G covers (outputs
-// past 2^b − 1 above G::min() are drawn again), high bits first.
+// 64 uniform bits from g by a fixed recipe: b bits from each output, b the
+// widest power of two G covers (outputs past 2^b − 1 above G::min() are drawn
+// again), high bits first; one output when b ≥ 64, its low 64 bits. A
+// generator wider than 64 bits (unsigned __int128) works in its own type.
 template <std::uniform_random_bit_generator G>
 constexpr umax random_word(G& g) {
-    static_assert(std::numeric_limits<std::invoke_result_t<G&>>::digits <= 64,
-                  "uniform<B>: a generator wider than 64 bits");
-    constexpr umax span = static_cast<umax>(G::max()) - static_cast<umax>(G::min());
-    if constexpr (span == std::numeric_limits<umax>::max())
-        return static_cast<umax>(g());
+    using R              = std::invoke_result_t<G&>;
+    using U              = std::conditional_t<wide_builtin<R>, std::make_unsigned_t<R>, umax>;
+    constexpr U   span   = static_cast<U>(G::max()) - static_cast<U>(G::min());
+    constexpr int digits = std::numeric_limits<U>::digits;
+    constexpr int bits   = [] {
+        if (span == std::numeric_limits<U>::max())
+            return digits;
+        int b = -1;
+        for (U s = span + 1; s != 0; s >>= 1)
+            ++b;
+        return b;
+    }();
+    auto draw = [&] {
+        U d = static_cast<U>(g()) - static_cast<U>(G::min());
+        if constexpr (bits < digits)
+            while (d > (U{1} << bits) - 1)
+                d = static_cast<U>(g()) - static_cast<U>(G::min());
+        return d;
+    };
+    if constexpr (bits >= 64)
+        return static_cast<umax>(draw());
     else {
-        constexpr int  bits = std::bit_width(span + 1) - 1;
-        constexpr umax mask = (umax{1} << bits) - 1;
-        umax           word = 0;
-        for (int got = 0; got < 64; got += bits) {
-            umax d;
-            do
-                d = static_cast<umax>(g()) - static_cast<umax>(G::min());
-            while (d > mask);
-            word = word << bits | d;
-        }
+        umax word = 0;
+        for (int got = 0; got < 64; got += bits)
+            word = word << bits | static_cast<umax>(draw());
         return word;
     }
 }

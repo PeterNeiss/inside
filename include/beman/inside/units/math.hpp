@@ -432,7 +432,7 @@ BEMAN_INSIDE_UNITS_NUMBER_FN(asinh)
 BEMAN_INSIDE_UNITS_NUMBER_FN(acosh)
 BEMAN_INSIDE_UNITS_NUMBER_FN(atanh)
 #undef BEMAN_INSIDE_UNITS_NUMBER_FN
-template <insidable Out, imax Base, class X>
+template <insidable Out, auto Base, class X>
 [[nodiscard]] constexpr auto pow_base_into(const X& x) {
     return beman::inside::math::pow_base_into<Out, Base>(detail::number_of(x));
 }

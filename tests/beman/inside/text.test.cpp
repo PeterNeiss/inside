@@ -623,3 +623,32 @@ TEST(TextArmTest, denominator_past_imax_and_a_kilobit_grid_number) {
     EXPECT_EQ(to_string(g).substr(0, 12), "107150860718");
 }
 } // namespace reached_arms_tests
+
+// The integer format types on integer grids past imax: uint64's top values
+// and a signed grid past 64 bits print as std::format prints an integer.
+namespace integer_format_tests {
+using namespace beman::inside;
+
+TEST(FormatTest, integer_types_past_imax) {
+    using u64 = inside<{0, 18446744073709551615_g}>;
+    using WS  = inside<{-1180591620717411303424_g, 1180591620717411303424_g}>;
+    const u64 u{18446744073709551615u};
+    EXPECT_EQ(std::format("{:x}", u), "ffffffffffffffff");
+    EXPECT_EQ(std::format("{:#X}", u), "0XFFFFFFFFFFFFFFFF");
+    EXPECT_EQ(std::format("{:#b}", u), "0b" + std::string(64, '1'));
+    EXPECT_EQ(std::format("{:o} {:#o}", u, u), "1777777777777777777777 01777777777777777777777");
+    EXPECT_EQ(std::format("{:d}|{:>24d}|{:+}", u, u, u),
+              "18446744073709551615|    18446744073709551615|+18446744073709551615");
+    EXPECT_EQ(std::format("{:.2e}", u), "1.84e+19"); // the exact types stay
+    const WS w{-(1180591620717411303424_g - 1)};     // −(2^70 − 1)
+    EXPECT_EQ(std::format("{:x}|{:#x}", w, w), "-3fffffffffffffffff|-0x3fffffffffffffffff");
+    EXPECT_EQ(std::format("{:#030x}", w), "-0x0000000003fffffffffffffffff");
+    EXPECT_EQ(std::format("{:<28d}|{:^28}|", w, w), "-1180591620717411303423     |  -1180591620717411303423   |");
+    EXPECT_EQ(std::format("{:#o} {:#b}", WS{0}, WS{0}), "0 0b0");
+    // A precision is no integer spec, and a fraction has no integer types.
+    const std::string_view x = "{:x}", px = "{:.2x}";
+    const auto             c = inside<{{0, 1}, max_denominator{3}}>{detail::rational{1, 3}};
+    EXPECT_THROW((void)std::vformat(px, std::make_format_args(u)), std::format_error);
+    EXPECT_THROW((void)std::vformat(x, std::make_format_args(c)), std::format_error);
+}
+} // namespace integer_format_tests

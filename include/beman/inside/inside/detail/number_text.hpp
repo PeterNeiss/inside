@@ -63,7 +63,7 @@ struct parsed_number {
     parse_fail Fail;
 };
 
-// An unsigned number in the grammar of the _ins / _r literals, scanned in
+// An unsigned number in the grammar of the _ins / _r / _g literals, scanned in
 // one pass: the radix and the exponent come back, and each mantissa digit
 // goes to on_digit(d, in_frac, base) (false stops the scan: the builder's
 // overflow). parse_number (64-bit), parse_exact (wide, wide_value.hpp),
@@ -230,26 +230,26 @@ consteval bool octal_literal() {
 }
 
 template <char... Chars>
-consteval rational parse_ins_literal() {
+consteval rational parse_rational_literal() {
     constexpr char          src[] = {Chars..., '\0'};
     constexpr parsed_number r     = parse_number(src, src + sizeof...(Chars));
     if constexpr (octal_literal<Chars...>())
-        constexpr_error<"_ins/_r literal: a leading 0 makes an octal literal; write the number without it">();
+        constexpr_error<"_r literal: a leading 0 makes an octal literal; write the number without it">();
     // (A malformed number is no literal token: only a value can fail.)
     else if constexpr (r.Fail == parse_fail::numerator_overflow)
-        constexpr_error<"_ins/_r literal: numerator overflow">();
+        constexpr_error<"_r literal: numerator overflow">();
     else if constexpr (r.Fail == parse_fail::denominator_overflow)
-        constexpr_error<"_ins/_r literal: denominator overflow">();
+        constexpr_error<"_r literal: denominator overflow">();
     else if constexpr (r.Fail == parse_fail::hex_fraction_too_long)
-        constexpr_error<"_ins/_r literal: hex fraction too long">();
+        constexpr_error<"_r literal: hex fraction too long">();
     else if constexpr (r.Fail == parse_fail::p_exponent_too_large)
-        constexpr_error<"_ins/_r literal: p exponent too large">();
+        constexpr_error<"_r literal: p exponent too large">();
     else if constexpr (r.Fail == parse_fail::p_exponent_denominator_overflow)
-        constexpr_error<"_ins/_r literal: p exponent denominator overflow">();
+        constexpr_error<"_r literal: p exponent denominator overflow">();
     else if constexpr (r.Fail == parse_fail::e_exponent_numerator_overflow)
-        constexpr_error<"_ins/_r literal: e exponent numerator overflow">();
+        constexpr_error<"_r literal: e exponent numerator overflow">();
     else if constexpr (r.Fail == parse_fail::e_exponent_denominator_overflow)
-        constexpr_error<"_ins/_r literal: e exponent denominator overflow">();
+        constexpr_error<"_r literal: e exponent denominator overflow">();
     return r.Value;
 }
 
@@ -307,7 +307,7 @@ constexpr std::expected<rational, errc> parse_text(const char* first, const char
 
 template <char... Chars>
 constexpr rational operator""_r() {
-    return parse_ins_literal<Chars...>();
+    return parse_rational_literal<Chars...>();
 }
 } // namespace beman::inside::detail
 

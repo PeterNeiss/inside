@@ -481,7 +481,7 @@ template <insidable InX, insidable InY>
 // the output precision from the angle's grid; results round to nearest. All
 // angles are radians, as in <cmath>.
 //---------------------------------------------------------------------------
-template <std::uint64_t K>
+template <auto K> // a builtin or a grid number of any size
 using unit_amplitude = inside<{{rational{-1}, rational{1}}, per<K>}, round_nearest>;
 
 //---------------------------------------------------------------------------

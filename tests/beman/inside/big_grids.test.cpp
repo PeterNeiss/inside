@@ -10,7 +10,9 @@
 #include <beman/inside/inside/numeric_limits.hpp>
 #include <beman/inside/inside/predicates.hpp>
 #include <beman/inside/inside/random.hpp>
+#include <beman/inside/inside/range.hpp>
 #include <beman/inside/math.hpp>
+#include <beman/inside/math/integer.hpp>
 
 #include <gtest/gtest.h>
 
@@ -743,10 +745,10 @@ TEST(WideGridTest, hooks_on_a_rational_inside_from_a_wide_source) {
     EXPECT_TRUE(exact);
     EXPECT_TRUE(r == 10);
 
-    // (2^70 + 1/3 + 10) / 20 turns: the carry saturates at the imax range.
-    imax carry                                             = 0;
-    r.on_wrap([&](auto&, auto k) { carry = as<imax>(k); }) = B{0x1p70} + B{rational{1, 3}};
-    EXPECT_EQ(carry, std::numeric_limits<imax>::max());
+    // (2^70 + 1/3 + 10) / 20 turns: the carry past imax, exactly.
+    bool carry                                                                   = false;
+    r.on_wrap([&](auto&, auto k) { carry = k == just<59029581035870565171_g>; }) = B{0x1p70} + B{rational{1, 3}};
+    EXPECT_TRUE(carry);
     EXPECT_TRUE((r == rational(13, 3)));
 }
 
@@ -965,3 +967,92 @@ TEST(BigGridsArmTest, wide_index_times_continuous_into_a_rational) {
     EXPECT_EQ(to_string(*parse_exact<L>("9223372036854775808") * C{1}), "9223372036854775808");
 }
 } // namespace reached_arms_tests
+
+// The whole public surface over six kinds of grid past 64 bits: a wide index,
+// grid numbers past 64 bits, a notch of 2^-70, a fraction raw, uint64's
+// range, and a signed wide grid. Every operation instantiates and runs, so
+// a path that assumes 64 bits fails this build (the audit that found the
+// last ones, 2026-11-07).
+namespace sweep_tests {
+using namespace beman::inside;
+using detail::rational;
+
+template <class X>
+std::string text_of(const X& x) {
+    if constexpr (insidable<X>)
+        return to_string(x);
+    else if constexpr (std::integral<X>)
+        return std::to_string(static_cast<long long>(x));
+    else
+        return x ? text_of(*x) : std::string{"error"};
+}
+
+template <class T>
+std::string sweep(const T a, const T b, std::mt19937_64& g) {
+    using S  = inside<{0, 100}, round_nearest>;
+    using O  = inside<{{0, 4}, per<1024>}, round_nearest | clamp>;
+    using Ow = inside<{{0, 4}, per<1180591620717411303424_g>}, round_nearest | clamp>;
+    const S     s{3};
+    std::string r;
+    T           c{a};
+    c                          = b;
+    c.template policy<clamp>() = s;
+    r += text_of(a + b) + text_of(a - b) + text_of(a * b) + text_of(a / b) + text_of(-a) + text_of(a + s) +
+         text_of(s * a) + text_of(a / s) + text_of(s / a);
+    if constexpr (requires { a % b; })
+        r += text_of(a % b) + text_of(a % s);
+    r += (a == b || a < b || a == s || a < s || a == 5 || a < 7 || a == rational{1, 2}) ? "y" : "n";
+    r += text_of(a.template to<int>()) + text_of(a.template to<std::uint64_t>());
+    r += std::to_string(a.template to<double>()) + std::to_string(static_cast<double>(a.template to<long double>()));
+    r += to_string(a.numerator()) + to_string(a.denominator());
+    if constexpr (requires { a.index(); })
+        r += to_string(T::from_index(a.index())) + to_string(step_count_of<T>);
+    r += std::format("{} {:.3f} {:e} {:>40g}", a, a, a, a) + to_string_debug(a);
+    if constexpr (detail::integer_lattice<T>)
+        r += std::format("{:x} {:#b}", a, a);
+    r += text_of(parse<T>("1")) + text_of(parse_exact<T>("1/2")) + std::to_string(std::hash<T>{}(a));
+    r += to_string(std::numeric_limits<T>::max()) + to_string(std::numeric_limits<T>::lowest());
+    if constexpr (detail::notched<T>) {
+        r += to_string(uniform<T>(g)) + to_string(*values<T>.begin()) + to_string(*std::ranges::prev(values<T>.end()));
+        auto t = cursor<T>{};
+        r += to_string(*++t);
+    }
+    r += text_of(math::abs(a)) + text_of(math::floor(a)) + text_of(math::round(a)) + text_of(math::fmod(a, b));
+    if constexpr (lower_of<T> >= 0)
+        r += text_of(math::sqrt_into<O>(a)) + text_of(math::sqrt_into<Ow>(a));
+    r += text_of(math::sin_into<O>(a)) + text_of(math::atan_into<O>(a)) + text_of(math::cos_into<Ow>(a)) +
+         text_of(math::pown<3>(a));
+    r += text_of(a * math::pi) + (a < math::pi ? "<" : ">");
+    T z                                                          = a;
+    z.template policy<clamp>()                                   = 1e300;
+    z.template policy<wrap>()                                    = -5;
+    z.on_wrap([&](auto&, auto carry) { r += to_string(carry); }) = a * a * a;
+    z.on_clamp([&](auto&, auto over) { r += to_string(over); })  = a * a * a;
+    z.template policy<wrap>() += b;
+    z.template policy<wrap>() -= b;
+    if constexpr (std::integral<__int128>) {
+        z.template policy<clamp>() = (static_cast<__int128>(1) << 100) + 7;
+        r += text_of(z.template to<__int128>());
+    }
+    return r + to_string(z);
+}
+
+TEST(BigGridsSweepTest, every_operation_past_64_bits) {
+    std::mt19937_64 g{7};
+    const auto      run = [&]<class T>(std::type_identity<T>, auto lo, auto hi) {
+        EXPECT_FALSE(sweep<T>(T{lo}, T{hi}, g).empty());
+    };
+    using WI = inside<{0, 1180591620717411303424_g}, round_nearest>;
+    using WN = inside<{1267650600228229401496703205376_g, 1267650600228229401496703205386_g}, round_nearest>;
+    using WL = inside<{{0, 1}, 1_g / 1180591620717411303424_g}, round_nearest>;
+    using WF = inside<{{0, 2}, max_denominator{1180591620717411303424_g}}, round_nearest>;
+    using WU = inside<{0, 18446744073709551615_g}, round_nearest>;
+    using WS = inside<{-1180591620717411303424_g, 1180591620717411303424_g}, round_nearest>;
+    run(std::type_identity<WI>{}, just<1180591620717411303423_g>, just<7>);
+    run(std::type_identity<WN>{}, just<1267650600228229401496703205380_g>, just<1267650600228229401496703205377_g>);
+    run(std::type_identity<WL>{}, rational{1, 3}, rational{3, 4});
+    run(std::type_identity<WF>{}, rational{1, 3}, rational{3, 4});
+    run(std::type_identity<WU>{}, std::uint64_t{18446744073709551615u}, std::uint64_t{3});
+    run(std::type_identity<WS>{}, just<-1180591620717411303423_g>, just<5>);
+}
+} // namespace sweep_tests

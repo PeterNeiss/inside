@@ -397,8 +397,8 @@ struct inside {
     // value is an integer or the call may round.
     template <std::integral T, policy_flag Round>
     static constexpr bool total_to =
-        !(lower_of<inside> < detail::rational{std::numeric_limits<T>::min()}) &&
-        !(upper_of<inside> > detail::rational{std::numeric_limits<T>::max()}) &&
+        !(lower_of<inside> < detail::grid_rational{std::numeric_limits<T>::min()}) &&
+        !(upper_of<inside> > detail::grid_rational{std::numeric_limits<T>::max()}) &&
         (detail::integer_lattice<inside> || Round != detail::none || has_flag(P, detail::snap));
 
   public:
@@ -415,8 +415,8 @@ struct inside {
                  Round == round_floor || Round == round_ceil || Round == round_half_even)
     [[nodiscard]] constexpr std::conditional_t<total_to<T, Round>, T, std::expected<T, errc>> to() const {
         using lim                             = std::numeric_limits<T>;
-        constexpr bool               check_lo = lower_of<inside> < detail::rational{lim::min()};
-        constexpr bool               check_hi = upper_of<inside> > detail::rational{lim::max()};
+        constexpr bool               check_lo = lower_of<inside> < detail::grid_rational{lim::min()};
+        constexpr bool               check_hi = upper_of<inside> > detail::grid_rational{lim::max()};
         constexpr bool               rounds   = Round != detail::none || has_flag(P, detail::snap);
         constexpr detail::round_mode mode     = detail::rounding_of(Round != detail::none ? Round : P);
         if constexpr (detail::integer_lattice<inside> && !check_lo && !check_hi && detail::values_fit_imax<inside>)
@@ -447,7 +447,10 @@ struct inside {
             if constexpr (check_hi)
                 if (t > detail::rational{lim::max()})
                     return std::unexpected{errc::overflow};
-            return static_cast<T>(detail::signed_numerator(t));
+            if constexpr (detail::wide_builtin<T>) // a value to 2^64 − 1: past imax
+                return static_cast<T>(t);
+            else
+                return static_cast<T>(detail::signed_numerator(t));
         }
     }
 
@@ -1074,14 +1077,24 @@ template <insidable B>
 //---------------------------------------------------------------------------
 // The point grid holds the value, so no value constructor is needed: grid
 // numbers past 64 bits (`_g`) work too. just<N, D> is the point N/D
-// for an integer D ≥ 1: just<1, 3>, just<-6, 5> for -1.2.
+// for an integer D ≥ 1, a builtin or a grid number: just<1, 3>, just<-6, 5>
+// for -1.2, just<1, 0x1p70_g>.
 namespace detail {
+template <auto den>
+consteval bool integer_den() {
+    if constexpr (std::integral<decltype(den)>)
+        return den >= 1;
+    else if constexpr (std::same_as<decltype(den), grid_rational>)
+        return den >= 1 && grid_denominator(den) == grid_int{1};
+    else
+        return false;
+}
 template <auto value, auto den>
 consteval auto just_point() {
     if constexpr (std::integral<decltype(den)> && den == 1)
         return inside<grid{value}>::from_raw({});
     else {
-        static_assert(std::integral<decltype(den)> && den >= 1, "just<N, D>: D is an integer of at least 1");
+        static_assert(integer_den<den>(), "just<N, D>: D is an integer of at least 1");
         return inside<grid{grid_rational{value} / grid_rational{den}}>::from_raw({});
     }
 }
@@ -1117,13 +1130,14 @@ inline constexpr auto step_count_of = just<detail::grid_rational{grid_of<T>.step
 //   0x1.8p3_ins     // inside<{12}>              hex float
 //   1'000_ins       // inside<{1000}>            digit separator
 //
-// Parse is exact (no double round-trip); same parser backs `_r` in
-// inside/detail/number_text.hpp. `-1.5_ins` parses as `-(1.5_ins)`.
+// Parse is exact (no double round-trip) and of any size, as `_g` reads it
+// (inside/detail/grid_rational.hpp): 18446744073709551616_ins is the point
+// 2^64. `-1.5_ins` parses as `-(1.5_ins)`.
 //---------------------------------------------------------------------------
 inline namespace literals {
 template <char... Chars>
 constexpr auto operator""_ins() {
-    return just<detail::parse_ins_literal<Chars...>()>;
+    return just<detail::parse_grid_literal<Chars...>()>;
 }
 } // namespace literals
 

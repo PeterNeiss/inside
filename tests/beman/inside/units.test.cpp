@@ -790,45 +790,6 @@ using namespace beman::inside::units;
 
 namespace pc = beman::inside::units::constants;
 
-namespace {
-// Every rational n/d is within 2^-57 of its constant v, checked exactly (no
-// long double, which is a double on some platforms). ref = floor(v·10^18), so
-// v lies in [ref, ref + 1]·10^-18 and |n/d − v| ≤ |n·10^18 − ref·d|/(d·10^18)
-// + 10^-18. The test asks for that bound to be below 2^-57, in 256 bits.
-void expect_close(const auto& c, std::uint64_t ref) {
-    using W          = beman::inside::detail::wide_sint<4>;
-    const rational r = rational{c};
-    const W        n{r.Num};
-    const W        d{static_cast<std::uint64_t>(r.Den)};
-    const W        scale{1'000'000'000'000'000'000ULL};
-    W              diff = n * scale - W{ref} * d;
-    if (diff < W{0})
-        diff = -diff;
-    EXPECT_TRUE((diff << 57) + (d << 57) < d * scale) << ref;
-}
-} // namespace
-
-TEST(ConstantsTest, mathematical_constants_are_close_rationals) {
-    expect_close(math::pi, 3141592653589793238ULL);
-    expect_close(math::two_pi, 6283185307179586476ULL);
-    expect_close(math::half_pi, 1570796326794896619ULL);
-    expect_close(math::inv_pi, 318309886183790671ULL);
-    expect_close(math::inv_sqrt_pi, 564189583547756286ULL);
-    expect_close(math::e, 2718281828459045235ULL);
-    expect_close(math::log2e, 1442695040888963407ULL);
-    expect_close(math::log10e, 434294481903251827ULL);
-    expect_close(math::ln2, 693147180559945309ULL);
-    expect_close(math::ln10, 2302585092994045684ULL);
-    expect_close(math::sqrt2, 1414213562373095048ULL);
-    expect_close(math::sqrt3, 1732050807568877293ULL);
-    expect_close(math::inv_sqrt2, 707106781186547524ULL);
-    expect_close(math::inv_sqrt3, 577350269189625764ULL);
-    expect_close(math::phi, 1618033988749894848ULL);
-    expect_close(math::egamma, 577215664901532860ULL);
-    expect_close(math::catalan, 915965594177219015ULL);
-    expect_close(math::zeta3, 1202056903159594285ULL);
-}
-
 TEST(ConstantsTest, physical_constants_have_their_kind_and_value) {
     static_assert(pc::speed_of_light_in_vacuum.quantity_spec == isq::speed);
     static_assert(pc::standard_gravity.quantity_spec == isq::acceleration_of_free_fall);

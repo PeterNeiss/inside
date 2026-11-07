@@ -369,3 +369,33 @@ TEST(MdspanArmTest, extent_traits) {
     static_assert(detail::extent_of_index<int> == 0);
 }
 } // namespace reached_arms_tests
+
+// raw_accessor on raws past imax: uint64's top values, and wide raws held
+// by the policy like any other.
+namespace wide_raw_tests {
+using namespace beman::inside;
+
+template <class N, std::size_t K, class R = typename N::raw_type>
+using raw_view = inside_mdspan<N, std::extents<std::size_t, K>, std::layout_right, raw_accessor<N, R>>;
+
+TEST(MdspanTest, raw_accessor_past_imax) {
+    std::array<std::uint64_t, 3> u{0, 7, 18446744073709551615u};
+    const raw_view<uint64, 3>    m{u.data()};
+    EXPECT_TRUE(m[2].get() == 18446744073709551615u);
+    m[0] = uint64{5};
+    EXPECT_EQ(u[0], 5u);
+
+    using WS = inside<{-1180591620717411303424_g, 1180591620717411303424_g}>;
+    std::array<WS::raw_type, 2> w{WS{-3}.raw(), WS{1180591620717411303424_g}.raw()};
+    const raw_view<WS, 2>       mw{w.data()};
+    EXPECT_TRUE(mw[0].get() == -3 && mw[1].get() == WS{1180591620717411303424_g});
+
+    // A wide raw past the grid: clamped by the policy, or reported.
+    using WC = inside<{0, 1180591620717411303424_g}, clamp>;
+    std::array<WC::raw_type, 1> c{static_cast<WC::raw_type>(~WC::raw_type{0})};
+    EXPECT_TRUE((raw_view<WC, 1>{c.data()}[0].get() == WC{1180591620717411303424_g}));
+    using WE = inside<{0, 1180591620717411303424_g}>;
+    std::array<WE::raw_type, 1> e{static_cast<WE::raw_type>(~WE::raw_type{0})};
+    EXPECT_THROW(((void)raw_view<WE, 1>{e.data()}[0].get()), inside_error);
+}
+} // namespace wide_raw_tests

@@ -38,6 +38,7 @@ A non-empty spec formats the value:
 | Type | Takes |
 |---|---|
 | an integer grid whose values fit `int64` | the integer specs: `{:>4}`, `{:#x}`, `{:b}` |
+| an integer grid past `int64` (`uint64`, a grid past 64 bits) | `d`, `b`, `B`, `o`, `x`, `X` with fill, align, sign, `#` (the base prefix), `0` and width, of any size; and `f`, `e`, `g` |
 | every other inside, and `rational` | `f`, `e`, `g` with fill, align, sign, `#`, `0`, width and precision |
 
 The digits are **rounded once from the exact value by the type's own

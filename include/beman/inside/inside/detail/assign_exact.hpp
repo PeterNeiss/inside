@@ -72,42 +72,6 @@ constexpr void report_failure(L& lhs, P& policy, A& action, errc code) {
 }
 
 //---------------------------------------------------------------------------
-// The on_wrap carry is always an inside whose grid holds every carry the
-// source kind can produce: an inside source uses its own range, an integral
-// source its type's limits, a fractional (double / rational) source the whole
-// imax range. So `minutes += carry` compiles for every source, and
-// `as<imax>(carry)` reads it as a number. The carries are computed on grid
-// numbers, so a grid past 64 bits has them too; each saturates at the imax
-// range, as the carry itself does.
-//---------------------------------------------------------------------------
-template <insidable L, typename R>
-constexpr grid wrap_carry_grid() {
-    constexpr grid_rational imax_lo{std::numeric_limits<imax>::min()}, imax_hi{std::numeric_limits<imax>::max()};
-    constexpr grid          G = grid_of<L>;
-    // The period: the span plus one notch, the span alone on a continuous grid.
-    constexpr grid_rational period = G.Interval.Upper - G.Interval.Lower + G.Notch;
-    if constexpr ((std::integral<R> || insidable<R>) && period != grid_rational{0}) {
-        const auto carry_of = [&](const grid_rational& v) {
-            const grid_rational q = grid_round<round_mode::floor>((v - G.Interval.Lower) / period);
-            return q < imax_lo ? imax_lo : imax_hi < q ? imax_hi : q;
-        };
-        if constexpr (insidable<R>)
-            return grid{carry_of(lower_of<R>), carry_of(upper_of<R>)};
-        else
-            return grid{carry_of(grid_rational{std::numeric_limits<R>::min()}),
-                        carry_of(grid_rational{std::numeric_limits<R>::max()})};
-    } else
-        return grid{imax_lo, imax_hi};
-}
-
-template <insidable L, typename R>
-constexpr auto make_wrap_carry(imax q) {
-    beman::inside::inside<wrap_carry_grid<L, R>()> carry;
-    from_value(carry, q); // in the carry grid by construction
-    return carry;
-}
-
-//---------------------------------------------------------------------------
 // The on_clamp overshoot: the source minus the limit it was clamped to,
 // exactly, as an inside for every source kind (as the wrap carry is). Its
 // grid holds every value of the source kind minus either limit: the source's
@@ -171,22 +135,55 @@ constexpr auto infinite_clamp_overshoot(bool negative) {
     return exact_value_result<T>(exact_of_grid<exact_limbs<T>>(negative ? lower_of<T> : upper_of<T>));
 }
 
+//---------------------------------------------------------------------------
+// The on_wrap carry is always an inside whose grid holds every carry the
+// source kind can produce, exactly: ⌊(v − Lower)/period⌋ over the source's
+// range (overshoot_source_grid: an inside's own, an integer type's limits,
+// a floating type's or a rational's whole range). So `minutes += carry`
+// compiles for every source, and `carry.to<long long>()` reads it as a
+// number; a double source's carries pass 2^1000 (a wide inside). The period
+// is the span plus one notch, the span alone on a continuous grid. A point
+// never wraps (dispatch_out_of_range rejects it): its carry grid is 0.
+//---------------------------------------------------------------------------
+template <insidable L, typename R>
+constexpr grid wrap_carry_grid() {
+    constexpr grid          G      = grid_of<L>;
+    constexpr grid_rational period = G.Interval.Upper - G.Interval.Lower + G.Notch;
+    if constexpr (period == grid_rational{0})
+        return grid{grid_rational{0}};
+    else {
+        constexpr interval source   = overshoot_source_grid<R>().Interval;
+        const auto         carry_of = [&](const grid_rational& v) {
+            return grid_round<round_mode::floor>((v - G.Interval.Lower) / period);
+        };
+        return grid{carry_of(source.Lower), carry_of(source.Upper)};
+    }
+}
+
+// The carry from the exact fold count q: an imax, a wide integer, or the
+// carry inside of another source kind (re-typed, the same value).
+template <insidable L, typename R, typename Q>
+constexpr auto make_wrap_carry(const Q& q) {
+    using C = beman::inside::inside<wrap_carry_grid<L, R>()>;
+    if constexpr (std::integral<Q> && notched<C> && !wide_valued<C>) {
+        C carry;
+        from_value(carry, static_cast<imax>(q)); // in the carry grid by construction
+        return carry;
+    } else if constexpr (std::integral<Q> || insidable<Q>)
+        return exact_value_result<C>(exact_of(q));
+    else
+        return exact_value_result<C>(wide_rational<sizeof(Q) / sizeof(umax)>{q, Q{1}});
+}
+
 // The exact value of a scalar source.
 template <typename R>
 constexpr auto exact_of_source(const R& rhs) {
     if constexpr (std::floating_point<R>)
         return exact_of_double(static_cast<double>(rhs)); // a float or double: exact
+    else if constexpr (std::integral<R>)
+        return exact_of(rhs); // any width (__int128 too)
     else
         return exact_of(rational{rhs});
-}
-
-// d saturated to imax: a clamp overshoot or a wrap carry, from a work type W
-// (imax or a wide integer).
-template <typename W>
-constexpr imax saturate_imax(const W& d) noexcept {
-    constexpr W lo = static_cast<W>(std::numeric_limits<imax>::min());
-    constexpr W hi = static_cast<W>(std::numeric_limits<imax>::max());
-    return static_cast<imax>(d < lo ? lo : hi < d ? hi : d);
 }
 
 //---------------------------------------------------------------------------
@@ -208,12 +205,12 @@ struct unit_fold {
 
     // v = Lower + carry·(span + 1) + offset with 0 ≤ offset ≤ span.
     struct folded {
-        imax Carry;
-        W    Offset;
+        W Carry;
+        W Offset;
     };
     static constexpr folded fold(const W& v) noexcept {
         const auto [q, w] = floor_divmod(v - lower, span + W{1});
-        return {saturate_imax(q), w};
+        return {q, w};
     }
 };
 
@@ -295,7 +292,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
                     const auto              q = floor_divmod(t.Num, t.Den).Quot;
                     store(x + -(wide_rational<KK>{q, wide_sint<KK>{1}} * span));
                     if constexpr (wrap_action<plain_t<A>>)
-                        action.Fn(lhs, make_wrap_carry<L, R>(saturate_imax(q)));
+                        action.Fn(lhs, make_wrap_carry<L, R>(q));
                 });
             return lhs;
         }
@@ -342,7 +339,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
                             return fail(errc::rounding_error);
                         assignment<L, rational>::assign(lhs, *f, policy, no_action{});
                         if constexpr (wrap_action<plain_t<A>>)
-                            action.Fn(lhs, make_wrap_carry<L, R>(saturate_imax(q)));
+                            action.Fn(lhs, make_wrap_carry<L, R>(q));
                     });
                 return lhs;
             }
@@ -396,7 +393,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
                             const auto [q, w] = floor_divmod(index, count + I{1});
                             lhs               = L::from_raw(raw_of_slot<L>(w));
                             if constexpr (wrap_action<plain_t<A>>)
-                                action.Fn(lhs, make_wrap_carry<L, R>(saturate_imax(q)));
+                                action.Fn(lhs, make_wrap_carry<L, R>(q));
                         }
                     }))
                 return lhs;
