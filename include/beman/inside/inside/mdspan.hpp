@@ -270,6 +270,22 @@ using element_number_t = typename element_traits<std::remove_cv_t<E>>::number;
 // How the storage is read and written: as plain values, or as raws.
 enum class storage_kind : unsigned char { value, raw };
 
+// The range of a raw type: a builtin's limits, or a wide_int's bits.
+template <class R>
+inline constexpr grid_int raw_type_min = [] {
+    if constexpr (std::integral<R>)
+        return grid_int{std::numeric_limits<R>::min()};
+    else
+        return R::is_signed ? -(grid_int{1} << (R::bits - 1)) : grid_int{0};
+}();
+template <class R>
+inline constexpr grid_int raw_type_max = [] {
+    if constexpr (std::integral<R>)
+        return grid_int{std::numeric_limits<R>::max()};
+    else
+        return (grid_int{1} << (R::is_signed ? R::bits - 1 : R::bits)) - grid_int{1};
+}();
+
 template <class E, class T, storage_kind K>
 constexpr E read_stored(const T& t) {
     using tr = element_traits<E>;
@@ -278,23 +294,27 @@ constexpr E read_stored(const T& t) {
         return tr::make(N{t}); // a store by N's policy
     else {
         // A raw outside the grid is held by N's policy; skipped when every
-        // raw of the type is a point of the grid.
-        constexpr imax lo = raw_lo<N>, hi = raw_hi<N>;
-        using L = std::numeric_limits<raw_t<N>>;
-        if constexpr (static_cast<imax>(L::min()) == lo && L::max() == static_cast<raw_t<N>>(hi))
+        // raw of the type is a point of the grid. The test runs in a work
+        // integer holding the raw type's range and the grid's (a uint64 raw
+        // passes imax; a wide raw is a wide_int).
+        using R                 = raw_t<N>;
+        constexpr grid_int rmin = raw_type_min<R>, rmax = raw_type_max<R>;
+        constexpr grid_int lo = raw_lo_exact<N>, hi = raw_hi_exact<N>;
+        using W = work_int_t<signed_value_bits({rmin, rmax, lo, hi, hi - lo + grid_int{1}})>;
+        if constexpr (rmin == lo && rmax == hi)
             return tr::make(N::from_raw(t));
         else {
-            const imax r = static_cast<imax>(t);
-            if (r >= lo && r <= hi) [[likely]]
+            constexpr W wlo = static_cast<W>(lo), whi = static_cast<W>(hi);
+            const W     r = static_cast<W>(t);
+            if (!(r < wlo) && !(whi < r)) [[likely]]
                 return tr::make(N::from_raw(t));
             if constexpr (has_flag(flags_of<N>, unsafe))
                 return tr::make(N::from_raw(t));
             else if constexpr (has_flag(flags_of<N>, clamp))
-                return tr::make(N::from_raw(raw_cast<N>(r < lo ? lo : hi)));
-            else if constexpr (has_flag(flags_of<N>, wrap)) {
-                const imax n = hi - lo + 1, m = (r - lo) % n;
-                return tr::make(N::from_raw(raw_cast<N>(lo + (m < 0 ? m + n : m))));
-            } else
+                return tr::make(N::from_raw(static_cast<R>(r < wlo ? wlo : whi)));
+            else if constexpr (has_flag(flags_of<N>, wrap))
+                return tr::make(N::from_raw(static_cast<R>(wlo + floor_divmod(r - wlo, whi - wlo + W{1}).Rem)));
+            else
                 raise(errc::overflow, "raw_accessor: a raw outside the grid");
         }
     }
@@ -355,8 +375,7 @@ struct storage_accessor {
 
 template <class E>
 concept raw_viewable =
-    mdspan_element<E> && integer_storage<element_number_t<E>> && !point_storage<element_number_t<E>> &&
-    !wide_index_storage<element_number_t<E>> && values_fit_imax<element_number_t<E>>;
+    mdspan_element<E> && integer_storage<element_number_t<E>> && !point_storage<element_number_t<E>>;
 } // namespace detail
 
 // E's numbers stored as plain values of T (const T: a read-only view).
