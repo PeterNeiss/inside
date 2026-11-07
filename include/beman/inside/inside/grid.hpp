@@ -281,14 +281,14 @@ namespace detail {
 //---------------------------------------------------------------------------
 constexpr bool continuous_grid(const grid& g) { return g.Notch == 0 && g.Interval.Lower != g.Interval.Upper; }
 
-// Whether g's step count fits umax: a builtin index (else g stores a wide
+// Whether g's step count fits uint64: a builtin index (else g stores a wide
 // one), and that count as the builtin (0 when it does not fit). Internal:
 // the public counts are step_count_of<T> and index_t<T>, insides of any size.
 consteval bool max_index_representable(const grid& g) {
-    return !(grid_int{std::numeric_limits<umax>::max()} < g.step_count());
+    return !(grid_int{std::numeric_limits<std::uint64_t>::max()} < g.step_count());
 }
-consteval umax max_index(const grid& g) {
-    return max_index_representable(g) ? static_cast<umax>(g.step_count()) : umax{0};
+consteval std::uint64_t max_index(const grid& g) {
+    return max_index_representable(g) ? static_cast<std::uint64_t>(g.step_count()) : std::uint64_t{0};
 }
 
 // Whether an inside on g exists (grid::validate): a lattice, a point, or a
@@ -339,11 +339,11 @@ consteval grid bounded_continuous(const interval& iv, grid_int d) {
 // G and M are template parameters so each store compiles to its own
 // branch-free rounding.
 template <grid G, round_mode M>
-[[nodiscard]] constexpr imax snap_double_index(double v) noexcept {
-    constexpr double nd = static_cast<double>(G.Notch);
-    const double     q  = v / nd;
-    const imax       t  = static_cast<imax>(q);       // toward zero
-    const double     f  = q - static_cast<double>(t); // exact, sign of q, |f| < 1
+[[nodiscard]] constexpr std::int64_t snap_double_index(double v) noexcept {
+    constexpr double   nd = static_cast<double>(G.Notch);
+    const double       q  = v / nd;
+    const std::int64_t t  = static_cast<std::int64_t>(q); // toward zero
+    const double       f  = q - static_cast<double>(t);   // exact, sign of q, |f| < 1
     if constexpr (M == round_mode::nearest)
         return t + (f >= 0.5) - (G.Interval.Lower < 0 && f <= -0.5);
     else if constexpr (M == round_mode::floor)
@@ -366,9 +366,9 @@ struct point_slot {
     constexpr point_slot() = default;
     template <typename T>
         requires std::is_arithmetic_v<T>
-    constexpr point_slot(T) noexcept {}                         // any index: the only slot
-    constexpr point_slot(const rational&) noexcept {}           // any value: the type holds it
-    constexpr      operator imax() const noexcept { return 0; } // reads as index 0
+    constexpr point_slot(T) noexcept {}                                 // any index: the only slot
+    constexpr point_slot(const rational&) noexcept {}                   // any value: the type holds it
+    constexpr      operator std::int64_t() const noexcept { return 0; } // reads as index 0
     constexpr bool operator==(const point_slot&) const  = default;
     constexpr auto operator<=>(const point_slot&) const = default;
 };
@@ -380,11 +380,11 @@ constexpr bool unit_lattice(const grid& g) noexcept {
     return g.Notch == 1 && grid_denominator(g.Interval.Lower) == grid_int{1};
 }
 
-// Both endpoints lie in imax — the signed value raw candidates (and every
+// Both endpoints lie in int64 — the signed value raw candidates (and every
 // `trunc(endpoint)` constant) are only meaningful then.
-constexpr bool fits_imax(const interval& iv) noexcept {
-    return iv.Lower >= rational{std::numeric_limits<imax>::min()} &&
-           iv.Upper <= rational{std::numeric_limits<imax>::max()};
+constexpr bool fits_int64(const interval& iv) noexcept {
+    return iv.Lower >= rational{std::numeric_limits<std::int64_t>::min()} &&
+           iv.Upper <= rational{std::numeric_limits<std::int64_t>::max()};
 }
 
 // Storage is a function of the grid alone. Order: point → empty point_slot;
@@ -410,10 +410,10 @@ inline constexpr bool deduces_value = [] {
     if constexpr (G.Interval.Lower == G.Interval.Upper || !unit_lattice(G) || !max_index_representable(G))
         return false;
     else if constexpr (G.Interval.Lower < 0)
-        return fits_imax(G.Interval);
+        return fits_int64(G.Interval);
     else if constexpr (G.Interval.Lower == 0)
         return true;
-    else if constexpr (!fits_imax(G.Interval))
+    else if constexpr (!fits_int64(G.Interval))
         return false;
     else
         return sizeof(value_uint_for_t<G>) <= sizeof(index_raw_for_t<G>);
@@ -423,8 +423,8 @@ inline constexpr bool deduces_value = [] {
 // rational, or — past it — a reduced fraction of K-limb integers, K sized
 // from the bounds, so every value fits.
 template <grid G>
-inline constexpr bool bound_fits_rational = !(grid_int{std::numeric_limits<imax>::max()} < den_bound(G)) &&
-                                            !(grid_int{std::numeric_limits<umax>::max()} < num_bound(G));
+inline constexpr bool bound_fits_rational = !(grid_int{std::numeric_limits<std::int64_t>::max()} < den_bound(G)) &&
+                                            !(grid_int{std::numeric_limits<std::uint64_t>::max()} < num_bound(G));
 
 template <grid G>
 inline constexpr std::size_t continuous_limbs = [] {

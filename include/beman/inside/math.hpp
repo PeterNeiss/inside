@@ -138,16 +138,16 @@ constexpr wide_rational<E> exact_to_int(const wide_rational<E>& v) noexcept {
 // Integer fast path for the algebraic tier: an anchored integer raw holds
 // the value J·p/q (J its value index, Notch p/q), so its integer rounding is
 // J·p over q rounded. It applies when the auto-deduced Out (which holds every
-// result by construction) is the target and |J·p| fits imax.
+// result by construction) is the target and |J·p| fits int64.
 template <insidable Out, insidable AutoOut, insidable In>
 inline constexpr bool int_direct = [] {
     if constexpr (!std::same_as<Out, AutoOut> || !integer_storage<In> || !integer_storage<Out> || !notched<In> ||
                   !anchored<In> || wide_valued<In> || wide_valued<Out> || !value_indices_fit64<In>)
         return false;
     else {
-        const umax m =
+        const std::uint64_t m =
             lower_index64<In>.Num > upper_index64<In>.Num ? lower_index64<In>.Num : upper_index64<In>.Num; // max |J|
-        return m <= static_cast<umax>(std::numeric_limits<imax>::max()) / notch64<In>.Num;
+        return m <= static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) / notch64<In>.Num;
     }
 }();
 
@@ -158,25 +158,25 @@ constexpr Out integer_into(In x) {
     if constexpr (any_wide_valued<Out, In>)
         return store_exact<Out>(exact_to_int<M>(engine::exact_input(x)));
     else if constexpr (int_direct<Out, integer_result_t<In, M>, In>) {
-        constexpr imax p = static_cast<imax>(notch64<In>.Num);
-        constexpr imax q = static_cast<imax>(abs_den(notch64<In>.Den));
-        const imax     j = value_index<imax>(x) * p;
-        if constexpr (p == 1 && std::has_single_bit(static_cast<umax>(q)) && M != round_mode::half_even) {
+        constexpr std::int64_t p = static_cast<std::int64_t>(notch64<In>.Num);
+        constexpr std::int64_t q = static_cast<std::int64_t>(abs_den(notch64<In>.Den));
+        const std::int64_t     j = value_index<std::int64_t>(x) * p;
+        if constexpr (p == 1 && std::has_single_bit(static_cast<std::uint64_t>(q)) && M != round_mode::half_even) {
             // A notch 2^-k: shifts. floor is the arithmetic shift, ceil its
             // mirror; nearest and trunc shift the magnitude (half away from 0).
-            constexpr int k = std::countr_zero(static_cast<umax>(q));
+            constexpr int k = std::countr_zero(static_cast<std::uint64_t>(q));
             if constexpr (M == round_mode::floor)
                 return from_value_index<Out>(j >> k);
             else if constexpr (M == round_mode::ceil)
                 return from_value_index<Out>(-((-j) >> k));
             else {
-                const imax s = j >> 63, a = (j ^ s) - s; // sign mask, |j|
-                const imax r = (a + (M == round_mode::nearest ? q / 2 : 0)) >> k;
+                const std::int64_t s = j >> 63, a = (j ^ s) - s; // sign mask, |j|
+                const std::int64_t r = (a + (M == round_mode::nearest ? q / 2 : 0)) >> k;
                 return from_value_index<Out>((r ^ s) - s);
             }
         } else
             return from_value_index<Out>(div_rounded(j, q, M));
-    } else // (as a rational: the integer may pass imax, a uint64's)
+    } else // (as a rational: the integer may pass int64, a uint64's)
         return store_value<Out>(round_to_integral(rational{x}, M));
 }
 } // namespace detail
@@ -200,12 +200,13 @@ template <insidable Out, insidable In>
 [[nodiscard]] constexpr Out abs_into(In x) {
     if constexpr (detail::any_wide_valued<Out, In>)
         return detail::store_exact<Out>(detail::engine::abs(detail::engine::exact_input(x)));
-    else if constexpr (std::same_as<Out, detail::abs_result_t<In>> && detail::value_indices_fit_imax<In> &&
+    else if constexpr (std::same_as<Out, detail::abs_result_t<In>> && detail::value_indices_fit_int64<In> &&
                        notch_of<Out> == notch_of<In>) {
         // The same lattice through 0: |x| is the value index's magnitude.
-        // In umax: |INT64_MIN| = 2^63 is past imax (Out then reaches it).
-        const imax j = detail::value_index<imax>(x);
-        return detail::from_value_index<Out>(j < 0 ? umax{0} - static_cast<umax>(j) : static_cast<umax>(j));
+        // In uint64: |INT64_MIN| = 2^63 is past int64 (Out then reaches it).
+        const std::int64_t j = detail::value_index<std::int64_t>(x);
+        return detail::from_value_index<Out>(j < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(j)
+                                                   : static_cast<std::uint64_t>(j));
     } else
         return detail::store_value<Out>(beman::inside::detail::abs(rational{x}));
 }
@@ -213,7 +214,7 @@ template <insidable Out, insidable In>
 // sign(x) ∈ {−1, 0, 1}, by exact comparison (no decode).
 template <insidable Out, insidable In>
 [[nodiscard]] constexpr Out sign_into(In x) {
-    return Out{imax{(x > 0) - (x < 0)}};
+    return Out{std::int64_t{(x > 0) - (x < 0)}};
 }
 
 // copysign(mag, sgn) — |mag| with the sign of sgn; sgn == 0 counts as positive.
@@ -223,12 +224,13 @@ template <insidable Out, insidable Mag, insidable Sgn>
         const auto a = detail::engine::abs(detail::engine::exact_input(mag));
         return detail::store_exact<Out>(sgn < 0 ? -a : a);
     } else if constexpr (std::same_as<Out, detail::copysign_result_t<Mag, Sgn>> &&
-                         detail::value_indices_fit_imax<Mag> && notch_of<Out> == notch_of<Mag>) {
-        // The same lattice through 0: ±|value index|, in umax (|INT64_MIN| =
+                         detail::value_indices_fit_int64<Mag> && notch_of<Out> == notch_of<Mag>) {
+        // The same lattice through 0: ±|value index|, in uint64 (|INT64_MIN| =
         // 2^63 when sgn is never negative); the raw follows modulo 2^64.
-        const imax j = detail::value_index<imax>(mag);
-        const umax a = j < 0 ? umax{0} - static_cast<umax>(j) : static_cast<umax>(j);
-        return detail::from_value_index<Out>(sgn < 0 ? umax{0} - a : a);
+        const std::int64_t  j = detail::value_index<std::int64_t>(mag);
+        const std::uint64_t a =
+            j < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(j) : static_cast<std::uint64_t>(j);
+        return detail::from_value_index<Out>(sgn < 0 ? std::uint64_t{0} - a : a);
     } else {
         const rational a = beman::inside::detail::abs(rational{mag});
         return detail::store_value<Out>(sgn < 0 ? -a : a);
@@ -262,7 +264,7 @@ namespace detail {
 //   * integer raws only (rational raws keep the rational path),
 //   * non-zero notches, g on Out's grid (g / notch of Out integer),
 //   * Out's interval covers the remainders: ±min(max|x|, max|y|), x's sign,
-//   * all unit counts fit comfortably in imax (headroom 4).
+//   * all unit counts fit comfortably in int64 (headroom 4).
 template <insidable Out, insidable InX, insidable InY>
 inline constexpr bool fmod_int_fast = [] {
     // (y != 0 is fmod_nonzero's precondition.) Lower/g must be an integer:
@@ -284,8 +286,8 @@ inline constexpr bool fmod_int_fast = [] {
         if (lower_of<Out> > (lower_of<InX> < 0 ? -bound : grid_rational{0}) ||
             upper_of<Out> < (upper_of<InX> > 0 ? bound : grid_rational{0}))
             return false;
-        // Every unit count, and Out's value index of Lower, within imax/4.
-        const grid_rational lim{std::numeric_limits<imax>::max() / 4};
+        // Every unit count, and Out's value index of Lower, within int64/4.
+        const grid_rational lim{std::numeric_limits<std::int64_t>::max() / 4};
         return !(lim < maxx / g) && !(lim < maxy / g) && !(lim < maxy / notch_of<Out>) &&
                !(lim < abs(lower_index_of<Out>));
     }
@@ -311,23 +313,23 @@ template <insidable Out, insidable InX, insidable InY>
         return exact();
     else if constexpr (detail::fmod_int_fast<Out, InX, InY>) {
         // One integer remainder in g-units; bit-identical to the rational path.
-        constexpr rational g   = detail::to_rational(gcd(notch_of<InX>, notch_of<InY>));
-        constexpr imax     wx  = trunc(detail::notch64<InX> / g);
-        constexpr imax     wy  = trunc(detail::notch64<InY> / g);
-        constexpr imax     wo  = trunc(g / detail::notch64<Out>);
-        constexpr imax     lox = trunc(detail::lower64<InX> / g); // exact: grid invariant
-        constexpr imax     loy = trunc(detail::lower64<InY> / g);
-        constexpr imax     loo = trunc(detail::lower64<Out> / detail::notch64<Out>);
-        const imax         a   = detail::raw_imax(x) * wx + (detail::index_storage<InX> ? lox : 0);
-        const imax         b   = detail::raw_imax(y) * wy + (detail::index_storage<InY> ? loy : 0);
-        const imax         r   = a % b; // |r| < |b|, in Out's range
+        constexpr rational     g   = detail::to_rational(gcd(notch_of<InX>, notch_of<InY>));
+        constexpr std::int64_t wx  = trunc(detail::notch64<InX> / g);
+        constexpr std::int64_t wy  = trunc(detail::notch64<InY> / g);
+        constexpr std::int64_t wo  = trunc(g / detail::notch64<Out>);
+        constexpr std::int64_t lox = trunc(detail::lower64<InX> / g); // exact: grid invariant
+        constexpr std::int64_t loy = trunc(detail::lower64<InY> / g);
+        constexpr std::int64_t loo = trunc(detail::lower64<Out> / detail::notch64<Out>);
+        const std::int64_t     a   = detail::raw_int64(x) * wx + (detail::index_storage<InX> ? lox : 0);
+        const std::int64_t     b   = detail::raw_int64(y) * wy + (detail::index_storage<InY> ? loy : 0);
+        const std::int64_t     r   = a % b; // |r| < |b|, in Out's range
         return Out::from_raw(detail::raw_from_offset<Out>(r * wo - loo));
     } else {
         // In 64-bit rationals while every step fits (the quotient within
-        // imax); else exactly — the remainder itself always fits Out.
+        // int64); else exactly — the remainder itself always fits Out.
         const rational xv = x, yv = y;
-        if (const auto q = try_div(xv, yv);
-            q && *q < rational{std::numeric_limits<imax>::max()} && rational{std::numeric_limits<imax>::min()} < *q)
+        if (const auto q = try_div(xv, yv); q && *q < rational{std::numeric_limits<std::int64_t>::max()} &&
+                                            rational{std::numeric_limits<std::int64_t>::min()} < *q)
             if (const auto qy = try_mul(rational{trunc(*q)}, yv))
                 if (const auto r = try_sub(xv, *qy)) [[likely]]
                     return detail::store_value<Out>(*r);
@@ -358,7 +360,7 @@ template <insidable Out, insidable InX, insidable InY>
 // (like abs/floor/fmod). Negative exponents are deferred (they need the
 // division error story).
 namespace detail {
-template <imax E, insidable In>
+template <std::int64_t E, insidable In>
 constexpr auto pown_impl(In x) noexcept {
     if constexpr (E == 0) {
         (void)x;
@@ -375,7 +377,7 @@ constexpr auto pown_impl(In x) noexcept {
 
 // pown<E>(x) exists when each squaring and multiply does: a continuous
 // product past detail::max_fraction_bits has no type.
-template <imax E, class In>
+template <std::int64_t E, class In>
 inline constexpr bool pown_defined = [] {
     if constexpr (E < 0)
         return false;
@@ -398,13 +400,13 @@ inline constexpr bool pown_defined = [] {
 namespace detail {
 // An even power of a base that reaches below 0 squares |x| instead, so the
 // result's range starts at the smallest |x|^E, never below 0.
-template <imax E, insidable In>
+template <std::int64_t E, insidable In>
 inline constexpr bool pown_via_abs = E > 0 && E % 2 == 0 && lower_of<In> < 0;
-template <imax E, insidable In>
+template <std::int64_t E, insidable In>
 using pown_base_t = std::conditional_t<pown_via_abs<E, In>, abs_result_t<In>, In>;
 } // namespace detail
 
-template <imax E, insidable In>
+template <std::int64_t E, insidable In>
     requires detail::pown_defined<E, detail::pown_base_t<E, In>>
 [[nodiscard]] constexpr auto pown(In x) noexcept {
     if constexpr (detail::pown_via_abs<E, In>)

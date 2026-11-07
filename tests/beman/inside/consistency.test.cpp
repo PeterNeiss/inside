@@ -21,7 +21,7 @@ using namespace beman::inside;
 using namespace beman::inside::detail;
 
 namespace {
-constexpr rational q(imax n, imax d = 1) { return rational{n, d}; }
+constexpr rational q(std::int64_t n, std::int64_t d = 1) { return rational{n, d}; }
 } // namespace
 
 //---------------------------------------------------------------------------
@@ -152,8 +152,8 @@ TEST(ConsistencyTest, math_output_deduces_its_storage) {
 // double compares exactly, not after rounding the other side to double.
 TEST(ConsistencyTest, dyadic_vs_exact_comparison_is_exact) {
     using F = inside<{{0, 2}, per<2>}>;
-    using C = inside<{{0, 2}, max_denominator{imax{1} << 53}}>; // continuous, rational raw
-    const C c{(q(1) + q(1, imax{1} << 53))};                    // 1 + 2^-53: rounds to 1.0
+    using C = inside<{{0, 2}, max_denominator{std::int64_t{1} << 53}}>; // continuous, rational raw
+    const C c{(q(1) + q(1, std::int64_t{1} << 53))};                    // 1 + 2^-53: rounds to 1.0
     const F one{1};
     EXPECT_FALSE(one == c);
     EXPECT_TRUE(one < c);
@@ -370,7 +370,7 @@ TEST(ConsistencyTest, pow_past_the_output_range) {
     EXPECT_EQ(test::caught([] { return math::pow_into<small>(B{4}, E{20}); }).error(), errc::overflow); // 2^40
     EXPECT_EQ(rational{math::pow_into<small_clamp>(B{4}, E{20})}, q(1000));
     // The deduced output covers every corner: 4^20 fits it.
-    EXPECT_EQ(rational{math::pow(B{4}, E{20})}, rational{umax{1} << 40});
+    EXPECT_EQ(rational{math::pow(B{4}, E{20})}, rational{std::uint64_t{1} << 40});
 }
 
 // conversion_rounds sees the notch of a non-dyadic notched grid.
@@ -588,14 +588,14 @@ TEST(ConsistencyTest, integer_storage_decodes_to_the_nearest_double) {
     expect_double_decode_exact<inside<{{0, 7}, rational{7, 1024}}, round_nearest>>();
 }
 
-// A fine-denominator source whose signed value index overflows imax rounds in
+// A fine-denominator source whose signed value index overflows int64 rounds in
 // value space too: `round_toward_zero` truncates toward zero, also below zero.
 TEST(ConsistencyTest, round_toward_zero_truncates_fine_negative_rationals) {
-    using T              = inside<{{-8, 8}, per<16384>}, round_toward_zero>;
-    constexpr imax k2_61 = imax{1} << 61;
-    EXPECT_EQ((rational{T{rational{-55 * (imax{1} << 47) + 1, k2_61}}}), q(-54, 16384));
-    EXPECT_EQ((rational{T{rational{-55 * (imax{1} << 47) - 1, k2_61}}}), q(-55, 16384));
-    EXPECT_EQ((rational{T{rational{55 * (imax{1} << 47) + 1, k2_61}}}), q(55, 16384));
+    using T                      = inside<{{-8, 8}, per<16384>}, round_toward_zero>;
+    constexpr std::int64_t k2_61 = std::int64_t{1} << 61;
+    EXPECT_EQ((rational{T{rational{-55 * (std::int64_t{1} << 47) + 1, k2_61}}}), q(-54, 16384));
+    EXPECT_EQ((rational{T{rational{-55 * (std::int64_t{1} << 47) - 1, k2_61}}}), q(-55, 16384));
+    EXPECT_EQ((rational{T{rational{55 * (std::int64_t{1} << 47) + 1, k2_61}}}), q(55, 16384));
 }
 
 //---------------------------------------------------------------------------

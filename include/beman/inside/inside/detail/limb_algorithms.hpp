@@ -5,8 +5,6 @@
 
 #include <beman/inside/inside/detail/config.hpp>
 
-#include <beman/inside/inside/detail/numbers.hpp> // umax
-
 #include <algorithm>
 #include <bit>
 #include <compare>
@@ -74,11 +72,12 @@ constexpr pair<L> mul(L a, L b) noexcept {
 }
 
 // a·b <=> c·d, exactly (the native 128-bit compare where available).
-constexpr std::strong_ordering mul_compare(umax a, umax b, umax c, umax d) noexcept {
+constexpr std::strong_ordering
+mul_compare(std::uint64_t a, std::uint64_t b, std::uint64_t c, std::uint64_t d) noexcept {
 #if BEMAN_INSIDE_HAS_INT128
     return static_cast<unsigned __int128>(a) * b <=> static_cast<unsigned __int128>(c) * d;
 #else
-    const pair<umax> x = mul(a, b), y = mul(c, d);
+    const pair<std::uint64_t> x = mul(a, b), y = mul(c, d);
     return x.Hi != y.Hi ? x.Hi <=> y.Hi : x.Lo <=> y.Lo;
 #endif
 }
@@ -324,8 +323,8 @@ constexpr I euclid_gcd(I a, I b, Rem rem = remainder_of) {
 // (one with Word limbs) divides limb-wise; any other integer type by its
 // own % and /.
 template <class I>
-constexpr imax strip_factor(I& x, umax p) {
-    imax k = 0;
+constexpr std::int64_t strip_factor(I& x, std::uint64_t p) {
+    std::int64_t k = 0;
     if constexpr (requires { x.Word; }) {
         constexpr std::size_t N = sizeof(x.Word) / sizeof(x.Word[0]);
         if (p == 2) {
@@ -337,8 +336,8 @@ constexpr imax strip_factor(I& x, umax p) {
             return s;
         }
         for (;;) {
-            umax       q[N];
-            const umax r = limb::div_1(q, x.Word, N, p);
+            std::uint64_t       q[N];
+            const std::uint64_t r = limb::div_1(q, x.Word, N, p);
             if (r != 0)
                 return k;
             std::copy_n(q, N, x.Word);

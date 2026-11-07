@@ -390,19 +390,19 @@ TEST(ConstexprTest, constexpr_numeric_limits_inside) {
 // constexpr: inside_range iterates the full grid
 TEST(ConstexprTest, constexpr_inside_range_iterates_the_full_grid) {
     // 0 + 1 + ... + 9 = 45
-    constexpr imax sum = [] {
-        imax s = 0;
+    constexpr std::int64_t sum = [] {
+        std::int64_t s = 0;
         for (auto i : inside_range<{0, 9}>{})
-            s += i.as<imax>();
+            s += i.as<std::int64_t>();
         return s;
     }();
     static_assert(sum == 45);
 
     // wrap-start: visits every element exactly once, starting mid-range
-    constexpr imax sum_from_5 = [] {
-        imax s = 0;
+    constexpr std::int64_t sum_from_5 = [] {
+        std::int64_t s = 0;
         for (auto i : inside_range<{0, 9}>{inside<{0, 9}>{5}})
-            s += i.as<imax>();
+            s += i.as<std::int64_t>();
         return s;
     }();
     static_assert(sum_from_5 == 45);
@@ -423,10 +423,10 @@ TEST(ConstexprTest, constexpr_inside_range_on_fractional_notch_grid) {
     static_assert(count == 5);
 
     // Sum the doubled values (-1 + -0.5 + 0 + 0.5 + 1) * 2 = 0
-    constexpr imax twice_sum = [] {
-        imax s = 0;
+    constexpr std::int64_t twice_sum = [] {
+        std::int64_t s = 0;
         for (auto v : inside_range<{{-1, 1}, per<2>}>{})
-            s += static_cast<imax>(2 * v.to<double>());
+            s += static_cast<std::int64_t>(2 * v.to<double>());
         return s;
     }();
     static_assert(twice_sum == 0);

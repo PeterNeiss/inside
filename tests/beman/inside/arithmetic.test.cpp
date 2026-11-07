@@ -229,8 +229,8 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
         // Grids whose values need 2^40 denominators: the quotient's
         // denominators reach 2^81, past the 64-bit rational: a fraction sized
         // from the bound holds it.
-        using fine = inside<{{0, 1}, rational{1, umax{1} << 40}}>;
-        using fpos = inside<{{1, 2}, rational{1, umax{1} << 40}}>;
+        using fine = inside<{{0, 1}, rational{1, std::uint64_t{1} << 40}}>;
+        using fpos = inside<{{1, 2}, rational{1, std::uint64_t{1} << 40}}>;
         static_assert(!is_expected_v<decltype(fine{0.5} / fpos{1.5})>);
         EXPECT_TRUE(lift_unwrap(fine{0.5} / fpos{1.5}) == (just<1, 3>));
     }
@@ -434,10 +434,10 @@ TEST(InsideArithmeticTest, beman_inside_sum_bulk_reduction_with_one_deferred_che
     ASSERT_EQ(rational{beman::inside::sum<qsum>(qs)}, (rational{3, 256}));
 
     // 64-bit raws whose index total passes 64 bits: summed exactly.
-    using u64 = inside<{0, std::numeric_limits<umax>::max()}>;
-    std::vector<u64> big(4, u64{std::numeric_limits<umax>::max()});
-    using wide_total = inside<{0, std::numeric_limits<umax>::max()}, clamp>;
-    ASSERT_TRUE(beman::inside::sum<wide_total>(big) == std::numeric_limits<umax>::max());
+    using u64 = inside<{0, std::numeric_limits<std::uint64_t>::max()}>;
+    std::vector<u64> big(4, u64{std::numeric_limits<std::uint64_t>::max()});
+    using wide_total = inside<{0, std::numeric_limits<std::uint64_t>::max()}, clamp>;
+    ASSERT_TRUE(beman::inside::sum<wide_total>(big) == std::numeric_limits<std::uint64_t>::max());
 
     // A continuous total past the target is reported through the target's
     // policy (not bad_expected_access).
@@ -464,12 +464,12 @@ TEST(InsideArithmeticTest, beman_inside_sum_bulk_reduction_with_one_deferred_che
     std::vector<qi> qv(40'000, qi{rational{-3, 16384}});
     using qtotal = inside<{{-200'000, 200'000}, per<16384>}>;
     ASSERT_EQ(rational{beman::inside::sum<qtotal>(qv)}, (rational{-120'000, 16384}));
-    // Raws near 2^31: a 32-bit lane holds two, too few, so imax blocks.
+    // Raws near 2^31: a 32-bit lane holds two, too few, so int64 blocks.
     using near = inside<{0, 0x7fff'fff0}>;
     static_assert(detail::lane32_block<near> == 2);
     std::vector<near> nv(5, near{0x7fff'fff0});
     using ntotal = inside<{0, 0x7'ffff'ffff}>;
-    ASSERT_TRUE(beman::inside::sum<ntotal>(nv) == 5 * imax{0x7fff'fff0});
+    ASSERT_TRUE(beman::inside::sum<ntotal>(nv) == 5 * std::int64_t{0x7fff'fff0});
 }
 
 // Issue #7 closure (user decision 2026-06-12): `inside op raw-scalar` is the
@@ -666,14 +666,14 @@ TEST(CrossGridTest, integer_paths_stay_engaged_and_fp_stays_excluded) {
     static_assert(detail::assignment<quarter_grid, tenths>::affine_map.Ok);
 
     // fp-backed operands: the sum is exact either way.
-    using coarse_real = inside<{{0, (umax{1} << 40)}, per<2>}>;
+    using coarse_real = inside<{{0, (std::uint64_t{1} << 40)}, per<2>}>;
     using fine_real   = inside<{{0, 1}, per<(1u << 20)>}>;
     EXPECT_TRUE(coarse_real{1.5_r} + fine_real{0.25_r} == 1.75_r);
 
     // value check across a negative Lower, at compile time (constexpr path).
     using signed_whole = inside<{-50, 50}>;
     using eighths      = inside<{{-2, 2}, per<8>}>;
-    static_assert(rational{signed_whole{-7} + eighths{-0.625_ins}} == rational{umax{61}, imax{-8}});
+    static_assert(rational{signed_whole{-7} + eighths{-0.625_ins}} == rational{std::uint64_t{61}, std::int64_t{-8}});
 }
 
 // regression: cross-grid assign onto rational storage keeps the value
@@ -743,7 +743,7 @@ TEST(CrossGridTest, scalar_comparison_integer_arm_agrees_with_the_rational_decod
         agree(offset_q{8}, scalar);
     }
 
-    // 64-bit scalars whose cross term c·d can overflow imax are excluded and
+    // 64-bit scalars whose cross term c·d can overflow int64 are excluded and
     // fall back to the exact rational path — still correct.
     static_assert(!scalar_index_cmp_fits<q88, long long>);
     ASSERT_TRUE(q88{42} < std::numeric_limits<long long>::max());
@@ -940,20 +940,20 @@ struct unwrap<std::expected<T, E>> {
 };
 
 template <class T>
-constexpr imax lo() {
+constexpr std::int64_t lo() {
     return detail::trunc(detail::to_rational(lower_of<typename unwrap<T>::type>));
 }
 template <class T>
-constexpr imax hi() {
+constexpr std::int64_t hi() {
     return detail::trunc(detail::to_rational(upper_of<typename unwrap<T>::type>));
 }
 
 // r = a − round(a/b)·b on plain integers.
 enum class mode { trunc, floor, ceil, nearest };
-constexpr imax reference_remainder(imax a, imax b, mode m) {
-    imax       q   = a / b;
-    const imax r   = a - q * b;
-    const bool neg = (a < 0) != (b < 0);
+constexpr std::int64_t reference_remainder(std::int64_t a, std::int64_t b, mode m) {
+    std::int64_t       q   = a / b;
+    const std::int64_t r   = a - q * b;
+    const bool         neg = (a < 0) != (b < 0);
     if (r != 0) {
         if (m == mode::floor && neg)
             --q;
@@ -969,16 +969,16 @@ constexpr imax reference_remainder(imax a, imax b, mode m) {
 // range's ends are reached (no slack) except at nearest-mode ties.
 template <mode M, auto Flag, grid GA, grid GB>
 void expect_tight_remainder(bool ends_reached) {
-    using R            = decltype(mod(inside<GA>{}, inside<GB>{}, Flag));
-    imax       seen_lo = hi<R>() + 1;
-    imax       seen_hi = lo<R>() - 1;
-    const imax a_lo = lo<inside<GA>>(), a_hi = hi<inside<GA>>();
-    const imax b_lo = lo<inside<GB>>(), b_hi = hi<inside<GB>>();
-    for (imax a = a_lo; a <= a_hi; ++a)
-        for (imax b = b_lo; b <= b_hi; ++b) {
+    using R                    = decltype(mod(inside<GA>{}, inside<GB>{}, Flag));
+    std::int64_t       seen_lo = hi<R>() + 1;
+    std::int64_t       seen_hi = lo<R>() - 1;
+    const std::int64_t a_lo = lo<inside<GA>>(), a_hi = hi<inside<GA>>();
+    const std::int64_t b_lo = lo<inside<GB>>(), b_hi = hi<inside<GB>>();
+    for (std::int64_t a = a_lo; a <= a_hi; ++a)
+        for (std::int64_t b = b_lo; b <= b_hi; ++b) {
             if (b == 0)
                 continue;
-            const imax r = reference_remainder(a, b, M);
+            const std::int64_t r = reference_remainder(a, b, M);
             ASSERT_LE(lo<R>(), r) << "a " << a << " b " << b;
             ASSERT_LE(r, hi<R>()) << "a " << a << " b " << b;
             seen_lo = std::min(seen_lo, r);
@@ -1302,9 +1302,9 @@ TEST(IntoTest, div_into) {
     using ten = inside<{0, 10}>;
     EXPECT_EQ(div_into<ten>(any{7}, any{2}).error(), errc::rounding_error);
     // A quotient with no 64-bit fraction, straight onto a grid.
-    using fine  = inside<{{0, 2}, per<(umax{1} << 62)>}, round_nearest>;
+    using fine  = inside<{{0, 2}, per<(std::uint64_t{1} << 62)>}, round_nearest>;
     const eth a = *parse<eth>("1.000000000000000001"), b = *parse<eth>("0.999999999999999999");
-    EXPECT_EQ(div_into<fine>(a, b).value(), fine::from_raw((umax{1} << 62) + 9));
+    EXPECT_EQ(div_into<fine>(a, b).value(), fine::from_raw((std::uint64_t{1} << 62) + 9));
 }
 
 // The native paths (the exact product inside, or a 64-bit rational) round as
@@ -1579,7 +1579,7 @@ TEST(ArithmeticTest, unanchored_sum_past_63_bits) {
 }
 
 // Sums counted in a unit finer than the result's notch (an unanchored
-// result): the offset from Lower in that unit passed imax.
+// result): the offset from Lower in that unit passed int64.
 TEST(ArithmeticTest, unanchored_sum_near_int64) {
     using halves = inside<{{0.5, 10.5}, 1}>; // Lower off the notch's multiples
     using thirds = inside<{{-(3ll << 60), 3ll << 60}, 3}>;
@@ -1639,7 +1639,7 @@ TEST(ArithmeticTest, sum_over_a_sentinel_range) {
     EXPECT_EQ(total, 6);
 }
 
-// A cross-grid comparison of an unanchored grid overflowed imax forming
+// A cross-grid comparison of an unanchored grid overflowed int64 forming
 // raw·scale.
 TEST(ArithmeticTest, unanchored_cross_grid_comparison) {
     using I64         = std::int64_t;
@@ -1826,8 +1826,8 @@ TEST(ArithmeticArmTest, div_into_past_the_unreduced_quotient) {
     using C   = inside<{{1, 1125899906842624_g}, max_denominator{1024}}>; // [1, 2^50]
     using Out = inside<{{0, 2}, per<1024>}, round_nearest>;
     static_assert(std::is_same_v<detail::raw_t<C>, rational>);
-    const C x{rational{umax{1} << 59, 1023}}, y{rational{umax{1} << 59, 1021}};
-    const C u{rational{(umax{1} << 59) + 1, 1023}}, v{rational{(umax{1} << 59) + 3, 1021}};
+    const C x{rational{std::uint64_t{1} << 59, 1023}}, y{rational{std::uint64_t{1} << 59, 1021}};
+    const C u{rational{(std::uint64_t{1} << 59) + 1, 1023}}, v{rational{(std::uint64_t{1} << 59) + 3, 1021}};
     EXPECT_TRUE(div_into<Out>(x, y) == Out{x / y});
     EXPECT_TRUE(div_into<Out>(u, v) == Out{u / v});
 }

@@ -64,7 +64,7 @@ template <int Bits>
 using fixed_t = wide_sint<limbs_for_bits(Bits + 1)>;
 
 template <typename T>
-inline constexpr std::size_t limbs_of = sizeof(T) / sizeof(umax);
+inline constexpr std::size_t limbs_of = sizeof(T) / sizeof(std::uint64_t);
 
 // The same value in a word of twice the limbs (for products and shifted
 // dividends).
@@ -80,13 +80,13 @@ template <std::size_t K>
 constexpr wide_sint<K> mul_q(const wide_sint<K>& a, const wide_sint<K>& b, int W) noexcept {
     if constexpr (K == 1) {
         // One limb: the 128-bit product of the magnitudes, shifted.
-        const bool             na = a.negative(), nb = b.negative();
-        const umax             ma = na ? umax{0} - a.Word[0] : a.Word[0];
-        const umax             mb = nb ? umax{0} - b.Word[0] : b.Word[0];
-        const limb::pair<umax> p  = limb::mul(ma, mb);
-        const umax             m  = W == 0 ? p.Lo : W < 64 ? (p.Lo >> W) | (p.Hi << (64 - W)) : p.Hi >> (W - 64);
-        wide_sint<1>           r;
-        r.Word[0] = (na != nb) ? umax{0} - m : m;
+        const bool                      na = a.negative(), nb = b.negative();
+        const std::uint64_t             ma = na ? std::uint64_t{0} - a.Word[0] : a.Word[0];
+        const std::uint64_t             mb = nb ? std::uint64_t{0} - b.Word[0] : b.Word[0];
+        const limb::pair<std::uint64_t> p  = limb::mul(ma, mb);
+        const std::uint64_t m = W == 0 ? p.Lo : W < 64 ? (p.Lo >> W) | (p.Hi << (64 - W)) : p.Hi >> (W - 64);
+        wide_sint<1>        r;
+        r.Word[0] = (na != nb) ? std::uint64_t{0} - m : m;
         return r;
     } else {
         // The magnitudes' product into 2K limbs, then the shift. (Not
@@ -94,27 +94,27 @@ constexpr wide_sint<K> mul_q(const wide_sint<K>& a, const wide_sint<K>& b, int W
         // kernels the math_decimal workload grows.)
         const bool         na = a.negative(), nb = b.negative();
         const wide_uint<K> ma{na ? -a : a}, mb{nb ? -b : b};
-        umax               prod[2 * K]{};
+        std::uint64_t      prod[2 * K]{};
         if constexpr (K == 2) { // the four partial products
-            const limb::pair<umax> p00 = limb::mul(ma.Word[0], mb.Word[0]);
-            const limb::pair<umax> p01 = limb::mul(ma.Word[0], mb.Word[1]);
-            const limb::pair<umax> p10 = limb::mul(ma.Word[1], mb.Word[0]);
-            const limb::pair<umax> p11 = limb::mul(ma.Word[1], mb.Word[1]);
-            umax                   c1 = 0, c2 = 0, c3 = 0, c4 = 0, c5 = 0;
+            const limb::pair<std::uint64_t> p00 = limb::mul(ma.Word[0], mb.Word[0]);
+            const limb::pair<std::uint64_t> p01 = limb::mul(ma.Word[0], mb.Word[1]);
+            const limb::pair<std::uint64_t> p10 = limb::mul(ma.Word[1], mb.Word[0]);
+            const limb::pair<std::uint64_t> p11 = limb::mul(ma.Word[1], mb.Word[1]);
+            std::uint64_t                   c1 = 0, c2 = 0, c3 = 0, c4 = 0, c5 = 0;
             prod[0] = p00.Lo;
             prod[1] = limb::add_carry(limb::add_carry(p00.Hi, p01.Lo, c1), p10.Lo, c2);
             prod[2] = limb::add_carry(limb::add_carry(limb::add_carry(p11.Lo, p01.Hi, c3), p10.Hi, c4), c1 + c2, c5);
             prod[3] = p11.Hi + c3 + c4 + c5;
         } else
             for (std::size_t i = 0; i < K; ++i) {
-                umax carry = 0;
+                std::uint64_t carry = 0;
                 for (std::size_t j = 0; j < K; ++j) {
-                    const limb::pair<umax> t  = limb::mul(ma.Word[i], mb.Word[j]);
-                    umax                   c1 = 0, c2 = 0;
-                    umax                   v = limb::add_carry(prod[i + j], t.Lo, c1);
-                    v                        = limb::add_carry(v, carry, c2);
-                    prod[i + j]              = v;
-                    carry                    = t.Hi + c1 + c2;
+                    const limb::pair<std::uint64_t> t  = limb::mul(ma.Word[i], mb.Word[j]);
+                    std::uint64_t                   c1 = 0, c2 = 0;
+                    std::uint64_t                   v = limb::add_carry(prod[i + j], t.Lo, c1);
+                    v                                 = limb::add_carry(v, carry, c2);
+                    prod[i + j]                       = v;
+                    carry                             = t.Hi + c1 + c2;
                 }
                 prod[i + K] = carry;
             }
@@ -122,9 +122,9 @@ constexpr wide_sint<K> mul_q(const wide_sint<K>& a, const wide_sint<K>& b, int W
         const int         bs = W % 64;
         wide_uint<K>      m;
         for (std::size_t i = 0; i < K; ++i) {
-            const umax lo = i + ws < 2 * K ? prod[i + ws] : 0;
-            const umax hi = i + ws + 1 < 2 * K ? prod[i + ws + 1] : 0;
-            m.Word[i]     = bs == 0 ? lo : (lo >> bs) | (hi << (64 - bs));
+            const std::uint64_t lo = i + ws < 2 * K ? prod[i + ws] : 0;
+            const std::uint64_t hi = i + ws + 1 < 2 * K ? prod[i + ws + 1] : 0;
+            m.Word[i]              = bs == 0 ? lo : (lo >> bs) | (hi << (64 - bs));
         }
         const wide_sint<K> r{m};
         return na != nb ? -r : r;
@@ -146,7 +146,7 @@ constexpr wide_sint<K> one_q(int W) noexcept {
 
 // An error bound v·2^-n, rounded down (callers add 1): 0 once n ≥ 64, where
 // the shift itself would be undefined.
-constexpr umax shr_bound(umax v, int n) noexcept { return n < 64 ? v >> n : 0; }
+constexpr std::uint64_t shr_bound(std::uint64_t v, int n) noexcept { return n < 64 ? v >> n : 0; }
 
 // v rounded to the nearest multiple of 2^-sh (half away from zero), shifted
 // down by sh: changes the scale from 2^(W+sh) to 2^W within ½ unit.
@@ -164,7 +164,7 @@ constexpr wide_sint<K> round_shift(const wide_sint<K>& v, int sh) noexcept {
 // n/d (d > 0) rounded to nearest, half away from zero; one-limb divisions
 // when d fits a limb.
 template <std::size_t K>
-constexpr wide_sint<K> nearest_div(const wide_sint<K>& n, umax d) noexcept {
+constexpr wide_sint<K> nearest_div(const wide_sint<K>& n, std::uint64_t d) noexcept {
     const bool neg    = n.negative();
     const auto [q, r] = divmod_small(wide_uint<K>{neg ? -n : n}, d);
     wide_sint<K> m{q};
@@ -235,9 +235,9 @@ inline constexpr int mag_bits = std::max(grid_magnitude_bits<Out>, 0);
 //---------------------------------------------------------------------------
 template <std::size_t K>
 struct approx {
-    wide_sint<K> Value;
-    int          Scale;
-    umax         Error;
+    wide_sint<K>  Value;
+    int           Scale;
+    std::uint64_t Error;
 
     // Stand-ins that decide reads like any other approx: ±2^(KMax+2) exactly,
     // past every output whose magnitude is below 2^KMax; [0, 2^-(S+1)] for a
@@ -246,7 +246,7 @@ struct approx {
         return {wide_sint<K>{negative ? -1 : 1}, -(KMax + 2), 0};
     }
     static constexpr approx below(int S) noexcept { return {wide_sint<K>{1}, S + 2, 1}; }
-    static constexpr approx unresolved(int S) noexcept { return {wide_sint<K>{0}, S, ~umax{0}}; }
+    static constexpr approx unresolved(int S) noexcept { return {wide_sint<K>{0}, S, ~std::uint64_t{0}}; }
 };
 
 //---------------------------------------------------------------------------
@@ -287,7 +287,7 @@ inline constexpr bool notch_fits64 = [] {
 
 // v / d for a small positive d, truncating toward zero (series terms).
 template <std::size_t K>
-constexpr wide_sint<K> div_small(const wide_sint<K>& v, umax d) noexcept {
+constexpr wide_sint<K> div_small(const wide_sint<K>& v, std::uint64_t d) noexcept {
     const bool         neg = v.negative();
     const wide_sint<K> q{divmod_small(wide_uint<K>{neg ? -v : v}, d).Quotient};
     return neg ? -q : q;
@@ -297,10 +297,11 @@ constexpr wide_sint<K> div_small(const wide_sint<K>& v, umax d) noexcept {
 // remainder r, and how the shifted-out part R compares with half a unit
 // (−1 below, 0 equal, 1 above; R == 0 known separately).
 template <round_mode M>
-constexpr bool round_up(bool neg, umax b0, umax r, umax p, bool low_zero, int low_vs_half) noexcept {
+constexpr bool
+round_up(bool neg, std::uint64_t b0, std::uint64_t r, std::uint64_t p, bool low_zero, int low_vs_half) noexcept {
     remainder_class c = (r == 0 && low_zero) ? remainder_class::zero : remainder_class::below_half;
     if constexpr (M == round_mode::nearest || M == round_mode::half_even) {
-        const umax d = p - r; // r + R against p/2, R the shifted-out part
+        const std::uint64_t d = p - r; // r + R against p/2, R the shifted-out part
         if (r > d || (r == d && !low_zero))
             c = remainder_class::above_half;
         else if (r == d)
@@ -319,13 +320,13 @@ template <insidable Out, round_mode M, std::size_t K>
 constexpr wide_sint<K + 2> fast_index(const wide_sint<K>& y, int S) noexcept {
     // On limb arrays: |y|·q, the part above 2^S divided by p, and the part
     // below read as the half-unit bit (bit S−1) plus a sticky bit for the rest.
-    using J                   = wide_sint<K + 2>;
-    constexpr std::size_t N   = K + 1;
-    constexpr umax        p   = static_cast<umax>(grid_numerator(notch_of<Out>));
-    constexpr umax        q   = static_cast<umax>(grid_denominator(notch_of<Out>));
-    const bool            neg = y.negative();
-    const wide_uint<K>    mag{neg ? -y : y};
-    umax                  a[N];
+    using J                     = wide_sint<K + 2>;
+    constexpr std::size_t   N   = K + 1;
+    constexpr std::uint64_t p   = static_cast<std::uint64_t>(grid_numerator(notch_of<Out>));
+    constexpr std::uint64_t q   = static_cast<std::uint64_t>(grid_denominator(notch_of<Out>));
+    const bool              neg = y.negative();
+    const wide_uint<K>      mag{neg ? -y : y};
+    std::uint64_t           a[N];
     a[K]     = limb::mul_1(a, mag.Word, K, q);
     auto bit = [&](int i) -> bool {
         const std::size_t w = static_cast<std::size_t>(i / 64);
@@ -338,15 +339,15 @@ constexpr wide_sint<K + 2> fast_index(const wide_sint<K>& y, int S) noexcept {
             if (a[w] != 0)
                 return true;
         const int rest = n % 64;
-        return full < N && rest != 0 && (a[full] & ((umax{1} << rest) - 1)) != 0;
+        return full < N && rest != 0 && (a[full] & ((std::uint64_t{1} << rest) - 1)) != 0;
     };
     const bool half_bit = bit(S - 1), below_half = sticky(S - 1);
     const bool low_zero = !half_bit && !below_half;
     const int  vs_half  = !half_bit ? -1 : below_half ? 1 : 0;
     // hi = a >> S
-    umax hi[N];
+    std::uint64_t hi[N];
     limb::shift_right(hi, N, a, N, S);
-    umax r = 0;
+    std::uint64_t r = 0;
     if constexpr (p != 1)
         r = limb::div_1(hi, hi, N, p);
     J m{0};
@@ -368,22 +369,22 @@ constexpr wide_sint<K + 2> fast_index(const wide_sint<K>& y, int S) noexcept {
 // (Its limb loops stay written out: on limb::mul_1 / shift_right / div_1,
 // shared with fast_index, the math_integer workload grows by about 10%.)
 template <insidable Out, round_mode M, std::size_t K>
-constexpr bool decide_fast(const wide_sint<K>& y, umax e, int S, wide_sint<K + 2>& index) noexcept {
-    using J                       = wide_sint<K + 2>;
-    constexpr std::size_t N       = K + 1; // |y|·q fits K + 1 limbs
-    constexpr umax        p       = static_cast<umax>(grid_numerator(notch_of<Out>));
-    constexpr umax        q       = static_cast<umax>(grid_denominator(notch_of<Out>));
-    constexpr bool        nearest = M == round_mode::nearest || M == round_mode::half_even;
-    const bool            neg     = y.negative();
-    const wide_uint<K>    mag{neg ? -y : y};
-    umax                  u[N]{};
+constexpr bool decide_fast(const wide_sint<K>& y, std::uint64_t e, int S, wide_sint<K + 2>& index) noexcept {
+    using J                         = wide_sint<K + 2>;
+    constexpr std::size_t   N       = K + 1; // |y|·q fits K + 1 limbs
+    constexpr std::uint64_t p       = static_cast<std::uint64_t>(grid_numerator(notch_of<Out>));
+    constexpr std::uint64_t q       = static_cast<std::uint64_t>(grid_denominator(notch_of<Out>));
+    constexpr bool          nearest = M == round_mode::nearest || M == round_mode::half_even;
+    const bool              neg     = y.negative();
+    const wide_uint<K>      mag{neg ? -y : y};
+    std::uint64_t           u[N]{};
     {
-        umax carry = 0;
+        std::uint64_t carry = 0;
         for (std::size_t i = 0; i < K; ++i) {
-            const limb::pair<umax> t = limb::mul(mag.Word[i], q);
-            umax                   c = 0;
-            u[i]                     = limb::add_carry(t.Lo, carry, c);
-            carry                    = t.Hi + c;
+            const limb::pair<std::uint64_t> t = limb::mul(mag.Word[i], q);
+            std::uint64_t                   c = 0;
+            u[i]                              = limb::add_carry(t.Lo, carry, c);
+            carry                             = t.Hi + c;
         }
         u[K] = carry;
     }
@@ -393,24 +394,24 @@ constexpr bool decide_fast(const wide_sint<K>& y, umax e, int S, wide_sint<K + 2
         const int         b = (S - 1) % 64;
         if (w >= N)
             return false;
-        umax carry = 0;
-        u[w]       = limb::add_carry(u[w], p << b, carry);
+        std::uint64_t carry = 0;
+        u[w]                = limb::add_carry(u[w], p << b, carry);
         if (w + 1 < N)
             u[w + 1] = limb::add_carry(u[w + 1], b == 0 ? 0 : p >> (64 - b), carry);
         for (std::size_t i = w + 2; i < N; ++i)
-            u[i] = limb::add_carry(u[i], umax{0}, carry);
+            u[i] = limb::add_carry(u[i], std::uint64_t{0}, carry);
         if (carry != 0)
             return false;
     }
     // The ends u − E and u + E, E = e·q.
-    const limb::pair<umax> E = limb::mul(e, q);
-    umax                   lo[N], hi[N];
+    const limb::pair<std::uint64_t> E = limb::mul(e, q);
+    std::uint64_t                   lo[N], hi[N];
     {
-        umax borrow = 0, carry = 0;
+        std::uint64_t borrow = 0, carry = 0;
         for (std::size_t i = 0; i < N; ++i) {
-            const umax ei = i == 0 ? E.Lo : i == 1 ? E.Hi : 0;
-            lo[i]         = limb::sub_borrow(u[i], ei, borrow);
-            hi[i]         = limb::add_carry(u[i], ei, carry);
+            const std::uint64_t ei = i == 0 ? E.Lo : i == 1 ? E.Hi : 0;
+            lo[i]                  = limb::sub_borrow(u[i], ei, borrow);
+            hi[i]                  = limb::add_carry(u[i], ei, carry);
         }
         if (borrow != 0 || carry != 0)
             return false; // near 0, or past the limbs
@@ -422,18 +423,18 @@ constexpr bool decide_fast(const wide_sint<K>& y, umax e, int S, wide_sint<K + 2
     for (std::size_t i = 0; i < ws && i < N; ++i)
         low_nonzero = low_nonzero || lo[i] != 0;
     if (ws < N && bs != 0)
-        low_nonzero = low_nonzero || (lo[ws] & ((umax{1} << bs) - 1)) != 0;
-    umax hl[N]{}, hh[N]{};
+        low_nonzero = low_nonzero || (lo[ws] & ((std::uint64_t{1} << bs) - 1)) != 0;
+    std::uint64_t hl[N]{}, hh[N]{};
     for (std::size_t i = 0; i + ws < N; ++i) {
-        const umax l0 = lo[i + ws], l1 = i + ws + 1 < N ? lo[i + ws + 1] : 0;
-        const umax h0 = hi[i + ws], h1 = i + ws + 1 < N ? hi[i + ws + 1] : 0;
+        const std::uint64_t l0 = lo[i + ws], l1 = i + ws + 1 < N ? lo[i + ws + 1] : 0;
+        const std::uint64_t h0 = hi[i + ws], h1 = i + ws + 1 < N ? hi[i + ws + 1] : 0;
         hl[i] = bs == 0 ? l0 : (l0 >> bs) | (l1 << (64 - bs));
         hh[i] = bs == 0 ? h0 : (h0 >> bs) | (h1 << (64 - bs));
     }
     // δ = hh − hl, one limb at most.
-    umax delta;
+    std::uint64_t delta;
     {
-        umax borrow = 0, d[N];
+        std::uint64_t borrow = 0, d[N];
         for (std::size_t i = 0; i < N; ++i)
             d[i] = limb::sub_borrow(hh[i], hl[i], borrow);
         for (std::size_t i = 1; i < N; ++i)
@@ -443,12 +444,12 @@ constexpr bool decide_fast(const wide_sint<K>& y, umax e, int S, wide_sint<K + 2
     }
     // B = ⌊hl/p⌋, r = hl mod p: same cell when r + δ < p; strictly inside
     // when lo is not on the cell's lower edge.
-    umax r = 0;
+    std::uint64_t r = 0;
     if constexpr (p != 1)
         for (std::size_t i = N; i-- > 0;) {
-            const limb::pair<umax> d = limb::div(r, hl[i], p);
-            hl[i]                    = d.Hi;
-            r                        = d.Lo;
+            const limb::pair<std::uint64_t> d = limb::div(r, hl[i], p);
+            hl[i]                             = d.Hi;
+            r                                 = d.Lo;
         }
     if (!(delta < p - r))
         return false;
@@ -457,16 +458,16 @@ constexpr bool decide_fast(const wide_sint<K>& y, umax e, int S, wide_sint<K + 2
     // Strictly inside: ⌊u/D⌋ = B and ⌈u/D⌉ = B + 1. Rounding the magnitude
     // up is ceil for a positive value and floor for a negative one. Then
     // the offset ±B − base, on the limbs.
-    umax up = 0;
+    std::uint64_t up = 0;
     if constexpr (!nearest && M != round_mode::trunc)
         up = (M == round_mode::ceil) != neg ? 1 : 0;
-    constexpr J base  = static_cast<J>(slot_base<Out>);
-    umax        carry = up, sign_borrow = 0, borrow = 0;
+    constexpr J   base  = static_cast<J>(slot_base<Out>);
+    std::uint64_t carry = up, sign_borrow = 0, borrow = 0;
     for (std::size_t i = 0; i < N + 1; ++i) {
-        umax w = limb::add_carry(i < N ? hl[i] : umax{0}, umax{0}, carry); // B (+1)
+        std::uint64_t w = limb::add_carry(i < N ? hl[i] : std::uint64_t{0}, std::uint64_t{0}, carry); // B (+1)
         if (neg)
-            w = limb::sub_borrow(umax{0}, w, sign_borrow);
-        index.Word[i] = limb::sub_borrow(w, static_cast<umax>(base.Word[i]), borrow);
+            w = limb::sub_borrow(std::uint64_t{0}, w, sign_borrow);
+        index.Word[i] = limb::sub_borrow(w, static_cast<std::uint64_t>(base.Word[i]), borrow);
     }
     return true;
 }
@@ -484,9 +485,9 @@ constexpr decision<Out, K> decide(const approx<K>& a) noexcept {
     };
     if (a.Error == 0)
         return {true, index(a.Value)};
-    // "unresolved" (~umax{0}) at every width, and an error past wide_sint<1>'s
+    // "unresolved" (~std::uint64_t{0}) at every width, and an error past wide_sint<1>'s
     // range, which would come out negative and invert the interval: undecided.
-    if (a.Error == ~umax{0} || (K == 1 && !std::in_range<imax>(a.Error))) [[unlikely]]
+    if (a.Error == ~std::uint64_t{0} || (K == 1 && !std::in_range<std::int64_t>(a.Error))) [[unlikely]]
         return {false, I{}};
     const I lo = index(a.Value - e), hi = index(a.Value + e);
     // Both ends past the same end of Out's range also decide: the policy
@@ -505,7 +506,7 @@ constexpr decision<Out, K> decide(const approx<K>& a) noexcept {
 template <insidable Out, std::size_t K>
 constexpr bool quick_slot(const approx<K>& a, wide_sint<K + 2>& index) noexcept {
     if constexpr (notch_fits64<Out>)
-        return a.Scale >= 1 && a.Error != 0 && a.Error != ~umax{0} &&
+        return a.Scale >= 1 && a.Error != 0 && a.Error != ~std::uint64_t{0} &&
                decide_fast<Out, out_rounding<Out>>(a.Value, a.Error, a.Scale, index);
     else
         return false;
@@ -675,20 +676,22 @@ inline constexpr int table_slots = BEMAN_INSIDE_MATH_INSTRUMENT ? 0 : 256;
 
 // A slot offset i of Out, or −1 when it falls outside Out's range.
 template <insidable Out, typename I>
-constexpr imax slot_in_range(const I& i) {
-    return in_slots<Out>(i) ? static_cast<imax>(i) : imax{-1};
+constexpr std::int64_t slot_in_range(const I& i) {
+    return in_slots<Out>(i) ? static_cast<std::int64_t>(i) : std::int64_t{-1};
 }
 
 // Out's slot offset for core's result (escalating as evaluate does), or
 // −1 when it falls outside Out's range or needs the deep step (too costly per
 // slot at compile time) or the guess.
 template <insidable Out, int W0, typename Core>
-constexpr imax slot_of(const Core& core) {
+constexpr std::int64_t slot_of(const Core& core) {
     if constexpr (requires { core.exact(); })
         if (const auto e = core.exact())
             return slot_in_range<Out>(exact_index<Out, out_rounding<Out>>(*e).Index);
     return escalate<Out, W0, precision_cap(W0)>(
-        core, [](const auto& index) { return slot_in_range<Out>(index); }, [](const auto&) { return imax{-1}; });
+        core,
+        [](const auto& index) { return slot_in_range<Out>(index); },
+        [](const auto&) { return std::int64_t{-1}; });
 }
 
 template <insidable In>
@@ -703,31 +706,32 @@ inline constexpr bool table_output = notched<Out> && !wide_valued<Out>;
 // whatever the signs (an input straddling 2^63 has both).
 template <insidable In>
 constexpr std::size_t offset_of(const In& x) noexcept {
-    return static_cast<std::size_t>(static_cast<umax>(value_index<imax>(x)) - static_cast<umax>(slot_base<In>));
+    return static_cast<std::size_t>(static_cast<std::uint64_t>(value_index<std::int64_t>(x)) -
+                                    static_cast<std::uint64_t>(slot_base<In>));
 }
 
 // T's grid point at slot offset k (a notched, integer raw).
 template <insidable T>
-constexpr T at_slot(umax k) noexcept {
+constexpr T at_slot(std::uint64_t k) noexcept {
     return T::from_raw(raw_from_offset<T>(k));
 }
 
 // Out's slot for In's slot I, or −1 past Out's range: one constant
 // expression per entry, so each has the compiler's whole evaluation budget.
 template <insidable Out, insidable In, int W0, auto MakeCore, std::size_t I>
-inline constexpr imax table_slot = slot_of<Out, W0>(MakeCore(at_slot<In>(I)));
+inline constexpr std::int64_t table_slot = slot_of<Out, W0>(MakeCore(at_slot<In>(I)));
 
 // Out's raw for slot offset I (a table output is an integer raw).
 template <insidable Out>
-constexpr raw_t<Out> table_raw(imax i) noexcept {
-    return raw_from_offset<Out>(static_cast<umax>(i));
+constexpr raw_t<Out> table_raw(std::int64_t i) noexcept {
+    return raw_from_offset<Out>(static_cast<std::uint64_t>(i));
 }
 
 // Out's raws for every In slot; Valid when all lie in Out's range. MakeCore
 // builds the core from an In value.
 template <insidable Out, insidable In, int W0, auto MakeCore>
 struct result_table {
-    static constexpr std::size_t N = static_cast<std::size_t>(static_cast<imax>(grid_of<In>.step_count())) + 1;
+    static constexpr std::size_t N = static_cast<std::size_t>(static_cast<std::int64_t>(grid_of<In>.step_count())) + 1;
     struct data {
         std::array<raw_t<Out>, N> Raw;
         bool                      Valid;
@@ -775,12 +779,12 @@ constexpr int series_guard(int W) noexcept { return std::bit_width(static_cast<u
 template <std::size_t K>
 constexpr wide_sint<K> inverse_series(int n, int sign, int G) noexcept {
     using I = wide_sint<K>;
-    I p     = div_small(I{1} << G, static_cast<umax>(n)); // 2^G / n^(2k+1)
+    I p     = div_small(I{1} << G, static_cast<std::uint64_t>(n)); // 2^G / n^(2k+1)
     I sum{0};
     for (int k = 0; !p.is_zero(); ++k) {
-        const I t = div_small(p, static_cast<umax>(2 * k + 1));
+        const I t = div_small(p, static_cast<std::uint64_t>(2 * k + 1));
         sum       = (k % 2 != 0 && sign < 0) ? sum - t : sum + t;
-        p         = div_small(p, static_cast<umax>(n) * static_cast<umax>(n));
+        p         = div_small(p, static_cast<std::uint64_t>(n) * static_cast<std::uint64_t>(n));
     }
     return sum;
 }
@@ -816,12 +820,12 @@ inline constexpr fixed_t<W + 4> ln10_q = [] {
 // Exact integer helpers.
 //---------------------------------------------------------------------------
 // ⌊√t⌋ for one limb: Newton from above.
-constexpr umax isqrt64(umax t) noexcept {
+constexpr std::uint64_t isqrt64(std::uint64_t t) noexcept {
     if (t < 2)
         return t;
-    umax x = umax{1} << ((std::bit_width(t) + 1) / 2);
+    std::uint64_t x = std::uint64_t{1} << ((std::bit_width(t) + 1) / 2);
     for (;;) {
-        const umax y = (x + t / x) >> 1;
+        const std::uint64_t y = (x + t / x) >> 1;
         if (y >= x)
             return x;
         x = y;
@@ -829,11 +833,11 @@ constexpr umax isqrt64(umax t) noexcept {
 }
 // ⌊∛t⌋ digit by digit, no division (Hacker's Delight 11-2): each step
 // brings down three bits and appends one bit to the root.
-constexpr umax icbrt64(umax t) noexcept {
-    umax y = 0;
+constexpr std::uint64_t icbrt64(std::uint64_t t) noexcept {
+    std::uint64_t y = 0;
     for (int s = 63; s >= 0; s -= 3) {
         y <<= 1;
-        const umax b = 3 * y * (y + 1) + 1;
+        const std::uint64_t b = 3 * y * (y + 1) + 1;
         if ((t >> s) >= b) {
             t -= b << s;
             y += 1;
@@ -845,7 +849,7 @@ constexpr umax icbrt64(umax t) noexcept {
 // The N-th root (N = 2, 3) helpers: the 64-bit root, and a shift that keeps
 // `keep` top bits and is a multiple of N (so the root shifts back by sh / N).
 template <int N>
-constexpr umax iroot64(umax t) noexcept {
+constexpr std::uint64_t iroot64(std::uint64_t t) noexcept {
     if constexpr (N == 2)
         return isqrt64(t);
     else
@@ -860,12 +864,13 @@ constexpr int iroot_shift(int bw, int keep) noexcept {
 // ⌊√t⌋ / ⌊∛t⌋ for two limbs: Newton from above on 128-bit words, seeded from
 // the root of the top 62 (√) or 63 (∛) bits; each quotient fits one limb.
 template <int N>
-constexpr umax iroot128(unsigned __int128 t) noexcept {
+constexpr std::uint64_t iroot128(unsigned __int128 t) noexcept {
     if ((t >> 64) == 0)
-        return iroot64<N>(static_cast<umax>(t));
-    const int         bw = 128 - std::countl_zero(static_cast<umax>(t >> 64));
+        return iroot64<N>(static_cast<std::uint64_t>(t));
+    const int         bw = 128 - std::countl_zero(static_cast<std::uint64_t>(t >> 64));
     const int         sh = iroot_shift<N>(bw, N == 2 ? 62 : 63);
-    unsigned __int128 x  = static_cast<unsigned __int128>(iroot64<N>(static_cast<umax>(t >> sh)) + 1) << (sh / N);
+    unsigned __int128 x  = static_cast<unsigned __int128>(iroot64<N>(static_cast<std::uint64_t>(t >> sh)) + 1)
+                           << (sh / N);
     for (;;) {
         unsigned __int128 y;
         if constexpr (N == 2)
@@ -873,7 +878,7 @@ constexpr umax iroot128(unsigned __int128 t) noexcept {
         else
             y = (2 * x + t / (x * x)) / 3;
         if (!(y < x))
-            return static_cast<umax>(x);
+            return static_cast<std::uint64_t>(x);
         x = y;
     }
 }
@@ -892,24 +897,24 @@ constexpr wide_sint<K> iroot(const wide_sint<K>& n) noexcept {
         return n;
     const int bw = bit_width_of(n);
     if (bw <= 64)
-        return I{iroot64<N>(static_cast<umax>(n))};
+        return I{iroot64<N>(static_cast<std::uint64_t>(n))};
     I   x{};
     int seed = 0;
 #if !BEMAN_INSIDE_HAS_INT128
     // (No 128-bit integer: the root of the top 61 to 63 bits seeds Newton
     // from above with about 30 (√) or 20 (∛) correct bits.)
     const int sh = iroot_shift<N>(bw, N == 2 ? 62 : 63);
-    x            = (I{iroot64<N>(static_cast<umax>(n >> sh))} + I{1}) << (sh / N);
+    x            = (I{iroot64<N>(static_cast<std::uint64_t>(n >> sh))} + I{1}) << (sh / N);
     seed         = N == 2 ? 30 : 20;
 #else
     if constexpr (K < 2)
-        return I{iroot64<N>(static_cast<umax>(n))};
+        return I{iroot64<N>(static_cast<std::uint64_t>(n))};
     else {
         const int               sh  = bw > 126 ? iroot_shift<N>(bw, 126) : 0;
         const I                 top = n >> sh;
-        const unsigned __int128 t =
-            (static_cast<unsigned __int128>(static_cast<umax>(top.Word[1])) << 64) | static_cast<umax>(top.Word[0]);
-        const umax r = iroot128<N>(t);
+        const unsigned __int128 t   = (static_cast<unsigned __int128>(static_cast<std::uint64_t>(top.Word[1])) << 64) |
+                                      static_cast<std::uint64_t>(top.Word[0]);
+        const std::uint64_t     r   = iroot128<N>(t);
         if (sh == 0)
             return I{r};
         x    = (I{r} + I{1}) << (sh / N); // ≥ the root, within 2^-61 (√) or 2^-40 (∛) of it
@@ -967,8 +972,8 @@ constexpr wide_rational<K> inverse(const wide_rational<K>& f) noexcept {
 //---------------------------------------------------------------------------
 template <std::size_t K>
 struct fixed_approx {
-    wide_sint<K> Value;
-    umax         Error;
+    wide_sint<K>  Value;
+    std::uint64_t Error;
 };
 
 // A positive double as mantissa·2^exponent, so a term bound far below the
@@ -1026,14 +1031,14 @@ inline constexpr auto series_coef = [] {
     I                                 v = I{1} << (S + G);
     for (int k = 0; k <= N; ++k) {
         if constexpr (Kind == series::atanh)
-            v = div_small(I{1} << (S + G), static_cast<umax>(2 * k + 1));
+            v = div_small(I{1} << (S + G), static_cast<std::uint64_t>(2 * k + 1));
         else if constexpr (Kind == series::log1p)
-            v = div_small(I{1} << (S + G), static_cast<umax>(k + 1));
+            v = div_small(I{1} << (S + G), static_cast<std::uint64_t>(k + 1));
         else if (k > 0) {
             const int d = Kind == series::exp                             ? k
                           : (Kind == series::sin || Kind == series::sinh) ? (2 * k) * (2 * k + 1)
                                                                           : (2 * k - 1) * (2 * k);
-            v           = div_small(v, static_cast<umax>(d));
+            v           = div_small(v, static_cast<std::uint64_t>(d));
         }
         const bool neg =
             (Kind == series::sin || Kind == series::cos || Kind == series::log1p || Alternate) && k % 2 != 0;
@@ -1056,18 +1061,18 @@ constexpr wide_sint<K> horner(const wide_sint<K>& x) noexcept {
 
 // e^r for |r| ≤ 0.36, r within dr units.
 template <int S, std::size_t K>
-constexpr fixed_approx<K> exp_series(const wide_sint<K>& r, umax dr) noexcept {
+constexpr fixed_approx<K> exp_series(const wide_sint<K>& r, std::uint64_t dr) noexcept {
     return {horner<series::exp, S, false>(r), 2 * dr + 8};
 }
 
 // sin r and cos r for |r| ≤ 0.8, r within dr units.
 template <int S, std::size_t K>
-constexpr fixed_approx<K> sin_series(const wide_sint<K>& r, umax dr) noexcept {
+constexpr fixed_approx<K> sin_series(const wide_sint<K>& r, std::uint64_t dr) noexcept {
     const wide_sint<K> z = mul_q(r, r, S);
     return {mul_q(r, horner<series::sin, S, false>(z), S), 3 * dr + 12};
 }
 template <int S, std::size_t K>
-constexpr fixed_approx<K> cos_series(const wide_sint<K>& r, umax dr) noexcept {
+constexpr fixed_approx<K> cos_series(const wide_sint<K>& r, std::uint64_t dr) noexcept {
     return {horner<series::cos, S, false>(mul_q(r, r, S)), 4 * dr + 12};
 }
 
@@ -1085,16 +1090,16 @@ inline constexpr auto log_table = [] {
     std::array<entry, log_tab_hi - log_tab_lo + 1> t{};
     for (int j = log_tab_lo; j <= log_tab_hi; ++j) {
         // log(j/32) = 2·atanh(z), z = (j − 32)/(j + 32), |z| ≤ 0.19.
-        const I z  = div_small(I{j - 32} << T, static_cast<umax>(j + 32));
+        const I z  = div_small(I{j - 32} << T, static_cast<std::uint64_t>(j + 32));
         const I z2 = mul_q(z, z, T);
         I       p  = z, sum{0};
         for (int k = 0; !p.is_zero(); ++k) {
-            sum += div_small(p, static_cast<umax>(2 * k + 1));
+            sum += div_small(p, static_cast<std::uint64_t>(2 * k + 1));
             p = mul_q(p, z2, T);
         }
         auto& e = t[static_cast<std::size_t>(j - log_tab_lo)];
         e.Log   = static_cast<fixed_t<S + 2>>(round_shift(sum << 1, T - S));
-        e.Inv   = static_cast<fixed_t<S + 8>>(round_shift(div_small(I{32} << T, static_cast<umax>(j)), T - S));
+        e.Inv = static_cast<fixed_t<S + 8>>(round_shift(div_small(I{32} << T, static_cast<std::uint64_t>(j)), T - S));
     }
     return t;
 }();
@@ -1102,9 +1107,9 @@ inline constexpr auto log_table = [] {
 // log m for m in [0.7, 1.42], m within dm units, with no division: j =
 // round(32m), u = m·(32/j) − 1 (|u| ≤ 1/44), log m = log(j/32) + log(1 + u).
 template <int S, std::size_t K>
-constexpr fixed_approx<K> log_series(const wide_sint<K>& m, umax dm) noexcept {
+constexpr fixed_approx<K> log_series(const wide_sint<K>& m, std::uint64_t dm) noexcept {
     using I       = wide_sint<K>;
-    int j         = static_cast<int>(static_cast<imax>(round_shift(m, S - 5)));
+    int j         = static_cast<int>(static_cast<std::int64_t>(round_shift(m, S - 5)));
     j             = std::clamp(j, log_tab_lo, log_tab_hi);
     const auto& e = log_table<S>[static_cast<std::size_t>(j - log_tab_lo)];
     const I     u = mul_q(m, static_cast<I>(e.Inv), S) - one_q<K>(S); // within 1.5·dm + 2
@@ -1115,7 +1120,7 @@ constexpr fixed_approx<K> log_series(const wide_sint<K>& m, umax dm) noexcept {
 // atan u for |u| ≤ 1/16 (the atanh table, sized for 0.18, with
 // alternating signs), u within du units.
 template <int S, std::size_t K>
-constexpr fixed_approx<K> atan_series(const wide_sint<K>& u, umax du) noexcept {
+constexpr fixed_approx<K> atan_series(const wide_sint<K>& u, std::uint64_t du) noexcept {
     return {mul_q(u, horner<series::atanh, S, true>(mul_q(u, u, S)), S), du + 6};
 }
 
@@ -1133,12 +1138,12 @@ constexpr wide_sint<K> sqrt_q(const wide_sint<K>& a, int S) noexcept {
 template <int S, std::size_t K>
 constexpr wide_sint<K> rsqrt_q(const wide_sint<K>& m) noexcept {
     using R = fixed_t<S + 34>;
-    const R       mr{m};
-    const umax    mm    = static_cast<umax>(S >= 60 ? mr >> (S - 60) : mr << (60 - S)); // m·2^60 < 2^62
-    const umax    sd    = isqrt64(mm);                                                  // √m·2^30, ≥ 2^29
-    R             y     = div_small(R{1} << (S + 30), sd);
-    const R       three = R{3} << S;
-    constexpr int steps = [] {
+    const R             mr{m};
+    const std::uint64_t mm    = static_cast<std::uint64_t>(S >= 60 ? mr >> (S - 60) : mr << (60 - S)); // m·2^60 < 2^62
+    const std::uint64_t sd    = isqrt64(mm); // √m·2^30, ≥ 2^29
+    R                   y     = div_small(R{1} << (S + 30), sd);
+    const R             three = R{3} << S;
+    constexpr int       steps = [] {
         int n = 0;
         for (int p = 29; p < S + 4; p *= 2)
             ++n;
@@ -1166,7 +1171,7 @@ inline constexpr auto atan_eighths = [] {
         const I t2 = mul_q(t, t, T);
         I       p  = t, sum{0};
         for (int k = 0; !p.is_zero(); ++k) {
-            const I term = div_small(p, static_cast<umax>(2 * k + 1));
+            const I term = div_small(p, static_cast<std::uint64_t>(2 * k + 1));
             sum          = (k % 2 == 0) ? sum + term : sum - term;
             p            = mul_q(p, t2, T);
         }
@@ -1178,11 +1183,11 @@ inline constexpr auto atan_eighths = [] {
 // atan t for |t| ≤ 1, t within dt units: c = j/8 nearest t, then
 // atan t = atan c + atan((t − c)/(1 + t·c)) with |(t − c)/(1 + t·c)| ≤ 1/16.
 template <int S, std::size_t K>
-constexpr fixed_approx<K> atan_fixed(const wide_sint<K>& t, umax dt) noexcept {
+constexpr fixed_approx<K> atan_fixed(const wide_sint<K>& t, std::uint64_t dt) noexcept {
     using I                    = wide_sint<K>;
     const I               one  = one_q<K>(S);
     const I               j    = round_shift(t, S - 3); // round(8t), in [−8, 8]
-    const int             jj   = static_cast<int>(static_cast<imax>(j));
+    const int             jj   = static_cast<int>(static_cast<std::int64_t>(j));
     const I               c    = j << (S - 3);                          // exact
     const I               u    = div_q(t - c, one + mul_q(t, c, S), S); // within dt + 2
     const fixed_approx<K> a    = atan_series<S>(u, dt + 2);
@@ -1197,7 +1202,7 @@ inline constexpr fixed_t<S + 2> sqrt2_q = static_cast<fixed_t<S + 2>>(isqrt(fixe
 // log a for a ≥ 1 at scale S (so b ≥ 0), a within da units: a = m·2^b with
 // m in [0.7, 1.42], log a = log m + b·ln 2.
 template <int S, std::size_t K>
-constexpr fixed_approx<K> log_fixed(const wide_sint<K>& a, umax da) noexcept {
+constexpr fixed_approx<K> log_fixed(const wide_sint<K>& a, std::uint64_t da) noexcept {
     using I = wide_sint<K>;
     int b   = bit_width_of(a) - 1 - S; // 2^b ≤ a/2^S < 2^(b+1)
     I   m   = b >= 0 ? a >> b : a << (-b);
@@ -1205,9 +1210,9 @@ constexpr fixed_approx<K> log_fixed(const wide_sint<K>& a, umax da) noexcept {
         ++b;
         m = b >= 0 ? a >> b : a << (-b);
     }
-    const umax            dm = shr_bound(da, b) + 1;
+    const std::uint64_t   dm = shr_bound(da, b) + 1;
     const fixed_approx<K> l  = log_series<S>(m, dm);
-    return {l.Value + I{b} * static_cast<I>(ln2_q<S>), l.Error + static_cast<umax>(b < 0 ? -b : b) + 1};
+    return {l.Value + I{b} * static_cast<I>(ln2_q<S>), l.Error + static_cast<std::uint64_t>(b < 0 ? -b : b) + 1};
 }
 
 // 1/ln 2 and 2/π at scale S (within 1 unit), for range reduction by a
@@ -1229,7 +1234,7 @@ inline constexpr fixed_t<S + 2> two_over_pi_q = inverse_q<S>(pi_q<S + 16>, 1);
 // hair (the series covers 0.36). Past KMax the value lies above 2^(KMax+1)
 // (approx::beyond); below 2^-(S+1), approx::below.
 template <int S, std::size_t K>
-constexpr approx<K> exp_fixed(const wide_sint<K>& t, umax dt, int KMax) noexcept {
+constexpr approx<K> exp_fixed(const wide_sint<K>& t, std::uint64_t dt, int KMax) noexcept {
     using I   = wide_sint<K>;
     const I k = round_shift(mul_q(t, static_cast<I>(log2e_q<S>), S), S);
     if (I{KMax} < k)
@@ -1237,8 +1242,8 @@ constexpr approx<K> exp_fixed(const wide_sint<K>& t, umax dt, int KMax) noexcept
     if (k < I{-(S + 2)})
         return approx<K>::below(S);
     const fixed_approx<K> e  = exp_series<S>(t - k * static_cast<I>(ln2_q<S>), 0);
-    const int             kk = static_cast<int>(static_cast<imax>(k));
-    const umax            ak = static_cast<umax>(kk < 0 ? -kk : kk);
+    const int             kk = static_cast<int>(static_cast<std::int64_t>(k));
+    const std::uint64_t   ak = static_cast<std::uint64_t>(kk < 0 ? -kk : kk);
     return {e.Value, S - kk, e.Error + 2 * (dt + ak + 1)};
 }
 } // namespace beman::inside::math::detail::engine

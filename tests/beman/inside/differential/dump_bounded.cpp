@@ -22,10 +22,10 @@ using Cs = inside<{{-40, 40}, max_denominator{1000}}, round_toward_zero>;
 using Ce = inside<{{-40, 40}, max_denominator{1000}}>;
 
 template <class T>
-T pick_fraction(rng_t& g, imax lo, imax hi, imax max_den) {
+T pick_fraction(rng_t& g, std::int64_t lo, std::int64_t hi, std::int64_t max_den) {
     for (;;) {
-        const imax d = 1 + static_cast<imax>(g() % static_cast<std::uint64_t>(max_den));
-        const imax k = lo * d + static_cast<imax>(g() % static_cast<std::uint64_t>((hi - lo) * d + 1));
+        const std::int64_t d = 1 + static_cast<std::int64_t>(g() % static_cast<std::uint64_t>(max_den));
+        const std::int64_t k = lo * d + static_cast<std::int64_t>(g() % static_cast<std::uint64_t>((hi - lo) * d + 1));
         if (const auto t = T::try_make(rational{k, d}))
             return *t;
     }

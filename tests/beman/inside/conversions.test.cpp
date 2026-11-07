@@ -154,11 +154,11 @@ TEST(InsideToTest, inside_to_rational_conversion) {
 TEST(InsideToTest, integers_are_read_with_as_or_to) {
     using narrow = inside<{0, 100}>;
     using wide   = inside<{0, std::numeric_limits<std::uint64_t>::max()}>;
-    static_assert(!std::is_convertible_v<narrow, imax>);
+    static_assert(!std::is_convertible_v<narrow, std::int64_t>);
     static_assert(!std::is_convertible_v<narrow, std::size_t>);
-    static_assert(!std::is_convertible_v<wide, imax>);
+    static_assert(!std::is_convertible_v<wide, std::int64_t>);
     static_assert(!std::is_convertible_v<wide, std::size_t>);
-    ASSERT_EQ(narrow{42}.as<imax>(), 42);
+    ASSERT_EQ(narrow{42}.as<std::int64_t>(), 42);
     // A grid past T's range reports the value that does not fit.
     ASSERT_EQ(narrow{42}.to<std::int8_t>(), std::int8_t{42});
     ASSERT_EQ((inside<{0, 300}>{300}.to<std::uint8_t>()), std::unexpected{errc::overflow});
@@ -198,11 +198,11 @@ TEST(InsideToTest, as_t_is_a_non_expected_shortcut_for_to_t_value) {
     using frac   = inside<{{0, 100}, per<10>}, round_nearest>;
 
     // Matches the integer-extraction value path.
-    ASSERT_TRUE(narrow{42}.as<imax>() == 42);
+    ASSERT_TRUE(narrow{42}.as<std::int64_t>() == 42);
     ASSERT_TRUE(narrow{42}.as<std::size_t>() == 42u);
 
-    // Fractional notch: extracting to imax rounds by the type's mode (matches to<imax>()).
-    ASSERT_TRUE(frac{7.5}.as<imax>() == 8);
+    // Fractional notch: extracting to int64 rounds by the type's mode (matches to<std::int64_t>()).
+    ASSERT_TRUE(frac{7.5}.as<std::int64_t>() == 8);
 
     // Double target behaves the same as `to<T>().value()`; the inside -> rational
     // conversion is the implicit operator.
@@ -211,10 +211,10 @@ TEST(InsideToTest, as_t_is_a_non_expected_shortcut_for_to_t_value) {
 
     // Free-function forms — template-friendly (no `.template` disambiguator),
     // found by ADL, same semantics as the members.
-    ASSERT_TRUE(as<imax>(narrow{42}) == 42);
+    ASSERT_TRUE(as<std::int64_t>(narrow{42}) == 42);
     ASSERT_TRUE(as<double>(frac{7.5}) == 7.5);
-    ASSERT_TRUE(to<imax>(frac{7.5}) == 8);
-    ASSERT_TRUE((to<imax, round_floor>(frac{7.5}) == 7));
+    ASSERT_TRUE(to<std::int64_t>(frac{7.5}) == 8);
+    ASSERT_TRUE((to<std::int64_t, round_floor>(frac{7.5}) == 7));
     ASSERT_TRUE(to<double>(narrow{3}) == 3.0);
 }
 
@@ -239,7 +239,7 @@ TEST(InsideToTest, as_floating_shares_operator_double_s_policy_gate) {
     static_assert(has_member_to<strict_b, double>);
 
     // Integral as<> is not policy-gated.
-    static_assert(has_member_as<strict_b, imax>);
+    static_assert(has_member_as<strict_b, std::int64_t>);
 
     // A rounding flag opens the gate.
     static_assert(has_member_as<rounded_b, double>);
@@ -356,7 +356,7 @@ TEST(ConstantTest, just_0_and_just_1_assign_across_storage_kinds) {
     // Q8.8: value 1 is raw 256.
     static_assert([] {
         inside<{{0, 1}, 0x1p-8_r}> b = just<1>;
-        return static_cast<imax>(b.raw()) == 256;
+        return static_cast<std::int64_t>(b.raw()) == 256;
     }());
 
     // assignment operator (not just construction)
@@ -428,12 +428,12 @@ template <class B, class S>
 constexpr bool can_checked_cast = requires(S s) { checked_cast<B>(s); };
 template <class O, class I>
 constexpr bool can_abs_into = requires(I x) { math::abs_into<O>(x); };
-template <imax E, class I>
+template <std::int64_t E, class I>
 constexpr bool can_pown = requires(I x) { math::pown<E>(x); };
 template <class T, class F>
 concept compares_with_fp = requires(T t, F f) { t == f; } || requires(T t, F f) { t <=> f; };
 template <class T>
-concept casts_to_imax = requires(T t) { static_cast<imax>(t); };
+concept casts_to_int64 = requires(T t) { static_cast<std::int64_t>(t); };
 template <class T>
 concept indexes_a_vector = requires(std::vector<int>& v, T t) { v[t]; };
 
@@ -514,7 +514,7 @@ TEST(ConversionTest, predicates_decide_exactly) {
 // A double finer than a continuous grid's bound is off the grid; the
 // predicates agree with the store.
 TEST(ConversionTest, continuous_predicates_see_the_rational_store) {
-    using C        = inside<{{-1, 1}, max_denominator{imax{1} << 62}}>;
+    using C        = inside<{{-1, 1}, max_denominator{std::int64_t{1} << 62}}>;
     const double d = 0x1.644cb4ec9ec46p-20;
     EXPECT_EQ(C::try_make(d).error(), errc::rounding_error);
     EXPECT_FALSE(conversion_overflows<C>(d));
@@ -522,7 +522,7 @@ TEST(ConversionTest, continuous_predicates_see_the_rational_store) {
     EXPECT_FALSE(conversion_overflows<C>(0.25));
 }
 
-// numerator() returned imax whenever the values fit it, and wrapped a
+// numerator() returned int64 whenever the values fit it, and wrapped a
 // reduced numerator past it. It is an inside on the numerators' grid now.
 TEST(ConversionTest, numerator_past_int64) {
     using I64             = std::int64_t;
@@ -652,16 +652,16 @@ TEST(ConversionTest, to_a_dyadic_grid_lands_on_the_grid) {
 
 TEST(ConversionTest, no_implicit_integer_conversion) {
     using idx = inside<{0, 9}>;
-    static_assert(!std::is_convertible_v<idx, imax>);
+    static_assert(!std::is_convertible_v<idx, std::int64_t>);
     static_assert(!std::is_convertible_v<idx, int>);
     static_assert(!std::is_constructible_v<int, idx>);
-    static_assert(!std::is_convertible_v<inside<{{0, 9}, per<2>}, round_nearest>, imax>);
+    static_assert(!std::is_convertible_v<inside<{{0, 9}, per<2>}, round_nearest>, std::int64_t>);
     static_assert(!std::is_convertible_v<inside<{0, 10'000'000'000}>, int>); // would narrow silently
-    static_assert(!casts_to_imax<idx>);
+    static_assert(!casts_to_int64<idx>);
     static_assert(!indexes_a_vector<idx>);
 
-    idx  a{5};
-    imax val = a.as<imax>();
+    idx          a{5};
+    std::int64_t val = a.as<std::int64_t>();
     ASSERT_EQ(val, 5);
 
     using idx2 = inside<{1, 10}>;
@@ -707,16 +707,16 @@ TEST(ConversionTest, rational_of_a_fractional_q_format_value) {
 TEST(ConversionTest, fraction_and_to_value_fast_paths_match_rational) {
     using Q = inside<{-4, 4, just<1, 8>}>; // dyadic, negative Lower
     static_assert(index_storage<Q> && q_format_fits<Q>);
-    for (imax k = 0; k <= 64; ++k) {
-        Q              q = Q::from_raw(static_cast<Q::raw_type>(k));
-        const rational r{q};
-        const imax     num = static_cast<imax>((r.Den < 0) ? umax{0} - r.Num : r.Num);
+    for (std::int64_t k = 0; k <= 64; ++k) {
+        Q                  q = Q::from_raw(static_cast<Q::raw_type>(k));
+        const rational     r{q};
+        const std::int64_t num = static_cast<std::int64_t>((r.Den < 0) ? std::uint64_t{0} - r.Num : r.Num);
         EXPECT_EQ(q.numerator(), num);
-        EXPECT_EQ(q.denominator(), static_cast<imax>(abs_den(r.Den)));
+        EXPECT_EQ(q.denominator(), static_cast<std::int64_t>(abs_den(r.Den)));
     }
     using I = inside<{-30, 90, 3}>; // integer notch 3, index storage
     static_assert(index_storage<I> && integer_lattice<I>);
-    for (imax v = -30; v <= 90; v += 3) {
+    for (std::int64_t v = -30; v <= 90; v += 3) {
         I i{v};
         EXPECT_EQ(to_value(i), v);
         EXPECT_EQ(i.numerator(), v);
@@ -755,7 +755,8 @@ TEST(ConversionsArmTest, predicates_on_the_exact_paths) {
 TEST(ConversionsArmTest, rounds_on_a_point_and_past_the_64_bit_steps) {
     EXPECT_FALSE((conversion_rounds<inside<{5, 5}>>(5)));
     EXPECT_FALSE((conversion_rounds<inside<{5, 5}>>(rational{5})));
-    EXPECT_TRUE((conversion_rounds<inside<{{0, 4}, per<3>}>>(rational{(umax{1} << 63) + 1, imax{1} << 62})));
+    EXPECT_TRUE(
+        (conversion_rounds<inside<{{0, 4}, per<3>}>>(rational{(std::uint64_t{1} << 63) + 1, std::int64_t{1} << 62})));
 }
 
 // A lattice past the 64-bit rationals converts the values that fit; one
@@ -843,7 +844,7 @@ TEST(ConversionsArmTest, rational_against_a_long_double) {
 
 //---------------------------------------------------------------------------
 // Builtin integers past 64 bits (__int128 under the GNU dialects, where it is
-// std::integral): stored, compared and read exactly, never through imax or
+// std::integral): stored, compared and read exactly, never through int64 or
 // the 64-bit rational.
 //---------------------------------------------------------------------------
 #if BEMAN_INSIDE_HAS_INT128
@@ -920,7 +921,7 @@ TEST(ConversionTest, uniform_from_a_generator_past_64_bits) {
     []<class G>() {
         if constexpr (std::uniform_random_bit_generator<G>) {
             G g;
-            EXPECT_EQ(detail::random_word(g), umax{7}); // (2^64 + 7) mod 2^64
+            EXPECT_EQ(detail::random_word(g), std::uint64_t{7}); // (2^64 + 7) mod 2^64
             const auto v = uniform<inside<{0, 100}>>(g);
             EXPECT_TRUE(v >= 0 && v <= 100);
         }

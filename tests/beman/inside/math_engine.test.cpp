@@ -35,9 +35,9 @@ namespace math_adaptive_tests {
 using namespace beman::inside;
 
 namespace engine = beman::inside::math::detail::engine;
-using beman::inside::umax;
 using detail::wide_rational;
 using detail::wide_sint;
+using std::uint64_t;
 
 namespace {
 // {0, 1} in eighths, rounded to nearest / floor / ceil.
@@ -49,13 +49,13 @@ using eighths_clamp = inside<{{0, 1}, rational{1, 8}}, round_nearest | clamp>;
 using sevenths = inside<{{rational{-6, 7}, rational{15, 7}}, rational{3, 7}}, round_nearest>;
 
 template <std::size_t K>
-constexpr wide_sint<K> hex2(umax hi, umax lo) {
+constexpr wide_sint<K> hex2(std::uint64_t hi, std::uint64_t lo) {
     return (wide_sint<K>{hi} << 64) | wide_sint<K>{lo};
 }
 
 // Value v (a rational) as an approx at scale 2^W with error e units.
 template <int W>
-constexpr engine::approx<4> approx_of(rational v, umax e) {
+constexpr engine::approx<4> approx_of(rational v, std::uint64_t e) {
     return {engine::to_q<W, 4>(detail::exact_of(v)), W, e};
 }
 } // namespace
@@ -74,7 +74,7 @@ TEST(MathAdaptiveTest, constants) {
     EXPECT_TRUE(P{-1} <= dp && dp <= P{1});
     EXPECT_TRUE(L{-1} <= dl && dl <= L{1});
     // At 64 bits.
-    static_assert(static_cast<umax>(engine::ln2_q<64>) - 0xb17217f7d1cf79abULL <= 1);
+    static_assert(static_cast<std::uint64_t>(engine::ln2_q<64>) - 0xb17217f7d1cf79abULL <= 1);
 }
 
 TEST(MathAdaptiveTest, fixed_point_helpers) {
@@ -182,7 +182,7 @@ int check_rounding(Fn fn, Ref ref, int stride = 1) {
     int            bad        = 0;
     const auto     count      = static_cast<long long>(grid_of<In>.step_count());
     for (long long i = 0; i <= count; i += stride) {
-        const In x    = In::from_raw(detail::raw_from_offset<In>(static_cast<umax>(i)));
+        const In x    = In::from_raw(detail::raw_from_offset<In>(static_cast<std::uint64_t>(i)));
         const ld xv   = static_cast<ld>(static_cast<double>(x));
         const ld want = ref(xv);
         const ld got  = static_cast<ld>(static_cast<double>(fn(x)));
@@ -220,7 +220,7 @@ using tan_in = inside<{{rational{-3, 2}, rational{3, 2}}, rational{1, 512}}, rou
 using out20  = inside<{{-64, 64}, rational{1, 1 << 20}}, round_nearest>;
 using out20f = inside<{{-64, 64}, rational{1, 1 << 20}}, round_floor>;
 using outdec = inside<{{-64, 64}, rational{1, 1000}}, round_nearest>;
-using out40  = inside<{{-64, 64}, rational{1, umax{1} << 40}}, round_nearest>;
+using out40  = inside<{{-64, 64}, rational{1, std::uint64_t{1} << 40}}, round_nearest>;
 using wide20 = inside<{{-1024, 1024}, rational{1, 1 << 20}}, round_nearest>;
 } // namespace
 
@@ -373,9 +373,9 @@ using detail::big_int;
 using detail::grid_rational;
 
 consteval big_int pow2(int k) { return big_int{1} << k; }
-consteval big_int from_limbs(std::initializer_list<umax> hi_to_lo) {
+consteval big_int from_limbs(std::initializer_list<std::uint64_t> hi_to_lo) {
     big_int v{0};
-    for (umax l : hi_to_lo)
+    for (std::uint64_t l : hi_to_lo)
         v = (v << 64) + big_int{l};
     return v;
 }
@@ -493,8 +493,8 @@ int root_failures() {
         if (wn < c * c * c || !(wn < (c + W{1}) * (c + W{1}) * (c + W{1})))
             ++bad;
     };
-    umax state = 0x9E3779B97F4A7C15u;
-    auto next  = [&] {
+    std::uint64_t state = 0x9E3779B97F4A7C15u;
+    auto          next  = [&] {
         state = state * 6364136223846793005u + 1442695040888963407u;
         return state;
     };
@@ -525,7 +525,7 @@ static_assert(engine::isqrt(detail::wide_sint<4>{1} << 200) == detail::wide_sint
 static_assert(engine::isqrt((detail::wide_sint<4>{1} << 200) - detail::wide_sint<4>{1}) ==
               (detail::wide_sint<4>{1} << 100) - detail::wide_sint<4>{1});
 #if defined(__SIZEOF_INT128__)
-static_assert(engine::iroot128<2>(~static_cast<unsigned __int128>(0)) == ~umax{0});
+static_assert(engine::iroot128<2>(~static_cast<unsigned __int128>(0)) == ~std::uint64_t{0});
 #endif
 } // namespace
 
@@ -537,7 +537,7 @@ template <typename Out, std::size_t K>
 std::pair<int, int> decide_fast_failures() {
     constexpr auto M   = engine::out_rounding<Out>;
     int            bad = 0, decided = 0;
-    umax           state = 0x2545F4914F6CDD1Du;
+    std::uint64_t  state = 0x2545F4914F6CDD1Du;
     auto           next  = [&] {
         state ^= state << 13;
         state ^= state >> 7;
@@ -548,9 +548,9 @@ std::pair<int, int> decide_fast_failures() {
         detail::wide_sint<K> y{0};
         for (std::size_t w = 0; w < K; ++w)
             y.Word[w] = next();
-        y            = y >> static_cast<int>(2 + next() % (64 * K - 2)); // every magnitude, both signs; y ± e fits
-        const int  S = 1 + static_cast<int>(next() % 140);
-        const umax e = next() >> (next() % 64);
+        y = y >> static_cast<int>(2 + next() % (64 * K - 2)); // every magnitude, both signs; y ± e fits
+        const int           S = 1 + static_cast<int>(next() % 140);
+        const std::uint64_t e = next() >> (next() % 64);
         if (e == 0)
             continue;
         detail::wide_sint<K + 2> j;
@@ -608,7 +608,7 @@ int tier_mismatches(Fn fn) {
     int        bad   = 0;
     const auto count = static_cast<long long>(grid_of<In>.step_count());
     for (long long i = 0; i <= count; ++i) {
-        const In  x       = In::from_raw(detail::raw_from_offset<In>(static_cast<umax>(i)));
+        const In  x       = In::from_raw(detail::raw_from_offset<In>(static_cast<std::uint64_t>(i)));
         const Out integer = engine::evaluate<Out, engine::start_bits<Out>>(Core{engine::exact_input(x)});
         if (!(fn(x).raw() == integer.raw()) && bad++ < 3)
             ADD_FAILURE() << "x = " << static_cast<double>(x);
@@ -870,13 +870,13 @@ TEST(MathAdaptiveTest, double_tier_agrees_on_decimal_inputs_and_checked_forms) {
 // Every result must equal the integer path's, in every rounding mode, for
 // decimal outputs (q up to 10^15) and dyadic outputs too.
 namespace {
-using out52    = inside<{{-1024, 1024}, rational{1, umax{1} << 52}}, round_nearest>; // indices ±2^62
-using out44f   = inside<{{-64, 64}, rational{1, umax{1} << 44}}, round_floor>;
-using out48c   = inside<{{-64, 64}, rational{1, umax{1} << 48}}, round_ceil>;
-using out50t   = inside<{{-64, 64}, rational{1, umax{1} << 50}}, round_toward_zero>;
-using out46e   = inside<{{-64, 64}, rational{1, umax{1} << 46}}, round_half_even>;
+using out52    = inside<{{-1024, 1024}, rational{1, std::uint64_t{1} << 52}}, round_nearest>; // indices ±2^62
+using out44f   = inside<{{-64, 64}, rational{1, std::uint64_t{1} << 44}}, round_floor>;
+using out48c   = inside<{{-64, 64}, rational{1, std::uint64_t{1} << 48}}, round_ceil>;
+using out50t   = inside<{{-64, 64}, rational{1, std::uint64_t{1} << 50}}, round_toward_zero>;
+using out46e   = inside<{{-64, 64}, rational{1, std::uint64_t{1} << 46}}, round_half_even>;
 using outdec15 = inside<{{-64, 64}, rational{1, 1'000'000'000'000'000}}, round_nearest>;
-using b44out   = inside<{{-64, 64}, rational{1, umax{1} << 44}}, round_nearest>;
+using b44out   = inside<{{-64, 64}, rational{1, std::uint64_t{1} << 44}}, round_nearest>;
 using symm4    = inside<{{-4, 4}, rational{1, 1000}}, round_nearest>;
 using posm8    = inside<{{rational{1, 1000}, 8}, rational{1, 1000}}, round_nearest>;
 } // namespace
@@ -989,7 +989,7 @@ TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
              b44out,
              symm4,
              engine::exp_core<engine::input_limbs<symm4>, engine::in_mag<symm4>, engine::out_kmax<b44out>>);
-    using tanout = inside<{{-1024, 1024}, rational{1, umax{1} << 52}}, round_nearest>;
+    using tanout = inside<{{-1024, 1024}, rational{1, std::uint64_t{1} << 52}}, round_nearest>;
     EXPECT_EQ((tier_mismatches<tanout,
                                tan_in,
                                engine::trig_core<engine::input_limbs<tan_in>,
@@ -1057,7 +1057,7 @@ double dd_worst_ratio(F kernel) {
     const long long count = static_cast<long long>(grid_of<In>.step_count());
     double          worst = 0;
     for (long long i = 0; i <= count; ++i) {
-        const In      x     = In::from_raw(detail::raw_from_offset<In>(static_cast<umax>(i)));
+        const In      x     = In::from_raw(detail::raw_from_offset<In>(static_cast<std::uint64_t>(i)));
         const auto    a     = Core{engine::exact_input(x)}.template run<150>();
         const ddk::dd ref   = ddk::of_fixed(a.Value, a.Scale);
         const ddk::dd v     = kernel(ddk::dd{static_cast<double>(x), 0});
@@ -1111,7 +1111,7 @@ double lean_worst_ratio(F kernel) {
     const long long count = static_cast<long long>(grid_of<In>.step_count());
     double          worst = 0;
     for (long long i = 0; i <= count; ++i) {
-        const In      x   = In::from_raw(detail::raw_from_offset<In>(static_cast<umax>(i)));
+        const In      x   = In::from_raw(detail::raw_from_offset<In>(static_cast<std::uint64_t>(i)));
         const auto    a   = Core{engine::exact_input(x)}.template run<150>();
         const ddk::dd ref = ddk::of_fixed(a.Value, a.Scale);
         const ddk::dd xd  = engine::dd_read(x);
@@ -1194,8 +1194,10 @@ TEST(MathAdaptiveTest, lean_dd_kernels_stay_within_their_proved_bounds) {
     LEAN_BOUND(asin_lean, unit, engine::asin_core<engine::input_limbs<unit>>);
     LEAN_BOUND(acos_lean, unit, engine::acos_core<engine::input_limbs<unit>>);
     // A sparse sweep of a wide grid: 4096 points spread over it.
-    const auto x     = [](long long i) { return huge::from_raw(detail::raw_from_offset<huge>(static_cast<umax>(i))); };
-    double     worst = 0;
+    const auto x = [](long long i) {
+        return huge::from_raw(detail::raw_from_offset<huge>(static_cast<std::uint64_t>(i)));
+    };
+    double          worst = 0;
     const long long count = static_cast<long long>(grid_of<huge>.step_count());
     for (long long i = 1; i < count; i += count / 4096 + 1) {
         const auto    a = engine::log_core<engine::input_limbs<huge>>{engine::exact_input(x(i))}.template run<150>();
@@ -1217,7 +1219,8 @@ TEST(MathAdaptiveTest, lean_dd_kernels_decide_double_fine_outputs) {
     const long long count     = static_cast<long long>(grid_of<sym4>.step_count());
     long long       undecided = 0;
     for (long long i = 0; i <= count; ++i) {
-        const ddk::dd x = engine::dd_read(sym4::from_raw(detail::raw_from_offset<sym4>(static_cast<umax>(i))));
+        const ddk::dd x =
+            engine::dd_read(sym4::from_raw(detail::raw_from_offset<sym4>(static_cast<std::uint64_t>(i))));
         double        b;
         amp52         s;
         exp40         e;
@@ -1232,7 +1235,8 @@ TEST(MathAdaptiveTest, lean_dd_kernels_decide_double_fine_outputs) {
     static_assert(engine::dd_tier<log48, pos64> && !engine::fp_tier<log48, engine::fp_log, pos64>);
     const long long n = static_cast<long long>(grid_of<pos64>.step_count());
     for (long long i = 0; i <= n; ++i) {
-        const ddk::dd x = engine::dd_read(pos64::from_raw(detail::raw_from_offset<pos64>(static_cast<umax>(i))));
+        const ddk::dd x =
+            engine::dd_read(pos64::from_raw(detail::raw_from_offset<pos64>(static_cast<std::uint64_t>(i))));
         double        b;
         log48         l;
         const ddk::dd log_lean_v = ddk::log_lean(x, b);
@@ -1254,7 +1258,7 @@ double fp_worst_ratio(F kernel) {
     const long long count = static_cast<long long>(grid_of<In>.step_count());
     double          worst = 0;
     for (long long i = 0; i <= count; ++i) {
-        const In      x     = In::from_raw(detail::raw_from_offset<In>(static_cast<umax>(i)));
+        const In      x     = In::from_raw(detail::raw_from_offset<In>(static_cast<std::uint64_t>(i)));
         const auto    a     = Core{engine::exact_input(x)}.template run<150>();
         const ddk::dd ref   = ddk::of_fixed(a.Value, a.Scale);
         double        bound = 0;
@@ -1347,8 +1351,8 @@ TEST(MathAdaptiveTest, double_kernels_stay_within_their_proved_bounds) {
                                         engine::input_bits<base>,
                                         engine::input_bits<expo>>;
         double worst = 0;
-        for (umax i = 1; i <= static_cast<umax>(grid_of<base>.step_count()); i += 7)
-            for (umax j = 0; j <= static_cast<umax>(grid_of<expo>.step_count()); ++j) {
+        for (std::uint64_t i = 1; i <= static_cast<std::uint64_t>(grid_of<base>.step_count()); i += 7)
+            for (std::uint64_t j = 0; j <= static_cast<std::uint64_t>(grid_of<expo>.step_count()); ++j) {
                 const base b = base::from_raw(detail::raw_from_offset<base>(i));
                 const expo e = expo::from_raw(detail::raw_from_offset<expo>(j));
                 const auto a = core{engine::exact_input(b), engine::exact_input(e)}.template run<150>();
@@ -1368,10 +1372,10 @@ TEST(MathAdaptiveTest, double_kernels_stay_within_their_proved_bounds) {
     // axes and the swapped (|y| > |x|) and π/6-step cases.
     using sq         = inside<{{-2, 2}, rational{1, 16}}, round_nearest>;
     auto atan2_worst = []<int T>() {
-        double     worst = 0;
-        const umax n     = static_cast<umax>(grid_of<sq>.step_count());
-        for (umax i = 0; i <= n; ++i)
-            for (umax j = 0; j <= n; ++j) {
+        double              worst = 0;
+        const std::uint64_t n     = static_cast<std::uint64_t>(grid_of<sq>.step_count());
+        for (std::uint64_t i = 0; i <= n; ++i)
+            for (std::uint64_t j = 0; j <= n; ++j) {
                 const sq y = sq::from_raw(detail::raw_from_offset<sq>(i));
                 const sq x = sq::from_raw(detail::raw_from_offset<sq>(j));
                 if (y == 0 && x == 0)
@@ -1409,15 +1413,15 @@ TEST(MathAdaptiveTest, double_kernels_stay_within_their_proved_bounds) {
 TEST(MathAdaptiveTest, hypot_on_mixed_grids_at_fine_outputs) {
     using xd   = inside<{{-4, 4}, rational{1, 512}}, round_nearest>;
     using ym   = inside<{{-4, 4}, rational{1, 1000}}, round_nearest>;
-    using o48  = inside<{{-1024, 1024}, rational{1, umax{1} << 48}}, round_nearest>;
+    using o48  = inside<{{-1024, 1024}, rational{1, std::uint64_t{1} << 48}}, round_nearest>;
     using u128 = unsigned __int128;
     int bad    = 0;
     for (int i = 0; i <= 4096; i += 97)
         for (int j = 0; j <= 8000; j += 211) {
             const long long a = i - 2048, b = j - 4000;
             const rational r = static_cast<rational>(am::hypot_into<o48>(xd{rational{a, 512}}, ym{rational{b, 1000}}));
-            const u128     m2  = u128{r.Num} * ((umax{1} << 48) / static_cast<umax>(r.Den)) * 2;
-            const u128     p74 = u128(static_cast<umax>(a * a * 1'000'000 + b * b * (1 << 18))) << 74;
+            const u128     m2  = u128{r.Num} * ((std::uint64_t{1} << 48) / static_cast<std::uint64_t>(r.Den)) * 2;
+            const u128     p74 = u128(static_cast<std::uint64_t>(a * a * 1'000'000 + b * b * (1 << 18))) << 74;
             const u128     lo = m2 == 0 ? 0 : (m2 - 1) * (m2 - 1) * 15625, hi = (m2 + 1) * (m2 + 1) * 15625;
             if (!(lo <= p74 && p74 <= hi))
                 ++bad;

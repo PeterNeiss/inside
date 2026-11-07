@@ -43,7 +43,7 @@ namespace beman::inside::math::detail::engine {
 // in J·s).
 template <std::size_t E, int Bits, int P, std::size_t KF = 1>
 struct pi_scale_core {
-    using factor = std::conditional_t<KF == 1, umax, beman::inside::detail::wide_uint<KF>>;
+    using factor = std::conditional_t<KF == 1, std::uint64_t, beman::inside::detail::wide_uint<KF>>;
     wide_rational<E> X;
     factor           N; // the rational factor n/d
     factor           D;
@@ -78,7 +78,7 @@ struct pi_scale_core {
 // theorem allows a rational value: 0, ±1/2, ±1.
 template <std::size_t E, bool Cos, std::size_t KF = 1>
 struct pi_trig_core {
-    using factor = std::conditional_t<KF == 1, umax, beman::inside::detail::wide_uint<KF>>;
+    using factor = std::conditional_t<KF == 1, std::uint64_t, beman::inside::detail::wide_uint<KF>>;
     wide_rational<E> X;
     factor           N; // the rational factor n/d
     factor           D;

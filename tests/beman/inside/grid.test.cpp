@@ -46,8 +46,8 @@ TEST(GridTest, grid_structured_binding) {
 TEST(GridTest, grid_construction_and_max_notch) {
     static_assert(grid{{0, 100}, 1}.step_count() == detail::grid_int{100});
     static_assert(grid{{1, 5}, 0.25}.step_count() == detail::grid_int{16});
-    static_assert(grid{{0, std::numeric_limits<umax>::max()}, 1}.step_count() ==
-                  detail::grid_int{std::numeric_limits<umax>::max()});
+    static_assert(grid{{0, std::numeric_limits<std::uint64_t>::max()}, 1}.step_count() ==
+                  detail::grid_int{std::numeric_limits<std::uint64_t>::max()});
 }
 
 // just<>/inside values work as grid corners
@@ -218,16 +218,16 @@ constexpr bool derived_notch_is_coarsest() {
     auto on = [](rational v, rational step) { return divides_evenly(v, step); };
     if (!on(1, n) || !on(G.Interval.Lower, n) || !on(G.Interval.Upper, n))
         return false;
-    const umax k    = abs_den(n.Den);
-    umax       rest = k;
-    for (umax p = 2; p * p <= rest || rest > 1; ++p) {
+    const std::uint64_t k    = abs_den(n.Den);
+    std::uint64_t       rest = k;
+    for (std::uint64_t p = 2; p * p <= rest || rest > 1; ++p) {
         if (p * p > rest)
             p = rest; // rest is prime
         if (rest % p != 0)
             continue;
         while (rest % p == 0)
             rest /= p;
-        const rational coarser{umax{1}, static_cast<imax>(k / p)};
+        const rational coarser{std::uint64_t{1}, static_cast<std::int64_t>(k / p)};
         if (on(G.Interval.Lower, coarser) && on(G.Interval.Upper, coarser))
             return false; // a coarser step works
     }
@@ -644,9 +644,9 @@ using namespace beman::inside::detail;
 #define WIDE_LONG_DOUBLE (LDBL_MANT_DIG > DBL_MANT_DIG)
 
 // A bound of 2^63 or more: the range prefilter's step 1/MaxDenominator
-// narrowed to imax and did not compile.
-TEST(GridTest, max_denominator_past_imax) {
-    using B = inside<{{0, 1}, max_denominator{rational{umax{1} << 63}}}, round_toward_zero>;
+// narrowed to int64 and did not compile.
+TEST(GridTest, max_denominator_past_int64) {
+    using B = inside<{{0, 1}, max_denominator{rational{std::uint64_t{1} << 63}}}, round_toward_zero>;
     B x{};
     x = 0.3;
     EXPECT_EQ(x, rational(0.3));
@@ -665,13 +665,13 @@ TEST(GridTest, grid_literal_takes_long_exact_literals) {
     static_assert(100000000000000000000000000000000000000000000000000000000000000000000000000000000000e-83_g ==
                   rational{1});
     static_assert(0e500_g == rational{0});
-    static_assert(18446744073709551615_g == rational{~umax{0}});
+    static_assert(18446744073709551615_g == rational{~std::uint64_t{0}});
 }
 
 // The _r literal rejected 0x1p63 (which fits) and fine forms whose factors
-// cancel; a decimal denominator past imax was checked before reducing.
+// cancel; a decimal denominator past int64 was checked before reducing.
 TEST(GridTest, rational_literal_cancels_before_the_limits) {
-    static_assert(0x1p63_r == rational{umax{1} << 63});
+    static_assert(0x1p63_r == rational{std::uint64_t{1} << 63});
     static_assert(0x0.1p4_r == rational{1});
     static_assert(0x10p-66_r == rational{1, 1ll << 62});
     static_assert(0.5e-18_r == rational{1, 2'000'000'000'000'000'000ll});
@@ -728,26 +728,27 @@ TEST(GridTest, representable_fine_double_at_runtime) {
 // gcd(rational, rational) (rational.hpp)
 //
 // `gcd(rational, rational)` calls `std::lcm` on |Den|s without an
-// overflow check and casts the result to imax via static_cast. Large
+// overflow check and casts the result to int64 via static_cast. Large
 // denominators silently wrap. The fix is to make `gcd` return
 // `std::expected<rational, errc>` and detect the overflow.
 //
-// Trigger: lcm(2^62, 3) = 3 * 2^62. That fits in umax (≈1.38e19) but
-// exceeds imax_max (≈9.22e18). After the cast to imax it goes negative,
+// Trigger: lcm(2^62, 3) = 3 * 2^62. That fits in uint64 (≈1.38e19) but
+// exceeds int64_max (≈9.22e18). After the cast to int64 it goes negative,
 // producing a bogus rational.
 //---------------------------------------------------------------------------
 TEST(GridTest, grid_plus_reports_gcd_lcm_overflow) {
     // Use grid arithmetic since gcd's return type changes — the error
     // surfaces at grid::operator+ which already returns expected<grid, errc>.
-    constexpr auto big   = rational{1u, imax{1} << 62};
+    constexpr auto big   = rational{1u, std::int64_t{1} << 62};
     constexpr auto third = rational{1u, 3};
 
     constexpr grid g1{interval{0_r, 1_r}, big};
     constexpr grid g2{interval{0_r, 1_r}, third};
 
     // Big grid numbers: the notch gcd 1/(3·2^62) is exact.
-    static_assert((g1 + g2).Notch ==
-                  detail::grid_rational{detail::big_int{1}, detail::big_int{3} * detail::big_int{imax{1} << 62}});
+    static_assert(
+        (g1 + g2).Notch ==
+        detail::grid_rational{detail::big_int{1}, detail::big_int{3} * detail::big_int{std::int64_t{1} << 62}});
 }
 
 } // namespace pinned_tests

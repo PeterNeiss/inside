@@ -73,8 +73,14 @@ namespace beman::inside::certify {
 
 // A grid from its fields' raw parts (numerator magnitude, signed
 // denominator), as a demangled symbol spells them: find_grids.py's form.
-constexpr grid
-grid_from(umax lo_n, imax lo_d, umax hi_n, imax hi_d, umax notch_n, imax notch_d, umax max_n = 0, imax max_d = 1) {
+constexpr grid grid_from(std::uint64_t lo_n,
+                         std::int64_t  lo_d,
+                         std::uint64_t hi_n,
+                         std::int64_t  hi_d,
+                         std::uint64_t notch_n,
+                         std::int64_t  notch_d,
+                         std::uint64_t max_n = 0,
+                         std::int64_t  max_d = 1) {
     using detail::rational_from_parts;
     grid g{interval{rational_from_parts(lo_n, lo_d), rational_from_parts(hi_n, hi_d)},
            rational_from_parts(notch_n, notch_d)};
@@ -192,7 +198,7 @@ constexpr std::uint64_t product(std::uint64_t a, std::uint64_t b) {
 }
 template <insidable In>
 In input(std::uint64_t i) {
-    return In::from_raw(detail::raw_from_offset<In>(static_cast<umax>(i)));
+    return In::from_raw(detail::raw_from_offset<In>(static_cast<std::uint64_t>(i)));
 }
 
 // Input i, computed as a run-time call and on the integer path.

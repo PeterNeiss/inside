@@ -2,10 +2,12 @@
 # The library is C++26 with static reflection only: fail when a header (or a
 # test or example) tests for an older language mode, another compiler, or the
 # 64-bit grid fallback again — e.g. after a merge from a branch that keeps them.
+# Nor do the names imax and umax return (in an identifier either): a 64-bit
+# fast path spells std::int64_t / std::uint64_t, a name says int64 / uint64.
 #
 #   cmake -D BEMAN_INSIDE_ROOT=<source dir> -P no_compat_code.cmake
 set(pattern
-    "BEMAN_INSIDE_BIG_GRIDS|BEMAN_INSIDE_DELETE|BEMAN_INSIDE_WARNINGS_|BEMAN_INSIDE_MSVC|BEMAN_INSIDE_HAS_(STD_FORMAT|VALUED_DIAG|DELETE_REASON|OVERFLOW_BUILTINS|UMUL128)|_MSC_VER|__cplusplus|grid_gcd_fits|grid_sum_fits|grid_product_fits"
+    "BEMAN_INSIDE_BIG_GRIDS|BEMAN_INSIDE_DELETE|BEMAN_INSIDE_WARNINGS_|BEMAN_INSIDE_MSVC|BEMAN_INSIDE_HAS_(STD_FORMAT|VALUED_DIAG|DELETE_REASON|OVERFLOW_BUILTINS|UMUL128)|_MSC_VER|__cplusplus|grid_gcd_fits|grid_sum_fits|grid_product_fits|(^|[^A-Za-z0-9])(imax|umax)([^A-Za-z0-9]|$)"
 )
 file(
     GLOB_RECURSE sources
@@ -24,5 +26,8 @@ foreach(source IN LISTS sources)
     endif()
 endforeach()
 if(found)
-    message(FATAL_ERROR "pre-C++26 compatibility code:${found}")
+    message(
+        FATAL_ERROR
+        "pre-C++26 compatibility code or the old 64-bit names:${found}"
+    )
 endif()

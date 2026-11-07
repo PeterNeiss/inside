@@ -53,7 +53,7 @@ namespace detail {
 template <class I>
 concept index_inside =
     insidable<I> && integer_lattice<I> && lower_of<I> == 0 && (notch_of<I> == 1 || upper_of<I> == 0) &&
-    upper_of<I> < grid_rational{std::numeric_limits<imax>::max()};
+    upper_of<I> < grid_rational{std::numeric_limits<std::int64_t>::max()};
 
 template <class I>
 inline constexpr std::size_t extent_of_index = [] {
@@ -138,9 +138,9 @@ template <class T, class E, class L, class A>
 //---------------------------------------------------------------------------
 namespace detail {
 // An index argument: a builtin integer (std semantics), or an inside on the
-// integers whose values fit imax.
+// integers whose values fit int64.
 template <class I>
-concept span_index = std::integral<I> || (insidable<I> && integer_lattice<I> && values_fit_imax<I>);
+concept span_index = std::integral<I> || (insidable<I> && integer_lattice<I> && values_fit_int64<I>);
 
 // The index at rank R of e for i: an integer as is; an inside proven within
 // a static extent as its value; any other inside held to [0, extent − 1] by
@@ -155,8 +155,8 @@ constexpr typename E::index_type extent_index(const E& e, const I& i) {
         if constexpr (S != std::dynamic_extent && S > 0 && lower_of<I> >= 0 && upper_of<I> <= grid_rational{S - 1})
             return static_cast<index_type>(to_value(i));
         else {
-            const imax v = to_value(i);
-            const imax n = static_cast<imax>(e.extent(R));
+            const std::int64_t v = to_value(i);
+            const std::int64_t n = static_cast<std::int64_t>(e.extent(R));
             if (v >= 0 && v < n) [[likely]]
                 return static_cast<index_type>(v);
             if constexpr (has_flag(flags_of<I>, unsafe))
@@ -167,7 +167,7 @@ constexpr typename E::index_type extent_index(const E& e, const I& i) {
                         return static_cast<index_type>(v < 0 ? 0 : n - 1);
                 } else if constexpr (has_flag(flags_of<I>, wrap)) {
                     if (n > 0) {
-                        const imax r = v % n;
+                        const std::int64_t r = v % n;
                         return static_cast<index_type>(r < 0 ? r + n : r);
                     }
                 }
@@ -296,7 +296,7 @@ constexpr E read_stored(const T& t) {
         // A raw outside the grid is held by N's policy; skipped when every
         // raw of the type is a point of the grid. The test runs in a work
         // integer holding the raw type's range and the grid's (a uint64 raw
-        // passes imax; a wide raw is a wide_int).
+        // passes int64; a wide raw is a wide_int).
         using R                 = raw_t<N>;
         constexpr grid_int rmin = raw_type_min<R>, rmax = raw_type_max<R>;
         constexpr grid_int lo = raw_lo_exact<N>, hi = raw_hi_exact<N>;

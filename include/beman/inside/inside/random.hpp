@@ -25,9 +25,9 @@ namespace detail {
 // again), high bits first; one output when b ≥ 64, its low 64 bits. A
 // generator wider than 64 bits (unsigned __int128) works in its own type.
 template <std::uniform_random_bit_generator G>
-constexpr umax random_word(G& g) {
+constexpr std::uint64_t random_word(G& g) {
     using R              = std::invoke_result_t<G&>;
-    using U              = std::conditional_t<wide_builtin<R>, std::make_unsigned_t<R>, umax>;
+    using U              = std::conditional_t<wide_builtin<R>, std::make_unsigned_t<R>, std::uint64_t>;
     constexpr U   span   = static_cast<U>(G::max()) - static_cast<U>(G::min());
     constexpr int digits = std::numeric_limits<U>::digits;
     constexpr int bits   = [] {
@@ -46,25 +46,25 @@ constexpr umax random_word(G& g) {
         return d;
     };
     if constexpr (bits >= 64)
-        return static_cast<umax>(draw());
+        return static_cast<std::uint64_t>(draw());
     else {
-        umax word = 0;
+        std::uint64_t word = 0;
         for (int got = 0; got < 64; got += bits)
-            word = word << bits | static_cast<umax>(draw());
+            word = word << bits | static_cast<std::uint64_t>(draw());
         return word;
     }
 }
 
 // An index in [0, N]: a word masked to N's bit width, drawn again past N
 // (accepts more than half of the draws). N = 0 draws nothing.
-template <umax N, std::uniform_random_bit_generator G>
-constexpr umax random_index(G& g) {
+template <std::uint64_t N, std::uniform_random_bit_generator G>
+constexpr std::uint64_t random_index(G& g) {
     if constexpr (N == 0)
         return 0;
     else {
-        constexpr umax mask = std::numeric_limits<umax>::max() >> std::countl_zero(N);
+        constexpr std::uint64_t mask = std::numeric_limits<std::uint64_t>::max() >> std::countl_zero(N);
         for (;;)
-            if (const umax k = random_word(g) & mask; k <= N)
+            if (const std::uint64_t k = random_word(g) & mask; k <= N)
                 return k;
     }
 }
@@ -85,7 +85,7 @@ template <insidable B, std::uniform_random_bit_generator G>
             for (auto& w : k.Word)
                 w = detail::random_word(g);
             if constexpr (top_bits < 64)
-                k.Word[sizeof(W) / 8 - 1] &= (umax{1} << top_bits) - 1;
+                k.Word[sizeof(W) / 8 - 1] &= (std::uint64_t{1} << top_bits) - 1;
             if (!(k > count))
                 return B::from_raw(k);
         }

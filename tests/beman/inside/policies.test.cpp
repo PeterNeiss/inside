@@ -141,12 +141,12 @@ TEST(PolicyActionsTest, try_make_on_fixed_point_grids) {
 // on_wrap action receives inside& and carry
 TEST(PolicyActionsTest, on_wrap_action_receives_inside_and_carry) {
     using sec = inside<{0, 59}, wrap>;
-    sec  s{0};
-    imax carry = 0;
+    sec          s{0};
+    std::int64_t carry = 0;
     s.on_wrap([&](auto& self, auto c) {
-        carry = as<imax>(c);
+        carry = as<std::int64_t>(c);
         (void)self;
-    })         = 65;
+    })                 = 65;
     ASSERT_EQ(s, 5);
     ASSERT_EQ(carry, 1);
 
@@ -163,12 +163,12 @@ TEST(PolicyActionsTest, on_wrap_action_receives_inside_and_carry) {
 TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_an_inside_rhs) {
     // A insidable RHS routes the wrap through inside arithmetic, so the carry is a
     // inside<excess-grid>. `carry + just<0>` is inside+inside (compiles only for an inside;
-    // an imax carry would hit the grid-less-scalar guidance overload).
+    // an int64 carry would hit the grid-less-scalar guidance overload).
     using w10 = inside<{0, 9}, wrap>; // wraps at 10
     w10            x{8};
     inside<{0, 5}> add{4}; // inside RHS
-    imax           carry_val = -99;
-    x.on_wrap([&](auto&, auto carry) { carry_val = as<imax>(carry + just<0>); }) += add;
+    std::int64_t   carry_val = -99;
+    x.on_wrap([&](auto&, auto carry) { carry_val = as<std::int64_t>(carry + just<0>); }) += add;
     ASSERT_EQ(x, 2);         // 8 + 4 = 12 -> 12 mod 10
     ASSERT_EQ(carry_val, 1); // floor(12 / 10)
 
@@ -177,8 +177,8 @@ TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_an_inside_rhs) {
     using pos = inside<{{0, 3}, per<2>}, wrap>;
     pos                      p{2.5};
     inside<{{0, 2}, per<2>}> fadd{1.5};
-    imax                     fcarry = -99;
-    p.on_wrap([&](auto&, auto carry) { fcarry = as<imax>(carry + just<0>); }) += fadd;
+    std::int64_t             fcarry = -99;
+    p.on_wrap([&](auto&, auto carry) { fcarry = as<std::int64_t>(carry + just<0>); }) += fadd;
     ASSERT_TRUE((p == just<1, 2>)); // 2.5 + 1.5 = 4.0 -> 4.0 - 3.5 = 0.5
     ASSERT_EQ(fcarry, 1);           // floor(4.0 / 3.5)
 }
@@ -186,12 +186,12 @@ TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_an_inside_rhs) {
 // on_clamp action receives overshoot
 TEST(PolicyActionsTest, on_clamp_action_receives_overshoot) {
     using u100 = inside<{0, 100}>;
-    u100 x{0};
-    imax overshoot = 0;
+    u100         x{0};
+    std::int64_t overshoot = 0;
     x.on_clamp([&](auto& self, auto over) {
-        overshoot = as<imax>(over); // an inside for every source
+        overshoot = as<std::int64_t>(over); // an inside for every source
         (void)self;
-    })             = 150;
+    })                     = 150;
     ASSERT_EQ(x, 100);
     ASSERT_EQ(overshoot, 50);
 }
@@ -199,13 +199,13 @@ TEST(PolicyActionsTest, on_clamp_action_receives_overshoot) {
 // on_clamp overshoot is an inside for an inside RHS
 TEST(PolicyActionsTest, on_clamp_overshoot_is_an_inside_for_an_inside_rhs) {
     // A insidable RHS routes clamp through inside arithmetic, so the overshoot is a
-    // inside<grid_of<R> - grid_of<L>>, read with as<imax>() (it would not compile
+    // inside<grid_of<R> - grid_of<L>>, read with as<std::int64_t>() (it would not compile
     // against a raw expected<rational>).
     using c100 = inside<{0, 100}, clamp>;
     c100             x{0};
     inside<{0, 200}> v{150}; // overlaps [0,100], runtime out of range
-    imax             ov                                        = 0;
-    x.on_clamp([&](auto&, auto over) { ov = as<imax>(over); }) = v;
+    std::int64_t     ov                                                = 0;
+    x.on_clamp([&](auto&, auto over) { ov = as<std::int64_t>(over); }) = v;
     ASSERT_EQ(x, 100);
     ASSERT_EQ(ov, 50); // overshoot 150 - 100
 }
@@ -227,12 +227,12 @@ TEST(PolicyActionsTest, on_error_action_receives_code_and_message) {
 // fires on_clamp.
 TEST(PolicyActionsTest, compound_op_fires_on_clamp_on_the_store_back) {
     using c100 = inside<{0, 100}, checked>;
-    c100 b{50};
-    bool cl   = false;
-    imax over = 0;
+    c100         b{50};
+    bool         cl   = false;
+    std::int64_t over = 0;
     b.on_clamp([&](auto&, auto o) {
         cl   = true;
-        over = as<imax>(o);
+        over = as<std::int64_t>(o);
     }) += 200_ins; // 50+200=250 overshoots [0,100]
     ASSERT_TRUE(cl);
     ASSERT_EQ(over, 150);
@@ -258,12 +258,12 @@ TEST(PolicyActionsTest, free_div_and_mod_return_a_zero_divisor) {
 // A compound op whose exact result is off the grid fails like a store:
 // on_error takes it, and the value is unchanged.
 TEST(PolicyActionsTest, compound_store_failure_reaches_on_error) {
-    using frac = inside<{{0, 1}, max_denominator{imax{1} << 62}}>;
-    frac f{rational{1, (imax{1} << 62) - 1}};
+    using frac = inside<{{0, 1}, max_denominator{std::int64_t{1} << 62}}>;
+    frac f{rational{1, (std::int64_t{1} << 62) - 1}};
     errc seen{};
-    f.on_error([&](auto&, errc c, const char*) { seen = c; }) += frac{rational{1, (imax{1} << 62) - 3}};
+    f.on_error([&](auto&, errc c, const char*) { seen = c; }) += frac{rational{1, (std::int64_t{1} << 62) - 3}};
     ASSERT_EQ(seen, errc::rounding_error); // the sum's denominator passes the bound
-    ASSERT_EQ(f, (rational{1, (imax{1} << 62) - 1}));
+    ASSERT_EQ(f, (rational{1, (std::int64_t{1} << 62) - 1}));
 }
 
 // free-fn div with beman::inside::errc& sets ec on div/0 / success path leaves ec clear
@@ -345,7 +345,7 @@ TEST(PolicyActionsTest, policy_ec_catches_rounding_error_on_float_assignment) {
 }
 
 // The on_wrap carry is an inside for every source kind, so it adds straight
-// into another inside; an `imax` callback parameter still binds.
+// into another inside; an `int64` callback parameter still binds.
 TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_every_source) {
     using sec = inside<{0, 59}, wrap>;
     using min = inside<{0, 59}>;
@@ -370,8 +370,8 @@ TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_every_source) {
         static_assert(grid_of<decltype(carry)> == grid{-3, 2}); // signed char into {0, 59}
     }) = static_cast<signed char>(5);
 
-    imax c                                             = 0;
-    s.on_wrap([&](auto&, auto k) { c = as<imax>(k); }) = 130;
+    std::int64_t c                                             = 0;
+    s.on_wrap([&](auto&, auto k) { c = as<std::int64_t>(k); }) = 130;
     EXPECT_EQ(c, 2);
 }
 
@@ -380,13 +380,13 @@ TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_every_source) {
 // source kind minus either limit.
 TEST(PolicyActionsTest, on_clamp_overshoot_is_an_inside_for_every_source) {
     using pct = inside<{0, 100}>;
-    auto run  = [](auto src, imax expected) {
-        pct  x{0};
-        imax got = -1;
+    auto run  = [](auto src, std::int64_t expected) {
+        pct          x{0};
+        std::int64_t got = -1;
         x.on_clamp([&](auto&, auto over) {
             static_assert(insidable<decltype(over)>);
-            got = as<imax>(over);
-        })       = src;
+            got = as<std::int64_t>(over);
+        })               = src;
         EXPECT_EQ(x, 100);
         EXPECT_EQ(got, expected);
     };
@@ -416,7 +416,7 @@ TEST(PolicyActionsTest, on_clamp_overshoot_is_an_inside_for_every_source) {
 
 // The overshoot is exact for every source: a double's fraction below the
 // target's notch, a rational's, a long double's past a double's precision, and
-// a double past the imax range. ±∞ reports the overshoot grid's end.
+// a double past the int64 range. ±∞ reports the overshoot grid's end.
 TEST(PolicyActionsTest, on_clamp_overshoot_is_exact) {
     using pct = inside<{0, 100}>;
     pct  x{0};
@@ -1380,7 +1380,7 @@ TEST(PoliciesArmTest, policy_ref_remainder) {
 } // namespace reached_arms_tests
 
 //---------------------------------------------------------------------------
-// The wrap carry is exact for every source: none saturates at imax.
+// The wrap carry is exact for every source: none saturates at int64.
 //---------------------------------------------------------------------------
 namespace wrap_carry_tests {
 using namespace beman::inside;
@@ -1395,14 +1395,14 @@ bool carry_is(V v, Want want) {
     return ok;
 }
 
-TEST(PolicyActionsTest, wrap_carry_past_imax_is_exact) {
+TEST(PolicyActionsTest, wrap_carry_past_int64_is_exact) {
     using digit   = inside<{0, 9}, wrap>;
     using quarter = inside<{{0, 10}, per<4>}, wrap>; // period 10.25
     using W       = inside<{0, 1180591620717411303424_g}>;
     // An inside source past 64 bits: ⌊2^70 / 10⌋ and ⌊2^70 / 10.25⌋.
     EXPECT_TRUE((carry_is<digit>(W{1180591620717411303424_g}, just<118059162071741130342_g>)));
     EXPECT_TRUE((carry_is<quarter>(W{1180591620717411303424_g}, just<115179670313893785699_g>)));
-    // A uint64 source: (2^64 − 1) / 10, past imax.
+    // A uint64 source: (2^64 − 1) / 10, past int64.
     EXPECT_TRUE(
         (carry_is<digit>(test::at_run_time(std::numeric_limits<std::uint64_t>::max()), just<1844674407370955161_g>)));
     // A double source: the carry grid spans the double's range.

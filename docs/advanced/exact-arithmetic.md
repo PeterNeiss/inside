@@ -84,8 +84,8 @@ times the divisor's largest numerator. The result grid records that bound
 `div_into` rounds the quotient onto a type you name instead.
 
 ```cpp
-using fine = inside<{{0, 1}, rational{1, umax{1} << 40}}>;
-auto f = fine{0.5} / inside<{{1, 2}, rational{1, umax{1} << 40}}>{1.5};
+using fine = inside<{{0, 1}, rational{1, std::uint64_t{1} << 40}}>;
+auto f = fine{0.5} / inside<{{1, 2}, rational{1, std::uint64_t{1} << 40}}>{1.5};
 // 1/3, a plain value: denominators up to 2^81, in a fraction sized for them
 ```
 

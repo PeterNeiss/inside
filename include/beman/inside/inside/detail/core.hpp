@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Internal — include "beman/inside/inside.hpp" (the umbrella), not this directly.
 // The core type beman::inside::inside<G, P>: construction and try_make,
-// compound assignment, ++/--, the conversions (imax, rational, double,
+// compound assignment, ++/--, the conversions (rational, double,
 // to<T>/as<T>), numerator()/denominator(), raw()/from_raw, the per-store
 // overrides (policy<F>(), policy(ec)) and hooks (on_wrap, on_clamp,
 // on_error), parse(first, last), just<…> and the _ins literal.
@@ -24,7 +24,8 @@
 #include <beman/inside/inside/detail/assignment.hpp>
 #include <beman/inside/inside/predicates.hpp>
 
-#include <bit> // std::countr_zero, std::has_single_bit
+#include <bit>     // std::countr_zero, std::has_single_bit
+#include <cstddef> // std::ptrdiff_t
 #include <optional>
 #include <expected> // std::expected, std::unexpected
 #include <iterator> // std::incrementable_traits, std::indirectly_readable_traits
@@ -164,7 +165,7 @@ constexpr N integer_inside(const I& n) noexcept {
         constexpr I lo = static_cast<I>(grid_numerator(lower_of<N>));
         return N::from_raw(raw_cast<N>(n - lo));
     } else
-        return N::from_raw(raw_cast<N>(static_cast<umax>(n) - static_cast<umax>(lower_imax<N>)));
+        return N::from_raw(raw_cast<N>(static_cast<std::uint64_t>(n) - static_cast<std::uint64_t>(lower_int64<N>)));
 }
 } // namespace detail
 
@@ -209,7 +210,7 @@ struct inside {
     // A cursor starts at Lower: slot 0.
     constexpr inside()
         requires(has_flag(P, detail::cursor_marker))
-        : Raw{detail::raw_from_offset<inside>(umax{0})} {}
+        : Raw{detail::raw_from_offset<inside>(std::uint64_t{0})} {}
 
   private:
     // from_raw's: the raw as given, without a default value first.
@@ -375,7 +376,7 @@ struct inside {
             return Raw;
         // Q-format-with-integer-Lower fast path skips the generic path's three
         // rational ops. Falls through to the rational path when a value times
-        // the notch's denominator could pass imax (e.g. a Q16.16 × Q16.16 result).
+        // the notch's denominator could pass int64 (e.g. a Q16.16 × Q16.16 result).
         else if constexpr (detail::q_format_fits<inside>)
             return detail::q_format_decode(*this);
         else {
@@ -419,7 +420,7 @@ struct inside {
         constexpr bool               check_hi = upper_of<inside> > detail::grid_rational{lim::max()};
         constexpr bool               rounds   = Round != detail::none || has_flag(P, detail::snap);
         constexpr detail::round_mode mode     = detail::rounding_of(Round != detail::none ? Round : P);
-        if constexpr (detail::integer_lattice<inside> && !check_lo && !check_hi && detail::values_fit_imax<inside>)
+        if constexpr (detail::integer_lattice<inside> && !check_lo && !check_hi && detail::values_fit_int64<inside>)
             return static_cast<T>(detail::to_value(*this));
         else if constexpr (detail::wide_valued<inside>) { // round first: -0.5 → unsigned is 0 when truncating
             const auto f = detail::exact_of(*this);
@@ -447,7 +448,7 @@ struct inside {
             if constexpr (check_hi)
                 if (t > detail::rational{lim::max()})
                     return std::unexpected{errc::overflow};
-            if constexpr (detail::wide_builtin<T>) // a value to 2^64 − 1: past imax
+            if constexpr (detail::wide_builtin<T>) // a value to 2^64 − 1: past int64
                 return static_cast<T>(t);
             else
                 return static_cast<T>(detail::signed_numerator(t));
@@ -507,7 +508,7 @@ struct inside {
             return N::from_raw({});
         else if constexpr (detail::numerator_grid(G) == G)
             return N::from_raw(Raw); // the value itself, on the same grid
-        else if constexpr (detail::fraction_fits_imax<inside>)
+        else if constexpr (detail::fraction_fits_int64<inside>)
             return detail::integer_inside<N>(fraction().first);
         else
             return detail::integer_inside<N>(detail::reduced_exact(*this).Num);
@@ -516,7 +517,7 @@ struct inside {
         using D = inside<detail::denominator_grid(G)>;
         if constexpr (detail::point_storage<D>)
             return D::from_raw({});
-        else if constexpr (detail::fraction_fits_imax<inside>)
+        else if constexpr (detail::fraction_fits_int64<inside>)
             return detail::integer_inside<D>(fraction().second);
         else
             return detail::integer_inside<D>(detail::reduced_exact(*this).Den);
@@ -576,7 +577,7 @@ struct inside {
             return from_raw({});
         else if constexpr (within && detail::index_storage<inside> && detail::raw_holds_value<I>)
             return from_raw(detail::raw_cast<inside>(i.raw()));
-        else if constexpr (within && !detail::wide_index_storage<inside> && detail::values_fit_imax<I>)
+        else if constexpr (within && !detail::wide_index_storage<inside> && detail::values_fit_int64<I>)
             return from_raw(detail::raw_from_offset<inside>(detail::to_value(i)));
         else
             return inside{index_value(i)};
@@ -622,20 +623,21 @@ struct inside {
     // The reduced exact value as {numerator, positive denominator}. Integer
     // grids need no division; dyadic Q-format grids reduce by shifting out
     // common factors of two instead of a gcd.
-    constexpr std::pair<imax, imax> fraction() const
-        requires detail::fraction_fits_imax<inside>
+    constexpr std::pair<std::int64_t, std::int64_t> fraction() const
+        requires detail::fraction_fits_int64<inside>
     {
         if constexpr (detail::integer_storage<inside> && detail::integer_lattice<inside>)
             return {detail::to_value(*this), 1};
         else if constexpr (detail::index_storage<inside> && detail::q_format_fits<inside> &&
                            std::has_single_bit(detail::abs_den(detail::notch64<inside>.Den))) {
-            constexpr imax nd  = detail::abs_den(detail::notch64<inside>.Den);
-            const imax     num = detail::raw_imax(*this) + detail::lower_imax<inside> * nd;
-            const int      s   = std::countr_zero(static_cast<umax>(num) | static_cast<umax>(nd)); // 0 → 0/1
+            constexpr std::int64_t nd  = detail::abs_den(detail::notch64<inside>.Den);
+            const std::int64_t     num = detail::raw_int64(*this) + detail::lower_int64<inside> * nd;
+            const int              s =
+                std::countr_zero(static_cast<std::uint64_t>(num) | static_cast<std::uint64_t>(nd)); // 0 → 0/1
             return {num >> s, nd >> s};
         } else {
             auto r = detail::as_rational(*this);
-            return {signed_numerator(r), static_cast<imax>(detail::abs_den(r.Den))};
+            return {signed_numerator(r), static_cast<std::int64_t>(detail::abs_den(r.Den))};
         }
     }
 
@@ -655,7 +657,7 @@ struct inside {
         else if constexpr (!detail::notched<inside>) // continuous: the raw is the value
             neg = negated_type::from_raw(-(Raw));
         else {
-            // Integer raws: the negated value index is −J (wide_value.hpp), in imax
+            // Integer raws: the negated value index is −J (wide_value.hpp), in int64
             // when the bounds allow, else by wrapping. Index storage on both sides
             // counts the slot from the opposite end instead.
             using W = detail::index_work_t<negated_type, inside, G.Notch, inside, G.Notch>;
@@ -720,7 +722,7 @@ struct inside {
     // Lower/Notch of an index-raw rhs (its raw is Lower-relative), else 0.
     //   point_delta<R>   — rhs is one whole number of notches: the delta.
     //   raw_add_ok<R>    — rhs raw adds or subtracts with that bias.
-    // The add runs in raw_work_t, sized from the raw and delta ranges: imax for
+    // The add runs in raw_work_t, sized from the raw and delta ranges: int64 for
     // every grid within int64, a wide_int beyond — never overflowing.
     template <insidable R>
     static constexpr bool point_delta_ok =
@@ -744,7 +746,7 @@ struct inside {
     // Work type of a raw-space add whose delta lies in [Dlo, Dhi]: it holds
     // every raw of this grid, the delta, the new raw (in [raw_lo + Dlo,
     // raw_hi + Dhi]), the wrap range raw_hi − raw_lo + 1 and the new raw's
-    // offset from raw_lo (wrap divides it), so the add cannot overflow. imax
+    // offset from raw_lo (wrap divides it), so the add cannot overflow. int64
     // for every grid within int64.
     template <detail::grid_int Dlo, detail::grid_int Dhi>
     static constexpr int raw_work_bits = [] {
@@ -1149,7 +1151,7 @@ constexpr auto operator""_ins() {
 template <beman::inside::grid G, beman::inside::policy_flag P>
     requires(beman::inside::has_flag(P, beman::inside::detail::cursor_marker))
 struct std::incrementable_traits<beman::inside::inside<G, P>> {
-    using difference_type = beman::inside::imax;
+    using difference_type = std::ptrdiff_t;
 };
 
 template <beman::inside::grid G, beman::inside::policy_flag P>

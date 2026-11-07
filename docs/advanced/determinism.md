@@ -40,9 +40,8 @@ fraction, and all of its arithmetic is integer or exact fraction arithmetic.
 There is no floating point on these paths, so nothing for a platform to round
 differently:
 
-- The widths are fixed: `umax` is `std::uint64_t` and `imax` is `std::int64_t`
-  (`inside/detail/numbers.hpp`); the value path is `imax` throughout, and wide raws are
-  arrays of 64-bit limbs.
+- The widths are fixed: the 64-bit paths work in `std::int64_t` and `std::uint64_t`,
+  and wide raws are arrays of 64-bit limbs.
 - A fraction is a `beman::inside::rational` (`inside/detail/rational.hpp`). Its
   arithmetic is compile time only; the library's own 64-bit steps on rational
   raws are overflow-detecting (`inside/detail/numbers.hpp`) and fall back to

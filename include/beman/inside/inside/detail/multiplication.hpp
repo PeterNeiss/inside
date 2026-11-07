@@ -12,7 +12,7 @@
 
 //---------------------------------------------------------------------------
 // multiplication — `mul(L, R, policy, action) -> inside<grid_of<L> * grid_of<R>>`.
-// Integer raws multiply their value indices (wide_value.hpp), in imax when the
+// Integer raws multiply their value indices (wide_value.hpp), in int64 when the
 // grids' bounds allow, else by wrapping arithmetic as wide as the result raw.
 // Point scaling and rational results have their own branches.
 //---------------------------------------------------------------------------
@@ -39,9 +39,9 @@ struct multiplication {
             return result::from_raw(raw_t<result>{});
         else {
             // Integer raws (a notched result has no continuous operand): multiply the operands' values in their own
-            // units (a notch or value unit, or |c| for a point c), in imax or by wrapping arithmetic (wide_value.hpp).
-            // The product of the unit counts counts the product in the product of the units — on anchored grids the
-            // result notch — exact for every grid and sign, at any width.
+            // units (a notch or value unit, or |c| for a point c), in int64 or by wrapping arithmetic
+            // (wide_value.hpp). The product of the unit counts counts the product in the product of the units — on
+            // anchored grids the result notch — exact for every grid and sign, at any width.
             static_assert(integer_storage<L> && integer_storage<R>);
             constexpr grid_rational U = unit_of<L> * unit_of<R>;
             using W                   = index_work_t<result, L, unit_of<L>, R, unit_of<R>, U>;

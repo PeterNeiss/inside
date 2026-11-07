@@ -39,25 +39,25 @@ using namespace beman::inside::detail;
 
 namespace {
 // Reference: round the exact quotient a/b per each mode (integer math).
-imax ref_trunc(imax a, imax b) { return a / b; }
-imax ref_floor(imax a, imax b) {
-    imax t = a / b, r = a % b;
+std::int64_t ref_trunc(std::int64_t a, std::int64_t b) { return a / b; }
+std::int64_t ref_floor(std::int64_t a, std::int64_t b) {
+    std::int64_t t = a / b, r = a % b;
     return (r != 0 && ((a < 0) != (b < 0))) ? t - 1 : t;
 }
-imax ref_ceil(imax a, imax b) {
-    imax t = a / b, r = a % b;
+std::int64_t ref_ceil(std::int64_t a, std::int64_t b) {
+    std::int64_t t = a / b, r = a % b;
     return (r != 0 && ((a < 0) == (b < 0))) ? t + 1 : t;
 }
-imax ref_near(imax a, imax b) {
-    imax t = a / b, r = a % b;
+std::int64_t ref_near(std::int64_t a, std::int64_t b) {
+    std::int64_t t = a / b, r = a % b;
     if (r == 0)
         return t;
     bool      neg = (a < 0) != (b < 0);
     long long ar = std::llabs(r), ab = std::llabs(b);
     return (2 * ar >= ab) ? (neg ? t - 1 : t + 1) : t;
 }
-imax ref_heven(imax a, imax b) {
-    imax t = a / b, r = a % b;
+std::int64_t ref_heven(std::int64_t a, std::int64_t b) {
+    std::int64_t t = a / b, r = a % b;
     if (r == 0)
         return t;
     bool      neg = (a < 0) != (b < 0);
@@ -66,7 +66,7 @@ imax ref_heven(imax a, imax b) {
         return t;
     if (2 * ar > ab)
         return neg ? t - 1 : t + 1;
-    imax away = neg ? t - 1 : t + 1;
+    std::int64_t away = neg ? t - 1 : t + 1;
     return (t & 1) == 0 ? t : away;
 }
 } // namespace
@@ -147,15 +147,15 @@ TEST(DivRoundTest, q_format_division_honours_the_rounding_mode) {
 }
 
 namespace {
-template <class A, class B, imax (*Ref)(imax, imax)>
+template <class A, class B, std::int64_t (*Ref)(std::int64_t, std::int64_t)>
 void sweep_div_mod() {
-    for (imax a = lower_imax<A>; a <= upper_imax<A>; ++a)
-        for (imax b = lower_imax<B>; b <= upper_imax<B>; ++b) {
+    for (std::int64_t a = lower_int64<A>; a <= upper_int64<A>; ++a)
+        for (std::int64_t b = lower_int64<B>; b <= upper_int64<B>; ++b) {
             if (b == 0)
                 continue;
-            A          ba{a};
-            B          bb{b};
-            const imax q = Ref(a, b);
+            A                  ba{a};
+            B                  bb{b};
+            const std::int64_t q = Ref(a, b);
             SCOPED_TRACE(::testing::Message() << "a=" << a << " b=" << b << " expected q=" << q);
             ASSERT_TRUE(static_cast<rational>(ba / bb) == q);         // quotient per mode
             ASSERT_TRUE(static_cast<rational>(ba % bb) == a - q * b); // remainder a − q·b
@@ -260,7 +260,7 @@ TEST(DivRoundTest, modulo_and_divmod_without_a_rounding_mode_truncate) {
 // round_quotient rounds an offset quotient from ONE division: the floor q and
 // remainder r, the sign of the floor's value index m + q, its parity. The
 // earlier code rebuilt the signed value index m·den + num and divided again
-// (a second, signed division), with the one-division form only past imax.
+// (a second, signed division), with the one-division form only past int64.
 // This test keeps that earlier code as the reference and checks the two
 // agree for every rounding mode, on grids whose value index m is positive,
 // zero and negative, on unanchored grids, and near the 64-bit limits.
@@ -270,15 +270,15 @@ using namespace beman::inside::detail;
 
 namespace {
 template <insidable L, typename P>
-umax reference_round_quotient(umax num, umax den) {
-    constexpr auto zq = (!notched<L>) ? std::expected<rational, errc>{rational{0}} : try_div(lower64<L>, notch64<L>);
-    constexpr bool vidx =
-        zq.has_value() && abs_den(zq->Den) == 1 && zq->Num <= static_cast<umax>(std::numeric_limits<imax>::max()) + 1;
-    constexpr imax       m    = vidx ? signed_numerator(*zq) : imax{0};
-    constexpr round_mode mode = rounding_for<L, P>;
+std::uint64_t reference_round_quotient(std::uint64_t num, std::uint64_t den) {
+    constexpr auto zq   = (!notched<L>) ? std::expected<rational, errc>{rational{0}} : try_div(lower64<L>, notch64<L>);
+    constexpr bool vidx = zq.has_value() && abs_den(zq->Den) == 1 &&
+                          zq->Num <= static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) + 1;
+    constexpr std::int64_t m    = vidx ? signed_numerator(*zq) : std::int64_t{0};
+    constexpr round_mode   mode = rounding_for<L, P>;
     if constexpr (!anchored<L>) {
-        const umax q = num / den, r = num % den;
-        bool       negative = false;
+        const std::uint64_t q = num / den, r = num % den;
+        bool                negative = false;
         if constexpr (lower64<L> < 0) {
             constexpr rational c = -lower_index64<L>;
             using W              = wide_uint<2>;
@@ -288,23 +288,26 @@ umax reference_round_quotient(umax num, umax den) {
     } else if constexpr (!vidx)
         return round_offset<L, P>(num / den, num % den, den);
     else {
-        const imax di = static_cast<imax>(den);
-        imax       mdi, NUM;
-        if (!std::in_range<imax>(num) || mul_overflow(m, di, &mdi) ||
-            add_overflow(mdi, static_cast<imax>(num), &NUM)) {
-            const umax q = num / den, r = num % den;
-            const bool negative = m < 0 && q < umax{0} - static_cast<umax>(m);
-            return q +
-                   rounds_up(mode, negative, classify_remainder(mode, r, den), ((q ^ static_cast<umax>(m)) & 1) != 0);
+        const std::int64_t di = static_cast<std::int64_t>(den);
+        std::int64_t       mdi, NUM;
+        if (!std::in_range<std::int64_t>(num) || mul_overflow(m, di, &mdi) ||
+            add_overflow(mdi, static_cast<std::int64_t>(num), &NUM)) {
+            const std::uint64_t q = num / den, r = num % den;
+            const bool          negative = m < 0 && q < std::uint64_t{0} - static_cast<std::uint64_t>(m);
+            return q + rounds_up(mode,
+                                 negative,
+                                 classify_remainder(mode, r, den),
+                                 ((q ^ static_cast<std::uint64_t>(m)) & 1) != 0);
         }
-        const imax t   = NUM / di;
-        const imax rr  = NUM % di;
-        const bool neg = NUM < 0;
-        const umax ar  = (rr < 0) ? ~static_cast<umax>(rr) + 1u : static_cast<umax>(rr);
-        const imax J   = rounds_away(mode, neg, classify_remainder(mode, ar, static_cast<umax>(di)), (t & 1) != 0)
-                             ? (neg ? t - 1 : t + 1)
-                             : t;
-        return static_cast<umax>(J - m);
+        const std::int64_t  t   = NUM / di;
+        const std::int64_t  rr  = NUM % di;
+        const bool          neg = NUM < 0;
+        const std::uint64_t ar  = (rr < 0) ? ~static_cast<std::uint64_t>(rr) + 1u : static_cast<std::uint64_t>(rr);
+        const std::int64_t  J =
+            rounds_away(mode, neg, classify_remainder(mode, ar, static_cast<std::uint64_t>(di)), (t & 1) != 0)
+                ? (neg ? t - 1 : t + 1)
+                : t;
+        return static_cast<std::uint64_t>(J - m);
     }
 }
 
@@ -312,16 +315,17 @@ template <grid G, policy_flag F>
 void check_grid() {
     using L = inside<G, F>;
     using P = decltype(make_policy<flags_of<L>>());
-    for (umax den = 1; den <= 40; ++den)
-        for (umax num = 0; num <= 600; ++num) {
-            const umax want = reference_round_quotient<L, P>(num, den);
+    for (std::uint64_t den = 1; den <= 40; ++den)
+        for (std::uint64_t num = 0; num <= 600; ++num) {
+            const std::uint64_t want = reference_round_quotient<L, P>(num, den);
             ASSERT_EQ((round_quotient<L, P>(num, den)), want) << "num " << num << " den " << den;
             ASSERT_EQ((round_split<L, P>(num / den, num % den, den)), want) << "num " << num << " den " << den;
         }
-    // Near the limits: a numerator past imax, m·den past imax.
-    constexpr umax big = static_cast<umax>(std::numeric_limits<imax>::max());
-    for (umax den : {umax{3}, umax{1} << 20, (umax{1} << 40) + 7, big / 5, big})
-        for (umax num : {big - 11, big, big + 1, big + 12345, std::numeric_limits<umax>::max() - den})
+    // Near the limits: a numerator past int64, m·den past int64.
+    constexpr std::uint64_t big = static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+    for (std::uint64_t den : {std::uint64_t{3}, std::uint64_t{1} << 20, (std::uint64_t{1} << 40) + 7, big / 5, big})
+        for (std::uint64_t num :
+             {big - 11, big, big + 1, big + 12345, std::numeric_limits<std::uint64_t>::max() - den})
             ASSERT_EQ((round_quotient<L, P>(num, den)), (reference_round_quotient<L, P>(num, den)))
                 << "num " << num << " den " << den;
 }
@@ -411,7 +415,7 @@ template <class L, class R>
 concept can_mod = requires(L l, R r) { l % r; };
 
 // `%` under rounding: INT64_MIN % -1 divided natively (UB), and a quotient
-// rounded away from zero made q·b pass imax. The remainder is now adjusted
+// rounded away from zero made q·b pass int64. The remainder is now adjusted
 // from C++'s `%` instead of formed as a − q·b.
 TEST(DivisionTest, modulo_at_the_int64_limits) {
     constexpr std::int64_t i64_min = INT64_MIN;
@@ -452,7 +456,7 @@ TEST(DivisionTest, fixed_point_division_work_type) {
     static_assert(L{rational{2147483647, 2}} / R{rational{1, 2}} == 2147483647);
 }
 
-// INT64_MIN / -1 reaches 2^63: the quotient grid's endpoint wrapped in imax.
+// INT64_MIN / -1 reaches 2^63: the quotient grid's endpoint wrapped in int64.
 TEST(DivisionTest, quotient_grid_reaching_2_pow_63) {
     constexpr std::int64_t i64_min = INT64_MIN;
     static_assert([] {
@@ -460,7 +464,7 @@ TEST(DivisionTest, quotient_grid_reaching_2_pow_63) {
         inside<{-2, -1}>                        b{-1};
         auto                                    q = a / b;
         using Q                                   = decltype(q);
-        return rational(q) == rational{umax{1} << 63} && upper_of<Q> == rational{umax{1} << 63};
+        return rational(q) == rational{std::uint64_t{1} << 63} && upper_of<Q> == rational{std::uint64_t{1} << 63};
     }());
 }
 
@@ -483,7 +487,7 @@ TEST(DivisionTest, integer_division_by_an_int64_min_divisor) {
 }
 
 // A native integer quotient whose grid reaches 2^63 (INT64_MIN / −1): every
-// non-negative quotient wrapped through from_value's imax (10 / 2 gave
+// non-negative quotient wrapped through from_value's int64 (10 / 2 gave
 // 3.4e38), and INT64_MIN / −1 came back as INT64_MIN.
 TEST(DivisionTest, integer_quotient_past_int64) {
     constexpr std::int64_t i64_min = INT64_MIN;
@@ -660,19 +664,19 @@ namespace reached_arms_tests {
 using namespace beman::inside;
 using detail::rational;
 
-// % and divmod on a lattice past imax units (2^64 quarters) compute in wide
+// % and divmod on a lattice past int64 units (2^64 quarters) compute in wide
 // integers; a divisor grid that holds 0 reports it.
-TEST(DivisionArmTest, remainder_on_a_lattice_past_imax_units) {
+TEST(DivisionArmTest, remainder_on_a_lattice_past_int64_units) {
     using L = inside<{{0, 4611686018427387904_g}, per<4>}>; // [0, 2^62]
     using Z = inside<{{0, 10}, per<2>}>;
-    const L a{rational{(umax{1} << 61) + 1, 4}}; // 2^59 + 1/4
+    const L a{rational{(std::uint64_t{1} << 61) + 1, 4}}; // 2^59 + 1/4
     EXPECT_EQ((rational{a % inside<{{1, 10}, per<2>}>{1.5}}), (rational{3, 4}));
     EXPECT_EQ(rational{*(a % Z{test::at_run_time(1.5)})}, (rational{3, 4}));
     EXPECT_EQ((a % Z{test::at_run_time(0)}).error(), errc::division_by_zero);
     EXPECT_EQ(divmod(a, Z{test::at_run_time(0)}).error(), errc::division_by_zero);
 }
 
-// % on integers past imax with a divisor grid that holds 0.
+// % on integers past int64 with a divisor grid that holds 0.
 TEST(DivisionArmTest, remainder_of_wide_integers_by_a_grid_with_zero) {
     const inside<{0, 1180591620717411303424_g}> c{1000};
     using Z = inside<{0, 10}>;

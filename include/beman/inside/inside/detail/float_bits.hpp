@@ -4,8 +4,7 @@
 
 #include <beman/inside/inside/detail/config.hpp>
 
-#include <beman/inside/inside/detail/numbers.hpp> // umax, imax
-#include <beman/inside/inside/detail/error.hpp>   // errc, detail::raise
+#include <beman/inside/inside/detail/error.hpp> // errc, detail::raise
 
 #include <bit>
 #include <concepts>
@@ -28,14 +27,14 @@ constexpr int biased_exponent(std::uint64_t bits) noexcept { return static_cast<
 // A finite |value| as Significand·2^Exp2, exactly: the stored bits with the
 // implicit 1 of a normal double (a subnormal has none).
 struct float_fields {
-    umax Significand;
-    int  Exp2;
+    std::uint64_t Significand;
+    int           Exp2;
 };
 constexpr float_fields abs_fields(double value) noexcept {
-    const auto bits = std::bit_cast<std::uint64_t>(value);
-    const int  e    = biased_exponent(bits);
-    const umax m    = bits & mantissa_mask;
-    return e == 0 ? float_fields{m, 1 - 1023 - 52} : float_fields{m | umax{1} << 52, e - 1023 - 52};
+    const auto          bits = std::bit_cast<std::uint64_t>(value);
+    const int           e    = biased_exponent(bits);
+    const std::uint64_t m    = bits & mantissa_mask;
+    return e == 0 ? float_fields{m, 1 - 1023 - 52} : float_fields{m | std::uint64_t{1} << 52, e - 1023 - 52};
 }
 
 inline constexpr double frexp(double value, int* exp) noexcept {
@@ -157,7 +156,7 @@ constexpr bool abs_fraction_exact(double value) noexcept {
 // engine behind rational(double). A finite double is exactly
 // `significand · 2^exp2` (a 53-bit significand), both read straight from the
 // IEEE-754 bits — no <cmath>, no FPU rounding, bit-identical across platforms.
-constexpr std::pair<umax, umax> abs_fraction(double value, bool& exact) {
+constexpr std::pair<std::uint64_t, std::uint64_t> abs_fraction(double value, bool& exact) {
     if (not is_finite(value))
         raise(errc::not_finite, "beman::inside::detail::abs_fraction: non-finite double");
 
@@ -194,7 +193,7 @@ constexpr std::pair<umax, umax> abs_fraction(double value, bool& exact) {
             return {0, 1};
         den_pow = max_pow;
     }
-    umax den = umax{1} << den_pow;
+    std::uint64_t den = std::uint64_t{1} << den_pow;
 
     // den is a power of two, so the whole reduction is one shift by the
     // shared factor count (bounded by den's exponent). Plain ternary — no
@@ -207,7 +206,7 @@ constexpr std::pair<umax, umax> abs_fraction(double value, bool& exact) {
     }
     return {significand, den};
 }
-constexpr std::pair<umax, umax> abs_fraction(double value) {
+constexpr std::pair<std::uint64_t, std::uint64_t> abs_fraction(double value) {
     bool exact = true;
     return abs_fraction(value, exact);
 }
@@ -238,8 +237,8 @@ template <std::floating_point T>
 
 // A finite double as |d| = Mant·2^Exp, Mant of 53 bits ({0, 0} for 0).
 struct double_parts_t {
-    umax Mant;
-    int  Exp;
+    std::uint64_t Mant;
+    int           Exp;
 };
 [[nodiscard]] constexpr double_parts_t double_parts(double d) noexcept {
     const auto [m, exp2] = abs_fields(d);

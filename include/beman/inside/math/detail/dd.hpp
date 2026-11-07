@@ -125,9 +125,9 @@ constexpr std::array<double, N> parts(wide_sint<K> y, int S, int B) noexcept {
         const int          bits = i + 1 < N ? B : 53;
         const int          sh   = n > bits ? n - bits : 0;
         const wide_sint<K> top  = y >> sh;
-        r[i]                    = ::beman::inside::detail::ldexp(static_cast<double>(static_cast<umax>(top)), sh - S);
-        y                       = y - (top << sh);
-        n                       = sh;
+        r[i] = ::beman::inside::detail::ldexp(static_cast<double>(static_cast<std::uint64_t>(top)), sh - S);
+        y    = y - (top << sh);
+        n    = sh;
     }
     return r;
 }

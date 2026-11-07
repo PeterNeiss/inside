@@ -201,7 +201,7 @@ inline constexpr bool native_product = [] {
     else {
         using P                   = typename multiplication<A, B>::result;
         constexpr policy_flag all = flags_of<Out> | F;
-        return values_fit_imax<P> && (notches_compatible<Out, P> || has_flag(all, snap)) &&
+        return values_fit_int64<P> && (notches_compatible<Out, P> || has_flag(all, snap)) &&
                (has_flag(all, clamp) || has_flag(all, wrap) || !excludes(interval_of<Out>, interval_of<P>));
     }
 }();
@@ -215,11 +215,11 @@ inline constexpr bool rational_operands = rational_readable<A> && rational_reada
 template <insidable Out>
 inline constexpr bool unreduced_store = q_format_fits<Out> && notched<Out>;
 constexpr rational    unreduced_quotient(rational x, rational y) noexcept {
-    umax num, den;
+    std::uint64_t num, den;
     if (y.Num == 0 || mul_overflow(x.Num, abs_den(y.Den), &num) || mul_overflow(abs_den(x.Den), y.Num, &den) ||
-        !std::in_range<imax>(den))
+        !std::in_range<std::int64_t>(den))
         return rational_from_parts(0, 0);
-    const imax d = static_cast<imax>(den);
+    const std::int64_t d = static_cast<std::int64_t>(den);
     return rational_from_parts(num, (x.Den < 0) != (y.Den < 0) ? -d : d);
 }
 
@@ -356,16 +356,17 @@ template <insidable First, insidable... Rest>
 namespace detail {
 // How many raws of B a 32-bit accumulator sums without overflow (unsigned
 // for raws ≥ 0, else signed), at most 2^30: 32-bit lanes are twice as many
-// per vector register as imax ones. 0 when a raw passes the lane.
+// per vector register as int64 ones. 0 when a raw passes the lane.
 template <insidable B>
-inline constexpr imax lane32_block = [] {
-    const grid_int lo = raw_lo_exact<B>, hi = raw_hi_exact<B>;
-    const grid_int mag   = lo.negative() && hi < -lo ? -lo : hi;
-    const umax     limit = lo.negative() ? umax{0x7fff'ffff} : umax{0xffff'ffff};
+inline constexpr std::int64_t lane32_block = [] {
+    const grid_int      lo = raw_lo_exact<B>, hi = raw_hi_exact<B>;
+    const grid_int      mag   = lo.negative() && hi < -lo ? -lo : hi;
+    const std::uint64_t limit = lo.negative() ? std::uint64_t{0x7fff'ffff} : std::uint64_t{0xffff'ffff};
     if (grid_int{limit} < mag)
-        return imax{0};
-    const umax m = static_cast<umax>(mag);
-    return m == 0 ? imax{1} << 30 : static_cast<imax>(std::min<umax>(limit / m, umax{1} << 30));
+        return std::int64_t{0};
+    const std::uint64_t m = static_cast<std::uint64_t>(mag);
+    return m == 0 ? std::int64_t{1} << 30
+                  : static_cast<std::int64_t>(std::min<std::uint64_t>(limit / m, std::uint64_t{1} << 30));
 }();
 } // namespace detail
 
@@ -377,14 +378,14 @@ namespace detail {
 inline constexpr int max_continuous_sum_bits = 4096;
 
 // lcm(1, …, d): the largest power of each prime up to d.
-consteval grid_int lcm_up_to(umax d) {
+consteval grid_int lcm_up_to(std::uint64_t d) {
     grid_int l{1};
-    for (umax p = 2; p <= d; ++p) {
+    for (std::uint64_t p = 2; p <= d; ++p) {
         bool prime = true;
-        for (umax f = 2; f * f <= p && prime; ++f)
+        for (std::uint64_t f = 2; f * f <= p && prime; ++f)
             prime = p % f != 0;
         if (prime) {
-            umax pk = p;
+            std::uint64_t pk = p;
             while (pk <= d / p)
                 pk *= p;
             l = l * grid_int{pk};
@@ -399,7 +400,7 @@ consteval int continuous_sum_bits_of() {
     const grid_int d = grid_numerator(grid_of<B>.MaxDenominator);
     if (grid_int{2 * max_continuous_sum_bits} < d)
         return max_continuous_sum_bits + 1;
-    return bit_width_of(lcm_up_to(static_cast<umax>(d)));
+    return bit_width_of(lcm_up_to(static_cast<std::uint64_t>(d)));
 }
 template <insidable B>
 inline constexpr int continuous_sum_bits = continuous_sum_bits_of<B>();
@@ -413,7 +414,7 @@ inline constexpr int continuous_sum_bits = continuous_sum_bits_of<B>();
 // Notched integer raws (wide ones too) sum value indices exactly — Σvalue =
 // Notch·ΣJ — in a wide integer with 64 bits of headroom for the count; ≤32-bit
 // raws add in blocks, the loop that vectorizes: in 32-bit lanes where a
-// block of at least 64 fits them, else in imax blocks of 2^30 elements.
+// block of at least 64 fits them, else in int64 blocks of 2^30 elements.
 // Continuous elements add exactly over lcm(1..D), D their denominator bound
 // (lcm(1..D) at most 4096 bits); n copies of a point are n·value.
 //---------------------------------------------------------------------------
@@ -439,30 +440,30 @@ template <insidable Target, std::ranges::input_range Rng>
             auto        it    = std::ranges::begin(r);
             auto        end   = std::ranges::end(r);
             while (it != end) {
-                imax acc = 0, cnt = 0;
+                std::int64_t acc = 0, cnt = 0;
                 // (A random-access range whose end is a sentinel, not a
                 // reachable iterator, has no distance to it: the loop below.)
                 if constexpr (std::ranges::random_access_range<Rng> &&
                               std::sized_sentinel_for<std::ranges::sentinel_t<Rng>, std::ranges::iterator_t<Rng>>) {
-                    if constexpr (constexpr imax lanes = detail::lane32_block<B>; lanes >= 64) {
+                    if constexpr (constexpr std::int64_t lanes = detail::lane32_block<B>; lanes >= 64) {
                         using L = std::conditional_t<detail::raw_lo_exact<B>.negative(), std::int32_t, std::uint32_t>;
-                        const imax block = std::min<imax>(end - it, lanes);
-                        L          a     = 0;
-                        for (imax j = 0; j < block; ++j)
+                        const std::int64_t block = std::min<std::int64_t>(end - it, lanes);
+                        L                  a     = 0;
+                        for (std::int64_t j = 0; j < block; ++j)
                             a += static_cast<L>(it[j].raw());
-                        acc = static_cast<imax>(a);
+                        acc = static_cast<std::int64_t>(a);
                         it += block;
                         cnt = block;
                     } else {
-                        const imax block = std::min<imax>(end - it, imax{1} << 30);
-                        for (imax j = 0; j < block; ++j)
-                            acc += detail::raw_imax(it[j]);
+                        const std::int64_t block = std::min<std::int64_t>(end - it, std::int64_t{1} << 30);
+                        for (std::int64_t j = 0; j < block; ++j)
+                            acc += detail::raw_int64(it[j]);
                         it += block;
                         cnt = block;
                     }
                 } else {
-                    for (; it != end && cnt < (imax{1} << 30); ++it, ++cnt)
-                        acc += detail::raw_imax(*it);
+                    for (; it != end && cnt < (std::int64_t{1} << 30); ++it, ++cnt)
+                        acc += detail::raw_int64(*it);
                 }
                 if constexpr (scale == I{1})
                     total += I{acc} + I{cnt} * base;
@@ -473,11 +474,12 @@ template <insidable Target, std::ranges::input_range Rng>
             for (const auto& b : r)
                 total += detail::value_in_units<I, U>(b);
         if constexpr (!detail::wide_valued<B>) {
-            // A total within imax: the cheaper 64-bit rational store.
-            constexpr imax lo = std::numeric_limits<imax>::min(), hi = std::numeric_limits<imax>::max();
+            // A total within int64: the cheaper 64-bit rational store.
+            constexpr std::int64_t lo = std::numeric_limits<std::int64_t>::min(),
+                                   hi = std::numeric_limits<std::int64_t>::max();
             if (!(total < I{lo}) && !(I{hi} < total))
                 if (const auto v =
-                        detail::try_mul(detail::rational{static_cast<imax>(total)}, detail::to_rational(U))) {
+                        detail::try_mul(detail::rational{static_cast<std::int64_t>(total)}, detail::to_rational(U))) {
                     detail::assignment<Target, detail::rational>::assign(out, *v, policy, detail::no_action{});
                     return out;
                 }
@@ -491,7 +493,7 @@ template <insidable Target, std::ranges::input_range Rng>
         detail::assign_exact<detail::rational>(out, v, policy, no_op);
     } else if constexpr (detail::point_storage<B>) {
         // n copies of the one value: n·value.
-        umax n = 0;
+        std::uint64_t n = 0;
         for ([[maybe_unused]] const auto& b : r)
             ++n;
         constexpr std::size_t K = detail::limbs_for_bits(detail::exact_value_bits<B> + 66);
@@ -509,17 +511,17 @@ template <insidable Target, std::ranges::input_range Rng>
                       "4096 bits) - store them onto a notched grid first");
         constexpr int bits = detail::continuous_sum_bits<B>;
         using N            = detail::wide_uint<detail::limbs_for_bits(bits)>;
-        constexpr N L =
-            static_cast<N>(detail::lcm_up_to(static_cast<umax>(detail::grid_numerator(grid_of<B>.MaxDenominator))));
+        constexpr N L      = static_cast<N>(
+            detail::lcm_up_to(static_cast<std::uint64_t>(detail::grid_numerator(grid_of<B>.MaxDenominator))));
         constexpr std::size_t K = detail::limbs_for_bits(bits + detail::exact_value_bits<B> + 66);
         using I                 = detail::wide_sint<K>;
         I total{0};
         for (const auto& b : r) {
             auto e  = detail::exact_of(b); // Den > 0
-            auto qr = detail::divmod_small(L, static_cast<umax>(e.Den));
+            auto qr = detail::divmod_small(L, static_cast<std::uint64_t>(e.Den));
             if (qr.Remainder != 0 || bit_width_of(e.Den) > 64) [[unlikely]] { // (ADL: wide_int's friend)
                 e  = detail::reduced(e); // a raw built unreduced: its reduced Den ≤ D divides L
-                qr = detail::divmod_small(L, static_cast<umax>(e.Den));
+                qr = detail::divmod_small(L, static_cast<std::uint64_t>(e.Den));
             }
             total += static_cast<I>(e.Num) * static_cast<I>(qr.Quotient);
         }

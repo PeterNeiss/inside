@@ -107,9 +107,9 @@ inline constexpr bool small_index = !wide_valued<In> && notched<In> &&
 template <insidable In>
 constexpr double input_double(const In& x) noexcept {
     if constexpr (fp_exact_input<In>)
-        return static_cast<double>(value_index<imax>(x)) * (notch_p<In> / notch_q<In>);
+        return static_cast<double>(value_index<std::int64_t>(x)) * (notch_p<In> / notch_q<In>);
     else if constexpr (small_index<In>)
-        return static_cast<double>(value_index<imax>(x)) * notch_p<In> / notch_q<In>;
+        return static_cast<double>(value_index<std::int64_t>(x)) * notch_p<In> / notch_q<In>;
     else
         return as_double(x);
 }
@@ -138,8 +138,8 @@ template <insidable Out>
 inline bool fp_decide(double v, double bound, Out& out) noexcept {
     constexpr round_mode M  = out_rounding<Out>;
     constexpr double     s  = notch_q<Out> / notch_p<Out>;
-    constexpr double     lo = static_cast<double>(static_cast<imax>(slot_base<Out>));
-    constexpr double     hi = lo + static_cast<double>(static_cast<imax>(grid_of<Out>.step_count()));
+    constexpr double     lo = static_cast<double>(static_cast<std::int64_t>(slot_base<Out>));
+    constexpr double     hi = lo + static_cast<double>(static_cast<std::int64_t>(grid_of<Out>.step_count()));
     const double         t  = v * s;
     double               bt = bound * (1.5 * s);
     if constexpr (!dyadic_notch<Out>)
@@ -169,13 +169,13 @@ inline bool fp_decide(double v, double bound, Out& out) noexcept {
                 return true;
             }
             if (j > hi) {
-                out = at_slot<Out>(static_cast<umax>(static_cast<imax>(hi - lo)));
+                out = at_slot<Out>(static_cast<std::uint64_t>(static_cast<std::int64_t>(hi - lo)));
                 return true;
             }
         }
         return false; // NaN too
     }
-    out = at_slot<Out>(static_cast<umax>(static_cast<imax>(j - lo)));
+    out = at_slot<Out>(static_cast<std::uint64_t>(static_cast<std::int64_t>(j - lo)));
     return true;
 }
 
@@ -247,15 +247,15 @@ inline ddk::dd dd_read(const In& x) noexcept {
     if constexpr (fp_exact_input<In>)
         return {input_double(x), 0};
     else if constexpr (rational_storage<In>) {
-        const rational r     = x.raw();     // ±Num/|Den|
-        auto           exact = [](umax n) { // two 32-bit halves, each a double exactly
-            return ddk::fast_two_sum(static_cast<double>(n & ~umax{0xFFFFFFFF}),
-                                     static_cast<double>(n & umax{0xFFFFFFFF}));
+        const rational r     = x.raw();              // ±Num/|Den|
+        auto           exact = [](std::uint64_t n) { // two 32-bit halves, each a double exactly
+            return ddk::fast_two_sum(static_cast<double>(n & ~std::uint64_t{0xFFFFFFFF}),
+                                     static_cast<double>(n & std::uint64_t{0xFFFFFFFF}));
         };
         const ddk::dd q = ddk::div(exact(r.Num), exact(abs_den(r.Den)));
         return r.Den < 0 ? ddk::neg(q) : q;
     } else {
-        const ddk::dd n = ddk::two_prod(static_cast<double>(value_index<imax>(x)), notch_p<In>);
+        const ddk::dd n = ddk::two_prod(static_cast<double>(value_index<std::int64_t>(x)), notch_p<In>);
         return ddk::div(n, ddk::dd{notch_q<In>, 0});
     }
 }
@@ -267,11 +267,11 @@ inline ddk::dd dd_read(const In& x) noexcept {
 // bound widened by u's rounding.
 template <insidable Out>
 inline bool dd_decide(ddk::dd v, double bound, Out& out) noexcept {
-    constexpr round_mode M     = out_rounding<Out>;
-    constexpr ddk::dd    s     = ddk::div(ddk::dd{notch_q<Out>, 0}, ddk::dd{notch_p<Out>, 0});
-    constexpr imax       first = static_cast<imax>(slot_base<Out>); // |index| ≤ 2^62
-    constexpr imax       last  = static_cast<imax>(slot_base<Out> + grid_of<Out>.step_count());
-    constexpr double     lo = static_cast<double>(first) - 1024, hi = static_cast<double>(last) + 1024;
+    constexpr round_mode   M     = out_rounding<Out>;
+    constexpr ddk::dd      s     = ddk::div(ddk::dd{notch_q<Out>, 0}, ddk::dd{notch_p<Out>, 0});
+    constexpr std::int64_t first = static_cast<std::int64_t>(slot_base<Out>); // |index| ≤ 2^62
+    constexpr std::int64_t last  = static_cast<std::int64_t>(slot_base<Out> + grid_of<Out>.step_count());
+    constexpr double       lo = static_cast<double>(first) - 1024, hi = static_cast<double>(last) + 1024;
     // t = J + u with J = j1 + j2: u is t.Hi's distance to its nearest
     // integer plus t.Lo, and may pass ½ (t.Hi on a half, or t.Lo carrying
     // it over), so it is rounded again rather than rejected.
@@ -300,19 +300,20 @@ inline bool dd_decide(ddk::dd v, double bound, Out& out) noexcept {
         if constexpr (M == round_mode::ceil)
             j2 += 1;
     }
-    imax j = static_cast<imax>(j1) + static_cast<imax>(j2);
+    std::int64_t j = static_cast<std::int64_t>(j1) + static_cast<std::int64_t>(j2);
     if constexpr (M == round_mode::trunc) {
         if (j < 0)
             j += 1;
     }
     if (j < first || j > last) {
         if constexpr (has_flag(flags_of<Out>, clamp)) { // as fp_decide
-            out = at_slot<Out>(j < first ? umax{0} : static_cast<umax>(last) - static_cast<umax>(first));
+            out = at_slot<Out>(j < first ? std::uint64_t{0}
+                                         : static_cast<std::uint64_t>(last) - static_cast<std::uint64_t>(first));
             return true;
         }
         return false;
     }
-    out = at_slot<Out>(static_cast<umax>(j) - static_cast<umax>(first));
+    out = at_slot<Out>(static_cast<std::uint64_t>(j) - static_cast<std::uint64_t>(first));
     return true;
 }
 
@@ -501,14 +502,14 @@ inline bool fp_attempt_pow(const InB& bi, const InE& ei, Out& out) {
 }
 
 // ln Base at compile time, from the integer log, as a double-double.
-template <imax Base>
+template <std::int64_t Base>
 inline constexpr ddk::dd ln_base = [] {
     const ddk::fixed a = ddk::fixed{Base} << ddk::scale_bits;
     return ddk::of_fixed(log_fixed<ddk::scale_bits>(a, 0).Value, ddk::scale_bits);
 }();
 
 // Base^x = e^(x·ln Base).
-template <insidable Out, imax Base, insidable In>
+template <insidable Out, std::int64_t Base, insidable In>
 inline bool fp_attempt_pow_base(const In& xi, Out& out) {
     const double x = input_double(xi);
     double       bound, y;
@@ -685,7 +686,7 @@ inline bool dd_attempt_pow(const InB& bi, const InE& ei, Out& out) {
 
 // Base^x = e^(x·ln Base): ln Base within 2^-104 and the product's 4U².
 // x·ln Base within the exp range (else the integer path decides).
-template <insidable Out, imax Base, insidable In>
+template <insidable Out, std::int64_t Base, insidable In>
 inline bool dd_attempt_pow_base(const In& xi, Out& out) {
     const ddk::dd x = dd_read(xi);
     const ddk::dd y = ddk::mul(x, ln_base<Base>);

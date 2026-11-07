@@ -125,10 +125,10 @@ using plain_t = std::remove_cvref_t<T>;
 //
 //   as_rational(x)         value → rational    exact view of a scalar or inside
 //   as_double(b)           raw   → double       kind-aware decode; lossy off dyadic grids
-//   to_value(b)            raw   → imax         the inside's integer value (decodes an index)
-//   from_value(b, v)       imax  → raw          store integer value v into b (inverse of to_value)
+//   to_value(b)            raw   → int64         the inside's integer value (decodes an index)
+//   from_value(b, v)       int64  → raw          store integer value v into b (inverse of to_value)
 //   raw_cast<B>(x)         x     → raw_t<B>     TYPE cast only — no value arithmetic
-//   raw_imax(b)            raw   → imax         widen the raw bits (NOT the value for index storage)
+//   raw_int64(b)            raw   → int64         widen the raw bits (NOT the value for index storage)
 //   raw_from_offset<B>(o)  index → raw_t<B>     adds raw_lo (Lower for a value raw, 0 for an index)
 //   raw_of_slot<B>(o)      index → raw_t<B>     any storage, any width (inside/detail/wide_value.hpp)
 //-------------------------------------------------------------------------

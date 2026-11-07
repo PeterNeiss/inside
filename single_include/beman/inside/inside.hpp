@@ -140,7 +140,7 @@
 // ======================================================================
 // Internal — include "beman/inside/inside.hpp" (the umbrella), not this directly.
 // The core type beman::inside::inside<G, P>: construction and try_make,
-// compound assignment, ++/--, the conversions (imax, rational, double,
+// compound assignment, ++/--, the conversions (rational, double,
 // to<T>/as<T>), numerator()/denominator(), raw()/from_raw, the per-store
 // overrides (policy<F>(), policy(ec)) and hooks (on_wrap, on_clamp,
 // on_error), parse(first, last), just<…> and the _ins literal.
@@ -350,14 +350,12 @@ template <fixed_string Msg>
 
 
 //---------------------------------------------------------------------------
-// numbers — primitive numeric utilities: umax/imax (public), and in detail
-// the overflow-detecting add/sub/mul, the plain_number / fractional concepts
-// and safe_abs. The floating-point bit helpers are in inside/detail/float_bits.hpp.
+// numbers — primitive numeric utilities, in detail: the overflow-detecting
+// add/sub/mul, the plain_number / fractional concepts and safe_abs. The
+// 64-bit fast paths name std::int64_t and std::uint64_t themselves. The
+// floating-point bit helpers are in inside/detail/float_bits.hpp.
 //---------------------------------------------------------------------------
 namespace beman::inside {
-using umax = std::uint64_t;
-using imax = std::int64_t;
-
 namespace detail {
 // Overflow-detecting add/sub/mul for integers (derived from Peter Sommerlad's
 // odins.h, MIT license): GCC's __builtin_*_overflow intrinsics. Return true on
@@ -392,23 +390,23 @@ template <typename T>
 concept fractional = std::floating_point<T> || std::same_as<rational, T>;
 
 // A builtin integer wider than 64 bits (__int128 under the GNU dialects):
-// it takes the exact paths, never imax or the 64-bit rational.
+// it takes the exact paths, never int64 or the 64-bit rational.
 template <typename T>
 concept wide_builtin = std::integral<T> && (std::numeric_limits<T>::digits > 64);
 
 // Whether a builtin integer's value fits the 64-bit rational's numerator.
 template <std::integral T>
-[[nodiscard]] constexpr bool fits_umax_magnitude(T v) noexcept {
+[[nodiscard]] constexpr bool fits_uint64_magnitude(T v) noexcept {
     if constexpr (wide_builtin<T>)
-        return std::is_signed_v<T> && v < 0 ? !(v < -static_cast<T>(std::numeric_limits<umax>::max()))
-                                            : !(static_cast<T>(std::numeric_limits<umax>::max()) < v);
+        return std::is_signed_v<T> && v < 0 ? !(v < -static_cast<T>(std::numeric_limits<std::uint64_t>::max()))
+                                            : !(static_cast<T>(std::numeric_limits<std::uint64_t>::max()) < v);
     else
         return true;
 }
 
 template <std::signed_integral V>
-[[nodiscard]] constexpr umax safe_abs(V value) noexcept {
-    return (value >= 0) ? static_cast<umax>(value) : umax{0} - static_cast<umax>(value);
+[[nodiscard]] constexpr std::uint64_t safe_abs(V value) noexcept {
+    return (value >= 0) ? static_cast<std::uint64_t>(value) : std::uint64_t{0} - static_cast<std::uint64_t>(value);
 }
 } // namespace detail
 } // namespace beman::inside
@@ -437,14 +435,14 @@ constexpr int biased_exponent(std::uint64_t bits) noexcept { return static_cast<
 // A finite |value| as Significand·2^Exp2, exactly: the stored bits with the
 // implicit 1 of a normal double (a subnormal has none).
 struct float_fields {
-    umax Significand;
-    int  Exp2;
+    std::uint64_t Significand;
+    int           Exp2;
 };
 constexpr float_fields abs_fields(double value) noexcept {
-    const auto bits = std::bit_cast<std::uint64_t>(value);
-    const int  e    = biased_exponent(bits);
-    const umax m    = bits & mantissa_mask;
-    return e == 0 ? float_fields{m, 1 - 1023 - 52} : float_fields{m | umax{1} << 52, e - 1023 - 52};
+    const auto          bits = std::bit_cast<std::uint64_t>(value);
+    const int           e    = biased_exponent(bits);
+    const std::uint64_t m    = bits & mantissa_mask;
+    return e == 0 ? float_fields{m, 1 - 1023 - 52} : float_fields{m | std::uint64_t{1} << 52, e - 1023 - 52};
 }
 
 inline constexpr double frexp(double value, int* exp) noexcept {
@@ -566,7 +564,7 @@ constexpr bool abs_fraction_exact(double value) noexcept {
 // engine behind rational(double). A finite double is exactly
 // `significand · 2^exp2` (a 53-bit significand), both read straight from the
 // IEEE-754 bits — no <cmath>, no FPU rounding, bit-identical across platforms.
-constexpr std::pair<umax, umax> abs_fraction(double value, bool& exact) {
+constexpr std::pair<std::uint64_t, std::uint64_t> abs_fraction(double value, bool& exact) {
     if (not is_finite(value))
         raise(errc::not_finite, "beman::inside::detail::abs_fraction: non-finite double");
 
@@ -603,7 +601,7 @@ constexpr std::pair<umax, umax> abs_fraction(double value, bool& exact) {
             return {0, 1};
         den_pow = max_pow;
     }
-    umax den = umax{1} << den_pow;
+    std::uint64_t den = std::uint64_t{1} << den_pow;
 
     // den is a power of two, so the whole reduction is one shift by the
     // shared factor count (bounded by den's exponent). Plain ternary — no
@@ -616,7 +614,7 @@ constexpr std::pair<umax, umax> abs_fraction(double value, bool& exact) {
     }
     return {significand, den};
 }
-constexpr std::pair<umax, umax> abs_fraction(double value) {
+constexpr std::pair<std::uint64_t, std::uint64_t> abs_fraction(double value) {
     bool exact = true;
     return abs_fraction(value, exact);
 }
@@ -647,8 +645,8 @@ template <std::floating_point T>
 
 // A finite double as |d| = Mant·2^Exp, Mant of 53 bits ({0, 0} for 0).
 struct double_parts_t {
-    umax Mant;
-    int  Exp;
+    std::uint64_t Mant;
+    int           Exp;
 };
 [[nodiscard]] constexpr double_parts_t double_parts(double d) noexcept {
     const auto [m, exp2] = abs_fields(d);
@@ -686,7 +684,6 @@ constexpr T for_each_double_part(T v, F f) {
 //  beman/inside/inside/detail/limb_algorithms.hpp
 // ======================================================================
 // Internal — include "beman/inside/inside.hpp" (the umbrella), not this directly.
-
 
 
 
@@ -749,11 +746,12 @@ constexpr pair<L> mul(L a, L b) noexcept {
 }
 
 // a·b <=> c·d, exactly (the native 128-bit compare where available).
-constexpr std::strong_ordering mul_compare(umax a, umax b, umax c, umax d) noexcept {
+constexpr std::strong_ordering
+mul_compare(std::uint64_t a, std::uint64_t b, std::uint64_t c, std::uint64_t d) noexcept {
 #if BEMAN_INSIDE_HAS_INT128
     return static_cast<unsigned __int128>(a) * b <=> static_cast<unsigned __int128>(c) * d;
 #else
-    const pair<umax> x = mul(a, b), y = mul(c, d);
+    const pair<std::uint64_t> x = mul(a, b), y = mul(c, d);
     return x.Hi != y.Hi ? x.Hi <=> y.Hi : x.Lo <=> y.Lo;
 #endif
 }
@@ -999,8 +997,8 @@ constexpr I euclid_gcd(I a, I b, Rem rem = remainder_of) {
 // (one with Word limbs) divides limb-wise; any other integer type by its
 // own % and /.
 template <class I>
-constexpr imax strip_factor(I& x, umax p) {
-    imax k = 0;
+constexpr std::int64_t strip_factor(I& x, std::uint64_t p) {
+    std::int64_t k = 0;
     if constexpr (requires { x.Word; }) {
         constexpr std::size_t N = sizeof(x.Word) / sizeof(x.Word[0]);
         if (p == 2) {
@@ -1012,8 +1010,8 @@ constexpr imax strip_factor(I& x, umax p) {
             return s;
         }
         for (;;) {
-            umax       q[N];
-            const umax r = limb::div_1(q, x.Word, N, p);
+            std::uint64_t       q[N];
+            const std::uint64_t r = limb::div_1(q, x.Word, N, p);
             if (r != 0)
                 return k;
             std::copy_n(q, N, x.Word);
@@ -1057,7 +1055,7 @@ constexpr T pow_by_squaring(T x, unsigned n) {
 // member and an inside raw. Every operation is constexpr and allocation-free.
 //
 // The limb type is a template parameter so tests can run wide_int over uint8_t
-// limbs exhaustively against builtin oracles; the library uses umax limbs.
+// limbs exhaustively against builtin oracles; the library uses uint64 limbs.
 // The limb kernels below are also used by big_rational.
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
@@ -1071,7 +1069,7 @@ template <class T>
 using conversion_word_t = std::uint64_t;
 #endif
 
-template <std::size_t N, bool Signed, std::unsigned_integral L = umax>
+template <std::size_t N, bool Signed, std::unsigned_integral L = std::uint64_t>
 struct wide_int {
     static_assert(N >= 1, "wide_int: at least one limb");
     static constexpr int  limb_bits = limb::bits<L>;
@@ -1331,25 +1329,25 @@ constexpr auto wide_int<N, Signed, L>::divmod(const wide_int& a, const wide_int&
     return res;
 }
 
-template <std::size_t N, std::unsigned_integral L = umax>
+template <std::size_t N, std::unsigned_integral L = std::uint64_t>
 using wide_uint = wide_int<N, false, L>;
-template <std::size_t N, std::unsigned_integral L = umax>
+template <std::size_t N, std::unsigned_integral L = std::uint64_t>
 using wide_sint = wide_int<N, true, L>;
 
 // n / d for a one-limb d: the quotient and the remainder.
 template <std::size_t K>
 struct small_divmod {
-    wide_uint<K> Quotient;
-    umax         Remainder;
+    wide_uint<K>  Quotient;
+    std::uint64_t Remainder;
 };
 
 template <std::size_t K>
-constexpr small_divmod<K> divmod_small(const wide_uint<K>& n, umax d) noexcept {
+constexpr small_divmod<K> divmod_small(const wide_uint<K>& n, std::uint64_t d) noexcept {
     small_divmod<K> r{wide_uint<K>{0}, 0};
     for (std::size_t i = K; i-- > 0;) { // (not limb::div_1: slower to constant-evaluate)
-        const limb::pair<umax> qr = limb::div(r.Remainder, n.Word[i], d);
-        r.Quotient.Word[i]        = qr.Hi;
-        r.Remainder               = qr.Lo;
+        const limb::pair<std::uint64_t> qr = limb::div(r.Remainder, n.Word[i], d);
+        r.Quotient.Word[i]                 = qr.Hi;
+        r.Remainder                        = qr.Lo;
     }
     return r;
 }
@@ -1537,14 +1535,14 @@ template <typename T>
 
 
 namespace beman::inside::detail {
-// |d| of a signed denominator (any imax, INT64_MIN too).
-[[nodiscard]] constexpr umax abs_den(imax d) noexcept { return safe_abs(d); }
+// |d| of a signed denominator (any int64, INT64_MIN too).
+[[nodiscard]] constexpr std::uint64_t abs_den(std::int64_t d) noexcept { return safe_abs(d); }
 
 //---------------------------------------------------------------------------
 // cancel_gcd — divides both parts by their gcd (the denominator signed)
 //---------------------------------------------------------------------------
-inline constexpr void cancel_gcd(umax& numerator, imax& denominator) {
-    umax ad = abs_den(denominator);
+inline constexpr void cancel_gcd(std::uint64_t& numerator, std::int64_t& denominator) {
+    std::uint64_t ad = abs_den(denominator);
     if (ad <= 1)
         return;
     if (std::has_single_bit(ad)) {
@@ -1552,7 +1550,7 @@ inline constexpr void cancel_gcd(umax& numerator, imax& denominator) {
         const int s = std::countr_zero(numerator | ad);
         numerator >>= s;
         ad >>= s;
-        denominator = (denominator < 0) ? -static_cast<imax>(ad) : static_cast<imax>(ad);
+        denominator = (denominator < 0) ? -static_cast<std::int64_t>(ad) : static_cast<std::int64_t>(ad);
         return;
     }
     auto g = std::gcd(numerator, ad);
@@ -1560,10 +1558,10 @@ inline constexpr void cancel_gcd(umax& numerator, imax& denominator) {
         return;
     numerator /= g;
     ad /= g;
-    denominator = static_cast<imax>((denominator < 0) ? umax{0} - ad : ad);
+    denominator = static_cast<std::int64_t>((denominator < 0) ? std::uint64_t{0} - ad : ad);
 }
 
-inline constexpr void cancel_gcd(umax& a, umax& b) {
+inline constexpr void cancel_gcd(std::uint64_t& a, std::uint64_t& b) {
     if (a <= 1 || b <= 1)
         return;
     if (std::has_single_bit(a) || std::has_single_bit(b)) {
@@ -1591,35 +1589,26 @@ inline constexpr void cancel_gcd(umax& a, umax& b) {
 //---------------------------------------------------------------------------
 // rational — structural type for NTTP (public members only). Sign is encoded
 // in the denominator (negative = negative rational); numerator is unsigned to
-// represent e.g. umax itself. Default-constructed it is 0 (0/1). Every
+// represent e.g. uint64 itself. Default-constructed it is 0 (0/1). Every
 // constructor stores the reduced form; writing Num/Den directly is unchecked
 // (like inside::from_raw), but == and <=> still compare values. (As a template
 // argument, a hand-built unreduced value is a different argument: template
 // identity compares the members.)
 //---------------------------------------------------------------------------
 struct rational {
-    umax Num{0};
-    imax Den{1};
+    std::uint64_t Num{0};
+    std::int64_t  Den{1};
 
     constexpr rational() = default;
     // Exact for every double of magnitude 2^-10 or more; one finer than
     // 2^-62 keeps only its bits down to 2^-62 (truncated toward zero), as the
     // denominator has 63 bits. |value| ≥ 2^64 and non-finite values raise.
     constexpr rational(std::floating_point auto);
-    constexpr rational(std::signed_integral auto, imax = 1);
-    constexpr rational(std::unsigned_integral auto num, imax den = 1) : Num{static_cast<umax>(num)}, Den{den} {
+    // num/den of any two integers (two size_t too, without a cast): |num|
+    // within 64 bits, den within int64 (the sign lives in it), else overflow.
+    template <std::integral N, std::integral D = std::int64_t>
+    constexpr rational(N num, D den = 1) : Num{magnitude(num)}, Den{signed_den(num, den)} {
         check_fits(num);
-        canonicalize(Num, Den);
-    }
-
-    // Two-unsigned overload: lets `rational{i, N}` accept two `size_t`
-    // operands without forcing the caller to `static_cast<imax>` the
-    // numerator. A den past imax has no signed denominator: overflow.
-    template <std::unsigned_integral N, std::unsigned_integral D>
-    constexpr rational(N num, D den) : Num{static_cast<umax>(num)}, Den{static_cast<imax>(den)} {
-        check_fits(num);
-        if (!std::in_range<imax>(den))
-            raise(errc::overflow, "rational: denominator past imax");
         canonicalize(Num, Den);
     }
 
@@ -1647,11 +1636,11 @@ struct rational {
 
     template <std::signed_integral T>
     explicit constexpr operator T() const {
-        const umax q = Num / abs_den(Den);
-        if constexpr (wide_builtin<T>) // negate in T: umax{0} − q would read as positive
+        const std::uint64_t q = Num / abs_den(Den);
+        if constexpr (wide_builtin<T>) // negate in T: std::uint64_t{0} − q would read as positive
             return Den < 0 ? -static_cast<T>(q) : static_cast<T>(q);
         else
-            return static_cast<T>((Den < 0) ? umax{0} - q : q);
+            return static_cast<T>((Den < 0) ? std::uint64_t{0} - q : q);
     }
 
     template <std::floating_point T>
@@ -1673,34 +1662,49 @@ struct rational {
   private:
     // A builtin integer past 64 bits (__int128) has no 64-bit rational.
     static constexpr void check_fits(std::integral auto num) {
-        if (!fits_umax_magnitude(num))
+        if (!fits_uint64_magnitude(num))
             raise(errc::overflow, "rational: an integer past 64 bits");
     }
 
     // The two invalid denominators: 0 (n/0 is a division by zero, as in
-    // parse and big_rational) and imax_min (does not fit: it cannot be
+    // parse and big_rational) and int64_min (does not fit: it cannot be
     // negated without UB, which every sign-flip in the file assumes is
     // well-defined).
-    static constexpr void check_den(imax den) {
+    static constexpr void check_den(std::int64_t den) {
         if (den == 0)
             raise(errc::division_by_zero, "rational: zero denominator");
-        if (den == std::numeric_limits<imax>::min())
-            raise(errc::overflow, "rational: denominator imax_min (cannot be negated)");
+        if (den == std::numeric_limits<std::int64_t>::min())
+            raise(errc::overflow, "rational: denominator int64_min (cannot be negated)");
     }
 
     // Domain check + canonical-zero + gcd reduction; used by the integral ctors.
-    static constexpr void canonicalize(umax& num, imax& den) {
+    static constexpr void canonicalize(std::uint64_t& num, std::int64_t& den) {
         check_den(den);
         if (num == 0)
             den = 1;
         cancel_gcd(num, den);
     }
 
-    // Signed-encoded denominator for the signed ctor, validated BEFORE the
-    // negation so `-den` is never UB.
-    static constexpr imax signed_den_from(std::signed_integral auto num, imax den) {
-        check_den(den);
-        return (num < 0) ? -den : den;
+    static constexpr std::uint64_t magnitude(std::integral auto num) {
+        if constexpr (std::signed_integral<decltype(num)>)
+            return safe_abs(num);
+        else
+            return static_cast<std::uint64_t>(num);
+    }
+
+    // The signed-encoded denominator, validated BEFORE the negation so `-d`
+    // is never UB.
+    template <std::integral N, std::integral D>
+    static constexpr std::int64_t signed_den(N num, D den) {
+        if constexpr (!std::same_as<D, std::int64_t>)
+            if (!std::in_range<std::int64_t>(den))
+                raise(errc::overflow, "rational: denominator past int64");
+        const std::int64_t d = static_cast<std::int64_t>(den);
+        check_den(d);
+        if constexpr (std::signed_integral<N>)
+            return num < 0 ? -d : d;
+        else
+            return d;
     }
 };
 
@@ -1725,7 +1729,7 @@ struct rational {
 
 // A rational from already-canonical parts (magnitude, signed denominator):
 // no gcd, no domain checks.
-[[nodiscard]] constexpr rational rational_from_parts(umax num, imax den) noexcept {
+[[nodiscard]] constexpr rational rational_from_parts(std::uint64_t num, std::int64_t den) noexcept {
     rational r;
     r.Num = num;
     r.Den = den;
@@ -1746,45 +1750,48 @@ constexpr std::unexpected<errc> fail(errc code) {
 }
 
 // The numerator with the value's sign, as I (callers ensure it fits). A
-// builtin I negates in umax, so −2^63 (numerator 2^63) comes out as INT64_MIN.
-template <class I = imax>
+// builtin I negates in uint64, so −2^63 (numerator 2^63) comes out as INT64_MIN.
+template <class I = std::int64_t>
 [[nodiscard]] constexpr I signed_numerator(rational v) noexcept {
     if constexpr (std::integral<I>)
-        return static_cast<I>((v.Den < 0) ? umax{0} - v.Num : v.Num);
+        return static_cast<I>((v.Den < 0) ? std::uint64_t{0} - v.Num : v.Num);
     else
         return v.Den < 0 ? -I{v.Num} : I{v.Num};
 }
 
 // v rounded to an integer by m (nearest: half away from zero), as a sign
-// and a umax magnitude: q + 1 cannot overflow, since a nonzero remainder
-// needs a denominator ≥ 2, so q ≤ umax/2.
+// and a uint64 magnitude: q + 1 cannot overflow, since a nonzero remainder
+// needs a denominator ≥ 2, so q ≤ uint64/2.
 struct rounded_integer {
-    umax Magnitude;
-    bool Negative;
+    std::uint64_t Magnitude;
+    bool          Negative;
 };
 [[nodiscard]] constexpr rounded_integer round_magnitude(rational v, round_mode m) {
-    const umax ad  = abs_den(v.Den);
-    const umax q   = v.Num / ad;
-    const bool neg = v.Den < 0;
+    const std::uint64_t ad  = abs_den(v.Den);
+    const std::uint64_t q   = v.Num / ad;
+    const bool          neg = v.Den < 0;
     return {q + rounds_away(m, neg, classify_remainder(m, v.Num % ad, ad), (q & 1) != 0), neg};
 }
 
-// Narrowed to imax (callers keep |v| within it).
-[[nodiscard]] constexpr imax round_to_int(rational v, round_mode m) {
+// As an int64: a rational's integer part reaches ±(2^64 − 1), and one past
+// int64 raises overflow (the library's own callers stay within it).
+[[nodiscard]] constexpr std::int64_t round_to_int(rational v, round_mode m) {
     const auto [mag, neg] = round_magnitude(v, m);
-    return static_cast<imax>(neg ? umax{0} - mag : mag);
+    if (mag > (neg ? std::uint64_t{1} << 63 : (std::uint64_t{1} << 63) - 1))
+        raise(errc::overflow, "rational: the rounded integer is past int64");
+    return static_cast<std::int64_t>(neg ? std::uint64_t{0} - mag : mag);
 }
 
-// Kept exact as a rational, for indices that may pass imax.
+// Kept exact as a rational, for indices that may pass int64.
 [[nodiscard]] constexpr rational round_to_integral(rational v, round_mode m) {
     const auto [mag, neg] = round_magnitude(v, m);
-    return rational_from_parts(mag, (neg && mag != 0) ? imax{-1} : imax{1});
+    return rational_from_parts(mag, (neg && mag != 0) ? std::int64_t{-1} : std::int64_t{1});
 }
 
-[[nodiscard]] constexpr imax trunc(rational v) { return round_to_int(v, round_mode::trunc); }
-[[nodiscard]] constexpr imax floor(rational v) { return round_to_int(v, round_mode::floor); }
-[[nodiscard]] constexpr imax ceil(rational v) { return round_to_int(v, round_mode::ceil); }
-[[nodiscard]] constexpr imax round(rational v) { return round_to_int(v, round_mode::nearest); }
+[[nodiscard]] constexpr std::int64_t trunc(rational v) { return round_to_int(v, round_mode::trunc); }
+[[nodiscard]] constexpr std::int64_t floor(rational v) { return round_to_int(v, round_mode::floor); }
+[[nodiscard]] constexpr std::int64_t ceil(rational v) { return round_to_int(v, round_mode::ceil); }
+[[nodiscard]] constexpr std::int64_t round(rational v) { return round_to_int(v, round_mode::nearest); }
 
 //---------------------------------------------------------------------------
 // abs
@@ -1799,17 +1806,17 @@ struct rounded_integer {
 // gcd
 //---------------------------------------------------------------------------
 // Returns errc::overflow if the combined denominator lcm = (a/gcd)·b would exceed
-// imax_max (sign-bit reservation) — traps the mul_overflow then range-checks.
+// int64_max (sign-bit reservation) — traps the mul_overflow then range-checks.
 //---------------------------------------------------------------------------
 [[nodiscard]] constexpr std::expected<rational, errc> gcd(rational lhs, rational rhs) {
-    umax a = abs_den(lhs.Den);
-    umax b = abs_den(rhs.Den);
-    umax g = std::gcd(a, b);
+    std::uint64_t a = abs_den(lhs.Den);
+    std::uint64_t b = abs_den(rhs.Den);
+    std::uint64_t g = std::gcd(a, b);
 
-    umax denominator;
+    std::uint64_t denominator;
     if (mul_overflow(a / g, b, &denominator))
         return std::unexpected{errc::overflow};
-    if (!std::in_range<imax>(denominator))
+    if (!std::in_range<std::int64_t>(denominator))
         return std::unexpected{errc::overflow};
 
     auto numerator = std::gcd(lhs.Num, rhs.Num);
@@ -1866,21 +1873,13 @@ constexpr rational rational_of_wide_float(T v, bool& exact) {
     constexpr int drop   = wide_float_shift - 62; // keep bits down to 2^-62
     exact                = tail == 0 && (m << (wide_uint<4>::bits - drop)).is_zero();
     const auto q         = m >> drop; // ≥ 1 here
-    const int  tz        = std::countr_zero(static_cast<umax>(q)) < 62 ? std::countr_zero(static_cast<umax>(q)) : 62;
-    const auto num       = q >> tz;
+    const int  tz =
+        std::countr_zero(static_cast<std::uint64_t>(q)) < 62 ? std::countr_zero(static_cast<std::uint64_t>(q)) : 62;
+    const auto num = q >> tz;
     if (bit_width_of(num) > 64)
         raise(errc::overflow, "beman::inside::detail::rational: long double past the 64-bit rational");
-    const imax den = imax{1} << (62 - tz);
-    return rational_from_parts(static_cast<umax>(num), v < 0 ? -den : den);
-}
-
-//---------------------------------------------------------------------------
-// rational::rational
-//---------------------------------------------------------------------------
-constexpr rational::rational(std::signed_integral auto num, imax den)
-    : Num{safe_abs(num)}, Den{signed_den_from(num, den)} {
-    check_fits(num);
-    canonicalize(Num, Den);
+    const std::int64_t den = std::int64_t{1} << (62 - tz);
+    return rational_from_parts(static_cast<std::uint64_t>(num), v < 0 ? -den : den);
 }
 
 // rational{value}, and whether it is exact: a finite |value| < 2^64 finer
@@ -1891,7 +1890,7 @@ constexpr rational rational_of_double(double value, bool& exact) {
     if (value == 0.0)
         return rational_from_parts(0, 1);
     const auto [num, den] = abs_fraction(value, exact);
-    return rational_from_parts(num, value < 0 ? -static_cast<imax>(den) : static_cast<imax>(den));
+    return rational_from_parts(num, value < 0 ? -static_cast<std::int64_t>(den) : static_cast<std::int64_t>(den));
 }
 
 constexpr rational::rational(std::floating_point auto value) {
@@ -1913,7 +1912,7 @@ template <std::unsigned_integral T>
 constexpr std::expected<T, errc> rational::to() const {
     if (Den < 0)
         return std::unexpected{errc::domain_error};
-    const umax q = Num / abs_den(Den);
+    const std::uint64_t q = Num / abs_den(Den);
     if (!std::in_range<T>(q))
         return std::unexpected{errc::overflow};
     return static_cast<T>(q);
@@ -1924,30 +1923,30 @@ constexpr std::expected<T, errc> rational::to() const {
 // reduce back into range: (2^63+1)/2 + 1/6 = (3·2^62+2)/3).
 template <bool Loud>
 [[gnu::cold]] [[gnu::noinline]] constexpr std::expected<rational, errc> add_wide(rational a, rational b) {
-    using W       = wide_sint<3>;
-    const umax ad = abs_den(a.Den), bd = abs_den(b.Den), g = std::gcd(ad, bd);
-    W          num = signed_numerator<W>(a) * W{bd / g} + signed_numerator<W>(b) * W{ad / g};
-    W          den = W{ad} * W{bd / g};
+    using W                = wide_sint<3>;
+    const std::uint64_t ad = abs_den(a.Den), bd = abs_den(b.Den), g = std::gcd(ad, bd);
+    W                   num = signed_numerator<W>(a) * W{bd / g} + signed_numerator<W>(b) * W{ad / g};
+    W                   den = W{ad} * W{bd / g};
     // (num is nonzero: a + b == 0 needs equal denominators, a 64-bit step.)
     const W x      = wide_gcd(abs(num), den);
     num            = num / x;
     den            = den / x;
     const bool neg = num.negative();
     const W    mag = neg ? -num : num;
-    if (W{std::numeric_limits<umax>::max()} < mag || W{std::numeric_limits<imax>::max()} < den)
+    if (W{std::numeric_limits<std::uint64_t>::max()} < mag || W{std::numeric_limits<std::int64_t>::max()} < den)
         return fail<"rational +: result out of the 64-bit range", Loud>(errc::overflow);
-    const imax d = static_cast<imax>(static_cast<umax>(den));
-    return rational_from_parts(static_cast<umax>(mag), neg ? -d : d);
+    const std::int64_t d = static_cast<std::int64_t>(static_cast<std::uint64_t>(den));
+    return rational_from_parts(static_cast<std::uint64_t>(mag), neg ? -d : d);
 }
 
 // Reduce n/d, the sum of two reduced fractions over d = lcm of their
 // denominators, whose gcd is g: gcd(n, d) = gcd(n, g) (Henrici), so a sum
 // over coprime denominators is already reduced.
-constexpr void reduce_sum(umax& n, umax& d, umax g) noexcept {
+constexpr void reduce_sum(std::uint64_t& n, std::uint64_t& d, std::uint64_t g) noexcept {
     if (g == 1)
         return;
     // A power-of-two g: the gcd is the lowest set bit of n | g.
-    const umax h = std::has_single_bit(g) ? (n | g) & (umax{0} - (n | g)) : std::gcd(n, g);
+    const std::uint64_t h = std::has_single_bit(g) ? (n | g) & (std::uint64_t{0} - (n | g)) : std::gcd(n, g);
     n /= h;
     d /= h;
 }
@@ -1970,14 +1969,14 @@ inline constexpr auto rational_add(rational a, rational b) {
     if (b.Num == 0)
         return ret_t{a};
 
-    bool a_neg = a.Den < 0;
-    bool b_neg = b.Den < 0;
-    umax a_ad  = abs_den(a.Den);
-    umax b_ad  = abs_den(b.Den);
+    bool          a_neg = a.Den < 0;
+    bool          b_neg = b.Den < 0;
+    std::uint64_t a_ad  = abs_den(a.Den);
+    std::uint64_t b_ad  = abs_den(b.Den);
 
     if (a_ad == b_ad) {
         if (a_neg == b_neg) {
-            umax numerator;
+            std::uint64_t numerator;
             if constexpr (Checked) {
                 if (add_overflow(a.Num, b.Num, &numerator)) {
                     return ret_t{fail<"rational +: numerator overflow (same denominator)", Loud>(errc::overflow)};
@@ -1992,45 +1991,46 @@ inline constexpr auto rational_add(rational a, rational b) {
             return ret_t{r};
         }
 
-        umax num   = (a.Num > b.Num) ? (a.Num - b.Num) : (b.Num - a.Num);
-        bool r_neg = a_neg ? (a.Num > b.Num) : (b.Num > a.Num);
+        std::uint64_t num   = (a.Num > b.Num) ? (a.Num - b.Num) : (b.Num - a.Num);
+        bool          r_neg = a_neg ? (a.Num > b.Num) : (b.Num > a.Num);
         if (num == 0)
             return ret_t{rational{0}};
         rational r;
         r.Num = num;
-        r.Den = static_cast<imax>(r_neg ? umax{0} - a_ad : a_ad);
+        r.Den = static_cast<std::int64_t>(r_neg ? std::uint64_t{0} - a_ad : a_ad);
         cancel_gcd(r.Num, r.Den);
         return ret_t{r};
     }
 
     // Common denominator = lcm(a_ad, b_ad) = a_ad·(b_ad/g), not a_ad·b_ad: the
     // reduced cofactors (g = gcd) overflow far less often than the raw product.
-    umax g      = std::gcd(a_ad, b_ad);
-    umax a_ad_r = a_ad / g; // = a_ad / gcd; coprime with b_ad_r
-    umax b_ad_r = b_ad / g;
+    std::uint64_t g      = std::gcd(a_ad, b_ad);
+    std::uint64_t a_ad_r = a_ad / g; // = a_ad / gcd; coprime with b_ad_r
+    std::uint64_t b_ad_r = b_ad / g;
 
-    umax denominator;
-    umax A;
-    umax B;
+    std::uint64_t denominator;
+    std::uint64_t A;
+    std::uint64_t B;
 
     if constexpr (Checked) {
         if (mul_overflow(a_ad, b_ad_r, &denominator) || // = lcm(a_ad, b_ad)
-            !std::in_range<imax>(denominator)) {
+            !std::in_range<std::int64_t>(denominator)) {
             return ret_t{fail<"rational +: denominator overflow", Loud>(errc::overflow)};
         }
         if (mul_overflow(a.Num, b_ad_r, &A) || mul_overflow(b.Num, a_ad_r, &B)) {
-            // Mixed signs: |A − B| can fit umax even when a cross-product alone
+            // Mixed signs: |A − B| can fit uint64 even when a cross-product alone
             // does not (e.g. 1024 − m/2^54 forms 1024·2^54 == 2^64 before the
             // subtraction brings it back in range). Retry the difference in 128-bit before giving up.
             if (a_neg != b_neg) {
-                const limb::pair<umax> A2       = limb::mul(a.Num, b_ad_r);
-                const limb::pair<umax> B2       = limb::mul(b.Num, a_ad_r);
-                const bool             a_bigger = A2.Hi != B2.Hi ? A2.Hi > B2.Hi : A2.Lo > B2.Lo;
-                const limb::pair<umax> big = a_bigger ? A2 : B2, small = a_bigger ? B2 : A2;
+                const limb::pair<std::uint64_t> A2       = limb::mul(a.Num, b_ad_r);
+                const limb::pair<std::uint64_t> B2       = limb::mul(b.Num, a_ad_r);
+                const bool                      a_bigger = A2.Hi != B2.Hi ? A2.Hi > B2.Hi : A2.Lo > B2.Lo;
+                const limb::pair<std::uint64_t> big = a_bigger ? A2 : B2, small = a_bigger ? B2 : A2;
                 if (big.Hi - small.Hi - (big.Lo < small.Lo ? 1u : 0u) == 0) {
                     rational r;
                     r.Num = big.Lo - small.Lo;
-                    r.Den = static_cast<imax>((a_neg ? a_bigger : !a_bigger) ? umax{0} - denominator : denominator);
+                    r.Den = static_cast<std::int64_t>((a_neg ? a_bigger : !a_bigger) ? std::uint64_t{0} - denominator
+                                                                                     : denominator);
                     cancel_gcd(r.Num, r.Den);
                     return ret_t{r};
                 }
@@ -2044,7 +2044,7 @@ inline constexpr auto rational_add(rational a, rational b) {
     }
 
     if (a_neg == b_neg) {
-        umax numerator;
+        std::uint64_t numerator;
         if constexpr (Checked) {
             if (add_overflow(A, B, &numerator)) {
                 return ret_t{fail<"rational +: numerator sum overflow", Loud>(errc::overflow)};
@@ -2055,18 +2055,18 @@ inline constexpr auto rational_add(rational a, rational b) {
         // num, den both > 0 here, so the ctor's domain/zero checks are dead;
         // assemble directly and reduce.
         reduce_sum(numerator, denominator, g);
-        return ret_t{
-            rational_from_parts(numerator, a_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator))};
+        return ret_t{rational_from_parts(
+            numerator, a_neg ? -static_cast<std::int64_t>(denominator) : static_cast<std::int64_t>(denominator))};
     }
 
     // numerator == 0 (exact cancellation) is unreachable here: it would
     // require a == -b, which for canonical inputs has equal denominators and
     // took the equal-denominator branch above.
-    umax       numerator = (A > B) ? (A - B) : (B - A);
-    const bool r_neg     = a_neg ? (A > B) : (B > A);
+    std::uint64_t numerator = (A > B) ? (A - B) : (B - A);
+    const bool    r_neg     = a_neg ? (A > B) : (B > A);
     reduce_sum(numerator, denominator, g);
-    return ret_t{
-        rational_from_parts(numerator, r_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator))};
+    return ret_t{rational_from_parts(
+        numerator, r_neg ? -static_cast<std::int64_t>(denominator) : static_cast<std::int64_t>(denominator))};
 }
 
 template <bool Checked, bool Loud = true>
@@ -2076,12 +2076,12 @@ inline constexpr auto rational_mul(rational a, rational b) {
     if (a.Num == 0 || b.Num == 0)
         return ret_t{rational{0}};
 
-    bool r_neg = (a.Den < 0) != (b.Den < 0);
-    umax a_ad  = abs_den(a.Den);
-    umax b_ad  = abs_den(b.Den);
+    bool          r_neg = (a.Den < 0) != (b.Den < 0);
+    std::uint64_t a_ad  = abs_den(a.Den);
+    std::uint64_t b_ad  = abs_den(b.Den);
 
     if (a_ad == 1 && b_ad == 1) {
-        umax numerator;
+        std::uint64_t numerator;
         if constexpr (Checked) {
             if (mul_overflow(a.Num, b.Num, &numerator)) {
                 return ret_t{fail<"rational *: numerator overflow", Loud>(errc::overflow)};
@@ -2089,17 +2089,17 @@ inline constexpr auto rational_mul(rational a, rational b) {
         } else
             numerator = a.Num * b.Num;
 
-        return ret_t{rational_from_parts(numerator, r_neg ? imax{-1} : imax{1})};
+        return ret_t{rational_from_parts(numerator, r_neg ? std::int64_t{-1} : std::int64_t{1})};
     }
 
     cancel_gcd(a.Num, b_ad);
     cancel_gcd(b.Num, a_ad);
 
-    umax numerator;
-    umax denominator;
+    std::uint64_t numerator;
+    std::uint64_t denominator;
     if constexpr (Checked) {
         if (mul_overflow(a.Num, b.Num, &numerator) || mul_overflow(a_ad, b_ad, &denominator) ||
-            !std::in_range<imax>(denominator)) {
+            !std::in_range<std::int64_t>(denominator)) {
             return ret_t{fail<"rational *: numerator or denominator overflow", Loud>(errc::overflow)};
         }
     } else {
@@ -2109,7 +2109,8 @@ inline constexpr auto rational_mul(rational a, rational b) {
 
     // The cross-cancellations above guarantee gcd(numerator, denominator) == 1,
     // so bypass rational(num, den) and skip its redundant cancel_gcd.
-    return ret_t{rational_from_parts(numerator, static_cast<imax>(r_neg ? umax{0} - denominator : denominator))};
+    return ret_t{rational_from_parts(numerator,
+                                     static_cast<std::int64_t>(r_neg ? std::uint64_t{0} - denominator : denominator))};
 }
 
 //---------------------------------------------------------------------------
@@ -2118,7 +2119,7 @@ inline constexpr auto rational_mul(rational a, rational b) {
 // a is already in lowest terms (Num and |Den| coprime), so the swapped
 // pair is too. Sign lives in the denominator and 1/(-x) has the same
 // sign as -x, so the sign bit moves with the (now) denominator unchanged.
-// Caller's contract: a != 0 and a's numerator fits imax.
+// Caller's contract: a != 0 and a's numerator fits int64.
 inline constexpr rational rational_inv(rational a) { return rational_from_parts(abs_den(a.Den), signed_numerator(a)); }
 
 // div(a, b): checked, cross-reduced; unchecked, a * inv(b) (caller's contract).
@@ -2133,21 +2134,21 @@ inline constexpr auto rational_div(rational a, rational b) {
             return ret_t{fail<"rational /: division by zero", Loud>(errc::division_by_zero)};
         if (a.Num == 0)
             return ret_t{rational{0}};
-        const umax g1 = std::gcd(a.Num, b.Num);
-        const umax g2 = std::gcd(abs_den(a.Den), abs_den(b.Den));
-        umax       num, den;
+        const std::uint64_t g1 = std::gcd(a.Num, b.Num);
+        const std::uint64_t g2 = std::gcd(abs_den(a.Den), abs_den(b.Den));
+        std::uint64_t       num, den;
         if (mul_overflow(a.Num / g1, abs_den(b.Den) / g2, &num) ||
-            mul_overflow(abs_den(a.Den) / g2, b.Num / g1, &den) || !std::in_range<imax>(den))
+            mul_overflow(abs_den(a.Den) / g2, b.Num / g1, &den) || !std::in_range<std::int64_t>(den))
             return ret_t{fail<"rational /: numerator or denominator overflow", Loud>(errc::overflow)};
         const bool neg = (a.Den < 0) != (b.Den < 0);
-        return ret_t{rational_from_parts(num, neg ? -static_cast<imax>(den) : static_cast<imax>(den))};
+        return ret_t{rational_from_parts(num, neg ? -static_cast<std::int64_t>(den) : static_cast<std::int64_t>(den))};
     } else
         return rational_mul<false>(a, rational_inv(b));
 }
 
 //---------------------------------------------------------------------------
-// unchecked rational arithmetic — caller guarantees: no umax overflow on the
-// products, no zero divisor/numerator, and the result Denominator fits in imax.
+// unchecked rational arithmetic — caller guarantees: no uint64 overflow on the
+// products, no zero divisor/numerator, and the result Denominator fits in int64.
 // The checked variants enforce all three; unchecked skips them.
 //---------------------------------------------------------------------------
 inline constexpr rational add_unchecked(rational a, rational b) { return rational_add<false>(a, b); }
@@ -2178,7 +2179,7 @@ inline constexpr rational div_unchecked(rational a, rational b) { return rationa
     // negative values. Each factor is below 2^64, so the products are exact
     // for every pair: no integer special case, no division. Two zeros give
     // two zero products: equal.
-    const umax lhs_ad = abs_den(lhs.Den), rhs_ad = abs_den(rhs.Den);
+    const std::uint64_t lhs_ad = abs_den(lhs.Den), rhs_ad = abs_den(rhs.Den);
     return lhs_sign < 0 ? limb::mul_compare(rhs.Num, lhs_ad, lhs.Num, rhs_ad)
                         : limb::mul_compare(lhs.Num, rhs_ad, rhs.Num, lhs_ad);
 }
@@ -2192,13 +2193,13 @@ inline constexpr rational div_unchecked(rational a, rational b) { return rationa
     const int ls = sign(lhs), rs = rhs < 0 ? -1 : 1;
     if (ls != rs)
         return ls <=> rs;
-    const auto [s, exp2] = abs_fields(rhs);
-    const int  k         = -exp2; // rhs = s·2^-k, k > 62
-    const umax n = lhs.Num, d = abs_den(lhs.Den);
+    const auto [s, exp2]  = abs_fields(rhs);
+    const int           k = -exp2; // rhs = s·2^-k, k > 62
+    const std::uint64_t n = lhs.Num, d = abs_den(lhs.Den);
     // s·D < 2^117: past that width N·2^k is larger.
     const auto mag = std::bit_width(n) + k > 117
                          ? std::strong_ordering::greater
-                         : limb::mul_compare(n << (k - 63), umax{1} << 63, s, d); // N·2^(k−63) < 2^54
+                         : limb::mul_compare(n << (k - 63), std::uint64_t{1} << 63, s, d); // N·2^(k−63) < 2^54
     return ls < 0 ? (0 <=> mag) : mag;
 }
 
@@ -2336,12 +2337,12 @@ BEMAN_INSIDE_RATIONAL_OP(/)
     if (divisor == 0)
         return true; // convention: everything divides 0 evenly
 
-    // dividend/divisor ∈ ℤ without forming the (possibly umax-overflowing)
+    // dividend/divisor ∈ ℤ without forming the (possibly uint64-overflowing)
     // quotient numerator. In lowest terms dividend = p/q, divisor = r/s; the
     // quotient p·s/(q·r) is integral iff q | s and r | p (rationals are
     // canonicalized, so gcd(p,q)=gcd(r,s)=1). All checks are on single fields.
-    const umax p = dividend.Num, q = abs_den(dividend.Den);
-    const umax r = divisor.Num, s = abs_den(divisor.Den);
+    const std::uint64_t p = dividend.Num, q = abs_den(dividend.Den);
+    const std::uint64_t r = divisor.Num, s = abs_den(divisor.Den);
     return (s % q == 0) && (p % r == 0);
 }
 } // namespace beman::inside::detail
@@ -2507,14 +2508,14 @@ template <typename OnDigit>
 
 // Unsigned number in [first, last): the grammar of the _ins / _r literals.
 constexpr parsed_number parse_number(const char* first, const char* last) {
-    auto fail       = [](parse_fail f) { return parsed_number{rational{}, f}; };
-    umax num        = 0;
-    int  frac_len   = 0;
-    int  frac_zeros = 0; // deferred fractional zeros
+    auto          fail       = [](parse_fail f) { return parsed_number{rational{}, f}; };
+    std::uint64_t num        = 0;
+    int           frac_len   = 0;
+    int           frac_zeros = 0; // deferred fractional zeros
     // A fractional zero only matters if a non-zero digit follows: defer it,
     // so trailing zeros ("1.000…0") cannot overflow num / den.
     const scanned_number sc = scan_number(first, last, [&](int d, bool in_frac, int base) {
-        const umax base_u = static_cast<umax>(base);
+        const std::uint64_t base_u = static_cast<std::uint64_t>(base);
         if (in_frac && d == 0) {
             ++frac_zeros;
             return true;
@@ -2522,7 +2523,7 @@ constexpr parsed_number parse_number(const char* first, const char* last) {
         for (; frac_zeros > 0; --frac_zeros, ++frac_len)
             if (mul_overflow(num, base_u, &num))
                 return false;
-        if (mul_overflow(num, base_u, &num) || add_overflow(num, static_cast<umax>(d), &num))
+        if (mul_overflow(num, base_u, &num) || add_overflow(num, static_cast<std::uint64_t>(d), &num))
             return false;
         if (in_frac)
             ++frac_len;
@@ -2535,10 +2536,10 @@ constexpr parsed_number parse_number(const char* first, const char* last) {
 
     // Build denominator from fractional part.
     // For decimal: den = 10^frac_len. For hex: den = 2^(4*frac_len).
-    umax den = 1;
+    std::uint64_t den = 1;
     if (sc.Base == 10) {
         for (int k = 0; k < frac_len; ++k)
-            if (mul_overflow(den, umax{10}, &den))
+            if (mul_overflow(den, std::uint64_t{10}, &den))
                 return fail(parse_fail::denominator_overflow);
     } else if (sc.Base == 16) {
         const int shift = 4 * frac_len;
@@ -2550,35 +2551,35 @@ constexpr parsed_number parse_number(const char* first, const char* last) {
     // Zero stays zero whatever the exponent: skip the scaling (which could
     // only overflow).
     if (num == 0)
-        return parsed_number{rational{umax{0}}, parse_fail::none};
+        return parsed_number{rational{std::uint64_t{0}}, parse_fail::none};
 
     // The exponent scales the numerator, or the denominator when negative.
-    umax& side = sc.ExpNeg ? den : num;
+    std::uint64_t& side = sc.ExpNeg ? den : num;
     // Binary exponent (hex floats, `p`). The factors of two cancel first
     // (0x0.1p4 is 1, 0x10p-66 is 2^-62), so only a value past the 64-bit
     // rationals fails; 2^63 itself fits.
     if (sc.HasP) {
-        umax&     other  = sc.ExpNeg ? num : den; // the side the shift cancels against
-        const int cancel = std::min(std::countr_zero(other), sc.Exp);
+        std::uint64_t& other  = sc.ExpNeg ? num : den; // the side the shift cancels against
+        const int      cancel = std::min(std::countr_zero(other), sc.Exp);
         other >>= cancel;
         const int e = sc.Exp - cancel;
         if (e >= 64)
             return fail(parse_fail::p_exponent_too_large);
-        if (side > ~umax{0} >> e)
+        if (side > ~std::uint64_t{0} >> e)
             return fail(sc.ExpNeg ? parse_fail::p_exponent_denominator_overflow : parse_fail::numerator_overflow);
         side <<= e;
     }
     // Decimal exponent (decimal scientific, `e`).
     if (sc.HasE)
         for (int k = 0; k < sc.Exp; ++k)
-            if (mul_overflow(side, umax{10}, &side))
+            if (mul_overflow(side, std::uint64_t{10}, &side))
                 return fail(sc.ExpNeg ? parse_fail::e_exponent_denominator_overflow
                                       : parse_fail::e_exponent_numerator_overflow);
 
     // In lowest terms before the signed-denominator check (0.5e-18 is
-    // 1/(2·10^18), though 10^19 itself is past imax).
+    // 1/(2·10^18), though 10^19 itself is past int64).
     cancel_gcd(num, den);
-    if (!std::in_range<imax>(den))
+    if (!std::in_range<std::int64_t>(den))
         return fail(parse_fail::denominator_overflow);
     return parsed_number{rational{num, den}, parse_fail::none};
 }
@@ -2707,13 +2708,13 @@ using detail::operator""_r;
 // the constexpr grid constructors, normalization and printing a grid; at
 // run time a result past one limb reports errc::overflow.
 //
-// Arithmetic on large values runs on transient std::vector<umax> magnitudes
+// Arithmetic on large values runs on transient std::vector<std::uint64_t> magnitudes
 // with the wide_int limb kernels, during constant evaluation only.
 //---------------------------------------------------------------------------
 
 namespace beman::inside::detail {
 namespace big {
-using mag = std::vector<umax>; // little-endian, no top zeros
+using mag = std::vector<std::uint64_t>; // little-endian, no top zeros
 
 constexpr void trim(mag& m) { m.resize(limb::top_size(m.data(), m.size())); }
 
@@ -2794,8 +2795,8 @@ constexpr signed_mag add_signed(const mag& x, bool xn, const mag& y, bool yn) {
 // A fraction of transient magnitudes, unreduced: nothing is interned, so it
 // computes at runtime too (a big grid's predicates against a runtime value).
 struct fraction {
-    mag  Num;          // |numerator|
-    mag  Den{umax{1}}; // > 0
+    mag  Num;                   // |numerator|
+    mag  Den{std::uint64_t{1}}; // > 0
     bool Negative = false;
 };
 
@@ -2843,8 +2844,8 @@ constexpr fraction fraction_of_float(T v) {
         mant >>= z;
         e += z;
     }
-    return e >= 0 ? fraction{shl(mag{mant}, e), mag{umax{1}}, d < 0}
-                  : fraction{mag{mant}, shl(mag{umax{1}}, -e), d < 0};
+    return e >= 0 ? fraction{shl(mag{mant}, e), mag{std::uint64_t{1}}, d < 0}
+                  : fraction{mag{mant}, shl(mag{std::uint64_t{1}}, -e), d < 0};
 }
 } // namespace big
 
@@ -2852,19 +2853,20 @@ constexpr fraction fraction_of_float(T v) {
 // big_int — a signed integer of any size; structural.
 //---------------------------------------------------------------------------
 struct big_int {
-    umax        Small = 0;       // the magnitude when Size == 0
-    const umax* Limbs = nullptr; // interned magnitude, Size ≥ 2 limbs
-    std::size_t Size  = 0;       // tested instead of Limbs: under -fno-delete-null-pointer-checks
-                                 // (implied by -fsanitize=null) GCC cannot compare an interned
-                                 // pointer with nullptr in a constant expression
-    bool Negative = false;       // never set for zero
+    std::uint64_t        Small = 0;       // the magnitude when Size == 0
+    const std::uint64_t* Limbs = nullptr; // interned magnitude, Size ≥ 2 limbs
+    std::size_t          Size  = 0;       // tested instead of Limbs: under -fno-delete-null-pointer-checks
+                                          // (implied by -fsanitize=null) GCC cannot compare an interned
+                                          // pointer with nullptr in a constant expression
+    bool Negative = false;                // never set for zero
 
     constexpr big_int() = default;
 
     template <std::integral T>
         requires(std::numeric_limits<T>::digits <= 64)
     constexpr big_int(T v) noexcept
-        : Small{std::is_signed_v<T> && v < 0 ? umax{0} - static_cast<umax>(v) : static_cast<umax>(v)},
+        : Small{std::is_signed_v<T> && v < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(v)
+                                             : static_cast<std::uint64_t>(v)},
           Negative{std::is_signed_v<T> && v < 0} {}
 
     // A builtin wider than 64 bits (__int128): its limbs. One past a limb
@@ -2876,7 +2878,7 @@ struct big_int {
         const bool neg = std::is_signed_v<T> && v < 0;
         big::mag   m;
         for (U u = neg ? U{0} - static_cast<U>(v) : static_cast<U>(v); u != 0; u >>= 64)
-            m.push_back(static_cast<umax>(u));
+            m.push_back(static_cast<std::uint64_t>(u));
         *this = from_mag(std::move(m), neg);
     }
 
@@ -2908,7 +2910,7 @@ struct big_int {
     }
 
     // The canonical big_int of a one-limb magnitude and sign.
-    static constexpr big_int of_limb(umax m, bool neg) noexcept {
+    static constexpr big_int of_limb(std::uint64_t m, bool neg) noexcept {
         big_int r;
         r.Small    = m;
         r.Negative = neg && m != 0;
@@ -2920,7 +2922,7 @@ struct big_int {
     static constexpr big_int from_mag(big::mag m, bool neg) {
         big::trim(m);
         if (m.size() <= 1)
-            return of_limb(m.empty() ? umax{0} : m[0], neg);
+            return of_limb(m.empty() ? std::uint64_t{0} : m[0], neg);
         big_int r;
         if consteval {
             const auto s = std::define_static_array(m);
@@ -2944,12 +2946,12 @@ struct big_int {
         if constexpr (std::integral<T> && std::numeric_limits<T>::digits > 64) {
             using U = std::make_unsigned_t<T>; // the low limbs that fit U
             U u     = 0;
-            for (std::size_t i = Size != 0 ? std::min(Size, sizeof(U) / sizeof(umax)) : 1; i-- > 0;)
+            for (std::size_t i = Size != 0 ? std::min(Size, sizeof(U) / sizeof(std::uint64_t)) : 1; i-- > 0;)
                 u = (u << 64) | (Size != 0 ? Limbs[i] : Small);
             return static_cast<T>(Negative ? U{0} - u : u);
         } else if constexpr (std::integral<T>) {
-            const umax low = Size != 0 ? Limbs[0] : Small;
-            return static_cast<T>(Negative ? umax{0} - low : low);
+            const std::uint64_t low = Size != 0 ? Limbs[0] : Small;
+            return static_cast<T>(Negative ? std::uint64_t{0} - low : low);
         } else {
             T w{0};
             for (std::size_t i = 0; i < sizeof(w.Word) / sizeof(w.Word[0]); ++i)
@@ -2980,8 +2982,8 @@ struct big_int {
     static constexpr big_int add(const big_int& a, const big_int& b) {
         if (a.Size == 0 && b.Size == 0) {
             if (a.Negative == b.Negative) {
-                umax       c = 0;
-                const umax s = limb::add_carry(a.Small, b.Small, c);
+                std::uint64_t       c = 0;
+                const std::uint64_t s = limb::add_carry(a.Small, b.Small, c);
                 if (c == 0)
                     return of_limb(s, a.Negative);
             } else
@@ -2994,7 +2996,7 @@ struct big_int {
     static constexpr big_int sub(const big_int& a, const big_int& b) { return add(a, neg(b)); }
     static constexpr big_int mul(const big_int& a, const big_int& b) {
         if (a.Size == 0 && b.Size == 0) {
-            const limb::pair<umax> p = limb::mul(a.Small, b.Small);
+            const limb::pair<std::uint64_t> p = limb::mul(a.Small, b.Small);
             if (p.Hi == 0)
                 return of_limb(p.Lo, a.Negative != b.Negative);
         }
@@ -3047,8 +3049,8 @@ constexpr auto big_int::divmod(const big_int& a, const big_int& b) -> divmod_res
     if (a.Size == 0 && b.Size == 0)
         return {of_limb(a.Small / b.Small, a.Negative != b.Negative), of_limb(a.Small % b.Small, a.Negative)};
     if (b.Size == 0) { // a one-limb divisor: one pass over a's limbs
-        big::mag   q(a.Limbs, a.Limbs + a.Size);
-        const umax r = limb::div_1(q.data(), q.data(), q.size(), b.Small);
+        big::mag            q(a.Limbs, a.Limbs + a.Size);
+        const std::uint64_t r = limb::div_1(q.data(), q.data(), q.size(), b.Small);
         return {from_mag(std::move(q), a.Negative != b.Negative), of_limb(r, a.Negative)};
     }
     big::divmod_result m = big::divmod(a.magnitude(), b.magnitude());
@@ -3057,7 +3059,7 @@ constexpr auto big_int::divmod(const big_int& a, const big_int& b) -> divmod_res
 constexpr big_int big_int::quot(const big_int& a, const big_int& b) { return divmod(a, b).Quotient; }
 constexpr big_int big_int::rem(const big_int& a, const big_int& b) {
     if (b.Size == 0 && a.Size != 0 && !b.is_zero()) { // a one-limb divisor: the remainder alone
-        umax r = 0;
+        std::uint64_t r = 0;
         for (std::size_t i = a.Size; i-- > 0;)
             r = limb::div(r, a.Limbs[i], b.Small).Lo;
         return of_limb(r, a.Negative);
@@ -3114,7 +3116,7 @@ struct big_rational {
             }
             if (e < 0 ? e > -64 : e <= std::countl_zero(m)) {
                 Num = big_int::of_limb(e >= 0 ? m << e : m, d < 0);
-                Den = big_int{e >= 0 ? umax{1} : umax{1} << -e};
+                Den = big_int{e >= 0 ? std::uint64_t{1} : std::uint64_t{1} << -e};
                 return;
             }
         }
@@ -3147,7 +3149,7 @@ struct big_rational {
 
     // The 64-bit rational, when the value fits it.
     [[nodiscard]] constexpr bool fits_rational() const noexcept {
-        return Num.fits_limb() && Den.fits_limb() && std::in_range<imax>(Den.Small);
+        return Num.fits_limb() && Den.fits_limb() && std::in_range<std::int64_t>(Den.Small);
     }
 
     // Implicit: lets every 64-bit path keep working on a small grid. A value
@@ -3155,7 +3157,7 @@ struct big_rational {
     constexpr operator rational() const {
         if (!fits_rational())
             fail_hard<"grid number past 64 bits on a path that needs a 64-bit rational">(errc::overflow);
-        const imax d = static_cast<imax>(Den.Small); // in lowest terms already
+        const std::int64_t d = static_cast<std::int64_t>(Den.Small); // in lowest terms already
         return rational_from_parts(Num.Small, Num.negative() ? -d : d);
     }
 
@@ -3259,16 +3261,17 @@ struct big_rational {
             const int      bw = big::bit_width(m);
             sh                = 0;
             if (bw <= 64)
-                return static_cast<double>(m.empty() ? umax{0} : m[0]);
+                return static_cast<double>(m.empty() ? std::uint64_t{0} : m[0]);
             sh                    = bw - 64;
             const std::size_t w   = static_cast<std::size_t>(sh / 64);
             const int         b   = sh % 64;
-            umax              top = m[w] >> b;
+            std::uint64_t     top = m[w] >> b;
             if (b != 0 && w + 1 < m.size())
                 top |= m[w + 1] << (64 - b);
             const bool sticky =
-                (b != 0 && (m[w] << (64 - b)) != 0) ||
-                std::any_of(m.begin(), m.begin() + static_cast<std::ptrdiff_t>(w), [](umax x) { return x != 0; });
+                (b != 0 && (m[w] << (64 - b)) != 0) || std::any_of(m.begin(),
+                                                                   m.begin() + static_cast<std::ptrdiff_t>(w),
+                                                                   [](std::uint64_t x) { return x != 0; });
             return static_cast<double>(top | (sticky ? 1u : 0u));
         };
         int          sn = 0, sd = 0;
@@ -3438,8 +3441,8 @@ template <auto D>
 consteval auto make_per() {
     if constexpr (std::integral<decltype(D)>) {
         static_assert(D >= 1, "per<D> is the positive step 1/D; a continuous grid is spelled 0");
-        if constexpr (std::in_range<imax>(D))
-            return rational{imax{1}, static_cast<imax>(D)};
+        if constexpr (std::in_range<std::int64_t>(D))
+            return rational{std::int64_t{1}, static_cast<std::int64_t>(D)};
         else
             return grid_rational{1} / grid_rational{D};
     } else {
@@ -4240,14 +4243,14 @@ namespace detail {
 //---------------------------------------------------------------------------
 constexpr bool continuous_grid(const grid& g) { return g.Notch == 0 && g.Interval.Lower != g.Interval.Upper; }
 
-// Whether g's step count fits umax: a builtin index (else g stores a wide
+// Whether g's step count fits uint64: a builtin index (else g stores a wide
 // one), and that count as the builtin (0 when it does not fit). Internal:
 // the public counts are step_count_of<T> and index_t<T>, insides of any size.
 consteval bool max_index_representable(const grid& g) {
-    return !(grid_int{std::numeric_limits<umax>::max()} < g.step_count());
+    return !(grid_int{std::numeric_limits<std::uint64_t>::max()} < g.step_count());
 }
-consteval umax max_index(const grid& g) {
-    return max_index_representable(g) ? static_cast<umax>(g.step_count()) : umax{0};
+consteval std::uint64_t max_index(const grid& g) {
+    return max_index_representable(g) ? static_cast<std::uint64_t>(g.step_count()) : std::uint64_t{0};
 }
 
 // Whether an inside on g exists (grid::validate): a lattice, a point, or a
@@ -4298,11 +4301,11 @@ consteval grid bounded_continuous(const interval& iv, grid_int d) {
 // G and M are template parameters so each store compiles to its own
 // branch-free rounding.
 template <grid G, round_mode M>
-[[nodiscard]] constexpr imax snap_double_index(double v) noexcept {
-    constexpr double nd = static_cast<double>(G.Notch);
-    const double     q  = v / nd;
-    const imax       t  = static_cast<imax>(q);       // toward zero
-    const double     f  = q - static_cast<double>(t); // exact, sign of q, |f| < 1
+[[nodiscard]] constexpr std::int64_t snap_double_index(double v) noexcept {
+    constexpr double   nd = static_cast<double>(G.Notch);
+    const double       q  = v / nd;
+    const std::int64_t t  = static_cast<std::int64_t>(q); // toward zero
+    const double       f  = q - static_cast<double>(t);   // exact, sign of q, |f| < 1
     if constexpr (M == round_mode::nearest)
         return t + (f >= 0.5) - (G.Interval.Lower < 0 && f <= -0.5);
     else if constexpr (M == round_mode::floor)
@@ -4325,9 +4328,9 @@ struct point_slot {
     constexpr point_slot() = default;
     template <typename T>
         requires std::is_arithmetic_v<T>
-    constexpr point_slot(T) noexcept {}                         // any index: the only slot
-    constexpr point_slot(const rational&) noexcept {}           // any value: the type holds it
-    constexpr      operator imax() const noexcept { return 0; } // reads as index 0
+    constexpr point_slot(T) noexcept {}                                 // any index: the only slot
+    constexpr point_slot(const rational&) noexcept {}                   // any value: the type holds it
+    constexpr      operator std::int64_t() const noexcept { return 0; } // reads as index 0
     constexpr bool operator==(const point_slot&) const  = default;
     constexpr auto operator<=>(const point_slot&) const = default;
 };
@@ -4339,11 +4342,11 @@ constexpr bool unit_lattice(const grid& g) noexcept {
     return g.Notch == 1 && grid_denominator(g.Interval.Lower) == grid_int{1};
 }
 
-// Both endpoints lie in imax — the signed value raw candidates (and every
+// Both endpoints lie in int64 — the signed value raw candidates (and every
 // `trunc(endpoint)` constant) are only meaningful then.
-constexpr bool fits_imax(const interval& iv) noexcept {
-    return iv.Lower >= rational{std::numeric_limits<imax>::min()} &&
-           iv.Upper <= rational{std::numeric_limits<imax>::max()};
+constexpr bool fits_int64(const interval& iv) noexcept {
+    return iv.Lower >= rational{std::numeric_limits<std::int64_t>::min()} &&
+           iv.Upper <= rational{std::numeric_limits<std::int64_t>::max()};
 }
 
 // Storage is a function of the grid alone. Order: point → empty point_slot;
@@ -4369,10 +4372,10 @@ inline constexpr bool deduces_value = [] {
     if constexpr (G.Interval.Lower == G.Interval.Upper || !unit_lattice(G) || !max_index_representable(G))
         return false;
     else if constexpr (G.Interval.Lower < 0)
-        return fits_imax(G.Interval);
+        return fits_int64(G.Interval);
     else if constexpr (G.Interval.Lower == 0)
         return true;
-    else if constexpr (!fits_imax(G.Interval))
+    else if constexpr (!fits_int64(G.Interval))
         return false;
     else
         return sizeof(value_uint_for_t<G>) <= sizeof(index_raw_for_t<G>);
@@ -4382,8 +4385,8 @@ inline constexpr bool deduces_value = [] {
 // rational, or — past it — a reduced fraction of K-limb integers, K sized
 // from the bounds, so every value fits.
 template <grid G>
-inline constexpr bool bound_fits_rational = !(grid_int{std::numeric_limits<imax>::max()} < den_bound(G)) &&
-                                            !(grid_int{std::numeric_limits<umax>::max()} < num_bound(G));
+inline constexpr bool bound_fits_rational = !(grid_int{std::numeric_limits<std::int64_t>::max()} < den_bound(G)) &&
+                                            !(grid_int{std::numeric_limits<std::uint64_t>::max()} < num_bound(G));
 
 template <grid G>
 inline constexpr std::size_t continuous_limbs = [] {
@@ -4706,10 +4709,10 @@ using plain_t = std::remove_cvref_t<T>;
 //
 //   as_rational(x)         value → rational    exact view of a scalar or inside
 //   as_double(b)           raw   → double       kind-aware decode; lossy off dyadic grids
-//   to_value(b)            raw   → imax         the inside's integer value (decodes an index)
-//   from_value(b, v)       imax  → raw          store integer value v into b (inverse of to_value)
+//   to_value(b)            raw   → int64         the inside's integer value (decodes an index)
+//   from_value(b, v)       int64  → raw          store integer value v into b (inverse of to_value)
 //   raw_cast<B>(x)         x     → raw_t<B>     TYPE cast only — no value arithmetic
-//   raw_imax(b)            raw   → imax         widen the raw bits (NOT the value for index storage)
+//   raw_int64(b)            raw   → int64         widen the raw bits (NOT the value for index storage)
 //   raw_from_offset<B>(o)  index → raw_t<B>     adds raw_lo (Lower for a value raw, 0 for an index)
 //   raw_of_slot<B>(o)      index → raw_t<B>     any storage, any width (inside/detail/wide_value.hpp)
 //-------------------------------------------------------------------------
@@ -4788,7 +4791,7 @@ template <typename B>
 concept point_storage = insidable<B> && std::same_as<raw_t<B>, point_slot>;
 
 // Its values need the exact wide paths (inside/detail/wide_value.hpp): a 64-bit
-// rational or imax cannot hold them.
+// rational or int64 cannot hold them.
 template <typename B>
 concept wide_index_storage = insidable<B> && wide_integer<raw_t<B>>;
 
@@ -4838,8 +4841,8 @@ inline constexpr bool wide_grid_numbers =
 // on {{-1.2e19, 1.2e19}, 1.5} the half-integers need numerators to 2.4e19.
 template <insidable B>
 inline constexpr bool lattice_past_rational =
-    grid_of<B>.Notch != 0 && (grid_int{std::numeric_limits<imax>::max()} < den_bound(grid_of<B>) ||
-                              grid_int{std::numeric_limits<umax>::max()} < num_bound(grid_of<B>));
+    grid_of<B>.Notch != 0 && (grid_int{std::numeric_limits<std::int64_t>::max()} < den_bound(grid_of<B>) ||
+                              grid_int{std::numeric_limits<std::uint64_t>::max()} < num_bound(grid_of<B>));
 
 // Values past the 64-bit rational: a wide index, grid numbers past 64 bits,
 // a lattice past it, or a fraction raw (a bounded continuous grid can need
@@ -4869,13 +4872,20 @@ inline constexpr bool value_indices_fit64 =
     notched<B> && fits_rational(lower_index_of<B>) && fits_rational(upper_index_of<B>);
 template <insidable B>
 inline constexpr rational lower_index64 = to_rational(lower_index_of<B>);
-// Lower/Notch as an imax value index: an integer within imax.
+// Lower/Notch as an int64 value index: an integer within int64.
 template <insidable B>
-inline constexpr bool lower_index_fits_imax = notched<B> && grid_denominator(lower_index_of<B>) == grid_int{1} &&
-                                              !(lower_index_of<B> < grid_rational{std::numeric_limits<imax>::min()}) &&
-                                              !(grid_rational{std::numeric_limits<imax>::max()} < lower_index_of<B>);
+inline constexpr bool lower_index_fits_int64 =
+    notched<B> && grid_denominator(lower_index_of<B>) == grid_int{1} &&
+    !(lower_index_of<B> < grid_rational{std::numeric_limits<std::int64_t>::min()}) &&
+    !(grid_rational{std::numeric_limits<std::int64_t>::max()} < lower_index_of<B>);
 template <insidable B>
 inline constexpr rational upper_index64 = to_rational(upper_index_of<B>);
+// Every value index of an anchored grid (value/Notch, an integer) fits
+// int64: value_index<std::int64_t> is exact. (uint64's do not.)
+template <insidable B>
+inline constexpr bool value_indices_fit_int64 =
+    notched<B> && anchored<B> && !(lower_index_of<B> < grid_rational{std::numeric_limits<std::int64_t>::min()}) &&
+    !(grid_rational{std::numeric_limits<std::int64_t>::max()} < upper_index_of<B>);
 
 // Index raw → double in one IEEE operation. On an anchored grid with Notch
 // p/q the value is J·p/q, J = raw + Lower/Notch. With |J·p| and q at most 2^53
@@ -4883,26 +4893,26 @@ inline constexpr rational upper_index64 = to_rational(upper_index_of<B>);
 // quotient: what the rational decode gives (a power-of-two q compiles to a
 // multiply).
 struct index_double_codec {
-    bool   Ok;
-    imax   LowerIndex; // Lower / Notch
-    imax   P;          // Notch numerator
-    double Q;          // Notch denominator
+    bool         Ok;
+    std::int64_t LowerIndex; // Lower / Notch
+    std::int64_t P;          // Notch numerator
+    double       Q;          // Notch denominator
 };
 template <insidable B>
 inline constexpr index_double_codec index_double = [] {
     if constexpr (!integer_index_storage<B> || !anchored<B> || wide_valued<B> || !value_indices_fit64<B>)
         return index_double_codec{};
     else {
-        constexpr umax k53 = umax{1} << 53;
-        const rational n   = notch64<B>;
-        const auto     lo = lower_index64<B>, hi = upper_index64<B>;
+        constexpr std::uint64_t k53 = std::uint64_t{1} << 53;
+        const rational          n   = notch64<B>;
+        const auto              lo = lower_index64<B>, hi = upper_index64<B>;
         if (abs_den(n.Den) > k53)
             return index_double_codec{};
-        const umax m = lo.Num > hi.Num ? lo.Num : hi.Num; // max |J|
+        const std::uint64_t m = lo.Num > hi.Num ? lo.Num : hi.Num; // max |J|
         if (m > k53 / n.Num)
             return index_double_codec{};
         return index_double_codec{
-            true, signed_numerator(lo), static_cast<imax>(n.Num), static_cast<double>(abs_den(n.Den))};
+            true, signed_numerator(lo), static_cast<std::int64_t>(n.Num), static_cast<double>(abs_den(n.Den))};
     }
 }();
 
@@ -4918,7 +4928,7 @@ template <insidable B>
     else if constexpr (value_storage<B>)
         return static_cast<double>(b.raw());
     else if constexpr (constexpr auto c = index_double<B>; c.Ok)
-        return static_cast<double>((static_cast<imax>(b.raw()) + c.LowerIndex) * c.P) / c.Q;
+        return static_cast<double>((static_cast<std::int64_t>(b.raw()) + c.LowerIndex) * c.P) / c.Q;
     else
         return static_cast<double>(as_rational(b)); // exact, even where Raw·Notch passes 64 bits
 }
@@ -4929,35 +4939,36 @@ template <insidable B>
 template <insidable R>
 inline constexpr bool divisor_excludes_zero = (lower_of<R> > 0) || (upper_of<R> < 0);
 
-// Storage-agnostic int truncation of interval endpoints — intent-revealing
-// `static_cast<imax>(lower64<B>)`. Used by from_value, raw_lo, the fast paths.
+// The interval's endpoints truncated toward zero, modulo 2^64 (exact on the
+// grids within int64 that read them). Used by from_value, raw_lo, the fast
+// paths.
 template <insidable B>
-inline constexpr imax lower_imax = trunc(lower64<B>);
+inline constexpr std::int64_t lower_int64 = static_cast<std::int64_t>(lower64<B>);
 
 template <insidable B>
-inline constexpr imax upper_imax = trunc(upper64<B>);
+inline constexpr std::int64_t upper_int64 = static_cast<std::int64_t>(upper64<B>);
 
-// The largest index, detail::max_index (overflow-safe: 0 when it doesn't fit umax,
+// The largest index, detail::max_index (overflow-safe: 0 when it doesn't fit uint64,
 // for grids with a wide index, which take the exact wide paths).
 template <insidable B>
-inline constexpr umax max_index_of = max_index(grid_of<B>);
+inline constexpr std::uint64_t max_index_of = max_index(grid_of<B>);
 
-// Every value — and, for index storage, every slot — fits imax. Gates the
-// integer fast paths that work in imax (raw_imax / to_value / raw_lo /
+// Every value — and, for index storage, every slot — fits int64. Gates the
+// integer fast paths that work in int64 (raw_int64 / to_value / raw_lo /
 // raw_hi); a grid reaching past int64 (e.g. {0, 2^64−1} in a uint64) takes
-// the exact rational / umax paths instead.
+// the exact rational / uint64 paths instead.
 template <insidable B>
-inline constexpr bool values_fit_imax =
-    !wide_valued<B> && fits_imax(interval_of<B>) && (value_storage<B> || std::in_range<imax>(max_index_of<B>));
+inline constexpr bool values_fit_int64 = !wide_valued<B> && fits_int64(interval_of<B>) &&
+                                         (value_storage<B> || std::in_range<std::int64_t>(max_index_of<B>));
 
-// Every value's reduced numerator and denominator fit imax too: a value
+// Every value's reduced numerator and denominator fit int64 too: a value
 // within int64 can still have a numerator past it ((2^63 + 1)/2).
 template <insidable B>
-inline constexpr bool fraction_fits_imax = [] {
-    if constexpr (!values_fit_imax<B>)
+inline constexpr bool fraction_fits_int64 = [] {
+    if constexpr (!values_fit_int64<B>)
         return false;
     else
-        return !(grid_int{std::numeric_limits<imax>::max()} < num_bound(grid_of<B>));
+        return !(grid_int{std::numeric_limits<std::int64_t>::max()} < num_bound(grid_of<B>));
 }();
 
 // Notch a non-zero integer and Lower an integer — every value is an
@@ -4978,52 +4989,53 @@ template <insidable B>
     return static_cast<raw_t<B>>(value);
 }
 
-// Widen raw storage to imax. Distinct from `to_value(b)` for notch-stored
+// Widen raw storage to int64. Distinct from `to_value(b)` for notch-stored
 // grids where raw is an index rather than a value; the names keep the two
-// intents apart although both are a `static_cast<imax>`.
+// intents apart although both are a `static_cast<std::int64_t>`.
 template <insidable B>
-    requires(!wide_index_storage<B>) // a wide raw does not fit imax: use the exact wide path
-constexpr imax raw_imax(B b) noexcept {
-    return static_cast<imax>(b.raw());
+    requires(!wide_index_storage<B>) // a wide raw does not fit int64: use the exact wide path
+constexpr std::int64_t raw_int64(B b) noexcept {
+    return static_cast<std::int64_t>(b.raw());
 }
 
 //-------------------------------------------------------------------------
 // Q-format integer fast path: for grids with integer Lower, unit-numerator
-// Notch 1/nd, and every value·nd within imax, value↔raw is pure integer
+// Notch 1/nd, and every value·nd within int64, value↔raw is pure integer
 // arithmetic. Shared
 // by operator rational(), from_value, and assignment::store.
 //-------------------------------------------------------------------------
 template <insidable B>
 inline constexpr bool q_format_fits = [] {
-    if constexpr (abs_den(lower64<B>.Den) != 1 || notch64<B>.Num != 1 || !values_fit_imax<B>)
+    if constexpr (abs_den(lower64<B>.Den) != 1 || notch64<B>.Num != 1 || !values_fit_int64<B>)
         return false;
-    else { // every value·nd (so Lower·nd and raw + Lower·nd) in imax
+    else { // every value·nd (so Lower·nd and raw + Lower·nd) in int64
         constexpr grid_rational nd{grid_denominator(notch_of<B>)};
-        return !(lower_of<B> * nd < grid_rational{std::numeric_limits<imax>::min()}) &&
-               !(grid_rational{std::numeric_limits<imax>::max()} < upper_of<B> * nd);
+        return !(lower_of<B> * nd < grid_rational{std::numeric_limits<std::int64_t>::min()}) &&
+               !(grid_rational{std::numeric_limits<std::int64_t>::max()} < upper_of<B> * nd);
     }
 }();
 
 // value → raw, integer math only.
 template <insidable B>
     requires q_format_fits<B>
-constexpr raw_t<B> q_format_encode(imax value) noexcept {
-    constexpr imax nd = abs_den(notch64<B>.Den);
-    return raw_cast<B>((value - lower_imax<B>)*nd);
+constexpr raw_t<B> q_format_encode(std::int64_t value) noexcept {
+    constexpr std::int64_t nd = abs_den(notch64<B>.Den);
+    return raw_cast<B>((value - lower_int64<B>)*nd);
 }
 
 // raw → rational, integer math only.
 template <insidable B>
     requires q_format_fits<B>
 constexpr rational q_format_decode(B b) noexcept {
-    constexpr imax nd = abs_den(notch64<B>.Den);
-    const imax     n  = raw_imax(b) + lower_imax<B> * nd;
-    if constexpr (std::has_single_bit(static_cast<umax>(nd))) {
+    constexpr std::int64_t nd = abs_den(notch64<B>.Den);
+    const std::int64_t     n  = raw_int64(b) + lower_int64<B> * nd;
+    if constexpr (std::has_single_bit(static_cast<std::uint64_t>(nd))) {
         // A power-of-two denominator reduces by the common trailing zeros
         // (0 reduces to 0/1).
-        const umax m = n < 0 ? umax{0} - static_cast<umax>(n) : static_cast<umax>(n);
-        const int  s = std::countr_zero(m | static_cast<umax>(nd));
-        rational   r;
+        const std::uint64_t m =
+            n < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(n) : static_cast<std::uint64_t>(n);
+        const int s = std::countr_zero(m | static_cast<std::uint64_t>(nd));
+        rational  r;
         r.Num = m >> s;
         r.Den = n < 0 ? -(nd >> s) : nd >> s;
         return r;
@@ -5031,27 +5043,29 @@ constexpr rational q_format_decode(B b) noexcept {
         return rational{n, nd};
 }
 
-// The value of an inside on an integer lattice as imax, which the caller
+// The value of an inside on an integer lattice as int64, which the caller
 // proves holds it (user code reads b.to<T>(), which reports overflow).
 template <insidable B>
     requires integer_lattice<B>
-[[nodiscard]] constexpr imax to_value(B b) noexcept {
+[[nodiscard]] constexpr std::int64_t to_value(B b) noexcept {
     if constexpr (value_storage<B>)
-        return raw_imax(b);
-    else // in umax: raw·Notch can pass imax although the value fits
-        return static_cast<imax>(static_cast<umax>(lower_imax<B>) + static_cast<umax>(raw_imax(b)) * notch64<B>.Num);
+        return raw_int64(b);
+    else // in uint64: raw·Notch can pass int64 although the value fits
+        return static_cast<std::int64_t>(static_cast<std::uint64_t>(lower_int64<B>) +
+                                         static_cast<std::uint64_t>(raw_int64(b)) * notch64<B>.Num);
 }
 
 // The callers store an integer of B (a fold count, a native quotient or
 // remainder) on an integer lattice with a nonzero notch (a carry point
 // {2, 2} has notch 1).
 template <insidable B>
-constexpr void from_value(B& b, imax val) {
+constexpr void from_value(B& b, std::int64_t val) {
     static_assert(notch64<B>.Num != 0 && abs_den(notch64<B>.Den) == 1 && abs_den(lower64<B>.Den) == 1);
     if constexpr (value_storage<B>)
         b = B::from_raw(raw_cast<B>(val));
     else
-        b = B::from_raw(raw_cast<B>((static_cast<umax>(val) - static_cast<umax>(lower_imax<B>)) / notch64<B>.Num));
+        b = B::from_raw(raw_cast<B>((static_cast<std::uint64_t>(val) - static_cast<std::uint64_t>(lower_int64<B>)) /
+                                    notch64<B>.Num));
 }
 
 //-------------------------------------------------------------------------
@@ -5059,22 +5073,22 @@ constexpr void from_value(B& b, imax val) {
 // raw is 0-based (raw_lo == 0); a value raw IS the value (raw_lo == Lower),
 // so an offset needs raw_lo<L> added back before storing.
 //-------------------------------------------------------------------------
-// (if constexpr: naming lower_imax instantiates it, and an index raw's
+// (if constexpr: naming lower_int64 instantiates it, and an index raw's
 // grid may have limits past 64 bits.)
 template <insidable B>
-inline constexpr imax raw_lo = [] {
+inline constexpr std::int64_t raw_lo = [] {
     if constexpr (integer_value_storage<B>)
-        return lower_imax<B>;
+        return lower_int64<B>;
     else
-        return imax{0};
+        return std::int64_t{0};
 }();
 
 template <insidable B>
-inline constexpr imax raw_hi = [] {
+inline constexpr std::int64_t raw_hi = [] {
     if constexpr (integer_value_storage<B>)
-        return upper_imax<B>;
+        return upper_int64<B>;
     else
-        return static_cast<imax>(max_index_of<B>);
+        return static_cast<std::int64_t>(max_index_of<B>);
 }();
 
 // The exact raw range: 0 .. step count for index storage, Lower .. Upper
@@ -5090,7 +5104,7 @@ constexpr int signed_value_bits(std::initializer_list<grid_int> vals) noexcept {
     return signed_value_bits(mn, mx);
 }
 
-// Signed work type for an exact intermediate of Bits value bits: imax for
+// Signed work type for an exact intermediate of Bits value bits: int64 for
 // everything within int64 (the builtin fast paths keep their codegen),
 // a wide_int beyond.
 template <int Bits>
@@ -5117,18 +5131,19 @@ template <raw_integer W>
     return f;
 }
 
-// Offset (umax or imax) → raw. Adds in umax: the bits are the same, but a
+// Offset (uint64 or int64) → raw. Adds in uint64: the bits are the same, but a
 // value raw of a grid reaching past int64 (offset + Lower ≥ 2^63) must not
-// overflow imax.
+// overflow int64.
 template <insidable L, std::integral W>
 constexpr raw_t<L> raw_from_offset(W offset) noexcept {
-    return raw_cast<L>(static_cast<umax>(offset) + static_cast<umax>(raw_lo<L>)); // raw_lo: 0 for an index raw
+    return raw_cast<L>(static_cast<std::uint64_t>(offset) +
+                       static_cast<std::uint64_t>(raw_lo<L>)); // raw_lo: 0 for an index raw
 }
 
-// Raw → offset (slot 0 at Lower), raw_from_offset's inverse, in umax.
+// Raw → offset (slot 0 at Lower), raw_from_offset's inverse, in uint64.
 template <insidable L, std::integral R>
-constexpr umax raw_offset(R raw) noexcept {
-    return static_cast<umax>(static_cast<imax>(raw)) - static_cast<umax>(raw_lo<L>);
+constexpr std::uint64_t raw_offset(R raw) noexcept {
+    return static_cast<std::uint64_t>(static_cast<std::int64_t>(raw)) - static_cast<std::uint64_t>(raw_lo<L>);
 }
 
 // The raw of L's Lower (low) or Upper endpoint: the exact constant for a
@@ -5138,13 +5153,13 @@ constexpr raw_t<L> endpoint_raw(bool low) noexcept {
     if constexpr (rational_storage<L>)
         return low ? lower64<L> : upper64<L>;
     else
-        return raw_from_offset<L>(low ? umax{0} : max_index_of<L>);
+        return raw_from_offset<L>(low ? std::uint64_t{0} : max_index_of<L>);
 }
 
 //-------------------------------------------------------------------------
 // integer_limits vs integer_lattice — easy to confuse, both needed.
 //   integer_limits<B>: Lower and Upper integer (Notch may be fractional,
-//     e.g. inside<{0,100}, 1/10>). Lets Lower/Upper be used as imax constants.
+//     e.g. inside<{0,100}, 1/10>). Lets Lower/Upper be used as int64 constants.
 //   integer_lattice<B>: every value an integer — an integer Lower and an
 //     integer non-zero Notch, or a point ⇒ integer_limits (not the converse).
 //     A continuous grid (Notch 0) is not one, whatever its limits.
@@ -5179,12 +5194,12 @@ consteval grid_int floor_quotient(const grid_rational& a, const grid_rational& b
 template <insidable B>
 inline constexpr grid_int lower_index_wide = notched<B> ? floor_quotient(lower_of<B>, notch_of<B>) : grid_int{0};
 template <insidable B>
-inline constexpr bool lower_index_odd = (static_cast<umax>(lower_index_wide<B>) & 1) != 0;
+inline constexpr bool lower_index_odd = (static_cast<std::uint64_t>(lower_index_wide<B>) & 1) != 0;
 
 // The rounding step onto L's lattice by rounding_for<L, P>: the exact
 // lattice offset q (v/Notch when anchored, (v − Lower)/Notch otherwise) as
 // a base index and whether to step one unit up from it. `negative`: v < 0.
-// A rational index never wraps, however far past imax it lies.
+// A rational index never wraps, however far past int64 it lies.
 struct lattice_step {
     rational Base;
     bool     Step;
@@ -5197,8 +5212,8 @@ template <insidable L, typename P>
     else {
         const rational k = round_to_integral(q, round_mode::floor);
         // q − k = r/d in [0, 1): the remainder of q's numerator, by integers.
-        const umax d = abs_den(q.Den), t = q.Num % d;
-        const umax r = q.Den < 0 && t != 0 ? d - t : t;
+        const std::uint64_t d = abs_den(q.Den), t = q.Num % d;
+        const std::uint64_t r = q.Den < 0 && t != 0 ? d - t : t;
         return {k, rounds_up(m, negative, classify_remainder(m, r, d), ((k.Num & 1) != 0) != lower_index_odd<L>)};
     }
 }
@@ -5254,15 +5269,15 @@ template <insidable L, typename P>
     if constexpr (!rounds_before_range_check<L, P>)
         return {raw_t<L>{}, false};
     else {
-        // A bound past imax: 1/imax still widens the limits by at least a
+        // A bound past int64: 1/int64 still widens the limits by at least a
         // step (only a prefilter: the exact rounding decides).
         constexpr rational step = [] {
             if constexpr (notched<L>)
                 return notch64<L>;
             else {
-                constexpr umax D = to_rational(grid_of<L>.MaxDenominator).Num;
-                constexpr umax M = static_cast<umax>(std::numeric_limits<imax>::max());
-                return rational{1, static_cast<imax>(D < M ? D : M)};
+                constexpr std::uint64_t D = to_rational(grid_of<L>.MaxDenominator).Num;
+                constexpr std::uint64_t M = static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+                return rational{1, static_cast<std::int64_t>(D < M ? D : M)};
             }
         }();
         constexpr rational lo = try_sub(lower64<L>, step).value_or(lower64<L>);
@@ -5285,27 +5300,21 @@ template <insidable L, typename P>
     return round_into_range<L, P>(v);
 }
 
-// Rounds the split offset quotient q + r/den (r < den ≤ imax_max) per L's
-// rounding policy — q/r form so no expression can overflow umax
-// (num + den/2 could, for num near umax). round_quotient's offset rule.
-template <insidable L, typename P>
-[[nodiscard]] constexpr umax round_offset(umax q, umax r, umax den) noexcept {
-    constexpr round_mode m = rounding_for<L, P>;
-    return q + rounds_away(m, false, classify_remainder(m, r, den), (q & 1) != 0);
-}
-
 // The split offset quotient q + r/den of an unanchored grid rounded in
 // value space: the value Lower + (q + r/den)·Notch is below zero exactly
-// when the offset num = q·den + r is below −Lower/Notch·den, compared
-// without overflow in 128 bits.
+// when the offset num = q·den + r is below c·den, c = −Lower/Notch,
+// compared without overflow in wide integers (two limbs when c is a 64-bit
+// rational).
 template <insidable L, typename P>
-[[nodiscard]] constexpr umax round_offset_unanchored(umax q, umax r, umax den) noexcept {
+[[nodiscard]] constexpr std::uint64_t
+round_offset_unanchored(std::uint64_t q, std::uint64_t r, std::uint64_t den) noexcept {
     constexpr round_mode m        = rounding_for<L, P>;
     bool                 negative = false;
-    if constexpr (lower64<L> < 0) {
-        constexpr rational c = -lower_index64<L>; // > 0
-        using W              = wide_uint<2>;
-        negative             = W{q * den + r} * W{abs_den(c.Den)} < W{c.Num} * W{den};
+    if constexpr (lower_of<L> < 0) {
+        constexpr grid_rational c  = -lower_index_of<L>; // > 0
+        constexpr grid_int      cn = grid_numerator(c), cd = grid_denominator(c);
+        using W  = wide_uint<limbs_for_bits(64 + std::max(cn.bit_width(), cd.bit_width()))>;
+        negative = W{q * den + r} * static_cast<W>(cd) < static_cast<W>(cn) * W{den};
     }
     return q + rounds_up(m, negative, classify_remainder(m, r, den), ((q & 1) != 0) != lower_index_odd<L>);
 }
@@ -5319,29 +5328,27 @@ template <insidable L, typename P>
 // reference). The offset is >= 0 (sign lost by subtracting Lower); with m =
 // Lower/Notch, the floor's value index is F = m + q, the value is below zero
 // exactly when F is, and the rounding moves F up by one or not: no second,
-// signed division. m is integral on every anchored grid; an unanchored one
-// rounds the offset against the value's sign.
+// signed division. m is integral on every anchored grid, of any size; an
+// unanchored one rounds the offset against the value's sign.
 template <insidable L, typename P>
-[[nodiscard]] constexpr umax round_split(umax q, umax r, umax den) noexcept {
-    // Lower/Notch past imax (a far-off grid with a fine notch) has no imax
-    // value index: round the offset as for a non-integral m.
-    constexpr bool vidx = lower_index_fits_imax<L>;
-    constexpr imax m    = vidx ? signed_numerator(to_rational(lower_index_of<L>)) : imax{0};
-
+[[nodiscard]] constexpr std::uint64_t round_split(std::uint64_t q, std::uint64_t r, std::uint64_t den) noexcept {
     if constexpr (!anchored<L>)
         return round_offset_unanchored<L, P>(q, r, den);
-    else if constexpr (!vidx)
-        return round_offset<L, P>(q, r, den);
     else {
-        constexpr round_mode mode     = rounding_for<L, P>;
-        const bool           negative = m < 0 && q < umax{0} - static_cast<umax>(m);
-        return q + rounds_up(mode, negative, classify_remainder(mode, r, den), ((q ^ static_cast<umax>(m)) & 1) != 0);
+        // F < 0 exactly when m < 0 and q < −m: every q when −m passes 64 bits.
+        constexpr round_mode    mode      = rounding_for<L, P>;
+        constexpr grid_int      mneg      = -lower_index_wide<L>;
+        constexpr bool          far_below = grid_int{std::numeric_limits<std::uint64_t>::max()} < mneg;
+        constexpr std::uint64_t bound =
+            mneg.negative() || far_below ? std::uint64_t{0} : static_cast<std::uint64_t>(mneg);
+        const bool negative = far_below || q < bound;
+        return q + rounds_up(mode, negative, classify_remainder(mode, r, den), ((q & 1) != 0) != lower_index_odd<L>);
     }
 }
 
 // The offset quotient num/den rounded: round_split of its one division.
 template <insidable L, typename P>
-[[nodiscard]] constexpr umax round_quotient(umax num, umax den) noexcept {
+[[nodiscard]] constexpr std::uint64_t round_quotient(std::uint64_t num, std::uint64_t den) noexcept {
     return round_split<L, P>(num / den, num % den, den);
 }
 
@@ -5618,7 +5625,8 @@ constexpr wide_rational<K> reduced(const wide_rational<K>& f) noexcept {
     using I = wide_sint<K>;
     I a = abs(f.Num), b = f.Den;
     if (bit_width_of(a) <= 64 && bit_width_of(b) <= 64) { // the common case: one-limb Euclid
-        const umax an = static_cast<umax>(a), bn = static_cast<umax>(b), g = std::gcd(an, bn);
+        const std::uint64_t an = static_cast<std::uint64_t>(a), bn = static_cast<std::uint64_t>(b),
+                            g = std::gcd(an, bn);
         if (g == 1)
             return f;
         const I n{an / g};
@@ -5783,13 +5791,13 @@ constexpr T nearest_float(const wide_rational<K>& f) noexcept {
     const int drop = bw - keep; // ≥ 2
     U         m    = q >> drop;
     const U   low = q - (m << drop), half = U{1} << (drop - 1);
-    if (half < low || (low == half && (sticky || static_cast<umax>(m) % 2 != 0)))
+    if (half < low || (low == half && (sticky || static_cast<std::uint64_t>(m) % 2 != 0)))
         m += U{1};
     if (bit_width_of(m) - 1 - s + drop > lim::max_exponent - 1) // rounded up past the largest finite
         return neg ? -lim::infinity() : lim::infinity();
     // m ≤ 2^p is exact in T, limb by limb; the scaling by 2^(drop − s) in
     // steps of 2^±64 stays exact (every step lies between m and the result).
-    T x = std::accumulate(std::rbegin(m.Word), std::rend(m.Word), T{0}, [](T acc, umax w) {
+    T x = std::accumulate(std::rbegin(m.Word), std::rend(m.Word), T{0}, [](T acc, std::uint64_t w) {
         return acc * static_cast<T>(0x1p64) + static_cast<T>(w);
     });
     for (int k = drop - s; k != 0;) {
@@ -5811,9 +5819,9 @@ constexpr wide_sint<K> trunc(const wide_rational<K>& f) noexcept {
 // A reduced fraction as a 64-bit rational (its parts fit).
 template <std::size_t K>
 constexpr rational narrow_reduced(const wide_rational<K>& r) noexcept {
-    const bool neg = r.Num.negative();
-    const imax den = static_cast<imax>(r.Den);
-    return rational_from_parts(static_cast<umax>(neg ? -r.Num : r.Num), neg ? -den : den);
+    const bool         neg = r.Num.negative();
+    const std::int64_t den = static_cast<std::int64_t>(r.Den);
+    return rational_from_parts(static_cast<std::uint64_t>(neg ? -r.Num : r.Num), neg ? -den : den);
 }
 
 // The reduced value as a 64-bit rational, when a grid proves it fits.
@@ -5827,8 +5835,8 @@ template <std::size_t K>
 constexpr std::expected<rational, errc> try_rational(const wide_rational<K>& f) noexcept {
     using I      = wide_sint<K>;
     const auto r = reduced(f);
-    if ((r.Num.negative() ? -r.Num : r.Num) > I{std::numeric_limits<umax>::max()} ||
-        r.Den > I{std::numeric_limits<imax>::max()})
+    if ((r.Num.negative() ? -r.Num : r.Num) > I{std::numeric_limits<std::uint64_t>::max()} ||
+        r.Den > I{std::numeric_limits<std::int64_t>::max()})
         return std::unexpected{errc::overflow};
     return narrow_reduced(r);
 }
@@ -6029,7 +6037,7 @@ constexpr wide_rational<K> round_to_bound(const wide_rational<K>& x) {
 template <insidable L, typename P>
 constexpr rounded_raw<L> exact_round_into_range(const rational& v) {
     if constexpr (!notched<L>) { // a bounded continuous grid: onto its bound
-        // Near a limit it fits, unless the bound itself is past imax.
+        // Near a limit it fits, unless the bound itself is past int64.
         const auto r = try_rational(round_to_bound<L, P>(exact_of(v)));
         if (!r || !includes(interval_of<L>, *r))
             return {raw_t<L>{}, false};
@@ -6037,7 +6045,7 @@ constexpr rounded_raw<L> exact_round_into_range(const rational& v) {
     } else {
         const auto j = exact_index<L, rounding_for<L, P>>(exact_of(v)).Index; // L's slot offset
         using I      = std::remove_cvref_t<decltype(j)>;
-        if (j.negative() || I{max_index_of<L>} < j)
+        if (j.negative() || static_cast<I>(grid_of<L>.step_count()) < j) // (max_index_of is 0 past 64 bits)
             return {raw_t<L>{}, false};
         return {raw_of_slot<L>(j), true};
     }
@@ -6045,7 +6053,7 @@ constexpr rounded_raw<L> exact_round_into_range(const rational& v) {
 
 // The raw of slot offset `offset` (0 .. step count) in L's storage. W is
 // any signed integer holding the offset and the value index J = offset +
-// Lower/Notch: imax, a wide_int, a wide_sint.
+// Lower/Notch: int64, a wide_int, a wide_sint.
 template <insidable L, typename W>
 constexpr raw_t<L> raw_of_slot(const W& offset) noexcept {
     if constexpr (point_storage<L>)
@@ -6089,7 +6097,7 @@ inline constexpr raw_t<B> default_raw = []() -> raw_t<B> {
 // Lower/Notch, a value raw as is — value storage has notch 1).
 //---------------------------------------------------------------------------
 template <insidable Result>
-using wrap_work_t = std::conditional_t<wide_index_storage<Result>, raw_t<Result>, umax>;
+using wrap_work_t = std::conditional_t<wide_index_storage<Result>, raw_t<Result>, std::uint64_t>;
 
 // An operand's value-index range in `Unit`s: Lower/Unit .. Upper/Unit.
 template <insidable X, grid_rational Unit>
@@ -6102,7 +6110,7 @@ inline constexpr grid_int units_hi = exact_quotient(upper_of<X>, Unit);
 template <insidable Result, grid_rational Unit>
 inline constexpr bool divides_units = !(point_storage<Result> || (anchored<Result> && Unit == notch_of<Result>));
 
-// The work type of an integer + or ×: signed imax when every value index
+// The work type of an integer + or ×: signed int64 when every value index
 // involved (each operand in its unit, the result in its notch, and the
 // result's slot offsets) provably fits — then nothing wraps, and the
 // compiler keeps the value ranges, as the builtin paths always did — else
@@ -6132,7 +6140,7 @@ template <insidable     Result,
           grid_rational UR,
           grid_rational URes = notch_of<Result>>
 using index_work_t = std::conditional_t<(index_work_bits<Result, L, UL, R, UR, URes> <= 63),
-                                        imax,
+                                        std::int64_t,
                                         std::conditional_t<divides_units<Result, URes>,
                                                            work_int_t<index_work_bits<Result, L, UL, R, UR, URes>>,
                                                            wrap_work_t<Result>>>;
@@ -6156,7 +6164,7 @@ template <insidable X>
 inline constexpr grid_rational unit_of = point_grid<X> ? abs(lower_of<X>) : grid_of<X>.value_unit();
 
 // Two integer raws whose values, counted in the gcd of their value units,
-// fit imax.
+// fit int64.
 template <insidable L, insidable R>
 inline constexpr bool units_cmp_fits = [] {
     if constexpr (!integer_storage<L> || !integer_storage<R>)
@@ -6566,7 +6574,7 @@ constexpr grid overshoot_source_grid() {
         const grid_rational top{static_cast<double>(std::numeric_limits<R>::max())};
         return grid{interval{-top, top}, grid_rational{static_cast<double>(std::numeric_limits<R>::denorm_min())}};
     } else { // rational: |Num| < 2^64, |Den| ≤ 2^63
-        const grid_rational top{grid_int{~umax{0}}};
+        const grid_rational top{grid_int{~std::uint64_t{0}}};
         return grid{interval{-top, top}, max_denominator{grid_rational{grid_int{1} << 63}}};
     }
 }
@@ -6631,19 +6639,19 @@ constexpr grid wrap_carry_grid() {
     }
 }
 
-// The carry from the exact fold count q: an imax, a wide integer, or the
+// The carry from the exact fold count q: an int64, a wide integer, or the
 // carry inside of another source kind (re-typed, the same value).
 template <insidable L, typename R, typename Q>
 constexpr auto make_wrap_carry(const Q& q) {
     using C = beman::inside::inside<wrap_carry_grid<L, R>()>;
     if constexpr (std::integral<Q> && notched<C> && !wide_valued<C>) {
         C carry;
-        from_value(carry, static_cast<imax>(q)); // in the carry grid by construction
+        from_value(carry, static_cast<std::int64_t>(q)); // in the carry grid by construction
         return carry;
     } else if constexpr (std::integral<Q> || insidable<Q>)
         return exact_value_result<C>(exact_of(q));
     else
-        return exact_value_result<C>(wide_rational<sizeof(Q) / sizeof(umax)>{q, Q{1}});
+        return exact_value_result<C>(wide_rational<sizeof(Q) / sizeof(std::uint64_t)>{q, Q{1}});
 }
 
 // The exact value of a scalar source.
@@ -6661,7 +6669,7 @@ constexpr auto exact_of_source(const R& rhs) {
 // unit_fold — clamp/wrap of an integer value v in [SrcLo, SrcHi] onto a
 // unit-notch integer grid L, exactly. v − Lower and the range
 // Upper − Lower + 1 may need 65 bits (a grid can span 2^64 values), so the
-// arithmetic runs in a work type sized from all of them: imax when that
+// arithmetic runs in a work type sized from all of them: int64 when that
 // suffices, else a wide_int.
 //---------------------------------------------------------------------------
 template <insidable L, grid_int SrcLo, grid_int SrcHi>
@@ -6712,7 +6720,7 @@ constexpr wide_rational<std::max(K, exact_limbs<L>)> onto_bound(const wide_ratio
 }
 
 //---------------------------------------------------------------------------
-// assign_exact — store an exact value into L: the path wherever neither imax
+// assign_exact — store an exact value into L: the path wherever neither int64
 // nor the 64-bit rational holds every value (a wide raw on either side, fine
 // doubles, mul_into/div_into, parse, sum, wrap_exact). Rounds first, then range-checks,
 // like the builtin paths; out of range runs the usual policy cascade.
@@ -6829,7 +6837,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
                 return exact_index<L, rounding_for<L, plain_t<P>>>(v);
         }();
         using I                       = decltype(slot.Index);
-        constexpr std::size_t KK      = sizeof(I) / sizeof(umax);
+        constexpr std::size_t KK      = sizeof(I) / sizeof(std::uint64_t);
         const I               index   = slot.Index;
         const bool            inexact = !slot.Exact && !uses_flag<L, P, snap> && policy.checks_rounding();
         constexpr I           count   = static_cast<I>(grid_of<L>.step_count());
@@ -6925,18 +6933,18 @@ struct assignment<L, R> {
     using fold = unit_fold<L, source_lo<R>, source_hi<R>>;
     using W    = typename fold::W;
 
-    // Hot-path range test. Bounds within imax compare as plain integers; a
-    // 64-bit unsigned source can exceed imax and compares sign-safe instead.
+    // Hot-path range test. Bounds within int64 compare as plain integers; a
+    // 64-bit unsigned source can exceed int64 and compares sign-safe instead.
     // (Not std::cmp_* throughout: GCC then misses folding `lo ≤ x ≤ hi` into
     // one unsigned compare.) Bounds past int64 compare exactly in the fold's
     // work type.
     static constexpr bool out_of_range(R rhs) noexcept {
-        if constexpr (fits_imax(interval_of<L>) && !wide_builtin<R>) {
-            constexpr imax lower = lower_imax<L>, upper = upper_imax<L>;
-            if constexpr (std::is_unsigned_v<R> && sizeof(R) >= sizeof(imax))
+        if constexpr (fits_int64(interval_of<L>) && !wide_builtin<R>) {
+            constexpr std::int64_t lower = lower_int64<L>, upper = upper_int64<L>;
+            if constexpr (std::is_unsigned_v<R> && sizeof(R) >= sizeof(std::int64_t))
                 return std::cmp_less(rhs, lower) || std::cmp_greater(rhs, upper);
             else
-                return static_cast<imax>(rhs) < lower || static_cast<imax>(rhs) > upper;
+                return static_cast<std::int64_t>(rhs) < lower || static_cast<std::int64_t>(rhs) > upper;
         } else {
             const W v = static_cast<W>(rhs);
             return v < fold::lower || fold::upper < v;
@@ -6976,14 +6984,15 @@ struct assignment<L, R> {
         else if constexpr (point_grid<L>)
             lhs = L::from_raw(0); // a point grid: 0 is the only offset
         else if constexpr (q_format_fits<L>)
-            lhs = L::from_raw(q_format_encode<L>(static_cast<imax>(rhs)));
+            lhs = L::from_raw(q_format_encode<L>(static_cast<std::int64_t>(rhs)));
         else {
             // Index storage on a notch 1/K grid over an integer Lower: the
-            // offset (rhs − Lower)·K of an in-range rhs is below 2^64, so umax
+            // offset (rhs − Lower)·K of an in-range rhs is below 2^64, so uint64
             // steps, exact modulo 2^64, give it exactly.
-            constexpr umax K  = static_cast<umax>(abs_den(notch64<L>.Den));
-            constexpr umax lo = lower64<L>.Den < 0 ? umax{0} - lower64<L>.Num : lower64<L>.Num; // Lower mod 2^64
-            lhs               = L::from_raw(raw_from_offset<L>((static_cast<umax>(rhs) - lo) * K));
+            constexpr std::uint64_t K = static_cast<std::uint64_t>(abs_den(notch64<L>.Den));
+            constexpr std::uint64_t lo =
+                lower64<L>.Den < 0 ? std::uint64_t{0} - lower64<L>.Num : lower64<L>.Num; // Lower mod 2^64
+            lhs = L::from_raw(raw_from_offset<L>((static_cast<std::uint64_t>(rhs) - lo) * K));
         }
     }
 
@@ -7049,39 +7058,39 @@ struct assignment<L, R> {
 //---------------------------------------------------------------------------
 // The integer store of an unanchored lattice: Notch = S/K and Lower = M/K
 // over their common denominator K. MaxDen bounds a source denominator so
-// that num·K, M·aden and aden·S stay in imax (|num| ≤ |value|·aden, and
+// that num·K, M·aden and aden·S stay in int64 (|num| ≤ |value|·aden, and
 // every in-range |value| is at most Mag); Ok when the grid allows any.
 //---------------------------------------------------------------------------
 struct unanchored_codec_t {
-    imax K, S, M;
-    umax MaxDen;
-    bool Ok;
+    std::int64_t  K, S, M;
+    std::uint64_t MaxDen;
+    bool          Ok;
 };
 template <insidable L>
 inline constexpr unanchored_codec_t unanchored_codec = [] {
     constexpr unanchored_codec_t no{0, 0, 0, 0, false};
-    if constexpr (anchored<L> || point_storage<L> || !values_fit_imax<L>) // unanchored ⇒ index raw
+    if constexpr (anchored<L> || point_storage<L> || !values_fit_int64<L>) // unanchored ⇒ index raw
         return no;
     else {
-        constexpr umax cap = static_cast<umax>(std::numeric_limits<imax>::max());
-        const rational n = notch64<L>, lo = lower64<L>, hi = upper64<L>;
-        const umax     dn = abs_den(n.Den), dl = abs_den(lo.Den);
-        umax           k;
+        constexpr std::uint64_t cap = static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+        const rational          n = notch64<L>, lo = lower64<L>, hi = upper64<L>;
+        const std::uint64_t     dn = abs_den(n.Den), dl = abs_den(lo.Den);
+        std::uint64_t           k;
         if (mul_overflow(dn / std::gcd(dn, dl), dl, &k) || k > cap)
             return no;
-        umax s, mm;
+        std::uint64_t s, mm;
         if (mul_overflow(n.Num, k / dn, &s) || s > cap || mul_overflow(lo.Num, k / dl, &mm) || mm > cap)
             return no;
         // Mag: a bound on every in-range |value|, plus one.
-        const umax mag = static_cast<umax>(ceil(abs(lo) > abs(hi) ? abs(lo) : abs(hi))) + 1;
-        umax       km, kms;
-        if (mul_overflow(k, mag, &km) || mul_overflow(km, umax{4}, &kms))
+        const std::uint64_t mag = static_cast<std::uint64_t>(ceil(abs(lo) > abs(hi) ? abs(lo) : abs(hi))) + 1;
+        std::uint64_t       km, kms;
+        if (mul_overflow(k, mag, &km) || mul_overflow(km, std::uint64_t{4}, &kms))
             return no;
-        const umax by_num = cap / kms; // num·K and M·aden each below cap/2
-        const umax by_den = cap / s;   // aden·S
-        return unanchored_codec_t{static_cast<imax>(k),
-                                  static_cast<imax>(s),
-                                  lo.Den < 0 ? -static_cast<imax>(mm) : static_cast<imax>(mm),
+        const std::uint64_t by_num = cap / kms; // num·K and M·aden each below cap/2
+        const std::uint64_t by_den = cap / s;   // aden·S
+        return unanchored_codec_t{static_cast<std::int64_t>(k),
+                                  static_cast<std::int64_t>(s),
+                                  lo.Den < 0 ? -static_cast<std::int64_t>(mm) : static_cast<std::int64_t>(mm),
                                   by_num < by_den ? by_num : by_den,
                                   true};
     }
@@ -7154,7 +7163,7 @@ struct assignment<L, R> {
         if constexpr (!notched<L> && grid_of<L>.MaxDenominator != 0 && uses_flag<L, P, snap>) {
             // A bounded continuous grid rounds onto its bound first, too: a
             // fold keeps the denominator, so the folded value stays on it.
-            // (L's bound fits imax, and a Farey neighbour p/q of N/d with
+            // (L's bound fits int64, and a Farey neighbour p/q of N/d with
             // q ≤ bound < d has p ≤ N: a 64-bit rational.)
             rhs_r = rational_of(round_to_bound<L, plain_t<P>>(exact_of(rhs_r)));
         } else if constexpr (uses_flag<L, P, snap>) {
@@ -7177,21 +7186,22 @@ struct assignment<L, R> {
             using W           = typename fold::W;
             const auto [q, w] = fold::fold(static_cast<W>(grid_numerator(rhs_r)));
             const W v         = fold::lower + w;
-            return finish(v < W{0} ? -rational{static_cast<umax>(-v)} : rational{static_cast<umax>(v)}, q);
+            return finish(
+                v < W{0} ? -rational{static_cast<std::uint64_t>(-v)} : rational{static_cast<std::uint64_t>(v)}, q);
         }
         // q = floor((rhs - lower) / range), wrapped = rhs - q * range. A step
-        // past the 64-bit rational range, or a fold count past imax, folds
+        // past the 64-bit rational range, or a fold count past int64, folds
         // exactly instead.
         const auto span  = try_sub(upper64<L>, lower64<L>);
         const auto range = span ? try_add(*span, notch64<L>) : span;
         const auto off   = try_sub(rhs_r, lower64<L>);
         const auto quot  = (range && off) ? try_div(*off, *range) : off;
-        if (!range || !quot || *quot < rational{std::numeric_limits<imax>::min()} ||
-            *quot > rational{std::numeric_limits<imax>::max()}) [[unlikely]]
+        if (!range || !quot || *quot < rational{std::numeric_limits<std::int64_t>::min()} ||
+            *quot > rational{std::numeric_limits<std::int64_t>::max()}) [[unlikely]]
             return wrap_exact(lhs, exact_of(rhs_r), policy, action);
-        const imax q  = floor(*quot);
-        const auto qr = try_mul(rational{q}, *range);
-        const auto w  = qr ? try_sub(rhs_r, *qr) : qr;
+        const std::int64_t q  = floor(*quot);
+        const auto         qr = try_mul(rational{q}, *range);
+        const auto         w  = qr ? try_sub(rhs_r, *qr) : qr;
         if (!w) [[unlikely]]
             return wrap_exact(lhs, exact_of(rhs_r), policy, action);
         finish(*w, q);
@@ -7216,13 +7226,13 @@ struct assignment<L, R> {
     // the 72-byte exact_index_result: GCC charges the copy of a large return
     // value against inlining the whole store (+17% instructions measured).
     struct wide_slot_result {
-        umax Slot;
-        bool Exact;
+        std::uint64_t Slot;
+        bool          Exact;
     };
     template <typename P>
     [[gnu::cold]] [[gnu::noinline]] static constexpr wide_slot_result wide_slot(rational v) {
         const exact_index_result r = exact_index<L, rounding_for<L, P>>(exact_of(v));
-        return {static_cast<umax>(r.Index), r.Exact}; // in range: fits 64 bits
+        return {static_cast<std::uint64_t>(r.Index), r.Exact}; // in range: fits 64 bits
     }
 
     // The source as a rational, converted once. A double finer than 2^-62
@@ -7286,7 +7296,7 @@ struct assignment<L, R> {
             if (code == errc{})
                 return {r.raw()};
             rational failed{};
-            failed.Num = static_cast<umax>(code);
+            failed.Num = static_cast<std::uint64_t>(code);
             failed.Den = 0;
             return {failed};
         } else
@@ -7337,8 +7347,8 @@ struct assignment<L, R> {
             constexpr bool has_round_flag = uses_flag<L, P, snap>; // every round_* flag contains snap
             // The slot onum/den when it is exact or P rounds; false otherwise
             // (strict policy, off-notch: the rational path below reports it).
-            auto stores_slot = [&](umax onum, umax den) {
-                const umax q = onum / den, r = onum % den; // one division
+            auto stores_slot = [&](std::uint64_t onum, std::uint64_t den) {
+                const std::uint64_t q = onum / den, r = onum % den; // one division
                 if (r == 0) {
                     store_slot(q);
                     return true;
@@ -7356,14 +7366,14 @@ struct assignment<L, R> {
             // value index. No rational round trip.
             if constexpr (std::floating_point<R> && anchored<L> && double_exact<grid_of<L>> &&
                           std::has_single_bit(notch64<L>.Num)) {
-                constexpr imax lo = signed_numerator(lower_index64<L>);
-                const double   v  = static_cast<double>(rhs);
-                const imax     j  = snap_double_index<grid_of<L>, rounding_for<L, P>>(v);
+                constexpr std::int64_t lo = signed_numerator(lower_index64<L>);
+                const double           v  = static_cast<double>(rhs);
+                const std::int64_t     j  = snap_double_index<grid_of<L>, rounding_for<L, P>>(v);
                 if constexpr (!has_round_flag)
                     if (static_cast<double>(j) * static_cast<double>(notch64<L>) != v && policy.checks_rounding())
                         [[unlikely]]
                         return report_failure(lhs, policy, action, errc::rounding_error);
-                store_slot(static_cast<umax>(j - lo));
+                store_slot(static_cast<std::uint64_t>(j - lo));
                 return;
             }
             bool           exact = true;
@@ -7376,35 +7386,36 @@ struct assignment<L, R> {
             // (num − Lo·aden)·K / aden — integer ops instead of two rational ops.
             // round_quotient is invariant under reduction, so the slot is
             // bit-identical to the rational path. Oversized denominators
-            // fall through (the max_den guard keeps every product inside imax).
+            // fall through (the max_den guard keeps every product inside int64).
             if constexpr (q_format_fits<L> && notched<L>) {
-                constexpr imax K      = abs_den(notch64<L>.Den);
-                constexpr imax Lo     = lower_imax<L>;
-                constexpr umax two_km = [] {
+                constexpr std::int64_t  K      = abs_den(notch64<L>.Den);
+                constexpr std::int64_t  Lo     = lower_int64<L>;
+                constexpr std::uint64_t two_km = [] {
                     // 2 · K · M with saturation (M bounds |value| and the offset span)
-                    // ceil in umax: a bound's magnitude may reach 2^63 (past imax)
-                    constexpr umax umax_hi = std::numeric_limits<umax>::max();
-                    const rational a       = abs(lower64<L>) > abs(upper64<L>) ? abs(lower64<L>) : abs(upper64<L>);
-                    const umax     c       = round_magnitude(a, round_mode::ceil).Magnitude;
-                    if (c > (umax_hi - 2) / 2)
-                        return umax_hi;
-                    umax k = static_cast<umax>(K);
-                    umax m = c * 2 + 2;
-                    if (k > umax_hi / m)
-                        return umax_hi;
-                    umax prod = k * m;
-                    return prod > umax_hi / 2 ? umax_hi : prod * 2;
+                    // ceil in uint64: a bound's magnitude may reach 2^63 (past int64)
+                    constexpr std::uint64_t uint64_hi = std::numeric_limits<std::uint64_t>::max();
+                    const rational          a = abs(lower64<L>) > abs(upper64<L>) ? abs(lower64<L>) : abs(upper64<L>);
+                    const std::uint64_t     c = round_magnitude(a, round_mode::ceil).Magnitude;
+                    if (c > (uint64_hi - 2) / 2)
+                        return uint64_hi;
+                    std::uint64_t k = static_cast<std::uint64_t>(K);
+                    std::uint64_t m = c * 2 + 2;
+                    if (k > uint64_hi / m)
+                        return uint64_hi;
+                    std::uint64_t prod = k * m;
+                    return prod > uint64_hi / 2 ? uint64_hi : prod * 2;
                 }();
-                constexpr umax max_den = static_cast<umax>(std::numeric_limits<imax>::max()) / two_km;
+                constexpr std::uint64_t max_den =
+                    static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) / two_km;
 
-                const umax aden = abs_den(rv.Den);
+                const std::uint64_t aden = abs_den(rv.Den);
                 if (max_den != 0 && aden <= max_den) {
                     // The offset (num − Lo·aden)·K / aden, unreduced: round_quotient
                     // rounds it as the reduced fraction would, and max_den keeps the
-                    // product in imax.
-                    const imax num  = signed_numerator(rv);
-                    const umax onum = // ≥ 0: rhs ≥ Lower (in range)
-                        static_cast<umax>((num - Lo * static_cast<imax>(aden)) * K);
+                    // product in int64.
+                    const std::int64_t  num  = signed_numerator(rv);
+                    const std::uint64_t onum = // ≥ 0: rhs ≥ Lower (in range)
+                        static_cast<std::uint64_t>((num - Lo * static_cast<std::int64_t>(aden)) * K);
                     if (stores_slot(onum, aden))
                         return;
                 }
@@ -7414,16 +7425,16 @@ struct assignment<L, R> {
             // denominator of Notch and Lower, Notch = sN/K and Lower = m/K, the
             // offset is (num·K − m·aden)/(aden·sN).
             if constexpr (unanchored_codec<L>.Ok) {
-                constexpr auto c    = unanchored_codec<L>;
-                const umax     aden = abs_den(rv.Den);
+                constexpr auto      c    = unanchored_codec<L>;
+                const std::uint64_t aden = abs_den(rv.Den);
                 if (aden <= c.MaxDen) {
                     // Unreduced: MaxDen bounds these products already, and the
                     // unanchored rounding and the exactness test do not change
                     // under reduction.
-                    const imax num  = signed_numerator(rv);
-                    const umax onum = // ≥ 0: rhs ≥ Lower (in range)
-                        static_cast<umax>(num * c.K - c.M * static_cast<imax>(aden));
-                    const umax den2 = aden * static_cast<umax>(c.S);
+                    const std::int64_t  num  = signed_numerator(rv);
+                    const std::uint64_t onum = // ≥ 0: rhs ≥ Lower (in range)
+                        static_cast<std::uint64_t>(num * c.K - c.M * static_cast<std::int64_t>(aden));
+                    const std::uint64_t den2 = aden * static_cast<std::uint64_t>(c.S);
                     if (stores_slot(onum, den2))
                         return;
                 }
@@ -7455,7 +7466,7 @@ struct assignment<L, R> {
             return wide_slot<P>(v);
         if (quotient->Den == 1)
             return {quotient->Num, true};
-        return {round_quotient<L, P>(quotient->Num, static_cast<umax>(quotient->Den)), false};
+        return {round_quotient<L, P>(quotient->Num, static_cast<std::uint64_t>(quotient->Den)), false};
     }
     template <typename P>
     [[gnu::cold]] [[gnu::noinline]] static constexpr wide_slot_result rational_slot_cold(rational v) {
@@ -7478,7 +7489,7 @@ struct assignment<L, R> {
     // endpoint by the denominator (n/d ≤ m ⇔ n ≤ m·d; an overflowing m·d
     // exceeds any n) — exact, and no division.
     static constexpr bool integer_bounds = std::same_as<R, rational> && abs_den(lower64<L>.Den) == 1 &&
-                                           abs_den(upper64<L>.Den) == 1 && fits_imax(interval_of<L>);
+                                           abs_den(upper64<L>.Den) == 1 && fits_int64(interval_of<L>);
 
     static constexpr bool out_of_interval(const R& rhs) {
         if (huge(rhs))
@@ -7488,15 +7499,15 @@ struct assignment<L, R> {
             constexpr double hi = static_cast<double>(upper64<L>);
             return rhs < lo || rhs > hi;
         } else if constexpr (integer_bounds) {
-            constexpr imax lo = signed_numerator(lower64<L>);
-            constexpr imax hi = signed_numerator(upper64<L>);
-            const umax     n = rhs.Num, d = abs_den(rhs.Den);
-            auto           le = [&](umax m) {
-                umax p;
+            constexpr std::int64_t lo = signed_numerator(lower64<L>);
+            constexpr std::int64_t hi = signed_numerator(upper64<L>);
+            const std::uint64_t    n = rhs.Num, d = abs_den(rhs.Den);
+            auto                   le = [&](std::uint64_t m) {
+                std::uint64_t p;
                 return mul_overflow(m, d, &p) || n <= p;
             };
-            auto ge = [&](umax m) {
-                umax p;
+            auto ge = [&](std::uint64_t m) {
+                std::uint64_t p;
                 return !mul_overflow(m, d, &p) && n >= p;
             };
             if (rhs.Den < 0 && n != 0) // value −n/d < 0
@@ -7516,11 +7527,11 @@ struct assignment<L, R> {
             if constexpr (lo <= 0)
                 in_lo = true;
             else
-                in_lo = ge(static_cast<umax>(lo));
+                in_lo = ge(static_cast<std::uint64_t>(lo));
             if constexpr (hi < 0)
                 in_hi = false;
             else
-                in_hi = le(static_cast<umax>(hi));
+                in_hi = le(static_cast<std::uint64_t>(hi));
             return !(in_lo && in_hi);
         } else if constexpr (std::floating_point<R>) {
             // A limit no double holds (INT64_MAX): compare exactly, without
@@ -7665,17 +7676,17 @@ struct assignment<L, R> {
 
     // Raw-space integer-only mapping — requires integer raw storage on both
     // sides (not rational).
-    // It also needs every raw and every mapped raw in imax: map_raw's L-raw
+    // It also needs every raw and every mapped raw in int64: map_raw's L-raw
     // range is [Offset, Offset + Factor·max_index<R>] (+ Lower for value storage).
     static constexpr bool is_integer_mapping = [] {
-        if constexpr (!maps_raws || abs_den(Factor.Den) != 1 || abs_den(Offset.Den) != 1 || !values_fit_imax<L> ||
-                      !values_fit_imax<R>)
+        if constexpr (!maps_raws || abs_den(Factor.Den) != 1 || abs_den(Offset.Den) != 1 || !values_fit_int64<L> ||
+                      !values_fit_int64<R>)
             return false;
         else {
             const rational lo = Offset + (index_storage<L> ? rational{0} : lower64<L>);
             const rational hi = lo + Factor * rational{max_index_of<R>};
-            return lo >= rational{std::numeric_limits<imax>::min()} &&
-                   hi <= rational{std::numeric_limits<imax>::max()};
+            return lo >= rational{std::numeric_limits<std::int64_t>::min()} &&
+                   hi <= rational{std::numeric_limits<std::int64_t>::max()};
         }
     }();
 
@@ -7685,43 +7696,43 @@ struct assignment<L, R> {
     // fraction reduction, so rounding the unreduced pair is bit-identical to
     // reducing through the two rational ops first. ok gates on every product
     // (including the worst-case runtime numerator over R's raw range)
-    // provably fitting imax; mul/add/den are zeroed when not ok.
+    // provably fitting int64; mul/add/den are zeroed when not ok.
     struct affine_map_t {
-        imax Mul;
-        imax Add;
-        imax Den;
-        bool Ok;
+        std::int64_t Mul;
+        std::int64_t Add;
+        std::int64_t Den;
+        bool         Ok;
     };
     static constexpr affine_map_t affine_map = [] {
         constexpr affine_map_t no{0, 0, 0, false};
-        if constexpr (!maps_raws || !notched<L> || is_integer_mapping || !values_fit_imax<L> || !values_fit_imax<R>)
+        if constexpr (!maps_raws || !notched<L> || is_integer_mapping || !values_fit_int64<L> || !values_fit_int64<R>)
             return no;
         else {
-            if (!std::in_range<imax>(Factor.Num) || !std::in_range<imax>(Offset.Num))
+            if (!std::in_range<std::int64_t>(Factor.Num) || !std::in_range<std::int64_t>(Offset.Num))
                 return no;
-            const imax   f_n = static_cast<imax>(Factor.Num); // Factor > 0
-            const imax   f_d = abs_den(Factor.Den);
-            const imax   o_s = signed_numerator(Offset);
-            const imax   o_d = abs_den(Offset.Den);
-            affine_map_t m{0, 0, 0, true};
+            const std::int64_t f_n = static_cast<std::int64_t>(Factor.Num); // Factor > 0
+            const std::int64_t f_d = abs_den(Factor.Den);
+            const std::int64_t o_s = signed_numerator(Offset);
+            const std::int64_t o_d = abs_den(Offset.Den);
+            affine_map_t       m{0, 0, 0, true};
             if (mul_overflow(f_n, o_d, &m.Mul) || mul_overflow(o_s, f_d, &m.Add) || mul_overflow(o_d, f_d, &m.Den))
                 return no;
             // worst-case |numerator| over R's offset range [0, max_index]
-            if (!std::in_range<imax>(max_index_of<R>))
+            if (!std::in_range<std::int64_t>(max_index_of<R>))
                 return no;
-            const imax rmax = static_cast<imax>(max_index_of<R>);
-            imax       term, num;
+            const std::int64_t rmax = static_cast<std::int64_t>(max_index_of<R>);
+            std::int64_t       term, num;
             if (mul_overflow(rmax, m.Mul, &term) || add_overflow(term, m.Add < 0 ? -m.Add : m.Add, &num))
                 return no;
             // round_quotient equivalence: rounding is reduction-invariant, but
             // its value-index-vs-offset branch CHOICE keys on m·di + num fitting
-            // imax — mirror those checks for the unreduced den so both forms
+            // int64 — mirror those checks for the unreduced den so both forms
             // take the same branch (ties on negatives differ across branches).
             if constexpr (grid_denominator(lower_index_of<L>) == grid_int{1}) {
-                if (!lower_index_fits_imax<L>)
+                if (!lower_index_fits_int64<L>)
                     return no;
-                const imax mbias = signed_numerator(to_rational(lower_index_of<L>));
-                imax       mdi, total;
+                const std::int64_t mbias = signed_numerator(to_rational(lower_index_of<L>));
+                std::int64_t       mdi, total;
                 if (mul_overflow(mbias, m.Den, &mdi) || add_overflow(mdi, num, &total))
                     return no;
             }
@@ -7730,16 +7741,18 @@ struct assignment<L, R> {
     }();
 
     // L's raw for R's offset 0: Offset + raw_lo<L>, which is_integer_mapping
-    // proves fits imax (Offset alone may not, e.g. 2^63 into a full int64).
-    static constexpr imax map_bias = signed_numerator(Offset + (index_storage<L> ? rational{0} : lower64<L>));
+    // proves fits int64 (Offset alone may not, e.g. 2^63 into a full int64).
+    static constexpr std::int64_t map_bias = signed_numerator(Offset + (index_storage<L> ? rational{0} : lower64<L>));
 
     // Map rhs.Raw into L's raw space (requires is_integer_mapping): Factor
     // scales R's 0-based offset, map_bias adds L's raw for offset 0. Every
-    // mapped raw fits imax, so the wrapping umax multiply-add is exact even
+    // mapped raw fits int64, so the wrapping uint64 multiply-add is exact even
     // where an intermediate (the offset, or a signed partial sum) would not be.
-    static constexpr imax map_raw(auto rhs_raw) {
-        const umax rel = static_cast<umax>(static_cast<imax>(rhs_raw)) - static_cast<umax>(raw_lo<R>);
-        return static_cast<imax>(static_cast<umax>(map_bias) + static_cast<umax>(Factor.Num) * rel);
+    static constexpr std::int64_t map_raw(auto rhs_raw) {
+        const std::uint64_t rel =
+            static_cast<std::uint64_t>(static_cast<std::int64_t>(rhs_raw)) - static_cast<std::uint64_t>(raw_lo<R>);
+        return static_cast<std::int64_t>(static_cast<std::uint64_t>(map_bias) +
+                                         static_cast<std::uint64_t>(Factor.Num) * rel);
     }
 
   private:
@@ -7796,8 +7809,9 @@ struct assignment<L, R> {
     static constexpr bool out_of_interval(const R& rhs) {
         if constexpr (units_cmp_fits<L, R>) {
             constexpr grid_rational U  = gcd(unit_of<L>, unit_of<R>);
-            constexpr imax          lo = static_cast<imax>(units_lo<L, U>), hi = static_cast<imax>(units_hi<L, U>);
-            const imax              c = value_in_units<imax, U>(rhs);
+            constexpr std::int64_t  lo = static_cast<std::int64_t>(units_lo<L, U>),
+                                    hi = static_cast<std::int64_t>(units_hi<L, U>);
+            const std::int64_t      c  = value_in_units<std::int64_t, U>(rhs);
             return c < lo || c > hi;
         } else
             return not includes(interval_of<L>, as_rational(rhs));
@@ -7821,11 +7835,11 @@ struct assignment<L, R> {
             // round_quotient (invariant under reduction — bit-identical to the
             // rational chain below).
             // Offset/Factor map R's 0-based offset: a value raw counts from Lower.
-            const imax r_offset = static_cast<imax>(rhs.raw()) - raw_lo<R>; // 0 for an index raw
-            const imax num      = affine_map.Add + r_offset * affine_map.Mul;
-            const umax q =
-                round_quotient<L, P>(static_cast<umax>(num < 0 ? -num : num), static_cast<umax>(affine_map.Den));
-            lhs = L::from_raw(num < 0 ? raw_from_offset<L>(-static_cast<imax>(q)) : raw_from_offset<L>(q));
+            const std::int64_t  r_offset = static_cast<std::int64_t>(rhs.raw()) - raw_lo<R>; // 0 for an index raw
+            const std::int64_t  num      = affine_map.Add + r_offset * affine_map.Mul;
+            const std::uint64_t q        = round_quotient<L, P>(static_cast<std::uint64_t>(num < 0 ? -num : num),
+                                                                static_cast<std::uint64_t>(affine_map.Den));
+            lhs = L::from_raw(num < 0 ? raw_from_offset<L>(-static_cast<std::int64_t>(q)) : raw_from_offset<L>(q));
         } else {
             // Offset/Factor map R's 0-based offset (a value raw counts from Lower).
             // A step past the 64-bit rational takes the exact wide store.
@@ -7844,12 +7858,13 @@ struct assignment<L, R> {
                 return;
             }
             const rational rat = *mapped;
-            umax           ad  = static_cast<umax>(abs_den(rat.Den));
+            std::uint64_t  ad  = static_cast<std::uint64_t>(abs_den(rat.Den));
             // Round the L-offset to a notch index in VALUE space via round_quotient
             // (same as the scalar path), honouring every rounding mode.
-            umax q = round_quotient<L, P>(rat.Num, ad);
+            std::uint64_t q = round_quotient<L, P>(rat.Num, ad);
             // rat is the L-offset; raw_from_offset<L> adds lower64<L> back for value storage.
-            lhs = L::from_raw((rat.Den < 0) ? raw_from_offset<L>(-static_cast<imax>(q)) : raw_from_offset<L>(q));
+            lhs =
+                L::from_raw((rat.Den < 0) ? raw_from_offset<L>(-static_cast<std::int64_t>(q)) : raw_from_offset<L>(q));
         }
     }
 
@@ -7894,7 +7909,7 @@ struct assignment<L, R> {
                 // (A point L maps every raw onto its one raw: only the value
                 // tells whether it is in range.)
                 if constexpr (is_integer_mapping && !point_storage<L>) {
-                    if (imax mapped = map_raw(rhs.raw()); mapped < raw_lo<L> || mapped > raw_hi<L>)
+                    if (std::int64_t mapped = map_raw(rhs.raw()); mapped < raw_lo<L> || mapped > raw_hi<L>)
                         if (clamp_or_fail(lhs, rhs, policy, action))
                             return lhs;
                 } else if (out_of_interval(rhs)) {
@@ -8166,9 +8181,9 @@ enum class exact_op : unsigned char { add, mul, div };
 // overflow. Result carries a denominator bound (grid.hpp: den_bound), so its
 // raw holds every value: a fraction raw is sized from the bound; a 64-bit
 // rational needs the unchecked kernels' intermediates in range too —
-//   +: each operand over the common denominator D_L·D_R fits umax;
+//   +: each operand over the common denominator D_L·D_R fits uint64;
 //   ×: nothing more (numerator ≤ num_bound(Result), denominator ≤ D_L·D_R);
-//   ÷: the divisor's numerator fits imax (1/r moves it to the denominator).
+//   ÷: the divisor's numerator fits int64 (1/r moves it to the denominator).
 template <exact_op Op, insidable Result, insidable L, insidable R>
 inline constexpr bool exact_fits = [] {
     if constexpr (fraction_storage<Result>)
@@ -8180,7 +8195,7 @@ inline constexpr bool exact_fits = [] {
             const grid_int d = den_bound(grid_of<L>) * den_bound(grid_of<R>);
             return num_bound(interval_of<L>, d).fits_limb() && num_bound(interval_of<R>, d).fits_limb();
         } else if constexpr (Op == exact_op::div)
-            return num_bound(grid_of<R>) <= std::numeric_limits<imax>::max();
+            return num_bound(grid_of<R>) <= std::numeric_limits<std::int64_t>::max();
         else
             return true;
     }
@@ -8206,7 +8221,7 @@ inline constexpr bool point_scale =
 template <insidable Result, insidable Point, insidable X>
 constexpr Result scale_by_point(const X& x) noexcept {
     static_assert(max_index_of<Result> == max_index_of<X>);
-    const umax off = raw_offset<X>(x.raw());
+    const std::uint64_t off = raw_offset<X>(x.raw());
     return Result::from_raw(raw_from_offset<Result>(lower_of<Point> < 0 ? max_index_of<X> - off : off));
 }
 } // namespace beman::inside::detail
@@ -8242,7 +8257,7 @@ struct addition {
         else {
             // Integer raws (a notched result has no continuous operand): add the
             // values in a unit dividing both operands' (the result notch
-            // gcd(N_L, N_R) on anchored grids), in imax or by wrapping arithmetic
+            // gcd(N_L, N_R) on anchored grids), in int64 or by wrapping arithmetic
             // (wide_value.hpp). Exact for every grid, at any width.
             static_assert(integer_storage<L> && integer_storage<R>);
             constexpr grid_rational U = gcd(unit_of<L>, unit_of<R>);
@@ -8274,7 +8289,7 @@ inline constexpr bool sub_defined = add_defined<L, decltype(-std::declval<const 
 
 //---------------------------------------------------------------------------
 // multiplication — `mul(L, R, policy, action) -> inside<grid_of<L> * grid_of<R>>`.
-// Integer raws multiply their value indices (wide_value.hpp), in imax when the
+// Integer raws multiply their value indices (wide_value.hpp), in int64 when the
 // grids' bounds allow, else by wrapping arithmetic as wide as the result raw.
 // Point scaling and rational results have their own branches.
 //---------------------------------------------------------------------------
@@ -8301,9 +8316,9 @@ struct multiplication {
             return result::from_raw(raw_t<result>{});
         else {
             // Integer raws (a notched result has no continuous operand): multiply the operands' values in their own
-            // units (a notch or value unit, or |c| for a point c), in imax or by wrapping arithmetic (wide_value.hpp).
-            // The product of the unit counts counts the product in the product of the units — on anchored grids the
-            // result notch — exact for every grid and sign, at any width.
+            // units (a notch or value unit, or |c| for a point c), in int64 or by wrapping arithmetic
+            // (wide_value.hpp). The product of the unit counts counts the product in the product of the units — on
+            // anchored grids the result notch — exact for every grid and sign, at any width.
             static_assert(integer_storage<L> && integer_storage<R>);
             constexpr grid_rational U = unit_of<L> * unit_of<R>;
             using W                   = index_work_t<result, L, unit_of<L>, R, unit_of<R>, U>;
@@ -8353,11 +8368,11 @@ namespace beman::inside::detail {
 template <insidable L, insidable R, policy_flag F>
 inline constexpr bool integer_ops = ((F | flags_of<L> | flags_of<R>)&snap) && integer_lattice<L> && integer_lattice<R>;
 
-// ...and every value fits imax, so the builtin integer division applies.
+// ...and every value fits int64, so the builtin integer division applies.
 template <insidable L, insidable R, policy_flag F>
-inline constexpr bool integer_native_ops = integer_ops<L, R, F> && values_fit_imax<L> && values_fit_imax<R>;
+inline constexpr bool integer_native_ops = integer_ops<L, R, F> && values_fit_int64<L> && values_fit_int64<R>;
 
-// Integer operands past imax (a uint64 grid, the 2^63 of INT64_MIN / -1, a
+// Integer operands past int64 (a uint64 grid, the 2^63 of INT64_MIN / -1, a
 // big grid): the rounded quotient in exact wide integers, on a grid of the
 // corner quotients rounded the same way.
 template <insidable L, insidable R, policy_flag F>
@@ -8432,13 +8447,13 @@ constexpr T div_rounded(T a, T b, round_mode m) noexcept {
 }
 
 // The native quotient q of a / b stored into Q. Q's grid reaches 2^63 when
-// a can be INT64_MIN and b can be −1 — past from_value's imax, and where
+// a can be INT64_MIN and b can be −1 — past from_value's int64, and where
 // div_rem_rounded's q wraps — so such a Q stores through its exact index.
 template <insidable Q, std::signed_integral T>
 constexpr Q native_quotient(T a, T b, T q) noexcept {
     Q res;
-    if constexpr (values_fit_imax<Q>)
-        from_value(res, imax{q});
+    if constexpr (values_fit_int64<Q>)
+        from_value(res, std::int64_t{q});
     else {
         constexpr std::size_t K = exact_limbs<Q>;
         using I                 = wide_sint<K>;
@@ -8450,14 +8465,14 @@ constexpr Q native_quotient(T a, T b, T q) noexcept {
 
 // The narrowest signed type in which native div/mod of L by R is exact: int32
 // when both value ranges fit (excluding INT32_MIN, so a / -1 cannot overflow),
-// else imax. A 32-bit divide is markedly cheaper than a 64-bit one.
+// else int64. A 32-bit divide is markedly cheaper than a 64-bit one.
 template <insidable L, insidable R>
-using native_div_t = std::conditional_t<(lower_imax<L> > std::numeric_limits<std::int32_t>::min() &&
-                                         upper_imax<L> <= std::numeric_limits<std::int32_t>::max() &&
-                                         lower_imax<R> > std::numeric_limits<std::int32_t>::min() &&
-                                         upper_imax<R> <= std::numeric_limits<std::int32_t>::max()),
+using native_div_t = std::conditional_t<(lower_int64<L> > std::numeric_limits<std::int32_t>::min() &&
+                                         upper_int64<L> <= std::numeric_limits<std::int32_t>::max() &&
+                                         lower_int64<R> > std::numeric_limits<std::int32_t>::min() &&
+                                         upper_int64<R> <= std::numeric_limits<std::int32_t>::max()),
                                         std::int32_t,
-                                        imax>;
+                                        std::int64_t>;
 
 // The zero-divisor check is skipped when R's grid excludes zero or `unsafe`
 // appears (a zero divisor is then UB, matching the `/= 0` no-op).
@@ -8514,15 +8529,15 @@ struct division {
     // as round_rat). a/b is monotonic in each operand on either side of 0,
     // and so is its rounding, so these are the rounded endpoints of the exact
     // quotient grid — which is not formed: its endpoints can pass the 64-bit
-    // rational (7/2^63 for a divisor reaching INT64_MIN). Rounded in umax,
-    // sign apart, so limits past imax and INT64_MIN / −1 = 2^63 need no
+    // rational (7/2^63 for a divisor reaching INT64_MIN). Rounded in uint64,
+    // sign apart, so limits past int64 and INT64_MIN / −1 = 2^63 need no
     // special case: |a / b| ≤ |a| for an integer |b| ≥ 1. Grid numbers past
     // 64 bits (a big grid) round the same way in grid integers.
     static constexpr interval integer_quotient_range() {
         const round_mode lo_mode = rmode == round_mode::half_even ? round_mode::floor : rmode;
         const round_mode hi_mode = rmode == round_mode::half_even ? round_mode::ceil : rmode;
         constexpr bool   big     = wide_grid_numbers<L> || wide_grid_numbers<R>;
-        using M                  = std::conditional_t<big, grid_int, umax>;
+        using M                  = std::conditional_t<big, grid_int, std::uint64_t>;
         using V                  = std::conditional_t<big, grid_rational, rational>;
         struct signed_mag {
             M    Mag;
@@ -8675,7 +8690,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, call_policy<G, E> policy) ->
         const T lhs_val = static_cast<T>(to_value(lhs));
         return native_quotient<result>(lhs_val, rhs_val, div_rounded(lhs_val, rhs_val, rmode));
     } else if constexpr (wide_div_integer) {
-        // Integer values past imax: the rounded quotient in exact wide
+        // Integer values past int64: the rounded quotient in exact wide
         // integers, as modulo's remainder.
         constexpr std::size_t K = exact_limbs<L, R, result>;
         using I                 = wide_sint<K>;
@@ -8710,13 +8725,15 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, call_policy<G, E> policy) ->
     } else if constexpr (int_quotient_fits) {
         // Two integer raws: J_L·Notch_L / (J_R·Notch_R) as one fraction of
         // value indices, reduced once — no operand decodes, no checked divide.
-        constexpr imax a = static_cast<imax>(notch64<L>.Num) * static_cast<imax>(abs_den(notch64<R>.Den));
-        constexpr imax b = static_cast<imax>(notch64<R>.Num) * static_cast<imax>(abs_den(notch64<L>.Den));
-        const imax     d = value_index<imax>(rhs) * b;
+        constexpr std::int64_t a =
+            static_cast<std::int64_t>(notch64<L>.Num) * static_cast<std::int64_t>(abs_den(notch64<R>.Den));
+        constexpr std::int64_t b =
+            static_cast<std::int64_t>(notch64<R>.Num) * static_cast<std::int64_t>(abs_den(notch64<L>.Den));
+        const std::int64_t d = value_index<std::int64_t>(rhs) * b;
         if constexpr (!zero_unchecked)
             if (d == 0)
                 return zero();
-        const imax n = value_index<imax>(lhs) * a;
+        const std::int64_t n = value_index<std::int64_t>(lhs) * a;
         return result::from_raw(d < 0 ? rational{-n, -d} : rational{n, d});
     } else {
         static_assert(exact_fits<exact_op::div, result, L, R>, "a continuous quotient's bound sizes its raw");
@@ -8742,13 +8759,13 @@ struct modulo {
     // sides (integer values, or whole numbers of mod_unit).
     static_assert(integer_ops<L, R, FS> || lattice_mod_ops<L, R>, "modulo requires notched grids");
 
-    // Builtin division when every value fits imax; else exact wide integers.
+    // Builtin division when every value fits int64; else exact wide integers.
     static constexpr bool native_mod = integer_native_ops<L, R, FS>;
 
     // The values' unit: 1 on integer grids, else the gcd of the value units.
     static constexpr grid_rational unit = mod_unit<L, R>;
     // A lattice remainder in builtin integers when both operands' unit counts
-    // fit imax.
+    // fit int64.
     static constexpr bool lattice_native = lattice_mod_ops<L, R> &&
                                            signed_value_bits({units_lo<L, unit>, units_hi<L, unit>}) < 63 &&
                                            signed_value_bits({units_lo<R, unit>, units_hi<R, unit>}) < 63;
@@ -8832,13 +8849,14 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, call_policy<G, E> policy) -> r
     constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
     if constexpr (lattice_native) {
         // A lattice: the integer remainder of the unit counts, scaled back.
-        const imax b = value_in_units<imax, unit>(rhs);
+        const std::int64_t b = value_in_units<std::int64_t, unit>(rhs);
         if constexpr (!zero_unchecked)
             if (b == 0)
                 return report_or_unexpected<result>(policy, errc::division_by_zero);
-        return from_value_in_units<result, unit>(div_rem_rounded(value_in_units<imax, unit>(lhs), b, rmode).Remainder);
+        return from_value_in_units<result, unit>(
+            div_rem_rounded(value_in_units<std::int64_t, unit>(lhs), b, rmode).Remainder);
     } else if constexpr (lattice_mod_ops<L, R>) {
-        // A lattice past imax units: the same in exact wide integers.
+        // A lattice past int64 units: the same in exact wide integers.
         constexpr std::size_t K = exact_limbs<L, R, result>;
         using I                 = wide_sint<K>;
         const I b               = value_in_units<I, unit>(rhs);
@@ -8850,7 +8868,7 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, call_policy<G, E> policy) -> r
             wide_rational<K>{(a - rounded_div<rmode>(a, b) * b) * static_cast<I>(grid_numerator(unit)),
                              static_cast<I>(grid_denominator(unit))});
     } else if constexpr (!native_mod) {
-        // Integer values past imax: r = a − round(a/b)·b in exact wide integers.
+        // Integer values past int64: r = a − round(a/b)·b in exact wide integers.
         using I   = wide_sint<exact_limbs<L, R, result>>;
         const I b = value_in_units<I, grid_rational{1}>(rhs); // integer values: no division
         if constexpr (!zero_unchecked)
@@ -8867,14 +8885,14 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, call_policy<G, E> policy) -> r
         result res;
         // Remainder consistent with the rounded quotient (trunc → C++ `%`).
         const T lhs_val = static_cast<T>(to_value(lhs));
-        from_value(res, imax{div_rem_rounded(lhs_val, rhs_val, rmode).Remainder});
+        from_value(res, std::int64_t{div_rem_rounded(lhs_val, rhs_val, rmode).Remainder});
         return res;
     }
 }
 
 //---------------------------------------------------------------------------
 // divmod (what `%` requires): the rounded quotient and the remainder
-// consistent with it, r = a − q·b, from one division (native within imax,
+// consistent with it, r = a − q·b, from one division (native within int64,
 // else exact wide integers). The two halves have the grids of `a / b` and
 // `a % b`.
 //---------------------------------------------------------------------------
@@ -8933,7 +8951,7 @@ struct quotient_remainder {
                           exact_result<M>(wide_rational<K>{(a - q * b) * static_cast<I>(grid_numerator(u)),
                                                            static_cast<I>(grid_denominator(u))})};
         } else if constexpr (!integer_native_ops<L, R, FS>) {
-            // Integer values past imax: q and r = a − q·b in exact wide
+            // Integer values past int64: q and r = a − q·b in exact wide
             // integers, as `/` and `%` do.
             using Q                 = typename division<L, R, FS>::result;
             using M                 = typename modulo<L, R, FS>::result;
@@ -8956,7 +8974,7 @@ struct quotient_remainder {
             const T    lhs_val = static_cast<T>(to_value(lhs));
             const auto qr      = div_rem_rounded(lhs_val, rhs_val, rmode);
             result     res{native_quotient<typename division<L, R, FS>::result>(lhs_val, rhs_val, qr.Quotient), {}};
-            from_value(res.Remainder, imax{qr.Remainder});
+            from_value(res.Remainder, std::int64_t{qr.Remainder});
             return res;
         }
     }
@@ -9255,7 +9273,7 @@ constexpr N integer_inside(const I& n) noexcept {
         constexpr I lo = static_cast<I>(grid_numerator(lower_of<N>));
         return N::from_raw(raw_cast<N>(n - lo));
     } else
-        return N::from_raw(raw_cast<N>(static_cast<umax>(n) - static_cast<umax>(lower_imax<N>)));
+        return N::from_raw(raw_cast<N>(static_cast<std::uint64_t>(n) - static_cast<std::uint64_t>(lower_int64<N>)));
 }
 } // namespace detail
 
@@ -9300,7 +9318,7 @@ struct inside {
     // A cursor starts at Lower: slot 0.
     constexpr inside()
         requires(has_flag(P, detail::cursor_marker))
-        : Raw{detail::raw_from_offset<inside>(umax{0})} {}
+        : Raw{detail::raw_from_offset<inside>(std::uint64_t{0})} {}
 
   private:
     // from_raw's: the raw as given, without a default value first.
@@ -9466,7 +9484,7 @@ struct inside {
             return Raw;
         // Q-format-with-integer-Lower fast path skips the generic path's three
         // rational ops. Falls through to the rational path when a value times
-        // the notch's denominator could pass imax (e.g. a Q16.16 × Q16.16 result).
+        // the notch's denominator could pass int64 (e.g. a Q16.16 × Q16.16 result).
         else if constexpr (detail::q_format_fits<inside>)
             return detail::q_format_decode(*this);
         else {
@@ -9510,7 +9528,7 @@ struct inside {
         constexpr bool               check_hi = upper_of<inside> > detail::grid_rational{lim::max()};
         constexpr bool               rounds   = Round != detail::none || has_flag(P, detail::snap);
         constexpr detail::round_mode mode     = detail::rounding_of(Round != detail::none ? Round : P);
-        if constexpr (detail::integer_lattice<inside> && !check_lo && !check_hi && detail::values_fit_imax<inside>)
+        if constexpr (detail::integer_lattice<inside> && !check_lo && !check_hi && detail::values_fit_int64<inside>)
             return static_cast<T>(detail::to_value(*this));
         else if constexpr (detail::wide_valued<inside>) { // round first: -0.5 → unsigned is 0 when truncating
             const auto f = detail::exact_of(*this);
@@ -9538,7 +9556,7 @@ struct inside {
             if constexpr (check_hi)
                 if (t > detail::rational{lim::max()})
                     return std::unexpected{errc::overflow};
-            if constexpr (detail::wide_builtin<T>) // a value to 2^64 − 1: past imax
+            if constexpr (detail::wide_builtin<T>) // a value to 2^64 − 1: past int64
                 return static_cast<T>(t);
             else
                 return static_cast<T>(detail::signed_numerator(t));
@@ -9598,7 +9616,7 @@ struct inside {
             return N::from_raw({});
         else if constexpr (detail::numerator_grid(G) == G)
             return N::from_raw(Raw); // the value itself, on the same grid
-        else if constexpr (detail::fraction_fits_imax<inside>)
+        else if constexpr (detail::fraction_fits_int64<inside>)
             return detail::integer_inside<N>(fraction().first);
         else
             return detail::integer_inside<N>(detail::reduced_exact(*this).Num);
@@ -9607,7 +9625,7 @@ struct inside {
         using D = inside<detail::denominator_grid(G)>;
         if constexpr (detail::point_storage<D>)
             return D::from_raw({});
-        else if constexpr (detail::fraction_fits_imax<inside>)
+        else if constexpr (detail::fraction_fits_int64<inside>)
             return detail::integer_inside<D>(fraction().second);
         else
             return detail::integer_inside<D>(detail::reduced_exact(*this).Den);
@@ -9667,7 +9685,7 @@ struct inside {
             return from_raw({});
         else if constexpr (within && detail::index_storage<inside> && detail::raw_holds_value<I>)
             return from_raw(detail::raw_cast<inside>(i.raw()));
-        else if constexpr (within && !detail::wide_index_storage<inside> && detail::values_fit_imax<I>)
+        else if constexpr (within && !detail::wide_index_storage<inside> && detail::values_fit_int64<I>)
             return from_raw(detail::raw_from_offset<inside>(detail::to_value(i)));
         else
             return inside{index_value(i)};
@@ -9713,20 +9731,21 @@ struct inside {
     // The reduced exact value as {numerator, positive denominator}. Integer
     // grids need no division; dyadic Q-format grids reduce by shifting out
     // common factors of two instead of a gcd.
-    constexpr std::pair<imax, imax> fraction() const
-        requires detail::fraction_fits_imax<inside>
+    constexpr std::pair<std::int64_t, std::int64_t> fraction() const
+        requires detail::fraction_fits_int64<inside>
     {
         if constexpr (detail::integer_storage<inside> && detail::integer_lattice<inside>)
             return {detail::to_value(*this), 1};
         else if constexpr (detail::index_storage<inside> && detail::q_format_fits<inside> &&
                            std::has_single_bit(detail::abs_den(detail::notch64<inside>.Den))) {
-            constexpr imax nd  = detail::abs_den(detail::notch64<inside>.Den);
-            const imax     num = detail::raw_imax(*this) + detail::lower_imax<inside> * nd;
-            const int      s   = std::countr_zero(static_cast<umax>(num) | static_cast<umax>(nd)); // 0 → 0/1
+            constexpr std::int64_t nd  = detail::abs_den(detail::notch64<inside>.Den);
+            const std::int64_t     num = detail::raw_int64(*this) + detail::lower_int64<inside> * nd;
+            const int              s =
+                std::countr_zero(static_cast<std::uint64_t>(num) | static_cast<std::uint64_t>(nd)); // 0 → 0/1
             return {num >> s, nd >> s};
         } else {
             auto r = detail::as_rational(*this);
-            return {signed_numerator(r), static_cast<imax>(detail::abs_den(r.Den))};
+            return {signed_numerator(r), static_cast<std::int64_t>(detail::abs_den(r.Den))};
         }
     }
 
@@ -9746,7 +9765,7 @@ struct inside {
         else if constexpr (!detail::notched<inside>) // continuous: the raw is the value
             neg = negated_type::from_raw(-(Raw));
         else {
-            // Integer raws: the negated value index is −J (wide_value.hpp), in imax
+            // Integer raws: the negated value index is −J (wide_value.hpp), in int64
             // when the bounds allow, else by wrapping. Index storage on both sides
             // counts the slot from the opposite end instead.
             using W = detail::index_work_t<negated_type, inside, G.Notch, inside, G.Notch>;
@@ -9811,7 +9830,7 @@ struct inside {
     // Lower/Notch of an index-raw rhs (its raw is Lower-relative), else 0.
     //   point_delta<R>   — rhs is one whole number of notches: the delta.
     //   raw_add_ok<R>    — rhs raw adds or subtracts with that bias.
-    // The add runs in raw_work_t, sized from the raw and delta ranges: imax for
+    // The add runs in raw_work_t, sized from the raw and delta ranges: int64 for
     // every grid within int64, a wide_int beyond — never overflowing.
     template <insidable R>
     static constexpr bool point_delta_ok =
@@ -9835,7 +9854,7 @@ struct inside {
     // Work type of a raw-space add whose delta lies in [Dlo, Dhi]: it holds
     // every raw of this grid, the delta, the new raw (in [raw_lo + Dlo,
     // raw_hi + Dhi]), the wrap range raw_hi − raw_lo + 1 and the new raw's
-    // offset from raw_lo (wrap divides it), so the add cannot overflow. imax
+    // offset from raw_lo (wrap divides it), so the add cannot overflow. int64
     // for every grid within int64.
     template <detail::grid_int Dlo, detail::grid_int Dhi>
     static constexpr int raw_work_bits = [] {
@@ -10240,7 +10259,7 @@ constexpr auto operator""_ins() {
 template <beman::inside::grid G, beman::inside::policy_flag P>
     requires(beman::inside::has_flag(P, beman::inside::detail::cursor_marker))
 struct std::incrementable_traits<beman::inside::inside<G, P>> {
-    using difference_type = beman::inside::imax;
+    using difference_type = std::ptrdiff_t;
 };
 
 template <beman::inside::grid G, beman::inside::policy_flag P>
@@ -10258,7 +10277,7 @@ struct std::indirectly_readable_traits<beman::inside::inside<G, P>> {
 
 
 //---------------------------------------------------------------------------
-// Comparisons of insides: across grids (by value index when both fit imax,
+// Comparisons of insides: across grids (by value index when both fit int64,
 // else exactly) and against integers and rationals. A floating point is a
 // deleted overload (0.1 is not 1/10 in binary). The inside type itself comes
 // with it, so this is the smallest public header that declares an inside.
@@ -10269,14 +10288,14 @@ namespace beman::inside {
 //---------------------------------------------------------------------------
 namespace detail {
 // Integer value-index comparison eligibility: an integer-backed anchored
-// inside whose value indices (value/Notch, integers) fit imax, so it
+// inside whose value indices (value/Notch, integers) fit int64, so it
 // compares with a scalar as `bias + raw` without a rational decode.
 template <insidable B>
 inline constexpr bool index_cmp_fits = [] {
-    if constexpr (!notched<B> || !anchored<B> || !values_fit_imax<B> || !value_indices_fit64<B>)
+    if constexpr (!notched<B> || !anchored<B> || !values_fit_int64<B> || !value_indices_fit64<B>)
         return false;
     else
-        return std::in_range<imax>(lower_index64<B>.Num) && std::in_range<imax>(upper_index64<B>.Num);
+        return std::in_range<std::int64_t>(lower_index64<B>.Num) && std::in_range<std::int64_t>(upper_index64<B>.Num);
 }();
 
 // Inside values are finite and exact, so they are always ordered: <=> of two
@@ -10331,7 +10350,7 @@ constexpr auto compare(const L& lhs, const R& rhs, Cmp cmp) {
     // offsets, without the rational decode.
     else if constexpr (units_cmp_fits<L, R>) {
         constexpr grid_rational U = gcd(unit_of<L>, unit_of<R>);
-        return cmp(value_in_units<imax, U>(lhs), value_in_units<imax, U>(rhs));
+        return cmp(value_in_units<std::int64_t, U>(lhs), value_in_units<std::int64_t, U>(rhs));
     } else
         return cmp(as_rational(lhs), as_rational(rhs));
 }
@@ -10352,43 +10371,45 @@ namespace detail {
 // notch n/d, value ⋈ c ⟺ (bias + raw)·n ⋈ c·d — both sides exact
 // integers (bias + raw is the signed value index, exact ordering AND
 // equality since c·d is exact too). Eligible when both cross terms
-// provably fit imax for every representable c of type A.
+// provably fit int64 for every representable c of type A.
 template <insidable B, typename A>
 inline constexpr bool scalar_index_cmp_fits = [] {
     if constexpr (!std::integral<A> || wide_builtin<A> || value_storage<B> || !index_cmp_fits<B>)
         return false;
     else {
-        constexpr umax notch_num = notch64<B>.Num;
-        constexpr umax notch_den = static_cast<umax>(notch64<B>.Den); // Notch > 0
-        constexpr umax index_mag =
+        constexpr std::uint64_t notch_num = notch64<B>.Num;
+        constexpr std::uint64_t notch_den = static_cast<std::uint64_t>(notch64<B>.Den); // Notch > 0
+        constexpr std::uint64_t index_mag =
             lower_index64<B>.Num > upper_index64<B>.Num ? lower_index64<B>.Num : upper_index64<B>.Num;
         // The largest |c| of A: |min| = max + 1 for a signed type.
-        constexpr umax scalar_mag = static_cast<umax>(std::numeric_limits<A>::max()) + std::signed_integral<A>;
-        umax           product;
-        return !mul_overflow(index_mag, notch_num, &product) && std::in_range<imax>(product) &&
-               !mul_overflow(scalar_mag, notch_den, &product) && std::in_range<imax>(product);
+        constexpr std::uint64_t scalar_mag =
+            static_cast<std::uint64_t>(std::numeric_limits<A>::max()) + std::signed_integral<A>;
+        std::uint64_t product;
+        return !mul_overflow(index_mag, notch_num, &product) && std::in_range<std::int64_t>(product) &&
+               !mul_overflow(scalar_mag, notch_den, &product) && std::in_range<std::int64_t>(product);
     }
 }();
 
 // inside ⋈ integer or rational. Integer storage compares as integers when
-// the scalar's type fits imax; a wide inside or an integer past 64 bits
+// the scalar's type fits int64; a wide inside or an integer past 64 bits
 // (__int128) compares exactly; everything else goes through rational.
 template <insidable B, class A, class Cmp>
     requires(std::integral<A> || std::same_as<A, rational>)
 constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
-    constexpr bool imax_scalar = std::signed_integral<A> || (std::unsigned_integral<A> && sizeof(A) < sizeof(imax));
+    constexpr bool int64_scalar =
+        std::signed_integral<A> || (std::unsigned_integral<A> && sizeof(A) < sizeof(std::int64_t));
     if constexpr (wide_builtin<A>)
         return cmp(exact_of(lhs), exact_of(rhs));
     else if constexpr (wide_valued<B>)
         return cmp(exact_of(lhs), exact_of(as_rational(rhs)));
-    else if constexpr (integer_value_storage<B> && values_fit_imax<B> && imax_scalar)
-        return cmp(raw_imax(lhs), static_cast<imax>(rhs));
-    else if constexpr (integer_value_storage<B> && values_fit_imax<B> && std::unsigned_integral<A>)
-        return cmp(raw_imax(lhs), rhs); // a 64-bit unsigned: sign-safe, by the cmp_* forms
+    else if constexpr (integer_value_storage<B> && values_fit_int64<B> && int64_scalar)
+        return cmp(raw_int64(lhs), static_cast<std::int64_t>(rhs));
+    else if constexpr (integer_value_storage<B> && values_fit_int64<B> && std::unsigned_integral<A>)
+        return cmp(raw_int64(lhs), rhs); // a 64-bit unsigned: sign-safe, by the cmp_* forms
     else if constexpr (scalar_index_cmp_fits<B, A>)
         // (An index raw: the value index is raw + Lower/Notch.)
-        return cmp((signed_numerator(lower_index64<B>) + raw_imax(lhs)) * static_cast<imax>(notch64<B>.Num),
-                   static_cast<imax>(rhs) * notch64<B>.Den);
+        return cmp((signed_numerator(lower_index64<B>) + raw_int64(lhs)) * static_cast<std::int64_t>(notch64<B>.Num),
+                   static_cast<std::int64_t>(rhs) * notch64<B>.Den);
     else
         return cmp(as_rational(lhs), rational{rhs});
 }
@@ -10645,7 +10666,7 @@ inline constexpr bool native_product = [] {
     else {
         using P                   = typename multiplication<A, B>::result;
         constexpr policy_flag all = flags_of<Out> | F;
-        return values_fit_imax<P> && (notches_compatible<Out, P> || has_flag(all, snap)) &&
+        return values_fit_int64<P> && (notches_compatible<Out, P> || has_flag(all, snap)) &&
                (has_flag(all, clamp) || has_flag(all, wrap) || !excludes(interval_of<Out>, interval_of<P>));
     }
 }();
@@ -10659,11 +10680,11 @@ inline constexpr bool rational_operands = rational_readable<A> && rational_reada
 template <insidable Out>
 inline constexpr bool unreduced_store = q_format_fits<Out> && notched<Out>;
 constexpr rational    unreduced_quotient(rational x, rational y) noexcept {
-    umax num, den;
+    std::uint64_t num, den;
     if (y.Num == 0 || mul_overflow(x.Num, abs_den(y.Den), &num) || mul_overflow(abs_den(x.Den), y.Num, &den) ||
-        !std::in_range<imax>(den))
+        !std::in_range<std::int64_t>(den))
         return rational_from_parts(0, 0);
-    const imax d = static_cast<imax>(den);
+    const std::int64_t d = static_cast<std::int64_t>(den);
     return rational_from_parts(num, (x.Den < 0) != (y.Den < 0) ? -d : d);
 }
 
@@ -10800,16 +10821,17 @@ template <insidable First, insidable... Rest>
 namespace detail {
 // How many raws of B a 32-bit accumulator sums without overflow (unsigned
 // for raws ≥ 0, else signed), at most 2^30: 32-bit lanes are twice as many
-// per vector register as imax ones. 0 when a raw passes the lane.
+// per vector register as int64 ones. 0 when a raw passes the lane.
 template <insidable B>
-inline constexpr imax lane32_block = [] {
-    const grid_int lo = raw_lo_exact<B>, hi = raw_hi_exact<B>;
-    const grid_int mag   = lo.negative() && hi < -lo ? -lo : hi;
-    const umax     limit = lo.negative() ? umax{0x7fff'ffff} : umax{0xffff'ffff};
+inline constexpr std::int64_t lane32_block = [] {
+    const grid_int      lo = raw_lo_exact<B>, hi = raw_hi_exact<B>;
+    const grid_int      mag   = lo.negative() && hi < -lo ? -lo : hi;
+    const std::uint64_t limit = lo.negative() ? std::uint64_t{0x7fff'ffff} : std::uint64_t{0xffff'ffff};
     if (grid_int{limit} < mag)
-        return imax{0};
-    const umax m = static_cast<umax>(mag);
-    return m == 0 ? imax{1} << 30 : static_cast<imax>(std::min<umax>(limit / m, umax{1} << 30));
+        return std::int64_t{0};
+    const std::uint64_t m = static_cast<std::uint64_t>(mag);
+    return m == 0 ? std::int64_t{1} << 30
+                  : static_cast<std::int64_t>(std::min<std::uint64_t>(limit / m, std::uint64_t{1} << 30));
 }();
 } // namespace detail
 
@@ -10821,14 +10843,14 @@ namespace detail {
 inline constexpr int max_continuous_sum_bits = 4096;
 
 // lcm(1, …, d): the largest power of each prime up to d.
-consteval grid_int lcm_up_to(umax d) {
+consteval grid_int lcm_up_to(std::uint64_t d) {
     grid_int l{1};
-    for (umax p = 2; p <= d; ++p) {
+    for (std::uint64_t p = 2; p <= d; ++p) {
         bool prime = true;
-        for (umax f = 2; f * f <= p && prime; ++f)
+        for (std::uint64_t f = 2; f * f <= p && prime; ++f)
             prime = p % f != 0;
         if (prime) {
-            umax pk = p;
+            std::uint64_t pk = p;
             while (pk <= d / p)
                 pk *= p;
             l = l * grid_int{pk};
@@ -10843,7 +10865,7 @@ consteval int continuous_sum_bits_of() {
     const grid_int d = grid_numerator(grid_of<B>.MaxDenominator);
     if (grid_int{2 * max_continuous_sum_bits} < d)
         return max_continuous_sum_bits + 1;
-    return bit_width_of(lcm_up_to(static_cast<umax>(d)));
+    return bit_width_of(lcm_up_to(static_cast<std::uint64_t>(d)));
 }
 template <insidable B>
 inline constexpr int continuous_sum_bits = continuous_sum_bits_of<B>();
@@ -10857,7 +10879,7 @@ inline constexpr int continuous_sum_bits = continuous_sum_bits_of<B>();
 // Notched integer raws (wide ones too) sum value indices exactly — Σvalue =
 // Notch·ΣJ — in a wide integer with 64 bits of headroom for the count; ≤32-bit
 // raws add in blocks, the loop that vectorizes: in 32-bit lanes where a
-// block of at least 64 fits them, else in imax blocks of 2^30 elements.
+// block of at least 64 fits them, else in int64 blocks of 2^30 elements.
 // Continuous elements add exactly over lcm(1..D), D their denominator bound
 // (lcm(1..D) at most 4096 bits); n copies of a point are n·value.
 //---------------------------------------------------------------------------
@@ -10876,52 +10898,53 @@ template <insidable Target, std::ranges::input_range Rng>
         using I            = detail::wide_sint<detail::limbs_for_bits(bits)>;
         I total{0};
         if constexpr (!detail::wide_index_storage<B> && sizeof(detail::raw_t<B>) <= 4) {
-            // Each value is base + raw·scale units (scale 1 when anchored).
-            constexpr imax base =
-                detail::index_storage<B> ? static_cast<imax>(detail::exact_quotient(lower_of<B>, U)) : 0;
-            constexpr imax scale = static_cast<imax>(detail::exact_quotient(notch_of<B>, U));
-            auto           it    = std::ranges::begin(r);
-            auto           end   = std::ranges::end(r);
+            // Each value is base + raw·scale units (scale 1 when anchored), in
+            // the total's type: a grid far from 0 has a base past 64 bits.
+            constexpr I base  = detail::index_storage<B> ? static_cast<I>(detail::units_lo<B, U>) : I{0};
+            constexpr I scale = static_cast<I>(detail::exact_quotient(notch_of<B>, U));
+            auto        it    = std::ranges::begin(r);
+            auto        end   = std::ranges::end(r);
             while (it != end) {
-                imax acc = 0, cnt = 0;
+                std::int64_t acc = 0, cnt = 0;
                 // (A random-access range whose end is a sentinel, not a
                 // reachable iterator, has no distance to it: the loop below.)
                 if constexpr (std::ranges::random_access_range<Rng> &&
                               std::sized_sentinel_for<std::ranges::sentinel_t<Rng>, std::ranges::iterator_t<Rng>>) {
-                    if constexpr (constexpr imax lanes = detail::lane32_block<B>; lanes >= 64) {
+                    if constexpr (constexpr std::int64_t lanes = detail::lane32_block<B>; lanes >= 64) {
                         using L = std::conditional_t<detail::raw_lo_exact<B>.negative(), std::int32_t, std::uint32_t>;
-                        const imax block = std::min<imax>(end - it, lanes);
-                        L          a     = 0;
-                        for (imax j = 0; j < block; ++j)
+                        const std::int64_t block = std::min<std::int64_t>(end - it, lanes);
+                        L                  a     = 0;
+                        for (std::int64_t j = 0; j < block; ++j)
                             a += static_cast<L>(it[j].raw());
-                        acc = static_cast<imax>(a);
+                        acc = static_cast<std::int64_t>(a);
                         it += block;
                         cnt = block;
                     } else {
-                        const imax block = std::min<imax>(end - it, imax{1} << 30);
-                        for (imax j = 0; j < block; ++j)
-                            acc += detail::raw_imax(it[j]);
+                        const std::int64_t block = std::min<std::int64_t>(end - it, std::int64_t{1} << 30);
+                        for (std::int64_t j = 0; j < block; ++j)
+                            acc += detail::raw_int64(it[j]);
                         it += block;
                         cnt = block;
                     }
                 } else {
-                    for (; it != end && cnt < (imax{1} << 30); ++it, ++cnt)
-                        acc += detail::raw_imax(*it);
+                    for (; it != end && cnt < (std::int64_t{1} << 30); ++it, ++cnt)
+                        acc += detail::raw_int64(*it);
                 }
-                if constexpr (scale == 1)
-                    total += I{acc} + I{cnt} * I{base};
+                if constexpr (scale == I{1})
+                    total += I{acc} + I{cnt} * base;
                 else
-                    total += I{acc} * I{scale} + I{cnt} * I{base};
+                    total += I{acc} * scale + I{cnt} * base;
             }
         } else
             for (const auto& b : r)
                 total += detail::value_in_units<I, U>(b);
         if constexpr (!detail::wide_valued<B>) {
-            // A total within imax: the cheaper 64-bit rational store.
-            constexpr imax lo = std::numeric_limits<imax>::min(), hi = std::numeric_limits<imax>::max();
+            // A total within int64: the cheaper 64-bit rational store.
+            constexpr std::int64_t lo = std::numeric_limits<std::int64_t>::min(),
+                                   hi = std::numeric_limits<std::int64_t>::max();
             if (!(total < I{lo}) && !(I{hi} < total))
                 if (const auto v =
-                        detail::try_mul(detail::rational{static_cast<imax>(total)}, detail::to_rational(U))) {
+                        detail::try_mul(detail::rational{static_cast<std::int64_t>(total)}, detail::to_rational(U))) {
                     detail::assignment<Target, detail::rational>::assign(out, *v, policy, detail::no_action{});
                     return out;
                 }
@@ -10935,7 +10958,7 @@ template <insidable Target, std::ranges::input_range Rng>
         detail::assign_exact<detail::rational>(out, v, policy, no_op);
     } else if constexpr (detail::point_storage<B>) {
         // n copies of the one value: n·value.
-        umax n = 0;
+        std::uint64_t n = 0;
         for ([[maybe_unused]] const auto& b : r)
             ++n;
         constexpr std::size_t K = detail::limbs_for_bits(detail::exact_value_bits<B> + 66);
@@ -10953,17 +10976,17 @@ template <insidable Target, std::ranges::input_range Rng>
                       "4096 bits) - store them onto a notched grid first");
         constexpr int bits = detail::continuous_sum_bits<B>;
         using N            = detail::wide_uint<detail::limbs_for_bits(bits)>;
-        constexpr N L =
-            static_cast<N>(detail::lcm_up_to(static_cast<umax>(detail::grid_numerator(grid_of<B>.MaxDenominator))));
+        constexpr N L      = static_cast<N>(
+            detail::lcm_up_to(static_cast<std::uint64_t>(detail::grid_numerator(grid_of<B>.MaxDenominator))));
         constexpr std::size_t K = detail::limbs_for_bits(bits + detail::exact_value_bits<B> + 66);
         using I                 = detail::wide_sint<K>;
         I total{0};
         for (const auto& b : r) {
             auto e  = detail::exact_of(b); // Den > 0
-            auto qr = detail::divmod_small(L, static_cast<umax>(e.Den));
+            auto qr = detail::divmod_small(L, static_cast<std::uint64_t>(e.Den));
             if (qr.Remainder != 0 || bit_width_of(e.Den) > 64) [[unlikely]] { // (ADL: wide_int's friend)
                 e  = detail::reduced(e); // a raw built unreduced: its reduced Den ≤ D divides L
-                qr = detail::divmod_small(L, static_cast<umax>(e.Den));
+                qr = detail::divmod_small(L, static_cast<std::uint64_t>(e.Den));
             }
             total += static_cast<I>(e.Num) * static_cast<I>(qr.Quotient);
         }
@@ -11226,9 +11249,10 @@ struct std::common_type<beman::inside::inside<G1, P1>, beman::inside::inside<G2,
 // a type (every value of T; of a quantity type, its values as quantities).
 // Walks by notch index (any non-zero notch), each `*it` computing the exact
 // `Lower + index·Notch`; the iterator wraps modulo the slot count so a
-// mid-range start visits every slot once. Up to 2^63 values a random-access
-// sized view (view_interface adds [], front, back, empty): end() − begin(),
-// an imax, is the count. Past that (uint64, int64, a grid past 64 bits) a
+// mid-range start visits every slot once. Up to PTRDIFF_MAX values a
+// random-access sized view (view_interface adds [], front, back, empty):
+// end() − begin(), a std::ptrdiff_t, is the count. Past that (uint64, int64,
+// a grid past 64 bits; a 32-bit target's past 2^31) a
 // bidirectional view without a size, its position a wide integer, as a
 // cursor walks. A borrowed range: its iterators never refer to it, so an
 // algorithm on a temporary still returns an iterator. iterator_category is
@@ -11241,11 +11265,12 @@ template <grid G, policy_flag P = checked, class V = inside<G, P>>
 struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
     using number_type = inside<G, P>;
     using value_type  = V; // number_type, or a quantity on it
-    // Random access while end() − begin(), an imax, can be the count.
+    // Random access while end() − begin(), a std::ptrdiff_t, can be the count.
     static constexpr bool random_access =
         detail::max_index_representable(G) &&
-        detail::max_index_of<number_type> < static_cast<umax>(std::numeric_limits<imax>::max());
-    static constexpr umax slot_count = random_access ? detail::max_index_of<number_type> + 1 : 0;
+        detail::max_index_of<number_type> < static_cast<std::uint64_t>(std::numeric_limits<std::ptrdiff_t>::max());
+    static constexpr std::size_t slot_count =
+        random_access ? static_cast<std::size_t>(detail::max_index_of<number_type> + 1) : 0;
 
   private:
     // The value at a slot (an offset from Lower).
@@ -11261,24 +11286,25 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
     // The slot and position in 32 bits where the slot count fits: a loop over
     // the range then vectorizes in 32-bit lanes, as a native counting loop
     // does (64-bit ones hold half as many).
-    static constexpr bool narrow = slot_count <= umax{0x7fff'ffff};
-    using slot_t                 = std::conditional_t<narrow, std::uint32_t, umax>;
-    using pos_t                  = std::conditional_t<narrow, std::int32_t, imax>;
+    static constexpr bool narrow = slot_count <= 0x7fff'ffff;
+    using slot_t                 = std::conditional_t<narrow, std::uint32_t, std::size_t>;
+    using pos_t                  = std::conditional_t<narrow, std::int32_t, std::ptrdiff_t>;
 
     struct counted_iterator {
         using iterator_concept  = std::random_access_iterator_tag;
         using iterator_category = std::input_iterator_tag;
         using value_type        = V;
-        using difference_type   = imax;
+        using difference_type   = std::ptrdiff_t;
 
         slot_t Start{0}; // slot of the first element (the range wraps past the top)
         pos_t  Pos{0};   // position in [0, slot_count]; the loop variable
 
         constexpr counted_iterator() = default;
-        constexpr counted_iterator(umax s, imax p) : Start{static_cast<slot_t>(s)}, Pos{static_cast<pos_t>(p)} {}
+        constexpr counted_iterator(std::size_t s, std::ptrdiff_t p)
+            : Start{static_cast<slot_t>(s)}, Pos{static_cast<pos_t>(p)} {}
 
         // Grid slot of this position: Start + Pos, wrapped once (no overflow).
-        constexpr umax slot() const {
+        constexpr std::size_t slot() const {
             constexpr slot_t count = static_cast<slot_t>(slot_count);
             const slot_t     p     = static_cast<slot_t>(Pos);
             return p < count - Start ? Start + p : p - (count - Start);
@@ -11344,7 +11370,7 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
         [[nodiscard]] constexpr auto operator<=>(counted_iterator o) const { return Pos <=> o.Pos; }
     };
 
-    // Past 2^63 values: the slot and position in a signed wide integer that
+    // Past PTRDIFF_MAX values: the slot and position in a signed wide integer that
     // holds the slot count (2^64 for uint64), stepping by one.
     using wide_pos_t                      = detail::wide_sint<detail::limbs_for_bits(G.slot_bits() + 2)>;
     static constexpr wide_pos_t pos_count = static_cast<wide_pos_t>(G.step_count() + detail::grid_int{1});
@@ -11353,7 +11379,7 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
         using iterator_concept  = std::bidirectional_iterator_tag;
         using iterator_category = std::input_iterator_tag;
         using value_type        = V;
-        using difference_type   = imax; // no distance is formed
+        using difference_type   = std::ptrdiff_t; // no distance is formed
 
         wide_pos_t Start{0}; // slot of the first element (the range wraps past the top)
         wide_pos_t Pos{0};   // position in [0, slot count]
@@ -11382,7 +11408,7 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
         }
         [[nodiscard]] constexpr bool operator==(const stepping_iterator& o) const { return Pos == o.Pos; }
     };
-    using start_t = std::conditional_t<random_access, umax, wide_pos_t>;
+    using start_t = std::conditional_t<random_access, std::size_t, wide_pos_t>;
 
     // A grid value's notch index: its raw's offset (a wide index raw is it).
     static constexpr start_t start_of(const number_type& start) {
@@ -11408,7 +11434,7 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
     }
     constexpr iterator end() const {
         if constexpr (random_access)
-            return {StartIndex, static_cast<imax>(slot_count)};
+            return {StartIndex, static_cast<std::ptrdiff_t>(slot_count)};
         else
             return {StartIndex, pos_count};
     }
@@ -11421,7 +11447,7 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
 };
 
 // values<T>: every value of T, Lower to Upper (random access and sized up to
-// 2^63 values, bidirectional past that); of a quantity type, its number's
+// PTRDIFF_MAX values, bidirectional past that); of a quantity type, its number's
 // values as quantities. A cursor has none: its grid ends past T's Upper.
 template <detail::steppable T>
     requires(notch_of<detail::step_number_t<T>> != 0 &&
@@ -11594,7 +11620,7 @@ struct std::hash<beman::inside::inside<G, P>> {
         return h ^ (std::hash<V>{}(v) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2));
     }
     static constexpr std::size_t combine(std::size_t h, const auto& w) noexcept {
-        for (beman::inside::umax limb : w.Word)
+        for (std::uint64_t limb : w.Word)
             h = mix(h, limb);
         return h;
     }
@@ -11605,7 +11631,7 @@ struct std::hash<beman::inside::inside<G, P>> {
         else if constexpr (beman::inside::detail::fraction_storage<B>)
             return combine(combine(0, b.raw().Num), b.raw().Den); // a reduced fraction
         else if constexpr (beman::inside::detail::rational_storage<B>)
-            return mix(std::hash<beman::inside::umax>{}(b.raw().Num), b.raw().Den);
+            return mix(std::hash<std::uint64_t>{}(b.raw().Num), b.raw().Den);
         else if constexpr (beman::inside::detail::wide_index_storage<B>)
             return combine(0, b.raw());
         else
@@ -11746,7 +11772,7 @@ std::string wide_to_base(wide_int<N, false> u, int base, bool upper) {
     const char* const digits = upper ? "0123456789ABCDEF" : "0123456789abcdef";
     std::string       out;
     do {
-        const auto [q, r] = divmod_small(u, static_cast<umax>(base));
+        const auto [q, r] = divmod_small(u, static_cast<std::uint64_t>(base));
         out.insert(out.begin(), digits[r]);
         u = q;
     } while (!u.is_zero());
@@ -11771,12 +11797,12 @@ struct decimal_stream {
     std::string next(int n) {
         std::string out;
         for (; n > 0; n -= 19) {
-            const int chunk = n < 19 ? n : 19;
-            umax      p     = 1;
+            const int     chunk = n < 19 ? n : 19;
+            std::uint64_t p     = 1;
             for (int i = 0; i < chunk; ++i)
                 p *= 10;
             const auto [q, r]      = W::divmod(Rem * W{p}, Den);
-            const std::string part = std::to_string(static_cast<umax>(q));
+            const std::string part = std::to_string(static_cast<std::uint64_t>(q));
             out.append(static_cast<std::size_t>(chunk) - part.size(), '0') += part;
             Rem = r;
         }
@@ -11934,7 +11960,8 @@ template <std::size_t N, bool S>
     std::string      out;
     do {
         // m /= 10^19, rem = m % 10^19
-        const umax rem = detail::limb::div_1(m.data(), m.data(), m.size(), umax{10'000'000'000'000'000'000ull});
+        const std::uint64_t rem =
+            detail::limb::div_1(m.data(), m.data(), m.size(), std::uint64_t{10'000'000'000'000'000'000ull});
         detail::big::trim(m);
         std::string part = std::to_string(rem);
         if (!m.empty())
@@ -12297,24 +12324,24 @@ inline constexpr round_mode display_rounding =
         : round_mode::half_even;
 } // namespace beman::inside::detail
 
-// Empty `{}` prints to_string. A notched integer grid within imax takes the
-// integer specs (std::formatter<imax>: {:>4}, {:#x}); every other inside takes
+// Empty `{}` prints to_string. A notched integer grid within int64 takes the
+// integer specs (std::formatter<std::int64_t>: {:>4}, {:#x}); every other inside takes
 // the exact specs ({:.2f}, {:e}, {:g}, fill / align / sign / width), rounded
 // from the exact value by the type's rounding mode (ties to even without one),
-// and an integer grid past imax the integer types too ({:#x}, {:b}, {:o}, {:d}).
+// and an integer grid past int64 the integer types too ({:#x}, {:b}, {:o}, {:d}).
 template <beman::inside::grid G, beman::inside::policy_flag P>
 struct std::formatter<beman::inside::inside<G, P>>
     : beman::inside::detail::numeric_spec_formatter<
           std::conditional_t<beman::inside::detail::integer_lattice<beman::inside::inside<G, P>> &&
-                                 beman::inside::detail::values_fit_imax<beman::inside::inside<G, P>>,
-                             std::formatter<beman::inside::imax>,
+                                 beman::inside::detail::values_fit_int64<beman::inside::inside<G, P>>,
+                             std::formatter<std::int64_t>,
                              beman::inside::detail::exact_format_spec<
                                  beman::inside::detail::integer_lattice<beman::inside::inside<G, P>>>>> {
     using B = beman::inside::inside<G, P>;
     // Integer formatting only for a notched integer grid: a continuous grid
     // (notch 0) holds fractions even between integer bounds.
     static constexpr bool integer_path =
-        beman::inside::detail::integer_lattice<B> && beman::inside::detail::values_fit_imax<B>;
+        beman::inside::detail::integer_lattice<B> && beman::inside::detail::values_fit_int64<B>;
 
     template <typename Ctx>
     auto format(const B& b, Ctx& ctx) const {
@@ -12398,7 +12425,7 @@ namespace detail {
 template <class I>
 concept index_inside =
     insidable<I> && integer_lattice<I> && lower_of<I> == 0 && (notch_of<I> == 1 || upper_of<I> == 0) &&
-    upper_of<I> < grid_rational{std::numeric_limits<imax>::max()};
+    upper_of<I> < grid_rational{std::numeric_limits<std::int64_t>::max()};
 
 template <class I>
 inline constexpr std::size_t extent_of_index = [] {
@@ -12483,9 +12510,9 @@ template <class T, class E, class L, class A>
 //---------------------------------------------------------------------------
 namespace detail {
 // An index argument: a builtin integer (std semantics), or an inside on the
-// integers whose values fit imax.
+// integers whose values fit int64.
 template <class I>
-concept span_index = std::integral<I> || (insidable<I> && integer_lattice<I> && values_fit_imax<I>);
+concept span_index = std::integral<I> || (insidable<I> && integer_lattice<I> && values_fit_int64<I>);
 
 // The index at rank R of e for i: an integer as is; an inside proven within
 // a static extent as its value; any other inside held to [0, extent − 1] by
@@ -12500,8 +12527,8 @@ constexpr typename E::index_type extent_index(const E& e, const I& i) {
         if constexpr (S != std::dynamic_extent && S > 0 && lower_of<I> >= 0 && upper_of<I> <= grid_rational{S - 1})
             return static_cast<index_type>(to_value(i));
         else {
-            const imax v = to_value(i);
-            const imax n = static_cast<imax>(e.extent(R));
+            const std::int64_t v = to_value(i);
+            const std::int64_t n = static_cast<std::int64_t>(e.extent(R));
             if (v >= 0 && v < n) [[likely]]
                 return static_cast<index_type>(v);
             if constexpr (has_flag(flags_of<I>, unsafe))
@@ -12512,7 +12539,7 @@ constexpr typename E::index_type extent_index(const E& e, const I& i) {
                         return static_cast<index_type>(v < 0 ? 0 : n - 1);
                 } else if constexpr (has_flag(flags_of<I>, wrap)) {
                     if (n > 0) {
-                        const imax r = v % n;
+                        const std::int64_t r = v % n;
                         return static_cast<index_type>(r < 0 ? r + n : r);
                     }
                 }
@@ -12641,7 +12668,7 @@ constexpr E read_stored(const T& t) {
         // A raw outside the grid is held by N's policy; skipped when every
         // raw of the type is a point of the grid. The test runs in a work
         // integer holding the raw type's range and the grid's (a uint64 raw
-        // passes imax; a wide raw is a wide_int).
+        // passes int64; a wide raw is a wide_int).
         using R                 = raw_t<N>;
         constexpr grid_int rmin = raw_type_min<R>, rmax = raw_type_max<R>;
         constexpr grid_int lo = raw_lo_exact<N>, hi = raw_hi_exact<N>;
@@ -12990,9 +13017,9 @@ namespace detail {
 // again), high bits first; one output when b ≥ 64, its low 64 bits. A
 // generator wider than 64 bits (unsigned __int128) works in its own type.
 template <std::uniform_random_bit_generator G>
-constexpr umax random_word(G& g) {
+constexpr std::uint64_t random_word(G& g) {
     using R              = std::invoke_result_t<G&>;
-    using U              = std::conditional_t<wide_builtin<R>, std::make_unsigned_t<R>, umax>;
+    using U              = std::conditional_t<wide_builtin<R>, std::make_unsigned_t<R>, std::uint64_t>;
     constexpr U   span   = static_cast<U>(G::max()) - static_cast<U>(G::min());
     constexpr int digits = std::numeric_limits<U>::digits;
     constexpr int bits   = [] {
@@ -13011,25 +13038,25 @@ constexpr umax random_word(G& g) {
         return d;
     };
     if constexpr (bits >= 64)
-        return static_cast<umax>(draw());
+        return static_cast<std::uint64_t>(draw());
     else {
-        umax word = 0;
+        std::uint64_t word = 0;
         for (int got = 0; got < 64; got += bits)
-            word = word << bits | static_cast<umax>(draw());
+            word = word << bits | static_cast<std::uint64_t>(draw());
         return word;
     }
 }
 
 // An index in [0, N]: a word masked to N's bit width, drawn again past N
 // (accepts more than half of the draws). N = 0 draws nothing.
-template <umax N, std::uniform_random_bit_generator G>
-constexpr umax random_index(G& g) {
+template <std::uint64_t N, std::uniform_random_bit_generator G>
+constexpr std::uint64_t random_index(G& g) {
     if constexpr (N == 0)
         return 0;
     else {
-        constexpr umax mask = std::numeric_limits<umax>::max() >> std::countl_zero(N);
+        constexpr std::uint64_t mask = std::numeric_limits<std::uint64_t>::max() >> std::countl_zero(N);
         for (;;)
-            if (const umax k = random_word(g) & mask; k <= N)
+            if (const std::uint64_t k = random_word(g) & mask; k <= N)
                 return k;
     }
 }
@@ -13050,7 +13077,7 @@ template <insidable B, std::uniform_random_bit_generator G>
             for (auto& w : k.Word)
                 w = detail::random_word(g);
             if constexpr (top_bits < 64)
-                k.Word[sizeof(W) / 8 - 1] &= (umax{1} << top_bits) - 1;
+                k.Word[sizeof(W) / 8 - 1] &= (std::uint64_t{1} << top_bits) - 1;
             if (!(k > count))
                 return B::from_raw(k);
         }
@@ -13138,7 +13165,7 @@ template <int Bits>
 using fixed_t = wide_sint<limbs_for_bits(Bits + 1)>;
 
 template <typename T>
-inline constexpr std::size_t limbs_of = sizeof(T) / sizeof(umax);
+inline constexpr std::size_t limbs_of = sizeof(T) / sizeof(std::uint64_t);
 
 // The same value in a word of twice the limbs (for products and shifted
 // dividends).
@@ -13154,13 +13181,13 @@ template <std::size_t K>
 constexpr wide_sint<K> mul_q(const wide_sint<K>& a, const wide_sint<K>& b, int W) noexcept {
     if constexpr (K == 1) {
         // One limb: the 128-bit product of the magnitudes, shifted.
-        const bool             na = a.negative(), nb = b.negative();
-        const umax             ma = na ? umax{0} - a.Word[0] : a.Word[0];
-        const umax             mb = nb ? umax{0} - b.Word[0] : b.Word[0];
-        const limb::pair<umax> p  = limb::mul(ma, mb);
-        const umax             m  = W == 0 ? p.Lo : W < 64 ? (p.Lo >> W) | (p.Hi << (64 - W)) : p.Hi >> (W - 64);
-        wide_sint<1>           r;
-        r.Word[0] = (na != nb) ? umax{0} - m : m;
+        const bool                      na = a.negative(), nb = b.negative();
+        const std::uint64_t             ma = na ? std::uint64_t{0} - a.Word[0] : a.Word[0];
+        const std::uint64_t             mb = nb ? std::uint64_t{0} - b.Word[0] : b.Word[0];
+        const limb::pair<std::uint64_t> p  = limb::mul(ma, mb);
+        const std::uint64_t m = W == 0 ? p.Lo : W < 64 ? (p.Lo >> W) | (p.Hi << (64 - W)) : p.Hi >> (W - 64);
+        wide_sint<1>        r;
+        r.Word[0] = (na != nb) ? std::uint64_t{0} - m : m;
         return r;
     } else {
         // The magnitudes' product into 2K limbs, then the shift. (Not
@@ -13168,27 +13195,27 @@ constexpr wide_sint<K> mul_q(const wide_sint<K>& a, const wide_sint<K>& b, int W
         // kernels the math_decimal workload grows.)
         const bool         na = a.negative(), nb = b.negative();
         const wide_uint<K> ma{na ? -a : a}, mb{nb ? -b : b};
-        umax               prod[2 * K]{};
+        std::uint64_t      prod[2 * K]{};
         if constexpr (K == 2) { // the four partial products
-            const limb::pair<umax> p00 = limb::mul(ma.Word[0], mb.Word[0]);
-            const limb::pair<umax> p01 = limb::mul(ma.Word[0], mb.Word[1]);
-            const limb::pair<umax> p10 = limb::mul(ma.Word[1], mb.Word[0]);
-            const limb::pair<umax> p11 = limb::mul(ma.Word[1], mb.Word[1]);
-            umax                   c1 = 0, c2 = 0, c3 = 0, c4 = 0, c5 = 0;
+            const limb::pair<std::uint64_t> p00 = limb::mul(ma.Word[0], mb.Word[0]);
+            const limb::pair<std::uint64_t> p01 = limb::mul(ma.Word[0], mb.Word[1]);
+            const limb::pair<std::uint64_t> p10 = limb::mul(ma.Word[1], mb.Word[0]);
+            const limb::pair<std::uint64_t> p11 = limb::mul(ma.Word[1], mb.Word[1]);
+            std::uint64_t                   c1 = 0, c2 = 0, c3 = 0, c4 = 0, c5 = 0;
             prod[0] = p00.Lo;
             prod[1] = limb::add_carry(limb::add_carry(p00.Hi, p01.Lo, c1), p10.Lo, c2);
             prod[2] = limb::add_carry(limb::add_carry(limb::add_carry(p11.Lo, p01.Hi, c3), p10.Hi, c4), c1 + c2, c5);
             prod[3] = p11.Hi + c3 + c4 + c5;
         } else
             for (std::size_t i = 0; i < K; ++i) {
-                umax carry = 0;
+                std::uint64_t carry = 0;
                 for (std::size_t j = 0; j < K; ++j) {
-                    const limb::pair<umax> t  = limb::mul(ma.Word[i], mb.Word[j]);
-                    umax                   c1 = 0, c2 = 0;
-                    umax                   v = limb::add_carry(prod[i + j], t.Lo, c1);
-                    v                        = limb::add_carry(v, carry, c2);
-                    prod[i + j]              = v;
-                    carry                    = t.Hi + c1 + c2;
+                    const limb::pair<std::uint64_t> t  = limb::mul(ma.Word[i], mb.Word[j]);
+                    std::uint64_t                   c1 = 0, c2 = 0;
+                    std::uint64_t                   v = limb::add_carry(prod[i + j], t.Lo, c1);
+                    v                                 = limb::add_carry(v, carry, c2);
+                    prod[i + j]                       = v;
+                    carry                             = t.Hi + c1 + c2;
                 }
                 prod[i + K] = carry;
             }
@@ -13196,9 +13223,9 @@ constexpr wide_sint<K> mul_q(const wide_sint<K>& a, const wide_sint<K>& b, int W
         const int         bs = W % 64;
         wide_uint<K>      m;
         for (std::size_t i = 0; i < K; ++i) {
-            const umax lo = i + ws < 2 * K ? prod[i + ws] : 0;
-            const umax hi = i + ws + 1 < 2 * K ? prod[i + ws + 1] : 0;
-            m.Word[i]     = bs == 0 ? lo : (lo >> bs) | (hi << (64 - bs));
+            const std::uint64_t lo = i + ws < 2 * K ? prod[i + ws] : 0;
+            const std::uint64_t hi = i + ws + 1 < 2 * K ? prod[i + ws + 1] : 0;
+            m.Word[i]              = bs == 0 ? lo : (lo >> bs) | (hi << (64 - bs));
         }
         const wide_sint<K> r{m};
         return na != nb ? -r : r;
@@ -13220,7 +13247,7 @@ constexpr wide_sint<K> one_q(int W) noexcept {
 
 // An error bound v·2^-n, rounded down (callers add 1): 0 once n ≥ 64, where
 // the shift itself would be undefined.
-constexpr umax shr_bound(umax v, int n) noexcept { return n < 64 ? v >> n : 0; }
+constexpr std::uint64_t shr_bound(std::uint64_t v, int n) noexcept { return n < 64 ? v >> n : 0; }
 
 // v rounded to the nearest multiple of 2^-sh (half away from zero), shifted
 // down by sh: changes the scale from 2^(W+sh) to 2^W within ½ unit.
@@ -13238,7 +13265,7 @@ constexpr wide_sint<K> round_shift(const wide_sint<K>& v, int sh) noexcept {
 // n/d (d > 0) rounded to nearest, half away from zero; one-limb divisions
 // when d fits a limb.
 template <std::size_t K>
-constexpr wide_sint<K> nearest_div(const wide_sint<K>& n, umax d) noexcept {
+constexpr wide_sint<K> nearest_div(const wide_sint<K>& n, std::uint64_t d) noexcept {
     const bool neg    = n.negative();
     const auto [q, r] = divmod_small(wide_uint<K>{neg ? -n : n}, d);
     wide_sint<K> m{q};
@@ -13309,9 +13336,9 @@ inline constexpr int mag_bits = std::max(grid_magnitude_bits<Out>, 0);
 //---------------------------------------------------------------------------
 template <std::size_t K>
 struct approx {
-    wide_sint<K> Value;
-    int          Scale;
-    umax         Error;
+    wide_sint<K>  Value;
+    int           Scale;
+    std::uint64_t Error;
 
     // Stand-ins that decide reads like any other approx: ±2^(KMax+2) exactly,
     // past every output whose magnitude is below 2^KMax; [0, 2^-(S+1)] for a
@@ -13320,7 +13347,7 @@ struct approx {
         return {wide_sint<K>{negative ? -1 : 1}, -(KMax + 2), 0};
     }
     static constexpr approx below(int S) noexcept { return {wide_sint<K>{1}, S + 2, 1}; }
-    static constexpr approx unresolved(int S) noexcept { return {wide_sint<K>{0}, S, ~umax{0}}; }
+    static constexpr approx unresolved(int S) noexcept { return {wide_sint<K>{0}, S, ~std::uint64_t{0}}; }
 };
 
 //---------------------------------------------------------------------------
@@ -13361,7 +13388,7 @@ inline constexpr bool notch_fits64 = [] {
 
 // v / d for a small positive d, truncating toward zero (series terms).
 template <std::size_t K>
-constexpr wide_sint<K> div_small(const wide_sint<K>& v, umax d) noexcept {
+constexpr wide_sint<K> div_small(const wide_sint<K>& v, std::uint64_t d) noexcept {
     const bool         neg = v.negative();
     const wide_sint<K> q{divmod_small(wide_uint<K>{neg ? -v : v}, d).Quotient};
     return neg ? -q : q;
@@ -13371,10 +13398,11 @@ constexpr wide_sint<K> div_small(const wide_sint<K>& v, umax d) noexcept {
 // remainder r, and how the shifted-out part R compares with half a unit
 // (−1 below, 0 equal, 1 above; R == 0 known separately).
 template <round_mode M>
-constexpr bool round_up(bool neg, umax b0, umax r, umax p, bool low_zero, int low_vs_half) noexcept {
+constexpr bool
+round_up(bool neg, std::uint64_t b0, std::uint64_t r, std::uint64_t p, bool low_zero, int low_vs_half) noexcept {
     remainder_class c = (r == 0 && low_zero) ? remainder_class::zero : remainder_class::below_half;
     if constexpr (M == round_mode::nearest || M == round_mode::half_even) {
-        const umax d = p - r; // r + R against p/2, R the shifted-out part
+        const std::uint64_t d = p - r; // r + R against p/2, R the shifted-out part
         if (r > d || (r == d && !low_zero))
             c = remainder_class::above_half;
         else if (r == d)
@@ -13393,13 +13421,13 @@ template <insidable Out, round_mode M, std::size_t K>
 constexpr wide_sint<K + 2> fast_index(const wide_sint<K>& y, int S) noexcept {
     // On limb arrays: |y|·q, the part above 2^S divided by p, and the part
     // below read as the half-unit bit (bit S−1) plus a sticky bit for the rest.
-    using J                   = wide_sint<K + 2>;
-    constexpr std::size_t N   = K + 1;
-    constexpr umax        p   = static_cast<umax>(grid_numerator(notch_of<Out>));
-    constexpr umax        q   = static_cast<umax>(grid_denominator(notch_of<Out>));
-    const bool            neg = y.negative();
-    const wide_uint<K>    mag{neg ? -y : y};
-    umax                  a[N];
+    using J                     = wide_sint<K + 2>;
+    constexpr std::size_t   N   = K + 1;
+    constexpr std::uint64_t p   = static_cast<std::uint64_t>(grid_numerator(notch_of<Out>));
+    constexpr std::uint64_t q   = static_cast<std::uint64_t>(grid_denominator(notch_of<Out>));
+    const bool              neg = y.negative();
+    const wide_uint<K>      mag{neg ? -y : y};
+    std::uint64_t           a[N];
     a[K]     = limb::mul_1(a, mag.Word, K, q);
     auto bit = [&](int i) -> bool {
         const std::size_t w = static_cast<std::size_t>(i / 64);
@@ -13412,15 +13440,15 @@ constexpr wide_sint<K + 2> fast_index(const wide_sint<K>& y, int S) noexcept {
             if (a[w] != 0)
                 return true;
         const int rest = n % 64;
-        return full < N && rest != 0 && (a[full] & ((umax{1} << rest) - 1)) != 0;
+        return full < N && rest != 0 && (a[full] & ((std::uint64_t{1} << rest) - 1)) != 0;
     };
     const bool half_bit = bit(S - 1), below_half = sticky(S - 1);
     const bool low_zero = !half_bit && !below_half;
     const int  vs_half  = !half_bit ? -1 : below_half ? 1 : 0;
     // hi = a >> S
-    umax hi[N];
+    std::uint64_t hi[N];
     limb::shift_right(hi, N, a, N, S);
-    umax r = 0;
+    std::uint64_t r = 0;
     if constexpr (p != 1)
         r = limb::div_1(hi, hi, N, p);
     J m{0};
@@ -13442,22 +13470,22 @@ constexpr wide_sint<K + 2> fast_index(const wide_sint<K>& y, int S) noexcept {
 // (Its limb loops stay written out: on limb::mul_1 / shift_right / div_1,
 // shared with fast_index, the math_integer workload grows by about 10%.)
 template <insidable Out, round_mode M, std::size_t K>
-constexpr bool decide_fast(const wide_sint<K>& y, umax e, int S, wide_sint<K + 2>& index) noexcept {
-    using J                       = wide_sint<K + 2>;
-    constexpr std::size_t N       = K + 1; // |y|·q fits K + 1 limbs
-    constexpr umax        p       = static_cast<umax>(grid_numerator(notch_of<Out>));
-    constexpr umax        q       = static_cast<umax>(grid_denominator(notch_of<Out>));
-    constexpr bool        nearest = M == round_mode::nearest || M == round_mode::half_even;
-    const bool            neg     = y.negative();
-    const wide_uint<K>    mag{neg ? -y : y};
-    umax                  u[N]{};
+constexpr bool decide_fast(const wide_sint<K>& y, std::uint64_t e, int S, wide_sint<K + 2>& index) noexcept {
+    using J                         = wide_sint<K + 2>;
+    constexpr std::size_t   N       = K + 1; // |y|·q fits K + 1 limbs
+    constexpr std::uint64_t p       = static_cast<std::uint64_t>(grid_numerator(notch_of<Out>));
+    constexpr std::uint64_t q       = static_cast<std::uint64_t>(grid_denominator(notch_of<Out>));
+    constexpr bool          nearest = M == round_mode::nearest || M == round_mode::half_even;
+    const bool              neg     = y.negative();
+    const wide_uint<K>      mag{neg ? -y : y};
+    std::uint64_t           u[N]{};
     {
-        umax carry = 0;
+        std::uint64_t carry = 0;
         for (std::size_t i = 0; i < K; ++i) {
-            const limb::pair<umax> t = limb::mul(mag.Word[i], q);
-            umax                   c = 0;
-            u[i]                     = limb::add_carry(t.Lo, carry, c);
-            carry                    = t.Hi + c;
+            const limb::pair<std::uint64_t> t = limb::mul(mag.Word[i], q);
+            std::uint64_t                   c = 0;
+            u[i]                              = limb::add_carry(t.Lo, carry, c);
+            carry                             = t.Hi + c;
         }
         u[K] = carry;
     }
@@ -13467,24 +13495,24 @@ constexpr bool decide_fast(const wide_sint<K>& y, umax e, int S, wide_sint<K + 2
         const int         b = (S - 1) % 64;
         if (w >= N)
             return false;
-        umax carry = 0;
-        u[w]       = limb::add_carry(u[w], p << b, carry);
+        std::uint64_t carry = 0;
+        u[w]                = limb::add_carry(u[w], p << b, carry);
         if (w + 1 < N)
             u[w + 1] = limb::add_carry(u[w + 1], b == 0 ? 0 : p >> (64 - b), carry);
         for (std::size_t i = w + 2; i < N; ++i)
-            u[i] = limb::add_carry(u[i], umax{0}, carry);
+            u[i] = limb::add_carry(u[i], std::uint64_t{0}, carry);
         if (carry != 0)
             return false;
     }
     // The ends u − E and u + E, E = e·q.
-    const limb::pair<umax> E = limb::mul(e, q);
-    umax                   lo[N], hi[N];
+    const limb::pair<std::uint64_t> E = limb::mul(e, q);
+    std::uint64_t                   lo[N], hi[N];
     {
-        umax borrow = 0, carry = 0;
+        std::uint64_t borrow = 0, carry = 0;
         for (std::size_t i = 0; i < N; ++i) {
-            const umax ei = i == 0 ? E.Lo : i == 1 ? E.Hi : 0;
-            lo[i]         = limb::sub_borrow(u[i], ei, borrow);
-            hi[i]         = limb::add_carry(u[i], ei, carry);
+            const std::uint64_t ei = i == 0 ? E.Lo : i == 1 ? E.Hi : 0;
+            lo[i]                  = limb::sub_borrow(u[i], ei, borrow);
+            hi[i]                  = limb::add_carry(u[i], ei, carry);
         }
         if (borrow != 0 || carry != 0)
             return false; // near 0, or past the limbs
@@ -13496,18 +13524,18 @@ constexpr bool decide_fast(const wide_sint<K>& y, umax e, int S, wide_sint<K + 2
     for (std::size_t i = 0; i < ws && i < N; ++i)
         low_nonzero = low_nonzero || lo[i] != 0;
     if (ws < N && bs != 0)
-        low_nonzero = low_nonzero || (lo[ws] & ((umax{1} << bs) - 1)) != 0;
-    umax hl[N]{}, hh[N]{};
+        low_nonzero = low_nonzero || (lo[ws] & ((std::uint64_t{1} << bs) - 1)) != 0;
+    std::uint64_t hl[N]{}, hh[N]{};
     for (std::size_t i = 0; i + ws < N; ++i) {
-        const umax l0 = lo[i + ws], l1 = i + ws + 1 < N ? lo[i + ws + 1] : 0;
-        const umax h0 = hi[i + ws], h1 = i + ws + 1 < N ? hi[i + ws + 1] : 0;
+        const std::uint64_t l0 = lo[i + ws], l1 = i + ws + 1 < N ? lo[i + ws + 1] : 0;
+        const std::uint64_t h0 = hi[i + ws], h1 = i + ws + 1 < N ? hi[i + ws + 1] : 0;
         hl[i] = bs == 0 ? l0 : (l0 >> bs) | (l1 << (64 - bs));
         hh[i] = bs == 0 ? h0 : (h0 >> bs) | (h1 << (64 - bs));
     }
     // δ = hh − hl, one limb at most.
-    umax delta;
+    std::uint64_t delta;
     {
-        umax borrow = 0, d[N];
+        std::uint64_t borrow = 0, d[N];
         for (std::size_t i = 0; i < N; ++i)
             d[i] = limb::sub_borrow(hh[i], hl[i], borrow);
         for (std::size_t i = 1; i < N; ++i)
@@ -13517,12 +13545,12 @@ constexpr bool decide_fast(const wide_sint<K>& y, umax e, int S, wide_sint<K + 2
     }
     // B = ⌊hl/p⌋, r = hl mod p: same cell when r + δ < p; strictly inside
     // when lo is not on the cell's lower edge.
-    umax r = 0;
+    std::uint64_t r = 0;
     if constexpr (p != 1)
         for (std::size_t i = N; i-- > 0;) {
-            const limb::pair<umax> d = limb::div(r, hl[i], p);
-            hl[i]                    = d.Hi;
-            r                        = d.Lo;
+            const limb::pair<std::uint64_t> d = limb::div(r, hl[i], p);
+            hl[i]                             = d.Hi;
+            r                                 = d.Lo;
         }
     if (!(delta < p - r))
         return false;
@@ -13531,16 +13559,16 @@ constexpr bool decide_fast(const wide_sint<K>& y, umax e, int S, wide_sint<K + 2
     // Strictly inside: ⌊u/D⌋ = B and ⌈u/D⌉ = B + 1. Rounding the magnitude
     // up is ceil for a positive value and floor for a negative one. Then
     // the offset ±B − base, on the limbs.
-    umax up = 0;
+    std::uint64_t up = 0;
     if constexpr (!nearest && M != round_mode::trunc)
         up = (M == round_mode::ceil) != neg ? 1 : 0;
-    constexpr J base  = static_cast<J>(slot_base<Out>);
-    umax        carry = up, sign_borrow = 0, borrow = 0;
+    constexpr J   base  = static_cast<J>(slot_base<Out>);
+    std::uint64_t carry = up, sign_borrow = 0, borrow = 0;
     for (std::size_t i = 0; i < N + 1; ++i) {
-        umax w = limb::add_carry(i < N ? hl[i] : umax{0}, umax{0}, carry); // B (+1)
+        std::uint64_t w = limb::add_carry(i < N ? hl[i] : std::uint64_t{0}, std::uint64_t{0}, carry); // B (+1)
         if (neg)
-            w = limb::sub_borrow(umax{0}, w, sign_borrow);
-        index.Word[i] = limb::sub_borrow(w, static_cast<umax>(base.Word[i]), borrow);
+            w = limb::sub_borrow(std::uint64_t{0}, w, sign_borrow);
+        index.Word[i] = limb::sub_borrow(w, static_cast<std::uint64_t>(base.Word[i]), borrow);
     }
     return true;
 }
@@ -13558,11 +13586,10 @@ constexpr decision<Out, K> decide(const approx<K>& a) noexcept {
     };
     if (a.Error == 0)
         return {true, index(a.Value)};
-    // An error past wide_sint<K>'s range (~umax{0}: "unresolved" at K = 1)
-    // would come out negative and invert the interval: undecided.
-    if constexpr (K == 1)
-        if (!std::in_range<imax>(a.Error)) [[unlikely]]
-            return {false, I{}};
+    // "unresolved" (~std::uint64_t{0}) at every width, and an error past wide_sint<1>'s
+    // range, which would come out negative and invert the interval: undecided.
+    if (a.Error == ~std::uint64_t{0} || (K == 1 && !std::in_range<std::int64_t>(a.Error))) [[unlikely]]
+        return {false, I{}};
     const I lo = index(a.Value - e), hi = index(a.Value + e);
     // Both ends past the same end of Out's range also decide: the policy
     // (clamp, or an overflow report) sees the same thing for every value there.
@@ -13580,7 +13607,8 @@ constexpr decision<Out, K> decide(const approx<K>& a) noexcept {
 template <insidable Out, std::size_t K>
 constexpr bool quick_slot(const approx<K>& a, wide_sint<K + 2>& index) noexcept {
     if constexpr (notch_fits64<Out>)
-        return a.Scale >= 1 && a.Error != 0 && decide_fast<Out, out_rounding<Out>>(a.Value, a.Error, a.Scale, index);
+        return a.Scale >= 1 && a.Error != 0 && a.Error != ~std::uint64_t{0} &&
+               decide_fast<Out, out_rounding<Out>>(a.Value, a.Error, a.Scale, index);
     else
         return false;
 }
@@ -13749,20 +13777,22 @@ inline constexpr int table_slots = BEMAN_INSIDE_MATH_INSTRUMENT ? 0 : 256;
 
 // A slot offset i of Out, or −1 when it falls outside Out's range.
 template <insidable Out, typename I>
-constexpr imax slot_in_range(const I& i) {
-    return in_slots<Out>(i) ? static_cast<imax>(i) : imax{-1};
+constexpr std::int64_t slot_in_range(const I& i) {
+    return in_slots<Out>(i) ? static_cast<std::int64_t>(i) : std::int64_t{-1};
 }
 
 // Out's slot offset for core's result (escalating as evaluate does), or
 // −1 when it falls outside Out's range or needs the deep step (too costly per
 // slot at compile time) or the guess.
 template <insidable Out, int W0, typename Core>
-constexpr imax slot_of(const Core& core) {
+constexpr std::int64_t slot_of(const Core& core) {
     if constexpr (requires { core.exact(); })
         if (const auto e = core.exact())
             return slot_in_range<Out>(exact_index<Out, out_rounding<Out>>(*e).Index);
     return escalate<Out, W0, precision_cap(W0)>(
-        core, [](const auto& index) { return slot_in_range<Out>(index); }, [](const auto&) { return imax{-1}; });
+        core,
+        [](const auto& index) { return slot_in_range<Out>(index); },
+        [](const auto&) { return std::int64_t{-1}; });
 }
 
 template <insidable In>
@@ -13773,34 +13803,36 @@ inline constexpr bool table_input =
 template <insidable Out>
 inline constexpr bool table_output = notched<Out> && !wide_valued<Out>;
 
-// The slot offset of an input value (0 … step count).
+// The slot offset of an input value (0 … step count), modulo 2^64: exact
+// whatever the signs (an input straddling 2^63 has both).
 template <insidable In>
 constexpr std::size_t offset_of(const In& x) noexcept {
-    return static_cast<std::size_t>(value_index<imax>(x) - static_cast<imax>(slot_base<In>));
+    return static_cast<std::size_t>(static_cast<std::uint64_t>(value_index<std::int64_t>(x)) -
+                                    static_cast<std::uint64_t>(slot_base<In>));
 }
 
 // T's grid point at slot offset k (a notched, integer raw).
 template <insidable T>
-constexpr T at_slot(umax k) noexcept {
+constexpr T at_slot(std::uint64_t k) noexcept {
     return T::from_raw(raw_from_offset<T>(k));
 }
 
 // Out's slot for In's slot I, or −1 past Out's range: one constant
 // expression per entry, so each has the compiler's whole evaluation budget.
 template <insidable Out, insidable In, int W0, auto MakeCore, std::size_t I>
-inline constexpr imax table_slot = slot_of<Out, W0>(MakeCore(at_slot<In>(I)));
+inline constexpr std::int64_t table_slot = slot_of<Out, W0>(MakeCore(at_slot<In>(I)));
 
 // Out's raw for slot offset I (a table output is an integer raw).
 template <insidable Out>
-constexpr raw_t<Out> table_raw(imax i) noexcept {
-    return raw_from_offset<Out>(static_cast<umax>(i));
+constexpr raw_t<Out> table_raw(std::int64_t i) noexcept {
+    return raw_from_offset<Out>(static_cast<std::uint64_t>(i));
 }
 
 // Out's raws for every In slot; Valid when all lie in Out's range. MakeCore
 // builds the core from an In value.
 template <insidable Out, insidable In, int W0, auto MakeCore>
 struct result_table {
-    static constexpr std::size_t N = static_cast<std::size_t>(static_cast<imax>(grid_of<In>.step_count())) + 1;
+    static constexpr std::size_t N = static_cast<std::size_t>(static_cast<std::int64_t>(grid_of<In>.step_count())) + 1;
     struct data {
         std::array<raw_t<Out>, N> Raw;
         bool                      Valid;
@@ -13848,12 +13880,12 @@ constexpr int series_guard(int W) noexcept { return std::bit_width(static_cast<u
 template <std::size_t K>
 constexpr wide_sint<K> inverse_series(int n, int sign, int G) noexcept {
     using I = wide_sint<K>;
-    I p     = div_small(I{1} << G, static_cast<umax>(n)); // 2^G / n^(2k+1)
+    I p     = div_small(I{1} << G, static_cast<std::uint64_t>(n)); // 2^G / n^(2k+1)
     I sum{0};
     for (int k = 0; !p.is_zero(); ++k) {
-        const I t = div_small(p, static_cast<umax>(2 * k + 1));
+        const I t = div_small(p, static_cast<std::uint64_t>(2 * k + 1));
         sum       = (k % 2 != 0 && sign < 0) ? sum - t : sum + t;
-        p         = div_small(p, static_cast<umax>(n) * static_cast<umax>(n));
+        p         = div_small(p, static_cast<std::uint64_t>(n) * static_cast<std::uint64_t>(n));
     }
     return sum;
 }
@@ -13889,12 +13921,12 @@ inline constexpr fixed_t<W + 4> ln10_q = [] {
 // Exact integer helpers.
 //---------------------------------------------------------------------------
 // ⌊√t⌋ for one limb: Newton from above.
-constexpr umax isqrt64(umax t) noexcept {
+constexpr std::uint64_t isqrt64(std::uint64_t t) noexcept {
     if (t < 2)
         return t;
-    umax x = umax{1} << ((std::bit_width(t) + 1) / 2);
+    std::uint64_t x = std::uint64_t{1} << ((std::bit_width(t) + 1) / 2);
     for (;;) {
-        const umax y = (x + t / x) >> 1;
+        const std::uint64_t y = (x + t / x) >> 1;
         if (y >= x)
             return x;
         x = y;
@@ -13902,11 +13934,11 @@ constexpr umax isqrt64(umax t) noexcept {
 }
 // ⌊∛t⌋ digit by digit, no division (Hacker's Delight 11-2): each step
 // brings down three bits and appends one bit to the root.
-constexpr umax icbrt64(umax t) noexcept {
-    umax y = 0;
+constexpr std::uint64_t icbrt64(std::uint64_t t) noexcept {
+    std::uint64_t y = 0;
     for (int s = 63; s >= 0; s -= 3) {
         y <<= 1;
-        const umax b = 3 * y * (y + 1) + 1;
+        const std::uint64_t b = 3 * y * (y + 1) + 1;
         if ((t >> s) >= b) {
             t -= b << s;
             y += 1;
@@ -13918,7 +13950,7 @@ constexpr umax icbrt64(umax t) noexcept {
 // The N-th root (N = 2, 3) helpers: the 64-bit root, and a shift that keeps
 // `keep` top bits and is a multiple of N (so the root shifts back by sh / N).
 template <int N>
-constexpr umax iroot64(umax t) noexcept {
+constexpr std::uint64_t iroot64(std::uint64_t t) noexcept {
     if constexpr (N == 2)
         return isqrt64(t);
     else
@@ -13933,12 +13965,13 @@ constexpr int iroot_shift(int bw, int keep) noexcept {
 // ⌊√t⌋ / ⌊∛t⌋ for two limbs: Newton from above on 128-bit words, seeded from
 // the root of the top 62 (√) or 63 (∛) bits; each quotient fits one limb.
 template <int N>
-constexpr umax iroot128(unsigned __int128 t) noexcept {
+constexpr std::uint64_t iroot128(unsigned __int128 t) noexcept {
     if ((t >> 64) == 0)
-        return iroot64<N>(static_cast<umax>(t));
-    const int         bw = 128 - std::countl_zero(static_cast<umax>(t >> 64));
+        return iroot64<N>(static_cast<std::uint64_t>(t));
+    const int         bw = 128 - std::countl_zero(static_cast<std::uint64_t>(t >> 64));
     const int         sh = iroot_shift<N>(bw, N == 2 ? 62 : 63);
-    unsigned __int128 x  = static_cast<unsigned __int128>(iroot64<N>(static_cast<umax>(t >> sh)) + 1) << (sh / N);
+    unsigned __int128 x  = static_cast<unsigned __int128>(iroot64<N>(static_cast<std::uint64_t>(t >> sh)) + 1)
+                           << (sh / N);
     for (;;) {
         unsigned __int128 y;
         if constexpr (N == 2)
@@ -13946,7 +13979,7 @@ constexpr umax iroot128(unsigned __int128 t) noexcept {
         else
             y = (2 * x + t / (x * x)) / 3;
         if (!(y < x))
-            return static_cast<umax>(x);
+            return static_cast<std::uint64_t>(x);
         x = y;
     }
 }
@@ -13965,24 +13998,24 @@ constexpr wide_sint<K> iroot(const wide_sint<K>& n) noexcept {
         return n;
     const int bw = bit_width_of(n);
     if (bw <= 64)
-        return I{iroot64<N>(static_cast<umax>(n))};
+        return I{iroot64<N>(static_cast<std::uint64_t>(n))};
     I   x{};
     int seed = 0;
 #if !BEMAN_INSIDE_HAS_INT128
     // (No 128-bit integer: the root of the top 61 to 63 bits seeds Newton
     // from above with about 30 (√) or 20 (∛) correct bits.)
     const int sh = iroot_shift<N>(bw, N == 2 ? 62 : 63);
-    x            = (I{iroot64<N>(static_cast<umax>(n >> sh))} + I{1}) << (sh / N);
+    x            = (I{iroot64<N>(static_cast<std::uint64_t>(n >> sh))} + I{1}) << (sh / N);
     seed         = N == 2 ? 30 : 20;
 #else
     if constexpr (K < 2)
-        return I{iroot64<N>(static_cast<umax>(n))};
+        return I{iroot64<N>(static_cast<std::uint64_t>(n))};
     else {
         const int               sh  = bw > 126 ? iroot_shift<N>(bw, 126) : 0;
         const I                 top = n >> sh;
-        const unsigned __int128 t =
-            (static_cast<unsigned __int128>(static_cast<umax>(top.Word[1])) << 64) | static_cast<umax>(top.Word[0]);
-        const umax r = iroot128<N>(t);
+        const unsigned __int128 t   = (static_cast<unsigned __int128>(static_cast<std::uint64_t>(top.Word[1])) << 64) |
+                                      static_cast<std::uint64_t>(top.Word[0]);
+        const std::uint64_t     r   = iroot128<N>(t);
         if (sh == 0)
             return I{r};
         x    = (I{r} + I{1}) << (sh / N); // ≥ the root, within 2^-61 (√) or 2^-40 (∛) of it
@@ -14040,8 +14073,8 @@ constexpr wide_rational<K> inverse(const wide_rational<K>& f) noexcept {
 //---------------------------------------------------------------------------
 template <std::size_t K>
 struct fixed_approx {
-    wide_sint<K> Value;
-    umax         Error;
+    wide_sint<K>  Value;
+    std::uint64_t Error;
 };
 
 // A positive double as mantissa·2^exponent, so a term bound far below the
@@ -14099,14 +14132,14 @@ inline constexpr auto series_coef = [] {
     I                                 v = I{1} << (S + G);
     for (int k = 0; k <= N; ++k) {
         if constexpr (Kind == series::atanh)
-            v = div_small(I{1} << (S + G), static_cast<umax>(2 * k + 1));
+            v = div_small(I{1} << (S + G), static_cast<std::uint64_t>(2 * k + 1));
         else if constexpr (Kind == series::log1p)
-            v = div_small(I{1} << (S + G), static_cast<umax>(k + 1));
+            v = div_small(I{1} << (S + G), static_cast<std::uint64_t>(k + 1));
         else if (k > 0) {
             const int d = Kind == series::exp                             ? k
                           : (Kind == series::sin || Kind == series::sinh) ? (2 * k) * (2 * k + 1)
                                                                           : (2 * k - 1) * (2 * k);
-            v           = div_small(v, static_cast<umax>(d));
+            v           = div_small(v, static_cast<std::uint64_t>(d));
         }
         const bool neg =
             (Kind == series::sin || Kind == series::cos || Kind == series::log1p || Alternate) && k % 2 != 0;
@@ -14129,18 +14162,18 @@ constexpr wide_sint<K> horner(const wide_sint<K>& x) noexcept {
 
 // e^r for |r| ≤ 0.36, r within dr units.
 template <int S, std::size_t K>
-constexpr fixed_approx<K> exp_series(const wide_sint<K>& r, umax dr) noexcept {
+constexpr fixed_approx<K> exp_series(const wide_sint<K>& r, std::uint64_t dr) noexcept {
     return {horner<series::exp, S, false>(r), 2 * dr + 8};
 }
 
 // sin r and cos r for |r| ≤ 0.8, r within dr units.
 template <int S, std::size_t K>
-constexpr fixed_approx<K> sin_series(const wide_sint<K>& r, umax dr) noexcept {
+constexpr fixed_approx<K> sin_series(const wide_sint<K>& r, std::uint64_t dr) noexcept {
     const wide_sint<K> z = mul_q(r, r, S);
     return {mul_q(r, horner<series::sin, S, false>(z), S), 3 * dr + 12};
 }
 template <int S, std::size_t K>
-constexpr fixed_approx<K> cos_series(const wide_sint<K>& r, umax dr) noexcept {
+constexpr fixed_approx<K> cos_series(const wide_sint<K>& r, std::uint64_t dr) noexcept {
     return {horner<series::cos, S, false>(mul_q(r, r, S)), 4 * dr + 12};
 }
 
@@ -14158,16 +14191,16 @@ inline constexpr auto log_table = [] {
     std::array<entry, log_tab_hi - log_tab_lo + 1> t{};
     for (int j = log_tab_lo; j <= log_tab_hi; ++j) {
         // log(j/32) = 2·atanh(z), z = (j − 32)/(j + 32), |z| ≤ 0.19.
-        const I z  = div_small(I{j - 32} << T, static_cast<umax>(j + 32));
+        const I z  = div_small(I{j - 32} << T, static_cast<std::uint64_t>(j + 32));
         const I z2 = mul_q(z, z, T);
         I       p  = z, sum{0};
         for (int k = 0; !p.is_zero(); ++k) {
-            sum += div_small(p, static_cast<umax>(2 * k + 1));
+            sum += div_small(p, static_cast<std::uint64_t>(2 * k + 1));
             p = mul_q(p, z2, T);
         }
         auto& e = t[static_cast<std::size_t>(j - log_tab_lo)];
         e.Log   = static_cast<fixed_t<S + 2>>(round_shift(sum << 1, T - S));
-        e.Inv   = static_cast<fixed_t<S + 8>>(round_shift(div_small(I{32} << T, static_cast<umax>(j)), T - S));
+        e.Inv = static_cast<fixed_t<S + 8>>(round_shift(div_small(I{32} << T, static_cast<std::uint64_t>(j)), T - S));
     }
     return t;
 }();
@@ -14175,9 +14208,9 @@ inline constexpr auto log_table = [] {
 // log m for m in [0.7, 1.42], m within dm units, with no division: j =
 // round(32m), u = m·(32/j) − 1 (|u| ≤ 1/44), log m = log(j/32) + log(1 + u).
 template <int S, std::size_t K>
-constexpr fixed_approx<K> log_series(const wide_sint<K>& m, umax dm) noexcept {
+constexpr fixed_approx<K> log_series(const wide_sint<K>& m, std::uint64_t dm) noexcept {
     using I       = wide_sint<K>;
-    int j         = static_cast<int>(static_cast<imax>(round_shift(m, S - 5)));
+    int j         = static_cast<int>(static_cast<std::int64_t>(round_shift(m, S - 5)));
     j             = std::clamp(j, log_tab_lo, log_tab_hi);
     const auto& e = log_table<S>[static_cast<std::size_t>(j - log_tab_lo)];
     const I     u = mul_q(m, static_cast<I>(e.Inv), S) - one_q<K>(S); // within 1.5·dm + 2
@@ -14188,7 +14221,7 @@ constexpr fixed_approx<K> log_series(const wide_sint<K>& m, umax dm) noexcept {
 // atan u for |u| ≤ 1/16 (the atanh table, sized for 0.18, with
 // alternating signs), u within du units.
 template <int S, std::size_t K>
-constexpr fixed_approx<K> atan_series(const wide_sint<K>& u, umax du) noexcept {
+constexpr fixed_approx<K> atan_series(const wide_sint<K>& u, std::uint64_t du) noexcept {
     return {mul_q(u, horner<series::atanh, S, true>(mul_q(u, u, S)), S), du + 6};
 }
 
@@ -14206,12 +14239,12 @@ constexpr wide_sint<K> sqrt_q(const wide_sint<K>& a, int S) noexcept {
 template <int S, std::size_t K>
 constexpr wide_sint<K> rsqrt_q(const wide_sint<K>& m) noexcept {
     using R = fixed_t<S + 34>;
-    const R       mr{m};
-    const umax    mm    = static_cast<umax>(S >= 60 ? mr >> (S - 60) : mr << (60 - S)); // m·2^60 < 2^62
-    const umax    sd    = isqrt64(mm);                                                  // √m·2^30, ≥ 2^29
-    R             y     = div_small(R{1} << (S + 30), sd);
-    const R       three = R{3} << S;
-    constexpr int steps = [] {
+    const R             mr{m};
+    const std::uint64_t mm    = static_cast<std::uint64_t>(S >= 60 ? mr >> (S - 60) : mr << (60 - S)); // m·2^60 < 2^62
+    const std::uint64_t sd    = isqrt64(mm); // √m·2^30, ≥ 2^29
+    R                   y     = div_small(R{1} << (S + 30), sd);
+    const R             three = R{3} << S;
+    constexpr int       steps = [] {
         int n = 0;
         for (int p = 29; p < S + 4; p *= 2)
             ++n;
@@ -14239,7 +14272,7 @@ inline constexpr auto atan_eighths = [] {
         const I t2 = mul_q(t, t, T);
         I       p  = t, sum{0};
         for (int k = 0; !p.is_zero(); ++k) {
-            const I term = div_small(p, static_cast<umax>(2 * k + 1));
+            const I term = div_small(p, static_cast<std::uint64_t>(2 * k + 1));
             sum          = (k % 2 == 0) ? sum + term : sum - term;
             p            = mul_q(p, t2, T);
         }
@@ -14251,11 +14284,11 @@ inline constexpr auto atan_eighths = [] {
 // atan t for |t| ≤ 1, t within dt units: c = j/8 nearest t, then
 // atan t = atan c + atan((t − c)/(1 + t·c)) with |(t − c)/(1 + t·c)| ≤ 1/16.
 template <int S, std::size_t K>
-constexpr fixed_approx<K> atan_fixed(const wide_sint<K>& t, umax dt) noexcept {
+constexpr fixed_approx<K> atan_fixed(const wide_sint<K>& t, std::uint64_t dt) noexcept {
     using I                    = wide_sint<K>;
     const I               one  = one_q<K>(S);
     const I               j    = round_shift(t, S - 3); // round(8t), in [−8, 8]
-    const int             jj   = static_cast<int>(static_cast<imax>(j));
+    const int             jj   = static_cast<int>(static_cast<std::int64_t>(j));
     const I               c    = j << (S - 3);                          // exact
     const I               u    = div_q(t - c, one + mul_q(t, c, S), S); // within dt + 2
     const fixed_approx<K> a    = atan_series<S>(u, dt + 2);
@@ -14270,7 +14303,7 @@ inline constexpr fixed_t<S + 2> sqrt2_q = static_cast<fixed_t<S + 2>>(isqrt(fixe
 // log a for a ≥ 1 at scale S (so b ≥ 0), a within da units: a = m·2^b with
 // m in [0.7, 1.42], log a = log m + b·ln 2.
 template <int S, std::size_t K>
-constexpr fixed_approx<K> log_fixed(const wide_sint<K>& a, umax da) noexcept {
+constexpr fixed_approx<K> log_fixed(const wide_sint<K>& a, std::uint64_t da) noexcept {
     using I = wide_sint<K>;
     int b   = bit_width_of(a) - 1 - S; // 2^b ≤ a/2^S < 2^(b+1)
     I   m   = b >= 0 ? a >> b : a << (-b);
@@ -14278,9 +14311,9 @@ constexpr fixed_approx<K> log_fixed(const wide_sint<K>& a, umax da) noexcept {
         ++b;
         m = b >= 0 ? a >> b : a << (-b);
     }
-    const umax            dm = shr_bound(da, b) + 1;
+    const std::uint64_t   dm = shr_bound(da, b) + 1;
     const fixed_approx<K> l  = log_series<S>(m, dm);
-    return {l.Value + I{b} * static_cast<I>(ln2_q<S>), l.Error + static_cast<umax>(b < 0 ? -b : b) + 1};
+    return {l.Value + I{b} * static_cast<I>(ln2_q<S>), l.Error + static_cast<std::uint64_t>(b < 0 ? -b : b) + 1};
 }
 
 // 1/ln 2 and 2/π at scale S (within 1 unit), for range reduction by a
@@ -14302,7 +14335,7 @@ inline constexpr fixed_t<S + 2> two_over_pi_q = inverse_q<S>(pi_q<S + 16>, 1);
 // hair (the series covers 0.36). Past KMax the value lies above 2^(KMax+1)
 // (approx::beyond); below 2^-(S+1), approx::below.
 template <int S, std::size_t K>
-constexpr approx<K> exp_fixed(const wide_sint<K>& t, umax dt, int KMax) noexcept {
+constexpr approx<K> exp_fixed(const wide_sint<K>& t, std::uint64_t dt, int KMax) noexcept {
     using I   = wide_sint<K>;
     const I k = round_shift(mul_q(t, static_cast<I>(log2e_q<S>), S), S);
     if (I{KMax} < k)
@@ -14310,8 +14343,8 @@ constexpr approx<K> exp_fixed(const wide_sint<K>& t, umax dt, int KMax) noexcept
     if (k < I{-(S + 2)})
         return approx<K>::below(S);
     const fixed_approx<K> e  = exp_series<S>(t - k * static_cast<I>(ln2_q<S>), 0);
-    const int             kk = static_cast<int>(static_cast<imax>(k));
-    const umax            ak = static_cast<umax>(kk < 0 ? -kk : kk);
+    const int             kk = static_cast<int>(static_cast<std::int64_t>(k));
+    const std::uint64_t   ak = static_cast<std::uint64_t>(kk < 0 ? -kk : kk);
     return {e.Value, S - kk, e.Error + 2 * (dt + ak + 1)};
 }
 } // namespace beman::inside::math::detail::engine
@@ -14330,7 +14363,7 @@ namespace beman::inside::math::detail::engine {
 //---------------------------------------------------------------------------
 // Inputs as exact values, in as few limbs as their grid needs.
 //---------------------------------------------------------------------------
-// A grid integer as a double (a notch's p or q, which may pass imax).
+// A grid integer as a double (a notch's p or q, which may pass int64).
 constexpr double grid_double(const grid_int& v) { return static_cast<double>(big_rational{v, big_int{1}}); }
 
 // A value of In is n/d with d dividing the notch's denominator and
@@ -14403,7 +14436,7 @@ constexpr fixed_approx<K> log_exact(const wide_rational<E>& x) noexcept {
     }
     const fixed_approx<K> l   = log_series<S>(m, 1);
     const I               ln2 = static_cast<I>(ln2_q<S>);
-    return {l.Value + I{e} * ln2, l.Error + static_cast<umax>(e < 0 ? -e : e) + 1};
+    return {l.Value + I{e} * ln2, l.Error + static_cast<std::uint64_t>(e < 0 ? -e : e) + 1};
 }
 
 // An approx moved to scale A ≤ its own, rounding (error shrinks, plus ½).
@@ -14411,7 +14444,8 @@ template <std::size_t K>
 constexpr fixed_approx<K> rescale(const approx<K>& a, int A) noexcept {
     const int sh = a.Scale - A;
     if (sh <= 0) // a bound past 64 bits saturates (never wraps small)
-        return {a.Value << (-sh), -sh < 64 && a.Error <= (~umax{0} >> -sh) ? a.Error << (-sh) : ~umax{0}};
+        return {a.Value << (-sh),
+                -sh < 64 && a.Error <= (~std::uint64_t{0} >> -sh) ? a.Error << (-sh) : ~std::uint64_t{0}};
     return {round_shift(a.Value, sh), shr_bound(a.Error, sh) + 1};
 }
 
@@ -14419,7 +14453,7 @@ constexpr fixed_approx<K> rescale(const approx<K>& a, int A) noexcept {
 // in fixed point. The quotient is within dt units (|t| ≤ 0.58): 6 for a u
 // within ½ (1 − u² then within 1.5), 7 for one within 1 (within 2).
 template <int S, std::size_t K>
-constexpr fixed_approx<K> asin_q(const wide_sint<K>& u, umax dt) noexcept {
+constexpr fixed_approx<K> asin_q(const wide_sint<K>& u, std::uint64_t dt) noexcept {
     return atan_fixed<S>(mul_q(u, rsqrt_q<S>(one_q<K>(S) - mul_q(u, u, S)), S), dt);
 }
 
@@ -14438,7 +14472,7 @@ using maybe_exact = std::optional<wide_rational<E>>;
 // milli / 1000⌉ for a result that nears a grid point like 2^(−c·|x|),
 // |x| < 2^Mag.
 constexpr int deep_scaled(int mag, int milli) noexcept {
-    return mag >= 20 ? deep_limit : static_cast<int>(((imax{1} << mag) * milli + 999) / 1000);
+    return mag >= 20 ? deep_limit : static_cast<int>(((std::int64_t{1} << mag) * milli + 999) / 1000);
 }
 
 // exp x. Exact only at 0 (Lindemann–Weierstrass: e^x is transcendental for
@@ -14476,7 +14510,7 @@ struct exp2_core {
             return approx<K>::beyond(false, KMax);
         if (k < J{-(S + 2)})
             return approx<K>::below(S);
-        int                    kk = static_cast<int>(static_cast<imax>(k));
+        int                    kk = static_cast<int>(static_cast<std::int64_t>(k));
         const wide_rational<E> f{X.Num - k * X.Den, X.Den}; // in [0, 1)
         if (is_zero(f))
             return approx<K>{I{1}, -kk, 0};
@@ -14510,12 +14544,12 @@ struct log_core {
 // with the factors 2 (and 5) of n and d stripped, n/d = 2^a·5^c·n'/d' is a
 // power of B exactly when n' = d' and a (= c, for 10) is that power.
 template <std::size_t E>
-constexpr std::optional<imax> exact_log(const wide_rational<E>& x, int B) noexcept {
+constexpr std::optional<std::int64_t> exact_log(const wide_rational<E>& x, int B) noexcept {
     using I = wide_sint<E>;
     if (x.Num.negative() || x.Num.is_zero())
         return std::nullopt;
-    I          n = x.Num, d = x.Den;
-    const imax a = strip_factor(n, 2) - strip_factor(d, 2);
+    I                  n = x.Num, d = x.Den;
+    const std::int64_t a = strip_factor(n, 2) - strip_factor(d, 2);
     if (B == 10 && strip_factor(n, 5) - strip_factor(d, 5) != a)
         return std::nullopt;
     if (!(n == d))
@@ -14541,15 +14575,15 @@ struct logb_core {
         const fixed_approx<K> l = log_exact<S, K, Bits>(X);
         // log x · (1/ln B): within 1.45·error + 2 (the constant is within 1).
         const I inv = B == 2 ? static_cast<I>(log2e_q<S>) : static_cast<I>(log10e_q<S>);
-        return approx<K>{mul_q(l.Value, inv, S), S, 2 * l.Error + 2 + static_cast<umax>(Bits)};
+        return approx<K>{mul_q(l.Value, inv, S), S, 2 * l.Error + 2 + static_cast<std::uint64_t>(Bits)};
     }
 };
 
 // Residues of squares mod 64, as a bit set: 12 of the 64.
-inline constexpr umax square_mod64 = [] {
-    umax m = 0;
-    for (umax i = 0; i < 64; ++i)
-        m |= umax{1} << (i * i % 64);
+inline constexpr std::uint64_t square_mod64 = [] {
+    std::uint64_t m = 0;
+    for (std::uint64_t i = 0; i < 64; ++i)
+        m |= std::uint64_t{1} << (i * i % 64);
     return m;
 }();
 
@@ -14580,10 +14614,10 @@ struct sqrt_core {
 };
 
 // Residues of cubes mod 63, as a bit set: 9 of the 63.
-inline constexpr umax cube_mod63 = [] {
-    umax m = 0;
-    for (umax i = 0; i < 63; ++i)
-        m |= umax{1} << (i * i * i % 63);
+inline constexpr std::uint64_t cube_mod63 = [] {
+    std::uint64_t m = 0;
+    for (std::uint64_t i = 0; i < 63; ++i)
+        m |= std::uint64_t{1} << (i * i * i % 63);
     return m;
 }();
 
@@ -14597,7 +14631,7 @@ struct cbrt_core {
     constexpr maybe_exact<E> exact() const {
         using J   = wide_sint<3 * E>;
         const J m = J{abs(X).Num} * J{X.Den} * J{X.Den};
-        if (!((cube_mod63 >> static_cast<umax>(m % J{63})) & 1))
+        if (!((cube_mod63 >> static_cast<std::uint64_t>(m % J{63})) & 1))
             return std::nullopt;
         const J c = icbrt(m);
         if (!(c * c * c == m))
@@ -14664,16 +14698,27 @@ struct trig_core {
             const double cd = static_cast<double>(cs.Value), sd = static_cast<double>(sn.Value);
             const double ac = cd < 0 ? -cd : cd, as = sd < 0 ? -sd : sd;
             const double ec = static_cast<double>(cs.Error), es = static_cast<double>(sn.Error);
+            // Past 2^KMax wherever cos's sign is known (the sign of the result),
+            // also while cos is within twice its error of 0.
+            if (ec < ac && (as - es) / (ac + ec) * (1 - 0x1p-40) > ::beman::inside::detail::ldexp(1.0, KMax))
+                return approx<K>::beyond(sn.Value.negative() != cs.Value.negative(), KMax);
             if (!(2 * ec < ac))
                 return approx<K>::unresolved(S); // cos unresolved
             const double unit = ::beman::inside::detail::ldexp(1.0, S);
-            if ((as - es) / (ac + ec) * (1 - 0x1p-40) > ::beman::inside::detail::ldexp(1.0, KMax))
-                return approx<K>::beyond(sn.Value.negative() != cs.Value.negative(), KMax);
-            const I      t   = div_q(sn.Value, cs.Value, S);
-            const double at  = (as + es) / (ac - ec);
-            const double err = ((es + at * ec) / (ac - ec) * unit + 2) * (1 + 0x1p-40) + 1;
-            const umax   e   = err < 0x1p62 ? static_cast<umax>(err) : ~umax{0};
-            return approx<K>{t, S, e};
+            const I      t    = div_q(sn.Value, cs.Value, S);
+            const double at   = (as + es) / (ac - ec);
+            double       err  = ((es + at * ec) / (ac - ec) * unit + 2) * (1 + 0x1p-40) + 1;
+            // The bound grows as tan²: past 2^62 units (|tan| past 2^31) the
+            // result moves to a coarser scale until it fits one word (halving
+            // a double is exact; the shift rounds within ½).
+            int sh = 0;
+            while (!(err < 0x1p62)) {
+                err *= 0.5;
+                ++sh;
+            }
+            if (sh == 0)
+                return approx<K>{t, S, static_cast<std::uint64_t>(err)};
+            return approx<K>{round_shift(t, sh), S - sh, static_cast<std::uint64_t>(err) + 2};
         }
     }
 };
@@ -14817,15 +14862,15 @@ struct hyp_core {
             const I k = round_shift(mul_q(ax, static_cast<I>(log2e_q<S>), S), S);
             if (I{KM} < k) // e^|x| past 2^KM: past Out
                 return approx<K>::beyond(Fn == hyp::sinh && neg, KMax);
-            const int  kk = static_cast<int>(static_cast<imax>(k));
-            const I    r  = ax - k * static_cast<I>(ln2_q<S>); // within ½ + k
-            const I    z  = mul_q(r, r, S);
-            const I    ev = horner<series::cosh, S, false>(z);
-            const I    od = mul_q(r, horner<series::sinh, S, false>(z), S);
-            const umax e  = 24 + 2 * (static_cast<umax>(kk) + 2);
-            const I    P  = round_shift(ev + od, S - kk - A); // e^|x| at scale A
-            const I    M  = round_shift(ev - od, S + kk - A); // e^−|x| at scale A
-            const umax ep = shr_bound(e, S - kk - A) + 1, em = shr_bound(e, S + kk - A) + 1;
+            const int           kk = static_cast<int>(static_cast<std::int64_t>(k));
+            const I             r  = ax - k * static_cast<I>(ln2_q<S>); // within ½ + k
+            const I             z  = mul_q(r, r, S);
+            const I             ev = horner<series::cosh, S, false>(z);
+            const I             od = mul_q(r, horner<series::sinh, S, false>(z), S);
+            const std::uint64_t e  = 24 + 2 * (static_cast<std::uint64_t>(kk) + 2);
+            const I             P  = round_shift(ev + od, S - kk - A); // e^|x| at scale A
+            const I             M  = round_shift(ev - od, S + kk - A); // e^−|x| at scale A
+            const std::uint64_t ep = shr_bound(e, S - kk - A) + 1, em = shr_bound(e, S + kk - A) + 1;
             if constexpr (Fn == hyp::cosh)
                 return approx<K>{(P + M) >> 1, A, (ep + em) / 2 + 1};
             else {
@@ -14873,7 +14918,7 @@ struct ahyp_core {
             const I               v  = (aq >> h) + mul_q(m, rsqrt_q<S>(m), S); // in [1, 3), within 30
             const fixed_approx<K> l  = log_fixed<S>(v, 30);
             const I               lv = l.Value + I{h} * static_cast<I>(ln2_q<S>);
-            return approx<K>{neg ? -lv : lv, S, l.Error + static_cast<umax>(h) + 1};
+            return approx<K>{neg ? -lv : lv, S, l.Error + static_cast<std::uint64_t>(h) + 1};
         } else {
             const F               r{(a.Num - a.Den) * (a.Num + a.Den), a.Den * a.Den}; // x² − 1 = (n − d)(n + d)/d²
             const I               v = to_q<S, K>(a) + sqrt_exact_q<S, K, 2 * Bits + 2>(r); // ≥ 1, within 2
@@ -14927,9 +14972,10 @@ constexpr std::optional<wide_rational<PL>> exact_pow(const wide_rational<EB>& b,
         return wide_rational<PL>{P{1}, P{1}};
     const wide_rational<EE> re = reduced(e); // p/q, q > 0
     const wide_rational<EB> r  = reduced(b);
-    if (bit_width_of(re.Den) > 31 || std::max(bit_width_of(r.Num), bit_width_of(r.Den)) < static_cast<imax>(re.Den))
+    if (bit_width_of(re.Den) > 31 ||
+        std::max(bit_width_of(r.Num), bit_width_of(r.Den)) < static_cast<std::int64_t>(re.Den))
         return std::nullopt;
-    const int  q  = static_cast<int>(static_cast<imax>(re.Den));
+    const int  q  = static_cast<int>(static_cast<std::int64_t>(re.Den));
     const auto k  = re.Num;
     const auto ak = abs(k);
     // b^(1/q) first: both parts perfect q-th powers, else irrational.
@@ -14937,18 +14983,19 @@ constexpr std::optional<wide_rational<PL>> exact_pow(const wide_rational<EB>& b,
     if (!rn || !rd)
         return std::nullopt;
     const int bits = bit_width_of(*rn) + bit_width_of(*rd);
-    if (bit_width_of(ak) > 31 || static_cast<imax>(ak) * bits > 64 * static_cast<imax>(PL) - 8)
+    if (bit_width_of(ak) > 31 || static_cast<std::int64_t>(ak) * bits > 64 * static_cast<std::int64_t>(PL) - 8)
         return std::nullopt;
-    const unsigned power = static_cast<unsigned>(static_cast<imax>(ak));
+    const unsigned power = static_cast<unsigned>(static_cast<std::int64_t>(ak));
     const P        n = pow_by_squaring(static_cast<P>(*rn), power), d = pow_by_squaring(static_cast<P>(*rd), power);
     return k.negative() ? inverse(wide_rational<PL>{n, d}) : wide_rational<PL>{n, d};
 }
 
-// A pow_base base: an imax, or a grid integer of any size.
+// A pow_base base: a builtin integer (an __int128 too), or a grid integer
+// of any size.
 template <auto Base>
 inline constexpr int base_bits = [] {
     if constexpr (std::integral<decltype(Base)>)
-        return std::bit_width(static_cast<umax>(Base));
+        return bit_width_of(grid_int{Base});
     else
         return bit_width_of(grid_numerator(Base));
 }();
@@ -14991,11 +15038,11 @@ struct pow_core {
             } else
                 return log_exact<SL, K, BitsB>(B);
         }();
-        const I prod = mul_q(l.Value, static_cast<I>(Exp.Num), 0);
-        const I q =
-            bit_width_of(Exp.Den) <= 64 ? div_small(prod, static_cast<umax>(Exp.Den)) : prod / static_cast<I>(Exp.Den);
-        const I    t  = round_shift(q, SL - S);
-        const umax dt = (l.Error >> (SL - S - MagE)) + 2;
+        const I             prod = mul_q(l.Value, static_cast<I>(Exp.Num), 0);
+        const I             q    = bit_width_of(Exp.Den) <= 64 ? div_small(prod, static_cast<std::uint64_t>(Exp.Den))
+                                                               : prod / static_cast<I>(Exp.Den);
+        const I             t    = round_shift(q, SL - S);
+        const std::uint64_t dt   = (l.Error >> (SL - S - MagE)) + 2;
         return exp_fixed<S>(t, dt, KMax);
     }
 };
@@ -15063,18 +15110,18 @@ constexpr wide_rational<input_limbs<In>> grid_input(const grid_rational& r) {
     return exact_of_grid<input_limbs<In>>(r);
 }
 
-// ⌈|r|⌉ as an int (deduction bounds), saturated at imax: a grid reaching
+// ⌈|r|⌉ as an int (deduction bounds), saturated at int64: a grid reaching
 // 2^63 must fail every range gate, not wrap past them.
-consteval imax ceil_abs(const grid_rational& r) {
-    const grid_int n = grid_numerator(r), d = grid_denominator(r);
-    const grid_int a = abs(n);
-    const grid_int c = (a + d - grid_int{1}) / d;
-    constexpr imax M = std::numeric_limits<imax>::max();
-    return grid_int{M} < c ? M : static_cast<imax>(c);
+consteval std::int64_t ceil_abs(const grid_rational& r) {
+    const grid_int         n = grid_numerator(r), d = grid_denominator(r);
+    const grid_int         a = abs(n);
+    const grid_int         c = (a + d - grid_int{1}) / d;
+    constexpr std::int64_t M = std::numeric_limits<std::int64_t>::max();
+    return grid_int{M} < c ? M : static_cast<std::int64_t>(c);
 }
 
 template <insidable In>
-inline constexpr imax max_abs_int = std::max(ceil_abs(lower_of<In>), ceil_abs(upper_of<In>));
+inline constexpr std::int64_t max_abs_int = std::max(ceil_abs(lower_of<In>), ceil_abs(upper_of<In>));
 
 // Policy of a deduced output: the input's (no cursor), rounding to nearest
 // unless the input names a mode.
@@ -15106,8 +15153,8 @@ inline constexpr int exp_kmax = [] {
 // Bits of the larger of |b| and 1/|b| over In (b > 0), for pow's growth.
 template <insidable In>
 inline constexpr int log2_span = [] {
-    const imax m = std::max(ceil_abs(upper_of<In>), ceil_abs(grid_rational{1} / lower_of<In>));
-    return std::bit_width(static_cast<umax>(m)) + 1;
+    const std::int64_t m = std::max(ceil_abs(upper_of<In>), ceil_abs(grid_rational{1} / lower_of<In>));
+    return std::bit_width(static_cast<std::uint64_t>(m)) + 1;
 }();
 
 template <insidable InB, insidable InE>
@@ -15144,7 +15191,7 @@ struct pow_grow {
         if constexpr (lower_of<InB> > 0)
             return pow_kmax<InB, InE>;
         else {
-            constexpr int b = std::bit_width(static_cast<umax>(ceil_abs(upper_of<InB>))) + 1;
+            constexpr int b = std::bit_width(static_cast<std::uint64_t>(ceil_abs(upper_of<InB>))) + 1;
             static_assert(max_abs_int<InE> * b <= 1 << 16,
                           "beman::inside::math::pow: a wrap output needs the whole result, which would pass "
                           "2^65536");
@@ -15225,7 +15272,7 @@ using namespace ::beman::inside::math::detail::engine;
 
 // v·q for a small q (a series' recurrence), exact.
 template <std::size_t K>
-constexpr wide_sint<K> mul_small(const wide_sint<K>& v, umax q) noexcept {
+constexpr wide_sint<K> mul_small(const wide_sint<K>& v, std::uint64_t q) noexcept {
     const bool   neg = v.negative();
     wide_uint<K> m{neg ? -v : v};
     limb::mul_1(m.Word, m.Word, K, q);
@@ -15235,7 +15282,7 @@ constexpr wide_sint<K> mul_small(const wide_sint<K>& v, umax q) noexcept {
 
 // ⌊√(a·2^2G)⌋: √a at scale G, within one unit.
 template <int G>
-constexpr fixed_t<G + 8> sqrt_of(umax a) noexcept {
+constexpr fixed_t<G + 8> sqrt_of(std::uint64_t a) noexcept {
     using T = fixed_t<2 * G + 8>;
     return static_cast<fixed_t<G + 8>>(isqrt(T{a} << (2 * G)));
 }
@@ -15245,7 +15292,7 @@ template <int G>
 constexpr fixed_t<G + 8> e_series() noexcept {
     using I = fixed_t<G + 8>;
     I t     = one_q<limbs_of<I>>(G), s{0};
-    for (umax k = 1; !t.is_zero(); ++k) {
+    for (std::uint64_t k = 1; !t.is_zero(); ++k) {
         s = s + t;
         t = div_small(t, k);
     }
@@ -15257,13 +15304,13 @@ constexpr fixed_t<G + 8> e_series() noexcept {
 // reach e^2n: the words carry 3n bits more.
 template <int G>
 constexpr fixed_t<G + 8> egamma_series() noexcept {
-    constexpr int  m  = std::bit_width(static_cast<unsigned>((G + 8) / 5 + 1));
-    constexpr umax n2 = umax{1} << (2 * m);
-    using J           = fixed_t<G + 3 * (1 << m) + 24>;
-    J b               = one_q<limbs_of<J>>(G);
-    J a               = -mul_small(static_cast<J>(ln2_q<G>), static_cast<umax>(m));
+    constexpr int           m  = std::bit_width(static_cast<unsigned>((G + 8) / 5 + 1));
+    constexpr std::uint64_t n2 = std::uint64_t{1} << (2 * m);
+    using J                    = fixed_t<G + 3 * (1 << m) + 24>;
+    J b                        = one_q<limbs_of<J>>(G);
+    J a                        = -mul_small(static_cast<J>(ln2_q<G>), static_cast<std::uint64_t>(m));
     J u = a, v = b;
-    for (umax k = 1; !(a.is_zero() && b.is_zero()); ++k) {
+    for (std::uint64_t k = 1; !(a.is_zero() && b.is_zero()); ++k) {
         b = div_small(div_small(mul_small(b, n2), k), k);
         a = div_small(div_small(mul_small(a, n2), k) + b, k);
         u = u + a;
@@ -15281,12 +15328,12 @@ constexpr fixed_t<G + 8> catalan_series() noexcept {
     using I     = fixed_t<G + 8>;
     const I one = one_q<limbs_of<I>>(G);
     I       s1{0}, t = one;
-    for (umax k = 0; !t.is_zero(); ++k, t = div_small(t, 3))
+    for (std::uint64_t k = 0; !t.is_zero(); ++k, t = div_small(t, 3))
         s1 = s1 + div_small(t, 2 * k + 1);
     const I inv_sqrt3 = static_cast<I>(isqrt((fixed_t<2 * G + 8>{1} << (2 * G)) / fixed_t<2 * G + 8>{3}));
     const I log_term  = mul_q(s1 << 1, inv_sqrt3, G);
     I       s2{0}, w = one;
-    for (umax j = 0; !w.is_zero(); ++j) {
+    for (std::uint64_t j = 0; !w.is_zero(); ++j) {
         s2 = s2 + div_small(div_small(w, 2 * j + 1), 2 * j + 1);
         w  = div_small(mul_small(w, j + 1), 2 * (2 * j + 1));
     }
@@ -15298,7 +15345,7 @@ template <int G>
 constexpr fixed_t<G + 8> zeta3_series() noexcept {
     using I = fixed_t<G + 8>;
     I s{0}, w = one_q<limbs_of<I>>(G);
-    for (umax k = 1;; ++k) {
+    for (std::uint64_t k = 1;; ++k) {
         w = div_small(mul_small(w, k), 2 * (2 * k - 1));
         if (w.is_zero())
             break;
@@ -15650,7 +15697,7 @@ template <insidable N>
 inline constexpr grid_int count_upper = grid_numerator(upper_of<N>);
 // A count's values at run time: a builtin up to 64 bits, else a wide integer.
 template <int Bits>
-using count_work_t = std::conditional_t<(Bits <= 64), umax, wide_uint<limbs_for_bits(Bits)>>;
+using count_work_t = std::conditional_t<(Bits <= 64), std::uint64_t, wide_uint<limbs_for_bits(Bits)>>;
 template <insidable N>
 using count_t = count_work_t<bit_width_of(count_upper<N>)>;
 
@@ -15658,7 +15705,7 @@ using count_t = count_work_t<bit_width_of(count_upper<N>)>;
 // or a wide_int wide enough for it).
 template <class W, insidable X>
 constexpr W integer_value(const X& x) {
-    if constexpr (values_fit_imax<X>)
+    if constexpr (values_fit_int64<X>)
         return static_cast<W>(to_value(x));
     else {
         const auto e = exact_of(x); // an integer: the denominator divides
@@ -15668,8 +15715,8 @@ constexpr W integer_value(const X& x) {
 
 template <insidable N>
 constexpr count_t<N> count_value(const N& n) {
-    if constexpr (values_fit_imax<N>)
-        return static_cast<umax>(to_value(n));
+    if constexpr (values_fit_int64<N>)
+        return static_cast<std::uint64_t>(to_value(n));
     else
         return static_cast<count_t<N>>(integer_value<wide_sint<limbs_for_bits(bit_width_of(count_upper<N>) + 1)>>(n));
 }
@@ -15680,7 +15727,7 @@ constexpr count_t<N> count_value(const N& n) {
 // fails fast instead of running the compiler out of time.
 //---------------------------------------------------------------------------
 struct counted {
-    big::mag Value{umax{1}};
+    big::mag Value{std::uint64_t{1}};
     bool     Fits = true;
 };
 
@@ -15696,25 +15743,25 @@ constexpr void times(counted& c, const big::mag& q) {
         return;
     }
     if (q.size() == 1) {
-        if (const umax carry = limb::mul_1(c.Value.data(), c.Value.data(), c.Value.size(), q[0]))
+        if (const std::uint64_t carry = limb::mul_1(c.Value.data(), c.Value.data(), c.Value.size(), q[0]))
             c.Value.push_back(carry);
     } else
         c.Value = big::mul(c.Value, q);
     check_fits(c);
 }
-constexpr void divided_by(counted& c, umax q) {
+constexpr void divided_by(counted& c, std::uint64_t q) {
     limb::div_1(c.Value.data(), c.Value.data(), c.Value.size(), q);
     big::trim(c.Value);
 }
-constexpr big::mag mag_of(umax v) { return v == 0 ? big::mag{} : big::mag{v}; }
-constexpr big::mag plus(const big::mag& a, umax b) { return big::add(a, mag_of(b)); }
+constexpr big::mag mag_of(std::uint64_t v) { return v == 0 ? big::mag{} : big::mag{v}; }
+constexpr big::mag plus(const big::mag& a, std::uint64_t b) { return big::add(a, mag_of(b)); }
 constexpr bool     less(const big::mag& a, const big::mag& b) { return big::compare(a, b) < 0; }
 
 // lo · (lo + 1) ··· (lo + count − 1), 1 for count 0 (lo ≥ 1). It stops once
 // past max_count_bits, after at most that many factors.
 constexpr counted product(const big::mag& lo, const big::mag& count) {
     counted c;
-    for (umax i = 0; less(mag_of(i), count) && c.Fits; ++i)
+    for (std::uint64_t i = 0; less(mag_of(i), count) && c.Fits; ++i)
         times(c, plus(lo, i));
     return c;
 }
@@ -15738,7 +15785,7 @@ constexpr counted rising_count(const big::mag& n, const big::mag& k) {
 // max_count_bits it stops: the intermediates grow toward C(s, t).
 constexpr void times_binomial(counted& r, const big::mag& s, const big::mag& k) {
     const big::mag rest = big::sub(s, k), t = less(rest, k) ? rest : k, base = big::sub(s, t);
-    for (umax i = 1; !less(t, mag_of(i)) && r.Fits; ++i) {
+    for (std::uint64_t i = 1; !less(t, mag_of(i)) && r.Fits; ++i) {
         times(r, plus(base, i));
         divided_by(r, i);
     }
@@ -15939,26 +15986,26 @@ constexpr void times(W& w, const Q& q) noexcept {
     else if constexpr (wide_integer<W>)
         w = w * static_cast<W>(q);
     else
-        w *= static_cast<umax>(q); // a factor of a 64-bit result fits 64 bits
+        w *= static_cast<std::uint64_t>(q); // a factor of a 64-bit result fits 64 bits
 }
 template <class W>
-constexpr void divided_by(W& w, umax q) noexcept {
+constexpr void divided_by(W& w, std::uint64_t q) noexcept {
     if constexpr (wide_integer<W>)
         limb::div_1(w.Word, w.Word, std::size(w.Word), q);
     else
         w /= q;
 }
 template <class W, class C>
-constexpr W product(const C& lo, umax count) noexcept {
+constexpr W product(const C& lo, std::uint64_t count) noexcept {
     W w{1};
-    for (umax i = 0; i < count; ++i)
+    for (std::uint64_t i = 0; i < count; ++i)
         times(w, lo + static_cast<C>(i));
     return w;
 }
 template <class W, class C>
 constexpr void times_binomial(W& r, const C& s, const C& k) noexcept {
-    const umax t = static_cast<umax>(std::min(k, s - k));
-    for (umax i = 1; i <= t; ++i) {
+    const std::uint64_t t = static_cast<std::uint64_t>(std::min(k, s - k));
+    for (std::uint64_t i = 1; i <= t; ++i) {
         times(r, s - static_cast<C>(t) + static_cast<C>(i));
         divided_by(r, i);
     }
@@ -15976,19 +16023,19 @@ constexpr R lattice_inside(const W& v) noexcept {
         constexpr W n  = static_cast<W>(grid_numerator(notch_of<R>));
         return R::from_raw(raw_cast<R>(W::divmod(v - lo, n).Quotient));
     } else
-        return R::from_raw(raw_cast<R>((static_cast<umax>(v) - static_cast<umax>(lower_imax<R>)) /
-                                       static_cast<umax>(notch64<R>.Num)));
+        return R::from_raw(raw_cast<R>((static_cast<std::uint64_t>(v) - static_cast<std::uint64_t>(lower_int64<R>)) /
+                                       static_cast<std::uint64_t>(notch64<R>.Num)));
 }
 
 template <insidable R>
 inline constexpr int result_bits = bit_width_of(grid_numerator(upper_of<R>));
 
 // i! for i ≤ Hi, when Hi! fits 64 bits: one load.
-template <umax Hi>
+template <std::uint64_t Hi>
 inline constexpr auto factorial_table = [] {
-    std::array<umax, Hi + 1> t{};
-    umax                     f = 1;
-    for (umax i = 0; i <= Hi; ++i) {
+    std::array<std::uint64_t, Hi + 1> t{};
+    std::uint64_t                     f = 1;
+    for (std::uint64_t i = 0; i <= Hi; ++i) {
         f *= i < 2 ? 1 : i;
         t[i] = f;
     }
@@ -16014,12 +16061,13 @@ template <insidable N>
         return R::from_raw({});
     } else {
         // A result within max_count_bits has n ≤ 1754: a builtin count.
-        const umax v = static_cast<umax>(detail::count_value(n));
+        const std::uint64_t v = static_cast<std::uint64_t>(detail::count_value(n));
         if constexpr (detail::result_bits<R> <= 64)
-            return detail::lattice_inside<R>(detail::factorial_table<static_cast<umax>(detail::count_upper<N>)>[v]);
+            return detail::lattice_inside<R>(
+                detail::factorial_table<static_cast<std::uint64_t>(detail::count_upper<N>)>[v]);
         else {
             using W = detail::count_work_t<detail::result_bits<R>>;
-            return detail::lattice_inside<R>(v < 2 ? W{1} : detail::product<W>(umax{2}, v - 1));
+            return detail::lattice_inside<R>(v < 2 ? W{1} : detail::product<W>(std::uint64_t{2}, v - 1));
         }
     }
 }
@@ -16052,7 +16100,8 @@ template <insidable N, insidable K>
             detail::count_work_t<std::max(bit_width_of(detail::count_upper<N>), bit_width_of(detail::count_upper<K>))>;
         const C a{detail::count_value(n)}, b{detail::count_value(k)};
         // b ≤ a: a nonzero result within max_count_bits has few factors.
-        return detail::lattice_inside<R>(b > a ? W{0} : detail::product<W>(a - b + C{1}, static_cast<umax>(b)));
+        return detail::lattice_inside<R>(b > a ? W{0}
+                                               : detail::product<W>(a - b + C{1}, static_cast<std::uint64_t>(b)));
     }
 }
 template <insidable N, insidable K>
@@ -16083,7 +16132,7 @@ template <insidable N, insidable K>
         // a ≥ 1 and b ≥ 1: a result within max_count_bits has few factors.
         return detail::lattice_inside<R>(b == decltype(b){0} ? W{1}
                                          : a == C{0}         ? W{0}
-                                                             : detail::product<W>(a, static_cast<umax>(b)));
+                                                             : detail::product<W>(a, static_cast<std::uint64_t>(b)));
     }
 }
 template <insidable N, insidable K>
@@ -16115,11 +16164,11 @@ template <insidable N, insidable K>
         using C =
             detail::count_work_t<std::max(bit_width_of(detail::count_upper<N>), bit_width_of(detail::count_upper<K>))>;
         const C a{detail::count_value(n)}, b{detail::count_value(k)};
-        W       c{static_cast<umax>(b > a ? 0 : 1)};
+        W       c{static_cast<std::uint64_t>(b > a ? 0 : 1)};
         if (b <= a)
             detail::times_binomial(c, a, b);
         if constexpr (detail::wide_integer<W> && detail::result_bits<R> <= 64)
-            return detail::lattice_inside<R>(static_cast<umax>(c));
+            return detail::lattice_inside<R>(static_cast<std::uint64_t>(c));
         else
             return detail::lattice_inside<R>(c);
     }
@@ -16155,7 +16204,7 @@ template <insidable... Ks>
             detail::times_binomial(r, s, k);
         }
         if constexpr (detail::wide_integer<W> && detail::result_bits<R> <= 64)
-            return detail::lattice_inside<R>(static_cast<umax>(r));
+            return detail::lattice_inside<R>(static_cast<std::uint64_t>(r));
         else
             return detail::lattice_inside<R>(r);
     }
@@ -17462,9 +17511,9 @@ constexpr std::array<double, N> parts(wide_sint<K> y, int S, int B) noexcept {
         const int          bits = i + 1 < N ? B : 53;
         const int          sh   = n > bits ? n - bits : 0;
         const wide_sint<K> top  = y >> sh;
-        r[i]                    = ::beman::inside::detail::ldexp(static_cast<double>(static_cast<umax>(top)), sh - S);
-        y                       = y - (top << sh);
-        n                       = sh;
+        r[i] = ::beman::inside::detail::ldexp(static_cast<double>(static_cast<std::uint64_t>(top)), sh - S);
+        y    = y - (top << sh);
+        n    = sh;
     }
     return r;
 }
@@ -18389,9 +18438,9 @@ inline constexpr bool small_index = !wide_valued<In> && notched<In> &&
 template <insidable In>
 constexpr double input_double(const In& x) noexcept {
     if constexpr (fp_exact_input<In>)
-        return static_cast<double>(value_index<imax>(x)) * (notch_p<In> / notch_q<In>);
+        return static_cast<double>(value_index<std::int64_t>(x)) * (notch_p<In> / notch_q<In>);
     else if constexpr (small_index<In>)
-        return static_cast<double>(value_index<imax>(x)) * notch_p<In> / notch_q<In>;
+        return static_cast<double>(value_index<std::int64_t>(x)) * notch_p<In> / notch_q<In>;
     else
         return as_double(x);
 }
@@ -18420,8 +18469,8 @@ template <insidable Out>
 inline bool fp_decide(double v, double bound, Out& out) noexcept {
     constexpr round_mode M  = out_rounding<Out>;
     constexpr double     s  = notch_q<Out> / notch_p<Out>;
-    constexpr double     lo = static_cast<double>(static_cast<imax>(slot_base<Out>));
-    constexpr double     hi = lo + static_cast<double>(static_cast<imax>(grid_of<Out>.step_count()));
+    constexpr double     lo = static_cast<double>(static_cast<std::int64_t>(slot_base<Out>));
+    constexpr double     hi = lo + static_cast<double>(static_cast<std::int64_t>(grid_of<Out>.step_count()));
     const double         t  = v * s;
     double               bt = bound * (1.5 * s);
     if constexpr (!dyadic_notch<Out>)
@@ -18451,13 +18500,13 @@ inline bool fp_decide(double v, double bound, Out& out) noexcept {
                 return true;
             }
             if (j > hi) {
-                out = at_slot<Out>(static_cast<umax>(static_cast<imax>(hi - lo)));
+                out = at_slot<Out>(static_cast<std::uint64_t>(static_cast<std::int64_t>(hi - lo)));
                 return true;
             }
         }
         return false; // NaN too
     }
-    out = at_slot<Out>(static_cast<umax>(static_cast<imax>(j - lo)));
+    out = at_slot<Out>(static_cast<std::uint64_t>(static_cast<std::int64_t>(j - lo)));
     return true;
 }
 
@@ -18529,15 +18578,15 @@ inline ddk::dd dd_read(const In& x) noexcept {
     if constexpr (fp_exact_input<In>)
         return {input_double(x), 0};
     else if constexpr (rational_storage<In>) {
-        const rational r     = x.raw();     // ±Num/|Den|
-        auto           exact = [](umax n) { // two 32-bit halves, each a double exactly
-            return ddk::fast_two_sum(static_cast<double>(n & ~umax{0xFFFFFFFF}),
-                                     static_cast<double>(n & umax{0xFFFFFFFF}));
+        const rational r     = x.raw();              // ±Num/|Den|
+        auto           exact = [](std::uint64_t n) { // two 32-bit halves, each a double exactly
+            return ddk::fast_two_sum(static_cast<double>(n & ~std::uint64_t{0xFFFFFFFF}),
+                                     static_cast<double>(n & std::uint64_t{0xFFFFFFFF}));
         };
         const ddk::dd q = ddk::div(exact(r.Num), exact(abs_den(r.Den)));
         return r.Den < 0 ? ddk::neg(q) : q;
     } else {
-        const ddk::dd n = ddk::two_prod(static_cast<double>(value_index<imax>(x)), notch_p<In>);
+        const ddk::dd n = ddk::two_prod(static_cast<double>(value_index<std::int64_t>(x)), notch_p<In>);
         return ddk::div(n, ddk::dd{notch_q<In>, 0});
     }
 }
@@ -18549,11 +18598,11 @@ inline ddk::dd dd_read(const In& x) noexcept {
 // bound widened by u's rounding.
 template <insidable Out>
 inline bool dd_decide(ddk::dd v, double bound, Out& out) noexcept {
-    constexpr round_mode M     = out_rounding<Out>;
-    constexpr ddk::dd    s     = ddk::div(ddk::dd{notch_q<Out>, 0}, ddk::dd{notch_p<Out>, 0});
-    constexpr imax       first = static_cast<imax>(slot_base<Out>); // |index| ≤ 2^62
-    constexpr imax       last  = static_cast<imax>(slot_base<Out> + grid_of<Out>.step_count());
-    constexpr double     lo = static_cast<double>(first) - 1024, hi = static_cast<double>(last) + 1024;
+    constexpr round_mode   M     = out_rounding<Out>;
+    constexpr ddk::dd      s     = ddk::div(ddk::dd{notch_q<Out>, 0}, ddk::dd{notch_p<Out>, 0});
+    constexpr std::int64_t first = static_cast<std::int64_t>(slot_base<Out>); // |index| ≤ 2^62
+    constexpr std::int64_t last  = static_cast<std::int64_t>(slot_base<Out> + grid_of<Out>.step_count());
+    constexpr double       lo = static_cast<double>(first) - 1024, hi = static_cast<double>(last) + 1024;
     // t = J + u with J = j1 + j2: u is t.Hi's distance to its nearest
     // integer plus t.Lo, and may pass ½ (t.Hi on a half, or t.Lo carrying
     // it over), so it is rounded again rather than rejected.
@@ -18582,19 +18631,20 @@ inline bool dd_decide(ddk::dd v, double bound, Out& out) noexcept {
         if constexpr (M == round_mode::ceil)
             j2 += 1;
     }
-    imax j = static_cast<imax>(j1) + static_cast<imax>(j2);
+    std::int64_t j = static_cast<std::int64_t>(j1) + static_cast<std::int64_t>(j2);
     if constexpr (M == round_mode::trunc) {
         if (j < 0)
             j += 1;
     }
     if (j < first || j > last) {
         if constexpr (has_flag(flags_of<Out>, clamp)) { // as fp_decide
-            out = at_slot<Out>(j < first ? umax{0} : static_cast<umax>(last) - static_cast<umax>(first));
+            out = at_slot<Out>(j < first ? std::uint64_t{0}
+                                         : static_cast<std::uint64_t>(last) - static_cast<std::uint64_t>(first));
             return true;
         }
         return false;
     }
-    out = at_slot<Out>(static_cast<umax>(j) - static_cast<umax>(first));
+    out = at_slot<Out>(static_cast<std::uint64_t>(j) - static_cast<std::uint64_t>(first));
     return true;
 }
 
@@ -18783,14 +18833,14 @@ inline bool fp_attempt_pow(const InB& bi, const InE& ei, Out& out) {
 }
 
 // ln Base at compile time, from the integer log, as a double-double.
-template <imax Base>
+template <std::int64_t Base>
 inline constexpr ddk::dd ln_base = [] {
     const ddk::fixed a = ddk::fixed{Base} << ddk::scale_bits;
     return ddk::of_fixed(log_fixed<ddk::scale_bits>(a, 0).Value, ddk::scale_bits);
 }();
 
 // Base^x = e^(x·ln Base).
-template <insidable Out, imax Base, insidable In>
+template <insidable Out, std::int64_t Base, insidable In>
 inline bool fp_attempt_pow_base(const In& xi, Out& out) {
     const double x = input_double(xi);
     double       bound, y;
@@ -18967,7 +19017,7 @@ inline bool dd_attempt_pow(const InB& bi, const InE& ei, Out& out) {
 
 // Base^x = e^(x·ln Base): ln Base within 2^-104 and the product's 4U².
 // x·ln Base within the exp range (else the integer path decides).
-template <insidable Out, imax Base, insidable In>
+template <insidable Out, std::int64_t Base, insidable In>
 inline bool dd_attempt_pow_base(const In& xi, Out& out) {
     const ddk::dd x = dd_read(xi);
     const ddk::dd y = ddk::mul(x, ln_base<Base>);
@@ -19049,7 +19099,7 @@ using bracket_t =
     inside<grid{{lower_of<Out> - notch_of<Out>, upper_of<Out> + notch_of<Out>}, Unit}, R | (flags_of<Out> & clamp)>;
 
 // The integer form: a bracket 1024 times finer than half_unit, counted in
-// imax. Rounded down there, the value lies in [y, y + F); only when y is
+// int64. Rounded down there, the value lies in [y, y + F); only when y is
 // itself a rounding boundary of Out (a point or a half point — at most one
 // bracket point in 1024) does rounding up decide whether the value is exactly y.
 // Then Out's slot follows from the bracket index by one integer division.
@@ -19070,15 +19120,16 @@ inline constexpr bool integer_bracket = [] {
 
 // Out's slot for a value known as `num/den` bracket units past Lower (in
 // value space: `negative` is the value's sign), or nothing past Out's range.
-template <insidable Out, imax den>
-constexpr std::optional<imax> bracket_slot(imax num, bool negative) noexcept {
+template <insidable Out, std::int64_t den>
+constexpr std::optional<std::int64_t> bracket_slot(std::int64_t num, bool negative) noexcept {
     using namespace ::beman::inside::detail;
     constexpr round_mode m = rounding_for<Out, call_policy<none>>;
     const auto [q, r]      = floor_divmod(num, den);
-    const imax k           = q + rounds_up(m,
-                                           negative,
-                                           classify_remainder(m, static_cast<umax>(r), static_cast<umax>(den)),
-                                           ((q & 1) != 0) != lower_index_odd<Out>);
+    const std::int64_t k =
+        q + rounds_up(m,
+                      negative,
+                      classify_remainder(m, static_cast<std::uint64_t>(r), static_cast<std::uint64_t>(den)),
+                      ((q & 1) != 0) != lower_index_odd<Out>);
     if (k < 0 || std::cmp_greater(k, max_index_of<Out>))
         return std::nullopt;
     return k;
@@ -19095,15 +19146,15 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
         return fn.template operator()<Out>(anchored_input(xs)...);
     else if constexpr (integer_bracket<Out>) {
         using namespace ::beman::inside::detail;
-        constexpr grid_rational F       = fine_unit<Out>;
-        constexpr imax          c       = static_cast<imax>(exact_quotient(lower_of<Out>, F)); // Lower in F
-        constexpr imax          s       = static_cast<imax>(exact_quotient(notch_of<Out>, F)); // Notch in F (even)
-        using Lo                        = bracket_t<Out, round_floor, F>;
-        using Hi                        = bracket_t<Out, round_ceil, F>;
-        using R                         = decltype(fn.template operator()<Lo>(anchored_input(xs)...));
-        constexpr bool checked          = expected_like<R>;
-        using Res                       = std::conditional_t<checked, std::expected<Out, errc>, Out>;
-        const R lo                      = fn.template operator()<Lo>(anchored_input(xs)...);
+        constexpr grid_rational F = fine_unit<Out>;
+        constexpr std::int64_t  c = static_cast<std::int64_t>(exact_quotient(lower_of<Out>, F)); // Lower in F
+        constexpr std::int64_t  s = static_cast<std::int64_t>(exact_quotient(notch_of<Out>, F)); // Notch in F (even)
+        using Lo                  = bracket_t<Out, round_floor, F>;
+        using Hi                  = bracket_t<Out, round_ceil, F>;
+        using R                   = decltype(fn.template operator()<Lo>(anchored_input(xs)...));
+        constexpr bool checked    = expected_like<R>;
+        using Res                 = std::conditional_t<checked, std::expected<Out, errc>, Out>;
+        const R lo                = fn.template operator()<Lo>(anchored_input(xs)...);
         const auto               unwrap = [](const auto& r) -> const auto& {
             if constexpr (checked)
                 return *r;
@@ -19113,10 +19164,10 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
         if constexpr (checked)
             if (!lo)
                 return Res{std::unexpected{lo.error()}};
-        const imax j = value_in_units<imax, F>(unwrap(lo)); // y = j·F
-        const imax t = j - c;                               // y − Lower, in F
+        const std::int64_t j = value_in_units<std::int64_t, F>(unwrap(lo)); // y = j·F
+        const std::int64_t t = j - c;                                       // y − Lower, in F
         // The value lies inside (y, y + F): 2t + 1 half units of F.
-        std::optional<imax> k;
+        std::optional<std::int64_t> k;
         if (t % (s / 2) != 0) [[likely]]
             k = bracket_slot<Out, 2 * s>(2 * t + 1, j < 0);
         else { // y is a boundary of Out: is the value exactly y?
@@ -19124,8 +19175,8 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
             if constexpr (checked)
                 if (!hi)
                     return Res{std::unexpected{hi.error()}};
-            k = value_in_units<imax, F>(unwrap(hi)) == j ? bracket_slot<Out, s>(t, j < 0)
-                                                         : bracket_slot<Out, 2 * s>(2 * t + 1, j < 0);
+            k = value_in_units<std::int64_t, F>(unwrap(hi)) == j ? bracket_slot<Out, s>(t, j < 0)
+                                                                 : bracket_slot<Out, 2 * s>(2 * t + 1, j < 0);
         }
         if (k) [[likely]]
             return Res{Out::from_raw(raw_of_slot<Out>(*k))};
@@ -19543,8 +19594,8 @@ template <insidable Out, insidable InB, insidable InE>
     }
 }
 
-// Base^x for a compile-time integer Base ≥ 2: an imax, or a grid integer of
-// any size (one within imax takes the imax path; one past it skips the
+// Base^x for a compile-time integer Base ≥ 2: an int64, or a grid integer of
+// any size (one within int64 takes the int64 path; one past it skips the
 // double and dd tiers, whose ln Base is a 64-bit table).
 template <auto Base>
 inline constexpr bool grid_base = std::same_as<decltype(Base), grid_rational>;
@@ -19561,8 +19612,11 @@ template <insidable Out, auto Base, insidable In>
 [[nodiscard]] constexpr Out pow_base_into(In x) {
     static_assert(base_ok<Base>, "beman::inside::math::pow_base: Base must be an integer of at least 2");
     require_rounding<Out>();
-    if constexpr (grid_base<Base> && ::beman::inside::detail::fits_imax(interval{Base, Base}))
-        return pow_base_into<Out, static_cast<imax>(::beman::inside::detail::grid_numerator(Base))>(x);
+    if constexpr (grid_base<Base> && ::beman::inside::detail::fits_int64(interval{Base, Base}))
+        return pow_base_into<Out, static_cast<std::int64_t>(::beman::inside::detail::grid_numerator(Base))>(x);
+    else if constexpr (std::integral<decltype(Base)> &&
+                       !::beman::inside::detail::fits_int64(interval{grid_rational{Base}, grid_rational{Base}}))
+        return pow_base_into<Out, grid_rational{Base}>(x); // a builtin past int64: the grid integer's path
     else if constexpr (anchoring::unanchored_call<Out, In>)
         return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return pow_base_into<O, Base>(v); }, x);
     else {
@@ -19678,12 +19732,16 @@ struct pow_base_core : engine::pow_core<engine::base_limbs<Base>, E, Mag, KMax> 
         : engine::pow_core<engine::base_limbs<Base>, E, Mag, KMax>{engine::exact_base<Base>(), x} {}
 };
 template <auto Base, insidable In>
+inline constexpr int pow_base_kmax = [] {
+    static_assert(engine::max_abs_int<In> <= (std::numeric_limits<int>::max() - 2) / engine::base_bits<Base>,
+                  "beman::inside::math::pow_base: the deduced output needs |x|·bit_width(Base) below 2^31 - name an "
+                  "output grid with pow_base_into<Out> instead");
+    return static_cast<int>(engine::max_abs_int<In>) * engine::base_bits<Base> + 2;
+}();
+template <auto Base, insidable In>
 using pow_base_t =
     engine::increasing_t<In,
-                         pow_base_core<Base,
-                                       engine::input_limbs<In>,
-                                       engine::in_mag<In>,
-                                       static_cast<int>(engine::max_abs_int<In>) * engine::base_bits<Base> + 2>>;
+                         pow_base_core<Base, engine::input_limbs<In>, engine::in_mag<In>, pow_base_kmax<Base, In>>>;
 
 // atan2: [−π, π] rounded outward on the gcd notch (π = atan2(0, −1)).
 template <insidable A, insidable B>
@@ -20016,16 +20074,16 @@ constexpr wide_rational<E> exact_to_int(const wide_rational<E>& v) noexcept {
 // Integer fast path for the algebraic tier: an anchored integer raw holds
 // the value J·p/q (J its value index, Notch p/q), so its integer rounding is
 // J·p over q rounded. It applies when the auto-deduced Out (which holds every
-// result by construction) is the target and |J·p| fits imax.
+// result by construction) is the target and |J·p| fits int64.
 template <insidable Out, insidable AutoOut, insidable In>
 inline constexpr bool int_direct = [] {
     if constexpr (!std::same_as<Out, AutoOut> || !integer_storage<In> || !integer_storage<Out> || !notched<In> ||
                   !anchored<In> || wide_valued<In> || wide_valued<Out> || !value_indices_fit64<In>)
         return false;
     else {
-        const umax m =
+        const std::uint64_t m =
             lower_index64<In>.Num > upper_index64<In>.Num ? lower_index64<In>.Num : upper_index64<In>.Num; // max |J|
-        return m <= static_cast<umax>(std::numeric_limits<imax>::max()) / notch64<In>.Num;
+        return m <= static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) / notch64<In>.Num;
     }
 }();
 
@@ -20036,25 +20094,25 @@ constexpr Out integer_into(In x) {
     if constexpr (any_wide_valued<Out, In>)
         return store_exact<Out>(exact_to_int<M>(engine::exact_input(x)));
     else if constexpr (int_direct<Out, integer_result_t<In, M>, In>) {
-        constexpr imax p = static_cast<imax>(notch64<In>.Num);
-        constexpr imax q = static_cast<imax>(abs_den(notch64<In>.Den));
-        const imax     j = value_index<imax>(x) * p;
-        if constexpr (p == 1 && std::has_single_bit(static_cast<umax>(q)) && M != round_mode::half_even) {
+        constexpr std::int64_t p = static_cast<std::int64_t>(notch64<In>.Num);
+        constexpr std::int64_t q = static_cast<std::int64_t>(abs_den(notch64<In>.Den));
+        const std::int64_t     j = value_index<std::int64_t>(x) * p;
+        if constexpr (p == 1 && std::has_single_bit(static_cast<std::uint64_t>(q)) && M != round_mode::half_even) {
             // A notch 2^-k: shifts. floor is the arithmetic shift, ceil its
             // mirror; nearest and trunc shift the magnitude (half away from 0).
-            constexpr int k = std::countr_zero(static_cast<umax>(q));
+            constexpr int k = std::countr_zero(static_cast<std::uint64_t>(q));
             if constexpr (M == round_mode::floor)
                 return from_value_index<Out>(j >> k);
             else if constexpr (M == round_mode::ceil)
                 return from_value_index<Out>(-((-j) >> k));
             else {
-                const imax s = j >> 63, a = (j ^ s) - s; // sign mask, |j|
-                const imax r = (a + (M == round_mode::nearest ? q / 2 : 0)) >> k;
+                const std::int64_t s = j >> 63, a = (j ^ s) - s; // sign mask, |j|
+                const std::int64_t r = (a + (M == round_mode::nearest ? q / 2 : 0)) >> k;
                 return from_value_index<Out>((r ^ s) - s);
             }
         } else
             return from_value_index<Out>(div_rounded(j, q, M));
-    } else // (as a rational: the integer may pass imax, a uint64's)
+    } else // (as a rational: the integer may pass int64, a uint64's)
         return store_value<Out>(round_to_integral(rational{x}, M));
 }
 } // namespace detail
@@ -20078,12 +20136,13 @@ template <insidable Out, insidable In>
 [[nodiscard]] constexpr Out abs_into(In x) {
     if constexpr (detail::any_wide_valued<Out, In>)
         return detail::store_exact<Out>(detail::engine::abs(detail::engine::exact_input(x)));
-    else if constexpr (std::same_as<Out, detail::abs_result_t<In>> && detail::notched<In> && detail::anchored<In> &&
+    else if constexpr (std::same_as<Out, detail::abs_result_t<In>> && detail::value_indices_fit_int64<In> &&
                        notch_of<Out> == notch_of<In>) {
         // The same lattice through 0: |x| is the value index's magnitude.
-        // In umax: |INT64_MIN| = 2^63 is past imax (Out then reaches it).
-        const imax j = detail::value_index<imax>(x);
-        return detail::from_value_index<Out>(j < 0 ? umax{0} - static_cast<umax>(j) : static_cast<umax>(j));
+        // In uint64: |INT64_MIN| = 2^63 is past int64 (Out then reaches it).
+        const std::int64_t j = detail::value_index<std::int64_t>(x);
+        return detail::from_value_index<Out>(j < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(j)
+                                                   : static_cast<std::uint64_t>(j));
     } else
         return detail::store_value<Out>(beman::inside::detail::abs(rational{x}));
 }
@@ -20091,7 +20150,7 @@ template <insidable Out, insidable In>
 // sign(x) ∈ {−1, 0, 1}, by exact comparison (no decode).
 template <insidable Out, insidable In>
 [[nodiscard]] constexpr Out sign_into(In x) {
-    return Out{imax{(x > 0) - (x < 0)}};
+    return Out{std::int64_t{(x > 0) - (x < 0)}};
 }
 
 // copysign(mag, sgn) — |mag| with the sign of sgn; sgn == 0 counts as positive.
@@ -20100,12 +20159,14 @@ template <insidable Out, insidable Mag, insidable Sgn>
     if constexpr (detail::any_wide_valued<Out, Mag>) {
         const auto a = detail::engine::abs(detail::engine::exact_input(mag));
         return detail::store_exact<Out>(sgn < 0 ? -a : a);
-    } else if constexpr (std::same_as<Out, detail::copysign_result_t<Mag, Sgn>> && detail::notched<Mag> &&
-                         detail::anchored<Mag> && notch_of<Out> == notch_of<Mag>) {
-        // The same lattice through 0: ±|value index|. j is never INT64_MIN:
-        // then Out, symmetric, would hold 2^64 slots and be wide (above).
-        const imax j = detail::value_index<imax>(mag), a = j < 0 ? -j : j;
-        return detail::from_value_index<Out>(sgn < 0 ? -a : a);
+    } else if constexpr (std::same_as<Out, detail::copysign_result_t<Mag, Sgn>> &&
+                         detail::value_indices_fit_int64<Mag> && notch_of<Out> == notch_of<Mag>) {
+        // The same lattice through 0: ±|value index|, in uint64 (|INT64_MIN| =
+        // 2^63 when sgn is never negative); the raw follows modulo 2^64.
+        const std::int64_t  j = detail::value_index<std::int64_t>(mag);
+        const std::uint64_t a =
+            j < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(j) : static_cast<std::uint64_t>(j);
+        return detail::from_value_index<Out>(sgn < 0 ? std::uint64_t{0} - a : a);
     } else {
         const rational a = beman::inside::detail::abs(rational{mag});
         return detail::store_value<Out>(sgn < 0 ? -a : a);
@@ -20139,7 +20200,7 @@ namespace detail {
 //   * integer raws only (rational raws keep the rational path),
 //   * non-zero notches, g on Out's grid (g / notch of Out integer),
 //   * Out's interval covers the remainders: ±min(max|x|, max|y|), x's sign,
-//   * all unit counts fit comfortably in imax (headroom 4).
+//   * all unit counts fit comfortably in int64 (headroom 4).
 template <insidable Out, insidable InX, insidable InY>
 inline constexpr bool fmod_int_fast = [] {
     // (y != 0 is fmod_nonzero's precondition.) Lower/g must be an integer:
@@ -20161,8 +20222,8 @@ inline constexpr bool fmod_int_fast = [] {
         if (lower_of<Out> > (lower_of<InX> < 0 ? -bound : grid_rational{0}) ||
             upper_of<Out> < (upper_of<InX> > 0 ? bound : grid_rational{0}))
             return false;
-        // Every unit count, and Out's value index of Lower, within imax/4.
-        const grid_rational lim{std::numeric_limits<imax>::max() / 4};
+        // Every unit count, and Out's value index of Lower, within int64/4.
+        const grid_rational lim{std::numeric_limits<std::int64_t>::max() / 4};
         return !(lim < maxx / g) && !(lim < maxy / g) && !(lim < maxy / notch_of<Out>) &&
                !(lim < abs(lower_index_of<Out>));
     }
@@ -20188,23 +20249,23 @@ template <insidable Out, insidable InX, insidable InY>
         return exact();
     else if constexpr (detail::fmod_int_fast<Out, InX, InY>) {
         // One integer remainder in g-units; bit-identical to the rational path.
-        constexpr rational g   = detail::to_rational(gcd(notch_of<InX>, notch_of<InY>));
-        constexpr imax     wx  = trunc(detail::notch64<InX> / g);
-        constexpr imax     wy  = trunc(detail::notch64<InY> / g);
-        constexpr imax     wo  = trunc(g / detail::notch64<Out>);
-        constexpr imax     lox = trunc(detail::lower64<InX> / g); // exact: grid invariant
-        constexpr imax     loy = trunc(detail::lower64<InY> / g);
-        constexpr imax     loo = trunc(detail::lower64<Out> / detail::notch64<Out>);
-        const imax         a   = detail::raw_imax(x) * wx + (detail::index_storage<InX> ? lox : 0);
-        const imax         b   = detail::raw_imax(y) * wy + (detail::index_storage<InY> ? loy : 0);
-        const imax         r   = a % b; // |r| < |b|, in Out's range
+        constexpr rational     g   = detail::to_rational(gcd(notch_of<InX>, notch_of<InY>));
+        constexpr std::int64_t wx  = trunc(detail::notch64<InX> / g);
+        constexpr std::int64_t wy  = trunc(detail::notch64<InY> / g);
+        constexpr std::int64_t wo  = trunc(g / detail::notch64<Out>);
+        constexpr std::int64_t lox = trunc(detail::lower64<InX> / g); // exact: grid invariant
+        constexpr std::int64_t loy = trunc(detail::lower64<InY> / g);
+        constexpr std::int64_t loo = trunc(detail::lower64<Out> / detail::notch64<Out>);
+        const std::int64_t     a   = detail::raw_int64(x) * wx + (detail::index_storage<InX> ? lox : 0);
+        const std::int64_t     b   = detail::raw_int64(y) * wy + (detail::index_storage<InY> ? loy : 0);
+        const std::int64_t     r   = a % b; // |r| < |b|, in Out's range
         return Out::from_raw(detail::raw_from_offset<Out>(r * wo - loo));
     } else {
         // In 64-bit rationals while every step fits (the quotient within
-        // imax); else exactly — the remainder itself always fits Out.
+        // int64); else exactly — the remainder itself always fits Out.
         const rational xv = x, yv = y;
-        if (const auto q = try_div(xv, yv);
-            q && *q < rational{std::numeric_limits<imax>::max()} && rational{std::numeric_limits<imax>::min()} < *q)
+        if (const auto q = try_div(xv, yv); q && *q < rational{std::numeric_limits<std::int64_t>::max()} &&
+                                            rational{std::numeric_limits<std::int64_t>::min()} < *q)
             if (const auto qy = try_mul(rational{trunc(*q)}, yv))
                 if (const auto r = try_sub(xv, *qy)) [[likely]]
                     return detail::store_value<Out>(*r);
@@ -20235,7 +20296,7 @@ template <insidable Out, insidable InX, insidable InY>
 // (like abs/floor/fmod). Negative exponents are deferred (they need the
 // division error story).
 namespace detail {
-template <imax E, insidable In>
+template <std::int64_t E, insidable In>
 constexpr auto pown_impl(In x) noexcept {
     if constexpr (E == 0) {
         (void)x;
@@ -20252,7 +20313,7 @@ constexpr auto pown_impl(In x) noexcept {
 
 // pown<E>(x) exists when each squaring and multiply does: a continuous
 // product past detail::max_fraction_bits has no type.
-template <imax E, class In>
+template <std::int64_t E, class In>
 inline constexpr bool pown_defined = [] {
     if constexpr (E < 0)
         return false;
@@ -20275,13 +20336,13 @@ inline constexpr bool pown_defined = [] {
 namespace detail {
 // An even power of a base that reaches below 0 squares |x| instead, so the
 // result's range starts at the smallest |x|^E, never below 0.
-template <imax E, insidable In>
+template <std::int64_t E, insidable In>
 inline constexpr bool pown_via_abs = E > 0 && E % 2 == 0 && lower_of<In> < 0;
-template <imax E, insidable In>
+template <std::int64_t E, insidable In>
 using pown_base_t = std::conditional_t<pown_via_abs<E, In>, abs_result_t<In>, In>;
 } // namespace detail
 
-template <imax E, insidable In>
+template <std::int64_t E, insidable In>
     requires detail::pown_defined<E, detail::pown_base_t<E, In>>
 [[nodiscard]] constexpr auto pown(In x) noexcept {
     if constexpr (detail::pown_via_abs<E, In>)
@@ -23472,7 +23533,7 @@ namespace beman::inside::math::detail::engine {
 // in J·s).
 template <std::size_t E, int Bits, int P, std::size_t KF = 1>
 struct pi_scale_core {
-    using factor = std::conditional_t<KF == 1, umax, beman::inside::detail::wide_uint<KF>>;
+    using factor = std::conditional_t<KF == 1, std::uint64_t, beman::inside::detail::wide_uint<KF>>;
     wide_rational<E> X;
     factor           N; // the rational factor n/d
     factor           D;
@@ -23507,7 +23568,7 @@ struct pi_scale_core {
 // theorem allows a rational value: 0, ±1/2, ±1.
 template <std::size_t E, bool Cos, std::size_t KF = 1>
 struct pi_trig_core {
-    using factor = std::conditional_t<KF == 1, umax, beman::inside::detail::wide_uint<KF>>;
+    using factor = std::conditional_t<KF == 1, std::uint64_t, beman::inside::detail::wide_uint<KF>>;
     wide_rational<E> X;
     factor           N; // the rational factor n/d
     factor           D;
@@ -23609,18 +23670,27 @@ inline constexpr reference radian_reference = reference{si::radian};
 
 // An angle in a unit with a factor of π (°, a turn): sin and cos reduce it exactly.
 template <reference R>
-inline constexpr bool pi_angle_v = dimension_of(R.U) == dim_one && magnitude_of(R.U).Pi == 1 &&
-                                   beman::inside::detail::fits_rational(magnitude_of(R.U).Ratio);
+inline constexpr bool pi_angle_v = dimension_of(R.U) == dim_one && magnitude_of(R.U).Pi == 1;
 
-// sin_into / cos_into of a π-scaled angle: one rounding onto Out.
+// sin_into / cos_into of a π-scaled angle: one rounding onto Out. The
+// factor n/d in one limb when it is a 64-bit rational, else in as many as
+// it needs.
 template <insidable Out, bool Cos, reference R, class V>
 constexpr Out pi_trig_into(const quantity<R, V>& q) {
     namespace engine = beman::inside::math::detail::engine;
+    using beman::inside::detail::grid_int;
     beman::inside::math::detail::entry::require_rounding<Out>();
-    constexpr rational r = beman::inside::detail::to_rational(magnitude_of(R.U).Ratio);
-    using core           = engine::pi_trig_core<engine::input_limbs<V>, Cos>;
+    constexpr auto        f  = magnitude_of(R.U).Ratio;
+    constexpr grid_int    n  = beman::inside::detail::grid_numerator(f);
+    constexpr grid_int    d  = beman::inside::detail::grid_denominator(f);
+    constexpr bool        ng = n.negative();
+    constexpr std::size_t KF = beman::inside::detail::fits_rational(f)
+                                   ? 1
+                                   : beman::inside::detail::limbs_for_bits(std::max(n.bit_width(), d.bit_width()) + 1);
+    using core               = engine::pi_trig_core<engine::input_limbs<V>, Cos, KF>;
+    using factor             = typename core::factor;
     return engine::evaluate<Out, engine::start_bits<Out>>(
-        core{engine::exact_input(q.numerical_value()), r.Num, beman::inside::detail::abs_den(r.Den), r.Den < 0});
+        core{engine::exact_input(q.numerical_value()), static_cast<factor>(ng ? -n : n), static_cast<factor>(d), ng});
 }
 } // namespace detail
 

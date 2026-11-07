@@ -281,7 +281,7 @@ TEST(InsideAssignTest, trivial_copy_guarantees) {
 // type-alias smoke checks
 TEST(InsideAssignTest, type_alias_smoke_checks) {
     using test0_t = inside<{{1, 3}, 1}>;
-    using test4_t = inside<{{0u, std::numeric_limits<umax>::max()}, 1}>;
+    using test4_t = inside<{{0u, std::numeric_limits<std::uint64_t>::max()}, 1}>;
     using test5_t = inside<{1_r}>;
     static_assert(std::is_same_v<test0_t::raw_type, std::uint8_t>);
     static_assert(std::is_same_v<test4_t::raw_type, std::uint64_t>);
@@ -410,15 +410,15 @@ TEST(InsideAssignTest, continuous_source_off_the_lattice_is_checked) {
 // Mixed-sign integer sources and scalars compare by value: a uint64_t past
 // INT64_MAX is not −1, and a negative inside is below every unsigned.
 TEST(InsideAssignTest, mixed_sign_integers_compare_by_value) {
-    constexpr std::uint64_t big       = std::numeric_limits<std::uint64_t>::max();
-    constexpr std::uint64_t past_imax = std::uint64_t{1} << 63;
-    using neg                         = inside<{-10, 10}>;
+    constexpr std::uint64_t big        = std::numeric_limits<std::uint64_t>::max();
+    constexpr std::uint64_t past_int64 = std::uint64_t{1} << 63;
+    using neg                          = inside<{-10, 10}>;
     EXPECT_THROW((void)(neg{big}), inside_error);
-    EXPECT_THROW((void)(neg{past_imax}), inside_error);
+    EXPECT_THROW((void)(neg{past_int64}), inside_error);
     inside<{-10, 10}, clamp> c{std::uint64_t{3}};
     c = big;
     EXPECT_EQ(c, 10);
-    c = past_imax;
+    c = past_int64;
     EXPECT_EQ(c, 10);
     c = 4u;
     EXPECT_EQ(c, 4);
@@ -428,13 +428,13 @@ TEST(InsideAssignTest, mixed_sign_integers_compare_by_value) {
     EXPECT_NE(m, 0xFFFFFFFFu);
     EXPECT_TRUE(m < 0u);
     EXPECT_TRUE(m < big);
-    EXPECT_EQ(m <=> past_imax, std::strong_ordering::less);
+    EXPECT_EQ(m <=> past_int64, std::strong_ordering::less);
     EXPECT_EQ(neg{7} <=> std::uint64_t{7}, std::strong_ordering::equal);
     EXPECT_EQ(neg{7} <=> 6u, std::strong_ordering::greater);
     EXPECT_EQ(neg{7}, std::uint64_t{7});
     EXPECT_EQ(neg{1}, true);
     EXPECT_EQ(neg{0}, false);
-    static_assert(neg{-1} != big && neg{-1} < past_imax);
+    static_assert(neg{-1} != big && neg{-1} < past_int64);
 }
 } // namespace inside_assign_tests
 
@@ -692,10 +692,10 @@ TEST(CastsTest, clamp_cast_with_rounding_accept_an_inside_source) {
 // wrap policy must reduce out-of-range integers without signed overflow.
 //
 // Regression: apply_wrap computed `range = upper - lower + 1` and
-// `shifted = rhs - lower` in imax, which overflowed (UB) when rhs was a large
+// `shifted = rhs - lower` in int64, which overflowed (UB) when rhs was a large
 // integral and Lower was a large-magnitude opposite sign (e.g. assigning
 // INT64_MAX to a wrap grid with a negative Lower), and when the grid spanned
-// more than imax under unsigned storage. The reduction now runs in umax.
+// more than int64 under unsigned storage. The reduction now runs in uint64.
 //
 // The oracle is an independent __int128 modular wrap, so values are checked, not
 // pinned to magic constants.
@@ -750,10 +750,10 @@ TEST(WrapOverflowTest, wrap_reduces_extreme_integers_with_no_signed_overflow) {
     }
 }
 
-// wrap on a grid spanning more than imax
-TEST(WrapOverflowTest, wrap_on_a_grid_spanning_more_than_imax) {
+// wrap on a grid spanning more than int64
+TEST(WrapOverflowTest, wrap_on_a_grid_spanning_more_than_int64) {
     // Unsigned-storage grid whose span exceeds INT64_MAX.
-    using Big                       = inside<{0, 12000000000000000000ULL}, wrap>; // span ~1.2e19 > imax
+    using Big                       = inside<{0, 12000000000000000000ULL}, wrap>; // span ~1.2e19 > int64
     constexpr unsigned long long hi = 12000000000000000000ULL;
 
     // A value above the top wraps to near the bottom; one below 0 wraps to the top.
@@ -765,7 +765,7 @@ TEST(WrapOverflowTest, wrap_on_a_grid_spanning_more_than_imax) {
 
 // wrap is identity on a grid spanning the whole u64 range
 TEST(WrapOverflowTest, wrap_is_identity_on_a_grid_spanning_the_whole_u64_range) {
-    // span == 2^64-1, so `urange = upper - lower + 1` wraps to 0 in umax: every
+    // span == 2^64-1, so `urange = upper - lower + 1` wraps to 0 in uint64: every
     // u64 bit pattern is already in range, so the wrap is the identity and the
     // value is stored verbatim. Exercises the urange==0 fast path in apply_wrap.
     // Identity is a raw round-trip: lower is 0, so the stored raw is exactly the
@@ -911,24 +911,24 @@ TEST(CompoundAssignTest, compound_assignment_insidable_rhs) {
     static_assert([] {
         u100 a{50}, d{20};
         a -= d;
-        return a.as<imax>();
+        return a.as<std::int64_t>();
     }() == 30);
 
     using ui = inside<{0, 100}, round_toward_zero>;
     static_assert([] {
         ui d{50}, two{2};
         d *= two;
-        return d.as<imax>();
+        return d.as<std::int64_t>();
     }() == 100);
     static_assert([] {
         ui e{60}, three{3};
         e /= three;
-        return e.as<imax>();
+        return e.as<std::int64_t>();
     }() == 20);
     static_assert([] {
         ui f{17}, five{5};
         f %= five;
-        return f.as<imax>();
+        return f.as<std::int64_t>();
     }() == 2);
 }
 
@@ -987,34 +987,34 @@ TEST(CompoundAssignTest, increment_decrement) {
     static_assert([] {
         u10 a{5};
         ++a;
-        return a.as<imax>();
+        return a.as<std::int64_t>();
     }() == 6);
     static_assert([] {
         u10 a{5};
         a++;
-        return a.as<imax>();
+        return a.as<std::int64_t>();
     }() == 6);
     static_assert([] {
         u10 a{5};
         --a;
-        return a.as<imax>();
+        return a.as<std::int64_t>();
     }() == 4);
     static_assert([] {
         u10 a{5};
         a--;
-        return a.as<imax>();
+        return a.as<std::int64_t>();
     }() == 4);
 
     // post-inc/dec returns the old value
     static_assert([] {
         u10  a{5};
         auto r = a++;
-        return r.as<imax>();
+        return r.as<std::int64_t>();
     }() == 5);
     static_assert([] {
         u10  a{5};
         auto r = a--;
-        return r.as<imax>();
+        return r.as<std::int64_t>();
     }() == 5);
 }
 
@@ -1131,7 +1131,7 @@ TEST(AssignmentTest, raw_map_into_a_full_int64_grid) {
 }
 
 // Scalar stores into a full-width int64 grid: the Q-format guard took the
-// ceiling of a 2^63 bound in imax, and the range check negated −2^63.
+// ceiling of a 2^63 bound in int64, and the range check negated −2^63.
 TEST(AssignmentTest, scalar_store_into_a_full_int64_grid) {
     constexpr std::int64_t i64_min = INT64_MIN;
     constexpr std::int64_t i64_max = INT64_MAX;
@@ -1227,16 +1227,16 @@ TEST(AssignmentTest, small_double_into_a_full_int64_grid) {
 // A rational just outside the grid with a denominator near 2^62: rounding
 // it onto the lattice threw bad_expected_access (v·64 passed the rational).
 TEST(AssignmentTest, fine_rational_rounds_onto_the_grid) {
-    using A        = inside<{{0, 1}, per<64>}, round_nearest>;
-    const imax d   = (1ll << 62) + 1;
-    const auto top = rational{static_cast<umax>(d + 1), d}; // 1 + 1/d
+    using A                = inside<{{0, 1}, per<64>}, round_nearest>;
+    const std::int64_t d   = (1ll << 62) + 1;
+    const auto         top = rational{static_cast<std::uint64_t>(d + 1), d}; // 1 + 1/d
     EXPECT_EQ(*A::try_make(top), 1_ins);
     EXPECT_EQ(*A::try_make(rational{1, -d}), 0_ins);
     EXPECT_FALSE(conversion_overflows<A>(top));
     EXPECT_TRUE(conversion_rounds<A>(top));
 }
 
-// += of a large constant on a large Q-format grid: the raw add passed imax
+// += of a large constant on a large Q-format grid: the raw add passed int64
 // (UB). (Found with a rational right-hand side, which += no longer takes.)
 TEST(AssignmentTest, add_a_large_constant_on_a_large_q_format_grid) {
     inside<{{0, 1ll << 60}, per<4>}, clamp> c{rational{1ll << 60}};
@@ -1458,18 +1458,18 @@ TEST(AssignmentTest, double_on_a_wide_rounding_grid_takes_the_exact_path) {
     {
         SCOPED_TRACE("negative value: offset fits after the 128-bit add rescue");
         wide slot{};
-        slot = rational{umax{9006646171630191}, imax{-18014398509481984}}; // ≈ -0.4999693
+        slot = rational{std::uint64_t{9006646171630191}, std::int64_t{-18014398509481984}}; // ≈ -0.4999693
         // ·16384 = -8191.49692… → round_nearest → -8191/16384
-        ASSERT_EQ(rational{slot}, (rational{umax{8191}, imax{-16384}}));
+        ASSERT_EQ(rational{slot}, (rational{std::uint64_t{8191}, std::int64_t{-16384}}));
     }
 
     {
         SCOPED_TRACE("positive value: exact offset needs > 64 bits → exact wide store");
         wide slot{};
-        slot = rational{umax{9006646171630191}, imax{18014398509481984}}; // ≈ +0.4999693
+        slot = rational{std::uint64_t{9006646171630191}, std::int64_t{18014398509481984}}; // ≈ +0.4999693
         // (1024 + v)·16384 = 16785407.49692… → round_nearest → slot 16785407
         // → value 8191/16384 (0.49993896…, the nearest grid point)
-        ASSERT_EQ(rational{slot}, (rational{umax{8191}, imax{16384}}));
+        ASSERT_EQ(rational{slot}, (rational{std::uint64_t{8191}, std::int64_t{16384}}));
     }
 
     // (No constexpr section: at constant evaluation the transient rational
@@ -1482,7 +1482,7 @@ TEST(AssignmentTest, double_on_a_wide_rounding_grid_takes_the_exact_path) {
         using strict = inside<{{-1024, 1024}, per<16384>}>; // checked, no round flag
         strict slot{};
         try {
-            slot = rational{umax{9006646171630191}, imax{18014398509481984}};
+            slot = rational{std::uint64_t{9006646171630191}, std::int64_t{18014398509481984}};
             FAIL() << "expected the default handler to throw";
         } catch (const inside_error& e) {
             ASSERT_EQ(e.Code, errc::rounding_error);
@@ -1533,14 +1533,14 @@ TEST(AssignmentTest, uint64_source_above_int64_max) {
     static_assert(inside<{{5, 9}, 1}>{-7, wrap}.as<int>() == 8);
 
     // The on_clamp overshoot is an inside over the source type's limits minus
-    // the target's, so it is exact (it saturated at imax before).
+    // the target's, so it is exact (it saturated at int64 before).
     inside<{{-10, 10}, 1}> c{0};
     bool                   exact                                = false;
     c.on_clamp([&](auto&, auto o) { exact = (o == big - 10); }) = big;
     EXPECT_EQ(c.as<int>(), 10);
     EXPECT_TRUE(exact);
-    c.on_clamp([&](auto&, auto o) { exact = (o == std::numeric_limits<imax>::max() - 10); }) =
-        std::numeric_limits<imax>::max();
+    c.on_clamp([&](auto&, auto o) { exact = (o == std::numeric_limits<std::int64_t>::max() - 10); }) =
+        std::numeric_limits<std::int64_t>::max();
     EXPECT_TRUE(exact);
 }
 
@@ -1584,15 +1584,15 @@ TEST(AssignmentTest, huge_double_source) {
     EXPECT_EQ(rational{0x1p63}, rational{1ull << 63});
 }
 
-// += / -= / ++ on the full int64 range: the raw add must not overflow imax.
+// += / -= / ++ on the full int64 range: the raw add must not overflow int64.
 TEST(AssignmentTest, full_int64_grid_compound_ops) {
-    constexpr umax u64_max = std::numeric_limits<umax>::max();
-    constexpr imax i64_min = std::numeric_limits<imax>::min();
-    constexpr imax i64_max = std::numeric_limits<imax>::max();
-    using I64              = inside<{{i64_min, i64_max}, 1}>;
-    using I64W             = inside<{{i64_min, i64_max}, 1}, wrap>;
-    using I64C             = inside<{{i64_min, i64_max}, 1}, clamp>;
-    constexpr auto a       = [] {
+    constexpr std::uint64_t u64_max = std::numeric_limits<std::uint64_t>::max();
+    constexpr std::int64_t  i64_min = std::numeric_limits<std::int64_t>::min();
+    constexpr std::int64_t  i64_max = std::numeric_limits<std::int64_t>::max();
+    using I64                       = inside<{{i64_min, i64_max}, 1}>;
+    using I64W                      = inside<{{i64_min, i64_max}, 1}, wrap>;
+    using I64C                      = inside<{{i64_min, i64_max}, 1}, clamp>;
+    constexpr auto a                = [] {
         I64W x{i64_max};
         ++x;
         return x.raw();
@@ -1731,10 +1731,10 @@ TEST(AssignmentTest, cross_grid_conversion_of_a_negative_off_notch_value) {
 }
 
 // round_to_lattice on a fine notch over a wide range: the notch index of
-// 2^61 − 1 on a 1/8 grid is 2^64 − 8, past imax. It must round in place, not
+// 2^61 − 1 on a 1/8 grid is 2^64 − 8, past int64. It must round in place, not
 // wrap to a negative index (it returned −1 when the index was narrowed to
-// imax), and a result past the rational range is errc::overflow.
-TEST(AssignmentTest, round_to_lattice_keeps_notch_indices_past_imax) {
+// int64), and a result past the rational range is errc::overflow.
+TEST(AssignmentTest, round_to_lattice_keeps_notch_indices_past_int64) {
     using L       = inside<grid{{0, 1ll << 61}, per<8>}>;
     const auto v  = rational{(1ull << 61) - 1, 1};
     const auto nv = rational{(1ull << 61) - 1, -1};
@@ -1744,13 +1744,13 @@ TEST(AssignmentTest, round_to_lattice_keeps_notch_indices_past_imax) {
     ASSERT_TRUE((*try_round_to_lattice<L, call_policy<round_ceil>>(nv) == nv));
     const auto off = rational{(1ull << 63) - 1, 4}; // a lattice point: index 2^64 − 2
     ASSERT_TRUE((*try_round_to_lattice<L, call_policy<round_nearest>>(off) == off));
-    // ceil(umax) on the 1/8 lattice is umax itself, but its index 8·umax is
+    // ceil(uint64) on the 1/8 lattice is uint64 itself, but its index 8·uint64 is
     // past every rational: reported, not wrapped.
     ASSERT_TRUE((try_round_to_lattice<L, call_policy<round_ceil>>(rational{~0ull, 1}).error() == errc::overflow));
 }
 
 // The unanchored branch (Lower 1/16 off the 1/8 notch's multiples): small
-// values round onto {1/16 + k/8}; a far value whose index passes imax, and
+// values round onto {1/16 + k/8}; a far value whose index passes int64, and
 // whose lattice neighbours pass the rational range, reports overflow instead
 // of a wrapped index.
 TEST(AssignmentTest, round_to_lattice_unanchored_rounds_and_reports_overflow) {
@@ -1771,12 +1771,12 @@ TEST(AssignmentTest, rounding_onto_a_span_past_two_to_the_64) {
     using wide_span = inside<{{-(just<3> * just<(1ll << 62)>), just<2> * just<(1ll << 62)>}, 4}, round_nearest>;
     static_assert(sizeof(wide_span::raw_type) == 8);
     wide_span w{0};
-    w = rational{(umax{1} << 63) + 1}; // 2^63 + 1 rounds to Upper, 2^63
+    w = rational{(std::uint64_t{1} << 63) + 1}; // 2^63 + 1 rounds to Upper, 2^63
     EXPECT_TRUE(w == upper_of<wide_span>);
-    w = rational{(umax{1} << 63) - 1}; // in range: rounds to 2^63 too
+    w = rational{(std::uint64_t{1} << 63) - 1}; // in range: rounds to 2^63 too
     EXPECT_TRUE(w == upper_of<wide_span>);
-    EXPECT_TRUE(conversion_rounds<wide_span>(rational{(umax{1} << 63) + 1}));
-    EXPECT_FALSE(conversion_overflows<wide_span>(rational{(umax{1} << 63) + 1}));
+    EXPECT_TRUE(conversion_rounds<wide_span>(rational{(std::uint64_t{1} << 63) + 1}));
+    EXPECT_FALSE(conversion_overflows<wide_span>(rational{(std::uint64_t{1} << 63) + 1}));
 }
 
 // An anchored grid whose Lower/Notch passes int64 rounded the offset as if

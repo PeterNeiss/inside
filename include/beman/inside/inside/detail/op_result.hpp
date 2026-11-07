@@ -15,9 +15,9 @@ enum class exact_op : unsigned char { add, mul, div };
 // overflow. Result carries a denominator bound (grid.hpp: den_bound), so its
 // raw holds every value: a fraction raw is sized from the bound; a 64-bit
 // rational needs the unchecked kernels' intermediates in range too —
-//   +: each operand over the common denominator D_L·D_R fits umax;
+//   +: each operand over the common denominator D_L·D_R fits uint64;
 //   ×: nothing more (numerator ≤ num_bound(Result), denominator ≤ D_L·D_R);
-//   ÷: the divisor's numerator fits imax (1/r moves it to the denominator).
+//   ÷: the divisor's numerator fits int64 (1/r moves it to the denominator).
 template <exact_op Op, insidable Result, insidable L, insidable R>
 inline constexpr bool exact_fits = [] {
     if constexpr (fraction_storage<Result>)
@@ -29,7 +29,7 @@ inline constexpr bool exact_fits = [] {
             const grid_int d = den_bound(grid_of<L>) * den_bound(grid_of<R>);
             return num_bound(interval_of<L>, d).fits_limb() && num_bound(interval_of<R>, d).fits_limb();
         } else if constexpr (Op == exact_op::div)
-            return num_bound(grid_of<R>) <= std::numeric_limits<imax>::max();
+            return num_bound(grid_of<R>) <= std::numeric_limits<std::int64_t>::max();
         else
             return true;
     }
@@ -55,7 +55,7 @@ inline constexpr bool point_scale =
 template <insidable Result, insidable Point, insidable X>
 constexpr Result scale_by_point(const X& x) noexcept {
     static_assert(max_index_of<Result> == max_index_of<X>);
-    const umax off = raw_offset<X>(x.raw());
+    const std::uint64_t off = raw_offset<X>(x.raw());
     return Result::from_raw(raw_from_offset<Result>(lower_of<Point> < 0 ? max_index_of<X> - off : off));
 }
 } // namespace beman::inside::detail

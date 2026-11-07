@@ -112,7 +112,7 @@ struct std::hash<beman::inside::inside<G, P>> {
         return h ^ (std::hash<V>{}(v) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2));
     }
     static constexpr std::size_t combine(std::size_t h, const auto& w) noexcept {
-        for (beman::inside::umax limb : w.Word)
+        for (std::uint64_t limb : w.Word)
             h = mix(h, limb);
         return h;
     }
@@ -123,7 +123,7 @@ struct std::hash<beman::inside::inside<G, P>> {
         else if constexpr (beman::inside::detail::fraction_storage<B>)
             return combine(combine(0, b.raw().Num), b.raw().Den); // a reduced fraction
         else if constexpr (beman::inside::detail::rational_storage<B>)
-            return mix(std::hash<beman::inside::umax>{}(b.raw().Num), b.raw().Den);
+            return mix(std::hash<std::uint64_t>{}(b.raw().Num), b.raw().Den);
         else if constexpr (beman::inside::detail::wide_index_storage<B>)
             return combine(0, b.raw());
         else

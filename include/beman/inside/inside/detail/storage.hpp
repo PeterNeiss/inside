@@ -57,7 +57,7 @@ template <typename B>
 concept point_storage = insidable<B> && std::same_as<raw_t<B>, point_slot>;
 
 // Its values need the exact wide paths (inside/detail/wide_value.hpp): a 64-bit
-// rational or imax cannot hold them.
+// rational or int64 cannot hold them.
 template <typename B>
 concept wide_index_storage = insidable<B> && wide_integer<raw_t<B>>;
 
@@ -107,8 +107,8 @@ inline constexpr bool wide_grid_numbers =
 // on {{-1.2e19, 1.2e19}, 1.5} the half-integers need numerators to 2.4e19.
 template <insidable B>
 inline constexpr bool lattice_past_rational =
-    grid_of<B>.Notch != 0 && (grid_int{std::numeric_limits<imax>::max()} < den_bound(grid_of<B>) ||
-                              grid_int{std::numeric_limits<umax>::max()} < num_bound(grid_of<B>));
+    grid_of<B>.Notch != 0 && (grid_int{std::numeric_limits<std::int64_t>::max()} < den_bound(grid_of<B>) ||
+                              grid_int{std::numeric_limits<std::uint64_t>::max()} < num_bound(grid_of<B>));
 
 // Values past the 64-bit rational: a wide index, grid numbers past 64 bits,
 // a lattice past it, or a fraction raw (a bounded continuous grid can need
@@ -138,19 +138,20 @@ inline constexpr bool value_indices_fit64 =
     notched<B> && fits_rational(lower_index_of<B>) && fits_rational(upper_index_of<B>);
 template <insidable B>
 inline constexpr rational lower_index64 = to_rational(lower_index_of<B>);
-// Lower/Notch as an imax value index: an integer within imax.
+// Lower/Notch as an int64 value index: an integer within int64.
 template <insidable B>
-inline constexpr bool lower_index_fits_imax = notched<B> && grid_denominator(lower_index_of<B>) == grid_int{1} &&
-                                              !(lower_index_of<B> < grid_rational{std::numeric_limits<imax>::min()}) &&
-                                              !(grid_rational{std::numeric_limits<imax>::max()} < lower_index_of<B>);
+inline constexpr bool lower_index_fits_int64 =
+    notched<B> && grid_denominator(lower_index_of<B>) == grid_int{1} &&
+    !(lower_index_of<B> < grid_rational{std::numeric_limits<std::int64_t>::min()}) &&
+    !(grid_rational{std::numeric_limits<std::int64_t>::max()} < lower_index_of<B>);
 template <insidable B>
 inline constexpr rational upper_index64 = to_rational(upper_index_of<B>);
 // Every value index of an anchored grid (value/Notch, an integer) fits
-// imax: value_index<imax> is exact. (uint64's do not.)
+// int64: value_index<std::int64_t> is exact. (uint64's do not.)
 template <insidable B>
-inline constexpr bool value_indices_fit_imax =
-    notched<B> && anchored<B> && !(lower_index_of<B> < grid_rational{std::numeric_limits<imax>::min()}) &&
-    !(grid_rational{std::numeric_limits<imax>::max()} < upper_index_of<B>);
+inline constexpr bool value_indices_fit_int64 =
+    notched<B> && anchored<B> && !(lower_index_of<B> < grid_rational{std::numeric_limits<std::int64_t>::min()}) &&
+    !(grid_rational{std::numeric_limits<std::int64_t>::max()} < upper_index_of<B>);
 
 // Index raw → double in one IEEE operation. On an anchored grid with Notch
 // p/q the value is J·p/q, J = raw + Lower/Notch. With |J·p| and q at most 2^53
@@ -158,26 +159,26 @@ inline constexpr bool value_indices_fit_imax =
 // quotient: what the rational decode gives (a power-of-two q compiles to a
 // multiply).
 struct index_double_codec {
-    bool   Ok;
-    imax   LowerIndex; // Lower / Notch
-    imax   P;          // Notch numerator
-    double Q;          // Notch denominator
+    bool         Ok;
+    std::int64_t LowerIndex; // Lower / Notch
+    std::int64_t P;          // Notch numerator
+    double       Q;          // Notch denominator
 };
 template <insidable B>
 inline constexpr index_double_codec index_double = [] {
     if constexpr (!integer_index_storage<B> || !anchored<B> || wide_valued<B> || !value_indices_fit64<B>)
         return index_double_codec{};
     else {
-        constexpr umax k53 = umax{1} << 53;
-        const rational n   = notch64<B>;
-        const auto     lo = lower_index64<B>, hi = upper_index64<B>;
+        constexpr std::uint64_t k53 = std::uint64_t{1} << 53;
+        const rational          n   = notch64<B>;
+        const auto              lo = lower_index64<B>, hi = upper_index64<B>;
         if (abs_den(n.Den) > k53)
             return index_double_codec{};
-        const umax m = lo.Num > hi.Num ? lo.Num : hi.Num; // max |J|
+        const std::uint64_t m = lo.Num > hi.Num ? lo.Num : hi.Num; // max |J|
         if (m > k53 / n.Num)
             return index_double_codec{};
         return index_double_codec{
-            true, signed_numerator(lo), static_cast<imax>(n.Num), static_cast<double>(abs_den(n.Den))};
+            true, signed_numerator(lo), static_cast<std::int64_t>(n.Num), static_cast<double>(abs_den(n.Den))};
     }
 }();
 
@@ -193,7 +194,7 @@ template <insidable B>
     else if constexpr (value_storage<B>)
         return static_cast<double>(b.raw());
     else if constexpr (constexpr auto c = index_double<B>; c.Ok)
-        return static_cast<double>((static_cast<imax>(b.raw()) + c.LowerIndex) * c.P) / c.Q;
+        return static_cast<double>((static_cast<std::int64_t>(b.raw()) + c.LowerIndex) * c.P) / c.Q;
     else
         return static_cast<double>(as_rational(b)); // exact, even where Raw·Notch passes 64 bits
 }
@@ -205,35 +206,35 @@ template <insidable R>
 inline constexpr bool divisor_excludes_zero = (lower_of<R> > 0) || (upper_of<R> < 0);
 
 // The interval's endpoints truncated toward zero, modulo 2^64 (exact on the
-// grids within imax that read them). Used by from_value, raw_lo, the fast
+// grids within int64 that read them). Used by from_value, raw_lo, the fast
 // paths.
 template <insidable B>
-inline constexpr imax lower_imax = static_cast<imax>(lower64<B>);
+inline constexpr std::int64_t lower_int64 = static_cast<std::int64_t>(lower64<B>);
 
 template <insidable B>
-inline constexpr imax upper_imax = static_cast<imax>(upper64<B>);
+inline constexpr std::int64_t upper_int64 = static_cast<std::int64_t>(upper64<B>);
 
-// The largest index, detail::max_index (overflow-safe: 0 when it doesn't fit umax,
+// The largest index, detail::max_index (overflow-safe: 0 when it doesn't fit uint64,
 // for grids with a wide index, which take the exact wide paths).
 template <insidable B>
-inline constexpr umax max_index_of = max_index(grid_of<B>);
+inline constexpr std::uint64_t max_index_of = max_index(grid_of<B>);
 
-// Every value — and, for index storage, every slot — fits imax. Gates the
-// integer fast paths that work in imax (raw_imax / to_value / raw_lo /
+// Every value — and, for index storage, every slot — fits int64. Gates the
+// integer fast paths that work in int64 (raw_int64 / to_value / raw_lo /
 // raw_hi); a grid reaching past int64 (e.g. {0, 2^64−1} in a uint64) takes
-// the exact rational / umax paths instead.
+// the exact rational / uint64 paths instead.
 template <insidable B>
-inline constexpr bool values_fit_imax =
-    !wide_valued<B> && fits_imax(interval_of<B>) && (value_storage<B> || std::in_range<imax>(max_index_of<B>));
+inline constexpr bool values_fit_int64 = !wide_valued<B> && fits_int64(interval_of<B>) &&
+                                         (value_storage<B> || std::in_range<std::int64_t>(max_index_of<B>));
 
-// Every value's reduced numerator and denominator fit imax too: a value
+// Every value's reduced numerator and denominator fit int64 too: a value
 // within int64 can still have a numerator past it ((2^63 + 1)/2).
 template <insidable B>
-inline constexpr bool fraction_fits_imax = [] {
-    if constexpr (!values_fit_imax<B>)
+inline constexpr bool fraction_fits_int64 = [] {
+    if constexpr (!values_fit_int64<B>)
         return false;
     else
-        return !(grid_int{std::numeric_limits<imax>::max()} < num_bound(grid_of<B>));
+        return !(grid_int{std::numeric_limits<std::int64_t>::max()} < num_bound(grid_of<B>));
 }();
 
 // Notch a non-zero integer and Lower an integer — every value is an
@@ -254,52 +255,53 @@ template <insidable B>
     return static_cast<raw_t<B>>(value);
 }
 
-// Widen raw storage to imax. Distinct from `to_value(b)` for notch-stored
+// Widen raw storage to int64. Distinct from `to_value(b)` for notch-stored
 // grids where raw is an index rather than a value; the names keep the two
-// intents apart although both are a `static_cast<imax>`.
+// intents apart although both are a `static_cast<std::int64_t>`.
 template <insidable B>
-    requires(!wide_index_storage<B>) // a wide raw does not fit imax: use the exact wide path
-constexpr imax raw_imax(B b) noexcept {
-    return static_cast<imax>(b.raw());
+    requires(!wide_index_storage<B>) // a wide raw does not fit int64: use the exact wide path
+constexpr std::int64_t raw_int64(B b) noexcept {
+    return static_cast<std::int64_t>(b.raw());
 }
 
 //-------------------------------------------------------------------------
 // Q-format integer fast path: for grids with integer Lower, unit-numerator
-// Notch 1/nd, and every value·nd within imax, value↔raw is pure integer
+// Notch 1/nd, and every value·nd within int64, value↔raw is pure integer
 // arithmetic. Shared
 // by operator rational(), from_value, and assignment::store.
 //-------------------------------------------------------------------------
 template <insidable B>
 inline constexpr bool q_format_fits = [] {
-    if constexpr (abs_den(lower64<B>.Den) != 1 || notch64<B>.Num != 1 || !values_fit_imax<B>)
+    if constexpr (abs_den(lower64<B>.Den) != 1 || notch64<B>.Num != 1 || !values_fit_int64<B>)
         return false;
-    else { // every value·nd (so Lower·nd and raw + Lower·nd) in imax
+    else { // every value·nd (so Lower·nd and raw + Lower·nd) in int64
         constexpr grid_rational nd{grid_denominator(notch_of<B>)};
-        return !(lower_of<B> * nd < grid_rational{std::numeric_limits<imax>::min()}) &&
-               !(grid_rational{std::numeric_limits<imax>::max()} < upper_of<B> * nd);
+        return !(lower_of<B> * nd < grid_rational{std::numeric_limits<std::int64_t>::min()}) &&
+               !(grid_rational{std::numeric_limits<std::int64_t>::max()} < upper_of<B> * nd);
     }
 }();
 
 // value → raw, integer math only.
 template <insidable B>
     requires q_format_fits<B>
-constexpr raw_t<B> q_format_encode(imax value) noexcept {
-    constexpr imax nd = abs_den(notch64<B>.Den);
-    return raw_cast<B>((value - lower_imax<B>)*nd);
+constexpr raw_t<B> q_format_encode(std::int64_t value) noexcept {
+    constexpr std::int64_t nd = abs_den(notch64<B>.Den);
+    return raw_cast<B>((value - lower_int64<B>)*nd);
 }
 
 // raw → rational, integer math only.
 template <insidable B>
     requires q_format_fits<B>
 constexpr rational q_format_decode(B b) noexcept {
-    constexpr imax nd = abs_den(notch64<B>.Den);
-    const imax     n  = raw_imax(b) + lower_imax<B> * nd;
-    if constexpr (std::has_single_bit(static_cast<umax>(nd))) {
+    constexpr std::int64_t nd = abs_den(notch64<B>.Den);
+    const std::int64_t     n  = raw_int64(b) + lower_int64<B> * nd;
+    if constexpr (std::has_single_bit(static_cast<std::uint64_t>(nd))) {
         // A power-of-two denominator reduces by the common trailing zeros
         // (0 reduces to 0/1).
-        const umax m = n < 0 ? umax{0} - static_cast<umax>(n) : static_cast<umax>(n);
-        const int  s = std::countr_zero(m | static_cast<umax>(nd));
-        rational   r;
+        const std::uint64_t m =
+            n < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(n) : static_cast<std::uint64_t>(n);
+        const int s = std::countr_zero(m | static_cast<std::uint64_t>(nd));
+        rational  r;
         r.Num = m >> s;
         r.Den = n < 0 ? -(nd >> s) : nd >> s;
         return r;
@@ -307,27 +309,29 @@ constexpr rational q_format_decode(B b) noexcept {
         return rational{n, nd};
 }
 
-// The value of an inside on an integer lattice as imax, which the caller
+// The value of an inside on an integer lattice as int64, which the caller
 // proves holds it (user code reads b.to<T>(), which reports overflow).
 template <insidable B>
     requires integer_lattice<B>
-[[nodiscard]] constexpr imax to_value(B b) noexcept {
+[[nodiscard]] constexpr std::int64_t to_value(B b) noexcept {
     if constexpr (value_storage<B>)
-        return raw_imax(b);
-    else // in umax: raw·Notch can pass imax although the value fits
-        return static_cast<imax>(static_cast<umax>(lower_imax<B>) + static_cast<umax>(raw_imax(b)) * notch64<B>.Num);
+        return raw_int64(b);
+    else // in uint64: raw·Notch can pass int64 although the value fits
+        return static_cast<std::int64_t>(static_cast<std::uint64_t>(lower_int64<B>) +
+                                         static_cast<std::uint64_t>(raw_int64(b)) * notch64<B>.Num);
 }
 
 // The callers store an integer of B (a fold count, a native quotient or
 // remainder) on an integer lattice with a nonzero notch (a carry point
 // {2, 2} has notch 1).
 template <insidable B>
-constexpr void from_value(B& b, imax val) {
+constexpr void from_value(B& b, std::int64_t val) {
     static_assert(notch64<B>.Num != 0 && abs_den(notch64<B>.Den) == 1 && abs_den(lower64<B>.Den) == 1);
     if constexpr (value_storage<B>)
         b = B::from_raw(raw_cast<B>(val));
     else
-        b = B::from_raw(raw_cast<B>((static_cast<umax>(val) - static_cast<umax>(lower_imax<B>)) / notch64<B>.Num));
+        b = B::from_raw(raw_cast<B>((static_cast<std::uint64_t>(val) - static_cast<std::uint64_t>(lower_int64<B>)) /
+                                    notch64<B>.Num));
 }
 
 //-------------------------------------------------------------------------
@@ -335,22 +339,22 @@ constexpr void from_value(B& b, imax val) {
 // raw is 0-based (raw_lo == 0); a value raw IS the value (raw_lo == Lower),
 // so an offset needs raw_lo<L> added back before storing.
 //-------------------------------------------------------------------------
-// (if constexpr: naming lower_imax instantiates it, and an index raw's
+// (if constexpr: naming lower_int64 instantiates it, and an index raw's
 // grid may have limits past 64 bits.)
 template <insidable B>
-inline constexpr imax raw_lo = [] {
+inline constexpr std::int64_t raw_lo = [] {
     if constexpr (integer_value_storage<B>)
-        return lower_imax<B>;
+        return lower_int64<B>;
     else
-        return imax{0};
+        return std::int64_t{0};
 }();
 
 template <insidable B>
-inline constexpr imax raw_hi = [] {
+inline constexpr std::int64_t raw_hi = [] {
     if constexpr (integer_value_storage<B>)
-        return upper_imax<B>;
+        return upper_int64<B>;
     else
-        return static_cast<imax>(max_index_of<B>);
+        return static_cast<std::int64_t>(max_index_of<B>);
 }();
 
 // The exact raw range: 0 .. step count for index storage, Lower .. Upper
@@ -366,7 +370,7 @@ constexpr int signed_value_bits(std::initializer_list<grid_int> vals) noexcept {
     return signed_value_bits(mn, mx);
 }
 
-// Signed work type for an exact intermediate of Bits value bits: imax for
+// Signed work type for an exact intermediate of Bits value bits: int64 for
 // everything within int64 (the builtin fast paths keep their codegen),
 // a wide_int beyond.
 template <int Bits>
@@ -393,18 +397,19 @@ template <raw_integer W>
     return f;
 }
 
-// Offset (umax or imax) → raw. Adds in umax: the bits are the same, but a
+// Offset (uint64 or int64) → raw. Adds in uint64: the bits are the same, but a
 // value raw of a grid reaching past int64 (offset + Lower ≥ 2^63) must not
-// overflow imax.
+// overflow int64.
 template <insidable L, std::integral W>
 constexpr raw_t<L> raw_from_offset(W offset) noexcept {
-    return raw_cast<L>(static_cast<umax>(offset) + static_cast<umax>(raw_lo<L>)); // raw_lo: 0 for an index raw
+    return raw_cast<L>(static_cast<std::uint64_t>(offset) +
+                       static_cast<std::uint64_t>(raw_lo<L>)); // raw_lo: 0 for an index raw
 }
 
-// Raw → offset (slot 0 at Lower), raw_from_offset's inverse, in umax.
+// Raw → offset (slot 0 at Lower), raw_from_offset's inverse, in uint64.
 template <insidable L, std::integral R>
-constexpr umax raw_offset(R raw) noexcept {
-    return static_cast<umax>(static_cast<imax>(raw)) - static_cast<umax>(raw_lo<L>);
+constexpr std::uint64_t raw_offset(R raw) noexcept {
+    return static_cast<std::uint64_t>(static_cast<std::int64_t>(raw)) - static_cast<std::uint64_t>(raw_lo<L>);
 }
 
 // The raw of L's Lower (low) or Upper endpoint: the exact constant for a
@@ -414,13 +419,13 @@ constexpr raw_t<L> endpoint_raw(bool low) noexcept {
     if constexpr (rational_storage<L>)
         return low ? lower64<L> : upper64<L>;
     else
-        return raw_from_offset<L>(low ? umax{0} : max_index_of<L>);
+        return raw_from_offset<L>(low ? std::uint64_t{0} : max_index_of<L>);
 }
 
 //-------------------------------------------------------------------------
 // integer_limits vs integer_lattice — easy to confuse, both needed.
 //   integer_limits<B>: Lower and Upper integer (Notch may be fractional,
-//     e.g. inside<{0,100}, 1/10>). Lets Lower/Upper be used as imax constants.
+//     e.g. inside<{0,100}, 1/10>). Lets Lower/Upper be used as int64 constants.
 //   integer_lattice<B>: every value an integer — an integer Lower and an
 //     integer non-zero Notch, or a point ⇒ integer_limits (not the converse).
 //     A continuous grid (Notch 0) is not one, whatever its limits.
@@ -455,12 +460,12 @@ consteval grid_int floor_quotient(const grid_rational& a, const grid_rational& b
 template <insidable B>
 inline constexpr grid_int lower_index_wide = notched<B> ? floor_quotient(lower_of<B>, notch_of<B>) : grid_int{0};
 template <insidable B>
-inline constexpr bool lower_index_odd = (static_cast<umax>(lower_index_wide<B>) & 1) != 0;
+inline constexpr bool lower_index_odd = (static_cast<std::uint64_t>(lower_index_wide<B>) & 1) != 0;
 
 // The rounding step onto L's lattice by rounding_for<L, P>: the exact
 // lattice offset q (v/Notch when anchored, (v − Lower)/Notch otherwise) as
 // a base index and whether to step one unit up from it. `negative`: v < 0.
-// A rational index never wraps, however far past imax it lies.
+// A rational index never wraps, however far past int64 it lies.
 struct lattice_step {
     rational Base;
     bool     Step;
@@ -473,8 +478,8 @@ template <insidable L, typename P>
     else {
         const rational k = round_to_integral(q, round_mode::floor);
         // q − k = r/d in [0, 1): the remainder of q's numerator, by integers.
-        const umax d = abs_den(q.Den), t = q.Num % d;
-        const umax r = q.Den < 0 && t != 0 ? d - t : t;
+        const std::uint64_t d = abs_den(q.Den), t = q.Num % d;
+        const std::uint64_t r = q.Den < 0 && t != 0 ? d - t : t;
         return {k, rounds_up(m, negative, classify_remainder(m, r, d), ((k.Num & 1) != 0) != lower_index_odd<L>)};
     }
 }
@@ -530,15 +535,15 @@ template <insidable L, typename P>
     if constexpr (!rounds_before_range_check<L, P>)
         return {raw_t<L>{}, false};
     else {
-        // A bound past imax: 1/imax still widens the limits by at least a
+        // A bound past int64: 1/int64 still widens the limits by at least a
         // step (only a prefilter: the exact rounding decides).
         constexpr rational step = [] {
             if constexpr (notched<L>)
                 return notch64<L>;
             else {
-                constexpr umax D = to_rational(grid_of<L>.MaxDenominator).Num;
-                constexpr umax M = static_cast<umax>(std::numeric_limits<imax>::max());
-                return rational{1, static_cast<imax>(D < M ? D : M)};
+                constexpr std::uint64_t D = to_rational(grid_of<L>.MaxDenominator).Num;
+                constexpr std::uint64_t M = static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+                return rational{1, static_cast<std::int64_t>(D < M ? D : M)};
             }
         }();
         constexpr rational lo = try_sub(lower64<L>, step).value_or(lower64<L>);
@@ -567,7 +572,8 @@ template <insidable L, typename P>
 // compared without overflow in wide integers (two limbs when c is a 64-bit
 // rational).
 template <insidable L, typename P>
-[[nodiscard]] constexpr umax round_offset_unanchored(umax q, umax r, umax den) noexcept {
+[[nodiscard]] constexpr std::uint64_t
+round_offset_unanchored(std::uint64_t q, std::uint64_t r, std::uint64_t den) noexcept {
     constexpr round_mode m        = rounding_for<L, P>;
     bool                 negative = false;
     if constexpr (lower_of<L> < 0) {
@@ -591,23 +597,24 @@ template <insidable L, typename P>
 // signed division. m is integral on every anchored grid, of any size; an
 // unanchored one rounds the offset against the value's sign.
 template <insidable L, typename P>
-[[nodiscard]] constexpr umax round_split(umax q, umax r, umax den) noexcept {
+[[nodiscard]] constexpr std::uint64_t round_split(std::uint64_t q, std::uint64_t r, std::uint64_t den) noexcept {
     if constexpr (!anchored<L>)
         return round_offset_unanchored<L, P>(q, r, den);
     else {
         // F < 0 exactly when m < 0 and q < −m: every q when −m passes 64 bits.
-        constexpr round_mode mode      = rounding_for<L, P>;
-        constexpr grid_int   mneg      = -lower_index_wide<L>;
-        constexpr bool       far_below = grid_int{std::numeric_limits<umax>::max()} < mneg;
-        constexpr umax       bound     = mneg.negative() || far_below ? umax{0} : static_cast<umax>(mneg);
-        const bool           negative  = far_below || q < bound;
+        constexpr round_mode    mode      = rounding_for<L, P>;
+        constexpr grid_int      mneg      = -lower_index_wide<L>;
+        constexpr bool          far_below = grid_int{std::numeric_limits<std::uint64_t>::max()} < mneg;
+        constexpr std::uint64_t bound =
+            mneg.negative() || far_below ? std::uint64_t{0} : static_cast<std::uint64_t>(mneg);
+        const bool negative = far_below || q < bound;
         return q + rounds_up(mode, negative, classify_remainder(mode, r, den), ((q & 1) != 0) != lower_index_odd<L>);
     }
 }
 
 // The offset quotient num/den rounded: round_split of its one division.
 template <insidable L, typename P>
-[[nodiscard]] constexpr umax round_quotient(umax num, umax den) noexcept {
+[[nodiscard]] constexpr std::uint64_t round_quotient(std::uint64_t num, std::uint64_t den) noexcept {
     return round_split<L, P>(num / den, num % den, den);
 }
 

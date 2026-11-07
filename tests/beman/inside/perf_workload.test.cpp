@@ -149,7 +149,7 @@ std::int64_t run_rational_store() {
         const auto ux = static_cast<unsigned long long>(x);
         // a fraction in [0, 255) whose denominator is not a power of two, so
         // the store rounds through the general fraction path
-        const R v{static_cast<umax>((ux >> 33) % 76500), static_cast<imax>(300 + (ux >> 60))};
+        const R v{static_cast<std::uint64_t>((ux >> 33) % 76500), static_cast<std::int64_t>(300 + (ux >> 60))};
         q = v;
         acc += static_cast<long>(q.raw());
     }
@@ -163,8 +163,8 @@ std::int64_t run_rational_compare() {
         lcg(x);
         const auto ux = static_cast<unsigned long long>(x);
         // large numerators and denominators: the cross products need 128 bits
-        const R a{(ux >> 3) | 1u, static_cast<imax>((ux >> 20) | 1u)};
-        const R b{(ux >> 5) | 1u, static_cast<imax>((ux >> 22) | 1u)};
+        const R a{(ux >> 3) | 1u, static_cast<std::int64_t>((ux >> 20) | 1u)};
+        const R b{(ux >> 5) | 1u, static_cast<std::int64_t>((ux >> 22) | 1u)};
         acc += (a < b) ? 1 : 0;
     }
     return acc;

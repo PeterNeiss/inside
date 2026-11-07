@@ -14,12 +14,12 @@ namespace {
 template <class B>
 void store(rng_t& g, int n, const char* mode, bool clamped, bool ties) {
     // Denominators that put values on midpoints (ties) or never (primes).
-    constexpr imax tie_dens[]   = {1, 2, 3, 6, 8, 16, 7919};
-    constexpr imax prime_dens[] = {7919, 10007, 65521};
+    constexpr std::int64_t tie_dens[]   = {1, 2, 3, 6, 8, 16, 7919};
+    constexpr std::int64_t prime_dens[] = {7919, 10007, 65521};
     for (int i = 0; i < n; ++i) {
-        const imax d = ties ? tie_dens[g() % 7] : prime_dens[g() % 3];
-        const imax k = static_cast<imax>(g() % static_cast<std::uint64_t>(28 * d + 1)) - 14 * d;
-        const auto v = rational{k, d};
+        const std::int64_t d = ties ? tie_dens[g() % 7] : prime_dens[g() % 3];
+        const std::int64_t k = static_cast<std::int64_t>(g() % static_cast<std::uint64_t>(28 * d + 1)) - 14 * d;
+        const auto         v = rational{k, d};
         std::cout << "S " << mode << ' ' << clamped << ' ' << lower_of<B> << ' ' << upper_of<B> << ' '
                   << notch_of<B> << ' ' << v << ' ';
         out(B::try_make(v));

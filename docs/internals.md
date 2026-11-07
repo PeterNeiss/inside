@@ -20,7 +20,7 @@ Contents: [1 grid invariants](#1-grid-invariants) ·
 [3 the Q-format path](#3-the-q-format-integer-path) ·
 [4 the policy cascade](#4-the-policy-cascade) ·
 [5 conversions](#5-conversions) ·
-[6 value extraction](#6-as_rational-raw_imax-and-to_value) ·
+[6 value extraction](#6-as_rational-raw_int64-and-to_value) ·
 [7 error vocabulary](#7-error-vocabulary) ·
 [8 header layout](#8-header-layout) ·
 [9 the units layer](#9-the-units-layer) ·
@@ -196,32 +196,32 @@ divides by the target notch and rounds by the policy's mode (`exact_index`),
 then runs the usual out-of-range cascade (`assign_exact`).
 
 **Integer `+` and `×`** run on value indices for every integer-raw grid:
-J_L·(N_L/N) + J_R·(N_R/N) and J_L·J_R. The work type is `imax` when
+J_L·(N_L/N) + J_R·(N_R/N) and J_L·J_R. The work type is `std::int64_t` when
 compile-time bounds prove no value index can overflow, so the compiler keeps
 the value ranges; otherwise an unsigned type as wide as the result raw, whose
 wrapping arithmetic still yields the exact raw (`index_work_t`). Compound
 `+=`/`-=` size one signed work type from the raw and delta ranges
 (`raw_work_t`), and clamp/wrap onto unit grids use `unit_fold`; both are
-`imax` for every grid within int64.
+`std::int64_t` for every grid within int64.
 
 ---
 
 ## 3. The Q-format integer path
 
 On a grid with an **integer Lower and a notch 1/nd** (1/256, 1/65536) whose
-values times nd fit `imax`, the conversion between value and raw is integer
+values times nd fit int64, the conversion between value and raw is integer
 arithmetic. The gate is `q_format_fits<B>` (`inside/detail/storage.hpp`):
 
 ```cpp
 abs_den(lower64<B>.Den) == 1                 // an integer Lower
 && notch64<B>.Num == 1                       // notch 1/nd
-&& values_fit_imax<B>
-&& Lower·nd and Upper·nd within imax         // so every value·nd, and raw + Lower·nd
+&& values_fit_int64<B>
+&& Lower·nd and Upper·nd within int64        // so every value·nd, and raw + Lower·nd
 ```
 
 | Helper | Direction | Used by |
 |---|---|---|
-| `q_format_encode<B>(imax)` | value → raw | `from_value`, `assignment::store` |
+| `q_format_encode<B>(std::int64_t)` | value → raw | `from_value`, `assignment::store` |
 | `q_format_decode<B>(B)` | raw → rational | `inside::operator rational()` |
 
 The value·nd clause matters because the result of a Q-format product can reach
@@ -236,7 +236,7 @@ without two gcd-reducing operations: with notch 1/K the offset
 g = gcd(aden, K), one `std::gcd` and three multiplies, then `round_quotient` on
 the rest. `round_quotient` does not change under reduction, so the point chosen
 is the rational path's. A compile-time fit check keeps every intermediate
-within `imax`; larger denominators take the rational path.
+within int64; larger denominators take the rational path.
 
 ---
 
@@ -300,7 +300,7 @@ explicit and truncates toward zero; `r.to<T>()` is the typed-error form, and
 
 ---
 
-## 6. `as_rational`, `raw_imax` and `to_value`
+## 6. `as_rational`, `raw_int64` and `to_value`
 
 Three helpers (`inside/detail/introspection.hpp`, `inside/detail/storage.hpp`), one per
 intent:
@@ -308,10 +308,10 @@ intent:
 | Helper | Returns | Use when |
 |---|---|---|
 | `detail::as_rational(x)` | `rational`, lossless | you want exact fraction arithmetic on `x` |
-| `raw_imax(b)` | the raw, widened to `imax` | you want the **raw** as a signed integer |
-| `to_value(b)` | the value, truncated to `imax` | you want the **value** as an integer |
+| `raw_int64(b)` | the raw, widened to `std::int64_t` | you want the **raw** as a signed integer |
+| `to_value(b)` | the value, truncated to `std::int64_t` | you want the **value** as an integer |
 
-Under `value_storage<B>` the raw is the value, so `raw_imax(b) == to_value(b)`.
+Under `value_storage<B>` the raw is the value, so `raw_int64(b) == to_value(b)`.
 For index storage they differ: `to_value` multiplies by the notch and adds
 Lower. That is one multiply-add on a whole-number grid and one truncating
 divide on a Q-format grid; only other grids go through `rational`.
@@ -411,11 +411,11 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 |---|---|
 | `inside/detail/config.hpp` | the build options and platform features (`__int128`, FMA, exceptions); the C++26-reflection `#error`; included first everywhere |
 | `inside/detail/core.hpp` | `inside<G, P>`: construction, compound assignment, `++`/`--`, `to`/`as`, `parse(first, last)`, hooks, `just`, `_ins` |
-| `inside/detail/numbers.hpp` | `umax`/`imax` (public names), the internal `add_overflow`/`sub_overflow`/`mul_overflow`, `plain_number`/`fractional`, `safe_abs` |
+| `inside/detail/numbers.hpp` | the internal `add_overflow`/`sub_overflow`/`mul_overflow`, `plain_number`/`fractional`, `wide_builtin`, `safe_abs` |
 | `inside/detail/call_policy.hpp` | `call_policy<F, E>`, `make_policy`, `with_flags<O>(pol)` (a flag as a call's policy) |
 | `inside/detail/error.hpp` | `errc`, `errc_message`, `inside_error`, the error handler, `raise`, `constexpr_error` |
 | `inside/detail/introspection.hpp` | `grid_of`, `flags_of`, `interval_of`, `lower_of`, `upper_of`, `notch_of`, the `insidable` concept (and `detail::numeric`), `raw_t`, `as_rational` |
-| `inside/detail/storage.hpp` | the storage concepts, `as_double`, `to_value`/`from_value`, `raw_imax`, the Q-format codec, `max_index_of`, `round_quotient` |
+| `inside/detail/storage.hpp` | the storage concepts, `as_double`, `to_value`/`from_value`, `raw_int64`, the Q-format codec, `max_index_of`, `round_quotient` |
 | `inside/detail/policy_ref.hpp` | `policy_ref`, `policy_buffer`: what `b.policy<F>()`, `b.policy(ec)` and `on_*()` return |
 | `inside/detail/lift.hpp` | `lift`, the combinator behind the lift operators; `is_expected_v`, `unwrap_t` |
 | `inside/detail/op_result.hpp` | what the result of `+`, `×` or `÷` needs: `exact_fits`, `exact_path_fits` (an exact wide path where the 64-bit kernels' intermediates could overflow), `point_scale` |

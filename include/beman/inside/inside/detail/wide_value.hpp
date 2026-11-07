@@ -159,7 +159,8 @@ constexpr wide_rational<K> reduced(const wide_rational<K>& f) noexcept {
     using I = wide_sint<K>;
     I a = abs(f.Num), b = f.Den;
     if (bit_width_of(a) <= 64 && bit_width_of(b) <= 64) { // the common case: one-limb Euclid
-        const umax an = static_cast<umax>(a), bn = static_cast<umax>(b), g = std::gcd(an, bn);
+        const std::uint64_t an = static_cast<std::uint64_t>(a), bn = static_cast<std::uint64_t>(b),
+                            g = std::gcd(an, bn);
         if (g == 1)
             return f;
         const I n{an / g};
@@ -324,13 +325,13 @@ constexpr T nearest_float(const wide_rational<K>& f) noexcept {
     const int drop = bw - keep; // ≥ 2
     U         m    = q >> drop;
     const U   low = q - (m << drop), half = U{1} << (drop - 1);
-    if (half < low || (low == half && (sticky || static_cast<umax>(m) % 2 != 0)))
+    if (half < low || (low == half && (sticky || static_cast<std::uint64_t>(m) % 2 != 0)))
         m += U{1};
     if (bit_width_of(m) - 1 - s + drop > lim::max_exponent - 1) // rounded up past the largest finite
         return neg ? -lim::infinity() : lim::infinity();
     // m ≤ 2^p is exact in T, limb by limb; the scaling by 2^(drop − s) in
     // steps of 2^±64 stays exact (every step lies between m and the result).
-    T x = std::accumulate(std::rbegin(m.Word), std::rend(m.Word), T{0}, [](T acc, umax w) {
+    T x = std::accumulate(std::rbegin(m.Word), std::rend(m.Word), T{0}, [](T acc, std::uint64_t w) {
         return acc * static_cast<T>(0x1p64) + static_cast<T>(w);
     });
     for (int k = drop - s; k != 0;) {
@@ -352,9 +353,9 @@ constexpr wide_sint<K> trunc(const wide_rational<K>& f) noexcept {
 // A reduced fraction as a 64-bit rational (its parts fit).
 template <std::size_t K>
 constexpr rational narrow_reduced(const wide_rational<K>& r) noexcept {
-    const bool neg = r.Num.negative();
-    const imax den = static_cast<imax>(r.Den);
-    return rational_from_parts(static_cast<umax>(neg ? -r.Num : r.Num), neg ? -den : den);
+    const bool         neg = r.Num.negative();
+    const std::int64_t den = static_cast<std::int64_t>(r.Den);
+    return rational_from_parts(static_cast<std::uint64_t>(neg ? -r.Num : r.Num), neg ? -den : den);
 }
 
 // The reduced value as a 64-bit rational, when a grid proves it fits.
@@ -368,8 +369,8 @@ template <std::size_t K>
 constexpr std::expected<rational, errc> try_rational(const wide_rational<K>& f) noexcept {
     using I      = wide_sint<K>;
     const auto r = reduced(f);
-    if ((r.Num.negative() ? -r.Num : r.Num) > I{std::numeric_limits<umax>::max()} ||
-        r.Den > I{std::numeric_limits<imax>::max()})
+    if ((r.Num.negative() ? -r.Num : r.Num) > I{std::numeric_limits<std::uint64_t>::max()} ||
+        r.Den > I{std::numeric_limits<std::int64_t>::max()})
         return std::unexpected{errc::overflow};
     return narrow_reduced(r);
 }
@@ -570,7 +571,7 @@ constexpr wide_rational<K> round_to_bound(const wide_rational<K>& x) {
 template <insidable L, typename P>
 constexpr rounded_raw<L> exact_round_into_range(const rational& v) {
     if constexpr (!notched<L>) { // a bounded continuous grid: onto its bound
-        // Near a limit it fits, unless the bound itself is past imax.
+        // Near a limit it fits, unless the bound itself is past int64.
         const auto r = try_rational(round_to_bound<L, P>(exact_of(v)));
         if (!r || !includes(interval_of<L>, *r))
             return {raw_t<L>{}, false};
@@ -586,7 +587,7 @@ constexpr rounded_raw<L> exact_round_into_range(const rational& v) {
 
 // The raw of slot offset `offset` (0 .. step count) in L's storage. W is
 // any signed integer holding the offset and the value index J = offset +
-// Lower/Notch: imax, a wide_int, a wide_sint.
+// Lower/Notch: int64, a wide_int, a wide_sint.
 template <insidable L, typename W>
 constexpr raw_t<L> raw_of_slot(const W& offset) noexcept {
     if constexpr (point_storage<L>)
@@ -630,7 +631,7 @@ inline constexpr raw_t<B> default_raw = []() -> raw_t<B> {
 // Lower/Notch, a value raw as is — value storage has notch 1).
 //---------------------------------------------------------------------------
 template <insidable Result>
-using wrap_work_t = std::conditional_t<wide_index_storage<Result>, raw_t<Result>, umax>;
+using wrap_work_t = std::conditional_t<wide_index_storage<Result>, raw_t<Result>, std::uint64_t>;
 
 // An operand's value-index range in `Unit`s: Lower/Unit .. Upper/Unit.
 template <insidable X, grid_rational Unit>
@@ -643,7 +644,7 @@ inline constexpr grid_int units_hi = exact_quotient(upper_of<X>, Unit);
 template <insidable Result, grid_rational Unit>
 inline constexpr bool divides_units = !(point_storage<Result> || (anchored<Result> && Unit == notch_of<Result>));
 
-// The work type of an integer + or ×: signed imax when every value index
+// The work type of an integer + or ×: signed int64 when every value index
 // involved (each operand in its unit, the result in its notch, and the
 // result's slot offsets) provably fits — then nothing wraps, and the
 // compiler keeps the value ranges, as the builtin paths always did — else
@@ -673,7 +674,7 @@ template <insidable     Result,
           grid_rational UR,
           grid_rational URes = notch_of<Result>>
 using index_work_t = std::conditional_t<(index_work_bits<Result, L, UL, R, UR, URes> <= 63),
-                                        imax,
+                                        std::int64_t,
                                         std::conditional_t<divides_units<Result, URes>,
                                                            work_int_t<index_work_bits<Result, L, UL, R, UR, URes>>,
                                                            wrap_work_t<Result>>>;
@@ -697,7 +698,7 @@ template <insidable X>
 inline constexpr grid_rational unit_of = point_grid<X> ? abs(lower_of<X>) : grid_of<X>.value_unit();
 
 // Two integer raws whose values, counted in the gcd of their value units,
-// fit imax.
+// fit int64.
 template <insidable L, insidable R>
 inline constexpr bool units_cmp_fits = [] {
     if constexpr (!integer_storage<L> || !integer_storage<R>)
