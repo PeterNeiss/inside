@@ -19553,7 +19553,7 @@ inline constexpr bool base_ok = [] {
     if constexpr (std::integral<decltype(Base)>)
         return Base >= 2;
     else if constexpr (grid_base<Base>)
-        return Base >= 2 && grid_denominator(Base) == grid_int{1};
+        return Base >= 2 && ::beman::inside::detail::grid_denominator(Base) == ::beman::inside::detail::grid_int{1};
     else
         return false;
 }();
@@ -19561,8 +19561,8 @@ template <insidable Out, auto Base, insidable In>
 [[nodiscard]] constexpr Out pow_base_into(In x) {
     static_assert(base_ok<Base>, "beman::inside::math::pow_base: Base must be an integer of at least 2");
     require_rounding<Out>();
-    if constexpr (grid_base<Base> && fits_imax(interval{Base, Base}))
-        return pow_base_into<Out, static_cast<imax>(grid_numerator(Base))>(x);
+    if constexpr (grid_base<Base> && ::beman::inside::detail::fits_imax(interval{Base, Base}))
+        return pow_base_into<Out, static_cast<imax>(::beman::inside::detail::grid_numerator(Base))>(x);
     else if constexpr (anchoring::unanchored_call<Out, In>)
         return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return pow_base_into<O, Base>(v); }, x);
     else {
