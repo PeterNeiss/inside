@@ -6,6 +6,7 @@
 
 #include <beman/inside/inside/detail/assignment.hpp>
 #include <beman/inside/inside/detail/call_policy.hpp>
+#include <beman/inside/inside/detail/lift.hpp>
 
 #include <expected>
 #include <tuple>
