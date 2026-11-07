@@ -910,3 +910,38 @@ TEST(RangeTest, uniform_draws_are_pinned_across_standard_libraries) {
 }
 
 } // namespace pinned_tests
+
+// Past 2^63 values (uint64, int64, a grid past 64 bits) values<T> is a
+// bidirectional view without a size: its position is a wide integer.
+namespace big_range_tests {
+using namespace beman::inside;
+
+TEST(RangeTest, values_past_2_to_the_63) {
+    using WS = inside<{-1180591620717411303424_g, 1180591620717411303424_g}>; // 2^71 + 1 values
+    using U  = std::remove_const_t<decltype(values<uint64>)>;
+    using R  = std::remove_const_t<decltype(values<WS>)>;
+    static_assert(std::ranges::bidirectional_range<U> && std::ranges::view<U> && std::ranges::borrowed_range<U>);
+    static_assert(!std::ranges::random_access_range<U> && !std::ranges::sized_range<U>);
+    static_assert(std::ranges::bidirectional_range<R> && !std::ranges::sized_range<R>);
+    static_assert(std::ranges::random_access_range<decltype(values<inside<{0, 100}>>)>);
+
+    std::vector<std::uint64_t> head;
+    for (const auto v : values<uint64> | std::views::take(3))
+        head.push_back(v.to<std::uint64_t>());
+    EXPECT_EQ(head, (std::vector<std::uint64_t>{0, 1, 2}));
+    EXPECT_TRUE(*std::ranges::prev(values<uint64>.end()) == 18446744073709551615u);
+    EXPECT_TRUE(*values<WS>.begin() == WS{-1180591620717411303424_g});
+    EXPECT_TRUE(*std::ranges::prev(values<WS>.end()) == WS{1180591620717411303424_g});
+    EXPECT_TRUE(*std::ranges::next(values<WS>.begin(), 2) == WS{-1180591620717411303422_g});
+
+    // A mid-range start wraps past the top, as on a smaller grid.
+    const inside_range<grid_of<uint64>> from_top{uint64{18446744073709551614u}};
+    auto                                it = from_top.begin();
+    EXPECT_TRUE(*it++ == 18446744073709551614u);
+    EXPECT_TRUE(*it++ == 18446744073709551615u);
+    EXPECT_TRUE(*it == 0);
+    EXPECT_TRUE(*--it == 18446744073709551615u);
+    EXPECT_TRUE(*std::ranges::prev(from_top.end()) == 18446744073709551613u);
+    EXPECT_FALSE(from_top.empty());
+}
+} // namespace big_range_tests

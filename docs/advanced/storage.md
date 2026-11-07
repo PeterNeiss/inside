@@ -119,8 +119,8 @@ auto steps  = h.index() - middle.index();                      // inside<{-2¹�
 ```
 
 `cursor<T>` steps through a big grid one notch at a time. `values<T>` is a
-sized random-access range, so it takes grids of fewer than 2⁶³ points; walk
-larger ones with a cursor, or jump with `index()` and `from_index`.
+sized random-access range up to 2⁶³ points and a bidirectional one past
+that; jump with `index()` and `from_index`.
 
 A continuous grid past 64 bits stores an exact fraction of fixed-width
 integers, sized from its denominator bound

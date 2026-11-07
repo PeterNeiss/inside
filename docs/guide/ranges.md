@@ -25,7 +25,9 @@ for (auto i : inside_range<{0, 9}>{5}) std::cout << i;   // 5 6 7 8 9 0 1 2 3 4:
 ```
 
 Both are random-access sized ranges, so views and algorithms compose with
-them, and `[i]`, `size()` and `back()` cost nothing:
+them, and `[i]`, `size()` and `back()` cost nothing. A grid of more than 2⁶³
+values (`uint64`, `int64`, a grid past 64 bits) gets a bidirectional range
+without a size instead: `begin`, `end`, `++`, `--`, `std::views::take`.
 
 ```cpp
 inside_range<{0, 9}> r;
