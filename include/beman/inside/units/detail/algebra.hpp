@@ -18,10 +18,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <meta>
 #include <ranges>
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 // The diagnostic of a π conversion asked to be exact (rescale, in()).
 #define BEMAN_INSIDE_UNITS_WHY_PI                                                                  \
@@ -33,31 +35,43 @@ using beman::inside::detail::grid_rational;
 
 //---------------------------------------------------------------------------
 // dimension — the exponents of the seven SI base dimensions
-// (L M T I Θ N J), and of up to four base dimensions you define
+// (L M T I Θ N J), and of any number of base dimensions you define
 // (base_dimension: currency, information). Angle is dimensionless, as in SI.
 //---------------------------------------------------------------------------
-struct base_dimension;
-
-namespace detail {
-inline constexpr std::size_t base_dimensions     = 7;
-inline constexpr std::size_t max_user_dimensions = 4;
-
-// A user base dimension to a power. By content (its name), as specs and units.
-struct user_exponent {
-    const base_dimension* D{};
-    std::int8_t           Exp{};
-};
-} // namespace detail
-
 // A base dimension of your own: inline constexpr base_dimension currency{"currency"}.
 struct base_dimension {
     std::string_view Name;
 };
 
+struct dimension;
+
+namespace detail {
+inline constexpr std::size_t base_dimensions = 7;
+
+// The base dimensions of your own of a dimension being computed, in
+// transient vectors: sorted by name, no zero exponents.
+struct user_exponents {
+    std::vector<const base_dimension*> D;
+    std::vector<std::int8_t>           E;
+
+    constexpr explicit user_exponents(const dimension& d);
+    // b^e merged in: an exponent reaching 0 drops out.
+    constexpr void add(const base_dimension* b, int e);
+    // d with these as its base dimensions of your own, interned.
+    constexpr dimension into(dimension d) const;
+};
+} // namespace detail
+
 struct dimension {
-    std::int8_t           Exp[detail::base_dimensions]{};
-    detail::user_exponent User[detail::max_user_dimensions]{}; // sorted by name, no zero exponents
-    std::int8_t           UserSize{0};
+    std::int8_t Exp[detail::base_dimensions]{};
+    // The base dimensions of your own, sorted by name, and their exponents
+    // (none zero): interned in static storage with std::define_static_array,
+    // as big grid numbers' limbs are, so a dimension holds any number of them.
+    // Two arrays of scalars, not one of pairs: GCC 16 cannot intern an array
+    // of a class type that equals one already interned.
+    const base_dimension* const* UserDim{};
+    const std::int8_t*           UserExp{};
+    std::size_t                  UserSize{0}; // tested instead of the pointers (see big_int::Size)
 
     // An exponent past ±127 is an error, not a wrap.
     static constexpr std::int8_t exponent(int e) {
@@ -66,18 +80,24 @@ struct dimension {
         return static_cast<std::int8_t>(e);
     }
 
+    // By content: a base dimension of your own is its name.
     friend constexpr bool operator==(const dimension& a, const dimension& b) {
-        return std::ranges::equal(a.Exp, b.Exp) && a.UserSize == b.UserSize &&
-               std::equal(a.User, a.User + a.UserSize, b.User, [](const auto& x, const auto& y) {
-                   return x.D->Name == y.D->Name && x.Exp == y.Exp;
-               });
+        if (!std::ranges::equal(a.Exp, b.Exp) || a.UserSize != b.UserSize)
+            return false;
+        for (std::size_t i = 0; i < a.UserSize; ++i)
+            if (a.UserDim[i]->Name != b.UserDim[i]->Name || a.UserExp[i] != b.UserExp[i])
+                return false;
+        return true;
     }
     friend consteval dimension operator*(dimension a, const dimension& b) {
         for (std::size_t i = 0; i < detail::base_dimensions; ++i)
             a.Exp[i] = exponent(a.Exp[i] + b.Exp[i]);
-        for (std::int8_t i = 0; i < b.UserSize; ++i)
-            a.add_user(b.User[i].D, b.User[i].Exp);
-        return a;
+        if (b.UserSize == 0) // SI only: nothing to intern
+            return a;
+        detail::user_exponents u{a};
+        for (std::size_t i = 0; i < b.UserSize; ++i)
+            u.add(b.UserDim[i], b.UserExp[i]);
+        return u.into(a);
     }
     friend consteval dimension operator/(const dimension& a, const dimension& b) { return a * b.pow(-1); }
     consteval dimension        pow(int n) const {
@@ -86,9 +106,12 @@ struct dimension {
         dimension r = *this;
         for (auto& e : r.Exp)
             e = exponent(e * n);
-        for (std::int8_t i = 0; i < r.UserSize; ++i)
-            r.User[i].Exp = exponent(r.User[i].Exp * n);
-        return r;
+        if (UserSize == 0)
+            return r;
+        detail::user_exponents u{r};
+        for (auto& e : u.E)
+            e = exponent(e * n);
+        return u.into(r);
     }
     // The n-th root; every exponent must divide.
     consteval dimension root(int n) const {
@@ -100,9 +123,12 @@ struct dimension {
         };
         for (auto& e : r.Exp)
             take(e);
-        for (std::int8_t i = 0; i < r.UserSize; ++i)
-            take(r.User[i].Exp);
-        return r;
+        if (UserSize == 0)
+            return r;
+        detail::user_exponents u{r};
+        for (auto& e : u.E)
+            take(e);
+        return u.into(r);
     }
 
     // b^e merged in: kept sorted by name, an exponent reaching 0 drops out.
@@ -110,6 +136,48 @@ struct dimension {
 };
 
 namespace detail {
+constexpr user_exponents::user_exponents(const dimension& d) {
+    for (std::size_t i = 0; i < d.UserSize; ++i) {
+        D.push_back(d.UserDim[i]);
+        E.push_back(d.UserExp[i]);
+    }
+}
+
+constexpr void user_exponents::add(const base_dimension* b, int e) {
+    if (e == 0)
+        return;
+    std::size_t i = 0;
+    while (i < D.size() && D[i]->Name < b->Name)
+        ++i;
+    if (i < D.size() && D[i]->Name == b->Name) {
+        E[i] = dimension::exponent(E[i] + e);
+        if (E[i] == 0) {
+            D.erase(D.begin() + i);
+            E.erase(E.begin() + i);
+        }
+        return;
+    }
+    D.insert(D.begin() + i, b);
+    E.insert(E.begin() + i, dimension::exponent(e));
+}
+
+constexpr dimension user_exponents::into(dimension d) const {
+    d.UserDim  = {};
+    d.UserExp  = {};
+    d.UserSize = 0;
+    if (D.empty())
+        return d;
+    if consteval {
+        const auto names = std::define_static_array(D);
+        d.UserDim        = names.data();
+        d.UserExp        = std::define_static_array(E).data();
+        d.UserSize       = names.size();
+        return d;
+    } else {
+        beman::inside::detail::constexpr_error<"units: a base dimension of your own is formed at compile time">();
+    }
+}
+
 // x^e merged into the sorted items[0, size): an item `same` as x takes the
 // summed exponent and drops out at 0; otherwise x goes in at its place by
 // `before`. False when items is full.
@@ -141,15 +209,9 @@ constexpr bool sorted_add(T (&items)[N], std::int8_t& size, T x, int e, Same sam
 } // namespace detail
 
 constexpr void dimension::add_user(const base_dimension* b, int e) {
-    auto name = [](const detail::user_exponent& u) { return u.D->Name; };
-    if (!detail::sorted_add(
-            User,
-            UserSize,
-            detail::user_exponent{b, 0},
-            e,
-            [&](const auto& a, const auto& c) { return name(a) == name(c); },
-            [&](const auto& a, const auto& c) { return name(a) < name(c); }))
-        beman::inside::detail::constexpr_error<"units: a dimension holds at most 4 base dimensions of your own">();
+    detail::user_exponents u{*this};
+    u.add(b, e);
+    *this = u.into(*this);
 }
 
 // The dimension of a base dimension of your own (its exponent 1).

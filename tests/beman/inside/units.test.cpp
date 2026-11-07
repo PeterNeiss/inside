@@ -350,6 +350,37 @@ inline constexpr base_dimension count_def{"count"};
 inline constexpr quantity_spec  adc_counts_def{"adc_counts", count_def};
 inline constexpr named_unit     cts_def{"cts", spec_c<adc_counts_def>};
 
+// Eight base dimensions of your own, four in each of two named units; one is
+// a class member.
+inline constexpr base_dimension gold_dim{"gold"};
+inline constexpr quantity_spec  gold_def{"gold", gold_dim};
+inline constexpr named_unit     gold_u{"g$", spec_c<gold_def>};
+inline constexpr base_dimension health_dim{"health"};
+inline constexpr quantity_spec  health_def{"health", health_dim};
+inline constexpr named_unit     health_u{"HP", spec_c<health_def>};
+inline constexpr base_dimension mana_dim{"mana"};
+inline constexpr quantity_spec  mana_def{"mana", mana_dim};
+inline constexpr named_unit     mana_u{"MP", spec_c<mana_def>};
+struct stamina {
+    static constexpr base_dimension dim{"stamina"};
+    static constexpr quantity_spec  spec{"stamina", dim};
+    static constexpr named_unit     st{"st", spec_c<spec>};
+};
+inline constexpr base_dimension xp_dim{"xp"};
+inline constexpr quantity_spec  xp_def{"xp", xp_dim};
+inline constexpr named_unit     xp_u{"XP", spec_c<xp_def>};
+inline constexpr base_dimension pixel_dim{"pixel"};
+inline constexpr quantity_spec  pixel_def{"pixel", pixel_dim};
+inline constexpr named_unit     pixel_u{"px", spec_c<pixel_def>};
+inline constexpr base_dimension packet_dim{"packet"};
+inline constexpr quantity_spec  packet_def{"packet", packet_dim};
+inline constexpr named_unit     packet_u{"pkt", spec_c<packet_def>};
+inline constexpr base_dimension token_dim{"token"};
+inline constexpr quantity_spec  token_def{"token", token_dim};
+inline constexpr named_unit     token_u{"tok", spec_c<token_def>};
+inline constexpr named_unit loot_def{"loot", unit_c<gold_u> * unit_c<health_u> * unit_c<mana_u> * unit_c<stamina::st>};
+inline constexpr named_unit net_def{"net", unit_c<xp_u> * unit_c<pixel_u> * unit_c<packet_u> * unit_c<token_u>};
+
 template <class A, class B>
 concept can_add = requires(const A& a, const B& b) { a + b; };
 template <class A, class B>
@@ -481,6 +512,28 @@ TEST(UnitsApiTest, base_dimensions_of_your_own) {
     static_assert(dimension_of(square(euro).value).root(2) == dimension_of(euro.value));
     static_assert(dimension_of((euro / cent).value) == dim_one);
     EXPECT_EQ(to_string((just<3> * euro) / (just<2> * si::kilogram)), "1.5 EUR/kg");
+}
+
+TEST(UnitsApiTest, any_number_of_base_dimensions_of_your_own) {
+    constexpr auto      loot  = unit_c<loot_def>;
+    constexpr auto      net   = unit_c<net_def>;
+    constexpr dimension eight = dimension_of((loot * net).value);
+    static_assert(eight.UserSize == 8);
+    // By content, in any order.
+    static_assert(eight == dimension_of((net * loot).value));
+    static_assert(eight == dimension_of(token_dim) * dimension_of(packet_dim) * dimension_of(pixel_dim) *
+                               dimension_of(xp_dim) * dimension_of(stamina::dim) * dimension_of(mana_dim) *
+                               dimension_of(health_dim) * dimension_of(gold_dim));
+    static_assert(eight.pow(3).root(3) == eight);
+    static_assert(eight / eight == dim_one);
+    static_assert(dimension_of((loot * net / si::second).value) == eight / dim_time);
+
+    const auto both  = (just<2> * loot) * (just<3> * net);
+    const auto seven = both / (just<1> * unit_c<gold_u>);
+    EXPECT_EQ(to_string(both + both), "12 loot net");
+    EXPECT_EQ(to_string(both / (just<2> * si::second)), "3 loot net/s");
+    static_assert(dimension_of(std::remove_cvref_t<decltype(seven)>::reference.U).UserSize == 7); // gold⁰ drops out
+    static_assert(!can_add<decltype(both), decltype(seven)>);
 }
 
 TEST(UnitsApiTest, adc_counts) {
