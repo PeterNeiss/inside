@@ -785,3 +785,30 @@ TEST(ConversionsPinnedTest, predicates_on_a_bound_past_64_bits) {
     EXPECT_TRUE(parse_exact<F>("0.5").has_value());
 }
 } // namespace pinned_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+using detail::rational;
+
+// to<long double>() and to<float>() of exact values past the type's range
+// are ±infinity, below its least subnormal 0; zero is 0.
+TEST(ConversionsArmTest, floats_of_values_past_the_range) {
+    using Big = inside<{{0, detail::grid_rational{detail::grid_int{1} << 20000}},
+                        detail::grid_rational{detail::grid_int{1} << 19990}}>;
+    EXPECT_EQ(Big::from_index(1024_ins).to<long double>(), std::numeric_limits<long double>::infinity());
+    EXPECT_EQ(Big::from_index(1024_ins).to<float>(), std::numeric_limits<float>::infinity());
+    using F = inside<{0, 340282366920938463463374607431768211456_g}>; // to 2^128
+    EXPECT_EQ(F{just<340282366920938463463374607431768211456_g>}.to<float>(), std::numeric_limits<float>::infinity());
+    using T = inside<{{0, 1}, max_denominator{detail::grid_rational{detail::grid_int{1} << 20000}}}>;
+    EXPECT_EQ((*parse_exact<T>("0")).to<long double>(), 0.0L);
+    EXPECT_EQ((*parse_exact<T>("0x1p-19999")).to<long double>(), 0.0L);
+}
+
+// rational{long double}: |v| ≥ 2^64 raises; finer than 2^-62 is truncated.
+TEST(ConversionsArmTest, rational_of_a_long_double) {
+    EXPECT_THROW((void)rational{test::at_run_time(1e30L)}, inside_error);
+    EXPECT_EQ(rational{test::at_run_time(1e-30L)}, 0);
+    EXPECT_EQ(rational{test::at_run_time(1.0L + 0x1p-63L)}, 1);
+    EXPECT_EQ(rational{test::at_run_time(0.0)}, 0);
+}
+} // namespace reached_arms_tests

@@ -590,3 +590,17 @@ TEST(TextArmTest, to_string_of_a_huge_grid_number) {
     EXPECT_EQ(s.substr(0, 10), "1412467032");
 }
 } // namespace reached_arms_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+
+// Text past the wide parse stands in by its magnitude: tiny rounds to 0,
+// huge is past the grid.
+TEST(TextArmTest, numbers_past_the_wide_parse) {
+    using I = inside<{{0, 10}, per<1024>}, round_nearest>;
+    EXPECT_TRUE((*parse<I>("1e-5000") == 0));
+    EXPECT_TRUE((*parse<I>("0x1p-5000") == 0));
+    EXPECT_TRUE((*parse<I>("0.0001e-5000") == 0));
+    EXPECT_EQ(parse<I>("1e5000").error(), errc::overflow);
+}
+} // namespace reached_arms_tests
