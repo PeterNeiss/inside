@@ -575,16 +575,21 @@ struct ahyp_core {
     }
 };
 
-// b^e for b > 0: e^(e·log b). Exact for e = 0, b = 1, and e = p/q (q ≤ 64)
-// when b's numerator and denominator are perfect q-th powers (4^0.5 = 2,
-// 2.25^1.5 = 3.375) and the power fits pow_limbs: such a result can sit on a
-// rounding boundary, where no approximation decides.
-inline constexpr std::size_t pow_limbs = 32; // exact integer powers up to 2048 bits
+// b^e for b > 0: e^(e·log b). Exact for e = 0, b = 1, and e = p/q when b's
+// numerator and denominator are perfect q-th powers (4^0.5 = 2, 2.25^1.5 =
+// 3.375) and the power fits PL limbs: such a result can sit on a rounding
+// boundary, where no approximation decides. PL is sized from Out: a larger
+// exact power lies past Out's range or off its notch, where the policy
+// takes it as any value. At least pow_limbs (2048 bits).
+inline constexpr std::size_t pow_limbs = 32;
+template <insidable Out, int KMax>
+inline constexpr std::size_t pow_exact_limbs =
+    std::max(pow_limbs, limbs_for_bits(KMax + 2 * bit_width_of(den_bound(grid_of<Out>)) + 16));
 
 // The q-th root of n ≥ 0 when n is a perfect q-th power: bit by bit, the
 // largest r with r^q ≤ n, then r^q == n.
-constexpr std::optional<wide_sint<pow_limbs>> exact_root(const wide_sint<pow_limbs>& n, int q) noexcept {
-    using P = wide_sint<pow_limbs>;
+template <class P>
+constexpr std::optional<P> exact_root(const P& n, int q) noexcept {
     if (q == 1 || n.is_zero() || n == P{1})
         return n;
     auto at_most = [&](const P& c) { // c^q ≤ n, stopping once past n
@@ -603,33 +608,32 @@ constexpr std::optional<wide_sint<pow_limbs>> exact_root(const wide_sint<pow_lim
 }
 
 // b^(p/q), q > 0 and p/q reduced, is rational exactly when b's numerator and
-// denominator are perfect q-th powers (the rational root theorem). The size
-// limits leave out only results no 64-bit grid can hold as a boundary: q > 64
-// needs a part of b past 2^64, and a power past 2040 bits is far beyond any
-// such grid's range or notch.
-template <std::size_t EB, std::size_t EE>
-constexpr std::optional<wide_rational<pow_limbs>> exact_pow(const wide_rational<EB>& b,
-                                                            const wide_rational<EE>& e) noexcept {
-    using P = wide_sint<pow_limbs>;
+// denominator are perfect q-th powers (the rational root theorem). A part
+// past 1 that is a q-th power has at least q bits, so q is bounded by the
+// parts' widths; the roots run as wide as b, the power in PL limbs.
+template <std::size_t PL, std::size_t EB, std::size_t EE>
+constexpr std::optional<wide_rational<PL>> exact_pow(const wide_rational<EB>& b, const wide_rational<EE>& e) noexcept {
+    using P = wide_sint<PL>;
+    using Q = wide_sint<std::max(PL, EB + 1)>;
     if (is_zero(e) || is_one(b))
-        return wide_rational<pow_limbs>{P{1}, P{1}};
+        return wide_rational<PL>{P{1}, P{1}};
     const wide_rational<EE> re = reduced(e); // p/q, q > 0
-    if (bit_width_of(re.Den) > 7 || 64 < static_cast<imax>(re.Den))
-        return std::nullopt;
-    const int               q  = static_cast<int>(static_cast<imax>(re.Den));
-    const auto              k  = re.Num;
-    const auto              ak = abs(k);
     const wide_rational<EB> r  = reduced(b);
+    if (bit_width_of(re.Den) > 31 || std::max(bit_width_of(r.Num), bit_width_of(r.Den)) < static_cast<imax>(re.Den))
+        return std::nullopt;
+    const int  q  = static_cast<int>(static_cast<imax>(re.Den));
+    const auto k  = re.Num;
+    const auto ak = abs(k);
     // b^(1/q) first: both parts perfect q-th powers, else irrational.
-    const auto rn = exact_root(P{r.Num}, q), rd = exact_root(P{r.Den}, q);
+    const auto rn = exact_root(Q{r.Num}, q), rd = exact_root(Q{r.Den}, q);
     if (!rn || !rd)
         return std::nullopt;
     const int bits = bit_width_of(*rn) + bit_width_of(*rd);
-    if (bit_width_of(ak) > 12 || static_cast<imax>(ak) * bits > 64 * static_cast<imax>(pow_limbs) - 8)
+    if (bit_width_of(ak) > 31 || static_cast<imax>(ak) * bits > 64 * static_cast<imax>(PL) - 8)
         return std::nullopt;
     const unsigned power = static_cast<unsigned>(static_cast<imax>(ak));
-    const P        n = pow_by_squaring(*rn, power), d = pow_by_squaring(*rd, power);
-    return k.negative() ? inverse(wide_rational<pow_limbs>{n, d}) : wide_rational<pow_limbs>{n, d};
+    const P        n = pow_by_squaring(static_cast<P>(*rn), power), d = pow_by_squaring(static_cast<P>(*rd), power);
+    return k.negative() ? inverse(wide_rational<PL>{n, d}) : wide_rational<PL>{n, d};
 }
 
 // ConstBase, when nonzero, is the base known at compile time (pow_base): its
@@ -640,11 +644,12 @@ template <std::size_t EB,
           int         KMax,
           int         BitsB     = fraction_bits<EB>,
           int         BitsE     = fraction_bits<EE>,
-          imax        ConstBase = 0>
+          imax        ConstBase = 0,
+          std::size_t PL        = pow_limbs>
 struct pow_core {
-    wide_rational<EB>                                 B;
-    wide_rational<EE>                                 Exp;
-    constexpr std::optional<wide_rational<pow_limbs>> exact() const { return exact_pow(B, Exp); }
+    wide_rational<EB>                          B;
+    wide_rational<EE>                          Exp;
+    constexpr std::optional<wide_rational<PL>> exact() const { return exact_pow<PL>(B, Exp); }
     template <int W>
     constexpr auto run() const {
         // log b at MagE more bits, so e·log b (|e| < 2^MagE) is within 2 units

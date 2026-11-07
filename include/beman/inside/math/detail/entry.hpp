@@ -536,12 +536,15 @@ template <insidable Out, insidable InB, insidable InE>
                 } else
                     return Out{e.Num.is_zero() ? 1 : 0};
             }
-            using core = engine::pow_core<engine::input_limbs<InB>,
-                                          engine::input_limbs<InE>,
-                                          engine::in_mag<InE>,
-                                          engine::pow_out_kmax<Out, InB, InE>,
-                                          engine::input_bits<InB>,
-                                          engine::input_bits<InE>>;
+            constexpr int KMax = engine::pow_out_kmax<Out, InB, InE>;
+            using core         = engine::pow_core<engine::input_limbs<InB>,
+                                                  engine::input_limbs<InE>,
+                                                  engine::in_mag<InE>,
+                                                  KMax,
+                                                  engine::input_bits<InB>,
+                                                  engine::input_bits<InE>,
+                                                  0,
+                                                  engine::pow_exact_limbs<Out, KMax>>;
             if constexpr (pow_pole<InB, InE>)
                 return engine::evaluate_checked<Out, engine::start_bits<Out>>(core{b, engine::exact_input(exp)});
             else
@@ -564,13 +567,15 @@ template <insidable Out, imax Base, insidable In>
     if constexpr (anchoring::unanchored_call<Out, In>)
         return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return pow_base_into<O, Base>(v); }, x);
     else {
-        using core = engine::pow_core<2,
-                                      engine::input_limbs<In>,
-                                      engine::in_mag<In>,
-                                      engine::pow_base_out_kmax<Out, In, Base>,
-                                      66,
-                                      engine::input_bits<In>,
-                                      Base>;
+        constexpr int KMax = engine::pow_base_out_kmax<Out, In, Base>;
+        using core         = engine::pow_core<2,
+                                              engine::input_limbs<In>,
+                                              engine::in_mag<In>,
+                                              KMax,
+                                              66,
+                                              engine::input_bits<In>,
+                                              Base,
+                                              engine::pow_exact_limbs<Out, KMax>>;
         BEMAN_INSIDE_ENGINE_TIERS(
             Out,
             (engine::fp_tier<Out, engine::fp_pow_base, In> && engine::in_max<In> <= 1000),
