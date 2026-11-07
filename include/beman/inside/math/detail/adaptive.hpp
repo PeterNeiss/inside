@@ -281,12 +281,8 @@ constexpr wide_rational<KR> scaled_rational(const wide_sint<K>& y, int W) noexce
 // one-limb divisions; the rounding reads r and R exactly (see below).
 template <insidable Out>
 inline constexpr bool notch_fits64 = [] {
-    if constexpr (!notched<Out>)
-        return false;
-    else {
-        const grid_int p = grid_numerator(notch_of<Out>), q = grid_denominator(notch_of<Out>);
-        return p.fits_limb() && q.fits_limb();
-    }
+    static_assert(notched<Out>); // (decide and quick_slot: a notched Out's slots)
+    return grid_numerator(notch_of<Out>).fits_limb() && grid_denominator(notch_of<Out>).fits_limb();
 }();
 
 // v / d for a small positive d, truncating toward zero (series terms).

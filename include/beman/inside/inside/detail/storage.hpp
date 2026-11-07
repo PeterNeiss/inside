@@ -471,18 +471,21 @@ template <insidable L, typename P>
 // result or step past the rational range is errc::overflow.
 template <insidable L, typename P>
 [[nodiscard]] constexpr std::expected<rational, errc> try_round_to_lattice(rational v) {
-    static_assert(notched<L>);
-    const auto q = anchored<L>
-                       ? try_div(v, notch64<L>)
-                       : try_sub(v, lower64<L>).and_then([](rational off) { return try_div(off, notch64<L>); });
-    if (!q)
-        return q;
-    const auto [base, step] = lattice_step_of<L, P>(*q, v < 0);
-    const auto j            = step ? try_add(base, rational{1}) : std::expected<rational, errc>{base};
-    if (!j)
-        return j;
-    const auto rel = try_mul(*j, notch64<L>);
-    return (rel && !anchored<L>) ? try_add(lower64<L>, *rel) : rel;
+    if constexpr (!notched<L>) // a point: apply_wrap's wrap arm is formed, never run (dispatch rejects it)
+        return v;
+    else {
+        const auto q = anchored<L>
+                           ? try_div(v, notch64<L>)
+                           : try_sub(v, lower64<L>).and_then([](rational off) { return try_div(off, notch64<L>); });
+        if (!q)
+            return q;
+        const auto [base, step] = lattice_step_of<L, P>(*q, v < 0);
+        const auto j            = step ? try_add(base, rational{1}) : std::expected<rational, errc>{base};
+        if (!j)
+            return j;
+        const auto rel = try_mul(*j, notch64<L>);
+        return (rel && !anchored<L>) ? try_add(lower64<L>, *rel) : rel;
+    }
 }
 
 // Round, then range-check. Lower and Upper are lattice points, so rounding
