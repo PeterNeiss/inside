@@ -813,3 +813,136 @@ TEST(MathTest, copysign_takes_the_magnitude_and_the_sign) {
 }
 
 } // namespace pinned_tests
+
+// Arms no other test reaches, found by the reachability audit (gcov and an
+// `if constexpr` probe over the suite).
+namespace reached_arms_tests {
+using namespace beman::inside;
+using detail::rational;
+
+// A bounded continuous Out takes the fraction nearest the result on its bound.
+TEST(MathArmTest, into_a_continuous_output) {
+    using Oc = inside<{{0, 2}, max_denominator{1000}}, round_nearest>;
+    EXPECT_EQ(rational{math::sqrt_into<Oc>(inside<{{0, 4}, per<16>}>{2})}, (rational{1393, 985}));
+}
+
+// pow over a base grid that stays above 0; pow_base into an unanchored Out
+// (2^5 = 32 is a tie between 31.5 and 32.5: away from zero); sqrt of a
+// rational raw.
+TEST(MathArmTest, pow_on_a_positive_base_and_pow_base_unanchored) {
+    using B = inside<{{1, 4}, per<4>}>;
+    EXPECT_TRUE(math::pow(B{2}, inside<{0, 3}>{3}) == 8);
+    using Ou = inside<{{0.5_r, 100.5_r}, 1}, round_nearest>;
+    EXPECT_EQ((rational{math::pow_base_into<Ou, 2>(inside<{0, 6}>{5})}), (rational{65, 2}));
+    using R = inside<{{1, 4}, max_denominator{7}}>;
+    using O = inside<{{0, 2}, per<1024>}, round_nearest>;
+    EXPECT_EQ(rational{math::sqrt_into<O>(R{rational{16, 7}})}, (rational{1548, 1024})); // √(16/7) ≈ 1.51186
+}
+
+// fmod_into: a zero divisor, and a quotient past imax taken exactly.
+TEST(MathArmTest, fmod_past_the_64_bit_quotient) {
+    using X  = inside<{{0, 4611686018427387904_g}, max_denominator{2}}>; // [0, 2^62]
+    using Y  = inside<{{0, 1}, max_denominator{3}}>;
+    using Of = inside<{{0, 1}, max_denominator{6}}>;
+    const X x{rational{(umax{1} << 63) - 1, 2}}; // 2^62 − 1/2
+    EXPECT_EQ(math::fmod_into<Of>(x, Y{test::at_run_time(0)}).error(), errc::division_by_zero);
+    EXPECT_EQ(rational{*math::fmod_into<Of>(x, Y{rational{1, 2}})}, 0);
+    EXPECT_EQ(rational{*math::fmod_into<Of>(x, Y{rational{1, 3}})}, (rational{1, 6}));
+}
+
+// pown has no result for a negative exponent.
+TEST(MathArmTest, pown_of_a_negative_exponent_is_undefined) {
+    static_assert(!math::detail::pown_defined<-1, inside<{0, 4}>>);
+}
+} // namespace reached_arms_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+using detail::rational;
+
+// Counts in [2^63, 2^64) read past imax; gcd and lcm on fractional lattices
+// (3/2 and 5/6 on 1/6: gcd 1/6, lcm 15/2) and past 64 bits.
+TEST(MathArmTest, integer_functions_past_imax_and_on_fractions) {
+    using N = inside<{0, 18446744073709551615_g}>;
+    EXPECT_TRUE(math::binomial(N{just<18446744073709551615_g>}, inside<{0, 1}>{1}) == just<18446744073709551615_g>);
+    using A = inside<{{0, 10}, per<4>}>;
+    using B = inside<{{0, 10}, per<6>}>;
+    EXPECT_EQ(rational{math::gcd(A{rational{3, 2}}, B{rational{5, 6}})}, (rational{1, 6}));
+    EXPECT_EQ(rational{math::lcm(A{rational{3, 2}}, B{rational{5, 6}})}, (rational{15, 2}));
+    using W = inside<{0, 1180591620717411303424_g}>; // 2^70
+    EXPECT_TRUE(math::gcd(W{just<1180591620717411303424_g>}, W{12}) == 4);
+    EXPECT_TRUE(math::lcm(W{just<36893488147419103232_g>}, W{6}) == just<110680464442257309696_g>); // 3·2^65
+}
+} // namespace reached_arms_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+
+// A fallible function (pow with 0 to a negative power possible) into an
+// unanchored Out passes its error on, through the integer bracket and, for
+// an Out past 64 bits, the exact midpoint. (2^2 = 4 is a tie: 4.5.)
+TEST(MathArmTest, fallible_function_into_an_unanchored_output) {
+    using B  = inside<{0, 4}>;
+    using X  = inside<{-2, 2}>;
+    using Ou = inside<{{0.5_r, 100.5_r}, 1}, round_nearest>;
+    using Ow = inside<{{0.5_r, 2361183241434822606849_g / 2}, 1}, round_nearest>; // to 2^70 + 1/2
+    EXPECT_EQ(detail::rational{*math::pow_into<Ou>(B{2}, X{2})}, (detail::rational{9, 2}));
+    EXPECT_EQ(math::pow_into<Ou>(B{0}, X{-1}).error(), errc::division_by_zero);
+    EXPECT_TRUE((*math::pow_into<Ow>(B{2}, X{2}) == just<9, 2>));
+    EXPECT_EQ(math::pow_into<Ow>(B{0}, X{-1}).error(), errc::division_by_zero);
+}
+} // namespace reached_arms_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+using detail::rational;
+
+// A wrap output of pow over a base grid above 0 (3^2 = 9 folds to 1); a
+// function into a wide unanchored Out and into a wide-index Out.
+TEST(MathArmTest, wrap_and_wide_outputs) {
+    EXPECT_TRUE((math::pow_into<inside<{0, 7}, wrap | round_nearest>>(inside<{1, 4}>{3}, inside<{0, 3}>{2}) == 1));
+    using Ow = inside<{{0.5_r, 2361183241434822606849_g / 2}, 1}, round_nearest>; // to 2^70 + 1/2
+    EXPECT_TRUE((math::sqrt_into<Ow>(inside<{0, 100}>{50}) == just<15, 2>));      // √50 ≈ 7.07
+    using Wn = inside<{{0, 2}, 1_g / 1180591620717411303424_g}, round_nearest>;   // notch 2^-70
+    static_assert(detail::wide_index_storage<Wn>);
+    EXPECT_TRUE((math::sqrt_into<Wn>(inside<{0, 4}>{4}) == 2));
+}
+
+// pown is undefined past the fraction cap: from x^64 on a continuous base,
+// so x^128 and x^129 through their halves.
+TEST(MathArmTest, pown_past_the_fraction_cap) {
+    using C = inside<{{0, 1}, max_denominator{1000}}>;
+    static_assert(math::detail::pown_defined<32, C> && !math::detail::pown_defined<64, C>);
+    static_assert(!math::detail::pown_defined<128, C> && !math::detail::pown_defined<129, C>);
+}
+
+// The integer functions past 64 bits: gcd on a wide even lattice, a
+// multinomial past 2^64, gcd and lcm on a wide fractional lattice.
+TEST(MathArmTest, integer_functions_past_64_bits) {
+    using E = inside<{{0, 2361183241434822606848_g}, 2}>;
+    EXPECT_TRUE((math::gcd(E{just<1180591620717411303424_g>}, E{12}) == 4));
+    EXPECT_TRUE((math::multinomial(inside<{0, 40}>{40}, inside<{0, 40}>{40}) == just<107507208733336176461620_g>));
+    using A = inside<{{0, 1180591620717411303424_g}, per<2>}>;
+    const A a{just<1180591620717411303425_g / 2>}, b{rational{3, 2}}; // (2^70 + 1)/2, 3/2
+    EXPECT_TRUE((math::gcd(a, b) == just<1, 2>));
+    EXPECT_TRUE((math::lcm(a, b) == just<3541774862152233910275_g / 2>));
+}
+
+// ⌊x⌋ on [3.25, 3.75] and ⌈x⌉ on [0.25, 0.75] have one value each: the
+// value-index path stores a point.
+TEST(MathArmTest, floor_and_ceil_onto_a_point) {
+    const auto f = math::floor(inside<{{rational{13, 4}, rational{15, 4}}, per<4>}>{rational{7, 2}});
+    static_assert(detail::point_storage<std::remove_cvref_t<decltype(f)>>);
+    EXPECT_TRUE(f == 3);
+    EXPECT_TRUE(math::ceil(inside<{{rational{1, 4}, rational{3, 4}}, per<4>}>{rational{1, 2}}) == 1);
+}
+
+// A continuous input with a rational raw, into an output finer than a
+// double: the dd tier reads the fraction as a dd quotient.
+TEST(MathArmTest, dd_tier_reads_a_rational_input) {
+    using In  = inside<{{0, 1}, max_denominator{1000}}>;
+    using Out = inside<{{0, 3}, per<(imax{1} << 40)>}, round_nearest>;
+    static_assert(!math::detail::engine::fp_tier_available || math::detail::engine::dd_tier<Out, In>);
+    EXPECT_EQ(math::exp_into<Out>(In{rational{1, 3}}).as<double>(), std::round(std::exp(1.0 / 3) * 0x1p40) / 0x1p40);
+}
+} // namespace reached_arms_tests

@@ -42,10 +42,13 @@ an operation can produce (result types are frozen from 1.0 on).
 - A run-time error is now a zero divisor, a store that does not fit, or input
   from outside the type system (an `int`, a `double`, text); the rest moved
   to compile time:
-  - `rational`'s arithmetic is `consteval`, like a grid number's: `+ − * /`,
-    its compound assignments, the conversion from an
-    `expected<rational, errc>` and the comparisons with one. An overflow is a
-    compile error. At run time an exact value is an inside. `add_unchecked`,
+  - `rational`'s arithmetic is `consteval`, like a grid number's: `+ − * /`
+    and its compound assignments. An overflow is a compile error, so the
+    result is a plain `rational` (it was an `expected` that could hold no
+    error): drop the `*` or `.value()` on `p / q`. The conversion from an
+    `expected<rational, errc>`, the comparisons with one and `+ − * /` on
+    `expected<rational, errc>` operands are gone. At run time an exact value
+    is an inside. `add_unchecked`,
     `mul_unchecked`, `div_unchecked`, `inv_unchecked` and `inv` are no
     longer members of `rational` (they are library-internal).
   - An inside's compound assignment takes no `rational`: write
@@ -66,6 +69,9 @@ an operation can produce (result types are frozen from 1.0 on).
   floating-point `T`): drop the `.value()` or `*` there.
 - A zero denominator is `errc::division_by_zero` everywhere (`rational{1, 0}`
   was `domain_error`); a denominator of `INT64_MIN` is `overflow`.
+- `grid::try_make` is removed: a grid is a compile-time value (an inside's
+  template argument, never built at run time), and a malformed grid is a
+  compile error that names the broken rule.
 
 ### Changed
 
@@ -143,6 +149,11 @@ ones implicitly.
 - The certified `tan` pairs moved to two branch grids, and the `sqrt` pair
   over a grid that crosses 0 went: 58 certified pairs (every other hash is
   unchanged).
+- A reachability audit (run-time coverage over the suite, and a probe of
+  which `if constexpr` arms any test instantiates) removed the arms no input
+  can reach and added a test for each reachable arm no test reached
+  (`reached_arms_tests` in the topic files, and compile-fail cases for each
+  literal error).
 
 ### Fixed
 
@@ -154,6 +165,13 @@ ones implicitly.
   bound does not compile).
 - `x += rational{1, 3}` on a fine grid reported overflow where the exact sum
   rounds onto the grid (now removed, see above).
+- `conversion_rounds`, `conversion_overflows` and `parse_exact` on a
+  continuous grid whose bound passes 64 bits but whose limits do not
+  (`{{0, 1}, max_denominator{2^70}}`) terminated: the 64-bit path read the
+  bound as a 64-bit rational inside a `noexcept` function. Such a grid takes
+  the exact path.
+- Writing through a `value_accessor<N, double>` (or any floating-point
+  element) did not compile.
 
 ## 0.7.0 — 2026-11-03
 

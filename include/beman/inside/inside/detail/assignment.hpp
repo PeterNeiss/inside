@@ -253,10 +253,9 @@ struct assignment<L, R> {
         if constexpr (!notched<L> && grid_of<L>.MaxDenominator != 0 && uses_flag<L, P, snap>) {
             // A bounded continuous grid rounds onto its bound first, too: a
             // fold keeps the denominator, so the folded value stays on it.
-            const auto r = try_rational(round_to_bound<L, plain_t<P>>(exact_of(rhs_r)));
-            if (!r) [[unlikely]]
-                return wrap_exact(lhs, exact_of(rhs_r), policy, action);
-            rhs_r = *r;
+            // (L's bound fits imax, and a Farey neighbour p/q of N/d with
+            // q ≤ bound < d has p ≤ N: a 64-bit rational.)
+            rhs_r = rational_of(round_to_bound<L, plain_t<P>>(exact_of(rhs_r)));
         } else if constexpr (uses_flag<L, P, snap>) {
             const auto r = try_round_to_lattice<L, P>(rhs_r);
             if (!r) [[unlikely]]
@@ -426,12 +425,7 @@ struct assignment<L, R> {
             // a rounding policy, else reported (but unsafe).
             if (abs_den(rv.Den) > to_rational(grid_of<L>.MaxDenominator).Num) [[unlikely]] {
                 if constexpr (uses_flag<L, P, snap>) {
-                    const auto o = onto_bound<L, plain_t<P>>(exact_of(rv));
-                    const auto r =
-                        o ? try_rational(*o) : std::expected<rational, errc>{std::unexpected{errc::rounding_error}};
-                    if (!r)
-                        return report_failure(lhs, policy, action, errc::rounding_error);
-                    lhs = L::from_raw(*r);
+                    lhs = L::from_raw(rational_of(onto_bound<L, plain_t<P>>(exact_of(rv))));
                     return;
                 } else if (std::is_constant_evaluated() || is_checked(flags_of<L> | plain_t<P>::Flags))
                     return report_failure(lhs, policy, action, errc::rounding_error);
@@ -447,7 +441,7 @@ struct assignment<L, R> {
             constexpr bool has_round_flag = uses_flag<L, P, snap>; // every round_* flag contains snap
             // The slot onum/den when it is exact or P rounds; false otherwise
             // (strict policy, off-notch: the rational path below reports it).
-            auto try_slot = [&](umax onum, umax den) {
+            auto stores_slot = [&](umax onum, umax den) {
                 const umax q = onum / den, r = onum % den; // one division
                 if (r == 0) {
                     store_slot(q);
@@ -466,7 +460,7 @@ struct assignment<L, R> {
             // value index. No rational round trip.
             if constexpr (std::floating_point<R> && anchored<L> && double_exact<grid_of<L>> &&
                           std::has_single_bit(notch64<L>.Num)) {
-                constexpr imax lo = signed_numerator(*lower_index64<L>);
+                constexpr imax lo = signed_numerator(lower_index64<L>);
                 const double   v  = static_cast<double>(rhs);
                 const imax     j  = snap_double_index<grid_of<L>, rounding_for<L, P>>(v);
                 if constexpr (!has_round_flag)
@@ -515,7 +509,7 @@ struct assignment<L, R> {
                     const imax num  = signed_numerator(rv);
                     const umax onum = // ≥ 0: rhs ≥ Lower (in range)
                         static_cast<umax>((num - Lo * static_cast<imax>(aden)) * K);
-                    if (try_slot(onum, aden))
+                    if (stores_slot(onum, aden))
                         return;
                 }
             }
@@ -534,7 +528,7 @@ struct assignment<L, R> {
                     const umax onum = // ≥ 0: rhs ≥ Lower (in range)
                         static_cast<umax>(num * c.K - c.M * static_cast<imax>(aden));
                     const umax den2 = aden * static_cast<umax>(c.S);
-                    if (try_slot(onum, den2))
+                    if (stores_slot(onum, den2))
                         return;
                 }
             }
@@ -759,27 +753,19 @@ struct assignment<L, R> {
     // path instead (both 0, unused), and a point L holds one value (both 0).
     static constexpr bool integer_raws = integer_storage<L> && integer_storage<R>;
 
-    static constexpr std::expected<rational, errc> try_offset() {
-        if constexpr (!integer_raws || !notched<L>)
-            return rational{0};
-        else
-            return try_sub(lower64<R>, lower64<L>).and_then([](const rational& d) { return try_div(d, notch64<L>); });
-    }
-
-    static constexpr std::expected<rational, errc> try_factor() {
-        if constexpr (!integer_raws || !notched<L> || point_storage<R>)
-            return rational{0}; // a point R's raw is always 0: the mapping is Offset alone
-        else
-            return try_div(notch64<R>, notch64<L>);
-    }
+    // Exactly; a point R's raw is always 0: the mapping is Offset alone.
+    static constexpr grid_rational offset_exact =
+        integer_raws && notched<L> ? (lower_of<R> - lower_of<L>) / notch_of<L> : grid_rational{0};
+    static constexpr grid_rational factor_exact =
+        integer_raws && notched<L> && !point_storage<R> ? notch_of<R> / notch_of<L> : grid_rational{0};
 
     // A mapping past the 64-bit rational (a full-int64 source into a fine
     // grid) stores through the rational path, as a continuous side does.
-    static constexpr bool maps_raws = integer_raws && try_offset().has_value() && try_factor().has_value();
+    static constexpr bool maps_raws = integer_raws && fits_rational(offset_exact) && fits_rational(factor_exact);
 
   public:
-    static constexpr rational Offset = try_offset().value_or(rational{0});
-    static constexpr rational Factor = try_factor().value_or(rational{0});
+    static constexpr rational Offset = maps_raws ? to_rational(offset_exact) : rational{0};
+    static constexpr rational Factor = maps_raws ? to_rational(factor_exact) : rational{0};
 
     // Raw-space integer-only mapping — requires integer raw storage on both
     // sides (not rational).
@@ -790,14 +776,10 @@ struct assignment<L, R> {
                       !values_fit_imax<R>)
             return false;
         else {
-            const rational base = index_storage<L> ? rational{0} : lower64<L>;
-            const auto     lo   = Offset + base;
-            const auto     span = Factor * rational{max_index_of<R>};
-            if (!lo || !span)
-                return false;
-            const auto hi = *lo + *span;
-            return hi.has_value() && *lo >= rational{std::numeric_limits<imax>::min()} &&
-                   *hi <= rational{std::numeric_limits<imax>::max()};
+            const rational lo = Offset + (index_storage<L> ? rational{0} : lower64<L>);
+            const rational hi = lo + Factor * rational{max_index_of<R>};
+            return lo >= rational{std::numeric_limits<imax>::min()} &&
+                   hi <= rational{std::numeric_limits<imax>::max()};
         }
     }();
 
@@ -839,11 +821,10 @@ struct assignment<L, R> {
             // its value-index-vs-offset branch CHOICE keys on m·di + num fitting
             // imax — mirror those checks for the unreduced den so both forms
             // take the same branch (ties on negatives differ across branches).
-            constexpr auto zl = try_div(lower64<L>, notch64<L>).value_or(rational{0});
-            if (abs_den(zl.Den) == 1) {
-                if (!std::in_range<imax>(zl.Num))
+            if constexpr (grid_denominator(lower_index_of<L>) == grid_int{1}) {
+                if (!lower_index_fits_imax<L>)
                     return no;
-                const imax mbias = signed_numerator(zl);
+                const imax mbias = signed_numerator(to_rational(lower_index_of<L>));
                 imax       mdi, total;
                 if (mul_overflow(mbias, m.Den, &mdi) || add_overflow(mdi, num, &total))
                     return no;
@@ -854,12 +835,7 @@ struct assignment<L, R> {
 
     // L's raw for R's offset 0: Offset + raw_lo<L>, which is_integer_mapping
     // proves fits imax (Offset alone may not, e.g. 2^63 into a full int64).
-    static constexpr imax map_bias = [] {
-        if constexpr (is_integer_mapping)
-            return signed_numerator((Offset + (index_storage<L> ? rational{0} : lower64<L>)).value());
-        else
-            return imax{0};
-    }();
+    static constexpr imax map_bias = signed_numerator(Offset + (index_storage<L> ? rational{0} : lower64<L>));
 
     // Map rhs.Raw into L's raw space (requires is_integer_mapping): Factor
     // scales R's 0-based offset, map_bias adds L's raw for offset 0. Every
@@ -910,7 +886,7 @@ struct assignment<L, R> {
     }
 
     template <typename P, typename A>
-    static constexpr bool try_clamp_or_fail(L& lhs, const R& rhs, P&& policy, A&& action) {
+    static constexpr bool clamp_or_fail(L& lhs, const R& rhs, P&& policy, A&& action) {
         return dispatch_out_of_range<true>(
             lhs,
             policy,
@@ -1023,7 +999,7 @@ struct assignment<L, R> {
                 // tells whether it is in range.)
                 if constexpr (is_integer_mapping && !point_storage<L>) {
                     if (imax mapped = map_raw(rhs.raw()); mapped < raw_lo<L> || mapped > raw_hi<L>)
-                        if (try_clamp_or_fail(lhs, rhs, policy, action))
+                        if (clamp_or_fail(lhs, rhs, policy, action))
                             return lhs;
                 } else if (out_of_interval(rhs)) {
                     // Round first: a value just outside may round onto an endpoint.
@@ -1033,7 +1009,7 @@ struct assignment<L, R> {
                             lhs = L::from_raw(rr.Raw);
                             return lhs;
                         }
-                    if (try_clamp_or_fail(lhs, rhs, policy, action))
+                    if (clamp_or_fail(lhs, rhs, policy, action))
                         return lhs;
                 }
             }

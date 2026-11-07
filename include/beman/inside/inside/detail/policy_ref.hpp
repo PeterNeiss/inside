@@ -6,6 +6,7 @@
 
 #include <beman/inside/inside/detail/assignment.hpp>
 #include <beman/inside/inside/detail/call_policy.hpp>
+#include <beman/inside/inside/detail/lift.hpp>
 
 #include <expected>
 #include <tuple>
@@ -132,21 +133,21 @@ struct policy_ref {
         requires requires(const B& b, const C& c, P& p) { add(b, c, p); } &&
                  stores_back<decltype(add(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator+=(const C& rhs) {
-        return finalize_arith(add(Ref, rhs, Policy), "policy_ref::operator+=");
+        return finalize_arith(add(Ref, rhs, Policy));
     }
 
     template <insidable C>
         requires requires(const B& b, const C& c, P& p) { sub(b, c, p); } &&
                  stores_back<decltype(sub(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator-=(const C& rhs) {
-        return finalize_arith(sub(Ref, rhs, Policy), "policy_ref::operator-=");
+        return finalize_arith(sub(Ref, rhs, Policy));
     }
 
     template <insidable C>
         requires requires(const B& b, const C& c, P& p) { mul(b, c, p); } &&
                  stores_back<decltype(mul(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator*=(const C& rhs) {
-        return finalize_arith(mul(Ref, rhs, Policy), "policy_ref::operator*=");
+        return finalize_arith(mul(Ref, rhs, Policy));
     }
 
     // A zero divisor is reported (on_error, unless `unsafe` appears) and leaves
@@ -161,7 +162,7 @@ struct policy_ref {
                 report_error(errc::division_by_zero, "policy_ref::operator/= division by zero");
             return Ref;
         }
-        return finalize_arith(div(Ref, rhs, Policy), "policy_ref::operator/= division by zero");
+        return finalize_arith(div(Ref, rhs, Policy));
     }
 
     template <insidable C>
@@ -173,7 +174,7 @@ struct policy_ref {
                 report_error(errc::division_by_zero, "policy_ref::operator%= division by zero");
             return Ref;
         }
-        return finalize_arith(mod(Ref, rhs, Policy), "policy_ref::operator%= division by zero");
+        return finalize_arith(mod(Ref, rhs, Policy));
     }
 
     // A rational has no grid: as on the inside itself, a compound assign
@@ -200,16 +201,13 @@ struct policy_ref {
             Policy.report(code);
     }
 
-    // A zero divisor: the op's expected holds it.
+    // An expected result (/ and % by a grid that holds 0) holds a value here:
+    // its only error is the zero divisor, which /= and %= report first.
     template <typename R>
-    constexpr B& finalize_arith(R&& result, [[maybe_unused]] const char* msg) {
-        if constexpr (expected_like<R>) {
-            if (!result.has_value()) [[unlikely]] {
-                report_error(result.error(), msg);
-                return Ref;
-            }
+    constexpr B& finalize_arith(R&& result) {
+        if constexpr (expected_like<R>)
             return dispatch_assign(Ref, *result, Policy, Actions);
-        } else
+        else
             return dispatch_assign(Ref, std::forward<R>(result), Policy, Actions);
     }
 };

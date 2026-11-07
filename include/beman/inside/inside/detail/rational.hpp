@@ -6,7 +6,6 @@
 
 #include <beman/inside/inside/detail/numbers.hpp>    // umax/imax, arithmetic, rational fwd
 #include <beman/inside/inside/detail/float_bits.hpp> // abs_fraction, is_double_value
-#include <beman/inside/inside/detail/lift.hpp>       // lift, expected_like, unwrap_t
 #include <beman/inside/inside/detail/error.hpp>      // errc, detail::raise, detail::constexpr_error
 #include <beman/inside/inside/detail/wide_int.hpp>   // limb kernels for exact 128-bit cross products
 #include <beman/inside/inside/detail/rounding.hpp>   // round_mode, rounds_away
@@ -65,22 +64,12 @@ inline constexpr void cancel_gcd(umax& a, umax& b) {
     b /= g;
 }
 
-[[nodiscard]] consteval std::expected<rational, errc> operator+(rational, rational);
-[[nodiscard]] consteval std::expected<rational, errc> operator/(rational, rational);
-[[nodiscard]] consteval std::expected<rational, errc> operator-(rational, rational);
+[[nodiscard]] consteval rational operator+(rational, rational);
+[[nodiscard]] consteval rational operator/(rational, rational);
+[[nodiscard]] consteval rational operator-(rational, rational);
 
-[[nodiscard]] consteval std::expected<rational, errc> operator*(rational, rational);
-[[nodiscard]] constexpr auto operator<=>(rational, rational) -> std::strong_ordering;
-
-// The value of a checked result. An error is raised like a failed checked
-// store (inside_error, or the installed handler; a compile error in constant
-// evaluation), never std::bad_expected_access.
-template <class T>
-[[nodiscard]] constexpr T value_or_raise(const std::expected<T, errc>& e) {
-    if (!e) [[unlikely]]
-        raise(e.error());
-    return *e;
-}
+[[nodiscard]] consteval rational operator*(rational, rational);
+[[nodiscard]] constexpr auto     operator<=>(rational, rational) -> std::strong_ordering;
 
 //---------------------------------------------------------------------------
 // rational — structural type for NTTP (public members only). Sign is encoded
@@ -112,16 +101,6 @@ struct rational {
             raise(errc::overflow, "rational: denominator past imax");
         canonicalize(Num, Den);
     }
-
-    // Implicit unwrap of a checked result, so coefficient expressions read as
-    // plain arithmetic (`rational two_pi = 2 * pi;`); an error (overflow) is a
-    // compile error. Compile time only, as the arithmetic is. same_as-constrained
-    // (not a plain `rational(expected<rational, errc>)`) because expected's own
-    // converting ctor is gated on `is_constructible_v<rational, U>` — a
-    // non-template overload would make that trait depend on itself.
-    template <class O>
-        requires std::same_as<std::remove_cvref_t<O>, std::expected<rational, errc>>
-    consteval rational(O&& o) : rational(value_or_raise(o)) {}
 
     // The values, not the members: equal members (two reduced values) answer
     // at once; anything else compares the fractions (a hand-built 2/2 equals 1).
@@ -418,8 +397,7 @@ template <bool Loud>
     const umax ad = abs_den(a.Den), bd = abs_den(b.Den), g = std::gcd(ad, bd);
     W          num = signed_numerator<W>(a) * W{bd / g} + signed_numerator<W>(b) * W{ad / g};
     W          den = W{ad} * W{bd / g};
-    if (num.is_zero())
-        return rational{0};
+    // (num is nonzero: a + b == 0 needs equal denominators, a 64-bit step.)
     const W x      = wide_gcd(abs(num), den);
     num            = num / x;
     den            = den / x;
@@ -444,7 +422,7 @@ constexpr void reduce_sum(umax& n, umax& d, umax g) noexcept {
 }
 
 //---------------------------------------------------------------------------
-// rational_add / rational_mul / rational_div / rational_inv — the arithmetic
+// rational_add / rational_mul / rational_div — the arithmetic
 // bodies, library-internal (the public operators are consteval: a rational is
 // compile-time vocabulary, run-time values are insides). Checked=true returns
 // expected<rational, errc>, reporting overflow / division_by_zero (Loud: a
@@ -609,27 +587,10 @@ inline constexpr auto rational_mul(rational a, rational b) {
 // a is already in lowest terms (Num and |Den| coprime), so the swapped
 // pair is too. Sign lives in the denominator and 1/(-x) has the same
 // sign as -x, so the sign bit moves with the (now) denominator unchanged.
-template <bool Checked, bool Loud = true>
-inline constexpr auto rational_inv(rational a) {
-    using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
+// Caller's contract: a != 0 and a's numerator fits imax.
+inline constexpr rational rational_inv(rational a) { return rational_from_parts(abs_den(a.Den), signed_numerator(a)); }
 
-    if constexpr (Checked) {
-        // a.Num goes into the result's Den slot, so it must fit in
-        // imax (else the umax→imax conversion wraps and a later -Den is UB).
-        if (a.Num == 0) {
-            return ret_t{fail<"rational inv: division by zero", Loud>(errc::division_by_zero)};
-        }
-        if (!std::in_range<imax>(a.Num)) {
-            return ret_t{fail<"rational inv: numerator out of denominator range", Loud>(errc::overflow)};
-        }
-    }
-
-    return ret_t{rational_from_parts(abs_den(a.Den), signed_numerator(a))};
-}
-
-// div(a, b) = a * inv(b). The checked path goes through rational_inv<true> so
-// the b.Num-fits-in-imax check (added there) propagates here too;
-// the unchecked path skips it (caller's contract).
+// div(a, b): checked, cross-reduced; unchecked, a * inv(b) (caller's contract).
 template <bool Checked, bool Loud = true>
 inline constexpr auto rational_div(rational a, rational b) {
     using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
@@ -650,7 +611,7 @@ inline constexpr auto rational_div(rational a, rational b) {
         const bool neg = (a.Den < 0) != (b.Den < 0);
         return ret_t{rational_from_parts(num, neg ? -static_cast<imax>(den) : static_cast<imax>(den))};
     } else
-        return rational_mul<false>(a, rational_inv<false>(b));
+        return rational_mul<false>(a, rational_inv(b));
 }
 
 //---------------------------------------------------------------------------
@@ -663,10 +624,6 @@ inline constexpr rational add_unchecked(rational a, rational b) { return rationa
 inline constexpr rational mul_unchecked(rational a, rational b) { return rational_mul<false>(a, b); }
 
 inline constexpr rational div_unchecked(rational a, rational b) { return rational_div<false>(a, b); }
-
-inline constexpr rational inv_unchecked(rational a) { return rational_inv<false>(a); }
-
-inline constexpr std::expected<rational, errc> try_inv(rational a) { return rational_inv<true>(a); }
 
 //---------------------------------------------------------------------------
 // operator-
@@ -693,18 +650,6 @@ inline constexpr std::expected<rational, errc> try_inv(rational a) { return rati
     const umax lhs_ad = abs_den(lhs.Den), rhs_ad = abs_den(rhs.Den);
     return lhs_sign < 0 ? limb::mul_compare(rhs.Num, lhs_ad, lhs.Num, rhs_ad)
                         : limb::mul_compare(lhs.Num, rhs_ad, rhs.Num, lhs_ad);
-}
-
-// A checked result against a rational (`2 * pi < 7`): compile time only, as
-// the arithmetic that makes the expected is.
-template <plain_number T>
-[[nodiscard]] inline consteval auto operator<=>(const std::expected<T, errc>& lhs, rational rhs) {
-    return rational{value_or_raise(lhs)} <=> rhs;
-}
-
-template <plain_number T>
-[[nodiscard]] inline consteval auto operator<=>(rational lhs, const std::expected<T, errc>& rhs) {
-    return lhs <=> rational{value_or_raise(rhs)};
 }
 
 // lhs against a finite double finer than 2^-62 (which rational{rhs}
@@ -789,48 +734,27 @@ template <plain_number T>
 }
 
 //---------------------------------------------------------------------------
-// Expected-lifting operators — one generic overload per arithmetic operator
-// that engages when an operand is a std::expected, both unwrap to arithmetic,
-// and at least one to rational. Gating on `plain_number` (not `insidable`, which
-// isn't visible this low) excludes inside operands, so inside-involving expected
-// expressions partition cleanly to arithmetic.hpp's generic instead.
-//---------------------------------------------------------------------------
-template <class L, class R>
-concept rational_lift_operands =
-    (expected_like<L> || expected_like<R>) && plain_number<unwrap_t<L>> && plain_number<unwrap_t<R>> &&
-    (std::same_as<unwrap_t<L>, rational> || std::same_as<unwrap_t<R>, rational>);
-
-//---------------------------------------------------------------------------
-// Binary operators: the checked rational ⋈ rational cores, then per operator
-// the arithmetic-operand forms (direct construction, no lift overhead), the
-// expected-operand form (propagates via lift), and the compound assignments.
-// All consteval: a rational's arithmetic is compile-time vocabulary, like a
-// grid number's, and an overflow is a compile error. At run time exact
-// values are insides, whose grids bound every result; the library's own
-// run-time steps on rational raws are the named functions above (a grid
-// proves the unchecked ones fit; a try_* step that misses falls back to the
-// exact wide value).
+// Binary operators: the rational ⋈ rational cores, the arithmetic-operand
+// forms and the compound assignments. All consteval: a rational's arithmetic
+// is compile-time vocabulary, like a grid number's, and an overflow is a
+// compile error naming the operation, so the result is a plain rational. At
+// run time exact values are insides, whose grids bound every result; the
+// library's own run-time steps on rational raws are the named functions
+// above (a grid proves the unchecked ones fit; a try_* step that misses
+// falls back to the exact wide value).
 //---------------------------------------------------------------------------
 // rational_add fails on a 64-bit step's overflow; the sum may still fit once
 // reduced, which add_wide (cold) settles.
-[[nodiscard]] inline consteval std::expected<rational, errc> operator+(rational lhs, rational rhs) {
+[[nodiscard]] inline consteval rational operator+(rational lhs, rational rhs) {
     const auto r = rational_add<true, false>(lhs, rhs);
-    if (!r) [[unlikely]]
-        return add_wide<true>(lhs, rhs);
-    return r;
+    return r ? *r : *add_wide<true>(lhs, rhs);
 }
 
-[[nodiscard]] inline consteval std::expected<rational, errc> operator-(rational lhs, rational rhs) {
-    return operator+(lhs, -rhs);
-}
+[[nodiscard]] inline consteval rational operator-(rational lhs, rational rhs) { return lhs + -rhs; }
 
-[[nodiscard]] inline consteval std::expected<rational, errc> operator*(rational lhs, rational rhs) {
-    return rational_mul<true>(lhs, rhs);
-}
+[[nodiscard]] inline consteval rational operator*(rational lhs, rational rhs) { return *rational_mul<true>(lhs, rhs); }
 
-[[nodiscard]] inline consteval std::expected<rational, errc> operator/(rational lhs, rational rhs) {
-    return rational_div<true>(lhs, rhs);
-}
+[[nodiscard]] inline consteval rational operator/(rational lhs, rational rhs) { return *rational_div<true>(lhs, rhs); }
 
 // Quiet checked ops: like the operators, but an overflow is an error value,
 // in constant evaluation too (the operators make it a compile error), and
@@ -850,34 +774,22 @@ concept rational_lift_operands =
     return rational_div<true, false>(a, b);
 }
 
-[[nodiscard]] inline consteval std::expected<rational, errc> operator-(const std::expected<rational, errc>& v) {
-    return lift([](rational r) { return -r; }, v);
-}
-
-#define BEMAN_INSIDE_RATIONAL_OP(op)                                                                        \
-    template <plain_number T>                                                                               \
-    [[nodiscard]] inline consteval auto operator op(T lhs, rational rhs) {                                  \
-        return rational{lhs} op rhs;                                                                        \
-    }                                                                                                       \
-    template <plain_number T>                                                                               \
-    [[nodiscard]] inline consteval auto operator op(rational lhs, T rhs) {                                  \
-        return lhs op rational{rhs};                                                                        \
-    }                                                                                                       \
-    template <class L, class R>                                                                             \
-        requires rational_lift_operands<L, R>                                                               \
-    [[nodiscard]] inline consteval auto operator op(L const& lhs, R const& rhs) {                           \
-        return lift([](auto const& a, auto const& b) { return a op b; }, lhs, rhs);                         \
-    }                                                                                                       \
-    inline consteval rational& rational::operator op## = (rational rhs) {                                   \
-        *this = value_or_raise(*this op rhs);                                                               \
-        return *this;                                                                                       \
-    }                                                                                                       \
-    template <plain_number T>                                                                               \
-    inline consteval rational& operator op## = (rational & lhs, T rhs) {                                    \
-        return lhs op## = rational{rhs};                                                                    \
-    }                                                                                                       \
-    inline consteval rational& operator op## = (rational & lhs, std::expected<rational, errc> const& rhs) { \
-        return lhs op## = value_or_raise(rhs);                                                              \
+#define BEMAN_INSIDE_RATIONAL_OP(op)                                       \
+    template <plain_number T>                                              \
+    [[nodiscard]] inline consteval auto operator op(T lhs, rational rhs) { \
+        return rational{lhs} op rhs;                                       \
+    }                                                                      \
+    template <plain_number T>                                              \
+    [[nodiscard]] inline consteval auto operator op(rational lhs, T rhs) { \
+        return lhs op rational{rhs};                                       \
+    }                                                                      \
+    inline consteval rational& rational::operator op## = (rational rhs) {  \
+        *this = *this op rhs;                                              \
+        return *this;                                                      \
+    }                                                                      \
+    template <plain_number T>                                              \
+    inline consteval rational& operator op## = (rational & lhs, T rhs) {   \
+        return lhs op## = rational{rhs};                                   \
     }
 
 BEMAN_INSIDE_RATIONAL_OP(+)
@@ -892,8 +804,6 @@ BEMAN_INSIDE_RATIONAL_OP(/)
 [[nodiscard]] inline constexpr bool divides_evenly(rational dividend, rational divisor) {
     if (divisor == 0)
         return true; // convention: everything divides 0 evenly
-    if (dividend.Num == 0)
-        return true; // 0 / anything is the integer 0
 
     // dividend/divisor ∈ ℤ without forming the (possibly umax-overflowing)
     // quotient numerator. In lowest terms dividend = p/q, divisor = r/s; the

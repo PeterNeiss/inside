@@ -27,14 +27,14 @@ struct interval {
 
     template <auto I>
     static constexpr bool validate() {
-        static_assert(I.Lower <= I.Upper);
+        static_assert(I.Lower <= I.Upper, "interval: Lower must not pass Upper");
         return true;
     }
 
     [[nodiscard]] constexpr bool     operator==(const interval& rhs) const = default;
     [[nodiscard]] consteval interval operator-() const { return interval{-Upper, -Lower}; }
 
-    // (Without forming Upper − Lower, so grid::try_make runs at run time.)
+    // (Without forming Upper − Lower: no grid number past 64 bits is made.)
     [[nodiscard]] constexpr bool divides_evenly(const detail::grid_rational& notch) const {
         return detail::grid_same_lattice(Upper, Lower, notch);
     }

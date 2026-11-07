@@ -524,3 +524,102 @@ TEST(TextTest, rational_to_string_zero_pads_short_decimal_fractions) {
 }
 
 } // namespace pinned_tests
+
+// Arms no other test reaches, found by the reachability audit (gcov and an
+// `if constexpr` probe over the suite).
+namespace reached_arms_tests {
+using namespace beman::inside;
+using detail::rational;
+
+// parse_exact takes a fraction exactly: onto a lattice, onto a point, and
+// N/0 is a zero denominator.
+TEST(TextArmTest, parse_exact_of_a_fraction) {
+    EXPECT_EQ((rational{*parse_exact<inside<{{0, 1}, per<4>}>>("1/2")}), (rational{1, 2}));
+    EXPECT_TRUE((*parse_exact<inside<{5, 5}>>("10/2") == 5));
+    EXPECT_EQ((parse_exact<inside<{{0, 1}, per<4>}>>("1/0").error()), errc::division_by_zero);
+}
+} // namespace reached_arms_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+using detail::rational;
+
+// Run-time parse: upper-case hex digits, a separator in an exponent, a dot in
+// a binary number, and fractions past the 64-bit rationals (an over-long hex
+// fraction, a p or decimal exponent past the denominator) taken exactly.
+TEST(TextArmTest, parse_of_the_scanner_edge_cases) {
+    EXPECT_TRUE((*parse<inside<{0, 1000}>>("0xFF") == 255));
+    EXPECT_TRUE((*parse<inside<{0, 100000}>>("1e0'3") == 1000));
+    EXPECT_EQ((parse<inside<{0, 1000}>>("0b1.1").error()), errc::invalid_format);
+    using F = inside<{{0, 1}, max_denominator{1000000000000000000_g}}>;            // 10^18
+    EXPECT_EQ(parse<F>("0x0.0000000000000001p0").error(), errc::rounding_error);   // 2^-64
+    EXPECT_EQ(parse<F>("0x1.8p-63").error(), errc::rounding_error);                // 3·2^-64
+    EXPECT_EQ(parse<F>("0.0000000000000000000001").error(), errc::rounding_error); // 10^-22
+    EXPECT_TRUE((*parse<F>("0x1p-2") == rational{1, 4}));
+}
+
+// format: a rounding carry in fixed and scientific forms, %g's scientific
+// choice, the sign kept out of the padded shortest form, and a precision
+// without digits.
+TEST(TextArmTest, format_edge_cases) {
+    using Q = inside<{{0, 20}, per<1000>}>;
+    EXPECT_EQ(std::format("{:.2f}", (Q{rational{9999, 1000}})), "10.00");
+    EXPECT_EQ(std::format("{:.0e}", (Q{rational{96, 10}})), "1e+01");
+    using G = inside<{{0, 1000000}, per<100000>}>;
+    EXPECT_EQ(std::format("{:g}", (G{rational{1, 100000}})), "1e-05");
+    EXPECT_EQ(std::format("{:g}", G{1000000}), "1e+06");
+    const inside<{{-2, 2}, per<2>}> h{-1.5};
+    EXPECT_EQ(std::format("{:>6}", h), "  -1.5");
+    const std::string spec = "{:.}";
+    EXPECT_THROW((void)std::vformat(spec, std::make_format_args(h)), std::format_error);
+}
+
+// >> on an empty stream sets failbit and leaves the value.
+TEST(TextArmTest, extraction_from_an_empty_stream) {
+    std::istringstream        in{""};
+    inside<{{-2, 2}, per<2>}> v{1};
+    in >> v;
+    EXPECT_TRUE((in.fail() && v == 1));
+}
+
+// A grid number past 4096 bits prints its numerator and denominator.
+TEST(TextArmTest, to_string_of_a_huge_grid_number) {
+    constexpr detail::grid_rational big = detail::grid_rational{detail::grid_int{1} << 5000} / 3;
+    const std::string               s   = to_string(big);
+    EXPECT_EQ(s.substr(s.size() - 2), "/3");
+    EXPECT_EQ(s.substr(0, 10), "1412467032");
+}
+} // namespace reached_arms_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+
+// Text past the wide parse stands in by its magnitude: tiny rounds to 0,
+// huge is past the grid.
+TEST(TextArmTest, numbers_past_the_wide_parse) {
+    using I = inside<{{0, 10}, per<1024>}, round_nearest>;
+    EXPECT_TRUE((*parse<I>("1e-5000") == 0));
+    EXPECT_TRUE((*parse<I>("0x1p-5000") == 0));
+    EXPECT_TRUE((*parse<I>("0.0001e-5000") == 0));
+    EXPECT_EQ(parse<I>("1e5000").error(), errc::overflow);
+}
+} // namespace reached_arms_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+
+// parse_exact of a fraction onto a notch-0 point.
+TEST(TextArmTest, parse_exact_onto_a_notch_zero_point) { EXPECT_TRUE((*parse_exact<inside<grid{5}>>("10/2") == 5)); }
+} // namespace reached_arms_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+
+// 1e-19 reduces to a denominator past imax: taken exactly, off a small bound;
+// a grid number of 512 to 4096 bits prints in full.
+TEST(TextArmTest, denominator_past_imax_and_a_kilobit_grid_number) {
+    EXPECT_EQ((parse<inside<{{0, 1}, max_denominator{1000}}>>("1e-19").error()), errc::rounding_error);
+    constexpr auto g = detail::grid_rational{detail::grid_int{1} << 1000} / 7;
+    EXPECT_EQ(to_string(g).substr(0, 12), "107150860718");
+}
+} // namespace reached_arms_tests

@@ -72,14 +72,11 @@ stored closed, so it is the same value, and type, as the closed spelling. A
 continuous grid has no next point, and an open grid must keep at least one;
 both are compile errors.
 
-**Runtime grids.** `grid::try_make(interval, notch, bounds)` checks the same
-invariants at run time and returns `std::expected<grid, errc>`:
-`domain_error` for Lower > Upper, a negative notch, notch 0 on two limits
-(a continuous grid takes `try_make(interval, max_denominator{D})`), or an
-open limit without a notch; `rounding_error` when the notch does not divide
-the interval. It
-validates configuration before choosing between precompiled types; a runtime
-grid cannot become a template argument.
+**No run-time grids.** A grid exists while compiling: it is an inside's
+template argument, and its numbers past 64 bits are interned. A malformed
+grid (Lower above Upper, a negative notch, a notch that does not divide the
+interval, a continuous grid without a bound) is a compile error naming the
+rule.
 
 **Point operands.** A point (`just<c>`, `1_ins`: Lower == Upper, notch 0) in a
 product scales the other operand's lattice: `grid × point{c}` has notch N·|c|
@@ -386,7 +383,7 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 |---|---|
 | `inside.hpp` | the umbrella of the number: the core and `inside/compare.hpp`, `casts.hpp`, `arithmetic.hpp`, `range.hpp`, `cursor.hpp`, `numeric_limits.hpp` |
 | `inside/compare.hpp` | `<=>` and `==` across grids and against integers and `rational` (a floating point is a deleted overload) |
-| `inside/grid.hpp` | `grid`, `bounds`, `grid::try_make`, `raw_for`, the grid operators |
+| `inside/grid.hpp` | `grid`, `bounds`, `max_denominator`, `raw_for`, the grid operators |
 | `inside/interval.hpp` | `interval`, its operators, `includes`/`excludes`/`overlaps` |
 | `inside/policy_flag.hpp` | the flags (each a `detail::flag<V>`), `has_flag` (and `detail::is_checked`, `detail::has_any_flag`), the policy validation bits, the rounding precedence, the internal `on_*` factories and `is_*_action` traits |
 | `inside/casts.hpp` | `checked_cast` (the other one-shot stores are the flag constructor, `B{v, clamp}`) |

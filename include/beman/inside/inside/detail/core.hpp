@@ -154,12 +154,11 @@ inline constexpr bool raw_holds_value =
 
 // The inside of N (a notch-1 integer grid) that holds the integer n, which
 // the caller proves lies in N: n itself on a value raw, n − Lower on an
-// index raw.
+// index raw. (Every caller returns a point result itself.)
 template <insidable N, typename I>
 constexpr N integer_inside(const I& n) noexcept {
-    if constexpr (point_storage<N>)
-        return N::from_raw({});
-    else if constexpr (value_storage<N>)
+    static_assert(!point_storage<N>);
+    if constexpr (value_storage<N>)
         return N::from_raw(raw_cast<N>(n));
     else if constexpr (wide_integer<I>) {
         constexpr I lo = static_cast<I>(grid_numerator(lower_of<N>));
@@ -822,21 +821,14 @@ struct inside {
     // Compound assignment private helpers — extracted to keep each
     // `operator*=` body focused on its own arithmetic shape.
     //-----------------------------------------------------------------------
+    // An expected result (/ and % by a grid that holds 0) holds a value here:
+    // its only error is the zero divisor, which /= and %= report first.
     template <typename Result>
     constexpr inside& assign_op_result(const Result& r) {
-        if constexpr (detail::expected_like<Result>) {
-            // A failed op is reported through this type's policy (throw / handler);
-            // *this stays unchanged. `*r` (not value()): no bad_expected_access.
-            if (!r.has_value())
-                return report_error(r.error());
+        if constexpr (detail::expected_like<Result>)
             *this = *r;
-        } else
+        else
             *this = r;
-        return *this;
-    }
-
-    constexpr inside& report_error(errc e) {
-        make_policy<P>().report(e);
         return *this;
     }
 

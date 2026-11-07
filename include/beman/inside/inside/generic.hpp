@@ -19,7 +19,7 @@ namespace beman::inside {
 namespace detail {
 // The two non-trivial clauses of `inside_assignable`, named so the concept and
 // its `inside_assignable_why` diagnostic share one definition. Concepts (not
-// bools) so `||` short-circuits *instantiation* (e.g. assignment<L,R>::Factor
+// bools) so `||` short-circuits *instantiation* (e.g. notches_compatible<L,R>
 // is never formed when R isn't insidable).
 template <typename L, typename R, policy_flag P = checked>
 concept assign_intervals_ok =
@@ -61,7 +61,7 @@ struct inside_assignable_why {
     // a concept-id makes GCC dump the whole satisfaction tree ("constraints not
     // satisfied / no operand of the disjunction…") on top of the message; a bool
     // condition prints just the message. Each clause is self-guarding (the inner
-    // disjunctions gate `assignment<L,R>::Factor` on `insidable<R>`), so evaluating
+    // disjunctions gate `notches_compatible<L,R>` on `insidable<R>`), so evaluating
     // all three unconditionally is safe even when R is not numeric.
     static constexpr bool is_numeric   = numeric<R>;
     static constexpr bool intervals_ok = detail::assign_intervals_ok<L, R, P>;

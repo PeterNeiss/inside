@@ -1780,3 +1780,117 @@ TEST(AssignmentTest, rounding_onto_a_span_past_two_to_the_64) {
 }
 
 } // namespace pinned_tests
+
+// Arms no other test reaches, found by the reachability audit (gcov and an
+// `if constexpr` probe over the suite).
+namespace reached_arms_tests {
+using namespace beman::inside;
+using detail::rational;
+
+// A non-negative rational is past an all-negative grid.
+TEST(AssignmentArmTest, non_negative_rational_into_a_negative_grid) {
+    EXPECT_EQ((inside<{-10, -1}>::try_make(rational{test::at_run_time(1), 3}).error()), errc::overflow);
+}
+
+// A wide grid: NaN, and ±∞ without clamp, are not_finite; clamp saturates
+// ±∞ and its on_clamp hears an overshoot at the overshoot grid's end.
+TEST(AssignmentArmTest, non_finite_doubles_into_a_wide_grid) {
+    using W = inside<{0, 1180591620717411303424_g}>; // 2^70
+    static_assert(detail::wide_valued<W>);
+    const double inf = test::at_run_time(std::numeric_limits<double>::infinity());
+    EXPECT_EQ(W::try_make(test::at_run_time(std::numeric_limits<double>::quiet_NaN())).error(), errc::not_finite);
+    EXPECT_EQ(W::try_make(inf).error(), errc::not_finite);
+    inside<{0, 1180591620717411303424_g}, clamp> c{5};
+    bool                                         below      = false;
+    c.on_clamp([&](auto&, auto over) { below = over < 0; }) = -inf;
+    EXPECT_TRUE(c == 0 && below);
+}
+
+// wrap onto a continuous grid folds only values with a 64-bit rational form:
+// a double of 2^63 or more reports overflow.
+TEST(AssignmentArmTest, wrap_of_a_huge_double_onto_a_continuous_grid) {
+    using C = inside<{{0, 1}, max_denominator{10}}, wrap>;
+    EXPECT_EQ(C::try_make(test::at_run_time(0x1p70)).error(), errc::overflow);
+}
+
+// on_clamp's overshoot keeps the source's storage: a 64-bit rational for a
+// bounded continuous source, the one value for a point.
+TEST(AssignmentArmTest, clamp_overshoot_of_a_continuous_and_a_point_source) {
+    using S = inside<{{0, 10}, max_denominator{100}}>;
+    inside<{{0, 5}, max_denominator{100}}, clamp> c{0};
+    rational                                      over{0};
+    c.on_clamp([&](auto&, auto o) {
+        static_assert(std::is_same_v<detail::raw_t<decltype(o)>, rational>);
+        over = rational{o};
+    }) = S{rational{test::at_run_time(13), 2}};
+    EXPECT_TRUE((c == 5 && over == rational{3, 2}));
+
+    inside<{5, 5}, clamp> p{5};
+    p.on_clamp([&](auto&, auto o) {
+        static_assert(detail::point_storage<decltype(o)>);
+        over = rational{o};
+    }) = just<7>;
+    EXPECT_TRUE((p == 5 && over == 2));
+}
+
+// A point stores a run-time double of its value.
+TEST(AssignmentArmTest, point_from_a_run_time_double) {
+    inside<{5, 5}> p;
+    p = test::at_run_time(5.0);
+    EXPECT_TRUE(p == 5);
+    EXPECT_EQ((inside<{5, 5}>::try_make(test::at_run_time(4.0)).error()), errc::overflow);
+}
+
+// An exact value past 64 bits off a bounded continuous grid's bound, folded
+// by wrap, is off the grid; so is an off-notch value folded onto a wide grid
+// without rounding.
+TEST(AssignmentArmTest, wrap_of_an_exact_value_off_the_grid) {
+    using F = inside<{{0, 2}, max_denominator{1180591620717411303424_g}}>; // bound 2^70
+    static_assert(detail::fraction_storage<F>);
+    const F f = *parse_exact<F>("1180591620717411303425/1180591620717411303424"); // 1 + 2^-70
+    EXPECT_EQ((inside<{{0, 1}, max_denominator{10}}, wrap>::try_make(f).error()), errc::rounding_error);
+    EXPECT_EQ((parse<inside<{0, 1180591620717411303424_g}, wrap>>("2361183241434822606848.5").error()),
+              errc::rounding_error); // 2^71 + 1/2
+}
+} // namespace reached_arms_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+using detail::rational;
+
+// round_half_even onto a bound: a tie goes to the even numerator (1/4 → 0),
+// else the smaller denominator (3/4 → 1).
+TEST(AssignmentArmTest, half_even_tie_onto_a_bound) {
+    using C = inside<{{0, 1}, max_denominator{2}}, round_half_even>;
+    EXPECT_TRUE((C{rational{test::at_run_time(1), 4}} == 0));
+    EXPECT_TRUE((C{rational{test::at_run_time(3), 4}} == 1));
+}
+} // namespace reached_arms_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+using detail::rational;
+
+// A fraction raw past 64 bits rounds an exact value off its bound onto it
+// (1/(2^71 + 1) → 0 on the bound 2^70).
+TEST(AssignmentArmTest, fraction_raw_rounds_onto_its_bound) {
+    using F = inside<{{0, 2}, max_denominator{1180591620717411303424_g}}, round_nearest>;
+    EXPECT_TRUE((*parse<F>("1/2361183241434822606849") == 0));
+}
+
+// A double finer than 2^-62 past a notch-0 point reports overflow.
+TEST(AssignmentArmTest, fine_double_past_a_point) {
+    EXPECT_EQ((inside<grid{5}>::try_make(test::at_run_time(0x1p-70)).error()), errc::overflow);
+}
+
+// The raw mapping 7/5 · raw past 64 bits takes the exact store; a value just
+// off a bound that rounds past it (16/15 → 10/9) is out of range.
+TEST(AssignmentArmTest, raw_mapping_past_64_bits_and_rounding_past_a_limit) {
+    using L   = inside<{{0, 1152921504606846976_g}, per<7>}, round_nearest>; // [0, 2^60] by 1/7
+    using R   = inside<{{0, 1152921504606846976_g}, per<5>}>;
+    const R r = R::from_index(5764607523034234879_ins); // 2^60 − 1/5
+    EXPECT_TRUE((L{r} == L{rational{5764607523034234879u, 5}}));
+    using C = inside<{{0, 1}, max_denominator{10}}, round_nearest>;
+    EXPECT_EQ(C::try_make(rational{test::at_run_time(16), 15}).error(), errc::overflow);
+}
+} // namespace reached_arms_tests

@@ -153,7 +153,7 @@ TEST(ConsistencyTest, math_output_deduces_its_storage) {
 TEST(ConsistencyTest, dyadic_vs_exact_comparison_is_exact) {
     using F = inside<{{0, 2}, per<2>}>;
     using C = inside<{{0, 2}, max_denominator{imax{1} << 53}}>; // continuous, rational raw
-    const C c{(q(1) + q(1, imax{1} << 53)).value()};            // 1 + 2^-53: rounds to 1.0
+    const C c{(q(1) + q(1, imax{1} << 53))};                    // 1 + 2^-53: rounds to 1.0
     const F one{1};
     EXPECT_FALSE(one == c);
     EXPECT_TRUE(one < c);

@@ -7,6 +7,7 @@
 #include <beman/inside/inside/casts.hpp>
 #include <beman/inside/inside/formats.hpp>
 #include <beman/inside/inside/io.hpp>
+#include <beman/inside/inside/numeric_limits.hpp>
 #include <beman/inside/inside/predicates.hpp>
 #include <beman/inside/inside/random.hpp>
 #include <beman/inside/math.hpp>
@@ -86,9 +87,8 @@ TEST(BigGridTest, assignment_policies) {
     c                                  = 1e31;
     EXPECT_TRUE(c == huge::from_raw(raw_2_100));
     inside<{{0, 1}, grid_rational{big_int{1}, pow2(80)}}, round_nearest> r = 0;
-    r = rational{1, 3}; // rounds to the nearest 2^-80
-    const bool close =
-        r > (rational{1, 3} - rational{1, 1 << 30}).value() && r < (rational{1, 3} + rational{1, 1 << 30}).value();
+    r                = rational{1, 3}; // rounds to the nearest 2^-80
+    const bool close = r > (rational{1, 3} - rational{1, 1 << 30}) && r < (rational{1, 3} + rational{1, 1 << 30});
     EXPECT_TRUE(close);
 }
 
@@ -434,7 +434,7 @@ TEST(WideGridTest, assignment_policies) {
     EXPECT_TRUE(c == 0);
     fine_wrap w = 0;
     w           = p34 + 1; // one past the top: 2^32 notches past it
-    EXPECT_TRUE(w == (rational{1} - tick).value());
+    EXPECT_TRUE(w == (rational{1} - tick));
 
     // errc-reporting policy.
     errc e{};
@@ -476,12 +476,12 @@ TEST(WideGridTest, comparisons) {
 }
 
 TEST(WideGridTest, arithmetic) {
-    fine a = 1.5, b = *(rational{1} + tick);
+    fine a = 1.5, b = (rational{1} + tick);
     auto sum = a + b; // {0, 2^35}, notch 2^-32
     static_assert(detail::wide_index_storage<decltype(sum)>);
-    EXPECT_TRUE(sum == (rational{5, 2} + tick).value());
+    EXPECT_TRUE(sum == (rational{5, 2} + tick));
     auto diff = a - b; // {−2^34, 2^34}
-    EXPECT_TRUE(diff == (rational{1, 2} - tick).value());
+    EXPECT_TRUE(diff == (rational{1, 2} - tick));
     auto neg = -a;
     EXPECT_TRUE(neg == -1.5_r);
     auto prod = a * inside<{0, 3}>{3}; // {0, 3·2^34}, notch 2^-32
@@ -565,7 +565,7 @@ TEST(WideGridTest, sum) {
     EXPECT_TRUE(beman::inside::sum<total>(v) == total::from_raw(detail::wide_uint<2>{1000} * e.raw()));
     // Offset (index raw, Lower ≠ 0) wide elements.
     std::vector<fine_signed> s{fine_signed{-1.5}, fine_signed{0.25}, fine_signed{tick}};
-    EXPECT_TRUE(beman::inside::sum<fine_signed>(s) == fine_signed{(rational{-5, 4} + tick).value()});
+    EXPECT_TRUE(beman::inside::sum<fine_signed>(s) == fine_signed{(rational{-5, 4} + tick)});
     // Into a 64-bit target, by its policy: the total is checked once.
     using coarse = inside<{0, 100}, round_nearest>;
     EXPECT_TRUE(beman::inside::sum<coarse>(std::vector<fine>(3, fine{2.25})) == 7);
@@ -686,7 +686,7 @@ TEST(WideGridTest, clamp_and_wrap_actions) {
     // One turn is 2^34 + 2^-32, so 3·2^34 + 2 = 3 turns + (2 − 3·2^-32).
     w.on_wrap([&](auto&, auto q) { carry = as<imax>(q); }) = 3 * p34 + 2;
     EXPECT_EQ(carry, 3);
-    EXPECT_TRUE(w == (rational{2} - (rational{3} * tick).value()).value());
+    EXPECT_TRUE(w == rational{2} - rational{3} * tick);
 }
 
 // on_clamp and on_wrap on a continuous grid past 64 bits (fraction storage):
@@ -829,7 +829,7 @@ TEST(WideGridTest, limb_edges) {
     EXPECT_TRUE((tt == rational{u64_max, 2}));
     auto d = top64{0} - t;
     EXPECT_TRUE((d == -rational{u64_max, 4}));
-    EXPECT_TRUE(t - top64{q1} == (rational{u64_max, 4} - q1).value());
+    EXPECT_TRUE(t - top64{q1} == (rational{u64_max, 4} - q1));
 
     // A 128-bit slot count: {−(2^64 − 1), 2^64 − 1} in steps of 1/(2^63 − 1).
     using full = inside<{{rational{u64_max, imax{-1}}, rational{u64_max}}, per<(umax{1} << 63) - 1>}>;
@@ -931,3 +931,37 @@ TEST(BigGridTest, predicates_at_run_time) {
 }
 
 } // namespace pinned_tests
+
+// Arms no other test reaches, found by the reachability audit (gcov and an
+// `if constexpr` probe over the suite).
+namespace reached_arms_tests {
+using namespace beman::inside;
+
+// A fraction raw past 64 bits hashes and prints its reduced parts.
+TEST(BigGridsArmTest, hash_and_debug_string_of_a_fraction_raw) {
+    using F = inside<{{0, 2}, max_denominator{1180591620717411303424_g}}>; // bound 2^70
+    static_assert(detail::fraction_storage<F>);
+    const F third = *parse_exact<F>("1/3");
+    EXPECT_EQ(std::hash<F>{}(third), std::hash<F>{}(*parse_exact<F>("2/6")));
+    EXPECT_EQ(to_string_debug(third).substr(0, 9), "1/3 {1/3[");
+}
+
+// uniform over 2^128 slots: the top limb is a whole word.
+TEST(BigGridsArmTest, uniform_over_two_full_limbs) {
+    using U = inside<{0, 340282366920938463463374607431768211455_g}>; // 2^128 − 1
+    std::mt19937_64 g{1};
+    const U         u = uniform<U>(g);
+    EXPECT_TRUE(u >= 0);
+}
+
+// {-2^63, 2^63} needs a wide index (2^64 + 1 values), yet its values fit the
+// 64-bit rational: times a continuous grid, the product's raw is the
+// rational, read off the exact product.
+TEST(BigGridsArmTest, wide_index_times_continuous_into_a_rational) {
+    using L = inside<{-9223372036854775808_g, 9223372036854775808_g}>;
+    using C = inside<{{0, 1}, max_denominator{1}}>;
+    static_assert(detail::wide_index_storage<L> && detail::rational_storage<decltype(L{} * C{})>);
+    EXPECT_EQ(to_string(L{std::numeric_limits<imax>::min()} * C{1}), "-9223372036854775808");
+    EXPECT_EQ(to_string(*parse_exact<L>("9223372036854775808") * C{1}), "9223372036854775808");
+}
+} // namespace reached_arms_tests

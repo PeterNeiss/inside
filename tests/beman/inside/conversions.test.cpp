@@ -567,9 +567,9 @@ TEST(ConversionTest, to_long_double_is_rounded_once) {
 #if WIDE_LONG_DOUBLE
     using F = inside<{{-2, 2}, per<(I64{1} << 62)>}>;
     using T = inside<{{-1, 1}, per<3>}>;
-    static_assert(F{*(rational{1} + rational{1, I64{1} << 60})}.to<long double>() == 1.0L + 0x1p-60L);
+    static_assert(F{(rational{1} + rational{1, I64{1} << 60})}.to<long double>() == 1.0L + 0x1p-60L);
     static_assert(T{rational{1, 3}}.to<long double>() == 1.0L / 3);
-    const F f{*(rational{-1} - rational{1, I64{1} << 62})};
+    const F f{(rational{-1} - rational{1, I64{1} << 62})};
     EXPECT_EQ(f.to<long double>(), -1.0L - 0x1p-62L);
     using Q = inside<{{-1000000, 1000000}, per<1000000007>}>;
     const Q q{rational{1, 1000000007}};
@@ -712,7 +712,6 @@ TEST(ConversionTest, fraction_and_to_value_fast_paths_match_rational) {
         const imax     num = static_cast<imax>((r.Den < 0) ? umax{0} - r.Num : r.Num);
         EXPECT_EQ(q.numerator(), num);
         EXPECT_EQ(q.denominator(), static_cast<imax>(abs_den(r.Den)));
-        EXPECT_EQ(to_value(q), trunc(r));
     }
     using I = inside<{-30, 90, 3}>; // integer notch 3, index storage
     static_assert(index_storage<I> && integer_lattice<I>);
@@ -728,3 +727,115 @@ TEST(ConversionTest, fraction_and_to_value_fast_paths_match_rational) {
 }
 
 } // namespace pinned_tests
+
+// Arms no other test reaches, found by the reachability audit (gcov and an
+// `if constexpr` probe over the suite).
+namespace reached_arms_tests {
+using namespace beman::inside;
+using detail::rational;
+
+// The exact paths of the conversion predicates: a double past the 64-bit
+// rationals, a long double that is no double, grid numbers past 64 bits.
+TEST(ConversionsArmTest, predicates_on_the_exact_paths) {
+    using I = inside<{0, 10}>;
+    EXPECT_TRUE(conversion_overflows<I>(1e30) && !conversion_rounds<I>(1e30));
+    EXPECT_TRUE(conversion_overflows<I>(1e30L));
+    // Just past Upper, onto the bound by the grid's rounding: rounds.
+    using C = inside<{{0, 1}, max_denominator{10}}, round_nearest>;
+    EXPECT_TRUE(!conversion_overflows<C>(1.0L + 0x1p-63L) && conversion_rounds<C>(1.0L + 0x1p-63L));
+    using P = inside<{1180591620717411303424_g, 1180591620717411303424_g}>; // the point 2^70
+    EXPECT_TRUE(!conversion_overflows<P>(0x1p70) && !conversion_rounds<P>(0x1p70));
+    using W = inside<{0, 1180591620717411303424_g}>;
+    EXPECT_TRUE(!conversion_overflows<W>(5) && !conversion_rounds<W>(5));
+}
+
+// A point rounds nothing; on a fine lattice an in-range value whose 64-bit
+// steps overflow is decided exactly.
+TEST(ConversionsArmTest, rounds_on_a_point_and_past_the_64_bit_steps) {
+    EXPECT_FALSE((conversion_rounds<inside<{5, 5}>>(5)));
+    EXPECT_FALSE((conversion_rounds<inside<{5, 5}>>(rational{5})));
+    EXPECT_TRUE((conversion_rounds<inside<{{0, 4}, per<3>}>>(rational{(umax{1} << 63) + 1, imax{1} << 62})));
+}
+
+// A lattice past the 64-bit rationals converts the values that fit; one
+// past them is reported.
+TEST(ConversionsArmTest, rational_of_a_value_past_64_bits) {
+    using T = inside<{{-12000000000000000000_g, 12000000000000000000_g}, just<3, 2>}>;
+    static_assert(detail::rational_readable<T>);
+    const T t = T::from_index(15333333333333333333_ins); // 10999999999999999999.5
+    EXPECT_THROW((void)rational{t}, inside_error);
+}
+} // namespace reached_arms_tests
+
+namespace pinned_tests {
+using namespace beman::inside;
+
+// A continuous grid whose bound passes 64 bits (small limits, a fraction raw)
+// takes the predicates' exact path: the 64-bit one read the bound as a 64-bit
+// rational and raised inside the noexcept predicates (terminate), also under
+// parse_exact.
+TEST(ConversionsPinnedTest, predicates_on_a_bound_past_64_bits) {
+    using F = inside<{{0, 1}, max_denominator{1180591620717411303424_g}}>; // bound 2^70
+    static_assert(detail::fraction_storage<F>);
+    EXPECT_FALSE(conversion_rounds<F>(test::at_run_time(0)));
+    EXPECT_TRUE(conversion_overflows<F>(test::at_run_time(2)));
+    EXPECT_FALSE(conversion_rounds<F>(test::at_run_time(0.5)));
+    EXPECT_TRUE(parse_exact<F>("0").has_value());
+    EXPECT_TRUE(parse_exact<F>("0.5").has_value());
+}
+} // namespace pinned_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+using detail::rational;
+
+// to<long double>() and to<float>() of exact values past the type's range
+// are ±infinity, below its least subnormal 0; zero is 0.
+TEST(ConversionsArmTest, floats_of_values_past_the_range) {
+    using Big = inside<{{0, detail::grid_rational{detail::grid_int{1} << 20000}},
+                        detail::grid_rational{detail::grid_int{1} << 19990}}>;
+    EXPECT_EQ(Big::from_index(1024_ins).to<long double>(), std::numeric_limits<long double>::infinity());
+    EXPECT_EQ(Big::from_index(1024_ins).to<float>(), std::numeric_limits<float>::infinity());
+    using F = inside<{0, 340282366920938463463374607431768211456_g}>; // to 2^128
+    EXPECT_EQ(F{just<340282366920938463463374607431768211456_g>}.to<float>(), std::numeric_limits<float>::infinity());
+    using T = inside<{{0, 1}, max_denominator{detail::grid_rational{detail::grid_int{1} << 20000}}}>;
+    EXPECT_EQ((*parse_exact<T>("0")).to<long double>(), 0.0L);
+    EXPECT_EQ((*parse_exact<T>("0x1p-19999")).to<long double>(), 0.0L);
+}
+
+// rational{long double}: |v| ≥ 2^64 raises; finer than 2^-62 is truncated.
+TEST(ConversionsArmTest, rational_of_a_long_double) {
+    EXPECT_THROW((void)rational{test::at_run_time(1e30L)}, inside_error);
+    EXPECT_EQ(rational{test::at_run_time(1e-30L)}, 0);
+    EXPECT_EQ(rational{test::at_run_time(1.0L + 0x1p-63L)}, 1);
+    EXPECT_EQ(rational{test::at_run_time(0.0)}, 0);
+}
+} // namespace reached_arms_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+using detail::rational;
+
+// A notch-0 point (inside<grid{5}>; {5, 5} derives notch 1) rounds nothing,
+// on the 64-bit path and the exact one; an integer compares on the left.
+TEST(ConversionsArmTest, notch_zero_point_and_reversed_comparison) {
+    using P = inside<grid{5}>;
+    static_assert(grid_of<P>.Notch == 0);
+    EXPECT_FALSE(conversion_rounds<P>(5));
+    EXPECT_FALSE(conversion_rounds<P>(inside<{0, 1180591620717411303424_g}>{5}));
+    EXPECT_TRUE((5 < rational{test::at_run_time(11), 2}));
+}
+} // namespace reached_arms_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+using detail::rational;
+
+// A rational against a long double finer than a double.
+TEST(ConversionsArmTest, rational_against_a_long_double) {
+    const long double up = test::at_run_time(1.0L + 0x1p-63L);
+    EXPECT_TRUE(rational{1} < up);
+    EXPECT_TRUE(rational{-1} > -up);
+    EXPECT_FALSE(rational{2} < up);
+}
+} // namespace reached_arms_tests

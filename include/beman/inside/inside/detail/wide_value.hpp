@@ -227,15 +227,11 @@ constexpr wide_rational<K> round_to_denominator(const wide_rational<K>& x, const
     return {static_cast<wide_sint<K>>(neg ? -p : p), static_cast<wide_sint<K>>(q)};
 }
 
-// v in lowest terms as the fraction raw F, or nothing when it needs more
-// limbs than F has.
+// v in lowest terms as the fraction raw F, when F's grid proves it fits.
 template <typename F, std::size_t K>
-constexpr std::optional<F> continuous_raw_of(const wide_rational<K>& v) noexcept {
-    const auto r      = reduced(v);
-    using I           = decltype(F::Num);
-    constexpr int cap = I::bits - 1; // magnitude bits
-    if (bit_width_of(abs(r.Num)) > cap || bit_width_of(r.Den) > cap)
-        return std::nullopt;
+constexpr F fraction_raw_of(const wide_rational<K>& v) noexcept {
+    const auto r = reduced(v);
+    using I      = decltype(F::Num);
     return F{static_cast<I>(r.Num), static_cast<I>(r.Den)};
 }
 
@@ -353,17 +349,29 @@ constexpr wide_sint<K> trunc(const wide_rational<K>& f) noexcept {
     return f.Num / f.Den;
 }
 
-// The reduced value as a 64-bit rational, or overflow when it does not fit.
+// A reduced fraction as a 64-bit rational (its parts fit).
+template <std::size_t K>
+constexpr rational narrow_reduced(const wide_rational<K>& r) noexcept {
+    const bool neg = r.Num.negative();
+    const imax den = static_cast<imax>(r.Den);
+    return rational_from_parts(static_cast<umax>(neg ? -r.Num : r.Num), neg ? -den : den);
+}
+
+// The reduced value as a 64-bit rational, when a grid proves it fits.
+template <std::size_t K>
+constexpr rational rational_of(const wide_rational<K>& f) noexcept {
+    return narrow_reduced(reduced(f));
+}
+
+// The same, or overflow when it does not fit.
 template <std::size_t K>
 constexpr std::expected<rational, errc> try_rational(const wide_rational<K>& f) noexcept {
-    using I        = wide_sint<K>;
-    const auto r   = reduced(f);
-    const bool neg = r.Num.negative();
-    const I    a   = neg ? -r.Num : r.Num;
-    if (a > I{std::numeric_limits<umax>::max()} || r.Den > I{std::numeric_limits<imax>::max()})
+    using I      = wide_sint<K>;
+    const auto r = reduced(f);
+    if ((r.Num.negative() ? -r.Num : r.Num) > I{std::numeric_limits<umax>::max()} ||
+        r.Den > I{std::numeric_limits<imax>::max()})
         return std::unexpected{errc::overflow};
-    const imax den = static_cast<imax>(r.Den);
-    return rational{static_cast<umax>(a), neg ? -den : den};
+    return narrow_reduced(r);
 }
 
 // Text → exact value, for values that outgrow the 64-bit rational parse
@@ -483,10 +491,11 @@ constexpr std::optional<wide_rational<K>> stand_in(const char* first, const char
         b = log2_bounds{b->Lo - d->Hi, b->Hi - d->Lo};
     }
     using I = wide_sint<K>;
-    if constexpr (G < 64 * static_cast<int>(K) - 2)
-        if (b->Hi <= -G)
-            return wide_rational<K>{neg ? I{-1} : I{1}, I{1} << G};
-    if constexpr (!Wrap && H < 64 * static_cast<int>(K) - 2)
+    // K ≥ exact_limbs<B> holds 3·exact_value_bits<B> + 8 bits: both stand-ins fit.
+    static_assert(G < 64 * static_cast<int>(K) - 2 && H < 64 * static_cast<int>(K) - 2);
+    if (b->Hi <= -G)
+        return wide_rational<K>{neg ? I{-1} : I{1}, I{1} << G};
+    if constexpr (!Wrap)
         if (b->Lo >= H)
             return wide_rational<K>{neg ? -(I{1} << H) : I{1} << H, I{1}};
     return std::nullopt;
@@ -761,10 +770,6 @@ constexpr Result exact_result(const wide_rational<K>& v) noexcept {
     return Result::from_raw(raw_of_slot<Result>(exact_index<Result, round_mode::trunc>(v).Index));
 }
 
-template <insidable B>
-constexpr B exact_integer_value(imax val) noexcept {
-    return exact_result<B>(exact_of(val));
-}
 } // namespace beman::inside::detail
 
 #endif // BEMAN_INSIDE_INSIDE_DETAIL_WIDE_VALUE_HPP

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Grids: construction and validation (grid, interval, grid::try_make),
+// Grids: construction and validation (grid, interval, bounds),
 // the grid operators, and the literals _r, _g and _ins.
 
 #include <beman/inside/inside.hpp>
@@ -236,8 +236,8 @@ constexpr bool derived_notch_is_coarsest() {
 
 template <grid G>
 constexpr bool max_index_matches() {
-    const rational span = (detail::to_rational(G.Interval.Upper) - detail::to_rational(G.Interval.Lower)).value();
-    return rational{detail::max_index(G)} == (span / detail::to_rational(G.Notch)).value();
+    const rational span = (detail::to_rational(G.Interval.Upper) - detail::to_rational(G.Interval.Lower));
+    return rational{detail::max_index(G)} == (span / detail::to_rational(G.Notch));
 }
 } // namespace
 
@@ -252,7 +252,7 @@ TEST(GridTest, derived_notch_of_fraction_pairs) {
 
     // Reversed order is not an interval: the notch still derives, the grid is invalid.
     static_assert(grid{just<13, 16>, just<3, 10>}.Notch == rational{1, 80});
-    static_assert(!grid::try_make(interval{just<13, 16>, just<3, 10>}, rational{1, 80}).has_value());
+    // (as a grid it is a compile error: tests/fail/interval_reversed.test.cpp)
 
     // Shared factors reduce first: 6/8 is 3/4, 10/12 is 5/6 → lcm(4, 6) = 12.
     constexpr grid b{just<6, 8>, just<10, 12>};
@@ -395,95 +395,33 @@ TEST(GridTest, bounded_storage_holds_every_value) {
 }
 } // namespace grid_tests
 
-// grid_try_make
-namespace grid_try_make_tests {
+// grid construction (the rejected grids are compile errors: tests/fail)
+namespace grid_construction_tests {
 using namespace beman::inside;
 using namespace beman::inside::detail;
 
-// grid::try_make accepts well-formed grids
-TEST(GridTryMakeTest, grid_try_make_accepts_well_formed_grids) {
-    {
-        SCOPED_TRACE("integer interval, unit notch");
-        auto g = grid::try_make(interval{0, 100}, 1_r);
-        ASSERT_TRUE(g.has_value());
-        ASSERT_TRUE((g->Interval == interval{0, 100}));
-        ASSERT_TRUE(g->Notch == 1);
-    }
-
-    {
-        SCOPED_TRACE("degenerate interval, zero notch (rational-raw shape)");
-        auto g = grid::try_make(interval{0, 0}, 0_r);
-        ASSERT_TRUE(g.has_value());
-        ASSERT_TRUE(g->Notch == 0);
-    }
-
-    {
-        SCOPED_TRACE("continuous: a denominator bound (rational storage)");
-        auto g = grid::try_make(interval{0, 1}, max_denominator{1000});
-        ASSERT_TRUE(g.has_value());
-        ASSERT_TRUE(g->Notch == 0 && g->MaxDenominator == 1000);
-    }
-
-    {
-        SCOPED_TRACE("fixed-point Q8.8 grid");
-        auto g = grid::try_make(interval{0, 255}, 0x1p-8_r);
-        ASSERT_TRUE(g.has_value());
-    }
-}
-
-// grid::try_make rejects malformed grids with typed errors
-TEST(GridTryMakeTest, grid_try_make_rejects_malformed_grids_with_typed_errors) {
-    {
-        SCOPED_TRACE("Lower > Upper -> domain_error");
-        auto g = grid::try_make(interval{10, 0}, 1_r);
-        ASSERT_FALSE(g.has_value());
-        ASSERT_EQ(g.error(), errc::domain_error);
-    }
-
-    {
-        SCOPED_TRACE("notch does not divide interval evenly -> rounding_error");
-        auto g = grid::try_make(interval{0, 10}, 3_r); // 10 / 3 has remainder
-        ASSERT_FALSE(g.has_value());
-        ASSERT_EQ(g.error(), errc::rounding_error);
-    }
-
-    {
-        SCOPED_TRACE("continuous without a denominator bound -> domain_error");
-        EXPECT_EQ(grid::try_make(interval{0, 1}, 0_r).error(), errc::domain_error);
-        EXPECT_EQ(grid::try_make(interval{0, 1}, max_denominator{rational{1, 2}}).error(), errc::domain_error);
-        EXPECT_EQ(grid::try_make(interval{0, rational{1, 3}}, max_denominator{2}).error(), errc::domain_error);
-        EXPECT_EQ(grid::try_make(interval{1, 1}, max_denominator{10}).error(), errc::domain_error); // a point
-    }
+TEST(GridConstructionTest, well_formed_grids) {
+    static_assert(grid{interval{0, 100}, 1_r}.Interval == interval{0, 100} && grid{interval{0, 100}, 1_r}.Notch == 1);
+    static_assert(grid{interval{0, 0}, 0_r}.Notch == 0); // a point
+    static_assert(grid{interval{0, 1}, max_denominator{1000}}.Notch == 0 &&
+                  grid{interval{0, 1}, max_denominator{1000}}.MaxDenominator == 1000);
+    static_assert(grid::validate<grid{interval{0, 255}, 0x1p-8_r}>()); // Q8.8
 }
 
 // A Lower off the notch's multiples is fine: the lattice is 1, 3, …, 11.
-TEST(GridTryMakeTest, grid_try_make_accepts_an_unanchored_lattice) {
-    auto g = grid::try_make(interval{1, 11}, 2_r);
-    ASSERT_TRUE(g.has_value());
-    EXPECT_FALSE(g->anchored());
-    // A run-time grid is a value to compare with the grids of types; its
-    // numbers are grid numbers, which are formed at compile time.
-    EXPECT_TRUE(*g == (grid{interval{1, 11}, 2_r}));
-    static_assert(grid{interval{1, 11}, 2_r}.step_count() == detail::grid_int{5});
+TEST(GridConstructionTest, an_unanchored_lattice) {
+    constexpr grid g{interval{1, 11}, 2_r};
+    static_assert(grid::validate<g>() && !g.anchored());
+    static_assert(g.step_count() == detail::grid_int{5});
 }
 
-// grid::try_make rejects a negative notch (decoding would count downward)
-TEST(GridTryMakeTest, grid_try_make_rejects_a_negative_notch) {
-    auto g = grid::try_make(interval{0, 10}, rational{-2});
-    ASSERT_FALSE(g.has_value());
-    EXPECT_EQ(g.error(), errc::domain_error);
+// An open limit moves in by one notch.
+TEST(GridConstructionTest, bounds_move_open_limits_in) {
+    static_assert(grid{interval{0, 360}, 1_r, bounds::half_open} == grid{0, 359});
+    static_assert(grid{interval{0, 10}, 1_r, bounds::open} == grid{1, 9});
+    static_assert(grid{interval{0, 10}, 1_r, bounds::closed} == grid{0, 10});
 }
-
-// grid::try_make moves an open limit in by one notch, like the ctors.
-TEST(GridTryMakeTest, grid_try_make_with_bounds) {
-    EXPECT_EQ(*grid::try_make(interval{0, 360}, 1_r, bounds::half_open), (grid{0, 359}));
-    EXPECT_EQ(*grid::try_make(interval{0, 10}, 1_r, bounds::open), (grid{1, 9}));
-    EXPECT_EQ(*grid::try_make(interval{0, 10}, 1_r), (grid{0, 10}));
-    // a continuous grid has no next point; an open {0, 1} on 1 holds none
-    EXPECT_EQ(grid::try_make(interval{0, 1}, 0_r, bounds::half_open).error(), errc::domain_error);
-    EXPECT_EQ(grid::try_make(interval{0, 1}, 1_r, bounds::open).error(), errc::domain_error);
-}
-} // namespace grid_try_make_tests
+} // namespace grid_construction_tests
 
 // interval
 namespace interval_tests {
@@ -508,9 +446,9 @@ TEST(IntervalTest, interval_structured_binding) {
 TEST(IntervalTest, interval_construction_and_predicates) {
     {
         SCOPED_TRACE("point interval");
-        constexpr interval p{*(3_r / 4), *(3_r / 4)};
+        constexpr interval p{(3_r / 4), (3_r / 4)};
         static_assert(p.Lower == p.Upper);
-        static_assert(includes(p, *(3_r / 4)));
+        static_assert(includes(p, (3_r / 4)));
         static_assert(!(includes(p, 0)));
     }
 

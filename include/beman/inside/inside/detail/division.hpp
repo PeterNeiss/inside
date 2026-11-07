@@ -271,11 +271,10 @@ struct division {
         else if constexpr (native_div_fixed) {
             constexpr interval q = (*(grid_of<L> / grid_of<R>)).Interval;
             // An endpoint on the notch stays; one off it rounds onto it.
-            constexpr rational n = notch64<L>, k = (rational{1} / n).value();
+            constexpr rational n = notch64<L>, k = rational{1} / n;
             auto               on = [&](const grid_rational& x, bool up) {
-                return grid_divides_evenly(x, notch_of<L>)
-                           ? to_rational(x)
-                           : (round_rat((to_rational(x) * k).value(), rmode, up) * n).value();
+                return grid_divides_evenly(x, notch_of<L>) ? to_rational(x)
+                                                           : round_rat(to_rational(x) * k, rmode, up) * n;
             };
             return grid{interval{on(q.Lower, false), on(q.Upper, true)}, n};
         } else
@@ -392,10 +391,10 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, call_policy<G, E> policy) ->
         if constexpr (!zero_unchecked)
             if (d.Num.is_zero())
                 return zero();
-        if constexpr (fraction_storage<result>)
-            return result::from_raw(*continuous_raw_of<raw_t<result>>(exact_of(lhs) / d));
-        else
-            return result::from_raw(*try_rational(exact_of(lhs) / d));
+        // (A wide operand puts the quotient's numerator or denominator bound
+        // past 64 bits: a fraction raw.)
+        static_assert(fraction_storage<result>);
+        return result::from_raw(fraction_raw_of<raw_t<result>>(exact_of(lhs) / d));
     } else if constexpr (int_quotient_fits) {
         // Two integer raws: J_L·Notch_L / (J_R·Notch_R) as one fraction of
         // value indices, reduced once — no operand decodes, no checked divide.

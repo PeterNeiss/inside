@@ -26,21 +26,10 @@ namespace detail {
 // compares with a scalar as `bias + raw` without a rational decode.
 template <insidable B>
 inline constexpr bool index_cmp_fits = [] {
-    if constexpr (!notched<B> || !anchored<B> || !values_fit_imax<B>)
+    if constexpr (!notched<B> || !anchored<B> || !values_fit_imax<B> || !value_indices_fit64<B>)
         return false;
     else
-        return lower_index64<B> && upper_index64<B> && std::in_range<imax>(lower_index64<B>->Num) &&
-               std::in_range<imax>(upper_index64<B>->Num);
-}();
-
-// Signed value index of Raw == 0: Lower/Notch for offset (index) storage,
-// 0 for a value raw (raw is already the value == the index at notch 1).
-template <insidable B>
-inline constexpr imax index_cmp_bias = [] {
-    if constexpr (index_storage<B>)
-        return signed_numerator(*lower_index64<B>);
-    else
-        return imax{0};
+        return std::in_range<imax>(lower_index64<B>.Num) && std::in_range<imax>(upper_index64<B>.Num);
 }();
 
 // Inside values are finite and exact, so they are always ordered: <=> of two
@@ -125,7 +114,7 @@ inline constexpr bool scalar_index_cmp_fits = [] {
         constexpr umax notch_num = notch64<B>.Num;
         constexpr umax notch_den = static_cast<umax>(notch64<B>.Den); // Notch > 0
         constexpr umax index_mag =
-            lower_index64<B>->Num > upper_index64<B>->Num ? lower_index64<B>->Num : upper_index64<B>->Num;
+            lower_index64<B>.Num > upper_index64<B>.Num ? lower_index64<B>.Num : upper_index64<B>.Num;
         // The largest |c| of A: |min| = max + 1 for a signed type.
         constexpr umax scalar_mag = static_cast<umax>(std::numeric_limits<A>::max()) + std::signed_integral<A>;
         umax           product;
@@ -147,7 +136,8 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
     else if constexpr (integer_value_storage<B> && values_fit_imax<B> && std::unsigned_integral<A>)
         return cmp(raw_imax(lhs), rhs); // a 64-bit unsigned: sign-safe, by the cmp_* forms
     else if constexpr (scalar_index_cmp_fits<B, A>)
-        return cmp((index_cmp_bias<B> + raw_imax(lhs)) * static_cast<imax>(notch64<B>.Num),
+        // (An index raw: the value index is raw + Lower/Notch.)
+        return cmp((signed_numerator(lower_index64<B>) + raw_imax(lhs)) * static_cast<imax>(notch64<B>.Num),
                    static_cast<imax>(rhs) * notch64<B>.Den);
     else
         return cmp(as_rational(lhs), rational{rhs});

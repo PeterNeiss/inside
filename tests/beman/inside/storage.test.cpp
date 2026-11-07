@@ -780,3 +780,39 @@ TEST(StorageTest, numeric_limits_epsilon_and_round_error_of_exact_types) {
 }
 
 } // namespace pinned_tests
+
+// Arms no other test reaches, found by the reachability audit (gcov and an
+// `if constexpr` probe over the suite).
+namespace reached_arms_tests {
+using namespace beman::inside;
+
+// A point's index is 0; its numerator and denominator are its own.
+TEST(StorageArmTest, index_and_parts_of_a_point) {
+    const inside<{5, 5}> p;
+    EXPECT_TRUE(p.index() == 0 && p.numerator() == 5 && p.denominator() == 1);
+}
+
+// x++ returns the old value.
+TEST(StorageArmTest, postfix_increment) {
+    volatile int    three = 3;
+    inside<{0, 10}> x{static_cast<int>(three)};
+    const auto      y = x++;
+    EXPECT_TRUE(x == 4 && y == 3);
+}
+} // namespace reached_arms_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+
+// A continuous grid has no binary digits to count.
+TEST(StorageArmTest, digits_of_a_continuous_grid) {
+    static_assert(std::numeric_limits<inside<{{0, 1}, max_denominator{10}}>>::digits == 0);
+}
+} // namespace reached_arms_tests
+
+namespace reached_arms_tests {
+using namespace beman::inside;
+
+// A notch-0 point's numerator is its value.
+TEST(StorageArmTest, numerator_of_a_notch_zero_point) { EXPECT_TRUE((inside<grid{5}>{}.numerator() == 5)); }
+} // namespace reached_arms_tests

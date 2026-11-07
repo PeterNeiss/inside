@@ -39,11 +39,8 @@ int main() {
     auto s1 = math::sin(Ang{1}); // runtime, integer engine
     (void)s1;
 
-    std::printf("a=%d w=%d s0=%d c0=%d\n",
-                (int)detail::to_value(a),
-                (int)detail::to_value(w),
-                (int)detail::to_value(s0),
-                (int)detail::to_value(c0));
+    std::printf(
+        "a=%d w=%d s0=%d c0=%d\n", (int)detail::to_value(a), (int)detail::to_value(w), s0.as<int>(), c0.as<int>());
 
     return (rational{c0} == 1) ? 0 : 1;
 }

@@ -352,12 +352,11 @@ constexpr void times_binomial(W& r, umax s, umax k) noexcept {
 }
 
 // The inside of R (an integer lattice) holding the integer v, which the
-// caller proves lies in R.
+// caller proves lies in R. (Every caller returns a point result itself.)
 template <insidable R, class W>
 constexpr R lattice_inside(const W& v) noexcept {
-    if constexpr (point_storage<R>)
-        return R::from_raw({});
-    else if constexpr (notch_of<R> == 1)
+    static_assert(!point_storage<R>);
+    if constexpr (notch_of<R> == 1)
         return integer_inside<R>(v);
     else if constexpr (wide_integer<W>) {
         constexpr W lo = static_cast<W>(grid_numerator(lower_of<R>));
@@ -559,26 +558,18 @@ template <insidable Out, insidable... Ks>
     "beman::inside::math::" #fn ": the operands need a lattice (a notch or a point); a continuous grid has none"
 
 namespace detail {
-// x's value in units of U, as magnitudes in one unsigned type that holds
-// both operands' (on integers U is 1: the values themselves).
+// For fractional lattices (gcd and lcm compute integers directly): x's
+// value in units of gcd_unit, as a magnitude in an unsigned type that holds
+// both operands', and the R of n such units.
 template <insidable A, insidable B, int Bits, class X>
 constexpr auto magnitude_in_units(const X& x) {
-    using S = int_for_bits_t<Bits, true>;
-    using U = count_work_t<Bits>;
-    S v;
-    if constexpr (integer_operands<A, B>)
-        v = integer_value<S>(x);
-    else
-        v = value_in_units<S, gcd_unit<A, B>>(x);
-    return static_cast<U>(v < S{0} ? -v : v);
+    using S   = int_for_bits_t<Bits, true>;
+    const S v = value_in_units<S, gcd_unit<A, B>>(x);
+    return static_cast<count_work_t<Bits>>(v < S{0} ? -v : v);
 }
-// The R of n units (integers: of value n).
 template <insidable R, insidable A, insidable B, class W>
 constexpr R from_units(const W& n) {
-    if constexpr (integer_operands<A, B>)
-        return lattice_inside<R>(n);
-    else
-        return from_value_in_units<R, gcd_unit<A, B>>(n);
+    return from_value_in_units<R, gcd_unit<A, B>>(n);
 }
 } // namespace detail
 

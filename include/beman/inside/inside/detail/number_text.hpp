@@ -235,14 +235,7 @@ consteval rational parse_ins_literal() {
     constexpr parsed_number r     = parse_number(src, src + sizeof...(Chars));
     if constexpr (octal_literal<Chars...>())
         constexpr_error<"_ins/_r literal: a leading 0 makes an octal literal; write the number without it">();
-    else if constexpr (r.Fail == parse_fail::invalid_exponent)
-        constexpr_error<"_ins/_r literal: invalid char in exponent">();
-    else if constexpr (r.Fail == parse_fail::multiple_dots)
-        constexpr_error<"_ins/_r literal: multiple '.'">();
-    else if constexpr (r.Fail == parse_fail::dot_in_binary)
-        constexpr_error<"_ins/_r literal: '.' not allowed in binary">();
-    else if constexpr (r.Fail == parse_fail::invalid_digit || r.Fail == parse_fail::empty)
-        constexpr_error<"_ins/_r literal: invalid digit for radix">();
+    // (A malformed number is no literal token: only a value can fail.)
     else if constexpr (r.Fail == parse_fail::numerator_overflow)
         constexpr_error<"_ins/_r literal: numerator overflow">();
     else if constexpr (r.Fail == parse_fail::denominator_overflow)

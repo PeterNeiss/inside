@@ -281,12 +281,8 @@ constexpr wide_rational<KR> scaled_rational(const wide_sint<K>& y, int W) noexce
 // one-limb divisions; the rounding reads r and R exactly (see below).
 template <insidable Out>
 inline constexpr bool notch_fits64 = [] {
-    if constexpr (!notched<Out>)
-        return false;
-    else {
-        const grid_int p = grid_numerator(notch_of<Out>), q = grid_denominator(notch_of<Out>);
-        return p.fits_limb() && q.fits_limb();
-    }
+    static_assert(notched<Out>); // (decide and quick_slot: a notched Out's slots)
+    return grid_numerator(notch_of<Out>).fits_limb() && grid_denominator(notch_of<Out>).fits_limb();
 }();
 
 // v / d for a small positive d, truncating toward zero (series terms).
@@ -538,9 +534,9 @@ constexpr bool in_slots(const I& i) noexcept {
 
 template <insidable Out, std::size_t K, typename P>
 constexpr Out store(const wide_sint<K>& index, P&& policy) {
-    if constexpr (integer_storage<Out>)
-        if (in_slots<Out>(index)) [[likely]]
-            return Out::from_raw(raw_of_slot<Out>(index));
+    static_assert(integer_storage<Out>); // slots: a lattice
+    if (in_slots<Out>(index)) [[likely]]
+        return Out::from_raw(raw_of_slot<Out>(index));
     // Past Out's range: the grid point (index + Lower/Notch)·Notch, exact,
     // through Out's assignment (its policy clamps, wraps or reports).
     constexpr std::size_t KK = std::max(K, exact_limbs<Out>);

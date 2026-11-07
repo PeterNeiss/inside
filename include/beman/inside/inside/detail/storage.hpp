@@ -126,12 +126,25 @@ inline constexpr bool rational_readable = !wide_valued<B> || (lattice_past_ratio
 template <insidable B>
 constexpr auto exact_of(const B& b); // wide_value.hpp
 
-// The value indices Lower/Notch and Upper/Notch, as 64-bit rationals (for
-// the 64-bit paths of a notched grid).
+// The value indices Lower/Notch and Upper/Notch of a notched grid (0 on a
+// continuous one), exactly, and as 64-bit rationals (for the 64-bit paths)
+// where both fit.
 template <insidable B>
-inline constexpr auto lower_index64 = lower64<B> / notch64<B>;
+inline constexpr grid_rational lower_index_of = notched<B> ? lower_of<B> / notch_of<B> : grid_rational{0};
 template <insidable B>
-inline constexpr auto upper_index64 = upper64<B> / notch64<B>;
+inline constexpr grid_rational upper_index_of = notched<B> ? upper_of<B> / notch_of<B> : grid_rational{0};
+template <insidable B>
+inline constexpr bool value_indices_fit64 =
+    notched<B> && fits_rational(lower_index_of<B>) && fits_rational(upper_index_of<B>);
+template <insidable B>
+inline constexpr rational lower_index64 = to_rational(lower_index_of<B>);
+// Lower/Notch as an imax value index: an integer within imax.
+template <insidable B>
+inline constexpr bool lower_index_fits_imax = notched<B> && grid_denominator(lower_index_of<B>) == grid_int{1} &&
+                                              !(lower_index_of<B> < grid_rational{std::numeric_limits<imax>::min()}) &&
+                                              !(grid_rational{std::numeric_limits<imax>::max()} < lower_index_of<B>);
+template <insidable B>
+inline constexpr rational upper_index64 = to_rational(upper_index_of<B>);
 
 // Index raw → double in one IEEE operation. On an anchored grid with Notch
 // p/q the value is J·p/q, J = raw + Lower/Notch. With |J·p| and q at most 2^53
@@ -146,7 +159,7 @@ struct index_double_codec {
 };
 template <insidable B>
 inline constexpr index_double_codec index_double = [] {
-    if constexpr (!integer_index_storage<B> || !anchored<B> || wide_valued<B>)
+    if constexpr (!integer_index_storage<B> || !anchored<B> || wide_valued<B> || !value_indices_fit64<B>)
         return index_double_codec{};
     else {
         constexpr umax k53 = umax{1} << 53;
@@ -154,11 +167,11 @@ inline constexpr index_double_codec index_double = [] {
         const auto     lo = lower_index64<B>, hi = upper_index64<B>;
         if (abs_den(n.Den) > k53)
             return index_double_codec{};
-        const umax m = lo->Num > hi->Num ? lo->Num : hi->Num; // max |J|
+        const umax m = lo.Num > hi.Num ? lo.Num : hi.Num; // max |J|
         if (m > k53 / n.Num)
             return index_double_codec{};
         return index_double_codec{
-            true, signed_numerator(*lo), static_cast<imax>(n.Num), static_cast<double>(abs_den(n.Den))};
+            true, signed_numerator(lo), static_cast<imax>(n.Num), static_cast<double>(abs_den(n.Den))};
     }
 }();
 
@@ -222,6 +235,12 @@ template <grid G>
 inline constexpr bool integer_notch =
     grid_denominator(G.Notch) == grid_int{1} && G.Notch != 0 && grid_denominator(G.Interval.Lower) == grid_int{1};
 
+// Every value an integer: an integer lattice or an integer point (see
+// integer_limits below).
+template <insidable B>
+inline constexpr bool integer_lattice =
+    integer_notch<grid_of<B>> || (lower_of<B> == upper_of<B> && grid_denominator(lower_of<B>) == grid_int{1});
+
 // ONLY type conversion, NO value representation conversion calculation
 template <insidable B>
 [[nodiscard]] constexpr raw_t<B> raw_cast(auto value) noexcept {
@@ -248,11 +267,9 @@ inline constexpr bool q_format_fits = [] {
     if constexpr (abs_den(lower64<B>.Den) != 1 || notch64<B>.Num != 1 || !values_fit_imax<B>)
         return false;
     else { // every value·nd (so Lower·nd and raw + Lower·nd) in imax
-        constexpr imax nd = abs_den(notch64<B>.Den);
-        constexpr auto lo = try_mul(lower64<B>, rational{nd});
-        constexpr auto hi = try_mul(upper64<B>, rational{nd});
-        return lo.has_value() && hi.has_value() && *lo >= rational{std::numeric_limits<imax>::min()} &&
-               *hi <= rational{std::numeric_limits<imax>::max()};
+        constexpr grid_rational nd{grid_denominator(notch_of<B>)};
+        return !(lower_of<B> * nd < grid_rational{std::numeric_limits<imax>::min()}) &&
+               !(grid_rational{std::numeric_limits<imax>::max()} < upper_of<B> * nd);
     }
 }();
 
@@ -283,40 +300,27 @@ constexpr rational q_format_decode(B b) noexcept {
         return rational{n, nd};
 }
 
-// Library-internal extraction helper. Always succeeds (returns `imax`
-// unconditionally) but does not check the value fits in any narrower
-// target. User code should prefer `b.to<T>()`, which carries a typed
-// overflow error.
+// The value of an inside on an integer lattice as imax, which the caller
+// proves holds it (user code reads b.to<T>(), which reports overflow).
 template <insidable B>
+    requires integer_lattice<B>
 [[nodiscard]] constexpr imax to_value(B b) noexcept {
     if constexpr (value_storage<B>)
         return raw_imax(b);
-    else if constexpr (abs_den(notch64<B>.Den) == 1 && abs_den(lower64<B>.Den) == 1)
-        // In umax: raw·Notch can pass imax although the value fits.
+    else // in umax: raw·Notch can pass imax although the value fits
         return static_cast<imax>(static_cast<umax>(lower_imax<B>) + static_cast<umax>(raw_imax(b)) * notch64<B>.Num);
-    else if constexpr (q_format_fits<B>) {
-        constexpr imax nd = abs_den(notch64<B>.Den);
-        return (raw_imax(b) + lower_imax<B> * nd) / nd; // q_format_decode, truncated
-    } else                                              // index storage, generic rational path
-        return trunc(as_rational(b));
 }
 
-// The B of an integer val on B's lattice, exactly (wide_value.hpp): the
-// offset (val − Lower)/Notch through wide integers, as its 64-bit steps may
-// pass 2^64 on a wide span.
-template <insidable B>
-constexpr B exact_integer_value(imax val) noexcept;
-
+// The callers store an integer of B (a fold count, a native quotient or
+// remainder) on an integer lattice with a nonzero notch (a carry point
+// {2, 2} has notch 1).
 template <insidable B>
 constexpr void from_value(B& b, imax val) {
+    static_assert(notch64<B>.Num != 0 && abs_den(notch64<B>.Den) == 1 && abs_den(lower64<B>.Den) == 1);
     if constexpr (value_storage<B>)
         b = B::from_raw(raw_cast<B>(val));
-    else if constexpr (abs_den(notch64<B>.Den) == 1 && abs_den(lower64<B>.Den) == 1)
+    else
         b = B::from_raw(raw_cast<B>((static_cast<umax>(val) - static_cast<umax>(lower_imax<B>)) / notch64<B>.Num));
-    else if constexpr (q_format_fits<B>)
-        b = B::from_raw(q_format_encode<B>(val));
-    else // index storage on a fractional lattice
-        b = exact_integer_value<B>(val);
 }
 
 //-------------------------------------------------------------------------
@@ -406,10 +410,6 @@ template <insidable B>
 inline constexpr bool integer_limits =
     grid_denominator(lower_of<B>) == grid_int{1} && grid_denominator(upper_of<B>) == grid_int{1};
 
-template <insidable B>
-inline constexpr bool integer_lattice =
-    integer_notch<grid_of<B>> || (lower_of<B> == upper_of<B> && grid_denominator(lower_of<B>) == grid_int{1});
-
 // Whether a store into B under the call policy P uses flag F: B's own flags
 // or P's. Composite flags (e.g. round_nearest = bit5 | snap) require all
 // their bits set — having a subset like just `snap` does NOT match.
@@ -466,7 +466,7 @@ template <insidable L, typename P>
 // result or step past the rational range is errc::overflow.
 template <insidable L, typename P>
 [[nodiscard]] constexpr std::expected<rational, errc> try_round_to_lattice(rational v) {
-    if constexpr (!notched<L>)
+    if constexpr (!notched<L>) // a point: apply_wrap's wrap arm is formed, never run (dispatch rejects it)
         return v;
     else {
         const auto q = anchored<L>
@@ -560,7 +560,7 @@ template <insidable L, typename P>
     constexpr round_mode m        = rounding_for<L, P>;
     bool                 negative = false;
     if constexpr (lower64<L> < 0) {
-        constexpr rational c = -*lower_index64<L>; // > 0
+        constexpr rational c = -lower_index64<L>; // > 0
         using W              = wide_uint<2>;
         negative             = W{q * den + r} * W{abs_den(c.Den)} < W{c.Num} * W{den};
     }
@@ -580,12 +580,10 @@ template <insidable L, typename P>
 // rounds the offset against the value's sign.
 template <insidable L, typename P>
 [[nodiscard]] constexpr umax round_split(umax q, umax r, umax den) noexcept {
-    // Lower/Notch past 64 bits (a far-off grid with a fine notch) has no imax
+    // Lower/Notch past imax (a far-off grid with a fine notch) has no imax
     // value index: round the offset as for a non-integral m.
-    constexpr auto zq = (!notched<L>) ? std::expected<rational, errc>{rational{0}} : try_div(lower64<L>, notch64<L>);
-    constexpr bool vidx =
-        zq.has_value() && abs_den(zq->Den) == 1 && zq->Num <= static_cast<umax>(std::numeric_limits<imax>::max()) + 1;
-    constexpr imax m = vidx ? signed_numerator(*zq) : imax{0};
+    constexpr bool vidx = lower_index_fits_imax<L>;
+    constexpr imax m    = vidx ? signed_numerator(to_rational(lower_index_of<L>)) : imax{0};
 
     if constexpr (!anchored<L>)
         return round_offset_unanchored<L, P>(q, r, den);
@@ -625,15 +623,11 @@ inline constexpr bool notches_compatible = [] {
         // A continuous target holds every value; a continuous source is
         // checked when stored, like a rational scalar.
         return true;
-    else if constexpr (wide_valued<L> || wide_valued<R>)
+    else
         // Every R value on L's lattice: R's notch a multiple of L's, and R's
         // lattice anchored on L's.
         return grid_divides_evenly(notch_of<R>, notch_of<L>) &&
                grid_same_lattice(lower_of<R>, lower_of<L>, notch_of<L>);
-    else
-        // R's notch a whole number of L's, and R's lattice on L's (a given
-        // when both pass through 0).
-        return abs_den(assignment<L, R>::Factor.Den) == 1 && grid_same_lattice(lower_of<R>, lower_of<L>, notch_of<L>);
 }();
 
 // Tail of the policy cascade: checked reports.

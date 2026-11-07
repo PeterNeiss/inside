@@ -63,12 +63,15 @@ constexpr lossy_result exact_lossy(const wide_rational<K>& x) noexcept {
     }
 }
 
-// Whether a value of A always takes the exact path: B past the 64-bit
-// paths, or an inside A whose values pass the 64-bit rational.
+// B past the 64-bit paths: grid numbers past 64 bits, or a fraction raw (a
+// bound past them). A value of A always takes the exact path for such a B,
+// or for an inside A whose values pass the 64-bit rational.
+template <insidable B>
+inline constexpr bool exact_grid_only = wide_grid_numbers<B> || fraction_storage<B>;
 template <typename A>
 concept wide_inside = insidable<A> && wide_valued<A>;
 template <insidable B, numeric A>
-inline constexpr bool exact_path_only = wide_grid_numbers<B> || wide_inside<A>;
+inline constexpr bool exact_path_only = exact_grid_only<B> || wide_inside<A>;
 
 // exact_lossy for a value, when the 64-bit paths cannot take it.
 template <insidable B, numeric A>
@@ -78,14 +81,14 @@ constexpr std::optional<lossy_result> exact_lossy_of(A value) noexcept {
         const double d = static_cast<double>(value);
         if (static_cast<A>(d) != value)
             return exact_lossy<B>(exact_of_long_double(value));
-        if (wide_grid_numbers<B> || past_rational(d))
+        if (exact_grid_only<B> || past_rational(d))
             return exact_lossy<B>(exact_of_double(d));
     } else if constexpr (std::floating_point<A>) {
-        if (wide_grid_numbers<B> || past_rational(static_cast<double>(value)))
+        if (exact_grid_only<B> || past_rational(static_cast<double>(value)))
             return exact_lossy<B>(exact_of_double(static_cast<double>(value)));
     } else if constexpr (wide_inside<A>)
         return exact_lossy<B>(exact_of(value));
-    else if constexpr (wide_grid_numbers<B>)
+    else if constexpr (exact_grid_only<B>)
         return exact_lossy<B>(exact_of(as_rational(value)));
     return std::nullopt;
 }

@@ -107,8 +107,8 @@ TEST(UnanchoredGridTest, grid_shape) {
     static_assert(half_off.value_unit() == 0.5_r);
     static_assert(tenth_off.value_unit() == 0.1_r);
     static_assert(half_off.step_count() == grid_int{10});
-    static_assert(grid::try_make(interval{0.5_r, 10.5_r}, 1).has_value());
-    static_assert(!grid::try_make(interval{0.5_r, 10.25_r}, 1).has_value()); // the notch must divide the span
+    static_assert(interval{0.5_r, 10.5_r}.divides_evenly(1));
+    static_assert(!interval{0.5_r, 10.25_r}.divides_evenly(1)); // the notch must divide the span
 
     // + keeps the gcd notch, anchored at the sum of the Lowers
     static_assert(half_off + half_off == grid{{1, 21}, 1});

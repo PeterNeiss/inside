@@ -22,8 +22,8 @@
 // compilation, `N - 1` folds wherever N is a constant, and run-time code
 // computes with insides, which hold any value of their grid. The same
 // arithmetic by name (big_int::add, big_rational::mul, …) is constexpr for
-// the few run-time paths on one-limb values (grid::try_make, printing a
-// grid); there a result past one limb reports errc::overflow.
+// the constexpr grid constructors, normalization and printing a grid; at
+// run time a result past one limb reports errc::overflow.
 //
 // Arithmetic on large values runs on transient std::vector<umax> magnitudes
 // with the wide_int limb kernels, during constant evaluation only.
