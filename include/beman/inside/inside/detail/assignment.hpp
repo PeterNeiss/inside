@@ -39,7 +39,7 @@ struct assignment<L, R> {
     // one unsigned compare.) Bounds past int64 compare exactly in the fold's
     // work type.
     static constexpr bool out_of_range(R rhs) noexcept {
-        if constexpr (fits_imax(interval_of<L>)) {
+        if constexpr (fits_imax(interval_of<L>) && !wide_builtin<R>) {
             constexpr imax lower = lower_imax<L>, upper = upper_imax<L>;
             if constexpr (std::is_unsigned_v<R> && sizeof(R) >= sizeof(imax))
                 return std::cmp_less(rhs, lower) || std::cmp_greater(rhs, upper);
@@ -107,7 +107,12 @@ struct assignment<L, R> {
         static_assert(uses_flag<L, P, wrap> || uses_flag<L, P, clamp> || not excludes(interval_of<L>, interval_of<R>),
                       "rhs type's range lies entirely outside lhs interval and the policy cannot bring it into range");
 
+        // (Separate arms: naming integers_on_grid instantiates L's 64-bit
+        // views.) A source past 64 bits (__int128) has no 64-bit rational:
+        // off L's integers it stores exactly.
         if constexpr (wide_valued<L>)
+            return assign_exact<R>(lhs, exact_of(rhs), policy, std::forward<A>(action));
+        else if constexpr (wide_builtin<R> && !integers_on_grid)
             return assign_exact<R>(lhs, exact_of(rhs), policy, std::forward<A>(action));
         else if constexpr (!integers_on_grid)
             return assignment<L, rational>::assign(lhs, rational{rhs}, policy, std::forward<A>(action));
@@ -128,10 +133,14 @@ struct assignment<L, R> {
                             if constexpr (notch64<L> == 1) {
                                 if (handle_out_of_range(lhs, rhs, policy, action))
                                     return lhs;
-                            } else
+                            } else if constexpr (wide_builtin<R>)
+                                return assign_exact<R>(lhs, exact_of(rhs), policy, action);
+                            else
                                 return assignment<L, rational>::assign(lhs, rational{rhs}, policy, action);
                         }
                     }
+                } else if constexpr (wide_builtin<R>) {
+                    return assign_exact<R>(lhs, exact_of(rhs), policy, action); // fractional limits: exactly
                 } else if (not includes(interval_of<L>, rhs)) {
                     // Non-integer L bounds: route through the rational path so fractional
                     // Lower/Upper drive clamp/error correctly.

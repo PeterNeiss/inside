@@ -397,8 +397,8 @@ struct inside {
     // value is an integer or the call may round.
     template <std::integral T, policy_flag Round>
     static constexpr bool total_to =
-        !(lower_of<inside> < detail::rational{std::numeric_limits<T>::min()}) &&
-        !(upper_of<inside> > detail::rational{std::numeric_limits<T>::max()}) &&
+        !(lower_of<inside> < detail::grid_rational{std::numeric_limits<T>::min()}) &&
+        !(upper_of<inside> > detail::grid_rational{std::numeric_limits<T>::max()}) &&
         (detail::integer_lattice<inside> || Round != detail::none || has_flag(P, detail::snap));
 
   public:
@@ -415,8 +415,8 @@ struct inside {
                  Round == round_floor || Round == round_ceil || Round == round_half_even)
     [[nodiscard]] constexpr std::conditional_t<total_to<T, Round>, T, std::expected<T, errc>> to() const {
         using lim                             = std::numeric_limits<T>;
-        constexpr bool               check_lo = lower_of<inside> < detail::rational{lim::min()};
-        constexpr bool               check_hi = upper_of<inside> > detail::rational{lim::max()};
+        constexpr bool               check_lo = lower_of<inside> < detail::grid_rational{lim::min()};
+        constexpr bool               check_hi = upper_of<inside> > detail::grid_rational{lim::max()};
         constexpr bool               rounds   = Round != detail::none || has_flag(P, detail::snap);
         constexpr detail::round_mode mode     = detail::rounding_of(Round != detail::none ? Round : P);
         if constexpr (detail::integer_lattice<inside> && !check_lo && !check_hi && detail::values_fit_imax<inside>)
@@ -447,7 +447,10 @@ struct inside {
             if constexpr (check_hi)
                 if (t > detail::rational{lim::max()})
                     return std::unexpected{errc::overflow};
-            return static_cast<T>(detail::signed_numerator(t));
+            if constexpr (detail::wide_builtin<T>) // a value to 2^64 − 1: past imax
+                return static_cast<T>(t);
+            else
+                return static_cast<T>(detail::signed_numerator(t));
         }
     }
 

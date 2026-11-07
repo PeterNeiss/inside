@@ -391,6 +391,21 @@ concept plain_number = std::integral<T> || std::floating_point<T> || std::same_a
 template <typename T>
 concept fractional = std::floating_point<T> || std::same_as<rational, T>;
 
+// A builtin integer wider than 64 bits (__int128 under the GNU dialects):
+// it takes the exact paths, never imax or the 64-bit rational.
+template <typename T>
+concept wide_builtin = std::integral<T> && (std::numeric_limits<T>::digits > 64);
+
+// Whether a builtin integer's value fits the 64-bit rational's numerator.
+template <std::integral T>
+[[nodiscard]] constexpr bool fits_umax_magnitude(T v) noexcept {
+    if constexpr (wide_builtin<T>)
+        return std::is_signed_v<T> && v < 0 ? !(v < -static_cast<T>(std::numeric_limits<umax>::max()))
+                                            : !(static_cast<T>(std::numeric_limits<umax>::max()) < v);
+    else
+        return true;
+}
+
 template <std::signed_integral V>
 [[nodiscard]] constexpr umax safe_abs(V value) noexcept {
     return (value >= 0) ? static_cast<umax>(value) : umax{0} - static_cast<umax>(value);
@@ -1592,13 +1607,17 @@ struct rational {
     // denominator has 63 bits. |value| ≥ 2^64 and non-finite values raise.
     constexpr rational(std::floating_point auto);
     constexpr rational(std::signed_integral auto, imax = 1);
-    constexpr rational(std::unsigned_integral auto num, imax den = 1) : Num{num}, Den{den} { canonicalize(Num, Den); }
+    constexpr rational(std::unsigned_integral auto num, imax den = 1) : Num{static_cast<umax>(num)}, Den{den} {
+        check_fits(num);
+        canonicalize(Num, Den);
+    }
 
     // Two-unsigned overload: lets `rational{i, N}` accept two `size_t`
     // operands without forcing the caller to `static_cast<imax>` the
     // numerator. A den past imax has no signed denominator: overflow.
     template <std::unsigned_integral N, std::unsigned_integral D>
-    constexpr rational(N num, D den) : Num{num}, Den{static_cast<imax>(den)} {
+    constexpr rational(N num, D den) : Num{static_cast<umax>(num)}, Den{static_cast<imax>(den)} {
+        check_fits(num);
         if (!std::in_range<imax>(den))
             raise(errc::overflow, "rational: denominator past imax");
         canonicalize(Num, Den);
@@ -1629,7 +1648,10 @@ struct rational {
     template <std::signed_integral T>
     explicit constexpr operator T() const {
         const umax q = Num / abs_den(Den);
-        return static_cast<T>((Den < 0) ? umax{0} - q : q);
+        if constexpr (wide_builtin<T>) // negate in T: umax{0} − q would read as positive
+            return Den < 0 ? -static_cast<T>(q) : static_cast<T>(q);
+        else
+            return static_cast<T>((Den < 0) ? umax{0} - q : q);
     }
 
     template <std::floating_point T>
@@ -1649,6 +1671,12 @@ struct rational {
     consteval rational& operator/=(rational rhs);
 
   private:
+    // A builtin integer past 64 bits (__int128) has no 64-bit rational.
+    static constexpr void check_fits(std::integral auto num) {
+        if (!fits_umax_magnitude(num))
+            raise(errc::overflow, "rational: an integer past 64 bits");
+    }
+
     // The two invalid denominators: 0 (n/0 is a division by zero, as in
     // parse and big_rational) and imax_min (does not fit: it cannot be
     // negated without UB, which every sign-flip in the file assumes is
@@ -1851,6 +1879,7 @@ constexpr rational rational_of_wide_float(T v, bool& exact) {
 //---------------------------------------------------------------------------
 constexpr rational::rational(std::signed_integral auto num, imax den)
     : Num{safe_abs(num)}, Den{signed_den_from(num, den)} {
+    check_fits(num);
     canonicalize(Num, Den);
 }
 
@@ -2853,9 +2882,23 @@ struct big_int {
     constexpr big_int() = default;
 
     template <std::integral T>
+        requires(std::numeric_limits<T>::digits <= 64)
     constexpr big_int(T v) noexcept
         : Small{std::is_signed_v<T> && v < 0 ? umax{0} - static_cast<umax>(v) : static_cast<umax>(v)},
           Negative{std::is_signed_v<T> && v < 0} {}
+
+    // A builtin wider than 64 bits (__int128): its limbs. One past a limb
+    // exists only at compile time (from_mag), as every big grid number.
+    template <std::integral T>
+        requires(std::numeric_limits<T>::digits > 64)
+    constexpr big_int(T v) {
+        using U        = std::make_unsigned_t<T>;
+        const bool neg = std::is_signed_v<T> && v < 0;
+        big::mag   m;
+        for (U u = neg ? U{0} - static_cast<U>(v) : static_cast<U>(v); u != 0; u >>= 64)
+            m.push_back(static_cast<umax>(u));
+        *this = from_mag(std::move(m), neg);
+    }
 
     // From a wide_int (sign-extending a signed one).
     template <std::size_t N, bool S>
@@ -2918,7 +2961,13 @@ struct big_int {
     template <typename T>
         requires raw_integer<T>
     constexpr explicit operator T() const {
-        if constexpr (std::integral<T>) {
+        if constexpr (std::integral<T> && std::numeric_limits<T>::digits > 64) {
+            using U = std::make_unsigned_t<T>; // the low limbs that fit U
+            U u     = 0;
+            for (std::size_t i = Size != 0 ? std::min(Size, sizeof(U) / sizeof(umax)) : 1; i-- > 0;)
+                u = (u << 64) | (Size != 0 ? Limbs[i] : Small);
+            return static_cast<T>(Negative ? U{0} - u : u);
+        } else if constexpr (std::integral<T>) {
             const umax low = Size != 0 ? Limbs[0] : Small;
             return static_cast<T>(Negative ? umax{0} - low : low);
         } else {
@@ -3058,7 +3107,7 @@ struct big_rational {
 
     constexpr big_rational() = default;
     template <std::integral T>
-    constexpr big_rational(T v) noexcept : Num{v} {}
+    constexpr big_rational(T v) noexcept(std::numeric_limits<T>::digits <= 64) : Num{v} {}
     constexpr big_rational(big_int n, big_int d = big_int{1}) : Num{n}, Den{d} { normalize(); }
     constexpr big_rational(const rational& r) : Num{big_int::of_limb(r.Num, r.Den < 0)}, Den{abs_den(r.Den)} {}
     // Anything else that converts to `rational` (an inside: just<-6, 5>)
@@ -6851,7 +6900,7 @@ struct assignment<L, R> {
     // one unsigned compare.) Bounds past int64 compare exactly in the fold's
     // work type.
     static constexpr bool out_of_range(R rhs) noexcept {
-        if constexpr (fits_imax(interval_of<L>)) {
+        if constexpr (fits_imax(interval_of<L>) && !wide_builtin<R>) {
             constexpr imax lower = lower_imax<L>, upper = upper_imax<L>;
             if constexpr (std::is_unsigned_v<R> && sizeof(R) >= sizeof(imax))
                 return std::cmp_less(rhs, lower) || std::cmp_greater(rhs, upper);
@@ -6919,7 +6968,12 @@ struct assignment<L, R> {
         static_assert(uses_flag<L, P, wrap> || uses_flag<L, P, clamp> || not excludes(interval_of<L>, interval_of<R>),
                       "rhs type's range lies entirely outside lhs interval and the policy cannot bring it into range");
 
+        // (Separate arms: naming integers_on_grid instantiates L's 64-bit
+        // views.) A source past 64 bits (__int128) has no 64-bit rational:
+        // off L's integers it stores exactly.
         if constexpr (wide_valued<L>)
+            return assign_exact<R>(lhs, exact_of(rhs), policy, std::forward<A>(action));
+        else if constexpr (wide_builtin<R> && !integers_on_grid)
             return assign_exact<R>(lhs, exact_of(rhs), policy, std::forward<A>(action));
         else if constexpr (!integers_on_grid)
             return assignment<L, rational>::assign(lhs, rational{rhs}, policy, std::forward<A>(action));
@@ -6940,10 +6994,14 @@ struct assignment<L, R> {
                             if constexpr (notch64<L> == 1) {
                                 if (handle_out_of_range(lhs, rhs, policy, action))
                                     return lhs;
-                            } else
+                            } else if constexpr (wide_builtin<R>)
+                                return assign_exact<R>(lhs, exact_of(rhs), policy, action);
+                            else
                                 return assignment<L, rational>::assign(lhs, rational{rhs}, policy, action);
                         }
                     }
+                } else if constexpr (wide_builtin<R>) {
+                    return assign_exact<R>(lhs, exact_of(rhs), policy, action); // fractional limits: exactly
                 } else if (not includes(interval_of<L>, rhs)) {
                     // Non-integer L bounds: route through the rational path so fractional
                     // Lower/Upper drive clamp/error correctly.
@@ -8943,13 +9001,14 @@ constexpr lossy_result exact_lossy(const wide_rational<K>& x) noexcept {
 
 // B past the 64-bit paths: grid numbers past 64 bits, or a fraction raw (a
 // bound past them). A value of A always takes the exact path for such a B,
-// or for an inside A whose values pass the 64-bit rational.
+// for an inside A whose values pass the 64-bit rational, or for an integer
+// past 64 bits (__int128).
 template <insidable B>
 inline constexpr bool exact_grid_only = wide_grid_numbers<B> || fraction_storage<B>;
 template <typename A>
 concept wide_inside = insidable<A> && wide_valued<A>;
 template <insidable B, numeric A>
-inline constexpr bool exact_path_only = exact_grid_only<B> || wide_inside<A>;
+inline constexpr bool exact_path_only = exact_grid_only<B> || wide_inside<A> || wide_builtin<A>;
 
 // exact_lossy for a value, when the 64-bit paths cannot take it.
 template <insidable B, numeric A>
@@ -8964,7 +9023,7 @@ constexpr std::optional<lossy_result> exact_lossy_of(A value) noexcept {
     } else if constexpr (std::floating_point<A>) {
         if (exact_grid_only<B> || past_rational(static_cast<double>(value)))
             return exact_lossy<B>(exact_of_double(static_cast<double>(value)));
-    } else if constexpr (wide_inside<A>)
+    } else if constexpr (wide_inside<A> || wide_builtin<A>)
         return exact_lossy<B>(exact_of(value));
     else if constexpr (exact_grid_only<B>)
         return exact_lossy<B>(exact_of(as_rational(value)));
@@ -9403,8 +9462,8 @@ struct inside {
     // value is an integer or the call may round.
     template <std::integral T, policy_flag Round>
     static constexpr bool total_to =
-        !(lower_of<inside> < detail::rational{std::numeric_limits<T>::min()}) &&
-        !(upper_of<inside> > detail::rational{std::numeric_limits<T>::max()}) &&
+        !(lower_of<inside> < detail::grid_rational{std::numeric_limits<T>::min()}) &&
+        !(upper_of<inside> > detail::grid_rational{std::numeric_limits<T>::max()}) &&
         (detail::integer_lattice<inside> || Round != detail::none || has_flag(P, detail::snap));
 
   public:
@@ -9421,8 +9480,8 @@ struct inside {
                  Round == round_floor || Round == round_ceil || Round == round_half_even)
     [[nodiscard]] constexpr std::conditional_t<total_to<T, Round>, T, std::expected<T, errc>> to() const {
         using lim                             = std::numeric_limits<T>;
-        constexpr bool               check_lo = lower_of<inside> < detail::rational{lim::min()};
-        constexpr bool               check_hi = upper_of<inside> > detail::rational{lim::max()};
+        constexpr bool               check_lo = lower_of<inside> < detail::grid_rational{lim::min()};
+        constexpr bool               check_hi = upper_of<inside> > detail::grid_rational{lim::max()};
         constexpr bool               rounds   = Round != detail::none || has_flag(P, detail::snap);
         constexpr detail::round_mode mode     = detail::rounding_of(Round != detail::none ? Round : P);
         if constexpr (detail::integer_lattice<inside> && !check_lo && !check_hi && detail::values_fit_imax<inside>)
@@ -9453,7 +9512,10 @@ struct inside {
             if constexpr (check_hi)
                 if (t > detail::rational{lim::max()})
                     return std::unexpected{errc::overflow};
-            return static_cast<T>(detail::signed_numerator(t));
+            if constexpr (detail::wide_builtin<T>) // a value to 2^64 − 1: past imax
+                return static_cast<T>(t);
+            else
+                return static_cast<T>(detail::signed_numerator(t));
         }
     }
 
@@ -10256,7 +10318,7 @@ namespace detail {
 // provably fit imax for every representable c of type A.
 template <insidable B, typename A>
 inline constexpr bool scalar_index_cmp_fits = [] {
-    if constexpr (!std::integral<A> || value_storage<B> || !index_cmp_fits<B>)
+    if constexpr (!std::integral<A> || wide_builtin<A> || value_storage<B> || !index_cmp_fits<B>)
         return false;
     else {
         constexpr umax notch_num = notch64<B>.Num;
@@ -10272,12 +10334,15 @@ inline constexpr bool scalar_index_cmp_fits = [] {
 }();
 
 // inside ⋈ integer or rational. Integer storage compares as integers when
-// the scalar's type fits imax; everything else goes through rational.
+// the scalar's type fits imax; a wide inside or an integer past 64 bits
+// (__int128) compares exactly; everything else goes through rational.
 template <insidable B, class A, class Cmp>
     requires(std::integral<A> || std::same_as<A, rational>)
 constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
     constexpr bool imax_scalar = std::signed_integral<A> || (std::unsigned_integral<A> && sizeof(A) < sizeof(imax));
-    if constexpr (wide_valued<B>)
+    if constexpr (wide_builtin<A>)
+        return cmp(exact_of(lhs), exact_of(rhs));
+    else if constexpr (wide_valued<B>)
         return cmp(exact_of(lhs), exact_of(as_rational(rhs)));
     else if constexpr (integer_value_storage<B> && values_fit_imax<B> && imax_scalar)
         return cmp(raw_imax(lhs), static_cast<imax>(rhs));
@@ -12744,27 +12809,37 @@ constexpr void transform_into(const In1& in1, const In2& in2, const Out& out, F 
 
 namespace beman::inside {
 namespace detail {
-// 64 uniform bits from g by a fixed recipe: one output when G spans 64 bits,
-// else b bits from each output, b the widest power of two G covers (outputs
-// past 2^b − 1 above G::min() are drawn again), high bits first.
+// 64 uniform bits from g by a fixed recipe: b bits from each output, b the
+// widest power of two G covers (outputs past 2^b − 1 above G::min() are drawn
+// again), high bits first; one output when b ≥ 64, its low 64 bits. A
+// generator wider than 64 bits (unsigned __int128) works in its own type.
 template <std::uniform_random_bit_generator G>
 constexpr umax random_word(G& g) {
-    static_assert(std::numeric_limits<std::invoke_result_t<G&>>::digits <= 64,
-                  "uniform<B>: a generator wider than 64 bits");
-    constexpr umax span = static_cast<umax>(G::max()) - static_cast<umax>(G::min());
-    if constexpr (span == std::numeric_limits<umax>::max())
-        return static_cast<umax>(g());
+    using R              = std::invoke_result_t<G&>;
+    using U              = std::conditional_t<wide_builtin<R>, std::make_unsigned_t<R>, umax>;
+    constexpr U   span   = static_cast<U>(G::max()) - static_cast<U>(G::min());
+    constexpr int digits = std::numeric_limits<U>::digits;
+    constexpr int bits   = [] {
+        if (span == std::numeric_limits<U>::max())
+            return digits;
+        int b = -1;
+        for (U s = span + 1; s != 0; s >>= 1)
+            ++b;
+        return b;
+    }();
+    auto draw = [&] {
+        U d = static_cast<U>(g()) - static_cast<U>(G::min());
+        if constexpr (bits < digits)
+            while (d > (U{1} << bits) - 1)
+                d = static_cast<U>(g()) - static_cast<U>(G::min());
+        return d;
+    };
+    if constexpr (bits >= 64)
+        return static_cast<umax>(draw());
     else {
-        constexpr int  bits = std::bit_width(span + 1) - 1;
-        constexpr umax mask = (umax{1} << bits) - 1;
-        umax           word = 0;
-        for (int got = 0; got < 64; got += bits) {
-            umax d;
-            do
-                d = static_cast<umax>(g()) - static_cast<umax>(G::min());
-            while (d > mask);
-            word = word << bits | d;
-        }
+        umax word = 0;
+        for (int got = 0; got < 64; got += bits)
+            word = word << bits | static_cast<umax>(draw());
         return word;
     }
 }
