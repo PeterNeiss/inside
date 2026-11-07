@@ -4,7 +4,6 @@
 
 #include <beman/inside/inside/detail/config.hpp>
 
-#include <beman/inside/inside/detail/numbers.hpp>         // umax
 #include <beman/inside/inside/detail/float_bits.hpp>      // constexpr ldexp
 #include <beman/inside/inside/detail/error.hpp>           // errc, raise, constexpr_error
 #include <beman/inside/inside/detail/limb_algorithms.hpp> // limb kernels
@@ -31,7 +30,7 @@
 // member and an inside raw. Every operation is constexpr and allocation-free.
 //
 // The limb type is a template parameter so tests can run wide_int over uint8_t
-// limbs exhaustively against builtin oracles; the library uses umax limbs.
+// limbs exhaustively against builtin oracles; the library uses uint64 limbs.
 // The limb kernels below are also used by big_rational.
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
@@ -45,7 +44,7 @@ template <class T>
 using conversion_word_t = std::uint64_t;
 #endif
 
-template <std::size_t N, bool Signed, std::unsigned_integral L = umax>
+template <std::size_t N, bool Signed, std::unsigned_integral L = std::uint64_t>
 struct wide_int {
     static_assert(N >= 1, "wide_int: at least one limb");
     static constexpr int  limb_bits = limb::bits<L>;
@@ -305,25 +304,25 @@ constexpr auto wide_int<N, Signed, L>::divmod(const wide_int& a, const wide_int&
     return res;
 }
 
-template <std::size_t N, std::unsigned_integral L = umax>
+template <std::size_t N, std::unsigned_integral L = std::uint64_t>
 using wide_uint = wide_int<N, false, L>;
-template <std::size_t N, std::unsigned_integral L = umax>
+template <std::size_t N, std::unsigned_integral L = std::uint64_t>
 using wide_sint = wide_int<N, true, L>;
 
 // n / d for a one-limb d: the quotient and the remainder.
 template <std::size_t K>
 struct small_divmod {
-    wide_uint<K> Quotient;
-    umax         Remainder;
+    wide_uint<K>  Quotient;
+    std::uint64_t Remainder;
 };
 
 template <std::size_t K>
-constexpr small_divmod<K> divmod_small(const wide_uint<K>& n, umax d) noexcept {
+constexpr small_divmod<K> divmod_small(const wide_uint<K>& n, std::uint64_t d) noexcept {
     small_divmod<K> r{wide_uint<K>{0}, 0};
     for (std::size_t i = K; i-- > 0;) { // (not limb::div_1: slower to constant-evaluate)
-        const limb::pair<umax> qr = limb::div(r.Remainder, n.Word[i], d);
-        r.Quotient.Word[i]        = qr.Hi;
-        r.Remainder               = qr.Lo;
+        const limb::pair<std::uint64_t> qr = limb::div(r.Remainder, n.Word[i], d);
+        r.Quotient.Word[i]                 = qr.Hi;
+        r.Remainder                        = qr.Lo;
     }
     return r;
 }

@@ -55,7 +55,7 @@ rational oracle_round(rational v, const grid& g, round_mode m) {
         return c0;
     const exact half{rational{1, 2}};
     // the anchor's parity: lattice index of c0 counted from the anchor
-    const auto j0 = static_cast<imax>(static_cast<rational>(k + floor(lo / n)));
+    const auto j0 = static_cast<std::int64_t>(static_cast<rational>(k + floor(lo / n)));
     switch (m) {
     case round_mode::floor:
         return c0;
@@ -91,7 +91,7 @@ std::vector<rational> sweep(const grid& g) {
 template <grid G>
 std::vector<rational> slots() {
     std::vector<rational> v;
-    for (umax k = 0; k <= detail::max_index(G); ++k)
+    for (std::uint64_t k = 0; k <= detail::max_index(G); ++k)
         v.push_back(
             static_cast<rational>(exact{to_rational(G.Interval.Lower)} + exact{k} * exact{to_rational(G.Notch)}));
     return v;
@@ -146,7 +146,7 @@ TEST(UnanchoredGridTest, storage) {
 template <grid G>
 void check_decode() {
     using B = inside<G>;
-    for (umax k = 0; k <= detail::max_index(G); ++k) {
+    for (std::uint64_t k = 0; k <= detail::max_index(G); ++k) {
         const auto want =
             static_cast<rational>(exact{to_rational(G.Interval.Lower)} + exact{k} * exact{to_rational(G.Notch)});
         const B b{want};
@@ -154,7 +154,7 @@ void check_decode() {
         EXPECT_EQ(b.raw(), static_cast<raw_t<B>>(k));
         EXPECT_EQ(b.numerator(), signed_numerator(want));
         EXPECT_EQ(b.denominator(), abs_den(want.Den));
-        EXPECT_EQ((b.template as<imax, round_toward_zero>()), trunc(want));
+        EXPECT_EQ((b.template as<std::int64_t, round_toward_zero>()), trunc(want));
         EXPECT_EQ(as_double(b), static_cast<double>(want));
         EXPECT_TRUE(b == want);
     }
@@ -188,7 +188,7 @@ void check_store_rational() {
             EXPECT_EQ(static_cast<rational>(B{static_cast<double>(v)}), want);
         }
         if (abs_den(v.Den) == 1) {
-            EXPECT_EQ(static_cast<rational>(B{static_cast<imax>(signed_numerator(v))}), want);
+            EXPECT_EQ(static_cast<rational>(B{static_cast<std::int64_t>(signed_numerator(v))}), want);
         }
     }
 }
@@ -463,16 +463,16 @@ TEST(UnanchoredGridTest, range_limits_random) {
     static_assert(!has_epsilon<inside<quarter_off>>);
     static_assert(!has_epsilon<inside<tenth_off>>);
     EXPECT_FALSE(std::numeric_limits<inside<half_off>>::is_integer);
-    static_assert(!std::is_convertible_v<inside<half_off>, imax>); // no silent truncation
-    static_assert(!std::is_convertible_v<inside<{0, 10}>, imax>);
-    // as<imax>() rounds by the policy's mode
-    EXPECT_EQ((inside<half_off, round_nearest>{2.5}.as<imax>()), 3);
-    EXPECT_EQ((inside<half_off, round_floor>{2.5}.as<imax>()), 2);
-    EXPECT_EQ((inside<half_off, round_toward_zero>{2.5}.as<imax>()), 2);
-    EXPECT_EQ((inside<quarter_off, round_toward_zero>{-1.75}.as<imax>()), -1);
-    EXPECT_EQ((inside<half_off, round_half_even>{2.5}.as<imax>()), 2);
-    EXPECT_EQ((inside<half_off, round_half_even>{3.5}.as<imax>()), 4);
-    const imax i = inside<{{0, 4}, per<4>}, round_ceil>{1.25}.as<imax>();
+    static_assert(!std::is_convertible_v<inside<half_off>, std::int64_t>); // no silent truncation
+    static_assert(!std::is_convertible_v<inside<{0, 10}>, std::int64_t>);
+    // as<std::int64_t>() rounds by the policy's mode
+    EXPECT_EQ((inside<half_off, round_nearest>{2.5}.as<std::int64_t>()), 3);
+    EXPECT_EQ((inside<half_off, round_floor>{2.5}.as<std::int64_t>()), 2);
+    EXPECT_EQ((inside<half_off, round_toward_zero>{2.5}.as<std::int64_t>()), 2);
+    EXPECT_EQ((inside<quarter_off, round_toward_zero>{-1.75}.as<std::int64_t>()), -1);
+    EXPECT_EQ((inside<half_off, round_half_even>{2.5}.as<std::int64_t>()), 2);
+    EXPECT_EQ((inside<half_off, round_half_even>{3.5}.as<std::int64_t>()), 4);
+    const std::int64_t i = inside<{{0, 4}, per<4>}, round_ceil>{1.25}.as<std::int64_t>();
     EXPECT_EQ(i, 2);
 
     std::mt19937_64 rng{42};
@@ -525,7 +525,7 @@ void expect_rounded(rational got, double value, round_mode m) {
     if (f < 1e-7 || f > 1 - 1e-7)
         return; // a lattice point or half point: double cannot decide
     // Far from every boundary, 2^-30 precision decides the same.
-    const rational v{static_cast<imax>(std::round(std::ldexp(value, 30))), imax{1} << 30};
+    const rational v{static_cast<std::int64_t>(std::round(std::ldexp(value, 30))), std::int64_t{1} << 30};
     const rational want = oracle_round(v, g, m);
     if (!includes(g.Interval, want))
         return;

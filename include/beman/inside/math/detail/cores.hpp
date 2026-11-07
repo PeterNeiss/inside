@@ -22,7 +22,7 @@ namespace beman::inside::math::detail::engine {
 //---------------------------------------------------------------------------
 // Inputs as exact values, in as few limbs as their grid needs.
 //---------------------------------------------------------------------------
-// A grid integer as a double (a notch's p or q, which may pass imax).
+// A grid integer as a double (a notch's p or q, which may pass int64).
 constexpr double grid_double(const grid_int& v) { return static_cast<double>(big_rational{v, big_int{1}}); }
 
 // A value of In is n/d with d dividing the notch's denominator and
@@ -95,7 +95,7 @@ constexpr fixed_approx<K> log_exact(const wide_rational<E>& x) noexcept {
     }
     const fixed_approx<K> l   = log_series<S>(m, 1);
     const I               ln2 = static_cast<I>(ln2_q<S>);
-    return {l.Value + I{e} * ln2, l.Error + static_cast<umax>(e < 0 ? -e : e) + 1};
+    return {l.Value + I{e} * ln2, l.Error + static_cast<std::uint64_t>(e < 0 ? -e : e) + 1};
 }
 
 // An approx moved to scale A ≤ its own, rounding (error shrinks, plus ½).
@@ -103,7 +103,8 @@ template <std::size_t K>
 constexpr fixed_approx<K> rescale(const approx<K>& a, int A) noexcept {
     const int sh = a.Scale - A;
     if (sh <= 0) // a bound past 64 bits saturates (never wraps small)
-        return {a.Value << (-sh), -sh < 64 && a.Error <= (~umax{0} >> -sh) ? a.Error << (-sh) : ~umax{0}};
+        return {a.Value << (-sh),
+                -sh < 64 && a.Error <= (~std::uint64_t{0} >> -sh) ? a.Error << (-sh) : ~std::uint64_t{0}};
     return {round_shift(a.Value, sh), shr_bound(a.Error, sh) + 1};
 }
 
@@ -111,7 +112,7 @@ constexpr fixed_approx<K> rescale(const approx<K>& a, int A) noexcept {
 // in fixed point. The quotient is within dt units (|t| ≤ 0.58): 6 for a u
 // within ½ (1 − u² then within 1.5), 7 for one within 1 (within 2).
 template <int S, std::size_t K>
-constexpr fixed_approx<K> asin_q(const wide_sint<K>& u, umax dt) noexcept {
+constexpr fixed_approx<K> asin_q(const wide_sint<K>& u, std::uint64_t dt) noexcept {
     return atan_fixed<S>(mul_q(u, rsqrt_q<S>(one_q<K>(S) - mul_q(u, u, S)), S), dt);
 }
 
@@ -130,7 +131,7 @@ using maybe_exact = std::optional<wide_rational<E>>;
 // milli / 1000⌉ for a result that nears a grid point like 2^(−c·|x|),
 // |x| < 2^Mag.
 constexpr int deep_scaled(int mag, int milli) noexcept {
-    return mag >= 20 ? deep_limit : static_cast<int>(((imax{1} << mag) * milli + 999) / 1000);
+    return mag >= 20 ? deep_limit : static_cast<int>(((std::int64_t{1} << mag) * milli + 999) / 1000);
 }
 
 // exp x. Exact only at 0 (Lindemann–Weierstrass: e^x is transcendental for
@@ -168,7 +169,7 @@ struct exp2_core {
             return approx<K>::beyond(false, KMax);
         if (k < J{-(S + 2)})
             return approx<K>::below(S);
-        int                    kk = static_cast<int>(static_cast<imax>(k));
+        int                    kk = static_cast<int>(static_cast<std::int64_t>(k));
         const wide_rational<E> f{X.Num - k * X.Den, X.Den}; // in [0, 1)
         if (is_zero(f))
             return approx<K>{I{1}, -kk, 0};
@@ -202,12 +203,12 @@ struct log_core {
 // with the factors 2 (and 5) of n and d stripped, n/d = 2^a·5^c·n'/d' is a
 // power of B exactly when n' = d' and a (= c, for 10) is that power.
 template <std::size_t E>
-constexpr std::optional<imax> exact_log(const wide_rational<E>& x, int B) noexcept {
+constexpr std::optional<std::int64_t> exact_log(const wide_rational<E>& x, int B) noexcept {
     using I = wide_sint<E>;
     if (x.Num.negative() || x.Num.is_zero())
         return std::nullopt;
-    I          n = x.Num, d = x.Den;
-    const imax a = strip_factor(n, 2) - strip_factor(d, 2);
+    I                  n = x.Num, d = x.Den;
+    const std::int64_t a = strip_factor(n, 2) - strip_factor(d, 2);
     if (B == 10 && strip_factor(n, 5) - strip_factor(d, 5) != a)
         return std::nullopt;
     if (!(n == d))
@@ -233,15 +234,15 @@ struct logb_core {
         const fixed_approx<K> l = log_exact<S, K, Bits>(X);
         // log x · (1/ln B): within 1.45·error + 2 (the constant is within 1).
         const I inv = B == 2 ? static_cast<I>(log2e_q<S>) : static_cast<I>(log10e_q<S>);
-        return approx<K>{mul_q(l.Value, inv, S), S, 2 * l.Error + 2 + static_cast<umax>(Bits)};
+        return approx<K>{mul_q(l.Value, inv, S), S, 2 * l.Error + 2 + static_cast<std::uint64_t>(Bits)};
     }
 };
 
 // Residues of squares mod 64, as a bit set: 12 of the 64.
-inline constexpr umax square_mod64 = [] {
-    umax m = 0;
-    for (umax i = 0; i < 64; ++i)
-        m |= umax{1} << (i * i % 64);
+inline constexpr std::uint64_t square_mod64 = [] {
+    std::uint64_t m = 0;
+    for (std::uint64_t i = 0; i < 64; ++i)
+        m |= std::uint64_t{1} << (i * i % 64);
     return m;
 }();
 
@@ -272,10 +273,10 @@ struct sqrt_core {
 };
 
 // Residues of cubes mod 63, as a bit set: 9 of the 63.
-inline constexpr umax cube_mod63 = [] {
-    umax m = 0;
-    for (umax i = 0; i < 63; ++i)
-        m |= umax{1} << (i * i * i % 63);
+inline constexpr std::uint64_t cube_mod63 = [] {
+    std::uint64_t m = 0;
+    for (std::uint64_t i = 0; i < 63; ++i)
+        m |= std::uint64_t{1} << (i * i * i % 63);
     return m;
 }();
 
@@ -289,7 +290,7 @@ struct cbrt_core {
     constexpr maybe_exact<E> exact() const {
         using J   = wide_sint<3 * E>;
         const J m = J{abs(X).Num} * J{X.Den} * J{X.Den};
-        if (!((cube_mod63 >> static_cast<umax>(m % J{63})) & 1))
+        if (!((cube_mod63 >> static_cast<std::uint64_t>(m % J{63})) & 1))
             return std::nullopt;
         const J c = icbrt(m);
         if (!(c * c * c == m))
@@ -356,16 +357,27 @@ struct trig_core {
             const double cd = static_cast<double>(cs.Value), sd = static_cast<double>(sn.Value);
             const double ac = cd < 0 ? -cd : cd, as = sd < 0 ? -sd : sd;
             const double ec = static_cast<double>(cs.Error), es = static_cast<double>(sn.Error);
+            // Past 2^KMax wherever cos's sign is known (the sign of the result),
+            // also while cos is within twice its error of 0.
+            if (ec < ac && (as - es) / (ac + ec) * (1 - 0x1p-40) > ::beman::inside::detail::ldexp(1.0, KMax))
+                return approx<K>::beyond(sn.Value.negative() != cs.Value.negative(), KMax);
             if (!(2 * ec < ac))
                 return approx<K>::unresolved(S); // cos unresolved
             const double unit = ::beman::inside::detail::ldexp(1.0, S);
-            if ((as - es) / (ac + ec) * (1 - 0x1p-40) > ::beman::inside::detail::ldexp(1.0, KMax))
-                return approx<K>::beyond(sn.Value.negative() != cs.Value.negative(), KMax);
-            const I      t   = div_q(sn.Value, cs.Value, S);
-            const double at  = (as + es) / (ac - ec);
-            const double err = ((es + at * ec) / (ac - ec) * unit + 2) * (1 + 0x1p-40) + 1;
-            const umax   e   = err < 0x1p62 ? static_cast<umax>(err) : ~umax{0};
-            return approx<K>{t, S, e};
+            const I      t    = div_q(sn.Value, cs.Value, S);
+            const double at   = (as + es) / (ac - ec);
+            double       err  = ((es + at * ec) / (ac - ec) * unit + 2) * (1 + 0x1p-40) + 1;
+            // The bound grows as tan²: past 2^62 units (|tan| past 2^31) the
+            // result moves to a coarser scale until it fits one word (halving
+            // a double is exact; the shift rounds within ½).
+            int sh = 0;
+            while (!(err < 0x1p62)) {
+                err *= 0.5;
+                ++sh;
+            }
+            if (sh == 0)
+                return approx<K>{t, S, static_cast<std::uint64_t>(err)};
+            return approx<K>{round_shift(t, sh), S - sh, static_cast<std::uint64_t>(err) + 2};
         }
     }
 };
@@ -509,15 +521,15 @@ struct hyp_core {
             const I k = round_shift(mul_q(ax, static_cast<I>(log2e_q<S>), S), S);
             if (I{KM} < k) // e^|x| past 2^KM: past Out
                 return approx<K>::beyond(Fn == hyp::sinh && neg, KMax);
-            const int  kk = static_cast<int>(static_cast<imax>(k));
-            const I    r  = ax - k * static_cast<I>(ln2_q<S>); // within ½ + k
-            const I    z  = mul_q(r, r, S);
-            const I    ev = horner<series::cosh, S, false>(z);
-            const I    od = mul_q(r, horner<series::sinh, S, false>(z), S);
-            const umax e  = 24 + 2 * (static_cast<umax>(kk) + 2);
-            const I    P  = round_shift(ev + od, S - kk - A); // e^|x| at scale A
-            const I    M  = round_shift(ev - od, S + kk - A); // e^−|x| at scale A
-            const umax ep = shr_bound(e, S - kk - A) + 1, em = shr_bound(e, S + kk - A) + 1;
+            const int           kk = static_cast<int>(static_cast<std::int64_t>(k));
+            const I             r  = ax - k * static_cast<I>(ln2_q<S>); // within ½ + k
+            const I             z  = mul_q(r, r, S);
+            const I             ev = horner<series::cosh, S, false>(z);
+            const I             od = mul_q(r, horner<series::sinh, S, false>(z), S);
+            const std::uint64_t e  = 24 + 2 * (static_cast<std::uint64_t>(kk) + 2);
+            const I             P  = round_shift(ev + od, S - kk - A); // e^|x| at scale A
+            const I             M  = round_shift(ev - od, S + kk - A); // e^−|x| at scale A
+            const std::uint64_t ep = shr_bound(e, S - kk - A) + 1, em = shr_bound(e, S + kk - A) + 1;
             if constexpr (Fn == hyp::cosh)
                 return approx<K>{(P + M) >> 1, A, (ep + em) / 2 + 1};
             else {
@@ -565,7 +577,7 @@ struct ahyp_core {
             const I               v  = (aq >> h) + mul_q(m, rsqrt_q<S>(m), S); // in [1, 3), within 30
             const fixed_approx<K> l  = log_fixed<S>(v, 30);
             const I               lv = l.Value + I{h} * static_cast<I>(ln2_q<S>);
-            return approx<K>{neg ? -lv : lv, S, l.Error + static_cast<umax>(h) + 1};
+            return approx<K>{neg ? -lv : lv, S, l.Error + static_cast<std::uint64_t>(h) + 1};
         } else {
             const F               r{(a.Num - a.Den) * (a.Num + a.Den), a.Den * a.Den}; // x² − 1 = (n − d)(n + d)/d²
             const I               v = to_q<S, K>(a) + sqrt_exact_q<S, K, 2 * Bits + 2>(r); // ≥ 1, within 2
@@ -619,9 +631,10 @@ constexpr std::optional<wide_rational<PL>> exact_pow(const wide_rational<EB>& b,
         return wide_rational<PL>{P{1}, P{1}};
     const wide_rational<EE> re = reduced(e); // p/q, q > 0
     const wide_rational<EB> r  = reduced(b);
-    if (bit_width_of(re.Den) > 31 || std::max(bit_width_of(r.Num), bit_width_of(r.Den)) < static_cast<imax>(re.Den))
+    if (bit_width_of(re.Den) > 31 ||
+        std::max(bit_width_of(r.Num), bit_width_of(r.Den)) < static_cast<std::int64_t>(re.Den))
         return std::nullopt;
-    const int  q  = static_cast<int>(static_cast<imax>(re.Den));
+    const int  q  = static_cast<int>(static_cast<std::int64_t>(re.Den));
     const auto k  = re.Num;
     const auto ak = abs(k);
     // b^(1/q) first: both parts perfect q-th powers, else irrational.
@@ -629,18 +642,19 @@ constexpr std::optional<wide_rational<PL>> exact_pow(const wide_rational<EB>& b,
     if (!rn || !rd)
         return std::nullopt;
     const int bits = bit_width_of(*rn) + bit_width_of(*rd);
-    if (bit_width_of(ak) > 31 || static_cast<imax>(ak) * bits > 64 * static_cast<imax>(PL) - 8)
+    if (bit_width_of(ak) > 31 || static_cast<std::int64_t>(ak) * bits > 64 * static_cast<std::int64_t>(PL) - 8)
         return std::nullopt;
-    const unsigned power = static_cast<unsigned>(static_cast<imax>(ak));
+    const unsigned power = static_cast<unsigned>(static_cast<std::int64_t>(ak));
     const P        n = pow_by_squaring(static_cast<P>(*rn), power), d = pow_by_squaring(static_cast<P>(*rd), power);
     return k.negative() ? inverse(wide_rational<PL>{n, d}) : wide_rational<PL>{n, d};
 }
 
-// A pow_base base: an imax, or a grid integer of any size.
+// A pow_base base: a builtin integer (an __int128 too), or a grid integer
+// of any size.
 template <auto Base>
 inline constexpr int base_bits = [] {
     if constexpr (std::integral<decltype(Base)>)
-        return std::bit_width(static_cast<umax>(Base));
+        return bit_width_of(grid_int{Base});
     else
         return bit_width_of(grid_numerator(Base));
 }();
@@ -683,11 +697,11 @@ struct pow_core {
             } else
                 return log_exact<SL, K, BitsB>(B);
         }();
-        const I prod = mul_q(l.Value, static_cast<I>(Exp.Num), 0);
-        const I q =
-            bit_width_of(Exp.Den) <= 64 ? div_small(prod, static_cast<umax>(Exp.Den)) : prod / static_cast<I>(Exp.Den);
-        const I    t  = round_shift(q, SL - S);
-        const umax dt = (l.Error >> (SL - S - MagE)) + 2;
+        const I             prod = mul_q(l.Value, static_cast<I>(Exp.Num), 0);
+        const I             q    = bit_width_of(Exp.Den) <= 64 ? div_small(prod, static_cast<std::uint64_t>(Exp.Den))
+                                                               : prod / static_cast<I>(Exp.Den);
+        const I             t    = round_shift(q, SL - S);
+        const std::uint64_t dt   = (l.Error >> (SL - S - MagE)) + 2;
         return exp_fixed<S>(t, dt, KMax);
     }
 };
@@ -755,18 +769,18 @@ constexpr wide_rational<input_limbs<In>> grid_input(const grid_rational& r) {
     return exact_of_grid<input_limbs<In>>(r);
 }
 
-// ⌈|r|⌉ as an int (deduction bounds), saturated at imax: a grid reaching
+// ⌈|r|⌉ as an int (deduction bounds), saturated at int64: a grid reaching
 // 2^63 must fail every range gate, not wrap past them.
-consteval imax ceil_abs(const grid_rational& r) {
-    const grid_int n = grid_numerator(r), d = grid_denominator(r);
-    const grid_int a = abs(n);
-    const grid_int c = (a + d - grid_int{1}) / d;
-    constexpr imax M = std::numeric_limits<imax>::max();
-    return grid_int{M} < c ? M : static_cast<imax>(c);
+consteval std::int64_t ceil_abs(const grid_rational& r) {
+    const grid_int         n = grid_numerator(r), d = grid_denominator(r);
+    const grid_int         a = abs(n);
+    const grid_int         c = (a + d - grid_int{1}) / d;
+    constexpr std::int64_t M = std::numeric_limits<std::int64_t>::max();
+    return grid_int{M} < c ? M : static_cast<std::int64_t>(c);
 }
 
 template <insidable In>
-inline constexpr imax max_abs_int = std::max(ceil_abs(lower_of<In>), ceil_abs(upper_of<In>));
+inline constexpr std::int64_t max_abs_int = std::max(ceil_abs(lower_of<In>), ceil_abs(upper_of<In>));
 
 // Policy of a deduced output: the input's (no cursor), rounding to nearest
 // unless the input names a mode.
@@ -798,8 +812,8 @@ inline constexpr int exp_kmax = [] {
 // Bits of the larger of |b| and 1/|b| over In (b > 0), for pow's growth.
 template <insidable In>
 inline constexpr int log2_span = [] {
-    const imax m = std::max(ceil_abs(upper_of<In>), ceil_abs(grid_rational{1} / lower_of<In>));
-    return std::bit_width(static_cast<umax>(m)) + 1;
+    const std::int64_t m = std::max(ceil_abs(upper_of<In>), ceil_abs(grid_rational{1} / lower_of<In>));
+    return std::bit_width(static_cast<std::uint64_t>(m)) + 1;
 }();
 
 template <insidable InB, insidable InE>
@@ -836,7 +850,7 @@ struct pow_grow {
         if constexpr (lower_of<InB> > 0)
             return pow_kmax<InB, InE>;
         else {
-            constexpr int b = std::bit_width(static_cast<umax>(ceil_abs(upper_of<InB>))) + 1;
+            constexpr int b = std::bit_width(static_cast<std::uint64_t>(ceil_abs(upper_of<InB>))) + 1;
             static_assert(max_abs_int<InE> * b <= 1 << 16,
                           "beman::inside::math::pow: a wrap output needs the whole result, which would pass "
                           "2^65536");

@@ -370,7 +370,7 @@ TEST(MdspanArmTest, extent_traits) {
 }
 } // namespace reached_arms_tests
 
-// raw_accessor on raws past imax: uint64's top values, and wide raws held
+// raw_accessor on raws past int64: uint64's top values, and wide raws held
 // by the policy like any other.
 namespace wide_raw_tests {
 using namespace beman::inside;
@@ -378,7 +378,7 @@ using namespace beman::inside;
 template <class N, std::size_t K, class R = typename N::raw_type>
 using raw_view = inside_mdspan<N, std::extents<std::size_t, K>, std::layout_right, raw_accessor<N, R>>;
 
-TEST(MdspanTest, raw_accessor_past_imax) {
+TEST(MdspanTest, raw_accessor_past_int64) {
     std::array<std::uint64_t, 3> u{0, 7, 18446744073709551615u};
     const raw_view<uint64, 3>    m{u.data()};
     EXPECT_TRUE(m[2].get() == 18446744073709551615u);

@@ -11,7 +11,7 @@
 #include <utility>
 
 //---------------------------------------------------------------------------
-// Comparisons of insides: across grids (by value index when both fit imax,
+// Comparisons of insides: across grids (by value index when both fit int64,
 // else exactly) and against integers and rationals. A floating point is a
 // deleted overload (0.1 is not 1/10 in binary). The inside type itself comes
 // with it, so this is the smallest public header that declares an inside.
@@ -22,14 +22,14 @@ namespace beman::inside {
 //---------------------------------------------------------------------------
 namespace detail {
 // Integer value-index comparison eligibility: an integer-backed anchored
-// inside whose value indices (value/Notch, integers) fit imax, so it
+// inside whose value indices (value/Notch, integers) fit int64, so it
 // compares with a scalar as `bias + raw` without a rational decode.
 template <insidable B>
 inline constexpr bool index_cmp_fits = [] {
-    if constexpr (!notched<B> || !anchored<B> || !values_fit_imax<B> || !value_indices_fit64<B>)
+    if constexpr (!notched<B> || !anchored<B> || !values_fit_int64<B> || !value_indices_fit64<B>)
         return false;
     else
-        return std::in_range<imax>(lower_index64<B>.Num) && std::in_range<imax>(upper_index64<B>.Num);
+        return std::in_range<std::int64_t>(lower_index64<B>.Num) && std::in_range<std::int64_t>(upper_index64<B>.Num);
 }();
 
 // Inside values are finite and exact, so they are always ordered: <=> of two
@@ -84,7 +84,7 @@ constexpr auto compare(const L& lhs, const R& rhs, Cmp cmp) {
     // offsets, without the rational decode.
     else if constexpr (units_cmp_fits<L, R>) {
         constexpr grid_rational U = gcd(unit_of<L>, unit_of<R>);
-        return cmp(value_in_units<imax, U>(lhs), value_in_units<imax, U>(rhs));
+        return cmp(value_in_units<std::int64_t, U>(lhs), value_in_units<std::int64_t, U>(rhs));
     } else
         return cmp(as_rational(lhs), as_rational(rhs));
 }
@@ -105,43 +105,45 @@ namespace detail {
 // notch n/d, value ⋈ c ⟺ (bias + raw)·n ⋈ c·d — both sides exact
 // integers (bias + raw is the signed value index, exact ordering AND
 // equality since c·d is exact too). Eligible when both cross terms
-// provably fit imax for every representable c of type A.
+// provably fit int64 for every representable c of type A.
 template <insidable B, typename A>
 inline constexpr bool scalar_index_cmp_fits = [] {
     if constexpr (!std::integral<A> || wide_builtin<A> || value_storage<B> || !index_cmp_fits<B>)
         return false;
     else {
-        constexpr umax notch_num = notch64<B>.Num;
-        constexpr umax notch_den = static_cast<umax>(notch64<B>.Den); // Notch > 0
-        constexpr umax index_mag =
+        constexpr std::uint64_t notch_num = notch64<B>.Num;
+        constexpr std::uint64_t notch_den = static_cast<std::uint64_t>(notch64<B>.Den); // Notch > 0
+        constexpr std::uint64_t index_mag =
             lower_index64<B>.Num > upper_index64<B>.Num ? lower_index64<B>.Num : upper_index64<B>.Num;
         // The largest |c| of A: |min| = max + 1 for a signed type.
-        constexpr umax scalar_mag = static_cast<umax>(std::numeric_limits<A>::max()) + std::signed_integral<A>;
-        umax           product;
-        return !mul_overflow(index_mag, notch_num, &product) && std::in_range<imax>(product) &&
-               !mul_overflow(scalar_mag, notch_den, &product) && std::in_range<imax>(product);
+        constexpr std::uint64_t scalar_mag =
+            static_cast<std::uint64_t>(std::numeric_limits<A>::max()) + std::signed_integral<A>;
+        std::uint64_t product;
+        return !mul_overflow(index_mag, notch_num, &product) && std::in_range<std::int64_t>(product) &&
+               !mul_overflow(scalar_mag, notch_den, &product) && std::in_range<std::int64_t>(product);
     }
 }();
 
 // inside ⋈ integer or rational. Integer storage compares as integers when
-// the scalar's type fits imax; a wide inside or an integer past 64 bits
+// the scalar's type fits int64; a wide inside or an integer past 64 bits
 // (__int128) compares exactly; everything else goes through rational.
 template <insidable B, class A, class Cmp>
     requires(std::integral<A> || std::same_as<A, rational>)
 constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
-    constexpr bool imax_scalar = std::signed_integral<A> || (std::unsigned_integral<A> && sizeof(A) < sizeof(imax));
+    constexpr bool int64_scalar =
+        std::signed_integral<A> || (std::unsigned_integral<A> && sizeof(A) < sizeof(std::int64_t));
     if constexpr (wide_builtin<A>)
         return cmp(exact_of(lhs), exact_of(rhs));
     else if constexpr (wide_valued<B>)
         return cmp(exact_of(lhs), exact_of(as_rational(rhs)));
-    else if constexpr (integer_value_storage<B> && values_fit_imax<B> && imax_scalar)
-        return cmp(raw_imax(lhs), static_cast<imax>(rhs));
-    else if constexpr (integer_value_storage<B> && values_fit_imax<B> && std::unsigned_integral<A>)
-        return cmp(raw_imax(lhs), rhs); // a 64-bit unsigned: sign-safe, by the cmp_* forms
+    else if constexpr (integer_value_storage<B> && values_fit_int64<B> && int64_scalar)
+        return cmp(raw_int64(lhs), static_cast<std::int64_t>(rhs));
+    else if constexpr (integer_value_storage<B> && values_fit_int64<B> && std::unsigned_integral<A>)
+        return cmp(raw_int64(lhs), rhs); // a 64-bit unsigned: sign-safe, by the cmp_* forms
     else if constexpr (scalar_index_cmp_fits<B, A>)
         // (An index raw: the value index is raw + Lower/Notch.)
-        return cmp((signed_numerator(lower_index64<B>) + raw_imax(lhs)) * static_cast<imax>(notch64<B>.Num),
-                   static_cast<imax>(rhs) * notch64<B>.Den);
+        return cmp((signed_numerator(lower_index64<B>) + raw_int64(lhs)) * static_cast<std::int64_t>(notch64<B>.Num),
+                   static_cast<std::int64_t>(rhs) * notch64<B>.Den);
     else
         return cmp(as_rational(lhs), rational{rhs});
 }

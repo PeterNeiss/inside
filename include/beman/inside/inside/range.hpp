@@ -17,9 +17,10 @@
 // a type (every value of T; of a quantity type, its values as quantities).
 // Walks by notch index (any non-zero notch), each `*it` computing the exact
 // `Lower + index·Notch`; the iterator wraps modulo the slot count so a
-// mid-range start visits every slot once. Up to 2^63 values a random-access
-// sized view (view_interface adds [], front, back, empty): end() − begin(),
-// an imax, is the count. Past that (uint64, int64, a grid past 64 bits) a
+// mid-range start visits every slot once. Up to PTRDIFF_MAX values a
+// random-access sized view (view_interface adds [], front, back, empty):
+// end() − begin(), a std::ptrdiff_t, is the count. Past that (uint64, int64,
+// a grid past 64 bits; a 32-bit target's past 2^31) a
 // bidirectional view without a size, its position a wide integer, as a
 // cursor walks. A borrowed range: its iterators never refer to it, so an
 // algorithm on a temporary still returns an iterator. iterator_category is
@@ -32,11 +33,12 @@ template <grid G, policy_flag P = checked, class V = inside<G, P>>
 struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
     using number_type = inside<G, P>;
     using value_type  = V; // number_type, or a quantity on it
-    // Random access while end() − begin(), an imax, can be the count.
+    // Random access while end() − begin(), a std::ptrdiff_t, can be the count.
     static constexpr bool random_access =
         detail::max_index_representable(G) &&
-        detail::max_index_of<number_type> < static_cast<umax>(std::numeric_limits<imax>::max());
-    static constexpr umax slot_count = random_access ? detail::max_index_of<number_type> + 1 : 0;
+        detail::max_index_of<number_type> < static_cast<std::uint64_t>(std::numeric_limits<std::ptrdiff_t>::max());
+    static constexpr std::size_t slot_count =
+        random_access ? static_cast<std::size_t>(detail::max_index_of<number_type> + 1) : 0;
 
   private:
     // The value at a slot (an offset from Lower).
@@ -52,24 +54,25 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
     // The slot and position in 32 bits where the slot count fits: a loop over
     // the range then vectorizes in 32-bit lanes, as a native counting loop
     // does (64-bit ones hold half as many).
-    static constexpr bool narrow = slot_count <= umax{0x7fff'ffff};
-    using slot_t                 = std::conditional_t<narrow, std::uint32_t, umax>;
-    using pos_t                  = std::conditional_t<narrow, std::int32_t, imax>;
+    static constexpr bool narrow = slot_count <= 0x7fff'ffff;
+    using slot_t                 = std::conditional_t<narrow, std::uint32_t, std::size_t>;
+    using pos_t                  = std::conditional_t<narrow, std::int32_t, std::ptrdiff_t>;
 
     struct counted_iterator {
         using iterator_concept  = std::random_access_iterator_tag;
         using iterator_category = std::input_iterator_tag;
         using value_type        = V;
-        using difference_type   = imax;
+        using difference_type   = std::ptrdiff_t;
 
         slot_t Start{0}; // slot of the first element (the range wraps past the top)
         pos_t  Pos{0};   // position in [0, slot_count]; the loop variable
 
         constexpr counted_iterator() = default;
-        constexpr counted_iterator(umax s, imax p) : Start{static_cast<slot_t>(s)}, Pos{static_cast<pos_t>(p)} {}
+        constexpr counted_iterator(std::size_t s, std::ptrdiff_t p)
+            : Start{static_cast<slot_t>(s)}, Pos{static_cast<pos_t>(p)} {}
 
         // Grid slot of this position: Start + Pos, wrapped once (no overflow).
-        constexpr umax slot() const {
+        constexpr std::size_t slot() const {
             constexpr slot_t count = static_cast<slot_t>(slot_count);
             const slot_t     p     = static_cast<slot_t>(Pos);
             return p < count - Start ? Start + p : p - (count - Start);
@@ -135,7 +138,7 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
         [[nodiscard]] constexpr auto operator<=>(counted_iterator o) const { return Pos <=> o.Pos; }
     };
 
-    // Past 2^63 values: the slot and position in a signed wide integer that
+    // Past PTRDIFF_MAX values: the slot and position in a signed wide integer that
     // holds the slot count (2^64 for uint64), stepping by one.
     using wide_pos_t                      = detail::wide_sint<detail::limbs_for_bits(G.slot_bits() + 2)>;
     static constexpr wide_pos_t pos_count = static_cast<wide_pos_t>(G.step_count() + detail::grid_int{1});
@@ -144,7 +147,7 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
         using iterator_concept  = std::bidirectional_iterator_tag;
         using iterator_category = std::input_iterator_tag;
         using value_type        = V;
-        using difference_type   = imax; // no distance is formed
+        using difference_type   = std::ptrdiff_t; // no distance is formed
 
         wide_pos_t Start{0}; // slot of the first element (the range wraps past the top)
         wide_pos_t Pos{0};   // position in [0, slot count]
@@ -173,7 +176,7 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
         }
         [[nodiscard]] constexpr bool operator==(const stepping_iterator& o) const { return Pos == o.Pos; }
     };
-    using start_t = std::conditional_t<random_access, umax, wide_pos_t>;
+    using start_t = std::conditional_t<random_access, std::size_t, wide_pos_t>;
 
     // A grid value's notch index: its raw's offset (a wide index raw is it).
     static constexpr start_t start_of(const number_type& start) {
@@ -199,7 +202,7 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
     }
     constexpr iterator end() const {
         if constexpr (random_access)
-            return {StartIndex, static_cast<imax>(slot_count)};
+            return {StartIndex, static_cast<std::ptrdiff_t>(slot_count)};
         else
             return {StartIndex, pos_count};
     }
@@ -212,7 +215,7 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
 };
 
 // values<T>: every value of T, Lower to Upper (random access and sized up to
-// 2^63 values, bidirectional past that); of a quantity type, its number's
+// PTRDIFF_MAX values, bidirectional past that); of a quantity type, its number's
 // values as quantities. A cursor has none: its grid ends past T's Upper.
 template <detail::steppable T>
     requires(notch_of<detail::step_number_t<T>> != 0 &&

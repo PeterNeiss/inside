@@ -145,14 +145,14 @@ template <typename OnDigit>
 
 // Unsigned number in [first, last): the grammar of the _ins / _r literals.
 constexpr parsed_number parse_number(const char* first, const char* last) {
-    auto fail       = [](parse_fail f) { return parsed_number{rational{}, f}; };
-    umax num        = 0;
-    int  frac_len   = 0;
-    int  frac_zeros = 0; // deferred fractional zeros
+    auto          fail       = [](parse_fail f) { return parsed_number{rational{}, f}; };
+    std::uint64_t num        = 0;
+    int           frac_len   = 0;
+    int           frac_zeros = 0; // deferred fractional zeros
     // A fractional zero only matters if a non-zero digit follows: defer it,
     // so trailing zeros ("1.000…0") cannot overflow num / den.
     const scanned_number sc = scan_number(first, last, [&](int d, bool in_frac, int base) {
-        const umax base_u = static_cast<umax>(base);
+        const std::uint64_t base_u = static_cast<std::uint64_t>(base);
         if (in_frac && d == 0) {
             ++frac_zeros;
             return true;
@@ -160,7 +160,7 @@ constexpr parsed_number parse_number(const char* first, const char* last) {
         for (; frac_zeros > 0; --frac_zeros, ++frac_len)
             if (mul_overflow(num, base_u, &num))
                 return false;
-        if (mul_overflow(num, base_u, &num) || add_overflow(num, static_cast<umax>(d), &num))
+        if (mul_overflow(num, base_u, &num) || add_overflow(num, static_cast<std::uint64_t>(d), &num))
             return false;
         if (in_frac)
             ++frac_len;
@@ -173,10 +173,10 @@ constexpr parsed_number parse_number(const char* first, const char* last) {
 
     // Build denominator from fractional part.
     // For decimal: den = 10^frac_len. For hex: den = 2^(4*frac_len).
-    umax den = 1;
+    std::uint64_t den = 1;
     if (sc.Base == 10) {
         for (int k = 0; k < frac_len; ++k)
-            if (mul_overflow(den, umax{10}, &den))
+            if (mul_overflow(den, std::uint64_t{10}, &den))
                 return fail(parse_fail::denominator_overflow);
     } else if (sc.Base == 16) {
         const int shift = 4 * frac_len;
@@ -188,35 +188,35 @@ constexpr parsed_number parse_number(const char* first, const char* last) {
     // Zero stays zero whatever the exponent: skip the scaling (which could
     // only overflow).
     if (num == 0)
-        return parsed_number{rational{umax{0}}, parse_fail::none};
+        return parsed_number{rational{std::uint64_t{0}}, parse_fail::none};
 
     // The exponent scales the numerator, or the denominator when negative.
-    umax& side = sc.ExpNeg ? den : num;
+    std::uint64_t& side = sc.ExpNeg ? den : num;
     // Binary exponent (hex floats, `p`). The factors of two cancel first
     // (0x0.1p4 is 1, 0x10p-66 is 2^-62), so only a value past the 64-bit
     // rationals fails; 2^63 itself fits.
     if (sc.HasP) {
-        umax&     other  = sc.ExpNeg ? num : den; // the side the shift cancels against
-        const int cancel = std::min(std::countr_zero(other), sc.Exp);
+        std::uint64_t& other  = sc.ExpNeg ? num : den; // the side the shift cancels against
+        const int      cancel = std::min(std::countr_zero(other), sc.Exp);
         other >>= cancel;
         const int e = sc.Exp - cancel;
         if (e >= 64)
             return fail(parse_fail::p_exponent_too_large);
-        if (side > ~umax{0} >> e)
+        if (side > ~std::uint64_t{0} >> e)
             return fail(sc.ExpNeg ? parse_fail::p_exponent_denominator_overflow : parse_fail::numerator_overflow);
         side <<= e;
     }
     // Decimal exponent (decimal scientific, `e`).
     if (sc.HasE)
         for (int k = 0; k < sc.Exp; ++k)
-            if (mul_overflow(side, umax{10}, &side))
+            if (mul_overflow(side, std::uint64_t{10}, &side))
                 return fail(sc.ExpNeg ? parse_fail::e_exponent_denominator_overflow
                                       : parse_fail::e_exponent_numerator_overflow);
 
     // In lowest terms before the signed-denominator check (0.5e-18 is
-    // 1/(2·10^18), though 10^19 itself is past imax).
+    // 1/(2·10^18), though 10^19 itself is past int64).
     cancel_gcd(num, den);
-    if (!std::in_range<imax>(den))
+    if (!std::in_range<std::int64_t>(den))
         return fail(parse_fail::denominator_overflow);
     return parsed_number{rational{num, den}, parse_fail::none};
 }

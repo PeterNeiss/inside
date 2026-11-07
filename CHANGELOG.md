@@ -29,7 +29,7 @@ an operation can produce (result types are frozen from 1.0 on).
   `is_unit_tag_v`, `spec_operand` and `expr_of`.
 - `x.numerator()` and `x.denominator()` return insides on the integers
   (`numerator_grid`, `denominator_grid`) instead of `imax` or a wide integer;
-  on an integer grid the numerator is the value itself. `.as<imax>()` reads
+  on an integer grid the numerator is the value itself. `.as<std::int64_t>()` reads
   the old value; comparisons with integers are unchanged.
 - Grid-number arithmetic is `consteval`: the operators of `grid_number`, the
   grid and interval operators, and `grid::step_count()`, `slot_bits()`,
@@ -86,7 +86,15 @@ an operation can produce (result types are frozen from 1.0 on).
   raw.
 - The on_wrap carry is exact: its grid spans every carry of the source kind
   (a double's whole range divided by the period: an inside past 64 bits), so
-  its type may be wider than before; nothing saturates at `imax`.
+  its type may be wider than before; nothing saturates at int64.
+- `imax` and `umax` are gone: write `std::int64_t` and `std::uint64_t`,
+  which they were. The iterators of `values<T>` and `inside_range` and a
+  cursor's `difference_type` are `std::ptrdiff_t` (the same type on 64-bit
+  targets), and `inside_range::slot_count` is a `std::size_t`.
+- `trunc`, `floor`, `ceil` and `round` of a `rational` raise
+  `errc::overflow` when the result passes int64 (they wrapped), and
+  `rational(num, den)` takes any two integers, raising `overflow` for a
+  `den` past int64.
 
 ### Changed
 
@@ -212,10 +220,37 @@ ones implicitly.
   failed. Stores, comparisons, `to`/`as`, `from_index` and grid numbers take
   it exactly; `rational` reports it as overflow; `uniform` takes a
   generator wider than 64 bits.
-- The on_wrap carry saturated at `imax`: wrapping 2⁷⁰ into `{0, 9}` reported
+- The on_wrap carry saturated at int64: wrapping 2⁷⁰ into `{0, 9}` reported
   2⁶³ − 1 (see Upgrading).
 - A cursor over an index raw whose grid numbers pass 64 bits did not
   compile.
+
+- Values past 64 bits held in one 64-bit word (an audit of every
+  `imax`/`umax` use):
+  - `sum<Target>` over a narrow raw far from 0 (`{2^70, 2^70 + 100}`, a
+    `uint8` raw) lost `n·2^70`; over an unanchored grid with a notch past 64
+    bits it lost every notch.
+  - `conversion_overflows`/`conversion_rounds` on a grid of more than 2⁶⁴
+    slots took a value that rounds onto Upper for an overflow.
+  - A store that rounds onto an anchored grid whose Lower/Notch passes int64
+    rounded ties up, toward zero down and half_even to odd indices; onto an
+    unanchored one whose −Lower/Notch is no 64-bit rational it did not
+    compile.
+  - `math::abs` and `math::copysign` of a `uint64` value past 2⁶³ were wrong
+    (`abs(2⁶⁴ − 1)` was 1), and `copysign(INT64_MIN, s)` with an `s` never
+    negative overflowed.
+  - `pow_base<Base>` with a builtin `Base` past int64 did not compile with
+    the double tiers on; an `__int128` `Base` got the bit width of its low
+    limb.
+  - The math table tier overflowed (signed) on an input straddling 2⁶³.
+  - `tan` with |tan x| past 2³¹ (an output range past ±2³¹, x near a pole)
+    took a slot up to 13 off: its error bound saturated at 64 bits. It
+    moves to a coarser scale now; checked against exact values near the
+    pole.
+  - `trunc(rational{2⁶⁴ − 1})` was −1 and `rational(1, 2⁶⁴ − 1)` was −1
+    (see Upgrading).
+  - `sin`/`cos` of a quantity in a π unit whose factor passes a 64-bit
+    rational did not compile.
 
 ## 0.7.0 — 2026-11-03
 

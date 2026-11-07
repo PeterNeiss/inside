@@ -173,35 +173,35 @@ TEST(RangeTest, inside_range_postfix_plus_plus_behave_standard) {
 
 // inside_range works with std::views::reverse
 TEST(RangeTest, inside_range_works_with_std_views_reverse) {
-    small_grid        r; // 0,1,2,3,4
-    std::vector<imax> seen;
+    small_grid                r; // 0,1,2,3,4
+    std::vector<std::int64_t> seen;
     for (auto v : std::views::reverse(r))
-        seen.push_back(v.as<imax>());
-    ASSERT_TRUE((seen == std::vector<imax>{4, 3, 2, 1, 0}));
+        seen.push_back(v.as<std::int64_t>());
+    ASSERT_TRUE((seen == std::vector<std::int64_t>{4, 3, 2, 1, 0}));
 }
 
 // std::views::enumerate pairs each value with its position
 TEST(RangeTest, inside_range_with_std_views_enumerate) {
-    small_grid                         r;
-    std::vector<std::pair<imax, imax>> seen;
+    small_grid                                         r;
+    std::vector<std::pair<std::int64_t, std::int64_t>> seen;
     for (auto [i, v] : std::views::enumerate(r))
-        seen.emplace_back(i, v.as<imax>());
-    ASSERT_TRUE((seen == std::vector<std::pair<imax, imax>>{{0, 0}, {1, 1}, {2, 2}, {3, 3}, {4, 4}}));
+        seen.emplace_back(i, v.as<std::int64_t>());
+    ASSERT_TRUE((seen == std::vector<std::pair<std::int64_t, std::int64_t>>{{0, 0}, {1, 1}, {2, 2}, {3, 3}, {4, 4}}));
 }
 
 // std::views::stride visits every step-th value
 TEST(RangeTest, inside_range_with_std_views_stride) {
     small_grid r; // 0,1,2,3,4
-    auto       collect = [&](imax step) {
-        std::vector<imax> seen;
+    auto       collect = [&](std::int64_t step) {
+        std::vector<std::int64_t> seen;
         for (auto v : r | std::views::stride(step))
-            seen.push_back(v.as<imax>());
+            seen.push_back(v.as<std::int64_t>());
         return seen;
     };
-    ASSERT_TRUE((collect(1) == std::vector<imax>{0, 1, 2, 3, 4}));
-    ASSERT_TRUE((collect(2) == std::vector<imax>{0, 2, 4}));
-    ASSERT_TRUE((collect(3) == std::vector<imax>{0, 3}));
-    ASSERT_TRUE(collect(5) == std::vector<imax>{0});
+    ASSERT_TRUE((collect(1) == std::vector<std::int64_t>{0, 1, 2, 3, 4}));
+    ASSERT_TRUE((collect(2) == std::vector<std::int64_t>{0, 2, 4}));
+    ASSERT_TRUE((collect(3) == std::vector<std::int64_t>{0, 3}));
+    ASSERT_TRUE(collect(5) == std::vector<std::int64_t>{0});
 
     // Fractional grid strides over notch values too.
     using quarters = inside_range<{{0, 1}, per<4>}>; // 0,.25,.5,.75,1
@@ -480,7 +480,7 @@ static_assert(std::bidirectional_iterator<cur>);
 static_assert(!std::random_access_iterator<cur>); // t - u is arithmetic, not a distance
 static_assert(std::sentinel_for<decltype(end(cur{})), cur>);
 static_assert(!std::sized_sentinel_for<cur, cur>);
-static_assert(std::same_as<std::iter_difference_t<cur>, imax>);
+static_assert(std::same_as<std::iter_difference_t<cur>, std::int64_t>);
 static_assert(std::same_as<std::iter_value_t<cur>, inside<{{-4, 4}, per<4>}, round_nearest>>);
 static_assert(std::convertible_to<std::iter_value_t<cur>, time_t_>);
 // plain insides stay numbers, not iterators
@@ -809,10 +809,10 @@ std::set<rational> sample(int n) {
 
 // inside_range sequential
 TEST(RangeTest, inside_range_sequential) {
-    int  count = 0;
-    imax sum   = 0;
+    int          count = 0;
+    std::int64_t sum   = 0;
     for (auto i : inside_range<{0, 9}>{}) {
-        sum += i.as<imax>();
+        sum += i.as<std::int64_t>();
         ++count;
     }
     ASSERT_EQ(count, 10);
@@ -821,12 +821,12 @@ TEST(RangeTest, inside_range_sequential) {
 
 // inside_range wrapping start
 TEST(RangeTest, inside_range_wrapping_start) {
-    int  count = 0;
-    imax first = -1, last = -1;
+    int          count = 0;
+    std::int64_t first = -1, last = -1;
     for (auto i : inside_range<{0, 9}>{7}) {
         if (count == 0)
-            first = i.as<imax>();
-        last = i.as<imax>();
+            first = i.as<std::int64_t>();
+        last = i.as<std::int64_t>();
         ++count;
     }
     ASSERT_EQ(count, 10);
@@ -836,12 +836,12 @@ TEST(RangeTest, inside_range_wrapping_start) {
 
 // inside_range over signed inside
 TEST(RangeTest, inside_range_over_signed_inside) {
-    int  count = 0;
-    imax first = 0, last = 0;
+    int          count = 0;
+    std::int64_t first = 0, last = 0;
     for (auto i : inside_range<{-2, 2}>{}) {
         if (count == 0)
-            first = i.as<imax>();
-        last = i.as<imax>();
+            first = i.as<std::int64_t>();
+        last = i.as<std::int64_t>();
         ++count;
     }
     ASSERT_EQ(count, 5);

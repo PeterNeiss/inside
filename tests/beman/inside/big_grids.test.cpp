@@ -54,7 +54,7 @@ using fine = inside<{{0, 1}, grid_rational{big_int{1}, pow2(80)}}>;
 // formed during constant evaluation.
 constexpr huge::raw_type raw_2_100   = static_cast<huge::raw_type>(pow2(100));
 constexpr huge::raw_type raw_2_100_3 = static_cast<huge::raw_type>(pow2(100) + big_int{3});
-constexpr huge::raw_type raw_2_65_2  = static_cast<huge::raw_type>(big_int{~umax{0}} * big_int{2});
+constexpr huge::raw_type raw_2_65_2  = static_cast<huge::raw_type>(big_int{~std::uint64_t{0}} * big_int{2});
 } // namespace
 
 TEST(BigGridTest, storage) {
@@ -106,8 +106,8 @@ TEST(BigGridTest, arithmetic_past_64_bits) {
     auto n = -a;
     EXPECT_TRUE(n == -7);
     // uint64 + uint64: its upper bound 2^65 − 2 needs big grid numbers.
-    constexpr umax u64_max = ~umax{0};
-    auto           q       = uint64{u64_max} + uint64{u64_max};
+    constexpr std::uint64_t u64_max = ~std::uint64_t{0};
+    auto                    q       = uint64{u64_max} + uint64{u64_max};
     EXPECT_TRUE(q == huge::from_raw(raw_2_65_2));
 }
 
@@ -372,8 +372,8 @@ namespace wide_grid_tests {
 using namespace beman::inside;
 
 namespace {
-constexpr umax p32 = umax{1} << 32;
-constexpr umax p34 = umax{1} << 34;
+constexpr std::uint64_t p32 = std::uint64_t{1} << 32;
+constexpr std::uint64_t p34 = std::uint64_t{1} << 34;
 
 // {0, 2^34} in steps of 2^-32: 2^66 + 1 slots, a 67-bit index.
 using fine         = inside<{{0, p34}, per<p32>}>;
@@ -383,7 +383,7 @@ using fine_wrap    = inside<{{0, p34}, per<p32>}, wrap>;
 // Signed and offset: {−2^34, 2^34} in steps of 2^-32, Lower ≠ 0.
 using fine_signed = inside<{{-rational{p34}, rational{p34}}, per<p32>}>;
 
-constexpr rational tick{umax{1}, static_cast<imax>(p32)}; // 2^-32
+constexpr rational tick{std::uint64_t{1}, static_cast<std::int64_t>(p32)}; // 2^-32
 } // namespace
 
 TEST(WideGridTest, deduces_wide_index) {
@@ -394,7 +394,7 @@ TEST(WideGridTest, deduces_wide_index) {
     static_assert(grid_of<fine>.slot_bits() == 67);
     // A 64-bit rational cannot hold every value: no implicit conversion.
     static_assert(!std::is_convertible_v<fine, rational>);
-    static_assert(!std::is_convertible_v<fine, imax>);
+    static_assert(!std::is_convertible_v<fine, std::int64_t>);
 }
 
 TEST(WideGridTest, construction_from_scalars) {
@@ -418,14 +418,14 @@ TEST(WideGridTest, construction_from_scalars) {
 TEST(WideGridTest, assignment_policies) {
     // checked: off-lattice and out-of-range report.
     fine a = 1;
-    EXPECT_THROW((a = rational{1, imax{1} << 33}), inside_error); // half a notch
+    EXPECT_THROW((a = rational{1, std::int64_t{1} << 33}), inside_error); // half a notch
     EXPECT_THROW(a = p34 + 1, inside_error);
     EXPECT_THROW(a = -1, inside_error);
     EXPECT_TRUE(a == 1); // unchanged
 
     // rounding: half a notch rounds away from zero.
     fine_nearest n = 0;
-    n              = rational{1, imax{1} << 33};
+    n              = rational{1, std::int64_t{1} << 33};
     EXPECT_TRUE(n == tick);
 
     // clamp and wrap.
@@ -458,7 +458,7 @@ TEST(WideGridTest, assignment_between_insides) {
     fine                            b = 41.75;
     inside<{0, 100}, round_nearest> n = 0;
     n                                 = b;
-    EXPECT_EQ(n.as<imax>(), 42);
+    EXPECT_EQ(n.as<std::int64_t>(), 42);
     // wide → wide of another lattice.
     fine_signed s = b;
     EXPECT_TRUE(s == 41.75_r);
@@ -495,9 +495,9 @@ TEST(WideGridTest, arithmetic) {
 }
 
 TEST(WideGridTest, uint64_difference_widens) {
-    constexpr umax u64_max = ~umax{0};
-    uint64         x{u64_max}, y{3};
-    auto           d = x - y; // spans 2^65 values
+    constexpr std::uint64_t u64_max = ~std::uint64_t{0};
+    uint64                  x{u64_max}, y{3};
+    auto                    d = x - y; // spans 2^65 values
     static_assert(detail::wide_index_storage<decltype(d)>);
     EXPECT_TRUE(d == u64_max - 3);
     EXPECT_TRUE(y - x == -rational{u64_max - 3});
@@ -530,10 +530,10 @@ TEST(WideGridTest, exact_read_out) {
     EXPECT_TRUE(half.numerator() == 1 && half.denominator() == 2);
     const fine_signed neg{-0.75};
     EXPECT_TRUE(neg.numerator() == -3 && neg.denominator() == 4);
-    // A 64-bit grid whose values pass imax reads out exactly too.
-    using big64     = inside<{0, std::numeric_limits<umax>::max()}>;
-    const big64 top = std::numeric_limits<umax>::max();
-    EXPECT_TRUE(top.numerator() == std::numeric_limits<umax>::max());
+    // A 64-bit grid whose values pass int64 reads out exactly too.
+    using big64     = inside<{0, std::numeric_limits<std::uint64_t>::max()}>;
+    const big64 top = std::numeric_limits<std::uint64_t>::max();
+    EXPECT_TRUE(top.numerator() == std::numeric_limits<std::uint64_t>::max());
     // On an integer grid the numerator is the value, on the same grid.
     static_assert(std::is_same_v<decltype(std::declval<inside<{0, 100}>>().numerator()), inside<{0, 100}>>);
     static_assert(std::is_same_v<decltype(std::declval<inside<{0, 100}>>().denominator()),
@@ -609,7 +609,7 @@ TEST(WideGridTest, uniform_sampling) {
     for (int i = 0; i < 1000; ++i) {
         const fine v = uniform<fine>(rng);
         ASSERT_TRUE(v >= 0 && v <= p34);
-        above_2_33 = above_2_33 || v > (umax{1} << 33);
+        above_2_33 = above_2_33 || v > (std::uint64_t{1} << 33);
     }
     EXPECT_TRUE(above_2_33);
 }
@@ -617,7 +617,7 @@ TEST(WideGridTest, uniform_sampling) {
 // Pinned like the 64-bit draws (sign_uniform.test.cpp): the same limbs on every
 // standard library.
 TEST(WideGridTest, uniform_draws_are_pinned_across_standard_libraries) {
-    const auto expect = [](auto g, const std::array<std::array<umax, 2>, 4>& want) {
+    const auto expect = [](auto g, const std::array<std::array<std::uint64_t, 2>, 4>& want) {
         for (const auto& [hi, lo] : want) {
             const auto r = uniform<fine>(g).raw();
             EXPECT_EQ(r.Word[1], hi);
@@ -653,24 +653,24 @@ TEST(WideGridTest, division) {
 }
 
 TEST(WideGridTest, modulo) {
-    // uint64 differences span 2^65 values: integers past imax.
-    constexpr umax u64_max = ~umax{0};
-    auto           d       = uint64{u64_max} - uint64{0};
+    // uint64 differences span 2^65 values: integers past int64.
+    constexpr std::uint64_t u64_max = ~std::uint64_t{0};
+    auto                    d       = uint64{u64_max} - uint64{0};
     static_assert(detail::wide_index_storage<decltype(d)>);
     auto m = mod(d, inside<{1, 1000}>{7}, make_policy<round_toward_zero>());
     EXPECT_TRUE(m == (u64_max % 7));
     auto n = mod(-d, inside<{1, 1000}>{7}, make_policy<round_toward_zero>()); // takes the dividend's sign
-    EXPECT_TRUE(n == -static_cast<imax>(u64_max % 7));
-    // uint64 itself (a uint64 value raw past imax) now has a modulo too.
+    EXPECT_TRUE(n == -static_cast<std::int64_t>(u64_max % 7));
+    // uint64 itself (a uint64 value raw past int64) now has a modulo too.
     EXPECT_TRUE((mod(uint64{u64_max}, inside<{1, 1000}>{10}, make_policy<round_toward_zero>()) == 5));
 }
 
 TEST(WideGridTest, clamp_and_wrap_actions) {
     // on_clamp: the overshoot is an inside for every source, as on the builtin
     // paths.
-    fine c                                                 = 0;
-    imax over                                              = 0;
-    c.on_clamp([&](auto&, auto o) { over = as<imax>(o); }) = p34 + 5;
+    fine         c                                                 = 0;
+    std::int64_t over                                              = 0;
+    c.on_clamp([&](auto&, auto o) { over = as<std::int64_t>(o); }) = p34 + 5;
     EXPECT_TRUE(c == p34);
     EXPECT_EQ(over, 5);
     bool frac_ok                                                         = false;
@@ -679,14 +679,14 @@ TEST(WideGridTest, clamp_and_wrap_actions) {
     EXPECT_TRUE(frac_ok);
     bool got_inside = false;
     c.on_clamp([&](auto&, auto o) { got_inside = insidable<decltype(o)> && o == 6; }) =
-        inside<{0, umax{1} << 40}>{p34 + 6};
+        inside<{0, std::uint64_t{1} << 40}>{p34 + 6};
     EXPECT_TRUE(got_inside);
 
     // on_wrap: the carry is the number of full turns.
-    fine w     = 0;
-    imax carry = 0;
+    fine         w     = 0;
+    std::int64_t carry = 0;
     // One turn is 2^34 + 2^-32, so 3·2^34 + 2 = 3 turns + (2 − 3·2^-32).
-    w.on_wrap([&](auto&, auto q) { carry = as<imax>(q); }) = 3 * p34 + 2;
+    w.on_wrap([&](auto&, auto q) { carry = as<std::int64_t>(q); }) = 3 * p34 + 2;
     EXPECT_EQ(carry, 3);
     EXPECT_TRUE(w == rational{2} - rational{3} * tick);
 }
@@ -709,24 +709,24 @@ TEST(WideGridTest, hooks_on_a_wide_continuous_grid) {
     EXPECT_TRUE(exact);
     EXPECT_TRUE(x == B{0x1p70});
 
-    // From a double it is exact too, past the imax range.
+    // From a double it is exact too, past the int64 range.
     bool from_double                                                  = false;
     x.on_clamp([&](auto&, auto o) { from_double = o == B{-0x1p70}; }) = -0x1p71;
     EXPECT_TRUE(x == B{-0x1p70});
     EXPECT_TRUE(from_double);
 
     // The period is the span, 2^71.
-    imax carry = 7;
+    std::int64_t carry = 7;
     x.on_wrap([&](auto&, auto k) {
         static_assert(insidable<decltype(k)>);
-        carry = as<imax>(k);
-    })         = B{0x1p71} + B{rational{1, 3}};
+        carry = as<std::int64_t>(k);
+    })                 = B{0x1p71} + B{rational{1, 3}};
     EXPECT_EQ(carry, 1);
     EXPECT_TRUE((x == B{rational{1, 3}}));
-    x.on_wrap([&](auto&, auto k) { carry = as<imax>(k); }) = -0x1p72;
+    x.on_wrap([&](auto&, auto k) { carry = as<std::int64_t>(k); }) = -0x1p72;
     EXPECT_EQ(carry, -2);
     EXPECT_TRUE(x == B{0});
-    x.on_wrap([&](auto&, auto k) { carry = as<imax>(k); }) = 0x1p72 + 0x1p70;
+    x.on_wrap([&](auto&, auto k) { carry = as<std::int64_t>(k); }) = 0x1p72 + 0x1p70;
     EXPECT_EQ(carry, 3);
     EXPECT_TRUE(x == B{-0x1p70});
 }
@@ -745,7 +745,7 @@ TEST(WideGridTest, hooks_on_a_rational_inside_from_a_wide_source) {
     EXPECT_TRUE(exact);
     EXPECT_TRUE(r == 10);
 
-    // (2^70 + 1/3 + 10) / 20 turns: the carry past imax, exactly.
+    // (2^70 + 1/3 + 10) / 20 turns: the carry past int64, exactly.
     bool carry                                                                   = false;
     r.on_wrap([&](auto&, auto k) { carry = k == just<59029581035870565171_g>; }) = B{0x1p70} + B{rational{1, 3}};
     EXPECT_TRUE(carry);
@@ -756,12 +756,12 @@ TEST(WideGridTest, hooks_on_a_rational_inside_from_a_wide_source) {
 // one: an int never leaves {-2^70, 2^70}, so its carry is always 0.
 TEST(WideGridTest, wrap_carry_grid_past_64_bits) {
     using W = inside<{-0x1p70, 0x1p70}, wrap>;
-    W    w{0};
-    imax c = 7;
+    W            w{0};
+    std::int64_t c = 7;
     w.on_wrap([&](auto&, auto k) {
         static_assert(grid_of<decltype(k)> == grid{0, 0});
-        c = as<imax>(k);
-    })     = 3;
+        c = as<std::int64_t>(k);
+    })             = 3;
     EXPECT_EQ(c, 7); // in range: no wrap
     EXPECT_TRUE(w == 3);
 }
@@ -797,10 +797,10 @@ TEST(WideGridTest, wide_operand_into_a_rational_sum) {
 // slot counts 2^64 − 1 (the last uint64 index) and 2^64 (the first two-limb
 // one), a 128-bit count, and arithmetic that crosses from one to the other.
 TEST(WideGridTest, limb_edges) {
-    constexpr umax     u64_max = ~umax{0};
-    constexpr rational q1{1, 4};                                             // one notch
-    using top64  = inside<{{rational{0}, rational{u64_max, 4}}, per<4>}>;    // 2^64 − 1 slots
-    using over64 = inside<{{rational{0}, rational{umax{1} << 62}}, per<4>}>; // 2^64 slots
+    constexpr std::uint64_t u64_max = ~std::uint64_t{0};
+    constexpr rational      q1{1, 4};                                                 // one notch
+    using top64  = inside<{{rational{0}, rational{u64_max, 4}}, per<4>}>;             // 2^64 − 1 slots
+    using over64 = inside<{{rational{0}, rational{std::uint64_t{1} << 62}}, per<4>}>; // 2^64 slots
     static_assert(std::is_same_v<top64::raw_type, std::uint64_t>);
     static_assert(std::is_same_v<over64::raw_type, detail::wide_uint<2>>);
     static_assert(grid_of<over64>.slot_bits() == 65);
@@ -808,24 +808,24 @@ TEST(WideGridTest, limb_edges) {
     // The top slot of each round-trips.
     top64 t = rational{u64_max, 4};
     EXPECT_EQ(t.raw(), u64_max);
-    over64 o = rational{umax{1} << 62};
+    over64 o = rational{std::uint64_t{1} << 62};
     EXPECT_TRUE(o.raw() == (detail::wide_uint<2>{1} << 64));
     EXPECT_TRUE((-t == -rational{u64_max, 4}));
-    EXPECT_TRUE(-o == -rational{umax{1} << 62});
+    EXPECT_TRUE(-o == -rational{std::uint64_t{1} << 62});
 
     // += across the 64-bit index boundary, by a point delta and by a raw.
     over64 c = rational{u64_max, 4}; // index 2^64 − 1
     c += just<1, 4>;                 // index 2^64
     EXPECT_TRUE(c.raw() == (detail::wide_uint<2>{1} << 64));
     EXPECT_THROW((c += just<1, 4>), inside_error); // past the top
-    inside<{{rational{0}, rational{umax{1} << 62}}, per<4>}, wrap> w = rational{umax{1} << 62};
+    inside<{{rational{0}, rational{std::uint64_t{1} << 62}}, per<4>}, wrap> w = rational{std::uint64_t{1} << 62};
     w += just<1, 4>; // wraps to 0
     EXPECT_TRUE(w == 0);
 
     // Sums and differences across the boundary, both ends.
     auto s = o + inside<{{0, 1}, per<4>}>{1}; // 2^64 + 4 slots
     static_assert(detail::wide_index_storage<decltype(s)>);
-    EXPECT_TRUE((s == rational{(umax{1} << 62) + 1}));
+    EXPECT_TRUE((s == rational{(std::uint64_t{1} << 62) + 1}));
     // (2^64 − 1)/4 + (2^64 − 1)/4: a big grid number.
     auto tt = t + t; // 2^65 − 1 slots
     EXPECT_TRUE((tt == rational{u64_max, 2}));
@@ -834,10 +834,10 @@ TEST(WideGridTest, limb_edges) {
     EXPECT_TRUE(t - top64{q1} == (rational{u64_max, 4} - q1));
 
     // A 128-bit slot count: {−(2^64 − 1), 2^64 − 1} in steps of 1/(2^63 − 1).
-    using full = inside<{{rational{u64_max, imax{-1}}, rational{u64_max}}, per<(umax{1} << 63) - 1>}>;
+    using full = inside<{{rational{u64_max, std::int64_t{-1}}, rational{u64_max}}, per<(std::uint64_t{1} << 63) - 1>}>;
     static_assert(std::is_same_v<full::raw_type, detail::wide_uint<2>>);
     static_assert(grid_of<full>.slot_bits() == 128);
-    full lo = rational{u64_max, imax{-1}}, hi = rational{u64_max};
+    full lo = rational{u64_max, std::int64_t{-1}}, hi = rational{u64_max};
     EXPECT_TRUE(lo.raw() == detail::wide_uint<2>{0});
     constexpr auto full_top = static_cast<detail::wide_uint<2>>(grid_of<full>.step_count());
     EXPECT_TRUE(hi.raw() == full_top);
@@ -855,7 +855,7 @@ TEST(WideGridTest, qformat_division_past_64_bits) {
     static_assert(!detail::rational_storage<decltype(q)>);
     EXPECT_TRUE(q == 4002);
     auto r = (q32{1} / q32{3}).value(); // rounds to the nearest 2^-32
-    EXPECT_TRUE((r == rational{1431655765, imax{1} << 32}));
+    EXPECT_TRUE((r == rational{1431655765, std::int64_t{1} << 32}));
 }
 
 // The wide paths are constexpr.
@@ -932,6 +932,34 @@ TEST(BigGridTest, predicates_at_run_time) {
     EXPECT_FALSE(includes(H.Interval, test::at_run_time(7)));
 }
 
+// sum's block loop over narrow raws held Lower and the notch in 64 bits: a
+// grid near 2^70 with a uint8 raw lost cnt·2^70 (base truncated to 0), an
+// unanchored one with notch 2^70 lost every raw·2^70 (scale 0).
+TEST(BigGridTest, sum_of_narrow_raws_far_from_zero) {
+    using X  = inside<{1180591620717411303424_g, 1180591620717411303524_g}>; // 2^70 + 0..100
+    using Xu = inside<{{1, 1_g + 100_g * 1180591620717411303424_g}, 1180591620717411303424_g}>;
+    using T  = inside<{0, 1208925819614629174706176_g}>; // 2^80
+    static_assert(sizeof(X::raw_type) == 1 && sizeof(Xu::raw_type) == 1);
+    constexpr std::array<X, 3> a{
+        X{1180591620717411303424_g}, X{1180591620717411303425_g}, X{1180591620717411303524_g}};
+    constexpr std::array<Xu, 2> b{Xu{1_g + 1180591620717411303424_g}, Xu{1_g + 2_g * 1180591620717411303424_g}};
+    static_assert(sum<T>(a) == a[0] + a[1] + a[2]);
+    static_assert(sum<T>(b) == b[0] + b[1]);
+    const std::vector<X> v(1000, a[2]);
+    EXPECT_EQ(sum<T>(v), T{1000_g * 1180591620717411303524_g});
+}
+
+// The out-of-range rounding of the predicates compared the slot with
+// max_index_of, 0 past 2^64 slots: a value just past Upper that rounds onto
+// it counted as overflow, not rounding.
+TEST(BigGridTest, predicates_round_onto_a_grid_past_two_to_the_64_slots) {
+    using T = inside<{{-18446744073709551615_g, 1}, per<4>}, round_nearest>; // 2^66 slots
+    static_assert(!conversion_overflows<T>(1.0625) && conversion_rounds<T>(1.0625));
+    static_assert(conversion_overflows<T>(1.25) && !conversion_rounds<T>(1.25));
+    EXPECT_FALSE(conversion_overflows<T>(test::at_run_time(1.0625)));
+    EXPECT_TRUE(conversion_rounds<T>(test::at_run_time(1.0625)));
+}
+
 } // namespace pinned_tests
 
 // Arms no other test reaches, found by the reachability audit (gcov and an
@@ -963,7 +991,7 @@ TEST(BigGridsArmTest, wide_index_times_continuous_into_a_rational) {
     using L = inside<{-9223372036854775808_g, 9223372036854775808_g}>;
     using C = inside<{{0, 1}, max_denominator{1}}>;
     static_assert(detail::wide_index_storage<L> && detail::rational_storage<decltype(L{} * C{})>);
-    EXPECT_EQ(to_string(L{std::numeric_limits<imax>::min()} * C{1}), "-9223372036854775808");
+    EXPECT_EQ(to_string(L{std::numeric_limits<std::int64_t>::min()} * C{1}), "-9223372036854775808");
     EXPECT_EQ(to_string(*parse_exact<L>("9223372036854775808") * C{1}), "9223372036854775808");
 }
 } // namespace reached_arms_tests

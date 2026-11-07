@@ -150,8 +150,8 @@ template <auto D>
 consteval auto make_per() {
     if constexpr (std::integral<decltype(D)>) {
         static_assert(D >= 1, "per<D> is the positive step 1/D; a continuous grid is spelled 0");
-        if constexpr (std::in_range<imax>(D))
-            return rational{imax{1}, static_cast<imax>(D)};
+        if constexpr (std::in_range<std::int64_t>(D))
+            return rational{std::int64_t{1}, static_cast<std::int64_t>(D)};
         else
             return grid_rational{1} / grid_rational{D};
     } else {

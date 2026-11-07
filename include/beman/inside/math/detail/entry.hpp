@@ -65,7 +65,7 @@ using bracket_t =
     inside<grid{{lower_of<Out> - notch_of<Out>, upper_of<Out> + notch_of<Out>}, Unit}, R | (flags_of<Out> & clamp)>;
 
 // The integer form: a bracket 1024 times finer than half_unit, counted in
-// imax. Rounded down there, the value lies in [y, y + F); only when y is
+// int64. Rounded down there, the value lies in [y, y + F); only when y is
 // itself a rounding boundary of Out (a point or a half point — at most one
 // bracket point in 1024) does rounding up decide whether the value is exactly y.
 // Then Out's slot follows from the bracket index by one integer division.
@@ -86,15 +86,16 @@ inline constexpr bool integer_bracket = [] {
 
 // Out's slot for a value known as `num/den` bracket units past Lower (in
 // value space: `negative` is the value's sign), or nothing past Out's range.
-template <insidable Out, imax den>
-constexpr std::optional<imax> bracket_slot(imax num, bool negative) noexcept {
+template <insidable Out, std::int64_t den>
+constexpr std::optional<std::int64_t> bracket_slot(std::int64_t num, bool negative) noexcept {
     using namespace ::beman::inside::detail;
     constexpr round_mode m = rounding_for<Out, call_policy<none>>;
     const auto [q, r]      = floor_divmod(num, den);
-    const imax k           = q + rounds_up(m,
-                                           negative,
-                                           classify_remainder(m, static_cast<umax>(r), static_cast<umax>(den)),
-                                           ((q & 1) != 0) != lower_index_odd<Out>);
+    const std::int64_t k =
+        q + rounds_up(m,
+                      negative,
+                      classify_remainder(m, static_cast<std::uint64_t>(r), static_cast<std::uint64_t>(den)),
+                      ((q & 1) != 0) != lower_index_odd<Out>);
     if (k < 0 || std::cmp_greater(k, max_index_of<Out>))
         return std::nullopt;
     return k;
@@ -111,15 +112,15 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
         return fn.template operator()<Out>(anchored_input(xs)...);
     else if constexpr (integer_bracket<Out>) {
         using namespace ::beman::inside::detail;
-        constexpr grid_rational F       = fine_unit<Out>;
-        constexpr imax          c       = static_cast<imax>(exact_quotient(lower_of<Out>, F)); // Lower in F
-        constexpr imax          s       = static_cast<imax>(exact_quotient(notch_of<Out>, F)); // Notch in F (even)
-        using Lo                        = bracket_t<Out, round_floor, F>;
-        using Hi                        = bracket_t<Out, round_ceil, F>;
-        using R                         = decltype(fn.template operator()<Lo>(anchored_input(xs)...));
-        constexpr bool checked          = expected_like<R>;
-        using Res                       = std::conditional_t<checked, std::expected<Out, errc>, Out>;
-        const R lo                      = fn.template operator()<Lo>(anchored_input(xs)...);
+        constexpr grid_rational F = fine_unit<Out>;
+        constexpr std::int64_t  c = static_cast<std::int64_t>(exact_quotient(lower_of<Out>, F)); // Lower in F
+        constexpr std::int64_t  s = static_cast<std::int64_t>(exact_quotient(notch_of<Out>, F)); // Notch in F (even)
+        using Lo                  = bracket_t<Out, round_floor, F>;
+        using Hi                  = bracket_t<Out, round_ceil, F>;
+        using R                   = decltype(fn.template operator()<Lo>(anchored_input(xs)...));
+        constexpr bool checked    = expected_like<R>;
+        using Res                 = std::conditional_t<checked, std::expected<Out, errc>, Out>;
+        const R lo                = fn.template operator()<Lo>(anchored_input(xs)...);
         const auto               unwrap = [](const auto& r) -> const auto& {
             if constexpr (checked)
                 return *r;
@@ -129,10 +130,10 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
         if constexpr (checked)
             if (!lo)
                 return Res{std::unexpected{lo.error()}};
-        const imax j = value_in_units<imax, F>(unwrap(lo)); // y = j·F
-        const imax t = j - c;                               // y − Lower, in F
+        const std::int64_t j = value_in_units<std::int64_t, F>(unwrap(lo)); // y = j·F
+        const std::int64_t t = j - c;                                       // y − Lower, in F
         // The value lies inside (y, y + F): 2t + 1 half units of F.
-        std::optional<imax> k;
+        std::optional<std::int64_t> k;
         if (t % (s / 2) != 0) [[likely]]
             k = bracket_slot<Out, 2 * s>(2 * t + 1, j < 0);
         else { // y is a boundary of Out: is the value exactly y?
@@ -140,8 +141,8 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
             if constexpr (checked)
                 if (!hi)
                     return Res{std::unexpected{hi.error()}};
-            k = value_in_units<imax, F>(unwrap(hi)) == j ? bracket_slot<Out, s>(t, j < 0)
-                                                         : bracket_slot<Out, 2 * s>(2 * t + 1, j < 0);
+            k = value_in_units<std::int64_t, F>(unwrap(hi)) == j ? bracket_slot<Out, s>(t, j < 0)
+                                                                 : bracket_slot<Out, 2 * s>(2 * t + 1, j < 0);
         }
         if (k) [[likely]]
             return Res{Out::from_raw(raw_of_slot<Out>(*k))};
@@ -559,8 +560,8 @@ template <insidable Out, insidable InB, insidable InE>
     }
 }
 
-// Base^x for a compile-time integer Base ≥ 2: an imax, or a grid integer of
-// any size (one within imax takes the imax path; one past it skips the
+// Base^x for a compile-time integer Base ≥ 2: an int64, or a grid integer of
+// any size (one within int64 takes the int64 path; one past it skips the
 // double and dd tiers, whose ln Base is a 64-bit table).
 template <auto Base>
 inline constexpr bool grid_base = std::same_as<decltype(Base), grid_rational>;
@@ -577,8 +578,11 @@ template <insidable Out, auto Base, insidable In>
 [[nodiscard]] constexpr Out pow_base_into(In x) {
     static_assert(base_ok<Base>, "beman::inside::math::pow_base: Base must be an integer of at least 2");
     require_rounding<Out>();
-    if constexpr (grid_base<Base> && ::beman::inside::detail::fits_imax(interval{Base, Base}))
-        return pow_base_into<Out, static_cast<imax>(::beman::inside::detail::grid_numerator(Base))>(x);
+    if constexpr (grid_base<Base> && ::beman::inside::detail::fits_int64(interval{Base, Base}))
+        return pow_base_into<Out, static_cast<std::int64_t>(::beman::inside::detail::grid_numerator(Base))>(x);
+    else if constexpr (std::integral<decltype(Base)> &&
+                       !::beman::inside::detail::fits_int64(interval{grid_rational{Base}, grid_rational{Base}}))
+        return pow_base_into<Out, grid_rational{Base}>(x); // a builtin past int64: the grid integer's path
     else if constexpr (anchoring::unanchored_call<Out, In>)
         return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return pow_base_into<O, Base>(v); }, x);
     else {
@@ -694,12 +698,16 @@ struct pow_base_core : engine::pow_core<engine::base_limbs<Base>, E, Mag, KMax> 
         : engine::pow_core<engine::base_limbs<Base>, E, Mag, KMax>{engine::exact_base<Base>(), x} {}
 };
 template <auto Base, insidable In>
+inline constexpr int pow_base_kmax = [] {
+    static_assert(engine::max_abs_int<In> <= (std::numeric_limits<int>::max() - 2) / engine::base_bits<Base>,
+                  "beman::inside::math::pow_base: the deduced output needs |x|·bit_width(Base) below 2^31 - name an "
+                  "output grid with pow_base_into<Out> instead");
+    return static_cast<int>(engine::max_abs_int<In>) * engine::base_bits<Base> + 2;
+}();
+template <auto Base, insidable In>
 using pow_base_t =
     engine::increasing_t<In,
-                         pow_base_core<Base,
-                                       engine::input_limbs<In>,
-                                       engine::in_mag<In>,
-                                       static_cast<int>(engine::max_abs_int<In>) * engine::base_bits<Base> + 2>>;
+                         pow_base_core<Base, engine::input_limbs<In>, engine::in_mag<In>, pow_base_kmax<Base, In>>>;
 
 // atan2: [−π, π] rounded outward on the gcd notch (π = atan2(0, −1)).
 template <insidable A, insidable B>

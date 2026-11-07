@@ -17,7 +17,7 @@ arithmetic with a rational-raw operand takes the exact rational path —
 its cost is measured directly in the continuous-grid / rational-engine
 tables against a hand-rolled reduced int64 fraction (the mixed
 integer/notch-offset add and cross-grid non-integer stores have folded
-integer fast paths, gated on imax-safe spans); `inside<checked>`
+integer fast paths, gated on int64-safe spans); `inside<checked>`
 element-wise loops keep a per-element range check — prefer `beman::inside::sum`'s
 bulk check, which validates the total instead.
 
@@ -212,7 +212,7 @@ bulk check, which validates the total instead.
 | relative |               ns/op |                op/s |    err% |          ins/op |          cyc/op |    IPC |         bra/op |   miss% |     total | convert out (inside -> scalar)
 |---------:|--------------------:|--------------------:|--------:|----------------:|----------------:|-------:|---------------:|--------:|----------:|:-------------------------------
 |   100.0% |                0.37 |    2,673,449,237.70 |    0.4% |            9.00 |            1.35 |  6.672 |           0.00 |    0.0% |      0.01 | `native int passthrough`
-|    99.3% |                0.38 |    2,655,096,131.02 |    0.7% |            9.00 |            1.36 |  6.637 |           0.00 |    0.0% |      0.01 | `as<imax> (integer grid)`
+|    99.3% |                0.38 |    2,655,096,131.02 |    0.7% |            9.00 |            1.36 |  6.637 |           0.00 |    0.0% |      0.01 | `as<int64_t> (integer grid)`
 |   126.3% |                0.30 |    3,376,973,178.39 |    0.5% |            8.00 |            1.07 |  7.492 |           0.00 |    0.0% |      0.01 | `to<uint8_t> (expected)`
 |    70.1% |                0.53 |    1,874,169,115.14 |    0.6% |           14.00 |            1.92 |  7.277 |           0.00 |    0.0% |      0.01 | `static_cast<double> (dyadic index)`
 |    69.6% |                0.54 |    1,860,531,000.08 |    3.9% |           14.00 |            1.92 |  7.301 |           0.00 |    0.0% |      0.01 | `numerator() (Q8.8)`

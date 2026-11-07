@@ -42,7 +42,7 @@ using f20n = inside<{{-64, 64}, per<1 << 20>}, round_nearest | clamp>;
 using f20e = inside<{{-64, 64}, per<1 << 20>}, round_half_even | clamp>;
 using d3n  = inside<{{-64, 64}, rational{1, 1000}}, round_nearest | clamp>;
 using d3t  = inside<{{-64, 64}, rational{1, 1000}}, round_toward_zero | clamp>;
-using dd52 = inside<{{-4, 4}, rational{1, umax{1} << 52}}, round_nearest | clamp>;
+using dd52 = inside<{{-4, 4}, rational{1, std::uint64_t{1} << 52}}, round_nearest | clamp>;
 using big  = inside<{{0, 1 << 20}, per<16>}, round_floor | clamp>;  // exp, cosh of sym8
 using wide = inside<{{-1 << 20, 1 << 20}, per<16>}, round_nearest>; // tan, pow: overflow reported
 // tan's inputs: one branch each (an interval holding a pole is a compile

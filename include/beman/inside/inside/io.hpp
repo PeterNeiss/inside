@@ -58,7 +58,7 @@ std::string wide_to_base(wide_int<N, false> u, int base, bool upper) {
     const char* const digits = upper ? "0123456789ABCDEF" : "0123456789abcdef";
     std::string       out;
     do {
-        const auto [q, r] = divmod_small(u, static_cast<umax>(base));
+        const auto [q, r] = divmod_small(u, static_cast<std::uint64_t>(base));
         out.insert(out.begin(), digits[r]);
         u = q;
     } while (!u.is_zero());
@@ -83,12 +83,12 @@ struct decimal_stream {
     std::string next(int n) {
         std::string out;
         for (; n > 0; n -= 19) {
-            const int chunk = n < 19 ? n : 19;
-            umax      p     = 1;
+            const int     chunk = n < 19 ? n : 19;
+            std::uint64_t p     = 1;
             for (int i = 0; i < chunk; ++i)
                 p *= 10;
             const auto [q, r]      = W::divmod(Rem * W{p}, Den);
-            const std::string part = std::to_string(static_cast<umax>(q));
+            const std::string part = std::to_string(static_cast<std::uint64_t>(q));
             out.append(static_cast<std::size_t>(chunk) - part.size(), '0') += part;
             Rem = r;
         }
@@ -246,7 +246,8 @@ template <std::size_t N, bool S>
     std::string      out;
     do {
         // m /= 10^19, rem = m % 10^19
-        const umax rem = detail::limb::div_1(m.data(), m.data(), m.size(), umax{10'000'000'000'000'000'000ull});
+        const std::uint64_t rem =
+            detail::limb::div_1(m.data(), m.data(), m.size(), std::uint64_t{10'000'000'000'000'000'000ull});
         detail::big::trim(m);
         std::string part = std::to_string(rem);
         if (!m.empty())
@@ -609,24 +610,24 @@ inline constexpr round_mode display_rounding =
         : round_mode::half_even;
 } // namespace beman::inside::detail
 
-// Empty `{}` prints to_string. A notched integer grid within imax takes the
-// integer specs (std::formatter<imax>: {:>4}, {:#x}); every other inside takes
+// Empty `{}` prints to_string. A notched integer grid within int64 takes the
+// integer specs (std::formatter<std::int64_t>: {:>4}, {:#x}); every other inside takes
 // the exact specs ({:.2f}, {:e}, {:g}, fill / align / sign / width), rounded
 // from the exact value by the type's rounding mode (ties to even without one),
-// and an integer grid past imax the integer types too ({:#x}, {:b}, {:o}, {:d}).
+// and an integer grid past int64 the integer types too ({:#x}, {:b}, {:o}, {:d}).
 template <beman::inside::grid G, beman::inside::policy_flag P>
 struct std::formatter<beman::inside::inside<G, P>>
     : beman::inside::detail::numeric_spec_formatter<
           std::conditional_t<beman::inside::detail::integer_lattice<beman::inside::inside<G, P>> &&
-                                 beman::inside::detail::values_fit_imax<beman::inside::inside<G, P>>,
-                             std::formatter<beman::inside::imax>,
+                                 beman::inside::detail::values_fit_int64<beman::inside::inside<G, P>>,
+                             std::formatter<std::int64_t>,
                              beman::inside::detail::exact_format_spec<
                                  beman::inside::detail::integer_lattice<beman::inside::inside<G, P>>>>> {
     using B = beman::inside::inside<G, P>;
     // Integer formatting only for a notched integer grid: a continuous grid
     // (notch 0) holds fractions even between integer bounds.
     static constexpr bool integer_path =
-        beman::inside::detail::integer_lattice<B> && beman::inside::detail::values_fit_imax<B>;
+        beman::inside::detail::integer_lattice<B> && beman::inside::detail::values_fit_int64<B>;
 
     template <typename Ctx>
     auto format(const B& b, Ctx& ctx) const {

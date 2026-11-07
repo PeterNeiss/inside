@@ -95,7 +95,7 @@ constexpr grid overshoot_source_grid() {
         const grid_rational top{static_cast<double>(std::numeric_limits<R>::max())};
         return grid{interval{-top, top}, grid_rational{static_cast<double>(std::numeric_limits<R>::denorm_min())}};
     } else { // rational: |Num| < 2^64, |Den| ≤ 2^63
-        const grid_rational top{grid_int{~umax{0}}};
+        const grid_rational top{grid_int{~std::uint64_t{0}}};
         return grid{interval{-top, top}, max_denominator{grid_rational{grid_int{1} << 63}}};
     }
 }
@@ -160,19 +160,19 @@ constexpr grid wrap_carry_grid() {
     }
 }
 
-// The carry from the exact fold count q: an imax, a wide integer, or the
+// The carry from the exact fold count q: an int64, a wide integer, or the
 // carry inside of another source kind (re-typed, the same value).
 template <insidable L, typename R, typename Q>
 constexpr auto make_wrap_carry(const Q& q) {
     using C = beman::inside::inside<wrap_carry_grid<L, R>()>;
     if constexpr (std::integral<Q> && notched<C> && !wide_valued<C>) {
         C carry;
-        from_value(carry, static_cast<imax>(q)); // in the carry grid by construction
+        from_value(carry, static_cast<std::int64_t>(q)); // in the carry grid by construction
         return carry;
     } else if constexpr (std::integral<Q> || insidable<Q>)
         return exact_value_result<C>(exact_of(q));
     else
-        return exact_value_result<C>(wide_rational<sizeof(Q) / sizeof(umax)>{q, Q{1}});
+        return exact_value_result<C>(wide_rational<sizeof(Q) / sizeof(std::uint64_t)>{q, Q{1}});
 }
 
 // The exact value of a scalar source.
@@ -190,7 +190,7 @@ constexpr auto exact_of_source(const R& rhs) {
 // unit_fold — clamp/wrap of an integer value v in [SrcLo, SrcHi] onto a
 // unit-notch integer grid L, exactly. v − Lower and the range
 // Upper − Lower + 1 may need 65 bits (a grid can span 2^64 values), so the
-// arithmetic runs in a work type sized from all of them: imax when that
+// arithmetic runs in a work type sized from all of them: int64 when that
 // suffices, else a wide_int.
 //---------------------------------------------------------------------------
 template <insidable L, grid_int SrcLo, grid_int SrcHi>
@@ -241,7 +241,7 @@ constexpr wide_rational<std::max(K, exact_limbs<L>)> onto_bound(const wide_ratio
 }
 
 //---------------------------------------------------------------------------
-// assign_exact — store an exact value into L: the path wherever neither imax
+// assign_exact — store an exact value into L: the path wherever neither int64
 // nor the 64-bit rational holds every value (a wide raw on either side, fine
 // doubles, mul_into/div_into, parse, sum, wrap_exact). Rounds first, then range-checks,
 // like the builtin paths; out of range runs the usual policy cascade.
@@ -358,7 +358,7 @@ constexpr L& assign_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& act
                 return exact_index<L, rounding_for<L, plain_t<P>>>(v);
         }();
         using I                       = decltype(slot.Index);
-        constexpr std::size_t KK      = sizeof(I) / sizeof(umax);
+        constexpr std::size_t KK      = sizeof(I) / sizeof(std::uint64_t);
         const I               index   = slot.Index;
         const bool            inexact = !slot.Exact && !uses_flag<L, P, snap> && policy.checks_rounding();
         constexpr I           count   = static_cast<I>(grid_of<L>.step_count());

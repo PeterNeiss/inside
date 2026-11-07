@@ -194,17 +194,17 @@ TEST(StorageTest, notched_arithmetic_returns_a_plain_inside) {
 
     // Continuous grids bound their denominators: add and mul are plain too,
     // in a fraction sized from the bounds.
-    using C = inside<{{0, 10}, max_denominator{imax{1} << 20}}, checked>;
+    using C = inside<{{0, 10}, max_denominator{std::int64_t{1} << 20}}, checked>;
     static_assert(!detail::is_expected_v<decltype(C{} + C{})>);
     static_assert(!detail::is_expected_v<decltype(C{} * C{})>);
-    const C x = C::from_raw(rational{1, imax{1} << 20});
-    ASSERT_EQ(rational{x * x}, (rational{1, imax{1} << 40}));
+    const C x = C::from_raw(rational{1, std::int64_t{1} << 20});
+    ASSERT_EQ(rational{x * x}, (rational{1, std::int64_t{1} << 40}));
 }
 
 // Smaller-threads batch: wide trig envelope, pown, clamp saturation.
 // sin/cos/tan accept radians up to 2^20
 TEST(StorageTest, sin_cos_tan_accept_radians_up_to_2_20) {
-    using wide_t     = inside<{{-(imax{1} << 20), imax{1} << 20}, per<1024>}, round_nearest>;
+    using wide_t     = inside<{{-(std::int64_t{1} << 20), std::int64_t{1} << 20}, per<1024>}, round_nearest>;
     auto         val = [](auto b) { return static_cast<double>(rational{b}); };
     const double tol = 2.0 / 1024; // grid tolerance (notch ≈ 9.8e-4)
 
@@ -461,7 +461,7 @@ TEST(FormatsTest, formats_round_trip_representative_values) {
 }
 
 //---------------------------------------------------------------------------
-// Extremes of the wider types round-trip through the imax value path.
+// Extremes of the wider types round-trip through the int64 value path.
 //---------------------------------------------------------------------------
 // formats: wide-type extremes round-trip
 TEST(FormatsTest, formats_wide_type_extremes_round_trip) {
@@ -560,7 +560,7 @@ concept has_epsilon = requires { std::numeric_limits<T>::epsilon(); };
 template <class T>
 concept has_round_error = requires { std::numeric_limits<T>::round_error(); };
 
-// A Q-format grid far from zero: Lower·2^frac passes imax, so the integer
+// A Q-format grid far from zero: Lower·2^frac passes int64, so the integer
 // codec does not apply (it overflowed in decode; the type did not compile).
 TEST(StorageTest, q_format_grid_far_from_zero) {
     static constexpr std::int64_t base = std::int64_t{1} << 48;
@@ -569,7 +569,7 @@ TEST(StorageTest, q_format_grid_far_from_zero) {
         Q x{base};
         Q y{rational{base * 2 + 1, 2}};
         return rational(x) == rational{base} && rational(y) == rational{base * 2 + 1, 2} &&
-               y.to<imax, round_toward_zero>() == base && y.to<imax>().error() == errc::rounding_error;
+               y.to<std::int64_t, round_toward_zero>() == base && y.to<std::int64_t>().error() == errc::rounding_error;
     }());
 }
 
@@ -579,7 +579,7 @@ TEST(StorageTest, q_format_grid_far_from_zero) {
 TEST(StorageTest, index_grid_reaching_2_pow_63) {
     constexpr std::int64_t i64_min = INT64_MIN;
     static_assert([] {
-        constexpr rational lo{i64_min}, hi{umax{1} << 63};
+        constexpr rational lo{i64_min}, hi{std::uint64_t{1} << 63};
         using G = inside<{{lo, hi}, 2}>;
         G x{hi};
         G y{lo};
@@ -588,7 +588,7 @@ TEST(StorageTest, index_grid_reaching_2_pow_63) {
 }
 
 // A slot count past 2^63 over a negative base: the value index overflowed
-// imax on the way (UB; constant evaluation rejects it), though the index fits.
+// int64 on the way (UB; constant evaluation rejects it), though the index fits.
 TEST(StorageTest, value_index_past_an_int64_raw) {
     using small  = inside<{-7, 5}>;
     using wide_q = inside<{{-(1ll << 40), 1ll << 40}, per<(1ll << 20)>}, clamp>;
@@ -600,7 +600,7 @@ TEST(StorageTest, value_index_past_an_int64_raw) {
 }
 
 // A deduced output limit k·Notch with the index k past 2^63 (π, √2 on a
-// 2^-62 notch) wrapped through imax: atan2's grid came out as [0.86, −0.86]
+// 2^-62 notch) wrapped through int64: atan2's grid came out as [0.86, −0.86]
 // and did not compile.
 TEST(StorageTest, deduced_limit_past_int64_index) {
     using fine = inside<{{0, 1}, per<(1ll << 62)>}, round_nearest>;
@@ -618,7 +618,7 @@ TEST(StorageTest, numeric_limits_epsilon_off_zero) {
     static_assert(!has_round_error<inside<{{rational{-7, 3}, rational{5, 3}}, rational{2, 3}}>>);
 }
 
-// raw·notch passed imax in to_value although the value fits.
+// raw·notch passed int64 in to_value although the value fits.
 TEST(StorageTest, to_value_on_a_coarse_int64_grid) {
     using I64             = std::int64_t;
     constexpr I64 I64_MAX = std::numeric_limits<I64>::max();
@@ -650,9 +650,9 @@ TEST(StorageTest, point_grid_stores_nothing) {
 }
 
 TEST(StorageTest, grid_past_int64_constructs_compares_and_converts) {
-    constexpr umax u64_max = std::numeric_limits<umax>::max();
-    using U64              = inside<{{0, rational{u64_max}}, 1}>;
-    using Small            = inside<{0, 10}>;
+    constexpr std::uint64_t u64_max = std::numeric_limits<std::uint64_t>::max();
+    using U64                       = inside<{{0, rational{u64_max}}, 1}>;
+    using Small                     = inside<{0, 10}>;
     static_assert(U64{5} == 5 && U64{5} < 6 && U64{5} > 4); // signed source
     static_assert(U64{u64_max} > 5 && U64{u64_max} == u64_max && U64{u64_max} > Small{3});
     static_assert(U64{1ull << 63} < U64{u64_max});
@@ -676,11 +676,11 @@ TEST(StorageTest, grid_past_int64_constructs_compares_and_converts) {
 }
 
 TEST(StorageTest, grid_past_int64_increments_and_negates) {
-    constexpr umax u64_max = std::numeric_limits<umax>::max();
-    using U64              = inside<{{0, rational{u64_max}}, 1}>;
-    using U64W             = inside<{{0, rational{u64_max}}, 1}, wrap>;
-    using Small            = inside<{0, 10}>;
-    constexpr auto inc     = [] {
+    constexpr std::uint64_t u64_max = std::numeric_limits<std::uint64_t>::max();
+    using U64                       = inside<{{0, rational{u64_max}}, 1}>;
+    using U64W                      = inside<{{0, rational{u64_max}}, 1}, wrap>;
+    using Small                     = inside<{0, 10}>;
+    constexpr auto inc              = [] {
         U64 w{u64_max - 1};
         ++w;
         return w == u64_max;
@@ -726,12 +726,12 @@ TEST(StorageTest, a_point_round_trips_its_value) {
     using point_pos = inside<{5, 5}>;
     point_pos a{5};
     ASSERT_EQ(a, 5);
-    ASSERT_EQ(a.as<imax>(), 5);
+    ASSERT_EQ(a.as<std::int64_t>(), 5);
 
     using point_neg = inside<{-3, -3}>;
     point_neg b{-3};
     ASSERT_EQ(b, -3);
-    ASSERT_EQ(b.as<imax>(), -3);
+    ASSERT_EQ(b.as<std::int64_t>(), -3);
 
     // Float assignment to single-value rational-storage grid (notch=0)
     using point_fp = inside<{2.5_r}>;

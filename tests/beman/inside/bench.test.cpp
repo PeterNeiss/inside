@@ -677,7 +677,7 @@ static void bench_store_convert() {
     auto store = group("Q8.8 store");
     store.run("from fraction (rational)", [&] {
         ++i;
-        rational q{static_cast<imax>(i & 0xFFF), 256};
+        rational q{static_cast<std::int64_t>(i & 0xFFF), 256};
         fp       v{q};
         doNotOptimizeAway(v.raw());
     });
@@ -710,7 +710,7 @@ static void bench_store_convert() {
     // cost more than the rounding measured.
     std::vector<tenths> tv(kMask + 1);
     for (std::size_t j = 0; j <= kMask; ++j)
-        tv[j] = rational{static_cast<imax>((j * 7) % 1000), 10};
+        tv[j] = rational{static_cast<std::int64_t>((j * 7) % 1000), 10};
     cga.run("non-integer round_toward_zero (1/10 -> 1/4 grid)", [&] {
         ++i;
         quarters b = tv[i & kMask].policy<round_toward_zero>();
@@ -729,8 +729,8 @@ static void bench_store_convert() {
         auto v = static_cast<std::int16_t>((j * 7 + 13) % 9501 - 500);
         ni[j]  = v;
         bi[j]  = static_cast<int>(v);
-        ia[j]  = rational{static_cast<imax>(j % 200) - 100, 16};
-        ib[j]  = rational{static_cast<imax>((j * 3) % 200) - 60, 16};
+        ia[j]  = rational{static_cast<std::int64_t>(j % 200) - 100, 16};
+        ib[j]  = rational{static_cast<std::int64_t>((j * 3) % 200) - 60, 16};
     }
     auto cmp = group("comparison <");
     cmp.run("native int16", [&] {
@@ -751,7 +751,7 @@ static void bench_store_convert() {
     finish(cmp);
 
     // equality — same-grid raw compare, plus the inside-vs-raw-scalar overloads
-    // (value-raw compares in imax; index-raw Q8.8 goes through rational).
+    // (value-raw compares in int64; index-raw Q8.8 goes through rational).
     using fp_u = inside<{{0, 255}, 1.0 / 256}, unsafe>;
     std::vector<fp_u> qv(kMask + 1);
     for (std::size_t j = 0; j <= kMask; ++j)
@@ -819,7 +819,7 @@ static void bench_store_convert() {
     std::vector<dyadic_real> rv(kMask + 1);
     std::vector<u200>        uv(kMask + 1);
     for (std::size_t j = 0; j <= kMask; ++j) {
-        rv[j] = rational{static_cast<imax>(j * 16) - 8192, 16384};
+        rv[j] = rational{static_cast<std::int64_t>(j * 16) - 8192, 16384};
         uv[j] = static_cast<int>(j % 201);
     }
     auto conv = group("convert out (inside -> scalar)");
@@ -828,9 +828,9 @@ static void bench_store_convert() {
         int v = ni[i & kMask];
         doNotOptimizeAway(v);
     });
-    conv.run("as<imax> (integer grid)", [&] {
+    conv.run("as<int64_t> (integer grid)", [&] {
         ++i;
-        doNotOptimizeAway(bi[i & kMask].as<imax>());
+        doNotOptimizeAway(bi[i & kMask].as<std::int64_t>());
     });
     conv.run("to<uint8_t> (expected)", [&] {
         ++i;
@@ -897,7 +897,7 @@ static void bench_helpers() {
     static const scalar_inputs pin{0, 100, 0, 100};
     std::vector<tenths>        tv(kMask + 1);
     for (std::size_t j = 0; j <= kMask; ++j)
-        tv[j] = rational{static_cast<imax>((j * 13 + 5) % 1001), 10};
+        tv[j] = rational{static_cast<std::int64_t>((j * 13 + 5) % 1001), 10};
     auto mm = group("min (mixed grids -> hull)");
     mm.run("native int on 1/10 lattice", [&] {
         ++i;
@@ -994,8 +994,8 @@ static void bench_dyadic() {
     std::vector<dyadic_real> va(kMask + 1), vb(kMask + 1);
     std::vector<double>      da(kMask + 1), db(kMask + 1);
     for (std::size_t j = 0; j <= kMask; ++j) {
-        rational qa{static_cast<imax>((j * 16) & 0x3FFF) - 8192, 16384};
-        rational qb{static_cast<imax>((j * 48 + 16) & 0x3FFF) - 8192, 16384};
+        rational qa{static_cast<std::int64_t>((j * 16) & 0x3FFF) - 8192, 16384};
+        rational qb{static_cast<std::int64_t>((j * 48 + 16) & 0x3FFF) - 8192, 16384};
         va[j] = qa;
         vb[j] = qb;
         da[j] = static_cast<double>(qa);
@@ -1066,20 +1066,20 @@ static void bench_rational() {
     std::vector<double>     da(kMask + 1), db(kMask + 1);
     std::vector<s9k>        ib(kMask + 1);
     for (std::size_t j = 0; j <= kMask; ++j) {
-        imax ka = static_cast<imax>((j * 7 + 3) % 16384) - 8192;
-        imax kb = static_cast<imax>((j * 13 + 5) % 16384) - 8192;
-        imax kp = static_cast<imax>((j * 11 + 7) % 8191) + 1; // positive divisor
-        ea[j]   = rational{ka, 1024};
-        eb[j]   = rational{kb, 1024};
-        ep[j]   = rational{kp, 1024};
-        qa[j]   = rational{ka, 1024};
-        qb[j]   = rational{kb, 1024};
-        fa[j]   = fraction_reduce(ka, 1024);
-        fb[j]   = fraction_reduce(kb, 1024);
-        fp_[j]  = fraction_reduce(kp, 1024);
-        da[j]   = static_cast<double>(qa[j]);
-        db[j]   = static_cast<double>(qb[j]);
-        ib[j]   = static_cast<int>(j % 200);
+        std::int64_t ka = static_cast<std::int64_t>((j * 7 + 3) % 16384) - 8192;
+        std::int64_t kb = static_cast<std::int64_t>((j * 13 + 5) % 16384) - 8192;
+        std::int64_t kp = static_cast<std::int64_t>((j * 11 + 7) % 8191) + 1; // positive divisor
+        ea[j]           = rational{ka, 1024};
+        eb[j]           = rational{kb, 1024};
+        ep[j]           = rational{kp, 1024};
+        qa[j]           = rational{ka, 1024};
+        qb[j]           = rational{kb, 1024};
+        fa[j]           = fraction_reduce(ka, 1024);
+        fb[j]           = fraction_reduce(kb, 1024);
+        fp_[j]          = fraction_reduce(kp, 1024);
+        da[j]           = static_cast<double>(qa[j]);
+        db[j]           = static_cast<double>(qb[j]);
+        ib[j]           = static_cast<int>(j % 200);
     }
     std::size_t             i      = 0;
     constexpr std::uint64_t kIters = 100'000;
@@ -1267,15 +1267,15 @@ static void bench_cmath() {
     std::vector<pow_e_t>    v_powe;
     std::vector<double>     d_qs, d_q, fp_log2, fp_log, fp_tan, d_aty, d_atx, d_fmy, d_powb, d_powe;
     for (std::size_t j = 0; j < M; ++j) {
-        imax     k  = static_cast<imax>((j * 16) & 0xFFFF);
-        rational q  = rational{k, 16384};
-        rational qs = rational{k - 32768, 16384};
-        rational rl2{(k % 65472) + 64, 16384}; // [1/256, 4): log2's grid starts at 1/256
-        rational rl{(k % 65535) + 1, 256};
-        rational rt{(k % 24576) - 12288, 16384};
-        rational ry{(k % 32768) - 16384, 16384};
-        rational rx{((k + 1) % 32768) - 16384, 16384};
-        rational rfy{(k % 60) + 4, 16}; // [0.25, 4): fmod_y_t's grid
+        std::int64_t k  = static_cast<std::int64_t>((j * 16) & 0xFFFF);
+        rational     q  = rational{k, 16384};
+        rational     qs = rational{k - 32768, 16384};
+        rational     rl2{(k % 65472) + 64, 16384}; // [1/256, 4): log2's grid starts at 1/256
+        rational     rl{(k % 65535) + 1, 256};
+        rational     rt{(k % 24576) - 12288, 16384};
+        rational     ry{(k % 32768) - 16384, 16384};
+        rational     rx{((k + 1) % 32768) - 16384, 16384};
+        rational     rfy{(k % 60) + 4, 16}; // [0.25, 4): fmod_y_t's grid
         v_alg.push_back(algeb_t{qs});
         v_alg2.push_back(algeb_t{q});
         v_sqrt.push_back(sqrt_in_t{q});
@@ -1529,7 +1529,7 @@ int main(int argc, char** argv) {
                   "its cost is measured directly in the continuous-grid / rational-engine\n"
                   "tables against a hand-rolled reduced int64 fraction (the mixed\n"
                   "integer/notch-offset add and cross-grid non-integer stores have folded\n"
-                  "integer fast paths, gated on imax-safe spans); a rational RHS in a\n"
+                  "integer fast paths, gated on int64-safe spans); a rational RHS in a\n"
                   "compound assign adds to the raw when it is a whole number of notches,\n"
                   "else takes the same exact branch; `inside<checked>`\n"
                   "element-wise loops keep a per-element range check — prefer `beman::inside::sum`'s\n"

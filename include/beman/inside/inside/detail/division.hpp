@@ -41,11 +41,11 @@ namespace beman::inside::detail {
 template <insidable L, insidable R, policy_flag F>
 inline constexpr bool integer_ops = ((F | flags_of<L> | flags_of<R>)&snap) && integer_lattice<L> && integer_lattice<R>;
 
-// ...and every value fits imax, so the builtin integer division applies.
+// ...and every value fits int64, so the builtin integer division applies.
 template <insidable L, insidable R, policy_flag F>
-inline constexpr bool integer_native_ops = integer_ops<L, R, F> && values_fit_imax<L> && values_fit_imax<R>;
+inline constexpr bool integer_native_ops = integer_ops<L, R, F> && values_fit_int64<L> && values_fit_int64<R>;
 
-// Integer operands past imax (a uint64 grid, the 2^63 of INT64_MIN / -1, a
+// Integer operands past int64 (a uint64 grid, the 2^63 of INT64_MIN / -1, a
 // big grid): the rounded quotient in exact wide integers, on a grid of the
 // corner quotients rounded the same way.
 template <insidable L, insidable R, policy_flag F>
@@ -120,13 +120,13 @@ constexpr T div_rounded(T a, T b, round_mode m) noexcept {
 }
 
 // The native quotient q of a / b stored into Q. Q's grid reaches 2^63 when
-// a can be INT64_MIN and b can be −1 — past from_value's imax, and where
+// a can be INT64_MIN and b can be −1 — past from_value's int64, and where
 // div_rem_rounded's q wraps — so such a Q stores through its exact index.
 template <insidable Q, std::signed_integral T>
 constexpr Q native_quotient(T a, T b, T q) noexcept {
     Q res;
-    if constexpr (values_fit_imax<Q>)
-        from_value(res, imax{q});
+    if constexpr (values_fit_int64<Q>)
+        from_value(res, std::int64_t{q});
     else {
         constexpr std::size_t K = exact_limbs<Q>;
         using I                 = wide_sint<K>;
@@ -138,14 +138,14 @@ constexpr Q native_quotient(T a, T b, T q) noexcept {
 
 // The narrowest signed type in which native div/mod of L by R is exact: int32
 // when both value ranges fit (excluding INT32_MIN, so a / -1 cannot overflow),
-// else imax. A 32-bit divide is markedly cheaper than a 64-bit one.
+// else int64. A 32-bit divide is markedly cheaper than a 64-bit one.
 template <insidable L, insidable R>
-using native_div_t = std::conditional_t<(lower_imax<L> > std::numeric_limits<std::int32_t>::min() &&
-                                         upper_imax<L> <= std::numeric_limits<std::int32_t>::max() &&
-                                         lower_imax<R> > std::numeric_limits<std::int32_t>::min() &&
-                                         upper_imax<R> <= std::numeric_limits<std::int32_t>::max()),
+using native_div_t = std::conditional_t<(lower_int64<L> > std::numeric_limits<std::int32_t>::min() &&
+                                         upper_int64<L> <= std::numeric_limits<std::int32_t>::max() &&
+                                         lower_int64<R> > std::numeric_limits<std::int32_t>::min() &&
+                                         upper_int64<R> <= std::numeric_limits<std::int32_t>::max()),
                                         std::int32_t,
-                                        imax>;
+                                        std::int64_t>;
 
 // The zero-divisor check is skipped when R's grid excludes zero or `unsafe`
 // appears (a zero divisor is then UB, matching the `/= 0` no-op).
@@ -202,15 +202,15 @@ struct division {
     // as round_rat). a/b is monotonic in each operand on either side of 0,
     // and so is its rounding, so these are the rounded endpoints of the exact
     // quotient grid — which is not formed: its endpoints can pass the 64-bit
-    // rational (7/2^63 for a divisor reaching INT64_MIN). Rounded in umax,
-    // sign apart, so limits past imax and INT64_MIN / −1 = 2^63 need no
+    // rational (7/2^63 for a divisor reaching INT64_MIN). Rounded in uint64,
+    // sign apart, so limits past int64 and INT64_MIN / −1 = 2^63 need no
     // special case: |a / b| ≤ |a| for an integer |b| ≥ 1. Grid numbers past
     // 64 bits (a big grid) round the same way in grid integers.
     static constexpr interval integer_quotient_range() {
         const round_mode lo_mode = rmode == round_mode::half_even ? round_mode::floor : rmode;
         const round_mode hi_mode = rmode == round_mode::half_even ? round_mode::ceil : rmode;
         constexpr bool   big     = wide_grid_numbers<L> || wide_grid_numbers<R>;
-        using M                  = std::conditional_t<big, grid_int, umax>;
+        using M                  = std::conditional_t<big, grid_int, std::uint64_t>;
         using V                  = std::conditional_t<big, grid_rational, rational>;
         struct signed_mag {
             M    Mag;
@@ -363,7 +363,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, call_policy<G, E> policy) ->
         const T lhs_val = static_cast<T>(to_value(lhs));
         return native_quotient<result>(lhs_val, rhs_val, div_rounded(lhs_val, rhs_val, rmode));
     } else if constexpr (wide_div_integer) {
-        // Integer values past imax: the rounded quotient in exact wide
+        // Integer values past int64: the rounded quotient in exact wide
         // integers, as modulo's remainder.
         constexpr std::size_t K = exact_limbs<L, R, result>;
         using I                 = wide_sint<K>;
@@ -398,13 +398,15 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, call_policy<G, E> policy) ->
     } else if constexpr (int_quotient_fits) {
         // Two integer raws: J_L·Notch_L / (J_R·Notch_R) as one fraction of
         // value indices, reduced once — no operand decodes, no checked divide.
-        constexpr imax a = static_cast<imax>(notch64<L>.Num) * static_cast<imax>(abs_den(notch64<R>.Den));
-        constexpr imax b = static_cast<imax>(notch64<R>.Num) * static_cast<imax>(abs_den(notch64<L>.Den));
-        const imax     d = value_index<imax>(rhs) * b;
+        constexpr std::int64_t a =
+            static_cast<std::int64_t>(notch64<L>.Num) * static_cast<std::int64_t>(abs_den(notch64<R>.Den));
+        constexpr std::int64_t b =
+            static_cast<std::int64_t>(notch64<R>.Num) * static_cast<std::int64_t>(abs_den(notch64<L>.Den));
+        const std::int64_t d = value_index<std::int64_t>(rhs) * b;
         if constexpr (!zero_unchecked)
             if (d == 0)
                 return zero();
-        const imax n = value_index<imax>(lhs) * a;
+        const std::int64_t n = value_index<std::int64_t>(lhs) * a;
         return result::from_raw(d < 0 ? rational{-n, -d} : rational{n, d});
     } else {
         static_assert(exact_fits<exact_op::div, result, L, R>, "a continuous quotient's bound sizes its raw");
@@ -430,13 +432,13 @@ struct modulo {
     // sides (integer values, or whole numbers of mod_unit).
     static_assert(integer_ops<L, R, FS> || lattice_mod_ops<L, R>, "modulo requires notched grids");
 
-    // Builtin division when every value fits imax; else exact wide integers.
+    // Builtin division when every value fits int64; else exact wide integers.
     static constexpr bool native_mod = integer_native_ops<L, R, FS>;
 
     // The values' unit: 1 on integer grids, else the gcd of the value units.
     static constexpr grid_rational unit = mod_unit<L, R>;
     // A lattice remainder in builtin integers when both operands' unit counts
-    // fit imax.
+    // fit int64.
     static constexpr bool lattice_native = lattice_mod_ops<L, R> &&
                                            signed_value_bits({units_lo<L, unit>, units_hi<L, unit>}) < 63 &&
                                            signed_value_bits({units_lo<R, unit>, units_hi<R, unit>}) < 63;
@@ -520,13 +522,14 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, call_policy<G, E> policy) -> r
     constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
     if constexpr (lattice_native) {
         // A lattice: the integer remainder of the unit counts, scaled back.
-        const imax b = value_in_units<imax, unit>(rhs);
+        const std::int64_t b = value_in_units<std::int64_t, unit>(rhs);
         if constexpr (!zero_unchecked)
             if (b == 0)
                 return report_or_unexpected<result>(policy, errc::division_by_zero);
-        return from_value_in_units<result, unit>(div_rem_rounded(value_in_units<imax, unit>(lhs), b, rmode).Remainder);
+        return from_value_in_units<result, unit>(
+            div_rem_rounded(value_in_units<std::int64_t, unit>(lhs), b, rmode).Remainder);
     } else if constexpr (lattice_mod_ops<L, R>) {
-        // A lattice past imax units: the same in exact wide integers.
+        // A lattice past int64 units: the same in exact wide integers.
         constexpr std::size_t K = exact_limbs<L, R, result>;
         using I                 = wide_sint<K>;
         const I b               = value_in_units<I, unit>(rhs);
@@ -538,7 +541,7 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, call_policy<G, E> policy) -> r
             wide_rational<K>{(a - rounded_div<rmode>(a, b) * b) * static_cast<I>(grid_numerator(unit)),
                              static_cast<I>(grid_denominator(unit))});
     } else if constexpr (!native_mod) {
-        // Integer values past imax: r = a − round(a/b)·b in exact wide integers.
+        // Integer values past int64: r = a − round(a/b)·b in exact wide integers.
         using I   = wide_sint<exact_limbs<L, R, result>>;
         const I b = value_in_units<I, grid_rational{1}>(rhs); // integer values: no division
         if constexpr (!zero_unchecked)
@@ -555,14 +558,14 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, call_policy<G, E> policy) -> r
         result res;
         // Remainder consistent with the rounded quotient (trunc → C++ `%`).
         const T lhs_val = static_cast<T>(to_value(lhs));
-        from_value(res, imax{div_rem_rounded(lhs_val, rhs_val, rmode).Remainder});
+        from_value(res, std::int64_t{div_rem_rounded(lhs_val, rhs_val, rmode).Remainder});
         return res;
     }
 }
 
 //---------------------------------------------------------------------------
 // divmod (what `%` requires): the rounded quotient and the remainder
-// consistent with it, r = a − q·b, from one division (native within imax,
+// consistent with it, r = a − q·b, from one division (native within int64,
 // else exact wide integers). The two halves have the grids of `a / b` and
 // `a % b`.
 //---------------------------------------------------------------------------
@@ -621,7 +624,7 @@ struct quotient_remainder {
                           exact_result<M>(wide_rational<K>{(a - q * b) * static_cast<I>(grid_numerator(u)),
                                                            static_cast<I>(grid_denominator(u))})};
         } else if constexpr (!integer_native_ops<L, R, FS>) {
-            // Integer values past imax: q and r = a − q·b in exact wide
+            // Integer values past int64: q and r = a − q·b in exact wide
             // integers, as `/` and `%` do.
             using Q                 = typename division<L, R, FS>::result;
             using M                 = typename modulo<L, R, FS>::result;
@@ -644,7 +647,7 @@ struct quotient_remainder {
             const T    lhs_val = static_cast<T>(to_value(lhs));
             const auto qr      = div_rem_rounded(lhs_val, rhs_val, rmode);
             result     res{native_quotient<typename division<L, R, FS>::result>(lhs_val, rhs_val, qr.Quotient), {}};
-            from_value(res.Remainder, imax{qr.Remainder});
+            from_value(res.Remainder, std::int64_t{qr.Remainder});
             return res;
         }
     }

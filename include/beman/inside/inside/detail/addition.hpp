@@ -41,7 +41,7 @@ struct addition {
         else {
             // Integer raws (a notched result has no continuous operand): add the
             // values in a unit dividing both operands' (the result notch
-            // gcd(N_L, N_R) on anchored grids), in imax or by wrapping arithmetic
+            // gcd(N_L, N_R) on anchored grids), in int64 or by wrapping arithmetic
             // (wide_value.hpp). Exact for every grid, at any width.
             static_assert(integer_storage<L> && integer_storage<R>);
             constexpr grid_rational U = gcd(unit_of<L>, unit_of<R>);

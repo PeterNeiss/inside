@@ -25,7 +25,7 @@
 // the constexpr grid constructors, normalization and printing a grid; at
 // run time a result past one limb reports errc::overflow.
 //
-// Arithmetic on large values runs on transient std::vector<umax> magnitudes
+// Arithmetic on large values runs on transient std::vector<std::uint64_t> magnitudes
 // with the wide_int limb kernels, during constant evaluation only.
 //---------------------------------------------------------------------------
 #include <algorithm>
@@ -37,7 +37,7 @@
 
 namespace beman::inside::detail {
 namespace big {
-using mag = std::vector<umax>; // little-endian, no top zeros
+using mag = std::vector<std::uint64_t>; // little-endian, no top zeros
 
 constexpr void trim(mag& m) { m.resize(limb::top_size(m.data(), m.size())); }
 
@@ -118,8 +118,8 @@ constexpr signed_mag add_signed(const mag& x, bool xn, const mag& y, bool yn) {
 // A fraction of transient magnitudes, unreduced: nothing is interned, so it
 // computes at runtime too (a big grid's predicates against a runtime value).
 struct fraction {
-    mag  Num;          // |numerator|
-    mag  Den{umax{1}}; // > 0
+    mag  Num;                   // |numerator|
+    mag  Den{std::uint64_t{1}}; // > 0
     bool Negative = false;
 };
 
@@ -167,8 +167,8 @@ constexpr fraction fraction_of_float(T v) {
         mant >>= z;
         e += z;
     }
-    return e >= 0 ? fraction{shl(mag{mant}, e), mag{umax{1}}, d < 0}
-                  : fraction{mag{mant}, shl(mag{umax{1}}, -e), d < 0};
+    return e >= 0 ? fraction{shl(mag{mant}, e), mag{std::uint64_t{1}}, d < 0}
+                  : fraction{mag{mant}, shl(mag{std::uint64_t{1}}, -e), d < 0};
 }
 } // namespace big
 
@@ -176,19 +176,20 @@ constexpr fraction fraction_of_float(T v) {
 // big_int — a signed integer of any size; structural.
 //---------------------------------------------------------------------------
 struct big_int {
-    umax        Small = 0;       // the magnitude when Size == 0
-    const umax* Limbs = nullptr; // interned magnitude, Size ≥ 2 limbs
-    std::size_t Size  = 0;       // tested instead of Limbs: under -fno-delete-null-pointer-checks
-                                 // (implied by -fsanitize=null) GCC cannot compare an interned
-                                 // pointer with nullptr in a constant expression
-    bool Negative = false;       // never set for zero
+    std::uint64_t        Small = 0;       // the magnitude when Size == 0
+    const std::uint64_t* Limbs = nullptr; // interned magnitude, Size ≥ 2 limbs
+    std::size_t          Size  = 0;       // tested instead of Limbs: under -fno-delete-null-pointer-checks
+                                          // (implied by -fsanitize=null) GCC cannot compare an interned
+                                          // pointer with nullptr in a constant expression
+    bool Negative = false;                // never set for zero
 
     constexpr big_int() = default;
 
     template <std::integral T>
         requires(std::numeric_limits<T>::digits <= 64)
     constexpr big_int(T v) noexcept
-        : Small{std::is_signed_v<T> && v < 0 ? umax{0} - static_cast<umax>(v) : static_cast<umax>(v)},
+        : Small{std::is_signed_v<T> && v < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(v)
+                                             : static_cast<std::uint64_t>(v)},
           Negative{std::is_signed_v<T> && v < 0} {}
 
     // A builtin wider than 64 bits (__int128): its limbs. One past a limb
@@ -200,7 +201,7 @@ struct big_int {
         const bool neg = std::is_signed_v<T> && v < 0;
         big::mag   m;
         for (U u = neg ? U{0} - static_cast<U>(v) : static_cast<U>(v); u != 0; u >>= 64)
-            m.push_back(static_cast<umax>(u));
+            m.push_back(static_cast<std::uint64_t>(u));
         *this = from_mag(std::move(m), neg);
     }
 
@@ -232,7 +233,7 @@ struct big_int {
     }
 
     // The canonical big_int of a one-limb magnitude and sign.
-    static constexpr big_int of_limb(umax m, bool neg) noexcept {
+    static constexpr big_int of_limb(std::uint64_t m, bool neg) noexcept {
         big_int r;
         r.Small    = m;
         r.Negative = neg && m != 0;
@@ -244,7 +245,7 @@ struct big_int {
     static constexpr big_int from_mag(big::mag m, bool neg) {
         big::trim(m);
         if (m.size() <= 1)
-            return of_limb(m.empty() ? umax{0} : m[0], neg);
+            return of_limb(m.empty() ? std::uint64_t{0} : m[0], neg);
         big_int r;
         if consteval {
             const auto s = std::define_static_array(m);
@@ -268,12 +269,12 @@ struct big_int {
         if constexpr (std::integral<T> && std::numeric_limits<T>::digits > 64) {
             using U = std::make_unsigned_t<T>; // the low limbs that fit U
             U u     = 0;
-            for (std::size_t i = Size != 0 ? std::min(Size, sizeof(U) / sizeof(umax)) : 1; i-- > 0;)
+            for (std::size_t i = Size != 0 ? std::min(Size, sizeof(U) / sizeof(std::uint64_t)) : 1; i-- > 0;)
                 u = (u << 64) | (Size != 0 ? Limbs[i] : Small);
             return static_cast<T>(Negative ? U{0} - u : u);
         } else if constexpr (std::integral<T>) {
-            const umax low = Size != 0 ? Limbs[0] : Small;
-            return static_cast<T>(Negative ? umax{0} - low : low);
+            const std::uint64_t low = Size != 0 ? Limbs[0] : Small;
+            return static_cast<T>(Negative ? std::uint64_t{0} - low : low);
         } else {
             T w{0};
             for (std::size_t i = 0; i < sizeof(w.Word) / sizeof(w.Word[0]); ++i)
@@ -304,8 +305,8 @@ struct big_int {
     static constexpr big_int add(const big_int& a, const big_int& b) {
         if (a.Size == 0 && b.Size == 0) {
             if (a.Negative == b.Negative) {
-                umax       c = 0;
-                const umax s = limb::add_carry(a.Small, b.Small, c);
+                std::uint64_t       c = 0;
+                const std::uint64_t s = limb::add_carry(a.Small, b.Small, c);
                 if (c == 0)
                     return of_limb(s, a.Negative);
             } else
@@ -318,7 +319,7 @@ struct big_int {
     static constexpr big_int sub(const big_int& a, const big_int& b) { return add(a, neg(b)); }
     static constexpr big_int mul(const big_int& a, const big_int& b) {
         if (a.Size == 0 && b.Size == 0) {
-            const limb::pair<umax> p = limb::mul(a.Small, b.Small);
+            const limb::pair<std::uint64_t> p = limb::mul(a.Small, b.Small);
             if (p.Hi == 0)
                 return of_limb(p.Lo, a.Negative != b.Negative);
         }
@@ -371,8 +372,8 @@ constexpr auto big_int::divmod(const big_int& a, const big_int& b) -> divmod_res
     if (a.Size == 0 && b.Size == 0)
         return {of_limb(a.Small / b.Small, a.Negative != b.Negative), of_limb(a.Small % b.Small, a.Negative)};
     if (b.Size == 0) { // a one-limb divisor: one pass over a's limbs
-        big::mag   q(a.Limbs, a.Limbs + a.Size);
-        const umax r = limb::div_1(q.data(), q.data(), q.size(), b.Small);
+        big::mag            q(a.Limbs, a.Limbs + a.Size);
+        const std::uint64_t r = limb::div_1(q.data(), q.data(), q.size(), b.Small);
         return {from_mag(std::move(q), a.Negative != b.Negative), of_limb(r, a.Negative)};
     }
     big::divmod_result m = big::divmod(a.magnitude(), b.magnitude());
@@ -381,7 +382,7 @@ constexpr auto big_int::divmod(const big_int& a, const big_int& b) -> divmod_res
 constexpr big_int big_int::quot(const big_int& a, const big_int& b) { return divmod(a, b).Quotient; }
 constexpr big_int big_int::rem(const big_int& a, const big_int& b) {
     if (b.Size == 0 && a.Size != 0 && !b.is_zero()) { // a one-limb divisor: the remainder alone
-        umax r = 0;
+        std::uint64_t r = 0;
         for (std::size_t i = a.Size; i-- > 0;)
             r = limb::div(r, a.Limbs[i], b.Small).Lo;
         return of_limb(r, a.Negative);
@@ -438,7 +439,7 @@ struct big_rational {
             }
             if (e < 0 ? e > -64 : e <= std::countl_zero(m)) {
                 Num = big_int::of_limb(e >= 0 ? m << e : m, d < 0);
-                Den = big_int{e >= 0 ? umax{1} : umax{1} << -e};
+                Den = big_int{e >= 0 ? std::uint64_t{1} : std::uint64_t{1} << -e};
                 return;
             }
         }
@@ -471,7 +472,7 @@ struct big_rational {
 
     // The 64-bit rational, when the value fits it.
     [[nodiscard]] constexpr bool fits_rational() const noexcept {
-        return Num.fits_limb() && Den.fits_limb() && std::in_range<imax>(Den.Small);
+        return Num.fits_limb() && Den.fits_limb() && std::in_range<std::int64_t>(Den.Small);
     }
 
     // Implicit: lets every 64-bit path keep working on a small grid. A value
@@ -479,7 +480,7 @@ struct big_rational {
     constexpr operator rational() const {
         if (!fits_rational())
             fail_hard<"grid number past 64 bits on a path that needs a 64-bit rational">(errc::overflow);
-        const imax d = static_cast<imax>(Den.Small); // in lowest terms already
+        const std::int64_t d = static_cast<std::int64_t>(Den.Small); // in lowest terms already
         return rational_from_parts(Num.Small, Num.negative() ? -d : d);
     }
 
@@ -583,16 +584,17 @@ struct big_rational {
             const int      bw = big::bit_width(m);
             sh                = 0;
             if (bw <= 64)
-                return static_cast<double>(m.empty() ? umax{0} : m[0]);
+                return static_cast<double>(m.empty() ? std::uint64_t{0} : m[0]);
             sh                    = bw - 64;
             const std::size_t w   = static_cast<std::size_t>(sh / 64);
             const int         b   = sh % 64;
-            umax              top = m[w] >> b;
+            std::uint64_t     top = m[w] >> b;
             if (b != 0 && w + 1 < m.size())
                 top |= m[w + 1] << (64 - b);
             const bool sticky =
-                (b != 0 && (m[w] << (64 - b)) != 0) ||
-                std::any_of(m.begin(), m.begin() + static_cast<std::ptrdiff_t>(w), [](umax x) { return x != 0; });
+                (b != 0 && (m[w] << (64 - b)) != 0) || std::any_of(m.begin(),
+                                                                   m.begin() + static_cast<std::ptrdiff_t>(w),
+                                                                   [](std::uint64_t x) { return x != 0; });
             return static_cast<double>(top | (sticky ? 1u : 0u));
         };
         int          sn = 0, sd = 0;

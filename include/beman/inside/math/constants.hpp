@@ -56,7 +56,7 @@ using namespace ::beman::inside::math::detail::engine;
 
 // v·q for a small q (a series' recurrence), exact.
 template <std::size_t K>
-constexpr wide_sint<K> mul_small(const wide_sint<K>& v, umax q) noexcept {
+constexpr wide_sint<K> mul_small(const wide_sint<K>& v, std::uint64_t q) noexcept {
     const bool   neg = v.negative();
     wide_uint<K> m{neg ? -v : v};
     limb::mul_1(m.Word, m.Word, K, q);
@@ -66,7 +66,7 @@ constexpr wide_sint<K> mul_small(const wide_sint<K>& v, umax q) noexcept {
 
 // ⌊√(a·2^2G)⌋: √a at scale G, within one unit.
 template <int G>
-constexpr fixed_t<G + 8> sqrt_of(umax a) noexcept {
+constexpr fixed_t<G + 8> sqrt_of(std::uint64_t a) noexcept {
     using T = fixed_t<2 * G + 8>;
     return static_cast<fixed_t<G + 8>>(isqrt(T{a} << (2 * G)));
 }
@@ -76,7 +76,7 @@ template <int G>
 constexpr fixed_t<G + 8> e_series() noexcept {
     using I = fixed_t<G + 8>;
     I t     = one_q<limbs_of<I>>(G), s{0};
-    for (umax k = 1; !t.is_zero(); ++k) {
+    for (std::uint64_t k = 1; !t.is_zero(); ++k) {
         s = s + t;
         t = div_small(t, k);
     }
@@ -88,13 +88,13 @@ constexpr fixed_t<G + 8> e_series() noexcept {
 // reach e^2n: the words carry 3n bits more.
 template <int G>
 constexpr fixed_t<G + 8> egamma_series() noexcept {
-    constexpr int  m  = std::bit_width(static_cast<unsigned>((G + 8) / 5 + 1));
-    constexpr umax n2 = umax{1} << (2 * m);
-    using J           = fixed_t<G + 3 * (1 << m) + 24>;
-    J b               = one_q<limbs_of<J>>(G);
-    J a               = -mul_small(static_cast<J>(ln2_q<G>), static_cast<umax>(m));
+    constexpr int           m  = std::bit_width(static_cast<unsigned>((G + 8) / 5 + 1));
+    constexpr std::uint64_t n2 = std::uint64_t{1} << (2 * m);
+    using J                    = fixed_t<G + 3 * (1 << m) + 24>;
+    J b                        = one_q<limbs_of<J>>(G);
+    J a                        = -mul_small(static_cast<J>(ln2_q<G>), static_cast<std::uint64_t>(m));
     J u = a, v = b;
-    for (umax k = 1; !(a.is_zero() && b.is_zero()); ++k) {
+    for (std::uint64_t k = 1; !(a.is_zero() && b.is_zero()); ++k) {
         b = div_small(div_small(mul_small(b, n2), k), k);
         a = div_small(div_small(mul_small(a, n2), k) + b, k);
         u = u + a;
@@ -112,12 +112,12 @@ constexpr fixed_t<G + 8> catalan_series() noexcept {
     using I     = fixed_t<G + 8>;
     const I one = one_q<limbs_of<I>>(G);
     I       s1{0}, t = one;
-    for (umax k = 0; !t.is_zero(); ++k, t = div_small(t, 3))
+    for (std::uint64_t k = 0; !t.is_zero(); ++k, t = div_small(t, 3))
         s1 = s1 + div_small(t, 2 * k + 1);
     const I inv_sqrt3 = static_cast<I>(isqrt((fixed_t<2 * G + 8>{1} << (2 * G)) / fixed_t<2 * G + 8>{3}));
     const I log_term  = mul_q(s1 << 1, inv_sqrt3, G);
     I       s2{0}, w = one;
-    for (umax j = 0; !w.is_zero(); ++j) {
+    for (std::uint64_t j = 0; !w.is_zero(); ++j) {
         s2 = s2 + div_small(div_small(w, 2 * j + 1), 2 * j + 1);
         w  = div_small(mul_small(w, j + 1), 2 * (2 * j + 1));
     }
@@ -129,7 +129,7 @@ template <int G>
 constexpr fixed_t<G + 8> zeta3_series() noexcept {
     using I = fixed_t<G + 8>;
     I s{0}, w = one_q<limbs_of<I>>(G);
-    for (umax k = 1;; ++k) {
+    for (std::uint64_t k = 1;; ++k) {
         w = div_small(mul_small(w, k), 2 * (2 * k - 1));
         if (w.is_zero())
             break;

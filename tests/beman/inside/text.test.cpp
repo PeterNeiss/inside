@@ -64,13 +64,13 @@ TEST(FormatTest, rational_to_string_fraction_forms) {
 
 // rational to_string: a terminating decimal prints in full however many digits
 TEST(FormatTest, rational_to_string_long_decimals) {
-    constexpr umax M = std::numeric_limits<umax>::max();
+    constexpr std::uint64_t M = std::numeric_limits<std::uint64_t>::max();
     ASSERT_EQ((beman::inside::to_string(rational{M, 2})), "9223372036854775807.5");
     ASSERT_EQ((beman::inside::to_string(rational{M, -2})), "-9223372036854775807.5");
     ASSERT_EQ((beman::inside::to_string(rational{M / 5, 2})), "1844674407370955161.5");
-    ASSERT_EQ((beman::inside::to_string(rational{1u, imax{1} << 52})),
+    ASSERT_EQ((beman::inside::to_string(rational{1u, std::int64_t{1} << 52})),
               "0.0000000000000002220446049250313080847263336181640625");
-    ASSERT_EQ((beman::inside::to_string(rational{M, imax{1} << 62})),
+    ASSERT_EQ((beman::inside::to_string(rational{M, std::int64_t{1} << 62})),
               "3.99999999999999999978315956550289911319850943982601165771484375");
 }
 
@@ -85,14 +85,14 @@ TEST(FormatTest, to_string_round_trips_through_parse) {
     using third = inside<{{-10, 10}, per<3>}>;
     for (const third v : {third{rational{7, 3}}, third{rational{-1, 3}}, third{rational{29, 3}}})
         ASSERT_EQ(parse<third>(beman::inside::to_string(v)), v);
-    using fine   = inside<{{0, 1}, per<imax{1} << 52>}>;
+    using fine   = inside<{{0, 1}, per<std::int64_t{1} << 52>}>;
     const fine e = fine::from_raw(1);
     ASSERT_EQ(parse<fine>(beman::inside::to_string(e)), e);
 }
 
 // rational max as integer formats without 1/
 TEST(FormatTest, rational_max_as_integer_formats_without_1) {
-    constexpr umax M = std::numeric_limits<umax>::max();
+    constexpr std::uint64_t M = std::numeric_limits<std::uint64_t>::max();
     ASSERT_EQ((beman::inside::to_string(rational{M, 1})), std::to_string(M));
 }
 
@@ -110,11 +110,11 @@ TEST(FormatTest, std_format_integration) {
 
 // std::format numeric specs - integer-aligned inside
 TEST(FormatTest, std_format_numeric_specs_integer_aligned_inside) {
-    // Integer-aligned bounds route through std::formatter<imax>, so every
+    // Integer-aligned bounds route through std::formatter<std::int64_t>, so every
     // standard integer spec flows through and matches a direct integer format.
     using pct = inside<{0, 100}>;
-    pct  x{42};
-    imax v = to_value(x);
+    pct          x{42};
+    std::int64_t v = to_value(x);
 
     ASSERT_EQ((std::format("{:5}", x)), (std::format("{:5}", v)));
     ASSERT_EQ((std::format("{:+}", x)), (std::format("{:+}", v)));
@@ -155,7 +155,7 @@ TEST(FormatTest, std_format_numeric_specs_by_storage) {
     ASSERT_EQ((std::format("{:.3f}", e)), (std::format("{:.3f}", static_cast<double>(rational{e}))));
 
     // A signed whole-number grid: specs format the VALUE (via
-    // std::formatter<imax>).
+    // std::formatter<std::int64_t>).
     using ix = inside<{-5, 5}>;
     ix i{-3};
     ASSERT_EQ((std::format("{}", i)), "-3");
@@ -197,7 +197,7 @@ TEST(FormatTest, std_format_exact_specs) {
     using third = inside<{{0, 10}, per<3>}>;
     EXPECT_EQ(std::format("[{:>6}] [{:.4f}]", third{rational{7, 3}}, third{rational{7, 3}}), "[   7/3] [2.3333]");
     // A wide value past 2^53: exact digits a double cannot give.
-    using fine     = inside<{{0, umax{1} << 34}, per<(umax{1} << 32)>}>;
+    using fine     = inside<{{0, std::uint64_t{1} << 34}, per<(std::uint64_t{1} << 32)>}>;
     const fine odd = fine::from_raw((detail::wide_uint<2>{1} << 65) + detail::wide_uint<2>{1});
     EXPECT_EQ(std::format("{:.12f}", odd), "8589934592.000000000233");
     EXPECT_EQ(std::format("{:.15e}", odd), "8.589934592000000e+09");
@@ -480,9 +480,9 @@ TEST(TextTest, parse_past_64_bits) {
     EXPECT_EQ(*parse<HC>(std::string_view{"-1e-200"}), 0);
     EXPECT_EQ(*parse<HC>(std::string_view{"1e-5000"}), rational(1, 100)); // past the wide parse
     EXPECT_EQ(parse_exact<S>(std::string_view{"1e-5000"}).error(), errc::rounding_error);
-    EXPECT_TRUE(*parse<uint64>(std::string_view{"0x1p63"}) == (umax{1} << 63));
+    EXPECT_TRUE(*parse<uint64>(std::string_view{"0x1p63"}) == (std::uint64_t{1} << 63));
     EXPECT_EQ(*parse<H>(std::string_view{"0x1p-70"}), 0);
-    EXPECT_TRUE(*parse<uint64>(std::string_view{"18'446'744'073'709'551'615"}) == ~umax{0});
+    EXPECT_TRUE(*parse<uint64>(std::string_view{"18'446'744'073'709'551'615"}) == ~std::uint64_t{0});
     const std::string third = "0." + std::string(299, '3') + "4";
     EXPECT_EQ(*parse<H>(std::string_view{third}), rational(33, 100));
     const std::string over_half = "0.5" + std::string(298, '0') + "1";
@@ -615,21 +615,21 @@ TEST(TextArmTest, parse_exact_onto_a_notch_zero_point) { EXPECT_TRUE((*parse_exa
 namespace reached_arms_tests {
 using namespace beman::inside;
 
-// 1e-19 reduces to a denominator past imax: taken exactly, off a small bound;
+// 1e-19 reduces to a denominator past int64: taken exactly, off a small bound;
 // a grid number of 512 to 4096 bits prints in full.
-TEST(TextArmTest, denominator_past_imax_and_a_kilobit_grid_number) {
+TEST(TextArmTest, denominator_past_int64_and_a_kilobit_grid_number) {
     EXPECT_EQ((parse<inside<{{0, 1}, max_denominator{1000}}>>("1e-19").error()), errc::rounding_error);
     constexpr auto g = detail::grid_rational{detail::grid_int{1} << 1000} / 7;
     EXPECT_EQ(to_string(g).substr(0, 12), "107150860718");
 }
 } // namespace reached_arms_tests
 
-// The integer format types on integer grids past imax: uint64's top values
+// The integer format types on integer grids past int64: uint64's top values
 // and a signed grid past 64 bits print as std::format prints an integer.
 namespace integer_format_tests {
 using namespace beman::inside;
 
-TEST(FormatTest, integer_types_past_imax) {
+TEST(FormatTest, integer_types_past_int64) {
     using u64 = inside<{0, 18446744073709551615_g}>;
     using WS  = inside<{-1180591620717411303424_g, 1180591620717411303424_g}>;
     const u64 u{18446744073709551615u};

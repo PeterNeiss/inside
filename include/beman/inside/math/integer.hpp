@@ -47,7 +47,7 @@ template <insidable N>
 inline constexpr grid_int count_upper = grid_numerator(upper_of<N>);
 // A count's values at run time: a builtin up to 64 bits, else a wide integer.
 template <int Bits>
-using count_work_t = std::conditional_t<(Bits <= 64), umax, wide_uint<limbs_for_bits(Bits)>>;
+using count_work_t = std::conditional_t<(Bits <= 64), std::uint64_t, wide_uint<limbs_for_bits(Bits)>>;
 template <insidable N>
 using count_t = count_work_t<bit_width_of(count_upper<N>)>;
 
@@ -55,7 +55,7 @@ using count_t = count_work_t<bit_width_of(count_upper<N>)>;
 // or a wide_int wide enough for it).
 template <class W, insidable X>
 constexpr W integer_value(const X& x) {
-    if constexpr (values_fit_imax<X>)
+    if constexpr (values_fit_int64<X>)
         return static_cast<W>(to_value(x));
     else {
         const auto e = exact_of(x); // an integer: the denominator divides
@@ -65,8 +65,8 @@ constexpr W integer_value(const X& x) {
 
 template <insidable N>
 constexpr count_t<N> count_value(const N& n) {
-    if constexpr (values_fit_imax<N>)
-        return static_cast<umax>(to_value(n));
+    if constexpr (values_fit_int64<N>)
+        return static_cast<std::uint64_t>(to_value(n));
     else
         return static_cast<count_t<N>>(integer_value<wide_sint<limbs_for_bits(bit_width_of(count_upper<N>) + 1)>>(n));
 }
@@ -77,7 +77,7 @@ constexpr count_t<N> count_value(const N& n) {
 // fails fast instead of running the compiler out of time.
 //---------------------------------------------------------------------------
 struct counted {
-    big::mag Value{umax{1}};
+    big::mag Value{std::uint64_t{1}};
     bool     Fits = true;
 };
 
@@ -93,25 +93,25 @@ constexpr void times(counted& c, const big::mag& q) {
         return;
     }
     if (q.size() == 1) {
-        if (const umax carry = limb::mul_1(c.Value.data(), c.Value.data(), c.Value.size(), q[0]))
+        if (const std::uint64_t carry = limb::mul_1(c.Value.data(), c.Value.data(), c.Value.size(), q[0]))
             c.Value.push_back(carry);
     } else
         c.Value = big::mul(c.Value, q);
     check_fits(c);
 }
-constexpr void divided_by(counted& c, umax q) {
+constexpr void divided_by(counted& c, std::uint64_t q) {
     limb::div_1(c.Value.data(), c.Value.data(), c.Value.size(), q);
     big::trim(c.Value);
 }
-constexpr big::mag mag_of(umax v) { return v == 0 ? big::mag{} : big::mag{v}; }
-constexpr big::mag plus(const big::mag& a, umax b) { return big::add(a, mag_of(b)); }
+constexpr big::mag mag_of(std::uint64_t v) { return v == 0 ? big::mag{} : big::mag{v}; }
+constexpr big::mag plus(const big::mag& a, std::uint64_t b) { return big::add(a, mag_of(b)); }
 constexpr bool     less(const big::mag& a, const big::mag& b) { return big::compare(a, b) < 0; }
 
 // lo · (lo + 1) ··· (lo + count − 1), 1 for count 0 (lo ≥ 1). It stops once
 // past max_count_bits, after at most that many factors.
 constexpr counted product(const big::mag& lo, const big::mag& count) {
     counted c;
-    for (umax i = 0; less(mag_of(i), count) && c.Fits; ++i)
+    for (std::uint64_t i = 0; less(mag_of(i), count) && c.Fits; ++i)
         times(c, plus(lo, i));
     return c;
 }
@@ -135,7 +135,7 @@ constexpr counted rising_count(const big::mag& n, const big::mag& k) {
 // max_count_bits it stops: the intermediates grow toward C(s, t).
 constexpr void times_binomial(counted& r, const big::mag& s, const big::mag& k) {
     const big::mag rest = big::sub(s, k), t = less(rest, k) ? rest : k, base = big::sub(s, t);
-    for (umax i = 1; !less(t, mag_of(i)) && r.Fits; ++i) {
+    for (std::uint64_t i = 1; !less(t, mag_of(i)) && r.Fits; ++i) {
         times(r, plus(base, i));
         divided_by(r, i);
     }
@@ -336,26 +336,26 @@ constexpr void times(W& w, const Q& q) noexcept {
     else if constexpr (wide_integer<W>)
         w = w * static_cast<W>(q);
     else
-        w *= static_cast<umax>(q); // a factor of a 64-bit result fits 64 bits
+        w *= static_cast<std::uint64_t>(q); // a factor of a 64-bit result fits 64 bits
 }
 template <class W>
-constexpr void divided_by(W& w, umax q) noexcept {
+constexpr void divided_by(W& w, std::uint64_t q) noexcept {
     if constexpr (wide_integer<W>)
         limb::div_1(w.Word, w.Word, std::size(w.Word), q);
     else
         w /= q;
 }
 template <class W, class C>
-constexpr W product(const C& lo, umax count) noexcept {
+constexpr W product(const C& lo, std::uint64_t count) noexcept {
     W w{1};
-    for (umax i = 0; i < count; ++i)
+    for (std::uint64_t i = 0; i < count; ++i)
         times(w, lo + static_cast<C>(i));
     return w;
 }
 template <class W, class C>
 constexpr void times_binomial(W& r, const C& s, const C& k) noexcept {
-    const umax t = static_cast<umax>(std::min(k, s - k));
-    for (umax i = 1; i <= t; ++i) {
+    const std::uint64_t t = static_cast<std::uint64_t>(std::min(k, s - k));
+    for (std::uint64_t i = 1; i <= t; ++i) {
         times(r, s - static_cast<C>(t) + static_cast<C>(i));
         divided_by(r, i);
     }
@@ -373,19 +373,19 @@ constexpr R lattice_inside(const W& v) noexcept {
         constexpr W n  = static_cast<W>(grid_numerator(notch_of<R>));
         return R::from_raw(raw_cast<R>(W::divmod(v - lo, n).Quotient));
     } else
-        return R::from_raw(raw_cast<R>((static_cast<umax>(v) - static_cast<umax>(lower_imax<R>)) /
-                                       static_cast<umax>(notch64<R>.Num)));
+        return R::from_raw(raw_cast<R>((static_cast<std::uint64_t>(v) - static_cast<std::uint64_t>(lower_int64<R>)) /
+                                       static_cast<std::uint64_t>(notch64<R>.Num)));
 }
 
 template <insidable R>
 inline constexpr int result_bits = bit_width_of(grid_numerator(upper_of<R>));
 
 // i! for i ≤ Hi, when Hi! fits 64 bits: one load.
-template <umax Hi>
+template <std::uint64_t Hi>
 inline constexpr auto factorial_table = [] {
-    std::array<umax, Hi + 1> t{};
-    umax                     f = 1;
-    for (umax i = 0; i <= Hi; ++i) {
+    std::array<std::uint64_t, Hi + 1> t{};
+    std::uint64_t                     f = 1;
+    for (std::uint64_t i = 0; i <= Hi; ++i) {
         f *= i < 2 ? 1 : i;
         t[i] = f;
     }
@@ -411,12 +411,13 @@ template <insidable N>
         return R::from_raw({});
     } else {
         // A result within max_count_bits has n ≤ 1754: a builtin count.
-        const umax v = static_cast<umax>(detail::count_value(n));
+        const std::uint64_t v = static_cast<std::uint64_t>(detail::count_value(n));
         if constexpr (detail::result_bits<R> <= 64)
-            return detail::lattice_inside<R>(detail::factorial_table<static_cast<umax>(detail::count_upper<N>)>[v]);
+            return detail::lattice_inside<R>(
+                detail::factorial_table<static_cast<std::uint64_t>(detail::count_upper<N>)>[v]);
         else {
             using W = detail::count_work_t<detail::result_bits<R>>;
-            return detail::lattice_inside<R>(v < 2 ? W{1} : detail::product<W>(umax{2}, v - 1));
+            return detail::lattice_inside<R>(v < 2 ? W{1} : detail::product<W>(std::uint64_t{2}, v - 1));
         }
     }
 }
@@ -449,7 +450,8 @@ template <insidable N, insidable K>
             detail::count_work_t<std::max(bit_width_of(detail::count_upper<N>), bit_width_of(detail::count_upper<K>))>;
         const C a{detail::count_value(n)}, b{detail::count_value(k)};
         // b ≤ a: a nonzero result within max_count_bits has few factors.
-        return detail::lattice_inside<R>(b > a ? W{0} : detail::product<W>(a - b + C{1}, static_cast<umax>(b)));
+        return detail::lattice_inside<R>(b > a ? W{0}
+                                               : detail::product<W>(a - b + C{1}, static_cast<std::uint64_t>(b)));
     }
 }
 template <insidable N, insidable K>
@@ -480,7 +482,7 @@ template <insidable N, insidable K>
         // a ≥ 1 and b ≥ 1: a result within max_count_bits has few factors.
         return detail::lattice_inside<R>(b == decltype(b){0} ? W{1}
                                          : a == C{0}         ? W{0}
-                                                             : detail::product<W>(a, static_cast<umax>(b)));
+                                                             : detail::product<W>(a, static_cast<std::uint64_t>(b)));
     }
 }
 template <insidable N, insidable K>
@@ -512,11 +514,11 @@ template <insidable N, insidable K>
         using C =
             detail::count_work_t<std::max(bit_width_of(detail::count_upper<N>), bit_width_of(detail::count_upper<K>))>;
         const C a{detail::count_value(n)}, b{detail::count_value(k)};
-        W       c{static_cast<umax>(b > a ? 0 : 1)};
+        W       c{static_cast<std::uint64_t>(b > a ? 0 : 1)};
         if (b <= a)
             detail::times_binomial(c, a, b);
         if constexpr (detail::wide_integer<W> && detail::result_bits<R> <= 64)
-            return detail::lattice_inside<R>(static_cast<umax>(c));
+            return detail::lattice_inside<R>(static_cast<std::uint64_t>(c));
         else
             return detail::lattice_inside<R>(c);
     }
@@ -552,7 +554,7 @@ template <insidable... Ks>
             detail::times_binomial(r, s, k);
         }
         if constexpr (detail::wide_integer<W> && detail::result_bits<R> <= 64)
-            return detail::lattice_inside<R>(static_cast<umax>(r));
+            return detail::lattice_inside<R>(static_cast<std::uint64_t>(r));
         else
             return detail::lattice_inside<R>(r);
     }

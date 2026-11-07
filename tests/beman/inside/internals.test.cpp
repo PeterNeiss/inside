@@ -37,7 +37,7 @@ using namespace beman::inside;
 using namespace beman::inside::detail;
 
 namespace {
-constexpr umax M = std::numeric_limits<umax>::max();
+constexpr std::uint64_t M = std::numeric_limits<std::uint64_t>::max();
 }
 
 // rational construction normalizes
@@ -78,12 +78,12 @@ TEST(RationalTest, rational_construction_normalises) {
     }
 
     {
-        SCOPED_TRACE("denominator imax_min throws (cannot be negated without UB)");
-        constexpr auto imin = std::numeric_limits<imax>::min();
+        SCOPED_TRACE("denominator int64_min throws (cannot be negated without UB)");
+        constexpr auto imin = std::numeric_limits<std::int64_t>::min();
         ASSERT_THROW((void)((rational{1u, imin})), beman::inside::inside_error);
         ASSERT_THROW((void)((rational{1, imin})), beman::inside::inside_error);
         // Negative-num path: the validation must run BEFORE the mem-init
-        // negation, otherwise -imax_min would be signed overflow (UB).
+        // negation, otherwise -int64_min would be signed overflow (UB).
         ASSERT_THROW((void)((rational{-1, imin})), beman::inside::inside_error);
     }
 
@@ -136,9 +136,9 @@ TEST(RationalTest, rational_comparison) {
 
     {
         SCOPED_TRACE("comparison cross-cancels so big denominators don't always overflow");
-        constexpr imax half = static_cast<imax>(M / 2);
-        rational       a{static_cast<umax>(half), half}; // -> 1
-        rational       b{1u};
+        constexpr std::int64_t half = static_cast<std::int64_t>(M / 2);
+        rational               a{static_cast<std::uint64_t>(half), half}; // -> 1
+        rational               b{1u};
         ASSERT_EQ(a, b);
     }
 
@@ -146,7 +146,7 @@ TEST(RationalTest, rational_comparison) {
         SCOPED_TRACE("cross-multiplication uses 128-bit, never overflows");
         // M/2 vs (M-1)/3: numerators are consecutive (coprime) and denominators
         // {2,3} are coprime, so cross-cancellation cannot reduce either pair and the 64-bit
-        // products overflow umax — but the 128-bit cross-multiply compares them
+        // products overflow uint64 — but the 128-bit cross-multiply compares them
         // exactly. a - b = (M+2)/6 > 0, so a > b.
         rational a{M, 2};
         rational b{M - 1, 3};
@@ -166,16 +166,16 @@ TEST(RationalTest, rational_comparison_by_cross_multiplication) {
     ASSERT_TRUE(rational{19} < almost20);
     ASSERT_TRUE(-almost20 > rational{-20});
     ASSERT_TRUE(rational{-19} > -almost20);
-    constexpr umax big  = std::numeric_limits<umax>::max();
-    const rational huge = rational_from_parts(big, 1), huge_half = rational_from_parts(big, 2);
+    constexpr std::uint64_t big  = std::numeric_limits<std::uint64_t>::max();
+    const rational          huge = rational_from_parts(big, 1), huge_half = rational_from_parts(big, 2);
     ASSERT_TRUE(huge_half < huge);
     ASSERT_TRUE(rational_from_parts(big - 1, 1) < huge);
     ASSERT_TRUE(rational_from_parts(big, 3) < rational_from_parts(big - 1, 2));
     ASSERT_TRUE(rational_from_parts(big, -3) > rational_from_parts(big - 1, -2));
     ASSERT_TRUE((rational_from_parts(6, 4) <=> rational{3, 2}) == 0); // unreduced, same value
     ASSERT_TRUE((rational{0} <=> rational_from_parts(0, -5)) == 0);
-    ASSERT_TRUE((rational{0} < rational{1, std::numeric_limits<imax>::max()}));
-    ASSERT_TRUE((rational{0} > rational{-1, std::numeric_limits<imax>::max()}));
+    ASSERT_TRUE((rational{0} < rational{1, std::numeric_limits<std::int64_t>::max()}));
+    ASSERT_TRUE((rational{0} > rational{-1, std::numeric_limits<std::int64_t>::max()}));
 }
 
 TEST(RationalTest, rational_arithmetic) {
@@ -351,18 +351,18 @@ TEST(RationalTest, rational_overflow_detection) {
     }
 
     {
-        SCOPED_TRACE("checked arithmetic rejects denominators exceeding imax_max");
-        // 2^62 * 3 = 1.5 * 2^63 — fits in umax, exceeds imax_max.
+        SCOPED_TRACE("checked arithmetic rejects denominators exceeding int64_max");
+        // 2^62 * 3 = 1.5 * 2^63 — fits in uint64, exceeds int64_max.
         // (Coprime denominators so the cross-cancellation cannot reduce the lcm.)
-        imax p62 = imax{1} << 62;
+        std::int64_t p62 = std::int64_t{1} << 62;
 
-        // mul: a_ad * b_ad after cross-cancellation still > imax_max.
+        // mul: a_ad * b_ad after cross-cancellation still > int64_max.
         ASSERT_FALSE(try_mul(rational{1u, p62}, rational{1u, 3}).has_value());
 
-        // add: lcm > imax_max.
+        // add: lcm > int64_max.
         ASSERT_FALSE(try_add(rational{1u, p62}, rational{1u, 3}).has_value());
 
-        // 1/M (M > imax_max) would land M in the result's Den slot.
+        // 1/M (M > int64_max) would land M in the result's Den slot.
         ASSERT_FALSE(try_div(rational{1u, 1}, rational{M, 1}).has_value());
     }
 
@@ -387,8 +387,8 @@ TEST(RationalTest, rational_helpers) {
         ASSERT_EQ((*gcd(rational{6u, 1}, rational{8u, 1})), (rational{2u, 1}));
         ASSERT_EQ((*gcd(rational{1u, 2}, rational{1u, 3})), (rational{1u, 6}));
 
-        // Denominator-lcm overflow: lcm(2^62, 3) = 3 * 2^62 > imax_max.
-        ASSERT_FALSE((gcd(rational{1u, imax{1} << 62}, rational{1u, 3}).has_value()));
+        // Denominator-lcm overflow: lcm(2^62, 3) = 3 * 2^62 > int64_max.
+        ASSERT_FALSE((gcd(rational{1u, std::int64_t{1} << 62}, rational{1u, 3}).has_value()));
     }
 
     {
@@ -404,7 +404,7 @@ TEST(RationalTest, rational_helpers) {
         SCOPED_TRACE("divides_evenly is alignment-only, independent of representability");
         // M / (1/2) = M*2 is mathematically an integer (M sits on the 1/2 lattice),
         // so divides_evenly is true even though the quotient numerator overflows
-        // umax. Representability of the index count is a separate concern
+        // uint64. Representability of the index count is a separate concern
         // (grid::max_index_representable), not part of the lattice-alignment predicate.
         ASSERT_TRUE((divides_evenly(rational{M}, rational{1, 2})));
         // genuinely unaligned stays false (no overflow involved)
@@ -494,22 +494,22 @@ TEST(RationalTest, rational_trunc_floor_round) {
 
 //---------------------------------------------------------------------------
 // Mixed-sign addition rescued in 128-bit. `1024 − m/2^54` forms the
-// cross-product 1024·2^54 == 2^64 (one past umax) before the subtraction
+// cross-product 1024·2^54 == 2^64 (one past uint64) before the subtraction
 // brings the numerator back into range — the dbl-engine store path hit
 // exactly this via `rhs - Lower` and terminated through noexcept.
 //---------------------------------------------------------------------------
 // mixed-sign add rescues a cross-product overflow when the difference fits
 TEST(RationalTest, mixed_sign_add_rescues_a_cross_product_overflow_when_the_difference_fits) {
     // -0.49996929771979287 as an exact double fraction: den 2^54.
-    const rational fp_value{umax{9006646171630191}, imax{-18014398509481984}};
+    const rational fp_value{std::uint64_t{9006646171630191}, std::int64_t{-18014398509481984}};
 
     const auto offset = try_add(fp_value, rational{1024});
     ASSERT_TRUE(offset.has_value());
-    ASSERT_TRUE(offset->Num == umax{18437737427537921425u});
-    ASSERT_TRUE(offset->Den == imax{18014398509481984});
+    ASSERT_TRUE(offset->Num == std::uint64_t{18437737427537921425u});
+    ASSERT_TRUE(offset->Den == std::int64_t{18014398509481984});
 
-    // Same-sign sums past umax stay an error (the result truly needs > 64 bits).
-    const rational positive{umax{9006646171630191}, imax{18014398509481984}};
+    // Same-sign sums past uint64 stay an error (the result truly needs > 64 bits).
+    const rational positive{std::uint64_t{9006646171630191}, std::int64_t{18014398509481984}};
     ASSERT_FALSE(try_add(positive, rational{1024}).has_value());
 }
 } // namespace rational_tests
@@ -518,8 +518,8 @@ TEST(RationalTest, mixed_sign_add_rescues_a_cross_product_overflow_when_the_diff
 namespace big_rational_tests {
 using namespace beman::inside::detail;
 
-using beman::inside::imax;
-using beman::inside::umax;
+using std::int64_t;
+using std::uint64_t;
 
 namespace {
 // 2^k as a big_int, built by doubling (every step is exact).
@@ -546,7 +546,7 @@ static_assert((pow2(200) + big_int{5}) % pow2(70) == big_int{5});
 static_assert(-pow2(100) < big_int{0} && -pow2(100) < -pow2(99));
 static_assert(gcd(pow2(150) * big_int{3}, pow2(120) * big_int{9}) == pow2(120) * big_int{3});
 static_assert(pow2(130).bit_width() == 131);
-static_assert(static_cast<umax>(pow2(64) + big_int{7}) == 7); // truncates like a builtin
+static_assert(static_cast<std::uint64_t>(pow2(64) + big_int{7}) == 7); // truncates like a builtin
 static_assert(static_cast<wide_uint<3>>(pow2(130)) == (wide_uint<3>{1} << 130));
 static_assert(big_int{wide_sint<3>{-1} << 130} == -pow2(130));
 
@@ -591,9 +591,9 @@ TEST(BigRationalTest, runtime_comparison_of_small_values_forms_no_big_value) {
     // (2^64 − 1)/4 against 1/3: the cross products need 128 bits. A runtime
     // comparison must not try to form them as big values (which only exist at
     // compile time) — a store's range check runs exactly this.
-    volatile umax      top = ~umax{0};
-    const big_rational a{rational{static_cast<umax>(top), 4}};
-    const big_rational b{rational{1, 3}};
+    volatile std::uint64_t top = ~std::uint64_t{0};
+    const big_rational     a{rational{static_cast<std::uint64_t>(top), 4}};
+    const big_rational     b{rational{1, 3}};
     EXPECT_TRUE(b < a);
     EXPECT_TRUE(big_rational::neg(a) < b);
     EXPECT_FALSE(a < a);
@@ -601,9 +601,10 @@ TEST(BigRationalTest, runtime_comparison_of_small_values_forms_no_big_value) {
 }
 
 TEST(BigRationalTest, runtime_overflow_is_reported) {
-    volatile umax big = ~umax{0};
-    EXPECT_THROW((void)big_int::mul(big_int{static_cast<umax>(big)}, big_int{static_cast<umax>(big)}),
-                 beman::inside::inside_error);
+    volatile std::uint64_t big = ~std::uint64_t{0};
+    EXPECT_THROW(
+        (void)big_int::mul(big_int{static_cast<std::uint64_t>(big)}, big_int{static_cast<std::uint64_t>(big)}),
+        beman::inside::inside_error);
 }
 } // namespace big_rational_tests
 
@@ -731,7 +732,7 @@ u128n to128(const wide_int<2, S>& w) {
 }
 } // namespace
 
-TEST(WideIntTest, two_umax_limbs_against_int128) {
+TEST(WideIntTest, two_uint64_limbs_against_int128) {
     using U = u128n;
     using S = __int128;
     rng  next{42};
@@ -772,7 +773,7 @@ TEST(WideIntTest, two_umax_limbs_against_int128) {
 
 // Three limbs have no builtin oracle: check the division identity and the
 // round trip through two-limb values.
-TEST(WideIntTest, three_umax_limbs_division_identity) {
+TEST(WideIntTest, three_uint64_limbs_division_identity) {
     using W = wide_sint<3>;
     rng next{7};
     for (int i = 0; i < 100000; ++i) {
@@ -867,32 +868,32 @@ TEST(WideIntTest, equality_in_constant_evaluation) {
     SUCCEED();
 }
 
-using beman::inside::umax;
+using std::uint64_t;
 
 // The 64-bit limb product and division: native __int128, or the portable
 // split on targets without it. Every path gives the same {hi, lo} and
 // {quotient, remainder}.
 namespace {
 struct limb_case {
-    umax A, B;
+    std::uint64_t A, B;
 };
-constexpr umax      ones         = std::numeric_limits<umax>::max();
-constexpr limb_case limb_cases[] = {
+constexpr std::uint64_t ones         = std::numeric_limits<std::uint64_t>::max();
+constexpr limb_case     limb_cases[] = {
     {0, 0},
     {1, ones},
     {ones, ones},
     {ones, 2},
-    {umax{1} << 63, umax{1} << 63},
-    {umax{1} << 32, umax{1} << 32},
+    {std::uint64_t{1} << 63, std::uint64_t{1} << 63},
+    {std::uint64_t{1} << 32, std::uint64_t{1} << 32},
     {0xffffffffu, 0xffffffffu},
     {0x123456789abcdef0u, 0x0fedcba987654321u},
 };
 constexpr bool limb_ops_agree(limb_case c) {
-    const limb::pair<umax> p = limb::mul(c.A, c.B);
+    const limb::pair<std::uint64_t> p = limb::mul(c.A, c.B);
     if (c.B == 0)
         return p.Hi == 0 && p.Lo == 0;
     // {hi, lo} / B gives back A, remainder 0; hi < B holds because A·B / B = A.
-    const limb::pair<umax> q = limb::div(p.Hi, p.Lo, c.B);
+    const limb::pair<std::uint64_t> q = limb::div(p.Hi, p.Lo, c.B);
     return q.Hi == c.A && q.Lo == 0;
 }
 } // namespace
@@ -905,22 +906,22 @@ TEST(WideIntTest, limb_mul_and_div_paths_agree) {
         return true;
     }());
     for (const limb_case c : limb_cases) {
-        volatile umax   a = c.A, b = c.B; // keep the run-time path
-        const limb_case rt{a, b};
+        volatile std::uint64_t a = c.A, b = c.B; // keep the run-time path
+        const limb_case        rt{a, b};
         EXPECT_TRUE(limb_ops_agree(rt)) << c.A << " * " << c.B;
-        const limb::pair<umax> p  = limb::mul(rt.A, rt.B);
-        const limb::pair<umax> pc = limb::mul(c.A, c.B);
+        const limb::pair<std::uint64_t> p  = limb::mul(rt.A, rt.B);
+        const limb::pair<std::uint64_t> pc = limb::mul(c.A, c.B);
         EXPECT_EQ(p.Hi, pc.Hi);
         EXPECT_EQ(p.Lo, pc.Lo);
     }
     // hi = d − 1, the largest high word div accepts.
-    volatile umax          d    = 0x8000000000000001u;
-    const limb::pair<umax> q    = limb::div(d - 1, ones, umax{d});
-    const limb::pair<umax> back = limb::mul(q.Hi, umax{d});
+    volatile std::uint64_t          d    = 0x8000000000000001u;
+    const limb::pair<std::uint64_t> q    = limb::div(d - 1, ones, std::uint64_t{d});
+    const limb::pair<std::uint64_t> back = limb::mul(q.Hi, std::uint64_t{d});
     // q·d + r == {d − 1, ones}, and r < d.
-    EXPECT_LT(q.Lo, umax{d});
-    const umax lo = back.Lo + q.Lo;
-    EXPECT_EQ(back.Hi + (lo < back.Lo), umax{d} - 1);
+    EXPECT_LT(q.Lo, std::uint64_t{d});
+    const std::uint64_t lo = back.Lo + q.Lo;
+    EXPECT_EQ(back.Hi + (lo < back.Lo), std::uint64_t{d} - 1);
     EXPECT_EQ(lo, ones);
 }
 } // namespace wide_int_tests
@@ -932,13 +933,13 @@ using namespace beman::inside::detail;
 
 // safe_abs handles INT_MIN without UB
 TEST(NumbersTest, safe_abs_handles_int_min_without_ub) {
-    static_assert(safe_abs(imax{0}) == 0u);
-    static_assert(safe_abs(imax{42}) == 42u);
-    static_assert(safe_abs(imax{-42}) == 42u);
+    static_assert(safe_abs(std::int64_t{0}) == 0u);
+    static_assert(safe_abs(std::int64_t{42}) == 42u);
+    static_assert(safe_abs(std::int64_t{-42}) == 42u);
 
-    // INT_MIN: -INT_MIN as signed would overflow; safe_abs computes via umax
-    constexpr imax min_v = std::numeric_limits<imax>::min();
-    static_assert(safe_abs(min_v) == static_cast<umax>(std::numeric_limits<imax>::max()) + 1u);
+    // INT_MIN: -INT_MIN as signed would overflow; safe_abs computes via uint64
+    constexpr std::int64_t min_v = std::numeric_limits<std::int64_t>::min();
+    static_assert(safe_abs(min_v) == static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) + 1u);
 }
 
 // frexp handles zero
@@ -1180,22 +1181,50 @@ using namespace beman::inside::detail;
 
 #define WIDE_LONG_DOUBLE (LDBL_MANT_DIG > DBL_MANT_DIG)
 
-// rational{unsigned, unsigned} with a den past imax: the cast to the signed
+// rational{unsigned, unsigned} with a den past int64: the cast to the signed
 // denominator flipped the sign silently.
 TEST(InternalsTest, rational_of_two_unsigned_rejects_a_large_denominator) {
     EXPECT_THROW((void)(rational{1u, 0x8000'0000'0000'0001ull}), inside_error);
     static_assert(rational{1u, 0x7FFF'FFFF'FFFF'FFFFull} > rational{0});
 }
 
+// rational(num, den) with a signed num took den as an int64 parameter: a
+// uint64 den past it converted on the way in, so rational(1, 2^64 − 1)
+// was −1.
+TEST(InternalsTest, rational_of_any_integers_rejects_a_large_denominator) {
+    constexpr std::uint64_t u64_max = std::numeric_limits<std::uint64_t>::max();
+    EXPECT_THROW((void)(rational(1, test::at_run_time(u64_max))), inside_error);
+    EXPECT_THROW((void)(rational(-1, test::at_run_time(std::uint64_t{1} << 63))), inside_error);
+    static_assert(rational(-3, std::uint64_t{6}) == rational{-1, 2});
+    static_assert(rational(3u, -6) == rational{-1, 2} && rational(-3, -6) == rational{1, 2});
+    constexpr int         i = 3;
+    constexpr std::size_t n = 6;
+    static_assert(rational{i, n} == rational{1, 2} && rational{n, i} == rational{2});
+}
+
+// trunc, floor, ceil and round of a rational narrowed its integer part (up
+// to 2^64 − 1) to int64 silently: trunc(rational{2^64 − 1}) was −1. Past
+// int64 they raise overflow (fail/rational_trunc_past_int64 while compiling).
+TEST(InternalsTest, rational_rounding_to_int64_at_its_limits) {
+    constexpr std::int64_t i64_min = std::numeric_limits<std::int64_t>::min();
+    EXPECT_THROW((void)trunc(rational{test::at_run_time(std::uint64_t{1} << 63)}), inside_error);
+    EXPECT_THROW((void)floor(rational{test::at_run_time((std::uint64_t{1} << 63) + 1), -1}), inside_error);
+    static_assert(trunc(rational{std::uint64_t{1} << 63, -1}) == i64_min);
+    static_assert(floor(rational{(std::uint64_t{1} << 63) - 1, -1}) == i64_min + 1);
+    static_assert(ceil(rational{(std::uint64_t{1} << 63) - 3, 2u}) == (std::int64_t{1} << 62) - 1);
+    static_assert(round(rational{(std::uint64_t{1} << 63) - 1}) == std::numeric_limits<std::int64_t>::max());
+}
+
 // Checked rational / and + reported overflow for results that fit.
 TEST(InternalsTest, rational_ops_reduce_before_overflowing) {
-    constexpr umax big = (umax{1} << 63) + 2;
+    constexpr std::uint64_t big = (std::uint64_t{1} << 63) + 2;
     static_assert((rational{big} / rational{big}) == rational{1});
     static_assert((rational{big} / rational{big, 3u}) == rational{3});
-    static_assert(*detail::try_add(rational{(umax{1} << 63) + 1, 2u}, rational{1, 6}) ==
-                  rational{3 * (umax{1} << 62) + 2, 3u});
-    static_assert(*detail::try_add(rational{~umax{0}, 2u}, rational{1u, 2u}) == rational{umax{1} << 63});
-    static_assert(!detail::try_add(rational{~umax{0}}, rational{1}).has_value());
+    static_assert(*detail::try_add(rational{(std::uint64_t{1} << 63) + 1, 2u}, rational{1, 6}) ==
+                  rational{3 * (std::uint64_t{1} << 62) + 2, 3u});
+    static_assert(*detail::try_add(rational{~std::uint64_t{0}, 2u}, rational{1u, 2u}) ==
+                  rational{std::uint64_t{1} << 63});
+    static_assert(!detail::try_add(rational{~std::uint64_t{0}}, rational{1}).has_value());
 }
 
 // rational compared with a double finer than 2^-62 through rational{double},
@@ -1264,15 +1293,15 @@ TEST(InternalsTest, rational_spaceship_cross_multiply_positive_and_negative) {
 
 //---------------------------------------------------------------------------
 // gcd(rational, rational) (rational.hpp) — the lcm cofactor multiply overflows
-// umax -> overflow (distinct from the imax-cap overflow exercised elsewhere:
-//  here the product exceeds 2^64, not merely imax_max.)
+// uint64 -> overflow (distinct from the int64-cap overflow exercised elsewhere:
+//  here the product exceeds 2^64, not merely int64_max.)
 //---------------------------------------------------------------------------
-// rational gcd: lcm that overflows umax returns overflow
-TEST(InternalsTest, rational_gcd_lcm_that_overflows_umax_returns_overflow) {
-    // Two odd, coprime denominators near 2^40; their product ~2^80 overflows umax,
-    // so the cross-multiplication trap (not the imax cap) fires.
-    imax a = (imax{1} << 40) + 1;
-    imax b = (imax{1} << 40) + 3;
+// rational gcd: lcm that overflows uint64 returns overflow
+TEST(InternalsTest, rational_gcd_lcm_that_overflows_uint64_returns_overflow) {
+    // Two odd, coprime denominators near 2^40; their product ~2^80 overflows uint64,
+    // so the cross-multiplication trap (not the int64 cap) fires.
+    std::int64_t a = (std::int64_t{1} << 40) + 1;
+    std::int64_t b = (std::int64_t{1} << 40) + 3;
     ASSERT_FALSE((gcd(rational{1u, a}, rational{1u, b}).has_value()));
     ASSERT_EQ((gcd(rational{1u, a}, rational{1u, b}).error()), errc::overflow);
 }
@@ -1286,7 +1315,7 @@ TEST(InternalsTest, rational_gcd_lcm_that_overflows_umax_returns_overflow) {
 // rational add: numerator sum overflow on unequal denominators
 TEST(InternalsTest, rational_add_numerator_sum_overflow_on_unequal_denominators) {
     // Denominators 2 and 6 (odd numerators so neither reduces). After cross-
-    // multiply A = num_a*3, B = num_b*1 each fit in umax, but A + B exceeds
+    // multiply A = num_a*3, B = num_b*1 each fit in uint64, but A + B exceeds
     // 2^64 — the sum reduces back by 2: 18999999999999999994/6.
     rational a{5999999999999999999u, 2}; // odd numerator -> stays /2
     rational b{999999999999999997u, 6};  // coprime to 6   -> stays /6
@@ -1323,7 +1352,7 @@ TEST(InternalsTest, rational_from_subnormal_and_very_small_doubles) {
 
     // Normal but below 2^-62: the significand is shifted down and recovered by
     // the trailing reduction, yielding the exact dyadic fraction.
-    ASSERT_EQ(rational{0x1p-40}, (rational{1u, imax{1} << 40}));
+    ASSERT_EQ(rational{0x1p-40}, (rational{1u, std::int64_t{1} << 40}));
 
     // Far below the cap: drops to a hard zero.
     ASSERT_EQ(rational{0x1p-70}, 0_r);

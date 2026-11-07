@@ -386,25 +386,25 @@ int at_run_time(int v) {
     return x;
 }
 
-umax factorial_ref(umax n) {
-    umax f = 1;
-    for (umax i = 2; i <= n; ++i)
+std::uint64_t factorial_ref(std::uint64_t n) {
+    std::uint64_t f = 1;
+    for (std::uint64_t i = 2; i <= n; ++i)
         f *= i;
     return f;
 }
-umax binomial_ref(umax n, umax k) {
+std::uint64_t binomial_ref(std::uint64_t n, std::uint64_t k) {
     if (k > n)
         return 0;
-    umax c = 1;
-    for (umax i = 1; i <= k; ++i)
+    std::uint64_t c = 1;
+    for (std::uint64_t i = 1; i <= k; ++i)
         c = c * (n - k + i) / i;
     return c;
 }
-umax falling_ref(umax n, umax k) {
+std::uint64_t falling_ref(std::uint64_t n, std::uint64_t k) {
     if (k > n)
         return 0;
-    umax p = 1;
-    for (umax i = 0; i < k; ++i)
+    std::uint64_t p = 1;
+    for (std::uint64_t i = 0; i < k; ++i)
         p *= n - i;
     return p;
 }
@@ -456,11 +456,13 @@ TEST(MathIntegerTest, compile_time) {
 TEST(MathIntegerTest, small_ranges_against_loops) {
     using n60 = inside<{0, 60}>;
     for (int n = 0; n <= 20; ++n)
-        EXPECT_TRUE(math::factorial(inside<{0, 20}>{at_run_time(n)}) == factorial_ref(static_cast<umax>(n))) << n;
+        EXPECT_TRUE(math::factorial(inside<{0, 20}>{at_run_time(n)}) == factorial_ref(static_cast<std::uint64_t>(n)))
+            << n;
     for (int n = 0; n <= 60; ++n)
         for (int k = 0; k <= 60; ++k) {
             const auto c = math::binomial(n60{at_run_time(n)}, n60{at_run_time(k)});
-            EXPECT_TRUE(c == binomial_ref(static_cast<umax>(n), static_cast<umax>(k))) << n << " " << k;
+            EXPECT_TRUE(c == binomial_ref(static_cast<std::uint64_t>(n), static_cast<std::uint64_t>(k)))
+                << n << " " << k;
             if (k <= n) { // symmetry
                 EXPECT_TRUE(c == math::binomial(n60{n}, n60{n - k}));
             }
@@ -469,26 +471,29 @@ TEST(MathIntegerTest, small_ranges_against_loops) {
     for (int n = 0; n <= 20; ++n)
         for (int k = 0; k <= 20; ++k) {
             const auto p = math::falling_factorial(n20{at_run_time(n)}, n20{at_run_time(k)});
-            EXPECT_TRUE(p == falling_ref(static_cast<umax>(n), static_cast<umax>(k))) << n << " " << k;
+            EXPECT_TRUE(p == falling_ref(static_cast<std::uint64_t>(n), static_cast<std::uint64_t>(k)))
+                << n << " " << k;
             // C(n, k)·k! = P(n, k)
             EXPECT_TRUE(math::binomial(n20{n}, n20{k}) * math::factorial(n20{k}) == p);
         }
     using n12 = inside<{0, 12}>;
     for (int n = 0; n <= 12; ++n)
         for (int k = 0; k <= 12; ++k) {
-            const auto r    = math::rising_factorial(n12{at_run_time(n)}, n12{at_run_time(k)});
-            const umax want = k == 0   ? 1
-                              : n == 0 ? 0
-                                       : falling_ref(static_cast<umax>(n + k - 1), static_cast<umax>(k));
+            const auto          r = math::rising_factorial(n12{at_run_time(n)}, n12{at_run_time(k)});
+            const std::uint64_t want =
+                k == 0   ? 1
+                : n == 0 ? 0
+                         : falling_ref(static_cast<std::uint64_t>(n + k - 1), static_cast<std::uint64_t>(k));
             EXPECT_TRUE(r == want) << n << " " << k;
         }
     using n8 = inside<{0, 8}>;
     for (int a = 0; a <= 8; ++a)
         for (int b = 0; b <= 8; ++b)
             for (int c = 0; c <= 8; ++c) {
-                const auto m    = math::multinomial(n8{at_run_time(a)}, n8{at_run_time(b)}, n8{at_run_time(c)});
-                const umax want = binomial_ref(static_cast<umax>(a + b), static_cast<umax>(b)) *
-                                  binomial_ref(static_cast<umax>(a + b + c), static_cast<umax>(c));
+                const auto          m = math::multinomial(n8{at_run_time(a)}, n8{at_run_time(b)}, n8{at_run_time(c)});
+                const std::uint64_t want =
+                    binomial_ref(static_cast<std::uint64_t>(a + b), static_cast<std::uint64_t>(b)) *
+                    binomial_ref(static_cast<std::uint64_t>(a + b + c), static_cast<std::uint64_t>(c));
                 EXPECT_TRUE(m == want) << a << " " << b << " " << c;
             }
     using z = inside<{-30, 30}>;
@@ -607,10 +612,10 @@ void expect_algebraic_matches_rational() {
 // (The input's branch now ends just below π/2: a grid holding the pole is a
 // compile error, fail/tan_pole.)
 TEST(MathTest, tan_near_a_pole_overflows) {
-    constexpr imax top = 1727108826178; // ⌊2^40·π/2⌋: the last point below the pole
-    using In           = inside<{{0, rational{top, imax{1} << 40}}, per<(std::uint64_t{1} << 40)>}, round_nearest>;
-    using Out          = inside<{{-4, 4}, per<8>}, round_nearest>;
-    using Clamped      = inside<{{-4, 4}, per<8>}, round_nearest | clamp>;
+    constexpr std::int64_t top = 1727108826178; // ⌊2^40·π/2⌋: the last point below the pole
+    using In      = inside<{{0, rational{top, std::int64_t{1} << 40}}, per<(std::uint64_t{1} << 40)>}, round_nearest>;
+    using Out     = inside<{{-4, 4}, per<8>}, round_nearest>;
+    using Clamped = inside<{{-4, 4}, per<8>}, round_nearest | clamp>;
     for (int d = 0; d <= 2; ++d) {
         const auto x = In::from_raw(static_cast<In::raw_type>(top - d));
         try {
@@ -674,7 +679,7 @@ TEST(MathTest, pow_of_a_zero_base) {
 }
 
 // floor / ceil / round / trunc of a value past INT64_MAX narrowed through
-// imax.
+// int64.
 TEST(MathTest, integer_roundings_past_int64) {
     const uint64 q{18446744073709551615u};
     EXPECT_EQ(math::floor(q).to<std::uint64_t>(), 18446744073709551615u);
@@ -700,7 +705,7 @@ TEST(MathTest, wrap_output_folds_the_true_value) {
     using Wide = inside<{{-rational{1ll << 40}, rational{1ll << 40}}, rational{1, 1024}}, round_nearest>;
     using Wrap = inside<{{-1, 1}, rational{1, 1024}}, round_nearest | wrap>;
     int bad    = 0;
-    for (imax k = -320; k <= 320; k += 3) {
+    for (std::int64_t k = -320; k <= 320; k += 3) {
         const In x{rational{k, 16}};
         bad += !(Wrap{math::exp_into<Wide>(x), wrap} == math::exp_into<Wrap>(x));
         bad += !(Wrap{math::exp2_into<Wide>(x), wrap} == math::exp2_into<Wrap>(x));
@@ -744,7 +749,7 @@ TEST(MathTest, deduced_exp_with_a_tiny_endpoint) {
     EXPECT_EQ(math::exp(X{0}), 1);
 }
 
-// abs(INT64_MIN) negated it in imax.
+// abs(INT64_MIN) negated it in int64.
 TEST(MathTest, abs_of_int64_min) {
     using I64             = std::int64_t;
     constexpr I64 I64_MIN = std::numeric_limits<I64>::min();
@@ -753,12 +758,53 @@ TEST(MathTest, abs_of_int64_min) {
     EXPECT_EQ(math::abs(X{-5}), 5);
 }
 
+// abs and copysign read uint64's value index (up to 2^64 − 1) as an int64:
+// abs(2^64 − 1) was 1. copysign of INT64_MIN with a sign never negative
+// negated it in int64 (an overflow).
+TEST(MathTest, abs_and_copysign_past_int64) {
+    using I64                       = std::int64_t;
+    constexpr I64           I64_MIN = std::numeric_limits<I64>::min();
+    constexpr std::uint64_t U64_MAX = std::numeric_limits<std::uint64_t>::max();
+    using Pos                       = inside<{0, 1}>;
+    using Neg                       = inside<{-1, 0}>;
+    static_assert(math::abs(uint64{U64_MAX}) == U64_MAX);
+    static_assert(math::copysign(uint64{U64_MAX}, Pos{1}) == U64_MAX);
+    static_assert(math::copysign(uint64{U64_MAX}, Neg{-1}) == just<-18446744073709551615_g>);
+    static_assert(math::copysign(int64{I64_MIN}, Pos{1}) == std::uint64_t{1} << 63);
+    static_assert(math::copysign(int64{I64_MIN}, Neg{-1}) == I64_MIN);
+    EXPECT_EQ(math::abs(uint64{test::at_run_time((std::uint64_t{1} << 63) + 5)}), (std::uint64_t{1} << 63) + 5);
+    EXPECT_EQ(math::copysign(uint64{test::at_run_time(U64_MAX - 2)}, Pos{0}), U64_MAX - 2);
+    EXPECT_EQ(math::copysign(int64{test::at_run_time(I64_MIN)}, Pos{1}), std::uint64_t{1} << 63);
+}
+
+// pow_base with a builtin Base past int64 passed it to the double and dd
+// tiers as an int64 template argument (a narrowing error), and an __int128
+// Base's bit width was its low limb's.
+TEST(MathTest, pow_base_with_a_builtin_base_past_int64) {
+    using O = inside<{{0, 1}, per<1024>}, round_nearest>;
+    using X = inside<{{-1, 0}, per<64>}>;
+    using Y = inside<{0, 2}>;
+    static_assert(math::pow_base_into<O, 9223372036854775809ull>(X{-1}) == 0);
+    static_assert(math::pow_base_into<O, 18446744073709551615ull>(X{rational{-1, 64}}) ==
+                  math::pow_base_into<O, 18446744073709551615_g>(X{rational{-1, 64}}));
+    static_assert(math::pow_base<9223372036854775809ull>(Y{2}) == just<85070591730234615884290395931651604481_g>);
+    EXPECT_EQ((math::pow_base_into<O, 9223372036854775809ull>(X{test::at_run_time(-1)})), 0);
+    []<class W>(std::type_identity<W>) {
+        if constexpr (std::integral<W>) { // __int128 under the GNU dialects
+            constexpr W base = W{1} << 100;
+            static_assert(math::pow_base<base>(Y{2}) ==
+                          just<1606938044258990275541962092341162602522202993782792835301376_g>);
+            static_assert(math::pow_base_into<O, base>(X{-1}) == 0);
+        }
+    }(std::type_identity<__int128>{});
+}
+
 //---------------------------------------------------------------------------
 // raw_from_offset (inside/detail/storage.hpp) with a signed offset, reached from the
 // integer fast path of math::fmod (fmod_int_fast, math.hpp). Needs non-rational integer grids and a divisor
 // that excludes zero. math::fmod was otherwise only static_assert-tested.
 //---------------------------------------------------------------------------
-// math::fmod integer fast path (raw_from_offset imax)
+// math::fmod integer fast path (raw_from_offset int64)
 TEST(MathTest, fmod_integer_fast_path) {
     using in_t      = inside<{{-8, 8}, per<16384>}, round_nearest>; // integer-backed
     using divisor_t = inside<{{1, 8}, per<16384>}, round_nearest>;  // excludes zero
@@ -839,12 +885,12 @@ TEST(MathArmTest, pow_on_a_positive_base_and_pow_base_unanchored) {
     EXPECT_EQ(rational{math::sqrt_into<O>(R{rational{16, 7}})}, (rational{1548, 1024})); // √(16/7) ≈ 1.51186
 }
 
-// fmod_into: a zero divisor, and a quotient past imax taken exactly.
+// fmod_into: a zero divisor, and a quotient past int64 taken exactly.
 TEST(MathArmTest, fmod_past_the_64_bit_quotient) {
     using X  = inside<{{0, 4611686018427387904_g}, max_denominator{2}}>; // [0, 2^62]
     using Y  = inside<{{0, 1}, max_denominator{3}}>;
     using Of = inside<{{0, 1}, max_denominator{6}}>;
-    const X x{rational{(umax{1} << 63) - 1, 2}}; // 2^62 − 1/2
+    const X x{rational{(std::uint64_t{1} << 63) - 1, 2}}; // 2^62 − 1/2
     EXPECT_EQ(math::fmod_into<Of>(x, Y{test::at_run_time(0)}).error(), errc::division_by_zero);
     EXPECT_EQ(rational{*math::fmod_into<Of>(x, Y{rational{1, 2}})}, 0);
     EXPECT_EQ(rational{*math::fmod_into<Of>(x, Y{rational{1, 3}})}, (rational{1, 6}));
@@ -860,9 +906,9 @@ namespace reached_arms_tests {
 using namespace beman::inside;
 using detail::rational;
 
-// Counts in [2^63, 2^64) read past imax; gcd and lcm on fractional lattices
+// Counts in [2^63, 2^64) read past int64; gcd and lcm on fractional lattices
 // (3/2 and 5/6 on 1/6: gcd 1/6, lcm 15/2) and past 64 bits.
-TEST(MathArmTest, integer_functions_past_imax_and_on_fractions) {
+TEST(MathArmTest, integer_functions_past_int64_and_on_fractions) {
     using N = inside<{0, 18446744073709551615_g}>;
     EXPECT_TRUE(math::binomial(N{just<18446744073709551615_g>}, inside<{0, 1}>{1}) == just<18446744073709551615_g>);
     using A = inside<{{0, 10}, per<4>}>;
@@ -941,7 +987,7 @@ TEST(MathArmTest, floor_and_ceil_onto_a_point) {
 // double: the dd tier reads the fraction as a dd quotient.
 TEST(MathArmTest, dd_tier_reads_a_rational_input) {
     using In  = inside<{{0, 1}, max_denominator{1000}}>;
-    using Out = inside<{{0, 3}, per<(imax{1} << 40)>}, round_nearest>;
+    using Out = inside<{{0, 3}, per<(std::int64_t{1} << 40)>}, round_nearest>;
     static_assert(!math::detail::engine::fp_tier_available || math::detail::engine::dd_tier<Out, In>);
     EXPECT_EQ(math::exp_into<Out>(In{rational{1, 3}}).as<double>(), std::round(std::exp(1.0 / 3) * 0x1p40) / 0x1p40);
 }
@@ -988,7 +1034,7 @@ TEST(MathTest, pow_base_past_64_bits) {
     const X       x70 = yes ? X{detail::rational{1, 70}} : X{};
     EXPECT_TRUE((math::pow_base_into<Out, 1180591620717411303424_g>(x70) == 2)); // (2^70)^(1/70)
     EXPECT_TRUE((math::pow_base<1180591620717411303424_g>(x1) == just<1180591620717411303424_g>));
-    EXPECT_TRUE((math::pow_base_into<Out, 2_g>(x1) == 2)); // within imax: the imax path
+    EXPECT_TRUE((math::pow_base_into<Out, 2_g>(x1) == 2)); // within int64: the int64 path
 }
 } // namespace big_base_tests
 
