@@ -328,11 +328,23 @@ constexpr void from_value(B& b, imax val) {
 // raw is 0-based (raw_lo == 0); a value raw IS the value (raw_lo == Lower),
 // so an offset needs raw_lo<L> added back before storing.
 //-------------------------------------------------------------------------
+// (if constexpr: naming lower_imax instantiates it, and an index raw's
+// grid may have limits past 64 bits.)
 template <insidable B>
-inline constexpr imax raw_lo = integer_value_storage<B> ? lower_imax<B> : 0;
+inline constexpr imax raw_lo = [] {
+    if constexpr (integer_value_storage<B>)
+        return lower_imax<B>;
+    else
+        return imax{0};
+}();
 
 template <insidable B>
-inline constexpr imax raw_hi = integer_value_storage<B> ? upper_imax<B> : static_cast<imax>(max_index_of<B>);
+inline constexpr imax raw_hi = [] {
+    if constexpr (integer_value_storage<B>)
+        return upper_imax<B>;
+    else
+        return static_cast<imax>(max_index_of<B>);
+}();
 
 // The exact raw range: 0 .. step count for index storage, Lower .. Upper
 // for value storage (integers there). Sizes the work types below.

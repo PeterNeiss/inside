@@ -186,9 +186,23 @@ struct big_int {
     constexpr big_int() = default;
 
     template <std::integral T>
+        requires(std::numeric_limits<T>::digits <= 64)
     constexpr big_int(T v) noexcept
         : Small{std::is_signed_v<T> && v < 0 ? umax{0} - static_cast<umax>(v) : static_cast<umax>(v)},
           Negative{std::is_signed_v<T> && v < 0} {}
+
+    // A builtin wider than 64 bits (__int128): its limbs. One past a limb
+    // exists only at compile time (from_mag), as every big grid number.
+    template <std::integral T>
+        requires(std::numeric_limits<T>::digits > 64)
+    constexpr big_int(T v) {
+        using U        = std::make_unsigned_t<T>;
+        const bool neg = std::is_signed_v<T> && v < 0;
+        big::mag   m;
+        for (U u = neg ? U{0} - static_cast<U>(v) : static_cast<U>(v); u != 0; u >>= 64)
+            m.push_back(static_cast<umax>(u));
+        *this = from_mag(std::move(m), neg);
+    }
 
     // From a wide_int (sign-extending a signed one).
     template <std::size_t N, bool S>
@@ -251,7 +265,13 @@ struct big_int {
     template <typename T>
         requires raw_integer<T>
     constexpr explicit operator T() const {
-        if constexpr (std::integral<T>) {
+        if constexpr (std::integral<T> && std::numeric_limits<T>::digits > 64) {
+            using U = std::make_unsigned_t<T>; // the low limbs that fit U
+            U u     = 0;
+            for (std::size_t i = Size != 0 ? std::min(Size, sizeof(U) / sizeof(umax)) : 1; i-- > 0;)
+                u = (u << 64) | (Size != 0 ? Limbs[i] : Small);
+            return static_cast<T>(Negative ? U{0} - u : u);
+        } else if constexpr (std::integral<T>) {
             const umax low = Size != 0 ? Limbs[0] : Small;
             return static_cast<T>(Negative ? umax{0} - low : low);
         } else {
@@ -391,7 +411,7 @@ struct big_rational {
 
     constexpr big_rational() = default;
     template <std::integral T>
-    constexpr big_rational(T v) noexcept : Num{v} {}
+    constexpr big_rational(T v) noexcept(std::numeric_limits<T>::digits <= 64) : Num{v} {}
     constexpr big_rational(big_int n, big_int d = big_int{1}) : Num{n}, Den{d} { normalize(); }
     constexpr big_rational(const rational& r) : Num{big_int::of_limb(r.Num, r.Den < 0)}, Den{abs_den(r.Den)} {}
     // Anything else that converts to `rational` (an inside: just<-6, 5>)

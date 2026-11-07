@@ -31,6 +31,8 @@
 #include <utility>
 #include <vector>
 
+#include "support.hpp"
+
 // policy_actions
 namespace policy_actions_tests {
 using namespace beman::inside;
@@ -1376,3 +1378,42 @@ TEST(PoliciesArmTest, policy_ref_remainder) {
     EXPECT_TRUE(b == 3);
 }
 } // namespace reached_arms_tests
+
+//---------------------------------------------------------------------------
+// The wrap carry is exact for every source: none saturates at imax.
+//---------------------------------------------------------------------------
+namespace wrap_carry_tests {
+using namespace beman::inside;
+using detail::rational;
+
+// The carry of v into a wrap grid, through the hook.
+template <class L, class V, class Want>
+bool carry_is(V v, Want want) {
+    L    x{};
+    bool ok                                                   = false;
+    x.on_wrap([&](auto&, auto carry) { ok = carry == want; }) = v;
+    return ok;
+}
+
+TEST(PolicyActionsTest, wrap_carry_past_imax_is_exact) {
+    using digit   = inside<{0, 9}, wrap>;
+    using quarter = inside<{{0, 10}, per<4>}, wrap>; // period 10.25
+    using W       = inside<{0, 1180591620717411303424_g}>;
+    // An inside source past 64 bits: ⌊2^70 / 10⌋ and ⌊2^70 / 10.25⌋.
+    EXPECT_TRUE((carry_is<digit>(W{1180591620717411303424_g}, just<118059162071741130342_g>)));
+    EXPECT_TRUE((carry_is<quarter>(W{1180591620717411303424_g}, just<115179670313893785699_g>)));
+    // A uint64 source: (2^64 − 1) / 10, past imax.
+    EXPECT_TRUE(
+        (carry_is<digit>(test::at_run_time(std::numeric_limits<std::uint64_t>::max()), just<1844674407370955161_g>)));
+    // A double source: the carry grid spans the double's range.
+    EXPECT_TRUE((carry_is<digit>(test::at_run_time(0x1p100), just<126765060022822940149670320537_g>)));
+    EXPECT_TRUE((carry_is<digit>(test::at_run_time(-0x1p100), just<-126765060022822940149670320538_g>)));
+    // A rational source, and an inside one into a fractional destination.
+    EXPECT_TRUE((carry_is<quarter>(rational{229, 4}, 5)));
+    EXPECT_TRUE((carry_is<quarter>(inside<{{0, 20}, per<4>}>{15}, 1)));
+    // The carry's type holds every carry of the source kind.
+    digit d{};
+    d.on_wrap([](auto&, auto carry) { static_assert(upper_of<decltype(carry)> == 1844674407370955161_g); }) =
+        std::uint64_t{0};
+}
+} // namespace wrap_carry_tests

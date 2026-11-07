@@ -66,7 +66,7 @@ and the [certified math pairs](certified.md).
 | `<beman/inside/inside/random.hpp>` | `uniform<B>(rng)` |
 | `<beman/inside/inside/mdspan.hpp>` | `std::mdspan` support: `inside_mdspan`, `extents_of`, `indices`, the accessors, `sum`, `dot`, the matrix products |
 | `<beman/inside/math.hpp>` | `beman::inside::math`: the functions and the constants |
-| `<beman/inside/math/constants.hpp>` | the constants alone (`math::pi`, …), with only the number |
+| `<beman/inside/math/constants.hpp>` | the constants alone (`math::pi`, …), with the engine that computes them |
 | `<beman/inside/units.hpp>` | `beman::inside::units`: the machinery and the SI and ISQ catalog |
 | `<beman/inside/units/core.hpp>` | the machinery alone, enough for units of your own |
 | `<beman/inside/units/io.hpp>` | text of quantities: `to_string`, `<<`, `std::format`, `parse<Q>` |

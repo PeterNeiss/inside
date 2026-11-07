@@ -91,3 +91,17 @@ TEST(MathInstrumentTest, integer_only_skips_the_fast_tiers) {
     EXPECT_EQ(sweep(), 1025u);
 #endif
 }
+
+// An exact power with a root degree past 64: (2^128)^(1/128) = 2 is a
+// rounding boundary of a floor or ceil output, decided exactly (no guess).
+TEST(MathInstrumentTest, an_exact_power_past_root_64_is_decided) {
+    using base          = inside<{1, 340282366920938463463374607431768211456_g}>; // [1, 2^128]
+    using exponent      = inside<{{0, 1}, rational{1, 128}}>;
+    using down          = inside<{{0, 4}, rational{1, 1024}}, round_floor>;
+    using up            = inside<{{0, 4}, rational{1, 1024}}, round_ceil>;
+    const counts before = read();
+    const base   b{340282366920938463463374607431768211456_g};
+    EXPECT_TRUE((am::pow_into<down>(b, exponent{rational{1, 128}}) == 2));
+    EXPECT_TRUE((am::pow_into<up>(b, exponent{rational{1, 128}}) == 2));
+    EXPECT_EQ(read().Guesses, before.Guesses);
+}

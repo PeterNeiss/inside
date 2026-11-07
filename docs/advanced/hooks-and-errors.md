@@ -29,9 +29,11 @@ divisor as `unexpected(errc::division_by_zero)`, as `/` does.
 ### The carry
 
 The carry is an inside, so it adds straight into another inside, and a hook
-reads it as a number with `as<imax>(carry)`. Its grid holds every carry the
-source can produce: for `125_ins` into a period of 60, `[2, 2]`; for an `int`,
-that type's limits divided by the period.
+reads it as a number with `carry.to<long long>()`. Its grid holds every carry
+the source can produce, exactly: for `125_ins` into a period of 60, `[2, 2]`;
+for an `int`, that type's limits divided by the period; for a `double`, its
+whole range divided by the period (an inside past 64 bits). No carry
+saturates.
 
 ```cpp
 using pos = inside<{{0, 64}, per<16>}, wrap | round_nearest>;

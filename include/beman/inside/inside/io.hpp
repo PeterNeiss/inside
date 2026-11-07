@@ -49,6 +49,22 @@ std::string wide_to_decimal(wide_int<N, S> v) {
     return neg ? "-" + out : out;
 }
 
+// The digits of a wide magnitude in base 2, 8 or 16 (upper or lower case),
+// or 10.
+template <std::size_t N>
+std::string wide_to_base(wide_int<N, false> u, int base, bool upper) {
+    if (base == 10)
+        return wide_to_decimal(u);
+    const char* const digits = upper ? "0123456789ABCDEF" : "0123456789abcdef";
+    std::string       out;
+    do {
+        const auto [q, r] = divmod_small(u, static_cast<umax>(base));
+        out.insert(out.begin(), digits[r]);
+        u = q;
+    } while (!u.is_zero());
+    return out;
+}
+
 // Decimal digits of num/den (den > 0) on demand: the integer part, then the
 // fraction one chunk at a time. Tail() says whether anything nonzero is left,
 // which rounding needs to tell a tie from a value above it.
@@ -394,11 +410,18 @@ inline bool round_digits(std::string& d, std::size_t keep, bool tail, round_mode
 // A std::format spec for exact values: [[fill]align][sign][#][0][width]
 // [.precision][type], type one of f F e E g G (or none). The digits come from
 // the exact value, rounded once by the type's rounding mode (display_rounding),
-// so wide and big values print correctly.
+// so wide and big values print correctly. On integers (Integer) the integer
+// types d b B o x X too, of any size, without a precision; `#` prefixes the
+// base (0b, 0B, 0, 0x, 0X), and `0` pads after the sign and the prefix.
+template <bool Integer = false>
 struct exact_format_spec {
     char Fill = ' ', Align = 0, Sign = '-', Type = 0;
     bool Alt = false, Zero = false;
     int  Width = 0, Precision = -1;
+
+    [[nodiscard]] constexpr bool integer_type() const noexcept {
+        return Type != 0 && std::string_view{"dbBoxX"}.find(Type) != std::string_view::npos;
+    }
 
     constexpr auto parse(std::format_parse_context& ctx) {
         auto       it       = ctx.begin();
@@ -431,11 +454,13 @@ struct exact_format_spec {
                 throw std::format_error("inside: precision needs digits");
             number(Precision);
         }
-        if (it != end && std::string_view{"fFeEgG"}.find(*it) != std::string_view::npos)
+        if (it != end && std::string_view{Integer ? "fFeEgGdbBoxX" : "fFeEgG"}.find(*it) != std::string_view::npos)
             Type = *it++;
         if (it != end && *it != '}')
             throw std::format_error("inside: unsupported format spec (use f, e or g with fill, align, sign, #, 0, "
-                                    "width and precision)");
+                                    "width and precision; d, b, o or x on integers)");
+        if (integer_type() && Precision >= 0)
+            throw std::format_error("inside: an integer format type takes no precision");
         return it;
     }
 
@@ -455,6 +480,17 @@ struct exact_format_spec {
     template <std::size_t K, typename Ctx>
     auto write_exact(const wide_rational<K>& f, std::string_view plain, round_mode mode, Ctx& ctx) const {
         const bool neg = f.Num.negative();
+        if (integer_type()) { // an integer: f.Den is 1
+            const int         base   = Type == 'd' ? 10 : Type == 'o' ? 8 : (Type | 0x20) == 'b' ? 2 : 16;
+            const std::string digits = wide_to_base(wide_uint<K>{abs(f.Num)}, base, Type == 'X');
+            const char*       prefix = !Alt || base == 10 ? ""
+                                       : base == 8        ? (digits == "0" ? "" : "0")
+                                       : Type == 'b'      ? "0b"
+                                       : Type == 'B'      ? "0B"
+                                       : Type == 'x'      ? "0x"
+                                                          : "0X";
+            return write(neg, digits, ctx, prefix);
+        }
         return write(neg, body(wide_uint<K>{abs(f.Num)}, wide_uint<K>{f.Den}, plain, neg, mode), ctx);
     }
 
@@ -498,10 +534,15 @@ struct exact_format_spec {
         return upper ? to_upper(out) : out;
     }
 
-    // Sign, then fill and alignment (numbers align right; `0` pads after the sign).
+    // Sign, then fill and alignment (numbers align right; `0` pads after the
+    // sign and a base prefix).
     template <typename Ctx>
-    auto write(bool negative, std::string text, Ctx& ctx) const {
-        std::string sign = negative ? "-" : Sign == '+' ? "+" : Sign == ' ' ? " " : "";
+    auto write(bool negative, std::string text, Ctx& ctx, std::string_view prefix = {}) const {
+        std::string sign = std::string{negative      ? "-"
+                                       : Sign == '+' ? "+"
+                                       : Sign == ' ' ? " "
+                                                     : ""} +
+                           std::string{prefix};
         std::size_t len  = sign.size() + text.size();
         std::size_t pad  = static_cast<std::size_t>(Width) > len ? static_cast<std::size_t>(Width) - len : 0;
         std::string out;
@@ -571,14 +612,16 @@ inline constexpr round_mode display_rounding =
 // Empty `{}` prints to_string. A notched integer grid within imax takes the
 // integer specs (std::formatter<imax>: {:>4}, {:#x}); every other inside takes
 // the exact specs ({:.2f}, {:e}, {:g}, fill / align / sign / width), rounded
-// from the exact value by the type's rounding mode (ties to even without one).
+// from the exact value by the type's rounding mode (ties to even without one),
+// and an integer grid past imax the integer types too ({:#x}, {:b}, {:o}, {:d}).
 template <beman::inside::grid G, beman::inside::policy_flag P>
 struct std::formatter<beman::inside::inside<G, P>>
     : beman::inside::detail::numeric_spec_formatter<
           std::conditional_t<beman::inside::detail::integer_lattice<beman::inside::inside<G, P>> &&
                                  beman::inside::detail::values_fit_imax<beman::inside::inside<G, P>>,
                              std::formatter<beman::inside::imax>,
-                             beman::inside::detail::exact_format_spec>> {
+                             beman::inside::detail::exact_format_spec<
+                                 beman::inside::detail::integer_lattice<beman::inside::inside<G, P>>>>> {
     using B = beman::inside::inside<G, P>;
     // Integer formatting only for a notched integer grid: a continuous grid
     // (notch 0) holds fractions even between integer bounds.
@@ -599,7 +642,7 @@ struct std::formatter<beman::inside::inside<G, P>>
 
 template <>
 struct std::formatter<beman::inside::detail::rational>
-    : beman::inside::detail::numeric_spec_formatter<beman::inside::detail::exact_format_spec> {
+    : beman::inside::detail::numeric_spec_formatter<beman::inside::detail::exact_format_spec<>> {
     template <typename Ctx>
     auto format(const beman::inside::detail::rational& r, Ctx& ctx) const {
         namespace d = beman::inside::detail;

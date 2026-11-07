@@ -306,11 +306,11 @@ namespace std::units {
 
 1. **More functions**: `expm1`, `log1p`, `erf`, `erfc`, `tgamma`, `lgamma` and
    the rest of `<cmath>`, under the same contract.
-2. **Mathematical constants** as point grids (π, e, √2, ln 2, the golden
-   ratio, …), rationals within 2⁻⁵⁷ of the value that compose exactly
-   (`angle * math::pi`). The reference implementation has them; for a
-   correctly rounded value on a chosen grid the functions above already serve
-   (`sqrt_into<Out>(just<2>)`).
+2. **Mathematical constants** (π, e, √2, ln 2, the golden ratio, …) computed
+   at the precision each use needs: correctly rounded onto a grid
+   (`Out o = math::pi`), as the simplest point an operand's resolution needs
+   (`angle * math::pi`), and compared exactly. The reference implementation
+   has them.
 3. **Algorithms that round once**: `mul_into<Out>` and `div_into<Out>` (in the
    reference implementation, and a candidate for the number paper's future
    work) round a product or quotient onto `Out` without an intermediate grid,

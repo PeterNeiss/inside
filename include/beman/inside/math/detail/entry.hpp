@@ -536,12 +536,15 @@ template <insidable Out, insidable InB, insidable InE>
                 } else
                     return Out{e.Num.is_zero() ? 1 : 0};
             }
-            using core = engine::pow_core<engine::input_limbs<InB>,
-                                          engine::input_limbs<InE>,
-                                          engine::in_mag<InE>,
-                                          engine::pow_out_kmax<Out, InB, InE>,
-                                          engine::input_bits<InB>,
-                                          engine::input_bits<InE>>;
+            constexpr int KMax = engine::pow_out_kmax<Out, InB, InE>;
+            using core         = engine::pow_core<engine::input_limbs<InB>,
+                                                  engine::input_limbs<InE>,
+                                                  engine::in_mag<InE>,
+                                                  KMax,
+                                                  engine::input_bits<InB>,
+                                                  engine::input_bits<InE>,
+                                                  0,
+                                                  engine::pow_exact_limbs<Out, KMax>>;
             if constexpr (pow_pole<InB, InE>)
                 return engine::evaluate_checked<Out, engine::start_bits<Out>>(core{b, engine::exact_input(exp)});
             else
@@ -556,28 +559,45 @@ template <insidable Out, insidable InB, insidable InE>
     }
 }
 
-// Base^x for a compile-time integer Base ≥ 2.
-template <insidable Out, imax Base, insidable In>
+// Base^x for a compile-time integer Base ≥ 2: an imax, or a grid integer of
+// any size (one within imax takes the imax path; one past it skips the
+// double and dd tiers, whose ln Base is a 64-bit table).
+template <auto Base>
+inline constexpr bool grid_base = std::same_as<decltype(Base), grid_rational>;
+template <auto Base>
+inline constexpr bool base_ok = [] {
+    if constexpr (std::integral<decltype(Base)>)
+        return Base >= 2;
+    else if constexpr (grid_base<Base>)
+        return Base >= 2 && ::beman::inside::detail::grid_denominator(Base) == ::beman::inside::detail::grid_int{1};
+    else
+        return false;
+}();
+template <insidable Out, auto Base, insidable In>
 [[nodiscard]] constexpr Out pow_base_into(In x) {
-    static_assert(Base >= 2, "beman::inside::math::pow_base: Base must be at least 2");
+    static_assert(base_ok<Base>, "beman::inside::math::pow_base: Base must be an integer of at least 2");
     require_rounding<Out>();
-    if constexpr (anchoring::unanchored_call<Out, In>)
+    if constexpr (grid_base<Base> && ::beman::inside::detail::fits_imax(interval{Base, Base}))
+        return pow_base_into<Out, static_cast<imax>(::beman::inside::detail::grid_numerator(Base))>(x);
+    else if constexpr (anchoring::unanchored_call<Out, In>)
         return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return pow_base_into<O, Base>(v); }, x);
     else {
-        using core = engine::pow_core<2,
-                                      engine::input_limbs<In>,
-                                      engine::in_mag<In>,
-                                      engine::pow_base_out_kmax<Out, In, Base>,
-                                      66,
-                                      engine::input_bits<In>,
-                                      Base>;
+        constexpr int KMax = engine::pow_base_out_kmax<Out, In, Base>;
+        using core         = engine::pow_core<engine::base_limbs<Base>,
+                                              engine::input_limbs<In>,
+                                              engine::in_mag<In>,
+                                              KMax,
+                                              grid_base<Base> ? engine::base_bits<Base> + 2 : 66,
+                                              engine::input_bits<In>,
+                                              Base,
+                                              engine::pow_exact_limbs<Out, KMax>>;
         BEMAN_INSIDE_ENGINE_TIERS(
             Out,
-            (engine::fp_tier<Out, engine::fp_pow_base, In> && engine::in_max<In> <= 1000),
-            (engine::dd_tier<Out, In> && engine::in_max<In> <= 700),
+            (!grid_base<Base> && engine::fp_tier<Out, engine::fp_pow_base, In> && engine::in_max<In> <= 1000),
+            (!grid_base<Base> && engine::dd_tier<Out, In> && engine::in_max<In> <= 700),
             (engine::fp_attempt_pow_base<Out, Base>(x, r)),
             (engine::dd_attempt_pow_base<Out, Base>(x, r)),
-            engine::evaluate<Out, engine::start_bits<Out>>(core{engine::exact_of<2>(Base), engine::exact_input(x)}))
+            engine::evaluate<Out, engine::start_bits<Out>>(core{engine::exact_base<Base>(), engine::exact_input(x)}))
     }
 }
 
@@ -668,18 +688,18 @@ template <insidable In>
 inline constexpr grid_rational max_abs = std::max(upper_of<In>, -lower_of<In>);
 
 // pow_base: pow_core with the base bound.
-template <imax Base, std::size_t E, int Mag, int KMax>
-struct pow_base_core : engine::pow_core<2, E, Mag, KMax> {
+template <auto Base, std::size_t E, int Mag, int KMax>
+struct pow_base_core : engine::pow_core<engine::base_limbs<Base>, E, Mag, KMax> {
     constexpr pow_base_core(::beman::inside::detail::wide_rational<E> x)
-        : engine::pow_core<2, E, Mag, KMax>{engine::exact_of<2>(Base), x} {}
+        : engine::pow_core<engine::base_limbs<Base>, E, Mag, KMax>{engine::exact_base<Base>(), x} {}
 };
-template <imax Base, insidable In>
-using pow_base_t = engine::increasing_t<
-    In,
-    pow_base_core<Base,
-                  engine::input_limbs<In>,
-                  engine::in_mag<In>,
-                  static_cast<int>(engine::max_abs_int<In>) * std::bit_width(static_cast<umax>(Base)) + 2>>;
+template <auto Base, insidable In>
+using pow_base_t =
+    engine::increasing_t<In,
+                         pow_base_core<Base,
+                                       engine::input_limbs<In>,
+                                       engine::in_mag<In>,
+                                       static_cast<int>(engine::max_abs_int<In>) * engine::base_bits<Base> + 2>>;
 
 // atan2: [−π, π] rounded outward on the gcd notch (π = atan2(0, −1)).
 template <insidable A, insidable B>
@@ -772,10 +792,10 @@ template <insidable In>
         return sqrt_into<inside<{0, 1}, round_nearest>>(x); // the _into domain message
 }
 
-template <imax Base, insidable In>
+template <auto Base, insidable In>
 [[nodiscard]] constexpr auto pow_base(In x) {
     static_assert(deducible<In>());
-    static_assert(Base >= 2, "beman::inside::math::pow_base: Base must be at least 2");
+    static_assert(base_ok<Base>, "beman::inside::math::pow_base: Base must be an integer of at least 2");
     return pow_base_into<results::pow_base_t<Base, In>, Base>(x);
 }
 
@@ -849,7 +869,7 @@ BEMAN_INSIDE_ENGINE_MODED(atanh)
 BEMAN_INSIDE_ENGINE_MODED(sqrt)
 #undef BEMAN_INSIDE_ENGINE_MODED
 
-template <imax Base, policy_flag Mode, insidable In>
+template <auto Base, policy_flag Mode, insidable In>
     requires rounding_mode<Mode>
 [[nodiscard]] constexpr auto pow_base(In x) {
     const auto v = with_mode<Mode>(x);

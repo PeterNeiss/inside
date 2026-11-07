@@ -108,7 +108,7 @@ namespace detail {
 // provably fit imax for every representable c of type A.
 template <insidable B, typename A>
 inline constexpr bool scalar_index_cmp_fits = [] {
-    if constexpr (!std::integral<A> || value_storage<B> || !index_cmp_fits<B>)
+    if constexpr (!std::integral<A> || wide_builtin<A> || value_storage<B> || !index_cmp_fits<B>)
         return false;
     else {
         constexpr umax notch_num = notch64<B>.Num;
@@ -124,12 +124,15 @@ inline constexpr bool scalar_index_cmp_fits = [] {
 }();
 
 // inside ⋈ integer or rational. Integer storage compares as integers when
-// the scalar's type fits imax; everything else goes through rational.
+// the scalar's type fits imax; a wide inside or an integer past 64 bits
+// (__int128) compares exactly; everything else goes through rational.
 template <insidable B, class A, class Cmp>
     requires(std::integral<A> || std::same_as<A, rational>)
 constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
     constexpr bool imax_scalar = std::signed_integral<A> || (std::unsigned_integral<A> && sizeof(A) < sizeof(imax));
-    if constexpr (wide_valued<B>)
+    if constexpr (wide_builtin<A>)
+        return cmp(exact_of(lhs), exact_of(rhs));
+    else if constexpr (wide_valued<B>)
         return cmp(exact_of(lhs), exact_of(as_rational(rhs)));
     else if constexpr (integer_value_storage<B> && values_fit_imax<B> && imax_scalar)
         return cmp(raw_imax(lhs), static_cast<imax>(rhs));

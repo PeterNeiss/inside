@@ -90,13 +90,17 @@ struct rational {
     // denominator has 63 bits. |value| ≥ 2^64 and non-finite values raise.
     constexpr rational(std::floating_point auto);
     constexpr rational(std::signed_integral auto, imax = 1);
-    constexpr rational(std::unsigned_integral auto num, imax den = 1) : Num{num}, Den{den} { canonicalize(Num, Den); }
+    constexpr rational(std::unsigned_integral auto num, imax den = 1) : Num{static_cast<umax>(num)}, Den{den} {
+        check_fits(num);
+        canonicalize(Num, Den);
+    }
 
     // Two-unsigned overload: lets `rational{i, N}` accept two `size_t`
     // operands without forcing the caller to `static_cast<imax>` the
     // numerator. A den past imax has no signed denominator: overflow.
     template <std::unsigned_integral N, std::unsigned_integral D>
-    constexpr rational(N num, D den) : Num{num}, Den{static_cast<imax>(den)} {
+    constexpr rational(N num, D den) : Num{static_cast<umax>(num)}, Den{static_cast<imax>(den)} {
+        check_fits(num);
         if (!std::in_range<imax>(den))
             raise(errc::overflow, "rational: denominator past imax");
         canonicalize(Num, Den);
@@ -127,7 +131,10 @@ struct rational {
     template <std::signed_integral T>
     explicit constexpr operator T() const {
         const umax q = Num / abs_den(Den);
-        return static_cast<T>((Den < 0) ? umax{0} - q : q);
+        if constexpr (wide_builtin<T>) // negate in T: umax{0} − q would read as positive
+            return Den < 0 ? -static_cast<T>(q) : static_cast<T>(q);
+        else
+            return static_cast<T>((Den < 0) ? umax{0} - q : q);
     }
 
     template <std::floating_point T>
@@ -147,6 +154,12 @@ struct rational {
     consteval rational& operator/=(rational rhs);
 
   private:
+    // A builtin integer past 64 bits (__int128) has no 64-bit rational.
+    static constexpr void check_fits(std::integral auto num) {
+        if (!fits_umax_magnitude(num))
+            raise(errc::overflow, "rational: an integer past 64 bits");
+    }
+
     // The two invalid denominators: 0 (n/0 is a division by zero, as in
     // parse and big_rational) and imax_min (does not fit: it cannot be
     // negated without UB, which every sign-flip in the file assumes is
@@ -349,6 +362,7 @@ constexpr rational rational_of_wide_float(T v, bool& exact) {
 //---------------------------------------------------------------------------
 constexpr rational::rational(std::signed_integral auto num, imax den)
     : Num{safe_abs(num)}, Den{signed_den_from(num, den)} {
+    check_fits(num);
     canonicalize(Num, Den);
 }
 
@@ -813,15 +827,6 @@ BEMAN_INSIDE_RATIONAL_OP(/)
     const umax r = divisor.Num, s = abs_den(divisor.Den);
     return (s % q == 0) && (p % r == 0);
 }
-
-// Checked builder for per<D> below: a static_assert here fires at the user's
-// spelling (also through just<N, D>, which is N · per<D>).
-template <umax D>
-consteval rational make_per() {
-    static_assert(D >= 1, "per<D> is the positive step 1/D; a continuous grid is spelled 0");
-    static_assert(std::in_range<imax>(D), "per<D>: denominator too large");
-    return rational{umax{1}, D};
-}
 } // namespace beman::inside::detail
 
 namespace beman::inside {
@@ -829,17 +834,6 @@ namespace beman::inside {
 // continuous inside's raw, and a value read out of an inside. Its arithmetic
 // is compile time only; at run time an exact value is an inside.
 using detail::rational;
-
-// The grid-building helpers:
-//   per<D>       the step 1/D — the common notch (per<256> is Q·8);
-// any other exact ratio is the point just<N, D> (inside/detail/core.hpp): a limit like
-// just<-6, 5> for -1.2, or another step like just<360, 4096>
-// (the _r literal, an exact decimal / hex value — 0.1_r is exactly 1/10 —
-// is in inside/detail/number_text.hpp.)
-// Integer steps are plain integers ({{0, 100}, 5}); grid::validate rejects a
-// negative notch however it is spelled.
-template <umax D>
-inline constexpr detail::rational per = detail::make_per<D>();
 
 } // namespace beman::inside
 

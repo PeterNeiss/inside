@@ -39,7 +39,7 @@ struct assignment<L, R> {
     // one unsigned compare.) Bounds past int64 compare exactly in the fold's
     // work type.
     static constexpr bool out_of_range(R rhs) noexcept {
-        if constexpr (fits_imax(interval_of<L>)) {
+        if constexpr (fits_imax(interval_of<L>) && !wide_builtin<R>) {
             constexpr imax lower = lower_imax<L>, upper = upper_imax<L>;
             if constexpr (std::is_unsigned_v<R> && sizeof(R) >= sizeof(imax))
                 return std::cmp_less(rhs, lower) || std::cmp_greater(rhs, upper);
@@ -64,8 +64,8 @@ struct assignment<L, R> {
 
     template <typename A>
     static constexpr void apply_wrap(L& lhs, R rhs, A&& action) {
-        // Modular wrap on the exact offset rhs − Lower into span + 1 slots. The
-        // carry saturates at imax, like the carry grid (wrap_carry_grid).
+        // Modular wrap on the exact offset rhs − Lower into span + 1 slots, and
+        // the exact carry (wrap_carry_grid).
         const auto [carry, w] = fold::fold(static_cast<W>(rhs));
         lhs                   = L::from_raw(raw_of_slot<L>(w));
         if constexpr (wrap_action<plain_t<A>>)
@@ -107,7 +107,12 @@ struct assignment<L, R> {
         static_assert(uses_flag<L, P, wrap> || uses_flag<L, P, clamp> || not excludes(interval_of<L>, interval_of<R>),
                       "rhs type's range lies entirely outside lhs interval and the policy cannot bring it into range");
 
+        // (Separate arms: naming integers_on_grid instantiates L's 64-bit
+        // views.) A source past 64 bits (__int128) has no 64-bit rational:
+        // off L's integers it stores exactly.
         if constexpr (wide_valued<L>)
+            return assign_exact<R>(lhs, exact_of(rhs), policy, std::forward<A>(action));
+        else if constexpr (wide_builtin<R> && !integers_on_grid)
             return assign_exact<R>(lhs, exact_of(rhs), policy, std::forward<A>(action));
         else if constexpr (!integers_on_grid)
             return assignment<L, rational>::assign(lhs, rational{rhs}, policy, std::forward<A>(action));
@@ -128,10 +133,14 @@ struct assignment<L, R> {
                             if constexpr (notch64<L> == 1) {
                                 if (handle_out_of_range(lhs, rhs, policy, action))
                                     return lhs;
-                            } else
+                            } else if constexpr (wide_builtin<R>)
+                                return assign_exact<R>(lhs, exact_of(rhs), policy, action);
+                            else
                                 return assignment<L, rational>::assign(lhs, rational{rhs}, policy, action);
                         }
                     }
+                } else if constexpr (wide_builtin<R>) {
+                    return assign_exact<R>(lhs, exact_of(rhs), policy, action); // fractional limits: exactly
                 } else if (not includes(interval_of<L>, rhs)) {
                     // Non-integer L bounds: route through the rational path so fractional
                     // Lower/Upper drive clamp/error correctly.
@@ -262,48 +271,43 @@ struct assignment<L, R> {
                 return wrap_exact(lhs, exact_of(rhs_r), policy, action);
             rhs_r = *r;
         }
-        imax     q;
-        rational folded;
+        // Re-enter the rational-rhs specialization for the actual store so the
+        // notch / rounding policy logic is exercised once; then the carry.
+        auto finish = [&](const rational& folded, const auto& q) {
+            assignment<L, rational>::store_checked(lhs, folded, policy, action);
+            if constexpr (wrap_action<plain_t<A>>)
+                action.Fn(lhs, make_wrap_carry<L, R>(q));
+        };
         if (abs_den(rhs_r.Den) == 1 && notch64<L> == 1 && abs_den(lower64<L>.Den) == 1) {
             // Integer value on a unit lattice: fold exactly (the grid may span
             // 2^64 values, past the rational range).
-            using fold         = unit_fold<L, source_lo<rational>, source_hi<rational>>;
-            using W            = typename fold::W;
-            const auto [qq, w] = fold::fold(static_cast<W>(grid_numerator(rhs_r)));
-            const W v          = fold::lower + w;
-            q                  = qq;
-            folded             = v < W{0} ? -rational{static_cast<umax>(-v)} : rational{static_cast<umax>(v)};
-        } else {
-            // q = floor((rhs - lower) / range), wrapped = rhs - q * range. A step
-            // past the 64-bit rational range, or a fold count past imax, folds
-            // exactly instead.
-            const auto span  = try_sub(upper64<L>, lower64<L>);
-            const auto range = span ? try_add(*span, notch64<L>) : span;
-            const auto off   = try_sub(rhs_r, lower64<L>);
-            const auto quot  = (range && off) ? try_div(*off, *range) : off;
-            if (!range || !quot || *quot < rational{std::numeric_limits<imax>::min()} ||
-                *quot > rational{std::numeric_limits<imax>::max()}) [[unlikely]]
-                return wrap_exact(lhs, exact_of(rhs_r), policy, action);
-            q             = floor(*quot);
-            const auto qr = try_mul(rational{q}, *range);
-            const auto w  = qr ? try_sub(rhs_r, *qr) : qr;
-            if (!w) [[unlikely]]
-                return wrap_exact(lhs, exact_of(rhs_r), policy, action);
-            folded = *w;
+            using fold        = unit_fold<L, source_lo<rational>, source_hi<rational>>;
+            using W           = typename fold::W;
+            const auto [q, w] = fold::fold(static_cast<W>(grid_numerator(rhs_r)));
+            const W v         = fold::lower + w;
+            return finish(v < W{0} ? -rational{static_cast<umax>(-v)} : rational{static_cast<umax>(v)}, q);
         }
-
-        // Re-enter the rational-rhs specialization for the actual store so the
-        // notch / rounding policy logic is exercised once.
-        assignment<L, rational>::store_checked(lhs, folded, policy, action);
-
-        if constexpr (wrap_action<plain_t<A>>)
-            action.Fn(lhs, make_wrap_carry<L, R>(q));
+        // q = floor((rhs - lower) / range), wrapped = rhs - q * range. A step
+        // past the 64-bit rational range, or a fold count past imax, folds
+        // exactly instead.
+        const auto span  = try_sub(upper64<L>, lower64<L>);
+        const auto range = span ? try_add(*span, notch64<L>) : span;
+        const auto off   = try_sub(rhs_r, lower64<L>);
+        const auto quot  = (range && off) ? try_div(*off, *range) : off;
+        if (!range || !quot || *quot < rational{std::numeric_limits<imax>::min()} ||
+            *quot > rational{std::numeric_limits<imax>::max()}) [[unlikely]]
+            return wrap_exact(lhs, exact_of(rhs_r), policy, action);
+        const imax q  = floor(*quot);
+        const auto qr = try_mul(rational{q}, *range);
+        const auto w  = qr ? try_sub(rhs_r, *qr) : qr;
+        if (!w) [[unlikely]]
+            return wrap_exact(lhs, exact_of(rhs_r), policy, action);
+        finish(*w, q);
     }
 
     // The fold done exactly when its rational steps overflow (a double past
     // 2^63, a far value on a fine grid): the exact store's wrap, which rounds
-    // by the policy and folds the wide lattice index (a wrap action's carry
-    // saturates, as on the wide paths). A continuous L has no lattice to
+    // by the policy and folds the wide lattice index (and its exact carry). A continuous L has no lattice to
     // fold in wide integers: still overflow. (A point cannot wrap at all:
     // dispatch_out_of_range rejects it.)
     template <typename P, typename A, std::size_t K>
@@ -877,7 +881,7 @@ struct assignment<L, R> {
             // rational source's carry grid) for R before handing it to the user action.
             assignment<L, rational>::apply_wrap(
                 lhs, as_rational(rhs), policy, beman::inside::detail::on_wrap([&](auto& self, const auto& q) {
-                    action.Fn(self, make_wrap_carry<L, R>(to_value(q)));
+                    action.Fn(self, make_wrap_carry<L, R>(q));
                 }));
         } else {
             // Fractional destination, no wrap action: delegate unchanged.
