@@ -5059,11 +5059,23 @@ constexpr void from_value(B& b, imax val) {
 // raw is 0-based (raw_lo == 0); a value raw IS the value (raw_lo == Lower),
 // so an offset needs raw_lo<L> added back before storing.
 //-------------------------------------------------------------------------
+// (if constexpr: naming lower_imax instantiates it, and an index raw's
+// grid may have limits past 64 bits.)
 template <insidable B>
-inline constexpr imax raw_lo = integer_value_storage<B> ? lower_imax<B> : 0;
+inline constexpr imax raw_lo = [] {
+    if constexpr (integer_value_storage<B>)
+        return lower_imax<B>;
+    else
+        return imax{0};
+}();
 
 template <insidable B>
-inline constexpr imax raw_hi = integer_value_storage<B> ? upper_imax<B> : static_cast<imax>(max_index_of<B>);
+inline constexpr imax raw_hi = [] {
+    if constexpr (integer_value_storage<B>)
+        return upper_imax<B>;
+    else
+        return static_cast<imax>(max_index_of<B>);
+}();
 
 // The exact raw range: 0 .. step count for index storage, Lower .. Upper
 // for value storage (integers there). Sizes the work types below.
@@ -15432,6 +15444,41 @@ inline constexpr grid_rational quotient_point =
 template <constant_id Id>
 inline constexpr grid_rational dividend_point = convergent_within<Id, pow2(-64)>();
 
+// The least distance from c to a fraction of denominator up to D, from c
+// within 2^-B of r = V/2^B: a convergent h/q of r (q ≤ D) lies at least
+// |r − h/q| − 2^-B away; any other fraction, 1/(2D²) (Legendre). 0 when a
+// convergent is too close to tell at B bits. In fixed-width integers.
+template <constant_id Id, grid_int D, int B>
+consteval grid_rational continuous_gap() {
+    using W   = fixed_t<5 * B + 2 * bit_width_of(D) + 64>;
+    const W V = static_cast<W>(constant_q<Id, B>), P = W{1} << B, Dw = static_cast<W>(D);
+    W       bn{1}, bd = W{2} * Dw * Dw; // the bound bn/bd, first 1/(2D²)
+    W       num = V, den = P, h1{1}, h2{0}, q1{0}, q2{1};
+    while (!den.is_zero()) {
+        const auto [a, rem] = W::divmod(num, den);
+        const W h = a * h1 + h2, q = a * q1 + q2;
+        if (Dw < q)
+            break;
+        W diff = V * q - h * P; // |r − h/q| − 2^-B = (|V·q − h·P| − q)/(q·P)
+        if (diff.negative())
+            diff = -diff;
+        const W gn = diff - q, gd = q * P;
+        if (!(W{0} < gn))
+            return grid_rational{0};
+        if (gn * bd < bn * gd) {
+            bn = gn;
+            bd = gd;
+        }
+        num = den;
+        den = rem;
+        h2  = h1;
+        h1  = h;
+        q2  = q1;
+        q1  = q;
+    }
+    return grid_rational{big_int{bn}, big_int{bd}};
+}
+
 // A lower bound on |v − c| over X's values v, from c within 2^(1−B): the
 // distance to the lattice points around c; to a point; on a continuous grid
 // of denominators up to D, 1/(2D²) (a closer fraction is a convergent of c,
@@ -15458,36 +15505,20 @@ consteval grid_rational separation() {
         else
             return std::min(lo - (L + j * n), L + (j + grid_rational{1}) * n - hi);
     } else {
-        constexpr grid_int D = grid_numerator(grid_of<X>.MaxDenominator);
-        if constexpr (B < 4 * bit_width_of(D) + 64)
-            return separation<Id, X, 4 * bit_width_of(D) + 64>();
+        constexpr grid_int D  = grid_numerator(grid_of<X>.MaxDenominator);
+        constexpr int      BD = 4 * bit_width_of(D) + 64;
+        if constexpr (B < BD)
+            return separation<Id, X, BD>();
         else {
-            grid_rational       d   = grid_rational{1} / (grid_rational{D} * grid_rational{D} * grid_rational{2});
-            bool                ok  = true;
-            grid_int            num = grid_numerator(V), den = big_int{1} << B; // V/2^B: V is an integer
-            grid_int            h1{1}, h2{0}, q1{0}, q2{1};
-            const grid_rational r = V * pow2(-B);
-            while (den != grid_int{0}) {
-                const grid_int a = num / den, rem = num - a * den;
-                const grid_int h = a * h1 + h2, q = a * q1 + q2;
-                if (D < q)
-                    break;
-                const grid_rational g = abs(r - grid_rational{h, q}) - pow2(-B);
-                if (!(g > 0))
-                    ok = false;
-                else
-                    d = std::min(d, g);
-                num = den;
-                den = rem;
-                h2  = h1;
-                h1  = h;
-                q2  = q1;
-                q1  = q;
-            }
-            return ok ? d : grid_rational{0};
+            constexpr grid_rational g = continuous_gap<Id, D, B>();
+            if constexpr (g > 0)
+                return g;
+            else
+                return separation<Id, X, 2 * B>();
         }
     }
 }
+
 template <constant_id Id, insidable X>
 inline constexpr grid_rational separating_point = [] {
     constexpr grid_rational d = separation<Id, X>();
