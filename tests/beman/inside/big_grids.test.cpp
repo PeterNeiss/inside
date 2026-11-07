@@ -953,4 +953,15 @@ TEST(BigGridsArmTest, uniform_over_two_full_limbs) {
     const U         u = uniform<U>(g);
     EXPECT_TRUE(u >= 0);
 }
+
+// {-2^63, 2^63} needs a wide index (2^64 + 1 values), yet its values fit the
+// 64-bit rational: times a continuous grid, the product's raw is the
+// rational, read off the exact product.
+TEST(BigGridsArmTest, wide_index_times_continuous_into_a_rational) {
+    using L = inside<{-9223372036854775808_g, 9223372036854775808_g}>;
+    using C = inside<{{0, 1}, max_denominator{1}}>;
+    static_assert(detail::wide_index_storage<L> && detail::rational_storage<decltype(L{} * C{})>);
+    EXPECT_EQ(to_string(L{std::numeric_limits<imax>::min()} * C{1}), "-9223372036854775808");
+    EXPECT_EQ(to_string(*parse_exact<L>("9223372036854775808") * C{1}), "9223372036854775808");
+}
 } // namespace reached_arms_tests

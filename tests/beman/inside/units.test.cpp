@@ -901,4 +901,30 @@ TEST(UnitsArmTest, conversion_policy_pow_decrement_and_unnamed_prefix) {
     EXPECT_EQ(to_string(old), "5 m");
     EXPECT_EQ(unit_symbol(prefix_t<4>{}(si::metre)), "?m");
 }
+
+// A quantity cursor in another unit is a cursor there: the rescale keeps
+// the marker the product dropped.
+TEST(UnitsArmTest, a_quantity_cursor_converts_to_a_cursor) {
+    cursor<quantity<si::metre, inside<{0, 10}>>, 1> c;
+    ++c;
+    const auto mm = c.in(si::milli(si::metre));
+    static_assert(
+        has_flag(flags_of<std::remove_cvref_t<decltype(mm.numerical_value())>>, beman::inside::detail::cursor_marker));
+    EXPECT_EQ(to_string(*mm), "1000 mm");
+}
+
+constexpr auto km = si::kilo(si::metre);
+template <class Q>
+constexpr bool converts_to_km = requires(const Q& q) { q.template in<km>(); };
+
+// point + quantity, where the quantity has no exact km (its fractions would
+// pass 1024 bits there): the sum in the common unit, metres.
+TEST(UnitsArmTest, point_plus_a_quantity_without_the_point_unit) {
+    using V = inside<{
+        {0, 1}, max_denominator{beman::inside::detail::grid_rational{beman::inside::detail::big_int{1} << 510}}}>;
+    const quantity<si::metre, V> q{rational{1, 3}};
+    static_assert(!converts_to_km<std::remove_cvref_t<decltype(q)>>);
+    const auto p = point<km>(inside<{{0, rational{1, 1000}}, per<1000>}>{rational{1, 1000}}); // 1 m
+    EXPECT_EQ(to_string(p + q), "4/3 m");
+}
 } // namespace reached_arms_tests

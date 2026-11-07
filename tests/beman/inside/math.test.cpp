@@ -927,4 +927,22 @@ TEST(MathArmTest, integer_functions_past_64_bits) {
     EXPECT_TRUE((math::gcd(a, b) == just<1, 2>));
     EXPECT_TRUE((math::lcm(a, b) == just<3541774862152233910275_g / 2>));
 }
+
+// ⌊x⌋ on [3.25, 3.75] and ⌈x⌉ on [0.25, 0.75] have one value each: the
+// value-index path stores a point.
+TEST(MathArmTest, floor_and_ceil_onto_a_point) {
+    const auto f = math::floor(inside<{{rational{13, 4}, rational{15, 4}}, per<4>}>{rational{7, 2}});
+    static_assert(detail::point_storage<std::remove_cvref_t<decltype(f)>>);
+    EXPECT_TRUE(f == 3);
+    EXPECT_TRUE(math::ceil(inside<{{rational{1, 4}, rational{3, 4}}, per<4>}>{rational{1, 2}}) == 1);
+}
+
+// A continuous input with a rational raw, into an output finer than a
+// double: the dd tier reads the fraction as a dd quotient.
+TEST(MathArmTest, dd_tier_reads_a_rational_input) {
+    using In  = inside<{{0, 1}, max_denominator{1000}}>;
+    using Out = inside<{{0, 3}, per<(imax{1} << 40)>}, round_nearest>;
+    static_assert(!math::detail::engine::fp_tier_available || math::detail::engine::dd_tier<Out, In>);
+    EXPECT_EQ(math::exp_into<Out>(In{rational{1, 3}}).as<double>(), std::round(std::exp(1.0 / 3) * 0x1p40) / 0x1p40);
+}
 } // namespace reached_arms_tests
