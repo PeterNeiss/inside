@@ -145,6 +145,12 @@ inline constexpr bool lower_index_fits_imax = notched<B> && grid_denominator(low
                                               !(grid_rational{std::numeric_limits<imax>::max()} < lower_index_of<B>);
 template <insidable B>
 inline constexpr rational upper_index64 = to_rational(upper_index_of<B>);
+// Every value index of an anchored grid (value/Notch, an integer) fits
+// imax: value_index<imax> is exact. (uint64's do not.)
+template <insidable B>
+inline constexpr bool value_indices_fit_imax =
+    notched<B> && anchored<B> && !(lower_index_of<B> < grid_rational{std::numeric_limits<imax>::min()}) &&
+    !(grid_rational{std::numeric_limits<imax>::max()} < upper_index_of<B>);
 
 // Index raw → double in one IEEE operation. On an anchored grid with Notch
 // p/q the value is J·p/q, J = raw + Lower/Notch. With |J·p| and q at most 2^53
@@ -198,13 +204,14 @@ template <insidable B>
 template <insidable R>
 inline constexpr bool divisor_excludes_zero = (lower_of<R> > 0) || (upper_of<R> < 0);
 
-// Storage-agnostic int truncation of interval endpoints — intent-revealing
-// `static_cast<imax>(lower64<B>)`. Used by from_value, raw_lo, the fast paths.
+// The interval's endpoints truncated toward zero, modulo 2^64 (exact on the
+// grids within imax that read them). Used by from_value, raw_lo, the fast
+// paths.
 template <insidable B>
-inline constexpr imax lower_imax = trunc(lower64<B>);
+inline constexpr imax lower_imax = static_cast<imax>(lower64<B>);
 
 template <insidable B>
-inline constexpr imax upper_imax = trunc(upper64<B>);
+inline constexpr imax upper_imax = static_cast<imax>(upper64<B>);
 
 // The largest index, detail::max_index (overflow-safe: 0 when it doesn't fit umax,
 // for grids with a wide index, which take the exact wide paths).
@@ -554,27 +561,20 @@ template <insidable L, typename P>
     return round_into_range<L, P>(v);
 }
 
-// Rounds the split offset quotient q + r/den (r < den ≤ imax_max) per L's
-// rounding policy — q/r form so no expression can overflow umax
-// (num + den/2 could, for num near umax). round_quotient's offset rule.
-template <insidable L, typename P>
-[[nodiscard]] constexpr umax round_offset(umax q, umax r, umax den) noexcept {
-    constexpr round_mode m = rounding_for<L, P>;
-    return q + rounds_away(m, false, classify_remainder(m, r, den), (q & 1) != 0);
-}
-
 // The split offset quotient q + r/den of an unanchored grid rounded in
 // value space: the value Lower + (q + r/den)·Notch is below zero exactly
-// when the offset num = q·den + r is below −Lower/Notch·den, compared
-// without overflow in 128 bits.
+// when the offset num = q·den + r is below c·den, c = −Lower/Notch,
+// compared without overflow in wide integers (two limbs when c is a 64-bit
+// rational).
 template <insidable L, typename P>
 [[nodiscard]] constexpr umax round_offset_unanchored(umax q, umax r, umax den) noexcept {
     constexpr round_mode m        = rounding_for<L, P>;
     bool                 negative = false;
-    if constexpr (lower64<L> < 0) {
-        constexpr rational c = -lower_index64<L>; // > 0
-        using W              = wide_uint<2>;
-        negative             = W{q * den + r} * W{abs_den(c.Den)} < W{c.Num} * W{den};
+    if constexpr (lower_of<L> < 0) {
+        constexpr grid_rational c  = -lower_index_of<L>; // > 0
+        constexpr grid_int      cn = grid_numerator(c), cd = grid_denominator(c);
+        using W  = wide_uint<limbs_for_bits(64 + std::max(cn.bit_width(), cd.bit_width()))>;
+        negative = W{q * den + r} * static_cast<W>(cd) < static_cast<W>(cn) * W{den};
     }
     return q + rounds_up(m, negative, classify_remainder(m, r, den), ((q & 1) != 0) != lower_index_odd<L>);
 }
@@ -588,23 +588,20 @@ template <insidable L, typename P>
 // reference). The offset is >= 0 (sign lost by subtracting Lower); with m =
 // Lower/Notch, the floor's value index is F = m + q, the value is below zero
 // exactly when F is, and the rounding moves F up by one or not: no second,
-// signed division. m is integral on every anchored grid; an unanchored one
-// rounds the offset against the value's sign.
+// signed division. m is integral on every anchored grid, of any size; an
+// unanchored one rounds the offset against the value's sign.
 template <insidable L, typename P>
 [[nodiscard]] constexpr umax round_split(umax q, umax r, umax den) noexcept {
-    // Lower/Notch past imax (a far-off grid with a fine notch) has no imax
-    // value index: round the offset as for a non-integral m.
-    constexpr bool vidx = lower_index_fits_imax<L>;
-    constexpr imax m    = vidx ? signed_numerator(to_rational(lower_index_of<L>)) : imax{0};
-
     if constexpr (!anchored<L>)
         return round_offset_unanchored<L, P>(q, r, den);
-    else if constexpr (!vidx)
-        return round_offset<L, P>(q, r, den);
     else {
-        constexpr round_mode mode     = rounding_for<L, P>;
-        const bool           negative = m < 0 && q < umax{0} - static_cast<umax>(m);
-        return q + rounds_up(mode, negative, classify_remainder(mode, r, den), ((q ^ static_cast<umax>(m)) & 1) != 0);
+        // F < 0 exactly when m < 0 and q < −m: every q when −m passes 64 bits.
+        constexpr round_mode mode      = rounding_for<L, P>;
+        constexpr grid_int   mneg      = -lower_index_wide<L>;
+        constexpr bool       far_below = grid_int{std::numeric_limits<umax>::max()} < mneg;
+        constexpr umax       bound     = mneg.negative() || far_below ? umax{0} : static_cast<umax>(mneg);
+        const bool           negative  = far_below || q < bound;
+        return q + rounds_up(mode, negative, classify_remainder(mode, r, den), ((q & 1) != 0) != lower_index_odd<L>);
     }
 }
 

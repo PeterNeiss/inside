@@ -1187,6 +1187,33 @@ TEST(InternalsTest, rational_of_two_unsigned_rejects_a_large_denominator) {
     static_assert(rational{1u, 0x7FFF'FFFF'FFFF'FFFFull} > rational{0});
 }
 
+// rational(num, den) with a signed num took den as an int64 parameter: a
+// uint64 den past it converted on the way in, so rational(1, 2^64 − 1)
+// was −1.
+TEST(InternalsTest, rational_of_any_integers_rejects_a_large_denominator) {
+    constexpr std::uint64_t u64_max = std::numeric_limits<std::uint64_t>::max();
+    EXPECT_THROW((void)(rational(1, test::at_run_time(u64_max))), inside_error);
+    EXPECT_THROW((void)(rational(-1, test::at_run_time(std::uint64_t{1} << 63))), inside_error);
+    static_assert(rational(-3, std::uint64_t{6}) == rational{-1, 2});
+    static_assert(rational(3u, -6) == rational{-1, 2} && rational(-3, -6) == rational{1, 2});
+    constexpr int         i = 3;
+    constexpr std::size_t n = 6;
+    static_assert(rational{i, n} == rational{1, 2} && rational{n, i} == rational{2});
+}
+
+// trunc, floor, ceil and round of a rational narrowed its integer part (up
+// to 2^64 − 1) to int64 silently: trunc(rational{2^64 − 1}) was −1. Past
+// int64 they raise overflow (fail/rational_trunc_past_int64 while compiling).
+TEST(InternalsTest, rational_rounding_to_int64_at_its_limits) {
+    constexpr std::int64_t i64_min = std::numeric_limits<std::int64_t>::min();
+    EXPECT_THROW((void)trunc(rational{test::at_run_time(std::uint64_t{1} << 63)}), inside_error);
+    EXPECT_THROW((void)floor(rational{test::at_run_time((std::uint64_t{1} << 63) + 1), -1}), inside_error);
+    static_assert(trunc(rational{std::uint64_t{1} << 63, -1}) == i64_min);
+    static_assert(floor(rational{(std::uint64_t{1} << 63) - 1, -1}) == i64_min + 1);
+    static_assert(ceil(rational{(std::uint64_t{1} << 63) - 3, 2u}) == (std::int64_t{1} << 62) - 1);
+    static_assert(round(rational{(std::uint64_t{1} << 63) - 1}) == std::numeric_limits<std::int64_t>::max());
+}
+
 // Checked rational / and + reported overflow for results that fit.
 TEST(InternalsTest, rational_ops_reduce_before_overflowing) {
     constexpr umax big = (umax{1} << 63) + 2;

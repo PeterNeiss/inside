@@ -932,6 +932,34 @@ TEST(BigGridTest, predicates_at_run_time) {
     EXPECT_FALSE(includes(H.Interval, test::at_run_time(7)));
 }
 
+// sum's block loop over narrow raws held Lower and the notch in 64 bits: a
+// grid near 2^70 with a uint8 raw lost cnt·2^70 (base truncated to 0), an
+// unanchored one with notch 2^70 lost every raw·2^70 (scale 0).
+TEST(BigGridTest, sum_of_narrow_raws_far_from_zero) {
+    using X  = inside<{1180591620717411303424_g, 1180591620717411303524_g}>; // 2^70 + 0..100
+    using Xu = inside<{{1, 1_g + 100_g * 1180591620717411303424_g}, 1180591620717411303424_g}>;
+    using T  = inside<{0, 1208925819614629174706176_g}>; // 2^80
+    static_assert(sizeof(X::raw_type) == 1 && sizeof(Xu::raw_type) == 1);
+    constexpr std::array<X, 3> a{
+        X{1180591620717411303424_g}, X{1180591620717411303425_g}, X{1180591620717411303524_g}};
+    constexpr std::array<Xu, 2> b{Xu{1_g + 1180591620717411303424_g}, Xu{1_g + 2_g * 1180591620717411303424_g}};
+    static_assert(sum<T>(a) == a[0] + a[1] + a[2]);
+    static_assert(sum<T>(b) == b[0] + b[1]);
+    const std::vector<X> v(1000, a[2]);
+    EXPECT_EQ(sum<T>(v), T{1000_g * 1180591620717411303524_g});
+}
+
+// The out-of-range rounding of the predicates compared the slot with
+// max_index_of, 0 past 2^64 slots: a value just past Upper that rounds onto
+// it counted as overflow, not rounding.
+TEST(BigGridTest, predicates_round_onto_a_grid_past_two_to_the_64_slots) {
+    using T = inside<{{-18446744073709551615_g, 1}, per<4>}, round_nearest>; // 2^66 slots
+    static_assert(!conversion_overflows<T>(1.0625) && conversion_rounds<T>(1.0625));
+    static_assert(conversion_overflows<T>(1.25) && !conversion_rounds<T>(1.25));
+    EXPECT_FALSE(conversion_overflows<T>(test::at_run_time(1.0625)));
+    EXPECT_TRUE(conversion_rounds<T>(test::at_run_time(1.0625)));
+}
+
 } // namespace pinned_tests
 
 // Arms no other test reaches, found by the reachability audit (gcov and an

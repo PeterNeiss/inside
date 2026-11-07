@@ -1779,6 +1779,37 @@ TEST(AssignmentTest, rounding_onto_a_span_past_two_to_the_64) {
     EXPECT_FALSE(conversion_overflows<wide_span>(rational{(umax{1} << 63) + 1}));
 }
 
+// An anchored grid whose Lower/Notch passes int64 rounded the offset as if
+// every value were positive and its own parity were the offset's: ties went
+// up, toward zero went down, half_even picked odd value indices.
+TEST(AssignmentTest, rounding_on_a_grid_whose_lower_index_passes_int64) {
+    constexpr grid R{{-3074457345618258603LL, -3074457345618258593LL}, per<3>}; // Lower/Notch = −2^63 − 1
+    using halves  = inside<grid{R.Interval, per<2>}>;
+    const auto at = []<policy_flag F>(std::integral_constant<policy_flag, F>, int raw) {
+        return inside<R, F>{halves::from_raw(test::at_run_time(raw))}.raw();
+    };
+    using std::integral_constant;
+    EXPECT_EQ(at(integral_constant<policy_flag, round_nearest>{}, 1), 1); // a tie, away from zero
+    EXPECT_EQ(at(integral_constant<policy_flag, round_toward_zero>{}, 1), 2);
+    EXPECT_EQ(at(integral_constant<policy_flag, round_half_even>{}, 1), 1); // value index −2^63 is even
+    EXPECT_EQ(at(integral_constant<policy_flag, round_floor>{}, 1), 1);
+    EXPECT_EQ(at(integral_constant<policy_flag, round_ceil>{}, 1), 2);
+    EXPECT_EQ(at(integral_constant<policy_flag, round_nearest>{}, 3), 4);
+    static_assert(inside<R, round_toward_zero>{halves::from_raw(3)}.raw() == 5);
+}
+
+// An unanchored grid whose −Lower/Notch is no 64-bit rational (2^-32 over a
+// notch of 2^31 + 1): a store that rounds did not compile.
+TEST(AssignmentTest, rounding_on_an_unanchored_grid_past_the_64_bit_lower_index) {
+    constexpr grid G{{-0x1p-32_g, -0x1p-32_g + 2147483649_g}, 2147483649};
+    using nearest = inside<G, round_nearest>;
+    using to_zero = inside<G, round_toward_zero>;
+    static_assert(nearest::try_make(0.25)->raw() == 0 && nearest::try_make(-0x1p-33)->raw() == 0);
+    static_assert(to_zero::try_make(-0x1p-33)->raw() == 1); // below zero: up, toward it
+    EXPECT_EQ(to_zero::try_make(test::at_run_time(-0x1p-33))->raw(), 1);
+    EXPECT_EQ(to_zero::try_make(test::at_run_time(0.25))->raw(), 0);
+}
+
 } // namespace pinned_tests
 
 // Arms no other test reaches, found by the reachability audit (gcov and an

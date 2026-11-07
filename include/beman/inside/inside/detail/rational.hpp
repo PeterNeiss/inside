@@ -89,20 +89,11 @@ struct rational {
     // 2^-62 keeps only its bits down to 2^-62 (truncated toward zero), as the
     // denominator has 63 bits. |value| ≥ 2^64 and non-finite values raise.
     constexpr rational(std::floating_point auto);
-    constexpr rational(std::signed_integral auto, imax = 1);
-    constexpr rational(std::unsigned_integral auto num, imax den = 1) : Num{static_cast<umax>(num)}, Den{den} {
+    // num/den of any two integers (two size_t too, without a cast): |num|
+    // within 64 bits, den within int64 (the sign lives in it), else overflow.
+    template <std::integral N, std::integral D = imax>
+    constexpr rational(N num, D den = 1) : Num{magnitude(num)}, Den{signed_den(num, den)} {
         check_fits(num);
-        canonicalize(Num, Den);
-    }
-
-    // Two-unsigned overload: lets `rational{i, N}` accept two `size_t`
-    // operands without forcing the caller to `static_cast<imax>` the
-    // numerator. A den past imax has no signed denominator: overflow.
-    template <std::unsigned_integral N, std::unsigned_integral D>
-    constexpr rational(N num, D den) : Num{static_cast<umax>(num)}, Den{static_cast<imax>(den)} {
-        check_fits(num);
-        if (!std::in_range<imax>(den))
-            raise(errc::overflow, "rational: denominator past imax");
         canonicalize(Num, Den);
     }
 
@@ -179,11 +170,26 @@ struct rational {
         cancel_gcd(num, den);
     }
 
-    // Signed-encoded denominator for the signed ctor, validated BEFORE the
-    // negation so `-den` is never UB.
-    static constexpr imax signed_den_from(std::signed_integral auto num, imax den) {
-        check_den(den);
-        return (num < 0) ? -den : den;
+    static constexpr umax magnitude(std::integral auto num) {
+        if constexpr (std::signed_integral<decltype(num)>)
+            return safe_abs(num);
+        else
+            return static_cast<umax>(num);
+    }
+
+    // The signed-encoded denominator, validated BEFORE the negation so `-d`
+    // is never UB.
+    template <std::integral N, std::integral D>
+    static constexpr imax signed_den(N num, D den) {
+        if constexpr (!std::same_as<D, imax>)
+            if (!std::in_range<imax>(den))
+                raise(errc::overflow, "rational: denominator past int64");
+        const imax d = static_cast<imax>(den);
+        check_den(d);
+        if constexpr (std::signed_integral<N>)
+            return num < 0 ? -d : d;
+        else
+            return d;
     }
 };
 
@@ -252,9 +258,12 @@ struct rounded_integer {
     return {q + rounds_away(m, neg, classify_remainder(m, v.Num % ad, ad), (q & 1) != 0), neg};
 }
 
-// Narrowed to imax (callers keep |v| within it).
+// As an imax: a rational's integer part reaches ±(2^64 − 1), and one past
+// imax raises overflow (the library's own callers stay within it).
 [[nodiscard]] constexpr imax round_to_int(rational v, round_mode m) {
     const auto [mag, neg] = round_magnitude(v, m);
+    if (mag > (neg ? umax{1} << 63 : (umax{1} << 63) - 1))
+        raise(errc::overflow, "rational: the rounded integer is past int64");
     return static_cast<imax>(neg ? umax{0} - mag : mag);
 }
 
@@ -355,15 +364,6 @@ constexpr rational rational_of_wide_float(T v, bool& exact) {
         raise(errc::overflow, "beman::inside::detail::rational: long double past the 64-bit rational");
     const imax den = imax{1} << (62 - tz);
     return rational_from_parts(static_cast<umax>(num), v < 0 ? -den : den);
-}
-
-//---------------------------------------------------------------------------
-// rational::rational
-//---------------------------------------------------------------------------
-constexpr rational::rational(std::signed_integral auto num, imax den)
-    : Num{safe_abs(num)}, Den{signed_den_from(num, den)} {
-    check_fits(num);
-    canonicalize(Num, Den);
 }
 
 // rational{value}, and whether it is exact: a finite |value| < 2^64 finer

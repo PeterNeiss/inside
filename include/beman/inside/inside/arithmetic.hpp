@@ -432,12 +432,12 @@ template <insidable Target, std::ranges::input_range Rng>
         using I            = detail::wide_sint<detail::limbs_for_bits(bits)>;
         I total{0};
         if constexpr (!detail::wide_index_storage<B> && sizeof(detail::raw_t<B>) <= 4) {
-            // Each value is base + raw·scale units (scale 1 when anchored).
-            constexpr imax base =
-                detail::index_storage<B> ? static_cast<imax>(detail::exact_quotient(lower_of<B>, U)) : 0;
-            constexpr imax scale = static_cast<imax>(detail::exact_quotient(notch_of<B>, U));
-            auto           it    = std::ranges::begin(r);
-            auto           end   = std::ranges::end(r);
+            // Each value is base + raw·scale units (scale 1 when anchored), in
+            // the total's type: a grid far from 0 has a base past 64 bits.
+            constexpr I base  = detail::index_storage<B> ? static_cast<I>(detail::units_lo<B, U>) : I{0};
+            constexpr I scale = static_cast<I>(detail::exact_quotient(notch_of<B>, U));
+            auto        it    = std::ranges::begin(r);
+            auto        end   = std::ranges::end(r);
             while (it != end) {
                 imax acc = 0, cnt = 0;
                 // (A random-access range whose end is a sentinel, not a
@@ -464,10 +464,10 @@ template <insidable Target, std::ranges::input_range Rng>
                     for (; it != end && cnt < (imax{1} << 30); ++it, ++cnt)
                         acc += detail::raw_imax(*it);
                 }
-                if constexpr (scale == 1)
-                    total += I{acc} + I{cnt} * I{base};
+                if constexpr (scale == I{1})
+                    total += I{acc} + I{cnt} * base;
                 else
-                    total += I{acc} * I{scale} + I{cnt} * I{base};
+                    total += I{acc} * scale + I{cnt} * base;
             }
         } else
             for (const auto& b : r)

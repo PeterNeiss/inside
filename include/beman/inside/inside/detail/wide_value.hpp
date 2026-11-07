@@ -578,7 +578,7 @@ constexpr rounded_raw<L> exact_round_into_range(const rational& v) {
     } else {
         const auto j = exact_index<L, rounding_for<L, P>>(exact_of(v)).Index; // L's slot offset
         using I      = std::remove_cvref_t<decltype(j)>;
-        if (j.negative() || I{max_index_of<L>} < j)
+        if (j.negative() || static_cast<I>(grid_of<L>.step_count()) < j) // (max_index_of is 0 past 64 bits)
             return {raw_t<L>{}, false};
         return {raw_of_slot<L>(j), true};
     }
