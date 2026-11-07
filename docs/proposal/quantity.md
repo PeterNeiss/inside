@@ -220,9 +220,8 @@ value. An entry is identified by its content, not by its address.
 
 ## Your own
 
-A program defines its own units, quantity specs, origins and up to four base
-dimensions of its own (currency, information, pixels) as `inline constexpr`
-objects. From then on they behave like the catalog's: prefixes apply to a
+A program defines its own units, quantity specs, origins and base dimensions
+(currency, information, pixels) as `inline constexpr` objects. From then on they behave like the catalog's: prefixes apply to a
 named unit, a spec under length is a length, and money never adds to a mass.
 
 ## Diagnostics
