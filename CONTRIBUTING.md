@@ -116,6 +116,21 @@ and compares its instruction count with `tests/beman/inside/perf_baseline.json`
 depend on the machine's load; compare before and after on the same build, or
 refresh the baseline with `--update`.
 
+### Comparing two versions of the headers
+
+The scripts in `tests/beman/inside/perf_gate/` compare a change with a
+baseline, given as two include dirs (a baseline:
+`git archive HEAD include | tar -x -C <dir>`). They need g++-16, and write to
+`build/perf-gate/`. Each script's header says how to call it.
+
+| Script | Measures |
+|---|---|
+| `irgate.sh <a> <b>` | the cachegrind instruction count of the perf workload's 13 keys, before and after (needs valgrind) |
+| `gate.sh <label> <inc>`, `insdiff.py <a.md> <b.md>` | the benchmark table for one include dir; the rows whose ins/op moved |
+| `kern.sh <inc> <kernels.cpp>` | per `k_*` function: hot-path instructions, divisions, stack canary, calls |
+| `dyn.sh <inc> <driver.cpp>` | instructions per iteration of a loop, with `perf stat` |
+| `matrix.sh <commit>` | a commit's Debug and `BEMAN_INSIDE_MATH_NO_FP` builds and tests, in a separate worktree |
+
 ## Documentation
 
 The docs are in three levels, mapped in [docs/README.md](docs/README.md):
