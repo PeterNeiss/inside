@@ -452,8 +452,9 @@ metaprogramming. Its parts are in `units/`: the algebra, `quantity` and
 `quantity_point` in `units/detail/` (together `units/core.hpp`), and the
 catalog in `units/systems.hpp`.
 
-**Values, not type lists.** A dimension (seven SI exponents plus up to four
-`base_dimension`s), a magnitude (an exact rational × π^k), a unit (up to six
+**Values, not type lists.** A dimension (seven SI exponents plus any number
+of `base_dimension`s, interned with `std::define_static_array` as big grid
+numbers are), a magnitude (an exact rational × π^k), a unit (up to six
 named-unit atoms, each with a decimal prefix and an exponent, plus a
 magnitude), a quantity spec and a reference are all structural values,
 combined by `consteval` functions. The names users write are empty tags whose

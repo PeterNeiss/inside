@@ -12,7 +12,7 @@ header costs to compile. [Units](../guide/units.md) has the everyday view.
 
 | Concept | What it is | Spelled |
 |---|---|---|
-| dimension | exponents of L M T I Θ N J, plus up to four of your own | `dimension_of(si::newton.value)` |
+| dimension | exponents of L M T I Θ N J, plus any number of your own | `dimension_of(si::newton.value)` |
 | magnitude | an exact rational × π^k, relative to the coherent SI unit | `mag<1000>`, `mag_pi` |
 | unit | named units to integer powers, with prefixes and a magnitude | `si::kilo(si::metre) / si::hour` |
 | quantity spec | a kind in the ISQ tree: `height` → `altitude` → `length` | `isq::height` |
@@ -190,8 +190,9 @@ inline constexpr named_unit    decibel_def{"dB", one, spec_c<level_def>};
 
 ### Base dimensions of your own
 
-Next to the seven SI base dimensions, a `base_dimension` adds one of yours (up
-to four in one dimension). Its base quantity and units follow as usual.
+Next to the seven SI base dimensions, a `base_dimension` adds one of yours,
+and a dimension holds any number of them. Its base quantity and units follow
+as usual.
 Money then never adds to a length or a plain number, EUR/kg is a dimension of
 its own, and EUR + ct runs in ct. The same shape gives hit points, pixels,
 packets, gas, or ADC counts. Two currencies whose rate changes are two base

@@ -4,6 +4,16 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
+## Unreleased
+
+### Changed
+
+- A dimension holds any number of base dimensions of your own (it held at
+  most 4): a unit of gold·HP·MP·stamina·XP·px·packets·tokens is one
+  dimension. The list is interned with `std::define_static_array`, as big
+  grid numbers are; SI-only dimensions intern nothing. `dimension`'s
+  `User`/`UserSize` members became `UserDim`, `UserExp` and `UserSize`.
+
 ## 0.8.0 — 2026-11-07
 
 The API freeze review: one spelling per flag, implementation names out of the
