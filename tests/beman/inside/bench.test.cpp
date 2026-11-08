@@ -834,7 +834,7 @@ static void bench_store_convert() {
     });
     conv.run("to<uint8_t> (expected)", [&] {
         ++i;
-        doNotOptimizeAway(*uv[i & kMask].to<std::uint8_t>());
+        doNotOptimizeAway(uv[i & kMask].to<std::uint8_t>());
     });
     conv.run("static_cast<double> (dyadic index)", [&] {
         ++i;
@@ -1357,7 +1357,7 @@ static void bench_cmath() {
         "math: pown<3>", d_qs[i & J] * d_qs[i & J] * d_qs[i & J], beman::inside::math::pown<3>(v_alg[i & J]).raw())
     BEMAN_INSIDE_CMATH_GROUP("math: pow (expected)",
                              std::pow(d_powb[i & J], d_powe[i & J]),
-                             (*beman::inside::math::pow(v_powb[i & J], v_powe[i & J])).raw())
+                             beman::inside::math::pow(v_powb[i & J], v_powe[i & J]).raw())
 #undef BEMAN_INSIDE_CMATH_GROUP
 }
 
