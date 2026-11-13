@@ -40,8 +40,8 @@ int main() {
     using coord = quantity<px, inside<{-100, 100}>>;
 
     // Two vectors a = (3, 4), b = (4, -3) — chosen to be perpendicular.
-    coord ax{3}, ay{4};
-    coord bx{4}, by{-3};
+    coord ax{3, px}, ay{4, px};
+    coord bx{4, px}, by{-3, px};
 
     std::cout << "a = (" << ax << ", " << ay << ")   b = (" << bx << ", " << by << ")\n\n";
 
@@ -65,7 +65,7 @@ int main() {
         return c > zero_area ? "left" : c < zero_area ? "right" : "collinear";
     };
     std::cout << "\nside of segment (0,0)->(10,0):\n";
-    const coord o{0}, ten{10}, five{5}, up{3}, down{-3};
+    const coord o{0, px}, ten{10, px}, five{5, px}, up{3, px}, down{-3, px};
     std::cout << "  point (5, 3)   is " << side(o, o, ten, o, five, up) << "\n";
     std::cout << "  point (5,-3)   is " << side(o, o, ten, o, five, down) << "\n";
     std::cout << "  point (5, 0)   is " << side(o, o, ten, o, five, o) << "\n";
@@ -74,7 +74,7 @@ int main() {
     // interpolation never leaves inside-space; dyadic t values are exact.
     using axis    = quantity<px, inside<{0, 100}>>;
     using param_t = inside<{{0, 1}, per<16>}, round_nearest>;
-    axis x0{20}, x1{80};
+    axis x0{20, px}, x1{80, px};
     std::cout << "\nlerp x from " << x0 << " to " << x1 << ":\n";
     for (cursor<param_t, per<4>> t; t != end(t); ++t) // 0, 0.25, …, 1
         std::cout << "  t = " << t << "  ->  " << lerp(x0, x1, *t) << "\n";

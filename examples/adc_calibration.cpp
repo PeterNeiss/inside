@@ -35,12 +35,12 @@ concept addable = requires(const A& a, const B& b) { a + b; };
 } // namespace
 
 int main() {
-    const reading raw{2048};
+    const reading raw{2048, cts};
 
     // 2. Offset 12 cts and gain 1240.909 cts/V, from a data sheet: 2048 cts
     //    read 2036 / 1240.909 V = 1.64073… V, which is 1641 mV.
-    const quantity<cts, inside<{-64, 64}>> offset{12};
-    const gain_t                           gain{just<1240909, 1000>};
+    const quantity<cts, inside<{-64, 64}>> offset{12, cts};
+    const gain_t                           gain{just<1240909, 1000> * (cts / si::volt)};
     const auto                             volts = (raw - offset) / gain;
     const auto                             mv    = value_cast<millivolts>(volts);
     std::cout << "fixed      " << raw << " at " << gain << " = " << mv << '\n';
@@ -51,10 +51,10 @@ int main() {
     //    2482 cts / 2 V = 1241 cts/V, the offset 632 − 1241 · 0.5 = 11.5 cts.
     //    The two references lie in disjoint ranges, so ΔV is never 0 and the
     //    gain is a plain quantity, not an expected.
-    const quantity<si::volt, inside<{{0, 1}, per<1000>}>> v1{just<1, 2>};
-    const quantity<si::volt, inside<{{2, 5}, per<1000>}>> v2{just<5, 2>};
-    const reading                                         c1{632};
-    const reading                                         c2{3114};
+    const quantity<si::volt, inside<{{0, 1}, per<1000>}>> v1{just<1, 2> * si::volt};
+    const quantity<si::volt, inside<{{2, 5}, per<1000>}>> v2{just<5, 2> * si::volt};
+    const reading                                         c1{632, cts};
+    const reading                                         c2{3114, cts};
     //    Equal readings would give a gain of 0, so the exact Δcts / ΔV is
     //    checked into gain_t's range once; after that, dividing by the gain
     //    cannot fail.

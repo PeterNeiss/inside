@@ -34,8 +34,9 @@ int main() {
     static_assert(sizeof(money) == 4);
 
     // Running total: line items add exactly, no float drift.
-    const std::vector<money> items    = {money{19.99}, money{4.50}, money{12.34}, money{0.99}, money{7.25}};
-    const money              subtotal = sum<money>(items);
+    const std::vector<money> items = {
+        money{19.99, USD}, money{4.50, USD}, money{12.34, USD}, money{0.99, USD}, money{7.25, USD}};
+    const money subtotal = sum<money>(items);
     std::cout << "subtotal: " << subtotal << "\n";
 
     // Apply 8 % sales tax: the exact product, rounded once to the nearest 1¢
@@ -49,7 +50,7 @@ int main() {
 
     // Issue a refund, capped at the total. `std::min` works on two `money`
     // values directly via the quantity's spaceship operator.
-    const money requested_refund{100.00};
+    const money requested_refund{100.00, USD};
     const money refund = std::min(requested_refund, total);
     std::cout << "refund (req " << requested_refund << ", cap " << total << "): " << refund << "\n";
 

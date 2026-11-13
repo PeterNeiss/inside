@@ -30,7 +30,7 @@ int main() {
     };
     for (const row r : {row{1'000'000'000'000'000'000, -4'471'936'262'876'823, 533'100'051'040'090},
                         row{(std::int64_t{1} << 62) - 1, 985'025'092'865'520, -4'394'557'448'717'327}}) {
-        const radians x{r.x};
+        const radians x{r.x, si::radian};
         const auto    s  = math::sin<per<(std::int64_t{1} << 52)>>(x); // [-1, 1] on a 2^-52 grid
         const auto    c  = math::cos<per<(std::int64_t{1} << 52)>>(x);
         const double  xd = static_cast<double>(r.x);

@@ -77,7 +77,7 @@ std::expected<order, std::vector<std::pair<std::string, errc>>> read_order(std::
         else
             errors.emplace_back(key, v.error());
     };
-    order o{order_id{0}, price_t{0}, quantity_t{1}, ratio_t{0}};
+    order o{order_id{0}, price_t{0, USD / item}, quantity_t{1, item}, ratio_t{0}};
     get("id", o.id);
     get("price", o.price);
     get("quantity", o.quantity);

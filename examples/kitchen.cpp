@@ -58,16 +58,17 @@ int main() {
     // 4. 250 mL of flour at 0.53 g/mL: density·volume is a mass. A mass and a
     //    volume never add:
     //      auto bad = flour + milk;   // does not compile: another dimension
-    const quantity<isq::mass_density[si::gram / ml], inside<{{0, 2}, per<100>}>> density{just<53, 100>};
-    const quantity<isq::volume[ml], inside<{0, 1000}>>                           cup{250};
-    const quantity<isq::mass[si::gram], inside<{{0, 2000}, per<100>}>>           cup_of_flour = density * cup;
+    const quantity<isq::mass_density[si::gram / ml], inside<{{0, 2}, per<100>}>> density{
+        just<53, 100> * isq::mass_density[si::gram / ml]};
+    const quantity<isq::volume[ml], inside<{0, 1000}>>                 cup{250, isq::volume[ml]};
+    const quantity<isq::mass[si::gram], inside<{{0, 2000}, per<100>}>> cup_of_flour = density * cup;
     std::cout << "cup    " << cup << " of flour = " << cup_of_flour << '\n';
     if (to_string(cup_of_flour) != "132.50 g")
         return 1;
 
     // 5. The jar holds 2 kg, to the gram; it starts with 1.5 kg. A pound fits
     //    (rounded to the gram); the second one is clamped at 2 kg.
-    quantity<si::kilogram, inside<{{0, 2}, per<1000>}, clamp | round_nearest>> jar{just<3, 2>};
+    quantity<si::kilogram, inside<{{0, 2}, per<1000>}, clamp | round_nearest>> jar{just<3, 2> * si::kilogram};
     jar += just<1> * international::pound;
     const auto after_one = to_string(jar);
     jar += just<1> * international::pound;

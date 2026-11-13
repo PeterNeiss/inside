@@ -38,12 +38,12 @@ using gain_t = quantity<percent / si::kelvin, inside<{{0, 4}, per<(1 << 8)>}, ro
 using output_t = quantity<percent, inside<{-100, 100}, clamp | round_nearest>>;
 
 struct pid {
-    gain_t kp{1.5};
-    gain_t ki{0.125};
-    gain_t kd{0.5};
+    gain_t kp{1.5, percent / si::kelvin};
+    gain_t ki{0.125, percent / si::kelvin};
+    gain_t kd{0.5, percent / si::kelvin};
 
-    integral_t               integral{0};
-    err_t                    previous{0};
+    integral_t               integral{0, si::kelvin};
+    err_t                    previous{0, si::kelvin};
     clamp_counter<1'000'000> windup_events{0};
 
     output_t step(err_t err) {
@@ -75,13 +75,13 @@ int main() {
 
     std::cout << "err      integ     cmd\n";
     for (double e : errors) {
-        err_t err{e};
+        err_t err{e, si::kelvin};
         auto  cmd = loop.step(err);
         std::cout << err << "    " << loop.integral << "   " << cmd << "\n";
     }
     std::cout << "\nintegrator saturation events: " << loop.windup_events << "\n";
 
-    if (to_string(loop.integral) != "41 K" || to_string(loop.step(err_t{0})) != "6 %")
+    if (to_string(loop.integral) != "41 K" || to_string(loop.step(err_t{0, si::kelvin})) != "6 %")
         return 1;
     return 0;
 }

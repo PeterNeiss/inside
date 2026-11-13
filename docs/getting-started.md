@@ -124,10 +124,11 @@ with a unit:
 using namespace beman::inside::units;
 
 constexpr auto km = si::kilo(si::metre);
-quantity<km, inside<{{0, 500}, per<1000>}>> leg{12.5};   // 12.5 km, to the metre
-auto total = leg + just<800> * si::metre;                // 13300 m, exact
-total.in(km);                                            // 13.300 km
-// leg + just<1> * si::second;                           // does not compile
+quantity<km, inside<{{0, 500}, per<1000>}>> leg{12.5, km};   // 12.5 km, to the metre
+auto total = leg + just<800> * si::metre;                    // 13300 m, exact
+total.in(km);                                                // 13.300 km
+// leg + just<1> * si::second;                               // does not compile
+// quantity<km, inside<{0, 500}>> bad{12};                   // does not compile: name the unit
 ```
 
 A unit conversion only rescales the grid, so it is exact and costs nothing at
@@ -159,7 +160,7 @@ With `<beman/inside/units/math.hpp>`, angles can be in degrees, and the
 reduction is exact: the sine of 30° is exactly 1/2.
 
 ```cpp
-math::sin<per<1000>>(quantity<si::degree, inside<{0, 360}>>{30});   // 0.500
+math::sin<per<1000>>(just<30> * si::degree);   // 0.500
 ```
 
 ## How a value flows

@@ -51,7 +51,7 @@ int main() {
         return 1;
 
     // 2. Rotate three points by 30°.
-    const auto        r30 = rotation(degrees{30});
+    const auto        r30 = rotation(degrees{30, si::degree});
     const std::mdspan rot{r30.data(), matrix{}};
     double            worst = 0;
     for (const auto& p : {std::array<coord, 2>{10, 0}, std::array<coord, 2>{0, 10}, std::array<coord, 2>{3, 4}}) {
@@ -72,7 +72,7 @@ int main() {
     // Q1.14 products, rounded once into Q1.14.
     std::array<q14, 4> r60{};
     matrix_product(rot, rot, std::mdspan{r60.data(), matrix{}});
-    const auto direct = rotation(degrees{60});
+    const auto direct = rotation(degrees{60, si::degree});
     std::cout << "R30·R30     [" << r60[0] << ", " << r60[1] << "; " << r60[2] << ", " << r60[3] << "]\n"
               << "R60         [" << direct[0] << ", " << direct[1] << "; " << direct[2] << ", " << direct[3] << "]\n";
     for (std::size_t k = 0; k < 4; ++k)

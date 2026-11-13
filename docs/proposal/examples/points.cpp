@@ -19,9 +19,10 @@ int main() {
     auto rise = warm - room;                                           // 5 ℃, a quantity: a difference
     static_assert(!addable<decltype(room), decltype(room)>);           // points do not add
     // [/listing]
-    if (k.quantity_from_zero().numerical_value() != 293.15_ins)
+    if (k.quantity_from_zero().numerical_value_in(si::kelvin) != 293.15_ins)
         return 1;
-    if (f.quantity_from_origin().numerical_value() != just<68> || rise.numerical_value() != just<5>)
+    if (f.quantity_from_origin().numerical_value_in(international::degree_Fahrenheit) != just<68> ||
+        rise.numerical_value_in(si::kelvin) != just<5>)
         return 1;
     return 0;
 }

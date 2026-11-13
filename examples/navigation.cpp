@@ -45,7 +45,9 @@ int main() {
     using pos_t     = quantity<si::metre, inside<{{-1024, 1024}, per<(1 << 8)>}, round_nearest>>;
     using compass_t = inside<{{-180, 180}, per<10>}, round_nearest>;
     std::cout << "\ntarget (east, north)   range       bearing\n";
-    for (auto [e, n] : {std::pair{pos_t{30}, pos_t{40}}, {pos_t{0}, pos_t{50}}, {pos_t{-30}, pos_t{-40}}}) {
+    for (auto [e, n] : {std::pair{pos_t{30, si::metre}, pos_t{40, si::metre}},
+                        {pos_t{0, si::metre}, pos_t{50, si::metre}},
+                        {pos_t{-30, si::metre}, pos_t{-40, si::metre}}}) {
         const auto range   = math::hypot(e, n);
         const auto bearing = math::atan2<per<(1 << 20)>>(e, n);
         const auto deg     = value_cast<si::degree, compass_t>(bearing);
@@ -53,7 +55,8 @@ int main() {
         if (range != just<50> * si::metre) // 3-4-5 triangles: exact
             return 1;
     }
-    if (to_string(value_cast<si::degree, compass_t>(math::atan2<per<(1 << 20)>>(pos_t{-30}, pos_t{-40}))) != "-143.1°")
+    if (to_string(value_cast<si::degree, compass_t>(
+            math::atan2<per<(1 << 20)>>(pos_t{-30, si::metre}, pos_t{-40, si::metre}))) != "-143.1°")
         return 1;
 
     // 3. Inverse trig on [-1, 1]: plain numbers, as angles in rad.

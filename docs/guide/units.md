@@ -16,24 +16,27 @@ using namespace beman::inside;
 using namespace beman::inside::units;
 
 constexpr auto km = si::kilo(si::metre);
-quantity<km, inside<{{0, 500}, per<1000>}>> leg{12.5};   // 12.5 km, to the metre
-auto total = leg + just<800> * si::metre;                // 13300 m, exact
-auto speed = total / quantity<si::minute, inside<{1, 600}>>{20};
-std::cout << speed.in(km / si::hour);                    // 39.9 km/h
+quantity<km, inside<{{0, 500}, per<1000>}>> leg{12.5, km};   // 12.5 km, to the metre
+auto total = leg + just<800> * si::metre;                    // 13300 m, exact
+auto speed = total / quantity<si::minute, inside<{1, 600}>>{20, si::minute};
+std::cout << speed.in(km / si::hour);                        // 39.9 km/h
 ```
 
 ## Making a quantity
 
 A quantity is `quantity<Unit, Number>`, and the number is always an inside.
-There are two ways to make one:
+A number goes in with its unit named, where the value is written:
 
 ```cpp
-quantity<si::metre, inside<{0, 100}>> d{42};   // a number in the quantity's unit
-auto c = just<800> * si::metre;                // a constant: a one-point inside times a unit
+quantity<si::metre, inside<{0, 100}>> d{42, si::metre};   // a number and its unit
+auto c = just<800> * si::metre;                           // a constant: a one-point inside times a unit
 ```
 
-A plain number has no grid, so `42 * si::metre` and `d * 2` do not compile;
-the error message says to write `just<42>` and `just<2>`.
+`d{42}` names no unit and does not compile. Neither does `42 * si::metre`,
+since a plain number has no grid, nor does `d * 2`. The error messages say
+what to write: `d{42, si::metre}`, `just<42>` and `just<2>`. An inside in
+another unit of the same quantity converts exactly first. A number comes out
+with its unit named too: `d.numerical_value_in(si::metre)`.
 
 Units combine with `*` and `/` (`km / si::hour`), take prefixes
 (`si::milli(si::second)`) and powers (`square(si::metre)`). The catalog has
@@ -49,9 +52,9 @@ the stored integer stays, so the conversion is **exact and free**: km → mm on
 | Write | Gives |
 |---|---|
 | `q.in(u)` | the same quantity in unit `u`, exactly |
-| `q.numerical_value()`, `q.numerical_value_in(u)` | the number, an inside |
+| `q.numerical_value_in(u)` | the number in unit `u`, an inside |
 | `value_cast<Number>(q)` | the quantity on another number type, rounded by it |
-| `Q{q, clamp}`, `Q::try_make(v)`, `checked_cast<Q>(q)` | the stores of [Policies](policies.md), on quantities |
+| `Q{q, clamp}`, `Q{v, u, clamp}`, `Q::try_make(v, u)`, `checked_cast<Q>(q)` | the stores of [Policies](policies.md), on quantities |
 
 A conversion that would not be exact does not compile: degrees to radians
 multiply by π, which no grid holds. Round it once with
@@ -157,8 +160,8 @@ number's, and the stores, hooks, `mul<C>`, `sum`, `parse` and the math take
 quantities in any unit of the right kind, converted exactly first:
 
 ```cpp
-quantity<si::second, inside<{0, 60, bounds::half_open}, wrap>> s{50};
-quantity<si::minute, inside<{0, 60, bounds::half_open}, wrap>> m{0};
+quantity<si::second, inside<{0, 60, bounds::half_open}, wrap>> s{50, si::second};
+quantity<si::minute, inside<{0, 60, bounds::half_open}, wrap>> m{0, si::minute};
 s.on_wrap([&](auto&, auto carry) { m += carry * si::minute; }) += just<2> * si::minute;
 // s == 50 s (170 s folds to 50 s), m == 2 min
 ```
@@ -167,7 +170,7 @@ s.on_wrap([&](auto&, auto carry) { m += carry * si::minute; }) += just<2> * si::
 
 A quantity of dimension one is a number: (3 km) / (2 m) converts to an
 inside holding 1500, and 8 % is 2/25. An angle is the exception: radians are
-a kind of their own, so read an angle's number with `numerical_value()`.
+a kind of their own, so read an angle's number with `numerical_value_in(si::radian)`.
 
 ## Text
 

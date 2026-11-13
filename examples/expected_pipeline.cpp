@@ -27,7 +27,7 @@ using reading = quantity<si::volt, inside<{{just<-1, 10>, just<1, 10>}, per<1'00
 using gain    = inside<{{0, 10}, per<100>}>;                                          // 0 is possible: a dead channel
 using volts   = quantity<si::volt, inside<{{-1, 1}, per<1'000'000>}, round_nearest>>; // the result, 1 µV
 
-constexpr reading offset{just<1, 4000>}; // 0.25 mV
+constexpr reading offset{just<1, 4000> * si::volt}; // 0.25 mV
 
 // One sample: a reading and the channel's gain, both as text.
 std::expected<volts, errc> calibrate(std::string_view r, std::string_view g) {
@@ -64,20 +64,22 @@ int main() {
     // or_else supplies a fallback for one cause and passes the rest on.
     const auto fallback = calibrate("0.0125", "0").or_else([](errc e) -> std::expected<volts, errc> {
         if (e == errc::division_by_zero)
-            return volts{0};
+            return volts{0, si::volt};
         return std::unexpected(e);
     });
     std::cout << "dead channel with fallback -> " << *fallback << "\n";
 
     // The lift operators chain without and_then: an expected operand makes the
     // whole expression an expected, and the first error wins.
-    const auto chained = (reading{just<1, 100>} - offset) / gain{0} * just<2> + reading{just<1, 1000>};
+    const auto chained =
+        (reading{just<1, 100> * si::volt} - offset) / gain{0} * just<2> + reading{just<1, 1000> * si::volt};
     std::cout << "chained -> " << errc_message(chained.error()) << "\n";
 
     // A gain that cannot be 0 makes the division total: a plain value.
     using live_gain   = inside<{{0.5, 10}, per<100>}>;
-    const auto always = (reading{just<1, 100>} - offset) / live_gain{2};
+    const auto always = (reading{just<1, 100> * si::volt} - offset) / live_gain{2};
     static_assert(quantity_like<decltype(always)>);
     std::cout << "zero-free gain -> " << always << "\n";
-    return fallback && *fallback == volts{0} && !chained && chained.error() == errc::division_by_zero ? 0 : 1;
+    return fallback && *fallback == volts{0, si::volt} && !chained && chained.error() == errc::division_by_zero ? 0
+                                                                                                                : 1;
 }

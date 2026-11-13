@@ -35,7 +35,7 @@ using seq_t = quantity<pkt, inside<{0, 65535}, wrap>>;
 using epoch_t = clamp_counter<1000>;
 
 int main() {
-    seq_t   seq{65500};
+    seq_t   seq{65500, pkt};
     epoch_t epoch{0};
 
     // A quantity delta (`_ins` times pkt): `seq += window` wraps, and the
@@ -64,7 +64,7 @@ int main() {
     // zero, so the result is plain, not an expected: the lap a number, the
     // slot in packets.
     std::cout << "\nslot assignment (seq / 256, seq % 256):\n";
-    seq_t s{65500};
+    seq_t s{65500, pkt};
     for (int i = 0; i < 6; ++i) {
         s += window;
         const auto [lap, slot] = divmod(s, 256_ins * pkt, round_toward_zero);

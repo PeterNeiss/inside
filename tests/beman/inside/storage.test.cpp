@@ -358,8 +358,8 @@ TEST(DefaultValueTest, rational_is_zero_and_compares_values) {
 
 TEST(DefaultValueTest, quantity) {
     using namespace beman::inside::units;
-    static_assert(quantity<si::metre, inside<{5, 100}>>{}.numerical_value() == 5_ins);
-    static_assert(quantity<si::metre, inside<{-5, 100}>>{}.numerical_value() == 0_ins);
+    static_assert(quantity<si::metre, inside<{5, 100}>>{}.numerical_value_in(si::metre) == 5_ins);
+    static_assert(quantity<si::metre, inside<{-5, 100}>>{}.numerical_value_in(si::metre) == 0_ins);
 }
 } // namespace default_value_tests
 

@@ -9,6 +9,6 @@ int main() {
     using namespace beman::inside::units;
     using area_t = quantity<square(si::metre), inside<{0, 100}>>;
     using km_t   = quantity<si::kilo(si::metre), inside<{{0, 1}, per<1000>}, round_nearest>>;
-    auto l       = math::sqrt<km_t>(area_t{4});
+    auto l       = math::sqrt<km_t>(area_t{4, square(si::metre)});
     (void)l;
 }

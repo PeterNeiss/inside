@@ -56,7 +56,7 @@ int main() {
 
     // 2. wrap: a heading in [0°, 360°), whole degrees.
     using heading_t = quantity<si::degree, inside<{0, 360, bounds::half_open}, wrap>>;
-    heading_t heading{350};
+    heading_t heading{350, si::degree};
     heading += 30_ins * si::degree;  // 20°
     heading += -90_ins * si::degree; // 290°
     heading += 360_ins * si::degree; // a full turn: 290°

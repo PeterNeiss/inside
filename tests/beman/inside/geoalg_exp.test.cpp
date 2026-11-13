@@ -64,7 +64,7 @@ long double ld(const rational& r) { return static_cast<long double>(r.Num) / sta
 template <class P>
 long double coef(const P& p) {
     if constexpr (quantity_like<P>)
-        return ld(static_cast<rational>(p.numerical_value()));
+        return ld(static_cast<rational>(p.numerical_value_in(unit_t<P::unit>{})));
     else
         return ld(static_cast<rational>(p));
 }
@@ -234,7 +234,7 @@ TEST(GeoalgExpTest, exact_cases_and_constant_evaluation) {
     // spelling (j = -e₁e₃) gets its sign.
     using qdom   = quantity<j, I>;
     using qcod   = multivector<O, quantity<i, O>, quantity<j, O>>;
-    const qcod q = math::exp<qcod>(qdom{I{rational{1, 2}}});
+    const qcod q = math::exp<qcod>(qdom{I{rational{1, 2}}, j});
     EXPECT_TRUE(std::get<1>(q.parts()) == just<0> * i);
     EXPECT_NEAR(static_cast<double>(coef(std::get<2>(q.parts()))), std::sin(0.5), 1e-6);
 }
@@ -270,10 +270,11 @@ TEST(GeoalgExpTest, the_deduced_output) {
     static_assert(upper_of<std::tuple_element_t<0, C::parts_type>> >= 54 &&
                   upper_of<std::tuple_element_t<0, C::parts_type>> < 55); // e^4 = 54.598…
     // A boost (hyperbolic) and a dual number deduce too.
-    EXPECT_NEAR(static_cast<double>(coef(std::get<0>(math::exp<per<1 << 20>>(quantity<g0 * g1, I>{1}).parts()))),
-                std::cosh(1.0),
-                1e-6);
-    EXPECT_EQ(coef(std::get<1>(math::exp<per<64>>(quantity<eps, I>{3}).parts())), 3); // e^(3ε) = 1 + 3ε
+    EXPECT_NEAR(
+        static_cast<double>(coef(std::get<0>(math::exp<per<1 << 20>>(quantity<g0 * g1, I>{1, g0 * g1}).parts()))),
+        std::cosh(1.0),
+        1e-6);
+    EXPECT_EQ(coef(std::get<1>(math::exp<per<64>>(quantity<eps, I>{3, eps}).parts())), 3); // e^(3ε) = 1 + 3ε
 }
 
 // A deleted overload is visible only through a template: a non-template
@@ -329,7 +330,8 @@ TEST(GeoalgExpTest, fast_path_equals_the_integer_path) {
             const cod s        = math::exp<cod>(x);
             driver.IntegerOnly = false;
             bad += !(std::get<0>(f.parts()).raw() == std::get<0>(s.parts()).raw() &&
-                     std::get<1>(f.parts()).numerical_value().raw() == std::get<1>(s.parts()).numerical_value().raw());
+                     std::get<1>(f.parts()).numerical_value_in(i).raw() ==
+                         std::get<1>(s.parts()).numerical_value_in(i).raw());
         }
     EXPECT_EQ(bad, 0);
     using J    = inside<{{-4, 4}, per<4>}, round_nearest>;

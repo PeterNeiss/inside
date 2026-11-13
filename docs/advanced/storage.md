@@ -159,9 +159,9 @@ The raw is private. The supported ways in and out:
   compile, because the library relies on the raw always being a valid point.
 
 A quantity stores its number and nothing else, so `sizeof(q)` is the size of
-its inside; read its raw with `q.numerical_value().raw()`. A unit conversion
-keeps the raw: km → mm on `inside<{0, 10}>` is the same `uint8_t`, read on a
-rescaled grid.
+its inside; read its raw in its own unit `u` with
+`q.numerical_value_in(u).raw()`. A unit conversion keeps the raw: km → mm on
+`inside<{0, 10}>` is the same `uint8_t`, read on a rescaled grid.
 
 ## Why no representation flags
 

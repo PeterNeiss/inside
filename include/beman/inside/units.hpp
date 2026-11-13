@@ -2,11 +2,12 @@
 // Opt-in: physical units and quantity kinds on inside — the main features of
 // mp-units with an inside as the only representation.
 //
-//   quantity<si::metre, inside<{0, 10}>> d{7};      // 7 m
-//   auto k = just<5> * si::kilo(si::metre);         // 5 km, a point grid
-//   auto s = k + d;                                 // 5007 m, exact
-//   auto v = d.in(si::milli(si::metre));            // 7000 mm, the same raw
-//   quantity<isq::height[si::metre], H> h{…};       // a quantity kind
+//   quantity<si::metre, inside<{0, 10}>> d{7, si::metre};   // 7 m: a number and its unit
+//   auto k = just<5> * si::kilo(si::metre);                 // 5 km, a point grid
+//   auto s = k + d;                                         // 5007 m, exact
+//   auto v = d.in(si::milli(si::metre));                    // 7000 mm, the same raw
+//   d.numerical_value_in(si::metre);                        // 7: read in a named unit
+//   quantity<isq::height[si::metre], H> h{…};               // a quantity kind
 //
 // A unit conversion is a grid rescale: km → m multiplies the interval and
 // notch by 1000 and keeps the raw, so it is exact, total and free. A sum of
@@ -29,9 +30,9 @@
 //   base_dimension, unit_c / spec_c / origin_c   dimensions of your own
 //   basis_vector                                 a basis vector of a geometric
 //                                                algebra: you state its square
-//   q.on_wrap / on_clamp / on_error, ++q, Q::try_make
+//   q.on_wrap / on_clamp / on_error, ++q, Q::try_make(v, u)
 //   mul<C>, div<C>, add_all, mul_all, sum<Q>, divmod,
-//   conversion_overflows / rounds / loses<Q>, Q{x, clamp} / Q{x, wrap},
+//   conversion_overflows / rounds / loses<Q>(v, u), Q{v, u, clamp} / Q{q, wrap},
 //   dot, cross, lerp                             inside's algorithms
 //   percent, per_mille                           dimensionless units
 // The catalog: isq, si, si2019, international. The derived physical

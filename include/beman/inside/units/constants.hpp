@@ -98,7 +98,7 @@ inline constexpr auto vacuum_electric_permittivity       = unit_c<codata2022_def
 //---------------------------------------------------------------------------
 namespace detail {
 template <reference R>
-inline constexpr quantity<R, std::remove_cvref_t<decltype(just<1>)>> one_of{just<1>};
+inline constexpr auto one_of = quantity_access::make<quantity<R, std::remove_cvref_t<decltype(just<1>)>>>(just<1>);
 } // namespace detail
 
 namespace constants {

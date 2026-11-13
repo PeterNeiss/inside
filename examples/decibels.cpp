@@ -64,12 +64,12 @@ int main() {
     // The canonical "6 dB doubles" / "12 dB quadruples" landmarks.
     println("\nLandmark conversions (within db_t's [-24, 12] range):");
     for (int d : {-24, -12, -6, 0, 6, 12}) {
-        db_t   db{d};
+        db_t   db{d, dB};
         gain_t lin = db_to_linear(db);
         println("    {}  =  {}", db, lin);
     }
     // Levels add; −6 dB is close to half the amplitude.
-    if (db_t{-6} + just<3> * dB != db_t{-3} || db_to_linear(db_t{-6}) != just<32846, (1 << 16)>)
+    if (db_t{-6, dB} + just<3> * dB != db_t{-3, dB} || db_to_linear(db_t{-6, dB}) != just<32846, (1 << 16)>)
         return 1;
 
     return 0;

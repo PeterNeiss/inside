@@ -209,11 +209,10 @@ using namespace beman::inside::units;
 inline constexpr named_unit slot_def{"slot", mag<rational{1, 32768}> * mag_pi * si::radian};
 inline constexpr auto       slot = unit_c<slot_def>;           // 2π/65536 rad
 
-quantity<slot, inside<{0, 65535}, wrap>> phase{0};             // wraps at exactly one turn
-phase += quantity<slot, inside<{0, 65535}>>{16384};            // a quarter turn
+quantity<slot, inside<{0, 65535}, wrap>> phase{0, slot};       // wraps at exactly one turn
+phase += just<16384> * slot;                                   // a quarter turn
 math::sin<per<(1 << 14)>>(phase);                              // exactly 1
-math::cos<per<(1 << 14)>, round_floor>(
-    quantity<si::degree, inside<{0, 360}>>{120});              // exactly −1/2, even under round_floor
+math::cos<per<(1 << 14)>, round_floor>(just<120> * si::degree); // exactly −1/2, even under round_floor
 ```
 
 [`oscillator.cpp`](../../examples/oscillator.cpp) runs a phase counter this

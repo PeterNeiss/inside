@@ -106,7 +106,7 @@ auto body = point<si::degree_Celsius>(celsius{37});
 auto diff = body - room;                                     // 15.5 ℃, a temperature difference
 
 constexpr auto km = si::kilo(si::metre);
-quantity<km, inside<{0, 10}>> d{7};
+quantity<km, inside<{0, 10}>> d{7, km};
 auto mm = d.in(si::milli(si::metre));                        // 7000000 mm: the same uint8_t raw
 ```
 

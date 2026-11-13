@@ -35,12 +35,12 @@ struct clock24 {
     using minute_t = quantity<si::minute, inside<{0, 60, bounds::half_open}, wrap>>;
     using second_t = quantity<si::second, inside<{0, 60, bounds::half_open}, wrap>>;
 
-    hour_t   hours{0};
-    minute_t minutes{0};
-    second_t seconds{0};
+    hour_t   hours{0, si::hour};
+    minute_t minutes{0, si::minute};
+    second_t seconds{0, si::second};
 
     clock24() = default;
-    clock24(int h, int m, int s) : hours(h), minutes(m), seconds(s) {}
+    clock24(int h, int m, int s) : hours(h, si::hour), minutes(m, si::minute), seconds(s, si::second) {}
 
     // Each field takes any duration: += converts it exactly (90 min is
     // 5400 s), and a wrap past 60 s hands its count of periods on as minutes.
@@ -89,9 +89,9 @@ struct clock24 {
 
 // Days 1–30, months 1–12; the year takes the final carry.
 struct date {
-    quantity<si::day, inside<{1, 30}, wrap>> day{1};
-    quantity<month, inside<{1, 12}, wrap>>   months{1};
-    quantity<year, inside<{1900, 2200}>>     years{2000};
+    quantity<si::day, inside<{1, 30}, wrap>> day{1, si::day};
+    quantity<month, inside<{1, 12}, wrap>>   months{1, month};
+    quantity<year, inside<{1900, 2200}>>     years{2000, year};
 
     void add_days(const auto& d) {
         day.on_wrap([&](auto&, auto carry) { add_months(carry * month); }) += d;
@@ -155,7 +155,7 @@ int main() {
     // Weeks and day of the week from one division: a week's grid excludes 0,
     // so divmod cannot fail.
     using ordinal_t         = quantity<si::day, inside<{0, 1'000'000}, round_toward_zero>>;
-    const auto [weeks, dow] = divmod(ordinal_t{14003}, just<1> * week);
+    const auto [weeks, dow] = divmod(ordinal_t{14003, si::day}, just<1> * week);
     std::cout << "day 14003 is " << weeks << " weeks + " << dow << " (0 d = the reference day's weekday)\n";
     if (weeks != 2000 || dow != just<3> * si::day)
         return 1;

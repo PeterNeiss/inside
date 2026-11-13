@@ -28,7 +28,7 @@ int main() {
     // 1. Start at Saturn's distance and add a million legs of 1000.000000001 km
     //    (the 1 nm is what a double cannot keep at this scale). Each += is a
     //    raw add of two 64-bit limbs.
-    const metres start{1'433'000'000'000};
+    const metres start{1'433'000'000'000, si::metre};
     const leg    step = just<1000> * si::kilo(si::metre) + just<1> * si::nano(si::metre); // 1e6 m + 1 nm
     metres       x    = start;
     double       xd   = 1.433e12;
@@ -44,7 +44,7 @@ int main() {
 
     // 2. Distance to a point 3·10^12 m east and 4·10^12 m north: exactly
     //    5·10^12 m, and hypot returns exactly that.
-    const metres east{3'000'000'000'000}, north{4'000'000'000'000};
+    const metres east{3'000'000'000'000, si::metre}, north{4'000'000'000'000, si::metre};
     const auto   d = math::hypot<per<1000>>(east, north); // to 1 mm
     std::cout << "hypot   " << d << "\n";
     if (d != just<5'000'000'000'000> * si::metre)

@@ -16,5 +16,5 @@ int main() {
     using I           = inside<{{-1, 1}, per<64>}, round_nearest>;
     using dom         = quantity<si::metre * e1 * e2, I>;
     using cod         = multivector<I, quantity<e1 * e2, I>>;
-    (void)math::exp<cod>(dom{I{1}});
+    (void)math::exp<cod>(dom{I{1}, si::metre * e1 * e2});
 }

@@ -300,7 +300,7 @@ inline constexpr bool is_zero_multivector_v = std::same_as<std::remove_cvref_t<X
 template <class P>
 constexpr bool part_is_zero(const P& p) {
     if constexpr (quantity_like<P>)
-        return p.numerical_value() == just<0>;
+        return units::detail::value_of(p) == just<0>;
     else
         return p == just<0>;
 }
@@ -419,7 +419,7 @@ consteval bool part_from() {
     if constexpr (from >= 0)
         return std::constructible_from<T, const std::tuple_element_t<from, PX>&, const Pol&...>;
     else
-        return std::constructible_from<T, decltype(just<0>), const Pol&...>;
+        return std::constructible_from<typename part_number<T>::type, decltype(just<0>), const Pol&...>;
 }
 template <class T, class PX>
 consteval bool part_from_implicitly() {
@@ -444,7 +444,7 @@ constexpr auto part_in(const P& p) {
     if constexpr (quantity_like<P>)
         return p.template in<unit_mul(U, blade_atoms(P::reference.U), 1)>();
     else
-        return quantity<reference_of(unit{}), P>{p}.template in<U>();
+        return quantity_access::make<quantity<reference_of(unit{}), P>>(p).template in<U>();
 }
 template <unit U, class P>
 concept part_in_unit = requires(const P& p) { part_in<U>(p); };
@@ -472,7 +472,7 @@ consteval unit unit_of_part() {
 template <class P>
 constexpr const auto& number_of_part(const P& p) {
     if constexpr (quantity_like<P>)
-        return p.numerical_value();
+        return units::detail::value_of(p);
     else
         return p;
 }
@@ -528,7 +528,7 @@ class multivector {
                 if constexpr (from >= 0)
                     return T(std::get<from>(px), pol...);
                 else
-                    return T(just<0>, pol...);
+                    return detail::part_of_number<T>(just<0>, pol...);
             }()...};
         }(std::make_index_sequence<sizeof...(Parts)>{});
     }
@@ -557,11 +557,15 @@ class multivector {
 
     constexpr multivector() = default;
 
-    // From its parts, in order: multivector<inside<…>, quantity<i, …>>{3, 4}.
+    // From its parts, in order: multivector<inside<…>, quantity<i, …>>{3,
+    // just<4> * i}. A blade's part is a quantity.
     template <class... A>
         requires(sizeof...(A) == sizeof...(Parts) && (std::constructible_from<Parts, A> && ...))
     constexpr explicit(!(std::convertible_to<A, Parts> && ...)) multivector(A&&... a)
         : P{Parts(std::forward<A>(a))...} {}
+    template <class... A>
+        requires(sizeof...(A) == sizeof...(Parts)) && (detail::bare_number_for<Parts, A> || ...)
+    multivector(A&&...) = delete ("units: a blade's part is a quantity - write {3, just<4> * i}, not {3, 4}");
 
     // From any element whose blades are among these; the parts it lacks are
     // 0. Implicit when each part converts implicitly.

@@ -52,7 +52,7 @@ static gain_t db_to_linear(db_t db) { return math::pow_base<10, gain_t>(db / (ju
 int main() {
     // Four channels — pre-gain levels: vocals hot, drums normal, bass quiet,
     // pad ducked.
-    db_t level[4] = {db_t{2.5}, db_t{0.0}, db_t{-6.0}, db_t{-12.0}};
+    db_t level[4] = {db_t{2.5, dB}, db_t{0.0, dB}, db_t{-6.0, dB}, db_t{-12.0, dB}};
 
     // Hoist the per-channel gain computation out of the per-sample loop: the
     // linear gain (pow_base<10>) is constant across the buffer.
@@ -71,7 +71,7 @@ int main() {
 
     constexpr auto     tone       = just<1> * si::hertz; // one cycle over the 1 s buffer
     constexpr offset_t offsets[4] = {
-        offset_t{0},
+        offset_t{0, turn},
         just<1, 8> * turn,  // +π/4
         just<-1, 6> * turn, // -π/3
         just<-1, 4> * turn  // -π/2

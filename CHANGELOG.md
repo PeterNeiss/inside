@@ -8,6 +8,25 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Upgrading
 
+- A number goes into and out of a quantity with its unit named, where it
+  happens. Every form that took a bare number in Q's unit names the unit, or
+  takes a quantity:
+
+  | Before | Now |
+  |---|---|
+  | `Q{42}`, `Q q{v}` | `Q{42, si::metre}`, or `just<42> * si::metre` |
+  | `Q{v, clamp}` | `Q{v, si::metre, clamp}`; `Q{q, clamp}` of a quantity is unchanged |
+  | `q.numerical_value()` | `q.numerical_value_in(si::metre)` |
+  | `Q::try_make(v)` | `Q::try_make(v, si::metre)` |
+  | `checked_cast<Q>(v)` | `checked_cast<Q>(q)` of a quantity, or `Q::try_make(v, si::metre)` |
+  | `conversion_overflows<Q>(v)`, `conversion_rounds`, `conversion_loses` | `conversion_overflows<Q>(v, si::metre)` |
+  | `multivector<I, quantity<i, I>>{3, 4}` | `{3, just<4> * i}`: a blade's part is a quantity |
+
+  Unit one is no exception (`{42, one}`). An inside in another unit of the
+  quantity converts exactly first (`Q{n, si::kilo(si::metre)}`); a raw number
+  in another unit does not compile. Each old form is a deleted overload whose
+  message names the new one.
+
 - Every math function has one call shape, and no `_into` name is left. The
   output is deduced unless the call names what it chooses:
 

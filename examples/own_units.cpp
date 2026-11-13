@@ -59,7 +59,7 @@ concept addable = requires(const A& a, const B& b) { a + b; };
 
 int main() {
     // 1. A depth of 12 fathoms is 21.9456 m; a kilofathom is 1828.8 m.
-    const quantity<depth[fathom], inside<{0, 100}>> sounding{12};
+    const quantity<depth[fathom], inside<{0, 100}>> sounding{12, depth[fathom]};
     std::cout << "sounding   " << sounding << " = " << sounding.in(si::metre) << '\n';
     if (to_string(sounding.in(si::metre)) != "21.9456 m" ||
         to_string((just<1> * si::kilo(fathom)).in(si::metre)) != "1828.8 m")
@@ -77,8 +77,8 @@ int main() {
 
     // 3. 1.25 kg of coffee at 3.99 EUR/kg is 4.9875 EUR, exactly; with a 50 ct
     //    tip the sum runs in cents.
-    const quantity<euro / si::kilogram, inside<{{0, 100}, per<100>}>> price{just<399, 100>};
-    const quantity<si::kilogram, inside<{{0, 10}, per<1000>}>>        coffee{just<1250, 1000>};
+    const quantity<euro / si::kilogram, inside<{{0, 100}, per<100>}>> price{just<399, 100> * (euro / si::kilogram)};
+    const quantity<si::kilogram, inside<{{0, 10}, per<1000>}>>        coffee{just<1250, 1000> * si::kilogram};
     const auto                                                        cost = price * coffee;
     const auto                                                        paid = cost + just<50> * cent;
     std::cout << "coffee     " << cost << ", with tip " << paid << '\n';
@@ -88,8 +88,8 @@ int main() {
     static_assert(!addable<decltype(cost), decltype(just<1> * si::metre)>);
 
     // 4. 64 KiB over 1 Mbit/s takes 64·1024·8 / 10^6 s = 0.524288 s.
-    const quantity<kibibyte, inside<{0, 1024}>>                  file{64};
-    const quantity<si::mega(bit) / si::second, inside<{1, 100}>> link{1};
+    const quantity<kibibyte, inside<{0, 1024}>>                  file{64, kibibyte};
+    const quantity<si::mega(bit) / si::second, inside<{1, 100}>> link{1, si::mega(bit) / si::second};
     const auto                                                   time = (file / link).in(si::second);
     std::cout << "transfer   " << file << " at " << link << " takes " << time << '\n';
     if (to_string(time) != "0.524288 s" || to_string(file.in(bit)) != "524288 bit")

@@ -26,8 +26,14 @@ names you write (`si::metre`, `isq::height`) are empty tags whose type carries
 the value. `si::metre * si::second / si::second` is `si::metre`, and m·s is
 the same unit as s·m.
 
-The number is always an inside. A raw scalar has no grid, so `42 * si::metre`
-and `q * 2` do not compile, and the message says to write `just<42>`.
+The number is always an inside, and it goes in and out with its unit named:
+`Q{42, si::metre}` and `q.numerical_value_in(si::metre)`, so the unit is
+visible wherever a number becomes a quantity or a quantity a number. An
+inside in another unit of the quantity converts exactly first,
+`Q{n, si::kilo(si::metre)}`; a raw number in another unit has no grid to
+rescale. `Q{42}` and `q.numerical_value()` name no unit and do not compile. A
+raw scalar has no grid either, so `42 * si::metre` and `q * 2` do not compile,
+and the message says to write `just<42>`.
 
 An operation that cannot happen is a constraint failure: `requires { a + b; }`
 is false for a length and a duration, for Hz and Bq, for `q * 2`, for
@@ -46,7 +52,7 @@ inch → mm is ×25.4. All exact. The rescaled number keeps its policy.
 | Function | Gives |
 |---|---|
 | `q.in(u)`, `q.in<u>()` | the same quantity in unit `u`, exact |
-| `q.numerical_value()`, `q.numerical_value_in(u)` | the inside |
+| `q.numerical_value_in(u)` | the inside, in unit `u` (the stored one in q's own unit) |
 | `value_cast<Rep2>(q)`, `try_value_cast<Rep2, F>(q)` | another number type, through Rep2's constructor or `try_make<F>` |
 | `value_cast<u, Rep2>(q)`, `try_value_cast<u, Rep2, F>(q)` | in unit `u`, into Rep2 |
 | `value_cast<Q>(q)`, `try_value_cast<Q, F>(q)` | into the quantity type Q, whose spec must take q's |
@@ -80,7 +86,7 @@ does, explicitly when the target must round. The number is its value in unit
 one: (21 kg) / (6 kg) is 3.5, (3 km) / (2 m) is 1500, and 8 % is 2/25;
 `q.as<T>()` and `q.to<T>()` read it as a built-in, as on an inside. An angle
 stays a quantity: radians and steradians are `is_kind` quantities, and so is
-a π-scaled ratio; read their number with `numerical_value()`. A dimensionless
+a π-scaled ratio; read their number with `numerical_value_in(u)`. A dimensionless
 kind of your own works the same way: a level in dB is no plain number, but
 L / (20 dB) is one.
 
@@ -238,9 +244,10 @@ the numbers, so it still rounds once and checks once.
 |---|---|
 | `q.on_wrap(f) += d`, `on_clamp`, `on_error` | a store with a hook: `d` is a quantity, converted as `+=` does; `f` gets the quantity, then the carry (a count of periods), the overshoot (a quantity in Q's unit) or the errc |
 | `q.policy<F>() = d`, `q.policy(ec) += d` | a store under the number's policy plus `F`, or setting `ec` instead of raising; `=`, `+=` and `-=` take quantities, `*=` and `/=` numbers |
-| `Q{x, clamp \| Round}`, `Q{x, wrap}` | a number in Q's unit, or a quantity converted to it first |
-| `checked_cast<Q>(x)` | the same, stored exactly or reported |
-| `Q::try_make<F>(v)` | the number's `try_make`, of a number in Q's unit |
+| `Q{q, clamp \| Round}`, `Q{q, wrap}` | a quantity, converted to Q's unit exactly first |
+| `Q{v, u, clamp}` | a number `v` in unit `u`, as `Q{v, u}` takes it |
+| `checked_cast<Q>(q)` | a quantity, stored exactly or reported |
+| `Q::try_make<F>(v, u)` | the number's `try_make` of `v` in unit `u` |
 | `min(a, b)`, `max(a, b)`, `midpoint(a, b)` | in the common unit, as `+`; `midpoint` is exact |
 | `q.as<T>()`, `q.to<T>()` | a dimensionless quantity's number as a built-in |
 | `++q`, `q--` | one notch of the number up or down, under its policy |
@@ -250,13 +257,13 @@ the numbers, so it still rounds once and checks once.
 | `divmod(a, b, args…)` | in the common unit: the quotient a number, the remainder a quantity |
 | `dot`, `cross`, `lerp` | on quantity components: `dot` of two px vectors is px²; `lerp`'s t is a number |
 | `units::parse<Q, F>(text)`, `units::parse_exact<Q>(text)` | the number, read in Q's unit |
-| `conversion_overflows<Q>(v)`, `conversion_rounds<Q>`, `conversion_loses<Q>` | a number in Q's unit against Q's grid |
+| `conversion_overflows<Q>(v, u)`, `conversion_rounds<Q>`, `conversion_loses<Q>` | a number `v` in unit `u` against Q's grid |
 | `values<Q>`, `cursor<Q, Step>` | the number's grid, as quantities; `Step` is a number in Q's unit |
 | `units::uniform<Q>(rng)` | units/random.hpp: a number drawn from Q's grid, in Q's unit |
 | `std::hash<Q>`, `std::numeric_limits<Q>` | the number's, with the limits as quantities |
 
 ```cpp
-quantity<si::second, inside<{0, 86399}>> t{3725};
+quantity<si::second, inside<{0, 86399}>> t{3725, si::second};
 auto [h, rest] = divmod(t, just<1> * si::hour);   // 1, 125 s: the remainder keeps its unit
 ```
 
@@ -302,13 +309,13 @@ translation units (best of three). On the maintainer's machine:
 
 | Compiler | inside | units.hpp | 200 inside expressions | as quantities |
 |---|---:|---:|---:|---:|
-| GCC 16, C++26 | 0.53 s | 0.72 s | 4.16 s | 5.83 s |
+| GCC 16, C++26 | 0.57 s | 0.87 s | 4.56 s | 6.85 s |
 
-The header adds about 0.2 s; printing (`units/io.hpp`, through
+The header adds about 0.3 s; printing (`units/io.hpp`, through
 `inside/io.hpp`) adds another 0.4 s. Units of your own need only
-`units/core.hpp`, without the catalog, which saves about 0.14 s of it. Each of
+`units/core.hpp`, without the catalog, which saves about 0.16 s of it. Each of
 the 200 expressions uses its own grid, so most of the time is inside's
-arithmetic on those grids; units add about 7 ms per expression.
+arithmetic on those grids; units add about 11 ms per expression.
 
 ## Differences from mp-units
 
@@ -329,3 +336,6 @@ arithmetic on those grids; units add about 7 ms per expression.
   by factor, and other recipes need `quantity_cast`.
 - inside's policies, hooks and algorithms (`on_wrap`, `sum`, `mul<C>`,
   `parse`) work on quantities.
+- A number names its unit going in and coming out, as in mp-units
+  (`Q{42, si::metre}`, `q.numerical_value_in(si::metre)`), and for unit one
+  too: `quantity<one, …>{42, one}`.

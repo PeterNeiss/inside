@@ -35,8 +35,8 @@ int main() {
     std::cout << "Fixed-frequency oscillator (1/8 turn per sample, 8 samples = 1 cycle):\n";
     std::cout << "  i   sin              cos\n";
     {
-        phase_t           phase{0};
-        constexpr phase_t increment{65536 / 8}; // 1/8 turn per sample
+        phase_t           phase{0, slot};
+        constexpr phase_t increment{65536 / 8, slot}; // 1/8 turn per sample
         int               cycles = 0;
         for (int i = 0; i < 8; ++i) {
             std::cout << "  " << i << "   " << math::sin<per<(1 << 14)>>(phase) << "   "
@@ -48,7 +48,7 @@ int main() {
             return 1;
         // 1/8 turn is 45°: sin and cos both round to 11585/16384.
         if (math::sin<per<(1 << 14)>>(increment) != just<11585, (1 << 14)> ||
-            math::cos<per<(1 << 14)>>(phase_t{65536 / 4}) != 0)
+            math::cos<per<(1 << 14)>>(phase_t{65536 / 4, slot}) != 0)
             return 1;
     }
 
@@ -56,8 +56,8 @@ int main() {
     std::cout << "  i   inc        phase        sin\n";
     {
         using increment_t = quantity<slot, inside<{1, 65535}, round_toward_zero>>; // snap: increment / 4 truncates
-        phase_t     phase{0};
-        increment_t increment{256}; // start at 1/256 turn
+        phase_t     phase{0, slot};
+        increment_t increment{256, slot}; // start at 1/256 turn
         for (int i = 0; i < 12; ++i) {
             std::cout << "  " << i << "   " << increment << "    " << phase << "    "
                       << math::sin<per<(1 << 14)>>(phase) << "\n";

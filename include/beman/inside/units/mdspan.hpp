@@ -34,16 +34,16 @@ struct element_traits<Q> {
     using number = typename Q::rep;
     template <insidable N>
     using rebind = units::quantity<Q::reference, N>;
-    static constexpr const number& number_of(const Q& q) noexcept { return q.numerical_value(); }
-    static constexpr Q             make(const number& n) { return Q{n}; }
+    static constexpr const number& number_of(const Q& q) noexcept { return units::detail::value_of(q); }
+    static constexpr Q             make(const number& n) { return units::detail::quantity_access::make<Q>(n); }
     template <class Rng>
     static constexpr Q total(Rng&& r) {
         using P = std::remove_cvref_t<std::ranges::range_reference_t<Rng>>;
         static_assert(units::quantity_like<P>, "sum: a quantity total of plain numbers - give them a unit");
-        using N = units::detail::rescaled_t<Q::reference, P::reference, number>;
-        const N total =
-            sum<N>(std::forward<Rng>(r) | std::views::transform([](const P& p) { return p.numerical_value(); }));
-        return Q{units::quantity<P::reference, N>{total}};
+        using N       = units::detail::rescaled_t<Q::reference, P::reference, number>;
+        const N total = sum<N>(std::forward<Rng>(r) |
+                               std::views::transform([](const P& p) { return units::detail::value_of(p); }));
+        return Q{units::detail::quantity_access::make<units::quantity<P::reference, N>>(total)};
     }
 };
 } // namespace beman::inside::detail

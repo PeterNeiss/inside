@@ -94,8 +94,9 @@ class quantity_point {
                  detail::shift_forms<detail::origin_shift<O, O2, R.U>(), Rep>)
     [[nodiscard]] constexpr auto quantity_from(origin_t<O2>) const {
         constexpr grid_rational c = detail::origin_shift<O, O2, R.U>();
-        return quantity<R, std::remove_cvref_t<decltype(detail::shift<c>(Q.numerical_value()))>>{
-            detail::shift<c>(Q.numerical_value())};
+        return detail::quantity_access::make<
+            quantity<R, std::remove_cvref_t<decltype(detail::shift<c>(units::detail::value_of(Q)))>>>(
+            detail::shift<c>(units::detail::value_of(Q)));
     }
     template <detail::origin_ref O2>
         requires(!detail::same(detail::absolute_of(O2), detail::absolute_of(O)))
@@ -164,7 +165,7 @@ template <auto U, insidable Rep2, reference R, detail::origin_ref O, class V>
 template <auto U, insidable V>
 [[nodiscard]] constexpr auto point(const V& v) {
     return quantity_point<reference_of(U), detail::origin_of_unit(decltype(U)::value), V>{
-        quantity<reference_of(U), V>{v}};
+        detail::quantity_access::make<quantity<reference_of(U), V>>(v)};
 }
 // delta<si::degree_Celsius>(v) — a difference: a plain quantity.
 template <auto U, insidable V>

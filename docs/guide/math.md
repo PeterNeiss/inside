@@ -132,7 +132,7 @@ at most π/4, is approximated, so exact values come out exact:
 #include <beman/inside/units/math.hpp>
 using namespace beman::inside::units;
 
-quantity<si::degree, inside<{0, 360}>> deg{120};
+quantity<si::degree, inside<{0, 360}>> deg{120, si::degree};
 math::cos<per<(1 << 14)>, round_floor>(deg);   // exactly −1/2, even rounding down
 ```
 

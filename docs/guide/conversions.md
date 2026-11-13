@@ -120,7 +120,8 @@ It reads every form `to_string` prints: `-1'000`, `1.25`, `1.5e2`, `0xff`,
 ## Quantities
 
 A quantity converts like its number, with the unit spelled out: `q.in(u)`
-changes the unit exactly, `q.numerical_value()` gives the inside, and text
+changes the unit exactly, `q.numerical_value_in(u)` gives the inside in unit
+`u`, and text
 prints the number and the unit (`5 km`). See [Units](units.md#conversions).
 
 ## Details

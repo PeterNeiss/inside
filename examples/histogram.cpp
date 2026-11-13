@@ -60,14 +60,14 @@ int main() {
     clamp_counter<1'000'000> lossy{0};
 
     for (double s : samples) {
-        if (conversion_overflows<latency_t>(s)) {
+        if (conversion_overflows<latency_t>(s, ms)) {
             ++rejected;
             continue;
         }
-        if (conversion_loses<latency_t>(s))
+        if (conversion_loses<latency_t>(s, ms))
             ++lossy; // accept but flag
 
-        const latency_t lat{s};
+        const latency_t lat{s, ms};
         // bin index = floor(lat / 10 ms), a plain number. div<Out> rounds by
         // `bin_index_t`'s `round_floor` (9.55 floors to 9 before the range check);
         // `clamp` folds 100 ms, whose quotient 10 floors to 10, into the last bin.

@@ -124,7 +124,7 @@ converts back exactly:
 
 ```cpp
 using km = quantity<si::kilo(si::metre), inside<{0, 10}>>;
-std::array<km, 2> legs{km{1}, km{3}};
+std::array<km, 2> legs{km{1, si::kilo(si::metre)}, km{3, si::kilo(si::metre)}};
 auto mm = units::view_in(std::mdspan{legs.data(), std::extents<std::size_t, 2>{}}, si::milli(si::metre));
 // mm[0].get() is 1000000 mm; the storage is still one byte per leg
 ```

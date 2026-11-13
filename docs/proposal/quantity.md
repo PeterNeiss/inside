@@ -76,13 +76,13 @@ exact.**
 <!-- listing: rescale -->
 ```cpp
 constexpr auto km = si::kilo(si::metre);
-quantity<km, inside<{{0, 500}, per<1000>}>> trip{12.5};    // 12.5 km, to the metre
-auto m = trip.in(si::metre);                               // 12500 m: the same raw, grid × 1000
+quantity<km, inside<{{0, 500}, per<1000>}>> trip{12.5, km};    // 12.5 km, to the metre
+auto m = trip.in(si::metre);                                   // 12500 m: the same raw, grid × 1000
 static_assert(grid_of<decltype(m)::rep> == grid{0, 500'000});
 
-auto total = trip + just<800> * si::metre;                 // 13300 m: the sum runs in metres
-auto speed = total / quantity<si::minute, inside<{1, 600}>>{20};
-auto kmh   = speed.in(km / si::hour);                      // 39.9 km/h, exactly
+auto total = trip + just<800> * si::metre;                     // 13300 m: the sum runs in metres
+auto speed = total / quantity<si::minute, inside<{1, 600}>>{20, si::minute};
+auto kmh   = speed.in(km / si::hour);                          // 39.9 km/h, exactly
 inside<{0, 1000}, round_nearest> laps = trip / (just<400> * si::metre); // 31: km / m is a number
 static_assert(!addable<decltype(trip), decltype(just<1> * si::second)>); // another dimension
 ```
@@ -91,12 +91,12 @@ static_assert(!addable<decltype(trip), decltype(just<1> * si::second)>); // anot
 
 <!-- listing: kinds -->
 ```cpp
-quantity<si::hertz, inside<{0, 1000}>>     f{50};
-quantity<si::becquerel, inside<{0, 1000}>> a{50};
+quantity<si::hertz, inside<{0, 1000}>>     f{50, si::hertz};
+quantity<si::becquerel, inside<{0, 1000}>> a{50, si::becquerel};
 static_assert(!addable<decltype(f), decltype(a)>);        // both 1/s, but not one kind
 
-quantity<isq::width[si::metre], inside<{1, 10}>>  w{3};
-quantity<isq::height[si::metre], inside<{1, 10}>> h{4};
+quantity<isq::width[si::metre], inside<{1, 10}>>  w{3, isq::width[si::metre]};
+quantity<isq::height[si::metre], inside<{1, 10}>> h{4, isq::height[si::metre]};
 quantity<isq::area[square(si::metre)], inside<{1, 100}>> area = w * h; // width · height
 auto around = w + h;                                      // 7 m, a length: the common kind
 auto tall   = quantity_cast<isq::height>(w);              // a width read as a height, explicitly
@@ -128,9 +128,9 @@ inline constexpr auto           cent = unit_c<cent_def>;
 using price = quantity<euro / si::kilogram, inside<{{0, 100}, per<100>}>>;
 using mass  = quantity<si::kilogram, inside<{{0, 10}, per<1000>}>>;
 
-constexpr auto cost  = price{3.49_ins} * mass{1.25_ins};     // 4.3625 EUR, exactly
-constexpr auto cents = cost.in(cent);                        // 436.25 ct: the same raw
-static_assert(!addable<decltype(cost), mass>);               // money never adds to a mass
+constexpr auto cost  = price{3.49_ins, euro / si::kilogram} * mass{1.25_ins, si::kilogram}; // 4.3625 EUR, exactly
+constexpr auto cents = cost.in(cent);                                                       // 436.25 ct: the same raw
+static_assert(!addable<decltype(cost), mass>);                                              // money never adds to a mass
 ```
 
 # Design
@@ -206,9 +206,16 @@ also reduce an angle in degrees or turns exactly, so `cos` of 120° is exactly
 ## No bare scalars
 
 `42 * si::metre` and `q * 2` are ill-formed, as `a + 1` is in the number paper:
-`42` has no grid. A quantity is made from a number in its unit
-(`quantity<si::metre, inside<{0, 100}>>{42}`) or from an `inside` times a unit
-(`just<42> * si::metre`).
+`42` has no grid. A number never becomes a quantity, or a quantity a number,
+without its unit named where it happens. A quantity is made from a number and
+its unit, `quantity<si::metre, inside<{0, 100}>>{42, si::metre}`, or from an
+`inside` times a unit, `just<42> * si::metre`; its number is read in a unit,
+`q.numerical_value_in(si::metre)`. `quantity<R, Rep>{42}` and
+`q.numerical_value()` are ill-formed. That is [@P3045R9]'s rule, without its
+exception for a dimensionless quantity in unit one: `{42, one}` names the unit
+too. A number in another unit of the same quantity is an `inside`, converted
+exactly first (`Q{n, si::kilo(si::metre)}`); a raw number in another unit has
+no grid to rescale.
 
 ## Structural values
 
@@ -234,14 +241,14 @@ comparing quantities of different kinds`.
 ## The policy of the number
 
 A quantity's stores are its number's stores: `++q`, `q += r` and the
-construction from a number apply `Rep`'s policy, and `q.on_wrap(f)`,
-`q.on_clamp(f)` and `q.on_error(f)` attach the number paper's actions.
-`q.policy<F>()` and `q.policy(ec)` store under `Rep`'s policy plus `F`.
-`Q::try_make(v)`, the flag constructor `Q{x, clamp}` (a flag or
-`make_policy<F>(ec)` for one store, `x` a number or a quantity converted
-exactly), `checked_cast<Q>(x)`, `value_cast` and `try_value_cast` convert into
-a quantity type, and `conversion_overflows<Q>(v)` and its siblings answer for
-a number `v` in `Q`'s unit. `min`, `max` and `midpoint` run in the common unit,
+construction from a number and its unit apply `Rep`'s policy, and
+`q.on_wrap(f)`, `q.on_clamp(f)` and `q.on_error(f)` attach the number paper's
+actions. `q.policy<F>()` and `q.policy(ec)` store under `Rep`'s policy plus
+`F`. `Q::try_make(v, u)`, the flag constructors `Q{q, clamp}` and
+`Q{v, u, clamp}` (a flag or `make_policy<F>(ec)` for one store, `q` a quantity
+converted exactly), `checked_cast<Q>(q)`, `value_cast` and `try_value_cast`
+convert into a quantity type, and `conversion_overflows<Q>(v, u)` and its
+siblings answer for a number `v` in unit `u`. `min`, `max` and `midpoint` run in the common unit,
 as `+` does, and the free arithmetic takes a per-call policy as in the number
 paper (`div(d, t, round_floor)`). Every function of the number paper has a
 quantity form.
@@ -295,16 +302,16 @@ namespace std::units {
     using rep = Rep;
     static constexpr units::reference reference = R;
     constexpr quantity() = default;
-    template<class V> constexpr explicit quantity(V&& number);     // a number in the unit R
+    template<class V, class U> constexpr quantity(V&& number, U unit); // a number in unit U of R's quantity
     template<reference R2, class V2>                               // implicit when R2's kind converts and
       constexpr explicit(@*see below*@) quantity(const quantity<R2, V2>&); // the rescaled number does
-    constexpr const Rep& numerical_value() const noexcept;
     template<@*unit*@ U> constexpr auto in(U) const;                 // Rep's grid rescaled; same raw
-    template<@*unit*@ U> constexpr auto numerical_value_in(U) const;
+    template<@*unit*@ U> constexpr auto numerical_value_in(U) const; // the number in unit U
     template<class T> constexpr explicit(@*see below*@) operator T() const; // dimension one: its number
     template<class T, policy_flag Round = checked> constexpr T as() const;     // dimension one; also to<T>()
-    template<policy_flag F = checked, class V> static constexpr auto try_make(const V&);
-    template<class X, class Pol> constexpr quantity(const X& x, Pol p);     // x in R's unit, or a quantity
+    template<policy_flag F = checked, class V, class U> static constexpr auto try_make(const V&, U);
+    template<class Q2, class Pol> constexpr quantity(const Q2& q, Pol p);   // q converted exactly
+    template<class V, class U, class Pol> constexpr quantity(V&& number, U unit, Pol p);
     template<policy_flag F = checked> constexpr auto policy();       // also policy(errc&)
     template<class F> constexpr auto on_clamp(F f);               // also on_wrap, on_error
     // ++, --, compound assignment: a store by Rep's policy
@@ -357,7 +364,7 @@ namespace std {
 
 | Expression | Result | Notes |
 |---|---|---|
-| `quantity<R, Rep>{v}` | `v` stored in `Rep`, in the unit of `R` | explicit |
+| `quantity<R, Rep>{v, u}` | `v` stored in `Rep`, `v` in unit `u` | `u` R's unit, or another of its quantity for an inside `v` (converted exactly); `{v}` alone is ill-formed |
 | `n * u` (`n` an inside) | `quantity<u, decltype(n)>` | `42 * u` is ill-formed |
 | `q.in(u)` | `q` in `u`: `Rep`'s interval and notch times the conversion factor | the same raw; ill-formed for another dimension or a factor of π |
 | `quantity<R2, Rep2>{q}` | `q` in `R2`'s unit, stored by `Rep2` | implicit when `R`'s kind converts to `R2`'s and the rescaled number converts implicitly |
@@ -365,8 +372,9 @@ namespace std {
 | `a * b`, `a / b` | units, kinds and numbers multiply or divide | `expected` iff `b`'s grid holds 0; a result of dimension one converts to its `inside` |
 | `quantity_cast<S>(q)` | the same number, kind `S` | down or sideways within one kind; never across an `is_kind` boundary |
 | `value_cast<Rep2>(q)`, `value_cast<u, Rep2>(q)` | the exact value, stored by `Rep2` | `try_value_cast` reports through `expected` |
-| `Q{x, clamp}`, `Q{x, wrap}` | `x` in `Q`'s unit, saturated or folded into `Q`'s number | `x` a quantity of `Q`'s dimension, or a number in `Q`'s unit |
-| `Q::try_make<F>(v)`, `q.on_wrap(f) += r` etc. | as for `Q::rep` | the number paper's policies and actions |
+| `Q{q, clamp}`, `Q{v, u, wrap}` | `q` or `v` in `Q`'s unit, saturated or folded into `Q`'s number | `q` a quantity of `Q`'s dimension, `v` a number in unit `u` |
+| `q.numerical_value_in(u)` | `q`'s number in unit `u` | exact; `q.numerical_value()` is ill-formed |
+| `Q::try_make<F>(v, u)`, `q.on_wrap(f) += r` etc. | as for `Q::rep` | the number paper's policies and actions |
 | `divmod(a, b, …)` | `{q, r}` in the common unit | as the number paper's `divmod` |
 | `point<u>(v)` | a point counted from `u`'s origin | |
 | `p.point_for(o)`, `p.quantity_from(o)` | the point or quantity from origin `o` | an exact shift of the grid |

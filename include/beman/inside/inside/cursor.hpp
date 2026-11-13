@@ -45,7 +45,7 @@ template <detail::steppable B>
     requires(has_flag(flags_of<detail::step_number_t<B>>, detail::cursor_marker))
 [[nodiscard]] constexpr auto end(const B&) noexcept {
     constexpr auto top = just<upper_of<detail::step_number_t<B>>>;
-    return detail::step_rebind_t<B, std::remove_cvref_t<decltype(top)>>{top};
+    return detail::stepping<B>::make(top);
 }
 } // namespace beman::inside
 

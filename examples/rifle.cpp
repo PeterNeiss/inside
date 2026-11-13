@@ -59,13 +59,13 @@ class rifle {
     clamp_counter<1'000'000>                    pulled_trigger{0}; // saturating event tallies
     clamp_counter<1'000'000>                    missed_shots{0};
     clamp_counter<1'000'000>                    reloads{0};
-    quantity<rd, inside<{0, 1'000'000}, clamp>> rounds_dropped{0}; // accumulates count_t values
+    quantity<rd, inside<{0, 1'000'000}, clamp>> rounds_dropped{0, rd}; // accumulates count_t values
 };
 
 class player {
   public:
     using reserve_t = quantity<rd, inside<{0, 200}, clamp>>;
-    reserve_t                reserve{60}; // two spare mags' worth
+    reserve_t                reserve{60, rd}; // two spare mags' worth
     rifle                    weapon;
     clamp_counter<1'000'000> dry_clicks{0}; // mag empty AND reserve empty
 
@@ -96,7 +96,7 @@ void player::pull_trigger() {
     weapon.mag.rounds.on_wrap([&](auto& m, auto) {
         // The wrap put `m` at capacity. Withdraw a full mag from the reserve;
         // on_clamp's overshoot tells us how much we were short of capacity.
-        magazine::count_t shortfall{0};
+        magazine::count_t shortfall{0, rd};
         reserve.on_clamp([&](auto&, auto over) { shortfall = magazine::count_t{-over}; }) -= magazine::capacity;
         ++weapon.reloads;
         if (shortfall > just<0> * rd)
@@ -109,7 +109,7 @@ void player::combat_reload() {
     // saturates, so this stays a plain += of two round counts.
     weapon.rounds_dropped += weapon.mag.rounds;
 
-    magazine::count_t shortfall{0};
+    magazine::count_t shortfall{0, rd};
     reserve.on_clamp([&](auto&, auto over) { shortfall = magazine::count_t{-over}; }) -= magazine::capacity;
     ++weapon.reloads;
     weapon.mag.rounds = magazine::capacity - shortfall;
