@@ -5,10 +5,11 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
 The core has **no `<system_error>` dependency**, builds no `std::string` on
-its own, and reports errors through one **replaceable handler** instead of
-exceptions. The math engine needs no FPU. This page shows how to build without
-exceptions or floating point, and where the limits are. It is also the home of
-`BEMAN_INSIDE_MATH_NO_FP`.
+its own, and never throws: a failure a program can expect is a value (a
+`std::expected`, an `errc&`, a hook), and a precondition goes to one
+**replaceable handler**. The math engine needs no FPU. This page shows how to
+build without exceptions or floating point, and where the limits are. It is
+also the home of `BEMAN_INSIDE_MATH_NO_FP`.
 
 > [!IMPORTANT]
 > `-ffreestanding` does not compile today. The library needs static
@@ -19,8 +20,9 @@ exceptions or floating point, and where the limits are. It is also the home of
 
 **In short:**
 
-- compile with `-fno-exceptions`, and install a handler with
-  `set_error_handler`;
+- compile with `-fno-exceptions` (nothing throws at run time either way), and
+  install a handler with `set_error_handler` if a trap is not what a broken
+  precondition should do;
 - don't include `inside/io.hpp`, `units/io.hpp`, `inside/random.hpp` or
   `units/random.hpp` (with the single header, define `BEMAN_INSIDE_NO_STRING`;
   it leaves the random headers out of a freestanding or
@@ -44,16 +46,19 @@ work unchanged: neither header uses floating point.
 
 ## Two build conditions
 
-### 1. Exceptions off: install a handler
+### 1. Exceptions off: the handler
 
-Every checked failure (an out-of-range store, a division by zero, a rounding
-mismatch, an overflow, a non-finite input) goes through
-`beman::inside::detail::raise`, which calls the installed handler. The
-**default** handler throws `beman::inside::inside_error`, which needs
-`<stdexcept>`, a hosted header. With `-fno-exceptions` that include goes away
-and the default handler **traps** instead.
+A store the grids cannot prove names its channel or does not compile, so an
+out-of-range store, a division by zero, a rounding mismatch or a non-finite
+input is a value the program reads. What is left is a broken precondition (a
+cursor stepped past its end, an mdspan index past a dynamic extent, a raw read
+off the grid): it goes through `beman::inside::detail::raise`, which calls the
+installed handler. The **default** handler prints the message and calls
+`std::abort()` on a hosted build, and **traps** on a freestanding one.
+`<stdexcept>` is included only with exceptions on, for the compile-time
+diagnostic of a constant expression.
 
-For anything other than a trap, install your own handler:
+For anything other than that, install your own handler:
 
 ```cpp
 #include <beman/inside/inside.hpp>
@@ -97,8 +102,9 @@ Besides the handler, errors come back as values, without `std::error_code`:
 - construction through `try_make`, an `std::expected<inside, errc>`;
 - stores and free functions through an `errc&` out-parameter;
 - `clamp` and `wrap` policies, which never fail;
-- `std::expected` results of division and math. Test `has_value()` and read
-  `error()`; don't call `.value()`, which would throw.
+- `std::expected` results of division, math and named outputs (`mul<Out>`,
+  `sum<T>`, `checked_cast<T>`). Test `has_value()` and read `error()`; don't
+  call `.value()`, which would throw.
 
 [Hooks and errors](hooks-and-errors.md#error-codes) shows the surface.
 
@@ -134,15 +140,15 @@ g++-16 -std=c++26 -freflection -DBEMAN_INSIDE_MATH_NO_FP -I single_include my_ap
 - **Bare metal.** A bare-metal link also needs `abort` or `__builtin_trap` for the failure path,
   libm's `sqrt` and `fma` unless `BEMAN_INSIDE_MATH_NO_FP` is on, and a start-up
   that does not assume a hosted environment.
-- **Exceptions on, freestanding** does not work out of the box: the default
-  handler needs `<stdexcept>`. Use `-fno-exceptions`, or replace the handler.
+- **Exceptions on, freestanding** needs `<stdexcept>` for the compile-time
+  diagnostic of a constant expression: use `-fno-exceptions`.
 
 ## A worked example
 
 `tests/beman/inside/single_header_freestanding_smoke.test.cpp` is a complete
 translation unit that sees **only** the single header, with the text layer
 dropped and exceptions off. It installs a trapping handler and runs clamp,
-wrap, the error codes and checked arithmetic:
+wrap, the error codes and arithmetic:
 
 ```sh
 ctest --test-dir <build-dir> -R single_header_freestanding_smoke

@@ -20,7 +20,7 @@
 // Widen `total` to [0,199] and the store check reappears -- the proof is
 // genuinely being done, not skipped.
 //
-//   g++ -std=c++26 -O2 -I ../../include p03_check_elision.cpp -o p03 && ./p03
+//   g++-16 -std=c++26 -freflection -O2 -I ../../include p03_check_elision.cpp -o p03 && ./p03
 
 #include <chrono>
 #include <cstdint>
@@ -83,14 +83,17 @@ int main()
   std::vector<checked_u8> na(kN), nb(kN), nc(kN), nd(kN);
   std::vector<part>       ba(kN), bb(kN), bc(kN), bd(kN);
 
+  errc ec{};   // a run-time int into part: reported, checked once below
   for (int i = 0; i < kN; ++i)
   {
     int v1 = i % 50, v2 = (i * 7) % 50, v3 = (i * 13) % 50, v4 = (i * 29) % 50;
     na[i] = checked_u8(v1); nb[i] = checked_u8(v2);
     nc[i] = checked_u8(v3); nd[i] = checked_u8(v4);
-    ba[i] = part(v1); bb[i] = part(v2);
-    bc[i] = part(v3); bd[i] = part(v4);
+    ba[i] = part{v1, make_policy<checked>(ec)}; bb[i] = part{v2, make_policy<checked>(ec)};
+    bc[i] = part{v3, make_policy<checked>(ec)}; bd[i] = part{v4, make_policy<checked>(ec)};
   }
+  if (ec != errc{})
+    return 1;
 
   const double native = time_ns_per_op([&] {
     for (int r = 0; r < kReps; ++r)

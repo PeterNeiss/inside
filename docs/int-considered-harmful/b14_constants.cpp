@@ -10,6 +10,7 @@
 
 #include <beman/inside/units/constants.hpp>
 #include <beman/inside/inside/io.hpp>
+#include <beman/inside/units/io.hpp>
 #include <beman/inside/units/math.hpp>
 
 using namespace beman::inside;
@@ -28,7 +29,7 @@ int main()
   std::cout << std::format("k    = {:.6e}\n", pc::boltzmann_constant.in(si::joule / si::kelvin));
 
   // E = h·nu for green light, 540 THz: an exact product.
-  const quantity<si::tera(si::hertz), inside<{0, 1000}>> nu{540};
+  const quantity<si::tera(si::hertz), inside<{0, 1000}>> nu{540, si::tera(si::hertz)};
   std::cout << std::format("h nu = {:.9e}\n", (pc::planck_constant * nu).in(si::joule));
 
   // R = N_A·k and F = N_A·e: every digit.

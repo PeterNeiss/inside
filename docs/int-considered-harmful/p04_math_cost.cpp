@@ -5,7 +5,7 @@
 // grid as fine as a double's own significand it is several times slower.
 // std:: is neither correctly rounded nor reproducible across libraries.
 //
-//   g++ -std=c++26 -O3 -mfma -DNDEBUG -I ../../include p04_math_cost.cpp -o p04
+//   g++-16 -std=c++26 -freflection -O3 -mfma -DNDEBUG -I ../../include p04_math_cost.cpp -o p04
 //   taskset -c 2 ./p04
 
 #include <chrono>
@@ -48,15 +48,20 @@ int main()
   constexpr int m = 4096, mask = m - 1;
   std::vector<angle> a; std::vector<pos> p; std::vector<unit4> s;
   std::vector<double> da, dp, ds;
+  errc ec{};   // run-time rationals into the input grids: reported, checked once
   for (int j = 0; j < m; ++j)
   {
     const rational qa{(j * 16 & 0xFFFF) - 32768, 16384}, qp{(j * 16 & 0xFFFF) % 65535 + 1, 256},
                    qs{j * 16 & 0xFFFF, 16384};
-    a.push_back(angle{qa}); p.push_back(pos{qp}); s.push_back(unit4{qs});
+    a.push_back(angle{qa, make_policy<checked>(ec)});
+    p.push_back(pos{qp, make_policy<checked>(ec)});
+    s.push_back(unit4{qs, make_policy<checked>(ec)});
     da.push_back(static_cast<double>(qa)); dp.push_back(static_cast<double>(qp));
     ds.push_back(static_cast<double>(qs));
   }
 
+  if (ec != errc{})
+    return 1;
   std::printf("%-6s %10s %18s %18s\n", "fn", "std ns", "deduced grid ns", "double-fine ns");
   std::printf("%-6s %10.2f %18.2f %18.2f\n", "sin",
               ns_per_op([&](long i) { g_sink = std::sin(da[i & mask]); }),

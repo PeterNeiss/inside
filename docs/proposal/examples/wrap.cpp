@@ -16,7 +16,7 @@ int main() {
     volume += 5_ins;                          // 14 clamps to 10
 
     auto n = count::try_make(14);             // unexpected(errc::overflow)
-    // count m = 14;                          // a checked store: throws inside_error
+    // count m = 14;                          // ill-formed: 14 is outside [0, 10]
     // [/listing]
     if (heading != just<10> || volume != just<10> || n.has_value() || n.error() != errc::overflow)
         return 1;

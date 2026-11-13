@@ -15,7 +15,7 @@ int main() {
     static_assert(conversion_overflows<level>(725));
     auto top  = level{raw, clamp};                      // 10: saturated
     auto deg  = inside<{0, 359}>{raw, wrap};            // 5: 725 mod 360
-    auto fit  = checked_cast<level>(sensor{7});              // 7, or inside_error
+    auto fit  = checked_cast<level>(sensor{7});              // expected<level, errc>: 7
     auto near = level{6.5, clamp | round_nearest};       // 7: a tie goes away from zero
 
     using quarter = inside<{{0, 10}, per<4>}>;
@@ -25,7 +25,7 @@ int main() {
     auto down = q.to<int, round_floor>();                    // 2: rounding named in the call
     auto neg  = inside<{-5, 5}>{-1}.to<unsigned>();          // unexpected(errc::domain_error)
     // [/listing]
-    if (top != just<10> || deg != just<5> || fit != just<7> || near != just<7>)
+    if (top != just<10> || deg != just<5> || *fit != just<7> || near != just<7>)
         return 1;
     if (num != 11 || q.denominator() != 4 || i.has_value() || i.error() != errc::rounding_error || down != 2 || neg.has_value() || neg.error() != errc::domain_error)
         return 1;

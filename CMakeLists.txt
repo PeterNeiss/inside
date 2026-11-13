@@ -123,9 +123,10 @@ if(BEMAN_INSIDE_FMA AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
     target_compile_options(beman.inside INTERFACE -mfma)
 endif()
 
-# Error reporting carries no strings: a checked violation funnels through the
-# installed beman::inside::error_handler (default throws beman::inside::inside_error
-# / traps under -fno-exceptions) with a static const-char* message — the core
+# Error reporting carries no strings and nothing throws: a store the grids cannot
+# prove names its channel (an expected, an errc&, a hook) or does not compile; a
+# precondition funnels through the installed beman::inside::error_handler (default
+# prints and aborts / traps freestanding) with a static const-char* message — the core
 # never drags <string>/<system_error> into a translation unit. General-purpose
 # stringification (to_string / operator<< / std::formatter) lives in the opt-in
 # <beman/inside/inside/io.hpp>; in the single header that block is wrapped in

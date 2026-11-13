@@ -5,8 +5,9 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
 What runs when a store clamps, wraps or fails, every way an error is
-reported, and how to replace the throw. [Policies](../guide/policies.md) has
-the everyday view.
+reported, and the handler that preconditions reach. Nothing throws: a store
+the grids cannot prove names its channel, or does not compile.
+[Policies](../guide/policies.md) has the everyday view.
 
 ## Hooks
 
@@ -19,11 +20,14 @@ hook also adds the flag it implies: `on_clamp` adds `clamp`, `on_wrap` adds
 |---|---|---|
 | `on_clamp(f)` | a stored value leaves the range and is saturated | `f(x, overshoot)`; the overshoot is an inside |
 | `on_wrap(f)` | a stored value leaves the range and is folded back | `f(x, carry)`; the carry is an inside |
-| `on_error(f)` | a checked store fails (`overflow`, `rounding_error`), or a compound op does (a zero divisor in `/=` or `%=`); replaces the throw | `f(x, errc, const char* message)` |
+| `on_error(f)` | a checked store fails (`overflow`, `rounding_error`, `not_finite`), or a compound op does (a zero divisor in `/=` or `%=`); the store's channel | `f(x, errc, const char* message)` |
 
-`f` gets `x` by reference, so it can change the stored value. A store takes
-one hook: clamping, wrapping and failing are different outcomes of the same
-store. The free functions `add` … `divmod` take no hooks; they return a zero
+`f` gets `x` by reference, so it can change the stored value: `on_error`'s
+`f` can store an alternative value. A store takes one hook: clamping,
+wrapping and failing are different outcomes of the same store. A `double`
+through `on_clamp` or `on_wrap` is a constant (stored once while compiling,
+then with the hook); a run-time `double` needs a report channel, since NaN
+fits no clamp. The free functions `add` … `divmod` take no hooks; they return a zero
 divisor as `unexpected(errc::division_by_zero)`, as `/` does.
 
 ### The carry
@@ -50,7 +54,8 @@ inside. Its grid holds every value of the source kind minus either limit: an
 integer type's range, an inside's grid, a `rational`'s 64-bit values, or a
 `double`'s whole range down to its least subnormal (an inside of about 2100
 bits, built only when the hook runs). 150.7 into `{0, 100}` reports the
-double 150.7 minus 100, not 50. A `long double` is exact below 2¹⁰²⁴, the
+double 150.7 minus 100, not 50 (a `double` reaches a clamp hook as a
+constant). A `long double` is exact below 2¹⁰²⁴, the
 range the library stores exactly; ±∞ reports the end of the overshoot's grid.
 
 On a compound assignment the hook acts on the store back:
@@ -106,8 +111,8 @@ combination (`clamp | round_floor`) and a call's policy.
 
 ## Error codes
 
-Errors can be reported as a `beman::inside::errc` instead of a throw. The
-library does not use `std::error_code` or `<system_error>`.
+Errors are reported as a `beman::inside::errc`. The library does not use
+`std::error_code` or `<system_error>`, and nothing throws.
 
 | Code | Means |
 |---|---|
@@ -137,7 +142,7 @@ leaves the previous value.
 
 ## Construction that can fail: `try_make`
 
-`T::try_make(v)` returns `std::expected<T, errc>` instead of throwing, and
+`T::try_make(v)` returns `std::expected<T, errc>`, and
 `try_make<F>(v)` adds the flags `F` for that one store. Given a
 `std::expected`, it passes the error on, so one fallible step feeds the next
 without unwrapping:
@@ -165,9 +170,16 @@ Each operation reports through one channel:
 
 | Operation | A failure goes to |
 |---|---|
-| a store: construction, `=`, `+=` and the other compound ops, `as<T>()`, `checked_cast` | the hook (`on_error`, or `on_clamp` / `on_wrap` where they apply), else the store's `errc&`, else the handler |
+| a store: construction, `=`, `+=` and the other compound ops, `++` | the hook (`on_error`, or `on_clamp` / `on_wrap` where they apply), else the store's `errc&`; a store the grids cannot prove, with neither, does not compile (a constant is checked while compiling) |
 | `try_make`, `parse`, `to<T>()` where it can fail | the returned `std::expected` |
 | `/` and `%` by a grid that holds 0 | the returned `std::expected` |
+| a named output that can miss: `mul<Out>`, `div<Out>`, `sum<T>`, `checked_cast<T>`, `value_cast`, `from_index`, `f<Out>(x)`, mdspan `sum`/`dot`/`matrix_product`/`transform_into` | the returned `std::expected` (`expected<void, errc>` for the mdspan writers) |
+| a precondition: a cursor stepped past its end, an mdspan index past a dynamic extent, a raw read off the grid | the error handler |
+
+`as<T>()` compiles only where the conversion is total; `to<T>()` is its
+`expected` form. A named math output over grids whose range the library does
+not bound (`exp` of `|x|` past 4096, `pow` of a base grid reaching 0) needs
+`clamp` or `wrap`.
 
 A `rational`'s own arithmetic (`p + q`, `p / q`) is compile time only, like
 a grid number's: an overflow or a zero divisor there is a compile error, so
@@ -182,9 +194,10 @@ yourself does.
 
 ## The error handler
 
-Every failure that no hook or `errc&` takes goes through one handler. By
-default it throws `beman::inside::inside_error` (a `std::runtime_error` whose
-`Code` member is the `errc`); under `-fno-exceptions` it traps.
+A precondition that no channel can take (a cursor stepped past its end, an
+mdspan index past a dynamic extent, a raw value read off the grid) goes
+through one handler. By default it writes `beman::inside: <message>` to
+`stderr` and calls `std::abort()`; a freestanding build traps.
 `set_error_handler` installs your own:
 
 ```cpp
@@ -194,8 +207,14 @@ beman::inside::set_error_handler(&on_inside_error);   // returns the previous ha
 // get_error_handler() reads it; set_error_handler(nullptr) restores the default
 ```
 
-The handler must not return: log, reset, `longjmp`, or terminate. `what` is a
-static string, so no allocation happens. There is one handler per program. It
+The handler must not return: log, reset, `longjmp`, terminate, or throw an
+exception of your own (the library is exception-neutral). `what` is a static
+string, so no allocation happens.
+
+In a constant expression a failed check is a compile error that names it: with
+exceptions on, `uncaught exception of type 'beman::inside::inside_error';
+'what()': '…'` (a C++26 constexpr exception, never thrown at run time);
+without, a call to `constexpr_error` whose template argument is the text. There is one handler per program. It
 is atomic, so one thread may install a handler while others raise, and it has
 default visibility, so shared libraries built with `-fvisibility=hidden` see
 the same one. [Freestanding](freestanding.md) shows it on bare metal.

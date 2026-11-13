@@ -24,10 +24,10 @@ or rounds.
 
 | Write | For |
 |---|---|
-| `T x{v};`, `x = v;` | a store under T's policy |
+| `T x{v};`, `x = v;` | a store under T's policy: proven by the grids, or a constant checked while compiling |
 | `T{v, F}` | one store with the flags `F`: `T{v, clamp}`, `T{v, clamp \| round_nearest}`, `T{v, wrap}` |
-| `checked_cast<T>(v)` | a store that reports any loss, whatever T's policy |
-| `T::try_make(v)` | a `std::expected` instead of a throw |
+| `checked_cast<T>(v)` | a store that reports any loss, whatever T's policy: a `std::expected` where it can fail |
+| `T::try_make(v)` | a `std::expected`: the store for a run-time value the grids cannot prove |
 | `T::from_raw(r)` | trusted raw transfer, without checks ([Storage](../advanced/storage.md#raw-access)) |
 
 To test a value without storing it:
@@ -43,7 +43,7 @@ conversion_loses<pct>(150);       // true: either of the two
 
 | Write | Gives |
 |---|---|
-| `x.as<T>()` | a `T`; a value that does not fit is reported like a failed store |
+| `x.as<T>()` | a `T`, where the grid proves the conversion total; else use `to<T>()` |
 | `x.to<T>()` | a `T` where it cannot fail (every value of the grid is an integer that fits `T`); else a `std::expected<T, errc>`: `overflow` when it does not fit, `domain_error` for a negative value into an unsigned type, `rounding_error` for a fraction |
 | `x.to<int, round_floor>()` | the same, rounding a fraction by the given mode: a plain `int` when the grid fits |
 | `double(x)`, `x.as<double>()` | a `double`, on a type with a rounding mode |
@@ -53,8 +53,10 @@ conversion_loses<pct>(150);       // true: either of the two
 | `rational r = x;` | the exact value as a 64-bit fraction, where it fits one |
 
 An inside has no implicit conversion to an integer: `int i = x;` would narrow
-silently. Where `T` holds the whole grid, `as<T>()` has nothing left to check,
-so an index costs nothing: `v[x.as<std::size_t>()]`.
+silently. `as<T>()` compiles where `T` holds the whole grid, so it has
+nothing to check and an index costs nothing: `v[x.as<std::size_t>()]`.
+Elsewhere `to<T>()` returns a `std::expected`. `T::from_index(i)` is a plain
+`T` where every value of `i` is an index of `T`, else an expected.
 
 A fraction into an integer type needs permission to round, as a store does:
 `x.to<int>()` of 2.75 is `errc::rounding_error`, `x.to<int, round_floor>()`

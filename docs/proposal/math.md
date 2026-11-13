@@ -302,7 +302,7 @@ namespace std::units {
 
 | Expression | Result | Errors |
 |---|---|---|
-| `fn<Out>(x)` | the true value rounded onto `Out`'s grid by `Out`'s mode, then stored by `Out`'s policy | ill-formed without a rounding mode in `Out`, except for a grid operation |
+| `fn<Out>(x)` | the true value rounded onto `Out`'s grid by `Out`'s mode: `Out` where `Out`'s range holds `fn`'s range over `x`'s grid or `Out` clamps or wraps, else `expected<Out, errc>` (`overflow` past `Out`) | ill-formed without a rounding mode in `Out`, except for a grid operation; ill-formed for a checked `Out` where no range of `fn` is bounded |
 | `fn(x)` | `fn<Out>(x)`, `Out` deduced from `x`'s grid and policy, rounding to nearest unless the policy names a mode | none beyond the function's |
 | `fn<Spec...>(x)` | as `fn(x)`, the range computed on the notch named, and the policy flags named replacing the deduced ones (a rounding mode its mode) | ill-formed for a `Spec` that is neither a notch nor a flag, or for two notches |
 | `abs`, `sign`, `copysign`, `floor`, `ceil`, `round`, `trunc`, `pown<E>` | exact | none; `round` sends a half away from zero |

@@ -117,9 +117,13 @@ depends on the *value*, and returns a `std::expected`:
 | `pow` | the base's grid holds 0 and the exponent's a negative: 0 to a negative power |
 | `fmod` | the divisor's grid holds 0 |
 
-Everything else returns a plain inside. A result past a named output
-(`fn<Out>`) is a store into `Out`: its policy clamps, wraps or reports it,
-as any store does.
+Everything else returns a plain inside. A named output (`fn<Out>`) is plain
+where `Out`'s range holds the function's range over the input grid, or `Out`
+clamps or wraps; otherwise the call returns `std::expected<Out, errc>`, whose
+error is `overflow` for a result past `Out` (the value is rounded once, onto
+`Out`'s notch, either way). Where the library bounds no range (`exp` of
+`|x|` past 4096, `pow` of a base grid reaching 0), a checked `Out` does not
+compile: give it `clamp` or `wrap`.
 
 ## Angles
 

@@ -257,14 +257,19 @@ four-level cascade:
 │ 3. the type's policy             inside<G, clamp>, inside<G, P>  │
 │                                       │ P does not handle it     │
 │                                       ▼                          │
-│ 4. the hard default              error handler → inside_error    │
+│ 4. no channel                    a compile error (or a constant) │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-The hard default goes through the replaceable error handler
-([Hooks and errors](advanced/hooks-and-errors.md#the-error-handler)). The default handler
-throws `beman::inside::inside_error` (carrying the `errc`), or traps under
-`-fno-exceptions`. There is no `<system_error>` dependency.
+A store that reaches step 4 at run time does not compile: the constructors
+and assignments are gated by `detail::store_proven` (`inside/generic.hpp`),
+so a store the grids cannot prove names a channel, or its source is a
+constant checked while compiling (a `consteval` constructor). Only
+preconditions (a cursor past its end, an mdspan index past a dynamic extent)
+reach the replaceable error handler
+([Hooks and errors](advanced/hooks-and-errors.md#the-error-handler)), which
+prints and aborts by default, or traps freestanding. Nothing throws at run
+time; there is no `<system_error>` dependency.
 
 The flags are in `policy_flag.hpp`, each a `detail::flag<V>` constant that
 converts to its bits: `round_toward_zero` (the rounding bit `detail::snap`
@@ -325,7 +330,7 @@ Two shapes, by role:
 
 | Shape | Role | Why |
 |---|---|---|
-| the policy cascade (handler / throw, `errc&`, clamp, wrap, hooks) | **storing** a value into an inside: construction, assignment, compound assignment | the caller chose the failure behaviour on the type or the store |
+| the policy cascade (`errc&`, clamp, wrap, hooks; else a compile error) | **storing** a value into an inside: construction, assignment, compound assignment | the caller chose the failure behaviour on the type or the store |
 | `std::expected<T, errc>` | every fallible **result**: arithmetic (`/`, `%` by a grid holding 0), queries (`to<T>()`, `try_make`, `parse`) and math (`tan`, `pow`, `sqrt` of a grid that crosses 0) | the caller tests the result and can read the cause; it chains through the lift operators |
 
 `std::expected<inside, errc>` is larger than an inside (a flag and an `errc`),
@@ -344,10 +349,11 @@ can fail: a result the grids prove total stays a plain inside.
 | `math::pow` | expected | `domain_error` (a negative base), `division_by_zero` (0 to a negative power), `overflow` |
 | `math::sqrt` of a grid that crosses 0 | expected | `domain_error` |
 | `to<T>()` | expected | `overflow`, `domain_error` (negative into unsigned) |
-| `as<T>()` | `T` | `to<T>()`; a failure is raised (`inside_error`, or the installed handler) |
+| `as<T>()` | `T` | only where `to<T>()` is total; else deleted (use `to<T>()`) |
 | `try_make`, `parse` | expected | `overflow`, `rounding_error`, `invalid_format` (text) |
-| construction, assignment | the cascade | by the policy: `overflow`, `rounding_error`, `not_finite` |
-| `sum<Target>` | `Target` | Target's policy, applied once to the total |
+| construction, assignment | the cascade | by the channel: `overflow`, `rounding_error`, `not_finite` |
+| `sum<Target>` | expected (`Target` under clamp, wrap or unsafe) | `overflow`, `rounding_error`, once for the total |
+| `mul<Out>`, `div<Out>`, `checked_cast<T>`, `f<Out>(x)`, `value_cast` | `Out`, or expected where it can miss | `overflow`, `rounding_error` |
 | a quantity's `/`, `div<C>`, `try_value_cast`, `parse<Q>`, `Q::try_make` | as the inside's | the inside's causes, with the quantity as the value |
 
 Chaining (`inside/detail/lift.hpp`, `arithmetic.hpp`): the expected-lift operators keep an
@@ -373,7 +379,8 @@ complete type)
 and the `std::numeric_limits` and `std::hash` specializations. The **opt-in**
 headers are included only on demand, which keeps the core free of
 `<ostream>`, `<format>` and `<cmath>`, and of `<string>` with exceptions off
-(with them on, `<stdexcept>` brings it, for `inside_error`). The units follow
+(with them on, `<stdexcept>` brings it, for `inside_error`, the compile-time
+diagnostic). The units follow
 the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 `units/math.hpp` holds the math.
 
@@ -413,7 +420,7 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 | `inside/detail/core.hpp` | `inside<G, P>`: construction, compound assignment, `++`/`--`, `to`/`as`, `parse(first, last)`, hooks, `just`, `_ins` |
 | `inside/detail/numbers.hpp` | the internal `add_overflow`/`sub_overflow`/`mul_overflow`, `plain_number`/`fractional`, `wide_builtin`, `safe_abs` |
 | `inside/detail/call_policy.hpp` | `call_policy<F, E>`, `make_policy`, `with_flags<O>(pol)` (a flag as a call's policy) |
-| `inside/detail/error.hpp` | `errc`, `errc_message`, `inside_error`, the error handler, `raise`, `constexpr_error` |
+| `inside/detail/error.hpp` | `errc`, `errc_message`, `inside_error` (compile time only), the error handler, `raise`, `constexpr_error` |
 | `inside/detail/introspection.hpp` | `grid_of`, `flags_of`, `interval_of`, `lower_of`, `upper_of`, `notch_of`, the `insidable` concept (and `detail::numeric`), `raw_t`, `as_rational` |
 | `inside/detail/storage.hpp` | the storage concepts, `as_double`, `to_value`/`from_value`, `raw_int64`, the Q-format codec, `max_index_of`, `round_quotient` |
 | `inside/detail/policy_ref.hpp` | `policy_ref`, `policy_buffer`: what `b.policy<F>()`, `b.policy(ec)` and `on_*()` return |

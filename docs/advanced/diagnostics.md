@@ -120,6 +120,42 @@ other code that probes convertibility. For the two grids' numbers, ask:
 static_assert(beman::inside::explain_assignable<Dst, decltype(src)>);   // prints the intervals and notches
 ```
 
+## A store that names no channel
+
+A store the grids cannot prove (some values of the source fit, some may not)
+names what happens, or does not compile. For an inside, a compound
+assignment, `++` or a flag proxy, the deleted overload says so:
+
+```text
+error: use of deleted function '…': inside: the source's values may fall outside
+       this grid, or off its notch, at run time - store with clamp, wrap or a
+       rounding mode (x.policy<clamp>() = v, T{v, clamp}), report with
+       T::try_make(v), x.policy(ec) = v or x.on_error(f) = v, or opt out with unsafe
+```
+
+A plain number (an `int`, a `double`, a `rational`) goes through a
+`consteval` constructor: a constant is checked while compiling, and a
+run-time value is the compiler's own message, with the variable named:
+
+```text
+error: call to consteval function 'inside<…>(n)' is not a constant expression
+error: 'n' is not a constant expression
+```
+
+Read it as "this run-time number needs a channel": `T::try_make(n)`,
+`T{n, clamp}`, `x.policy(ec) = n`. Unlike a deleted overload, the
+constructor exists, so `std::is_constructible_v<T, int>` is `true`; a generic
+`emplace_back(5)` constructs at run time and does not compile (write
+`emplace_back(5_ins)`). A constant that does not fit fails with the text:
+
+```text
+error: uncaught exception of type 'beman::inside::inside_error'; 'what()': 'inside: a checked
+       store in a constant expression is outside the grid's interval - widen the interval, …'
+```
+
+(`inside_error` is thrown only during constant evaluation. Without
+exceptions the same text is the template argument of `constexpr_error`.)
+
 ## Named reasons for a unit mismatch
 
 Each units mistake is a deleted overload whose message says what to write

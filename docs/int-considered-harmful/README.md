@@ -10,22 +10,17 @@ The `h*` (int hazard) and `d*` (double hazard) programs need nothing but a
 compiler:
 
 ```bash
-g++ -std=c++26 -O2 h01_overflow_ub.cpp -o h01
-g++ -std=c++26 -O0 h01_overflow_ub.cpp -o h01_O0    # folded even at -O0
+g++-16 -std=c++26 -O2 h01_overflow_ub.cpp -o h01
+g++-16 -std=c++26 -O0 h01_overflow_ub.cpp -o h01_O0    # folded even at -O0
 ```
 
-The `b*` (inside), `m_after` and `p*` programs need the library on the include
-path:
+The `b*` (inside), `m_after`, `m2_after` and `p*` programs need the library on
+the include path, and the library needs C++26 static reflection (GCC 16):
 
 ```bash
-g++ -std=c++26 -O2 -I ../../include b01_no_overflow.cpp -o b01
-```
-
-`b11_no_ceiling.cpp` uses grids past 64 bits, which need C++26 static
-reflection (GCC 16):
-
-```bash
-g++-16 -std=c++26 -freflection -O2 -I ../../include b11_no_ceiling.cpp -o b11
+g++-16 -std=c++26 -freflection -O2 -I ../../include b01_no_overflow.cpp -o b01
+g++-16 -std=c++26 -freflection -O2 -I ../../include -c p01_codegen.cpp   # no main: objdump it
+g++-16 -std=c++26 -freflection -O3 -mfma -DNDEBUG -I ../../include p04_math_cost.cpp -o p04
 ```
 
 The committed single header (`../../single_include`) holds `io.hpp`,
@@ -42,14 +37,15 @@ diagnostics are quoted in the paper.
 
 | File | Behaviour |
 |---|---|
-| `h02_overflow_loop.cpp` | At `-O2` GCC emits no instructions for `main`; the binary segfaults. At `-O0` it prints `iterations = 3`. |
+| `h02_overflow_loop.cpp` | At `-O2` GCC emits only a trap (`ud2`) for `main`; the binary dies with `SIGILL`. At `-O0` it prints `iterations = 3`. |
 | `h04_divzero.cpp` | Raises `SIGFPE`. Takes an argument: `0` for `x / 0`, `1` for `INT_MIN / -1`. |
 
 `h01` and `h08` rely on undefined behaviour, and `h06` on
 implementation-defined properties; they may legitimately produce different
 output on another compiler or platform — that is the point being made.
-Everything is built as C++26 (`-std=c++26`); the library itself needs C++23.
-Output in the paper is from GCC 15.2.0 on x86-64 Linux.
+Everything is built as C++26 (`-std=c++26`); the library itself needs C++26
+static reflection (`-freflection`). Output in the paper is from GCC 16.0.1 on
+x86-64 Linux.
 
 ## Benchmarks
 
@@ -72,7 +68,7 @@ the mean of three such runs.
 `p01_codegen.cpp` is compiled, not run:
 
 ```bash
-g++ -std=c++26 -O2 -I ../../include -c p01_codegen.cpp -o p01.o
+g++-16 -std=c++26 -freflection -O2 -I ../../include -c p01_codegen.cpp -o p01.o
 objdump -d --no-show-raw-insn -C p01.o
 ```
 
