@@ -6,15 +6,16 @@
 //
 // Three classes, each leaning on a different policy:
 //
-//   - `magazine` holds the round count as `inside<{0, capacity}, wrap>` —
+//   - `magazine` holds the rounds as rd on `inside<{0, capacity}, wrap>` —
 //     31 distinct states, and the wrap from 0 back up to capacity is
 //     exactly the magazine-swap event.
-//   - `rifle` owns a magazine and the per-weapon trigger-event counters
-//     (`pulled_trigger`, `missed_shots`, `reloads`, `rounds_dropped`).
-//   - `player` owns a rifle plus an `inside<{0, 200}, clamp>` reserve pool;
-//     withdrawals saturate at 0 so we never underflow, and the on_clamp
-//     overshoot tells us how short the reserve was without an explicit
-//     `std::min` or extraction cast.
+//   - `rifle` owns a magazine, the per-weapon trigger-event counters
+//     (`pulled_trigger`, `missed_shots`, `reloads`) and the rounds it
+//     dropped (`rounds_dropped`, in rd).
+//   - `player` owns a rifle plus a reserve pool of rd on
+//     `inside<{0, 200}, clamp>`: withdrawals saturate at 0 so we never
+//     underflow, and the on_clamp overshoot tells us how short the reserve
+//     was without an explicit `std::min` or extraction cast.
 //
 // Demonstrates:
 //   - `wrap` policy on the magazine — firing past empty triggers on_wrap

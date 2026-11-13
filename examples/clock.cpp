@@ -58,9 +58,9 @@ struct clock24 {
     // the store), then one divmod per field.
     using day_seconds_t = quantity<si::second, inside<{0, 86400, bounds::half_open}>>;
     static clock24 from(const auto& since_midnight) {
-        const day_seconds_t s = try_value_cast<day_seconds_t, wrap>(since_midnight).value();
-        const auto [h, rest]  = divmod(s, just<1> * si::hour);
-        const auto [m, sec]   = divmod(rest, just<1> * si::minute);
+        const day_seconds_t s{since_midnight, wrap};
+        const auto [h, rest] = divmod(s, just<1> * si::hour);
+        const auto [m, sec]  = divmod(rest, just<1> * si::minute);
         clock24 c;
         c.hours   = h * si::hour;
         c.minutes = m * si::minute;

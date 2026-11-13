@@ -11,9 +11,9 @@
 //   - `B{v, wrap}`   — modular reduction into the target interval
 //   - `B{v, clamp}`  — saturate to [Lower, Upper]
 //   - `B{v, unsafe}` — trust the caller (UB if out of range)
-//   - the per-store `x.policy<F>()` (F = snap / round_nearest / round_floor /
-//     round_ceil / round_half_even / clamp / wrap) on a strict (throwing)
-//     inside — the same intents, for one assignment
+//   - the per-store `x.policy<F>()` (here F = round_floor / round_ceil /
+//     round_toward_zero / round_half_even / wrap; any flag works) on a strict
+//     (throwing) inside — the same intents, for one assignment
 
 #include <algorithm>
 #include <iostream>
@@ -22,7 +22,6 @@
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/inside/io.hpp>
-#include <beman/inside/inside/casts.hpp>
 
 using namespace beman::inside;
 
@@ -61,17 +60,17 @@ int main() {
     std::cout << "\nper-operation overrides on a strict inside<{0,100}>:\n";
     inside<{0, 100}> q{0};
     q.policy<round_floor>() = 3.7;
-    std::cout << "  policy<round_floor>()     = 3.7  -> " << q << "\n";
+    std::cout << "  policy<round_floor>()       = 3.7  -> " << q << "\n";
     q.policy<round_ceil>() = 3.2;
-    std::cout << "  policy<round_ceil>()      = 3.2  -> " << q << "\n";
+    std::cout << "  policy<round_ceil>()        = 3.2  -> " << q << "\n";
     q.policy<round_toward_zero>() = 9.9;
-    std::cout << "  policy<round_toward_zero>()            = 9.9  -> " << q << "\n";
+    std::cout << "  policy<round_toward_zero>() = 9.9  -> " << q << "\n";
     q.policy<round_half_even>() = 2.5;
-    std::cout << "  policy<round_half_even>() = 2.5  -> " << q << "\n";
+    std::cout << "  policy<round_half_even>()   = 2.5  -> " << q << "\n";
 
     inside<{0, 359}> angle{0};
     angle.policy<wrap>() = 400;
-    std::cout << "  policy<wrap>()            = 400  -> " << angle << "\n";
+    std::cout << "  policy<wrap>()              = 400  -> " << angle << "\n";
 
     return 0;
 }

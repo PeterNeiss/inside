@@ -61,7 +61,7 @@ struct pid {
         // add_all folds variadically; each pairwise + widens the grid further.
         auto raw = add_all(p_term, i_term, d_term);
 
-        // Cross the API boundary: assignment into `output_t` saturates (clamp)
+        // Cross the API boundary: storing into `output_t` saturates (clamp)
         // and snaps to its integer notch (round_nearest) via the type's policy.
         return output_t{raw};
     }

@@ -29,7 +29,7 @@ inline constexpr auto           cent = unit_c<cent_def>;
 
 int main() {
     // 0..1,000,000 USD in 1¢ steps -> 100M+1 steps fits uint32.
-    // 0.01 is not exact in binary, so the notch is given as an exact rational.
+    // 0.01 is not exact in binary; per<100> is the exact notch 1/100.
     using money = quantity<USD, inside<{{0, 1'000'000}, per<100>}, round_nearest>>;
     static_assert(sizeof(money) == 4);
 

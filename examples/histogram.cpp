@@ -11,7 +11,7 @@
 //     plain number, and the bin labels are back in ms
 
 #include <iostream>
-#include <iomanip>
+#include <limits>
 #include <vector>
 
 #include <beman/inside/inside.hpp>
