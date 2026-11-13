@@ -28,7 +28,7 @@ int main() {
     std::cout << "t     exp(t / 1 s)\n";
     for (cursor<seconds_t, per<4>> n; n != end(n); ++n) {
         const seconds_t t{*n};
-        std::cout << t << "\t" << units::exp_into<amp_t>(t / tau) << "\n";
+        std::cout << t << "\t" << math::exp<amp_t>(t / tau) << "\n";
     }
 
     // 2. Sweep: half-octave steps from 20 Hz, 2^e rounded once onto mult_t;
@@ -38,10 +38,10 @@ int main() {
     constexpr auto f0 = just<20> * si::hertz;
     std::cout << "\noctave  frequency\n";
     for (cursor<exponent_t, per<2>> e; e != end(e); ++e)
-        std::cout << *e << "\t" << f0 * math::exp2_into<mult_t>(*e) << "\n";
-    if (f0 * math::exp2_into<mult_t>(exponent_t{3}) != just<160> * si::hertz)
+        std::cout << *e << "\t" << f0 * math::exp2<mult_t>(*e) << "\n";
+    if (f0 * math::exp2<mult_t>(exponent_t{3}) != just<160> * si::hertz)
         return 1;
-    if (math::exp2_into<mult_t>(exponent_t{3}) != 8 || math::exp2_into<mult_t>(exponent_t{4}) != 16)
+    if (math::exp2<mult_t>(exponent_t{3}) != 8 || math::exp2<mult_t>(exponent_t{4}) != 16)
         return 1;
 
     // 3. Soft clip and the hyperbolic identity.

@@ -5,7 +5,7 @@
 //
 // Demonstrates:
 //   - `mul_all` to chain damage multipliers (crit * vulnerable * armor_pen)
-//   - `mul_into` to round the scaled damage once onto whole HP
+//   - `mul<Out>` to round the scaled damage once onto whole HP
 //   - Implicit clamping when assigning a wider inside into a clamp-policy
 //     target (level-scaling that may exceed the HP range)
 //   - `on_clamp` callback on HP to fire "full health" and "downed" hooks
@@ -57,10 +57,10 @@ int main() {
 
     // mul_all folds three multipliers into one — grid widens each step.
     auto chain = mul_all(crit, vuln, pen);
-    // chain has interval [0, 64] notch 1/4096. mul_into scales base by it and
+    // chain has interval [0, 64] notch 1/4096. mul<dealt_t> scales base by it and
     // rounds once to the nearest whole HP of damage — no rational, no cast.
     using dealt_t    = quantity<HP, inside<{0, 3200}, round_nearest>>;
-    const auto dealt = mul_into<dealt_t>(base, chain);
+    const auto dealt = mul<dealt_t>(base, chain);
     std::cout << "damage chain (2.0 * 1.25 * 1.5) on base 10 HP = " << dealt << "\n";
 
     hp -= dealt; // 75 − 38 stays in range: nothing to clamp

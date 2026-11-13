@@ -286,7 +286,7 @@ step.
 A chain of exact operations on fractions multiplies the bounds. The reference
 implementation gives a result whose fractions would need more than 1024 bits
 (a configurable limit) no type: the operator is deleted, and its message names
-the fix, which is to round an operand, or the product with `mul_into`, into a
+the fix, which is to round an operand, or the product with `mul<Out>`, into a
 coarser type.
 
 ## Division
@@ -611,7 +611,7 @@ below is a candidate for a later paper:
 1. **Text**: `to_string`, `parse`, `parse_exact`, `std::formatter` and stream
    operators, printing and reading the exact value.
 2. **Algorithms**: `sum<Target>` with one deferred check, `add_all`,
-   `mul_all`, `mul_into<Out>` / `div_into<Out>` (one rounding, no intermediate
+   `mul_all`, `mul<Out>` / `div<Out>` (one rounding, no intermediate
    grid), `min`, `max`, `midpoint`, `lerp`, `dot` and `cross`.
 3. **Iterating a grid**: `cursor<T, Step>` for loops, the range
    `inside_range` and `values<T>` (every value of `T`), and `uniform<B>(rng)`,

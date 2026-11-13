@@ -234,6 +234,7 @@ foreach(r IN LISTS roots)
         OR r STREQUAL "beman/inside/units/systems.hpp"
         OR r STREQUAL "beman/inside/units/math.hpp"
         OR r STREQUAL "beman/inside/units/constants.hpp"
+        OR r STREQUAL "beman/inside/units/geoalg.hpp"
     )
         set(_guard_open "#ifndef BEMAN_INSIDE_NO_UNITS")
         set(_guard_close "#endif // BEMAN_INSIDE_NO_UNITS")

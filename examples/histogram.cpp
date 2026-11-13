@@ -3,7 +3,7 @@
 //
 // Demonstrates:
 //   - `values<T>` for iterating over bin indices
-//   - `div_into` to round the bin quotient once by the index type's policy
+//   - `div<Out>` to round the bin quotient once by the index type's policy
 //   - `conversion_overflows` to gate out-of-range samples before insert
 //   - `conversion_loses` to count samples that don't land on a notch
 //   - Fixed-point bin boundaries (latency in ms with 0.1 resolution)
@@ -68,10 +68,10 @@ int main() {
             ++lossy; // accept but flag
 
         const latency_t lat{s};
-        // bin index = floor(lat / 10 ms), a plain number. div_into rounds by
+        // bin index = floor(lat / 10 ms), a plain number. div<Out> rounds by
         // `bin_index_t`'s `round_floor` (9.55 floors to 9 before the range check);
         // `clamp` folds 100 ms, whose quotient 10 floors to 10, into the last bin.
-        const auto bin = div_into<bin_index_t>(lat, just<10> * ms);
+        const auto bin = div<bin_index_t>(lat, just<10> * ms);
         // `clamp_counter` saturates on `++`, so the bar caps at 9 — no manual guard.
         ++bins[bin.as<std::size_t>()];
     }

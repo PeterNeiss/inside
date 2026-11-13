@@ -204,11 +204,27 @@ excludes 0, (raw − offset) / gain is a plain voltage; checking a two-point
 calibration's gain into that type once with `try_value_cast` means no later
 division can fail ([`adc_calibration.cpp`](../../examples/adc_calibration.cpp)).
 
+### Basis vectors
+
+A `basis_vector` is a base dimension of your own together with its unit, and
+you state its square, +1, −1 or 0. Its exponent is 0 or 1, and two different
+basis vectors anticommute, so a unit's magnitude carries a sign
+(`e2 * e1` is −1 times e₁ e₂), and a product of quantities moves that sign to
+the number. Sums of different blades are multivectors, in
+`<beman/inside/units/geoalg.hpp>`;
+[geometric algebra](geometric-algebra.md) has the model and the operations.
+
+```cpp
+inline constexpr basis_vector e1_def{"e₁", +1, {.ascii = "e1"}};
+inline constexpr auto         e1 = unit_c<e1_def>;
+```
+
 ### Identity and limits
 
 An entry is identified by its content, not its address: a spec by its name,
 dimension, recipe, kind boundary and parent chain; a unit by its symbols,
-dimension, magnitude, kind and origin. A unit holds at most 6 named units, a
+dimension, magnitude, kind and origin; a basis vector also by its square. A
+unit holds at most 6 named units, a
 recipe at most 6 specs, and an exponent stays within ±127; past that is a
 compile error.
 
@@ -228,7 +244,7 @@ the numbers, so it still rounds once and checks once.
 | `min(a, b)`, `max(a, b)`, `midpoint(a, b)` | in the common unit, as `+`; `midpoint` is exact |
 | `q.as<T>()`, `q.to<T>()` | a dimensionless quantity's number as a built-in |
 | `++q`, `q--` | one notch of the number up or down, under its policy |
-| `mul_into<Out, F>(a, b)`, `div_into<Out, F>(a, b)` | a·b or a/b rounded once into `Out`, a quantity type (or a plain inside for a dimensionless result); the factor between units folds into the exact product |
+| `mul<C>(a, b)`, `div<C>(a, b)` (a flag may follow: `mul<C>(a, b, round_floor)`) | a·b or a/b rounded once into `C`: a quantity type, or its number (the unit is the product's; a plain inside for a dimensionless result); the factor between units folds into the exact product |
 | `add_all(…)`, `mul_all(…)`, `sum<Q>(range)` | the folds; `sum<Q>` takes quantities in any unit that converts to Q's |
 | `add(a, b, args…)`, `sub`, `mod`, `mul`, `div` | inside's free arithmetic with a per-call flag or `errc&`: sums in the common unit, products and quotients with the units multiplied |
 | `divmod(a, b, args…)` | in the common unit: the quotient a number, the remainder a quantity |
@@ -267,8 +283,9 @@ e, k and N_A are exact; E = h·ν comes out exact.
 
 `units.hpp` is `units/core.hpp` (the machinery) plus `units/systems.hpp` (the
 catalog); units of your own need only `units/core.hpp`. `units/math.hpp` adds
-the functions that need the math engine, `units/io.hpp` the text, and
-`units/random.hpp` `uniform<Q>(rng)`. They are separate headers so that
+the functions that need the math engine, `units/io.hpp` the text,
+`units/random.hpp` `uniform<Q>(rng)`, and `units/geoalg.hpp` multivectors and
+the products of geometric algebra. They are separate headers so that
 `units.hpp` alone compiles fast.
 
 `units.hpp` needs no text support; `units/io.hpp` includes `inside/io.hpp`,
@@ -295,11 +312,13 @@ arithmetic on those grids; units add about 7 ms per expression.
 
 ## Differences from mp-units
 
-- The number is always an inside: no `double` or `int` representations, no
-  vector or tensor characters.
+- The number is always an inside: no `double` or `int` representations, and
+  no vector or tensor characters. Vectors are multivectors over basis vectors
+  of your own instead ([geometric algebra](geometric-algebra.md)): 2 m e₁ +
+  1 m e₂ is a sum of two quantities, each with its own grid.
 - No logarithmic units. A level such as dB is a dimensionless kind of your
   own, which adds and subtracts; its conversion to a ratio is an explicit
-  `pow_base_into`.
+  `math::pow_base<10>`.
 - Conversions and mixed-unit sums are exact, and the result grids are
   inferred.
 - A unit's symbol is part of its identity: J and N·m are different units of
@@ -308,5 +327,5 @@ arithmetic on those grids; units add about 7 ms per expression.
   π-scaled angle reduces it exactly.
 - The kind rules are a simplified form of mp-units': a recipe matches factor
   by factor, and other recipes need `quantity_cast`.
-- inside's policies, hooks and algorithms (`on_wrap`, `sum`, `mul_into`,
+- inside's policies, hooks and algorithms (`on_wrap`, `sum`, `mul<C>`,
   `parse`) work on quantities.

@@ -14,9 +14,9 @@ without an FPU.
 using namespace beman::inside;
 
 using angle = inside<{{-8, 8}, per<16384>}, round_nearest>;
-auto s = math::sin(angle{1});                                    // 0.84149169921875
-auto c = math::cos_into<math::unit_amplitude<256>>(angle{1});    // 0.5390625: an output grid you name
-auto h = math::hypot(s, s);                                      // √(s² + s²)
+auto s = math::sin(angle{1});              // 0.84149169921875, on the input's notch
+auto c = math::cos<per<256>>(angle{1});    // 0.5390625: the notch you name
+auto h = math::hypot(s, s);                // √(s² + s²)
 ```
 
 ## The rounding mode
@@ -24,11 +24,11 @@ auto h = math::hypot(s, s);                                      // √(s² + s�
 A result such as sin 1 lies between two points of any grid, so it is
 rounded once, by one rounding mode:
 
-- a named output's: `math::sin_into<Out>(x)`, where `Out` must have a rounding
-  mode (it is your type, and its policy forbids rounding without one);
 - the call's: `math::exp<round_floor>(x)`;
-- for the deduced `math::sin(x)`, the input type's mode, or `round_nearest`
-  when it names none. The deduced output carries that mode.
+- a named output's: `math::sin<Out>(x)`, where `Out` must have a rounding
+  mode (it is your type, and its policy forbids rounding without one);
+- otherwise the input type's mode, or `round_nearest` when it names none.
+  The deduced output carries that mode.
 
 The rounding mode decides the result: `round_nearest` gives the nearest
 point, `round_floor` the one below, and so on.
@@ -39,10 +39,19 @@ point, `round_floor` the one below, and so on.
 and the function's range over the input's range, computed at compile time.
 `sin` and `cos` give [−1, 1], `exp` of [0, 3] gives [1, e³] rounded outward.
 
-`fn_into<Out>(x)` **names** the output. Use it for a coarser result, which is
-cheaper, or a range you know. A value past `Out`'s range goes through `Out`'s
-policy, like any store. `math::unit_amplitude<K>` is [−1, 1] in steps of 1/K,
-ready for `sin` and `cos`.
+Name only what you choose; the rest is still deduced:
+
+| Call | Output |
+|---|---|
+| `fn(x)` | deduced: the function's range over x, on x's notch, with x's policy |
+| `fn<per<1024>>(x)` | the same range, computed on the notch you name |
+| `fn<round_floor>(x)`, `fn<per<1000>, round_floor, clamp>(x)` | the deduced output with your notch and policy flags, in any order |
+| `fn<Out>(x)` | `Out`, a type you name: a coarser result, which is cheaper, or a range you know |
+| `fn<Out, In>(x)` | `Out`, with x converted to `In` first |
+
+A value past a named `Out`'s range goes through `Out`'s policy, like any
+store. `math::unit_amplitude<K>` is [−1, 1] in steps of 1/K, what
+`sin<per<K>>(x)` deduces.
 
 ## The functions
 
@@ -56,10 +65,13 @@ ready for `sin` and `cos`.
 | counting | `factorial`, `binomial`, `falling_factorial`, `rising_factorial`, `multinomial` |
 | number theory | `gcd`, `lcm` |
 
-Each function but the exact ones has the forms `fn(x)`, `fn_into<Out>(x)`
-and `fn<mode>(x)`; `pow_base<10>(x)` is 10ˣ, and `pow_base_into<Out, 10>(x)`
-names its output. The exact functions have `fn(x)` and `fn_into<Out>(x)`, and
-need no rounding mode. So do the counting and number-theory functions.
+Every function has every form above. `pow_base<10>(x)` is 10ˣ: its base
+comes first, `pow_base<10, per<1024>>(x)`, `pow_base<10, Out>(x)`; so does
+`pown<3>(x)`'s exponent. `exp` also takes a multivector, every part of its
+output correctly rounded ([geometric algebra](../advanced/geometric-algebra.md#exp)).
+The exact functions (the first row, the counting and number-theory ones)
+need no rounding mode for their deduced output, which is exact; a notch you
+name rounds by the input's mode, else to nearest.
 
 ## Counting
 
@@ -86,7 +98,8 @@ auto big = math::factorial(inside<{0, 100}>{100});         // 100!, on a wide ra
 fractional, and follow `std::gcd` and `std::lcm`: never negative, `gcd(0, 0)`
 and `lcm(0, b)` are 0. Their result types keep the lattice the operands share
 (the gcd of two even grids is even; of halves and thirds a multiple of 1/6:
-`gcd(3/2, 4/3)` is 1/6, `lcm(3/2, 4/3)` is 12). Each function has the forms `fn(…)` and `fn_into<Out>(…)`;
+`gcd(3/2, 4/3)` is 1/6, `lcm(3/2, 4/3)` is 12). `fn<Out>(…)` stores a
+result into `Out`;
 [`combinatorics.cpp`](../../examples/combinatorics.cpp) uses them for
 odds as exact fractions.
 
@@ -105,8 +118,8 @@ depends on the *value*, and returns a `std::expected`:
 | `fmod` | the divisor's grid holds 0 |
 
 Everything else returns a plain inside. A result past a named output
-(`fn_into<Out>`) is a store into `Out`: its policy clamps, wraps or reports
-it, as any store does.
+(`fn<Out>`) is a store into `Out`: its policy clamps, wraps or reports it,
+as any store does.
 
 ## Angles
 
@@ -120,8 +133,11 @@ at most π/4, is approximated, so exact values come out exact:
 using namespace beman::inside::units;
 
 quantity<si::degree, inside<{0, 360}>> deg{120};
-units::cos_into<inside<{{-1, 1}, per<16384>}, round_floor>>(deg);   // exactly −1/2, even rounding down
+math::cos<per<16384>, round_floor>(deg);   // exactly −1/2, even rounding down
 ```
+
+An angle's notch in degrees says nothing about its sine's, so a call on one
+names the result's notch (or the whole output).
 
 Do not `wrap` an angle in radians: a grid's period is never exactly 2π, so
 each turn would shift the angle. Carry a wrapping phase in degrees, turns or
@@ -129,21 +145,27 @@ steps of 2π/2ⁿ, as [`oscillator.cpp`](../../examples/oscillator.cpp) does.
 
 ## Quantities
 
-`<beman/inside/units/math.hpp>` gives each function the unit it should have:
+`<beman/inside/units/math.hpp>` gives each function the unit it should have,
+in every form above:
 
 | Function | Takes | Gives |
 |---|---|---|
 | `abs`, `floor`, `ceil`, `round`, `trunc` | any quantity | the same unit |
 | `sqrt`, `cbrt` | a unit with that root | the root of the unit: m² → m |
-| `sin`, `cos`, `tan` | an angle in rad | a plain inside |
-| `sin_into`, `cos_into` | an angle in rad, degrees, or any unit with a factor of π | a plain inside, reduced exactly |
-| `asin`, `acos`, `atan` | an inside or a dimensionless quantity | rad |
+| `sin`, `cos`, `tan` | an angle in rad (`sin`, `cos`: or degrees, or any unit with a factor of π, reduced exactly) | a plain inside |
+| `asin`, `acos`, `atan` | a dimensionless quantity | rad |
 | `atan2(y, x)`, `hypot(x, y)` | two quantities of one dimension | rad; their common unit |
-| `exp_into`, `log_into`, `log10_into`, `sinh_into`, …, `pow_base_into<Out, B>`, `pow_into<Out>` | an inside or a dimensionless quantity | a plain inside |
+| `exp`, `exp2`, `log`, …, `atanh`, `pow_base<B>`, `pow` | dimensionless quantities | a plain inside |
+| `exp` | a multivector, or a quantity of one blade, whose non-scalar parts anticommute | a multivector: each part rounded once |
 | `value_cast<si::radian, Out>(q)` | an angle in degrees or turns | rad, rounded once |
 
+`fn<L>(q)`, with `L` an inside, names only the result's number: the unit
+follows (`math::sqrt<L>(area)` is a length on `L`). `fn<Q>(q)` names the
+whole quantity, whose unit must be the result's. Of a plain inside, `asin`,
+`acos` and `atan` give a plain inside, as in `<cmath>`.
+
 A level in dB converts to a gain with
-`units::pow_base_into<gain_t, 10>(level / (just<20> * dB))`
+`math::pow_base<10, gain_t>(level / (just<20> * dB))`
 ([`decibels.cpp`](../../examples/decibels.cpp)).
 
 ## Constants

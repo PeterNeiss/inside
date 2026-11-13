@@ -6,8 +6,9 @@
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/math/constants.hpp>
-#include <beman/inside/math/integer.hpp>      // factorial, binomial, …, gcd, lcm
-#include <beman/inside/math/detail/entry.hpp> // the math engine
+#include <beman/inside/math/integer.hpp>          // factorial, binomial, …, gcd, lcm
+#include <beman/inside/math/detail/entry.hpp>     // the math engine
+#include <beman/inside/math/detail/functions.hpp> // the call forms
 
 #include <bit>
 #include <cstdint>
@@ -24,9 +25,10 @@
 // under the output's rounding mode, at whatever precision that grid needs —
 // so results are the same on every platform, at compile time and at runtime,
 // with or without an FPU. Inputs and outputs may be grids past 64 bits.
-// `fn_into<Out>(x)` names the output grid; `fn(x)` deduces it from the input
-// (its notch and policy, the function's range over the input rounded
-// outward).
+// `fn(x)` deduces the output from the input (its notch and policy, the
+// function's range over the input rounded outward); `fn<per<K>>(x)` and
+// `fn<round_floor>(x)` name its notch or policy, `fn<Out>(x)` the output
+// itself (math/detail/functions.hpp).
 //
 // BEMAN_INSIDE_MATH_NO_FP (auto-enabled when freestanding) leaves out the
 // engine's double and dd tiers and <cmath>; results do not change. Builds
@@ -154,7 +156,7 @@ inline constexpr bool int_direct = [] {
 // x rounded to an integer by M: exactly, on the value index, or through
 // rational. Round is half away from zero, as rational round() is.
 template <round_mode M, insidable Out, insidable In>
-constexpr Out integer_into(In x) {
+constexpr Out round_integer(In x) {
     if constexpr (any_wide_valued<Out, In>)
         return store_exact<Out>(exact_to_int<M>(engine::exact_input(x)));
     else if constexpr (int_direct<Out, integer_result_t<In, M>, In>) {
@@ -179,83 +181,7 @@ constexpr Out integer_into(In x) {
     } else // (as a rational: the integer may pass int64, a uint64's)
         return store_value<Out>(round_to_integral(rational{x}, M));
 }
-} // namespace detail
 
-//---------------------------------------------------------------------------
-// Algebraic tier — exact, no polynomial machinery. Each function wraps the
-// corresponding `rational` operation and routes through `Out`'s assignment.
-//---------------------------------------------------------------------------
-
-namespace detail {
-template <class Out, class In>
-consteval bool abs_into_ok() {
-    return lower_of<Out> <= abs_result_lower<In>;
-}
-} // namespace detail
-
-// |x|. Out must include the smallest |x|, 0 when x's range spans 0 — a
-// constraint, so a probe sees it.
-template <insidable Out, insidable In>
-    requires(detail::abs_into_ok<Out, In>())
-[[nodiscard]] constexpr Out abs_into(In x) {
-    if constexpr (detail::any_wide_valued<Out, In>)
-        return detail::store_exact<Out>(detail::engine::abs(detail::engine::exact_input(x)));
-    else if constexpr (std::same_as<Out, detail::abs_result_t<In>> && detail::value_indices_fit_int64<In> &&
-                       notch_of<Out> == notch_of<In>) {
-        // The same lattice through 0: |x| is the value index's magnitude.
-        // In uint64: |INT64_MIN| = 2^63 is past int64 (Out then reaches it).
-        const std::int64_t j = detail::value_index<std::int64_t>(x);
-        return detail::from_value_index<Out>(j < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(j)
-                                                   : static_cast<std::uint64_t>(j));
-    } else
-        return detail::store_value<Out>(beman::inside::detail::abs(rational{x}));
-}
-
-// sign(x) ∈ {−1, 0, 1}, by exact comparison (no decode).
-template <insidable Out, insidable In>
-[[nodiscard]] constexpr Out sign_into(In x) {
-    return Out{std::int64_t{(x > 0) - (x < 0)}};
-}
-
-// copysign(mag, sgn) — |mag| with the sign of sgn; sgn == 0 counts as positive.
-template <insidable Out, insidable Mag, insidable Sgn>
-[[nodiscard]] constexpr Out copysign_into(Mag mag, Sgn sgn) {
-    if constexpr (detail::any_wide_valued<Out, Mag>) {
-        const auto a = detail::engine::abs(detail::engine::exact_input(mag));
-        return detail::store_exact<Out>(sgn < 0 ? -a : a);
-    } else if constexpr (std::same_as<Out, detail::copysign_result_t<Mag, Sgn>> &&
-                         detail::value_indices_fit_int64<Mag> && notch_of<Out> == notch_of<Mag>) {
-        // The same lattice through 0: ±|value index|, in uint64 (|INT64_MIN| =
-        // 2^63 when sgn is never negative); the raw follows modulo 2^64.
-        const std::int64_t  j = detail::value_index<std::int64_t>(mag);
-        const std::uint64_t a =
-            j < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(j) : static_cast<std::uint64_t>(j);
-        return detail::from_value_index<Out>(sgn < 0 ? std::uint64_t{0} - a : a);
-    } else {
-        const rational a = beman::inside::detail::abs(rational{mag});
-        return detail::store_value<Out>(sgn < 0 ? -a : a);
-    }
-}
-
-// ⌊x⌋, ⌈x⌉, x rounded half away from zero, and x truncated toward zero.
-template <insidable Out, insidable In>
-[[nodiscard]] constexpr Out floor_into(In x) {
-    return detail::integer_into<detail::round_mode::floor, Out>(x);
-}
-template <insidable Out, insidable In>
-[[nodiscard]] constexpr Out ceil_into(In x) {
-    return detail::integer_into<detail::round_mode::ceil, Out>(x);
-}
-template <insidable Out, insidable In>
-[[nodiscard]] constexpr Out round_into(In x) {
-    return detail::integer_into<detail::round_mode::nearest, Out>(x);
-}
-template <insidable Out, insidable In>
-[[nodiscard]] constexpr Out trunc_into(In x) {
-    return detail::integer_into<detail::round_mode::trunc, Out>(x);
-}
-
-namespace detail {
 // Gate for fmod's integer fast path. When both operands and Out are
 // integer-backed on commensurable notches, fmod collapses to ONE integer
 // remainder in units of g = gcd(notch of InX, notch of InY): with x
@@ -292,38 +218,36 @@ inline constexpr bool fmod_int_fast = [] {
                !(lim < abs(lower_index_of<Out>));
     }
 }();
-} // namespace detail
 
-namespace detail {
 // x mod y = x − trunc(x/y)·y (truncated division, matching std::fmod).
-// Result has the sign of x. Pre: y != 0 (fmod_into checks it).
+// Result has the sign of x. Pre: y != 0 (fmod_fn checks it).
 template <insidable Out, insidable InX, insidable InY>
 [[nodiscard]] constexpr Out fmod_nonzero(InX x, InY y) {
     // x − trunc(x/y)·y on exact values.
     auto exact = [&] {
-        constexpr std::size_t E = 2 * (detail::engine::input_limbs<InX> > detail::engine::input_limbs<InY>
-                                           ? detail::engine::input_limbs<InX>
-                                           : detail::engine::input_limbs<InY>)+1;
-        using F                 = detail::wide_rational<E>;
-        const F    a{detail::engine::exact_input(x)}, b{detail::engine::exact_input(y)};
+        constexpr std::size_t E =
+            2 * (engine::input_limbs<InX> > engine::input_limbs<InY> ? engine::input_limbs<InX>
+                                                                     : engine::input_limbs<InY>)+1;
+        using F = wide_rational<E>;
+        const F    a{engine::exact_input(x)}, b{engine::exact_input(y)};
         const auto q = (a.Num * b.Den) / (a.Den * b.Num); // truncated
-        return detail::store_exact<Out>(a + F{-(q * b.Num), b.Den});
+        return store_exact<Out>(a + F{-(q * b.Num), b.Den});
     };
-    if constexpr (detail::any_wide_valued<Out, InX, InY>)
+    if constexpr (any_wide_valued<Out, InX, InY>)
         return exact();
-    else if constexpr (detail::fmod_int_fast<Out, InX, InY>) {
+    else if constexpr (fmod_int_fast<Out, InX, InY>) {
         // One integer remainder in g-units; bit-identical to the rational path.
-        constexpr rational     g   = detail::to_rational(gcd(notch_of<InX>, notch_of<InY>));
-        constexpr std::int64_t wx  = trunc(detail::notch64<InX> / g);
-        constexpr std::int64_t wy  = trunc(detail::notch64<InY> / g);
-        constexpr std::int64_t wo  = trunc(g / detail::notch64<Out>);
-        constexpr std::int64_t lox = trunc(detail::lower64<InX> / g); // exact: grid invariant
-        constexpr std::int64_t loy = trunc(detail::lower64<InY> / g);
-        constexpr std::int64_t loo = trunc(detail::lower64<Out> / detail::notch64<Out>);
-        const std::int64_t     a   = detail::raw_int64(x) * wx + (detail::index_storage<InX> ? lox : 0);
-        const std::int64_t     b   = detail::raw_int64(y) * wy + (detail::index_storage<InY> ? loy : 0);
+        constexpr rational     g   = to_rational(gcd(notch_of<InX>, notch_of<InY>));
+        constexpr std::int64_t wx  = trunc(notch64<InX> / g);
+        constexpr std::int64_t wy  = trunc(notch64<InY> / g);
+        constexpr std::int64_t wo  = trunc(g / notch64<Out>);
+        constexpr std::int64_t lox = trunc(lower64<InX> / g); // exact: grid invariant
+        constexpr std::int64_t loy = trunc(lower64<InY> / g);
+        constexpr std::int64_t loo = trunc(lower64<Out> / notch64<Out>);
+        const std::int64_t     a   = raw_int64(x) * wx + (index_storage<InX> ? lox : 0);
+        const std::int64_t     b   = raw_int64(y) * wy + (index_storage<InY> ? loy : 0);
         const std::int64_t     r   = a % b; // |r| < |b|, in Out's range
-        return Out::from_raw(detail::raw_from_offset<Out>(r * wo - loo));
+        return Out::from_raw(raw_from_offset<Out>(r * wo - loo));
     } else {
         // In 64-bit rationals while every step fits (the quotient within
         // int64); else exactly — the remainder itself always fits Out.
@@ -332,34 +256,31 @@ template <insidable Out, insidable InX, insidable InY>
                                             rational{std::numeric_limits<std::int64_t>::min()} < *q)
             if (const auto qy = try_mul(rational{trunc(*q)}, yv))
                 if (const auto r = try_sub(xv, *qy)) [[likely]]
-                    return detail::store_value<Out>(*r);
+                    return store_value<Out>(*r);
         return exact();
     }
 }
-} // namespace detail
 
-// Like `/`: a plain Out when y's grid excludes 0, else expected<Out, errc>
-// with division_by_zero for y == 0.
-template <insidable Out, insidable InX, insidable InY>
-[[nodiscard]] constexpr auto fmod_into(InX x, InY y) {
-    if constexpr (beman::inside::detail::divisor_excludes_zero<InY>)
-        return detail::fmod_nonzero<Out>(x, y);
-    else {
-        if (y == 0)
-            return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
-        return std::expected<Out, errc>{detail::fmod_nonzero<Out>(x, y)};
-    }
-}
+// fmod's result: |r| < |y| and |r| ≤ |x|, with the sign of x, on the gcd of
+// both notches (x − k·y lies on that lattice, so the result is exact).
+template <insidable InX, insidable InY>
+inline constexpr grid_rational fmod_bound =
+    abs_result_upper<InX> < abs_result_upper<InY> ? abs_result_upper<InX> : abs_result_upper<InY>;
+
+template <insidable InX, insidable InY>
+using fmod_result_t = inside<exact_out_grid({(lower_of<InX> < 0 ? -fmod_bound<InX, InY> : grid_rational{0}),
+                                             (upper_of<InX> > 0 ? fmod_bound<InX, InY> : grid_rational{0})},
+                                            engine::gcd_notch<InX, InY>,
+                                            den_bound(grid_of<InX>) * den_bound(grid_of<InY>)),
+                             with_default_rounding(out_policy<InX>)>;
 
 //---------------------------------------------------------------------------
-// pown<E> — compile-time integer powers, pure grid arithmetic
-//---------------------------------------------------------------------------
-// Repeated squaring in inside-space: every multiply widens the result grid
+// pown<E> — compile-time integer powers, pure grid arithmetic. Repeated
+// squaring in inside-space: every multiply widens the result grid
 // corner-correctly, so the result is exact for exact inputs and negative
-// bases are fine. No engine — works on any inside
-// (like abs/floor/fmod). Negative exponents are deferred (they need the
-// division error story).
-namespace detail {
+// bases are fine. No engine — works on any inside (like abs/floor/fmod).
+// Negative exponents are deferred (they need the division error story).
+//---------------------------------------------------------------------------
 template <std::int64_t E, insidable In>
 constexpr auto pown_impl(In x) noexcept {
     if constexpr (E == 0) {
@@ -395,147 +316,185 @@ inline constexpr bool pown_defined = [] {
             return requires(In x) { pown_impl<E / 2>(x) * pown_impl<E / 2>(x); };
     }
 }();
-} // namespace detail
 
-namespace detail {
 // An even power of a base that reaches below 0 squares |x| instead, so the
 // result's range starts at the smallest |x|^E, never below 0.
 template <std::int64_t E, insidable In>
 inline constexpr bool pown_via_abs = E > 0 && E % 2 == 0 && lower_of<In> < 0;
 template <std::int64_t E, insidable In>
 using pown_base_t = std::conditional_t<pown_via_abs<E, In>, abs_result_t<In>, In>;
+
+//---------------------------------------------------------------------------
+// The tags (math/detail/functions.hpp) of the grid operations: exact, so
+// each deduced output is the exact result's grid. abs and copysign take a
+// notch symmetric about 0 (sym_notch), fmod the gcd of both inputs' notches;
+// floor/ceil/round/trunc deduce notch 1 since their outputs are integers.
+//---------------------------------------------------------------------------
+template <std::size_t Arity>
+struct exact_fn {
+    static constexpr bool rounds = false;
+    template <class... In>
+    static constexpr bool takes = sizeof...(In) == Arity && (insidable<In> && ...);
+};
+
+// |x|.
+struct abs_fn : exact_fn<1> {
+    template <insidable In>
+    using result = abs_result_t<In>;
+    template <insidable Out, insidable In>
+    [[nodiscard]] static constexpr Out eval(In x) {
+        if constexpr (any_wide_valued<Out, In>)
+            return store_exact<Out>(engine::abs(engine::exact_input(x)));
+        else if constexpr (grid_of<Out> == grid_of<result<In>> && value_indices_fit_int64<In> &&
+                           notch_of<Out> == notch_of<In>) {
+            // The same lattice through 0: |x| is the value index's magnitude.
+            // In uint64: |INT64_MIN| = 2^63 is past int64 (Out then reaches it).
+            const std::int64_t j = value_index<std::int64_t>(x);
+            return from_value_index<Out>(j < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(j)
+                                               : static_cast<std::uint64_t>(j));
+        } else
+            return store_value<Out>(beman::inside::detail::abs(rational{x}));
+    }
+};
+
+// sign(x) ∈ {−1, 0, 1}, by exact comparison (no decode).
+struct sign_fn : exact_fn<1> {
+    template <insidable In>
+    using result = sign_result_t<In>;
+    template <insidable Out, insidable In>
+    [[nodiscard]] static constexpr Out eval(In x) {
+        return Out{std::int64_t{(x > 0) - (x < 0)}};
+    }
+};
+
+// copysign(mag, sgn) — |mag| with the sign of sgn; sgn == 0 counts as positive.
+struct copysign_fn : exact_fn<2> {
+    template <insidable Mag, insidable Sgn>
+    using result = copysign_result_t<Mag, Sgn>;
+    template <insidable Out, insidable Mag, insidable Sgn>
+    [[nodiscard]] static constexpr Out eval(Mag mag, Sgn sgn) {
+        if constexpr (any_wide_valued<Out, Mag>) {
+            const auto a = engine::abs(engine::exact_input(mag));
+            return store_exact<Out>(sgn < 0 ? -a : a);
+        } else if constexpr (grid_of<Out> == grid_of<result<Mag, Sgn>> && value_indices_fit_int64<Mag> &&
+                             notch_of<Out> == notch_of<Mag>) {
+            // The same lattice through 0: ±|value index|, in uint64 (|INT64_MIN| =
+            // 2^63 when sgn is never negative); the raw follows modulo 2^64.
+            const std::int64_t  j = value_index<std::int64_t>(mag);
+            const std::uint64_t a =
+                j < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(j) : static_cast<std::uint64_t>(j);
+            return from_value_index<Out>(sgn < 0 ? std::uint64_t{0} - a : a);
+        } else {
+            const rational a = beman::inside::detail::abs(rational{mag});
+            return store_value<Out>(sgn < 0 ? -a : a);
+        }
+    }
+};
+
+// ⌊x⌋, ⌈x⌉, x rounded half away from zero, and x truncated toward zero.
+template <round_mode M>
+struct integer_fn : exact_fn<1> {
+    template <insidable In>
+    using result = integer_result_t<In, M>;
+    template <insidable Out, insidable In>
+    [[nodiscard]] static constexpr Out eval(In x) {
+        return round_integer<M, Out>(x);
+    }
+};
+using floor_fn = integer_fn<round_mode::floor>;
+using ceil_fn  = integer_fn<round_mode::ceil>;
+using round_fn = integer_fn<round_mode::nearest>;
+using trunc_fn = integer_fn<round_mode::trunc>;
+
+// Like `/`: a plain Out when y's grid excludes 0, else expected<Out, errc>
+// with division_by_zero for y == 0.
+struct fmod_fn : exact_fn<2> {
+    template <insidable InX, insidable InY>
+    using result = fmod_result_t<InX, InY>;
+    template <insidable Out, insidable InX, insidable InY>
+    [[nodiscard]] static constexpr auto eval(InX x, InY y) {
+        if constexpr (beman::inside::detail::divisor_excludes_zero<InY>)
+            return fmod_nonzero<Out>(x, y);
+        else {
+            if (y == 0)
+                return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
+            return std::expected<Out, errc>{fmod_nonzero<Out>(x, y)};
+        }
+    }
+};
+
+template <std::int64_t E>
+struct pown_fn {
+    static constexpr bool rounds = false;
+    template <class... In>
+    static constexpr bool takes = [] {
+        if constexpr (sizeof...(In) != 1 || !(insidable<In> && ...))
+            return false;
+        else
+            return pown_defined<E, pown_base_t<E, In...[0]>>;
+    }();
+    template <insidable In>
+    static constexpr auto value(In x) noexcept {
+        if constexpr (pown_via_abs<E, In>)
+            return pown_impl<E>(abs_fn::eval<abs_result_t<In>>(x));
+        else
+            return pown_impl<E>(x);
+    }
+    template <insidable In>
+    using result = decltype(value(std::declval<In>()));
+    template <insidable Out, insidable In>
+    [[nodiscard]] static constexpr Out eval(In x) {
+        return Out{value(x)};
+    }
+};
 } // namespace detail
 
-template <std::int64_t E, insidable In>
-    requires detail::pown_defined<E, detail::pown_base_t<E, In>>
-[[nodiscard]] constexpr auto pown(In x) noexcept {
-    if constexpr (detail::pown_via_abs<E, In>)
-        return detail::pown_impl<E>(abs_into<detail::abs_result_t<In>>(x));
-    else
-        return detail::pown_impl<E>(x);
-}
-
 //---------------------------------------------------------------------------
-// Auto-deducing forms — algebraic tier.
-//
-// Each `fn_into<Out>(x)` has an auto form `fn(x)` that derives `Out` from `In`
-// and delegates to it. abs and copysign take a notch symmetric about 0
-// (sym_notch), fmod the gcd of both inputs' notches; floor/ceil/round/trunc
-// deduce notch 1 since their outputs are integer-valued.
-//---------------------------------------------------------------------------
-template <insidable In>
-[[nodiscard]] constexpr auto abs(In x) {
-    return abs_into<detail::abs_result_t<In>>(x);
-}
-
-template <insidable In>
-[[nodiscard]] constexpr auto sign(In x) {
-    return sign_into<detail::sign_result_t<In>>(x);
-}
-
-template <insidable Mag, insidable Sgn>
-[[nodiscard]] constexpr auto copysign(Mag mag, Sgn sgn) {
-    return copysign_into<detail::copysign_result_t<Mag, Sgn>>(mag, sgn);
-}
-
-template <insidable In>
-[[nodiscard]] constexpr auto floor(In x) {
-    return floor_into<detail::floor_result_t<In>>(x);
-}
-
-template <insidable In>
-[[nodiscard]] constexpr auto ceil(In x) {
-    return ceil_into<detail::ceil_result_t<In>>(x);
-}
-
-template <insidable In>
-[[nodiscard]] constexpr auto round(In x) {
-    return round_into<detail::round_result_t<In>>(x);
-}
-
-template <insidable In>
-[[nodiscard]] constexpr auto trunc(In x) {
-    return trunc_into<detail::trunc_result_t<In>>(x);
-}
-
-namespace detail {
-// fmod's result: |r| < |y| and |r| ≤ |x|, with the sign of x, on the gcd of
-// both notches (x − k·y lies on that lattice, so the result is exact).
-template <insidable InX, insidable InY>
-inline constexpr grid_rational fmod_bound =
-    abs_result_upper<InX> < abs_result_upper<InY> ? abs_result_upper<InX> : abs_result_upper<InY>;
-
-template <insidable InX, insidable InY>
-using fmod_result_t = inside<exact_out_grid({(lower_of<InX> < 0 ? -fmod_bound<InX, InY> : grid_rational{0}),
-                                             (upper_of<InX> > 0 ? fmod_bound<InX, InY> : grid_rational{0})},
-                                            engine::gcd_notch<InX, InY>,
-                                            den_bound(grid_of<InX>) * den_bound(grid_of<InY>)),
-                             with_default_rounding(out_policy<InX>)>;
-} // namespace detail
-
-template <insidable InX, insidable InY>
-[[nodiscard]] constexpr auto fmod(InX x, InY y) {
-    return fmod_into<detail::fmod_result_t<InX, InY>>(x, y);
-}
-
-//---------------------------------------------------------------------------
-// unit_amplitude<K> — amplitude grid [-1, 1] at 1/K resolution: a ready-made explicit
-// output for sin / cos (`math::sin_into<math::unit_amplitude<32768>>(angle)`), decoupling
-// the output precision from the angle's grid; results round to nearest. All
-// angles are radians, as in <cmath>.
+// unit_amplitude<K> — amplitude grid [-1, 1] at 1/K resolution, rounding to
+// nearest: a ready-made output for sin and cos (`math::sin<math::
+// unit_amplitude<32768>>(angle)`; `math::sin<per<32768>>(angle)` deduces the
+// same). All angles are radians, as in <cmath>.
 //---------------------------------------------------------------------------
 template <auto K> // a builtin or a grid number of any size
 using unit_amplitude = inside<{{rational{-1}, rational{1}}, per<K>}, round_nearest>;
 
 //---------------------------------------------------------------------------
-// The transcendentals: the adaptive engine.
+// The functions (math/detail/functions.hpp states the call forms): the grid
+// operations, exact, and the transcendentals of the adaptive engine.
 //---------------------------------------------------------------------------
-using detail::entry::acos;
-using detail::entry::acos_into;
-using detail::entry::acosh;
-using detail::entry::acosh_into;
-using detail::entry::asin;
-using detail::entry::asin_into;
-using detail::entry::asinh;
-using detail::entry::asinh_into;
-using detail::entry::atan;
-using detail::entry::atan2;
-using detail::entry::atan2_into;
-using detail::entry::atan_into;
-using detail::entry::atanh;
-using detail::entry::atanh_into;
-using detail::entry::cbrt;
-using detail::entry::cbrt_into;
-using detail::entry::cos;
-using detail::entry::cos_into;
-using detail::entry::cosh;
-using detail::entry::cosh_into;
-using detail::entry::exp;
-using detail::entry::exp2;
-using detail::entry::exp2_into;
-using detail::entry::exp_into;
-using detail::entry::hypot;
-using detail::entry::hypot_into;
-using detail::entry::log;
-using detail::entry::log10;
-using detail::entry::log10_into;
-using detail::entry::log2;
-using detail::entry::log2_into;
-using detail::entry::log_into;
-using detail::entry::pow;
-using detail::entry::pow_base;
-using detail::entry::pow_base_into;
-using detail::entry::pow_into;
-using detail::entry::sin;
-using detail::entry::sin_into;
-using detail::entry::sinh;
-using detail::entry::sinh_into;
-using detail::entry::sqrt;
-using detail::entry::sqrt_into;
-using detail::entry::tan;
-using detail::entry::tan_into;
-using detail::entry::tanh;
-using detail::entry::tanh_into;
+BEMAN_INSIDE_MATH_FUNCTION(abs, detail::abs_fn)
+BEMAN_INSIDE_MATH_FUNCTION(sign, detail::sign_fn)
+BEMAN_INSIDE_MATH_FUNCTION(copysign, detail::copysign_fn)
+BEMAN_INSIDE_MATH_FUNCTION(floor, detail::floor_fn)
+BEMAN_INSIDE_MATH_FUNCTION(ceil, detail::ceil_fn)
+BEMAN_INSIDE_MATH_FUNCTION(round, detail::round_fn)
+BEMAN_INSIDE_MATH_FUNCTION(trunc, detail::trunc_fn)
+BEMAN_INSIDE_MATH_FUNCTION(fmod, detail::fmod_fn)
+BEMAN_INSIDE_MATH_FUNCTION(pown, detail::pown_fn<E>, std::int64_t E)
+
+BEMAN_INSIDE_MATH_FUNCTION(exp, detail::entry::exp_fn)
+BEMAN_INSIDE_MATH_FUNCTION(exp2, detail::entry::exp2_fn)
+BEMAN_INSIDE_MATH_FUNCTION(log, detail::entry::log_fn)
+BEMAN_INSIDE_MATH_FUNCTION(log2, detail::entry::log2_fn)
+BEMAN_INSIDE_MATH_FUNCTION(log10, detail::entry::log10_fn)
+BEMAN_INSIDE_MATH_FUNCTION(sqrt, detail::entry::sqrt_fn)
+BEMAN_INSIDE_MATH_FUNCTION(cbrt, detail::entry::cbrt_fn)
+BEMAN_INSIDE_MATH_FUNCTION(sin, detail::entry::sin_fn)
+BEMAN_INSIDE_MATH_FUNCTION(cos, detail::entry::cos_fn)
+BEMAN_INSIDE_MATH_FUNCTION(tan, detail::entry::tan_fn)
+BEMAN_INSIDE_MATH_FUNCTION(asin, detail::entry::asin_fn)
+BEMAN_INSIDE_MATH_FUNCTION(acos, detail::entry::acos_fn)
+BEMAN_INSIDE_MATH_FUNCTION(atan, detail::entry::atan_fn)
+BEMAN_INSIDE_MATH_FUNCTION(atan2, detail::entry::atan2_fn)
+BEMAN_INSIDE_MATH_FUNCTION(sinh, detail::entry::sinh_fn)
+BEMAN_INSIDE_MATH_FUNCTION(cosh, detail::entry::cosh_fn)
+BEMAN_INSIDE_MATH_FUNCTION(tanh, detail::entry::tanh_fn)
+BEMAN_INSIDE_MATH_FUNCTION(asinh, detail::entry::asinh_fn)
+BEMAN_INSIDE_MATH_FUNCTION(acosh, detail::entry::acosh_fn)
+BEMAN_INSIDE_MATH_FUNCTION(atanh, detail::entry::atanh_fn)
+BEMAN_INSIDE_MATH_FUNCTION(hypot, detail::entry::hypot_fn)
+BEMAN_INSIDE_MATH_FUNCTION(pow, detail::entry::pow_fn)
+BEMAN_INSIDE_MATH_FUNCTION(pow_base, detail::entry::pow_base_fn<Base>, auto Base)
 } // namespace beman::inside::math
 
 #endif // BEMAN_INSIDE_MATH_HPP

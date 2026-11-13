@@ -72,7 +72,7 @@ using down = inside<{0, 100}, round_floor>;
 auto j = down{7} / inside<{1, 10}>{2};           // 3
 ```
 
-## Round once: `mul_into` and `div_into`
+## Round once: `mul<Out>` and `div<Out>`
 
 `a * b` and `a / b` give the exact result on its own grid. When you want the
 result on a type of your choice, round the exact result straight into it,
@@ -85,14 +85,15 @@ using usd   = inside<{{0, 1'000'000'000'000'000}, per<100>}, round_nearest>;
 
 eth   balance{rational{15, 10}};
 price rate{rational{345678, 100}};
-usd   value = mul_into<usd>(balance, rate);                     // 5185.17
-auto  share = div_into<inside<{0, 100}, round_floor>>(val{50}, inside<{1, 10}>{3});   // 16
+usd   value = mul<usd>(balance, rate);                     // 5185.17
+auto  share = div<inside<{0, 100}, round_floor>>(val{50}, inside<{1, 10}>{3});   // 16
 ```
 
-`mul_into<Out, F>(a, b)` and `div_into<Out, F>(a, b)` round by `Out`'s policy
-plus the flags `F`. The exact product `balance × rate` above would need a
-notch of 10⁻²⁰; `mul_into` never forms it. `div_into` returns a
-`std::expected` when the divisor's grid holds 0.
+`mul<Out>(a, b)` and `div<Out>(a, b)` round by `Out`'s policy; a flag after
+the operands, `mul<Out>(a, b, round_floor)`, replaces its rounding mode for
+the call. The exact product `balance × rate` above would need a notch of
+10⁻²⁰; `mul<Out>` never forms it. `div<Out>` returns a `std::expected` when
+the divisor's grid holds 0.
 
 ## Remainder and `divmod`
 

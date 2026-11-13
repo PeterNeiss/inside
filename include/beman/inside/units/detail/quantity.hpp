@@ -17,6 +17,16 @@ namespace beman::inside::units {
 template <reference R, insidable Rep>
 class quantity;
 
+// A sum of quantities of different blades (units/geoalg.hpp). The empty one
+// is the zero of any dimension: a product that vanishes, ε·ε with ε² = 0.
+template <class... Parts>
+class multivector;
+template <>
+class multivector<> {
+  public:
+    friend constexpr bool operator==(const multivector&, const multivector&) = default;
+};
+
 namespace detail {
 template <class T>
 inline constexpr bool is_quantity_v = false;
@@ -97,11 +107,30 @@ constexpr auto lift_to(V&& v) {
         return Q{std::forward<V>(v)};
 }
 
+// R with the sign of its scale dropped (see below).
+template <reference R>
+consteval reference unsigned_reference() {
+    reference r     = R;
+    r.U.Scale.Ratio = beman::inside::detail::abs(r.U.Scale.Ratio);
+    return r;
+}
+
 // A quantity of reference R on a number that inside's arithmetic returned: an
-// inside, or an expected of one (division by a grid holding 0).
+// inside, or an expected of one (division by a grid holding 0). A product of
+// blades can leave a sign in R's scale (e₂e₁ = -e₁e₂): it goes to the number.
+// A zero scale is a product that vanishes: the zero multivector.
 template <reference R, class V>
 constexpr auto make_quantity(V&& v) {
-    return lift_to<quantity<R, beman::inside::detail::unwrap_t<V>>>(std::forward<V>(v));
+    if constexpr (R.U.Scale.Ratio.Num.is_zero())
+        return multivector<>{};
+    else if constexpr (R.U.Scale.Ratio.Num.negative()) {
+        constexpr reference P = unsigned_reference<R>();
+        if constexpr (is_expected_v<std::remove_cvref_t<V>>)
+            return make_quantity<P>(std::forward<V>(v).transform([](const auto& x) { return -x; }));
+        else
+            return make_quantity<P>(-v);
+    } else
+        return lift_to<quantity<R, beman::inside::detail::unwrap_t<V>>>(std::forward<V>(v));
 }
 
 // q.on_wrap(f) and the other hooks: the inside's policy_ref on q's number,
@@ -167,6 +196,9 @@ constexpr auto make_action_ref(Q& q, Ref&& r) {
 
 template <reference R, insidable Rep>
 class quantity {
+    static_assert(!R.U.Scale.Ratio.Num.negative() && !R.U.Scale.Ratio.Num.is_zero(),
+                  "units: this unit carries a sign (e2 * e1 is -(e1 * e2)) - write the unit in another order and "
+                  "negate the number");
     Rep Value;
 
   public:
@@ -397,7 +429,7 @@ namespace beman::inside::units {
 template <insidable V, class Tag>
     requires detail::is_reference_tag_v<Tag>
 [[nodiscard]] constexpr auto operator*(const V& v, Tag t) {
-    return quantity<reference_of(t), V>{v};
+    return detail::make_quantity<reference_of(t)>(v);
 }
 template <class N, class Tag>
     requires detail::is_reference_tag_v<Tag> && std::is_arithmetic_v<N>
@@ -406,7 +438,7 @@ void operator*(N, Tag) =
 // number / unit: 5 / s.
 template <insidable V, unit U>
 [[nodiscard]] constexpr auto operator/(const V& v, unit_t<U>) {
-    return quantity<reference_of(detail::unit_pow(U, -1)), V>{v};
+    return detail::make_quantity<reference_of(detail::unit_pow(U, -1))>(v);
 }
 
 // A magnitude scales a quantity's unit, not its number: mag_pi * q is q
@@ -459,12 +491,14 @@ consteval reference sum_reference() {
 // Why a sum or comparison of A and B is a unit error, if it is: other
 // dimensions or kinds, or no common unit. Each reason is a deleted overload
 // with its message.
-enum class sum_error : unsigned char { none, dimensions, kinds, pi };
+// Dimensions that differ only in basis vectors are a blade error: their sum
+// is a multivector (units/geoalg.hpp).
+enum class sum_error : unsigned char { none, dimensions, blades, kinds, pi };
 
 template <reference A, reference B>
 consteval sum_error sum_error_of() {
     if (dimension_of(A.U) != dimension_of(B.U))
-        return sum_error::dimensions;
+        return same_outside_blade(dimension_of(A.U), dimension_of(B.U)) ? sum_error::blades : sum_error::dimensions;
     if (!common_spec(A, B).Ok)
         return sum_error::kinds;
     const magnitude ma = magnitude_of(A.U), mb = magnitude_of(B.U);
@@ -476,6 +510,13 @@ template <reference A, reference B>
 consteval bool sum_diagnosed() {
     return sum_error_of<A, B>() != sum_error::none;
 }
+// Two quantities of different blades: units/geoalg.hpp adds them, its
+// overloads more constrained than the deleted ones here.
+template <reference A, reference B>
+concept blade_sum = sum_error_of<A, B>() == sum_error::blades;
+// A number and a quantity of a blade without a unit (3 + 4 i).
+template <reference A>
+concept number_blade_sum = has_blade(dimension_of(A.U)) && same_outside_blade(dimension_of(A.U), dim_one);
 
 // Whether the two quantities have a common unit (no sum diagnostic) and both
 // numbers rescale to it.
@@ -559,11 +600,14 @@ template <reference A, class VA, reference B, class VB>
 // A sum, difference, remainder or comparison of two units that cannot meet:
 // a deleted overload per reason, so a requires-test is false and a call says
 // why.
-#define BEMAN_INSIDE_UNITS_SUM_DELETED(ret, op)                                   \
+#define BEMAN_INSIDE_UNITS_SUM_DELETED(ret, op, blades)                           \
     template <reference A, class VA, reference B, class VB>                       \
         requires(detail::sum_error_of<A, B>() == detail::sum_error::dimensions)   \
     ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                      \
         delete ("units: adding or comparing quantities of different dimensions"); \
+    template <reference A, class VA, reference B, class VB>                       \
+        requires detail::blade_sum<A, B>                                          \
+    ret op(const quantity<A, VA>&, const quantity<B, VB>&) = delete (blades);     \
     template <reference A, class VA, reference B, class VB>                       \
         requires(detail::sum_error_of<A, B>() == detail::sum_error::kinds)        \
     ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                      \
@@ -572,15 +616,33 @@ template <reference A, class VA, reference B, class VB>
         requires(detail::sum_error_of<A, B>() == detail::sum_error::pi)           \
     ret op(const quantity<A, VA>&, const quantity<B, VB>&) = delete (             \
         "units: no common unit of a pi multiple and a rational one - convert one side with value_cast first");
-BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator+)
-BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator-)
-BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator%)
-BEMAN_INSIDE_UNITS_SUM_DELETED(bool, operator==)
-BEMAN_INSIDE_UNITS_SUM_DELETED(std::strong_ordering, operator<=>)
-BEMAN_INSIDE_UNITS_SUM_DELETED(void, min)
-BEMAN_INSIDE_UNITS_SUM_DELETED(void, max)
-BEMAN_INSIDE_UNITS_SUM_DELETED(void, midpoint)
+#define BEMAN_INSIDE_UNITS_WHY_GEOALG \
+    "units: quantities of different blades add to a multivector - include <beman/inside/units/geoalg.hpp>"
+#define BEMAN_INSIDE_UNITS_WHY_ORDER "units: quantities of different blades have no order and no remainder"
+BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator+, BEMAN_INSIDE_UNITS_WHY_GEOALG)
+BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator-, BEMAN_INSIDE_UNITS_WHY_GEOALG)
+BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator%, BEMAN_INSIDE_UNITS_WHY_ORDER)
+BEMAN_INSIDE_UNITS_SUM_DELETED(bool, operator==, BEMAN_INSIDE_UNITS_WHY_GEOALG)
+BEMAN_INSIDE_UNITS_SUM_DELETED(std::strong_ordering, operator<=>, BEMAN_INSIDE_UNITS_WHY_ORDER)
+BEMAN_INSIDE_UNITS_SUM_DELETED(void, min, BEMAN_INSIDE_UNITS_WHY_ORDER)
+BEMAN_INSIDE_UNITS_SUM_DELETED(void, max, BEMAN_INSIDE_UNITS_WHY_ORDER)
+BEMAN_INSIDE_UNITS_SUM_DELETED(void, midpoint, BEMAN_INSIDE_UNITS_WHY_ORDER)
 #undef BEMAN_INSIDE_UNITS_SUM_DELETED
+
+// A number plus a quantity of a blade: a multivector too.
+template <insidable V, reference A, class VA>
+    requires detail::number_blade_sum<A>
+void operator+(const V&, const quantity<A, VA>&) = delete (BEMAN_INSIDE_UNITS_WHY_GEOALG);
+template <reference A, class VA, insidable V>
+    requires detail::number_blade_sum<A>
+void operator+(const quantity<A, VA>&, const V&) = delete (BEMAN_INSIDE_UNITS_WHY_GEOALG);
+template <insidable V, reference A, class VA>
+    requires detail::number_blade_sum<A>
+void operator-(const V&, const quantity<A, VA>&) = delete (BEMAN_INSIDE_UNITS_WHY_GEOALG);
+template <reference A, class VA, insidable V>
+    requires detail::number_blade_sum<A>
+void operator-(const quantity<A, VA>&, const V&) = delete (BEMAN_INSIDE_UNITS_WHY_GEOALG);
+#undef BEMAN_INSIDE_UNITS_WHY_ORDER
 
 template <reference A, class VA, reference B, class VB>
     requires detail::number_op<VA, VB, '*'>
@@ -815,28 +877,55 @@ constexpr auto into_scaled(const A& a, const auto& b) {
         product_reference<as_quantity_t<A>::reference, std::remove_cvref_t<decltype(as_quantity(b))>::reference, E>();
     return rescale<conversion_factor<P.U, out_reference<Out>().U>>(as_quantity(a).numerical_value());
 }
+// The output of mul<C> / div<C> (E = ±1) of a and b: C, a quantity type or a
+// plain number for a dimensionless result; or, for another result, C the
+// number of a quantity in the product's unit.
+template <class C, int E, class A, class B>
+struct named_product {
+    using type = C;
+};
+template <insidable C, int E, class A, class B>
+    requires(quantity_like<A> || quantity_like<B>) &&
+            (!number_like_v<product_reference<as_quantity_t<A>::reference, as_quantity_t<B>::reference, E>()>)
+struct named_product<C, E, A, B> {
+    using type = quantity<
+        unsigned_reference<product_reference<as_quantity_t<A>::reference, as_quantity_t<B>::reference, E>()>(),
+        C>;
+};
+template <class C, int E, class A, class B>
+using named_product_t = typename named_product<C, E, A, B>::type;
 } // namespace detail
 
-// mul_into<Out, F>(a, b) / div_into<Out, F>(a, b): a·b or a/b rounded once
-// into Out, a quantity type (or a plain inside for a dimensionless result).
-// The unit factor is folded into the exact product: mul_into<usd>(eth, usd/eth).
-template <class Out, policy_flag F = beman::inside::detail::none, class A, class B>
-    requires detail::into_operands<Out, 1, A, B> && requires(const A& a, const B& b) {
-        beman::inside::mul_into<typename detail::out_rep<Out>::type, F>(detail::into_scaled<Out, 1>(a, b),
-                                                                        detail::as_quantity(b).numerical_value());
-    }
-[[nodiscard]] constexpr auto mul_into(const A& a, const B& b) {
-    return detail::wrap_out<Out>(beman::inside::mul_into<typename detail::out_rep<Out>::type, F>(
-        detail::into_scaled<Out, 1>(a, b), detail::as_quantity(b).numerical_value()));
+// mul<C>(a, b [, flag]) / div<C>(a, b [, flag]): a·b or a/b rounded once into
+// C, a quantity type, or its number (the unit is the product's; a plain
+// number for a dimensionless result). The unit factor is folded into the
+// exact product: mul<usd>(eth, usd/eth).
+template <class C, class A, class B, class... Fl>
+    requires(!insidable<A> || !insidable<B>) && detail::into_operands<detail::named_product_t<C, 1, A, B>, 1, A, B> &&
+            requires(const A& a, const B& b, const Fl&... f) {
+                beman::inside::mul<typename detail::out_rep<detail::named_product_t<C, 1, A, B>>::type>(
+                    detail::into_scaled<detail::named_product_t<C, 1, A, B>, 1>(a, b),
+                    detail::as_quantity(b).numerical_value(),
+                    f...);
+            }
+[[nodiscard]] constexpr auto mul(const A& a, const B& b, const Fl&... f) {
+    using Out = detail::named_product_t<C, 1, A, B>;
+    return detail::wrap_out<Out>(beman::inside::mul<typename detail::out_rep<Out>::type>(
+        detail::into_scaled<Out, 1>(a, b), detail::as_quantity(b).numerical_value(), f...));
 }
-template <class Out, policy_flag F = beman::inside::detail::none, class A, class B>
-    requires detail::into_operands<Out, -1, A, B> && requires(const A& a, const B& b) {
-        beman::inside::div_into<typename detail::out_rep<Out>::type, F>(detail::into_scaled<Out, -1>(a, b),
-                                                                        detail::as_quantity(b).numerical_value());
-    }
-[[nodiscard]] constexpr auto div_into(const A& a, const B& b) {
-    return detail::wrap_out<Out>(beman::inside::div_into<typename detail::out_rep<Out>::type, F>(
-        detail::into_scaled<Out, -1>(a, b), detail::as_quantity(b).numerical_value()));
+template <class C, class A, class B, class... Fl>
+    requires(!insidable<A> || !insidable<B>) &&
+            detail::into_operands<detail::named_product_t<C, -1, A, B>, -1, A, B> &&
+            requires(const A& a, const B& b, const Fl&... f) {
+                beman::inside::div<typename detail::out_rep<detail::named_product_t<C, -1, A, B>>::type>(
+                    detail::into_scaled<detail::named_product_t<C, -1, A, B>, -1>(a, b),
+                    detail::as_quantity(b).numerical_value(),
+                    f...);
+            }
+[[nodiscard]] constexpr auto div(const A& a, const B& b, const Fl&... f) {
+    using Out = detail::named_product_t<C, -1, A, B>;
+    return detail::wrap_out<Out>(beman::inside::div<typename detail::out_rep<Out>::type>(
+        detail::into_scaled<Out, -1>(a, b), detail::as_quantity(b).numerical_value(), f...));
 }
 
 // add_all / mul_all with at least one quantity: the same folds as on inside.
@@ -978,7 +1067,7 @@ BEMAN_INSIDE_UNITS_SUM_FN(mod)
 #undef BEMAN_INSIDE_UNITS_SUM_FN
 
 #define BEMAN_INSIDE_UNITS_PRODUCT_FN(name, sign)                                                                  \
-    template <reference A, class VA, reference B, class VB, class... Args>                                         \
+    template <int&... Barrier, reference A, class VA, reference B, class VB, class... Args>                        \
         requires requires(const VA& x, const VB& y, Args&&... args) {                                              \
             beman::inside::name(x, y, std::forward<Args>(args)...);                                                \
         }                                                                                                          \
@@ -986,7 +1075,7 @@ BEMAN_INSIDE_UNITS_SUM_FN(mod)
         return detail::make_quantity<detail::product_reference<A, B, sign>()>(                                     \
             beman::inside::name(a.numerical_value(), b.numerical_value(), std::forward<Args>(args)...));           \
     }                                                                                                              \
-    template <reference A, class VA, insidable V, class... Args>                                                   \
+    template <int&... Barrier, reference A, class VA, insidable V, class... Args>                                  \
         requires requires(const VA& x, const V& y, Args&&... args) {                                               \
             beman::inside::name(x, y, std::forward<Args>(args)...);                                                \
         }                                                                                                          \
@@ -997,15 +1086,16 @@ BEMAN_INSIDE_UNITS_PRODUCT_FN(mul, 1)
 BEMAN_INSIDE_UNITS_PRODUCT_FN(div, -1)
 #undef BEMAN_INSIDE_UNITS_PRODUCT_FN
 
-// A number times or over a quantity, as the operators.
-template <insidable V, reference A, class VA, class... Args>
+// A number times or over a quantity, as the operators. (The leading int&...
+// takes no argument: mul<C>(a, b) is the named form above.)
+template <int&... Barrier, insidable V, reference A, class VA, class... Args>
     requires requires(const V& x, const VA& y, Args&&... args) {
         beman::inside::mul(x, y, std::forward<Args>(args)...);
     }
 [[nodiscard]] constexpr auto mul(const V& v, const quantity<A, VA>& a, Args&&... args) {
     return detail::make_quantity<A>(beman::inside::mul(v, a.numerical_value(), std::forward<Args>(args)...));
 }
-template <insidable V, reference A, class VA, class... Args>
+template <int&... Barrier, insidable V, reference A, class VA, class... Args>
     requires requires(const V& x, const VA& y, Args&&... args) {
         beman::inside::div(x, y, std::forward<Args>(args)...);
     }
@@ -1022,7 +1112,7 @@ concept arith_with_hook = (quantity_like<L> || quantity_like<R>) &&
                           (beman::inside::detail::is_action_tag_v<std::remove_cvref_t<Args>> || ...);
 }
 #define BEMAN_INSIDE_UNITS_HOOK_DELETED(name)                                                                    \
-    template <class L, class R, class... Args>                                                                   \
+    template <int&... Barrier, class L, class R, class... Args>                                                  \
         requires detail::arith_with_hook<L, R, Args...>                                                          \
     auto name(const L&, const R&, Args&&...) = delete (                                                          \
         "units: add/sub/mul/div/mod/divmod take no hooks: on_clamp / on_wrap / on_error apply to a store - use " \

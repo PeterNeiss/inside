@@ -92,7 +92,7 @@ struct expected_results {
     rational Nearest, Even, Floor, Ceil, Zero;
 };
 
-// F is a captureless lambda []<class O>() { return fn_into<O>(x); }.
+// F is a captureless lambda []<class O>() { return fn<O>(x); }.
 template <policy_flag M, template <policy_flag> class G, class F>
 void expect_mode(rational want, const char* mode) {
     using Out                       = G<M>;
@@ -135,79 +135,78 @@ static_assert(no_table<q4, q8, i8, pos, pq4, u4, deg, nq4, n8>);
 
 TEST(MathExactTest, roots_of_squares_and_cubes_are_ties) {
     // √(9/4) = 3/2 and ∛(27/8) = 3/2, between 1 and 2.
-    expect_modes<ints>([]<class O>() { return am::sqrt_into<O>(nq4{2.25}); }, {2, 2, 1, 2, 1});
-    expect_modes<ints>([]<class O>() { return am::cbrt_into<O>(q8{3.375}); }, {2, 2, 1, 2, 1});
-    expect_modes<ints>([]<class O>() { return am::cbrt_into<O>(q8{-3.375}); }, {-2, -2, -2, -1, -1});
+    expect_modes<ints>([]<class O>() { return am::sqrt<O>(nq4{2.25}); }, {2, 2, 1, 2, 1});
+    expect_modes<ints>([]<class O>() { return am::cbrt<O>(q8{3.375}); }, {2, 2, 1, 2, 1});
+    expect_modes<ints>([]<class O>() { return am::cbrt<O>(q8{-3.375}); }, {-2, -2, -2, -1, -1});
     // √(25/4) = 5/2: the even neighbour is 2.
-    expect_modes<ints>([]<class O>() { return am::sqrt_into<O>(inside<{{0, 8}, per<32>}>{6.25}); }, {3, 2, 2, 3, 2});
+    expect_modes<ints>([]<class O>() { return am::sqrt<O>(inside<{{0, 8}, per<32>}>{6.25}); }, {3, 2, 2, 3, 2});
     // hypot(3/2, 2) = 5/2, hypot(−3/2, −2) too.
-    expect_modes<ints>([]<class O>() { return am::hypot_into<O>(q4{1.5}, q4{2}); }, {3, 2, 2, 3, 2});
-    expect_modes<ints>([]<class O>() { return am::hypot_into<O>(q4{-1.5}, q4{-2}); }, {3, 2, 2, 3, 2});
+    expect_modes<ints>([]<class O>() { return am::hypot<O>(q4{1.5}, q4{2}); }, {3, 2, 2, 3, 2});
+    expect_modes<ints>([]<class O>() { return am::hypot<O>(q4{-1.5}, q4{-2}); }, {3, 2, 2, 3, 2});
     // √4 = 2 and ∛(−8) = −2: grid points.
-    expect_point<ints>([]<class O>() { return am::sqrt_into<O>(nq4{4}); }, 2);
-    expect_point<ints>([]<class O>() { return am::cbrt_into<O>(i8{-8}); }, -2);
+    expect_point<ints>([]<class O>() { return am::sqrt<O>(nq4{4}); }, 2);
+    expect_point<ints>([]<class O>() { return am::cbrt<O>(i8{-8}); }, -2);
 }
 
 TEST(MathExactTest, exp2_of_an_integer) {
     // 2^−1 = 1/2, between 0 and 1; 2^−2 = 1/4 between 0 and 1/2.
-    expect_modes<ints>([]<class O>() { return am::exp2_into<O>(i8{-1}); }, {1, 0, 0, 1, 0});
-    expect_modes<halves>([]<class O>() { return am::exp2_into<O>(i8{-2}); },
-                         {rational{1, 2}, 0, 0, rational{1, 2}, 0});
-    expect_point<ints>([]<class O>() { return am::exp2_into<O>(i8{3}); }, 8);
-    expect_point<ints>([]<class O>() { return am::exp2_into<O>(i8{0}); }, 1);
+    expect_modes<ints>([]<class O>() { return am::exp2<O>(i8{-1}); }, {1, 0, 0, 1, 0});
+    expect_modes<halves>([]<class O>() { return am::exp2<O>(i8{-2}); }, {rational{1, 2}, 0, 0, rational{1, 2}, 0});
+    expect_point<ints>([]<class O>() { return am::exp2<O>(i8{3}); }, 8);
+    expect_point<ints>([]<class O>() { return am::exp2<O>(i8{0}); }, 1);
 }
 
 TEST(MathExactTest, logs_of_exact_powers) {
-    expect_point<ints>([]<class O>() { return am::log2_into<O>(pos{8}); }, 3);
-    expect_point<ints>([]<class O>() { return am::log2_into<O>(pq4{0.25}); }, -2);
-    expect_point<ints>([]<class O>() { return am::log10_into<O>(pos{1000}); }, 3);
-    expect_point<ints>([]<class O>() { return am::log10_into<O>(pos{rational{1, 100}}); }, -2);
-    expect_point<ints>([]<class O>() { return am::log_into<O>(pos{1}); }, 0);
+    expect_point<ints>([]<class O>() { return am::log2<O>(pos{8}); }, 3);
+    expect_point<ints>([]<class O>() { return am::log2<O>(pq4{0.25}); }, -2);
+    expect_point<ints>([]<class O>() { return am::log10<O>(pos{1000}); }, 3);
+    expect_point<ints>([]<class O>() { return am::log10<O>(pos{rational{1, 100}}); }, -2);
+    expect_point<ints>([]<class O>() { return am::log<O>(pos{1}); }, 0);
 }
 
 TEST(MathExactTest, pow_with_a_rational_exponent) {
     using thirds     = inside<{{-3, 3}, per<3>}>;
     using half_steps = inside<{{-3, 3}, per<2>}>;
     // (1/4)^(1/2) = 1/2: a tie between 0 and 1.
-    expect_modes<ints>([]<class O>() { return am::pow_into<O>(nq4{0.25}, half_steps{0.5}); }, {1, 0, 0, 1, 0});
+    expect_modes<ints>([]<class O>() { return am::pow<O>(nq4{0.25}, half_steps{0.5}); }, {1, 0, 0, 1, 0});
     // (9/4)^(3/2) = 27/8: a tie between 13/4 and 14/4.
-    expect_modes<quarters>([]<class O>() { return am::pow_into<O>(nq4{2.25}, half_steps{1.5}); },
+    expect_modes<quarters>([]<class O>() { return am::pow<O>(nq4{2.25}, half_steps{1.5}); },
                            {rational{7, 2}, rational{7, 2}, rational{13, 4}, rational{7, 2}, rational{13, 4}});
     // 8^(2/3) = 4 and 8^(−2/3) = 1/4.
-    expect_point<ints>([]<class O>() { return am::pow_into<O>(n8{8}, thirds{rational{2, 3}}); }, 4);
-    expect_modes<halves>([]<class O>() { return am::pow_into<O>(n8{8}, thirds{rational{-2, 3}}); },
+    expect_point<ints>([]<class O>() { return am::pow<O>(n8{8}, thirds{rational{2, 3}}); }, 4);
+    expect_modes<halves>([]<class O>() { return am::pow<O>(n8{8}, thirds{rational{-2, 3}}); },
                          {rational{1, 2}, 0, 0, rational{1, 2}, 0});
 }
 
 TEST(MathExactTest, zero_and_one_are_exact) {
     // Grid points: a result a hair off 0 or 1 would floor or ceil to a neighbour.
-    expect_point<ints>([]<class O>() { return am::exp_into<O>(i8{0}); }, 1);
-    expect_point<ints>([]<class O>() { return am::sin_into<O>(i8{0}); }, 0);
-    expect_point<ints>([]<class O>() { return am::cos_into<O>(i8{0}); }, 1);
-    expect_point<ints>([]<class O>() { return am::atan_into<O>(i8{0}); }, 0);
-    expect_point<ints>([]<class O>() { return am::asin_into<O>(u4{0}); }, 0);
-    expect_point<ints>([]<class O>() { return am::acos_into<O>(u4{1}); }, 0);
-    expect_point<ints>([]<class O>() { return am::atan2_into<O>(i8{0}, i8{1}); }, 0);
-    expect_point<ints>([]<class O>() { return am::sinh_into<O>(i8{0}); }, 0);
-    expect_point<ints>([]<class O>() { return am::cosh_into<O>(i8{0}); }, 1);
-    expect_point<ints>([]<class O>() { return am::tanh_into<O>(i8{0}); }, 0);
-    expect_point<ints>([]<class O>() { return am::asinh_into<O>(i8{0}); }, 0);
-    expect_point<ints>([]<class O>() { return am::acosh_into<O>(inside<{{1, 8}, per<64>}>{1}); }, 0);
+    expect_point<ints>([]<class O>() { return am::exp<O>(i8{0}); }, 1);
+    expect_point<ints>([]<class O>() { return am::sin<O>(i8{0}); }, 0);
+    expect_point<ints>([]<class O>() { return am::cos<O>(i8{0}); }, 1);
+    expect_point<ints>([]<class O>() { return am::atan<O>(i8{0}); }, 0);
+    expect_point<ints>([]<class O>() { return am::asin<O>(u4{0}); }, 0);
+    expect_point<ints>([]<class O>() { return am::acos<O>(u4{1}); }, 0);
+    expect_point<ints>([]<class O>() { return am::atan2<O>(i8{0}, i8{1}); }, 0);
+    expect_point<ints>([]<class O>() { return am::sinh<O>(i8{0}); }, 0);
+    expect_point<ints>([]<class O>() { return am::cosh<O>(i8{0}); }, 1);
+    expect_point<ints>([]<class O>() { return am::tanh<O>(i8{0}); }, 0);
+    expect_point<ints>([]<class O>() { return am::asinh<O>(i8{0}); }, 0);
+    expect_point<ints>([]<class O>() { return am::acosh<O>(inside<{{1, 8}, per<64>}>{1}); }, 0);
     expect_point<ints>(
-        []<class O>() { return am::atanh_into<O>(inside<{{rational{-3, 4}, rational{3, 4}}, per<256>}>{0}); }, 0);
+        []<class O>() { return am::atanh<O>(inside<{{rational{-3, 4}, rational{3, 4}}, per<256>}>{0}); }, 0);
 }
 
 TEST(MathExactTest, niven_angles_in_degrees) {
     using un::si::degree;
     // sin 30° = cos 60° = 1/2 and sin −30° = −1/2: ties.
-    expect_modes<ints>([]<class O>() { return un::sin_into<O>(un::quantity<degree, deg>{30}); }, {1, 0, 0, 1, 0});
-    expect_modes<ints>([]<class O>() { return un::cos_into<O>(un::quantity<degree, deg>{60}); }, {1, 0, 0, 1, 0});
-    expect_modes<ints>([]<class O>() { return un::sin_into<O>(un::quantity<degree, deg>{-30}); }, {-1, 0, -1, 0, 0});
-    expect_modes<ints>([]<class O>() { return un::cos_into<O>(un::quantity<degree, deg>{240}); }, {-1, 0, -1, 0, 0});
+    expect_modes<ints>([]<class O>() { return am::sin<O>(un::quantity<degree, deg>{30}); }, {1, 0, 0, 1, 0});
+    expect_modes<ints>([]<class O>() { return am::cos<O>(un::quantity<degree, deg>{60}); }, {1, 0, 0, 1, 0});
+    expect_modes<ints>([]<class O>() { return am::sin<O>(un::quantity<degree, deg>{-30}); }, {-1, 0, -1, 0, 0});
+    expect_modes<ints>([]<class O>() { return am::cos<O>(un::quantity<degree, deg>{240}); }, {-1, 0, -1, 0, 0});
     // 0 and ±1: grid points.
-    expect_point<ints>([]<class O>() { return un::cos_into<O>(un::quantity<degree, deg>{90}); }, 0);
-    expect_point<ints>([]<class O>() { return un::sin_into<O>(un::quantity<degree, deg>{180}); }, 0);
-    expect_point<ints>([]<class O>() { return un::sin_into<O>(un::quantity<degree, deg>{-90}); }, -1);
+    expect_point<ints>([]<class O>() { return am::cos<O>(un::quantity<degree, deg>{90}); }, 0);
+    expect_point<ints>([]<class O>() { return am::sin<O>(un::quantity<degree, deg>{180}); }, 0);
+    expect_point<ints>([]<class O>() { return am::sin<O>(un::quantity<degree, deg>{-90}); }, -1);
 }
 
 // fn<Mode>(x): the rounding mode on the call, for an input whose type has
@@ -279,7 +278,7 @@ TEST(InverseHyperbolicTest, explicit_output_and_decimal_grids) {
     using I = inside<{-20, 20}, round_nearest>; // integer grid
     EXPECT_EQ(rational{math::asinh(I{3})}, 2);  // asinh(3) ≈ 1.818 → 2
     using Out = inside<{{0, 8}, per<256>}, round_nearest>;
-    EXPECT_NEAR(value(math::acosh_into<Out>(C{2})), std::acosh(2.0), 1.0 / 256);
+    EXPECT_NEAR(value(math::acosh<Out>(C{2})), std::acosh(2.0), 1.0 / 256);
 }
 } // namespace inverse_hyperbolic_tests
 
@@ -355,7 +354,7 @@ TEST(MathTurnsTest, a_turn_phase_wraps_exactly_and_converts_at_the_call) {
     EXPECT_EQ(rational{phase}, 0); // no drift
 
     turn_t     q{0.25};
-    const auto s = math::sin_into<math::unit_amplitude<16384>>(angle_t{q * math::two_pi});
+    const auto s = math::sin<math::unit_amplitude<16384>>(angle_t{q * math::two_pi});
     EXPECT_EQ(rational{s}, 1); // sin(π/2), on the 1/16384 grid
 }
 
@@ -372,7 +371,7 @@ TEST(MathTurnsTest, an_unwrapped_radians_angle_stays_exact) {
 // Counting and number theory (math/integer.hpp): factorial, binomial,
 // falling_factorial, rising_factorial, multinomial, gcd and lcm. Their result
 // grids, every value on small ranges against plain loops and the identities,
-// values past 64 bits, the _into forms and compile-time evaluation. Inputs
+// values past 64 bits, the named-output forms and compile-time evaluation. Inputs
 // pass through a volatile, so the run-time paths run.
 namespace math_integer_tests {
 using namespace beman::inside;
@@ -542,15 +541,15 @@ TEST(MathIntegerTest, past_64_bits) {
 
 TEST(MathIntegerTest, into_forms) {
     using n10 = inside<{0, 10}>;
-    EXPECT_TRUE((math::factorial_into<inside<{0, 1000}, clamp>>(n10{at_run_time(7)})) == 1000); // 5040 saturates
+    EXPECT_TRUE((math::factorial<inside<{0, 1000}, clamp>>(n10{at_run_time(7)})) == 1000); // 5040 saturates
     using checked_out = inside<{0, 1000}>;
-    EXPECT_THROW((void)math::factorial_into<checked_out>(n10{at_run_time(7)}), inside_error);
-    EXPECT_TRUE((math::binomial_into<inside<{0, 255}>>(n10{at_run_time(10)}, n10{at_run_time(5)})) == 252);
-    EXPECT_TRUE((math::gcd_into<inside<{0, 100}>>(n10{at_run_time(4)}, n10{at_run_time(6)})) == 2);
-    EXPECT_TRUE((math::lcm_into<inside<{0, 100}>>(n10{at_run_time(4)}, n10{at_run_time(6)})) == 12);
-    EXPECT_TRUE((math::multinomial_into<inside<{0, 100}>>(n10{at_run_time(2)}, n10{at_run_time(2)})) == 6);
-    EXPECT_TRUE((math::falling_factorial_into<inside<{0, 100}>>(n10{at_run_time(5)}, n10{at_run_time(2)})) == 20);
-    EXPECT_TRUE((math::rising_factorial_into<inside<{0, 100}>>(n10{at_run_time(5)}, n10{at_run_time(2)})) == 30);
+    EXPECT_THROW((void)math::factorial<checked_out>(n10{at_run_time(7)}), inside_error);
+    EXPECT_TRUE((math::binomial<inside<{0, 255}>>(n10{at_run_time(10)}, n10{at_run_time(5)})) == 252);
+    EXPECT_TRUE((math::gcd<inside<{0, 100}>>(n10{at_run_time(4)}, n10{at_run_time(6)})) == 2);
+    EXPECT_TRUE((math::lcm<inside<{0, 100}>>(n10{at_run_time(4)}, n10{at_run_time(6)})) == 12);
+    EXPECT_TRUE((math::multinomial<inside<{0, 100}>>(n10{at_run_time(2)}, n10{at_run_time(2)})) == 6);
+    EXPECT_TRUE((math::falling_factorial<inside<{0, 100}>>(n10{at_run_time(5)}, n10{at_run_time(2)})) == 20);
+    EXPECT_TRUE((math::rising_factorial<inside<{0, 100}>>(n10{at_run_time(5)}, n10{at_run_time(2)})) == 30);
 }
 
 // gcd and lcm of fractional lattices: x = a·u, y = b·u for u the gcd of the
@@ -619,12 +618,12 @@ TEST(MathTest, tan_near_a_pole_overflows) {
     for (int d = 0; d <= 2; ++d) {
         const auto x = In::from_raw(static_cast<In::raw_type>(top - d));
         try {
-            (void)math::tan_into<Out>(x);
+            (void)math::tan<Out>(x);
             ADD_FAILURE() << "no error reported";
         } catch (const inside_error& e) {
             EXPECT_EQ(e.Code, errc::overflow);
         }
-        EXPECT_EQ(math::tan_into<Clamped>(x), 4);
+        EXPECT_EQ(math::tan<Clamped>(x), 4);
     }
 }
 
@@ -652,10 +651,10 @@ TEST(MathTest, pow_with_a_rational_exponent_is_exact) {
     using down4  = inside<{{0, 4}, per<4>}, round_floor>;
     using up8    = inside<{{0, 4}, per<8>}, round_ceil>;
     using down16 = inside<{0, 16}, round_floor>;
-    EXPECT_EQ(math::pow_into<up4>(qtr{2.25_r}, half{0.5_r}), 1.5_r);
-    EXPECT_EQ(math::pow_into<down4>(qtr{2.25_r}, half{0.5_r}), 1.5_r);
-    EXPECT_EQ(math::pow_into<up8>(qtr{2.25_r}, half{1.5_r}), 3.375_r);
-    EXPECT_EQ(math::pow_into<down16>(inside<{0, 16}>{4}, half{0.5}), 2);
+    EXPECT_EQ(math::pow<up4>(qtr{2.25_r}, half{0.5_r}), 1.5_r);
+    EXPECT_EQ(math::pow<down4>(qtr{2.25_r}, half{0.5_r}), 1.5_r);
+    EXPECT_EQ(math::pow<up8>(qtr{2.25_r}, half{1.5_r}), 3.375_r);
+    EXPECT_EQ(math::pow<down16>(inside<{0, 16}>{4}, half{0.5}), 2);
 }
 
 // A second exponent sign was accepted ("1e-+5" read as 1e5).
@@ -671,10 +670,10 @@ TEST(MathTest, pow_of_a_zero_base) {
     using B   = inside<{{0, 4}, per<4>}>;
     using E   = inside<{{-2, 2}, per<2>}>;
     using Out = inside<{{0, 16}, per<16>}, round_nearest>;
-    EXPECT_EQ(*math::pow_into<Out>(B{0}, E{1.5}), 0);
-    EXPECT_EQ(*math::pow_into<Out>(B{0}, E{0}), 1);
-    EXPECT_EQ(math::pow_into<Out>(B{0}, E{-1}).error(), errc::division_by_zero);
-    EXPECT_EQ(*math::pow_into<Out>(B{2}, E{2}), 4);
+    EXPECT_EQ(*math::pow<Out>(B{0}, E{1.5}), 0);
+    EXPECT_EQ(*math::pow<Out>(B{0}, E{0}), 1);
+    EXPECT_EQ(math::pow<Out>(B{0}, E{-1}).error(), errc::division_by_zero);
+    EXPECT_EQ(*math::pow<Out>(B{2}, E{2}), 4);
     // (A base grid reaching below 0 is a compile error: fail/pow_negative_base.)
 }
 
@@ -707,11 +706,11 @@ TEST(MathTest, wrap_output_folds_the_true_value) {
     int bad    = 0;
     for (std::int64_t k = -320; k <= 320; k += 3) {
         const In x{rational{k, 16}};
-        bad += !(Wrap{math::exp_into<Wide>(x), wrap} == math::exp_into<Wrap>(x));
-        bad += !(Wrap{math::exp2_into<Wide>(x), wrap} == math::exp2_into<Wrap>(x));
-        bad += !(Wrap{math::sinh_into<Wide>(x), wrap} == math::sinh_into<Wrap>(x));
-        bad += !(Wrap{math::cosh_into<Wide>(x), wrap} == math::cosh_into<Wrap>(x));
-        bad += !(Wrap{math::pow_base_into<Wide, 3>(x), wrap} == math::pow_base_into<Wrap, 3>(x));
+        bad += !(Wrap{math::exp<Wide>(x), wrap} == math::exp<Wrap>(x));
+        bad += !(Wrap{math::exp2<Wide>(x), wrap} == math::exp2<Wrap>(x));
+        bad += !(Wrap{math::sinh<Wide>(x), wrap} == math::sinh<Wrap>(x));
+        bad += !(Wrap{math::cosh<Wide>(x), wrap} == math::cosh<Wrap>(x));
+        bad += !(Wrap{math::pow_base<3, Wide>(x), wrap} == math::pow_base<3, Wrap>(x));
     }
     EXPECT_EQ(bad, 0);
     // pow, with a base reaching 0 (bounded: the exponent is not negative).
@@ -721,7 +720,7 @@ TEST(MathTest, wrap_output_folds_the_true_value) {
         for (int e = 0; e <= 12; ++e) {
             const B b{rational{i, 4}};
             const P p{rational{e, 2}};
-            bad += !(Wrap{math::pow_into<Wide>(b, p), wrap} == math::pow_into<Wrap>(b, p));
+            bad += !(Wrap{math::pow<Wide>(b, p), wrap} == math::pow<Wrap>(b, p));
         }
     EXPECT_EQ(bad, 0);
 }
@@ -732,11 +731,11 @@ TEST(MathTest, asinh_of_a_large_argument) {
     using I64 = std::int64_t;
     using O   = inside<{{0, 64}, 0x1p-56}, round_floor>;
     // floor(asinh(1e9)·2^56) (mpmath, 300 bits).
-    const auto r = math::asinh_into<O>(inside<{0, 1000000000}>{1000000000});
+    const auto r = math::asinh<O>(inside<{0, 1000000000}>{1000000000});
     EXPECT_EQ(rational(r), (rational{1543215194964068268ull, 1ull << 56}));
     static_assert([] {
         using P      = inside<{{0, 64}, 0x1p-20}, round_nearest>;
-        const auto c = math::asinh_into<P>(inside<{0, I64{1} << 40}>{I64{1} << 40});
+        const auto c = math::asinh<P>(inside<{0, I64{1} << 40}>{I64{1} << 40});
         return c > 28.41_r && c < 28.43_r; // asinh(2^40) = 28.4190_r…; log(2^40) is 27.7_r
     }());
 }
@@ -784,17 +783,17 @@ TEST(MathTest, pow_base_with_a_builtin_base_past_int64) {
     using O = inside<{{0, 1}, per<1024>}, round_nearest>;
     using X = inside<{{-1, 0}, per<64>}>;
     using Y = inside<{0, 2}>;
-    static_assert(math::pow_base_into<O, 9223372036854775809ull>(X{-1}) == 0);
-    static_assert(math::pow_base_into<O, 18446744073709551615ull>(X{rational{-1, 64}}) ==
-                  math::pow_base_into<O, 18446744073709551615_g>(X{rational{-1, 64}}));
+    static_assert(math::pow_base<9223372036854775809ull, O>(X{-1}) == 0);
+    static_assert(math::pow_base<18446744073709551615ull, O>(X{rational{-1, 64}}) ==
+                  math::pow_base<18446744073709551615_g, O>(X{rational{-1, 64}}));
     static_assert(math::pow_base<9223372036854775809ull>(Y{2}) == just<85070591730234615884290395931651604481_g>);
-    EXPECT_EQ((math::pow_base_into<O, 9223372036854775809ull>(X{test::at_run_time(-1)})), 0);
+    EXPECT_EQ((math::pow_base<9223372036854775809ull, O>(X{test::at_run_time(-1)})), 0);
     []<class W>(std::type_identity<W>) {
         if constexpr (std::integral<W>) { // __int128 under the GNU dialects
             constexpr W base = W{1} << 100;
             static_assert(math::pow_base<base>(Y{2}) ==
                           just<1606938044258990275541962092341162602522202993782792835301376_g>);
-            static_assert(math::pow_base_into<O, base>(X{-1}) == 0);
+            static_assert(math::pow_base<base, O>(X{-1}) == 0);
         }
     }(std::type_identity<__int128>{});
 }
@@ -869,7 +868,7 @@ using detail::rational;
 // A bounded continuous Out takes the fraction nearest the result on its bound.
 TEST(MathArmTest, into_a_continuous_output) {
     using Oc = inside<{{0, 2}, max_denominator{1000}}, round_nearest>;
-    EXPECT_EQ(rational{math::sqrt_into<Oc>(inside<{{0, 4}, per<16>}>{2})}, (rational{1393, 985}));
+    EXPECT_EQ(rational{math::sqrt<Oc>(inside<{{0, 4}, per<16>}>{2})}, (rational{1393, 985}));
 }
 
 // pow over a base grid that stays above 0; pow_base into an unanchored Out
@@ -879,21 +878,21 @@ TEST(MathArmTest, pow_on_a_positive_base_and_pow_base_unanchored) {
     using B = inside<{{1, 4}, per<4>}>;
     EXPECT_TRUE(math::pow(B{2}, inside<{0, 3}>{3}) == 8);
     using Ou = inside<{{0.5_r, 100.5_r}, 1}, round_nearest>;
-    EXPECT_EQ((rational{math::pow_base_into<Ou, 2>(inside<{0, 6}>{5})}), (rational{65, 2}));
+    EXPECT_EQ((rational{math::pow_base<2, Ou>(inside<{0, 6}>{5})}), (rational{65, 2}));
     using R = inside<{{1, 4}, max_denominator{7}}>;
     using O = inside<{{0, 2}, per<1024>}, round_nearest>;
-    EXPECT_EQ(rational{math::sqrt_into<O>(R{rational{16, 7}})}, (rational{1548, 1024})); // √(16/7) ≈ 1.51186
+    EXPECT_EQ(rational{math::sqrt<O>(R{rational{16, 7}})}, (rational{1548, 1024})); // √(16/7) ≈ 1.51186
 }
 
-// fmod_into: a zero divisor, and a quotient past int64 taken exactly.
+// fmod<Out>: a zero divisor, and a quotient past int64 taken exactly.
 TEST(MathArmTest, fmod_past_the_64_bit_quotient) {
     using X  = inside<{{0, 4611686018427387904_g}, max_denominator{2}}>; // [0, 2^62]
     using Y  = inside<{{0, 1}, max_denominator{3}}>;
     using Of = inside<{{0, 1}, max_denominator{6}}>;
     const X x{rational{(std::uint64_t{1} << 63) - 1, 2}}; // 2^62 − 1/2
-    EXPECT_EQ(math::fmod_into<Of>(x, Y{test::at_run_time(0)}).error(), errc::division_by_zero);
-    EXPECT_EQ(rational{*math::fmod_into<Of>(x, Y{rational{1, 2}})}, 0);
-    EXPECT_EQ(rational{*math::fmod_into<Of>(x, Y{rational{1, 3}})}, (rational{1, 6}));
+    EXPECT_EQ(math::fmod<Of>(x, Y{test::at_run_time(0)}).error(), errc::division_by_zero);
+    EXPECT_EQ(rational{*math::fmod<Of>(x, Y{rational{1, 2}})}, 0);
+    EXPECT_EQ(rational{*math::fmod<Of>(x, Y{rational{1, 3}})}, (rational{1, 6}));
 }
 
 // pown has no result for a negative exponent.
@@ -932,10 +931,10 @@ TEST(MathArmTest, fallible_function_into_an_unanchored_output) {
     using X  = inside<{-2, 2}>;
     using Ou = inside<{{0.5_r, 100.5_r}, 1}, round_nearest>;
     using Ow = inside<{{0.5_r, 2361183241434822606849_g / 2}, 1}, round_nearest>; // to 2^70 + 1/2
-    EXPECT_EQ(detail::rational{*math::pow_into<Ou>(B{2}, X{2})}, (detail::rational{9, 2}));
-    EXPECT_EQ(math::pow_into<Ou>(B{0}, X{-1}).error(), errc::division_by_zero);
-    EXPECT_TRUE((*math::pow_into<Ow>(B{2}, X{2}) == just<9, 2>));
-    EXPECT_EQ(math::pow_into<Ow>(B{0}, X{-1}).error(), errc::division_by_zero);
+    EXPECT_EQ(detail::rational{*math::pow<Ou>(B{2}, X{2})}, (detail::rational{9, 2}));
+    EXPECT_EQ(math::pow<Ou>(B{0}, X{-1}).error(), errc::division_by_zero);
+    EXPECT_TRUE((*math::pow<Ow>(B{2}, X{2}) == just<9, 2>));
+    EXPECT_EQ(math::pow<Ow>(B{0}, X{-1}).error(), errc::division_by_zero);
 }
 } // namespace reached_arms_tests
 
@@ -946,12 +945,12 @@ using detail::rational;
 // A wrap output of pow over a base grid above 0 (3^2 = 9 folds to 1); a
 // function into a wide unanchored Out and into a wide-index Out.
 TEST(MathArmTest, wrap_and_wide_outputs) {
-    EXPECT_TRUE((math::pow_into<inside<{0, 7}, wrap | round_nearest>>(inside<{1, 4}>{3}, inside<{0, 3}>{2}) == 1));
+    EXPECT_TRUE((math::pow<inside<{0, 7}, wrap | round_nearest>>(inside<{1, 4}>{3}, inside<{0, 3}>{2}) == 1));
     using Ow = inside<{{0.5_r, 2361183241434822606849_g / 2}, 1}, round_nearest>; // to 2^70 + 1/2
-    EXPECT_TRUE((math::sqrt_into<Ow>(inside<{0, 100}>{50}) == just<15, 2>));      // √50 ≈ 7.07
+    EXPECT_TRUE((math::sqrt<Ow>(inside<{0, 100}>{50}) == just<15, 2>));           // √50 ≈ 7.07
     using Wn = inside<{{0, 2}, 1_g / 1180591620717411303424_g}, round_nearest>;   // notch 2^-70
     static_assert(detail::wide_index_storage<Wn>);
-    EXPECT_TRUE((math::sqrt_into<Wn>(inside<{0, 4}>{4}) == 2));
+    EXPECT_TRUE((math::sqrt<Wn>(inside<{0, 4}>{4}) == 2));
 }
 
 // pown is undefined past the fraction cap: from x^64 on a continuous base,
@@ -989,7 +988,7 @@ TEST(MathArmTest, dd_tier_reads_a_rational_input) {
     using In  = inside<{{0, 1}, max_denominator{1000}}>;
     using Out = inside<{{0, 3}, per<(std::int64_t{1} << 40)>}, round_nearest>;
     static_assert(!math::detail::engine::fp_tier_available || math::detail::engine::dd_tier<Out, In>);
-    EXPECT_EQ(math::exp_into<Out>(In{rational{1, 3}}).as<double>(), std::round(std::exp(1.0 / 3) * 0x1p40) / 0x1p40);
+    EXPECT_EQ((math::exp<Out>(In{rational{1, 3}}).as<double>()), std::round(std::exp(1.0 / 3) * 0x1p40) / 0x1p40);
 }
 } // namespace reached_arms_tests
 
@@ -1032,9 +1031,9 @@ TEST(MathTest, pow_base_past_64_bits) {
     volatile bool yes = true; // the inputs at run time
     const X       x1  = yes ? X{1} : X{};
     const X       x70 = yes ? X{detail::rational{1, 70}} : X{};
-    EXPECT_TRUE((math::pow_base_into<Out, 1180591620717411303424_g>(x70) == 2)); // (2^70)^(1/70)
+    EXPECT_TRUE((math::pow_base<1180591620717411303424_g, Out>(x70) == 2)); // (2^70)^(1/70)
     EXPECT_TRUE((math::pow_base<1180591620717411303424_g>(x1) == just<1180591620717411303424_g>));
-    EXPECT_TRUE((math::pow_base_into<Out, 2_g>(x1) == 2)); // within int64: the int64 path
+    EXPECT_TRUE((math::pow_base<2_g, Out>(x1) == 2)); // within int64: the int64 path
 }
 } // namespace big_base_tests
 
@@ -1108,3 +1107,90 @@ TEST(MathConstantsTest, compared_exactly) {
     EXPECT_TRUE((inside<{0, 2}>{1} > math::egamma));
 }
 } // namespace constant_tests
+
+//---------------------------------------------------------------------------
+// The call forms (math/detail/functions.hpp): f<C>(x) and f<C, D>(x) agree;
+// f<per<K>>(x) is the deduced output computed on notch K, the type that call
+// names; specs combine in any order; f<T>(x) always names the output.
+//---------------------------------------------------------------------------
+namespace call_form_tests {
+using namespace beman::inside;
+
+using x_t = inside<{{rational{1, 4}, rational{3, 4}}, per<64>}, round_nearest>; // every unary domain but acosh's
+using y_t = inside<{{1, 2}, per<64>}, round_nearest>;                           // acosh's
+using o_t = inside<{{-8, 8}, per<1 << 20>}, round_floor>;
+template <class X>
+using fine_t = inside<{interval_of<X>, per<1 << 20>}, flags_of<X>>; // X's interval on the spec's notch
+
+// The range on notch K: a rounding function's computed there, an exact
+// function's exact range rounded outward.
+template <bool Rounds, class S, class D, class Fine>
+inline constexpr bool range_on_notch = [] {
+    if constexpr (Rounds)
+        return grid_of<S> == grid_of<Fine>;
+    else
+        return grid_of<S> == grid_of<math::detail::on_notch_t<D, detail::grid_rational{per<1 << 20>}>>;
+}();
+
+#define BEMAN_INSIDE_CALL_FORMS(fn, X, v, rounds)                                                               \
+    {                                                                                                           \
+        const X x{v};                                                                                           \
+        EXPECT_EQ((math::fn<o_t>(x)), (math::fn<o_t, X>(x))) << #fn;                                            \
+        using S = decltype(math::fn<per<1 << 20>>(x));                                                          \
+        static_assert(range_on_notch<rounds, S, decltype(math::fn(x)), decltype(math::fn(fine_t<X>{v}))>, #fn); \
+        EXPECT_EQ(math::fn<per<1 << 20>>(x), math::fn<S>(x)) << #fn;                                            \
+        static_assert(std::same_as<decltype(math::fn<per<1 << 20>, round_floor, clamp>(x)),                     \
+                                   decltype(math::fn<clamp, round_floor, per<1 << 20>>(x))>);                   \
+        static_assert(detail::rounding_of(flags_of<decltype(math::fn<per<1 << 20>, round_floor>(x))>) ==        \
+                      detail::round_mode::floor);                                                               \
+        static_assert(std::same_as<decltype(math::fn(x)), decltype(math::fn<>(x))>);                            \
+    }
+
+TEST(MathCallFormTest, named_spec_and_deduced_forms_agree){
+    BEMAN_INSIDE_CALL_FORMS(exp, x_t, 0.5, true) BEMAN_INSIDE_CALL_FORMS(exp2, x_t, 0.5, true)
+        BEMAN_INSIDE_CALL_FORMS(log, x_t, 0.5, true) BEMAN_INSIDE_CALL_FORMS(log2, x_t, 0.5, true)
+            BEMAN_INSIDE_CALL_FORMS(log10, x_t, 0.5, true) BEMAN_INSIDE_CALL_FORMS(sqrt, x_t, 0.5, true)
+                BEMAN_INSIDE_CALL_FORMS(cbrt, x_t, 0.5, true) BEMAN_INSIDE_CALL_FORMS(sin, x_t, 0.5, true)
+                    BEMAN_INSIDE_CALL_FORMS(cos, x_t, 0.5, true) BEMAN_INSIDE_CALL_FORMS(tan, x_t, 0.5, true)
+                        BEMAN_INSIDE_CALL_FORMS(asin, x_t, 0.5, true) BEMAN_INSIDE_CALL_FORMS(acos, x_t, 0.5, true)
+                            BEMAN_INSIDE_CALL_FORMS(atan, x_t, 0.5, true) BEMAN_INSIDE_CALL_FORMS(sinh, x_t, 0.5, true)
+                                BEMAN_INSIDE_CALL_FORMS(cosh, x_t, 0.5, true)
+                                    BEMAN_INSIDE_CALL_FORMS(tanh, x_t, 0.5, true)
+                                        BEMAN_INSIDE_CALL_FORMS(asinh, x_t, 0.5, true)
+                                            BEMAN_INSIDE_CALL_FORMS(acosh, y_t, 1.5, true)
+                                                BEMAN_INSIDE_CALL_FORMS(atanh, x_t, 0.5, true)
+                                                    BEMAN_INSIDE_CALL_FORMS(abs, x_t, 0.5, false)
+                                                        BEMAN_INSIDE_CALL_FORMS(floor, x_t, 0.5, false)
+                                                            BEMAN_INSIDE_CALL_FORMS(round, x_t, 0.5, false)}
+#undef BEMAN_INSIDE_CALL_FORMS
+
+TEST(MathCallFormTest, two_argument_and_leading_argument_forms) {
+    const x_t a{0.5}, b{0.25};
+    EXPECT_EQ((math::atan2<o_t>(a, b)), (math::atan2<o_t, x_t, x_t>(a, b)));
+    EXPECT_EQ((math::hypot<o_t>(a, b)), (math::hypot<o_t, x_t>(a, b))); // D named for the first only
+    EXPECT_EQ((math::pow<o_t>(a, b)), (math::pow<o_t, x_t, x_t>(a, b)));
+    EXPECT_EQ((math::pow_base<10, o_t>(a)), (math::pow_base<10, o_t, x_t>(a)));
+    EXPECT_EQ((math::pow_base<10, per<1 << 20>, round_floor>(a)), (math::pow_base<10, o_t>(a)));
+    EXPECT_EQ((math::atan2<per<1 << 20>, round_floor>(a, b)), (math::atan2<o_t>(a, b)));
+    static_assert(grid_of<decltype(math::pown<3>(inside<{-2, 2}>{1}))> ==
+                  grid_of<decltype(math::pown<3, per<1>>(inside<{-2, 2}>{1}))>);
+    EXPECT_EQ((math::pown<3, inside<{-100, 100}>>(inside<{-2, 2}>{-2})), -8);
+    EXPECT_EQ((math::factorial<inside<{0, 1000}>>(inside<{0, 5}>{5})), 120);
+    EXPECT_EQ((math::multinomial<inside<{0, 1000}>>(inside<{0, 3}>{1}, inside<{0, 3}>{2})), 3);
+    // An exact function on a coarser notch rounds, by the input's mode, else to nearest.
+    using q_t = inside<{{-4, 4}, per<4>}>; // no rounding policy
+    static_assert(std::same_as<decltype(math::abs<per<2>>(q_t{1})), inside<{{0, 4}, per<2>}, round_nearest>>);
+    EXPECT_EQ(math::abs<per<2>>(q_t{-1.25}), 1.5_ins);
+    EXPECT_EQ((math::abs<per<2>, round_floor>(q_t{-1.25})), 1);
+    // A notch named, a continuous input deduces too.
+    using c_t = inside<{{0, 1}, max_denominator{1000}}, round_nearest>;
+    EXPECT_EQ(math::sqrt<per<1024>>(c_t{rational{1, 4}}), 0.5_ins);
+}
+
+// f<T>(x) names the output for any type T: tan<T> is no rounding mode.
+TEST(MathCallFormTest, a_type_argument_is_the_output) {
+    using t_t = inside<{{-2, 2}, per<1000>}, round_ceil>;
+    static_assert(std::same_as<decltype(math::tan<t_t>(x_t{0.5})), t_t>);
+    EXPECT_EQ(math::tan<t_t>(x_t{0.5}), (t_t{rational{547, 1000}})); // tan 0.5 = 0.5463…, up
+}
+} // namespace call_form_tests

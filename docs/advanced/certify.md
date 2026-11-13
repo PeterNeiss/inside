@@ -50,7 +50,7 @@ the examples' unoptimized build and fails if one of their pairs has no row
 
 **1. Build your program unoptimized**: a Debug build, or
 add `-O0` (or `-fkeep-inline-functions`). Each math call instantiates
-`beman::inside::math::detail::entry::<fn>_into<Out, In>`, and an unoptimized build
+`beman::inside::math::detail::entry::<fn>_fn::eval<Out, In>`, and an unoptimized build
 keeps that instantiation as a symbol whose demangled name spells both grids
 exactly. That includes outputs deduced by `math::sin(x)`, aliases, and the
 numbers inside quantities.
@@ -156,8 +156,8 @@ using angle = inside<{{-4, 4}, per<16384>}, round_nearest>;
 using level = inside<{{-1, 1}, per<1024>}, round_floor>;
 
 void pairs(certify::runner& r) {
-    r.unary<level, angle>("sin", [](angle x) { return math::sin_into<level>(x); });
-    r.binary<level, angle, angle>("atan2", [](angle y, angle x) { return math::atan2_into<level>(y, x); });
+    r.unary<level, angle>("sin", [](angle x) { return math::sin<level>(x); });
+    r.binary<level, angle, angle>("atan2", [](angle y, angle x) { return math::atan2<level>(y, x); });
 }
 int main(int argc, char** argv) { return certify::main(argc, argv, pairs); }
 ```
@@ -178,7 +178,7 @@ same way.
 - **What the scanner cannot see.**
   - Calls inlined away by an optimized build, and calls evaluated only at
     compile time, leave no symbol. Build unoptimized, or add the pair by hand.
-  - `units::sin_into` and `cos_into` of an angle in degrees or turns run the
+  - `math::sin` and `cos` of an angle in degrees or turns run the
     integer path alone and are reported, but not certified: the tool cannot
     rebuild their unit types.
   - Inputs on continuous grids have no finite set of inputs, and are

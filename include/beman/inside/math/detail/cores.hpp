@@ -787,25 +787,26 @@ inline constexpr std::int64_t max_abs_int = std::max(ceil_abs(lower_of<In>), cei
 template <insidable In>
 inline constexpr policy_flag result_policy = with_default_rounding(flags_of<In> & ~cursor_marker);
 
-template <insidable In, grid_rational Lo, grid_rational Hi>
-using result_grid_t = inside<{{Lo, Hi}, notch_of<In>}, result_policy<In>>;
+// A deduced output on notch N.
+template <insidable In, grid_rational N, grid_rational Lo, grid_rational Hi>
+using result_grid_t = inside<{{Lo, Hi}, N}, result_policy<In>>;
 
-// The bound of Core's result at In's lower or upper end.
-template <insidable In, typename Core, bool AtUpper, bool Up>
+// The bound of Core's result at In's lower or upper end, on notch N.
+template <insidable In, grid_rational N, typename Core, bool AtUpper, bool Up>
 inline constexpr grid_rational bound_at =
-    lattice_bound<notch_of<In>, Up>(Core{grid_input<In>(AtUpper ? upper_of<In> : lower_of<In>)});
+    lattice_bound<N, Up>(Core{grid_input<In>(AtUpper ? upper_of<In> : lower_of<In>)});
 
-template <insidable In, typename Core>
-using increasing_t = result_grid_t<In, bound_at<In, Core, false, false>, bound_at<In, Core, true, true>>;
-template <insidable In, typename Core>
-using decreasing_t = result_grid_t<In, bound_at<In, Core, true, false>, bound_at<In, Core, false, true>>;
+template <insidable In, grid_rational N, typename Core>
+using increasing_t = result_grid_t<In, N, bound_at<In, N, Core, false, false>, bound_at<In, N, Core, true, true>>;
+template <insidable In, grid_rational N, typename Core>
+using decreasing_t = result_grid_t<In, N, bound_at<In, N, Core, true, false>, bound_at<In, N, Core, false, true>>;
 
 // Growth bounds for the deduction: |result| < 2^kmax over In.
 template <insidable In>
 inline constexpr int exp_kmax = [] {
     static_assert(max_abs_int<In> <= 4096,
                   "beman::inside::math: the deduced output of exp, exp2, sinh and cosh needs |x| <= 4096 - "
-                  "name an output grid with fn_into<Out> instead");
+                  "name the output: f<C>(x)");
     return static_cast<int>(max_abs_int<In> * 3 / 2) + 2;
 }();
 
@@ -819,8 +820,8 @@ inline constexpr int log2_span = [] {
 template <insidable InB, insidable InE>
 inline constexpr int pow_kmax = [] {
     static_assert(max_abs_int<InE> * log2_span<InB> <= 1 << 16,
-                  "beman::inside::math::pow: the deduced output would pass 2^65536 - name an output grid "
-                  "with pow_into<Out> instead");
+                  "beman::inside::math::pow: the deduced output would pass 2^65536 - name the output: "
+                  "pow<C>(b, e)");
     return static_cast<int>(max_abs_int<InE>) * log2_span<InB> + 2;
 }();
 

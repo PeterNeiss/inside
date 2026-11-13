@@ -133,7 +133,7 @@ instead (`= delete("…")`):
 | `length.in(si::second)` | `units: in() - the unit has another dimension` |
 | `degrees.in(si::radian)` | `units: this conversion multiplies by a power of pi, which has no exact grid - round it with value_cast<unit, Rep>(q) from <beman/inside/units/math.hpp>, Rep declared with a rounding mode` |
 | `inside<{0, 7}> x = angle;` | `units: an angle (an is_kind quantity) or a pi-scaled ratio is no plain number - read numerical_value(), or value_cast it first` |
-| `units::sin(degrees)` (the deduced form) | `units: sin takes an angle in radians - sin_into<Out>(q) takes a unit with a factor of pi` |
+| `math::sin(degrees)` (the deduced form) | `units: sin takes an angle in radians - sin<Out>(q) takes a unit with a factor of pi` |
 
 Kinds that never mix (Hz and Bq, Gy and Sv), and the kind boundaries of
 angles, give messages of the same form. The `tests/beman/inside/fail/units_*`

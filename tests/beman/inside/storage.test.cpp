@@ -242,12 +242,12 @@ TEST(StorageTest, tan_saturates_instead_of_erroring_when_out_carries_clamp) {
     using err_t = inside<{{-1, 1}, per<16384>}, round_nearest>;
 
     // tan(1.2) ≈ 2.57 — beyond [-1, 1].
-    const auto sat = math::tan_into<sat_t>(in_t{1.2});
+    const auto sat = math::tan<sat_t>(in_t{1.2});
     ASSERT_TRUE(static_cast<double>(rational{sat}) == 1.0); // clamped to Upper
 
     // Without clamp the store into Out reports it, like any store.
     try {
-        (void)math::tan_into<err_t>(in_t{1.2});
+        (void)math::tan<err_t>(in_t{1.2});
         FAIL() << "no error reported";
     } catch (const inside_error& e) {
         ASSERT_EQ(e.Code, errc::overflow);

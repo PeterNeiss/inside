@@ -68,8 +68,9 @@ def main() -> int:
             baseline = json.load(f)
 
     keys = sorted(baseline) if args.all else [args.key]
+    missing = any(key not in baseline for key in keys)  # before check() records them
     failed = [key for key in keys if not check(args, baseline, key)]
-    if args.update or any(key not in baseline for key in keys):
+    if args.update or missing:
         with open(args.baseline, "w", encoding="utf-8") as f:
             json.dump(baseline, f, indent=2, sort_keys=True)
             f.write("\n")

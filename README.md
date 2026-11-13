@@ -36,7 +36,7 @@ auto speed = total / quantity<si::minute, inside<{1, 600}>>{20};
 speed.in(si::kilo(si::metre) / si::hour);   // 39.9 km/h
 
 using amplitude = inside<{{-1, 1}, per<1000>}, round_nearest>;
-units::sin_into<amplitude>(quantity<si::degree, inside<{0, 360}>>{30});   // exactly 0.5
+math::sin<amplitude>(quantity<si::degree, inside<{0, 360}>>{30});   // exactly 0.5
 math::sqrt(inside<{{0, 10}, per<1000>}, round_nearest>{2});              // 1.414, correctly rounded
 ```
 
@@ -121,7 +121,7 @@ the ideas. Then:
 
 ## Examples
 
-[`examples/`](examples/) holds 39 programs; each checks its own output and
+[`examples/`](examples/) holds 44 programs; each checks its own output and
 runs as a test (`ctest --preset gcc-debug -L example`). A few to start with:
 
 - [`basics.cpp`](examples/basics.cpp): clamp, wrap and bounded loops.

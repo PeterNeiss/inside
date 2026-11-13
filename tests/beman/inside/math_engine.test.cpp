@@ -165,7 +165,7 @@ TEST(MathAdaptiveTest, evaluate_escalates_until_decided) {
 //---------------------------------------------------------------------------
 
 namespace {
-namespace am = beman::inside::math::detail::entry;
+namespace am = beman::inside::math;
 using ld     = long double;
 
 template <typename Out>
@@ -226,101 +226,98 @@ using wide20 = inside<{{-1024, 1024}, rational{1, 1 << 20}}, round_nearest>;
 
 TEST(MathAdaptiveTest, exp_family_rounds_correctly) {
     EXPECT_EQ(
-        (check_rounding<out20, sym4>([](sym4 x) { return am::exp_into<out20>(x); }, [](ld v) { return std::exp(v); })),
+        (check_rounding<out20, sym4>([](sym4 x) { return am::exp<out20>(x); }, [](ld v) { return std::exp(v); })), 0);
+    EXPECT_EQ(
+        (check_rounding<out20f, sym4>([](sym4 x) { return am::exp<out20f>(x); }, [](ld v) { return std::exp(v); })),
         0);
-    EXPECT_EQ((check_rounding<out20f, sym4>([](sym4 x) { return am::exp_into<out20f>(x); },
-                                            [](ld v) { return std::exp(v); })),
-              0);
-    EXPECT_EQ((check_rounding<outdec, sym4>([](sym4 x) { return am::exp_into<outdec>(x); },
-                                            [](ld v) { return std::exp(v); })),
-              0);
-    EXPECT_EQ((check_rounding<out40, sym4>(
-                  [](sym4 x) { return am::exp_into<out40>(x); }, [](ld v) { return std::exp(v); }, 7)),
-              0);
-    EXPECT_EQ((check_rounding<out20, sym4>([](sym4 x) { return am::exp2_into<out20>(x); },
-                                           [](ld v) { return std::exp2(v); })),
-              0);
-    EXPECT_EQ((check_rounding<out20, sym4>([](sym4 x) { return am::sinh_into<out20>(x); },
-                                           [](ld v) { return std::sinh(v); })),
-              0);
-    EXPECT_EQ((check_rounding<out20, sym4>([](sym4 x) { return am::cosh_into<out20>(x); },
-                                           [](ld v) { return std::cosh(v); })),
-              0);
-    EXPECT_EQ((check_rounding<out20, sym4>([](sym4 x) { return am::tanh_into<out20>(x); },
-                                           [](ld v) { return std::tanh(v); })),
-              0);
+    EXPECT_EQ(
+        (check_rounding<outdec, sym4>([](sym4 x) { return am::exp<outdec>(x); }, [](ld v) { return std::exp(v); })),
+        0);
+    EXPECT_EQ(
+        (check_rounding<out40, sym4>([](sym4 x) { return am::exp<out40>(x); }, [](ld v) { return std::exp(v); }, 7)),
+        0);
+    EXPECT_EQ(
+        (check_rounding<out20, sym4>([](sym4 x) { return am::exp2<out20>(x); }, [](ld v) { return std::exp2(v); })),
+        0);
+    EXPECT_EQ(
+        (check_rounding<out20, sym4>([](sym4 x) { return am::sinh<out20>(x); }, [](ld v) { return std::sinh(v); })),
+        0);
+    EXPECT_EQ(
+        (check_rounding<out20, sym4>([](sym4 x) { return am::cosh<out20>(x); }, [](ld v) { return std::cosh(v); })),
+        0);
+    EXPECT_EQ(
+        (check_rounding<out20, sym4>([](sym4 x) { return am::tanh<out20>(x); }, [](ld v) { return std::tanh(v); })),
+        0);
 }
 
 TEST(MathAdaptiveTest, log_family_rounds_correctly) {
-    EXPECT_EQ((check_rounding<out20, pos64>([](pos64 x) { return am::log_into<out20>(x); },
-                                            [](ld v) { return std::log(v); })),
-              0);
-    EXPECT_EQ((check_rounding<out20f, pos64>([](pos64 x) { return am::log_into<out20f>(x); },
-                                             [](ld v) { return std::log(v); })),
-              0);
-    EXPECT_EQ((check_rounding<out20, pos64>([](pos64 x) { return am::log2_into<out20>(x); },
-                                            [](ld v) { return std::log2(v); })),
-              0);
-    EXPECT_EQ((check_rounding<out20, pos64>([](pos64 x) { return am::log10_into<out20>(x); },
+    EXPECT_EQ(
+        (check_rounding<out20, pos64>([](pos64 x) { return am::log<out20>(x); }, [](ld v) { return std::log(v); })),
+        0);
+    EXPECT_EQ(
+        (check_rounding<out20f, pos64>([](pos64 x) { return am::log<out20f>(x); }, [](ld v) { return std::log(v); })),
+        0);
+    EXPECT_EQ(
+        (check_rounding<out20, pos64>([](pos64 x) { return am::log2<out20>(x); }, [](ld v) { return std::log2(v); })),
+        0);
+    EXPECT_EQ((check_rounding<out20, pos64>([](pos64 x) { return am::log10<out20>(x); },
                                             [](ld v) { return std::log10(v); })),
               0);
-    EXPECT_EQ((check_rounding<out40, pos64>(
-                  [](pos64 x) { return am::log_into<out40>(x); }, [](ld v) { return std::log(v); }, 3)),
-              0);
-    EXPECT_EQ((check_rounding<out20, sym4>([](sym4 x) { return am::asinh_into<out20>(x); },
-                                           [](ld v) { return std::asinh(v); })),
-              0);
-    EXPECT_EQ((check_rounding<out20, ge1>([](ge1 x) { return am::acosh_into<out20>(x); },
-                                          [](ld v) { return std::acosh(v); })),
-              0);
-    EXPECT_EQ((check_rounding<out20, open1>([](open1 x) { return am::atanh_into<out20>(x); },
+    EXPECT_EQ(
+        (check_rounding<out40, pos64>([](pos64 x) { return am::log<out40>(x); }, [](ld v) { return std::log(v); }, 3)),
+        0);
+    EXPECT_EQ(
+        (check_rounding<out20, sym4>([](sym4 x) { return am::asinh<out20>(x); }, [](ld v) { return std::asinh(v); })),
+        0);
+    EXPECT_EQ(
+        (check_rounding<out20, ge1>([](ge1 x) { return am::acosh<out20>(x); }, [](ld v) { return std::acosh(v); })),
+        0);
+    EXPECT_EQ((check_rounding<out20, open1>([](open1 x) { return am::atanh<out20>(x); },
                                             [](ld v) { return std::atanh(v); })),
               0);
 }
 
 TEST(MathAdaptiveTest, roots_round_correctly) {
-    EXPECT_EQ((check_rounding<out20, pos64>([](pos64 x) { return am::sqrt_into<out20>(x); },
-                                            [](ld v) { return std::sqrt(v); })),
-              0);
-    EXPECT_EQ((check_rounding<out20f, pos64>([](pos64 x) { return am::sqrt_into<out20f>(x); },
+    EXPECT_EQ(
+        (check_rounding<out20, pos64>([](pos64 x) { return am::sqrt<out20>(x); }, [](ld v) { return std::sqrt(v); })),
+        0);
+    EXPECT_EQ((check_rounding<out20f, pos64>([](pos64 x) { return am::sqrt<out20f>(x); },
                                              [](ld v) { return std::sqrt(v); })),
               0);
-    EXPECT_EQ((check_rounding<out20, sym4>([](sym4 x) { return am::cbrt_into<out20>(x); },
-                                           [](ld v) { return std::cbrt(v); })),
-              0);
+    EXPECT_EQ(
+        (check_rounding<out20, sym4>([](sym4 x) { return am::cbrt<out20>(x); }, [](ld v) { return std::cbrt(v); })),
+        0);
     // (sqrt of a grid that reaches below 0 is a compile error: fail/sqrt_domain.)
     // Exact roots of rationals, including ties: √(1/4) = 1/2 exactly.
     using quarters = inside<{{0, 4}, rational{1, 4}}, round_nearest>;
     using halves   = inside<{{0, 4}, rational{1, 2}}, round_floor>;
-    EXPECT_EQ(am::sqrt_into<halves>(quarters{0.25}), halves{0.5});
-    EXPECT_EQ(am::sqrt_into<halves>(quarters{2.25}), halves{1.5});
+    EXPECT_EQ(am::sqrt<halves>(quarters{0.25}), halves{0.5});
+    EXPECT_EQ(am::sqrt<halves>(quarters{2.25}), halves{1.5});
 }
 
 TEST(MathAdaptiveTest, trig_rounds_correctly) {
     EXPECT_EQ(
-        (check_rounding<out20, sym4>([](sym4 x) { return am::sin_into<out20>(x); }, [](ld v) { return std::sin(v); })),
+        (check_rounding<out20, sym4>([](sym4 x) { return am::sin<out20>(x); }, [](ld v) { return std::sin(v); })), 0);
+    EXPECT_EQ(
+        (check_rounding<out20, sym4>([](sym4 x) { return am::cos<out20>(x); }, [](ld v) { return std::cos(v); })), 0);
+    EXPECT_EQ(
+        (check_rounding<out20f, sym4>([](sym4 x) { return am::cos<out20f>(x); }, [](ld v) { return std::cos(v); })),
         0);
     EXPECT_EQ(
-        (check_rounding<out20, sym4>([](sym4 x) { return am::cos_into<out20>(x); }, [](ld v) { return std::cos(v); })),
+        (check_rounding<out40, sym4>([](sym4 x) { return am::sin<out40>(x); }, [](ld v) { return std::sin(v); }, 5)),
         0);
-    EXPECT_EQ((check_rounding<out20f, sym4>([](sym4 x) { return am::cos_into<out20f>(x); },
-                                            [](ld v) { return std::cos(v); })),
-              0);
-    EXPECT_EQ((check_rounding<out40, sym4>(
-                  [](sym4 x) { return am::sin_into<out40>(x); }, [](ld v) { return std::sin(v); }, 5)),
-              0);
-    EXPECT_EQ((check_rounding<wide20, tan_in>([](tan_in x) { return am::tan_into<wide20>(x); },
+    EXPECT_EQ((check_rounding<wide20, tan_in>([](tan_in x) { return am::tan<wide20>(x); },
                                               [](ld v) { return std::tan(v); })),
               0);
-    EXPECT_EQ((check_rounding<out20, sym4>([](sym4 x) { return am::atan_into<out20>(x); },
-                                           [](ld v) { return std::atan(v); })),
-              0);
-    EXPECT_EQ((check_rounding<out20, unit>([](unit x) { return am::asin_into<out20>(x); },
-                                           [](ld v) { return std::asin(v); })),
-              0);
-    EXPECT_EQ((check_rounding<out20, unit>([](unit x) { return am::acos_into<out20>(x); },
-                                           [](ld v) { return std::acos(v); })),
-              0);
+    EXPECT_EQ(
+        (check_rounding<out20, sym4>([](sym4 x) { return am::atan<out20>(x); }, [](ld v) { return std::atan(v); })),
+        0);
+    EXPECT_EQ(
+        (check_rounding<out20, unit>([](unit x) { return am::asin<out20>(x); }, [](ld v) { return std::asin(v); })),
+        0);
+    EXPECT_EQ(
+        (check_rounding<out20, unit>([](unit x) { return am::acos<out20>(x); }, [](ld v) { return std::acos(v); })),
+        0);
 }
 
 TEST(MathAdaptiveTest, two_argument_functions_round_correctly) {
@@ -331,9 +328,9 @@ TEST(MathAdaptiveTest, two_argument_functions_round_correctly) {
             const sym4 y{i / 8.0}, x{j / 8.0};
             const ld   a = std::atan2(static_cast<ld>(i) / 8, static_cast<ld>(j) / 8);
             const ld   h = std::hypot(static_cast<ld>(i) / 8, static_cast<ld>(j) / 8);
-            if (std::fabs(static_cast<double>(am::atan2_into<out20>(y, x)) - a) > n / 2)
+            if (std::fabs(static_cast<double>(am::atan2<out20>(y, x)) - a) > n / 2)
                 ++bad;
-            if (std::fabs(static_cast<double>(am::hypot_into<out20>(x, y)) - h) > n / 2)
+            if (std::fabs(static_cast<double>(am::hypot<out20>(x, y)) - h) > n / 2)
                 ++bad;
         }
     EXPECT_EQ(bad, 0);
@@ -342,7 +339,7 @@ TEST(MathAdaptiveTest, two_argument_functions_round_correctly) {
     for (int i = 1; i <= 128; i += 3)
         for (int j = -24; j <= 24; ++j) {
             const ld   want = std::pow(static_cast<ld>(i) / 16, static_cast<ld>(j) / 8);
-            const auto r    = test::caught([&] { return am::pow_into<wide20>(base{i / 16.0}, expo{j / 8.0}); });
+            const auto r    = test::caught([&] { return am::pow<wide20>(base{i / 16.0}, expo{j / 8.0}); });
             if (want > 1024.5L) {
                 EXPECT_FALSE(r.has_value());
                 continue;
@@ -357,11 +354,11 @@ TEST(MathAdaptiveTest, two_argument_functions_round_correctly) {
     EXPECT_EQ(bad, 0);
     // Exact powers, including ties on the output grid.
     using halves = inside<{{0, 64}, rational{1, 2}}, round_nearest>;
-    EXPECT_EQ(am::pow_into<halves>(base{1.5}, expo{2}), halves{2.5}); // 2.25 → 2.5 (half away)
-    EXPECT_EQ((am::pow_base_into<out20, 10>(expo{1})), out20{10});
-    EXPECT_EQ((am::pow_base_into<out20, 2>(expo{-3})), out20{0.125});
-    EXPECT_EQ((am::pow_base_into<out20, 10>(expo{-1})), (out20{rational{1, 10}}));                // 1/10 rounded
-    EXPECT_FALSE(test::caught([] { return am::pow_into<out20>(base{8}, expo{3}); }).has_value()); // 512: past 64
+    EXPECT_EQ(am::pow<halves>(base{1.5}, expo{2}), halves{2.5}); // 2.25 → 2.5 (half away)
+    EXPECT_EQ((am::pow_base<10, out20>(expo{1})), out20{10});
+    EXPECT_EQ((am::pow_base<2, out20>(expo{-3})), out20{0.125});
+    EXPECT_EQ((am::pow_base<10, out20>(expo{-1})), (out20{rational{1, 10}}));                // 1/10 rounded
+    EXPECT_FALSE(test::caught([] { return am::pow<out20>(base{8}, expo{3}); }).has_value()); // 512: past 64
 }
 
 //---------------------------------------------------------------------------
@@ -394,23 +391,23 @@ constexpr fine_in third = fine_in::from_raw(static_cast<fine_in::raw_type>(pow2(
 TEST(MathAdaptiveTest, fine_grids_past_64_bits) {
     constexpr auto sin_raw = static_cast<fine_out::raw_type>(from_limbs({0x153c3081a2ULL, 0xa031ab144c43424bULL}));
     constexpr auto exp_raw = static_cast<fine_pos::raw_type>(from_limbs({0x16546db1baULL, 0x2d1310a7f6bf8106ULL}));
-    EXPECT_EQ(am::sin_into<fine_out>(third).raw(), sin_raw);
-    EXPECT_EQ(am::exp_into<fine_pos>(third).raw(), exp_raw);
+    EXPECT_EQ(am::sin<fine_out>(third).raw(), sin_raw);
+    EXPECT_EQ((am::exp<fine_pos>(third).raw()), exp_raw);
 }
 
 TEST(MathAdaptiveTest, huge_inputs_past_64_bits) {
     // log(2^299 + 12345) on a 2^-64 grid.
     constexpr huge_in x       = huge_in::from_raw(static_cast<huge_in::raw_type>(pow2(299) + big_int{12344}));
     constexpr auto    log_raw = static_cast<log_out::raw_type>(from_limbs({0xcfULL, 0x4041fe720d531ba5ULL}));
-    EXPECT_EQ(am::log_into<log_out>(x).raw(), log_raw);
+    EXPECT_EQ(am::log<log_out>(x).raw(), log_raw);
     // ⌊√(2^300 − 1)⌋ = 2^150 − 1.
     constexpr huge_in y        = huge_in::from_raw(static_cast<huge_in::raw_type>(pow2(300) - big_int{2}));
     constexpr auto    root_raw = static_cast<root_out::raw_type>(pow2(150) - big_int{1});
-    EXPECT_EQ(am::sqrt_into<root_out>(y).raw(), root_raw);
+    EXPECT_EQ(am::sqrt<root_out>(y).raw(), root_raw);
     // log2 of a power of two is exact: 2^299 → 299.
     constexpr huge_in p = huge_in::from_raw(static_cast<huge_in::raw_type>(pow2(299) - big_int{1}));
     using log2_out      = inside<{{0, 512}, grid_rational{big_int{1}, pow2(64)}}, round_nearest>;
-    EXPECT_EQ(am::log2_into<log2_out>(p), log2_out{299});
+    EXPECT_EQ(am::log2<log2_out>(p), log2_out{299});
 }
 
 TEST(MathAdaptiveTest, deduced_outputs_past_64_bits) {
@@ -423,22 +420,21 @@ TEST(MathAdaptiveTest, deduced_outputs_past_64_bits) {
     // sin on a 2^-80 grid keeps the notch: a wide output.
     using S = decltype(am::sin(third));
     static_assert(notch_of<S> == notch_of<fine_in>);
-    EXPECT_EQ(am::sin(third), am::sin_into<S>(third));
+    EXPECT_EQ(am::sin(third), am::sin<S>(third));
 }
 
 TEST(MathAdaptiveTest, constant_evaluation) {
     // The engine is integer-only, so the same results are available at compile time.
     using quarters = inside<{{0, 4}, rational{1, 4}}, round_nearest>;
     using halves   = inside<{{0, 4}, rational{1, 2}}, round_floor>;
-    static_assert(am::sqrt_into<halves>(quarters{2.25}) == halves{1.5});
-    static_assert(am::exp_into<out20>(sym4{1}).raw() ==
-                  out20{rational{2850325, 1 << 20}}.raw()); // e·2^20 = 2850325.0…
-    static_assert(am::sin_into<out20>(sym4{0}) == out20{0});
+    static_assert(am::sqrt<halves>(quarters{2.25}) == halves{1.5});
+    static_assert(am::exp<out20>(sym4{1}).raw() == out20{rational{2850325, 1 << 20}}.raw()); // e·2^20 = 2850325.0…
+    static_assert(am::sin<out20>(sym4{0}) == out20{0});
     // An output up to 2^62 makes sinh's and cosh's error shifts reach 64 bits
     // (KMax + 4); they must stay defined, which constant evaluation checks.
     using big62 = inside<{-(1LL << 62), 1LL << 62}, round_nearest>;
-    static_assert(am::sinh_into<big62>(sym4{rational{1, 2}}) == big62{1});
-    static_assert(am::cosh_into<big62>(sym4{rational{1, 2}}) == big62{1});
+    static_assert(am::sinh<big62>(sym4{rational{1, 2}}) == big62{1});
+    static_assert(am::cosh<big62>(sym4{rational{1, 2}}) == big62{1});
     SUCCEED();
 }
 
@@ -447,7 +443,7 @@ TEST(MathAdaptiveTest, deduced_outputs) {
     using E = decltype(am::exp(sym4{0}));
     static_assert(lower_of<E> == rational{9, 512} && upper_of<E> == rational{27955, 512});
     static_assert(notch_of<E> == rational{1, 512});
-    EXPECT_EQ(am::exp(sym4{1}), am::exp_into<E>(sym4{1}));
+    EXPECT_EQ(am::exp(sym4{1}), (am::exp<E>(sym4{1})));
     // acos over [-1, 1]: [0, ⌈π·1024⌉/1024], decreasing; acos(1) = 0 exactly.
     using A = decltype(am::acos(unit{0}));
     static_assert(lower_of<A> == 0 && upper_of<A> == rational{3217, 1024});
@@ -461,7 +457,7 @@ TEST(MathAdaptiveTest, deduced_outputs) {
     static_assert(lower_of<decltype(am::sin(sym4{0}))> == -1);
     using T = decltype(am::atan2(out20{0}, out20{1}));
     static_assert(upper_of<T> == rational{3294199, 1 << 20} && lower_of<T> == -rational{3294199, 1 << 20});
-    EXPECT_EQ(am::atan2(out20{1}, out20{-1}), (am::atan2_into<T>(out20{1}, out20{-1})));
+    EXPECT_EQ(am::atan2(out20{1}, out20{-1}), (am::atan2<T>(out20{1}, out20{-1})));
     // tan is its range over the input's branch; pow over a positive base
     // the corners of the input rectangle: plain values, no expected.
     using Tn = decltype(am::tan(tan_in{1}));
@@ -472,7 +468,7 @@ TEST(MathAdaptiveTest, deduced_outputs) {
     using P    = decltype(am::pow(base{1}, expo{1}));
     static_assert(lower_of<P> == rational{1, 16} && upper_of<P> == 16); // 4^-2 and 4^2 (1/2)^±2 inside
     EXPECT_EQ(am::pow(base{2}, expo{2}), P{4});
-    EXPECT_EQ((am::pow_base<10>(expo{1})), (am::pow_base_into<decltype(am::pow_base<10>(expo{1})), 10>(expo{1})));
+    EXPECT_EQ((am::pow_base<10>(expo{1})), (am::pow_base<10, decltype(am::pow_base<10>(expo{1}))>(expo{1})));
 }
 
 //---------------------------------------------------------------------------
@@ -599,7 +595,7 @@ TEST(MathAdaptiveTest, exact_roots_are_floors_at_every_width) {
 
 //---------------------------------------------------------------------------
 // The double tier agrees with the integer path on every input slot: the
-// _into forms (which try the double kernels first where an FPU is present)
+// named-output forms (which try the double kernels first where an FPU is present)
 // against the integer cores run through the driver directly.
 //---------------------------------------------------------------------------
 namespace {
@@ -625,7 +621,7 @@ using outdect = inside<{{-64, 64}, rational{1, 1000}}, round_toward_zero>;
 } // namespace
 
 #define TIER_CHECK(fn, Out, In, ...) \
-    EXPECT_EQ((tier_mismatches<Out, In, __VA_ARGS__>([](In x) { return am::fn##_into<Out>(x); })), 0) << #fn " " #Out
+    EXPECT_EQ((tier_mismatches<Out, In, __VA_ARGS__>([](In x) { return am::fn<Out>(x); })), 0) << #fn " " #Out
 
 TEST(MathAdaptiveTest, double_tier_agrees_with_the_integer_path) {
     TIER_CHECK(
@@ -726,15 +722,15 @@ TEST(MathAdaptiveTest, tables_agree_with_the_integer_path) {
     EXPECT_EQ((tier_mismatches<out20,
                                s8,
                                engine::trig_core<engine::input_limbs<s8>, engine::in_mag<s8>, engine::trig::sin, 1>>(
-                  [](s8 x) { return am::sin_into<out20>(x); })),
+                  [](s8 x) { return am::sin<out20>(x); })),
               0);
     EXPECT_EQ((tier_mismatches<out40,
                                s8,
                                engine::exp_core<engine::input_limbs<s8>, engine::in_mag<s8>, engine::out_kmax<out40>>>(
-                  [](s8 x) { return am::exp_into<out40>(x); })),
+                  [](s8 x) { return am::exp<out40>(x); })),
               0);
     EXPECT_EQ((tier_mismatches<outdec, p8, engine::log_core<engine::input_limbs<p8>>>(
-                  [](p8 x) { return am::log_into<outdec>(x); })),
+                  [](p8 x) { return am::log<outdec>(x); })),
               0);
     // Floating-point outputs: the table holds the grid point as a double or float.
     using b14t = inside<{{-64, 64}, per<16384>}, round_nearest>;
@@ -747,16 +743,16 @@ TEST(MathAdaptiveTest, tables_agree_with_the_integer_path) {
     EXPECT_EQ((tier_mismatches<b14t,
                                s8,
                                engine::trig_core<engine::input_limbs<s8>, engine::in_mag<s8>, engine::trig::sin, 1>>(
-                  [](s8 x) { return am::sin_into<b14t>(x); })),
+                  [](s8 x) { return am::sin<b14t>(x); })),
               0);
     EXPECT_EQ((tier_mismatches<b8t,
                                s8,
                                engine::exp_core<engine::input_limbs<s8>, engine::in_mag<s8>, engine::out_kmax<b8t>>>(
-                  [](s8 x) { return am::exp_into<b8t>(x); })),
+                  [](s8 x) { return am::exp<b8t>(x); })),
               0);
-    EXPECT_EQ((tier_mismatches<b14t, p8, engine::log_core<engine::input_limbs<p8>>>(
-                  [](p8 x) { return am::log_into<b14t>(x); })),
-              0);
+    EXPECT_EQ(
+        (tier_mismatches<b14t, p8, engine::log_core<engine::input_limbs<p8>>>([](p8 x) { return am::log<b14t>(x); })),
+        0);
     // Results past Out's range keep the computed path, and its policy.
     using small_clamp = inside<{{0, 4}, rational{1, 64}}, round_nearest | clamp>;
     using table       = engine::result_table<small_clamp, s8, engine::start_bits<small_clamp>, [](s8 v) {
@@ -764,8 +760,8 @@ TEST(MathAdaptiveTest, tables_agree_with_the_integer_path) {
             engine::exact_input(v)};
     }>;
     static_assert(!table::Table.Valid); // e^2 > 4
-    EXPECT_EQ(am::exp_into<small_clamp>(s8{1.984375}), small_clamp{4});
-    EXPECT_EQ(am::exp_into<small_clamp>(s8{1}), (small_clamp{rational{174, 64}})); // e·64 = 173.97…
+    EXPECT_EQ((am::exp<small_clamp>(s8{1.984375})), small_clamp{4});
+    EXPECT_EQ((am::exp<small_clamp>(s8{1})), (small_clamp{rational{174, 64}})); // e·64 = 173.97…
 }
 
 TEST(MathAdaptiveTest, double_tier_agrees_on_decimal_inputs_and_checked_forms) {
@@ -784,42 +780,42 @@ TEST(MathAdaptiveTest, double_tier_agrees_on_decimal_inputs_and_checked_forms) {
         (tier_mismatches<out20,
                          symd,
                          engine::trig_core<engine::input_limbs<symd>, engine::in_mag<symd>, engine::trig::sin, 1>>(
-            [](symd x) { return am::sin_into<out20>(x); })),
+            [](symd x) { return am::sin<out20>(x); })),
         0);
     EXPECT_EQ(
         (tier_mismatches<outdec,
                          symd,
                          engine::exp_core<engine::input_limbs<symd>, engine::in_mag<symd>, engine::out_kmax<outdec>>>(
-            [](symd x) { return am::exp_into<outdec>(x); })),
+            [](symd x) { return am::exp<outdec>(x); })),
         0);
     EXPECT_EQ((tier_mismatches<out20, symd, engine::cbrt_core<engine::input_limbs<symd>>>(
-                  [](symd x) { return am::cbrt_into<out20>(x); })),
+                  [](symd x) { return am::cbrt<out20>(x); })),
               0);
     EXPECT_EQ((tier_mismatches<out16c, posd, engine::log_core<engine::input_limbs<posd>>>(
-                  [](posd x) { return am::log_into<out16c>(x); })),
+                  [](posd x) { return am::log<out16c>(x); })),
               0);
     EXPECT_EQ((tier_mismatches<out20, unid, engine::asin_core<engine::input_limbs<unid>>>(
-                  [](unid x) { return am::asin_into<out20>(x); })),
+                  [](unid x) { return am::asin<out20>(x); })),
               0);
     EXPECT_EQ(
         (tier_mismatches<out20,
                          ge1d,
                          engine::ahyp_core<engine::input_limbs<ge1d>, engine::in_mag<ge1d>, engine::ahyp::acosh>>(
-            [](ge1d x) { return am::acosh_into<out20>(x); })),
+            [](ge1d x) { return am::acosh<out20>(x); })),
         0);
     EXPECT_EQ((tier_mismatches<out8f,
                                ge1,
                                engine::ahyp_core<engine::input_limbs<ge1>, engine::in_mag<ge1>, engine::ahyp::acosh>>(
-                  [](ge1 x) { return am::acosh_into<out8f>(x); })),
+                  [](ge1 x) { return am::acosh<out8f>(x); })),
               0);
-    EXPECT_EQ((tier_mismatches<tanout,
-                               tan_in,
-                               engine::trig_core<engine::input_limbs<tan_in>,
-                                                 engine::in_mag<tan_in>,
-                                                 engine::trig::tan,
-                                                 engine::out_kmax<tanout>>>(
-                  [](tan_in x) { return am::tan_into<tanout>(x); })),
-              0);
+    EXPECT_EQ(
+        (tier_mismatches<tanout,
+                         tan_in,
+                         engine::trig_core<engine::input_limbs<tan_in>,
+                                           engine::in_mag<tan_in>,
+                                           engine::trig::tan,
+                                           engine::out_kmax<tanout>>>([](tan_in x) { return am::tan<tanout>(x); })),
+        0);
 
     // Two inputs: atan2, hypot and pow against their cores on a grid of pairs.
     using base = inside<{{rational{1, 16}, 8}, rational{1, 16}}, round_nearest>;
@@ -828,7 +824,7 @@ TEST(MathAdaptiveTest, double_tier_agrees_on_decimal_inputs_and_checked_forms) {
     for (int i = -40; i <= 40; i += 3)
         for (int j = -40; j <= 40; j += 3) {
             const symd y{i / 10.0}, x{j / 10.0};
-            const auto a  = am::atan2_into<out20>(y, x);
+            const auto a  = am::atan2<out20>(y, x);
             const auto a2 = engine::evaluate<out20, engine::start_bits<out20>>(
                 engine::atan2_core<engine::input_limbs<symd>>{engine::exact_input(y), engine::exact_input(x)});
             if (a.raw() != a2.raw())
@@ -837,14 +833,14 @@ TEST(MathAdaptiveTest, double_tier_agrees_on_decimal_inputs_and_checked_forms) {
             const F    fx{engine::exact_input(x)}, fy{engine::exact_input(y)};
             const auto h2 = engine::evaluate<out20, engine::start_bits<out20>>(
                 engine::sqrt_core<2 * engine::input_limbs<symd> + 1>{fx * fx + fy * fy});
-            if (am::hypot_into<out20>(x, y).raw() != h2.raw())
+            if (am::hypot<out20>(x, y).raw() != h2.raw())
                 ++bad;
         }
     for (int i = 1; i <= 128; i += 5)
         for (int j = -300; j <= 300; j += 13) {
             const base b{i / 16.0};
             const expo e{rational{j, 100}};
-            const auto r  = test::caught([&] { return am::pow_into<tanout>(b, e); });
+            const auto r  = test::caught([&] { return am::pow<tanout>(b, e); });
             using core    = engine::pow_core<engine::input_limbs<base>,
                                              engine::input_limbs<expo>,
                                              engine::in_mag<expo>,
@@ -860,7 +856,7 @@ TEST(MathAdaptiveTest, double_tier_agrees_on_decimal_inputs_and_checked_forms) {
         using core    = engine::pow_core<2, engine::input_limbs<expo>, engine::in_mag<expo>, engine::out_kmax<tanout>>;
         const auto r2 = engine::evaluate<tanout, engine::start_bits<tanout>>(
             core{engine::exact_of<2>(10), engine::exact_input(e)});
-        if ((am::pow_base_into<tanout, 10>(e)).raw() != r2.raw())
+        if ((am::pow_base<10, tanout>(e)).raw() != r2.raw())
             ++bad;
     }
     EXPECT_EQ(bad, 0);
@@ -881,9 +877,8 @@ using symm4    = inside<{{-4, 4}, rational{1, 1000}}, round_nearest>;
 using posm8    = inside<{{rational{1, 1000}, 8}, rational{1, 1000}}, round_nearest>;
 } // namespace
 
-#define DD_CHECK(fn, Out, In, ...)                                                                    \
-    EXPECT_EQ((tier_mismatches<Out, In, __VA_ARGS__>([](In x) { return am::fn##_into<Out>(x); })), 0) \
-        << #fn " " #Out " " #In
+#define DD_CHECK(fn, Out, In, ...) \
+    EXPECT_EQ((tier_mismatches<Out, In, __VA_ARGS__>([](In x) { return am::fn<Out>(x); })), 0) << #fn " " #Out " " #In
 
 TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
     static_assert(!engine::fp_tier_available ||
@@ -983,21 +978,21 @@ TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
                          engine::trig_core<engine::input_limbs<tan_in>,
                                            engine::in_mag<tan_in>,
                                            engine::trig::tan,
-                                           engine::out_kmax<out40>>>([](tan_in x) { return am::tan_into<out40>(x); })),
+                                           engine::out_kmax<out40>>>([](tan_in x) { return am::tan<out40>(x); })),
         0);
     DD_CHECK(exp,
              b44out,
              symm4,
              engine::exp_core<engine::input_limbs<symm4>, engine::in_mag<symm4>, engine::out_kmax<b44out>>);
     using tanout = inside<{{-1024, 1024}, rational{1, std::uint64_t{1} << 52}}, round_nearest>;
-    EXPECT_EQ((tier_mismatches<tanout,
-                               tan_in,
-                               engine::trig_core<engine::input_limbs<tan_in>,
-                                                 engine::in_mag<tan_in>,
-                                                 engine::trig::tan,
-                                                 engine::out_kmax<tanout>>>(
-                  [](tan_in x) { return am::tan_into<tanout>(x); })),
-              0);
+    EXPECT_EQ(
+        (tier_mismatches<tanout,
+                         tan_in,
+                         engine::trig_core<engine::input_limbs<tan_in>,
+                                           engine::in_mag<tan_in>,
+                                           engine::trig::tan,
+                                           engine::out_kmax<tanout>>>([](tan_in x) { return am::tan<tanout>(x); })),
+        0);
 
     // Two inputs.
     using base = inside<{{rational{1, 16}, 8}, rational{1, 16}}, round_nearest>;
@@ -1008,20 +1003,20 @@ TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
             const symm4 y{rational{i, 10}}, x{rational{j, 10}};
             const auto  a2 = engine::evaluate<out52, engine::start_bits<out52>>(
                 engine::atan2_core<engine::input_limbs<symm4>>{engine::exact_input(y), engine::exact_input(x)});
-            if (am::atan2_into<out52>(y, x).raw() != a2.raw())
+            if (am::atan2<out52>(y, x).raw() != a2.raw())
                 ++bad;
             using F = detail::wide_rational<2 * engine::input_limbs<symm4> + 1>;
             const F    fx{engine::exact_input(x)}, fy{engine::exact_input(y)};
             const auto h2 = engine::evaluate<out46e, engine::start_bits<out46e>>(
                 engine::sqrt_core<2 * engine::input_limbs<symm4> + 1>{fx * fx + fy * fy});
-            if (am::hypot_into<out46e>(x, y).raw() != h2.raw())
+            if (am::hypot<out46e>(x, y).raw() != h2.raw())
                 ++bad;
         }
     for (int i = 1; i <= 128; i += 5)
         for (int j = -300; j <= 300; j += 13) {
             const base b{i / 16.0};
             const expo e{rational{j, 100}};
-            const auto r  = test::caught([&] { return am::pow_into<tanout>(b, e); });
+            const auto r  = test::caught([&] { return am::pow<tanout>(b, e); });
             using core    = engine::pow_core<engine::input_limbs<base>,
                                              engine::input_limbs<expo>,
                                              engine::in_mag<expo>,
@@ -1039,7 +1034,7 @@ TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
             pow_core<2, engine::input_limbs<decltype(e)>, engine::in_mag<decltype(e)>, engine::out_kmax<p10out>>;
         const auto r2 = engine::evaluate<p10out, engine::start_bits<p10out>>(
             core{engine::exact_of<2>(10), engine::exact_input(e)});
-        if ((am::pow_base_into<p10out, 10>(e)).raw() != r2.raw())
+        if ((am::pow_base<10, p10out>(e)).raw() != r2.raw())
             ++bad;
     }
     EXPECT_EQ(bad, 0);
@@ -1419,10 +1414,10 @@ TEST(MathAdaptiveTest, hypot_on_mixed_grids_at_fine_outputs) {
     for (int i = 0; i <= 4096; i += 97)
         for (int j = 0; j <= 8000; j += 211) {
             const long long a = i - 2048, b = j - 4000;
-            const rational r = static_cast<rational>(am::hypot_into<o48>(xd{rational{a, 512}}, ym{rational{b, 1000}}));
-            const u128     m2  = u128{r.Num} * ((std::uint64_t{1} << 48) / static_cast<std::uint64_t>(r.Den)) * 2;
-            const u128     p74 = u128(static_cast<std::uint64_t>(a * a * 1'000'000 + b * b * (1 << 18))) << 74;
-            const u128     lo = m2 == 0 ? 0 : (m2 - 1) * (m2 - 1) * 15625, hi = (m2 + 1) * (m2 + 1) * 15625;
+            const rational  r   = static_cast<rational>(am::hypot<o48>(xd{rational{a, 512}}, ym{rational{b, 1000}}));
+            const u128      m2  = u128{r.Num} * ((std::uint64_t{1} << 48) / static_cast<std::uint64_t>(r.Den)) * 2;
+            const u128      p74 = u128(static_cast<std::uint64_t>(a * a * 1'000'000 + b * b * (1 << 18))) << 74;
+            const u128      lo = m2 == 0 ? 0 : (m2 - 1) * (m2 - 1) * 15625, hi = (m2 + 1) * (m2 + 1) * 15625;
             if (!(lo <= p74 && p74 <= hi))
                 ++bad;
         }
@@ -1725,13 +1720,13 @@ TEST(MathEngineTest, deep_step_at_the_cap) {
     using F  = inside<{{-1, 1}, per<65536>}, round_floor>;
     using C  = inside<{{-1, 1}, per<65536>}, round_ceil>;
     using In = inside<{-100, 100}>;
-    EXPECT_EQ(math::tanh_into<F>(In{50}), rational(65535, 65536));
-    EXPECT_EQ(math::tanh_into<C>(In{-50}), rational(-65535, 65536));
+    EXPECT_EQ(math::tanh<F>(In{50}), rational(65535, 65536));
+    EXPECT_EQ(math::tanh<C>(In{-50}), rational(-65535, 65536));
     using EC = inside<{{0, 1}, per<1024>}, round_ceil>;
-    EXPECT_EQ(math::exp_into<EC>(inside<{-100, 0}>{-60}), rational(1, 1024));
+    EXPECT_EQ((math::exp<EC>(inside<{-100, 0}>{-60})), rational(1, 1024));
     using X  = inside<{{0, 1}, per<(std::uint64_t{1} << 40)>}>;
     using SF = inside<{{0, 1}, per<(std::uint64_t{1} << 40)>}, round_floor>;
-    EXPECT_EQ(math::sin_into<SF>(X{rational{3u, std::uint64_t{1} << 40}}).raw(), 2u);
+    EXPECT_EQ(math::sin<SF>(X{rational{3u, std::uint64_t{1} << 40}}).raw(), 2u);
 }
 
 // The table tier's slot offset subtracted signed 64-bit value indices: an
@@ -1741,11 +1736,11 @@ TEST(MathEngineTest, table_lookup_on_an_input_straddling_two_to_the_63) {
     using Xl = inside<{9223372036854775806u, 9223372036854776908u}>; // too many: computed
     using O  = inside<{{0, 2}, per<1024>}, round_nearest>;
     static_assert(math::detail::engine::table_input<X> && !math::detail::engine::table_input<Xl>);
-    static_assert(math::atan_into<O>(X{9223372036854775900u}) == math::atan_into<O>(Xl{9223372036854775900u}));
-    EXPECT_EQ(math::atan_into<O>(X{test::at_run_time(std::uint64_t{9223372036854775900u})}),
-              math::atan_into<O>(Xl{9223372036854775900u}));
-    EXPECT_EQ(math::atan_into<O>(X{test::at_run_time(std::uint64_t{9223372036854775806u})}),
-              math::atan_into<O>(Xl{9223372036854775806u}));
+    static_assert(math::atan<O>(X{9223372036854775900u}) == math::atan<O>(Xl{9223372036854775900u}));
+    EXPECT_EQ(math::atan<O>(X{test::at_run_time(std::uint64_t{9223372036854775900u})}),
+              math::atan<O>(Xl{9223372036854775900u}));
+    EXPECT_EQ(math::atan<O>(X{test::at_run_time(std::uint64_t{9223372036854775806u})}),
+              math::atan<O>(Xl{9223372036854775806u}));
 }
 
 // tan's error bound grows as tan²: past 2^62 units (|tan| past 2^31) it
@@ -1767,8 +1762,8 @@ TEST(MathEngineTest, tan_near_its_pole_with_a_bound_past_64_bits) {
                         row{12517207, 368427707302, -368427700492},
                         row{354172375, 13021021228, -13021021220}}) {
         const auto m = test::at_run_time(r.M);
-        EXPECT_EQ(math::tan_into<O>(Lo::from_raw(j0 - m - p)), r.Below) << r.M;
-        EXPECT_EQ(math::tan_into<O>(Hi::from_raw(m)), r.Above) << r.M;
+        EXPECT_EQ(math::tan<O>(Lo::from_raw(j0 - m - p)), r.Below) << r.M;
+        EXPECT_EQ(math::tan<O>(Hi::from_raw(m)), r.Above) << r.M;
     }
 }
 

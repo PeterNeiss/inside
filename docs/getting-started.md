@@ -152,14 +152,14 @@ without an FPU. A result is rounded, so the input or the output must allow it:
 using angle = inside<{{-4, 4}, per<1024>}, round_nearest>;
 math::sin(angle{1});                                // 0.841796875: the output grid follows the input
 using out = inside<{{0, 2}, per<100>}, round_nearest>;
-math::sqrt_into<out>(inside<{0, 4}>{2});            // 1.41: you name the output grid
+math::sqrt<out>(inside<{0, 4}>{2});            // 1.41: you name the output grid
 ```
 
 With `<beman/inside/units/math.hpp>`, angles can be in degrees, and the
 reduction is exact: the sine of 30° is exactly 1/2.
 
 ```cpp
-units::sin_into<math::unit_amplitude<1000>>(quantity<si::degree, inside<{0, 360}>>{30});   // 0.500
+math::sin<per<1000>>(quantity<si::degree, inside<{0, 360}>>{30});   // 0.500
 ```
 
 ## How a value flows

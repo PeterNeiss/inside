@@ -8,6 +8,6 @@ int main() {
     using namespace beman::inside::units;
     using m_t = quantity<si::metre, inside<{{-1, 1}, per<8>}, round_nearest>>;
     using s_t = quantity<si::second, inside<{{-1, 1}, per<8>}, round_nearest>>;
-    auto a    = atan2(m_t{1}, s_t{1});
+    auto a    = math::atan2(m_t{1}, s_t{1});
     (void)a;
 }

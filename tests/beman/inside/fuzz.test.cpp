@@ -1338,15 +1338,14 @@ void prop_math_tiers(fuzz_state& s, long iters) {
         s.iter       = i;
         const A    a = A::from_raw(random_in_range_raw<A>(s.rng));
         const auto x = engine::exact_input(a);
-        FUZZ_REQUIRE(s, math::sin_into<O>(a).raw() == integer(engine::trig_core<E, Mag, engine::trig::sin, 1>{x}));
-        FUZZ_REQUIRE(s, math::cos_into<O>(a).raw() == integer(engine::trig_core<E, Mag, engine::trig::cos, 1>{x}));
-        FUZZ_REQUIRE(s, math::tanh_into<O>(a).raw() == integer(engine::hyp_core<E, Mag, engine::hyp::tanh, 1>{x}));
-        FUZZ_REQUIRE(s, math::atan_into<O>(a).raw() == integer(engine::atan_core<E>{x}));
+        FUZZ_REQUIRE(s, math::sin<O>(a).raw() == integer(engine::trig_core<E, Mag, engine::trig::sin, 1>{x}));
+        FUZZ_REQUIRE(s, math::cos<O>(a).raw() == integer(engine::trig_core<E, Mag, engine::trig::cos, 1>{x}));
+        FUZZ_REQUIRE(s, math::tanh<O>(a).raw() == integer(engine::hyp_core<E, Mag, engine::hyp::tanh, 1>{x}));
+        FUZZ_REQUIRE(s, math::atan<O>(a).raw() == integer(engine::atan_core<E>{x}));
 
         const P p = P::from_raw(random_in_range_raw<P>(s.rng));
-        FUZZ_REQUIRE(s,
-                     math::sqrt_into<O>(p).raw() ==
-                         integer(engine::sqrt_core<engine::input_limbs<P>>{engine::exact_input(p)}));
+        FUZZ_REQUIRE(
+            s, math::sqrt<O>(p).raw() == integer(engine::sqrt_core<engine::input_limbs<P>>{engine::exact_input(p)}));
     }
 }
 

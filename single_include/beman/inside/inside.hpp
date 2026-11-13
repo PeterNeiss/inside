@@ -6378,7 +6378,7 @@ struct call_policy : E {
 
     // Cheap default report: no message construction. error_ref mode records the
     // code (sticky: keeps the first error) — also during constant evaluation, so
-    // try_make / parse / tan_into return error values in constexpr code.
+    // try_make / parse / tan<Out> return error values in constexpr code.
     // Throw mode funnels through the installed handler via an outlined cold
     // helper; at compile time it throws, so the build fails with a text that
     // names the code and the fix.
@@ -6722,7 +6722,7 @@ constexpr wide_rational<std::max(K, exact_limbs<L>)> onto_bound(const wide_ratio
 //---------------------------------------------------------------------------
 // assign_exact — store an exact value into L: the path wherever neither int64
 // nor the 64-bit rational holds every value (a wide raw on either side, fine
-// doubles, mul_into/div_into, parse, sum, wrap_exact). Rounds first, then range-checks,
+// doubles, mul<Out>/div<Out>, parse, sum, wrap_exact). Rounds first, then range-checks,
 // like the builtin paths; out of range runs the usual policy cascade.
 //---------------------------------------------------------------------------
 // R is the source type: an on_clamp action gets the overshoot and an
@@ -9139,38 +9139,6 @@ template <insidable B, detail::numeric A>
 
 
 
-// Forward-declare the `beman::inside::math` entry points used in-class, so the bodies
-// pass `-Wtemplate-body` without pulling math.hpp in unconditionally (its
-// definitions live there).
-namespace beman::inside::math {
-template <insidable Out, insidable In>
-constexpr Out floor_into(In x);
-template <insidable Out, insidable In>
-constexpr Out ceil_into(In x);
-template <insidable Out, insidable In>
-constexpr Out round_into(In x);
-template <insidable Out, insidable In>
-constexpr Out trunc_into(In x);
-namespace detail {
-// abs_into's constraint (math.hpp): Out includes the smallest |x|.
-template <class Out, class In>
-consteval bool abs_into_ok();
-} // namespace detail
-template <insidable Out, insidable In>
-    requires(detail::abs_into_ok<Out, In>())
-constexpr Out abs_into(In x);
-template <insidable In>
-constexpr auto floor(In x);
-template <insidable In>
-constexpr auto ceil(In x);
-template <insidable In>
-constexpr auto round(In x);
-template <insidable In>
-constexpr auto trunc(In x);
-template <insidable In>
-constexpr auto abs(In x);
-} // namespace beman::inside::math
-
 //---------------------------------------------------------------------------
 // inside — defines `inside<G, P>` and its member operators. Free-function
 // arithmetic (arithmetic.hpp), casts (casts.hpp) and `inside_range` (range.hpp)
@@ -9751,9 +9719,9 @@ struct inside {
 
   public:
     // Integer reductions (floor/ceil/round/trunc) and abs live as free
-    // functions in `beman::inside::math` — `beman::inside::math::floor(b)` etc. (auto-deduced Out)
-    // or `beman::inside::math::floor_into<Out>(b)` for an explicit output grid. There is
-    // deliberately no member-syntax alias: one spelling, in `<beman/inside/math.hpp>`.
+    // functions in `beman::inside::math` — `beman::inside::math::floor(b)` etc. (the
+    // output deduced) or `beman::inside::math::floor<Out>(b)`. There is deliberately
+    // no member-syntax alias: one spelling, in `<beman/inside/math.hpp>`.
 
     // +x is x, as for a built-in number (and a quantity's +q).
     [[nodiscard]] constexpr inside operator+() const noexcept { return *this; }
@@ -10481,7 +10449,7 @@ template <insidable B, detail::numeric A>
 // Free-function arithmetic over detail::addition/multiplication/division/
 // modulo:
 //   add, sub, mul, div, mod, divmod   with a policy, hooks or an errc&
-//   mul_into<Out>, div_into<Out>      the exact result, rounded once into Out
+//   mul<Out>, div<Out>(a, b [, flag]) the exact result, rounded once into Out
 //   add_all, mul_all, sum<Target>     folds; sum checks the total once
 //   min, max, midpoint                ADL-found, exact on mixed grids
 //   dot, cross, lerp                  2-D helpers that widen like + and *
@@ -10575,7 +10543,7 @@ struct divmod_op {
     "coarser type first)"
 #define BEMAN_INSIDE_WHY_mul                                                                                    \
     "multiplication: no result type - the exact product's fractions pass 1024 bits - round the product into a " \
-    "coarser type with mul_into<Out>(a, b)"
+    "coarser type with mul<Out>(a, b)"
 #define BEMAN_INSIDE_WHY_div                                                                              \
     "division: no result type - the divisor grid is the point 0, or the exact quotient's fractions pass " \
     "1024 bits"
@@ -10603,8 +10571,10 @@ inline constexpr policy_flag call_flags = []() -> policy_flag {
 // `if constexpr` probe is false where the op cannot compile.
 } // namespace detail
 
+// (The leading int&... takes no argument: an explicit template argument,
+// as in mul<Out>(a, b), selects mul<Out> below instead of naming L.)
 #define BEMAN_INSIDE_ARITH_FN(name, op)                                             \
-    template <insidable L, insidable R, class... Args>                              \
+    template <int&... Barrier, insidable L, insidable R, class... Args>             \
         requires detail::name                                                       \
     ##_defined<L, R, detail::call_flags<Args...>>&&                                 \
         requires(L const& l, R const& r, Args && ... args)                          \
@@ -10614,10 +10584,10 @@ inline constexpr policy_flag call_flags = []() -> policy_flag {
     [[nodiscard]] constexpr auto name(L const& lhs, R const& rhs, Args&&... args) { \
         return detail::arith(detail::op{}, lhs, rhs, std::forward<Args>(args)...);  \
     }                                                                               \
-    template <insidable L, insidable R, class... Args>                              \
+    template <int&... Barrier, insidable L, insidable R, class... Args>             \
         requires(!detail::name##_defined<L, R, detail::call_flags<Args...>>)        \
     auto name(L const&, R const&, Args&&...) = delete (BEMAN_INSIDE_WHY_##name);    \
-    template <insidable L, insidable R, class... Args>                              \
+    template <int&... Barrier, insidable L, insidable R, class... Args>             \
         requires(detail::name##_defined<L, R, detail::call_flags<Args...>> &&       \
                  (detail::is_action_tag_v<std::remove_cvref_t<Args>> || ...))       \
     auto name(L const&, R const&, Args&&...) = delete (BEMAN_INSIDE_WHY_arith_action);
@@ -10631,13 +10601,14 @@ BEMAN_INSIDE_ARITH_FN(divmod, divmod_op)
 #undef BEMAN_INSIDE_ARITH_FN
 
 //---------------------------------------------------------------------------
-// mul_into<Out> / div_into<Out> — the exact product or quotient, rounded once
-// onto Out by Out's policy (plus the per-call flags F). Neither forms the
-// product or quotient grid, so they work where that grid's fractions would pass
-// the fraction limit, or a quotient past the 64-bit fraction. A store that
-// fails is reported through the policy (it throws under `checked`).
-// div_into returns std::expected<Out, errc> when the divisor's grid holds 0 —
-// then every failure, a zero divisor or a failed store, is the error — else Out.
+// mul<Out>(a, b [, flag]) / div<Out>(a, b [, flag]) — the exact product or
+// quotient, rounded once onto Out by Out's policy (the call's flag, such as
+// round_floor, replacing its rounding). Neither forms the product or
+// quotient grid, so they work where that grid's fractions would pass the
+// fraction limit, or a quotient past the 64-bit fraction. A store that fails
+// is reported through the policy (it throws under `checked`). div<Out>
+// returns std::expected<Out, errc> when the divisor's grid holds 0 — then
+// every failure, a zero divisor or a failed store, is the error — else Out.
 //---------------------------------------------------------------------------
 namespace detail {
 template <insidable Out, std::size_t K, typename P>
@@ -10665,7 +10636,7 @@ inline constexpr bool native_product = [] {
         return false;
     else {
         using P                   = typename multiplication<A, B>::result;
-        constexpr policy_flag all = flags_of<Out> | F;
+        constexpr policy_flag all = override_flags(flags_of<Out>, F);
         return values_fit_int64<P> && (notches_compatible<Out, P> || has_flag(all, snap)) &&
                (has_flag(all, clamp) || has_flag(all, wrap) || !excludes(interval_of<Out>, interval_of<P>));
     }
@@ -10689,62 +10660,73 @@ constexpr rational    unreduced_quotient(rational x, rational y) noexcept {
 }
 
 template <insidable Out, insidable A, insidable B, typename P>
-constexpr Out mul_into_wide(const A& a, const B& b, P&& policy) {
+constexpr Out mul_wide(const A& a, const B& b, P&& policy) {
     using E = wide_rational<exact_limbs<A, B, Out>>;
     return store_exact_into<Out>(E{exact_of(a)} * E{exact_of(b)}, policy);
 }
 template <insidable Out, insidable A, insidable B, typename P>
-constexpr Out div_into_wide(const A& a, const B& b, P&& policy) {
+constexpr Out div_wide(const A& a, const B& b, P&& policy) {
     using E = wide_rational<exact_limbs<A, B, Out>>;
     return store_exact_into<Out>(E{exact_of(a)} / E{exact_of(b)}, policy);
 }
 // The quotient as a reduced 64-bit rational, else wide.
 template <insidable Out, insidable A, insidable B, typename P>
-constexpr Out div_into_reduced(A a, B b, P policy) {
+constexpr Out div_reduced(A a, B b, P policy) {
     if constexpr (rational_operands<A, B>)
         if (const auto q = try_div(as_rational(a), as_rational(b)))
             return store_into<Out>(*q, policy);
-    return div_into_wide<Out>(a, b, policy);
+    return div_wide<Out>(a, b, policy);
 }
 // The same out of line, behind the unreduced quotient (by value, so the fast
 // path's operands stay in registers).
 template <insidable Out, insidable A, insidable B, typename P>
-[[gnu::cold]] [[gnu::noinline]] constexpr Out div_into_reduced_cold(A a, B b, P policy) {
-    return div_into_reduced<Out>(a, b, policy);
+[[gnu::cold]] [[gnu::noinline]] constexpr Out div_reduced_cold(A a, B b, P policy) {
+    return div_reduced<Out>(a, b, policy);
 }
 } // namespace detail
 
-template <insidable Out, policy_flag F = detail::none, insidable A, insidable B>
-[[nodiscard]] constexpr Out mul_into(const A& a, const B& b) {
-    auto policy = make_policy<flags_of<Out> | F>();
+namespace detail {
+// The flags of mul<Out> / div<Out>'s trailing argument: a flag, or none.
+template <class... Fl>
+concept call_flag_args = sizeof...(Fl) <= 1 && (flag_like<Fl> && ...);
+} // namespace detail
+
+template <insidable Out, insidable A, insidable B, class... Fl>
+    requires detail::call_flag_args<Fl...>
+[[nodiscard]] constexpr Out mul(const A& a, const B& b, const Fl&...) {
+    constexpr policy_flag F      = detail::call_flags<Fl...>;
+    auto                  policy = make_policy<detail::override_flags(flags_of<Out>, F)>();
     if constexpr (detail::native_product<Out, F, A, B>)
         return detail::store_into<Out>(a * b, policy);
     else {
         if constexpr (detail::rational_operands<A, B>)
             if (const auto p = detail::try_mul(detail::as_rational(a), detail::as_rational(b)))
                 return detail::store_into<Out>(*p, policy);
-        return detail::mul_into_wide<Out>(a, b, policy);
+        return detail::mul_wide<Out>(a, b, policy);
     }
 }
 
-template <insidable Out, policy_flag F = detail::none, insidable A, insidable B>
-[[nodiscard]] constexpr auto div_into(const A& a, const B& b)
+template <insidable Out, insidable A, insidable B, class... Fl>
+    requires detail::call_flag_args<Fl...>
+[[nodiscard]] constexpr auto div(const A& a, const B& b, const Fl&...)
     -> std::conditional_t<detail::divisor_excludes_zero<B>, Out, std::expected<Out, errc>> {
-    const auto quotient = [&](auto&& policy) {
+    constexpr policy_flag F        = detail::call_flags<Fl...>;
+    const auto            quotient = [&](auto&& policy) {
         if constexpr (detail::rational_operands<A, B> && detail::unreduced_store<Out>) {
             if (const auto q = detail::unreduced_quotient(detail::as_rational(a), detail::as_rational(b)); q.Den != 0)
                 [[likely]]
                 return detail::store_into<Out>(q, policy);
-            return detail::div_into_reduced_cold<Out>(a, b, policy);
+            return detail::div_reduced_cold<Out>(a, b, policy);
         } else
-            return detail::div_into_reduced<Out>(a, b, policy);
+            return detail::div_reduced<Out>(a, b, policy);
     };
+    constexpr policy_flag P = detail::override_flags(flags_of<Out>, F);
     if constexpr (detail::divisor_excludes_zero<B>)
-        return quotient(make_policy<flags_of<Out> | F>());
+        return quotient(make_policy<P>());
     else {
         if (b == 0)
             return std::unexpected{errc::division_by_zero};
-        return detail::try_store<Out, flags_of<Out> | F>([&](Out& out, auto&& policy) { out = quotient(policy); });
+        return detail::try_store<Out, P>([&](Out& out, auto&& policy) { out = quotient(policy); });
     }
 }
 
@@ -15128,25 +15110,26 @@ inline constexpr std::int64_t max_abs_int = std::max(ceil_abs(lower_of<In>), cei
 template <insidable In>
 inline constexpr policy_flag result_policy = with_default_rounding(flags_of<In> & ~cursor_marker);
 
-template <insidable In, grid_rational Lo, grid_rational Hi>
-using result_grid_t = inside<{{Lo, Hi}, notch_of<In>}, result_policy<In>>;
+// A deduced output on notch N.
+template <insidable In, grid_rational N, grid_rational Lo, grid_rational Hi>
+using result_grid_t = inside<{{Lo, Hi}, N}, result_policy<In>>;
 
-// The bound of Core's result at In's lower or upper end.
-template <insidable In, typename Core, bool AtUpper, bool Up>
+// The bound of Core's result at In's lower or upper end, on notch N.
+template <insidable In, grid_rational N, typename Core, bool AtUpper, bool Up>
 inline constexpr grid_rational bound_at =
-    lattice_bound<notch_of<In>, Up>(Core{grid_input<In>(AtUpper ? upper_of<In> : lower_of<In>)});
+    lattice_bound<N, Up>(Core{grid_input<In>(AtUpper ? upper_of<In> : lower_of<In>)});
 
-template <insidable In, typename Core>
-using increasing_t = result_grid_t<In, bound_at<In, Core, false, false>, bound_at<In, Core, true, true>>;
-template <insidable In, typename Core>
-using decreasing_t = result_grid_t<In, bound_at<In, Core, true, false>, bound_at<In, Core, false, true>>;
+template <insidable In, grid_rational N, typename Core>
+using increasing_t = result_grid_t<In, N, bound_at<In, N, Core, false, false>, bound_at<In, N, Core, true, true>>;
+template <insidable In, grid_rational N, typename Core>
+using decreasing_t = result_grid_t<In, N, bound_at<In, N, Core, true, false>, bound_at<In, N, Core, false, true>>;
 
 // Growth bounds for the deduction: |result| < 2^kmax over In.
 template <insidable In>
 inline constexpr int exp_kmax = [] {
     static_assert(max_abs_int<In> <= 4096,
                   "beman::inside::math: the deduced output of exp, exp2, sinh and cosh needs |x| <= 4096 - "
-                  "name an output grid with fn_into<Out> instead");
+                  "name the output: f<C>(x)");
     return static_cast<int>(max_abs_int<In> * 3 / 2) + 2;
 }();
 
@@ -15160,8 +15143,8 @@ inline constexpr int log2_span = [] {
 template <insidable InB, insidable InE>
 inline constexpr int pow_kmax = [] {
     static_assert(max_abs_int<InE> * log2_span<InB> <= 1 << 16,
-                  "beman::inside::math::pow: the deduced output would pass 2^65536 - name an output grid "
-                  "with pow_into<Out> instead");
+                  "beman::inside::math::pow: the deduced output would pass 2^65536 - name the output: "
+                  "pow<C>(b, e)");
     return static_cast<int>(max_abs_int<InE>) * log2_span<InB> + 2;
 }();
 
@@ -15662,6 +15645,208 @@ inline constexpr constant<detail::constant_id::zeta3>       zeta3{};   // Apéry
 
 
 
+// ======================================================================
+//  beman/inside/math/detail/functions.hpp
+// ======================================================================
+
+
+
+
+//---------------------------------------------------------------------------
+// The one call shape of every math function (math.hpp, math/integer.hpp):
+//   f(x…)             the output deduced: the function's range over the
+//                     arguments' types, on their notch, with their policy
+//   f<Spec…>(x…)      the same with the notch (per<K>) and/or policy flags
+//                     (round_floor, clamp, …) named, in any order
+//   f<C>(x…)          onto C: the whole result type, or only its number (a
+//                     quantity's unit, a multivector's blades deduced)
+//   f<C, D…>(x…)      the arguments converted to D… first
+// A function is a tag F:
+//   takes<In…>        whether it takes these insides (its arity, its
+//                     constraints)
+//   rounds            whether its value rounds onto the output (the engine)
+//                     or is exact (the grid operations, the counts)
+//   result<In…>       an exact function's output, deduced
+//   result_on<N, In…> a rounding function's output on notch N, and
+//   notch<In…>        the notch it takes by default, and domain<In…>
+//   eval<O>(x…)       the value onto the output type O
+// The kinds of arguments map a call to the tag: insides here, quantities
+// (units/math.hpp), multivectors (units/detail/geoalg_exp.hpp).
+//---------------------------------------------------------------------------
+namespace beman::inside::math::detail {
+using namespace beman::inside::detail;
+
+//---------------------------------------------------------------------------
+// Output specs: a notch (a rational or a grid number: per<K>, 0.5_r, 1e-30_g)
+// and policy flags, as template arguments of the call.
+//---------------------------------------------------------------------------
+struct out_spec {
+    bool          HasNotch = false;
+    grid_rational Notch{0};
+    policy_flag   Flags = 0;
+};
+
+template <auto S>
+inline constexpr bool notch_spec = std::same_as<decltype(S), rational> || std::same_as<decltype(S), grid_rational>;
+template <auto S>
+inline constexpr bool flag_spec = flag_like<decltype(S)> || std::same_as<decltype(S), policy_flag>;
+
+template <auto S>
+consteval out_spec add_spec(out_spec s) {
+    if constexpr (notch_spec<S>) {
+        s.HasNotch = true;
+        s.Notch    = grid_rational{S};
+    } else
+        s.Flags |= static_cast<policy_flag>(S);
+    return s;
+}
+
+template <auto... Spec>
+consteval out_spec spec_of() {
+    static_assert(((notch_spec<Spec> || flag_spec<Spec>) && ...),
+                  "beman::inside::math: a template argument of f<...>(x) names the output's notch (per<K>) or "
+                  "policy (round_floor, clamp, ...), or is the output type itself: f<C>(x)");
+    static_assert((0 + ... + int{notch_spec<Spec>}) <= 1, "beman::inside::math: f<...>(x) takes one notch");
+    out_spec s{};
+    ((s = add_spec<Spec>(s)), ...);
+    return s;
+}
+
+// What a call names: specs (nothing, for f(x)), or the output C.
+template <out_spec S>
+struct specs {};
+template <class C>
+struct named {};
+
+// R's policy under the specs: their rounding and range handling replace R's
+// (override_flags), and once anything is named the output rounds (by R's
+// mode, else to nearest, unless the specs name one: round_toward_zero too).
+consteval policy_flag spec_flags(policy_flag r, const out_spec& s) {
+    if (!s.HasNotch && s.Flags == 0)
+        return r;
+    const policy_flag f = override_flags(r, s.Flags);
+    return (s.Flags & (mode_bits | snap)) != 0 ? f : with_default_rounding(f);
+}
+template <insidable R, out_spec S>
+using with_spec_flags_t = inside<grid_of<R>, spec_flags(flags_of<R>, S)>;
+
+// An exact output R on notch N: its range rounded outward onto N.
+template <insidable R, grid_rational N>
+using on_notch_t = inside<
+    grid{{grid_round<round_mode::floor>(lower_of<R> / N) * N, grid_round<round_mode::ceil>(upper_of<R> / N) * N}, N},
+    flags_of<R>>;
+
+// A rounding function's deduced output over insides In… for specs S: on the
+// named notch, else on its own (the arguments' notch, which they need then).
+// Outside the domain, a stand-in: eval states the domain.
+template <class F, out_spec S, class... In>
+consteval auto rounding_output() {
+    if constexpr (!F::template domain<In...>)
+        return std::type_identity<inside<{0, 1}, round_nearest>>{};
+    else if constexpr (S.HasNotch)
+        return std::type_identity<typename F::template result_on<S.Notch, In...>>{};
+    else {
+        static_assert(F::template notch<In...> != 0,
+                      "beman::inside::math: a deduced output takes the input's notch - the input needs one, or "
+                      "name it: f<per<K>>(x)");
+        return std::type_identity<typename F::template result_on<F::template notch<In...>, In...>>{};
+    }
+}
+template <class F, out_spec S, class... In>
+consteval auto number_output() {
+    if constexpr (F::rounds)
+        return std::type_identity<with_spec_flags_t<typename decltype(rounding_output<F, S, In...>())::type, S>>{};
+    else if constexpr (S.HasNotch)
+        return std::type_identity<with_spec_flags_t<on_notch_t<typename F::template result<In...>, S.Notch>, S>>{};
+    else
+        return std::type_identity<with_spec_flags_t<typename F::template result<In...>, S>>{};
+}
+// F's output over insides In… for specs S.
+template <class F, out_spec S, class... In>
+using number_output_t = typename decltype(number_output<F, S, In...>())::type;
+
+//---------------------------------------------------------------------------
+// Kinds of arguments. An argument's rank: 1 an inside, 2 a quantity, 3 a
+// multivector (the units headers add theirs); a call's is its highest, 0
+// when an argument is none of them.
+//---------------------------------------------------------------------------
+template <class T>
+inline constexpr int kind_rank = insidable<T> ? 1 : 0;
+
+template <class... Args>
+inline constexpr int rank_of = [] {
+    int r = 0;
+    for (const int k : {0, kind_rank<Args>...}) // (the leading 0: no arguments)
+        r = std::max(r, k);
+    return ((kind_rank<Args> == 0) || ...) ? 0 : r;
+}();
+
+// How F applies to arguments of one rank: takes (whether it does),
+// output<S> (the output for specs S) and eval<O>(x…). The primary takes
+// nothing.
+template <class F, int Rank, class... Args>
+struct kind {
+    static constexpr bool takes = false;
+};
+
+// Insides: the tag itself.
+template <class F, class... In>
+struct kind<F, 1, In...> {
+    static constexpr bool takes = F::template takes<In...>;
+
+    template <class S>
+    struct out;
+    template <out_spec S>
+    struct out<specs<S>> {
+        using type = number_output_t<F, S, In...>;
+    };
+    template <class C>
+    struct out<named<C>> {
+        static_assert(insidable<C>, "beman::inside::math: f<C>(x) of insides - C is an inside");
+        using type = C;
+    };
+    template <class S>
+    using output = typename out<S>::type;
+
+    template <class O>
+    [[gnu::always_inline]] static constexpr auto eval(const In&... x) {
+        return F::template eval<O>(x...);
+    }
+};
+
+template <class F, class... Args>
+using kind_of = kind<F, rank_of<Args...>, Args...>;
+
+template <class F, class... Args>
+concept takes = kind_of<F, Args...>::takes;
+
+// The call: F's value onto the output its kind makes of S.
+template <class F, class S, class... Args>
+[[nodiscard]] [[gnu::always_inline]] constexpr auto call(const Args&... x) {
+    using K = kind_of<F, Args...>;
+    return K::template eval<typename K::template output<S>>(x...);
+}
+} // namespace beman::inside::math::detail
+
+// The public templates of a math function `name` with tag `Tag`: f(x…),
+// f<Spec…>(x…), and f<C>(x…), f<C, D…>(x…). The value pack of the first
+// takes no type, so f<T>(x) always names the output. An optional leading
+// template parameter (pow_base's base, pown's exponent) comes before them
+// all: f<P>(x), f<P, Spec…>(x), f<P, C>(x).
+#define BEMAN_INSIDE_MATH_FUNCTION(name, Tag, ...)                                                              \
+    template <__VA_ARGS__ __VA_OPT__(, ) auto... Spec, class... In>                                             \
+        requires ::beman::inside::math::detail::takes<Tag, In...>                                               \
+    [[nodiscard]] [[gnu::always_inline]] constexpr auto name(const In&... x) {                                  \
+        using specs_ = ::beman::inside::math::detail::specs<::beman::inside::math::detail::spec_of<Spec...>()>; \
+        return ::beman::inside::math::detail::call<Tag, specs_>(x...);                                          \
+    }                                                                                                           \
+    template <__VA_ARGS__ __VA_OPT__(, ) class C, class... D>                                                   \
+        requires ::beman::inside::math::detail::takes<Tag, D...>                                                \
+    [[nodiscard]] [[gnu::always_inline]] constexpr auto name(const D&... x) {                                   \
+        return ::beman::inside::math::detail::call<Tag, ::beman::inside::math::detail::named<C>>(x...);         \
+    }
+
+
 
 //---------------------------------------------------------------------------
 // Counting and number theory on integer grids — exact, no rounding mode:
@@ -15674,8 +15859,8 @@ inline constexpr constant<detail::constant_id::zeta3>       zeta3{};   // Apéry
 //                             lcm(0, b) = 0
 // Each result type holds exactly the values its inputs can produce, worked
 // out at compile time: factorial of inside<{0, 20}> is inside<{1, 20!}>, of
-// inside<{0, 100}> a wide raw. fn_into<Out>(…) stores the result into Out by
-// Out's policy. A count (n, k) is an inside on the integers from 0, of any
+// inside<{0, 100}> a wide raw. fn<Out>(…) stores the result into Out by Out's
+// policy (math/detail/functions.hpp has every call form). A count (n, k) is an inside on the integers from 0, of any
 // size; gcd and lcm take integer grids of any sign and size. A result whose
 // limit would pass max_count_bits has no type: its grid number is computed
 // while compiling.
@@ -16047,14 +16232,13 @@ inline constexpr auto factorial_table = [] {
 #define BEMAN_INSIDE_WHY_too_large(fn)                                                                            \
     "beman::inside::math::" #fn ": the result would pass 16384 bits (math::detail::max_count_bits) - narrow the " \
     "input grids"
-} // namespace detail
 
 //---------------------------------------------------------------------------
 // factorial
 //---------------------------------------------------------------------------
 template <insidable N>
     requires detail::count<N> && (detail::factorial_grid<N>.Fits)
-[[nodiscard]] constexpr auto factorial(N n) noexcept {
+[[nodiscard]] constexpr auto factorial_of(N n) noexcept {
     using R = inside<detail::factorial_grid<N>.Grid>;
     if constexpr (detail::point_grid<R>) {
         (void)n;
@@ -16071,25 +16255,13 @@ template <insidable N>
         }
     }
 }
-template <insidable N>
-    requires(!detail::count<N>)
-auto factorial(N) = delete (BEMAN_INSIDE_WHY_count(factorial));
-template <insidable N>
-    requires detail::count<N> && (!detail::factorial_grid<N>.Fits)
-auto factorial(N) = delete (BEMAN_INSIDE_WHY_too_large(factorial));
-
-template <insidable Out, insidable N>
-    requires requires(N n) { factorial(n); }
-[[nodiscard]] constexpr Out factorial_into(N n) {
-    return Out{factorial(n)};
-}
 
 //---------------------------------------------------------------------------
 // falling_factorial, rising_factorial
 //---------------------------------------------------------------------------
 template <insidable N, insidable K>
     requires detail::count<N> && detail::count<K> && (detail::falling_grid<N, K>.Fits)
-[[nodiscard]] constexpr auto falling_factorial(N n, K k) noexcept {
+[[nodiscard]] constexpr auto falling_factorial_of(N n, K k) noexcept {
     using R = inside<detail::falling_grid<N, K>.Grid>;
     if constexpr (detail::point_grid<R>) {
         (void)n, (void)k;
@@ -16104,22 +16276,10 @@ template <insidable N, insidable K>
                                                : detail::product<W>(a - b + C{1}, static_cast<std::uint64_t>(b)));
     }
 }
-template <insidable N, insidable K>
-    requires(!detail::count<N> || !detail::count<K>)
-auto falling_factorial(N, K) = delete (BEMAN_INSIDE_WHY_count(falling_factorial));
-template <insidable N, insidable K>
-    requires detail::count<N> && detail::count<K> && (!detail::falling_grid<N, K>.Fits)
-auto falling_factorial(N, K) = delete (BEMAN_INSIDE_WHY_too_large(falling_factorial));
-
-template <insidable Out, insidable N, insidable K>
-    requires requires(N n, K k) { falling_factorial(n, k); }
-[[nodiscard]] constexpr Out falling_factorial_into(N n, K k) {
-    return Out{falling_factorial(n, k)};
-}
 
 template <insidable N, insidable K>
     requires detail::count<N> && detail::count<K> && (detail::rising_grid<N, K>.Fits)
-[[nodiscard]] constexpr auto rising_factorial(N n, K k) noexcept {
+[[nodiscard]] constexpr auto rising_factorial_of(N n, K k) noexcept {
     using R = inside<detail::rising_grid<N, K>.Grid>;
     if constexpr (detail::point_grid<R>) {
         (void)n, (void)k;
@@ -16135,25 +16295,13 @@ template <insidable N, insidable K>
                                                              : detail::product<W>(a, static_cast<std::uint64_t>(b)));
     }
 }
-template <insidable N, insidable K>
-    requires(!detail::count<N> || !detail::count<K>)
-auto rising_factorial(N, K) = delete (BEMAN_INSIDE_WHY_count(rising_factorial));
-template <insidable N, insidable K>
-    requires detail::count<N> && detail::count<K> && (!detail::rising_grid<N, K>.Fits)
-auto rising_factorial(N, K) = delete (BEMAN_INSIDE_WHY_too_large(rising_factorial));
-
-template <insidable Out, insidable N, insidable K>
-    requires requires(N n, K k) { rising_factorial(n, k); }
-[[nodiscard]] constexpr Out rising_factorial_into(N n, K k) {
-    return Out{rising_factorial(n, k)};
-}
 
 //---------------------------------------------------------------------------
 // binomial, multinomial
 //---------------------------------------------------------------------------
 template <insidable N, insidable K>
     requires detail::count<N> && detail::count<K> && (detail::binomial_grid<N, K>.Fits)
-[[nodiscard]] constexpr auto binomial(N n, K k) noexcept {
+[[nodiscard]] constexpr auto binomial_of(N n, K k) noexcept {
     using R = inside<detail::binomial_grid<N, K>.Grid>;
     if constexpr (detail::point_grid<R>) {
         (void)n, (void)k;
@@ -16173,22 +16321,10 @@ template <insidable N, insidable K>
             return detail::lattice_inside<R>(c);
     }
 }
-template <insidable N, insidable K>
-    requires(!detail::count<N> || !detail::count<K>)
-auto binomial(N, K) = delete (BEMAN_INSIDE_WHY_count(binomial));
-template <insidable N, insidable K>
-    requires detail::count<N> && detail::count<K> && (!detail::binomial_grid<N, K>.Fits)
-auto binomial(N, K) = delete (BEMAN_INSIDE_WHY_too_large(binomial));
-
-template <insidable Out, insidable N, insidable K>
-    requires requires(N n, K k) { binomial(n, k); }
-[[nodiscard]] constexpr Out binomial_into(N n, K k) {
-    return Out{binomial(n, k)};
-}
 
 template <insidable... Ks>
     requires(sizeof...(Ks) >= 1) && (detail::count<Ks> && ...) && (detail::multinomial_grid<Ks...>.Fits)
-[[nodiscard]] constexpr auto multinomial(Ks... ks) noexcept {
+[[nodiscard]] constexpr auto multinomial_of(Ks... ks) noexcept {
     using R = inside<detail::multinomial_grid<Ks...>.Grid>;
     if constexpr (detail::point_grid<R>) {
         ((void)ks, ...);
@@ -16209,26 +16345,10 @@ template <insidable... Ks>
             return detail::lattice_inside<R>(r);
     }
 }
-template <insidable... Ks>
-    requires(sizeof...(Ks) >= 1) && (!(detail::count<Ks> && ...))
-auto multinomial(Ks...) = delete (BEMAN_INSIDE_WHY_count(multinomial));
-template <insidable... Ks>
-    requires(sizeof...(Ks) >= 1) && (detail::count<Ks> && ...) && (!detail::multinomial_grid<Ks...>.Fits)
-auto multinomial(Ks...) = delete (BEMAN_INSIDE_WHY_too_large(multinomial));
-
-template <insidable Out, insidable... Ks>
-    requires requires(Ks... ks) { multinomial(ks...); }
-[[nodiscard]] constexpr Out multinomial_into(Ks... ks) {
-    return Out{multinomial(ks...)};
-}
 
 //---------------------------------------------------------------------------
 // gcd, lcm
 //---------------------------------------------------------------------------
-#define BEMAN_INSIDE_WHY_integers(fn) \
-    "beman::inside::math::" #fn ": the operands need a lattice (a notch or a point); a continuous grid has none"
-
-namespace detail {
 // For fractional lattices (gcd and lcm compute integers directly): x's
 // value in units of gcd_unit, as a magnitude in an unsigned type that holds
 // both operands', and the R of n such units.
@@ -16242,7 +16362,6 @@ template <insidable R, insidable A, insidable B, class W>
 constexpr R from_units(const W& n) {
     return from_value_in_units<R, gcd_unit<A, B>>(n);
 }
-} // namespace detail
 
 // gcd and lcm of two lattices: of integers as std::gcd and std::lcm; of
 // fractions x = a·u, y = b·u (u the gcd of the value units) u·gcd(a, b) and
@@ -16250,7 +16369,7 @@ constexpr R from_units(const W& n) {
 // the lattice uℤ.
 template <insidable A, insidable B>
     requires detail::has_lattice<A> && detail::has_lattice<B>
-[[nodiscard]] constexpr auto gcd(A a, B b) noexcept {
+[[nodiscard]] constexpr auto gcd_of(A a, B b) noexcept {
     using R = inside<detail::gcd_grid<A, B>>;
     if constexpr (detail::point_grid<R>) {
         (void)a, (void)b;
@@ -16278,19 +16397,10 @@ template <insidable A, insidable B>
             return detail::lattice_inside<R>(std::gcd(ux, uy));
     }
 }
-template <insidable A, insidable B>
-    requires(!detail::has_lattice<A> || !detail::has_lattice<B>)
-auto gcd(A, B) = delete (BEMAN_INSIDE_WHY_integers(gcd));
-
-template <insidable Out, insidable A, insidable B>
-    requires requires(A a, B b) { gcd(a, b); }
-[[nodiscard]] constexpr Out gcd_into(A a, B b) {
-    return Out{gcd(a, b)};
-}
 
 template <insidable A, insidable B>
     requires detail::has_lattice<A> && detail::has_lattice<B> && detail::lcm_fits<A, B>
-[[nodiscard]] constexpr auto lcm(A a, B b) noexcept {
+[[nodiscard]] constexpr auto lcm_of(A a, B b) noexcept {
     using R = inside<detail::lcm_grid<A, B>>;
     if constexpr (detail::point_grid<R>) {
         (void)a, (void)b;
@@ -16321,18 +16431,83 @@ template <insidable A, insidable B>
             return detail::lattice_inside<R>(std::lcm(ux, uy));
     }
 }
-template <insidable A, insidable B>
-    requires(!detail::has_lattice<A> || !detail::has_lattice<B>)
-auto lcm(A, B) = delete (BEMAN_INSIDE_WHY_integers(lcm));
-template <insidable A, insidable B>
-    requires detail::has_lattice<A> && detail::has_lattice<B> && (!detail::lcm_fits<A, B>)
-auto lcm(A, B) = delete (BEMAN_INSIDE_WHY_too_large(lcm));
 
-template <insidable Out, insidable A, insidable B>
-    requires requires(A a, B b) { lcm(a, b); }
-[[nodiscard]] constexpr Out lcm_into(A a, B b) {
-    return Out{lcm(a, b)};
-}
+//---------------------------------------------------------------------------
+// The tags (math/detail/functions.hpp): exact, each deduced output the
+// result's own grid; a call takes what the implementation above takes.
+//---------------------------------------------------------------------------
+#define BEMAN_INSIDE_COUNT_TAG(fn)                                                                           \
+    struct fn##_fn {                                                                                         \
+        static constexpr bool rounds = false;                                                                \
+        template <class... In>                                                                               \
+        static constexpr bool takes = (insidable<In> && ...) && requires(const In&... x) { fn##_of(x...); }; \
+        template <class... In>                                                                               \
+        using result = decltype(fn##_of(std::declval<const In&>()...));                                      \
+        template <class Out, class... In>                                                                    \
+        [[nodiscard]] static constexpr Out eval(const In&... x) {                                            \
+            return Out{fn##_of(x...)};                                                                       \
+        }                                                                                                    \
+    };
+BEMAN_INSIDE_COUNT_TAG(factorial)
+BEMAN_INSIDE_COUNT_TAG(falling_factorial)
+BEMAN_INSIDE_COUNT_TAG(rising_factorial)
+BEMAN_INSIDE_COUNT_TAG(binomial)
+BEMAN_INSIDE_COUNT_TAG(multinomial)
+BEMAN_INSIDE_COUNT_TAG(gcd)
+BEMAN_INSIDE_COUNT_TAG(lcm)
+#undef BEMAN_INSIDE_COUNT_TAG
+} // namespace detail
+
+BEMAN_INSIDE_MATH_FUNCTION(factorial, detail::factorial_fn)
+BEMAN_INSIDE_MATH_FUNCTION(falling_factorial, detail::falling_factorial_fn)
+BEMAN_INSIDE_MATH_FUNCTION(rising_factorial, detail::rising_factorial_fn)
+BEMAN_INSIDE_MATH_FUNCTION(binomial, detail::binomial_fn)
+BEMAN_INSIDE_MATH_FUNCTION(multinomial, detail::multinomial_fn)
+BEMAN_INSIDE_MATH_FUNCTION(gcd, detail::gcd_fn)
+BEMAN_INSIDE_MATH_FUNCTION(lcm, detail::lcm_fn)
+
+// The cases a function does not take, with the reason.
+#define BEMAN_INSIDE_WHY_integers(fn) \
+    "beman::inside::math::" #fn ": the operands need a lattice (a notch or a point); a continuous grid has none"
+template <auto... Spec, insidable N>
+    requires(!detail::count<N>)
+auto factorial(const N&) = delete (BEMAN_INSIDE_WHY_count(factorial));
+template <auto... Spec, insidable N>
+    requires detail::count<N> && (!detail::factorial_grid<N>.Fits)
+auto factorial(const N&) = delete (BEMAN_INSIDE_WHY_too_large(factorial));
+template <auto... Spec, insidable N, insidable K>
+    requires(!detail::count<N> || !detail::count<K>)
+auto falling_factorial(const N&, const K&) = delete (BEMAN_INSIDE_WHY_count(falling_factorial));
+template <auto... Spec, insidable N, insidable K>
+    requires detail::count<N> && detail::count<K> && (!detail::falling_grid<N, K>.Fits)
+auto falling_factorial(const N&, const K&) = delete (BEMAN_INSIDE_WHY_too_large(falling_factorial));
+template <auto... Spec, insidable N, insidable K>
+    requires(!detail::count<N> || !detail::count<K>)
+auto rising_factorial(const N&, const K&) = delete (BEMAN_INSIDE_WHY_count(rising_factorial));
+template <auto... Spec, insidable N, insidable K>
+    requires detail::count<N> && detail::count<K> && (!detail::rising_grid<N, K>.Fits)
+auto rising_factorial(const N&, const K&) = delete (BEMAN_INSIDE_WHY_too_large(rising_factorial));
+template <auto... Spec, insidable N, insidable K>
+    requires(!detail::count<N> || !detail::count<K>)
+auto binomial(const N&, const K&) = delete (BEMAN_INSIDE_WHY_count(binomial));
+template <auto... Spec, insidable N, insidable K>
+    requires detail::count<N> && detail::count<K> && (!detail::binomial_grid<N, K>.Fits)
+auto binomial(const N&, const K&) = delete (BEMAN_INSIDE_WHY_too_large(binomial));
+template <auto... Spec, insidable... Ks>
+    requires(sizeof...(Ks) >= 1) && (!(detail::count<Ks> && ...))
+auto multinomial(const Ks&...) = delete (BEMAN_INSIDE_WHY_count(multinomial));
+template <auto... Spec, insidable... Ks>
+    requires(sizeof...(Ks) >= 1) && (detail::count<Ks> && ...) && (!detail::multinomial_grid<Ks...>.Fits)
+auto multinomial(const Ks&...) = delete (BEMAN_INSIDE_WHY_too_large(multinomial));
+template <auto... Spec, insidable A, insidable B>
+    requires(!detail::has_lattice<A> || !detail::has_lattice<B>)
+auto gcd(const A&, const B&) = delete (BEMAN_INSIDE_WHY_integers(gcd));
+template <auto... Spec, insidable A, insidable B>
+    requires(!detail::has_lattice<A> || !detail::has_lattice<B>)
+auto lcm(const A&, const B&) = delete (BEMAN_INSIDE_WHY_integers(lcm));
+template <auto... Spec, insidable A, insidable B>
+    requires detail::has_lattice<A> && detail::has_lattice<B> && (!detail::lcm_fits<A, B>)
+auto lcm(const A&, const B&) = delete (BEMAN_INSIDE_WHY_too_large(lcm));
 
 #undef BEMAN_INSIDE_WHY_count
 #undef BEMAN_INSIDE_WHY_too_large
@@ -18464,8 +18639,11 @@ inline double nearest_int(double t) noexcept { return __builtin_nearbyint(t); }
 // t + bt < F + 1. Exact ties and integers fail the strict tests and go to
 // the integer path. NaN and infinities fail every comparison, and the range
 // check runs in double before J becomes an integer, so no finite check is
-// needed. A decided slot inside Out's range is stored in out.
-template <insidable Out>
+// needed. A decided slot inside Out's range is stored in out. InRange: the
+// caller proves at compile time that every exact value it decides lies in
+// Out's range, so a decided slot does too and the range check goes (NaN and
+// infinities still fail the tests above).
+template <insidable Out, bool InRange = false>
 inline bool fp_decide(double v, double bound, Out& out) noexcept {
     constexpr round_mode M  = out_rounding<Out>;
     constexpr double     s  = notch_q<Out> / notch_p<Out>;
@@ -18491,7 +18669,7 @@ inline bool fp_decide(double v, double bound, Out& out) noexcept {
                 j += 1;
         }
     }
-    if (!(j >= lo && j <= hi)) {
+    if (!InRange && !(j >= lo && j <= hi)) {
         // Decided past an end: a clamp Out takes the end here; any other
         // policy reports or wraps on the integer path.
         if constexpr (has_flag(flags_of<Out>, clamp)) {
@@ -18596,7 +18774,9 @@ inline ddk::dd dd_read(const In& x) noexcept {
 // into J1 = nearbyint(t.Hi) and the rest u = (t.Hi − J1) + t.Lo, which
 // rounds to J2 with remainder d. The tests on d are fp_decide's, with the
 // bound widened by u's rounding.
-template <insidable Out>
+// InRange as for fp_decide: no range checks (NaN and infinities make u and
+// d NaN, which fail the tests before any conversion).
+template <insidable Out, bool InRange = false>
 inline bool dd_decide(ddk::dd v, double bound, Out& out) noexcept {
     constexpr round_mode   M     = out_rounding<Out>;
     constexpr ddk::dd      s     = ddk::div(ddk::dd{notch_q<Out>, 0}, ddk::dd{notch_p<Out>, 0});
@@ -18612,7 +18792,7 @@ inline bool dd_decide(ddk::dd v, double bound, Out& out) noexcept {
     else
         t = ddk::mul(v, s);
     const double j1 = nearest_int(t.Hi);
-    if (!(j1 >= lo && j1 <= hi))
+    if (!InRange && !(j1 >= lo && j1 <= hi))
         return false; // NaN and infinities too
     const double u  = (t.Hi - j1) + t.Lo;
     double       j2 = nearest_int(u);
@@ -18636,7 +18816,7 @@ inline bool dd_decide(ddk::dd v, double bound, Out& out) noexcept {
         if (j < 0)
             j += 1;
     }
-    if (j < first || j > last) {
+    if (!InRange && (j < first || j > last)) {
         if constexpr (has_flag(flags_of<Out>, clamp)) { // as fp_decide
             out = at_slot<Out>(j < first ? std::uint64_t{0}
                                          : static_cast<std::uint64_t>(last) - static_cast<std::uint64_t>(first));
@@ -19254,9 +19434,9 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
     return integer();
 }
 
-// An _into form's body after the table: the tiers, with the double and
-// dd attempts as expressions in r (nothing of them without an FPU). FP and
-// DD in parentheses.
+// A rounding function's body after the table: the tiers, with the double
+// and dd attempts as expressions in r (nothing of them without an FPU). FP
+// and DD in parentheses.
 #ifndef BEMAN_INSIDE_MATH_NO_FP
     #define BEMAN_INSIDE_ENGINE_TIERS(Out, FP, DD, fp_call, dd_call, ...)                                         \
         return ::beman::inside::math::detail::entry::tiers<Out, FP, DD>([=](auto& r) -> bool { return fp_call; }, \
@@ -19277,7 +19457,7 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
                               (engine::dd_attempt<Out, engine::fp_##fn>(x, r)),    \
                               __VA_ARGS__)
 
-// The table tier's lookup, inside an _into form: In has few slots and every
+// The table tier's lookup, inside an eval: In has few slots and every
 // result lies in Out's range.
 #define BEMAN_INSIDE_ENGINE_TABLE(Out, In, x)                                           \
     if constexpr (engine::table_input<In> && engine::table_output<Out>) {               \
@@ -19295,139 +19475,6 @@ consteval void require_rounding() noexcept {
     static_assert(has_flag(flags_of<Out>, beman::inside::detail::snap) || !engine::notched<Out>,
                   "beman::inside::math: the result is rounded onto Out's grid - Out must permit rounding "
                   "(declare it with round_nearest, round_floor, ...)");
-}
-
-// One-input functions: the domain (checked on In's grid, `true` for none),
-// the double kernel's argument range (fp_ok), and the integer core.
-#define BEMAN_INSIDE_ENGINE_UNARY(fn, domain, msg, fp_ok, ...)                                           \
-    template <insidable In>                                                                              \
-    inline constexpr bool fn##_domain = domain;                                                          \
-    template <insidable Out, insidable In>                                                               \
-    [[nodiscard]] constexpr Out fn##_into(In x) {                                                        \
-        static_assert(fn##_domain<In>, "beman::inside::math::" #fn ": " msg);                            \
-        require_rounding<Out>();                                                                         \
-        if constexpr (anchoring::unanchored_call<Out, In>)                                               \
-            return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return fn##_into<O>(v); }, x); \
-        else {                                                                                           \
-            using core = __VA_ARGS__;                                                                    \
-            BEMAN_INSIDE_ENGINE_TABLE(Out, In, x)                                                        \
-            BEMAN_INSIDE_ENGINE_KERNEL_TIERS(                                                            \
-                Out,                                                                                     \
-                In,                                                                                      \
-                fn,                                                                                      \
-                x,                                                                                       \
-                (fp_ok),                                                                                 \
-                engine::evaluate<Out, engine::start_bits<Out>>(core{engine::exact_input(x)}))            \
-        }                                                                                                \
-    }
-
-BEMAN_INSIDE_ENGINE_UNARY(exp,
-                          true,
-                          "",
-                          engine::in_max<In> <= 700,
-                          engine::exp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_out_kmax<Out, In>>)
-BEMAN_INSIDE_ENGINE_UNARY(
-    exp2,
-    true,
-    "",
-    engine::in_max<In> <= 1000,
-    engine::exp2_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_out_kmax<Out, In>>)
-BEMAN_INSIDE_ENGINE_UNARY(sin,
-                          true,
-                          "",
-                          engine::in_max<In> <= 0x1p20,
-                          engine::trig_core<engine::input_limbs<In>, engine::in_mag<In>, engine::trig::sin, 1>)
-BEMAN_INSIDE_ENGINE_UNARY(cos,
-                          true,
-                          "",
-                          engine::in_max<In> <= 0x1p20,
-                          engine::trig_core<engine::input_limbs<In>, engine::in_mag<In>, engine::trig::cos, 1>)
-BEMAN_INSIDE_ENGINE_UNARY(atan, true, "", true, engine::atan_core<engine::input_limbs<In>>)
-BEMAN_INSIDE_ENGINE_UNARY(
-    sinh,
-    true,
-    "",
-    engine::in_max<In> <= 700,
-    engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::sinh, engine::exp_out_kmax<Out, In>>)
-BEMAN_INSIDE_ENGINE_UNARY(
-    cosh,
-    true,
-    "",
-    engine::in_max<In> <= 700,
-    engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::cosh, engine::exp_out_kmax<Out, In>>)
-BEMAN_INSIDE_ENGINE_UNARY(tanh,
-                          true,
-                          "",
-                          engine::in_max<In> <= 300,
-                          engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::tanh, 1>)
-BEMAN_INSIDE_ENGINE_UNARY(
-    asinh,
-    true,
-    "",
-    engine::in_max<In> <= 0x1p500,
-    engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::asinh, engine::input_bits<In>>)
-BEMAN_INSIDE_ENGINE_UNARY(cbrt, true, "", true, engine::cbrt_core<engine::input_limbs<In>, engine::input_bits<In>>)
-BEMAN_INSIDE_ENGINE_UNARY(log,
-                          (lower_of<In> > 0),
-                          "input must be strictly positive",
-                          true,
-                          engine::log_core<engine::input_limbs<In>, engine::input_bits<In>>)
-BEMAN_INSIDE_ENGINE_UNARY(log2,
-                          (lower_of<In> > 0),
-                          "input must be strictly positive",
-                          true,
-                          engine::logb_core<engine::input_limbs<In>, 2, engine::input_bits<In>>)
-BEMAN_INSIDE_ENGINE_UNARY(log10,
-                          (lower_of<In> > 0),
-                          "input must be strictly positive",
-                          true,
-                          engine::logb_core<engine::input_limbs<In>, 10, engine::input_bits<In>>)
-BEMAN_INSIDE_ENGINE_UNARY(asin,
-                          (lower_of<In> >= -1 && upper_of<In> <= 1),
-                          "input must be in [-1, 1]",
-                          true,
-                          engine::asin_core<engine::input_limbs<In>, engine::input_bits<In>>)
-BEMAN_INSIDE_ENGINE_UNARY(acos,
-                          (lower_of<In> >= -1 && upper_of<In> <= 1),
-                          "input must be in [-1, 1]",
-                          true,
-                          engine::acos_core<engine::input_limbs<In>, engine::input_bits<In>>)
-BEMAN_INSIDE_ENGINE_UNARY(
-    acosh,
-    (lower_of<In> >= 1),
-    "input must be at least 1",
-    engine::in_max<In> <= 0x1p500,
-    engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::acosh, engine::input_bits<In>>)
-BEMAN_INSIDE_ENGINE_UNARY(
-    atanh,
-    (lower_of<In> > -1 && upper_of<In> < 1),
-    "input must be in (-1, 1)",
-    true,
-    engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::atanh, engine::input_bits<In>>)
-#undef BEMAN_INSIDE_ENGINE_UNARY
-
-// sqrt of a non-negative input. A grid that reaches below 0 is rejected, as
-// log's reaching 0 is: the domain is the input grid's, decided at compile time.
-template <insidable In>
-inline constexpr bool sqrt_domain = lower_of<In> >= 0;
-template <insidable Out, insidable In>
-[[nodiscard]] constexpr Out sqrt_into(In x) {
-    static_assert(sqrt_domain<In>,
-                  "beman::inside::math::sqrt: input must be non-negative - take abs(x), or store x into a "
-                  "non-negative grid first");
-    require_rounding<Out>();
-    if constexpr (anchoring::unanchored_call<Out, In>)
-        return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return sqrt_into<O>(v); }, x);
-    else {
-        BEMAN_INSIDE_ENGINE_KERNEL_TIERS(
-            Out,
-            In,
-            sqrt,
-            x,
-            true,
-            engine::evaluate<Out, engine::start_bits<Out>>(
-                engine::sqrt_core<engine::input_limbs<In>, engine::input_bits<In>>{engine::exact_input(x)}))
-    }
 }
 
 // tan's domain: an input interval strictly inside one branch (kπ − π/2,
@@ -19476,124 +19523,6 @@ inline constexpr bool tan_domain = tan_branch::of<In>().Ok;
 template <insidable In>
 inline constexpr int tan_kmax = tan_branch::kmax_of<In>();
 
-// tan on one branch: a plain Out. A result past Out is Out's store, which its
-// policy reports or clamps.
-template <insidable Out, insidable In>
-[[nodiscard]] constexpr Out tan_into(In x) {
-    static_assert(tan_domain<In>,
-                  "beman::inside::math::tan: the input interval holds a pole (an odd multiple of pi/2) - narrow "
-                  "it to one branch, such as (-pi/2, pi/2)");
-    require_rounding<Out>();
-    static_assert(!has_flag(flags_of<Out>, wrap),
-                  "beman::inside::math::tan: wrap is not supported - tan has no bound near its poles, so "
-                  "the folded value cannot be computed; take an Out with clamp or the default policy");
-    if constexpr (anchoring::unanchored_call<Out, In>)
-        return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return tan_into<O>(v); }, x);
-    else {
-        using core =
-            engine::trig_core<engine::input_limbs<In>, engine::in_mag<In>, engine::trig::tan, engine::out_kmax<Out>>;
-        BEMAN_INSIDE_ENGINE_TIERS(Out,
-                                  (engine::fp_tier<Out, engine::fp_tan, In> && engine::in_max<In> <= 0x1p20),
-                                  (engine::dd_tier<Out, In> && engine::in_max<In> <= 0x1p20),
-                                  (engine::fp_attempt_tan<Out>(x, r)),
-                                  (engine::dd_attempt_tan<Out>(x, r)),
-                                  engine::evaluate<Out, engine::start_bits<Out>>(core{engine::exact_input(x)}))
-    }
-}
-
-template <insidable Out, insidable InY, insidable InX>
-[[nodiscard]] constexpr Out atan2_into(InY y, InX x) {
-    require_rounding<Out>();
-    if constexpr (anchoring::unanchored_call<Out, InY, InX>)
-        return anchoring::via_anchored<Out>([]<insidable O>(auto a, auto b) { return atan2_into<O>(a, b); }, y, x);
-    else {
-        constexpr std::size_t E = std::max(engine::input_limbs<InY>, engine::input_limbs<InX>);
-        using F                 = ::beman::inside::detail::wide_rational<E>;
-        BEMAN_INSIDE_ENGINE_TIERS(Out,
-                                  (engine::fp_tier<Out, engine::fp_atan2, InY, InX> &&
-                                   engine::in_max<InY> <= 0x1p500 && engine::in_max<InX> <= 0x1p500),
-                                  (engine::dd_tier<Out, InY, InX>),
-                                  (engine::fp_attempt_atan2<Out>(y, x, r)),
-                                  (engine::dd_attempt_atan2<Out>(y, x, r)),
-                                  engine::evaluate<Out, engine::start_bits<Out>>(
-                                      engine::atan2_core<E>{F{engine::exact_input(y)}, F{engine::exact_input(x)}}))
-    }
-}
-
-template <insidable Out, insidable InX, insidable InY>
-[[nodiscard]] constexpr Out hypot_into(InX x, InY y) {
-    require_rounding<Out>();
-    if constexpr (anchoring::unanchored_call<Out, InX, InY>)
-        return anchoring::via_anchored<Out>([]<insidable O>(auto a, auto b) { return hypot_into<O>(a, b); }, x, y);
-    else {
-        constexpr int         Bits = engine::hypot_bits<InX, InY>;
-        constexpr std::size_t E    = ::beman::inside::detail::limbs_for_bits(Bits);
-        using F                    = ::beman::inside::detail::wide_rational<E>;
-        BEMAN_INSIDE_ENGINE_TIERS(Out,
-                                  (engine::fp_tier<Out, engine::fp_hypot, InX, InY> &&
-                                   engine::in_max<InX> <= 0x1p500 && engine::in_max<InY> <= 0x1p500),
-                                  (engine::dd_tier<Out, InX, InY>),
-                                  (engine::fp_attempt_hypot<Out>(x, y, r)),
-                                  (engine::dd_attempt_hypot<Out>(x, y, r)),
-                                  engine::evaluate<Out, engine::start_bits<Out>>(engine::sqrt_core<E, Bits>{
-                                      F{engine::exact_input(x)} * F{engine::exact_input(x)} +
-                                      F{engine::exact_input(y)} * F{engine::exact_input(y)}}))
-    }
-}
-
-// pow over a non-negative base grid (pown<E> takes a negative base): 0^y is
-// 0 for y > 0 and 1 for y = 0. Its one run-time error is the pole 0^y with
-// y < 0 (division_by_zero), possible only when the base grid holds 0 and the
-// exponent grid negatives: then the result is an expected, else a plain Out.
-// A result past Out is Out's store, which its policy reports or clamps.
-template <insidable InB, insidable InE>
-inline constexpr bool pow_pole = lower_of<InB> == 0 && lower_of<InE> < 0;
-
-template <insidable Out, insidable InB, insidable InE>
-[[nodiscard]] constexpr auto pow_into(InB base, InE exp)
-    -> std::conditional_t<pow_pole<InB, InE>, std::expected<Out, errc>, Out> {
-    static_assert(lower_of<InB> >= 0,
-                  "beman::inside::math::pow: the base must be non-negative - pown<E>(x) takes a negative base "
-                  "with an integer exponent");
-    require_rounding<Out>();
-    if constexpr (anchoring::unanchored_call<Out, InB, InE>)
-        return anchoring::via_anchored<Out>([]<insidable O>(auto a, auto b) { return pow_into<O>(a, b); }, base, exp);
-    else {
-        using R            = std::conditional_t<pow_pole<InB, InE>, std::expected<Out, errc>, Out>;
-        const auto integer = [=]() -> R {
-            const auto b = engine::exact_input(base);
-            if (b.Num.is_zero()) {
-                const auto e = engine::exact_input(exp);
-                if constexpr (pow_pole<InB, InE>) {
-                    if (e.Num.negative())
-                        return std::unexpected(errc::division_by_zero);
-                    return Out::try_make(e.Num.is_zero() ? 1 : 0); // Out's policy: range, clamp
-                } else
-                    return Out{e.Num.is_zero() ? 1 : 0};
-            }
-            constexpr int KMax = engine::pow_out_kmax<Out, InB, InE>;
-            using core         = engine::pow_core<engine::input_limbs<InB>,
-                                                  engine::input_limbs<InE>,
-                                                  engine::in_mag<InE>,
-                                                  KMax,
-                                                  engine::input_bits<InB>,
-                                                  engine::input_bits<InE>,
-                                                  0,
-                                                  engine::pow_exact_limbs<Out, KMax>>;
-            if constexpr (pow_pole<InB, InE>)
-                return engine::evaluate_checked<Out, engine::start_bits<Out>>(core{b, engine::exact_input(exp)});
-            else
-                return engine::evaluate<Out, engine::start_bits<Out>>(core{b, engine::exact_input(exp)});
-        };
-        BEMAN_INSIDE_ENGINE_TIERS(Out,
-                                  (engine::fp_tier<Out, engine::fp_pow, InB, InE>),
-                                  (engine::dd_tier<Out, InB, InE>),
-                                  (engine::fp_attempt_pow<Out>(base, exp, r)),
-                                  (engine::dd_attempt_pow<Out>(base, exp, r)),
-                                  integer())
-    }
-}
-
 // Base^x for a compile-time integer Base ≥ 2: an int64, or a grid integer of
 // any size (one within int64 takes the int64 path; one past it skips the
 // double and dd tiers, whose ln Base is a 64-bit table).
@@ -19608,118 +19537,92 @@ inline constexpr bool base_ok = [] {
     else
         return false;
 }();
-template <insidable Out, auto Base, insidable In>
-[[nodiscard]] constexpr Out pow_base_into(In x) {
-    static_assert(base_ok<Base>, "beman::inside::math::pow_base: Base must be an integer of at least 2");
-    require_rounding<Out>();
-    if constexpr (grid_base<Base> && ::beman::inside::detail::fits_int64(interval{Base, Base}))
-        return pow_base_into<Out, static_cast<std::int64_t>(::beman::inside::detail::grid_numerator(Base))>(x);
-    else if constexpr (std::integral<decltype(Base)> &&
-                       !::beman::inside::detail::fits_int64(interval{grid_rational{Base}, grid_rational{Base}}))
-        return pow_base_into<Out, grid_rational{Base}>(x); // a builtin past int64: the grid integer's path
-    else if constexpr (anchoring::unanchored_call<Out, In>)
-        return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return pow_base_into<O, Base>(v); }, x);
-    else {
-        constexpr int KMax = engine::pow_base_out_kmax<Out, In, Base>;
-        using core         = engine::pow_core<engine::base_limbs<Base>,
-                                              engine::input_limbs<In>,
-                                              engine::in_mag<In>,
-                                              KMax,
-                                              grid_base<Base> ? engine::base_bits<Base> + 2 : 66,
-                                              engine::input_bits<In>,
-                                              Base,
-                                              engine::pow_exact_limbs<Out, KMax>>;
-        BEMAN_INSIDE_ENGINE_TIERS(
-            Out,
-            (!grid_base<Base> && engine::fp_tier<Out, engine::fp_pow_base, In> && engine::in_max<In> <= 1000),
-            (!grid_base<Base> && engine::dd_tier<Out, In> && engine::in_max<In> <= 700),
-            (engine::fp_attempt_pow_base<Out, Base>(x, r)),
-            (engine::dd_attempt_pow_base<Out, Base>(x, r)),
-            engine::evaluate<Out, engine::start_bits<Out>>(core{engine::exact_base<Base>(), engine::exact_input(x)}))
-    }
-}
+
+// pow over a non-negative base grid (pown<E> takes a negative base): 0^y is
+// 0 for y > 0 and 1 for y = 0. Its one run-time error is the pole 0^y with
+// y < 0 (division_by_zero), possible only when the base grid holds 0 and the
+// exponent grid negatives: then the result is an expected, else a plain Out.
+template <insidable InB, insidable InE>
+inline constexpr bool pow_pole = lower_of<InB> == 0 && lower_of<InE> < 0;
 
 //---------------------------------------------------------------------------
-// Auto forms: Out deduced from In — the range the function takes over In,
-// rounded outward to In's notch, with In's notch and policy (rounding to
-// nearest). sin and cos give [-1, 1], tan its range over In's branch,
-// atan2 [-π, π] on the gcd of both notches. Every one is a plain inside: a
-// domain the input grid leaves is a compile error.
+// Deduced outputs on notch N: the range the function takes over In, rounded
+// outward to N, with In's policy (rounding to nearest unless it names a
+// mode). sin and cos give [-1, 1], tan its range over In's branch, atan2
+// [-π, π]. Every one is a plain inside: a domain the input grid leaves is a
+// compile error.
 //---------------------------------------------------------------------------
-template <insidable In>
-consteval bool deducible() noexcept {
-    // (No rounding flag needed: the deduced output rounds by the input's mode,
-    // else to nearest, engine::result_policy; the input is read exactly.)
-    static_assert(::beman::inside::detail::notched<In>,
-                  "beman::inside::math: a deduced output takes the input's notch - the input needs one");
-    return true;
-}
-
 namespace results {
-template <insidable In>
+template <grid_rational N, insidable In>
 using exp =
-    engine::increasing_t<In, engine::exp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_kmax<In>>>;
-template <insidable In>
+    engine::increasing_t<In, N, engine::exp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_kmax<In>>>;
+template <grid_rational N, insidable In>
 using exp2 =
-    engine::increasing_t<In, engine::exp2_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_kmax<In>>>;
-template <insidable In>
-using log = engine::increasing_t<In, engine::log_core<engine::input_limbs<In>, engine::input_bits<In>>>;
-template <insidable In>
-using log2 = engine::increasing_t<In, engine::logb_core<engine::input_limbs<In>, 2, engine::input_bits<In>>>;
-template <insidable In>
-using log10 = engine::increasing_t<In, engine::logb_core<engine::input_limbs<In>, 10, engine::input_bits<In>>>;
-template <insidable In>
-using sqrt = engine::increasing_t<In, engine::sqrt_core<engine::input_limbs<In>, engine::input_bits<In>>>;
-template <insidable In>
-using cbrt = engine::increasing_t<In, engine::cbrt_core<engine::input_limbs<In>, engine::input_bits<In>>>;
-template <insidable In>
-using atan = engine::increasing_t<In, engine::atan_core<engine::input_limbs<In>>>;
-template <insidable In>
-using asin = engine::increasing_t<In, engine::asin_core<engine::input_limbs<In>, engine::input_bits<In>>>;
-template <insidable In>
-using acos = engine::decreasing_t<In, engine::acos_core<engine::input_limbs<In>, engine::input_bits<In>>>;
-template <insidable In>
+    engine::increasing_t<In, N, engine::exp2_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_kmax<In>>>;
+template <grid_rational N, insidable In>
+using log = engine::increasing_t<In, N, engine::log_core<engine::input_limbs<In>, engine::input_bits<In>>>;
+template <grid_rational N, insidable In>
+using log2 = engine::increasing_t<In, N, engine::logb_core<engine::input_limbs<In>, 2, engine::input_bits<In>>>;
+template <grid_rational N, insidable In>
+using log10 = engine::increasing_t<In, N, engine::logb_core<engine::input_limbs<In>, 10, engine::input_bits<In>>>;
+template <grid_rational N, insidable In>
+using sqrt = engine::increasing_t<In, N, engine::sqrt_core<engine::input_limbs<In>, engine::input_bits<In>>>;
+template <grid_rational N, insidable In>
+using cbrt = engine::increasing_t<In, N, engine::cbrt_core<engine::input_limbs<In>, engine::input_bits<In>>>;
+template <grid_rational N, insidable In>
+using atan = engine::increasing_t<In, N, engine::atan_core<engine::input_limbs<In>>>;
+template <grid_rational N, insidable In>
+using asin = engine::increasing_t<In, N, engine::asin_core<engine::input_limbs<In>, engine::input_bits<In>>>;
+template <grid_rational N, insidable In>
+using acos = engine::decreasing_t<In, N, engine::acos_core<engine::input_limbs<In>, engine::input_bits<In>>>;
+template <grid_rational N, insidable In>
 using sinh = engine::increasing_t<
     In,
+    N,
     engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::sinh, engine::exp_kmax<In>>>;
-template <insidable In>
+template <grid_rational N, insidable In>
 using tanh =
-    engine::increasing_t<In, engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::tanh, 1>>;
-template <insidable In>
+    engine::increasing_t<In, N, engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::tanh, 1>>;
+template <grid_rational N, insidable In>
 using asinh = engine::increasing_t<
     In,
+    N,
     engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::asinh, engine::input_bits<In>>>;
-template <insidable In>
+template <grid_rational N, insidable In>
 using acosh = engine::increasing_t<
     In,
+    N,
     engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::acosh, engine::input_bits<In>>>;
-template <insidable In>
+template <grid_rational N, insidable In>
 using atanh = engine::increasing_t<
     In,
+    N,
     engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::atanh, engine::input_bits<In>>>;
-template <insidable In>
-using sin = inside<{{-1, 1}, notch_of<In>}, engine::result_policy<In>>;
-template <insidable In>
-using cos = sin<In>;
+template <grid_rational N, insidable In>
+using sin = inside<{{-1, 1}, N}, engine::result_policy<In>>;
+template <grid_rational N, insidable In>
+using cos = sin<N, In>;
 // tan is increasing on its branch (tan_domain).
-template <insidable In>
-using tan = engine::
-    increasing_t<In, engine::trig_core<engine::input_limbs<In>, engine::in_mag<In>, engine::trig::tan, tan_kmax<In>>>;
+template <grid_rational N, insidable In>
+using tan = engine::increasing_t<
+    In,
+    N,
+    engine::trig_core<engine::input_limbs<In>, engine::in_mag<In>, engine::trig::tan, tan_kmax<In>>>;
 
 // cosh is even: its least value is 1 when In spans 0, else at the end
 // nearer 0.
 template <insidable In>
 using cosh_core =
     engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::cosh, engine::exp_kmax<In>>;
-template <insidable In>
+template <grid_rational N, insidable In>
 inline constexpr grid_rational cosh_lo = (lower_of<In> <= 0 && upper_of<In> >= 0) ? grid_rational{1}
-                                         : (lower_of<In> > 0) ? engine::bound_at<In, cosh_core<In>, false, false>
-                                                              : engine::bound_at<In, cosh_core<In>, true, false>;
-template <insidable In>
+                                         : (lower_of<In> > 0) ? engine::bound_at<In, N, cosh_core<In>, false, false>
+                                                              : engine::bound_at<In, N, cosh_core<In>, true, false>;
+template <grid_rational N, insidable In>
 inline constexpr grid_rational cosh_hi =
-    std::max(engine::bound_at<In, cosh_core<In>, true, true>, engine::bound_at<In, cosh_core<In>, false, true>);
-template <insidable In>
-using cosh = engine::result_grid_t<In, cosh_lo<In>, cosh_hi<In>>;
+    std::max(engine::bound_at<In, N, cosh_core<In>, true, true>, engine::bound_at<In, N, cosh_core<In>, false, true>);
+template <grid_rational N, insidable In>
+using cosh = engine::result_grid_t<In, N, cosh_lo<N, In>, cosh_hi<N, In>>;
 
 // max(|Lower|, |Upper|) (hypot's bound).
 template <insidable In>
@@ -19734,42 +19637,41 @@ struct pow_base_core : engine::pow_core<engine::base_limbs<Base>, E, Mag, KMax> 
 template <auto Base, insidable In>
 inline constexpr int pow_base_kmax = [] {
     static_assert(engine::max_abs_int<In> <= (std::numeric_limits<int>::max() - 2) / engine::base_bits<Base>,
-                  "beman::inside::math::pow_base: the deduced output needs |x|·bit_width(Base) below 2^31 - name an "
-                  "output grid with pow_base_into<Out> instead");
+                  "beman::inside::math::pow_base: the deduced output needs |x|·bit_width(Base) below 2^31 - name "
+                  "the output: pow_base<B, C>(x)");
     return static_cast<int>(engine::max_abs_int<In>) * engine::base_bits<Base> + 2;
 }();
-template <auto Base, insidable In>
-using pow_base_t =
-    engine::increasing_t<In,
-                         pow_base_core<Base, engine::input_limbs<In>, engine::in_mag<In>, pow_base_kmax<Base, In>>>;
+template <grid_rational N, auto Base, insidable In>
+using pow_base = engine::
+    increasing_t<In, N, pow_base_core<Base, engine::input_limbs<In>, engine::in_mag<In>, pow_base_kmax<Base, In>>>;
 
-// atan2: [−π, π] rounded outward on the gcd notch (π = atan2(0, −1)).
-template <insidable A, insidable B>
-inline constexpr grid_rational pi_up = engine::lattice_bound<engine::gcd_notch<A, B>, true>(
-    engine::atan2_core<1>{engine::exact_of<1>(0), engine::exact_of<1>(-1)});
-template <insidable InY, insidable InX>
-using atan2 = inside<{{-pi_up<InY, InX>, pi_up<InY, InX>}, engine::gcd_notch<InY, InX>}, engine::result_policy<InY>>;
+// atan2: [−π, π] rounded outward on N (π = atan2(0, −1)).
+template <grid_rational N>
+inline constexpr grid_rational pi_up =
+    engine::lattice_bound<N, true>(engine::atan2_core<1>{engine::exact_of<1>(0), engine::exact_of<1>(-1)});
+template <grid_rational N, insidable InY, insidable InX>
+using atan2 = inside<{{-pi_up<N>, pi_up<N>}, N}, engine::result_policy<InY>>;
 
-// hypot: [0, hypot of the largest magnitudes] on the gcd notch.
+// hypot: [0, hypot of the largest magnitudes] on N.
 template <insidable InX, insidable InY>
 inline constexpr std::size_t hypot_limbs = ::beman::inside::detail::limbs_for_bits(engine::hypot_bits<InX, InY>);
 // (A consteval function, not an immediately invoked lambda: the lambda would
 // become immediate, and GCC 16 then takes the address of its invoker.)
-template <insidable InX, insidable InY>
+template <grid_rational N, insidable InX, insidable InY>
 consteval grid_rational hypot_upper() {
     using F   = ::beman::inside::detail::wide_rational<hypot_limbs<InX, InY>>;
     const F a = ::beman::inside::detail::exact_of_grid<hypot_limbs<InX, InY>>(max_abs<InX>);
     const F b = ::beman::inside::detail::exact_of_grid<hypot_limbs<InX, InY>>(max_abs<InY>);
-    return engine::lattice_bound<engine::gcd_notch<InX, InY>, true>(
+    return engine::lattice_bound<N, true>(
         engine::sqrt_core<hypot_limbs<InX, InY>, engine::hypot_bits<InX, InY>>{a * a + b * b});
 }
-template <insidable InX, insidable InY>
-inline constexpr grid_rational hypot_hi = hypot_upper<InX, InY>();
-template <insidable InX, insidable InY>
-using hypot = inside<{{0, hypot_hi<InX, InY>}, engine::gcd_notch<InX, InY>}, engine::result_policy<InX>>;
+template <grid_rational N, insidable InX, insidable InY>
+inline constexpr grid_rational hypot_hi = hypot_upper<N, InX, InY>();
+template <grid_rational N, insidable InX, insidable InY>
+using hypot = inside<{{0, hypot_hi<N, InX, InY>}, N}, engine::result_policy<InX>>;
 
 // pow: b^e is monotone in each argument for b > 0, so the extremes are at
-// the corners of the input rectangle. Notch of the base.
+// the corners of the input rectangle.
 template <insidable InB, insidable InE>
 using pow_core = engine::pow_core<engine::input_limbs<InB>,
                                   engine::input_limbs<InE>,
@@ -19777,170 +19679,368 @@ using pow_core = engine::pow_core<engine::input_limbs<InB>,
                                   engine::pow_kmax<InB, InE>,
                                   engine::input_bits<InB>,
                                   engine::input_bits<InE>>;
-template <insidable InB, insidable InE, bool BUp, bool EUp, bool Up>
-inline constexpr grid_rational pow_corner = engine::lattice_bound<notch_of<InB>, Up>(
-    pow_core<InB, InE>{engine::grid_input<InB>(BUp ? upper_of<InB> : lower_of<InB>),
-                       engine::grid_input<InE>(EUp ? upper_of<InE> : lower_of<InE>)});
+template <grid_rational N, insidable InB, insidable InE, bool BUp, bool EUp, bool Up>
+inline constexpr grid_rational pow_corner =
+    engine::lattice_bound<N, Up>(pow_core<InB, InE>{engine::grid_input<InB>(BUp ? upper_of<InB> : lower_of<InB>),
+                                                    engine::grid_input<InE>(EUp ? upper_of<InE> : lower_of<InE>)});
 // The least (Up: greatest) bound over the four corners.
-template <insidable InB, insidable InE, bool Up>
+template <grid_rational N, insidable InB, insidable InE, bool Up>
 inline constexpr grid_rational pow_extreme = [] {
-    const std::initializer_list<grid_rational> c{pow_corner<InB, InE, false, false, Up>,
-                                                 pow_corner<InB, InE, false, true, Up>,
-                                                 pow_corner<InB, InE, true, false, Up>,
-                                                 pow_corner<InB, InE, true, true, Up>};
+    static_assert(lower_of<InB> > 0,
+                  "beman::inside::math::pow: the deduced output needs a base grid above 0 - name the output: "
+                  "pow<C>(b, e)");
+    const std::initializer_list<grid_rational> c{pow_corner<N, InB, InE, false, false, Up>,
+                                                 pow_corner<N, InB, InE, false, true, Up>,
+                                                 pow_corner<N, InB, InE, true, false, Up>,
+                                                 pow_corner<N, InB, InE, true, true, Up>};
     return Up ? std::max(c) : std::min(c);
 }();
-template <insidable InB, insidable InE>
-using pow =
-    inside<{{pow_extreme<InB, InE, false>, pow_extreme<InB, InE, true>}, notch_of<InB>}, engine::result_policy<InB>>;
+template <grid_rational N, insidable InB, insidable InE>
+using pow = inside<{{pow_extreme<N, InB, InE, false>, pow_extreme<N, InB, InE, true>}, N}, engine::result_policy<InB>>;
 } // namespace results
 
-#define BEMAN_INSIDE_ENGINE_AUTO(fn)                                                           \
-    template <insidable In>                                                                    \
-    [[nodiscard]] constexpr auto fn(In x) {                                                    \
-        static_assert(deducible<In>());                                                        \
-        if constexpr (fn##_domain<In>)                                                         \
-            return fn##_into<results::fn<In>>(x);                                              \
-        else                                                                                   \
-            return fn##_into<inside<{0, 1}, round_nearest>>(x); /* the _into domain message */ \
-    }
-
-BEMAN_INSIDE_ENGINE_AUTO(exp)
-BEMAN_INSIDE_ENGINE_AUTO(exp2)
-BEMAN_INSIDE_ENGINE_AUTO(sin)
-BEMAN_INSIDE_ENGINE_AUTO(cos)
-BEMAN_INSIDE_ENGINE_AUTO(tan)
-BEMAN_INSIDE_ENGINE_AUTO(atan)
-BEMAN_INSIDE_ENGINE_AUTO(sinh)
-BEMAN_INSIDE_ENGINE_AUTO(cosh)
-BEMAN_INSIDE_ENGINE_AUTO(tanh)
-BEMAN_INSIDE_ENGINE_AUTO(asinh)
-BEMAN_INSIDE_ENGINE_AUTO(cbrt)
-BEMAN_INSIDE_ENGINE_AUTO(log)
-BEMAN_INSIDE_ENGINE_AUTO(log2)
-BEMAN_INSIDE_ENGINE_AUTO(log10)
-BEMAN_INSIDE_ENGINE_AUTO(asin)
-BEMAN_INSIDE_ENGINE_AUTO(acos)
-BEMAN_INSIDE_ENGINE_AUTO(acosh)
-BEMAN_INSIDE_ENGINE_AUTO(atanh)
-#undef BEMAN_INSIDE_ENGINE_AUTO
-
-template <insidable In>
-[[nodiscard]] constexpr auto sqrt(In x) {
-    static_assert(deducible<In>());
-    if constexpr (sqrt_domain<In>)
-        return sqrt_into<results::sqrt<In>>(x);
-    else
-        return sqrt_into<inside<{0, 1}, round_nearest>>(x); // the _into domain message
-}
-
-template <auto Base, insidable In>
-[[nodiscard]] constexpr auto pow_base(In x) {
-    static_assert(deducible<In>());
-    static_assert(base_ok<Base>, "beman::inside::math::pow_base: Base must be an integer of at least 2");
-    return pow_base_into<results::pow_base_t<Base, In>, Base>(x);
-}
-
-template <insidable InY, insidable InX>
-[[nodiscard]] constexpr auto atan2(InY y, InX x) {
-    static_assert(deducible<InY>() && deducible<InX>());
-    return atan2_into<results::atan2<InY, InX>>(y, x);
-}
-
-template <insidable InX, insidable InY>
-[[nodiscard]] constexpr auto hypot(InX x, InY y) {
-    static_assert(deducible<InX>() && deducible<InY>());
-    return hypot_into<results::hypot<InX, InY>>(x, y);
-}
-
-template <insidable InB, insidable InE>
-    requires(lower_of<InB> > 0)
-[[nodiscard]] constexpr auto pow(InB base, InE exp) {
-    static_assert(deducible<InB>() && deducible<InE>());
-    return pow_into<results::pow<InB, InE>>(base, exp);
-}
-
 //---------------------------------------------------------------------------
-// fn<Mode>(x): the deduced form with the rounding mode named on the call, so
-// the input's type need not carry one. The input is read as the same grid
-// with Mode as its rounding (the same raw), the output deduced as for fn(x),
-// and that output rounds by exactly Mode.
+// The tags (math/detail/functions.hpp): what every rounding function has in
+// common, by arity; then each one's domain, deduced output and evaluation.
 //---------------------------------------------------------------------------
-inline constexpr policy_flag rounding_bits = round_nearest | round_floor | round_ceil | round_half_even; // snap too
+template <std::size_t Arity>
+struct rounding_fn {
+    static constexpr bool rounds = true;
+    template <class... In>
+    static constexpr bool takes = sizeof...(In) == Arity && (insidable<In> && ...);
+    template <class... In>
+    static constexpr bool domain = true;
+    // The arguments' notch: the gcd of their value units (0 when one has none).
+    template <class... In>
+    static constexpr grid_rational notch = [] {
+        if constexpr (Arity == 1)
+            return notch_of<In...[0]>;
+        else
+            return engine::gcd_notch<In...[0], In...[1]>;
+    }();
+};
 
-template <policy_flag Mode>
-concept rounding_mode = Mode == round_toward_zero || Mode == round_nearest || Mode == round_floor ||
-                        Mode == round_ceil || Mode == round_half_even;
+// One-input functions: the domain (checked on In's grid, `true` for none),
+// the double kernel's argument range (fp_ok), and the integer core.
+#define BEMAN_INSIDE_ENGINE_UNARY(fn, domain_v, msg, fp_ok, ...)                                                 \
+    struct fn##_fn : rounding_fn<1> {                                                                            \
+        template <class... In>                                                                                   \
+        static constexpr bool domain = [] {                                                                      \
+            using In0 [[maybe_unused]] = In...[0];                                                               \
+            return domain_v;                                                                                     \
+        }();                                                                                                     \
+        template <grid_rational N, insidable In>                                                                 \
+        using result_on = results::fn<N, In>;                                                                    \
+        template <insidable Out, insidable In>                                                                   \
+        [[nodiscard]] static constexpr Out eval(In x) {                                                          \
+            static_assert(domain<In>, "beman::inside::math::" #fn ": " msg);                                     \
+            require_rounding<Out>();                                                                             \
+            if constexpr (anchoring::unanchored_call<Out, In>)                                                   \
+                return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return fn##_fn::eval<O>(v); }, x); \
+            else {                                                                                               \
+                using core = __VA_ARGS__;                                                                        \
+                BEMAN_INSIDE_ENGINE_TABLE(Out, In, x)                                                            \
+                BEMAN_INSIDE_ENGINE_KERNEL_TIERS(                                                                \
+                    Out,                                                                                         \
+                    In,                                                                                          \
+                    fn,                                                                                          \
+                    x,                                                                                           \
+                    (fp_ok),                                                                                     \
+                    engine::evaluate<Out, engine::start_bits<Out>>(core{engine::exact_input(x)}))                \
+            }                                                                                                    \
+        }                                                                                                        \
+    };
 
-template <policy_flag Mode, insidable In>
-[[nodiscard]] constexpr auto with_mode(const In& x) noexcept {
-    return inside<grid_of<In>, (flags_of<In> & ~(::beman::inside::detail::cursor_marker | rounding_bits)) | Mode>::
-        from_raw(x.raw());
-}
+BEMAN_INSIDE_ENGINE_UNARY(exp,
+                          true,
+                          "",
+                          engine::in_max<In> <= 700,
+                          engine::exp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_out_kmax<Out, In>>)
+BEMAN_INSIDE_ENGINE_UNARY(
+    exp2,
+    true,
+    "",
+    engine::in_max<In> <= 1000,
+    engine::exp2_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_out_kmax<Out, In>>)
+BEMAN_INSIDE_ENGINE_UNARY(sin,
+                          true,
+                          "",
+                          engine::in_max<In> <= 0x1p20,
+                          engine::trig_core<engine::input_limbs<In>, engine::in_mag<In>, engine::trig::sin, 1>)
+BEMAN_INSIDE_ENGINE_UNARY(cos,
+                          true,
+                          "",
+                          engine::in_max<In> <= 0x1p20,
+                          engine::trig_core<engine::input_limbs<In>, engine::in_mag<In>, engine::trig::cos, 1>)
+BEMAN_INSIDE_ENGINE_UNARY(atan, true, "", true, engine::atan_core<engine::input_limbs<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(
+    sinh,
+    true,
+    "",
+    engine::in_max<In> <= 700,
+    engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::sinh, engine::exp_out_kmax<Out, In>>)
+BEMAN_INSIDE_ENGINE_UNARY(
+    cosh,
+    true,
+    "",
+    engine::in_max<In> <= 700,
+    engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::cosh, engine::exp_out_kmax<Out, In>>)
+BEMAN_INSIDE_ENGINE_UNARY(tanh,
+                          true,
+                          "",
+                          engine::in_max<In> <= 300,
+                          engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::tanh, 1>)
+BEMAN_INSIDE_ENGINE_UNARY(
+    asinh,
+    true,
+    "",
+    engine::in_max<In> <= 0x1p500,
+    engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::asinh, engine::input_bits<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(cbrt, true, "", true, engine::cbrt_core<engine::input_limbs<In>, engine::input_bits<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(log,
+                          (lower_of<In0> > 0),
+                          "input must be strictly positive",
+                          true,
+                          engine::log_core<engine::input_limbs<In>, engine::input_bits<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(log2,
+                          (lower_of<In0> > 0),
+                          "input must be strictly positive",
+                          true,
+                          engine::logb_core<engine::input_limbs<In>, 2, engine::input_bits<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(log10,
+                          (lower_of<In0> > 0),
+                          "input must be strictly positive",
+                          true,
+                          engine::logb_core<engine::input_limbs<In>, 10, engine::input_bits<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(asin,
+                          (lower_of<In0> >= -1 && upper_of<In0> <= 1),
+                          "input must be in [-1, 1]",
+                          true,
+                          engine::asin_core<engine::input_limbs<In>, engine::input_bits<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(acos,
+                          (lower_of<In0> >= -1 && upper_of<In0> <= 1),
+                          "input must be in [-1, 1]",
+                          true,
+                          engine::acos_core<engine::input_limbs<In>, engine::input_bits<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(
+    acosh,
+    (lower_of<In0> >= 1),
+    "input must be at least 1",
+    engine::in_max<In> <= 0x1p500,
+    engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::acosh, engine::input_bits<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(
+    atanh,
+    (lower_of<In0> > -1 && upper_of<In0> < 1),
+    "input must be in (-1, 1)",
+    true,
+    engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::atanh, engine::input_bits<In>>)
+#undef BEMAN_INSIDE_ENGINE_UNARY
 
-// The deduced output D (an inside, or an expected of one) rounding by Mode.
-template <class D, policy_flag Mode>
-using moded_t = inside<grid_of<::beman::inside::detail::unwrap_t<D>>,
-                       (flags_of<::beman::inside::detail::unwrap_t<D>> & ~rounding_bits) | Mode>;
-
-#define BEMAN_INSIDE_ENGINE_MODED(fn)                        \
-    template <policy_flag Mode, insidable In>                \
-        requires rounding_mode<Mode>                         \
-    [[nodiscard]] constexpr auto fn(In x) {                  \
-        const auto v = with_mode<Mode>(x);                   \
-        return fn##_into<moded_t<decltype(fn(v)), Mode>>(v); \
+// sqrt of a non-negative input. A grid that reaches below 0 is rejected, as
+// log's reaching 0 is: the domain is the input grid's, decided at compile time.
+struct sqrt_fn : rounding_fn<1> {
+    template <class... In>
+    static constexpr bool domain = lower_of<In...[0]> >= 0;
+    template <grid_rational N, insidable In>
+    using result_on = results::sqrt<N, In>;
+    template <insidable Out, insidable In>
+    [[nodiscard]] static constexpr Out eval(In x) {
+        static_assert(domain<In>,
+                      "beman::inside::math::sqrt: input must be non-negative - take abs(x), or store x into a "
+                      "non-negative grid first");
+        require_rounding<Out>();
+        if constexpr (anchoring::unanchored_call<Out, In>)
+            return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return sqrt_fn::eval<O>(v); }, x);
+        else {
+            BEMAN_INSIDE_ENGINE_KERNEL_TIERS(
+                Out,
+                In,
+                sqrt,
+                x,
+                true,
+                engine::evaluate<Out, engine::start_bits<Out>>(
+                    engine::sqrt_core<engine::input_limbs<In>, engine::input_bits<In>>{engine::exact_input(x)}))
+        }
     }
-BEMAN_INSIDE_ENGINE_MODED(exp)
-BEMAN_INSIDE_ENGINE_MODED(exp2)
-BEMAN_INSIDE_ENGINE_MODED(sin)
-BEMAN_INSIDE_ENGINE_MODED(cos)
-BEMAN_INSIDE_ENGINE_MODED(tan)
-BEMAN_INSIDE_ENGINE_MODED(atan)
-BEMAN_INSIDE_ENGINE_MODED(sinh)
-BEMAN_INSIDE_ENGINE_MODED(cosh)
-BEMAN_INSIDE_ENGINE_MODED(tanh)
-BEMAN_INSIDE_ENGINE_MODED(asinh)
-BEMAN_INSIDE_ENGINE_MODED(cbrt)
-BEMAN_INSIDE_ENGINE_MODED(log)
-BEMAN_INSIDE_ENGINE_MODED(log2)
-BEMAN_INSIDE_ENGINE_MODED(log10)
-BEMAN_INSIDE_ENGINE_MODED(asin)
-BEMAN_INSIDE_ENGINE_MODED(acos)
-BEMAN_INSIDE_ENGINE_MODED(acosh)
-BEMAN_INSIDE_ENGINE_MODED(atanh)
-BEMAN_INSIDE_ENGINE_MODED(sqrt)
-#undef BEMAN_INSIDE_ENGINE_MODED
+};
 
-template <auto Base, policy_flag Mode, insidable In>
-    requires rounding_mode<Mode>
-[[nodiscard]] constexpr auto pow_base(In x) {
-    const auto v = with_mode<Mode>(x);
-    return pow_base_into<moded_t<decltype(pow_base<Base>(v)), Mode>, Base>(v);
-}
+// tan on one branch: a plain Out. A result past Out is Out's store, which its
+// policy reports or clamps.
+struct tan_fn : rounding_fn<1> {
+    template <class... In>
+    static constexpr bool domain = tan_domain<In...[0]>;
+    template <grid_rational N, insidable In>
+    using result_on = results::tan<N, In>;
+    template <insidable Out, insidable In>
+    [[nodiscard]] static constexpr Out eval(In x) {
+        static_assert(tan_domain<In>,
+                      "beman::inside::math::tan: the input interval holds a pole (an odd multiple of pi/2) - narrow "
+                      "it to one branch, such as (-pi/2, pi/2)");
+        require_rounding<Out>();
+        static_assert(!has_flag(flags_of<Out>, wrap),
+                      "beman::inside::math::tan: wrap is not supported - tan has no bound near its poles, so "
+                      "the folded value cannot be computed; take an Out with clamp or the default policy");
+        if constexpr (anchoring::unanchored_call<Out, In>)
+            return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return tan_fn::eval<O>(v); }, x);
+        else {
+            using core = engine::
+                trig_core<engine::input_limbs<In>, engine::in_mag<In>, engine::trig::tan, engine::out_kmax<Out>>;
+            BEMAN_INSIDE_ENGINE_TIERS(Out,
+                                      (engine::fp_tier<Out, engine::fp_tan, In> && engine::in_max<In> <= 0x1p20),
+                                      (engine::dd_tier<Out, In> && engine::in_max<In> <= 0x1p20),
+                                      (engine::fp_attempt_tan<Out>(x, r)),
+                                      (engine::dd_attempt_tan<Out>(x, r)),
+                                      engine::evaluate<Out, engine::start_bits<Out>>(core{engine::exact_input(x)}))
+        }
+    }
+};
 
-template <policy_flag Mode, insidable InY, insidable InX>
-    requires rounding_mode<Mode>
-[[nodiscard]] constexpr auto atan2(InY y, InX x) {
-    const auto vy = with_mode<Mode>(y);
-    const auto vx = with_mode<Mode>(x);
-    return atan2_into<moded_t<decltype(atan2(vy, vx)), Mode>>(vy, vx);
-}
+struct atan2_fn : rounding_fn<2> {
+    template <grid_rational N, insidable InY, insidable InX>
+    using result_on = results::atan2<N, InY, InX>;
+    template <insidable Out, insidable InY, insidable InX>
+    [[nodiscard]] static constexpr Out eval(InY y, InX x) {
+        require_rounding<Out>();
+        if constexpr (anchoring::unanchored_call<Out, InY, InX>)
+            return anchoring::via_anchored<Out>(
+                []<insidable O>(auto a, auto b) { return atan2_fn::eval<O>(a, b); }, y, x);
+        else {
+            constexpr std::size_t E = std::max(engine::input_limbs<InY>, engine::input_limbs<InX>);
+            using F                 = ::beman::inside::detail::wide_rational<E>;
+            BEMAN_INSIDE_ENGINE_TIERS(Out,
+                                      (engine::fp_tier<Out, engine::fp_atan2, InY, InX> &&
+                                       engine::in_max<InY> <= 0x1p500 && engine::in_max<InX> <= 0x1p500),
+                                      (engine::dd_tier<Out, InY, InX>),
+                                      (engine::fp_attempt_atan2<Out>(y, x, r)),
+                                      (engine::dd_attempt_atan2<Out>(y, x, r)),
+                                      engine::evaluate<Out, engine::start_bits<Out>>(
+                                          engine::atan2_core<E>{F{engine::exact_input(y)}, F{engine::exact_input(x)}}))
+        }
+    }
+};
 
-template <policy_flag Mode, insidable InX, insidable InY>
-    requires rounding_mode<Mode>
-[[nodiscard]] constexpr auto hypot(InX x, InY y) {
-    const auto vx = with_mode<Mode>(x);
-    const auto vy = with_mode<Mode>(y);
-    return hypot_into<moded_t<decltype(hypot(vx, vy)), Mode>>(vx, vy);
-}
+struct hypot_fn : rounding_fn<2> {
+    template <grid_rational N, insidable InX, insidable InY>
+    using result_on = results::hypot<N, InX, InY>;
+    template <insidable Out, insidable InX, insidable InY>
+    [[nodiscard]] static constexpr Out eval(InX x, InY y) {
+        require_rounding<Out>();
+        if constexpr (anchoring::unanchored_call<Out, InX, InY>)
+            return anchoring::via_anchored<Out>(
+                []<insidable O>(auto a, auto b) { return hypot_fn::eval<O>(a, b); }, x, y);
+        else {
+            constexpr int         Bits = engine::hypot_bits<InX, InY>;
+            constexpr std::size_t E    = ::beman::inside::detail::limbs_for_bits(Bits);
+            using F                    = ::beman::inside::detail::wide_rational<E>;
+            BEMAN_INSIDE_ENGINE_TIERS(Out,
+                                      (engine::fp_tier<Out, engine::fp_hypot, InX, InY> &&
+                                       engine::in_max<InX> <= 0x1p500 && engine::in_max<InY> <= 0x1p500),
+                                      (engine::dd_tier<Out, InX, InY>),
+                                      (engine::fp_attempt_hypot<Out>(x, y, r)),
+                                      (engine::dd_attempt_hypot<Out>(x, y, r)),
+                                      engine::evaluate<Out, engine::start_bits<Out>>(engine::sqrt_core<E, Bits>{
+                                          F{engine::exact_input(x)} * F{engine::exact_input(x)} +
+                                          F{engine::exact_input(y)} * F{engine::exact_input(y)}}))
+        }
+    }
+};
 
-template <policy_flag Mode, insidable InB, insidable InE>
-    requires rounding_mode<Mode>
-[[nodiscard]] constexpr auto pow(InB base, InE exp) {
-    const auto vb = with_mode<Mode>(base);
-    const auto ve = with_mode<Mode>(exp);
-    return pow_into<moded_t<decltype(pow(vb, ve)), Mode>>(vb, ve);
-}
+// A result past Out is Out's store, which its policy reports or clamps. The
+// deduced output takes the base's notch.
+struct pow_fn : rounding_fn<2> {
+    template <class... In>
+    static constexpr bool domain = lower_of<In...[0]> >= 0;
+    template <class InB, class InE>
+    static constexpr grid_rational notch = ::beman::inside::detail::notched<InE> ? notch_of<InB> : grid_rational{0};
+    template <grid_rational N, insidable InB, insidable InE>
+    using result_on = results::pow<N, InB, InE>;
+    template <insidable Out, insidable InB, insidable InE>
+    [[nodiscard]] static constexpr auto eval(InB base, InE exp)
+        -> std::conditional_t<pow_pole<InB, InE>, std::expected<Out, errc>, Out> {
+        static_assert(lower_of<InB> >= 0,
+                      "beman::inside::math::pow: the base must be non-negative - pown<E>(x) takes a negative base "
+                      "with an integer exponent");
+        require_rounding<Out>();
+        if constexpr (anchoring::unanchored_call<Out, InB, InE>)
+            return anchoring::via_anchored<Out>(
+                []<insidable O>(auto a, auto b) { return pow_fn::eval<O>(a, b); }, base, exp);
+        else {
+            using R            = std::conditional_t<pow_pole<InB, InE>, std::expected<Out, errc>, Out>;
+            const auto integer = [=]() -> R {
+                const auto b = engine::exact_input(base);
+                if (b.Num.is_zero()) {
+                    const auto e = engine::exact_input(exp);
+                    if constexpr (pow_pole<InB, InE>) {
+                        if (e.Num.negative())
+                            return std::unexpected(errc::division_by_zero);
+                        return Out::try_make(e.Num.is_zero() ? 1 : 0); // Out's policy: range, clamp
+                    } else
+                        return Out{e.Num.is_zero() ? 1 : 0};
+                }
+                constexpr int KMax = engine::pow_out_kmax<Out, InB, InE>;
+                using core         = engine::pow_core<engine::input_limbs<InB>,
+                                                      engine::input_limbs<InE>,
+                                                      engine::in_mag<InE>,
+                                                      KMax,
+                                                      engine::input_bits<InB>,
+                                                      engine::input_bits<InE>,
+                                                      0,
+                                                      engine::pow_exact_limbs<Out, KMax>>;
+                if constexpr (pow_pole<InB, InE>)
+                    return engine::evaluate_checked<Out, engine::start_bits<Out>>(core{b, engine::exact_input(exp)});
+                else
+                    return engine::evaluate<Out, engine::start_bits<Out>>(core{b, engine::exact_input(exp)});
+            };
+            BEMAN_INSIDE_ENGINE_TIERS(Out,
+                                      (engine::fp_tier<Out, engine::fp_pow, InB, InE>),
+                                      (engine::dd_tier<Out, InB, InE>),
+                                      (engine::fp_attempt_pow<Out>(base, exp, r)),
+                                      (engine::dd_attempt_pow<Out>(base, exp, r)),
+                                      integer())
+        }
+    }
+};
+
+// Base^x.
+template <auto Base>
+struct pow_base_fn : rounding_fn<1> {
+    template <class... In>
+    static constexpr bool domain = base_ok<Base>;
+    template <grid_rational N, insidable In>
+    using result_on = results::pow_base<N, Base, In>;
+    template <insidable Out, insidable In>
+    [[nodiscard]] static constexpr Out eval(In x) {
+        static_assert(base_ok<Base>, "beman::inside::math::pow_base: Base must be an integer of at least 2");
+        require_rounding<Out>();
+        if constexpr (grid_base<Base> && ::beman::inside::detail::fits_int64(interval{Base, Base}))
+            return pow_base_fn<static_cast<std::int64_t>(
+                ::beman::inside::detail::grid_numerator(Base))>::template eval<Out>(x);
+        else if constexpr (std::integral<decltype(Base)> &&
+                           !::beman::inside::detail::fits_int64(interval{grid_rational{Base}, grid_rational{Base}}))
+            return pow_base_fn<grid_rational{Base}>::template eval<Out>(x); // a builtin past int64: the grid path
+        else if constexpr (anchoring::unanchored_call<Out, In>)
+            return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return pow_base_fn::eval<O>(v); }, x);
+        else {
+            constexpr int KMax = engine::pow_base_out_kmax<Out, In, Base>;
+            using core         = engine::pow_core<engine::base_limbs<Base>,
+                                                  engine::input_limbs<In>,
+                                                  engine::in_mag<In>,
+                                                  KMax,
+                                                  grid_base<Base> ? engine::base_bits<Base> + 2 : 66,
+                                                  engine::input_bits<In>,
+                                                  Base,
+                                                  engine::pow_exact_limbs<Out, KMax>>;
+            BEMAN_INSIDE_ENGINE_TIERS(
+                Out,
+                (!grid_base<Base> && engine::fp_tier<Out, engine::fp_pow_base, In> && engine::in_max<In> <= 1000),
+                (!grid_base<Base> && engine::dd_tier<Out, In> && engine::in_max<In> <= 700),
+                (engine::fp_attempt_pow_base<Out, Base>(x, r)),
+                (engine::dd_attempt_pow_base<Out, Base>(x, r)),
+                engine::evaluate<Out, engine::start_bits<Out>>(
+                    core{engine::exact_base<Base>(), engine::exact_input(x)}))
+        }
+    }
+};
 } // namespace beman::inside::math::detail::entry
 
 #undef BEMAN_INSIDE_ENGINE_TIERS
@@ -19960,9 +20060,10 @@ template <policy_flag Mode, insidable InB, insidable InE>
 // under the output's rounding mode, at whatever precision that grid needs —
 // so results are the same on every platform, at compile time and at runtime,
 // with or without an FPU. Inputs and outputs may be grids past 64 bits.
-// `fn_into<Out>(x)` names the output grid; `fn(x)` deduces it from the input
-// (its notch and policy, the function's range over the input rounded
-// outward).
+// `fn(x)` deduces the output from the input (its notch and policy, the
+// function's range over the input rounded outward); `fn<per<K>>(x)` and
+// `fn<round_floor>(x)` name its notch or policy, `fn<Out>(x)` the output
+// itself (math/detail/functions.hpp).
 //
 // BEMAN_INSIDE_MATH_NO_FP (auto-enabled when freestanding) leaves out the
 // engine's double and dd tiers and <cmath>; results do not change. Builds
@@ -20090,7 +20191,7 @@ inline constexpr bool int_direct = [] {
 // x rounded to an integer by M: exactly, on the value index, or through
 // rational. Round is half away from zero, as rational round() is.
 template <round_mode M, insidable Out, insidable In>
-constexpr Out integer_into(In x) {
+constexpr Out round_integer(In x) {
     if constexpr (any_wide_valued<Out, In>)
         return store_exact<Out>(exact_to_int<M>(engine::exact_input(x)));
     else if constexpr (int_direct<Out, integer_result_t<In, M>, In>) {
@@ -20115,83 +20216,7 @@ constexpr Out integer_into(In x) {
     } else // (as a rational: the integer may pass int64, a uint64's)
         return store_value<Out>(round_to_integral(rational{x}, M));
 }
-} // namespace detail
 
-//---------------------------------------------------------------------------
-// Algebraic tier — exact, no polynomial machinery. Each function wraps the
-// corresponding `rational` operation and routes through `Out`'s assignment.
-//---------------------------------------------------------------------------
-
-namespace detail {
-template <class Out, class In>
-consteval bool abs_into_ok() {
-    return lower_of<Out> <= abs_result_lower<In>;
-}
-} // namespace detail
-
-// |x|. Out must include the smallest |x|, 0 when x's range spans 0 — a
-// constraint, so a probe sees it.
-template <insidable Out, insidable In>
-    requires(detail::abs_into_ok<Out, In>())
-[[nodiscard]] constexpr Out abs_into(In x) {
-    if constexpr (detail::any_wide_valued<Out, In>)
-        return detail::store_exact<Out>(detail::engine::abs(detail::engine::exact_input(x)));
-    else if constexpr (std::same_as<Out, detail::abs_result_t<In>> && detail::value_indices_fit_int64<In> &&
-                       notch_of<Out> == notch_of<In>) {
-        // The same lattice through 0: |x| is the value index's magnitude.
-        // In uint64: |INT64_MIN| = 2^63 is past int64 (Out then reaches it).
-        const std::int64_t j = detail::value_index<std::int64_t>(x);
-        return detail::from_value_index<Out>(j < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(j)
-                                                   : static_cast<std::uint64_t>(j));
-    } else
-        return detail::store_value<Out>(beman::inside::detail::abs(rational{x}));
-}
-
-// sign(x) ∈ {−1, 0, 1}, by exact comparison (no decode).
-template <insidable Out, insidable In>
-[[nodiscard]] constexpr Out sign_into(In x) {
-    return Out{std::int64_t{(x > 0) - (x < 0)}};
-}
-
-// copysign(mag, sgn) — |mag| with the sign of sgn; sgn == 0 counts as positive.
-template <insidable Out, insidable Mag, insidable Sgn>
-[[nodiscard]] constexpr Out copysign_into(Mag mag, Sgn sgn) {
-    if constexpr (detail::any_wide_valued<Out, Mag>) {
-        const auto a = detail::engine::abs(detail::engine::exact_input(mag));
-        return detail::store_exact<Out>(sgn < 0 ? -a : a);
-    } else if constexpr (std::same_as<Out, detail::copysign_result_t<Mag, Sgn>> &&
-                         detail::value_indices_fit_int64<Mag> && notch_of<Out> == notch_of<Mag>) {
-        // The same lattice through 0: ±|value index|, in uint64 (|INT64_MIN| =
-        // 2^63 when sgn is never negative); the raw follows modulo 2^64.
-        const std::int64_t  j = detail::value_index<std::int64_t>(mag);
-        const std::uint64_t a =
-            j < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(j) : static_cast<std::uint64_t>(j);
-        return detail::from_value_index<Out>(sgn < 0 ? std::uint64_t{0} - a : a);
-    } else {
-        const rational a = beman::inside::detail::abs(rational{mag});
-        return detail::store_value<Out>(sgn < 0 ? -a : a);
-    }
-}
-
-// ⌊x⌋, ⌈x⌉, x rounded half away from zero, and x truncated toward zero.
-template <insidable Out, insidable In>
-[[nodiscard]] constexpr Out floor_into(In x) {
-    return detail::integer_into<detail::round_mode::floor, Out>(x);
-}
-template <insidable Out, insidable In>
-[[nodiscard]] constexpr Out ceil_into(In x) {
-    return detail::integer_into<detail::round_mode::ceil, Out>(x);
-}
-template <insidable Out, insidable In>
-[[nodiscard]] constexpr Out round_into(In x) {
-    return detail::integer_into<detail::round_mode::nearest, Out>(x);
-}
-template <insidable Out, insidable In>
-[[nodiscard]] constexpr Out trunc_into(In x) {
-    return detail::integer_into<detail::round_mode::trunc, Out>(x);
-}
-
-namespace detail {
 // Gate for fmod's integer fast path. When both operands and Out are
 // integer-backed on commensurable notches, fmod collapses to ONE integer
 // remainder in units of g = gcd(notch of InX, notch of InY): with x
@@ -20228,38 +20253,36 @@ inline constexpr bool fmod_int_fast = [] {
                !(lim < abs(lower_index_of<Out>));
     }
 }();
-} // namespace detail
 
-namespace detail {
 // x mod y = x − trunc(x/y)·y (truncated division, matching std::fmod).
-// Result has the sign of x. Pre: y != 0 (fmod_into checks it).
+// Result has the sign of x. Pre: y != 0 (fmod_fn checks it).
 template <insidable Out, insidable InX, insidable InY>
 [[nodiscard]] constexpr Out fmod_nonzero(InX x, InY y) {
     // x − trunc(x/y)·y on exact values.
     auto exact = [&] {
-        constexpr std::size_t E = 2 * (detail::engine::input_limbs<InX> > detail::engine::input_limbs<InY>
-                                           ? detail::engine::input_limbs<InX>
-                                           : detail::engine::input_limbs<InY>)+1;
-        using F                 = detail::wide_rational<E>;
-        const F    a{detail::engine::exact_input(x)}, b{detail::engine::exact_input(y)};
+        constexpr std::size_t E =
+            2 * (engine::input_limbs<InX> > engine::input_limbs<InY> ? engine::input_limbs<InX>
+                                                                     : engine::input_limbs<InY>)+1;
+        using F = wide_rational<E>;
+        const F    a{engine::exact_input(x)}, b{engine::exact_input(y)};
         const auto q = (a.Num * b.Den) / (a.Den * b.Num); // truncated
-        return detail::store_exact<Out>(a + F{-(q * b.Num), b.Den});
+        return store_exact<Out>(a + F{-(q * b.Num), b.Den});
     };
-    if constexpr (detail::any_wide_valued<Out, InX, InY>)
+    if constexpr (any_wide_valued<Out, InX, InY>)
         return exact();
-    else if constexpr (detail::fmod_int_fast<Out, InX, InY>) {
+    else if constexpr (fmod_int_fast<Out, InX, InY>) {
         // One integer remainder in g-units; bit-identical to the rational path.
-        constexpr rational     g   = detail::to_rational(gcd(notch_of<InX>, notch_of<InY>));
-        constexpr std::int64_t wx  = trunc(detail::notch64<InX> / g);
-        constexpr std::int64_t wy  = trunc(detail::notch64<InY> / g);
-        constexpr std::int64_t wo  = trunc(g / detail::notch64<Out>);
-        constexpr std::int64_t lox = trunc(detail::lower64<InX> / g); // exact: grid invariant
-        constexpr std::int64_t loy = trunc(detail::lower64<InY> / g);
-        constexpr std::int64_t loo = trunc(detail::lower64<Out> / detail::notch64<Out>);
-        const std::int64_t     a   = detail::raw_int64(x) * wx + (detail::index_storage<InX> ? lox : 0);
-        const std::int64_t     b   = detail::raw_int64(y) * wy + (detail::index_storage<InY> ? loy : 0);
+        constexpr rational     g   = to_rational(gcd(notch_of<InX>, notch_of<InY>));
+        constexpr std::int64_t wx  = trunc(notch64<InX> / g);
+        constexpr std::int64_t wy  = trunc(notch64<InY> / g);
+        constexpr std::int64_t wo  = trunc(g / notch64<Out>);
+        constexpr std::int64_t lox = trunc(lower64<InX> / g); // exact: grid invariant
+        constexpr std::int64_t loy = trunc(lower64<InY> / g);
+        constexpr std::int64_t loo = trunc(lower64<Out> / notch64<Out>);
+        const std::int64_t     a   = raw_int64(x) * wx + (index_storage<InX> ? lox : 0);
+        const std::int64_t     b   = raw_int64(y) * wy + (index_storage<InY> ? loy : 0);
         const std::int64_t     r   = a % b; // |r| < |b|, in Out's range
-        return Out::from_raw(detail::raw_from_offset<Out>(r * wo - loo));
+        return Out::from_raw(raw_from_offset<Out>(r * wo - loo));
     } else {
         // In 64-bit rationals while every step fits (the quotient within
         // int64); else exactly — the remainder itself always fits Out.
@@ -20268,34 +20291,31 @@ template <insidable Out, insidable InX, insidable InY>
                                             rational{std::numeric_limits<std::int64_t>::min()} < *q)
             if (const auto qy = try_mul(rational{trunc(*q)}, yv))
                 if (const auto r = try_sub(xv, *qy)) [[likely]]
-                    return detail::store_value<Out>(*r);
+                    return store_value<Out>(*r);
         return exact();
     }
 }
-} // namespace detail
 
-// Like `/`: a plain Out when y's grid excludes 0, else expected<Out, errc>
-// with division_by_zero for y == 0.
-template <insidable Out, insidable InX, insidable InY>
-[[nodiscard]] constexpr auto fmod_into(InX x, InY y) {
-    if constexpr (beman::inside::detail::divisor_excludes_zero<InY>)
-        return detail::fmod_nonzero<Out>(x, y);
-    else {
-        if (y == 0)
-            return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
-        return std::expected<Out, errc>{detail::fmod_nonzero<Out>(x, y)};
-    }
-}
+// fmod's result: |r| < |y| and |r| ≤ |x|, with the sign of x, on the gcd of
+// both notches (x − k·y lies on that lattice, so the result is exact).
+template <insidable InX, insidable InY>
+inline constexpr grid_rational fmod_bound =
+    abs_result_upper<InX> < abs_result_upper<InY> ? abs_result_upper<InX> : abs_result_upper<InY>;
+
+template <insidable InX, insidable InY>
+using fmod_result_t = inside<exact_out_grid({(lower_of<InX> < 0 ? -fmod_bound<InX, InY> : grid_rational{0}),
+                                             (upper_of<InX> > 0 ? fmod_bound<InX, InY> : grid_rational{0})},
+                                            engine::gcd_notch<InX, InY>,
+                                            den_bound(grid_of<InX>) * den_bound(grid_of<InY>)),
+                             with_default_rounding(out_policy<InX>)>;
 
 //---------------------------------------------------------------------------
-// pown<E> — compile-time integer powers, pure grid arithmetic
-//---------------------------------------------------------------------------
-// Repeated squaring in inside-space: every multiply widens the result grid
+// pown<E> — compile-time integer powers, pure grid arithmetic. Repeated
+// squaring in inside-space: every multiply widens the result grid
 // corner-correctly, so the result is exact for exact inputs and negative
-// bases are fine. No engine — works on any inside
-// (like abs/floor/fmod). Negative exponents are deferred (they need the
-// division error story).
-namespace detail {
+// bases are fine. No engine — works on any inside (like abs/floor/fmod).
+// Negative exponents are deferred (they need the division error story).
+//---------------------------------------------------------------------------
 template <std::int64_t E, insidable In>
 constexpr auto pown_impl(In x) noexcept {
     if constexpr (E == 0) {
@@ -20331,147 +20351,185 @@ inline constexpr bool pown_defined = [] {
             return requires(In x) { pown_impl<E / 2>(x) * pown_impl<E / 2>(x); };
     }
 }();
-} // namespace detail
 
-namespace detail {
 // An even power of a base that reaches below 0 squares |x| instead, so the
 // result's range starts at the smallest |x|^E, never below 0.
 template <std::int64_t E, insidable In>
 inline constexpr bool pown_via_abs = E > 0 && E % 2 == 0 && lower_of<In> < 0;
 template <std::int64_t E, insidable In>
 using pown_base_t = std::conditional_t<pown_via_abs<E, In>, abs_result_t<In>, In>;
+
+//---------------------------------------------------------------------------
+// The tags (math/detail/functions.hpp) of the grid operations: exact, so
+// each deduced output is the exact result's grid. abs and copysign take a
+// notch symmetric about 0 (sym_notch), fmod the gcd of both inputs' notches;
+// floor/ceil/round/trunc deduce notch 1 since their outputs are integers.
+//---------------------------------------------------------------------------
+template <std::size_t Arity>
+struct exact_fn {
+    static constexpr bool rounds = false;
+    template <class... In>
+    static constexpr bool takes = sizeof...(In) == Arity && (insidable<In> && ...);
+};
+
+// |x|.
+struct abs_fn : exact_fn<1> {
+    template <insidable In>
+    using result = abs_result_t<In>;
+    template <insidable Out, insidable In>
+    [[nodiscard]] static constexpr Out eval(In x) {
+        if constexpr (any_wide_valued<Out, In>)
+            return store_exact<Out>(engine::abs(engine::exact_input(x)));
+        else if constexpr (grid_of<Out> == grid_of<result<In>> && value_indices_fit_int64<In> &&
+                           notch_of<Out> == notch_of<In>) {
+            // The same lattice through 0: |x| is the value index's magnitude.
+            // In uint64: |INT64_MIN| = 2^63 is past int64 (Out then reaches it).
+            const std::int64_t j = value_index<std::int64_t>(x);
+            return from_value_index<Out>(j < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(j)
+                                               : static_cast<std::uint64_t>(j));
+        } else
+            return store_value<Out>(beman::inside::detail::abs(rational{x}));
+    }
+};
+
+// sign(x) ∈ {−1, 0, 1}, by exact comparison (no decode).
+struct sign_fn : exact_fn<1> {
+    template <insidable In>
+    using result = sign_result_t<In>;
+    template <insidable Out, insidable In>
+    [[nodiscard]] static constexpr Out eval(In x) {
+        return Out{std::int64_t{(x > 0) - (x < 0)}};
+    }
+};
+
+// copysign(mag, sgn) — |mag| with the sign of sgn; sgn == 0 counts as positive.
+struct copysign_fn : exact_fn<2> {
+    template <insidable Mag, insidable Sgn>
+    using result = copysign_result_t<Mag, Sgn>;
+    template <insidable Out, insidable Mag, insidable Sgn>
+    [[nodiscard]] static constexpr Out eval(Mag mag, Sgn sgn) {
+        if constexpr (any_wide_valued<Out, Mag>) {
+            const auto a = engine::abs(engine::exact_input(mag));
+            return store_exact<Out>(sgn < 0 ? -a : a);
+        } else if constexpr (grid_of<Out> == grid_of<result<Mag, Sgn>> && value_indices_fit_int64<Mag> &&
+                             notch_of<Out> == notch_of<Mag>) {
+            // The same lattice through 0: ±|value index|, in uint64 (|INT64_MIN| =
+            // 2^63 when sgn is never negative); the raw follows modulo 2^64.
+            const std::int64_t  j = value_index<std::int64_t>(mag);
+            const std::uint64_t a =
+                j < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(j) : static_cast<std::uint64_t>(j);
+            return from_value_index<Out>(sgn < 0 ? std::uint64_t{0} - a : a);
+        } else {
+            const rational a = beman::inside::detail::abs(rational{mag});
+            return store_value<Out>(sgn < 0 ? -a : a);
+        }
+    }
+};
+
+// ⌊x⌋, ⌈x⌉, x rounded half away from zero, and x truncated toward zero.
+template <round_mode M>
+struct integer_fn : exact_fn<1> {
+    template <insidable In>
+    using result = integer_result_t<In, M>;
+    template <insidable Out, insidable In>
+    [[nodiscard]] static constexpr Out eval(In x) {
+        return round_integer<M, Out>(x);
+    }
+};
+using floor_fn = integer_fn<round_mode::floor>;
+using ceil_fn  = integer_fn<round_mode::ceil>;
+using round_fn = integer_fn<round_mode::nearest>;
+using trunc_fn = integer_fn<round_mode::trunc>;
+
+// Like `/`: a plain Out when y's grid excludes 0, else expected<Out, errc>
+// with division_by_zero for y == 0.
+struct fmod_fn : exact_fn<2> {
+    template <insidable InX, insidable InY>
+    using result = fmod_result_t<InX, InY>;
+    template <insidable Out, insidable InX, insidable InY>
+    [[nodiscard]] static constexpr auto eval(InX x, InY y) {
+        if constexpr (beman::inside::detail::divisor_excludes_zero<InY>)
+            return fmod_nonzero<Out>(x, y);
+        else {
+            if (y == 0)
+                return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
+            return std::expected<Out, errc>{fmod_nonzero<Out>(x, y)};
+        }
+    }
+};
+
+template <std::int64_t E>
+struct pown_fn {
+    static constexpr bool rounds = false;
+    template <class... In>
+    static constexpr bool takes = [] {
+        if constexpr (sizeof...(In) != 1 || !(insidable<In> && ...))
+            return false;
+        else
+            return pown_defined<E, pown_base_t<E, In...[0]>>;
+    }();
+    template <insidable In>
+    static constexpr auto value(In x) noexcept {
+        if constexpr (pown_via_abs<E, In>)
+            return pown_impl<E>(abs_fn::eval<abs_result_t<In>>(x));
+        else
+            return pown_impl<E>(x);
+    }
+    template <insidable In>
+    using result = decltype(value(std::declval<In>()));
+    template <insidable Out, insidable In>
+    [[nodiscard]] static constexpr Out eval(In x) {
+        return Out{value(x)};
+    }
+};
 } // namespace detail
 
-template <std::int64_t E, insidable In>
-    requires detail::pown_defined<E, detail::pown_base_t<E, In>>
-[[nodiscard]] constexpr auto pown(In x) noexcept {
-    if constexpr (detail::pown_via_abs<E, In>)
-        return detail::pown_impl<E>(abs_into<detail::abs_result_t<In>>(x));
-    else
-        return detail::pown_impl<E>(x);
-}
-
 //---------------------------------------------------------------------------
-// Auto-deducing forms — algebraic tier.
-//
-// Each `fn_into<Out>(x)` has an auto form `fn(x)` that derives `Out` from `In`
-// and delegates to it. abs and copysign take a notch symmetric about 0
-// (sym_notch), fmod the gcd of both inputs' notches; floor/ceil/round/trunc
-// deduce notch 1 since their outputs are integer-valued.
-//---------------------------------------------------------------------------
-template <insidable In>
-[[nodiscard]] constexpr auto abs(In x) {
-    return abs_into<detail::abs_result_t<In>>(x);
-}
-
-template <insidable In>
-[[nodiscard]] constexpr auto sign(In x) {
-    return sign_into<detail::sign_result_t<In>>(x);
-}
-
-template <insidable Mag, insidable Sgn>
-[[nodiscard]] constexpr auto copysign(Mag mag, Sgn sgn) {
-    return copysign_into<detail::copysign_result_t<Mag, Sgn>>(mag, sgn);
-}
-
-template <insidable In>
-[[nodiscard]] constexpr auto floor(In x) {
-    return floor_into<detail::floor_result_t<In>>(x);
-}
-
-template <insidable In>
-[[nodiscard]] constexpr auto ceil(In x) {
-    return ceil_into<detail::ceil_result_t<In>>(x);
-}
-
-template <insidable In>
-[[nodiscard]] constexpr auto round(In x) {
-    return round_into<detail::round_result_t<In>>(x);
-}
-
-template <insidable In>
-[[nodiscard]] constexpr auto trunc(In x) {
-    return trunc_into<detail::trunc_result_t<In>>(x);
-}
-
-namespace detail {
-// fmod's result: |r| < |y| and |r| ≤ |x|, with the sign of x, on the gcd of
-// both notches (x − k·y lies on that lattice, so the result is exact).
-template <insidable InX, insidable InY>
-inline constexpr grid_rational fmod_bound =
-    abs_result_upper<InX> < abs_result_upper<InY> ? abs_result_upper<InX> : abs_result_upper<InY>;
-
-template <insidable InX, insidable InY>
-using fmod_result_t = inside<exact_out_grid({(lower_of<InX> < 0 ? -fmod_bound<InX, InY> : grid_rational{0}),
-                                             (upper_of<InX> > 0 ? fmod_bound<InX, InY> : grid_rational{0})},
-                                            engine::gcd_notch<InX, InY>,
-                                            den_bound(grid_of<InX>) * den_bound(grid_of<InY>)),
-                             with_default_rounding(out_policy<InX>)>;
-} // namespace detail
-
-template <insidable InX, insidable InY>
-[[nodiscard]] constexpr auto fmod(InX x, InY y) {
-    return fmod_into<detail::fmod_result_t<InX, InY>>(x, y);
-}
-
-//---------------------------------------------------------------------------
-// unit_amplitude<K> — amplitude grid [-1, 1] at 1/K resolution: a ready-made explicit
-// output for sin / cos (`math::sin_into<math::unit_amplitude<32768>>(angle)`), decoupling
-// the output precision from the angle's grid; results round to nearest. All
-// angles are radians, as in <cmath>.
+// unit_amplitude<K> — amplitude grid [-1, 1] at 1/K resolution, rounding to
+// nearest: a ready-made output for sin and cos (`math::sin<math::
+// unit_amplitude<32768>>(angle)`; `math::sin<per<32768>>(angle)` deduces the
+// same). All angles are radians, as in <cmath>.
 //---------------------------------------------------------------------------
 template <auto K> // a builtin or a grid number of any size
 using unit_amplitude = inside<{{rational{-1}, rational{1}}, per<K>}, round_nearest>;
 
 //---------------------------------------------------------------------------
-// The transcendentals: the adaptive engine.
+// The functions (math/detail/functions.hpp states the call forms): the grid
+// operations, exact, and the transcendentals of the adaptive engine.
 //---------------------------------------------------------------------------
-using detail::entry::acos;
-using detail::entry::acos_into;
-using detail::entry::acosh;
-using detail::entry::acosh_into;
-using detail::entry::asin;
-using detail::entry::asin_into;
-using detail::entry::asinh;
-using detail::entry::asinh_into;
-using detail::entry::atan;
-using detail::entry::atan2;
-using detail::entry::atan2_into;
-using detail::entry::atan_into;
-using detail::entry::atanh;
-using detail::entry::atanh_into;
-using detail::entry::cbrt;
-using detail::entry::cbrt_into;
-using detail::entry::cos;
-using detail::entry::cos_into;
-using detail::entry::cosh;
-using detail::entry::cosh_into;
-using detail::entry::exp;
-using detail::entry::exp2;
-using detail::entry::exp2_into;
-using detail::entry::exp_into;
-using detail::entry::hypot;
-using detail::entry::hypot_into;
-using detail::entry::log;
-using detail::entry::log10;
-using detail::entry::log10_into;
-using detail::entry::log2;
-using detail::entry::log2_into;
-using detail::entry::log_into;
-using detail::entry::pow;
-using detail::entry::pow_base;
-using detail::entry::pow_base_into;
-using detail::entry::pow_into;
-using detail::entry::sin;
-using detail::entry::sin_into;
-using detail::entry::sinh;
-using detail::entry::sinh_into;
-using detail::entry::sqrt;
-using detail::entry::sqrt_into;
-using detail::entry::tan;
-using detail::entry::tan_into;
-using detail::entry::tanh;
-using detail::entry::tanh_into;
+BEMAN_INSIDE_MATH_FUNCTION(abs, detail::abs_fn)
+BEMAN_INSIDE_MATH_FUNCTION(sign, detail::sign_fn)
+BEMAN_INSIDE_MATH_FUNCTION(copysign, detail::copysign_fn)
+BEMAN_INSIDE_MATH_FUNCTION(floor, detail::floor_fn)
+BEMAN_INSIDE_MATH_FUNCTION(ceil, detail::ceil_fn)
+BEMAN_INSIDE_MATH_FUNCTION(round, detail::round_fn)
+BEMAN_INSIDE_MATH_FUNCTION(trunc, detail::trunc_fn)
+BEMAN_INSIDE_MATH_FUNCTION(fmod, detail::fmod_fn)
+BEMAN_INSIDE_MATH_FUNCTION(pown, detail::pown_fn<E>, std::int64_t E)
+
+BEMAN_INSIDE_MATH_FUNCTION(exp, detail::entry::exp_fn)
+BEMAN_INSIDE_MATH_FUNCTION(exp2, detail::entry::exp2_fn)
+BEMAN_INSIDE_MATH_FUNCTION(log, detail::entry::log_fn)
+BEMAN_INSIDE_MATH_FUNCTION(log2, detail::entry::log2_fn)
+BEMAN_INSIDE_MATH_FUNCTION(log10, detail::entry::log10_fn)
+BEMAN_INSIDE_MATH_FUNCTION(sqrt, detail::entry::sqrt_fn)
+BEMAN_INSIDE_MATH_FUNCTION(cbrt, detail::entry::cbrt_fn)
+BEMAN_INSIDE_MATH_FUNCTION(sin, detail::entry::sin_fn)
+BEMAN_INSIDE_MATH_FUNCTION(cos, detail::entry::cos_fn)
+BEMAN_INSIDE_MATH_FUNCTION(tan, detail::entry::tan_fn)
+BEMAN_INSIDE_MATH_FUNCTION(asin, detail::entry::asin_fn)
+BEMAN_INSIDE_MATH_FUNCTION(acos, detail::entry::acos_fn)
+BEMAN_INSIDE_MATH_FUNCTION(atan, detail::entry::atan_fn)
+BEMAN_INSIDE_MATH_FUNCTION(atan2, detail::entry::atan2_fn)
+BEMAN_INSIDE_MATH_FUNCTION(sinh, detail::entry::sinh_fn)
+BEMAN_INSIDE_MATH_FUNCTION(cosh, detail::entry::cosh_fn)
+BEMAN_INSIDE_MATH_FUNCTION(tanh, detail::entry::tanh_fn)
+BEMAN_INSIDE_MATH_FUNCTION(asinh, detail::entry::asinh_fn)
+BEMAN_INSIDE_MATH_FUNCTION(acosh, detail::entry::acosh_fn)
+BEMAN_INSIDE_MATH_FUNCTION(atanh, detail::entry::atanh_fn)
+BEMAN_INSIDE_MATH_FUNCTION(hypot, detail::entry::hypot_fn)
+BEMAN_INSIDE_MATH_FUNCTION(pow, detail::entry::pow_fn)
+BEMAN_INSIDE_MATH_FUNCTION(pow_base, detail::entry::pow_base_fn<Base>, auto Base)
 } // namespace beman::inside::math
 
 
@@ -20508,14 +20566,17 @@ using detail::entry::tanh_into;
 //   quantity_cast, value_cast, try_value_cast    kinds and representations
 //   named_unit, quantity_spec, point_origin,     units, kinds, origins and
 //   base_dimension, unit_c / spec_c / origin_c   dimensions of your own
+//   basis_vector                                 a basis vector of a geometric
+//                                                algebra: you state its square
 //   q.on_wrap / on_clamp / on_error, ++q, Q::try_make
-//   mul_into, div_into, add_all, mul_all, sum<Q>, divmod,
+//   mul<C>, div<C>, add_all, mul_all, sum<Q>, divmod,
 //   conversion_overflows / rounds / loses<Q>, Q{x, clamp} / Q{x, wrap},
 //   dot, cross, lerp                             inside's algorithms
 //   percent, per_mille                           dimensionless units
 // The catalog: isq, si, si2019, international. The derived physical
 // constants are in units/constants.hpp; text (to_string, <<, std::format,
-// parse<Q>) in units/io.hpp.
+// parse<Q>) in units/io.hpp; multivectors and the products of geometric
+// algebra (3 + 4 i, wedge, reverse, inverse, dual) in units/geoalg.hpp.
 //
 // This umbrella is units/core.hpp (the machinery: units/detail/algebra.hpp,
 // quantity.hpp, point.hpp) plus units/systems.hpp (the catalog). For units of
@@ -20571,9 +20632,17 @@ using beman::inside::detail::grid_rational;
 // (L M T I Θ N J), and of any number of base dimensions you define
 // (base_dimension: currency, information). Angle is dimensionless, as in SI.
 //---------------------------------------------------------------------------
+struct named_unit;
+
 // A base dimension of your own: inline constexpr base_dimension currency{"currency"}.
+// A basis vector of a geometric algebra is one too (see basis_vector): its
+// exponent is 0 or 1, it squares to Square (+1, -1 or 0), two of them
+// anticommute, and Vector is its unit. Vector is read only when Basis is set.
 struct base_dimension {
-    std::string_view Name;
+    std::string_view  Name;
+    std::int8_t       Square{0};
+    bool              Basis{false};
+    const named_unit* Vector{};
 };
 
 struct dimension;
@@ -20613,12 +20682,14 @@ struct dimension {
         return static_cast<std::int8_t>(e);
     }
 
-    // By content: a base dimension of your own is its name.
+    // By content: a base dimension of your own is its name (and, for a basis
+    // vector, its square).
     friend constexpr bool operator==(const dimension& a, const dimension& b) {
         if (!std::ranges::equal(a.Exp, b.Exp) || a.UserSize != b.UserSize)
             return false;
         for (std::size_t i = 0; i < a.UserSize; ++i)
-            if (a.UserDim[i]->Name != b.UserDim[i]->Name || a.UserExp[i] != b.UserExp[i])
+            if (a.UserDim[i]->Name != b.UserDim[i]->Name || a.UserDim[i]->Square != b.UserDim[i]->Square ||
+                a.UserExp[i] != b.UserExp[i])
                 return false;
         return true;
     }
@@ -20641,9 +20712,10 @@ struct dimension {
             e = exponent(e * n);
         if (UserSize == 0)
             return r;
-        detail::user_exponents u{r};
-        for (auto& e : u.E)
-            e = exponent(e * n);
+        // Merged afresh: a basis vector's exponent is taken mod 2 and drops out at 0.
+        detail::user_exponents u{dimension{}};
+        for (std::size_t i = 0; i < UserSize; ++i)
+            u.add(UserDim[i], UserExp[i] * n);
         return u.into(r);
     }
     // The n-th root; every exponent must divide.
@@ -20676,14 +20748,21 @@ constexpr user_exponents::user_exponents(const dimension& d) {
     }
 }
 
+// A basis vector's exponent is 0 or 1: v·v is a number (its square).
+constexpr int basis_exponent(int e) { return ((e % 2) + 2) % 2; }
+
 constexpr void user_exponents::add(const base_dimension* b, int e) {
+    if (b->Basis)
+        e = basis_exponent(e);
     if (e == 0)
         return;
     std::size_t i = 0;
     while (i < D.size() && D[i]->Name < b->Name)
         ++i;
     if (i < D.size() && D[i]->Name == b->Name) {
-        E[i] = dimension::exponent(E[i] + e);
+        if (D[i]->Basis != b->Basis || D[i]->Square != b->Square)
+            beman::inside::detail::constexpr_error<"units: two base dimensions of one name differ">();
+        E[i] = b->Basis ? static_cast<std::int8_t>(basis_exponent(E[i] + e)) : dimension::exponent(E[i] + e);
         if (E[i] == 0) {
             D.erase(D.begin() + i);
             E.erase(E.begin() + i);
@@ -20762,6 +20841,93 @@ inline constexpr dimension dim_electric_current{{0, 0, 0, 1, 0, 0, 0}};
 inline constexpr dimension dim_thermodynamic_temperature{{0, 0, 0, 0, 1, 0, 0}};
 inline constexpr dimension dim_amount_of_substance{{0, 0, 0, 0, 0, 1, 0}};
 inline constexpr dimension dim_luminous_intensity{{0, 0, 0, 0, 0, 0, 1}};
+
+//---------------------------------------------------------------------------
+// Blades — the basis vectors of a dimension. A blade's canonical value is the
+// product of its basis vectors in name order; two different basis vectors
+// anticommute and each squares to its Square.
+//---------------------------------------------------------------------------
+namespace detail {
+// A blade being computed: its basis vectors, sorted by name.
+using blade = std::vector<const base_dimension*>;
+
+constexpr blade blade_of(const dimension& d) {
+    blade b;
+    for (std::size_t i = 0; i < d.UserSize; ++i)
+        if (d.UserDim[i]->Basis)
+            b.push_back(d.UserDim[i]);
+    return b;
+}
+constexpr bool has_blade(const dimension& d) {
+    for (std::size_t i = 0; i < d.UserSize; ++i)
+        if (d.UserDim[i]->Basis)
+            return true;
+    return false;
+}
+// Whether a and b are equal but for their basis vectors.
+constexpr bool same_outside_blade(const dimension& a, const dimension& b) {
+    if (!std::ranges::equal(a.Exp, b.Exp))
+        return false;
+    std::size_t i = 0, j = 0;
+    for (;;) {
+        while (i < a.UserSize && a.UserDim[i]->Basis)
+            ++i;
+        while (j < b.UserSize && b.UserDim[j]->Basis)
+            ++j;
+        if (i == a.UserSize || j == b.UserSize)
+            return i == a.UserSize && j == b.UserSize;
+        if (a.UserDim[i]->Name != b.UserDim[j]->Name || a.UserExp[i] != b.UserExp[j])
+            return false;
+        ++i;
+        ++j;
+    }
+}
+
+// The sign s of A·B = s·(A ⊕ B), A and B canonical: -1 for each pair out of
+// name order, times the square of each basis vector in both. 0 when a null
+// vector meets itself.
+constexpr int blade_sign(const blade& a, const blade& b) {
+    int s = 1;
+    for (const base_dimension* x : a)
+        for (const base_dimension* y : b) {
+            if (x->Name > y->Name)
+                s = -s;
+            else if (x->Name == y->Name)
+                s *= x->Square;
+        }
+    return s;
+}
+// a·b into a (the symmetric difference); the sign of the product.
+constexpr int blade_mul(blade& a, const blade& b) {
+    const int   s = blade_sign(a, b);
+    blade       r;
+    std::size_t i = 0, j = 0;
+    while (i < a.size() || j < b.size()) {
+        if (j == b.size() || (i < a.size() && a[i]->Name < b[j]->Name))
+            r.push_back(a[i++]);
+        else if (i == a.size() || b[j]->Name < a[i]->Name)
+            r.push_back(b[j++]);
+        else { // in both: v·v is a number
+            ++i;
+            ++j;
+        }
+    }
+    a = std::move(r);
+    return s;
+}
+constexpr int blade_sign(const dimension& a, const dimension& b) { return blade_sign(blade_of(a), blade_of(b)); }
+// B·B: +1 or -1, 0 for a blade with a null vector.
+constexpr int blade_square(const dimension& d) {
+    const blade b = blade_of(d);
+    return blade_sign(b, b);
+}
+// The sign of B's reverse, involute and Clifford conjugate, by its grade k:
+// (-1)^(k(k-1)/2), (-1)^k, (-1)^(k(k+1)/2).
+constexpr int grade_of(const dimension& d) { return static_cast<int>(blade_of(d).size()); }
+constexpr int reverse_sign(int k) { return (k * (k - 1) / 2) % 2 == 0 ? 1 : -1; }
+constexpr int involute_sign(int k) { return k % 2 == 0 ? 1 : -1; }
+constexpr int conjugate_sign(int k) { return (k * (k + 1) / 2) % 2 == 0 ? 1 : -1; }
+} // namespace detail
 
 //---------------------------------------------------------------------------
 // magnitude — Ratio·π^Pi, exact.
@@ -21173,6 +21339,34 @@ struct named_unit {
     constexpr named_unit(std::string_view sym, unit_t<U>, unit_options o = {});
     template <unit U, const quantity_spec* K>
     constexpr named_unit(std::string_view sym, unit_t<U>, spec_t<K>, unit_options o = {});
+
+  private:
+    friend struct basis_vector;
+    // A basis vector's unit, its dimension set by basis_vector.
+    constexpr named_unit(std::string_view sym, unit_options o)
+        : Utf8{sym}, Ascii{o.ascii.empty() ? sym : o.ascii}, SpaceBefore{o.space_before} {}
+};
+
+//---------------------------------------------------------------------------
+// basis_vector — a basis vector of a geometric algebra: a base dimension of
+// your own and its unit in one static object. You state its square, v·v: +1,
+// -1 or 0 (a null vector). Two different basis vectors anticommute, so a
+// product of units is again a unit, up to a sign: e₂e₁ = -e₁e₂.
+//   inline constexpr basis_vector e1_def{"e₁", +1, {.ascii = "e1"}};
+//   inline constexpr auto         e1 = unit_c<e1_def>;
+//---------------------------------------------------------------------------
+struct basis_vector {
+    named_unit     Unit;
+    base_dimension Self;
+
+    consteval basis_vector(std::string_view sym, int square, unit_options o = {})
+        : Unit{sym, o}, Self{sym, static_cast<std::int8_t>(square), true, &Unit} {
+        if (square != 1 && square != -1 && square != 0)
+            beman::inside::detail::constexpr_error<"units: a basis vector squares to +1, -1 or 0">();
+        if (o.kind || o.origin)
+            beman::inside::detail::constexpr_error<"units: a basis vector has no kind or origin">();
+        Unit.Dim = dimension_of(Self);
+    }
 };
 
 namespace detail {
@@ -21203,7 +21397,17 @@ consteval void unit_add(unit& u, unit_atom a) {
         beman::inside::detail::constexpr_error<"units: a unit holds at most 6 factors - name it with named_unit">();
 }
 
+// An atom whose named unit holds basis vectors (e₁, i = e₁e₂).
+constexpr bool is_blade_atom(const unit_atom& a) { return a.U->Dim.UserSize > 0 && has_blade(a.U->Dim); }
+constexpr bool has_blade_atoms(const unit& u) {
+    return std::any_of(u.Atoms, u.Atoms + u.Size, [](const unit_atom& a) { return is_blade_atom(a); });
+}
+
+consteval unit blade_unit_mul(const unit& a, const unit& b, int sign);
+
 consteval unit unit_mul(unit a, const unit& b, int sign) {
+    if (has_blade_atoms(a) || has_blade_atoms(b))
+        return blade_unit_mul(a, b, sign);
     for (std::int8_t i = 0; i < b.Size; ++i) {
         unit_atom t = b.Atoms[i];
         t.Exp       = static_cast<std::int8_t>(t.Exp * sign);
@@ -21214,6 +21418,12 @@ consteval unit unit_mul(unit a, const unit& b, int sign) {
 }
 
 consteval unit unit_pow(const unit& u, int n) {
+    if (has_blade_atoms(u)) { // repeated products: the blades do not commute
+        unit r{};
+        for (int i = 0; i < (n < 0 ? -n : n); ++i)
+            r = unit_mul(r, u, n < 0 ? -1 : 1);
+        return r;
+    }
     unit r{};
     for (std::int8_t i = 0; i < u.Size; ++i)
         unit_add(r, {u.Atoms[i].U, u.Atoms[i].Prefix, dimension::exponent(u.Atoms[i].Exp * n)});
@@ -21243,12 +21453,90 @@ consteval dimension dimension_of(const unit& u) {
         d = d * u.Atoms[i].U->Dim.pow(u.Atoms[i].Exp);
     return d;
 }
+namespace detail {
+// The sign of the product of u's blade atoms in stored order against the
+// canonical blade of their product: ±1, or 0 for a product that vanishes.
+consteval int atoms_blade_sign(const unit& u) {
+    blade acc;
+    int   s = 1;
+    for (std::int8_t i = 0; i < u.Size; ++i) {
+        if (!is_blade_atom(u.Atoms[i]))
+            continue;
+        const blade b = blade_of(u.Atoms[i].U->Dim);
+        const int   e = u.Atoms[i].Exp;
+        if (e < 0 && blade_sign(b, b) == 0)
+            beman::inside::detail::constexpr_error<"units: a null blade (a basis vector that squares to 0) has no "
+                                                   "inverse">();
+        for (int k = 0; k < (e < 0 ? -e : e); ++k)
+            s *= (e < 0 ? blade_sign(b, b) : 1) * blade_mul(acc, b); // B⁻¹ = B·B²
+    }
+    return s;
+}
+} // namespace detail
+
 consteval magnitude magnitude_of(const unit& u) {
     magnitude m = u.Scale;
     for (std::int8_t i = 0; i < u.Size; ++i)
         m = m * (u.Atoms[i].U->Mag * detail::ten_pow(u.Atoms[i].Prefix)).pow(u.Atoms[i].Exp);
+    if (detail::has_blade_atoms(u))
+        m = m * magnitude{grid_rational{detail::atoms_blade_sign(u)}};
     return m;
 }
+
+namespace detail {
+// a·b (sign 1) or a/b (sign -1) of units with blades. The non-blade atoms
+// merge as usual. The blade atoms are kept when they share no basis vector
+// (1·i stays i, i·j stays "i j"), else the blade of the product is spelled by
+// its basis vectors (i·i is 1, e₁·e₁₂₃ is e₂e₃). The scale makes the
+// magnitude the true one, sign included: a negative scale is the number's
+// sign, a zero scale a product that vanishes (ε·ε).
+consteval unit blade_unit_mul(const unit& a, const unit& b, int sign) {
+    const dimension da = dimension_of(a), db = dimension_of(b);
+    blade           bl = blade_of(da);
+    const blade     br = blade_of(db);
+    int             s  = blade_mul(bl, br);
+    if (sign < 0) { // B⁻¹ = B·B²
+        const int sq = blade_sign(br, br);
+        if (sq == 0)
+            beman::inside::detail::constexpr_error<"units: a null blade (a basis vector that squares to 0) has no "
+                                                   "inverse">();
+        s *= sq;
+    }
+    const magnitude target = sign > 0 ? magnitude_of(a) * magnitude_of(b) : magnitude_of(a) / magnitude_of(b);
+
+    unit                   r{};
+    std::vector<unit_atom> blades;
+    const auto             take = [&](const unit& u, int sgn) {
+        for (std::int8_t i = 0; i < u.Size; ++i) {
+            unit_atom t = u.Atoms[i];
+            if (is_blade_atom(t)) {
+                t.Exp = 1;
+                blades.push_back(t);
+            } else {
+                t.Exp = static_cast<std::int8_t>(t.Exp * sgn);
+                unit_add(r, t);
+            }
+        }
+    };
+    take(a, 1);
+    take(b, sign);
+    bool disjoint = true;
+    for (std::size_t i = 0; i < blades.size() && disjoint; ++i)
+        for (std::size_t j = i + 1; j < blades.size() && disjoint; ++j) {
+            blade x = blade_of(blades[i].U->Dim);
+            blade_mul(x, blade_of(blades[j].U->Dim));
+            disjoint = x.size() == blade_of(blades[i].U->Dim).size() + blade_of(blades[j].U->Dim).size();
+        }
+    if (disjoint)
+        for (const unit_atom& t : blades)
+            unit_add(r, t);
+    else
+        for (const base_dimension* v : bl)
+            unit_add(r, unit_atom{v->Vector, 0, 1});
+    r.Scale = s == 0 ? magnitude{grid_rational{0}} : target * magnitude{grid_rational{s}} / magnitude_of(r);
+    return r;
+}
+} // namespace detail
 namespace detail {
 // One named unit (with a prefix too) to the power 1, unscaled: its kind,
 // origin and spacing are the unit's.
@@ -21282,6 +21570,12 @@ constexpr named_unit::named_unit(std::string_view sym, unit_t<U>, unit_options o
         beman::inside::detail::constexpr_error<"units: a unit's kind must have the unit's dimension">();
     if (Origin && !(Origin->Dim == Dim))
         beman::inside::detail::constexpr_error<"units: a unit's origin must have the unit's dimension">();
+    if (detail::has_blade(Dim) && !detail::same_outside_blade(Dim, dim_one))
+        beman::inside::detail::constexpr_error<"units: a named unit with basis vectors names only a blade - "
+                                               "write si::metre * e1, not a unit of both">();
+    if (Mag.Ratio == grid_rational{0})
+        beman::inside::detail::constexpr_error<"units: a named unit of a product that vanishes (a null vector "
+                                               "squared)">();
 }
 template <unit U, const quantity_spec* K>
 constexpr named_unit::named_unit(std::string_view sym, unit_t<U>, spec_t<K>, unit_options o)
@@ -21289,10 +21583,22 @@ constexpr named_unit::named_unit(std::string_view sym, unit_t<U>, spec_t<K>, uni
 
 // The tags of your own entries, each made from its static object:
 //   inline constexpr auto metre  = unit_c<metre_def>;     // a named_unit
+//   inline constexpr auto e1     = unit_c<e1_def>;        // a basis_vector
 //   inline constexpr auto height = spec_c<height_def>;    // a quantity_spec
 //   inline constexpr auto origin = origin_c<origin_def>;  // a point_origin
-template <const named_unit& N>
-inline constexpr unit_t<unit{N}> unit_c{};
+namespace detail {
+template <class N>
+consteval const named_unit& named_of(const N& n) {
+    if constexpr (std::same_as<N, basis_vector>)
+        return n.Unit;
+    else
+        return n;
+}
+} // namespace detail
+template <const auto& N>
+    requires std::same_as<std::remove_cvref_t<decltype(N)>, named_unit> ||
+             std::same_as<std::remove_cvref_t<decltype(N)>, basis_vector>
+inline constexpr unit_t<unit{detail::named_of(N)}> unit_c{};
 template <const quantity_spec& S>
 inline constexpr spec_t<&S> spec_c{};
 template <const point_origin& O>
@@ -21584,23 +21890,26 @@ consteval bool unit_before(const unit& a, const unit& b) {
 // (km + m → m), else the smaller unit scaled to the gcd of the magnitudes
 // (ft + m and m + ft → [1/381 ft]); of two spellings of one size, the
 // shorter (J + N m → J). The sum's type is the same either way.
+// A magnitude may carry a sign (e₃₁ := e₃e₁ is -1 of the canonical e₁e₃):
+// sizes compare without it.
 consteval unit common_unit(const unit& a, const unit& b) {
     if (a == b)
         return a;
-    const magnitude ma = magnitude_of(a), mb = magnitude_of(b);
-    if (ma == mb) // one size, two spellings (J, N m): the shorter, then by symbol
+    const magnitude     ma = magnitude_of(a), mb = magnitude_of(b);
+    const grid_rational sa = beman::inside::detail::abs(ma.Ratio), sb = beman::inside::detail::abs(mb.Ratio);
+    if (ma.Pi == mb.Pi && sa == sb) // one size, two spellings (J, N m): the shorter, then by symbol
         return unit_before(b, a) ? b : a;
     if (ma.Pi != mb.Pi)
         beman::inside::detail::constexpr_error<
             "units: no common unit of a pi multiple and a rational one - convert one side with value_cast first">();
-    const grid_rational g = beman::inside::detail::gcd(ma.Ratio, mb.Ratio);
-    if (g == ma.Ratio)
+    const grid_rational g = beman::inside::detail::gcd(sa, sb);
+    if (g == sa)
         return a;
-    if (g == mb.Ratio)
+    if (g == sb)
         return b;
-    const bool a_smaller = ma.Ratio < mb.Ratio;
+    const bool a_smaller = sa < sb;
     unit       u         = a_smaller ? a : b;
-    u.Scale              = u.Scale * magnitude{g / (a_smaller ? ma.Ratio : mb.Ratio)};
+    u.Scale              = u.Scale * magnitude{g / (a_smaller ? sa : sb)};
     return u;
 }
 
@@ -21655,6 +21964,16 @@ namespace beman::inside::units {
 //---------------------------------------------------------------------------
 template <reference R, insidable Rep>
 class quantity;
+
+// A sum of quantities of different blades (units/geoalg.hpp). The empty one
+// is the zero of any dimension: a product that vanishes, ε·ε with ε² = 0.
+template <class... Parts>
+class multivector;
+template <>
+class multivector<> {
+  public:
+    friend constexpr bool operator==(const multivector&, const multivector&) = default;
+};
 
 namespace detail {
 template <class T>
@@ -21736,11 +22055,30 @@ constexpr auto lift_to(V&& v) {
         return Q{std::forward<V>(v)};
 }
 
+// R with the sign of its scale dropped (see below).
+template <reference R>
+consteval reference unsigned_reference() {
+    reference r     = R;
+    r.U.Scale.Ratio = beman::inside::detail::abs(r.U.Scale.Ratio);
+    return r;
+}
+
 // A quantity of reference R on a number that inside's arithmetic returned: an
-// inside, or an expected of one (division by a grid holding 0).
+// inside, or an expected of one (division by a grid holding 0). A product of
+// blades can leave a sign in R's scale (e₂e₁ = -e₁e₂): it goes to the number.
+// A zero scale is a product that vanishes: the zero multivector.
 template <reference R, class V>
 constexpr auto make_quantity(V&& v) {
-    return lift_to<quantity<R, beman::inside::detail::unwrap_t<V>>>(std::forward<V>(v));
+    if constexpr (R.U.Scale.Ratio.Num.is_zero())
+        return multivector<>{};
+    else if constexpr (R.U.Scale.Ratio.Num.negative()) {
+        constexpr reference P = unsigned_reference<R>();
+        if constexpr (is_expected_v<std::remove_cvref_t<V>>)
+            return make_quantity<P>(std::forward<V>(v).transform([](const auto& x) { return -x; }));
+        else
+            return make_quantity<P>(-v);
+    } else
+        return lift_to<quantity<R, beman::inside::detail::unwrap_t<V>>>(std::forward<V>(v));
 }
 
 // q.on_wrap(f) and the other hooks: the inside's policy_ref on q's number,
@@ -21806,6 +22144,9 @@ constexpr auto make_action_ref(Q& q, Ref&& r) {
 
 template <reference R, insidable Rep>
 class quantity {
+    static_assert(!R.U.Scale.Ratio.Num.negative() && !R.U.Scale.Ratio.Num.is_zero(),
+                  "units: this unit carries a sign (e2 * e1 is -(e1 * e2)) - write the unit in another order and "
+                  "negate the number");
     Rep Value;
 
   public:
@@ -22036,7 +22377,7 @@ namespace beman::inside::units {
 template <insidable V, class Tag>
     requires detail::is_reference_tag_v<Tag>
 [[nodiscard]] constexpr auto operator*(const V& v, Tag t) {
-    return quantity<reference_of(t), V>{v};
+    return detail::make_quantity<reference_of(t)>(v);
 }
 template <class N, class Tag>
     requires detail::is_reference_tag_v<Tag> && std::is_arithmetic_v<N>
@@ -22045,7 +22386,7 @@ void operator*(N, Tag) =
 // number / unit: 5 / s.
 template <insidable V, unit U>
 [[nodiscard]] constexpr auto operator/(const V& v, unit_t<U>) {
-    return quantity<reference_of(detail::unit_pow(U, -1)), V>{v};
+    return detail::make_quantity<reference_of(detail::unit_pow(U, -1))>(v);
 }
 
 // A magnitude scales a quantity's unit, not its number: mag_pi * q is q
@@ -22098,12 +22439,14 @@ consteval reference sum_reference() {
 // Why a sum or comparison of A and B is a unit error, if it is: other
 // dimensions or kinds, or no common unit. Each reason is a deleted overload
 // with its message.
-enum class sum_error : unsigned char { none, dimensions, kinds, pi };
+// Dimensions that differ only in basis vectors are a blade error: their sum
+// is a multivector (units/geoalg.hpp).
+enum class sum_error : unsigned char { none, dimensions, blades, kinds, pi };
 
 template <reference A, reference B>
 consteval sum_error sum_error_of() {
     if (dimension_of(A.U) != dimension_of(B.U))
-        return sum_error::dimensions;
+        return same_outside_blade(dimension_of(A.U), dimension_of(B.U)) ? sum_error::blades : sum_error::dimensions;
     if (!common_spec(A, B).Ok)
         return sum_error::kinds;
     const magnitude ma = magnitude_of(A.U), mb = magnitude_of(B.U);
@@ -22115,6 +22458,13 @@ template <reference A, reference B>
 consteval bool sum_diagnosed() {
     return sum_error_of<A, B>() != sum_error::none;
 }
+// Two quantities of different blades: units/geoalg.hpp adds them, its
+// overloads more constrained than the deleted ones here.
+template <reference A, reference B>
+concept blade_sum = sum_error_of<A, B>() == sum_error::blades;
+// A number and a quantity of a blade without a unit (3 + 4 i).
+template <reference A>
+concept number_blade_sum = has_blade(dimension_of(A.U)) && same_outside_blade(dimension_of(A.U), dim_one);
 
 // Whether the two quantities have a common unit (no sum diagnostic) and both
 // numbers rescale to it.
@@ -22198,11 +22548,14 @@ template <reference A, class VA, reference B, class VB>
 // A sum, difference, remainder or comparison of two units that cannot meet:
 // a deleted overload per reason, so a requires-test is false and a call says
 // why.
-#define BEMAN_INSIDE_UNITS_SUM_DELETED(ret, op)                                   \
+#define BEMAN_INSIDE_UNITS_SUM_DELETED(ret, op, blades)                           \
     template <reference A, class VA, reference B, class VB>                       \
         requires(detail::sum_error_of<A, B>() == detail::sum_error::dimensions)   \
     ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                      \
         delete ("units: adding or comparing quantities of different dimensions"); \
+    template <reference A, class VA, reference B, class VB>                       \
+        requires detail::blade_sum<A, B>                                          \
+    ret op(const quantity<A, VA>&, const quantity<B, VB>&) = delete (blades);     \
     template <reference A, class VA, reference B, class VB>                       \
         requires(detail::sum_error_of<A, B>() == detail::sum_error::kinds)        \
     ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                      \
@@ -22211,15 +22564,33 @@ template <reference A, class VA, reference B, class VB>
         requires(detail::sum_error_of<A, B>() == detail::sum_error::pi)           \
     ret op(const quantity<A, VA>&, const quantity<B, VB>&) = delete (             \
         "units: no common unit of a pi multiple and a rational one - convert one side with value_cast first");
-BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator+)
-BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator-)
-BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator%)
-BEMAN_INSIDE_UNITS_SUM_DELETED(bool, operator==)
-BEMAN_INSIDE_UNITS_SUM_DELETED(std::strong_ordering, operator<=>)
-BEMAN_INSIDE_UNITS_SUM_DELETED(void, min)
-BEMAN_INSIDE_UNITS_SUM_DELETED(void, max)
-BEMAN_INSIDE_UNITS_SUM_DELETED(void, midpoint)
+#define BEMAN_INSIDE_UNITS_WHY_GEOALG \
+    "units: quantities of different blades add to a multivector - include <beman/inside/units/geoalg.hpp>"
+#define BEMAN_INSIDE_UNITS_WHY_ORDER "units: quantities of different blades have no order and no remainder"
+BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator+, BEMAN_INSIDE_UNITS_WHY_GEOALG)
+BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator-, BEMAN_INSIDE_UNITS_WHY_GEOALG)
+BEMAN_INSIDE_UNITS_SUM_DELETED(void, operator%, BEMAN_INSIDE_UNITS_WHY_ORDER)
+BEMAN_INSIDE_UNITS_SUM_DELETED(bool, operator==, BEMAN_INSIDE_UNITS_WHY_GEOALG)
+BEMAN_INSIDE_UNITS_SUM_DELETED(std::strong_ordering, operator<=>, BEMAN_INSIDE_UNITS_WHY_ORDER)
+BEMAN_INSIDE_UNITS_SUM_DELETED(void, min, BEMAN_INSIDE_UNITS_WHY_ORDER)
+BEMAN_INSIDE_UNITS_SUM_DELETED(void, max, BEMAN_INSIDE_UNITS_WHY_ORDER)
+BEMAN_INSIDE_UNITS_SUM_DELETED(void, midpoint, BEMAN_INSIDE_UNITS_WHY_ORDER)
 #undef BEMAN_INSIDE_UNITS_SUM_DELETED
+
+// A number plus a quantity of a blade: a multivector too.
+template <insidable V, reference A, class VA>
+    requires detail::number_blade_sum<A>
+void operator+(const V&, const quantity<A, VA>&) = delete (BEMAN_INSIDE_UNITS_WHY_GEOALG);
+template <reference A, class VA, insidable V>
+    requires detail::number_blade_sum<A>
+void operator+(const quantity<A, VA>&, const V&) = delete (BEMAN_INSIDE_UNITS_WHY_GEOALG);
+template <insidable V, reference A, class VA>
+    requires detail::number_blade_sum<A>
+void operator-(const V&, const quantity<A, VA>&) = delete (BEMAN_INSIDE_UNITS_WHY_GEOALG);
+template <reference A, class VA, insidable V>
+    requires detail::number_blade_sum<A>
+void operator-(const quantity<A, VA>&, const V&) = delete (BEMAN_INSIDE_UNITS_WHY_GEOALG);
+#undef BEMAN_INSIDE_UNITS_WHY_ORDER
 
 template <reference A, class VA, reference B, class VB>
     requires detail::number_op<VA, VB, '*'>
@@ -22454,28 +22825,55 @@ constexpr auto into_scaled(const A& a, const auto& b) {
         product_reference<as_quantity_t<A>::reference, std::remove_cvref_t<decltype(as_quantity(b))>::reference, E>();
     return rescale<conversion_factor<P.U, out_reference<Out>().U>>(as_quantity(a).numerical_value());
 }
+// The output of mul<C> / div<C> (E = ±1) of a and b: C, a quantity type or a
+// plain number for a dimensionless result; or, for another result, C the
+// number of a quantity in the product's unit.
+template <class C, int E, class A, class B>
+struct named_product {
+    using type = C;
+};
+template <insidable C, int E, class A, class B>
+    requires(quantity_like<A> || quantity_like<B>) &&
+            (!number_like_v<product_reference<as_quantity_t<A>::reference, as_quantity_t<B>::reference, E>()>)
+struct named_product<C, E, A, B> {
+    using type = quantity<
+        unsigned_reference<product_reference<as_quantity_t<A>::reference, as_quantity_t<B>::reference, E>()>(),
+        C>;
+};
+template <class C, int E, class A, class B>
+using named_product_t = typename named_product<C, E, A, B>::type;
 } // namespace detail
 
-// mul_into<Out, F>(a, b) / div_into<Out, F>(a, b): a·b or a/b rounded once
-// into Out, a quantity type (or a plain inside for a dimensionless result).
-// The unit factor is folded into the exact product: mul_into<usd>(eth, usd/eth).
-template <class Out, policy_flag F = beman::inside::detail::none, class A, class B>
-    requires detail::into_operands<Out, 1, A, B> && requires(const A& a, const B& b) {
-        beman::inside::mul_into<typename detail::out_rep<Out>::type, F>(detail::into_scaled<Out, 1>(a, b),
-                                                                        detail::as_quantity(b).numerical_value());
-    }
-[[nodiscard]] constexpr auto mul_into(const A& a, const B& b) {
-    return detail::wrap_out<Out>(beman::inside::mul_into<typename detail::out_rep<Out>::type, F>(
-        detail::into_scaled<Out, 1>(a, b), detail::as_quantity(b).numerical_value()));
+// mul<C>(a, b [, flag]) / div<C>(a, b [, flag]): a·b or a/b rounded once into
+// C, a quantity type, or its number (the unit is the product's; a plain
+// number for a dimensionless result). The unit factor is folded into the
+// exact product: mul<usd>(eth, usd/eth).
+template <class C, class A, class B, class... Fl>
+    requires(!insidable<A> || !insidable<B>) && detail::into_operands<detail::named_product_t<C, 1, A, B>, 1, A, B> &&
+            requires(const A& a, const B& b, const Fl&... f) {
+                beman::inside::mul<typename detail::out_rep<detail::named_product_t<C, 1, A, B>>::type>(
+                    detail::into_scaled<detail::named_product_t<C, 1, A, B>, 1>(a, b),
+                    detail::as_quantity(b).numerical_value(),
+                    f...);
+            }
+[[nodiscard]] constexpr auto mul(const A& a, const B& b, const Fl&... f) {
+    using Out = detail::named_product_t<C, 1, A, B>;
+    return detail::wrap_out<Out>(beman::inside::mul<typename detail::out_rep<Out>::type>(
+        detail::into_scaled<Out, 1>(a, b), detail::as_quantity(b).numerical_value(), f...));
 }
-template <class Out, policy_flag F = beman::inside::detail::none, class A, class B>
-    requires detail::into_operands<Out, -1, A, B> && requires(const A& a, const B& b) {
-        beman::inside::div_into<typename detail::out_rep<Out>::type, F>(detail::into_scaled<Out, -1>(a, b),
-                                                                        detail::as_quantity(b).numerical_value());
-    }
-[[nodiscard]] constexpr auto div_into(const A& a, const B& b) {
-    return detail::wrap_out<Out>(beman::inside::div_into<typename detail::out_rep<Out>::type, F>(
-        detail::into_scaled<Out, -1>(a, b), detail::as_quantity(b).numerical_value()));
+template <class C, class A, class B, class... Fl>
+    requires(!insidable<A> || !insidable<B>) &&
+            detail::into_operands<detail::named_product_t<C, -1, A, B>, -1, A, B> &&
+            requires(const A& a, const B& b, const Fl&... f) {
+                beman::inside::div<typename detail::out_rep<detail::named_product_t<C, -1, A, B>>::type>(
+                    detail::into_scaled<detail::named_product_t<C, -1, A, B>, -1>(a, b),
+                    detail::as_quantity(b).numerical_value(),
+                    f...);
+            }
+[[nodiscard]] constexpr auto div(const A& a, const B& b, const Fl&... f) {
+    using Out = detail::named_product_t<C, -1, A, B>;
+    return detail::wrap_out<Out>(beman::inside::div<typename detail::out_rep<Out>::type>(
+        detail::into_scaled<Out, -1>(a, b), detail::as_quantity(b).numerical_value(), f...));
 }
 
 // add_all / mul_all with at least one quantity: the same folds as on inside.
@@ -22617,7 +23015,7 @@ BEMAN_INSIDE_UNITS_SUM_FN(mod)
 #undef BEMAN_INSIDE_UNITS_SUM_FN
 
 #define BEMAN_INSIDE_UNITS_PRODUCT_FN(name, sign)                                                                  \
-    template <reference A, class VA, reference B, class VB, class... Args>                                         \
+    template <int&... Barrier, reference A, class VA, reference B, class VB, class... Args>                        \
         requires requires(const VA& x, const VB& y, Args&&... args) {                                              \
             beman::inside::name(x, y, std::forward<Args>(args)...);                                                \
         }                                                                                                          \
@@ -22625,7 +23023,7 @@ BEMAN_INSIDE_UNITS_SUM_FN(mod)
         return detail::make_quantity<detail::product_reference<A, B, sign>()>(                                     \
             beman::inside::name(a.numerical_value(), b.numerical_value(), std::forward<Args>(args)...));           \
     }                                                                                                              \
-    template <reference A, class VA, insidable V, class... Args>                                                   \
+    template <int&... Barrier, reference A, class VA, insidable V, class... Args>                                  \
         requires requires(const VA& x, const V& y, Args&&... args) {                                               \
             beman::inside::name(x, y, std::forward<Args>(args)...);                                                \
         }                                                                                                          \
@@ -22636,15 +23034,16 @@ BEMAN_INSIDE_UNITS_PRODUCT_FN(mul, 1)
 BEMAN_INSIDE_UNITS_PRODUCT_FN(div, -1)
 #undef BEMAN_INSIDE_UNITS_PRODUCT_FN
 
-// A number times or over a quantity, as the operators.
-template <insidable V, reference A, class VA, class... Args>
+// A number times or over a quantity, as the operators. (The leading int&...
+// takes no argument: mul<C>(a, b) is the named form above.)
+template <int&... Barrier, insidable V, reference A, class VA, class... Args>
     requires requires(const V& x, const VA& y, Args&&... args) {
         beman::inside::mul(x, y, std::forward<Args>(args)...);
     }
 [[nodiscard]] constexpr auto mul(const V& v, const quantity<A, VA>& a, Args&&... args) {
     return detail::make_quantity<A>(beman::inside::mul(v, a.numerical_value(), std::forward<Args>(args)...));
 }
-template <insidable V, reference A, class VA, class... Args>
+template <int&... Barrier, insidable V, reference A, class VA, class... Args>
     requires requires(const V& x, const VA& y, Args&&... args) {
         beman::inside::div(x, y, std::forward<Args>(args)...);
     }
@@ -22661,7 +23060,7 @@ concept arith_with_hook = (quantity_like<L> || quantity_like<R>) &&
                           (beman::inside::detail::is_action_tag_v<std::remove_cvref_t<Args>> || ...);
 }
 #define BEMAN_INSIDE_UNITS_HOOK_DELETED(name)                                                                    \
-    template <class L, class R, class... Args>                                                                   \
+    template <int&... Barrier, class L, class R, class... Args>                                                  \
         requires detail::arith_with_hook<L, R, Args...>                                                          \
     auto name(const L&, const R&, Args&&...) = delete (                                                          \
         "units: add/sub/mul/div/mod/divmod take no hooks: on_clamp / on_wrap / on_error apply to a store - use " \
@@ -22942,6 +23341,7 @@ template <reference R, detail::origin_ref O, class V, reference R2, detail::orig
 
 
 #undef BEMAN_INSIDE_UNITS_WHY_PI
+#undef BEMAN_INSIDE_UNITS_WHY_GEOALG
 
 
 // ======================================================================
@@ -23371,6 +23771,854 @@ inline constexpr auto vacuum_electric_permittivity = detail::one_of<codata2022::
 
 #endif // BEMAN_INSIDE_NO_UNITS
 
+#ifndef BEMAN_INSIDE_NO_UNITS
+
+// ======================================================================
+//  beman/inside/units/geoalg.hpp
+// ======================================================================
+// Geometric algebra on units. Basis vectors are units of your own
+// (basis_vector, in units/core.hpp): you state each one's square, +1, -1 or
+// 0, and two different ones anticommute. A product of quantities is then
+// again a quantity, its sign worked out: (3 e₂)(4 e₁) = -12 e₁ e₂. This header
+// adds the sums of different blades, multivectors, and the operations of the
+// algebra on them:
+//   - a + b, a - b, -a, a * b (the geometric product), a / b;
+//   - wedge, left_contraction, right_contraction, scalar_product;
+//   - reverse, involute, conjugate, grade<K>, part(x, u);
+//   - dual(x, I), complement(x, I), regressive(a, b, I);
+//   - squared_norm(x), inverse(x).
+// Complex numbers are the even part of G(2,0), quaternions the even part of
+// G(3,0). Each part of a multivector keeps its own inside, so every part's
+// range is proved; the arithmetic is exact.
+
+
+
+#include <array>
+#include <cstddef>
+#include <expected>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+
+namespace beman::inside::units {
+
+namespace detail {
+template <class T>
+inline constexpr bool is_multivector_v = false;
+template <class... P>
+inline constexpr bool is_multivector_v<multivector<P...>> = true;
+} // namespace detail
+
+// An element of the algebra: an inside (a scalar), a quantity (a number times
+// a unit with or without a blade), or a multivector.
+template <class T>
+concept multivector_like = insidable<T> || quantity_like<T> || detail::is_multivector_v<std::remove_cvref_t<T>>;
+
+namespace detail {
+// A part as a multivector holds it: a dimensionless quantity that is a plain
+// number (no blade, no kind) is its inside.
+template <class P>
+constexpr auto as_part(const P& p) {
+    if constexpr (quantity_like<P>) {
+        if constexpr (number_like_v<P::reference>)
+            return static_cast<number_t<P::reference, typename P::rep>>(p);
+        else
+            return p;
+    } else
+        return p;
+}
+
+// x's parts, as a tuple: one for an inside or a quantity, none for the zero.
+template <class X>
+constexpr auto parts_of(const X& x) {
+    if constexpr (std::same_as<X, multivector<>>)
+        return std::tuple<>{};
+    else if constexpr (is_multivector_v<X>)
+        return x.parts();
+    else
+        return std::tuple{as_part(x)};
+}
+template <class X>
+using parts_t = decltype(parts_of(std::declval<const X&>()));
+
+// The dimension of a part: the unit's for a quantity, one for an inside.
+template <class P>
+consteval dimension part_dim() {
+    if constexpr (quantity_like<P>)
+        return dimension_of(P::reference.U);
+    else
+        return dim_one;
+}
+template <class Tuple>
+consteval auto dims_of() {
+    return []<std::size_t... I>(std::index_sequence<I...>) {
+        return std::array<dimension, sizeof...(I)>{part_dim<std::tuple_element_t<I, Tuple>>()...};
+    }(std::make_index_sequence<std::tuple_size_v<Tuple>>{});
+}
+
+// The order of parts: by grade, then by the names of the basis vectors.
+consteval bool blade_less(const dimension& a, const dimension& b) {
+    const blade x = blade_of(a), y = blade_of(b);
+    if (x.size() != y.size())
+        return x.size() < y.size();
+    const auto name = [](const base_dimension* v) { return v->Name; };
+    return std::ranges::lexicographical_compare(x, y, std::ranges::less{}, name, name);
+}
+consteval bool blade_equal(const dimension& a, const dimension& b) { return !blade_less(a, b) && !blade_less(b, a); }
+
+// Parts in order, of distinct blades and one dimension but for the blades.
+template <class... P>
+consteval bool canonical_parts() {
+    const std::array<dimension, sizeof...(P)> d{part_dim<P>()...};
+    for (std::size_t i = 1; i < d.size(); ++i)
+        if (!same_outside_blade(d[0], d[i]) || !blade_less(d[i - 1], d[i]))
+            return false;
+    return true;
+}
+template <class P>
+consteval bool is_part() {
+    if constexpr (quantity_like<P>)
+        return !number_like_v<P::reference>;
+    else
+        return insidable<P>;
+}
+
+// 0, 1 or more parts (in order, distinct blades): the zero, the part itself,
+// or a multivector.
+template <class... P>
+constexpr auto collapse(const P&... p) {
+    if constexpr (sizeof...(P) == 0)
+        return multivector<>{};
+    else if constexpr (sizeof...(P) == 1)
+        return (p, ...);
+    else
+        return multivector<P...>{p...};
+}
+
+// Where each blade of a sum comes from: a part of A, of B, or of both.
+struct merge_item {
+    int A{-1};
+    int B{-1};
+};
+template <std::size_t N>
+struct merge_plan {
+    std::array<merge_item, N> Items{};
+    std::size_t               Size{0};
+};
+template <class PA, class PB>
+consteval auto make_merge_plan() {
+    constexpr auto                    da = dims_of<PA>(), db = dims_of<PB>();
+    merge_plan<da.size() + db.size()> p;
+    std::size_t                       i = 0, j = 0;
+    while (i < da.size() || j < db.size()) {
+        if (j == db.size() || (i < da.size() && blade_less(da[i], db[j])))
+            p.Items[p.Size++] = {static_cast<int>(i++), -1};
+        else if (i == da.size() || blade_less(db[j], da[i]))
+            p.Items[p.Size++] = {-1, static_cast<int>(j++)};
+        else
+            p.Items[p.Size++] = {static_cast<int>(i++), static_cast<int>(j++)};
+    }
+    return p;
+}
+
+// Whether a and b add: one dimension but for the blades, and each pair of
+// parts of one blade adds.
+template <class A, class B>
+consteval bool mergeable() {
+    using PA          = parts_t<A>;
+    using PB          = parts_t<B>;
+    constexpr auto da = dims_of<PA>();
+    constexpr auto db = dims_of<PB>();
+    if constexpr (da.size() > 0 && db.size() > 0) {
+        if (!same_outside_blade(da[0], db[0]))
+            return false;
+        static constexpr auto plan = make_merge_plan<PA, PB>();
+        return []<std::size_t... K>(std::index_sequence<K...>) {
+            return ([] {
+                constexpr merge_item it = plan.Items[K];
+                if constexpr (it.A >= 0 && it.B >= 0)
+                    return requires(const std::tuple_element_t<it.A, PA>& x, const std::tuple_element_t<it.B, PB>& y) {
+                        x + y;
+                    };
+                else
+                    return true;
+            }() && ...);
+        }(std::make_index_sequence<plan.Size>{});
+    } else
+        return true;
+}
+
+// a + b: per blade, the parts of one blade added (in their common unit).
+template <class A, class B>
+constexpr auto mv_add(const A& a, const B& b) {
+    using PA                   = parts_t<A>;
+    using PB                   = parts_t<B>;
+    static constexpr auto plan = make_merge_plan<PA, PB>();
+    const PA              pa   = parts_of(a);
+    const PB              pb   = parts_of(b);
+    return [&]<std::size_t... K>(std::index_sequence<K...>) {
+        return collapse([&] {
+            constexpr merge_item it = plan.Items[K];
+            if constexpr (it.A >= 0 && it.B >= 0)
+                return as_part(std::get<it.A>(pa) + std::get<it.B>(pb));
+            else if constexpr (it.A >= 0)
+                return std::get<it.A>(pa);
+            else
+                return std::get<it.B>(pb);
+        }()...);
+    }(std::make_index_sequence<plan.Size>{});
+}
+
+// The sum of any number of elements, from the zero up.
+template <class T>
+constexpr auto mv_sum(const T& t) {
+    return t;
+}
+template <class T, class U, class... R>
+constexpr auto mv_sum(const T& t, const U& u, const R&... r) {
+    return mv_sum(mv_add(t, u), r...);
+}
+
+// f applied to each part, the results summed (f may drop a part as zero or
+// move it to another blade).
+template <class X, class F>
+constexpr auto each_part(const X& x, F f) {
+    return std::apply([&](const auto&... p) { return mv_sum(multivector<>{}, f(p)...); }, parts_of(x));
+}
+
+template <class X>
+constexpr auto mv_negate(const X& x) {
+    return each_part(x, [](const auto& p) { return as_part(-p); });
+}
+
+// The bilinear products: each keeps the pairs of basis blades its rule
+// names, as their geometric product (for an orthogonal basis, A⌋B is AB when
+// A ⊆ B, and A∧B is AB when they share no basis vector).
+enum class product_rule : unsigned char { geometric, wedge, left_contraction, right_contraction, scalar };
+
+consteval bool keeps(product_rule r, const dimension& a, const dimension& b) {
+    const blade x = blade_of(a), y = blade_of(b);
+    if (blade_sign(x, y) == 0) // a null vector meets itself: the product is 0
+        return false;
+    blade z = x;
+    blade_mul(z, y);
+    switch (r) {
+    case product_rule::geometric:
+        return true;
+    case product_rule::wedge:
+        return z.size() == x.size() + y.size();
+    case product_rule::left_contraction:
+        return z.size() + x.size() == y.size();
+    case product_rule::right_contraction:
+        return z.size() + y.size() == x.size();
+    case product_rule::scalar:
+        return z.empty();
+    }
+    return false;
+}
+
+template <product_rule Rule, class A, class B>
+constexpr auto mv_product(const A& a, const B& b) {
+    using PA                 = parts_t<A>;
+    using PB                 = parts_t<B>;
+    constexpr std::size_t NA = std::tuple_size_v<PA>, NB = std::tuple_size_v<PB>;
+    static constexpr auto da = dims_of<PA>();
+    static constexpr auto db = dims_of<PB>();
+    const PA              pa = parts_of(a);
+    const PB              pb = parts_of(b);
+    return [&]<std::size_t... K>(std::index_sequence<K...>) {
+        return mv_sum(multivector<>{}, [&] {
+            constexpr std::size_t i = K / NB, j = K % NB;
+            if constexpr (keeps(Rule, da[i], db[j]))
+                return as_part(std::get<i>(pa) * std::get<j>(pb));
+            else
+                return multivector<>{};
+        }()...);
+    }(std::make_index_sequence<NA * NB>{});
+}
+
+// v as an expected (a quotient is one when it can fail).
+template <class V>
+constexpr auto as_expected(V&& v) {
+    if constexpr (is_expected_v<std::remove_cvref_t<V>>)
+        return std::forward<V>(v);
+    else
+        return std::expected<std::remove_cvref_t<V>, errc>{std::forward<V>(v)};
+}
+
+// x / s for one part s (a number, or a quantity of any blade): each part
+// divided. When a quotient can fail (s's grid holds 0), the result is an
+// expected, with the first part's error.
+template <class X, class S>
+constexpr auto divide_parts(const X& x, const S& s) {
+    using P = parts_t<X>;
+    return [&]<std::size_t... K>(std::index_sequence<K...>) {
+        const P p = parts_of(x);
+        if constexpr ((is_expected_v<decltype(std::get<K>(p) / s)> || ...)) {
+            const auto q = std::tuple{as_expected(std::get<K>(p) / s)...};
+            using R      = decltype(mv_sum(multivector<>{}, as_part(*std::get<K>(q))...));
+            errc e{};
+            if (((!std::get<K>(q) && (e = std::get<K>(q).error(), true)) || ...))
+                return std::expected<R, errc>{std::unexpect, e};
+            return std::expected<R, errc>{mv_sum(multivector<>{}, as_part(*std::get<K>(q))...)};
+        } else
+            return mv_sum(multivector<>{}, as_part(std::get<K>(p) / s)...);
+    }(std::make_index_sequence<std::tuple_size_v<P>>{});
+}
+
+template <class X>
+inline constexpr bool is_zero_multivector_v = std::same_as<std::remove_cvref_t<X>, multivector<>>;
+
+// A part that is 0.
+template <class P>
+constexpr bool part_is_zero(const P& p) {
+    if constexpr (quantity_like<P>)
+        return p.numerical_value() == just<0>;
+    else
+        return p == just<0>;
+}
+
+template <class A, class B>
+constexpr bool mv_equal(const A& a, const B& b) {
+    using PA                   = parts_t<A>;
+    using PB                   = parts_t<B>;
+    static constexpr auto plan = make_merge_plan<PA, PB>();
+    const PA              pa   = parts_of(a);
+    const PB              pb   = parts_of(b);
+    return [&]<std::size_t... K>(std::index_sequence<K...>) {
+        return ([&] {
+            constexpr merge_item it = plan.Items[K];
+            if constexpr (it.A >= 0 && it.B >= 0)
+                return std::get<it.A>(pa) == std::get<it.B>(pb);
+            else if constexpr (it.A >= 0)
+                return part_is_zero(std::get<it.A>(pa));
+            else
+                return part_is_zero(std::get<it.B>(pb));
+        }() && ...);
+    }(std::make_index_sequence<plan.Size>{});
+}
+
+// The involutions: a sign per grade.
+template <int (*Sign)(int), class X>
+constexpr auto graded_sign(const X& x) {
+    return each_part(x, [](const auto& p) {
+        if constexpr (Sign(grade_of(part_dim<std::remove_cvref_t<decltype(p)>>())) > 0)
+            return p;
+        else
+            return as_part(-p);
+    });
+}
+
+// The adjoint whose product with x is a scalar for every value of x's type,
+// if one is: for each pair of parts i < j, the two cross terms B_i·α(B_j) and
+// B_j·α(B_i) must cancel. reverse first, then the Clifford conjugate (which
+// also covers G(1,0) and the dual numbers).
+enum class adjoint_kind : unsigned char { none, reverse, conjugate };
+template <class X>
+consteval adjoint_kind adjoint_of() {
+    constexpr auto d       = dims_of<parts_t<X>>();
+    const auto     cancels = [&](int (*sign)(int)) {
+        for (std::size_t i = 0; i < d.size(); ++i)
+            for (std::size_t j = i + 1; j < d.size(); ++j) {
+                const blade x = blade_of(d[i]), y = blade_of(d[j]);
+                const int   p = blade_sign(x, y), q = blade_sign(y, x);
+                if (p * sign(static_cast<int>(y.size())) + q * sign(static_cast<int>(x.size())) != 0)
+                    return false;
+            }
+        return true;
+    };
+    if (cancels(reverse_sign))
+        return adjoint_kind::reverse;
+    if (cancels(conjugate_sign))
+        return adjoint_kind::conjugate;
+    return adjoint_kind::none;
+}
+template <adjoint_kind K, class X>
+constexpr auto adjoint(const X& x) {
+    if constexpr (K == adjoint_kind::reverse)
+        return graded_sign<reverse_sign>(x);
+    else
+        return graded_sign<conjugate_sign>(x);
+}
+// Σ partᵢ·α(partᵢ): the scalar x·α(x) when the cross terms cancel.
+template <adjoint_kind K, class X>
+constexpr auto adjoint_norm(const X& x) {
+    return each_part(x, [](const auto& p) { return as_part(p * adjoint<K>(p)); });
+}
+template <class X>
+concept invertible = multivector_like<X> && (adjoint_of<std::remove_cvref_t<X>>() != adjoint_kind::none) &&
+                     !is_zero_multivector_v<decltype(adjoint_norm<adjoint_of<std::remove_cvref_t<X>>()>(
+                         std::declval<const std::remove_cvref_t<X>&>()))>;
+
+// A unit spelled by the basis vectors of d's blade, in name order: its
+// canonical blade (magnitude 1).
+consteval unit canonical_blade_unit(const dimension& d) {
+    unit u{};
+    for (const base_dimension* v : blade_of(d))
+        unit_add(u, unit_atom{v->Vector, 0, 1});
+    return u;
+}
+// d's blade outside the blade of I (I ∖ A).
+consteval dimension blade_rest(const dimension& i, const dimension& a) {
+    return dimension_of(canonical_blade_unit(i)) / dimension_of(canonical_blade_unit(a));
+}
+consteval bool blade_within(const dimension& a, const dimension& i) {
+    blade x = blade_of(a);
+    blade_mul(x, blade_of(i));
+    return x.size() + blade_of(a).size() == blade_of(i).size();
+}
+// Where the part of type T comes from in the parts PX: its index, or -1.
+template <class T, class PX>
+consteval int source_of() {
+    constexpr auto dx = dims_of<PX>();
+    for (std::size_t j = 0; j < dx.size(); ++j)
+        if (blade_equal(part_dim<T>(), dx[j]))
+            return static_cast<int>(j);
+    return -1;
+}
+// The number type of a part.
+template <class T>
+struct part_number {
+    using type = T;
+};
+template <reference R, class V>
+struct part_number<quantity<R, V>> {
+    using type = V;
+};
+// Whether part T is made from its source in PX (or from 0), with policies.
+template <class T, class PX, class... Pol>
+consteval bool part_from() {
+    constexpr int from = source_of<T, PX>();
+    if constexpr (from >= 0)
+        return std::constructible_from<T, const std::tuple_element_t<from, PX>&, const Pol&...>;
+    else
+        return std::constructible_from<T, decltype(just<0>), const Pol&...>;
+}
+template <class T, class PX>
+consteval bool part_from_implicitly() {
+    constexpr int from = source_of<T, PX>();
+    if constexpr (from >= 0)
+        return std::convertible_to<const std::tuple_element_t<from, PX>&, T>;
+    else
+        return std::convertible_to<decltype(just<0>), typename part_number<T>::type>;
+}
+
+// The blade atoms of a unit, unscaled: e₁ e₂ of m e₁ e₂.
+consteval unit blade_atoms(const unit& u) {
+    unit b{};
+    for (std::int8_t i = 0; i < u.Size; ++i)
+        if (is_blade_atom(u.Atoms[i]))
+            unit_add(b, u.Atoms[i]);
+    return b;
+}
+// Part p in unit U times p's blade: 2 km e₁ in m is 2000 m e₁.
+template <unit U, class P>
+constexpr auto part_in(const P& p) {
+    if constexpr (quantity_like<P>)
+        return p.template in<unit_mul(U, blade_atoms(P::reference.U), 1)>();
+    else
+        return quantity<reference_of(unit{}), P>{p}.template in<U>();
+}
+template <unit U, class P>
+concept part_in_unit = requires(const P& p) { part_in<U>(p); };
+
+// u without its blade atoms (its scale kept), and the sign and size of the
+// blade's spelling: u = factor · physical_atoms(u) · canonical blade.
+consteval unit physical_atoms(const unit& u) {
+    unit r{};
+    r.Scale = u.Scale;
+    for (std::int8_t i = 0; i < u.Size; ++i)
+        if (!is_blade_atom(u.Atoms[i]))
+            unit_add(r, u.Atoms[i]);
+    return r;
+}
+consteval grid_rational blade_factor(const unit& u) {
+    return (magnitude_of(u) / magnitude_of(physical_atoms(u))).Ratio;
+}
+template <class P>
+consteval unit unit_of_part() {
+    if constexpr (quantity_like<P>)
+        return P::reference.U;
+    else
+        return unit{};
+}
+template <class P>
+constexpr const auto& number_of_part(const P& p) {
+    if constexpr (quantity_like<P>)
+        return p.numerical_value();
+    else
+        return p;
+}
+// p's coefficient times F on the canonical blade B, in p's unit without its
+// blade: no division, so a blade with a null vector moves too.
+template <dimension B, grid_rational F, class P>
+constexpr auto move_to_blade(const P& p) {
+    static constexpr unit u = unit_of_part<P>();
+    constexpr unit        r = [] {
+        unit t = physical_atoms(u);
+        for (const base_dimension* v : blade_of(B))
+            unit_add(t, unit_atom{v->Vector, 0, 1});
+        return t;
+    }();
+    constexpr grid_rational f = blade_factor(u) * F;
+    return as_part(make_quantity<reference_of(r)>(number_of_part(p) * just<f>));
+}
+
+// A pseudoscalar argument: a unit of a blade only.
+template <unit I>
+concept pseudoscalar = has_blade(dimension_of(I)) && same_outside_blade(dimension_of(I), dim_one);
+} // namespace detail
+
+//---------------------------------------------------------------------------
+// multivector<Parts...> — a sum of parts of different blades: insides (the
+// scalar part, when it is a plain number) and quantities, in canonical order
+// (by grade, then by the names of the basis vectors), all of one dimension
+// but for their blades. Results with one part are that part, with none the
+// zero multivector<>.
+//---------------------------------------------------------------------------
+template <class... Parts>
+class multivector {
+    static_assert(sizeof...(Parts) >= 2,
+                  "units: a multivector has two parts or more - one part is the quantity itself");
+    static_assert(
+        (detail::is_part<Parts>() && ...),
+        "units: a multivector's parts are insides and quantities (a plain dimensionless number is an inside)");
+    static_assert(
+        detail::canonical_parts<Parts...>(),
+        "units: a multivector's parts have distinct blades, by grade then by name, and one dimension but for "
+        "their blades");
+
+    std::tuple<Parts...> P{};
+
+    template <class X, class... Pol>
+    static constexpr std::tuple<Parts...> embed(const X& x, const Pol&... pol) {
+        using PX    = detail::parts_t<X>;
+        const PX px = detail::parts_of(x);
+        return [&]<std::size_t... K>(std::index_sequence<K...>) {
+            return std::tuple<Parts...>{[&] {
+                using T            = Parts...[K];
+                constexpr int from = detail::source_of<T, PX>();
+                if constexpr (from >= 0)
+                    return T(std::get<from>(px), pol...);
+                else
+                    return T(just<0>, pol...);
+            }()...};
+        }(std::make_index_sequence<sizeof...(Parts)>{});
+    }
+
+    // Each of X's blades is one of these (of the same dimension), and each
+    // part is made from X's part of its blade, or from 0.
+    template <class X, class... Pol>
+    static consteval bool embeds() {
+        using PX = detail::parts_t<X>;
+        for (const dimension& d : detail::dims_of<PX>()) {
+            bool found = false;
+            for (const dimension& m : {detail::part_dim<Parts>()...})
+                found = found || (detail::blade_equal(d, m) && detail::same_outside_blade(d, m));
+            if (!found)
+                return false;
+        }
+        return (detail::part_from<Parts, PX, Pol...>() && ...);
+    }
+    template <class X>
+    static consteval bool embeds_implicitly() {
+        return (detail::part_from_implicitly<Parts, detail::parts_t<X>>() && ...);
+    }
+
+  public:
+    using parts_type = std::tuple<Parts...>;
+
+    constexpr multivector() = default;
+
+    // From its parts, in order: multivector<inside<…>, quantity<i, …>>{3, 4}.
+    template <class... A>
+        requires(sizeof...(A) == sizeof...(Parts) && (std::constructible_from<Parts, A> && ...))
+    constexpr explicit(!(std::convertible_to<A, Parts> && ...)) multivector(A&&... a)
+        : P{Parts(std::forward<A>(a))...} {}
+
+    // From any element whose blades are among these; the parts it lacks are
+    // 0. Implicit when each part converts implicitly.
+    template <multivector_like X>
+        requires(!std::same_as<std::remove_cvref_t<X>, multivector>) && (embeds<X>())
+    constexpr explicit(!embeds_implicitly<X>()) multivector(const X& x) : P{embed(x)} {}
+
+    // The same with a one-shot policy for each part's store: {x, clamp}.
+    template <multivector_like X, class Pol>
+        requires(beman::inside::detail::flag_like<Pol> || beman::inside::detail::policy_like<Pol>) &&
+                (embeds<X, Pol>())
+    constexpr multivector(const X& x, const Pol& pol) : P{embed(x, pol)} {}
+
+    [[nodiscard]] constexpr const parts_type& parts() const noexcept { return P; }
+
+    // Each part in unit U (a unit without blades), its blade kept, exactly:
+    // (V / Z).in(si::ampere).
+    template <units::unit U>
+        requires(!detail::has_blade(dimension_of(U))) && (detail::part_in_unit<U, Parts> && ...)
+    [[nodiscard]] constexpr auto in(unit_t<U>) const {
+        return std::apply([](const auto&... p) { return detail::collapse(detail::part_in<U>(p)...); }, P);
+    }
+
+    [[nodiscard]] constexpr auto operator+() const { return *this; }
+    [[nodiscard]] constexpr auto operator-() const { return detail::mv_negate(*this); }
+};
+
+namespace detail {
+// The operands of a multivector operation: elements, at least one of them a
+// multivector (sums and products of plain parts are the units' own).
+template <class A, class B>
+concept mv_operands = multivector_like<A> && multivector_like<B> &&
+                      (is_multivector_v<std::remove_cvref_t<A>> || is_multivector_v<std::remove_cvref_t<B>>);
+template <class A, class B>
+concept mv_addable = mergeable<std::remove_cvref_t<A>, std::remove_cvref_t<B>>();
+// Subsumes the deleted overloads of units/core.hpp.
+template <reference A>
+concept geoalg_included = true;
+} // namespace detail
+
+//---------------------------------------------------------------------------
+// Sums: per blade, the parts of one blade added in their common unit.
+//---------------------------------------------------------------------------
+template <class A, class B>
+    requires detail::mv_operands<A, B> && detail::mv_addable<A, B>
+[[nodiscard]] constexpr auto operator+(const A& a, const B& b) {
+    return detail::mv_add(a, b);
+}
+template <class A, class B>
+    requires detail::mv_operands<A, B> && detail::mv_addable<A, B>
+[[nodiscard]] constexpr auto operator-(const A& a, const B& b) {
+    return detail::mv_add(a, detail::mv_negate(b));
+}
+template <class A, class B>
+    requires detail::mv_operands<A, B> && detail::mv_addable<A, B>
+[[nodiscard]] constexpr bool operator==(const A& a, const B& b) {
+    return detail::mv_equal(a, b);
+}
+
+template <class A, class B>
+    requires detail::mv_operands<A, B> && (!detail::mv_addable<A, B>)
+void operator+(const A&, const B&) = delete ("units: adding multivectors of different dimensions (outside their "
+                                             "blades), or parts of one blade that do not add");
+template <class A, class B>
+    requires detail::mv_operands<A, B> && (!detail::mv_addable<A, B>)
+void operator-(const A&, const B&) = delete ("units: subtracting multivectors of different dimensions (outside "
+                                             "their blades), or parts of one blade that do not add");
+
+// A number and a quantity, as elements: i·i == just<-1>, (2 e₁)² == just<4>.
+template <insidable V, reference A, class VA>
+    requires detail::mv_addable<V, quantity<A, VA>>
+[[nodiscard]] constexpr bool operator==(const V& v, const quantity<A, VA>& q) {
+    return detail::mv_equal(v, q);
+}
+
+// Two quantities of different blades, and a number and a quantity of a
+// blade: 3 + 4 i, 2 m e₁ + 1 m e₂.
+template <reference A, class VA, reference B, class VB>
+    requires detail::blade_sum<A, B> && detail::geoalg_included<A>
+[[nodiscard]] constexpr auto operator+(const quantity<A, VA>& a, const quantity<B, VB>& b) {
+    return detail::mv_add(a, b);
+}
+template <reference A, class VA, reference B, class VB>
+    requires detail::blade_sum<A, B> && detail::geoalg_included<A>
+[[nodiscard]] constexpr auto operator-(const quantity<A, VA>& a, const quantity<B, VB>& b) {
+    return detail::mv_add(a, -b);
+}
+template <reference A, class VA, reference B, class VB>
+    requires detail::blade_sum<A, B> && detail::geoalg_included<A>
+[[nodiscard]] constexpr bool operator==(const quantity<A, VA>& a, const quantity<B, VB>& b) {
+    return detail::mv_equal(a, b);
+}
+template <insidable V, reference A, class VA>
+    requires detail::number_blade_sum<A> && detail::geoalg_included<A>
+[[nodiscard]] constexpr auto operator+(const V& v, const quantity<A, VA>& a) {
+    return detail::mv_add(v, a);
+}
+template <reference A, class VA, insidable V>
+    requires detail::number_blade_sum<A> && detail::geoalg_included<A>
+[[nodiscard]] constexpr auto operator+(const quantity<A, VA>& a, const V& v) {
+    return detail::mv_add(a, v);
+}
+template <insidable V, reference A, class VA>
+    requires detail::number_blade_sum<A> && detail::geoalg_included<A>
+[[nodiscard]] constexpr auto operator-(const V& v, const quantity<A, VA>& a) {
+    return detail::mv_add(v, -a);
+}
+template <reference A, class VA, insidable V>
+    requires detail::number_blade_sum<A> && detail::geoalg_included<A>
+[[nodiscard]] constexpr auto operator-(const quantity<A, VA>& a, const V& v) {
+    return detail::mv_add(a, detail::as_part(-v));
+}
+
+//---------------------------------------------------------------------------
+// Products. The geometric product of two quantities is the units' own;
+// these take multivectors.
+//---------------------------------------------------------------------------
+template <class A, class B>
+    requires detail::mv_operands<A, B>
+[[nodiscard]] constexpr auto operator*(const A& a, const B& b) {
+    return detail::mv_product<detail::product_rule::geometric>(a, b);
+}
+// Each part times a unit: (3 + 4 i) * si::ohm.
+template <class... P, class Tag>
+    requires detail::is_reference_tag_v<Tag>
+[[nodiscard]] constexpr auto operator*(const multivector<P...>& x, Tag t) {
+    return detail::each_part(x, [t](const auto& p) { return detail::as_part(p * t); });
+}
+
+// The outer product a ∧ b: the pairs of blades with no basis vector in common.
+template <multivector_like A, multivector_like B>
+[[nodiscard]] constexpr auto wedge(const A& a, const B& b) {
+    return detail::mv_product<detail::product_rule::wedge>(a, b);
+}
+// The left contraction a ⌋ b (the pairs with A ⊆ B, of grade |B| - |A|) and
+// the right one a ⌊ b (B ⊆ A).
+template <multivector_like A, multivector_like B>
+[[nodiscard]] constexpr auto left_contraction(const A& a, const B& b) {
+    return detail::mv_product<detail::product_rule::left_contraction>(a, b);
+}
+template <multivector_like A, multivector_like B>
+[[nodiscard]] constexpr auto right_contraction(const A& a, const B& b) {
+    return detail::mv_product<detail::product_rule::right_contraction>(a, b);
+}
+// The scalar product ⟨a b⟩₀.
+template <multivector_like A, multivector_like B>
+[[nodiscard]] constexpr auto scalar_product(const A& a, const B& b) {
+    return detail::mv_product<detail::product_rule::scalar>(a, b);
+}
+
+//---------------------------------------------------------------------------
+// Involutions, grades and parts.
+//---------------------------------------------------------------------------
+// The reverse x̃ (grade k times (-1)^(k(k-1)/2)): the conjugate of a complex
+// number or a quaternion.
+template <multivector_like X>
+[[nodiscard]] constexpr auto reverse(const X& x) {
+    return detail::graded_sign<detail::reverse_sign>(x);
+}
+// The grade involution x̂ ((-1)^k).
+template <multivector_like X>
+[[nodiscard]] constexpr auto involute(const X& x) {
+    return detail::graded_sign<detail::involute_sign>(x);
+}
+// The Clifford conjugate x̄ ((-1)^(k(k+1)/2)).
+template <multivector_like X>
+[[nodiscard]] constexpr auto conjugate(const X& x) {
+    return detail::graded_sign<detail::conjugate_sign>(x);
+}
+// The parts of grade K.
+template <int K, multivector_like X>
+[[nodiscard]] constexpr auto grade(const X& x) {
+    return detail::each_part(x, [](const auto& p) {
+        if constexpr (detail::grade_of(detail::part_dim<std::remove_cvref_t<decltype(p)>>()) == K)
+            return p;
+        else
+            return multivector<>{};
+    });
+}
+// The coefficient of blade u (a unit of a blade only, or `one`): the part of
+// that blade divided by u, so 2 m for 2 m e₁ and u = e1, the sign of u's
+// spelling included. The zero when x has no such part.
+template <multivector_like X, unit U>
+    requires(detail::same_outside_blade(dimension_of(U), dim_one))
+[[nodiscard]] constexpr auto part(const X& x, unit_t<U>) {
+    return detail::each_part(x, [](const auto& p) {
+        if constexpr (detail::blade_equal(detail::part_dim<std::remove_cvref_t<decltype(p)>>(), dimension_of(U)))
+            return detail::move_to_blade<dim_one, grid_rational{1} / magnitude_of(U).Ratio>(p);
+        else
+            return multivector<>{};
+    });
+}
+
+//---------------------------------------------------------------------------
+// Norms, inverses and division.
+//---------------------------------------------------------------------------
+// ⟨x x̃⟩₀ = Σ partᵢ·reverse(partᵢ): |z|² of a complex number z, |q|² of a
+// quaternion, |v|² of a Euclidean vector.
+template <multivector_like X>
+[[nodiscard]] constexpr auto squared_norm(const X& x) {
+    return detail::adjoint_norm<detail::adjoint_kind::reverse>(x);
+}
+
+// x⁻¹ = α(x) / (x α(x)), α the reverse or the Clifford conjugate: offered when
+// x α(x) is a scalar for every value of x's type (complex numbers,
+// quaternions, rotors, vectors, dual numbers). Like `/`, an expected when
+// the norm's grid holds 0.
+template <multivector_like X>
+    requires detail::invertible<X>
+[[nodiscard]] constexpr auto inverse(const X& x) {
+    constexpr auto k = detail::adjoint_of<std::remove_cvref_t<X>>();
+    return detail::divide_parts(detail::adjoint<k>(x), detail::adjoint_norm<k>(x));
+}
+template <multivector_like X>
+    requires(!detail::invertible<X>)
+void inverse(const X&) = delete ("units: x times its reverse (or conjugate) is no scalar for every value of this type "
+                                 "- no inverse of the form x~ / (x x~)");
+
+// a / b: by a part (each part divided), or by a multivector (a · b⁻¹).
+template <class A, class B>
+    requires detail::mv_operands<A, B>
+[[nodiscard]] constexpr auto operator/(const A& a, const B& b) {
+    if constexpr (!detail::is_multivector_v<B>)
+        return detail::divide_parts(a, b);
+    else {
+        static_assert(detail::invertible<B>, "units: the divisor has no inverse of the form x~ / (x x~)");
+        const auto inv = inverse(b);
+        if constexpr (detail::is_expected_v<std::remove_cvref_t<decltype(inv)>>)
+            return inv.transform([&](const auto& i) { return a * i; });
+        else
+            return a * inv;
+    }
+}
+
+//---------------------------------------------------------------------------
+// Duals.
+//---------------------------------------------------------------------------
+// x · I⁻¹ for a pseudoscalar unit I that squares to ±1: the cross product is
+// dual(u ∧ v, e₁₂₃) up to its sign convention.
+template <multivector_like X, unit I>
+    requires detail::pseudoscalar<I>
+[[nodiscard]] constexpr auto dual(const X& x, unit_t<I> i) {
+    static_assert(detail::blade_square(dimension_of(I)) != 0,
+                  "units: dual - the pseudoscalar squares to 0 (a null vector): use complement(x, I)");
+    return detail::each_part(x, [i](const auto& p) { return detail::as_part(p / i); });
+}
+
+// The right complement within the blade of I, without the metric: A ∧ c(A) = I
+// for each basis blade A of I. With null vectors (PGA) it stands in for the
+// dual.
+template <multivector_like X, unit I>
+    requires detail::pseudoscalar<I>
+[[nodiscard]] constexpr auto complement(const X& x, unit_t<I>) {
+    return detail::each_part(x, [](const auto& p) {
+        constexpr dimension a = detail::part_dim<std::remove_cvref_t<decltype(p)>>();
+        static_assert(detail::blade_within(a, dimension_of(I)), "units: complement - a part outside I's blade");
+        constexpr dimension rest = detail::blade_rest(dimension_of(I), a);
+        return detail::move_to_blade<rest, magnitude_of(I).Ratio * grid_rational{detail::blade_sign(a, rest)}>(p);
+    });
+}
+// The inverse of complement: uncomplement(complement(x, I), I) == x.
+template <multivector_like X, unit I>
+    requires detail::pseudoscalar<I>
+[[nodiscard]] constexpr auto uncomplement(const X& x, unit_t<I>) {
+    return detail::each_part(x, [](const auto& p) {
+        constexpr dimension b = detail::part_dim<std::remove_cvref_t<decltype(p)>>();
+        static_assert(detail::blade_within(b, dimension_of(I)), "units: uncomplement - a part outside I's blade");
+        constexpr dimension a = detail::blade_rest(dimension_of(I), b);
+        return detail::
+            move_to_blade<a, grid_rational{1} / (magnitude_of(I).Ratio * grid_rational{detail::blade_sign(a, b)})>(p);
+    });
+}
+// The regressive product a ∨ b = c⁻¹(c(a) ∧ c(b)): the join of PGA.
+template <multivector_like A, multivector_like B, unit I>
+    requires detail::pseudoscalar<I>
+[[nodiscard]] constexpr auto regressive(const A& a, const B& b, unit_t<I> i) {
+    return uncomplement(wedge(complement(a, i), complement(b, i)), i);
+}
+
+} // namespace beman::inside::units
+
+
+#endif // BEMAN_INSIDE_NO_UNITS
+
 #if !defined(BEMAN_INSIDE_NO_STRING) && !defined(BEMAN_INSIDE_NO_UNITS)
 
 // ======================================================================
@@ -23391,6 +24639,7 @@ inline constexpr auto vacuum_electric_permittivity = detail::one_of<codata2022::
 #include <ostream>
 #include <string>
 #include <string_view>
+#include <tuple>
 
 namespace beman::inside::units {
 // parse<Q, F>(text) / parse_exact<Q>(text): the number, in Q's unit.
@@ -23444,20 +24693,21 @@ inline void append_exponent(std::string& s, int e, text_encoding enc) {
 }
 
 // The atoms of one sign with |exponent| (sign ±1), or all of them with their
-// own exponent (sign 0).
+// own exponent (sign 0). The blade atoms come last, in their order: 2 m e₁.
 inline void append_atoms(std::string& s, const unit& u, int sign, text_encoding enc) {
     bool first = true;
-    for (std::int8_t i = 0; i < u.Size; ++i) {
-        const unit_atom& a = u.Atoms[i];
-        if (sign != 0 && (a.Exp > 0) != (sign > 0))
-            continue;
-        if (!first)
-            s += ' ';
-        first = false;
-        s += prefix_symbol(a.Prefix, enc);
-        s += enc == text_encoding::utf8 ? a.U->Utf8 : a.U->Ascii;
-        append_exponent(s, sign == 0 ? a.Exp : a.Exp * sign, enc);
-    }
+    for (const bool blades : {false, true})
+        for (std::int8_t i = 0; i < u.Size; ++i) {
+            const unit_atom& a = u.Atoms[i];
+            if ((sign != 0 && (a.Exp > 0) != (sign > 0)) || is_blade_atom(a) != blades)
+                continue;
+            if (!first)
+                s += ' ';
+            first = false;
+            s += prefix_symbol(a.Prefix, enc);
+            s += enc == text_encoding::utf8 ? a.U->Utf8 : a.U->Ascii;
+            append_exponent(s, sign == 0 ? a.Exp : a.Exp * sign, enc);
+        }
 }
 } // namespace detail
 
@@ -23511,6 +24761,36 @@ std::ostream& operator<<(std::ostream& os, const quantity<R, V>& q) {
     return os << units::to_string(q);
 }
 
+// A multivector (units/geoalg.hpp): its parts joined by " + ", a negative one
+// by " - ": "3 - 4 i", "2 m e₁ + 1 m e₂"; the zero is "0".
+template <class... P>
+std::string to_string(const multivector<P...>& x, text_encoding enc = text_encoding::utf8) {
+    if constexpr (sizeof...(P) == 0)
+        return "0";
+    else {
+        std::string s;
+        const auto  append = [&](const auto& p) {
+            std::string t;
+            if constexpr (quantity_like<std::remove_cvref_t<decltype(p)>>)
+                t = units::to_string(p, enc);
+            else
+                t = beman::inside::to_string(p);
+            if (s.empty())
+                s = std::move(t);
+            else if (t.starts_with('-'))
+                s += " - " + t.substr(1);
+            else
+                s += " + " + t;
+        };
+        std::apply([&](const auto&... p) { (append(p), ...); }, x.parts());
+        return s;
+    }
+}
+template <class... P>
+std::ostream& operator<<(std::ostream& os, const multivector<P...>& x) {
+    return os << units::to_string(x);
+}
+
 // A point as its quantity from its origin: "20 ℃".
 template <reference R, detail::origin_ref O, class V>
 std::string to_string(const quantity_point<R, O, V>& p, text_encoding enc = text_encoding::utf8) {
@@ -23539,6 +24819,15 @@ struct std::formatter<beman::inside::units::quantity<R, V>> : std::formatter<V> 
     }
 };
 
+// A multivector as to_string prints it; the spec pads the whole text ({:>20}).
+template <class... P>
+struct std::formatter<beman::inside::units::multivector<P...>> : std::formatter<std::string_view> {
+    template <typename Ctx>
+    auto format(const beman::inside::units::multivector<P...>& x, Ctx& ctx) const {
+        return std::formatter<std::string_view>::format(beman::inside::units::to_string(x), ctx);
+    }
+};
+
 template <beman::inside::units::reference R, beman::inside::units::detail::origin_ref O, class V>
 struct std::formatter<beman::inside::units::quantity_point<R, O, V>>
     : std::formatter<beman::inside::units::quantity<R, V>> {
@@ -23556,28 +24845,31 @@ struct std::formatter<beman::inside::units::quantity_point<R, O, V>>
 // ======================================================================
 //  beman/inside/units/math.hpp
 // ======================================================================
-// Opt-in: math on units::quantity, over the correctly rounded engine
-// (math.hpp). Kept apart from units.hpp, which stays free of the engine's
-// compile time.
+// Opt-in: the math functions on units::quantity, over the correctly rounded
+// engine (math.hpp). Kept apart from units.hpp, which stays free of the
+// engine's compile time. Each math::fn takes quantities too, in every call
+// form (math/detail/functions.hpp):
 //
-//   value_cast<si::radian, Out>(q)   degree → radian (a pi factor): the exact
-//                                    x·π/180, rounded once onto Out's grid
-//   sqrt(q), cbrt(q)                 the unit's root (m² → m), the number's
-//   abs, floor, ceil, round, trunc   on the number, in q's unit
-//   sin, cos, tan(q)                 of an angle in radians: a plain inside
-//   sin_into, cos_into<Out>(q)       also of an angle in a unit with a factor
-//                                    of π (°, a turn): reduced exactly by
-//                                    quarter turns, exact at Niven's values
-//   asin, acos, atan(x), atan2(y, x) an angle in radians (x an inside or a
-//                                    dimensionless quantity)
-//   hypot(x, y)                      in the common unit
-//   exp_into … atanh_into, log10_into, pow_base_into<Out, B>, pow_into
-//                                    of an inside or a dimensionless quantity
-//   fn_into<Out>(…)                  each of them with the result's number
-//                                    named: Out rounds, the input need not
+//   math::sqrt(q), math::cbrt(q)       the unit's root (m² → m), the number's
+//   abs, floor, ceil, round, trunc     on the number, in q's unit
+//   sin, cos, tan(q)                   of an angle in radians: a number; sin
+//                                      and cos also of an angle in a unit with
+//                                      a factor of π (°, a turn), reduced
+//                                      exactly by quarter turns, exact at
+//                                      Niven's values (name the notch then:
+//                                      sin<per<K>>(q))
+//   asin, acos, atan(x), atan2(y, x)   an angle in radians (x a dimensionless
+//                                      quantity; atan2 of two that add)
+//   hypot(x, y)                        in the common unit
+//   exp … atanh, pow_base<B>, pow      of numbers: dimensionless quantities
+//                                      (and insides): a number
+//   math::exp(x) of a multivector      units/detail/geoalg_exp.hpp
+//   value_cast<si::radian, Out>(q)     degree → radian (a pi factor): the
+//                                      exact x·π/180, rounded once onto Out
 //
-// Every result rounds as the inside function does: onto the output grid,
-// under its rounding mode (the deduced forms take the input's grid).
+// fn<L>(q) names only the result's number L (the unit follows), fn<C>(q) the
+// whole quantity, whose unit must be the result's. Every result rounds as
+// the inside function does: onto the output grid, under its rounding mode.
 //---------------------------------------------------------------------------
 
 
@@ -23734,11 +25026,10 @@ inline constexpr reference radian_reference = reference{si::radian};
 template <reference R>
 inline constexpr bool pi_angle_v = dimension_of(R.U) == dim_one && magnitude_of(R.U).Pi == 1;
 
-// sin_into / cos_into of a π-scaled angle: one rounding onto Out. The
-// factor n/d in one limb when it is a 64-bit rational, else in as many as
-// it needs.
+// sin or cos of a π-scaled angle: one rounding onto Out. The factor n/d in
+// one limb when it is a 64-bit rational, else in as many as it needs.
 template <insidable Out, bool Cos, reference R, class V>
-constexpr Out pi_trig_into(const quantity<R, V>& q) {
+constexpr Out pi_trig(const quantity<R, V>& q) {
     namespace engine = beman::inside::math::detail::engine;
     using beman::inside::detail::grid_int;
     beman::inside::math::detail::entry::require_rounding<Out>();
@@ -23785,113 +25076,6 @@ template <auto U, insidable Out, reference R, class V>
         core{engine::exact_input(q.numerical_value()), static_cast<factor>(ng ? -n : n), static_cast<factor>(d), ng})};
 }
 
-// The number's functions, in q's unit.
-#define BEMAN_INSIDE_UNITS_SAME_UNIT_FN(fn)                                            \
-    template <reference R, class V>                                                    \
-    [[nodiscard]] constexpr auto fn(const quantity<R, V>& q) {                         \
-        return detail::make_quantity<R>(beman::inside::math::fn(q.numerical_value())); \
-    }
-BEMAN_INSIDE_UNITS_SAME_UNIT_FN(abs)
-BEMAN_INSIDE_UNITS_SAME_UNIT_FN(floor)
-BEMAN_INSIDE_UNITS_SAME_UNIT_FN(ceil)
-BEMAN_INSIDE_UNITS_SAME_UNIT_FN(round)
-BEMAN_INSIDE_UNITS_SAME_UNIT_FN(trunc)
-#undef BEMAN_INSIDE_UNITS_SAME_UNIT_FN
-
-// Trigonometry of an angle in radians: a plain number.
-template <reference R, class V>
-[[nodiscard]] constexpr auto sin(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R>,
-                  "units: sin takes an angle in radians - sin_into<Out>(q) takes a unit with a factor of pi");
-    return beman::inside::math::sin(q.numerical_value());
-}
-
-template <policy_flag Mode, reference R, class V>
-    requires beman::inside::math::detail::entry::rounding_mode<Mode>
-[[nodiscard]] constexpr auto sin(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R>,
-                  "units: sin takes an angle in radians - sin_into<Out>(q) takes a unit with a factor of pi");
-    return beman::inside::math::sin<Mode>(q.numerical_value());
-}
-template <reference R, class V>
-[[nodiscard]] constexpr auto cos(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R>,
-                  "units: cos takes an angle in radians - cos_into<Out>(q) takes a unit with a factor of pi");
-    return beman::inside::math::cos(q.numerical_value());
-}
-
-template <policy_flag Mode, reference R, class V>
-    requires beman::inside::math::detail::entry::rounding_mode<Mode>
-[[nodiscard]] constexpr auto cos(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R>,
-                  "units: cos takes an angle in radians - cos_into<Out>(q) takes a unit with a factor of pi");
-    return beman::inside::math::cos<Mode>(q.numerical_value());
-}
-template <reference R, class V>
-[[nodiscard]] constexpr auto tan(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R>, "units: tan takes an angle in radians - value_cast<si::radian, Out>(q) first");
-    return beman::inside::math::tan(q.numerical_value());
-}
-
-template <policy_flag Mode, reference R, class V>
-    requires beman::inside::math::detail::entry::rounding_mode<Mode>
-[[nodiscard]] constexpr auto tan(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R>, "units: tan takes an angle in radians - value_cast<si::radian, Out>(q) first");
-    return beman::inside::math::tan<Mode>(q.numerical_value());
-}
-
-// atan2(y, x) of two quantities of one dimension, in their common unit.
-template <reference A, class VA, reference B, class VB>
-    requires(detail::common_rescalable<A, VA, B, VB> &&
-             requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
-                 beman::inside::math::atan2(x, y);
-             })
-[[nodiscard]] constexpr auto atan2(const quantity<A, VA>& y, const quantity<B, VB>& x) {
-    return detail::make_quantity<detail::radian_reference>(
-        beman::inside::math::atan2(detail::in_common_unit<A, B>(y), detail::in_common_unit<A, B>(x)));
-}
-
-template <policy_flag Mode, reference A, class VA, reference B, class VB>
-    requires(detail::common_rescalable<A, VA, B, VB> &&
-             requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
-                 beman::inside::math::atan2<Mode>(x, y);
-             }) &&
-            beman::inside::math::detail::entry::rounding_mode<Mode>
-[[nodiscard]] constexpr auto atan2(const quantity<A, VA>& y, const quantity<B, VB>& x) {
-    return detail::make_quantity<detail::radian_reference>(
-        beman::inside::math::atan2<Mode>(detail::in_common_unit<A, B>(y), detail::in_common_unit<A, B>(x)));
-}
-
-// hypot(x, y): √(x² + y²) in the common unit.
-template <reference A, class VA, reference B, class VB>
-    requires(detail::common_rescalable<A, VA, B, VB> &&
-             requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
-                 beman::inside::math::hypot(x, y);
-             })
-[[nodiscard]] constexpr auto hypot(const quantity<A, VA>& x, const quantity<B, VB>& y) {
-    constexpr reference C = detail::sum_reference<A, B>();
-    return detail::make_quantity<C>(
-        beman::inside::math::hypot(detail::in_common_unit<A, B>(x), detail::in_common_unit<A, B>(y)));
-}
-
-template <policy_flag Mode, reference A, class VA, reference B, class VB>
-    requires(detail::common_rescalable<A, VA, B, VB> &&
-             requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
-                 beman::inside::math::hypot<Mode>(x, y);
-             }) &&
-            beman::inside::math::detail::entry::rounding_mode<Mode>
-[[nodiscard]] constexpr auto hypot(const quantity<A, VA>& x, const quantity<B, VB>& y) {
-    constexpr reference C = detail::sum_reference<A, B>();
-    return detail::make_quantity<C>(
-        beman::inside::math::hypot<Mode>(detail::in_common_unit<A, B>(x), detail::in_common_unit<A, B>(y)));
-}
-
-//---------------------------------------------------------------------------
-// The _into forms: Out names the result's number (an inside with a rounding
-// mode); the input needs no rounding mode — an arithmetic result (checked)
-// goes straight in. As math::fn_into, a result is an expected only for pow
-// at its pole (0 to a negative power).
-//---------------------------------------------------------------------------
 namespace detail {
 // x's number as an inside: an inside itself, or a dimensionless quantity's.
 template <class X>
@@ -23904,141 +25088,1559 @@ constexpr auto number_of(const X& x) {
         return rescale<conversion_factor<X::reference.U, unit{}>>(x.numerical_value());
     }
 }
+template <class X>
+using number_of_t = decltype(number_of(std::declval<const X&>()));
+
+//---------------------------------------------------------------------------
+// The math functions on quantities (math/detail/functions.hpp): each takes
+// its arguments' numbers to the inside function, by one of these rules, and
+// puts the result in its unit.
+//---------------------------------------------------------------------------
+namespace m = beman::inside::math::detail;
+enum class math_rule {
+    none,
+    same,   // abs, floor, ceil, round, trunc: in q's unit
+    root2,  // sqrt: the unit's root (m² → m)
+    root3,  // cbrt
+    trig,   // sin, cos: of an angle in radians or with a factor of π; a number
+    tan,    // tan: of an angle in radians; a number
+    arc,    // asin, acos, atan: of a number; an angle in radians
+    arc2,   // atan2: of two quantities that add; an angle in radians
+    common, // hypot: of two quantities that add; in their common unit
+    number, // exp … atanh, pow_base, pow: of numbers; a number
+};
+template <class F>
+inline constexpr math_rule rule_of = math_rule::none;
+template <>
+inline constexpr math_rule rule_of<m::abs_fn> = math_rule::same;
+template <>
+inline constexpr math_rule rule_of<m::floor_fn> = math_rule::same;
+template <>
+inline constexpr math_rule rule_of<m::ceil_fn> = math_rule::same;
+template <>
+inline constexpr math_rule rule_of<m::round_fn> = math_rule::same;
+template <>
+inline constexpr math_rule rule_of<m::trunc_fn> = math_rule::same;
+template <>
+inline constexpr math_rule rule_of<m::entry::sqrt_fn> = math_rule::root2;
+template <>
+inline constexpr math_rule rule_of<m::entry::cbrt_fn> = math_rule::root3;
+template <>
+inline constexpr math_rule rule_of<m::entry::sin_fn> = math_rule::trig;
+template <>
+inline constexpr math_rule rule_of<m::entry::cos_fn> = math_rule::trig;
+template <>
+inline constexpr math_rule rule_of<m::entry::tan_fn> = math_rule::tan;
+template <>
+inline constexpr math_rule rule_of<m::entry::asin_fn> = math_rule::arc;
+template <>
+inline constexpr math_rule rule_of<m::entry::acos_fn> = math_rule::arc;
+template <>
+inline constexpr math_rule rule_of<m::entry::atan_fn> = math_rule::arc;
+template <>
+inline constexpr math_rule rule_of<m::entry::atan2_fn> = math_rule::arc2;
+template <>
+inline constexpr math_rule rule_of<m::entry::hypot_fn> = math_rule::common;
+#define BEMAN_INSIDE_UNITS_NUMBER_RULE(fn) \
+    template <>                            \
+    inline constexpr math_rule rule_of<m::entry::fn##_fn> = math_rule::number;
+BEMAN_INSIDE_UNITS_NUMBER_RULE(exp)
+BEMAN_INSIDE_UNITS_NUMBER_RULE(exp2)
+BEMAN_INSIDE_UNITS_NUMBER_RULE(log)
+BEMAN_INSIDE_UNITS_NUMBER_RULE(log2)
+BEMAN_INSIDE_UNITS_NUMBER_RULE(log10)
+BEMAN_INSIDE_UNITS_NUMBER_RULE(sinh)
+BEMAN_INSIDE_UNITS_NUMBER_RULE(cosh)
+BEMAN_INSIDE_UNITS_NUMBER_RULE(tanh)
+BEMAN_INSIDE_UNITS_NUMBER_RULE(asinh)
+BEMAN_INSIDE_UNITS_NUMBER_RULE(acosh)
+BEMAN_INSIDE_UNITS_NUMBER_RULE(atanh)
+BEMAN_INSIDE_UNITS_NUMBER_RULE(pow)
+#undef BEMAN_INSIDE_UNITS_NUMBER_RULE
+template <auto B>
+inline constexpr math_rule rule_of<m::entry::pow_base_fn<B>> = math_rule::number;
+
+// The output for specs S of a result in reference To (a quantity), or a
+// plain number (Number), whose number is the output of the numbers' kind NK.
+template <class O>
+struct rep_of {
+    using type = typename O::rep;
+};
+template <class NK, bool Number, reference To>
+struct output_in {
+    template <class N>
+    using with = std::conditional_t<Number, N, quantity<To, N>>;
+    template <class S>
+    struct out {
+        using type = with<typename NK::template output<S>>;
+    };
+    template <class C>
+    struct out<m::named<C>> {
+        static consteval auto pick() {
+            if constexpr (insidable<C>)
+                return std::type_identity<with<C>>{};
+            else {
+                static_assert(!Number, "beman::inside::math: f<C>(q) - the result is a number: C is an inside");
+                static_assert(quantity_like<C>, "beman::inside::math: f<C>(q) - C is a quantity or its number");
+                static_assert(C::reference.U == To.U && implicit_v<To, C::reference>,
+                              "beman::inside::math: f<C>(q) - C's unit must be exactly the result's (or name only "
+                              "the number)");
+                return std::type_identity<C>{};
+            }
+        }
+        using type = typename decltype(pick())::type;
+    };
+
+    // The output's number: O itself, or its rep.
+    template <class O>
+    using number_t = typename std::conditional_t<Number, std::type_identity<O>, rep_of<O>>::type;
+    template <class O, class V>
+    static constexpr auto make(V&& v) {
+        if constexpr (Number)
+            return std::forward<V>(v);
+        else
+            return lift_to<O>(std::forward<V>(v));
+    }
+};
+
+// Each rule: whether it takes the arguments (takes), the kind of their
+// numbers (NK), whether the result is a plain number or else its reference
+// (number, to), and the specs the numbers' kind sees (number_spec).
+template <math_rule Rule, class F, class... Args>
+struct quantity_rule {
+    static constexpr bool takes = false;
+};
+struct rule_base {
+    template <class S>
+    using number_spec = S;
+};
+
+template <math_rule Rule, class F, reference R, class V>
+    requires(Rule == math_rule::same || Rule == math_rule::root2 || Rule == math_rule::root3)
+struct quantity_rule<Rule, F, quantity<R, V>> : rule_base {
+    using NK                          = m::kind<F, 1, V>;
+    static constexpr bool      takes  = NK::takes;
+    static constexpr bool      number = false;
+    static constexpr reference to     = Rule == math_rule::same    ? R
+                                        : Rule == math_rule::root2 ? root_reference<R, 2>()
+                                                                   : root_reference<R, 3>();
+};
+
+// An angle in radians: the number's function; with a factor of π (sin and
+// cos): reduced exactly by quarter turns, the result on the named notch.
+template <math_rule Rule, class F, reference R, class V>
+    requires(Rule == math_rule::trig || Rule == math_rule::tan)
+struct quantity_rule<Rule, F, quantity<R, V>> {
+    static_assert(radians_v<R> || (Rule == math_rule::trig && pi_angle_v<R>),
+                  "units: sin, cos and tan take an angle in radians, sin and cos one in a unit with a factor of pi "
+                  "too - value_cast<si::radian, Out>(q) first");
+    using NK                          = m::kind<F, 1, V>;
+    static constexpr bool      takes  = NK::takes;
+    static constexpr bool      number = true;
+    static constexpr reference to     = {};
+    template <class S>
+    struct spec {
+        using type = S;
+    };
+    template <m::out_spec S>
+    struct spec<m::specs<S>> {
+        static_assert(radians_v<R> || S.HasNotch,
+                      "units: sin and cos of an angle with a factor of pi (°, a turn) - name the result's notch: "
+                      "sin<per<K>>(q)");
+        using type = m::specs<S>;
+    };
+    template <class S>
+    using number_spec = typename spec<S>::type;
+};
+
+// A number: an angle in radians.
+template <class F, class X>
+struct quantity_rule<math_rule::arc, F, X> : rule_base {
+    using NK                          = m::kind<F, 1, number_of_t<X>>;
+    static constexpr bool      takes  = NK::takes;
+    static constexpr bool      number = false;
+    static constexpr reference to     = radian_reference;
+};
+
+// Two quantities that add, in their common unit: an angle in radians
+// (atan2), or in that unit (hypot). (Two that do not add take nothing, and
+// form no common unit: the deleted overloads below say why.)
+template <class F, reference A, class VA, reference B, class VB, bool = common_rescalable<A, VA, B, VB>>
+struct common_rule {
+    using NK                      = m::kind<F, 0>;
+    static constexpr reference to = {};
+};
+template <class F, reference A, class VA, reference B, class VB>
+struct common_rule<F, A, VA, B, VB, true> {
+    using NK                      = m::kind<F, 1, common_number_t<A, VA, B>, common_number_t<B, VB, A>>;
+    static constexpr reference to = sum_reference<A, B>();
+};
+template <math_rule Rule, class F, reference A, class VA, reference B, class VB>
+    requires(Rule == math_rule::arc2 || Rule == math_rule::common)
+struct quantity_rule<Rule, F, quantity<A, VA>, quantity<B, VB>> : rule_base {
+    using C                           = common_rule<F, A, VA, B, VB>;
+    using NK                          = typename C::NK;
+    static constexpr bool      takes  = NK::takes;
+    static constexpr bool      number = false;
+    static constexpr reference to     = Rule == math_rule::arc2 ? radian_reference : C::to;
+};
+
+// Numbers (insides or dimensionless quantities): a number.
+template <class F, class... X>
+struct quantity_rule<math_rule::number, F, X...> : rule_base {
+    using NK                          = m::kind<F, 1, number_of_t<X>...>;
+    static constexpr bool      takes  = NK::takes;
+    static constexpr bool      number = true;
+    static constexpr reference to     = {};
+};
 } // namespace detail
+} // namespace beman::inside::units
 
-// Roots: the unit's (m² → m, m³ → m) and the number's.
-#define BEMAN_INSIDE_UNITS_ROOT_FN(fn, n)                                                                           \
-    template <reference R, class V>                                                                                 \
-    [[nodiscard]] constexpr auto fn(const quantity<R, V>& q) {                                                      \
-        return detail::make_quantity<detail::root_reference<R, n>()>(beman::inside::math::fn(q.numerical_value())); \
-    }                                                                                                               \
-    template <policy_flag Mode, reference R, class V>                                                               \
-        requires beman::inside::math::detail::entry::rounding_mode<Mode>                                            \
-    [[nodiscard]] constexpr auto fn(const quantity<R, V>& q) {                                                      \
-        return detail::make_quantity<detail::root_reference<R, n>()>(                                               \
-            beman::inside::math::fn<Mode>(q.numerical_value()));                                                    \
-    }                                                                                                               \
-    template <insidable Out, reference R, class V>                                                                  \
-    [[nodiscard]] constexpr auto fn##_into(const quantity<R, V>& q) {                                               \
-        return detail::make_quantity<detail::root_reference<R, n>()>(                                               \
-            beman::inside::math::fn##_into<Out>(q.numerical_value()));                                              \
+namespace beman::inside::math::detail {
+// A quantity's rank: 2, or 3 when its unit holds a blade (a part of a
+// multivector, which exp takes: units/detail/geoalg_exp.hpp).
+template <class T>
+    requires units::quantity_like<T>
+inline constexpr int kind_rank<T> = units::detail::has_blade(dimension_of(T::reference.U)) ? 3 : 2;
+
+// Quantities: the rule of F.
+template <class F, class... Args>
+struct kind<F, 2, Args...> {
+    using rule                  = units::detail::quantity_rule<units::detail::rule_of<F>, F, Args...>;
+    static constexpr bool takes = rule::takes;
+    using io                    = units::detail::output_in<typename rule::NK, rule::number, rule::to>;
+
+    template <class S>
+    using output = typename io::template out<typename rule::template number_spec<S>>::type;
+
+    template <class O>
+    [[gnu::always_inline]] static constexpr auto eval(const Args&... x) {
+        using NO         = typename io::template number_t<O>;
+        constexpr auto r = units::detail::rule_of<F>;
+        if constexpr (r == units::detail::math_rule::trig || r == units::detail::math_rule::tan) {
+            constexpr units::reference R = Args...[0] ::reference;
+            if constexpr (units::detail::radians_v<R>)
+                return F::template eval<NO>(x...[0].numerical_value());
+            else
+                return units::detail::pi_trig<NO, std::same_as<F, entry::cos_fn>>(x...[0]);
+        } else if constexpr (r == units::detail::math_rule::arc2 || r == units::detail::math_rule::common) {
+            constexpr units::reference A = Args...[0] ::reference, B = Args...[1] ::reference;
+            return io::template make<O>(F::template eval<NO>(units::detail::in_common_unit<A, B>(x...[0]),
+                                                             units::detail::in_common_unit<A, B>(x...[1])));
+        } else if constexpr (r == units::detail::math_rule::arc || r == units::detail::math_rule::number)
+            return io::template make<O>(F::template eval<NO>(units::detail::number_of(x)...));
+        else
+            return io::template make<O>(F::template eval<NO>(x.numerical_value()...));
     }
-BEMAN_INSIDE_UNITS_ROOT_FN(sqrt, 2)
-BEMAN_INSIDE_UNITS_ROOT_FN(cbrt, 3)
-#undef BEMAN_INSIDE_UNITS_ROOT_FN
+};
+} // namespace beman::inside::math::detail
 
-// An angle in radians, or in a unit with a factor of π (°, a turn, 2π/65536
-// rad): that one is reduced exactly, and the result rounds once.
-template <insidable Out, reference R, class V>
-[[nodiscard]] constexpr auto sin_into(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R> || detail::pi_angle_v<R>,
-                  "units: sin_into takes an angle in radians or in a unit with a factor of pi");
-    if constexpr (detail::radians_v<R>)
-        return beman::inside::math::sin_into<Out>(q.numerical_value());
-    else
-        return detail::pi_trig_into<Out, false>(q);
-}
-template <insidable Out, reference R, class V>
-[[nodiscard]] constexpr auto cos_into(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R> || detail::pi_angle_v<R>,
-                  "units: cos_into takes an angle in radians or in a unit with a factor of pi");
-    if constexpr (detail::radians_v<R>)
-        return beman::inside::math::cos_into<Out>(q.numerical_value());
-    else
-        return detail::pi_trig_into<Out, true>(q);
-}
-template <insidable Out, reference R, class V>
-[[nodiscard]] constexpr auto tan_into(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R>, "units: tan takes an angle in radians - value_cast<si::radian, Out>(q) first");
-    return beman::inside::math::tan_into<Out>(q.numerical_value());
-}
-
-// Inverse trigonometry: an angle in radians.
-#define BEMAN_INSIDE_UNITS_ARC_FN(fn)                                                             \
-    template <insidable V>                                                                        \
-    [[nodiscard]] constexpr auto fn(const V& x) {                                                 \
-        return detail::make_quantity<detail::radian_reference>(beman::inside::math::fn(x));       \
-    }                                                                                             \
-    template <policy_flag Mode, insidable V>                                                      \
-        requires beman::inside::math::detail::entry::rounding_mode<Mode>                          \
-    [[nodiscard]] constexpr auto fn(const V& x) {                                                 \
-        return detail::make_quantity<detail::radian_reference>(beman::inside::math::fn<Mode>(x)); \
-    }                                                                                             \
-    template <insidable Out, class X>                                                             \
-    [[nodiscard]] constexpr auto fn##_into(const X& x) {                                          \
-        return detail::make_quantity<detail::radian_reference>(                                   \
-            beman::inside::math::fn##_into<Out>(detail::number_of(x)));                           \
-    }
-BEMAN_INSIDE_UNITS_ARC_FN(asin)
-BEMAN_INSIDE_UNITS_ARC_FN(acos)
-BEMAN_INSIDE_UNITS_ARC_FN(atan)
-#undef BEMAN_INSIDE_UNITS_ARC_FN
-
-// Exponentials, logarithms and the hyperbolic functions of a number: an
-// inside or a dimensionless quantity (10^(L / 20 dB), log10(P / 1 mW)).
-#define BEMAN_INSIDE_UNITS_NUMBER_FN(fn)                                  \
-    template <insidable Out, class X>                                     \
-    [[nodiscard]] constexpr auto fn##_into(const X& x) {                  \
-        return beman::inside::math::fn##_into<Out>(detail::number_of(x)); \
-    }
-BEMAN_INSIDE_UNITS_NUMBER_FN(exp)
-BEMAN_INSIDE_UNITS_NUMBER_FN(exp2)
-BEMAN_INSIDE_UNITS_NUMBER_FN(log)
-BEMAN_INSIDE_UNITS_NUMBER_FN(log2)
-BEMAN_INSIDE_UNITS_NUMBER_FN(log10)
-BEMAN_INSIDE_UNITS_NUMBER_FN(sinh)
-BEMAN_INSIDE_UNITS_NUMBER_FN(cosh)
-BEMAN_INSIDE_UNITS_NUMBER_FN(tanh)
-BEMAN_INSIDE_UNITS_NUMBER_FN(asinh)
-BEMAN_INSIDE_UNITS_NUMBER_FN(acosh)
-BEMAN_INSIDE_UNITS_NUMBER_FN(atanh)
-#undef BEMAN_INSIDE_UNITS_NUMBER_FN
-template <insidable Out, auto Base, class X>
-[[nodiscard]] constexpr auto pow_base_into(const X& x) {
-    return beman::inside::math::pow_base_into<Out, Base>(detail::number_of(x));
-}
-template <insidable Out, class B, class E>
-[[nodiscard]] constexpr auto pow_into(const B& base, const E& exp) {
-    return beman::inside::math::pow_into<Out>(detail::number_of(base), detail::number_of(exp));
-}
-template <insidable Out, reference A, class VA, reference B, class VB>
-    requires(detail::common_rescalable<A, VA, B, VB> &&
-             requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
-                 beman::inside::math::atan2_into<Out>(x, y);
-             })
-[[nodiscard]] constexpr auto atan2_into(const quantity<A, VA>& y, const quantity<B, VB>& x) {
-    return detail::make_quantity<detail::radian_reference>(
-        beman::inside::math::atan2_into<Out>(detail::in_common_unit<A, B>(y), detail::in_common_unit<A, B>(x)));
-}
-template <insidable Out, reference A, class VA, reference B, class VB>
-    requires(detail::common_rescalable<A, VA, B, VB> &&
-             requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
-                 beman::inside::math::hypot_into<Out>(x, y);
-             })
-[[nodiscard]] constexpr auto hypot_into(const quantity<A, VA>& x, const quantity<B, VB>& y) {
-    constexpr reference C = detail::sum_reference<A, B>();
-    return detail::make_quantity<C>(
-        beman::inside::math::hypot_into<Out>(detail::in_common_unit<A, B>(x), detail::in_common_unit<A, B>(y)));
-}
+namespace beman::inside::math {
 // atan2 and hypot of two quantities that do not add (another dimension or
 // kind, no common unit).
-template <reference A, class VA, reference B, class VB>
-    requires(detail::sum_diagnosed<A, B>())
-void atan2(const quantity<A, VA>&, const quantity<B, VB>&) =
+template <auto... Spec, units::reference A, class VA, units::reference B, class VB>
+    requires(units::detail::sum_diagnosed<A, B>())
+void atan2(const units::quantity<A, VA>&, const units::quantity<B, VB>&) =
     delete ("units: atan2 takes two quantities that add - one dimension and kind, a common unit");
-template <reference A, class VA, reference B, class VB>
-    requires(detail::sum_diagnosed<A, B>())
-void hypot(const quantity<A, VA>&, const quantity<B, VB>&) =
+template <auto... Spec, units::reference A, class VA, units::reference B, class VB>
+    requires(units::detail::sum_diagnosed<A, B>())
+void hypot(const units::quantity<A, VA>&, const units::quantity<B, VB>&) =
     delete ("units: hypot takes two quantities that add - one dimension and kind, a common unit");
-template <insidable Out, reference A, class VA, reference B, class VB>
-    requires(detail::sum_diagnosed<A, B>())
-void atan2_into(const quantity<A, VA>&, const quantity<B, VB>&) =
-    delete ("units: atan2 takes two quantities that add - one dimension and kind, a common unit");
-template <insidable Out, reference A, class VA, reference B, class VB>
-    requires(detail::sum_diagnosed<A, B>())
-void hypot_into(const quantity<A, VA>&, const quantity<B, VB>&) =
-    delete ("units: hypot takes two quantities that add - one dimension and kind, a common unit");
-} // namespace beman::inside::units
+} // namespace beman::inside::math
+
+// exp of multivectors (units/geoalg.hpp).
+
+// ======================================================================
+//  beman/inside/units/detail/geoalg_exp.hpp
+// ======================================================================
+// math::exp(x) of a multivector (or a quantity of a blade): the closed form,
+// each part of the output (the CoDomain) correctly rounded. Internal —
+// include <beman/inside/units/math.hpp>.
+//
+// x = a + y, a the scalar part. When y·y is a scalar for every value of
+// Domain (every two of y's parts anticommute), with z = -y·y,
+//   exp(x) = e^a · (C + S·y),   C = cos √z,  S = sin √z / √z
+// (for z < 0 these are cosh √-z and sinh √-z / √-z; for z = 0, C = S = 1).
+// e^a, C and S are computed once per call and each part is decided onto its
+// own grid from its error bound, as the scalar functions are: in double
+// (parts of up to 47 bits), else in double-double, and what neither decides
+// on the integer path (ga_exp_core), which also runs at compile time and
+// without an FPU. So every part is the correctly rounded value, whichever
+// path ran.
+//
+// Speed: the first fast tier runs inline (flattened), everything else out
+// of line from x alone; one part of y needs no root or quotient (sin y
+// itself); the bounds wait for no value (|sin|, |cos| ≤ 1, |S| ≤ 1/λ, ...);
+// z is exact from the value indices on a 2^-k grid; and each part's range
+// is proved at compile time where it can be, so the decides skip their
+// range checks.
+
+
+
+#include <algorithm>
+#include <array>
+#include <bit>
+#include <cstddef>
+#include <cstdint>
+#include <tuple>
+#include <utility>
+
+namespace beman::inside::units::detail::gaexp {
+namespace eng = ::beman::inside::math::detail::engine;
+using ::beman::inside::detail::wide_rational;
+using ::beman::inside::detail::wide_sint;
+
+template <class P>
+using num_t = typename part_number<P>::type;
+
+// f.template operator()<P>() for P = 0 … N-1.
+template <std::size_t N, class Fn>
+[[gnu::always_inline]] constexpr void for_index(Fn&& f) {
+    [&]<std::size_t... P>(std::index_sequence<P...>) {
+        (f.template operator()<P>(), ...);
+    }(std::make_index_sequence<N>{});
+}
+
+// The sign of a part's unit against its canonical blade (j := e₃e₁ is -1).
+template <class P>
+consteval int part_sign() {
+    constexpr grid_rational f = blade_factor(unit_of_part<P>());
+    static_assert(f == grid_rational{1} || f == grid_rational{-1},
+                  "math::exp: a part's unit scales its blade (a prefix, a scaled unit) - use the blade's own unit");
+    return f == grid_rational{1} ? 1 : -1;
+}
+
+template <class P>
+consteval bool plain_part() { // dimensionless (rad allowed) and free of π
+    return same_outside_blade(part_dim<P>(), dim_one) && magnitude_of(unit_of_part<P>()).Pi == 0;
+}
+
+// |v| ≤ bound for every value of a part's number, as a double.
+template <class N>
+inline constexpr double max_abs = [] {
+    const double lo = static_cast<double>(lower_of<N>), hi = static_cast<double>(upper_of<N>);
+    return std::max(lo < 0 ? -lo : lo, hi < 0 ? -hi : hi);
+}();
+
+// An upper bound of e^x for 0 ≤ x ≤ 709, at compile time: x halved k times
+// to at most ½, e^x there by its Taylor sum (positive terms: within 21U,
+// widened by 2^-40), then squared k times, each square widened by 2^-50 so
+// it stays above. Over by at most 2^-29.
+consteval double exp_upper(double x) {
+    int k = 0;
+    while (x > 0.5) {
+        x *= 0.5;
+        ++k;
+    }
+    double t = 1, s = 1;
+    for (int n = 1; n <= 20; ++n) {
+        t *= x / n;
+        s += t;
+    }
+    s *= 1 + 0x1p-40;
+    for (int i = 0; i < k; ++i)
+        s = s * s * (1 + 0x1p-50);
+    return s;
+}
+
+// Everything known at compile time about Domain: its scalar part and the
+// parts of y, their squares and signs, and bounds on each part of the result.
+template <class Domain>
+struct domain_facts {
+    using DP                            = parts_t<Domain>;
+    static constexpr std::size_t ND     = std::tuple_size_v<DP>;
+    static constexpr auto        ddims  = dims_of<DP>();
+    static constexpr int         scalar = [] {
+        for (std::size_t i = 0; i < ND; ++i)
+            if (!has_blade(ddims[i]))
+                return static_cast<int>(i);
+        return -1;
+    }();
+    static constexpr std::size_t N    = ND - (scalar >= 0 ? 1 : 0);
+    static constexpr auto        yidx = [] {
+        std::array<int, N> r{};
+        std::size_t        j = 0;
+        for (std::size_t i = 0; i < ND; ++i)
+            if (static_cast<int>(i) != scalar)
+                r[j++] = static_cast<int>(i);
+        return r;
+    }();
+    template <std::size_t J>
+    using ypart              = std::tuple_element_t<static_cast<std::size_t>(yidx[J]), DP>;
+    static constexpr auto sq = [] {
+        std::array<signed char, N> r{};
+        for (std::size_t j = 0; j < N; ++j)
+            r[j] = static_cast<signed char>(blade_square(ddims[static_cast<std::size_t>(yidx[j])]));
+        return r;
+    }();
+    static constexpr bool closed = [] {
+        for (std::size_t i = 0; i < N; ++i)
+            for (std::size_t j = i + 1; j < N; ++j) {
+                const dimension& a = ddims[static_cast<std::size_t>(yidx[i])];
+                const dimension& b = ddims[static_cast<std::size_t>(yidx[j])];
+                if (blade_sign(a, b) + blade_sign(b, a) != 0)
+                    return false;
+            }
+        return true;
+    }();
+    static constexpr bool has_neg = [] { // a part squaring to -1: z can be > 0 (trig)
+        for (auto s : sq)
+            if (s < 0)
+                return true;
+        return false;
+    }();
+    static constexpr bool has_pos = [] { // a part squaring to +1: z can be < 0 (hyperbolic)
+        for (auto s : sq)
+            if (s > 0)
+                return true;
+        return false;
+    }();
+    // λ = √|z| bounds: over the parts squaring to -1 (z > 0), to +1 (z < 0).
+    template <int Sign>
+    static consteval double lam_bound() {
+        return []<std::size_t... J>(std::index_sequence<J...>) {
+            double s = 0;
+            ((s += sq[J] == Sign ? max_abs<num_t<ypart<J>>> * max_abs<num_t<ypart<J>>> : 0.0), ...);
+            return __builtin_sqrt(s);
+        }(std::make_index_sequence<N>{});
+    }
+    static constexpr double lam_neg = lam_bound<-1>(), lam_pos = lam_bound<1>();
+    // The signs of y's parts against their blades.
+    static constexpr auto dsign = []<std::size_t... J>(std::index_sequence<J...>) {
+        return std::array<int, N>{part_sign<ypart<J>>()...};
+    }(std::make_index_sequence<N>{});
+    // Bounds on the result's parts: |e^a·C| ≤ e^amax·cosh λ₊, and |e^a·S·yⱼ|
+    // ≤ e^amax when every square is -1 (|yⱼ| ≤ λ), else e^amax·cosh λ₊·max|yⱼ|
+    // (|S| ≤ max(1, sinh λ₊/λ₊) ≤ cosh λ₊). Each is above by at most 2^-29.
+    // (e^amax: amax ≤ 0 counts as 0.)
+    static constexpr double ea = [] {
+        if constexpr (scalar >= 0) {
+            const double hi =
+                static_cast<double>(upper_of<num_t<std::tuple_element_t<static_cast<std::size_t>(scalar), DP>>>);
+            return exp_upper(hi > 0 ? hi : 0.0);
+        } else
+            return exp_upper(0.0);
+    }();
+    static constexpr double ch      = has_pos ? (exp_upper(lam_pos) + 1) * 0.5 * (1 + 0x1p-50) : 1.0;
+    static constexpr bool   all_neg = [] {
+        for (auto s : sq)
+            if (s >= 0)
+                return false;
+        return true;
+    }();
+    static constexpr double scalar_bound = ea * ch;
+    static constexpr auto   part_bound   = []<std::size_t... J>(std::index_sequence<J...>) {
+        return std::array<double, N>{(all_neg ? ea : ea * ch * max_abs<num_t<ypart<J>>>)...};
+    }(std::make_index_sequence<N>{});
+};
+
+// What is known about a call onto CoDomain besides: for each part of
+// CoDomain, where its value comes from (-2 zero, -1 the scalar part e^a·C,
+// j ≥ 0 e^a·S·yⱼ) and its sign.
+template <class Domain, class CoDomain>
+struct facts : domain_facts<Domain> {
+    using B = domain_facts<Domain>;
+    using B::ddims, B::N, B::scalar, B::yidx;
+    using typename B::DP;
+    using CP                           = parts_t<CoDomain>;
+    static constexpr std::size_t NC    = std::tuple_size_v<CP>;
+    static constexpr auto        cdims = dims_of<CP>();
+    static constexpr auto        src   = [] {
+        std::array<int, NC> r{};
+        for (std::size_t p = 0; p < NC; ++p) {
+            r[p] = -2;
+            if (!has_blade(cdims[p]))
+                r[p] = -1;
+            else
+                for (std::size_t j = 0; j < N; ++j)
+                    if (blade_equal(cdims[p], ddims[static_cast<std::size_t>(yidx[j])]))
+                        r[p] = static_cast<int>(j);
+        }
+        return r;
+    }();
+    // The signs of CoDomain's parts against their blades.
+    static constexpr auto osign = []<std::size_t... P>(std::index_sequence<P...>) {
+        return std::array<int, NC>{part_sign<std::tuple_element_t<P, CP>>()...};
+    }(std::make_index_sequence<NC>{});
+    // Whether each part of CoDomain holds every value the part takes, so the
+    // decides skip their range checks.
+    static constexpr auto in_range = []<std::size_t... P>(std::index_sequence<P...>) {
+        const auto fits = []<std::size_t Q>() {
+            using O = num_t<std::tuple_element_t<Q, CP>>;
+            if (src[Q] == -2)
+                return true;
+            const double m  = src[Q] == -1 ? B::scalar_bound : B::part_bound[static_cast<std::size_t>(src[Q])];
+            const double lo = static_cast<double>(lower_of<O>), hi = static_cast<double>(upper_of<O>);
+            return m * (1 + 0x1p-30) <= std::min(-lo, hi);
+        };
+        return std::array<bool, NC>{fits.template operator()<P>()...};
+    }(std::make_index_sequence<NC>{});
+    static constexpr bool covers = [] { // CoDomain holds the scalar part and every blade of y
+        bool scalar_seen = false;
+        for (std::size_t p = 0; p < NC; ++p)
+            scalar_seen = scalar_seen || src[p] == -1;
+        for (std::size_t j = 0; j < N; ++j) {
+            bool seen = false;
+            for (std::size_t p = 0; p < NC; ++p)
+                seen = seen || src[p] == static_cast<int>(j);
+            if (!seen)
+                return false;
+        }
+        return scalar_seen;
+    }();
+};
+
+template <class Domain>
+consteval bool domain_closed() {
+    return domain_facts<Domain>::closed;
+}
+
+//---------------------------------------------------------------------------
+// The integer path: one part of the result at precision W. All values are
+// fixed point at scale S, with |e^a| < 2^KE, |C|, |S| < 2^H and |yⱼ| < 2^MagY
+// bounding the products, so an absolute error of a few units at S is far
+// below 2^-(W + G).
+//---------------------------------------------------------------------------
+template <std::size_t                E,
+          std::size_t                N,
+          std::array<signed char, N> Sq,
+          bool                       HasA,
+          int                        MagA,
+          int                        MagY,
+          int                        MagL,
+          int                        KE,
+          int                        H>
+struct ga_exp_core {
+    static constexpr std::size_t    EZ = 2 * N * E + 1;
+    wide_rational<E>                A;
+    std::array<wide_rational<E>, N> Y;
+    int                             Part; // -1: the scalar part, else j
+    int                             Sign; // ±1 of CoDomain's part against the canonical blade
+
+    // e^a·C near 1 (|x| tiny), e^a near 0 (a very negative), cos √z near 0.
+    static constexpr int deep_extra = std::max(eng::deep_scaled(MagA, 1443), 4 * eng::fraction_bits<E>);
+
+    // z = Σ -sqⱼ·yⱼ², exactly.
+    constexpr wide_rational<EZ> z_exact() const noexcept {
+        using ZI = wide_sint<EZ>;
+        ZI num{0}, den{1};
+        for (std::size_t j = 0; j < N; ++j) {
+            const ZI n{Y[j].Num}, d{Y[j].Den};
+            const ZI n2 = n * n, d2 = d * d;
+            num = num * d2 + ZI{-Sq[j]} * n2 * den;
+            den = den * d2;
+        }
+        return {num, den};
+    }
+
+    // The rational results: a part whose coefficient is 0, and every part
+    // when a = 0 and z = 0 (1 and y). Elsewhere e^a·C and e^a·S·yⱼ are
+    // transcendental (Lindemann–Weierstrass: e^(a ± i√z) and 1 are linearly
+    // independent over the algebraic numbers unless a = z = 0).
+    constexpr eng::maybe_exact<E> exact() const {
+        if (Part >= 0 && eng::is_zero(Y[static_cast<std::size_t>(Part)]))
+            return wide_rational<E>{wide_sint<E>{0}, wide_sint<E>{1}};
+        if ((!HasA || eng::is_zero(A)) && eng::is_zero(z_exact())) {
+            if (Part < 0)
+                return wide_rational<E>{wide_sint<E>{1}, wide_sint<E>{1}};
+            const wide_rational<E>& y = Y[static_cast<std::size_t>(Part)];
+            return wide_rational<E>{Sign < 0 ? -y.Num : y.Num, y.Den};
+        }
+        return std::nullopt;
+    }
+
+    template <int W>
+    constexpr auto run() const {
+        constexpr int G            = 12;
+        constexpr int Head         = KE + H + MagY + 2;
+        constexpr int S            = W + G + Head;
+        constexpr int T            = S + MagL + 4;
+        using I                    = eng::fixed_t<T + std::max(Head, 2 * MagY + 2 * MagL + 8) + 8>;
+        constexpr std::size_t K    = eng::limbs_of<I>;
+        const auto            zr   = z_exact();
+        const I               zq   = eng::to_q<S, K>(zr); // within ½
+        const I               half = eng::one_q<K>(S - 1);
+        I                     cq, sq;
+        double                ec = 0, es = 0;
+        if (!(zq > half) && !(zq < -half)) { // |z| ≤ ½: cos √z and sin √z / √z as series in z, both signs
+            cq = eng::horner<eng::series::cos, S, false>(zq);
+            sq = eng::horner<eng::series::sin, S, false>(zq);
+            ec = 9;
+            es = 9;
+        } else if (zq > half) { // λ = √z ≥ 0.7: sin and cos of λ, reduced by quarter turns
+            const I    lam  = eng::sqrt_exact_q<T, K, 64 * static_cast<int>(EZ)>(zr);
+            const I    hp   = static_cast<I>(eng::pi_q<T - 1>);
+            const I    k    = eng::round_shift(eng::mul_q(lam, static_cast<I>(eng::two_over_pi_q<T>), T), T);
+            const I    r    = eng::round_shift(lam - k * hp, T - S); // |r| ≤ π/4 + a hair, within 2
+            const auto qd   = static_cast<unsigned>(k.Word[0] & 3u);
+            auto       quad = [&](unsigned p) {
+                const eng::fixed_approx<K> f = p & 1u ? eng::cos_series<S>(r, 2) : eng::sin_series<S>(r, 2);
+                return p & 2u ? eng::fixed_approx<K>{-f.Value, f.Error} : f;
+            };
+            const eng::fixed_approx<K> s = quad(qd), c = quad(qd + 1);
+            const I                    lams = eng::round_shift(lam, T - S); // within 1
+            cq                              = c.Value;
+            ec                              = static_cast<double>(c.Error);
+            sq                              = eng::div_q(s.Value, lams, S);
+            es                              = 2 * static_cast<double>(s.Error) + 6;
+        } else { // λ = √-z ≥ 0.7: cosh and sinh from e^λ
+            const wide_rational<EZ> nz{-zr.Num, zr.Den};
+            const I                 lam = eng::sqrt_exact_q<S, K, 64 * static_cast<int>(EZ)>(nz); // within 1
+            const eng::approx<K>    e   = eng::exp_fixed<S>(lam, 1, H + 1);
+            const int               kk  = S - e.Scale; // ≥ 0: e^λ ≥ 2
+            const I                 ev  = e.Value << kk;
+            const double            eev = static_cast<double>(e.Error) * ::beman::inside::detail::ldexp(1.0, kk);
+            const I                 inv = eng::div_q(eng::one_q<K>(S), ev, S); // within eev/e² + 1
+            const double            ei  = eev / 2.7 + 1;
+            cq                          = eng::round_shift(ev + inv, 1);
+            const I sh                  = eng::round_shift(ev - inv, 1);
+            ec                          = (eev + ei) / 2 + 1;
+            sq                          = eng::div_q(sh, lam, S);
+            es = 1.5 * ((eev + ei) / 2 + 1) + 3 * ::beman::inside::detail::ldexp(1.0, H + 1) + 2;
+        }
+        // e^a at scale S: exp_fixed gives e^r·2^k at scale S - k (approx::below
+        // is 1 at scale S + 2, which rescales to 0 within 1).
+        I      eq = eng::one_q<K>(S);
+        double ee = 0;
+        if constexpr (HasA) {
+            const I              aq = eng::to_q<S, K>(A);
+            const eng::approx<K> e  = eng::exp_fixed<S>(aq, 1, KE);
+            const int            kk = S - e.Scale;
+            if (kk >= 0) {
+                eq = e.Value << kk;
+                ee = static_cast<double>(e.Error) * ::beman::inside::detail::ldexp(1.0, kk);
+            } else {
+                eq = eng::round_shift(e.Value, -kk);
+                ee = static_cast<double>(eng::shr_bound(e.Error, -kk)) + 1;
+            }
+        }
+        const double topE = ::beman::inside::detail::ldexp(1.0, KE), topC = ::beman::inside::detail::ldexp(1.0, H),
+                     topY = ::beman::inside::detail::ldexp(1.0, MagY);
+        I            v;
+        double       err;
+        if (Part < 0) {
+            v   = eng::mul_q(eq, cq, S);
+            err = ee * topC + ec * topE + 2;
+        } else {
+            const I      p  = eng::mul_q(eq, sq, S);
+            const double ep = ee * topC + es * topE + 2;
+            const I      yq = eng::to_q<S, K>(Y[static_cast<std::size_t>(Part)]); // within ½
+            v               = eng::mul_q(p, yq, S);
+            err             = ep * topY + topE * topC + 2;
+        }
+        if (Sign < 0)
+            v = -v;
+        err *= 1.01;
+        int sh = 0;
+        while (!(err < 0x1p60)) {
+            err *= 0.5;
+            ++sh;
+        }
+        if (sh == 0)
+            return eng::approx<K>{v, S, static_cast<std::uint64_t>(err) + 1};
+        return eng::approx<K>{eng::round_shift(v, sh), S - sh, static_cast<std::uint64_t>(err) + 2};
+    }
+};
+
+//---------------------------------------------------------------------------
+// The double tier: e^a, C and S once, each part decided from its bound.
+//---------------------------------------------------------------------------
+#ifndef BEMAN_INSIDE_MATH_NO_FP
+namespace fpk = ::beman::inside::math::detail::fp;
+
+// The most bits (notch and magnitude) a part may need for the double tier
+// to go first: the composite's bound is a few times 2^-50 relative. At 47
+// bits a part near its largest magnitude fails over to the dd tier often
+// enough to cost 5% (complex onto [-64, 64] at 2^-40), while typical values
+// decide in half the dd tier's time; at 48 bits that worst case costs 50%.
+inline constexpr int ga_fp_limit = 47;
+
+template <class N>
+inline constexpr int part_fp_bits = eng::fp_bits<N, eng::mag_bits<N> + 1>;
+
+template <class N>
+inline constexpr bool part_fp = eng::fp_output<N> && part_fp_bits<N> <= ga_fp_limit;
+
+// Terms of cos √z and sin √z / √z as series in z for |z| ≤ z_small.
+inline constexpr double z_small = 0.26;
+template <int T>
+inline constexpr int c_terms =
+    fpk::terms_for(T, 14, [](int n) { return fpk::pow_n(z_small, n) / fpk::factorial(2 * n) * 1.01; });
+template <int T>
+inline constexpr int s_terms =
+    fpk::terms_for(T, 14, [](int n) { return fpk::pow_n(z_small, n) / fpk::factorial(2 * n + 1) * 1.01; });
+template <int T>
+inline constexpr double c_small_err = [] {
+    constexpr int N = c_terms<T>;
+    return fpk::up(fpk::horner_error(fpk::cos_c<N>, z_small, 0).Err +
+                   fpk::pow_n(z_small, N) / fpk::factorial(2 * N) * 1.01);
+}();
+template <int T>
+inline constexpr double s_small_err = [] {
+    constexpr int N = s_terms<T>;
+    return fpk::up(fpk::horner_error(fpk::sin_c<N>, z_small, 0).Err +
+                   fpk::pow_n(z_small, N) / fpk::factorial(2 * N + 1) * 1.01);
+}();
+
+// sin(r + q·π/2) and cos(r + q·π/2) from s = sin r and c = cos r, without a
+// branch: sin and cos of q·π/2 are 0 or ±1, so both are exact.
+struct sin_cos {
+    double S, C;
+};
+inline constexpr double               quarter_sin[4] = {0, 1, 0, -1}, quarter_cos[4] = {1, 0, -1, 0};
+[[gnu::always_inline]] inline sin_cos turn(long q, double s, double c) {
+    const double qs = quarter_sin[q], qc = quarter_cos[q];
+    return {std::fma(s, qc, c * qs), std::fma(c, qc, -(s * qs))};
+}
+
+// sin x and cos x for |x| ≤ 2^20 to T bits from one reduction, each within
+// trig_k's Rel·|v| + AbsX·max(1, |x|).
+template <int T>
+[[gnu::always_inline]] inline sin_cos sincos_k(double x) {
+    using tk       = fpk::trig_k<T>;
+    long         q = 0;
+    double       k = 0;
+    const double r = fpk::reduce_quadrant(x, q, k);
+    return turn(q, fpk::sin_poly<tk::NS>(r), fpk::cos_poly<tk::NC>(r));
+}
+
+// The shared values of the double tier and their absolute bounds. With one
+// part of y, S·y itself (SY): sin y, sinh y or y, with no root or quotient.
+// HasA: a scalar part (else E = 1 exactly); ExactInputs: every input a double
+// exactly (no input terms in the bounds).
+struct shared_fp {
+    double E, bE, C, bC, S, bS, SY, bSY;
+    double Cmax, Smax; // ≥ |C|, |S| (|SY|), known before C and S: the bounds wait for no value
+};
+
+template <int                        T,
+          bool                       HasA,
+          bool                       ExactInputs,
+          bool                       HasNeg,
+          bool                       HasPos,
+          std::size_t                N,
+          std::array<signed char, N> Sq,
+          bool                       ZExact>
+[[gnu::always_inline]] inline shared_fp
+shared_values(double a, double ra, const std::array<double, N>& y, const std::array<double, N>& ry, double z_exact) {
+    constexpr double U = fpk::unit_roundoff;
+    shared_fp        v{1, 0, 1, 0, 1, 0, 0, 0, 1, 1};
+    if constexpr (HasA) {
+        v.E = fpk::exp_k<T>::exp(a, v.bE);
+        if constexpr (!ExactInputs)
+            v.bE += v.E * __builtin_fabs(a) * ra;
+        v.bE = fpk::up(v.bE);
+    }
+    if constexpr (N == 1) {
+        const double y0 = y[0], ay = __builtin_fabs(y0);
+        double       by = 0; // y's input bound
+        if constexpr (!ExactInputs)
+            by = ay * ry[0];
+        if (!(HasNeg || HasPos) || !(ay > 0.5)) { // z = y² ≤ ¼: the series
+            constexpr int NC = c_terms<T>, NS = s_terms<T>;
+            const double  z  = static_cast<double>(-Sq[0]) * y0 * y0;
+            const double  bz = fpk::up(U * ay * ay + 2 * by * ay) + fpk::tiny;
+            v.C              = fpk::horner(z, fpk::cos_c<NC>.C);
+            v.S              = fpk::horner(z, fpk::sin_c<NS>.C);
+            v.bC             = fpk::up(c_small_err<T> + 0.53 * bz);
+            v.bS             = fpk::up(s_small_err<T> + 0.17 * bz);
+            v.SY             = v.S * y0;
+            v.Cmax           = 1.13; // ≥ cosh ½
+            v.Smax           = 1.13 * ay;
+            v.bSY            = fpk::up(v.bS * ay + 1.05 * by + U * v.Smax);
+        } else if constexpr (HasNeg) { // cos y, sin y: |sin|, |cos| ≤ 1
+            using tk           = fpk::trig_k<T>;
+            const sin_cos sc   = sincos_k<T>(y0);
+            const double  absx = tk::AbsX * std::max(1.0, ay) + fpk::tiny + by;
+            v.C                = sc.C;
+            v.bC               = fpk::up(tk::Rel + absx);
+            v.SY               = sc.S;
+            v.bSY              = v.bC;
+        } else { // cosh y, sinh y; both move by at most cosh y per unit of y
+            using ek         = fpk::exp_k<T>;
+            const double e   = ek::value(ay);
+            const double inv = 1.0 / e;
+            const double rel = ek::Rel + U;
+            v.C              = (e + inv) * 0.5;
+            const double sh  = (e - inv) * 0.5;
+            v.bC             = fpk::up(v.C * (rel + 2 * U + by));
+            v.SY             = y0 < 0 ? -sh : sh;
+            v.bSY            = fpk::up(v.C * (rel + by + U));
+            v.Cmax = v.Smax = v.C * (1 + 4 * U);
+        }
+        return v;
+    } else {
+        // z = Σ -sqⱼ·yⱼ²: exact from the indices, else by fma with
+        // ss = Σ yⱼ² bounding it.
+        double z = z_exact, bz = fpk::tiny;
+        if constexpr (!ZExact) {
+            double ss = 0, sr = 0;
+            z = 0;
+            for_index<N>([&]<std::size_t J>() {
+                if constexpr (Sq[J] != 0) {
+                    ss = std::fma(y[J], y[J], ss);
+                    z  = Sq[J] < 0 ? std::fma(y[J], y[J], z) : std::fma(-y[J], y[J], z);
+                    if constexpr (!ExactInputs)
+                        sr = std::fma(ry[J] * y[J], y[J], sr);
+                }
+            });
+            bz = fpk::up((static_cast<double>(N) + 2) * U * ss + 2 * sr) + fpk::tiny;
+        }
+        const double az = __builtin_fabs(z);
+        if (!(az > 0.25)) { // |C|, |S| ≤ cosh ½
+            constexpr int NC = c_terms<T>, NS = s_terms<T>;
+            v.C    = fpk::horner(z, fpk::cos_c<NC>.C);
+            v.S    = fpk::horner(z, fpk::sin_c<NS>.C);
+            v.bC   = fpk::up(c_small_err<T> + 0.53 * bz);
+            v.bS   = fpk::up(s_small_err<T> + 0.17 * bz);
+            v.Cmax = v.Smax = 1.13;
+        } else if (HasNeg && z > 0) { // |sin|, |cos| ≤ 1, |S| ≤ 1/λ
+            using tk           = fpk::trig_k<T>;
+            const double  lam  = std::sqrt(z);
+            const double  il   = 1.0 / lam; // now, so the quotient overlaps the reduction
+            const double  blam = 0.5 * bz * il * (1 + 0x1p-50) + U * lam; // λ·(½·bz/z + U)
+            const sin_cos sc   = sincos_k<T>(lam);
+            const double  absx = tk::AbsX * std::max(1.0, lam) + fpk::tiny + blam;
+            v.C                = sc.C;
+            v.bC               = fpk::up(tk::Rel + absx);
+            v.S                = sc.S * il; // within 2U of s/λ
+            v.Smax             = il * (1 + 2 * U);
+            v.bS               = fpk::up((tk::Rel + absx + blam * il) * il * (1 + U) + 2 * U * v.Smax);
+        } else if (HasPos) {
+            using ek          = fpk::exp_k<T>;
+            const double lam  = std::sqrt(-z);
+            const double il   = 1.0 / lam;
+            const double blam = 0.5 * bz * il * (1 + 0x1p-50) + U * lam;
+            const double e    = ek::value(lam);
+            const double inv  = 1.0 / e;
+            const double rel  = ek::Rel + blam + U;
+            v.C               = (e + inv) * 0.5;
+            const double sh   = (e - inv) * 0.5;
+            v.Cmax            = v.C * (1 + 4 * U); // ≥ |C|, |sinh|
+            v.bC              = fpk::up(v.C * (rel + 2 * U));
+            const double bsh  = v.Cmax * (rel + U);
+            v.S               = sh * il;
+            v.Smax            = v.Cmax * il * (1 + 2 * U);
+            v.bS              = fpk::up((bsh + v.Cmax * blam * il) * il * (1 + U) + 2 * U * v.Smax);
+        } else { // unreachable for the domain's signs; force the integer path
+            v.bC = v.bS = 1e300;
+        }
+        return v;
+    }
+}
+
+//---------------------------------------------------------------------------
+// The dd tier, for parts past 36 bits the double tier leaves: e^a, C and
+// W = sin λ (sinh λ) once in double-double, λ = √|z|, and each blade part as
+// (e^a·W·(1/λ))·yⱼ. With every square of one sign |yⱼ| ≤ λ, so W's absolute
+// bound is not magnified as λ → 0; in a mixed signature near z = 0 the
+// bound grows and the integer path decides. Error terms of the dd
+// operations as in dd.hpp: a product within 4U², a sum 4U² of |a| + |b|, a
+// quotient 32U², sqrt 7U² plus half its argument's (relative); the lean
+// kernels' own bounds; the total doubled.
+//---------------------------------------------------------------------------
+namespace ddk = ::beman::inside::math::detail::dd;
+
+template <class N>
+inline constexpr bool part_dd = eng::dd_output<N>;
+
+struct shared_dd {
+    ddk::dd E, C, W, IL;    // IL = 1/λ
+    double  bE, bC, bW, rL; // absolute bounds; rL relative, of 1/λ
+    double  Cmax, Wmax;     // ≥ |C|, |W|, known before C and W
+    bool    Ok;
+};
+
+// √z and 1/√z for z > 0 in dd from one root and one quotient: y = RN(√zh)
+// and inv = RN(1/y), whose residuals zh − y² and 1 − y·inv are exact (fma).
+// λ = y + (zh − y² + zl)·(inv/2): the Newton step's truncation
+// (zh − y² + zl)²/(8y³) ≤ 1.2U²·λ, the sum's and products' roundings
+// 4.5U²·λ: within 6U² (ddk::sqrt's 7U² stands). 1/λ = inv/(1 − r),
+// r = 1 − y·inv − l·inv: inv + inv·r, within r²·inv ≤ 4.5U², the roundings
+// of l·inv and inv·r 3.5U²: within 8U² (a quotient's 32U² stands). The root
+// and the quotient overlap, and neither waits for a dd sum.
+struct root_and_inverse {
+    ddk::dd L, IL;
+};
+[[gnu::always_inline]] inline root_and_inverse sqrt_inv(ddk::dd z) noexcept {
+    const double y   = fpk::fp_sqrt(z.Hi);
+    const double inv = 1.0 / y;
+    const double e   = std::fma(-y, y, z.Hi) + z.Lo;
+    const double l   = e * (0.5 * inv);
+    const double r   = std::fma(-y, inv, 1.0) - l * inv;
+    return {fpk::fast_two_sum(y, l), fpk::fast_two_sum(inv, r * inv)};
+}
+
+template <bool                       HasA,
+          bool                       ExactInputs,
+          bool                       HasNeg,
+          bool                       HasPos,
+          std::size_t                N,
+          std::array<signed char, N> Sq,
+          bool                       ZExact>
+[[gnu::always_inline]] inline shared_dd shared_dd_values(
+    ddk::dd a, double ra, const std::array<ddk::dd, N>& y, const std::array<double, N>& ry, double z_exact) {
+    constexpr double U2 = fpk::unit_roundoff2;
+    shared_dd        v{{1, 0}, {1, 0}, {1, 0}, {1, 0}, 0, 0, 0, 0, 1, 1, true};
+    if constexpr (HasA) {
+        v.E = ddk::exp_lean(a, v.bE);
+        if constexpr (!ExactInputs)
+            v.bE += v.E.Hi * __builtin_fabs(a.Hi) * ra;
+    }
+    if constexpr (N == 1) { // W = sin y (sinh y, y) itself, λ = 1: no root, no quotient
+        const double ay = __builtin_fabs(y[0].Hi);
+        double       by = 0;
+        if constexpr (!ExactInputs)
+            by = ay * ry[0];
+        if constexpr (HasNeg) {
+            const ddk::sincos_t sc = ddk::sincos_lean(y[0]);
+            v.C                    = sc.Cos;
+            v.W                    = sc.Sin;
+            v.bC = v.bW = ddk::lean_trig_bound(y[0].Hi) + by;
+        } else if constexpr (HasPos) {
+            const ddk::dd e   = ddk::exp_lean_value(ddk::dd{ay, y[0].Hi < 0 ? -y[0].Lo : y[0].Lo});
+            const ddk::dd inv = ddk::div(ddk::dd{1, 0}, e);
+            v.C               = ddk::scale(ddk::add(e, inv), -1);
+            const ddk::dd sh  = ddk::scale(ddk::sub(e, inv), -1);
+            v.W               = y[0].Hi < 0 ? ddk::neg(sh) : sh;
+            v.Cmax = v.Wmax = v.C.Hi * (1 + 0x1p-50);
+            v.bC = v.bW = (ddk::lean_exp::Rel + 20 * U2) * v.C.Hi * (1 + 0x1p-40) + v.C.Hi * by + fpk::tiny;
+        } else {
+            v.W    = y[0];
+            v.bW   = by;
+            v.Wmax = ay * (1 + 0x1p-50);
+        }
+    } else if constexpr (HasNeg || HasPos) {
+        // z = Σ -sqⱼ·yⱼ²: the squares' high parts summed exactly (two_sum),
+        // their low parts and the sums' errors in double, then one two_sum;
+        // within (N + 2)·U²·Σ yⱼ² plus each square's own 4U² (sqr).
+        ddk::dd z{z_exact, 0};
+        double  bz = fpk::tiny;
+        if constexpr (!ZExact) {
+            double hi = 0, lo = 0, ss = 0, sr = 0;
+            bool   first = true;
+            for_index<N>([&]<std::size_t J>() {
+                if constexpr (Sq[J] != 0) {
+                    ddk::dd y2;
+                    if constexpr (ExactInputs)
+                        y2 = ddk::two_prod(y[J].Hi, y[J].Hi);
+                    else {
+                        y2 = ddk::sqr(y[J]);
+                        sr = std::fma(ry[J], y2.Hi, sr);
+                    }
+                    if constexpr (Sq[J] > 0)
+                        y2 = ddk::neg(y2);
+                    ss += __builtin_fabs(y2.Hi);
+                    if (first) {
+                        hi    = y2.Hi;
+                        lo    = y2.Lo;
+                        first = false;
+                    } else {
+                        const ddk::dd t = fpk::two_sum(hi, y2.Hi);
+                        hi              = t.Hi;
+                        lo += t.Lo + y2.Lo;
+                    }
+                }
+            });
+            z  = fpk::two_sum(hi, lo);
+            bz = fpk::up((4 * static_cast<double>(N) + 4) * U2 * ss + 2 * sr) + fpk::tiny;
+        }
+        const double az = __builtin_fabs(z.Hi);
+        if (!(az > 2 * bz)) { // z's sign unknown, or λ too small for W/λ
+            v.Ok = false;
+            return v;
+        }
+        const bool             trig = z.Hi > 0;
+        const root_and_inverse ri   = sqrt_inv(trig ? z : ddk::neg(z));
+        const ddk::dd          lam  = ri.L;
+        const double           rl   = 7 * U2 + 0.5 * bz / (az - bz); // λ's relative bound
+        const double           dl   = lam.Hi * rl * (1 + 0x1p-40);   // and absolute
+        v.IL                        = ri.IL;
+        v.rL                        = rl * (1 + 0x1p-40) + 32 * U2;
+        if (HasNeg && trig) {
+            const ddk::sincos_t sc = ddk::sincos_lean(lam);
+            const double        bt = ddk::lean_trig_bound(lam.Hi);
+            v.C                    = sc.Cos;
+            v.W                    = sc.Sin;
+            v.bC = v.bW = bt + dl;
+        } else if (HasPos && !trig) {
+            const ddk::dd e   = ddk::exp_lean_value(lam);
+            const ddk::dd inv = ddk::div(ddk::dd{1, 0}, e);
+            v.C               = ddk::scale(ddk::add(e, inv), -1);
+            v.W               = ddk::scale(ddk::sub(e, inv), -1);
+            v.Cmax = v.Wmax = v.C.Hi * (1 + 0x1p-50);
+            v.bC = v.bW = (ddk::lean_exp::Rel + 20 * U2) * v.C.Hi * (1 + 0x1p-40) + v.C.Hi * dl + fpk::tiny;
+        } else
+            v.Ok = false;
+    }
+    return v;
+}
+#endif
+
+//---------------------------------------------------------------------------
+// The call.
+//---------------------------------------------------------------------------
+template <std::size_t E, class Num>
+constexpr wide_rational<E> exact_widened(const Num& n, int sign) {
+    const auto       r = eng::exact_input(n);
+    wide_rational<E> w{static_cast<wide_sint<E>>(r.Num), static_cast<wide_sint<E>>(r.Den)};
+    if (sign < 0)
+        w.Num = -w.Num;
+    return w;
+}
+
+// x's parts: a multivector's own tuple (no copy: a local copy would sit in
+// memory and bring the stack protector into the hot path), else a one-part
+// tuple.
+template <class X>
+[[gnu::always_inline]] constexpr decltype(auto) parts_view(const X& x) {
+    if constexpr (is_multivector_v<X>)
+        return x.parts();
+    else
+        return parts_of(x);
+}
+
+// The number of y's J-th part, and of the scalar part.
+template <class F, std::size_t J>
+[[gnu::always_inline]] constexpr const auto& ynum(const typename F::DP& px) {
+    return number_of_part(std::get<static_cast<std::size_t>(F::yidx[J])>(px));
+}
+template <class F>
+[[gnu::always_inline]] constexpr const auto& anum(const typename F::DP& px) {
+    return number_of_part(std::get<static_cast<std::size_t>(F::scalar)>(px));
+}
+
+// CoDomain's part numbers so far and which of them are decided.
+template <class F>
+struct state {
+    decltype([]<std::size_t... P>(std::index_sequence<P...>) {
+        return std::tuple<num_t<std::tuple_element_t<P, typename F::CP>>...>{};
+    }(std::make_index_sequence<F::NC>{})) Out;
+    std::array<bool, F::NC>               Done;
+    // A fold over constant indices, so Done stays in registers.
+    [[gnu::always_inline]] constexpr bool rest() const {
+        return [&]<std::size_t... P>(std::index_sequence<P...>) {
+            return (!Done[P] || ...);
+        }(std::make_index_sequence<F::NC>{});
+    }
+};
+
+// Compile-time facts of the tiers.
+template <class F>
+struct tier_facts {
+    static constexpr bool a_fp = [] {
+        if constexpr (F::scalar >= 0)
+            return max_abs<num_t<std::tuple_element_t<static_cast<std::size_t>(F::scalar), typename F::DP>>> <= 700;
+        else
+            return true;
+    }();
+    static constexpr bool lam_fp = F::lam_neg <= 0x1p20 && F::lam_pos <= 700;
+#ifndef BEMAN_INSIDE_MATH_NO_FP
+    static constexpr bool any_fp = []<std::size_t... P>(std::index_sequence<P...>) {
+        return ((part_fp<num_t<std::tuple_element_t<P, typename F::CP>>> && F::src[P] != -2) || ...);
+    }(std::make_index_sequence<F::NC>{});
+    static constexpr bool inputs_fp = []<std::size_t... I>(std::index_sequence<I...>) {
+        return (!::beman::inside::detail::wide_valued<num_t<std::tuple_element_t<I, typename F::DP>>> && ...);
+    }(std::make_index_sequence<F::ND>{});
+    static constexpr bool fp_ok  = eng::fp_tier_available && any_fp && inputs_fp && a_fp && lam_fp;
+    static constexpr bool any_dd = []<std::size_t... P>(std::index_sequence<P...>) {
+        return ((part_dd<num_t<std::tuple_element_t<P, typename F::CP>>> && F::src[P] != -2) || ...);
+    }(std::make_index_sequence<F::NC>{});
+    static constexpr bool inputs_dd = []<std::size_t... I>(std::index_sequence<I...>) {
+        return (eng::dd_input<num_t<std::tuple_element_t<I, typename F::DP>>> && ...);
+    }(std::make_index_sequence<F::ND>{});
+    static constexpr bool dd_ok = eng::fp_tier_available && any_dd && inputs_dd && a_fp && lam_fp;
+    // Every input a double exactly: no input terms in the bounds.
+    static constexpr bool exact_in = []<std::size_t... I>(std::index_sequence<I...>) {
+        return (eng::fp_exact_input<num_t<std::tuple_element_t<I, typename F::DP>>> && ...);
+    }(std::make_index_sequence<F::ND>{});
+    // z exactly from the value indices: every part of y on one notch 2^-k
+    // and N·max|index|² ≤ 2^53, so Σ -sqⱼ·indexⱼ² is an exact int64 and
+    // double, and z = that·2^-2k exactly (no bound, no dd sum).
+    template <std::size_t J>
+    using ypart                 = num_t<std::tuple_element_t<static_cast<std::size_t>(F::yidx[J]), typename F::DP>>;
+    static constexpr bool int_z = [] {
+        if constexpr (F::N < 2)
+            return false;
+        else
+            return []<std::size_t... J>(std::index_sequence<J...>) {
+                using Y0 = ypart<0>;
+                if constexpr (!((eng::fp_exact_input<ypart<J>> && eng::small_index<ypart<J>>) && ...))
+                    return false;
+                else {
+                    const bool same = ((notch_of<ypart<J>> == notch_of<Y0>) && ...) && eng::notch_p<Y0> == 1;
+                    const int  bits = std::max({eng::index_bits<ypart<J>>...});
+                    return same && 2 * bits + static_cast<int>(std::bit_width(F::N)) <= 53;
+                }
+            }(std::make_index_sequence<F::N>{});
+    }();
+    static constexpr double z_scale = [] {
+        if constexpr (int_z)
+            return 1 / (eng::notch_q<ypart<0>> * eng::notch_q<ypart<0>>);
+        else
+            return 0.0;
+    }();
+#else
+    static constexpr bool fp_ok = false, dd_ok = false;
+#endif
+};
+
+#ifndef BEMAN_INSIDE_MATH_NO_FP
+// z = Σ -sqⱼ·yⱼ² exactly from the value indices (tier_facts::int_z), else 0.
+template <class F>
+[[gnu::always_inline]] inline double exact_z(const typename F::DP& px) {
+    if constexpr (tier_facts<F>::int_z) {
+        std::int64_t zi = 0;
+        for_index<F::N>([&]<std::size_t J>() {
+            if constexpr (F::sq[J] != 0) {
+                const auto i = ::beman::inside::detail::value_index<std::int64_t>(ynum<F, J>(px));
+                zi += F::sq[J] < 0 ? i * i : -(i * i);
+            }
+        });
+        return static_cast<double>(zi) * tier_facts<F>::z_scale;
+    } else
+        return 0.0;
+}
+
+// The double tier: e^a, C and S once, then each part it may decide.
+template <class F>
+[[gnu::always_inline]] inline void fp_pass(const typename F::DP& px, state<F>& st) {
+    using CP                = typename F::CP;
+    constexpr std::size_t N = F::N;
+    constexpr bool        A = F::scalar >= 0, X = tier_facts<F>::exact_in;
+    constexpr int         T = []<std::size_t... P>(std::index_sequence<P...>) {
+        const int b = std::max({0, part_fp_bits<num_t<std::tuple_element_t<P, CP>>>...});
+        return std::min(std::max(b + 10, 24), fpk::full_bits);
+    }(std::make_index_sequence<F::NC>{});
+    double a = 0, ra = 0;
+    if constexpr (A) {
+        a  = eng::input_double(anum<F>(px));
+        ra = eng::input_rel<std::remove_cvref_t<decltype(anum<F>(px))>>;
+    }
+    std::array<double, N> y{}, ry{};
+    for_index<N>([&]<std::size_t J>() {
+        const double r = eng::input_double(ynum<F, J>(px));
+        y[J]           = F::dsign[J] < 0 ? -r : r;
+        ry[J]          = eng::input_rel<std::remove_cvref_t<decltype(ynum<F, J>(px))>>;
+    });
+    const shared_fp v =
+        shared_values<T, A, X, F::has_neg, F::has_pos, N, F::sq, tier_facts<F>::int_z>(a, ra, y, ry, exact_z<F>(px));
+    constexpr double U = fpk::unit_roundoff;
+    // The bounds take |C|, |S| from Cmax, Smax: none waits for a value.
+    const double aE = __builtin_fabs(v.E);
+    // e^a·S (N > 1), its bound, and ≥ its magnitude.
+    double p = v.S, bp = v.bS, pmax = v.Smax;
+    if constexpr (A && N > 1) {
+        p    = v.E * v.S;
+        pmax = aE * v.Smax * (1 + U);
+        bp   = fpk::up(aE * v.bS + v.Smax * v.bE + v.bE * v.bS + U * pmax);
+    }
+    // E·w and its bound, w within bw and |w| ≤ wmax (E·C, E·SY).
+    const auto times_e = [&](double w, double bw, double wmax, double& b) {
+        if constexpr (A) {
+            b = aE * bw + wmax * v.bE + v.bE * bw + U * aE * wmax * (1 + U);
+            return v.E * w;
+        } else {
+            b = bw;
+            return w;
+        }
+    };
+    for_index<F::NC>([&]<std::size_t Q>() {
+        using O = num_t<std::tuple_element_t<Q, CP>>;
+        if constexpr (part_fp<O> && F::src[Q] != -2) {
+            if (st.Done[Q])
+                return;
+            double val, b;
+            if constexpr (F::src[Q] == -1)
+                val = times_e(v.C, v.bC, v.Cmax, b);
+            else if constexpr (N == 1) {
+                val = times_e(v.SY, v.bSY, v.Smax, b);
+                if constexpr (F::osign[Q] < 0)
+                    val = -val;
+            } else {
+                constexpr std::size_t j  = static_cast<std::size_t>(F::src[Q]);
+                const double          ay = __builtin_fabs(y[j]);
+                val                      = p * y[j];
+                if constexpr (X)
+                    b = ay * (bp + U * pmax * (1 + U));
+                else
+                    b = ay * (bp + (U + ry[j]) * pmax * (1 + U));
+                if constexpr (F::osign[Q] < 0)
+                    val = -val;
+            }
+            if (eng::fp_decide<O, F::in_range[Q]>(val, fpk::up(b) + fpk::tiny, std::get<Q>(st.Out)))
+                st.Done[Q] = true;
+        }
+    });
+}
+
+// The dd tier on the parts it may decide that are left.
+template <class F>
+[[gnu::always_inline]] inline void dd_pass(const typename F::DP& px, state<F>& st) {
+    using CP                = typename F::CP;
+    constexpr std::size_t N = F::N;
+    constexpr bool        A = F::scalar >= 0, X = tier_facts<F>::exact_in;
+    ddk::dd               a{0, 0};
+    double                ra = 0;
+    if constexpr (A) {
+        a  = eng::dd_read(anum<F>(px));
+        ra = eng::dd_input_rel<std::remove_cvref_t<decltype(anum<F>(px))>>;
+    }
+    std::array<ddk::dd, N> y{};
+    std::array<double, N>  ry{};
+    for_index<N>([&]<std::size_t J>() {
+        const ddk::dd r = eng::dd_read(ynum<F, J>(px));
+        y[J]            = F::dsign[J] < 0 ? ddk::neg(r) : r;
+        ry[J]           = eng::dd_input_rel<std::remove_cvref_t<decltype(ynum<F, J>(px))>>;
+    });
+    const shared_dd v =
+        shared_dd_values<A, X, F::has_neg, F::has_pos, N, F::sq, tier_facts<F>::int_z>(a, ra, y, ry, exact_z<F>(px));
+    if (!v.Ok)
+        return;
+    constexpr double U2 = fpk::unit_roundoff2;
+    // The bounds take |C|, |W| from Cmax, Wmax: none waits for a value.
+    const double aE = __builtin_fabs(v.E.Hi) * (1 + 0x1p-50);
+    // E·w and its bound, w within bw and |w| ≤ wmax.
+    const auto times_e = [&](ddk::dd w, double bw, double wmax, double& b) {
+        if constexpr (A) {
+            b = aE * bw + wmax * v.bE + v.bE * bw + 4 * U2 * aE * wmax * (1 + 0x1p-50);
+            return ddk::mul(v.E, w);
+        } else {
+            b = bw;
+            return w;
+        }
+    };
+    double        bp;
+    const ddk::dd p    = times_e(v.W, v.bW, v.Wmax, bp);
+    double        pmax = A ? aE * v.Wmax * (1 + 0x1p-50) : v.Wmax;
+    ddk::dd       w    = p; // e^a·W/λ (N > 1)
+    double        bw = bp, wmax = pmax;
+    if constexpr (N > 1) {
+        const double ail = __builtin_fabs(v.IL.Hi) * (1 + 0x1p-50);
+        w                = ddk::mul(p, v.IL);
+        wmax             = pmax * ail * (1 + 0x1p-50);
+        bw               = (bp + pmax * v.rL) * ail * (1 + 0x1p-40) + 4 * U2 * wmax;
+    }
+    for_index<F::NC>([&]<std::size_t Q>() {
+        using O = num_t<std::tuple_element_t<Q, CP>>;
+        if constexpr (part_dd<O> && F::src[Q] != -2) {
+            if (st.Done[Q])
+                return;
+            ddk::dd val;
+            double  b;
+            if constexpr (F::src[Q] == -1)
+                val = times_e(v.C, v.bC, v.Cmax, b);
+            else {
+                if constexpr (N == 1) { // y's input bound is in bW
+                    val = p;
+                    b   = bp;
+                } else {
+                    constexpr std::size_t j  = static_cast<std::size_t>(F::src[Q]);
+                    const double          ay = __builtin_fabs(y[j].Hi) * (1 + 0x1p-50);
+                    if constexpr (X) {
+                        val = ddk::mul(w, y[j].Hi);
+                        b   = ay * (bw + 4 * U2 * wmax);
+                    } else {
+                        val = ddk::mul(w, y[j]);
+                        b   = ay * (bw + (ry[j] + 4 * U2) * wmax * (1 + 0x1p-50));
+                    }
+                }
+                if constexpr (F::osign[Q] < 0)
+                    val = ddk::neg(val);
+            }
+            if (eng::dd_decide<O, F::in_range[Q]>(val, 2 * b * (1 + 0x1p-40) + fpk::tiny, std::get<Q>(st.Out)))
+                st.Done[Q] = true;
+        }
+    });
+}
+#endif
+
+// The integer path for every part left.
+template <class F>
+constexpr void integer_pass(const typename F::DP& px, state<F>& st) {
+    using DP                = typename F::DP;
+    using CP                = typename F::CP;
+    constexpr std::size_t N = F::N;
+    constexpr std::size_t E = []<std::size_t... I>(std::index_sequence<I...>) {
+        return std::max({std::size_t{1}, eng::input_limbs<num_t<std::tuple_element_t<I, DP>>>...});
+    }(std::make_index_sequence<F::ND>{});
+    constexpr bool HasA = F::scalar >= 0;
+    constexpr int  MagA = [] {
+        if constexpr (HasA)
+            return eng::in_mag<num_t<std::tuple_element_t<static_cast<std::size_t>(F::scalar), DP>>>;
+        else
+            return 1;
+    }();
+    constexpr int MagY = []<std::size_t... J>(std::index_sequence<J...>) {
+        return std::max({1, eng::in_mag<num_t<std::tuple_element_t<static_cast<std::size_t>(F::yidx[J]), DP>>>...});
+    }(std::make_index_sequence<N>{});
+    constexpr int MagL = MagY + static_cast<int>(std::bit_width(N)) + 1;
+    constexpr int KE   = [] {
+        if constexpr (HasA) {
+            using A         = num_t<std::tuple_element_t<static_cast<std::size_t>(F::scalar), DP>>;
+            const double hi = static_cast<double>(upper_of<A>);
+            return std::max(0, static_cast<int>(hi * 1.4427) + 1) + 2;
+        } else
+            return 2;
+    }();
+    constexpr int H = F::has_pos ? static_cast<int>(F::lam_pos * 1.4427) + 3 : 2;
+    using core      = ga_exp_core<E, N, F::sq, HasA, MagA, MagY, MagL, KE, H>;
+    core c{};
+    if constexpr (HasA)
+        c.A = exact_widened<E>(anum<F>(px), 1);
+    else
+        c.A = wide_rational<E>{wide_sint<E>{0}, wide_sint<E>{1}};
+    for_index<N>([&]<std::size_t J>() { c.Y[J] = exact_widened<E>(ynum<F, J>(px), F::dsign[J]); });
+    for_index<F::NC>([&]<std::size_t Q>() {
+        using O = num_t<std::tuple_element_t<Q, CP>>;
+        if constexpr (F::src[Q] != -2) {
+            if (!st.Done[Q]) {
+                core cq = c;
+                cq.Part = F::src[Q];
+                cq.Sign = F::osign[Q];
+                eng::note<eng::probe::integer_run>();
+                std::get<Q>(st.Out) = eng::evaluate<O, eng::start_bits<O>>(cq);
+                st.Done[Q]          = true;
+            }
+        }
+    });
+}
+
+template <class Domain, class CoDomain>
+CoDomain run_cold(const Domain& x);
+
+// The call. Hot (Cold false): the exact parts, then the first fast tier
+// inline; anything left redoes the call out of line from x alone, so the
+// result goes straight to the caller and only x's address (the caller's
+// object: Domain holds a std::tuple, passed by reference anyway) leaves the
+// frame. Cold:
+// the fast tiers again, the dd tier after the double tier, then the
+// integer path.
+template <class Domain, class CoDomain, bool Cold>
+[[gnu::always_inline]] constexpr CoDomain body(const Domain& x) {
+    using F                   = facts<Domain, CoDomain>;
+    using TF [[maybe_unused]] = tier_facts<F>; // unused without the FP tiers
+    using DP                  = typename F::DP;
+    using CP                  = typename F::CP;
+    constexpr std::size_t N   = F::N;
+    constexpr std::size_t NC  = F::NC;
+    static_assert(F::covers, "math::exp: CoDomain must hold the scalar part and every blade of the argument");
+    []<std::size_t... I>(std::index_sequence<I...>) {
+        static_assert((plain_part<std::tuple_element_t<I, DP>>() && ...),
+                      "math::exp: the argument's parts are numbers times blades (rad allowed), with no other unit "
+                      "and no factor of pi");
+    }(std::make_index_sequence<F::ND>{});
+    []<std::size_t... P>(std::index_sequence<P...>) {
+        static_assert((plain_part<std::tuple_element_t<P, CP>>() && ...),
+                      "math::exp: CoDomain's parts are numbers times blades, with no other unit");
+        static_assert((::beman::inside::detail::anchored<num_t<std::tuple_element_t<P, CP>>> && ...),
+                      "math::exp: each CoDomain part's grid must pass through 0");
+        (::beman::inside::math::detail::entry::require_rounding<num_t<std::tuple_element_t<P, CP>>>(), ...);
+    }(std::make_index_sequence<NC>{});
+
+    const DP& px = parts_view(x);
+    state<F>  st{};
+
+    // CoDomain's blades the argument lacks: 0.
+    for_index<NC>([&]<std::size_t P>() {
+        if constexpr (F::src[P] == -2) {
+            std::get<P>(st.Out) = num_t<std::tuple_element_t<P, CP>>(just<0>);
+            st.Done[P]          = true;
+        }
+    });
+    // The exact parts of a value: coefficients 0, and with y = 0 the scalar
+    // part e^a by the scalar engine (1 without a scalar part). Not on the
+    // hot path: there a 0 comes out of the fast tiers exactly, and decides
+    // unless a directed mode puts it on a rounding boundary - then the cold
+    // call finds it here.
+    bool       all_zero    = false;
+    const auto exact_parts = [&] {
+        all_zero = true;
+        for_index<N>([&]<std::size_t J>() { all_zero = all_zero && ynum<F, J>(px) == just<0>; });
+        for_index<NC>([&]<std::size_t P>() {
+            using O = num_t<std::tuple_element_t<P, CP>>;
+            if constexpr (F::src[P] >= 0) {
+                if (ynum<F, static_cast<std::size_t>(F::src[P])>(px) == just<0>) {
+                    std::get<P>(st.Out) = O(just<0>);
+                    st.Done[P]          = true;
+                }
+            } else if constexpr (F::src[P] == -1) {
+                if (all_zero) {
+                    if constexpr (F::scalar >= 0) {
+                        const auto& a       = anum<F>(px);
+                        std::get<P>(st.Out) = ::beman::inside::math::detail::entry::exp_fn::eval<O>(a);
+                    } else
+                        std::get<P>(st.Out) = O(just<1>);
+                    st.Done[P] = true;
+                }
+            }
+        });
+    };
+    if consteval {
+        exact_parts();
+    } else {
+        if constexpr (Cold)
+            exact_parts();
+    }
+
+    if !consteval {
+#ifndef BEMAN_INSIDE_MATH_NO_FP
+        // The double tier where a part allows it, else the dd tier; cold,
+        // the dd tier after the double tier.
+        if constexpr (TF::fp_ok || TF::dd_ok)
+            if (!eng::integer_only() && !all_zero) {
+                if constexpr (TF::fp_ok)
+                    fp_pass<F>(px, st);
+                else
+                    dd_pass<F>(px, st);
+                if constexpr (Cold && TF::fp_ok && TF::dd_ok)
+                    if (st.rest())
+                        dd_pass<F>(px, st);
+            }
+#endif
+        if (st.rest()) {
+            if constexpr (Cold)
+                integer_pass<F>(px, st);
+            else
+                return eng::cold_call([&x] { return run_cold<Domain, CoDomain>(x); });
+        }
+    } else {
+        if (st.rest())
+            integer_pass<F>(px, st);
+    }
+    return [&]<std::size_t... P>(std::index_sequence<P...>) {
+        return CoDomain{std::tuple_element_t<P, CP>(std::get<P>(st.Out))...};
+    }(std::make_index_sequence<NC>{});
+}
+
+// flatten: the kernels' helpers (Horner's lambdas, the dd operations) inline
+// into the hot path too; cold_call stays out of line (noinline).
+template <class Domain, class CoDomain>
+[[gnu::always_inline]] [[gnu::flatten]] constexpr CoDomain run(const Domain& x) {
+    return body<Domain, CoDomain, false>(x);
+}
+template <class Domain, class CoDomain>
+CoDomain run_cold(const Domain& x) {
+    return body<Domain, CoDomain, true>(x);
+}
+} // namespace beman::inside::units::detail::gaexp
+
+namespace beman::inside::units::detail::gaexp {
+// The output of exp over Domain: the scalar part, then each blade of y in
+// Domain's unit, on the number N (the deduced output's, or one named).
+template <class Domain, template <std::size_t> class N>
+struct output_parts {
+    using D    = domain_facts<Domain>;
+    using type = decltype([]<std::size_t... J>(std::index_sequence<J...>) {
+        return std::type_identity<multivector<N<D::N>, quantity<D::template ypart<J>::reference, N<J>>...>>{};
+    }(std::make_index_sequence<D::N>{}))::type;
+};
+
+// The deduced output: each part's number on [-L, L], L its bound (above by
+// a 2^-30 margin, so its decide skips the range check) rounded up onto the
+// notch N: the parts' own (their gcd) unless S names one; the parts' policy
+// (rounding to nearest unless it names a mode) under S's flags.
+template <class Domain>
+inline constexpr grid_rational parts_notch = []<std::size_t... P>(std::index_sequence<P...>) {
+    using DP = parts_t<Domain>;
+    grid_rational g{0};
+    for (const grid_rational& n : {notch_of<num_t<std::tuple_element_t<P, DP>>>...}) {
+        if (n == 0)
+            return grid_rational{0};
+        g = g == 0 ? n : ::beman::inside::detail::gcd(g, n);
+    }
+    return g;
+}(std::make_index_sequence<std::tuple_size_v<parts_t<Domain>>>{});
+
+template <class Domain, ::beman::inside::math::detail::out_spec S>
+struct deduced {
+    using D                              = domain_facts<Domain>;
+    static constexpr grid_rational notch = S.HasNotch ? S.Notch : parts_notch<Domain>;
+    static_assert(notch != 0,
+                  "math::exp: a deduced output takes the argument's notch - its parts need one, or name it: "
+                  "exp<per<K>>(x)");
+    static constexpr policy_flag flags = ::beman::inside::math::detail::spec_flags(
+        ::beman::inside::detail::with_default_rounding(flags_of<num_t<std::tuple_element_t<0, typename D::DP>>> &
+                                                       ~::beman::inside::detail::cursor_marker),
+        S);
+    static consteval grid_rational limit(double m) {
+        const grid_rational v{m * (1 + 0x1p-30)};
+        return ::beman::inside::detail::grid_round<::beman::inside::detail::round_mode::ceil>(v / notch) * notch;
+    }
+    // Part J of y, or J = N for the scalar part.
+    template <std::size_t J>
+    using number = inside<grid{{-limit(J == D::N ? D::scalar_bound : D::part_bound[J % D::N]),
+                                limit(J == D::N ? D::scalar_bound : D::part_bound[J % D::N])},
+                               notch},
+                          flags>;
+    using type   = typename output_parts<Domain, number>::type;
+};
+
+// A named output: a multivector (or a quantity, its one part), or the number
+// of every part.
+template <class Domain, class C>
+struct named {
+    template <std::size_t>
+    using number = C;
+    static consteval auto pick() {
+        if constexpr (is_multivector_v<C> || quantity_like<C>)
+            return std::type_identity<C>{};
+        else {
+            static_assert(insidable<C>,
+                          "math::exp<C>(x) of a multivector - C is a multivector, or the number of "
+                          "every part");
+            return std::type_identity<typename output_parts<Domain, number>::type>{};
+        }
+    }
+    using type = typename decltype(pick())::type;
+};
+} // namespace beman::inside::units::detail::gaexp
+
+namespace beman::inside::math::detail {
+// A multivector's rank: 3 (a quantity of a blade has it too: units/math.hpp).
+template <class T>
+    requires units::detail::is_multivector_v<T>
+inline constexpr int kind_rank<T> = 3;
+
+// exp of a multivector, or of a quantity of a blade: the closed form, every
+// part of the output correctly rounded.
+template <class Domain>
+struct kind<entry::exp_fn, 3, Domain> {
+    static constexpr bool takes = units::detail::gaexp::domain_closed<Domain>();
+
+    template <class S>
+    struct out;
+    template <out_spec S>
+    struct out<specs<S>> {
+        using type = typename units::detail::gaexp::deduced<Domain, S>::type;
+    };
+    template <class C>
+    struct out<named<C>> {
+        using type = typename units::detail::gaexp::named<Domain, C>::type;
+    };
+    template <class S>
+    using output = typename out<S>::type;
+
+    template <class O>
+    [[nodiscard]] [[gnu::always_inline]] static constexpr O eval(const Domain& x) {
+        return units::detail::gaexp::run<Domain, O>(x);
+    }
+};
+} // namespace beman::inside::math::detail
+
+namespace beman::inside::math {
+// Two parts of the argument that commute: no closed form.
+#define BEMAN_INSIDE_WHY_not_closed \
+    "math::exp: no closed form - two parts of the argument commute (e12 and e34 in 4-D), so its square is no scalar"
+template <auto... Spec, class D>
+    requires(detail::rank_of<D> == 3 && !units::detail::gaexp::domain_closed<D>())
+void exp(const D&) = delete (BEMAN_INSIDE_WHY_not_closed);
+template <class C, class D>
+    requires(detail::rank_of<D> == 3 && !units::detail::gaexp::domain_closed<D>())
+void exp(const D&) = delete (BEMAN_INSIDE_WHY_not_closed);
+#undef BEMAN_INSIDE_WHY_not_closed
+} // namespace beman::inside::math
+
 
 
 #endif // BEMAN_INSIDE_NO_UNITS

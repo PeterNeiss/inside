@@ -63,7 +63,7 @@ struct call_policy : E {
 
     // Cheap default report: no message construction. error_ref mode records the
     // code (sticky: keeps the first error) — also during constant evaluation, so
-    // try_make / parse / tan_into return error values in constexpr code.
+    // try_make / parse / tan<Out> return error values in constexpr code.
     // Throw mode funnels through the installed handler via an outlined cold
     // helper; at compile time it throws, so the build fails with a text that
     // names the code and the fix.

@@ -61,18 +61,18 @@ int main()
   std::printf("%-6s %10.2f %18.2f %18.2f\n", "sin",
               ns_per_op([&](long i) { g_sink = std::sin(da[i & mask]); }),
               ns_per_op([&](long i) { g_sink = math::sin(a[i & mask]).raw(); }),
-              ns_per_op([&](long i) { g_sink = math::sin_into<sin_fine>(a[i & mask]).raw(); }));
+              ns_per_op([&](long i) { g_sink = math::sin<sin_fine>(a[i & mask]).raw(); }));
   std::printf("%-6s %10.2f %18.2f %18.2f\n", "exp",
               ns_per_op([&](long i) { g_sink = std::exp(da[i & mask]); }),
               ns_per_op([&](long i) { g_sink = math::exp(a[i & mask]).raw(); }),
-              ns_per_op([&](long i) { g_sink = math::exp_into<exp_fine>(a[i & mask]).raw(); }));
+              ns_per_op([&](long i) { g_sink = math::exp<exp_fine>(a[i & mask]).raw(); }));
   std::printf("%-6s %10.2f %18.2f %18.2f\n", "log",
               ns_per_op([&](long i) { g_sink = std::log(dp[i & mask]); }),
               ns_per_op([&](long i) { g_sink = math::log(p[i & mask]).raw(); }),
-              ns_per_op([&](long i) { g_sink = math::log_into<log_fine>(p[i & mask]).raw(); }));
+              ns_per_op([&](long i) { g_sink = math::log<log_fine>(p[i & mask]).raw(); }));
   std::printf("%-6s %10.2f %18.2f %18.2f\n", "sqrt",
               ns_per_op([&](long i) { g_sink = std::sqrt(ds[i & mask]); }),
               ns_per_op([&](long i) { g_sink = math::sqrt(s[i & mask]).raw(); }),
-              ns_per_op([&](long i) { g_sink = math::sqrt_into<sqrt_fine>(s[i & mask]).raw(); }));
+              ns_per_op([&](long i) { g_sink = math::sqrt<sqrt_fine>(s[i & mask]).raw(); }));
   return 0;
 }

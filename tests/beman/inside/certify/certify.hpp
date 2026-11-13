@@ -15,7 +15,7 @@
 //
 //   #include "certify.hpp"            // before any beman.inside header
 //   void pairs(beman::inside::certify::runner& r) {
-//       r.unary<Out, In>("sin", [](In x) { return beman::inside::math::sin_into<Out>(x); });
+//       r.unary<Out, In>("sin", [](In x) { return beman::inside::math::sin<Out>(x); });
 //   }
 //   int main(int argc, char** argv) { return beman::inside::certify::main(argc, argv, pairs); }
 //
@@ -204,7 +204,7 @@ In input(std::uint64_t i) {
 // Input i, computed as a run-time call and on the integer path.
 using evaluator = std::function<void(std::uint64_t, record&, record&)>;
 
-// A result, or the errc of a store into Out that failed: an _into form
+// A result, or the errc of a store into Out that failed: a call fn<Out>(x)
 // reports a result past Out through Out's policy, and the default handler
 // throws. It is recorded as an expected's error is.
 template <class Fn, class... X>

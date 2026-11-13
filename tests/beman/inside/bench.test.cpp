@@ -21,9 +21,13 @@
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/math.hpp>
+#include <beman/inside/units.hpp>
+#include <beman/inside/units/geoalg.hpp>
+#include <beman/inside/units/math.hpp>
 
 #include <algorithm>
 #include <cmath>
+#include <complex>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -191,10 +195,10 @@ static void bench_scalar_u8() {
         u200 a(min.a[i & kMask]), b(min.b[i & kMask]);
         doNotOptimizeAway((a * b).raw());
     });
-    mul.run("inside mul_into<u200>", [&] {
+    mul.run("inside mul<u200>", [&] {
         ++i;
         u200 a(min.a[i & kMask]), b(min.b[i & kMask]);
-        doNotOptimizeAway(mul_into<u200>(a, b).raw());
+        doNotOptimizeAway(mul<u200>(a, b).raw());
     });
     finish(mul);
 
@@ -216,16 +220,16 @@ static void bench_scalar_u8() {
         doNotOptimizeAway(div(a, b, round_toward_zero)->raw());
     });
     using q16 = inside<{{0, 200}, per<16>}, round_nearest>;
-    dv.run("inside div_into<1/16> (divisor excludes 0)", [&] {
+    dv.run("inside div<1/16> (divisor excludes 0)", [&] {
         ++i;
         u200                   a(din.a[i & kMask]);
         inside<{1, 9}, unsafe> b(din.b[i & kMask]);
-        doNotOptimizeAway(div_into<q16>(a, b).raw());
+        doNotOptimizeAway(div<q16>(a, b).raw());
     });
-    dv.run("inside div_into<1/16> (expected)", [&] {
+    dv.run("inside div<1/16> (expected)", [&] {
         ++i;
         u200 a(din.a[i & kMask]), b(din.b[i & kMask]);
-        doNotOptimizeAway(div_into<q16>(a, b)->raw());
+        doNotOptimizeAway(div<q16>(a, b)->raw());
     });
     finish(dv);
 
@@ -569,10 +573,10 @@ static void bench_fixed_point() {
         fp a(min.a[i & kMask]), b(min.b[i & kMask]);
         doNotOptimizeAway((a * b).raw());
     });
-    mul.run("inside mul_into<Q8.8, round_nearest>", [&] {
+    mul.run("inside mul<Q8.8>(a, b, round_nearest)", [&] {
         ++i;
         fp a(min.a[i & kMask]), b(min.b[i & kMask]);
-        doNotOptimizeAway(mul_into<inside<{{0, 255}, 1.0 / 256}, round_nearest>>(a, b).raw());
+        doNotOptimizeAway(mul<inside<{{0, 255}, 1.0 / 256}, round_nearest>>(a, b).raw());
     });
     finish(mul);
 
@@ -834,7 +838,7 @@ static void bench_store_convert() {
     });
     conv.run("to<uint8_t> (expected)", [&] {
         ++i;
-        doNotOptimizeAway(*uv[i & kMask].to<std::uint8_t>());
+        doNotOptimizeAway(uv[i & kMask].to<std::uint8_t>());
     });
     conv.run("static_cast<double> (dyadic index)", [&] {
         ++i;
@@ -1357,8 +1361,95 @@ static void bench_cmath() {
         "math: pown<3>", d_qs[i & J] * d_qs[i & J] * d_qs[i & J], beman::inside::math::pown<3>(v_alg[i & J]).raw())
     BEMAN_INSIDE_CMATH_GROUP("math: pow (expected)",
                              std::pow(d_powb[i & J], d_powe[i & J]),
-                             (*beman::inside::math::pow(v_powb[i & J], v_powe[i & J])).raw())
+                             beman::inside::math::pow(v_powb[i & J], v_powe[i & J]).raw())
 #undef BEMAN_INSIDE_CMATH_GROUP
+}
+
+//---------------------------------------------------------------------------
+// exp of multivectors: a complex number (the even part of G(2,0)) against
+// std::exp(std::complex<double>), and a rotor from a bivector of G(3,0)
+// against sqrt + sin + cos + 3 multiplies in doubles. Every part correctly
+// rounded onto a 2^-20 grid (the double tier) and a 2^-52 grid (the dd
+// tier).
+//---------------------------------------------------------------------------
+namespace ga {
+inline constexpr units::basis_vector e1_def{"e₁", +1, {.ascii = "e1"}};
+inline constexpr units::basis_vector e2_def{"e₂", +1, {.ascii = "e2"}};
+inline constexpr units::basis_vector e3_def{"e₃", +1, {.ascii = "e3"}};
+inline constexpr auto                e1 = units::unit_c<e1_def>;
+inline constexpr auto                e2 = units::unit_c<e2_def>;
+inline constexpr auto                e3 = units::unit_c<e3_def>;
+inline constexpr units::named_unit   i_def{"i", e1 * e2};
+inline constexpr units::named_unit   j_def{"j", e3 * e1};
+inline constexpr units::named_unit   k_def{"k", e2 * e3};
+inline constexpr auto                i = units::unit_c<i_def>;
+inline constexpr auto                j = units::unit_c<j_def>;
+inline constexpr auto                k = units::unit_c<k_def>;
+} // namespace ga
+
+static void bench_geoalg() {
+    using units::multivector;
+    using units::quantity;
+    using in_t  = inside<{{-4, 4}, per<16384>}, round_nearest>;
+    using o20_t = inside<{{-64, 64}, per<1 << 20>}, round_nearest>;
+    using o52_t = inside<{{-64, 64}, per<(std::int64_t{1} << 52)>}, round_nearest>;
+    using cdom  = multivector<in_t, quantity<ga::i, in_t>>;
+    using c20   = multivector<o20_t, quantity<ga::i, o20_t>>;
+    using c52   = multivector<o52_t, quantity<ga::i, o52_t>>;
+    using bdom  = multivector<quantity<ga::i, in_t>, quantity<ga::j, in_t>, quantity<ga::k, in_t>>;
+    using r20   = multivector<o20_t, quantity<ga::i, o20_t>, quantity<ga::j, o20_t>, quantity<ga::k, o20_t>>;
+    using r52   = multivector<o52_t, quantity<ga::i, o52_t>, quantity<ga::j, o52_t>, quantity<ga::k, o52_t>>;
+    struct rotor { // the native rotor: cos λ + (sin λ / λ)·(u i + v j + w k)
+        double s, i, j, k;
+    };
+    constexpr std::size_t              M = 4096;
+    std::vector<cdom>                  v_c;
+    std::vector<bdom>                  v_b;
+    std::vector<std::complex<double>>  d_c;
+    std::vector<std::array<double, 3>> d_b;
+    for (std::size_t n = 0; n < M; ++n) {
+        const std::int64_t a = static_cast<std::int64_t>((n * 16) & 0xFFFF) - 32768;
+        const std::int64_t b = static_cast<std::int64_t>((n * 40503) & 0xFFFF) - 32768;
+        const std::int64_t c = static_cast<std::int64_t>((n * 25171) & 0xFFFF) - 32768;
+        const rational     ra{a, 8192}, rb{b, 8192}, rc{c, 8192};
+        v_c.push_back(cdom{in_t{ra} + in_t{rb} * ga::i});
+        d_c.emplace_back(static_cast<double>(ra), static_cast<double>(rb));
+        v_b.push_back(bdom{in_t{ra} * ga::i + in_t{rb} * ga::j + in_t{rc} * ga::k});
+        d_b.push_back({static_cast<double>(ra), static_cast<double>(rb), static_cast<double>(rc)});
+    }
+    const auto native_rotor = [](const std::array<double, 3>& y) {
+        const double l = std::sqrt(y[0] * y[0] + y[1] * y[1] + y[2] * y[2]);
+        const double s = l == 0 ? 1 : std::sin(l) / l;
+        return rotor{std::cos(l), s * y[0], s * y[1], s * y[2]};
+    };
+    std::size_t           i = 0;
+    constexpr std::size_t J = M - 1;
+#define BEMAN_INSIDE_GA_GROUP(title, std_expr, ins_expr) \
+    {                                                    \
+        auto bench = group(title, 50'000);               \
+        bench.run("std double", [&] {                    \
+            ++i;                                         \
+            doNotOptimizeAway(std_expr);                 \
+        });                                              \
+        bench.run("beman::inside::math inside", [&] {    \
+            ++i;                                         \
+            doNotOptimizeAway(ins_expr);                 \
+        });                                              \
+        finish(bench);                                   \
+    }
+    BEMAN_INSIDE_GA_GROUP("math: exp of a complex number (onto 2^-20)",
+                          std::exp(d_c[i & J]),
+                          (beman::inside::math::exp<c20>(v_c[i & J])))
+    BEMAN_INSIDE_GA_GROUP("math: exp of a complex number (onto 2^-52)",
+                          std::exp(d_c[i & J]),
+                          (beman::inside::math::exp<c52>(v_c[i & J])))
+    BEMAN_INSIDE_GA_GROUP("math: exp of a bivector, a rotor (onto 2^-20)",
+                          native_rotor(d_b[i & J]),
+                          (beman::inside::math::exp<r20>(v_b[i & J])))
+    BEMAN_INSIDE_GA_GROUP("math: exp of a bivector, a rotor (onto 2^-52)",
+                          native_rotor(d_b[i & J]),
+                          (beman::inside::math::exp<r52>(v_b[i & J])))
+#undef BEMAN_INSIDE_GA_GROUP
 }
 
 //---------------------------------------------------------------------------
@@ -1546,6 +1637,7 @@ int main(int argc, char** argv) {
     bench_rational();
     bench_range();
     bench_cmath();
+    bench_geoalg();
     bench_algorithms();
     return 0;
 }

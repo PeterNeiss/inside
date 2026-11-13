@@ -381,7 +381,7 @@ below is a candidate for a later paper or revision:
    number, then the unit symbol (`unit_symbol`: "kg m²/s²", "km/h"), in UTF-8 or
    ASCII; `parse<Q>` reads a number in `Q`'s unit.
 2. **Algorithms on quantities**: `sum<Q>`, `add_all`, `mul_all`,
-   `mul_into<Out>` / `div_into<Out>`, `min`, `max`, `lerp`, `dot` and `cross`,
+   `mul<Out>` / `div<Out>`, `min`, `max`, `lerp`, `dot` and `cross`,
    as for `inside`.
 3. **The catalog**: about 80 ISQ kinds, the SI units and prefixes (quecto …
    quetta, exact past 64 bits), the international units, and `percent` and
@@ -404,7 +404,7 @@ third of the time of mp-units' `si` and `isq` headers (0.61 s against 1.90 s on
 GCC 15, 0.92 s against 3.39 s on Clang 20), and per expression the two are
 about the same on GCC.
 
-A unit conversion compiles to one `mov`. 31 of the repository's 39 examples use
+A unit conversion compiles to one `mov`. 36 of the repository's 44 examples use
 quantities, among them a clock whose seconds carry into minutes through
 `on_wrap`, a PID controller in kelvin and percent, sensor fusion of
 temperature points, a rocket's delta-v in km/s, and money and cryptocurrency

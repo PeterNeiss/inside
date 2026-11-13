@@ -46,7 +46,6 @@ constexpr std::array with_quantity_form{
     std::string_view{"conversion_rounds"},
     std::string_view{"cross"},
     std::string_view{"div"},
-    std::string_view{"div_into"},
     std::string_view{"divmod"},
     std::string_view{"dot"},
     std::string_view{"end"},
@@ -59,7 +58,6 @@ constexpr std::array with_quantity_form{
     std::string_view{"mod"},
     std::string_view{"mul"},
     std::string_view{"mul_all"},
-    std::string_view{"mul_into"},
     std::string_view{"parse"},
     std::string_view{"parse_exact"},
     std::string_view{"sub"},
@@ -187,8 +185,8 @@ TEST(UnitsParityTest, the_quantity_forms_compile) {
     static_assert(requires { add_all(m, k, m); });
     static_assert(requires { mul_all(m, m); });
     static_assert(requires(std::vector<metres> v) { sum<quantity<si::metre, inside<{0, 1000}>>>(v); });
-    static_assert(requires { mul_into<metres>(m, just<2>); });
-    static_assert(requires { div_into<metres>(m, just<2>); });
+    static_assert(requires { mul<metres>(m, just<2>); });
+    static_assert(requires { div<metres>(m, just<2>); });
     static_assert(requires { divmod(m, k); });
     static_assert(requires { add(m, k); });
     static_assert(requires { sub(k, m, round_floor); });

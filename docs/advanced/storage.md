@@ -136,7 +136,7 @@ using decade = inside<{{-100, 100}, per<1 << 20>}, round_nearest>;
 const length planck   = just<1.616255e-35_g>;
 const length universe = just<8.8e26_g>;
 auto ratio = universe / planck;           // exactly 1760…0/323251, a plain value
-math::log10_into<decade>(ratio);          // 61.73597…, rounded once
+math::log10<decade>(ratio);          // 61.73597…, rounded once
 ```
 
 [`planck_to_cosmos.cpp`](../../examples/planck_to_cosmos.cpp) runs this with

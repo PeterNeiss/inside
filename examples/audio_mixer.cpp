@@ -6,12 +6,12 @@
 //   - Q-format gain inside; per-frame mix runs entirely in integer notch math
 //   - an `on_clamp` hook for peak metering
 //   - `sample_t{v, clamp}` to push the mixed value back into the sample grid
-//   - `units::pow_base_into` / `mul_into`: one rounding straight into the
+//   - `math::pow_base<10, Out>` / `mul<Out>`: one rounding straight into the
 //     target type, never a wide product narrowed afterwards
 //   - Units: channel gains in dB (a level unit of our own, as in
 //     decibels.cpp), frame times in s, the tone in Hz, and its phase in turns
 //     (tr = 2π rad), so the phase offsets 1/8, −1/6 and −1/4 tr are exact and
-//     `units::sin_into` reduces them exactly — no approximation of π, no `<cmath>`
+//     `math::sin<Out>` reduces them exactly — no approximation of π, no `<cmath>`
 //   - `values<T>` for the frame loops
 
 #include <iostream>
@@ -44,9 +44,9 @@ using db_t = quantity<dB, inside<{{-24, 12}, per<2>}, round_nearest>>;
 using gain_t = inside<{{0, 4}, per<65536>}, round_nearest>;
 
 // Decibels → linear amplitude via 10^(L / 20 dB). The ratio is exact (a 1/40
-// grid), and pow_base_into rounds 10^x once onto gain_t — integer/constexpr,
+// grid), and pow_base rounds 10^x once onto gain_t — integer/constexpr,
 // no std::pow, no FPU boundary anywhere.
-static gain_t db_to_linear(db_t db) { return units::pow_base_into<gain_t, 10>(db / (just<20> * dB)); }
+static gain_t db_to_linear(db_t db) { return math::pow_base<10, gain_t>(db / (just<20> * dB)); }
 
 int main() {
     // Four channels — pre-gain levels: vocals hot, drums normal, bass quiet,
@@ -58,7 +58,7 @@ int main() {
     gain_t gain[4] = {db_to_linear(level[0]), db_to_linear(level[1]), db_to_linear(level[2]), db_to_linear(level[3])};
 
     // 16 sample frames of synthetic audio (sine waves at different phases).
-    // All synthesis is exact arithmetic on quantities until sin_into's one
+    // All synthesis is exact arithmetic on quantities until sin's one
     // rounding — same idiom as the mix pipeline below.
     constexpr std::size_t N = 16;
     using frame_t           = inside<{0, N - 1}>;
@@ -84,7 +84,7 @@ int main() {
         const cycles_t  c = tone * t;                 // Hz · s is a plain number of cycles
         for (int ch = 0; ch < 4; ++ch) {
             const auto a                      = c * turn + offsets[ch]; // in turns, exact
-            channels[ch][i.as<std::size_t>()] = mul_into<sample_t>(amplitudes[ch], units::sin_into<sine_t>(a));
+            channels[ch][i.as<std::size_t>()] = mul<sample_t>(amplitudes[ch], math::sin<sine_t>(a));
         }
     }
 

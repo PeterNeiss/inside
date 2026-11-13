@@ -49,7 +49,7 @@ int main() {
     //    denominator is at most 60000 (mf in kg). Its log rounds once onto
     //    a 1e-6 grid, and v_e = 3.1 km/s scales it into a Δv.
     const inside<{{1, 300}, max_denominator{60'000}}> ratio = m0 / m_final;
-    const auto                                        ln    = math::log_into<fine<1'000'000>>(ratio);
+    const auto                                        ln    = math::log<fine<1'000'000>>(ratio);
     const quantity<km_s, inside<{{1, 5}, per<10>}>>   v_e{rational{31, 10}};
     const auto                                        dv_stage = v_e * ln;
     std::cout << "dv stage  = " << dv_stage.in(si::metre / si::second) << '\n';
@@ -63,7 +63,7 @@ int main() {
     const auto                                             r = altitude + earth;
     static_assert(r.quantity_spec == isq::length);
     constexpr auto mu     = just<rational{3'986'004'418, 10'000}> * (cubic(km) / square(si::second));
-    const auto     v_park = units::sqrt_into<fine<1'000'000>>(mu / r);
+    const auto     v_park = math::sqrt<fine<1'000'000>>(mu / r);
     std::cout << "v parking = " << v_park << '\n';
     if (to_string(v_park) != "7.797393 km/s")
         return 1;
@@ -71,9 +71,9 @@ int main() {
     // 4. The transfer ellipse reaches the Moon's distance: a = (r + 384400 km)/2,
     //    exactly. Vis-viva at perigee, v² = 2μ/r − μ/a: the grids of r and a
     //    prove the difference positive, so its sqrt is a plain value (a grid
-    //    that reached below 0 would make sqrt_into return an expected).
+    //    that reached below 0 would not compile: sqrt takes no negative grid).
     const auto a      = (r + just<384'400> * km) / just<2>;
-    const auto v_peri = units::sqrt_into<fine<1'000'000>>(just<2> * mu / r - mu / a);
+    const auto v_peri = math::sqrt<fine<1'000'000>>(just<2> * mu / r - mu / a);
     const auto dv_tli = v_peri - v_park;
     std::cout << "v perigee = " << v_peri << ", TLI needs " << dv_tli << '\n';
     if (to_string(v_peri) != "10.934330 km/s" || to_string(dv_tli) != "3.136937 km/s" || !(dv_stage > dv_tli))
@@ -81,7 +81,7 @@ int main() {
     //    Half the ellipse's period, π·a·√(a/μ): √(s²/km²) is s/km, so
     //    a·√(a/μ) is a time; mag_pi puts π in the unit, and the cast to hours
     //    rounds once with the true π.
-    const auto rt   = units::sqrt_into<fine<1'000'000'000>>(a / mu);
+    const auto rt   = math::sqrt<fine<1'000'000'000>>(a / mu);
     const auto t_h  = value_cast<si::hour, inside<{{0, 200}, per<10>}, round_nearest>>(mag_pi * (a * rt));
     const auto days = value_cast<si::day, inside<{{0, 10}, per<100>}, round_nearest>>(mag_pi * (a * rt));
     std::cout << "transfer  = " << t_h << " (" << days << ")\n";

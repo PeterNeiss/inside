@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Arithmetic: result grids of + − × and comparison across grids, signed
 // values, the tight result grids, std::expected operands and lift,
-// mul_into/div_into, and bounded continuous grids.
+// mul<Out>/div<Out>, and bounded continuous grids.
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/inside/casts.hpp>
@@ -1246,7 +1246,7 @@ TEST(LiftTest, lift_propagates_exceptions_thrown_by_op) {
 }
 } // namespace lift_tests
 
-// mul_into<Out> / div_into<Out>: the exact product or quotient rounded once
+// mul<Out> / div<Out>: the exact product or quotient rounded once
 // onto Out, without forming the product or quotient grid.
 namespace into_tests {
 using namespace beman::inside;
@@ -1258,53 +1258,53 @@ using price = inside<{{0, 100'000'000}, per<100>}>;           // dollars per ETH
 using usd   = inside<{{0, 1'000'000'000'000'000}, per<100>}>; // dollars to the cent
 } // namespace
 
-TEST(IntoTest, mul_into_rounds_the_exact_product_once) {
+TEST(NamedOutputTest, mul_rounds_the_exact_product_once) {
     // eth × price has a 10^-20 notch: rounded once onto usd's grid.
     const eth   balance = *parse<eth>("123456789.123456789123456789");
     const price p       = *parse<price>("3141.59");
     using usd_nearest   = inside<grid_of<usd>, round_nearest>;
-    EXPECT_EQ(to_string(mul_into<usd_nearest>(balance, p)), "387850614142.36");
-    EXPECT_EQ(to_string(mul_into<usd, round_floor>(balance, p)), "387850614142.36");
-    EXPECT_EQ(to_string(mul_into<usd, round_ceil>(balance, p)), "387850614142.37");
+    EXPECT_EQ(to_string(mul<usd_nearest>(balance, p)), "387850614142.36");
+    EXPECT_EQ(to_string(mul<usd>(balance, p, round_floor)), "387850614142.36");
+    EXPECT_EQ(to_string(mul<usd>(balance, p, round_ceil)), "387850614142.37");
     // Off the cents grid under a checked Out: reported, not rounded.
-    EXPECT_THROW((void)mul_into<usd>(balance, p), inside_error);
+    EXPECT_THROW((void)mul<usd>(balance, p), inside_error);
     // On the grid: exact.
-    EXPECT_EQ(mul_into<usd>(eth{2}, p), (usd{rational{628318, 100}}));
+    EXPECT_EQ(mul<usd>(eth{2}, p), (usd{rational{628318, 100}}));
 }
 
-TEST(IntoTest, mul_into_range_follows_out_policy) {
+TEST(NamedOutputTest, mul_range_follows_out_policy) {
     using small   = inside<{0, 100}>;
     using clamped = inside<{0, 100}, clamp>;
     const small a{20}, b{30};
-    EXPECT_THROW((void)mul_into<small>(a, b), inside_error);
-    EXPECT_EQ(mul_into<clamped>(a, b), 100);
-    EXPECT_EQ(mul_into<small>(small{5}, a), 100);
+    EXPECT_THROW((void)mul<small>(a, b), inside_error);
+    EXPECT_EQ(mul<clamped>(a, b), 100);
+    EXPECT_EQ(mul<small>(small{5}, a), 100);
 }
 
-TEST(IntoTest, div_into) {
+TEST(NamedOutputTest, div_onto_a_named_output) {
     using third = inside<{{0, 100}, per<3>}, round_nearest>;
     using pos   = inside<{1, 100}>;
     using any   = inside<{0, 100}>;
     // A zero-free divisor: a plain Out.
-    const auto q = div_into<third>(any{7}, pos{3});
+    const auto q = div<third>(any{7}, pos{3});
     static_assert(std::is_same_v<std::remove_cvref_t<decltype(q)>, third>);
     EXPECT_EQ(q, (third{rational{7, 3}}));
     // Rounded once onto a coarser Out.
     using tenth = inside<{{0, 100}, per<10>}, round_nearest>;
-    EXPECT_EQ(div_into<tenth>(any{7}, pos{3}), (tenth{rational{23, 10}}));
+    EXPECT_EQ(div<tenth>(any{7}, pos{3}), (tenth{rational{23, 10}}));
     // A divisor that may be 0: every failure is the expected's error.
-    const auto r = div_into<third>(any{7}, any{3});
+    const auto r = div<third>(any{7}, any{3});
     static_assert(std::is_same_v<std::remove_cvref_t<decltype(r)>, std::expected<third, errc>>);
     EXPECT_EQ(*r, (third{rational{7, 3}}));
-    EXPECT_EQ(div_into<third>(any{7}, any{0}).error(), errc::division_by_zero);
+    EXPECT_EQ(div<third>(any{7}, any{0}).error(), errc::division_by_zero);
     using one = inside<{0, 1}, round_nearest>;
-    EXPECT_EQ(div_into<one>(any{7}, any{2}).error(), errc::overflow);
+    EXPECT_EQ(div<one>(any{7}, any{2}).error(), errc::overflow);
     using ten = inside<{0, 10}>;
-    EXPECT_EQ(div_into<ten>(any{7}, any{2}).error(), errc::rounding_error);
+    EXPECT_EQ(div<ten>(any{7}, any{2}).error(), errc::rounding_error);
     // A quotient with no 64-bit fraction, straight onto a grid.
     using fine  = inside<{{0, 2}, per<(std::uint64_t{1} << 62)>}, round_nearest>;
     const eth a = *parse<eth>("1.000000000000000001"), b = *parse<eth>("0.999999999999999999");
-    EXPECT_EQ(div_into<fine>(a, b).value(), fine::from_raw((std::uint64_t{1} << 62) + 9));
+    EXPECT_EQ(div<fine>(a, b).value(), fine::from_raw((std::uint64_t{1} << 62) + 9));
 }
 
 // The native paths (the exact product inside, or a 64-bit rational) round as
@@ -1323,14 +1323,14 @@ template <class Out, policy_flag F, class A, class B>
 void expect_mul_div_agree() {
     for (const A a : values<A>)
         for (const B b : values<B>) {
-            const auto policy = make_policy<flags_of<Out> | F>();
-            const auto m      = outcome<Out, F>([&] { return mul_into<Out, F>(a, b); });
-            const auto mw     = outcome<Out, F>([&] { return detail::mul_into_wide<Out>(a, b, policy); });
+            const auto policy = make_policy<detail::override_flags(flags_of<Out>, F)>();
+            const auto m      = outcome<Out, F>([&] { return mul<Out>(a, b, detail::flag<F>{}); });
+            const auto mw     = outcome<Out, F>([&] { return detail::mul_wide<Out>(a, b, policy); });
             EXPECT_EQ(m, mw) << to_string(a) << " * " << to_string(b);
             if (b == 0)
                 continue;
             const auto d  = outcome<Out, F>([&] {
-                const auto r = div_into<Out, F>(a, b);
+                const auto r = div<Out>(a, b, detail::flag<F>{});
                 if constexpr (detail::expected_like<std::remove_const_t<decltype(r)>>) {
                     if (!r)
                         throw inside_error(r.error());
@@ -1338,7 +1338,7 @@ void expect_mul_div_agree() {
                 } else
                     return r;
             });
-            const auto dw = outcome<Out, F>([&] { return detail::div_into_wide<Out>(a, b, policy); });
+            const auto dw = outcome<Out, F>([&] { return detail::div_wide<Out>(a, b, policy); });
             EXPECT_EQ(d, dw) << to_string(a) << " / " << to_string(b);
         }
 }
@@ -1348,7 +1348,7 @@ using thirds = inside<{{rational{1, 3}, rational{13, 3}}, rational{1, 2}}>; // u
 using neg    = inside<{{-2, -1}, per<8>}>;
 } // namespace
 
-TEST(IntoTest, native_paths_agree_with_the_wide_path) {
+TEST(NamedOutputTest, native_paths_agree_with_the_wide_path) {
     using round_out = inside<{{-50, 50}, per<3>}, round_nearest>;
     using floor_out = inside<{-40, 40}, round_floor>;
     using clamp_out = inside<{{-5, 5}, per<2>}, clamp | round_ceil>;
@@ -1370,7 +1370,7 @@ TEST(IntoTest, native_paths_agree_with_the_wide_path) {
     expect_mul_div_agree<check_out, checked, thirds, thirds>();
     expect_mul_div_agree<check_out, round_nearest, quart, int_g>();
     expect_mul_div_agree<int_g, round_floor, quart, quart>();
-    // div_into's unreduced quotient (Q-format targets): wrap, and a floor
+    // div<Out>'s unreduced quotient (Q-format targets): wrap, and a floor
     // target fed by unanchored and negative operands.
     static_assert(detail::unreduced_store<wrap_out> && detail::unreduced_store<floor_out>);
     expect_mul_div_agree<wrap_out, checked, int_g, quart>();
@@ -1520,7 +1520,7 @@ TEST(BoundedRationalTest, bounded_results_are_total_past_64_bit_intermediates) {
 }
 
 // Fractions past 1024 bits (detail::max_fraction_bits) have no type: the operator
-// is deleted, so a probe answers, and mul_into rounds the product instead.
+// is deleted, so a probe answers, and mul<Out> rounds the product instead.
 template <class A, class B>
 constexpr bool can_mul = requires(A a, B b) { a * b; };
 template <class A, class B>
@@ -1536,7 +1536,7 @@ TEST(BoundedRationalTest, results_past_the_fraction_cap_have_no_type) {
     static_assert(!can_mul<b16, b16> && !can_add<b16, b16>); // 10^288: past 1024 bits
     using cent      = inside<{{0, 1}, per<100>}, round_nearest>;
     const b16 tenth = rational{1, 10};
-    EXPECT_EQ(mul_into<cent>(tenth, tenth), rational(1, 100));
+    EXPECT_EQ(mul<cent>(tenth, tenth), rational(1, 100));
 }
 } // namespace bounded_rational_tests
 
@@ -1819,17 +1819,17 @@ TEST(ArithmeticArmTest, min_and_max_of_disjoint_ranges) {
     EXPECT_TRUE(max(lo, hi) == 15 && max(hi, lo) == 15);
 }
 
-// div_into on rational raws: when the unreduced quotient passes 64 bits, the
+// div<Out> on rational raws: when the unreduced quotient passes 64 bits, the
 // cross-reduced one (2^59/1023 ÷ 2^59/1021 = 1021/1023) or else the exact
 // wide one is stored, as the exact quotient rounds.
-TEST(ArithmeticArmTest, div_into_past_the_unreduced_quotient) {
+TEST(ArithmeticArmTest, div_onto_past_the_unreduced_quotient) {
     using C   = inside<{{1, 1125899906842624_g}, max_denominator{1024}}>; // [1, 2^50]
     using Out = inside<{{0, 2}, per<1024>}, round_nearest>;
     static_assert(std::is_same_v<detail::raw_t<C>, rational>);
     const C x{rational{std::uint64_t{1} << 59, 1023}}, y{rational{std::uint64_t{1} << 59, 1021}};
     const C u{rational{(std::uint64_t{1} << 59) + 1, 1023}}, v{rational{(std::uint64_t{1} << 59) + 3, 1021}};
-    EXPECT_TRUE(div_into<Out>(x, y) == Out{x / y});
-    EXPECT_TRUE(div_into<Out>(u, v) == Out{u / v});
+    EXPECT_TRUE(div<Out>(x, y) == Out{x / y});
+    EXPECT_TRUE(div<Out>(u, v) == Out{u / v});
 }
 
 // sum of continuous elements re-reduces a raw built unreduced (2/8), whose

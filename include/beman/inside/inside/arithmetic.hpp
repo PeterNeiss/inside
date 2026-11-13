@@ -16,7 +16,7 @@
 // Free-function arithmetic over detail::addition/multiplication/division/
 // modulo:
 //   add, sub, mul, div, mod, divmod   with a policy, hooks or an errc&
-//   mul_into<Out>, div_into<Out>      the exact result, rounded once into Out
+//   mul<Out>, div<Out>(a, b [, flag]) the exact result, rounded once into Out
 //   add_all, mul_all, sum<Target>     folds; sum checks the total once
 //   min, max, midpoint                ADL-found, exact on mixed grids
 //   dot, cross, lerp                  2-D helpers that widen like + and *
@@ -110,7 +110,7 @@ struct divmod_op {
     "coarser type first)"
 #define BEMAN_INSIDE_WHY_mul                                                                                    \
     "multiplication: no result type - the exact product's fractions pass 1024 bits - round the product into a " \
-    "coarser type with mul_into<Out>(a, b)"
+    "coarser type with mul<Out>(a, b)"
 #define BEMAN_INSIDE_WHY_div                                                                              \
     "division: no result type - the divisor grid is the point 0, or the exact quotient's fractions pass " \
     "1024 bits"
@@ -138,8 +138,10 @@ inline constexpr policy_flag call_flags = []() -> policy_flag {
 // `if constexpr` probe is false where the op cannot compile.
 } // namespace detail
 
+// (The leading int&... takes no argument: an explicit template argument,
+// as in mul<Out>(a, b), selects mul<Out> below instead of naming L.)
 #define BEMAN_INSIDE_ARITH_FN(name, op)                                             \
-    template <insidable L, insidable R, class... Args>                              \
+    template <int&... Barrier, insidable L, insidable R, class... Args>             \
         requires detail::name                                                       \
     ##_defined<L, R, detail::call_flags<Args...>>&&                                 \
         requires(L const& l, R const& r, Args && ... args)                          \
@@ -149,10 +151,10 @@ inline constexpr policy_flag call_flags = []() -> policy_flag {
     [[nodiscard]] constexpr auto name(L const& lhs, R const& rhs, Args&&... args) { \
         return detail::arith(detail::op{}, lhs, rhs, std::forward<Args>(args)...);  \
     }                                                                               \
-    template <insidable L, insidable R, class... Args>                              \
+    template <int&... Barrier, insidable L, insidable R, class... Args>             \
         requires(!detail::name##_defined<L, R, detail::call_flags<Args...>>)        \
     auto name(L const&, R const&, Args&&...) = delete (BEMAN_INSIDE_WHY_##name);    \
-    template <insidable L, insidable R, class... Args>                              \
+    template <int&... Barrier, insidable L, insidable R, class... Args>             \
         requires(detail::name##_defined<L, R, detail::call_flags<Args...>> &&       \
                  (detail::is_action_tag_v<std::remove_cvref_t<Args>> || ...))       \
     auto name(L const&, R const&, Args&&...) = delete (BEMAN_INSIDE_WHY_arith_action);
@@ -166,13 +168,14 @@ BEMAN_INSIDE_ARITH_FN(divmod, divmod_op)
 #undef BEMAN_INSIDE_ARITH_FN
 
 //---------------------------------------------------------------------------
-// mul_into<Out> / div_into<Out> — the exact product or quotient, rounded once
-// onto Out by Out's policy (plus the per-call flags F). Neither forms the
-// product or quotient grid, so they work where that grid's fractions would pass
-// the fraction limit, or a quotient past the 64-bit fraction. A store that
-// fails is reported through the policy (it throws under `checked`).
-// div_into returns std::expected<Out, errc> when the divisor's grid holds 0 —
-// then every failure, a zero divisor or a failed store, is the error — else Out.
+// mul<Out>(a, b [, flag]) / div<Out>(a, b [, flag]) — the exact product or
+// quotient, rounded once onto Out by Out's policy (the call's flag, such as
+// round_floor, replacing its rounding). Neither forms the product or
+// quotient grid, so they work where that grid's fractions would pass the
+// fraction limit, or a quotient past the 64-bit fraction. A store that fails
+// is reported through the policy (it throws under `checked`). div<Out>
+// returns std::expected<Out, errc> when the divisor's grid holds 0 — then
+// every failure, a zero divisor or a failed store, is the error — else Out.
 //---------------------------------------------------------------------------
 namespace detail {
 template <insidable Out, std::size_t K, typename P>
@@ -200,7 +203,7 @@ inline constexpr bool native_product = [] {
         return false;
     else {
         using P                   = typename multiplication<A, B>::result;
-        constexpr policy_flag all = flags_of<Out> | F;
+        constexpr policy_flag all = override_flags(flags_of<Out>, F);
         return values_fit_int64<P> && (notches_compatible<Out, P> || has_flag(all, snap)) &&
                (has_flag(all, clamp) || has_flag(all, wrap) || !excludes(interval_of<Out>, interval_of<P>));
     }
@@ -224,62 +227,73 @@ constexpr rational    unreduced_quotient(rational x, rational y) noexcept {
 }
 
 template <insidable Out, insidable A, insidable B, typename P>
-constexpr Out mul_into_wide(const A& a, const B& b, P&& policy) {
+constexpr Out mul_wide(const A& a, const B& b, P&& policy) {
     using E = wide_rational<exact_limbs<A, B, Out>>;
     return store_exact_into<Out>(E{exact_of(a)} * E{exact_of(b)}, policy);
 }
 template <insidable Out, insidable A, insidable B, typename P>
-constexpr Out div_into_wide(const A& a, const B& b, P&& policy) {
+constexpr Out div_wide(const A& a, const B& b, P&& policy) {
     using E = wide_rational<exact_limbs<A, B, Out>>;
     return store_exact_into<Out>(E{exact_of(a)} / E{exact_of(b)}, policy);
 }
 // The quotient as a reduced 64-bit rational, else wide.
 template <insidable Out, insidable A, insidable B, typename P>
-constexpr Out div_into_reduced(A a, B b, P policy) {
+constexpr Out div_reduced(A a, B b, P policy) {
     if constexpr (rational_operands<A, B>)
         if (const auto q = try_div(as_rational(a), as_rational(b)))
             return store_into<Out>(*q, policy);
-    return div_into_wide<Out>(a, b, policy);
+    return div_wide<Out>(a, b, policy);
 }
 // The same out of line, behind the unreduced quotient (by value, so the fast
 // path's operands stay in registers).
 template <insidable Out, insidable A, insidable B, typename P>
-[[gnu::cold]] [[gnu::noinline]] constexpr Out div_into_reduced_cold(A a, B b, P policy) {
-    return div_into_reduced<Out>(a, b, policy);
+[[gnu::cold]] [[gnu::noinline]] constexpr Out div_reduced_cold(A a, B b, P policy) {
+    return div_reduced<Out>(a, b, policy);
 }
 } // namespace detail
 
-template <insidable Out, policy_flag F = detail::none, insidable A, insidable B>
-[[nodiscard]] constexpr Out mul_into(const A& a, const B& b) {
-    auto policy = make_policy<flags_of<Out> | F>();
+namespace detail {
+// The flags of mul<Out> / div<Out>'s trailing argument: a flag, or none.
+template <class... Fl>
+concept call_flag_args = sizeof...(Fl) <= 1 && (flag_like<Fl> && ...);
+} // namespace detail
+
+template <insidable Out, insidable A, insidable B, class... Fl>
+    requires detail::call_flag_args<Fl...>
+[[nodiscard]] constexpr Out mul(const A& a, const B& b, const Fl&...) {
+    constexpr policy_flag F      = detail::call_flags<Fl...>;
+    auto                  policy = make_policy<detail::override_flags(flags_of<Out>, F)>();
     if constexpr (detail::native_product<Out, F, A, B>)
         return detail::store_into<Out>(a * b, policy);
     else {
         if constexpr (detail::rational_operands<A, B>)
             if (const auto p = detail::try_mul(detail::as_rational(a), detail::as_rational(b)))
                 return detail::store_into<Out>(*p, policy);
-        return detail::mul_into_wide<Out>(a, b, policy);
+        return detail::mul_wide<Out>(a, b, policy);
     }
 }
 
-template <insidable Out, policy_flag F = detail::none, insidable A, insidable B>
-[[nodiscard]] constexpr auto div_into(const A& a, const B& b)
+template <insidable Out, insidable A, insidable B, class... Fl>
+    requires detail::call_flag_args<Fl...>
+[[nodiscard]] constexpr auto div(const A& a, const B& b, const Fl&...)
     -> std::conditional_t<detail::divisor_excludes_zero<B>, Out, std::expected<Out, errc>> {
-    const auto quotient = [&](auto&& policy) {
+    constexpr policy_flag F        = detail::call_flags<Fl...>;
+    const auto            quotient = [&](auto&& policy) {
         if constexpr (detail::rational_operands<A, B> && detail::unreduced_store<Out>) {
             if (const auto q = detail::unreduced_quotient(detail::as_rational(a), detail::as_rational(b)); q.Den != 0)
                 [[likely]]
                 return detail::store_into<Out>(q, policy);
-            return detail::div_into_reduced_cold<Out>(a, b, policy);
+            return detail::div_reduced_cold<Out>(a, b, policy);
         } else
-            return detail::div_into_reduced<Out>(a, b, policy);
+            return detail::div_reduced<Out>(a, b, policy);
     };
+    constexpr policy_flag P = detail::override_flags(flags_of<Out>, F);
     if constexpr (detail::divisor_excludes_zero<B>)
-        return quotient(make_policy<flags_of<Out> | F>());
+        return quotient(make_policy<P>());
     else {
         if (b == 0)
             return std::unexpected{errc::division_by_zero};
-        return detail::try_store<Out, flags_of<Out> | F>([&](Out& out, auto&& policy) { out = quotient(policy); });
+        return detail::try_store<Out, P>([&](Out& out, auto&& policy) { out = quotient(policy); });
     }
 }
 

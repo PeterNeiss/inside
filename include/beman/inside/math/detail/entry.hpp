@@ -220,9 +220,9 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
     return integer();
 }
 
-// An _into form's body after the table: the tiers, with the double and
-// dd attempts as expressions in r (nothing of them without an FPU). FP and
-// DD in parentheses.
+// A rounding function's body after the table: the tiers, with the double
+// and dd attempts as expressions in r (nothing of them without an FPU). FP
+// and DD in parentheses.
 #ifndef BEMAN_INSIDE_MATH_NO_FP
     #define BEMAN_INSIDE_ENGINE_TIERS(Out, FP, DD, fp_call, dd_call, ...)                                         \
         return ::beman::inside::math::detail::entry::tiers<Out, FP, DD>([=](auto& r) -> bool { return fp_call; }, \
@@ -243,7 +243,7 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
                               (engine::dd_attempt<Out, engine::fp_##fn>(x, r)),    \
                               __VA_ARGS__)
 
-// The table tier's lookup, inside an _into form: In has few slots and every
+// The table tier's lookup, inside an eval: In has few slots and every
 // result lies in Out's range.
 #define BEMAN_INSIDE_ENGINE_TABLE(Out, In, x)                                           \
     if constexpr (engine::table_input<In> && engine::table_output<Out>) {               \
@@ -261,139 +261,6 @@ consteval void require_rounding() noexcept {
     static_assert(has_flag(flags_of<Out>, beman::inside::detail::snap) || !engine::notched<Out>,
                   "beman::inside::math: the result is rounded onto Out's grid - Out must permit rounding "
                   "(declare it with round_nearest, round_floor, ...)");
-}
-
-// One-input functions: the domain (checked on In's grid, `true` for none),
-// the double kernel's argument range (fp_ok), and the integer core.
-#define BEMAN_INSIDE_ENGINE_UNARY(fn, domain, msg, fp_ok, ...)                                           \
-    template <insidable In>                                                                              \
-    inline constexpr bool fn##_domain = domain;                                                          \
-    template <insidable Out, insidable In>                                                               \
-    [[nodiscard]] constexpr Out fn##_into(In x) {                                                        \
-        static_assert(fn##_domain<In>, "beman::inside::math::" #fn ": " msg);                            \
-        require_rounding<Out>();                                                                         \
-        if constexpr (anchoring::unanchored_call<Out, In>)                                               \
-            return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return fn##_into<O>(v); }, x); \
-        else {                                                                                           \
-            using core = __VA_ARGS__;                                                                    \
-            BEMAN_INSIDE_ENGINE_TABLE(Out, In, x)                                                        \
-            BEMAN_INSIDE_ENGINE_KERNEL_TIERS(                                                            \
-                Out,                                                                                     \
-                In,                                                                                      \
-                fn,                                                                                      \
-                x,                                                                                       \
-                (fp_ok),                                                                                 \
-                engine::evaluate<Out, engine::start_bits<Out>>(core{engine::exact_input(x)}))            \
-        }                                                                                                \
-    }
-
-BEMAN_INSIDE_ENGINE_UNARY(exp,
-                          true,
-                          "",
-                          engine::in_max<In> <= 700,
-                          engine::exp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_out_kmax<Out, In>>)
-BEMAN_INSIDE_ENGINE_UNARY(
-    exp2,
-    true,
-    "",
-    engine::in_max<In> <= 1000,
-    engine::exp2_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_out_kmax<Out, In>>)
-BEMAN_INSIDE_ENGINE_UNARY(sin,
-                          true,
-                          "",
-                          engine::in_max<In> <= 0x1p20,
-                          engine::trig_core<engine::input_limbs<In>, engine::in_mag<In>, engine::trig::sin, 1>)
-BEMAN_INSIDE_ENGINE_UNARY(cos,
-                          true,
-                          "",
-                          engine::in_max<In> <= 0x1p20,
-                          engine::trig_core<engine::input_limbs<In>, engine::in_mag<In>, engine::trig::cos, 1>)
-BEMAN_INSIDE_ENGINE_UNARY(atan, true, "", true, engine::atan_core<engine::input_limbs<In>>)
-BEMAN_INSIDE_ENGINE_UNARY(
-    sinh,
-    true,
-    "",
-    engine::in_max<In> <= 700,
-    engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::sinh, engine::exp_out_kmax<Out, In>>)
-BEMAN_INSIDE_ENGINE_UNARY(
-    cosh,
-    true,
-    "",
-    engine::in_max<In> <= 700,
-    engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::cosh, engine::exp_out_kmax<Out, In>>)
-BEMAN_INSIDE_ENGINE_UNARY(tanh,
-                          true,
-                          "",
-                          engine::in_max<In> <= 300,
-                          engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::tanh, 1>)
-BEMAN_INSIDE_ENGINE_UNARY(
-    asinh,
-    true,
-    "",
-    engine::in_max<In> <= 0x1p500,
-    engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::asinh, engine::input_bits<In>>)
-BEMAN_INSIDE_ENGINE_UNARY(cbrt, true, "", true, engine::cbrt_core<engine::input_limbs<In>, engine::input_bits<In>>)
-BEMAN_INSIDE_ENGINE_UNARY(log,
-                          (lower_of<In> > 0),
-                          "input must be strictly positive",
-                          true,
-                          engine::log_core<engine::input_limbs<In>, engine::input_bits<In>>)
-BEMAN_INSIDE_ENGINE_UNARY(log2,
-                          (lower_of<In> > 0),
-                          "input must be strictly positive",
-                          true,
-                          engine::logb_core<engine::input_limbs<In>, 2, engine::input_bits<In>>)
-BEMAN_INSIDE_ENGINE_UNARY(log10,
-                          (lower_of<In> > 0),
-                          "input must be strictly positive",
-                          true,
-                          engine::logb_core<engine::input_limbs<In>, 10, engine::input_bits<In>>)
-BEMAN_INSIDE_ENGINE_UNARY(asin,
-                          (lower_of<In> >= -1 && upper_of<In> <= 1),
-                          "input must be in [-1, 1]",
-                          true,
-                          engine::asin_core<engine::input_limbs<In>, engine::input_bits<In>>)
-BEMAN_INSIDE_ENGINE_UNARY(acos,
-                          (lower_of<In> >= -1 && upper_of<In> <= 1),
-                          "input must be in [-1, 1]",
-                          true,
-                          engine::acos_core<engine::input_limbs<In>, engine::input_bits<In>>)
-BEMAN_INSIDE_ENGINE_UNARY(
-    acosh,
-    (lower_of<In> >= 1),
-    "input must be at least 1",
-    engine::in_max<In> <= 0x1p500,
-    engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::acosh, engine::input_bits<In>>)
-BEMAN_INSIDE_ENGINE_UNARY(
-    atanh,
-    (lower_of<In> > -1 && upper_of<In> < 1),
-    "input must be in (-1, 1)",
-    true,
-    engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::atanh, engine::input_bits<In>>)
-#undef BEMAN_INSIDE_ENGINE_UNARY
-
-// sqrt of a non-negative input. A grid that reaches below 0 is rejected, as
-// log's reaching 0 is: the domain is the input grid's, decided at compile time.
-template <insidable In>
-inline constexpr bool sqrt_domain = lower_of<In> >= 0;
-template <insidable Out, insidable In>
-[[nodiscard]] constexpr Out sqrt_into(In x) {
-    static_assert(sqrt_domain<In>,
-                  "beman::inside::math::sqrt: input must be non-negative - take abs(x), or store x into a "
-                  "non-negative grid first");
-    require_rounding<Out>();
-    if constexpr (anchoring::unanchored_call<Out, In>)
-        return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return sqrt_into<O>(v); }, x);
-    else {
-        BEMAN_INSIDE_ENGINE_KERNEL_TIERS(
-            Out,
-            In,
-            sqrt,
-            x,
-            true,
-            engine::evaluate<Out, engine::start_bits<Out>>(
-                engine::sqrt_core<engine::input_limbs<In>, engine::input_bits<In>>{engine::exact_input(x)}))
-    }
 }
 
 // tan's domain: an input interval strictly inside one branch (kπ − π/2,
@@ -442,124 +309,6 @@ inline constexpr bool tan_domain = tan_branch::of<In>().Ok;
 template <insidable In>
 inline constexpr int tan_kmax = tan_branch::kmax_of<In>();
 
-// tan on one branch: a plain Out. A result past Out is Out's store, which its
-// policy reports or clamps.
-template <insidable Out, insidable In>
-[[nodiscard]] constexpr Out tan_into(In x) {
-    static_assert(tan_domain<In>,
-                  "beman::inside::math::tan: the input interval holds a pole (an odd multiple of pi/2) - narrow "
-                  "it to one branch, such as (-pi/2, pi/2)");
-    require_rounding<Out>();
-    static_assert(!has_flag(flags_of<Out>, wrap),
-                  "beman::inside::math::tan: wrap is not supported - tan has no bound near its poles, so "
-                  "the folded value cannot be computed; take an Out with clamp or the default policy");
-    if constexpr (anchoring::unanchored_call<Out, In>)
-        return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return tan_into<O>(v); }, x);
-    else {
-        using core =
-            engine::trig_core<engine::input_limbs<In>, engine::in_mag<In>, engine::trig::tan, engine::out_kmax<Out>>;
-        BEMAN_INSIDE_ENGINE_TIERS(Out,
-                                  (engine::fp_tier<Out, engine::fp_tan, In> && engine::in_max<In> <= 0x1p20),
-                                  (engine::dd_tier<Out, In> && engine::in_max<In> <= 0x1p20),
-                                  (engine::fp_attempt_tan<Out>(x, r)),
-                                  (engine::dd_attempt_tan<Out>(x, r)),
-                                  engine::evaluate<Out, engine::start_bits<Out>>(core{engine::exact_input(x)}))
-    }
-}
-
-template <insidable Out, insidable InY, insidable InX>
-[[nodiscard]] constexpr Out atan2_into(InY y, InX x) {
-    require_rounding<Out>();
-    if constexpr (anchoring::unanchored_call<Out, InY, InX>)
-        return anchoring::via_anchored<Out>([]<insidable O>(auto a, auto b) { return atan2_into<O>(a, b); }, y, x);
-    else {
-        constexpr std::size_t E = std::max(engine::input_limbs<InY>, engine::input_limbs<InX>);
-        using F                 = ::beman::inside::detail::wide_rational<E>;
-        BEMAN_INSIDE_ENGINE_TIERS(Out,
-                                  (engine::fp_tier<Out, engine::fp_atan2, InY, InX> &&
-                                   engine::in_max<InY> <= 0x1p500 && engine::in_max<InX> <= 0x1p500),
-                                  (engine::dd_tier<Out, InY, InX>),
-                                  (engine::fp_attempt_atan2<Out>(y, x, r)),
-                                  (engine::dd_attempt_atan2<Out>(y, x, r)),
-                                  engine::evaluate<Out, engine::start_bits<Out>>(
-                                      engine::atan2_core<E>{F{engine::exact_input(y)}, F{engine::exact_input(x)}}))
-    }
-}
-
-template <insidable Out, insidable InX, insidable InY>
-[[nodiscard]] constexpr Out hypot_into(InX x, InY y) {
-    require_rounding<Out>();
-    if constexpr (anchoring::unanchored_call<Out, InX, InY>)
-        return anchoring::via_anchored<Out>([]<insidable O>(auto a, auto b) { return hypot_into<O>(a, b); }, x, y);
-    else {
-        constexpr int         Bits = engine::hypot_bits<InX, InY>;
-        constexpr std::size_t E    = ::beman::inside::detail::limbs_for_bits(Bits);
-        using F                    = ::beman::inside::detail::wide_rational<E>;
-        BEMAN_INSIDE_ENGINE_TIERS(Out,
-                                  (engine::fp_tier<Out, engine::fp_hypot, InX, InY> &&
-                                   engine::in_max<InX> <= 0x1p500 && engine::in_max<InY> <= 0x1p500),
-                                  (engine::dd_tier<Out, InX, InY>),
-                                  (engine::fp_attempt_hypot<Out>(x, y, r)),
-                                  (engine::dd_attempt_hypot<Out>(x, y, r)),
-                                  engine::evaluate<Out, engine::start_bits<Out>>(engine::sqrt_core<E, Bits>{
-                                      F{engine::exact_input(x)} * F{engine::exact_input(x)} +
-                                      F{engine::exact_input(y)} * F{engine::exact_input(y)}}))
-    }
-}
-
-// pow over a non-negative base grid (pown<E> takes a negative base): 0^y is
-// 0 for y > 0 and 1 for y = 0. Its one run-time error is the pole 0^y with
-// y < 0 (division_by_zero), possible only when the base grid holds 0 and the
-// exponent grid negatives: then the result is an expected, else a plain Out.
-// A result past Out is Out's store, which its policy reports or clamps.
-template <insidable InB, insidable InE>
-inline constexpr bool pow_pole = lower_of<InB> == 0 && lower_of<InE> < 0;
-
-template <insidable Out, insidable InB, insidable InE>
-[[nodiscard]] constexpr auto pow_into(InB base, InE exp)
-    -> std::conditional_t<pow_pole<InB, InE>, std::expected<Out, errc>, Out> {
-    static_assert(lower_of<InB> >= 0,
-                  "beman::inside::math::pow: the base must be non-negative - pown<E>(x) takes a negative base "
-                  "with an integer exponent");
-    require_rounding<Out>();
-    if constexpr (anchoring::unanchored_call<Out, InB, InE>)
-        return anchoring::via_anchored<Out>([]<insidable O>(auto a, auto b) { return pow_into<O>(a, b); }, base, exp);
-    else {
-        using R            = std::conditional_t<pow_pole<InB, InE>, std::expected<Out, errc>, Out>;
-        const auto integer = [=]() -> R {
-            const auto b = engine::exact_input(base);
-            if (b.Num.is_zero()) {
-                const auto e = engine::exact_input(exp);
-                if constexpr (pow_pole<InB, InE>) {
-                    if (e.Num.negative())
-                        return std::unexpected(errc::division_by_zero);
-                    return Out::try_make(e.Num.is_zero() ? 1 : 0); // Out's policy: range, clamp
-                } else
-                    return Out{e.Num.is_zero() ? 1 : 0};
-            }
-            constexpr int KMax = engine::pow_out_kmax<Out, InB, InE>;
-            using core         = engine::pow_core<engine::input_limbs<InB>,
-                                                  engine::input_limbs<InE>,
-                                                  engine::in_mag<InE>,
-                                                  KMax,
-                                                  engine::input_bits<InB>,
-                                                  engine::input_bits<InE>,
-                                                  0,
-                                                  engine::pow_exact_limbs<Out, KMax>>;
-            if constexpr (pow_pole<InB, InE>)
-                return engine::evaluate_checked<Out, engine::start_bits<Out>>(core{b, engine::exact_input(exp)});
-            else
-                return engine::evaluate<Out, engine::start_bits<Out>>(core{b, engine::exact_input(exp)});
-        };
-        BEMAN_INSIDE_ENGINE_TIERS(Out,
-                                  (engine::fp_tier<Out, engine::fp_pow, InB, InE>),
-                                  (engine::dd_tier<Out, InB, InE>),
-                                  (engine::fp_attempt_pow<Out>(base, exp, r)),
-                                  (engine::dd_attempt_pow<Out>(base, exp, r)),
-                                  integer())
-    }
-}
-
 // Base^x for a compile-time integer Base ≥ 2: an int64, or a grid integer of
 // any size (one within int64 takes the int64 path; one past it skips the
 // double and dd tiers, whose ln Base is a 64-bit table).
@@ -574,118 +323,92 @@ inline constexpr bool base_ok = [] {
     else
         return false;
 }();
-template <insidable Out, auto Base, insidable In>
-[[nodiscard]] constexpr Out pow_base_into(In x) {
-    static_assert(base_ok<Base>, "beman::inside::math::pow_base: Base must be an integer of at least 2");
-    require_rounding<Out>();
-    if constexpr (grid_base<Base> && ::beman::inside::detail::fits_int64(interval{Base, Base}))
-        return pow_base_into<Out, static_cast<std::int64_t>(::beman::inside::detail::grid_numerator(Base))>(x);
-    else if constexpr (std::integral<decltype(Base)> &&
-                       !::beman::inside::detail::fits_int64(interval{grid_rational{Base}, grid_rational{Base}}))
-        return pow_base_into<Out, grid_rational{Base}>(x); // a builtin past int64: the grid integer's path
-    else if constexpr (anchoring::unanchored_call<Out, In>)
-        return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return pow_base_into<O, Base>(v); }, x);
-    else {
-        constexpr int KMax = engine::pow_base_out_kmax<Out, In, Base>;
-        using core         = engine::pow_core<engine::base_limbs<Base>,
-                                              engine::input_limbs<In>,
-                                              engine::in_mag<In>,
-                                              KMax,
-                                              grid_base<Base> ? engine::base_bits<Base> + 2 : 66,
-                                              engine::input_bits<In>,
-                                              Base,
-                                              engine::pow_exact_limbs<Out, KMax>>;
-        BEMAN_INSIDE_ENGINE_TIERS(
-            Out,
-            (!grid_base<Base> && engine::fp_tier<Out, engine::fp_pow_base, In> && engine::in_max<In> <= 1000),
-            (!grid_base<Base> && engine::dd_tier<Out, In> && engine::in_max<In> <= 700),
-            (engine::fp_attempt_pow_base<Out, Base>(x, r)),
-            (engine::dd_attempt_pow_base<Out, Base>(x, r)),
-            engine::evaluate<Out, engine::start_bits<Out>>(core{engine::exact_base<Base>(), engine::exact_input(x)}))
-    }
-}
+
+// pow over a non-negative base grid (pown<E> takes a negative base): 0^y is
+// 0 for y > 0 and 1 for y = 0. Its one run-time error is the pole 0^y with
+// y < 0 (division_by_zero), possible only when the base grid holds 0 and the
+// exponent grid negatives: then the result is an expected, else a plain Out.
+template <insidable InB, insidable InE>
+inline constexpr bool pow_pole = lower_of<InB> == 0 && lower_of<InE> < 0;
 
 //---------------------------------------------------------------------------
-// Auto forms: Out deduced from In — the range the function takes over In,
-// rounded outward to In's notch, with In's notch and policy (rounding to
-// nearest). sin and cos give [-1, 1], tan its range over In's branch,
-// atan2 [-π, π] on the gcd of both notches. Every one is a plain inside: a
-// domain the input grid leaves is a compile error.
+// Deduced outputs on notch N: the range the function takes over In, rounded
+// outward to N, with In's policy (rounding to nearest unless it names a
+// mode). sin and cos give [-1, 1], tan its range over In's branch, atan2
+// [-π, π]. Every one is a plain inside: a domain the input grid leaves is a
+// compile error.
 //---------------------------------------------------------------------------
-template <insidable In>
-consteval bool deducible() noexcept {
-    // (No rounding flag needed: the deduced output rounds by the input's mode,
-    // else to nearest, engine::result_policy; the input is read exactly.)
-    static_assert(::beman::inside::detail::notched<In>,
-                  "beman::inside::math: a deduced output takes the input's notch - the input needs one");
-    return true;
-}
-
 namespace results {
-template <insidable In>
+template <grid_rational N, insidable In>
 using exp =
-    engine::increasing_t<In, engine::exp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_kmax<In>>>;
-template <insidable In>
+    engine::increasing_t<In, N, engine::exp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_kmax<In>>>;
+template <grid_rational N, insidable In>
 using exp2 =
-    engine::increasing_t<In, engine::exp2_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_kmax<In>>>;
-template <insidable In>
-using log = engine::increasing_t<In, engine::log_core<engine::input_limbs<In>, engine::input_bits<In>>>;
-template <insidable In>
-using log2 = engine::increasing_t<In, engine::logb_core<engine::input_limbs<In>, 2, engine::input_bits<In>>>;
-template <insidable In>
-using log10 = engine::increasing_t<In, engine::logb_core<engine::input_limbs<In>, 10, engine::input_bits<In>>>;
-template <insidable In>
-using sqrt = engine::increasing_t<In, engine::sqrt_core<engine::input_limbs<In>, engine::input_bits<In>>>;
-template <insidable In>
-using cbrt = engine::increasing_t<In, engine::cbrt_core<engine::input_limbs<In>, engine::input_bits<In>>>;
-template <insidable In>
-using atan = engine::increasing_t<In, engine::atan_core<engine::input_limbs<In>>>;
-template <insidable In>
-using asin = engine::increasing_t<In, engine::asin_core<engine::input_limbs<In>, engine::input_bits<In>>>;
-template <insidable In>
-using acos = engine::decreasing_t<In, engine::acos_core<engine::input_limbs<In>, engine::input_bits<In>>>;
-template <insidable In>
+    engine::increasing_t<In, N, engine::exp2_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_kmax<In>>>;
+template <grid_rational N, insidable In>
+using log = engine::increasing_t<In, N, engine::log_core<engine::input_limbs<In>, engine::input_bits<In>>>;
+template <grid_rational N, insidable In>
+using log2 = engine::increasing_t<In, N, engine::logb_core<engine::input_limbs<In>, 2, engine::input_bits<In>>>;
+template <grid_rational N, insidable In>
+using log10 = engine::increasing_t<In, N, engine::logb_core<engine::input_limbs<In>, 10, engine::input_bits<In>>>;
+template <grid_rational N, insidable In>
+using sqrt = engine::increasing_t<In, N, engine::sqrt_core<engine::input_limbs<In>, engine::input_bits<In>>>;
+template <grid_rational N, insidable In>
+using cbrt = engine::increasing_t<In, N, engine::cbrt_core<engine::input_limbs<In>, engine::input_bits<In>>>;
+template <grid_rational N, insidable In>
+using atan = engine::increasing_t<In, N, engine::atan_core<engine::input_limbs<In>>>;
+template <grid_rational N, insidable In>
+using asin = engine::increasing_t<In, N, engine::asin_core<engine::input_limbs<In>, engine::input_bits<In>>>;
+template <grid_rational N, insidable In>
+using acos = engine::decreasing_t<In, N, engine::acos_core<engine::input_limbs<In>, engine::input_bits<In>>>;
+template <grid_rational N, insidable In>
 using sinh = engine::increasing_t<
     In,
+    N,
     engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::sinh, engine::exp_kmax<In>>>;
-template <insidable In>
+template <grid_rational N, insidable In>
 using tanh =
-    engine::increasing_t<In, engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::tanh, 1>>;
-template <insidable In>
+    engine::increasing_t<In, N, engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::tanh, 1>>;
+template <grid_rational N, insidable In>
 using asinh = engine::increasing_t<
     In,
+    N,
     engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::asinh, engine::input_bits<In>>>;
-template <insidable In>
+template <grid_rational N, insidable In>
 using acosh = engine::increasing_t<
     In,
+    N,
     engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::acosh, engine::input_bits<In>>>;
-template <insidable In>
+template <grid_rational N, insidable In>
 using atanh = engine::increasing_t<
     In,
+    N,
     engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::atanh, engine::input_bits<In>>>;
-template <insidable In>
-using sin = inside<{{-1, 1}, notch_of<In>}, engine::result_policy<In>>;
-template <insidable In>
-using cos = sin<In>;
+template <grid_rational N, insidable In>
+using sin = inside<{{-1, 1}, N}, engine::result_policy<In>>;
+template <grid_rational N, insidable In>
+using cos = sin<N, In>;
 // tan is increasing on its branch (tan_domain).
-template <insidable In>
-using tan = engine::
-    increasing_t<In, engine::trig_core<engine::input_limbs<In>, engine::in_mag<In>, engine::trig::tan, tan_kmax<In>>>;
+template <grid_rational N, insidable In>
+using tan = engine::increasing_t<
+    In,
+    N,
+    engine::trig_core<engine::input_limbs<In>, engine::in_mag<In>, engine::trig::tan, tan_kmax<In>>>;
 
 // cosh is even: its least value is 1 when In spans 0, else at the end
 // nearer 0.
 template <insidable In>
 using cosh_core =
     engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::cosh, engine::exp_kmax<In>>;
-template <insidable In>
+template <grid_rational N, insidable In>
 inline constexpr grid_rational cosh_lo = (lower_of<In> <= 0 && upper_of<In> >= 0) ? grid_rational{1}
-                                         : (lower_of<In> > 0) ? engine::bound_at<In, cosh_core<In>, false, false>
-                                                              : engine::bound_at<In, cosh_core<In>, true, false>;
-template <insidable In>
+                                         : (lower_of<In> > 0) ? engine::bound_at<In, N, cosh_core<In>, false, false>
+                                                              : engine::bound_at<In, N, cosh_core<In>, true, false>;
+template <grid_rational N, insidable In>
 inline constexpr grid_rational cosh_hi =
-    std::max(engine::bound_at<In, cosh_core<In>, true, true>, engine::bound_at<In, cosh_core<In>, false, true>);
-template <insidable In>
-using cosh = engine::result_grid_t<In, cosh_lo<In>, cosh_hi<In>>;
+    std::max(engine::bound_at<In, N, cosh_core<In>, true, true>, engine::bound_at<In, N, cosh_core<In>, false, true>);
+template <grid_rational N, insidable In>
+using cosh = engine::result_grid_t<In, N, cosh_lo<N, In>, cosh_hi<N, In>>;
 
 // max(|Lower|, |Upper|) (hypot's bound).
 template <insidable In>
@@ -700,42 +423,41 @@ struct pow_base_core : engine::pow_core<engine::base_limbs<Base>, E, Mag, KMax> 
 template <auto Base, insidable In>
 inline constexpr int pow_base_kmax = [] {
     static_assert(engine::max_abs_int<In> <= (std::numeric_limits<int>::max() - 2) / engine::base_bits<Base>,
-                  "beman::inside::math::pow_base: the deduced output needs |x|·bit_width(Base) below 2^31 - name an "
-                  "output grid with pow_base_into<Out> instead");
+                  "beman::inside::math::pow_base: the deduced output needs |x|·bit_width(Base) below 2^31 - name "
+                  "the output: pow_base<B, C>(x)");
     return static_cast<int>(engine::max_abs_int<In>) * engine::base_bits<Base> + 2;
 }();
-template <auto Base, insidable In>
-using pow_base_t =
-    engine::increasing_t<In,
-                         pow_base_core<Base, engine::input_limbs<In>, engine::in_mag<In>, pow_base_kmax<Base, In>>>;
+template <grid_rational N, auto Base, insidable In>
+using pow_base = engine::
+    increasing_t<In, N, pow_base_core<Base, engine::input_limbs<In>, engine::in_mag<In>, pow_base_kmax<Base, In>>>;
 
-// atan2: [−π, π] rounded outward on the gcd notch (π = atan2(0, −1)).
-template <insidable A, insidable B>
-inline constexpr grid_rational pi_up = engine::lattice_bound<engine::gcd_notch<A, B>, true>(
-    engine::atan2_core<1>{engine::exact_of<1>(0), engine::exact_of<1>(-1)});
-template <insidable InY, insidable InX>
-using atan2 = inside<{{-pi_up<InY, InX>, pi_up<InY, InX>}, engine::gcd_notch<InY, InX>}, engine::result_policy<InY>>;
+// atan2: [−π, π] rounded outward on N (π = atan2(0, −1)).
+template <grid_rational N>
+inline constexpr grid_rational pi_up =
+    engine::lattice_bound<N, true>(engine::atan2_core<1>{engine::exact_of<1>(0), engine::exact_of<1>(-1)});
+template <grid_rational N, insidable InY, insidable InX>
+using atan2 = inside<{{-pi_up<N>, pi_up<N>}, N}, engine::result_policy<InY>>;
 
-// hypot: [0, hypot of the largest magnitudes] on the gcd notch.
+// hypot: [0, hypot of the largest magnitudes] on N.
 template <insidable InX, insidable InY>
 inline constexpr std::size_t hypot_limbs = ::beman::inside::detail::limbs_for_bits(engine::hypot_bits<InX, InY>);
 // (A consteval function, not an immediately invoked lambda: the lambda would
 // become immediate, and GCC 16 then takes the address of its invoker.)
-template <insidable InX, insidable InY>
+template <grid_rational N, insidable InX, insidable InY>
 consteval grid_rational hypot_upper() {
     using F   = ::beman::inside::detail::wide_rational<hypot_limbs<InX, InY>>;
     const F a = ::beman::inside::detail::exact_of_grid<hypot_limbs<InX, InY>>(max_abs<InX>);
     const F b = ::beman::inside::detail::exact_of_grid<hypot_limbs<InX, InY>>(max_abs<InY>);
-    return engine::lattice_bound<engine::gcd_notch<InX, InY>, true>(
+    return engine::lattice_bound<N, true>(
         engine::sqrt_core<hypot_limbs<InX, InY>, engine::hypot_bits<InX, InY>>{a * a + b * b});
 }
-template <insidable InX, insidable InY>
-inline constexpr grid_rational hypot_hi = hypot_upper<InX, InY>();
-template <insidable InX, insidable InY>
-using hypot = inside<{{0, hypot_hi<InX, InY>}, engine::gcd_notch<InX, InY>}, engine::result_policy<InX>>;
+template <grid_rational N, insidable InX, insidable InY>
+inline constexpr grid_rational hypot_hi = hypot_upper<N, InX, InY>();
+template <grid_rational N, insidable InX, insidable InY>
+using hypot = inside<{{0, hypot_hi<N, InX, InY>}, N}, engine::result_policy<InX>>;
 
 // pow: b^e is monotone in each argument for b > 0, so the extremes are at
-// the corners of the input rectangle. Notch of the base.
+// the corners of the input rectangle.
 template <insidable InB, insidable InE>
 using pow_core = engine::pow_core<engine::input_limbs<InB>,
                                   engine::input_limbs<InE>,
@@ -743,170 +465,368 @@ using pow_core = engine::pow_core<engine::input_limbs<InB>,
                                   engine::pow_kmax<InB, InE>,
                                   engine::input_bits<InB>,
                                   engine::input_bits<InE>>;
-template <insidable InB, insidable InE, bool BUp, bool EUp, bool Up>
-inline constexpr grid_rational pow_corner = engine::lattice_bound<notch_of<InB>, Up>(
-    pow_core<InB, InE>{engine::grid_input<InB>(BUp ? upper_of<InB> : lower_of<InB>),
-                       engine::grid_input<InE>(EUp ? upper_of<InE> : lower_of<InE>)});
+template <grid_rational N, insidable InB, insidable InE, bool BUp, bool EUp, bool Up>
+inline constexpr grid_rational pow_corner =
+    engine::lattice_bound<N, Up>(pow_core<InB, InE>{engine::grid_input<InB>(BUp ? upper_of<InB> : lower_of<InB>),
+                                                    engine::grid_input<InE>(EUp ? upper_of<InE> : lower_of<InE>)});
 // The least (Up: greatest) bound over the four corners.
-template <insidable InB, insidable InE, bool Up>
+template <grid_rational N, insidable InB, insidable InE, bool Up>
 inline constexpr grid_rational pow_extreme = [] {
-    const std::initializer_list<grid_rational> c{pow_corner<InB, InE, false, false, Up>,
-                                                 pow_corner<InB, InE, false, true, Up>,
-                                                 pow_corner<InB, InE, true, false, Up>,
-                                                 pow_corner<InB, InE, true, true, Up>};
+    static_assert(lower_of<InB> > 0,
+                  "beman::inside::math::pow: the deduced output needs a base grid above 0 - name the output: "
+                  "pow<C>(b, e)");
+    const std::initializer_list<grid_rational> c{pow_corner<N, InB, InE, false, false, Up>,
+                                                 pow_corner<N, InB, InE, false, true, Up>,
+                                                 pow_corner<N, InB, InE, true, false, Up>,
+                                                 pow_corner<N, InB, InE, true, true, Up>};
     return Up ? std::max(c) : std::min(c);
 }();
-template <insidable InB, insidable InE>
-using pow =
-    inside<{{pow_extreme<InB, InE, false>, pow_extreme<InB, InE, true>}, notch_of<InB>}, engine::result_policy<InB>>;
+template <grid_rational N, insidable InB, insidable InE>
+using pow = inside<{{pow_extreme<N, InB, InE, false>, pow_extreme<N, InB, InE, true>}, N}, engine::result_policy<InB>>;
 } // namespace results
 
-#define BEMAN_INSIDE_ENGINE_AUTO(fn)                                                           \
-    template <insidable In>                                                                    \
-    [[nodiscard]] constexpr auto fn(In x) {                                                    \
-        static_assert(deducible<In>());                                                        \
-        if constexpr (fn##_domain<In>)                                                         \
-            return fn##_into<results::fn<In>>(x);                                              \
-        else                                                                                   \
-            return fn##_into<inside<{0, 1}, round_nearest>>(x); /* the _into domain message */ \
-    }
-
-BEMAN_INSIDE_ENGINE_AUTO(exp)
-BEMAN_INSIDE_ENGINE_AUTO(exp2)
-BEMAN_INSIDE_ENGINE_AUTO(sin)
-BEMAN_INSIDE_ENGINE_AUTO(cos)
-BEMAN_INSIDE_ENGINE_AUTO(tan)
-BEMAN_INSIDE_ENGINE_AUTO(atan)
-BEMAN_INSIDE_ENGINE_AUTO(sinh)
-BEMAN_INSIDE_ENGINE_AUTO(cosh)
-BEMAN_INSIDE_ENGINE_AUTO(tanh)
-BEMAN_INSIDE_ENGINE_AUTO(asinh)
-BEMAN_INSIDE_ENGINE_AUTO(cbrt)
-BEMAN_INSIDE_ENGINE_AUTO(log)
-BEMAN_INSIDE_ENGINE_AUTO(log2)
-BEMAN_INSIDE_ENGINE_AUTO(log10)
-BEMAN_INSIDE_ENGINE_AUTO(asin)
-BEMAN_INSIDE_ENGINE_AUTO(acos)
-BEMAN_INSIDE_ENGINE_AUTO(acosh)
-BEMAN_INSIDE_ENGINE_AUTO(atanh)
-#undef BEMAN_INSIDE_ENGINE_AUTO
-
-template <insidable In>
-[[nodiscard]] constexpr auto sqrt(In x) {
-    static_assert(deducible<In>());
-    if constexpr (sqrt_domain<In>)
-        return sqrt_into<results::sqrt<In>>(x);
-    else
-        return sqrt_into<inside<{0, 1}, round_nearest>>(x); // the _into domain message
-}
-
-template <auto Base, insidable In>
-[[nodiscard]] constexpr auto pow_base(In x) {
-    static_assert(deducible<In>());
-    static_assert(base_ok<Base>, "beman::inside::math::pow_base: Base must be an integer of at least 2");
-    return pow_base_into<results::pow_base_t<Base, In>, Base>(x);
-}
-
-template <insidable InY, insidable InX>
-[[nodiscard]] constexpr auto atan2(InY y, InX x) {
-    static_assert(deducible<InY>() && deducible<InX>());
-    return atan2_into<results::atan2<InY, InX>>(y, x);
-}
-
-template <insidable InX, insidable InY>
-[[nodiscard]] constexpr auto hypot(InX x, InY y) {
-    static_assert(deducible<InX>() && deducible<InY>());
-    return hypot_into<results::hypot<InX, InY>>(x, y);
-}
-
-template <insidable InB, insidable InE>
-    requires(lower_of<InB> > 0)
-[[nodiscard]] constexpr auto pow(InB base, InE exp) {
-    static_assert(deducible<InB>() && deducible<InE>());
-    return pow_into<results::pow<InB, InE>>(base, exp);
-}
-
 //---------------------------------------------------------------------------
-// fn<Mode>(x): the deduced form with the rounding mode named on the call, so
-// the input's type need not carry one. The input is read as the same grid
-// with Mode as its rounding (the same raw), the output deduced as for fn(x),
-// and that output rounds by exactly Mode.
+// The tags (math/detail/functions.hpp): what every rounding function has in
+// common, by arity; then each one's domain, deduced output and evaluation.
 //---------------------------------------------------------------------------
-inline constexpr policy_flag rounding_bits = round_nearest | round_floor | round_ceil | round_half_even; // snap too
+template <std::size_t Arity>
+struct rounding_fn {
+    static constexpr bool rounds = true;
+    template <class... In>
+    static constexpr bool takes = sizeof...(In) == Arity && (insidable<In> && ...);
+    template <class... In>
+    static constexpr bool domain = true;
+    // The arguments' notch: the gcd of their value units (0 when one has none).
+    template <class... In>
+    static constexpr grid_rational notch = [] {
+        if constexpr (Arity == 1)
+            return notch_of<In...[0]>;
+        else
+            return engine::gcd_notch<In...[0], In...[1]>;
+    }();
+};
 
-template <policy_flag Mode>
-concept rounding_mode = Mode == round_toward_zero || Mode == round_nearest || Mode == round_floor ||
-                        Mode == round_ceil || Mode == round_half_even;
+// One-input functions: the domain (checked on In's grid, `true` for none),
+// the double kernel's argument range (fp_ok), and the integer core.
+#define BEMAN_INSIDE_ENGINE_UNARY(fn, domain_v, msg, fp_ok, ...)                                                 \
+    struct fn##_fn : rounding_fn<1> {                                                                            \
+        template <class... In>                                                                                   \
+        static constexpr bool domain = [] {                                                                      \
+            using In0 [[maybe_unused]] = In...[0];                                                               \
+            return domain_v;                                                                                     \
+        }();                                                                                                     \
+        template <grid_rational N, insidable In>                                                                 \
+        using result_on = results::fn<N, In>;                                                                    \
+        template <insidable Out, insidable In>                                                                   \
+        [[nodiscard]] static constexpr Out eval(In x) {                                                          \
+            static_assert(domain<In>, "beman::inside::math::" #fn ": " msg);                                     \
+            require_rounding<Out>();                                                                             \
+            if constexpr (anchoring::unanchored_call<Out, In>)                                                   \
+                return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return fn##_fn::eval<O>(v); }, x); \
+            else {                                                                                               \
+                using core = __VA_ARGS__;                                                                        \
+                BEMAN_INSIDE_ENGINE_TABLE(Out, In, x)                                                            \
+                BEMAN_INSIDE_ENGINE_KERNEL_TIERS(                                                                \
+                    Out,                                                                                         \
+                    In,                                                                                          \
+                    fn,                                                                                          \
+                    x,                                                                                           \
+                    (fp_ok),                                                                                     \
+                    engine::evaluate<Out, engine::start_bits<Out>>(core{engine::exact_input(x)}))                \
+            }                                                                                                    \
+        }                                                                                                        \
+    };
 
-template <policy_flag Mode, insidable In>
-[[nodiscard]] constexpr auto with_mode(const In& x) noexcept {
-    return inside<grid_of<In>, (flags_of<In> & ~(::beman::inside::detail::cursor_marker | rounding_bits)) | Mode>::
-        from_raw(x.raw());
-}
+BEMAN_INSIDE_ENGINE_UNARY(exp,
+                          true,
+                          "",
+                          engine::in_max<In> <= 700,
+                          engine::exp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_out_kmax<Out, In>>)
+BEMAN_INSIDE_ENGINE_UNARY(
+    exp2,
+    true,
+    "",
+    engine::in_max<In> <= 1000,
+    engine::exp2_core<engine::input_limbs<In>, engine::in_mag<In>, engine::exp_out_kmax<Out, In>>)
+BEMAN_INSIDE_ENGINE_UNARY(sin,
+                          true,
+                          "",
+                          engine::in_max<In> <= 0x1p20,
+                          engine::trig_core<engine::input_limbs<In>, engine::in_mag<In>, engine::trig::sin, 1>)
+BEMAN_INSIDE_ENGINE_UNARY(cos,
+                          true,
+                          "",
+                          engine::in_max<In> <= 0x1p20,
+                          engine::trig_core<engine::input_limbs<In>, engine::in_mag<In>, engine::trig::cos, 1>)
+BEMAN_INSIDE_ENGINE_UNARY(atan, true, "", true, engine::atan_core<engine::input_limbs<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(
+    sinh,
+    true,
+    "",
+    engine::in_max<In> <= 700,
+    engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::sinh, engine::exp_out_kmax<Out, In>>)
+BEMAN_INSIDE_ENGINE_UNARY(
+    cosh,
+    true,
+    "",
+    engine::in_max<In> <= 700,
+    engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::cosh, engine::exp_out_kmax<Out, In>>)
+BEMAN_INSIDE_ENGINE_UNARY(tanh,
+                          true,
+                          "",
+                          engine::in_max<In> <= 300,
+                          engine::hyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::hyp::tanh, 1>)
+BEMAN_INSIDE_ENGINE_UNARY(
+    asinh,
+    true,
+    "",
+    engine::in_max<In> <= 0x1p500,
+    engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::asinh, engine::input_bits<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(cbrt, true, "", true, engine::cbrt_core<engine::input_limbs<In>, engine::input_bits<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(log,
+                          (lower_of<In0> > 0),
+                          "input must be strictly positive",
+                          true,
+                          engine::log_core<engine::input_limbs<In>, engine::input_bits<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(log2,
+                          (lower_of<In0> > 0),
+                          "input must be strictly positive",
+                          true,
+                          engine::logb_core<engine::input_limbs<In>, 2, engine::input_bits<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(log10,
+                          (lower_of<In0> > 0),
+                          "input must be strictly positive",
+                          true,
+                          engine::logb_core<engine::input_limbs<In>, 10, engine::input_bits<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(asin,
+                          (lower_of<In0> >= -1 && upper_of<In0> <= 1),
+                          "input must be in [-1, 1]",
+                          true,
+                          engine::asin_core<engine::input_limbs<In>, engine::input_bits<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(acos,
+                          (lower_of<In0> >= -1 && upper_of<In0> <= 1),
+                          "input must be in [-1, 1]",
+                          true,
+                          engine::acos_core<engine::input_limbs<In>, engine::input_bits<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(
+    acosh,
+    (lower_of<In0> >= 1),
+    "input must be at least 1",
+    engine::in_max<In> <= 0x1p500,
+    engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::acosh, engine::input_bits<In>>)
+BEMAN_INSIDE_ENGINE_UNARY(
+    atanh,
+    (lower_of<In0> > -1 && upper_of<In0> < 1),
+    "input must be in (-1, 1)",
+    true,
+    engine::ahyp_core<engine::input_limbs<In>, engine::in_mag<In>, engine::ahyp::atanh, engine::input_bits<In>>)
+#undef BEMAN_INSIDE_ENGINE_UNARY
 
-// The deduced output D (an inside, or an expected of one) rounding by Mode.
-template <class D, policy_flag Mode>
-using moded_t = inside<grid_of<::beman::inside::detail::unwrap_t<D>>,
-                       (flags_of<::beman::inside::detail::unwrap_t<D>> & ~rounding_bits) | Mode>;
-
-#define BEMAN_INSIDE_ENGINE_MODED(fn)                        \
-    template <policy_flag Mode, insidable In>                \
-        requires rounding_mode<Mode>                         \
-    [[nodiscard]] constexpr auto fn(In x) {                  \
-        const auto v = with_mode<Mode>(x);                   \
-        return fn##_into<moded_t<decltype(fn(v)), Mode>>(v); \
+// sqrt of a non-negative input. A grid that reaches below 0 is rejected, as
+// log's reaching 0 is: the domain is the input grid's, decided at compile time.
+struct sqrt_fn : rounding_fn<1> {
+    template <class... In>
+    static constexpr bool domain = lower_of<In...[0]> >= 0;
+    template <grid_rational N, insidable In>
+    using result_on = results::sqrt<N, In>;
+    template <insidable Out, insidable In>
+    [[nodiscard]] static constexpr Out eval(In x) {
+        static_assert(domain<In>,
+                      "beman::inside::math::sqrt: input must be non-negative - take abs(x), or store x into a "
+                      "non-negative grid first");
+        require_rounding<Out>();
+        if constexpr (anchoring::unanchored_call<Out, In>)
+            return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return sqrt_fn::eval<O>(v); }, x);
+        else {
+            BEMAN_INSIDE_ENGINE_KERNEL_TIERS(
+                Out,
+                In,
+                sqrt,
+                x,
+                true,
+                engine::evaluate<Out, engine::start_bits<Out>>(
+                    engine::sqrt_core<engine::input_limbs<In>, engine::input_bits<In>>{engine::exact_input(x)}))
+        }
     }
-BEMAN_INSIDE_ENGINE_MODED(exp)
-BEMAN_INSIDE_ENGINE_MODED(exp2)
-BEMAN_INSIDE_ENGINE_MODED(sin)
-BEMAN_INSIDE_ENGINE_MODED(cos)
-BEMAN_INSIDE_ENGINE_MODED(tan)
-BEMAN_INSIDE_ENGINE_MODED(atan)
-BEMAN_INSIDE_ENGINE_MODED(sinh)
-BEMAN_INSIDE_ENGINE_MODED(cosh)
-BEMAN_INSIDE_ENGINE_MODED(tanh)
-BEMAN_INSIDE_ENGINE_MODED(asinh)
-BEMAN_INSIDE_ENGINE_MODED(cbrt)
-BEMAN_INSIDE_ENGINE_MODED(log)
-BEMAN_INSIDE_ENGINE_MODED(log2)
-BEMAN_INSIDE_ENGINE_MODED(log10)
-BEMAN_INSIDE_ENGINE_MODED(asin)
-BEMAN_INSIDE_ENGINE_MODED(acos)
-BEMAN_INSIDE_ENGINE_MODED(acosh)
-BEMAN_INSIDE_ENGINE_MODED(atanh)
-BEMAN_INSIDE_ENGINE_MODED(sqrt)
-#undef BEMAN_INSIDE_ENGINE_MODED
+};
 
-template <auto Base, policy_flag Mode, insidable In>
-    requires rounding_mode<Mode>
-[[nodiscard]] constexpr auto pow_base(In x) {
-    const auto v = with_mode<Mode>(x);
-    return pow_base_into<moded_t<decltype(pow_base<Base>(v)), Mode>, Base>(v);
-}
+// tan on one branch: a plain Out. A result past Out is Out's store, which its
+// policy reports or clamps.
+struct tan_fn : rounding_fn<1> {
+    template <class... In>
+    static constexpr bool domain = tan_domain<In...[0]>;
+    template <grid_rational N, insidable In>
+    using result_on = results::tan<N, In>;
+    template <insidable Out, insidable In>
+    [[nodiscard]] static constexpr Out eval(In x) {
+        static_assert(tan_domain<In>,
+                      "beman::inside::math::tan: the input interval holds a pole (an odd multiple of pi/2) - narrow "
+                      "it to one branch, such as (-pi/2, pi/2)");
+        require_rounding<Out>();
+        static_assert(!has_flag(flags_of<Out>, wrap),
+                      "beman::inside::math::tan: wrap is not supported - tan has no bound near its poles, so "
+                      "the folded value cannot be computed; take an Out with clamp or the default policy");
+        if constexpr (anchoring::unanchored_call<Out, In>)
+            return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return tan_fn::eval<O>(v); }, x);
+        else {
+            using core = engine::
+                trig_core<engine::input_limbs<In>, engine::in_mag<In>, engine::trig::tan, engine::out_kmax<Out>>;
+            BEMAN_INSIDE_ENGINE_TIERS(Out,
+                                      (engine::fp_tier<Out, engine::fp_tan, In> && engine::in_max<In> <= 0x1p20),
+                                      (engine::dd_tier<Out, In> && engine::in_max<In> <= 0x1p20),
+                                      (engine::fp_attempt_tan<Out>(x, r)),
+                                      (engine::dd_attempt_tan<Out>(x, r)),
+                                      engine::evaluate<Out, engine::start_bits<Out>>(core{engine::exact_input(x)}))
+        }
+    }
+};
 
-template <policy_flag Mode, insidable InY, insidable InX>
-    requires rounding_mode<Mode>
-[[nodiscard]] constexpr auto atan2(InY y, InX x) {
-    const auto vy = with_mode<Mode>(y);
-    const auto vx = with_mode<Mode>(x);
-    return atan2_into<moded_t<decltype(atan2(vy, vx)), Mode>>(vy, vx);
-}
+struct atan2_fn : rounding_fn<2> {
+    template <grid_rational N, insidable InY, insidable InX>
+    using result_on = results::atan2<N, InY, InX>;
+    template <insidable Out, insidable InY, insidable InX>
+    [[nodiscard]] static constexpr Out eval(InY y, InX x) {
+        require_rounding<Out>();
+        if constexpr (anchoring::unanchored_call<Out, InY, InX>)
+            return anchoring::via_anchored<Out>(
+                []<insidable O>(auto a, auto b) { return atan2_fn::eval<O>(a, b); }, y, x);
+        else {
+            constexpr std::size_t E = std::max(engine::input_limbs<InY>, engine::input_limbs<InX>);
+            using F                 = ::beman::inside::detail::wide_rational<E>;
+            BEMAN_INSIDE_ENGINE_TIERS(Out,
+                                      (engine::fp_tier<Out, engine::fp_atan2, InY, InX> &&
+                                       engine::in_max<InY> <= 0x1p500 && engine::in_max<InX> <= 0x1p500),
+                                      (engine::dd_tier<Out, InY, InX>),
+                                      (engine::fp_attempt_atan2<Out>(y, x, r)),
+                                      (engine::dd_attempt_atan2<Out>(y, x, r)),
+                                      engine::evaluate<Out, engine::start_bits<Out>>(
+                                          engine::atan2_core<E>{F{engine::exact_input(y)}, F{engine::exact_input(x)}}))
+        }
+    }
+};
 
-template <policy_flag Mode, insidable InX, insidable InY>
-    requires rounding_mode<Mode>
-[[nodiscard]] constexpr auto hypot(InX x, InY y) {
-    const auto vx = with_mode<Mode>(x);
-    const auto vy = with_mode<Mode>(y);
-    return hypot_into<moded_t<decltype(hypot(vx, vy)), Mode>>(vx, vy);
-}
+struct hypot_fn : rounding_fn<2> {
+    template <grid_rational N, insidable InX, insidable InY>
+    using result_on = results::hypot<N, InX, InY>;
+    template <insidable Out, insidable InX, insidable InY>
+    [[nodiscard]] static constexpr Out eval(InX x, InY y) {
+        require_rounding<Out>();
+        if constexpr (anchoring::unanchored_call<Out, InX, InY>)
+            return anchoring::via_anchored<Out>(
+                []<insidable O>(auto a, auto b) { return hypot_fn::eval<O>(a, b); }, x, y);
+        else {
+            constexpr int         Bits = engine::hypot_bits<InX, InY>;
+            constexpr std::size_t E    = ::beman::inside::detail::limbs_for_bits(Bits);
+            using F                    = ::beman::inside::detail::wide_rational<E>;
+            BEMAN_INSIDE_ENGINE_TIERS(Out,
+                                      (engine::fp_tier<Out, engine::fp_hypot, InX, InY> &&
+                                       engine::in_max<InX> <= 0x1p500 && engine::in_max<InY> <= 0x1p500),
+                                      (engine::dd_tier<Out, InX, InY>),
+                                      (engine::fp_attempt_hypot<Out>(x, y, r)),
+                                      (engine::dd_attempt_hypot<Out>(x, y, r)),
+                                      engine::evaluate<Out, engine::start_bits<Out>>(engine::sqrt_core<E, Bits>{
+                                          F{engine::exact_input(x)} * F{engine::exact_input(x)} +
+                                          F{engine::exact_input(y)} * F{engine::exact_input(y)}}))
+        }
+    }
+};
 
-template <policy_flag Mode, insidable InB, insidable InE>
-    requires rounding_mode<Mode>
-[[nodiscard]] constexpr auto pow(InB base, InE exp) {
-    const auto vb = with_mode<Mode>(base);
-    const auto ve = with_mode<Mode>(exp);
-    return pow_into<moded_t<decltype(pow(vb, ve)), Mode>>(vb, ve);
-}
+// A result past Out is Out's store, which its policy reports or clamps. The
+// deduced output takes the base's notch.
+struct pow_fn : rounding_fn<2> {
+    template <class... In>
+    static constexpr bool domain = lower_of<In...[0]> >= 0;
+    template <class InB, class InE>
+    static constexpr grid_rational notch = ::beman::inside::detail::notched<InE> ? notch_of<InB> : grid_rational{0};
+    template <grid_rational N, insidable InB, insidable InE>
+    using result_on = results::pow<N, InB, InE>;
+    template <insidable Out, insidable InB, insidable InE>
+    [[nodiscard]] static constexpr auto eval(InB base, InE exp)
+        -> std::conditional_t<pow_pole<InB, InE>, std::expected<Out, errc>, Out> {
+        static_assert(lower_of<InB> >= 0,
+                      "beman::inside::math::pow: the base must be non-negative - pown<E>(x) takes a negative base "
+                      "with an integer exponent");
+        require_rounding<Out>();
+        if constexpr (anchoring::unanchored_call<Out, InB, InE>)
+            return anchoring::via_anchored<Out>(
+                []<insidable O>(auto a, auto b) { return pow_fn::eval<O>(a, b); }, base, exp);
+        else {
+            using R            = std::conditional_t<pow_pole<InB, InE>, std::expected<Out, errc>, Out>;
+            const auto integer = [=]() -> R {
+                const auto b = engine::exact_input(base);
+                if (b.Num.is_zero()) {
+                    const auto e = engine::exact_input(exp);
+                    if constexpr (pow_pole<InB, InE>) {
+                        if (e.Num.negative())
+                            return std::unexpected(errc::division_by_zero);
+                        return Out::try_make(e.Num.is_zero() ? 1 : 0); // Out's policy: range, clamp
+                    } else
+                        return Out{e.Num.is_zero() ? 1 : 0};
+                }
+                constexpr int KMax = engine::pow_out_kmax<Out, InB, InE>;
+                using core         = engine::pow_core<engine::input_limbs<InB>,
+                                                      engine::input_limbs<InE>,
+                                                      engine::in_mag<InE>,
+                                                      KMax,
+                                                      engine::input_bits<InB>,
+                                                      engine::input_bits<InE>,
+                                                      0,
+                                                      engine::pow_exact_limbs<Out, KMax>>;
+                if constexpr (pow_pole<InB, InE>)
+                    return engine::evaluate_checked<Out, engine::start_bits<Out>>(core{b, engine::exact_input(exp)});
+                else
+                    return engine::evaluate<Out, engine::start_bits<Out>>(core{b, engine::exact_input(exp)});
+            };
+            BEMAN_INSIDE_ENGINE_TIERS(Out,
+                                      (engine::fp_tier<Out, engine::fp_pow, InB, InE>),
+                                      (engine::dd_tier<Out, InB, InE>),
+                                      (engine::fp_attempt_pow<Out>(base, exp, r)),
+                                      (engine::dd_attempt_pow<Out>(base, exp, r)),
+                                      integer())
+        }
+    }
+};
+
+// Base^x.
+template <auto Base>
+struct pow_base_fn : rounding_fn<1> {
+    template <class... In>
+    static constexpr bool domain = base_ok<Base>;
+    template <grid_rational N, insidable In>
+    using result_on = results::pow_base<N, Base, In>;
+    template <insidable Out, insidable In>
+    [[nodiscard]] static constexpr Out eval(In x) {
+        static_assert(base_ok<Base>, "beman::inside::math::pow_base: Base must be an integer of at least 2");
+        require_rounding<Out>();
+        if constexpr (grid_base<Base> && ::beman::inside::detail::fits_int64(interval{Base, Base}))
+            return pow_base_fn<static_cast<std::int64_t>(
+                ::beman::inside::detail::grid_numerator(Base))>::template eval<Out>(x);
+        else if constexpr (std::integral<decltype(Base)> &&
+                           !::beman::inside::detail::fits_int64(interval{grid_rational{Base}, grid_rational{Base}}))
+            return pow_base_fn<grid_rational{Base}>::template eval<Out>(x); // a builtin past int64: the grid path
+        else if constexpr (anchoring::unanchored_call<Out, In>)
+            return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return pow_base_fn::eval<O>(v); }, x);
+        else {
+            constexpr int KMax = engine::pow_base_out_kmax<Out, In, Base>;
+            using core         = engine::pow_core<engine::base_limbs<Base>,
+                                                  engine::input_limbs<In>,
+                                                  engine::in_mag<In>,
+                                                  KMax,
+                                                  grid_base<Base> ? engine::base_bits<Base> + 2 : 66,
+                                                  engine::input_bits<In>,
+                                                  Base,
+                                                  engine::pow_exact_limbs<Out, KMax>>;
+            BEMAN_INSIDE_ENGINE_TIERS(
+                Out,
+                (!grid_base<Base> && engine::fp_tier<Out, engine::fp_pow_base, In> && engine::in_max<In> <= 1000),
+                (!grid_base<Base> && engine::dd_tier<Out, In> && engine::in_max<In> <= 700),
+                (engine::fp_attempt_pow_base<Out, Base>(x, r)),
+                (engine::dd_attempt_pow_base<Out, Base>(x, r)),
+                engine::evaluate<Out, engine::start_bits<Out>>(
+                    core{engine::exact_base<Base>(), engine::exact_input(x)}))
+        }
+    }
+};
 } // namespace beman::inside::math::detail::entry
 
 #undef BEMAN_INSIDE_ENGINE_TIERS

@@ -22,6 +22,8 @@
 //   math_dd           — sin onto a 2^-52 grid (the dd tier)
 //   math_integer      — exp onto a 2^-57 grid, indices past 2^62 (the integer path)
 //   math_decimal      — exp of a decimal input onto a 10^-6 grid
+//   math_rotor        — exp of a bivector of G(3,0) onto a rotor, each part
+//                       onto a 2^-20 grid (units/geoalg.hpp, the double tier)
 //
 // The work is intentionally small and scaled by BEMAN_INSIDE_PERF_SCALE so cachegrind
 // (~20-50x slowdown) stays well inside the CI time budget. Bump the scale for a
@@ -33,6 +35,9 @@
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/math.hpp>
+#include <beman/inside/units.hpp>
+#include <beman/inside/units/geoalg.hpp>
+#include <beman/inside/units/math.hpp>
 
 #include <cstdint>
 #include <cstdio>
@@ -195,22 +200,53 @@ using out57  = inside<{{0, 64}, per<(std::uint64_t{1} << 57)>}, round_nearest>;
 using out6   = inside<{{0, 64}, per<1000000>}, round_nearest>;
 
 std::int64_t run_math_table() {
-    return run_math<angle8>([](angle8 v) { return math::sin_into<out20>(v); });
+    return run_math<angle8>([](angle8 v) { return math::sin<out20>(v); });
 }
 std::int64_t run_math_double() {
-    return run_math<angle>([](angle v) { return math::sin_into<out20>(v); });
+    return run_math<angle>([](angle v) { return math::sin<out20>(v); });
 }
 std::int64_t run_math_double_fine() {
-    return run_math<angle>([](angle v) { return math::sin_into<out40>(v); });
+    return run_math<angle>([](angle v) { return math::sin<out40>(v); });
 }
 std::int64_t run_math_dd() {
-    return run_math<angle>([](angle v) { return math::sin_into<out52>(v); });
+    return run_math<angle>([](angle v) { return math::sin<out52>(v); });
 }
 std::int64_t run_math_integer() {
-    return run_math<angle>([](angle v) { return math::exp_into<out57>(v); });
+    return run_math<angle>([](angle v) { return math::exp<out57>(v); });
 }
 std::int64_t run_math_decimal() {
-    return run_math<dec>([](dec v) { return math::exp_into<out6>(v); });
+    return run_math<dec>([](dec v) { return math::exp<out6>(v); });
+}
+
+// G(3,0): the bivectors e₁e₂, e₁e₃, e₂e₃ square to -1.
+inline constexpr units::basis_vector e1_def{"e1", +1};
+inline constexpr units::basis_vector e2_def{"e2", +1};
+inline constexpr units::basis_vector e3_def{"e3", +1};
+inline constexpr auto                e1 = units::unit_c<e1_def>;
+inline constexpr auto                e2 = units::unit_c<e2_def>;
+inline constexpr auto                e3 = units::unit_c<e3_def>;
+using bivector                          = units::
+    multivector<units::quantity<e1 * e2, angle>, units::quantity<e1 * e3, angle>, units::quantity<e2 * e3, angle>>;
+using rotor = units::multivector<out20,
+                                 units::quantity<e1 * e2, out20>,
+                                 units::quantity<e1 * e3, out20>,
+                                 units::quantity<e2 * e3, out20>>;
+
+std::int64_t run_math_rotor() {
+    std::int64_t   acc = 0, x = 1;
+    constexpr auto slots = static_cast<std::uint64_t>(static_cast<std::int64_t>(grid_of<angle>.step_count())) + 1;
+    const auto     next  = [&] {
+        lcg(x);
+        return angle::from_raw(detail::raw_from_offset<angle>((static_cast<std::uint64_t>(x) >> 20) % slots));
+    };
+    for (long i = 0; i < math_iters; ++i) {
+        const angle    u = next(), v = next(), w = next();
+        const bivector b{u * (e1 * e2) + v * (e1 * e3) + w * (e2 * e3)};
+        const rotor    r = math::exp<rotor>(b);
+        acc += static_cast<std::int64_t>(std::get<0>(r.parts()).raw()) +
+               static_cast<std::int64_t>(std::get<3>(r.parts()).numerical_value().raw());
+    }
+    return acc;
 }
 } // namespace
 
@@ -244,6 +280,8 @@ int main(int argc, char** argv) {
         acc = run_math_integer();
     else if (std::strcmp(key, "math_decimal") == 0)
         acc = run_math_decimal();
+    else if (std::strcmp(key, "math_rotor") == 0)
+        acc = run_math_rotor();
     else {
         std::fprintf(stderr, "unknown workload key: %s\n", key);
         return 2;

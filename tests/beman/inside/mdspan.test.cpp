@@ -240,8 +240,7 @@ TEST(MdspanTest, transform_into) {
     using out_t = inside<{{0, 10}, per<1000>}, round_nearest>;
     std::array<in_t, 4>  in{1, 4, 9, 2};
     std::array<out_t, 4> out{};
-    transform_into(
-        std::mdspan{in.data(), 4}, std::mdspan{out.data(), 4}, [](in_t v) { return math::sqrt_into<out_t>(v); });
+    transform_into(std::mdspan{in.data(), 4}, std::mdspan{out.data(), 4}, [](in_t v) { return math::sqrt<out_t>(v); });
     EXPECT_TRUE((out[0] == 1 && out[1] == 2 && out[2] == 3 && out[3] == rational{1414, 1000}));
     // Two inputs, stored by the output's policy (clamp saturates).
     std::array<inside<{0, 150}, clamp>, 4> s{};

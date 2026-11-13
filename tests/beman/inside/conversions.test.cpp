@@ -427,7 +427,7 @@ constexpr bool can_clamp_cast = requires(S s) { B{s, clamp}; };
 template <class B, class S>
 constexpr bool can_checked_cast = requires(S s) { checked_cast<B>(s); };
 template <class O, class I>
-constexpr bool can_abs_into = requires(I x) { math::abs_into<O>(x); };
+constexpr bool can_abs = requires(I x) { math::abs<O>(x); };
 template <std::int64_t E, class I>
 constexpr bool can_pown = requires(I x) { math::pown<E>(x); };
 template <class T, class F>
@@ -483,7 +483,9 @@ TEST(ConversionTest, casts_and_math_are_constraint_friendly) {
     using small  = inside<{-7, 5}>;
     static_assert(can_clamp_cast<digit, int> && can_clamp_cast<digit, small>);
     static_assert(!can_clamp_cast<halves, three> && can_checked_cast<halves, three>); // 3 is off the .5 lattice
-    static_assert(can_abs_into<digit, small> && !can_abs_into<inside<{1, 10}>, small>);
+    // An output that misses a result (|0| = 0) is the store's run-time check.
+    static_assert(can_abs<digit, small> && can_abs<inside<{1, 10}>, small>);
+    EXPECT_THROW((void)(math::abs<inside<{1, 10}>>(small{0})), inside_error);
     static_assert(can_pown<5, digit> && can_pown<0, inside<{{-2, 2}, max_denominator{1000}}>>);
     EXPECT_EQ(math::pown<3>(small{-2}), -8_ins);
     EXPECT_EQ((digit{small{-3}, clamp}), 0_ins);

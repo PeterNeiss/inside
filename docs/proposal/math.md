@@ -31,7 +31,7 @@ point that the output's rounding mode selects from the true value. The output
 grid is part of the type, so the precision is too, with no ceiling. The result
 does not depend on how it was computed, so it is the same at compile time and at
 run time, on every platform, with or without an FPU. `sin(x)` deduces its
-output grid from the input; `sin_into<Out>(x)` names it. On a quantity the unit
+output grid from the input; `sin<Out>(x)` names it. On a quantity the unit
 follows the function: `sqrt` of an area is a length, and an angle in degrees is
 reduced exactly, so `cos` of 120° is exactly −1/2.
 
@@ -74,7 +74,7 @@ checks its own results.
 using angle = inside<{{-8, 8}, per<16384>}, round_nearest>;
 auto s = math::sin(angle{1});                    // 0.84149169921875, the nearest 1/16384
 static_assert(grid_of<decltype(s)> == grid{{-1, 1}, per<16384>});
-auto c = math::cos_into<math::unit_amplitude<256>>(angle{1}); // 0.5390625: a coarser output, named
+auto c = math::cos<per<256>>(angle{1});                  // 0.5390625: a coarser notch, named
 
 using level = inside<{{0, 4}, per<256>}, round_nearest>;
 auto r = math::sqrt(level{2.25});                // 1.5, on [0, 2]
@@ -91,10 +91,10 @@ using x_t  = inside<{{1, 16}, per<64>}, round_nearest>;
 using down = inside<{{0, 16}, per<1024>}, round_floor>;
 using up   = inside<{{0, 16}, per<1024>}, round_ceil>;
 
-auto lo = math::sqrt_into<down>(x_t{2});         // 1.4140625    = 1448/1024 ≤ √2
-auto hi = math::sqrt_into<up>(x_t{2});           // 1.4150390625 = 1449/1024 ≥ √2
-static_assert(math::sqrt_into<down>(x_t{2.25}) == math::sqrt_into<up>(x_t{2.25})); // 1.5 exactly
-static_assert(math::log2_into<down>(x_t{8}) == 3 && math::log2_into<up>(x_t{8}) == 3);
+auto lo = math::sqrt<down>(x_t{2});         // 1.4140625    = 1448/1024 ≤ √2
+auto hi = math::sqrt<up>(x_t{2});           // 1.4150390625 = 1449/1024 ≥ √2
+static_assert(math::sqrt<down>(x_t{2.25}) == math::sqrt<up>(x_t{2.25})); // 1.5 exactly
+static_assert(math::log2<down>(x_t{8}) == 3 && math::log2<up>(x_t{8}) == 3);
 
 using plain = inside<{{1, 16}, per<64>}>;           // no rounding in the type
 auto e = math::exp<round_floor>(plain{1.5});     // the mode named on the call
@@ -108,10 +108,10 @@ auto           at_run_time     = math::exp(x_t{1.5});
 <!-- listing: math_quantity -->
 ```cpp
 using down = inside<{{-1, 1}, per<16384>}, round_floor>;
-auto h = units::cos_into<down>(quantity<si::degree, inside<{0, 360}>>{120}); // exactly -1/2, even rounding down
+auto h = math::cos<down>(quantity<si::degree, inside<{0, 360}>>{120}); // exactly -1/2, even rounding down
 
 using area_t = quantity<square(si::metre), inside<{{0, 100}, per<1024>}, round_nearest>>;
-auto side = units::sqrt(area_t{2});              // 1.4140625 m: the unit's root
+auto side = math::sqrt(area_t{2});              // 1.4140625 m: the unit's root
 static_assert(std::is_same_v<decltype(side)::rep, inside<{{0, 10}, per<1024>}, round_nearest>>);
 
 using rad_t = inside<{{0, 7}, per<1'000'000>}, round_nearest>;
@@ -134,22 +134,29 @@ The result does not depend on how it was computed. It is the same at compile
 time and at run time, on every platform, and with or without an FPU, so a
 constant expression and a run-time call agree by specification.
 
-## Three forms
+## One call shape, the output deduced
 
-`fn_into<Out>(x)` names the output. `fn(x)` deduces it: the input's notch and
-policy, and the function's range over the input's interval, computed at
-compile time and rounded outward. `fn<mode>(x)` deduces it the same way and
-rounds by the mode named on the call, so the input's type need not carry a
-rounding policy (which would change every store into it). A few ranges are fixed instead: `sin` and
-`cos` give [−1, 1] and `atan2` [−π, π]; `tan` takes its range over the input's branch. `hypot` takes the
-gcd of both notches, `pow` the base's notch, and `floor` & co. notch 1.
+`fn(x)` deduces the output: the input's notch and policy, and the function's
+range over the input's interval, computed at compile time and rounded
+outward. A few ranges are fixed instead: `sin` and `cos` give [−1, 1] and
+`atan2` [−π, π]; `tan` takes its range over the input's branch. `hypot` takes
+the gcd of both notches, `pow` the base's notch, and `floor` & co. notch 1.
+
+The template arguments name only what the caller chooses, and the rest stays
+deduced. `fn<per<K>>(x)` computes the same range on the notch 1/K;
+`fn<round_floor>(x)` rounds by the mode named on the call, so the input's
+type need not carry a rounding policy (which would change every store into
+it); a notch and policy flags combine in any order (`fn<per<K>, round_floor,
+clamp>(x)`). `fn<Out>(x)` names the output itself, and `fn<Out, In>(x)` the
+input type too. On a quantity, `fn<L>(q)` names only the result's number, the
+unit following the function.
 
 ## Rounding needs permission
 
 A transcendental result is never on a grid by accident, so it rounds once:
-by `Out`'s mode, which a named `Out` must have, as a store that rounds must in
-the number paper; by the call's (`fn<round_floor>(x)`); or, for `fn(x)`, by
-the input type's mode, else to nearest, which the deduced output carries. A result past `Out`'s interval goes through `Out`'s policy:
+by the call's (`fn<round_floor>(x)`); by `Out`'s mode, which a named `Out`
+must have, as a store that rounds must in the number paper; or else by the
+input type's mode, else to nearest, which the deduced output carries. A result past `Out`'s interval goes through `Out`'s policy:
 `clamp` saturates, `wrap` folds the true value, and the default reports.
 
 ## Errors follow the number paper
@@ -182,9 +189,10 @@ turns.
 - `sqrt` and `cbrt` take the unit's root: of an area, a length.
 - `abs`, `floor`, `ceil`, `round` and `trunc` keep the unit.
 - `sin`, `cos` and `tan` take an angle in radians and return a number;
-  `sin_into` and `cos_into` also take an angle in a unit with a factor of π
-  (degrees, turns), which they reduce exactly by quarter turns, so only a
-  remainder of at most π/4 is approximated.
+  `sin` and `cos` also take an angle in a unit with a factor of π (degrees,
+  turns), which they reduce exactly by quarter turns, so only a remainder of
+  at most π/4 is approximated. Such an angle's notch says nothing about the
+  result's, so the call names one (`sin<per<K>>(q)`) or the output.
 - `asin`, `acos` and `atan` of a number, and `atan2` of two quantities of one
   dimension, return radians; `hypot` returns the common unit.
 - `exp`, `log`, `pow` and the hyperbolic functions take a dimensionless
@@ -217,13 +225,19 @@ experience](#implementation-experience)).
 
 # Proposed interface
 
-Every function below except `pown` also has the form `fn_into<Out>(args)`,
-which returns `Out` (or `expected<Out, errc>` for `pow` where its pole is
-possible). Except for the grid operations, `Out` must be an `inside` whose
-policy names a rounding mode; the deduced form `fn(args)` rounds by its
-input's mode, else to nearest. Every deduced form also has the form
-`fn<mode>(args)` (`pow_base<B, mode>`), which names the rounding mode on the
-call instead.
+Each declaration `fn(args)` below stands for two templates:
+
+```cpp
+template<auto... Spec, class... In> constexpr auto fn(const In&... args);  // the output deduced
+template<class Out, class... D> constexpr auto fn(const D&... args);       // onto Out
+```
+
+A `Spec` is a notch (`per<K>`, or any rational) or policy flags, in any
+order, at most one notch. The second form returns `Out` (or `expected<Out,
+errc>` where the deduced form returns an `expected`); except for the grid
+operations, `Out` must be an `inside` whose policy names a rounding mode.
+`pow_base` and `pown` take their compile-time argument first:
+`pow_base<10, per<1024>>(x)`, `pown<3, Out>(x)`.
 
 ```cpp
 namespace std::math {
@@ -271,13 +285,14 @@ namespace std::math {
   template<class B, class E> constexpr auto pow(B base, E e);  // deduced: base's grid > 0
 }
 
+// std::math's functions also take quantities, the unit following the function:
+//   q's unit:              abs, floor, ceil, round, trunc
+//   the unit's root:       sqrt, cbrt (m² → m)
+//   an angle in rad:       sin, cos, tan; sin and cos also of a unit with a factor of pi
+//   to rad:                asin, acos, atan of a dimensionless quantity; atan2
+//   the common unit:       hypot
+//   a dimensionless input: exp, exp2, log, log2, log10, the hyperbolic functions, pow_base, pow
 namespace std::units {
-  // q's unit:              abs, floor, ceil, round, trunc
-  // the unit's root:       sqrt, cbrt (m² → m), and _into
-  // an angle in rad:       sin, cos, tan; sin_into, cos_into also take a unit with a factor of pi
-  // to rad:                asin, acos, atan of an inside or a dimensionless quantity; atan2
-  // the common unit:       hypot
-  // a dimensionless input: exp_into ... atanh_into, log10_into, pow_base_into<Out, B>, pow_into
   template<auto U, class Out, reference R, class V>          // across a factor of pi: one rounding
     constexpr auto value_cast(const quantity<R, V>&);
 }
@@ -287,9 +302,9 @@ namespace std::units {
 
 | Expression | Result | Errors |
 |---|---|---|
-| `fn_into<Out>(x)` | the true value rounded onto `Out`'s grid by `Out`'s mode, then stored by `Out`'s policy | ill-formed without a rounding mode in `Out`, except for a grid operation |
-| `fn(x)` | `fn_into<Out>(x)`, `Out` deduced from `x`'s grid and policy, rounding to nearest unless the policy names a mode | none beyond the function's |
-| `fn<mode>(x)` | as `fn(x)`, the output rounding by `mode` | `mode` one of the rounding modes |
+| `fn<Out>(x)` | the true value rounded onto `Out`'s grid by `Out`'s mode, then stored by `Out`'s policy | ill-formed without a rounding mode in `Out`, except for a grid operation |
+| `fn(x)` | `fn<Out>(x)`, `Out` deduced from `x`'s grid and policy, rounding to nearest unless the policy names a mode | none beyond the function's |
+| `fn<Spec...>(x)` | as `fn(x)`, the range computed on the notch named, and the policy flags named replacing the deduced ones (a rounding mode its mode) | ill-formed for a `Spec` that is neither a notch nor a flag, or for two notches |
 | `abs`, `sign`, `copysign`, `floor`, `ceil`, `round`, `trunc`, `pown<E>` | exact | none; `round` sends a half away from zero |
 | `fmod(x, y)` | `x − trunc(x/y)·y`, exact, the sign of `x` | `division_by_zero`, iff `y`'s grid holds 0 |
 | `factorial`, `binomial`, `falling_factorial`, `rising_factorial`, `multinomial` | exact; the result grid is the range over the inputs' grids | ill-formed unless the inputs are integer grids from 0, or when the result's limit would pass an implementation limit (the reference implementation: 16384 bits) |
@@ -298,8 +313,9 @@ namespace std::units {
 | `log`, `log2`, `log10`, `asin`, `acos`, `acosh`, `atanh` | | ill-formed unless `x`'s grid lies in the domain |
 | `tan(x)` | | ill-formed unless `x`'s interval lies on one branch; `overflow` past `Out` (saturates under `clamp`) |
 | `pow(b, e)` | exact for an integer `e`, and for `p/q` when `b` is a perfect `q`-th power | ill-formed unless `b`'s grid is non-negative; `division_by_zero` for 0 to a negative power (an `expected` iff the grids allow it), `overflow` past `Out` |
-| `units::sqrt(q)` | `sqrt` of the number, in the unit's root | ill-formed when the unit has no such root |
-| `units::sin_into<Out>(q)` | `q` reduced exactly by quarter turns when its unit has a factor of π | as `sin_into` |
+| `math::sqrt(q)` | `sqrt` of the number, in the unit's root | ill-formed when the unit has no such root |
+| `math::sin<Out>(q)` | `q` reduced exactly by quarter turns when its unit has a factor of π | as `sin<Out>(x)` |
+| `math::sqrt<L>(q)` | a quantity in the result's unit on the number `L`; `math::sqrt<Q>(q)` names the whole quantity | ill-formed unless `Q`'s unit is the result's |
 | `value_cast<U, Out>(q)` | the exact `x·r·π^±1`, rounded once onto `Out` | ill-formed without a rounding mode in `Out` |
 
 # Future work
@@ -311,7 +327,7 @@ namespace std::units {
    (`Out o = math::pi`), as the simplest point an operand's resolution needs
    (`angle * math::pi`), and compared exactly. The reference implementation
    has them.
-3. **Algorithms that round once**: `mul_into<Out>` and `div_into<Out>` (in the
+3. **Algorithms that round once**: `mul<Out>` and `div<Out>` (in the
    reference implementation, and a candidate for the number paper's future
    work) round a product or quotient onto `Out` without an intermediate grid,
    as these functions do.
@@ -336,7 +352,7 @@ Onto the grid deduced from the input, the functions run from about 2× slower to
 call, at about 0.13 s of compile time per table. Onto grids as fine as a
 `double`, correct rounding costs 1.2–7× `<cmath>`: `sin` onto 2⁻⁵² in about
 14 ns, `exp` onto 2⁻⁴⁰ in about 6 ns, `log` onto 2⁻⁴⁸ in about 17 ns (x86-64,
-`-O3 -mfma`; the repository's `docs/advanced/math-engine.md`, "Speed"). 11 of the repository's 39 examples
+`-O3 -mfma`; the repository's `docs/advanced/math-engine.md`, "Speed"). 13 of the repository's 44 examples
 use the functions, among them an oscillator, range and bearing from `hypot` and
 `atan2`, audio gain in decibels and a rocket equation.
 
@@ -361,7 +377,7 @@ math functions.
 # Open questions
 
 1. **Naming.** A namespace `std::math`, as in the implementation, or overloads
-   of `std::sin` and the others, with `sin_into<Out>` beside them?
+   of `std::sin` and the others, with `sin<Out>` beside them?
 2. **Correct rounding as a requirement.** The proposal requires the correctly
    rounded point. The cost is small onto coarse grids and 4–9× at a `double`'s
    resolution. Should implementations be allowed a faithful result (one of the
