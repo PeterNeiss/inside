@@ -17,7 +17,7 @@ using namespace beman::inside;
 using namespace beman::inside::units;
 namespace pc = units::constants;
 
-using angle_t = inside<{{0, 4}, per<1024>}>;
+using angle_t = inside<{{0, 4}, per<(1 << 10)>}>;
 auto x = angle_t{1.5} * math::pi;                                   // π to angle_t's resolution
 auto d = pc::speed_of_light_in_vacuum * quantity<si::second, inside<{0, 10}>>{2};
 d.in(si::metre);                                                    // 599584916 m, exact

@@ -46,7 +46,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   them. Examples `complex.cpp`, `quaternions.cpp` and
   `geometric_algebra.cpp`; `docs/advanced/geometric-algebra.md`.
 
-- Output specs on every math function: `math::exp<per<1 << 20>>(x)` names
+- Output specs on every math function: `math::exp<per<(1 << 20)>>(x)` names
   only the output's notch, the range computed on it (tighter than rounding
   the deduced one outward); policy flags (`round_floor`, `clamp`, `wrap`) in
   any order, `math::sin<per<1000>, round_floor>(x)`. A call on a quantity
@@ -61,7 +61,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   evaluation). Complex numbers, quaternion rotors, boosts and dual numbers
   alike: a rotor onto a 2^-20 grid costs about what `std::sqrt`, `std::sin`,
   `std::cos` and three products cost in `double`. The deduced output bounds
-  every part at compile time (`math::exp<per<1 << 20>>(bivector)` is a
+  every part at compile time (`math::exp<per<(1 << 20)>>(bivector)` is a
   rotor), and `math::exp<C>(x)` takes a multivector or one number for every
   part. An argument without the closed form (e1 e2 + e3 e4 in 4-D) is a
   deleted overload with the reason.

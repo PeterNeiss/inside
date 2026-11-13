@@ -132,11 +132,10 @@ quotients are plain values:
 
 ```cpp
 using length = inside<{{1e-41_g, 1e27_g}, 1e-41_g}, round_nearest>;
-using decade = inside<{{-100, 100}, per<1 << 20>}, round_nearest>;
 const length planck   = just<1.616255e-35_g>;
 const length universe = just<8.8e26_g>;
-auto ratio = universe / planck;           // exactly 1760…0/323251, a plain value
-math::log10<decade>(ratio);          // 61.73597…, rounded once
+auto ratio = universe / planck;       // exactly 1760…0/323251, a plain value
+math::log10<per<(1 << 20)>>(ratio);   // 61.73597…, rounded once onto 2^-20
 ```
 
 [`planck_to_cosmos.cpp`](../../examples/planck_to_cosmos.cpp) runs this with

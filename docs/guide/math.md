@@ -13,10 +13,10 @@ without an FPU.
 #include <beman/inside/math.hpp>
 using namespace beman::inside;
 
-using angle = inside<{{-8, 8}, per<16384>}, round_nearest>;
-auto s = math::sin(angle{1});              // 0.84149169921875, on the input's notch
-auto c = math::cos<per<256>>(angle{1});    // 0.5390625: the notch you name
-auto h = math::hypot(s, s);                // √(s² + s²)
+using angle = inside<{{-8, 8}, per<(1 << 14)>}, round_nearest>;
+auto s = math::sin(angle{1});                   // 0.84149169921875, on the input's notch
+auto c = math::cos<per<(1 << 8)>>(angle{1});    // 0.5390625: the notch you name
+auto h = math::hypot(s, s);                     // √(s² + s²)
 ```
 
 ## The rounding mode
@@ -44,7 +44,7 @@ Name only what you choose; the rest is still deduced:
 | Call | Output |
 |---|---|
 | `fn(x)` | deduced: the function's range over x, on x's notch, with x's policy |
-| `fn<per<1024>>(x)` | the same range, computed on the notch you name |
+| `fn<per<(1 << 10)>>(x)` | the same range, computed on the notch you name |
 | `fn<round_floor>(x)`, `fn<per<1000>, round_floor, clamp>(x)` | the deduced output with your notch and policy flags, in any order |
 | `fn<Out>(x)` | `Out`, a type you name: a coarser result, which is cheaper, or a range you know |
 | `fn<Out, In>(x)` | `Out`, with x converted to `In` first |
@@ -66,7 +66,7 @@ store. `math::unit_amplitude<K>` is [−1, 1] in steps of 1/K, what
 | number theory | `gcd`, `lcm` |
 
 Every function has every form above. `pow_base<10>(x)` is 10ˣ: its base
-comes first, `pow_base<10, per<1024>>(x)`, `pow_base<10, Out>(x)`; so does
+comes first, `pow_base<10, per<(1 << 10)>>(x)`, `pow_base<10, Out>(x)`; so does
 `pown<3>(x)`'s exponent. `exp` also takes a multivector, every part of its
 output correctly rounded ([geometric algebra](../advanced/geometric-algebra.md#exp)).
 The exact functions (the first row, the counting and number-theory ones)
@@ -133,7 +133,7 @@ at most π/4, is approximated, so exact values come out exact:
 using namespace beman::inside::units;
 
 quantity<si::degree, inside<{0, 360}>> deg{120};
-math::cos<per<16384>, round_floor>(deg);   // exactly −1/2, even rounding down
+math::cos<per<(1 << 14)>, round_floor>(deg);   // exactly −1/2, even rounding down
 ```
 
 An angle's notch in degrees says nothing about its sine's, so a call on one

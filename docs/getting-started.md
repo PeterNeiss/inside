@@ -39,9 +39,9 @@ limit and a step, the *notch*. All three are exact and known at compile time,
 and the value can never leave the grid.
 
 ```cpp
-using pct    = inside<{0, 100}>;                // the integers 0 … 100
-using halves = inside<{0.5, 10}>;               // 0.5 … 10 in steps of 1/2
-using sample = inside<{{-1, 1}, per<16384>}>;   // −1 … 1 in steps of 1/16384
+using pct    = inside<{0, 100}>;                    // the integers 0 … 100
+using halves = inside<{0.5, 10}>;                   // 0.5 … 10 in steps of 1/2
+using sample = inside<{{-1, 1}, per<(1 << 14)>}>;   // −1 … 1 in steps of 1/16384
 ```
 
 Both limits belong to the grid. With two limits the notch is the coarsest one
@@ -149,7 +149,7 @@ its output grid, and it is the same on every platform, at compile time and
 without an FPU. A result is rounded, so the input or the output must allow it:
 
 ```cpp
-using angle = inside<{{-4, 4}, per<1024>}, round_nearest>;
+using angle = inside<{{-4, 4}, per<(1 << 10)>}, round_nearest>;
 math::sin(angle{1});                                // 0.841796875: the output grid follows the input
 using out = inside<{{0, 2}, per<100>}, round_nearest>;
 math::sqrt<out>(inside<{0, 4}>{2});            // 1.41: you name the output grid
@@ -165,7 +165,7 @@ math::sin<per<1000>>(quantity<si::degree, inside<{0, 360}>>{30});   // 0.500
 ## How a value flows
 
 ```cpp
-using mix = inside<{{-4, 4}, per<16384>}, round_nearest | clamp>;
+using mix = inside<{{-4, 4}, per<(1 << 14)>}, round_nearest | clamp>;
 // gain and bias are insides too
 sample s = read_input();     // 1. enter the bounded world once
 auto   m = s * gain + bias;  // 2. compute: the types widen, nothing overflows

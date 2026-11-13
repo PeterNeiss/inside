@@ -8,14 +8,14 @@ using namespace beman::inside;
 
 int main() {
     // [listing]
-    using angle = inside<{{-8, 8}, per<16384>}, round_nearest>;
+    using angle = inside<{{-8, 8}, per<(1 << 14)>}, round_nearest>;
     auto s = math::sin(angle{1});                    // 0.84149169921875, the nearest 1/16384
-    static_assert(grid_of<decltype(s)> == grid{{-1, 1}, per<16384>});
-    auto c = math::cos<per<256>>(angle{1});                  // 0.5390625: a coarser notch, named
+    static_assert(grid_of<decltype(s)> == grid{{-1, 1}, per<(1 << 14)>});
+    auto c = math::cos<per<(1 << 8)>>(angle{1});     // 0.5390625: a coarser notch, named
 
-    using level = inside<{{0, 4}, per<256>}, round_nearest>;
+    using level = inside<{{0, 4}, per<(1 << 8)>}, round_nearest>;
     auto r = math::sqrt(level{2.25});                // 1.5, on [0, 2]
-    // math::sqrt(inside<{{-4, 4}, per<256>}, round_nearest>{2.25}) does not compile:
+    // math::sqrt(inside<{{-4, 4}, per<(1 << 8)>}, round_nearest>{2.25}) does not compile:
     // the grid reaches below 0, so take abs(x) or store x into a non-negative grid first
     // [/listing]
     if (s != 0.84149169921875_ins || c != 0.5390625_ins)

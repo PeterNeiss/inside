@@ -13,7 +13,7 @@ same formats with physical units.
 
 An inside's type is a **grid** `{interval, notch}`:
 
-- the **notch** is the resolution, the value of one LSB: `per<256>` is 2⁻⁸,
+- the **notch** is the resolution, the value of one LSB: `per<(1 << 8)>` is 2⁻⁸,
   that is **8 fractional bits**;
 - the **interval** `[Lower, Upper]` is the range;
 - a value is Lower + index · notch. On a whole-number grid the raw *is* the
@@ -23,7 +23,7 @@ An unsigned Q8.8 register (8 integer bits, 8 fractional bits, every one of the
 65536 bit patterns) is:
 
 ```cpp
-using q8_8 = inside<{{0, rational{65535, 256}}, per<256>}, round_nearest>;   // == beman::inside::q8_8
+using q8_8 = inside<{{0, rational{65535, 256}}, per<(1 << 8)>}, round_nearest>;   // == beman::inside::q8_8
 ```
 
 `<beman/inside/inside/formats.hpp>` has the common ones ([Grids](../guide/grids.md#predefined-formats)):
@@ -35,7 +35,7 @@ using q8_8 = inside<{{0, rational{65535, 256}}, per<256>}, round_nearest>;   // 
 | `uint8` … `uint64`, `int8` … `int64` | the full integer ranges (`int64` from −(2⁶³ − 1)) | the same width |
 
 Any other format is one line: a signed Q1.14 sample is
-`inside<{{-1, 1}, per<16384>}, round_nearest>`, a 0.5 °C step
+`inside<{{-1, 1}, per<(1 << 14)>}, round_nearest>`, a 0.5 °C step
 `inside<{{-40, 60}, 0.5}, round_nearest>`.
 
 ## What inside adds over a raw Qm.n integer

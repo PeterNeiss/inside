@@ -10,7 +10,7 @@ values, and the ready-made formats.
 
 ```cpp
 using pct    = inside<{0, 100}>;                    // 0, 1, …, 100
-using sample = inside<{{-1, 1}, per<16384>}>;       // −1 … 1 in steps of 1/16384
+using sample = inside<{{-1, 1}, per<(1 << 14)>}>;   // −1 … 1 in steps of 1/16384
 using temp   = inside<{{-40, 60}, 0.5}>;            // −40 … 60 in steps of 0.5
 using money  = inside<{{0, 1'000'000}, per<100>}>;  // cents
 ```
