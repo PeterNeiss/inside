@@ -21,27 +21,26 @@ using namespace beman::inside::units;
 
 int main() {
     // 1. Growth and decay: t = −4, −3.75, …, 4 s by a cursor over the number
-    //    grid in steps of 1/4 (end(n) is the step past 4), amp on Q.14.
+    //    grid in steps of 1/4 (end(n) is the step past 4); exp onto 2^-14,
+    //    its range [e^-4, e^4] deduced.
     using seconds_t    = quantity<si::second, inside<{{-4, 4}, per<(1 << 10)>}, round_nearest>>;
-    using amp_t        = inside<{{0, 100}, per<(1 << 14)>}, round_nearest>;
     constexpr auto tau = just<1> * si::second;
     std::cout << "t     exp(t / 1 s)\n";
     for (cursor<seconds_t, per<4>> n; n != end(n); ++n) {
         const seconds_t t{*n};
-        std::cout << t << "\t" << math::exp<amp_t>(t / tau) << "\n";
+        std::cout << t << "\t" << math::exp<per<(1 << 14)>>(t / tau) << "\n";
     }
 
-    // 2. Sweep: half-octave steps from 20 Hz, 2^e rounded once onto mult_t;
+    // 2. Sweep: half-octave steps from 20 Hz, 2^e rounded once onto 2^-14;
     //    every whole octave doubles exactly.
     using exponent_t  = inside<{{0, 4}, per<(1 << 10)>}, round_nearest>;
-    using mult_t      = inside<{{0, 16}, per<(1 << 14)>}, round_nearest>;
     constexpr auto f0 = just<20> * si::hertz;
     std::cout << "\noctave  frequency\n";
     for (cursor<exponent_t, per<2>> e; e != end(e); ++e)
-        std::cout << *e << "\t" << f0 * math::exp2<mult_t>(*e) << "\n";
-    if (f0 * math::exp2<mult_t>(exponent_t{3}) != just<160> * si::hertz)
+        std::cout << *e << "\t" << f0 * math::exp2<per<(1 << 14)>>(*e) << "\n";
+    if (f0 * math::exp2<per<(1 << 14)>>(exponent_t{3}) != just<160> * si::hertz)
         return 1;
-    if (math::exp2<mult_t>(exponent_t{3}) != 8 || math::exp2<mult_t>(exponent_t{4}) != 16)
+    if (math::exp2<per<(1 << 14)>>(exponent_t{3}) != 8 || math::exp2<per<(1 << 14)>>(exponent_t{4}) != 16)
         return 1;
 
     // 3. Soft clip and the hyperbolic identity.
@@ -55,7 +54,7 @@ int main() {
         const auto c        = math::cosh(x);
         const auto identity = c * c - s * s; // within a few notches of 1
         std::cout << "cosh^2 - sinh^2 at " << x << " = " << identity << "\n";
-        if (math::abs(identity - just<1>) > just<1, (1 << 6)>)
+        if (math::abs(identity - just<1>) > just<4, (1 << 11)>)
             return 1;
     }
 

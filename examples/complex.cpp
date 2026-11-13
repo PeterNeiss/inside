@@ -10,8 +10,8 @@
 //      and 5 = (2 + i)(2 - i).
 //   4. An impedance: 10 V across 3 Ω + 4 Ω i draws 1.2 A - 1.6 A i.
 //   5. e^(iπ) = -1: math::exp of a complex number rounds each part once,
-//      here onto a grid of 2^-20, and with π on that grid the result is
-//      -1 + 0 i exactly.
+//      here onto its argument's grid of 2^-20, and with π on that grid the
+//      result is -1 + 0 i exactly.
 
 #include <iostream>
 
@@ -78,10 +78,9 @@ int main() {
         return 1;
 
     // 5. Euler's identity, onto a grid of 2^-20.
-    using fine    = inside<{{-4, 4}, per<(1 << 20)>}, round_nearest>;
-    using complex = multivector<fine, quantity<i, fine>>;
-    const fine    pi{rational{314159265358979, 100000000000000}};
-    const complex euler = math::exp<complex>(complex{pi * i});
+    using fine       = inside<{{-4, 4}, per<(1 << 20)>}, round_nearest>;
+    const fine pi    = math::pi; // π rounded onto 2^-20
+    const auto euler = math::exp(pi * i);
     std::cout << "e^(iπ) = " << euler << '\n';
     if (!(euler == just<-1>))
         return 1;

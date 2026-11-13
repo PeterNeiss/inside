@@ -55,22 +55,23 @@ using branch1 = inside<{{rational{51, 32}, rational{75, 16}}, per<1 << 18>}, rou
 // example pair has no row here). The alias each grid comes from is named.
 namespace ex {
 // navigation.cpp
-using coord    = inside<{{-1, 1}, per<16384>}, round_nearest>;                     // coord_t
-using angle    = inside<{{-4, 4}, per<16384>}, round_nearest>;                     // angle_t
+using coord    = inside<{{-1, 1}, per<16384>}, round_nearest>;                                       // coord_t
+using angle    = inside<{{rational{-3217, 1024}, rational{3217, 1024}}, per<16384>}, round_nearest>; // atan2's
 using radius   = inside<{{0, rational{23171, 16384}}, per<16384>}, round_nearest>; // hypot(coord_t, coord_t)
 using ratio    = inside<{{-1, 1}, per<4096>}, round_nearest>;                      // ratio_t
 using asin_r   = inside<{{rational{-3217, 2048}, rational{3217, 2048}}, per<4096>}, round_nearest>;
 using acos_r   = inside<{{0, rational{3217, 1024}}, per<4096>}, round_nearest>;
-using position = inside<{{-1024, 1024}, per<256>}, round_nearest>;            // pos_t's number
-using fine     = inside<{{-4, 4}, per<1 << 20>}, round_nearest>;              // fine_t
-using range    = inside<{{0, rational{46341, 32}}, per<256>}, round_nearest>; // math::hypot(pos_t, pos_t)
+using position = inside<{{-1024, 1024}, per<256>}, round_nearest>; // pos_t's number
+using fine =
+    inside<{{rational{-3294199, 1 << 20}, rational{3294199, 1 << 20}}, per<1 << 20>}, round_nearest>; // atan2's
+using range = inside<{{0, rational{46341, 32}}, per<256>}, round_nearest>; // math::hypot(pos_t, pos_t)
 // audio_math.cpp
-using t_tau    = inside<{{-4, 4}, per<1024>}, round_nearest>;   // seconds_t / tau (keeps the shared policy)
-using amp      = inside<{{0, 100}, per<16384>}, round_nearest>; // amp_t
-using exponent = inside<{{0, 4}, per<1024>}, round_nearest>;    // exponent_t
-using half     = inside<{{0, 4}, per<2>}, round_nearest>;       // the half-octave cursor
-using mult     = inside<{{0, 16}, per<16384>}, round_nearest>;  // mult_t
-using drive    = inside<{{-4, 4}, per<2048>}, round_nearest>;   // drive_t
+using t_tau    = inside<{{-4, 4}, per<1024>}, round_nearest>; // seconds_t / tau (keeps the shared policy)
+using amp      = inside<{{rational{75, 4096}, rational{894537, 16384}}, per<16384>}, round_nearest>; // exp's
+using exponent = inside<{{0, 4}, per<1024>}, round_nearest>;                                         // exponent_t
+using half     = inside<{{0, 4}, per<2>}, round_nearest>;      // the half-octave cursor
+using mult     = inside<{{1, 16}, per<16384>}, round_nearest>; // exp2's
+using drive    = inside<{{-4, 4}, per<2048>}, round_nearest>;  // drive_t
 using tanh_r   = inside<{{rational{-2047, 2048}, rational{2047, 2048}}, per<2048>}, round_nearest>;
 using sinh_r   = inside<{{rational{-27945, 1024}, rational{27945, 1024}}, per<2048>}, round_nearest>;
 using cosh_r   = inside<{{1, rational{6991, 256}}, per<2048>}, round_nearest>;
@@ -82,19 +83,21 @@ using cbrt_r   = inside<{{0, 4}, per<256>}, round_nearest>;
 using rad  = inside<{{0, 7}, rational{1, 1'000'000}}, round_nearest>; // angle
 using trig = inside<{{-1, 1}, rational{1, 1'000'000}}, round_nearest>;
 // decibels.cpp, audio_mixer.cpp
-using gain    = inside<{{rational{1, 256}, 4}, per<65536>}, round_nearest>;          // decibels gain_t
-using gain0   = inside<{{0, 4}, per<65536>}, round_nearest>;                         // audio_mixer gain_t
-using db20    = inside<{{rational{-5, 2}, 1}, per<40>}, round_nearest>;              // db_div20_t
-using db_by20 = inside<{{rational{-6, 5}, rational{3, 5}}, per<40>}, round_nearest>; // db_t / 20 dB
-// moon_rocket.cpp: sqrt of the exhaust-velocity ratio, onto fine<10^9>
+using gain    = inside<{{rational{1, 256}, 4}, per<65536>}, round_nearest>;            // decibels gain_t
+using gain0   = inside<{{0, 4}, per<65536>}, round_nearest>;                           // audio_mixer gain_t
+using db20    = inside<{{rational{-97, 40}, rational{5, 8}}, per<40>}, round_nearest>; // log10<per<40>>'s
+using db_by20 = inside<{{rational{-6, 5}, rational{3, 5}}, per<40>}, round_nearest>;   // db_t / 20 dB
+// moon_rocket.cpp: sqrt of the exhaust-velocity ratio, onto per<10^9>
 using v_ratio = inside<{{rational{977'000'000, 1'993'002'209}, rational{979'500'000, 1'993'002'209}},
                         rational{2500, 1'993'002'209}}>;
-using fine9   = inside<{{0, 200}, rational{1, 1'000'000'000}}, round_nearest>;
+using fine9 =
+    inside<{{rational{140'030'741, 200'000'000}, rational{701'048'929, 1'000'000'000}}, rational{1, 1'000'000'000}},
+           round_nearest>;
 // huge_angles.cpp, solar_system.cpp: too many inputs to certify
-using huge   = inside<{0, (std::int64_t{1} << 62) - 1}>; // radians' number
-using amp52  = math::unit_amplitude<(std::int64_t{1} << 52)>;
+using huge   = inside<{0, (std::int64_t{1} << 62) - 1}>;      // radians' number
+using amp52  = math::unit_amplitude<(std::int64_t{1} << 52)>; // sin's and cos's on per<2^52>
 using metres = inside<{{-10'000'000'000'000, 10'000'000'000'000}, rational{1, 1'000'000'000}}>;
-using mm     = inside<{{0, 100'000'000'000'000}, per<1000>}, round_nearest>;
+using mm     = inside<{{0, rational{14'142'135'623'730'951, 1000}}, per<1000>}, round_nearest>; // hypot's
 } // namespace ex
 
 #define CERTIFY(fn, Out, In) r.unary<Out, In>(#fn, [](In x) { return am::fn<Out>(x); })

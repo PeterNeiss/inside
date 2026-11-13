@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // A flight to the Moon with units on insides: the masses add exactly across
-// t and kg, every irrational step (log, sqrt, π) rounds once onto a grid the
+// t and kg, every irrational step (log, sqrt, π) rounds once onto a notch the
 // program names, and the quantity kinds keep an energy from becoming a
 // torque.
 //   1. The stage's masses in t and kg: m0 and the mass after the burn, in kg.
@@ -15,7 +15,6 @@
 //   5. The spacecraft's kinetic energy after the burn (mass·speed² is a
 //      kinetic energy), and its initial acceleration in g₀.
 
-#include <cstdint>
 #include <iostream>
 
 #include <beman/inside/inside.hpp>
@@ -29,9 +28,6 @@ using namespace beman::inside::units;
 namespace {
 constexpr auto km   = si::kilo(si::metre);
 constexpr auto km_s = km / si::second;
-
-template <std::uint64_t D>
-using fine = inside<{{0, 200}, per<D>}, round_nearest>; // a value in [0, 200] rounded to 1/D
 } // namespace
 
 int main() {
@@ -49,7 +45,7 @@ int main() {
     //    denominator is at most 60000 (mf in kg). Its log rounds once onto
     //    a 1e-6 grid, and v_e = 3.1 km/s scales it into a Δv.
     const inside<{{1, 300}, max_denominator{60'000}}> ratio = m0 / m_final;
-    const auto                                        ln    = math::log<fine<1'000'000>>(ratio);
+    const auto                                        ln    = math::log<per<1'000'000>>(ratio);
     const quantity<km_s, inside<{{1, 5}, per<10>}>>   v_e{just<31, 10>};
     const auto                                        dv_stage = v_e * ln;
     std::cout << "dv stage  = " << dv_stage.in(si::metre / si::second) << '\n';
@@ -63,7 +59,7 @@ int main() {
     const auto                                             r = altitude + earth;
     static_assert(r.quantity_spec == isq::length);
     constexpr auto mu     = just<3'986'004'418, 10'000> * (cubic(km) / square(si::second));
-    const auto     v_park = math::sqrt<fine<1'000'000>>(mu / r);
+    const auto     v_park = math::sqrt<per<1'000'000>>(mu / r);
     std::cout << "v parking = " << v_park << '\n';
     if (to_string(v_park) != "7.797393 km/s")
         return 1;
@@ -73,7 +69,7 @@ int main() {
     //    prove the difference positive, so its sqrt is a plain value (a grid
     //    that reached below 0 would not compile: sqrt takes no negative grid).
     const auto a      = (r + just<384'400> * km) / just<2>;
-    const auto v_peri = math::sqrt<fine<1'000'000>>(just<2> * mu / r - mu / a);
+    const auto v_peri = math::sqrt<per<1'000'000>>(just<2> * mu / r - mu / a);
     const auto dv_tli = v_peri - v_park;
     std::cout << "v perigee = " << v_peri << ", TLI needs " << dv_tli << '\n';
     if (to_string(v_peri) != "10.934330 km/s" || to_string(dv_tli) != "3.136937 km/s" || !(dv_stage > dv_tli))
@@ -81,7 +77,7 @@ int main() {
     //    Half the ellipse's period, π·a·√(a/μ): √(s²/km²) is s/km, so
     //    a·√(a/μ) is a time; mag_pi puts π in the unit, and the cast to hours
     //    rounds once with the true π.
-    const auto rt   = math::sqrt<fine<1'000'000'000>>(a / mu);
+    const auto rt   = math::sqrt<per<1'000'000'000>>(a / mu);
     const auto t_h  = value_cast<si::hour, inside<{{0, 200}, per<10>}, round_nearest>>(mag_pi * (a * rt));
     const auto days = value_cast<si::day, inside<{{0, 10}, per<100>}, round_nearest>>(mag_pi * (a * rt));
     std::cout << "transfer  = " << t_h << " (" << days << ")\n";

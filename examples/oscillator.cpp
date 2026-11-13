@@ -5,9 +5,10 @@
 //   - A 16-bit phase counter as `quantity<slot, inside<{0, 65535}, wrap>>`:
 //     `+=` wraps at a full turn, and `on_wrap` counts the completed cycles.
 //   - The counter is an angle in a unit of our own, the slot (2π/65536 rad).
-//     A unit with a factor of π reduces exactly: `math::sin<Out>` /
-//     `cos<Out>` take the slots as they are and round once onto Q.14 — no
-//     rational approximation of 2π anywhere.
+//     A unit with a factor of π reduces exactly: `math::sin<per<(1 << 14)>>`
+//     and `math::cos` take the slots as they are and round once onto 2^-14,
+//     the notch named, the range deduced — no rational approximation of 2π
+//     anywhere.
 //   - A frequency-swept variant where the per-sample increment changes
 //     each step — exactly the pattern a chirp generator or vibrato LFO uses.
 
@@ -30,8 +31,6 @@ inline constexpr auto       slot = unit_c<slot_def>;
 int main() {
     // One full turn of phase in 65536 slots; wrap is the periodicity.
     using phase_t = quantity<slot, inside<{0, 65535}, wrap>>;
-    // Q.14 output of sin and cos.
-    using sample_t = inside<{{-1, 1}, per<(1 << 14)>}, round_nearest>;
 
     std::cout << "Fixed-frequency oscillator (1/8 turn per sample, 8 samples = 1 cycle):\n";
     std::cout << "  i   sin              cos\n";
@@ -40,15 +39,16 @@ int main() {
         constexpr phase_t increment{65536 / 8}; // 1/8 turn per sample
         int               cycles = 0;
         for (int i = 0; i < 8; ++i) {
-            std::cout << "  " << i << "   " << math::sin<sample_t>(phase) << "   " << math::cos<sample_t>(phase)
-                      << "\n";
+            std::cout << "  " << i << "   " << math::sin<per<(1 << 14)>>(phase) << "   "
+                      << math::cos<per<(1 << 14)>>(phase) << "\n";
             phase.on_wrap([&](auto&, auto) { ++cycles; }) += increment;
         }
         std::cout << "  completed cycles: " << cycles << "\n";
         if (cycles != 1 || phase != just<0> * slot)
             return 1;
         // 1/8 turn is 45°: sin and cos both round to 11585/16384.
-        if (math::sin<sample_t>(increment) != just<11585, (1 << 14)> || math::cos<sample_t>(phase_t{65536 / 4}) != 0)
+        if (math::sin<per<(1 << 14)>>(increment) != just<11585, (1 << 14)> ||
+            math::cos<per<(1 << 14)>>(phase_t{65536 / 4}) != 0)
             return 1;
     }
 
@@ -59,8 +59,8 @@ int main() {
         phase_t     phase{0};
         increment_t increment{256}; // start at 1/256 turn
         for (int i = 0; i < 12; ++i) {
-            std::cout << "  " << i << "   " << increment << "    " << phase << "    " << math::sin<sample_t>(phase)
-                      << "\n";
+            std::cout << "  " << i << "   " << increment << "    " << phase << "    "
+                      << math::sin<per<(1 << 14)>>(phase) << "\n";
             phase += increment;               // wraps at a full turn
             increment += increment / just<4>; // ×1.25 each step
         }

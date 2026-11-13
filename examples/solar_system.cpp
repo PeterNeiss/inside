@@ -20,10 +20,9 @@
 using namespace beman::inside;
 using namespace beman::inside::units;
 
-inline constexpr rational nm{1, 1'000'000'000};
+inline constexpr auto nm = per<1'000'000'000>;
 using metres = quantity<si::metre, inside<{{-10'000'000'000'000, 10'000'000'000'000}, nm}>>; // ±10^13 m to 1 nm
 using leg    = quantity<si::metre, inside<{{-10'000'000, 10'000'000}, nm}>>;                 // one step, ±10 000 km
-using mm     = inside<{{0, 100'000'000'000'000}, per<1000>}, round_nearest>;                 // a distance, to 1 mm
 
 int main() {
     // 1. Start at Saturn's distance and add a million legs of 1000.000000001 km
@@ -46,7 +45,7 @@ int main() {
     // 2. Distance to a point 3·10^12 m east and 4·10^12 m north: exactly
     //    5·10^12 m, and hypot returns exactly that.
     const metres east{3'000'000'000'000}, north{4'000'000'000'000};
-    const auto   d = math::hypot<mm>(east, north);
+    const auto   d = math::hypot<per<1000>>(east, north); // to 1 mm
     std::cout << "hypot   " << d << "\n";
     if (d != just<5'000'000'000'000> * si::metre)
         return 1;

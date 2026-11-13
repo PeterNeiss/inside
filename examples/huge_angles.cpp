@@ -22,7 +22,6 @@ using namespace beman::inside;
 using namespace beman::inside::units;
 
 using radians = quantity<si::radian, inside<{0, (std::int64_t{1} << 62) - 1}>>; // whole rad up to 2^62 − 1
-using amp52   = math::unit_amplitude<(std::int64_t{1} << 52)>;                  // [-1, 1] on a 2^-52 grid
 
 int main() {
     struct row {
@@ -32,15 +31,15 @@ int main() {
     for (const row r : {row{1'000'000'000'000'000'000, -4'471'936'262'876'823, 533'100'051'040'090},
                         row{(std::int64_t{1} << 62) - 1, 985'025'092'865'520, -4'394'557'448'717'327}}) {
         const radians x{r.x};
-        const amp52   s = math::sin<amp52>(x), c = math::cos<amp52>(x);
+        const auto    s  = math::sin<per<(std::int64_t{1} << 52)>>(x); // [-1, 1] on a 2^-52 grid
+        const auto    c  = math::cos<per<(std::int64_t{1} << 52)>>(x);
         const double  xd = static_cast<double>(r.x);
         // The results print exactly: a 2^-52 grid point has 52 decimals.
         std::cout << "x = " << x << "\n  sin                    " << s << "\n  cos                    " << c << "\n";
         std::printf("  std::sin(double)       %.16f\n  sin(fmod(x, 2*pi))     %.16f\n",
                     std::sin(xd),
                     std::sin(std::fmod(xd, 2 * 3.141592653589793)));
-        if (s != amp52{rational{r.sin_slot, std::int64_t{1} << 52}} ||
-            c != amp52{rational{r.cos_slot, std::int64_t{1} << 52}})
+        if (s != rational{r.sin_slot, std::int64_t{1} << 52} || c != rational{r.cos_slot, std::int64_t{1} << 52})
             return 1;
     }
     return 0;

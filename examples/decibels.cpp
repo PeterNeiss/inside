@@ -5,8 +5,8 @@
 // number. L / 20 dB is one, and that is what 10^x takes.
 //
 // Demonstrates:
-//   - `db_to_linear`: 10^(dB/20), rounded once onto the gain grid. This is the
-//     building block audio_mixer uses for per-channel gain.
+//   - `db_to_linear`: 10^(dB/20), rounded once onto the gain grid;
+//     audio_mixer.cpp computes its per-channel gain the same way.
 //   - `linear_to_db`: 20 · log10(amp), with log10 rounded once onto a grid 20×
 //     finer than the dB grid, so the exact × 20 lands on it.
 //   - A sweep in 3 dB steps (a cursor over the level's number grid) showing
@@ -35,16 +35,14 @@ inline constexpr auto          dB = unit_c<decibel_def>;
 using db_t = quantity<dB, inside<{{-24, 12}, per<2>}, round_nearest>>;
 // Linear amplitude. dB ∈ [-24, 12] ⇒ amp ∈ [10^-1.2, 10^0.6] ≈ [0.063, 3.98].
 using gain_t = inside<{{0x1p-8, 4}, per<(1 << 16)>}, round_nearest>;
-// dB/20 on a 1/40 grid: × 20 maps it exactly onto db_t's 0.5 dB notch. The
-// range covers log10 of every gain_t, [log10(2^-8), log10(4)].
-using db_div20_t = inside<{{-2.5, 1}, per<40>}, round_nearest>;
 
 // dB → linear: 10^(L / 20 dB). The ratio is exact; pow_base rounds once.
 static constexpr gain_t db_to_linear(db_t db) { return math::pow_base<10, gain_t>(db / (just<20> * dB)); }
 
 // linear → dB: 20 dB · log10(amp). log10 rounds once onto 1/40 steps, which is
-// the same as rounding 20·log10 onto 0.5 dB; the × 20 dB is exact.
-static constexpr db_t linear_to_db(gain_t amp) { return db_t{math::log10<db_div20_t>(amp) * (just<20> * dB)}; }
+// the same as rounding 20·log10 onto 0.5 dB; the × 20 dB is exact. Only the
+// notch is named: the range, log10 over gain_t's, is deduced.
+static constexpr db_t linear_to_db(gain_t amp) { return db_t{math::log10<per<40>>(amp) * (just<20> * dB)}; }
 
 int main() {
     // `std::println` works on inside / rational because `beman/inside/inside/io.hpp`
