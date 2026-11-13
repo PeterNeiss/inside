@@ -33,10 +33,19 @@ int main() {
     std::vector<double> raw = {-1.0, 2.4, 3.5, 7.9, 12.0};
     std::vector<level>  down(raw.size()), up(raw.size()), nearest(raw.size());
 
-    // Same inputs, three rounding directions — clamp with a rounding mode, in transform.
-    std::ranges::transform(raw, down.begin(), [](double v) { return level{v, clamp | round_floor}; });
-    std::ranges::transform(raw, up.begin(), [](double v) { return level{v, clamp | round_ceil}; });
-    std::ranges::transform(raw, nearest.begin(), [](double v) { return level{v, clamp | round_nearest}; });
+    // Same inputs, three rounding directions — clamp with a rounding mode, in
+    // transform. A run-time double may be NaN, which no clamp places: the
+    // policy reports it into ec (the store leaves 0).
+    errc ec{};
+    std::ranges::transform(
+        raw, down.begin(), [&](double v) { return level{v, make_policy<clamp | round_floor>(ec)}; });
+    std::ranges::transform(raw, up.begin(), [&](double v) { return level{v, make_policy<clamp | round_ceil>(ec)}; });
+    std::ranges::transform(
+        raw, nearest.begin(), [&](double v) { return level{v, make_policy<clamp | round_nearest>(ec)}; });
+    if (ec != errc{}) {
+        std::cout << "a raw value is not a number\n";
+        return 1;
+    }
 
     std::cout << "level{v, clamp | round_*} into inside<{{0,10},2}> (out-of-range saturates):\n";
     std::cout << "   raw     floor   ceil    round\n";

@@ -292,9 +292,9 @@ TEST(RangeTest, inside_range_decode_agrees_with_lower_plus_i_notch_on_every_stor
 // inside_range: start ctor inverts the decode on every storage kind
 TEST(RangeTest, inside_range_start_ctor_inverts_the_decode_on_every_storage_kind) {
     auto first_equals_start = [](auto range_tag, auto start_value) {
-        using RangeType = decltype(range_tag);
-        typename RangeType::value_type start{start_value};
-        RangeType                      r{start};
+        using RangeType  = decltype(range_tag);
+        const auto start = test::store<typename RangeType::value_type>(start_value);
+        RangeType  r{start};
         ASSERT_EQ(as_rational(*r.begin()), as_rational(start));
     };
     first_equals_start(inside_range<{0, 999}>{}, 500);
@@ -424,13 +424,13 @@ TEST(CursorTest, default_starts_at_lower) {
 
 TEST(CursorTest, steps_and_ends) {
     cur t;
-    EXPECT_THROW(--t, inside_error); // nothing before Lower
+    EXPECT_DEATH(--t, "beman::inside: value does not fit"); // nothing before Lower: a precondition
     cur u = 4_ins;
-    ++u;                             // the end
-    EXPECT_THROW(++u, inside_error); // nothing past the end
+    ++u;                                                    // the end
+    EXPECT_DEATH(++u, "beman::inside: value does not fit"); // nothing past the end: a precondition
     // the values convert back to T exactly
     for (cur v; v != end(v); ++v) {
-        const time_t_ x = v;
+        const time_t_ x = *v; // (a cursor's value: without the end)
         EXPECT_EQ(static_cast<rational>(x), static_cast<rational>(v));
     }
     // a cursor works where an inside does
@@ -452,12 +452,14 @@ TEST(CursorTest, marker_does_not_leak) {
 }
 
 TEST(CursorTest, increment_moves_one_notch) {
-    inside<{{0, 2}, per<4>}> q{0.5};
+    // (++ on a checked grid may step out: clamp names its range handling)
+    static_assert(!test::can_step<inside<{{0, 2}, per<4>}>>);
+    inside<{{0, 2}, per<4>}, clamp> q{0.5};
     ++q;
     EXPECT_EQ(static_cast<rational>(q), 0.75_r);
     q--;
     EXPECT_EQ(static_cast<rational>(q), 0.5_r);
-    inside<{0, 10}> i{3};
+    inside<{0, 10}, clamp> i{3};
     ++i;
     EXPECT_EQ(static_cast<rational>(i), rational{4});
 }
@@ -509,7 +511,7 @@ TEST(CursorTest, is_an_iterator) {
     }());
 
     cur e = end(t);
-    EXPECT_THROW((void)*e, inside_error); // the end has no value
+    EXPECT_DEATH((void)*e, "beman::inside: value does not fit"); // the end has no value: a precondition
 }
 } // namespace cursor_tests
 
@@ -521,15 +523,16 @@ using namespace beman::inside::detail;
 namespace rng = std::ranges;
 
 namespace {
-using cell  = beman::inside::inside<{0, 100, 0.5}>;
-using accum = beman::inside::inside<{0, 1000, 0.5}>;
+using cell = beman::inside::inside<{0, 100, 0.5}>;
+// (an accumulator of std algorithms stores each prefix back: clamp names it)
+using accum = beman::inside::inside<{0, 1000, 0.5}, beman::inside::clamp>;
 } // namespace
 
 // algo: ranges algorithms over vector<inside>
 TEST(AlgoTest, algo_ranges_algorithms_over_vector_inside) {
     std::vector<cell> v;
     v.resize(10);
-    rng::generate(v, [counter = 7]() mutable { return ++counter; });
+    rng::generate(v, [counter = 7]() mutable { return test::store<cell>(++counter); });
     ASSERT_EQ(v.size(), 10);
 
     // reduce/accumulate
@@ -623,9 +626,10 @@ TEST(AlgoTest, algo_classic_stl_algorithms) {
     ASSERT_EQ(*mm.first, 20);
     ASSERT_EQ(*mm.second, 99);
 
-    // iota: ++ moves one notch (1/2 on this grid)
-    std::vector<cell> iota_v(5);
-    std::iota(iota_v.begin(), iota_v.end(), cell{10});
+    // iota: ++ moves one notch (1/2 on this grid); ++ names its range handling
+    using step_cell = beman::inside::inside<{0, 100, 0.5}, beman::inside::clamp>;
+    std::vector<step_cell> iota_v(5);
+    std::iota(iota_v.begin(), iota_v.end(), step_cell{10});
     ASSERT_EQ(iota_v.front(), 10);
     ASSERT_EQ(iota_v.back(), 12);
 }
@@ -702,7 +706,7 @@ TEST(IndexTest, counts_are_insides) {
 }
 
 TEST(IndexTest, index_round_trips_past_64_bits) {
-    const huge h = huge::from_index(at_run_time(7));
+    const huge h = *huge::from_index(at_run_time(7)); // (an int index may miss: an expected)
     EXPECT_TRUE(h == 7);
     const huge last = huge::from_index(step_count_of<huge>);
     EXPECT_TRUE(last == just<g(pow2(100))>);
@@ -715,7 +719,7 @@ TEST(IndexTest, index_round_trips_past_64_bits) {
 
     const fine f = 0.5;
     EXPECT_TRUE(f.index() == just<g(pow2(79))>);
-    EXPECT_TRUE(fine::from_index(f.index() + 1_ins) > f);
+    EXPECT_TRUE(*fine::from_index(f.index() + 1_ins) > f);
 
     const shuge s = -at_run_time(3);
     EXPECT_EQ(to_string(s.index()), "1267650600228229401496703205373"); // −3 + 2^100
@@ -723,7 +727,7 @@ TEST(IndexTest, index_round_trips_past_64_bits) {
 }
 
 TEST(IndexTest, index_within_64_bits) {
-    const temp t = at_run_time(-39);
+    const temp t = test::store<temp>(at_run_time(-39));
     EXPECT_TRUE(t.index() == 1);
     EXPECT_TRUE(temp::from_index(t.index()) == -39);
     const halves h = rational{5, 2};
@@ -736,22 +740,22 @@ TEST(IndexTest, index_within_64_bits) {
     EXPECT_TRUE(five::from_index(0_ins) == 5);
     // Every value of a small grid round-trips.
     for (int k = 0; k <= 10; ++k)
-        EXPECT_TRUE(halves::from_index(at_run_time(k)).index() == k);
+        EXPECT_TRUE(halves::from_index(at_run_time(k))->index() == k); // (an int index: an expected)
 }
 
 TEST(IndexTest, from_index_out_of_range) {
     const int past = at_run_time(11); // halves has indices 0 … 10
-    EXPECT_THROW((void)halves::from_index(past), inside_error);
+    EXPECT_EQ(halves::from_index(past).error(), errc::overflow);
     EXPECT_TRUE(halves::from_index(past, clamp) == 5);
     EXPECT_TRUE((halves::from_index(past + 1, wrap) == rational{1, 2})); // 12 folds to 1
     EXPECT_TRUE(halves::from_index(-at_run_time(1), clamp) == 0);
     EXPECT_EQ(halves::try_from_index(past).error(), errc::overflow);
     EXPECT_TRUE(halves::try_from_index(at_run_time(4)).value() == 2);
-    EXPECT_THROW((void)five::from_index(at_run_time(1)), inside_error); // a point has index 0 only
+    EXPECT_EQ(five::from_index(at_run_time(1)).error(), errc::overflow); // a point has index 0 only
 
     // Past 2^64 points: one past the last index.
-    const auto beyond = step_count_of<huge> + inside<{0, 1}>{at_run_time(1)};
-    EXPECT_THROW((void)huge::from_index(beyond), inside_error);
+    const auto beyond = step_count_of<huge> + test::store<inside<{0, 1}>>(at_run_time(1));
+    EXPECT_EQ(huge::from_index(beyond).error(), errc::overflow);
     EXPECT_TRUE(huge::from_index(beyond, clamp) == just<g(pow2(100))>);
     EXPECT_TRUE(huge::from_index(beyond, wrap) == 0);
     EXPECT_EQ(huge::try_from_index(beyond).error(), errc::overflow);
@@ -764,7 +768,7 @@ TEST(IndexTest, numerator_and_denominator_are_insides) {
     EXPECT_TRUE(q.numerator() == 3 && q.denominator() == 2);
     EXPECT_EQ(q.numerator().as<int>(), 3);
 
-    const temp t = -at_run_time(7);
+    const temp t = test::store<temp>(-at_run_time(7));
     static_assert(std::is_same_v<decltype(t.numerator()), temp>); // the value itself
     EXPECT_TRUE(t.numerator() == -7 && t.denominator() == 1);
 
@@ -774,7 +778,7 @@ TEST(IndexTest, numerator_and_denominator_are_insides) {
     EXPECT_TRUE(m.numerator() == -5 && m.denominator() == 4);
 
     using ratio   = inside<{{0, 1}, max_denominator{1000}}>;
-    const ratio r = rational{at_run_time(2), 6};
+    const ratio r = test::store<ratio>(rational{at_run_time(2), 6});
     EXPECT_TRUE(r.numerator() == 1 && r.denominator() == 3);
 
     // Past 64 bits: wide raws, exact.

@@ -83,7 +83,7 @@ static_assert(grid_of<decltype(m)::rep> == grid{0, 500'000});
 auto total = trip + just<800> * si::metre;                     // 13300 m: the sum runs in metres
 auto speed = total / quantity<si::minute, inside<{1, 600}>>{20, si::minute};
 auto kmh   = speed.in(km / si::hour);                          // 39.9 km/h, exactly
-inside<{0, 1000}, round_nearest> laps = trip / (just<400> * si::metre); // 31: km / m is a number
+inside<{0, 1000}, round_nearest | clamp> laps = trip / (just<400> * si::metre); // 31: km / m is a number
 static_assert(!addable<decltype(trip), decltype(just<1> * si::second)>); // another dimension
 ```
 

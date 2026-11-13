@@ -68,7 +68,11 @@ int main() {
 
     std::cout << "step   x        y      crossings (x, y)\n";
     for (auto& m : moves) {
-        s.step(pos_delta_t{m[0], px}, pos_delta_t{m[1], px});
+        // Run-time doubles: try_make (a NaN would be its error).
+        const auto dx = pos_delta_t::try_make(m[0], px), dy = pos_delta_t::try_make(m[1], px);
+        if (!dx || !dy)
+            return 1;
+        s.step(*dx, *dy);
         std::cout << " " << s.x << "    " << s.y << "     (" << s.edge_x_crossings << ", " << s.edge_y_crossings
                   << ")\n";
     }

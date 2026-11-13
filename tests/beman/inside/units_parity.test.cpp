@@ -166,9 +166,9 @@ TEST(UnitsParityTest, the_quantity_forms_compile) {
     static_assert(requires { m.policy(ec) = k; });
     static_assert(requires { m.on_clamp([](auto&, auto) {}) *= just<2>; });
     static_assert(requires { metres::try_make(5, si::metre); });
-    static_assert(requires(ratio r) { r.as<int>(); });
+    static_assert(requires(ratio r) { r.as<int, round_floor>(); });
     static_assert(requires(ratio r) { r.to<int>(); });
-    static_assert(requires(ratio r) { as<int>(r); });
+    static_assert(requires(ratio r) { as<int, round_floor>(r); });
     static_assert(requires(ratio r) { to<double>(r); });
     static_assert(!has_as<metres>); // a length is no number
 
@@ -242,7 +242,7 @@ TEST(UnitsParityTest, the_new_forms_work) {
     EXPECT_TRUE(m == just<4> * si::metre);
 
     EXPECT_TRUE(checked_cast<metres>(just<7> * si::metre) == just<7> * si::metre);
-    EXPECT_THROW((void)checked_cast<metres>(k), inside_error);
+    EXPECT_EQ(checked_cast<metres>(k).error(), errc::overflow);
 
     EXPECT_TRUE(min(m, k) == just<4> * si::metre);
     EXPECT_TRUE(max(m, k) == k);
@@ -310,7 +310,8 @@ TEST(UnitsParityTest, cursors_and_values_over_quantities) {
     EXPECT_EQ(std::ranges::find(values<s_t>, s_t{rational{3, 4}, si::second}) - values<s_t>.begin(), 3);
 
     // A quantity's ++ steps one notch of its number, as an inside's does.
-    s_t q{0, si::second};
+    quantity<si::second, inside<{{0, 2}, per<4>}, round_nearest | clamp>> q{
+        0, si::second}; // (++ names its range handling)
     ++q;
     EXPECT_TRUE((q == just<1, 4> * si::second));
 }

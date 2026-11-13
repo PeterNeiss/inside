@@ -13,6 +13,8 @@
 #include <beman/inside/inside.hpp>
 #include <beman/inside/math.hpp>
 
+#include "support.hpp"
+
 #include <cfloat>
 #include <cmath>
 #include <cstdint>
@@ -46,7 +48,7 @@ stats sweep(EngineFn engine_fn, ReferenceFn reference_fn, long target_samples = 
     long double sum = 0.0L;
     for (long i = 0; i <= count; i += stride) {
         const long double value = lo + static_cast<long double>(i) * in_notch;
-        const In          x{static_cast<double>(value)};
+        const In          x     = test::store<In>(static_cast<double>(value));
 
         // Some ops return expected<inside, errc> (runtime-failable domains);
         // unwrap and skip the rare out-of-domain sample.

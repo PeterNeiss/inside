@@ -30,9 +30,11 @@ int main() {
                         {coord_t{-1}, coord_t{1}},
                         {coord_t{just<3, 5>}, coord_t{just<4, 5>}},
                         {coord_t{0.5}, coord_t{-0.5}}}) {
-        const auto    r     = math::hypot(x, y);
-        const auto    theta = math::atan2<per<(1 << 14)>>(y, x);
-        const coord_t rx = mul<coord_t>(r, math::cos(theta)), ry = mul<coord_t>(r, math::sin(theta));
+        const auto r     = math::hypot(x, y);
+        const auto theta = math::atan2<per<(1 << 14)>>(y, x);
+        // (r and cos θ are each rounded, so their product can land a notch past
+        // coord_t's range: clamp says where it goes.)
+        const coord_t rx = mul<coord_t>(r, math::cos(theta), clamp), ry = mul<coord_t>(r, math::sin(theta), clamp);
         std::cout << "  (" << x << ", " << y << ") -> (" << r << ", " << theta << ") -> (" << rx << ", " << ry
                   << ")\n";
         if (math::abs(rx - x) > just<2, (1 << 14)> || math::abs(ry - y) > just<2, (1 << 14)>)

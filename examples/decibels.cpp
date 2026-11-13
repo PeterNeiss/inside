@@ -41,8 +41,9 @@ static constexpr gain_t db_to_linear(db_t db) { return math::pow_base<10, gain_t
 
 // linear → dB: 20 dB · log10(amp). log10 rounds once onto 1/40 steps, which is
 // the same as rounding 20·log10 onto 0.5 dB; the × 20 dB is exact. Only the
-// notch is named: the range, log10 over gain_t's, is deduced.
-static constexpr db_t linear_to_db(gain_t amp) { return db_t{math::log10<per<40>>(amp) * (just<20> * dB)}; }
+// notch is named: the range, log10 over gain_t's, is deduced - rounded outward,
+// so a little wider than db_t's: clamp states that it lands in db_t.
+static constexpr db_t linear_to_db(gain_t amp) { return db_t{math::log10<per<40>>(amp) * (just<20> * dB), clamp}; }
 
 int main() {
     // `std::println` works on inside / rational because `beman/inside/inside/io.hpp`
@@ -63,8 +64,7 @@ int main() {
 
     // The canonical "6 dB doubles" / "12 dB quadruples" landmarks.
     println("\nLandmark conversions (within db_t's [-24, 12] range):");
-    for (int d : {-24, -12, -6, 0, 6, 12}) {
-        db_t   db{d, dB};
+    for (const db_t db : {db_t{-24, dB}, db_t{-12, dB}, db_t{-6, dB}, db_t{0, dB}, db_t{6, dB}, db_t{12, dB}}) {
         gain_t lin = db_to_linear(db);
         println("    {}  =  {}", db, lin);
     }

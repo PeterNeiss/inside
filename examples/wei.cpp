@@ -81,9 +81,11 @@ int main() {
     // 3. A thousand accounts near the top of the grid.
     std::array<eth, 1000> accounts;
     accounts.fill(*parse<eth>("999999999.999999999999999999"));
-    const total sum = units::sum<total>(accounts);
-    std::cout << "sum      " << sum << "\n";
-    if (to_string(sum) != "999999999999.999999999999999000 ETH") // a 10^-18 grid: 18 decimals
+    const auto sum = units::sum<total>(accounts); // the count is run time: an expected
+    if (!sum)
+        return 1;
+    std::cout << "sum      " << *sum << "\n";
+    if (to_string(*sum) != "999999999999.999999999999999000 ETH") // a 10^-18 grid: 18 decimals
         return 1;
 
     // 4. balance × rate has a 10^-20 notch — a grid past 64-bit numbers — so

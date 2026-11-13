@@ -16,6 +16,7 @@
 #include <beman/inside/inside/range.hpp>
 
 #include "exact.hpp"
+#include "support.hpp"
 
 using beman::inside::test::exact;
 
@@ -150,7 +151,7 @@ void prop_native_compare(fuzz_state& s, long iters) {
         for (long i = 0; i < iters; ++i) {
             s.iter         = i;
             std::int64_t v = dist(s.rng);
-            B            b{v};
+            B            b = test::store<B>(v);
             FUZZ_REQUIRE(s, b == v);
             FUZZ_REQUIRE(s, !(b != v));
             if (v < hi)
@@ -233,7 +234,7 @@ void prop_on_clamp(fuzz_state& s, long iters) {
             std::int64_t overshoot_seen = 0;
             c.on_clamp([&](auto&, auto over) {
                 fired          = true;
-                overshoot_seen = as<std::int64_t>(over);
+                overshoot_seen = test::unwrap(to<std::int64_t>(over));
             })                          = v;
 
             // Library convention (assignment.hpp apply_clamp): overshoot = rhs - clamped.
@@ -326,7 +327,7 @@ void prop_round_trip_construct(fuzz_state& s, long iters) {
         for (long i = 0; i < iters; ++i) {
             s.iter         = i;
             std::int64_t v = dist(s.rng);
-            B            b{v};
+            B            b = test::store<B>(v);
             FUZZ_REQUIRE(s, b == v);
             // Construct another from the same value via try_make:
             auto opt = B::try_make(v);
@@ -377,9 +378,10 @@ void prop_compound_add_inside(fuzz_state& s, long iters) {
             // delta in [-slack_lo, +slack_hi]
             std::uniform_int_distribution<std::int64_t> delta_dist(-slack_lo, slack_hi);
             std::int64_t                                delta = delta_dist(s.rng);
-            B                                           b{start};
-            b += Delta{delta};
-            FUZZ_REQUIRE(s, b == start + delta);
+            B                                           b     = test::store<B>(start);
+            errc ec{}; // (the sum stays in range by construction; its type cannot show it)
+            b.policy(ec) += test::store<Delta>(delta);
+            FUZZ_REQUIRE(s, b == start + delta && ec == errc{});
         }
     }
 }
@@ -416,7 +418,7 @@ void prop_modulo(fuzz_state& s, long iters) {
             for (long i = 0; i < iters; ++i) {
                 s.iter = i;
                 BI a   = BI::from_raw(random_in_range_raw<BI>(s.rng));
-                BI b{0};
+                BI b   = test::store<BI>(0);
                 do {
                     b = BI::from_raw(random_in_range_raw<BI>(s.rng));
                 } while (b == 0);
@@ -499,34 +501,28 @@ void prop_spaceship_symmetry(fuzz_state& s, long iters) {
     }
 }
 
-// Helper: run `fn` and verify it threw beman::inside::inside_error with the expected errc.
+// Helper: run `fn`, which stores through a reporting channel and returns the
+// errc it reported, and verify it is the expected one.
 template <typename Fn>
-bool throws_with(errc expected, Fn&& fn) {
-    try {
-        fn();
-    } catch (const beman::inside::inside_error& e) {
-        return e.Code == expected;
-    } catch (...) {
-        return false;
-    }
-    return false;
+bool reports_with(errc expected, Fn&& fn) {
+    return fn() == expected;
 }
 
 // As above, but accepts any of the listed errcs (the int64-probe stage and
 // the post-probe narrowing stage may legitimately fire different codes).
 template <typename Fn>
-bool throws_with_any(std::initializer_list<errc> codes, Fn&& fn) {
-    try {
-        fn();
-    } catch (const beman::inside::inside_error& e) {
-        for (auto c : codes)
-            if (e.Code == c)
-                return true;
-        return false;
-    } catch (...) {
-        return false;
-    }
+bool reports_with_any(std::initializer_list<errc> codes, Fn&& fn) {
+    const errc got = fn();
+    for (auto c : codes)
+        if (got == c)
+            return true;
     return false;
+}
+
+// The errc of a fallible result (errc{} for a value).
+template <typename R>
+errc error_of(const R& r) {
+    return r ? errc{} : r.error();
 }
 
 // (Removed: prop_compound_int64_overflow — it forced add/sub/mul_overflow by
@@ -550,10 +546,12 @@ void prop_compound_div_mod_zero(fuzz_state& s, long iters) {
         for (long i = 0; i < iters; ++i) {
             s.iter             = i;
             std::int64_t start = dist(s.rng);
-            FUZZ_REQUIRE(s, throws_with(errc::division_by_zero, [&] {
-                             B                    b{start};
+            FUZZ_REQUIRE(s, reports_with(errc::division_by_zero, [&] {
+                             B                    b = test::store<B>(start);
                              const inside<{0, 1}> zero{0};
-                             b /= zero;
+                             errc                 ec{};
+                             b.policy(ec) /= zero;
+                             return ec;
                          }));
         }
     }
@@ -582,10 +580,12 @@ void prop_compound_inside_overshoot(fuzz_state& s, long iters) {
             bool         overshoots = (sum < lo || sum > hi);
             if (!overshoots)
                 continue;
-            FUZZ_REQUIRE(s, throws_with(errc::overflow, [&] {
-                             B b{start};
-                             B delta{hi};
-                             b += delta;
+            FUZZ_REQUIRE(s, reports_with(errc::overflow, [&] {
+                             B    b     = test::store<B>(start);
+                             B    delta = test::store<B>(hi);
+                             errc ec{};
+                             b.policy(ec) += delta;
+                             return ec;
                          }));
         }
     }
@@ -635,37 +635,45 @@ void prop_non_notch_assign(fuzz_state& s, long iters) {
             const bool az_in       = away_zero >= lo && away_zero <= hi;
 
             // Default-policy (checked) B: must throw rounding_error (sign-independent).
-            FUZZ_REQUIRE(s, throws_with(errc::rounding_error, [&] {
-                             B b;
-                             b = mid;
+            FUZZ_REQUIRE(s, reports_with(errc::rounding_error, [&] {
+                             B    b;
+                             errc ec{};
+                             b.policy(ec) = mid;
+                             return ec;
                          }));
 
             // round_toward_zero: silent truncate toward zero.
             if (tz_in)
-                FUZZ_REQUIRE(s, !throws_with(errc::rounding_error, [&] {
-                                 BIR b;
-                                 b            = mid;
+                FUZZ_REQUIRE(s, !reports_with(errc::rounding_error, [&] {
+                                 BIR  b;
+                                 errc ec{};
+                                 b.policy(ec) = mid;
                                  rational got = b;
                                  FUZZ_REQUIRE(s, got == toward_zero);
+                                 return ec;
                              }));
 
             // round_nearest: silent round half away from zero.
             if (az_in)
-                FUZZ_REQUIRE(s, !throws_with(errc::rounding_error, [&] {
-                                 BRN b;
-                                 b            = mid;
+                FUZZ_REQUIRE(s, !reports_with(errc::rounding_error, [&] {
+                                 BRN  b;
+                                 errc ec{};
+                                 b.policy(ec) = mid;
                                  rational got = b;
                                  FUZZ_REQUIRE(s, got == away_zero);
+                                 return ec;
                              }));
 
             // Unchecked policy (unsafe): silent truncate toward zero (assignment.hpp).
             // (`none` is checked like every policy without `unsafe`.)
             if (tz_in)
-                FUZZ_REQUIRE(s, !throws_with(errc::rounding_error, [&] {
+                FUZZ_REQUIRE(s, !reports_with(errc::rounding_error, [&] {
                                  BNONE b;
-                                 b            = mid;
+                                 errc  ec{};
+                                 b.policy(ec) = mid;
                                  rational got = b;
                                  FUZZ_REQUIRE(s, got == toward_zero);
+                                 return ec;
                              }));
         }
     }
@@ -694,12 +702,14 @@ void prop_subnormal_construct(fuzz_state& s, long iters) {
             s.iter   = i;
             double v = mantissa(s.rng) * std::pow(2.0, exp_dist(s.rng));
             // round_toward_zero → silent floor; should not throw and should land on 0.
-            FUZZ_REQUIRE(s, !throws_with(errc::rounding_error, [&] {
-                             BIR b;
-                             b            = v;
+            FUZZ_REQUIRE(s, !reports_with(errc::rounding_error, [&] {
+                             BIR  b;
+                             errc ec{};
+                             b.policy(ec) = v;
                              rational got = b;
                              // Floored toward lo, but for tiny v near zero the floor is 0 (or lo).
                              FUZZ_REQUIRE(s, got == 0 || got == lo || (!anchored<B> && got == below));
+                             return ec;
                          }));
         }
     }
@@ -767,7 +777,8 @@ void prop_compound_add_same_inside(fuzz_state& s, long iters) {
             // Skip if result lands outside the grid (avoids checked-policy throw).
             if (expect < exact{detail::lower64<B>} || expect > exact{detail::upper64<B>})
                 continue;
-            a += delta;
+            errc ec{}; // (in range by the check above; the type cannot show it)
+            a.policy(ec) += delta;
             FUZZ_REQUIRE(s, exact{to_rational(a)} == expect);
         }
     }
@@ -859,7 +870,7 @@ void prop_casts(fuzz_state& s, long iters) {
                 FUZZ_REQUIRE(s, checked_cast<B>(v) == v);
                 FUZZ_REQUIRE(s, B{v, unsafe} == v);
             } else
-                FUZZ_REQUIRE(s, throws_with(errc::overflow, [&] { (void)checked_cast<B>(v); }));
+                FUZZ_REQUIRE(s, error_of(checked_cast<B>(v)) == errc::overflow);
         }
     }
 }
@@ -880,8 +891,8 @@ void prop_casts_fixed(fuzz_state& s, long iters) {
             const auto on_notch = static_cast<rational>(exact{lo} + exact{k} * exact{notch});
             const auto next     = static_cast<rational>(exact{on_notch} + exact{notch});
             const auto mid      = static_cast<double>(exact{on_notch} + exact{half});
-            FUZZ_REQUIRE(s, to_rational(B{mid, clamp | round_floor}) == on_notch);
-            FUZZ_REQUIRE(s, to_rational(B{mid, clamp | round_ceil}) == next);
+            FUZZ_REQUIRE(s, to_rational(test::store<B, clamp | round_floor>(mid)) == on_notch);
+            FUZZ_REQUIRE(s, to_rational(test::store<B, clamp | round_ceil>(mid)) == next);
         }
     }
 }
@@ -902,7 +913,8 @@ void prop_predicates(fuzz_state& s, long iters) {
             FUZZ_REQUIRE(s, conversion_overflows<B>(v) == !in_range);
             FUZZ_REQUIRE(s, !conversion_rounds<B>(v)); // integer grid never truncates
             bool lossy = conversion_loses<B>(v);
-            bool threw = throws_with_any({errc::overflow, errc::rounding_error}, [&] { (void)checked_cast<B>(v); });
+            bool threw =
+                reports_with_any({errc::overflow, errc::rounding_error}, [&] { return error_of(checked_cast<B>(v)); });
             FUZZ_REQUIRE(s, lossy == threw);
         }
     } else if constexpr (DyadicNotch<B>) {
@@ -926,7 +938,7 @@ void prop_predicates(fuzz_state& s, long iters) {
                 FUZZ_REQUIRE(s, !conversion_overflows<B>(mid));
                 FUZZ_REQUIRE(s, conversion_rounds<B>(mid));
                 FUZZ_REQUIRE(s, conversion_loses<B>(mid));
-                FUZZ_REQUIRE(s, throws_with(errc::rounding_error, [&] { (void)checked_cast<B>(mid); }));
+                FUZZ_REQUIRE(s, error_of(checked_cast<B>(mid)) == errc::rounding_error);
             }
             // Above the top notch: overflow (lossy).
             constexpr double over = static_cast<double>((hi + notch));
@@ -952,7 +964,7 @@ void prop_range(fuzz_state& s, long iters) {
                 std::uint64_t k = kdist(s.rng);
                 const auto    start =
                     static_cast<rational>(exact{detail::lower64<B>} + exact{k} * exact{detail::notch64<B>});
-                R r{typename R::value_type{start}};
+                R r{test::store<typename R::value_type>(start)};
                 FUZZ_REQUIRE(s, r.size() == N);
                 std::uint64_t idx = 0;
                 for (auto b : r) {

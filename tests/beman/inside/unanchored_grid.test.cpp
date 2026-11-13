@@ -149,7 +149,7 @@ void check_decode() {
     for (std::uint64_t k = 0; k <= detail::max_index(G); ++k) {
         const auto want =
             static_cast<rational>(exact{to_rational(G.Interval.Lower)} + exact{k} * exact{to_rational(G.Notch)});
-        const B b{want};
+        const B b = test::store<B>(want);
         EXPECT_EQ(static_cast<rational>(b), want) << to_string(want);
         EXPECT_EQ(b.raw(), static_cast<raw_t<B>>(k));
         EXPECT_EQ(b.numerator(), signed_numerator(want));
@@ -180,15 +180,15 @@ void check_store_rational() {
         SCOPED_TRACE(::testing::Message() << "v=" << to_string(v) << " grid=" << to_string(G));
         const rational want = oracle_round(v, G, mode_of<F>);
         if (!includes(G.Interval, want)) {
-            EXPECT_THROW((void)B{v}, inside_error);
+            EXPECT_NE(test::store_error<B>(v), errc{});
             continue;
         }
-        EXPECT_EQ(static_cast<rational>(B{v}), want);
+        EXPECT_EQ(static_cast<rational>(test::store<B>(v)), want);
         if (static_cast<double>(v) == static_cast<double>(v) && rational{static_cast<double>(v)} == v) {
-            EXPECT_EQ(static_cast<rational>(B{static_cast<double>(v)}), want);
+            EXPECT_EQ(static_cast<rational>(test::store<B>(static_cast<double>(v))), want);
         }
         if (abs_den(v.Den) == 1) {
-            EXPECT_EQ(static_cast<rational>(B{static_cast<std::int64_t>(signed_numerator(v))}), want);
+            EXPECT_EQ(static_cast<rational>(test::store<B>(static_cast<std::int64_t>(signed_numerator(v)))), want);
         }
     }
 }
@@ -230,8 +230,8 @@ TEST(UnanchoredGridTest, store_rounds_with_exact_storage) {
 
 TEST(UnanchoredGridTest, off_lattice_store_is_an_error_without_rounding) {
     using half = inside<half_off>;
-    EXPECT_THROW((void)half{1}, inside_error);
-    EXPECT_THROW((void)half{rational{1}}, inside_error);
+    EXPECT_EQ(test::store_error<half>(test::at_run_time(1)), errc::rounding_error);
+    EXPECT_EQ(test::store_error<half>(test::at_run_time(rational{1})), errc::rounding_error);
     EXPECT_EQ(static_cast<rational>(half{1.5}), 1.5_r);
     EXPECT_FALSE(half::try_make(2).has_value());
     EXPECT_EQ(half::try_make(2).error(), errc::rounding_error);
@@ -250,7 +250,7 @@ void check_convert() {
         const rational want = oracle_round(v, To, mode_of<F>);
         if (!includes(To.Interval, want))
             continue;
-        EXPECT_EQ(static_cast<rational>(T{S{v}}), want);
+        EXPECT_EQ(static_cast<rational>(test::store<T>(test::store<S>(v))), want);
     }
 }
 
@@ -290,7 +290,7 @@ TEST(UnanchoredGridTest, assignability) {
     static_assert(inside_assignable<fine, half>);  // half's lattice lies on fine's
     static_assert(!inside_assignable<ints, half>);
     static_assert(inside_assignable<half, ints, round_nearest>);
-    EXPECT_EQ(static_cast<rational>(fine{half{2.5}}), 2.5_r);
+    EXPECT_EQ(static_cast<rational>(test::store<fine>(half{2.5})), 2.5_r);
     EXPECT_EQ(static_cast<rational>(half{on_half{3.5}}), 3.5_r);
 }
 
@@ -304,8 +304,8 @@ void check_pairs() {
     for (const rational x : slots<GA>())
         for (const rational y : slots<GB>()) {
             SCOPED_TRACE(::testing::Message() << to_string(x) << " , " << to_string(y));
-            const A a{x};
-            const B b{y};
+            const A a = test::store<A>(x);
+            const B b = test::store<B>(y);
             EXPECT_EQ(exact{a + b}, exact{x} + exact{y});
             EXPECT_EQ(exact{a - b}, exact{x} - exact{y});
             EXPECT_EQ(exact{a * b}, exact{x} * exact{y});
@@ -338,7 +338,7 @@ TEST(UnanchoredGridTest, arithmetic_and_comparison) {
 TEST(UnanchoredGridTest, point_operands) {
     using half = inside<half_off>;
     for (const rational x : slots<half_off>()) {
-        const half a{x};
+        const half a = test::store<half>(x);
         EXPECT_EQ(exact{a + 2_ins}, exact{x} + exact{2});
         EXPECT_EQ(exact{a + 0.25_ins}, exact{x} + exact{0.25_r});
         EXPECT_EQ(exact{a * 3_ins}, exact{x} * exact{3});
@@ -357,33 +357,39 @@ TEST(UnanchoredGridTest, compound_assignment) {
         for (const rational y : slots<grid{{-3, 4}, 1}>()) {
             SCOPED_TRACE(::testing::Message() << to_string(x) << " , " << to_string(y));
             const auto s = static_cast<rational>(exact{x} + exact{y});
-            half       a{x};
+            half       a = test::store<half>(x);
+            errc       ea{}; // (the sum may leave half's range: a reported store)
+            a.policy(ea) += test::store<ints>(y);
             if (includes(half_off.Interval, s)) {
-                a += ints{y};
+                EXPECT_EQ(ea, errc{});
                 EXPECT_EQ(static_cast<rational>(a), s);
             } else
-                EXPECT_THROW(a += ints{y}, inside_error);
-            half       b{x};
+                EXPECT_EQ(ea, errc::overflow);
+            half       b = test::store<half>(x);
             const auto d = static_cast<rational>(exact{x} - exact{y});
+            errc       eb{};
+            b.policy(eb) -= test::store<ints>(y);
             if (includes(half_off.Interval, d)) {
-                b -= ints{y};
+                EXPECT_EQ(eb, errc{});
                 EXPECT_EQ(static_cast<rational>(b), d);
             } else
-                EXPECT_THROW(b -= ints{y}, inside_error);
+                EXPECT_EQ(eb, errc::overflow);
         }
     // a sum on another lattice rounds back by the policy
+    errc                          ec{};
     inside<half_off, round_floor> h{2.5};
-    h += inside<half_off>{0.5};
+    h.policy(ec) += inside<half_off>{0.5};
     EXPECT_EQ(static_cast<rational>(h), 2.5_r); // 3 floors to 2.5
     inside<half_off, round_ceil> c{2.5};
-    c *= inside<{2, 2}>{2};
+    c.policy(ec) *= inside<{2, 2}>{2};
     EXPECT_EQ(static_cast<rational>(c), 5.5_r); // 5 rounds up to 5.5
     half i{4.5};
-    ++i;
+    i.policy(ec) += 1_ins; // (++ may step out of half: a channel)
     EXPECT_EQ(static_cast<rational>(i), 5.5_r);
-    --i;
-    --i;
+    i.policy(ec) -= 1_ins;
+    i.policy(ec) -= 1_ins;
     EXPECT_EQ(static_cast<rational>(i), 3.5_r);
+    EXPECT_EQ(ec, errc{});
 }
 
 //---------------------------------------------------------------------------
@@ -417,7 +423,7 @@ template <grid G>
 void check_text() {
     using B = inside<G>;
     for (const rational v : slots<G>()) {
-        const B           b{v};
+        const B           b = test::store<B>(v);
         const std::string s = to_string(b);
         const auto        r = parse<B>(s);
         ASSERT_TRUE(r.has_value()) << s;
@@ -491,23 +497,23 @@ TEST(UnanchoredGridTest, sum) {
     std::vector<inside<quarter_off>> quarters;
     exact                            h{0}, t{0}, q{0};
     for (const rational v : slots<half_off>()) {
-        halves.emplace_back(v);
+        halves.push_back(test::store<inside<half_off>>(v));
         h = h + exact{v};
     }
     for (const rational v : slots<tenth_off>()) {
-        tenths.emplace_back(v);
+        tenths.push_back(test::store<inside<tenth_off>>(v));
         t = t + exact{v};
     }
     for (const rational v : slots<quarter_off>()) {
-        quarters.emplace_back(v);
+        quarters.push_back(test::store<inside<quarter_off>>(v));
         q = q + exact{v};
     }
     using half_total    = inside<{{0, 1000}, 0.5_r}>;
     using tenth_total   = inside<{{-100, 100}, 0.1_r}>;
     using quarter_total = inside<{{-100, 100}, 0.25_r}>;
-    EXPECT_EQ(exact{sum<half_total>(halves)}, h);
-    EXPECT_EQ(exact{sum<tenth_total>(tenths)}, t);
-    EXPECT_EQ(exact{sum<quarter_total>(quarters)}, q);
+    EXPECT_EQ(exact{*sum<half_total>(halves)}, h);
+    EXPECT_EQ(exact{*sum<tenth_total>(tenths)}, t);
+    EXPECT_EQ(exact{*sum<quarter_total>(quarters)}, q);
 }
 
 //---------------------------------------------------------------------------
@@ -542,7 +548,7 @@ void check_math_mode() {
     constexpr round_mode m = mode_of<F>;
     for (const rational r : slots<grid_of<in_t>>()) {
         SCOPED_TRACE(to_string(r));
-        const in_t   x{r};
+        const in_t   x = test::store<in_t>(r);
         const double d = static_cast<double>(r);
         expect_rounded<out_t>(static_cast<rational>(math::exp<out_t>(x)), std::exp(d), m);
         expect_rounded<out_t>(static_cast<rational>(math::sin<out_t>(x)), std::sin(d), m);
@@ -551,22 +557,22 @@ void check_math_mode() {
         expect_rounded<dec_t>(static_cast<rational>(math::tanh<dec_t>(x)), std::tanh(d), m);
         expect_rounded<dec_t>(static_cast<rational>(math::cbrt<dec_t>(x)), std::cbrt(d), m);
         if (includes(grid_of<tan_t>.Interval, r)) // tan on one branch
-            expect_rounded<out_t>(static_cast<rational>(math::tan<out_t>(tan_t{r})), std::tan(d), m);
+            expect_rounded<out_t>(static_cast<rational>(math::tan<out_t>(test::store<tan_t>(r))), std::tan(d), m);
         for (const rational s : slots<grid_of<pos_t>>()) {
-            const pos_t  y{s};
+            const pos_t  y = test::store<pos_t>(s);
             const double e = static_cast<double>(s);
             expect_rounded<out_t>(static_cast<rational>(math::atan2<out_t>(x, y)), std::atan2(d, e), m);
             expect_rounded<out_t>(static_cast<rational>(math::hypot<out_t>(x, y)), std::hypot(d, e), m);
-            try {
-                expect_rounded<out_t>(static_cast<rational>(math::pow<out_t>(y, x)), std::pow(e, d), m);
-            } catch (const inside_error& err) { // past Out: its store reports overflow
-                EXPECT_EQ(err.Code, errc::overflow);
+            if (const auto p = test::reported([&] { return math::pow<out_t>(y, x); }))
+                expect_rounded<out_t>(static_cast<rational>(*p), std::pow(e, d), m);
+            else { // past Out: an expected holding overflow
+                EXPECT_EQ(p.error(), errc::overflow);
                 EXPECT_GT(std::pow(e, d), 20.0);
             }
         }
     }
     for (const rational s : slots<grid_of<pos_t>>()) {
-        const pos_t  y{s};
+        const pos_t  y = test::store<pos_t>(s);
         const double e = static_cast<double>(s);
         expect_rounded<dec_t>(static_cast<rational>(math::log<dec_t>(y)), std::log(e), m);
         expect_rounded<dec_t>(static_cast<rational>(math::sqrt<dec_t>(y)), std::sqrt(e), m);
@@ -587,8 +593,8 @@ TEST(UnanchoredGridTest, math) {
     using ref_t = inside<{{-2.75_r, 2.25_r}, rational{1, 4}}, round_nearest>; // anchored, same values
     for (const rational x : slots<grid_of<in_t>>()) {
         SCOPED_TRACE(to_string(x));
-        const in_t  a{x};
-        const ref_t r{x};
+        const in_t  a = test::store<in_t>(x);
+        const ref_t r = test::store<ref_t>(x);
         // an unanchored input gives the same result as the same value anchored
         using fixed = inside<{{0, 17}, rational{1, 64}}, round_nearest>;
         using unit  = inside<{{-1, 1}, rational{1, 1024}}, round_nearest>;
@@ -608,13 +614,14 @@ TEST(UnanchoredGridTest, math) {
     using sq_floor = inside<{{0.5_r, 4.5_r}, 1}, round_floor>;
     using quarters = inside<{{0, 64}, rational{1, 4}}>;
     using whole    = inside<{0, 64}>;
-    EXPECT_EQ(static_cast<rational>(math::sqrt<sq_t>(quarters{6.25})), 2.5_r);
+    // (sqrt over [0, 64] can leave [0.5, 4.5]: a named output is an expected)
+    EXPECT_EQ(static_cast<rational>(*math::sqrt<sq_t>(quarters{6.25})), 2.5_r);
     // a tie of `nearest` on the offset lattice: sqrt(4) = 2 between 1.5 and 2.5 → 2.5
-    EXPECT_EQ(static_cast<rational>(math::sqrt<sq_t>(whole{4})), 2.5_r);
-    EXPECT_EQ(static_cast<rational>(math::sqrt<sq_floor>(whole{4})), 1.5_r);
+    EXPECT_EQ(static_cast<rational>(*math::sqrt<sq_t>(whole{4})), 2.5_r);
+    EXPECT_EQ(static_cast<rational>(*math::sqrt<sq_floor>(whole{4})), 1.5_r);
     // out of range through the policy: a checked output reports
     using small = inside<{{0.5_r, 2.5_r}, 1}, round_nearest>;
-    EXPECT_THROW((void)(math::exp<small>(whole{3})), inside_error);
+    EXPECT_EQ(math::exp<small>(whole{3}).error(), errc::overflow);
     using clamped = inside<{{0.5_r, 2.5_r}, 1}, round_nearest | clamp>;
     EXPECT_EQ(static_cast<rational>(math::exp<clamped>(whole{3})), 2.5_r);
 }

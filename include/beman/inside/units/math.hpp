@@ -496,6 +496,31 @@ struct kind<F, 2, Args...> {
         else
             return io::template make<O>(F::template eval<NO>(units::detail::value_of(x)...));
     }
+
+    // A named output f<C>(q): the numbers' kind decides it (C itself, or an
+    // expected where the result can miss C), lifted to the quantity.
+    template <class O>
+    [[gnu::always_inline]] static constexpr auto eval_named(const Args&... x) {
+        using NO             = typename io::template number_t<O>;
+        constexpr auto r     = units::detail::rule_of<F>;
+        const auto     named = [](const auto&... n) {
+            return detail::eval_named<F, NO, std::remove_cvref_t<decltype(n)>...>(n...);
+        };
+        if constexpr (r == units::detail::math_rule::trig || r == units::detail::math_rule::tan) {
+            constexpr units::reference R = Args...[0] ::reference;
+            if constexpr (units::detail::radians_v<R>)
+                return named(units::detail::value_of(x...[0]));
+            else // (a degree input: the pi-scaled engine, into NO as named)
+                return units::detail::pi_trig<NO, std::same_as<F, entry::cos_fn>>(x...[0]);
+        } else if constexpr (r == units::detail::math_rule::arc2 || r == units::detail::math_rule::common) {
+            constexpr units::reference A = Args...[0] ::reference, B = Args...[1] ::reference;
+            return io::template make<O>(
+                named(units::detail::in_common_unit<A, B>(x...[0]), units::detail::in_common_unit<A, B>(x...[1])));
+        } else if constexpr (r == units::detail::math_rule::arc || r == units::detail::math_rule::number)
+            return io::template make<O>(named(units::detail::number_of(x)...));
+        else
+            return io::template make<O>(named(units::detail::value_of(x)...));
+    }
 };
 } // namespace beman::inside::math::detail
 

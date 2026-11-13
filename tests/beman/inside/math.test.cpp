@@ -93,9 +93,11 @@ struct expected_results {
 };
 
 // F is a captureless lambda []<class O>() { return fn<O>(x); }.
+// (Out clamps: pow over a base grid that reaches 0 has no range the library
+// bounds, so its named output needs clamp; every result here is in range.)
 template <policy_flag M, template <policy_flag> class G, class F>
 void expect_mode(rational want, const char* mode) {
-    using Out                       = G<M>;
+    using Out                       = G<M | clamp>;
     static constexpr rational ctime = exact_value(F{}.template operator()<Out>());
     const rational            rtime = exact_value(F{}.template operator()<Out>());
     EXPECT_EQ(ctime, want) << mode << " at compile time";
@@ -264,13 +266,13 @@ TEST(InverseHyperbolicTest, auto_output_grids_hold_the_endpoint_images) {
 
 TEST(InverseHyperbolicTest, every_engine_matches_cmath_within_one_notch) {
     for (double x = -64; x <= 64; x += 0.5) {
-        EXPECT_NEAR(value(math::asinh(A{x})), std::asinh(x), notch_size) << x;
+        EXPECT_NEAR(value(math::asinh(test::store<A>(x))), std::asinh(x), notch_size) << x;
     }
     for (double x = 1; x <= 64; x += 0.25) {
-        EXPECT_NEAR(value(math::acosh(C{x})), std::acosh(x), notch_size) << x;
+        EXPECT_NEAR(value(math::acosh(test::store<C>(x))), std::acosh(x), notch_size) << x;
     }
     for (double x = -0.9990234375; x <= 0.9990234375; x += 0.0625) {
-        EXPECT_NEAR(value(math::atanh(T{x})), std::atanh(x), notch_size) << x;
+        EXPECT_NEAR(value(math::atanh(test::store<T>(x))), std::atanh(x), notch_size) << x;
     }
     // Near the poles of atanh the ratio form keeps full precision.
     EXPECT_NEAR(value(math::atanh(T{0.9990234375})), std::atanh(0.9990234375), notch_size);
@@ -363,10 +365,12 @@ TEST(MathTurnsTest, a_turn_phase_wraps_exactly_and_converts_at_the_call) {
 TEST(MathTurnsTest, an_unwrapped_radians_angle_stays_exact) {
     using big    = inside<{{0, 1 << 20}, per<64>}, round_nearest>;
     using step_t = inside<{{0, 1}, per<64>}, round_nearest>;
-    big x{0};
+    big  x{0};
+    errc ec{}; // (a sum the grids cannot prove: reported)
     for (int n = 0; n < 100000; ++n)
-        x += step_t{0.25};
+        x.policy(ec) += step_t{0.25};
     EXPECT_EQ(rational{x}, 25000); // exact after ~4000 turns
+    EXPECT_EQ(ec, errc{});
 }
 } // namespace math_turns_tests
 
@@ -457,30 +461,32 @@ TEST(MathIntegerTest, compile_time) {
 TEST(MathIntegerTest, small_ranges_against_loops) {
     using n60 = inside<{0, 60}>;
     for (int n = 0; n <= 20; ++n)
-        EXPECT_TRUE(math::factorial(inside<{0, 20}>{at_run_time(n)}) == factorial_ref(static_cast<std::uint64_t>(n)))
+        EXPECT_TRUE(math::factorial(test::store<inside<{0, 20}>>(at_run_time(n))) ==
+                    factorial_ref(static_cast<std::uint64_t>(n)))
             << n;
     for (int n = 0; n <= 60; ++n)
         for (int k = 0; k <= 60; ++k) {
-            const auto c = math::binomial(n60{at_run_time(n)}, n60{at_run_time(k)});
+            const auto c = math::binomial(test::store<n60>(at_run_time(n)), test::store<n60>(at_run_time(k)));
             EXPECT_TRUE(c == binomial_ref(static_cast<std::uint64_t>(n), static_cast<std::uint64_t>(k)))
                 << n << " " << k;
             if (k <= n) { // symmetry
-                EXPECT_TRUE(c == math::binomial(n60{n}, n60{n - k}));
+                EXPECT_TRUE(c == math::binomial(test::store<n60>(n), test::store<n60>(n - k)));
             }
         }
     using n20 = inside<{0, 20}>;
     for (int n = 0; n <= 20; ++n)
         for (int k = 0; k <= 20; ++k) {
-            const auto p = math::falling_factorial(n20{at_run_time(n)}, n20{at_run_time(k)});
+            const auto p = math::falling_factorial(test::store<n20>(at_run_time(n)), test::store<n20>(at_run_time(k)));
             EXPECT_TRUE(p == falling_ref(static_cast<std::uint64_t>(n), static_cast<std::uint64_t>(k)))
                 << n << " " << k;
             // C(n, k)·k! = P(n, k)
-            EXPECT_TRUE(math::binomial(n20{n}, n20{k}) * math::factorial(n20{k}) == p);
+            EXPECT_TRUE(
+                math::binomial(test::store<n20>(n), test::store<n20>(k)) * math::factorial(test::store<n20>(k)) == p);
         }
     using n12 = inside<{0, 12}>;
     for (int n = 0; n <= 12; ++n)
         for (int k = 0; k <= 12; ++k) {
-            const auto          r = math::rising_factorial(n12{at_run_time(n)}, n12{at_run_time(k)});
+            const auto r = math::rising_factorial(test::store<n12>(at_run_time(n)), test::store<n12>(at_run_time(k)));
             const std::uint64_t want =
                 k == 0   ? 1
                 : n == 0 ? 0
@@ -491,7 +497,8 @@ TEST(MathIntegerTest, small_ranges_against_loops) {
     for (int a = 0; a <= 8; ++a)
         for (int b = 0; b <= 8; ++b)
             for (int c = 0; c <= 8; ++c) {
-                const auto          m = math::multinomial(n8{at_run_time(a)}, n8{at_run_time(b)}, n8{at_run_time(c)});
+                const auto m = math::multinomial(
+                    test::store<n8>(at_run_time(a)), test::store<n8>(at_run_time(b)), test::store<n8>(at_run_time(c)));
                 const std::uint64_t want =
                     binomial_ref(static_cast<std::uint64_t>(a + b), static_cast<std::uint64_t>(b)) *
                     binomial_ref(static_cast<std::uint64_t>(a + b + c), static_cast<std::uint64_t>(c));
@@ -500,33 +507,36 @@ TEST(MathIntegerTest, small_ranges_against_loops) {
     using z = inside<{-30, 30}>;
     for (int a = -30; a <= 30; ++a)
         for (int b = -30; b <= 30; ++b) {
-            EXPECT_TRUE(math::gcd(z{at_run_time(a)}, z{at_run_time(b)}) == std::gcd(a, b)) << a << " " << b;
-            EXPECT_TRUE(math::lcm(z{at_run_time(a)}, z{at_run_time(b)}) == std::lcm(a, b)) << a << " " << b;
+            EXPECT_TRUE(math::gcd(test::store<z>(at_run_time(a)), test::store<z>(at_run_time(b))) == std::gcd(a, b))
+                << a << " " << b;
+            EXPECT_TRUE(math::lcm(test::store<z>(at_run_time(a)), test::store<z>(at_run_time(b))) == std::lcm(a, b))
+                << a << " " << b;
         }
 }
 
 TEST(MathIntegerTest, past_64_bits) {
-    const auto f25 = math::factorial(inside<{0, 25}>{at_run_time(25)});
+    const auto f25 = math::factorial(test::store<inside<{0, 25}>>(at_run_time(25)));
     EXPECT_EQ(to_string(f25), "15511210043330985984000000");
-    const auto f100 = math::factorial(inside<{0, 100}>{at_run_time(100)});
+    const auto f100 = math::factorial(test::store<inside<{0, 100}>>(at_run_time(100)));
     static_assert(detail::wide_index_storage<std::remove_const_t<decltype(f100)>>);
     EXPECT_EQ(to_string(f100),
               "93326215443944152681699238856266700490715968264381621468592963895217599993229915608941"
               "463976156518286253697920827223758251185210916864000000000000000000000000");
     using n100 = inside<{0, 100}>;
-    EXPECT_EQ(to_string(math::binomial(n100{at_run_time(100)}, n100{at_run_time(50)})),
+    EXPECT_EQ(to_string(math::binomial(test::store<n100>(at_run_time(100)), test::store<n100>(at_run_time(50)))),
               "100891344545564193334812497256");
     // Pascal at C(1000, 500), 300 digits.
     using n1000   = inside<{0, 1000}>;
     using n999    = inside<{0, 999}>;
-    const auto c  = math::binomial(n1000{at_run_time(1000)}, n1000{at_run_time(500)});
-    const auto c1 = math::binomial(n999{at_run_time(999)}, n999{at_run_time(499)});
-    const auto c2 = math::binomial(n999{at_run_time(999)}, n999{at_run_time(500)});
+    const auto c  = math::binomial(test::store<n1000>(at_run_time(1000)), test::store<n1000>(at_run_time(500)));
+    const auto c1 = math::binomial(test::store<n999>(at_run_time(999)), test::store<n999>(at_run_time(499)));
+    const auto c2 = math::binomial(test::store<n999>(at_run_time(999)), test::store<n999>(at_run_time(500)));
     EXPECT_TRUE(c == c1 + c2);
     EXPECT_EQ(to_string(c).size(), 300u);
     // P(30, 25) = 30!/5!
-    EXPECT_TRUE(math::falling_factorial(inside<{0, 30}>{at_run_time(30)}, inside<{0, 30}>{at_run_time(25)}) ==
-                math::factorial(inside<{0, 30}>{30}) / just<120>);
+    EXPECT_TRUE(math::falling_factorial(test::store<inside<{0, 30}>>(at_run_time(30)),
+                                        test::store<inside<{0, 30}>>(at_run_time(25))) ==
+                math::factorial(test::store<inside<{0, 30}>>(30)) / just<120>);
 
     // gcd and lcm of wide values: 2^150·3 and 2^120·9 share 2^120·3.
     using wide         = inside<{0, g(big_int{1} << 160)}>;
@@ -543,15 +553,22 @@ TEST(MathIntegerTest, past_64_bits) {
 
 TEST(MathIntegerTest, into_forms) {
     using n10 = inside<{0, 10}>;
-    EXPECT_TRUE((math::factorial<inside<{0, 1000}, clamp>>(n10{at_run_time(7)})) == 1000); // 5040 saturates
+    EXPECT_TRUE((math::factorial<inside<{0, 1000}, clamp>>(test::store<n10>(at_run_time(7)))) ==
+                1000); // 5040 saturates
     using checked_out = inside<{0, 1000}>;
-    EXPECT_THROW((void)math::factorial<checked_out>(n10{at_run_time(7)}), inside_error);
-    EXPECT_TRUE((math::binomial<inside<{0, 255}>>(n10{at_run_time(10)}, n10{at_run_time(5)})) == 252);
-    EXPECT_TRUE((math::gcd<inside<{0, 100}>>(n10{at_run_time(4)}, n10{at_run_time(6)})) == 2);
-    EXPECT_TRUE((math::lcm<inside<{0, 100}>>(n10{at_run_time(4)}, n10{at_run_time(6)})) == 12);
-    EXPECT_TRUE((math::multinomial<inside<{0, 100}>>(n10{at_run_time(2)}, n10{at_run_time(2)})) == 6);
-    EXPECT_TRUE((math::falling_factorial<inside<{0, 100}>>(n10{at_run_time(5)}, n10{at_run_time(2)})) == 20);
-    EXPECT_TRUE((math::rising_factorial<inside<{0, 100}>>(n10{at_run_time(5)}, n10{at_run_time(2)})) == 30);
+    EXPECT_EQ(math::factorial<checked_out>(test::store<n10>(at_run_time(7))).error(), errc::overflow);
+    EXPECT_TRUE((math::binomial<inside<{0, 255}>>(test::store<n10>(at_run_time(10)),
+                                                  test::store<n10>(at_run_time(5)))) == 252);
+    EXPECT_TRUE((math::gcd<inside<{0, 100}>>(test::store<n10>(at_run_time(4)), test::store<n10>(at_run_time(6)))) ==
+                2);
+    EXPECT_TRUE((math::lcm<inside<{0, 100}>>(test::store<n10>(at_run_time(4)), test::store<n10>(at_run_time(6)))) ==
+                12);
+    EXPECT_TRUE((math::multinomial<inside<{0, 100}>>(test::store<n10>(at_run_time(2)),
+                                                     test::store<n10>(at_run_time(2)))) == 6);
+    EXPECT_TRUE((math::falling_factorial<inside<{0, 100}>>(test::store<n10>(at_run_time(5)),
+                                                           test::store<n10>(at_run_time(2)))) == 20);
+    EXPECT_TRUE((math::rising_factorial<inside<{0, 100}>>(test::store<n10>(at_run_time(5)),
+                                                          test::store<n10>(at_run_time(2)))) == 30);
 }
 
 // gcd and lcm of fractional lattices: x = a·u, y = b·u for u the gcd of the
@@ -619,12 +636,7 @@ TEST(MathTest, tan_near_a_pole_overflows) {
     using Clamped = inside<{{-4, 4}, per<8>}, round_nearest | clamp>;
     for (int d = 0; d <= 2; ++d) {
         const auto x = In::from_raw(static_cast<In::raw_type>(top - d));
-        try {
-            (void)math::tan<Out>(x);
-            ADD_FAILURE() << "no error reported";
-        } catch (const inside_error& e) {
-            EXPECT_EQ(e.Code, errc::overflow);
-        }
+        EXPECT_EQ(test::reported([&] { return math::tan<Out>(x); }).error(), errc::overflow);
         EXPECT_EQ(math::tan<Clamped>(x), 4);
     }
 }
@@ -647,12 +659,14 @@ TEST(MathTest, gates_fail_closed_on_huge_grids) { static_assert(math::detail::en
 // pow of an exact rational result with a non-integer exponent sat on a
 // rounding boundary and was guessed at the precision cap.
 TEST(MathTest, pow_with_a_rational_exponent_is_exact) {
-    using half   = inside<{{0, 2}, per<2>}>;
-    using qtr    = inside<{{0, 4}, per<4>}>;
-    using up4    = inside<{{0, 4}, per<4>}, round_ceil>;
-    using down4  = inside<{{0, 4}, per<4>}, round_floor>;
-    using up8    = inside<{{0, 4}, per<8>}, round_ceil>;
-    using down16 = inside<{0, 16}, round_floor>;
+    using half = inside<{{0, 2}, per<2>}>;
+    using qtr  = inside<{{0, 4}, per<4>}>;
+    // (clamp: pow over a base grid reaching 0 has no bounded range, so a named
+    // output names its range handling; every result here is in range)
+    using up4    = inside<{{0, 4}, per<4>}, round_ceil | clamp>;
+    using down4  = inside<{{0, 4}, per<4>}, round_floor | clamp>;
+    using up8    = inside<{{0, 4}, per<8>}, round_ceil | clamp>;
+    using down16 = inside<{0, 16}, round_floor | clamp>;
     EXPECT_EQ(math::pow<up4>(qtr{2.25_r}, half{0.5_r}), 1.5_r);
     EXPECT_EQ(math::pow<down4>(qtr{2.25_r}, half{0.5_r}), 1.5_r);
     EXPECT_EQ(math::pow<up8>(qtr{2.25_r}, half{1.5_r}), 3.375_r);
@@ -671,7 +685,7 @@ TEST(MathTest, pow_exponent_one_keeps_the_sign) {
 TEST(MathTest, pow_of_a_zero_base) {
     using B   = inside<{{0, 4}, per<4>}>;
     using E   = inside<{{-2, 2}, per<2>}>;
-    using Out = inside<{{0, 16}, per<16>}, round_nearest>;
+    using Out = inside<{{0, 16}, per<16>}, round_nearest | clamp>; // (a base reaching 0: clamp, as above)
     EXPECT_EQ(*math::pow<Out>(B{0}, E{1.5}), 0);
     EXPECT_EQ(*math::pow<Out>(B{0}, E{0}), 1);
     EXPECT_EQ(math::pow<Out>(B{0}, E{-1}).error(), errc::division_by_zero);
@@ -703,11 +717,11 @@ TEST(MathTest, fmod_quotient_past_64_bits) {
 // one: the wrapped slot was wrong.
 TEST(MathTest, wrap_output_folds_the_true_value) {
     using In   = inside<{{-20, 20}, rational{1, 16}}>;
-    using Wide = inside<{{-rational{1ll << 40}, rational{1ll << 40}}, rational{1, 1024}}, round_nearest>;
+    using Wide = inside<{{-rational{1ll << 40}, rational{1ll << 40}}, rational{1, 1024}}, round_nearest | clamp>;
     using Wrap = inside<{{-1, 1}, rational{1, 1024}}, round_nearest | wrap>;
     int bad    = 0;
     for (std::int64_t k = -320; k <= 320; k += 3) {
-        const In x{rational{k, 16}};
+        const In x = test::store<In>(rational{k, 16});
         bad += !(Wrap{math::exp<Wide>(x), wrap} == math::exp<Wrap>(x));
         bad += !(Wrap{math::exp2<Wide>(x), wrap} == math::exp2<Wrap>(x));
         bad += !(Wrap{math::sinh<Wide>(x), wrap} == math::sinh<Wrap>(x));
@@ -720,8 +734,8 @@ TEST(MathTest, wrap_output_folds_the_true_value) {
     using P = inside<{{0, 6}, rational{1, 2}}>;
     for (int i = 0; i <= 36; i += 5)
         for (int e = 0; e <= 12; ++e) {
-            const B b{rational{i, 4}};
-            const P p{rational{e, 2}};
+            const B b = test::store<B>(rational{i, 4});
+            const P p = test::store<P>(rational{e, 2});
             bad += !(Wrap{math::pow<Wide>(b, p), wrap} == math::pow<Wrap>(b, p));
         }
     EXPECT_EQ(bad, 0);
@@ -789,7 +803,7 @@ TEST(MathTest, pow_base_with_a_builtin_base_past_int64) {
     static_assert(math::pow_base<18446744073709551615ull, O>(X{rational{-1, 64}}) ==
                   math::pow_base<18446744073709551615_g, O>(X{rational{-1, 64}}));
     static_assert(math::pow_base<9223372036854775809ull>(Y{2}) == just<85070591730234615884290395931651604481_g>);
-    EXPECT_EQ((math::pow_base<9223372036854775809ull, O>(X{test::at_run_time(-1)})), 0);
+    EXPECT_EQ((math::pow_base<9223372036854775809ull, O>(test::store<X>(test::at_run_time(-1)))), 0);
     []<class W>(std::type_identity<W>) {
         if constexpr (std::integral<W>) { // __int128 under the GNU dialects
             constexpr W base = W{1} << 100;
@@ -892,7 +906,7 @@ TEST(MathArmTest, fmod_past_the_64_bit_quotient) {
     using Y  = inside<{{0, 1}, max_denominator{3}}>;
     using Of = inside<{{0, 1}, max_denominator{6}}>;
     const X x{rational{(std::uint64_t{1} << 63) - 1, 2}}; // 2^62 − 1/2
-    EXPECT_EQ(math::fmod<Of>(x, Y{test::at_run_time(0)}).error(), errc::division_by_zero);
+    EXPECT_EQ(math::fmod<Of>(x, test::store<Y>(test::at_run_time(0))).error(), errc::division_by_zero);
     EXPECT_EQ(rational{*math::fmod<Of>(x, Y{rational{1, 2}})}, 0);
     EXPECT_EQ(rational{*math::fmod<Of>(x, Y{rational{1, 3}})}, (rational{1, 6}));
 }
@@ -929,10 +943,12 @@ using namespace beman::inside;
 // unanchored Out passes its error on, through the integer bracket and, for
 // an Out past 64 bits, the exact midpoint. (2^2 = 4 is a tie: 4.5.)
 TEST(MathArmTest, fallible_function_into_an_unanchored_output) {
-    using B  = inside<{0, 4}>;
-    using X  = inside<{-2, 2}>;
-    using Ou = inside<{{0.5_r, 100.5_r}, 1}, round_nearest>;
-    using Ow = inside<{{0.5_r, 2361183241434822606849_g / 2}, 1}, round_nearest>; // to 2^70 + 1/2
+    using B = inside<{0, 4}>;
+    using X = inside<{-2, 2}>;
+    // (clamp: pow over a base grid reaching 0 has no bounded range to check a
+    // named output against; the results here are in range)
+    using Ou = inside<{{0.5_r, 100.5_r}, 1}, round_nearest | clamp>;
+    using Ow = inside<{{0.5_r, 2361183241434822606849_g / 2}, 1}, round_nearest | clamp>; // to 2^70 + 1/2
     EXPECT_EQ(detail::rational{*math::pow<Ou>(B{2}, X{2})}, (detail::rational{9, 2}));
     EXPECT_EQ(math::pow<Ou>(B{0}, X{-1}).error(), errc::division_by_zero);
     EXPECT_TRUE((*math::pow<Ow>(B{2}, X{2}) == just<9, 2>));
@@ -1096,9 +1112,9 @@ TEST(MathConstantsTest, arithmetic_takes_the_point_its_operand_needs) {
 
 TEST(MathConstantsTest, compared_exactly) {
     using X = inside<{0, 10}>;
-    EXPECT_TRUE(X{test::at_run_time(3)} < math::pi);
-    EXPECT_TRUE(X{test::at_run_time(4)} > math::pi);
-    EXPECT_FALSE(X{test::at_run_time(3)} == math::pi);
+    EXPECT_TRUE(test::store<X>(test::at_run_time(3)) < math::pi);
+    EXPECT_TRUE(test::store<X>(test::at_run_time(4)) > math::pi);
+    EXPECT_FALSE(test::store<X>(test::at_run_time(3)) == math::pi);
     EXPECT_TRUE(math::pi < X{4} && math::pi > X{3});
     using C = inside<{{0, 4}, max_denominator{1000}}>; // 355/113 and 22/7 lie above π, 311/99 below
     EXPECT_TRUE(

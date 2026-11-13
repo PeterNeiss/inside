@@ -91,7 +91,7 @@ auto    neg  = -a;                  // inside<{-100, 0}>: no -INT_MIN
 static_assert(std::is_same_v<decltype(sum), inside<{0, 200}>>);
 static_assert(sizeof(percent) == 1);
 
-percent c = sum - just<100>;        // a checked store: 0..100 fits
+percent c{sum - just<100>, clamp};  // -100..100 into 0..100: the store names what happens
 auto    bad = percent::try_make(sum); // expected<percent, errc>
 ```
 
@@ -196,7 +196,7 @@ whole x = 50;
 x.policy<clamp>() = 150;                                    // 100: this store saturates
 
 using seconds = inside<{0, 59}, wrap>;
-using minutes = inside<{0, 59}>;
+using minutes = inside<{0, 59}, clamp>; // m += carry names what happens past 59
 seconds s = 50;
 minutes m = 0;
 s.on_wrap([&](auto&, auto carry) { m += carry; }) += 75_ins; // 125 s: s == 5, m == 2

@@ -384,7 +384,8 @@ TEST(InsideArithmeticTest, scalars_need_a_grid_to_join_inside_arithmetic) {
     // programmer must give the scalar a grid (`1_ins` / `just<1>`). Only comparisons
     // (`b == 5`) against a raw scalar stay ergonomic.
     ASSERT_EQ(b, 5);
-    b += 1_ins;
+    errc ec{}; // (b + 1 may leave b's grid: a reported store)
+    b.policy(ec) += 1_ins;
     ASSERT_EQ(b, 6);
 }
 
@@ -419,7 +420,7 @@ TEST(InsideArithmeticTest, beman_inside_sum_bulk_reduction_with_one_deferred_che
     using elem = inside<{0, 200'000}, checked>;
     std::vector<elem> v(1000);
     for (std::size_t i = 0; i < v.size(); ++i)
-        v[i] = static_cast<int>(i % 5);
+        v[i] = test::store<elem>(static_cast<int>(i % 5));
     ASSERT_TRUE(beman::inside::sum<elem>(v) == 2000); // 200·(0+1+2+3+4)
 
     // The TOTAL is validated, not the running prefix: a clamp target clips
@@ -431,7 +432,7 @@ TEST(InsideArithmeticTest, beman_inside_sum_bulk_reduction_with_one_deferred_che
     using q = inside<{{0, 4}, per<256>}, round_nearest>;
     std::vector<q> qs(3, q{rational{1, 256}});
     using qsum = inside<{{0, 16}, per<256>}, round_nearest>;
-    ASSERT_EQ(rational{beman::inside::sum<qsum>(qs)}, (rational{3, 256}));
+    ASSERT_EQ(rational{*beman::inside::sum<qsum>(qs)}, (rational{3, 256}));
 
     // 64-bit raws whose index total passes 64 bits: summed exactly.
     using u64 = inside<{0, std::numeric_limits<std::uint64_t>::max()}>;
@@ -443,7 +444,7 @@ TEST(InsideArithmeticTest, beman_inside_sum_bulk_reduction_with_one_deferred_che
     // policy (not bad_expected_access).
     using cont = inside<{{0, 1}, max_denominator{10}}>;
     std::vector<cont> c{cont{rational{3, 5}}, cont{rational{7, 10}}};
-    ASSERT_THROW((void)beman::inside::sum<cont>(c), inside_error);
+    ASSERT_EQ(beman::inside::sum<cont>(c).error(), errc::overflow); // 13/10
 
     // Blocks: 32-bit lanes take ⌊(2^32 − 1)/max raw⌋ elements (unsigned)
     // or ⌊(2^31 − 1)/max |raw|⌋ (signed) at a time; ranges longer than a
@@ -463,7 +464,7 @@ TEST(InsideArithmeticTest, beman_inside_sum_bulk_reduction_with_one_deferred_che
     using qi = inside<{{-8, 8}, per<16384>}>;
     std::vector<qi> qv(40'000, qi{rational{-3, 16384}});
     using qtotal = inside<{{-200'000, 200'000}, per<16384>}>;
-    ASSERT_EQ(rational{beman::inside::sum<qtotal>(qv)}, (rational{-120'000, 16384}));
+    ASSERT_EQ(rational{*beman::inside::sum<qtotal>(qv)}, (rational{-120'000, 16384}));
     // Raws near 2^31: a 32-bit lane holds two, too few, so int64 blocks.
     using near = inside<{0, 0x7fff'fff0}>;
     static_assert(detail::lane32_block<near> == 2);
@@ -498,7 +499,8 @@ TEST(InsideArithmeticTest, scalar_operand_ban_guidance_overloads_pinned) {
     auto w = b + 1_ins;
     static_assert(!std::same_as<decltype(w), pct>); // widened grid
     ASSERT_EQ(w, 6);
-    b += 1_ins;
+    errc ec{}; // (b + 1 may leave b's grid: a reported store)
+    b.policy(ec) += 1_ins;
     ASSERT_EQ(b, 6);
     ASSERT_TRUE(b < 10);
 }
@@ -554,8 +556,8 @@ template <class A, class B>
 void check_cross(const std::vector<double>& va, const std::vector<double>& vb) {
     for (double xa : va)
         for (double xb : vb) {
-            A              a  = xa;
-            B              b  = xb;
+            A              a  = test::store<A>(xa);
+            B              b  = test::store<B>(xb);
             const rational ar = static_cast<rational>(a);
             const rational br = static_cast<rational>(b);
 
@@ -689,7 +691,7 @@ TEST(CrossGridTest, cross_grid_assign_keeps_the_value) {
 
     using wide_thirds = inside<{{-4, 4}, per<3>}, round_nearest>;
     thirds from_exact;
-    from_exact = wide_thirds{rational{5, 3}};
+    from_exact = test::store<thirds>(wide_thirds{rational{5, 3}});
     ASSERT_EQ(rational{from_exact}, (rational{5, 3}));
 
     using value_src = inside<{0, 4}, round_toward_zero>;
@@ -804,13 +806,15 @@ TEST(SignedTest, signed_construction_and_arithmetic) {
     auto quot = x / y;
     ASSERT_EQ(*quot, -0.5_r);
 
-    s32 acc{100}, delta{-30};
-    acc += delta;
+    s32  acc{100}, delta{-30};
+    errc ec{}; // (a sum the grids cannot prove: reported)
+    acc.policy(ec) += delta;
     ASSERT_EQ(acc, 70);
 
     s32 acc2{50};
-    acc2 += -75_ins;
+    acc2.policy(ec) += -75_ins;
     ASSERT_EQ(acc2, -25);
+    ASSERT_EQ(ec, errc{});
 }
 
 // signed storage uses the type's full range, including its minimum
@@ -1097,7 +1101,7 @@ TEST(ExpectedArithmeticTest, inside_does_not_store_an_expected) {
 
     const auto g = good(0.5_r);
     ASSERT_TRUE(g.has_value());
-    b_t v{*g};
+    b_t v = test::store<b_t>(*g);
     ASSERT_EQ(rational{v}, 0.5_r);
     ASSERT_EQ(*b_t::try_make(good(0.25_r)), 0.25_r);
     ASSERT_EQ(b_t::try_make(bad(errc::division_by_zero)).error(), errc::division_by_zero);
@@ -1262,11 +1266,11 @@ TEST(NamedOutputTest, mul_rounds_the_exact_product_once) {
     const eth   balance = *parse<eth>("123456789.123456789123456789");
     const price p       = *parse<price>("3141.59");
     using usd_nearest   = inside<grid_of<usd>, round_nearest>;
-    EXPECT_EQ(to_string(mul<usd_nearest>(balance, p)), "387850614142.36");
-    EXPECT_EQ(to_string(mul<usd>(balance, p, round_floor)), "387850614142.36");
-    EXPECT_EQ(to_string(mul<usd>(balance, p, round_ceil)), "387850614142.37");
+    EXPECT_EQ(to_string(*mul<usd_nearest>(balance, p)), "387850614142.36");
+    EXPECT_EQ(to_string(*mul<usd>(balance, p, round_floor)), "387850614142.36");
+    EXPECT_EQ(to_string(*mul<usd>(balance, p, round_ceil)), "387850614142.37");
     // Off the cents grid under a checked Out: reported, not rounded.
-    EXPECT_THROW((void)mul<usd>(balance, p), inside_error);
+    EXPECT_EQ(mul<usd>(balance, p).error(), errc::rounding_error);
     // On the grid: exact.
     EXPECT_EQ(mul<usd>(eth{2}, p), (usd{rational{628318, 100}}));
 }
@@ -1275,7 +1279,7 @@ TEST(NamedOutputTest, mul_range_follows_out_policy) {
     using small   = inside<{0, 100}>;
     using clamped = inside<{0, 100}, clamp>;
     const small a{20}, b{30};
-    EXPECT_THROW((void)mul<small>(a, b), inside_error);
+    EXPECT_EQ(mul<small>(a, b).error(), errc::overflow);
     EXPECT_EQ(mul<clamped>(a, b), 100);
     EXPECT_EQ(mul<small>(small{5}, a), 100);
 }
@@ -1310,34 +1314,21 @@ TEST(NamedOutputTest, div_onto_a_named_output) {
 // the wide path does: every value pair of small grids, every Out policy, the
 // same result or the same error.
 namespace {
-template <class Out, policy_flag F, class Fn>
-std::expected<Out, errc> outcome(Fn&& f) {
-    try {
-        return f();
-    } catch (const inside_error& e) {
-        return std::unexpected{e.Code};
-    }
-}
 template <class Out, policy_flag F, class A, class B>
 void expect_mul_div_agree() {
+    constexpr policy_flag P = detail::override_flags(flags_of<Out>, F);
     for (const A a : values<A>)
         for (const B b : values<B>) {
-            const auto policy = make_policy<detail::override_flags(flags_of<Out>, F)>();
-            const auto m      = outcome<Out, F>([&] { return mul<Out>(a, b, detail::flag<F>{}); });
-            const auto mw     = outcome<Out, F>([&] { return detail::mul_wide<Out>(a, b, policy); });
+            // (The wide paths report into an errc: try_store.)
+            const auto m = test::reported([&] { return mul<Out>(a, b, detail::flag<F>{}); });
+            const auto mw =
+                detail::try_store<Out, P>([&](Out& out, auto&& policy) { out = detail::mul_wide<Out>(a, b, policy); });
             EXPECT_EQ(m, mw) << to_string(a) << " * " << to_string(b);
             if (b == 0)
                 continue;
-            const auto d  = outcome<Out, F>([&] {
-                const auto r = div<Out>(a, b, detail::flag<F>{});
-                if constexpr (detail::expected_like<std::remove_const_t<decltype(r)>>) {
-                    if (!r)
-                        throw inside_error(r.error());
-                    return *r;
-                } else
-                    return r;
-            });
-            const auto dw = outcome<Out, F>([&] { return detail::div_wide<Out>(a, b, policy); });
+            const auto d = test::reported([&] { return div<Out>(a, b, detail::flag<F>{}); });
+            const auto dw =
+                detail::try_store<Out, P>([&](Out& out, auto&& policy) { out = detail::div_wide<Out>(a, b, policy); });
             EXPECT_EQ(d, dw) << to_string(a) << " / " << to_string(b);
         }
 }
@@ -1456,14 +1447,17 @@ TEST(BoundedRationalTest, store_past_the_bound_reports_rounding_error) {
     EXPECT_TRUE(thousandths::try_make(rational{7, 1000}).has_value());
     EXPECT_EQ(thousandths::try_make(rational{1, 1001}).error(), errc::rounding_error);
     EXPECT_EQ(parse<thousandths>("0.0001").error(), errc::rounding_error);
-    EXPECT_THROW((thousandths{rational{1, 1001}}), inside_error);
+    EXPECT_EQ(test::store_error<thousandths>(test::at_run_time(rational{1, 1001})), errc::rounding_error);
     static_assert(!thousandths::try_make(rational{1, 1001}).has_value()); // also at compile time
 
     // Compound assignment stores back through the same check.
     thousandths x{rational{1, 10}};
-    x *= thousandths{rational{1, 10}}; // 1/100: within the bound
+    errc        ec{};
+    x.policy(ec) *= thousandths{rational{1, 10}}; // 1/100: within the bound
     EXPECT_TRUE(x == rational(1, 100));
-    EXPECT_THROW((x *= thousandths{rational{1, 100}}), inside_error); // 1/10000
+    EXPECT_EQ(ec, errc{});
+    x.policy(ec) *= thousandths{rational{1, 100}}; // 1/10000
+    EXPECT_EQ(ec, errc::rounding_error);
 
     // A quotient type's bound is what the grids allow, so its own results fit.
     auto q = num{1} / den{7};
@@ -1603,9 +1597,12 @@ TEST(ArithmeticTest, operations_are_constraint_friendly) {
     static_assert(can_add<uint64, uint64> && can_mul<full, full>);
     static_assert(can_make<digit, int> && can_make<digit, inside<{5, 20}>> && !can_make<digit, inside<{20, 30}>>);
     static_assert(!can_make<digit, fourths> && can_make<inside<{0, 9}, round_toward_zero>, fourths>);
-    static_assert(can_add_assign<digit, digit> && can_add_assign<digit, inside<{10}>> &&
-                  !can_add_assign<digit, fourths>);
-    static_assert(!can_div_assign<digit, inside<{0}>> && can_div_assign<inside<{0, 9}, round_toward_zero>, digit>);
+    // (A compound store the grids cannot prove names its channel: clamp here.)
+    static_assert(!can_add_assign<digit, digit> && !can_add_assign<digit, inside<{10}>> &&
+                  !can_add_assign<digit, fourths> && can_add_assign<inside<{0, 9}, clamp>, digit> &&
+                  can_add_assign<inside<{0, 9}, clamp>, inside<{10}>>);
+    static_assert(!can_div_assign<digit, inside<{0}>> && !can_div_assign<inside<{0, 9}, round_toward_zero>, digit> &&
+                  can_div_assign<inside<{0, 9}, round_toward_zero>, inside<{1, 9}>>);
 }
 
 // Two integer raws whose common unit (the gcd of a 2/3 and a 2^-62 notch) is
@@ -1726,7 +1723,7 @@ TEST(ArithmeticTest, scalar_comparison_does_not_truncate_the_scalar) {
 // ++ moves one notch (1/256 here); += point adds the value.
 TEST(ArithmeticTest, increment_moves_one_notch) {
     using namespace beman::inside;
-    using rl = inside<{{-4, 4}, per<256>}, round_nearest>;
+    using rl = inside<{{-4, 4}, per<256>}, round_nearest | clamp>; // (++ names its range handling)
     rl x{rational{3, 2}};
     ++x;
     EXPECT_EQ(rational{x}, (rational{385, 256}));
@@ -1767,7 +1764,7 @@ TEST(ArithmeticTest, multiply_by_point_keeps_integer_storage) {
 
 TEST(ArithmeticTest, multiply_by_point_matches_exact_product) {
     for (int v : {-100, -7, 0, 1, 99, 100}) {
-        inside<{-100, 100}> x{v};
+        const auto x = test::store<inside<{-100, 100}>>(v);
         EXPECT_EQ(rational{x * just<3>}, rational{3 * v});
         EXPECT_EQ(rational{just<3> * x}, rational{3 * v});
         EXPECT_EQ(rational{x * just<-2>}, rational{-2 * v});
@@ -1791,15 +1788,15 @@ TEST(ArithmeticTest, continuous_sum_is_exact) {
                                 fine{rational{1, 1973}}};
     using total  = inside<{{0, 6}, per<(1ll << 40)>}, round_nearest>;
     const auto s = beman::inside::sum<total>(r); // Σ 1/p, rounded once
-    EXPECT_EQ(s.raw(), 3318520424);              // round(2^40 · Σ 1/p)
+    EXPECT_EQ(s->raw(), 3318520424);             // round(2^40 · Σ 1/p)
     using sixths = inside<{{-1, 1}, max_denominator{6}}>;
     const std::array<sixths, 4> h{
         sixths{rational{1, 2}}, sixths{rational{1, 3}}, sixths{rational{1, 6}}, sixths{rational{-5, 6}}};
     using sixths_total = inside<{{-4, 4}, max_denominator{6}}>;
-    EXPECT_EQ(rational{beman::inside::sum<sixths_total>(h)}, (rational{1, 6}));
+    EXPECT_EQ(rational{*beman::inside::sum<sixths_total>(h)}, (rational{1, 6}));
     const std::array<std::remove_cvref_t<decltype(just<1, 3>)>, 5> p{}; // a point grid: 5 copies of 1/3
     using thirds_total = inside<{{0, 2}, max_denominator{3}}>;
-    EXPECT_EQ(rational{beman::inside::sum<thirds_total>(p)}, (rational{5, 3}));
+    EXPECT_EQ(rational{*beman::inside::sum<thirds_total>(p)}, (rational{5, 3}));
 }
 
 } // namespace pinned_tests
@@ -1827,8 +1824,8 @@ TEST(ArithmeticArmTest, div_onto_past_the_unreduced_quotient) {
     static_assert(std::is_same_v<detail::raw_t<C>, rational>);
     const C x{rational{std::uint64_t{1} << 59, 1023}}, y{rational{std::uint64_t{1} << 59, 1021}};
     const C u{rational{(std::uint64_t{1} << 59) + 1, 1023}}, v{rational{(std::uint64_t{1} << 59) + 3, 1021}};
-    EXPECT_TRUE(div<Out>(x, y) == Out{x / y});
-    EXPECT_TRUE(div<Out>(u, v) == Out{u / v});
+    EXPECT_TRUE(div<Out>(x, y) == test::store<Out>(x / y));
+    EXPECT_TRUE(div<Out>(u, v) == test::store<Out>(u / v));
 }
 
 // sum of continuous elements re-reduces a raw built unreduced (2/8), whose
@@ -1840,6 +1837,6 @@ TEST(ArithmeticArmTest, sum_reduces_an_unreduced_raw) {
     quarter.Den = 8;
     const std::vector<T> v{T::from_raw(quarter), T{rational{1, 4}}};
     using total = inside<{{0, 2}, max_denominator{4}}>;
-    EXPECT_EQ(rational{beman::inside::sum<total>(v)}, (rational{1, 2}));
+    EXPECT_EQ(rational{*beman::inside::sum<total>(v)}, (rational{1, 2}));
 }
 } // namespace reached_arms_tests

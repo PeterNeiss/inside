@@ -5,6 +5,7 @@
 #include <iostream>
 #include <iterator>
 #include <numeric>
+#include <ranges>
 #include <vector>
 
 #include <beman/inside/inside.hpp>
@@ -109,20 +110,25 @@ int main() {
     // --- reduce ---
     std::cout << "\n--- reduce ---\n";
     {
-        // sum<Target>: an exact total with one range check against Target.
+        // sum<Target>: an exact total with one range check against Target,
+        // an expected (the count is a run-time number).
         using wide_score          = inside<{0, 100'000}>;
         std::vector<score> scores = {100, 250, 500, 750, 1000};
         auto               total  = sum<wide_score>(scores);
-        std::cout << "total: " << total << "\n";
+        if (!total)
+            return 1;
+        std::cout << "total: " << *total << "\n";
 
-        // transform_reduce: weighted sum
+        // A weighted sum: the products, then sum<Target> with its one check.
+        // (std::transform_reduce into an inside accumulator stores every
+        // prefix back into it, a store the grids cannot prove.)
         std::vector<score> weights = {2, 3, 5};
         using wide                 = inside<{0, 1'000'000}>;
-        auto dot                   = std::transform_reduce(
-            scores.begin(), scores.begin() + 3, weights.begin(), wide{0}, std::plus<>{}, [](score a, score b) {
-                return a * b;
-            });
-        std::cout << "weighted sum(first 3): " << dot << "\n";
+        auto products = std::views::zip_transform([](score a, score b) { return a * b; }, scores, weights);
+        auto dot      = sum<wide>(products);
+        if (!dot)
+            return 1;
+        std::cout << "weighted sum(first 3): " << *dot << "\n";
     }
 
     // --- filter ---
@@ -177,25 +183,28 @@ int main() {
 
         // std::accumulate
         std::vector<channel> rgb = {200, 150, 100};
-        using wide_ch            = inside<{0, 100'000}>;
-        auto brightness          = std::accumulate(rgb.begin(), rgb.end(), wide_ch{0}, std::plus<>{});
+        // std::accumulate stores each prefix back into its accumulator: a
+        // store the grids cannot prove, so the accumulator names what happens
+        // past its range (clamp; sum<Target> checks the total once instead).
+        using wide_ch   = inside<{0, 100'000}, clamp>;
+        auto brightness = std::accumulate(rgb.begin(), rgb.end(), wide_ch{0}, std::plus<>{});
         std::cout << "accumulate brightness: " << brightness << "\n";
 
         // std::inner_product
         std::vector<score> a = {10, 20, 30};
         std::vector<score> b = {3, 2, 1};
-        using wide_score     = inside<{0, 1'000'000}>;
+        using wide_score     = inside<{0, 1'000'000}, clamp>; // (as accumulate's)
         auto dot             = std::inner_product(
             a.begin(), a.end(), b.begin(), wide_score{0}, std::plus<>{}, [](score x, score y) { return x * y; });
         std::cout << "inner_product: " << dot << "\n";
 
         // std::adjacent_difference
-        std::vector<celsius> readings = {-5.0, 0.0, 3.5, 8.0, 6.5};
-        std::vector<celsius> deltas(readings.size());
-        std::adjacent_difference(readings.begin(),
-                                 readings.end(),
-                                 deltas.begin(),
-                                 [](celsius k, celsius l) -> celsius { return celsius{k - l}; });
+        // (A difference of two celsius spans twice the range: its own type.)
+        using celsius_delta                 = decltype(celsius{} - celsius{});
+        std::vector<celsius>       readings = {-5.0, 0.0, 3.5, 8.0, 6.5};
+        std::vector<celsius_delta> deltas(readings.size());
+        std::adjacent_difference(
+            readings.begin(), readings.end(), deltas.begin(), [](celsius k, celsius l) { return k - l; });
         show("adj_diff", deltas);
 
         // std::for_each with side effect

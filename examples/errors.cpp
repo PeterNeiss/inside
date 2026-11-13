@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Tour of every error-handling mechanism plus the policy alternatives
-// that avoid errors entirely (clamp / wrap).
+// that avoid errors entirely (clamp / wrap). Nothing throws: a store either
+// clamps, wraps, takes an alternative value, reports, or does not compile.
 // See clock.cpp for a fuller on_wrap workflow.
 
 #include <iostream>
@@ -16,19 +17,22 @@ using wrap_360    = inside<{0, 359}, wrap>;
 using digit       = inside<{0, 9}>;
 using coarse      = inside<{{0, 10}, 2}>; // notch 2: rounding_error demo
 
+// An int read at run time, as from input.
+int read(int v) {
+    volatile int x = v;
+    return x;
+}
+
 int main() {
     // === Section 1: Reporting strategies for an out-of-range value ===
-    // Same logical event (200 outside [0,100]), two different reports.
-    // The free-function `errc&` overload is shown in Section 4.
+    // Same logical event (200 outside [0,100]), several reports. A constant
+    // is checked while compiling: `checked_100 x = 200;` does not compile.
+    // A run-time int may not fit [0,100], so `checked_100 x = n;` does not
+    // compile either: the store names its channel. The free-function `errc&`
+    // overload is shown in Section 4.
+    const int n = read(200);
 
-    try {
-        checked_100 x = 200;
-        (void)x;
-    } catch (beman::inside::inside_error& e) {
-        std::cout << "throw:    " << errc_message(e.Code) << "\n";
-    }
-
-    auto maybe = checked_100::try_make(200);
+    auto maybe = checked_100::try_make(n);
     std::cout << "expected: " << (maybe ? "has value" : errc_message(maybe.error())) << "\n";
 
     auto ok = checked_100::try_make(50);
@@ -38,14 +42,14 @@ int main() {
 
     beman::inside::errc ec{};
     checked_100         z(50);
-    z.policy(ec) = 200;
+    z.policy(ec) = n;
     std::cout << "policy ec:" << (ec != errc{} ? errc_message(ec) : "no error") << " (z=" << z << ")" << "\n";
 
     checked_100 r(50);
     r.on_error([](auto& self, errc code, std::string_view msg) {
         std::cout << "on_error: [" << errc_message(code) << "] " << msg << " -> recover to 0" << "\n";
-        self = 0;
-    }) = 200;
+        self = 0; // the alternative value
+    }) = n;
     std::cout << "          (r=" << r << ")" << "\n";
 
     inside<{0, 100}> w(50);
@@ -79,7 +83,7 @@ int main() {
               << " (q has_value=" << (qz.has_value() ? "true" : "false") << ")" << "\n";
 
     // === Section 5: Policies that avoid errors entirely ===
-    // clamp saturates, wrap is modular; try_make reports instead of throwing.
+    // clamp saturates, wrap is modular; try_make reports.
 
     clamp_100 cl = 150;
     std::cout << "clamp:    150 -> " << cl << "\n";

@@ -67,7 +67,13 @@ int main() {
         if (conversion_loses<latency_t>(s, ms))
             ++lossy; // accept but flag
 
-        const latency_t lat{s, ms};
+        // A run-time double is stored with try_make (a NaN would be its error).
+        const auto stored = latency_t::try_make(s, ms);
+        if (!stored) {
+            ++rejected;
+            continue;
+        }
+        const latency_t lat = *stored;
         // bin index = floor(lat / 10 ms), a plain number. div<Out> rounds by
         // `bin_index_t`'s `round_floor` (9.55 floors to 9 before the range check);
         // `clamp` folds 100 ms, whose quotient 10 floors to 10, into the last bin.
@@ -81,8 +87,8 @@ int main() {
     using bin_label_t = quantity<ms, inside<{0, 99}>>;
     std::cout << "bin          count\n";
     for (bin_index_t b : values<bin_index_t>) {
-        bin_label_t lo{b * (just<10> * ms)}; // {0,9}×{10,10} ms → {0,90} ms, fits statically
-        bin_label_t hi{lo + just<9> * ms};   // widened then narrowed to bin_label_t
+        const auto  lo = b * (just<10> * ms); // {0,9}×{10,10} ms → {0,90} ms
+        bin_label_t hi{lo + just<9> * ms};    // {9,99} ms: fits bin_label_t statically
         std::cout << " " << lo << "-" << hi << "  " << bins[b.as<std::size_t>()] << "\n";
     }
 

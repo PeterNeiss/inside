@@ -71,7 +71,7 @@ TEST(BigGridTest, construction_and_comparison) {
     huge h = 5;
     EXPECT_TRUE(h == 5);
     EXPECT_TRUE(h < 6 && h > 4.5_r);
-    far f{huge::from_raw(raw_2_100_3)};
+    const far f = test::store<far>(huge::from_raw(raw_2_100_3));
     EXPECT_TRUE(f > h);
     EXPECT_TRUE(f.raw() == 3);
     fine x = 0.5;
@@ -83,8 +83,8 @@ TEST(BigGridTest, construction_and_comparison) {
 
 TEST(BigGridTest, assignment_policies) {
     huge h = 0;
-    EXPECT_THROW(h = -1, inside_error);
-    EXPECT_THROW(h = 1e31, inside_error); // past 2^100
+    EXPECT_EQ(test::store_error<huge>(test::at_run_time(-1)), errc::overflow);
+    EXPECT_EQ(test::store_error<huge>(test::at_run_time(1e31)), errc::overflow); // past 2^100
     inside<{0, g(pow2(100))}, clamp> c = 0;
     c                                  = 1e31;
     EXPECT_TRUE(c == huge::from_raw(raw_2_100));
@@ -112,7 +112,7 @@ TEST(BigGridTest, arithmetic_past_64_bits) {
 }
 
 TEST(BigGridTest, conversions_and_io) {
-    far f{huge::from_raw(raw_2_100_3)};
+    const far f = test::store<far>(huge::from_raw(raw_2_100_3));
     EXPECT_EQ(to_string(f), "1267650600228229401496703205379");
     EXPECT_EQ(f.to<int>().error(), errc::overflow);
     EXPECT_DOUBLE_EQ(f.to<double>(), 0x1p100);
@@ -189,9 +189,10 @@ TEST(BigGridTest, just_big_and_small_grid_numbers) {
     huge h = big;
     EXPECT_TRUE(h == big);
     h = 0;
-    h += just<g(pow2(99))>;
-    h += just<g(pow2(99))>;
-    EXPECT_TRUE(h == big);
+    errc ec{}; // h + 2^99 may pass 2^100: the store reports
+    h.policy(ec) += just<g(pow2(99))>;
+    h.policy(ec) += just<g(pow2(99))>;
+    EXPECT_TRUE(h == big && ec == errc{});
     using planck = inside<{{0, 1}, 1e-41_g}>;
     planck p     = tiny;
     EXPECT_TRUE(p == tiny);
@@ -199,14 +200,14 @@ TEST(BigGridTest, just_big_and_small_grid_numbers) {
 
 TEST(BigGridTest, division) {
     // Big ÷ big: the exact quotient, reported when it passes the 64-bit rational.
-    const far  a{huge::from_raw(raw_2_100_3)};
+    const far  a = test::store<far>(huge::from_raw(raw_2_100_3));
     const huge b{huge::from_raw(raw_2_100)};
     const auto q = a / b; // (2^100 + 3) / 2^100: exact in the quotient's wide fraction
     ASSERT_TRUE(q.has_value());
     EXPECT_EQ(
         to_string(*q),
         "1.0000000000000000000000000000023665827156630354162351856958483586890196193053270690143108367919921875");
-    const auto r = far{huge::from_raw(raw_2_100)} / b;
+    const auto r = test::store<far>(huge::from_raw(raw_2_100)) / b;
     ASSERT_TRUE(r.has_value());
     EXPECT_TRUE(*r == 1);
     const auto s = b / huge{4};
@@ -261,19 +262,20 @@ static_assert(huge{below} + huge{1} == huge{two_100});                          
 } // namespace
 
 TEST(BigGridTest, grid_number_at_run_time) {
-    // A grid number past 64 bits is formed at compile time only, but a store
-    // reads one at run time: construct, assign, try_make.
+    // A grid number past 64 bits is formed at compile time only; a store
+    // reads one at run time through try_make (a constant: construct, assign).
     volatile int             pick      = 1;
     const grid_rational&     v         = pick ? below : two_100; // chosen at run time
-    huge                     a         = v;
+    huge                     a         = *huge::try_make(v);
     constexpr huge::raw_type raw_below = static_cast<huge::raw_type>(pow2(100) - big_int{1});
     EXPECT_TRUE(a.raw() == raw_below);
     a = two_100;
     EXPECT_TRUE(a == huge::from_raw(raw_2_100));
     using small = inside<{-5, 5}>;
     EXPECT_TRUE(small{grid_rational{-3}} == -3); // a value within 64 bits
-    // Out of range: checked throws, clamp saturates, try_make reports.
-    EXPECT_THROW(small{two_100}, inside_error);
+    // Out of range: try_make reports, clamp saturates (and a checked constant
+    // store, small{two_100}, does not compile).
+    EXPECT_EQ(small::try_make(two_100).error(), errc::overflow);
     EXPECT_TRUE((small{two_100, clamp}) == 5);
     EXPECT_TRUE((small{-far_out, clamp}) == -5);
     EXPECT_EQ(huge::try_make(above).error(), errc::overflow);
@@ -314,12 +316,12 @@ TEST(BigGridTest, continuous_past_64_bits) {
     EXPECT_EQ(to_string(b), "1/3");
     b = *parse<big_real>("123456789012345678901234567890/11");
     EXPECT_EQ(to_string(b), "123456789012345678901234567890/11");
-    EXPECT_THROW(b = -1, inside_error);
+    EXPECT_EQ(test::store_error<big_real>(test::at_run_time(-1)), errc::overflow);
     inside<{{0, 1e30_g}, max_denominator{1000}}, clamp> c = 0;
     c                                                     = huge::from_raw(raw_2_100);
     EXPECT_EQ(to_string(c), "1000000000000000000000000000000");
     inside<{{0, 1e30_g}, max_denominator{1000}}, wrap> w = 0;
-    w                                                    = far{huge::from_raw(raw_2_100_3)}; // 2^100 + 3 − 10^30
+    w = test::store<far>(huge::from_raw(raw_2_100_3)); // 2^100 + 3 − 10^30
     EXPECT_EQ(to_string(w), "267650600228229401496703205379");
     // + and × hold the exact value, in fractions sized from the bounds.
     const auto s = b + b;
@@ -348,7 +350,7 @@ TEST(BigGridTest, same_notch_store_between_unanchored_wide_grids) {
     using R = inside<{{0.125_g, 1180591620717411303424.125_g}, 0.25_g}>;
     const R r{rational{11, 8}};
     L       l{rational{-1, 8}};
-    l = r;
+    l = test::store<L>(r); // R's top is past L's: a checked store
     EXPECT_EQ(to_string(l), "1.375");
 }
 
@@ -418,9 +420,11 @@ TEST(WideGridTest, construction_from_scalars) {
 TEST(WideGridTest, assignment_policies) {
     // checked: off-lattice and out-of-range report.
     fine a = 1;
-    EXPECT_THROW((a = rational{1, std::int64_t{1} << 33}), inside_error); // half a notch
-    EXPECT_THROW(a = p34 + 1, inside_error);
-    EXPECT_THROW(a = -1, inside_error);
+    errc ae{};
+    a.policy(ae) = test::at_run_time(rational{1, std::int64_t{1} << 33}); // half a notch
+    EXPECT_EQ(ae, errc::rounding_error);
+    EXPECT_EQ(test::store_error<fine>(test::at_run_time(p34 + 1)), errc::overflow);
+    EXPECT_EQ(test::store_error<fine>(test::at_run_time(-1)), errc::overflow);
     EXPECT_TRUE(a == 1); // unchanged
 
     // rounding: half a notch rounds away from zero.
@@ -446,7 +450,7 @@ TEST(WideGridTest, assignment_policies) {
     EXPECT_TRUE(x == 3);
 
     // non-finite doubles.
-    EXPECT_THROW(x = std::numeric_limits<double>::infinity(), inside_error);
+    EXPECT_EQ(test::store_error<fine>(test::at_run_time(std::numeric_limits<double>::infinity())), errc::not_finite);
     c = std::numeric_limits<double>::infinity();
     EXPECT_TRUE(c == p34);
 }
@@ -457,7 +461,7 @@ TEST(WideGridTest, assignment_between_insides) {
     // wide → narrow: the narrow grid's notch is coarser, so it rounds toward zero.
     fine                            b = 41.75;
     inside<{0, 100}, round_nearest> n = 0;
-    n                                 = b;
+    n                                 = test::store<inside<{0, 100}, round_nearest>>(b);
     EXPECT_EQ(n.as<std::int64_t>(), 42);
     // wide → wide of another lattice.
     fine_signed s = b;
@@ -542,14 +546,15 @@ TEST(WideGridTest, exact_read_out) {
 
 TEST(WideGridTest, same_notch_assignment) {
     // A wider sum maps back by a raw shift; out of range runs the policy.
-    fine f = fine{1.5} + fine{2.25};
+    // (A sum's grid is wider than fine's: checked stores, reported.)
+    fine f = test::store<fine>(fine{1.5} + fine{2.25});
     EXPECT_TRUE(f == 3.75_r);
-    fine_signed g = fine{1.5} + fine{2.25}; // offset raw (Lower ≠ 0)
+    fine_signed g = test::store<fine_signed>(fine{1.5} + fine{2.25}); // offset raw (Lower ≠ 0)
     EXPECT_TRUE(g == 3.75_r);
-    g = fine_signed{-1.5} - fine{2.25};
+    g = test::store<fine_signed>(fine_signed{-1.5} - fine{2.25});
     EXPECT_TRUE(g == -3.75_r);
     const auto over = fine{rational{p34}} + fine{tick};
-    EXPECT_THROW(f = over, inside_error);
+    EXPECT_EQ(test::store_error<fine>(over), errc::overflow);
     fine_clamp c = 0;
     c            = over;
     EXPECT_TRUE(c == rational{p34});
@@ -572,7 +577,7 @@ TEST(WideGridTest, sum) {
     using coarse = inside<{0, 100}, round_nearest>;
     EXPECT_TRUE(beman::inside::sum<coarse>(std::vector<fine>(3, fine{2.25})) == 7);
     using six = inside<{0, 6}>;
-    EXPECT_THROW((void)beman::inside::sum<six>(std::vector<fine>(3, fine{2.25})), inside_error);
+    EXPECT_EQ(beman::inside::sum<six>(std::vector<fine>(3, fine{2.25})).error(), errc::overflow);
 }
 
 TEST(WideGridTest, to_string) {
@@ -668,9 +673,9 @@ TEST(WideGridTest, modulo) {
 TEST(WideGridTest, clamp_and_wrap_actions) {
     // on_clamp: the overshoot is an inside for every source, as on the builtin
     // paths.
-    fine         c                                                 = 0;
-    std::int64_t over                                              = 0;
-    c.on_clamp([&](auto&, auto o) { over = as<std::int64_t>(o); }) = p34 + 5;
+    fine         c                                                               = 0;
+    std::int64_t over                                                            = 0;
+    c.on_clamp([&](auto&, auto o) { over = test::unwrap(to<std::int64_t>(o)); }) = p34 + 5;
     EXPECT_TRUE(c == p34);
     EXPECT_EQ(over, 5);
     bool frac_ok                                                         = false;
@@ -695,7 +700,9 @@ TEST(WideGridTest, clamp_and_wrap_actions) {
 // clamp stores the limit and reports the overshoot, wrap folds by the span
 // and reports the carry.
 TEST(WideGridTest, hooks_on_a_wide_continuous_grid) {
-    using C = inside<{{-0x1p70, 0x1p70}, max_denominator{3}}>;
+    // (round_nearest: a sum of two B values may have a denominator past 3,
+    // which a store through a hook alone cannot report.)
+    using C = inside<{{-0x1p70, 0x1p70}, max_denominator{3}}, round_nearest>;
     using B = inside<{{-0x1p80, 0x1p80}, max_denominator{3}}>;
     static_assert(detail::fraction_storage<C>);
 
@@ -719,21 +726,21 @@ TEST(WideGridTest, hooks_on_a_wide_continuous_grid) {
     std::int64_t carry = 7;
     x.on_wrap([&](auto&, auto k) {
         static_assert(insidable<decltype(k)>);
-        carry = as<std::int64_t>(k);
+        carry = test::unwrap(to<std::int64_t>(k));
     })                 = B{0x1p71} + B{rational{1, 3}};
     EXPECT_EQ(carry, 1);
     EXPECT_TRUE((x == B{rational{1, 3}}));
-    x.on_wrap([&](auto&, auto k) { carry = as<std::int64_t>(k); }) = -0x1p72;
+    x.on_wrap([&](auto&, auto k) { carry = test::unwrap(to<std::int64_t>(k)); }) = -0x1p72;
     EXPECT_EQ(carry, -2);
     EXPECT_TRUE(x == B{0});
-    x.on_wrap([&](auto&, auto k) { carry = as<std::int64_t>(k); }) = 0x1p72 + 0x1p70;
+    x.on_wrap([&](auto&, auto k) { carry = test::unwrap(to<std::int64_t>(k)); }) = 0x1p72 + 0x1p70;
     EXPECT_EQ(carry, 3);
     EXPECT_TRUE(x == B{-0x1p70});
 }
 
 // A source past the 64-bit rational into a rational inside: both hooks.
 TEST(WideGridTest, hooks_on_a_rational_inside_from_a_wide_source) {
-    using R = inside<{{-10, 10}, max_denominator{4}}>;
+    using R = inside<{{-10, 10}, max_denominator{4}}, round_nearest>; // (as above)
     using B = inside<{{-0x1p80, 0x1p80}, max_denominator{3}}>;
     static_assert(detail::rational_storage<R>);
     R    r{0};
@@ -815,9 +822,12 @@ TEST(WideGridTest, limb_edges) {
 
     // += across the 64-bit index boundary, by a point delta and by a raw.
     over64 c = rational{u64_max, 4}; // index 2^64 − 1
-    c += just<1, 4>;                 // index 2^64
+    errc   ec{};                     // (a checked += names its channel)
+    c.policy(ec) += just<1, 4>;      // index 2^64
+    EXPECT_EQ(ec, errc{});
     EXPECT_TRUE(c.raw() == (detail::wide_uint<2>{1} << 64));
-    EXPECT_THROW((c += just<1, 4>), inside_error); // past the top
+    c.policy(ec) += just<1, 4>; // past the top
+    EXPECT_EQ(ec, errc::overflow);
     inside<{{rational{0}, rational{std::uint64_t{1} << 62}}, per<4>}, wrap> w = rational{std::uint64_t{1} << 62};
     w += just<1, 4>; // wraps to 0
     EXPECT_TRUE(w == 0);
@@ -1067,7 +1077,7 @@ std::string sweep(const T a, const T b, std::mt19937_64& g) {
 TEST(BigGridsSweepTest, every_operation_past_64_bits) {
     std::mt19937_64 g{7};
     const auto      run = [&]<class T>(std::type_identity<T>, auto lo, auto hi) {
-        EXPECT_FALSE(sweep<T>(T{lo}, T{hi}, g).empty());
+        EXPECT_FALSE(sweep<T>(test::store<T>(lo), test::store<T>(hi), g).empty());
     };
     using WI = inside<{0, 1180591620717411303424_g}, round_nearest>;
     using WN = inside<{1267650600228229401496703205376_g, 1267650600228229401496703205386_g}, round_nearest>;

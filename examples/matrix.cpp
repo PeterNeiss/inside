@@ -84,22 +84,22 @@ int main() {
     const std::array<fib, 4> step{1, 1, 1, 0};
     std::array<fib, 4>       power{1, 0, 0, 1};
     std::array<fib, 4>       next{};
+    // fib's range holds no product of two fib matrices: matrix_product
+    // returns an expected<void, errc>, the first element that does not fit.
     for (int n = 1; n <= 92; ++n) {
-        matrix_product(std::mdspan{power.data(), matrix{}},
-                       std::mdspan{step.data(), matrix{}},
-                       std::mdspan{next.data(), matrix{}});
+        if (!matrix_product(std::mdspan{power.data(), matrix{}},
+                            std::mdspan{step.data(), matrix{}},
+                            std::mdspan{next.data(), matrix{}}))
+            return 1;
         power = next;
     }
     std::cout << "F(93)       " << power[0] << "\n";
     if (to_string(power[0]) != "12200160415121876738")
         return 1;
-    try {
-        matrix_product(std::mdspan{power.data(), matrix{}},
-                       std::mdspan{step.data(), matrix{}},
-                       std::mdspan{next.data(), matrix{}});
+    const auto f94 = matrix_product(
+        std::mdspan{power.data(), matrix{}}, std::mdspan{step.data(), matrix{}}, std::mdspan{next.data(), matrix{}});
+    if (f94)
         return 1; // F(94) must not fit
-    } catch (const inside_error& e) {
-        std::cout << "F(94)       " << e.what() << "\n";
-    }
+    std::cout << "F(94)       " << errc_message(f94.error()) << "\n";
     return 0;
 }

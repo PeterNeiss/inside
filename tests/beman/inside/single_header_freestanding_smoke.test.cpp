@@ -31,9 +31,9 @@ int main() {
     beman::inside::inside<{0, 100}> x{0};
     x.policy(ec) = 150;
 
-    // a checked arithmetic op that stays in range
-    beman::inside::inside<{0, 100}, beman::inside::checked> s{40};
-    s = s + beman::inside::inside<{0, 100}, beman::inside::checked>{10}; // 50
+    // a checked arithmetic op that stays in range: its result's own grid
+    const beman::inside::inside<{0, 100}, beman::inside::checked> s0{40};
+    const auto s = s0 + beman::inside::inside<{0, 10}, beman::inside::checked>{10}; // 50, on [0, 110]
 
     std::printf("a=%d w=%d s=%d ec=%d\n",
                 static_cast<int>(beman::inside::detail::to_value(a)),

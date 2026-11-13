@@ -41,11 +41,14 @@ int main() {
     if (a * b != just<203, 8>) // 25.375
         return 1;
 
-    // Storing a product back onto Q8.8: mul<q8_8> rounds once, by the mode given.
+    // Storing a product back onto Q8.8: mul<q8_8> rounds once, by the mode
+    // given. A product of two Q8.8 can pass Q8.8's range: an expected.
     const q8_8 gain{just<257, (1 << 8)>}; // 1.00390625
     const auto scaled = mul<q8_8>(b, gain, round_nearest);
-    std::cout << "7.25 * 1.00390625 = " << b * gain << " -> Q8.8 " << scaled << "\n";
-    if (scaled != just<1863, (1 << 8)>) // 1863.25/256 rounds to 1863/256
+    if (!scaled)
+        return 1;
+    std::cout << "7.25 * 1.00390625 = " << b * gain << " -> Q8.8 " << *scaled << "\n";
+    if (*scaled != just<1863, (1 << 8)>) // 1863.25/256 rounds to 1863/256
         return 1;
 
     // Storing onto the 0.5 °C grid rounds by the type's policy; a reading is a

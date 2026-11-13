@@ -30,8 +30,10 @@ int main() {
     //    raw add of two 64-bit limbs.
     const metres start{1'433'000'000'000, si::metre};
     const leg    step = just<1000> * si::kilo(si::metre) + just<1> * si::nano(si::metre); // 1e6 m + 1 nm
-    metres       x    = start;
-    double       xd   = 1.433e12;
+    // (x's grid holds a million legs, which its type cannot show for a
+    // run-time count: the accumulator clamps at ±10^13 m. It never does here.)
+    quantity<si::metre, inside<grid_of<metres::rep>, clamp>> x  = start;
+    double                                                   xd = 1.433e12;
     for (int i = 0; i < 1'000'000; ++i) {
         x += step;
         xd += 1e6 + 1e-9;

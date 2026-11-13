@@ -67,24 +67,20 @@ TEST(RationalTest, rational_construction_normalises) {
     }
 
     {
+        // (A detail rational built at run time: its checks are preconditions.)
         SCOPED_TRACE("denominator zero: division_by_zero, as parse(\"1/0\")");
-        ASSERT_THROW((void)((rational{1u, 0})), beman::inside::inside_error);
-        ASSERT_THROW((void)((rational{1, 0})), beman::inside::inside_error);
-        try {
-            (void)rational{1, 0};
-        } catch (const beman::inside::inside_error& e) {
-            EXPECT_EQ(e.Code, errc::division_by_zero);
-        }
+        EXPECT_DEATH((void)((rational{1u, test::at_run_time(0)})), "zero denominator");
+        EXPECT_DEATH((void)((rational{1, test::at_run_time(0)})), "zero denominator");
     }
 
     {
         SCOPED_TRACE("denominator int64_min throws (cannot be negated without UB)");
         constexpr auto imin = std::numeric_limits<std::int64_t>::min();
-        ASSERT_THROW((void)((rational{1u, imin})), beman::inside::inside_error);
-        ASSERT_THROW((void)((rational{1, imin})), beman::inside::inside_error);
+        EXPECT_DEATH((void)((rational{1u, test::at_run_time(imin)})), "int64_min");
+        EXPECT_DEATH((void)((rational{1, test::at_run_time(imin)})), "int64_min");
         // Negative-num path: the validation must run BEFORE the mem-init
         // negation, otherwise -int64_min would be signed overflow (UB).
-        ASSERT_THROW((void)((rational{-1, imin})), beman::inside::inside_error);
+        EXPECT_DEATH((void)((rational{-1, test::at_run_time(imin)})), "int64_min");
     }
 
     {
@@ -417,7 +413,7 @@ TEST(RationalTest, rational_conversion_to_integer_float) {
     {
         SCOPED_TRACE("to_unsigned floors, rejects negatives");
         ASSERT_TRUE((static_cast<unsigned>(rational{7u, 2}) == 3u));
-        ASSERT_THROW((void)(static_cast<unsigned>(rational{7, -2})), beman::inside::inside_error);
+        EXPECT_DEATH((void)(static_cast<unsigned>(rational{7, test::at_run_time(-2)})), "negative rational");
     }
 
     {
@@ -602,9 +598,9 @@ TEST(BigRationalTest, runtime_comparison_of_small_values_forms_no_big_value) {
 
 TEST(BigRationalTest, runtime_overflow_is_reported) {
     volatile std::uint64_t big = ~std::uint64_t{0};
-    EXPECT_THROW(
+    EXPECT_DEATH(
         (void)big_int::mul(big_int{static_cast<std::uint64_t>(big)}, big_int{static_cast<std::uint64_t>(big)}),
-        beman::inside::inside_error);
+        "64 bits");
 }
 } // namespace big_rational_tests
 
@@ -1077,9 +1073,9 @@ TEST(NumbersTest, abs_fraction_handles_values_ge_2_53) {
 
 // abs_fraction throws on non-finite
 TEST(NumbersTest, abs_fraction_throws_on_non_finite) {
-    ASSERT_THROW((void)(abs_fraction(std::numeric_limits<double>::infinity())), beman::inside::inside_error);
-    ASSERT_THROW((void)(abs_fraction(-std::numeric_limits<double>::infinity())), beman::inside::inside_error);
-    ASSERT_THROW((void)(abs_fraction(std::numeric_limits<double>::quiet_NaN())), beman::inside::inside_error);
+    ASSERT_DEATH((void)(abs_fraction(std::numeric_limits<double>::infinity())), "beman::inside");
+    ASSERT_DEATH((void)(abs_fraction(-std::numeric_limits<double>::infinity())), "beman::inside");
+    ASSERT_DEATH((void)(abs_fraction(std::numeric_limits<double>::quiet_NaN())), "beman::inside");
 }
 
 // rational from large doubles
@@ -1096,8 +1092,8 @@ TEST(NumbersTest, rational_from_large_doubles) {
 
 // rational rejects non-finite double
 TEST(NumbersTest, rational_rejects_non_finite_double) {
-    ASSERT_THROW((void)(rational{std::numeric_limits<double>::infinity()}), beman::inside::inside_error);
-    ASSERT_THROW((void)(rational{std::numeric_limits<double>::quiet_NaN()}), beman::inside::inside_error);
+    ASSERT_DEATH((void)(rational{std::numeric_limits<double>::infinity()}), "beman::inside");
+    ASSERT_DEATH((void)(rational{std::numeric_limits<double>::quiet_NaN()}), "beman::inside");
 }
 
 // scale_pow2 (the exp kernels' scaling) gives ldexp's bits for every k,
@@ -1184,7 +1180,7 @@ using namespace beman::inside::detail;
 // rational{unsigned, unsigned} with a den past int64: the cast to the signed
 // denominator flipped the sign silently.
 TEST(InternalsTest, rational_of_two_unsigned_rejects_a_large_denominator) {
-    EXPECT_THROW((void)(rational{1u, 0x8000'0000'0000'0001ull}), inside_error);
+    EXPECT_DEATH((void)(rational{1u, 0x8000'0000'0000'0001ull}), "beman::inside");
     static_assert(rational{1u, 0x7FFF'FFFF'FFFF'FFFFull} > rational{0});
 }
 
@@ -1193,8 +1189,8 @@ TEST(InternalsTest, rational_of_two_unsigned_rejects_a_large_denominator) {
 // was −1.
 TEST(InternalsTest, rational_of_any_integers_rejects_a_large_denominator) {
     constexpr std::uint64_t u64_max = std::numeric_limits<std::uint64_t>::max();
-    EXPECT_THROW((void)(rational(1, test::at_run_time(u64_max))), inside_error);
-    EXPECT_THROW((void)(rational(-1, test::at_run_time(std::uint64_t{1} << 63))), inside_error);
+    EXPECT_DEATH((void)(rational(1, test::at_run_time(u64_max))), "beman::inside");
+    EXPECT_DEATH((void)(rational(-1, test::at_run_time(std::uint64_t{1} << 63))), "beman::inside");
     static_assert(rational(-3, std::uint64_t{6}) == rational{-1, 2});
     static_assert(rational(3u, -6) == rational{-1, 2} && rational(-3, -6) == rational{1, 2});
     constexpr int         i = 3;
@@ -1207,8 +1203,8 @@ TEST(InternalsTest, rational_of_any_integers_rejects_a_large_denominator) {
 // int64 they raise overflow (fail/rational_trunc_past_int64 while compiling).
 TEST(InternalsTest, rational_rounding_to_int64_at_its_limits) {
     constexpr std::int64_t i64_min = std::numeric_limits<std::int64_t>::min();
-    EXPECT_THROW((void)trunc(rational{test::at_run_time(std::uint64_t{1} << 63)}), inside_error);
-    EXPECT_THROW((void)floor(rational{test::at_run_time((std::uint64_t{1} << 63) + 1), -1}), inside_error);
+    EXPECT_DEATH((void)trunc(rational{test::at_run_time(std::uint64_t{1} << 63)}), "beman::inside");
+    EXPECT_DEATH((void)floor(rational{test::at_run_time((std::uint64_t{1} << 63) + 1), -1}), "beman::inside");
     static_assert(trunc(rational{std::uint64_t{1} << 63, -1}) == i64_min);
     static_assert(floor(rational{(std::uint64_t{1} << 63) - 1, -1}) == i64_min + 1);
     static_assert(ceil(rational{(std::uint64_t{1} << 63) - 3, 2u}) == (std::int64_t{1} << 62) - 1);

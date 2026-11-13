@@ -89,9 +89,12 @@ TEST(PolicyActionsTest, try_make_on_fixed_point_grids) {
         auto low = fp::try_make(-0.5);
         ASSERT_FALSE(low.has_value());
 
-        // in-place increment past upper bound reports through the checked policy
-        fp top = fp::try_make(255.0).value();
-        ASSERT_ANY_THROW(++top);
+        // ++ may step past the upper bound: it names a channel
+        static_assert(!test::can_step<fp>);
+        fp   top = fp::try_make(255.0).value();
+        errc ec{};
+        top.policy(ec) += inside<grid{notch_of<fp>}>::from_raw({});
+        ASSERT_EQ(ec, errc::overflow);
     }
 
     {
@@ -348,7 +351,7 @@ TEST(PolicyActionsTest, policy_ec_catches_rounding_error_on_float_assignment) {
 // into another inside; an `int64` callback parameter still binds.
 TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_every_source) {
     using sec = inside<{0, 59}, wrap>;
-    using min = inside<{0, 59}>;
+    using min = inside<{0, 59}, clamp>; // (the carries stay in range)
     auto run  = [](auto src) {
         sec seconds{0};
         min minutes{0};
@@ -361,8 +364,18 @@ TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_every_source) {
     };
     run(125);
     run(std::uint8_t{125});
-    run(125.0);
     run(125_ins);
+    {
+        // A double: a constant (a run-time one needs a report channel).
+        sec seconds{0};
+        min minutes{0};
+        seconds.on_wrap([&](auto&, auto carry) {
+            static_assert(insidable<decltype(carry)>);
+            minutes += carry;
+        }) = 125.0;
+        EXPECT_EQ(seconds, 5);
+        EXPECT_EQ(minutes, 2);
+    }
 
     // An integer source's carry grid comes from its type's limits.
     sec s{0};
@@ -385,16 +398,28 @@ TEST(PolicyActionsTest, on_clamp_overshoot_is_an_inside_for_every_source) {
         std::int64_t got = -1;
         x.on_clamp([&](auto&, auto over) {
             static_assert(insidable<decltype(over)>);
-            got = as<std::int64_t>(over);
+            got = test::unwrap(to<std::int64_t>(over));
         })               = src;
         EXPECT_EQ(x, 100);
         EXPECT_EQ(got, expected);
     };
     run(150, 50);
     run(std::uint8_t{200}, 100);
-    run(150.0, 50);
-    run(rational{150}, 50);
     run(150_ins, 50);
+    // A double or a rational: a constant (a run-time one needs a report channel).
+    for (const auto store :
+         {+[](pct& x, std::int64_t& got) {
+              x.on_clamp([&](auto&, auto over) { got = test::unwrap(to<std::int64_t>(over)); }) = 150.0;
+          },
+          +[](pct& x, std::int64_t& got) {
+              x.on_clamp([&](auto&, auto over) { got = test::unwrap(to<std::int64_t>(over)); }) = rational{150};
+          }}) {
+        pct          x{0};
+        std::int64_t got = -1;
+        store(x, got);
+        EXPECT_EQ(x, 100);
+        EXPECT_EQ(got, 50);
+    }
 
     // An integer source's overshoot grid is its type's limits minus the limits.
     pct y{0};
@@ -431,7 +456,7 @@ TEST(PolicyActionsTest, on_clamp_overshoot_is_exact) {
     EXPECT_TRUE(exact);
 
     if constexpr (std::numeric_limits<long double>::digits > 53) {
-        const long double ld = 150.25L + 0x1p-55L; // past a double's precision at 150
+        constexpr long double ld = 150.25L + 0x1p-55L; // past a double's precision at 150
         x.on_clamp([&](auto&, auto over) { exact = over == inside<{{0, 64}, 0x1p-55}>{50.25L + 0x1p-55L}; }) = ld;
         EXPECT_TRUE(exact);
     }
@@ -739,11 +764,13 @@ TEST(PolicyHandleTest, the_handle_converts_to_a_value) {
 }
 } // namespace with_methods_tests
 
-// The replaceable failure handler (beman/inside/inside/detail/error.hpp). A checked violation
-// funnels through beman::inside::detail::raise -> the installed handler. By default that
-// throws beman::inside::inside_error carrying the originating errc; set_error_handler swaps
-// in a user handler (e.g. a bare-metal reset/log) without any <system_error>
-// dependency. These tests cover both the default and a custom handler.
+// The replaceable failure handler (beman/inside/inside/detail/error.hpp). A
+// failure a program can expect is a value (an expected, an errc&, a hook); a
+// store the grids cannot prove does not compile without one. What is left -
+// a precondition such as a cursor stepped past its end - funnels through
+// beman::inside::detail::raise -> the installed handler. By default that
+// prints the message and aborts; set_error_handler swaps in a user handler
+// (a bare-metal reset/log, or here a throw the test can observe).
 namespace error_handler_tests {
 using namespace beman::inside;
 
@@ -768,86 +795,32 @@ struct scoped_handler {
     explicit scoped_handler(error_handler_t h) : prev(set_error_handler(h)) {}
     ~scoped_handler() { set_error_handler(prev); }
 };
+
+// A precondition broken at run time: a cursor stepped past its end.
+void step_past_the_end() {
+    cursor<inside<{0, 3}>> t;
+    t = end(t);
+    ++t;
+}
 } // namespace
 
-// default handler throws inside_error carrying the code / overflow on out-of-range assignment
-TEST(ErrorHandlerTest, default_handler_throws_inside_error_carrying_the_code__overflow_on_out_of_range_assignment) {
-    using c100 = inside<{0, 100}, checked>;
-
-    {
-        SCOPED_TRACE("overflow on out-of-range assignment");
-        try {
-            c100 x{200};
-            (void)x;
-            FAIL() << "expected throw";
-        } catch (const inside_error& e) {
-            ASSERT_EQ(e.Code, errc::overflow);
-        }
-    }
-
-    // what() defaults to the static category message.
-    try {
-        c100 x{200};
-        (void)x;
-    } catch (const inside_error& e) {
-        ASSERT_EQ(std::string_view{e.what()}, errc_message(errc::overflow));
-    }
+// The default handler prints the message and aborts.
+TEST(ErrorHandlerTest, default_handler_prints_and_aborts) {
+    EXPECT_DEATH(step_past_the_end(), "beman::inside: value does not fit its range");
 }
 
-// default handler throws inside_error carrying the code / rounding_error on off-notch checked cast
-TEST(ErrorHandlerTest,
-     default_handler_throws_inside_error_carrying_the_code__rounding_error_on_off_notch_checked_cast) {
+// What a program can expect is reported as a value, not to the handler.
+TEST(ErrorHandlerTest, expected_failures_are_values) {
+    using coarse = inside<{{0, 10}, 2}>; // notch 2: 3 doesn't land
+    EXPECT_EQ(checked_cast<coarse>(test::at_run_time(3)).error(), errc::rounding_error);
+    using R = inside<{{0, 1}, per<16>}>;
+    EXPECT_EQ(test::store_error<R>(test::at_run_time(std::numeric_limits<double>::infinity())), errc::not_finite);
     using c100 = inside<{0, 100}, checked>;
-
-    {
-        SCOPED_TRACE("rounding_error on off-notch checked cast");
-        using coarse = inside<{{0, 10}, 2}>; // notch 2: 3 doesn't land
-        try {
-            (void)checked_cast<coarse>(3);
-            FAIL() << "expected throw";
-        } catch (const inside_error& e) {
-            ASSERT_EQ(e.Code, errc::rounding_error);
-        }
-    }
-
-    // what() defaults to the static category message.
-    try {
-        c100 x{200};
-        (void)x;
-    } catch (const inside_error& e) {
-        ASSERT_EQ(std::string_view{e.what()}, errc_message(errc::overflow));
-    }
-}
-
-// default handler throws inside_error carrying the code / not_finite on non-finite double input
-TEST(ErrorHandlerTest, default_handler_throws_inside_error_carrying_the_code__not_finite_on_non_finite_double_input) {
-    using c100 = inside<{0, 100}, checked>;
-
-    {
-        SCOPED_TRACE("not_finite on non-finite double input");
-        using R = inside<{0.0, 1.0}>;
-        try {
-            R r{std::numeric_limits<double>::infinity()};
-            (void)r;
-            FAIL() << "expected throw";
-        } catch (const inside_error& e) {
-            ASSERT_EQ(e.Code, errc::not_finite);
-        }
-    }
-
-    // what() defaults to the static category message.
-    try {
-        c100 x{200};
-        (void)x;
-    } catch (const inside_error& e) {
-        ASSERT_EQ(std::string_view{e.what()}, errc_message(errc::overflow));
-    }
+    EXPECT_EQ(c100::try_make(test::at_run_time(200)).error(), errc::overflow);
 }
 
 // set_error_handler redirects failures and is restorable
 TEST(ErrorHandlerTest, set_error_handler_redirects_failures_and_is_restorable) {
-    using c100 = inside<{0, 100}, checked>;
-
     error_handler_t before = get_error_handler();
     {
         scoped_handler guard{&recording_handler};
@@ -855,16 +828,16 @@ TEST(ErrorHandlerTest, set_error_handler_redirects_failures_and_is_restorable) {
 
         g_seen = errc{};
         try {
-            c100 x{200};
-            (void)x;
+            step_past_the_end();
+            FAIL() << "expected the handler";
         } catch (const handler_fired& f) {
             ASSERT_EQ(f.code, errc::overflow);
+            ASSERT_EQ(std::string_view{f.what}, errc_message(errc::overflow));
         }
         ASSERT_EQ(g_seen, errc::overflow);
     }
     // Default restored after the guard.
     ASSERT_EQ(get_error_handler(), before);
-    ASSERT_THROW((void)((c100{200})), inside_error);
 
     // A null handler restores the default too.
     set_error_handler(&recording_handler);
@@ -872,51 +845,44 @@ TEST(ErrorHandlerTest, set_error_handler_redirects_failures_and_is_restorable) {
     ASSERT_EQ(get_error_handler(), before);
 }
 
-// A zero divisor in a compound division reaches the installed handler like
-// any failed store. (No inside stores a std::expected; a rational's
-// arithmetic, whose zero divisor is a compile error, runs only at compile time.)
-TEST(ErrorHandlerTest, compound_zero_divisor_reaches_the_handler) {
-    scoped_handler guard{&recording_handler};
-    g_seen = errc{};
-    try {
-        inside<{0, 10}>      x{5};
-        const inside<{0, 1}> zero{0};
-        x /= zero;
-    } catch (const handler_fired& f) {
-        EXPECT_EQ(f.code, errc::division_by_zero);
-    }
-    EXPECT_EQ(g_seen, errc::division_by_zero);
+// A zero divisor in a compound division is no handler's: it needs a channel.
+TEST(ErrorHandlerTest, compound_zero_divisor_names_a_channel) {
+    using x_t    = inside<{0, 10}, round_toward_zero>;
+    using zero_t = inside<{0, 1}>;
+    static_assert(!test::can_div<x_t, zero_t>);
+    x_t  x{5};
+    errc ec{};
+    x.policy(ec) /= zero_t{0};
+    EXPECT_EQ(ec, errc::division_by_zero);
+    EXPECT_EQ(x, 5);
 }
 
 // The handler is atomic: installing one while other threads raise is no data
 // race (the weekly TSan run checks it).
 TEST(ErrorHandlerTest, handler_swaps_while_other_threads_raise) {
-    using c100 = inside<{0, 100}, checked>;
-    // No shared state in the handler: only the handler pointer is contended.
+    // No shared state in the handlers: only the handler pointer is contended.
     constexpr error_handler_t quiet  = [](errc code, const char* what) { throw handler_fired{code, what}; };
-    const error_handler_t     before = get_error_handler();
+    constexpr error_handler_t quiet2 = [](errc code, const char* what) { throw handler_fired{code, what}; };
+    const scoped_handler      guard{quiet};
     std::atomic<int>          caught{0};
     std::vector<std::thread>  raisers;
     for (int t = 0; t < 4; ++t)
         raisers.emplace_back([&] {
             for (int i = 0; i < 200; ++i)
                 try {
-                    c100 x{200};
-                    (void)x;
-                } catch (const inside_error&) {
-                    ++caught;
+                    step_past_the_end();
                 } catch (const handler_fired&) {
                     ++caught;
                 }
         });
     for (int i = 0; i < 200; ++i) {
-        const error_handler_t prev = set_error_handler(quiet);
+        const error_handler_t prev = set_error_handler(quiet2);
         set_error_handler(prev);
     }
     for (auto& r : raisers)
         r.join();
     EXPECT_EQ(caught.load(), 4 * 200);
-    EXPECT_EQ(get_error_handler(), before);
+    EXPECT_EQ(get_error_handler(), quiet);
 }
 } // namespace error_handler_tests
 
@@ -932,7 +898,7 @@ namespace {
 using num_t = inside<{0, 100}>;
 using den_t = inside<{-5, 5}>; // spans zero → division returns expected
 
-std::expected<num_t, errc> num_ok(int v) { return num_t{v}; }
+std::expected<num_t, errc> num_ok(int v) { return num_t::try_make(v); }
 std::expected<num_t, errc> num_err(errc e) { return std::unexpected{e}; }
 } // namespace
 
@@ -1225,26 +1191,32 @@ TEST(PolicyTest, policy_handle_zero_divisor_does_not_divide) {
     b.policy<unsafe>() %= X{0};
     b.policy() /= Z{0};
     EXPECT_EQ(b, 6);
-    EXPECT_THROW(b.policy() /= X{0}, inside_error);
-    EXPECT_THROW(b.policy() %= X{0}, inside_error);
+    // A checked divisor that may be 0 needs a channel for it.
+    static_assert(!test::can_div<decltype(b.policy()), X> && !test::can_mod<decltype(b.policy()), X>);
     errc ec{};
     b.policy(ec) %= X{0};
     EXPECT_EQ(ec, errc::division_by_zero);
     EXPECT_EQ(b, 6);
-    b.policy() /= X{3};
+    ec = errc{};
+    b.policy(ec) /= X{3};
+    EXPECT_EQ(ec, errc{});
     EXPECT_EQ(b, 2);
 }
 
 //---------------------------------------------------------------------------
 // inside.hpp — operator+=(insidable) result out of range, checked policy with
-// no clamp/wrap handler -> report (throws).
+// no clamp/wrap handler: a channel, which reports.
 //---------------------------------------------------------------------------
-// checked += insidable overflow reports (throws)
-TEST(PolicyTest, checked_compound_overflow_throws) {
+// checked += insidable overflow reports
+TEST(PolicyTest, checked_compound_overflow_reports) {
     using c100 = inside<{0, 100}, checked>;
+    static_assert(!test::can_add<c100, c100>);
     c100 a{80};
     c100 b{50};
-    ASSERT_THROW((void)(a += b), beman::inside::inside_error); // 130 not in [0,100]
+    errc ec{};
+    a.policy(ec) += b; // 130 not in [0,100]
+    ASSERT_EQ(ec, errc::overflow);
+    ASSERT_EQ(a, 80);
 }
 
 //---------------------------------------------------------------------------
@@ -1331,7 +1303,10 @@ TEST(PolicyTest, unsafe_stores_without_a_range_check) {
 TEST(PolicyTest, checked_range_check_fires) {
     using L = inside<{0, 100}, checked>;
     L b{50};
-    ASSERT_THROW((void)((b += inside<{0, 200}>{200})), beman::inside::inside_error);
+    static_assert(!test::can_add<L, inside<{0, 200}>>);
+    errc ec{};
+    b.policy(ec) += inside<{0, 200}>{200};
+    ASSERT_EQ(ec, errc::overflow);
 }
 
 // clamp policy: range check still fires
@@ -1374,7 +1349,7 @@ using namespace beman::inside;
 TEST(PoliciesArmTest, policy_ref_remainder) {
     inside<{0, 10}> b{7};
     volatile int    four = 4;
-    b.policy<wrap>() %= inside<{1, 10}>{static_cast<int>(four)};
+    b.policy<wrap>() %= test::store<inside<{1, 10}>>(static_cast<int>(four));
     EXPECT_TRUE(b == 3);
 }
 } // namespace reached_arms_tests
@@ -1394,6 +1369,15 @@ bool carry_is(V v, Want want) {
     x.on_wrap([&](auto&, auto carry) { ok = carry == want; }) = v;
     return ok;
 }
+// The same for a constant V (a double or a rational through a hook is a
+// constant: a run-time one needs a report channel).
+template <class L, auto V, class Want>
+bool carry_is(Want want) {
+    L    x{};
+    bool ok                                                   = false;
+    x.on_wrap([&](auto&, auto carry) { ok = carry == want; }) = V;
+    return ok;
+}
 
 TEST(PolicyActionsTest, wrap_carry_past_int64_is_exact) {
     using digit   = inside<{0, 9}, wrap>;
@@ -1406,10 +1390,10 @@ TEST(PolicyActionsTest, wrap_carry_past_int64_is_exact) {
     EXPECT_TRUE(
         (carry_is<digit>(test::at_run_time(std::numeric_limits<std::uint64_t>::max()), just<1844674407370955161_g>)));
     // A double source: the carry grid spans the double's range.
-    EXPECT_TRUE((carry_is<digit>(test::at_run_time(0x1p100), just<126765060022822940149670320537_g>)));
-    EXPECT_TRUE((carry_is<digit>(test::at_run_time(-0x1p100), just<-126765060022822940149670320538_g>)));
+    EXPECT_TRUE((carry_is<digit, 0x1p100>(just<126765060022822940149670320537_g>)));
+    EXPECT_TRUE((carry_is<digit, -0x1p100>(just<-126765060022822940149670320538_g>)));
     // A rational source, and an inside one into a fractional destination.
-    EXPECT_TRUE((carry_is<quarter>(rational{229, 4}, 5)));
+    EXPECT_TRUE((carry_is<quarter, rational{229, 4}>(5)));
     EXPECT_TRUE((carry_is<quarter>(inside<{{0, 20}, per<4>}>{15}, 1)));
     // The carry's type holds every carry of the source kind.
     digit d{};

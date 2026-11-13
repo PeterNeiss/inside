@@ -75,8 +75,12 @@ int main() {
 
     std::cout << "err      integ     cmd\n";
     for (double e : errors) {
-        err_t err{e, si::kelvin};
-        auto  cmd = loop.step(err);
+        // A run-time double is stored with try_make (a NaN would be its error).
+        const auto stored = err_t::try_make(e, si::kelvin);
+        if (!stored)
+            return 1;
+        const err_t err = *stored;
+        auto        cmd = loop.step(err);
         std::cout << err << "    " << loop.integral << "   " << cmd << "\n";
     }
     std::cout << "\nintegrator saturation events: " << loop.windup_events << "\n";

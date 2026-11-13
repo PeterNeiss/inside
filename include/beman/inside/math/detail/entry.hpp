@@ -761,7 +761,7 @@ struct pow_fn : rounding_fn<2> {
                             return std::unexpected(errc::division_by_zero);
                         return Out::try_make(e.Num.is_zero() ? 1 : 0); // Out's policy: range, clamp
                     } else
-                        return Out{e.Num.is_zero() ? 1 : 0};
+                        return beman::inside::detail::stored<Out>(e.Num.is_zero() ? 1 : 0);
                 }
                 constexpr int KMax = engine::pow_out_kmax<Out, InB, InE>;
                 using core         = engine::pow_core<engine::input_limbs<InB>,
@@ -828,6 +828,30 @@ struct pow_base_fn : rounding_fn<1> {
     }
 };
 } // namespace beman::inside::math::detail::entry
+
+namespace beman::inside::math::detail {
+// The grids over which a deduced output (and so a checked named one) exists.
+template <class In>
+inline constexpr bool range_bounded<entry::exp_fn, In> = engine::max_abs_int<In> <= 4096;
+template <class In>
+inline constexpr bool range_bounded<entry::exp2_fn, In> = engine::max_abs_int<In> <= 4096;
+template <class In>
+inline constexpr bool range_bounded<entry::sinh_fn, In> = engine::max_abs_int<In> <= 4096;
+template <class In>
+inline constexpr bool range_bounded<entry::cosh_fn, In> = engine::max_abs_int<In> <= 4096;
+template <insidable InB, insidable InE>
+consteval bool pow_bounded() {
+    if constexpr (!(lower_of<InB> > 0))
+        return false;
+    else
+        return engine::max_abs_int<InE> * engine::log2_span<InB> <= (1 << 16);
+}
+template <class InB, class InE>
+inline constexpr bool range_bounded<entry::pow_fn, InB, InE> = pow_bounded<InB, InE>();
+template <auto Base, class In>
+inline constexpr bool range_bounded<entry::pow_base_fn<Base>, In> =
+    engine::max_abs_int<In> <= (std::numeric_limits<int>::max() - 2) / engine::base_bits<Base>;
+} // namespace beman::inside::math::detail
 
 #undef BEMAN_INSIDE_ENGINE_TIERS
 #undef BEMAN_INSIDE_ENGINE_KERNEL_TIERS

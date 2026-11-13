@@ -60,14 +60,18 @@ int main() {
     weighted_sum_t weighted_sum{0, deg_C};
     weight_sum_t   weight_sum{0};
 
+    // The accumulators' ranges hold any five readings, which their types
+    // cannot show: each += reports into one sticky errc, checked after the
+    // loop (the first error is kept).
+    errc accumulated{};
     auto accept = [&]<typename B>(std::type_identity<B>, double r, weight_t w, const char* tag) {
-        const bool ok = !conversion_overflows<B>(r);
-        std::cout << r << "  " << (ok ? "yes" : "no ") << "  " << tag << "\n";
-        if (!ok)
+        const auto stored = B::try_make(r); // a run-time double: out of range, or NaN
+        std::cout << r << "  " << (stored ? "yes" : "no ") << "  " << tag << "\n";
+        if (!stored)
             return;
-        const auto reading = point<deg_C>(B{r});
-        weighted_sum += (reading - ref) * w; // a difference in ℃ times a weight: exact
-        weight_sum += w;
+        const auto reading = point<deg_C>(*stored);
+        weighted_sum.policy(accumulated) += (reading - ref) * w; // a difference in ℃ times a weight: exact
+        weight_sum.policy(accumulated) += w;
     };
 
     accept(std::type_identity<outdoor_t>{}, raw[0], w_outdoor, "outdoor");
@@ -75,6 +79,8 @@ int main() {
     accept(std::type_identity<outdoor_t>{}, raw[2], w_outdoor, "outdoor");
     accept(std::type_identity<ground_t>{}, raw[3], w_ground, "ground ");
     accept(std::type_identity<indoor_t>{}, raw[4], w_indoor, "indoor ");
+    if (accumulated != errc{})
+        return 1;
 
     // The weight grid includes 0, so div<fused_t> returns expected<fused_t, errc>:
     // no accepted reading is a division by zero, reported, not a crash.

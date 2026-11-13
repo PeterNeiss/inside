@@ -80,7 +80,7 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
                                          beman::inside::detail::no_action{});
             return b;
         } else
-            return B{d::to_rational(v)};
+            return d::stored<B>(d::to_rational(v));
     }
 
   public:

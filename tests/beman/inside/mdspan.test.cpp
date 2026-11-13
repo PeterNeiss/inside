@@ -10,6 +10,8 @@
 #include <beman/inside/units/io.hpp>
 #include <beman/inside/units/mdspan.hpp>
 
+#include "support.hpp"
+
 #include <gtest/gtest.h>
 
 #include <array>
@@ -41,7 +43,7 @@ using img_t = inside_mdspan<pixel, extents_of<row, col>>;
 std::array<pixel, 20> ramp() {
     std::array<pixel, 20> a{};
     for (std::size_t k = 0; k < a.size(); ++k)
-        a[k] = pixel{static_cast<int>(k) * 10};
+        a[k] = test::store<pixel>(static_cast<int>(k) * 10);
     return a;
 }
 } // namespace
@@ -82,7 +84,7 @@ TEST(MdspanTest, indexing_by_type_and_policy) {
     std::array<pixel, 20> a = ramp();
     const img_t           img{a.data()};
     // Proven: the grids lie within the extents.
-    EXPECT_TRUE((img[row{at_run_time(2)}, col{at_run_time(3)}]) == 130);
+    EXPECT_TRUE((img[test::store<row>(at_run_time(2)), test::store<col>(at_run_time(3))]) == 130);
     // Builtin integers keep std::mdspan's indexing; they may mix with insides.
     EXPECT_TRUE((img[std::size_t{2}, std::size_t{3}]) == 130);
     EXPECT_TRUE((img[row{2}, std::size_t{3}]) == 130);
@@ -94,8 +96,9 @@ TEST(MdspanTest, indexing_by_type_and_policy) {
     EXPECT_TRUE((img[row{1}, wcol{at_run_time(-1)}]) == 90);
     EXPECT_TRUE((img[row{1}, wcol{at_run_time(7)}]) == 70);
     using wide_row = inside<{0, 10}>;
-    EXPECT_THROW(((void)img[wide_row{at_run_time(4)}, col{0}]), inside_error);
-    EXPECT_TRUE((img[wide_row{at_run_time(3)}, col{0}]) == 150);
+    // (an index past the extent is a precondition, reported to the handler)
+    EXPECT_DEATH(((void)img[test::store<wide_row>(at_run_time(4)), col{0}]), "beman::inside");
+    EXPECT_TRUE((img[test::store<wide_row>(at_run_time(3)), col{0}]) == 150);
     // An offset keeps the clamp policy: r + dr stays on a clamp grid.
     const crow r = 0;
     EXPECT_TRUE((img[r - 1_ins, col{2}]) == 20);
@@ -105,7 +108,7 @@ TEST(MdspanTest, indexing_by_type_and_policy) {
     static_assert(std::is_same_v<decltype(dyn)::extents_type, std::dextents<std::size_t, 2>>);
     EXPECT_EQ((dyn[inside<{0, 1}>{1}, inside<{0, 2}>{2}]), 5);
     EXPECT_EQ((dyn[inside<{0, 9}, clamp>{at_run_time(7)}, inside<{0, 9}, clamp>{at_run_time(7)}]), 5);
-    EXPECT_THROW(((void)dyn[inside<{0, 9}>{at_run_time(2)}, inside<{0, 2}>{0}]), inside_error);
+    EXPECT_DEATH(((void)dyn[test::store<inside<{0, 9}>>(at_run_time(2)), inside<{0, 2}>{0}]), "beman::inside");
 }
 
 TEST(MdspanTest, wrapper_is_an_mdspan) {
@@ -134,7 +137,7 @@ TEST(MdspanTest, value_accessor) {
     const inside_mdspan<small, std::extents<std::size_t, 2>, std::layout_right, value_accessor<small, const int>> s{
         big.data()};
     EXPECT_TRUE((s[0] == 5));
-    EXPECT_THROW(((void)small{s[1]}), inside_error);
+    EXPECT_DEATH(((void)small{s[1]}), "beman::inside"); // raw memory read: a precondition
     // Writable: a proxy that reads and writes through the element.
     std::array<std::int16_t, 2> st{0, 0};
     const inside_mdspan<small, std::extents<std::size_t, 2>, std::layout_right, value_accessor<small, std::int16_t>> w{
@@ -154,7 +157,7 @@ TEST(MdspanTest, raw_accessor) {
     const inside_mdspan<adc, std::extents<std::size_t, 3>, std::layout_right, raw_accessor<adc, const std::uint16_t>>
         checked_view{raw.data()};
     EXPECT_TRUE((checked_view[0] == 100 && checked_view[1] == 4095));
-    EXPECT_THROW(((void)adc{checked_view[2]}), inside_error);
+    EXPECT_DEATH(((void)adc{checked_view[2]}), "beman::inside"); // raw memory read: a precondition
     using adc_clamp = inside<{0, 4095}, clamp>;
     const inside_mdspan<adc_clamp,
                         std::extents<std::size_t, 3>,
@@ -209,7 +212,8 @@ TEST(MdspanTest, dot_and_matrix_products) {
     static_assert(grid_of<decltype(d)> == grid{-300, 300});
     EXPECT_TRUE((d == 12));
     EXPECT_TRUE((dot<inside<{-1000, 1000}>>(std::mdspan{x.data(), 3}, std::mdspan{y.data(), 3}) == 12));
-    EXPECT_THROW(((void)dot<inside<{-1000, 1000}>>(std::mdspan{x.data(), 3}, std::mdspan{y.data(), 2})), inside_error);
+    EXPECT_DEATH(((void)dot<inside<{-1000, 1000}>>(std::mdspan{x.data(), 3}, std::mdspan{y.data(), 2})),
+                 "beman::inside: dot: the extents differ");
 
     // A = [[1, 2, 3], [4, 5, 6]]: A·x and A·Aᵀ against loops.
     std::array<v_t, 6>                 a{1, 2, 3, 4, 5, 6};
@@ -254,8 +258,8 @@ TEST(MdspanTest, transform_into) {
                    std::mdspan{s.data(), 4},
                    [](in_t u, in_t v) { return u * v; });
     EXPECT_TRUE((s[0] == 150 && s[1] == 150 && s[2] == 81));
-    EXPECT_THROW(transform_into(std::mdspan{in.data(), 4}, std::mdspan{out.data(), 3}, [](in_t v) { return v; }),
-                 inside_error);
+    EXPECT_DEATH((void)transform_into(std::mdspan{in.data(), 4}, std::mdspan{out.data(), 3}, [](in_t v) { return v; }),
+                 "beman::inside: transform_into: the extents differ");
 }
 } // namespace mdspan_tests
 
@@ -312,7 +316,7 @@ TEST(UnitsMdspanTest, sums_and_products_carry_units) {
     const std::mdspan     v{a.data(), std::extents<std::size_t, 4>{}};
     EXPECT_EQ(to_string(sum(v)), "10 m");
     // A target in another unit: the exact total in metres, converted once.
-    EXPECT_EQ(to_string(sum<quantity<si::kilo(si::metre), inside<{{0, 1}, per<1000>}>>>(v)), "0.010 km");
+    EXPECT_EQ(to_string(*sum<quantity<si::kilo(si::metre), inside<{{0, 1}, per<1000>}>>>(v)), "0.010 km");
     EXPECT_EQ(to_string(dot(v, v)), "30 m²");
     // A matrix of lengths times itself: areas.
     const std::mdspan                                                   m{a.data(), std::extents<std::size_t, 2, 2>{}};
@@ -395,6 +399,6 @@ TEST(MdspanTest, raw_accessor_past_int64) {
     EXPECT_TRUE((raw_view<WC, 1>{c.data()}[0].get() == WC{1180591620717411303424_g}));
     using WE = inside<{0, 1180591620717411303424_g}>;
     std::array<WE::raw_type, 1> e{static_cast<WE::raw_type>(~WE::raw_type{0})};
-    EXPECT_THROW(((void)raw_view<WE, 1>{e.data()}[0].get()), inside_error);
+    EXPECT_DEATH(((void)raw_view<WE, 1>{e.data()}[0].get()), "beman::inside"); // a precondition
 }
 } // namespace wide_raw_tests

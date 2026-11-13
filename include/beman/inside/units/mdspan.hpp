@@ -36,15 +36,39 @@ struct element_traits<Q> {
     using rebind = units::quantity<Q::reference, N>;
     static constexpr const number& number_of(const Q& q) noexcept { return units::detail::value_of(q); }
     static constexpr Q             make(const number& n) { return units::detail::quantity_access::make<Q>(n); }
+    // (total: the caller proved the total fits; try_total reports it.)
     template <class Rng>
     static constexpr Q total(Rng&& r) {
         using P = std::remove_cvref_t<std::ranges::range_reference_t<Rng>>;
-        static_assert(units::quantity_like<P>, "sum: a quantity total of plain numbers - give them a unit");
-        using N       = units::detail::rescaled_t<Q::reference, P::reference, number>;
-        const N total = sum<N>(std::forward<Rng>(r) |
-                               std::views::transform([](const P& p) { return units::detail::value_of(p); }));
-        return Q{units::detail::quantity_access::make<units::quantity<P::reference, N>>(total)};
+        using N = numbers_of<P>;
+        auto numbers =
+            std::forward<Rng>(r) | std::views::transform([](const P& p) { return units::detail::value_of(p); });
+        N    out{};
+        auto policy = make_policy<flags_of<N>>();
+        sum_into(numbers, out, policy);
+        return Q{units::detail::quantity_access::make<units::quantity<P::reference, N>>(out)};
     }
+    template <class Rng>
+    static constexpr std::expected<Q, errc> try_total(Rng&& r) {
+        using P = std::remove_cvref_t<std::ranges::range_reference_t<Rng>>;
+        using N = numbers_of<P>;
+        auto numbers =
+            std::forward<Rng>(r) | std::views::transform([](const P& p) { return units::detail::value_of(p); });
+        return try_store<N, flags_of<N>>([&](N& out, auto&& policy) { sum_into(numbers, out, policy); })
+            .transform([](const N& t) {
+                return Q{units::detail::quantity_access::make<units::quantity<P::reference, N>>(t)};
+            });
+    }
+    template <class V>
+    static constexpr std::expected<Q, errc> try_store_of(const V& v) {
+        return units::try_value_cast<Q>(v);
+    }
+
+  private:
+    // Q's range in the elements' unit, where their numbers add.
+    template <class P>
+    using numbers_of =
+        std::enable_if_t<units::quantity_like<P>, units::detail::rescaled_t<Q::reference, P::reference, number>>;
 };
 } // namespace beman::inside::detail
 

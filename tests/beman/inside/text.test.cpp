@@ -10,6 +10,8 @@
 #include <beman/inside/inside/predicates.hpp>
 #include <beman/inside/math.hpp>
 
+#include "support.hpp"
+
 #include <gtest/gtest.h>
 
 #include <cfloat>
@@ -385,7 +387,7 @@ TEST(ParseTest, reports_malformed_text_range_and_notch_errors) {
 TEST(ParseTest, stream_extraction_round_trips_to_string) {
     using q = inside<{{-10, 10}, per<12>}>;
     for (auto v : {rational{-5, 4}, rational{0}, rational{7, 3}, rational{1, 12}, rational{-10}}) {
-        const q           x{v};
+        const q           x = test::store<q>(v);
         std::stringstream ss{to_string(x)};
         if (to_string(x).find(' ') != std::string::npos)
             continue; // mixed "2 1/3" is two tokens

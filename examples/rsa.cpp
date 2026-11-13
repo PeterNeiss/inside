@@ -12,6 +12,7 @@
 //   4. Sign and verify.
 // This is not cryptography: a fixed test key, no padding, not constant-time.
 
+#include <expected>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -53,8 +54,9 @@ constexpr Residue powmod(Residue b, Exponent e) {
 }
 
 // d = e^-1 mod phi by extended Euclid. The remainders stay in [0, phi], the
-// Bezout coefficients in [-phi, phi]: each step checks its way back there.
-exponent inverse_mod_phi() {
+// Bezout coefficients in [-phi, phi]: each step checks its way back there
+// (checked_cast, an expected). An e without an inverse is a domain_error.
+std::expected<exponent, errc> inverse_mod_phi() {
     using rem  = inside<{0, Phi}>;
     using coef = inside<{-Phi, Phi}>;
     rem  r0 = Phi, r1 = E; // the grid number phi, read at run time
@@ -63,20 +65,26 @@ exponent inverse_mod_phi() {
         const auto [q, r] = *divmod(r0, r1); // one 1024-bit division
         r0                = r1;
         r1                = r;
-        const coef t      = checked_cast<coef>(t0 - q * t1);
-        t0                = t1;
-        t1                = t;
+        const auto t      = checked_cast<coef>(t0 - q * t1);
+        if (!t)
+            return std::unexpected(t.error());
+        t0 = t1;
+        t1 = *t;
     }
     if (r0 != 1)
-        throw std::logic_error("e is not invertible mod phi");
+        return std::unexpected(errc::domain_error);
     return checked_cast<exponent>(mod(t0, just<Phi>, round_floor));
 }
 
 // Bytes in, big-endian: m = m * 256 + byte, checked to stay below n.
-constexpr residue pack(std::string_view text) {
+constexpr std::expected<residue, errc> pack(std::string_view text) {
     residue m = 0;
-    for (const unsigned char c : text)
-        m = checked_cast<residue>(m * just<256> + inside<{0, 255}>{c});
+    for (const unsigned char c : text) {
+        const auto next = checked_cast<residue>(m * just<256> + inside<{0, 255}>{c});
+        if (!next)
+            return next;
+        m = *next;
+    }
     return m;
 }
 
@@ -98,16 +106,22 @@ std::string digits(const residue& x) {
 
 int main() {
     // 1. The private exponent.
-    const exponent d = inverse_mod_phi();
+    const auto checked_d = inverse_mod_phi();
+    if (!checked_d)
+        return 1;
+    const exponent d = *checked_d;
     if (exponent{E} * d % just<Phi> != 1)
         return 1;
 
     // 2. Encrypt and decrypt.
-    constexpr std::string_view text = "inside: RSA-1024 on C++26 big grids";
-    const residue              m    = pack(text);
-    const residue              c    = powmod<residue, modulus>(m, exponent{E});
+    constexpr std::string_view text   = "inside: RSA-1024 on C++26 big grids";
+    const auto                 packed = pack(text);
+    if (!packed)
+        return 1;
+    const residue m = *packed;
+    const residue c = powmod<residue, modulus>(m, exponent{E});
     // The same encryption during compilation: 17 squarings of 1024-bit residues.
-    constexpr residue c_at_compile_time = powmod<residue, modulus>(pack(text), exponent{E});
+    constexpr residue c_at_compile_time = powmod<residue, modulus>(*pack(text), exponent{E});
     if (c != c_at_compile_time)
         return 1;
     const residue back = powmod<residue, modulus>(c, d);
@@ -137,7 +151,10 @@ int main() {
         return 1;
 
     // 4. Sign with d, verify with e.
-    const residue hash = pack("signed by beman.inside");
+    const auto packed_hash = pack("signed by beman.inside");
+    if (!packed_hash)
+        return 1;
+    const residue hash = *packed_hash;
     const residue sig  = powmod<residue, modulus>(hash, d);
     const bool    ok   = powmod<residue, modulus>(sig, exponent{E}) == hash;
     std::cout << "signature  = " << digits(sig) << "\nverified   = " << ok << "\n";

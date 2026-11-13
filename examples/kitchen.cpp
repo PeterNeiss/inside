@@ -44,15 +44,19 @@ int main() {
 
     // 3. 350 ℉ is a point; in ℃ it is (350 − 32)·5/9 = 530/3, exactly, on a
     //    grid shifted and scaled from the ℉ one. A whole-degree oven dial
-    //    rounds it once. Raising the oven by 25 ℉ adds a difference.
+    //    rounds it once. Raising the oven by 25 ℉ adds a difference. The dial's
+    //    [0, 300] does not hold every ℃ of the oven's [0, 600] ℉, so each
+    //    value_cast is an expected.
     const auto oven    = point<international::degree_Fahrenheit>(inside<{0, 600}>{350});
     const auto oven_c  = oven.point_in(si::degree_Celsius);
     const auto dial    = value_cast<inside<{0, 300}, round_nearest>>(oven_c);
     const auto hotter  = oven + delta<international::degree_Fahrenheit>(just<25>);
     const auto dial_up = value_cast<inside<{0, 300}, round_nearest>>(hotter.point_in(si::degree_Celsius));
-    std::cout << "oven   " << oven << " = " << oven_c << " ≈ " << dial << "; " << hotter << " ≈ " << dial_up << '\n';
-    if (to_string(oven_c) != "530/3 ℃" || to_string(dial) != "177 ℃" || to_string(hotter) != "375 ℉" ||
-        to_string(dial_up) != "191 ℃")
+    if (!dial || !dial_up)
+        return 1;
+    std::cout << "oven   " << oven << " = " << oven_c << " ≈ " << *dial << "; " << hotter << " ≈ " << *dial_up << '\n';
+    if (to_string(oven_c) != "530/3 ℃" || to_string(*dial) != "177 ℃" || to_string(hotter) != "375 ℉" ||
+        to_string(*dial_up) != "191 ℃")
         return 1;
 
     // 4. 250 mL of flour at 0.53 g/mL: density·volume is a mass. A mass and a
