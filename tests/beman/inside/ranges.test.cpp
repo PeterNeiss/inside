@@ -436,7 +436,7 @@ TEST(CursorTest, steps_and_ends) {
     // a cursor works where an inside does
     using amp = inside<{{0, 64}, per<16384>}, round_nearest>;
     cur w     = 1_ins;
-    EXPECT_EQ(math::exp_into<amp>(w), math::exp_into<amp>(time_t_{1}));
+    EXPECT_EQ((math::exp<amp>(w)), (math::exp<amp>(time_t_{1})));
     EXPECT_EQ(to_string(w), "1");
 }
 

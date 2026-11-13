@@ -6,7 +6,71 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ## Unreleased
 
+### Upgrading
+
+- Every math function has one call shape, and no `_into` name is left. The
+  output is deduced unless the call names what it chooses:
+
+  | Before | Now |
+  |---|---|
+  | `math::fn_into<Out>(x)` | `math::fn<Out>(x)` |
+  | `math::pow_base_into<Out, B>(x)` | `math::pow_base<B, Out>(x)` |
+  | `math::fn<round_floor>(x)` | the same; flags combine: `math::fn<round_floor, clamp>(x)` |
+  | `math::sin_into<math::unit_amplitude<K>>(x)` | also `math::sin<per<K>>(x)`: only the notch named, the range deduced |
+  | `units::fn(q)`, `units::fn_into<L>(q)` | `math::fn(q)`, `math::fn<L>(q)`: the unit follows (`math::sqrt<L>(area)` is a length on `L`) |
+  | `mul_into<Out>(a, b)`, `mul_into<Out, F>(a, b)` | `mul<Out>(a, b)`, `mul<Out>(a, b, F)`; `div<Out>` likewise |
+
+  `math::fn<C, D>(x)` converts x to `D` first. `math::asin`, `acos` and
+  `atan` of a plain inside give a plain inside, as in `<cmath>`; of a
+  dimensionless quantity, an angle in rad (`units::asin(x)` gave rad for both).
+  `mul<Out>(a, b, F)`'s flag replaces `Out`'s rounding mode, as a call's flag
+  does elsewhere (`mul_into<Out, F>` added its bits to `Out`'s).
+  `math::abs<Out>(x)` with an `Out` that misses the smallest |x| compiles: a
+  result outside `Out` goes through `Out`'s policy, as any store.
+
+### Added
+
+- Geometric algebra on the units (opt-in `<beman/inside/units/geoalg.hpp>`).
+  A `basis_vector` is a base dimension of your own and its unit; you state its
+  square (+1, -1 or 0), and two different ones anticommute, so G(p, q, r) of
+  any signature follows. A product of units carries its sign in the
+  magnitude (`e2 * e1` is -1 times e1 e2) and a product of quantities moves
+  it to the number; `i * i` is -1 for i := e1 e2, and a product that vanishes
+  is the zero `multivector<>`. A sum of different blades is a `multivector`
+  whose parts keep their own insides, so every part's range is proved; the
+  geometric product, `wedge`, `left_contraction`, `right_contraction`,
+  `scalar_product`, `reverse`, `involute`, `conjugate`, `grade<K>`,
+  `part(x, u)`, `x.in(u)`, `squared_norm`, `inverse` and `/` (when x times
+  its reverse or conjugate is a scalar for every value of its type), `dual`,
+  `complement` and `regressive` work on them, and `units/io.hpp` prints
+  them. Examples `complex.cpp`, `quaternions.cpp` and
+  `geometric_algebra.cpp`; `docs/advanced/geometric-algebra.md`.
+
+- Output specs on every math function: `math::exp<per<1 << 20>>(x)` names
+  only the output's notch, the range computed on it (tighter than rounding
+  the deduced one outward); policy flags (`round_floor`, `clamp`, `wrap`) in
+  any order, `math::sin<per<1000>, round_floor>(x)`. A call on a quantity
+  names the result's number alone (`math::sqrt<L>(area)`) or the whole
+  quantity, whose unit must be the result's.
+
+- `math::exp(x)` of a multivector (or a quantity of one blade) whose
+  non-scalar parts anticommute: the closed form
+  e^a·(cos λ + y·sin λ/λ), its hyperbolic and nilpotent cases, and their
+  mixtures, with every part of CoDomain correctly rounded, as the scalar
+  functions are (double, double-double and integer tiers; constant
+  evaluation). Complex numbers, quaternion rotors, boosts and dual numbers
+  alike: a rotor onto a 2^-20 grid costs about what `std::sqrt`, `std::sin`,
+  `std::cos` and three products cost in `double`. The deduced output bounds
+  every part at compile time (`math::exp<per<1 << 20>>(bivector)` is a
+  rotor), and `math::exp<C>(x)` takes a multivector or one number for every
+  part. An argument without the closed form (e1 e2 + e3 e4 in 4-D) is a
+  deleted overload with the reason.
+
 ### Changed
+
+- `unit_c<N>` takes a `named_unit` or a `basis_vector`. A sum, comparison or
+  remainder of quantities whose dimensions differ only in basis vectors has
+  its own reason, and a dimension holds a basis vector's exponent mod 2.
 
 - A dimension holds any number of base dimensions of your own (it held at
   most 4): a unit of gold·HP·MP·stamina·XP·px·packets·tokens is one

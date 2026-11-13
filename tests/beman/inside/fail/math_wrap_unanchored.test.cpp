@@ -9,6 +9,6 @@
 int main() {
     using namespace beman::inside;
     using out_t = inside<{{0.5_r, 10.5_r}, 1}, round_nearest | wrap>;
-    auto e      = math::exp_into<out_t>(inside<{0, 3}>{1});
+    auto e      = math::exp<out_t>(inside<{0, 3}>{1});
     (void)e;
 }

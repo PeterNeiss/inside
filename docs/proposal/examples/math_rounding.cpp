@@ -11,10 +11,10 @@ int main() {
     using down = inside<{{0, 16}, per<1024>}, round_floor>;
     using up   = inside<{{0, 16}, per<1024>}, round_ceil>;
 
-    auto lo = math::sqrt_into<down>(x_t{2});         // 1.4140625    = 1448/1024 ≤ √2
-    auto hi = math::sqrt_into<up>(x_t{2});           // 1.4150390625 = 1449/1024 ≥ √2
-    static_assert(math::sqrt_into<down>(x_t{2.25}) == math::sqrt_into<up>(x_t{2.25})); // 1.5 exactly
-    static_assert(math::log2_into<down>(x_t{8}) == 3 && math::log2_into<up>(x_t{8}) == 3);
+    auto lo = math::sqrt<down>(x_t{2});         // 1.4140625    = 1448/1024 ≤ √2
+    auto hi = math::sqrt<up>(x_t{2});           // 1.4150390625 = 1449/1024 ≥ √2
+    static_assert(math::sqrt<down>(x_t{2.25}) == math::sqrt<up>(x_t{2.25})); // 1.5 exactly
+    static_assert(math::log2<down>(x_t{8}) == 3 && math::log2<up>(x_t{8}) == 3);
 
     using plain = inside<{{1, 16}, per<64>}>;           // no rounding in the type
     auto e = math::exp<round_floor>(plain{1.5});     // the mode named on the call

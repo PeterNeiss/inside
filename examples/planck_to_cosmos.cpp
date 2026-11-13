@@ -33,14 +33,14 @@ int main() {
     //    denominator bound sizes the fraction — and one rounding for its log10.
     const auto ratio = universe / planck;
     std::cout << "universe / planck = " << ratio << "\n";
-    const decade d = units::log10_into<decade>(ratio);
+    const decade d = math::log10<decade>(ratio);
     std::cout << std::format("log10              = {:.6f}\n", d);
     if (to_string(ratio) != "17600000000000000000000000000000000000000000000000000000000000000000/323251" ||
         d != decade{rational{64'734'859, 1 << 20}})
         return 1;
 
     // 2. The geometric mean, exact to the last of 41 decimals.
-    const length mean = units::sqrt_into<length_number>(planck * universe);
+    const length mean = math::sqrt<length_number>(planck * universe);
     std::cout << "sqrt(planck * universe) = " << mean << "\n";
     if (mean != *parse<length>("0.00011926040415829555623064347860850441433"))
         return 1;

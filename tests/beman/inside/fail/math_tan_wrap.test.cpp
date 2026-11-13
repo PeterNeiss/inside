@@ -8,6 +8,6 @@
 int main() {
     using namespace beman::inside;
     using out_t = inside<{{-1, 1}, rational{1, 1024}}, round_nearest | wrap>;
-    auto t      = math::tan_into<out_t>(inside<{{0, 3}, rational{1, 16}}>{1});
+    auto t      = math::tan<out_t>(inside<{{0, 3}, rational{1, 16}}>{1});
     (void)t;
 }

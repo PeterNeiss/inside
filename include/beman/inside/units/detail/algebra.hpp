@@ -38,9 +38,17 @@ using beman::inside::detail::grid_rational;
 // (L M T I Θ N J), and of any number of base dimensions you define
 // (base_dimension: currency, information). Angle is dimensionless, as in SI.
 //---------------------------------------------------------------------------
+struct named_unit;
+
 // A base dimension of your own: inline constexpr base_dimension currency{"currency"}.
+// A basis vector of a geometric algebra is one too (see basis_vector): its
+// exponent is 0 or 1, it squares to Square (+1, -1 or 0), two of them
+// anticommute, and Vector is its unit. Vector is read only when Basis is set.
 struct base_dimension {
-    std::string_view Name;
+    std::string_view  Name;
+    std::int8_t       Square{0};
+    bool              Basis{false};
+    const named_unit* Vector{};
 };
 
 struct dimension;
@@ -80,12 +88,14 @@ struct dimension {
         return static_cast<std::int8_t>(e);
     }
 
-    // By content: a base dimension of your own is its name.
+    // By content: a base dimension of your own is its name (and, for a basis
+    // vector, its square).
     friend constexpr bool operator==(const dimension& a, const dimension& b) {
         if (!std::ranges::equal(a.Exp, b.Exp) || a.UserSize != b.UserSize)
             return false;
         for (std::size_t i = 0; i < a.UserSize; ++i)
-            if (a.UserDim[i]->Name != b.UserDim[i]->Name || a.UserExp[i] != b.UserExp[i])
+            if (a.UserDim[i]->Name != b.UserDim[i]->Name || a.UserDim[i]->Square != b.UserDim[i]->Square ||
+                a.UserExp[i] != b.UserExp[i])
                 return false;
         return true;
     }
@@ -108,9 +118,10 @@ struct dimension {
             e = exponent(e * n);
         if (UserSize == 0)
             return r;
-        detail::user_exponents u{r};
-        for (auto& e : u.E)
-            e = exponent(e * n);
+        // Merged afresh: a basis vector's exponent is taken mod 2 and drops out at 0.
+        detail::user_exponents u{dimension{}};
+        for (std::size_t i = 0; i < UserSize; ++i)
+            u.add(UserDim[i], UserExp[i] * n);
         return u.into(r);
     }
     // The n-th root; every exponent must divide.
@@ -143,14 +154,21 @@ constexpr user_exponents::user_exponents(const dimension& d) {
     }
 }
 
+// A basis vector's exponent is 0 or 1: v·v is a number (its square).
+constexpr int basis_exponent(int e) { return ((e % 2) + 2) % 2; }
+
 constexpr void user_exponents::add(const base_dimension* b, int e) {
+    if (b->Basis)
+        e = basis_exponent(e);
     if (e == 0)
         return;
     std::size_t i = 0;
     while (i < D.size() && D[i]->Name < b->Name)
         ++i;
     if (i < D.size() && D[i]->Name == b->Name) {
-        E[i] = dimension::exponent(E[i] + e);
+        if (D[i]->Basis != b->Basis || D[i]->Square != b->Square)
+            beman::inside::detail::constexpr_error<"units: two base dimensions of one name differ">();
+        E[i] = b->Basis ? static_cast<std::int8_t>(basis_exponent(E[i] + e)) : dimension::exponent(E[i] + e);
         if (E[i] == 0) {
             D.erase(D.begin() + i);
             E.erase(E.begin() + i);
@@ -229,6 +247,93 @@ inline constexpr dimension dim_electric_current{{0, 0, 0, 1, 0, 0, 0}};
 inline constexpr dimension dim_thermodynamic_temperature{{0, 0, 0, 0, 1, 0, 0}};
 inline constexpr dimension dim_amount_of_substance{{0, 0, 0, 0, 0, 1, 0}};
 inline constexpr dimension dim_luminous_intensity{{0, 0, 0, 0, 0, 0, 1}};
+
+//---------------------------------------------------------------------------
+// Blades — the basis vectors of a dimension. A blade's canonical value is the
+// product of its basis vectors in name order; two different basis vectors
+// anticommute and each squares to its Square.
+//---------------------------------------------------------------------------
+namespace detail {
+// A blade being computed: its basis vectors, sorted by name.
+using blade = std::vector<const base_dimension*>;
+
+constexpr blade blade_of(const dimension& d) {
+    blade b;
+    for (std::size_t i = 0; i < d.UserSize; ++i)
+        if (d.UserDim[i]->Basis)
+            b.push_back(d.UserDim[i]);
+    return b;
+}
+constexpr bool has_blade(const dimension& d) {
+    for (std::size_t i = 0; i < d.UserSize; ++i)
+        if (d.UserDim[i]->Basis)
+            return true;
+    return false;
+}
+// Whether a and b are equal but for their basis vectors.
+constexpr bool same_outside_blade(const dimension& a, const dimension& b) {
+    if (!std::ranges::equal(a.Exp, b.Exp))
+        return false;
+    std::size_t i = 0, j = 0;
+    for (;;) {
+        while (i < a.UserSize && a.UserDim[i]->Basis)
+            ++i;
+        while (j < b.UserSize && b.UserDim[j]->Basis)
+            ++j;
+        if (i == a.UserSize || j == b.UserSize)
+            return i == a.UserSize && j == b.UserSize;
+        if (a.UserDim[i]->Name != b.UserDim[j]->Name || a.UserExp[i] != b.UserExp[j])
+            return false;
+        ++i;
+        ++j;
+    }
+}
+
+// The sign s of A·B = s·(A ⊕ B), A and B canonical: -1 for each pair out of
+// name order, times the square of each basis vector in both. 0 when a null
+// vector meets itself.
+constexpr int blade_sign(const blade& a, const blade& b) {
+    int s = 1;
+    for (const base_dimension* x : a)
+        for (const base_dimension* y : b) {
+            if (x->Name > y->Name)
+                s = -s;
+            else if (x->Name == y->Name)
+                s *= x->Square;
+        }
+    return s;
+}
+// a·b into a (the symmetric difference); the sign of the product.
+constexpr int blade_mul(blade& a, const blade& b) {
+    const int   s = blade_sign(a, b);
+    blade       r;
+    std::size_t i = 0, j = 0;
+    while (i < a.size() || j < b.size()) {
+        if (j == b.size() || (i < a.size() && a[i]->Name < b[j]->Name))
+            r.push_back(a[i++]);
+        else if (i == a.size() || b[j]->Name < a[i]->Name)
+            r.push_back(b[j++]);
+        else { // in both: v·v is a number
+            ++i;
+            ++j;
+        }
+    }
+    a = std::move(r);
+    return s;
+}
+constexpr int blade_sign(const dimension& a, const dimension& b) { return blade_sign(blade_of(a), blade_of(b)); }
+// B·B: +1 or -1, 0 for a blade with a null vector.
+constexpr int blade_square(const dimension& d) {
+    const blade b = blade_of(d);
+    return blade_sign(b, b);
+}
+// The sign of B's reverse, involute and Clifford conjugate, by its grade k:
+// (-1)^(k(k-1)/2), (-1)^k, (-1)^(k(k+1)/2).
+constexpr int grade_of(const dimension& d) { return static_cast<int>(blade_of(d).size()); }
+constexpr int reverse_sign(int k) { return (k * (k - 1) / 2) % 2 == 0 ? 1 : -1; }
+constexpr int involute_sign(int k) { return k % 2 == 0 ? 1 : -1; }
+constexpr int conjugate_sign(int k) { return (k * (k + 1) / 2) % 2 == 0 ? 1 : -1; }
+} // namespace detail
 
 //---------------------------------------------------------------------------
 // magnitude — Ratio·π^Pi, exact.
@@ -640,6 +745,34 @@ struct named_unit {
     constexpr named_unit(std::string_view sym, unit_t<U>, unit_options o = {});
     template <unit U, const quantity_spec* K>
     constexpr named_unit(std::string_view sym, unit_t<U>, spec_t<K>, unit_options o = {});
+
+  private:
+    friend struct basis_vector;
+    // A basis vector's unit, its dimension set by basis_vector.
+    constexpr named_unit(std::string_view sym, unit_options o)
+        : Utf8{sym}, Ascii{o.ascii.empty() ? sym : o.ascii}, SpaceBefore{o.space_before} {}
+};
+
+//---------------------------------------------------------------------------
+// basis_vector — a basis vector of a geometric algebra: a base dimension of
+// your own and its unit in one static object. You state its square, v·v: +1,
+// -1 or 0 (a null vector). Two different basis vectors anticommute, so a
+// product of units is again a unit, up to a sign: e₂e₁ = -e₁e₂.
+//   inline constexpr basis_vector e1_def{"e₁", +1, {.ascii = "e1"}};
+//   inline constexpr auto         e1 = unit_c<e1_def>;
+//---------------------------------------------------------------------------
+struct basis_vector {
+    named_unit     Unit;
+    base_dimension Self;
+
+    consteval basis_vector(std::string_view sym, int square, unit_options o = {})
+        : Unit{sym, o}, Self{sym, static_cast<std::int8_t>(square), true, &Unit} {
+        if (square != 1 && square != -1 && square != 0)
+            beman::inside::detail::constexpr_error<"units: a basis vector squares to +1, -1 or 0">();
+        if (o.kind || o.origin)
+            beman::inside::detail::constexpr_error<"units: a basis vector has no kind or origin">();
+        Unit.Dim = dimension_of(Self);
+    }
 };
 
 namespace detail {
@@ -670,7 +803,17 @@ consteval void unit_add(unit& u, unit_atom a) {
         beman::inside::detail::constexpr_error<"units: a unit holds at most 6 factors - name it with named_unit">();
 }
 
+// An atom whose named unit holds basis vectors (e₁, i = e₁e₂).
+constexpr bool is_blade_atom(const unit_atom& a) { return a.U->Dim.UserSize > 0 && has_blade(a.U->Dim); }
+constexpr bool has_blade_atoms(const unit& u) {
+    return std::any_of(u.Atoms, u.Atoms + u.Size, [](const unit_atom& a) { return is_blade_atom(a); });
+}
+
+consteval unit blade_unit_mul(const unit& a, const unit& b, int sign);
+
 consteval unit unit_mul(unit a, const unit& b, int sign) {
+    if (has_blade_atoms(a) || has_blade_atoms(b))
+        return blade_unit_mul(a, b, sign);
     for (std::int8_t i = 0; i < b.Size; ++i) {
         unit_atom t = b.Atoms[i];
         t.Exp       = static_cast<std::int8_t>(t.Exp * sign);
@@ -681,6 +824,12 @@ consteval unit unit_mul(unit a, const unit& b, int sign) {
 }
 
 consteval unit unit_pow(const unit& u, int n) {
+    if (has_blade_atoms(u)) { // repeated products: the blades do not commute
+        unit r{};
+        for (int i = 0; i < (n < 0 ? -n : n); ++i)
+            r = unit_mul(r, u, n < 0 ? -1 : 1);
+        return r;
+    }
     unit r{};
     for (std::int8_t i = 0; i < u.Size; ++i)
         unit_add(r, {u.Atoms[i].U, u.Atoms[i].Prefix, dimension::exponent(u.Atoms[i].Exp * n)});
@@ -710,12 +859,90 @@ consteval dimension dimension_of(const unit& u) {
         d = d * u.Atoms[i].U->Dim.pow(u.Atoms[i].Exp);
     return d;
 }
+namespace detail {
+// The sign of the product of u's blade atoms in stored order against the
+// canonical blade of their product: ±1, or 0 for a product that vanishes.
+consteval int atoms_blade_sign(const unit& u) {
+    blade acc;
+    int   s = 1;
+    for (std::int8_t i = 0; i < u.Size; ++i) {
+        if (!is_blade_atom(u.Atoms[i]))
+            continue;
+        const blade b = blade_of(u.Atoms[i].U->Dim);
+        const int   e = u.Atoms[i].Exp;
+        if (e < 0 && blade_sign(b, b) == 0)
+            beman::inside::detail::constexpr_error<"units: a null blade (a basis vector that squares to 0) has no "
+                                                   "inverse">();
+        for (int k = 0; k < (e < 0 ? -e : e); ++k)
+            s *= (e < 0 ? blade_sign(b, b) : 1) * blade_mul(acc, b); // B⁻¹ = B·B²
+    }
+    return s;
+}
+} // namespace detail
+
 consteval magnitude magnitude_of(const unit& u) {
     magnitude m = u.Scale;
     for (std::int8_t i = 0; i < u.Size; ++i)
         m = m * (u.Atoms[i].U->Mag * detail::ten_pow(u.Atoms[i].Prefix)).pow(u.Atoms[i].Exp);
+    if (detail::has_blade_atoms(u))
+        m = m * magnitude{grid_rational{detail::atoms_blade_sign(u)}};
     return m;
 }
+
+namespace detail {
+// a·b (sign 1) or a/b (sign -1) of units with blades. The non-blade atoms
+// merge as usual. The blade atoms are kept when they share no basis vector
+// (1·i stays i, i·j stays "i j"), else the blade of the product is spelled by
+// its basis vectors (i·i is 1, e₁·e₁₂₃ is e₂e₃). The scale makes the
+// magnitude the true one, sign included: a negative scale is the number's
+// sign, a zero scale a product that vanishes (ε·ε).
+consteval unit blade_unit_mul(const unit& a, const unit& b, int sign) {
+    const dimension da = dimension_of(a), db = dimension_of(b);
+    blade           bl = blade_of(da);
+    const blade     br = blade_of(db);
+    int             s  = blade_mul(bl, br);
+    if (sign < 0) { // B⁻¹ = B·B²
+        const int sq = blade_sign(br, br);
+        if (sq == 0)
+            beman::inside::detail::constexpr_error<"units: a null blade (a basis vector that squares to 0) has no "
+                                                   "inverse">();
+        s *= sq;
+    }
+    const magnitude target = sign > 0 ? magnitude_of(a) * magnitude_of(b) : magnitude_of(a) / magnitude_of(b);
+
+    unit                   r{};
+    std::vector<unit_atom> blades;
+    const auto             take = [&](const unit& u, int sgn) {
+        for (std::int8_t i = 0; i < u.Size; ++i) {
+            unit_atom t = u.Atoms[i];
+            if (is_blade_atom(t)) {
+                t.Exp = 1;
+                blades.push_back(t);
+            } else {
+                t.Exp = static_cast<std::int8_t>(t.Exp * sgn);
+                unit_add(r, t);
+            }
+        }
+    };
+    take(a, 1);
+    take(b, sign);
+    bool disjoint = true;
+    for (std::size_t i = 0; i < blades.size() && disjoint; ++i)
+        for (std::size_t j = i + 1; j < blades.size() && disjoint; ++j) {
+            blade x = blade_of(blades[i].U->Dim);
+            blade_mul(x, blade_of(blades[j].U->Dim));
+            disjoint = x.size() == blade_of(blades[i].U->Dim).size() + blade_of(blades[j].U->Dim).size();
+        }
+    if (disjoint)
+        for (const unit_atom& t : blades)
+            unit_add(r, t);
+    else
+        for (const base_dimension* v : bl)
+            unit_add(r, unit_atom{v->Vector, 0, 1});
+    r.Scale = s == 0 ? magnitude{grid_rational{0}} : target * magnitude{grid_rational{s}} / magnitude_of(r);
+    return r;
+}
+} // namespace detail
 namespace detail {
 // One named unit (with a prefix too) to the power 1, unscaled: its kind,
 // origin and spacing are the unit's.
@@ -749,6 +976,12 @@ constexpr named_unit::named_unit(std::string_view sym, unit_t<U>, unit_options o
         beman::inside::detail::constexpr_error<"units: a unit's kind must have the unit's dimension">();
     if (Origin && !(Origin->Dim == Dim))
         beman::inside::detail::constexpr_error<"units: a unit's origin must have the unit's dimension">();
+    if (detail::has_blade(Dim) && !detail::same_outside_blade(Dim, dim_one))
+        beman::inside::detail::constexpr_error<"units: a named unit with basis vectors names only a blade - "
+                                               "write si::metre * e1, not a unit of both">();
+    if (Mag.Ratio == grid_rational{0})
+        beman::inside::detail::constexpr_error<"units: a named unit of a product that vanishes (a null vector "
+                                               "squared)">();
 }
 template <unit U, const quantity_spec* K>
 constexpr named_unit::named_unit(std::string_view sym, unit_t<U>, spec_t<K>, unit_options o)
@@ -756,10 +989,22 @@ constexpr named_unit::named_unit(std::string_view sym, unit_t<U>, spec_t<K>, uni
 
 // The tags of your own entries, each made from its static object:
 //   inline constexpr auto metre  = unit_c<metre_def>;     // a named_unit
+//   inline constexpr auto e1     = unit_c<e1_def>;        // a basis_vector
 //   inline constexpr auto height = spec_c<height_def>;    // a quantity_spec
 //   inline constexpr auto origin = origin_c<origin_def>;  // a point_origin
-template <const named_unit& N>
-inline constexpr unit_t<unit{N}> unit_c{};
+namespace detail {
+template <class N>
+consteval const named_unit& named_of(const N& n) {
+    if constexpr (std::same_as<N, basis_vector>)
+        return n.Unit;
+    else
+        return n;
+}
+} // namespace detail
+template <const auto& N>
+    requires std::same_as<std::remove_cvref_t<decltype(N)>, named_unit> ||
+             std::same_as<std::remove_cvref_t<decltype(N)>, basis_vector>
+inline constexpr unit_t<unit{detail::named_of(N)}> unit_c{};
 template <const quantity_spec& S>
 inline constexpr spec_t<&S> spec_c{};
 template <const point_origin& O>
@@ -1051,23 +1296,26 @@ consteval bool unit_before(const unit& a, const unit& b) {
 // (km + m → m), else the smaller unit scaled to the gcd of the magnitudes
 // (ft + m and m + ft → [1/381 ft]); of two spellings of one size, the
 // shorter (J + N m → J). The sum's type is the same either way.
+// A magnitude may carry a sign (e₃₁ := e₃e₁ is -1 of the canonical e₁e₃):
+// sizes compare without it.
 consteval unit common_unit(const unit& a, const unit& b) {
     if (a == b)
         return a;
-    const magnitude ma = magnitude_of(a), mb = magnitude_of(b);
-    if (ma == mb) // one size, two spellings (J, N m): the shorter, then by symbol
+    const magnitude     ma = magnitude_of(a), mb = magnitude_of(b);
+    const grid_rational sa = beman::inside::detail::abs(ma.Ratio), sb = beman::inside::detail::abs(mb.Ratio);
+    if (ma.Pi == mb.Pi && sa == sb) // one size, two spellings (J, N m): the shorter, then by symbol
         return unit_before(b, a) ? b : a;
     if (ma.Pi != mb.Pi)
         beman::inside::detail::constexpr_error<
             "units: no common unit of a pi multiple and a rational one - convert one side with value_cast first">();
-    const grid_rational g = beman::inside::detail::gcd(ma.Ratio, mb.Ratio);
-    if (g == ma.Ratio)
+    const grid_rational g = beman::inside::detail::gcd(sa, sb);
+    if (g == sa)
         return a;
-    if (g == mb.Ratio)
+    if (g == sb)
         return b;
-    const bool a_smaller = ma.Ratio < mb.Ratio;
+    const bool a_smaller = sa < sb;
     unit       u         = a_smaller ? a : b;
-    u.Scale              = u.Scale * magnitude{g / (a_smaller ? ma.Ratio : mb.Ratio)};
+    u.Scale              = u.Scale * magnitude{g / (a_smaller ? sa : sb)};
     return u;
 }
 

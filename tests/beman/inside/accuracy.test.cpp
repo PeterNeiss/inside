@@ -170,7 +170,7 @@ int main(int argc, char** argv) {
         #fn,                                                                               \
         "out 2^-40",                                                                       \
         domain,                                                                            \
-        sweep<In>([](In x) { return math::fn##_into<fine_out>(x); }, [](long double v) { return ref; }));
+        sweep<In>([](In x) { return math::fn<fine_out>(x); }, [](long double v) { return ref; }));
 
     BEMAN_INSIDE_ACCURACY(sin, angle_grid, angle_dec, "[-8, 8]", sinl(v))
     BEMAN_INSIDE_ACCURACY(cos, angle_grid, angle_dec, "[-8, 8]", cosl(v))

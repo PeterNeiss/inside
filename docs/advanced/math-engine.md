@@ -96,14 +96,17 @@ and the speed each guard costs, are in
   branch). The exceptions are fixed ranges: `sin`/`cos` [−1, 1], `atan2`
   [−π, π]; `hypot`
   uses the gcd of both notches, `pow` the base's notch, `floor` & co. notch 1.
-  A fine input gives a fine, slower output; name a coarser one with `fn_into`.
-- **`fn_into<Out>(x)` names the output.** The result rounds under `Out`'s
+  A fine input gives a fine, slower output; name a coarser notch with
+  `fn<per<K>>(x)`.
+- **`fn<per<K>, flags…>(x)`** deduces the output as `fn(x)` does, with the
+  range computed on the notch you name and your flags: its rounding mode
+  (`fn<round_floor>(x)`, whatever `x`'s type says), `clamp`, `wrap`.
+  `pow_base<B, …>(x)`; on quantities `math::sqrt<round_floor>(q)` & co.
+- **`fn<Out>(x)` names the output.** The result rounds under `Out`'s
   mode, and a result past `Out`'s range goes through `Out`'s policy (`clamp`
   saturates, `wrap` wraps the true value, the default reports). `tan` cannot
-  have a `wrap` output: near a pole its value has no bound.
-- **`fn<mode>(x)`** deduces the output as `fn(x)` does and rounds it by
-  `mode`, whatever `x`'s type says (`pow_base<B, mode>(x)`; on quantities
-  `units::sqrt<mode>(q)` & co.).
+  have a `wrap` output: near a pole its value has no bound. `fn<Out, In>(x)`
+  converts x to `In` first.
 - **Grids off the notch's multiples** (`{{0.5, 10.5}, 1}`) are correctly
   rounded too, at about 1.5× the time; such an output cannot use `wrap`.
 - **Domains are mathematical.** `sin` takes any finite argument, `exp` any
@@ -158,7 +161,7 @@ These work on grids past 64 bits too, and need no rounding mode.
 
 | Function | Domain | Errors | Notes |
 |---|---|---|---|
-| `exp`, `exp2` | all (deduced forms: \|x\| ≤ 4096) | none | |
+| `exp`, `exp2` | all (deduced forms: \|x\| ≤ 4096) | none | `exp` also takes a multivector, each part of its output rounded once ([geometric algebra](geometric-algebra.md#exp)) |
 | `log`, `log2`, `log10` | x > 0 | none | `log2`, `log10` of an exact power are exact |
 | `pow_base<B>(x)` | `B` an integer ≥ 2, known at compile time (a builtin, or a grid number of any size) | none | |
 | `pow(base, e)` | base ≥ 0 (a base grid below 0 does not compile); deduced form: Lower(base) > 0 | `expected` only when 0 to a negative power is possible: `division_by_zero`; `overflow` past `Out` | exact for integer exponents, and for p/q when the base is a perfect q-th power |
@@ -193,7 +196,7 @@ No rational notch divides 2π, so how an angle survives many revolutions
 depends on how it is carried.
 
 **Best: an angle in a unit with a factor of π.** With units, a phase can be in
-turns, degrees, or slots of 2π/65536 rad. `units::sin_into` and `cos_into`
+turns, degrees, or slots of 2π/65536 rad. `math::sin` and `math::cos`
 reduce such an angle exactly: x·r half turns, for a rational r, minus whole
 quarter turns. Only the rest, at most π/4, is approximated. The result rounds
 once, and Niven's rational values (0, ±1/2, ±1) are exact under any rounding
@@ -208,8 +211,8 @@ inline constexpr auto       slot = unit_c<slot_def>;           // 2π/65536 rad
 
 quantity<slot, inside<{0, 65535}, wrap>> phase{0};             // wraps at exactly one turn
 phase += quantity<slot, inside<{0, 65535}>>{16384};            // a quarter turn
-units::sin_into<math::unit_amplitude<16384>>(phase);           // exactly 1
-units::cos_into<inside<{{-1, 1}, per<16384>}, round_floor>>(
+math::sin<per<16384>>(phase);                           // exactly 1
+math::cos<per<16384>, round_floor>(
     quantity<si::degree, inside<{0, 360}>>{120});              // exactly −1/2, even under round_floor
 ```
 
@@ -237,7 +240,7 @@ using turn_t  = inside<{{0, 1 - 1.0 / 4096}, per<4096>}, wrap | round_nearest>;
 using angle_t = inside<{{0, 8}, per<16384>}, round_nearest>;
 turn_t phase{0};
 phase += turn_t{0.25};
-auto s = math::sin_into<math::unit_amplitude<16384>>(angle_t{phase * math::two_pi});   // 1
+auto s = math::sin<per<16384>>(angle_t{phase * math::two_pi});   // 1
 ```
 
 ## Without floating point

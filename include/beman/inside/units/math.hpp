@@ -1,26 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Opt-in: math on units::quantity, over the correctly rounded engine
-// (math.hpp). Kept apart from units.hpp, which stays free of the engine's
-// compile time.
+// Opt-in: the math functions on units::quantity, over the correctly rounded
+// engine (math.hpp). Kept apart from units.hpp, which stays free of the
+// engine's compile time. Each math::fn takes quantities too, in every call
+// form (math/detail/functions.hpp):
 //
-//   value_cast<si::radian, Out>(q)   degree → radian (a pi factor): the exact
-//                                    x·π/180, rounded once onto Out's grid
-//   sqrt(q), cbrt(q)                 the unit's root (m² → m), the number's
-//   abs, floor, ceil, round, trunc   on the number, in q's unit
-//   sin, cos, tan(q)                 of an angle in radians: a plain inside
-//   sin_into, cos_into<Out>(q)       also of an angle in a unit with a factor
-//                                    of π (°, a turn): reduced exactly by
-//                                    quarter turns, exact at Niven's values
-//   asin, acos, atan(x), atan2(y, x) an angle in radians (x an inside or a
-//                                    dimensionless quantity)
-//   hypot(x, y)                      in the common unit
-//   exp_into … atanh_into, log10_into, pow_base_into<Out, B>, pow_into
-//                                    of an inside or a dimensionless quantity
-//   fn_into<Out>(…)                  each of them with the result's number
-//                                    named: Out rounds, the input need not
+//   math::sqrt(q), math::cbrt(q)       the unit's root (m² → m), the number's
+//   abs, floor, ceil, round, trunc     on the number, in q's unit
+//   sin, cos, tan(q)                   of an angle in radians: a number; sin
+//                                      and cos also of an angle in a unit with
+//                                      a factor of π (°, a turn), reduced
+//                                      exactly by quarter turns, exact at
+//                                      Niven's values (name the notch then:
+//                                      sin<per<K>>(q))
+//   asin, acos, atan(x), atan2(y, x)   an angle in radians (x a dimensionless
+//                                      quantity; atan2 of two that add)
+//   hypot(x, y)                        in the common unit
+//   exp … atanh, pow_base<B>, pow      of numbers: dimensionless quantities
+//                                      (and insides): a number
+//   math::exp(x) of a multivector      units/detail/geoalg_exp.hpp
+//   value_cast<si::radian, Out>(q)     degree → radian (a pi factor): the
+//                                      exact x·π/180, rounded once onto Out
 //
-// Every result rounds as the inside function does: onto the output grid,
-// under its rounding mode (the deduced forms take the input's grid).
+// fn<L>(q) names only the result's number L (the unit follows), fn<C>(q) the
+// whole quantity, whose unit must be the result's. Every result rounds as
+// the inside function does: onto the output grid, under its rounding mode.
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_UNITS_MATH_HPP
 #define BEMAN_INSIDE_UNITS_MATH_HPP
@@ -182,11 +185,10 @@ inline constexpr reference radian_reference = reference{si::radian};
 template <reference R>
 inline constexpr bool pi_angle_v = dimension_of(R.U) == dim_one && magnitude_of(R.U).Pi == 1;
 
-// sin_into / cos_into of a π-scaled angle: one rounding onto Out. The
-// factor n/d in one limb when it is a 64-bit rational, else in as many as
-// it needs.
+// sin or cos of a π-scaled angle: one rounding onto Out. The factor n/d in
+// one limb when it is a 64-bit rational, else in as many as it needs.
 template <insidable Out, bool Cos, reference R, class V>
-constexpr Out pi_trig_into(const quantity<R, V>& q) {
+constexpr Out pi_trig(const quantity<R, V>& q) {
     namespace engine = beman::inside::math::detail::engine;
     using beman::inside::detail::grid_int;
     beman::inside::math::detail::entry::require_rounding<Out>();
@@ -233,113 +235,6 @@ template <auto U, insidable Out, reference R, class V>
         core{engine::exact_input(q.numerical_value()), static_cast<factor>(ng ? -n : n), static_cast<factor>(d), ng})};
 }
 
-// The number's functions, in q's unit.
-#define BEMAN_INSIDE_UNITS_SAME_UNIT_FN(fn)                                            \
-    template <reference R, class V>                                                    \
-    [[nodiscard]] constexpr auto fn(const quantity<R, V>& q) {                         \
-        return detail::make_quantity<R>(beman::inside::math::fn(q.numerical_value())); \
-    }
-BEMAN_INSIDE_UNITS_SAME_UNIT_FN(abs)
-BEMAN_INSIDE_UNITS_SAME_UNIT_FN(floor)
-BEMAN_INSIDE_UNITS_SAME_UNIT_FN(ceil)
-BEMAN_INSIDE_UNITS_SAME_UNIT_FN(round)
-BEMAN_INSIDE_UNITS_SAME_UNIT_FN(trunc)
-#undef BEMAN_INSIDE_UNITS_SAME_UNIT_FN
-
-// Trigonometry of an angle in radians: a plain number.
-template <reference R, class V>
-[[nodiscard]] constexpr auto sin(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R>,
-                  "units: sin takes an angle in radians - sin_into<Out>(q) takes a unit with a factor of pi");
-    return beman::inside::math::sin(q.numerical_value());
-}
-
-template <policy_flag Mode, reference R, class V>
-    requires beman::inside::math::detail::entry::rounding_mode<Mode>
-[[nodiscard]] constexpr auto sin(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R>,
-                  "units: sin takes an angle in radians - sin_into<Out>(q) takes a unit with a factor of pi");
-    return beman::inside::math::sin<Mode>(q.numerical_value());
-}
-template <reference R, class V>
-[[nodiscard]] constexpr auto cos(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R>,
-                  "units: cos takes an angle in radians - cos_into<Out>(q) takes a unit with a factor of pi");
-    return beman::inside::math::cos(q.numerical_value());
-}
-
-template <policy_flag Mode, reference R, class V>
-    requires beman::inside::math::detail::entry::rounding_mode<Mode>
-[[nodiscard]] constexpr auto cos(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R>,
-                  "units: cos takes an angle in radians - cos_into<Out>(q) takes a unit with a factor of pi");
-    return beman::inside::math::cos<Mode>(q.numerical_value());
-}
-template <reference R, class V>
-[[nodiscard]] constexpr auto tan(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R>, "units: tan takes an angle in radians - value_cast<si::radian, Out>(q) first");
-    return beman::inside::math::tan(q.numerical_value());
-}
-
-template <policy_flag Mode, reference R, class V>
-    requires beman::inside::math::detail::entry::rounding_mode<Mode>
-[[nodiscard]] constexpr auto tan(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R>, "units: tan takes an angle in radians - value_cast<si::radian, Out>(q) first");
-    return beman::inside::math::tan<Mode>(q.numerical_value());
-}
-
-// atan2(y, x) of two quantities of one dimension, in their common unit.
-template <reference A, class VA, reference B, class VB>
-    requires(detail::common_rescalable<A, VA, B, VB> &&
-             requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
-                 beman::inside::math::atan2(x, y);
-             })
-[[nodiscard]] constexpr auto atan2(const quantity<A, VA>& y, const quantity<B, VB>& x) {
-    return detail::make_quantity<detail::radian_reference>(
-        beman::inside::math::atan2(detail::in_common_unit<A, B>(y), detail::in_common_unit<A, B>(x)));
-}
-
-template <policy_flag Mode, reference A, class VA, reference B, class VB>
-    requires(detail::common_rescalable<A, VA, B, VB> &&
-             requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
-                 beman::inside::math::atan2<Mode>(x, y);
-             }) &&
-            beman::inside::math::detail::entry::rounding_mode<Mode>
-[[nodiscard]] constexpr auto atan2(const quantity<A, VA>& y, const quantity<B, VB>& x) {
-    return detail::make_quantity<detail::radian_reference>(
-        beman::inside::math::atan2<Mode>(detail::in_common_unit<A, B>(y), detail::in_common_unit<A, B>(x)));
-}
-
-// hypot(x, y): √(x² + y²) in the common unit.
-template <reference A, class VA, reference B, class VB>
-    requires(detail::common_rescalable<A, VA, B, VB> &&
-             requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
-                 beman::inside::math::hypot(x, y);
-             })
-[[nodiscard]] constexpr auto hypot(const quantity<A, VA>& x, const quantity<B, VB>& y) {
-    constexpr reference C = detail::sum_reference<A, B>();
-    return detail::make_quantity<C>(
-        beman::inside::math::hypot(detail::in_common_unit<A, B>(x), detail::in_common_unit<A, B>(y)));
-}
-
-template <policy_flag Mode, reference A, class VA, reference B, class VB>
-    requires(detail::common_rescalable<A, VA, B, VB> &&
-             requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
-                 beman::inside::math::hypot<Mode>(x, y);
-             }) &&
-            beman::inside::math::detail::entry::rounding_mode<Mode>
-[[nodiscard]] constexpr auto hypot(const quantity<A, VA>& x, const quantity<B, VB>& y) {
-    constexpr reference C = detail::sum_reference<A, B>();
-    return detail::make_quantity<C>(
-        beman::inside::math::hypot<Mode>(detail::in_common_unit<A, B>(x), detail::in_common_unit<A, B>(y)));
-}
-
-//---------------------------------------------------------------------------
-// The _into forms: Out names the result's number (an inside with a rounding
-// mode); the input needs no rounding mode — an arithmetic result (checked)
-// goes straight in. As math::fn_into, a result is an expected only for pow
-// at its pole (0 to a negative power).
-//---------------------------------------------------------------------------
 namespace detail {
 // x's number as an inside: an inside itself, or a dimensionless quantity's.
 template <class X>
@@ -352,140 +247,267 @@ constexpr auto number_of(const X& x) {
         return rescale<conversion_factor<X::reference.U, unit{}>>(x.numerical_value());
     }
 }
+template <class X>
+using number_of_t = decltype(number_of(std::declval<const X&>()));
+
+//---------------------------------------------------------------------------
+// The math functions on quantities (math/detail/functions.hpp): each takes
+// its arguments' numbers to the inside function, by one of these rules, and
+// puts the result in its unit.
+//---------------------------------------------------------------------------
+namespace m = beman::inside::math::detail;
+enum class math_rule {
+    none,
+    same,   // abs, floor, ceil, round, trunc: in q's unit
+    root2,  // sqrt: the unit's root (m² → m)
+    root3,  // cbrt
+    trig,   // sin, cos: of an angle in radians or with a factor of π; a number
+    tan,    // tan: of an angle in radians; a number
+    arc,    // asin, acos, atan: of a number; an angle in radians
+    arc2,   // atan2: of two quantities that add; an angle in radians
+    common, // hypot: of two quantities that add; in their common unit
+    number, // exp … atanh, pow_base, pow: of numbers; a number
+};
+template <class F>
+inline constexpr math_rule rule_of = math_rule::none;
+template <>
+inline constexpr math_rule rule_of<m::abs_fn> = math_rule::same;
+template <>
+inline constexpr math_rule rule_of<m::floor_fn> = math_rule::same;
+template <>
+inline constexpr math_rule rule_of<m::ceil_fn> = math_rule::same;
+template <>
+inline constexpr math_rule rule_of<m::round_fn> = math_rule::same;
+template <>
+inline constexpr math_rule rule_of<m::trunc_fn> = math_rule::same;
+template <>
+inline constexpr math_rule rule_of<m::entry::sqrt_fn> = math_rule::root2;
+template <>
+inline constexpr math_rule rule_of<m::entry::cbrt_fn> = math_rule::root3;
+template <>
+inline constexpr math_rule rule_of<m::entry::sin_fn> = math_rule::trig;
+template <>
+inline constexpr math_rule rule_of<m::entry::cos_fn> = math_rule::trig;
+template <>
+inline constexpr math_rule rule_of<m::entry::tan_fn> = math_rule::tan;
+template <>
+inline constexpr math_rule rule_of<m::entry::asin_fn> = math_rule::arc;
+template <>
+inline constexpr math_rule rule_of<m::entry::acos_fn> = math_rule::arc;
+template <>
+inline constexpr math_rule rule_of<m::entry::atan_fn> = math_rule::arc;
+template <>
+inline constexpr math_rule rule_of<m::entry::atan2_fn> = math_rule::arc2;
+template <>
+inline constexpr math_rule rule_of<m::entry::hypot_fn> = math_rule::common;
+#define BEMAN_INSIDE_UNITS_NUMBER_RULE(fn) \
+    template <>                            \
+    inline constexpr math_rule rule_of<m::entry::fn##_fn> = math_rule::number;
+BEMAN_INSIDE_UNITS_NUMBER_RULE(exp)
+BEMAN_INSIDE_UNITS_NUMBER_RULE(exp2)
+BEMAN_INSIDE_UNITS_NUMBER_RULE(log)
+BEMAN_INSIDE_UNITS_NUMBER_RULE(log2)
+BEMAN_INSIDE_UNITS_NUMBER_RULE(log10)
+BEMAN_INSIDE_UNITS_NUMBER_RULE(sinh)
+BEMAN_INSIDE_UNITS_NUMBER_RULE(cosh)
+BEMAN_INSIDE_UNITS_NUMBER_RULE(tanh)
+BEMAN_INSIDE_UNITS_NUMBER_RULE(asinh)
+BEMAN_INSIDE_UNITS_NUMBER_RULE(acosh)
+BEMAN_INSIDE_UNITS_NUMBER_RULE(atanh)
+BEMAN_INSIDE_UNITS_NUMBER_RULE(pow)
+#undef BEMAN_INSIDE_UNITS_NUMBER_RULE
+template <auto B>
+inline constexpr math_rule rule_of<m::entry::pow_base_fn<B>> = math_rule::number;
+
+// The output for specs S of a result in reference To (a quantity), or a
+// plain number (Number), whose number is the output of the numbers' kind NK.
+template <class O>
+struct rep_of {
+    using type = typename O::rep;
+};
+template <class NK, bool Number, reference To>
+struct output_in {
+    template <class N>
+    using with = std::conditional_t<Number, N, quantity<To, N>>;
+    template <class S>
+    struct out {
+        using type = with<typename NK::template output<S>>;
+    };
+    template <class C>
+    struct out<m::named<C>> {
+        static consteval auto pick() {
+            if constexpr (insidable<C>)
+                return std::type_identity<with<C>>{};
+            else {
+                static_assert(!Number, "beman::inside::math: f<C>(q) - the result is a number: C is an inside");
+                static_assert(quantity_like<C>, "beman::inside::math: f<C>(q) - C is a quantity or its number");
+                static_assert(C::reference.U == To.U && implicit_v<To, C::reference>,
+                              "beman::inside::math: f<C>(q) - C's unit must be exactly the result's (or name only "
+                              "the number)");
+                return std::type_identity<C>{};
+            }
+        }
+        using type = typename decltype(pick())::type;
+    };
+
+    // The output's number: O itself, or its rep.
+    template <class O>
+    using number_t = typename std::conditional_t<Number, std::type_identity<O>, rep_of<O>>::type;
+    template <class O, class V>
+    static constexpr auto make(V&& v) {
+        if constexpr (Number)
+            return std::forward<V>(v);
+        else
+            return lift_to<O>(std::forward<V>(v));
+    }
+};
+
+// Each rule: whether it takes the arguments (takes), the kind of their
+// numbers (NK), whether the result is a plain number or else its reference
+// (number, to), and the specs the numbers' kind sees (number_spec).
+template <math_rule Rule, class F, class... Args>
+struct quantity_rule {
+    static constexpr bool takes = false;
+};
+struct rule_base {
+    template <class S>
+    using number_spec = S;
+};
+
+template <math_rule Rule, class F, reference R, class V>
+    requires(Rule == math_rule::same || Rule == math_rule::root2 || Rule == math_rule::root3)
+struct quantity_rule<Rule, F, quantity<R, V>> : rule_base {
+    using NK                          = m::kind<F, 1, V>;
+    static constexpr bool      takes  = NK::takes;
+    static constexpr bool      number = false;
+    static constexpr reference to     = Rule == math_rule::same    ? R
+                                        : Rule == math_rule::root2 ? root_reference<R, 2>()
+                                                                   : root_reference<R, 3>();
+};
+
+// An angle in radians: the number's function; with a factor of π (sin and
+// cos): reduced exactly by quarter turns, the result on the named notch.
+template <math_rule Rule, class F, reference R, class V>
+    requires(Rule == math_rule::trig || Rule == math_rule::tan)
+struct quantity_rule<Rule, F, quantity<R, V>> {
+    static_assert(radians_v<R> || (Rule == math_rule::trig && pi_angle_v<R>),
+                  "units: sin, cos and tan take an angle in radians, sin and cos one in a unit with a factor of pi "
+                  "too - value_cast<si::radian, Out>(q) first");
+    using NK                          = m::kind<F, 1, V>;
+    static constexpr bool      takes  = NK::takes;
+    static constexpr bool      number = true;
+    static constexpr reference to     = {};
+    template <class S>
+    struct spec {
+        using type = S;
+    };
+    template <m::out_spec S>
+    struct spec<m::specs<S>> {
+        static_assert(radians_v<R> || S.HasNotch,
+                      "units: sin and cos of an angle with a factor of pi (°, a turn) - name the result's notch: "
+                      "sin<per<K>>(q)");
+        using type = m::specs<S>;
+    };
+    template <class S>
+    using number_spec = typename spec<S>::type;
+};
+
+// A number: an angle in radians.
+template <class F, class X>
+struct quantity_rule<math_rule::arc, F, X> : rule_base {
+    using NK                          = m::kind<F, 1, number_of_t<X>>;
+    static constexpr bool      takes  = NK::takes;
+    static constexpr bool      number = false;
+    static constexpr reference to     = radian_reference;
+};
+
+// Two quantities that add, in their common unit: an angle in radians
+// (atan2), or in that unit (hypot). (Two that do not add take nothing, and
+// form no common unit: the deleted overloads below say why.)
+template <class F, reference A, class VA, reference B, class VB, bool = common_rescalable<A, VA, B, VB>>
+struct common_rule {
+    using NK                      = m::kind<F, 0>;
+    static constexpr reference to = {};
+};
+template <class F, reference A, class VA, reference B, class VB>
+struct common_rule<F, A, VA, B, VB, true> {
+    using NK                      = m::kind<F, 1, common_number_t<A, VA, B>, common_number_t<B, VB, A>>;
+    static constexpr reference to = sum_reference<A, B>();
+};
+template <math_rule Rule, class F, reference A, class VA, reference B, class VB>
+    requires(Rule == math_rule::arc2 || Rule == math_rule::common)
+struct quantity_rule<Rule, F, quantity<A, VA>, quantity<B, VB>> : rule_base {
+    using C                           = common_rule<F, A, VA, B, VB>;
+    using NK                          = typename C::NK;
+    static constexpr bool      takes  = NK::takes;
+    static constexpr bool      number = false;
+    static constexpr reference to     = Rule == math_rule::arc2 ? radian_reference : C::to;
+};
+
+// Numbers (insides or dimensionless quantities): a number.
+template <class F, class... X>
+struct quantity_rule<math_rule::number, F, X...> : rule_base {
+    using NK                          = m::kind<F, 1, number_of_t<X>...>;
+    static constexpr bool      takes  = NK::takes;
+    static constexpr bool      number = true;
+    static constexpr reference to     = {};
+};
 } // namespace detail
+} // namespace beman::inside::units
 
-// Roots: the unit's (m² → m, m³ → m) and the number's.
-#define BEMAN_INSIDE_UNITS_ROOT_FN(fn, n)                                                                           \
-    template <reference R, class V>                                                                                 \
-    [[nodiscard]] constexpr auto fn(const quantity<R, V>& q) {                                                      \
-        return detail::make_quantity<detail::root_reference<R, n>()>(beman::inside::math::fn(q.numerical_value())); \
-    }                                                                                                               \
-    template <policy_flag Mode, reference R, class V>                                                               \
-        requires beman::inside::math::detail::entry::rounding_mode<Mode>                                            \
-    [[nodiscard]] constexpr auto fn(const quantity<R, V>& q) {                                                      \
-        return detail::make_quantity<detail::root_reference<R, n>()>(                                               \
-            beman::inside::math::fn<Mode>(q.numerical_value()));                                                    \
-    }                                                                                                               \
-    template <insidable Out, reference R, class V>                                                                  \
-    [[nodiscard]] constexpr auto fn##_into(const quantity<R, V>& q) {                                               \
-        return detail::make_quantity<detail::root_reference<R, n>()>(                                               \
-            beman::inside::math::fn##_into<Out>(q.numerical_value()));                                              \
+namespace beman::inside::math::detail {
+// A quantity's rank: 2, or 3 when its unit holds a blade (a part of a
+// multivector, which exp takes: units/detail/geoalg_exp.hpp).
+template <class T>
+    requires units::quantity_like<T>
+inline constexpr int kind_rank<T> = units::detail::has_blade(dimension_of(T::reference.U)) ? 3 : 2;
+
+// Quantities: the rule of F.
+template <class F, class... Args>
+struct kind<F, 2, Args...> {
+    using rule                  = units::detail::quantity_rule<units::detail::rule_of<F>, F, Args...>;
+    static constexpr bool takes = rule::takes;
+    using io                    = units::detail::output_in<typename rule::NK, rule::number, rule::to>;
+
+    template <class S>
+    using output = typename io::template out<typename rule::template number_spec<S>>::type;
+
+    template <class O>
+    [[gnu::always_inline]] static constexpr auto eval(const Args&... x) {
+        using NO         = typename io::template number_t<O>;
+        constexpr auto r = units::detail::rule_of<F>;
+        if constexpr (r == units::detail::math_rule::trig || r == units::detail::math_rule::tan) {
+            constexpr units::reference R = Args...[0] ::reference;
+            if constexpr (units::detail::radians_v<R>)
+                return F::template eval<NO>(x...[0].numerical_value());
+            else
+                return units::detail::pi_trig<NO, std::same_as<F, entry::cos_fn>>(x...[0]);
+        } else if constexpr (r == units::detail::math_rule::arc2 || r == units::detail::math_rule::common) {
+            constexpr units::reference A = Args...[0] ::reference, B = Args...[1] ::reference;
+            return io::template make<O>(F::template eval<NO>(units::detail::in_common_unit<A, B>(x...[0]),
+                                                             units::detail::in_common_unit<A, B>(x...[1])));
+        } else if constexpr (r == units::detail::math_rule::arc || r == units::detail::math_rule::number)
+            return io::template make<O>(F::template eval<NO>(units::detail::number_of(x)...));
+        else
+            return io::template make<O>(F::template eval<NO>(x.numerical_value()...));
     }
-BEMAN_INSIDE_UNITS_ROOT_FN(sqrt, 2)
-BEMAN_INSIDE_UNITS_ROOT_FN(cbrt, 3)
-#undef BEMAN_INSIDE_UNITS_ROOT_FN
+};
+} // namespace beman::inside::math::detail
 
-// An angle in radians, or in a unit with a factor of π (°, a turn, 2π/65536
-// rad): that one is reduced exactly, and the result rounds once.
-template <insidable Out, reference R, class V>
-[[nodiscard]] constexpr auto sin_into(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R> || detail::pi_angle_v<R>,
-                  "units: sin_into takes an angle in radians or in a unit with a factor of pi");
-    if constexpr (detail::radians_v<R>)
-        return beman::inside::math::sin_into<Out>(q.numerical_value());
-    else
-        return detail::pi_trig_into<Out, false>(q);
-}
-template <insidable Out, reference R, class V>
-[[nodiscard]] constexpr auto cos_into(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R> || detail::pi_angle_v<R>,
-                  "units: cos_into takes an angle in radians or in a unit with a factor of pi");
-    if constexpr (detail::radians_v<R>)
-        return beman::inside::math::cos_into<Out>(q.numerical_value());
-    else
-        return detail::pi_trig_into<Out, true>(q);
-}
-template <insidable Out, reference R, class V>
-[[nodiscard]] constexpr auto tan_into(const quantity<R, V>& q) {
-    static_assert(detail::radians_v<R>, "units: tan takes an angle in radians - value_cast<si::radian, Out>(q) first");
-    return beman::inside::math::tan_into<Out>(q.numerical_value());
-}
-
-// Inverse trigonometry: an angle in radians.
-#define BEMAN_INSIDE_UNITS_ARC_FN(fn)                                                             \
-    template <insidable V>                                                                        \
-    [[nodiscard]] constexpr auto fn(const V& x) {                                                 \
-        return detail::make_quantity<detail::radian_reference>(beman::inside::math::fn(x));       \
-    }                                                                                             \
-    template <policy_flag Mode, insidable V>                                                      \
-        requires beman::inside::math::detail::entry::rounding_mode<Mode>                          \
-    [[nodiscard]] constexpr auto fn(const V& x) {                                                 \
-        return detail::make_quantity<detail::radian_reference>(beman::inside::math::fn<Mode>(x)); \
-    }                                                                                             \
-    template <insidable Out, class X>                                                             \
-    [[nodiscard]] constexpr auto fn##_into(const X& x) {                                          \
-        return detail::make_quantity<detail::radian_reference>(                                   \
-            beman::inside::math::fn##_into<Out>(detail::number_of(x)));                           \
-    }
-BEMAN_INSIDE_UNITS_ARC_FN(asin)
-BEMAN_INSIDE_UNITS_ARC_FN(acos)
-BEMAN_INSIDE_UNITS_ARC_FN(atan)
-#undef BEMAN_INSIDE_UNITS_ARC_FN
-
-// Exponentials, logarithms and the hyperbolic functions of a number: an
-// inside or a dimensionless quantity (10^(L / 20 dB), log10(P / 1 mW)).
-#define BEMAN_INSIDE_UNITS_NUMBER_FN(fn)                                  \
-    template <insidable Out, class X>                                     \
-    [[nodiscard]] constexpr auto fn##_into(const X& x) {                  \
-        return beman::inside::math::fn##_into<Out>(detail::number_of(x)); \
-    }
-BEMAN_INSIDE_UNITS_NUMBER_FN(exp)
-BEMAN_INSIDE_UNITS_NUMBER_FN(exp2)
-BEMAN_INSIDE_UNITS_NUMBER_FN(log)
-BEMAN_INSIDE_UNITS_NUMBER_FN(log2)
-BEMAN_INSIDE_UNITS_NUMBER_FN(log10)
-BEMAN_INSIDE_UNITS_NUMBER_FN(sinh)
-BEMAN_INSIDE_UNITS_NUMBER_FN(cosh)
-BEMAN_INSIDE_UNITS_NUMBER_FN(tanh)
-BEMAN_INSIDE_UNITS_NUMBER_FN(asinh)
-BEMAN_INSIDE_UNITS_NUMBER_FN(acosh)
-BEMAN_INSIDE_UNITS_NUMBER_FN(atanh)
-#undef BEMAN_INSIDE_UNITS_NUMBER_FN
-template <insidable Out, auto Base, class X>
-[[nodiscard]] constexpr auto pow_base_into(const X& x) {
-    return beman::inside::math::pow_base_into<Out, Base>(detail::number_of(x));
-}
-template <insidable Out, class B, class E>
-[[nodiscard]] constexpr auto pow_into(const B& base, const E& exp) {
-    return beman::inside::math::pow_into<Out>(detail::number_of(base), detail::number_of(exp));
-}
-template <insidable Out, reference A, class VA, reference B, class VB>
-    requires(detail::common_rescalable<A, VA, B, VB> &&
-             requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
-                 beman::inside::math::atan2_into<Out>(x, y);
-             })
-[[nodiscard]] constexpr auto atan2_into(const quantity<A, VA>& y, const quantity<B, VB>& x) {
-    return detail::make_quantity<detail::radian_reference>(
-        beman::inside::math::atan2_into<Out>(detail::in_common_unit<A, B>(y), detail::in_common_unit<A, B>(x)));
-}
-template <insidable Out, reference A, class VA, reference B, class VB>
-    requires(detail::common_rescalable<A, VA, B, VB> &&
-             requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
-                 beman::inside::math::hypot_into<Out>(x, y);
-             })
-[[nodiscard]] constexpr auto hypot_into(const quantity<A, VA>& x, const quantity<B, VB>& y) {
-    constexpr reference C = detail::sum_reference<A, B>();
-    return detail::make_quantity<C>(
-        beman::inside::math::hypot_into<Out>(detail::in_common_unit<A, B>(x), detail::in_common_unit<A, B>(y)));
-}
+namespace beman::inside::math {
 // atan2 and hypot of two quantities that do not add (another dimension or
 // kind, no common unit).
-template <reference A, class VA, reference B, class VB>
-    requires(detail::sum_diagnosed<A, B>())
-void atan2(const quantity<A, VA>&, const quantity<B, VB>&) =
+template <auto... Spec, units::reference A, class VA, units::reference B, class VB>
+    requires(units::detail::sum_diagnosed<A, B>())
+void atan2(const units::quantity<A, VA>&, const units::quantity<B, VB>&) =
     delete ("units: atan2 takes two quantities that add - one dimension and kind, a common unit");
-template <reference A, class VA, reference B, class VB>
-    requires(detail::sum_diagnosed<A, B>())
-void hypot(const quantity<A, VA>&, const quantity<B, VB>&) =
+template <auto... Spec, units::reference A, class VA, units::reference B, class VB>
+    requires(units::detail::sum_diagnosed<A, B>())
+void hypot(const units::quantity<A, VA>&, const units::quantity<B, VB>&) =
     delete ("units: hypot takes two quantities that add - one dimension and kind, a common unit");
-template <insidable Out, reference A, class VA, reference B, class VB>
-    requires(detail::sum_diagnosed<A, B>())
-void atan2_into(const quantity<A, VA>&, const quantity<B, VB>&) =
-    delete ("units: atan2 takes two quantities that add - one dimension and kind, a common unit");
-template <insidable Out, reference A, class VA, reference B, class VB>
-    requires(detail::sum_diagnosed<A, B>())
-void hypot_into(const quantity<A, VA>&, const quantity<B, VB>&) =
-    delete ("units: hypot takes two quantities that add - one dimension and kind, a common unit");
-} // namespace beman::inside::units
+} // namespace beman::inside::math
+
+// exp of multivectors (units/geoalg.hpp).
+#include <beman/inside/units/detail/geoalg_exp.hpp>
 
 #endif // BEMAN_INSIDE_UNITS_MATH_HPP

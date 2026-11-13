@@ -4,7 +4,7 @@
 // amount never adds to a plain number or a length. A 0.01 notch over
 // [0, 1'000'000] USD gives exact two-decimal storage in uint32 — no float
 // drift on running totals. `sum` adds the line items with one range check,
-// and `mul_into` rounds the 8 % tax once onto the cent.
+// and `mul<money>` rounds the 8 % tax once onto the cent.
 
 #include <algorithm>
 #include <iostream>
@@ -41,7 +41,7 @@ int main() {
     // Apply 8 % sales tax: the exact product, rounded once to the nearest 1¢
     // by `money`'s `round_nearest`. USD·% is USD/100, folded into the rounding.
     const auto  rate = just<8> * percent;
-    const money tax  = mul_into<money>(subtotal, rate);
+    const money tax  = mul<money>(subtotal, rate);
     std::cout << "tax (" << rate << "): " << tax << "\n";
 
     const money total = subtotal + tax;

@@ -243,7 +243,7 @@ constexpr wide_rational<std::max(K, exact_limbs<L>)> onto_bound(const wide_ratio
 //---------------------------------------------------------------------------
 // assign_exact — store an exact value into L: the path wherever neither int64
 // nor the 64-bit rational holds every value (a wide raw on either side, fine
-// doubles, mul_into/div_into, parse, sum, wrap_exact). Rounds first, then range-checks,
+// doubles, mul<Out>/div<Out>, parse, sum, wrap_exact). Rounds first, then range-checks,
 // like the builtin paths; out of range runs the usual policy cascade.
 //---------------------------------------------------------------------------
 // R is the source type: an on_clamp action gets the overshoot and an

@@ -27,14 +27,17 @@
 //   quantity_cast, value_cast, try_value_cast    kinds and representations
 //   named_unit, quantity_spec, point_origin,     units, kinds, origins and
 //   base_dimension, unit_c / spec_c / origin_c   dimensions of your own
+//   basis_vector                                 a basis vector of a geometric
+//                                                algebra: you state its square
 //   q.on_wrap / on_clamp / on_error, ++q, Q::try_make
-//   mul_into, div_into, add_all, mul_all, sum<Q>, divmod,
+//   mul<C>, div<C>, add_all, mul_all, sum<Q>, divmod,
 //   conversion_overflows / rounds / loses<Q>, Q{x, clamp} / Q{x, wrap},
 //   dot, cross, lerp                             inside's algorithms
 //   percent, per_mille                           dimensionless units
 // The catalog: isq, si, si2019, international. The derived physical
 // constants are in units/constants.hpp; text (to_string, <<, std::format,
-// parse<Q>) in units/io.hpp.
+// parse<Q>) in units/io.hpp; multivectors and the products of geometric
+// algebra (3 + 4 i, wedge, reverse, inverse, dual) in units/geoalg.hpp.
 //
 // This umbrella is units/core.hpp (the machinery: units/detail/algebra.hpp,
 // quantity.hpp, point.hpp) plus units/systems.hpp (the catalog). For units of

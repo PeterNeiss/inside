@@ -5,7 +5,7 @@
 //   - Per-sensor fixed-point grids (different lower/upper/notch each)
 //   - `conversion_overflows` predicate as a soft outlier filter
 //   - A fixed-point weighted sum that stays exact until the one rounding
-//   - `div_into` with `clamp | round_nearest` on the output type: the average
+//   - `div<Out>` with `clamp | round_nearest` on the output type: the average
 //     saturates and rounds once (no explicit `B{v, clamp | round_nearest}`)
 //   - Readings as ℃ points: a point has no sum and no product, so the
 //     weighted mean is the affine one, ref + Σ w·(p − ref) / Σ w, with each
@@ -32,7 +32,7 @@ using indoor_t  = inside<{{0, 50}, per<10>}, round_nearest>;  // 0.1  °C
 using ground_t  = inside<{{-10, 30}, per<4>}, round_nearest>; // 0.25 °C
 
 // Output: a coarse fused grid, whole ℃ above the reference. `clamp |
-// round_nearest` lets `div_into<fused_t>` saturate AND round the quotient in
+// round_nearest` lets `div<fused_t>` saturate AND round the quotient in
 // one step — no explicit `fused_t{..., clamp | round_nearest}` cast needed.
 using fused_t = quantity<deg_C, inside<{-40, 60}, clamp | round_nearest>>;
 
@@ -76,9 +76,9 @@ int main() {
     accept(std::type_identity<ground_t>{}, raw[3], w_ground, "ground ");
     accept(std::type_identity<indoor_t>{}, raw[4], w_indoor, "indoor ");
 
-    // The weight grid includes 0, so div_into returns expected<fused_t, errc>:
+    // The weight grid includes 0, so div<fused_t> returns expected<fused_t, errc>:
     // no accepted reading is a division by zero, reported, not a crash.
-    const auto fused = ref + div_into<fused_t>(weighted_sum, weight_sum).value_or(fused_t{0});
+    const auto fused = ref + div<fused_t>(weighted_sum, weight_sum).value_or(fused_t{0});
 
     std::cout << "\nweighted sum: " << weighted_sum << ",  total weight: " << weight_sum << "\n";
     std::cout << "fused (clamp+round into fused_t): " << fused << "\n";

@@ -81,7 +81,7 @@ the quotient's denominator is at most the dividend's largest denominator
 times the divisor's largest numerator. The result grid records that bound
 ([below](#bounded-continuous-grids)), and its fraction is sized for it, up to
 1024 bits. Past that the quotient has no type: `/` does not compile, and
-`div_into` rounds the quotient onto a type you name instead.
+`div<Out>` rounds the quotient onto a type you name instead.
 
 ```cpp
 using fine = inside<{{0, 1}, rational{1, std::uint64_t{1} << 40}}>;
@@ -192,7 +192,7 @@ auto p = t * t;                       // a plain value, denominators ≤ 10^6
 Any bound works while a value's numerator and denominator together fit 1024
 bits. An operation whose exact result would need more has no result type: the
 operator is deleted, and its message names the fix (store an operand into a
-coarser type first, or round the result once with `mul_into` or `div_into`).
+coarser type first, or round the result once with `mul<Out>` or `div<Out>`).
 
 A stored value whose denominator passes the bound is a `rounding_error`
 unless the policy rounds. Then it goes to a neighbouring fraction within the

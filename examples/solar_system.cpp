@@ -46,7 +46,7 @@ int main() {
     // 2. Distance to a point 3·10^12 m east and 4·10^12 m north: exactly
     //    5·10^12 m, and hypot returns exactly that.
     const metres east{3'000'000'000'000}, north{4'000'000'000'000};
-    const auto   d = units::hypot_into<mm>(east, north);
+    const auto   d = math::hypot<mm>(east, north);
     std::cout << "hypot   " << d << "\n";
     if (d != just<5'000'000'000'000> * si::metre)
         return 1;

@@ -30,8 +30,8 @@ int main() {
                         {coord_t{just<3, 5>}, coord_t{just<4, 5>}},
                         {coord_t{0.5}, coord_t{-0.5}}}) {
         const auto    r     = math::hypot(x, y);
-        const auto    theta = math::atan2_into<angle_t>(y, x);
-        const coord_t rx = mul_into<coord_t>(r, math::cos(theta)), ry = mul_into<coord_t>(r, math::sin(theta));
+        const auto    theta = math::atan2<angle_t>(y, x);
+        const coord_t rx = mul<coord_t>(r, math::cos(theta)), ry = mul<coord_t>(r, math::sin(theta));
         std::cout << "  (" << x << ", " << y << ") -> (" << r << ", " << theta << ") -> (" << rx << ", " << ry
                   << ")\n";
         if (math::abs(rx - x) > just<2, 16384> || math::abs(ry - y) > just<2, 16384>)
@@ -46,22 +46,22 @@ int main() {
     using compass_t = inside<{{-180, 180}, per<10>}, round_nearest>;
     std::cout << "\ntarget (east, north)   range       bearing\n";
     for (auto [e, n] : {std::pair{pos_t{30}, pos_t{40}}, {pos_t{0}, pos_t{50}}, {pos_t{-30}, pos_t{-40}}}) {
-        const auto range   = units::hypot(e, n);
-        const auto bearing = units::atan2_into<fine_t>(e, n);
+        const auto range   = math::hypot(e, n);
+        const auto bearing = math::atan2<fine_t>(e, n);
         const auto deg     = value_cast<si::degree, compass_t>(bearing);
         std::cout << "  (" << e << ", " << n << ")" << "\t" << range << "\t" << bearing << " = " << deg << "\n";
         if (range != just<50> * si::metre) // 3-4-5 triangles: exact
             return 1;
     }
-    if (to_string(value_cast<si::degree, compass_t>(units::atan2_into<fine_t>(pos_t{-30}, pos_t{-40}))) != "-143.1°")
+    if (to_string(value_cast<si::degree, compass_t>(math::atan2<fine_t>(pos_t{-30}, pos_t{-40}))) != "-143.1°")
         return 1;
 
-    // 3. Inverse trig on [-1, 1]: angles in rad.
+    // 3. Inverse trig on [-1, 1]: plain numbers, as angles in rad.
     using ratio_t = inside<{{-1, 1}, per<4096>}, round_nearest>;
     std::cout << "\nr      asin(r)    acos(r)\n";
     for (const ratio_t r : {ratio_t{-1}, ratio_t{-0.5}, ratio_t{0}, ratio_t{0.5}, ratio_t{1}})
-        std::cout << "  " << r << "\t" << units::asin(r) << "\t" << units::acos(r) << "\n";
-    if (units::asin(ratio_t{0}) != just<0> * si::radian || units::acos(ratio_t{1}) != just<0> * si::radian)
+        std::cout << "  " << r << "\t" << math::asin(r) * si::radian << "\t" << math::acos(r) * si::radian << "\n";
+    if (math::asin(ratio_t{0}) != 0 || math::acos(ratio_t{1}) != 0)
         return 1;
     return 0;
 }

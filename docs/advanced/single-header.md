@@ -64,7 +64,7 @@ int main() {
 
     // math: correctly rounded onto the output grid, the same bits everywhere.
     using amplitude = inside<{{-1, 1}, per<1000>}, round_nearest>;
-    auto s = units::sin_into<amplitude>(quantity<si::degree, inside<{0, 360}>>{30});
+    auto s = math::sin<amplitude>(quantity<si::degree, inside<{0, 360}>>{30});
     auto r = math::sqrt(inside<{{0, 10}, per<1000>}, round_nearest>{2});
     std::cout << "sin 30°         = " << s << '\n'
               << "sqrt 2          = " << r << '\n';

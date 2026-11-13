@@ -41,9 +41,9 @@ int main() {
     if (a * b != just<203, 8>) // 25.375
         return 1;
 
-    // Storing a product back onto Q8.8: mul_into rounds once, by the mode given.
+    // Storing a product back onto Q8.8: mul<q8_8> rounds once, by the mode given.
     const q8_8 gain{1.00390625}; // 257/256
-    const auto scaled = mul_into<q8_8, round_nearest>(b, gain);
+    const auto scaled = mul<q8_8>(b, gain, round_nearest);
     std::cout << "7.25 * 1.00390625 = " << b * gain << " -> Q8.8 " << scaled << "\n";
     if (scaled != just<1863, 256>) // 1863.25/256 rounds to 1863/256
         return 1;

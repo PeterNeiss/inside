@@ -57,7 +57,7 @@ precision it needs.
 
 Two ways avoid approximating π at all: scale a unit with `mag_pi`
 ([the units model](units-model.md#factors-of-π-round-once)), and take the sine of an angle
-in degrees or turns, which `units::sin_into` reduces exactly
+in degrees or turns, which `math::sin` reduces exactly
 ([the math engine](math-engine.md#angles-over-many-turns)).
 
 ## Physical constants: `units::constants::`

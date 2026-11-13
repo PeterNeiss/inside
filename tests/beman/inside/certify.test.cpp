@@ -63,7 +63,7 @@ using asin_r   = inside<{{rational{-3217, 2048}, rational{3217, 2048}}, per<4096
 using acos_r   = inside<{{0, rational{3217, 1024}}, per<4096>}, round_nearest>;
 using position = inside<{{-1024, 1024}, per<256>}, round_nearest>;            // pos_t's number
 using fine     = inside<{{-4, 4}, per<1 << 20>}, round_nearest>;              // fine_t
-using range    = inside<{{0, rational{46341, 32}}, per<256>}, round_nearest>; // units::hypot(pos_t, pos_t)
+using range    = inside<{{0, rational{46341, 32}}, per<256>}, round_nearest>; // math::hypot(pos_t, pos_t)
 // audio_math.cpp
 using t_tau    = inside<{{-4, 4}, per<1024>}, round_nearest>;   // seconds_t / tau (keeps the shared policy)
 using amp      = inside<{{0, 100}, per<16384>}, round_nearest>; // amp_t
@@ -97,9 +97,9 @@ using metres = inside<{{-10'000'000'000'000, 10'000'000'000'000}, rational{1, 1'
 using mm     = inside<{{0, 100'000'000'000'000}, per<1000>}, round_nearest>;
 } // namespace ex
 
-#define CERTIFY(fn, Out, In) r.unary<Out, In>(#fn, [](In x) { return am::fn##_into<Out>(x); })
-#define CERTIFY2(fn, Out, A, B) r.binary<Out, A, B>(#fn, [](A a, B b) { return am::fn##_into<Out>(a, b); })
-#define CERTIFY_POW10(Out, In) r.unary<Out, In>("pow_base<10>", [](In x) { return am::pow_base_into<Out, 10>(x); })
+#define CERTIFY(fn, Out, In) r.unary<Out, In>(#fn, [](In x) { return am::fn<Out>(x); })
+#define CERTIFY2(fn, Out, A, B) r.binary<Out, A, B>(#fn, [](A a, B b) { return am::fn<Out>(a, b); })
+#define CERTIFY_POW10(Out, In) r.unary<Out, In>("pow_base<10>", [](In x) { return am::pow_base<10, Out>(x); })
 
 void pairs(certify::runner& r) {
     r.section("## Library pairs\n\n"
@@ -140,16 +140,16 @@ void pairs(certify::runner& r) {
     CERTIFY(acosh, f20n, ge1);
     CERTIFY(atanh, c4f, open1);
 
-    r.unary<f20n, sym4>("pow_base<10>", [](sym4 x) { return am::pow_base_into<f20n, 10>(x); });
+    r.unary<f20n, sym4>("pow_base<10>", [](sym4 x) { return am::pow_base<10, f20n>(x); });
 
     // Small inputs: these run in a debug build too.
     CERTIFY(sin, c4f, small);
     CERTIFY(exp, c4c, small);
     CERTIFY(atan, f20n, side);
 
-    r.binary<c4n, side, side>("atan2", [](side y, side x) { return am::atan2_into<c4n>(y, x); });
-    r.binary<f20n, side, side>("hypot", [](side x, side y) { return am::hypot_into<f20n>(x, y); });
-    r.binary<wide, base, expo>("pow", [](base b, expo e) { return am::pow_into<wide>(b, e); });
+    r.binary<c4n, side, side>("atan2", [](side y, side x) { return am::atan2<c4n>(y, x); });
+    r.binary<f20n, side, side>("hypot", [](side x, side y) { return am::hypot<f20n>(x, y); });
+    r.binary<wide, base, expo>("pow", [](base b, expo e) { return am::pow<wide>(b, e); });
 
     using namespace ex;
     constexpr const char* examples =

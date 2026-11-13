@@ -88,7 +88,7 @@ int main() {
 
     // 4. balance × rate has a 10^-20 notch — a grid past 64-bit numbers — so
     //    round the exact product straight onto the cents grid. ETH·USD/ETH is USD.
-    const usd value = mul_into<usd>(balance, *parse<rate>("3141.59"));
+    const usd value = mul<usd>(balance, *parse<rate>("3141.59"));
     std::cout << "value    " << value << "\n";
     if (to_string(value) != "387850614142.36 USD")
         return 1;

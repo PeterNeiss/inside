@@ -5,6 +5,7 @@
 #include <beman/inside/inside/detail/config.hpp>
 
 #include <beman/inside/inside.hpp>
+#include <beman/inside/math/detail/functions.hpp> // the call forms
 
 #include <algorithm>
 #include <array>
@@ -24,8 +25,8 @@
 //                             lcm(0, b) = 0
 // Each result type holds exactly the values its inputs can produce, worked
 // out at compile time: factorial of inside<{0, 20}> is inside<{1, 20!}>, of
-// inside<{0, 100}> a wide raw. fn_into<Out>(…) stores the result into Out by
-// Out's policy. A count (n, k) is an inside on the integers from 0, of any
+// inside<{0, 100}> a wide raw. fn<Out>(…) stores the result into Out by Out's
+// policy (math/detail/functions.hpp has every call form). A count (n, k) is an inside on the integers from 0, of any
 // size; gcd and lcm take integer grids of any sign and size. A result whose
 // limit would pass max_count_bits has no type: its grid number is computed
 // while compiling.
@@ -397,14 +398,13 @@ inline constexpr auto factorial_table = [] {
 #define BEMAN_INSIDE_WHY_too_large(fn)                                                                            \
     "beman::inside::math::" #fn ": the result would pass 16384 bits (math::detail::max_count_bits) - narrow the " \
     "input grids"
-} // namespace detail
 
 //---------------------------------------------------------------------------
 // factorial
 //---------------------------------------------------------------------------
 template <insidable N>
     requires detail::count<N> && (detail::factorial_grid<N>.Fits)
-[[nodiscard]] constexpr auto factorial(N n) noexcept {
+[[nodiscard]] constexpr auto factorial_of(N n) noexcept {
     using R = inside<detail::factorial_grid<N>.Grid>;
     if constexpr (detail::point_grid<R>) {
         (void)n;
@@ -421,25 +421,13 @@ template <insidable N>
         }
     }
 }
-template <insidable N>
-    requires(!detail::count<N>)
-auto factorial(N) = delete (BEMAN_INSIDE_WHY_count(factorial));
-template <insidable N>
-    requires detail::count<N> && (!detail::factorial_grid<N>.Fits)
-auto factorial(N) = delete (BEMAN_INSIDE_WHY_too_large(factorial));
-
-template <insidable Out, insidable N>
-    requires requires(N n) { factorial(n); }
-[[nodiscard]] constexpr Out factorial_into(N n) {
-    return Out{factorial(n)};
-}
 
 //---------------------------------------------------------------------------
 // falling_factorial, rising_factorial
 //---------------------------------------------------------------------------
 template <insidable N, insidable K>
     requires detail::count<N> && detail::count<K> && (detail::falling_grid<N, K>.Fits)
-[[nodiscard]] constexpr auto falling_factorial(N n, K k) noexcept {
+[[nodiscard]] constexpr auto falling_factorial_of(N n, K k) noexcept {
     using R = inside<detail::falling_grid<N, K>.Grid>;
     if constexpr (detail::point_grid<R>) {
         (void)n, (void)k;
@@ -454,22 +442,10 @@ template <insidable N, insidable K>
                                                : detail::product<W>(a - b + C{1}, static_cast<std::uint64_t>(b)));
     }
 }
-template <insidable N, insidable K>
-    requires(!detail::count<N> || !detail::count<K>)
-auto falling_factorial(N, K) = delete (BEMAN_INSIDE_WHY_count(falling_factorial));
-template <insidable N, insidable K>
-    requires detail::count<N> && detail::count<K> && (!detail::falling_grid<N, K>.Fits)
-auto falling_factorial(N, K) = delete (BEMAN_INSIDE_WHY_too_large(falling_factorial));
-
-template <insidable Out, insidable N, insidable K>
-    requires requires(N n, K k) { falling_factorial(n, k); }
-[[nodiscard]] constexpr Out falling_factorial_into(N n, K k) {
-    return Out{falling_factorial(n, k)};
-}
 
 template <insidable N, insidable K>
     requires detail::count<N> && detail::count<K> && (detail::rising_grid<N, K>.Fits)
-[[nodiscard]] constexpr auto rising_factorial(N n, K k) noexcept {
+[[nodiscard]] constexpr auto rising_factorial_of(N n, K k) noexcept {
     using R = inside<detail::rising_grid<N, K>.Grid>;
     if constexpr (detail::point_grid<R>) {
         (void)n, (void)k;
@@ -485,25 +461,13 @@ template <insidable N, insidable K>
                                                              : detail::product<W>(a, static_cast<std::uint64_t>(b)));
     }
 }
-template <insidable N, insidable K>
-    requires(!detail::count<N> || !detail::count<K>)
-auto rising_factorial(N, K) = delete (BEMAN_INSIDE_WHY_count(rising_factorial));
-template <insidable N, insidable K>
-    requires detail::count<N> && detail::count<K> && (!detail::rising_grid<N, K>.Fits)
-auto rising_factorial(N, K) = delete (BEMAN_INSIDE_WHY_too_large(rising_factorial));
-
-template <insidable Out, insidable N, insidable K>
-    requires requires(N n, K k) { rising_factorial(n, k); }
-[[nodiscard]] constexpr Out rising_factorial_into(N n, K k) {
-    return Out{rising_factorial(n, k)};
-}
 
 //---------------------------------------------------------------------------
 // binomial, multinomial
 //---------------------------------------------------------------------------
 template <insidable N, insidable K>
     requires detail::count<N> && detail::count<K> && (detail::binomial_grid<N, K>.Fits)
-[[nodiscard]] constexpr auto binomial(N n, K k) noexcept {
+[[nodiscard]] constexpr auto binomial_of(N n, K k) noexcept {
     using R = inside<detail::binomial_grid<N, K>.Grid>;
     if constexpr (detail::point_grid<R>) {
         (void)n, (void)k;
@@ -523,22 +487,10 @@ template <insidable N, insidable K>
             return detail::lattice_inside<R>(c);
     }
 }
-template <insidable N, insidable K>
-    requires(!detail::count<N> || !detail::count<K>)
-auto binomial(N, K) = delete (BEMAN_INSIDE_WHY_count(binomial));
-template <insidable N, insidable K>
-    requires detail::count<N> && detail::count<K> && (!detail::binomial_grid<N, K>.Fits)
-auto binomial(N, K) = delete (BEMAN_INSIDE_WHY_too_large(binomial));
-
-template <insidable Out, insidable N, insidable K>
-    requires requires(N n, K k) { binomial(n, k); }
-[[nodiscard]] constexpr Out binomial_into(N n, K k) {
-    return Out{binomial(n, k)};
-}
 
 template <insidable... Ks>
     requires(sizeof...(Ks) >= 1) && (detail::count<Ks> && ...) && (detail::multinomial_grid<Ks...>.Fits)
-[[nodiscard]] constexpr auto multinomial(Ks... ks) noexcept {
+[[nodiscard]] constexpr auto multinomial_of(Ks... ks) noexcept {
     using R = inside<detail::multinomial_grid<Ks...>.Grid>;
     if constexpr (detail::point_grid<R>) {
         ((void)ks, ...);
@@ -559,26 +511,10 @@ template <insidable... Ks>
             return detail::lattice_inside<R>(r);
     }
 }
-template <insidable... Ks>
-    requires(sizeof...(Ks) >= 1) && (!(detail::count<Ks> && ...))
-auto multinomial(Ks...) = delete (BEMAN_INSIDE_WHY_count(multinomial));
-template <insidable... Ks>
-    requires(sizeof...(Ks) >= 1) && (detail::count<Ks> && ...) && (!detail::multinomial_grid<Ks...>.Fits)
-auto multinomial(Ks...) = delete (BEMAN_INSIDE_WHY_too_large(multinomial));
-
-template <insidable Out, insidable... Ks>
-    requires requires(Ks... ks) { multinomial(ks...); }
-[[nodiscard]] constexpr Out multinomial_into(Ks... ks) {
-    return Out{multinomial(ks...)};
-}
 
 //---------------------------------------------------------------------------
 // gcd, lcm
 //---------------------------------------------------------------------------
-#define BEMAN_INSIDE_WHY_integers(fn) \
-    "beman::inside::math::" #fn ": the operands need a lattice (a notch or a point); a continuous grid has none"
-
-namespace detail {
 // For fractional lattices (gcd and lcm compute integers directly): x's
 // value in units of gcd_unit, as a magnitude in an unsigned type that holds
 // both operands', and the R of n such units.
@@ -592,7 +528,6 @@ template <insidable R, insidable A, insidable B, class W>
 constexpr R from_units(const W& n) {
     return from_value_in_units<R, gcd_unit<A, B>>(n);
 }
-} // namespace detail
 
 // gcd and lcm of two lattices: of integers as std::gcd and std::lcm; of
 // fractions x = a·u, y = b·u (u the gcd of the value units) u·gcd(a, b) and
@@ -600,7 +535,7 @@ constexpr R from_units(const W& n) {
 // the lattice uℤ.
 template <insidable A, insidable B>
     requires detail::has_lattice<A> && detail::has_lattice<B>
-[[nodiscard]] constexpr auto gcd(A a, B b) noexcept {
+[[nodiscard]] constexpr auto gcd_of(A a, B b) noexcept {
     using R = inside<detail::gcd_grid<A, B>>;
     if constexpr (detail::point_grid<R>) {
         (void)a, (void)b;
@@ -628,19 +563,10 @@ template <insidable A, insidable B>
             return detail::lattice_inside<R>(std::gcd(ux, uy));
     }
 }
-template <insidable A, insidable B>
-    requires(!detail::has_lattice<A> || !detail::has_lattice<B>)
-auto gcd(A, B) = delete (BEMAN_INSIDE_WHY_integers(gcd));
-
-template <insidable Out, insidable A, insidable B>
-    requires requires(A a, B b) { gcd(a, b); }
-[[nodiscard]] constexpr Out gcd_into(A a, B b) {
-    return Out{gcd(a, b)};
-}
 
 template <insidable A, insidable B>
     requires detail::has_lattice<A> && detail::has_lattice<B> && detail::lcm_fits<A, B>
-[[nodiscard]] constexpr auto lcm(A a, B b) noexcept {
+[[nodiscard]] constexpr auto lcm_of(A a, B b) noexcept {
     using R = inside<detail::lcm_grid<A, B>>;
     if constexpr (detail::point_grid<R>) {
         (void)a, (void)b;
@@ -671,18 +597,83 @@ template <insidable A, insidable B>
             return detail::lattice_inside<R>(std::lcm(ux, uy));
     }
 }
-template <insidable A, insidable B>
-    requires(!detail::has_lattice<A> || !detail::has_lattice<B>)
-auto lcm(A, B) = delete (BEMAN_INSIDE_WHY_integers(lcm));
-template <insidable A, insidable B>
-    requires detail::has_lattice<A> && detail::has_lattice<B> && (!detail::lcm_fits<A, B>)
-auto lcm(A, B) = delete (BEMAN_INSIDE_WHY_too_large(lcm));
 
-template <insidable Out, insidable A, insidable B>
-    requires requires(A a, B b) { lcm(a, b); }
-[[nodiscard]] constexpr Out lcm_into(A a, B b) {
-    return Out{lcm(a, b)};
-}
+//---------------------------------------------------------------------------
+// The tags (math/detail/functions.hpp): exact, each deduced output the
+// result's own grid; a call takes what the implementation above takes.
+//---------------------------------------------------------------------------
+#define BEMAN_INSIDE_COUNT_TAG(fn)                                                                           \
+    struct fn##_fn {                                                                                         \
+        static constexpr bool rounds = false;                                                                \
+        template <class... In>                                                                               \
+        static constexpr bool takes = (insidable<In> && ...) && requires(const In&... x) { fn##_of(x...); }; \
+        template <class... In>                                                                               \
+        using result = decltype(fn##_of(std::declval<const In&>()...));                                      \
+        template <class Out, class... In>                                                                    \
+        [[nodiscard]] static constexpr Out eval(const In&... x) {                                            \
+            return Out{fn##_of(x...)};                                                                       \
+        }                                                                                                    \
+    };
+BEMAN_INSIDE_COUNT_TAG(factorial)
+BEMAN_INSIDE_COUNT_TAG(falling_factorial)
+BEMAN_INSIDE_COUNT_TAG(rising_factorial)
+BEMAN_INSIDE_COUNT_TAG(binomial)
+BEMAN_INSIDE_COUNT_TAG(multinomial)
+BEMAN_INSIDE_COUNT_TAG(gcd)
+BEMAN_INSIDE_COUNT_TAG(lcm)
+#undef BEMAN_INSIDE_COUNT_TAG
+} // namespace detail
+
+BEMAN_INSIDE_MATH_FUNCTION(factorial, detail::factorial_fn)
+BEMAN_INSIDE_MATH_FUNCTION(falling_factorial, detail::falling_factorial_fn)
+BEMAN_INSIDE_MATH_FUNCTION(rising_factorial, detail::rising_factorial_fn)
+BEMAN_INSIDE_MATH_FUNCTION(binomial, detail::binomial_fn)
+BEMAN_INSIDE_MATH_FUNCTION(multinomial, detail::multinomial_fn)
+BEMAN_INSIDE_MATH_FUNCTION(gcd, detail::gcd_fn)
+BEMAN_INSIDE_MATH_FUNCTION(lcm, detail::lcm_fn)
+
+// The cases a function does not take, with the reason.
+#define BEMAN_INSIDE_WHY_integers(fn) \
+    "beman::inside::math::" #fn ": the operands need a lattice (a notch or a point); a continuous grid has none"
+template <auto... Spec, insidable N>
+    requires(!detail::count<N>)
+auto factorial(const N&) = delete (BEMAN_INSIDE_WHY_count(factorial));
+template <auto... Spec, insidable N>
+    requires detail::count<N> && (!detail::factorial_grid<N>.Fits)
+auto factorial(const N&) = delete (BEMAN_INSIDE_WHY_too_large(factorial));
+template <auto... Spec, insidable N, insidable K>
+    requires(!detail::count<N> || !detail::count<K>)
+auto falling_factorial(const N&, const K&) = delete (BEMAN_INSIDE_WHY_count(falling_factorial));
+template <auto... Spec, insidable N, insidable K>
+    requires detail::count<N> && detail::count<K> && (!detail::falling_grid<N, K>.Fits)
+auto falling_factorial(const N&, const K&) = delete (BEMAN_INSIDE_WHY_too_large(falling_factorial));
+template <auto... Spec, insidable N, insidable K>
+    requires(!detail::count<N> || !detail::count<K>)
+auto rising_factorial(const N&, const K&) = delete (BEMAN_INSIDE_WHY_count(rising_factorial));
+template <auto... Spec, insidable N, insidable K>
+    requires detail::count<N> && detail::count<K> && (!detail::rising_grid<N, K>.Fits)
+auto rising_factorial(const N&, const K&) = delete (BEMAN_INSIDE_WHY_too_large(rising_factorial));
+template <auto... Spec, insidable N, insidable K>
+    requires(!detail::count<N> || !detail::count<K>)
+auto binomial(const N&, const K&) = delete (BEMAN_INSIDE_WHY_count(binomial));
+template <auto... Spec, insidable N, insidable K>
+    requires detail::count<N> && detail::count<K> && (!detail::binomial_grid<N, K>.Fits)
+auto binomial(const N&, const K&) = delete (BEMAN_INSIDE_WHY_too_large(binomial));
+template <auto... Spec, insidable... Ks>
+    requires(sizeof...(Ks) >= 1) && (!(detail::count<Ks> && ...))
+auto multinomial(const Ks&...) = delete (BEMAN_INSIDE_WHY_count(multinomial));
+template <auto... Spec, insidable... Ks>
+    requires(sizeof...(Ks) >= 1) && (detail::count<Ks> && ...) && (!detail::multinomial_grid<Ks...>.Fits)
+auto multinomial(const Ks&...) = delete (BEMAN_INSIDE_WHY_too_large(multinomial));
+template <auto... Spec, insidable A, insidable B>
+    requires(!detail::has_lattice<A> || !detail::has_lattice<B>)
+auto gcd(const A&, const B&) = delete (BEMAN_INSIDE_WHY_integers(gcd));
+template <auto... Spec, insidable A, insidable B>
+    requires(!detail::has_lattice<A> || !detail::has_lattice<B>)
+auto lcm(const A&, const B&) = delete (BEMAN_INSIDE_WHY_integers(lcm));
+template <auto... Spec, insidable A, insidable B>
+    requires detail::has_lattice<A> && detail::has_lattice<B> && (!detail::lcm_fits<A, B>)
+auto lcm(const A&, const B&) = delete (BEMAN_INSIDE_WHY_too_large(lcm));
 
 #undef BEMAN_INSIDE_WHY_count
 #undef BEMAN_INSIDE_WHY_too_large

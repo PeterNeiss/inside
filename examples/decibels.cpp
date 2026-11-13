@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Decibel ↔ linear conversion using `units::pow_base_into<…, 10>` and
-// `log10_into`. A level is a quantity of a unit of our own, dB, on a
+// Decibel ↔ linear conversion using `math::pow_base<10, …>` and
+// `math::log10<…>`. A level is a quantity of a unit of our own, dB, on a
 // dimensionless kind: levels add (−6 dB + 3 dB), but a level is no plain
 // number. L / 20 dB is one, and that is what 10^x takes.
 //
@@ -39,12 +39,12 @@ using gain_t = inside<{{0x1p-8, 4}, per<65536>}, round_nearest>;
 // range covers log10 of every gain_t, [log10(2^-8), log10(4)].
 using db_div20_t = inside<{{-2.5, 1}, per<40>}, round_nearest>;
 
-// dB → linear: 10^(L / 20 dB). The ratio is exact; pow_base_into rounds once.
-static constexpr gain_t db_to_linear(db_t db) { return units::pow_base_into<gain_t, 10>(db / (just<20> * dB)); }
+// dB → linear: 10^(L / 20 dB). The ratio is exact; pow_base rounds once.
+static constexpr gain_t db_to_linear(db_t db) { return math::pow_base<10, gain_t>(db / (just<20> * dB)); }
 
 // linear → dB: 20 dB · log10(amp). log10 rounds once onto 1/40 steps, which is
 // the same as rounding 20·log10 onto 0.5 dB; the × 20 dB is exact.
-static constexpr db_t linear_to_db(gain_t amp) { return db_t{units::log10_into<db_div20_t>(amp) * (just<20> * dB)}; }
+static constexpr db_t linear_to_db(gain_t amp) { return db_t{math::log10<db_div20_t>(amp) * (just<20> * dB)}; }
 
 int main() {
     // `std::println` works on inside / rational because `beman/inside/inside/io.hpp`

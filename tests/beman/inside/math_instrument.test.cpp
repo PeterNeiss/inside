@@ -10,7 +10,7 @@
 
 using namespace beman::inside;
 namespace engine = beman::inside::math::detail::engine;
-namespace am     = beman::inside::math::detail::entry;
+namespace am     = beman::inside::math;
 using beman::inside::math::driver;
 using detail::wide_rational;
 using detail::wide_sint;
@@ -79,7 +79,7 @@ TEST(MathInstrumentTest, integer_only_skips_the_fast_tiers) {
     const auto sweep = [] {
         const std::uint64_t before = driver.IntegerRuns.load();
         for (int i = -512; i <= 512; ++i)
-            (void)am::sin_into<out>(in{rational{i, 128}});
+            (void)am::sin<out>(in{rational{i, 128}});
         return driver.IntegerRuns.load() - before;
     };
     driver.IntegerOnly = true;
@@ -101,7 +101,7 @@ TEST(MathInstrumentTest, an_exact_power_past_root_64_is_decided) {
     using up            = inside<{{0, 4}, rational{1, 1024}}, round_ceil>;
     const counts before = read();
     const base   b{340282366920938463463374607431768211456_g};
-    EXPECT_TRUE((am::pow_into<down>(b, exponent{rational{1, 128}}) == 2));
-    EXPECT_TRUE((am::pow_into<up>(b, exponent{rational{1, 128}}) == 2));
+    EXPECT_TRUE((am::pow<down>(b, exponent{rational{1, 128}}) == 2));
+    EXPECT_TRUE((am::pow<up>(b, exponent{rational{1, 128}}) == 2));
     EXPECT_EQ(read().Guesses, before.Guesses);
 }

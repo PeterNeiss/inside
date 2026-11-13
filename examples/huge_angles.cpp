@@ -5,7 +5,7 @@
 // problems: 2^62 − 1 is not a double at all (it rounds to 2^62, a different
 // angle), and reducing with fmod(x, 2π) uses a 2π that is off by 2^-51, an
 // error the huge argument multiplies into garbage. The angle is a quantity in
-// rad, and units::sin_into / cos_into take it as it is.
+// rad, and math::sin / cos take it as it is.
 
 #include <cmath>
 #include <cstdint>
@@ -32,7 +32,7 @@ int main() {
     for (const row r : {row{1'000'000'000'000'000'000, -4'471'936'262'876'823, 533'100'051'040'090},
                         row{(std::int64_t{1} << 62) - 1, 985'025'092'865'520, -4'394'557'448'717'327}}) {
         const radians x{r.x};
-        const amp52   s = units::sin_into<amp52>(x), c = units::cos_into<amp52>(x);
+        const amp52   s = math::sin<amp52>(x), c = math::cos<amp52>(x);
         const double  xd = static_cast<double>(r.x);
         // The results print exactly: a 2^-52 grid point has 52 decimals.
         std::cout << "x = " << x << "\n  sin                    " << s << "\n  cos                    " << c << "\n";

@@ -70,8 +70,8 @@ int main() {
     // 4. A bearing of 30° (from north) rounds once into radians; the leg's
     //    components are 1.5 km · sin and · cos, each on a 1e-6 grid.
     const auto bearing = value_cast<si::radian, angle>(quantity<si::degree, inside<{0, 360}>>{30});
-    const auto east    = just<1.5> * km * units::sin(bearing);
-    const auto north   = just<1.5> * km * units::cos(bearing);
+    const auto east    = just<1.5> * km * math::sin(bearing);
+    const auto north   = just<1.5> * km * math::cos(bearing);
     std::cout << "bearing: " << bearing << ", east " << east.in(si::metre) << ", north " << north.in(si::metre)
               << '\n'; // 0.523599 rad, east 750.0000 m, north 1299.0375 m
     if (to_string(bearing) != "0.523599 rad" || to_string(east.in(si::metre)) != "750.0000 m")

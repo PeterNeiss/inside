@@ -49,7 +49,7 @@ Any other format is one line: a signed Q1.14 sample is
 - **Storing back is a policy.** Onto a coarser grid a store truncates
   (`round_toward_zero`), rounds (`round_nearest`, …), saturates (`clamp`), wraps, or
   reports (checked), chosen per type or per store.
-- **Round once.** `mul_into<Out>(a, b)` rounds the exact product straight onto
+- **Round once.** `mul<Out>(a, b)` rounds the exact product straight onto
   `Out`, the fixed-point "multiply, then shift with rounding" in one step,
   without a wide intermediate type.
 - **Exact by default.** A notched grid holds exact integer indices; only a
@@ -112,14 +112,14 @@ auto mm = d.in(si::milli(si::metre));                        // 7000000 mm: the 
 
 - A unit conversion rescales the grid and keeps the raw: km → mm compiles to
   one `mov`.
-- `mul_into<Out>` on quantities folds the unit factor into the same single
-  rounding: `mul_into<usd>(subtotal, just<8> * percent)`.
+- `mul<Out>` on quantities folds the unit factor into the same single
+  rounding: `mul<usd>(subtotal, just<8> * percent)`.
 - A sensor count can be a dimension of its own: an ADC reading in `cts`
   never adds to a voltage, and a calibrated gain in cts/V turns it into volts
   with one exact division ([`adc_calibration.cpp`](../../examples/adc_calibration.cpp)).
 
 [`fixed_point.cpp`](../../examples/fixed_point.cpp) shows the formats table, exact
-products, `mul_into` onto Q8.8, and the 0.5 °C grid as ℃ points.
+products, `mul<q8_8>` onto Q8.8, and the 0.5 °C grid as ℃ points.
 
 ## Choosing a grid
 

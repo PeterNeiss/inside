@@ -31,38 +31,6 @@
 #include <iterator> // std::incrementable_traits, std::indirectly_readable_traits
 #include <utility>  // std::pair
 
-// Forward-declare the `beman::inside::math` entry points used in-class, so the bodies
-// pass `-Wtemplate-body` without pulling math.hpp in unconditionally (its
-// definitions live there).
-namespace beman::inside::math {
-template <insidable Out, insidable In>
-constexpr Out floor_into(In x);
-template <insidable Out, insidable In>
-constexpr Out ceil_into(In x);
-template <insidable Out, insidable In>
-constexpr Out round_into(In x);
-template <insidable Out, insidable In>
-constexpr Out trunc_into(In x);
-namespace detail {
-// abs_into's constraint (math.hpp): Out includes the smallest |x|.
-template <class Out, class In>
-consteval bool abs_into_ok();
-} // namespace detail
-template <insidable Out, insidable In>
-    requires(detail::abs_into_ok<Out, In>())
-constexpr Out abs_into(In x);
-template <insidable In>
-constexpr auto floor(In x);
-template <insidable In>
-constexpr auto ceil(In x);
-template <insidable In>
-constexpr auto round(In x);
-template <insidable In>
-constexpr auto trunc(In x);
-template <insidable In>
-constexpr auto abs(In x);
-} // namespace beman::inside::math
-
 //---------------------------------------------------------------------------
 // inside — defines `inside<G, P>` and its member operators. Free-function
 // arithmetic (arithmetic.hpp), casts (casts.hpp) and `inside_range` (range.hpp)
@@ -643,9 +611,9 @@ struct inside {
 
   public:
     // Integer reductions (floor/ceil/round/trunc) and abs live as free
-    // functions in `beman::inside::math` — `beman::inside::math::floor(b)` etc. (auto-deduced Out)
-    // or `beman::inside::math::floor_into<Out>(b)` for an explicit output grid. There is
-    // deliberately no member-syntax alias: one spelling, in `<beman/inside/math.hpp>`.
+    // functions in `beman::inside::math` — `beman::inside::math::floor(b)` etc. (the
+    // output deduced) or `beman::inside::math::floor<Out>(b)`. There is deliberately
+    // no member-syntax alias: one spelling, in `<beman/inside/math.hpp>`.
 
     // +x is x, as for a built-in number (and a quantity's +q).
     [[nodiscard]] constexpr inside operator+() const noexcept { return *this; }

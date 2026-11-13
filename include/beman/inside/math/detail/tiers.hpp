@@ -133,8 +133,11 @@ inline double nearest_int(double t) noexcept { return __builtin_nearbyint(t); }
 // t + bt < F + 1. Exact ties and integers fail the strict tests and go to
 // the integer path. NaN and infinities fail every comparison, and the range
 // check runs in double before J becomes an integer, so no finite check is
-// needed. A decided slot inside Out's range is stored in out.
-template <insidable Out>
+// needed. A decided slot inside Out's range is stored in out. InRange: the
+// caller proves at compile time that every exact value it decides lies in
+// Out's range, so a decided slot does too and the range check goes (NaN and
+// infinities still fail the tests above).
+template <insidable Out, bool InRange = false>
 inline bool fp_decide(double v, double bound, Out& out) noexcept {
     constexpr round_mode M  = out_rounding<Out>;
     constexpr double     s  = notch_q<Out> / notch_p<Out>;
@@ -160,7 +163,7 @@ inline bool fp_decide(double v, double bound, Out& out) noexcept {
                 j += 1;
         }
     }
-    if (!(j >= lo && j <= hi)) {
+    if (!InRange && !(j >= lo && j <= hi)) {
         // Decided past an end: a clamp Out takes the end here; any other
         // policy reports or wraps on the integer path.
         if constexpr (has_flag(flags_of<Out>, clamp)) {
@@ -265,7 +268,9 @@ inline ddk::dd dd_read(const In& x) noexcept {
 // into J1 = nearbyint(t.Hi) and the rest u = (t.Hi − J1) + t.Lo, which
 // rounds to J2 with remainder d. The tests on d are fp_decide's, with the
 // bound widened by u's rounding.
-template <insidable Out>
+// InRange as for fp_decide: no range checks (NaN and infinities make u and
+// d NaN, which fail the tests before any conversion).
+template <insidable Out, bool InRange = false>
 inline bool dd_decide(ddk::dd v, double bound, Out& out) noexcept {
     constexpr round_mode   M     = out_rounding<Out>;
     constexpr ddk::dd      s     = ddk::div(ddk::dd{notch_q<Out>, 0}, ddk::dd{notch_p<Out>, 0});
@@ -281,7 +286,7 @@ inline bool dd_decide(ddk::dd v, double bound, Out& out) noexcept {
     else
         t = ddk::mul(v, s);
     const double j1 = nearest_int(t.Hi);
-    if (!(j1 >= lo && j1 <= hi))
+    if (!InRange && !(j1 >= lo && j1 <= hi))
         return false; // NaN and infinities too
     const double u  = (t.Hi - j1) + t.Lo;
     double       j2 = nearest_int(u);
@@ -305,7 +310,7 @@ inline bool dd_decide(ddk::dd v, double bound, Out& out) noexcept {
         if (j < 0)
             j += 1;
     }
-    if (j < first || j > last) {
+    if (!InRange && (j < first || j > last)) {
         if constexpr (has_flag(flags_of<Out>, clamp)) { // as fp_decide
             out = at_slot<Out>(j < first ? std::uint64_t{0}
                                          : static_cast<std::uint64_t>(last) - static_cast<std::uint64_t>(first));

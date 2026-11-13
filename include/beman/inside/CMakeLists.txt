@@ -54,14 +54,17 @@ target_sources(
                 math/detail/dd.hpp
                 math/detail/entry.hpp
                 math/detail/fp.hpp
+                math/detail/functions.hpp
                 math/detail/minimax.hpp
                 math/detail/tiers.hpp
                 units.hpp
                 units/constants.hpp
                 units/core.hpp
                 units/detail/algebra.hpp
+                units/detail/geoalg_exp.hpp
                 units/detail/point.hpp
                 units/detail/quantity.hpp
+                units/geoalg.hpp
                 units/io.hpp
                 units/mdspan.hpp
                 units/math.hpp

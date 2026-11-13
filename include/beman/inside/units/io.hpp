@@ -19,6 +19,7 @@
 #include <ostream>
 #include <string>
 #include <string_view>
+#include <tuple>
 
 namespace beman::inside::units {
 // parse<Q, F>(text) / parse_exact<Q>(text): the number, in Q's unit.
@@ -72,20 +73,21 @@ inline void append_exponent(std::string& s, int e, text_encoding enc) {
 }
 
 // The atoms of one sign with |exponent| (sign ±1), or all of them with their
-// own exponent (sign 0).
+// own exponent (sign 0). The blade atoms come last, in their order: 2 m e₁.
 inline void append_atoms(std::string& s, const unit& u, int sign, text_encoding enc) {
     bool first = true;
-    for (std::int8_t i = 0; i < u.Size; ++i) {
-        const unit_atom& a = u.Atoms[i];
-        if (sign != 0 && (a.Exp > 0) != (sign > 0))
-            continue;
-        if (!first)
-            s += ' ';
-        first = false;
-        s += prefix_symbol(a.Prefix, enc);
-        s += enc == text_encoding::utf8 ? a.U->Utf8 : a.U->Ascii;
-        append_exponent(s, sign == 0 ? a.Exp : a.Exp * sign, enc);
-    }
+    for (const bool blades : {false, true})
+        for (std::int8_t i = 0; i < u.Size; ++i) {
+            const unit_atom& a = u.Atoms[i];
+            if ((sign != 0 && (a.Exp > 0) != (sign > 0)) || is_blade_atom(a) != blades)
+                continue;
+            if (!first)
+                s += ' ';
+            first = false;
+            s += prefix_symbol(a.Prefix, enc);
+            s += enc == text_encoding::utf8 ? a.U->Utf8 : a.U->Ascii;
+            append_exponent(s, sign == 0 ? a.Exp : a.Exp * sign, enc);
+        }
 }
 } // namespace detail
 
@@ -139,6 +141,36 @@ std::ostream& operator<<(std::ostream& os, const quantity<R, V>& q) {
     return os << units::to_string(q);
 }
 
+// A multivector (units/geoalg.hpp): its parts joined by " + ", a negative one
+// by " - ": "3 - 4 i", "2 m e₁ + 1 m e₂"; the zero is "0".
+template <class... P>
+std::string to_string(const multivector<P...>& x, text_encoding enc = text_encoding::utf8) {
+    if constexpr (sizeof...(P) == 0)
+        return "0";
+    else {
+        std::string s;
+        const auto  append = [&](const auto& p) {
+            std::string t;
+            if constexpr (quantity_like<std::remove_cvref_t<decltype(p)>>)
+                t = units::to_string(p, enc);
+            else
+                t = beman::inside::to_string(p);
+            if (s.empty())
+                s = std::move(t);
+            else if (t.starts_with('-'))
+                s += " - " + t.substr(1);
+            else
+                s += " + " + t;
+        };
+        std::apply([&](const auto&... p) { (append(p), ...); }, x.parts());
+        return s;
+    }
+}
+template <class... P>
+std::ostream& operator<<(std::ostream& os, const multivector<P...>& x) {
+    return os << units::to_string(x);
+}
+
 // A point as its quantity from its origin: "20 ℃".
 template <reference R, detail::origin_ref O, class V>
 std::string to_string(const quantity_point<R, O, V>& p, text_encoding enc = text_encoding::utf8) {
@@ -164,6 +196,15 @@ struct std::formatter<beman::inside::units::quantity<R, V>> : std::formatter<V> 
         if constexpr (u::detail::space_before(R.U))
             *out++ = ' ';
         return std::ranges::copy(sym, out).out;
+    }
+};
+
+// A multivector as to_string prints it; the spec pads the whole text ({:>20}).
+template <class... P>
+struct std::formatter<beman::inside::units::multivector<P...>> : std::formatter<std::string_view> {
+    template <typename Ctx>
+    auto format(const beman::inside::units::multivector<P...>& x, Ctx& ctx) const {
+        return std::formatter<std::string_view>::format(beman::inside::units::to_string(x), ctx);
     }
 };
 

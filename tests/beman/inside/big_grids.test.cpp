@@ -302,7 +302,7 @@ TEST(BigGridTest, continuous_past_64_bits) {
     EXPECT_TRUE(ratio > just<5.4e61_g> && ratio < just<5.5e61_g>);
     EXPECT_EQ(std::format("{:.6e}", ratio), "5.444685e+61");
     using decade = inside<{{-100, 100}, per<1 << 20>}, round_nearest>;
-    EXPECT_EQ(math::log10_into<decade>(ratio), (decade{rational{64'734'859, 1 << 20}})); // 61.7359724…
+    EXPECT_EQ(math::log10<decade>(ratio), (decade{rational{64'734'859, 1 << 20}})); // 61.7359724…
     const auto one = universe / universe;
     EXPECT_TRUE(one == 1);
     EXPECT_EQ(to_string(planck / length{2}), "0.000000000000000000000000000000000008081275");
@@ -1047,9 +1047,8 @@ std::string sweep(const T a, const T b, std::mt19937_64& g) {
     }
     r += text_of(math::abs(a)) + text_of(math::floor(a)) + text_of(math::round(a)) + text_of(math::fmod(a, b));
     if constexpr (lower_of<T> >= 0)
-        r += text_of(math::sqrt_into<O>(a)) + text_of(math::sqrt_into<Ow>(a));
-    r += text_of(math::sin_into<O>(a)) + text_of(math::atan_into<O>(a)) + text_of(math::cos_into<Ow>(a)) +
-         text_of(math::pown<3>(a));
+        r += text_of(math::sqrt<O>(a)) + text_of(math::sqrt<Ow>(a));
+    r += text_of(math::sin<O>(a)) + text_of(math::atan<O>(a)) + text_of(math::cos<Ow>(a)) + text_of(math::pown<3>(a));
     r += text_of(a * math::pi) + (a < math::pi ? "<" : ">");
     T z                                                          = a;
     z.template policy<clamp>()                                   = 1e300;

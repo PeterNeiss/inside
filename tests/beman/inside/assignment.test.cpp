@@ -1280,7 +1280,7 @@ TEST(AssignmentTest, point_grid_on_the_exact_path) {
     EXPECT_EQ(zero, 0_ins);
 }
 
-// The exact store (mul_into, div_into, wide sums) tested the notch before the
+// The exact store (mul<Out>, div<Out>, wide sums) tested the notch before the
 // range: an off-notch value past a limit reported rounding_error, and clamp
 // did not clamp it — the builtin stores range-check the value first.
 TEST(AssignmentTest, exact_store_checks_range_before_notch) {
@@ -1288,15 +1288,15 @@ TEST(AssignmentTest, exact_store_checks_range_before_notch) {
     using fourths = inside<{{-2, 3}, per<4>}>;
     const fourths a{rational{-1, 4}}, b{rational{11, 4}}; // −11/16
     using clamped = inside<{0, 9}, clamp>;
-    EXPECT_EQ(mul_into<clamped>(a, b), 0_ins);
+    EXPECT_EQ(mul<clamped>(a, b), 0_ins);
     try {
-        (void)mul_into<digit>(a, b);
+        (void)mul<digit>(a, b);
         ADD_FAILURE() << "no error";
     } catch (const inside_error& e) {
         EXPECT_EQ(e.Code, errc::overflow);
     }
     try {
-        (void)mul_into<digit>(b, b); // 121/16: in range, off the notch
+        (void)mul<digit>(b, b); // 121/16: in range, off the notch
         ADD_FAILURE() << "no error";
     } catch (const inside_error& e) {
         EXPECT_EQ(e.Code, errc::rounding_error);

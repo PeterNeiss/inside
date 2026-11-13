@@ -11,7 +11,7 @@ int main() {
     using angle = inside<{{-8, 8}, per<16384>}, round_nearest>;
     auto s = math::sin(angle{1});                    // 0.84149169921875, the nearest 1/16384
     static_assert(grid_of<decltype(s)> == grid{{-1, 1}, per<16384>});
-    auto c = math::cos_into<math::unit_amplitude<256>>(angle{1}); // 0.5390625: a coarser output, named
+    auto c = math::cos<per<256>>(angle{1});                  // 0.5390625: a coarser notch, named
 
     using level = inside<{{0, 4}, per<256>}, round_nearest>;
     auto r = math::sqrt(level{2.25});                // 1.5, on [0, 2]

@@ -13,5 +13,6 @@
 #include <beman/inside/units/detail/point.hpp>
 
 #undef BEMAN_INSIDE_UNITS_WHY_PI
+#undef BEMAN_INSIDE_UNITS_WHY_GEOALG
 
 #endif // BEMAN_INSIDE_UNITS_CORE_HPP

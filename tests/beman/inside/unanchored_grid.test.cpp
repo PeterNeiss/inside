@@ -544,21 +544,21 @@ void check_math_mode() {
         SCOPED_TRACE(to_string(r));
         const in_t   x{r};
         const double d = static_cast<double>(r);
-        expect_rounded<out_t>(static_cast<rational>(math::exp_into<out_t>(x)), std::exp(d), m);
-        expect_rounded<out_t>(static_cast<rational>(math::sin_into<out_t>(x)), std::sin(d), m);
-        expect_rounded<dec_t>(static_cast<rational>(math::cos_into<dec_t>(x)), std::cos(d), m);
-        expect_rounded<dec_t>(static_cast<rational>(math::atan_into<dec_t>(x)), std::atan(d), m);
-        expect_rounded<dec_t>(static_cast<rational>(math::tanh_into<dec_t>(x)), std::tanh(d), m);
-        expect_rounded<dec_t>(static_cast<rational>(math::cbrt_into<dec_t>(x)), std::cbrt(d), m);
+        expect_rounded<out_t>(static_cast<rational>(math::exp<out_t>(x)), std::exp(d), m);
+        expect_rounded<out_t>(static_cast<rational>(math::sin<out_t>(x)), std::sin(d), m);
+        expect_rounded<dec_t>(static_cast<rational>(math::cos<dec_t>(x)), std::cos(d), m);
+        expect_rounded<dec_t>(static_cast<rational>(math::atan<dec_t>(x)), std::atan(d), m);
+        expect_rounded<dec_t>(static_cast<rational>(math::tanh<dec_t>(x)), std::tanh(d), m);
+        expect_rounded<dec_t>(static_cast<rational>(math::cbrt<dec_t>(x)), std::cbrt(d), m);
         if (includes(grid_of<tan_t>.Interval, r)) // tan on one branch
-            expect_rounded<out_t>(static_cast<rational>(math::tan_into<out_t>(tan_t{r})), std::tan(d), m);
+            expect_rounded<out_t>(static_cast<rational>(math::tan<out_t>(tan_t{r})), std::tan(d), m);
         for (const rational s : slots<grid_of<pos_t>>()) {
             const pos_t  y{s};
             const double e = static_cast<double>(s);
-            expect_rounded<out_t>(static_cast<rational>(math::atan2_into<out_t>(x, y)), std::atan2(d, e), m);
-            expect_rounded<out_t>(static_cast<rational>(math::hypot_into<out_t>(x, y)), std::hypot(d, e), m);
+            expect_rounded<out_t>(static_cast<rational>(math::atan2<out_t>(x, y)), std::atan2(d, e), m);
+            expect_rounded<out_t>(static_cast<rational>(math::hypot<out_t>(x, y)), std::hypot(d, e), m);
             try {
-                expect_rounded<out_t>(static_cast<rational>(math::pow_into<out_t>(y, x)), std::pow(e, d), m);
+                expect_rounded<out_t>(static_cast<rational>(math::pow<out_t>(y, x)), std::pow(e, d), m);
             } catch (const inside_error& err) { // past Out: its store reports overflow
                 EXPECT_EQ(err.Code, errc::overflow);
                 EXPECT_GT(std::pow(e, d), 20.0);
@@ -568,8 +568,8 @@ void check_math_mode() {
     for (const rational s : slots<grid_of<pos_t>>()) {
         const pos_t  y{s};
         const double e = static_cast<double>(s);
-        expect_rounded<dec_t>(static_cast<rational>(math::log_into<dec_t>(y)), std::log(e), m);
-        expect_rounded<dec_t>(static_cast<rational>(math::sqrt_into<dec_t>(y)), std::sqrt(e), m);
+        expect_rounded<dec_t>(static_cast<rational>(math::log<dec_t>(y)), std::log(e), m);
+        expect_rounded<dec_t>(static_cast<rational>(math::sqrt<dec_t>(y)), std::sqrt(e), m);
     }
 }
 } // namespace
@@ -592,8 +592,8 @@ TEST(UnanchoredGridTest, math) {
         // an unanchored input gives the same result as the same value anchored
         using fixed = inside<{{0, 17}, rational{1, 64}}, round_nearest>;
         using unit  = inside<{{-1, 1}, rational{1, 1024}}, round_nearest>;
-        EXPECT_EQ(math::exp_into<fixed>(a), math::exp_into<fixed>(r));
-        EXPECT_EQ(math::sin_into<unit>(a), math::sin_into<unit>(r));
+        EXPECT_EQ((math::exp<fixed>(a)), (math::exp<fixed>(r)));
+        EXPECT_EQ(math::sin<unit>(a), math::sin<unit>(r));
         EXPECT_EQ(math::floor(a), math::floor(r));
         EXPECT_EQ(math::round(a), math::round(r));
         EXPECT_EQ(static_cast<rational>(math::abs(a)), static_cast<rational>(math::abs(r)));
@@ -608,13 +608,13 @@ TEST(UnanchoredGridTest, math) {
     using sq_floor = inside<{{0.5_r, 4.5_r}, 1}, round_floor>;
     using quarters = inside<{{0, 64}, rational{1, 4}}>;
     using whole    = inside<{0, 64}>;
-    EXPECT_EQ(static_cast<rational>(math::sqrt_into<sq_t>(quarters{6.25})), 2.5_r);
+    EXPECT_EQ(static_cast<rational>(math::sqrt<sq_t>(quarters{6.25})), 2.5_r);
     // a tie of `nearest` on the offset lattice: sqrt(4) = 2 between 1.5 and 2.5 → 2.5
-    EXPECT_EQ(static_cast<rational>(math::sqrt_into<sq_t>(whole{4})), 2.5_r);
-    EXPECT_EQ(static_cast<rational>(math::sqrt_into<sq_floor>(whole{4})), 1.5_r);
+    EXPECT_EQ(static_cast<rational>(math::sqrt<sq_t>(whole{4})), 2.5_r);
+    EXPECT_EQ(static_cast<rational>(math::sqrt<sq_floor>(whole{4})), 1.5_r);
     // out of range through the policy: a checked output reports
     using small = inside<{{0.5_r, 2.5_r}, 1}, round_nearest>;
-    EXPECT_THROW((void)math::exp_into<small>(whole{3}), inside_error);
+    EXPECT_THROW((void)(math::exp<small>(whole{3})), inside_error);
     using clamped = inside<{{0.5_r, 2.5_r}, 1}, round_nearest | clamp>;
-    EXPECT_EQ(static_cast<rational>(math::exp_into<clamped>(whole{3})), 2.5_r);
+    EXPECT_EQ(static_cast<rational>(math::exp<clamped>(whole{3})), 2.5_r);
 }

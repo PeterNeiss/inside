@@ -35,7 +35,7 @@ using degrees = quantity<si::degree, inside<{0, 360}>>;
 
 // [[cos a, −sin a], [sin a, cos a]], each entry correctly rounded to Q1.14.
 std::array<q14, 4> rotation(degrees a) {
-    const q14 c = units::cos_into<q14>(a), s = units::sin_into<q14>(a);
+    const q14 c = math::cos<q14>(a), s = math::sin<q14>(a);
     return {c, q14{-s}, s, c};
 }
 

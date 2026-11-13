@@ -54,7 +54,7 @@ math functions.
 
 | Label | Runs |
 |---|---|
-| `example` | the 39 programs in `examples/` |
+| `example` | the 44 programs in `examples/` |
 | `compile-fail` | `tests/beman/inside/fail/`: ill-formed uses that must keep their diagnostics; each case names the expected message on its first line (`// EXPECT: …`) |
 | `fuzz` | the property fuzzer and the differential oracle (`tests/beman/inside/differential`), which recomputes arithmetic, stores and conversions exactly in Python |
 | `accuracy` | the math accuracy sweep |
