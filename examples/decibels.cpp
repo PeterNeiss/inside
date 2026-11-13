@@ -34,7 +34,7 @@ inline constexpr auto          dB = unit_c<decibel_def>;
 // dB in [-24, 12] at 0.5 dB resolution — matches a typical mixer fader range.
 using db_t = quantity<dB, inside<{{-24, 12}, per<2>}, round_nearest>>;
 // Linear amplitude. dB ∈ [-24, 12] ⇒ amp ∈ [10^-1.2, 10^0.6] ≈ [0.063, 3.98].
-using gain_t = inside<{{0x1p-8, 4}, per<65536>}, round_nearest>;
+using gain_t = inside<{{0x1p-8, 4}, per<(1 << 16)>}, round_nearest>;
 // dB/20 on a 1/40 grid: × 20 maps it exactly onto db_t's 0.5 dB notch. The
 // range covers log10 of every gain_t, [log10(2^-8), log10(4)].
 using db_div20_t = inside<{{-2.5, 1}, per<40>}, round_nearest>;
@@ -71,7 +71,7 @@ int main() {
         println("    {}  =  {}", db, lin);
     }
     // Levels add; −6 dB is close to half the amplitude.
-    if (db_t{-6} + just<3> * dB != db_t{-3} || db_to_linear(db_t{-6}) != gain_t{rational{32846, 65536}})
+    if (db_t{-6} + just<3> * dB != db_t{-3} || db_to_linear(db_t{-6}) != just<32846, (1 << 16)>)
         return 1;
 
     return 0;

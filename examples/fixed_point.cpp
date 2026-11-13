@@ -20,8 +20,8 @@ using namespace beman::inside::units;
 
 int main() {
     // Q-format reference: the predefined formats and two custom ones.
-    using q1_7        = inside<{{0, 1}, per<128>}>; // Q1.7 in [0, 1]
-    using half_signed = inside<{{-50, 50}, 0.5}>;   // 201 half steps, offset-encoded
+    using q1_7        = inside<{{0, 1}, per<(1 << 7)>}>; // Q1.7 in [0, 1]
+    using half_signed = inside<{{-50, 50}, 0.5}>;        // 201 half steps, offset-encoded
     static_assert(sizeof(q4_4) == 1 && sizeof(q8_8) == 2 && sizeof(q16_16) == 4);
     static_assert(sizeof(q1_7) == 1 && sizeof(half_signed) == 1);
 
@@ -42,10 +42,10 @@ int main() {
         return 1;
 
     // Storing a product back onto Q8.8: mul<q8_8> rounds once, by the mode given.
-    const q8_8 gain{1.00390625}; // 257/256
+    const q8_8 gain{just<257, (1 << 8)>}; // 1.00390625
     const auto scaled = mul<q8_8>(b, gain, round_nearest);
     std::cout << "7.25 * 1.00390625 = " << b * gain << " -> Q8.8 " << scaled << "\n";
-    if (scaled != just<1863, 256>) // 1863.25/256 rounds to 1863/256
+    if (scaled != just<1863, (1 << 8)>) // 1863.25/256 rounds to 1863/256
         return 1;
 
     // Storing onto the 0.5 °C grid rounds by the type's policy; a reading is a

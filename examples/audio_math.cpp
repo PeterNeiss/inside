@@ -22,8 +22,8 @@ using namespace beman::inside::units;
 int main() {
     // 1. Growth and decay: t = −4, −3.75, …, 4 s by a cursor over the number
     //    grid in steps of 1/4 (end(n) is the step past 4), amp on Q.14.
-    using seconds_t    = quantity<si::second, inside<{{-4, 4}, per<1024>}, round_nearest>>;
-    using amp_t        = inside<{{0, 100}, per<16384>}, round_nearest>;
+    using seconds_t    = quantity<si::second, inside<{{-4, 4}, per<(1 << 10)>}, round_nearest>>;
+    using amp_t        = inside<{{0, 100}, per<(1 << 14)>}, round_nearest>;
     constexpr auto tau = just<1> * si::second;
     std::cout << "t     exp(t / 1 s)\n";
     for (cursor<seconds_t, per<4>> n; n != end(n); ++n) {
@@ -33,8 +33,8 @@ int main() {
 
     // 2. Sweep: half-octave steps from 20 Hz, 2^e rounded once onto mult_t;
     //    every whole octave doubles exactly.
-    using exponent_t  = inside<{{0, 4}, per<1024>}, round_nearest>;
-    using mult_t      = inside<{{0, 16}, per<16384>}, round_nearest>;
+    using exponent_t  = inside<{{0, 4}, per<(1 << 10)>}, round_nearest>;
+    using mult_t      = inside<{{0, 16}, per<(1 << 14)>}, round_nearest>;
     constexpr auto f0 = just<20> * si::hertz;
     std::cout << "\noctave  frequency\n";
     for (cursor<exponent_t, per<2>> e; e != end(e); ++e)
@@ -45,23 +45,23 @@ int main() {
         return 1;
 
     // 3. Soft clip and the hyperbolic identity.
-    using drive_t = inside<{{-4, 4}, per<2048>}, round_nearest>;
+    using drive_t = inside<{{-4, 4}, per<(1 << 11)>}, round_nearest>;
     std::cout << "\nx     tanh(x)   hard clip\n";
     for (const drive_t x : {drive_t{-3}, drive_t{-0.5}, drive_t{0}, drive_t{1}, drive_t{3}})
-        std::cout << x << "\t" << math::tanh(x) << "\t" << inside<{{-1, 1}, per<1024>}, clamp | round_nearest>{x}
+        std::cout << x << "\t" << math::tanh(x) << "\t" << inside<{{-1, 1}, per<(1 << 10)>}, clamp | round_nearest>{x}
                   << "\n";
     for (const drive_t x : {drive_t{-2}, drive_t{0}, drive_t{2}}) {
         const auto s        = math::sinh(x);
         const auto c        = math::cosh(x);
         const auto identity = c * c - s * s; // within a few notches of 1
         std::cout << "cosh^2 - sinh^2 at " << x << " = " << identity << "\n";
-        if (math::abs(identity - just<1>) > just<1, 64>)
+        if (math::abs(identity - just<1>) > just<1, (1 << 6)>)
             return 1;
     }
 
     // 4. Octaves and a perceptual curve: exact where the answer is.
-    using ratio_t = inside<{{0x1p-4, 16}, per<1024>}, round_nearest>;
-    using vol_t   = inside<{{0, 64}, per<256>}, round_nearest>;
+    using ratio_t = inside<{{0x1p-4, 16}, per<(1 << 10)>}, round_nearest>;
+    using vol_t   = inside<{{0, 64}, per<(1 << 8)>}, round_nearest>;
     std::cout << "\nlog2(8) = " << math::log2(ratio_t{8}) << ", log2(0.5) = " << math::log2(ratio_t{0.5})
               << ", cbrt(27) = " << math::cbrt(vol_t{27}) << "\n";
     if (math::log2(ratio_t{8}) != 3 || math::cbrt(vol_t{27}) != 3)

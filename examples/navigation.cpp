@@ -22,8 +22,8 @@ using namespace beman::inside::units;
 
 int main() {
     // 1. Polar round trip on a Q.14 unit square.
-    using coord_t = inside<{{-1, 1}, per<16384>}, round_nearest>;
-    using angle_t = inside<{{-4, 4}, per<16384>}, round_nearest>;
+    using coord_t = inside<{{-1, 1}, per<(1 << 14)>}, round_nearest>;
+    using angle_t = inside<{{-4, 4}, per<(1 << 14)>}, round_nearest>;
     std::cout << "(x, y) -> (r, theta) -> (x, y)\n";
     for (auto [x, y] : {std::pair{coord_t{1}, coord_t{0}},
                         {coord_t{-1}, coord_t{1}},
@@ -34,15 +34,15 @@ int main() {
         const coord_t rx = mul<coord_t>(r, math::cos(theta)), ry = mul<coord_t>(r, math::sin(theta));
         std::cout << "  (" << x << ", " << y << ") -> (" << r << ", " << theta << ") -> (" << rx << ", " << ry
                   << ")\n";
-        if (math::abs(rx - x) > just<2, 16384> || math::abs(ry - y) > just<2, 16384>)
+        if (math::abs(rx - x) > just<2, (1 << 14)> || math::abs(ry - y) > just<2, (1 << 14)>)
             return 1;
     }
 
     // 2. Range and bearing, metres at 1/256 m. The bearing runs from north
     //    clockwise, atan2(east, north), on a 2^-20 rad grid; degrees are a
     //    factor of π away, so value_cast rounds that once more, onto 0.1°.
-    using pos_t     = quantity<si::metre, inside<{{-1024, 1024}, per<256>}, round_nearest>>;
-    using fine_t    = inside<{{-4, 4}, per<1 << 20>}, round_nearest>;
+    using pos_t     = quantity<si::metre, inside<{{-1024, 1024}, per<(1 << 8)>}, round_nearest>>;
+    using fine_t    = inside<{{-4, 4}, per<(1 << 20)>}, round_nearest>;
     using compass_t = inside<{{-180, 180}, per<10>}, round_nearest>;
     std::cout << "\ntarget (east, north)   range       bearing\n";
     for (auto [e, n] : {std::pair{pos_t{30}, pos_t{40}}, {pos_t{0}, pos_t{50}}, {pos_t{-30}, pos_t{-40}}}) {
@@ -57,7 +57,7 @@ int main() {
         return 1;
 
     // 3. Inverse trig on [-1, 1]: plain numbers, as angles in rad.
-    using ratio_t = inside<{{-1, 1}, per<4096>}, round_nearest>;
+    using ratio_t = inside<{{-1, 1}, per<(1 << 12)>}, round_nearest>;
     std::cout << "\nr      asin(r)    acos(r)\n";
     for (const ratio_t r : {ratio_t{-1}, ratio_t{-0.5}, ratio_t{0}, ratio_t{0.5}, ratio_t{1}})
         std::cout << "  " << r << "\t" << math::asin(r) * si::radian << "\t" << math::acos(r) * si::radian << "\n";

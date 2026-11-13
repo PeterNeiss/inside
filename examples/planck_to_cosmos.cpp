@@ -23,7 +23,7 @@ using namespace beman::inside::units;
 
 using length_number = inside<{{1e-41_g, 1e27_g}, 1e-41_g}, round_nearest>; // positive: log10 needs it
 using length        = quantity<si::metre, length_number>;
-using decade        = inside<{{-100, 100}, per<1 << 20>}, round_nearest>; // log10 to 2^-20
+using decade        = inside<{{-100, 100}, per<(1 << 20)>}, round_nearest>; // log10 to 2^-20
 
 int main() {
     const length planck   = just<1.616255e-35_g> * si::metre;
@@ -36,7 +36,7 @@ int main() {
     const decade d = math::log10<decade>(ratio);
     std::cout << std::format("log10              = {:.6f}\n", d);
     if (to_string(ratio) != "17600000000000000000000000000000000000000000000000000000000000000000/323251" ||
-        d != decade{rational{64'734'859, 1 << 20}})
+        d != just<64'734'859, (1 << 20)>)
         return 1;
 
     // 2. The geometric mean, exact to the last of 41 decimals.

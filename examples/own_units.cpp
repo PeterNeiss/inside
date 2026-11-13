@@ -67,7 +67,7 @@ int main() {
     static_assert(sounding.quantity_spec == depth);
 
     // 2. Water freezes at 491.67 °R: the same point as 0 ℃ and 32 ℉.
-    const auto freezing = point<rankine>(inside<{{0, 1000}, per<100>}>{rational{49167, 100}});
+    const auto freezing = point<rankine>(inside<{{0, 1000}, per<100>}>{just<49167, 100>});
     std::cout << "freezing   " << freezing << " = " << freezing.point_in(si::degree_Celsius) << " = "
               << freezing.point_in(international::degree_Fahrenheit) << '\n';
     if (!(freezing == point<si::degree_Celsius>(just<0>)) ||
@@ -77,8 +77,8 @@ int main() {
 
     // 3. 1.25 kg of coffee at 3.99 EUR/kg is 4.9875 EUR, exactly; with a 50 ct
     //    tip the sum runs in cents.
-    const quantity<euro / si::kilogram, inside<{{0, 100}, per<100>}>> price{rational{399, 100}};
-    const quantity<si::kilogram, inside<{{0, 10}, per<1000>}>>        coffee{rational{1250, 1000}};
+    const quantity<euro / si::kilogram, inside<{{0, 100}, per<100>}>> price{just<399, 100>};
+    const quantity<si::kilogram, inside<{{0, 10}, per<1000>}>>        coffee{just<1250, 1000>};
     const auto                                                        cost = price * coffee;
     const auto                                                        paid = cost + just<50> * cent;
     std::cout << "coffee     " << cost << ", with tip " << paid << '\n';

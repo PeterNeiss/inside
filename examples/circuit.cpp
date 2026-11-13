@@ -32,9 +32,9 @@ using hertz_t = inside<{{0, 100'000}, per<100>}, round_nearest>; // Hz to 0.01 H
 int main() {
     // 1. 4.7 kΩ + 330 Ω + 1.2 kΩ: the common unit is the ohm, so the sum is
     //    6230 Ω on the exact hull of the three grids.
-    const kohm_t r1{rational{47, 10}};
+    const kohm_t r1{just<47, 10>};
     const ohm_t  r2{330};
-    const kohm_t r3{rational{12, 10}};
+    const kohm_t r3{just<12, 10>};
     const auto   r = r1 + r2 + r3;
     std::cout << "R      = " << r << '\n';
     if (to_string(r) != "6230 Ω")

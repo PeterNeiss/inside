@@ -27,8 +27,8 @@
 using namespace beman::inside;
 using namespace beman::inside::units;
 
-using q14     = inside<{{-2, 2}, per<16384>}, round_nearest>; // Q1.14
-using coord   = inside<{{-100, 100}, per<256>}, round_nearest>;
+using q14     = inside<{{-2, 2}, per<(1 << 14)>}, round_nearest>; // Q1.14
+using coord   = inside<{{-100, 100}, per<(1 << 8)>}, round_nearest>;
 using matrix  = std::extents<std::size_t, 2, 2>;
 using vector2 = std::extents<std::size_t, 2>;
 using degrees = quantity<si::degree, inside<{0, 360}>>;
@@ -64,8 +64,8 @@ int main() {
         std::cout << "(" << p[0] << ", " << p[1] << ") -> (" << q[0] << ", " << q[1] << ")  double (" << ex << ", "
                   << ey << ")\n";
     }
-    std::cout << "worst error " << worst << " (a coordinate notch is " << 1.0 / 256 << ")\n";
-    if (!(worst <= 1.0 / 256))
+    std::cout << "worst error " << worst << " (a coordinate notch is " << 1.0 / (1 << 8) << ")\n";
+    if (!(worst <= 1.0 / (1 << 8)))
         return 1;
 
     // 3. Two 30° turns make one of 60°: every entry is the exact sum of two
@@ -76,7 +76,7 @@ int main() {
     std::cout << "R30·R30     [" << r60[0] << ", " << r60[1] << "; " << r60[2] << ", " << r60[3] << "]\n"
               << "R60         [" << direct[0] << ", " << direct[1] << "; " << direct[2] << ", " << direct[3] << "]\n";
     for (std::size_t k = 0; k < 4; ++k)
-        if (r60[k] - direct[k] > just<1, 16384> || direct[k] - r60[k] > just<1, 16384>)
+        if (r60[k] - direct[k] > just<1, (1 << 14)> || direct[k] - r60[k] > just<1, (1 << 14)>)
             return 1;
 
     // 4. Fibonacci: [[1, 1], [1, 0]]^n = [[F(n+1), F(n)], [F(n), F(n−1)]].

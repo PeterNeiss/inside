@@ -78,7 +78,7 @@ int main() {
         return 1;
 
     // 5. Euler's identity, onto a grid of 2^-20.
-    using fine    = inside<{{-4, 4}, per<1 << 20>}, round_nearest>;
+    using fine    = inside<{{-4, 4}, per<(1 << 20)>}, round_nearest>;
     using complex = multivector<fine, quantity<i, fine>>;
     const fine    pi{rational{314159265358979, 100000000000000}};
     const complex euler = math::exp<complex>(complex{pi * i});

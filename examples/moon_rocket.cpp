@@ -50,7 +50,7 @@ int main() {
     //    a 1e-6 grid, and v_e = 3.1 km/s scales it into a Δv.
     const inside<{{1, 300}, max_denominator{60'000}}> ratio = m0 / m_final;
     const auto                                        ln    = math::log<fine<1'000'000>>(ratio);
-    const quantity<km_s, inside<{{1, 5}, per<10>}>>   v_e{rational{31, 10}};
+    const quantity<km_s, inside<{{1, 5}, per<10>}>>   v_e{just<31, 10>};
     const auto                                        dv_stage = v_e * ln;
     std::cout << "dv stage  = " << dv_stage.in(si::metre / si::second) << '\n';
     if (to_string(dv_stage) != "5.2041963 km/s")
@@ -62,7 +62,7 @@ int main() {
     const quantity<isq::radius[km], inside<{6300, 6400}>>  earth{6371};
     const auto                                             r = altitude + earth;
     static_assert(r.quantity_spec == isq::length);
-    constexpr auto mu     = just<rational{3'986'004'418, 10'000}> * (cubic(km) / square(si::second));
+    constexpr auto mu     = just<3'986'004'418, 10'000> * (cubic(km) / square(si::second));
     const auto     v_park = math::sqrt<fine<1'000'000>>(mu / r);
     std::cout << "v parking = " << v_park << '\n';
     if (to_string(v_park) != "7.797393 km/s")

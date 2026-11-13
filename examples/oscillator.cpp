@@ -31,7 +31,7 @@ int main() {
     // One full turn of phase in 65536 slots; wrap is the periodicity.
     using phase_t = quantity<slot, inside<{0, 65535}, wrap>>;
     // Q.14 output of sin and cos.
-    using sample_t = inside<{{-1, 1}, per<16384>}, round_nearest>;
+    using sample_t = inside<{{-1, 1}, per<(1 << 14)>}, round_nearest>;
 
     std::cout << "Fixed-frequency oscillator (1/8 turn per sample, 8 samples = 1 cycle):\n";
     std::cout << "  i   sin              cos\n";
@@ -48,7 +48,7 @@ int main() {
         if (cycles != 1 || phase != just<0> * slot)
             return 1;
         // 1/8 turn is 45°: sin and cos both round to 11585/16384.
-        if (math::sin<sample_t>(increment) != just<11585, 16384> || math::cos<sample_t>(phase_t{65536 / 4}) != 0)
+        if (math::sin<sample_t>(increment) != just<11585, (1 << 14)> || math::cos<sample_t>(phase_t{65536 / 4}) != 0)
             return 1;
     }
 
