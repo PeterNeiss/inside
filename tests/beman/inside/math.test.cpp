@@ -80,8 +80,8 @@ template <class R>
 constexpr rational exact_value(const R& r) {
     if constexpr (requires { r.has_value(); })
         return r.has_value() ? exact_value(*r) : rational{-999'999};
-    else if constexpr (requires { r.numerical_value(); })
-        return rational{r.numerical_value()};
+    else if constexpr (un::quantity_like<R>)
+        return rational{r.numerical_value_in(un::unit_t<R::unit>{})};
     else
         return rational{r};
 }
@@ -199,14 +199,16 @@ TEST(MathExactTest, zero_and_one_are_exact) {
 TEST(MathExactTest, niven_angles_in_degrees) {
     using un::si::degree;
     // sin 30° = cos 60° = 1/2 and sin −30° = −1/2: ties.
-    expect_modes<ints>([]<class O>() { return am::sin<O>(un::quantity<degree, deg>{30}); }, {1, 0, 0, 1, 0});
-    expect_modes<ints>([]<class O>() { return am::cos<O>(un::quantity<degree, deg>{60}); }, {1, 0, 0, 1, 0});
-    expect_modes<ints>([]<class O>() { return am::sin<O>(un::quantity<degree, deg>{-30}); }, {-1, 0, -1, 0, 0});
-    expect_modes<ints>([]<class O>() { return am::cos<O>(un::quantity<degree, deg>{240}); }, {-1, 0, -1, 0, 0});
+    expect_modes<ints>([]<class O>() { return am::sin<O>(un::quantity<degree, deg>{30, degree}); }, {1, 0, 0, 1, 0});
+    expect_modes<ints>([]<class O>() { return am::cos<O>(un::quantity<degree, deg>{60, degree}); }, {1, 0, 0, 1, 0});
+    expect_modes<ints>([]<class O>() { return am::sin<O>(un::quantity<degree, deg>{-30, degree}); },
+                       {-1, 0, -1, 0, 0});
+    expect_modes<ints>([]<class O>() { return am::cos<O>(un::quantity<degree, deg>{240, degree}); },
+                       {-1, 0, -1, 0, 0});
     // 0 and ±1: grid points.
-    expect_point<ints>([]<class O>() { return am::cos<O>(un::quantity<degree, deg>{90}); }, 0);
-    expect_point<ints>([]<class O>() { return am::sin<O>(un::quantity<degree, deg>{180}); }, 0);
-    expect_point<ints>([]<class O>() { return am::sin<O>(un::quantity<degree, deg>{-90}); }, -1);
+    expect_point<ints>([]<class O>() { return am::cos<O>(un::quantity<degree, deg>{90, degree}); }, 0);
+    expect_point<ints>([]<class O>() { return am::sin<O>(un::quantity<degree, deg>{180, degree}); }, 0);
+    expect_point<ints>([]<class O>() { return am::sin<O>(un::quantity<degree, deg>{-90, degree}); }, -1);
 }
 
 // fn<Mode>(x): the rounding mode on the call, for an input whose type has

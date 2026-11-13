@@ -31,18 +31,12 @@ constexpr auto N   = P * Q;
 constexpr auto Phi = (P - 1) * (Q - 1);
 constexpr auto E   = 65537;
 
-constexpr auto Two1024 = [] {
-    auto v = 2_g;
-    for (int i = 0; i < 10; ++i)
-        v = v * v; // 2^(2^i)
-    return v;
-}();
+constexpr auto Two1024 = 0x1p1024_g;
 static_assert(Two1024 / 2 <= N && N < Two1024); // a 1024-bit modulus
 
 using residue  = inside<{0, N - 1}>;   // Z/nZ
 using modulus  = inside<{N, N}>;       // the point n: "% modulus{}" never divides by 0
 using exponent = inside<{0, Phi - 1}>; // exponents mod phi(n)
-using two      = inside<{2, 2}>;
 
 // b^e mod M by right-to-left square-and-multiply. One template serves the
 // residues mod n and the 512-bit residues mod p and q.
@@ -50,10 +44,10 @@ template <typename Residue, typename Modulus, typename Exponent>
 constexpr Residue powmod(Residue b, Exponent e) {
     Residue r = 1;
     while (e != 0) {
-        if (e % two{} == 1)
+        if (e % just<2> == 1)
             r = r * b % Modulus{}; // a 2048-bit product, back onto [0, M - 1]
         b = b * b % Modulus{};
-        e = div(e, two{}, round_toward_zero);
+        e = div(e, just<2>, round_toward_zero);
     }
     return r;
 }
@@ -75,21 +69,21 @@ exponent inverse_mod_phi() {
     }
     if (r0 != 1)
         throw std::logic_error("e is not invertible mod phi");
-    return checked_cast<exponent>(mod(t0, inside<{Phi, Phi}>{}, round_floor));
+    return checked_cast<exponent>(mod(t0, just<Phi>, round_floor));
 }
 
 // Bytes in, big-endian: m = m * 256 + byte, checked to stay below n.
 constexpr residue pack(std::string_view text) {
     residue m = 0;
     for (const unsigned char c : text)
-        m = checked_cast<residue>(m * inside<{256, 256}>{} + inside<{0, 255}>{c});
+        m = checked_cast<residue>(m * just<256> + inside<{0, 255}>{c});
     return m;
 }
 
 std::string unpack(residue m) {
     std::string text;
     while (m != 0) {
-        const auto [rest, byte] = divmod(m, inside<{256, 256}>{});
+        const auto [rest, byte] = divmod(m, just<256>);
         text.insert(text.begin(), static_cast<char>(byte.as<unsigned char>()));
         m = rest;
     }
@@ -105,7 +99,7 @@ std::string digits(const residue& x) {
 int main() {
     // 1. The private exponent.
     const exponent d = inverse_mod_phi();
-    if (exponent{E} * d % inside<{Phi, Phi}>{} != 1)
+    if (exponent{E} * d % just<Phi> != 1)
         return 1;
 
     // 2. Encrypt and decrypt.
@@ -129,8 +123,8 @@ int main() {
     using modulus_q     = inside<{Q, Q}>;
     using exponent_p    = inside<{0, P - 2}>;
     using exponent_q    = inside<{0, Q - 2}>;
-    const exponent_p dp = d % inside<{P - 1, P - 1}>{};
-    const exponent_q dq = d % inside<{Q - 1, Q - 1}>{};
+    const exponent_p dp = d % just<P - 1>;
+    const exponent_q dq = d % just<Q - 1>;
     // q^-1 mod p by Fermat: q^(p - 2). (P - 2 is formed during compilation.)
     const residue_p qinv = powmod<residue_p, modulus_p>(modulus_q{} % modulus_p{}, exponent_p{P - 2});
     const residue_p mp   = powmod<residue_p, modulus_p>(c % modulus_p{}, dp);

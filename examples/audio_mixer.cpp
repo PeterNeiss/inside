@@ -11,7 +11,8 @@
 //   - Units: channel gains in dB (a level unit of our own, as in
 //     decibels.cpp), frame times in s, the tone in Hz, and its phase in turns
 //     (tr = 2π rad), so the phase offsets 1/8, −1/6 and −1/4 tr are exact and
-//     `math::sin<Out>` reduces them exactly — no approximation of π, no `<cmath>`
+//     `math::sin<per<(1 << 14)>>` reduces them exactly — no approximation of
+//     π, no `<cmath>`
 //   - `values<T>` for the frame loops
 
 #include <iostream>
@@ -33,7 +34,7 @@ inline constexpr auto          turn = unit_c<turn_def>;
 } // namespace
 
 // Q1.14 signed samples in [-1, 1].
-using sample_t = inside<{{-1, 1}, per<16384>}, round_nearest | clamp>;
+using sample_t = inside<{{-1, 1}, per<(1 << 14)>}, round_nearest | clamp>;
 static_assert(sizeof(sample_t) == 2);
 
 // dB gain bounded to [-24, 12] dB with 0.5 dB step — fits in a uint8.
@@ -41,37 +42,36 @@ using db_t = quantity<dB, inside<{{-24, 12}, per<2>}, round_nearest>>;
 
 // Linear gain on a notch grid wide enough to cover 10^(dB/20) for dB∈[-24,12]
 // (i.e. ~[0.063, 3.98]) with 1/65536 resolution — well below per-step audible.
-using gain_t = inside<{{0, 4}, per<65536>}, round_nearest>;
+using gain_t = inside<{{0, 4}, per<(1 << 16)>}, round_nearest>;
 
 // Decibels → linear amplitude via 10^(L / 20 dB). The ratio is exact (a 1/40
-// grid), and pow_base rounds 10^x once onto gain_t — integer/constexpr,
-// no std::pow, no FPU boundary anywhere.
+// grid), and pow_base rounds 10^x once onto gain_t: the correctly rounded
+// point, the same on every platform, no std::pow.
 static gain_t db_to_linear(db_t db) { return math::pow_base<10, gain_t>(db / (just<20> * dB)); }
 
 int main() {
     // Four channels — pre-gain levels: vocals hot, drums normal, bass quiet,
     // pad ducked.
-    db_t level[4] = {db_t{2.5}, db_t{0.0}, db_t{-6.0}, db_t{-12.0}};
+    db_t level[4] = {db_t{2.5, dB}, db_t{0.0, dB}, db_t{-6.0, dB}, db_t{-12.0, dB}};
 
     // Hoist the per-channel gain computation out of the per-sample loop: the
     // linear gain (pow_base<10>) is constant across the buffer.
     gain_t gain[4] = {db_to_linear(level[0]), db_to_linear(level[1]), db_to_linear(level[2]), db_to_linear(level[3])};
 
     // 16 sample frames of synthetic audio (sine waves at different phases).
-    // All synthesis is exact arithmetic on quantities until sin's one
-    // rounding — same idiom as the mix pipeline below.
+    // The phase is exact arithmetic on quantities up to sin, which rounds once
+    // onto 2^-14; mul<sample_t> rounds the scaled sample once more.
     constexpr std::size_t N = 16;
     using frame_t           = inside<{0, N - 1}>;
 
     using seconds_t   = quantity<si::second, inside<{{0, 1}, per<N>}>>;
     using cycles_t    = inside<{{0, 1}, per<N>}>;
     using offset_t    = quantity<turn, inside<{{-1, 1}, per<24>}>>;
-    using sine_t      = math::unit_amplitude<16384>;
-    using amplitude_t = inside<{{0, 1}, per<1024>}, round_nearest>;
+    using amplitude_t = inside<{{0, 1}, per<(1 << 10)>}, round_nearest>;
 
     constexpr auto     tone       = just<1> * si::hertz; // one cycle over the 1 s buffer
     constexpr offset_t offsets[4] = {
-        offset_t{0},
+        offset_t{0, turn},
         just<1, 8> * turn,  // +π/4
         just<-1, 6> * turn, // -π/3
         just<-1, 4> * turn  // -π/2
@@ -84,7 +84,7 @@ int main() {
         const cycles_t  c = tone * t;                 // Hz · s is a plain number of cycles
         for (int ch = 0; ch < 4; ++ch) {
             const auto a                      = c * turn + offsets[ch]; // in turns, exact
-            channels[ch][i.as<std::size_t>()] = mul<sample_t>(amplitudes[ch], math::sin<sine_t>(a));
+            channels[ch][i.as<std::size_t>()] = mul<sample_t>(amplitudes[ch], math::sin<per<(1 << 14)>>(a));
         }
     }
 
@@ -111,7 +111,7 @@ int main() {
 
     // Standalone: the clamp flag pushes a wider-grid inside into sample_t.
     // Common idiom inside std::transform over a sum bus.
-    using mixbus_t = inside<{{-4, 4}, per<16384>}, round_nearest>;
+    using mixbus_t = inside<{{-4, 4}, per<(1 << 14)>}, round_nearest>;
     mixbus_t hot;
     hot.policy<clamp>() = 2.5;
     std::cout << "\nsample_t{mixbus 2.5, clamp} = " << sample_t{hot, clamp} << "\n";
@@ -123,7 +123,7 @@ int main() {
     std::cout << "bus_t{add_all(1,-1,1,1), clamp} = "
               << bus_t{add_all(channel_t{1}, channel_t{-1}, channel_t{1}, channel_t{1}), clamp} << "\n";
 
-    if (clip_events != 10 || db_to_linear(level[2]) != gain_t{rational{32846, 65536}})
+    if (clip_events != 10 || db_to_linear(level[2]) != just<32846, (1 << 16)>)
         return 1;
     return 0;
 }

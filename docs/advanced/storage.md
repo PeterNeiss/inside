@@ -132,11 +132,10 @@ quotients are plain values:
 
 ```cpp
 using length = inside<{{1e-41_g, 1e27_g}, 1e-41_g}, round_nearest>;
-using decade = inside<{{-100, 100}, per<1 << 20>}, round_nearest>;
 const length planck   = just<1.616255e-35_g>;
 const length universe = just<8.8e26_g>;
-auto ratio = universe / planck;           // exactly 1760…0/323251, a plain value
-math::log10<decade>(ratio);          // 61.73597…, rounded once
+auto ratio = universe / planck;       // exactly 1760…0/323251, a plain value
+math::log10<per<(1 << 20)>>(ratio);   // 61.73597…, rounded once onto 2^-20
 ```
 
 [`planck_to_cosmos.cpp`](../../examples/planck_to_cosmos.cpp) runs this with
@@ -160,9 +159,9 @@ The raw is private. The supported ways in and out:
   compile, because the library relies on the raw always being a valid point.
 
 A quantity stores its number and nothing else, so `sizeof(q)` is the size of
-its inside; read its raw with `q.numerical_value().raw()`. A unit conversion
-keeps the raw: km → mm on `inside<{0, 10}>` is the same `uint8_t`, read on a
-rescaled grid.
+its inside; read its raw in its own unit `u` with
+`q.numerical_value_in(u).raw()`. A unit conversion keeps the raw: km → mm on
+`inside<{0, 10}>` is the same `uint8_t`, read on a rescaled grid.
 
 ## Why no representation flags
 

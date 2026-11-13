@@ -48,7 +48,7 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
         if constexpr (std::same_as<V, number_type>)
             return n;
         else
-            return V{n};
+            return detail::stepping<V>::make(n);
     }
 
     // The slot and position in 32 bits where the slot count fits: a loop over
@@ -85,7 +85,7 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
             if constexpr (std::same_as<V, number_type>)
                 return n;
             else
-                return V{n};
+                return detail::stepping<V>::make(n);
         }
 
         [[nodiscard]] constexpr value_type operator[](difference_type n) const { return *(*this + n); }

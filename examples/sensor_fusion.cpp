@@ -57,7 +57,7 @@ int main() {
     const auto ref       = point<deg_C>(just<0>);
     using weighted_sum_t = quantity<deg_C, inside<{{-200, 200}, per<160>}, round_nearest>>;
     using weight_sum_t   = inside<{{0, 8}, per<8>}, round_nearest>;
-    weighted_sum_t weighted_sum{0};
+    weighted_sum_t weighted_sum{0, deg_C};
     weight_sum_t   weight_sum{0};
 
     auto accept = [&]<typename B>(std::type_identity<B>, double r, weight_t w, const char* tag) {
@@ -78,7 +78,7 @@ int main() {
 
     // The weight grid includes 0, so div<fused_t> returns expected<fused_t, errc>:
     // no accepted reading is a division by zero, reported, not a crash.
-    const auto fused = ref + div<fused_t>(weighted_sum, weight_sum).value_or(fused_t{0});
+    const auto fused = ref + div<fused_t>(weighted_sum, weight_sum).value_or(fused_t{0, deg_C});
 
     std::cout << "\nweighted sum: " << weighted_sum << ",  total weight: " << weight_sum << "\n";
     std::cout << "fused (clamp+round into fused_t): " << fused << "\n";

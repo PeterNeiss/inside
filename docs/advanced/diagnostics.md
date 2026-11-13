@@ -128,11 +128,13 @@ instead (`= delete("…")`):
 | Code | Message |
 |---|---|
 | `just<1> * si::metre + just<1> * si::second` | `units: adding or comparing quantities of different dimensions` |
-| `42 * si::metre` | `units: a raw number has no grid - write just<42> * unit, or quantity<unit, inside<…>>{42}` |
+| `42 * si::metre` | `units: a raw number has no grid - write just<42> * unit, or Q{42, unit} into a quantity type Q` |
+| `quantity<si::metre, inside<{0, 100}>>{42}` | `units: a number alone has no unit - write Q{42, si::metre}, or just<42> * si::metre` |
+| `q.numerical_value()` | `units: a number alone has no unit - read q.numerical_value_in(si::metre)` |
 | `q * 2` | `units: a raw number has no grid - scale by just<2>, not 2` |
 | `length.in(si::second)` | `units: in() - the unit has another dimension` |
 | `degrees.in(si::radian)` | `units: this conversion multiplies by a power of pi, which has no exact grid - round it with value_cast<unit, Rep>(q) from <beman/inside/units/math.hpp>, Rep declared with a rounding mode` |
-| `inside<{0, 7}> x = angle;` | `units: an angle (an is_kind quantity) or a pi-scaled ratio is no plain number - read numerical_value(), or value_cast it first` |
+| `inside<{0, 7}> x = angle;` | `units: an angle (an is_kind quantity) or a pi-scaled ratio is no plain number - read numerical_value_in(si::radian), or value_cast it first` |
 | `math::sin(degrees)` (the deduced form) | `units: sin takes an angle in radians - sin<Out>(q) takes a unit with a factor of pi` |
 
 Kinds that never mix (Hz and Bq, Gy and Sv), and the kind boundaries of

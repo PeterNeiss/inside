@@ -93,8 +93,8 @@ constexpr std::array inside_only{
 
 // Member functions of an inside without a quantity counterpart: properties of
 // the number in one unit (5 km and 5000 m have other raws, numerators and
-// notch indices). A quantity's number is numerical_value(), and these are its
-// members.
+// notch indices). A quantity's number is numerical_value_in(u), and these are
+// its members.
 constexpr std::array member_only{
     std::string_view{"raw"},
     std::string_view{"from_raw"},
@@ -153,19 +153,19 @@ TEST(UnitsParityTest, every_inside_member_has_a_quantity_member_or_a_reason) {
 // Each listed quantity form compiles.
 TEST(UnitsParityTest, the_quantity_forms_compile) {
     std::mt19937_64 rng{42};
-    metres          m{40};
-    km              k{1};
+    metres          m{40, si::metre};
+    km              k{1, si::kilo(si::metre)};
     errc            ec{};
 
     // Members: the one-shot policy, the policy handles and the hooks.
-    static_assert(requires { metres{150, clamp}; });
+    static_assert(requires { metres{150, si::metre, clamp}; });
     static_assert(requires { metres{k, clamp}; });
     static_assert(requires { m.policy<clamp>() = k; });
     static_assert(requires { m.policy<clamp>() += k; });
     static_assert(requires { m.policy<clamp>() *= just<2>; });
     static_assert(requires { m.policy(ec) = k; });
     static_assert(requires { m.on_clamp([](auto&, auto) {}) *= just<2>; });
-    static_assert(requires { metres::try_make(5); });
+    static_assert(requires { metres::try_make(5, si::metre); });
     static_assert(requires(ratio r) { r.as<int>(); });
     static_assert(requires(ratio r) { r.to<int>(); });
     static_assert(requires(ratio r) { as<int>(r); });
@@ -173,15 +173,15 @@ TEST(UnitsParityTest, the_quantity_forms_compile) {
     static_assert(!has_as<metres>); // a length is no number
 
     // Free functions.
-    static_assert(requires { checked_cast<metres>(5); });
+    static_assert(requires { checked_cast<metres>(just<5> * si::metre); });
     static_assert(requires { checked_cast<metres>(k); });
     static_assert(requires { min(m, k); });
     static_assert(requires { max(m, k); });
     static_assert(requires { midpoint(m, k); });
     static_assert(!has_min<metres, seconds>); // other dimensions
-    static_assert(requires { conversion_overflows<metres>(5); });
-    static_assert(requires { conversion_rounds<metres>(5); });
-    static_assert(requires { conversion_loses<metres>(5); });
+    static_assert(requires { conversion_overflows<metres>(5, si::metre); });
+    static_assert(requires { conversion_rounds<metres>(5, si::metre); });
+    static_assert(requires { conversion_loses<metres>(5, si::metre); });
     static_assert(requires { add_all(m, k, m); });
     static_assert(requires { mul_all(m, m); });
     static_assert(requires(std::vector<metres> v) { sum<quantity<si::metre, inside<{0, 1000}>>>(v); });
@@ -221,8 +221,8 @@ TEST(UnitsParityTest, the_quantity_forms_compile) {
 
 // The new forms do what the inside forms do.
 TEST(UnitsParityTest, the_new_forms_work) {
-    metres m{40};
-    km     k{1};
+    metres m{40, si::metre};
+    km     k{1, si::kilo(si::metre)};
 
     // Unary + on a quantity and on an inside: the value itself.
     static_assert(std::same_as<decltype(+m), metres>);
@@ -241,14 +241,14 @@ TEST(UnitsParityTest, the_new_forms_work) {
     EXPECT_EQ(ec, errc::overflow);
     EXPECT_TRUE(m == just<4> * si::metre);
 
-    EXPECT_TRUE(checked_cast<metres>(7) == just<7> * si::metre);
+    EXPECT_TRUE(checked_cast<metres>(just<7> * si::metre) == just<7> * si::metre);
     EXPECT_THROW((void)checked_cast<metres>(k), inside_error);
 
     EXPECT_TRUE(min(m, k) == just<4> * si::metre);
     EXPECT_TRUE(max(m, k) == k);
     EXPECT_TRUE(midpoint(m, k) == just<502> * si::metre);
 
-    const ratio r{25}; // 25 %: the number 1/4
+    const ratio r{25, percent}; // 25 %: the number 1/4
     EXPECT_EQ(r.to<double>(), 0.25);
     EXPECT_EQ((r.as<int, round_nearest>()), 0);
     EXPECT_EQ((as<int, round_ceil>(r)), 1);
@@ -267,10 +267,10 @@ template <class A, class B, class H>
 concept add_with = requires(const A& a, const B& b, H h) { add(a, b, h); };
 
 TEST(UnitsParityTest, per_call_arithmetic) {
-    const metres m{40};
-    const km     k{1};
+    const metres m{40, si::metre};
+    const km     k{1, si::kilo(si::metre)};
     using per_s = quantity<si::second, inside<{1, 10}>>;
-    const per_s s{3};
+    const per_s s{3, si::second};
 
     EXPECT_TRUE(add(m, k) == just<1040> * si::metre);
     EXPECT_TRUE(sub(k, m) == just<960> * si::metre);
@@ -283,7 +283,7 @@ TEST(UnitsParityTest, per_call_arithmetic) {
     EXPECT_TRUE(div(just<30>, s, round_floor) == just<10> / si::second);
 
     errc       ec{};
-    const auto z = div(m, quantity<si::second, inside<{0, 10}>>{0}, ec);
+    const auto z = div(m, quantity<si::second, inside<{0, 10}>>{0, si::second}, ec);
     EXPECT_EQ(ec, errc::division_by_zero);
     (void)z;
 
@@ -307,10 +307,10 @@ TEST(UnitsParityTest, cursors_and_values_over_quantities) {
     static_assert(std::same_as<std::ranges::range_value_t<decltype(values<s_t>)>, s_t>);
     EXPECT_EQ(values<s_t>.size(), 9u);
     EXPECT_TRUE(values<s_t>.back() == just<2> * si::second);
-    EXPECT_EQ(std::ranges::find(values<s_t>, s_t{rational{3, 4}}) - values<s_t>.begin(), 3);
+    EXPECT_EQ(std::ranges::find(values<s_t>, s_t{rational{3, 4}, si::second}) - values<s_t>.begin(), 3);
 
     // A quantity's ++ steps one notch of its number, as an inside's does.
-    s_t q{0};
+    s_t q{0, si::second};
     ++q;
     EXPECT_TRUE((q == just<1, 4> * si::second));
 }
@@ -318,9 +318,9 @@ TEST(UnitsParityTest, cursors_and_values_over_quantities) {
 // std::hash and std::numeric_limits of a quantity: its number's, the limits
 // as quantities.
 TEST(UnitsParityTest, hash_and_numeric_limits) {
-    std::unordered_set<metres> set{metres{3}, metres{4}, metres{3}};
+    std::unordered_set<metres> set{metres{3, si::metre}, metres{4, si::metre}, metres{3, si::metre}};
     EXPECT_EQ(set.size(), 2u);
-    EXPECT_EQ(std::hash<metres>{}(metres{7}), std::hash<num>{}(num{7}));
+    EXPECT_EQ(std::hash<metres>{}(metres{7, si::metre}), std::hash<num>{}(num{7}));
 
     using lim = std::numeric_limits<metres>;
     static_assert(lim::is_specialized && lim::is_integer && lim::is_exact && !lim::is_signed);
@@ -334,18 +334,18 @@ TEST(UnitsParityTest, hash_and_numeric_limits) {
 // A quantity's on_clamp passes the overshoot as a quantity in its unit and
 // kind, exactly; on_wrap's carry stays a count of periods.
 TEST(UnitsParityTest, clamp_overshoot_is_a_quantity) {
-    metres m{40};
+    metres m{40, si::metre};
     bool   exact = false;
     m.on_clamp([&](metres& self, auto over) {
         static_assert(quantity_like<decltype(over)>);
         static_assert(decltype(over)::reference == metres::reference);
         exact = &self == &m && over == just<900> * si::metre; // 1 km is 1000 m: 900 m past 100 m
-    })           = km{1};
+    })           = km{1, si::kilo(si::metre)};
     EXPECT_TRUE(exact);
     EXPECT_TRUE(m == just<100> * si::metre);
 
     using turn = quantity<si::second, inside<{0, 59}, wrap>>;
-    turn t{0};
+    turn t{0, si::second};
     t.on_wrap([&](auto&, auto carry) {
         static_assert(!quantity_like<decltype(carry)>);
         exact = carry == 2_ins;

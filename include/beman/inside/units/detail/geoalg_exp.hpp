@@ -1160,7 +1160,7 @@ template <class Domain, class CoDomain, bool Cold>
             integer_pass<F>(px, st);
     }
     return [&]<std::size_t... P>(std::index_sequence<P...>) {
-        return CoDomain{std::tuple_element_t<P, CP>(std::get<P>(st.Out))...};
+        return CoDomain{units::detail::part_of_number<std::tuple_element_t<P, CP>>(std::get<P>(st.Out))...};
     }(std::make_index_sequence<NC>{});
 }
 

@@ -44,7 +44,7 @@ It steps through `T`'s range by `Step`, starting at `T`'s lower limit, and
 `end(t)` is the value one step past the last:
 
 ```cpp
-using time_t = inside<{{-4, 4}, per<1024>}, round_nearest>;
+using time_t = inside<{{-4, 4}, per<(1 << 10)>}, round_nearest>;
 for (cursor<time_t, per<4>> t; t != end(t); ++t)          // −4, −3.75, …, 4
     std::cout << t << ' ';
 for (cursor<time_t, 0.25_r> t = -2_ins; t <= 2_ins; ++t)  // any start, the classic test
@@ -119,8 +119,8 @@ point of `T`'s grid uniformly from any standard engine:
 
 ```cpp
 std::mt19937 rng{42};
-auto die  = uniform<inside<{1, 6}>>(rng);                // 1 … 6
-auto gain = uniform<inside<{{0, 1}, per<256>}>>(rng);    // one of the 257 points of [0, 1]
+auto die  = uniform<inside<{1, 6}>>(rng);                     // 1 … 6
+auto gain = uniform<inside<{{0, 1}, per<(1 << 8)>}>>(rng);    // one of the 257 points of [0, 1]
 ```
 
 A seed gives the same values on every standard library, because the draw

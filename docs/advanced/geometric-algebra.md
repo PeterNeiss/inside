@@ -152,20 +152,19 @@ physical.
 The output is deduced as for the scalar functions: the scalar part and each
 blade of y, in x's units, every part's range a bound computed at compile time
 (so its value needs no range check), on x's notch, or the one you name:
-`math::exp<per<1 << 20>>(x)`. `math::exp<C>(x)` names it: a multivector that
+`math::exp<per<(1 << 20)>>(x)`. `math::exp<C>(x)` names it: a multivector that
 holds the scalar part and every blade of y (a part it has beyond them is 0,
 and a part spelled with a sign, j = e₃e₁, gets its sign), or one inside, the
 number of every part.
 
 ```cpp
-using coef  = inside<{{-1, 1}, per<1 << 20>}, round_nearest>;
-using part  = inside<{{-1, 1}, per<1 << 16>}, round_nearest>;
-using bivec = multivector<quantity<i, coef>, quantity<j, coef>, quantity<k, coef>>;
+using coef  = inside<{{-1, 1}, per<(1 << 20)>}, round_nearest>;
+using part  = inside<{{-1, 1}, per<(1 << 16)>}, round_nearest>;
 using rotor = multivector<part, quantity<i, part>, quantity<j, part>, quantity<k, part>>;
-const coef c{rational{6045997880780726, 10000000000000000}};      // π/(3√3)
-math::exp<rotor>(bivec{c * i + c * j + c * k});             // ½ + ½ i + ½ j + ½ k
-math::exp<part>(bivec{c * i + c * j + c * k});              // the same rotor
-math::exp<per<1 << 16>>(bivec{c * i + c * j + c * k});     // the same, its range ±(1 + 2^-16)
+const coef c{just<6045997880780726, 10000000000000000>};    // π/(3√3)
+math::exp<rotor>(c * i + c * j + c * k);                    // ½ + ½ i + ½ j + ½ k
+math::exp<part>(c * i + c * j + c * k);                     // the same rotor
+math::exp<per<(1 << 16)>>(c * i + c * j + c * k);           // the same, its range ±(1 + 2^-16)
 ```
 
 e^a, cos λ and sin λ / λ are computed once per call and each part is decided

@@ -39,7 +39,7 @@ using pos_delta_t = quantity<px, inside<{{-64, 64}, per<16>}, round_nearest>>;
 using cell_t = inside<{0, 63}>;
 
 struct sprite {
-    pos_t                    x{0}, y{0};
+    pos_t                    x{0, px}, y{0, px};
     clamp_counter<1'000'000> edge_x_crossings{0};
     clamp_counter<1'000'000> edge_y_crossings{0};
 
@@ -54,8 +54,8 @@ struct sprite {
 
 int main() {
     sprite s{};
-    s.x = pos_t{60.5};
-    s.y = pos_t{2.0};
+    s.x = pos_t{60.5, px};
+    s.y = pos_t{2.0, px};
 
     // Five movement ticks: enough to wrap once in x, twice in y.
     double moves[][2] = {
@@ -68,7 +68,7 @@ int main() {
 
     std::cout << "step   x        y      crossings (x, y)\n";
     for (auto& m : moves) {
-        s.step(pos_delta_t{m[0]}, pos_delta_t{m[1]});
+        s.step(pos_delta_t{m[0], px}, pos_delta_t{m[1], px});
         std::cout << " " << s.x << "    " << s.y << "     (" << s.edge_x_crossings << ", " << s.edge_y_crossings
                   << ")\n";
     }

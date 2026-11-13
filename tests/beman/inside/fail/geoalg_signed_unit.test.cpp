@@ -9,6 +9,6 @@ inline constexpr beman::inside::units::basis_vector e2_def{"e2", 1};
 int main() {
     using namespace beman::inside;
     using namespace beman::inside::units;
-    quantity<unit_c<e2_def> * unit_c<e1_def>, inside<{0, 10}>> q{1};
+    quantity<unit_c<e2_def> * unit_c<e1_def>, inside<{0, 10}>> q{};
     (void)q;
 }

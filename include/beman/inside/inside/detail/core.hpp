@@ -52,7 +52,7 @@ using cursor_value_t =
 
 // The number a type steps over in cursor<T>, values<T> and end(t): an inside
 // itself, or a quantity's number (units specializes it); rebind<N> wraps a
-// number N back into the type's kind.
+// number N back into the type's kind, and make(n) is that value.
 template <class T>
 struct stepping {};
 template <insidable T>
@@ -60,6 +60,10 @@ struct stepping<T> {
     using number = T;
     template <class N>
     using rebind = N;
+    template <class N>
+    static constexpr N make(const N& n) {
+        return n;
+    }
 };
 template <class T>
 concept steppable = requires { typename stepping<T>::number; };

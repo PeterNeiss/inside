@@ -1062,13 +1062,12 @@ TEST(ResultGridsTest, lerp_stays_between_its_ends) {
 
 TEST(ResultGridsTest, quantities_take_the_numbers_tight_types) {
     using namespace beman::inside::units;
-    const quantity<si::metre, inside<{0, 100}>>         a{10};
-    const quantity<si::kilo(si::metre), inside<{0, 1}>> b{1};
+    const quantity<si::metre, inside<{0, 100}>>         a{10, si::metre};
+    const quantity<si::kilo(si::metre), inside<{0, 1}>> b{1, si::kilo(si::metre)};
     const inside<{{0, 1}, per<4>}>                      t{0.25};
     // In the common unit, metres: lerp between [0, 100] m and [0, 1000] m.
-    static_assert(
-        std::is_same_v<std::remove_cvref_t<decltype(lerp(a, b, t).numerical_value())>, inside<{{0, 1000}, per<4>}>>);
-    static_assert(std::is_same_v<std::remove_cvref_t<decltype(min(a, b).numerical_value())>, inside<{0, 100}>>);
+    static_assert(std::is_same_v<std::remove_cvref_t<decltype(lerp(a, b, t))>::rep, inside<{{0, 1000}, per<4>}>>);
+    static_assert(std::is_same_v<std::remove_cvref_t<decltype(min(a, b))>::rep, inside<{0, 100}>>);
     EXPECT_TRUE((lerp(a, b, t) == just<2575, 10> * si::metre));
     EXPECT_TRUE(min(a, b) == just<10> * si::metre);
 }

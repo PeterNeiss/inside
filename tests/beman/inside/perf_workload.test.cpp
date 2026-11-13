@@ -244,7 +244,7 @@ std::int64_t run_math_rotor() {
         const bivector b{u * (e1 * e2) + v * (e1 * e3) + w * (e2 * e3)};
         const rotor    r = math::exp<rotor>(b);
         acc += static_cast<std::int64_t>(std::get<0>(r.parts()).raw()) +
-               static_cast<std::int64_t>(std::get<3>(r.parts()).numerical_value().raw());
+               static_cast<std::int64_t>(std::get<3>(r.parts()).numerical_value_in(e2 * e3).raw());
     }
     return acc;
 }

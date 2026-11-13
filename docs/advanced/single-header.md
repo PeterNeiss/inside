@@ -56,15 +56,15 @@ int main() {
     std::cout << "70 + 58         = " << sum << ", capped " << capped << '\n';
 
     // units: a conversion rescales the grid, so mixed units add exactly.
-    quantity<si::kilo(si::metre), inside<{{0, 500}, per<1000>}>> leg{12.5};
+    quantity<si::kilo(si::metre), inside<{{0, 500}, per<1000>}>> leg{12.5, si::kilo(si::metre)};
     auto total = leg + just<800> * si::metre;   // runs in metres
-    auto speed = total / quantity<si::minute, inside<{1, 600}>>{20};
+    auto speed = total / quantity<si::minute, inside<{1, 600}>>{20, si::minute};
     std::cout << "12.5 km + 800 m = " << total << '\n'
               << "in 20 min       = " << speed.in(si::kilo(si::metre) / si::hour) << '\n';
 
     // math: correctly rounded onto the output grid, the same bits everywhere.
     using amplitude = inside<{{-1, 1}, per<1000>}, round_nearest>;
-    auto s = math::sin<amplitude>(quantity<si::degree, inside<{0, 360}>>{30});
+    auto s = math::sin<amplitude>(just<30> * si::degree);
     auto r = math::sqrt(inside<{{0, 10}, per<1000>}, round_nearest>{2});
     std::cout << "sin 30°         = " << s << '\n'
               << "sqrt 2          = " << r << '\n';

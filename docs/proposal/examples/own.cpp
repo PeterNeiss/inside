@@ -21,13 +21,13 @@ inline constexpr auto           cent = unit_c<cent_def>;
 using price = quantity<euro / si::kilogram, inside<{{0, 100}, per<100>}>>;
 using mass  = quantity<si::kilogram, inside<{{0, 10}, per<1000>}>>;
 
-constexpr auto cost  = price{3.49_ins} * mass{1.25_ins};     // 4.3625 EUR, exactly
-constexpr auto cents = cost.in(cent);                        // 436.25 ct: the same raw
-static_assert(!addable<decltype(cost), mass>);               // money never adds to a mass
+constexpr auto cost  = price{3.49_ins, euro / si::kilogram} * mass{1.25_ins, si::kilogram}; // 4.3625 EUR, exactly
+constexpr auto cents = cost.in(cent);                                                       // 436.25 ct: the same raw
+static_assert(!addable<decltype(cost), mass>);                                              // money never adds to a mass
 // [/listing]
 
 int main() {
-    if (cost.numerical_value() != 4.3625_ins || cents.numerical_value() != 436.25_ins)
+    if (cost.numerical_value_in(euro) != 4.3625_ins || cents.numerical_value_in(cent) != 436.25_ins)
         return 1;
     return 0;
 }

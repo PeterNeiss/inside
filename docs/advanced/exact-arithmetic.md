@@ -60,14 +60,14 @@ Both native paths divide in 32 bits when the operands fit, so `/` and `%` on
 small grids run at native speed.
 
 ```cpp
-using fp = inside<{{0, 255}, per<256>}, unsafe>;      // Q8.8; unsafe rounds toward zero
-auto q = div(fp{200}, fp{3}, round_toward_zero);      // path A: raw 17066, about 66.664
+using fp = inside<{{0, 255}, per<(1 << 8)>}, unsafe>;      // Q8.8; unsafe rounds toward zero
+auto q = div(fp{200}, fp{3}, round_toward_zero);           // path A: raw 17066, about 66.664
 ```
 
 Path A multiplies before it divides: (51200 × 256) / 768 = 17066, that is
 ⌊66.667 × 256⌋. Dividing first would give 66 × 256 = 16896 and lose the
 fraction. It also **widens the interval**: Q8.8 / Q8.8 has the type
-`inside<{{0, 65280}, per<256>}>`, because 255 divided by the smallest nonzero
+`inside<{{0, 65280}, per<(1 << 8)>}>`, because 255 divided by the smallest nonzero
 divisor, 1/256, is 65280.
 
 Path C splits a divisor range that straddles 0 into its positive part

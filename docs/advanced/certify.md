@@ -152,8 +152,8 @@ for example for a call that only runs at compile time (it leaves no symbol):
 #include "certify.hpp" // tests/beman/inside/certify; before any beman.inside header
 
 using namespace beman::inside;
-using angle = inside<{{-4, 4}, per<16384>}, round_nearest>;
-using level = inside<{{-1, 1}, per<1024>}, round_floor>;
+using angle = inside<{{-4, 4}, per<(1 << 14)>}, round_nearest>;
+using level = inside<{{-1, 1}, per<(1 << 10)>}, round_floor>;
 
 void pairs(certify::runner& r) {
     r.unary<level, angle>("sin", [](angle x) { return math::sin<level>(x); });

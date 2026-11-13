@@ -63,12 +63,12 @@ int main() {
     if (to_string(balance) != text + " ETH")
         return 1;
     // One wei is the notch of the grid: 10^-18 ETH.
-    static_assert(just<1> * wei == just<rational{1, 1'000'000'000'000'000'000}> * ETH);
+    static_assert(just<1> * wei == just<1, 1'000'000'000'000'000'000> * ETH);
 
     // 2. 21000 gas at 30 gwei/gas is 630000 gwei, exactly 0.00063 ETH.
-    const auto fee = gas_used{21'000} * gas_price{30};
+    const auto fee = gas_used{21'000, gas} * gas_price{30, gwei / gas};
     std::cout << "fee      " << fee << " = " << fee.in(ETH) << "\n";
-    if (fee != just<rational{63, 100'000}> * ETH || to_string(fee) != "630000 gwei")
+    if (fee != just<63, 100'000> * ETH || to_string(fee) != "630000 gwei")
         return 1;
 
     const eth  alice = *parse<eth>("1.5");

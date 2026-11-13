@@ -17,17 +17,17 @@ using namespace beman::inside;
 using namespace beman::inside::units;
 namespace pc = units::constants;
 
-using angle_t = inside<{{0, 4}, per<1024>}>;
+using angle_t = inside<{{0, 4}, per<(1 << 10)>}>;
 auto x = angle_t{1.5} * math::pi;                                   // π to angle_t's resolution
-auto d = pc::speed_of_light_in_vacuum * quantity<si::second, inside<{0, 10}>>{2};
+auto d = pc::speed_of_light_in_vacuum * quantity<si::second, inside<{0, 10}>>{2, si::second};
 d.in(si::metre);                                                    // 599584916 m, exact
-auto w = pc::standard_gravity * quantity<si::kilogram, inside<{0, 100}>>{70};
+auto w = pc::standard_gravity * quantity<si::kilogram, inside<{0, 100}>>{70, si::kilogram};
 w.in(si::newton);                                                   // 686.46550 N, exact
 
 // h, e, k and N_A are grid numbers past 64 bits.
 auto R = pc::avogadro_constant * pc::boltzmann_constant;            // exact
 std::format("{:.14e}", R.in(si::joule / (si::mole * si::kelvin)));  // 8.31446261815324e+00 J/(K mol)
-auto E = pc::planck_constant * quantity<si::tera(si::hertz), inside<{0, 1000}>>{540};
+auto E = pc::planck_constant * quantity<si::tera(si::hertz), inside<{0, 1000}>>{540, si::tera(si::hertz)};
 std::format("{:.9e}", E.in(si::joule));                             // 3.578077881e-19 J
 ```
 

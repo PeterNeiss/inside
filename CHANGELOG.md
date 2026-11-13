@@ -8,6 +8,25 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Upgrading
 
+- A number goes into and out of a quantity with its unit named, where it
+  happens. Every form that took a bare number in Q's unit names the unit, or
+  takes a quantity:
+
+  | Before | Now |
+  |---|---|
+  | `Q{42}`, `Q q{v}` | `Q{42, si::metre}`, or `just<42> * si::metre` |
+  | `Q{v, clamp}` | `Q{v, si::metre, clamp}`; `Q{q, clamp}` of a quantity is unchanged |
+  | `q.numerical_value()` | `q.numerical_value_in(si::metre)` |
+  | `Q::try_make(v)` | `Q::try_make(v, si::metre)` |
+  | `checked_cast<Q>(v)` | `checked_cast<Q>(q)` of a quantity, or `Q::try_make(v, si::metre)` |
+  | `conversion_overflows<Q>(v)`, `conversion_rounds`, `conversion_loses` | `conversion_overflows<Q>(v, si::metre)` |
+  | `multivector<I, quantity<i, I>>{3, 4}` | `{3, just<4> * i}`: a blade's part is a quantity |
+
+  Unit one is no exception (`{42, one}`). An inside in another unit of the
+  quantity converts exactly first (`Q{n, si::kilo(si::metre)}`); a raw number
+  in another unit does not compile. Each old form is a deleted overload whose
+  message names the new one.
+
 - Every math function has one call shape, and no `_into` name is left. The
   output is deduced unless the call names what it chooses:
 
@@ -46,7 +65,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   them. Examples `complex.cpp`, `quaternions.cpp` and
   `geometric_algebra.cpp`; `docs/advanced/geometric-algebra.md`.
 
-- Output specs on every math function: `math::exp<per<1 << 20>>(x)` names
+- Output specs on every math function: `math::exp<per<(1 << 20)>>(x)` names
   only the output's notch, the range computed on it (tighter than rounding
   the deduced one outward); policy flags (`round_floor`, `clamp`, `wrap`) in
   any order, `math::sin<per<1000>, round_floor>(x)`. A call on a quantity
@@ -61,7 +80,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   evaluation). Complex numbers, quaternion rotors, boosts and dual numbers
   alike: a rotor onto a 2^-20 grid costs about what `std::sqrt`, `std::sin`,
   `std::cos` and three products cost in `double`. The deduced output bounds
-  every part at compile time (`math::exp<per<1 << 20>>(bivector)` is a
+  every part at compile time (`math::exp<per<(1 << 20)>>(bivector)` is a
   rotor), and `math::exp<C>(x)` takes a multivector or one number for every
   part. An argument without the closed form (e1 e2 + e3 e4 in 4-D) is a
   deleted overload with the reason.

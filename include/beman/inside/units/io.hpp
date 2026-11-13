@@ -129,7 +129,7 @@ inline std::string unit_symbol(unit_t<U>, text_encoding enc = text_encoding::utf
 // "5 km", "90°", "3" (unit one).
 template <reference R, class V>
 std::string to_string(const quantity<R, V>& q, text_encoding enc = text_encoding::utf8) {
-    std::string       s   = beman::inside::to_string(q.numerical_value());
+    std::string       s   = beman::inside::to_string(units::detail::value_of(q));
     const std::string sym = unit_symbol(R.U, enc);
     if (sym.empty())
         return s;
@@ -189,7 +189,7 @@ struct std::formatter<beman::inside::units::quantity<R, V>> : std::formatter<V> 
     template <typename Ctx>
     auto format(const beman::inside::units::quantity<R, V>& q, Ctx& ctx) const {
         namespace u           = beman::inside::units;
-        auto              out = std::formatter<V>::format(q.numerical_value(), ctx);
+        auto              out = std::formatter<V>::format(beman::inside::units::detail::value_of(q), ctx);
         const std::string sym = u::unit_symbol(R.U);
         if (sym.empty())
             return out;

@@ -43,7 +43,7 @@ using timestamp_t = quantity<ms, inside<{{0, 8000}, per<8>}, round_nearest>>;
 
 int main() {
     constexpr std::size_t        window = values<slot_id_t>.size(); // 16
-    std::vector<packet_offset_t> slots(window, packet_offset_t{0});
+    std::vector<packet_offset_t> slots(window, packet_offset_t{0, pkt});
     std::vector<bool>            filled(window, false);
 
     int dropped = 0;
@@ -51,7 +51,7 @@ int main() {
     // Per-packet insertion. The "offset" is (seq - base). If it exceeds the
     // window (offset > 63), the write is rejected and on_error fires.
     auto insert = [&](int seq, int base) {
-        const quantity<pkt, inside<{-1024, 1024}>> offset{seq - base};
+        const quantity<pkt, inside<{-1024, 1024}>> offset{seq - base, pkt};
 
         // The slot is seq modulo the window: the wrap flag folds it into slot_id_t.
         const auto idx = slot_id_t{seq, wrap};
@@ -82,8 +82,8 @@ int main() {
 
     // Companion timestamps live on a fractional notch so the API can interop
     // with sub-millisecond audio clocks without slipping into floating point.
-    timestamp_t arrival{125.375};
-    timestamp_t playback{125.5};
+    timestamp_t arrival{125.375, ms};
+    timestamp_t playback{125.5, ms};
     std::cout << "\nplayback - arrival (1/8 ms grid): " << (playback - arrival) << "\n";
 
     if (dropped != 2 || to_string(slots[5]) != "5 pkt" || to_string(playback - arrival) != "0.125 ms")

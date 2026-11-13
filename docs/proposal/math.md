@@ -71,14 +71,14 @@ checks its own results.
 
 <!-- listing: math -->
 ```cpp
-using angle = inside<{{-8, 8}, per<16384>}, round_nearest>;
+using angle = inside<{{-8, 8}, per<(1 << 14)>}, round_nearest>;
 auto s = math::sin(angle{1});                    // 0.84149169921875, the nearest 1/16384
-static_assert(grid_of<decltype(s)> == grid{{-1, 1}, per<16384>});
-auto c = math::cos<per<256>>(angle{1});                  // 0.5390625: a coarser notch, named
+static_assert(grid_of<decltype(s)> == grid{{-1, 1}, per<(1 << 14)>});
+auto c = math::cos<per<(1 << 8)>>(angle{1});     // 0.5390625: a coarser notch, named
 
-using level = inside<{{0, 4}, per<256>}, round_nearest>;
+using level = inside<{{0, 4}, per<(1 << 8)>}, round_nearest>;
 auto r = math::sqrt(level{2.25});                // 1.5, on [0, 2]
-// math::sqrt(inside<{{-4, 4}, per<256>}, round_nearest>{2.25}) does not compile:
+// math::sqrt(inside<{{-4, 4}, per<(1 << 8)>}, round_nearest>{2.25}) does not compile:
 // the grid reaches below 0, so take abs(x) or store x into a non-negative grid first
 ```
 
@@ -87,17 +87,17 @@ time and run time agree.**
 
 <!-- listing: math_rounding -->
 ```cpp
-using x_t  = inside<{{1, 16}, per<64>}, round_nearest>;
-using down = inside<{{0, 16}, per<1024>}, round_floor>;
-using up   = inside<{{0, 16}, per<1024>}, round_ceil>;
+using x_t  = inside<{{1, 16}, per<(1 << 6)>}, round_nearest>;
+using down = inside<{{0, 16}, per<(1 << 10)>}, round_floor>;
+using up   = inside<{{0, 16}, per<(1 << 10)>}, round_ceil>;
 
 auto lo = math::sqrt<down>(x_t{2});         // 1.4140625    = 1448/1024 ≤ √2
 auto hi = math::sqrt<up>(x_t{2});           // 1.4150390625 = 1449/1024 ≥ √2
 static_assert(math::sqrt<down>(x_t{2.25}) == math::sqrt<up>(x_t{2.25})); // 1.5 exactly
 static_assert(math::log2<down>(x_t{8}) == 3 && math::log2<up>(x_t{8}) == 3);
 
-using plain = inside<{{1, 16}, per<64>}>;           // no rounding in the type
-auto e = math::exp<round_floor>(plain{1.5});     // the mode named on the call
+using plain = inside<{{1, 16}, per<(1 << 6)>}>;     // no rounding in the type
+auto e = math::exp<round_floor>(plain{1.5});        // the mode named on the call
 constexpr auto at_compile_time = math::exp(x_t{1.5});
 auto           at_run_time     = math::exp(x_t{1.5});
 // at_compile_time == at_run_time, on every platform, with or without an FPU
@@ -107,15 +107,15 @@ auto           at_run_time     = math::exp(x_t{1.5});
 
 <!-- listing: math_quantity -->
 ```cpp
-using down = inside<{{-1, 1}, per<16384>}, round_floor>;
-auto h = math::cos<down>(quantity<si::degree, inside<{0, 360}>>{120}); // exactly -1/2, even rounding down
+using down = inside<{{-1, 1}, per<(1 << 14)>}, round_floor>;
+auto h = math::cos<down>(just<120> * si::degree); // exactly -1/2, even rounding down
 
-using area_t = quantity<square(si::metre), inside<{{0, 100}, per<1024>}, round_nearest>>;
-auto side = math::sqrt(area_t{2});              // 1.4140625 m: the unit's root
-static_assert(std::is_same_v<decltype(side)::rep, inside<{{0, 10}, per<1024>}, round_nearest>>);
+using area_t = quantity<square(si::metre), inside<{{0, 100}, per<(1 << 10)>}, round_nearest>>;
+auto side = math::sqrt(area_t{2, square(si::metre)}); // 1.4140625 m: the unit's root
+static_assert(std::is_same_v<decltype(side)::rep, inside<{{0, 10}, per<(1 << 10)>}, round_nearest>>);
 
 using rad_t = inside<{{0, 7}, per<1'000'000>}, round_nearest>;
-auto right = value_cast<si::radian, rad_t>(quantity<si::degree, inside<{0, 360}>>{90}); // 1.570796 rad: π/2, rounded once
+auto right = value_cast<si::radian, rad_t>(just<90> * si::degree); // 1.570796 rad: π/2, rounded once
 ```
 
 # Design
@@ -237,7 +237,7 @@ order, at most one notch. The second form returns `Out` (or `expected<Out,
 errc>` where the deduced form returns an `expected`); except for the grid
 operations, `Out` must be an `inside` whose policy names a rounding mode.
 `pow_base` and `pown` take their compile-time argument first:
-`pow_base<10, per<1024>>(x)`, `pown<3, Out>(x)`.
+`pow_base<10, per<(1 << 10)>>(x)`, `pown<3, Out>(x)`.
 
 ```cpp
 namespace std::math {

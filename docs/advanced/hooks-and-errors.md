@@ -75,8 +75,8 @@ quantity in any unit of the same kind and convert it exactly first; `*=` and
 periods), the overshoot (a quantity in the same unit) or the errc:
 
 ```cpp
-quantity<si::second, inside<{0, 60, bounds::half_open}, wrap>> s{50};
-quantity<si::minute, inside<{0, 60, bounds::half_open}, wrap>> m{0};
+quantity<si::second, inside<{0, 60, bounds::half_open}, wrap>> s{50, si::second};
+quantity<si::minute, inside<{0, 60, bounds::half_open}, wrap>> m{0, si::minute};
 s.on_wrap([&](auto&, auto carry) { m += carry * si::minute; }) += just<2> * si::minute;
 // s == 50 s (170 s fold to 50 s), m == 2 min
 ```
@@ -149,14 +149,14 @@ inside<{0, 1000}> gain{400};
 auto v = volts::try_make((x - offset) / gain);   // the division's error, or the store's: 1
 ```
 
-For a quantity, `Q::try_make<F>(v)` takes a number in Q's unit, and
+For a quantity, `Q::try_make<F>(v, u)` takes a number and its unit, and
 `try_value_cast<Q, F>(q)` takes another quantity:
 
 ```cpp
 using metres = quantity<si::metre, inside<{0, 1000}>>;
-const quantity<si::kilo(si::metre), inside<{0, 5}>> leg{2};
-auto a = metres::try_make(1200);        // !a: overflow
-auto b = try_value_cast<metres>(leg);   // !b: 2000 m does not fit
+const quantity<si::kilo(si::metre), inside<{0, 5}>> leg{2, si::kilo(si::metre)};
+auto a = metres::try_make(1200, si::metre);   // !a: overflow
+auto b = try_value_cast<metres>(leg);         // !b: 2000 m does not fit
 ```
 
 ## Which channel reports a failure

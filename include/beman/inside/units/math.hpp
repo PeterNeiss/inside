@@ -201,8 +201,10 @@ constexpr Out pi_trig(const quantity<R, V>& q) {
                                    : beman::inside::detail::limbs_for_bits(std::max(n.bit_width(), d.bit_width()) + 1);
     using core               = engine::pi_trig_core<engine::input_limbs<V>, Cos, KF>;
     using factor             = typename core::factor;
-    return engine::evaluate<Out, engine::start_bits<Out>>(
-        core{engine::exact_input(q.numerical_value()), static_cast<factor>(ng ? -n : n), static_cast<factor>(d), ng});
+    return engine::evaluate<Out, engine::start_bits<Out>>(core{engine::exact_input(units::detail::value_of(q)),
+                                                               static_cast<factor>(ng ? -n : n),
+                                                               static_cast<factor>(d),
+                                                               ng});
 }
 } // namespace detail
 
@@ -231,8 +233,11 @@ template <auto U, insidable Out, reference R, class V>
                                    : beman::inside::detail::limbs_for_bits(std::max(NB, d.bit_width()) + 1);
     using core               = engine::pi_scale_core<engine::input_limbs<V>, engine::in_mag<V> + NB + 4, f.Pi, KF>;
     using factor             = typename core::factor;
-    return quantity<to, Out>{engine::evaluate<Out, engine::start_bits<Out>>(
-        core{engine::exact_input(q.numerical_value()), static_cast<factor>(ng ? -n : n), static_cast<factor>(d), ng})};
+    return detail::quantity_access::make<quantity<to, Out>>(
+        engine::evaluate<Out, engine::start_bits<Out>>(core{engine::exact_input(units::detail::value_of(q)),
+                                                            static_cast<factor>(ng ? -n : n),
+                                                            static_cast<factor>(d),
+                                                            ng}));
 }
 
 namespace detail {
@@ -244,7 +249,7 @@ constexpr auto number_of(const X& x) {
     else {
         static_assert(quantity_like<X> && number_like_v<X::reference>,
                       "units: the argument must be a number - an inside or a dimensionless quantity");
-        return rescale<conversion_factor<X::reference.U, unit{}>>(x.numerical_value());
+        return rescale<conversion_factor<X::reference.U, unit{}>>(units::detail::value_of(x));
     }
 }
 template <class X>
@@ -479,7 +484,7 @@ struct kind<F, 2, Args...> {
         if constexpr (r == units::detail::math_rule::trig || r == units::detail::math_rule::tan) {
             constexpr units::reference R = Args...[0] ::reference;
             if constexpr (units::detail::radians_v<R>)
-                return F::template eval<NO>(x...[0].numerical_value());
+                return F::template eval<NO>(units::detail::value_of(x...[0]));
             else
                 return units::detail::pi_trig<NO, std::same_as<F, entry::cos_fn>>(x...[0]);
         } else if constexpr (r == units::detail::math_rule::arc2 || r == units::detail::math_rule::common) {
@@ -489,7 +494,7 @@ struct kind<F, 2, Args...> {
         } else if constexpr (r == units::detail::math_rule::arc || r == units::detail::math_rule::number)
             return io::template make<O>(F::template eval<NO>(units::detail::number_of(x)...));
         else
-            return io::template make<O>(F::template eval<NO>(x.numerical_value()...));
+            return io::template make<O>(F::template eval<NO>(units::detail::value_of(x)...));
     }
 };
 } // namespace beman::inside::math::detail

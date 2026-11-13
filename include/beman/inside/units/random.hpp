@@ -18,7 +18,7 @@ namespace beman::inside::units {
 template <class Q, std::uniform_random_bit_generator G>
     requires quantity_like<Q>
 [[nodiscard]] Q uniform(G& g) {
-    return Q{beman::inside::uniform<typename Q::rep>(g)};
+    return detail::quantity_access::make<Q>(beman::inside::uniform<typename Q::rep>(g));
 }
 } // namespace beman::inside::units
 

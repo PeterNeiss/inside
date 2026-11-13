@@ -16,9 +16,9 @@ template <class Out>
 void deg_to_rad(rng_t& g, int n, const char* mode) {
     using D = inside<{{-720, 720}, per<1000>}>;
     for (int i = 0; i < n; ++i) {
-        const quantity<si::degree, D> q{pick<D>(g)};
-        std::cout << "P " << mode << " deg2rad " << notch_of<Out> << ' ' << q.numerical_value() << ' '
-                  << value_cast<si::radian, Out>(q).numerical_value() << '\n';
+        const quantity<si::degree, D> q{pick<D>(g), si::degree};
+        std::cout << "P " << mode << " deg2rad " << notch_of<Out> << ' ' << q.numerical_value_in(si::degree) << ' '
+                  << value_cast<si::radian, Out>(q).numerical_value_in(si::radian) << '\n';
     }
 }
 
@@ -26,9 +26,9 @@ template <class Out>
 void rad_to_deg(rng_t& g, int n, const char* mode) {
     using R = inside<{{-13, 13}, per<1'000'003>}>;
     for (int i = 0; i < n; ++i) {
-        const quantity<si::radian, R> q{pick<R>(g)};
-        std::cout << "P " << mode << " rad2deg " << notch_of<Out> << ' ' << q.numerical_value() << ' '
-                  << value_cast<si::degree, Out>(q).numerical_value() << '\n';
+        const quantity<si::radian, R> q{pick<R>(g), si::radian};
+        std::cout << "P " << mode << " rad2deg " << notch_of<Out> << ' ' << q.numerical_value_in(si::radian) << ' '
+                  << value_cast<si::degree, Out>(q).numerical_value_in(si::degree) << '\n';
     }
 }
 } // namespace

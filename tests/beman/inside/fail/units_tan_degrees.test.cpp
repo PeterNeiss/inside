@@ -6,6 +6,6 @@
 int main() {
     using namespace beman::inside;
     using namespace beman::inside::units;
-    auto t = math::tan<per<1024>>(quantity<si::degree, inside<{0, 60}, round_nearest>>{30});
+    auto t = math::tan<per<1024>>(quantity<si::degree, inside<{0, 60}, round_nearest>>{30, si::degree});
     (void)t;
 }

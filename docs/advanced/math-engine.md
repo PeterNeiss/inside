@@ -209,11 +209,10 @@ using namespace beman::inside::units;
 inline constexpr named_unit slot_def{"slot", mag<rational{1, 32768}> * mag_pi * si::radian};
 inline constexpr auto       slot = unit_c<slot_def>;           // 2π/65536 rad
 
-quantity<slot, inside<{0, 65535}, wrap>> phase{0};             // wraps at exactly one turn
-phase += quantity<slot, inside<{0, 65535}>>{16384};            // a quarter turn
-math::sin<per<16384>>(phase);                           // exactly 1
-math::cos<per<16384>, round_floor>(
-    quantity<si::degree, inside<{0, 360}>>{120});              // exactly −1/2, even under round_floor
+quantity<slot, inside<{0, 65535}, wrap>> phase{0, slot};       // wraps at exactly one turn
+phase += just<16384> * slot;                                   // a quarter turn
+math::sin<per<(1 << 14)>>(phase);                              // exactly 1
+math::cos<per<(1 << 14)>, round_floor>(just<120> * si::degree); // exactly −1/2, even under round_floor
 ```
 
 [`oscillator.cpp`](../../examples/oscillator.cpp) runs a phase counter this
@@ -227,7 +226,7 @@ however many turns. [`huge_angles.cpp`](../../examples/huge_angles.cpp) takes
 the sine of 10¹⁸ rad, correctly rounded.
 
 **Don't `wrap` a radians angle.** `wrap` folds modulo the grid's period,
-span + notch, which is never exactly 2π: `inside<{{0, 6.28125}, per<64>}, wrap>`
+span + notch, which is never exactly 2π: `inside<{{0, 6.28125}, per<(1 << 6)>}, wrap>`
 folds every 6.296875 rad, so each revolution shifts the angle by about
 0.014 rad.
 
@@ -236,11 +235,11 @@ at the call. The conversion adds the rounding onto the angle grid and
 `math::two_pi`'s own error (about 6·10⁻¹⁸), but never accumulates:
 
 ```cpp
-using turn_t  = inside<{{0, 1 - 1.0 / 4096}, per<4096>}, wrap | round_nearest>;
-using angle_t = inside<{{0, 8}, per<16384>}, round_nearest>;
+using turn_t  = inside<{{0, 1 - 1.0 / 4096}, per<(1 << 12)>}, wrap | round_nearest>;
+using angle_t = inside<{{0, 8}, per<(1 << 14)>}, round_nearest>;
 turn_t phase{0};
 phase += turn_t{0.25};
-auto s = math::sin<per<16384>>(angle_t{phase * math::two_pi});   // 1
+auto s = math::sin<per<(1 << 14)>>(angle_t{phase * math::two_pi});   // 1
 ```
 
 ## Without floating point

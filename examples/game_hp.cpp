@@ -44,13 +44,13 @@ using damage_t = quantity<HP, inside<{0, 50}>>;
 using big_pool_t = quantity<HP, inside<{0, 1000}>>;
 
 int main() {
-    hp_t hp{75};
+    hp_t hp{75, HP};
     std::cout << "starting health: " << hp << "\n";
 
     bool downed = false;
 
     // Single damage event with three multipliers.
-    damage_t base{10};
+    damage_t base{10, HP};
     mult_t   crit{2.0};  // 2x on crit
     mult_t   vuln{1.25}; // 1.25x vulnerable target
     mult_t   pen{1.5};   // 1.5x armor penetration
@@ -83,7 +83,7 @@ int main() {
     // `clamp` policy, the implicit quantity→quantity conversion already clips at the
     // boundary: no clamp flag needed when the target type already says
     // what to do with out-of-range values.
-    big_pool_t bonus{180};
+    big_pool_t bonus{180, HP};
     hp_t       capped = bonus;
     std::cout << "\nlevel bonus 180 HP -> hp_t (implicit clamp): " << capped << "\n";
 

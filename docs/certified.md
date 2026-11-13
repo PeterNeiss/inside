@@ -70,22 +70,22 @@ more inputs than exhaustion can compute.
 
 | function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
 |:--|:--|:--|--:|--:|--:|:--|:--|
-| `sin` | `{[-4, 4], 1/16384} round_nearest` | `{[-1, 1], 1/16384} round_nearest` | 131073 | 0 | 0 | `031a93e2ad9b518e0a27557b4d710fbee31e67c446760d95dacc419f8315cea0` | certified |
-| `cos` | `{[-4, 4], 1/16384} round_nearest` | `{[-1, 1], 1/16384} round_nearest` | 131073 | 0 | 0 | `8c958bddd2776f5bcde318558e57eea3c0579572d1bdddd05bda8419b85cfbd4` | certified |
+| `sin` | `{[-3217/1024, 3217/1024], 1/16384} round_nearest` | `{[-1, 1], 1/16384} round_nearest` | 102945 | 0 | 0 | `f29b1c193ac480dfa4f8e35fd7ed0f396288a6b3a0622f5bbd4e15d466d8fa57` | certified |
+| `cos` | `{[-3217/1024, 3217/1024], 1/16384} round_nearest` | `{[-1, 1], 1/16384} round_nearest` | 102945 | 0 | 0 | `7333edda8bfa627b4a95b4e7416aa459bd47df449fc1b31a5c7e76fb1005ddff` | certified |
 | `asin` | `{[-1, 1], 1/4096} round_nearest` | `{[-3217/2048, 3217/2048], 1/4096} round_nearest` | 8193 | 0 | 0 | `7fdb8f24ad5550b15b354d8c963fc534d7e5e09e7bc10d04d53a4035df3d79f5` | certified |
 | `acos` | `{[-1, 1], 1/4096} round_nearest` | `{[0, 3217/1024], 1/4096} round_nearest` | 8193 | 0 | 0 | `810c89e56e31b187e823abde7186179ad08f700097c20a5686f720de16b86e4f` | certified |
-| `atan2` | `{[-1, 1], 1/16384} round_nearest × {[-1, 1], 1/16384} round_nearest` | `{[-4, 4], 1/16384} round_nearest` | 1073807361 | 0 | 0 | `0ea93bb107289163a5a711080b2cd223197ba1d0cdefe478bf4ac1af66f1191d` | certified |
+| `atan2` | `{[-1, 1], 1/16384} round_nearest × {[-1, 1], 1/16384} round_nearest` | `{[-3217/1024, 3217/1024], 1/16384} round_nearest` | 1073807361 | 0 | 0 | `0ea93bb107289163a5a711080b2cd223197ba1d0cdefe478bf4ac1af66f1191d` | certified |
 | `hypot` | `{[-1, 1], 1/16384} round_nearest × {[-1, 1], 1/16384} round_nearest` | `{[0, 23171/16384], 1/16384} round_nearest` | 1073807361 | 0 | 0 | `5e3d50b8cd3b9da832a977a3aa1faae71d5e4b55ac1bf466c46344bd276fcd70` | certified |
-| `atan2` | `{[-1024, 1024], 1/256} round_nearest × {[-1024, 1024], 1/256} round_nearest` | `{[-4, 4], 1/1048576} round_nearest` | 274878955521 | – | – | – | skipped: 274.9 G inputs, over --max-slots (~11 h 00 min) |
-| `hypot` | `{[-1024, 1024], 1/256} round_nearest × {[-1024, 1024], 1/256} round_nearest` | `{[0, 46341/32], 1/256} round_nearest` | 274878955521 | – | – | – | skipped: 274.9 G inputs, over --max-slots (~12 h 23 min) |
+| `atan2` | `{[-1024, 1024], 1/256} round_nearest × {[-1024, 1024], 1/256} round_nearest` | `{[-3294199/1048576, 3294199/1048576], 1/1048576} round_nearest` | 274878955521 | – | – | – | skipped: 274.9 G inputs, over --max-slots (~14 h 43 min) |
+| `hypot` | `{[-1024, 1024], 1/256} round_nearest × {[-1024, 1024], 1/256} round_nearest` | `{[0, 46341/32], 1/256} round_nearest` | 274878955521 | – | – | – | skipped: 274.9 G inputs, over --max-slots (~19 h 38 min) |
 
 ### audio_math.cpp
 
 | function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
 |:--|:--|:--|--:|--:|--:|:--|:--|
-| `exp` | `{[-4, 4], 1/1024} round_nearest` | `{[0, 100], 1/16384} round_nearest` | 8193 | 0 | 0 | `8be94bf2017946d52914e3b2cf11dc8e8802fad740cb1fa0211b2c8cb13cd0a8` | certified |
-| `exp2` | `{[0, 4], 1/2} round_nearest` | `{[0, 16], 1/16384} round_nearest` | 9 | 0 | 0 | `02c1498e58196a42851514085cb2763c43082b6e4c6646ce41fe30a7993a8c63` | certified |
-| `exp2` | `{[0, 4], 1/1024} round_nearest` | `{[0, 16], 1/16384} round_nearest` | 4097 | 0 | 0 | `5433cd272cdfb76e8afc5321f3d2c79f49f5bd7facbe37c27fb0a228728c2fe9` | certified |
+| `exp` | `{[-4, 4], 1/1024} round_nearest` | `{[75/4096, 894537/16384], 1/16384} round_nearest` | 8193 | 0 | 0 | `8be94bf2017946d52914e3b2cf11dc8e8802fad740cb1fa0211b2c8cb13cd0a8` | certified |
+| `exp2` | `{[0, 4], 1/2} round_nearest` | `{[1, 16], 1/16384} round_nearest` | 9 | 0 | 0 | `02c1498e58196a42851514085cb2763c43082b6e4c6646ce41fe30a7993a8c63` | certified |
+| `exp2` | `{[0, 4], 1/1024} round_nearest` | `{[1, 16], 1/16384} round_nearest` | 4097 | 0 | 0 | `5433cd272cdfb76e8afc5321f3d2c79f49f5bd7facbe37c27fb0a228728c2fe9` | certified |
 | `tanh` | `{[-4, 4], 1/2048} round_nearest` | `{[-2047/2048, 2047/2048], 1/2048} round_nearest` | 16385 | 0 | 0 | `bf8bcb44db70b7fa12ce3703eae15034fbf86962549086756ca910afcf6cd3e6` | certified |
 | `sinh` | `{[-4, 4], 1/2048} round_nearest` | `{[-27945/1024, 27945/1024], 1/2048} round_nearest` | 16385 | 0 | 0 | `8a8d00fecb36b076e66c7c1af335a5c1fb31fffb4410a9fc06c41a102c65051e` | certified |
 | `cosh` | `{[-4, 4], 1/2048} round_nearest` | `{[1, 6991/256], 1/2048} round_nearest` | 16385 | 0 | 0 | `8268cd63f662dff5dd54ce59da9681cf8b1fdfd0223d11073f8581a8ebe39e40` | certified |
@@ -103,7 +103,7 @@ more inputs than exhaustion can compute.
 
 | function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
 |:--|:--|:--|--:|--:|--:|:--|:--|
-| `log10` | `{[1/256, 4], 1/65536} round_nearest` | `{[-5/2, 1], 1/40} round_nearest` | 261889 | 0 | 0 | `cab0a8a7196c52b2fe919a6a61710bf86fa341bcaadb9403953dde31d9168621` | certified |
+| `log10` | `{[1/256, 4], 1/65536} round_nearest` | `{[-97/40, 5/8], 1/40} round_nearest` | 261889 | 0 | 0 | `cab0a8a7196c52b2fe919a6a61710bf86fa341bcaadb9403953dde31d9168621` | certified |
 | `pow_base<10>` | `{[-6/5, 3/5], 1/40} round_nearest` | `{[1/256, 4], 1/65536} round_nearest` | 73 | 0 | 0 | `95e86dcdd0125a5279739d77f143b4940caaedd20ab3cc7f1c2dae5572d6f96d` | certified |
 
 ### audio_mixer.cpp
@@ -116,17 +116,17 @@ more inputs than exhaustion can compute.
 
 | function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
 |:--|:--|:--|--:|--:|--:|:--|:--|
-| `sqrt` | `{[977000000/1993002209, 979500000/1993002209], 2500/1993002209} checked` | `{[0, 200], 1/1000000000} round_nearest` | 1001 | 0 | 0 | `4162c4b13289d8784b8a2c7e60949585205e0e09bf90d7e740250f55b7a55d0f` | certified |
+| `sqrt` | `{[977000000/1993002209, 979500000/1993002209], 2500/1993002209} checked` | `{[140030741/200000000, 701048929/1000000000], 1/1000000000} round_nearest` | 1001 | 0 | 0 | `4162c4b13289d8784b8a2c7e60949585205e0e09bf90d7e740250f55b7a55d0f` | certified |
 
 ### huge_angles.cpp
 
 | function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
 |:--|:--|:--|--:|--:|--:|:--|:--|
-| `sin` | `{[0, 4611686018427387903], 1} checked` | `{[-1, 1], 1/4503599627370496} round_nearest` | 4611686018427387904 | – | – | – | skipped: 4.6e+18 inputs, over --max-slots (~8e+04 years) |
-| `cos` | `{[0, 4611686018427387903], 1} checked` | `{[-1, 1], 1/4503599627370496} round_nearest` | 4611686018427387904 | – | – | – | skipped: 4.6e+18 inputs, over --max-slots (~8.1e+04 years) |
+| `sin` | `{[0, 4611686018427387903], 1} checked` | `{[-1, 1], 1/4503599627370496} round_nearest` | 4611686018427387904 | – | – | – | skipped: 4.6e+18 inputs, over --max-slots (~7.9e+04 years) |
+| `cos` | `{[0, 4611686018427387903], 1} checked` | `{[-1, 1], 1/4503599627370496} round_nearest` | 4611686018427387904 | – | – | – | skipped: 4.6e+18 inputs, over --max-slots (~8.2e+04 years) |
 
 ### solar_system.cpp
 
 | function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
 |:--|:--|:--|--:|--:|--:|:--|:--|
-| `hypot` | `{[-10000000000000, 10000000000000], 1/1000000000} checked × {[-10000000000000, 10000000000000], 1/1000000000} checked` | `{[0, 100000000000000], 1/1000} round_nearest` | > 1.8e+19 | – | – | – | skipped: > 1.8e+19 inputs, over --max-slots (~1e+06 years) |
+| `hypot` | `{[-10000000000000, 10000000000000], 1/1000000000} checked × {[-10000000000000, 10000000000000], 1/1000000000} checked` | `{[0, 14142135623730951/1000], 1/1000} round_nearest` | > 1.8e+19 | – | – | – | skipped: > 1.8e+19 inputs, over --max-slots (~1e+06 years) |

@@ -30,7 +30,7 @@ using err_t = quantity<si::kelvin, inside<{{-10, 10}, per<16>}, round_nearest | 
 using integral_t = quantity<si::kelvin, inside<{{-200, 200}, per<16>}, round_nearest | clamp>>;
 
 // Gain coefficients: [0, 4] %/K with 1/256 step.
-using gain_t = quantity<percent / si::kelvin, inside<{{0, 4}, per<256>}, round_nearest>>;
+using gain_t = quantity<percent / si::kelvin, inside<{{0, 4}, per<(1 << 8)>}, round_nearest>>;
 
 // Actuator command in [-100, 100] % integer steps. `clamp | round_nearest`
 // lets `output_t{raw}` saturate AND round the wider input in one step — no
@@ -38,12 +38,12 @@ using gain_t = quantity<percent / si::kelvin, inside<{{0, 4}, per<256>}, round_n
 using output_t = quantity<percent, inside<{-100, 100}, clamp | round_nearest>>;
 
 struct pid {
-    gain_t kp{1.5};
-    gain_t ki{0.125};
-    gain_t kd{0.5};
+    gain_t kp{1.5, percent / si::kelvin};
+    gain_t ki{0.125, percent / si::kelvin};
+    gain_t kd{0.5, percent / si::kelvin};
 
-    integral_t               integral{0};
-    err_t                    previous{0};
+    integral_t               integral{0, si::kelvin};
+    err_t                    previous{0, si::kelvin};
     clamp_counter<1'000'000> windup_events{0};
 
     output_t step(err_t err) {
@@ -61,7 +61,7 @@ struct pid {
         // add_all folds variadically; each pairwise + widens the grid further.
         auto raw = add_all(p_term, i_term, d_term);
 
-        // Cross the API boundary: assignment into `output_t` saturates (clamp)
+        // Cross the API boundary: storing into `output_t` saturates (clamp)
         // and snaps to its integer notch (round_nearest) via the type's policy.
         return output_t{raw};
     }
@@ -75,13 +75,13 @@ int main() {
 
     std::cout << "err      integ     cmd\n";
     for (double e : errors) {
-        err_t err{e};
+        err_t err{e, si::kelvin};
         auto  cmd = loop.step(err);
         std::cout << err << "    " << loop.integral << "   " << cmd << "\n";
     }
     std::cout << "\nintegrator saturation events: " << loop.windup_events << "\n";
 
-    if (to_string(loop.integral) != "41 K" || to_string(loop.step(err_t{0})) != "6 %")
+    if (to_string(loop.integral) != "41 K" || to_string(loop.step(err_t{0, si::kelvin})) != "6 %")
         return 1;
     return 0;
 }

@@ -32,9 +32,9 @@ using hertz_t = inside<{{0, 100'000}, per<100>}, round_nearest>; // Hz to 0.01 H
 int main() {
     // 1. 4.7 kΩ + 330 Ω + 1.2 kΩ: the common unit is the ohm, so the sum is
     //    6230 Ω on the exact hull of the three grids.
-    const kohm_t r1{rational{47, 10}};
-    const ohm_t  r2{330};
-    const kohm_t r3{rational{12, 10}};
+    const kohm_t r1{just<47, 10> * kohm};
+    const ohm_t  r2{330, si::ohm};
+    const kohm_t r3{just<12, 10> * kohm};
     const auto   r = r1 + r2 + r3;
     std::cout << "R      = " << r << '\n';
     if (to_string(r) != "6230 Ω")
@@ -42,7 +42,7 @@ int main() {
 
     // 2. I = V / R. Every R is at least 1 kΩ, so the quotient is a plain value
     //    (V/Ω, exactly 9/6230 A); it rounds once, onto a µA grid in mA.
-    const volts supply{9};
+    const volts supply{9, si::volt};
     const auto  i = value_cast<mA, current>(supply / r);
     std::cout << "I      = " << i << '\n'; // 1.445 mA
     if (to_string(i) != "1.445 mA")
@@ -50,7 +50,7 @@ int main() {
 
     // 3. A potentiometer's grid holds 0 Ω: V / R can divide by zero, so the
     //    quotient is std::expected and the zero setting is an error value.
-    const quantity<si::ohm, inside<{0, 10'000}>> pot{0};
+    const quantity<si::ohm, inside<{0, 10'000}>> pot{0, si::ohm};
     const auto                                   ip = supply / pot;
     if (ip)
         return 1;
@@ -66,7 +66,7 @@ int main() {
 
     // 5. τ = R·C with C = 100 nF: Ω·nF is a time, 0.623 ms exactly (printed to
     //    the notch the product carries, 1 Ω·nF = 10^-6 ms).
-    const quantity<si::nano(si::farad), inside<{1, 1000}>> c{100};
+    const quantity<si::nano(si::farad), inside<{1, 1000}>> c{100, si::nano(si::farad)};
     const auto                                             tau = (r * c).in(si::milli(si::second));
     std::cout << "tau    = " << tau << '\n';
     if (to_string(tau) != "0.623000 ms")
