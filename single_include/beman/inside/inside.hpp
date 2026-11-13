@@ -4822,6 +4822,13 @@ struct error_ref {
     errc& Code;
 };
 
+// The errc channel's record, out of line: a failure is the rare path, and
+// inline it would sit in every checked loop. The first error is kept.
+[[gnu::cold]] [[gnu::noinline]] constexpr void record_error(errc& slot, errc code) noexcept {
+    if (slot == errc{})
+        slot = code;
+}
+
 template <policy_flag F = none, typename E = empty_ref>
 struct call_policy : E {
     constexpr call_policy() = default;
@@ -4857,7 +4864,7 @@ struct call_policy : E {
     // library bug, reported to the installed handler.
     constexpr void report(errc code) const {
         if constexpr (std::is_same_v<E, error_ref>)
-            E::Code = E::Code != errc{} ? E::Code : code;
+            record_error(E::Code, code);
         else {
             if consteval {
 #if BEMAN_INSIDE_HAS_EXCEPTIONS
@@ -11607,10 +11614,10 @@ template <typename A>
 concept builtin_arithmetic = std::integral<A> || std::floating_point<A>;
 } // namespace detail
 
-#define BEMAN_INSIDE_SCALAR_MSG                                                     \
-    "an inside cannot be combined with a raw scalar: give the scalar a grid — "     \
-    "`1_ins`, `just<1>`, or `inside<{lo,hi}>{n}` for a runtime value with a known " \
-    "range"
+#define BEMAN_INSIDE_SCALAR_MSG                                                          \
+    "an inside cannot be combined with a raw scalar: give the scalar a grid — "          \
+    "`1_ins`, `just<1>`, or `inside<{lo,hi}>::try_make(n)` for a run-time value with a " \
+    "known range"
 #define BEMAN_INSIDE_NO_SCALAR(op)                                    \
     template <insidable B, detail::builtin_arithmetic A>              \
     void operator op(B const&, A) = delete (BEMAN_INSIDE_SCALAR_MSG); \

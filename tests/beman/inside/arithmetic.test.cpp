@@ -474,7 +474,7 @@ TEST(InsideArithmeticTest, beman_inside_sum_bulk_reduction_with_one_deferred_che
 }
 
 // Issue #7 closure (user decision 2026-06-12): `inside op raw-scalar` is the
-// DESIGNED ban — `1_ins` / `just<V>` / `inside<{lo,hi}>{n}` are the API. Since
+// DESIGNED ban — `1_ins` / `just<V>` / `inside<{lo,hi}>::try_make(n)` are the API. Since
 // 2026-10-31 the guidance overloads are deleted (their reason is the fix), so
 // probes answer false like for every operation that cannot compile. An
 // accidentally-introduced real widening overload would make a probe true.

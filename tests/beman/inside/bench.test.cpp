@@ -96,6 +96,18 @@ using s100k         = inside<{-100'000, 100'000}, unsafe>;
 using s9k           = inside<{-500, 9000}, unsafe>;
 using u255          = inside<{0, 255}, unsafe>;
 
+// The checked rows' channel: a store the grids cannot prove reports into an
+// errc (nothing throws), so the checked rows store through this one, and
+// main checks it after the run. The inputs below are in range: it stays 0.
+errc g_checked_ec{};
+
+// A run-time value stored into T through that channel: the benchmarks'
+// inputs, and the checked rows' stores.
+template <class T, class V>
+T input(const V& v) {
+    return T{v, make_policy<detail::none>(g_checked_ec)};
+}
+
 // Cycling input pool — defeats constant folding in the scalar groups (the
 // old bench used literal constants, which let both sides fold).
 constexpr std::size_t kMask = 1023;
@@ -198,7 +210,7 @@ static void bench_scalar_u8() {
     mul.run("inside mul<u200>", [&] {
         ++i;
         u200 a(min.a[i & kMask]), b(min.b[i & kMask]);
-        doNotOptimizeAway(mul<u200>(a, b).raw());
+        doNotOptimizeAway(beman::inside::mul<u200>(a, b).raw());
     });
     finish(mul);
 
@@ -367,7 +379,7 @@ static void bench_accumulate() {
     for (std::size_t i = 0; i < SZ; ++i) {
         nv[i]  = static_cast<std::uint32_t>(i % 5);
         bv[i]  = static_cast<int>(i % 5);
-        bvc[i] = static_cast<int>(i % 5);
+        bvc[i] = input<u200k_checked>(static_cast<int>(i % 5));
     }
 
     auto bench = group("accumulate 1000 (u32 [0,200000], per element)", 300);
@@ -387,11 +399,11 @@ static void bench_accumulate() {
     bench.run("inside<checked> loop", [&] {
         u200k_checked sum{0};
         for (auto v : bvc)
-            sum += v;
+            sum.policy(g_checked_ec) += v; // a checked += names its channel
         doNotOptimizeAway(sum.raw());
     });
     bench.run("beman::inside::sum<checked> (bulk check)",
-              [&] { doNotOptimizeAway(beman::inside::sum<u200k_checked>(bvc).raw()); });
+              [&] { doNotOptimizeAway(beman::inside::sum<u200k_checked>(bvc)->raw()); });
     bench.run("std::accumulate native",
               [&] { doNotOptimizeAway(std::accumulate(nv.begin(), nv.end(), std::uint32_t{0})); });
     bench.run("std::accumulate inside",
@@ -524,7 +536,7 @@ static void bench_fixed_point() {
     });
     ctor.run("inside<checked>", [&] {
         ++i;
-        fp_c v(in.a[i & kMask]);
+        const auto v = input<fp_c>(in.a[i & kMask]);
         doNotOptimizeAway(v.raw());
     });
     finish(ctor);
@@ -542,7 +554,7 @@ static void bench_fixed_point() {
     });
     add.run("inside<checked>", [&] {
         ++i;
-        fp_c a(in.a[i & kMask]), b(in.b[i & kMask]);
+        const auto a = input<fp_c>(in.a[i & kMask]), b = input<fp_c>(in.b[i & kMask]);
         doNotOptimizeAway((a + b).raw());
     });
     finish(add);
@@ -576,7 +588,7 @@ static void bench_fixed_point() {
     mul.run("inside mul<Q8.8>(a, b, round_nearest)", [&] {
         ++i;
         fp a(min.a[i & kMask]), b(min.b[i & kMask]);
-        doNotOptimizeAway(mul<inside<{{0, 255}, 1.0 / 256}, round_nearest>>(a, b).raw());
+        doNotOptimizeAway(beman::inside::mul<inside<{{0, 255}, 1.0 / 256}, round_nearest>>(a, b)->raw());
     });
     finish(mul);
 
@@ -665,14 +677,14 @@ static void bench_store_convert() {
     auto assign         = group("assign from double ([-40,60] step 0.5)");
     assign.run("truncate (round_toward_zero)", [&] {
         ++i;
-        double        val = -40.0 + static_cast<double>(i % 200) * 0.5 + 0.3;
-        celsius_trunc c   = val;
+        double     val = -40.0 + static_cast<double>(i % 200) * 0.5 + 0.3;
+        const auto c   = input<celsius_trunc>(val);
         doNotOptimizeAway(c.raw());
     });
     assign.run("round_nearest", [&] {
         ++i;
-        double        val = -40.0 + static_cast<double>(i % 200) * 0.5 + 0.3;
-        celsius_round c   = val;
+        double     val = -40.0 + static_cast<double>(i % 200) * 0.5 + 0.3;
+        const auto c   = input<celsius_round>(val);
         doNotOptimizeAway(c.raw());
     });
     finish(assign);
@@ -681,14 +693,14 @@ static void bench_store_convert() {
     auto store = group("Q8.8 store");
     store.run("from fraction (rational)", [&] {
         ++i;
-        rational q{static_cast<std::int64_t>(i & 0xFFF), 256};
-        fp       v{q};
+        rational   q{static_cast<std::int64_t>(i & 0xFFF), 256};
+        const auto v = input<fp>(q);
         doNotOptimizeAway(v.raw());
     });
     store.run("from double", [&] {
         ++i;
-        double d = static_cast<double>(i & 0xFFF) / 256.0;
-        fp     v{d};
+        double     d = static_cast<double>(i & 0xFFF) / 256.0;
+        const auto v = input<fp>(d);
         doNotOptimizeAway(v.raw());
     });
     finish(store);
@@ -800,7 +812,7 @@ static void bench_store_convert() {
         ++i;
         using u200c = inside<{0, 200}, checked>;
         s9k v(static_cast<int>(i % 200));
-        doNotOptimizeAway(u200c{v}.raw());
+        doNotOptimizeAway(input<u200c>(v).raw());
     });
     finish(casts);
 
@@ -823,7 +835,7 @@ static void bench_store_convert() {
     std::vector<dyadic_real> rv(kMask + 1);
     std::vector<u200>        uv(kMask + 1);
     for (std::size_t j = 0; j <= kMask; ++j) {
-        rv[j] = rational{static_cast<std::int64_t>(j * 16) - 8192, 16384};
+        rv[j] = input<dyadic_real>(rational{static_cast<std::int64_t>(j * 16) - 8192, 16384});
         uv[j] = static_cast<int>(j % 201);
     }
     auto conv = group("convert out (inside -> scalar)");
@@ -1000,8 +1012,8 @@ static void bench_dyadic() {
     for (std::size_t j = 0; j <= kMask; ++j) {
         rational qa{static_cast<std::int64_t>((j * 16) & 0x3FFF) - 8192, 16384};
         rational qb{static_cast<std::int64_t>((j * 48 + 16) & 0x3FFF) - 8192, 16384};
-        va[j] = qa;
-        vb[j] = qb;
+        va[j] = input<dyadic_real>(qa);
+        vb[j] = input<dyadic_real>(qb);
         da[j] = static_cast<double>(qa);
         db[j] = static_cast<double>(qb);
     }
@@ -1073,9 +1085,9 @@ static void bench_rational() {
         std::int64_t ka = static_cast<std::int64_t>((j * 7 + 3) % 16384) - 8192;
         std::int64_t kb = static_cast<std::int64_t>((j * 13 + 5) % 16384) - 8192;
         std::int64_t kp = static_cast<std::int64_t>((j * 11 + 7) % 8191) + 1; // positive divisor
-        ea[j]           = rational{ka, 1024};
-        eb[j]           = rational{kb, 1024};
-        ep[j]           = rational{kp, 1024};
+        ea[j]           = input<continuous>(rational{ka, 1024});
+        eb[j]           = input<continuous>(rational{kb, 1024});
+        ep[j]           = input<positive>(rational{kp, 1024});
         qa[j]           = rational{ka, 1024};
         qb[j]           = rational{kb, 1024};
         fa[j]           = fraction_reduce(ka, 1024);
@@ -1280,23 +1292,23 @@ static void bench_cmath() {
         rational     ry{(k % 32768) - 16384, 16384};
         rational     rx{((k + 1) % 32768) - 16384, 16384};
         rational     rfy{(k % 60) + 4, 16}; // [0.25, 4): fmod_y_t's grid
-        v_alg.push_back(algeb_t{qs});
-        v_alg2.push_back(algeb_t{q});
-        v_sqrt.push_back(sqrt_in_t{q});
-        v_exp2.push_back(exp2_in_t{qs});
-        v_log2.push_back(log2_in_t{rl2});
-        v_exp.push_back(exp_in_t{qs});
-        v_log.push_back(log_in_t{rl});
-        v_pow.push_back(pow_in_t{qs});
-        v_ang.push_back(angle_t{qs});
-        v_tan.push_back(tan_in_t{rt});
-        v_aty.push_back(atan2_in_t{ry});
-        v_atx.push_back(atan2_in_t{rx});
-        v_fmx.push_back(fmod_x_t{qs});
-        v_fmy.push_back(fmod_y_t{rfy});
+        v_alg.push_back(input<algeb_t>(qs));
+        v_alg2.push_back(input<algeb_t>(q));
+        v_sqrt.push_back(input<sqrt_in_t>(q));
+        v_exp2.push_back(input<exp2_in_t>(qs));
+        v_log2.push_back(input<log2_in_t>(rl2));
+        v_exp.push_back(input<exp_in_t>(qs));
+        v_log.push_back(input<log_in_t>(rl));
+        v_pow.push_back(input<pow_in_t>(qs));
+        v_ang.push_back(input<angle_t>(qs));
+        v_tan.push_back(input<tan_in_t>(rt));
+        v_aty.push_back(input<atan2_in_t>(ry));
+        v_atx.push_back(input<atan2_in_t>(rx));
+        v_fmx.push_back(input<fmod_x_t>(qs));
+        v_fmy.push_back(input<fmod_y_t>(rfy));
         rational rpb{65536 + (k % 65536), 65536}; // base in [1, 2)
-        v_powb.push_back(pow_b_t{rpb});
-        v_powe.push_back(pow_e_t{qs});
+        v_powb.push_back(input<pow_b_t>(rpb));
+        v_powe.push_back(input<pow_e_t>(qs));
         d_powb.push_back(static_cast<double>(rpb));
         d_powe.push_back(static_cast<double>(qs));
         d_qs.push_back(static_cast<double>(qs));
@@ -1412,9 +1424,9 @@ static void bench_geoalg() {
         const std::int64_t b = static_cast<std::int64_t>((n * 40503) & 0xFFFF) - 32768;
         const std::int64_t c = static_cast<std::int64_t>((n * 25171) & 0xFFFF) - 32768;
         const rational     ra{a, 8192}, rb{b, 8192}, rc{c, 8192};
-        v_c.push_back(cdom{in_t{ra} + in_t{rb} * ga::i});
+        v_c.push_back(cdom{input<in_t>(ra) + input<in_t>(rb) * ga::i});
         d_c.emplace_back(static_cast<double>(ra), static_cast<double>(rb));
-        v_b.push_back(bdom{in_t{ra} * ga::i + in_t{rb} * ga::j + in_t{rc} * ga::k});
+        v_b.push_back(bdom{input<in_t>(ra) * ga::i + input<in_t>(rb) * ga::j + input<in_t>(rc) * ga::k});
         d_b.push_back({static_cast<double>(ra), static_cast<double>(rb), static_cast<double>(rc)});
     }
     const auto native_rotor = [](const std::array<double, 3>& y) {
@@ -1623,8 +1635,8 @@ int main(int argc, char** argv) {
                   "integer fast paths, gated on int64-safe spans); a rational RHS in a\n"
                   "compound assign adds to the raw when it is a whole number of notches,\n"
                   "else takes the same exact branch; `inside<checked>`\n"
-                  "element-wise loops keep a per-element range check — prefer `beman::inside::sum`'s\n"
-                  "bulk check, which validates the total instead.\n\n";
+                  "element-wise loops report each element's store into an errc (`x.policy(ec) += v`) —\n"
+                  "prefer `beman::inside::sum`'s bulk check, which validates the total instead.\n\n";
 
     bench_scalar_u8();
     bench_compound();
@@ -1639,5 +1651,9 @@ int main(int argc, char** argv) {
     bench_cmath();
     bench_geoalg();
     bench_algorithms();
+    if (g_checked_ec != errc{}) { // the inputs are in range: no checked row reports
+        std::cerr << "a checked row reported: " << errc_message(g_checked_ec) << "\n";
+        return 1;
+    }
     return 0;
 }

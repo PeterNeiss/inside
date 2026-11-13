@@ -36,6 +36,13 @@ struct error_ref {
     errc& Code;
 };
 
+// The errc channel's record, out of line: a failure is the rare path, and
+// inline it would sit in every checked loop. The first error is kept.
+[[gnu::cold]] [[gnu::noinline]] constexpr void record_error(errc& slot, errc code) noexcept {
+    if (slot == errc{})
+        slot = code;
+}
+
 template <policy_flag F = none, typename E = empty_ref>
 struct call_policy : E {
     constexpr call_policy() = default;
@@ -71,7 +78,7 @@ struct call_policy : E {
     // library bug, reported to the installed handler.
     constexpr void report(errc code) const {
         if constexpr (std::is_same_v<E, error_ref>)
-            E::Code = E::Code != errc{} ? E::Code : code;
+            record_error(E::Code, code);
         else {
             if consteval {
 #if BEMAN_INSIDE_HAS_EXCEPTIONS

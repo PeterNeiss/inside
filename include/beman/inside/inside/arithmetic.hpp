@@ -802,10 +802,10 @@ template <typename A>
 concept builtin_arithmetic = std::integral<A> || std::floating_point<A>;
 } // namespace detail
 
-#define BEMAN_INSIDE_SCALAR_MSG                                                     \
-    "an inside cannot be combined with a raw scalar: give the scalar a grid — "     \
-    "`1_ins`, `just<1>`, or `inside<{lo,hi}>{n}` for a runtime value with a known " \
-    "range"
+#define BEMAN_INSIDE_SCALAR_MSG                                                          \
+    "an inside cannot be combined with a raw scalar: give the scalar a grid — "          \
+    "`1_ins`, `just<1>`, or `inside<{lo,hi}>::try_make(n)` for a run-time value with a " \
+    "known range"
 #define BEMAN_INSIDE_NO_SCALAR(op)                                    \
     template <insidable B, detail::builtin_arithmetic A>              \
     void operator op(B const&, A) = delete (BEMAN_INSIDE_SCALAR_MSG); \
