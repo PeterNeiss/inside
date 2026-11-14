@@ -46,7 +46,7 @@ inline constexpr policy_flag out_policy = flags_of<In> & ~cursor_marker;
 // A 64-bit grid operation's result through Out's assignment.
 template <insidable Out, typename V>
 constexpr Out store_value(const V& v) {
-    return Out{v};
+    return beman::inside::detail::stored<Out>(v);
 }
 
 // The sign of a grid number, for the deduced sign() output.
@@ -363,7 +363,7 @@ struct sign_fn : exact_fn<1> {
     using result = sign_result_t<In>;
     template <insidable Out, insidable In>
     [[nodiscard]] static constexpr Out eval(In x) {
-        return Out{std::int64_t{(x > 0) - (x < 0)}};
+        return store_value<Out>(std::int64_t{(x > 0) - (x < 0)});
     }
 };
 

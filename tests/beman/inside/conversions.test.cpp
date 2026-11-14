@@ -246,16 +246,12 @@ TEST(InsideToTest, as_floating_shares_operator_double_s_policy_gate) {
     ASSERT_TRUE(rounded_b{42}.as<double>() == 42.0);
 }
 
-// as<T>() reports a failed conversion like a checked store: inside_error with
-// to<T>()'s code, through the replaceable handler.
-TEST(InsideToTest, as_reports_through_inside_error) {
+// as<T>() takes only a conversion the grid proves total; where a value may
+// not convert, to<T>() reports it as an expected.
+TEST(InsideToTest, as_is_total_and_to_reports) {
     using s = inside<{-5, 5}>;
-    try {
-        (void)s{-1}.as<unsigned>();
-        FAIL() << "as<unsigned>() of -1 did not report";
-    } catch (const inside_error& e) {
-        ASSERT_EQ(e.Code, errc::domain_error);
-    }
+    static_assert(!has_member_as<s, unsigned>);
+    ASSERT_EQ(s{-1}.to<unsigned>().error(), errc::domain_error);
     ASSERT_EQ(s{3}.as<int>(), 3);
 }
 } // namespace inside_to_tests
@@ -398,7 +394,7 @@ TEST(ConstantTest, just_0_and_just_1_in_comparison_and_arithmetic) {
 
     // a runtime check too, for good measure
     B b = 41;
-    b   = b + just<1>;
+    b   = test::store<B>(b + just<1>); // (b + 1 may leave B: a checked store)
     ASSERT_EQ(b, 42);
 }
 
@@ -483,9 +479,9 @@ TEST(ConversionTest, casts_and_math_are_constraint_friendly) {
     using small  = inside<{-7, 5}>;
     static_assert(can_clamp_cast<digit, int> && can_clamp_cast<digit, small>);
     static_assert(!can_clamp_cast<halves, three> && can_checked_cast<halves, three>); // 3 is off the .5 lattice
-    // An output that misses a result (|0| = 0) is the store's run-time check.
+    // An output that may miss a result (|0| = 0) makes it an expected.
     static_assert(can_abs<digit, small> && can_abs<inside<{1, 10}>, small>);
-    EXPECT_THROW((void)(math::abs<inside<{1, 10}>>(small{0})), inside_error);
+    EXPECT_EQ((math::abs<inside<{1, 10}>>(small{0}).error()), errc::overflow);
     static_assert(can_pown<5, digit> && can_pown<0, inside<{{-2, 2}, max_denominator{1000}}>>);
     EXPECT_EQ(math::pown<3>(small{-2}), -8_ins);
     EXPECT_EQ((digit{small{-3}, clamp}), 0_ins);
@@ -578,7 +574,7 @@ TEST(ConversionTest, to_long_double_is_rounded_once) {
     const Q q{rational{1, 1000000007}};
     EXPECT_EQ(q.to<long double>(), 1.0L / 1000000007);
     using S = inside<{{-9223372036854775807, 9223372036854775807}, 1}>;
-    EXPECT_EQ(S{test::at_run_time(I64{9223372036854775807})}.to<long double>(), 9223372036854775807.0L);
+    EXPECT_EQ(test::store<S>(test::at_run_time(I64{9223372036854775807})).to<long double>(), 9223372036854775807.0L);
 #endif
 }
 
@@ -615,7 +611,7 @@ TEST(ConversionTest, predicates_handle_non_finite_input) {
 // checked_cast returns the value on the in-range happy path (runtime)
 TEST(ConversionTest, checked_cast_in_range_at_run_time) {
     using pct = inside<{0, 100}>;
-    pct p     = checked_cast<pct>(42); // runtime call, not static_assert
+    pct p     = *checked_cast<pct>(test::at_run_time(42)); // an int may not fit: an expected
     ASSERT_EQ(p, 42);
 
     using coarse = inside<{{0, 10}, 2}>;
@@ -719,7 +715,7 @@ TEST(ConversionTest, fraction_and_to_value_fast_paths_match_rational) {
     using I = inside<{-30, 90, 3}>; // integer notch 3, index storage
     static_assert(index_storage<I> && integer_lattice<I>);
     for (std::int64_t v = -30; v <= 90; v += 3) {
-        I i{v};
+        I i = test::store<I>(v);
         EXPECT_EQ(to_value(i), v);
         EXPECT_EQ(i.numerator(), v);
         EXPECT_EQ(i.denominator(), 1);
@@ -767,7 +763,7 @@ TEST(ConversionsArmTest, rational_of_a_value_past_64_bits) {
     using T = inside<{{-12000000000000000000_g, 12000000000000000000_g}, just<3, 2>}>;
     static_assert(detail::rational_readable<T>);
     const T t = T::from_index(15333333333333333333_ins); // 10999999999999999999.5
-    EXPECT_THROW((void)rational{t}, inside_error);
+    EXPECT_DEATH((void)rational{t}, "beman::inside: inside: value past the 64-bit rationals"); // a precondition
 }
 } // namespace reached_arms_tests
 
@@ -809,7 +805,7 @@ TEST(ConversionsArmTest, floats_of_values_past_the_range) {
 
 // rational{long double}: |v| ≥ 2^64 raises; finer than 2^-62 is truncated.
 TEST(ConversionsArmTest, rational_of_a_long_double) {
-    EXPECT_THROW((void)rational{test::at_run_time(1e30L)}, inside_error);
+    EXPECT_DEATH((void)rational{test::at_run_time(1e30L)}, "beman::inside"); // (detail) a precondition
     EXPECT_EQ(rational{test::at_run_time(1e-30L)}, 0);
     EXPECT_EQ(rational{test::at_run_time(1.0L + 0x1p-63L)}, 1);
     EXPECT_EQ(rational{test::at_run_time(0.0)}, 0);
@@ -873,13 +869,13 @@ void check_wide_builtins() {
     EXPECT_TRUE((inside<{0, 100}, clamp>{big} == 100));
     EXPECT_TRUE((inside<{0, 100}, clamp>{-big} == 0));
     EXPECT_TRUE((inside<{0, 9}, wrap>{big} == 9)); // 2^70 ≡ 4 (mod 10)
-    EXPECT_THROW(((void)inside<{0, 100}>{test::at_run_time(big)}), inside_error);
-    EXPECT_THROW(((void)inside<{0, 100}>{test::at_run_time(ubig)}), inside_error);
+    EXPECT_EQ((test::store_error<inside<{0, 100}>>(test::at_run_time(big))), errc::overflow);
+    EXPECT_EQ((test::store_error<inside<{0, 100}>>(test::at_run_time(ubig))), errc::overflow);
     EXPECT_TRUE((inside<{{0, 10}, per<4>}, clamp>{big} == 10));
     EXPECT_TRUE((inside<{{rational{1, 2}, rational{21, 2}}, 1}, clamp>{big} == rational{21, 2}));
     EXPECT_TRUE((inside<{{0, 10}, max_denominator{3}}, clamp>{big} == 10));
     EXPECT_TRUE((inside<{{0, 10}, per<4>}>{S{7}} == 7));
-    EXPECT_TRUE(W{test::at_run_time(big)} == big);
+    EXPECT_TRUE(test::store<W>(test::at_run_time(big)) == big);
 
     // Comparisons.
     EXPECT_FALSE((inside<{0, 100}>{5} == test::at_run_time(big)));
@@ -899,7 +895,7 @@ void check_wide_builtins() {
     EXPECT_TRUE(W::from_index(big) == W{big});
 
     // A 64-bit rational has no such integer.
-    EXPECT_THROW((void)rational{test::at_run_time(big)}, inside_error);
+    EXPECT_DEATH((void)rational{test::at_run_time(big)}, "beman::inside"); // (detail) a precondition
     EXPECT_FALSE((conversion_overflows<inside<{0, 2361183241434822606848_g}>>(big)));
     EXPECT_TRUE((conversion_overflows<inside<{0, 100}>>(big)));
 }

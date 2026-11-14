@@ -8,6 +8,7 @@
 
 #include <beman/inside/inside/io.hpp>
 #include <beman/inside/units.hpp>
+#include <beman/inside/units/io.hpp>
 
 using namespace beman::inside;
 using namespace beman::inside::units;
@@ -20,15 +21,15 @@ concept addable = requires(A a, B b) { a + b; };
 
 int main()
 {
-  quantity<lbf_s, inside<{0, 100}>> reported{10};   // ground software: lbf·s
-  quantity<n_s, inside<{0, 1000}>>  budget{100};    // navigation: N·s
+  quantity<lbf_s, inside<{0, 100}>> reported{10, lbf_s};   // ground software: lbf·s
+  quantity<n_s, inside<{0, 1000}>>  budget{100, n_s};      // navigation: N·s
 
   // The sum runs in a common unit; both conversions are exact rescales.
   auto total = budget + reported;
   std::cout << "100 N·s + 10 lbf·s = " << total.in(n_s) << "\n";
 
   // An impulse and a length do not add: the expression is ill-formed.
-  quantity<si::metre, inside<{0, 1000}>> d{5};
+  quantity<si::metre, inside<{0, 1000}>> d{5, si::metre};
   static_assert(!addable<decltype(budget), decltype(d)>);
   std::cout << "N·s + m            : does not compile\n";
   return 0;

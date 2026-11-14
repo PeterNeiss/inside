@@ -65,6 +65,52 @@ constexpr Target dispatch_new(const C& src, P& policy, std::tuple<As...>& action
 // `auto square(small n){ return (n*n).policy<round_toward_zero>(); }` is safe. Value read-out only
 // (no operator=: assigning into a throwaway is meaningless). Same constrained
 // conversion as policy_ref, so it stays SFINAE-friendly.
+// A proxy store of a C into B is proven by the grids under the proxy's flags,
+// or has a channel: an errc& policy or an on_error hook.
+template <insidable B, typename C, typename P, typename... As>
+inline constexpr bool proxy_store_ok =
+    store_proven<B, C, flags_of<B> | flags_of<P>> || reports_into_errc<P> || has_action<is_error_action, As...>;
+
+#define BEMAN_INSIDE_WHY_proxy_unproven                                                                         \
+    "inside: the value may fall outside the target grid, or off its notch, at run time - add clamp, wrap or a " \
+    "rounding mode to the policy, report with policy(ec) or on_error(f), or opt out with unsafe"
+
+// A plain number that a proxy's grids cannot prove (a double, a rational, an
+// int off the lattice): a constant, stored once while compiling under the
+// proxy's flags F into B's grid, so a store that would fail is a compile
+// error; at run time it is stored again with the proxy's hooks, which fire
+// (an on_clamp hears its overshoot). A run-time value does not compile: it
+// needs a report channel (policy(ec), on_error).
+template <insidable B, policy_flag F>
+struct constant_value {
+    bool        Floating = false;
+    long double Float    = 0; // a float, double or long double, exactly
+    rational    Exact{};      // an integer or a rational
+
+    template <std::floating_point X>
+        requires inside_assignable<inside<grid_of<B>, F>, X, F>
+    consteval constant_value(X x) : Floating{true}, Float{x} {
+        trial(x);
+    }
+    template <class X>
+        requires(std::integral<X> || std::same_as<X, rational>) && inside_assignable<inside<grid_of<B>, F>, X, F>
+    consteval constant_value(const X& x) : Exact{x} {
+        trial(x);
+    }
+
+    template <class Store>
+    constexpr decltype(auto) visit(Store store) const {
+        return Floating ? store(Float) : store(Exact);
+    }
+
+  private:
+    template <class X>
+    static consteval void trial(const X& x) {
+        inside<grid_of<B>, F> twin;
+        assignment<inside<grid_of<B>, F>, X>::assign(twin, x, make_policy<F>());
+    }
+};
+
 template <insidable B, typename P, typename... As>
 struct policy_buffer {
     B                                       Owned;
@@ -72,7 +118,7 @@ struct policy_buffer {
     [[no_unique_address]] std::tuple<As...> Actions;
 
     template <insidable Target>
-        requires inside_assignable<Target, B, flags_of<Target> | flags_of<P>>
+        requires inside_assignable<Target, B, flags_of<Target> | flags_of<P>> && proxy_store_ok<Target, B, P, As...>
     constexpr operator Target() {
         return dispatch_new<Target>(Owned, Policy, Actions);
     }
@@ -93,9 +139,17 @@ struct policy_ref {
     // into Ref for `operator=`, into a fresh target for the conversion below,
     // so a one-shot snap can be read out as a value (`(a * b).policy<round_toward_zero>()`).
     template <numeric C>
+        requires proxy_store_ok<B, C, P, As...>
     constexpr B& operator=(const C& other) {
         return dispatch_assign(Ref, other, Policy, Actions);
     }
+    // A constant the grids cannot prove: checked while compiling (above).
+    constexpr B& operator=(const constant_value<B, flags_of<B> | plain_t<P>::Flags>& c) {
+        return c.visit([&](const auto& v) -> B& { return dispatch_assign(Ref, v, Policy, Actions); });
+    }
+    template <insidable C>
+        requires(!proxy_store_ok<B, C, P, As...>)
+    B& operator=(const C&) = delete (BEMAN_INSIDE_WHY_proxy_unproven);
 
     // Value read-out: a one-shot policy ref converts to any inside the assignment
     // could satisfy, applying the target's own policy (range) plus this ref's
@@ -103,7 +157,7 @@ struct policy_ref {
     // `Target t = (a * b).policy<round_toward_zero>();` / `return (a * b).policy<round_toward_zero>();` compile.
     // Constrained so the proxy stays SFINAE-friendly (no over-broad convertibility).
     template <insidable Target>
-        requires inside_assignable<Target, B, flags_of<Target> | flags_of<P>>
+        requires inside_assignable<Target, B, flags_of<Target> | flags_of<P>> && proxy_store_ok<Target, B, P, As...>
     constexpr operator Target() {
         return dispatch_new<Target>(Ref, Policy, Actions);
     }
@@ -118,7 +172,13 @@ struct policy_ref {
   private:
     // The value an op's result holds (an expected's value type) assigns back.
     template <typename R>
-    static constexpr bool stores_back = inside_assignable<B, detail::unwrap_t<R>, flags_of<B> | flags_of<P>>;
+    static constexpr bool stores_back = inside_assignable<B, detail::unwrap_t<R>, flags_of<B> | flags_of<P>> &&
+                                        proxy_store_ok<B, detail::unwrap_t<R>, P, As...>;
+    // A divisor whose grid holds 0 needs a channel for the zero, or unsafe.
+    template <insidable C>
+    static constexpr bool divisor_ok =
+        reports_into_errc<P> || has_action<is_error_action, As...> ||
+        !is_checked(flags_of<B> | plain_t<P>::Flags | flags_of<C>) || !grid_of<C>.representable(grid_rational{0});
 
   public:
     //-------------------------------------------------------------------------
@@ -155,7 +215,8 @@ struct policy_ref {
     // own check, so dividing here would be a division by zero.
     template <insidable C>
         requires requires(const B& b, const C& c, P& p) { div(b, c, p); } &&
-                 stores_back<decltype(div(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
+                 stores_back<decltype(div(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))> &&
+                 divisor_ok<C>
     constexpr B& operator/=(const C& rhs) {
         if (rhs == 0) {
             if constexpr (is_checked(flags_of<C>)) // either operand silences it
@@ -167,7 +228,8 @@ struct policy_ref {
 
     template <insidable C>
         requires requires(const B& b, const C& c, P& p) { mod(b, c, p); } &&
-                 stores_back<decltype(mod(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
+                 stores_back<decltype(mod(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))> &&
+                 divisor_ok<C>
     constexpr B& operator%=(const C& rhs) {
         if (rhs == 0) {
             if constexpr (is_checked(flags_of<C>)) // either operand silences it
@@ -211,6 +273,7 @@ struct policy_ref {
             return dispatch_assign(Ref, std::forward<R>(result), Policy, Actions);
     }
 };
+#undef BEMAN_INSIDE_WHY_proxy_unproven
 } // namespace detail
 } // namespace beman::inside
 

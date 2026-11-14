@@ -62,9 +62,13 @@ int main() {
     if (!gain2)
         return 1; // a broken calibration
     const auto offset2 = c1 - *gain2 * v1;
-    const auto mv2     = value_cast<millivolts>((raw - offset2) / *gain2);
-    std::cout << "two-point  gain " << *gain2 << ", offset " << offset2 << ", " << raw << " = " << mv2 << '\n';
-    if (to_string(offset2) != "11.500000 cts" || to_string(mv2) != "1641 mV")
+    //    The reading in millivolts can miss millivolts' range: value_cast
+    //    returns an expected here.
+    const auto mv2 = value_cast<millivolts>((raw - offset2) / *gain2);
+    if (!mv2)
+        return 1;
+    std::cout << "two-point  gain " << *gain2 << ", offset " << offset2 << ", " << raw << " = " << *mv2 << '\n';
+    if (to_string(offset2) != "11.500000 cts" || to_string(*mv2) != "1641 mV")
         return 1;
 
     // Counts and volts do not add, and a voltage is no current.

@@ -48,7 +48,10 @@ add_subdirectory(differential)
 add_executable(beman.inside.fuzz fuzz.test.cpp)
 target_link_libraries(
     beman.inside.fuzz
-    PRIVATE beman::inside beman.inside.warnings
+    PRIVATE
+        beman::inside
+        beman.inside.warnings
+        GTest::gtest # (support.hpp's checks)
 )
 add_test(NAME beman.inside.tests.fuzz COMMAND beman.inside.fuzz 1 300)
 set_tests_properties(beman.inside.tests.fuzz PROPERTIES LABELS "fuzz")
@@ -56,7 +59,10 @@ set_tests_properties(beman.inside.tests.fuzz PROPERTIES LABELS "fuzz")
 add_executable(beman.inside.accuracy accuracy.test.cpp)
 target_link_libraries(
     beman.inside.accuracy
-    PRIVATE beman::inside beman.inside.warnings
+    PRIVATE
+        beman::inside
+        beman.inside.warnings
+        GTest::gtest # (support.hpp's checks)
 )
 add_test(NAME beman.inside.tests.accuracy COMMAND beman.inside.accuracy --check)
 set_tests_properties(beman.inside.tests.accuracy PROPERTIES LABELS "accuracy")

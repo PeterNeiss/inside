@@ -7,6 +7,7 @@
 #include <beman/inside/inside/detail/error.hpp> // errc, detail::raise
 
 #include <bit>
+#include <limits>
 #include <concepts>
 #include <cstdint>
 #include <utility>
@@ -126,12 +127,13 @@ constexpr double scale_pow2(double value, int k) noexcept {
     return ldexp(value, k);
 }
 
-// Freestanding finite check: `v - v` is 0 for every finite v, NaN otherwise
-// (and inf - inf is NaN). Avoids <cmath>/std::isfinite so the core stays
-// bare-metal clean; the same idiom is used in the store paths.
+// Freestanding finite check by comparisons only (NaN compares false with
+// everything; ±∞ against the type's infinity), so it is a constant expression
+// for every value. Avoids <cmath>/std::isfinite so the core stays bare-metal
+// clean.
 template <std::floating_point T>
 constexpr bool is_finite(T v) noexcept {
-    return v - v == 0;
+    return v == v && v < std::numeric_limits<T>::infinity() && -std::numeric_limits<T>::infinity() < v;
 }
 
 // |v| ≥ 2^64 or NaN: past every 64-bit integer and rational (a grid within

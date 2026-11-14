@@ -144,14 +144,15 @@ TEST(UnitsTest, products_and_quotients) {
 TEST(UnitsTest, dimensionless_quantities_are_numbers) {
     const quantity<si::kilogram, inside<{1, 100}>> a{21, si::kilogram};
     const quantity<si::kilogram, inside<{1, 100}>> b{6, si::kilogram};
-    const inside<{{0, 100}, per<2>}>               r = a / b; // 7/2, implicitly
+    // (a / b is a fraction of denominator up to 100 in [0, 100]: implicit)
+    const inside<{{0, 100}, max_denominator{100}}> r = a / b; // 7/2, implicitly
     EXPECT_EQ(rational{r}, rational(7, 2));
     // km/m does not cancel to unit one: its number is ×1000.
     const auto           ratio = (just<3> * km) / (just<2> * si::metre);
     const inside<{1500}> n     = ratio;
     EXPECT_EQ(n, 1500);
     // Into a grid that must round: explicit, through that inside's constructor.
-    const auto x = inside<{{0, 10}, per<10>}, round_nearest>(a / b * just<1, 3>);
+    const auto x = *inside<{{0, 10}, per<10>}, round_nearest>::try_make((a / b * just<1, 3>).numerical_value_in(one));
     EXPECT_EQ(rational{x}, rational(12, 10));
     // An angle is a quantity, not a number.
     static_assert(!std::is_convertible_v<quantity<si::radian, inside<{0, 7}>>, inside<{0, 7}>>);
@@ -179,17 +180,19 @@ TEST(UnitsTest, magnitudes_scale_the_unit_not_the_number) {
 
 TEST(UnitsTest, compound_assignment_and_casts) {
     quantity<si::metre, inside<{0, 10000}>> d{100, si::metre};
-    d += just<1> * km;
+    errc                                    ec{}; // (a sum the grids cannot prove: reported)
+    d.policy(ec) += just<1> * km;
     EXPECT_EQ(d.numerical_value_in(si::metre), 1100);
-    d -= just<100> * si::metre;
+    d.policy(ec) -= just<100> * si::metre;
     EXPECT_EQ(d.numerical_value_in(si::metre), 1000);
-    const auto narrow = value_cast<inside<{0, 2000}>>(d);
-    EXPECT_EQ(narrow.numerical_value_in(si::metre), 1000);
+    EXPECT_EQ(ec, errc{});
+    const auto narrow = value_cast<inside<{0, 2000}>>(d); // may not fit: an expected
+    EXPECT_EQ(narrow->numerical_value_in(si::metre), 1000);
     EXPECT_EQ((try_value_cast<inside<{0, 500}>>(d).error()), errc::overflow);
     // In another unit: 1000 m is 1 km; 1001 m rounds onto whole km by F, and
     // is past a {0, 1} km grid.
     EXPECT_EQ((try_value_cast<km, inside<{{0, 5}, per<1000>}>>(d)->numerical_value_in(km)), 1);
-    d += just<1> * si::metre;
+    d.policy(ec) += just<1> * si::metre;
     EXPECT_EQ((try_value_cast<km, inside<{0, 5}>, round_nearest>(d)->numerical_value_in(km)), 1);
     EXPECT_EQ((try_value_cast<km, inside<{{0, 1}, per<1000>}>>(d).error()), errc::overflow);
 }
@@ -315,8 +318,9 @@ TEST(UnitsTest, point_arithmetic) {
     EXPECT_EQ(to_string(t2), "25 ℃");
     const auto d = t2 - point<si::kelvin>(inside<{250, 300}>{273}); // 25 ℃ − 273 K = 25.15 K
     EXPECT_EQ(rational{d.numerical_value_in(si::kelvin)}, rational(2515, 100));
-    t += delta<si::degree_Celsius>(just<1>);
-    EXPECT_EQ(to_string(t), "21 ℃");
+    auto tc = point<si::degree_Celsius>(inside<{-40, 60}, clamp>{20}); // (+= names its range handling)
+    tc += delta<si::degree_Celsius>(just<1>);
+    EXPECT_EQ(to_string(tc), "21 ℃");
     const auto z = si::absolute_zero + just<300> * si::kelvin;
     EXPECT_TRUE(z > t);
     // A unit without an origin counts from the implicit zero.
@@ -340,9 +344,9 @@ TEST(UnitsTest, point_in_and_value_cast_on_points) {
     const auto c    = oven.point_in(si::degree_Celsius); // (350 − 32)·5/9
     static_assert(std::remove_cvref_t<decltype(c)>::origin->Name == "ice_point");
     EXPECT_EQ(rational{c.quantity_from_origin().numerical_value_in(si::degree_Celsius)}, rational(530, 3));
-    EXPECT_EQ(to_string(c.point_in(si::kelvin)), "26989/60 K"); // 449.8166…: exact, so N/D
-    const auto r = value_cast<inside<{0, 300}, round_nearest>>(c);
-    EXPECT_EQ(to_string(r), "177 ℃");
+    EXPECT_EQ(to_string(c.point_in(si::kelvin)), "26989/60 K");    // 449.8166…: exact, so N/D
+    const auto r = value_cast<inside<{0, 300}, round_nearest>>(c); // may not fit: an expected
+    EXPECT_EQ(to_string(*r), "177 ℃");
     const auto k = value_cast<si::kelvin, inside<{{0, 1000}, per<10>}, round_nearest>>(c.point_for(si::absolute_zero));
     EXPECT_EQ(to_string(k), "449.8 K");
 }
@@ -682,10 +686,10 @@ TEST(UnitsAlgorithmsTest, mul_and_div_onto_a_named_output_fold_the_unit_factor) 
 
 TEST(UnitsAlgorithmsTest, folds_sum_and_parse) {
     const std::vector<usd_t> items{usd_t{1.5, HP}, usd_t{2.25, HP}};
-    EXPECT_EQ(to_string(sum<usd_t>(items)), "3.75 HP");
+    EXPECT_EQ(to_string(*sum<usd_t>(items)), "3.75 HP");
     const std::array<quantity<ms, inside<{0, 1000}>>, 2> waits{quantity<ms, inside<{0, 1000}>>{250, ms},
                                                                quantity<ms, inside<{0, 1000}>>{1000, ms}};
-    EXPECT_EQ(to_string(sum<quantity<si::second, inside<{{0, 10}, per<1000>}>>>(waits)), "1.250 s");
+    EXPECT_EQ(to_string(*sum<quantity<si::second, inside<{{0, 10}, per<1000>}>>>(waits)), "1.250 s");
     EXPECT_EQ(to_string(add_all(just<1> * HP, just<2> * HP, just<3> * HP)), "6 HP");
     EXPECT_EQ(to_string(mul_all(just<2> * si::metre, just<3> * si::metre, just<1, 2>)), "3 m²");
 

@@ -21,7 +21,7 @@ int main()
 
   // In range: usable directly.
   index i{7};
-  std::cout << "data[7]            = " << data[i.to<std::size_t>().value()] << "\n";
+  std::cout << "data[7]            = " << data[i.as<std::size_t>()] << "\n";
 
   // Out of range: an error value, not a buffer overrun.
   auto bad = index::try_make(10);
@@ -31,7 +31,7 @@ int main()
   // Iterating the valid slots exactly, with no off-by-one to get wrong.
   int sum = 0;
   for (auto k : inside_range<{0, 9}>{})
-    sum += data[k.to<std::size_t>().value()];
+    sum += data[k.as<std::size_t>()];
   std::cout << "sum of all slots   = " << sum << "\n";
   return 0;
 }

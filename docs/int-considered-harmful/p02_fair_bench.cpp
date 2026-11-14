@@ -6,14 +6,15 @@
 //   1. native unchecked   -- plain uint8_t. No range enforcement at all.
 //   2. native clamped     -- std::clamp on every result.
 //   3. native checked     -- hand-rolled bounded struct, throws out_of_range.
-//   4. inside<checked>     -- the library's default policy.
+//   4. inside<checked>     -- the library's default policy: the run-time inputs
+//                            and the narrowing store report into an errc.
 //   5. inside<unsafe>      -- the library with checking switched off.
 //
 // Contenders 2, 3 and 4 provide the same guarantee. Those are the rows that
 // belong in a fair comparison. 1 is included only to show what the guarantee
 // costs in the first place.
 //
-//   g++ -std=c++26 -O2 -I ../../include p02_fair_bench.cpp -o p02 && ./p02
+//   g++-16 -std=c++26 -freflection -O2 -I ../../include p02_fair_bench.cpp -o p02 && ./p02
 
 #include <algorithm>
 #include <chrono>
@@ -109,15 +110,19 @@ int main()
       }
   });
 
+  errc         ec{};             // the checked channel, read after the run
   const double inside_checked = time_ns_per_op([&] {
     for (int r = 0; r < kReps; ++r)
       for (int i = 0; i < kN; ++i)
       {
-        bchecked x(a[i]), y(b[i]);
-        bchecked c = x + y;      // widened sum narrowed back: the checked store
+        bchecked x{a[i], make_policy<checked>(ec)}, y{b[i], make_policy<checked>(ec)};
+        bchecked c;
+        c.policy(ec) = x + y;    // widened sum narrowed back: the checked store
         sink(c.raw());
       }
   });
+  if (ec != errc{})
+    return 1;
 
   const double inside_unsafe = time_ns_per_op([&] {
     for (int r = 0; r < kReps; ++r)

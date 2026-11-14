@@ -91,7 +91,7 @@ auto    neg  = -a;                  // inside<{-100, 0}>: no -INT_MIN
 static_assert(std::is_same_v<decltype(sum), inside<{0, 200}>>);
 static_assert(sizeof(percent) == 1);
 
-percent c = sum - just<100>;        // a checked store: 0..100 fits
+percent c{sum - just<100>, clamp};  // -100..100 into 0..100: the store names what happens
 auto    bad = percent::try_make(sum); // expected<percent, errc>
 ```
 
@@ -123,7 +123,7 @@ level   volume  = 9;
 volume += 5_ins;                          // 14 clamps to 10
 
 auto n = count::try_make(14);             // unexpected(errc::overflow)
-// count m = 14;                          // a checked store: throws inside_error
+// count m = 14;                          // ill-formed: 14 is outside [0, 10]
 ```
 
 **The lowest value need not be a multiple of the notch.**
@@ -169,7 +169,7 @@ sensor raw   = 725;
 static_assert(conversion_overflows<level>(725));
 auto top  = level{raw, clamp};                      // 10: saturated
 auto deg  = inside<{0, 359}>{raw, wrap};            // 5: 725 mod 360
-auto fit  = checked_cast<level>(sensor{7});              // 7, or inside_error
+auto fit  = checked_cast<level>(sensor{7});              // expected<level, errc>: 7
 auto near = level{6.5, clamp | round_nearest};       // 7: a tie goes away from zero
 
 using quarter = inside<{{0, 10}, per<4>}>;
@@ -196,7 +196,7 @@ whole x = 50;
 x.policy<clamp>() = 150;                                    // 100: this store saturates
 
 using seconds = inside<{0, 59}, wrap>;
-using minutes = inside<{0, 59}>;
+using minutes = inside<{0, 59}, clamp>; // m += carry names what happens past 59
 seconds s = 50;
 minutes m = 0;
 s.on_wrap([&](auto&, auto carry) { m += carry; }) += 75_ins; // 125 s: s == 5, m == 2
@@ -326,11 +326,19 @@ point, counted from the lattice's anchor.
 `a + 1` is ill-formed, with a diagnostic that names the fix. `1` has no grid,
 so the result grid cannot be computed. Constants are written `just<1>` or
 `1_ins`, which are point grids. An arithmetic value enters an `inside` only
-through a store, which its policy checks.
+through a store, which the grids prove or the store's channel checks.
 
 ## Checked by default, `std::expected` only at boundaries
 
-Every policy range-checks a narrowing store unless it says `unsafe`. The checks
+Every policy checks a narrowing store unless it says `unsafe`, and nothing
+throws. A store has five outcomes: it clamps, wraps, takes an alternative
+value, reports, or does not compile. A store the grids prove (every value of
+the source fits) is plain. Any other store names its channel before it runs:
+a flag (`clamp`, `wrap`, a rounding mode), an `errc&` (`b.policy(ec) = v`), an
+`on_error` action, `try_make`, or `unsafe`; without one it is ill-formed. A
+constant is checked while compiling: the constructor from a value the grids
+cannot prove is `consteval`, so `count m = 14;` with `count` on `[0, 10]` is
+a compile error, and `count m = n;` for a run-time `n` is one too. The checks
 that remain are the ones the grids cannot discharge. On a chain of operations
 the library therefore emits fewer checks than a hand-written checked integer,
 and is 21% faster than a native checked type in the paper's benchmark ("Where
@@ -340,16 +348,18 @@ Fallible results are values only where failure is possible at run time:
 `try_make`, `to<T>()` where `T` cannot hold every value, and division by a
 divisor whose grid holds zero. A
 total operation returns a plain
-value, so the type says whether failure is possible. A failed checked store
-throws `inside_error`, which carries the `errc`.
+value, so the type says whether failure is possible. A function that stores
+into an output it names (`mul<Out>`, `sum<T>`, `checked_cast<T>`, `f<Out>(x)`)
+returns `expected<Out, errc>` exactly where the result can miss `Out`.
 
 Fallible results chain. The operators also accept a `std::expected<inside,
 errc>` operand, so `a / b * gain + offset` stays one `expected` from end to
 end. The first error passes through with its cause, and an operation that fails
 later in the chain reports its own. An `inside` never stores an `expected`
 implicitly: `B x = a / b;` is ill-formed, and `B::try_make(a / b)` passes the
-error on. The handler that a failed
-store reaches (it throws `inside_error` by default) is one per program, and
+error on. What is left is a precondition with no call to report through (a
+cursor stepped past its end, an index past a dynamic extent): it reaches a
+replaceable handler, one per program, which prints and aborts by default;
 installing one is safe while other threads raise.
 
 ## Conversions
@@ -361,8 +371,9 @@ sees at the call what happens to a value that does not fit:
   another rounding mode) also rounds onto `B`'s notch. The flags of `B{v, F}`
   replace `B`'s own of the same kind.
 - `B{v, wrap}` folds `v` modulo `B`'s interval.
-- `checked_cast<B>(v)` reports `overflow` or `rounding_error` whatever `B`'s
-  policy is.
+- `checked_cast<B>(v)` stores `v` exactly whatever `B`'s policy is: `B`
+  where the grids prove it, else `expected<B, errc>` with `overflow` or
+  `rounding_error`.
 - `B{v, unsafe}` makes the fit a precondition.
 
 Each is a store into `B`'s grid under a fixed policy, so each is ill-formed
@@ -380,9 +391,9 @@ store does: it rounds by the call's mode (`to<int, round_floor>()`), else by
 the type's, and with neither it is `rounding_error`. `overflow` reports a value
 past `T`'s range
 (`domain_error` for a negative value into an unsigned `T`); a floating-point
-`T` gets the value rounded once. `as<T>()` returns `T` and reports a failure
-like a checked store (`inside_error` with `to<T>()`'s code), and requires
-a rounding policy for a floating-point `T`. `numerator()` and `denominator()`
+`T` gets the value rounded once. `as<T>()` is `to<T>()` where that is total,
+returning `T`, and is ill-formed elsewhere; it requires a rounding policy for
+a floating-point `T`. `numerator()` and `denominator()`
 give the exact value in lowest terms, the sign on the numerator, as insides on
 the integers that hold those parts of every value of the grid. `index()` gives
 a value's notch index, an `index_t<B>` = `inside<{0, step_count}>` with `B`'s
@@ -399,7 +410,7 @@ another:
 - **One call.** The functions `add`, `sub`, `mul`, `div`, `mod` and `divmod`
   compute what the operators compute, with trailing arguments: a flag or a
   policy (`div(a, b, round_floor)`, or `make_policy<F>(ec)`), an `errc&` that receives
-  a failure instead of an exception, or actions. `divmod` returns
+  a failure, or actions. `divmod` returns
   `divmod_result{Quotient, Remainder}` from one division, consistent with the
   rounding: `q·b + r == a`.
 - **One store.** `b.policy<F>()` returns a proxy whose `=`, `+=`, `-=`, `*=`,
@@ -414,7 +425,7 @@ what it did. `b.on_wrap(f) += x` stores into `b` with `f` wired in:
 |---|---|---|
 | `on_clamp(f)` | a stored value leaves the range and is saturated | `f(b, overshoot)`; the overshoot is an `inside`, the source minus the limit, exactly |
 | `on_wrap(f)` | a stored value leaves the range and is folded back | `f(b, carry)`; the carry is an `inside` whose grid holds every possible carry |
-| `on_error(f)` | a checked store fails, or a compound assignment does (a zero divisor in `/=`); replaces the exception | `f(b, errc, message)` |
+| `on_error(f)` | a checked store fails, or a compound assignment does (a zero divisor in `/=`); the store's channel | `f(b, errc, message)` |
 
 `f` receives the destination by reference and may change it. An action implies
 its flag (`on_clamp` adds `clamp`, `on_wrap` adds `wrap`). A store takes one
@@ -490,13 +501,14 @@ namespace std {
   // errors
   enum class errc { domain_error = 1, division_by_zero, overflow,
                     rounding_error, not_finite, invalid_format };
-  struct inside_error : runtime_error { errc Code; };
+  // (no exception type: a run-time failure is a value or a precondition)
 
   // the type
   template<grid G, policy_flag P = checked>               // G continuous: MaxDenominator != 0
   struct inside {
     constexpr inside();                                   // 0, or Lower on a grid without 0
-    template<class A> constexpr inside(A value);          // A arithmetic or inside: a store by P
+    template<class A> constexpr inside(A value);          // a store the grids prove
+    template<class A> consteval inside(A value);          // A arithmetic, not proven: a constant
     template<class A, class Pol> constexpr inside(A value, Pol p); // p a flag or make_policy<F>(ec):
                                                           // its rounding mode / clamp / wrap replace P's
     template<policy_flag F = checked, class A>               // the store by P | F
@@ -505,7 +517,7 @@ namespace std {
     // out of an inside
     template<class T, policy_flag Round = checked>                // T arithmetic; Round: checked or a mode
       constexpr expected<T, errc> to() const;
-    template<class T, policy_flag Round = checked> constexpr T as() const; // to<T, Round>(), failures throw
+    template<class T, policy_flag Round = checked> constexpr T as() const; // to<T, Round>() where total
     constexpr inside<@*numerator grid*@> numerator() const;      // lowest terms, the sign here
     constexpr inside<@*denominator grid*@> denominator() const;  // > 0
     constexpr index_t<inside> index() const noexcept;            // (value - Lower) / Notch
@@ -576,24 +588,24 @@ namespace std {
 
 | Expression | Result | Notes |
 |---|---|---|
-| `inside<G, P>{v}` | stores `v` by `P` | ill-formed when no value of `v`'s type can fit (disjoint intervals without `clamp`/`wrap`, incompatible notch without a rounding) |
-| `B::try_make<F>(v)` | `expected<B, errc>` | the store under `P | F`, reporting instead of throwing |
+| `inside<G, P>{v}` | stores `v` by `P` | proven by the grids, or a constant (`consteval`); ill-formed when no value of `v`'s type can fit, and for a run-time `v` the grids cannot prove |
+| `B::try_make<F>(v)` | `expected<B, errc>` | the store under `P | F`, reporting |
 | `-a` | `inside<-G, P>` | mirrored interval, same notch |
 | `a + b`, `a - b` | interval sum or difference; notch `gcd(n_a, n_b)` | continuous if either operand is, with denominator bound `D_a·D_b` |
 | `a * b` | interval product; notch `n_a·n_b`, refined by the operands' offsets | a point `c` scales the other notch by `|c|`; continuous as for `+` |
 | `a / b` | a point `c`: `a`'s notch scaled by `1/|c|`; else continuous with denominator bound `D_a·max|b|·D_b` | rounded onto the integers or the shared notch when a policy names a rounding; `expected` iff `b`'s grid holds 0 |
 | `a % b` | on the lattice of `u`, the gcd of the two value units (1 on integers), the values `r` can take: truncation `r` has `a`'s sign, `|r| ≤ min(m, max|a|)`; floor `b`'s sign, ceil the opposite, `|r| ≤ m`; nearest `|r| ≤ min(⌊max|b|/2u⌋·u, max|a|)`; `m = max|b| − u` | notched grids required; `r = a − q·b` for the integer `q` truncated or rounded by the policy |
 | `e op b`, `a op e` (`e` an `expected`) | `expected` of `a op b`'s result | the first error passes through |
-| `++a`, `--a` | `a` moved by one notch | a store by `P` (wraps under `wrap`); absent on a continuous grid |
-| `a += b` etc. | `a = a + b` | a store by `a`'s policy |
+| `++a`, `--a` | `a` moved by one notch | a store by `P` (wraps under `wrap`); ill-formed where the step may leave the grid without `clamp`/`wrap`; absent on a continuous grid |
+| `a += b` etc. | `a = a + b` | a store by `a`'s policy: ill-formed where the grids cannot prove it and `P` has no `clamp`/`wrap`; `b.policy(ec) += x` reports |
 | `a == b`, `a <=> b` | exact comparison of values | any two grids, or an inside and an integer or a rational; no floating-point operand (0.1 is not 1/10) |
 | `b.to<T>()` | `T` where total, else `expected<T, errc>` | integer `T`: exact, or rounded by `Round`, else by `P`'s mode; `rounding_error` for a fractional value when neither names one; `overflow` out of `T`'s range, `domain_error` for a negative value into an unsigned `T`. Floating-point `T`: rounded once |
-| `b.as<T>()` | `T` | a failure of `to<T>()` throws `inside_error`; a floating-point `T` needs a rounding policy |
+| `b.as<T>()` | `T` | where `to<T>()` is total; else ill-formed. A floating-point `T` needs a rounding policy |
 | `b.numerator()`, `b.denominator()` | the value in lowest terms, as insides | with `D` the grid's largest denominator: numerator in `[⌈L⌉, ⌊U·D⌋]` (`⌈L·D⌉` for `L < 0`, `⌊U⌋` for `U ≤ 0`), denominator in `[1, D]` |
-| `b.index()`, `B::from_index(i)` | `(b − L)/n` as an `index_t<B>`; `L + i·n` | `from_index` is plain when `i`'s grid lies in `[0, step_count]`, else a store by `P` (or the call's policy) |
+| `b.index()`, `B::from_index(i)` | `(b − L)/n` as an `index_t<B>`; `L + i·n` | `from_index` is plain when `i`'s grid lies in `[0, step_count]`, else `expected<B, errc>` (plain under a call's `clamp`/`wrap`) |
 | `B{v, clamp | M}` | `v` saturated into `B`, rounded by `M` | `M == checked`: off the notch as `B`'s policy |
 | `B{v, wrap}` | `v` modulo `B`'s interval | |
-| `checked_cast<B>(v)` | `v` | throws `inside_error` (`overflow`, `rounding_error`) |
+| `checked_cast<B>(v)` | `v`, or `expected<B, errc>` where it can fail | `overflow`, `rounding_error` |
 | `B{v, unsafe}` | `v` | precondition: `v` fits |
 | `conversion_overflows<B>(v)`, `conversion_rounds<B>(v)` | what `B{v}` would report or round | a rounding that brings `v` in is a rounding |
 | `op(a, b, policy)` (`op` one of `add` … `mod`) | `a op b`, the store and the division under `P | F` | `errc&`: a zero divisor sets it (and stays in the `expected`) |
@@ -666,9 +678,14 @@ The repository's `docs/resources.md` compares their features.
    implementation's. The committee may prefer others (`bounded`, `ranged`). A
    standard literal suffix cannot begin with `_`, so `_ins` and `_g` need new
    names.
-2. **Failure of a checked store.** An exception (`inside_error`, as proposed),
-   a contract violation ([@P2900R14]), or a replaceable handler (the
-   implementation has one, which lets the core run without exceptions).
+2. **Failure of a checked store.** Proposed: no run-time failure path of its
+   own. A store the grids cannot prove names its channel (a flag, an
+   `errc&`, an action, `try_make`) or is ill-formed; a constant is checked
+   while compiling. The cost is that `is_constructible_v<B, int>` is `true`
+   for a `consteval` constructor that a run-time `int` cannot call. What
+   remains are preconditions (a cursor past its end), which reach a
+   replaceable handler; a contract violation ([@P2900R14]) is the
+   alternative there.
 3. **Bare scalars.** Rejecting `a + 1` is deliberate. Should mixed arithmetic
    with an integer of a stated range be allowed instead?
 4. **The per-call interface.** Trailing arguments on free functions for one

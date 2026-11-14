@@ -6,6 +6,8 @@
 #define BEMAN_INSIDE_MATH_INSTRUMENT 1
 #include <beman/inside/math.hpp>
 
+#include "support.hpp"
+
 #include <gtest/gtest.h>
 
 using namespace beman::inside;
@@ -79,7 +81,7 @@ TEST(MathInstrumentTest, integer_only_skips_the_fast_tiers) {
     const auto sweep = [] {
         const std::uint64_t before = driver.IntegerRuns.load();
         for (int i = -512; i <= 512; ++i)
-            (void)am::sin<out>(in{rational{i, 128}});
+            (void)am::sin<out>(beman::inside::test::store<in>(rational{i, 128}));
         return driver.IntegerRuns.load() - before;
     };
     driver.IntegerOnly = true;

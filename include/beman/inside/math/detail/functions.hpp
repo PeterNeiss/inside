@@ -170,6 +170,8 @@ struct kind<F, 1, In...> {
     [[gnu::always_inline]] static constexpr auto eval(const In&... x) {
         return F::template eval<O>(x...);
     }
+    template <class O>
+    [[gnu::always_inline]] static constexpr auto eval_named(const In&... x);
 };
 
 template <class F, class... Args>
@@ -178,11 +180,104 @@ using kind_of = kind<F, rank_of<Args...>, Args...>;
 template <class F, class... Args>
 concept takes = kind_of<F, Args...>::takes;
 
+//---------------------------------------------------------------------------
+// A named output f<C>(x): C itself where C's range holds every value f takes
+// over the input grids (or C clamps or wraps), else std::expected<C, errc>.
+// The value is computed once onto a twin of C - C's notch and lattice, an
+// interval that holds every value - then stored into C exactly, so the
+// failure is only the range, and the rounding stays one.
+//---------------------------------------------------------------------------
+template <class>
+inline constexpr bool is_named_v = false;
+template <class C>
+inline constexpr bool is_named_v<named<C>> = true;
+
+// The range of f over In… rounded onto O's notch (1/MaxDenominator for a
+// continuous O).
+template <class F, class O, class... In>
+using named_range_t =
+    typename F::template result_on<notch_of<O> != 0 ? notch_of<O> : grid_rational{1} / grid_of<O>.MaxDenominator,
+                                   In...>;
+
+// Whether the library bounds f over In… (entry.hpp specializes it false for
+// grids where a deduced output would not exist: exp of |x| past 4096, pow of
+// a base grid that reaches 0, …). A named output of an unbounded f needs
+// clamp or wrap.
+template <class F, class... In>
+inline constexpr bool range_bounded = true;
+
+// (Outside f's domain the call goes straight to f, whose diagnostic names it.)
+template <class F, class... In>
+consteval bool in_domain() {
+    if constexpr (requires { F::template domain<In...>; })
+        return F::template domain<In...>;
+    else
+        return true;
+}
+
+template <class F, class O, class... In>
+consteval bool named_fits() {
+    if constexpr (!is_checked(flags_of<O>) || has_any_flag(flags_of<O>, clamp | wrap) || !in_domain<F, In...>())
+        return true;
+    else if constexpr (!range_bounded<F, In...>)
+        return false;
+    else if constexpr (!F::rounds)
+        return store_proven<O, typename F::template result<In...>>;
+    else
+        return includes(interval_of<O>, interval_of<named_range_t<F, O, In...>>);
+}
+
+template <class F, class O, class... In>
+consteval grid named_twin_grid() {
+    using R                = named_range_t<F, O, In...>;
+    const grid_rational lo = lower_of<O> < lower_of<R> ? lower_of<O> : lower_of<R>;
+    const grid_rational hi = upper_of<R> < upper_of<O> ? upper_of<O> : upper_of<R>;
+    if constexpr (notch_of<O> == 0)
+        return grid{interval{lo, hi}, max_denominator{grid_of<O>.MaxDenominator}};
+    else {
+        const grid_rational n = notch_of<O>; // whole notches out from O's limits
+        return grid{interval{lower_of<O> - grid_round<round_mode::ceil>((lower_of<O> - lo) / n) * n,
+                             upper_of<O> + grid_round<round_mode::ceil>((hi - upper_of<O>) / n) * n},
+                    n};
+    }
+}
+
+template <class F, class O, class... In>
+consteval auto named_twin() {
+    if constexpr (F::rounds)
+        return std::type_identity<inside<named_twin_grid<F, O, In...>(), flags_of<O>>>{};
+    else
+        return std::type_identity<typename F::template result<In...>>{};
+}
+template <class F, class O, class... In>
+using named_twin_t = typename decltype(named_twin<F, O, In...>())::type;
+
+template <class F, class O, class... In>
+[[gnu::always_inline]] constexpr auto eval_named(const In&... x) {
+    if constexpr (named_fits<F, O, In...>())
+        return F::template eval<O>(x...);
+    else if constexpr (!range_bounded<F, In...>)
+        static_assert(false,
+                      "beman::inside::math: f<C>(x) - the library bounds no range of f over these input grids, so "
+                      "no grid proves C or checks it: give C clamp or wrap, or narrow the input grids");
+    else
+        return O::try_make(F::template eval<named_twin_t<F, O, In...>>(x...));
+}
+
+template <class F, class... In>
+template <class O>
+constexpr auto kind<F, 1, In...>::eval_named(const In&... x) {
+    return detail::eval_named<F, O, In...>(x...);
+}
+
 // The call: F's value onto the output its kind makes of S.
 template <class F, class S, class... Args>
 [[nodiscard]] [[gnu::always_inline]] constexpr auto call(const Args&... x) {
     using K = kind_of<F, Args...>;
-    return K::template eval<typename K::template output<S>>(x...);
+    if constexpr (is_named_v<S> && requires { K::template eval_named<typename K::template output<S>>(x...); })
+        return K::template eval_named<typename K::template output<S>>(x...);
+    else
+        return K::template eval<typename K::template output<S>>(x...);
 }
 } // namespace beman::inside::math::detail
 

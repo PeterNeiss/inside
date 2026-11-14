@@ -51,7 +51,13 @@ int main() {
     // Per-packet insertion. The "offset" is (seq - base). If it exceeds the
     // window (offset > 63), the write is rejected and on_error fires.
     auto insert = [&](int seq, int base) {
-        const quantity<pkt, inside<{-1024, 1024}>> offset{seq - base, pkt};
+        // A run-time count into a checked quantity: try_make, its error here.
+        const auto stored_offset = quantity<pkt, inside<{-1024, 1024}>>::try_make(seq - base, pkt);
+        if (!stored_offset) {
+            ++dropped;
+            return;
+        }
+        const auto offset = *stored_offset;
 
         // The slot is seq modulo the window: the wrap flag folds it into slot_id_t.
         const auto idx = slot_id_t{seq, wrap};

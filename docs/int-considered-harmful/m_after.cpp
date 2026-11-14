@@ -29,7 +29,7 @@ int main()
   auto  disc_exact = subtotal * just<1, 3>;
   money discount   = disc_exact;
 
-  money total = subtotal + tax - discount;
+  auto  total = subtotal + tax - discount;   // exact, on the sum's own grid
 
   std::cout << "subtotal           = $" << subtotal << "\n";
   std::cout << "tax  (8%)          = $" << tax      << "   (exact, no overflow)\n";

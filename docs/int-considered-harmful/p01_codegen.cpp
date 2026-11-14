@@ -3,7 +3,7 @@
 // grid, `a + b` must lower to a plain machine add -- no branch into the
 // checked/clamp/rational fallback.
 //
-//   g++ -std=c++26 -O2 -I ../../include -c p01_codegen.cpp -o p01.o
+//   g++-16 -std=c++26 -freflection -O2 -I ../../include -c p01_codegen.cpp -o p01.o
 //   objdump -d p01.o
 //
 // The repo enforces exactly this in CI: tests/beman/inside/check_codegen.sh disassembles
@@ -37,8 +37,9 @@ using km = units::quantity<units::si::kilo(units::si::metre), inside<{{0, 100}, 
 }
 
 // A loop, to check that vectorization still happens. In-place += can leave
-// [0, 1000], so a checked element is checked on every pass and the loop stays
-// scalar; unsafe states that the caller keeps it in range.
+// [0, 1000], so on a checked element it names a channel (policy(ec) checks
+// every pass, and the loop stays scalar); unsafe states that the caller keeps
+// it in range.
 using fast = inside<{0, 1000}, unsafe>;
 
 [[gnu::noinline]] void inside_loop(fast* data, int n)

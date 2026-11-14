@@ -92,12 +92,13 @@ struct date {
     quantity<si::day, inside<{1, 30}, wrap>> day{1, si::day};
     quantity<month, inside<{1, 12}, wrap>>   months{1, month};
     quantity<year, inside<{1900, 2200}>>     years{2000, year};
+    errc                                     Error{}; // a year past 2200 lands here
 
     void add_days(const auto& d) {
         day.on_wrap([&](auto&, auto carry) { add_months(carry * month); }) += d;
     }
     void add_months(const auto& d) {
-        months.on_wrap([&](auto&, auto carry) { years += carry * year; }) += d;
+        months.on_wrap([&](auto&, auto carry) { years.policy(Error) += carry * year; }) += d;
     }
 
     friend std::ostream& operator<<(std::ostream& os, const date& d) {

@@ -6,23 +6,32 @@
 #include <algorithm>
 #include <atomic> // the handler (freestanding)
 
-// <stdexcept> backs the *default* throwing handler only; it is the single heavy
-// error include and is pulled in solely when exceptions are available. A
-// freestanding / -fno-exceptions build never sees it and traps instead. Error
-// reporting otherwise stays on static const-char* messages — no <string>, no
-// <string_view>, no <system_error>. (General-purpose stringification lives in
-// the opt-in "beman/inside/inside/io.hpp".)
+// <stdexcept> backs inside_error, the compile-time diagnostic of a failed
+// check in a constant expression; it is pulled in solely when exceptions are
+// available. Nothing throws at run time. A hosted build's default handler
+// prints with <cstdio> and stops with <cstdlib>; a freestanding one traps.
+// Error reporting otherwise stays on static const-char* messages — no
+// <string>, no <string_view>, no <system_error>. (General-purpose
+// stringification lives in the opt-in "beman/inside/inside/io.hpp".)
 #if BEMAN_INSIDE_HAS_EXCEPTIONS // (config.hpp)
     #include <stdexcept>
+#endif
+#if __STDC_HOSTED__
+    #include <cstdio>
+    #include <cstdlib>
 #endif
 
 //---------------------------------------------------------------------------
 // debug — error codes, the replaceable failure handler, and diagnostic helpers.
-// `errc` enumerates the failure modes. Every runtime failure funnels through
-// `detail::raise`, which calls the installed `error_handler` — by default one
-// that throws `beman::inside::inside_error` (hosted) or traps (freestanding / no
-// exceptions). `set_error_handler` lets a bare-metal target redirect failures
-// to a reset/log without depending on <system_error> or the C++ exception ABI.
+// `errc` enumerates the failure modes. A failure a program can expect is a
+// value: a std::expected, an errc&, an on_error hook; a store the grids cannot
+// prove does not compile without one. What is left funnels through
+// `detail::raise`: a precondition (an mdspan index past a dynamic extent, a
+// cursor past its end) or a library bug. raise calls the installed
+// `error_handler` — by default one that prints the message and aborts
+// (hosted) or traps (freestanding). `set_error_handler` lets a bare-metal
+// target redirect failures to a reset/log. In a constant expression a failed
+// check is a compile error that names it.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 //---------------------------------------------------------------------------
@@ -40,7 +49,7 @@ enum class errc {
 
 // Static, allocation-free message per code. The single source of truth for
 // every error path; returns a null-terminated string literal so it doubles as
-// the default exception's what() and as an on_error message.
+// the default handler's text and as an on_error message.
 constexpr const char* errc_message(errc e) noexcept {
     switch (e) {
     case errc::domain_error:
@@ -61,9 +70,11 @@ constexpr const char* errc_message(errc e) noexcept {
 
 #if BEMAN_INSIDE_HAS_EXCEPTIONS
 //---------------------------------------------------------------------------
-// inside_error — the exception thrown by the default handler. Derives from
+// inside_error — thrown only during constant evaluation, where an uncaught
+// exception is a compile error that prints its what(): the text of a failed
+// check in a constant expression. Nothing throws it at run time. Derives from
 // std::runtime_error (the library's only <stdexcept> use) and carries the
-// originating `errc`: `catch (inside_error& e) { e.Code; }`.
+// originating `errc`.
 //---------------------------------------------------------------------------
 struct inside_error : std::runtime_error {
     errc Code;
@@ -73,15 +84,19 @@ struct inside_error : std::runtime_error {
 #endif
 
 //---------------------------------------------------------------------------
-// Replaceable failure handler. Contract: it must NOT return (throw / longjmp /
-// abort / reset). If it does return, `raise` traps to honour [[noreturn]].
+// Replaceable failure handler, for preconditions (and library bugs). Contract:
+// it must NOT return (abort / reset / longjmp / throw). If it does return,
+// `raise` traps to honour [[noreturn]].
 //---------------------------------------------------------------------------
 using error_handler_t = void (*)(errc code, const char* what);
 
 namespace detail {
 [[noreturn]] [[gnu::cold]] [[gnu::noinline]] inline void default_error_handler(errc code, const char* what) {
-#if BEMAN_INSIDE_HAS_EXCEPTIONS
-    throw inside_error(code, what);
+#if __STDC_HOSTED__
+    std::fputs("beman::inside: ", stderr);
+    std::fputs(what ? what : errc_message(code), stderr);
+    std::fputs("\n", stderr);
+    std::abort();
 #else
     (void)code;
     (void)what;
@@ -106,19 +121,26 @@ inline error_handler_t set_error_handler(error_handler_t h) noexcept {
 inline error_handler_t get_error_handler() noexcept { return detail::g_error_handler.load(std::memory_order_acquire); }
 
 namespace detail {
+// A failed check in a constant expression without exceptions: a compile error
+// naming the code (the text of `what` would need exceptions to print).
+[[noreturn]] constexpr void constexpr_error_of(errc code);
+
 //-----------------------------------------------------------------------
 // Outlined failure funnel. Cold + non-inline so the (rare) machinery is
 // emitted once, off the hot path. During constant evaluation it throws an
 // inside_error (C++26 constexpr exceptions), so a failed compile-time path is
-// a compile error whose text is `what`. (Without exceptions, it is the call
-// to the non-constexpr handler.)
+// a compile error whose text is `what`; without exceptions, a compile error
+// naming the code.
 //-----------------------------------------------------------------------
 [[noreturn]] [[gnu::cold]] [[gnu::noinline]] constexpr void raise(errc code, const char* what = nullptr) {
-#if BEMAN_INSIDE_HAS_EXCEPTIONS
     if consteval {
+#if BEMAN_INSIDE_HAS_EXCEPTIONS
         throw inside_error(code, what);
-    }
+#else
+        (void)what;
+        constexpr_error_of(code);
 #endif
+    }
     g_error_handler.load(std::memory_order_acquire)(code, what ? what : errc_message(code));
     __builtin_trap(); // handler must not return; trap if it did
 }
@@ -153,6 +175,35 @@ struct fixed_string {
 template <fixed_string Msg>
 [[noreturn]] [[gnu::cold]] [[gnu::noinline]] inline void constexpr_error() {
     raise(errc::overflow, Msg.Data);
+}
+
+// A checked store that fails in a constant expression: what happened, and the
+// fix (store_failure_message's text, without exceptions).
+constexpr void store_constexpr_error(errc code) {
+    if (code == errc::overflow)
+        constexpr_error<"inside: a checked store in a constant expression is outside the grid's interval - widen "
+                        "the interval, or store with clamp or wrap">();
+    if (code == errc::rounding_error)
+        constexpr_error<"inside: a checked store in a constant expression is not on the grid's notch - write the "
+                        "value exactly (3.49_ins, just<349, 100>), or store with a rounding policy">();
+    constexpr_error_of(code);
+}
+
+constexpr void constexpr_error_of(errc code) {
+    switch (code) {
+    case errc::overflow:
+        constexpr_error<"inside: a value does not fit its range (overflow) in a constant expression">();
+    case errc::rounding_error:
+        constexpr_error<"inside: a value is not on the grid's notch (rounding_error) in a constant expression">();
+    case errc::division_by_zero:
+        constexpr_error<"inside: division by zero in a constant expression">();
+    case errc::not_finite:
+        constexpr_error<"inside: a non-finite floating-point value (not_finite) in a constant expression">();
+    case errc::invalid_format:
+        constexpr_error<"inside: malformed number text (invalid_format) in a constant expression">();
+    default:
+        constexpr_error<"inside: argument outside the function's domain (domain_error) in a constant expression">();
+    }
 }
 
 // A checked path's hard failure: Msg as the compile-time diagnostic during

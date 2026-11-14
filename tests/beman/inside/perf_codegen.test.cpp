@@ -61,7 +61,7 @@ extern "C" double ins_perf_to_double(D a) { return static_cast<double>(a); }
 // must subtract raws directly (index-raw Q8.8 here — the case that would
 // otherwise fall into the full binary-add + cross-grid-assign engine via
 // `+= (-rhs)`).
-using Q = inside<{{0, 255}, per<256>}, round_toward_zero>;
+using Q = inside<{{0, 255}, per<256>}, clamp | round_toward_zero>; // (-= names its range handling)
 
 extern "C" long ins_perf_sub_compound(long a, long b) {
     Q x = Q::from_raw(static_cast<Q::raw_type>(a));

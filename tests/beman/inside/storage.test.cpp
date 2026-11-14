@@ -13,6 +13,8 @@
 #include <beman/inside/math.hpp>
 #include <beman/inside/units.hpp>
 
+#include "support.hpp"
+
 #include <gtest/gtest.h>
 
 #include <cfloat>
@@ -74,9 +76,9 @@ TEST(StorageTest, dyadic_grid_runs_the_full_out_of_range_policy_cascade) {
     ASSERT_TRUE(static_cast<double>(rational{RW{370.0}}) == 10.0);
     ASSERT_TRUE(static_cast<double>(rational{RW{-10.0}}) == 350.0);
 
-    // checked: out-of-range reports (throws) instead of silently storing.
+    // checked: out-of-range reports instead of silently storing.
     using RK = inside<{{0, 4}, per<256>}, checked>;
-    ASSERT_THROW((void)(RK{9.5}), beman::inside::inside_error);
+    ASSERT_EQ(test::store_error<RK>(test::at_run_time(9.5)), errc::overflow);
     ASSERT_TRUE(static_cast<double>(rational{RK{2.5}}) == 2.5);
 
     // try_make: out-of-range yields errc::overflow.
@@ -90,23 +92,14 @@ TEST(StorageTest, dyadic_grid_runs_the_full_out_of_range_policy_cascade) {
 
 // non-finite doubles are rejected, both engines
 TEST(StorageTest, non_finite_doubles_are_rejected_both_engines) {
-    // Default engine: store_real guards before rounding onto the grid; fixed engine:
-    // the integer-backed path throws in rational(double). Same observable.
-    using R          = inside<{{0, 4}, per<256>}, round_nearest>;
-    const double nan = std::numeric_limits<double>::quiet_NaN();
-    const double inf = std::numeric_limits<double>::infinity();
-    ASSERT_THROW((void)(R{nan}), beman::inside::inside_error);
-    ASSERT_THROW((void)(R{inf}), beman::inside::inside_error);
-    ASSERT_THROW((void)(R{-inf}), beman::inside::inside_error);
-
     // Non-finite input is reported as errc::not_finite (distinct from the
     // overflow used for finite-but-out-of-interval values), both engines.
-    try {
-        R{nan};
-        FAIL() << "expected throw";
-    } catch (const beman::inside::inside_error& e) {
-        ASSERT_EQ(e.Code, errc::not_finite);
-    }
+    using R          = inside<{{0, 4}, per<256>}, round_nearest>;
+    const double nan = test::at_run_time(std::numeric_limits<double>::quiet_NaN());
+    const double inf = test::at_run_time(std::numeric_limits<double>::infinity());
+    ASSERT_EQ(test::store_error<R>(nan), errc::not_finite);
+    ASSERT_EQ(test::store_error<R>(inf), errc::not_finite);
+    ASSERT_EQ(test::store_error<R>(-inf), errc::not_finite);
 }
 
 // Full-domain inverse trig (improvement #2): atan beyond |x| ≤ 1 via
@@ -210,8 +203,8 @@ TEST(StorageTest, sin_cos_tan_accept_radians_up_to_2_20) {
 
     const double xs[] = {100000.0, -551496.5, 1048576.0, -1048576.0, 3.0};
     for (double x : xs) {
-        ASSERT_TRUE(std::fabs(val(math::sin(wide_t{x})) - std::sin(x)) < tol);
-        ASSERT_TRUE(std::fabs(val(math::cos(wide_t{x})) - std::cos(x)) < tol);
+        ASSERT_TRUE(std::fabs(val(math::sin(test::store<wide_t>(x))) - std::sin(x)) < tol);
+        ASSERT_TRUE(std::fabs(val(math::cos(test::store<wide_t>(x))) - std::cos(x)) < tol);
     }
 }
 
@@ -245,13 +238,8 @@ TEST(StorageTest, tan_saturates_instead_of_erroring_when_out_carries_clamp) {
     const auto sat = math::tan<sat_t>(in_t{1.2});
     ASSERT_TRUE(static_cast<double>(rational{sat}) == 1.0); // clamped to Upper
 
-    // Without clamp the store into Out reports it, like any store.
-    try {
-        (void)math::tan<err_t>(in_t{1.2});
-        FAIL() << "no error reported";
-    } catch (const inside_error& e) {
-        ASSERT_EQ(e.Code, errc::overflow);
-    }
+    // Without clamp the named output is an expected holding the overflow.
+    ASSERT_EQ(test::reported([] { return math::tan<err_t>(in_t{1.2}); }).error(), errc::overflow);
 }
 } // namespace storage_tests
 
@@ -483,26 +471,12 @@ TEST(FormatsTest, formats_wide_type_extremes_round_trip) {
 //---------------------------------------------------------------------------
 // formats reject values past the native range
 TEST(FormatsTest, formats_reject_values_past_the_native_range) {
-    ASSERT_ANY_THROW((void)([] {
-        int   v = 256;
-        uint8 x{v};
-        (void)x;
-    }()));
-    ASSERT_ANY_THROW((void)([] {
-        int   v = -32769;
-        int16 x{v};
-        (void)x;
-    }()));
-    ASSERT_NO_THROW((void)([] {
-        int   v = 255;
-        uint8 x{v};
-        (void)x;
-    }()));
-    ASSERT_NO_THROW((void)([] {
-        int   v = -32768;
-        int16 x{v};
-        (void)x;
-    }()));
+    // An int may not fit: stores of a run-time int report.
+    ASSERT_EQ(test::store_error<uint8>(test::at_run_time(256)), errc::overflow);
+    ASSERT_EQ(test::store_error<int16>(test::at_run_time(-32769)), errc::overflow);
+    ASSERT_EQ(test::store_error<uint8>(test::at_run_time(255)), errc{});
+    ASSERT_EQ(test::store_error<int16>(test::at_run_time(-32768)), errc{});
+    static_assert(std::is_constructible_v<int16, std::int16_t>); // a narrower type is proven
 }
 } // namespace formats_tests
 
@@ -546,7 +520,7 @@ template class beman::inside::units::quantity_point<pt::reference, pt::origin, p
 TEST(ExplicitInstantiationTest, every_member_compiles_or_is_constrained) {
     // The instantiations above are the test; a continuous grid has no ++.
     static_assert(!steps<inside<{{-1, 1}, max_denominator{8}}>>);
-    static_assert(steps<inside<{0, 100}>>);
+    static_assert(!steps<inside<{0, 100}>> && steps<inside<{0, 100}, wrap>>); // ++ may step out: a channel
     SUCCEED();
 }
 
@@ -644,7 +618,7 @@ TEST(StorageTest, point_grid_stores_nothing) {
     static_assert(M7{-7} == -7);
     static_assert(P5{5} + inside<{0, 10}>{3} == 8);
 
-    inside<{0, 10}> t{3};
+    inside<{0, 10}, clamp> t{3}; // (3..10 + 5 may pass 10: clamp names it)
     t += P5{5};
     EXPECT_EQ(t, 8);
 }
@@ -681,9 +655,10 @@ TEST(StorageTest, grid_past_int64_increments_and_negates) {
     using U64W                      = inside<{{0, rational{u64_max}}, 1}, wrap>;
     using Small                     = inside<{0, 10}>;
     constexpr auto inc              = [] {
-        U64 w{u64_max - 1};
-        ++w;
-        return w == u64_max;
+        U64  w{u64_max - 1};
+        errc ec{}; // (++ may step past the top: a channel)
+        w.policy(ec) += 1_ins;
+        return w == u64_max && ec == errc{};
     }();
     static_assert(inc);
     constexpr auto wrap_up = [] {
@@ -716,8 +691,10 @@ TEST(StorageTest, grid_past_int64_increments_and_negates) {
     static_assert(U64{u64_max} - U64{u64_max - 3} == 3); // result grid spans 2^65
     static_assert(U64{u64_max} * just<1> == u64_max);
 
-    U64 x{u64_max};
-    EXPECT_THROW(++x, inside_error);
+    U64  x{u64_max};
+    errc ec{};
+    x.policy(ec) += 1_ins;
+    EXPECT_EQ(ec, errc::overflow);
     EXPECT_EQ(x, u64_max);
 }
 
@@ -794,9 +771,9 @@ TEST(StorageArmTest, index_and_parts_of_a_point) {
 
 // x++ returns the old value.
 TEST(StorageArmTest, postfix_increment) {
-    volatile int    three = 3;
-    inside<{0, 10}> x{static_cast<int>(three)};
-    const auto      y = x++;
+    volatile int           three = 3;
+    inside<{0, 10}, clamp> x{static_cast<int>(three)}; // (x++ names its range handling)
+    const auto             y = x++;
     EXPECT_TRUE(x == 4 && y == 3);
 }
 } // namespace reached_arms_tests

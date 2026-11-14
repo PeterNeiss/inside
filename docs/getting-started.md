@@ -81,11 +81,16 @@ grid: on construction, `=`, `+=` and the like. The type's **policy**, its
 second template argument, decides what happens then:
 
 ```cpp
-inside<{0, 100}>        x{150};   // throws: the default policy reports the error
 inside<{0, 100}, clamp> y{150};   // 100: saturates
 inside<{0, 359}, wrap>  z{370};   // 10: wraps around
-auto m = inside<{0, 100}>::try_make(150);   // no throw: a std::expected
+inside<{0, 100}>        x{50};    // a constant: checked while compiling (150 would not compile)
+int  n = 150;                     // read at run time
+auto m = inside<{0, 100}>::try_make(n);   // a std::expected: errc::overflow
 ```
+
+Nothing throws. A store that the grids cannot prove to fit names what happens
+(`try_make`, `clamp`, `wrap`, an `errc&`, an `on_error` hook) or does not
+compile.
 
 A value between two notches needs permission to round:
 
@@ -98,8 +103,8 @@ The policies are `clamp`, `wrap`, the rounding modes (`round_nearest`,
 `round_floor`, `round_ceil`, `round_half_even`, `round_toward_zero`) and
 `unsafe`, which drops the checks. Combine them with `|`:
 `inside<{0, 100}, clamp | round_nearest>`.
-[Policies](guide/policies.md) has the details, including error codes instead
-of exceptions.
+[Policies](guide/policies.md) has the details, including every way a store
+reports.
 
 ## Reading values out
 

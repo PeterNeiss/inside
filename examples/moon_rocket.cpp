@@ -44,10 +44,15 @@ int main() {
     // 2. m0 / mf is a number (kg/kg): exactly 209/39, a fraction whose
     //    denominator is at most 60000 (mf in kg). Its log rounds once onto
     //    a 1e-6 grid, and v_e = 3.1 km/s scales it into a Δv.
-    const inside<{{1, 300}, max_denominator{60'000}}> ratio = m0 / m_final;
-    const auto                                        ln    = math::log<per<1'000'000>>(ratio);
-    const quantity<km_s, inside<{{1, 5}, per<10>}>>   v_e{just<31, 10> * km_s};
-    const auto                                        dv_stage = v_e * ln;
+    //    (m0 / mf over the masses' grids can pass 300: checked into the ratio.)
+    const auto checked_ratio =
+        inside<{{1, 300}, max_denominator{60'000}}>::try_make((m0 / m_final).numerical_value_in(one));
+    if (!checked_ratio)
+        return 1;
+    const auto                                      ratio = *checked_ratio;
+    const auto                                      ln    = math::log<per<1'000'000>>(ratio);
+    const quantity<km_s, inside<{{1, 5}, per<10>}>> v_e{just<31, 10> * km_s};
+    const auto                                      dv_stage = v_e * ln;
     std::cout << "dv stage  = " << dv_stage.in(si::metre / si::second) << '\n';
     if (to_string(dv_stage) != "5.2041963 km/s")
         return 1;
@@ -89,9 +94,12 @@ int main() {
     //    torque has the same dimension but another recipe:
     //      quantity<isq::torque[si::newton * si::metre], …> τ = m_final * v * v;   // does not compile
     using gigajoules_t = inside<{{0, 10'000}, per<1000>}, round_nearest>;
+    //    (A value_cast into a grid that may not hold the value is an expected.)
     const auto v = value_cast<km_s, inside<{{0, 20}, per<1000>}, round_nearest>>(quantity_cast<isq::speed>(v_peri));
-    const quantity<isq::kinetic_energy[si::giga(si::joule)], gigajoules_t> ke =
-        value_cast<si::giga(si::joule), gigajoules_t>(m_final * v * v);
+    const auto checked_ke = value_cast<si::giga(si::joule), gigajoules_t>(m_final * v * v);
+    if (!checked_ke)
+        return 1;
+    const quantity<isq::kinetic_energy[si::giga(si::joule)], gigajoules_t> ke = *checked_ke;
     std::cout << "KE        = " << ke << '\n';
     if (to_string(ke) != "2331.271 GJ")
         return 1;
@@ -99,8 +107,10 @@ int main() {
     //    110 kN on 104.5 t, in units of standard gravity (exact: g₀ is rational).
     const quantity<si::kilo(si::newton), inside<{1, 1000}>> thrust{110, si::kilo(si::newton)};
     const auto acc = value_cast<si2019::standard_gravity, inside<{{0, 10}, per<1000>}, round_nearest>>(thrust / m0);
-    std::cout << "a0        = " << acc << '\n';
-    if (to_string(acc) != "0.107 g₀")
+    if (!acc)
+        return 1;
+    std::cout << "a0        = " << *acc << '\n';
+    if (to_string(*acc) != "0.107 g₀")
         return 1;
     return 0;
 }

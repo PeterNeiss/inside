@@ -16,10 +16,8 @@ using dollars = inside<{0, 1000}>;   // whole dollars only
 
 int main()
 {
-  money subtotal{0};
-  subtotal += money{19.99};
-  subtotal += money{4.50};
-  subtotal += money{12.34};
+  // A sum widens: its grid holds every sum of three money values.
+  auto subtotal = money{19.99} + money{4.50} + money{12.34};
   std::cout << "subtotal           = $" << subtotal << "\n";
 
   dollars shipping{5};   // "5" -- but 5 what? The type says: whole dollars.

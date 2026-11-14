@@ -8,6 +8,33 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Upgrading
 
+- Nothing throws. A store either clamps, wraps, takes an alternative value,
+  reports, or does not compile: a store the grids cannot prove names its
+  channel before it runs (a flag, `x.policy(ec)`, `x.on_error(f)`,
+  `T::try_make`, `unsafe`). A constant is checked while compiling. Functions
+  that store into an output they name return `std::expected` exactly where
+  the result can miss it.
+
+  | Before | Now |
+  |---|---|
+  | `T x{n}`, `x = n` for a run-time `n` the grids cannot prove (an `int` past the interval, any `double`) | `T::try_make(n)`, `T{n, clamp}`, `x.policy(ec) = n`; a constant `T x{50}` is unchanged |
+  | `T x{d, clamp}` for a run-time `double` | `T::try_make<clamp>(d)` or `T{d, make_policy<clamp>(ec)}` (NaN fits no clamp) |
+  | `narrow = wide;`, `T x{wide}` | `T::try_make(wide)`, `T{wide, clamp}`, `x.policy(ec) = wide` |
+  | `acc += x`, `x *= y`, `++i` where the result may leave the grid | `acc.policy(ec) += x` (one `errc` for a loop), a `clamp`/`wrap` type, or `x.on_error(f) += y` |
+  | `x /= d`, `x %= d` with `d`'s grid holding 0 | `x.policy(ec) /= d`, or a divisor grid without 0 |
+  | `x.as<T>()` where `T` may not hold every value | `x.to<T>()`, a `std::expected` |
+  | `checked_cast<B>(v)` returned `B` | `B` where proven, else `std::expected<B, errc>` |
+  | `mul<Out>`, `div<Out>`, `sum<T>`, `value_cast`, `quantity`'s `sum`, `T::from_index(i)`, `math::fn<Out>(x)` returned `Out` | `Out` where proven (or under `clamp`/`wrap`), else `std::expected<Out, errc>` |
+  | `matrix_product`, `matrix_vector_product`, `transform_into` returned `void` | `void` where proven, else `std::expected<void, errc>` |
+  | `catch (inside_error&)` | the channels above; `inside_error` is only the compile-time diagnostic |
+  | the default handler threw `inside_error` | it prints `beman::inside: <message>` and aborts (traps freestanding); preconditions only reach it: a cursor past its end, an mdspan index past a dynamic extent, a raw read off the grid |
+  | `std::accumulate(…, T{0})` into a checked `T` | `sum<T>(r)`, or an accumulator type with `clamp` |
+  | `math::pow<C>(b, e)` with a base grid reaching 0 into a checked `C` | `C` with `clamp` or `wrap` (no range is bounded there) |
+
+  `x.policy<round_floor>() = 3.7` and a hook's `= 12.25` still take a
+  constant. Without exceptions a failed check in a constant expression now
+  names its text (it was a bare "call to non-constexpr function").
+
 - A number goes into and out of a quantity with its unit named, where it
   happens. Every form that took a bare number in Q's unit names the unit, or
   takes a quantity:

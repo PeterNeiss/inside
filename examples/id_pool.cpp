@@ -30,7 +30,9 @@ struct id_pool {
             std::cout << "  reject (out of range): " << request << "\n";
             return false;
         }
-        auto [_, inserted] = allocated.insert(pool_id{request}); // in range: the gate checked it
+        // In range: the gate checked it, so the store's precondition holds and
+        // it needs no check of its own (unsafe states that).
+        auto [_, inserted] = allocated.insert(pool_id{request, unsafe});
         if (!inserted)
             std::cout << "  reject (duplicate):  " << request << "\n";
         return inserted;

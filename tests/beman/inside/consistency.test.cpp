@@ -68,7 +68,7 @@ TEST(ConsistencyTest, integer_source_off_notch_rounds_like_rational_source) {
 
     using Strict = inside<{{0, 10}, 2}>; // checked, no rounding mode
     EXPECT_EQ(Strict::try_make(3).error(), errc::rounding_error);
-    EXPECT_THROW((void)Strict{3}, inside_error);
+    EXPECT_EQ(test::store_error<Strict>(test::at_run_time(3)), errc::rounding_error);
 }
 
 TEST(ConsistencyTest, integer_source_rounds_on_every_path) {
@@ -194,15 +194,20 @@ TEST(ConsistencyTest, continuous_arithmetic_is_total) {
 }
 
 //---------------------------------------------------------------------------
-// Compound operators report an error result through the type's policy — never
-// a silent no-op, never std::bad_expected_access.
+// Compound operators the grids cannot prove name a channel, which reports —
+// never a silent no-op, never std::bad_expected_access.
 //---------------------------------------------------------------------------
 TEST(ConsistencyTest, compound_ops_report_errors_through_the_policy) {
     using E = inside<{{0, 1}, max_denominator{1000}}, checked>;
-    E e{q(1, 1000)};
-    EXPECT_THROW(e += E{q(1, 999)}, inside_error); // 1999/999000 is off the grid
-    EXPECT_EQ(rational{e}, q(1, 1000));            // left unchanged
-    EXPECT_THROW(e *= E{q(1, 999)}, inside_error);
+    static_assert(!test::can_add<E, E>);
+    E    e{q(1, 1000)};
+    errc ec{};
+    e.policy(ec) += E{q(1, 999)}; // 1999/999000 is off the grid
+    EXPECT_EQ(ec, errc::rounding_error);
+    EXPECT_EQ(rational{e}, q(1, 1000)); // left unchanged
+    ec = errc{};
+    e.policy(ec) *= E{q(1, 999)};
+    EXPECT_EQ(ec, errc::rounding_error);
 }
 
 // The raw += fast path honours unsafe like plain assignment does.
@@ -223,7 +228,7 @@ TEST(ConsistencyTest, zero_divisor_handling_agrees) {
     X x{6};
     EXPECT_NO_THROW(x /= Z{0});
     EXPECT_NO_THROW(x %= Z{0});
-    EXPECT_THROW(x /= X{0}, inside_error);
+    static_assert(!test::can_div<X, X>); // a divisor that may be 0: a channel
 
     bool called = false;
     X    b{6};
@@ -249,8 +254,10 @@ TEST(ConsistencyTest, unsafe_is_the_one_opt_out_and_wins_over_checked) {
     EXPECT_NO_THROW(b.policy<unsafe>() /= D{0});
     EXPECT_NO_THROW(b.policy<unsafe>() %= D{0});
     EXPECT_EQ(b, 6);
-    EXPECT_THROW(b /= D{0}, inside_error);
-    EXPECT_THROW(b.policy() /= D{0}, inside_error);
+    static_assert(!test::can_div<D, D> && !test::can_div<decltype(b.policy()), D>);
+    errc ec{};
+    b.policy(ec) /= D{0};
+    EXPECT_EQ(ec, errc::division_by_zero);
 }
 
 // Every store, operator and free function that cannot compile is deleted, so
@@ -326,7 +333,7 @@ TEST(ConsistencyTest, no_arithmetic_with_a_rational) {
     static_assert(!rational_mix<I, rational> && !rational_mix<inside<{0, 10}>, rational>);
     static_assert(!rational_compound<I, rational>);
     static_assert(I{2} + just<1, 2> == 2.5_r);
-    I x{2};
+    inside<{{0, 10}, per<4>}, clamp> x{2}; // (x + 0.5 may pass 10: clamp names it)
     x += 0.5_ins;
     EXPECT_EQ(x, 2.5_r);
 }
@@ -336,7 +343,7 @@ TEST(ConsistencyTest, no_arithmetic_with_a_rational) {
 TEST(ConsistencyTest, store_rounds_before_the_range_check) {
     using O = inside<{0, 8}, checked | round_nearest>;
     EXPECT_EQ(rational{O{q(33, 4)}}, q(8));
-    EXPECT_THROW((void)O{q(17, 2)}, inside_error);
+    EXPECT_EQ(test::store_error<O>(test::at_run_time(q(17, 2))), errc::overflow);
 }
 
 // NaN / ±inf go through the policy like any other bad value: the error-code
@@ -349,15 +356,15 @@ TEST(ConsistencyTest, non_finite_input_goes_through_the_policy) {
     auto t = X::try_make(inf);
     ASSERT_FALSE(t.has_value());
     EXPECT_EQ(t.error(), errc::not_finite);
-    EXPECT_THROW((void)X{nan}, inside_error);
+    EXPECT_EQ(test::store_error<X>(test::at_run_time(nan)), errc::not_finite);
 
     using C = inside<{0, 10}, round_nearest | clamp>;
-    EXPECT_EQ(rational{C{inf}}, q(10));
-    EXPECT_EQ(rational{C{-inf}}, q(0));
+    EXPECT_EQ(rational{test::store<C>(test::at_run_time(inf))}, q(10));
+    EXPECT_EQ(rational{test::store<C>(test::at_run_time(-inf))}, q(0));
     using F = inside<{{0, 10}, per<2>}>;
     EXPECT_EQ(F::try_make(nan).error(), errc::not_finite);
     using FC = inside<{{0, 10}, per<2>}, clamp>;
-    EXPECT_EQ(rational{FC{inf}}, rational{10.0});
+    EXPECT_EQ(rational{test::store<FC>(test::at_run_time(inf))}, rational{10.0});
 }
 
 // pow: a result past Out reports overflow, and saturates under clamp.
@@ -367,7 +374,7 @@ TEST(ConsistencyTest, pow_past_the_output_range) {
     using small       = inside<{0, 1000}, round_nearest>;
     using small_clamp = inside<{0, 1000}, round_nearest | clamp>;
     // Past Out: its store reports overflow (the handler throws).
-    EXPECT_EQ(test::caught([] { return math::pow<small>(B{4}, E{20}); }).error(), errc::overflow); // 2^40
+    EXPECT_EQ(test::reported([] { return math::pow<small>(B{4}, E{20}); }).error(), errc::overflow); // 2^40
     EXPECT_EQ(rational{math::pow<small_clamp>(B{4}, E{20})}, q(1000));
     // The deduced output covers every corner: 4^20 fits it.
     EXPECT_EQ(rational{math::pow(B{4}, E{20})}, rational{std::uint64_t{1} << 40});
@@ -416,7 +423,8 @@ TEST(ConsistencyTest, compound_ops_reject_expected_rhs) {
     X    x{2};
     auto q3 = Y{6} / Y{2};
     ASSERT_TRUE(q3.has_value());
-    x += *q3;
+    errc ec{}; // (x + 3 may pass x's grid: a reported store)
+    x.policy(ec) += *q3;
     EXPECT_EQ(rational{x}, q(5));
     EXPECT_FALSE(X::try_make(Y{6} / Y{0}).has_value()); // try_make passes the error on
 }
@@ -424,14 +432,9 @@ TEST(ConsistencyTest, compound_ops_reject_expected_rhs) {
 TEST(ConsistencyTest, casts_take_inside_sources) {
     using Src = inside<{{0, 20}, per<2>}>;
     using Dst = inside<{0, 10}>;
-    EXPECT_EQ(rational{checked_cast<Dst>(Src{q(4)})}, q(4));
-    EXPECT_THROW((void)checked_cast<Dst>(Src{q(9, 2)}), inside_error); // off notch
-    try {
-        (void)checked_cast<Dst>(Src{q(12)});
-        FAIL();
-    } catch (const inside_error& e) {
-        EXPECT_EQ(e.Code, errc::overflow);
-    } // out of range
+    EXPECT_EQ(rational{*checked_cast<Dst>(Src{q(4)})}, q(4));
+    EXPECT_EQ(checked_cast<Dst>(Src{q(9, 2)}).error(), errc::rounding_error); // off notch
+    EXPECT_EQ(checked_cast<Dst>(Src{q(12)}).error(), errc::overflow);         // out of range
     EXPECT_EQ((rational{Dst{Src{q(4)}, unsafe}}), q(4));
 }
 
@@ -448,8 +451,8 @@ TEST(ConsistencyTest, rounding_runs_before_the_range_check) {
     EXPECT_EQ(rational{bin{9.55}}, q(9));       // double source
     EXPECT_EQ(rational{bin{q(191, 20)}}, q(9)); // rational source
     using ms = inside<{{0, 100}, per<10>}, round_nearest>;
-    EXPECT_EQ(rational{bin{ms{95.5} / just<10>}}, q(9));    // inside source
-    EXPECT_EQ(bin::try_make(10.0).error(), errc::overflow); // floors to 10: outside
+    EXPECT_EQ(rational{test::store<bin>(ms{95.5} / just<10>)}, q(9)); // inside source
+    EXPECT_EQ(bin::try_make(10.0).error(), errc::overflow);           // floors to 10: outside
 
     using db = inside<{{-24, 12}, per<2>}, round_nearest>;
     EXPECT_EQ(rational{db{-24.1}}, q(-24));
@@ -549,13 +552,13 @@ std::vector<double> probe_doubles() {
 template <typename T>
 void expect_double_store_exact() {
     for (double d : probe_doubles<T>())
-        EXPECT_EQ(T{d}.raw(), T{rational{d}}.raw()) << "d = " << d;
+        EXPECT_EQ(test::store<T>(d).raw(), test::store<T>(rational{d}).raw()) << "d = " << d;
 }
 
 template <typename T>
 void expect_double_decode_exact() {
     for (double d : probe_doubles<T>()) {
-        const T t{rational{d}};
+        const T t = test::store<T>(rational{d});
         EXPECT_EQ(static_cast<double>(t), static_cast<double>(rational{t})) << "d = " << d;
     }
 }
@@ -641,9 +644,11 @@ TEST(ConsistencyTest, continuous_sides_are_assignable) {
     c = inside<{{0, 1}, per<10>}>{q(3, 10)};
     EXPECT_EQ(rational{c}, q(3, 10));
     inside<{{0, 10}, 2}> e{0};
-    e = inside<{{0, 10}, max_denominator{10}}>{4};
+    using evens = inside<{{0, 10}, 2}>;
+    using tenth = inside<{{0, 10}, max_denominator{10}}>;
+    e           = test::store<evens>(tenth{4});
     EXPECT_EQ(rational{e}, q(4));
-    EXPECT_THROW((e = inside<{{0, 10}, max_denominator{10}}>{3}), inside_error);
+    EXPECT_EQ(test::store_error<evens>(tenth{3}), errc::rounding_error);
 }
 
 TEST(ConsistencyTest, hash_covers_every_storage) {

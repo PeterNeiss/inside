@@ -7,15 +7,14 @@
 
 #include <beman/inside/inside/io.hpp>
 #include <beman/inside/units.hpp>
+#include <beman/inside/units/io.hpp>
 #include <beman/inside/units/math.hpp>
 
 using namespace beman::inside;
 using namespace beman::inside::units;
 
-// Units of our own: per cent, a currency, samples per second.
-inline constexpr named_unit     percent_def{"%", mag<rational{1, 100}> * one,
-                                            {.space_before = false}};
-inline constexpr auto           percent = unit_c<percent_def>;
+// Units of our own: a currency, samples per second. The catalogue has
+// the per cent.
 inline constexpr base_dimension currency_def{"currency"};
 inline constexpr quantity_spec  amount_def{"amount_of_money", currency_def};
 inline constexpr named_unit     euro_def{"EUR", spec_c<amount_def>};
@@ -36,17 +35,19 @@ using height      = quantity<isq::height[si::metre], inside<{0, 9000}>>;
 
 int main()
 {
-  std::cout << "pct          = " << pct{42} << "\n";
-  money price{19.99};
+  // A number goes in with its unit named.
+  std::cout << "pct          = " << pct{42, percent} << "\n";
+  const money price{19.99, euro};
   std::cout << "money        = " << price << " = " << price.in(cent) << "\n";
-  std::cout << "angle        = " << angle{370} << "   (370° wraps)\n";
+  std::cout << "angle        = " << angle{370, si::degree} << "   (370° wraps)\n";
   // Degrees <-> radians is a factor of pi: exact, then rounded once.
-  auto rad = value_cast<si::radian, rad_number>(angle{90});
-  auto deg = value_cast<si::degree, deg_number>(quantity<si::radian, inside<{0, 6}>>{1});
+  auto rad = value_cast<si::radian, rad_number>(angle{90, si::degree});
+  auto deg = value_cast<si::degree, deg_number>(quantity<si::radian, inside<{0, 6}>>{1, si::radian});
   std::cout << "90° in rad   = " << rad << "\n";
   std::cout << "1 rad in deg = " << deg << "\n";
-  std::cout << "sample_rate  = " << sample_rate{48'000} << "\n";
-  std::cout << "trip         = " << trip{12.5} << " = " << trip{12.5}.in(si::metre) << "\n";
-  std::cout << "height       = " << height{8849} << "\n";
+  std::cout << "sample_rate  = " << sample_rate{48'000, sps} << "\n";
+  const trip t{12.5, si::kilo(si::metre)};
+  std::cout << "trip         = " << t << " = " << t.in(si::metre) << "\n";
+  std::cout << "height       = " << height{8849, si::metre} << "\n";
   return 0;
 }

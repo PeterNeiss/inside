@@ -36,7 +36,12 @@ int main() {
     // Running total: line items add exactly, no float drift.
     const std::vector<money> items = {
         money{19.99, USD}, money{4.50, USD}, money{12.34, USD}, money{0.99, USD}, money{7.25, USD}};
-    const money subtotal = sum<money>(items);
+    // sum<money> checks the total once; the count is a run-time number, so
+    // it returns an expected.
+    const auto checked_subtotal = sum<money>(items);
+    if (!checked_subtotal)
+        return 1;
+    const money subtotal = *checked_subtotal;
     std::cout << "subtotal: " << subtotal << "\n";
 
     // Apply 8 % sales tax: the exact product, rounded once to the nearest 1¢
@@ -45,7 +50,11 @@ int main() {
     const money tax  = mul<money>(subtotal, rate);
     std::cout << "tax (" << rate << "): " << tax << "\n";
 
-    const money total = subtotal + tax;
+    // subtotal + tax can pass money's 1,000,000 USD: stored with a check.
+    const auto checked_total = try_value_cast<money>(subtotal + tax);
+    if (!checked_total)
+        return 1;
+    const money total = *checked_total;
     std::cout << "total:    " << total << " = " << total.in(cent) << "\n";
 
     // Issue a refund, capped at the total. `std::min` works on two `money`

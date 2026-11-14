@@ -134,7 +134,8 @@ TEST(MathAdaptiveTest, store_out_of_range_runs_the_policy) {
     static_assert(d.Decided);
     EXPECT_EQ(engine::store<eighths_clamp>(d.Index), eighths_clamp{1});
     // The default checked policy reports it.
-    EXPECT_ANY_THROW((void)engine::store<eighths>(engine::decide<eighths>(approx_of<30>(rational{13, 10}, 1)).Index));
+    EXPECT_DEATH((void)engine::store<eighths>(engine::decide<eighths>(approx_of<30>(rational{13, 10}, 1)).Index),
+                 "beman::inside");
 }
 
 namespace {
@@ -325,7 +326,7 @@ TEST(MathAdaptiveTest, two_argument_functions_round_correctly) {
     int      bad = 0;
     for (int i = -32; i <= 32; ++i)
         for (int j = -32; j <= 32; ++j) {
-            const sym4 y{i / 8.0}, x{j / 8.0};
+            const sym4 y = test::store<sym4>(i / 8.0), x = test::store<sym4>(j / 8.0);
             const ld   a = std::atan2(static_cast<ld>(i) / 8, static_cast<ld>(j) / 8);
             const ld   h = std::hypot(static_cast<ld>(i) / 8, static_cast<ld>(j) / 8);
             if (std::fabs(static_cast<double>(am::atan2<out20>(y, x)) - a) > n / 2)
@@ -339,7 +340,8 @@ TEST(MathAdaptiveTest, two_argument_functions_round_correctly) {
     for (int i = 1; i <= 128; i += 3)
         for (int j = -24; j <= 24; ++j) {
             const ld   want = std::pow(static_cast<ld>(i) / 16, static_cast<ld>(j) / 8);
-            const auto r    = test::caught([&] { return am::pow<wide20>(base{i / 16.0}, expo{j / 8.0}); });
+            const auto r    = test::reported(
+                [&] { return am::pow<wide20>(test::store<base>(i / 16.0), test::store<expo>(j / 8.0)); });
             if (want > 1024.5L) {
                 EXPECT_FALSE(r.has_value());
                 continue;
@@ -357,8 +359,8 @@ TEST(MathAdaptiveTest, two_argument_functions_round_correctly) {
     EXPECT_EQ(am::pow<halves>(base{1.5}, expo{2}), halves{2.5}); // 2.25 → 2.5 (half away)
     EXPECT_EQ((am::pow_base<10, out20>(expo{1})), out20{10});
     EXPECT_EQ((am::pow_base<2, out20>(expo{-3})), out20{0.125});
-    EXPECT_EQ((am::pow_base<10, out20>(expo{-1})), (out20{rational{1, 10}}));                // 1/10 rounded
-    EXPECT_FALSE(test::caught([] { return am::pow<out20>(base{8}, expo{3}); }).has_value()); // 512: past 64
+    EXPECT_EQ((am::pow_base<10, out20>(expo{-1})), (out20{rational{1, 10}}));                  // 1/10 rounded
+    EXPECT_FALSE(test::reported([] { return am::pow<out20>(base{8}, expo{3}); }).has_value()); // 512: past 64
 }
 
 //---------------------------------------------------------------------------
@@ -823,7 +825,7 @@ TEST(MathAdaptiveTest, double_tier_agrees_on_decimal_inputs_and_checked_forms) {
     int bad    = 0;
     for (int i = -40; i <= 40; i += 3)
         for (int j = -40; j <= 40; j += 3) {
-            const symd y{i / 10.0}, x{j / 10.0};
+            const symd y = test::store<symd>(i / 10.0), x = test::store<symd>(j / 10.0);
             const auto a  = am::atan2<out20>(y, x);
             const auto a2 = engine::evaluate<out20, engine::start_bits<out20>>(
                 engine::atan2_core<engine::input_limbs<symd>>{engine::exact_input(y), engine::exact_input(x)});
@@ -838,9 +840,9 @@ TEST(MathAdaptiveTest, double_tier_agrees_on_decimal_inputs_and_checked_forms) {
         }
     for (int i = 1; i <= 128; i += 5)
         for (int j = -300; j <= 300; j += 13) {
-            const base b{i / 16.0};
-            const expo e{rational{j, 100}};
-            const auto r  = test::caught([&] { return am::pow<tanout>(b, e); });
+            const base b  = test::store<base>(i / 16.0);
+            const expo e  = test::store<expo>(rational{j, 100});
+            const auto r  = test::reported([&] { return am::pow<tanout>(b, e); });
             using core    = engine::pow_core<engine::input_limbs<base>,
                                              engine::input_limbs<expo>,
                                              engine::in_mag<expo>,
@@ -852,7 +854,7 @@ TEST(MathAdaptiveTest, double_tier_agrees_on_decimal_inputs_and_checked_forms) {
         }
     // pow_base<10> over a decimal exponent.
     for (int j = -300; j <= 300; ++j) {
-        const expo e{rational{j, 100}};
+        const expo e  = test::store<expo>(rational{j, 100});
         using core    = engine::pow_core<2, engine::input_limbs<expo>, engine::in_mag<expo>, engine::out_kmax<tanout>>;
         const auto r2 = engine::evaluate<tanout, engine::start_bits<tanout>>(
             core{engine::exact_of<2>(10), engine::exact_input(e)});
@@ -1000,7 +1002,7 @@ TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
     int bad    = 0;
     for (int i = -40; i <= 40; i += 3)
         for (int j = -40; j <= 40; j += 3) {
-            const symm4 y{rational{i, 10}}, x{rational{j, 10}};
+            const symm4 y = test::store<symm4>(rational{i, 10}), x = test::store<symm4>(rational{j, 10});
             const auto  a2 = engine::evaluate<out52, engine::start_bits<out52>>(
                 engine::atan2_core<engine::input_limbs<symm4>>{engine::exact_input(y), engine::exact_input(x)});
             if (am::atan2<out52>(y, x).raw() != a2.raw())
@@ -1014,9 +1016,9 @@ TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
         }
     for (int i = 1; i <= 128; i += 5)
         for (int j = -300; j <= 300; j += 13) {
-            const base b{i / 16.0};
-            const expo e{rational{j, 100}};
-            const auto r  = test::caught([&] { return am::pow<tanout>(b, e); });
+            const base b  = test::store<base>(i / 16.0);
+            const expo e  = test::store<expo>(rational{j, 100});
+            const auto r  = test::reported([&] { return am::pow<tanout>(b, e); });
             using core    = engine::pow_core<engine::input_limbs<base>,
                                              engine::input_limbs<expo>,
                                              engine::in_mag<expo>,
@@ -1029,7 +1031,7 @@ TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
     // pow_base<10> onto a 44-bit output, as the deduced pow10 of a dyadic grid.
     using p10out = inside<{{0, 1'000'000'000}, rational{1, 16384}}, round_nearest>;
     for (int j = -900; j <= 900; ++j) {
-        const auto e = inside<{{-9, 9}, rational{1, 100}}, round_nearest>{rational{j, 100}};
+        const auto e = test::store<inside<{{-9, 9}, rational{1, 100}}, round_nearest>>(rational{j, 100});
         using core   = engine::
             pow_core<2, engine::input_limbs<decltype(e)>, engine::in_mag<decltype(e)>, engine::out_kmax<p10out>>;
         const auto r2 = engine::evaluate<p10out, engine::start_bits<p10out>>(
@@ -1414,10 +1416,11 @@ TEST(MathAdaptiveTest, hypot_on_mixed_grids_at_fine_outputs) {
     for (int i = 0; i <= 4096; i += 97)
         for (int j = 0; j <= 8000; j += 211) {
             const long long a = i - 2048, b = j - 4000;
-            const rational  r   = static_cast<rational>(am::hypot<o48>(xd{rational{a, 512}}, ym{rational{b, 1000}}));
-            const u128      m2  = u128{r.Num} * ((std::uint64_t{1} << 48) / static_cast<std::uint64_t>(r.Den)) * 2;
-            const u128      p74 = u128(static_cast<std::uint64_t>(a * a * 1'000'000 + b * b * (1 << 18))) << 74;
-            const u128      lo = m2 == 0 ? 0 : (m2 - 1) * (m2 - 1) * 15625, hi = (m2 + 1) * (m2 + 1) * 15625;
+            const rational  r = static_cast<rational>(
+                am::hypot<o48>(test::store<xd>(rational{a, 512}), test::store<ym>(rational{b, 1000})));
+            const u128 m2  = u128{r.Num} * ((std::uint64_t{1} << 48) / static_cast<std::uint64_t>(r.Den)) * 2;
+            const u128 p74 = u128(static_cast<std::uint64_t>(a * a * 1'000'000 + b * b * (1 << 18))) << 74;
+            const u128 lo = m2 == 0 ? 0 : (m2 - 1) * (m2 - 1) * 15625, hi = (m2 + 1) * (m2 + 1) * 15625;
             if (!(lo <= p74 && p74 <= hi))
                 ++bad;
         }
@@ -1726,7 +1729,7 @@ TEST(MathEngineTest, deep_step_at_the_cap) {
     EXPECT_EQ((math::exp<EC>(inside<{-100, 0}>{-60})), rational(1, 1024));
     using X  = inside<{{0, 1}, per<(std::uint64_t{1} << 40)>}>;
     using SF = inside<{{0, 1}, per<(std::uint64_t{1} << 40)>}, round_floor>;
-    EXPECT_EQ(math::sin<SF>(X{rational{3u, std::uint64_t{1} << 40}}).raw(), 2u);
+    EXPECT_EQ(test::unwrap(math::sin<SF>(X{rational{3u, std::uint64_t{1} << 40}})).raw(), 2u);
 }
 
 // The table tier's slot offset subtracted signed 64-bit value indices: an
@@ -1737,9 +1740,9 @@ TEST(MathEngineTest, table_lookup_on_an_input_straddling_two_to_the_63) {
     using O  = inside<{{0, 2}, per<1024>}, round_nearest>;
     static_assert(math::detail::engine::table_input<X> && !math::detail::engine::table_input<Xl>);
     static_assert(math::atan<O>(X{9223372036854775900u}) == math::atan<O>(Xl{9223372036854775900u}));
-    EXPECT_EQ(math::atan<O>(X{test::at_run_time(std::uint64_t{9223372036854775900u})}),
+    EXPECT_EQ(math::atan<O>(test::store<X>(test::at_run_time(std::uint64_t{9223372036854775900u}))),
               math::atan<O>(Xl{9223372036854775900u}));
-    EXPECT_EQ(math::atan<O>(X{test::at_run_time(std::uint64_t{9223372036854775806u})}),
+    EXPECT_EQ(math::atan<O>(test::store<X>(test::at_run_time(std::uint64_t{9223372036854775806u}))),
               math::atan<O>(Xl{9223372036854775806u}));
 }
 

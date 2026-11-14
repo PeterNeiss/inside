@@ -17,7 +17,7 @@ int main() {
     static_assert(std::is_same_v<decltype(sum), inside<{0, 200}>>);
     static_assert(sizeof(percent) == 1);
 
-    percent c = sum - just<100>;        // a checked store: 0..100 fits
+    percent c{sum - just<100>, clamp};  // -100..100 into 0..100: the store names what happens
     auto    bad = percent::try_make(sum); // expected<percent, errc>
     // [/listing]
     if (sum != just<100> || diff != just<-16> || neg != just<-42> || c != just<0> || !bad.has_value())

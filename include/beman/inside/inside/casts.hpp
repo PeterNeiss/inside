@@ -12,18 +12,28 @@
 // flag constructor: B{v, clamp}, B{v, wrap | round_floor}, B{v, unsafe}.)
 //---------------------------------------------------------------------------
 namespace beman::inside {
-// `checked_cast` — throws (via the installed handler) when the value would not
-// fit exactly: errc::overflow out of the interval (as to<T> and the predicate
-// name it), errc::rounding_error off the notch. Any numeric source, insides
-// included; once both checks pass the store is exact.
+// `checked_cast<B>(v)` — v stored into B exactly, whatever B's policy says
+// about rounding or the range: B itself where the grids prove every v fits
+// B's interval and lands on its notch, else a std::expected<B, errc> holding
+// errc::overflow (out of the interval, as to<T> and the predicate name it)
+// or errc::rounding_error (off the notch). Any numeric source, insides
+// included.
 template <insidable B, detail::numeric A>
     requires inside_assignable<B, A, flags_of<B> | detail::snap>
-[[nodiscard]] constexpr B checked_cast(A value) {
-    if (conversion_overflows<B>(value))
-        detail::raise(errc::overflow, "checked_cast: value out of inside interval");
-    if (conversion_rounds<B>(value))
-        detail::raise(errc::rounding_error, "checked_cast: value does not land on notch");
-    return B{value, make_policy<detail::snap>()};
+[[nodiscard]] constexpr auto checked_cast(A value) {
+    if constexpr (detail::values_in_range<B, A, detail::none>() && detail::values_on_lattice<B, A>())
+        return detail::stored<B, flags_of<B> | detail::snap>(value);
+    else {
+        using result = std::expected<B, errc>;
+        if constexpr (std::floating_point<A>)
+            if (!detail::is_finite(value))
+                return result{std::unexpect, errc::not_finite};
+        if (conversion_overflows<B>(value))
+            return result{std::unexpect, errc::overflow};
+        if (conversion_rounds<B>(value))
+            return result{std::unexpect, errc::rounding_error};
+        return result{detail::stored<B, flags_of<B> | detail::snap>(value)}; // both checks passed: exact
+    }
 }
 
 } // namespace beman::inside

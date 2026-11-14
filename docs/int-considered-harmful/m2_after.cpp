@@ -7,6 +7,7 @@
 
 #include <beman/inside/inside/io.hpp>
 #include <beman/inside/units.hpp>
+#include <beman/inside/units/io.hpp>
 
 using namespace beman::inside;
 using namespace beman::inside::units;
@@ -26,10 +27,10 @@ concept comparable = requires(A a, B b) { a < b; };
 
 int main()
 {
-  const reading                          raw{2048};
-  const quantity<cts, inside<{-64, 64}>> offset{12};
-  const gain_t                           gain{rational{1240909, 1000}};
-  const millivolts                       limit{2000};
+  const reading                          raw{2048, cts};
+  const quantity<cts, inside<{-64, 64}>> offset{12, cts};
+  const gain_t                           gain{rational{1240909, 1000}, cts / si::volt};
+  const millivolts                       limit{2000, si::milli(si::volt)};
 
   // The gain excludes 0, so the quotient is a plain, exact voltage.
   auto       volts = (raw - offset) / gain;

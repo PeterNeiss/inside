@@ -138,7 +138,7 @@
 \title{\vspace{-1.5cm}\textbf{int considered harmful}\\[0.4em]
        \large A case against the default integer, and a type that fixes it}
 \author{Peter Neiss}
-\date{26 October 2026}
+\date{13 November 2026}
 
 \begin{document}
 \maketitle
@@ -179,7 +179,7 @@ together with the programs that produced them.
 output block was captured by running it, and every measurement comes from those
 programs or from the repository's generated \file{docs/performance.md}. Every
 program is built as C++26 (\code{-std=c++26}), and every language rule cited is
-C++26's. The compiler is GCC 15.2.0 on \mbox{x86-64} Linux unless stated
+C++26's. The compiler is GCC 16.0.1 on \mbox{x86-64} Linux unless stated
 otherwise.
 \code{inside} is at version 0.5 and still under development, so its API may
 change. The paper and the library were developed with
@@ -287,20 +287,20 @@ $ objdump -d h02
 
 0000000000001040 <main>:
     1040:   endbr64
-    1044:   cs nopw 0x0(%rax,%rax,1)
-    104e:   xchg   %ax,%ax
+    1044:   ud2
+    1046:   cs nopw 0x0(%rax,%rax,1)
 
 0000000000001050 <_start>:
 \end{lstlisting}
 
 \noindent
-That is all of \code{main}: a landing pad and padding. There is no loop, no
-\code{printf} and \textbf{no \code{ret}}. Execution falls through into
-whatever comes next:
+That is all of \code{main}: a landing pad and a trap. There is no loop, no
+\code{printf} and \textbf{no \code{ret}}. The compiler marks the end of
+\code{main} unreachable, and runs into the trap instruction:
 
 \begin{lstlisting}[style=term]
 $ ./h02
-Segmentation fault (core dumped)          [exit 139]
+Illegal instruction (core dumped)         [exit 132]
 
 $ ./h02_compiled_at_O0
 iterations = 3
@@ -635,7 +635,7 @@ and its edge policy:
 
 \begin{lstlisting}
 template<grid G, policy_flag P>
-struct inside;                        // include/beman/inside/inside/detail/core.hpp:98
+struct inside;                        // include/beman/inside/inside/detail/core.hpp:160
 \end{lstlisting}
 
 \noindent
@@ -656,24 +656,25 @@ The number is always an \code{inside}:
 
 \begin{lstlisting}
 template<reference R, insidable Rep>
-class quantity;                       // include/beman/inside/units.hpp:1180
+class quantity;                       // include/beman/inside/units/detail/quantity.hpp:314
 template<reference R, origin_ref O, insidable Rep>
-class quantity_point;                 // include/beman/inside/units.hpp:1718
+class quantity_point;                 // include/beman/inside/units/detail/point.hpp:66
 \end{lstlisting}
 
 \noindent
 A reference is either a unit, such as \code{si::kilo(si::metre)}, or a
 quantity kind with a unit, such as \code{isq::height[si::metre]}. A quantity
 point counts from an origin, such as absolute zero or the ice point.
-\file{units\_math.hpp} adds the math functions on quantities.
+\file{units/math.hpp} adds the math functions on quantities.
 
-Units of your own are values too: here a per cent, a currency with euros and
-cents, and samples per second. The catalogue supplies the degree, the radian,
-the kilometre and the height kind:
+Units of your own are values too: here a currency with euros and cents, and
+samples per second. The catalogue supplies the per cent, the degree, the
+radian, the kilometre and the height kind. A number goes into a quantity with
+its unit named:
 
-\lstinputlisting[firstline=15,lastline=50]{int-considered-harmful/b00_declarations.cpp}
+\lstinputlisting[firstline=16,lastline=51]{int-considered-harmful/b00_declarations.cpp}
 \begin{lstlisting}[style=term]
-pct          = 42%
+pct          = 42 %
 money        = 19.99 EUR = 1999 ct
 angle        = 10°   (370° wraps)
 90° in rad   = 1.5708 rad
@@ -686,7 +687,7 @@ height       = 8849 m
 \noindent
 Euros to cents is an exact rescale. Degrees to radians is a factor of $\pi$,
 which no grid holds exactly. \code{.in()} refuses it, and
-\code{value\_cast} from \file{units\_math.hpp} computes $x\pi/180$ exactly
+\code{value\_cast} from \file{units/math.hpp} computes $x\pi/180$ exactly
 and rounds once onto the target grid.
 
 \paragraph{Credit where it is due.} The quantity layer follows
@@ -766,7 +767,7 @@ round_toward_zero = -3
 mode is honoured for negative operands, where truncation and flooring differ.
 A property test pins $(a/b) \cdot b + a \bmod b = a$ across whole grids, in
 every mode and with negative divisors
-(\file{tests/beman/inside/div\_round.test.cpp:150}).
+(\file{tests/beman/inside/division.test.cpp:151}).
 \end{sloppypar}
 
 \subsection{The edge is a policy you declare}
@@ -774,7 +775,7 @@ every mode and with negative divisors
 Arithmetic never leaves its range. Only assignment into a narrower type can,
 and what happens then is part of the declaration:
 
-\lstinputlisting[firstline=18,lastline=46]{int-considered-harmful/b03_policies.cpp}
+\lstinputlisting[firstline=19,lastline=46]{int-considered-harmful/b03_policies.cpp}
 \begin{lstlisting}[style=term]
 checked  200 ->    value does not fit its range
 clamp    150 ->    100
@@ -788,6 +789,10 @@ Wrapping is available, but here you request it, and it is well-defined. The
 default is \code{checked}, and every policy checks unless it says
 \code{unsafe}. For example, \code{round\_nearest} rounds first and then still
 range-checks the result. To turn the check off, you have to write the word.
+Nothing throws: a constant out of range does not compile, and a run-time value
+the grids cannot prove names how a failure is reported (\code{try\_make}, an
+\code{errc}, an \code{on\_error} hook) or how it is resolved (\code{clamp},
+\code{wrap}).
 
 \subsection{Negation reflects the type}
 
@@ -810,7 +815,7 @@ return a negative number.
 The notch records the scale, so a cent value and a dollar value have different
 types, and combining them converts:
 
-\lstinputlisting[firstline=14,lastline=33]{int-considered-harmful/b05_units.cpp}
+\lstinputlisting[firstline=14,lastline=31]{int-considered-harmful/b05_units.cpp}
 \begin{lstlisting}[style=term]
 subtotal           = $36.83
 shipping           = $5
@@ -822,12 +827,12 @@ A bare integer cannot enter the arithmetic at all, because nothing says which
 grid it belongs to. The diagnostic says so:
 
 \begin{lstlisting}[style=term]
-$ g++ -std=c++26 -I ../../include x01_bare_int_rejected.cpp
-   16 |   auto bad = x + 1;      // error: no grid for the literal
-include/beman/inside/inside/arithmetic.hpp:552:31: error: static assertion failed:
+$ g++-16 -std=c++26 -freflection -I ../../include x01_bare_int_rejected.cpp
+x01_bare_int_rejected.cpp:16:18: error: use of deleted function 'operator+(...)':
    an inside cannot be combined with a raw scalar: give the scalar a grid --
-   `1_ins`, `just<1>`, or `inside<{lo,hi}>{n}` for a runtime value with a
-   known range
+   `1_ins`, `just<1>`, or `inside<{lo,hi}>::try_make(n)` for a run-time value
+   with a known range
+   16 |   auto bad = x + 1;      // error: no grid for the literal
 \end{lstlisting}
 
 \subsection{The unit is part of the type}\label{sec:units}
@@ -836,7 +841,7 @@ Scale is not the same as dimension. A quantity carries its unit, so the Mars
 Climate Orbiter mismatch of \S2.11 converts exactly, and adding an impulse to a
 length does not compile:
 
-\lstinputlisting[firstline=15,lastline=33]{int-considered-harmful/b12_impulse.cpp}
+\lstinputlisting[firstline=16,lastline=34]{int-considered-harmful/b12_impulse.cpp}
 \begin{lstlisting}[style=term]
 100 N·s + 10 lbf·s = 144.4822161526050 N s
 N·s + m            : does not compile
@@ -852,7 +857,7 @@ Units do more than dimensions. A conversion multiplies the grid, not the
 number. Temperatures are points with origins. Kinds separate quantities that
 share a dimension:
 
-\lstinputlisting[firstline=20,lastline=46]{int-considered-harmful/b13_quantities.cpp}
+\lstinputlisting[firstline=21,lastline=48]{int-considered-harmful/b13_quantities.cpp}
 \begin{lstlisting}[style=term]
 12.5 km in m       = 12500 m   (raw 12500 -> 12500)
 20 C in K          = 293.15 K
@@ -931,7 +936,7 @@ them as a quantity of its kind: $h$ is an action and $e$ an electric charge.
 It also holds the constants that follow from them, the CODATA 2022 measured
 values, and the common mathematical constants (\file{docs/constants.md}):
 
-\lstinputlisting[firstline=21,lastline=40]{int-considered-harmful/b14_constants.cpp}
+\lstinputlisting[firstline=22,lastline=41]{int-considered-harmful/b14_constants.cpp}
 \begin{lstlisting}[style=term]
 $ g++-16 -std=c++26 -freflection -O2 -I ../../include b14_constants.cpp
 h    = 6.62607015e-34 J s
@@ -1016,7 +1021,7 @@ The gain was rounded to whole counts per volt, the division truncated, and the
 over-voltage check compares 2048 counts with 2000 millivolts. With quantities,
 counts get a base dimension of their own, as in \file{examples/adc\_calibration.cpp}:
 
-\lstinputlisting[firstline=14,lastline=42]{int-considered-harmful/m2_after.cpp}
+\lstinputlisting[firstline=15,lastline=43]{int-considered-harmful/m2_after.cpp}
 \begin{lstlisting}[style=term]
 reading            = 1641 mV
 over-voltage?      = no
@@ -1043,19 +1048,21 @@ Every line is a \code{static\_assert}. An out-of-range constant is rejected
 outright:
 
 \begin{lstlisting}[style=term]
-$ g++ -std=c++26 -I ../../include x02_range_rejected.cpp
-error: 'constexpr void beman::inside::policy<W,E>::report(beman::inside::errc) const'
-       called in a constant expression
-error: call to non-'constexpr' function 'void beman::inside::detail::raise(beman::inside::errc,
-       const char*)'
+$ g++-16 -std=c++26 -freflection -I ../../include x02_range_rejected.cpp
+x02_range_rejected.cpp:14:37: error: uncaught exception of type
+       'beman::inside::inside_error'; 'what()': 'inside: a checked store in a
+       constant expression is outside the grid's interval - widen the interval,
+       or store with clamp or wrap'
 \end{lstlisting}
 
 \noindent
-The error path is deliberately not \code{constexpr}, so reaching it during
-constant evaluation is a compile error. Dimension and kind mismatches are
+A failed check during constant evaluation throws a C++26 constexpr exception,
+so the build fails with a text that names the fix. Without \code{constexpr}
+the store is rejected too: a constant the grids cannot prove is checked while
+compiling, and a run-time value names how a failure is reported. Dimension and kind mismatches are
 caught the same way, as constraint failures with a stated reason
 (\S\ref{sec:units}). The library's
-\file{tests/beman/inside/constexpr.test.cpp} relies on this: 159
+\file{tests/beman/inside/constexpr.test.cpp} relies on this: 155
 \code{static\_assert}s that run inside the compiler.
 
 \subsection{The error vocabulary}
@@ -1069,18 +1076,18 @@ matches the caller's role:
 \toprule
 Shape & Spelling & When \\
 \midrule
-Plain value & \code{a + b} & The type proves the operation cannot fail. \\
-\code{expected<T,errc>} & \code{a / b}, \code{try\_make}, \code{to<T>()}, \code{math::tan} & It can fail at runtime. A math argument outside the domain for the whole input grid is a compile error instead. \\
-Error code & \code{x.policy(ec) = v} & Hot paths; the first error sticks. \\
-Throwing & default (\code{checked}) & Programming errors not handled locally. \\
-Callback & \code{on\_clamp}, \code{on\_wrap} & The event is expected and carries data. \\
+Plain value & \code{a + b}, a store the grids prove & The type proves the operation cannot fail. \\
+\code{expected<T,errc>} & \code{a / b}, \code{try\_make}, \code{to<T>()}, \code{mul<Out>}, \code{math::tan} & It can fail at runtime. A math argument outside the domain for the whole input grid is a compile error instead. \\
+Error code & \code{x.policy(ec) = v} & Hot paths and loops; the first error sticks. \\
+Callback & \code{on\_clamp}, \code{on\_wrap}, \code{on\_error} & The event is expected and carries data, or a value replaces a failed store. \\
+Compile error & a store the grids cannot prove, with no channel & The default (\code{checked}): nothing throws, so a store names its outcome. \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 \noindent
 Quantities keep these shapes: dividing by a quantity whose grid holds 0 gives
-an \code{expected}, as it does for an \code{inside}. The codes form a small closed set (\file{detail/debug.hpp:30}). A value that
+an \code{expected}, as it does for an \code{inside}. The codes form a small closed set (\file{inside/detail/error.hpp:40}). A value that
 does not fit is always \code{overflow}, whichever path found it:
 
 \begin{lstlisting}
@@ -1089,9 +1096,10 @@ enum class errc { domain_error, division_by_zero, overflow,
 \end{lstlisting}
 
 \noindent
-There is no \code{<system\_error>} dependency. \code{set\_error\_handler}
-replaces the failure path where exceptions are unavailable, which lets the
-library run freestanding. Callbacks matter because some ``errors'' are the
+There is no \code{<system\_error>} dependency, and no run-time exception.
+What no call can report, a broken precondition such as a cursor stepped past
+its end, goes to a handler that \code{set\_error\_handler} replaces; by
+default it prints and aborts, so the library runs freestanding. Callbacks matter because some ``errors'' are the
 domain's semantics. Seconds overflowing 59 is a carry:
 
 \begin{lstlisting}
@@ -1109,7 +1117,7 @@ That is the whole carry logic of \file{examples/clock.cpp}.
 The notch is an exact rational, so cents and thirds have no approximation. Here
 is the money example from \S\ref{sec:double}:
 
-\lstinputlisting[firstline=15,lastline=30]{int-considered-harmful/b04_money.cpp}
+\lstinputlisting[firstline=15,lastline=31]{int-considered-harmful/b04_money.cpp}
 \begin{lstlisting}[style=term]
 10000 x $0.01      = $100.00
 exactly $100.00    ? true
@@ -1160,16 +1168,16 @@ Regime & When & Measured \\
 \textbf{Negative cost} & A chain of operations whose intermediate ranges the
 grid arithmetic discharges; comparisons that run on raw storage. &
 21\% faster than native checked (\S\ref{sec:checks}); scalar comparison at
-130\% of native \\[0.6em]
+129\% of native \\[0.6em]
 \textbf{Zero cost} & Integer operands, where all the range reasoning happens in
 the type system. &
 Byte-identical disassembly; a unit conversion is one \code{mov}
 (\S\ref{sec:codegen}); construct, add,
-\code{std::accumulate}, sort, transform at 98--100\% \\[0.6em]
+\code{std::accumulate}, transform at 98--100\%, sort at 91\% \\[0.6em]
 \textbf{Additional cost} & Continuous (rational) grids, element-wise checking,
 transcendentals correctly rounded at full \code{double} resolution. &
-rational add about 5$\times$ \code{double}; checked loop at 20\%; fine math
-4--9$\times$ \code{std} \\
+rational add about 4$\times$ \code{double}; checked loop at 24\%; fine math
+4--7$\times$ \code{std} \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1185,7 +1193,7 @@ least one direction.
 
 \lstinputlisting[firstline=17,lastline=37]{int-considered-harmful/p01_codegen.cpp}
 \begin{lstlisting}[style=term]
-$ g++ -std=c++26 -O2 -I ../../include -c p01_codegen.cpp && objdump -d p01.o
+$ g++-16 -std=c++26 -freflection -O2 -I ../../include -c p01_codegen.cpp && objdump -d p01.o
 
 0000000000000000 <inside_add(inside<...>, inside<...>)>:
    0:   endbr64
@@ -1207,9 +1215,9 @@ $ g++ -std=c++26 -O2 -I ../../include -c p01_codegen.cpp && objdump -d p01.o
 \code{inside\_add} and \code{native\_add} are byte-identical under the
 default \code{checked} policy: the sum widens to $[0, 2000]$, so there is
 nothing to check. The km-to-mm conversion is a single \code{mov}: it rescales
-the grid and keeps the raw. An in-place \code{+=} can leave its range, so a
-\code{checked} element is checked on every pass and the loop stays scalar, as
-in the accumulate table below. With \code{unsafe} it vectorises, on 16-bit lanes
+the grid and keeps the raw. An in-place \code{+=} can leave its range, so on
+a \code{checked} element it names a channel: \code{x.policy(ec) += 1\_ins}
+checks every pass and the loop stays scalar, as in the accumulate table below. With \code{unsafe} it vectorises, on 16-bit lanes
 (its storage for $[0,1000]$) where native uses 32-bit lanes.
 \file{tests/beman/inside/check\_codegen.sh} runs in CI. It disassembles named
 kernels and fails on any \code{call} other than the cold error report, and on
@@ -1222,11 +1230,14 @@ The fastest row in every table is plain, unchecked native code. It is fastest
 because it does not do the job: it is the code of \S\ref{sec:indictment}.
 The honest baselines are native code that enforces the same range, written as
 a competent programmer would write it
-(\file{tests/beman/inside/bench.test.cpp:62}):
+(\file{tests/beman/inside/bench.test.cpp:66}):
 \begin{itemize}
 \item \code{native clamped}: \code{std::clamp(v, 0, 200)};
 \item \code{native checked}: a hand-rolled bounded struct that throws on
-      violation.
+      violation;
+\item \code{inside<checked>}: the inputs and the narrowing store report into
+      an \code{errc} (a run-time \code{int} names its channel), checked after
+      the run.
 \end{itemize}
 \file{p02\_fair\_bench.cpp} measures all five contenders on the same data: a
 summed pass over 4096 values, repeated 20{,}000 times, with no throws.
@@ -1237,20 +1248,23 @@ summed pass over 4096 values, repeated 20{,}000 times, with no throws.
 \toprule
 Implementation & ns/op & vs.\ unchecked & enforces? & vs.\ safe native \\
 \midrule
-\code{native unchecked}   & 0.439 & 100.0\% & no  & --- \\
-\code{native clamped}     & 0.459 &  95.6\% & yes & 100.0\% \\
-\code{native checked}     & 0.518 &  84.6\% & yes &  88.5\% \\
-\code{inside<checked>}    & 0.522 &  84.1\% & yes & \textbf{87.9\%} \\
-\code{inside<unsafe>}     & 0.439 & 100.0\% & no  & --- \\
+\code{native unchecked}   & 0.442 & 100.0\% & no  & --- \\
+\code{native clamped}     & 0.460 &  96.1\% & yes & 100.0\% \\
+\code{native checked}     & 0.522 &  84.7\% & yes &  88.1\% \\
+\code{inside<checked>}    & 0.587 &  75.3\% & yes & \textbf{78.4\%} \\
+\code{inside<unsafe>}     & 0.442 & 100.0\% & no  & --- \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 \noindent
-\emph{Mean of three runs pinned to one core; GCC 15.2.0, \code{-std=c++26 -O2}, x86-64.}
+\emph{Mean of three runs pinned to one core; GCC 16.0.1, \code{-std=c++26 -O2}, x86-64.}
 
-The guarantee itself costs 5--15\% in plain C++. \code{inside<checked>} runs at
-99.4\% of the hand-rolled checked struct, so the library adds under 1\% on top.
+The guarantee itself costs 4--15\% in plain C++. \code{inside<checked>} runs at
+88.9\% of the hand-rolled checked struct. The difference is the reporting: the
+struct's \code{throw} never returns, so the compiler drops the failure path from
+the loop, while a check that reports into an \code{errc} continues with a
+defined value and keeps the channel's address live.
 \code{inside<unsafe>} matches unchecked native. This is a favourable pattern:
 a tight, predictable loop. It shows that the gap is small \emph{when you
 compare against code doing the same work}, not that \code{inside} is free
@@ -1269,9 +1283,9 @@ appear:
 \toprule
 Operation & Emitted & Check? \\
 \midrule
-\code{bchecked(int v)}            & \code{cmp \$0xc8,\%edi; ja ...} & yes \\
+\code{bchecked\{v, make\_policy<checked>(ec)\}} & \code{cmp \$0xc8,\%edi; ja ...} & yes \\
 \code{auto c = a + b} (kept wide) & \code{movzbl; movzbl; lea; ret} & \textbf{none} \\
-\code{bchecked c = a + b}         & \code{add; cmp \$0xc8,\%rax; jg ...} & yes \\
+\code{c.policy(ec) = a + b}       & \code{add; cmp \$0xc8,\%rax; jg ...} & yes \\
 \code{checked\_u8 c = a + b} (native) & \code{add; cmp \$0xc8,\%eax; jg ...} & yes \\
 \code{bchecked b = a} (same grid)  & \code{mov; ret} & \textbf{none} \\
 \code{wide w = a} (widening)       & \code{movzbl; ret} & \textbf{none} \\
@@ -1281,7 +1295,8 @@ Operation & Emitted & Check? \\
 
 \noindent
 Checks appear in only two places: entering from a raw integer, and narrowing
-into a smaller grid. The narrowing check is the same instructions as the native
+into a smaller grid. Both name their channel (here an \code{errc}); the record
+of a failure is a cold call out of line. The narrowing check is the same instructions as the native
 struct's. A native checked type must re-validate after \emph{every} step of a
 chain. \code{inside} lets intermediates widen and checks only the final store.
 \file{p03\_check\_elision.cpp} sums four values in $[0,50]$ into $[0,200]$:
@@ -1292,9 +1307,9 @@ chain. \code{inside} lets intermediates widen and checks only the final store.
 \toprule
 Implementation & ns/op & vs.\ unchecked & runtime checks \\
 \midrule
-\code{native unchecked}  & 0.874 & 100.0\% & 0 \\
-\code{native checked}    & 1.067 &  81.9\% & 3 \\
-\code{inside<checked>}   & 0.881 &  \textbf{99.2\%} & \textbf{0} \\
+\code{native unchecked}  & 0.877 & 100.0\% & 0 \\
+\code{native checked}    & 1.072 &  81.8\% & 3 \\
+\code{inside<checked>}   & 0.883 &  \textbf{99.4\%} & \textbf{0} \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1312,7 +1327,7 @@ in \code{int} records what has already been established.
 
 \begin{sloppypar}
 \noindent
-These come from \file{docs/performance.md} (GCC 15, C++26, \code{-O3}, one run pinned
+These come from \file{docs/performance.md} (GCC 16, C++26, \code{-O3}, one run pinned
 to one core). \emph{rel.} is throughput relative to the first row, so smaller
 means slower. Frequency scaling was active, so read the ratios and instruction
 counts, not the nanoseconds. Sub-nanosecond rows move by 15--20\% from run to
@@ -1320,38 +1335,39 @@ run.
 \end{sloppypar}
 
 \begin{benchtablec}{construct (u8 [0,200])}
-  100.0\% & 0.29 & 7.00 & no & \texttt{native uint8} \\
-  62.8\% & 0.47 & 13.00 & yes & \texttt{native clamped} \\
-  90.1\% & 0.33 & 9.00 & yes & \texttt{native checked (exceptions)} \\
-  99.9\% & 0.29 & 7.00 & no & \texttt{inside<unsafe>} \\
+  100.0\% & 0.29 & 8.00 & no & \texttt{native uint8} \\
+  62.7\% & 0.47 & 14.00 & yes & \texttt{native clamped} \\
+  89.9\% & 0.33 & 10.00 & yes & \texttt{native checked (exceptions)} \\
+  98.4\% & 0.30 & 8.00 & no & \texttt{inside<unsafe>} \\
 \end{benchtablec}
 
 \begin{benchtablec}{add (u8 [0,200])}
-  100.0\% & 0.41 & 11.00 & no & \texttt{native uint8} \\
-  49.7\% & 0.82 & 15.00 & yes & \texttt{native clamped} \\
-  79.8\% & 0.51 & 17.00 & yes & \texttt{native checked (exceptions)} \\
-  99.7\% & 0.41 & 10.00 & no & \texttt{inside<unsafe>} \\
+  100.0\% & 0.41 & 12.00 & no & \texttt{native uint8} \\
+  32.9\% & 1.25 & 16.00 & yes & \texttt{native clamped} \\
+  79.5\% & 0.52 & 18.00 & yes & \texttt{native checked (exceptions)} \\
+  100.2\% & 0.41 & 11.00 & no & \texttt{inside<unsafe>} \\
 \end{benchtablec}
 
 \begin{benchtable}{accumulate 1000 (u32 [0,200000], per element)}
   100.0\% & 0.05 & 1.03 & \texttt{native loop} \\
-  100.1\% & 0.05 & 1.03 & \texttt{inside<unsafe> loop} \\
-  20.1\% & 0.26 & 9.01 & \texttt{inside<checked> loop} \\
-  47.4\% & 0.11 & 2.47 & \texttt{beman::inside::sum<checked> (bulk check)} \\
+  97.7\% & 0.05 & 1.03 & \texttt{inside<unsafe> loop} \\
+  24.2\% & 0.21 & 8.01 & \texttt{inside<checked> loop} \\
+  87.4\% & 0.06 & 1.24 & \texttt{beman::inside::sum<checked> (bulk check)} \\
   100.0\% & 0.05 & 1.03 & \texttt{std::accumulate native} \\
-  100.0\% & 0.05 & 1.03 & \texttt{std::accumulate inside} \\
+  98.7\% & 0.05 & 1.03 & \texttt{std::accumulate inside} \\
 \end{benchtable}
 
 \noindent
-A checked element-wise loop checks every element and so cannot vectorise.
-\code{beman::inside::sum} checks the total instead and is 2.4$\times$ faster.
+A checked element-wise loop reports each element's store into an \code{errc}
+(\code{acc.policy(ec) += v}) and so cannot vectorise.
+\code{beman::inside::sum} checks the total instead and is 3.6$\times$ faster.
 Without the check, both loops vectorise like native code.
 
 \begin{benchtable}{comparison ==}
-  100.0\% & 0.53 & 12.00 & \texttt{native int16} \\
-  101.3\% & 0.52 & 12.00 & \texttt{inside same grid} \\
-  130.0\% & 0.41 & 9.00 & \texttt{inside == int scalar (value raw)} \\
-  129.6\% & 0.41 & 9.00 & \texttt{inside Q8.8 == int scalar (index raw)} \\
+  100.0\% & 0.53 & 13.00 & \texttt{native int16} \\
+  100.3\% & 0.53 & 13.00 & \texttt{inside same grid} \\
+  129.0\% & 0.41 & 10.00 & \texttt{inside == int scalar (value raw)} \\
+  129.0\% & 0.41 & 10.00 & \texttt{inside Q8.8 == int scalar (index raw)} \\
 \end{benchtable}
 
 \noindent
@@ -1359,23 +1375,17 @@ The grid lets a comparison against a scalar run on raw storage, which takes
 fewer instructions than native.
 
 \begin{benchtable}{rational add (continuous grid)}
-  100.0\% & 4.97 & 97.20 & \texttt{native fraction} \\
-  863.6\% & 0.58 & 12.00 & \texttt{std double (reference)} \\
-  187.1\% & 2.66 & 62.27 & \texttt{inside (continuous)} \\
+  100.0\% & 4.89 & 98.20 & \texttt{native fraction} \\
+  839.1\% & 0.58 & 13.00 & \texttt{std double (reference)} \\
+  199.7\% & 2.45 & 59.62 & \texttt{inside (continuous)} \\
 \end{benchtable}
 
 \noindent
 Overflow-checked rational addition beats a hand-rolled reduced \code{int64}
-fraction, and costs about 5$\times$ a \code{double}. That is the price of
+fraction, and costs about 4$\times$ a \code{double}. That is the price of
 exactness. Only continuous grids pay it: any notched grid, thirds included,
-stores an integer index. Sort and \code{std::transform} run at 98.7\% and
-99.0\% of native.
-
-\textbf{Increment} (\code{u32 [0,200000]}) is the outlier, at 12.0\%, and the
-library's arithmetic is not the cause. As plain functions, the two increments
-compile identically (\code{lea; xor; cmp; cmovae}). In the benchmark, GCC
-gives the native counter a predicted branch and the \code{inside} one a
-conditional move on a loop-carried dependency through memory.
+stores an integer index. Sort and \code{std::transform} run at 90.6\% and
+99.5\% of native, and the increment (\code{u32 [0,200000]}) at 111\%.
 
 \subsection{What correct rounding costs}\label{sec:mathcost}
 
@@ -1410,20 +1420,20 @@ fine as a \code{double}:
 \toprule
 Function & \code{std} ns & deduced grid ns & \code{double}-fine ns & fine vs.\ \code{std} \\
 \midrule
-\code{sin}  ($2^{-52}$) & 3.40 & 4.93 & 14.5 & 4.3$\times$ \\
-\code{exp}  ($2^{-40}$ on $[0,4096]$) & 2.67 & 5.61 & 12.4 & 4.7$\times$ \\
-\code{log}  ($2^{-48}$) & 2.32 & 5.57 & 17.4 & 7.5$\times$ \\
-\code{sqrt} ($2^{-51}$) & 1.23 & 2.38 & 10.5 & 8.6$\times$ \\
+\code{sin}  ($2^{-52}$) & 3.40 & 4.69 & 13.1 & 3.8$\times$ \\
+\code{exp}  ($2^{-40}$ on $[0,4096]$) & 2.68 & 5.15 & 11.4 & 4.3$\times$ \\
+\code{log}  ($2^{-48}$) & 2.34 & 5.16 & 14.7 & 6.3$\times$ \\
+\code{sqrt} ($2^{-51}$) & 1.24 & 1.97 & 8.91 & 7.2$\times$ \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 \noindent
-\emph{Mean of three runs pinned to one core; GCC 15.2.0,
+\emph{Mean of three runs pinned to one core; GCC 16.0.1,
 \code{-std=c++26 -O3 -mfma}, x86-64.}
 
 At full \code{double} resolution, correct rounding costs \textbf{4 to
-9$\times$} \code{std}. In return, the results are correct to the last bit and
+7$\times$} \code{std}. In return, the results are correct to the last bit and
 identical on every platform, compiler and optimisation level, with or without
 an FPU. Ask for the output grid you need, not the finest one available.
 
@@ -1459,7 +1469,7 @@ hardware.
       progressively wider types. That is correct, but most C++ programmers do
       not expect it.
 \item \textbf{Correct rounding is not free.} At \code{double} resolution it
-      costs 4--9$\times$ \code{<cmath>}. Code that needs \code{double}
+      costs 4--7$\times$ \code{<cmath>}. Code that needs \code{double}
       throughput and tolerates \code{double} error should call \code{<cmath>}.
 \item \textbf{Not everything needs it.} A loop counter is not where numeric
       bugs come from. The machinery pays off where a wrong answer is expensive:

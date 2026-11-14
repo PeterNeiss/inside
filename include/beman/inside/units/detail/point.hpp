@@ -148,16 +148,25 @@ class quantity_point {
 };
 
 // value_cast on a point: its quantity from the origin cast, the origin kept.
+// (The point of a cast quantity, or an expected one: the cast's error passed on.)
+namespace detail {
+template <origin_ref O, class Q>
+constexpr auto point_at(const Q& q) {
+    if constexpr (beman::inside::detail::is_expected_v<Q>)
+        return q.transform([](const auto& x) { return point_at<O>(x); });
+    else
+        return quantity_point<Q::reference, O, typename Q::rep>{q};
+}
+} // namespace detail
 template <insidable Rep2, reference R, detail::origin_ref O, class V>
-    requires std::constructible_from<Rep2, const V&>
-[[nodiscard]] constexpr quantity_point<R, O, Rep2> value_cast(const quantity_point<R, O, V>& p) {
-    return quantity_point<R, O, Rep2>{value_cast<Rep2>(p.quantity_from_origin())};
+    requires requires(const quantity<R, V>& q) { value_cast<Rep2>(q); }
+[[nodiscard]] constexpr auto value_cast(const quantity_point<R, O, V>& p) {
+    return detail::point_at<O>(value_cast<Rep2>(p.quantity_from_origin()));
 }
 template <auto U, insidable Rep2, reference R, detail::origin_ref O, class V>
     requires requires(const quantity<R, V>& q) { value_cast<U, Rep2>(q); }
 [[nodiscard]] constexpr auto value_cast(const quantity_point<R, O, V>& p) {
-    const auto q = value_cast<U, Rep2>(p.quantity_from_origin());
-    return quantity_point<std::remove_cvref_t<decltype(q)>::reference, O, Rep2>{q};
+    return detail::point_at<O>(value_cast<U, Rep2>(p.quantity_from_origin()));
 }
 
 // point<si::degree_Celsius>(v) — a point at the unit's default origin (the

@@ -32,7 +32,10 @@ using col          = inside<{0, 7}, clamp>;
 using offset       = inside<{-1, 1}, clamp>;
 using image        = inside_mdspan<pixel, extents_of<row, col>>;
 using smooth_image = inside_mdspan<smooth, extents_of<row, col>>;
-using window       = inside<{0, 9 * 255}>; // the sum of 9 pixels
+// The sum of 9 pixels. sum<window> counts at run time, so its type cannot
+// show that 9 pixels of at most 255 fit: clamp names what a larger total
+// would do (it never happens here).
+using window = inside<{0, 9 * 255}, clamp>;
 
 // out = the 3×3 mean of in, each output pixel rounded once.
 void blur(const image& in, const smooth_image& out) {

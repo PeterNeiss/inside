@@ -204,16 +204,11 @@ In input(std::uint64_t i) {
 // Input i, computed as a run-time call and on the integer path.
 using evaluator = std::function<void(std::uint64_t, record&, record&)>;
 
-// A result, or the errc of a store into Out that failed: a call fn<Out>(x)
-// reports a result past Out through Out's policy, and the default handler
-// throws. It is recorded as an expected's error is.
+// A result, or the errc of a call fn<Out>(x) whose result can miss Out:
+// that call returns an expected, recorded as its error is.
 template <class Fn, class... X>
 record record_of_call(const Fn& fn, const X&... x) {
-    try {
-        return record_of(fn(x...));
-    } catch (const inside_error& e) {
-        return {2, static_cast<std::uint64_t>(e.Code), 0};
-    }
+    return record_of(fn(x...));
 }
 
 template <class Fn, class... X>

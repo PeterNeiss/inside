@@ -17,7 +17,7 @@ int main() {
     x.policy<clamp>() = 150;                                    // 100: this store saturates
 
     using seconds = inside<{0, 59}, wrap>;
-    using minutes = inside<{0, 59}>;
+    using minutes = inside<{0, 59}, clamp>; // m += carry names what happens past 59
     seconds s = 50;
     minutes m = 0;
     s.on_wrap([&](auto&, auto carry) { m += carry; }) += 75_ins; // 125 s: s == 5, m == 2

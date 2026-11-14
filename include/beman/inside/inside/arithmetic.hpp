@@ -253,30 +253,60 @@ template <insidable Out, insidable A, insidable B, typename P>
 } // namespace detail
 
 namespace detail {
+// The exact result of a op b stores into Out under P with no run-time
+// failure (false where a op b has no result type of its own).
+template <insidable Out, policy_flag P, class A, class B>
+consteval bool product_proven() {
+    if constexpr (requires(const A& a, const B& b) { a * b; })
+        return store_proven<Out, decltype(std::declval<const A&>() * std::declval<const B&>()), P>;
+    else
+        return false;
+}
+template <insidable Out, policy_flag P, class A, class B>
+consteval bool quotient_proven() {
+    if constexpr (requires(const A& a, const B& b) { a / b; })
+        return store_proven<Out, unwrap_t<decltype(std::declval<const A&>() / std::declval<const B&>())>, P>;
+    else
+        return false;
+}
 // The flags of mul<Out> / div<Out>'s trailing argument: a flag, or none.
 template <class... Fl>
 concept call_flag_args = sizeof...(Fl) <= 1 && (flag_like<Fl> && ...);
 } // namespace detail
 
+// mul<Out>(a, b) / div<Out>(a, b): the exact product or quotient stored
+// once into Out, by Out's policy and the call's flag. Out where the grids
+// prove the store (the result's values fit Out, or the flag clamps or
+// wraps), else std::expected<Out, errc>; div's is also an expected when the
+// divisor's grid holds 0.
 template <insidable Out, insidable A, insidable B, class... Fl>
     requires detail::call_flag_args<Fl...>
-[[nodiscard]] constexpr Out mul(const A& a, const B& b, const Fl&...) {
-    constexpr policy_flag F      = detail::call_flags<Fl...>;
-    auto                  policy = make_policy<detail::override_flags(flags_of<Out>, F)>();
-    if constexpr (detail::native_product<Out, F, A, B>)
-        return detail::store_into<Out>(a * b, policy);
-    else {
-        if constexpr (detail::rational_operands<A, B>)
-            if (const auto p = detail::try_mul(detail::as_rational(a), detail::as_rational(b)))
-                return detail::store_into<Out>(*p, policy);
-        return detail::mul_wide<Out>(a, b, policy);
-    }
+[[nodiscard]] constexpr auto mul(const A& a, const B& b, const Fl&...) {
+    constexpr policy_flag F       = detail::call_flags<Fl...>;
+    constexpr policy_flag P       = detail::override_flags(flags_of<Out>, F);
+    const auto            product = [&](auto&& policy) -> Out {
+        if constexpr (detail::native_product<Out, F, A, B>)
+            return detail::store_into<Out>(a * b, policy);
+        else {
+            if constexpr (detail::rational_operands<A, B>)
+                if (const auto p = detail::try_mul(detail::as_rational(a), detail::as_rational(b)))
+                    return detail::store_into<Out>(*p, policy);
+            return detail::mul_wide<Out>(a, b, policy);
+        }
+    };
+    if constexpr (detail::product_proven<Out, P, A, B>())
+        return product(make_policy<P>());
+    else
+        return detail::try_store<Out, P>([&](Out& out, auto&& policy) { out = product(policy); });
 }
 
 template <insidable Out, insidable A, insidable B, class... Fl>
     requires detail::call_flag_args<Fl...>
-[[nodiscard]] constexpr auto div(const A& a, const B& b, const Fl&...)
-    -> std::conditional_t<detail::divisor_excludes_zero<B>, Out, std::expected<Out, errc>> {
+[[nodiscard]] constexpr auto div(const A& a, const B& b, const Fl&...) -> std::conditional_t<
+    detail::divisor_excludes_zero<B> &&
+        detail::quotient_proven<Out, detail::override_flags(flags_of<Out>, detail::call_flags<Fl...>), A, B>(),
+    Out,
+    std::expected<Out, errc>> {
     constexpr policy_flag F        = detail::call_flags<Fl...>;
     const auto            quotient = [&](auto&& policy) {
         if constexpr (detail::rational_operands<A, B> && detail::unreduced_store<Out>) {
@@ -288,11 +318,12 @@ template <insidable Out, insidable A, insidable B, class... Fl>
             return detail::div_reduced<Out>(a, b, policy);
     };
     constexpr policy_flag P = detail::override_flags(flags_of<Out>, F);
-    if constexpr (detail::divisor_excludes_zero<B>)
+    if constexpr (detail::divisor_excludes_zero<B> && detail::quotient_proven<Out, P, A, B>())
         return quotient(make_policy<P>());
     else {
-        if (b == 0)
-            return std::unexpected{errc::division_by_zero};
+        if constexpr (!detail::divisor_excludes_zero<B>)
+            if (b == 0)
+                return std::unexpected{errc::division_by_zero};
         return detail::try_store<Out, P>([&](Out& out, auto&& policy) { out = quotient(policy); });
     }
 }
@@ -432,12 +463,30 @@ inline constexpr int continuous_sum_bits = continuous_sum_bits_of<B>();
 // Continuous elements add exactly over lcm(1..D), D their denominator bound
 // (lcm(1..D) at most 4096 bits); n copies of a point are n·value.
 //---------------------------------------------------------------------------
-template <insidable Target, std::ranges::input_range Rng>
-    requires insidable<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>>
-[[nodiscard]] constexpr Target sum(Rng&& r) {
+namespace detail {
+// Every partial sum of B values lies on Target's lattice (or Target rounds):
+// B anchored, its step a whole number of Target's notches, Target anchored.
+template <insidable Target, insidable B>
+consteval bool sums_on_lattice() {
+    if constexpr (has_flag(flags_of<Target>, snap))
+        return true;
+    else if constexpr (!notched<Target> || (!point_grid<B> && !notched<B>))
+        return false; // continuous: denominators up to lcm(1..D) - reported
+    else {
+        if (!point_grid<B> && !grid_divides_evenly(lower_of<B>, notch_of<B>))
+            return false;
+        const grid_rational step = point_grid<B> ? lower_of<B> : notch_of<B>;
+        return grid_divides_evenly(step, notch_of<Target>) && grid_divides_evenly(lower_of<Target>, notch_of<Target>);
+    }
+}
+// A total of a run-time count of B values fits Target only by its policy.
+template <insidable Target, insidable B>
+inline constexpr bool sum_proven =
+    !is_checked(flags_of<Target>) || (has_any_flag(flags_of<Target>, clamp | wrap) && sums_on_lattice<Target, B>());
+
+template <insidable Target, class Rng, class Pol>
+constexpr void sum_into(Rng&& r, Target& out, Pol& policy) {
     using B = std::remove_cvref_t<std::ranges::range_reference_t<Rng>>;
-    Target out{};
-    auto   policy = make_policy<flags_of<Target>>();
 
     if constexpr (detail::integer_storage<B> && !detail::point_storage<B> && detail::notched<B>) {
         // The total in units of U, the value unit: the notch on an anchored
@@ -495,7 +544,7 @@ template <insidable Target, std::ranges::input_range Rng>
                 if (const auto v =
                         detail::try_mul(detail::rational{static_cast<std::int64_t>(total)}, detail::to_rational(U))) {
                     detail::assignment<Target, detail::rational>::assign(out, *v, policy, detail::no_action{});
-                    return out;
+                    return;
                 }
         }
         constexpr std::size_t K =
@@ -543,7 +592,24 @@ template <insidable Target, std::ranges::input_range Rng>
         detail::no_action              no_op;
         detail::assign_exact<detail::rational>(out, v, policy, no_op);
     }
-    return out;
+}
+} // namespace detail
+
+// The total stored into Target: Target where its policy takes any total
+// (clamp, wrap, unsafe), else std::expected<Target, errc> - the count is a
+// run-time number, so no grid proves a checked total.
+template <insidable Target, std::ranges::input_range Rng>
+    requires insidable<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>>
+[[nodiscard]] constexpr auto sum(Rng&& r) {
+    using B = std::remove_cvref_t<std::ranges::range_reference_t<Rng>>;
+    if constexpr (detail::sum_proven<Target, B>) {
+        Target out{};
+        auto   policy = make_policy<flags_of<Target>>();
+        detail::sum_into(r, out, policy);
+        return out;
+    } else
+        return detail::try_store<Target, flags_of<Target>>(
+            [&](Target& out, auto&& policy) { detail::sum_into(r, out, policy); });
 }
 
 //---------------------------------------------------------------------------
@@ -736,10 +802,10 @@ template <typename A>
 concept builtin_arithmetic = std::integral<A> || std::floating_point<A>;
 } // namespace detail
 
-#define BEMAN_INSIDE_SCALAR_MSG                                                     \
-    "an inside cannot be combined with a raw scalar: give the scalar a grid — "     \
-    "`1_ins`, `just<1>`, or `inside<{lo,hi}>{n}` for a runtime value with a known " \
-    "range"
+#define BEMAN_INSIDE_SCALAR_MSG                                                          \
+    "an inside cannot be combined with a raw scalar: give the scalar a grid — "          \
+    "`1_ins`, `just<1>`, or `inside<{lo,hi}>::try_make(n)` for a run-time value with a " \
+    "known range"
 #define BEMAN_INSIDE_NO_SCALAR(op)                                    \
     template <insidable B, detail::builtin_arithmetic A>              \
     void operator op(B const&, A) = delete (BEMAN_INSIDE_SCALAR_MSG); \

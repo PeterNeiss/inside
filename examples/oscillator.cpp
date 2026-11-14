@@ -55,7 +55,9 @@ int main() {
     std::cout << "\nSwept-frequency oscillator (increment grows each step):\n";
     std::cout << "  i   inc        phase        sin\n";
     {
-        using increment_t = quantity<slot, inside<{1, 65535}, round_toward_zero>>; // snap: increment / 4 truncates
+        // snap: increment / 4 truncates; clamp: the growth stays within 65535
+        // (×1.25 twelve times from 256 reaches 3725, which the grid cannot show).
+        using increment_t = quantity<slot, inside<{1, 65535}, round_toward_zero | clamp>>;
         phase_t     phase{0, slot};
         increment_t increment{256, slot}; // start at 1/256 turn
         for (int i = 0; i < 12; ++i) {

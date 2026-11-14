@@ -36,6 +36,13 @@ struct error_ref {
     errc& Code;
 };
 
+// The errc channel's record, out of line: a failure is the rare path, and
+// inline it would sit in every checked loop. The first error is kept.
+[[gnu::cold]] [[gnu::noinline]] constexpr void record_error(errc& slot, errc code) noexcept {
+    if (slot == errc{})
+        slot = code;
+}
+
 template <policy_flag F = none, typename E = empty_ref>
 struct call_policy : E {
     constexpr call_policy() = default;
@@ -64,15 +71,21 @@ struct call_policy : E {
     // Cheap default report: no message construction. error_ref mode records the
     // code (sticky: keeps the first error) — also during constant evaluation, so
     // try_make / parse / tan<Out> return error values in constexpr code.
-    // Throw mode funnels through the installed handler via an outlined cold
-    // helper; at compile time it throws, so the build fails with a text that
-    // names the code and the fix.
+    // Without an errc&, a failure is reached only in a constant expression
+    // (a run-time store the grids cannot prove needs a channel, so it does
+    // not compile): the build fails with a text that names the code and the
+    // fix. At run time it is a precondition (a cursor past its end) or a
+    // library bug, reported to the installed handler.
     constexpr void report(errc code) const {
         if constexpr (std::is_same_v<E, error_ref>)
-            E::Code = E::Code != errc{} ? E::Code : code;
+            record_error(E::Code, code);
         else {
             if consteval {
+#if BEMAN_INSIDE_HAS_EXCEPTIONS
                 raise(code, store_failure_message(code));
+#else
+                store_constexpr_error(code);
+#endif
             }
             raise(code);
         }

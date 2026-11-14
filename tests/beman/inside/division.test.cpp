@@ -153,9 +153,9 @@ void sweep_div_mod() {
         for (std::int64_t b = lower_int64<B>; b <= upper_int64<B>; ++b) {
             if (b == 0)
                 continue;
-            A                  ba{a};
-            B                  bb{b};
-            const std::int64_t q = Ref(a, b);
+            A                  ba = test::store<A>(a);
+            B                  bb = test::store<B>(b);
+            const std::int64_t q  = Ref(a, b);
             SCOPED_TRACE(::testing::Message() << "a=" << a << " b=" << b << " expected q=" << q);
             ASSERT_TRUE(static_cast<rational>(ba / bb) == q);         // quotient per mode
             ASSERT_TRUE(static_cast<rational>(ba % bb) == a - q * b); // remainder a − q·b
@@ -622,7 +622,7 @@ TEST(DivisionTest, divide_by_point_keeps_integer_storage) {
 
 TEST(DivisionTest, divide_by_point_matches_exact_quotient) {
     for (int v : {-100, -7, 0, 1, 99, 100}) {
-        inside<{-100, 100}> x{v};
+        const auto x = test::store<inside<{-100, 100}>>(v);
         EXPECT_EQ(exact{x / just<3>}, exact{v} / exact{3});
         EXPECT_EQ(exact{x / just<-4>}, exact{v} / exact{-4});
         EXPECT_EQ((exact{x / just<-3, 2>}), (exact{v} * exact{rational{-2, 3}}));
@@ -671,16 +671,16 @@ TEST(DivisionArmTest, remainder_on_a_lattice_past_int64_units) {
     using Z = inside<{{0, 10}, per<2>}>;
     const L a{rational{(std::uint64_t{1} << 61) + 1, 4}}; // 2^59 + 1/4
     EXPECT_EQ((rational{a % inside<{{1, 10}, per<2>}>{1.5}}), (rational{3, 4}));
-    EXPECT_EQ(rational{*(a % Z{test::at_run_time(1.5)})}, (rational{3, 4}));
-    EXPECT_EQ((a % Z{test::at_run_time(0)}).error(), errc::division_by_zero);
-    EXPECT_EQ(divmod(a, Z{test::at_run_time(0)}).error(), errc::division_by_zero);
+    EXPECT_EQ(rational{*(a % test::store<Z>(test::at_run_time(1.5)))}, (rational{3, 4}));
+    EXPECT_EQ((a % test::store<Z>(test::at_run_time(0))).error(), errc::division_by_zero);
+    EXPECT_EQ(divmod(a, test::store<Z>(test::at_run_time(0))).error(), errc::division_by_zero);
 }
 
 // % on integers past int64 with a divisor grid that holds 0.
 TEST(DivisionArmTest, remainder_of_wide_integers_by_a_grid_with_zero) {
     const inside<{0, 1180591620717411303424_g}> c{1000};
     using Z = inside<{0, 10}>;
-    EXPECT_TRUE(*(c % Z{test::at_run_time(7)}) == 6);
-    EXPECT_EQ((c % Z{test::at_run_time(0)}).error(), errc::division_by_zero);
+    EXPECT_TRUE(*(c % test::store<Z>(test::at_run_time(7))) == 6);
+    EXPECT_EQ((c % test::store<Z>(test::at_run_time(0))).error(), errc::division_by_zero);
 }
 } // namespace reached_arms_tests
