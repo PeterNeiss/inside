@@ -4,7 +4,8 @@
 
 #include <beman/inside/inside/detail/config.hpp>
 
-#include <beman/inside/math/detail/tiers.hpp> // the double and dd tiers, over math_cores.hpp
+#include <beman/inside/math/detail/functions.hpp> // range_bounded, specialized below
+#include <beman/inside/math/detail/tiers.hpp>     // the double and dd tiers, over math_cores.hpp
 
 #include <algorithm>
 #include <cstddef>

@@ -82,7 +82,6 @@ TEST(BigGridTest, construction_and_comparison) {
 }
 
 TEST(BigGridTest, assignment_policies) {
-    huge h = 0;
     EXPECT_EQ(test::store_error<huge>(test::at_run_time(-1)), errc::overflow);
     EXPECT_EQ(test::store_error<huge>(test::at_run_time(1e31)), errc::overflow); // past 2^100
     inside<{0, g(pow2(100))}, clamp> c = 0;
