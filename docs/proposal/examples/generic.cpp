@@ -23,7 +23,7 @@ int main() {
 
     std::unordered_set<small> seen{small{3}, small{4}, small{3}};  // two elements
     // [/listing]
-    if (hi != just<7> || seen.size() != 2)
+    if (hi != 7 || seen.size() != 2)
         return 1;
     return 0;
 }

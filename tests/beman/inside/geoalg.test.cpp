@@ -204,9 +204,9 @@ TEST(GeoalgTest, the_algebra_holds) {
     EXPECT_TRUE(wedge(u, v) == -wedge(v, u));
     EXPECT_TRUE(left_contraction(u, v) == right_contraction(u, v));
     EXPECT_TRUE(left_contraction(u, wedge(v, w)) == left_contraction(u, v) * w - left_contraction(u, w) * v);
-    EXPECT_TRUE(squared_norm(u) == just<14>);
+    EXPECT_TRUE(squared_norm(u) == 14);
     // In spacetime, γ₀ is timelike and γ₁ spacelike.
-    EXPECT_TRUE(squared_norm(just<3> * g0 + just<2> * g1) == just<5>);
+    EXPECT_TRUE(squared_norm(just<3> * g0 + just<2> * g1) == 5);
     EXPECT_TRUE((just<3> * g0 + just<2> * g1) * (just<3> * g0 + just<2> * g1) == just<5>);
 }
 
@@ -217,11 +217,11 @@ TEST(GeoalgTest, results_collapse) {
     static_assert(quantity_like<decltype(wedge(just<1> * x, just<1> * y))>);
     static_assert(std::same_as<decltype(wedge(just<1> * x, just<1> * x)), multivector<>>);
     static_assert(std::same_as<decltype(grade<3>(u)), multivector<>>);
-    EXPECT_TRUE(part(u, y) == just<2>);
+    EXPECT_TRUE(part(u, y) == 2);
     EXPECT_TRUE(part(u, z) == multivector<>{});
     // The coefficient of a named blade has its spelling's sign.
     const auto t = just<3> * x * z + just<1>;
-    EXPECT_TRUE(part(t, zx) == just<-3>);
+    EXPECT_TRUE(part(t, zx) == -3);
     EXPECT_TRUE(part(just<2> * si::metre * x + just<1> * si::metre * y, x) == just<2> * si::metre);
 }
 

@@ -38,7 +38,7 @@ TEST(StorageTest, default_ctor_stores_a_grid_value) {
     static_assert(!std::is_trivially_default_constructible_v<inside<{-100, -5}>>); // signed value
     static_assert(!std::is_trivially_default_constructible_v<inside<{{0, 10}, per<4>}, round_nearest>>);
     static_assert(!std::is_trivially_default_constructible_v<inside<{0, 10}, unsafe>>);
-    static_assert(inside<{-100, -5}>{} == -100_ins && inside<grid{5}>{} == 5_ins);
+    static_assert(inside<{-100, -5}>{} == -100 && inside<grid{5}>{} == 5);
 }
 
 // behaviour policies on a notched grid
@@ -285,14 +285,14 @@ TEST(DefaultValueTest, zero_when_the_grid_holds_it_else_lower) {
 
 TEST(DefaultValueTest, wide_storage) {
     // a wide index (more than 2^64 slots)
-    static_assert(inside<{0, 0x1p100}>{} == 0_ins);
+    static_assert(inside<{0, 0x1p100}>{} == 0);
     static_assert(inside<{0x1p100, 0x1p101}>{} == just<0x1p100>);
     static_assert(inside<{-0x1p101, -0x1p100}>{} == -just<0x1p101>);
     // a fraction raw (a continuous grid past the 64-bit rational)
     using F0 = inside<{{-0x1p70, 0x1p70}, max_denominator{3}}>;
     using F1 = inside<{{1, 0x1p70}, max_denominator{3}}>;
     static_assert(detail::fraction_storage<F0> && detail::fraction_storage<F1>);
-    static_assert(F0{} == 0_ins && F1{} == 1_ins);
+    static_assert(F0{} == 0 && F1{} == 1);
 }
 
 TEST(DefaultValueTest, runtime_matches_compile_time) {
@@ -346,8 +346,8 @@ TEST(DefaultValueTest, rational_is_zero_and_compares_values) {
 
 TEST(DefaultValueTest, quantity) {
     using namespace beman::inside::units;
-    static_assert(quantity<si::metre, inside<{5, 100}>>{}.numerical_value_in(si::metre) == 5_ins);
-    static_assert(quantity<si::metre, inside<{-5, 100}>>{}.numerical_value_in(si::metre) == 0_ins);
+    static_assert(quantity<si::metre, inside<{5, 100}>>{}.numerical_value_in(si::metre) == 5);
+    static_assert(quantity<si::metre, inside<{-5, 100}>>{}.numerical_value_in(si::metre) == 0);
 }
 } // namespace default_value_tests
 

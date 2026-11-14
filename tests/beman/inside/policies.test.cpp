@@ -1022,7 +1022,7 @@ TEST(PolicyTest, wrap_folds_past_the_64_bit_rational) {
 TEST(PolicyTest, named_policy_in_a_constructor) {
     using halves = inside<{{0.5, 10.5}, 1}>; // Lower off the notch's multiples
     using digit  = inside<{0, 9}>;
-    static_assert(digit{12, clamp} == 9_ins && digit{12, wrap} == 2_ins);
+    static_assert(digit{12, clamp} == 9 && digit{12, wrap} == 2);
     static_assert(halves{7, round_floor} == 6.5_ins);
     errc       ec{};
     const auto pol = make_policy<checked>(ec);

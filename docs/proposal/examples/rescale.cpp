@@ -24,9 +24,9 @@ int main() {
     static_assert(!addable<decltype(trip), decltype(just<1> * si::second)>); // another dimension
     // [/listing]
     if (m.numerical_value_in(si::metre).raw() != trip.numerical_value_in(km).raw() ||
-        m.numerical_value_in(si::metre) != just<12'500>)
+        m.numerical_value_in(si::metre) != 12'500)
         return 1;
-    if (total.numerical_value_in(si::metre) != just<13'300> || kmh.numerical_value_in(km / si::hour) != 39.9_ins || laps != just<31>)
+    if (total.numerical_value_in(si::metre) != 13'300 || kmh.numerical_value_in(km / si::hour) != 39.9_ins || laps != 31)
         return 1;
     return 0;
 }

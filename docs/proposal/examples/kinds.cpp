@@ -22,8 +22,8 @@ int main() {
     auto around = w + h;                                      // 7 m, a length: the common kind
     auto tall   = quantity_cast<isq::height>(w);              // a width read as a height, explicitly
     // [/listing]
-    if (area.numerical_value_in(square(si::metre)) != just<12> || around.numerical_value_in(si::metre) != just<7> ||
-        tall.numerical_value_in(si::metre) != just<3>)
+    if (area.numerical_value_in(square(si::metre)) != 12 || around.numerical_value_in(si::metre) != 7 ||
+        tall.numerical_value_in(si::metre) != 3)
         return 1;
     return 0;
 }

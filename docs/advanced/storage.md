@@ -167,6 +167,7 @@ its inside; read its raw in its own unit `u` with
 
 Storage is not a policy: one grid always has one raw, so two insides on a
 grid share their encoding, and every result type finds its own. For a fixed
-wire layout, write `b.to<std::uint16_t>()` into the field (checked) and read
+wire layout, write the inside into the field (`b.to<std::uint16_t>()` where its
+grid may not fit, checked) and read
 it back with `B{field}` or `B::try_make(field)`
 ([`storage.cpp`](../../examples/storage.cpp)).

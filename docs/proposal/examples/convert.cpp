@@ -25,7 +25,7 @@ int main() {
     auto down = q.to<int, round_floor>();                    // 2: rounding named in the call
     auto neg  = inside<{-5, 5}>{-1}.to<unsigned>();          // unexpected(errc::domain_error)
     // [/listing]
-    if (top != just<10> || deg != just<5> || *fit != just<7> || near != just<7>)
+    if (top != 10 || deg != 5 || *fit != 7 || near != 7)
         return 1;
     if (num != 11 || q.denominator() != 4 || i.has_value() || i.error() != errc::rounding_error || down != 2 || neg.has_value() || neg.error() != errc::domain_error)
         return 1;

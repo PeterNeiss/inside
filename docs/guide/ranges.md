@@ -33,7 +33,7 @@ without a size instead: `begin`, `end`, `++`, `--`, `std::views::take`.
 inside_range<{0, 9}> r;
 for (auto i : std::views::reverse(r)) { /* 9 8 … 0 */ }
 for (auto i : r | std::views::stride(3)) { /* 0 3 6 9 */ }
-auto it = std::ranges::find_if(values<bin>, [](bin b) { return b * b > 50_ins; });   // 8
+auto it = std::ranges::find_if(values<bin>, [](bin b) { return b * b > 50; });   // 8
 ```
 
 ## Stepping loops: `cursor<T, Step>`
@@ -47,7 +47,7 @@ It steps through `T`'s range by `Step`, starting at `T`'s lower limit, and
 using time_t = inside<{{-4, 4}, per<(1 << 10)>}, round_nearest>;
 for (cursor<time_t, per<4>> t; t != end(t); ++t)          // −4, −3.75, …, 4
     std::cout << t << ' ';
-for (cursor<time_t, 0.25_r> t = -2_ins; t <= 2_ins; ++t)  // any start, the classic test
+for (cursor<time_t, 0.25_r> t = -2_ins; t <= 2; ++t)  // any start, the classic test
     std::cout << t << ' ';
 ```
 

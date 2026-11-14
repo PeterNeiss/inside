@@ -422,8 +422,8 @@ struct inside {
     //                       A strict inside opts in via `to<double>().value()`.
     //   to<T>()           — narrowing/widening: T where the grid proves it total,
     //                       else `expected<T, errc>` (overflow / domain_error).
-    //   as<T>()           — non-expected sibling; throws on error. For known-
-    //                       in-range sites (array indexing: `vec[b.as<std::size_t>()]`);
+    //   as<T>()           — non-expected sibling, for known-in-range sites
+    //                       (an index needs none: `vec[b]`, below);
     //                       no check is left where T holds the whole grid.
     //   to<T>(b)/as<T>(b) — free-function forms, for generic code.
     // No implicit integer conversion: it would narrow silently into a smaller

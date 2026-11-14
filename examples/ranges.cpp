@@ -70,7 +70,7 @@ int main() {
 
     // The first thousandth whose square exceeds 2: sqrt(2), rounded up.
     using x_t        = inside<{{0, 2}, per<1000>}>;
-    const auto root2 = rng::partition_point(values<x_t>, [](x_t x) { return x * x <= 2_ins; });
+    const auto root2 = rng::partition_point(values<x_t>, [](x_t x) { return x * x <= 2; });
     std::cout << "sqrt(2) <=    " << *root2 << '\n';
     if (*root2 != 1.415_ins)
         return 1;

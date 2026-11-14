@@ -349,7 +349,7 @@ TEST(UnitsParityTest, clamp_overshoot_is_a_quantity) {
     turn t{0, si::second};
     t.on_wrap([&](auto&, auto carry) {
         static_assert(!quantity_like<decltype(carry)>);
-        exact = carry == 2_ins;
+        exact = carry == 2;
     }) = just<125> * si::second;
     EXPECT_TRUE(exact);
 }

@@ -111,7 +111,7 @@ int main() {
     // A hook on a compound op: the inside add overshoots [0,100], so the
     // store back fires on_clamp (the sum itself cannot fail).
     clamp_100 combo(50);
-    combo.on_clamp([](auto&, auto over) { std::cout << "combo:    on_clamp overshoot=" << over << "\n"; }) += 200_ins;
+    combo.on_clamp([](auto&, auto over) { std::cout << "combo:    on_clamp overshoot=" << over << "\n"; }) += 200;
     std::cout << "          (combo=" << combo << ")" << "\n";
 
     return 0;

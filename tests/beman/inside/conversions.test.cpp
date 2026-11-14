@@ -173,7 +173,7 @@ TEST(InsideToTest, as_size_t_indexes_a_container) {
     using idx_t = inside<{0, 9}>;
     std::vector<int> v{0, 10, 20, 30, 40, 50, 60, 70, 80, 90};
     idx_t            i{3};
-    ASSERT_EQ(v[i.as<std::size_t>()], 30);
+    ASSERT_EQ(v[i], 30);
     std::size_t s = i.as<std::size_t>();
     ASSERT_EQ(s, 3u);
 }
@@ -679,7 +679,7 @@ TEST(ConversionTest, implicit_integer_conversion_of_an_index_only) {
     int arr[] = {10, 20, 30, 40, 50};
     using ai  = inside<{0, 4}>;
     ai c{3};
-    ASSERT_EQ(arr[c.as<std::size_t>()], 40);
+    ASSERT_EQ(arr[c], 40);
 }
 
 //---------------------------------------------------------------------------

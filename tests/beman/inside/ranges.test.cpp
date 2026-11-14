@@ -232,7 +232,7 @@ static_assert(has_values<bin>);
 static_assert(!has_values<cursor<bin>>);                           // ends past bin's Upper
 static_assert(!has_values<inside<{{0, 1}, max_denominator{10}}>>); // no notch
 static_assert(std::ranges::size(values<bin>) == 10);
-static_assert(std::ranges::count_if(values<bin>, [](bin b) { return b > 5_ins; }) == 4);
+static_assert(std::ranges::count_if(values<bin>, [](bin b) { return b > 5; }) == 4);
 
 TEST(RangeTest, values_walks_every_value_of_a_type) {
     std::vector<rational> seen;
@@ -253,7 +253,7 @@ static_assert(small_grid{3}[4] == 2 && small_grid{3}.back() == 2); // indexes fr
 
 TEST(RangeTest, algorithm_on_a_temporary_returns_an_iterator) {
     // Borrowed: no std::ranges::dangling, though the range is a temporary.
-    const auto it = std::ranges::partition_point(small_grid{}, [](auto v) { return v < 3_ins; });
+    const auto it = std::ranges::partition_point(small_grid{}, [](auto v) { return v < 3; });
     ASSERT_EQ(*it, 3);
 }
 
@@ -384,7 +384,7 @@ TEST(CursorTest, type) {
 TEST(CursorTest, three_loop_forms) {
     const auto            want = quarter_steps();
     std::vector<rational> a, b, c;
-    for (cur t = -4_ins; t <= 4_ins; ++t)
+    for (cur t = -4_ins; t <= 4; ++t)
         a.push_back(static_cast<rational>(t));
     for (cur t = -4_ins; t != end(t); ++t)
         b.push_back(static_cast<rational>(t));
@@ -395,7 +395,7 @@ TEST(CursorTest, three_loop_forms) {
     EXPECT_EQ(c, want);
 
     cur t;
-    for (; t <= 4_ins; ++t) {
+    for (; t <= 4; ++t) {
     }
     EXPECT_EQ(static_cast<rational>(t), 4.25_r);
     EXPECT_TRUE(t == end(t));
@@ -405,7 +405,7 @@ TEST(CursorTest, three_loop_forms) {
 TEST(CursorTest, default_starts_at_lower) {
     static_assert([] {
         cur t;
-        return t == -4_ins;
+        return t == -4;
     }());
     using off = cursor<inside<{{0.25_r, 1.25_r}, per<4>}>, 0.5_r>;
     static_assert([] {
@@ -507,7 +507,7 @@ TEST(CursorTest, is_an_iterator) {
 
     static_assert([] {
         cursor<inside<{0, 9}>, 3> i;
-        return std::ranges::count_if(i, end(i), [](auto v) { return v > 2_ins; }) == 3;
+        return std::ranges::count_if(i, end(i), [](auto v) { return v > 2; }) == 3;
     }());
 
     cur e = end(t);

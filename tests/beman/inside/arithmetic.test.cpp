@@ -1032,11 +1032,11 @@ TEST(ResultGridsTest, min_and_max_hold_the_values_they_can_take) {
     static_assert(std::is_same_v<decltype(max(inside<{-100, 0}>{}, inside<{5, 10}>{})), inside<{5, 10}>>);
     static_assert(std::is_same_v<decltype(min(a_t{}, a_t{})), a_t>);
 
-    EXPECT_TRUE(min(a_t{50}, c_t{3}) == 3_ins);
-    EXPECT_TRUE(max(a_t{50}, c_t{3}) == 50_ins);
-    EXPECT_TRUE(min(a_t{2}, c_t{3}) == 2_ins);
+    EXPECT_TRUE(min(a_t{50}, c_t{3}) == 3);
+    EXPECT_TRUE(max(a_t{50}, c_t{3}) == 50);
+    EXPECT_TRUE(min(a_t{2}, c_t{3}) == 2);
     EXPECT_TRUE(min(inside<{{0.5, 10.5}, 1}>{2.5}, c_t{3}) == 2.5_r);
-    EXPECT_TRUE(max(inside<{{0.5, 10.5}, 1}>{2.5}, c_t{3}) == 3_ins);
+    EXPECT_TRUE(max(inside<{{0.5, 10.5}, 1}>{2.5}, c_t{3}) == 3);
 }
 
 TEST(ResultGridsTest, abs_and_even_powers_never_reach_below_their_least_magnitude) {
@@ -1047,9 +1047,9 @@ TEST(ResultGridsTest, abs_and_even_powers_never_reach_below_their_least_magnitud
     static_assert(std::is_same_v<decltype(math::pown<2>(inside<{-10, -2}>{-2})), inside<{4, 100}>>);
     static_assert(std::is_same_v<decltype(math::pown<3>(inside<{-10, 10}>{})), inside<{-1000, 1000}>>);
 
-    EXPECT_TRUE(math::abs(inside<{-10, -5}>{-7}) == 7_ins);
-    EXPECT_TRUE(math::pown<2>(inside<{-10, 10}>{-7}) == 49_ins);
-    EXPECT_TRUE(math::pown<4>(inside<{-3, 2}>{-3}) == 81_ins);
+    EXPECT_TRUE(math::abs(inside<{-10, -5}>{-7}) == 7);
+    EXPECT_TRUE(math::pown<2>(inside<{-10, 10}>{-7}) == 49);
+    EXPECT_TRUE(math::pown<4>(inside<{-3, 2}>{-3}) == 81);
 }
 
 TEST(ResultGridsTest, lerp_stays_between_its_ends) {
@@ -1060,8 +1060,8 @@ TEST(ResultGridsTest, lerp_stays_between_its_ends) {
     // t past [0, 1] extrapolates: the wide grid stays.
     static_assert(lower_of<decltype(lerp(v_t{}, v_t{}, inside<{{0, 2}, per<4>}>{}))> < 0);
 
-    EXPECT_TRUE(lerp(v_t{10}, v_t{30}, t_t{0.25}) == 15_ins);
-    EXPECT_TRUE(lerp(v_t{30}, v_t{10}, t_t{1}) == 10_ins);
+    EXPECT_TRUE(lerp(v_t{10}, v_t{30}, t_t{0.25}) == 15);
+    EXPECT_TRUE(lerp(v_t{30}, v_t{10}, t_t{1}) == 10);
 }
 
 TEST(ResultGridsTest, quantities_take_the_numbers_tight_types) {

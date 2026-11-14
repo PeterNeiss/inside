@@ -1225,7 +1225,7 @@ TEST(AssignmentTest, full_int64_into_a_fine_grid) {
         auto a = quarter::try_make(full{2});
         auto b = inside<grid_of<halves>, round_nearest>::try_make(full{3}); // a tie: away from zero
         auto c = quarter::try_make(full{i64_min});
-        return *a == 2_ins && *b == 3.5_ins && c.error() == errc::overflow;
+        return *a == 2 && *b == 3.5_ins && c.error() == errc::overflow;
     }());
     auto w = inside<grid_of<halves>, wrap | round_floor>::try_make(full{i64_max});
     EXPECT_EQ(to_string(*w), "6.5"); // (2^63 − 1.5) mod 11 from 0.5
@@ -1289,9 +1289,9 @@ TEST(AssignmentTest, point_grid_checks_the_value) {
     using small  = inside<{-7, 5}>;
     static_assert(three::try_make(small{4}).error() == errc::overflow);
     static_assert(three::try_make(halves{rational{7, 2}}).error() == errc::overflow);
-    static_assert(*three::try_make(small{3}) == 3_ins);
+    static_assert(*three::try_make(small{3}) == 3);
     using clamped = inside<{3}, clamp>;
-    static_assert(*clamped::try_make(small{4}) == 3_ins);
+    static_assert(*clamped::try_make(small{4}) == 3);
     three x{};
     static_assert(!test::can_add<three, small>);
     errc ec{};
