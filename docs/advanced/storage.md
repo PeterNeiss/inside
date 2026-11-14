@@ -107,23 +107,23 @@ runs stays exact:
 | Spelling | Gives |
 |---|---|
 | `x + y`, `x * y`, `x % m`, `divmod(x, m)`, … | exact results on wide raws; the result types are sized at compile time |
-| `x.index()` | the notch index (x − Lower)/Notch as an `index_t<T>` = `inside<{0, step_count}>`, with T's raw type |
-| `T::from_index(i)` | the value Lower + i·Notch: plain when `i`'s grid lies within the indices, else checked by T's policy (or `from_index(i, clamp)`, `try_from_index(i)`) |
+| `x.step()` | the step (x − Lower)/Notch as a `step_t<T>` = `inside<{0, step_count}>`, with T's raw type |
+| `T::from_step(i)` | the value Lower + i·Notch: plain when `i`'s grid lies within the indices, else checked by T's policy (or `from_step(i, clamp)`, `try_from_step(i)`) |
 | `step_count_of<T>` | (Upper − Lower)/Notch as a point inside: 0 bytes, printable |
 | `x.numerator()`, `x.denominator()` | the value in lowest terms, as insides on the integers |
 | `std::numeric_limits<T>::min()`, `max()`, `just<lower_of<T>>` | the limits as insides |
 
 ```cpp
 using huge = inside<{0, 0x1p100}>;
-huge h      = huge::from_index(step_count_of<huge>);         // 2¹⁰⁰
-auto half   = div(h.index(), 2_ins, round_floor);              // 2⁹⁹, at run time
-huge middle = huge::from_index(half);                          // a raw copy
-auto steps  = h.index() - middle.index();                      // inside<{-2¹⁰⁰, 2¹⁰⁰}>
+huge h      = huge::from_step(step_count_of<huge>);         // 2¹⁰⁰
+auto half   = div(h.step(), 2_ins, round_floor);              // 2⁹⁹, at run time
+huge middle = huge::from_step(half);                          // a raw copy
+auto steps  = h.step() - middle.step();                      // inside<{-2¹⁰⁰, 2¹⁰⁰}>
 ```
 
 `cursor<T>` steps through a big grid one notch at a time. `values<T>` is a
 sized random-access range up to 2⁶³ points and a bidirectional one past
-that; jump with `index()` and `from_index`.
+that; jump with `step()` and `from_step`.
 
 A continuous grid past 64 bits stores an exact fraction of fixed-width
 integers, sized from its denominator bound
@@ -131,7 +131,7 @@ integers, sized from its denominator bound
 quotients are plain values:
 
 ```cpp
-using length = inside<{{1e-41_g, 1e27_g}, 1e-41_g}, round_nearest>;
+using length = inside<{{1e-41_g, 1e27_g}, 1e-41_g}, round_half_away>;
 const length planck   = just<1.616255e-35_g>;
 const length universe = just<8.8e26_g>;
 auto ratio = universe / planck;       // exactly 1760…0/323251, a plain value
@@ -153,7 +153,7 @@ The raw is private. The supported ways in and out:
 
 - **`b.raw()`**: a const reference to the raw, under every policy (for C
   interop, `&std::as_const(b).raw()`).
-- **`B::from_raw(raw)`**: build an inside from a raw, without validation (the
+- **`B::from_raw(raw, unsafe)`**: build an inside from a raw, without validation (the
   `unsafe` contract). The entry point for trusted raw transfer.
 - **Writing through `b.raw()`**: only under `unsafe`. Elsewhere it does not
   compile, because the library relies on the raw always being a valid point.

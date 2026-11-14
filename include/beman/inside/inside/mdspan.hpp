@@ -124,7 +124,7 @@ constexpr auto rank_indices(const E& e) {
         // start mid-ring, and that wrap costs every step).
         using I = extent_index_t<E, R>;
         return std::views::iota(std::size_t{0}, E::static_extent(R)) |
-               std::views::transform([](std::size_t k) { return I::from_raw(raw_from_offset<I>(k)); });
+               std::views::transform([](std::size_t k) { return I::from_raw(raw_from_offset<I>(k), unsafe); });
     } else
         return std::views::iota(typename E::index_type{0}, e.extent(R));
 }
@@ -168,16 +168,16 @@ struct element_traits<E> {
     template <class Rng>
     static constexpr E total(Rng&& r) {
         E    out{};
-        auto policy = make_policy<flags_of<E>>();
+        auto policy = make_policy<policy_of<E>>();
         sum_into(r, out, policy);
         return out;
     }
     template <class Rng>
-    static constexpr std::expected<E, errc> try_total(Rng&& r) {
-        return try_store<E, flags_of<E>>([&](E& out, auto&& policy) { sum_into(r, out, policy); });
+    static constexpr std::expected<E, error> try_total(Rng&& r) {
+        return try_store<E, policy_of<E>>([&](E& out, auto&& policy) { sum_into(r, out, policy); });
     }
     template <class V>
-    static constexpr std::expected<E, errc> try_store_of(const V& v) {
+    static constexpr std::expected<E, error> try_store_of(const V& v) {
         return E::try_make(v);
     }
 };
@@ -221,20 +221,21 @@ constexpr E read_stored(const T& t) {
         constexpr grid_int lo = raw_lo_exact<N>, hi = raw_hi_exact<N>;
         using W = work_int_t<signed_value_bits({rmin, rmax, lo, hi, hi - lo + grid_int{1}})>;
         if constexpr (rmin == lo && rmax == hi)
-            return tr::make(N::from_raw(t));
+            return tr::make(N::from_raw(t, unsafe));
         else {
             constexpr W wlo = static_cast<W>(lo), whi = static_cast<W>(hi);
             const W     r = static_cast<W>(t);
             if (!(r < wlo) && !(whi < r)) [[likely]]
-                return tr::make(N::from_raw(t));
-            if constexpr (has_flag(flags_of<N>, unsafe))
-                return tr::make(N::from_raw(t));
-            else if constexpr (has_flag(flags_of<N>, clamp))
-                return tr::make(N::from_raw(static_cast<R>(r < wlo ? wlo : whi)));
-            else if constexpr (has_flag(flags_of<N>, wrap))
-                return tr::make(N::from_raw(static_cast<R>(wlo + floor_divmod(r - wlo, whi - wlo + W{1}).Rem)));
+                return tr::make(N::from_raw(t, unsafe));
+            if constexpr (has_flag(policy_of<N>, unsafe))
+                return tr::make(N::from_raw(t, unsafe));
+            else if constexpr (has_flag(policy_of<N>, clamp))
+                return tr::make(N::from_raw(static_cast<R>(r < wlo ? wlo : whi), unsafe));
+            else if constexpr (has_flag(policy_of<N>, wrap))
+                return tr::make(
+                    N::from_raw(static_cast<R>(wlo + floor_divmod(r - wlo, whi - wlo + W{1}).Rem), unsafe));
             else
-                raise(errc::overflow, "raw_accessor: a raw outside the grid");
+                raise(error::overflow, "raw_accessor: a raw outside the grid");
         }
     }
 }
@@ -350,7 +351,7 @@ inline constexpr bool extent_compatible =
 
 constexpr void require_extent(bool same, const char* what) {
     if (!same) [[unlikely]]
-        raise(errc::domain_error, what);
+        raise(error::domain_error, what);
 }
 
 // Calls f(i0, i1, …) for every integer index tuple of e, the last fastest.
@@ -382,7 +383,7 @@ consteval grid n_fold_grid(const grid& g, std::size_t n) {
 }
 template <insidable N, std::size_t Count>
     requires notched<N> || point_grid<N>
-using n_fold_sum_t = inside<n_fold_grid(grid_of<N>, Count), flags_of<N> & ~cursor_marker>;
+using n_fold_sum_t = inside<n_fold_grid(grid_of<N>, Count), policy_of<N> & ~cursor_marker>;
 // The same for an element (an inside or a quantity): its kind on that number.
 template <class E, std::size_t Count>
 using n_fold_t = typename element_traits<E>::template rebind<n_fold_sum_t<element_number_t<E>, Count>>;
@@ -521,7 +522,7 @@ template <detail::matrix_span MA, detail::vector_span X, detail::vector_span Y>
     requires detail::extent_compatible<typename MA::extents_type, 1, typename X::extents_type, 0> &&
              detail::extent_compatible<typename MA::extents_type, 0, typename Y::extents_type, 0>
 // (void where every element's total is proven, else std::expected<void,
-// errc>: the first failure, the elements before it written.)
+// error>: the first failure, the elements before it written.)
 constexpr auto matrix_vector_product(const MA& a, const X& x, const Y& y) {
     detail::require_extent(a.extent(1) == x.extent(0) && a.extent(0) == y.extent(0),
                            "matrix_vector_product: the extents differ");
@@ -538,12 +539,12 @@ constexpr auto matrix_vector_product(const MA& a, const X& x, const Y& y) {
             y[static_cast<typename Y::index_type>(i)] = t;
         else {
             if (!t)
-                return std::expected<void, errc>{std::unexpect, t.error()};
+                return std::expected<void, error>{std::unexpect, t.error()};
             y[static_cast<typename Y::index_type>(i)] = *t;
         }
     }
     if constexpr (!proven)
-        return std::expected<void, errc>{};
+        return std::expected<void, error>{};
 }
 
 // C = A·B: C[i, j] = Σ_k A[i, k]·B[k, j], each exact, stored once by C's policy.
@@ -570,12 +571,12 @@ constexpr auto matrix_product(const MA& a, const MB& b, const MC& c) {
                 c[static_cast<CI>(i), static_cast<CI>(j)] = t;
             else {
                 if (!t)
-                    return std::expected<void, errc>{std::unexpect, t.error()};
+                    return std::expected<void, error>{std::unexpect, t.error()};
                 c[static_cast<CI>(i), static_cast<CI>(j)] = *t;
             }
         }
     if constexpr (!proven)
-        return std::expected<void, errc>{};
+        return std::expected<void, error>{};
 }
 
 //---------------------------------------------------------------------------
@@ -583,7 +584,7 @@ constexpr auto matrix_product(const MA& a, const MB& b, const MC& c) {
 //---------------------------------------------------------------------------
 namespace detail {
 // out[idx] = v for every index, v = value(idx...): void where every store is
-// proven (it compiles), else std::expected<void, errc> with the first failure
+// proven (it compiles), else std::expected<void, error> with the first failure
 // (the elements before it written).
 template <class Out, class R, class Ext, class Value>
 constexpr auto store_each(const Out& out, const Ext& extents, Value value) {
@@ -593,9 +594,9 @@ constexpr auto store_each(const Out& out, const Ext& extents, Value value) {
         for_each_index(extents, each);
     } else {
         using E = mdspan_value_t<Out>;
-        errc ec{};
-        auto each = [&](auto... i) {
-            if (ec != errc{})
+        error ec{};
+        auto  each = [&](auto... i) {
+            if (ec != error{})
                 return;
             if (const auto r = element_traits<E>::try_store_of(value(i...)))
                 out[static_cast<OI>(i)...] = *r;
@@ -603,15 +604,15 @@ constexpr auto store_each(const Out& out, const Ext& extents, Value value) {
                 ec = r.error();
         };
         for_each_index(extents, each);
-        if (ec != errc{})
-            return std::expected<void, errc>{std::unexpect, ec};
-        return std::expected<void, errc>{};
+        if (ec != error{})
+            return std::expected<void, error>{std::unexpect, ec};
+        return std::expected<void, error>{};
     }
 }
 } // namespace detail
 
 // out[idx] = f(in[idx]) for every index, stored by out's element policy:
-// void where the grids prove every store, else std::expected<void, errc>.
+// void where the grids prove every store, else std::expected<void, error>.
 template <mdspan_like In, mdspan_like Out, class F>
     requires detail::extents_compatible<typename In::extents_type, typename Out::extents_type> &&
              std::invocable<F&, detail::mdspan_value_t<In>>

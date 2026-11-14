@@ -7,7 +7,7 @@ using namespace beman::inside;
 
 int main() {
     // [listing]
-    using x_t  = inside<{{1, 16}, per<(1 << 6)>}, round_nearest>;
+    using x_t  = inside<{{1, 16}, per<(1 << 6)>}, round_half_away>;
     using down = inside<{{0, 16}, per<(1 << 10)>}, round_floor>;
     using up   = inside<{{0, 16}, per<(1 << 10)>}, round_ceil>;
 

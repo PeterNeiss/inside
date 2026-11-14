@@ -32,9 +32,9 @@
 //
 // The hash: SHA-256 over one 17-byte record per input, in input order (two
 // inputs: the first argument's slots outer). A record is a kind byte (0 for
-// a value ≥ 0, 1 for a negative value, 2 for an errc), then the reduced
+// a value ≥ 0, 1 for a negative value, 2 for an error), then the reduced
 // value's numerator magnitude and its denominator, each 8 bytes little
-// endian; an errc record holds the code, then 0.
+// endian; an error record holds the code, then 0.
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_CERTIFY_HPP
 #define BEMAN_INSIDE_CERTIFY_HPP
@@ -88,7 +88,7 @@ constexpr grid grid_from(std::uint64_t lo_n,
     return g;
 }
 
-// "{[-4, 4], 1/4} round_nearest, clamp": the grid's limits and notch as
+// "{[-4, 4], 1/4} round_half_away, clamp": the grid's limits and notch as
 // fractions, and the policy's flags by name.
 inline std::string number_text(const detail::grid_rational& v) {
     // A grid number of any size, as the 64-bit form prints it.
@@ -119,11 +119,11 @@ inline std::string flags_text(policy_flag f) {
         add("round_ceil");
     else if (has_flag(f, round_floor))
         add("round_floor");
-    else if (has_flag(f, round_nearest))
-        add("round_nearest");
+    else if (has_flag(f, round_half_away))
+        add("round_half_away");
     else if (has_flag(f, round_toward_zero))
         add("round_toward_zero");
-    f &= ~(round_half_even | round_ceil | round_floor | round_nearest | round_toward_zero);
+    f &= ~(round_half_even | round_ceil | round_floor | round_half_away | round_toward_zero);
     using named = std::pair<policy_flag, const char*>;
     for (const auto& [flag, name] : {named{clamp, "clamp"}, named{wrap, "wrap"}})
         if (has_flag(f, flag)) {
@@ -139,12 +139,12 @@ inline std::string flags_text(policy_flag f) {
 }
 template <insidable T>
 std::string type_text() {
-    return grid_text(grid_of<T>) + " " + flags_text(flags_of<T>);
+    return grid_text(grid_of<T>) + " " + flags_text(policy_of<T>);
 }
 
-// One result: a value as a reduced fraction, or an errc.
+// One result: a value as a reduced fraction, or an error.
 struct record {
-    unsigned char Kind      = 0; // 0: ≥ 0, 1: negative, 2: errc
+    unsigned char Kind      = 0; // 0: ≥ 0, 1: negative, 2: error
     std::uint64_t Magnitude = 0, Denominator = 0;
     friend bool   operator==(const record&, const record&) = default;
 };
@@ -198,13 +198,13 @@ constexpr std::uint64_t product(std::uint64_t a, std::uint64_t b) {
 }
 template <insidable In>
 In input(std::uint64_t i) {
-    return In::from_raw(detail::raw_from_offset<In>(static_cast<std::uint64_t>(i)));
+    return In::from_raw(detail::raw_from_offset<In>(static_cast<std::uint64_t>(i)), unsafe);
 }
 
 // Input i, computed as a run-time call and on the integer path.
 using evaluator = std::function<void(std::uint64_t, record&, record&)>;
 
-// A result, or the errc of a call fn<Out>(x) whose result can miss Out:
+// A result, or the error of a call fn<Out>(x) whose result can miss Out:
 // that call returns an expected, recorded as its error is.
 template <class Fn, class... X>
 record record_of_call(const Fn& fn, const X&... x) {

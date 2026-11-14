@@ -46,7 +46,7 @@ The literals `_ins`, `_r` and `_g` are also in `beman::inside::literals`:
 
 `0.1` is not 1/10 in binary, so a grid or a constant that needs 1/10 says
 `0.1_r`, `per<10>` or `just<1, 10>`. A value at run time can be a `double`:
-`inside<{{0, 1}, per<10>}, round_nearest>{0.1}` rounds it to the nearest notch,
+`inside<{{0, 1}, per<10>}, round_half_away>{0.1}` rounds it to the nearest notch,
 1/10.
 
 A point such as `just<440>` or `5_ins` holds its value in the type and takes no
@@ -87,19 +87,21 @@ explains the bound.
 
 ## Predefined formats
 
-`<beman/inside/inside/formats.hpp>` names grids that fill a native width:
+`<beman/inside/inside/formats.hpp>` names grids that fill a native width, in
+`beman::inside::formats` (`using namespace beman::inside::formats;` brings
+them in):
 
 | Types | Range, notch | Stored as | Policy |
 |---|---|---|---|
 | `uint8`, `uint16`, `uint32`, `uint64` | [0, 2ᴺ − 1], 1 | `uintN_t` | checked |
 | `int8`, `int16`, `int32`, `int64` | [−2ᴺ⁻¹, 2ᴺ⁻¹ − 1], 1 | `intN_t` | checked |
-| `unorm8`, `unorm16`, `unorm32` | [0, 1], 1/(2ᴺ − 1) | `uintN_t` | `round_nearest` |
-| `q4_4`, `q8_8`, `q16_16` | [0, 2ᴹ − 2⁻ᴹ], 2⁻ᴹ: every bit pattern | `uint8_t`, `uint16_t`, `uint32_t` | `round_nearest` |
+| `unorm8`, `unorm16`, `unorm32` | [0, 1], 1/(2ᴺ − 1) | `uintN_t` | `round_half_away` |
+| `uq4_4`, `uq8_8`, `uq16_16` | [0, 2ᴹ − 2⁻ᴹ], 2⁻ᴹ: every bit pattern | `uint8_t`, `uint16_t`, `uint32_t` | `round_half_away` |
 | `clamp_counter<Max>` | `inside<{0, Max}, clamp>`: `++` stops at Max | the smallest that fits | `clamp` |
 | `wrap_counter<Max>` | `inside<{0, Max}, wrap>`: `++` wraps Max → 0 | the smallest that fits | `wrap` |
 
 ```cpp
-q8_8 gain{1.5};              // stored as 384
+uq8_8 gain{1.5};              // stored as 384
 wrap_counter<255> seq{255};
 ++seq;                       // 0
 ```
@@ -125,10 +127,10 @@ A grid's numbers have no size limit: `inside<{0, 0x1p100}>` and a notch of
 |---|---|
 | `grid_of<T>` | the grid, as a value |
 | `lower_of<T>`, `upper_of<T>`, `notch_of<T>` | its numbers, grid numbers for spelling other grids (`inside<{lower_of<T>, 2 * upper_of<T>}>`) |
-| `flags_of<T>` | the policy |
+| `policy_of<T>` | the policy |
 | `std::numeric_limits<T>::min()`, `max()` | the limits, as insides |
 | `step_count_of<T>` | (Upper − Lower)/Notch, as a point inside |
-| `x.index()`, `T::from_index(i)` | a value's notch index as an `index_t<T>` = `inside<{0, step_count}>`, and back |
+| `x.step()`, `T::from_step(i)` | a value's step, its count of notches above Lower, as a `step_t<T>` = `inside<{0, step_count}>`, and back |
 
 Grid numbers are compile-time values: their arithmetic is `consteval`, so
 `N - 1` with a constant `N` is evaluated while compiling, wherever it appears.

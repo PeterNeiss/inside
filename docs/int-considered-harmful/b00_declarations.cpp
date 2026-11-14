@@ -25,10 +25,10 @@ inline constexpr named_unit     sps_def{"SPS", one / si::second, {.kind = isq::f
 inline constexpr auto           sps = unit_c<sps_def>;
 
 using pct         = quantity<percent, inside<{0, 100}>>;
-using money       = quantity<euro, inside<{{0, 1'000'000}, per<100>}, round_nearest>>;
+using money       = quantity<euro, inside<{{0, 1'000'000}, per<100>}, round_half_away>>;
 using angle       = quantity<si::degree, inside<{0, 359}, wrap>>;   // modular
-using rad_number  = inside<{{0, 7}, per<10'000>}, round_nearest>;
-using deg_number  = inside<{{0, 360}, per<100>}, round_nearest>;
+using rad_number  = inside<{{0, 7}, per<10'000>}, round_half_away>;
+using deg_number  = inside<{{0, 360}, per<100>}, round_half_away>;
 using sample_rate = quantity<sps, inside<{0, 192'000}>>;
 using trip        = quantity<si::kilo(si::metre), inside<{{0, 500}, per<1000>}>>;
 using height      = quantity<isq::height[si::metre], inside<{0, 9000}>>;

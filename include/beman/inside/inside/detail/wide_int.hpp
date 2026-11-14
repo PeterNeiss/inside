@@ -5,7 +5,7 @@
 #include <beman/inside/inside/detail/config.hpp>
 
 #include <beman/inside/inside/detail/float_bits.hpp>      // constexpr ldexp
-#include <beman/inside/inside/detail/error.hpp>           // errc, raise, constexpr_error
+#include <beman/inside/inside/detail/error.hpp>           // error, raise, constexpr_error
 #include <beman/inside/inside/detail/limb_algorithms.hpp> // limb kernels
 
 #include <algorithm>
@@ -282,7 +282,7 @@ struct wide_int<N, Signed, L>::divmod_result {
 template <std::size_t N, bool Signed, std::unsigned_integral L>
 constexpr auto wide_int<N, Signed, L>::divmod(const wide_int& a, const wide_int& b) noexcept -> divmod_result {
     if (b.is_zero())
-        fail_hard<"wide_int: division by zero">(errc::division_by_zero);
+        fail_hard<"wide_int: division by zero">(error::division_by_zero);
     // Divide the magnitudes; −min reads correctly as an unsigned magnitude.
     const bool        na = a.negative(), nb = b.negative();
     const wide_int    ua = na ? -a : a, ub = nb ? -b : b;

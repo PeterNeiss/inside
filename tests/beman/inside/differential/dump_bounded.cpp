@@ -15,7 +15,7 @@ namespace diff {
 namespace {
 using A  = inside<{{-5, 5}, max_denominator{7}}>;
 using D  = inside<{{1, 3}, max_denominator{10}}>;
-using Cn = inside<{{-40, 40}, max_denominator{1000}}, round_nearest>;
+using Cn = inside<{{-40, 40}, max_denominator{1000}}, round_half_away>;
 using Cf = inside<{{-40, 40}, max_denominator{1000}}, round_floor>;
 using Cc = inside<{{-40, 40}, max_denominator{1000}}, round_ceil>;
 using Cs = inside<{{-40, 40}, max_denominator{1000}}, round_toward_zero>;

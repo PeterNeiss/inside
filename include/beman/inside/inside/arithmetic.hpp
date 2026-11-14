@@ -15,11 +15,11 @@
 //---------------------------------------------------------------------------
 // Free-function arithmetic over detail::addition/multiplication/division/
 // modulo:
-//   add, sub, mul, div, mod, divmod   with a policy, hooks or an errc&
+//   add, sub, mul, div, mod, divmod   with a policy, hooks or an error&
 //   mul<Out>, div<Out>(a, b [, flag]) the exact result, rounded once into Out
 //   add_all, mul_all, sum<Target>     folds; sum checks the total once
 //   min, max, midpoint                ADL-found, exact on mixed grids
-//   dot, cross, lerp                  2-D helpers that widen like + and *
+//   lerp                              interpolation that widens like + and *
 //   common_inside_t, std::common_type the hull of two grids
 // and the operators, including the std::expected-lift overloads (an error
 // operand passes through; detail::lift_operand_v names the operand types).
@@ -49,7 +49,7 @@ constexpr auto arith(Op op, const L& l, const R& r, flag<V>) {
 }
 
 template <class Op, class L, class R>
-constexpr auto arith(Op op, const L& l, const R& r, errc& ec) {
+constexpr auto arith(Op op, const L& l, const R& r, error& ec) {
     return op(l, r, make_policy<checked>(ec));
 }
 
@@ -81,19 +81,19 @@ struct mul_op {
 struct div_op {
     template <class L, class R, class P>
     constexpr auto operator()(const L& l, const R& r, P&& p) const {
-        return division<L, R, flags_of<P>>::div(l, r, p);
+        return division<L, R, policy_of<P>>::div(l, r, p);
     }
 };
 struct mod_op {
     template <class L, class R, class P>
     constexpr auto operator()(const L& l, const R& r, P&& p) const {
-        return modulo<L, R, flags_of<P>>::mod(l, r, p);
+        return modulo<L, R, policy_of<P>>::mod(l, r, p);
     }
 };
 struct divmod_op {
     template <class L, class R, class P>
     constexpr auto operator()(const L& l, const R& r, P&& p) const {
-        return quotient_remainder<L, R, flags_of<P>>::divmod(l, r, p);
+        return quotient_remainder<L, R, policy_of<P>>::divmod(l, r, p);
     }
 };
 } // namespace detail
@@ -119,14 +119,14 @@ struct divmod_op {
 
 namespace detail {
 // The policy flags a call's trailing arguments select, as arith normalizes
-// them: a policy's own, checked for an errc&, an action's implied flags.
+// them: a policy's own, checked for an error&, an action's implied flags.
 template <class... Args>
 inline constexpr policy_flag call_flags = []() -> policy_flag {
     if constexpr (sizeof...(Args) == 0)
         return none;
     else if constexpr (policy_like<std::remove_cvref_t<Args...[0]>> || flag_like<Args...[0]>)
-        return flags_of<Args...[0]>;
-    else if constexpr (std::same_as<Args...[0], errc&>)
+        return policy_of<Args...[0]>;
+    else if constexpr (std::same_as<Args...[0], error&>)
         return checked;
     else
         return none; // a hook: rejected below
@@ -174,7 +174,7 @@ BEMAN_INSIDE_ARITH_FN(divmod, divmod_op)
 // quotient grid, so they work where that grid's fractions would pass the
 // fraction limit, or a quotient past the 64-bit fraction. A store that fails
 // is reported through the policy (it throws under `checked`). div<Out>
-// returns std::expected<Out, errc> when the divisor's grid holds 0 — then
+// returns std::expected<Out, error> when the divisor's grid holds 0 — then
 // every failure, a zero divisor or a failed store, is the error — else Out.
 //---------------------------------------------------------------------------
 namespace detail {
@@ -203,7 +203,7 @@ inline constexpr bool native_product = [] {
         return false;
     else {
         using P                   = typename multiplication<A, B>::result;
-        constexpr policy_flag all = override_flags(flags_of<Out>, F);
+        constexpr policy_flag all = override_flags(policy_of<Out>, F);
         return values_fit_int64<P> && (notches_compatible<Out, P> || has_flag(all, snap)) &&
                (has_flag(all, clamp) || has_flag(all, wrap) || !excludes(interval_of<Out>, interval_of<P>));
     }
@@ -277,13 +277,13 @@ concept call_flag_args = sizeof...(Fl) <= 1 && (flag_like<Fl> && ...);
 // mul<Out>(a, b) / div<Out>(a, b): the exact product or quotient stored
 // once into Out, by Out's policy and the call's flag. Out where the grids
 // prove the store (the result's values fit Out, or the flag clamps or
-// wraps), else std::expected<Out, errc>; div's is also an expected when the
+// wraps), else std::expected<Out, error>; div's is also an expected when the
 // divisor's grid holds 0.
 template <insidable Out, insidable A, insidable B, class... Fl>
     requires detail::call_flag_args<Fl...>
 [[nodiscard]] constexpr auto mul(const A& a, const B& b, const Fl&...) {
     constexpr policy_flag F       = detail::call_flags<Fl...>;
-    constexpr policy_flag P       = detail::override_flags(flags_of<Out>, F);
+    constexpr policy_flag P       = detail::override_flags(policy_of<Out>, F);
     const auto            product = [&](auto&& policy) -> Out {
         if constexpr (detail::native_product<Out, F, A, B>)
             return detail::store_into<Out>(a * b, policy);
@@ -304,9 +304,9 @@ template <insidable Out, insidable A, insidable B, class... Fl>
     requires detail::call_flag_args<Fl...>
 [[nodiscard]] constexpr auto div(const A& a, const B& b, const Fl&...) -> std::conditional_t<
     detail::divisor_excludes_zero<B> &&
-        detail::quotient_proven<Out, detail::override_flags(flags_of<Out>, detail::call_flags<Fl...>), A, B>(),
+        detail::quotient_proven<Out, detail::override_flags(policy_of<Out>, detail::call_flags<Fl...>), A, B>(),
     Out,
-    std::expected<Out, errc>> {
+    std::expected<Out, error>> {
     constexpr policy_flag F        = detail::call_flags<Fl...>;
     const auto            quotient = [&](auto&& policy) {
         if constexpr (detail::rational_operands<A, B> && detail::unreduced_store<Out>) {
@@ -317,13 +317,13 @@ template <insidable Out, insidable A, insidable B, class... Fl>
         } else
             return detail::div_reduced<Out>(a, b, policy);
     };
-    constexpr policy_flag P = detail::override_flags(flags_of<Out>, F);
+    constexpr policy_flag P = detail::override_flags(policy_of<Out>, F);
     if constexpr (detail::divisor_excludes_zero<B> && detail::quotient_proven<Out, P, A, B>())
         return quotient(make_policy<P>());
     else {
         if constexpr (!detail::divisor_excludes_zero<B>)
             if (b == 0)
-                return std::unexpected{errc::division_by_zero};
+                return std::unexpected{error::division_by_zero};
         return detail::try_store<Out, P>([&](Out& out, auto&& policy) { out = quotient(policy); });
     }
 }
@@ -360,21 +360,21 @@ template <insidable L, insidable R>
 auto operator*(L, R) = delete (BEMAN_INSIDE_WHY_mul);
 
 template <insidable L, insidable R>
-    requires detail::div_defined<L, R, flags_of<L> | flags_of<R>>
+    requires detail::div_defined<L, R, policy_of<L> | policy_of<R>>
 [[nodiscard]] constexpr auto operator/(L lhs, R rhs) {
-    return beman::inside::div(lhs, rhs, make_policy<flags_of<L> | flags_of<R>>());
+    return beman::inside::div(lhs, rhs, make_policy<policy_of<L> | policy_of<R>>());
 }
 template <insidable L, insidable R>
-    requires(!detail::div_defined<L, R, flags_of<L> | flags_of<R>>)
+    requires(!detail::div_defined<L, R, policy_of<L> | policy_of<R>>)
 auto operator/(L, R) = delete (BEMAN_INSIDE_WHY_div);
 
 template <insidable L, insidable R>
-    requires detail::mod_defined<L, R, flags_of<L> | flags_of<R>>
+    requires detail::mod_defined<L, R, policy_of<L> | policy_of<R>>
 [[nodiscard]] constexpr auto operator%(L lhs, R rhs) {
-    return beman::inside::mod(lhs, rhs, make_policy<flags_of<L> | flags_of<R>>());
+    return beman::inside::mod(lhs, rhs, make_policy<policy_of<L> | policy_of<R>>());
 }
 template <insidable L, insidable R>
-    requires(!detail::mod_defined<L, R, flags_of<L> | flags_of<R>>)
+    requires(!detail::mod_defined<L, R, policy_of<L> | policy_of<R>>)
 auto operator%(L, R) = delete (BEMAN_INSIDE_WHY_mod);
 #undef BEMAN_INSIDE_WHY_arith_action
 #undef BEMAN_INSIDE_WHY_add
@@ -468,7 +468,7 @@ namespace detail {
 // B anchored, its step a whole number of Target's notches, Target anchored.
 template <insidable Target, insidable B>
 consteval bool sums_on_lattice() {
-    if constexpr (has_flag(flags_of<Target>, snap))
+    if constexpr (has_flag(policy_of<Target>, snap))
         return true;
     else if constexpr (!notched<Target> || (!point_grid<B> && !notched<B>))
         return false; // continuous: denominators up to lcm(1..D) - reported
@@ -482,7 +482,7 @@ consteval bool sums_on_lattice() {
 // A total of a run-time count of B values fits Target only by its policy.
 template <insidable Target, insidable B>
 inline constexpr bool sum_proven =
-    !is_checked(flags_of<Target>) || (has_any_flag(flags_of<Target>, clamp | wrap) && sums_on_lattice<Target, B>());
+    !is_checked(policy_of<Target>) || (has_any_flag(policy_of<Target>, clamp | wrap) && sums_on_lattice<Target, B>());
 
 template <insidable Target, class Rng, class Pol>
 constexpr void sum_into(Rng&& r, Target& out, Pol& policy) {
@@ -596,7 +596,7 @@ constexpr void sum_into(Rng&& r, Target& out, Pol& policy) {
 } // namespace detail
 
 // The total stored into Target: Target where its policy takes any total
-// (clamp, wrap, unsafe), else std::expected<Target, errc> - the count is a
+// (clamp, wrap, unsafe), else std::expected<Target, error> - the count is a
 // run-time number, so no grid proves a checked total.
 template <insidable Target, std::ranges::input_range Rng>
     requires insidable<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>>
@@ -604,26 +604,18 @@ template <insidable Target, std::ranges::input_range Rng>
     using B = std::remove_cvref_t<std::ranges::range_reference_t<Rng>>;
     if constexpr (detail::sum_proven<Target, B>) {
         Target out{};
-        auto   policy = make_policy<flags_of<Target>>();
+        auto   policy = make_policy<policy_of<Target>>();
         detail::sum_into(r, out, policy);
         return out;
     } else
-        return detail::try_store<Target, flags_of<Target>>(
+        return detail::try_store<Target, policy_of<Target>>(
             [&](Target& out, auto&& policy) { detail::sum_into(r, out, policy); });
 }
 
 //---------------------------------------------------------------------------
-// dot / cross / lerp — 2-D inside-space vector helpers. Each widens its result
-// grid like the underlying `+`/`*`, so no overflow and the result is a plain
-// `inside`. (cross is the z-component, useful for "which side" tests.)
+// lerp — interpolation in inside-space: it widens its result grid like the
+// underlying `+`/`*`, so no overflow and the result is a plain `inside`.
 //---------------------------------------------------------------------------
-[[nodiscard]] constexpr auto dot(insidable auto ax, insidable auto ay, insidable auto bx, insidable auto by) {
-    return ax * bx + ay * by;
-}
-
-[[nodiscard]] constexpr auto cross(insidable auto ax, insidable auto ay, insidable auto bx, insidable auto by) {
-    return ax * by - ay * bx;
-}
 
 namespace detail {
 // lerp's type: a + (b - a)·t's lattice; when t's grid lies in [0, 1] the
@@ -655,7 +647,7 @@ template <insidable A, insidable B, insidable T>
 [[nodiscard]] constexpr auto lerp(A a, B b, T t) {
     const auto w = a + (b - a) * t;
     using W      = std::remove_cvref_t<decltype(w)>;
-    using R      = inside<detail::lerp_grid<W, A, B, T>(), flags_of<W>>;
+    using R      = inside<detail::lerp_grid<W, A, B, T>(), policy_of<W>>;
     if constexpr (std::is_same_v<R, W>)
         return w;
     else
@@ -754,7 +746,7 @@ template <insidable Lhs, insidable Rhs>
 // expected-lift operators — fallible results (division, modulo, checked
 // rational arithmetic, beman::inside::math) chain without per-step unwrapping:
 // `a / b * gain + offset` and `math::tan(x) * gain` stay a
-// std::expected<inside, errc> end to end. The first error short-circuits and
+// std::expected<inside, error> end to end. The first error short-circuits and
 // keeps its cause; an operation that fails inside the chain reports its own
 // (overflow, division_by_zero, ...). One overload per operator covers all
 // three shapes (expected op inside, inside op expected, expected op expected);
@@ -887,7 +879,7 @@ void operator~(const B&) = delete (BEMAN_INSIDE_BUILTIN_MSG);
 #undef BEMAN_INSIDE_BUILTIN_MSG
 
 // An inside with a rational: through the implicit operator rational() it
-// would become rational arithmetic, an expected<rational, errc> without a
+// would become rational arithmetic, an expected<rational, error> without a
 // grid. Deleted, with the spelling that keeps the grid; so are the compound
 // assignments (inside/detail/core.hpp, policy_ref.hpp).
 #define BEMAN_INSIDE_RATIONAL_MSG                                                                \

@@ -30,7 +30,7 @@ inline constexpr auto           cent = unit_c<cent_def>;
 int main() {
     // 0..1,000,000 USD in 1¢ steps -> 100M+1 steps fits uint32.
     // 0.01 is not exact in binary; per<100> is the exact notch 1/100.
-    using money = quantity<USD, inside<{{0, 1'000'000}, per<100>}, round_nearest>>;
+    using money = quantity<USD, inside<{{0, 1'000'000}, per<100>}, round_half_away>>;
     static_assert(sizeof(money) == 4);
 
     // Running total: line items add exactly, no float drift.
@@ -45,7 +45,7 @@ int main() {
     std::cout << "subtotal: " << subtotal << "\n";
 
     // Apply 8 % sales tax: the exact product, rounded once to the nearest 1¢
-    // by `money`'s `round_nearest`. USD·% is USD/100, folded into the rounding.
+    // by `money`'s `round_half_away`. USD·% is USD/100, folded into the rounding.
     const auto  rate = just<8> * percent;
     const money tax  = mul<money>(subtotal, rate);
     std::cout << "tax (" << rate << "): " << tax << "\n";

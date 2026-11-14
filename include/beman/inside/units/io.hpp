@@ -25,12 +25,12 @@ namespace beman::inside::units {
 // parse<Q, F>(text) / parse_exact<Q>(text): the number, in Q's unit.
 template <class Q, policy_flag F = beman::inside::detail::none>
     requires quantity_like<Q>
-[[nodiscard]] constexpr std::expected<Q, errc> parse(std::string_view text) {
+[[nodiscard]] constexpr std::expected<Q, error> parse(std::string_view text) {
     return detail::wrap_out<Q>(beman::inside::parse<typename Q::rep, F>(text));
 }
 template <class Q>
     requires quantity_like<Q>
-[[nodiscard]] constexpr std::expected<Q, errc> parse_exact(std::string_view text) {
+[[nodiscard]] constexpr std::expected<Q, error> parse_exact(std::string_view text) {
     return detail::wrap_out<Q>(beman::inside::parse_exact<typename Q::rep>(text));
 }
 

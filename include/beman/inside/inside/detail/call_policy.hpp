@@ -4,8 +4,8 @@
 
 #include <beman/inside/inside/detail/config.hpp>
 
-#include <beman/inside/inside/detail/error.hpp>         // errc, raise, constexpr_error
-#include <beman/inside/inside/detail/introspection.hpp> // insidable, flags_of_impl
+#include <beman/inside/inside/detail/error.hpp>         // error, raise, constexpr_error
+#include <beman/inside/inside/detail/introspection.hpp> // insidable, policy_of_impl
 #include <beman/inside/inside/policy_flag.hpp>
 
 #include <expected>
@@ -14,9 +14,9 @@
 //---------------------------------------------------------------------------
 // policy — the runtime policy carrier.
 //   detail::call_policy<F, E> — compile-time flags F plus an optional error_ref E holding a
-//                   beman::inside::errc& (EBO so the no-error-code form is zero-sized).
+//                   beman::inside::error& (EBO so the no-error-code form is zero-sized).
 //   make_policy<F>(), and with_flags<O>(pol), a call's policy (a flag or a
-//                   call_policy) under the flags O, keeping its errc&.
+//                   call_policy) under the flags O, keeping its error&.
 // The proxies that b.policy<F>(), b.policy(ec) and on_*() return are in
 // inside/detail/policy_ref.hpp.
 //---------------------------------------------------------------------------
@@ -24,29 +24,29 @@ namespace beman::inside {
 //---------------------------------------------------------------------------
 // call_policy — the policy of one call or store, what make_policy returns.
 // Derives from E for EBO: throwing form (E == empty_ref) is zero-sized;
-// `call_policy(ec)` makes E == error_ref carrying a `beman::inside::errc&`. No
-// virtuals, resolved at compile time. (The error-code channel reports `errc`
+// `call_policy(ec)` makes E == error_ref carrying a `beman::inside::error&`. No
+// virtuals, resolved at compile time. (The error-code channel reports `error`
 // directly — there is no <system_error> dependency.) Users spell it through
 // make_policy<F>() / make_policy<F>(ec), or pass a flag.
 //---------------------------------------------------------------------------
 namespace detail {
 struct empty_ref {};
 struct error_ref {
-    constexpr error_ref(errc& ec) : Code{ec} {}
-    errc& Code;
+    constexpr error_ref(error& ec) : Code{ec} {}
+    error& Code;
 };
 
-// The errc channel's record, out of line: a failure is the rare path, and
+// The error channel's record, out of line: a failure is the rare path, and
 // inline it would sit in every checked loop. The first error is kept.
-[[gnu::cold]] [[gnu::noinline]] constexpr void record_error(errc& slot, errc code) noexcept {
-    if (slot == errc{})
+[[gnu::cold]] [[gnu::noinline]] constexpr void record_error(error& slot, error code) noexcept {
+    if (slot == error{})
         slot = code;
 }
 
 template <policy_flag F = none, typename E = empty_ref>
 struct call_policy : E {
     constexpr call_policy() = default;
-    constexpr call_policy(errc& ec)
+    constexpr call_policy(error& ec)
         requires std::same_as<E, error_ref>
         : E(ec) {}
 
@@ -71,12 +71,12 @@ struct call_policy : E {
     // Cheap default report: no message construction. error_ref mode records the
     // code (sticky: keeps the first error) — also during constant evaluation, so
     // try_make / parse / tan<Out> return error values in constexpr code.
-    // Without an errc&, a failure is reached only in a constant expression
+    // Without an error&, a failure is reached only in a constant expression
     // (a run-time store the grids cannot prove needs a channel, so it does
     // not compile): the build fails with a text that names the code and the
     // fix. At run time it is a precondition (a cursor past its end) or a
     // library bug, reported to the installed handler.
-    constexpr void report(errc code) const {
+    constexpr void report(error code) const {
         if constexpr (std::is_same_v<E, error_ref>)
             record_error(E::Code, code);
         else {
@@ -92,7 +92,7 @@ struct call_policy : E {
     }
 };
 
-call_policy(errc&) -> call_policy<none, error_ref>;
+call_policy(error&) -> call_policy<none, error_ref>;
 } // namespace detail
 
 //---------------------------------------------------------------------------
@@ -110,14 +110,14 @@ inline constexpr bool is_policy_v<call_policy<F, E>> = true;
 template <typename T>
 concept policy_like = is_policy_v<std::remove_cvref_t<T>>;
 
-// flags_of<call_policy<F, E>> is F. Lets the value+policy constructor and
+// policy_of<call_policy<F, E>> is F. Lets the value+policy constructor and
 // policy_ref's conversion fold the per-call flags into their
 // `inside_assignable` check, so a one-shot clamp/round actually relaxes the
 // constraint it enables.
 template <policy_flag F, typename E>
-inline constexpr policy_flag flags_of_impl<call_policy<F, E>> = F;
+inline constexpr policy_flag policy_of_impl<call_policy<F, E>> = F;
 
-// True for policy specializations that carry a beman::inside::errc& reference.
+// True for policy specializations that carry a beman::inside::error& reference.
 // Free-fn arithmetic uses this to decide whether to call policy.report on
 // failure (which sets ec) vs. returning a silent std::unexpected (no-arg form).
 template <typename T>
@@ -135,17 +135,17 @@ template <policy_flag F = detail::none>
 }
 
 template <policy_flag F = detail::none>
-[[nodiscard]] constexpr auto make_policy(errc& ec) {
+[[nodiscard]] constexpr auto make_policy(error& ec) {
     return detail::call_policy<F, detail::error_ref>{ec};
 }
 
 //---------------------------------------------------------------------------
 // report_or_unexpected — the zero-divisor result of division and modulo:
-// an errc& policy (uses_error_ref<P>) is set too; the error is returned.
+// an error& policy (uses_error_ref<P>) is set too; the error is returned.
 //---------------------------------------------------------------------------
 namespace detail {
 template <insidable Result, typename P>
-constexpr std::expected<Result, errc> report_or_unexpected(P&& policy, errc code) {
+constexpr std::expected<Result, error> report_or_unexpected(P&& policy, error code) {
     if constexpr (uses_error_ref<std::remove_cvref_t<P>>)
         policy.report(code);
     return std::unexpected{code};
@@ -155,7 +155,7 @@ constexpr std::expected<Result, errc> report_or_unexpected(P&& policy, errc code
 //---------------------------------------------------------------------------
 // with_flags<O>(pol) — a call's one-shot policy (a named flag, or a
 // call_policy from make_policy<F>() / make_policy<F>(ec)) as a call_policy
-// with the flags O, keeping its errc& if it has one.
+// with the flags O, keeping its error& if it has one.
 //---------------------------------------------------------------------------
 namespace detail {
 template <policy_flag O, class Pol>

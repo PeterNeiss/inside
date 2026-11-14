@@ -14,8 +14,8 @@ int main() {
     using some = inside<{1, 10}>;              // never zero
 
     auto q = num{7} / some{3};                 // exactly 7/3, a plain value
-    auto r = num{7} / any{3};                  // std::expected<..., errc>
-    auto z = num{7} / any{0};                  // unexpected(errc::division_by_zero)
+    auto r = num{7} / any{3};                  // std::expected<..., error>
+    auto z = num{7} / any{0};                  // unexpected(error::division_by_zero)
     static_assert(!std::is_same_v<decltype(q), decltype(r)>);
 
     using whole = inside<{0, 100}, round_floor>;
@@ -23,7 +23,7 @@ int main() {
     auto m = whole{7} % some{3};               // 1, consistent: 2·3 + 1 == 7
     // [/listing]
     if (q != just<rational{7, 3}> || *r != just<rational{7, 3}> || z.has_value() ||
-        z.error() != errc::division_by_zero || f != 2 || m != 1)
+        z.error() != error::division_by_zero || f != 2 || m != 1)
         return 1;
     return 0;
 }

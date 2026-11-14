@@ -32,9 +32,9 @@ inline constexpr auto          dB = unit_c<decibel_def>;
 } // namespace
 
 // dB in [-24, 12] at 0.5 dB resolution — matches a typical mixer fader range.
-using db_t = quantity<dB, inside<{{-24, 12}, per<2>}, round_nearest>>;
+using db_t = quantity<dB, inside<{{-24, 12}, per<2>}, round_half_away>>;
 // Linear amplitude. dB ∈ [-24, 12] ⇒ amp ∈ [10^-1.2, 10^0.6] ≈ [0.063, 3.98].
-using gain_t = inside<{{0x1p-8, 4}, per<(1 << 16)>}, round_nearest>;
+using gain_t = inside<{{0x1p-8, 4}, per<(1 << 16)>}, round_half_away>;
 
 // dB → linear: 10^(L / 20 dB). The ratio is exact; pow_base rounds once.
 static constexpr gain_t db_to_linear(db_t db) { return math::pow_base<10, gain_t>(db / (just<20> * dB)); }

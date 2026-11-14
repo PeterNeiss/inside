@@ -4,7 +4,7 @@
 // Demonstrates:
 //   - Fixed-point grids for error / integral / derivative / gain
 //   - `add_all` to fold the three weighted terms into a single sum
-//   - `clamp | round_nearest` on the output type to saturate AND snap the
+//   - `clamp | round_half_away` on the output type to saturate AND snap the
 //     actuator command to its physical range in one `output_t{raw}` write
 //   - `on_clamp` on the integrator to detect anti-wind-up saturation
 //   - Units: a temperature loop. The error and the integral (summed once per
@@ -21,21 +21,23 @@
 #include <beman/inside/inside/formats.hpp>
 
 using namespace beman::inside;
+
+using namespace beman::inside::formats;
 using namespace beman::inside::units;
 
 // Sensor error in [-10, 10] K with 1/16 K resolution.
-using err_t = quantity<si::kelvin, inside<{{-10, 10}, per<16>}, round_nearest | clamp>>;
+using err_t = quantity<si::kelvin, inside<{{-10, 10}, per<16>}, round_half_away | clamp>>;
 
 // Integrator accumulates errors; clamp-saturating to prevent wind-up.
-using integral_t = quantity<si::kelvin, inside<{{-200, 200}, per<16>}, round_nearest | clamp>>;
+using integral_t = quantity<si::kelvin, inside<{{-200, 200}, per<16>}, round_half_away | clamp>>;
 
 // Gain coefficients: [0, 4] %/K with 1/256 step.
-using gain_t = quantity<percent / si::kelvin, inside<{{0, 4}, per<(1 << 8)>}, round_nearest>>;
+using gain_t = quantity<percent / si::kelvin, inside<{{0, 4}, per<(1 << 8)>}, round_half_away>>;
 
-// Actuator command in [-100, 100] % integer steps. `clamp | round_nearest`
+// Actuator command in [-100, 100] % integer steps. `clamp | round_half_away`
 // lets `output_t{raw}` saturate AND round the wider input in one step — no
-// explicit `output_t{..., clamp | round_nearest}` cast needed.
-using output_t = quantity<percent, inside<{-100, 100}, clamp | round_nearest>>;
+// explicit `output_t{..., clamp | round_half_away}` cast needed.
+using output_t = quantity<percent, inside<{-100, 100}, clamp | round_half_away>>;
 
 struct pid {
     gain_t kp{1.5, percent / si::kelvin};
@@ -62,7 +64,7 @@ struct pid {
         auto raw = add_all(p_term, i_term, d_term);
 
         // Cross the API boundary: storing into `output_t` saturates (clamp)
-        // and snaps to its integer notch (round_nearest) via the type's policy.
+        // and snaps to its integer notch (round_half_away) via the type's policy.
         return output_t{raw};
     }
 };

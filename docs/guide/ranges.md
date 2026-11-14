@@ -44,7 +44,7 @@ It steps through `T`'s range by `Step`, starting at `T`'s lower limit, and
 `end(t)` is the value one step past the last:
 
 ```cpp
-using time_t = inside<{{-4, 4}, per<(1 << 10)>}, round_nearest>;
+using time_t = inside<{{-4, 4}, per<(1 << 10)>}, round_half_away>;
 for (cursor<time_t, per<4>> t; t != end(t); ++t)          // −4, −3.75, …, 4
     std::cout << t << ' ';
 for (cursor<time_t, 0.25_r> t = -2_ins; t <= 2; ++t)  // any start, the classic test
@@ -66,7 +66,7 @@ quantity, and the step is a number in the quantity's unit.
 Insides sort, search and compare like integers, and as fast:
 
 ```cpp
-using celsius = inside<{{-40, 60}, 0.5}, round_nearest>;
+using celsius = inside<{{-40, 60}, 0.5}, round_half_away>;
 std::vector<celsius> temps = {21.5, -5.0, 37.0, 0.0, 15.5};
 std::ranges::sort(temps);
 auto hot      = std::ranges::count_if(temps, [](celsius c) { return c > 30; });

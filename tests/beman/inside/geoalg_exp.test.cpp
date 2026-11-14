@@ -113,7 +113,7 @@ closed reference(long double a, const long double* y, const int* sq, int n) {
 // Complex numbers onto Out: every input of a coarse grid.
 template <template <policy_flag> class Out, policy_flag M>
 int complex_mismatches(int stride) {
-    using I   = in_t<round_nearest>;
+    using I   = in_t<round_half_away>;
     using O   = Out<M>;
     using dom = multivector<I, quantity<i, I>>;
     using cod = multivector<O, quantity<i, O>>;
@@ -133,18 +133,18 @@ int complex_mismatches(int stride) {
 } // namespace
 
 TEST(GeoalgExpTest, complex_numbers_round_correctly) {
-    EXPECT_EQ((complex_mismatches<out_t, round_nearest>(3)), 0);
+    EXPECT_EQ((complex_mismatches<out_t, round_half_away>(3)), 0);
     EXPECT_EQ((complex_mismatches<out_t, round_floor>(7)), 0);
     EXPECT_EQ((complex_mismatches<out_t, round_ceil>(7)), 0);
     EXPECT_EQ((complex_mismatches<out_t, round_toward_zero>(7)), 0);
     EXPECT_EQ((complex_mismatches<out_t, round_half_even>(7)), 0);
-    EXPECT_EQ((complex_mismatches<dec_t, round_nearest>(7)), 0);
-    EXPECT_EQ((complex_mismatches<fine_t, round_nearest>(29)), 0);
+    EXPECT_EQ((complex_mismatches<dec_t, round_half_away>(7)), 0);
+    EXPECT_EQ((complex_mismatches<fine_t, round_half_away>(29)), 0);
 }
 
 TEST(GeoalgExpTest, rotors_from_bivectors) {
-    using I   = in_t<round_nearest>;
-    using O   = out_t<round_nearest>;
+    using I   = in_t<round_half_away>;
+    using O   = out_t<round_half_away>;
     using dom = multivector<quantity<i, I>, quantity<j, I>, quantity<k, I>>;
     using cod = multivector<O, quantity<i, O>, quantity<j, O>, quantity<k, O>>;
     int bad   = 0;
@@ -157,10 +157,10 @@ TEST(GeoalgExpTest, rotors_from_bivectors) {
                 const long double y[3]  = {u / 64.0L, v / 64.0L, w / 64.0L};
                 const int         sq[3] = {-1, -1, -1};
                 const closed      c     = reference(0, y, sq, 3);
-                bad += !rounded_ok<O, round_nearest>(coef(std::get<0>(r.parts())), c.C);
-                bad += !rounded_ok<O, round_nearest>(coef(std::get<1>(r.parts())), c.S * y[0]);
-                bad += !rounded_ok<O, round_nearest>(coef(std::get<2>(r.parts())), c.S * y[1]);
-                bad += !rounded_ok<O, round_nearest>(coef(std::get<3>(r.parts())), c.S * y[2]);
+                bad += !rounded_ok<O, round_half_away>(coef(std::get<0>(r.parts())), c.C);
+                bad += !rounded_ok<O, round_half_away>(coef(std::get<1>(r.parts())), c.S * y[0]);
+                bad += !rounded_ok<O, round_half_away>(coef(std::get<2>(r.parts())), c.S * y[1]);
+                bad += !rounded_ok<O, round_half_away>(coef(std::get<3>(r.parts())), c.S * y[2]);
             }
     EXPECT_EQ(bad, 0);
     // A quarter turn about e₃ (θ = π/2 in the e₁e₂ plane): exp(-i π/4).
@@ -171,8 +171,8 @@ TEST(GeoalgExpTest, rotors_from_bivectors) {
 }
 
 TEST(GeoalgExpTest, hyperbolic_nilpotent_and_mixed) {
-    using I = in_t<round_nearest>;
-    using O = out_t<round_nearest>;
+    using I = in_t<round_half_away>;
+    using O = out_t<round_half_away>;
     int bad = 0;
     // a + b e₁, e₁² = +1: e^a (cosh b + e₁ sinh b).
     using hdom = multivector<I, quantity<e1, I>>;
@@ -189,14 +189,14 @@ TEST(GeoalgExpTest, hyperbolic_nilpotent_and_mixed) {
                     math::exp<hcod>(hdom{test::store<I>(rational{ra, 64}) + test::store<I>(rational{rb, 64}) * e1});
                 const int    sq[] = {1};
                 const closed c    = reference(a, &b, sq, 1);
-                bad += !rounded_ok<O, round_nearest>(coef(std::get<0>(r.parts())), c.E * c.C);
-                bad += !rounded_ok<O, round_nearest>(coef(std::get<1>(r.parts())), c.E * c.S * b);
+                bad += !rounded_ok<O, round_half_away>(coef(std::get<0>(r.parts())), c.E * c.C);
+                bad += !rounded_ok<O, round_half_away>(coef(std::get<1>(r.parts())), c.E * c.S * b);
             }
             {
                 const ncod r =
                     math::exp<ncod>(ndom{test::store<I>(rational{ra, 64}) + test::store<I>(rational{rb, 64}) * eps});
-                bad += !rounded_ok<O, round_nearest>(coef(std::get<0>(r.parts())), std::exp(a));
-                bad += !rounded_ok<O, round_nearest>(coef(std::get<1>(r.parts())), std::exp(a) * b);
+                bad += !rounded_ok<O, round_half_away>(coef(std::get<0>(r.parts())), std::exp(a));
+                bad += !rounded_ok<O, round_half_away>(coef(std::get<1>(r.parts())), std::exp(a) * b);
             }
         }
     // Past CoDomain's range: a named multivector output does not report as
@@ -214,9 +214,9 @@ TEST(GeoalgExpTest, hyperbolic_nilpotent_and_mixed) {
             const closed      c     = reference(0, y, sq, 2);
             const mcod        r     = math::exp<mcod>(
                 mdom{test::store<I>(rational{u, 64}) * (g0 * g1) + test::store<I>(rational{v, 64}) * (g1 * g2)});
-            bad += !rounded_ok<O, round_nearest>(coef(std::get<0>(r.parts())), c.C);
-            bad += !rounded_ok<O, round_nearest>(coef(std::get<1>(r.parts())), c.S * y[0]);
-            bad += !rounded_ok<O, round_nearest>(coef(std::get<2>(r.parts())), c.S * y[1]);
+            bad += !rounded_ok<O, round_half_away>(coef(std::get<0>(r.parts())), c.C);
+            bad += !rounded_ok<O, round_half_away>(coef(std::get<1>(r.parts())), c.S * y[0]);
+            bad += !rounded_ok<O, round_half_away>(coef(std::get<2>(r.parts())), c.S * y[1]);
         }
     EXPECT_EQ(bad, 0);
 }
@@ -251,15 +251,15 @@ TEST(GeoalgExpTest, exact_cases_and_constant_evaluation) {
 // checks), on the argument's notch or the one named; a named number is every
 // part's.
 TEST(GeoalgExpTest, the_deduced_output) {
-    using I   = in_t<round_nearest>;
-    using O   = out_t<round_nearest>;
+    using I   = in_t<round_half_away>;
+    using O   = out_t<round_half_away>;
     using dom = multivector<quantity<i, I>, quantity<j, I>, quantity<k, I>>;
     using cod = multivector<O, quantity<i, O>, quantity<j, O>, quantity<k, O>>;
     const dom x =
         test::store<I>(rational{5, 8}) * i + test::store<I>(rational{-3, 8}) * j + test::store<I>(rational{1, 4}) * k;
     // A rotor: every part within ±1, its range 1 + one notch.
     using R = decltype(math::exp<per<1 << 20>>(x));
-    using P = inside<{{-1 - rational{1, 1 << 20}, 1 + rational{1, 1 << 20}}, per<1 << 20>}, round_nearest>;
+    using P = inside<{{-1 - rational{1, 1 << 20}, 1 + rational{1, 1 << 20}}, per<1 << 20>}, round_half_away>;
     static_assert(std::same_as<R, multivector<P, quantity<i, P>, quantity<j, P>, quantity<k, P>>>);
     static_assert(units::detail::gaexp::facts<dom, R>::in_range == std::array{true, true, true, true});
     const R   r = math::exp<per<1 << 20>>(x);
@@ -291,8 +291,8 @@ template <class D, class C>
 concept can_exp = requires(const D& d) { math::exp<C>(d); };
 
 TEST(GeoalgExpTest, the_closed_form_is_required) {
-    using I = in_t<round_nearest>;
-    using O = out_t<round_nearest>;
+    using I = in_t<round_half_away>;
+    using O = out_t<round_half_away>;
     // e₁e₂ and γ... in 4-D: two commuting bivectors.
     using four = multivector<quantity<g0 * g1, I>, quantity<g2 * g3, I>>;
     using cod  = multivector<O, quantity<g0 * g1, O>, quantity<g2 * g3, O>, quantity<g0 * g1 * g2 * g3, O>>;
@@ -324,8 +324,8 @@ int same_as_integer(int U, int V, int step, Make make) {
 
 // The fast tiers decide only what the integer path decides the same way.
 TEST(GeoalgExpTest, fast_path_equals_the_integer_path) {
-    using I   = inside<{{-4, 4}, per<16>}, round_nearest>;
-    using O   = out_t<round_nearest>;
+    using I   = inside<{{-4, 4}, per<16>}, round_half_away>;
+    using O   = out_t<round_half_away>;
     using dom = multivector<I, quantity<i, I>>;
     using cod = multivector<O, quantity<i, O>>;
     int bad   = 0;
@@ -342,7 +342,7 @@ TEST(GeoalgExpTest, fast_path_equals_the_integer_path) {
                          std::get<1>(s.parts()).numerical_value_in(i).raw());
         }
     EXPECT_EQ(bad, 0);
-    using J    = inside<{{-4, 4}, per<4>}, round_nearest>;
+    using J    = inside<{{-4, 4}, per<4>}, round_half_away>;
     using rdom = multivector<quantity<i, J>, quantity<j, J>, quantity<k, J>>;
     using rcod = multivector<O, quantity<i, O>, quantity<j, O>, quantity<k, O>>;
     int bad3   = 0;
@@ -381,9 +381,9 @@ TEST(GeoalgExpTest, fast_path_equals_the_integer_path) {
     const auto mixed = [](rational a, rational b) {
         return mdom{test::store<I>(a) * (g0 * g1) + test::store<I>(b) * (g1 * g2)};
     };
-    using F40 = fine_t<round_nearest>;
+    using F40 = fine_t<round_half_away>;
     using F52 = p52_t<round_floor>;
-    using N52 = p52_t<round_nearest>;
+    using N52 = p52_t<round_half_away>;
     EXPECT_EQ((same_as_integer<dom, multivector<F40, quantity<i, F40>>>(64, 64, 2, cplx)), 0);
     EXPECT_EQ((same_as_integer<dom, multivector<F52, quantity<i, F52>>>(32, 64, 3, cplx)), 0);
     EXPECT_EQ(

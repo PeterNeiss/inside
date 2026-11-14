@@ -68,13 +68,13 @@ std::int64_t run_integer_qformat() {
         const long b = static_cast<long>((x >> 11) % 1000000) - 500000;
 
         // integer fast paths: add (widening) and the raw round-trip
-        I ia = I::from_raw(static_cast<I::raw_type>(a));
-        I ib = I::from_raw(static_cast<I::raw_type>(b));
+        I ia = I::from_raw(static_cast<I::raw_type>(a), unsafe);
+        I ib = I::from_raw(static_cast<I::raw_type>(b), unsafe);
         acc += static_cast<long>((ia + ib).raw());
 
         // Q-format fast path: same-grid add on a fractional notch
-        Q qa = Q::from_raw(static_cast<Q::raw_type>(a % 16001));
-        Q qb = Q::from_raw(static_cast<Q::raw_type>(b % 16001));
+        Q qa = Q::from_raw(static_cast<Q::raw_type>(a % 16001), unsafe);
+        Q qb = Q::from_raw(static_cast<Q::raw_type>(b % 16001), unsafe);
         acc ^= static_cast<long>((qa + qb).raw());
     }
     return acc;
@@ -87,8 +87,8 @@ std::int64_t run_integer_mul() {
         lcg(x);
         const long a  = static_cast<long>((x >> 33) % 2000) - 1000;
         const long b  = static_cast<long>((x >> 11) % 2000) - 1000;
-        M          ma = M::from_raw(static_cast<M::raw_type>(a));
-        M          mb = M::from_raw(static_cast<M::raw_type>(b));
+        M          ma = M::from_raw(static_cast<M::raw_type>(a), unsafe);
+        M          mb = M::from_raw(static_cast<M::raw_type>(b), unsafe);
         acc += static_cast<long>((ma * mb).raw()); // value-index fast path
     }
     return acc;
@@ -105,8 +105,8 @@ std::int64_t run_qformat_div() {
         lcg(x);
         const long a  = static_cast<long>((x >> 33) % 16001);
         const long b  = static_cast<long>((x >> 11) % 15984) + 16; // raw ∈ [16, 15999]
-        Qn         qa = Qn::from_raw(static_cast<Qn::raw_type>(a));
-        Qn         qb = Qn::from_raw(static_cast<Qn::raw_type>(b));
+        Qn         qa = Qn::from_raw(static_cast<Qn::raw_type>(a), unsafe);
+        Qn         qb = Qn::from_raw(static_cast<Qn::raw_type>(b), unsafe);
         acc += static_cast<long>(div(qa, qb, round_toward_zero)->raw()); // native Q divide
     }
     return acc;
@@ -118,7 +118,7 @@ std::int64_t run_cross_grid_assign() {
     std::int64_t acc = 0, x = 1;
     for (long i = 0; i < iters; ++i) {
         lcg(x);
-        narrow a = narrow::from_raw(static_cast<narrow::raw_type>((x >> 33) % 101));
+        narrow a = narrow::from_raw(static_cast<narrow::raw_type>((x >> 33) % 101), unsafe);
         wide   b = a; // integer-mapping store
         acc += static_cast<long>(b.raw());
     }
@@ -136,11 +136,11 @@ std::int64_t run_checked_add() {
         const auto ux = static_cast<unsigned long long>(x);
         const long a  = static_cast<long>((ux >> 33) % 1000000) - 500000;
         const long b  = static_cast<long>((ux >> 11) % 1000000) - 500000;
-        C          ca = C::from_raw(static_cast<C::raw_type>(a));
-        C          cb = C::from_raw(static_cast<C::raw_type>(b));
+        C          ca = C::from_raw(static_cast<C::raw_type>(a), unsafe);
+        C          cb = C::from_raw(static_cast<C::raw_type>(b), unsafe);
         C          c;
-        errc       ec{};
-        c.policy(ec) = ca + cb; // checked narrowing store, reported into an errc
+        error      ec{};
+        c.policy(ec) = ca + cb; // checked narrowing store, reported into an error
         acc += static_cast<long>(c.raw()) + static_cast<long>(ec);
     }
     return acc;
@@ -148,7 +148,7 @@ std::int64_t run_checked_add() {
 
 std::int64_t run_rational_store() {
     using R          = rational;
-    using Q8         = inside<{{0, 255}, per<256>}, round_nearest>;
+    using Q8         = inside<{{0, 255}, per<256>}, round_half_away>;
     std::int64_t acc = 0, x = 1;
     Q8           q = 0;
     for (long i = 0; i < iters; ++i) {
@@ -157,7 +157,7 @@ std::int64_t run_rational_store() {
         // a fraction in [0, 255) whose denominator is not a power of two, so
         // the store rounds through the general fraction path
         const R v{static_cast<std::uint64_t>((ux >> 33) % 76500), static_cast<std::int64_t>(300 + (ux >> 60))};
-        errc    ec{};
+        error   ec{};
         q.policy(ec) = v; // (a rational has no interval: a reported store)
         acc += static_cast<long>(q.raw()) + static_cast<long>(ec);
     }
@@ -187,20 +187,20 @@ std::int64_t run_math(F f) {
     const auto   slots = static_cast<std::uint64_t>(static_cast<std::int64_t>(grid_of<In>.step_count())) + 1;
     for (long i = 0; i < math_iters; ++i) {
         lcg(x);
-        const In v = In::from_raw(detail::raw_from_offset<In>((static_cast<std::uint64_t>(x) >> 20) % slots));
+        const In v = In::from_raw(detail::raw_from_offset<In>((static_cast<std::uint64_t>(x) >> 20) % slots), unsafe);
         acc += static_cast<std::int64_t>(f(v).raw());
     }
     return acc;
 }
 
-using angle8 = inside<{{-4, rational{127, 32}}, per<32>}, round_nearest>; // 256 slots
-using angle  = inside<{{-4, 4}, per<512>}, round_nearest>;
-using dec    = inside<{{-4, 4}, per<1000>}, round_nearest>;
-using out20  = inside<{{-64, 64}, per<(1u << 20)>}, round_nearest>;
-using out40  = inside<{{-64, 64}, per<(std::uint64_t{1} << 40)>}, round_nearest>;
-using out52  = inside<{{-64, 64}, per<(std::uint64_t{1} << 52)>}, round_nearest>;
-using out57  = inside<{{0, 64}, per<(std::uint64_t{1} << 57)>}, round_nearest>;
-using out6   = inside<{{0, 64}, per<1000000>}, round_nearest>;
+using angle8 = inside<{{-4, rational{127, 32}}, per<32>}, round_half_away>; // 256 slots
+using angle  = inside<{{-4, 4}, per<512>}, round_half_away>;
+using dec    = inside<{{-4, 4}, per<1000>}, round_half_away>;
+using out20  = inside<{{-64, 64}, per<(1u << 20)>}, round_half_away>;
+using out40  = inside<{{-64, 64}, per<(std::uint64_t{1} << 40)>}, round_half_away>;
+using out52  = inside<{{-64, 64}, per<(std::uint64_t{1} << 52)>}, round_half_away>;
+using out57  = inside<{{0, 64}, per<(std::uint64_t{1} << 57)>}, round_half_away>;
+using out6   = inside<{{0, 64}, per<1000000>}, round_half_away>;
 
 std::int64_t run_math_table() {
     return run_math<angle8>([](angle8 v) { return math::sin<out20>(v); });
@@ -240,7 +240,7 @@ std::int64_t run_math_rotor() {
     constexpr auto slots = static_cast<std::uint64_t>(static_cast<std::int64_t>(grid_of<angle>.step_count())) + 1;
     const auto     next  = [&] {
         lcg(x);
-        return angle::from_raw(detail::raw_from_offset<angle>((static_cast<std::uint64_t>(x) >> 20) % slots));
+        return angle::from_raw(detail::raw_from_offset<angle>((static_cast<std::uint64_t>(x) >> 20) % slots), unsafe);
     };
     for (long i = 0; i < math_iters; ++i) {
         const angle    u = next(), v = next(), w = next();

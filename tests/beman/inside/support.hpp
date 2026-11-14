@@ -31,7 +31,7 @@ auto reported(F&& f) {
     if constexpr (detail::is_expected_v<decltype(r)>)
         return r;
     else
-        return std::expected<decltype(r), errc>{r};
+        return std::expected<decltype(r), error>{r};
 }
 
 // v, or the value an expected v holds (a test that knows it has one).
@@ -59,21 +59,21 @@ template <class T>
 concept can_step = requires(T& t) { ++t; };
 
 // v stored into T at run time under T's policy and the flags F (they replace
-// T's of the same kind, as T{v, F}), reporting into an errc: the stored T,
+// T's of the same kind, as T{v, F}), reporting into an error: the stored T,
 // with a test failure if the store failed.
 template <class T, policy_flag F = detail::none, class V>
 T store(const V& v) {
-    errc ec{};
-    T    r{v, make_policy<F>(ec)};
-    EXPECT_EQ(ec, errc{}) << "the store failed";
+    error ec{};
+    T     r{v, make_policy<F>(ec)};
+    EXPECT_EQ(ec, error{}) << "the store failed";
     return r;
 }
 
-// The errc a run-time store of v into T (under F) reports, errc{} for none.
+// The error a run-time store of v into T (under F) reports, error{} for none.
 template <class T, policy_flag F = detail::none, class V>
-errc store_error(const V& v) {
-    errc ec{};
-    T    r{v, make_policy<F>(ec)};
+error store_error(const V& v) {
+    error ec{};
+    T     r{v, make_policy<F>(ec)};
     static_cast<void>(r);
     return ec;
 }

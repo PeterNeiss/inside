@@ -3,9 +3,9 @@
 // only when the divisor's grid holds zero.
 //   - `a / b` is the exact rational quotient.
 //   - a rounding mode (per call, `div(a, b, round_toward_zero)`, or in the type) divides natively;
-//     a rounding flag picks the direction (`round_nearest`, `round_floor`, ...).
-//   - A divisor grid that holds 0 makes the result std::expected<inside, errc>
-//     (errc::division_by_zero); a zero-free divisor gives a plain value.
+//     a rounding flag picks the direction (`round_half_away`, `round_floor`, ...).
+//   - A divisor grid that holds 0 makes the result std::expected<inside, error>
+//     (error::division_by_zero); a zero-free divisor gives a plain value.
 //   - A quotient's type bounds its denominators, so arithmetic on it stays
 //     exact and plain: its precision is known at compile time.
 
@@ -28,7 +28,7 @@ int main() {
 
     // Integer division, per call: truncates like C++ `/`, or rounds.
     const auto trunc   = div(a, b, round_toward_zero);
-    const auto nearest = div(number{22}, number{7}, round_nearest);
+    const auto nearest = div(number{22}, number{7}, round_half_away);
     const auto ceil    = div(number{22}, number{7}, round_ceil);
     std::cout << "7 / 3 (toward zero)    = " << *trunc << "\n"
               << "22 / 7 (nearest, ceil) = " << *nearest << ", " << *ceil << "\n";
@@ -46,8 +46,8 @@ int main() {
 
     // Division by zero is a value, not a crash.
     const auto by_zero = number{10} / number{0};
-    std::cout << "10 / 0                 = " << errc_message(by_zero.error()) << "\n";
-    if (by_zero || by_zero.error() != errc::division_by_zero)
+    std::cout << "10 / 0                 = " << error_message(by_zero.error()) << "\n";
+    if (by_zero || by_zero.error() != error::division_by_zero)
         return 1;
 
     // A divisor grid without 0 cannot fail: a plain inside, nothing to unwrap.

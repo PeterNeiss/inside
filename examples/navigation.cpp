@@ -24,7 +24,7 @@ using namespace beman::inside::units;
 int main() {
     // 1. Polar round trip on a Q.14 unit square; theta onto 2^-14, its range
     //    [-π, π] deduced.
-    using coord_t = inside<{{-1, 1}, per<(1 << 14)>}, round_nearest>;
+    using coord_t = inside<{{-1, 1}, per<(1 << 14)>}, round_half_away>;
     std::cout << "(x, y) -> (r, theta) -> (x, y)\n";
     for (auto [x, y] : {std::pair{coord_t{1}, coord_t{0}},
                         {coord_t{-1}, coord_t{1}},
@@ -44,8 +44,8 @@ int main() {
     // 2. Range and bearing, metres at 1/256 m. The bearing runs from north
     //    clockwise, atan2(east, north), on a 2^-20 rad grid; degrees are a
     //    factor of π away, so value_cast rounds that once more, onto 0.1°.
-    using pos_t     = quantity<si::metre, inside<{{-1024, 1024}, per<(1 << 8)>}, round_nearest>>;
-    using compass_t = inside<{{-180, 180}, per<10>}, round_nearest>;
+    using pos_t     = quantity<si::metre, inside<{{-1024, 1024}, per<(1 << 8)>}, round_half_away>>;
+    using compass_t = inside<{{-180, 180}, per<10>}, round_half_away>;
     std::cout << "\ntarget (east, north)   range       bearing\n";
     for (auto [e, n] : {std::pair{pos_t{30, si::metre}, pos_t{40, si::metre}},
                         {pos_t{0, si::metre}, pos_t{50, si::metre}},
@@ -62,7 +62,7 @@ int main() {
         return 1;
 
     // 3. Inverse trig on [-1, 1]: plain numbers, as angles in rad.
-    using ratio_t = inside<{{-1, 1}, per<(1 << 12)>}, round_nearest>;
+    using ratio_t = inside<{{-1, 1}, per<(1 << 12)>}, round_half_away>;
     std::cout << "\nr      asin(r)    acos(r)\n";
     for (const ratio_t r : {ratio_t{-1}, ratio_t{-0.5}, ratio_t{0}, ratio_t{0.5}, ratio_t{1}})
         std::cout << "  " << r << "\t" << math::asin(r) * si::radian << "\t" << math::acos(r) * si::radian << "\n";

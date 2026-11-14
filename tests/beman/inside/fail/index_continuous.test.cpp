@@ -6,5 +6,5 @@
 int main() {
     using namespace beman::inside;
     const inside<{{0, 1}, max_denominator{10}}> x = 0;
-    (void)x.index();
+    (void)x.step();
 }

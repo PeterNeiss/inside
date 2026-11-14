@@ -27,8 +27,8 @@ inline constexpr named_unit     cts_def{"cts", adc_counts};
 inline constexpr auto           cts = unit_c<cts_def>;
 
 using reading    = quantity<cts, inside<{0, 4095}>>; // a 12-bit ADC
-using gain_t     = quantity<cts / si::volt, inside<{{1000, 1500}, per<1000>}, round_nearest>>;
-using millivolts = quantity<si::milli(si::volt), inside<{-5000, 5000}, round_nearest>>;
+using gain_t     = quantity<cts / si::volt, inside<{{1000, 1500}, per<1000>}, round_half_away>>;
+using millivolts = quantity<si::milli(si::volt), inside<{-5000, 5000}, round_half_away>>;
 
 template <class A, class B>
 concept addable = requires(const A& a, const B& b) { a + b; };

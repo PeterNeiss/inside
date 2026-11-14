@@ -40,7 +40,7 @@ constexpr std::array with_quantity_form{
     std::string_view{"add"},
     std::string_view{"add_all"},
     std::string_view{"as"},
-    std::string_view{"checked_cast"},
+    std::string_view{"exact_cast"},
     std::string_view{"conversion_loses"},
     std::string_view{"conversion_overflows"},
     std::string_view{"conversion_rounds"},
@@ -80,7 +80,7 @@ constexpr std::array inside_only{
     exception{"excludes", "grid algebra"},
     exception{"overlaps", "grid algebra"},
     // Vocabulary both share.
-    exception{"errc_message", "shared vocabulary"},
+    exception{"error_message", "shared vocabulary"},
     exception{"get_error_handler", "shared vocabulary"},
     exception{"set_error_handler", "shared vocabulary"},
     exception{"has_flag", "shared vocabulary"},
@@ -101,8 +101,8 @@ constexpr std::array member_only{
     std::string_view{"numerator"},
     std::string_view{"denominator"},
     std::string_view{"index"},
-    std::string_view{"from_index"},
-    std::string_view{"try_from_index"},
+    std::string_view{"from_step"},
+    std::string_view{"try_from_step"},
 };
 
 template <class Q>
@@ -155,7 +155,7 @@ TEST(UnitsParityTest, the_quantity_forms_compile) {
     std::mt19937_64 rng{42};
     metres          m{40, si::metre};
     km              k{1, si::kilo(si::metre)};
-    errc            ec{};
+    error           ec{};
 
     // Members: the one-shot policy, the policy handles and the hooks.
     static_assert(requires { metres{150, si::metre, clamp}; });
@@ -173,8 +173,8 @@ TEST(UnitsParityTest, the_quantity_forms_compile) {
     static_assert(!has_as<metres>); // a length is no number
 
     // Free functions.
-    static_assert(requires { checked_cast<metres>(just<5> * si::metre); });
-    static_assert(requires { checked_cast<metres>(k); });
+    static_assert(requires { exact_cast<metres>(just<5> * si::metre); });
+    static_assert(requires { exact_cast<metres>(k); });
     static_assert(requires { min(m, k); });
     static_assert(requires { max(m, k); });
     static_assert(requires { midpoint(m, k); });
@@ -198,8 +198,6 @@ TEST(UnitsParityTest, the_quantity_forms_compile) {
     static_assert(requires(seconds s) { div(m, s, ec); });
     static_assert(requires { div(m, just<2>, round_floor); });
     static_assert(requires(seconds s) { div(just<2>, s, round_floor); });
-    static_assert(requires { dot(m, m, m, m); });
-    static_assert(requires { cross(m, m, m, m); });
     static_assert(requires { lerp(m, k, just<1, 2>); });
     static_assert(requires { parse<metres>("5"); });
     static_assert(requires { parse_exact<metres>("5"); });
@@ -236,13 +234,13 @@ TEST(UnitsParityTest, the_new_forms_work) {
     m.policy<wrap>() += just<105> * si::metre; // the period is 101
     EXPECT_TRUE(m == just<4> * si::metre);
 
-    errc ec{};
+    error ec{};
     m.policy(ec) = k;
-    EXPECT_EQ(ec, errc::overflow);
+    EXPECT_EQ(ec, error::overflow);
     EXPECT_TRUE(m == just<4> * si::metre);
 
-    EXPECT_TRUE(checked_cast<metres>(just<7> * si::metre) == just<7> * si::metre);
-    EXPECT_EQ(checked_cast<metres>(k).error(), errc::overflow);
+    EXPECT_TRUE(exact_cast<metres>(just<7> * si::metre) == just<7> * si::metre);
+    EXPECT_EQ(exact_cast<metres>(k).error(), error::overflow);
 
     EXPECT_TRUE(min(m, k) == just<4> * si::metre);
     EXPECT_TRUE(max(m, k) == k);
@@ -250,9 +248,9 @@ TEST(UnitsParityTest, the_new_forms_work) {
 
     const ratio r{25, percent}; // 25 %: the number 1/4
     EXPECT_EQ(r.to<double>(), 0.25);
-    EXPECT_EQ((r.as<int, round_nearest>()), 0);
+    EXPECT_EQ((r.as<int, round_half_away>()), 0);
     EXPECT_EQ((as<int, round_ceil>(r)), 1);
-    EXPECT_EQ(r.to<int>().error(), errc::rounding_error); // 1/4 is no int without a rounding
+    EXPECT_EQ(r.to<int>().error(), error::rounding_error); // 1/4 is no int without a rounding
 
     std::mt19937_64 rng{7};
     for (int i = 0; i < 100; ++i) {
@@ -282,9 +280,9 @@ TEST(UnitsParityTest, per_call_arithmetic) {
     EXPECT_TRUE(div(m, inside<{1, 10}>{3}, round_floor) == just<13> * si::metre);
     EXPECT_TRUE(div(just<30>, s, round_floor) == just<10> / si::second);
 
-    errc       ec{};
+    error      ec{};
     const auto z = div(m, quantity<si::second, inside<{0, 10}>>{0, si::second}, ec);
-    EXPECT_EQ(ec, errc::division_by_zero);
+    EXPECT_EQ(ec, error::division_by_zero);
     (void)z;
 
     static_assert(!add_with<metres, km, decltype(beman::inside::detail::on_clamp([](auto&, auto) {}))>);
@@ -293,7 +291,7 @@ TEST(UnitsParityTest, per_call_arithmetic) {
 // cursor<Q, Step>, values<Q> and end(t) on a quantity: the number's grid,
 // yielding quantities; Step is a number in Q's unit.
 TEST(UnitsParityTest, cursors_and_values_over_quantities) {
-    using s_t = quantity<si::second, inside<{{0, 2}, per<4>}, round_nearest>>;
+    using s_t = quantity<si::second, inside<{{0, 2}, per<4>}, round_half_away>>;
     std::vector<s_t> seen;
     for (cursor<s_t, rational{1, 2}> t; t != end(t); ++t)
         seen.push_back(*t);
@@ -310,7 +308,7 @@ TEST(UnitsParityTest, cursors_and_values_over_quantities) {
     EXPECT_EQ(std::ranges::find(values<s_t>, s_t{rational{3, 4}, si::second}) - values<s_t>.begin(), 3);
 
     // A quantity's ++ steps one notch of its number, as an inside's does.
-    quantity<si::second, inside<{{0, 2}, per<4>}, round_nearest | clamp>> q{
+    quantity<si::second, inside<{{0, 2}, per<4>}, round_half_away | clamp>> q{
         0, si::second}; // (++ names its range handling)
     ++q;
     EXPECT_TRUE((q == just<1, 4> * si::second));

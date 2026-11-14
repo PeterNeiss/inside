@@ -56,7 +56,7 @@ template <insidable Result, insidable Point, insidable X>
 constexpr Result scale_by_point(const X& x) noexcept {
     static_assert(max_index_of<Result> == max_index_of<X>);
     const std::uint64_t off = raw_offset<X>(x.raw());
-    return Result::from_raw(raw_from_offset<Result>(lower_of<Point> < 0 ? max_index_of<X> - off : off));
+    return Result::from_raw(raw_from_offset<Result>(lower_of<Point> < 0 ? max_index_of<X> - off : off), unsafe);
 }
 } // namespace beman::inside::detail
 

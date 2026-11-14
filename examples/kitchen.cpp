@@ -49,9 +49,9 @@ int main() {
     //    value_cast is an expected.
     const auto oven    = point<international::degree_Fahrenheit>(inside<{0, 600}>{350});
     const auto oven_c  = oven.point_in(si::degree_Celsius);
-    const auto dial    = value_cast<inside<{0, 300}, round_nearest>>(oven_c);
+    const auto dial    = value_cast<inside<{0, 300}, round_half_away>>(oven_c);
     const auto hotter  = oven + delta<international::degree_Fahrenheit>(just<25>);
-    const auto dial_up = value_cast<inside<{0, 300}, round_nearest>>(hotter.point_in(si::degree_Celsius));
+    const auto dial_up = value_cast<inside<{0, 300}, round_half_away>>(hotter.point_in(si::degree_Celsius));
     if (!dial || !dial_up)
         return 1;
     std::cout << "oven   " << oven << " = " << oven_c << " ≈ " << *dial << "; " << hotter << " ≈ " << *dial_up << '\n';
@@ -72,7 +72,7 @@ int main() {
 
     // 5. The jar holds 2 kg, to the gram; it starts with 1.5 kg. A pound fits
     //    (rounded to the gram); the second one is clamped at 2 kg.
-    quantity<si::kilogram, inside<{{0, 2}, per<1000>}, clamp | round_nearest>> jar{just<3, 2> * si::kilogram};
+    quantity<si::kilogram, inside<{{0, 2}, per<1000>}, clamp | round_half_away>> jar{just<3, 2> * si::kilogram};
     jar += just<1> * international::pound;
     const auto after_one = to_string(jar);
     jar += just<1> * international::pound;

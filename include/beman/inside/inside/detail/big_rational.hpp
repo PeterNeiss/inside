@@ -23,7 +23,7 @@
 // computes with insides, which hold any value of their grid. The same
 // arithmetic by name (big_int::add, big_rational::mul, …) is constexpr for
 // the constexpr grid constructors, normalization and printing a grid; at
-// run time a result past one limb reports errc::overflow.
+// run time a result past one limb reports error::overflow.
 //
 // Arithmetic on large values runs on transient std::vector<std::uint64_t> magnitudes
 // with the wide_int limb kernels, during constant evaluation only.
@@ -254,7 +254,7 @@ struct big_int {
             r.Negative   = neg;
             return r;
         } else {
-            raise(errc::overflow, "big_int: a value past 64 bits exists only at compile time");
+            raise(error::overflow, "big_int: a value past 64 bits exists only at compile time");
         }
     }
 
@@ -368,7 +368,7 @@ constexpr big_int abs(big_int a) {
 
 constexpr auto big_int::divmod(const big_int& a, const big_int& b) -> divmod_result {
     if (b.is_zero())
-        fail_hard<"big_int: division by zero">(errc::division_by_zero);
+        fail_hard<"big_int: division by zero">(error::division_by_zero);
     if (a.Size == 0 && b.Size == 0)
         return {of_limb(a.Small / b.Small, a.Negative != b.Negative), of_limb(a.Small % b.Small, a.Negative)};
     if (b.Size == 0) { // a one-limb divisor: one pass over a's limbs
@@ -423,10 +423,10 @@ struct big_rational {
     constexpr big_rational(std::floating_point auto d) // exact binary value
     {
         if (!is_finite(d))
-            fail_hard<"big_rational: not a finite number">(errc::not_finite);
+            fail_hard<"big_rational: not a finite number">(error::not_finite);
         if constexpr (wide_float<decltype(d)>)
             if (!is_double_value(d) && !is_finite(static_cast<double>(d)))
-                fail_hard<"big_rational: a long double past the double range">(errc::overflow);
+                fail_hard<"big_rational: a long double past the double range">(error::overflow);
         // One limb each (most limits): m·2^e reduced, no transient magnitudes.
         if (is_double_value(d)) {
             auto [m, e] = double_parts(static_cast<double>(d));
@@ -454,7 +454,7 @@ struct big_rational {
 
     constexpr void normalize() {
         if (Den.is_zero())
-            fail_hard<"big_rational: zero denominator">(errc::division_by_zero);
+            fail_hard<"big_rational: zero denominator">(error::division_by_zero);
         if (Den.negative()) {
             Num = big_int::neg(Num);
             Den = big_int::neg(Den);
@@ -479,7 +479,7 @@ struct big_rational {
     // past 64 bits fails the build when such a path meets it.
     constexpr operator rational() const {
         if (!fits_rational())
-            fail_hard<"grid number past 64 bits on a path that needs a 64-bit rational">(errc::overflow);
+            fail_hard<"grid number past 64 bits on a path that needs a 64-bit rational">(error::overflow);
         const std::int64_t d = static_cast<std::int64_t>(Den.Small); // in lowest terms already
         return rational_from_parts(Num.Small, Num.negative() ? -d : d);
     }

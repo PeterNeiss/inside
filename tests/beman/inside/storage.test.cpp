@@ -30,13 +30,14 @@
 // Storage deduced from the grid, and how the behaviour policies act on it.
 namespace storage_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 
 // The default ctor stores a value of the grid (0, else Lower; see
 // default_value.test.cpp) on every storage.
 TEST(StorageTest, default_ctor_stores_a_grid_value) {
     static_assert(!std::is_trivially_default_constructible_v<inside<{0, 10}>>);    // index
     static_assert(!std::is_trivially_default_constructible_v<inside<{-100, -5}>>); // signed value
-    static_assert(!std::is_trivially_default_constructible_v<inside<{{0, 10}, per<4>}, round_nearest>>);
+    static_assert(!std::is_trivially_default_constructible_v<inside<{{0, 10}, per<4>}, round_half_away>>);
     static_assert(!std::is_trivially_default_constructible_v<inside<{0, 10}, unsafe>>);
     static_assert(inside<{-100, -5}>{} == -100 && inside<grid{5}>{} == 5);
 }
@@ -44,23 +45,23 @@ TEST(StorageTest, default_ctor_stores_a_grid_value) {
 // behaviour policies on a notched grid
 TEST(StorageTest, behaviour_policies_on_a_notched_grid) {
     // clamp: out-of-range snaps to the endpoint.
-    using EC = inside<{{0, 10}, per<4>}, clamp | round_nearest>;
+    using EC = inside<{{0, 10}, per<4>}, clamp | round_half_away>;
     ASSERT_EQ(rational{EC{rational{15}}}, 10);
     ASSERT_EQ(rational{EC{rational{-3}}}, 0);
 
     // wrap: modular reduction onto the grid
     // (range = Upper − Lower + Notch = 10.25, so 11.25 wraps to 1).
-    using EW = inside<{{0, 10}, per<4>}, wrap | round_nearest>;
+    using EW = inside<{{0, 10}, per<4>}, wrap | round_half_away>;
     ASSERT_EQ((rational{EW{rational{45, 4}}}), 1);
 
-    // try_make: out-of-range yields errc::overflow.
+    // try_make: out-of-range yields error::overflow.
     using DS  = inside<{5, 100}, checked>;
     auto ok   = DS::try_make(42);
     auto fail = DS::try_make(200);
     ASSERT_TRUE(ok.has_value());
     ASSERT_EQ(*ok, 42);
     ASSERT_TRUE(!fail.has_value());
-    ASSERT_EQ(fail.error(), errc::overflow);
+    ASSERT_EQ(fail.error(), error::overflow);
 }
 
 // a dyadic grid runs the full out-of-range policy cascade
@@ -78,10 +79,10 @@ TEST(StorageTest, dyadic_grid_runs_the_full_out_of_range_policy_cascade) {
 
     // checked: out-of-range reports instead of silently storing.
     using RK = inside<{{0, 4}, per<256>}, checked>;
-    ASSERT_EQ(test::store_error<RK>(test::at_run_time(9.5)), errc::overflow);
+    ASSERT_EQ(test::store_error<RK>(test::at_run_time(9.5)), error::overflow);
     ASSERT_TRUE(static_cast<double>(rational{RK{2.5}}) == 2.5);
 
-    // try_make: out-of-range yields errc::overflow.
+    // try_make: out-of-range yields error::overflow.
     ASSERT_TRUE(RK::try_make(2.0).has_value());
     ASSERT_TRUE(!RK::try_make(9.5).has_value());
 
@@ -92,14 +93,14 @@ TEST(StorageTest, dyadic_grid_runs_the_full_out_of_range_policy_cascade) {
 
 // non-finite doubles are rejected, both engines
 TEST(StorageTest, non_finite_doubles_are_rejected_both_engines) {
-    // Non-finite input is reported as errc::not_finite (distinct from the
+    // Non-finite input is reported as error::not_finite (distinct from the
     // overflow used for finite-but-out-of-interval values), both engines.
-    using R          = inside<{{0, 4}, per<256>}, round_nearest>;
+    using R          = inside<{{0, 4}, per<256>}, round_half_away>;
     const double nan = test::at_run_time(std::numeric_limits<double>::quiet_NaN());
     const double inf = test::at_run_time(std::numeric_limits<double>::infinity());
-    ASSERT_EQ(test::store_error<R>(nan), errc::not_finite);
-    ASSERT_EQ(test::store_error<R>(inf), errc::not_finite);
-    ASSERT_EQ(test::store_error<R>(-inf), errc::not_finite);
+    ASSERT_EQ(test::store_error<R>(nan), error::not_finite);
+    ASSERT_EQ(test::store_error<R>(inf), error::not_finite);
+    ASSERT_EQ(test::store_error<R>(-inf), error::not_finite);
 }
 
 // Full-domain inverse trig (improvement #2): atan beyond |x| ≤ 1 via
@@ -107,7 +108,7 @@ TEST(StorageTest, non_finite_doubles_are_rejected_both_engines) {
 // normalization. Engine-neutral (both engines accept the same programs).
 // atan / atan2 accept magnitudes beyond 1
 TEST(StorageTest, atan_atan2_accept_magnitudes_beyond_1) {
-    using wide_t = inside<{{-16, 16}, per<16384>}, round_nearest>;
+    using wide_t = inside<{{-16, 16}, per<16384>}, round_half_away>;
 
     auto val = [](auto b) { return static_cast<double>(rational{b}); };
 
@@ -127,7 +128,7 @@ TEST(StorageTest, atan_atan2_accept_magnitudes_beyond_1) {
 // Per-operation policy overrides (`with_*`, `on_*`, `policy(ec)`) route
 // through the assignment engine and store the endpoint, not a notch count.
 TEST(StorageTest, per_operation_policies_work_on_dyadic_bounds) {
-    using R = inside<{{1, 4}, per<256>}, round_nearest>; // Lower != 0
+    using R = inside<{{1, 4}, per<256>}, round_half_away>; // Lower != 0
 
     R a{2.0};
     a.policy<clamp>() = 9.5;
@@ -146,11 +147,11 @@ TEST(StorageTest, per_operation_policies_work_on_dyadic_bounds) {
     c.policy<round_toward_zero>() = 2.5;
     ASSERT_TRUE(static_cast<double>(rational{c}) == 2.5);
 
-    // errc mode: out-of-range reports, value unchanged.
-    beman::inside::errc ec{};
-    R                   d{2.0};
+    // error mode: out-of-range reports, value unchanged.
+    beman::inside::error ec{};
+    R                    d{2.0};
     d.policy<checked>(ec) = 9.5;
-    ASSERT_TRUE(ec != errc{});
+    ASSERT_TRUE(ec != error{});
     ASSERT_TRUE(static_cast<double>(rational{d}) == 2.0);
 
     // inside rhs through the per-operation clamp.
@@ -160,7 +161,7 @@ TEST(StorageTest, per_operation_policies_work_on_dyadic_bounds) {
     ASSERT_TRUE(static_cast<double>(rational{e}) == 4.0);
 
     // wrap override.
-    using W = inside<{{0, 359}, 1}, round_nearest>;
+    using W = inside<{{0, 359}, 1}, round_half_away>;
     W w{0.0};
     w.policy<wrap>() = 370.0;
     ASSERT_TRUE(static_cast<double>(rational{w}) == 10.0);
@@ -170,7 +171,7 @@ TEST(StorageTest, per_operation_policies_work_on_dyadic_bounds) {
 // holds every result. Continuous (Notch == 0) grids store arbitrary
 // rationals, so nothing is provable and they keep the wrapper.
 TEST(StorageTest, notched_arithmetic_returns_a_plain_inside) {
-    using E = inside<{{0, 10}, per<4>}, checked | round_nearest>;
+    using E = inside<{{0, 10}, per<4>}, checked | round_half_away>;
     E a{rational{3, 4}}, b{rational{5, 4}};
 
     auto s = a + b;
@@ -190,14 +191,14 @@ TEST(StorageTest, notched_arithmetic_returns_a_plain_inside) {
     using C = inside<{{0, 10}, max_denominator{std::int64_t{1} << 20}}, checked>;
     static_assert(!detail::is_expected_v<decltype(C{} + C{})>);
     static_assert(!detail::is_expected_v<decltype(C{} * C{})>);
-    const C x = C::from_raw(rational{1, std::int64_t{1} << 20});
+    const C x = C::from_raw(rational{1, std::int64_t{1} << 20}, unsafe);
     ASSERT_EQ(rational{x * x}, (rational{1, std::int64_t{1} << 40}));
 }
 
 // Smaller-threads batch: wide trig envelope, pown, clamp saturation.
 // sin/cos/tan accept radians up to 2^20
 TEST(StorageTest, sin_cos_tan_accept_radians_up_to_2_20) {
-    using wide_t     = inside<{{-(std::int64_t{1} << 20), std::int64_t{1} << 20}, per<1024>}, round_nearest>;
+    using wide_t     = inside<{{-(std::int64_t{1} << 20), std::int64_t{1} << 20}, per<1024>}, round_half_away>;
     auto         val = [](auto b) { return static_cast<double>(rational{b}); };
     const double tol = 2.0 / 1024; // grid tolerance (notch ≈ 9.8e-4)
 
@@ -222,7 +223,7 @@ TEST(StorageTest, pown_e_exact_compile_time_integer_powers_on_any_inside) {
     static_assert(upper_of<cube_t> >= 1000);
 
     // Exact on fractional grids.
-    using q = inside<{{0, 2}, per<4>}, round_nearest>;
+    using q = inside<{{0, 2}, per<4>}, round_half_away>;
     ASSERT_EQ((rational{math::pown<2>(q{rational{3, 4}})}), (rational{9, 16}));
 }
 
@@ -230,16 +231,16 @@ TEST(StorageTest, pown_e_exact_compile_time_integer_powers_on_any_inside) {
 TEST(StorageTest, tan_saturates_instead_of_erroring_when_out_carries_clamp) {
     // Explicit-Out spelling is the impl form (`tan<T>(x)` would bind T as the
     // INPUT of the auto form).
-    using in_t  = inside<{{rational{-3, 2}, rational{3, 2}}, per<16384>}, round_nearest>; // one branch
-    using sat_t = inside<{{-1, 1}, per<16384>}, round_nearest | clamp>;
-    using err_t = inside<{{-1, 1}, per<16384>}, round_nearest>;
+    using in_t  = inside<{{rational{-3, 2}, rational{3, 2}}, per<16384>}, round_half_away>; // one branch
+    using sat_t = inside<{{-1, 1}, per<16384>}, round_half_away | clamp>;
+    using err_t = inside<{{-1, 1}, per<16384>}, round_half_away>;
 
     // tan(1.2) ≈ 2.57 — beyond [-1, 1].
     const auto sat = math::tan<sat_t>(in_t{1.2});
     ASSERT_TRUE(static_cast<double>(rational{sat}) == 1.0); // clamped to Upper
 
     // Without clamp the named output is an expected holding the overflow.
-    ASSERT_EQ(test::reported([] { return math::tan<err_t>(in_t{1.2}); }).error(), errc::overflow);
+    ASSERT_EQ(test::reported([] { return math::tan<err_t>(in_t{1.2}); }).error(), error::overflow);
 }
 } // namespace storage_tests
 
@@ -248,6 +249,7 @@ TEST(StorageTest, tan_saturates_instead_of_erroring_when_out_carries_clamp) {
 // A failed error-code construction keeps the default value.
 namespace default_value_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 
 namespace {
 // The value of T{} and of a default-initialized T, both in a constant
@@ -269,17 +271,17 @@ constexpr bool defaults_to(const rational& v) {
 } // namespace
 
 TEST(DefaultValueTest, zero_when_the_grid_holds_it_else_lower) {
-    static_assert(defaults_to<inside<{0, 100}>>(0));                                 // index from 0
-    static_assert(defaults_to<inside<{-100, 100}>>(0));                              // signed value
-    static_assert(defaults_to<inside<{5, 100}>>(5));                                 // value raw, no 0
-    static_assert(defaults_to<inside<{200, 300}>>(200));                             // index, no 0
-    static_assert(defaults_to<inside<{-10, -5}>>(-10));                              // below 0
-    static_assert(defaults_to<inside<{{-1, 1}, per<16384>}, round_nearest>>(0));     // Q1.14: not Lower
-    static_assert(defaults_to<inside<{{0.5, 10.5}, 1}>>(rational{1u, 2}));           // unanchored
-    static_assert(defaults_to<inside<{{-1, 1}, max_denominator{8}}>>(0));            // continuous
-    static_assert(defaults_to<inside<{{1, 2}, max_denominator{100}}>>(1));           // continuous, no 0
-    static_assert(defaults_to<inside<grid{7}>>(7));                                  // point
-    static_assert(defaults_to<inside<{0, 100}, clamp | round_nearest | unsafe>>(0)); // any policy
+    static_assert(defaults_to<inside<{0, 100}>>(0));                                   // index from 0
+    static_assert(defaults_to<inside<{-100, 100}>>(0));                                // signed value
+    static_assert(defaults_to<inside<{5, 100}>>(5));                                   // value raw, no 0
+    static_assert(defaults_to<inside<{200, 300}>>(200));                               // index, no 0
+    static_assert(defaults_to<inside<{-10, -5}>>(-10));                                // below 0
+    static_assert(defaults_to<inside<{{-1, 1}, per<16384>}, round_half_away>>(0));     // Q1.14: not Lower
+    static_assert(defaults_to<inside<{{0.5, 10.5}, 1}>>(rational{1u, 2}));             // unanchored
+    static_assert(defaults_to<inside<{{-1, 1}, max_denominator{8}}>>(0));              // continuous
+    static_assert(defaults_to<inside<{{1, 2}, max_denominator{100}}>>(1));             // continuous, no 0
+    static_assert(defaults_to<inside<grid{7}>>(7));                                    // point
+    static_assert(defaults_to<inside<{0, 100}, clamp | round_half_away | unsafe>>(0)); // any policy
     static_assert(value_init<inside<{{1, 2}, max_denominator{100}}>>().Den != 0);
 }
 
@@ -296,9 +298,9 @@ TEST(DefaultValueTest, wide_storage) {
 }
 
 TEST(DefaultValueTest, runtime_matches_compile_time) {
-    inside<{5, 100}>                             a;
-    inside<{-10, -5}>                            b{};
-    inside<{{-1, 1}, per<16384>}, round_nearest> c;
+    inside<{5, 100}>                               a;
+    inside<{-10, -5}>                              b{};
+    inside<{{-1, 1}, per<16384>}, round_half_away> c;
     EXPECT_EQ(rational{a}, 5);
     EXPECT_EQ(rational{b}, -10);
     EXPECT_EQ(rational{c}, 0);
@@ -306,14 +308,14 @@ TEST(DefaultValueTest, runtime_matches_compile_time) {
 
 TEST(DefaultValueTest, failed_error_code_construction_keeps_the_default) {
     constexpr auto store = [] {
-        errc             ec{};
+        error            ec{};
         inside<{5, 100}> x(200, make_policy(ec));
         return std::pair{ec, rational{x}};
     };
-    static_assert(store().first == errc::overflow && store().second == 5);
-    errc             ec{};
+    static_assert(store().first == error::overflow && store().second == 5);
+    error            ec{};
     inside<{5, 100}> x(200, make_policy(ec));
-    EXPECT_EQ(ec, errc::overflow);
+    EXPECT_EQ(ec, error::overflow);
     EXPECT_EQ(rational{x}, 5);
 }
 
@@ -354,6 +356,7 @@ TEST(DefaultValueTest, quantity) {
 // formats
 namespace formats_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 //---------------------------------------------------------------------------
@@ -399,9 +402,9 @@ TEST(FormatsTest, formats_map_to_native_byte_widths) {
     static_assert(sizeof(unorm32) == 4);
 
     // Q-format fixed-point
-    static_assert(sizeof(q4_4) == 1);
-    static_assert(sizeof(q8_8) == 2);
-    static_assert(sizeof(q16_16) == 4);
+    static_assert(sizeof(uq4_4) == 1);
+    static_assert(sizeof(uq8_8) == 2);
+    static_assert(sizeof(uq16_16) == 4);
 }
 
 //---------------------------------------------------------------------------
@@ -416,7 +419,7 @@ TEST(FormatsTest, formats_fallible_results_are_expected_storage_stays_native) {
 
     auto r = uint8{200} / uint8{0};
     ASSERT_FALSE(r.has_value());
-    ASSERT_EQ(r.error(), errc::division_by_zero);
+    ASSERT_EQ(r.error(), error::division_by_zero);
 }
 
 //---------------------------------------------------------------------------
@@ -437,15 +440,15 @@ TEST(FormatsTest, formats_round_trip_representative_values) {
     ASSERT_EQ(unorm16{1.0_r}, 1);
 
     // Q-format — fractional values on the grid.
-    ASSERT_EQ(q8_8{42.5}, 42.5_r);
-    ASSERT_EQ(q4_4{3.25}, 3.25_r);
-    ASSERT_EQ(q16_16{1000.125}, 1000.125_r);
+    ASSERT_EQ(uq8_8{42.5}, 42.5_r);
+    ASSERT_EQ(uq4_4{3.25}, 3.25_r);
+    ASSERT_EQ(uq16_16{1000.125}, 1000.125_r);
     // Every bit pattern: the top value is 2^n − 1 notches.
-    ASSERT_EQ(q4_4{15.9375}, 15.9375_r);
-    ASSERT_EQ(q8_8{255.99609375}, rational(65535u, 256u));
-    ASSERT_EQ(q16_16{65535.5}, 65535.5_r);
-    ASSERT_FALSE(q4_4::try_make(16).has_value());
-    static_assert(grid_of<q4_4>.step_count() == 255 && grid_of<q8_8>.step_count() == 65535);
+    ASSERT_EQ(uq4_4{15.9375}, 15.9375_r);
+    ASSERT_EQ(uq8_8{255.99609375}, rational(65535u, 256u));
+    ASSERT_EQ(uq16_16{65535.5}, 65535.5_r);
+    ASSERT_FALSE(uq4_4::try_make(16).has_value());
+    static_assert(grid_of<uq4_4>.step_count() == 255 && grid_of<uq8_8>.step_count() == 65535);
 }
 
 //---------------------------------------------------------------------------
@@ -472,10 +475,10 @@ TEST(FormatsTest, formats_wide_type_extremes_round_trip) {
 // formats reject values past the native range
 TEST(FormatsTest, formats_reject_values_past_the_native_range) {
     // An int may not fit: stores of a run-time int report.
-    ASSERT_EQ(test::store_error<uint8>(test::at_run_time(256)), errc::overflow);
-    ASSERT_EQ(test::store_error<int16>(test::at_run_time(-32769)), errc::overflow);
-    ASSERT_EQ(test::store_error<uint8>(test::at_run_time(255)), errc{});
-    ASSERT_EQ(test::store_error<int16>(test::at_run_time(-32768)), errc{});
+    ASSERT_EQ(test::store_error<uint8>(test::at_run_time(256)), error::overflow);
+    ASSERT_EQ(test::store_error<int16>(test::at_run_time(-32769)), error::overflow);
+    ASSERT_EQ(test::store_error<uint8>(test::at_run_time(255)), error{});
+    ASSERT_EQ(test::store_error<int16>(test::at_run_time(-32768)), error{});
     static_assert(std::is_constructible_v<int16, std::int16_t>); // a narrower type is proven
 }
 } // namespace formats_tests
@@ -486,14 +489,15 @@ TEST(FormatsTest, formats_reject_values_past_the_native_range) {
 // (units_parity.test.cpp): a member whose body is ill-formed for some
 // arguments (a static_assert body, a missing operation) fails here.
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::units;
 
 namespace {
-// A cursor's own policy: flags_of drops the cursor marker.
+// A cursor's own policy: policy_of drops the cursor marker.
 template <class>
-struct policy_of;
+struct policy_param;
 template <grid G, policy_flag P>
-struct policy_of<inside<G, P>> {
+struct policy_param<inside<G, P>> {
     static constexpr policy_flag value = P;
 };
 using cur = cursor<inside<{0, 60}, round_floor>, 5>;
@@ -505,15 +509,15 @@ concept steps = requires(T x) { ++x; };
 // Insides: an integer grid, a Q format with a rounding and clamp, a bounded
 // continuous grid, a grid past 64 bits, a point, a cursor.
 template class beman::inside::inside<grid{0, 100}>;
-template class beman::inside::inside<grid{{0, 1}, per<4>}, round_nearest | clamp>;
+template class beman::inside::inside<grid{{0, 1}, per<4>}, round_half_away | clamp>;
 template class beman::inside::inside<grid{{-1, 1}, max_denominator{8}}, wrap>;
 template class beman::inside::inside<grid{{0, 0x1p70}, per<4>}>;
 template class beman::inside::inside<grid{7}>;
-template class beman::inside::inside<grid_of<cur>, policy_of<cur>::value>;
+template class beman::inside::inside<grid_of<cur>, policy_param<cur>::value>;
 
 // Quantities and a point.
 template class beman::inside::units::quantity<si::metre, inside<{0, 100}>>;
-template class beman::inside::units::quantity<percent, inside<{{0, 100}, per<4>}, round_nearest>>;
+template class beman::inside::units::quantity<percent, inside<{{0, 100}, per<4>}, round_half_away>>;
 template class beman::inside::units::quantity<si::second, cur>;
 template class beman::inside::units::quantity_point<pt::reference, pt::origin, pt::rep>;
 
@@ -527,6 +531,7 @@ TEST(ExplicitInstantiationTest, every_member_compiles_or_is_constrained) {
 // Pinned defects: each case failed before its fix.
 namespace pinned_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 template <class T>
@@ -543,7 +548,8 @@ TEST(StorageTest, q_format_grid_far_from_zero) {
         Q x{base};
         Q y{rational{base * 2 + 1, 2}};
         return rational(x) == rational{base} && rational(y) == rational{base * 2 + 1, 2} &&
-               y.to<std::int64_t, round_toward_zero>() == base && y.to<std::int64_t>().error() == errc::rounding_error;
+               y.to<std::int64_t, round_toward_zero>() == base &&
+               y.to<std::int64_t>().error() == error::rounding_error;
     }());
 }
 
@@ -577,7 +583,7 @@ TEST(StorageTest, value_index_past_an_int64_raw) {
 // 2^-62 notch) wrapped through int64: atan2's grid came out as [0.86, −0.86]
 // and did not compile.
 TEST(StorageTest, deduced_limit_past_int64_index) {
-    using fine = inside<{{0, 1}, per<(1ll << 62)>}, round_nearest>;
+    using fine = inside<{{0, 1}, per<(1ll << 62)>}, round_half_away>;
     using A    = decltype(math::atan2(fine{}, fine{}));
     static_assert(lower_of<A> < -3 && upper_of<A> > 3);
     using H = decltype(math::hypot(fine{}, fine{}));
@@ -633,16 +639,16 @@ TEST(StorageTest, grid_past_int64_constructs_compares_and_converts) {
     static_assert(U64{Small{7}} == 7);
     static_assert(U64{u64_max}.to<unsigned long long>() == u64_max);
     static_assert(U64{3}.to<int>().value() == 3);
-    static_assert(U64{u64_max}.to<long long>().error() == errc::overflow);
+    static_assert(U64{u64_max}.to<long long>().error() == error::overflow);
     static_assert(Small{U64{u64_max}, clamp} == 10);
 
     constexpr auto narrowed = [] {
-        errc  ec{};
+        error ec{};
         Small s{1};
         s.policy(ec) = U64{u64_max};
         return std::pair{s == 1, ec};
     }();
-    static_assert(narrowed.first && narrowed.second == errc::overflow);
+    static_assert(narrowed.first && narrowed.second == error::overflow);
 
     U64 big{u64_max};
     EXPECT_GT(big, Small{10});
@@ -655,10 +661,10 @@ TEST(StorageTest, grid_past_int64_increments_and_negates) {
     using U64W                      = inside<{{0, rational{u64_max}}, 1}, wrap>;
     using Small                     = inside<{0, 10}>;
     constexpr auto inc              = [] {
-        U64  w{u64_max - 1};
-        errc ec{}; // (++ may step past the top: a channel)
+        U64   w{u64_max - 1};
+        error ec{}; // (++ may step past the top: a channel)
         w.policy(ec) += 1_ins;
-        return w == u64_max && ec == errc{};
+        return w == u64_max && ec == error{};
     }();
     static_assert(inc);
     constexpr auto wrap_up = [] {
@@ -691,10 +697,10 @@ TEST(StorageTest, grid_past_int64_increments_and_negates) {
     static_assert(U64{u64_max} - U64{u64_max - 3} == 3); // result grid spans 2^65
     static_assert(U64{u64_max} * just<1> == u64_max);
 
-    U64  x{u64_max};
-    errc ec{};
+    U64   x{u64_max};
+    error ec{};
     x.policy(ec) += 1_ins;
-    EXPECT_EQ(ec, errc::overflow);
+    EXPECT_EQ(ec, error::overflow);
     EXPECT_EQ(x, u64_max);
 }
 
@@ -762,11 +768,12 @@ TEST(StorageTest, numeric_limits_epsilon_and_round_error_of_exact_types) {
 // `if constexpr` probe over the suite).
 namespace reached_arms_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 
 // A point's index is 0; its numerator and denominator are its own.
 TEST(StorageArmTest, index_and_parts_of_a_point) {
     const inside<{5, 5}> p;
-    EXPECT_TRUE(p.index() == 0 && p.numerator() == 5 && p.denominator() == 1);
+    EXPECT_TRUE(p.step() == 0 && p.numerator() == 5 && p.denominator() == 1);
 }
 
 // x++ returns the old value.
@@ -780,6 +787,7 @@ TEST(StorageArmTest, postfix_increment) {
 
 namespace reached_arms_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 
 // A continuous grid has no binary digits to count.
 TEST(StorageArmTest, digits_of_a_continuous_grid) {
@@ -789,6 +797,7 @@ TEST(StorageArmTest, digits_of_a_continuous_grid) {
 
 namespace reached_arms_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 
 // A notch-0 point's numerator is its value.
 TEST(StorageArmTest, numerator_of_a_notch_zero_point) { EXPECT_TRUE((inside<grid{5}>{}.numerator() == 5)); }

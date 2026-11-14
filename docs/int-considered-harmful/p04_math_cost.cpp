@@ -32,15 +32,15 @@ namespace
     return std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - t0).count() / n;
   }
 
-  using angle = inside<{{-8, 8}, per<16384>}, round_nearest>;          // inputs
-  using pos   = inside<{{rational{1, 256}, 256}, per<256>}, round_nearest>;
-  using unit4 = inside<{{0, 4}, per<65536>}, round_nearest>;
+  using angle = inside<{{-8, 8}, per<16384>}, round_half_away>;          // inputs
+  using pos   = inside<{{rational{1, 256}, 256}, per<256>}, round_half_away>;
+  using unit4 = inside<{{0, 4}, per<65536>}, round_half_away>;
 
   // Outputs as fine as a double: every one has close to 2^53 slots.
   using sin_fine  = math::unit_amplitude<(std::uint64_t{1} << 52)>;                                      // 2^-52
-  using exp_fine  = inside<{{0, 4096}, per<(std::uint64_t{1} << 40)>}, round_nearest>;  // 2^-40
-  using log_fine  = inside<{{-8, 8}, per<(std::uint64_t{1} << 48)>}, round_nearest>;    // 2^-48
-  using sqrt_fine = inside<{{0, 2}, per<(std::uint64_t{1} << 51)>}, round_nearest>;     // 2^-51
+  using exp_fine  = inside<{{0, 4096}, per<(std::uint64_t{1} << 40)>}, round_half_away>;  // 2^-40
+  using log_fine  = inside<{{-8, 8}, per<(std::uint64_t{1} << 48)>}, round_half_away>;    // 2^-48
+  using sqrt_fine = inside<{{0, 2}, per<(std::uint64_t{1} << 51)>}, round_half_away>;     // 2^-51
 }
 
 int main()
@@ -48,7 +48,7 @@ int main()
   constexpr int m = 4096, mask = m - 1;
   std::vector<angle> a; std::vector<pos> p; std::vector<unit4> s;
   std::vector<double> da, dp, ds;
-  errc ec{};   // run-time rationals into the input grids: reported, checked once
+  error ec{};   // run-time rationals into the input grids: reported, checked once
   for (int j = 0; j < m; ++j)
   {
     const rational qa{(j * 16 & 0xFFFF) - 32768, 16384}, qp{(j * 16 & 0xFFFF) % 65535 + 1, 256},
@@ -60,7 +60,7 @@ int main()
     ds.push_back(static_cast<double>(qs));
   }
 
-  if (ec != errc{})
+  if (ec != error{})
     return 1;
   std::printf("%-6s %10s %18s %18s\n", "fn", "std ns", "deduced grid ns", "double-fine ns");
   std::printf("%-6s %10.2f %18.2f %18.2f\n", "sin",

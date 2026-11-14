@@ -21,83 +21,83 @@ namespace am = beman::inside::math;
 
 namespace {
 // Inputs.
-using sym4   = inside<{{-4, 4}, per<1 << 18>}, round_nearest>;         // 2^21 + 1 inputs
-using sym8   = inside<{{-8, 8}, per<1 << 16>}, round_nearest>;         // 2^20 + 1
-using symdec = inside<{{-4, 4}, rational{1, 100'000}}, round_nearest>; // 800 001
-using unit   = inside<{{-1, 1}, per<1 << 19>}, round_nearest>;         // 2^20 + 1
-using open1  = inside<{{rational{-1023, 1024}, rational{1023, 1024}}, per<1024>}, round_nearest>;
-using pos    = inside<{{rational{1, 1024}, 1024}, per<1024>}, round_nearest>; // 2^20
-using ge1    = inside<{{1, 1025}, per<1024>}, round_nearest>;                 // 2^20 + 1
-using small  = inside<{{-2, 2}, per<16>}, round_nearest>;                     // 65
-using side   = inside<{{-16, 16}, per<32>}, round_nearest>;                   // 1025
-using base   = inside<{{rational{1, 64}, 16}, per<64>}, round_nearest>;       // 1024
-using expo   = inside<{{-4, 4}, per<8>}, round_nearest>;                      // 65
+using sym4   = inside<{{-4, 4}, per<1 << 18>}, round_half_away>;         // 2^21 + 1 inputs
+using sym8   = inside<{{-8, 8}, per<1 << 16>}, round_half_away>;         // 2^20 + 1
+using symdec = inside<{{-4, 4}, rational{1, 100'000}}, round_half_away>; // 800 001
+using unit   = inside<{{-1, 1}, per<1 << 19>}, round_half_away>;         // 2^20 + 1
+using open1  = inside<{{rational{-1023, 1024}, rational{1023, 1024}}, per<1024>}, round_half_away>;
+using pos    = inside<{{rational{1, 1024}, 1024}, per<1024>}, round_half_away>; // 2^20
+using ge1    = inside<{{1, 1025}, per<1024>}, round_half_away>;                 // 2^20 + 1
+using small  = inside<{{-2, 2}, per<16>}, round_half_away>;                     // 65
+using side   = inside<{{-16, 16}, per<32>}, round_half_away>;                   // 1025
+using base   = inside<{{rational{1, 64}, 16}, per<64>}, round_half_away>;       // 1024
+using expo   = inside<{{-4, 4}, per<8>}, round_half_away>;                      // 65
 
 // Outputs: coarse (a 4-bit notch: start precision 16, cap 64 bits), fine,
 // decimal, and one past the double tier (the dd tier: a 2^-52 notch).
 using c4f  = inside<{{-64, 64}, per<16>}, round_floor | clamp>;
 using c4c  = inside<{{-64, 64}, per<16>}, round_ceil | clamp>;
-using c4n  = inside<{{-64, 64}, per<16>}, round_nearest | clamp>;
-using f20n = inside<{{-64, 64}, per<1 << 20>}, round_nearest | clamp>;
+using c4n  = inside<{{-64, 64}, per<16>}, round_half_away | clamp>;
+using f20n = inside<{{-64, 64}, per<1 << 20>}, round_half_away | clamp>;
 using f20e = inside<{{-64, 64}, per<1 << 20>}, round_half_even | clamp>;
-using d3n  = inside<{{-64, 64}, rational{1, 1000}}, round_nearest | clamp>;
+using d3n  = inside<{{-64, 64}, rational{1, 1000}}, round_half_away | clamp>;
 using d3t  = inside<{{-64, 64}, rational{1, 1000}}, round_toward_zero | clamp>;
-using dd52 = inside<{{-4, 4}, rational{1, std::uint64_t{1} << 52}}, round_nearest | clamp>;
-using big  = inside<{{0, 1 << 20}, per<16>}, round_floor | clamp>;  // exp, cosh of sym8
-using wide = inside<{{-1 << 20, 1 << 20}, per<16>}, round_nearest>; // tan, pow: overflow reported
+using dd52 = inside<{{-4, 4}, rational{1, std::uint64_t{1} << 52}}, round_half_away | clamp>;
+using big  = inside<{{0, 1 << 20}, per<16>}, round_floor | clamp>;    // exp, cosh of sym8
+using wide = inside<{{-1 << 20, 1 << 20}, per<16>}, round_half_away>; // tan, pow: overflow reported
 // tan's inputs: one branch each (an interval holding a pole is a compile
 // error), the one around 0 and the next, (π/2, 3π/2).
-using branch0 = inside<{{rational{-25, 16}, rational{25, 16}}, per<1 << 18>}, round_nearest>; // 819 201
-using branch1 = inside<{{rational{51, 32}, rational{75, 16}}, per<1 << 18>}, round_nearest>;  // 811 009
+using branch0 = inside<{{rational{-25, 16}, rational{25, 16}}, per<1 << 18>}, round_half_away>; // 819 201
+using branch1 = inside<{{rational{51, 32}, rational{75, 16}}, per<1 << 18>}, round_half_away>;  // 811 009
 
 // The examples' pairs, spelled as the number grids each math call sees
 // (find_grids.py over a debug build lists them; its test fails when an
 // example pair has no row here). The alias each grid comes from is named.
 namespace ex {
 // navigation.cpp
-using coord    = inside<{{-1, 1}, per<16384>}, round_nearest>;                                       // coord_t
-using angle    = inside<{{rational{-3217, 1024}, rational{3217, 1024}}, per<16384>}, round_nearest>; // atan2's
-using radius   = inside<{{0, rational{23171, 16384}}, per<16384>}, round_nearest>; // hypot(coord_t, coord_t)
-using ratio    = inside<{{-1, 1}, per<4096>}, round_nearest>;                      // ratio_t
-using asin_r   = inside<{{rational{-3217, 2048}, rational{3217, 2048}}, per<4096>}, round_nearest>;
-using acos_r   = inside<{{0, rational{3217, 1024}}, per<4096>}, round_nearest>;
-using position = inside<{{-1024, 1024}, per<256>}, round_nearest>; // pos_t's number
+using coord    = inside<{{-1, 1}, per<16384>}, round_half_away>;                                       // coord_t
+using angle    = inside<{{rational{-3217, 1024}, rational{3217, 1024}}, per<16384>}, round_half_away>; // atan2's
+using radius   = inside<{{0, rational{23171, 16384}}, per<16384>}, round_half_away>; // hypot(coord_t, coord_t)
+using ratio    = inside<{{-1, 1}, per<4096>}, round_half_away>;                      // ratio_t
+using asin_r   = inside<{{rational{-3217, 2048}, rational{3217, 2048}}, per<4096>}, round_half_away>;
+using acos_r   = inside<{{0, rational{3217, 1024}}, per<4096>}, round_half_away>;
+using position = inside<{{-1024, 1024}, per<256>}, round_half_away>; // pos_t's number
 using fine =
-    inside<{{rational{-3294199, 1 << 20}, rational{3294199, 1 << 20}}, per<1 << 20>}, round_nearest>; // atan2's
-using range = inside<{{0, rational{46341, 32}}, per<256>}, round_nearest>; // math::hypot(pos_t, pos_t)
+    inside<{{rational{-3294199, 1 << 20}, rational{3294199, 1 << 20}}, per<1 << 20>}, round_half_away>; // atan2's
+using range = inside<{{0, rational{46341, 32}}, per<256>}, round_half_away>; // math::hypot(pos_t, pos_t)
 // audio_math.cpp
-using t_tau    = inside<{{-4, 4}, per<1024>}, round_nearest>; // seconds_t / tau (keeps the shared policy)
-using amp      = inside<{{rational{75, 4096}, rational{894537, 16384}}, per<16384>}, round_nearest>; // exp's
-using exponent = inside<{{0, 4}, per<1024>}, round_nearest>;                                         // exponent_t
-using half     = inside<{{0, 4}, per<2>}, round_nearest>;      // the half-octave cursor
-using mult     = inside<{{1, 16}, per<16384>}, round_nearest>; // exp2's
-using drive    = inside<{{-4, 4}, per<2048>}, round_nearest>;  // drive_t
-using tanh_r   = inside<{{rational{-2047, 2048}, rational{2047, 2048}}, per<2048>}, round_nearest>;
-using sinh_r   = inside<{{rational{-27945, 1024}, rational{27945, 1024}}, per<2048>}, round_nearest>;
-using cosh_r   = inside<{{1, rational{6991, 256}}, per<2048>}, round_nearest>;
-using octaves  = inside<{{rational{1, 16}, 16}, per<1024>}, round_nearest>; // ratio_t
-using log2_r   = inside<{{-4, 4}, per<1024>}, round_nearest>;
-using vol      = inside<{{0, 64}, per<256>}, round_nearest>; // vol_t
-using cbrt_r   = inside<{{0, 4}, per<256>}, round_nearest>;
+using t_tau    = inside<{{-4, 4}, per<1024>}, round_half_away>; // seconds_t / tau (keeps the shared policy)
+using amp      = inside<{{rational{75, 4096}, rational{894537, 16384}}, per<16384>}, round_half_away>; // exp's
+using exponent = inside<{{0, 4}, per<1024>}, round_half_away>;                                         // exponent_t
+using half     = inside<{{0, 4}, per<2>}, round_half_away>;      // the half-octave cursor
+using mult     = inside<{{1, 16}, per<16384>}, round_half_away>; // exp2's
+using drive    = inside<{{-4, 4}, per<2048>}, round_half_away>;  // drive_t
+using tanh_r   = inside<{{rational{-2047, 2048}, rational{2047, 2048}}, per<2048>}, round_half_away>;
+using sinh_r   = inside<{{rational{-27945, 1024}, rational{27945, 1024}}, per<2048>}, round_half_away>;
+using cosh_r   = inside<{{1, rational{6991, 256}}, per<2048>}, round_half_away>;
+using octaves  = inside<{{rational{1, 16}, 16}, per<1024>}, round_half_away>; // ratio_t
+using log2_r   = inside<{{-4, 4}, per<1024>}, round_half_away>;
+using vol      = inside<{{0, 64}, per<256>}, round_half_away>; // vol_t
+using cbrt_r   = inside<{{0, 4}, per<256>}, round_half_away>;
 // units.cpp
-using rad  = inside<{{0, 7}, rational{1, 1'000'000}}, round_nearest>; // angle
-using trig = inside<{{-1, 1}, rational{1, 1'000'000}}, round_nearest>;
+using rad  = inside<{{0, 7}, rational{1, 1'000'000}}, round_half_away>; // angle
+using trig = inside<{{-1, 1}, rational{1, 1'000'000}}, round_half_away>;
 // decibels.cpp, audio_mixer.cpp
-using gain    = inside<{{rational{1, 256}, 4}, per<65536>}, round_nearest>;            // decibels gain_t
-using gain0   = inside<{{0, 4}, per<65536>}, round_nearest>;                           // audio_mixer gain_t
-using db20    = inside<{{rational{-97, 40}, rational{5, 8}}, per<40>}, round_nearest>; // log10<per<40>>'s
-using db_by20 = inside<{{rational{-6, 5}, rational{3, 5}}, per<40>}, round_nearest>;   // db_t / 20 dB
+using gain    = inside<{{rational{1, 256}, 4}, per<65536>}, round_half_away>;            // decibels gain_t
+using gain0   = inside<{{0, 4}, per<65536>}, round_half_away>;                           // audio_mixer gain_t
+using db20    = inside<{{rational{-97, 40}, rational{5, 8}}, per<40>}, round_half_away>; // log10<per<40>>'s
+using db_by20 = inside<{{rational{-6, 5}, rational{3, 5}}, per<40>}, round_half_away>;   // db_t / 20 dB
 // moon_rocket.cpp: sqrt of the exhaust-velocity ratio, onto per<10^9>
 using v_ratio = inside<{{rational{977'000'000, 1'993'002'209}, rational{979'500'000, 1'993'002'209}},
                         rational{2500, 1'993'002'209}}>;
 using fine9 =
     inside<{{rational{140'030'741, 200'000'000}, rational{701'048'929, 1'000'000'000}}, rational{1, 1'000'000'000}},
-           round_nearest>;
+           round_half_away>;
 // huge_angles.cpp, solar_system.cpp: too many inputs to certify
 using huge   = inside<{0, (std::int64_t{1} << 62) - 1}>;      // radians' number
 using amp52  = math::unit_amplitude<(std::int64_t{1} << 52)>; // sin's and cos's on per<2^52>
 using metres = inside<{{-10'000'000'000'000, 10'000'000'000'000}, rational{1, 1'000'000'000}}>;
-using mm     = inside<{{0, rational{14'142'135'623'730'951, 1000}}, per<1000>}, round_nearest>; // hypot's
+using mm     = inside<{{0, rational{14'142'135'623'730'951, 1000}}, per<1000>}, round_half_away>; // hypot's
 } // namespace ex
 
 #define CERTIFY(fn, Out, In) r.unary<Out, In>(#fn, [](In x) { return am::fn<Out>(x); })

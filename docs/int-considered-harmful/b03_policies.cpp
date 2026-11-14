@@ -23,10 +23,10 @@ int main(int argc, char**)
   // checked (the default): a store the grids cannot prove names its channel.
   // checked_100 x = 200;            // does not compile: 200 is outside
   // checked_100 y = n;              // does not compile: n may not fit
-  errc        ec{};
+  error        ec{};
   checked_100 x{50};
   x.policy(ec) = n;                  // reports; x keeps 50
-  std::cout << "checked  200 ->    " << errc_message(ec) << "\n";
+  std::cout << "checked  200 ->    " << error_message(ec) << "\n";
 
   // clamp: saturate at the boundary.
   clamp_100 cl = 150;
@@ -38,7 +38,7 @@ int main(int argc, char**)
 
   // try_make: failure is a value you test.
   auto tm = digit::try_make(n / 20);
-  std::cout << "try_make  10 ->    " << (tm ? "has value" : errc_message(tm.error())) << "\n";
+  std::cout << "try_make  10 ->    " << (tm ? "has value" : error_message(tm.error())) << "\n";
 
   // Per-operation override on an otherwise-checked value.
   checked_100 p{50};

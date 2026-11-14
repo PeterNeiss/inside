@@ -6,7 +6,7 @@
 // bare `B{v}` would obscure what happens at the boundary.
 //
 // Demonstrates:
-//   - `B{v, clamp | round_floor}` (and round_ceil / round_nearest) — saturate + a
+//   - `B{v, clamp | round_floor}` (and round_ceil / round_half_away) — saturate + a
 //     rounding direction, applied across a buffer with std::ranges::transform
 //   - `B{v, wrap}`   — modular reduction into the target interval
 //   - `B{v, clamp}`  — saturate to [Lower, Upper]
@@ -36,13 +36,13 @@ int main() {
     // Same inputs, three rounding directions — clamp with a rounding mode, in
     // transform. A run-time double may be NaN, which no clamp places: the
     // policy reports it into ec (the store leaves 0).
-    errc ec{};
+    error ec{};
     std::ranges::transform(
         raw, down.begin(), [&](double v) { return level{v, make_policy<clamp | round_floor>(ec)}; });
     std::ranges::transform(raw, up.begin(), [&](double v) { return level{v, make_policy<clamp | round_ceil>(ec)}; });
     std::ranges::transform(
-        raw, nearest.begin(), [&](double v) { return level{v, make_policy<clamp | round_nearest>(ec)}; });
-    if (ec != errc{}) {
+        raw, nearest.begin(), [&](double v) { return level{v, make_policy<clamp | round_half_away>(ec)}; });
+    if (ec != error{}) {
         std::cout << "a raw value is not a number\n";
         return 1;
     }

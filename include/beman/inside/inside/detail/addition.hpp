@@ -31,13 +31,13 @@ struct addition {
     template <policy_flag F = none, typename E = empty_ref>
     static constexpr result add(L lhs, R rhs, call_policy<F, E> = {}) {
         if constexpr (fraction_storage<result>)
-            return result::from_raw(fraction_raw_of<raw_t<result>>(exact_of(lhs) + exact_of(rhs)));
+            return result::from_raw(fraction_raw_of<raw_t<result>>(exact_of(lhs) + exact_of(rhs)), unsafe);
         else if constexpr (exact_path_fits<exact_op::add, result, L, R>)
-            return result::from_raw(rational_of(exact_of(lhs) + exact_of(rhs)));
+            return result::from_raw(rational_of(exact_of(lhs) + exact_of(rhs)), unsafe);
         else if constexpr (rational_storage<result>)
-            return result::from_raw(add_unchecked(lhs, rhs));
+            return result::from_raw(add_unchecked(lhs, rhs), unsafe);
         else if constexpr (point_storage<result>)
-            return result::from_raw(raw_t<result>{}); // point + point: a point
+            return result::from_raw(raw_t<result>{}, unsafe); // point + point: a point
         else {
             // Integer raws (a notched result has no continuous operand): add the
             // values in a unit dividing both operands' (the result notch

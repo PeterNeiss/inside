@@ -366,25 +366,25 @@ constexpr rational rational_of(const wide_rational<K>& f) noexcept {
 
 // The same, or overflow when it does not fit.
 template <std::size_t K>
-constexpr std::expected<rational, errc> try_rational(const wide_rational<K>& f) noexcept {
+constexpr std::expected<rational, error> try_rational(const wide_rational<K>& f) noexcept {
     using I      = wide_sint<K>;
     const auto r = reduced(f);
     if ((r.Num.negative() ? -r.Num : r.Num) > I{std::numeric_limits<std::uint64_t>::max()} ||
         r.Den > I{std::numeric_limits<std::int64_t>::max()})
-        return std::unexpected{errc::overflow};
+        return std::unexpected{error::overflow};
     return narrow_reduced(r);
 }
 
 // Text → exact value, for values that outgrow the 64-bit rational parse
-// (parse falls back here on errc::overflow): the grammar of parse_text
+// (parse falls back here on error::overflow): the grammar of parse_text
 // (scan_number: radix prefixes, ' separators, '.', e / p exponents, N/D),
 // built in K limbs. Anything K limbs cannot hold reports overflow.
 template <std::size_t K>
-constexpr std::expected<wide_rational<K>, errc> parse_exact(const char* first, const char* last) noexcept {
+constexpr std::expected<wide_rational<K>, error> parse_exact(const char* first, const char* last) noexcept {
     using I           = wide_sint<K>;
     constexpr I limit = std::numeric_limits<I>::max() / I{32}; // room for ·16 + a digit
     const auto  big   = [&](const I& x) { return limit < x; };
-    auto        one   = [&](const char* f, const char* l) -> std::expected<wide_rational<K>, errc> {
+    auto        one   = [&](const char* f, const char* l) -> std::expected<wide_rational<K>, error> {
         I                    num{0}, den{1};
         int                  frac_zeros = 0; // deferred, as in parse_number: trailing zeros cost nothing
         const scanned_number sc         = scan_number(f, l, [&](int d, bool in_frac, int b) {
@@ -407,21 +407,21 @@ constexpr std::expected<wide_rational<K>, errc> parse_exact(const char* first, c
             return true;
         });
         if (sc.Fail != parse_fail::none)
-            return std::unexpected{errc::invalid_format};
+            return std::unexpected{error::invalid_format};
         if (sc.Stopped)
-            return std::unexpected{errc::overflow};
+            return std::unexpected{error::overflow};
         if (num.is_zero())
             return wide_rational<K>{I{0}, I{1}};
         if (sc.HasP) { // ·2^±Exp
             I& t = sc.ExpNeg ? den : num;
             if (bit_width_of(t) + sc.Exp > I::bits - 2)
-                return std::unexpected{errc::overflow};
+                return std::unexpected{error::overflow};
             t = t << sc.Exp;
         } else if (sc.HasE) // ·10^±Exp
             for (int e = 0; e < sc.Exp; ++e) {
                 I& t = sc.ExpNeg ? den : num;
                 if (big(t))
-                    return std::unexpected{errc::overflow};
+                    return std::unexpected{error::overflow};
                 t = t * I{10};
             }
         return wide_rational<K>{num, den};
@@ -742,11 +742,11 @@ constexpr W value_in_units(const X& x) noexcept {
 template <insidable Result, typename W>
 constexpr Result from_value_index(const W& j) noexcept {
     if constexpr (point_storage<Result>)
-        return Result::from_raw(raw_t<Result>{});
+        return Result::from_raw(raw_t<Result>{}, unsafe);
     else if constexpr (index_storage<Result>)
-        return Result::from_raw(static_cast<raw_t<Result>>(j - static_cast<W>(slot_base<Result>)));
+        return Result::from_raw(static_cast<raw_t<Result>>(j - static_cast<W>(slot_base<Result>)), unsafe);
     else
-        return Result::from_raw(static_cast<raw_t<Result>>(j));
+        return Result::from_raw(static_cast<raw_t<Result>>(j), unsafe);
 }
 
 // The Result whose value is j `Unit`s (on its lattice by construction; an
@@ -758,17 +758,18 @@ constexpr Result from_value_in_units(const W& j) noexcept {
     else if constexpr (index_storage<Result>) {
         constexpr grid_int base  = exact_quotient(lower_of<Result>, Unit),
                            scale = exact_quotient(notch_of<Result>, Unit);
-        return Result::from_raw(static_cast<raw_t<Result>>((j - static_cast<W>(base)) / static_cast<W>(scale)));
+        return Result::from_raw(static_cast<raw_t<Result>>((j - static_cast<W>(base)) / static_cast<W>(scale)),
+                                unsafe);
     } else // integer values counted in Unit = 1/k
-        return Result::from_raw(
-            static_cast<raw_t<Result>>(j / static_cast<W>(exact_quotient(grid_rational{1}, Unit))));
+        return Result::from_raw(static_cast<raw_t<Result>>(j / static_cast<W>(exact_quotient(grid_rational{1}, Unit))),
+                                unsafe);
 }
 
 // Exact result of grid arithmetic: the value is on the result lattice and
 // inside its interval by construction, so it maps straight to a raw.
 template <insidable Result, std::size_t K>
 constexpr Result exact_result(const wide_rational<K>& v) noexcept {
-    return Result::from_raw(raw_of_slot<Result>(exact_index<Result, round_mode::trunc>(v).Index));
+    return Result::from_raw(raw_of_slot<Result>(exact_index<Result, round_mode::trunc>(v).Index), unsafe);
 }
 
 } // namespace beman::inside::detail

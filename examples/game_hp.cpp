@@ -35,7 +35,7 @@ inline constexpr auto           HP = unit_c<hp_def>;
 using hp_t = quantity<HP, inside<{0, 100}, clamp>>;
 
 // Damage multipliers in [0, 4] with 1/16 step (Q2.4-ish).
-using mult_t = inside<{{0, 4}, per<16>}, round_nearest>;
+using mult_t = inside<{{0, 4}, per<16>}, round_half_away>;
 
 // Base damage in [0, 50] HP.
 using damage_t = quantity<HP, inside<{0, 50}>>;
@@ -59,7 +59,7 @@ int main() {
     auto chain = mul_all(crit, vuln, pen);
     // chain has interval [0, 64] notch 1/4096. mul<dealt_t> scales base by it and
     // rounds once to the nearest whole HP of damage — no rational, no cast.
-    using dealt_t    = quantity<HP, inside<{0, 3200}, round_nearest>>;
+    using dealt_t    = quantity<HP, inside<{0, 3200}, round_half_away>>;
     const auto dealt = mul<dealt_t>(base, chain);
     std::cout << "damage chain (2.0 * 1.25 * 1.5) on base 10 HP = " << dealt << "\n";
 

@@ -50,7 +50,7 @@ using total                      = quantity<ETH, inside<{{0, 1'000'000'000'000},
 using gas_used                   = quantity<gas, inside<{0, 30'000'000}>>;                      // units of work
 using gas_price                  = quantity<gwei / gas, inside<{0, 10'000}>>;                   // whole gwei per gas
 using rate                       = quantity<USD / ETH, inside<{{0, 1'000'000}, per<100>}>>;     // to the cent
-using usd = quantity<USD, inside<{{0, 1'000'000'000'000'000}, per<100>}, round_nearest>>;       // to the cent
+using usd = quantity<USD, inside<{{0, 1'000'000'000'000'000}, per<100>}, round_half_away>>;     // to the cent
 
 int main() {
     static_assert(sizeof(eth) == 16); // 10^27 + 1 points: two 64-bit limbs
@@ -74,8 +74,8 @@ int main() {
     const eth  alice = *parse<eth>("1.5");
     const auto spent = *parse<eth>("1.4999") + fee; // 1.50053 ETH: more than she has
     const auto after = try_value_cast<eth>(alice - spent);
-    std::cout << "send     " << (after ? to_string(*after) : errc_message(after.error())) << "\n";
-    if (after || after.error() != errc::overflow)
+    std::cout << "send     " << (after ? to_string(*after) : error_message(after.error())) << "\n";
+    if (after || after.error() != error::overflow)
         return 1;
 
     // 3. A thousand accounts near the top of the grid.

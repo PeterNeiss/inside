@@ -23,8 +23,8 @@
 
 //---------------------------------------------------------------------------
 // debug — error codes, the replaceable failure handler, and diagnostic helpers.
-// `errc` enumerates the failure modes. A failure a program can expect is a
-// value: a std::expected, an errc&, an on_error hook; a store the grids cannot
+// `error` enumerates the failure modes. A failure a program can expect is a
+// value: a std::expected, an error&, an on_error hook; a store the grids cannot
 // prove does not compile without one. What is left funnels through
 // `detail::raise`: a precondition (an mdspan index past a dynamic extent, a
 // cursor past its end) or a library bug. raise calls the installed
@@ -37,7 +37,7 @@ namespace beman::inside {
 //---------------------------------------------------------------------------
 // error codes
 //---------------------------------------------------------------------------
-enum class errc {
+enum class error {
     domain_error = 1, // argument outside a function's mathematical domain
     division_by_zero, // divisor is zero
     overflow,         // value does not fit its destination's range (an inside's
@@ -50,19 +50,19 @@ enum class errc {
 // Static, allocation-free message per code. The single source of truth for
 // every error path; returns a null-terminated string literal so it doubles as
 // the default handler's text and as an on_error message.
-constexpr const char* errc_message(errc e) noexcept {
+constexpr const char* error_message(error e) noexcept {
     switch (e) {
-    case errc::domain_error:
+    case error::domain_error:
         return "argument outside the function's domain";
-    case errc::division_by_zero:
+    case error::division_by_zero:
         return "division by zero";
-    case errc::overflow:
+    case error::overflow:
         return "value does not fit its range";
-    case errc::rounding_error:
+    case error::rounding_error:
         return "value is not on the grid";
-    case errc::not_finite:
+    case error::not_finite:
         return "non-finite floating-point value";
-    case errc::invalid_format:
+    case error::invalid_format:
         return "malformed number";
     }
     return "unknown inside error";
@@ -74,13 +74,15 @@ constexpr const char* errc_message(errc e) noexcept {
 // exception is a compile error that prints its what(): the text of a failed
 // check in a constant expression. Nothing throws it at run time. Derives from
 // std::runtime_error (the library's only <stdexcept> use) and carries the
-// originating `errc`.
+// originating `error`.
 //---------------------------------------------------------------------------
+namespace detail {
 struct inside_error : std::runtime_error {
-    errc Code;
-    constexpr explicit inside_error(errc c) : std::runtime_error(errc_message(c)), Code(c) {}
-    constexpr inside_error(errc c, const char* what) : std::runtime_error(what ? what : errc_message(c)), Code(c) {}
+    error Code;
+    constexpr explicit inside_error(error c) : std::runtime_error(error_message(c)), Code(c) {}
+    constexpr inside_error(error c, const char* what) : std::runtime_error(what ? what : error_message(c)), Code(c) {}
 };
+} // namespace detail
 #endif
 
 //---------------------------------------------------------------------------
@@ -88,13 +90,13 @@ struct inside_error : std::runtime_error {
 // it must NOT return (abort / reset / longjmp / throw). If it does return,
 // `raise` traps to honour [[noreturn]].
 //---------------------------------------------------------------------------
-using error_handler_t = void (*)(errc code, const char* what);
+using error_handler_t = void (*)(error code, const char* what);
 
 namespace detail {
-[[noreturn]] [[gnu::cold]] [[gnu::noinline]] inline void default_error_handler(errc code, const char* what) {
+[[noreturn]] [[gnu::cold]] [[gnu::noinline]] inline void default_error_handler(error code, const char* what) {
 #if __STDC_HOSTED__
     std::fputs("beman::inside: ", stderr);
-    std::fputs(what ? what : errc_message(code), stderr);
+    std::fputs(what ? what : error_message(code), stderr);
     std::fputs("\n", stderr);
     std::abort();
 #else
@@ -123,7 +125,7 @@ inline error_handler_t get_error_handler() noexcept { return detail::g_error_han
 namespace detail {
 // A failed check in a constant expression without exceptions: a compile error
 // naming the code (the text of `what` would need exceptions to print).
-[[noreturn]] constexpr void constexpr_error_of(errc code);
+[[noreturn]] constexpr void constexpr_error_of(error code);
 
 //-----------------------------------------------------------------------
 // Outlined failure funnel. Cold + non-inline so the (rare) machinery is
@@ -132,7 +134,7 @@ namespace detail {
 // a compile error whose text is `what`; without exceptions, a compile error
 // naming the code.
 //-----------------------------------------------------------------------
-[[noreturn]] [[gnu::cold]] [[gnu::noinline]] constexpr void raise(errc code, const char* what = nullptr) {
+[[noreturn]] [[gnu::cold]] [[gnu::noinline]] constexpr void raise(error code, const char* what = nullptr) {
     if consteval {
 #if BEMAN_INSIDE_HAS_EXCEPTIONS
         throw inside_error(code, what);
@@ -141,21 +143,21 @@ namespace detail {
         constexpr_error_of(code);
 #endif
     }
-    g_error_handler.load(std::memory_order_acquire)(code, what ? what : errc_message(code));
+    g_error_handler.load(std::memory_order_acquire)(code, what ? what : error_message(code));
     __builtin_trap(); // handler must not return; trap if it did
 }
 
 // The compile-time text of a failed checked store: what happened, and the fix.
-constexpr const char* store_failure_message(errc e) noexcept {
+constexpr const char* store_failure_message(error e) noexcept {
     switch (e) {
-    case errc::overflow:
+    case error::overflow:
         return "inside: a checked store in a constant expression is outside the grid's interval - widen the "
                "interval, or store with clamp or wrap";
-    case errc::rounding_error:
+    case error::rounding_error:
         return "inside: a checked store in a constant expression is not on the grid's notch - write the value "
                "exactly (3.49_ins, just<349, 100>), or store with a rounding policy";
     default:
-        return errc_message(e);
+        return error_message(e);
     }
 }
 
@@ -174,32 +176,32 @@ struct fixed_string {
 
 template <fixed_string Msg>
 [[noreturn]] [[gnu::cold]] [[gnu::noinline]] inline void constexpr_error() {
-    raise(errc::overflow, Msg.Data);
+    raise(error::overflow, Msg.Data);
 }
 
 // A checked store that fails in a constant expression: what happened, and the
 // fix (store_failure_message's text, without exceptions).
-constexpr void store_constexpr_error(errc code) {
-    if (code == errc::overflow)
+constexpr void store_constexpr_error(error code) {
+    if (code == error::overflow)
         constexpr_error<"inside: a checked store in a constant expression is outside the grid's interval - widen "
                         "the interval, or store with clamp or wrap">();
-    if (code == errc::rounding_error)
+    if (code == error::rounding_error)
         constexpr_error<"inside: a checked store in a constant expression is not on the grid's notch - write the "
                         "value exactly (3.49_ins, just<349, 100>), or store with a rounding policy">();
     constexpr_error_of(code);
 }
 
-constexpr void constexpr_error_of(errc code) {
+constexpr void constexpr_error_of(error code) {
     switch (code) {
-    case errc::overflow:
+    case error::overflow:
         constexpr_error<"inside: a value does not fit its range (overflow) in a constant expression">();
-    case errc::rounding_error:
+    case error::rounding_error:
         constexpr_error<"inside: a value is not on the grid's notch (rounding_error) in a constant expression">();
-    case errc::division_by_zero:
+    case error::division_by_zero:
         constexpr_error<"inside: division by zero in a constant expression">();
-    case errc::not_finite:
+    case error::not_finite:
         constexpr_error<"inside: a non-finite floating-point value (not_finite) in a constant expression">();
-    case errc::invalid_format:
+    case error::invalid_format:
         constexpr_error<"inside: malformed number text (invalid_format) in a constant expression">();
     default:
         constexpr_error<"inside: argument outside the function's domain (domain_error) in a constant expression">();
@@ -209,7 +211,7 @@ constexpr void constexpr_error_of(errc code) {
 // A checked path's hard failure: Msg as the compile-time diagnostic during
 // constant evaluation, else raised with code.
 template <fixed_string Msg>
-[[noreturn]] constexpr void fail_hard(errc code) {
+[[noreturn]] constexpr void fail_hard(error code) {
 #if !BEMAN_INSIDE_HAS_EXCEPTIONS
     if consteval {
         constexpr_error<Msg>();

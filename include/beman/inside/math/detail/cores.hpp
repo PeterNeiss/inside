@@ -785,7 +785,7 @@ inline constexpr std::int64_t max_abs_int = std::max(ceil_abs(lower_of<In>), cei
 // Policy of a deduced output: the input's (no cursor), rounding to nearest
 // unless the input names a mode.
 template <insidable In>
-inline constexpr policy_flag result_policy = with_default_rounding(flags_of<In> & ~cursor_marker);
+inline constexpr policy_flag result_policy = with_default_rounding(policy_of<In> & ~cursor_marker);
 
 // A deduced output on notch N.
 template <insidable In, grid_rational N, grid_rational Lo, grid_rational Hi>
@@ -832,7 +832,7 @@ inline constexpr int pow_kmax = [] {
 // inputs that other outputs take, such as a base reaching 0).
 template <insidable Out, typename Grow>
 inline constexpr int grow_kmax = [] {
-    if constexpr (has_flag(flags_of<Out>, wrap))
+    if constexpr (has_flag(policy_of<Out>, wrap))
         return std::max(Grow::bits, out_kmax<Out>);
     else
         return out_kmax<Out>;

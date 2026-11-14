@@ -41,7 +41,7 @@ using namespace beman::inside::detail;
 // Policy of an auto-deduced output: the input's (a cursor's output is no
 // cursor).
 template <insidable In>
-inline constexpr policy_flag out_policy = flags_of<In> & ~cursor_marker;
+inline constexpr policy_flag out_policy = policy_of<In> & ~cursor_marker;
 
 // A 64-bit grid operation's result through Out's assignment.
 template <insidable Out, typename V>
@@ -129,7 +129,7 @@ inline constexpr bool any_wide_valued = (wide_valued<Bs> || ...);
 
 template <insidable Out, std::size_t E>
 constexpr Out store_exact(const wide_rational<E>& v) {
-    return engine::store_exact<Out>(v, make_policy<flags_of<Out>>());
+    return engine::store_exact<Out>(v, make_policy<policy_of<Out>>());
 }
 
 template <round_mode M, std::size_t E>
@@ -247,7 +247,7 @@ template <insidable Out, insidable InX, insidable InY>
         const std::int64_t     a   = raw_int64(x) * wx + (index_storage<InX> ? lox : 0);
         const std::int64_t     b   = raw_int64(y) * wy + (index_storage<InY> ? loy : 0);
         const std::int64_t     r   = a % b; // |r| < |b|, in Out's range
-        return Out::from_raw(raw_from_offset<Out>(r * wo - loo));
+        return Out::from_raw(raw_from_offset<Out>(r * wo - loo), unsafe);
     } else {
         // In 64-bit rationals while every step fits (the quotient within
         // int64); else exactly — the remainder itself always fits Out.
@@ -406,7 +406,7 @@ using ceil_fn  = integer_fn<round_mode::ceil>;
 using round_fn = integer_fn<round_mode::nearest>;
 using trunc_fn = integer_fn<round_mode::trunc>;
 
-// Like `/`: a plain Out when y's grid excludes 0, else expected<Out, errc>
+// Like `/`: a plain Out when y's grid excludes 0, else expected<Out, error>
 // with division_by_zero for y == 0.
 struct fmod_fn : exact_fn<2> {
     template <insidable InX, insidable InY>
@@ -417,8 +417,8 @@ struct fmod_fn : exact_fn<2> {
             return fmod_nonzero<Out>(x, y);
         else {
             if (y == 0)
-                return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
-            return std::expected<Out, errc>{fmod_nonzero<Out>(x, y)};
+                return std::expected<Out, error>{std::unexpected(error::division_by_zero)};
+            return std::expected<Out, error>{fmod_nonzero<Out>(x, y)};
         }
     }
 };
@@ -456,7 +456,7 @@ struct pown_fn {
 // same). All angles are radians, as in <cmath>.
 //---------------------------------------------------------------------------
 template <auto K> // a builtin or a grid number of any size
-using unit_amplitude = inside<{{rational{-1}, rational{1}}, per<K>}, round_nearest>;
+using unit_amplitude = inside<{{rational{-1}, rational{1}}, per<K>}, round_half_away>;
 
 //---------------------------------------------------------------------------
 // The functions (math/detail/functions.hpp states the call forms): the grid

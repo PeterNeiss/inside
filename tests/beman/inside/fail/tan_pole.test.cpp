@@ -8,7 +8,7 @@
 using namespace beman::inside;
 
 int main() {
-    using angle = inside<{{0, 2}, per<1024>}, round_nearest>;
+    using angle = inside<{{0, 2}, per<1024>}, round_half_away>;
     auto t      = math::tan(angle{1});
     (void)t;
 }

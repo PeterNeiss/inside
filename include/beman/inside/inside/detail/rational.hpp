@@ -6,7 +6,7 @@
 
 #include <beman/inside/inside/detail/numbers.hpp>    // overflow arithmetic, rational fwd
 #include <beman/inside/inside/detail/float_bits.hpp> // abs_fraction, is_double_value
-#include <beman/inside/inside/detail/error.hpp>      // errc, detail::raise, detail::constexpr_error
+#include <beman/inside/inside/detail/error.hpp>      // error, detail::raise, detail::constexpr_error
 #include <beman/inside/inside/detail/wide_int.hpp>   // limb kernels for exact 128-bit cross products
 #include <beman/inside/inside/detail/rounding.hpp>   // round_mode, rounds_away
 
@@ -110,12 +110,12 @@ struct rational {
     [[nodiscard]] constexpr rational operator-() const;
 
     template <std::unsigned_integral T>
-    constexpr std::expected<T, errc> to() const;
+    constexpr std::expected<T, error> to() const;
 
     template <std::unsigned_integral T>
     explicit constexpr operator T() const {
         if (Den < 0)
-            raise(errc::domain_error, "cannot convert negative rational to unsigned");
+            raise(error::domain_error, "cannot convert negative rational to unsigned");
         return static_cast<T>(Num / abs_den(Den));
     }
 
@@ -148,7 +148,7 @@ struct rational {
     // A builtin integer past 64 bits (__int128) has no 64-bit rational.
     static constexpr void check_fits(std::integral auto num) {
         if (!fits_uint64_magnitude(num))
-            raise(errc::overflow, "rational: an integer past 64 bits");
+            raise(error::overflow, "rational: an integer past 64 bits");
     }
 
     // The two invalid denominators: 0 (n/0 is a division by zero, as in
@@ -157,9 +157,9 @@ struct rational {
     // well-defined).
     static constexpr void check_den(std::int64_t den) {
         if (den == 0)
-            raise(errc::division_by_zero, "rational: zero denominator");
+            raise(error::division_by_zero, "rational: zero denominator");
         if (den == std::numeric_limits<std::int64_t>::min())
-            raise(errc::overflow, "rational: denominator int64_min (cannot be negated)");
+            raise(error::overflow, "rational: denominator int64_min (cannot be negated)");
     }
 
     // Domain check + canonical-zero + gcd reduction; used by the integral ctors.
@@ -183,7 +183,7 @@ struct rational {
     static constexpr std::int64_t signed_den(N num, D den) {
         if constexpr (!std::same_as<D, std::int64_t>)
             if (!std::in_range<std::int64_t>(den))
-                raise(errc::overflow, "rational: denominator past int64");
+                raise(error::overflow, "rational: denominator past int64");
         const std::int64_t d = static_cast<std::int64_t>(den);
         check_den(d);
         if constexpr (std::signed_integral<N>)
@@ -193,8 +193,8 @@ struct rational {
     }
 };
 
-[[nodiscard]] constexpr std::expected<rational, errc> gcd(rational, rational);
-[[nodiscard]] constexpr rational                      abs(rational);
+[[nodiscard]] constexpr std::expected<rational, error> gcd(rational, rational);
+[[nodiscard]] constexpr rational                       abs(rational);
 
 [[nodiscard]] constexpr bool divides_evenly(rational, rational);
 
@@ -226,7 +226,7 @@ struct rational {
 // Loud == false is the quiet form behind try_add & co.: an error value even
 // during constant evaluation, for code that must test whether an op fits.
 template <fixed_string Msg, bool Loud = true>
-constexpr std::unexpected<errc> fail(errc code) {
+constexpr std::unexpected<error> fail(error code) {
     if constexpr (Loud)
         if consteval {
             constexpr_error<Msg>();
@@ -263,7 +263,7 @@ struct rounded_integer {
 [[nodiscard]] constexpr std::int64_t round_to_int(rational v, round_mode m) {
     const auto [mag, neg] = round_magnitude(v, m);
     if (mag > (neg ? std::uint64_t{1} << 63 : (std::uint64_t{1} << 63) - 1))
-        raise(errc::overflow, "rational: the rounded integer is past int64");
+        raise(error::overflow, "rational: the rounded integer is past int64");
     return static_cast<std::int64_t>(neg ? std::uint64_t{0} - mag : mag);
 }
 
@@ -290,19 +290,19 @@ struct rounded_integer {
 //---------------------------------------------------------------------------
 // gcd
 //---------------------------------------------------------------------------
-// Returns errc::overflow if the combined denominator lcm = (a/gcd)·b would exceed
+// Returns error::overflow if the combined denominator lcm = (a/gcd)·b would exceed
 // int64_max (sign-bit reservation) — traps the mul_overflow then range-checks.
 //---------------------------------------------------------------------------
-[[nodiscard]] constexpr std::expected<rational, errc> gcd(rational lhs, rational rhs) {
+[[nodiscard]] constexpr std::expected<rational, error> gcd(rational lhs, rational rhs) {
     std::uint64_t a = abs_den(lhs.Den);
     std::uint64_t b = abs_den(rhs.Den);
     std::uint64_t g = std::gcd(a, b);
 
     std::uint64_t denominator;
     if (mul_overflow(a / g, b, &denominator))
-        return std::unexpected{errc::overflow};
+        return std::unexpected{error::overflow};
     if (!std::in_range<std::int64_t>(denominator))
-        return std::unexpected{errc::overflow};
+        return std::unexpected{error::overflow};
 
     auto numerator = std::gcd(lhs.Num, rhs.Num);
     return rational{numerator, denominator};
@@ -349,7 +349,7 @@ constexpr rational rational_of_wide_float(T v, bool& exact) {
     const T a = v < 0 ? -v : v;
     exact     = true;
     if (!(a < static_cast<T>(0x1p64)))
-        raise(errc::overflow, "beman::inside::detail::rational: |long double| >= 2^64");
+        raise(error::overflow, "beman::inside::detail::rational: |long double| >= 2^64");
     if (a < static_cast<T>(0x1p-62)) {
         exact = a == 0;
         return rational_from_parts(0, 1);
@@ -362,7 +362,7 @@ constexpr rational rational_of_wide_float(T v, bool& exact) {
         std::countr_zero(static_cast<std::uint64_t>(q)) < 62 ? std::countr_zero(static_cast<std::uint64_t>(q)) : 62;
     const auto num = q >> tz;
     if (bit_width_of(num) > 64)
-        raise(errc::overflow, "beman::inside::detail::rational: long double past the 64-bit rational");
+        raise(error::overflow, "beman::inside::detail::rational: long double past the 64-bit rational");
     const std::int64_t den = std::int64_t{1} << (62 - tz);
     return rational_from_parts(static_cast<std::uint64_t>(num), v < 0 ? -den : den);
 }
@@ -380,7 +380,7 @@ constexpr rational rational_of_double(double value, bool& exact) {
 
 constexpr rational::rational(std::floating_point auto value) {
     if (!is_finite(value))
-        raise(errc::not_finite, "non-finite double");
+        raise(error::not_finite, "non-finite double");
     bool exact;
     if constexpr (wide_float<decltype(value)>)
         if (!is_double_value(value)) {
@@ -394,12 +394,12 @@ constexpr rational::rational(std::floating_point auto value) {
 // to
 //---------------------------------------------------------------------------
 template <std::unsigned_integral T>
-constexpr std::expected<T, errc> rational::to() const {
+constexpr std::expected<T, error> rational::to() const {
     if (Den < 0)
-        return std::unexpected{errc::domain_error};
+        return std::unexpected{error::domain_error};
     const std::uint64_t q = Num / abs_den(Den);
     if (!std::in_range<T>(q))
-        return std::unexpected{errc::overflow};
+        return std::unexpected{error::overflow};
     return static_cast<T>(q);
 }
 
@@ -407,7 +407,7 @@ constexpr std::expected<T, errc> rational::to() const {
 // numerator and lcm in 3 limbs, reduced, then checked to fit (a sum can
 // reduce back into range: (2^63+1)/2 + 1/6 = (3·2^62+2)/3).
 template <bool Loud>
-[[gnu::cold]] [[gnu::noinline]] constexpr std::expected<rational, errc> add_wide(rational a, rational b) {
+[[gnu::cold]] [[gnu::noinline]] constexpr std::expected<rational, error> add_wide(rational a, rational b) {
     using W                = wide_sint<3>;
     const std::uint64_t ad = abs_den(a.Den), bd = abs_den(b.Den), g = std::gcd(ad, bd);
     W                   num = signed_numerator<W>(a) * W{bd / g} + signed_numerator<W>(b) * W{ad / g};
@@ -419,7 +419,7 @@ template <bool Loud>
     const bool neg = num.negative();
     const W    mag = neg ? -num : num;
     if (W{std::numeric_limits<std::uint64_t>::max()} < mag || W{std::numeric_limits<std::int64_t>::max()} < den)
-        return fail<"rational +: result out of the 64-bit range", Loud>(errc::overflow);
+        return fail<"rational +: result out of the 64-bit range", Loud>(error::overflow);
     const std::int64_t d = static_cast<std::int64_t>(static_cast<std::uint64_t>(den));
     return rational_from_parts(static_cast<std::uint64_t>(mag), neg ? -d : d);
 }
@@ -440,13 +440,13 @@ constexpr void reduce_sum(std::uint64_t& n, std::uint64_t& d, std::uint64_t g) n
 // rational_add / rational_mul / rational_div — the arithmetic
 // bodies, library-internal (the public operators are consteval: a rational is
 // compile-time vocabulary, run-time values are insides). Checked=true returns
-// expected<rational, errc>, reporting overflow / division_by_zero (Loud: a
+// expected<rational, error>, reporting overflow / division_by_zero (Loud: a
 // compile error in constant evaluation); Checked=false silently overflows —
 // the caller must guarantee its absence (a grid bound proves it).
 //---------------------------------------------------------------------------
 template <bool Checked, bool Loud = true>
 inline constexpr auto rational_add(rational a, rational b) {
-    using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
+    using ret_t = std::conditional_t<Checked, std::expected<rational, error>, rational>;
 
     // (a == −b needs no test: equal denominators, opposite signs → num == 0 below.)
     if (a.Num == 0)
@@ -464,7 +464,7 @@ inline constexpr auto rational_add(rational a, rational b) {
             std::uint64_t numerator;
             if constexpr (Checked) {
                 if (add_overflow(a.Num, b.Num, &numerator)) {
-                    return ret_t{fail<"rational +: numerator overflow (same denominator)", Loud>(errc::overflow)};
+                    return ret_t{fail<"rational +: numerator overflow (same denominator)", Loud>(error::overflow)};
                 }
             } else
                 numerator = a.Num + b.Num;
@@ -500,7 +500,7 @@ inline constexpr auto rational_add(rational a, rational b) {
     if constexpr (Checked) {
         if (mul_overflow(a_ad, b_ad_r, &denominator) || // = lcm(a_ad, b_ad)
             !std::in_range<std::int64_t>(denominator)) {
-            return ret_t{fail<"rational +: denominator overflow", Loud>(errc::overflow)};
+            return ret_t{fail<"rational +: denominator overflow", Loud>(error::overflow)};
         }
         if (mul_overflow(a.Num, b_ad_r, &A) || mul_overflow(b.Num, a_ad_r, &B)) {
             // Mixed signs: |A − B| can fit uint64 even when a cross-product alone
@@ -520,7 +520,7 @@ inline constexpr auto rational_add(rational a, rational b) {
                     return ret_t{r};
                 }
             }
-            return ret_t{fail<"rational +: cross-multiplication overflow", Loud>(errc::overflow)};
+            return ret_t{fail<"rational +: cross-multiplication overflow", Loud>(error::overflow)};
         }
     } else {
         denominator = a_ad * b_ad_r;
@@ -532,7 +532,7 @@ inline constexpr auto rational_add(rational a, rational b) {
         std::uint64_t numerator;
         if constexpr (Checked) {
             if (add_overflow(A, B, &numerator)) {
-                return ret_t{fail<"rational +: numerator sum overflow", Loud>(errc::overflow)};
+                return ret_t{fail<"rational +: numerator sum overflow", Loud>(error::overflow)};
             }
         } else
             numerator = A + B;
@@ -556,7 +556,7 @@ inline constexpr auto rational_add(rational a, rational b) {
 
 template <bool Checked, bool Loud = true>
 inline constexpr auto rational_mul(rational a, rational b) {
-    using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
+    using ret_t = std::conditional_t<Checked, std::expected<rational, error>, rational>;
 
     if (a.Num == 0 || b.Num == 0)
         return ret_t{rational{0}};
@@ -569,7 +569,7 @@ inline constexpr auto rational_mul(rational a, rational b) {
         std::uint64_t numerator;
         if constexpr (Checked) {
             if (mul_overflow(a.Num, b.Num, &numerator)) {
-                return ret_t{fail<"rational *: numerator overflow", Loud>(errc::overflow)};
+                return ret_t{fail<"rational *: numerator overflow", Loud>(error::overflow)};
             }
         } else
             numerator = a.Num * b.Num;
@@ -585,7 +585,7 @@ inline constexpr auto rational_mul(rational a, rational b) {
     if constexpr (Checked) {
         if (mul_overflow(a.Num, b.Num, &numerator) || mul_overflow(a_ad, b_ad, &denominator) ||
             !std::in_range<std::int64_t>(denominator)) {
-            return ret_t{fail<"rational *: numerator or denominator overflow", Loud>(errc::overflow)};
+            return ret_t{fail<"rational *: numerator or denominator overflow", Loud>(error::overflow)};
         }
     } else {
         numerator   = a.Num * b.Num;
@@ -610,13 +610,13 @@ inline constexpr rational rational_inv(rational a) { return rational_from_parts(
 // div(a, b): checked, cross-reduced; unchecked, a * inv(b) (caller's contract).
 template <bool Checked, bool Loud = true>
 inline constexpr auto rational_div(rational a, rational b) {
-    using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
+    using ret_t = std::conditional_t<Checked, std::expected<rational, error>, rational>;
 
     if constexpr (Checked) {
         // Cross-reduce a.N/b.N and b.D/a.D first: b.N need not fit the
         // denominator alone (x/x with x > 2^63 is 1).
         if (b.Num == 0)
-            return ret_t{fail<"rational /: division by zero", Loud>(errc::division_by_zero)};
+            return ret_t{fail<"rational /: division by zero", Loud>(error::division_by_zero)};
         if (a.Num == 0)
             return ret_t{rational{0}};
         const std::uint64_t g1 = std::gcd(a.Num, b.Num);
@@ -624,7 +624,7 @@ inline constexpr auto rational_div(rational a, rational b) {
         std::uint64_t       num, den;
         if (mul_overflow(a.Num / g1, abs_den(b.Den) / g2, &num) ||
             mul_overflow(abs_den(a.Den) / g2, b.Num / g1, &den) || !std::in_range<std::int64_t>(den))
-            return ret_t{fail<"rational /: numerator or denominator overflow", Loud>(errc::overflow)};
+            return ret_t{fail<"rational /: numerator or denominator overflow", Loud>(error::overflow)};
         const bool neg = (a.Den < 0) != (b.Den < 0);
         return ret_t{rational_from_parts(num, neg ? -static_cast<std::int64_t>(den) : static_cast<std::int64_t>(den))};
     } else
@@ -777,17 +777,19 @@ template <plain_number T>
 // in constant evaluation too (the operators make it a compile error), and
 // they run at run time: the library's 64-bit fast steps, each with an exact
 // fallback, and compile-time code that asks whether a result fits.
-[[nodiscard]] inline constexpr std::expected<rational, errc> try_add(rational a, rational b) {
+[[nodiscard]] inline constexpr std::expected<rational, error> try_add(rational a, rational b) {
     const auto r = rational_add<true, false>(a, b);
     if (!r) [[unlikely]]
         return add_wide<false>(a, b);
     return r;
 }
-[[nodiscard]] inline constexpr std::expected<rational, errc> try_sub(rational a, rational b) { return try_add(a, -b); }
-[[nodiscard]] inline constexpr std::expected<rational, errc> try_mul(rational a, rational b) {
+[[nodiscard]] inline constexpr std::expected<rational, error> try_sub(rational a, rational b) {
+    return try_add(a, -b);
+}
+[[nodiscard]] inline constexpr std::expected<rational, error> try_mul(rational a, rational b) {
     return rational_mul<true, false>(a, b);
 }
-[[nodiscard]] inline constexpr std::expected<rational, errc> try_div(rational a, rational b) {
+[[nodiscard]] inline constexpr std::expected<rational, error> try_div(rational a, rational b) {
     return rational_div<true, false>(a, b);
 }
 

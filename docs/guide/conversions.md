@@ -25,10 +25,10 @@ or rounds.
 | Write | For |
 |---|---|
 | `T x{v};`, `x = v;` | a store under T's policy: proven by the grids, or a constant checked while compiling |
-| `T{v, F}` | one store with the flags `F`: `T{v, clamp}`, `T{v, clamp \| round_nearest}`, `T{v, wrap}` |
-| `checked_cast<T>(v)` | a store that reports any loss, whatever T's policy: a `std::expected` where it can fail |
+| `T{v, F}` | one store with the flags `F`: `T{v, clamp}`, `T{v, clamp \| round_half_away}`, `T{v, wrap}` |
+| `exact_cast<T>(v)` | a store that reports any loss, whatever T's policy: a `std::expected` where it can fail |
 | `T::try_make(v)` | a `std::expected`: the store for a run-time value the grids cannot prove |
-| `T::from_raw(r)` | trusted raw transfer, without checks ([Storage](../advanced/storage.md#raw-access)) |
+| `T::from_raw(r, unsafe)` | raw transfer without checks, which is why it names `unsafe` ([Storage](../advanced/storage.md#raw-access)) |
 
 To test a value without storing it:
 
@@ -44,20 +44,20 @@ conversion_loses<pct>(150);       // true: either of the two
 | Write | Gives |
 |---|---|
 | `x.as<T>()` | a `T`, where the grid proves the conversion total; else use `to<T>()` |
-| `x.to<T>()` | a `T` where it cannot fail (every value of the grid is an integer that fits `T`); else a `std::expected<T, errc>`: `overflow` when it does not fit, `domain_error` for a negative value into an unsigned type, `rounding_error` for a fraction |
+| `x.to<T>()` | a `T` where it cannot fail (every value of the grid is an integer that fits `T`); else a `std::expected<T, error>`: `overflow` when it does not fit, `domain_error` for a negative value into an unsigned type, `rounding_error` for a fraction |
 | `x.to<int, round_floor>()` | the same, rounding a fraction by the given mode: a plain `int` when the grid fits |
 | `double(x)`, `x.as<double>()` | a `double`, on a type with a rounding mode |
 | `x.to<double>()` | a `double`, on any type |
 | `x.numerator()`, `x.denominator()` | the exact value in lowest terms, as insides on the integers: `3` and `16` for 0.1875 (`.as<int>()` reads them) |
-| `x.index()` | the notch index, an `index_t<T>`; `T::from_index(i)` goes back |
+| `x.step()` | the count of notches above Lower, a `step_t<T>`; `T::from_step(i)` goes back |
 | `rational r = x;` | the exact value as a 64-bit fraction, where it fits one |
 
 `as<T>()` compiles where `T` holds the whole grid, so it has nothing to
-check. Elsewhere `to<T>()` returns a `std::expected`. `T::from_index(i)` is a plain
+check. Elsewhere `to<T>()` returns a `std::expected`. `T::from_step(i)` is a plain
 `T` where every value of `i` is an index of `T`, else an expected.
 
 A fraction into an integer type needs permission to round, as a store does:
-`x.to<int>()` of 2.75 is `errc::rounding_error`, `x.to<int, round_floor>()`
+`x.to<int>()` of 2.75 is `error::rounding_error`, `x.to<int, round_floor>()`
 is 2. A `float` or `double` result is rounded once from the exact value.
 
 `as` and `to` are free functions too, `as<T>(x)` and `to<T>(x)`, which spares
@@ -137,9 +137,9 @@ stores it through `T::try_make`:
 
 ```cpp
 parse<pct>("42");                          // 42
-parse<pct>("0.1");                         // errc::rounding_error: not on the grid
-parse<pct>("150");                         // errc::overflow
-parse<pct>("4x");                          // errc::invalid_format
+parse<pct>("0.1");                         // error::rounding_error: not on the grid
+parse<pct>("150");                         // error::overflow
+parse<pct>("4x");                          // error::invalid_format
 parse<inside<{{0, 1}, per<10>}>>("0.1");   // exactly 1/10
 std::cin >> a;                             // one token; failbit on an error
 ```

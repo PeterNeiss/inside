@@ -44,7 +44,7 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
     // The value at a slot (an offset from Lower).
     template <class S>
     static constexpr value_type value_at(const S& slot) {
-        const auto n = number_type::from_raw(detail::raw_of_slot<number_type>(slot));
+        const auto n = number_type::from_raw(detail::raw_of_slot<number_type>(slot), unsafe);
         if constexpr (std::same_as<V, number_type>)
             return n;
         else
@@ -81,7 +81,7 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
         [[nodiscard]] constexpr value_type operator*() const {
             // value = Lower + index * Notch: an integer raw (a range needs a
             // notch), slot() for an index raw, Lower + slot() for a value raw.
-            const auto n = number_type::from_raw(detail::raw_from_offset<number_type>(slot()));
+            const auto n = number_type::from_raw(detail::raw_from_offset<number_type>(slot()), unsafe);
             if constexpr (std::same_as<V, number_type>)
                 return n;
             else
@@ -219,8 +219,8 @@ struct inside_range : std::ranges::view_interface<inside_range<G, P, V>> {
 // values as quantities. A cursor has none: its grid ends past T's Upper.
 template <detail::steppable T>
     requires(notch_of<detail::step_number_t<T>> != 0 &&
-             !has_flag(flags_of<detail::step_number_t<T>>, detail::cursor_marker))
-inline constexpr inside_range<grid_of<detail::step_number_t<T>>, flags_of<detail::step_number_t<T>>, T> values{};
+             !has_flag(policy_of<detail::step_number_t<T>>, detail::cursor_marker))
+inline constexpr inside_range<grid_of<detail::step_number_t<T>>, policy_of<detail::step_number_t<T>>, T> values{};
 
 } // namespace beman::inside
 

@@ -7,7 +7,7 @@
 //   2. native clamped     -- std::clamp on every result.
 //   3. native checked     -- hand-rolled bounded struct, throws out_of_range.
 //   4. inside<checked>     -- the library's default policy: the run-time inputs
-//                            and the narrowing store report into an errc.
+//                            and the narrowing store report into an error.
 //   5. inside<unsafe>      -- the library with checking switched off.
 //
 // Contenders 2, 3 and 4 provide the same guarantee. Those are the rows that
@@ -110,7 +110,7 @@ int main()
       }
   });
 
-  errc         ec{};             // the checked channel, read after the run
+  error         ec{};             // the checked channel, read after the run
   const double inside_checked = time_ns_per_op([&] {
     for (int r = 0; r < kReps; ++r)
       for (int i = 0; i < kN; ++i)
@@ -121,7 +121,7 @@ int main()
         sink(c.raw());
       }
   });
-  if (ec != errc{})
+  if (ec != error{})
     return 1;
 
   const double inside_unsafe = time_ns_per_op([&] {

@@ -9,5 +9,5 @@ using namespace beman::inside;
 int main() {
     const inside<{{0, 4}, per<4>}> b{2};
     const inside<{{0, 2}, per<2>}> e{1};
-    (void)math::pow<inside<{{0, 16}, per<16>}, round_nearest>>(b, e);
+    (void)math::pow<inside<{{0, 16}, per<16>}, round_half_away>>(b, e);
 }

@@ -63,7 +63,7 @@ and the [certified math pairs](certified.md).
 |---|---|
 | `<beman/inside/inside.hpp>` | the number: `inside`, grids, policies, arithmetic, casts, ranges, `cursor`, `std::hash` and `std::numeric_limits` |
 | `<beman/inside/inside/io.hpp>` | text: `to_string`, `<<`, `>>`, `std::format`, `parse` of a `string_view` |
-| `<beman/inside/inside/formats.hpp>` | the native formats `uint8` … `int64`, `unorm8` …, `q8_8` …, and the counters |
+| `<beman/inside/inside/formats.hpp>` | the native formats `uint8` … `int64`, `unorm8` …, `uq8_8` …, and the counters |
 | `<beman/inside/inside/random.hpp>` | `uniform<B>(rng)` |
 | `<beman/inside/inside/mdspan.hpp>` | `std::mdspan` support: `extents_of`, `index_for`, `indices`, the accessors, `sum`, `dot`, the matrix products |
 | `<beman/inside/math.hpp>` | `beman::inside::math`: the functions and the constants |

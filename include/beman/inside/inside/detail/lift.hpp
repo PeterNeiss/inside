@@ -4,7 +4,7 @@
 
 #include <beman/inside/inside/detail/config.hpp>
 
-#include <beman/inside/inside/detail/error.hpp> // errc
+#include <beman/inside/inside/detail/error.hpp> // error
 
 #include <concepts>
 #include <expected>
@@ -12,14 +12,14 @@
 #include <utility>
 
 //---------------------------------------------------------------------------
-// lift — monadic composition for `std::expected<T, errc>`. `lift(op, args...)`
+// lift — monadic composition for `std::expected<T, error>`. `lift(op, args...)`
 // unwraps each expected arg, calls `op`, and re-wraps; the first arg (left to
 // right) holding an error short-circuits with that error. An `op` already
 // returning expected<R> is forwarded as-is, so the inner operation reports
 // its own cause. Internal: it backs grid division and the expected-lift
 // operators; user code chains through those.
 //
-// std::expected is larger than its value (flag + errc), so it only ever
+// std::expected is larger than its value (flag + error), so it only ever
 // travels as a parameter or return value — never as stored state.
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
@@ -57,7 +57,7 @@ constexpr decltype(auto) lift_unwrap(T&& v) {
 
 // Copy an arg's error into `e`; true if the arg holds one.
 template <class T>
-constexpr bool lift_take_error([[maybe_unused]] const T& v, [[maybe_unused]] errc& e) {
+constexpr bool lift_take_error([[maybe_unused]] const T& v, [[maybe_unused]] error& e) {
     if constexpr (expected_like<T>)
         if (!v.has_value()) {
             e = v.error();
@@ -69,9 +69,9 @@ constexpr bool lift_take_error([[maybe_unused]] const T& v, [[maybe_unused]] err
 template <class Op, class... Args>
 [[nodiscard]] constexpr auto lift(Op op, Args&&... args) {
     using R   = std::remove_cvref_t<decltype(op(lift_unwrap(std::forward<Args>(args))...))>;
-    using Ret = std::conditional_t<is_expected_v<R>, R, std::expected<R, errc>>;
+    using Ret = std::conditional_t<is_expected_v<R>, R, std::expected<R, error>>;
 
-    errc e{};
+    error e{};
     if ((lift_take_error(args, e) || ...))
         return Ret{std::unexpected{e}};
 

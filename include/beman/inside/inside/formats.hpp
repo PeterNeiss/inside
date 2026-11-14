@@ -8,7 +8,7 @@
 
 //---------------------------------------------------------------------------
 // formats — predefined `inside` aliases mapping to hardware byte widths, so you
-// can write `beman::inside::uint8` / `beman::inside::unorm16` / `beman::inside::q8_8` directly.
+// can write `beman::inside::uint8` / `beman::inside::unorm16` / `beman::inside::uq8_8` directly.
 //
 // `uint8` … `uint64` and `int8` … `int64` are named after the std::uintN_t /
 // std::intN_t they are stored in, and each uses that type's full range:
@@ -19,7 +19,9 @@
 // For wraparound or saturation declare your own (`inside<{0, 255}, wrap>`),
 // or use the counters clamp_counter<Max> and wrap_counter<Max> below.
 //---------------------------------------------------------------------------
-namespace beman::inside {
+// In their own namespace, so the names (int8, uint64, …) come in on request:
+//   using namespace beman::inside::formats;
+namespace beman::inside::formats {
 //-------------------------------------------------------------------------
 // Native integer widths — value storage (Raw == value), `checked`.
 // Full native range.
@@ -40,21 +42,21 @@ using int32 = inside<{-2147483648, 2147483647}>;
 using int64 = inside<{-9223372036854775807 - 1, 9223372036854775807}>;
 
 //-------------------------------------------------------------------------
-// Unsigned normalized (UNORM) — [0, 1] at N-bit resolution, `round_nearest`.
+// Unsigned normalized (UNORM) — [0, 1] at N-bit resolution, `round_half_away`.
 // The notch denominator is the type max, so the index 0..max fills the native
 // width; both endpoints (0 and 1) are exactly representable.
 //-------------------------------------------------------------------------
-using unorm8  = inside<{{0, 1}, per<255>}, round_nearest>;        // uint8
-using unorm16 = inside<{{0, 1}, per<65535>}, round_nearest>;      // uint16
-using unorm32 = inside<{{0, 1}, per<4294967295>}, round_nearest>; // uint32
+using unorm8  = inside<{{0, 1}, per<255>}, round_half_away>;        // uint8
+using unorm16 = inside<{{0, 1}, per<65535>}, round_half_away>;      // uint16
+using unorm32 = inside<{{0, 1}, per<4294967295>}, round_half_away>; // uint32
 
 //-------------------------------------------------------------------------
 // Q-format fixed-point — unsigned integer.fraction, power-of-two notch,
-// full natural range. `round_nearest`.
+// full natural range. `round_half_away`.
 //-------------------------------------------------------------------------
-using q4_4   = inside<{{0, rational{255, 16}}, per<16>}, round_nearest>;                // uint8: [0, 15.9375]
-using q8_8   = inside<{{0, rational{65535, 256}}, per<256>}, round_nearest>;            // uint16
-using q16_16 = inside<{{0, rational{4294967295u, 65536u}}, per<65536>}, round_nearest>; // uint32
+using uq4_4   = inside<{{0, rational{255, 16}}, per<16>}, round_half_away>;                // uint8: [0, 15.9375]
+using uq8_8   = inside<{{0, rational{65535, 256}}, per<256>}, round_half_away>;            // uint16
+using uq16_16 = inside<{{0, rational{4294967295u, 65536u}}, per<65536>}, round_half_away>; // uint32
 
 //-------------------------------------------------------------------------
 // Counters — a counter is an inside over [0, Max] whose overflow policy says
@@ -68,6 +70,6 @@ using clamp_counter = inside<{0, Max}, clamp>;
 template <auto Max>
 using wrap_counter = inside<{0, Max}, wrap>;
 
-} // namespace beman::inside
+} // namespace beman::inside::formats
 
 #endif // BEMAN_INSIDE_INSIDE_FORMATS_HPP

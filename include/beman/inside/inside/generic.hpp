@@ -5,7 +5,7 @@
 #include <beman/inside/inside/detail/config.hpp>
 
 #include <beman/inside/inside/detail/call_policy.hpp>   // error_ref
-#include <beman/inside/inside/detail/introspection.hpp> // grid_of, flags_of, insidable, numeric
+#include <beman/inside/inside/detail/introspection.hpp> // grid_of, policy_of, insidable, numeric
 #include <beman/inside/inside/detail/storage.hpp>       // storage concepts, raw/value plumbing
 
 #include <type_traits>
@@ -27,10 +27,10 @@ concept assign_intervals_ok =
     (!insidable<R> && !std::integral<R>)
     // wrap/clamp bring any value into range, so a disjoint rhs interval is fine
     // for them (the integral-rhs path already allows it — int's interval is unbounded).
-    || has_any_flag(flags_of<L> | P, wrap | clamp) || not excludes(interval_of<L>, interval_of<R>);
+    || has_any_flag(policy_of<L> | P, wrap | clamp) || not excludes(interval_of<L>, interval_of<R>);
 
 template <typename L, typename R, policy_flag P>
-concept assign_notch_ok = !insidable<R> || has_flag(flags_of<L> | P, snap) || notches_compatible<L, R>;
+concept assign_notch_ok = !insidable<R> || has_flag(policy_of<L> | P, snap) || notches_compatible<L, R>;
 
 // Every value of R lies on L's lattice (or within L's MaxDenominator), so a
 // store of an R into L never reports rounding_error. A double, a rational or
@@ -74,13 +74,13 @@ consteval bool values_in_range() {
 // store_proven<L, R, P>: the grids prove that a store of any R into L under
 // P cannot fail at run time — the range and the notch both hold, or P is
 // `unsafe` (the fit is then a precondition). A store that is not proven
-// needs a channel (an errc&, an on_error hook, try_make), or a constant.
-template <typename L, typename R, policy_flag P = flags_of<L>>
+// needs a channel (an error&, an on_error hook, try_make), or a constant.
+template <typename L, typename R, policy_flag P = policy_of<L>>
 concept store_proven =
-    !is_checked(flags_of<L> | P) ||
-    (values_in_range<L, R, flags_of<L> | P>() && (has_flag(flags_of<L> | P, snap) || values_on_lattice<L, R>()));
+    !is_checked(policy_of<L> | P) ||
+    (values_in_range<L, R, policy_of<L> | P>() && (has_flag(policy_of<L> | P, snap) || values_on_lattice<L, R>()));
 
-// A policy that reports into an errc& (policy(ec), make_policy<F>(ec)).
+// A policy that reports into an error& (policy(ec), make_policy<F>(ec)).
 template <typename Pol>
 inline constexpr bool reports_into_errc = std::is_base_of_v<error_ref, std::remove_cvref_t<Pol>>;
 
@@ -137,7 +137,7 @@ struct inside_assignable_why {
 
 // Public manual probe: `static_assert(beman::inside::explain_assignable<DstInside, decltype(src)>);`
 // emits the named per-clause reasons with the grids' numbers.
-template <typename Dst, typename Src, policy_flag P = flags_of<Dst>>
+template <typename Dst, typename Src, policy_flag P = policy_of<Dst>>
 inline constexpr bool explain_assignable = detail::inside_assignable_why<Dst, std::remove_cvref_t<Src>, P>::value;
 } // namespace beman::inside
 

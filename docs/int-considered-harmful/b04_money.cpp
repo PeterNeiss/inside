@@ -14,17 +14,17 @@ int main()
 {
   // 0..$1,000,000 in 1-cent steps. 0.01 is not exact in binary, so the
   // notch is given as an exact rational -- not as 0.01.
-  using money = inside<{{0, 1'000'000}, per<100>}, round_nearest>;
+  using money = inside<{{0, 1'000'000}, per<100>}, round_half_away>;
   static_assert(sizeof(money) == 4);   // still four bytes
 
   money total{0};
-  errc  ec{};                     // a running total names its channel
+  error  ec{};                     // a running total names its channel
   for (int i = 0; i < 10000; ++i)
     total.policy(ec) += money{0.01};
 
   std::cout << "10000 x $0.01      = $" << total << "\n";
   std::cout << "exactly $100.00    ? "
-            << (ec == errc{} && total == money{100.00} ? "true" : "false") << "\n";
+            << (ec == error{} && total == money{100.00} ? "true" : "false") << "\n";
 
   // Read the value back out exactly, as an integer pair.
   std::cout << "as a fraction      = " << total.numerator()

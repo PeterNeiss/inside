@@ -46,22 +46,22 @@ int main() {
     std::cout << "a = (" << ax << ", " << ay << ")   b = (" << bx << ", " << by << ")\n\n";
 
     // dot(a, b) = ax*bx + ay*by. Zero ⇒ perpendicular.
-    auto ab = dot(ax, ay, bx, by);
+    auto ab = ax * bx + ay * by;
     std::cout << "dot(a, b)      = " << ab << (ab == zero_area ? "   (perpendicular)\n" : "\n");
 
     // |a|^2 via dot(a, a) — stays exact in inside-space, no sqrt needed for a
     // length comparison.
-    std::cout << "dot(a, a)=|a|^2 = " << dot(ax, ay, ax, ay) << "   (= (5 px)^2)\n";
+    std::cout << "dot(a, a)=|a|^2 = " << (ax * ax + ay * ay) << "   (= (5 px)^2)\n";
 
     // cross(a, b) = ax*by - ay*bx — the z-component of a×b. Its sign answers
     // "is b to the left (+) or right (-) of a?". Also twice the signed area of
     // the triangle (0, a, b).
-    std::cout << "cross(a, b)    = " << cross(ax, ay, bx, by) << "   (sign = side of a)\n";
+    std::cout << "cross(a, b)    = " << (ax * by - ay * bx) << "   (sign = side of a)\n";
 
     // Side test for three points P, Q, R: cross(Q-P, R-P).
     auto side = [](coord p_x, coord p_y, coord q_x, coord q_y, coord r_x, coord r_y) {
         // Edge vectors widen to a signed grid; cross widens further. No overflow.
-        auto c = cross(q_x - p_x, q_y - p_y, r_x - p_x, r_y - p_y);
+        auto c = (q_x - p_x) * (r_y - p_y) - (q_y - p_y) * (r_x - p_x);
         return c > zero_area ? "left" : c < zero_area ? "right" : "collinear";
     };
     std::cout << "\nside of segment (0,0)->(10,0):\n";
@@ -73,13 +73,13 @@ int main() {
     // lerp(a, b, t) = a + (b - a) * t. `t` is a [0, 1] fixed-point inside, so the
     // interpolation never leaves inside-space; dyadic t values are exact.
     using axis    = quantity<px, inside<{0, 100}>>;
-    using param_t = inside<{{0, 1}, per<16>}, round_nearest>;
+    using param_t = inside<{{0, 1}, per<16>}, round_half_away>;
     axis x0{20, px}, x1{80, px};
     std::cout << "\nlerp x from " << x0 << " to " << x1 << ":\n";
     for (cursor<param_t, per<4>> t; t != end(t); ++t) // 0, 0.25, …, 1
         std::cout << "  t = " << t << "  ->  " << lerp(x0, x1, *t) << "\n";
 
-    if (ab != zero_area || to_string(cross(ax, ay, bx, by)) != "-25 px²" ||
+    if (ab != zero_area || to_string(ax * by - ay * bx) != "-25 px²" ||
         to_string(lerp(x0, x1, param_t{0.25})) != "35 px" || std::string{side(o, o, ten, o, five, up)} != "left")
         return 1;
     return 0;

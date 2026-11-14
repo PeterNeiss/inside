@@ -20,7 +20,7 @@ integer/notch-offset add and cross-grid non-integer stores have folded
 integer fast paths, gated on int64-safe spans); a rational RHS in a
 compound assign adds to the raw when it is a whole number of notches,
 else takes the same exact branch; `inside<checked>`
-element-wise loops report each element's store into an errc (`x.policy(ec) += v`) —
+element-wise loops report each element's store into an error (`x.policy(ec) += v`) —
 prefer `beman::inside::sum`'s bulk check, which validates the total instead.
 
 
@@ -149,7 +149,7 @@ prefer `beman::inside::sum`'s bulk check, which validates the total instead.
 |---------:|--------------------:|--------------------:|--------:|----------------:|----------------:|-------:|---------------:|--------:|----------:|:---------
 |   100.0% |                0.51 |    1,968,577,621.91 |    4.4% |           14.00 |            1.83 |  7.648 |           0.00 |    0.0% |      0.01 | `native (a*b)>>8`
 |    94.7% |                0.54 |    1,863,470,712.24 |    1.1% |           15.00 |            1.93 |  7.753 |           0.00 |    0.0% |      0.01 | `inside<unsafe>`
-|    82.3% |                0.62 |    1,619,560,066.56 |    0.7% |           19.00 |            2.23 |  8.534 |           1.00 |    0.0% |      0.01 | `inside mul<Q8.8>(a, b, round_nearest)`
+|    82.3% |                0.62 |    1,619,560,066.56 |    0.7% |           19.00 |            2.23 |  8.534 |           1.00 |    0.0% |      0.01 | `inside mul<Q8.8>(a, b, round_half_away)`
 
 | relative |               ns/op |                op/s |    err% |          ins/op |          cyc/op |    IPC |         bra/op |   miss% |     total | Q8.8 div (toward zero)
 |---------:|--------------------:|--------------------:|--------:|----------------:|----------------:|-------:|---------------:|--------:|----------:|:-----------------------
@@ -174,7 +174,7 @@ prefer `beman::inside::sum`'s bulk check, which validates the total instead.
 | relative |               ns/op |                op/s |    err% |          ins/op |          cyc/op |    IPC |         bra/op |   miss% |     total | assign from double ([-40,60] step 0.5)
 |---------:|--------------------:|--------------------:|--------:|----------------:|----------------:|-------:|---------------:|--------:|----------:|:---------------------------------------
 |   100.0% |                0.92 |    1,086,381,231.47 |    0.5% |           19.00 |            3.32 |  5.718 |           0.00 |    0.0% |      0.01 | `truncate (round_toward_zero)`
-|    59.2% |                1.55 |      643,589,996.70 |    0.2% |           25.00 |            5.60 |  4.463 |           0.00 |    0.0% |      0.01 | `round_nearest`
+|    59.2% |                1.55 |      643,589,996.70 |    0.2% |           25.00 |            5.60 |  4.463 |           0.00 |    0.0% |      0.01 | `round_half_away`
 
 | relative |               ns/op |                op/s |    err% |          ins/op |          cyc/op |    IPC |         bra/op |   miss% |     total | Q8.8 store
 |---------:|--------------------:|--------------------:|--------:|----------------:|----------------:|-------:|---------------:|--------:|----------:|:-----------

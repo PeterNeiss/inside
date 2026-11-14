@@ -55,8 +55,8 @@ constexpr Residue powmod(Residue b, Exponent e) {
 
 // d = e^-1 mod phi by extended Euclid. The remainders stay in [0, phi], the
 // Bezout coefficients in [-phi, phi]: each step checks its way back there
-// (checked_cast, an expected). An e without an inverse is a domain_error.
-std::expected<exponent, errc> inverse_mod_phi() {
+// (exact_cast, an expected). An e without an inverse is a domain_error.
+std::expected<exponent, error> inverse_mod_phi() {
     using rem  = inside<{0, Phi}>;
     using coef = inside<{-Phi, Phi}>;
     rem  r0 = Phi, r1 = E; // the grid number phi, read at run time
@@ -65,22 +65,22 @@ std::expected<exponent, errc> inverse_mod_phi() {
         const auto [q, r] = *divmod(r0, r1); // one 1024-bit division
         r0                = r1;
         r1                = r;
-        const auto t      = checked_cast<coef>(t0 - q * t1);
+        const auto t      = exact_cast<coef>(t0 - q * t1);
         if (!t)
             return std::unexpected(t.error());
         t0 = t1;
         t1 = *t;
     }
     if (r0 != 1)
-        return std::unexpected(errc::domain_error);
-    return checked_cast<exponent>(mod(t0, just<Phi>, round_floor));
+        return std::unexpected(error::domain_error);
+    return exact_cast<exponent>(mod(t0, just<Phi>, round_floor));
 }
 
 // Bytes in, big-endian: m = m * 256 + byte, checked to stay below n.
-constexpr std::expected<residue, errc> pack(std::string_view text) {
+constexpr std::expected<residue, error> pack(std::string_view text) {
     residue m = 0;
     for (const unsigned char c : text) {
-        const auto next = checked_cast<residue>(m * just<256> + inside<{0, 255}>{c});
+        const auto next = exact_cast<residue>(m * just<256> + inside<{0, 255}>{c});
         if (!next)
             return next;
         m = *next;
@@ -143,7 +143,7 @@ int main() {
     const residue_p qinv = powmod<residue_p, modulus_p>(modulus_q{} % modulus_p{}, exponent_p{P - 2});
     const residue_p mp   = powmod<residue_p, modulus_p>(c % modulus_p{}, dp);
     const residue_q mq   = powmod<residue_q, modulus_q>(c % modulus_q{}, dq);
-    const residue_p h    = checked_cast<residue_p>(mod((mp - mq) * qinv, modulus_p{}, round_floor));
+    const residue_p h    = exact_cast<residue_p>(mod((mp - mq) * qinv, modulus_p{}, round_floor));
     const auto      crt  = mq + modulus_q{} * h; // on [0, q - 1 + q * (p - 1)] = [0, n - 1]
     static_assert(grid_of<decltype(crt)> == grid_of<residue>);
     std::cout << "CRT agrees = " << std::boolalpha << (crt == back) << "\n";

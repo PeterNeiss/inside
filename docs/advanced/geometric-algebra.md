@@ -119,7 +119,7 @@ auto v = just<2> * si::metre * e1 + just<1> * si::metre * e2;      // 2 m e₁ +
 
 A division by a grid that holds 0 gives an `std::expected`, as `/` does
 everywhere: `inverse` of a multivector whose norm's grid holds 0 is an
-`expected` with `errc::division_by_zero` when it is 0.
+`expected` with `error::division_by_zero` when it is 0.
 
 ### When `inverse` exists
 
@@ -158,8 +158,8 @@ and a part spelled with a sign, j = e₃e₁, gets its sign), or one inside, the
 number of every part.
 
 ```cpp
-using coef  = inside<{{-1, 1}, per<(1 << 20)>}, round_nearest>;
-using part  = inside<{{-1, 1}, per<(1 << 16)>}, round_nearest>;
+using coef  = inside<{{-1, 1}, per<(1 << 20)>}, round_half_away>;
+using part  = inside<{{-1, 1}, per<(1 << 16)>}, round_half_away>;
 using rotor = multivector<part, quantity<i, part>, quantity<j, part>, quantity<k, part>>;
 const coef c{just<6045997880780726, 10000000000000000>};    // π/(3√3)
 math::exp<rotor>(c * i + c * j + c * k);                    // ½ + ½ i + ½ j + ½ k

@@ -29,6 +29,7 @@
 // grid
 namespace grid_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 // grid structured binding
@@ -112,7 +113,7 @@ TEST(GridTest, grid_arithmetic) {
         constexpr grid zero{{0, 0}, 0}; // pure zero-point grid
         constexpr auto r = a / zero;
         ASSERT_FALSE(r.has_value());
-        ASSERT_EQ(r.error(), errc::division_by_zero);
+        ASSERT_EQ(r.error(), error::division_by_zero);
     }
 
     {
@@ -161,7 +162,7 @@ TEST(GridTest, grid_arithmetic) {
         SCOPED_TRACE("divide by zero-notch interval that straddles zero");
         constexpr grid a{{1, 10}, 1};
         constexpr grid b{{-5, 5}, 0}; // unbounded: its values come arbitrarily close to 0
-        static_assert((a / b).error() == errc::overflow);
+        static_assert((a / b).error() == error::overflow);
         constexpr grid c{{-5, 5}, max_denominator{4}}; // nonzero values are at least 1/4 in magnitude
         constexpr auto r = a / c;
         ASSERT_TRUE(r.has_value());
@@ -302,9 +303,9 @@ TEST(GridTest, derived_notch_of_fraction_pairs) {
     static_assert(std::is_same_v<eightieths::raw_type, std::uint8_t>);
     EXPECT_EQ(rational{eightieths{0.5}}, (rational{1, 2})); // 40/80
     EXPECT_EQ((rational{eightieths{just<13, 16>}}), (rational{13, 16}));
-    EXPECT_EQ(eightieths::try_make(rational{just<1, 3>}).error(), errc::rounding_error); // 1/3 is not k/80
+    EXPECT_EQ(eightieths::try_make(rational{just<1, 3>}).error(), error::rounding_error); // 1/3 is not k/80
 
-    using signed_63 = inside<{just<-5, 7>, just<4, 9>}, round_nearest>;
+    using signed_63 = inside<{just<-5, 7>, just<4, 9>}, round_half_away>;
     EXPECT_EQ((rational{signed_63{just<-5, 7>}}), (rational{-5, 7}));
     EXPECT_EQ(rational{signed_63{0.0}}, rational{0});
     EXPECT_EQ((rational{signed_63{just<1, 4>}}), (rational{16, 63})); // 1/4 = 15.75/63 → nearest 16/63
@@ -354,7 +355,7 @@ TEST(GridTest, quotients_and_their_results_bound_denominators) {
     static_assert((q + unbounded).MaxDenominator == 0);            // unbounded stays unbounded
     static_assert((*(hundred / grid{{1, 10}, 0})).MaxDenominator == 0);
     // an unbounded divisor reaching 0 comes arbitrarily close to it: no bounded quotient
-    static_assert((hundred / unbounded).error() == errc::overflow);
+    static_assert((hundred / unbounded).error() == error::overflow);
     // hull: the larger bound; a lattice bounds by its value unit's denominator
     static_assert(hull(thousandths, grid{{0, 2}, rational{1, 4}}).MaxDenominator == 1000);
     static_assert(hull(thousandths, unbounded).MaxDenominator == 0);
@@ -398,6 +399,7 @@ TEST(GridTest, bounded_storage_holds_every_value) {
 // grid construction (the rejected grids are compile errors: tests/fail)
 namespace grid_construction_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 TEST(GridConstructionTest, well_formed_grids) {
@@ -426,6 +428,7 @@ TEST(GridConstructionTest, bounds_move_open_limits_in) {
 // interval
 namespace interval_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 // interval structured binding
@@ -562,6 +565,7 @@ TEST(IntervalTest, interval_rational_notch) {
 // literals
 namespace literals_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 // _r literal: integer forms
@@ -639,6 +643,7 @@ TEST(LiteralsTest, r_and_ins_agree) {
 // Pinned defects: each case failed before its fix.
 namespace pinned_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 #define WIDE_LONG_DOUBLE (LDBL_MANT_DIG > DBL_MANT_DIG)
@@ -652,9 +657,9 @@ TEST(GridTest, max_denominator_past_int64) {
     EXPECT_EQ(x, rational(0.3));
     x = 0x1p-70;
     EXPECT_EQ(x, 0);
-    errc ec{};
+    error ec{};
     x.policy(ec) = 1.0 + 0x1p-52;
-    EXPECT_EQ(ec, errc::overflow);
+    EXPECT_EQ(ec, error::overflow);
 }
 
 // The _g literal multiplied in grid_int without a limit: a long literal
@@ -730,7 +735,7 @@ TEST(GridTest, representable_fine_double_at_runtime) {
 // `gcd(rational, rational)` calls `std::lcm` on |Den|s without an
 // overflow check and casts the result to int64 via static_cast. Large
 // denominators silently wrap. The fix is to make `gcd` return
-// `std::expected<rational, errc>` and detect the overflow.
+// `std::expected<rational, error>` and detect the overflow.
 //
 // Trigger: lcm(2^62, 3) = 3 * 2^62. That fits in uint64 (≈1.38e19) but
 // exceeds int64_max (≈9.22e18). After the cast to int64 it goes negative,
@@ -738,7 +743,7 @@ TEST(GridTest, representable_fine_double_at_runtime) {
 //---------------------------------------------------------------------------
 TEST(GridTest, grid_plus_reports_gcd_lcm_overflow) {
     // Use grid arithmetic since gcd's return type changes — the error
-    // surfaces at grid::operator+ which already returns expected<grid, errc>.
+    // surfaces at grid::operator+ which already returns expected<grid, error>.
     constexpr auto big   = rational{1u, std::int64_t{1} << 62};
     constexpr auto third = rational{1u, 3};
 
@@ -757,6 +762,7 @@ TEST(GridTest, grid_plus_reports_gcd_lcm_overflow) {
 // just<N, D>, _g and _ins in every form, the counters and unit_amplitude.
 namespace big_spelling_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using detail::grid_rational;
 constexpr grid_rational two_70 = 1180591620717411303424_g;
 

@@ -22,11 +22,11 @@ namespace {
 constexpr auto kohm = si::kilo(si::ohm);
 constexpr auto mA   = si::milli(si::ampere);
 
-using kohm_t  = quantity<kohm, inside<{{1, 100}, per<10>}>>;     // 0.1 kΩ steps, at least 1 kΩ
-using ohm_t   = quantity<si::ohm, inside<{1, 1000}>>;            // whole ohms
-using volts   = quantity<si::volt, inside<{1, 12}>>;             // a supply
-using current = inside<{{0, 20}, per<1000>}, round_nearest>;     // mA to the µA
-using hertz_t = inside<{{0, 100'000}, per<100>}, round_nearest>; // Hz to 0.01 Hz
+using kohm_t  = quantity<kohm, inside<{{1, 100}, per<10>}>>;       // 0.1 kΩ steps, at least 1 kΩ
+using ohm_t   = quantity<si::ohm, inside<{1, 1000}>>;              // whole ohms
+using volts   = quantity<si::volt, inside<{1, 12}>>;               // a supply
+using current = inside<{{0, 20}, per<1000>}, round_half_away>;     // mA to the µA
+using hertz_t = inside<{{0, 100'000}, per<100>}, round_half_away>; // Hz to 0.01 Hz
 } // namespace
 
 int main() {
@@ -55,7 +55,7 @@ int main() {
     if (ip)
         return 1;
     std::cout << "I(pot) = error: " << ip.error() << '\n';
-    if (ip.error() != errc::division_by_zero)
+    if (ip.error() != error::division_by_zero)
         return 1;
 
     // 4. P = V·I: V·mA is a power, so it converts to watts (exactly: ×1/1000).

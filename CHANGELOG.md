@@ -20,12 +20,12 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   | `T x{n}`, `x = n` for a run-time `n` the grids cannot prove (an `int` past the interval, any `double`) | `T::try_make(n)`, `T{n, clamp}`, `x.policy(ec) = n`; a constant `T x{50}` is unchanged |
   | `T x{d, clamp}` for a run-time `double` | `T::try_make<clamp>(d)` or `T{d, make_policy<clamp>(ec)}` (NaN fits no clamp) |
   | `narrow = wide;`, `T x{wide}` | `T::try_make(wide)`, `T{wide, clamp}`, `x.policy(ec) = wide` |
-  | `acc += x`, `x *= y`, `++i` where the result may leave the grid | `acc.policy(ec) += x` (one `errc` for a loop), a `clamp`/`wrap` type, or `x.on_error(f) += y` |
+  | `acc += x`, `x *= y`, `++i` where the result may leave the grid | `acc.policy(ec) += x` (one `error` for a loop), a `clamp`/`wrap` type, or `x.on_error(f) += y` |
   | `x /= d`, `x %= d` with `d`'s grid holding 0 | `x.policy(ec) /= d`, or a divisor grid without 0 |
   | `x.as<T>()` where `T` may not hold every value | `x.to<T>()`, a `std::expected` |
-  | `checked_cast<B>(v)` returned `B` | `B` where proven, else `std::expected<B, errc>` |
-  | `mul<Out>`, `div<Out>`, `sum<T>`, `value_cast`, `quantity`'s `sum`, `T::from_index(i)`, `math::fn<Out>(x)` returned `Out` | `Out` where proven (or under `clamp`/`wrap`), else `std::expected<Out, errc>` |
-  | `matrix_product`, `matrix_vector_product`, `transform_into` returned `void` | `void` where proven, else `std::expected<void, errc>` |
+  | `exact_cast<B>(v)` returned `B` | `B` where proven, else `std::expected<B, error>` |
+  | `mul<Out>`, `div<Out>`, `sum<T>`, `value_cast`, `quantity`'s `sum`, `T::from_step(i)`, `math::fn<Out>(x)` returned `Out` | `Out` where proven (or under `clamp`/`wrap`), else `std::expected<Out, error>` |
+  | `matrix_product`, `matrix_vector_product`, `transform_into` returned `void` | `void` where proven, else `std::expected<void, error>` |
   | `catch (inside_error&)` | the channels above; `inside_error` is only the compile-time diagnostic |
   | the default handler threw `inside_error` | it prints `beman::inside: <message>` and aborts (traps freestanding); preconditions only reach it: a cursor past its end, a raw read off the grid |
   | `std::accumulate(…, T{0})` into a checked `T` | `sum<T>(r)`, or an accumulator type with `clamp` |
@@ -45,7 +45,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   | `Q{v, clamp}` | `Q{v, si::metre, clamp}`; `Q{q, clamp}` of a quantity is unchanged |
   | `q.numerical_value()` | `q.numerical_value_in(si::metre)` |
   | `Q::try_make(v)` | `Q::try_make(v, si::metre)` |
-  | `checked_cast<Q>(v)` | `checked_cast<Q>(q)` of a quantity, or `Q::try_make(v, si::metre)` |
+  | `exact_cast<Q>(v)` | `exact_cast<Q>(q)` of a quantity, or `Q::try_make(v, si::metre)` |
   | `conversion_overflows<Q>(v)`, `conversion_rounds`, `conversion_loses` | `conversion_overflows<Q>(v, si::metre)` |
   | `multivector<I, quantity<i, I>>{3, 4}` | `{3, just<4> * i}`: a blade's part is a quantity |
 
@@ -54,6 +54,22 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   in another unit does not compile. Each old form is a deleted overload whose
   message names the new one.
 
+- Renamed, to give each idea one word. No old spelling is kept.
+
+  | Before | Now | Why |
+  |---|---|---|
+  | `errc`, `errc_message` | `error`, `error_message` | `errc` collided with `std::errc` under two using-directives |
+  | `x.index()`, `T::from_index(i)`, `index_t<T>` | `x.step()`, `T::from_step(i)`, `step_t<T>` | an index is now a container index, by its value; the count of notches is a step, as in `step_count_of` |
+  | `flags_of<T>` | `policy_of<T>` | it is the policy |
+  | `checked_cast<T>(v)` | `exact_cast<T>(v)` | it reports any loss; `checked` is the policy that asks for a channel |
+  | `round_nearest` | `round_half_away` | it says where a tie goes, like `round_half_even` |
+  | `q4_4`, `q8_8`, `q16_16` | `uq4_4`, `uq8_8`, `uq16_16` | they are unsigned |
+  | `math::inv_sqrt_pi` | `math::inv_sqrtpi` | as `std::numbers` |
+  | `uint8` … `int64`, `unorm8` …, the counters in `beman::inside` | the same names in `beman::inside::formats` | `using namespace beman::inside::formats;` brings them in on request |
+  | `T::from_raw(r)` | `T::from_raw(r, unsafe)` | it is unchecked, and now says so |
+  | `dot(ax, ay, bx, by)`, `cross(ax, ay, bx, by)` | `ax * bx + ay * by`, `ax * by - ay * bx` | the operators widen the same way; `dot` is the mdspan one |
+  | `beman::inside::inside_error` | `beman::inside::detail::inside_error` | it only names a failed check in a constant expression |
+
 - `inside_mdspan` is gone: a `std::mdspan` takes inside indices itself,
   through the new implicit conversion of an index (below).
 
@@ -61,7 +77,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   |---|---|
   | `inside_mdspan<T, E, L, A>`, `inside_mdspan{m}` | `std::mdspan<T, E, L, A>`, `m` |
   | `m[r + dr, c + dc]`, held to the extent by the policy of `r + dr` | `m[row{r + dr}, col{c + dc}]`: stored into the index type, by its policy (`clamp` pads, `wrap` is periodic) |
-  | an inside index past a dynamic extent reported `errc::overflow` to the handler | `std::mdspan`'s precondition (libstdc++ checks it with `_GLIBCXX_ASSERTIONS`) |
+  | an inside index past a dynamic extent reported `error::overflow` to the handler | `std::mdspan`'s precondition (libstdc++ checks it with `_GLIBCXX_ASSERTIONS`) |
   | `v[x.as<std::size_t>()]` | `v[x]` (the old form still compiles) |
   | `b ? x : 0` for an inside `x` on non-negative integers | `b ? x : 0_ins`: the plain form is ambiguous now |
 
@@ -103,7 +119,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 - `index_for<I, E, r>`: the index type I lies within the static extent of E
   at rank r, as a concept for a `static_assert` or a function's constraint.
   `extents_of<I...>` takes any index type; an extent is the index's Upper + 1.
-- `T::from_raw(x)` of an inside `x` is a deleted overload with a reason: an
+- `T::from_raw(x, unsafe)` of an inside `x` is a deleted overload with a reason: an
   inside is no raw.
 - Geometric algebra on the units (opt-in `<beman/inside/units/geoalg.hpp>`).
   A `basis_vector` is a base dimension of your own and its unit; you state its

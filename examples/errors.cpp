@@ -28,26 +28,26 @@ int main() {
     // Same logical event (200 outside [0,100]), several reports. A constant
     // is checked while compiling: `checked_100 x = 200;` does not compile.
     // A run-time int may not fit [0,100], so `checked_100 x = n;` does not
-    // compile either: the store names its channel. The free-function `errc&`
+    // compile either: the store names its channel. The free-function `error&`
     // overload is shown in Section 4.
     const int n = read(200);
 
     auto maybe = checked_100::try_make(n);
-    std::cout << "expected: " << (maybe ? "has value" : errc_message(maybe.error())) << "\n";
+    std::cout << "expected: " << (maybe ? "has value" : error_message(maybe.error())) << "\n";
 
     auto ok = checked_100::try_make(50);
     std::cout << "in-range: " << *ok << "\n";
 
     // === Section 2: Per-operation overrides on a default-checked inside ===
 
-    beman::inside::errc ec{};
-    checked_100         z(50);
+    beman::inside::error ec{};
+    checked_100          z(50);
     z.policy(ec) = n;
-    std::cout << "policy ec:" << (ec != errc{} ? errc_message(ec) : "no error") << " (z=" << z << ")" << "\n";
+    std::cout << "policy ec:" << (ec != error{} ? error_message(ec) : "no error") << " (z=" << z << ")" << "\n";
 
     checked_100 r(50);
-    r.on_error([](auto& self, errc code, std::string_view msg) {
-        std::cout << "on_error: [" << errc_message(code) << "] " << msg << " -> recover to 0" << "\n";
+    r.on_error([](auto& self, error code, std::string_view msg) {
+        std::cout << "on_error: [" << error_message(code) << "] " << msg << " -> recover to 0" << "\n";
         self = 0; // the alternative value
     }) = n;
     std::cout << "          (r=" << r << ")" << "\n";
@@ -56,30 +56,30 @@ int main() {
     w.policy<clamp>() = 200;
     std::cout << "clamped:  value=" << w << " (this store saturates)" << "\n";
 
-    // === Section 3: Every errc value gets a demo ===
+    // === Section 3: Every error value gets a demo ===
     // overflow (out of range) already shown in Sections 1-2. Now: rounding_error (via
     // on_error) and division_by_zero (in the expected a division returns).
 
     coarse c(0);
-    c.on_error([](auto& self, errc code, std::string_view msg) {
-        std::cout << "rounding: [" << errc_message(code) << "] " << msg << " -> recover to 4" << "\n";
+    c.on_error([](auto& self, error code, std::string_view msg) {
+        std::cout << "rounding: [" << error_message(code) << "] " << msg << " -> recover to 4" << "\n";
         self = 4;
     }) = 3.0; // 3 doesn't land on the notch-2 grid
     std::cout << "          (c=" << c << ")" << "\n";
 
     const auto quotient = div(checked_100(10), checked_100(0));
     if (!quotient)
-        std::cout << "div/0:    [" << errc_message(quotient.error()) << "] -> recover to 0" << "\n";
+        std::cout << "div/0:    [" << error_message(quotient.error()) << "] -> recover to 0" << "\n";
     const auto q = quotient.value_or(std::remove_cvref_t<decltype(*quotient)>{0});
     std::cout << "          (q=" << q << ")" << "\n";
 
-    // === Section 4: Free-function errc& overload ===
-    // add / sub / mul / div / mod accept a beman::inside::errc& directly; ec is
+    // === Section 4: Free-function error& overload ===
+    // add / sub / mul / div / mod accept a beman::inside::error& directly; ec is
     // set on overflow or division-by-zero, the result holds the error on failure.
 
-    ec      = errc{};
+    ec      = error{};
     auto qz = div(checked_100(10), checked_100(0), ec);
-    std::cout << "free-fn:  " << (ec != errc{} ? errc_message(ec) : "no error")
+    std::cout << "free-fn:  " << (ec != error{} ? error_message(ec) : "no error")
               << " (q has_value=" << (qz.has_value() ? "true" : "false") << ")" << "\n";
 
     // === Section 5: Policies that avoid errors entirely ===
@@ -92,7 +92,7 @@ int main() {
     std::cout << "wrap:     370 -> " << wr << "\n";
 
     auto tm = digit::try_make(10);
-    std::cout << "try_make: 10  -> " << (tm ? "has value" : errc_message(tm.error())) << "\n";
+    std::cout << "try_make: 10  -> " << (tm ? "has value" : error_message(tm.error())) << "\n";
 
     // === Section 6: Inspection callbacks for non-error policies ===
 

@@ -87,10 +87,10 @@ template <insidable B, std::uniform_random_bit_generator G>
             if constexpr (top_bits < 64)
                 k.Word[sizeof(W) / 8 - 1] &= (std::uint64_t{1} << top_bits) - 1;
             if (!(k > count))
-                return B::from_raw(k);
+                return B::from_raw(k, unsafe);
         }
     } else
-        return B::from_raw(detail::raw_from_offset<B>(detail::random_index<detail::max_index_of<B>>(g)));
+        return B::from_raw(detail::raw_from_offset<B>(detail::random_index<detail::max_index_of<B>>(g)), unsafe);
 }
 } // namespace beman::inside
 

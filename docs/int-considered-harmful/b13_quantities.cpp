@@ -44,7 +44,7 @@ int main()
   // A ratio of two lengths is dimensionless: it converts to a plain inside.
   quantity<si::kilo(si::metre), inside<{1, 10}>> run{3, si::kilo(si::metre)};
   quantity<si::metre, inside<{1, 10}>>           step{2, si::metre};
-  inside<{0, 10000}, round_nearest> ratio = run / step;
+  inside<{0, 10000}, round_half_away> ratio = run / step;
   std::cout << "3 km / 2 m         = " << ratio << "\n";
   return 0;
 }

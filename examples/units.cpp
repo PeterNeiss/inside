@@ -22,10 +22,10 @@ using namespace beman::inside::units;
 namespace {
 constexpr auto km = si::kilo(si::metre);
 
-using leg_km  = quantity<km, inside<{{0, 500}, per<1000>}>>;     // a leg, to the metre
-using minutes = quantity<si::minute, inside<{1, 600}>>;          // its duration
-using celsius = inside<{{-50, 50}, per<10>}, round_nearest>;     // to 0.1 ℃
-using angle   = inside<{{0, 7}, per<1'000'000>}, round_nearest>; // radians, 1e-6
+using leg_km  = quantity<km, inside<{{0, 500}, per<1000>}>>;       // a leg, to the metre
+using minutes = quantity<si::minute, inside<{1, 600}>>;            // its duration
+using celsius = inside<{{-50, 50}, per<10>}, round_half_away>;     // to 0.1 ℃
+using angle   = inside<{{0, 7}, per<1'000'000>}, round_half_away>; // radians, 1e-6
 } // namespace
 
 int main() {

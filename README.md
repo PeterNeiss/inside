@@ -35,9 +35,9 @@ auto total = leg + just<800> * si::metre;   // 13300 m, exact
 auto speed = total / quantity<si::minute, inside<{1, 600}>>{20, si::minute};
 speed.in(si::kilo(si::metre) / si::hour);   // 39.9 km/h
 
-using amplitude = inside<{{-1, 1}, per<1000>}, round_nearest>;
+using amplitude = inside<{{-1, 1}, per<1000>}, round_half_away>;
 math::sin<amplitude>(just<30> * si::degree);                       // exactly 0.5
-math::sqrt(inside<{{0, 10}, per<1000>}, round_nearest>{2});              // 1.414, correctly rounded
+math::sqrt(inside<{{0, 10}, per<1000>}, round_half_away>{2});              // 1.414, correctly rounded
 ```
 
 **[Try it on Compiler Explorer](https://godbolt.org/z/MafnPMMxh).**

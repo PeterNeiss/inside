@@ -91,7 +91,7 @@ and the speed each guard costs, are in
 ## Output grids
 
 - **`fn(x)` deduces its output** from the input: the input's notch and policy
-  (plus `round_nearest`), and the function's range over the input's range,
+  (plus `round_half_away`), and the function's range over the input's range,
   computed at compile time and rounded outward (`tan` over the input's
   branch). The exceptions are fixed ranges: `sin`/`cos` [−1, 1], `atan2`
   [−π, π]; `hypot`
@@ -235,8 +235,8 @@ at the call. The conversion adds the rounding onto the angle grid and
 `math::two_pi`'s own error (about 6·10⁻¹⁸), but never accumulates:
 
 ```cpp
-using turn_t  = inside<{{0, 1 - 1.0 / 4096}, per<(1 << 12)>}, wrap | round_nearest>;
-using angle_t = inside<{{0, 8}, per<(1 << 14)>}, round_nearest>;
+using turn_t  = inside<{{0, 1 - 1.0 / 4096}, per<(1 << 12)>}, wrap | round_half_away>;
+using angle_t = inside<{{0, 8}, per<(1 << 14)>}, round_half_away>;
 turn_t phase{0};
 phase += turn_t{0.25};
 auto s = math::sin<per<(1 << 14)>>(angle_t{phase * math::two_pi});   // 1

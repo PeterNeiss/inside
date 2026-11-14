@@ -3,7 +3,7 @@
 //   1. The smallest integer that numbers every point — the value itself for a
 //      whole-number range where that costs no width, else the 0-based index.
 //   2. Presets from <beman/inside/inside/formats.hpp>: native byte widths (uint8, int16,
-//      unorm16, q8_8, …) that still carry a range and a policy.
+//      unorm16, uq8_8, …) that still carry a range and a policy.
 //   3. A fixed wire layout: write `to<T>()` into the field.
 
 #include <cstdint>
@@ -14,6 +14,8 @@
 #include <beman/inside/inside/io.hpp> // to_string_debug: value, raw and raw type
 
 using namespace beman::inside;
+
+using namespace beman::inside::formats;
 
 int main() {
     // 1. Deduced storage.
@@ -35,11 +37,11 @@ int main() {
         return 1;
 
     // 2. Presets at native widths.
-    static_assert(sizeof(uint8) == 1 && sizeof(int16) == 2 && sizeof(unorm16) == 2 && sizeof(q8_8) == 2 &&
-                  sizeof(q16_16) == 4);
+    static_assert(sizeof(uint8) == 1 && sizeof(int16) == 2 && sizeof(unorm16) == 2 && sizeof(uq8_8) == 2 &&
+                  sizeof(uq16_16) == 4);
     int16 mixed{0};
-    mixed.policy<clamp>() = int16{30000} + int16{20000};                               // PCM mix: 50000 saturates
-    const int16 out       = mul<int16>(unorm16{0.5_ins}, int16{10001}, round_nearest); // gain, rounded once
+    mixed.policy<clamp>() = int16{30000} + int16{20000};                                 // PCM mix: 50000 saturates
+    const int16 out       = mul<int16>(unorm16{0.5_ins}, int16{10001}, round_half_away); // gain, rounded once
     std::cout << "mix " << mixed << ", gain " << out << "\n";
     if (mixed != 32767 || out != 5001)
         return 1;

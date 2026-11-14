@@ -5,4 +5,4 @@
 
 using namespace beman::inside;
 
-int main() { (void)math::sin<per<64>, per<128>>(inside<{{-1, 1}, per<64>}, round_nearest>{0.5}); }
+int main() { (void)math::sin<per<64>, per<128>>(inside<{{-1, 1}, per<64>}, round_half_away>{0.5}); }

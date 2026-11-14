@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Ranges and loops: values<T>, inside_range, cursor, the standard
-// algorithms, index()/from_index, and uniform<B>.
+// algorithms, index()/from_step, and uniform<B>.
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/inside/formats.hpp>
@@ -28,6 +28,7 @@ using beman::inside::test::exact;
 // range
 namespace range_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 namespace {
@@ -216,7 +217,7 @@ TEST(RangeTest, inside_range_with_std_views_stride) {
 //---------------------------------------------------------------------------
 namespace {
 using bin     = inside<{0, 9}>;
-using quarter = inside<{{0, 1}, per<4>}, round_nearest>;
+using quarter = inside<{{0, 1}, per<4>}, round_half_away>;
 
 template <typename T>
 concept has_values = requires { values<T>; };
@@ -224,7 +225,7 @@ concept has_values = requires { values<T>; };
 
 static_assert(std::is_same_v<std::remove_const_t<decltype(values<bin>)>, inside_range<{0, 9}>>);
 static_assert(
-    std::is_same_v<std::remove_const_t<decltype(values<quarter>)>, inside_range<{{0, 1}, per<4>}, round_nearest>>);
+    std::is_same_v<std::remove_const_t<decltype(values<quarter>)>, inside_range<{{0, 1}, per<4>}, round_half_away>>);
 static_assert(std::ranges::random_access_range<decltype(values<bin>)>);
 static_assert(std::ranges::sized_range<decltype(values<bin>)>);
 static_assert(std::is_same_v<std::ranges::range_value_t<decltype(values<quarter>)>, quarter>);
@@ -347,10 +348,11 @@ TEST(RangeTest, inside_range_mid_start_random_access_and_reverse) {
 // past its Upper, so the classic loop needs no value T cannot hold.
 namespace cursor_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 namespace {
-using time_t_ = inside<{{-4, 4}, per<1024>}, round_nearest>;
+using time_t_ = inside<{{-4, 4}, per<1024>}, round_half_away>;
 using cur     = cursor<time_t_, per<4>>;
 
 template <typename B>
@@ -366,8 +368,8 @@ std::vector<rational> quarter_steps() {
 
 TEST(CursorTest, type) {
     static_assert(grid_of<cur> == grid{{-4, 4.25_r}, 0.25_r});
-    static_assert(has_flag(flags_of<cur>, round_nearest));
-    static_assert(has_flag(flags_of<cur>, cursor_marker));
+    static_assert(has_flag(policy_of<cur>, round_half_away));
+    static_assert(has_flag(policy_of<cur>, cursor_marker));
     static_assert(index_storage<cur>);
     static_assert(std::is_same_v<raw_t<cur>, std::uint8_t>);
     // a whole-number cursor stores its value, and still starts at Lower
@@ -434,7 +436,7 @@ TEST(CursorTest, steps_and_ends) {
         EXPECT_EQ(static_cast<rational>(x), static_cast<rational>(v));
     }
     // a cursor works where an inside does
-    using amp = inside<{{0, 64}, per<16384>}, round_nearest>;
+    using amp = inside<{{0, 64}, per<16384>}, round_half_away>;
     cur w     = 1_ins;
     EXPECT_EQ((math::exp<amp>(w)), (math::exp<amp>(time_t_{1})));
     EXPECT_EQ(to_string(w), "1");
@@ -442,11 +444,11 @@ TEST(CursorTest, steps_and_ends) {
 
 TEST(CursorTest, marker_does_not_leak) {
     cur t = 1_ins;
-    static_assert(!has_flag(flags_of<decltype(t + t)>, cursor_marker));
-    static_assert(!has_flag(flags_of<decltype(t * t)>, cursor_marker));
-    static_assert(!has_flag(flags_of<decltype(-t)>, cursor_marker));
-    static_assert(!has_flag(flags_of<decltype(math::exp(t))>, cursor_marker));
-    static_assert(!has_flag(flags_of<decltype(math::abs(t))>, cursor_marker));
+    static_assert(!has_flag(policy_of<decltype(t + t)>, cursor_marker));
+    static_assert(!has_flag(policy_of<decltype(t * t)>, cursor_marker));
+    static_assert(!has_flag(policy_of<decltype(-t)>, cursor_marker));
+    static_assert(!has_flag(policy_of<decltype(math::exp(t))>, cursor_marker));
+    static_assert(!has_flag(policy_of<decltype(math::abs(t))>, cursor_marker));
     static_assert(!has_end<time_t_>); // only a cursor has an end
     static_assert(has_end<cur>);
 }
@@ -483,7 +485,7 @@ static_assert(!std::random_access_iterator<cur>); // t - u is arithmetic, not a 
 static_assert(std::sentinel_for<decltype(end(cur{})), cur>);
 static_assert(!std::sized_sentinel_for<cur, cur>);
 static_assert(std::same_as<std::iter_difference_t<cur>, std::int64_t>);
-static_assert(std::same_as<std::iter_value_t<cur>, inside<{{-4, 4}, per<4>}, round_nearest>>);
+static_assert(std::same_as<std::iter_value_t<cur>, inside<{{-4, 4}, per<4>}, round_half_away>>);
 static_assert(std::convertible_to<std::iter_value_t<cur>, time_t_>);
 // plain insides stay numbers, not iterators
 static_assert(!std::weakly_incrementable<time_t_>);
@@ -518,6 +520,7 @@ TEST(CursorTest, is_an_iterator) {
 // algo
 namespace algo_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 namespace rng = std::ranges;
@@ -651,7 +654,7 @@ TEST(AlgoTest, beman_inside_min_max_midpoint_over_bounds) {
     ASSERT_EQ((min(a, b)), 30);
 
     // Fractional grid.
-    using s = inside<{{-1, 1}, per<16384>}, round_nearest>;
+    using s = inside<{{-1, 1}, per<16384>}, round_half_away>;
     s x{rational{1, 4}}, y{rational{3, 4}};
     ASSERT_EQ((rational{beman::inside::midpoint(x, y)}), (rational{1, 2}));
     ASSERT_EQ((beman::inside::max(x, y)), (rational{3, 4}));
@@ -660,11 +663,12 @@ TEST(AlgoTest, beman_inside_min_max_midpoint_over_bounds) {
 
 // Run-time values are insides, never grid numbers: a grid number past 64 bits
 // exists only at compile time, while an inside holds any value of its grid in
-// a raw sized from it. index(), from_index, index_t, step_count_of and the
+// a raw sized from it. step(), from_step, step_t, step_count_of and the
 // numerator/denominator insides, on grids past 2^64 points and within them.
 // The inputs pass through a volatile, so every computation runs at run time.
 namespace runtime_insides_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 
 using detail::big_int;
 using detail::grid_rational;
@@ -689,12 +693,12 @@ int at_run_time(int v) {
 } // namespace
 
 TEST(IndexTest, counts_are_insides) {
-    static_assert(std::is_same_v<index_t<huge>, huge>); // {0, 2^100} notch 1 is its own index grid
-    static_assert(sizeof(index_t<fine>) == sizeof(fine));
-    static_assert(std::is_same_v<index_t<fine>::raw_type, fine::raw_type>);
-    static_assert(grid_of<index_t<temp>> == grid{0, 125});
-    static_assert(grid_of<index_t<halves>> == grid{0, 10});
-    static_assert(grid_of<index_t<five>> == grid{0});
+    static_assert(std::is_same_v<step_t<huge>, huge>); // {0, 2^100} notch 1 is its own index grid
+    static_assert(sizeof(step_t<fine>) == sizeof(fine));
+    static_assert(std::is_same_v<step_t<fine>::raw_type, fine::raw_type>);
+    static_assert(grid_of<step_t<temp>> == grid{0, 125});
+    static_assert(grid_of<step_t<halves>> == grid{0, 10});
+    static_assert(grid_of<step_t<five>> == grid{0});
     // The step count is a point: no storage, the value in the type, printable.
     static_assert(std::is_empty_v<std::remove_cvref_t<decltype(step_count_of<huge>)>>);
     EXPECT_EQ(to_string(step_count_of<huge>), "1267650600228229401496703205376");
@@ -706,63 +710,63 @@ TEST(IndexTest, counts_are_insides) {
 }
 
 TEST(IndexTest, index_round_trips_past_64_bits) {
-    const huge h = *huge::from_index(at_run_time(7)); // (an int index may miss: an expected)
+    const huge h = *huge::from_step(at_run_time(7)); // (an int index may miss: an expected)
     EXPECT_TRUE(h == 7);
-    const huge last = huge::from_index(step_count_of<huge>);
+    const huge last = huge::from_step(step_count_of<huge>);
     EXPECT_TRUE(last == just<g(pow2(100))>);
     // Index arithmetic at run time, on wide raws.
-    const auto gap = last.index() - h.index(); // {−2^100, 2^100}
+    const auto gap = last.step() - h.step(); // {−2^100, 2^100}
     EXPECT_EQ(to_string(gap), "1267650600228229401496703205369");
-    const huge mid = huge::from_index(div(last.index(), 2_ins, round_floor));
+    const huge mid = huge::from_step(div(last.step(), 2_ins, round_floor));
     EXPECT_TRUE(mid == just<g(pow2(99))>);
-    EXPECT_TRUE(huge::from_index(mid.index()) == mid);
+    EXPECT_TRUE(huge::from_step(mid.step()) == mid);
 
     const fine f = 0.5;
-    EXPECT_TRUE(f.index() == just<g(pow2(79))>);
-    EXPECT_TRUE(*fine::from_index(f.index() + 1_ins) > f);
+    EXPECT_TRUE(f.step() == just<g(pow2(79))>);
+    EXPECT_TRUE(*fine::from_step(f.step() + 1_ins) > f);
 
     const shuge s = -at_run_time(3);
-    EXPECT_EQ(to_string(s.index()), "1267650600228229401496703205373"); // −3 + 2^100
-    EXPECT_TRUE(shuge::from_index(s.index()) == -3);
+    EXPECT_EQ(to_string(s.step()), "1267650600228229401496703205373"); // −3 + 2^100
+    EXPECT_TRUE(shuge::from_step(s.step()) == -3);
 }
 
 TEST(IndexTest, index_within_64_bits) {
     const temp t = test::store<temp>(at_run_time(-39));
-    EXPECT_TRUE(t.index() == 1);
-    EXPECT_TRUE(temp::from_index(t.index()) == -39);
+    EXPECT_TRUE(t.step() == 1);
+    EXPECT_TRUE(temp::from_step(t.step()) == -39);
     const halves h = rational{5, 2};
-    EXPECT_TRUE(h.index() == 5);
-    EXPECT_TRUE((halves::from_index(h.index()) == rational{5, 2}));
+    EXPECT_TRUE(h.step() == 5);
+    EXPECT_TRUE((halves::from_step(h.step()) == rational{5, 2}));
     const bins b = 3.5;
-    EXPECT_TRUE(b.index() == 3);
-    EXPECT_TRUE(bins::from_index(at_run_time(3)) == b);
-    EXPECT_TRUE(five{}.index() == 0);
-    EXPECT_TRUE(five::from_index(0_ins) == 5);
+    EXPECT_TRUE(b.step() == 3);
+    EXPECT_TRUE(bins::from_step(at_run_time(3)) == b);
+    EXPECT_TRUE(five{}.step() == 0);
+    EXPECT_TRUE(five::from_step(0_ins) == 5);
     // Every value of a small grid round-trips.
     for (int k = 0; k <= 10; ++k)
-        EXPECT_TRUE(halves::from_index(at_run_time(k))->index() == k); // (an int index: an expected)
+        EXPECT_TRUE(halves::from_step(at_run_time(k))->step() == k); // (an int index: an expected)
 }
 
 TEST(IndexTest, from_index_out_of_range) {
     const int past = at_run_time(11); // halves has indices 0 … 10
-    EXPECT_EQ(halves::from_index(past).error(), errc::overflow);
-    EXPECT_TRUE(halves::from_index(past, clamp) == 5);
-    EXPECT_TRUE((halves::from_index(past + 1, wrap) == rational{1, 2})); // 12 folds to 1
-    EXPECT_TRUE(halves::from_index(-at_run_time(1), clamp) == 0);
-    EXPECT_EQ(halves::try_from_index(past).error(), errc::overflow);
-    EXPECT_TRUE(halves::try_from_index(at_run_time(4)).value() == 2);
-    EXPECT_EQ(five::from_index(at_run_time(1)).error(), errc::overflow); // a point has index 0 only
+    EXPECT_EQ(halves::from_step(past).error(), error::overflow);
+    EXPECT_TRUE(halves::from_step(past, clamp) == 5);
+    EXPECT_TRUE((halves::from_step(past + 1, wrap) == rational{1, 2})); // 12 folds to 1
+    EXPECT_TRUE(halves::from_step(-at_run_time(1), clamp) == 0);
+    EXPECT_EQ(halves::try_from_step(past).error(), error::overflow);
+    EXPECT_TRUE(halves::try_from_step(at_run_time(4)).value() == 2);
+    EXPECT_EQ(five::from_step(at_run_time(1)).error(), error::overflow); // a point has index 0 only
 
     // Past 2^64 points: one past the last index.
     const auto beyond = step_count_of<huge> + test::store<inside<{0, 1}>>(at_run_time(1));
-    EXPECT_EQ(huge::from_index(beyond).error(), errc::overflow);
-    EXPECT_TRUE(huge::from_index(beyond, clamp) == just<g(pow2(100))>);
-    EXPECT_TRUE(huge::from_index(beyond, wrap) == 0);
-    EXPECT_EQ(huge::try_from_index(beyond).error(), errc::overflow);
+    EXPECT_EQ(huge::from_step(beyond).error(), error::overflow);
+    EXPECT_TRUE(huge::from_step(beyond, clamp) == just<g(pow2(100))>);
+    EXPECT_TRUE(huge::from_step(beyond, wrap) == 0);
+    EXPECT_EQ(huge::try_from_step(beyond).error(), error::overflow);
 }
 
 TEST(IndexTest, numerator_and_denominator_are_insides) {
-    const q8_8 q = 1.5;
+    const uq8_8 q = 1.5;
     static_assert(grid_of<decltype(q.numerator())> == grid{0, 65535});
     static_assert(grid_of<decltype(q.denominator())> == grid{1, 256});
     EXPECT_TRUE(q.numerator() == 3 && q.denominator() == 2);
@@ -782,7 +786,7 @@ TEST(IndexTest, numerator_and_denominator_are_insides) {
     EXPECT_TRUE(r.numerator() == 1 && r.denominator() == 3);
 
     // Past 64 bits: wide raws, exact.
-    const fine f = fine::from_raw(fine::raw_type{3});
+    const fine f = fine::from_raw(fine::raw_type{3}, unsafe);
     EXPECT_TRUE(f.numerator() == 3 && f.denominator() == just<g(pow2(80))>);
     EXPECT_EQ(to_string(f.denominator()), "1208925819614629174706176");
 
@@ -796,6 +800,7 @@ TEST(IndexTest, numerator_and_denominator_are_insides) {
 // Pinned defects: each case failed before its fix.
 namespace pinned_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 template <class B>
@@ -919,6 +924,7 @@ TEST(RangeTest, uniform_draws_are_pinned_across_standard_libraries) {
 // bidirectional view without a size: its position is a wide integer.
 namespace big_range_tests {
 using namespace beman::inside;
+using namespace beman::inside::formats;
 
 TEST(RangeTest, values_past_2_to_the_63) {
     using WS = inside<{-1180591620717411303424_g, 1180591620717411303424_g}>; // 2^71 + 1 values

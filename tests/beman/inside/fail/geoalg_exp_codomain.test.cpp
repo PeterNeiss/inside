@@ -14,7 +14,7 @@ int main() {
     using namespace beman::inside::units;
     constexpr auto e1 = unit_c<e1_def>;
     constexpr auto e2 = unit_c<e2_def>;
-    using I           = inside<{{-4, 4}, per<64>}, round_nearest>;
+    using I           = inside<{{-4, 4}, per<64>}, round_half_away>;
     using dom         = multivector<I, quantity<e1 * e2, I>>;
     using cod         = quantity<e1 * e2, I>;
     (void)math::exp<cod>(dom{I{1} + I{1} * (e1 * e2)});

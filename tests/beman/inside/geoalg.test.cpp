@@ -251,7 +251,7 @@ TEST(GeoalgTest, inverse_when_provably_a_scalar_norm) {
     const auto     bad  = inverse(zero);
     const auto     good = inverse(two);
     ASSERT_FALSE(bad.has_value());
-    EXPECT_EQ(bad.error(), errc::division_by_zero);
+    EXPECT_EQ(bad.error(), error::division_by_zero);
     ASSERT_TRUE(good.has_value());
     EXPECT_TRUE((*good == just<1, 2>));
 }

@@ -30,13 +30,13 @@ struct multiplication {
         else if constexpr (point_scale<L, R, result>)
             return scale_by_point<result, L>(rhs);
         else if constexpr (fraction_storage<result>)
-            return result::from_raw(fraction_raw_of<raw_t<result>>(exact_of(lhs) * exact_of(rhs)));
+            return result::from_raw(fraction_raw_of<raw_t<result>>(exact_of(lhs) * exact_of(rhs)), unsafe);
         else if constexpr (exact_path_fits<exact_op::mul, result, L, R>)
-            return result::from_raw(rational_of(exact_of(lhs) * exact_of(rhs)));
+            return result::from_raw(rational_of(exact_of(lhs) * exact_of(rhs)), unsafe);
         else if constexpr (rational_storage<result>)
-            return result::from_raw(mul_unchecked(as_rational(lhs), as_rational(rhs)));
+            return result::from_raw(mul_unchecked(as_rational(lhs), as_rational(rhs)), unsafe);
         else if constexpr (point_storage<result>) // point × point, or × 0: the grid's one value
-            return result::from_raw(raw_t<result>{});
+            return result::from_raw(raw_t<result>{}, unsafe);
         else {
             // Integer raws (a notched result has no continuous operand): multiply the operands' values in their own
             // units (a notch or value unit, or |c| for a point c), in int64 or by wrapping arithmetic

@@ -159,7 +159,7 @@ def slots(t):
 
 FLAG_NAMES = [(1 << 32, "clamp"), (1 << 33, "wrap")]
 ROUNDING = [((1 << 8) | 16, "round_half_even"), ((1 << 7) | 16, "round_ceil"), ((1 << 6) | 16, "round_floor"),
-            ((1 << 5) | 16, "round_nearest"), (16, "round_toward_zero")]
+            ((1 << 5) | 16, "round_half_away"), (16, "round_toward_zero")]
 
 
 def flags_text(f):

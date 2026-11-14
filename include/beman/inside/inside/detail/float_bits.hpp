@@ -4,7 +4,7 @@
 
 #include <beman/inside/inside/detail/config.hpp>
 
-#include <beman/inside/inside/detail/error.hpp> // errc, detail::raise
+#include <beman/inside/inside/detail/error.hpp> // error, detail::raise
 
 #include <bit>
 #include <limits>
@@ -160,7 +160,7 @@ constexpr bool abs_fraction_exact(double value) noexcept {
 // IEEE-754 bits — no <cmath>, no FPU rounding, bit-identical across platforms.
 constexpr std::pair<std::uint64_t, std::uint64_t> abs_fraction(double value, bool& exact) {
     if (not is_finite(value))
-        raise(errc::not_finite, "beman::inside::detail::abs_fraction: non-finite double");
+        raise(error::not_finite, "beman::inside::detail::abs_fraction: non-finite double");
 
     if (value == 0.0)
         return {0, 1};
@@ -174,7 +174,7 @@ constexpr std::pair<std::uint64_t, std::uint64_t> abs_fraction(double value, boo
             if consteval {
                 constexpr_error<"no 64-bit rational for a double of magnitude 2^64 or more">();
             }
-            raise(errc::overflow, "beman::inside::detail::abs_fraction: |double| >= 2^64");
+            raise(error::overflow, "beman::inside::detail::abs_fraction: |double| >= 2^64");
         }
         return {significand << exp2, 1};
     }

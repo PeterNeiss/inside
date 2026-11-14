@@ -45,7 +45,7 @@ of both grids, with the gcd notch, under the same rule.
 ## Division
 
 `a / b` returns a plain inside when the divisor's grid excludes 0, and a
-`std::expected<…, errc>` when it holds 0. Which code runs is chosen at compile
+`std::expected<…, error>` when it holds 0. Which code runs is chosen at compile
 time from the operands' grids and the rounding mode of either operand or of
 the call (`div(a, b, round_floor)`):
 
@@ -107,7 +107,7 @@ coarse c{0};
 finer  f{3};
 // c = f;                              // does not compile: 3 is between notches
 c.policy<round_toward_zero>() = f;                  // 2: this store rounds toward zero
-c.policy<round_nearest>() = f;         // 4: this store rounds to nearest
+c.policy<round_half_away>() = f;         // 4: this store rounds to nearest
 auto half = [](finer x) -> coarse { return x.policy<round_toward_zero>(); };   // round at the return
 ```
 
@@ -123,12 +123,12 @@ offset from the multiples of the notch (`{{0.5, 10.5}, 1}`):
 | Mode | Rounds |
 |---|---|
 | `round_toward_zero` | toward zero: down at or above 0, up below 0 |
-| `round_nearest` | to the nearest point; a tie away from zero |
+| `round_half_away` | to the nearest point; a tie away from zero |
 | `round_floor`, `round_ceil` | toward −∞, toward +∞ |
 | `round_half_even` | to the nearest point; a tie to the even point, counted from the grid's anchor (…, −1.5, 0.5, 2.5, … on `{{-2.5, 2.5}, 1}`) |
 
 On an offset grid 0 itself lies between two points (−0.5 and 0.5 on
-`{{-10.5, 10.5}, 1}`): `round_nearest` takes 0.5, and `round_toward_zero`
+`{{-10.5, 10.5}, 1}`): `round_half_away` takes 0.5, and `round_toward_zero`
 takes −0.5, since 0 counts as non-negative. A rounding mode rounds before the
 range check, so 9.5 into `inside<{0, 9}, round_floor>` stores 9.
 
@@ -148,7 +148,7 @@ deleted overloads, so a `requires` probe answers false.
 `x op= y` computes `x op y` exactly and stores the result back through `x`'s
 policy, so it rounds and checks once. The right-hand side is an inside
 (`x += 0.5_ins`); a plain `int`, a `double`, a `rational` and a
-`std::expected` are rejected. A zero divisor in `/=` or `%=` goes to `on_error`, the `errc&`
+`std::expected` are rejected. A zero divisor in `/=` or `%=` goes to `on_error`, the `error&`
 or the handler like any failed store; under `unsafe` it is undefined.
 
 Under `unsafe`, `+=`, `-=` and `*=` run at the raw type's width: a loop of
@@ -197,8 +197,8 @@ coarser type first, or round the result once with `mul<Out>` or `div<Out>`).
 A stored value whose denominator passes the bound is a `rounding_error`
 unless the policy rounds. Then it goes to a neighbouring fraction within the
 bound (a Farey neighbour): `round_floor`, `round_ceil` and `round_toward_zero`
-pick a side, `round_nearest` the closer one. So
-`inside<{{0, 1}, max_denominator{1000}}, round_nearest>{0.1}` holds exactly
+pick a side, `round_half_away` the closer one. So
+`inside<{{0, 1}, max_denominator{1000}}, round_half_away>{0.1}` holds exactly
 1/10, although the `double` 0.1 is not 1/10.
 
 ## The free functions
@@ -210,8 +210,8 @@ with an optional last argument:
 |---|---|
 | `op(l, r)` | the operator |
 | `op(l, r, round_floor)` | a flag: how a division rounds |
-| `op(l, r, make_policy<F>())`, `make_policy<F>(ec)` | flags, and an `errc&` |
-| `op(l, r, ec)` | an `errc&` that receives a zero divisor |
+| `op(l, r, make_policy<F>())`, `make_policy<F>(ec)` | flags, and an `error&` |
+| `op(l, r, ec)` | an `error&` that receives a zero divisor |
 
 They take no hooks: the arithmetic cannot fail but for a zero divisor, which
 stays in the result. `divmod(a, b)` returns a `divmod_result` with `Quotient`

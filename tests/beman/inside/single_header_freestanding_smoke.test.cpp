@@ -10,9 +10,9 @@
 #include <cstdio>
 
 namespace {
-volatile beman::inside::errc g_last{};
+volatile beman::inside::error g_last{};
 
-[[noreturn]] void trap_handler(beman::inside::errc code, const char* /*what*/) {
+[[noreturn]] void trap_handler(beman::inside::error code, const char* /*what*/) {
     g_last = code;
     for (;;) {
     } // a bare-metal target would reset/halt
@@ -27,7 +27,7 @@ int main() {
     beman::inside::inside<{0, 9}, beman::inside::wrap>    w{13};  // -> 3
 
     // error-code channel reports without throwing
-    beman::inside::errc             ec{};
+    beman::inside::error            ec{};
     beman::inside::inside<{0, 100}> x{0};
     x.policy(ec) = 150;
 
@@ -41,5 +41,5 @@ int main() {
                 static_cast<int>(beman::inside::detail::to_value(s)),
                 static_cast<int>(ec));
 
-    return (ec != beman::inside::errc{}) ? 0 : 1; // ec must have been set (overflow)
+    return (ec != beman::inside::error{}) ? 0 : 1; // ec must have been set (overflow)
 }

@@ -64,8 +64,8 @@ python3 tests/beman/inside/certify/find_grids.py path/to/build
 
 ```text
 find_grids: 76 files scanned, 25 math pairs found
-  acos                 8193 inputs  {[-1, 1], 1/4096} round_nearest -> {[0, 3217/1024], 1/4096} round_nearest
-  atan2          1073807361 inputs  {[-1, 1], 1/16384} round_nearest x {[-1, 1], 1/16384} round_nearest -> ...
+  acos                 8193 inputs  {[-1, 1], 1/4096} round_half_away -> {[0, 3217/1024], 1/4096} round_half_away
+  atan2          1073807361 inputs  {[-1, 1], 1/16384} round_half_away x {[-1, 1], 1/16384} round_half_away -> ...
   ...
 ```
 
@@ -80,9 +80,9 @@ python3 tests/beman/inside/certify/find_grids.py path/to/build --run -- --estima
 
 ```text
 certify: 20 of 25 pairs, 2.2 G inputs, about 7 min 34 s
-  acos             8193 inputs                ~<1 s  {[-1, 1], 1/4096} round_nearest -> ...
-  atan2           1.1 G inputs         ~2 min 53 s  {[-1, 1], 1/16384} round_nearest × ...
-  atan2         274.9 G inputs  skipped ~12 h 58 min  {[-1024, 1024], 1/256} round_nearest × ...
+  acos             8193 inputs                ~<1 s  {[-1, 1], 1/4096} round_half_away -> ...
+  atan2           1.1 G inputs         ~2 min 53 s  {[-1, 1], 1/16384} round_half_away × ...
+  atan2         274.9 G inputs  skipped ~12 h 58 min  {[-1024, 1024], 1/256} round_half_away × ...
   sin           4.6e+18 inputs  skipped ~9.2e+04 years  {[0, 4611686018427387903], 1} checked -> ...
 ```
 
@@ -121,7 +121,7 @@ as JSON).
 
 | function | input | output | inputs | guesses | fp ≠ integer | SHA-256 of the results | verdict |
 |:--|:--|:--|--:|--:|--:|:--|:--|
-| `sin` | `{[-4, 4], 1/262144} round_nearest` | `{[-64, 64], 1/16} round_floor, clamp` | 2097153 | 0 | 0 | `bd2965…` | certified |
+| `sin` | `{[-4, 4], 1/262144} round_half_away` | `{[-64, 64], 1/16} round_floor, clamp` | 2097153 | 0 | 0 | `bd2965…` | certified |
 
 - **Sections.** A certify program can put its pairs under headings
   (`runner::section("## …")`); each starts a new table. certified.md has the
@@ -136,9 +136,9 @@ as JSON).
   build", so any count fails the pair too. No pair has had one yet.
 - **SHA-256** is defined by the results alone. Each input, in grid order
   (for two inputs, the first argument's points outer), contributes 17 bytes:
-  a kind byte (0 for a value ≥ 0, 1 for a negative value, 2 for an `errc`),
+  a kind byte (0 for a value ≥ 0, 1 for a negative value, 2 for an `error`),
   then the reduced value's numerator magnitude and denominator, 8 bytes
-  little-endian each (for an `errc`, its code and 0). `--dump` prints the
+  little-endian each (for an `error`, its code and 0). `--dump` prints the
   records; `tests/beman/inside/certify/check_hash.py` recomputes the hash with
   Python's `hashlib`.
 
@@ -152,7 +152,7 @@ for example for a call that only runs at compile time (it leaves no symbol):
 #include "certify.hpp" // tests/beman/inside/certify; before any beman.inside header
 
 using namespace beman::inside;
-using angle = inside<{{-4, 4}, per<(1 << 14)>}, round_nearest>;
+using angle = inside<{{-4, 4}, per<(1 << 14)>}, round_half_away>;
 using level = inside<{{-1, 1}, per<(1 << 10)>}, round_floor>;
 
 void pairs(certify::runner& r) {

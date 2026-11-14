@@ -23,6 +23,8 @@
 #include <beman/inside/units/math.hpp>
 
 using namespace beman::inside;
+
+using namespace beman::inside::formats;
 using namespace beman::inside::units;
 
 namespace {
@@ -34,15 +36,15 @@ inline constexpr auto          turn = unit_c<turn_def>;
 } // namespace
 
 // Q1.14 signed samples in [-1, 1].
-using sample_t = inside<{{-1, 1}, per<(1 << 14)>}, round_nearest | clamp>;
+using sample_t = inside<{{-1, 1}, per<(1 << 14)>}, round_half_away | clamp>;
 static_assert(sizeof(sample_t) == 2);
 
 // dB gain bounded to [-24, 12] dB with 0.5 dB step — fits in a uint8.
-using db_t = quantity<dB, inside<{{-24, 12}, per<2>}, round_nearest>>;
+using db_t = quantity<dB, inside<{{-24, 12}, per<2>}, round_half_away>>;
 
 // Linear gain on a notch grid wide enough to cover 10^(dB/20) for dB∈[-24,12]
 // (i.e. ~[0.063, 3.98]) with 1/65536 resolution — well below per-step audible.
-using gain_t = inside<{{0, 4}, per<(1 << 16)>}, round_nearest>;
+using gain_t = inside<{{0, 4}, per<(1 << 16)>}, round_half_away>;
 
 // Decibels → linear amplitude via 10^(L / 20 dB). The ratio is exact (a 1/40
 // grid), and pow_base rounds 10^x once onto gain_t: the correctly rounded
@@ -67,7 +69,7 @@ int main() {
     using seconds_t   = quantity<si::second, inside<{{0, 1}, per<N>}>>;
     using cycles_t    = inside<{{0, 1}, per<N>}>;
     using offset_t    = quantity<turn, inside<{{-1, 1}, per<24>}>>;
-    using amplitude_t = inside<{{0, 1}, per<(1 << 10)>}, round_nearest>;
+    using amplitude_t = inside<{{0, 1}, per<(1 << 10)>}, round_half_away>;
 
     constexpr auto     tone       = just<1> * si::hertz; // one cycle over the 1 s buffer
     constexpr offset_t offsets[4] = {
@@ -110,7 +112,7 @@ int main() {
 
     // Standalone: the clamp flag pushes a wider-grid inside into sample_t.
     // Common idiom inside std::transform over a sum bus.
-    using mixbus_t = inside<{{-4, 4}, per<(1 << 14)>}, round_nearest>;
+    using mixbus_t = inside<{{-4, 4}, per<(1 << 14)>}, round_half_away>;
     mixbus_t hot;
     hot.policy<clamp>() = 2.5;
     std::cout << "\nsample_t{mixbus 2.5, clamp} = " << sample_t{hot, clamp} << "\n";

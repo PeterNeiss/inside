@@ -5,7 +5,7 @@
 #include <beman/inside/inside/detail/config.hpp>
 
 #include <beman/inside/inside/detail/rational.hpp> // rational, its checked arithmetic
-#include <beman/inside/inside/detail/error.hpp>    // errc, constexpr_error
+#include <beman/inside/inside/detail/error.hpp>    // error, constexpr_error
 
 #include <algorithm>
 #include <bit>
@@ -41,7 +41,7 @@ constexpr int parse_digit(char c, int base) {
 }
 
 // Failure kinds of the number parser. The literals turn each into a named
-// compile-time diagnostic; runtime parsing maps them onto errc.
+// compile-time diagnostic; runtime parsing maps them onto error.
 enum class parse_fail : unsigned char {
     none,
     empty,
@@ -278,7 +278,7 @@ constexpr auto parse_fraction(const char* first, const char* last, One one, IsZe
         if (!d)
             return d;
         if (is_zero(*d))
-            return decltype(v){std::unexpect, errc::division_by_zero};
+            return decltype(v){std::unexpect, error::division_by_zero};
         v = *v / *d;
     }
     if (v && neg)
@@ -295,13 +295,13 @@ constexpr bool fraction_text(const char* first, const char* last) noexcept {
 
 // Runtime text → exact value, the 64-bit fast path for a number (not a
 // fraction): an optional sign, then the literal grammar. Malformed text is
-// errc::invalid_format; a value past the 64-bit fields is errc::overflow,
+// error::invalid_format; a value past the 64-bit fields is error::overflow,
 // which sends parse to the exact parser too.
-constexpr std::expected<rational, errc> parse_text(const char* first, const char* last) {
+constexpr std::expected<rational, error> parse_text(const char* first, const char* last) {
     const auto [neg, f, slash] = split_fraction(first, last);
     const parsed_number r      = parse_number(f, slash);
     if (r.Fail != parse_fail::none || slash != last)
-        return std::unexpected{r.Fail >= parse_fail::numerator_overflow ? errc::overflow : errc::invalid_format};
+        return std::unexpected{r.Fail >= parse_fail::numerator_overflow ? error::overflow : error::invalid_format};
     return neg ? -r.Value : r.Value;
 }
 

@@ -25,7 +25,7 @@ int main()
 
   // Out of range: an error value, not a buffer overrun.
   auto bad = index::try_make(10);
-  std::cout << "index 10           = " << (bad ? "has value" : errc_message(bad.error()))
+  std::cout << "index 10           = " << (bad ? "has value" : error_message(bad.error()))
             << "   (no out-of-bounds access possible)\n";
 
   // Iterating the valid slots exactly, with no off-by-one to get wrong.

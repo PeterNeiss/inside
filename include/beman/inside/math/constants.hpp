@@ -34,7 +34,7 @@ enum class constant_id : unsigned char {
     two_pi,
     half_pi,
     inv_pi,
-    inv_sqrt_pi,
+    inv_sqrtpi,
     e,
     log2e,
     log10e,
@@ -155,7 +155,7 @@ inline constexpr fixed_t<W + 8> constant_q = [] {
         v = static_cast<I>(pi_q<G>) >> 1;
     else if constexpr (Id == constant_id::inv_pi)
         v = static_cast<I>(inverse_q<G>(pi_q<G + 16>));
-    else if constexpr (Id == constant_id::inv_sqrt_pi)
+    else if constexpr (Id == constant_id::inv_sqrtpi)
         v = static_cast<I>(isqrt(static_cast<T>(inverse_q<2 * G>(pi_q<2 * G + 16>))));
     else if constexpr (Id == constant_id::e)
         v = e_series<G>();
@@ -199,9 +199,9 @@ struct constant_core {
 // The constant correctly rounded onto Out, at compile time.
 template <class Out, constant_id Id>
 inline constexpr Out stored = [] {
-    static_assert(has_flag(flags_of<Out>, ::beman::inside::detail::snap),
+    static_assert(has_flag(policy_of<Out>, ::beman::inside::detail::snap),
                   "beman::inside::math: a constant is irrational - store it into a grid with a rounding mode "
-                  "(round_nearest, round_floor, ...)");
+                  "(round_half_away, round_floor, ...)");
     return evaluate<Out, start_bits<Out>>(constant_core<Id>{});
 }();
 
@@ -419,24 +419,24 @@ template <insidable X, detail::constant_id Id>
     return false;
 }
 
-inline constexpr constant<detail::constant_id::pi>          pi{};
-inline constexpr constant<detail::constant_id::two_pi>      two_pi{};
-inline constexpr constant<detail::constant_id::half_pi>     half_pi{};
-inline constexpr constant<detail::constant_id::inv_pi>      inv_pi{};
-inline constexpr constant<detail::constant_id::inv_sqrt_pi> inv_sqrt_pi{};
-inline constexpr constant<detail::constant_id::e>           e{};
-inline constexpr constant<detail::constant_id::log2e>       log2e{};
-inline constexpr constant<detail::constant_id::log10e>      log10e{};
-inline constexpr constant<detail::constant_id::ln2>         ln2{};
-inline constexpr constant<detail::constant_id::ln10>        ln10{};
-inline constexpr constant<detail::constant_id::sqrt2>       sqrt2{};
-inline constexpr constant<detail::constant_id::sqrt3>       sqrt3{};
-inline constexpr constant<detail::constant_id::inv_sqrt2>   inv_sqrt2{};
-inline constexpr constant<detail::constant_id::inv_sqrt3>   inv_sqrt3{};
-inline constexpr constant<detail::constant_id::phi>         phi{};     // golden ratio
-inline constexpr constant<detail::constant_id::egamma>      egamma{};  // Euler–Mascheroni γ
-inline constexpr constant<detail::constant_id::catalan>     catalan{}; // Catalan's G
-inline constexpr constant<detail::constant_id::zeta3>       zeta3{};   // Apéry's ζ(3)
+inline constexpr constant<detail::constant_id::pi>         pi{};
+inline constexpr constant<detail::constant_id::two_pi>     two_pi{};
+inline constexpr constant<detail::constant_id::half_pi>    half_pi{};
+inline constexpr constant<detail::constant_id::inv_pi>     inv_pi{};
+inline constexpr constant<detail::constant_id::inv_sqrtpi> inv_sqrtpi{};
+inline constexpr constant<detail::constant_id::e>          e{};
+inline constexpr constant<detail::constant_id::log2e>      log2e{};
+inline constexpr constant<detail::constant_id::log10e>     log10e{};
+inline constexpr constant<detail::constant_id::ln2>        ln2{};
+inline constexpr constant<detail::constant_id::ln10>       ln10{};
+inline constexpr constant<detail::constant_id::sqrt2>      sqrt2{};
+inline constexpr constant<detail::constant_id::sqrt3>      sqrt3{};
+inline constexpr constant<detail::constant_id::inv_sqrt2>  inv_sqrt2{};
+inline constexpr constant<detail::constant_id::inv_sqrt3>  inv_sqrt3{};
+inline constexpr constant<detail::constant_id::phi>        phi{};     // golden ratio
+inline constexpr constant<detail::constant_id::egamma>     egamma{};  // Euler–Mascheroni γ
+inline constexpr constant<detail::constant_id::catalan>    catalan{}; // Catalan's G
+inline constexpr constant<detail::constant_id::zeta3>      zeta3{};   // Apéry's ζ(3)
 } // namespace beman::inside::math
 
 #endif // BEMAN_INSIDE_MATH_CONSTANTS_HPP

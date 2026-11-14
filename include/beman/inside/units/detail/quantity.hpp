@@ -115,7 +115,7 @@ constexpr auto number_in_unit(const quantity<R, V>& q) {
     return rescale<conversion_factor<R.U, U>>(value_of(q));
 }
 
-// A one-shot store's source (Q{x, clamp}, checked_cast<Q>(x)): a quantity,
+// A one-shot store's source (Q{x, clamp}, exact_cast<Q>(x)): a quantity,
 // converted to Q's unit exactly first. A bare number names its unit instead:
 // Q{v, u, clamp}.
 template <class Q, class X>
@@ -211,7 +211,7 @@ constexpr auto make_quantity(V&& v) {
 
 // q.on_wrap(f) and the other hooks: the inside's policy_ref on q's number,
 // with stores taking quantities (rescaled exactly, as +=) and f called on the
-// quantity. The other arguments (carry, overshoot, errc) are the inside's.
+// quantity. The other arguments (carry, overshoot, error) are the inside's.
 template <class F, class Q>
 constexpr auto on_quantity(Q& q, F&& f) {
     return [&q, f = std::forward<F>(f)](auto&, auto&&... a) mutable -> decltype(auto) {
@@ -264,7 +264,7 @@ struct divide_assign {
 };
 template <class Rep, class V, class Op>
 concept needs_channel = !std::invocable<Op, Rep&, const V&> &&
-                        requires(Rep& n, errc& ec) { requires std::invocable<Op, decltype(n.policy(ec)), const V&>; };
+                        requires(Rep& n, error& ec) { requires std::invocable<Op, decltype(n.policy(ec)), const V&>; };
 template <class Rep>
 concept step_needs_channel = insidable<Rep> && notch_of<Rep> != 0 && !requires(Rep& n) { ++n; };
 
@@ -553,7 +553,7 @@ class quantity {
 
     // A store with a hook, as on inside: q.on_wrap(f) += d calls f(q, carry)
     // when the sum wraps. Stores take quantities; f gets the quantity, then
-    // the carry (a count of periods), the overshoot (a quantity) or the errc.
+    // the carry (a count of periods), the overshoot (a quantity) or the error.
     template <class F>
     [[nodiscard]] constexpr auto on_wrap(F&& f) {
         return detail::make_action_ref<R>(*this, Value.on_wrap(detail::on_quantity(*this, std::forward<F>(f))));
@@ -576,7 +576,7 @@ class quantity {
         return detail::make_action_ref<R>(*this, Value.template policy<F>());
     }
     template <policy_flag F = beman::inside::detail::none>
-    [[nodiscard]] constexpr auto policy(errc& ec) {
+    [[nodiscard]] constexpr auto policy(error& ec) {
         return detail::make_action_ref<R>(*this, Value.template policy<F>(ec));
     }
 
@@ -958,7 +958,7 @@ void quantity_cast(const quantity<R, V>&) = delete ("units: quantity_cast - acro
 
 namespace detail {
 // v stored into Rep2: Rep2 where the grids prove the store, else
-// std::expected<Rep2, errc> (Rep2::try_make), lifted to the quantity Q.
+// std::expected<Rep2, error> (Rep2::try_make), lifted to the quantity Q.
 template <class Q, insidable Rep2, class N>
 constexpr auto cast_number(const N& v) {
     if constexpr (beman::inside::detail::store_proven<Rep2, N>)
@@ -1009,14 +1009,14 @@ template <class Q, policy_flag F = beman::inside::detail::none, reference R, cla
     requires detail::value_castable_to<Q, R> && requires(const quantity<R, V>& q) {
         Q::rep::template try_make<F>(units::detail::value_of(q.template in<Q::reference.U>()));
     }
-[[nodiscard]] constexpr std::expected<Q, errc> try_value_cast(const quantity<R, V>& q) {
+[[nodiscard]] constexpr std::expected<Q, error> try_value_cast(const quantity<R, V>& q) {
     return detail::lift_to<Q>(Q::rep::template try_make<F>(units::detail::value_of(q.template in<Q::reference.U>())));
 }
 
 // try_value_cast<Rep2, F>(q) — as Rep2::try_make<F>: an expected.
 template <insidable Rep2, policy_flag F = beman::inside::detail::none, reference R, class V>
     requires requires(const V& v) { Rep2::template try_make<F>(v); }
-[[nodiscard]] constexpr std::expected<quantity<R, Rep2>, errc> try_value_cast(const quantity<R, V>& q) {
+[[nodiscard]] constexpr std::expected<quantity<R, Rep2>, error> try_value_cast(const quantity<R, V>& q) {
     return detail::lift_to<quantity<R, Rep2>>(Rep2::template try_make<F>(units::detail::value_of(q)));
 }
 
@@ -1196,19 +1196,19 @@ template <class Q, beman::inside::detail::numeric A>
     requires quantity_like<Q>
 bool conversion_loses(A) = delete ("units: a number alone has no unit - write conversion_loses<Q>(v, si::metre)");
 
-// checked_cast<Q>(q): q, a quantity converted to Q's unit exactly, stored
-// into Q exactly - Q, or std::expected<Q, errc> where it can fail, as
-// inside's checked_cast.
+// exact_cast<Q>(q): q, a quantity converted to Q's unit exactly, stored
+// into Q exactly - Q, or std::expected<Q, error> where it can fail, as
+// inside's exact_cast.
 template <class Q, class X>
     requires detail::castable_from<Q, X> &&
-             requires(const X& x) { beman::inside::checked_cast<typename Q::rep>(detail::number_in<Q>(x)); }
-[[nodiscard]] constexpr auto checked_cast(const X& x) {
-    return detail::lift_to<Q>(beman::inside::checked_cast<typename Q::rep>(detail::number_in<Q>(x)));
+             requires(const X& x) { beman::inside::exact_cast<typename Q::rep>(detail::number_in<Q>(x)); }
+[[nodiscard]] constexpr auto exact_cast(const X& x) {
+    return detail::lift_to<Q>(beman::inside::exact_cast<typename Q::rep>(detail::number_in<Q>(x)));
 }
 template <class Q, class X>
     requires detail::bare_number_for<Q, X>
-Q checked_cast(const X&) = delete ("units: a number alone has no unit - write checked_cast<Q>(v * si::metre) or "
-                                   "Q::try_make(v, si::metre)");
+Q exact_cast(const X&) = delete ("units: a number alone has no unit - write exact_cast<Q>(v * si::metre) or "
+                                 "Q::try_make(v, si::metre)");
 
 // as<T>(q) / to<T>(q): the member forms, free, as for an inside.
 template <typename T, policy_flag Round = beman::inside::detail::none, quantity_like Q>
@@ -1222,17 +1222,6 @@ template <typename T, policy_flag Round = beman::inside::detail::none, quantity_
     return q.template to<T, Round>();
 }
 
-// dot, cross, lerp on quantity components (lerp's t is a plain number).
-template <quantity_like AX, quantity_like AY, quantity_like BX, quantity_like BY>
-[[nodiscard]] constexpr auto dot(const AX& ax, const AY& ay, const BX& bx, const BY& by)
-    -> decltype(ax * bx + ay * by) {
-    return ax * bx + ay * by;
-}
-template <quantity_like AX, quantity_like AY, quantity_like BX, quantity_like BY>
-[[nodiscard]] constexpr auto cross(const AX& ax, const AY& ay, const BX& bx, const BY& by)
-    -> decltype(ax * by - ay * bx) {
-    return ax * by - ay * bx;
-}
 // lerp in a and b's common unit, as + takes it: inside's lerp on the numbers,
 // so with t in [0, 1] the result's range is that of a and b together.
 template <reference A, class VA, reference B, class VB, insidable T>
@@ -1279,7 +1268,7 @@ template <reference A, class VA, reference B, class VB, class... Args>
 // add / sub / mod(a, b, args...) of two quantities of one kind, in their
 // common unit as + takes it, and mul / div of two quantities (units multiply)
 // or of a quantity and a number (the number scales): inside's free arithmetic
-// on the numbers, with its per-call policy, flag or errc&.
+// on the numbers, with its per-call policy, flag or error&.
 #define BEMAN_INSIDE_UNITS_SUM_FN(name)                                                                      \
     template <reference A, class VA, reference B, class VB, class... Args>                                   \
         requires detail::common_rescalable<A, VA, B, VB> &&                                                  \

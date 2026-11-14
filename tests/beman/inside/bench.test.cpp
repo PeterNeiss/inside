@@ -97,9 +97,9 @@ using s9k           = inside<{-500, 9000}, unsafe>;
 using u255          = inside<{0, 255}, unsafe>;
 
 // The checked rows' channel: a store the grids cannot prove reports into an
-// errc (nothing throws), so the checked rows store through this one, and
+// error (nothing throws), so the checked rows store through this one, and
 // main checks it after the run. The inputs below are in range: it stays 0.
-errc g_checked_ec{};
+error g_checked_ec{};
 
 // A run-time value stored into T through that channel: the benchmarks'
 // inputs, and the checked rows' stores.
@@ -231,7 +231,7 @@ static void bench_scalar_u8() {
         u200 a(din.a[i & kMask]), b(din.b[i & kMask]);
         doNotOptimizeAway(div(a, b, round_toward_zero)->raw());
     });
-    using q16 = inside<{{0, 200}, per<16>}, round_nearest>;
+    using q16 = inside<{{0, 200}, per<16>}, round_half_away>;
     dv.run("inside div<1/16> (divisor excludes 0)", [&] {
         ++i;
         u200                   a(din.a[i & kMask]);
@@ -484,7 +484,7 @@ static void bench_signed() {
     mixed.run("inside", [&] {
         ++i;
         whole    a(in.a[i & kMask]);
-        quarters b = quarters::from_raw(static_cast<quarters::raw_type>(i & 3));
+        quarters b = quarters::from_raw(static_cast<quarters::raw_type>(i & 3), unsafe);
         doNotOptimizeAway((a + b).raw());
     });
     finish(mixed);
@@ -585,10 +585,10 @@ static void bench_fixed_point() {
         fp a(min.a[i & kMask]), b(min.b[i & kMask]);
         doNotOptimizeAway((a * b).raw());
     });
-    mul.run("inside mul<Q8.8>(a, b, round_nearest)", [&] {
+    mul.run("inside mul<Q8.8>(a, b, round_half_away)", [&] {
         ++i;
         fp a(min.a[i & kMask]), b(min.b[i & kMask]);
-        doNotOptimizeAway(beman::inside::mul<inside<{{0, 255}, 1.0 / 256}, round_nearest>>(a, b)->raw());
+        doNotOptimizeAway(beman::inside::mul<inside<{{0, 255}, 1.0 / 256}, round_half_away>>(a, b)->raw());
     });
     finish(mul);
 
@@ -640,9 +640,9 @@ static void bench_fixed_point() {
         doNotOptimizeAway(a + b);
     });
     q14g.run("inside (raw-level)", [&] {
-        auto a = q14::from_raw(20000);
+        auto a = q14::from_raw(20000, unsafe);
         ++i;
-        auto b = q14::from_raw(static_cast<std::uint16_t>(10000 + (i & 63)));
+        auto b = q14::from_raw(static_cast<std::uint16_t>(10000 + (i & 63)), unsafe);
         doNotOptimizeAway((a + b).raw());
     });
     finish(q14g);
@@ -673,7 +673,7 @@ static void bench_store_convert() {
     std::size_t i = 0;
 
     using celsius_trunc = inside<{{-40, 60}, 0.5}, round_toward_zero>;
-    using celsius_round = inside<{{-40, 60}, 0.5}, round_nearest>;
+    using celsius_round = inside<{{-40, 60}, 0.5}, round_half_away>;
     auto assign         = group("assign from double ([-40,60] step 0.5)");
     assign.run("truncate (round_toward_zero)", [&] {
         ++i;
@@ -681,7 +681,7 @@ static void bench_store_convert() {
         const auto c   = input<celsius_trunc>(val);
         doNotOptimizeAway(c.raw());
     });
-    assign.run("round_nearest", [&] {
+    assign.run("round_half_away", [&] {
         ++i;
         double     val = -40.0 + static_cast<double>(i % 200) * 0.5 + 0.3;
         const auto c   = input<celsius_round>(val);
@@ -689,7 +689,7 @@ static void bench_store_convert() {
     });
     finish(assign);
 
-    using fp   = inside<{{0, 255}, 1.0 / 256}, round_nearest>;
+    using fp   = inside<{{0, 255}, 1.0 / 256}, round_half_away>;
     auto store = group("Q8.8 store");
     store.run("from fraction (rational)", [&] {
         ++i;
@@ -708,7 +708,7 @@ static void bench_store_convert() {
     // cross-grid assignment
     using narrow   = inside<{0, 100}, unsafe>;
     using tenths   = inside<{{0, 100}, per<10>}, unsafe>;
-    using quarters = inside<{{0, 100}, per<4>}, round_nearest>;
+    using quarters = inside<{{0, 100}, per<4>}, round_half_away>;
     auto cga       = group("cross-grid assign");
     cga.run("same-grid copy", [&] {
         ++i;
@@ -831,7 +831,7 @@ static void bench_store_convert() {
     finish(wrp);
 
     // conversions OUT of inside — the API-boundary direction (stores are above).
-    using dyadic_real = inside<{{-8, 8}, per<16384>}, round_nearest>;
+    using dyadic_real = inside<{{-8, 8}, per<16384>}, round_half_away>;
     std::vector<dyadic_real> rv(kMask + 1);
     std::vector<u200>        uv(kMask + 1);
     for (std::size_t j = 0; j <= kMask; ++j) {
@@ -876,7 +876,7 @@ static void bench_store_convert() {
         ++i;
         c100 ax(din.a[i & kMask]), ay(din.b[i & kMask]);
         c100 bx(din.b[(i + 3) & kMask]), by(din.a[(i + 5) & kMask]);
-        doNotOptimizeAway(beman::inside::dot(ax, ay, bx, by).raw());
+        doNotOptimizeAway((ax * bx + ay * by).raw());
     });
     finish(dg);
 }
@@ -953,7 +953,7 @@ static void bench_helpers() {
     lp.run("beman::inside::lerp", [&] {
         ++i;
         fp88 a(uin.a[i & kMask]), b(uin.b[i & kMask]);
-        t256 t = t256::from_raw(static_cast<t256::raw_type>(i & 255));
+        t256 t = t256::from_raw(static_cast<t256::raw_type>(i & 255), unsafe);
         doNotOptimizeAway(beman::inside::lerp(a, b, t).raw());
     });
     finish(lp);
@@ -969,7 +969,7 @@ static void bench_helpers() {
         ++i;
         c100 ax(in.a[i & kMask]), ay(in.b[i & kMask]);
         c100 bx(in.b[(i + 3) & kMask]), by(in.a[(i + 5) & kMask]);
-        doNotOptimizeAway(beman::inside::cross(ax, ay, bx, by).raw());
+        doNotOptimizeAway((ax * by - ay * bx).raw());
     });
     finish(cg);
 
@@ -1006,7 +1006,7 @@ static void bench_helpers() {
 // double.
 //---------------------------------------------------------------------------
 static void bench_dyadic() {
-    using dyadic_real = inside<{{-8, 8}, per<16384>}, round_nearest>;
+    using dyadic_real = inside<{{-8, 8}, per<16384>}, round_half_away>;
     std::vector<dyadic_real> va(kMask + 1), vb(kMask + 1);
     std::vector<double>      da(kMask + 1), db(kMask + 1);
     for (std::size_t j = 0; j <= kMask; ++j) {
@@ -1251,20 +1251,20 @@ static void bench_range() {
 // (grids match tests/beman/inside/cmath.test.cpp).
 //---------------------------------------------------------------------------
 static void bench_cmath() {
-    using algeb_t    = inside<{{-8, 8}, per<16384>}, round_nearest>;
-    using sqrt_in_t  = inside<{{0, 4}, per<65536>}, round_nearest>;
-    using exp2_in_t  = inside<{{-4, 4}, per<16384>}, round_nearest>;
-    using log2_in_t  = inside<{{0x1p-8_r, 256}, per<16384>}, round_nearest>;
-    using exp_in_t   = inside<{{-10, 10}, per<16384>}, round_nearest>;
-    using log_in_t   = inside<{{0x1p-8_r, 256}, per<256>}, round_nearest>;
-    using pow_in_t   = inside<{{-9, 9}, per<16384>}, round_nearest>;
-    using angle_t    = inside<{{-8, 8}, per<16384>}, round_nearest>;
-    using tan_in_t   = inside<{{-0.75_r, 0.75_r}, per<16384>}, round_nearest>;
-    using atan2_in_t = inside<{{-1, 1}, per<16384>}, round_nearest>;
-    using fmod_x_t   = inside<{{-8, 8}, per<16384>}, round_nearest>;
-    using fmod_y_t   = inside<{{0.25_r, 4}, per<16384>}, round_nearest>;
-    using pow_b_t    = inside<{{1, 16}, per<65536>}, round_nearest>;
-    using pow_e_t    = inside<{{-2, 2}, per<16384>}, round_nearest>;
+    using algeb_t    = inside<{{-8, 8}, per<16384>}, round_half_away>;
+    using sqrt_in_t  = inside<{{0, 4}, per<65536>}, round_half_away>;
+    using exp2_in_t  = inside<{{-4, 4}, per<16384>}, round_half_away>;
+    using log2_in_t  = inside<{{0x1p-8_r, 256}, per<16384>}, round_half_away>;
+    using exp_in_t   = inside<{{-10, 10}, per<16384>}, round_half_away>;
+    using log_in_t   = inside<{{0x1p-8_r, 256}, per<256>}, round_half_away>;
+    using pow_in_t   = inside<{{-9, 9}, per<16384>}, round_half_away>;
+    using angle_t    = inside<{{-8, 8}, per<16384>}, round_half_away>;
+    using tan_in_t   = inside<{{-0.75_r, 0.75_r}, per<16384>}, round_half_away>;
+    using atan2_in_t = inside<{{-1, 1}, per<16384>}, round_half_away>;
+    using fmod_x_t   = inside<{{-8, 8}, per<16384>}, round_half_away>;
+    using fmod_y_t   = inside<{{0.25_r, 4}, per<16384>}, round_half_away>;
+    using pow_b_t    = inside<{{1, 16}, per<65536>}, round_half_away>;
+    using pow_e_t    = inside<{{-2, 2}, per<16384>}, round_half_away>;
 
     constexpr std::size_t   M = 4096;
     std::vector<algeb_t>    v_alg, v_alg2;
@@ -1402,9 +1402,9 @@ inline constexpr auto                k = units::unit_c<k_def>;
 static void bench_geoalg() {
     using units::multivector;
     using units::quantity;
-    using in_t  = inside<{{-4, 4}, per<16384>}, round_nearest>;
-    using o20_t = inside<{{-64, 64}, per<1 << 20>}, round_nearest>;
-    using o52_t = inside<{{-64, 64}, per<(std::int64_t{1} << 52)>}, round_nearest>;
+    using in_t  = inside<{{-4, 4}, per<16384>}, round_half_away>;
+    using o20_t = inside<{{-64, 64}, per<1 << 20>}, round_half_away>;
+    using o52_t = inside<{{-64, 64}, per<(std::int64_t{1} << 52)>}, round_half_away>;
     using cdom  = multivector<in_t, quantity<ga::i, in_t>>;
     using c20   = multivector<o20_t, quantity<ga::i, o20_t>>;
     using c52   = multivector<o52_t, quantity<ga::i, o52_t>>;
@@ -1635,7 +1635,7 @@ int main(int argc, char** argv) {
                   "integer fast paths, gated on int64-safe spans); a rational RHS in a\n"
                   "compound assign adds to the raw when it is a whole number of notches,\n"
                   "else takes the same exact branch; `inside<checked>`\n"
-                  "element-wise loops report each element's store into an errc (`x.policy(ec) += v`) —\n"
+                  "element-wise loops report each element's store into an error (`x.policy(ec) += v`) —\n"
                   "prefer `beman::inside::sum`'s bulk check, which validates the total instead.\n\n";
 
     bench_scalar_u8();
@@ -1651,8 +1651,8 @@ int main(int argc, char** argv) {
     bench_cmath();
     bench_geoalg();
     bench_algorithms();
-    if (g_checked_ec != errc{}) { // the inputs are in range: no checked row reports
-        std::cerr << "a checked row reported: " << errc_message(g_checked_ec) << "\n";
+    if (g_checked_ec != error{}) { // the inputs are in range: no checked row reports
+        std::cerr << "a checked row reported: " << error_message(g_checked_ec) << "\n";
         return 1;
     }
     return 0;

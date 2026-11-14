@@ -54,7 +54,7 @@ constexpr auto anchored_input(const In& x) {
         return x;
     else
         return inside<grid{grid_of<In>.Interval, grid_of<In>.value_unit()},
-                      flags_of<In> & ~::beman::inside::detail::cursor_marker>{x};
+                      policy_of<In> & ~::beman::inside::detail::cursor_marker>{x};
 }
 
 template <insidable Out>
@@ -63,7 +63,7 @@ inline constexpr grid_rational half_unit =
 
 template <insidable Out, policy_flag R, grid_rational Unit = half_unit<Out>>
 using bracket_t =
-    inside<grid{{lower_of<Out> - notch_of<Out>, upper_of<Out> + notch_of<Out>}, Unit}, R | (flags_of<Out> & clamp)>;
+    inside<grid{{lower_of<Out> - notch_of<Out>, upper_of<Out> + notch_of<Out>}, Unit}, R | (policy_of<Out> & clamp)>;
 
 // The integer form: a bracket 1024 times finer than half_unit, counted in
 // int64. Rounded down there, the value lies in [y, y + F); only when y is
@@ -105,7 +105,7 @@ constexpr std::optional<std::int64_t> bracket_slot(std::int64_t num, bool negati
 // fn.operator()<O>(xs...) for an anchored O: Out's result, or its error.
 template <insidable Out, typename Fn, insidable... Ins>
 constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
-    static_assert(anchored<Out> || !has_flag(flags_of<Out>, wrap),
+    static_assert(anchored<Out> || !has_flag(policy_of<Out>, wrap),
                   "beman::inside::math: wrap onto a grid that does not pass through 0 is not supported - "
                   "use clamp, or an anchored output grid");
     using ::beman::inside::detail::expected_like;
@@ -120,7 +120,7 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
         using Hi                  = bracket_t<Out, round_ceil, F>;
         using R                   = decltype(fn.template operator()<Lo>(anchored_input(xs)...));
         constexpr bool checked    = expected_like<R>;
-        using Res                 = std::conditional_t<checked, std::expected<Out, errc>, Out>;
+        using Res                 = std::conditional_t<checked, std::expected<Out, error>, Out>;
         const R lo                = fn.template operator()<Lo>(anchored_input(xs)...);
         const auto               unwrap = [](const auto& r) -> const auto& {
             if constexpr (checked)
@@ -146,17 +146,17 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
                                                                  : bracket_slot<Out, 2 * s>(2 * t + 1, j < 0);
         }
         if (k) [[likely]]
-            return Res{Out::from_raw(raw_of_slot<Out>(*k))};
+            return Res{Out::from_raw(raw_of_slot<Out>(*k), unsafe)};
         // Past Out's range: the bracket value through Out's policy (it rounds
         // as the value does, and lies on the same side of the range).
         const auto v = exact_of(unwrap(lo)) +
                        wide_rational<exact_min_limbs>{wide_sint<exact_min_limbs>{1}, wide_sint<exact_min_limbs>{2}} *
                            exact_of_grid<exact_min_limbs>(F);
         if constexpr (checked)
-            return try_store<Out, flags_of<Out>>(
+            return try_store<Out, policy_of<Out>>(
                 [&](Out& out, auto&& policy) { out = engine::store_exact<Out>(v, policy); });
         else
-            return engine::store_exact<Out>(v, make_policy<flags_of<Out>>());
+            return engine::store_exact<Out>(v, make_policy<policy_of<Out>>());
     } else {
         const auto lo                   = fn.template operator()<bracket_t<Out, round_floor>>(anchored_input(xs)...);
         const auto hi                   = fn.template operator()<bracket_t<Out, round_ceil>>(anchored_input(xs)...);
@@ -166,15 +166,15 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
             return decltype(s){s.Num, s.Den + s.Den};
         };
         if constexpr (expected_like<decltype(lo)>) {
-            using R = std::expected<Out, errc>;
+            using R = std::expected<Out, error>;
             if (!lo)
                 return R{std::unexpected{lo.error()}};
             if (!hi)
                 return R{std::unexpected{hi.error()}};
-            return ::beman::inside::detail::try_store<Out, flags_of<Out>>(
+            return ::beman::inside::detail::try_store<Out, policy_of<Out>>(
                 [&](Out& out, auto&& policy) { out = engine::store_exact<Out>(mid(*lo, *hi), policy); });
         } else
-            return engine::store_exact<Out>(mid(lo, hi), make_policy<flags_of<Out>>());
+            return engine::store_exact<Out>(mid(lo, hi), make_policy<policy_of<Out>>());
     }
 }
 
@@ -252,16 +252,16 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
             return core{engine::exact_input(v)};                                        \
         }>;                                                                             \
         if constexpr (table::Table.Valid)                                               \
-            return Out::from_raw(table::Table.Raw[engine::offset_of(x)]);               \
+            return Out::from_raw(table::Table.Raw[engine::offset_of(x)], unsafe);       \
     }
 
 // Every transcendental rounds onto the output grid: Out's policy needs a
 // rounding mode, like any assignment that may round.
 template <insidable Out>
 consteval void require_rounding() noexcept {
-    static_assert(has_flag(flags_of<Out>, beman::inside::detail::snap) || !engine::notched<Out>,
+    static_assert(has_flag(policy_of<Out>, beman::inside::detail::snap) || !engine::notched<Out>,
                   "beman::inside::math: the result is rounded onto Out's grid - Out must permit rounding "
-                  "(declare it with round_nearest, round_floor, ...)");
+                  "(declare it with round_half_away, round_floor, ...)");
 }
 
 // tan's domain: an input interval strictly inside one branch (kπ − π/2,
@@ -664,7 +664,7 @@ struct tan_fn : rounding_fn<1> {
                       "beman::inside::math::tan: the input interval holds a pole (an odd multiple of pi/2) - narrow "
                       "it to one branch, such as (-pi/2, pi/2)");
         require_rounding<Out>();
-        static_assert(!has_flag(flags_of<Out>, wrap),
+        static_assert(!has_flag(policy_of<Out>, wrap),
                       "beman::inside::math::tan: wrap is not supported - tan has no bound near its poles, so "
                       "the folded value cannot be computed; take an Out with clamp or the default policy");
         if constexpr (anchoring::unanchored_call<Out, In>)
@@ -743,7 +743,7 @@ struct pow_fn : rounding_fn<2> {
     using result_on = results::pow<N, InB, InE>;
     template <insidable Out, insidable InB, insidable InE>
     [[nodiscard]] static constexpr auto eval(InB base, InE exp)
-        -> std::conditional_t<pow_pole<InB, InE>, std::expected<Out, errc>, Out> {
+        -> std::conditional_t<pow_pole<InB, InE>, std::expected<Out, error>, Out> {
         static_assert(lower_of<InB> >= 0,
                       "beman::inside::math::pow: the base must be non-negative - pown<E>(x) takes a negative base "
                       "with an integer exponent");
@@ -752,14 +752,14 @@ struct pow_fn : rounding_fn<2> {
             return anchoring::via_anchored<Out>(
                 []<insidable O>(auto a, auto b) { return pow_fn::eval<O>(a, b); }, base, exp);
         else {
-            using R            = std::conditional_t<pow_pole<InB, InE>, std::expected<Out, errc>, Out>;
+            using R            = std::conditional_t<pow_pole<InB, InE>, std::expected<Out, error>, Out>;
             const auto integer = [=]() -> R {
                 const auto b = engine::exact_input(base);
                 if (b.Num.is_zero()) {
                     const auto e = engine::exact_input(exp);
                     if constexpr (pow_pole<InB, InE>) {
                         if (e.Num.negative())
-                            return std::unexpected(errc::division_by_zero);
+                            return std::unexpected(error::division_by_zero);
                         return Out::try_make(e.Num.is_zero() ? 1 : 0); // Out's policy: range, clamp
                     } else
                         return beman::inside::detail::stored<Out>(e.Num.is_zero() ? 1 : 0);

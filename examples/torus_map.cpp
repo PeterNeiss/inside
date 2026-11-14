@@ -19,6 +19,8 @@
 #include <beman/inside/units/io.hpp>
 
 using namespace beman::inside;
+
+using namespace beman::inside::formats;
 using namespace beman::inside::units;
 
 namespace {
@@ -29,11 +31,11 @@ inline constexpr auto           px = unit_c<px_def>;
 } // namespace
 
 // Position grid: [0, 64) px in 1/16-pixel steps, so wrap's period is 64 px.
-using pos_t = quantity<px, inside<{{0, 64}, per<16>, bounds::half_open}, wrap | round_nearest>>;
+using pos_t = quantity<px, inside<{{0, 64}, per<16>, bounds::half_open}, wrap | round_half_away>>;
 
 // A signed per-tick movement delta, same 1/16 notch family as pos_t. A runtime
 // step has a range — name it — so `x += d` stays quantity += quantity.
-using pos_delta_t = quantity<px, inside<{{-64, 64}, per<16>}, round_nearest>>;
+using pos_delta_t = quantity<px, inside<{{-64, 64}, per<16>}, round_half_away>>;
 
 // Whole-pixel cells for the viewport.
 using cell_t = inside<{0, 63}>;

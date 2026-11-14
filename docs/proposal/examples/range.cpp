@@ -18,7 +18,7 @@ int main() {
     static_assert(sizeof(percent) == 1);
 
     percent c{sum - just<100>, clamp};  // -100..100 into 0..100: the store names what happens
-    auto    bad = percent::try_make(sum); // expected<percent, errc>
+    auto    bad = percent::try_make(sum); // expected<percent, error>
     // [/listing]
     if (sum != 100 || diff != -16 || neg != -42 || c != 0 || !bad.has_value())
         return 1;
