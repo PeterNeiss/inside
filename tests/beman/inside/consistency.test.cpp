@@ -296,12 +296,12 @@ TEST(ConsistencyTest, flags_are_call_policies) {
     static_assert(policy_flag{round_toward_zero} == policy_flag{round_toward_zero});
     using W = inside<{0, 10}>;
     using D = inside<{1, 4}>;
-    static_assert(div(W{7}, D{2}, round_floor) == 3_ins && div(W{7}, D{2}, round_ceil) == 4_ins);
+    static_assert(div(W{7}, D{2}, round_floor) == 3 && div(W{7}, D{2}, round_ceil) == 4);
     static_assert(div(W{7}, D{2}, round_floor) == div(W{7}, D{2}, make_policy<round_floor>()));
-    static_assert(divmod(W{7}, D{2}, round_floor).Remainder == 1_ins);
+    static_assert(divmod(W{7}, D{2}, round_floor).Remainder == 1);
     using halves = inside<{{0, 10}, per<2>}>;
-    static_assert(W{halves{3.5}, round_floor} == 3_ins && W{halves{3.5}, round_ceil} == 4_ins);
-    static_assert(inside<{0, 10}, clamp>{20, round_floor} == 10_ins);
+    static_assert(W{halves{3.5}, round_floor} == 3 && W{halves{3.5}, round_ceil} == 4);
+    static_assert(inside<{0, 10}, clamp>{20, round_floor} == 10);
     errc ec{};
     EXPECT_EQ(div(W{7}, inside<{0, 4}>{0}, make_policy<round_floor>(ec)).error(), errc::division_by_zero);
     EXPECT_EQ(ec, errc::division_by_zero);
@@ -312,7 +312,7 @@ TEST(ConsistencyTest, flags_are_call_policies) {
 // intermediate step.
 TEST(ConsistencyTest, results_keep_the_shared_policy) {
     constexpr inside<{0, 10}, round_floor> a{7};
-    static_assert(a / 2_ins == 3_ins && (a + 0_ins) / 2_ins == 3_ins && (a * 1_ins) / 2_ins == 3_ins);
+    static_assert(a / 2_ins == 3 && (a + 0_ins) / 2_ins == 3 && (a * 1_ins) / 2_ins == 3);
     static_assert(flags_of<decltype(a + a)> == round_floor && flags_of<decltype(a - a)> == round_floor);
     static_assert(flags_of<decltype(a + inside<{0, 10}>{1})> == 0); // mixed: the default
     static_assert(flags_of<decltype(a + inside<{0, 10}, clamp>{1})> == 0);

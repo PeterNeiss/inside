@@ -23,7 +23,7 @@ int main() {
     auto m = whole{7} % some{3};               // 1, consistent: 2·3 + 1 == 7
     // [/listing]
     if (q != just<rational{7, 3}> || *r != just<rational{7, 3}> || z.has_value() ||
-        z.error() != errc::division_by_zero || f != just<2> || m != just<1>)
+        z.error() != errc::division_by_zero || f != 2 || m != 1)
         return 1;
     return 0;
 }

@@ -18,7 +18,7 @@ int main() {
     auto n = count::try_make(14);             // unexpected(errc::overflow)
     // count m = 14;                          // ill-formed: 14 is outside [0, 10]
     // [/listing]
-    if (heading != just<10> || volume != just<10> || n.has_value() || n.error() != errc::overflow)
+    if (heading != 10 || volume != 10 || n.has_value() || n.error() != errc::overflow)
         return 1;
     return 0;
 }

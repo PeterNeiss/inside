@@ -42,7 +42,7 @@ int main() {
     const auto w = just<1> - just<2> * i;
     std::cout << "z = " << z << ", w = " << w << ", z w = " << z * w << ", conj z = " << reverse(z)
               << ", |z|² = " << squared_norm(z) << ", z / w = " << z / w << '\n';
-    if (to_string(z * w) != "11 - 2 i" || to_string(reverse(z)) != "3 - 4 i" || !(squared_norm(z) == just<25>) ||
+    if (to_string(z * w) != "11 - 2 i" || to_string(reverse(z)) != "3 - 4 i" || !(squared_norm(z) == 25) ||
         !(z / w == just<-1> + just<2> * i))
         return 1;
 

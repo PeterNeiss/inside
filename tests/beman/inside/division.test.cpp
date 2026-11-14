@@ -204,15 +204,15 @@ TEST(DivRoundTest, divmod_types_and_errors) {
     const auto [q, r] = divmod(val{17}, pos{5});
     static_assert(std::same_as<decltype(q), const decltype(val{} / pos{1})>);
     static_assert(std::same_as<decltype(r), const decltype(val{} % pos{1})>);
-    ASSERT_TRUE(q == 3_ins);
-    ASSERT_TRUE(r == 2_ins);
+    ASSERT_TRUE(q == 3);
+    ASSERT_TRUE(r == 2);
 
     // A per-call rounding policy picks the quotient; the remainder follows it.
     using num          = inside<{-100, 100}>;
     using den          = inside<{1, 10}>;
     const auto [f, fr] = divmod(num{-8}, den{3}, round_floor);
-    ASSERT_TRUE(f == -3_ins);
-    ASSERT_TRUE(fr == 1_ins);
+    ASSERT_TRUE(f == -3);
+    ASSERT_TRUE(fr == 1);
 
     // A divisor grid holding zero: expected, division_by_zero.
     auto e   = divmod(val{17}, val{0});
@@ -222,7 +222,7 @@ TEST(DivRoundTest, divmod_types_and_errors) {
     ASSERT_FALSE(e.has_value());
     ASSERT_EQ(e.error(), errc::division_by_zero);
     auto ok = divmod(val{17}, val{4});
-    ASSERT_TRUE(ok.has_value() && ok->Quotient == 4_ins && ok->Remainder == 1_ins);
+    ASSERT_TRUE(ok.has_value() && ok->Quotient == 4 && ok->Remainder == 1);
 
     errc ec{};
     (void)divmod(val{1}, val{0}, ec);
@@ -230,7 +230,7 @@ TEST(DivRoundTest, divmod_types_and_errors) {
 
     static_assert([] {
         const auto [cq, cr] = divmod(val{99}, pos{10});
-        return cq == 9_ins && cr == 9_ins;
+        return cq == 9 && cr == 9;
     }());
 }
 
@@ -241,19 +241,19 @@ TEST(DivRoundTest, modulo_and_divmod_without_a_rounding_mode_truncate) {
     using signed_digit = inside<{-9, 9}>;
 
     static_assert(std::same_as<decltype(digit{7} % 2_ins), inside<{0, 1}>>);
-    static_assert(digit{7} % 2_ins == 1_ins);
-    static_assert(signed_digit{-7} % 2_ins == -1_ins);
-    static_assert(mod(signed_digit{-7}, 2_ins, round_floor) == 1_ins);
+    static_assert(digit{7} % 2_ins == 1);
+    static_assert(signed_digit{-7} % 2_ins == -1);
+    static_assert(mod(signed_digit{-7}, 2_ins, round_floor) == 1);
     static_assert(digit{7} / 2_ins == 3.5_ins); // `/` is unchanged: exact
 
     const auto [q, r] = divmod(signed_digit{-7}, 2_ins);
-    ASSERT_TRUE(q == -3_ins);
-    ASSERT_TRUE(r == -1_ins);
-    ASSERT_TRUE(q * 2_ins + r == -7_ins);
+    ASSERT_TRUE(q == -3);
+    ASSERT_TRUE(r == -1);
+    ASSERT_TRUE(q * 2_ins + r == -7);
 
     digit d{8};
     d %= 3_ins;
-    ASSERT_TRUE(d == 2_ins);
+    ASSERT_TRUE(d == 2);
 }
 } // namespace div_round_tests
 
@@ -478,8 +478,7 @@ TEST(DivisionTest, integer_division_by_an_int64_min_divisor) {
     static_assert([] {
         auto q  = div(small{-7}, full{2}, round_toward_zero);
         auto qr = divmod(small{-7}, full{i64_min});
-        return *q == -3_ins && qr->Quotient == 0_ins && qr->Remainder == -7_ins &&
-               grid_of<decltype(*q)> == grid{-7, 7};
+        return *q == -3 && qr->Quotient == 0 && qr->Remainder == -7 && grid_of<decltype(*q)> == grid{-7, 7};
     }());
     // The range is the rounded corners, as the exact quotient grid gave it.
     static_assert(grid_of<decltype(div(small{}, std::declval<inside<{-3, 4}>>(), round_ceil))::value_type> ==
@@ -493,7 +492,7 @@ TEST(DivisionTest, integer_quotient_past_int64) {
     constexpr std::int64_t i64_min = INT64_MIN;
     constexpr std::int64_t i64_max = INT64_MAX;
     using full                     = inside<{i64_min, i64_max}>;
-    static_assert(*div(full{10}, full{2}, round_toward_zero) == 5_ins);
+    static_assert(*div(full{10}, full{2}, round_toward_zero) == 5);
     EXPECT_EQ(to_string(*div(full{i64_max}, full{1}, round_toward_zero)), "9223372036854775807");
     EXPECT_EQ(to_string(*div(full{i64_min}, full{-1}, round_floor)), "9223372036854775808");
     EXPECT_EQ(to_string(*div(full{i64_min}, inside<{-1, 1}>{-1}, round_toward_zero)), "9223372036854775808");

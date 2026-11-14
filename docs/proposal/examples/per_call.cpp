@@ -22,9 +22,9 @@ int main() {
     minutes m = 0;
     s.on_wrap([&](auto&, auto carry) { m += carry; }) += 75_ins; // 125 s: s == 5, m == 2
     // [/listing]
-    if (down != just<3> || up != just<4> || quo != just<3> || rem != just<2> || x != just<100>)
+    if (down != 3 || up != 4 || quo != 3 || rem != 2 || x != 100)
         return 1;
-    if (s != just<5> || m != just<2>)
+    if (s != 5 || m != 2)
         return 1;
     return 0;
 }

@@ -274,7 +274,7 @@ int main() {
         cursor<idx, 3>   c;
         rng::copy(c, end(c), std::back_inserter(thirds));
         show("cursor<idx, 3>", thirds);
-        std::cout << "count > 4:       " << rng::count_if(values<idx>, [](idx i) { return i > 4_ins; }) << "\n";
+        std::cout << "count > 4:       " << rng::count_if(values<idx>, [](idx i) { return i > 4; }) << "\n";
     }
 
     return 0;
