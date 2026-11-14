@@ -11,7 +11,7 @@ the standard containers and algorithms.
 using bin = inside<{0, 9}>;
 std::vector<int> bins(10);
 for (bin b : values<bin>)            // 0, 1, …, 9
-    bins[b.as<std::size_t>()] = 0;   // an index, with no check left
+    bins[b] = 0;                     // an index, with no check left
 ```
 
 ## Every value of a type: `values<T>`
@@ -77,8 +77,9 @@ To add up a range, use [`sum<Target>`](arithmetic.md#sums-of-many-values),
 which checks the total once, rather than `std::accumulate` into a wider type.
 
 For arrays of more than one dimension, `std::mdspan` holds insides too, and
-[`<beman/inside/inside/mdspan.hpp>`](../advanced/mdspan.md) adds indices
-whose types prove them in bounds, views of raw buffers, and exact sums and
+takes insides as [indices](conversions.md#indices);
+[`<beman/inside/inside/mdspan.hpp>`](../advanced/mdspan.md) adds extents
+from index types, views of raw buffers, and exact sums and
 matrix products.
 
 ## `min`, `max`, `midpoint`

@@ -117,7 +117,7 @@ template <unit U, class T, class E, class L>
     requires quantity_like<std::remove_cv_t<T>> && requires(const std::remove_cv_t<T>& q) { q.template in<U>(); }
 [[nodiscard]] constexpr auto view_in(const std::mdspan<T, E, L, std::default_accessor<T>>& m, unit_t<U>) {
     using A = detail::in_unit_accessor<T, U>;
-    return inside_mdspan<typename A::element_type, E, L, A>{m.data_handle(), m.mapping(), A{}};
+    return std::mdspan<typename A::element_type, E, L, A>{m.data_handle(), m.mapping(), A{}};
 }
 } // namespace beman::inside::units
 

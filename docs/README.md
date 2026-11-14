@@ -36,7 +36,7 @@ The details behind the guides, and topics most programs never need.
 | [The math engine](advanced/math-engine.md) | how results are rounded correctly, what is guaranteed, speed, angles over many turns |
 | [Constants](advanced/constants.md) | the mathematical and physical constants |
 | [For fixed-point users](advanced/fixed-point.md) | Qm.n formats as grids, which grids are fast |
-| [mdspan](advanced/mdspan.md) | indices proven in bounds, views of raw buffers, exact sums and matrix products, quantities |
+| [mdspan](advanced/mdspan.md) | insides as indices of `std::mdspan`, views of raw buffers, exact sums and matrix products, quantities |
 | [Determinism](advanced/determinism.md) | which results are bit-identical across platforms, and the build rules |
 | [Certifying math](advanced/certify.md) | proving the math of your own grids correct by exhaustion |
 | [Freestanding and bare metal](advanced/freestanding.md) | no exceptions, no FPU, no text |
@@ -65,7 +65,7 @@ and the [certified math pairs](certified.md).
 | `<beman/inside/inside/io.hpp>` | text: `to_string`, `<<`, `>>`, `std::format`, `parse` of a `string_view` |
 | `<beman/inside/inside/formats.hpp>` | the native formats `uint8` … `int64`, `unorm8` …, `q8_8` …, and the counters |
 | `<beman/inside/inside/random.hpp>` | `uniform<B>(rng)` |
-| `<beman/inside/inside/mdspan.hpp>` | `std::mdspan` support: `inside_mdspan`, `extents_of`, `indices`, the accessors, `sum`, `dot`, the matrix products |
+| `<beman/inside/inside/mdspan.hpp>` | `std::mdspan` support: `extents_of`, `index_for`, `indices`, the accessors, `sum`, `dot`, the matrix products |
 | `<beman/inside/math.hpp>` | `beman::inside::math`: the functions and the constants |
 | `<beman/inside/math/constants.hpp>` | the constants alone (`math::pi`, …), with the engine that computes them |
 | `<beman/inside/units.hpp>` | `beman::inside::units`: the machinery and the SI and ISQ catalog |

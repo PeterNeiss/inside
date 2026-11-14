@@ -30,8 +30,9 @@ constexpr auto ms = si::milli(si::second);
 using latency_t = quantity<ms, inside<{{0, 100}, per<10>}, round_nearest>>;
 
 // 10 bins: 0-9.9, 10-19.9, ..., 90-100 ms.
-using bin_count_t = clamp_counter<9>;                    // saturating per-bin count (caps at bar height 9)
-using bin_index_t = inside<{0, 9}, clamp | round_floor>; // bin index: floor; 100 ms → last bin
+using bin_count_t = clamp_counter<9>; // saturating per-bin count (caps at bar height 9)
+// bin index: floor; 100 ms → last bin; `bins` takes it as an index, as it is
+using bin_index_t = inside<{0, 9}, clamp | round_floor>;
 
 int main() {
     std::vector<bin_count_t> bins(10, bin_count_t{0});
@@ -79,17 +80,17 @@ int main() {
         // `clamp` folds 100 ms, whose quotient 10 floors to 10, into the last bin.
         const auto bin = div<bin_index_t>(lat, just<10> * ms);
         // `clamp_counter` saturates on `++`, so the bar caps at 9 — no manual guard.
-        ++bins[bin.as<std::size_t>()];
+        ++bins[bin];
     }
 
-    // values<bin_index_t> iterates every bin index; `b.as<std::size_t>()` reads
-    // it as an index, with no check left (every bin index fits a size_t).
+    // values<bin_index_t> iterates every bin index, and each indexes `bins`
+    // with no check left: the index type is the proof.
     using bin_label_t = quantity<ms, inside<{0, 99}>>;
     std::cout << "bin          count\n";
     for (bin_index_t b : values<bin_index_t>) {
         const auto  lo = b * (just<10> * ms); // {0,9}×{10,10} ms → {0,90} ms
         bin_label_t hi{lo + just<9> * ms};    // {9,99} ms: fits bin_label_t statically
-        std::cout << " " << lo << "-" << hi << "  " << bins[b.as<std::size_t>()] << "\n";
+        std::cout << " " << lo << "-" << hi << "  " << bins[b] << "\n";
     }
 
     std::cout << "\nrejected outliers: " << rejected << "\n";

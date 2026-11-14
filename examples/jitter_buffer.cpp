@@ -62,13 +62,13 @@ int main() {
         // The slot is seq modulo the window: the wrap flag folds it into slot_id_t.
         const auto idx = slot_id_t{seq, wrap};
 
-        bool stored                   = true;
-        slots[idx.as<std::size_t>()].on_error([&](auto&, errc, auto) {
+        bool stored = true;
+        slots[idx].on_error([&](auto&, errc, auto) {
             std::cout << "[dropped: offset " << offset << " too far past base " << base << "]\n";
             ++dropped;
             stored = false;
-        })                            = offset;
-        filled[idx.as<std::size_t>()] = stored;
+        })          = offset;
+        filled[idx] = stored;
     };
 
     // Insert 18 packets: most within window, two stragglers way past base.
@@ -78,10 +78,10 @@ int main() {
 
     std::cout << "\nplayback order:\n";
     for (slot_id_t slot : values<slot_id_t>) {
-        if (!filled[slot.as<std::size_t>()])
+        if (!filled[slot])
             std::cout << "  slot " << slot << "  <empty>\n";
         else
-            std::cout << "  slot " << slot << "  packet offset " << slots[slot.as<std::size_t>()] << "\n";
+            std::cout << "  slot " << slot << "  packet offset " << slots[slot] << "\n";
     }
 
     std::cout << "\ndrop events: " << dropped << "\n";

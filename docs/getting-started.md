@@ -118,7 +118,8 @@ An inside does not turn into an `int` by itself. Name the type you want:
 | `x.numerator()`, `x.denominator()` | the exact value as a fraction, two insides |
 | `std::cout << x`, `std::format("{}", x)` | the exact value as text |
 
-An index is `v[x.as<std::size_t>()]`.
+An inside on non-negative integers is an index, and a container takes it as
+it is: `v[x]` ([Conversions](guide/conversions.md#indices)).
 
 ## Units
 

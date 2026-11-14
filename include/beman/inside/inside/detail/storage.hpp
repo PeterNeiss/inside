@@ -243,6 +243,12 @@ template <grid G>
 inline constexpr bool integer_notch =
     grid_denominator(G.Notch) == grid_int{1} && G.Notch != 0 && grid_denominator(G.Interval.Lower) == grid_int{1};
 
+// An index grid: every value an integer from 0 up, within int64.
+template <grid G>
+inline constexpr bool index_shaped = (integer_notch<G> || (G.Interval.Lower == G.Interval.Upper &&
+                                                           grid_denominator(G.Interval.Lower) == grid_int{1})) &&
+                                     !(G.Interval.Lower < 0) && fits_int64(G.Interval);
+
 // Every value an integer: an integer lattice or an integer point (see
 // integer_limits below).
 template <insidable B>

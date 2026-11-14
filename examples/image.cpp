@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Images and fields with std::mdspan (inside/mdspan.hpp, units/mdspan.hpp).
-//   1. An 8×8 grayscale image and a 3×3 box blur. The index types prove every
-//      access within the extents, and a clamp policy on the row and column
-//      types pads the edges, so no access is checked. Each 9-pixel sum is
-//      exact, on [0, 2295], and rounded once into the output pixel.
-//   2. A heat map: a sensor's raw deci-kelvin codes viewed as kelvin without
+//   1. An 8×8 grayscale image and a 3×3 box blur. Rows and columns are
+//      insides on 0 … 7, which a std::mdspan takes as they are: the index
+//      type proves every access within the extents, and its clamp policy
+//      pads the edges. Each 9-pixel sum is exact, on [0, 2295], and rounded
+//      once into the output pixel.
+//   2. Interior pixels: an index on 1 … 6 and its neighbours, proven within
+//      the image by the grids alone.
+//   3. A heat map: a sensor's raw deci-kelvin codes viewed as kelvin without
 //      copying. The mean is exact, the hottest cell is found by comparing
 //      quantities, and the gradient between neighbours is a transform_into
 //      over two shifted submdspans.
@@ -19,19 +22,22 @@
 #include <beman/inside/inside.hpp>
 #include <beman/inside/inside/io.hpp>
 #include <beman/inside/inside/mdspan.hpp>
+#include <beman/inside/math.hpp>
 #include <beman/inside/units/io.hpp>
 #include <beman/inside/units/mdspan.hpp>
 
 using namespace beman::inside;
 using namespace beman::inside::units;
 
-using pixel        = inside<{0, 255}>;
-using smooth       = inside<{0, 255}, round_nearest>; // a blurred pixel: rounded once
-using row          = inside<{0, 7}, clamp>;           // clamp: an index past an edge reads the edge
+using pixel  = inside<{0, 255}>;
+using smooth = inside<{0, 255}, round_nearest>; // a blurred pixel: rounded once
+// An index: a std::mdspan takes it as it is. clamp: a value past an edge,
+// stored into the index, is the edge.
+using row          = inside<{0, 7}, clamp>;
 using col          = inside<{0, 7}, clamp>;
 using offset       = inside<{-1, 1}, clamp>;
-using image        = inside_mdspan<pixel, extents_of<row, col>>;
-using smooth_image = inside_mdspan<smooth, extents_of<row, col>>;
+using image        = std::mdspan<pixel, extents_of<row, col>>;
+using smooth_image = std::mdspan<smooth, extents_of<row, col>>;
 // The sum of 9 pixels. sum<window> counts at run time, so its type cannot
 // show that 9 pixels of at most 255 fit: clamp names what a larger total
 // would do (it never happens here).
@@ -40,11 +46,10 @@ using window = inside<{0, 9 * 255}, clamp>;
 // out = the 3×3 mean of in, each output pixel rounded once.
 void blur(const image& in, const smooth_image& out) {
     for (auto [i, j] : indices(in)) {
-        const row  r = i, c = j; // the clamp types, so r + dr keeps the clamp
         const auto around =
             std::views::cartesian_product(values<offset>, values<offset>) | std::views::transform([&](auto d) {
                 const auto [dr, dc] = d;
-                return in[r + dr, c + dc];
+                return in[row{i + dr}, col{j + dc}]; // past an edge: the edge
             });
         out[i, j] = sum<window>(around) / 9_ins; // exact, then rounded to the nearest pixel
     }
@@ -79,7 +84,22 @@ int main() {
     if (corner != 119 || blurred[row{3}, col{3}] != 200 || to_string(mean) != "61.328125")
         return 1;
 
-    // 2. A heat map: 4×6 raw codes in steps of 0.1 K from 200 K, as a sensor
+    // 2. Interior pixels need no clamp: an index on 1 … 6 plus or minus 1 is
+    // on 0 … 7, so the store into the image's index type is proven by the
+    // grids. The largest step between a pixel's left and right neighbours:
+    using inner = inside<{1, 6}>;
+    using index = inside<{0, 7}>;
+    pixel edge  = 0;
+    for (auto [r, c] : std::views::cartesian_product(values<inner>, values<inner>)) {
+        const auto step = math::abs(img[r, index{c + 1_ins}] - img[r, index{c - 1_ins}]);
+        if (step > edge)
+            edge = step;
+    }
+    std::cout << "largest step " << edge << "\n";
+    if (edge != 190)
+        return 1;
+
+    // 3. A heat map: 4×6 raw codes in steps of 0.1 K from 200 K, as a sensor
     // sends them, read as kelvin through raw_accessor.
     using kelvin = quantity<si::kelvin, inside<{{200, 400}, per<10>}>>;
     const std::array<std::uint16_t, 24> codes{
@@ -88,18 +108,18 @@ int main() {
         733, 739, 749, 765, 781, 790, //
         733, 740, 752, 771, 789, 801, //
     };
-    const inside_mdspan<kelvin,
-                        std::extents<std::size_t, 4, 6>,
-                        std::layout_right,
-                        raw_accessor<kelvin, const std::uint16_t>>
+    const std::
+        mdspan<kelvin, std::extents<std::size_t, 4, 6>, std::layout_right, raw_accessor<kelvin, const std::uint16_t>>
                heat{codes.data()};
     const auto heat_total = sum(heat);
     std::cout << "heat: " << heat[0, 0] << " to " << heat[3, 5] << ", mean " << (heat_total / 24_ins) << "\n";
 
-    std::size_t hot_r = 0, hot_c = 0;
+    // The indices of the extents 4 × 6: inside<{0, 3}>, inside<{0, 5}>.
+    extent_index_t<decltype(heat)::extents_type, 0> hot_r;
+    extent_index_t<decltype(heat)::extents_type, 1> hot_c;
     for (auto [r, c] : indices(heat))
         if (heat[r, c] > heat[hot_r, hot_c])
-            hot_r = static_cast<std::size_t>(r.as<int>()), hot_c = static_cast<std::size_t>(c.as<int>());
+            hot_r = r, hot_c = c;
     std::cout << "hottest cell (" << hot_r << ", " << hot_c << ") at " << heat[hot_r, hot_c] << "\n";
 
     // The rise from each cell to its right neighbour: two shifted views of

@@ -470,7 +470,7 @@ TEST(UnanchoredGridTest, range_limits_random) {
     static_assert(!has_epsilon<inside<tenth_off>>);
     EXPECT_FALSE(std::numeric_limits<inside<half_off>>::is_integer);
     static_assert(!std::is_convertible_v<inside<half_off>, std::int64_t>); // no silent truncation
-    static_assert(!std::is_convertible_v<inside<{0, 10}>, std::int64_t>);
+    static_assert(!std::is_convertible_v<inside<{-1, 10}>, std::int64_t>);
     // as<std::int64_t>() rounds by the policy's mode
     EXPECT_EQ((inside<half_off, round_nearest>{2.5}.as<std::int64_t>()), 3);
     EXPECT_EQ((inside<half_off, round_floor>{2.5}.as<std::int64_t>()), 2);

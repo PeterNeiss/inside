@@ -5194,6 +5194,12 @@ template <grid G>
 inline constexpr bool integer_notch =
     grid_denominator(G.Notch) == grid_int{1} && G.Notch != 0 && grid_denominator(G.Interval.Lower) == grid_int{1};
 
+// An index grid: every value an integer from 0 up, within int64.
+template <grid G>
+inline constexpr bool index_shaped = (integer_notch<G> || (G.Interval.Lower == G.Interval.Upper &&
+                                                           grid_denominator(G.Interval.Lower) == grid_int{1})) &&
+                                     !(G.Interval.Lower < 0) && fits_int64(G.Interval);
+
 // Every value an integer: an integer lattice or an integer point (see
 // integer_limits below).
 template <insidable B>
@@ -8135,6 +8141,26 @@ template <insidable B, typename C, typename P, typename... As>
 inline constexpr bool proxy_store_ok =
     store_proven<B, C, flags_of<B> | flags_of<P>> || reports_into_errc<P> || has_action<is_error_action, As...>;
 
+// A builtin integer that stands for a number: no bool, no character type.
+// An index converts to one (core.hpp), and a compound assignment takes one.
+template <class T>
+concept index_integer =
+    std::integral<T> && !std::same_as<T, bool> && !std::same_as<T, char> && !std::same_as<T, wchar_t> &&
+    !std::same_as<T, char8_t> && !std::same_as<T, char16_t> && !std::same_as<T, char32_t>;
+
+// A builtin integer on the right of `x += n`, `x -= n`, `x *= n`: an inside
+// on the whole range of its type (an int is an inside<{INT_MIN, INT_MAX}>),
+// so the result is stored back into x by the same rules as for any inside.
+// (The binary x + n has no such reading: its type would be that range.)
+template <index_integer A>
+using lifted_t = inside<grid{interval_of<A>, grid_rational{1}}>;
+template <class A>
+concept step_integer = index_integer<A> && integer_value_storage<lifted_t<A>>;
+template <step_integer A>
+[[nodiscard]] constexpr lifted_t<A> lift_integer(A a) noexcept {
+    return lifted_t<A>::from_raw(static_cast<raw_t<lifted_t<A>>>(a));
+}
+
 #define BEMAN_INSIDE_WHY_proxy_unproven                                                                         \
     "inside: the value may fall outside the target grid, or off its notch, at run time - add clamp, wrap or a " \
     "rounding mode to the policy, report with policy(ec) or on_error(f), or opt out with unsafe"
@@ -8272,6 +8298,23 @@ struct policy_ref {
                  stores_back<decltype(mul(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator*=(const C& rhs) {
         return finalize_arith(mul(Ref, rhs, Policy));
+    }
+
+    // A builtin integer steps as the inside on its type's range (above).
+    template <step_integer A>
+        requires requires(policy_ref& r, const lifted_t<A>& v) { r += v; }
+    constexpr B& operator+=(A a) {
+        return *this += lift_integer(a);
+    }
+    template <step_integer A>
+        requires requires(policy_ref& r, const lifted_t<A>& v) { r -= v; }
+    constexpr B& operator-=(A a) {
+        return *this -= lift_integer(a);
+    }
+    template <step_integer A>
+        requires requires(policy_ref& r, const lifted_t<A>& v) { r *= v; }
+    constexpr B& operator*=(A a) {
+        return *this *= lift_integer(a);
     }
 
     // A zero divisor is reported (on_error, unless `unsafe` appears) and leaves
@@ -9338,6 +9381,19 @@ template <grid G, policy_flag P>
 using cursor_value_t =
     inside<grid{interval{G.Interval.Lower, G.Interval.Upper - G.Notch}, G.Notch}, P & ~cursor_marker>;
 
+// (index_integer, the builtin integers an index converts to: policy_ref.hpp.)
+
+// B converts implicitly to the builtin integer T: B is an index - every
+// value a non-negative integer (storage.hpp index_shaped), and no cursor,
+// whose end is one past the last index - and T holds its whole grid.
+template <class B, class T>
+inline constexpr bool index_converts = false;
+template <insidable B, index_integer T>
+inline constexpr bool index_converts<B, T> =
+    index_shaped<grid_of<B>> && !has_flag(flags_of<B>, cursor_marker) && values_fit_int64<B> &&
+    !(lower_of<B> < grid_rational{std::numeric_limits<T>::min()}) &&
+    !(upper_of<B> > grid_rational{std::numeric_limits<T>::max()});
+
 // The number a type steps over in cursor<T>, values<T> and end(t): an inside
 // itself, or a quantity's number (units specializes it); rebind<N> wraps a
 // number N back into the type's kind, and make(n) is that value.
@@ -9685,6 +9741,10 @@ struct inside {
     // asserts `r` is a valid slot. Entry point for tests, fast paths, and same-grid
     // raw transfer.
     [[nodiscard]] static constexpr inside from_raw(raw_type r) noexcept { return inside{detail::raw_tag{}, r}; }
+    // (An inside is no raw: an index would convert to its value and be read as one.)
+    template <insidable X>
+    static inside from_raw(const X&) = delete ("from_raw takes a raw, not an inside: store the inside (T{x}), or "
+                                               "pass its raw (T::from_raw(x.raw()))");
 
     // Conversion summary:
     //   operator rational — implicit; lossless and exact.
@@ -9699,7 +9759,30 @@ struct inside {
     //   to<T>(b)/as<T>(b) — free-function forms, for generic code.
     // No implicit integer conversion: it would narrow silently into a smaller
     // built-in (`int i = b;`, `unsigned char c = b;`), the range escaping
-    // the type.
+    // the type. The exception is an index, an inside whose every value is a
+    // non-negative integer (inside<{0, 479}>, inside<{3, 11}>): it converts
+    // to each builtin integer that holds its whole grid, which is what
+    // std::mdspan, std::array, std::span, std::vector and builtin arrays ask
+    // of an index (`m[i, j]`, `a[i]`). Never narrowing, and never to bool, a
+    // character or a floating type: those are deleted, as they would
+    // otherwise follow from the integer by a standard conversion.
+    // (std::size_t is no template: a builtin subscript takes no other.)
+    constexpr operator std::size_t() const noexcept
+        requires(detail::index_converts<inside, std::size_t>)
+    {
+        return static_cast<std::size_t>(detail::to_value(*this));
+    }
+    template <detail::index_integer T>
+        requires(!std::same_as<T, std::size_t> && detail::index_converts<inside, T>)
+    constexpr operator T() const noexcept {
+        return static_cast<T>(detail::to_value(*this));
+    }
+    template <class T>
+        requires(std::is_arithmetic_v<T> && detail::index_converts<inside, std::size_t> &&
+                 !detail::index_converts<inside, T>)
+    operator T() const = delete ("inside: an index converts to the builtin integers that hold its whole grid - "
+                                 "not to a smaller one, bool, a character or a floating type (x.to<T>(), x != 0)");
+
     constexpr explicit operator double() const
         requires(has_flag(P, detail::snap))
     {
@@ -11634,6 +11717,70 @@ BEMAN_INSIDE_NO_SCALAR(%)
 #undef BEMAN_INSIDE_NO_SCALAR
 #undef BEMAN_INSIDE_SCALAR_MSG
 
+// The exception: `x += n`, `x -= n`, `x *= n` with a builtin integer. The
+// result has a type, x's, so n needs none of its own: it steps as the inside
+// on its type's range (policy_ref.hpp lifted_t), and the result is stored
+// back by the rules of every compound assignment - a clamp or wrap type
+// takes it, a checked one names a channel (x.policy(ec) += n). A division
+// stays with insides: a builtin integer's range holds 0.
+#define BEMAN_INSIDE_STEP_MSG                                                                              \
+    "inside: x op= n stores the result back into x, which the grids cannot prove for a builtin integer - " \
+    "use a clamp or wrap type, report with x.policy(ec) op= n or x.on_error(f) op= n, or opt out with unsafe"
+#define BEMAN_INSIDE_INTEGER_STEP(op)                                                                \
+    template <insidable B, detail::builtin_arithmetic A>                                             \
+        requires detail::step_integer<A>                                                             \
+    void operator op(B&, A) = delete (BEMAN_INSIDE_STEP_MSG);                                        \
+    template <insidable B, detail::builtin_arithmetic A>                                             \
+        requires detail::step_integer<A> && requires(B& b, const detail::lifted_t<A>& v) { b op v; } \
+    constexpr B& operator op(B& b, A a) {                                                            \
+        return b op detail::lift_integer(a);                                                         \
+    }
+
+BEMAN_INSIDE_INTEGER_STEP(+=)
+BEMAN_INSIDE_INTEGER_STEP(-=)
+BEMAN_INSIDE_INTEGER_STEP(*=)
+#undef BEMAN_INSIDE_INTEGER_STEP
+#undef BEMAN_INSIDE_STEP_MSG
+
+// An index converts to the builtin integers (core.hpp), which a builtin
+// operator would take: the bit and shift operators, and a compound
+// assignment into a builtin number, would leave the grid without a word.
+// Deleted, with the spelling that says so. (Subscripts and pointer
+// arithmetic stay: they are what an index is for.)
+#define BEMAN_INSIDE_BUILTIN_MSG                                                                        \
+    "an inside takes no builtin integer operator: read the value into the builtin type first (int n = " \
+    "x; or x.to<T>()), or keep the arithmetic on insides"
+#define BEMAN_INSIDE_NO_BUILTIN(op)                                           \
+    template <insidable B, class A>                                           \
+        requires detail::builtin_arithmetic<A> || insidable<A>                \
+    void operator op(B const&, A const&) = delete (BEMAN_INSIDE_BUILTIN_MSG); \
+    template <detail::builtin_arithmetic A, insidable B>                      \
+    void operator op(A, B const&) = delete (BEMAN_INSIDE_BUILTIN_MSG);
+#define BEMAN_INSIDE_NO_BUILTIN_ASSIGN(op)               \
+    template <detail::builtin_arithmetic A, insidable B> \
+    void operator op(A&, B const&) = delete (BEMAN_INSIDE_BUILTIN_MSG);
+
+BEMAN_INSIDE_NO_BUILTIN(&)
+BEMAN_INSIDE_NO_BUILTIN(|)
+BEMAN_INSIDE_NO_BUILTIN(^)
+BEMAN_INSIDE_NO_BUILTIN(<<)
+BEMAN_INSIDE_NO_BUILTIN(>>)
+BEMAN_INSIDE_NO_BUILTIN_ASSIGN(+=)
+BEMAN_INSIDE_NO_BUILTIN_ASSIGN(-=)
+BEMAN_INSIDE_NO_BUILTIN_ASSIGN(*=)
+BEMAN_INSIDE_NO_BUILTIN_ASSIGN(/=)
+BEMAN_INSIDE_NO_BUILTIN_ASSIGN(%=)
+BEMAN_INSIDE_NO_BUILTIN_ASSIGN(&=)
+BEMAN_INSIDE_NO_BUILTIN_ASSIGN(|=)
+BEMAN_INSIDE_NO_BUILTIN_ASSIGN(^=)
+BEMAN_INSIDE_NO_BUILTIN_ASSIGN(<<=)
+BEMAN_INSIDE_NO_BUILTIN_ASSIGN(>>=)
+template <insidable B>
+void operator~(const B&) = delete (BEMAN_INSIDE_BUILTIN_MSG);
+#undef BEMAN_INSIDE_NO_BUILTIN
+#undef BEMAN_INSIDE_NO_BUILTIN_ASSIGN
+#undef BEMAN_INSIDE_BUILTIN_MSG
+
 // An inside with a rational: through the implicit operator rational() it
 // would become rational arithmetic, an expected<rational, errc> without a
 // grid. Deleted, with the spelling that keeps the grid; so are the compound
@@ -12819,17 +12966,20 @@ struct std::formatter<beman::inside::detail::rational>
 //---------------------------------------------------------------------------
 // std::mdspan with insides (opt-in: include this header).
 //
-//   extents_of<I, J>            std::extents from index types: inside<{0, 479}>
-//                               is an extent of 480
-//   extent_index_t<E, r>        inside<{0, N − 1}> for E's static extent N at rank r
+//   m[i, j]                    a std::mdspan takes an inside on non-negative
+//                               integers as it is (inside<{0, 479}>): an index
+//                               converts to its value. A value that may lie
+//                               past an edge is stored into the index type
+//                               first, by its policy (clamp pads at the
+//                               edges, wrap is periodic)
+//   extents_of<I, J>            std::extents from index types: the extent of
+//                               inside<{0, 479}> is 480 (Upper + 1)
+//   extent_index_t<E, r>        inside<{0, N − 1}> for E's static extent N at
+//                               rank r
+//   index_for<I, E, r>          I is an index whose every value lies within
+//                               E's static extent at rank r
 //   indices(m)                  every index tuple, the last index fastest; a
 //                               static rank yields extent_index_t insides
-//   inside_mdspan<T, E, L, A>   a std::mdspan that also takes inside indices:
-//                               one whose grid lies within a static extent
-//                               needs no check; any other is held to the
-//                               extent by its own policy (clamp pads at the
-//                               edges, wrap is periodic, checked reports
-//                               overflow, unsafe trusts it)
 //   value_accessor<E, T>        E's numbers stored as values of T (a double
 //                               or int16_t buffer), read by E's policy
 //   raw_accessor<E, R>          E's numbers stored as their raws (fixed-point
@@ -12848,11 +12998,10 @@ struct std::formatter<beman::inside::detail::rational>
 //---------------------------------------------------------------------------
 namespace beman::inside {
 namespace detail {
-// An index type: an inside on 0, 1, …, N − 1 (or the point 0).
+// An index type: an inside that converts to std::size_t - every value a
+// non-negative integer (core.hpp index_converts).
 template <class I>
-concept index_inside =
-    insidable<I> && integer_lattice<I> && lower_of<I> == 0 && (notch_of<I> == 1 || upper_of<I> == 0) &&
-    upper_of<I> < grid_rational{std::numeric_limits<std::int64_t>::max()};
+concept index_inside = insidable<I> && index_converts<I, std::size_t>;
 
 template <class I>
 inline constexpr std::size_t extent_of_index = [] {
@@ -12865,7 +13014,7 @@ inline constexpr std::size_t extent_of_index = [] {
 template <class... Is>
 struct extents_of_impl {
     static_assert((index_inside<Is> && ...),
-                  "extents_of<I...>: each I is an index type - an inside on 0, 1, ..., N - 1 (inside<{0, 479}>)");
+                  "extents_of<I...>: each I is an index type - an inside on non-negative integers (inside<{0, 479}>)");
     using type = std::extents<std::size_t, extent_of_index<Is>...>;
 };
 
@@ -12885,7 +13034,8 @@ template <class T, class E, class L, class A>
 inline constexpr bool is_mdspan_v<std::mdspan<T, E, L, A>> = true;
 } // namespace detail
 
-// The extents whose indices are the index types Is.
+// The extents whose indices are the index types Is: each extent is the
+// index's Upper + 1, the smallest that every value of it indexes.
 template <class... Is>
 using extents_of = typename detail::extents_of_impl<Is...>::type;
 
@@ -12895,7 +13045,16 @@ template <class E, std::size_t R>
                  (E::static_extent(R) > 0)
 using extent_index_t = inside<detail::index_range_grid(E::static_extent(R))>;
 
-// Any std::mdspan, and so an inside_mdspan, which derives from one.
+// I indexes rank R of E within bounds, proven by the types: I is an index
+// and its Upper lies below E's static extent (a dynamic extent proves
+// nothing). `static_assert(index_for<row, image::extents_type, 0>)`, or a
+// constraint on a function that takes indices.
+template <class I, class E, std::size_t R>
+concept index_for =
+    detail::index_inside<I> && detail::is_extents_v<E> && (R < E::rank()) &&
+    (E::static_extent(R) != std::dynamic_extent) && (upper_of<I> < detail::grid_rational{E::static_extent(R)});
+
+// Any std::mdspan (or a type derived from one).
 template <class M>
 concept mdspan_like =
     requires(const M& m) { []<class T, class E, class L, class A>(const std::mdspan<T, E, L, A>&) {}(m); };
@@ -12919,7 +13078,7 @@ constexpr auto rank_indices(const E& e) {
 
 // Every index tuple of e, the last index fastest (layout_right's order):
 // `for (auto [i, j] : indices(m))`. A static rank yields its extent_index_t,
-// so indexing an inside_mdspan with them needs no check.
+// which indexes m within bounds by its type.
 template <class I, std::size_t... Ns>
 [[nodiscard]] constexpr auto indices(const std::extents<I, Ns...>& e) {
     using E = std::extents<I, Ns...>;
@@ -12931,112 +13090,6 @@ template <class T, class E, class L, class A>
 [[nodiscard]] constexpr auto indices(const std::mdspan<T, E, L, A>& m) {
     return indices(m.extents());
 }
-
-//---------------------------------------------------------------------------
-// inside_mdspan
-//---------------------------------------------------------------------------
-namespace detail {
-// An index argument: a builtin integer (std semantics), or an inside on the
-// integers whose values fit int64.
-template <class I>
-concept span_index = std::integral<I> || (insidable<I> && integer_lattice<I> && values_fit_int64<I>);
-
-// The index at rank R of e for i: an integer as is; an inside proven within
-// a static extent as its value; any other inside held to [0, extent − 1] by
-// its policy.
-template <std::size_t R, class E, class I>
-constexpr typename E::index_type extent_index(const E& e, const I& i) {
-    using index_type = typename E::index_type;
-    if constexpr (std::integral<I>)
-        return static_cast<index_type>(i);
-    else {
-        constexpr std::size_t S = E::static_extent(R);
-        if constexpr (S != std::dynamic_extent && S > 0 && lower_of<I> >= 0 && upper_of<I> <= grid_rational{S - 1})
-            return static_cast<index_type>(to_value(i));
-        else {
-            const std::int64_t v = to_value(i);
-            const std::int64_t n = static_cast<std::int64_t>(e.extent(R));
-            if (v >= 0 && v < n) [[likely]]
-                return static_cast<index_type>(v);
-            if constexpr (has_flag(flags_of<I>, unsafe))
-                return static_cast<index_type>(v);
-            else {
-                if constexpr (has_flag(flags_of<I>, clamp)) {
-                    if (n > 0)
-                        return static_cast<index_type>(v < 0 ? 0 : n - 1);
-                } else if constexpr (has_flag(flags_of<I>, wrap)) {
-                    if (n > 0) {
-                        const std::int64_t r = v % n;
-                        return static_cast<index_type>(r < 0 ? r + n : r);
-                    }
-                }
-                raise(errc::overflow, "inside_mdspan: an index past the extent");
-            }
-        }
-    }
-}
-} // namespace detail
-
-template <class T, class Extents, class Layout = std::layout_right, class Accessor = std::default_accessor<T>>
-class inside_mdspan : public std::mdspan<T, Extents, Layout, Accessor> {
-    using base = std::mdspan<T, Extents, Layout, Accessor>;
-
-  public:
-    using typename base::accessor_type;
-    using typename base::data_handle_type;
-    using typename base::element_type;
-    using typename base::extents_type;
-    using typename base::index_type;
-    using typename base::layout_type;
-    using typename base::mapping_type;
-    using typename base::reference;
-    using typename base::value_type;
-
-    using base::base;
-    constexpr inside_mdspan() = default;
-    constexpr inside_mdspan(const base& m) : base(m) {}
-
-    // Builtin integer indices: std::mdspan's (a precondition, no check).
-    using base::operator[];
-
-    // Inside indices (builtin integers may mix in): proven within a static
-    // extent, no check; else held to the extent by each index's policy.
-    template <class... Is>
-        requires(sizeof...(Is) == Extents::rank()) && (insidable<Is> || ...) && (detail::span_index<Is> && ...)
-    [[nodiscard]] constexpr reference operator[](const Is&... is) const {
-        return [&]<std::size_t... R>(std::index_sequence<R...>) -> reference {
-            return base::operator[](detail::extent_index<R>(this->extents(), is)...);
-        }(std::index_sequence_for<Is...>{});
-    }
-#define BEMAN_INSIDE_WHY_span_index \
-    "inside_mdspan: an index is a builtin integer or an inside on the integers within int64"
-    template <class... Is>
-        requires(sizeof...(Is) == Extents::rank()) && (insidable<Is> || ...) && (!(detail::span_index<Is> && ...)) &&
-                    ((insidable<Is> || std::integral<Is>) && ...)
-    reference operator[](const Is&...) const = delete (BEMAN_INSIDE_WHY_span_index);
-#undef BEMAN_INSIDE_WHY_span_index
-};
-
-template <class ElementType, class... Integrals>
-    requires(std::is_convertible_v<Integrals, std::size_t> && ...) && (sizeof...(Integrals) > 0)
-explicit inside_mdspan(ElementType*, Integrals...)
-    -> inside_mdspan<ElementType, std::dextents<std::size_t, sizeof...(Integrals)>>;
-template <class ElementType, class IndexType, std::size_t... Ns>
-inside_mdspan(ElementType*, const std::extents<IndexType, Ns...>&)
-    -> inside_mdspan<ElementType, std::extents<IndexType, Ns...>>;
-template <class ElementType, class Mapping>
-    requires requires { typename Mapping::layout_type; }
-inside_mdspan(ElementType*, const Mapping&)
-    -> inside_mdspan<ElementType, typename Mapping::extents_type, typename Mapping::layout_type>;
-template <class Mapping, class Accessor>
-inside_mdspan(const typename Accessor::data_handle_type&, const Mapping&, const Accessor&)
-    -> inside_mdspan<typename Accessor::element_type,
-                     typename Mapping::extents_type,
-                     typename Mapping::layout_type,
-                     Accessor>;
-// (By value: a prvalue mdspan, such as submdspan's, deduces too.)
-template <class T, class E, class L, class A>
-inside_mdspan(std::mdspan<T, E, L, A>) -> inside_mdspan<T, E, L, A>;
 
 //---------------------------------------------------------------------------
 // Accessors: E (an inside, or a quantity with units/mdspan.hpp) viewed over
@@ -27720,7 +27773,7 @@ template <unit U, class T, class E, class L>
     requires quantity_like<std::remove_cv_t<T>> && requires(const std::remove_cv_t<T>& q) { q.template in<U>(); }
 [[nodiscard]] constexpr auto view_in(const std::mdspan<T, E, L, std::default_accessor<T>>& m, unit_t<U>) {
     using A = detail::in_unit_accessor<T, U>;
-    return inside_mdspan<typename A::element_type, E, L, A>{m.data_handle(), m.mapping(), A{}};
+    return std::mdspan<typename A::element_type, E, L, A>{m.data_handle(), m.mapping(), A{}};
 }
 } // namespace beman::inside::units
 

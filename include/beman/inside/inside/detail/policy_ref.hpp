@@ -71,6 +71,26 @@ template <insidable B, typename C, typename P, typename... As>
 inline constexpr bool proxy_store_ok =
     store_proven<B, C, flags_of<B> | flags_of<P>> || reports_into_errc<P> || has_action<is_error_action, As...>;
 
+// A builtin integer that stands for a number: no bool, no character type.
+// An index converts to one (core.hpp), and a compound assignment takes one.
+template <class T>
+concept index_integer =
+    std::integral<T> && !std::same_as<T, bool> && !std::same_as<T, char> && !std::same_as<T, wchar_t> &&
+    !std::same_as<T, char8_t> && !std::same_as<T, char16_t> && !std::same_as<T, char32_t>;
+
+// A builtin integer on the right of `x += n`, `x -= n`, `x *= n`: an inside
+// on the whole range of its type (an int is an inside<{INT_MIN, INT_MAX}>),
+// so the result is stored back into x by the same rules as for any inside.
+// (The binary x + n has no such reading: its type would be that range.)
+template <index_integer A>
+using lifted_t = inside<grid{interval_of<A>, grid_rational{1}}>;
+template <class A>
+concept step_integer = index_integer<A> && integer_value_storage<lifted_t<A>>;
+template <step_integer A>
+[[nodiscard]] constexpr lifted_t<A> lift_integer(A a) noexcept {
+    return lifted_t<A>::from_raw(static_cast<raw_t<lifted_t<A>>>(a));
+}
+
 #define BEMAN_INSIDE_WHY_proxy_unproven                                                                         \
     "inside: the value may fall outside the target grid, or off its notch, at run time - add clamp, wrap or a " \
     "rounding mode to the policy, report with policy(ec) or on_error(f), or opt out with unsafe"
@@ -208,6 +228,23 @@ struct policy_ref {
                  stores_back<decltype(mul(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator*=(const C& rhs) {
         return finalize_arith(mul(Ref, rhs, Policy));
+    }
+
+    // A builtin integer steps as the inside on its type's range (above).
+    template <step_integer A>
+        requires requires(policy_ref& r, const lifted_t<A>& v) { r += v; }
+    constexpr B& operator+=(A a) {
+        return *this += lift_integer(a);
+    }
+    template <step_integer A>
+        requires requires(policy_ref& r, const lifted_t<A>& v) { r -= v; }
+    constexpr B& operator-=(A a) {
+        return *this -= lift_integer(a);
+    }
+    template <step_integer A>
+        requires requires(policy_ref& r, const lifted_t<A>& v) { r *= v; }
+    constexpr B& operator*=(A a) {
+        return *this *= lift_integer(a);
     }
 
     // A zero divisor is reported (on_error, unless `unsafe` appears) and leaves

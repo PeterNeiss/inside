@@ -150,10 +150,13 @@ TEST(InsideToTest, inside_to_rational_conversion) {
     }
 }
 
-// No implicit integer conversion, whatever the grid: as<T>() / to<T>() read it.
+// The implicit integer conversion is an index's alone (non-negative integers
+// within int64, mdspan.test.cpp); as<T>() / to<T>() read every other grid.
 TEST(InsideToTest, integers_are_read_with_as_or_to) {
-    using narrow = inside<{0, 100}>;
+    using narrow = inside<{-100, 100}>;
     using wide   = inside<{0, std::numeric_limits<std::uint64_t>::max()}>;
+    static_assert(std::is_convertible_v<inside<{0, 100}>, std::int64_t>);
+    static_assert(std::is_convertible_v<inside<{0, 100}>, std::size_t>);
     static_assert(!std::is_convertible_v<narrow, std::int64_t>);
     static_assert(!std::is_convertible_v<narrow, std::size_t>);
     static_assert(!std::is_convertible_v<wide, std::int64_t>);
@@ -648,15 +651,21 @@ TEST(ConversionTest, to_a_dyadic_grid_lands_on_the_grid) {
     ASSERT_EQ(double(dn), -2.0);
 }
 
-TEST(ConversionTest, no_implicit_integer_conversion) {
+// An index (non-negative integers) converts to the builtin integers that
+// hold its grid; nothing else converts, and nothing narrows.
+TEST(ConversionTest, implicit_integer_conversion_of_an_index_only) {
     using idx = inside<{0, 9}>;
-    static_assert(!std::is_convertible_v<idx, std::int64_t>);
-    static_assert(!std::is_convertible_v<idx, int>);
-    static_assert(!std::is_constructible_v<int, idx>);
+    using off = inside<{-1, 9}>;
+    static_assert(std::is_convertible_v<idx, std::int64_t>);
+    static_assert(std::is_convertible_v<idx, int>);
+    static_assert(std::is_constructible_v<int, idx>);
+    static_assert(casts_to_int64<idx>);
+    static_assert(indexes_a_vector<idx>);
+    static_assert(!std::is_convertible_v<off, std::int64_t> && !std::is_constructible_v<int, off>);
+    static_assert(!casts_to_int64<off> && !indexes_a_vector<off>);
     static_assert(!std::is_convertible_v<inside<{{0, 9}, per<2>}, round_nearest>, std::int64_t>);
     static_assert(!std::is_convertible_v<inside<{0, 10'000'000'000}>, int>); // would narrow silently
-    static_assert(!casts_to_int64<idx>);
-    static_assert(!indexes_a_vector<idx>);
+    static_assert(std::is_convertible_v<inside<{0, 10'000'000'000}>, std::int64_t>);
 
     idx          a{5};
     std::int64_t val = a.as<std::int64_t>();

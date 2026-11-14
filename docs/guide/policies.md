@@ -157,7 +157,7 @@ one `errc` checked after the loop, or an accumulator type with `clamp`. A
 | `try_make`, `to<T>()` where it can fail, `parse` | the returned `std::expected` |
 | `/` and `%` by a grid that holds 0 | the returned `std::expected` |
 | a named output that can miss: `mul<Out>`, `sum<T>`, `checked_cast<T>`, `f<Out>(x)`, `value_cast` | the returned `std::expected` |
-| a precondition: a cursor past its end, an mdspan index past a dynamic extent | the error handler, which prints and aborts by default |
+| a precondition: a cursor past its end, a raw read off the grid | the error handler, which prints and aborts by default |
 
 An inside never stores a `std::expected`: check it and store `*e`, or pass it
 to `T::try_make(e)`, which passes the error on.

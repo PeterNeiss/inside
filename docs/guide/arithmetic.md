@@ -140,15 +140,20 @@ with `t` in [0, 1] lies between `a` and `b`, and its type says so.
 ```cpp
 using pct = inside<{0, 100}, clamp | round_toward_zero>;
 pct p{50};
-p += 30_ins;     // 80
-p *= 2_ins;      // 100: clamped
+p += 30;         // 80
+p *= 2;          // 100: clamped
 p /= 3_ins;      // 33: 100/3, rounded toward zero
 ++p;             // 34: one notch up
 ```
 
-The right-hand side is an inside (`p += 0.5_ins`, `p += just<1, 2>`), never a
-plain `int`, `double` or `rational`: like the binary operators, a compound
-assignment needs a grid on both sides. `++` and `--` move one notch: ±1/4 on
+`+=`, `-=` and `*=` also take a builtin integer, a literal or a variable:
+`p += 30`, `p *= 2`, `p -= n`. The result has a type, `p`'s, so the integer
+needs no grid of its own; it counts as an inside on the whole range of its
+type, and the store back follows the same rules (a `clamp` or `wrap` type
+takes it, a checked one names a channel: `x.policy(ec) += n`). Everything
+else on the right is an inside (`p += 0.5_ins`, `p /= 3_ins`), never a
+`double` or a `rational`, and a division takes no builtin integer, whose
+range holds 0. `++` and `--` move one notch: ±1/4 on
 `inside<{{0, 2}, per<4>}>`.
 
 ## Results that are `std::expected`
