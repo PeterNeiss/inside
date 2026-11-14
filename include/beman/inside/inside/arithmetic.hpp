@@ -822,6 +822,70 @@ BEMAN_INSIDE_NO_SCALAR(%)
 #undef BEMAN_INSIDE_NO_SCALAR
 #undef BEMAN_INSIDE_SCALAR_MSG
 
+// The exception: `x += n`, `x -= n`, `x *= n` with a builtin integer. The
+// result has a type, x's, so n needs none of its own: it steps as the inside
+// on its type's range (policy_ref.hpp lifted_t), and the result is stored
+// back by the rules of every compound assignment - a clamp or wrap type
+// takes it, a checked one names a channel (x.policy(ec) += n). A division
+// stays with insides: a builtin integer's range holds 0.
+#define BEMAN_INSIDE_STEP_MSG                                                                              \
+    "inside: x op= n stores the result back into x, which the grids cannot prove for a builtin integer - " \
+    "use a clamp or wrap type, report with x.policy(ec) op= n or x.on_error(f) op= n, or opt out with unsafe"
+#define BEMAN_INSIDE_INTEGER_STEP(op)                                                                \
+    template <insidable B, detail::builtin_arithmetic A>                                             \
+        requires detail::step_integer<A>                                                             \
+    void operator op(B&, A) = delete (BEMAN_INSIDE_STEP_MSG);                                        \
+    template <insidable B, detail::builtin_arithmetic A>                                             \
+        requires detail::step_integer<A> && requires(B& b, const detail::lifted_t<A>& v) { b op v; } \
+    constexpr B& operator op(B& b, A a) {                                                            \
+        return b op detail::lift_integer(a);                                                         \
+    }
+
+BEMAN_INSIDE_INTEGER_STEP(+=)
+BEMAN_INSIDE_INTEGER_STEP(-=)
+BEMAN_INSIDE_INTEGER_STEP(*=)
+#undef BEMAN_INSIDE_INTEGER_STEP
+#undef BEMAN_INSIDE_STEP_MSG
+
+// An index converts to the builtin integers (core.hpp), which a builtin
+// operator would take: the bit and shift operators, and a compound
+// assignment into a builtin number, would leave the grid without a word.
+// Deleted, with the spelling that says so. (Subscripts and pointer
+// arithmetic stay: they are what an index is for.)
+#define BEMAN_INSIDE_BUILTIN_MSG                                                                        \
+    "an inside takes no builtin integer operator: read the value into the builtin type first (int n = " \
+    "x; or x.to<T>()), or keep the arithmetic on insides"
+#define BEMAN_INSIDE_NO_BUILTIN(op)                                           \
+    template <insidable B, class A>                                           \
+        requires detail::builtin_arithmetic<A> || insidable<A>                \
+    void operator op(B const&, A const&) = delete (BEMAN_INSIDE_BUILTIN_MSG); \
+    template <detail::builtin_arithmetic A, insidable B>                      \
+    void operator op(A, B const&) = delete (BEMAN_INSIDE_BUILTIN_MSG);
+#define BEMAN_INSIDE_NO_BUILTIN_ASSIGN(op)               \
+    template <detail::builtin_arithmetic A, insidable B> \
+    void operator op(A&, B const&) = delete (BEMAN_INSIDE_BUILTIN_MSG);
+
+BEMAN_INSIDE_NO_BUILTIN(&)
+BEMAN_INSIDE_NO_BUILTIN(|)
+BEMAN_INSIDE_NO_BUILTIN(^)
+BEMAN_INSIDE_NO_BUILTIN(<<)
+BEMAN_INSIDE_NO_BUILTIN(>>)
+BEMAN_INSIDE_NO_BUILTIN_ASSIGN(+=)
+BEMAN_INSIDE_NO_BUILTIN_ASSIGN(-=)
+BEMAN_INSIDE_NO_BUILTIN_ASSIGN(*=)
+BEMAN_INSIDE_NO_BUILTIN_ASSIGN(/=)
+BEMAN_INSIDE_NO_BUILTIN_ASSIGN(%=)
+BEMAN_INSIDE_NO_BUILTIN_ASSIGN(&=)
+BEMAN_INSIDE_NO_BUILTIN_ASSIGN(|=)
+BEMAN_INSIDE_NO_BUILTIN_ASSIGN(^=)
+BEMAN_INSIDE_NO_BUILTIN_ASSIGN(<<=)
+BEMAN_INSIDE_NO_BUILTIN_ASSIGN(>>=)
+template <insidable B>
+void operator~(const B&) = delete (BEMAN_INSIDE_BUILTIN_MSG);
+#undef BEMAN_INSIDE_NO_BUILTIN
+#undef BEMAN_INSIDE_NO_BUILTIN_ASSIGN
+#undef BEMAN_INSIDE_BUILTIN_MSG
+
 // An inside with a rational: through the implicit operator rational() it
 // would become rational arithmetic, an expected<rational, errc> without a
 // grid. Deleted, with the spelling that keeps the grid; so are the compound

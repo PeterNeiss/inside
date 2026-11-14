@@ -174,7 +174,7 @@ Each operation reports through one channel:
 | `try_make`, `parse`, `to<T>()` where it can fail | the returned `std::expected` |
 | `/` and `%` by a grid that holds 0 | the returned `std::expected` |
 | a named output that can miss: `mul<Out>`, `div<Out>`, `sum<T>`, `checked_cast<T>`, `value_cast`, `from_index`, `f<Out>(x)`, mdspan `sum`/`dot`/`matrix_product`/`transform_into` | the returned `std::expected` (`expected<void, errc>` for the mdspan writers) |
-| a precondition: a cursor stepped past its end, an mdspan index past a dynamic extent, a raw read off the grid | the error handler |
+| a precondition: a cursor stepped past its end, a raw read off the grid | the error handler |
 
 `as<T>()` compiles only where the conversion is total; `to<T>()` is its
 `expected` form. A named math output over grids whose range the library does
@@ -194,8 +194,8 @@ yourself does.
 
 ## The error handler
 
-A precondition that no channel can take (a cursor stepped past its end, an
-mdspan index past a dynamic extent, a raw value read off the grid) goes
+A precondition that no channel can take (a cursor stepped past its end, a
+raw value read off the grid) goes
 through one handler. By default it writes `beman::inside: <message>` to
 `stderr` and calls `std::abort()`; a freestanding build traps.
 `set_error_handler` installs your own:

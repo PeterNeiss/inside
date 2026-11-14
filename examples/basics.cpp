@@ -7,6 +7,7 @@
 //      so `arr[i]` is in range.
 // The default policy, `checked`, reports instead; errors.cpp shows how.
 
+#include <array>
 #include <iostream>
 
 #include <beman/inside/inside.hpp>
@@ -37,8 +38,8 @@ struct rgb {
 int main() {
     // 1. clamp.
     using pct      = inside<{0, 100}, clamp>;
-    pct brightness = 120;   // 100
-    brightness += -200_ins; // 0
+    pct brightness = 120; // 100
+    brightness -= 200;    // 0: a plain integer steps a clamp type
     std::cout << "brightness " << brightness << "\n";
     inside<{0, 100}> strict{50};  // checked by default …
     strict.policy<clamp>() = 200; // … clamped for this one store
@@ -65,17 +66,17 @@ int main() {
         return 1;
 
     // 3. Bounded loops.
-    const int arr[] = {10, 20, 30, 40, 50, 60, 70, 80, 90, 100};
-    using idx       = inside<{0, 9}>;
+    const std::array arr{10, 20, 30, 40, 50, 60, 70, 80, 90, 100};
+    using idx = inside<{0, 9}>; // an index: arr takes it as it is
     std::cout << "from 5, wrapping:";
     for (idx i : inside_range<grid_of<idx>>{5})
-        std::cout << ' ' << arr[i.as<std::size_t>()];
+        std::cout << ' ' << arr[i];
     std::cout << "\nevery index:     ";
     for (idx i : values<idx>)
-        std::cout << ' ' << arr[i.as<std::size_t>()];
+        std::cout << ' ' << arr[i];
     std::cout << "\nevery third:     ";
     for (cursor<idx, 3> i; i != end(i); ++i)
-        std::cout << ' ' << arr[(*i).as<std::size_t>()];
+        std::cout << ' ' << arr[idx{*i}];
     std::cout << "\n";
     return 0;
 }

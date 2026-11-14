@@ -52,10 +52,8 @@ conversion_loses<pct>(150);       // true: either of the two
 | `x.index()` | the notch index, an `index_t<T>`; `T::from_index(i)` goes back |
 | `rational r = x;` | the exact value as a 64-bit fraction, where it fits one |
 
-An inside has no implicit conversion to an integer: `int i = x;` would narrow
-silently. `as<T>()` compiles where `T` holds the whole grid, so it has
-nothing to check and an index costs nothing: `v[x.as<std::size_t>()]`.
-Elsewhere `to<T>()` returns a `std::expected`. `T::from_index(i)` is a plain
+`as<T>()` compiles where `T` holds the whole grid, so it has nothing to
+check. Elsewhere `to<T>()` returns a `std::expected`. `T::from_index(i)` is a plain
 `T` where every value of `i` is an index of `T`, else an expected.
 
 A fraction into an integer type needs permission to round, as a store does:
@@ -64,6 +62,36 @@ is 2. A `float` or `double` result is rounded once from the exact value.
 
 `as` and `to` are free functions too, `as<T>(x)` and `to<T>(x)`, which spares
 generic code the `x.template as<T>()` spelling.
+
+## Indices
+
+One conversion is implicit: an index, an inside whose every value is a
+non-negative integer, converts to the builtin integers. A container takes it
+as it is:
+
+```cpp
+using row = inside<{0, 479}>;
+std::array<int, 480> a{};
+row r = 17;
+a[r] = 1;       // also std::vector, std::span, std::mdspan, a builtin array
+```
+
+- The target is any builtin integer type that holds the whole grid. A
+  smaller one, `bool`, a character and a floating type do not compile:
+  nothing narrows, and `int n = x;` loses nothing.
+- The grid need not start at 0: `inside<{3, 11}>` names the positions 3 to
+  11 of a larger array. A grid with a negative or fractional value is no
+  index (`x.to<T>()` reads it), and neither is a cursor, whose end lies one
+  past the last index.
+- No builtin operator takes an index except the subscript and the pointer
+  arithmetic behind it: `n + x`, `n += x`, `x << 2`, `x & 1` and `if (x)` do
+  not compile, so the arithmetic stays on insides.
+- The index type is the proof of the bounds, so give a container the extent
+  its index reaches. A result is an index where its grid is: `a[r + 1_ins]`
+  compiles, and reaches 480. Store it into the index type first where that
+  matters, by its policy: `row{r + 1_ins, clamp}`.
+  [mdspan](../advanced/mdspan.md) builds extents from index types and
+  checks an index type against an extent.
 
 ## Comparing
 

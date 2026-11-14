@@ -35,7 +35,7 @@ void show(std::string_view label, R&& r) {
 
 int main() {
     // 1. values<T> in a pipeline.
-    using digit = inside<{0, 9}>;
+    using digit = inside<{0, 9}>; // an index: a container takes it as it is
     static_assert(rng::random_access_range<decltype(values<digit>)>);
     static_assert(rng::sized_range<decltype(values<digit>)>);
 
@@ -53,7 +53,7 @@ int main() {
 
     // Index another container: every index is in range by construction.
     constexpr std::array<char, values<digit>.size()> names{'z', 'o', 't', 't', 'f', 'f', 's', 's', 'e', 'n'};
-    show("initials:    ", values<digit> | views::transform([&](digit d) { return names[d.as<std::size_t>()]; }));
+    show("initials:    ", values<digit> | views::transform([&](digit d) { return names[d]; }));
 
     // 2. Bisect a grid: the first tenth of a degree Celsius past 212 ℉, in 11
     //    exact comparisons out of 2001 values. Each value is a ℃ point, and
@@ -80,8 +80,7 @@ int main() {
     using slot = inside<{0, 7}>;
     const std::array<char, values<slot>.size()> ring{'i', 'j', 'c', 'd', 'e', 'f', 'g', 'h'};
     const slot                                  head{2};
-    show("oldest first:",
-         inside_range<grid_of<slot>>{head} | views::transform([&](slot s) { return ring[s.as<std::size_t>()]; }));
+    show("oldest first:", inside_range<grid_of<slot>>{head} | views::transform([&](slot s) { return ring[s]; }));
 
     // 4. A cursor and its end as a view: the quarter hours of a day, 0 through
     //    1440 with both ends, and the ones in office hours.

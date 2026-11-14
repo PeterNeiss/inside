@@ -265,7 +265,7 @@ A store that reaches step 4 at run time does not compile: the constructors
 and assignments are gated by `detail::store_proven` (`inside/generic.hpp`),
 so a store the grids cannot prove names a channel, or its source is a
 constant checked while compiling (a `consteval` constructor). Only
-preconditions (a cursor past its end, an mdspan index past a dynamic extent)
+preconditions (a cursor past its end, a raw read off the grid)
 reach the replaceable error handler
 ([Hooks and errors](advanced/hooks-and-errors.md#the-error-handler)), which
 prints and aborts by default, or traps freestanding. Nothing throws at run

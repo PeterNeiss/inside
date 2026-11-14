@@ -20,17 +20,20 @@
 //---------------------------------------------------------------------------
 // std::mdspan with insides (opt-in: include this header).
 //
-//   extents_of<I, J>            std::extents from index types: inside<{0, 479}>
-//                               is an extent of 480
-//   extent_index_t<E, r>        inside<{0, N − 1}> for E's static extent N at rank r
+//   m[i, j]                    a std::mdspan takes an inside on non-negative
+//                               integers as it is (inside<{0, 479}>): an index
+//                               converts to its value. A value that may lie
+//                               past an edge is stored into the index type
+//                               first, by its policy (clamp pads at the
+//                               edges, wrap is periodic)
+//   extents_of<I, J>            std::extents from index types: the extent of
+//                               inside<{0, 479}> is 480 (Upper + 1)
+//   extent_index_t<E, r>        inside<{0, N − 1}> for E's static extent N at
+//                               rank r
+//   index_for<I, E, r>          I is an index whose every value lies within
+//                               E's static extent at rank r
 //   indices(m)                  every index tuple, the last index fastest; a
 //                               static rank yields extent_index_t insides
-//   inside_mdspan<T, E, L, A>   a std::mdspan that also takes inside indices:
-//                               one whose grid lies within a static extent
-//                               needs no check; any other is held to the
-//                               extent by its own policy (clamp pads at the
-//                               edges, wrap is periodic, checked reports
-//                               overflow, unsafe trusts it)
 //   value_accessor<E, T>        E's numbers stored as values of T (a double
 //                               or int16_t buffer), read by E's policy
 //   raw_accessor<E, R>          E's numbers stored as their raws (fixed-point
@@ -49,11 +52,10 @@
 //---------------------------------------------------------------------------
 namespace beman::inside {
 namespace detail {
-// An index type: an inside on 0, 1, …, N − 1 (or the point 0).
+// An index type: an inside that converts to std::size_t - every value a
+// non-negative integer (core.hpp index_converts).
 template <class I>
-concept index_inside =
-    insidable<I> && integer_lattice<I> && lower_of<I> == 0 && (notch_of<I> == 1 || upper_of<I> == 0) &&
-    upper_of<I> < grid_rational{std::numeric_limits<std::int64_t>::max()};
+concept index_inside = insidable<I> && index_converts<I, std::size_t>;
 
 template <class I>
 inline constexpr std::size_t extent_of_index = [] {
@@ -66,7 +68,7 @@ inline constexpr std::size_t extent_of_index = [] {
 template <class... Is>
 struct extents_of_impl {
     static_assert((index_inside<Is> && ...),
-                  "extents_of<I...>: each I is an index type - an inside on 0, 1, ..., N - 1 (inside<{0, 479}>)");
+                  "extents_of<I...>: each I is an index type - an inside on non-negative integers (inside<{0, 479}>)");
     using type = std::extents<std::size_t, extent_of_index<Is>...>;
 };
 
@@ -86,7 +88,8 @@ template <class T, class E, class L, class A>
 inline constexpr bool is_mdspan_v<std::mdspan<T, E, L, A>> = true;
 } // namespace detail
 
-// The extents whose indices are the index types Is.
+// The extents whose indices are the index types Is: each extent is the
+// index's Upper + 1, the smallest that every value of it indexes.
 template <class... Is>
 using extents_of = typename detail::extents_of_impl<Is...>::type;
 
@@ -96,7 +99,16 @@ template <class E, std::size_t R>
                  (E::static_extent(R) > 0)
 using extent_index_t = inside<detail::index_range_grid(E::static_extent(R))>;
 
-// Any std::mdspan, and so an inside_mdspan, which derives from one.
+// I indexes rank R of E within bounds, proven by the types: I is an index
+// and its Upper lies below E's static extent (a dynamic extent proves
+// nothing). `static_assert(index_for<row, image::extents_type, 0>)`, or a
+// constraint on a function that takes indices.
+template <class I, class E, std::size_t R>
+concept index_for =
+    detail::index_inside<I> && detail::is_extents_v<E> && (R < E::rank()) &&
+    (E::static_extent(R) != std::dynamic_extent) && (upper_of<I> < detail::grid_rational{E::static_extent(R)});
+
+// Any std::mdspan (or a type derived from one).
 template <class M>
 concept mdspan_like =
     requires(const M& m) { []<class T, class E, class L, class A>(const std::mdspan<T, E, L, A>&) {}(m); };
@@ -120,7 +132,7 @@ constexpr auto rank_indices(const E& e) {
 
 // Every index tuple of e, the last index fastest (layout_right's order):
 // `for (auto [i, j] : indices(m))`. A static rank yields its extent_index_t,
-// so indexing an inside_mdspan with them needs no check.
+// which indexes m within bounds by its type.
 template <class I, std::size_t... Ns>
 [[nodiscard]] constexpr auto indices(const std::extents<I, Ns...>& e) {
     using E = std::extents<I, Ns...>;
@@ -132,112 +144,6 @@ template <class T, class E, class L, class A>
 [[nodiscard]] constexpr auto indices(const std::mdspan<T, E, L, A>& m) {
     return indices(m.extents());
 }
-
-//---------------------------------------------------------------------------
-// inside_mdspan
-//---------------------------------------------------------------------------
-namespace detail {
-// An index argument: a builtin integer (std semantics), or an inside on the
-// integers whose values fit int64.
-template <class I>
-concept span_index = std::integral<I> || (insidable<I> && integer_lattice<I> && values_fit_int64<I>);
-
-// The index at rank R of e for i: an integer as is; an inside proven within
-// a static extent as its value; any other inside held to [0, extent − 1] by
-// its policy.
-template <std::size_t R, class E, class I>
-constexpr typename E::index_type extent_index(const E& e, const I& i) {
-    using index_type = typename E::index_type;
-    if constexpr (std::integral<I>)
-        return static_cast<index_type>(i);
-    else {
-        constexpr std::size_t S = E::static_extent(R);
-        if constexpr (S != std::dynamic_extent && S > 0 && lower_of<I> >= 0 && upper_of<I> <= grid_rational{S - 1})
-            return static_cast<index_type>(to_value(i));
-        else {
-            const std::int64_t v = to_value(i);
-            const std::int64_t n = static_cast<std::int64_t>(e.extent(R));
-            if (v >= 0 && v < n) [[likely]]
-                return static_cast<index_type>(v);
-            if constexpr (has_flag(flags_of<I>, unsafe))
-                return static_cast<index_type>(v);
-            else {
-                if constexpr (has_flag(flags_of<I>, clamp)) {
-                    if (n > 0)
-                        return static_cast<index_type>(v < 0 ? 0 : n - 1);
-                } else if constexpr (has_flag(flags_of<I>, wrap)) {
-                    if (n > 0) {
-                        const std::int64_t r = v % n;
-                        return static_cast<index_type>(r < 0 ? r + n : r);
-                    }
-                }
-                raise(errc::overflow, "inside_mdspan: an index past the extent");
-            }
-        }
-    }
-}
-} // namespace detail
-
-template <class T, class Extents, class Layout = std::layout_right, class Accessor = std::default_accessor<T>>
-class inside_mdspan : public std::mdspan<T, Extents, Layout, Accessor> {
-    using base = std::mdspan<T, Extents, Layout, Accessor>;
-
-  public:
-    using typename base::accessor_type;
-    using typename base::data_handle_type;
-    using typename base::element_type;
-    using typename base::extents_type;
-    using typename base::index_type;
-    using typename base::layout_type;
-    using typename base::mapping_type;
-    using typename base::reference;
-    using typename base::value_type;
-
-    using base::base;
-    constexpr inside_mdspan() = default;
-    constexpr inside_mdspan(const base& m) : base(m) {}
-
-    // Builtin integer indices: std::mdspan's (a precondition, no check).
-    using base::operator[];
-
-    // Inside indices (builtin integers may mix in): proven within a static
-    // extent, no check; else held to the extent by each index's policy.
-    template <class... Is>
-        requires(sizeof...(Is) == Extents::rank()) && (insidable<Is> || ...) && (detail::span_index<Is> && ...)
-    [[nodiscard]] constexpr reference operator[](const Is&... is) const {
-        return [&]<std::size_t... R>(std::index_sequence<R...>) -> reference {
-            return base::operator[](detail::extent_index<R>(this->extents(), is)...);
-        }(std::index_sequence_for<Is...>{});
-    }
-#define BEMAN_INSIDE_WHY_span_index \
-    "inside_mdspan: an index is a builtin integer or an inside on the integers within int64"
-    template <class... Is>
-        requires(sizeof...(Is) == Extents::rank()) && (insidable<Is> || ...) && (!(detail::span_index<Is> && ...)) &&
-                    ((insidable<Is> || std::integral<Is>) && ...)
-    reference operator[](const Is&...) const = delete (BEMAN_INSIDE_WHY_span_index);
-#undef BEMAN_INSIDE_WHY_span_index
-};
-
-template <class ElementType, class... Integrals>
-    requires(std::is_convertible_v<Integrals, std::size_t> && ...) && (sizeof...(Integrals) > 0)
-explicit inside_mdspan(ElementType*, Integrals...)
-    -> inside_mdspan<ElementType, std::dextents<std::size_t, sizeof...(Integrals)>>;
-template <class ElementType, class IndexType, std::size_t... Ns>
-inside_mdspan(ElementType*, const std::extents<IndexType, Ns...>&)
-    -> inside_mdspan<ElementType, std::extents<IndexType, Ns...>>;
-template <class ElementType, class Mapping>
-    requires requires { typename Mapping::layout_type; }
-inside_mdspan(ElementType*, const Mapping&)
-    -> inside_mdspan<ElementType, typename Mapping::extents_type, typename Mapping::layout_type>;
-template <class Mapping, class Accessor>
-inside_mdspan(const typename Accessor::data_handle_type&, const Mapping&, const Accessor&)
-    -> inside_mdspan<typename Accessor::element_type,
-                     typename Mapping::extents_type,
-                     typename Mapping::layout_type,
-                     Accessor>;
-// (By value: a prvalue mdspan, such as submdspan's, deduces too.)
-template <class T, class E, class L, class A>
-inside_mdspan(std::mdspan<T, E, L, A>) -> inside_mdspan<T, E, L, A>;
 
 //---------------------------------------------------------------------------
 // Accessors: E (an inside, or a quantity with units/mdspan.hpp) viewed over

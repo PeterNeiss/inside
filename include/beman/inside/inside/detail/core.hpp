@@ -50,6 +50,19 @@ template <grid G, policy_flag P>
 using cursor_value_t =
     inside<grid{interval{G.Interval.Lower, G.Interval.Upper - G.Notch}, G.Notch}, P & ~cursor_marker>;
 
+// (index_integer, the builtin integers an index converts to: policy_ref.hpp.)
+
+// B converts implicitly to the builtin integer T: B is an index - every
+// value a non-negative integer (storage.hpp index_shaped), and no cursor,
+// whose end is one past the last index - and T holds its whole grid.
+template <class B, class T>
+inline constexpr bool index_converts = false;
+template <insidable B, index_integer T>
+inline constexpr bool index_converts<B, T> =
+    index_shaped<grid_of<B>> && !has_flag(flags_of<B>, cursor_marker) && values_fit_int64<B> &&
+    !(lower_of<B> < grid_rational{std::numeric_limits<T>::min()}) &&
+    !(upper_of<B> > grid_rational{std::numeric_limits<T>::max()});
+
 // The number a type steps over in cursor<T>, values<T> and end(t): an inside
 // itself, or a quantity's number (units specializes it); rebind<N> wraps a
 // number N back into the type's kind, and make(n) is that value.
@@ -397,6 +410,10 @@ struct inside {
     // asserts `r` is a valid slot. Entry point for tests, fast paths, and same-grid
     // raw transfer.
     [[nodiscard]] static constexpr inside from_raw(raw_type r) noexcept { return inside{detail::raw_tag{}, r}; }
+    // (An inside is no raw: an index would convert to its value and be read as one.)
+    template <insidable X>
+    static inside from_raw(const X&) = delete ("from_raw takes a raw, not an inside: store the inside (T{x}), or "
+                                               "pass its raw (T::from_raw(x.raw()))");
 
     // Conversion summary:
     //   operator rational — implicit; lossless and exact.
@@ -411,7 +428,30 @@ struct inside {
     //   to<T>(b)/as<T>(b) — free-function forms, for generic code.
     // No implicit integer conversion: it would narrow silently into a smaller
     // built-in (`int i = b;`, `unsigned char c = b;`), the range escaping
-    // the type.
+    // the type. The exception is an index, an inside whose every value is a
+    // non-negative integer (inside<{0, 479}>, inside<{3, 11}>): it converts
+    // to each builtin integer that holds its whole grid, which is what
+    // std::mdspan, std::array, std::span, std::vector and builtin arrays ask
+    // of an index (`m[i, j]`, `a[i]`). Never narrowing, and never to bool, a
+    // character or a floating type: those are deleted, as they would
+    // otherwise follow from the integer by a standard conversion.
+    // (std::size_t is no template: a builtin subscript takes no other.)
+    constexpr operator std::size_t() const noexcept
+        requires(detail::index_converts<inside, std::size_t>)
+    {
+        return static_cast<std::size_t>(detail::to_value(*this));
+    }
+    template <detail::index_integer T>
+        requires(!std::same_as<T, std::size_t> && detail::index_converts<inside, T>)
+    constexpr operator T() const noexcept {
+        return static_cast<T>(detail::to_value(*this));
+    }
+    template <class T>
+        requires(std::is_arithmetic_v<T> && detail::index_converts<inside, std::size_t> &&
+                 !detail::index_converts<inside, T>)
+    operator T() const = delete ("inside: an index converts to the builtin integers that hold its whole grid - "
+                                 "not to a smaller one, bool, a character or a floating type (x.to<T>(), x != 0)");
+
     constexpr explicit operator double() const
         requires(has_flag(P, detail::snap))
     {

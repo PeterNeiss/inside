@@ -51,8 +51,7 @@ work unchanged: neither header uses floating point.
 A store the grids cannot prove names its channel or does not compile, so an
 out-of-range store, a division by zero, a rounding mismatch or a non-finite
 input is a value the program reads. What is left is a broken precondition (a
-cursor stepped past its end, an mdspan index past a dynamic extent, a raw read
-off the grid): it goes through `beman::inside::detail::raise`, which calls the
+cursor stepped past its end, a raw read off the grid): it goes through `beman::inside::detail::raise`, which calls the
 installed handler. The **default** handler prints the message and calls
 `std::abort()` on a hosted build, and **traps** on a freestanding one.
 `<stdexcept>` is included only with exceptions on, for the compile-time

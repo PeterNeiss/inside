@@ -27,7 +27,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   | `mul<Out>`, `div<Out>`, `sum<T>`, `value_cast`, `quantity`'s `sum`, `T::from_index(i)`, `math::fn<Out>(x)` returned `Out` | `Out` where proven (or under `clamp`/`wrap`), else `std::expected<Out, errc>` |
   | `matrix_product`, `matrix_vector_product`, `transform_into` returned `void` | `void` where proven, else `std::expected<void, errc>` |
   | `catch (inside_error&)` | the channels above; `inside_error` is only the compile-time diagnostic |
-  | the default handler threw `inside_error` | it prints `beman::inside: <message>` and aborts (traps freestanding); preconditions only reach it: a cursor past its end, an mdspan index past a dynamic extent, a raw read off the grid |
+  | the default handler threw `inside_error` | it prints `beman::inside: <message>` and aborts (traps freestanding); preconditions only reach it: a cursor past its end, a raw read off the grid |
   | `std::accumulate(…, T{0})` into a checked `T` | `sum<T>(r)`, or an accumulator type with `clamp` |
   | `math::pow<C>(b, e)` with a base grid reaching 0 into a checked `C` | `C` with `clamp` or `wrap` (no range is bounded there) |
 
@@ -54,6 +54,17 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   in another unit does not compile. Each old form is a deleted overload whose
   message names the new one.
 
+- `inside_mdspan` is gone: a `std::mdspan` takes inside indices itself,
+  through the new implicit conversion of an index (below).
+
+  | Before | Now |
+  |---|---|
+  | `inside_mdspan<T, E, L, A>`, `inside_mdspan{m}` | `std::mdspan<T, E, L, A>`, `m` |
+  | `m[r + dr, c + dc]`, held to the extent by the policy of `r + dr` | `m[row{r + dr}, col{c + dc}]`: stored into the index type, by its policy (`clamp` pads, `wrap` is periodic) |
+  | an inside index past a dynamic extent reported `errc::overflow` to the handler | `std::mdspan`'s precondition (libstdc++ checks it with `_GLIBCXX_ASSERTIONS`) |
+  | `v[x.as<std::size_t>()]` | `v[x]` (the old form still compiles) |
+  | `b ? x : 0` for an inside `x` on non-negative integers | `b ? x : 0_ins`: the plain form is ambiguous now |
+
 - Every math function has one call shape, and no `_into` name is left. The
   output is deduced unless the call names what it chooses:
 
@@ -76,6 +87,24 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Added
 
+- An index converts implicitly: an inside whose every value is a
+  non-negative integer converts to each builtin integer type that holds its
+  whole grid, so `std::mdspan` (indexing, `submdspan` slices, extents),
+  `std::array`, `std::span`, `std::vector` and builtin arrays take it as it
+  is (`a[i]`, `m[i, j]`, `int n = i`). Nothing narrows, and nothing converts
+  to `bool`, a character or a floating type. No builtin operator takes an
+  index except the subscript and pointer arithmetic: the bit and shift
+  operators and a compound assignment into a builtin number are deleted. A
+  grid with a negative or fractional value, and a cursor, do not convert.
+- `x += n`, `x -= n`, `x *= n` take a builtin integer, a literal or a
+  variable (`brightness += 10`), also through `x.policy(...)` and the hooks.
+  The integer counts as an inside on the range of its type; the store back
+  follows the rules of every compound assignment.
+- `index_for<I, E, r>`: the index type I lies within the static extent of E
+  at rank r, as a concept for a `static_assert` or a function's constraint.
+  `extents_of<I...>` takes any index type; an extent is the index's Upper + 1.
+- `T::from_raw(x)` of an inside `x` is a deleted overload with a reason: an
+  inside is no raw.
 - Geometric algebra on the units (opt-in `<beman/inside/units/geoalg.hpp>`).
   A `basis_vector` is a base dimension of your own and its unit; you state its
   square (+1, -1 or 0), and two different ones anticommute, so G(p, q, r) of
