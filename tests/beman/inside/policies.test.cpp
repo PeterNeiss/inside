@@ -271,7 +271,7 @@ TEST(PolicyActionsTest, compound_store_failure_reaches_on_error) {
 }
 
 // free-fn div with beman::inside::error& sets ec on div/0 / success path leaves ec clear
-TEST(PolicyActionsTest, free_fn_div_with_beman_inside_errc_sets_ec_on_div_0__success_path_leaves_ec_clear) {
+TEST(PolicyActionsTest, free_fn_div_with_beman_inside_error_sets_ec_on_div_0__success_path_leaves_ec_clear) {
     using c100 = inside<{0, 100}, checked>;
     beman::inside::error ec{};
     auto                 q = div(c100{10}, c100{0}, ec);
@@ -288,7 +288,7 @@ TEST(PolicyActionsTest, free_fn_div_with_beman_inside_errc_sets_ec_on_div_0__suc
 }
 
 // free-fn mod with beman::inside::error& sets ec on div/0
-TEST(PolicyActionsTest, free_fn_mod_with_beman_inside_errc_sets_ec_on_div_0) {
+TEST(PolicyActionsTest, free_fn_mod_with_beman_inside_error_sets_ec_on_div_0) {
     using u100ic = inside<{0, 100}, checked | round_toward_zero>;
     beman::inside::error ec{};
     auto                 m = mod(u100ic{7}, u100ic{0}, ec);
@@ -297,7 +297,7 @@ TEST(PolicyActionsTest, free_fn_mod_with_beman_inside_errc_sets_ec_on_div_0) {
 }
 
 // free-fn add with beman::inside::error& compiles and clears on success
-TEST(PolicyActionsTest, free_fn_add_with_beman_inside_errc_compiles_and_clears_on_success) {
+TEST(PolicyActionsTest, free_fn_add_with_beman_inside_error_compiles_and_clears_on_success) {
     using c100 = inside<{0, 100}, checked>;
     beman::inside::error ec{};
     auto                 sum = add(c100{40}, c100{50}, ec);
@@ -622,7 +622,7 @@ TEST(PolicyHandleTest, round_toward_zero_float_rhs_not_on_notch) {
 // policy<round_half_away> (round half away)
 //---------------------------------------------------------------------------
 // policy<round_half_away>: float rhs
-TEST(PolicyHandleTest, round_nearest_float_rhs) {
+TEST(PolicyHandleTest, round_half_away_float_rhs) {
     using coarse = inside<{{0, 10}, 2}>;
     coarse c{0};
 
@@ -644,7 +644,7 @@ TEST(PolicyHandleTest, round_nearest_float_rhs) {
 }
 
 // policy<round_half_away>: inside rhs incompatible notches
-TEST(PolicyHandleTest, round_nearest_inside_rhs_incompatible_notches) {
+TEST(PolicyHandleTest, round_half_away_inside_rhs_incompatible_notches) {
     using coarse = inside<{{0, 10}, 2}>;
     using fine   = inside<{{0, 10}, 1}>;
 
@@ -661,7 +661,7 @@ TEST(PolicyHandleTest, round_nearest_inside_rhs_incompatible_notches) {
 // policy<round_toward_zero> vs policy<round_half_away> divergence
 //---------------------------------------------------------------------------
 // policy<round_toward_zero> vs policy<round_half_away> disagree on halfway
-TEST(PolicyHandleTest, round_toward_zero_and_round_nearest_differ_on_a_tie) {
+TEST(PolicyHandleTest, round_toward_zero_and_round_half_away_differ_on_a_tie) {
     using coarse = inside<{{0, 10}, 2}>;
     coarse c{0};
 
@@ -1065,7 +1065,7 @@ TEST(PolicyTest, on_error_sees_rounding_from_a_continuous_source) {
     EXPECT_EQ(w, 7);
 }
 
-TEST(PolicyTest, policy_handle_expected_sink_reports_into_errc) {
+TEST(PolicyTest, policy_handle_expected_sink_reports_into_error) {
     using ref = decltype(std::declval<inside<{0, 100}>&>().policy(std::declval<error&>()));
     static_assert(!stores_expected<ref, std::expected<rational, error>>);
     static_assert(stores_expected<ref, rational>);
@@ -1279,7 +1279,7 @@ TEST(PolicyTest, clamp_truncates_an_off_notch_value_in_range) {
 }
 
 // error_message stringifies every error
-TEST(PolicyTest, errc_message_stringifies_every_errc) {
+TEST(PolicyTest, error_message_stringifies_every_error) {
     ASSERT_EQ(std::string_view{error_message(error::domain_error)}, "argument outside the function's domain");
     ASSERT_EQ(std::string_view{error_message(error::division_by_zero)}, "division by zero");
     ASSERT_EQ(std::string_view{error_message(error::overflow)}, "value does not fit its range");

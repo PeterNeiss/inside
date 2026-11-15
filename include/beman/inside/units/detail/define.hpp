@@ -38,7 +38,7 @@ namespace beman::inside::units {
 //              its own (velocity: displacement / duration, under speed)
 struct kind_options {
     bool              distinct{false};
-    detail::spec_expr recipe{};
+    detail::kind_expr recipe{};
 };
 
 namespace detail {
@@ -49,12 +49,7 @@ struct definition {
     static constexpr T value{Name.view(), Args...};
 };
 
-template <symbol_text Sym, unit_options O, auto... Def>
-struct unit_holder {
-    static constexpr named_unit value{Sym.view(), Def..., O};
-};
-
-// What a unit is defined by, as named_unit takes it: a unit (si::joule /
+// What a unit is defined by, as unit_def takes it: a unit (si::joule /
 // si::second), a kind (the base unit of that kind), or the quantity it
 // equals (1.8288_ins * si::metre): its number times its unit.
 template <auto Def>
@@ -70,31 +65,33 @@ struct unit_definition<Def> {
     static constexpr auto value = mag<lower_of<typename Q::rep>> * unit_t<Q::unit>{};
 };
 
+// A kind's definition by its options (specializations, not a lambda: the
+// catalog declares some eighty kinds).
 template <symbol_text Name, kind_options O, auto Parent>
 struct kind_holder {
-    static constexpr quantity_spec value = [] {
-        if constexpr (requires { quantity_spec{Name.view(), Parent, O.recipe}; }) {
-            if (O.recipe.Recipe.Size != 0)
-                return quantity_spec{Name.view(), Parent, O.recipe};
-        }
-        if constexpr (requires { quantity_spec{Name.view(), Parent, is_kind}; }) {
-            if (O.distinct)
-                return quantity_spec{Name.view(), Parent, is_kind};
-        }
-        return quantity_spec{Name.view(), Parent};
-    }();
+    static constexpr kind_def value{Name.view(), Parent};
 };
-
-template <symbol_text Name>
-struct dimension_holder {
-    static constexpr base_dimension_def value{Name.view()};
+template <symbol_text Name, kind_options O, auto Parent>
+    requires(O.distinct && O.recipe.Recipe.Size == 0)
+struct kind_holder<Name, O, Parent> {
+    static constexpr kind_def value{Name.view(), Parent, distinct};
+};
+template <symbol_text Name, kind_options O, auto Parent>
+    requires(!O.distinct && O.recipe.Recipe.Size != 0)
+struct kind_holder<Name, O, Parent> {
+    static constexpr kind_def value{Name.view(), Parent, O.recipe};
+};
+template <symbol_text Name, kind_options O, auto Parent>
+    requires(O.distinct && O.recipe.Recipe.Size != 0)
+struct kind_holder<Name, O, Parent> {
+    static constexpr kind_def value{Name.view(), Parent, O.recipe, distinct};
 };
 
 // An origin is absolute (named by a kind or a dimension: the zero of that
 // dimension) or lies at a point of another origin.
 template <symbol_text Name, auto Def>
 struct origin_holder {
-    static constexpr point_origin value = [] {
+    static constexpr origin_def value = [] {
         if constexpr (requires { Def.quantity_from_origin(); }) {
             using P = decltype(Def);
             static_assert(static_cast<bool>(P::origin),
@@ -104,20 +101,15 @@ struct origin_holder {
             static_assert(lower_of<typename Q::rep> == upper_of<typename Q::rep>,
                           "units: an origin lies at a constant point - si::absolute_zero + 273.15_ins * si::kelvin");
             static_assert(magnitude_of(Q::unit).Pi == 0, "units: an origin's offset has no factor of pi");
-            return point_origin{Name.view(),
-                                dimension_of(Q::unit),
-                                absolute_of(P::origin),
-                                offset_of(P::origin) + lower_of<typename Q::rep> * magnitude_of(Q::unit).Ratio};
+            return origin_def{Name.view(),
+                              dimension_of(Q::unit),
+                              absolute_of(P::origin),
+                              offset_of(P::origin) + lower_of<typename Q::rep> * magnitude_of(Q::unit).Ratio};
         } else if constexpr (requires { dimension{Def}; })
-            return point_origin{Name.view(), dimension{Def}};
+            return origin_def{Name.view(), dimension{Def}};
         else
-            return point_origin{Name.view(), Def.value->Dim};
+            return origin_def{Name.view(), Def.value->Dim};
     }();
-};
-
-template <symbol_text Sym, int Square, unit_options O>
-struct basis_holder {
-    static constexpr basis_vector_def value{Sym.view(), Square, O};
 };
 } // namespace detail
 
@@ -125,17 +117,18 @@ struct basis_holder {
 // the quantity it equals (1.8288_ins * si::metre), another unit (si::joule /
 // si::second), or a kind, whose base unit it then is.
 template <detail::symbol_text Sym, auto Def, unit_options O = {}>
-inline constexpr auto unit = detail::unit_c<detail::unit_holder<Sym, O, detail::unit_definition<Def>::value>::value>;
+inline constexpr auto unit =
+    detail::unit_tag<detail::definition<detail::unit_def, Sym, detail::unit_definition<Def>::value, O>::value>;
 
 // kind<"name", parent, options>: a kind of quantity. The parent is a kind
 // (depth under length), a product of kinds (speed: length / duration) or a
 // dimension (a base quantity).
 template <detail::symbol_text Name, auto Parent, kind_options O = {}>
-inline constexpr auto kind = detail::spec_c<detail::kind_holder<Name, O, Parent>::value>;
+inline constexpr auto kind = detail::kind_tag<detail::kind_holder<Name, O, Parent>::value>;
 
 // base_dimension<"name">: a dimension of your own, which mixes with no other.
 template <detail::symbol_text Name>
-inline constexpr dimension base_dimension = dimension_of(detail::dimension_holder<Name>::value);
+inline constexpr dimension base_dimension = dimension_of(detail::definition<detail::base_dimension_def, Name>::value);
 
 // base_unit<"sym", "dimension">: a unit of something that mixes with nothing
 // else (money, pixels, counts): a new dimension, its kind, and this unit.
@@ -146,7 +139,7 @@ inline constexpr auto base_unit = unit<Sym, kind<Dimension, base_dimension<Dimen
 // named by a kind or a dimension; any other lies at a point of one:
 // origin<"ice point", si::absolute_zero + 273.15_ins * si::kelvin>.
 template <detail::symbol_text Name, auto Def>
-inline constexpr auto origin = detail::origin_c<detail::origin_holder<Name, Def>::value>;
+inline constexpr auto origin = detail::origin_tag<detail::origin_holder<Name, Def>::value>;
 
 // pi: the number π as a unit, exactly. A unit that is a multiple of π says
 // so, and conversions between such units stay exact:
@@ -175,7 +168,8 @@ template <insidable V>
 // basis_vector<"e₁", +1>: a basis vector of a geometric algebra, by its
 // square (+1, -1 or 0).
 template <detail::symbol_text Sym, int Square, unit_options O = {}>
-inline constexpr auto basis_vector = detail::unit_c<detail::basis_holder<Sym, Square, O>::value>;
+inline constexpr auto basis_vector =
+    detail::unit_tag<detail::definition<detail::basis_vector_def, Sym, Square, O>::value>;
 } // namespace beman::inside::units
 
 #endif // BEMAN_INSIDE_UNITS_DETAIL_DEFINE_HPP

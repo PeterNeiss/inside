@@ -508,7 +508,7 @@ bool reports_with(error expected, Fn&& fn) {
     return fn() == expected;
 }
 
-// As above, but accepts any of the listed errcs (the int64-probe stage and
+// As above, but accepts any of the listed errors (the int64-probe stage and
 // the post-probe narrowing stage may legitimately fire different codes).
 template <typename Fn>
 bool reports_with_any(std::initializer_list<error> codes, Fn&& fn) {

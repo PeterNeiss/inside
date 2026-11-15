@@ -154,25 +154,25 @@ consteval unit_value unit_root(const unit_value& u, int n) {
 }
 
 // The root of a reference's spec: its recipe's, when the exponents divide.
-consteval reference spec_root(const reference& a, int n, const unit_value& u) {
+consteval reference root_reference(const reference& a, int n, const unit_value& u) {
     if (is_generic(a))
         return reference{nullptr, false, {}, u};
-    const recipe f = a.Spec ? recipe_of(a.KindOf ? kind_root(a.Spec.P) : a.Spec.P) : a.Derived;
+    const recipe f = a.Kind ? recipe_of(a.KindOf ? kind_root(a.Kind.P) : a.Kind.P) : a.Derived;
     recipe       r{};
     for (std::int8_t i = 0; i < f.Size; ++i) {
         if (f.F[i].Exp % n != 0)
             return reference{nullptr, false, {}, u};
-        recipe_add(r, f.F[i].Spec, f.F[i].Exp / n);
+        recipe_add(r, f.F[i].Kind, f.F[i].Exp / n);
     }
     if (r.Size == 1 && r.F[0].Exp == 1)
-        return reference{r.F[0].Spec, a.KindOf, {}, u};
+        return reference{r.F[0].Kind, a.KindOf, {}, u};
     return reference{nullptr, a.KindOf, r, u};
 }
 
 template <reference R, int N>
 consteval reference root_reference() {
     const unit_value u = unit_root(R.U, N);
-    return spec_root(R, N, u);
+    return root_reference(R, N, u);
 }
 
 // An angle in radians: a dimensionless quantity of magnitude one.
@@ -220,7 +220,7 @@ template <auto U, insidable Out, reference R, class V>
     static_assert(dimension_of(u) == dimension_of(R.U), "units: value_cast - the unit has another dimension");
     static_assert(f.Pi == 1 || f.Pi == -1, "units: value_cast - only a factor of pi or 1/pi rounds");
     beman::inside::math::detail::entry::require_rounding<Out>();
-    constexpr reference to{R.Spec, R.KindOf, R.Derived, u};
+    constexpr reference to{R.Kind, R.KindOf, R.Derived, u};
     // The factor n/d in one limb when it is a 64-bit rational, else in as
     // many as it needs (ħ = h/2π in J·s).
     using beman::inside::detail::grid_int;

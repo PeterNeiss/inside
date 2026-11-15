@@ -446,7 +446,8 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 | `math/detail/tiers.hpp` | the `double` and double-double tiers: which kernel applies, the per-call error bound, the decision |
 | `math/detail/entry.hpp` | the engine's functions as tags in `math::detail::entry` (`exp_fn`, …): each one's domain, deduced output and evaluation onto a named output; the table, the unanchored grids |
 | `math/detail/functions.hpp` | the call forms of every math function (`f(x)`, `f<Spec…>(x)`, `f<C>(x)`, `f<C, D…>(x)`): output specs, the kinds of arguments (insides here, quantities in `units/math.hpp`, multivectors in `units/detail/geoalg_exp.hpp`), and the macro that declares a function's public templates |
-| `units/detail/algebra.hpp` | dimensions, magnitudes, quantity specs, point origins, units, named units, references, the exact unit conversion |
+| `units/detail/algebra.hpp` | dimensions, magnitudes, kinds, origins, units, their definition objects, references, the exact unit conversion |
+| `units/detail/define.hpp` | the declarations of your own: `unit`, `kind`, `base_dimension`, `base_unit`, `origin`, `basis_vector`, `pi` |
 | `units/detail/quantity.hpp` | `quantity<R, Rep>`: construction, arithmetic, casts, inside's algorithms on quantities |
 | `units/detail/point.hpp` | `quantity_point<R, O, Rep>`: points from an origin, their shifts and comparisons |
 
@@ -463,15 +464,15 @@ metaprogramming. Its parts are in `units/`: the algebra, `quantity` and
 catalog in `units/systems.hpp`.
 
 **Values, not type lists.** A dimension (seven SI exponents plus any number
-of `base_dimension`s, interned with `std::define_static_array` as big grid
+of base dimensions of your own, interned with `std::define_static_array` as big grid
 numbers are), a magnitude (an exact rational × π^k), a unit (up to six
 named-unit atoms, each with a decimal prefix and an exponent, plus a
-magnitude), a quantity spec and a reference are all structural values,
+magnitude), a kind and a reference are all structural values,
 combined by `consteval` functions. The names users write are empty tags whose
-type carries the value (`unit_t<V>`, `spec_t<P>`, `origin_t<P>`), so
+type carries the value (`unit_t<V>`, `kind_t<P>`, `origin_t<P>`), so
 `si::metre * si::second / si::second` is computed, not sorted, and m·s equals
 s·m. Identity is by content: a unit by its symbols, dimension, magnitude, kind
-and origin; a spec by its name, dimension, recipe, kind boundary and parent
+and origin; a kind by its name, dimension, recipe, kind boundary and parent
 chain. Optional pointers inside these values are `ref_or_none<T>` (a pointer
 and a flag), because some compilers do not fold `&obj == nullptr` in constant
 expressions.
@@ -486,11 +487,11 @@ at the bits the output needs.
 
 **The common unit.** `+`, `-`, `%` and the comparisons convert both operands
 to `sum_reference<A, B>()`, whose magnitude is the gcd of the two, then run
-inside's operator. The common spec is the nearest common ancestor in the ISQ
-tree. `*` and `/` combine units and specs with `product_reference<A, B, ±1>()`.
+inside's operator. The common kind is the nearest common ancestor in the ISQ
+tree. `*` and `/` combine units and kinds with `product_reference<A, B, ±1>()`.
 
 **Kinds.** `implicit_v<From, To>` decides implicit conversion: up the tree, from
-a matching recipe, never across an `is_kind` boundary.
+a matching recipe, never across a distinct kind's boundary.
 
 **Operations as constraints.** Every operator is constrained on the number
 operation it runs (`number_op`, `summable`), so `requires` probes are honest.

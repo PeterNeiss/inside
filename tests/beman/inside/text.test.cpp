@@ -46,7 +46,7 @@ TEST(FormatTest, rational_to_string_decimal_forms) {
 }
 
 // rational to_string: no finite decimal prints N/D, the form parse reads
-TEST(FormatTest, errc_as_text) {
+TEST(FormatTest, error_as_text) {
     EXPECT_EQ(to_string(error::division_by_zero), "division by zero");
     std::ostringstream os;
     os << error::overflow;

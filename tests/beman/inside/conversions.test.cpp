@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Out of an inside: to<T>, as<T>, the conversion predicates and casts,
+// Out of an inside: to<T>, the conversion predicates and casts,
 // numerator/denominator, points (just<…>) and their stores.
 
 #include <beman/inside/inside.hpp>
@@ -416,7 +416,7 @@ concept compares_with = requires(T t, F f) { t == f; } || requires(T t, F f) { t
 template <class B, class S>
 constexpr bool can_clamp_cast = requires(S s) { B{s, clamp}; };
 template <class B, class S>
-constexpr bool can_checked_cast = requires(S s) { exact_cast<B>(s); };
+constexpr bool can_exact_cast = requires(S s) { exact_cast<B>(s); };
 template <class O, class I>
 constexpr bool can_abs = requires(I x) { math::abs<O>(x); };
 template <std::int64_t E, class I>
@@ -473,7 +473,7 @@ TEST(ConversionTest, casts_and_math_are_constraint_friendly) {
     using digit  = inside<{0, 9}>;
     using small  = inside<{-7, 5}>;
     static_assert(can_clamp_cast<digit, int> && can_clamp_cast<digit, small>);
-    static_assert(!can_clamp_cast<halves, three> && can_checked_cast<halves, three>); // 3 is off the .5 lattice
+    static_assert(!can_clamp_cast<halves, three> && can_exact_cast<halves, three>); // 3 is off the .5 lattice
     // An output that may miss a result (|0| = 0) makes it an expected.
     static_assert(can_abs<digit, small> && can_abs<inside<{1, 10}>, small>);
     EXPECT_EQ((math::abs<inside<{1, 10}>>(small{0}).error()), error::overflow);
@@ -606,7 +606,7 @@ TEST(ConversionTest, predicates_handle_non_finite_input) {
 // exact_cast (casts.hpp) — the success return (was static_assert only)
 //---------------------------------------------------------------------------
 // exact_cast returns the value on the in-range happy path (runtime)
-TEST(ConversionTest, checked_cast_in_range_at_run_time) {
+TEST(ConversionTest, exact_cast_in_range_at_run_time) {
     using pct = inside<{0, 100}>;
     pct p     = *exact_cast<pct>(test::at_run_time(42)); // an int may not fit: an expected
     ASSERT_EQ(p, 42);

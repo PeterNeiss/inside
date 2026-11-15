@@ -83,7 +83,7 @@ TEST(InsideAssignTest, rounding_requires_opt_in__a_value_on_the_grid_stores_exac
 }
 
 // rounding requires opt-in / policy<round_half_away>() rounds half up to grid
-TEST(InsideAssignTest, rounding_requires_opt_in__round_nearest_rounds_a_tie_up) {
+TEST(InsideAssignTest, rounding_requires_opt_in__round_half_away_rounds_a_tie_up) {
     using f30t40 = inside<{{30, 40}, 2}>;
     using f20t50 = inside<{interval{20, 50}, 1}>;
     [[maybe_unused]] f20t50 bigger{39};
@@ -129,7 +129,7 @@ TEST(InsideAssignTest, rounding_requires_opt_in__type_level_round_toward_zero) {
 }
 
 // rounding requires opt-in / type-level round_half_away
-TEST(InsideAssignTest, rounding_requires_opt_in__type_level_round_nearest) {
+TEST(InsideAssignTest, rounding_requires_opt_in__type_level_round_half_away) {
     using f30t40 = inside<{{30, 40}, 2}>;
     using f20t50 = inside<{interval{20, 50}, 1}>;
     [[maybe_unused]] f20t50 bigger{39};
@@ -580,7 +580,7 @@ TEST(CastsTest, clamp_cast_clamps_to_boundary) {
 }
 
 // exact_cast reports a value out of range (an expected: an int may not fit)
-TEST(CastsTest, checked_cast_reports_out_of_range) {
+TEST(CastsTest, exact_cast_reports_out_of_range) {
     using pct = inside<{0, 100}>;
 
     static_assert(*exact_cast<pct>(42) == pct{42});
@@ -590,7 +590,7 @@ TEST(CastsTest, checked_cast_reports_out_of_range) {
 }
 
 // exact_cast reports a value off the notch
-TEST(CastsTest, checked_cast_reports_truncation) {
+TEST(CastsTest, exact_cast_reports_truncation) {
     using coarse = inside<{{0, 10}, 2}>;
 
     static_assert(*exact_cast<coarse>(4) == coarse{4});
@@ -598,7 +598,7 @@ TEST(CastsTest, checked_cast_reports_truncation) {
 }
 
 // the unsafe constructor bypasses runtime checks
-TEST(CastsTest, unchecked_cast_bypasses_runtime_checks) {
+TEST(CastsTest, unexact_cast_bypasses_runtime_checks) {
     using pct = inside<{0, 100}>;
 
     // In-range value: same result as exact_cast.
@@ -827,7 +827,7 @@ using namespace beman::inside::formats;
 using namespace beman::inside::detail;
 
 // round_half_away assignment is half-away-from-zero on negatives
-TEST(RoundNegativeTiesTest, round_nearest_assignment_is_half_away_from_zero_on_negatives) {
+TEST(RoundNegativeTiesTest, round_half_away_assignment_is_half_away_from_zero_on_negatives) {
     using N = inside<{-100, 100}, round_half_away>;
     ASSERT_TRUE((static_cast<rational>(N(rational{5, 2})) == 3));   //  2.5 ->  3
     ASSERT_TRUE((static_cast<rational>(N(rational{-5, 2})) == -3)); // -2.5 -> -3 (was -2)

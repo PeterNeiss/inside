@@ -123,7 +123,7 @@ TEST(ConsistencyTest, inside_source_wrap_rounds_first) {
 }
 
 // the unsafe constructor keeps the target's storage layout.
-TEST(ConsistencyTest, unchecked_cast_keeps_the_storage_layout) {
+TEST(ConsistencyTest, unexact_cast_keeps_the_storage_layout) {
     using D = inside<{5, 100}>;
     EXPECT_EQ(rational{(D{7, unsafe})}, q(7));
     using F = inside<{{0, 4}, per<2>}>;

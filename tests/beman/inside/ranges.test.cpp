@@ -747,7 +747,7 @@ TEST(IndexTest, index_within_64_bits) {
         EXPECT_TRUE(halves::from_step(at_run_time(k))->step() == k); // (an int index: an expected)
 }
 
-TEST(IndexTest, from_index_out_of_range) {
+TEST(IndexTest, from_step_out_of_range) {
     const int past = at_run_time(11); // halves has indices 0 … 10
     EXPECT_EQ(halves::from_step(past).error(), error::overflow);
     EXPECT_TRUE(halves::from_step(past, clamp) == 5);

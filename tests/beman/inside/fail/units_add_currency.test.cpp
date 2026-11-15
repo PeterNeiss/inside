@@ -4,13 +4,13 @@
 // not add to a length.
 #include <beman/inside/units.hpp>
 
-inline constexpr auto currency_def = beman::inside::units::base_dimension<"currency">;
-inline constexpr auto money_def    = beman::inside::units::kind<"money", currency_def>;
-inline constexpr auto euro_def     = beman::inside::units::unit<"EUR", money_def>;
+inline constexpr auto currency_dim = beman::inside::units::base_dimension<"currency">;
+inline constexpr auto money_kind   = beman::inside::units::kind<"money", currency_dim>;
+inline constexpr auto euro         = beman::inside::units::unit<"EUR", money_kind>;
 
 int main() {
     using namespace beman::inside;
     using namespace beman::inside::units;
-    auto s = just<1> * euro_def + just<1> * si::metre;
+    auto s = just<1> * euro + just<1> * si::metre;
     (void)s;
 }
