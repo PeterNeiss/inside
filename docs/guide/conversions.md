@@ -17,8 +17,8 @@ auto p = parse<inside<{0, 1000}>>("42");   // text in: a std::expected
 
 ## Into an inside
 
-An inside is built from an integer, a `double`, a `float`, a `rational` or
-another inside. The store follows the type's [policy](policies.md): a value
+An inside is built from an integer, a `double`, a `float` or another
+inside (a constant such as `0.1_ins` is one). The store follows the type's [policy](policies.md): a value
 out of range or between notches is an error unless the policy clamps, wraps
 or rounds.
 
@@ -48,7 +48,6 @@ conversion_loses<pct>(150);       // true: either of the two
 | `double(x)`, `x.to<double>()` | a `double`, rounded once from the exact value |
 | `x.numerator()`, `x.denominator()` | the exact value in lowest terms, as insides on the integers: `3` and `16` for 0.1875 (`.to<int>()` reads them) |
 | `x.step()` | the count of notches above Lower, a `step_t<T>`; `T::from_step(i)` goes back |
-| `rational r = x;` | the exact value as a 64-bit fraction, where it fits one |
 
 The type of `to<T>()` says whether it can fail: where `T` holds the whole
 grid it is a plain `T`, with nothing to check; elsewhere it is a
@@ -100,14 +99,14 @@ without narrowing either side:
 ```cpp
 inside<{0, 100}> a{42}, c{58};
 a == 42;          // true
-a < 50.5_r;       // true
+a < 50.5_ins;       // true
 a + c == 100;     // true
 // a < 50.5;      // does not compile: no comparison with a double
 ```
 
 An inside does not compare with a `double`, because 0.1 is not 1/10 in
 binary: an inside holding 1/10 would compare unequal to 0.1. Compare with
-`0.1_r` or `just<1, 10>`.
+`0.1_ins` or `just<1, 10>`.
 
 ## Printing
 
@@ -124,7 +123,7 @@ A format spec rounds once, from the exact value, by the type's rounding mode:
 
 ```cpp
 using cents = inside<{{0, 1'000'000}, per<100>}>;
-cents price{19.9_r};
+cents price{19.9_ins};
 std::println("{} {:.1f} {:>8}", price, price, price);   // 19.90 19.9    19.90
 std::println("{:#04x}", inside<{0, 100}>{42});          // 0x2a
 ```

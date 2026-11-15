@@ -166,14 +166,14 @@ object, and a tag made from it is used like the catalog's:
 ```cpp
 inline constexpr quantity_spec depth_def{"depth", isq::length};
 inline constexpr auto          depth = spec_c<depth_def>;
-inline constexpr named_unit    fathom_def{"ftm", mag<rational{18288, 10000}> * si::metre};
+inline constexpr named_unit    fathom_def{"ftm", mag<18288_g / 10000_g> * si::metre};
 inline constexpr auto          fathom = unit_c<fathom_def>;
 inline constexpr point_origin  sea_level_def{"sea_level", dim_length};
 inline constexpr auto          sea_level = origin_c<sea_level_def>;
 ```
 
 A `named_unit` is either the base unit of a kind (`{"EUR", money}`, or with a
-magnitude `{"g", mag<rational{1, 1000}>, isq::mass}`) or a unit defined by
+magnitude `{"g", mag<1_g / 1000_g>, isq::mass}`) or a unit defined by
 others (`{"ftm", mag<…> * si::metre}`, or with a kind
 `{"Hz", one / si::second, isq::frequency}`). A last `unit_options` argument
 sets the rest, each optional, as designated initializers in this order:
@@ -186,7 +186,7 @@ sets the rest, each optional, as designated initializers in this order:
 | `.space_before = false` | no space before the symbol (`90°`) | a space |
 
 ```cpp
-inline constexpr named_unit rankine_def{"°R", mag<rational{5, 9}> * si::kelvin,
+inline constexpr named_unit rankine_def{"°R", mag<5_g / 9_g> * si::kelvin,
                                         {.ascii = "R", .origin = si::absolute_zero}};
 inline constexpr named_unit rpm_def{"rpm", one / si::minute, {.kind = isq::frequency}};
 inline constexpr named_unit turn_def{"tr", mag<2> * mag_pi * si::radian, {.space_before = false}};

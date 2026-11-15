@@ -38,14 +38,13 @@ Every number in a grid, and every constant in an expression, is exact:
 | `42`, `0.5`, `0x1p-4` | an integer, or a floating-point literal that is exact in binary |
 | `per<D>` | the step 1/D |
 | `just<N, D>` | the exact ratio N/D, as an inside of one point; `just<N>` is N |
-| `0.1_r` | the exact decimal 1/10, as a `rational` |
-| `5_ins` | the integer 5, as an inside of one point |
+| `5_ins`, `0.1_ins` | the integer 5, the exact decimal 1/10: an inside of one point |
 
-The literals `_ins`, `_r` and `_g` are also in `beman::inside::literals`:
+The literals `_ins` and `_g` are also in `beman::inside::literals`:
 `using namespace beman::inside::literals;` brings only them.
 
 `0.1` is not 1/10 in binary, so a grid or a constant that needs 1/10 says
-`0.1_r`, `per<10>` or `just<1, 10>`. A value at run time can be a `double`:
+`0.1_ins`, `per<10>` or `just<1, 10>`. A value at run time can be a `double`:
 `inside<{{0, 1}, per<10>}, round_half_away>{0.1}` rounds it to the nearest notch,
 1/10.
 
@@ -76,7 +75,7 @@ denominator stays within a bound you name.
 
 ```cpp
 using thousandths = inside<{{0, 1}, max_denominator{1000}}>;
-thousandths t{rational{1, 3}};                   // exactly 1/3
+thousandths t{just<1, 3>};                   // exactly 1/3
 ```
 
 You rarely write one yourself. They come from exact division: `a / b` on

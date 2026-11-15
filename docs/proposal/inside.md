@@ -595,7 +595,7 @@ namespace std {
 | `e op b`, `a op e` (`e` an `expected`) | `expected` of `a op b`'s result | the first error passes through |
 | `++a`, `--a` | `a` moved by one notch | a store by `P` (wraps under `wrap`); ill-formed where the step may leave the grid without `clamp`/`wrap`; absent on a continuous grid |
 | `a += b` etc. | `a = a + b` | a store by `a`'s policy: ill-formed where the grids cannot prove it and `P` has no `clamp`/`wrap`; `b.policy(ec) += x` reports |
-| `a == b`, `a <=> b` | exact comparison of values | any two grids, or an inside and an integer or a rational; no floating-point operand (0.1 is not 1/10) |
+| `a == b`, `a <=> b` | exact comparison of values | any two grids, or an inside and an integer; no floating-point operand (0.1 is not 1/10) |
 | `b.to<T>()` | `T` where total, else `expected<T, error>` | integer `T`: exact, or rounded by `Round`, else by `P`'s mode; `rounding_error` for a fractional value when neither names one; `overflow` out of `T`'s range. Floating-point `T`: rounded once |
 | `b.numerator()`, `b.denominator()` | the value in lowest terms, as insides | with `D` the grid's largest denominator: numerator in `[⌈L⌉, ⌊U·D⌋]` (`⌈L·D⌉` for `L < 0`, `⌊U⌋` for `U ≤ 0`), denominator in `[1, D]` |
 | `b.step()`, `B::from_step(i)` | `(b − L)/n` as a `step_t<B>`; `L + i·n` | `from_step` is plain when `i`'s grid lies in `[0, step_count]`, else `expected<B, error>` (plain under a call's `clamp`/`wrap`) |

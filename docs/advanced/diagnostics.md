@@ -133,7 +133,7 @@ error: use of deleted function '…': inside: the source's values may fall outsi
        T::try_make(v), x.policy(ec) = v or x.on_error(f) = v, or opt out with unsafe
 ```
 
-A plain number (an `int`, a `double`, a `rational`) goes through a
+A plain number (an `int`, a `double`) goes through a
 `consteval` constructor: a constant is checked while compiling, and a
 run-time value is the compiler's own message, with the variable named:
 

@@ -34,7 +34,7 @@ auto d = a * just<5, 2>;   // the exact factor 5/2
 ```
 
 A runtime value gets its range from a type: `a + lvl{n}`. Comparisons need no
-grid: `a == 5` and `a < 1.5_r` are exact. A `double` does not compare with an
+grid: `a == 5` and `a < 1.5_ins` are exact. A `double` does not compare with an
 inside, because 0.1 is not 1/10 in binary.
 
 Multiplying by a constant scales by an exact fraction, and a store rounds the
@@ -82,12 +82,12 @@ result on a type of your choice, round the exact result straight into it,
 once:
 
 ```cpp
-using eth   = inside<{{0, 1'000'000'000}, 1e-18_r}>;            // to the wei
+using eth   = inside<{{0, 1'000'000'000}, 1e-18_ins}>;            // to the wei
 using price = inside<{{0, 100'000'000}, per<100>}>;             // dollars per ETH
 using usd   = inside<{{0, 1'000'000'000'000'000}, per<100>}, round_half_away>;
 
-eth   balance{rational{15, 10}};
-price rate{rational{345678, 100}};
+eth   balance{just<15, 10>};
+price rate{just<345678, 100>};
 usd   value = mul<usd>(balance, rate);                     // 5185.17
 auto  share = div<inside<{0, 100}, round_floor>>(val{50}, inside<{1, 10}>{3});   // 16
 ```
@@ -108,7 +108,7 @@ auto r1 = n % 5_ins;                  // inside<{0, 4}>: 2
 auto r2 = n % inside<{1, 10}>{5};     // inside<{0, 9}>: 2
 auto r3 = n % val{5};                 // std::expected: val's grid holds 0
 auto [q, rest] = divmod(n, inside<{1, 10}>{5});   // 3 and 2, from one division
-auto r4 = inside<{{0, 8}, per<2>}>{7.5} % inside<{{1, 4}, per<3>}>{rational{4, 3}};  // 7.5 − 5·4/3 = 5/6
+auto r4 = inside<{{0, 8}, per<2>}>{7.5} % inside<{{1, 4}, per<3>}>{just<4, 3>};  // 7.5 − 5·4/3 = 5/6
 ```
 
 The remainder belongs to the rounded quotient: under `round_floor`,
@@ -155,7 +155,7 @@ needs no grid of its own; it counts as an inside on the whole range of its
 type, and the store back follows the same rules (a `clamp` or `wrap` type
 takes it, a checked one names a channel: `x.policy(ec) += n`). Everything
 else on the right is an inside (`p += 0.5_ins`, `p /= 3_ins`), never a
-`double` or a `rational`, and a division takes no builtin integer, whose
+`double`, and a division takes no builtin integer, whose
 range holds 0. `++` and `--` move one notch: ±1/4 on
 `inside<{{0, 2}, per<4>}>`.
 

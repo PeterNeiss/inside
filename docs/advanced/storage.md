@@ -22,7 +22,7 @@ except in the cases at the end of this table.
 | Lower < 0, a fractional notch | an unsigned offset index | `inside<{{-5, 5}, 0.5}>`: `uint8_t` |
 | more than 2⁶⁴ points | a library `wide_int` of as many 64-bit limbs as needed | `inside<{{0, 1ull << 34}, per<(1ull << 32)>}>`: 2 limbs |
 | a single point (`just<…>`, `5_ins`) | nothing: the value is in the type | `sizeof(5_ins) == 1`, 0 bytes as a `[[no_unique_address]]` member |
-| notch 0 (continuous) | an exact fraction (`beman::inside::rational`), or past 64 bits a fraction of fixed-width integers sized from the bound | `inside<{{-10, 10}, max_denominator{1000}}>`, and exact quotients |
+| notch 0 (continuous) | an exact fraction of two 64-bit integers, or past 64 bits a fraction of fixed-width integers sized from the bound | `inside<{{-10, 10}, max_denominator{1000}}>`, and exact quotients |
 
 The selection uses each type's full range: `inside<{0, 255}>` is a `uint8_t`
 and `inside<{-128, 127}>` an `int8_t`, so a loop over them vectorizes with the
@@ -30,7 +30,7 @@ same lane count as native bytes.
 
 **Grids off the notch's multiples.** Lower need not be a multiple of the
 notch: `{{0.5, 255.5}, 1}` holds 0.5, 1.5, …, 255.5 (bin centres), and
-`{{-1.1_r, 0.9_r}, 0.2_r}` holds −1.1, −0.9, …, 0.9. These always use an
+`{{-1.1_ins, 0.9_ins}, 0.2_ins}` holds −1.1, −0.9, …, 0.9. These always use an
 offset index, because their values are not integers.
 
 ```cpp
@@ -57,9 +57,8 @@ division by a point, which scales the dividend's lattice).
 
 **Wide raws** behave like any other: compare, `+ - * / %`, negate, every
 policy and hook, `sum`, print, parse, hash and sample, all exact. `+=` and a
-same-notch store are a raw add of the limbs. Their values can outgrow the
-64-bit fraction, so a wide inside has no implicit `rational` conversion: read
-it with `numerator()`/`denominator()` (insides on wide raws) or `to<T>()`.
+same-notch store are a raw add of the limbs. Read
+one with `numerator()`/`denominator()` (insides on wide raws) or `to<T>()`.
 [`wei.cpp`](../../examples/wei.cpp) (10²⁷ points of 10⁻¹⁸ ETH) and
 [`solar_system.cpp`](../../examples/solar_system.cpp) (nanometres across
 ±10¹³ m) use wide raws, as quantities.
@@ -85,8 +84,7 @@ exactly in any form of the literal grammar (decimal, `0x`, `0b`, a point, an
 `inside<{0, 1267650600228229401496703205376_g}>` is `inside<{0, 0x1p100}>`,
 and `inside<{{0, 1}, 1e-30_g}>` has an exact decimal notch of 10⁻³⁰.
 `per<D>`, `just<N, D>` and `_ins` take grid numbers of any size too
-(`per<0x1p70_g>`, `18446744073709551616_ins`); only `rational` and `_r`, a
-64-bit fraction by definition, stay 64-bit.
+(`per<0x1p70_g>`, `18446744073709551616_ins`).
 
 Grid numbers past 64 bits exist only at compile time; the raw of such an
 inside is a fixed-width integer sized from them. A grid can hold huge values

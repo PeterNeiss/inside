@@ -85,8 +85,8 @@ times the divisor's largest numerator. The result grid records that bound
 `div<Out>` rounds the quotient onto a type you name instead.
 
 ```cpp
-using fine = inside<{{0, 1}, rational{1, std::uint64_t{1} << 40}}>;
-auto f = fine{0.5} / inside<{{1, 2}, rational{1, std::uint64_t{1} << 40}}>{1.5};
+using fine = inside<{{0, 1}, per<(std::uint64_t{1} << 40)>}>;
+auto f = fine{0.5} / inside<{{1, 2}, per<(std::uint64_t{1} << 40)>}>{1.5};
 // 1/3, a plain value: denominators up to 2^81, in a fraction sized for them
 ```
 
@@ -148,8 +148,8 @@ deleted overloads, so a `requires` probe answers false.
 
 `x op= y` computes `x op y` exactly and stores the result back through `x`'s
 policy, so it rounds and checks once. The right-hand side is an inside
-(`x += 0.5_ins`); a plain `int`, a `double`, a `rational` and a
-`std::expected` are rejected. A zero divisor in `/=` or `%=` goes to `on_error`, the `error&`
+(`x += 0.5_ins`); a `double` and a `std::expected` are rejected (a builtin
+integer steps `+=`, `-=` and `*=`). A zero divisor in `/=` or `%=` goes to `on_error`, the `error&`
 or the handler like any failed store; under `unsafe` it is undefined.
 
 Under `unsafe`, `+=`, `-=` and `*=` run at the raw type's width: a loop of
@@ -185,9 +185,9 @@ A continuous grid you declare names its bound with `max_denominator`;
 
 ```cpp
 using thousandths = inside<{{0, 1}, max_denominator{1000}}>;
-thousandths t{rational{1, 1000}};
+thousandths t{just<1, 1000>};
 auto p = t * t;                       // a plain value, denominators ≤ 10^6
-// t = rational{1, 1001};             // rounding_error: off the grid
+// t = just<1, 1001>;             // rounding_error: off the grid
 ```
 
 Any bound works while a value's numerator and denominator together fit 1024

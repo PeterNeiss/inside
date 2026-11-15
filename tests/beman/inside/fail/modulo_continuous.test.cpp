@@ -9,6 +9,6 @@ using namespace beman::inside;
 int main() {
     using ratio = inside<{{0, 8}, max_denominator{100}}>;
     inside<{1, 4}> divisor{2};
-    auto           rem = ratio{rational{5, 2}} % divisor;
+    auto           rem = ratio{detail::rational{5, 2}} % divisor;
     (void)rem;
 }

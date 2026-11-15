@@ -5,6 +5,7 @@
 
 int main() {
     using namespace beman::inside;
+    using beman::inside::detail::operator""_r; // the library's own literal
     inside<grid{interval{10, 0}, 1_r}> x{5};
     (void)x;
 }

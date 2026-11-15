@@ -40,7 +40,9 @@ int main() {
         std::printf("  std::sin(double)       %.16f\n  sin(fmod(x, 2*pi))     %.16f\n",
                     std::sin(xd),
                     std::sin(std::fmod(xd, 2 * 3.141592653589793)));
-        if (s != rational{r.sin_slot, std::int64_t{1} << 52} || c != rational{r.cos_slot, std::int64_t{1} << 52})
+        // (s · 2^52 is a whole number, exactly: compared with the expected slot.)
+        constexpr auto scale = just<(std::int64_t{1} << 52)>;
+        if (s * scale != r.sin_slot || c * scale != r.cos_slot)
             return 1;
     }
     return 0;

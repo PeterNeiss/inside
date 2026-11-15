@@ -64,7 +64,7 @@ gcd of the numerators over the lcm of the denominators): the coarsest 1/k that
 keeps every integer and both limits on the lattice. Integer limits give 1.
 The exact gcd is kept, however large its denominator. A floating-point limit is its exact
 binary value, so a `double` that would need a notch finer than 1/1024 (0.1 is
-3602879701896397/2⁵⁵) is rejected in favour of `0.1_r` or an explicit notch.
+3602879701896397/2⁵⁵) is rejected in favour of `0.1_ins` or an explicit notch.
 
 **Open limits.** `grid{lo, hi, bounds::half_open}` (or `bounds::open`, or with
 a notch) moves each open limit in by one notch at construction. The grid is
@@ -296,10 +296,13 @@ which step takes a given set of hooks. A quantity's hooks wrap the inside's
 
 ## 5. Conversions
 
-The user-facing rules (an implicit lossless `operator rational`, an explicit
+The user-facing rules (an explicit
 `operator double`, an implicit conversion to a built-in integer for an index
 only: `to<T>()` reads any other) are in
-[Conversions](guide/conversions.md). On `rational` itself every `operator T()` is
+[Conversions](guide/conversions.md). `rational` is `detail::rational`, the
+library's own exact 64-bit fraction (the raw of a bounded continuous grid, the
+fast path of exact arithmetic, the tests' oracle); it is no part of the user
+API. On `rational` itself every `operator T()` is
 explicit and truncates toward zero; `r.to<T>()` is the typed-error form, and
 `trunc`, `floor`, `ceil` and `round` name the integer reductions.
 

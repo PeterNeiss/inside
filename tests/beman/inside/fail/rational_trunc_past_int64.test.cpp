@@ -6,7 +6,7 @@
 #include <beman/inside/inside.hpp>
 
 int main() {
-    using beman::inside::rational;
+    using beman::inside::detail::rational; // the library's own exact fraction
     constexpr auto t = trunc(rational{18446744073709551615u});
     (void)t;
 }

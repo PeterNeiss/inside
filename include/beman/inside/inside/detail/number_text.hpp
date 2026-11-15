@@ -312,12 +312,10 @@ constexpr rational operator""_r() {
 } // namespace beman::inside::detail
 
 namespace beman::inside {
-//   _r literal   an exact decimal / hex value, e.g. 0.1_r is exactly 1/10.
-// The literals (_r, _ins, _g) live in the inline namespace literals:
+// The literals (_ins, _g) live in the inline namespace literals:
 // `using namespace beman::inside::literals;` brings only them.
-inline namespace literals {
-using detail::operator""_r;
-} // namespace literals
+// (detail::operator""_r, an exact decimal as a detail::rational, is the
+// library's own.)
 } // namespace beman::inside
 
 #endif // BEMAN_INSIDE_INSIDE_DETAIL_NUMBER_TEXT_HPP

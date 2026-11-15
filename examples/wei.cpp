@@ -28,9 +28,9 @@ inline constexpr base_dimension ether_dim{"ether"};
 inline constexpr quantity_spec  ether_def{"ether", ether_dim};
 inline constexpr named_unit     eth_def{"ETH", spec_c<ether_def>};
 inline constexpr auto           ETH = unit_c<eth_def>;
-inline constexpr named_unit     gwei_def{"gwei", mag<rational{1, 1'000'000'000}> * ETH};
+inline constexpr named_unit     gwei_def{"gwei", mag<1_g / 1'000'000'000_g> * ETH};
 inline constexpr auto           gwei = unit_c<gwei_def>;
-inline constexpr named_unit     wei_def{"wei", mag<rational{1, 1'000'000'000'000'000'000}> * ETH};
+inline constexpr named_unit     wei_def{"wei", mag<1_g / 1'000'000'000'000'000'000_g> * ETH};
 inline constexpr auto           wei = unit_c<wei_def>;
 
 inline constexpr base_dimension work_dim{"gas"};

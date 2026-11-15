@@ -10,6 +10,14 @@
 
 #include "exact.hpp"
 
+// The tests name the library's own exact fraction and its literal, as an
+// oracle and to reach every internal path: detail::rational is no part of
+// the user API.
+namespace beman::inside {
+using detail::rational;
+using detail::operator""_r;
+} // namespace beman::inside
+
 namespace beman::inside::test {
 // v, hidden from the optimizer: what follows computes at run time.
 template <class T>

@@ -14,6 +14,8 @@
 #include <beman/inside/units/mdspan.hpp>
 #include <beman/inside/units/random.hpp>
 
+#include "support.hpp"
+
 #include <gtest/gtest.h>
 
 #include <algorithm>

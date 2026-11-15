@@ -171,13 +171,14 @@ inline constexpr prefix_t<30>  quetta{};
 // SI base units.
 BEMAN_INSIDE_UNIT(si, second, "s", isq::duration)
 BEMAN_INSIDE_UNIT(si, metre, "m", isq::length)
-BEMAN_INSIDE_UNIT(si, gram, "g", mag<rational{1, 1000}>, isq::mass)
+BEMAN_INSIDE_UNIT(si, gram, "g", mag<1_g / 1000_g>, isq::mass)
 namespace si {
 inline constexpr auto kilogram = kilo(gram);
 }
 BEMAN_INSIDE_UNIT(si, ampere, "A", isq::electric_current)
 BEMAN_INSIDE_ORIGIN(si, absolute_zero, dim_thermodynamic_temperature)
-BEMAN_INSIDE_ORIGIN(si, ice_point, dim_thermodynamic_temperature, &si_defs::absolute_zero, rational{27315, 100})
+BEMAN_INSIDE_ORIGIN(
+    si, ice_point, dim_thermodynamic_temperature, &si_defs::absolute_zero, beman::inside::detail::rational{27315, 100})
 BEMAN_INSIDE_UNIT(si, kelvin, "K", isq::thermodynamic_temperature, {.origin = si::absolute_zero})
 BEMAN_INSIDE_UNIT(si, mole, "mol", isq::amount_of_substance)
 BEMAN_INSIDE_UNIT(si, candela, "cd", isq::luminous_intensity)
@@ -211,9 +212,9 @@ BEMAN_INSIDE_UNIT(si, minute, "min", mag<60>* si::second)
 BEMAN_INSIDE_UNIT(si, hour, "h", mag<60>* si::minute)
 BEMAN_INSIDE_UNIT(si, day, "d", mag<24>* si::hour)
 BEMAN_INSIDE_UNIT(si, astronomical_unit, "au", mag<149'597'870'700>* si::metre)
-BEMAN_INSIDE_UNIT(si, degree, "°", mag_pi* mag<rational{1, 180}>* si::radian, {.ascii = "deg", .space_before = false})
-BEMAN_INSIDE_UNIT(si, arcminute, "′", mag<rational{1, 60}>* si::degree, {.ascii = "'", .space_before = false})
-BEMAN_INSIDE_UNIT(si, arcsecond, "″", mag<rational{1, 60}>* si::arcminute, {.ascii = "''", .space_before = false})
+BEMAN_INSIDE_UNIT(si, degree, "°", mag_pi* mag<1_g / 180_g>* si::radian, {.ascii = "deg", .space_before = false})
+BEMAN_INSIDE_UNIT(si, arcminute, "′", mag<1_g / 60_g>* si::degree, {.ascii = "'", .space_before = false})
+BEMAN_INSIDE_UNIT(si, arcsecond, "″", mag<1_g / 60_g>* si::arcminute, {.ascii = "''", .space_before = false})
 BEMAN_INSIDE_UNIT(si, are, "a", square(si::deca(si::metre)))
 BEMAN_INSIDE_UNIT(si, litre, "L", cubic(si::deci(si::metre)))
 BEMAN_INSIDE_UNIT(si, tonne, "t", mag<1000>* si::kilogram)
@@ -231,40 +232,40 @@ BEMAN_INSIDE_UNIT(
 BEMAN_INSIDE_UNIT(si2019, speed_of_light_in_vacuum, "c", mag<299'792'458>* si::metre / si::second)
 BEMAN_INSIDE_UNIT(si2019, luminous_efficacy, "K_cd", mag<683>* si::lumen / si::watt)
 BEMAN_INSIDE_UNIT(
-    si2019, standard_gravity, "g₀", mag<rational{980665, 100000}>* si::metre / square(si::second), {.ascii = "g_0"})
+    si2019, standard_gravity, "g₀", mag<980665_g / 100000_g>* si::metre / square(si::second), {.ascii = "g_0"})
 BEMAN_INSIDE_UNIT(si2019, planck_constant, "h", mag<6.62607015e-34_g>* si::joule* si::second)
 BEMAN_INSIDE_UNIT(si2019, elementary_charge, "e", mag<1.602176634e-19_g>* si::coulomb)
 BEMAN_INSIDE_UNIT(si2019, boltzmann_constant, "k", mag<1.380649e-23_g>* si::joule / si::kelvin)
 BEMAN_INSIDE_UNIT(si2019, avogadro_constant, "N_A", mag<6.02214076e23_g> / si::mole)
 
 // International (yard and pound agreement, 1959) and nautical units.
-BEMAN_INSIDE_UNIT(international, yard, "yd", mag<rational{9144, 10000}>* si::metre)
-BEMAN_INSIDE_UNIT(international, foot, "ft", mag<rational{1, 3}>* international::yard)
-BEMAN_INSIDE_UNIT(international, inch, "in", mag<rational{1, 12}>* international::foot)
+BEMAN_INSIDE_UNIT(international, yard, "yd", mag<9144_g / 10000_g>* si::metre)
+BEMAN_INSIDE_UNIT(international, foot, "ft", mag<1_g / 3_g>* international::yard)
+BEMAN_INSIDE_UNIT(international, inch, "in", mag<1_g / 12_g>* international::foot)
 BEMAN_INSIDE_UNIT(international, mile, "mi", mag<1760>* international::yard)
 BEMAN_INSIDE_UNIT(international, nautical_mile, "nmi", mag<1852>* si::metre)
-BEMAN_INSIDE_UNIT(international, pound, "lb", mag<rational{45359237, 100000000}>* si::kilogram)
-BEMAN_INSIDE_UNIT(international, ounce, "oz", mag<rational{1, 16}>* international::pound)
+BEMAN_INSIDE_UNIT(international, pound, "lb", mag<45359237_g / 100000000_g>* si::kilogram)
+BEMAN_INSIDE_UNIT(international, ounce, "oz", mag<1_g / 16_g>* international::pound)
 BEMAN_INSIDE_UNIT(international,
                   pound_force,
                   "lbf",
-                  mag<rational{980665, 100000}>* international::pound* si::metre / square(si::second))
+                  mag<980665_g / 100000_g>* international::pound* si::metre / square(si::second))
 BEMAN_INSIDE_UNIT(international, knot, "kn", international::nautical_mile / si::hour)
 BEMAN_INSIDE_ORIGIN(international,
                     zeroth_degree_Fahrenheit,
                     dim_thermodynamic_temperature,
                     &si_defs::absolute_zero,
-                    rational{45967, 180})
+                    beman::inside::detail::rational{45967, 180})
 BEMAN_INSIDE_UNIT(international,
                   degree_Fahrenheit,
                   "℉",
-                  mag<rational{5, 9}>* si::kelvin,
+                  mag<5_g / 9_g>* si::kelvin,
                   {.ascii = "`F", .origin = international::zeroth_degree_Fahrenheit})
 
 // Scaled dimensionless units, as in mp-units: 8 % is the number 2/25.
 namespace dimensionless_defs {
-inline constexpr named_unit percent{"%", mag<rational{1, 100}> * one};
-inline constexpr named_unit per_mille{"‰", mag<rational{1, 1000}> * one, {.ascii = "permille"}};
+inline constexpr named_unit percent{"%", mag<1_g / 100_g> * one};
+inline constexpr named_unit per_mille{"‰", mag<1_g / 1000_g> * one, {.ascii = "permille"}};
 } // namespace dimensionless_defs
 inline constexpr auto percent   = unit_c<dimensionless_defs::percent>;
 inline constexpr auto per_mille = unit_c<dimensionless_defs::per_mille>;

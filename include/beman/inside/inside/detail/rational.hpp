@@ -349,7 +349,7 @@ constexpr rational rational_of_wide_float(T v, bool& exact) {
     const T a = v < 0 ? -v : v;
     exact     = true;
     if (!(a < static_cast<T>(0x1p64)))
-        raise(error::overflow, "beman::inside::detail::rational: |long double| >= 2^64");
+        raise(error::overflow, "rational: |long double| >= 2^64");
     if (a < static_cast<T>(0x1p-62)) {
         exact = a == 0;
         return rational_from_parts(0, 1);
@@ -362,7 +362,7 @@ constexpr rational rational_of_wide_float(T v, bool& exact) {
         std::countr_zero(static_cast<std::uint64_t>(q)) < 62 ? std::countr_zero(static_cast<std::uint64_t>(q)) : 62;
     const auto num = q >> tz;
     if (bit_width_of(num) > 64)
-        raise(error::overflow, "beman::inside::detail::rational: long double past the 64-bit rational");
+        raise(error::overflow, "rational: long double past the 64-bit rational");
     const std::int64_t den = std::int64_t{1} << (62 - tz);
     return rational_from_parts(static_cast<std::uint64_t>(num), v < 0 ? -den : den);
 }
@@ -834,12 +834,8 @@ BEMAN_INSIDE_RATIONAL_OP(/)
 }
 } // namespace beman::inside::detail
 
-namespace beman::inside {
-// `rational` — an exact 64-bit fraction: the value of a literal (`0.1_r`), a
-// continuous inside's raw, and a value read out of an inside. Its arithmetic
-// is compile time only; at run time an exact value is an inside.
-using detail::rational;
-
-} // namespace beman::inside
+// (`detail::rational` is the library's own: the raw of a bounded continuous
+// inside and the fast path of exact arithmetic. It is no part of the user
+// API: an exact value is an inside (0.1_ins, just<1, 10>, a / b).)
 
 #endif // BEMAN_INSIDE_INSIDE_DETAIL_RATIONAL_HPP

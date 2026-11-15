@@ -23,7 +23,7 @@ An unsigned Q8.8 register (8 integer bits, 8 fractional bits, every one of the
 65536 bit patterns) is:
 
 ```cpp
-using uq8_8 = inside<{{0, rational{65535, 256}}, per<(1 << 8)>}, round_half_away>;   // == beman::inside::uq8_8
+using uq8_8 = inside<{{0, just<65535, 256>}, per<(1 << 8)>}, round_half_away>;   // == beman::inside::uq8_8
 ```
 
 `<beman/inside/inside/formats.hpp>` has the common ones, in `beman::inside::formats` ([Grids](../guide/grids.md#predefined-formats)):
@@ -61,7 +61,7 @@ Any other format is one line: a signed Q1.14 sample is
 |---|---|---|---|
 | the value (whole-number grids) | the value as a plain integer | one integer | integer ranges, interop: `raw()` is the wire value |
 | an index (every other notched grid) | the 0-based notch index | one integer, plus an offset or shift to read the value | Q formats, dense serialization |
-| an exact fraction (continuous grids) | a `rational` | a gcd per operation | exact quotients |
+| an exact fraction (continuous grids) | a fraction of two 64-bit integers | a gcd per operation | exact quotients |
 
 Integer raws are cheap. **The fraction is the slow one**: keep continuous grids
 out of hot loops ([Storage](storage.md#which-raw-a-grid-gets)).

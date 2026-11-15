@@ -21,7 +21,7 @@ int main() {
     auto f = div(num{7}, some{3}, round_floor);  // 2: rounding named at the call
     auto m = mod(num{7}, some{3}, round_floor);  // 1, consistent: 2·3 + 1 == 7
     // [/listing]
-    if (q != just<rational{7, 3}> || *r != just<rational{7, 3}> || z.has_value() ||
+    if (q != just<7, 3> || *r != just<7, 3> || z.has_value() ||
         z.error() != error::division_by_zero || f != 2 || m != 1)
         return 1;
     return 0;

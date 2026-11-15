@@ -14,7 +14,7 @@ concept addable = requires(A a, B b) { a + b; };
 inline constexpr base_dimension currency_def{"currency"};
 inline constexpr quantity_spec  money_def{"money", currency_def};
 inline constexpr named_unit     euro_def{"EUR", spec_c<money_def>};
-inline constexpr named_unit     cent_def{"ct", mag<rational{1, 100}> * unit_c<euro_def>};
+inline constexpr named_unit     cent_def{"ct", mag<1_g / 100_g> * unit_c<euro_def>};
 inline constexpr auto           euro = unit_c<euro_def>;
 inline constexpr auto           cent = unit_c<cent_def>;
 

@@ -104,7 +104,7 @@ A unit of your own is an `inline constexpr` object plus a tag made from it,
 and then it works like the catalog's:
 
 ```cpp
-inline constexpr named_unit fathom_def{"ftm", mag<rational{18288, 10000}> * si::metre};
+inline constexpr named_unit fathom_def{"ftm", mag<18288_g / 10000_g> * si::metre};
 inline constexpr auto       fathom = unit_c<fathom_def>;   // 1.8288 m
 
 auto depth = just<3> * fathom;
@@ -120,7 +120,7 @@ inline constexpr base_dimension currency_def{"currency"};
 inline constexpr quantity_spec  money_def{"money", currency_def};
 inline constexpr named_unit     euro_def{"EUR", spec_c<money_def>};
 inline constexpr auto           EUR = unit_c<euro_def>;
-inline constexpr named_unit     cent_def{"ct", mag<rational{1, 100}> * EUR};
+inline constexpr named_unit     cent_def{"ct", mag<1_g / 100_g> * EUR};
 inline constexpr auto           ct = unit_c<cent_def>;
 
 auto price = just<5> * EUR + just<20> * ct;                // 520 ct

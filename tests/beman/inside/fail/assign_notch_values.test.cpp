@@ -7,6 +7,6 @@
 
 using namespace beman::inside;
 
-static_assert(explain_assignable<inside<{0, 10}>, inside<{{0, 10}, rational{1, 2}}>>);
+static_assert(explain_assignable<inside<{0, 10}>, inside<{{0, 10}, detail::rational{1, 2}}>>);
 
 int main() {}
