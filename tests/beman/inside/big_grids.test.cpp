@@ -463,7 +463,7 @@ TEST(WideGridTest, assignment_between_insides) {
     fine                              b = 41.75;
     inside<{0, 100}, round_half_away> n = 0;
     n                                   = test::store<inside<{0, 100}, round_half_away>>(b);
-    EXPECT_EQ(n.as<std::int64_t>(), 42);
+    EXPECT_EQ(n.to<std::int64_t>(), 42);
     // wide → wide of another lattice.
     fine_signed s = b;
     EXPECT_TRUE(s == 41.75_r);
@@ -517,7 +517,7 @@ TEST(WideGridTest, conversions) {
     EXPECT_EQ((a.to<std::uint8_t, round_half_away>().value()), 42);
     fine big = p34;
     EXPECT_EQ(big.to<std::int32_t>().error(), error::overflow);
-    EXPECT_EQ(fine_signed{-1}.to<unsigned>().error(), error::domain_error);
+    EXPECT_EQ(fine_signed{-1}.to<unsigned>().error(), error::overflow);
 }
 
 TEST(WideGridTest, exact_read_out) {
@@ -692,7 +692,7 @@ TEST(WideGridTest, clamp_and_wrap_actions) {
     fine         w     = 0;
     std::int64_t carry = 0;
     // One turn is 2^34 + 2^-32, so 3·2^34 + 2 = 3 turns + (2 − 3·2^-32).
-    w.on_wrap([&](auto&, auto q) { carry = as<std::int64_t>(q); }) = 3 * p34 + 2;
+    w.on_wrap([&](auto&, auto q) { carry = to<std::int64_t>(q); }) = 3 * p34 + 2;
     EXPECT_EQ(carry, 3);
     EXPECT_TRUE(w == rational{2} - rational{3} * tick);
 }
@@ -768,7 +768,7 @@ TEST(WideGridTest, wrap_carry_grid_past_64_bits) {
     std::int64_t c = 7;
     w.on_wrap([&](auto&, auto k) {
         static_assert(grid_of<decltype(k)> == grid{0, 0});
-        c = as<std::int64_t>(k);
+        c = to<std::int64_t>(k);
     })             = 3;
     EXPECT_EQ(c, 7); // in range: no wrap
     EXPECT_TRUE(w == 3);
@@ -861,11 +861,11 @@ TEST(WideGridTest, limb_edges) {
 TEST(WideGridTest, qformat_division_past_64_bits) {
     using q32 = inside<{{0, (1ull << 31)}, per<(1ull << 32)>}, round_half_away>; // 2^63 slots
     q32  a = 1000.5, b = 0.25;
-    auto q = (a / b).value();                              // b's grid includes 0
+    auto q = div(a, b, round_half_away).value();           // b's grid includes 0
     static_assert(notch_of<decltype(q)> == notch_of<q32>); // Q-format result
     static_assert(!detail::rational_storage<decltype(q)>);
     EXPECT_TRUE(q == 4002);
-    auto r = (q32{1} / q32{3}).value(); // rounds to the nearest 2^-32
+    auto r = (test::rdiv(q32{1}, q32{3})).value(); // rounds to the nearest 2^-32
     EXPECT_TRUE((r == rational{1431655765, std::int64_t{1} << 32}));
 }
 

@@ -92,7 +92,7 @@ std::string unpack(residue m) {
     std::string text;
     while (m != 0) {
         const auto [rest, byte] = divmod(m, just<256>);
-        text.insert(text.begin(), static_cast<char>(byte.as<unsigned char>()));
+        text.insert(text.begin(), static_cast<char>(byte.to<unsigned char>()));
         m = rest;
     }
     return text;

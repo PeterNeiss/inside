@@ -23,11 +23,11 @@ int main() {
     auto num  = q.numerator();                               // 11: the value is 11/4
     auto i    = q.to<int>();                                 // unexpected(error::rounding_error)
     auto down = q.to<int, round_floor>();                    // 2: rounding named in the call
-    auto neg  = inside<{-5, 5}>{-1}.to<unsigned>();          // unexpected(error::domain_error)
+    auto neg  = inside<{-5, 5}>{-1}.to<unsigned>();          // unexpected(error::overflow)
     // [/listing]
     if (top != 10 || deg != 5 || *fit != 7 || near != 7)
         return 1;
-    if (num != 11 || q.denominator() != 4 || i.has_value() || i.error() != error::rounding_error || down != 2 || neg.has_value() || neg.error() != error::domain_error)
+    if (num != 11 || q.denominator() != 4 || i.has_value() || i.error() != error::rounding_error || down != 2 || neg.has_value() || neg.error() != error::overflow)
         return 1;
     return 0;
 }

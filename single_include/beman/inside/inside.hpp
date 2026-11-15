@@ -141,7 +141,7 @@
 // Internal — include "beman/inside/inside.hpp" (the umbrella), not this directly.
 // The core type beman::inside::inside<G, P>: construction and try_make,
 // compound assignment, ++/--, the conversions (rational, double,
-// to<T>/as<T>), numerator()/denominator(), raw()/from_raw, the per-store
+// to<T>), numerator()/denominator(), raw()/from_raw, the per-store
 // overrides (policy<F>(), policy(ec)) and hooks (on_wrap, on_clamp,
 // on_error), parse(first, last), just<…> and the _ins literal.
 // The umbrella adds the casts, arithmetic, range and cursor layers, which
@@ -8593,11 +8593,12 @@ struct divmod_result {
 } // namespace beman::inside
 
 namespace beman::inside::detail {
-// Both operands are plain integer grids and the caller accepted integer
-// truncation (snap) — the prerequisite for native integer div / mod.
+// Both operands are plain integer grids and the call names a rounding mode
+// (F: div(a, b, round_floor), a compound assignment's type) — the
+// prerequisite for native integer div / mod. The operands' own modes play no
+// part: a / b is the exact quotient whatever their types round.
 template <insidable L, insidable R, policy_flag F>
-inline constexpr bool integer_ops =
-    ((F | policy_of<L> | policy_of<R>)&snap) && integer_lattice<L> && integer_lattice<R>;
+inline constexpr bool integer_ops = (F & snap) && integer_lattice<L> && integer_lattice<R>;
 
 // ...and every value fits int64, so the builtin integer division applies.
 template <insidable L, insidable R, policy_flag F>
@@ -8738,7 +8739,7 @@ struct division {
                       !(grid_int{1} < grid_denominator(notch_of<L>)) || !(grid_of<L> / grid_of<R>).has_value())
             return false;
         else
-            return ((F | policy_of<L> | policy_of<R>)&snap) != 0;
+            return (F & snap) != 0;
     }();
 
     static constexpr bool wide_div_integer = integer_wide_ops<L, R, F>;
@@ -8746,7 +8747,7 @@ struct division {
     static constexpr bool native_div = native_div_integer || native_div_fixed || wide_div_integer;
 
     // The rounding mode for the native paths (shared by the grid and runtime).
-    static constexpr round_mode rmode = rounding_of(F | policy_of<L> | policy_of<R>);
+    static constexpr round_mode rmode = rounding_of(F);
 
     // A clear diagnostic when there is no result grid, instead of the
     // expected-deref below failing cryptically. The native integer path forms
@@ -9001,7 +9002,7 @@ struct modulo {
                                            signed_value_bits({units_lo<L, unit>, units_hi<L, unit>}) < 63 &&
                                            signed_value_bits({units_lo<R, unit>, units_hi<R, unit>}) < 63;
 
-    static constexpr round_mode rmode = rounding_of(F | policy_of<L> | policy_of<R>);
+    static constexpr round_mode rmode = rounding_of(F);
 
     // Remainder consistent with the rounded quotient: r = a − round(a/b)·b,
     // with the tightest bounds every mode allows (the values r can take):
@@ -9134,7 +9135,7 @@ struct quotient_remainder {
 
     static_assert(integer_ops<L, R, FS> || lattice_mod_ops<L, R>, "divmod requires notched grids");
 
-    static constexpr round_mode rmode = rounding_of(FS | policy_of<L> | policy_of<R>);
+    static constexpr round_mode rmode = rounding_of(FS);
 
     // On a lattice the quotient is the integer round(a/b): its grid holds the
     // quotient interval's limits rounded the same way (rounding is monotone).
@@ -9764,15 +9765,12 @@ struct inside {
 
     // Conversion summary:
     //   operator rational — implicit; lossless and exact.
-    //   operator double   — explicit, and gated on a rounding flag (a double
-    //                       may round the value).
-    //                       A strict inside opts in via `to<double>().value()`.
-    //   to<T>()           — narrowing/widening: T where the grid proves it total,
-    //                       else `expected<T, error>` (overflow / domain_error).
-    //   as<T>()           — non-expected sibling, for known-in-range sites
-    //                       (an index needs none: `vec[b]`, below);
-    //                       no check is left where T holds the whole grid.
-    //   to<T>(b)/as<T>(b) — free-function forms, for generic code.
+    //   operator double   — explicit; the value rounded once to a double,
+    //                       as to<double>().
+    //   to<T>()           — T where the grid proves the conversion total (no
+    //                       check is left), else `expected<T, error>`
+    //                       (overflow, rounding_error).
+    //   to<T>(b)          — the free-function form, for generic code.
     // No implicit integer conversion: it would narrow silently into a smaller
     // built-in (`int i = b;`, `unsigned char c = b;`), the range escaping
     // the type. The exception is an index, an inside whose every value is a
@@ -9799,11 +9797,7 @@ struct inside {
     operator T() const = delete ("inside: an index converts to the builtin integers that hold its whole grid - "
                                  "not to a smaller one, bool, a character or a floating type (x.to<T>(), x != 0)");
 
-    constexpr explicit operator double() const
-        requires(has_flag(P, detail::snap))
-    {
-        return detail::as_double(*this);
-    }
+    constexpr explicit operator double() const { return detail::as_double(*this); }
 
     // Unavailable on a wide-index grid: its values outgrow the 64-bit rational
     // (compare it, or read it with to<T>()).
@@ -9847,8 +9841,8 @@ struct inside {
     // and floating point). Like `/`, the type says whether it can fail: a plain
     // T where the grid proves the conversion total (total_to, and every
     // floating T), else std::expected<T, error> with `error::overflow` (out of
-    // T's range; `error::domain_error` for a negative value into unsigned T)
-    // or `error::rounding_error`. Rounding needs permission, as for a store: a
+    // T's range, a negative value into an unsigned T too) or
+    // `error::rounding_error`. Rounding needs permission, as for a store: a
     // fractional value rounds by Round, else by this type's rounding mode.
     // Bounds the grid already satisfies are not checked.
     template <std::integral T, policy_flag Round = detail::none>
@@ -9871,7 +9865,7 @@ struct inside {
             const auto t = q.Quot;
             if constexpr (check_lo)
                 if (t < decltype(t){lim::min()})
-                    return std::unexpected{std::unsigned_integral<T> ? error::domain_error : error::overflow};
+                    return std::unexpected{error::overflow};
             if constexpr (check_hi)
                 if (t > decltype(t){lim::max()})
                     return std::unexpected{error::overflow};
@@ -9884,7 +9878,7 @@ struct inside {
                     return std::unexpected{error::rounding_error};
             if constexpr (check_lo)
                 if (t < detail::rational{lim::min()})
-                    return std::unexpected{std::unsigned_integral<T> ? error::domain_error : error::overflow};
+                    return std::unexpected{error::overflow};
             if constexpr (check_hi)
                 if (t > detail::rational{lim::max()})
                     return std::unexpected{error::overflow};
@@ -9911,44 +9905,13 @@ struct inside {
             return static_cast<T>(detail::as_double(*this));
     }
 
-  private:
-    // to<T>() as as<T>() reads it: with the call's rounding for an integer T.
-    template <typename T, policy_flag Round>
-    constexpr auto to_for_as() const {
-        if constexpr (std::integral<T>)
-            return to<T, Round>();
-        else
-            return to<T>();
-    }
-    template <typename T, policy_flag Round>
-    static constexpr bool as_total =
-        !detail::expected_like<decltype(std::declval<const inside&>().template to_for_as<T, Round>())>;
-
   public:
-    // as<T>() — to<T>() where the grid proves the conversion total: T itself,
-    // for known-in-range sites (array indexing, capacity arithmetic). Where a
-    // value may not convert, to<T>() returns a std::expected and as<T>() is
-    // deleted. FP targets share operator double's policy gate, so a strict
-    // inside rejects `b.as<double>()` too.
-    template <typename T, policy_flag Round = detail::none>
-        requires(std::integral<T> || (std::floating_point<T> && Round == detail::none)) &&
-                (!std::floating_point<T> || has_flag(P, detail::snap)) && as_total<T, Round>
-    [[nodiscard]] constexpr T as() const {
-        return to_for_as<T, Round>();
-    }
-    template <typename T, policy_flag Round = detail::none>
-        requires(std::integral<T> || (std::floating_point<T> && Round == detail::none)) &&
-                    (!std::floating_point<T> || has_flag(P, detail::snap)) && (!as_total<T, Round>)
-    T as() const = delete ("inside: as<T>() takes a conversion the grid proves total - here a value may not fit T "
-                           "(or would need rounding): use to<T>(), which returns a std::expected, or to<T, "
-                           "round_floor>() and the like");
-
     // numerator() / denominator() — the exact value in lowest terms (sign on
     // the numerator, denominator positive), each an inside on the integers
     // that holds every such part of this grid's values (numerator_grid,
     // denominator_grid): 3 and 16 for 0.1875 on {{0, 1}, per<16>}. On an
     // integer lattice the numerator is the value and the denominator the
-    // point 1. Read a builtin with .as<T>() or .to<T>().
+    // point 1. Read a builtin with .to<T>().
     [[nodiscard]] constexpr auto numerator() const {
         using N = inside<detail::numerator_grid(G)>;
         if constexpr (detail::point_storage<N>)
@@ -10015,15 +9978,13 @@ struct inside {
     // when every value of i is an index of T (0 … step_count_of<T>), a raw
     // copy; else a store checked by T's policy, or by a one-shot policy
     // (clamp saturates at the ends, wrap folds onto the indices).
-    // try_from_step reports the failure instead.
     template <insidable I>
         requires detail::integer_lattice<I> && (G.Notch != 0 || G.Interval.Lower == G.Interval.Upper)
-    // (An index that may fall outside 0 … step_count: a std::expected, as
-    // try_from_step.)
+    // (A step that may fall outside 0 … step_count: a std::expected.)
     [[nodiscard]] static constexpr auto from_step(const I& i) {
         constexpr bool within = lower_of<I> >= 0 && upper_of<I> <= G.step_count();
         if constexpr (!within)
-            return try_from_step(i);
+            return try_make(step_value(i));
         else if constexpr (detail::point_storage<inside>)
             return from_raw({}, unsafe);
         else if constexpr (detail::index_storage<inside> && detail::raw_holds_value<I>)
@@ -10044,11 +10005,6 @@ struct inside {
         else
             return detail::try_store<inside, O>([&](inside& r, auto&& ec_pol) { r = inside{step_value(i), ec_pol}; });
     }
-    template <policy_flag F = detail::none, insidable I>
-        requires detail::integer_lattice<I> && (G.Notch != 0 || G.Interval.Lower == G.Interval.Upper)
-    [[nodiscard]] static constexpr std::expected<inside, error> try_from_step(const I& i) {
-        return try_make<F>(step_value(i));
-    }
 #define BEMAN_INSIDE_WHY_from_index \
     "inside: from_step(i) takes a notch index - an inside on the integers (step_t<T>, 3_ins) or a builtin integer"
     template <insidable I>
@@ -10068,11 +10024,6 @@ struct inside {
                 (detail::flag_like<Pol> || detail::policy_like<Pol>)
     [[nodiscard]] static constexpr auto from_step(T i, Pol&& pol) {
         return from_step(as_step_inside(i), std::forward<Pol>(pol));
-    }
-    template <policy_flag F = detail::none, std::integral T>
-        requires(G.Notch != 0 || G.Interval.Lower == G.Interval.Upper)
-    [[nodiscard]] static constexpr std::expected<inside, error> try_from_step(T i) {
-        return try_from_step<F>(as_step_inside(i));
     }
 
   private:
@@ -10358,7 +10309,11 @@ struct inside {
     constexpr inside& operator/=(const R& rhs) {
         if (rhs == 0)
             return *this;
-        return assign_op_result(*this / rhs);
+        // (A store into this type: its rounding mode divides, on the grid.)
+        if constexpr (has_flag(P, detail::snap))
+            return assign_op_result(div(*this, rhs, make_policy<P>()));
+        else
+            return assign_op_result(*this / rhs);
     }
 
     template <insidable R>
@@ -10523,8 +10478,8 @@ struct inside {
 };
 
 //---------------------------------------------------------------------------
-// to<T>(b) / as<T>(b) — free-function forms, for generic code that would
-// otherwise need the `.template` disambiguator. Same semantics as the members.
+// to<T>(b) — the free-function form, for generic code that would
+// otherwise need the `.template` disambiguator. Same semantics as the member.
 //---------------------------------------------------------------------------
 template <typename T, policy_flag Round = detail::none, insidable B>
 [[nodiscard]] constexpr auto to(const B& b)
@@ -10534,13 +10489,6 @@ template <typename T, policy_flag Round = detail::none, insidable B>
         return b.template to<T>();
     else
         return b.template to<T, Round>();
-}
-
-template <typename T, policy_flag Round = detail::none, insidable B>
-[[nodiscard]] constexpr T as(const B& b)
-    requires requires { b.template as<T, Round>(); }
-{
-    return b.template as<T, Round>();
 }
 
 //---------------------------------------------------------------------------
@@ -11271,22 +11219,31 @@ template <insidable L, insidable R>
     requires(!detail::mul_defined<L, R>)
 auto operator*(L, R) = delete (BEMAN_INSIDE_WHY_mul);
 
+// `/` and `%` are one operation whatever the operands' types round: the exact
+// quotient, and the remainder of the quotient truncated toward zero. A
+// rounded division names its mode at the call (div(a, b, round_floor),
+// mod(a, b, round_floor)), or is a store into a type that rounds (x /= b).
+// Only `unsafe` is taken from the operands (it skips the zero-divisor check).
+namespace detail {
 template <insidable L, insidable R>
-    requires detail::div_defined<L, R, policy_of<L> | policy_of<R>>
-[[nodiscard]] constexpr auto operator/(L lhs, R rhs) {
-    return beman::inside::div(lhs, rhs, make_policy<policy_of<L> | policy_of<R>>());
+inline constexpr policy_flag operator_flags = (policy_of<L> | policy_of<R>)&unsafe_marker;
 }
 template <insidable L, insidable R>
-    requires(!detail::div_defined<L, R, policy_of<L> | policy_of<R>>)
+    requires detail::div_defined<L, R, detail::operator_flags<L, R>>
+[[nodiscard]] constexpr auto operator/(L lhs, R rhs) {
+    return beman::inside::div(lhs, rhs, make_policy<detail::operator_flags<L, R>>());
+}
+template <insidable L, insidable R>
+    requires(!detail::div_defined<L, R, detail::operator_flags<L, R>>)
 auto operator/(L, R) = delete (BEMAN_INSIDE_WHY_div);
 
 template <insidable L, insidable R>
-    requires detail::mod_defined<L, R, policy_of<L> | policy_of<R>>
+    requires detail::mod_defined<L, R, detail::operator_flags<L, R>>
 [[nodiscard]] constexpr auto operator%(L lhs, R rhs) {
-    return beman::inside::mod(lhs, rhs, make_policy<policy_of<L> | policy_of<R>>());
+    return beman::inside::mod(lhs, rhs, make_policy<detail::operator_flags<L, R>>());
 }
 template <insidable L, insidable R>
-    requires(!detail::mod_defined<L, R, policy_of<L> | policy_of<R>>)
+    requires(!detail::mod_defined<L, R, detail::operator_flags<L, R>>)
 auto operator%(L, R) = delete (BEMAN_INSIDE_WHY_mod);
 #undef BEMAN_INSIDE_WHY_arith_action
 #undef BEMAN_INSIDE_WHY_add
@@ -12253,8 +12210,7 @@ namespace beman::inside::formats {
 using uint8  = inside<{0, 255}>;
 using uint16 = inside<{0, 65535}>;
 using uint32 = inside<{0, 4294967295}>;
-// uint64 reaches past int64: read it with `to<std::uint64_t>()` or
-// `as<std::uint64_t>()`. A difference of two uint64s spans 2^65 values and
+// uint64 reaches past int64: read it with `to<std::uint64_t>()`. A difference of two uint64s spans 2^65 values and
 // gets a wide-integer index.
 using uint64 = inside<{0, 18446744073709551615u}>;
 
@@ -21309,7 +21265,7 @@ BEMAN_INSIDE_MATH_FUNCTION(pow_base, detail::entry::pow_base_fn<Base>, auto Base
 //
 // Also here:
 //   quantity_point, point<U>(v), the origins     ℃ and ℉ points, exact shifts
-//   quantity_cast, value_cast, try_value_cast    kinds and representations
+//   quantity_cast, value_cast                    kinds and representations
 //   named_unit, quantity_spec, point_origin,     units, kinds, origins and
 //   base_dimension, unit_c / spec_c / origin_c   dimensions of your own
 //   basis_vector                                 a basis vector of a geometric
@@ -22991,6 +22947,13 @@ struct quantity_action_ref {
         NumRef *= v;
         return Self;
     }
+    // (A builtin integer scales as on an inside: q.policy(ec) *= 2.)
+    template <beman::inside::detail::step_integer N>
+        requires requires(Ref& r, N n) { r *= n; }
+    constexpr Q& operator*=(N n) {
+        NumRef *= n;
+        return Self;
+    }
     template <insidable V>
         requires requires(Ref& r, const V& v) { r /= v; }
     constexpr Q& operator/=(const V& v) {
@@ -23123,15 +23086,8 @@ class quantity {
     operator T() const = delete ("units: an angle (an is_kind quantity) or a pi-scaled ratio is no plain "
                                  "number - read numerical_value_in(si::radian), or value_cast it first");
 
-    // A dimensionless quantity's number as a built-in, as inside's as<T>() and
-    // to<T>(): its value in unit one (5 % is 1/20), under the same rule as the
-    // conversion above.
-    template <typename T, policy_flag Round = beman::inside::detail::none>
-        requires detail::number_like_v<R> &&
-                 requires(const detail::number_t<R, Rep>& n) { beman::inside::as<T, Round>(n); }
-    [[nodiscard]] constexpr T as() const {
-        return beman::inside::as<T, Round>(detail::rescale<detail::conversion_factor<R.U, units::unit{}>>(Value));
-    }
+    // A dimensionless quantity's number as a built-in, as inside's to<T>(): its value in unit one (5 % is 1/20), under
+    // the same rule as the conversion above.
     template <typename T, policy_flag Round = beman::inside::detail::none>
         requires detail::number_like_v<R> &&
                  requires(const detail::number_t<R, Rep>& n) { beman::inside::to<T, Round>(n); }
@@ -23162,6 +23118,14 @@ class quantity {
         requires requires(Rep& n, const V& v) { n *= v; }
     constexpr quantity& operator*=(const V& v) {
         Value *= v;
+        return *this;
+    }
+    // A builtin integer scales the number as on an inside (q *= 2): the
+    // result is stored back by the number's rules.
+    template <beman::inside::detail::step_integer N>
+        requires requires(Rep& r, N n) { r *= n; }
+    constexpr quantity& operator*=(N n) {
+        Value *= n;
         return *this;
     }
     template <insidable V>
@@ -23664,7 +23628,7 @@ constexpr auto cast_number(const N& v) {
 
 // value_cast<Rep2>(q) — another representation, the same unit: q's number
 // stored into Rep2 by Rep2's policy. The quantity where the grids prove the
-// store, else std::expected (try_value_cast always returns one).
+// store, else std::expected.
 template <insidable Rep2, reference R, class V>
     requires requires(const V& v) { Rep2::try_make(v); }
 [[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q) {
@@ -23698,31 +23662,6 @@ template <class Q, reference R, class V>
 [[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q) {
     return detail::cast_number<Q, typename Q::rep>(units::detail::value_of(q.template in<Q::reference.U>()));
 }
-// try_value_cast<Q, F>(q) — the same through Q's Rep2::try_make<F>.
-template <class Q, policy_flag F = beman::inside::detail::none, reference R, class V>
-    requires detail::value_castable_to<Q, R> && requires(const quantity<R, V>& q) {
-        Q::rep::template try_make<F>(units::detail::value_of(q.template in<Q::reference.U>()));
-    }
-[[nodiscard]] constexpr std::expected<Q, error> try_value_cast(const quantity<R, V>& q) {
-    return detail::lift_to<Q>(Q::rep::template try_make<F>(units::detail::value_of(q.template in<Q::reference.U>())));
-}
-
-// try_value_cast<Rep2, F>(q) — as Rep2::try_make<F>: an expected.
-template <insidable Rep2, policy_flag F = beman::inside::detail::none, reference R, class V>
-    requires requires(const V& v) { Rep2::template try_make<F>(v); }
-[[nodiscard]] constexpr std::expected<quantity<R, Rep2>, error> try_value_cast(const quantity<R, V>& q) {
-    return detail::lift_to<quantity<R, Rep2>>(Rep2::template try_make<F>(units::detail::value_of(q)));
-}
-
-// try_value_cast<U, Rep2, F>(q) — in unit U, as Rep2::try_make<F>.
-template <auto U, insidable Rep2, policy_flag F = beman::inside::detail::none, reference R, class V>
-    requires detail::is_unit_tag_v<decltype(U)> && detail::exact_rescale_v<R.U, decltype(U)::value> &&
-             requires(const quantity<R, V>& q) { Rep2::template try_make<F>(units::detail::value_of(q.in(U))); }
-[[nodiscard]] constexpr auto try_value_cast(const quantity<R, V>& q) {
-    constexpr reference to{R.Spec, R.KindOf, R.Derived, decltype(U)::value};
-    return detail::lift_to<quantity<to, Rep2>>(Rep2::template try_make<F>(units::detail::value_of(q.in(U))));
-}
-
 //---------------------------------------------------------------------------
 // inside's algorithms on quantities: the number goes through the inside
 // function in the target's unit, so each still rounds once and checks once.
@@ -23904,12 +23843,7 @@ template <class Q, class X>
 Q exact_cast(const X&) = delete ("units: a number alone has no unit - write exact_cast<Q>(v * si::metre) or "
                                  "Q::try_make(v, si::metre)");
 
-// as<T>(q) / to<T>(q): the member forms, free, as for an inside.
-template <typename T, policy_flag Round = beman::inside::detail::none, quantity_like Q>
-    requires requires(const Q& q) { q.template as<T, Round>(); }
-[[nodiscard]] constexpr T as(const Q& q) {
-    return q.template as<T, Round>();
-}
+// to<T>(q): the member form, free, as for an inside.
 template <typename T, policy_flag Round = beman::inside::detail::none, quantity_like Q>
     requires requires(const Q& q) { q.template to<T, Round>(); }
 [[nodiscard]] constexpr auto to(const Q& q) {
@@ -25390,6 +25324,15 @@ template <insidable V, reference A, class VA>
     requires detail::mv_addable<V, quantity<A, VA>>
 [[nodiscard]] constexpr bool operator==(const V& v, const quantity<A, VA>& q) {
     return detail::mv_equal(v, q);
+}
+
+// A builtin integer compares as a number does: squared_norm(z) == 25,
+// i * i == -1.
+template <class A, beman::inside::detail::step_integer N>
+    requires(!insidable<A>) && (multivector_like<A> || quantity_like<A>) &&
+            requires(const A& a, const beman::inside::detail::lifted_t<N>& v) { a == v; }
+[[nodiscard]] constexpr bool operator==(const A& a, N n) {
+    return a == beman::inside::detail::lift_integer(n);
 }
 
 // Two quantities of different blades, and a number and a quantity of a
@@ -27719,7 +27662,12 @@ struct element_traits<Q> {
     }
     template <class V>
     static constexpr std::expected<Q, error> try_store_of(const V& v) {
-        return units::try_value_cast<Q>(v);
+        if constexpr (requires {
+                          { units::value_cast<Q>(v) } -> std::same_as<Q>;
+                      })
+            return std::expected<Q, error>{units::value_cast<Q>(v)};
+        else
+            return units::value_cast<Q>(v);
     }
 
   private:

@@ -76,36 +76,36 @@ std::int64_t ref_heven(std::int64_t a, std::int64_t b) {
 TEST(DivRoundTest, integer_division_honours_each_rounding_mode) {
     using Nn  = inside<{-100, 100}, round_half_away>;
     using Nnd = inside<{1, 10}, round_half_away>;
-    ASSERT_TRUE(static_cast<rational>(Nn{-8} / Nnd{3}) == -3); // round to nearest, not -2
-    ASSERT_TRUE(static_cast<rational>(Nn{8} / Nnd{3}) == 3);
-    ASSERT_TRUE(static_cast<rational>(Nn{7} / Nnd{2}) == 4); // 3.5 → 4 (half away)
-    ASSERT_TRUE(static_cast<rational>(Nn{-7} / Nnd{2}) == -4);
+    ASSERT_TRUE(static_cast<rational>(test::rdiv(Nn{-8}, Nnd{3})) == -3); // round to nearest, not -2
+    ASSERT_TRUE(static_cast<rational>(test::rdiv(Nn{8}, Nnd{3})) == 3);
+    ASSERT_TRUE(static_cast<rational>(test::rdiv(Nn{7}, Nnd{2})) == 4); // 3.5 → 4 (half away)
+    ASSERT_TRUE(static_cast<rational>(test::rdiv(Nn{-7}, Nnd{2})) == -4);
 
     using Ff  = inside<{-100, 100}, round_floor>;
     using Ffd = inside<{1, 10}, round_floor>;
-    ASSERT_TRUE(static_cast<rational>(Ff{-8} / Ffd{3}) == -3); // floor(-2.667)
-    ASSERT_TRUE(static_cast<rational>(Ff{8} / Ffd{3}) == 2);   // floor(2.667)
+    ASSERT_TRUE(static_cast<rational>(test::rdiv(Ff{-8}, Ffd{3})) == -3); // floor(-2.667)
+    ASSERT_TRUE(static_cast<rational>(test::rdiv(Ff{8}, Ffd{3})) == 2);   // floor(2.667)
 
     using Cc  = inside<{-100, 100}, round_ceil>;
     using Ccd = inside<{1, 10}, round_ceil>;
-    ASSERT_TRUE(static_cast<rational>(Cc{8} / Ccd{3}) == 3);   // ceil(2.667)
-    ASSERT_TRUE(static_cast<rational>(Cc{-8} / Ccd{3}) == -2); // ceil(-2.667)
+    ASSERT_TRUE(static_cast<rational>(test::rdiv(Cc{8}, Ccd{3})) == 3);   // ceil(2.667)
+    ASSERT_TRUE(static_cast<rational>(test::rdiv(Cc{-8}, Ccd{3})) == -2); // ceil(-2.667)
 
     using Tt  = inside<{-100, 100}, round_toward_zero>;
     using Ttd = inside<{1, 10}, round_toward_zero>;
-    ASSERT_TRUE(static_cast<rational>(Tt{-8} / Ttd{3}) == -2); // round_toward_zero truncates
-    ASSERT_TRUE(static_cast<rational>(Tt{8} / Ttd{3}) == 2);
+    ASSERT_TRUE(static_cast<rational>(test::rdiv(Tt{-8}, Ttd{3})) == -2); // round_toward_zero truncates
+    ASSERT_TRUE(static_cast<rational>(test::rdiv(Tt{8}, Ttd{3})) == 2);
 }
 
 // half-even division breaks ties to even
 TEST(DivRoundTest, half_even_division_breaks_ties_to_even) {
     using H  = inside<{-100, 100}, round_half_even>;
     using Hd = inside<{1, 10}, round_half_even>;
-    ASSERT_TRUE(static_cast<rational>(H{5} / Hd{2}) == 2);   // 2.5 → 2 (even)
-    ASSERT_TRUE(static_cast<rational>(H{7} / Hd{2}) == 4);   // 3.5 → 4 (even)
-    ASSERT_TRUE(static_cast<rational>(H{-5} / Hd{2}) == -2); // -2.5 → -2
-    ASSERT_TRUE(static_cast<rational>(H{9} / Hd{2}) == 4);   // 4.5 → 4
-    ASSERT_TRUE(static_cast<rational>(H{3} / Hd{2}) == 2);   // 1.5 → 2
+    ASSERT_TRUE(static_cast<rational>(test::rdiv(H{5}, Hd{2})) == 2);   // 2.5 → 2 (even)
+    ASSERT_TRUE(static_cast<rational>(test::rdiv(H{7}, Hd{2})) == 4);   // 3.5 → 4 (even)
+    ASSERT_TRUE(static_cast<rational>(test::rdiv(H{-5}, Hd{2})) == -2); // -2.5 → -2
+    ASSERT_TRUE(static_cast<rational>(test::rdiv(H{9}, Hd{2})) == 4);   // 4.5 → 4
+    ASSERT_TRUE(static_cast<rational>(test::rdiv(H{3}, Hd{2})) == 2);   // 1.5 → 2
 }
 
 // modulo remainder stays consistent with the rounded quotient
@@ -113,17 +113,17 @@ TEST(DivRoundTest, modulo_remainder_stays_consistent_with_the_rounded_quotient) 
     // For every mode, (a/b)*b + a%b == a.
     using N  = inside<{-100, 100}, round_half_away>;
     using Nd = inside<{1, 10}, round_half_away>;
-    ASSERT_TRUE(static_cast<rational>(N{-8} % Nd{3}) == 1); // -8 = (-3)*3 + 1
-    ASSERT_TRUE(static_cast<rational>(N{8} % Nd{3}) == -1); //  8 =   3 *3 - 1
+    ASSERT_TRUE(static_cast<rational>(test::rmod(N{-8}, Nd{3})) == 1); // -8 = (-3)*3 + 1
+    ASSERT_TRUE(static_cast<rational>(test::rmod(N{8}, Nd{3})) == -1); //  8 =   3 *3 - 1
 
     using F  = inside<{-100, 100}, round_floor>;
     using Fd = inside<{1, 10}, round_floor>;
-    ASSERT_TRUE(static_cast<rational>(F{-8} % Fd{3}) == 1); // floored remainder ≥ 0 for b>0
-    ASSERT_TRUE(static_cast<rational>(F{8} % Fd{3}) == 2);
+    ASSERT_TRUE(static_cast<rational>(test::rmod(F{-8}, Fd{3})) == 1); // floored remainder ≥ 0 for b>0
+    ASSERT_TRUE(static_cast<rational>(test::rmod(F{8}, Fd{3})) == 2);
 
     using T  = inside<{-100, 100}, round_toward_zero>;
     using Td = inside<{1, 10}, round_toward_zero>;
-    ASSERT_TRUE(static_cast<rational>(T{-8} % Td{3}) == -2); // truncated remainder (sign of dividend)
+    ASSERT_TRUE(static_cast<rational>(test::rmod(T{-8}, Td{3})) == -2); // truncated remainder (sign of dividend)
 }
 
 // Q-format division honours the rounding mode
@@ -131,20 +131,21 @@ TEST(DivRoundTest, q_format_division_honours_the_rounding_mode) {
     using Qn = inside<{{0, 255}, per<256>}, round_half_away>;
     using Qt = inside<{{0, 255}, per<256>}, round_toward_zero>;
     // 200/3 = 66.6667 → on the 1/256 grid: nearest = 17067/256, truncate = 17066/256.
-    ASSERT_TRUE((static_cast<rational>(*(Qn{200.0} / Qn{3.0})) == rational{17067u, 256}));
-    ASSERT_TRUE((static_cast<rational>(*(Qt{200.0} / Qt{3.0})) == rational{17066u, 256}));
+    ASSERT_TRUE((static_cast<rational>(*(test::rdiv(Qn{200.0}, Qn{3.0}))) == rational{17067u, 256}));
+    ASSERT_TRUE((static_cast<rational>(*(test::rdiv(Qt{200.0}, Qt{3.0}))) == rational{17066u, 256}));
 
     // floor / ceil / half_even also honoured (round_uquotient — Lower == 0, so the
     // quotient is non-negative; these arms were previously untested).
     using Qf = inside<{{0, 255}, per<256>}, round_floor>;
     using Qc = inside<{{0, 255}, per<256>}, round_ceil>;
     using Qe = inside<{{0, 255}, per<256>}, round_half_even>;
-    ASSERT_TRUE((static_cast<rational>(*(Qf{200.0} / Qf{3.0})) == rational{17066u, 256})); // floor
-    ASSERT_TRUE((static_cast<rational>(*(Qc{200.0} / Qc{3.0})) == rational{17067u, 256})); // ceil
+    ASSERT_TRUE((static_cast<rational>(*(test::rdiv(Qf{200.0}, Qf{3.0}))) == rational{17066u, 256})); // floor
+    ASSERT_TRUE((static_cast<rational>(*(test::rdiv(Qc{200.0}, Qc{3.0}))) == rational{17067u, 256})); // ceil
     // exact ties on the 1/256 grid: 1.5/256 → 2 (even), 2.5/256 → 2 (even).
-    ASSERT_TRUE((static_cast<rational>(*(Qe{rational{3, 256}} / Qe{2.0})) == rational{2u, 256}));
-    ASSERT_TRUE((static_cast<rational>(*(Qe{rational{5, 256}} / Qe{2.0})) == rational{2u, 256}));
-    ASSERT_TRUE((static_cast<rational>(*(Qn{rational{5, 256}} / Qn{2.0})) == rational{3u, 256})); // nearest tie
+    ASSERT_TRUE((static_cast<rational>(*(test::rdiv(Qe{rational{3, 256}}, Qe{2.0}))) == rational{2u, 256}));
+    ASSERT_TRUE((static_cast<rational>(*(test::rdiv(Qe{rational{5, 256}}, Qe{2.0}))) == rational{2u, 256}));
+    ASSERT_TRUE(
+        (static_cast<rational>(*(test::rdiv(Qn{rational{5, 256}}, Qn{2.0}))) == rational{3u, 256})); // nearest tie
 }
 
 namespace {
@@ -158,11 +159,11 @@ void sweep_div_mod() {
             B                  bb = test::store<B>(b);
             const std::int64_t q  = Ref(a, b);
             SCOPED_TRACE(::testing::Message() << "a=" << a << " b=" << b << " expected q=" << q);
-            ASSERT_TRUE(static_cast<rational>(ba / bb) == q);         // quotient per mode
-            ASSERT_TRUE(static_cast<rational>(ba % bb) == a - q * b); // remainder a − q·b
-            const auto [dq, dr] = divmod(ba, bb);                     // divmod agrees with / and %
-            ASSERT_TRUE(dq == ba / bb);
-            ASSERT_TRUE(dr == ba % bb);
+            ASSERT_TRUE(static_cast<rational>(test::rdiv(ba, bb)) == q);         // quotient per mode
+            ASSERT_TRUE(static_cast<rational>(test::rmod(ba, bb)) == a - q * b); // remainder a − q·b
+            const auto [dq, dr] = test::rdivmod(ba, bb);                         // divmod agrees with / and %
+            ASSERT_TRUE(dq == test::rdiv(ba, bb));
+            ASSERT_TRUE(dr == test::rmod(ba, bb));
         }
 }
 } // namespace
@@ -203,7 +204,7 @@ TEST(DivRoundTest, divmod_types_and_errors) {
     using pos = inside<{1, 10}, round_toward_zero>;
 
     const auto [q, r] = divmod(val{17}, pos{5});
-    static_assert(std::same_as<decltype(q), const decltype(val{} / pos{1})>);
+    static_assert(std::same_as<decltype(q), const decltype(div(val{}, pos{1}, round_toward_zero))>);
     static_assert(std::same_as<decltype(r), const decltype(val{} % pos{1})>);
     ASSERT_TRUE(q == 3);
     ASSERT_TRUE(r == 2);
@@ -217,7 +218,7 @@ TEST(DivRoundTest, divmod_types_and_errors) {
 
     // A divisor grid holding zero: expected, division_by_zero.
     auto e   = divmod(val{17}, val{0});
-    using vq = decltype(val{} / val{1})::value_type;
+    using vq = decltype(div(val{}, val{1}, round_toward_zero))::value_type;
     using vr = decltype(val{} % val{1})::value_type;
     static_assert(std::same_as<decltype(e), std::expected<divmod_result<vq, vr>, error>>);
     ASSERT_FALSE(e.has_value());
@@ -366,12 +367,12 @@ void check_all() {
             if (b == 0)
                 continue;
             const exact ea{a}, eb{b};
-            const auto  r     = a % b;
+            const auto  r     = test::rmod(a, b);
             const auto [q, m] = [&] {
-                if constexpr (detail::expected_like<decltype(divmod(a, b))>)
-                    return *divmod(a, b);
+                if constexpr (detail::expected_like<decltype(test::rdivmod(a, b))>)
+                    return *test::rdivmod(a, b);
                 else
-                    return divmod(a, b);
+                    return test::rdivmod(a, b);
             }();
             const exact got = [&] {
                 if constexpr (detail::expected_like<decltype(r)>)
@@ -399,13 +400,13 @@ TEST(LatticeModuloTest, remainders_are_exact) {
     check_all<shifted, halves>();
     check_all<inside<{{-3, 3}, per<4>}, round_floor>, inside<{{-2, 2}, per<3>}, round_floor>>();
     // The remainder grid is the lattice g·ℤ, bounded as on integer grids.
-    using r_t = decltype(inside<{{-3, 3}, per<4>}, round_floor>{} % thirds{1});
+    using r_t = decltype(mod(inside<{{-3, 3}, per<4>}, round_floor>{}, thirds{1}, round_floor));
     static_assert(grid_of<r_t> == grid{{0, rational{47, 12}}, rational{1, 12}});
     using floored = inside<{{-3, 3}, per<4>}, round_floor>;
-    EXPECT_EQ((rational{floored{-1.25} % thirds{rational{4, 3}}}), (rational{1, 12}));
+    EXPECT_EQ((rational{test::rmod(floored{-1.25}, thirds{rational{4, 3}})}), (rational{1, 12}));
     // A divisor grid holding 0: an expected, division_by_zero for 0.
-    EXPECT_EQ((halves{2.5} % fourths{0}).error(), error::division_by_zero);
-    EXPECT_EQ(rational{*(halves{2.5} % fourths{0.75})}, (rational{1, 4}));
+    EXPECT_EQ((test::rmod(halves{2.5}, fourths{0})).error(), error::division_by_zero);
+    EXPECT_EQ(rational{*(test::rmod(halves{2.5}, fourths{0.75}))}, (rational{1, 4}));
 }
 } // namespace lattice_modulo_tests
 
@@ -431,12 +432,14 @@ TEST(DivisionTest, modulo_at_the_int64_limits) {
     }());
     static_assert([] {
         inside<{1, 2}> two{2};
-        return inside<{0, i64_max}, round_ceil>{i64_max} % two == -1 &&
-               inside<{0, i64_max}, round_half_away>{i64_max} % two == -1;
+        return mod(inside<{0, i64_max}>{i64_max}, two, round_ceil) == -1 &&
+               mod(inside<{0, i64_max}>{i64_max}, two, round_half_away) == -1;
     }());
     static_assert([] {
         inside<{1, 3}> two{2};
-        return inside<{-7, 7}, round_floor>{-7} % two == 1 && inside<{-7, 7}, round_ceil>{7} % two == -1;
+        return mod(inside<{-7, 7}>{-7}, two, round_floor) == 1 && mod(inside<{-7, 7}>{7}, two, round_ceil) == -1 &&
+               // The operator is the truncated remainder, whatever the operands round.
+               inside<{-7, 7}, round_floor>{-7} % two == -1;
     }());
 }
 
@@ -466,7 +469,7 @@ TEST(DivisionTest, quotient_grid_reaching_2_pow_63) {
     static_assert([] {
         inside<{i64_min, 0}, round_toward_zero> a{i64_min};
         inside<{-2, -1}>                        b{-1};
-        auto                                    q = a / b;
+        auto                                    q = div(a, b, round_toward_zero);
         using Q                                   = decltype(q);
         return rational(q) == rational{std::uint64_t{1} << 63} && upper_of<Q> == rational{std::uint64_t{1} << 63};
     }());
@@ -519,22 +522,22 @@ TEST(DivisionTest, integer_division_past_int64_rounds) {
     constexpr I64 I64_MAX = std::numeric_limits<I64>::max();
     constexpr I64 I64_MIN = std::numeric_limits<I64>::min();
     using u64             = inside<{0, UINT64_MAX}, round_toward_zero>;
-    EXPECT_EQ(u64{7u} / u64{2u}, 3);
+    EXPECT_EQ(test::rdiv(u64{7u}, u64{2u}), 3);
     EXPECT_EQ(div(uint64{7u}, uint64{2u}, round_floor), 3);
     EXPECT_EQ(div(uint64{UINT64_MAX}, inside<{-3, -1}>{-2}, round_ceil), rational(-I64_MAX));
     using i64     = inside<{I64_MIN, I64_MAX}, round_toward_zero>;
-    const auto q1 = i64{-7} / i64{-1};
+    const auto q1 = test::rdiv(i64{-7}, i64{-1});
     using small   = inside<{1, 10}, round_toward_zero>;
-    EXPECT_EQ(q1.value() / small{2}, 3);
+    EXPECT_EQ(test::rdiv(q1.value(), small{2}), 3);
     const auto d = uint64{0} - uint64{UINT64_MAX};
     EXPECT_EQ(div(d, inside<{1, 1000}>{7}, round_floor), rational(-2635249153387078803));
     using around_zero = inside<{-2, 3}, round_toward_zero>;
-    EXPECT_EQ((u64{5u} / around_zero{0}).error(), error::division_by_zero);
+    EXPECT_EQ((test::rdiv(u64{5u}, around_zero{0})).error(), error::division_by_zero);
     // (a / b)·b + a % b == a, as for the native widths.
     const uint64                               a{18446744073709551557u};
     const inside<{1, 1000}, round_toward_zero> b{1000};
     const auto                                 quot = div(a, b, round_floor);
-    EXPECT_EQ(exact{quot} * exact{1000} + exact{a % b}, exact{a});
+    EXPECT_EQ(exact{quot} * exact{1000} + exact{test::rmod(a, b)}, exact{a});
 }
 
 TEST(DivisionTest, modulo_by_a_zero_grid_is_constrained) {

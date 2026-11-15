@@ -61,7 +61,12 @@ struct element_traits<Q> {
     }
     template <class V>
     static constexpr std::expected<Q, error> try_store_of(const V& v) {
-        return units::try_value_cast<Q>(v);
+        if constexpr (requires {
+                          { units::value_cast<Q>(v) } -> std::same_as<Q>;
+                      })
+            return std::expected<Q, error>{units::value_cast<Q>(v)};
+        else
+            return units::value_cast<Q>(v);
     }
 
   private:

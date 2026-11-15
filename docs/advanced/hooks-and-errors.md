@@ -119,7 +119,7 @@ Errors are reported as a `beman::inside::error`. The library does not use
 | `overflow` | the value does not fit its destination: an inside's range, a native type (`to<T>()`), a 64-bit rational (`rational{1e30}`) |
 | `rounding_error` | the value is between two notches, and the policy does not round |
 | `division_by_zero` | the divisor is 0, or a fraction's denominator is (`rational{1, 0}`, `parse("1/0")`) |
-| `domain_error` | the argument is outside the function's mathematical domain: `sqrt` of a negative, `pow` of a negative base, a negative value into an unsigned `to<T>()` |
+| `domain_error` | the argument is outside the function's mathematical domain: `sqrt` of a negative, `pow` of a negative base |
 | `not_finite` | a NaN or an infinity came in from a `double` |
 | `invalid_format` | text that is not a number (`parse`, `operator>>`) |
 
@@ -155,13 +155,13 @@ auto v = volts::try_make((x - offset) / gain);   // the division's error, or the
 ```
 
 For a quantity, `Q::try_make<F>(v, u)` takes a number and its unit, and
-`try_value_cast<Q, F>(q)` takes another quantity:
+`value_cast<Q, F>(q)` takes another quantity:
 
 ```cpp
 using metres = quantity<si::metre, inside<{0, 1000}>>;
 const quantity<si::kilo(si::metre), inside<{0, 5}>> leg{2, si::kilo(si::metre)};
 auto a = metres::try_make(1200, si::metre);   // !a: overflow
-auto b = try_value_cast<metres>(leg);         // !b: 2000 m does not fit
+auto b = value_cast<metres>(leg);         // !b: 2000 m does not fit
 ```
 
 ## Which channel reports a failure
@@ -176,8 +176,8 @@ Each operation reports through one channel:
 | a named output that can miss: `mul<Out>`, `div<Out>`, `sum<T>`, `exact_cast<T>`, `value_cast`, `from_step`, `f<Out>(x)`, mdspan `sum`/`dot`/`matrix_product`/`transform_into` | the returned `std::expected` (`expected<void, error>` for the mdspan writers) |
 | a precondition: a cursor stepped past its end, a raw read off the grid | the error handler |
 
-`as<T>()` compiles only where the conversion is total; `to<T>()` is its
-`expected` form. A named math output over grids whose range the library does
+`to<T>()` is a plain `T` where the conversion is total, else an `expected`.
+A named math output over grids whose range the library does
 not bound (`exp` of `|x|` past 4096, `pow` of a base grid reaching 0) needs
 `clamp` or `wrap`.
 

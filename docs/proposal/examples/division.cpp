@@ -18,9 +18,8 @@ int main() {
     auto z = num{7} / any{0};                  // unexpected(error::division_by_zero)
     static_assert(!std::is_same_v<decltype(q), decltype(r)>);
 
-    using whole = inside<{0, 100}, round_floor>;
-    auto f = whole{7} / some{3};               // 2: rounding named in the type
-    auto m = whole{7} % some{3};               // 1, consistent: 2·3 + 1 == 7
+    auto f = div(num{7}, some{3}, round_floor);  // 2: rounding named at the call
+    auto m = mod(num{7}, some{3}, round_floor);  // 1, consistent: 2·3 + 1 == 7
     // [/listing]
     if (q != just<rational{7, 3}> || *r != just<rational{7, 3}> || z.has_value() ||
         z.error() != error::division_by_zero || f != 2 || m != 1)

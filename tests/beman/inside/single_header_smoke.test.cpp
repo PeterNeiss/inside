@@ -14,5 +14,5 @@ int main() {
     inside<{0, 100}> b{8};
     auto             sum = a + b; // result grid {0, 200}, unit integer
 
-    return (sum.as<int>() == 50) ? 0 : 1;
+    return (sum.to<int>() == 50) ? 0 : 1;
 }

@@ -246,7 +246,7 @@ construction from a number and its unit apply `Rep`'s policy, and
 actions. `q.policy<F>()` and `q.policy(ec)` store under `Rep`'s policy plus
 `F`. `Q::try_make(v, u)`, the flag constructors `Q{q, clamp}` and
 `Q{v, u, clamp}` (a flag or `make_policy<F>(ec)` for one store, `q` a quantity
-converted exactly), `exact_cast<Q>(q)`, `value_cast` and `try_value_cast`
+converted exactly), `exact_cast<Q>(q)`, `value_cast` and `value_cast`
 convert into a quantity type, and `conversion_overflows<Q>(v, u)` and its
 siblings answer for a number `v` in unit `u`. `min`, `max` and `midpoint` run in the common unit,
 as `+` does, and the free arithmetic takes a per-call policy as in the number
@@ -323,7 +323,7 @@ namespace std::units {
   template<class Rep2, reference R, class V> constexpr quantity<R, Rep2> value_cast(const quantity<R, V>&);
   template<auto U, class Rep2, reference R, class V> constexpr auto value_cast(const quantity<R, V>&);
   template<class Q, reference R, class V> constexpr Q value_cast(const quantity<R, V>&);
-  // try_value_cast<...>(q): the same through Rep2::try_make, an expected
+  // value_cast<...>(q): the same through Rep2::try_make, an expected
   template<class Q, class X> constexpr Q exact_cast(const X& x);  // x in Q's unit, or a quantity
   template<class Q, class N> constexpr bool conversion_overflows(N v) noexcept; // v in Q's unit; also
                                                                 // conversion_rounds, conversion_loses
@@ -371,7 +371,7 @@ namespace std {
 | `a + b`, `a - b`, `a % b`, `a <=> b` | in the common unit (the gcd of the magnitudes); kind: the nearest common ancestor | ill-formed for different dimensions or kinds |
 | `a * b`, `a / b` | units, kinds and numbers multiply or divide | `expected` iff `b`'s grid holds 0; a result of dimension one converts to its `inside` |
 | `quantity_cast<S>(q)` | the same number, kind `S` | down or sideways within one kind; never across an `is_kind` boundary |
-| `value_cast<Rep2>(q)`, `value_cast<u, Rep2>(q)` | the exact value, stored by `Rep2` | `try_value_cast` reports through `expected` |
+| `value_cast<Rep2>(q)`, `value_cast<u, Rep2>(q)` | the exact value, stored by `Rep2` | `value_cast` reports through `expected` |
 | `Q{q, clamp}`, `Q{v, u, wrap}` | `q` or `v` in `Q`'s unit, saturated or folded into `Q`'s number | `q` a quantity of `Q`'s dimension, `v` a number in unit `u` |
 | `q.numerical_value_in(u)` | `q`'s number in unit `u` | exact; `q.numerical_value()` is ill-formed |
 | `Q::try_make<F>(v, u)`, `q.on_wrap(f) += r` etc. | as for `Q::rep` | the number paper's policies and actions |

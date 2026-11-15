@@ -2,8 +2,9 @@
 // Division: exact by default, integer division on request, and std::expected
 // only when the divisor's grid holds zero.
 //   - `a / b` is the exact rational quotient.
-//   - a rounding mode (per call, `div(a, b, round_toward_zero)`, or in the type) divides natively;
-//     a rounding flag picks the direction (`round_half_away`, `round_floor`, ...).
+//   - a rounding mode at the call, `div(a, b, round_toward_zero)`, divides natively; the flag
+//     picks the direction (`round_half_away`, `round_floor`, ...). So does a store into a
+//     type that rounds: `x /= b`.
 //   - A divisor grid that holds 0 makes the result std::expected<inside, error>
 //     (error::division_by_zero); a zero-free divisor gives a plain value.
 //   - A quotient's type bounds its denominators, so arithmetic on it stays
@@ -35,13 +36,17 @@ int main() {
     if (*trunc != 2 || *nearest != 3 || *ceil != 4)
         return 1;
 
-    // In the type: `/` and `%` divide natively, and divmod gives both from one
-    // division. The remainder follows the rounded quotient, so
-    // q * b + r == a under every mode.
-    using floored       = inside<{-100, 100}, round_floor>;
-    const auto [fq, fr] = *divmod(floored{-8}, floored{3});
+    // divmod gives the quotient and the remainder from one division. The
+    // remainder follows the rounded quotient, so q * b + r == a under every
+    // mode. A type that rounds divides the same way when it is stored into:
+    // `/=` is a store.
+    using signed_number = inside<{-100, 100}>;
+    const auto [fq, fr] = *divmod(signed_number{-8}, signed_number{3}, round_floor);
     std::cout << "-8 / 3, -8 % 3 (floor) = " << fq << ", " << fr << "\n";
-    if (fq != -3 || fr != 1 || *(floored{-8} / floored{3}) != fq)
+    using floored = inside<{-100, 100}, round_floor>;
+    floored x{-8};
+    x /= inside<{1, 10}>{3}; // -8/3 floored: -3
+    if (fq != -3 || fr != 1 || x != fq)
         return 1;
 
     // Division by zero is a value, not a crash.

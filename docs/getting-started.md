@@ -112,9 +112,8 @@ An inside does not turn into an `int` by itself. Name the type you want:
 
 | Write | Gives |
 |---|---|
-| `x.as<int>()` | an `int`; no check where `int` holds the whole grid |
-| `x.to<std::uint8_t>()` | a `std::uint8_t` when every value of the grid fits one, else a `std::expected<std::uint8_t, error>` that fails if the value does not |
-| `double(x)` | a `double`, on a type with a rounding mode |
+| `x.to<int>()` | an `int` when every value of the grid fits one (nothing is checked), else a `std::expected<int, error>` that fails if the value does not |
+| `double(x)` | a `double`, rounded once |
 | `x.numerator()`, `x.denominator()` | the exact value as a fraction, two insides |
 | `std::cout << x`, `std::format("{}", x)` | the exact value as text |
 

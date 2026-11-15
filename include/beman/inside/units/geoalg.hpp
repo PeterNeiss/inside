@@ -641,6 +641,15 @@ template <insidable V, reference A, class VA>
     return detail::mv_equal(v, q);
 }
 
+// A builtin integer compares as a number does: squared_norm(z) == 25,
+// i * i == -1.
+template <class A, beman::inside::detail::step_integer N>
+    requires(!insidable<A>) && (multivector_like<A> || quantity_like<A>) &&
+            requires(const A& a, const beman::inside::detail::lifted_t<N>& v) { a == v; }
+[[nodiscard]] constexpr bool operator==(const A& a, N n) {
+    return a == beman::inside::detail::lift_integer(n);
+}
+
 // Two quantities of different blades, and a number and a quantity of a
 // blade: 3 + 4 i, 2 m e₁ + 1 m e₂.
 template <reference A, class VA, reference B, class VB>

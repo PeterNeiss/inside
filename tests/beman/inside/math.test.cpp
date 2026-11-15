@@ -1016,7 +1016,7 @@ TEST(MathArmTest, dd_tier_reads_a_rational_input) {
     using In  = inside<{{0, 1}, max_denominator{1000}}>;
     using Out = inside<{{0, 3}, per<(std::int64_t{1} << 40)>}, round_half_away>;
     static_assert(!math::detail::engine::fp_tier_available || math::detail::engine::dd_tier<Out, In>);
-    EXPECT_EQ((math::exp<Out>(In{rational{1, 3}}).as<double>()), std::round(std::exp(1.0 / 3) * 0x1p40) / 0x1p40);
+    EXPECT_EQ((math::exp<Out>(In{rational{1, 3}}).to<double>()), std::round(std::exp(1.0 / 3) * 0x1p40) / 0x1p40);
 }
 } // namespace reached_arms_tests
 

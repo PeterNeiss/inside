@@ -52,7 +52,7 @@ TEST(InsideToTest, to_is_plain_where_it_cannot_fail) {
     static_assert(std::same_as<decltype(money{}.to<int, round_floor>()), int>);
     static_assert(std::same_as<decltype(money{}.to<double>()), double>);
     EXPECT_EQ((money{2.75}.to<int, round_floor>()), 2);
-    EXPECT_EQ(digits{7}.as<int>(), 7);
+    EXPECT_EQ(digits{7}.to<int>(), 7);
 }
 
 TEST(InsideToTest, inside_to_unsigned_t) {
@@ -73,11 +73,11 @@ TEST(InsideToTest, inside_to_unsigned_t) {
     }
 
     {
-        SCOPED_TRACE("negative inside to unsigned -> domain_error");
+        SCOPED_TRACE("negative inside to unsigned -> overflow");
         using B = inside<{-10, 10}>;
         auto r  = B{-5}.to<std::uint8_t>();
         ASSERT_FALSE(r.has_value());
-        ASSERT_EQ(r.error(), error::domain_error);
+        ASSERT_EQ(r.error(), error::overflow);
     }
 
     {
@@ -152,7 +152,7 @@ TEST(InsideToTest, inside_to_rational_conversion) {
 }
 
 // The implicit integer conversion is an index's alone (non-negative integers
-// within int64, mdspan.test.cpp); as<T>() / to<T>() read every other grid.
+// within int64, mdspan.test.cpp); to<T>() / to<T>() read every other grid.
 TEST(InsideToTest, integers_are_read_with_as_or_to) {
     using narrow = inside<{-100, 100}>;
     using wide   = inside<{0, std::numeric_limits<std::uint64_t>::max()}>;
@@ -162,20 +162,20 @@ TEST(InsideToTest, integers_are_read_with_as_or_to) {
     static_assert(!std::is_convertible_v<narrow, std::size_t>);
     static_assert(!std::is_convertible_v<wide, std::int64_t>);
     static_assert(!std::is_convertible_v<wide, std::size_t>);
-    ASSERT_EQ(narrow{42}.as<std::int64_t>(), 42);
+    ASSERT_EQ(narrow{42}.to<std::int64_t>(), 42);
     // A grid past T's range reports the value that does not fit.
     ASSERT_EQ(narrow{42}.to<std::int8_t>(), std::int8_t{42});
     ASSERT_EQ((inside<{0, 300}>{300}.to<std::uint8_t>()), std::unexpected{error::overflow});
 }
 
-// An index reads as a size_t: as<std::size_t>() keeps no check on an
+// An index reads as a size_t: to<std::size_t>() keeps no check on an
 // index-shaped grid.
 TEST(InsideToTest, as_size_t_indexes_a_container) {
     using idx_t = inside<{0, 9}>;
     std::vector<int> v{0, 10, 20, 30, 40, 50, 60, 70, 80, 90};
     idx_t            i{3};
     ASSERT_EQ(v[i], 30);
-    std::size_t s = i.as<std::size_t>();
+    std::size_t s = i.to<std::size_t>();
     ASSERT_EQ(s, 3u);
 }
 
@@ -190,33 +190,33 @@ TEST(InsideToTest, operator_double_is_gated_on_rounding_policy) {
     static_assert(std::is_constructible_v<double, B_round>);
     static_assert(std::is_constructible_v<double, B_ignore>);
     static_assert(std::is_constructible_v<double, B_floor>);
-    static_assert(!(std::is_constructible_v<double, B_strict>));
+    static_assert(std::is_constructible_v<double, B_strict>); // explicit, rounded once
 
     // The typed-error path is always available.
     ASSERT_TRUE(B_strict{0.5}.to<double>() == 0.5);
 }
 
-// as<T>() is a non-expected shortcut for to<T>().value()
+// to<T>() is a non-expected shortcut for to<T>().value()
 TEST(InsideToTest, as_t_is_a_non_expected_shortcut_for_to_t_value) {
     using narrow = inside<{0, 100}>;
     using frac   = inside<{{0, 100}, per<10>}, round_half_away>;
 
     // Matches the integer-extraction value path.
-    ASSERT_TRUE(narrow{42}.as<std::int64_t>() == 42);
-    ASSERT_TRUE(narrow{42}.as<std::size_t>() == 42u);
+    ASSERT_TRUE(narrow{42}.to<std::int64_t>() == 42);
+    ASSERT_TRUE(narrow{42}.to<std::size_t>() == 42u);
 
     // Fractional notch: extracting to int64 rounds by the type's mode (matches to<std::int64_t>()).
-    ASSERT_TRUE(frac{7.5}.as<std::int64_t>() == 8);
+    ASSERT_TRUE(frac{7.5}.to<std::int64_t>() == 8);
 
     // Double target behaves the same as `to<T>().value()`; the inside -> rational
     // conversion is the implicit operator.
     ASSERT_TRUE(static_cast<rational>(narrow{42}) == 42);
-    ASSERT_TRUE(frac{7.5}.as<double>() == 7.5);
+    ASSERT_TRUE(frac{7.5}.to<double>() == 7.5);
 
     // Free-function forms — template-friendly (no `.template` disambiguator),
     // found by ADL, same semantics as the members.
-    ASSERT_TRUE(as<std::int64_t>(narrow{42}) == 42);
-    ASSERT_TRUE(as<double>(frac{7.5}) == 7.5);
+    ASSERT_TRUE(to<std::int64_t>(narrow{42}) == 42);
+    ASSERT_TRUE(to<double>(frac{7.5}) == 7.5);
     ASSERT_TRUE(to<std::int64_t>(frac{7.5}) == 8);
     ASSERT_TRUE((to<std::int64_t, round_floor>(frac{7.5}) == 7));
     ASSERT_TRUE(to<double>(narrow{3}) == 3.0);
@@ -225,38 +225,27 @@ TEST(InsideToTest, as_t_is_a_non_expected_shortcut_for_to_t_value) {
 // Probes must stay dependent so a gated call yields `false` instead of a
 // hard error (requires-expressions only SFINAE during substitution).
 template <typename B, typename T>
-concept has_member_as = requires(B b) { b.template as<T>(); };
-template <typename B, typename T>
-concept has_free_as = requires(B b) { as<T>(b); };
-template <typename B, typename T>
 concept has_member_to = requires(B b) { b.template to<T>(); };
 
-// as<floating> shares operator double's policy gate
-TEST(InsideToTest, as_floating_shares_operator_double_s_policy_gate) {
+// A double is read from every inside, rounded once: by double(x) and by
+// to<double>(), under one rule.
+TEST(InsideToTest, double_is_read_from_every_inside) {
     using strict_b  = inside<{0, 100}>; // no rounding flag
     using rounded_b = inside<{0, 100}, round_half_away>;
-
-    // Strict: both spellings of the direct double read are rejected;
-    // to<double>() stays the explicit opt-in.
-    static_assert(!has_member_as<strict_b, double>);
-    static_assert(!has_free_as<strict_b, double>);
-    static_assert(has_member_to<strict_b, double>);
-
-    // Integral as<> is not policy-gated.
-    static_assert(has_member_as<strict_b, std::int64_t>);
-
-    // A rounding flag opens the gate.
-    static_assert(has_member_as<rounded_b, double>);
-    ASSERT_TRUE(rounded_b{42}.as<double>() == 42.0);
+    static_assert(has_member_to<strict_b, double> && has_member_to<rounded_b, double>);
+    static_assert(std::is_constructible_v<double, strict_b> && std::is_constructible_v<double, rounded_b>);
+    static_assert(!std::is_convertible_v<strict_b, double>); // explicit only
+    ASSERT_TRUE(rounded_b{42}.to<double>() == 42.0);
+    ASSERT_TRUE(double(strict_b{42}) == 42.0);
 }
 
-// as<T>() takes only a conversion the grid proves total; where a value may
+// to<T>() takes only a conversion the grid proves total; where a value may
 // not convert, to<T>() reports it as an expected.
-TEST(InsideToTest, as_is_total_and_to_reports) {
+TEST(InsideToTest, to_is_total_or_reports) {
     using s = inside<{-5, 5}>;
-    static_assert(!has_member_as<s, unsigned>);
-    ASSERT_EQ(s{-1}.to<unsigned>().error(), error::domain_error);
-    ASSERT_EQ(s{3}.as<int>(), 3);
+    static_assert(!std::same_as<decltype(s{}.to<unsigned>()), unsigned>);
+    ASSERT_EQ(s{-1}.to<unsigned>().error(), error::overflow); // does not fit
+    ASSERT_EQ(s{3}.to<int>(), 3);
 }
 } // namespace inside_to_tests
 
@@ -465,7 +454,7 @@ TEST(ConversionTest, to_rounds_before_the_range_check) {
     static_assert(H{127.5}.to<int, round_half_away>() == 128 && H{127.5}.to<int, round_floor>() == 127);
     static_assert(inside<{{0, 10}, per<4>}, round_half_away>{2.75}.to<int>() == 3); // the type's own mode
     static_assert(H{128}.to<std::int8_t>().error() == error::overflow);
-    static_assert(inside<{-5, 5}>{-1}.to<unsigned>().error() == error::domain_error);
+    static_assert(inside<{-5, 5}>{-1}.to<unsigned>().error() == error::overflow);
 }
 
 // A bounded continuous grid rejects a denominator past its bound: so does
@@ -673,12 +662,12 @@ TEST(ConversionTest, implicit_integer_conversion_of_an_index_only) {
     static_assert(std::is_convertible_v<inside<{0, 10'000'000'000}>, std::int64_t>);
 
     idx          a{5};
-    std::int64_t val = a.as<std::int64_t>();
+    std::int64_t val = a.to<std::int64_t>();
     ASSERT_EQ(val, 5);
 
     using idx2 = inside<{1, 10}>;
     idx2 b{7};
-    ASSERT_EQ(b.as<int>(), 7);
+    ASSERT_EQ(b.to<int>(), 7);
 
     // an array subscript names the index type
     int arr[] = {10, 20, 30, 40, 50};
@@ -908,7 +897,7 @@ void check_wide_builtins() {
 
     // Reads.
     EXPECT_TRUE((inside<{-5, 5}>{-3}.template to<S>() == S{-3}));
-    EXPECT_TRUE((inside<{-5, 5}>{-3}.template as<S>() == S{-3}));
+    EXPECT_TRUE((inside<{-5, 5}>{-3}.template to<S>() == S{-3}));
     EXPECT_FALSE((inside<{-5, 5}>{-3}.template to<U>().has_value()));
     EXPECT_TRUE(W{big}.template to<S>() == big);
     EXPECT_TRUE(u64{18446744073709551615u}.template to<U>() == U{18446744073709551615u});

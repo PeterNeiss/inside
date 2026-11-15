@@ -405,7 +405,7 @@ void prop_modulo(fuzz_state& s, long iters) {
                 if (b == 0)
                     continue; // possible if hi <= 0 and zero is in range
                 auto         r        = mod(a, b, round_toward_zero);
-                std::int64_t expected = as<std::int64_t>(a) % as<std::int64_t>(b);
+                std::int64_t expected = to<std::int64_t>(a) % to<std::int64_t>(b);
                 // mod returns a plain inside when B's grid excludes zero, else expected.
                 if constexpr (is_expected_v<decltype(r)>) {
                     FUZZ_REQUIRE(s, r.has_value());
@@ -423,7 +423,7 @@ void prop_modulo(fuzz_state& s, long iters) {
                     b = BI::from_raw(random_in_range_raw<BI>(s.rng), unsafe);
                 } while (b == 0);
                 auto         r        = mod(a, b, round_toward_zero);
-                std::int64_t expected = as<std::int64_t>(a) % as<std::int64_t>(b);
+                std::int64_t expected = to<std::int64_t>(a) % to<std::int64_t>(b);
                 // mod returns a plain inside when B's grid excludes zero, else expected.
                 if constexpr (is_expected_v<decltype(r)>) {
                     FUZZ_REQUIRE(s, r.has_value());

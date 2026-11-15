@@ -53,9 +53,9 @@ inch → mm is ×25.4. All exact. The rescaled number keeps its policy.
 |---|---|
 | `q.in(u)`, `q.in<u>()` | the same quantity in unit `u`, exact |
 | `q.numerical_value_in(u)` | the inside, in unit `u` (the stored one in q's own unit) |
-| `value_cast<Rep2>(q)`, `try_value_cast<Rep2, F>(q)` | another number type, through Rep2's constructor or `try_make<F>` |
-| `value_cast<u, Rep2>(q)`, `try_value_cast<u, Rep2, F>(q)` | in unit `u`, into Rep2 |
-| `value_cast<Q>(q)`, `try_value_cast<Q, F>(q)` | into the quantity type Q, whose spec must take q's |
+| `value_cast<Rep2>(q)`, `value_cast<Rep2, F>(q)` | another number type, through Rep2's constructor or `try_make<F>` |
+| `value_cast<u, Rep2>(q)`, `value_cast<u, Rep2, F>(q)` | in unit `u`, into Rep2 |
+| `value_cast<Q>(q)`, `value_cast<Q, F>(q)` | into the quantity type Q, whose spec must take q's |
 | `quantity_cast<isq::height>(q)` | another spec: down the tree, or across one kind |
 | `q.quantity_spec` | the spec as a value: `q.quantity_spec == isq::length` |
 
@@ -84,7 +84,7 @@ grow with every product.
 A quantity of dimension one converts to an inside: implicitly when its number
 does, explicitly when the target must round. The number is its value in unit
 one: (21 kg) / (6 kg) is 3.5, (3 km) / (2 m) is 1500, and 8 % is 2/25;
-`q.as<T>()` and `q.to<T>()` read it as a built-in, as on an inside. An angle
+`q.to<T>()` reads it as a built-in, as on an inside. An angle
 stays a quantity: radians and steradians are `is_kind` quantities, and so is
 a π-scaled ratio; read their number with `numerical_value_in(u)`. A dimensionless
 kind of your own works the same way: a level in dB is no plain number, but
@@ -207,7 +207,7 @@ dimensions, and the rate is a quantity of USD/ETH
 
 For ADC counts, a gain in cts/V is not a 1/V. With a gain type whose range
 excludes 0, (raw − offset) / gain is a plain voltage; checking a two-point
-calibration's gain into that type once with `try_value_cast` means no later
+calibration's gain into that type once with `value_cast` means no later
 division can fail ([`adc_calibration.cpp`](../../examples/adc_calibration.cpp)).
 
 ### Basis vectors
@@ -243,13 +243,13 @@ the numbers, so it still rounds once and checks once.
 | Spelling | Does |
 |---|---|
 | `q.on_wrap(f) += d`, `on_clamp`, `on_error` | a store with a hook: `d` is a quantity, converted as `+=` does; `f` gets the quantity, then the carry (a count of periods), the overshoot (a quantity in Q's unit) or the error |
-| `q.policy<F>() = d`, `q.policy(ec) += d` | a store under the number's policy plus `F`, or setting `ec` instead of raising; `=`, `+=` and `-=` take quantities, `*=` and `/=` numbers |
+| `q.policy<F>() = d`, `q.policy(ec) += d` | a store under the number's policy plus `F`, or setting `ec` instead of raising; `=`, `+=` and `-=` take quantities, `*=` and `/=` numbers (`*=` a builtin integer too: `q *= 2`) |
 | `Q{q, clamp \| Round}`, `Q{q, wrap}` | a quantity, converted to Q's unit exactly first |
 | `Q{v, u, clamp}` | a number `v` in unit `u`, as `Q{v, u}` takes it |
 | `exact_cast<Q>(q)` | a quantity, stored exactly or reported |
 | `Q::try_make<F>(v, u)` | the number's `try_make` of `v` in unit `u` |
 | `min(a, b)`, `max(a, b)`, `midpoint(a, b)` | in the common unit, as `+`; `midpoint` is exact |
-| `q.as<T>()`, `q.to<T>()` | a dimensionless quantity's number as a built-in |
+| `q.to<T>()` | a dimensionless quantity's number as a built-in |
 | `++q`, `q--` | one notch of the number up or down, under its policy |
 | `mul<C>(a, b)`, `div<C>(a, b)` (a flag may follow: `mul<C>(a, b, round_floor)`) | a·b or a/b rounded once into `C`: a quantity type, or its number (the unit is the product's; a plain inside for a dimensionless result); the factor between units folds into the exact product |
 | `add_all(…)`, `mul_all(…)`, `sum<Q>(range)` | the folds; `sum<Q>` takes quantities in any unit that converts to Q's |

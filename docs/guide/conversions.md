@@ -9,7 +9,7 @@ casts, comparisons, and text.
 
 ```cpp
 inside<{0, 1000}> b{42};                   // in: from an int
-auto n = b.as<int>();                      // out: 42, as an int
+auto n = b.to<int>();                      // out: 42, a plain int: 1000 fits one
 auto m = b.to<std::uint8_t>();             // out: a std::expected, since 1000 does not fit a byte
 std::cout << b;                            // text: 42
 auto p = parse<inside<{0, 1000}>>("42");   // text in: a std::expected
@@ -43,25 +43,24 @@ conversion_loses<pct>(150);       // true: either of the two
 
 | Write | Gives |
 |---|---|
-| `x.as<T>()` | a `T`, where the grid proves the conversion total; else use `to<T>()` |
-| `x.to<T>()` | a `T` where it cannot fail (every value of the grid is an integer that fits `T`); else a `std::expected<T, error>`: `overflow` when it does not fit, `domain_error` for a negative value into an unsigned type, `rounding_error` for a fraction |
+| `x.to<T>()` | a `T` where it cannot fail (every value of the grid is an integer that fits `T`); else a `std::expected<T, error>`: `overflow` when it does not fit (a negative value into an unsigned type too), `rounding_error` for a fraction |
 | `x.to<int, round_floor>()` | the same, rounding a fraction by the given mode: a plain `int` when the grid fits |
-| `double(x)`, `x.as<double>()` | a `double`, on a type with a rounding mode |
-| `x.to<double>()` | a `double`, on any type |
-| `x.numerator()`, `x.denominator()` | the exact value in lowest terms, as insides on the integers: `3` and `16` for 0.1875 (`.as<int>()` reads them) |
+| `double(x)`, `x.to<double>()` | a `double`, rounded once from the exact value |
+| `x.numerator()`, `x.denominator()` | the exact value in lowest terms, as insides on the integers: `3` and `16` for 0.1875 (`.to<int>()` reads them) |
 | `x.step()` | the count of notches above Lower, a `step_t<T>`; `T::from_step(i)` goes back |
 | `rational r = x;` | the exact value as a 64-bit fraction, where it fits one |
 
-`as<T>()` compiles where `T` holds the whole grid, so it has nothing to
-check. Elsewhere `to<T>()` returns a `std::expected`. `T::from_step(i)` is a plain
-`T` where every value of `i` is an index of `T`, else an expected.
+The type of `to<T>()` says whether it can fail: where `T` holds the whole
+grid it is a plain `T`, with nothing to check; elsewhere it is a
+`std::expected`. `T::from_step(i)` follows the same rule: a plain `T` where
+every value of `i` is a step of `T`, else an expected.
 
 A fraction into an integer type needs permission to round, as a store does:
 `x.to<int>()` of 2.75 is `error::rounding_error`, `x.to<int, round_floor>()`
 is 2. A `float` or `double` result is rounded once from the exact value.
 
-`as` and `to` are free functions too, `as<T>(x)` and `to<T>(x)`, which spares
-generic code the `x.template as<T>()` spelling.
+`to` is a free function too, `to<T>(x)`, which spares generic code the
+`x.template to<T>()` spelling.
 
 ## Indices
 

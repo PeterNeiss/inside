@@ -58,7 +58,7 @@ int main() {
     //    Equal readings would give a gain of 0, so the exact Δcts / ΔV is
     //    checked into gain_t's range once; after that, dividing by the gain
     //    cannot fail.
-    const auto gain2 = try_value_cast<gain_t>((c2 - c1) / (v2 - v1));
+    const auto gain2 = value_cast<gain_t>((c2 - c1) / (v2 - v1));
     if (!gain2)
         return 1; // a broken calibration
     const auto offset2 = c1 - *gain2 * v1;

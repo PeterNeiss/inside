@@ -39,7 +39,6 @@ using ratio   = quantity<percent, inside<{0, 100}>>;
 constexpr std::array with_quantity_form{
     std::string_view{"add"},
     std::string_view{"add_all"},
-    std::string_view{"as"},
     std::string_view{"exact_cast"},
     std::string_view{"conversion_loses"},
     std::string_view{"conversion_overflows"},
@@ -102,11 +101,10 @@ constexpr std::array member_only{
     std::string_view{"denominator"},
     std::string_view{"step"},
     std::string_view{"from_step"},
-    std::string_view{"try_from_step"},
 };
 
 template <class Q>
-concept has_as = requires(const Q& q) { q.template as<int>(); };
+concept has_as = requires(const Q& q) { q.template to<int>(); };
 template <class A, class B>
 concept has_min = requires(const A& a, const B& b) { min(a, b); };
 
@@ -166,9 +164,9 @@ TEST(UnitsParityTest, the_quantity_forms_compile) {
     static_assert(requires { m.policy(ec) = k; });
     static_assert(requires { m.on_clamp([](auto&, auto) {}) *= just<2>; });
     static_assert(requires { metres::try_make(5, si::metre); });
-    static_assert(requires(ratio r) { r.as<int, round_floor>(); });
+    static_assert(requires(ratio r) { r.to<int, round_floor>(); });
     static_assert(requires(ratio r) { r.to<int>(); });
-    static_assert(requires(ratio r) { as<int, round_floor>(r); });
+    static_assert(requires(ratio r) { to<int, round_floor>(r); });
     static_assert(requires(ratio r) { to<double>(r); });
     static_assert(!has_as<metres>); // a length is no number
 
@@ -248,8 +246,8 @@ TEST(UnitsParityTest, the_new_forms_work) {
 
     const ratio r{25, percent}; // 25 %: the number 1/4
     EXPECT_EQ(r.to<double>(), 0.25);
-    EXPECT_EQ((r.as<int, round_half_away>()), 0);
-    EXPECT_EQ((as<int, round_ceil>(r)), 1);
+    EXPECT_EQ((r.to<int, round_half_away>()), 0);
+    EXPECT_EQ((to<int, round_ceil>(r)), 1);
     EXPECT_EQ(r.to<int>().error(), error::rounding_error); // 1/4 is no int without a rounding
 
     std::mt19937_64 rng{7};

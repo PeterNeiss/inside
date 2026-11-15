@@ -25,7 +25,7 @@
 //
 // Also here:
 //   quantity_point, point<U>(v), the origins     ℃ and ℉ points, exact shifts
-//   quantity_cast, value_cast, try_value_cast    kinds and representations
+//   quantity_cast, value_cast                    kinds and representations
 //   named_unit, quantity_spec, point_origin,     units, kinds, origins and
 //   base_dimension, unit_c / spec_c / origin_c   dimensions of your own
 //   basis_vector                                 a basis vector of a geometric

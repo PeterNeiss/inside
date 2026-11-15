@@ -189,13 +189,13 @@ TEST(UnitsTest, compound_assignment_and_casts) {
     EXPECT_EQ(ec, error{});
     const auto narrow = value_cast<inside<{0, 2000}>>(d); // may not fit: an expected
     EXPECT_EQ(narrow->numerical_value_in(si::metre), 1000);
-    EXPECT_EQ((try_value_cast<inside<{0, 500}>>(d).error()), error::overflow);
+    EXPECT_EQ((value_cast<inside<{0, 500}>>(d).error()), error::overflow);
     // In another unit: 1000 m is 1 km; 1001 m rounds onto whole km by F, and
     // is past a {0, 1} km grid.
-    EXPECT_EQ((try_value_cast<km, inside<{{0, 5}, per<1000>}>>(d)->numerical_value_in(km)), 1);
+    EXPECT_EQ((value_cast<km, inside<{{0, 5}, per<1000>}>>(d)->numerical_value_in(km)), 1);
     d.policy(ec) += just<1> * si::metre;
-    EXPECT_EQ((try_value_cast<km, inside<{0, 5}>, round_half_away>(d)->numerical_value_in(km)), 1);
-    EXPECT_EQ((try_value_cast<km, inside<{{0, 1}, per<1000>}>>(d).error()), error::overflow);
+    EXPECT_EQ((value_cast<km, inside<{0, 5}, round_half_away>>(d)->numerical_value_in(km)), 1);
+    EXPECT_EQ((value_cast<km, inside<{{0, 1}, per<1000>}>>(d).error()), error::overflow);
 }
 
 TEST(UnitsTest, kinds_convert_up_implicitly_and_down_explicitly) {
@@ -493,8 +493,8 @@ TEST(UnitsApiTest, value_cast_to_a_quantity_type) {
     const auto                                    a = value_cast<km_q>(d);
     static_assert(std::is_same_v<std::remove_cvref_t<decltype(a)>, km_q>);
     EXPECT_EQ(to_string(a), "12.345 km");
-    EXPECT_EQ((try_value_cast<quantity<km, inside<{0, 20}>>, round_floor>(d)->numerical_value_in(km)), 12);
-    EXPECT_EQ((try_value_cast<quantity<km, inside<{{0, 5}, per<1000>}>>>(d).error()), error::overflow);
+    EXPECT_EQ((value_cast<quantity<km, inside<{0, 20}, round_floor>>>(d).numerical_value_in(km)), 12);
+    EXPECT_EQ((value_cast<quantity<km, inside<{{0, 5}, per<1000>}>>>(d).error()), error::overflow);
     // The spec must convert as for an implicit conversion: up the tree, not down.
     using height_q = quantity<isq::height[si::metre], inside<{0, 9}>>;
     using length_q = quantity<isq::length[si::metre], inside<{0, 9}>>;
@@ -588,10 +588,10 @@ TEST(UnitsApiTest, adc_counts) {
     // Two-point calibration: the exact Δcts / ΔV, checked into gain_t once.
     const quantity<si::volt, inside<{{0, 1}, per<1000>}>> v1{rational{1, 2}, si::volt};
     const quantity<si::volt, inside<{{2, 5}, per<1000>}>> v2{rational{5, 2}, si::volt};
-    const auto g = try_value_cast<gain_t>((reading{3114, cts} - reading{632, cts}) / (v2 - v1));
+    const auto g = value_cast<gain_t>((reading{3114, cts} - reading{632, cts}) / (v2 - v1));
     ASSERT_TRUE(g.has_value());
     EXPECT_EQ(to_string(*g), "1241.000 cts/V");
-    EXPECT_FALSE(try_value_cast<gain_t>((reading{632, cts} - reading{632, cts}) / (v2 - v1)).has_value());
+    EXPECT_FALSE(value_cast<gain_t>((reading{632, cts} - reading{632, cts}) / (v2 - v1)).has_value());
     static_assert(!can_add<reading, volts_t>);
     static_assert(!can_add<reading, decltype(just<1> * one)>); // counts are not a plain number
     static_assert(!(dimension_of((cts / si::volt).value) == dimension_of((one / si::volt).value)));
@@ -636,12 +636,12 @@ TEST(UnitsAlgorithmsTest, hooks_take_quantities_and_see_the_quantity) {
     seconds_t s{50, si::second};
     int       carry = -1;
     s.on_wrap([&](seconds_t& self, auto c) {
-        carry = as<int>(c);
+        carry = to<int>(c);
         EXPECT_EQ(&self, &s);
     }) += just<25> * si::second;
     EXPECT_EQ(to_string(s), "15 s");
     EXPECT_EQ(carry, 1);
-    s.on_wrap([&](auto&, auto c) { carry = as<int>(c); }) += just<2> * si::minute; // in seconds, exactly
+    s.on_wrap([&](auto&, auto c) { carry = to<int>(c); }) += just<2> * si::minute; // in seconds, exactly
     EXPECT_EQ(to_string(s), "15 s");
     EXPECT_EQ(carry, 2);
     static_assert(!can_add_into<seconds_t, decltype(just<1> * si::metre)>);
@@ -710,6 +710,21 @@ TEST(UnitsAlgorithmsTest, predicates_and_casts) {
     EXPECT_EQ(to_string(seconds_t{130, si::second, wrap}), "10 s");
     EXPECT_EQ(to_string(seconds_t{just<3> * si::minute + just<5> * si::second, wrap}), "5 s");
     static_assert(!can_wrap_cast<seconds_t, decltype(just<1> * si::metre)>);
+}
+
+// q *= n with a builtin integer scales the number, stored back by its rules.
+TEST(UnitsAlgorithmsTest, a_builtin_integer_scales_a_quantity) {
+    quantity<si::metre, inside<{0, 100}, clamp>> q{5, si::metre};
+    q *= 2;
+    EXPECT_TRUE(q == just<10> * si::metre);
+    q *= 100; // clamped
+    EXPECT_TRUE(q == just<100> * si::metre);
+    quantity<si::metre, inside<{0, 100}>> c{5, si::metre};
+    error                                 ec{};
+    c.policy(ec) *= 3;
+    EXPECT_TRUE(c == just<15> * si::metre && ec == error{});
+    c.policy(ec) *= 100;
+    EXPECT_TRUE(c == just<15> * si::metre && ec == error::overflow);
 }
 
 TEST(UnitsAlgorithmsTest, dot_cross_lerp) {
