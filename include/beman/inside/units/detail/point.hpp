@@ -63,8 +63,9 @@ constexpr auto make_point(Q&& q) {
 } // namespace detail
 
 template <reference R, detail::origin_ref O, insidable Rep>
-class quantity_point {
-    quantity<R, Rep> Q;
+class quantity_point : public detail::member_holder<Rep, quantity<R, Rep>, quantity_point<R, O, Rep>> {
+    using holder = detail::member_holder<Rep, quantity<R, Rep>, quantity_point<R, O, Rep>>;
+    using holder::Value; // the quantity from the origin
 
   public:
     using quantity_type                           = quantity<R, Rep>;
@@ -73,7 +74,7 @@ class quantity_point {
     static constexpr detail::origin_ref origin    = O;
 
     constexpr quantity_point() = default;
-    constexpr explicit quantity_point(const quantity<R, Rep>& q) : Q{q} {}
+    constexpr explicit quantity_point(const quantity<R, Rep>& q) : holder(q) {}
 
     // From a point of another origin (of the same absolute one) or unit:
     // shifted, then rescaled, exactly; implicit as the quantities are.
@@ -85,18 +86,18 @@ class quantity_point {
     constexpr explicit(
         !std::convertible_to<decltype(std::declval<const quantity_point<R2, O2, V2>&>().quantity_from(origin_t<O>{})),
                              quantity<R, Rep>>) quantity_point(const quantity_point<R2, O2, V2>& p)
-        : Q(p.quantity_from(origin_t<O>{})) {}
+        : holder(quantity<R, Rep>(p.quantity_from(origin_t<O>{}))) {}
 
     // The quantity from this point's origin, or from another one.
-    [[nodiscard]] constexpr const quantity<R, Rep>& quantity_from_origin() const noexcept { return Q; }
+    [[nodiscard]] constexpr const quantity<R, Rep>& quantity_from_origin() const noexcept { return Value; }
     template <detail::origin_ref O2>
         requires(detail::same(detail::absolute_of(O2), detail::absolute_of(O)) && magnitude_of(R.U).Pi == 0 &&
                  detail::shift_forms<detail::origin_shift<O, O2, R.U>(), Rep>)
     [[nodiscard]] constexpr auto quantity_from(origin_t<O2>) const {
         constexpr grid_rational c = detail::origin_shift<O, O2, R.U>();
         return detail::quantity_access::make<
-            quantity<R, std::remove_cvref_t<decltype(detail::shift<c>(units::detail::value_of(Q)))>>>(
-            detail::shift<c>(units::detail::value_of(Q)));
+            quantity<R, std::remove_cvref_t<decltype(detail::shift<c>(units::detail::value_of(Value)))>>>(
+            detail::shift<c>(units::detail::value_of(Value)));
     }
     template <detail::origin_ref O2>
         requires(!detail::same(detail::absolute_of(O2), detail::absolute_of(O)))
@@ -122,7 +123,7 @@ class quantity_point {
     template <units::unit U>
         requires requires(const quantity<R, Rep>& q, unit_t<U> u) { q.in(u); }
     [[nodiscard]] constexpr auto in(unit_t<U> u) const {
-        return detail::make_point<O>(Q.in(u));
+        return detail::make_point<O>(Value.in(u));
     }
     // The same point in unit U, counted from U's own origin: 350 ℉ → 530/3 ℃.
     template <units::unit U>
@@ -136,13 +137,13 @@ class quantity_point {
     template <units::reference R2, class V2>
         requires requires(quantity<R, Rep>& a, const quantity<R2, V2>& b) { a += b; }
     constexpr quantity_point& operator+=(const quantity<R2, V2>& q) {
-        Q += q;
+        Value += q;
         return *this;
     }
     template <units::reference R2, class V2>
         requires requires(quantity<R, Rep>& a, const quantity<R2, V2>& b) { a -= b; }
     constexpr quantity_point& operator-=(const quantity<R2, V2>& q) {
-        Q -= q;
+        Value -= q;
         return *this;
     }
 };

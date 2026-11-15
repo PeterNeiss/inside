@@ -9504,8 +9504,33 @@ template <insidable T, policy_flag F = policy_of<T>, typename V>
 //---------------------------------------------------------------------------
 // inside
 //---------------------------------------------------------------------------
+namespace detail {
+// Where an inside keeps its raw. A point (just<5>, 0.1_ins) holds its value
+// in its type and stores nothing, so its empty raw can sit in a public base:
+// that makes a point inside a structural type, a template argument
+// (unit<"ftm", 1.8288_ins * si::metre>). Every other inside keeps its raw
+// private.
+template <class R>
+struct public_raw {
+    [[no_unique_address]] R Raw;
+};
+template <class R, class Owner>
+class private_raw {
+    friend Owner;
+    [[no_unique_address]] R Raw;
+
+  public:
+    constexpr private_raw() = default;
+    constexpr private_raw(R r) noexcept : Raw{r} {}
+};
 template <grid G, policy_flag P>
-struct inside {
+using raw_holder = std::conditional_t<G.Interval.Lower == G.Interval.Upper,
+                                      public_raw<raw_for_t<G>>,
+                                      private_raw<raw_for_t<G>, inside<G, P>>>;
+} // namespace detail
+
+template <grid G, policy_flag P>
+struct inside : detail::raw_holder<G, P> {
     static_assert(grid::validate<G>());
     static_assert((P & ~detail::known_bits) == 0,
                   "inside: the policy holds bits no flag names - build it from the flags (clamp | round_floor)");
@@ -9519,7 +9544,8 @@ struct inside {
     using raw_type     = detail::raw_for_t<G>;
 
   private:
-    [[no_unique_address]] raw_type Raw; // empty for a point grid
+    using holder = detail::raw_holder<G, P>;
+    using holder::Raw; // empty for a point grid
 
   public:
     // raw() — access escape hatch, symmetric with `from_raw`. Read overload
@@ -9538,16 +9564,16 @@ struct inside {
     // value of the grid, as every other inside holds.
     constexpr inside()
         requires(!has_flag(P, detail::cursor_marker))
-        : Raw{detail::default_raw<inside>} {}
+        : holder{detail::default_raw<inside>} {}
 
     // A cursor starts at Lower: slot 0.
     constexpr inside()
         requires(has_flag(P, detail::cursor_marker))
-        : Raw{detail::raw_from_offset<inside>(std::uint64_t{0})} {}
+        : holder{detail::raw_from_offset<inside>(std::uint64_t{0})} {}
 
   private:
     // from_raw's: the raw as given, without a default value first.
-    constexpr inside(detail::raw_tag, raw_type r) noexcept : Raw{r} {}
+    constexpr inside(detail::raw_tag, raw_type r) noexcept : holder{r} {}
 
     // The one store every constructor and assignment goes through — the same
     // for every raw kind.
@@ -9574,12 +9600,12 @@ struct inside {
     // deleted below (BEMAN_INSIDE_WHY_unproven).
     template <detail::numeric A>
         requires inside_assignable<inside, A, P> && detail::store_proven<inside, A, P>
-    constexpr inside(A value) : Raw{detail::default_raw<inside>} {
+    constexpr inside(A value) : holder{detail::default_raw<inside>} {
         store_value(value);
     }
     template <detail::numeric A>
         requires inside_assignable<inside, A, P> && (!detail::store_proven<inside, A, P>) && (!insidable<A>)
-    consteval inside(A value) : Raw{detail::default_raw<inside>} {
+    consteval inside(A value) : holder{detail::default_raw<inside>} {
         store_value(value);
     }
 
@@ -9598,7 +9624,7 @@ struct inside {
                                       A,
                                       detail::override_flags(P, policy_of<Pol>)> ||
                  detail::reports_into_errc<Pol>)
-    constexpr inside(A value, Pol&& pol) : Raw{detail::default_raw<inside>} {
+    constexpr inside(A value, Pol&& pol) : holder{detail::default_raw<inside>} {
         store_with(value, pol);
     }
     template <detail::numeric A, typename Pol>
@@ -9610,7 +9636,7 @@ struct inside {
                                        A,
                                        detail::override_flags(P, policy_of<Pol>)> &&
                  !detail::reports_into_errc<Pol> && !insidable<A>)
-    consteval inside(A value, Pol&& pol) : Raw{detail::default_raw<inside>} {
+    consteval inside(A value, Pol&& pol) : holder{detail::default_raw<inside>} {
         store_with(value, pol);
     }
     template <insidable A, typename Pol>
@@ -9673,17 +9699,17 @@ struct inside {
     // part of its type. (Exactly a grid number: templates, so nothing
     // converts to one.)
     template <std::same_as<detail::grid_rational> V>
-    consteval inside(const V& value) : Raw{detail::default_raw<inside>} {
+    consteval inside(const V& value) : holder{detail::default_raw<inside>} {
         detail::assign_grid_number(*this, value, make_policy<P>());
     }
     template <std::same_as<detail::grid_rational> V, class Pol>
         requires(detail::policy_like<Pol> || detail::flag_like<Pol>) && detail::reports_into_errc<Pol>
-    constexpr inside(const V& value, Pol&& pol) : Raw{detail::default_raw<inside>} {
+    constexpr inside(const V& value, Pol&& pol) : holder{detail::default_raw<inside>} {
         store_grid_number_with(value, pol);
     }
     template <std::same_as<detail::grid_rational> V, class Pol>
         requires(detail::policy_like<Pol> || detail::flag_like<Pol>) && (!detail::reports_into_errc<Pol>)
-    consteval inside(const V& value, Pol&& pol) : Raw{detail::default_raw<inside>} {
+    consteval inside(const V& value, Pol&& pol) : holder{detail::default_raw<inside>} {
         store_grid_number_with(value, pol);
     }
     // (`x = N - 1` runs the constructor above, then the copy assignment.)
@@ -22961,12 +22987,38 @@ constexpr auto make_action_ref(Q& q, Ref&& r) {
 }
 } // namespace detail
 
+namespace detail {
+// Where a quantity keeps its number (and a point its quantity). A point
+// number (just<5>, 1.8288_ins) holds no data, so it can sit in a public
+// base: a quantity of one is then a structural type, a template argument
+// (unit<"ftm", 1.8288_ins * si::metre>). Any other number stays private.
+template <class T>
+struct public_member {
+    [[no_unique_address]] T Value;
+    constexpr public_member() = default;
+    constexpr explicit public_member(const T& v) : Value(v) {}
+};
+template <class T, class Owner>
+class private_member {
+    friend Owner;
+    T Value;
+
+  public:
+    constexpr private_member() = default;
+    // (The owner builds the value: a consteval store stays in its constructor.)
+    constexpr explicit private_member(const T& v) : Value(v) {}
+};
+template <class Rep, class T, class Owner>
+using member_holder = std::conditional_t<lower_of<Rep> == upper_of<Rep>, public_member<T>, private_member<T, Owner>>;
+} // namespace detail
+
 template <reference R, insidable Rep>
-class quantity {
+class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
     static_assert(!R.U.Scale.Ratio.Num.negative() && !R.U.Scale.Ratio.Num.is_zero(),
                   "units: this unit carries a sign (e2 * e1 is -(e1 * e2)) - write the unit in another order and "
                   "negate the number");
-    Rep Value;
+    using holder = detail::member_holder<Rep, Rep, quantity<R, Rep>>;
+    using holder::Value;
 
   public:
     using rep                                   = Rep;
@@ -22990,7 +23042,7 @@ class quantity {
     template <class V, class Tag>
         requires detail::number_in_tag<quantity, V, Tag> &&
                  std::constructible_from<Rep, detail::number_from_tag_t<quantity, V, Tag>>
-    constexpr quantity(V&& v, Tag) : Value(detail::number_from_tag<quantity, Tag>(std::forward<V>(v))) {}
+    constexpr quantity(V&& v, Tag) : holder(Rep(detail::number_from_tag<quantity, Tag>(std::forward<V>(v)))) {}
     // A one-shot policy for this store, as for an inside: a flag or
     // make_policy<F>(ec) (Q{v, si::metre, clamp}, Q{q, round_floor}).
     template <class V, class Tag, class Pol>
@@ -22998,13 +23050,13 @@ class quantity {
                 detail::number_in_tag<quantity, V, Tag> &&
                 std::constructible_from<Rep, detail::number_from_tag_t<quantity, V, Tag>, Pol>
     constexpr quantity(V&& v, Tag, Pol&& pol)
-        : Value(detail::number_from_tag<quantity, Tag>(std::forward<V>(v)), std::forward<Pol>(pol)) {}
+        : holder(Rep(detail::number_from_tag<quantity, Tag>(std::forward<V>(v)), std::forward<Pol>(pol))) {}
     // x a quantity, converted to R's unit exactly first.
     template <class X, class Pol>
         requires(beman::inside::detail::flag_like<Pol> || beman::inside::detail::policy_like<Pol>) &&
                 detail::castable_from<quantity, X> &&
                 std::constructible_from<Rep, decltype(detail::number_in<quantity>(std::declval<const X&>())), Pol>
-    constexpr quantity(const X& x, Pol&& pol) : Value(detail::number_in<quantity>(x), std::forward<Pol>(pol)) {}
+    constexpr quantity(const X& x, Pol&& pol) : holder(Rep(detail::number_in<quantity>(x), std::forward<Pol>(pol))) {}
 
     // A number alone names no unit.
     template <class V>
@@ -23028,7 +23080,7 @@ class quantity {
     template <units::reference R2, class V2>
         requires detail::implicit_rescalable<R2, R, V2> && std::constructible_from<Rep, detail::rescaled_t<R2, R, V2>>
     constexpr explicit(!std::convertible_to<detail::rescaled_t<R2, R, V2>, Rep>) quantity(const quantity<R2, V2>& q)
-        : Value(detail::number_in_unit<R.U>(q)) {}
+        : holder(Rep(detail::number_in_unit<R.U>(q))) {}
 
     void numerical_value() const = delete ("units: a number alone has no unit - read q.numerical_value_in(si::metre)");
 
@@ -23247,7 +23299,7 @@ class quantity {
     friend struct detail::quantity_access;
     struct from_number {};
     template <class V>
-    constexpr quantity(from_number, V&& v) : Value(std::forward<V>(v)) {}
+    constexpr quantity(from_number, V&& v) : holder(Rep(std::forward<V>(v))) {}
 };
 
 // A quantity chains through inside's expected-lift operators: a division by
@@ -24066,8 +24118,9 @@ constexpr auto make_point(Q&& q) {
 } // namespace detail
 
 template <reference R, detail::origin_ref O, insidable Rep>
-class quantity_point {
-    quantity<R, Rep> Q;
+class quantity_point : public detail::member_holder<Rep, quantity<R, Rep>, quantity_point<R, O, Rep>> {
+    using holder = detail::member_holder<Rep, quantity<R, Rep>, quantity_point<R, O, Rep>>;
+    using holder::Value; // the quantity from the origin
 
   public:
     using quantity_type                           = quantity<R, Rep>;
@@ -24076,7 +24129,7 @@ class quantity_point {
     static constexpr detail::origin_ref origin    = O;
 
     constexpr quantity_point() = default;
-    constexpr explicit quantity_point(const quantity<R, Rep>& q) : Q{q} {}
+    constexpr explicit quantity_point(const quantity<R, Rep>& q) : holder(q) {}
 
     // From a point of another origin (of the same absolute one) or unit:
     // shifted, then rescaled, exactly; implicit as the quantities are.
@@ -24088,18 +24141,18 @@ class quantity_point {
     constexpr explicit(
         !std::convertible_to<decltype(std::declval<const quantity_point<R2, O2, V2>&>().quantity_from(origin_t<O>{})),
                              quantity<R, Rep>>) quantity_point(const quantity_point<R2, O2, V2>& p)
-        : Q(p.quantity_from(origin_t<O>{})) {}
+        : holder(quantity<R, Rep>(p.quantity_from(origin_t<O>{}))) {}
 
     // The quantity from this point's origin, or from another one.
-    [[nodiscard]] constexpr const quantity<R, Rep>& quantity_from_origin() const noexcept { return Q; }
+    [[nodiscard]] constexpr const quantity<R, Rep>& quantity_from_origin() const noexcept { return Value; }
     template <detail::origin_ref O2>
         requires(detail::same(detail::absolute_of(O2), detail::absolute_of(O)) && magnitude_of(R.U).Pi == 0 &&
                  detail::shift_forms<detail::origin_shift<O, O2, R.U>(), Rep>)
     [[nodiscard]] constexpr auto quantity_from(origin_t<O2>) const {
         constexpr grid_rational c = detail::origin_shift<O, O2, R.U>();
         return detail::quantity_access::make<
-            quantity<R, std::remove_cvref_t<decltype(detail::shift<c>(units::detail::value_of(Q)))>>>(
-            detail::shift<c>(units::detail::value_of(Q)));
+            quantity<R, std::remove_cvref_t<decltype(detail::shift<c>(units::detail::value_of(Value)))>>>(
+            detail::shift<c>(units::detail::value_of(Value)));
     }
     template <detail::origin_ref O2>
         requires(!detail::same(detail::absolute_of(O2), detail::absolute_of(O)))
@@ -24125,7 +24178,7 @@ class quantity_point {
     template <units::unit U>
         requires requires(const quantity<R, Rep>& q, unit_t<U> u) { q.in(u); }
     [[nodiscard]] constexpr auto in(unit_t<U> u) const {
-        return detail::make_point<O>(Q.in(u));
+        return detail::make_point<O>(Value.in(u));
     }
     // The same point in unit U, counted from U's own origin: 350 ℉ → 530/3 ℃.
     template <units::unit U>
@@ -24139,13 +24192,13 @@ class quantity_point {
     template <units::reference R2, class V2>
         requires requires(quantity<R, Rep>& a, const quantity<R2, V2>& b) { a += b; }
     constexpr quantity_point& operator+=(const quantity<R2, V2>& q) {
-        Q += q;
+        Value += q;
         return *this;
     }
     template <units::reference R2, class V2>
         requires requires(quantity<R, Rep>& a, const quantity<R2, V2>& b) { a -= b; }
     constexpr quantity_point& operator-=(const quantity<R2, V2>& q) {
-        Q -= q;
+        Value -= q;
         return *this;
     }
 };

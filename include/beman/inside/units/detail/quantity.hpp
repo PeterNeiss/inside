@@ -317,12 +317,38 @@ constexpr auto make_action_ref(Q& q, Ref&& r) {
 }
 } // namespace detail
 
+namespace detail {
+// Where a quantity keeps its number (and a point its quantity). A point
+// number (just<5>, 1.8288_ins) holds no data, so it can sit in a public
+// base: a quantity of one is then a structural type, a template argument
+// (unit<"ftm", 1.8288_ins * si::metre>). Any other number stays private.
+template <class T>
+struct public_member {
+    [[no_unique_address]] T Value;
+    constexpr public_member() = default;
+    constexpr explicit public_member(const T& v) : Value(v) {}
+};
+template <class T, class Owner>
+class private_member {
+    friend Owner;
+    T Value;
+
+  public:
+    constexpr private_member() = default;
+    // (The owner builds the value: a consteval store stays in its constructor.)
+    constexpr explicit private_member(const T& v) : Value(v) {}
+};
+template <class Rep, class T, class Owner>
+using member_holder = std::conditional_t<lower_of<Rep> == upper_of<Rep>, public_member<T>, private_member<T, Owner>>;
+} // namespace detail
+
 template <reference R, insidable Rep>
-class quantity {
+class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
     static_assert(!R.U.Scale.Ratio.Num.negative() && !R.U.Scale.Ratio.Num.is_zero(),
                   "units: this unit carries a sign (e2 * e1 is -(e1 * e2)) - write the unit in another order and "
                   "negate the number");
-    Rep Value;
+    using holder = detail::member_holder<Rep, Rep, quantity<R, Rep>>;
+    using holder::Value;
 
   public:
     using rep                                   = Rep;
@@ -346,7 +372,7 @@ class quantity {
     template <class V, class Tag>
         requires detail::number_in_tag<quantity, V, Tag> &&
                  std::constructible_from<Rep, detail::number_from_tag_t<quantity, V, Tag>>
-    constexpr quantity(V&& v, Tag) : Value(detail::number_from_tag<quantity, Tag>(std::forward<V>(v))) {}
+    constexpr quantity(V&& v, Tag) : holder(Rep(detail::number_from_tag<quantity, Tag>(std::forward<V>(v)))) {}
     // A one-shot policy for this store, as for an inside: a flag or
     // make_policy<F>(ec) (Q{v, si::metre, clamp}, Q{q, round_floor}).
     template <class V, class Tag, class Pol>
@@ -354,13 +380,13 @@ class quantity {
                 detail::number_in_tag<quantity, V, Tag> &&
                 std::constructible_from<Rep, detail::number_from_tag_t<quantity, V, Tag>, Pol>
     constexpr quantity(V&& v, Tag, Pol&& pol)
-        : Value(detail::number_from_tag<quantity, Tag>(std::forward<V>(v)), std::forward<Pol>(pol)) {}
+        : holder(Rep(detail::number_from_tag<quantity, Tag>(std::forward<V>(v)), std::forward<Pol>(pol))) {}
     // x a quantity, converted to R's unit exactly first.
     template <class X, class Pol>
         requires(beman::inside::detail::flag_like<Pol> || beman::inside::detail::policy_like<Pol>) &&
                 detail::castable_from<quantity, X> &&
                 std::constructible_from<Rep, decltype(detail::number_in<quantity>(std::declval<const X&>())), Pol>
-    constexpr quantity(const X& x, Pol&& pol) : Value(detail::number_in<quantity>(x), std::forward<Pol>(pol)) {}
+    constexpr quantity(const X& x, Pol&& pol) : holder(Rep(detail::number_in<quantity>(x), std::forward<Pol>(pol))) {}
 
     // A number alone names no unit.
     template <class V>
@@ -384,7 +410,7 @@ class quantity {
     template <units::reference R2, class V2>
         requires detail::implicit_rescalable<R2, R, V2> && std::constructible_from<Rep, detail::rescaled_t<R2, R, V2>>
     constexpr explicit(!std::convertible_to<detail::rescaled_t<R2, R, V2>, Rep>) quantity(const quantity<R2, V2>& q)
-        : Value(detail::number_in_unit<R.U>(q)) {}
+        : holder(Rep(detail::number_in_unit<R.U>(q))) {}
 
     void numerical_value() const = delete ("units: a number alone has no unit - read q.numerical_value_in(si::metre)");
 
@@ -603,7 +629,7 @@ class quantity {
     friend struct detail::quantity_access;
     struct from_number {};
     template <class V>
-    constexpr quantity(from_number, V&& v) : Value(std::forward<V>(v)) {}
+    constexpr quantity(from_number, V&& v) : holder(Rep(std::forward<V>(v))) {}
 };
 
 // A quantity chains through inside's expected-lift operators: a division by

@@ -170,8 +170,33 @@ template <insidable T, policy_flag F = policy_of<T>, typename V>
 //---------------------------------------------------------------------------
 // inside
 //---------------------------------------------------------------------------
+namespace detail {
+// Where an inside keeps its raw. A point (just<5>, 0.1_ins) holds its value
+// in its type and stores nothing, so its empty raw can sit in a public base:
+// that makes a point inside a structural type, a template argument
+// (unit<"ftm", 1.8288_ins * si::metre>). Every other inside keeps its raw
+// private.
+template <class R>
+struct public_raw {
+    [[no_unique_address]] R Raw;
+};
+template <class R, class Owner>
+class private_raw {
+    friend Owner;
+    [[no_unique_address]] R Raw;
+
+  public:
+    constexpr private_raw() = default;
+    constexpr private_raw(R r) noexcept : Raw{r} {}
+};
 template <grid G, policy_flag P>
-struct inside {
+using raw_holder = std::conditional_t<G.Interval.Lower == G.Interval.Upper,
+                                      public_raw<raw_for_t<G>>,
+                                      private_raw<raw_for_t<G>, inside<G, P>>>;
+} // namespace detail
+
+template <grid G, policy_flag P>
+struct inside : detail::raw_holder<G, P> {
     static_assert(grid::validate<G>());
     static_assert((P & ~detail::known_bits) == 0,
                   "inside: the policy holds bits no flag names - build it from the flags (clamp | round_floor)");
@@ -185,7 +210,8 @@ struct inside {
     using raw_type     = detail::raw_for_t<G>;
 
   private:
-    [[no_unique_address]] raw_type Raw; // empty for a point grid
+    using holder = detail::raw_holder<G, P>;
+    using holder::Raw; // empty for a point grid
 
   public:
     // raw() — access escape hatch, symmetric with `from_raw`. Read overload
@@ -204,16 +230,16 @@ struct inside {
     // value of the grid, as every other inside holds.
     constexpr inside()
         requires(!has_flag(P, detail::cursor_marker))
-        : Raw{detail::default_raw<inside>} {}
+        : holder{detail::default_raw<inside>} {}
 
     // A cursor starts at Lower: slot 0.
     constexpr inside()
         requires(has_flag(P, detail::cursor_marker))
-        : Raw{detail::raw_from_offset<inside>(std::uint64_t{0})} {}
+        : holder{detail::raw_from_offset<inside>(std::uint64_t{0})} {}
 
   private:
     // from_raw's: the raw as given, without a default value first.
-    constexpr inside(detail::raw_tag, raw_type r) noexcept : Raw{r} {}
+    constexpr inside(detail::raw_tag, raw_type r) noexcept : holder{r} {}
 
     // The one store every constructor and assignment goes through — the same
     // for every raw kind.
@@ -240,12 +266,12 @@ struct inside {
     // deleted below (BEMAN_INSIDE_WHY_unproven).
     template <detail::numeric A>
         requires inside_assignable<inside, A, P> && detail::store_proven<inside, A, P>
-    constexpr inside(A value) : Raw{detail::default_raw<inside>} {
+    constexpr inside(A value) : holder{detail::default_raw<inside>} {
         store_value(value);
     }
     template <detail::numeric A>
         requires inside_assignable<inside, A, P> && (!detail::store_proven<inside, A, P>) && (!insidable<A>)
-    consteval inside(A value) : Raw{detail::default_raw<inside>} {
+    consteval inside(A value) : holder{detail::default_raw<inside>} {
         store_value(value);
     }
 
@@ -264,7 +290,7 @@ struct inside {
                                       A,
                                       detail::override_flags(P, policy_of<Pol>)> ||
                  detail::reports_into_errc<Pol>)
-    constexpr inside(A value, Pol&& pol) : Raw{detail::default_raw<inside>} {
+    constexpr inside(A value, Pol&& pol) : holder{detail::default_raw<inside>} {
         store_with(value, pol);
     }
     template <detail::numeric A, typename Pol>
@@ -276,7 +302,7 @@ struct inside {
                                        A,
                                        detail::override_flags(P, policy_of<Pol>)> &&
                  !detail::reports_into_errc<Pol> && !insidable<A>)
-    consteval inside(A value, Pol&& pol) : Raw{detail::default_raw<inside>} {
+    consteval inside(A value, Pol&& pol) : holder{detail::default_raw<inside>} {
         store_with(value, pol);
     }
     template <insidable A, typename Pol>
@@ -339,17 +365,17 @@ struct inside {
     // part of its type. (Exactly a grid number: templates, so nothing
     // converts to one.)
     template <std::same_as<detail::grid_rational> V>
-    consteval inside(const V& value) : Raw{detail::default_raw<inside>} {
+    consteval inside(const V& value) : holder{detail::default_raw<inside>} {
         detail::assign_grid_number(*this, value, make_policy<P>());
     }
     template <std::same_as<detail::grid_rational> V, class Pol>
         requires(detail::policy_like<Pol> || detail::flag_like<Pol>) && detail::reports_into_errc<Pol>
-    constexpr inside(const V& value, Pol&& pol) : Raw{detail::default_raw<inside>} {
+    constexpr inside(const V& value, Pol&& pol) : holder{detail::default_raw<inside>} {
         store_grid_number_with(value, pol);
     }
     template <std::same_as<detail::grid_rational> V, class Pol>
         requires(detail::policy_like<Pol> || detail::flag_like<Pol>) && (!detail::reports_into_errc<Pol>)
-    consteval inside(const V& value, Pol&& pol) : Raw{detail::default_raw<inside>} {
+    consteval inside(const V& value, Pol&& pol) : holder{detail::default_raw<inside>} {
         store_grid_number_with(value, pol);
     }
     // (`x = N - 1` runs the constructor above, then the copy assignment.)
