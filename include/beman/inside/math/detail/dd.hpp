@@ -432,28 +432,28 @@ inline D atan_unit(D a) noexcept {
 // atan2(y, x) by `unit` (atan on [0, 1], the full or the lean kernel): the
 // ratio of the smaller to the larger magnitude, then the octant.
 template <dd_type D, class Unit>
-inline D atan2_with(D y, D x, Unit unit) noexcept {
+inline D atan2_with(D y, D x, Unit unit_value) noexcept {
     using C         = consts<D>;
     const double ay = __builtin_fabs(y.Hi), ax_ = __builtin_fabs(x.Hi);
     if (ay == 0 && ax_ == 0)
         return D{0, 0};
     if (ay <= ax_) {
         const D q = div(y, x);
-        const D r = q.Hi < 0 ? neg(unit(neg(q))) : unit(q);
+        const D r = q.Hi < 0 ? neg(unit_value(neg(q))) : unit_value(q);
         if (x.Hi > 0)
             return r;
         return y.Hi < 0 ? sub(r, C::Pi) : add(r, C::Pi);
     }
     const D q = div(x, y); // |q| < 1
-    const D r = q.Hi < 0 ? neg(unit(neg(q))) : unit(q);
+    const D r = q.Hi < 0 ? neg(unit_value(neg(q))) : unit_value(q);
     return y.Hi > 0 ? sub(C::HalfPi, r) : sub(neg(C::HalfPi), r);
 }
 
 template <dd_type D, class Unit>
-inline D atan_with(D x, Unit unit) noexcept {
+inline D atan_with(D x, Unit unit_value) noexcept {
     const bool negative = x.Hi < 0;
     const D    a        = negative ? neg(x) : x;
-    const D    r        = a.Hi <= 1 ? unit(a) : sub(consts<D>::HalfPi, unit(div(D{1, 0}, a)));
+    const D    r        = a.Hi <= 1 ? unit_value(a) : sub(consts<D>::HalfPi, unit_value(div(D{1, 0}, a)));
     return negative ? neg(r) : r;
 }
 

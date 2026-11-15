@@ -23,34 +23,23 @@ using namespace beman::inside::units;
 
 namespace {
 // G(3,0): x, y, z.
-inline constexpr basis_vector x_def{"x", +1};
-inline constexpr basis_vector y_def{"y", +1};
-inline constexpr basis_vector z_def{"z", +1};
-inline constexpr auto         x = unit_c<x_def>;
-inline constexpr auto         y = unit_c<y_def>;
-inline constexpr auto         z = unit_c<z_def>;
-inline constexpr named_unit   zx_def{"zx", z * x}; // -(x z)
-inline constexpr auto         zx = unit_c<zx_def>;
-inline constexpr named_unit   xy_def{"xy", x * y};
-inline constexpr auto         xy = unit_c<xy_def>;
+inline constexpr auto x = basis_vector<"x", +1>;
+inline constexpr auto y = basis_vector<"y", +1>;
+inline constexpr auto z = basis_vector<"z", +1>;
+// -(x z)
+inline constexpr auto zx = unit<"zx", z * x>;
+inline constexpr auto xy = unit<"xy", x * y>;
 
 // G(1,3), spacetime: γ₀ squares to +1, γ₁ γ₂ γ₃ to -1.
-inline constexpr basis_vector g0_def{"γ₀", +1, {.ascii = "g0"}};
-inline constexpr basis_vector g1_def{"γ₁", -1, {.ascii = "g1"}};
-inline constexpr basis_vector g2_def{"γ₂", -1, {.ascii = "g2"}};
-inline constexpr basis_vector g3_def{"γ₃", -1, {.ascii = "g3"}};
-inline constexpr auto         g0 = unit_c<g0_def>;
-inline constexpr auto         g1 = unit_c<g1_def>;
-inline constexpr auto         g2 = unit_c<g2_def>;
-inline constexpr auto         g3 = unit_c<g3_def>;
+inline constexpr auto g0 = basis_vector<"γ₀", +1, {.ascii = "g0"}>;
+inline constexpr auto g1 = basis_vector<"γ₁", -1, {.ascii = "g1"}>;
+inline constexpr auto g2 = basis_vector<"γ₂", -1, {.ascii = "g2"}>;
+inline constexpr auto g3 = basis_vector<"γ₃", -1, {.ascii = "g3"}>;
 
 // G(2,0,1), the projective plane: p₀ is a null vector.
-inline constexpr basis_vector p0_def{"p₀", 0, {.ascii = "p0"}};
-inline constexpr basis_vector p1_def{"p₁", +1, {.ascii = "p1"}};
-inline constexpr basis_vector p2_def{"p₂", +1, {.ascii = "p2"}};
-inline constexpr auto         p0 = unit_c<p0_def>;
-inline constexpr auto         p1 = unit_c<p1_def>;
-inline constexpr auto         p2 = unit_c<p2_def>;
+inline constexpr auto p0 = basis_vector<"p₀", 0, {.ascii = "p0"}>;
+inline constexpr auto p1 = basis_vector<"p₁", +1, {.ascii = "p1"}>;
+inline constexpr auto p2 = basis_vector<"p₂", +1, {.ascii = "p2"}>;
 
 constexpr auto km = si::kilo(si::metre);
 
@@ -59,19 +48,24 @@ concept can_add = requires(const A& a, const B& b) { a + b; };
 template <class X>
 concept can_invert = requires(const X& v) { inverse(v); };
 
+// A basis vector for the reference: its unit and its square.
+struct basis_ref {
+    unit_value Unit;
+    int        Square;
+};
 // The blade of `mask` as a unit: its basis vectors multiplied in order.
 template <std::size_t N>
-consteval unit blade_unit(const std::array<const basis_vector*, N>& basis, unsigned mask) {
-    unit u{};
+consteval unit_value blade_unit(const std::array<basis_ref, N>& basis, unsigned mask) {
+    unit_value u{};
     for (std::size_t k = 0; k < N; ++k)
         if ((mask >> k & 1U) != 0)
-            u = units::detail::unit_mul(u, unit{basis[k]->Unit}, 1);
+            u = units::detail::unit_mul(u, basis[k].Unit, 1);
     return u;
 }
 // The reference: e_A e_B = s e_(A xor B), s = (-1)^(pairs a in A, b in B with
 // a > b) times the square of each common vector.
 template <std::size_t N>
-consteval int reference_sign(unsigned a, unsigned b, const std::array<const basis_vector*, N>& basis) {
+consteval int reference_sign(unsigned a, unsigned b, const std::array<basis_ref, N>& basis) {
     int s = 1;
     for (std::size_t i = 0; i < N; ++i) {
         if ((b >> i & 1U) == 0)
@@ -80,16 +74,16 @@ consteval int reference_sign(unsigned a, unsigned b, const std::array<const basi
             if ((a >> j & 1U) != 0)
                 s = -s;
         if ((a >> i & 1U) != 0)
-            s *= basis[i]->Self.Square;
+            s *= basis[i].Square;
     }
     return s;
 }
 // Every product of blade a with each basis blade: the unit's magnitude is
 // the reference sign, and its dimension the blade a xor b.
 template <std::size_t N>
-consteval bool products_match(const std::array<const basis_vector*, N>& basis, unsigned a) {
+consteval bool products_match(const std::array<basis_ref, N>& basis, unsigned a) {
     for (unsigned b = 0; b < (1U << N); ++b) {
-        const unit u = units::detail::unit_mul(blade_unit(basis, a), blade_unit(basis, b), 1);
+        const unit_value u = units::detail::unit_mul(blade_unit(basis, a), blade_unit(basis, b), 1);
         if (magnitude_of(u) != magnitude{grid_rational{reference_sign(a, b, basis)}})
             return false;
         if (reference_sign(a, b, basis) != 0 && !(dimension_of(u) == dimension_of(blade_unit(basis, a ^ b))))
@@ -98,9 +92,9 @@ consteval bool products_match(const std::array<const basis_vector*, N>& basis, u
     return true;
 }
 // One constant evaluation per row, each within the compiler's step limit.
-inline constexpr std::array<const basis_vector*, 3> g30{&x_def, &y_def, &z_def};
-inline constexpr std::array<const basis_vector*, 4> g13{&g0_def, &g1_def, &g2_def, &g3_def};
-inline constexpr std::array<const basis_vector*, 3> g201{&p0_def, &p1_def, &p2_def};
+inline constexpr std::array<basis_ref, 3> g30{basis_ref{x.value, +1}, {y.value, +1}, {z.value, +1}};
+inline constexpr std::array<basis_ref, 4> g13{basis_ref{g0.value, +1}, {g1.value, -1}, {g2.value, -1}, {g3.value, -1}};
+inline constexpr std::array<basis_ref, 3> g201{basis_ref{p0.value, 0}, {p1.value, +1}, {p2.value, +1}};
 template <const auto& Basis, unsigned A>
 inline constexpr bool row_matches = products_match(Basis, A);
 template <const auto& Basis, unsigned... A>
@@ -118,7 +112,7 @@ TEST(GeoalgTest, basis_vectors_square_and_anticommute) {
     static_assert(dimension_of((y * x).value) == dimension_of((x * y).value));
     static_assert(magnitude_of((xy * xy).value) == magnitude{grid_rational{-1}});
     // A named blade keeps the sign of its spelling.
-    static_assert(zx_def.Mag == magnitude{grid_rational{-1}});
+    static_assert(magnitude_of(zx.value) == magnitude{grid_rational{-1}});
     // A basis vector's exponent is 0 or 1.
     static_assert(dimension_of(x.value).pow(2) == dim_one);
     static_assert(dimension_of(x.value).pow(3) == dimension_of(x.value));

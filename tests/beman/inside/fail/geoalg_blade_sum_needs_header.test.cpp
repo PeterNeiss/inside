@@ -4,11 +4,11 @@
 // units/geoalg.hpp; the message names it.
 #include <beman/inside/units.hpp>
 
-inline constexpr beman::inside::units::basis_vector e1_def{"e1", 1};
+inline constexpr auto e1_def = beman::inside::units::basis_vector<"e1", 1>;
 
 int main() {
     using namespace beman::inside;
     using namespace beman::inside::units;
-    auto z = just<3> + just<4> * unit_c<e1_def>;
+    auto z = just<3> + just<4> * e1_def;
     (void)z;
 }

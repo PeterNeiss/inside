@@ -11,6 +11,7 @@
 #include <beman/inside/units/detail/algebra.hpp>
 #include <beman/inside/units/detail/quantity.hpp>
 #include <beman/inside/units/detail/point.hpp>
+#include <beman/inside/units/detail/define.hpp>
 
 #undef BEMAN_INSIDE_UNITS_WHY_PI
 #undef BEMAN_INSIDE_UNITS_WHY_GEOALG

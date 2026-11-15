@@ -29,29 +29,19 @@ using beman::inside::math::driver;
 
 namespace {
 // G(3,0)
-inline constexpr basis_vector e1_def{"e₁", +1, {.ascii = "e1"}};
-inline constexpr basis_vector e2_def{"e₂", +1, {.ascii = "e2"}};
-inline constexpr basis_vector e3_def{"e₃", +1, {.ascii = "e3"}};
-inline constexpr auto         e1 = unit_c<e1_def>;
-inline constexpr auto         e2 = unit_c<e2_def>;
-inline constexpr auto         e3 = unit_c<e3_def>;
-inline constexpr named_unit   i_def{"i", e1 * e2};
-inline constexpr named_unit   j_def{"j", e3 * e1}; // -(e₁e₃)
-inline constexpr named_unit   k_def{"k", e2 * e3};
-inline constexpr auto         i = unit_c<i_def>;
-inline constexpr auto         j = unit_c<j_def>;
-inline constexpr auto         k = unit_c<k_def>;
+inline constexpr auto e1 = basis_vector<"e₁", +1, {.ascii = "e1"}>;
+inline constexpr auto e2 = basis_vector<"e₂", +1, {.ascii = "e2"}>;
+inline constexpr auto e3 = basis_vector<"e₃", +1, {.ascii = "e3"}>;
+// -(e₁e₃)
+inline constexpr auto i = unit<"i", e1 * e2>;
+inline constexpr auto j = unit<"j", e3 * e1>;
+inline constexpr auto k = unit<"k", e2 * e3>;
 // A null vector, and spacetime: γ₀ (+1), γ₁ γ₂ (−1).
-inline constexpr basis_vector eps_def{"ε", 0, {.ascii = "eps"}};
-inline constexpr auto         eps = unit_c<eps_def>;
-inline constexpr basis_vector g0_def{"γ₀", +1, {.ascii = "g0"}};
-inline constexpr basis_vector g1_def{"γ₁", -1, {.ascii = "g1"}};
-inline constexpr basis_vector g2_def{"γ₂", -1, {.ascii = "g2"}};
-inline constexpr basis_vector g3_def{"γ₃", -1, {.ascii = "g3"}};
-inline constexpr auto         g0 = unit_c<g0_def>;
-inline constexpr auto         g1 = unit_c<g1_def>;
-inline constexpr auto         g2 = unit_c<g2_def>;
-inline constexpr auto         g3 = unit_c<g3_def>;
+inline constexpr auto eps = basis_vector<"ε", 0, {.ascii = "eps"}>;
+inline constexpr auto g0  = basis_vector<"γ₀", +1, {.ascii = "g0"}>;
+inline constexpr auto g1  = basis_vector<"γ₁", -1, {.ascii = "g1"}>;
+inline constexpr auto g2  = basis_vector<"γ₂", -1, {.ascii = "g2"}>;
+inline constexpr auto g3  = basis_vector<"γ₃", -1, {.ascii = "g3"}>;
 
 template <policy_flag M>
 using in_t = inside<{{-4, 4}, per<64>}, M>;

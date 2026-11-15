@@ -24,8 +24,7 @@ using namespace beman::inside::units;
 
 namespace {
 // One full turn is 65536 slots: a slot is 2π/65536 = π/32768 rad.
-inline constexpr named_unit slot_def{"slot", mag<1_g / 32768_g> * mag_pi * si::radian};
-inline constexpr auto       slot = unit_c<slot_def>;
+inline constexpr auto slot = unit<"slot", just<1, 32768> * pi * si::radian>;
 } // namespace
 
 int main() {

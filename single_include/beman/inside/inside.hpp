@@ -8989,12 +8989,12 @@ struct modulo {
     static constexpr bool native_mod = integer_native_ops<L, R, FS>;
 
     // The values' unit: 1 on integer grids, else the gcd of the value units.
-    static constexpr grid_rational unit = mod_unit<L, R>;
+    static constexpr grid_rational unit_value = mod_unit<L, R>;
     // A lattice remainder in builtin integers when both operands' unit counts
     // fit int64.
-    static constexpr bool lattice_native = lattice_mod_ops<L, R> &&
-                                           signed_value_bits({units_lo<L, unit>, units_hi<L, unit>}) < 63 &&
-                                           signed_value_bits({units_lo<R, unit>, units_hi<R, unit>}) < 63;
+    static constexpr bool lattice_native =
+        lattice_mod_ops<L, R> && signed_value_bits({units_lo<L, unit_value>, units_hi<L, unit_value>}) < 63 &&
+        signed_value_bits({units_lo<R, unit_value>, units_hi<R, unit_value>}) < 63;
 
     static constexpr round_mode rmode = rounding_of(F);
 
@@ -9009,7 +9009,7 @@ struct modulo {
     // ⌊|b|/2⌋ counts units.
     static constexpr grid result_grid = [] {
         using G      = grid_rational;
-        const G one  = unit, zero{0};
+        const G one  = unit_value, zero{0};
         const G a_lo = lower_of<L>, a_hi = upper_of<L>, b_lo = lower_of<R>, b_hi = upper_of<R>;
         const G b_max  = abs(b_lo) > abs(b_hi) ? abs(b_lo) : abs(b_hi);
         const G a_max  = abs(a_lo) > abs(a_hi) ? abs(a_lo) : abs(a_hi);
@@ -9075,24 +9075,24 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, call_policy<G, E> policy) -> r
     constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
     if constexpr (lattice_native) {
         // A lattice: the integer remainder of the unit counts, scaled back.
-        const std::int64_t b = value_in_units<std::int64_t, unit>(rhs);
+        const std::int64_t b = value_in_units<std::int64_t, unit_value>(rhs);
         if constexpr (!zero_unchecked)
             if (b == 0)
                 return report_or_unexpected<result>(policy, error::division_by_zero);
-        return from_value_in_units<result, unit>(
-            div_rem_rounded(value_in_units<std::int64_t, unit>(lhs), b, rmode).Remainder);
+        return from_value_in_units<result, unit_value>(
+            div_rem_rounded(value_in_units<std::int64_t, unit_value>(lhs), b, rmode).Remainder);
     } else if constexpr (lattice_mod_ops<L, R>) {
         // A lattice past int64 units: the same in exact wide integers.
         constexpr std::size_t K = exact_limbs<L, R, result>;
         using I                 = wide_sint<K>;
-        const I b               = value_in_units<I, unit>(rhs);
+        const I b               = value_in_units<I, unit_value>(rhs);
         if constexpr (!zero_unchecked)
             if (b.is_zero())
                 return report_or_unexpected<result>(policy, error::division_by_zero);
-        const I a = value_in_units<I, unit>(lhs);
+        const I a = value_in_units<I, unit_value>(lhs);
         return exact_result<result>(
-            wide_rational<K>{(a - rounded_div<rmode>(a, b) * b) * static_cast<I>(grid_numerator(unit)),
-                             static_cast<I>(grid_denominator(unit))});
+            wide_rational<K>{(a - rounded_div<rmode>(a, b) * b) * static_cast<I>(grid_numerator(unit_value)),
+                             static_cast<I>(grid_denominator(unit_value))});
     } else if constexpr (!native_mod) {
         // Integer values past int64: r = a − round(a/b)·b in exact wide integers.
         using I   = wide_sint<exact_limbs<L, R, result>>;
@@ -9981,9 +9981,9 @@ struct inside : detail::raw_holder<G, P> {
     // so only index 0 lands on it).
     template <insidable I>
     static constexpr auto step_value(const I& i) {
-        constexpr detail::grid_rational unit  = G.Notch != 0 ? G.Notch : detail::grid_rational{1};
-        constexpr auto                  lower = inside<grid{G.Interval.Lower}>::from_raw({}, unsafe);
-        constexpr auto                  step  = inside<grid{unit}>::from_raw({}, unsafe);
+        constexpr detail::grid_rational unit_value = G.Notch != 0 ? G.Notch : detail::grid_rational{1};
+        constexpr auto                  lower      = inside<grid{G.Interval.Lower}>::from_raw({}, unsafe);
+        constexpr auto                  step       = inside<grid{unit_value}>::from_raw({}, unsafe);
         return lower + i * step;
     }
     // A builtin index as the inside on its type's range.
@@ -15287,10 +15287,10 @@ struct trig_core {
                 return approx<K>::beyond(sn.Value.negative() != cs.Value.negative(), KMax);
             if (!(2 * ec < ac))
                 return approx<K>::unresolved(S); // cos unresolved
-            const double unit = ::beman::inside::detail::ldexp(1.0, S);
-            const I      t    = div_q(sn.Value, cs.Value, S);
-            const double at   = (as + es) / (ac - ec);
-            double       err  = ((es + at * ec) / (ac - ec) * unit + 2) * (1 + 0x1p-40) + 1;
+            const double unit_value = ::beman::inside::detail::ldexp(1.0, S);
+            const I      t          = div_q(sn.Value, cs.Value, S);
+            const double at         = (as + es) / (ac - ec);
+            double       err        = ((es + at * ec) / (ac - ec) * unit_value + 2) * (1 + 0x1p-40) + 1;
             // The bound grows as tan²: past 2^62 units (|tan| past 2^31) the
             // result moves to a coarser scale until it fits one word (halving
             // a double is exact; the shift rounds within ½).
@@ -16794,10 +16794,10 @@ consteval grid_rational least_magnitude() {
     const grid_rational dn = up - n;                                         // the last ≤ 0
     return up < -dn ? up : -dn;
 }
-consteval grid lattice_grid(const grid_rational& lo, const grid_rational& hi, const grid_rational& unit) {
+consteval grid lattice_grid(const grid_rational& lo, const grid_rational& hi, const grid_rational& unit_value) {
     if (lo == hi)
         return grid{lo};
-    return grid{interval{lo, hi}, unit};
+    return grid{interval{lo, hi}, unit_value};
 }
 template <insidable A, insidable B>
 consteval grid gcd_grid_of() {
@@ -18690,28 +18690,28 @@ inline D atan_unit(D a) noexcept {
 // atan2(y, x) by `unit` (atan on [0, 1], the full or the lean kernel): the
 // ratio of the smaller to the larger magnitude, then the octant.
 template <dd_type D, class Unit>
-inline D atan2_with(D y, D x, Unit unit) noexcept {
+inline D atan2_with(D y, D x, Unit unit_value) noexcept {
     using C         = consts<D>;
     const double ay = __builtin_fabs(y.Hi), ax_ = __builtin_fabs(x.Hi);
     if (ay == 0 && ax_ == 0)
         return D{0, 0};
     if (ay <= ax_) {
         const D q = div(y, x);
-        const D r = q.Hi < 0 ? neg(unit(neg(q))) : unit(q);
+        const D r = q.Hi < 0 ? neg(unit_value(neg(q))) : unit_value(q);
         if (x.Hi > 0)
             return r;
         return y.Hi < 0 ? sub(r, C::Pi) : add(r, C::Pi);
     }
     const D q = div(x, y); // |q| < 1
-    const D r = q.Hi < 0 ? neg(unit(neg(q))) : unit(q);
+    const D r = q.Hi < 0 ? neg(unit_value(neg(q))) : unit_value(q);
     return y.Hi > 0 ? sub(C::HalfPi, r) : sub(neg(C::HalfPi), r);
 }
 
 template <dd_type D, class Unit>
-inline D atan_with(D x, Unit unit) noexcept {
+inline D atan_with(D x, Unit unit_value) noexcept {
     const bool negative = x.Hi < 0;
     const D    a        = negative ? neg(x) : x;
-    const D    r        = a.Hi <= 1 ? unit(a) : sub(consts<D>::HalfPi, unit(div(D{1, 0}, a)));
+    const D    r        = a.Hi <= 1 ? unit_value(a) : sub(consts<D>::HalfPi, unit_value(div(D{1, 0}, a)));
     return negative ? neg(r) : r;
 }
 
@@ -21354,18 +21354,22 @@ using beman::inside::detail::grid_rational;
 // (L M T I Θ N J), and of any number of base dimensions you define
 // (base_dimension: currency, information). Angle is dimensionless, as in SI.
 //---------------------------------------------------------------------------
+namespace detail {
 struct named_unit;
+} // namespace detail
 
 // A base dimension of your own: inline constexpr base_dimension currency{"currency"}.
 // A basis vector of a geometric algebra is one too (see basis_vector): its
 // exponent is 0 or 1, it squares to Square (+1, -1 or 0), two of them
 // anticommute, and Vector is its unit. Vector is read only when Basis is set.
-struct base_dimension {
+namespace detail {
+struct base_dimension_def {
     std::string_view  Name;
     std::int8_t       Square{0};
     bool              Basis{false};
     const named_unit* Vector{};
 };
+} // namespace detail
 
 struct dimension;
 
@@ -21375,12 +21379,12 @@ inline constexpr std::size_t base_dimensions = 7;
 // The base dimensions of your own of a dimension being computed, in
 // transient vectors: sorted by name, no zero exponents.
 struct user_exponents {
-    std::vector<const base_dimension*> D;
-    std::vector<std::int8_t>           E;
+    std::vector<const base_dimension_def*> D;
+    std::vector<std::int8_t>               E;
 
     constexpr explicit user_exponents(const dimension& d);
     // b^e merged in: an exponent reaching 0 drops out.
-    constexpr void add(const base_dimension* b, int e);
+    constexpr void add(const base_dimension_def* b, int e);
     // d with these as its base dimensions of your own, interned.
     constexpr dimension into(dimension d) const;
 };
@@ -21393,9 +21397,9 @@ struct dimension {
     // as big grid numbers' limbs are, so a dimension holds any number of them.
     // Two arrays of scalars, not one of pairs: GCC 16 cannot intern an array
     // of a class type that equals one already interned.
-    const base_dimension* const* UserDim{};
-    const std::int8_t*           UserExp{};
-    std::size_t                  UserSize{0}; // tested instead of the pointers (see big_int::Size)
+    const detail::base_dimension_def* const* UserDim{};
+    const std::int8_t*                       UserExp{};
+    std::size_t                              UserSize{0}; // tested instead of the pointers (see big_int::Size)
 
     // An exponent past ±127 is an error, not a wrap.
     static constexpr std::int8_t exponent(int e) {
@@ -21459,7 +21463,7 @@ struct dimension {
     }
 
     // b^e merged in: kept sorted by name, an exponent reaching 0 drops out.
-    constexpr void add_user(const base_dimension* b, int e);
+    constexpr void add_user(const detail::base_dimension_def* b, int e);
 };
 
 namespace detail {
@@ -21473,7 +21477,7 @@ constexpr user_exponents::user_exponents(const dimension& d) {
 // A basis vector's exponent is 0 or 1: v·v is a number (its square).
 constexpr int basis_exponent(int e) { return ((e % 2) + 2) % 2; }
 
-constexpr void user_exponents::add(const base_dimension* b, int e) {
+constexpr void user_exponents::add(const base_dimension_def* b, int e) {
     if (b->Basis)
         e = basis_exponent(e);
     if (e == 0)
@@ -21542,14 +21546,14 @@ constexpr bool sorted_add(T (&items)[N], std::int8_t& size, T x, int e, Same sam
 }
 } // namespace detail
 
-constexpr void dimension::add_user(const base_dimension* b, int e) {
+constexpr void dimension::add_user(const detail::base_dimension_def* b, int e) {
     detail::user_exponents u{*this};
     u.add(b, e);
     *this = u.into(*this);
 }
 
 // The dimension of a base dimension of your own (its exponent 1).
-constexpr dimension dimension_of(const base_dimension& b) {
+constexpr dimension dimension_of(const detail::base_dimension_def& b) {
     dimension d{};
     d.add_user(&b, 1);
     return d;
@@ -21571,7 +21575,7 @@ inline constexpr dimension dim_luminous_intensity{{0, 0, 0, 0, 0, 0, 1}};
 //---------------------------------------------------------------------------
 namespace detail {
 // A blade being computed: its basis vectors, sorted by name.
-using blade = std::vector<const base_dimension*>;
+using blade = std::vector<const base_dimension_def*>;
 
 constexpr blade blade_of(const dimension& d) {
     blade b;
@@ -21610,8 +21614,8 @@ constexpr bool same_outside_blade(const dimension& a, const dimension& b) {
 // vector meets itself.
 constexpr int blade_sign(const blade& a, const blade& b) {
     int s = 1;
-    for (const base_dimension* x : a)
-        for (const base_dimension* y : b) {
+    for (const base_dimension_def* x : a)
+        for (const base_dimension_def* y : b) {
             if (x->Name > y->Name)
                 s = -s;
             else if (x->Name == y->Name)
@@ -21675,6 +21679,7 @@ struct magnitude {
 };
 
 // mag<r> — a magnitude tag: mag<1000> * si::metre, mag<1_g / 3_g> * …
+namespace detail {
 template <magnitude M>
 struct mag_t {
     static constexpr magnitude value = M;
@@ -21682,14 +21687,15 @@ struct mag_t {
 template <auto R>
 inline constexpr mag_t<magnitude{grid_rational{R}}>    mag{};
 inline constexpr mag_t<magnitude{grid_rational{1}, 1}> mag_pi{};
+} // namespace detail
 
 template <magnitude A, magnitude B>
-consteval auto operator*(mag_t<A>, mag_t<B>) {
-    return mag_t<A * B>{};
+consteval auto operator*(detail::mag_t<A>, detail::mag_t<B>) {
+    return detail::mag_t<A * B>{};
 }
 template <magnitude A, magnitude B>
-consteval auto operator/(mag_t<A>, mag_t<B>) {
-    return mag_t<A / B>{};
+consteval auto operator/(detail::mag_t<A>, detail::mag_t<B>) {
+    return detail::mag_t<A / B>{};
 }
 
 //---------------------------------------------------------------------------
@@ -21701,7 +21707,9 @@ consteval auto operator/(mag_t<A>, mag_t<B>) {
 // it never converts implicitly across that boundary (angular_measure vs a
 // dimensionless ratio).
 //---------------------------------------------------------------------------
+namespace detail {
 struct quantity_spec;
+} // namespace detail
 
 // An optional reference to a static object (a parent spec, a unit's kind, an
 // origin). It is tested by its flag, never against nullptr, and compared by
@@ -21747,14 +21755,17 @@ struct spec_expr {
 };
 } // namespace detail
 
+namespace detail {
 struct is_kind_t {
     explicit is_kind_t() = default;
 };
 inline constexpr is_kind_t is_kind{};
+} // namespace detail
 
-template <const quantity_spec* S>
+template <const detail::quantity_spec* S>
 struct spec_t;
 
+namespace detail {
 struct quantity_spec {
     std::string_view Name;
     dimension        Dim{};
@@ -21765,7 +21776,7 @@ struct quantity_spec {
     // A base quantity: a dimension of its own.
     constexpr quantity_spec(std::string_view name, dimension d) : Name{name}, Dim{d} {}
     // A base quantity of a base dimension of your own (money: currency).
-    constexpr quantity_spec(std::string_view name, const base_dimension& b) : Name{name}, Dim{dimension_of(b)} {}
+    constexpr quantity_spec(std::string_view name, const base_dimension_def& b) : Name{name}, Dim{dimension_of(b)} {}
     // A child of a named spec.
     template <const quantity_spec* P>
     constexpr quantity_spec(std::string_view name, spec_t<P>) : Name{name}, Dim{P->Dim}, Parent{P} {}
@@ -21790,6 +21801,7 @@ struct quantity_spec {
         IsKind = true;
     }
 };
+} // namespace detail
 
 namespace detail {
 // Identity by content (see ref_or_none). A spec is its name, dimension, recipe, kind boundary and parent chain: a
@@ -21886,9 +21898,9 @@ consteval bool recipe_matches(const recipe& have, const recipe& want) {
 }
 } // namespace detail
 
-template <const quantity_spec* S>
+template <const detail::quantity_spec* S>
 struct spec_t {
-    static constexpr const quantity_spec* value = S;
+    static constexpr const detail::quantity_spec* value = S;
     constexpr operator detail::spec_ref() const { return S; } // unit_options{.kind = isq::frequency}
     // isq::height[si::metre] — defined after unit_t and reference_t.
     template <class U>
@@ -21946,19 +21958,23 @@ consteval detail::spec_expr inverse(A a) {
     return detail::spec_combine(detail::spec_expr{}, detail::expr_of(a), -1);
 }
 
+namespace detail {
 struct named_unit;
+} // namespace detail
 
 //---------------------------------------------------------------------------
 // point_origin — where a quantity_point's number counts from. An absolute
 // origin (absolute zero) or one at an exact offset from one, in the coherent
 // SI unit of the dimension (the ice point: absolute zero + 273.15 K).
 //---------------------------------------------------------------------------
+namespace detail {
 struct point_origin {
     std::string_view                  Name;
     dimension                         Dim{};
     detail::ref_or_none<point_origin> Absolute{}; // none for an absolute origin
     grid_rational                     Offset{0};  // from Absolute, in the coherent unit
 };
+} // namespace detail
 
 namespace detail {
 using origin_ref = ref_or_none<point_origin>; // none: the implicit zero of a dimension
@@ -21981,16 +21997,39 @@ constexpr bool same(const origin_ref& a, const origin_ref& b) {
 consteval grid_rational offset_of(origin_ref o) { return o && o->Absolute ? o->Offset : grid_rational{0}; }
 } // namespace detail
 
+namespace detail {
+// A short text held by value (a symbol, a name), so that a type which holds
+// one is structural: a template argument, as in unit<"ftm", …> and
+// {.ascii = "R"}.
+struct symbol_text {
+    static constexpr std::size_t capacity = 64;
+    char                         Text[capacity]{};
+    std::uint8_t                 Size{0};
+
+    constexpr symbol_text() = default;
+    template <std::size_t N>
+    consteval symbol_text(const char (&s)[N]) : Size{static_cast<std::uint8_t>(N - 1)} {
+        if (N > capacity)
+            beman::inside::detail::constexpr_error<"units: a symbol or name is at most 63 bytes">();
+        for (std::size_t i = 0; i + 1 < N; ++i)
+            Text[i] = s[i];
+    }
+    [[nodiscard]] constexpr std::string_view view() const { return {Text, Size}; }
+    [[nodiscard]] constexpr bool             empty() const { return Size == 0; }
+    friend constexpr bool                    operator==(const symbol_text&, const symbol_text&) = default;
+};
+} // namespace detail
+
 // A named unit's options, all optional (designated, in this order):
 //   .ascii         the ASCII symbol ("ohm" for Ω), else the symbol itself
 //   .kind          the quantity kind it measures, else its definition's
 //   .origin        the default origin of its points (℃: the ice point)
 //   .space_before  false for a symbol written against the number (90°)
 struct unit_options {
-    std::string_view   ascii{};
-    detail::spec_ref   kind{};
-    detail::origin_ref origin{};
-    bool               space_before{true};
+    detail::symbol_text ascii{};
+    detail::spec_ref    kind{};
+    detail::origin_ref  origin{};
+    bool                space_before{true};
 };
 
 namespace detail {
@@ -22009,22 +22048,22 @@ inline constexpr std::size_t max_unit_atoms = 6;
 // decimal prefix (k, m, µ…), times a scale (mag<1000> * m; the common unit of
 // a sum). A structural value: it is the template argument.
 //---------------------------------------------------------------------------
-struct unit {
+struct unit_value {
     detail::unit_atom Atoms[detail::max_unit_atoms]{};
     std::int8_t       Size{0};
     magnitude         Scale{};
 
-    constexpr unit() = default;
-    constexpr unit(const named_unit& u) : Atoms{{&u, 0, 1}}, Size{1} {}
+    constexpr unit_value() = default;
+    constexpr unit_value(const detail::named_unit& u) : Atoms{{&u, 0, 1}}, Size{1} {}
 
-    friend constexpr bool operator==(const unit& a, const unit& b) {
+    friend constexpr bool operator==(const unit_value& a, const unit_value& b) {
         return a.Size == b.Size && a.Scale == b.Scale && std::equal(a.Atoms, a.Atoms + a.Size, b.Atoms);
     }
 };
 
-template <unit U>
+template <unit_value U>
 struct unit_t {
-    static constexpr unit value = U;
+    static constexpr unit_value value = U;
 };
 
 //---------------------------------------------------------------------------
@@ -22032,14 +22071,15 @@ struct unit_t {
 // magnitude is relative to the coherent SI unit of its dimension; Kind (if
 // any) is the quantity kind it measures (Hz: frequency, Bq: activity).
 //---------------------------------------------------------------------------
+namespace detail {
 struct named_unit {
-    std::string_view   Utf8;
-    std::string_view   Ascii;
-    dimension          Dim{};
-    magnitude          Mag{};
-    detail::spec_ref   Kind{};
-    bool               SpaceBefore{true};
-    detail::origin_ref Origin{}; // the default origin of its points (K: absolute zero)
+    std::string_view    Utf8;
+    detail::symbol_text Ascii; // empty: the symbol itself
+    dimension           Dim{};
+    magnitude           Mag{};
+    detail::spec_ref    Kind{};
+    bool                SpaceBefore{true};
+    detail::origin_ref  Origin{}; // the default origin of its points (K: absolute zero)
 
     // A base unit of a kind: the coherent unit of its dimension, or a scale
     // of it (g: 1/1000 of the coherent kg).
@@ -22048,26 +22088,23 @@ struct named_unit {
         : named_unit{sym, mag_t<magnitude{}>{}, spec_t<K>{}, o} {}
     template <magnitude M, const quantity_spec* K>
     constexpr named_unit(std::string_view sym, mag_t<M>, spec_t<K>, unit_options o = {})
-        : Utf8{sym},
-          Ascii{o.ascii.empty() ? sym : o.ascii},
-          Dim{K->Dim},
-          Mag{M},
-          Kind{K},
-          SpaceBefore{o.space_before},
-          Origin{o.origin} {}
+        : Utf8{sym}, Ascii{o.ascii}, Dim{K->Dim}, Mag{M}, Kind{K}, SpaceBefore{o.space_before}, Origin{o.origin} {}
     // A unit defined by others: named_unit{"N", kg * m / s², isq::force}. Its
     // kind is the given one, else .kind, else its one factor's (min: 60 s).
-    template <unit U>
+    template <unit_value U>
     constexpr named_unit(std::string_view sym, unit_t<U>, unit_options o = {});
-    template <unit U, const quantity_spec* K>
+    template <unit_value U, const quantity_spec* K>
     constexpr named_unit(std::string_view sym, unit_t<U>, spec_t<K>, unit_options o = {});
 
+    [[nodiscard]] constexpr std::string_view ascii() const { return Ascii.empty() ? Utf8 : Ascii.view(); }
+
   private:
-    friend struct basis_vector;
+    friend struct basis_vector_def;
     // A basis vector's unit, its dimension set by basis_vector.
     constexpr named_unit(std::string_view sym, unit_options o)
-        : Utf8{sym}, Ascii{o.ascii.empty() ? sym : o.ascii}, SpaceBefore{o.space_before} {}
+        : Utf8{sym}, Ascii{o.ascii}, SpaceBefore{o.space_before} {}
 };
+} // namespace detail
 
 //---------------------------------------------------------------------------
 // basis_vector — a basis vector of a geometric algebra: a base dimension of
@@ -22077,11 +22114,12 @@ struct named_unit {
 //   inline constexpr basis_vector e1_def{"e₁", +1, {.ascii = "e1"}};
 //   inline constexpr auto         e1 = unit_c<e1_def>;
 //---------------------------------------------------------------------------
-struct basis_vector {
-    named_unit     Unit;
-    base_dimension Self;
+namespace detail {
+struct basis_vector_def {
+    named_unit         Unit;
+    base_dimension_def Self;
 
-    consteval basis_vector(std::string_view sym, int square, unit_options o = {})
+    consteval basis_vector_def(std::string_view sym, int square, unit_options o = {})
         : Unit{sym, o}, Self{sym, static_cast<std::int8_t>(square), true, &Unit} {
         if (square != 1 && square != -1 && square != 0)
             beman::inside::detail::constexpr_error<"units: a basis vector squares to +1, -1 or 0">();
@@ -22090,11 +22128,12 @@ struct basis_vector {
         Unit.Dim = dimension_of(Self);
     }
 };
+} // namespace detail
 
 namespace detail {
 // A unit is its symbols, dimension, magnitude, kind and origin.
 constexpr bool same(const named_unit* a, const named_unit* b) { // both set
-    return a->Utf8 == b->Utf8 && a->Ascii == b->Ascii && a->Dim == b->Dim && a->Mag == b->Mag &&
+    return a->Utf8 == b->Utf8 && a->ascii() == b->ascii() && a->Dim == b->Dim && a->Mag == b->Mag &&
            same(a->Kind, b->Kind) && same(a->Origin, b->Origin);
 }
 
@@ -22108,7 +22147,7 @@ constexpr bool atom_before(const unit_atom& a, const unit_atom& b) {
     return a.Prefix < b.Prefix;
 }
 
-consteval void unit_add(unit& u, unit_atom a) {
+consteval void unit_add(unit_value& u, unit_atom a) {
     if (!sorted_add(
             u.Atoms,
             u.Size,
@@ -22121,13 +22160,13 @@ consteval void unit_add(unit& u, unit_atom a) {
 
 // An atom whose named unit holds basis vectors (e₁, i = e₁e₂).
 constexpr bool is_blade_atom(const unit_atom& a) { return a.U->Dim.UserSize > 0 && has_blade(a.U->Dim); }
-constexpr bool has_blade_atoms(const unit& u) {
+constexpr bool has_blade_atoms(const unit_value& u) {
     return std::any_of(u.Atoms, u.Atoms + u.Size, [](const unit_atom& a) { return is_blade_atom(a); });
 }
 
-consteval unit blade_unit_mul(const unit& a, const unit& b, int sign);
+consteval unit_value blade_unit_mul(const unit_value& a, const unit_value& b, int sign);
 
-consteval unit unit_mul(unit a, const unit& b, int sign) {
+consteval unit_value unit_mul(unit_value a, const unit_value& b, int sign) {
     if (has_blade_atoms(a) || has_blade_atoms(b))
         return blade_unit_mul(a, b, sign);
     for (std::int8_t i = 0; i < b.Size; ++i) {
@@ -22139,25 +22178,25 @@ consteval unit unit_mul(unit a, const unit& b, int sign) {
     return a;
 }
 
-consteval unit unit_pow(const unit& u, int n) {
+consteval unit_value unit_pow(const unit_value& u, int n) {
     if (has_blade_atoms(u)) { // repeated products: the blades do not commute
-        unit r{};
+        unit_value r{};
         for (int i = 0; i < (n < 0 ? -n : n); ++i)
             r = unit_mul(r, u, n < 0 ? -1 : 1);
         return r;
     }
-    unit r{};
+    unit_value r{};
     for (std::int8_t i = 0; i < u.Size; ++i)
         unit_add(r, {u.Atoms[i].U, u.Atoms[i].Prefix, dimension::exponent(u.Atoms[i].Exp * n)});
     r.Scale = u.Scale.pow(n);
     return r;
 }
 
-consteval unit unit_scaled(unit u, const magnitude& m) {
+consteval unit_value unit_scaled(unit_value u, const magnitude& m) {
     u.Scale = m * u.Scale;
     return u;
 }
-consteval unit unit_prefixed(unit u, int p) {
+consteval unit_value unit_prefixed(unit_value u, int p) {
     u.Atoms[0].Prefix = static_cast<std::int8_t>(p);
     return u;
 }
@@ -22169,7 +22208,7 @@ consteval magnitude ten_pow(int p) {
 } // namespace detail
 
 // A unit's dimension, magnitude (relative to the coherent SI unit) and kind.
-consteval dimension dimension_of(const unit& u) {
+consteval dimension dimension_of(const unit_value& u) {
     dimension d{};
     for (std::int8_t i = 0; i < u.Size; ++i)
         d = d * u.Atoms[i].U->Dim.pow(u.Atoms[i].Exp);
@@ -22178,7 +22217,7 @@ consteval dimension dimension_of(const unit& u) {
 namespace detail {
 // The sign of the product of u's blade atoms in stored order against the
 // canonical blade of their product: ±1, or 0 for a product that vanishes.
-consteval int atoms_blade_sign(const unit& u) {
+consteval int atoms_blade_sign(const unit_value& u) {
     blade acc;
     int   s = 1;
     for (std::int8_t i = 0; i < u.Size; ++i) {
@@ -22196,7 +22235,7 @@ consteval int atoms_blade_sign(const unit& u) {
 }
 } // namespace detail
 
-consteval magnitude magnitude_of(const unit& u) {
+consteval magnitude magnitude_of(const unit_value& u) {
     magnitude m = u.Scale;
     for (std::int8_t i = 0; i < u.Size; ++i)
         m = m * (u.Atoms[i].U->Mag * detail::ten_pow(u.Atoms[i].Prefix)).pow(u.Atoms[i].Exp);
@@ -22212,7 +22251,7 @@ namespace detail {
 // its basis vectors (i·i is 1, e₁·e₁₂₃ is e₂e₃). The scale makes the
 // magnitude the true one, sign included: a negative scale is the number's
 // sign, a zero scale a product that vanishes (ε·ε).
-consteval unit blade_unit_mul(const unit& a, const unit& b, int sign) {
+consteval unit_value blade_unit_mul(const unit_value& a, const unit_value& b, int sign) {
     const dimension da = dimension_of(a), db = dimension_of(b);
     blade           bl = blade_of(da);
     const blade     br = blade_of(db);
@@ -22226,9 +22265,9 @@ consteval unit blade_unit_mul(const unit& a, const unit& b, int sign) {
     }
     const magnitude target = sign > 0 ? magnitude_of(a) * magnitude_of(b) : magnitude_of(a) / magnitude_of(b);
 
-    unit                   r{};
+    unit_value             r{};
     std::vector<unit_atom> blades;
-    const auto             take = [&](const unit& u, int sgn) {
+    const auto             take = [&](const unit_value& u, int sgn) {
         for (std::int8_t i = 0; i < u.Size; ++i) {
             unit_atom t = u.Atoms[i];
             if (is_blade_atom(t)) {
@@ -22253,7 +22292,7 @@ consteval unit blade_unit_mul(const unit& a, const unit& b, int sign) {
         for (const unit_atom& t : blades)
             unit_add(r, t);
     else
-        for (const base_dimension* v : bl)
+        for (const base_dimension_def* v : bl)
             unit_add(r, unit_atom{v->Vector, 0, 1});
     r.Scale = s == 0 ? magnitude{grid_rational{0}} : target * magnitude{grid_rational{s}} / magnitude_of(r);
     return r;
@@ -22262,27 +22301,27 @@ consteval unit blade_unit_mul(const unit& a, const unit& b, int sign) {
 namespace detail {
 // One named unit (with a prefix too) to the power 1, unscaled: its kind,
 // origin and spacing are the unit's.
-consteval bool is_single_named(const unit& u) { return u.Size == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one(); }
+consteval bool is_single_named(const unit_value& u) { return u.Size == 1 && u.Atoms[0].Exp == 1 && u.Scale.is_one(); }
 // Whether a quantity's text puts a space before the unit (not before °).
-consteval bool space_before(const unit& u) { return !(is_single_named(u) && !u.Atoms[0].U->SpaceBefore); }
+consteval bool space_before(const unit_value& u) { return !(is_single_named(u) && !u.Atoms[0].U->SpaceBefore); }
 } // namespace detail
 
 // The kind a unit measures: a named unit's (with a prefix too), else none.
-consteval detail::spec_ref kind_of(const unit& u) {
+consteval detail::spec_ref kind_of(const unit_value& u) {
     return detail::is_single_named(u) ? u.Atoms[0].U->Kind : detail::spec_ref{};
 }
 
 namespace detail {
 // The kind a unit defined by U inherits: its one factor's (min: 60 s).
-consteval spec_ref inherited_kind(const unit& u) {
+consteval spec_ref inherited_kind(const unit_value& u) {
     return u.Size == 1 && u.Atoms[0].Exp == 1 ? u.Atoms[0].U->Kind : spec_ref{};
 }
 } // namespace detail
 
-template <unit U>
-constexpr named_unit::named_unit(std::string_view sym, unit_t<U>, unit_options o)
+template <unit_value U>
+constexpr detail::named_unit::named_unit(std::string_view sym, unit_t<U>, unit_options o)
     : Utf8{sym},
-      Ascii{o.ascii.empty() ? sym : o.ascii},
+      Ascii{o.ascii},
       Dim{dimension_of(U)},
       Mag{magnitude_of(U)},
       Kind{o.kind ? o.kind : detail::inherited_kind(U)},
@@ -22299,9 +22338,9 @@ constexpr named_unit::named_unit(std::string_view sym, unit_t<U>, unit_options o
         beman::inside::detail::constexpr_error<"units: a named unit of a product that vanishes (a null vector "
                                                "squared)">();
 }
-template <unit U, const quantity_spec* K>
-constexpr named_unit::named_unit(std::string_view sym, unit_t<U>, spec_t<K>, unit_options o)
-    : named_unit{sym, unit_t<U>{}, unit_options{o.ascii, K, o.origin, o.space_before}} {}
+template <unit_value U, const detail::quantity_spec* K>
+constexpr detail::named_unit::named_unit(std::string_view sym, unit_t<U>, spec_t<K>, unit_options o)
+    : detail::named_unit{sym, unit_t<U>{}, unit_options{o.ascii, K, o.origin, o.space_before}} {}
 
 // The tags of your own entries, each made from its static object:
 //   inline constexpr auto metre  = unit_c<metre_def>;     // a named_unit
@@ -22311,65 +22350,67 @@ constexpr named_unit::named_unit(std::string_view sym, unit_t<U>, spec_t<K>, uni
 namespace detail {
 template <class N>
 consteval const named_unit& named_of(const N& n) {
-    if constexpr (std::same_as<N, basis_vector>)
+    if constexpr (std::same_as<N, basis_vector_def>)
         return n.Unit;
     else
         return n;
 }
 } // namespace detail
+namespace detail {
 template <const auto& N>
     requires std::same_as<std::remove_cvref_t<decltype(N)>, named_unit> ||
-             std::same_as<std::remove_cvref_t<decltype(N)>, basis_vector>
-inline constexpr unit_t<unit{detail::named_of(N)}> unit_c{};
+             std::same_as<std::remove_cvref_t<decltype(N)>, basis_vector_def>
+inline constexpr unit_t<unit_value{detail::named_of(N)}> unit_c{};
 template <const quantity_spec& S>
 inline constexpr spec_t<&S> spec_c{};
 template <const point_origin& O>
 inline constexpr origin_t<&O> origin_c{};
+} // namespace detail
 
 // The dimensionless unit 1.
-inline constexpr unit_t<unit{}> one{};
+inline constexpr unit_t<unit_value{}> one{};
 
-template <unit A, unit B>
+template <unit_value A, unit_value B>
 consteval bool operator==(unit_t<A>, unit_t<B>) {
     return A == B;
 }
-template <unit A, unit B>
+template <unit_value A, unit_value B>
 consteval auto operator*(unit_t<A>, unit_t<B>) {
     return unit_t<detail::unit_mul(A, B, 1)>{};
 }
-template <unit A, unit B>
+template <unit_value A, unit_value B>
 consteval auto operator/(unit_t<A>, unit_t<B>) {
     return unit_t<detail::unit_mul(A, B, -1)>{};
 }
-template <magnitude M, unit B>
-consteval auto operator*(mag_t<M>, unit_t<B>) {
+template <magnitude M, unit_value B>
+consteval auto operator*(detail::mag_t<M>, unit_t<B>) {
     return unit_t<detail::unit_scaled(B, M)>{};
 }
-template <magnitude M, unit B>
-consteval auto operator/(mag_t<M>, unit_t<B>) {
+template <magnitude M, unit_value B>
+consteval auto operator/(detail::mag_t<M>, unit_t<B>) {
     return unit_t<detail::unit_scaled(detail::unit_pow(B, -1), M)>{};
 }
-template <unit B, magnitude M>
-consteval auto operator*(unit_t<B>, mag_t<M>) {
+template <unit_value B, magnitude M>
+consteval auto operator*(unit_t<B>, detail::mag_t<M>) {
     return unit_t<detail::unit_scaled(B, M)>{};
 }
-template <unit B, magnitude M>
-consteval auto operator/(unit_t<B>, mag_t<M>) {
+template <unit_value B, magnitude M>
+consteval auto operator/(unit_t<B>, detail::mag_t<M>) {
     return unit_t<detail::unit_scaled(B, magnitude{} / M)>{};
 }
-template <int N, unit A>
+template <int N, unit_value A>
 consteval auto pow(unit_t<A>) {
     return unit_t<detail::unit_pow(A, N)>{};
 }
-template <unit A>
+template <unit_value A>
 consteval auto square(unit_t<A>) {
     return unit_t<detail::unit_pow(A, 2)>{};
 }
-template <unit A>
+template <unit_value A>
 consteval auto cubic(unit_t<A>) {
     return unit_t<detail::unit_pow(A, 3)>{};
 }
-template <unit A>
+template <unit_value A>
 consteval auto inverse(unit_t<A>) {
     return unit_t<detail::unit_pow(A, -1)>{};
 }
@@ -22377,7 +22418,7 @@ consteval auto inverse(unit_t<A>) {
 // A decimal prefix: si::kilo(si::metre). Only on a named unit, once.
 template <int P>
 struct prefix_t {
-    template <unit U>
+    template <unit_value U>
     consteval auto operator()(unit_t<U>) const {
         static_assert(U.Size == 1 && U.Atoms[0].Exp == 1 && U.Atoms[0].Prefix == 0 && U.Scale.is_one(),
                       "units: a prefix applies to a named unit without a prefix (kilo(metre), not kilo(m/s))");
@@ -22396,13 +22437,13 @@ struct reference {
     detail::spec_ref Spec{};
     bool             KindOf{false};
     detail::recipe   Derived{};
-    unit             U{};
+    unit_value       U{};
 
     constexpr reference() = default;
-    constexpr reference(detail::spec_ref s, bool kind_of, detail::recipe derived, unit u)
+    constexpr reference(detail::spec_ref s, bool kind_of, detail::recipe derived, unit_value u)
         : Spec{s}, KindOf{kind_of}, Derived{derived}, U{u} {}
     // A unit tag as a reference: quantity<si::metre, …>.
-    template <unit V>
+    template <unit_value V>
     constexpr reference(unit_t<V>) : Spec{kind_of(V)}, KindOf{static_cast<bool>(kind_of(V))}, U{V} {}
 
     friend constexpr bool operator==(const reference& a, const reference& b) {
@@ -22410,7 +22451,7 @@ struct reference {
     }
 };
 
-consteval reference reference_of(const unit& u) {
+consteval reference reference_of(const unit_value& u) {
     const detail::spec_ref k = kind_of(u);
     return reference{k, static_cast<bool>(k), detail::recipe{}, u};
 }
@@ -22424,19 +22465,19 @@ struct reference_t {
 namespace detail {
 template <class T>
 inline constexpr bool is_unit_tag_v = false;
-template <unit U>
+template <unit_value U>
 inline constexpr bool is_unit_tag_v<unit_t<U>> = true;
 
 template <class T>
 inline constexpr bool is_reference_tag_v = false;
-template <unit U>
+template <unit_value U>
 inline constexpr bool is_reference_tag_v<unit_t<U>> = true;
 template <reference R>
 inline constexpr bool is_reference_tag_v<reference_t<R>> = true;
 } // namespace detail
 
 // The reference of a tag: a unit_t is the unit with its kind.
-template <unit U>
+template <unit_value U>
 consteval reference reference_of(unit_t<U>) {
     return reference_of(U);
 }
@@ -22445,11 +22486,11 @@ consteval reference reference_of(reference_t<R>) {
     return R;
 }
 
-template <const quantity_spec* S>
+template <const detail::quantity_spec* S>
 template <class U>
 consteval auto spec_t<S>::operator[](U) const {
     static_assert(detail::is_reference_tag_v<U> && requires { U::value.Size; }, "units: spec[unit] takes a unit");
-    constexpr unit u = U::value;
+    constexpr unit_value u = U::value;
     static_assert(dimension_of(u) == S->Dim, "units: spec[unit] - the unit has another dimension than the spec");
     constexpr detail::spec_ref k = kind_of(u);
     static_assert(!k || detail::same(detail::kind_root(k.P), detail::kind_root(S)),
@@ -22537,7 +22578,7 @@ consteval spec_result common_spec(const reference& a, const reference& b) {
 
 // The spec part of a product: named factors multiply into a recipe.
 // (Spec null, KindOf, no recipe) is the empty product: 1 / x starts there.
-consteval reference spec_product(const reference& a, const reference& b, int sign, const unit& u) {
+consteval reference spec_product(const reference& a, const reference& b, int sign, const unit_value& u) {
     const auto empty = [](const reference& r) consteval { return !r.Spec && r.KindOf && r.Derived.Size == 0; };
     if ((is_generic(a) && !empty(a)) || (is_generic(b) && !empty(b)))
         return reference{nullptr, false, {}, u};
@@ -22557,7 +22598,7 @@ consteval reference spec_product(const reference& a, const reference& b, int sig
     return reference{nullptr, kind_of, f, u};
 }
 
-consteval reference spec_pow(const reference& a, int n, const unit& u) {
+consteval reference spec_pow(const reference& a, int n, const unit_value& u) {
     if (is_generic(a) || n == 0)
         return reference{nullptr, false, {}, u};
     reference r = a;
@@ -22593,11 +22634,11 @@ constexpr auto rescale(const V& v) {
     }
 }
 
-template <unit From, unit To>
+template <unit_value From, unit_value To>
 inline constexpr magnitude conversion_factor = magnitude_of(From) / magnitude_of(To);
 
 // A fixed order of units: fewer atoms first, then by symbol and exponent.
-consteval bool unit_before(const unit& a, const unit& b) {
+consteval bool unit_before(const unit_value& a, const unit_value& b) {
     if (a.Size != b.Size)
         return a.Size < b.Size;
     return std::lexicographical_compare(
@@ -22614,7 +22655,7 @@ consteval bool unit_before(const unit& a, const unit& b) {
 // shorter (J + N m → J). The sum's type is the same either way.
 // A magnitude may carry a sign (e₃₁ := e₃e₁ is -1 of the canonical e₁e₃):
 // sizes compare without it.
-consteval unit common_unit(const unit& a, const unit& b) {
+consteval unit_value common_unit(const unit_value& a, const unit_value& b) {
     if (a == b)
         return a;
     const magnitude     ma = magnitude_of(a), mb = magnitude_of(b);
@@ -22630,7 +22671,7 @@ consteval unit common_unit(const unit& a, const unit& b) {
     if (g == sb)
         return b;
     const bool a_smaller = sa < sb;
-    unit       u         = a_smaller ? a : b;
+    unit_value u         = a_smaller ? a : b;
     u.Scale              = u.Scale * magnitude{g / (a_smaller ? sa : sb)};
     return u;
 }
@@ -22641,7 +22682,7 @@ template <magnitude M, class V>
 concept rescale_forms = !exact_factor_v<M> || M.is_one() || requires(const V& v) { v * just<M.Ratio>; };
 
 // Whether a number of V in unit From rescales to unit To.
-template <unit From, unit To, class V>
+template <unit_value From, unit_value To, class V>
 concept rescalable = rescale_forms<conversion_factor<From, To>, V>;
 
 // Whether inside's x Op y exists (Op one of + - % * / = <, the last two for
@@ -22658,7 +22699,7 @@ concept number_op = (Op == '+' && requires(const X& x, const Y& y) { x + y; }) |
 // Why q.in(To) cannot convert from From, if it cannot: another dimension, or
 // a factor of pi (which value_cast rounds). A deleted overload per reason.
 enum class in_error : unsigned char { none, dimension, pi };
-template <unit From, unit To>
+template <unit_value From, unit_value To>
 consteval in_error in_error_of() {
     if (dimension_of(From) != dimension_of(To))
         return in_error::dimension;
@@ -22744,7 +22785,7 @@ constexpr T part_of_number(N&& n, const Pol&... pol) {
 
 namespace detail {
 // An exact conversion factor from unit From to unit To: it holds no π.
-template <unit From, unit To>
+template <unit_value From, unit_value To>
 inline constexpr bool exact_rescale_v = exact_factor_v<conversion_factor<From, To>>;
 
 template <reference From, reference To>
@@ -22754,14 +22795,15 @@ inline constexpr bool implicit_v =
 // converts to unit U (q.in<U>()).
 template <reference From, reference To, class V>
 concept implicit_rescalable = implicit_v<From, To> && rescalable<From.U, To.U, V>;
-template <reference R, unit U, class V>
+template <reference R, unit_value U, class V>
 concept in_rescalable = in_error_of<R.U, U>() == in_error::none && rescalable<R.U, U, V>;
 
 // A dimensionless quantity that is a plain number: no is_kind spec (an
 // angle), and an exact factor to unit one.
 template <reference R>
-inline constexpr bool number_like_v = dimension_of(R.U) == dim_one && exact_factor_v<conversion_factor<R.U, unit{}>> &&
-                                      (!R.Spec || !kind_root(R.Spec.P)->IsKind);
+inline constexpr bool number_like_v =
+    dimension_of(R.U) == dim_one && exact_factor_v<conversion_factor<R.U, unit_value{}>> &&
+    (!R.Spec || !kind_root(R.Spec.P)->IsKind);
 
 // Its number's type; void for any other quantity (never forming the
 // rescale, whose pi check would fire for an angle in degrees).
@@ -22771,7 +22813,7 @@ struct number_type {
 };
 template <reference R, class V>
 struct number_type<R, V, true> {
-    using type = decltype(rescale<conversion_factor<R.U, unit{}>>(std::declval<const V&>()));
+    using type = decltype(rescale<conversion_factor<R.U, unit_value{}>>(std::declval<const V&>()));
 };
 template <reference R, class V>
 using number_t = typename number_type<R, V>::type;
@@ -22780,7 +22822,7 @@ template <reference From, reference To, insidable V>
 using rescaled_t = decltype(rescale<conversion_factor<From.U, To.U>>(std::declval<const V&>()));
 
 // q's number in unit U: exact, its grid rescaled.
-template <unit U, reference R, class V>
+template <unit_value U, reference R, class V>
 constexpr auto number_in_unit(const quantity<R, V>& q) {
     return rescale<conversion_factor<R.U, U>>(value_of(q));
 }
@@ -23021,13 +23063,13 @@ class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
     using holder::Value;
 
   public:
-    using rep                                   = Rep;
-    static constexpr units::reference reference = R;
-    static constexpr units::unit      unit      = R.U;
-    static constexpr units::dimension dimension = dimension_of(R.U);
-    // The spec as a value: its tag for a named spec (isq::height), else the
-    // spec expression of its recipe. Compare with ==: q.quantity_spec == isq::length.
-    static constexpr auto quantity_spec = [] {
+    using rep                                    = Rep;
+    static constexpr units::reference  reference = R;
+    static constexpr units::unit_value unit      = R.U;
+    static constexpr units::dimension  dimension = dimension_of(R.U);
+    // The kind as a value: its tag for a named kind (isq::height), else the
+    // expression of its recipe. Compare with ==: q.kind == isq::length.
+    static constexpr auto kind = [] {
         if constexpr (static_cast<bool>(R.Spec))
             return spec_t<R.Spec.P>{};
         else
@@ -23085,19 +23127,19 @@ class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
     void numerical_value() const = delete ("units: a number alone has no unit - read q.numerical_value_in(si::metre)");
 
     // The same quantity in unit U: exact, the number's grid rescaled.
-    template <units::unit U>
+    template <units::unit_value U>
         requires detail::in_rescalable<R, U, Rep>
     [[nodiscard]] constexpr auto in() const {
         constexpr units::reference to{R.Spec, R.KindOf, R.Derived, U};
         return detail::make_quantity<to>(detail::rescale<detail::conversion_factor<R.U, U>>(Value));
     }
-    template <units::unit U>
+    template <units::unit_value U>
         requires detail::in_rescalable<R, U, Rep>
     [[nodiscard]] constexpr auto in(units::unit_t<U>) const {
         return in<U>();
     }
     // The number in unit U: q.numerical_value_in(si::metre).
-    template <units::unit U>
+    template <units::unit_value U>
         requires detail::in_rescalable<R, U, Rep>
     [[nodiscard]] constexpr auto numerical_value_in(units::unit_t<U>) const {
         if constexpr (U == R.U)
@@ -23105,16 +23147,16 @@ class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
         else
             return detail::value_of(in<U>());
     }
-    template <units::unit U>
+    template <units::unit_value U>
         requires(detail::in_error_of<R.U, U>() == detail::in_error::dimension)
     void in() const = delete ("units: in() - the unit has another dimension");
-    template <units::unit U>
+    template <units::unit_value U>
         requires(detail::in_error_of<R.U, U>() == detail::in_error::dimension)
     void in(units::unit_t<U>) const = delete ("units: in() - the unit has another dimension");
-    template <units::unit U>
+    template <units::unit_value U>
         requires(detail::in_error_of<R.U, U>() == detail::in_error::pi)
     void in() const = delete (BEMAN_INSIDE_UNITS_WHY_PI);
-    template <units::unit U>
+    template <units::unit_value U>
         requires(detail::in_error_of<R.U, U>() == detail::in_error::pi)
     void in(units::unit_t<U>) const = delete (BEMAN_INSIDE_UNITS_WHY_PI);
 
@@ -23125,7 +23167,7 @@ class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
     template <insidable T>
         requires detail::number_like_v<R> && std::constructible_from<T, detail::number_t<R, Rep>>
     constexpr explicit(!std::convertible_to<detail::number_t<R, Rep>, T>) operator T() const {
-        return T(detail::rescale<detail::conversion_factor<R.U, units::unit{}>>(Value));
+        return T(detail::rescale<detail::conversion_factor<R.U, units::unit_value{}>>(Value));
     }
     template <insidable T>
         requires(dimension_of(R.U) == dim_one && !detail::number_like_v<R>)
@@ -23138,7 +23180,8 @@ class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
         requires detail::number_like_v<R> &&
                  requires(const detail::number_t<R, Rep>& n) { beman::inside::to<T, Round>(n); }
     [[nodiscard]] constexpr auto to() const {
-        return beman::inside::to<T, Round>(detail::rescale<detail::conversion_factor<R.U, units::unit{}>>(Value));
+        return beman::inside::to<T, Round>(
+            detail::rescale<detail::conversion_factor<R.U, units::unit_value{}>>(Value));
     }
 
     [[nodiscard]] constexpr auto operator+() const { return detail::make_quantity<R>(+Value); }
@@ -23336,7 +23379,7 @@ template <class N, class Tag>
 void operator*(N, Tag) =
     delete ("units: a raw number has no grid - write just<42> * unit, or Q{42, unit} into a quantity type Q");
 // number / unit: 5 / s.
-template <insidable V, unit U>
+template <insidable V, unit_value U>
 [[nodiscard]] constexpr auto operator/(const V& v, unit_t<U>) {
     return detail::make_quantity<reference_of(detail::unit_pow(U, -1))>(v);
 }
@@ -23351,25 +23394,25 @@ consteval reference scaled_reference(reference r, const magnitude& m) {
 }
 } // namespace detail
 template <magnitude M, reference R, class V>
-[[nodiscard]] constexpr auto operator*(mag_t<M>, const quantity<R, V>& q) {
+[[nodiscard]] constexpr auto operator*(detail::mag_t<M>, const quantity<R, V>& q) {
     return detail::quantity_access::make<quantity<detail::scaled_reference(R, M), V>>(units::detail::value_of(q));
 }
 template <reference R, class V, magnitude M>
-[[nodiscard]] constexpr auto operator*(const quantity<R, V>& q, mag_t<M>) {
+[[nodiscard]] constexpr auto operator*(const quantity<R, V>& q, detail::mag_t<M>) {
     return detail::quantity_access::make<quantity<detail::scaled_reference(R, M), V>>(units::detail::value_of(q));
 }
 // A magnitude times a number: the number in the scaled unit one ([π]), so
 // mag_pi * just<2> * si::second is 2 in [π s].
 template <magnitude M, insidable V>
-[[nodiscard]] constexpr auto operator*(mag_t<M>, const V& v) {
-    return detail::quantity_access::make<quantity<reference_of(detail::unit_scaled(unit{}, M)), V>>(v);
+[[nodiscard]] constexpr auto operator*(detail::mag_t<M>, const V& v) {
+    return detail::quantity_access::make<quantity<reference_of(detail::unit_scaled(unit_value{}, M)), V>>(v);
 }
 template <insidable V, magnitude M>
-[[nodiscard]] constexpr auto operator*(const V& v, mag_t<M>) {
-    return detail::quantity_access::make<quantity<reference_of(detail::unit_scaled(unit{}, M)), V>>(v);
+[[nodiscard]] constexpr auto operator*(const V& v, detail::mag_t<M>) {
+    return detail::quantity_access::make<quantity<reference_of(detail::unit_scaled(unit_value{}, M)), V>>(v);
 }
 template <reference R, class V, magnitude M>
-[[nodiscard]] constexpr auto operator/(const quantity<R, V>& q, mag_t<M>) {
+[[nodiscard]] constexpr auto operator/(const quantity<R, V>& q, detail::mag_t<M>) {
     return detail::quantity_access::make<quantity<detail::scaled_reference(R, magnitude{} / M), V>>(
         units::detail::value_of(q));
 }
@@ -23434,7 +23477,7 @@ concept summable =
 
 template <reference A, reference B, int Sign>
 consteval reference product_reference() {
-    const unit u = unit_mul(A.U, B.U, Sign);
+    const unit_value u = unit_mul(A.U, B.U, Sign);
     return spec_product(A, B, Sign, u);
 }
 
@@ -23578,7 +23621,7 @@ template <reference A, class VA, insidable V>
 template <insidable V, reference A, class VA>
     requires detail::number_op<V, VA, '/'>
 [[nodiscard]] constexpr auto operator/(const V& v, const quantity<A, VA>& a) {
-    constexpr reference R = detail::product_reference<reference{nullptr, true, {}, unit{}}, A, -1>();
+    constexpr reference R = detail::product_reference<reference{nullptr, true, {}, unit_value{}}, A, -1>();
     return detail::make_quantity<R>(v / units::detail::value_of(a));
 }
 // A quantity times a unit: (5 * m) / s.
@@ -23688,7 +23731,7 @@ template <auto U, insidable Rep2, reference R, class V>
     requires detail::is_unit_tag_v<decltype(U)> && detail::exact_rescale_v<R.U, decltype(U)::value> &&
              requires(const quantity<R, V>& q) { Rep2::try_make(units::detail::value_of(q.in(U))); }
 [[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q) {
-    constexpr units::unit u = decltype(U)::value;
+    constexpr units::unit_value u = decltype(U)::value;
     static_assert(dimension_of(u) == dimension_of(R.U), "units: value_cast - the unit has another dimension");
     constexpr reference to{R.Spec, R.KindOf, R.Derived, u};
     return detail::cast_number<quantity<to, Rep2>, Rep2>(units::detail::value_of(q.in(U)));
@@ -23995,7 +24038,7 @@ template <int&... Barrier, insidable V, reference A, class VA, class... Args>
         beman::inside::div(x, y, std::forward<Args>(args)...);
     }
 [[nodiscard]] constexpr auto div(const V& v, const quantity<A, VA>& a, Args&&... args) {
-    constexpr reference R = detail::product_reference<reference{nullptr, true, {}, unit{}}, A, -1>();
+    constexpr reference R = detail::product_reference<reference{nullptr, true, {}, unit_value{}}, A, -1>();
     return detail::make_quantity<R>(beman::inside::div(v, units::detail::value_of(a), std::forward<Args>(args)...));
 }
 
@@ -24087,7 +24130,7 @@ inline constexpr bool is_quantity_point_v<quantity_point<R, O, Rep>> = true;
 namespace detail {
 // The number, in unit U, that takes a quantity from origin From to origin To:
 // (offset(From) − offset(To)) / mag(U).
-template <origin_ref From, origin_ref To, unit U>
+template <origin_ref From, origin_ref To, unit_value U>
 consteval grid_rational origin_shift() {
     static_assert(same(absolute_of(From), absolute_of(To)), "units: points of different absolute origins");
     constexpr magnitude m = magnitude_of(U);
@@ -24108,7 +24151,9 @@ constexpr auto shift(const V& v) {
 }
 
 // The default origin of a unit's points: its named unit's (K, ℃, ℉).
-consteval origin_ref origin_of_unit(const unit& u) { return is_single_named(u) ? u.Atoms[0].U->Origin : origin_ref{}; }
+consteval origin_ref origin_of_unit(const unit_value& u) {
+    return is_single_named(u) ? u.Atoms[0].U->Origin : origin_ref{};
+}
 
 template <origin_ref O, class Q>
 constexpr auto make_point(Q&& q) {
@@ -24175,13 +24220,13 @@ class quantity_point : public detail::member_holder<Rep, quantity<R, Rep>, quant
         return detail::make_point<O2>(quantity_from(o));
     }
     // The same point in another unit.
-    template <units::unit U>
+    template <units::unit_value U>
         requires requires(const quantity<R, Rep>& q, unit_t<U> u) { q.in(u); }
     [[nodiscard]] constexpr auto in(unit_t<U> u) const {
         return detail::make_point<O>(Value.in(u));
     }
     // The same point in unit U, counted from U's own origin: 350 ℉ → 530/3 ℃.
-    template <units::unit U>
+    template <units::unit_value U>
         requires requires(const quantity_point& p, unit_t<U> u) {
             p.point_for(origin_t<detail::origin_of_unit(U)>{}).in(u);
         }
@@ -24253,7 +24298,7 @@ template <reference R, class V, detail::origin_ref O>
 // common unit; point − point: a quantity (the second counted from the first's
 // origin).
 namespace detail {
-template <unit U, reference R2, class V2>
+template <unit_value U, reference R2, class V2>
 constexpr auto in_point_unit(const quantity<R2, V2>& q) {
     if constexpr (requires { q.template in<U>(); })
         return q.template in<U>();
@@ -24300,6 +24345,182 @@ template <reference R, detail::origin_ref O, class V, reference R2, detail::orig
 } // namespace beman::inside::units
 
 
+// ======================================================================
+//  beman/inside/units/detail/define.hpp
+// ======================================================================
+// Internal — include <beman/inside/units.hpp> (or units/core.hpp), not this
+// directly.
+
+
+
+#include <concepts>
+#include <cstdint>
+#include <type_traits>
+
+//---------------------------------------------------------------------------
+// Units, kinds, origins and dimensions of your own: one declaration each.
+//
+//   inline constexpr auto fathom  = unit<"ftm", 1.8288_ins * si::metre>;
+//   inline constexpr auto depth   = kind<"depth", isq::length>;
+//   inline constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin,
+//                                        {.ascii = "R", .origin = si::absolute_zero}>;
+//   inline constexpr auto EUR     = base_unit<"EUR", "currency">;
+//   inline constexpr auto ct      = unit<"ct", 0.01_ins * EUR>;
+//   inline constexpr auto ice     = origin<"ice point", si::absolute_zero + 273.15_ins * si::kelvin>;
+//   inline constexpr auto e1      = basis_vector<"e₁", +1>;
+//
+// The name is a template argument and the definition a static member of a
+// class template, so a declaration is its own identity: the same declaration
+// in two places is the same unit.
+//---------------------------------------------------------------------------
+namespace beman::inside::units {
+// A kind's options, all optional:
+//   .distinct  true for a kind that never mixes with its siblings, although
+//              they share a dimension (activity and frequency are both 1/s)
+//   .recipe    the quantities it is made of, for a child that has a recipe of
+//              its own (velocity: displacement / duration, under speed)
+struct kind_options {
+    bool              distinct{false};
+    detail::spec_expr recipe{};
+};
+
+namespace detail {
+// A definition object of type T, named by a template argument: T{name, args…}
+// as a static member, which gives it static storage and one identity.
+template <class T, symbol_text Name, auto... Args>
+struct definition {
+    static constexpr T value{Name.view(), Args...};
+};
+
+template <symbol_text Sym, unit_options O, auto... Def>
+struct unit_holder {
+    static constexpr named_unit value{Sym.view(), Def..., O};
+};
+
+// What a unit is defined by, as named_unit takes it: a unit (si::joule /
+// si::second), a kind (the base unit of that kind), or the quantity it
+// equals (1.8288_ins * si::metre): its number times its unit.
+template <auto Def>
+struct unit_definition {
+    static constexpr auto value = Def;
+};
+template <auto Def>
+    requires quantity_like<decltype(Def)>
+struct unit_definition<Def> {
+    using Q = decltype(Def);
+    static_assert(lower_of<typename Q::rep> == upper_of<typename Q::rep>,
+                  "units: a unit is defined by a constant - unit<\"ftm\", 1.8288_ins * si::metre>");
+    static constexpr auto value = mag<lower_of<typename Q::rep>> * unit_t<Q::unit>{};
+};
+
+template <symbol_text Name, kind_options O, auto Parent>
+struct kind_holder {
+    static constexpr quantity_spec value = [] {
+        if constexpr (requires { quantity_spec{Name.view(), Parent, O.recipe}; }) {
+            if (O.recipe.Recipe.Size != 0)
+                return quantity_spec{Name.view(), Parent, O.recipe};
+        }
+        if constexpr (requires { quantity_spec{Name.view(), Parent, is_kind}; }) {
+            if (O.distinct)
+                return quantity_spec{Name.view(), Parent, is_kind};
+        }
+        return quantity_spec{Name.view(), Parent};
+    }();
+};
+
+template <symbol_text Name>
+struct dimension_holder {
+    static constexpr base_dimension_def value{Name.view()};
+};
+
+// An origin is absolute (named by a kind or a dimension: the zero of that
+// dimension) or lies at a point of another origin.
+template <symbol_text Name, auto Def>
+struct origin_holder {
+    static constexpr point_origin value = [] {
+        if constexpr (requires { Def.quantity_from_origin(); }) {
+            using P = decltype(Def);
+            static_assert(static_cast<bool>(P::origin), "units: origin<name, o + q> - the point counts from an origin");
+            constexpr auto q = Def.quantity_from_origin();
+            using Q          = decltype(q);
+            static_assert(lower_of<typename Q::rep> == upper_of<typename Q::rep>,
+                          "units: an origin lies at a constant point - si::absolute_zero + 273.15_ins * si::kelvin");
+            static_assert(magnitude_of(Q::unit).Pi == 0, "units: an origin's offset has no factor of pi");
+            return point_origin{Name.view(),
+                                dimension_of(Q::unit),
+                                absolute_of(P::origin),
+                                offset_of(P::origin) + lower_of<typename Q::rep> * magnitude_of(Q::unit).Ratio};
+        } else if constexpr (requires { dimension{Def}; })
+            return point_origin{Name.view(), dimension{Def}};
+        else
+            return point_origin{Name.view(), Def.value->Dim};
+    }();
+};
+
+template <symbol_text Sym, int Square, unit_options O>
+struct basis_holder {
+    static constexpr basis_vector_def value{Sym.view(), Square, O};
+};
+} // namespace detail
+
+// unit<"sym", definition, options>: a unit of your own. The definition is
+// the quantity it equals (1.8288_ins * si::metre), another unit (si::joule /
+// si::second), or a kind, whose base unit it then is.
+template <detail::symbol_text Sym, auto Def, unit_options O = {}>
+inline constexpr auto unit = detail::unit_c<detail::unit_holder<Sym, O, detail::unit_definition<Def>::value>::value>;
+
+// kind<"name", parent, options>: a kind of quantity. The parent is a kind
+// (depth under length), a product of kinds (speed: length / duration) or a
+// dimension (a base quantity).
+template <detail::symbol_text Name, auto Parent, kind_options O = {}>
+inline constexpr auto kind = detail::spec_c<detail::kind_holder<Name, O, Parent>::value>;
+
+// base_dimension<"name">: a dimension of your own, which mixes with no other.
+template <detail::symbol_text Name>
+inline constexpr dimension base_dimension = dimension_of(detail::dimension_holder<Name>::value);
+
+// base_unit<"sym", "dimension">: a unit of something that mixes with nothing
+// else (money, pixels, counts): a new dimension, its kind, and this unit.
+template <detail::symbol_text Sym, detail::symbol_text Dimension, unit_options O = {}>
+inline constexpr auto base_unit = unit<Sym, kind<Dimension, base_dimension<Dimension>>, O>;
+
+// origin<"name", where>: where points count from. An absolute origin is
+// named by a kind or a dimension; any other lies at a point of one:
+// origin<"ice point", si::absolute_zero + 273.15_ins * si::kelvin>.
+template <detail::symbol_text Name, auto Def>
+inline constexpr auto origin = detail::origin_c<detail::origin_holder<Name, Def>::value>;
+
+// pi: the number π as a unit, exactly. A unit that is a multiple of π says
+// so, and conversions between such units stay exact:
+//   unit<"°", just<1, 180> * pi * si::radian>, unit<"tr", just<2> * pi * si::radian>.
+inline constexpr auto pi = detail::mag_pi * one;
+// A quantity times or over pi: the same number, in a unit scaled by π
+// (pi * (2 * si::second) is 2 [π s]); value_cast rounds it once.
+template <reference R, class V>
+[[nodiscard]] constexpr auto operator*(decltype(pi), const quantity<R, V>& q) {
+    return detail::mag_pi * q;
+}
+template <reference R, class V>
+[[nodiscard]] constexpr auto operator*(const quantity<R, V>& q, decltype(pi)) {
+    return q * detail::mag_pi;
+}
+template <reference R, class V>
+[[nodiscard]] constexpr auto operator/(const quantity<R, V>& q, decltype(pi)) {
+    return q / detail::mag_pi;
+}
+// (pi times a number is that number of [π].)
+template <insidable V>
+[[nodiscard]] constexpr auto operator*(decltype(pi), const V& v) {
+    return detail::mag_pi * v;
+}
+
+// basis_vector<"e₁", +1>: a basis vector of a geometric algebra, by its
+// square (+1, -1 or 0).
+template <detail::symbol_text Sym, int Square, unit_options O = {}>
+inline constexpr auto basis_vector = detail::unit_c<detail::basis_holder<Sym, Square, O>::value>;
+} // namespace beman::inside::units
+
+
 #undef BEMAN_INSIDE_UNITS_WHY_PI
 #undef BEMAN_INSIDE_UNITS_WHY_GEOALG
 
@@ -24317,28 +24538,22 @@ namespace beman::inside::units {
 
 //---------------------------------------------------------------------------
 // The catalog: ISQ quantity specs, SI units and prefixes, international units.
-// Each name is a tag object; its definition is a static object in *_defs.
+// Each name is a tag object; its definition is a static member of a class
+// template (detail::definition), as for a unit of your own.
 //---------------------------------------------------------------------------
-#define BEMAN_INSIDE_SPEC(name, ...)                         \
-    namespace isq_defs {                                     \
-    inline constexpr quantity_spec name{#name, __VA_ARGS__}; \
-    }                                                        \
-    namespace isq {                                          \
-    inline constexpr auto name = spec_c<isq_defs::name>;     \
+#define BEMAN_INSIDE_SPEC(name, ...)                                                          \
+    namespace isq {                                                                           \
+    inline constexpr auto name =                                                              \
+        detail::spec_c<detail::definition<detail::quantity_spec, #name, __VA_ARGS__>::value>; \
     }
-#define BEMAN_INSIDE_ORIGIN(ns, name, ...)                      \
-    namespace ns##_defs {                                       \
-        inline constexpr point_origin name{#name, __VA_ARGS__}; \
-    }                                                           \
-    namespace ns {                                              \
-    inline constexpr auto name = origin_c<ns##_defs::name>;     \
+#define BEMAN_INSIDE_ORIGIN(ns, name, ...)                                                     \
+    namespace ns {                                                                             \
+    inline constexpr auto name =                                                               \
+        detail::origin_c<detail::definition<detail::point_origin, #name, __VA_ARGS__>::value>; \
     }
-#define BEMAN_INSIDE_UNIT(ns, name, ...)                  \
-    namespace ns##_defs {                                 \
-        inline constexpr named_unit name{__VA_ARGS__};    \
-    }                                                     \
-    namespace ns {                                        \
-    inline constexpr auto name = unit_c<ns##_defs::name>; \
+#define BEMAN_INSIDE_UNIT(ns, name, ...)                                                                     \
+    namespace ns {                                                                                           \
+    inline constexpr auto name = detail::unit_c<detail::definition<detail::named_unit, __VA_ARGS__>::value>; \
     }
 
 // Base quantities (ISO 80000-1) and the dimensionless one.
@@ -24370,10 +24585,10 @@ BEMAN_INSIDE_SPEC(displacement, isq::length)
 BEMAN_INSIDE_SPEC(position_vector, isq::displacement)
 BEMAN_INSIDE_SPEC(area, pow<2>(isq::length))
 BEMAN_INSIDE_SPEC(volume, pow<3>(isq::length))
-BEMAN_INSIDE_SPEC(angular_measure, isq::dimensionless, isq::arc_length / isq::radius, is_kind)
+BEMAN_INSIDE_SPEC(angular_measure, isq::dimensionless, isq::arc_length / isq::radius, detail::is_kind)
 BEMAN_INSIDE_SPEC(rotational_displacement, isq::angular_measure, isq::path_length / isq::radius)
-BEMAN_INSIDE_SPEC(phase_angle, isq::angular_measure, is_kind)
-BEMAN_INSIDE_SPEC(solid_angular_measure, isq::dimensionless, isq::area / pow<2>(isq::radius), is_kind)
+BEMAN_INSIDE_SPEC(phase_angle, isq::angular_measure, detail::is_kind)
+BEMAN_INSIDE_SPEC(solid_angular_measure, isq::dimensionless, isq::area / pow<2>(isq::radius), detail::is_kind)
 BEMAN_INSIDE_SPEC(period_duration, isq::duration)
 BEMAN_INSIDE_SPEC(time_constant, isq::duration)
 BEMAN_INSIDE_SPEC(speed, isq::length / isq::duration)
@@ -24475,15 +24690,14 @@ inline constexpr prefix_t<30>  quetta{};
 // SI base units.
 BEMAN_INSIDE_UNIT(si, second, "s", isq::duration)
 BEMAN_INSIDE_UNIT(si, metre, "m", isq::length)
-BEMAN_INSIDE_UNIT(si, gram, "g", mag<1_g / 1000_g>, isq::mass)
+BEMAN_INSIDE_UNIT(si, gram, "g", detail::mag<1_g / 1000_g>, isq::mass)
 namespace si {
 inline constexpr auto kilogram = kilo(gram);
 }
 BEMAN_INSIDE_UNIT(si, ampere, "A", isq::electric_current)
 BEMAN_INSIDE_ORIGIN(si, absolute_zero, dim_thermodynamic_temperature)
-BEMAN_INSIDE_ORIGIN(
-    si, ice_point, dim_thermodynamic_temperature, &si_defs::absolute_zero, beman::inside::detail::rational{27315, 100})
-BEMAN_INSIDE_UNIT(si, kelvin, "K", isq::thermodynamic_temperature, {.origin = si::absolute_zero})
+BEMAN_INSIDE_ORIGIN(si, ice_point, dim_thermodynamic_temperature, si::absolute_zero, 27315_g / 100_g)
+BEMAN_INSIDE_UNIT(si, kelvin, "K", isq::thermodynamic_temperature, unit_options{.origin = si::absolute_zero})
 BEMAN_INSIDE_UNIT(si, mole, "mol", isq::amount_of_substance)
 BEMAN_INSIDE_UNIT(si, candela, "cd", isq::luminous_intensity)
 
@@ -24498,12 +24712,12 @@ BEMAN_INSIDE_UNIT(si, watt, "W", si::joule / si::second)
 BEMAN_INSIDE_UNIT(si, coulomb, "C", si::ampere* si::second)
 BEMAN_INSIDE_UNIT(si, volt, "V", si::watt / si::ampere, isq::electric_potential)
 BEMAN_INSIDE_UNIT(si, farad, "F", si::coulomb / si::volt, isq::capacitance)
-BEMAN_INSIDE_UNIT(si, ohm, "Ω", si::volt / si::ampere, isq::impedance, {.ascii = "ohm"})
+BEMAN_INSIDE_UNIT(si, ohm, "Ω", si::volt / si::ampere, isq::impedance, unit_options{.ascii = "ohm"})
 BEMAN_INSIDE_UNIT(si, siemens, "S", one / si::ohm, isq::admittance)
 BEMAN_INSIDE_UNIT(si, weber, "Wb", si::volt* si::second)
 BEMAN_INSIDE_UNIT(si, tesla, "T", si::weber / square(si::metre), isq::magnetic_flux_density)
 BEMAN_INSIDE_UNIT(si, henry, "H", si::weber / si::ampere)
-BEMAN_INSIDE_UNIT(si, degree_Celsius, "℃", si::kelvin, {.ascii = "`C", .origin = si::ice_point})
+BEMAN_INSIDE_UNIT(si, degree_Celsius, "℃", si::kelvin, unit_options{.ascii = "`C", .origin = si::ice_point})
 BEMAN_INSIDE_UNIT(si, lumen, "lm", si::candela* si::steradian, isq::luminous_flux)
 BEMAN_INSIDE_UNIT(si, lux, "lx", si::lumen / square(si::metre), isq::illuminance)
 BEMAN_INSIDE_UNIT(si, becquerel, "Bq", one / si::second, isq::activity)
@@ -24512,67 +24726,72 @@ BEMAN_INSIDE_UNIT(si, sievert, "Sv", si::joule / si::kilogram, isq::dose_equival
 BEMAN_INSIDE_UNIT(si, katal, "kat", si::mole / si::second, isq::catalytic_activity)
 
 // Non-SI units accepted for use with the SI.
-BEMAN_INSIDE_UNIT(si, minute, "min", mag<60>* si::second)
-BEMAN_INSIDE_UNIT(si, hour, "h", mag<60>* si::minute)
-BEMAN_INSIDE_UNIT(si, day, "d", mag<24>* si::hour)
-BEMAN_INSIDE_UNIT(si, astronomical_unit, "au", mag<149'597'870'700>* si::metre)
-BEMAN_INSIDE_UNIT(si, degree, "°", mag_pi* mag<1_g / 180_g>* si::radian, {.ascii = "deg", .space_before = false})
-BEMAN_INSIDE_UNIT(si, arcminute, "′", mag<1_g / 60_g>* si::degree, {.ascii = "'", .space_before = false})
-BEMAN_INSIDE_UNIT(si, arcsecond, "″", mag<1_g / 60_g>* si::arcminute, {.ascii = "''", .space_before = false})
+BEMAN_INSIDE_UNIT(si, minute, "min", detail::mag<60>* si::second)
+BEMAN_INSIDE_UNIT(si, hour, "h", detail::mag<60>* si::minute)
+BEMAN_INSIDE_UNIT(si, day, "d", detail::mag<24>* si::hour)
+BEMAN_INSIDE_UNIT(si, astronomical_unit, "au", detail::mag<149'597'870'700>* si::metre)
+BEMAN_INSIDE_UNIT(si,
+                  degree,
+                  "°",
+                  detail::mag_pi* detail::mag<1_g / 180_g>* si::radian,
+                  unit_options{.ascii = "deg", .space_before = false})
+BEMAN_INSIDE_UNIT(
+    si, arcminute, "′", detail::mag<1_g / 60_g>* si::degree, unit_options{.ascii = "'", .space_before = false})
+BEMAN_INSIDE_UNIT(
+    si, arcsecond, "″", detail::mag<1_g / 60_g>* si::arcminute, unit_options{.ascii = "''", .space_before = false})
 BEMAN_INSIDE_UNIT(si, are, "a", square(si::deca(si::metre)))
 BEMAN_INSIDE_UNIT(si, litre, "L", cubic(si::deci(si::metre)))
-BEMAN_INSIDE_UNIT(si, tonne, "t", mag<1000>* si::kilogram)
+BEMAN_INSIDE_UNIT(si, tonne, "t", detail::mag<1000>* si::kilogram)
 namespace si {
 inline constexpr auto hectare = hecto(are);
 }
-BEMAN_INSIDE_UNIT(si, dalton, "Da", mag<1.66053906892e-27_g>* si::kilogram) // CODATA 2022
-BEMAN_INSIDE_UNIT(si, electronvolt, "eV", mag<1.602176634e-19_g>* si::joule)
+BEMAN_INSIDE_UNIT(si, dalton, "Da", detail::mag<1.66053906892e-27_g>* si::kilogram) // CODATA 2022
+BEMAN_INSIDE_UNIT(si, electronvolt, "eV", detail::mag<1.602176634e-19_g>* si::joule)
 
 // The defining constants of the SI (2019) and standard gravity, as units:
 // just<1> * si2019::speed_of_light_in_vacuum is c, exactly, and .in(m/s)
 // gives its number. h, e, k and N_A need grid numbers past 64 bits.
-BEMAN_INSIDE_UNIT(
-    si2019, hyperfine_structure_transition_frequency_of_cs, "Δν_Cs", mag<9'192'631'770>* si::hertz, {.ascii = "dv_Cs"})
-BEMAN_INSIDE_UNIT(si2019, speed_of_light_in_vacuum, "c", mag<299'792'458>* si::metre / si::second)
-BEMAN_INSIDE_UNIT(si2019, luminous_efficacy, "K_cd", mag<683>* si::lumen / si::watt)
-BEMAN_INSIDE_UNIT(
-    si2019, standard_gravity, "g₀", mag<980665_g / 100000_g>* si::metre / square(si::second), {.ascii = "g_0"})
-BEMAN_INSIDE_UNIT(si2019, planck_constant, "h", mag<6.62607015e-34_g>* si::joule* si::second)
-BEMAN_INSIDE_UNIT(si2019, elementary_charge, "e", mag<1.602176634e-19_g>* si::coulomb)
-BEMAN_INSIDE_UNIT(si2019, boltzmann_constant, "k", mag<1.380649e-23_g>* si::joule / si::kelvin)
-BEMAN_INSIDE_UNIT(si2019, avogadro_constant, "N_A", mag<6.02214076e23_g> / si::mole)
+BEMAN_INSIDE_UNIT(si2019,
+                  hyperfine_structure_transition_frequency_of_cs,
+                  "Δν_Cs",
+                  detail::mag<9'192'631'770>* si::hertz,
+                  unit_options{.ascii = "dv_Cs"})
+BEMAN_INSIDE_UNIT(si2019, speed_of_light_in_vacuum, "c", detail::mag<299'792'458>* si::metre / si::second)
+BEMAN_INSIDE_UNIT(si2019, luminous_efficacy, "K_cd", detail::mag<683>* si::lumen / si::watt)
+BEMAN_INSIDE_UNIT(si2019,
+                  standard_gravity,
+                  "g₀",
+                  detail::mag<980665_g / 100000_g>* si::metre / square(si::second),
+                  unit_options{.ascii = "g_0"})
+BEMAN_INSIDE_UNIT(si2019, planck_constant, "h", detail::mag<6.62607015e-34_g>* si::joule* si::second)
+BEMAN_INSIDE_UNIT(si2019, elementary_charge, "e", detail::mag<1.602176634e-19_g>* si::coulomb)
+BEMAN_INSIDE_UNIT(si2019, boltzmann_constant, "k", detail::mag<1.380649e-23_g>* si::joule / si::kelvin)
+BEMAN_INSIDE_UNIT(si2019, avogadro_constant, "N_A", detail::mag<6.02214076e23_g> / si::mole)
 
 // International (yard and pound agreement, 1959) and nautical units.
-BEMAN_INSIDE_UNIT(international, yard, "yd", mag<9144_g / 10000_g>* si::metre)
-BEMAN_INSIDE_UNIT(international, foot, "ft", mag<1_g / 3_g>* international::yard)
-BEMAN_INSIDE_UNIT(international, inch, "in", mag<1_g / 12_g>* international::foot)
-BEMAN_INSIDE_UNIT(international, mile, "mi", mag<1760>* international::yard)
-BEMAN_INSIDE_UNIT(international, nautical_mile, "nmi", mag<1852>* si::metre)
-BEMAN_INSIDE_UNIT(international, pound, "lb", mag<45359237_g / 100000000_g>* si::kilogram)
-BEMAN_INSIDE_UNIT(international, ounce, "oz", mag<1_g / 16_g>* international::pound)
+BEMAN_INSIDE_UNIT(international, yard, "yd", detail::mag<9144_g / 10000_g>* si::metre)
+BEMAN_INSIDE_UNIT(international, foot, "ft", detail::mag<1_g / 3_g>* international::yard)
+BEMAN_INSIDE_UNIT(international, inch, "in", detail::mag<1_g / 12_g>* international::foot)
+BEMAN_INSIDE_UNIT(international, mile, "mi", detail::mag<1760>* international::yard)
+BEMAN_INSIDE_UNIT(international, nautical_mile, "nmi", detail::mag<1852>* si::metre)
+BEMAN_INSIDE_UNIT(international, pound, "lb", detail::mag<45359237_g / 100000000_g>* si::kilogram)
+BEMAN_INSIDE_UNIT(international, ounce, "oz", detail::mag<1_g / 16_g>* international::pound)
 BEMAN_INSIDE_UNIT(international,
                   pound_force,
                   "lbf",
-                  mag<980665_g / 100000_g>* international::pound* si::metre / square(si::second))
+                  detail::mag<980665_g / 100000_g>* international::pound* si::metre / square(si::second))
 BEMAN_INSIDE_UNIT(international, knot, "kn", international::nautical_mile / si::hour)
-BEMAN_INSIDE_ORIGIN(international,
-                    zeroth_degree_Fahrenheit,
-                    dim_thermodynamic_temperature,
-                    &si_defs::absolute_zero,
-                    beman::inside::detail::rational{45967, 180})
+BEMAN_INSIDE_ORIGIN(
+    international, zeroth_degree_Fahrenheit, dim_thermodynamic_temperature, si::absolute_zero, 45967_g / 180_g)
 BEMAN_INSIDE_UNIT(international,
                   degree_Fahrenheit,
                   "℉",
-                  mag<5_g / 9_g>* si::kelvin,
-                  {.ascii = "`F", .origin = international::zeroth_degree_Fahrenheit})
+                  detail::mag<5_g / 9_g>* si::kelvin,
+                  unit_options{.ascii = "`F", .origin = international::zeroth_degree_Fahrenheit})
 
 // Scaled dimensionless units, as in mp-units: 8 % is the number 2/25.
-namespace dimensionless_defs {
-inline constexpr named_unit percent{"%", mag<1_g / 100_g> * one};
-inline constexpr named_unit per_mille{"‰", mag<1_g / 1000_g> * one, {.ascii = "permille"}};
-} // namespace dimensionless_defs
-inline constexpr auto percent   = unit_c<dimensionless_defs::percent>;
-inline constexpr auto per_mille = unit_c<dimensionless_defs::per_mille>;
+inline constexpr auto percent   = unit<"%", 0.01_ins * one>;
+inline constexpr auto per_mille = unit<"‰", 0.001_ins * one, unit_options{.ascii = "permille"}>;
 
 #undef BEMAN_INSIDE_UNIT
 #undef BEMAN_INSIDE_ORIGIN
@@ -24608,73 +24827,52 @@ namespace beman::inside::units {
 // The constants' units. Each is a named unit whose magnitude is the constant,
 // in the namespace of its source, next to si2019's defining constants.
 //---------------------------------------------------------------------------
-namespace si2019_defs {
-inline constexpr named_unit standard_atmosphere{"atm", mag<101'325> * si::pascal};
-inline constexpr named_unit reduced_planck_constant{
-    "ħ", si2019::planck_constant / (mag<2> * mag_pi), {.ascii = "hbar"}};
-inline constexpr named_unit molar_gas_constant{"R", si2019::avogadro_constant * si2019::boltzmann_constant};
-inline constexpr named_unit faraday_constant{"F", si2019::avogadro_constant * si2019::elementary_charge};
-inline constexpr named_unit josephson_constant{"K_J", mag<2> * si2019::elementary_charge / si2019::planck_constant};
-inline constexpr named_unit von_klitzing_constant{"R_K", si2019::planck_constant / square(si2019::elementary_charge)};
-inline constexpr named_unit conductance_quantum{
-    "G₀", mag<2> * square(si2019::elementary_charge) / si2019::planck_constant, {.ascii = "G_0"}};
-inline constexpr named_unit magnetic_flux_quantum{
-    "Φ₀", si2019::planck_constant / (mag<2> * si2019::elementary_charge), {.ascii = "Phi_0"}};
-inline constexpr named_unit stefan_boltzmann_constant{
-    "σ",
-    mag<2> * mag_pi * mag_pi * mag_pi * mag_pi * mag_pi * square(square(si2019::boltzmann_constant)) /
-        (mag<15> * cubic(si2019::planck_constant) * square(si2019::speed_of_light_in_vacuum)),
-    {.ascii = "sigma"}};
-inline constexpr named_unit first_radiation_constant{
-    "c₁", mag<2> * mag_pi * si2019::planck_constant * square(si2019::speed_of_light_in_vacuum), {.ascii = "c_1"}};
-inline constexpr named_unit second_radiation_constant{
-    "c₂", si2019::planck_constant * si2019::speed_of_light_in_vacuum / si2019::boltzmann_constant, {.ascii = "c_2"}};
-} // namespace si2019_defs
-
 namespace si2019 {
-inline constexpr auto standard_atmosphere       = unit_c<si2019_defs::standard_atmosphere>;
-inline constexpr auto reduced_planck_constant   = unit_c<si2019_defs::reduced_planck_constant>;
-inline constexpr auto molar_gas_constant        = unit_c<si2019_defs::molar_gas_constant>;
-inline constexpr auto faraday_constant          = unit_c<si2019_defs::faraday_constant>;
-inline constexpr auto josephson_constant        = unit_c<si2019_defs::josephson_constant>;
-inline constexpr auto von_klitzing_constant     = unit_c<si2019_defs::von_klitzing_constant>;
-inline constexpr auto conductance_quantum       = unit_c<si2019_defs::conductance_quantum>;
-inline constexpr auto magnetic_flux_quantum     = unit_c<si2019_defs::magnetic_flux_quantum>;
-inline constexpr auto stefan_boltzmann_constant = unit_c<si2019_defs::stefan_boltzmann_constant>;
-inline constexpr auto first_radiation_constant  = unit_c<si2019_defs::first_radiation_constant>;
-inline constexpr auto second_radiation_constant = unit_c<si2019_defs::second_radiation_constant>;
+inline constexpr auto standard_atmosphere = unit<"atm", detail::mag<101'325> * si::pascal>;
+inline constexpr auto reduced_planck_constant =
+    unit<"ħ", si2019::planck_constant / (detail::mag<2> * detail::mag_pi), {.ascii = "hbar"}>;
+inline constexpr auto molar_gas_constant = unit<"R", si2019::avogadro_constant * si2019::boltzmann_constant>;
+inline constexpr auto faraday_constant   = unit<"F", si2019::avogadro_constant * si2019::elementary_charge>;
+inline constexpr auto josephson_constant =
+    unit<"K_J", detail::mag<2> * si2019::elementary_charge / si2019::planck_constant>;
+inline constexpr auto von_klitzing_constant = unit<"R_K", si2019::planck_constant / square(si2019::elementary_charge)>;
+inline constexpr auto conductance_quantum =
+    unit<"G₀", detail::mag<2> * square(si2019::elementary_charge) / si2019::planck_constant, {.ascii = "G_0"}>;
+inline constexpr auto magnetic_flux_quantum =
+    unit<"Φ₀", si2019::planck_constant / (detail::mag<2> * si2019::elementary_charge), {.ascii = "Phi_0"}>;
+inline constexpr auto stefan_boltzmann_constant =
+    unit<"σ",
+         detail::mag<2> * detail::mag_pi * detail::mag_pi * detail::mag_pi * detail::mag_pi * detail::mag_pi *
+             square(square(si2019::boltzmann_constant)) /
+             (detail::mag<15> * cubic(si2019::planck_constant) * square(si2019::speed_of_light_in_vacuum)),
+         {.ascii = "sigma"}>;
+inline constexpr auto first_radiation_constant =
+    unit<"c₁",
+         detail::mag<2> * detail::mag_pi * si2019::planck_constant * square(si2019::speed_of_light_in_vacuum),
+         {.ascii = "c_1"}>;
+inline constexpr auto second_radiation_constant =
+    unit<"c₂",
+         si2019::planck_constant * si2019::speed_of_light_in_vacuum / si2019::boltzmann_constant,
+         {.ascii = "c_2"}>;
 } // namespace si2019
 
 // CODATA 2022 recommended values (Mohr et al., Rev. Mod. Phys. 97, 025002).
-namespace codata2022_defs {
-inline constexpr named_unit gravitational_constant{
-    "G", mag<6.67430e-11_g> * cubic(si::metre) / (si::kilogram * square(si::second))};
-inline constexpr named_unit fine_structure_constant{"α", mag<7.2973525643e-3_g> * one, {.ascii = "alpha"}};
-inline constexpr named_unit rydberg_constant{"R_∞", mag<10'973'731.568157_g> / si::metre, {.ascii = "R_inf"}};
-inline constexpr named_unit vacuum_magnetic_permeability{
-    "μ₀", mag<1.25663706127e-6_g> * si::newton / square(si::ampere), {.ascii = "mu_0"}};
-inline constexpr named_unit characteristic_impedance_of_vacuum{"Z₀", mag<376.730313412_g> * si::ohm, {.ascii = "Z_0"}};
-inline constexpr named_unit electron_mass{"m_e", mag<9.1093837139e-31_g> * si::kilogram};
-inline constexpr named_unit proton_mass{"m_p", mag<1.67262192595e-27_g> * si::kilogram};
-inline constexpr named_unit neutron_mass{"m_n", mag<1.67492750056e-27_g> * si::kilogram};
-inline constexpr named_unit atomic_mass_constant{"m_u", mag<1.66053906892e-27_g> * si::kilogram};
-inline constexpr named_unit bohr_radius{"a₀", mag<5.29177210544e-11_g> * si::metre, {.ascii = "a_0"}};
-inline constexpr named_unit vacuum_electric_permittivity{
-    "ε₀", mag<8.8541878188e-12_g> * si::farad / si::metre, {.ascii = "epsilon_0"}};
-} // namespace codata2022_defs
-
 namespace codata2022 {
-inline constexpr auto gravitational_constant             = unit_c<codata2022_defs::gravitational_constant>;
-inline constexpr auto fine_structure_constant            = unit_c<codata2022_defs::fine_structure_constant>;
-inline constexpr auto rydberg_constant                   = unit_c<codata2022_defs::rydberg_constant>;
-inline constexpr auto vacuum_magnetic_permeability       = unit_c<codata2022_defs::vacuum_magnetic_permeability>;
-inline constexpr auto characteristic_impedance_of_vacuum = unit_c<codata2022_defs::characteristic_impedance_of_vacuum>;
-inline constexpr auto electron_mass                      = unit_c<codata2022_defs::electron_mass>;
-inline constexpr auto proton_mass                        = unit_c<codata2022_defs::proton_mass>;
-inline constexpr auto neutron_mass                       = unit_c<codata2022_defs::neutron_mass>;
-inline constexpr auto atomic_mass_constant               = unit_c<codata2022_defs::atomic_mass_constant>;
-inline constexpr auto bohr_radius                        = unit_c<codata2022_defs::bohr_radius>;
-inline constexpr auto vacuum_electric_permittivity       = unit_c<codata2022_defs::vacuum_electric_permittivity>;
+inline constexpr auto gravitational_constant =
+    unit<"G", detail::mag<6.67430e-11_g> * cubic(si::metre) / (si::kilogram * square(si::second))>;
+inline constexpr auto fine_structure_constant = unit<"α", detail::mag<7.2973525643e-3_g> * one, {.ascii = "alpha"}>;
+inline constexpr auto rydberg_constant = unit<"R_∞", detail::mag<10'973'731.568157_g> / si::metre, {.ascii = "R_inf"}>;
+inline constexpr auto vacuum_magnetic_permeability =
+    unit<"μ₀", detail::mag<1.25663706127e-6_g> * si::newton / square(si::ampere), {.ascii = "mu_0"}>;
+inline constexpr auto characteristic_impedance_of_vacuum =
+    unit<"Z₀", detail::mag<376.730313412_g> * si::ohm, {.ascii = "Z_0"}>;
+inline constexpr auto electron_mass        = unit<"m_e", detail::mag<9.1093837139e-31_g> * si::kilogram>;
+inline constexpr auto proton_mass          = unit<"m_p", detail::mag<1.67262192595e-27_g> * si::kilogram>;
+inline constexpr auto neutron_mass         = unit<"m_n", detail::mag<1.67492750056e-27_g> * si::kilogram>;
+inline constexpr auto atomic_mass_constant = unit<"m_u", detail::mag<1.66053906892e-27_g> * si::kilogram>;
+inline constexpr auto bohr_radius = unit<"a₀", detail::mag<5.29177210544e-11_g> * si::metre, {.ascii = "a_0"}>;
+inline constexpr auto vacuum_electric_permittivity =
+    unit<"ε₀", detail::mag<8.8541878188e-12_g> * si::farad / si::metre, {.ascii = "epsilon_0"}>;
 } // namespace codata2022
 
 //---------------------------------------------------------------------------
@@ -24822,7 +25020,7 @@ consteval bool blade_less(const dimension& a, const dimension& b) {
     const blade x = blade_of(a), y = blade_of(b);
     if (x.size() != y.size())
         return x.size() < y.size();
-    const auto name = [](const base_dimension* v) { return v->Name; };
+    const auto name = [](const base_dimension_def* v) { return v->Name; };
     return std::ranges::lexicographical_compare(x, y, std::ranges::less{}, name, name);
 }
 consteval bool blade_equal(const dimension& a, const dimension& b) { return !blade_less(a, b) && !blade_less(b, a); }
@@ -25113,9 +25311,9 @@ concept invertible = multivector_like<X> && (adjoint_of<std::remove_cvref_t<X>>(
 
 // A unit spelled by the basis vectors of d's blade, in name order: its
 // canonical blade (magnitude 1).
-consteval unit canonical_blade_unit(const dimension& d) {
-    unit u{};
-    for (const base_dimension* v : blade_of(d))
+consteval unit_value canonical_blade_unit(const dimension& d) {
+    unit_value u{};
+    for (const base_dimension_def* v : blade_of(d))
         unit_add(u, unit_atom{v->Vector, 0, 1});
     return u;
 }
@@ -25165,43 +25363,43 @@ consteval bool part_from_implicitly() {
 }
 
 // The blade atoms of a unit, unscaled: e₁ e₂ of m e₁ e₂.
-consteval unit blade_atoms(const unit& u) {
-    unit b{};
+consteval unit_value blade_atoms(const unit_value& u) {
+    unit_value b{};
     for (std::int8_t i = 0; i < u.Size; ++i)
         if (is_blade_atom(u.Atoms[i]))
             unit_add(b, u.Atoms[i]);
     return b;
 }
 // Part p in unit U times p's blade: 2 km e₁ in m is 2000 m e₁.
-template <unit U, class P>
+template <unit_value U, class P>
 constexpr auto part_in(const P& p) {
     if constexpr (quantity_like<P>)
         return p.template in<unit_mul(U, blade_atoms(P::reference.U), 1)>();
     else
-        return quantity_access::make<quantity<reference_of(unit{}), P>>(p).template in<U>();
+        return quantity_access::make<quantity<reference_of(unit_value{}), P>>(p).template in<U>();
 }
-template <unit U, class P>
+template <unit_value U, class P>
 concept part_in_unit = requires(const P& p) { part_in<U>(p); };
 
 // u without its blade atoms (its scale kept), and the sign and size of the
 // blade's spelling: u = factor · physical_atoms(u) · canonical blade.
-consteval unit physical_atoms(const unit& u) {
-    unit r{};
+consteval unit_value physical_atoms(const unit_value& u) {
+    unit_value r{};
     r.Scale = u.Scale;
     for (std::int8_t i = 0; i < u.Size; ++i)
         if (!is_blade_atom(u.Atoms[i]))
             unit_add(r, u.Atoms[i]);
     return r;
 }
-consteval grid_rational blade_factor(const unit& u) {
+consteval grid_rational blade_factor(const unit_value& u) {
     return (magnitude_of(u) / magnitude_of(physical_atoms(u))).Ratio;
 }
 template <class P>
-consteval unit unit_of_part() {
+consteval unit_value unit_of_part() {
     if constexpr (quantity_like<P>)
         return P::reference.U;
     else
-        return unit{};
+        return unit_value{};
 }
 template <class P>
 constexpr const auto& number_of_part(const P& p) {
@@ -25214,10 +25412,10 @@ constexpr const auto& number_of_part(const P& p) {
 // blade: no division, so a blade with a null vector moves too.
 template <dimension B, grid_rational F, class P>
 constexpr auto move_to_blade(const P& p) {
-    static constexpr unit u = unit_of_part<P>();
-    constexpr unit        r = [] {
-        unit t = physical_atoms(u);
-        for (const base_dimension* v : blade_of(B))
+    static constexpr unit_value u = unit_of_part<P>();
+    constexpr unit_value        r = [] {
+        unit_value t = physical_atoms(u);
+        for (const base_dimension_def* v : blade_of(B))
             unit_add(t, unit_atom{v->Vector, 0, 1});
         return t;
     }();
@@ -25226,7 +25424,7 @@ constexpr auto move_to_blade(const P& p) {
 }
 
 // A pseudoscalar argument: a unit of a blade only.
-template <unit I>
+template <unit_value I>
 concept pseudoscalar = has_blade(dimension_of(I)) && same_outside_blade(dimension_of(I), dim_one);
 } // namespace detail
 
@@ -25317,7 +25515,7 @@ class multivector {
 
     // Each part in unit U (a unit without blades), its blade kept, exactly:
     // (V / Z).in(si::ampere).
-    template <units::unit U>
+    template <units::unit_value U>
         requires(!detail::has_blade(dimension_of(U))) && (detail::part_in_unit<U, Parts> && ...)
     [[nodiscard]] constexpr auto in(unit_t<U>) const {
         return std::apply([](const auto&... p) { return detail::collapse(detail::part_in<U>(p)...); }, P);
@@ -25491,7 +25689,7 @@ template <int K, multivector_like X>
 // The coefficient of blade u (a unit of a blade only, or `one`): the part of
 // that blade divided by u, so 2 m for 2 m e₁ and u = e1, the sign of u's
 // spelling included. The zero when x has no such part.
-template <multivector_like X, unit U>
+template <multivector_like X, unit_value U>
     requires(detail::same_outside_blade(dimension_of(U), dim_one))
 [[nodiscard]] constexpr auto part(const X& x, unit_t<U>) {
     return detail::each_part(x, [](const auto& p) {
@@ -25548,7 +25746,7 @@ template <class A, class B>
 //---------------------------------------------------------------------------
 // x · I⁻¹ for a pseudoscalar unit I that squares to ±1: the cross product is
 // dual(u ∧ v, e₁₂₃) up to its sign convention.
-template <multivector_like X, unit I>
+template <multivector_like X, unit_value I>
     requires detail::pseudoscalar<I>
 [[nodiscard]] constexpr auto dual(const X& x, unit_t<I> i) {
     static_assert(detail::blade_square(dimension_of(I)) != 0,
@@ -25559,7 +25757,7 @@ template <multivector_like X, unit I>
 // The right complement within the blade of I, without the metric: A ∧ c(A) = I
 // for each basis blade A of I. With null vectors (PGA) it stands in for the
 // dual.
-template <multivector_like X, unit I>
+template <multivector_like X, unit_value I>
     requires detail::pseudoscalar<I>
 [[nodiscard]] constexpr auto complement(const X& x, unit_t<I>) {
     return detail::each_part(x, [](const auto& p) {
@@ -25570,7 +25768,7 @@ template <multivector_like X, unit I>
     });
 }
 // The inverse of complement: uncomplement(complement(x, I), I) == x.
-template <multivector_like X, unit I>
+template <multivector_like X, unit_value I>
     requires detail::pseudoscalar<I>
 [[nodiscard]] constexpr auto uncomplement(const X& x, unit_t<I>) {
     return detail::each_part(x, [](const auto& p) {
@@ -25582,7 +25780,7 @@ template <multivector_like X, unit I>
     });
 }
 // The regressive product a ∨ b = c⁻¹(c(a) ∧ c(b)): the join of PGA.
-template <multivector_like A, multivector_like B, unit I>
+template <multivector_like A, multivector_like B, unit_value I>
     requires detail::pseudoscalar<I>
 [[nodiscard]] constexpr auto regressive(const A& a, const B& b, unit_t<I> i) {
     return uncomplement(wedge(complement(a, i), complement(b, i)), i);
@@ -25668,7 +25866,7 @@ inline void append_exponent(std::string& s, int e, text_encoding enc) {
 
 // The atoms of one sign with |exponent| (sign ±1), or all of them with their
 // own exponent (sign 0). The blade atoms come last, in their order: 2 m e₁.
-inline void append_atoms(std::string& s, const unit& u, int sign, text_encoding enc) {
+inline void append_atoms(std::string& s, const unit_value& u, int sign, text_encoding enc) {
     bool first = true;
     for (const bool blades : {false, true})
         for (std::int8_t i = 0; i < u.Size; ++i) {
@@ -25679,14 +25877,14 @@ inline void append_atoms(std::string& s, const unit& u, int sign, text_encoding 
                 s += ' ';
             first = false;
             s += prefix_symbol(a.Prefix, enc);
-            s += enc == text_encoding::utf8 ? a.U->Utf8 : a.U->Ascii;
+            s += enc == text_encoding::utf8 ? a.U->Utf8 : a.U->ascii();
             append_exponent(s, sign == 0 ? a.Exp : a.Exp * sign, enc);
         }
 }
 } // namespace detail
 
 // The symbol of a unit: "km", "kg m²/s²", "s⁻¹", "[1/381 ft]" (a scaled unit).
-inline std::string unit_symbol(const unit& u, text_encoding enc = text_encoding::utf8) {
+inline std::string unit_symbol(const unit_value& u, text_encoding enc = text_encoding::utf8) {
     std::string s;
     const int   num =
         static_cast<int>(std::count_if(u.Atoms, u.Atoms + u.Size, [](const auto& a) { return a.Exp > 0; }));
@@ -25715,7 +25913,7 @@ inline std::string unit_symbol(const unit& u, text_encoding enc = text_encoding:
     }
     return s;
 }
-template <unit U>
+template <unit_value U>
 inline std::string unit_symbol(unit_t<U>, text_encoding enc = text_encoding::utf8) {
     return unit_symbol(U, enc);
 }
@@ -25954,8 +26152,8 @@ struct pi_trig_core {
 namespace beman::inside::units {
 namespace detail {
 // The n-th root of a unit: every factor's exponent must divide.
-consteval unit unit_root(const unit& u, int n) {
-    unit r{};
+consteval unit_value unit_root(const unit_value& u, int n) {
+    unit_value r{};
     for (std::int8_t i = 0; i < u.Size; ++i) {
         if (u.Atoms[i].Exp % n != 0)
             beman::inside::detail::constexpr_error<
@@ -25969,7 +26167,7 @@ consteval unit unit_root(const unit& u, int n) {
 }
 
 // The root of a reference's spec: its recipe's, when the exponents divide.
-consteval reference spec_root(const reference& a, int n, const unit& u) {
+consteval reference spec_root(const reference& a, int n, const unit_value& u) {
     if (is_generic(a))
         return reference{nullptr, false, {}, u};
     const recipe f = a.Spec ? recipe_of(a.KindOf ? kind_root(a.Spec.P) : a.Spec.P) : a.Derived;
@@ -25986,7 +26184,7 @@ consteval reference spec_root(const reference& a, int n, const unit& u) {
 
 template <reference R, int N>
 consteval reference root_reference() {
-    const unit u = unit_root(R.U, N);
+    const unit_value u = unit_root(R.U, N);
     return spec_root(R, N, u);
 }
 
@@ -26029,9 +26227,9 @@ template <auto U, insidable Out, reference R, class V>
     requires detail::is_unit_tag_v<decltype(U)> &&
              (!detail::exact_factor_v<detail::conversion_factor<R.U, decltype(U)::value>>)
 [[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q) {
-    namespace engine        = beman::inside::math::detail::engine;
-    constexpr units::unit u = decltype(U)::value;
-    constexpr magnitude   f = detail::conversion_factor<R.U, u>;
+    namespace engine              = beman::inside::math::detail::engine;
+    constexpr units::unit_value u = decltype(U)::value;
+    constexpr magnitude         f = detail::conversion_factor<R.U, u>;
     static_assert(dimension_of(u) == dimension_of(R.U), "units: value_cast - the unit has another dimension");
     static_assert(f.Pi == 1 || f.Pi == -1, "units: value_cast - only a factor of pi or 1/pi rounds");
     beman::inside::math::detail::entry::require_rounding<Out>();
@@ -26064,7 +26262,7 @@ constexpr auto number_of(const X& x) {
     else {
         static_assert(quantity_like<X> && number_like_v<X::reference>,
                       "units: the argument must be a number - an inside or a dimensionless quantity");
-        return rescale<conversion_factor<X::reference.U, unit{}>>(units::detail::value_of(x));
+        return rescale<conversion_factor<X::reference.U, unit_value{}>>(units::detail::value_of(x));
     }
 }
 template <class X>
@@ -27730,10 +27928,10 @@ struct element_traits<Q> {
 namespace beman::inside::units {
 namespace detail {
 // An element of From read in unit U, written back exactly.
-template <class From, unit U>
+template <class From, unit_value U>
 using in_unit_t = decltype(std::declval<const std::remove_cv_t<From>&>().template in<U>());
 
-template <class From, unit U>
+template <class From, unit_value U>
 class in_unit_ref {
     From* P;
 
@@ -27749,7 +27947,7 @@ class in_unit_ref {
     constexpr const in_unit_ref& operator=(const in_unit_ref& o) const { return *this = o.get(); }
 };
 
-template <class From, unit U>
+template <class From, unit_value U>
 struct in_unit_accessor {
     using element_type     = in_unit_t<From, U>;
     using data_handle_type = From*;
@@ -27768,7 +27966,7 @@ struct in_unit_accessor {
 
 // m's quantities read in unit u, over the same storage: an element is
 // q.in(u) (exact, the raw unchanged), and a store converts back exactly.
-template <unit U, class T, class E, class L>
+template <unit_value U, class T, class E, class L>
     requires quantity_like<std::remove_cv_t<T>> && requires(const std::remove_cv_t<T>& q) { q.template in<U>(); }
 [[nodiscard]] constexpr auto view_in(const std::mdspan<T, E, L, std::default_accessor<T>>& m, unit_t<U>) {
     using A = detail::in_unit_accessor<T, U>;

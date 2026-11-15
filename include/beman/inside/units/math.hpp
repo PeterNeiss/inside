@@ -139,8 +139,8 @@ struct pi_trig_core {
 namespace beman::inside::units {
 namespace detail {
 // The n-th root of a unit: every factor's exponent must divide.
-consteval unit unit_root(const unit& u, int n) {
-    unit r{};
+consteval unit_value unit_root(const unit_value& u, int n) {
+    unit_value r{};
     for (std::int8_t i = 0; i < u.Size; ++i) {
         if (u.Atoms[i].Exp % n != 0)
             beman::inside::detail::constexpr_error<
@@ -154,7 +154,7 @@ consteval unit unit_root(const unit& u, int n) {
 }
 
 // The root of a reference's spec: its recipe's, when the exponents divide.
-consteval reference spec_root(const reference& a, int n, const unit& u) {
+consteval reference spec_root(const reference& a, int n, const unit_value& u) {
     if (is_generic(a))
         return reference{nullptr, false, {}, u};
     const recipe f = a.Spec ? recipe_of(a.KindOf ? kind_root(a.Spec.P) : a.Spec.P) : a.Derived;
@@ -171,7 +171,7 @@ consteval reference spec_root(const reference& a, int n, const unit& u) {
 
 template <reference R, int N>
 consteval reference root_reference() {
-    const unit u = unit_root(R.U, N);
+    const unit_value u = unit_root(R.U, N);
     return spec_root(R, N, u);
 }
 
@@ -214,9 +214,9 @@ template <auto U, insidable Out, reference R, class V>
     requires detail::is_unit_tag_v<decltype(U)> &&
              (!detail::exact_factor_v<detail::conversion_factor<R.U, decltype(U)::value>>)
 [[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q) {
-    namespace engine        = beman::inside::math::detail::engine;
-    constexpr units::unit u = decltype(U)::value;
-    constexpr magnitude   f = detail::conversion_factor<R.U, u>;
+    namespace engine              = beman::inside::math::detail::engine;
+    constexpr units::unit_value u = decltype(U)::value;
+    constexpr magnitude         f = detail::conversion_factor<R.U, u>;
     static_assert(dimension_of(u) == dimension_of(R.U), "units: value_cast - the unit has another dimension");
     static_assert(f.Pi == 1 || f.Pi == -1, "units: value_cast - only a factor of pi or 1/pi rounds");
     beman::inside::math::detail::entry::require_rounding<Out>();
@@ -249,7 +249,7 @@ constexpr auto number_of(const X& x) {
     else {
         static_assert(quantity_like<X> && number_like_v<X::reference>,
                       "units: the argument must be a number - an inside or a dimensionless quantity");
-        return rescale<conversion_factor<X::reference.U, unit{}>>(units::detail::value_of(x));
+        return rescale<conversion_factor<X::reference.U, unit_value{}>>(units::detail::value_of(x));
     }
 }
 template <class X>

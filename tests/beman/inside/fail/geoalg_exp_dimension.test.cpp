@@ -5,14 +5,11 @@
 #include <beman/inside/units/geoalg.hpp>
 #include <beman/inside/units/math.hpp>
 
-inline constexpr beman::inside::units::basis_vector e1_def{"e1", 1};
-inline constexpr beman::inside::units::basis_vector e2_def{"e2", 1};
-
 int main() {
     using namespace beman::inside;
     using namespace beman::inside::units;
-    constexpr auto e1 = unit_c<e1_def>;
-    constexpr auto e2 = unit_c<e2_def>;
+    constexpr auto e1 = beman::inside::units::basis_vector<"e1", 1>;
+    constexpr auto e2 = beman::inside::units::basis_vector<"e2", 1>;
     using I           = inside<{{-1, 1}, per<64>}, round_half_away>;
     using dom         = quantity<si::metre * e1 * e2, I>;
     using cod         = multivector<I, quantity<e1 * e2, I>>;

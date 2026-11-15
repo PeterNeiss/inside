@@ -438,12 +438,12 @@ struct modulo {
     static constexpr bool native_mod = integer_native_ops<L, R, FS>;
 
     // The values' unit: 1 on integer grids, else the gcd of the value units.
-    static constexpr grid_rational unit = mod_unit<L, R>;
+    static constexpr grid_rational unit_value = mod_unit<L, R>;
     // A lattice remainder in builtin integers when both operands' unit counts
     // fit int64.
-    static constexpr bool lattice_native = lattice_mod_ops<L, R> &&
-                                           signed_value_bits({units_lo<L, unit>, units_hi<L, unit>}) < 63 &&
-                                           signed_value_bits({units_lo<R, unit>, units_hi<R, unit>}) < 63;
+    static constexpr bool lattice_native =
+        lattice_mod_ops<L, R> && signed_value_bits({units_lo<L, unit_value>, units_hi<L, unit_value>}) < 63 &&
+        signed_value_bits({units_lo<R, unit_value>, units_hi<R, unit_value>}) < 63;
 
     static constexpr round_mode rmode = rounding_of(F);
 
@@ -458,7 +458,7 @@ struct modulo {
     // ⌊|b|/2⌋ counts units.
     static constexpr grid result_grid = [] {
         using G      = grid_rational;
-        const G one  = unit, zero{0};
+        const G one  = unit_value, zero{0};
         const G a_lo = lower_of<L>, a_hi = upper_of<L>, b_lo = lower_of<R>, b_hi = upper_of<R>;
         const G b_max  = abs(b_lo) > abs(b_hi) ? abs(b_lo) : abs(b_hi);
         const G a_max  = abs(a_lo) > abs(a_hi) ? abs(a_lo) : abs(a_hi);
@@ -524,24 +524,24 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, call_policy<G, E> policy) -> r
     constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
     if constexpr (lattice_native) {
         // A lattice: the integer remainder of the unit counts, scaled back.
-        const std::int64_t b = value_in_units<std::int64_t, unit>(rhs);
+        const std::int64_t b = value_in_units<std::int64_t, unit_value>(rhs);
         if constexpr (!zero_unchecked)
             if (b == 0)
                 return report_or_unexpected<result>(policy, error::division_by_zero);
-        return from_value_in_units<result, unit>(
-            div_rem_rounded(value_in_units<std::int64_t, unit>(lhs), b, rmode).Remainder);
+        return from_value_in_units<result, unit_value>(
+            div_rem_rounded(value_in_units<std::int64_t, unit_value>(lhs), b, rmode).Remainder);
     } else if constexpr (lattice_mod_ops<L, R>) {
         // A lattice past int64 units: the same in exact wide integers.
         constexpr std::size_t K = exact_limbs<L, R, result>;
         using I                 = wide_sint<K>;
-        const I b               = value_in_units<I, unit>(rhs);
+        const I b               = value_in_units<I, unit_value>(rhs);
         if constexpr (!zero_unchecked)
             if (b.is_zero())
                 return report_or_unexpected<result>(policy, error::division_by_zero);
-        const I a = value_in_units<I, unit>(lhs);
+        const I a = value_in_units<I, unit_value>(lhs);
         return exact_result<result>(
-            wide_rational<K>{(a - rounded_div<rmode>(a, b) * b) * static_cast<I>(grid_numerator(unit)),
-                             static_cast<I>(grid_denominator(unit))});
+            wide_rational<K>{(a - rounded_div<rmode>(a, b) * b) * static_cast<I>(grid_numerator(unit_value)),
+                             static_cast<I>(grid_denominator(unit_value))});
     } else if constexpr (!native_mod) {
         // Integer values past int64: r = a − round(a/b)·b in exact wide integers.
         using I   = wide_sint<exact_limbs<L, R, result>>;

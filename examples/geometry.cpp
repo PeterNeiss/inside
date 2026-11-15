@@ -28,11 +28,10 @@ using namespace beman::inside;
 using namespace beman::inside::units;
 
 namespace {
-inline constexpr base_dimension screen_dim{"screen"};
-inline constexpr quantity_spec  screen_def{"screen_distance", screen_dim};
-inline constexpr named_unit     px_def{"px", spec_c<screen_def>};
-inline constexpr auto           px        = unit_c<px_def>;
-inline constexpr auto           zero_area = just<0> * square(px);
+inline constexpr auto screen_dim = base_dimension<"screen">;
+inline constexpr auto screen_def = kind<"screen_distance", screen_dim>;
+inline constexpr auto px         = unit<"px", screen_def>;
+inline constexpr auto zero_area  = just<0> * square(px);
 } // namespace
 
 int main() {

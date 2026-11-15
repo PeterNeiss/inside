@@ -264,10 +264,10 @@ consteval grid_rational least_magnitude() {
     const grid_rational dn = up - n;                                         // the last ≤ 0
     return up < -dn ? up : -dn;
 }
-consteval grid lattice_grid(const grid_rational& lo, const grid_rational& hi, const grid_rational& unit) {
+consteval grid lattice_grid(const grid_rational& lo, const grid_rational& hi, const grid_rational& unit_value) {
     if (lo == hi)
         return grid{lo};
-    return grid{interval{lo, hi}, unit};
+    return grid{interval{lo, hi}, unit_value};
 }
 template <insidable A, insidable B>
 consteval grid gcd_grid_of() {

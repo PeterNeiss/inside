@@ -429,9 +429,9 @@ template <class T>
 concept indexes_a_vector = requires(std::vector<int>& v, T t) { v[t]; };
 
 TEST(ConversionTest, predicates_on_tiny_doubles) {
-    using unit = inside<{{0, 1}, per<100>}>;
-    static_assert(conversion_rounds<unit>(1e-20) && !conversion_overflows<unit>(1e-20));
-    static_assert(conversion_overflows<unit>(-1e-20) && !conversion_rounds<unit>(-1e-20));
+    using unit_value = inside<{{0, 1}, per<100>}>;
+    static_assert(conversion_rounds<unit_value>(1e-20) && !conversion_overflows<unit_value>(1e-20));
+    static_assert(conversion_overflows<unit_value>(-1e-20) && !conversion_rounds<unit_value>(-1e-20));
     static_assert(conversion_rounds<inside<{{0, 1}, per<100>}, round_half_away>>(-1e-20));
 }
 

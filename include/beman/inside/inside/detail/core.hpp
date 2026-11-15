@@ -647,9 +647,9 @@ struct inside : detail::raw_holder<G, P> {
     // so only index 0 lands on it).
     template <insidable I>
     static constexpr auto step_value(const I& i) {
-        constexpr detail::grid_rational unit  = G.Notch != 0 ? G.Notch : detail::grid_rational{1};
-        constexpr auto                  lower = inside<grid{G.Interval.Lower}>::from_raw({}, unsafe);
-        constexpr auto                  step  = inside<grid{unit}>::from_raw({}, unsafe);
+        constexpr detail::grid_rational unit_value = G.Notch != 0 ? G.Notch : detail::grid_rational{1};
+        constexpr auto                  lower      = inside<grid{G.Interval.Lower}>::from_raw({}, unsafe);
+        constexpr auto                  step       = inside<grid{unit_value}>::from_raw({}, unsafe);
         return lower + i * step;
     }
     // A builtin index as the inside on its type's range.

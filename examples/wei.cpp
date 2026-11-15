@@ -24,24 +24,19 @@ using namespace beman::inside;
 using namespace beman::inside::units;
 
 namespace {
-inline constexpr base_dimension ether_dim{"ether"};
-inline constexpr quantity_spec  ether_def{"ether", ether_dim};
-inline constexpr named_unit     eth_def{"ETH", spec_c<ether_def>};
-inline constexpr auto           ETH = unit_c<eth_def>;
-inline constexpr named_unit     gwei_def{"gwei", mag<1_g / 1'000'000'000_g> * ETH};
-inline constexpr auto           gwei = unit_c<gwei_def>;
-inline constexpr named_unit     wei_def{"wei", mag<1_g / 1'000'000'000'000'000'000_g> * ETH};
-inline constexpr auto           wei = unit_c<wei_def>;
+inline constexpr auto ether_dim = base_dimension<"ether">;
+inline constexpr auto ether_def = kind<"ether", ether_dim>;
+inline constexpr auto ETH       = unit<"ETH", ether_def>;
+inline constexpr auto gwei      = unit<"gwei", just<1, 1'000'000'000> * ETH>;
+inline constexpr auto wei       = unit<"wei", just<1, 1'000'000'000'000'000'000> * ETH>;
 
-inline constexpr base_dimension work_dim{"gas"};
-inline constexpr quantity_spec  work_def{"gas", work_dim};
-inline constexpr named_unit     gas_def{"gas", spec_c<work_def>};
-inline constexpr auto           gas = unit_c<gas_def>;
+inline constexpr auto work_dim = base_dimension<"gas">;
+inline constexpr auto work_def = kind<"gas", work_dim>;
+inline constexpr auto gas      = unit<"gas", work_def>;
 
-inline constexpr base_dimension dollar_dim{"dollar"};
-inline constexpr quantity_spec  dollars_def{"dollars", dollar_dim};
-inline constexpr named_unit     usd_def{"USD", spec_c<dollars_def>};
-inline constexpr auto           USD = unit_c<usd_def>;
+inline constexpr auto dollar_dim  = base_dimension<"dollar">;
+inline constexpr auto dollars_def = kind<"dollars", dollar_dim>;
+inline constexpr auto USD         = unit<"USD", dollars_def>;
 } // namespace
 
 inline constexpr auto to_the_wei = per<1'000'000'000'000'000'000>;

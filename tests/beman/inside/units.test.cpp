@@ -165,20 +165,20 @@ TEST(UnitsTest, dimensionless_quantities_are_numbers) {
 
 TEST(UnitsTest, magnitudes_scale_the_unit_not_the_number) {
     const quantity<si::second, inside<{0, 10}>> t{3, si::second};
-    const auto                                  p = mag_pi * t;
+    const auto                                  p = pi * t;
     static_assert(magnitude_of(std::remove_cvref_t<decltype(p)>::unit).Pi == 1);
-    EXPECT_EQ(p.numerical_value_in(mag_pi * si::second), 3); // the number is untouched
+    EXPECT_EQ(p.numerical_value_in(pi * si::second), 3); // the number is untouched
     EXPECT_EQ(to_string(p), "3 [π s]");
     EXPECT_EQ(unit_symbol(std::remove_cvref_t<decltype(p)>::unit, text_encoding::ascii), "[pi s]");
-    EXPECT_EQ(to_string(t * mag<2>), "3 [2 s]");
-    EXPECT_EQ((t * mag<2>).numerical_value_in(si::second), 6);
-    EXPECT_EQ(unit_symbol(std::remove_cvref_t<decltype(t / mag_pi)>::unit), "[π⁻¹ s]");
+    EXPECT_EQ(to_string(t * units::detail::mag<2>), "3 [2 s]");
+    EXPECT_EQ((t * units::detail::mag<2>).numerical_value_in(si::second), 6);
+    EXPECT_EQ(unit_symbol(std::remove_cvref_t<decltype(t / pi)>::unit), "[π⁻¹ s]");
     // π · π⁻¹ cancels: back to seconds, exactly.
-    EXPECT_EQ((mag_pi * t / mag_pi).numerical_value_in(si::second), 3);
+    EXPECT_EQ((pi * t / pi).numerical_value_in(si::second), 3);
     // A magnitude times a number is that number in [π], then [π s].
-    EXPECT_EQ(to_string(mag_pi * just<2> * si::second), "2 [π s]");
-    EXPECT_EQ(to_string(just<2> * mag_pi), "2 [π]");
-    EXPECT_EQ(unit_symbol(mag_pi / si::metre), "[π m⁻¹]");
+    EXPECT_EQ(to_string(pi * just<2> * si::second), "2 [π s]");
+    EXPECT_EQ(to_string(just<2> * pi), "2 [π]");
+    EXPECT_EQ(unit_symbol(pi / si::metre), "[π m⁻¹]");
 }
 
 TEST(UnitsTest, compound_assignment_and_casts) {
@@ -252,7 +252,7 @@ TEST(UnitsTest, separate_kinds_do_not_mix) {
         !std::is_convertible_v<quantity<si::hertz, inside<{0, 10}>>, quantity<si::becquerel, inside<{0, 10}>>>);
     // Gy and Sv: both J/kg, different kinds.
     static_assert(!addable<decltype(just<1> * si::gray), decltype(just<1> * si::sievert)>());
-    static_assert(!units::detail::spec_casts(std::remove_cvref_t<decltype(rad)>::reference, &isq_defs::dimensionless));
+    static_assert(!units::detail::spec_casts(std::remove_cvref_t<decltype(rad)>::reference, isq::dimensionless.value));
 }
 
 TEST(UnitsTest, text) {
@@ -310,7 +310,7 @@ TEST(UnitsTest, points_shift_their_grid_between_origins) {
                            .numerical_value_in(si::degree_Celsius)},
               rational(20));
     // Implicit conversion to a kelvin point type.
-    using kelvin_point    = quantity_point<si::kelvin, &si_defs::absolute_zero, inside<{{0, 400}, per<100>}>>;
+    using kelvin_point    = quantity_point<si::kelvin, si::absolute_zero, inside<{{0, 400}, per<100>}>>;
     const kelvin_point kp = t;
     EXPECT_EQ(rational{kp.quantity_from_origin().numerical_value_in(si::kelvin)}, rational(29315, 100));
 }
@@ -368,58 +368,50 @@ constexpr auto km = si::kilo(si::metre);
 
 // A spec that reuses a catalog name under another parent, and two units that
 // differ only in the kind they measure.
-inline constexpr quantity_spec length_of_width{"length", isq::width};
-inline constexpr named_unit    per_second_f{"Hz", one / si::second, isq::frequency};
-inline constexpr named_unit    per_second_a{"Hz", one / si::second, isq::activity};
-inline constexpr point_origin  other_zero{"other_zero", dim_thermodynamic_temperature};
+inline constexpr auto length_of_width = kind<"length", isq::width>;
+inline constexpr auto per_second_f    = unit<"Hz", one / si::second, {.kind = isq::frequency}>;
+inline constexpr auto per_second_a    = unit<"Hz", one / si::second, {.kind = isq::activity}>;
 
 // unit_options: an ASCII symbol, a kind, an origin, no space before.
-inline constexpr named_unit rankine_def{
-    "°R", mag<rational{5, 9}> * si::kelvin, {.ascii = "R", .origin = si::absolute_zero}};
-inline constexpr named_unit turn_def{"tr", mag<2> * mag_pi * si::radian, {.space_before = false}};
-inline constexpr named_unit rpm_def{"rpm", one / si::minute, {.kind = isq::frequency}};
+inline constexpr auto turn_def = unit<"tr", just<2> * pi * si::radian, {.space_before = false}>;
+inline constexpr auto rpm_def  = unit<"rpm", one / si::minute, {.kind = isq::frequency}>;
 
 // A base dimension of your own.
-inline constexpr base_dimension currency_def{"currency"};
-inline constexpr quantity_spec  money_def{"money", currency_def};
-inline constexpr named_unit     euro_def{"EUR", spec_c<money_def>};
-inline constexpr named_unit     cent_def{"ct", mag<rational{1, 100}> * unit_c<euro_def>};
+inline constexpr auto currency_def = base_dimension<"currency">;
+inline constexpr auto money_def    = kind<"money", currency_def>;
 
 // ADC counts: a dimension apart from SI's dimensionless one.
-inline constexpr base_dimension count_def{"count"};
-inline constexpr quantity_spec  adc_counts_def{"adc_counts", count_def};
-inline constexpr named_unit     cts_def{"cts", spec_c<adc_counts_def>};
+inline constexpr auto count_def      = base_dimension<"count">;
+inline constexpr auto adc_counts_def = kind<"adc_counts", count_def>;
 
 // Eight base dimensions of your own, four in each of two named units; one is
 // a class member.
-inline constexpr base_dimension gold_dim{"gold"};
-inline constexpr quantity_spec  gold_def{"gold", gold_dim};
-inline constexpr named_unit     gold_u{"g$", spec_c<gold_def>};
-inline constexpr base_dimension health_dim{"health"};
-inline constexpr quantity_spec  health_def{"health", health_dim};
-inline constexpr named_unit     health_u{"HP", spec_c<health_def>};
-inline constexpr base_dimension mana_dim{"mana"};
-inline constexpr quantity_spec  mana_def{"mana", mana_dim};
-inline constexpr named_unit     mana_u{"MP", spec_c<mana_def>};
+inline constexpr auto gold_dim   = base_dimension<"gold">;
+inline constexpr auto gold_def   = kind<"gold", gold_dim>;
+inline constexpr auto gold_u     = unit<"g$", gold_def>;
+inline constexpr auto health_dim = base_dimension<"health">;
+inline constexpr auto health_def = kind<"health", health_dim>;
+inline constexpr auto health_u   = unit<"HP", health_def>;
+inline constexpr auto mana_dim   = base_dimension<"mana">;
+inline constexpr auto mana_def   = kind<"mana", mana_dim>;
+inline constexpr auto mana_u     = unit<"MP", mana_def>;
 struct stamina {
-    static constexpr base_dimension dim{"stamina"};
-    static constexpr quantity_spec  spec{"stamina", dim};
-    static constexpr named_unit     st{"st", spec_c<spec>};
+    static constexpr auto dim  = base_dimension<"stamina">;
+    static constexpr auto spec = kind<"stamina", dim>;
+    static constexpr auto st   = unit<"st", spec>;
 };
-inline constexpr base_dimension xp_dim{"xp"};
-inline constexpr quantity_spec  xp_def{"xp", xp_dim};
-inline constexpr named_unit     xp_u{"XP", spec_c<xp_def>};
-inline constexpr base_dimension pixel_dim{"pixel"};
-inline constexpr quantity_spec  pixel_def{"pixel", pixel_dim};
-inline constexpr named_unit     pixel_u{"px", spec_c<pixel_def>};
-inline constexpr base_dimension packet_dim{"packet"};
-inline constexpr quantity_spec  packet_def{"packet", packet_dim};
-inline constexpr named_unit     packet_u{"pkt", spec_c<packet_def>};
-inline constexpr base_dimension token_dim{"token"};
-inline constexpr quantity_spec  token_def{"token", token_dim};
-inline constexpr named_unit     token_u{"tok", spec_c<token_def>};
-inline constexpr named_unit loot_def{"loot", unit_c<gold_u> * unit_c<health_u> * unit_c<mana_u> * unit_c<stamina::st>};
-inline constexpr named_unit net_def{"net", unit_c<xp_u> * unit_c<pixel_u> * unit_c<packet_u> * unit_c<token_u>};
+inline constexpr auto xp_dim     = base_dimension<"xp">;
+inline constexpr auto xp_def     = kind<"xp", xp_dim>;
+inline constexpr auto xp_u       = unit<"XP", xp_def>;
+inline constexpr auto pixel_dim  = base_dimension<"pixel">;
+inline constexpr auto pixel_def  = kind<"pixel", pixel_dim>;
+inline constexpr auto pixel_u    = unit<"px", pixel_def>;
+inline constexpr auto packet_dim = base_dimension<"packet">;
+inline constexpr auto packet_def = kind<"packet", packet_dim>;
+inline constexpr auto packet_u   = unit<"pkt", packet_def>;
+inline constexpr auto token_dim  = base_dimension<"token">;
+inline constexpr auto token_def  = kind<"token", token_dim>;
+inline constexpr auto token_u    = unit<"tok", token_def>;
 
 template <class A, class B>
 concept can_add = requires(const A& a, const B& b) { a + b; };
@@ -454,11 +446,11 @@ using degrees = quantity<si::degree, inside<{0, 360}>>;
 
 TEST(UnitsApiTest, specs_and_units_are_identified_by_all_their_parts) {
     // Same name and dimension, another parent: another spec.
-    static_assert(!(spec_c<length_of_width> == isq::length));
-    static_assert(spec_c<length_of_width> == spec_c<length_of_width>);
+    static_assert(!(length_of_width == isq::length));
+    static_assert(length_of_width == length_of_width);
     // Same symbols, dimension and magnitude, another kind: another unit.
-    static_assert(!(unit_c<per_second_f> == unit_c<per_second_a>));
-    static_assert(unit_c<per_second_f> == unit_c<per_second_f>);
+    static_assert(!(per_second_f == per_second_a));
+    static_assert(per_second_f == per_second_f);
 }
 
 TEST(UnitsApiTest, mismatches_are_constraint_failures) {
@@ -472,8 +464,7 @@ TEST(UnitsApiTest, mismatches_are_constraint_failures) {
 }
 
 TEST(UnitsApiTest, tags_for_your_own_entries) {
-    static_assert(std::is_same_v<std::remove_cvref_t<decltype(spec_c<length_of_width>)>, spec_t<&length_of_width>>);
-    constexpr auto zero = origin_c<other_zero>;
+    constexpr auto zero = origin<"zero", dim_thermodynamic_temperature>;
     const auto     p    = zero + just<5> * si::kelvin;
     EXPECT_EQ(p.quantity_from_origin().numerical_value_in(si::kelvin), 5);
     static_assert(!can_subtract<decltype(p), decltype(point<si::kelvin>(just<1>))>); // two absolute origins
@@ -483,9 +474,9 @@ TEST(UnitsApiTest, quantity_spec_is_a_value) {
     const quantity<isq::altitude[km], inside<{100, 1000}>> altitude{185, isq::altitude[km]};
     const quantity<isq::radius[km], inside<{6300, 6400}>>  earth{6371, isq::radius[km]};
     const auto                                             r = altitude + earth;
-    static_assert(r.quantity_spec == isq::length && !(r.quantity_spec == isq::height));
-    static_assert(altitude.quantity_spec == isq::altitude);
-    static_assert(decltype(r / (just<2> * si::second))::quantity_spec == isq::length / isq::duration);
+    static_assert(r.kind == isq::length && !(r.kind == isq::height));
+    static_assert(altitude.kind == isq::altitude);
+    static_assert(decltype(r / (just<2> * si::second))::kind == isq::length / isq::duration);
     static_assert(isq::length / isq::duration == isq::length / isq::time);
 }
 
@@ -505,9 +496,9 @@ TEST(UnitsApiTest, value_cast_to_a_quantity_type) {
 }
 
 TEST(UnitsApiTest, units_scale_by_magnitudes_on_either_side) {
-    static_assert(si::metre * mag<2> == mag<2> * si::metre);
-    static_assert(si::metre / mag_pi == mag<1> / mag_pi * si::metre);
-    EXPECT_EQ(unit_symbol(si::metre * mag<2>), "[2 m]");
+    static_assert(si::metre * units::detail::mag<2> == units::detail::mag<2> * si::metre);
+    static_assert(si::metre / pi == units::detail::mag<1> / pi * si::metre);
+    EXPECT_EQ(unit_symbol(si::metre * units::detail::mag<2>), "[2 m]");
 }
 
 TEST(UnitsApiTest, sums_take_one_type_in_either_order) {
@@ -521,7 +512,7 @@ TEST(UnitsApiTest, a_denominator_alone_prints_negative_exponents) {
     EXPECT_EQ(to_string(just<2> / si::second), "2 s⁻¹");
     EXPECT_EQ(to_string(just<1> / (si::second * si::metre)), "1 m⁻¹ s⁻¹");
     EXPECT_EQ(unit_symbol(inverse(si::second), text_encoding::ascii), "s^-1");
-    EXPECT_EQ(unit_symbol(mag_pi / si::metre), "[π m⁻¹]");
+    EXPECT_EQ(unit_symbol(pi / si::metre), "[π m⁻¹]");
     EXPECT_EQ(unit_symbol(si::metre / si::second), "m/s");
 }
 
@@ -533,17 +524,17 @@ TEST(UnitsApiTest, points_from_zero_and_their_constraints) {
 }
 
 TEST(UnitsApiTest, unit_options) {
-    constexpr auto rankine = unit_c<rankine_def>;
+    constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin, {.ascii = "R", .origin = si::absolute_zero}>;
     EXPECT_EQ(unit_symbol(rankine, text_encoding::ascii), "R");
     EXPECT_EQ(to_string(point<rankine>(just<9>).point_in(si::kelvin)), "5 K"); // counted from absolute zero
-    EXPECT_EQ(to_string(just<1> * unit_c<turn_def>), "1tr");
-    static_assert(kind_of(unit_c<rpm_def>.value).P->Name == "frequency");
-    static_assert(!addable_units<decltype(just<1> * unit_c<rpm_def>), decltype(just<1> * si::becquerel)>());
+    EXPECT_EQ(to_string(just<1> * turn_def), "1tr");
+    static_assert(kind_of(rpm_def.value).P->Name == "frequency");
+    static_assert(!addable_units<decltype(just<1> * rpm_def), decltype(just<1> * si::becquerel)>());
 }
 
 TEST(UnitsApiTest, base_dimensions_of_your_own) {
-    constexpr auto euro = unit_c<euro_def>;
-    constexpr auto cent = unit_c<cent_def>;
+    constexpr auto euro = unit<"EUR", money_def>;
+    constexpr auto cent = unit<"ct", just<1, 100> * euro>;
     const auto     sum  = just<2> * euro + just<5> * cent;
     EXPECT_EQ(to_string(sum), "205 ct");
     static_assert(!can_add<decltype(just<1> * euro), decltype(just<1> * si::metre)>);
@@ -555,21 +546,20 @@ TEST(UnitsApiTest, base_dimensions_of_your_own) {
 }
 
 TEST(UnitsApiTest, any_number_of_base_dimensions_of_your_own) {
-    constexpr auto      loot  = unit_c<loot_def>;
-    constexpr auto      net   = unit_c<net_def>;
+    constexpr auto      loot  = unit<"loot", gold_u * health_u * mana_u * stamina::st>;
+    constexpr auto      net   = unit<"net", xp_u * pixel_u * packet_u * token_u>;
     constexpr dimension eight = dimension_of((loot * net).value);
     static_assert(eight.UserSize == 8);
     // By content, in any order.
     static_assert(eight == dimension_of((net * loot).value));
-    static_assert(eight == dimension_of(token_dim) * dimension_of(packet_dim) * dimension_of(pixel_dim) *
-                               dimension_of(xp_dim) * dimension_of(stamina::dim) * dimension_of(mana_dim) *
-                               dimension_of(health_dim) * dimension_of(gold_dim));
+    static_assert(eight ==
+                  token_dim * packet_dim * pixel_dim * xp_dim * stamina::dim * mana_dim * health_dim * gold_dim);
     static_assert(eight.pow(3).root(3) == eight);
     static_assert(eight / eight == dim_one);
     static_assert(dimension_of((loot * net / si::second).value) == eight / dim_time);
 
     const auto both  = (just<2> * loot) * (just<3> * net);
-    const auto seven = both / (just<1> * unit_c<gold_u>);
+    const auto seven = both / (just<1> * gold_u);
     EXPECT_EQ(to_string(both + both), "12 loot net");
     EXPECT_EQ(to_string(both / (just<2> * si::second)), "3 loot net/s");
     static_assert(dimension_of(std::remove_cvref_t<decltype(seven)>::reference.U).UserSize == 7); // gold⁰ drops out
@@ -577,7 +567,7 @@ TEST(UnitsApiTest, any_number_of_base_dimensions_of_your_own) {
 }
 
 TEST(UnitsApiTest, adc_counts) {
-    constexpr auto cts = unit_c<cts_def>;
+    constexpr auto cts = unit<"cts", adc_counts_def>;
     using reading      = quantity<cts, inside<{0, 4095}>>;
     using gain_t       = quantity<cts / si::volt, inside<{{1000, 1500}, per<1000>}, round_half_away>>;
     using volts_t      = quantity<si::volt, inside<{{0, 5}, per<1000>}>>;
@@ -610,15 +600,12 @@ using namespace beman::inside;
 using namespace beman::inside::units;
 
 namespace {
-inline constexpr base_dimension health_dim{"health"};
-inline constexpr quantity_spec  health_def{"health", health_dim};
-inline constexpr named_unit     hp_def{"HP", spec_c<health_def>};
-inline constexpr auto           HP = unit_c<hp_def>;
-inline constexpr named_unit     slot_def{"slot", mag<rational{1, 32768}> * mag_pi * si::radian};
-inline constexpr auto           slot = unit_c<slot_def>;
+inline constexpr auto health_dim = base_dimension<"health">;
+inline constexpr auto health_def = kind<"health", health_dim>;
+inline constexpr auto HP         = unit<"HP", health_def>;
+inline constexpr auto slot       = unit<"slot", just<1, 32768> * pi * si::radian>;
 // π/2^70 rad: a factor past the 64-bit rational.
-inline constexpr named_unit fine_turn_def{"ft", mag<1_g / 1180591620717411303424_g> * mag_pi * si::radian};
-inline constexpr auto       fine_turn = unit_c<fine_turn_def>;
+inline constexpr auto fine_turn = unit<"ft", just<1, 1180591620717411303424_g> * pi * si::radian>;
 
 constexpr auto ms = si::milli(si::second);
 
@@ -870,9 +857,9 @@ TEST(UnitsMathTest, number_functions_keep_the_unit) {
 TEST(UnitsMathTest, pi_magnitudes_round_once_in_value_cast) {
     // π · 2 s → 6.283185 s: π is part of the unit until the one rounding.
     const quantity<si::second, inside<{0, 10}>> t{2, si::second};
-    const auto s = value_cast<si::second, inside<{{0, 100}, per<1'000'000>}, round_half_away>>(mag_pi * t);
+    const auto s = value_cast<si::second, inside<{{0, 100}, per<1'000'000>}, round_half_away>>(pi * t);
     EXPECT_EQ(rational{s.numerical_value_in(si::second)}, rational(6283185, 1'000'000));
-    const auto h = value_cast<si::hour, inside<{{0, 1}, per<1'000'000'000>}, round_half_away>>(mag_pi * t);
+    const auto h = value_cast<si::hour, inside<{{0, 1}, per<1'000'000'000>}, round_half_away>>(pi * t);
     EXPECT_EQ(rational{h.numerical_value_in(si::hour)}, rational(1745329, 1'000'000'000)); // 2π/3600 = 0.00174532925…
 }
 
@@ -953,10 +940,10 @@ using namespace beman::inside::units;
 namespace pc = beman::inside::units::constants;
 
 TEST(ConstantsTest, physical_constants_have_their_kind_and_value) {
-    static_assert(pc::speed_of_light_in_vacuum.quantity_spec == isq::speed);
-    static_assert(pc::standard_gravity.quantity_spec == isq::acceleration_of_free_fall);
-    static_assert(pc::standard_atmosphere.quantity_spec == isq::pressure);
-    static_assert(pc::characteristic_impedance_of_vacuum.quantity_spec == isq::impedance);
+    static_assert(pc::speed_of_light_in_vacuum.kind == isq::speed);
+    static_assert(pc::standard_gravity.kind == isq::acceleration_of_free_fall);
+    static_assert(pc::standard_atmosphere.kind == isq::pressure);
+    static_assert(pc::characteristic_impedance_of_vacuum.kind == isq::impedance);
     EXPECT_EQ(to_string(pc::speed_of_light_in_vacuum.in(si::metre / si::second)), "299792458 m/s");
     EXPECT_EQ(to_string(pc::standard_atmosphere.in(si::pascal)), "101325 Pa");
     EXPECT_EQ(to_string(pc::standard_gravity.in(si::metre / square(si::second))), "9.80665 m/s²");
@@ -972,8 +959,8 @@ TEST(ConstantsTest, physical_constants_have_their_kind_and_value) {
 }
 
 TEST(ConstantsTest, si2019_defining_constants_are_exact) {
-    static_assert(pc::planck_constant.quantity_spec == isq::action);
-    static_assert(pc::elementary_charge.quantity_spec == isq::electric_charge);
+    static_assert(pc::planck_constant.kind == isq::action);
+    static_assert(pc::elementary_charge.kind == isq::electric_charge);
     EXPECT_EQ(std::format("{:.8e}", pc::planck_constant.in(si::joule * si::second)), "6.62607015e-34 J s");
     EXPECT_EQ(std::format("{:.9e}", pc::elementary_charge.in(si::coulomb)), "1.602176634e-19 C");
     EXPECT_EQ(std::format("{:.6e}", pc::boltzmann_constant.in(si::joule / si::kelvin)), "1.380649e-23 J/K");

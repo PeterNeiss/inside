@@ -5,18 +5,13 @@
 #include <beman/inside/units.hpp>
 #include <beman/inside/units/geoalg.hpp>
 
-inline constexpr beman::inside::units::basis_vector e1_def{"e1", 1};
-inline constexpr beman::inside::units::basis_vector e2_def{"e2", 1};
-inline constexpr beman::inside::units::basis_vector e3_def{"e3", 1};
-inline constexpr beman::inside::units::basis_vector e4_def{"e4", 1};
-
 int main() {
     using namespace beman::inside;
     using namespace beman::inside::units;
-    constexpr auto e1 = unit_c<e1_def>;
-    constexpr auto e2 = unit_c<e2_def>;
-    constexpr auto e3 = unit_c<e3_def>;
-    constexpr auto e4 = unit_c<e4_def>;
+    constexpr auto e1 = beman::inside::units::basis_vector<"e1", 1>;
+    constexpr auto e2 = beman::inside::units::basis_vector<"e2", 1>;
+    constexpr auto e3 = beman::inside::units::basis_vector<"e3", 1>;
+    constexpr auto e4 = beman::inside::units::basis_vector<"e4", 1>;
     auto           x  = just<1> + just<1> * e1 * e2 + just<1> * e3 * e4;
     auto           y  = inverse(x);
     (void)y;

@@ -73,9 +73,9 @@ int main() {
         return 1;
     //    The cutoff 1/(2πτ) is a frequency: 1/s names one, and the cast picks
     //    frequency (Hz) — the same 1/s as activity (Bq), which would not add
-    //    to it. mag_pi keeps π in the unit, so the result rounds once, with
+    //    to it. pi keeps π in the unit, so the result rounds once, with
     //    the true π, onto a 0.01 Hz grid.
-    const auto f  = just<1> / (just<2> * (mag_pi * tau));
+    const auto f  = just<1> / (just<2> * (pi * tau));
     const auto fc = value_cast<si::hertz, hertz_t>(quantity_cast<isq::frequency>(f));
     std::cout << "f_c    = " << fc << '\n'; // 255.47 Hz
     if (to_string(fc) != "255.47 Hz")

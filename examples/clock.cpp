@@ -22,12 +22,9 @@ using namespace beman::inside::units;
 
 namespace {
 // Calendar units of our own: a 30-day month, a 12-month year, a 7-day week.
-inline constexpr named_unit month_def{"mo", mag<30> * si::day};
-inline constexpr auto       month = unit_c<month_def>;
-inline constexpr named_unit year_def{"yr", mag<12> * month};
-inline constexpr auto       year = unit_c<year_def>;
-inline constexpr named_unit week_def{"wk", mag<7> * si::day};
-inline constexpr auto       week = unit_c<week_def>;
+inline constexpr auto month = unit<"mo", just<30> * si::day>;
+inline constexpr auto year  = unit<"yr", just<12> * month>;
+inline constexpr auto week  = unit<"wk", just<7> * si::day>;
 } // namespace
 
 struct clock24 {

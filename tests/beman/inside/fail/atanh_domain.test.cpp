@@ -7,7 +7,7 @@
 using namespace beman::inside;
 
 int main() {
-    using unit = inside<{{-1, 1}, per<1024>}, round_half_away>;
-    auto r     = math::atanh(unit{0});
+    using unit_value = inside<{{-1, 1}, per<1024>}, round_half_away>;
+    auto r           = math::atanh(unit_value{0});
     (void)r;
 }

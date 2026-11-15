@@ -13,28 +13,22 @@ namespace beman::inside::units {
 
 //---------------------------------------------------------------------------
 // The catalog: ISQ quantity specs, SI units and prefixes, international units.
-// Each name is a tag object; its definition is a static object in *_defs.
+// Each name is a tag object; its definition is a static member of a class
+// template (detail::definition), as for a unit of your own.
 //---------------------------------------------------------------------------
-#define BEMAN_INSIDE_SPEC(name, ...)                         \
-    namespace isq_defs {                                     \
-    inline constexpr quantity_spec name{#name, __VA_ARGS__}; \
-    }                                                        \
-    namespace isq {                                          \
-    inline constexpr auto name = spec_c<isq_defs::name>;     \
+#define BEMAN_INSIDE_SPEC(name, ...)                                                          \
+    namespace isq {                                                                           \
+    inline constexpr auto name =                                                              \
+        detail::spec_c<detail::definition<detail::quantity_spec, #name, __VA_ARGS__>::value>; \
     }
-#define BEMAN_INSIDE_ORIGIN(ns, name, ...)                      \
-    namespace ns##_defs {                                       \
-        inline constexpr point_origin name{#name, __VA_ARGS__}; \
-    }                                                           \
-    namespace ns {                                              \
-    inline constexpr auto name = origin_c<ns##_defs::name>;     \
+#define BEMAN_INSIDE_ORIGIN(ns, name, ...)                                                     \
+    namespace ns {                                                                             \
+    inline constexpr auto name =                                                               \
+        detail::origin_c<detail::definition<detail::point_origin, #name, __VA_ARGS__>::value>; \
     }
-#define BEMAN_INSIDE_UNIT(ns, name, ...)                  \
-    namespace ns##_defs {                                 \
-        inline constexpr named_unit name{__VA_ARGS__};    \
-    }                                                     \
-    namespace ns {                                        \
-    inline constexpr auto name = unit_c<ns##_defs::name>; \
+#define BEMAN_INSIDE_UNIT(ns, name, ...)                                                                     \
+    namespace ns {                                                                                           \
+    inline constexpr auto name = detail::unit_c<detail::definition<detail::named_unit, __VA_ARGS__>::value>; \
     }
 
 // Base quantities (ISO 80000-1) and the dimensionless one.
@@ -66,10 +60,10 @@ BEMAN_INSIDE_SPEC(displacement, isq::length)
 BEMAN_INSIDE_SPEC(position_vector, isq::displacement)
 BEMAN_INSIDE_SPEC(area, pow<2>(isq::length))
 BEMAN_INSIDE_SPEC(volume, pow<3>(isq::length))
-BEMAN_INSIDE_SPEC(angular_measure, isq::dimensionless, isq::arc_length / isq::radius, is_kind)
+BEMAN_INSIDE_SPEC(angular_measure, isq::dimensionless, isq::arc_length / isq::radius, detail::is_kind)
 BEMAN_INSIDE_SPEC(rotational_displacement, isq::angular_measure, isq::path_length / isq::radius)
-BEMAN_INSIDE_SPEC(phase_angle, isq::angular_measure, is_kind)
-BEMAN_INSIDE_SPEC(solid_angular_measure, isq::dimensionless, isq::area / pow<2>(isq::radius), is_kind)
+BEMAN_INSIDE_SPEC(phase_angle, isq::angular_measure, detail::is_kind)
+BEMAN_INSIDE_SPEC(solid_angular_measure, isq::dimensionless, isq::area / pow<2>(isq::radius), detail::is_kind)
 BEMAN_INSIDE_SPEC(period_duration, isq::duration)
 BEMAN_INSIDE_SPEC(time_constant, isq::duration)
 BEMAN_INSIDE_SPEC(speed, isq::length / isq::duration)
@@ -171,15 +165,14 @@ inline constexpr prefix_t<30>  quetta{};
 // SI base units.
 BEMAN_INSIDE_UNIT(si, second, "s", isq::duration)
 BEMAN_INSIDE_UNIT(si, metre, "m", isq::length)
-BEMAN_INSIDE_UNIT(si, gram, "g", mag<1_g / 1000_g>, isq::mass)
+BEMAN_INSIDE_UNIT(si, gram, "g", detail::mag<1_g / 1000_g>, isq::mass)
 namespace si {
 inline constexpr auto kilogram = kilo(gram);
 }
 BEMAN_INSIDE_UNIT(si, ampere, "A", isq::electric_current)
 BEMAN_INSIDE_ORIGIN(si, absolute_zero, dim_thermodynamic_temperature)
-BEMAN_INSIDE_ORIGIN(
-    si, ice_point, dim_thermodynamic_temperature, &si_defs::absolute_zero, beman::inside::detail::rational{27315, 100})
-BEMAN_INSIDE_UNIT(si, kelvin, "K", isq::thermodynamic_temperature, {.origin = si::absolute_zero})
+BEMAN_INSIDE_ORIGIN(si, ice_point, dim_thermodynamic_temperature, si::absolute_zero, 27315_g / 100_g)
+BEMAN_INSIDE_UNIT(si, kelvin, "K", isq::thermodynamic_temperature, unit_options{.origin = si::absolute_zero})
 BEMAN_INSIDE_UNIT(si, mole, "mol", isq::amount_of_substance)
 BEMAN_INSIDE_UNIT(si, candela, "cd", isq::luminous_intensity)
 
@@ -194,12 +187,12 @@ BEMAN_INSIDE_UNIT(si, watt, "W", si::joule / si::second)
 BEMAN_INSIDE_UNIT(si, coulomb, "C", si::ampere* si::second)
 BEMAN_INSIDE_UNIT(si, volt, "V", si::watt / si::ampere, isq::electric_potential)
 BEMAN_INSIDE_UNIT(si, farad, "F", si::coulomb / si::volt, isq::capacitance)
-BEMAN_INSIDE_UNIT(si, ohm, "Ω", si::volt / si::ampere, isq::impedance, {.ascii = "ohm"})
+BEMAN_INSIDE_UNIT(si, ohm, "Ω", si::volt / si::ampere, isq::impedance, unit_options{.ascii = "ohm"})
 BEMAN_INSIDE_UNIT(si, siemens, "S", one / si::ohm, isq::admittance)
 BEMAN_INSIDE_UNIT(si, weber, "Wb", si::volt* si::second)
 BEMAN_INSIDE_UNIT(si, tesla, "T", si::weber / square(si::metre), isq::magnetic_flux_density)
 BEMAN_INSIDE_UNIT(si, henry, "H", si::weber / si::ampere)
-BEMAN_INSIDE_UNIT(si, degree_Celsius, "℃", si::kelvin, {.ascii = "`C", .origin = si::ice_point})
+BEMAN_INSIDE_UNIT(si, degree_Celsius, "℃", si::kelvin, unit_options{.ascii = "`C", .origin = si::ice_point})
 BEMAN_INSIDE_UNIT(si, lumen, "lm", si::candela* si::steradian, isq::luminous_flux)
 BEMAN_INSIDE_UNIT(si, lux, "lx", si::lumen / square(si::metre), isq::illuminance)
 BEMAN_INSIDE_UNIT(si, becquerel, "Bq", one / si::second, isq::activity)
@@ -208,67 +201,72 @@ BEMAN_INSIDE_UNIT(si, sievert, "Sv", si::joule / si::kilogram, isq::dose_equival
 BEMAN_INSIDE_UNIT(si, katal, "kat", si::mole / si::second, isq::catalytic_activity)
 
 // Non-SI units accepted for use with the SI.
-BEMAN_INSIDE_UNIT(si, minute, "min", mag<60>* si::second)
-BEMAN_INSIDE_UNIT(si, hour, "h", mag<60>* si::minute)
-BEMAN_INSIDE_UNIT(si, day, "d", mag<24>* si::hour)
-BEMAN_INSIDE_UNIT(si, astronomical_unit, "au", mag<149'597'870'700>* si::metre)
-BEMAN_INSIDE_UNIT(si, degree, "°", mag_pi* mag<1_g / 180_g>* si::radian, {.ascii = "deg", .space_before = false})
-BEMAN_INSIDE_UNIT(si, arcminute, "′", mag<1_g / 60_g>* si::degree, {.ascii = "'", .space_before = false})
-BEMAN_INSIDE_UNIT(si, arcsecond, "″", mag<1_g / 60_g>* si::arcminute, {.ascii = "''", .space_before = false})
+BEMAN_INSIDE_UNIT(si, minute, "min", detail::mag<60>* si::second)
+BEMAN_INSIDE_UNIT(si, hour, "h", detail::mag<60>* si::minute)
+BEMAN_INSIDE_UNIT(si, day, "d", detail::mag<24>* si::hour)
+BEMAN_INSIDE_UNIT(si, astronomical_unit, "au", detail::mag<149'597'870'700>* si::metre)
+BEMAN_INSIDE_UNIT(si,
+                  degree,
+                  "°",
+                  detail::mag_pi* detail::mag<1_g / 180_g>* si::radian,
+                  unit_options{.ascii = "deg", .space_before = false})
+BEMAN_INSIDE_UNIT(
+    si, arcminute, "′", detail::mag<1_g / 60_g>* si::degree, unit_options{.ascii = "'", .space_before = false})
+BEMAN_INSIDE_UNIT(
+    si, arcsecond, "″", detail::mag<1_g / 60_g>* si::arcminute, unit_options{.ascii = "''", .space_before = false})
 BEMAN_INSIDE_UNIT(si, are, "a", square(si::deca(si::metre)))
 BEMAN_INSIDE_UNIT(si, litre, "L", cubic(si::deci(si::metre)))
-BEMAN_INSIDE_UNIT(si, tonne, "t", mag<1000>* si::kilogram)
+BEMAN_INSIDE_UNIT(si, tonne, "t", detail::mag<1000>* si::kilogram)
 namespace si {
 inline constexpr auto hectare = hecto(are);
 }
-BEMAN_INSIDE_UNIT(si, dalton, "Da", mag<1.66053906892e-27_g>* si::kilogram) // CODATA 2022
-BEMAN_INSIDE_UNIT(si, electronvolt, "eV", mag<1.602176634e-19_g>* si::joule)
+BEMAN_INSIDE_UNIT(si, dalton, "Da", detail::mag<1.66053906892e-27_g>* si::kilogram) // CODATA 2022
+BEMAN_INSIDE_UNIT(si, electronvolt, "eV", detail::mag<1.602176634e-19_g>* si::joule)
 
 // The defining constants of the SI (2019) and standard gravity, as units:
 // just<1> * si2019::speed_of_light_in_vacuum is c, exactly, and .in(m/s)
 // gives its number. h, e, k and N_A need grid numbers past 64 bits.
-BEMAN_INSIDE_UNIT(
-    si2019, hyperfine_structure_transition_frequency_of_cs, "Δν_Cs", mag<9'192'631'770>* si::hertz, {.ascii = "dv_Cs"})
-BEMAN_INSIDE_UNIT(si2019, speed_of_light_in_vacuum, "c", mag<299'792'458>* si::metre / si::second)
-BEMAN_INSIDE_UNIT(si2019, luminous_efficacy, "K_cd", mag<683>* si::lumen / si::watt)
-BEMAN_INSIDE_UNIT(
-    si2019, standard_gravity, "g₀", mag<980665_g / 100000_g>* si::metre / square(si::second), {.ascii = "g_0"})
-BEMAN_INSIDE_UNIT(si2019, planck_constant, "h", mag<6.62607015e-34_g>* si::joule* si::second)
-BEMAN_INSIDE_UNIT(si2019, elementary_charge, "e", mag<1.602176634e-19_g>* si::coulomb)
-BEMAN_INSIDE_UNIT(si2019, boltzmann_constant, "k", mag<1.380649e-23_g>* si::joule / si::kelvin)
-BEMAN_INSIDE_UNIT(si2019, avogadro_constant, "N_A", mag<6.02214076e23_g> / si::mole)
+BEMAN_INSIDE_UNIT(si2019,
+                  hyperfine_structure_transition_frequency_of_cs,
+                  "Δν_Cs",
+                  detail::mag<9'192'631'770>* si::hertz,
+                  unit_options{.ascii = "dv_Cs"})
+BEMAN_INSIDE_UNIT(si2019, speed_of_light_in_vacuum, "c", detail::mag<299'792'458>* si::metre / si::second)
+BEMAN_INSIDE_UNIT(si2019, luminous_efficacy, "K_cd", detail::mag<683>* si::lumen / si::watt)
+BEMAN_INSIDE_UNIT(si2019,
+                  standard_gravity,
+                  "g₀",
+                  detail::mag<980665_g / 100000_g>* si::metre / square(si::second),
+                  unit_options{.ascii = "g_0"})
+BEMAN_INSIDE_UNIT(si2019, planck_constant, "h", detail::mag<6.62607015e-34_g>* si::joule* si::second)
+BEMAN_INSIDE_UNIT(si2019, elementary_charge, "e", detail::mag<1.602176634e-19_g>* si::coulomb)
+BEMAN_INSIDE_UNIT(si2019, boltzmann_constant, "k", detail::mag<1.380649e-23_g>* si::joule / si::kelvin)
+BEMAN_INSIDE_UNIT(si2019, avogadro_constant, "N_A", detail::mag<6.02214076e23_g> / si::mole)
 
 // International (yard and pound agreement, 1959) and nautical units.
-BEMAN_INSIDE_UNIT(international, yard, "yd", mag<9144_g / 10000_g>* si::metre)
-BEMAN_INSIDE_UNIT(international, foot, "ft", mag<1_g / 3_g>* international::yard)
-BEMAN_INSIDE_UNIT(international, inch, "in", mag<1_g / 12_g>* international::foot)
-BEMAN_INSIDE_UNIT(international, mile, "mi", mag<1760>* international::yard)
-BEMAN_INSIDE_UNIT(international, nautical_mile, "nmi", mag<1852>* si::metre)
-BEMAN_INSIDE_UNIT(international, pound, "lb", mag<45359237_g / 100000000_g>* si::kilogram)
-BEMAN_INSIDE_UNIT(international, ounce, "oz", mag<1_g / 16_g>* international::pound)
+BEMAN_INSIDE_UNIT(international, yard, "yd", detail::mag<9144_g / 10000_g>* si::metre)
+BEMAN_INSIDE_UNIT(international, foot, "ft", detail::mag<1_g / 3_g>* international::yard)
+BEMAN_INSIDE_UNIT(international, inch, "in", detail::mag<1_g / 12_g>* international::foot)
+BEMAN_INSIDE_UNIT(international, mile, "mi", detail::mag<1760>* international::yard)
+BEMAN_INSIDE_UNIT(international, nautical_mile, "nmi", detail::mag<1852>* si::metre)
+BEMAN_INSIDE_UNIT(international, pound, "lb", detail::mag<45359237_g / 100000000_g>* si::kilogram)
+BEMAN_INSIDE_UNIT(international, ounce, "oz", detail::mag<1_g / 16_g>* international::pound)
 BEMAN_INSIDE_UNIT(international,
                   pound_force,
                   "lbf",
-                  mag<980665_g / 100000_g>* international::pound* si::metre / square(si::second))
+                  detail::mag<980665_g / 100000_g>* international::pound* si::metre / square(si::second))
 BEMAN_INSIDE_UNIT(international, knot, "kn", international::nautical_mile / si::hour)
-BEMAN_INSIDE_ORIGIN(international,
-                    zeroth_degree_Fahrenheit,
-                    dim_thermodynamic_temperature,
-                    &si_defs::absolute_zero,
-                    beman::inside::detail::rational{45967, 180})
+BEMAN_INSIDE_ORIGIN(
+    international, zeroth_degree_Fahrenheit, dim_thermodynamic_temperature, si::absolute_zero, 45967_g / 180_g)
 BEMAN_INSIDE_UNIT(international,
                   degree_Fahrenheit,
                   "℉",
-                  mag<5_g / 9_g>* si::kelvin,
-                  {.ascii = "`F", .origin = international::zeroth_degree_Fahrenheit})
+                  detail::mag<5_g / 9_g>* si::kelvin,
+                  unit_options{.ascii = "`F", .origin = international::zeroth_degree_Fahrenheit})
 
 // Scaled dimensionless units, as in mp-units: 8 % is the number 2/25.
-namespace dimensionless_defs {
-inline constexpr named_unit percent{"%", mag<1_g / 100_g> * one};
-inline constexpr named_unit per_mille{"‰", mag<1_g / 1000_g> * one, {.ascii = "permille"}};
-} // namespace dimensionless_defs
-inline constexpr auto percent   = unit_c<dimensionless_defs::percent>;
-inline constexpr auto per_mille = unit_c<dimensionless_defs::per_mille>;
+inline constexpr auto percent   = unit<"%", 0.01_ins * one>;
+inline constexpr auto per_mille = unit<"‰", 0.001_ins * one, unit_options{.ascii = "permille"}>;
 
 #undef BEMAN_INSIDE_UNIT
 #undef BEMAN_INSIDE_ORIGIN

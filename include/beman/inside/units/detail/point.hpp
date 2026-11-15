@@ -32,7 +32,7 @@ inline constexpr bool is_quantity_point_v<quantity_point<R, O, Rep>> = true;
 namespace detail {
 // The number, in unit U, that takes a quantity from origin From to origin To:
 // (offset(From) − offset(To)) / mag(U).
-template <origin_ref From, origin_ref To, unit U>
+template <origin_ref From, origin_ref To, unit_value U>
 consteval grid_rational origin_shift() {
     static_assert(same(absolute_of(From), absolute_of(To)), "units: points of different absolute origins");
     constexpr magnitude m = magnitude_of(U);
@@ -53,7 +53,9 @@ constexpr auto shift(const V& v) {
 }
 
 // The default origin of a unit's points: its named unit's (K, ℃, ℉).
-consteval origin_ref origin_of_unit(const unit& u) { return is_single_named(u) ? u.Atoms[0].U->Origin : origin_ref{}; }
+consteval origin_ref origin_of_unit(const unit_value& u) {
+    return is_single_named(u) ? u.Atoms[0].U->Origin : origin_ref{};
+}
 
 template <origin_ref O, class Q>
 constexpr auto make_point(Q&& q) {
@@ -120,13 +122,13 @@ class quantity_point : public detail::member_holder<Rep, quantity<R, Rep>, quant
         return detail::make_point<O2>(quantity_from(o));
     }
     // The same point in another unit.
-    template <units::unit U>
+    template <units::unit_value U>
         requires requires(const quantity<R, Rep>& q, unit_t<U> u) { q.in(u); }
     [[nodiscard]] constexpr auto in(unit_t<U> u) const {
         return detail::make_point<O>(Value.in(u));
     }
     // The same point in unit U, counted from U's own origin: 350 ℉ → 530/3 ℃.
-    template <units::unit U>
+    template <units::unit_value U>
         requires requires(const quantity_point& p, unit_t<U> u) {
             p.point_for(origin_t<detail::origin_of_unit(U)>{}).in(u);
         }
@@ -198,7 +200,7 @@ template <reference R, class V, detail::origin_ref O>
 // common unit; point − point: a quantity (the second counted from the first's
 // origin).
 namespace detail {
-template <unit U, reference R2, class V2>
+template <unit_value U, reference R2, class V2>
 constexpr auto in_point_unit(const quantity<R2, V2>& q) {
     if constexpr (requires { q.template in<U>(); })
         return q.template in<U>();

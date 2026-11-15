@@ -27,19 +27,13 @@ using namespace beman::inside;
 using namespace beman::inside::units;
 
 namespace {
-inline constexpr basis_vector e1_def{"e₁", +1, {.ascii = "e1"}};
-inline constexpr basis_vector e2_def{"e₂", +1, {.ascii = "e2"}};
-inline constexpr basis_vector e3_def{"e₃", +1, {.ascii = "e3"}};
-inline constexpr auto         e1 = unit_c<e1_def>;
-inline constexpr auto         e2 = unit_c<e2_def>;
-inline constexpr auto         e3 = unit_c<e3_def>;
+inline constexpr auto e1 = basis_vector<"e₁", +1, {.ascii = "e1"}>;
+inline constexpr auto e2 = basis_vector<"e₂", +1, {.ascii = "e2"}>;
+inline constexpr auto e3 = basis_vector<"e₃", +1, {.ascii = "e3"}>;
 
-inline constexpr named_unit i_def{"i", e1 * e2};
-inline constexpr named_unit j_def{"j", e3 * e1};
-inline constexpr named_unit k_def{"k", e2 * e3};
-inline constexpr auto       i = unit_c<i_def>;
-inline constexpr auto       j = unit_c<j_def>;
-inline constexpr auto       k = unit_c<k_def>;
+inline constexpr auto i = unit<"i", e1 * e2>;
+inline constexpr auto j = unit<"j", e3 * e1>;
+inline constexpr auto k = unit<"k", e2 * e3>;
 
 inline constexpr auto one_i = just<1> * i;
 inline constexpr auto one_j = just<1> * j;
