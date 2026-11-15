@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //---------------------------------------------------------------------------
-// beman.inside 0.8.0 — single-header amalgamation
+// beman.inside 0.9.0 — single-header amalgamation
 //
 //   *** GENERATED FILE — DO NOT EDIT BY HAND ***
 //
@@ -22845,8 +22845,13 @@ template <class Q, class X>
 concept bare_number_for = quantity_like<Q> && !quantity_like<X> && number_value<X>;
 
 // Q{v, u}: v a number in the unit of the tag u (a unit, or kind[unit]) that
-// names a value of Q. In Q's own unit any number Rep stores; in another unit
-// an inside, rescaled exactly first (a raw number has no grid to rescale).
+// names a value of Q. In Q's own unit any number Rep stores. In another unit
+// an inside is rescaled exactly first; a plain number (60, 1.5) is stored
+// into Rep's twin in that unit (Rep's grid and policy, in u: minutes on
+// integers are seconds on a notch of 60), by every rule of a store, and the
+// twin converts exactly.
+using beman::inside::detail::is_expected_v;
+
 template <class Tag>
 inline constexpr reference reference_of_tag = reference_of(Tag{});
 template <class Q, class Tag>
@@ -22870,15 +22875,31 @@ constexpr decltype(auto) number_from_tag(V&& v) {
 }
 template <class Q, class V, class Tag>
 using number_from_tag_t = decltype(number_from_tag<Q, Tag>(std::declval<V>()));
-// A raw number in another unit than Q's: the deleted overload's test.
+// A plain number in another unit than Q's.
 template <class Q, class V, class Tag>
 concept raw_in_other_unit =
     unit_tag_of<Q, Tag> && !own_unit_v<Q, Tag> && number_value<V> && !insidable<std::remove_cvref_t<V>>;
+// Rep's twin in the unit of Tag (unit_tag_of: the factor holds no pi).
+template <class Q, class Tag>
+concept twin_forms = rescalable<Q::reference.U, reference_of_tag<std::remove_cvref_t<Tag>>.U, typename Q::rep>;
+template <class Q, class Tag>
+using twin_t = decltype(rescale<conversion_factor<Q::reference.U, reference_of_tag<std::remove_cvref_t<Tag>>.U>>(
+    std::declval<const typename Q::rep&>()));
+template <class Q, class V, class Tag>
+concept raw_in_twin = raw_in_other_unit<Q, V, Tag> && twin_forms<Q, Tag>;
+// The twin's value as Q's number: the same value on the same grid, or an
+// expected of it (try_make).
+template <class Q, class Tag, class T>
+constexpr auto from_twin(const T& t) {
+    using Rep = typename Q::rep;
+    if constexpr (is_expected_v<T>)
+        return t.transform([](const auto& x) { return from_twin<Q, Tag>(x); });
+    else
+        return Rep(rescale<conversion_factor<reference_of_tag<std::remove_cvref_t<Tag>>.U, Q::reference.U>>(t));
+}
 // A unit of another quantity than Q's.
 template <class Q, class Tag>
 concept foreign_unit_tag = is_reference_tag_v<std::remove_cvref_t<Tag>> && !unit_tag_of<Q, Tag>;
-
-using beman::inside::detail::is_expected_v;
 
 // Q from v, or an expected Q from an expected v (its error passed on). A
 // quantity Q takes v as its number, in its unit.
@@ -23106,10 +23127,18 @@ class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
                  beman::inside::detail::policy_like<std::remove_cvref_t<Pol>>) &&
                     detail::bare_number_for<quantity, V>
     quantity(V&&, Pol&&) = delete ("units: a number alone has no unit - write Q{v, si::metre, clamp}");
-    template <class V, class Tag, class... Pol>
-        requires detail::raw_in_other_unit<quantity, V, Tag>
-    quantity(V&&, Tag, Pol&&...) = delete ("units: Q{v, u} - a raw number in another unit than Q's has no grid to "
-                                           "rescale: make it an inside first, or write it in Q's unit");
+    // A plain number in another unit of the quantity: minutes{90, si::second}
+    // is stored once, onto Rep's grid in seconds, and converts exactly.
+    template <class V, class Tag>
+        requires detail::raw_in_twin<quantity, V, Tag> && std::constructible_from<detail::twin_t<quantity, Tag>, V>
+    constexpr quantity(V&& v, Tag)
+        : holder(detail::from_twin<quantity, Tag>(detail::twin_t<quantity, Tag>(std::forward<V>(v)))) {}
+    template <class V, class Tag, class Pol>
+        requires(beman::inside::detail::flag_like<Pol> || beman::inside::detail::policy_like<Pol>) &&
+                detail::raw_in_twin<quantity, V, Tag> && std::constructible_from<detail::twin_t<quantity, Tag>, V, Pol>
+    constexpr quantity(V&& v, Tag, Pol&& pol)
+        : holder(detail::from_twin<quantity, Tag>(
+              detail::twin_t<quantity, Tag>(std::forward<V>(v), std::forward<Pol>(pol)))) {}
     template <class V, class Tag, class... Pol>
         requires detail::foreign_unit_tag<quantity, Tag>
     quantity(V&&, Tag, Pol&&...) = delete ("units: Q{v, u} - u is a unit of another quantity than Q's");
@@ -23331,6 +23360,13 @@ class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
                  requires(const V& v) { Rep::template try_make<F>(detail::number_from_tag<quantity, Tag>(v)); }
     [[nodiscard]] static constexpr auto try_make(const V& v, Tag) {
         return detail::make_quantity<R>(Rep::template try_make<F>(detail::number_from_tag<quantity, Tag>(v)));
+    }
+    template <policy_flag F = beman::inside::detail::none, class V, class Tag>
+        requires detail::raw_in_twin<quantity, V, Tag> &&
+                 requires(const V& v) { detail::twin_t<quantity, Tag>::template try_make<F>(v); }
+    [[nodiscard]] static constexpr auto try_make(const V& v, Tag) {
+        return detail::make_quantity<R>(
+            detail::from_twin<quantity, Tag>(detail::twin_t<quantity, Tag>::template try_make<F>(v)));
     }
     template <policy_flag F = beman::inside::detail::none, class V>
     static void try_make(const V&) = delete ("units: a number alone has no unit - write Q::try_make(v, si::metre)");

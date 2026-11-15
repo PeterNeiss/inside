@@ -127,10 +127,12 @@ int main() {
     using rise = quantity<si::kelvin, inside<{{-20, 20}, per<10>}>>;
     std::array<rise, 20> g{};
     const std::mdspan    gradient{g.data(), std::extents<std::size_t, 4, 5>{}};
-    transform_into(std::submdspan(heat, std::full_extent, std::pair{0, 5}),
-                   std::submdspan(heat, std::full_extent, std::pair{1, 6}),
-                   gradient,
-                   [](kelvin left, kelvin right) { return right - left; });
+    // (A rise past 20 K would not fit: the call reports it.)
+    if (!transform_into(std::submdspan(heat, std::full_extent, std::pair{0, 5}),
+                        std::submdspan(heat, std::full_extent, std::pair{1, 6}),
+                        gradient,
+                        [](kelvin left, kelvin right) { return right - left; }))
+        return 1;
     const auto steepest = *std::ranges::max_element(g);
     std::cout << "steepest rise " << steepest << "\n";
     if (to_string(heat[0, 0]) != "273.1 K" || to_string(heat_total) != "6605.2 K" || hot_r != 3 || hot_c != 5 ||

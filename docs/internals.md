@@ -9,8 +9,8 @@ contributors: adding an operator, debugging a storage edge case, reasoning
 about performance or about the units layer. For the user's view start with
 [Getting started](getting-started.md).
 
-The exact-fraction type is `beman::inside::rational` (defined in `detail`,
-public through a using-declaration). It is the raw of continuous grids and
+The exact-fraction type is `beman::inside::detail::rational`: no part of the
+user API, where an exact value is an inside. It is the raw of continuous grids and
 the type of the 64-bit fast paths; grids themselves use `detail::big_rational`
 (§2a). "Rational" below always means this type.
 
@@ -222,7 +222,7 @@ abs_den(lower64<B>.Den) == 1                 // an integer Lower
 | Helper | Direction | Used by |
 |---|---|---|
 | `q_format_encode<B>(std::int64_t)` | value → raw | `from_value`, `assignment::store` |
-| `q_format_decode<B>(B)` | raw → rational | `inside::operator rational()` |
+| `q_format_decode<B>(B)` | raw → rational | `inside::operator detail::rational()` |
 
 The value·nd clause matters because the result of a Q-format product can reach
 past it (Q16.16 × Q16.16 has `max_index_of` ≈ 2⁶⁴), where the integer codec
@@ -419,7 +419,7 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 | Header | Holds |
 |---|---|
 | `inside/detail/config.hpp` | the build options and platform features (`__int128`, FMA, exceptions); the C++26-reflection `#error`; included first everywhere |
-| `inside/detail/core.hpp` | `inside<G, P>`: construction, compound assignment, `++`/`--`, `to`/`as`, `parse(first, last)`, hooks, `just`, `_ins` |
+| `inside/detail/core.hpp` | `inside<G, P>`: construction, compound assignment, `++`/`--`, `to<T>`, `parse(first, last)`, hooks, `just`, `_ins` |
 | `inside/detail/numbers.hpp` | the internal `add_overflow`/`sub_overflow`/`mul_overflow`, `plain_number`/`fractional`, `wide_builtin`, `safe_abs` |
 | `inside/detail/call_policy.hpp` | `call_policy<F, E>`, `make_policy`, `with_flags<O>(pol)` (a flag as a call's policy) |
 | `inside/detail/error.hpp` | `error`, `error_message`, `inside_error` (compile time only), the error handler, `raise`, `constexpr_error` |
@@ -433,7 +433,7 @@ the same split: `units.hpp` holds no text, `units/io.hpp` prints,
 | `inside/detail/addition.hpp`, `multiplication.hpp`, `division.hpp` | `addition<L, R>`, `multiplication<L, R>`, `division<L, R, F>`, `modulo<L, R, F>`, `divmod_result` |
 | `inside/detail/diag_text.hpp` | `diag_text`: `static_assert` messages with values |
 | `inside/detail/rational.hpp` | `rational` and its checked and unchecked arithmetic |
-| `inside/detail/number_text.hpp` | the literal and text grammar, and the `_r` literal |
+| `inside/detail/number_text.hpp` | the literal and text grammar, and `detail`'s `_r` literal |
 | `inside/detail/float_bits.hpp` | floating points from their IEEE-754 bits: `frexp`, `ldexp`, `is_finite`, `abs_fraction` |
 | `inside/detail/grid_rational.hpp` | the grid-number vocabulary (§2a) |
 | `inside/detail/big_rational.hpp` | `big_int`, `big_rational`: interned grid numbers of any size |

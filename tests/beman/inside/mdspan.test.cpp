@@ -466,7 +466,7 @@ TEST(UnitsMdspanTest, sums_and_products_carry_units) {
     // A matrix of lengths times itself: areas.
     const std::mdspan                                                   m{a.data(), std::extents<std::size_t, 2, 2>{}};
     std::array<quantity<si::metre * si::metre, inside<{0, 100000}>>, 4> c{};
-    matrix_product(m, m, std::mdspan{c.data(), std::extents<std::size_t, 2, 2>{}});
+    EXPECT_TRUE(matrix_product(m, m, std::mdspan{c.data(), std::extents<std::size_t, 2, 2>{}}));
     EXPECT_EQ(to_string(c[0]), "7 m²");
     EXPECT_EQ(to_string(c[3]), "22 m²");
     // Lengths times plain numbers stay lengths.

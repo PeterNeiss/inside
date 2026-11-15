@@ -28,10 +28,12 @@ the same unit as s·m.
 
 The number is always an inside, and it goes in and out with its unit named:
 `Q{42, si::metre}` and `q.numerical_value_in(si::metre)`, so the unit is
-visible wherever a number becomes a quantity or a quantity a number. An
-inside in another unit of the quantity converts exactly first,
-`Q{n, si::kilo(si::metre)}`; a raw number in another unit has no grid to
-rescale. `Q{42}` and `q.numerical_value()` name no unit and do not compile. A
+visible wherever a number becomes a quantity or a quantity a number. A
+number in another unit of the quantity is scaled: `minutes{120, si::second}`
+is 2 min. An inside converts exactly first; a plain number is stored once,
+onto Q's grid in the unit named, so `minutes{90, si::second, round_floor}` is
+1 min and a run-time number takes a channel as any store does
+(`minutes::try_make(n, si::second)`). `Q{42}` and `q.numerical_value()` name no unit and do not compile. A
 raw scalar has no grid either, so `42 * si::metre` and `q * 2` do not compile,
 and the message says to write `just<42>`.
 

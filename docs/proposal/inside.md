@@ -31,13 +31,13 @@ clamp, the carry of a wrap. Named conversions, `std::numeric_limits`,
 
 This is the first of three papers, and it stands alone. Two companion papers
 build on it: [*Quantities on
-`inside`*](https://github.com/PeterNeiss/inside/blob/v0.8.0/docs/proposal/quantity.md)
+`inside`*](https://github.com/PeterNeiss/inside/blob/v0.9.0/docs/proposal/quantity.md)
 puts units on the number, and [*Correctly rounded math for `inside` and
-quantities*](https://github.com/PeterNeiss/inside/blob/v0.8.0/docs/proposal/math.md)
+quantities*](https://github.com/PeterNeiss/inside/blob/v0.9.0/docs/proposal/math.md)
 adds the functions of `<cmath>`.
 
 The reference implementation is
-[beman.inside v0.8.0](https://github.com/PeterNeiss/inside/tree/v0.8.0). A
+[beman.inside v0.9.0](https://github.com/PeterNeiss/inside/tree/v0.9.0). A
 long-form motivation with compiled exhibits is [*int considered
 harmful*](https://github.com/PeterNeiss/inside/blob/v0.5.0/docs/int-considered-harmful.pdf)
 (the *paper* below).
@@ -627,7 +627,6 @@ below is a candidate for a later paper:
 4. **Predefined types**: `uint8` … `int64` on their full ranges,
    `unorm8`/`unorm16`, the Q formats (`uq8_8`), `clamp_counter` and
    `wrap_counter`.
-5. **A public exact rational type** and its literals.
 
 The companion papers propose quantities and the math functions.
 
@@ -636,7 +635,7 @@ The companion papers propose quantities and the math functions.
 The reference implementation is header-only C++26 and needs static reflection:
 today GCC 16 with `-freflection`. It ships a single-header amalgamation, a
 CMake package and a vcpkg port, and follows the Beman Standard. Its test suite
-(1041 tests) runs in CI in six configurations on every change (a
+(1105 tests) runs in CI in six configurations on every change (a
 debug preset, release, debug with `-Werror`, coverage, the address, undefined
 and leak sanitizers, no floating point) and in four more every
 week (a release preset, debug, the thread sanitizer, and the full certification

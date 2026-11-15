@@ -8,7 +8,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 [![Continuous Integration Tests](https://github.com/PeterNeiss/inside/actions/workflows/ci_tests.yml/badge.svg)](https://github.com/PeterNeiss/inside/actions/workflows/ci_tests.yml)
 [![Lint Check (pre-commit)](https://github.com/PeterNeiss/inside/actions/workflows/pre-commit-check.yml/badge.svg)](https://github.com/PeterNeiss/inside/actions/workflows/pre-commit-check.yml)
 [![Coverage](https://coveralls.io/repos/github/PeterNeiss/inside/badge.svg?branch=main)](https://coveralls.io/github/PeterNeiss/inside?branch=main)
-[![Try it on Compiler Explorer](https://img.shields.io/badge/Try%20it%20on%20Compiler%20Explorer-grey?logo=compilerexplorer&logoColor=67c52a)](https://godbolt.org/z/MafnPMMxh)
+[![Try it on Compiler Explorer](https://img.shields.io/badge/Try%20it%20on%20Compiler%20Explorer-grey?logo=compilerexplorer&logoColor=67c52a)](https://godbolt.org/z/EEqWMPvj7)
 <!-- markdownlint-restore -->
 
 `beman.inside` is a header-only C++26 library for numbers whose **range and
@@ -40,7 +40,7 @@ math::sin<amplitude>(just<30> * si::degree);                       // exactly 0.
 math::sqrt(inside<{{0, 10}, per<1000>}, round_half_away>{2});              // 1.414, correctly rounded
 ```
 
-**[Try it on Compiler Explorer](https://godbolt.org/z/MafnPMMxh).**
+**[Try it on Compiler Explorer](https://godbolt.org/z/EEqWMPvj7).**
 
 ## What you get
 

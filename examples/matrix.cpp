@@ -56,7 +56,8 @@ int main() {
     double            worst = 0;
     for (const auto& p : {std::array<coord, 2>{10, 0}, std::array<coord, 2>{0, 10}, std::array<coord, 2>{3, 4}}) {
         std::array<coord, 2> q{};
-        matrix_vector_product(rot, std::mdspan{p.data(), vector2{}}, std::mdspan{q.data(), vector2{}});
+        if (!matrix_vector_product(rot, std::mdspan{p.data(), vector2{}}, std::mdspan{q.data(), vector2{}}))
+            return 1; // a coordinate past its range
         const double x = p[0].to<double>(), y = p[1].to<double>();
         const double c = std::cos(std::numbers::pi / 6), s = std::sin(std::numbers::pi / 6);
         const double ex = c * x - s * y, ey = s * x + c * y;
@@ -71,7 +72,8 @@ int main() {
     // 3. Two 30° turns make one of 60°: every entry is the exact sum of two
     // Q1.14 products, rounded once into Q1.14.
     std::array<q14, 4> r60{};
-    matrix_product(rot, rot, std::mdspan{r60.data(), matrix{}});
+    if (!matrix_product(rot, rot, std::mdspan{r60.data(), matrix{}}))
+        return 1; // an entry past Q1.14
     const auto direct = rotation(degrees{60, si::degree});
     std::cout << "R30·R30     [" << r60[0] << ", " << r60[1] << "; " << r60[2] << ", " << r60[3] << "]\n"
               << "R60         [" << direct[0] << ", " << direct[1] << "; " << direct[2] << ", " << direct[3] << "]\n";
