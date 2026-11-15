@@ -281,7 +281,7 @@ TEST(ConstexprTest, constexpr_add_all_mul_all_folds) {
 // casts
 //---------------------------------------------------------------------------
 // constexpr: the unsafe constructor preserves in-range values
-TEST(ConstexprTest, constexpr_unchecked_cast_preserves_in_range_values) {
+TEST(ConstexprTest, constexpr_unexact_cast_preserves_in_range_values) {
     using pct = inside<{0, 100}>;
     static_assert(pct{42, unsafe} == 42);
     static_assert(pct{0, unsafe} == 0);
@@ -289,7 +289,7 @@ TEST(ConstexprTest, constexpr_unchecked_cast_preserves_in_range_values) {
 }
 
 // constexpr: exact_cast with in-range values
-TEST(ConstexprTest, constexpr_checked_cast_with_in_range_values) {
+TEST(ConstexprTest, constexpr_exact_cast_with_in_range_values) {
     using pct = inside<{0, 100}>;
     static_assert(exact_cast<pct>(42) == 42);
     static_assert(exact_cast<pct>(100) == 100);

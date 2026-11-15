@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Units, specs, origins and base dimensions of your own. Each is a static
-// object plus a tag made from it, and from then on works like the catalog.
-//   1. A unit from existing ones: the fathom (1.8288 m) for a `depth` spec
+// Units, kinds, origins and base dimensions of your own. Each is one
+// declaration, and from then on works like the catalog.
+//   1. A unit from existing ones: the fathom (1.8288 m) for a `depth` kind
 //      under length. Conversions are exact, and prefixes apply.
 //   2. A unit with an origin: the Rankine scale (°R, 5/9 K from absolute
 //      zero), defined with unit_options. Its points meet ℃ and ℉ exactly.
@@ -21,7 +21,7 @@ using namespace beman::inside;
 using namespace beman::inside::units;
 
 namespace {
-// 1. A spec under length and a unit defined by the metre.
+// 1. A kind under length and a unit defined by the metre.
 inline constexpr auto depth  = kind<"depth", isq::length>;
 inline constexpr auto fathom = unit<"ftm", 1.8288_ins * si::metre>;
 

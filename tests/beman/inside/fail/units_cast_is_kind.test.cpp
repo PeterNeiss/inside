@@ -1,6 +1,6 @@
 // EXPECT: across a distinct kind's boundary
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// kind_cast cannot cross an is_kind boundary (rad → a dimensionless 1).
+// kind_cast cannot cross an distinct boundary (rad → a dimensionless 1).
 #include <beman/inside/units.hpp>
 
 int main() {

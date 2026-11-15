@@ -31,7 +31,7 @@ constexpr auto mm = si::milli(si::metre);
 
 template <class A, class B>
 consteval bool addable() {
-    return units::detail::common_spec(std::remove_cvref_t<A>::reference, std::remove_cvref_t<B>::reference).Ok;
+    return units::detail::common_kind(std::remove_cvref_t<A>::reference, std::remove_cvref_t<B>::reference).Ok;
 }
 } // namespace
 
@@ -217,7 +217,7 @@ TEST(UnitsTest, kinds_convert_up_implicitly_and_down_explicitly) {
     static_assert(std::is_convertible_v<height_m, quantity<si::metre, inside<{0, 100}>>>);
     // width + height: their common ancestor, length.
     const auto s = width_m{1, isq::width[si::metre]} + h;
-    static_assert(std::remove_cvref_t<decltype(s)>::reference.Spec->Name == "length");
+    static_assert(std::remove_cvref_t<decltype(s)>::reference.Kind->Name == "length");
 }
 
 TEST(UnitsTest, derived_kinds_follow_their_recipes) {
@@ -252,7 +252,7 @@ TEST(UnitsTest, separate_kinds_do_not_mix) {
         !std::is_convertible_v<quantity<si::hertz, inside<{0, 10}>>, quantity<si::becquerel, inside<{0, 10}>>>);
     // Gy and Sv: both J/kg, different kinds.
     static_assert(!addable<decltype(just<1> * si::gray), decltype(just<1> * si::sievert)>());
-    static_assert(!units::detail::spec_casts(std::remove_cvref_t<decltype(rad)>::reference, isq::dimensionless.value));
+    static_assert(!units::detail::kind_casts(std::remove_cvref_t<decltype(rad)>::reference, isq::dimensionless.value));
 }
 
 TEST(UnitsTest, text) {
@@ -373,45 +373,45 @@ inline constexpr auto per_second_f    = unit<"Hz", one / si::second, {.kind = is
 inline constexpr auto per_second_a    = unit<"Hz", one / si::second, {.kind = isq::activity}>;
 
 // unit_options: an ASCII symbol, a kind, an origin, no space before.
-inline constexpr auto turn_def = unit<"tr", just<2> * pi * si::radian, {.space_before = false}>;
-inline constexpr auto rpm_def  = unit<"rpm", one / si::minute, {.kind = isq::frequency}>;
+inline constexpr auto turn_unit = unit<"tr", just<2> * pi * si::radian, {.space_before = false}>;
+inline constexpr auto rpm_unit  = unit<"rpm", one / si::minute, {.kind = isq::frequency}>;
 
 // A base dimension of your own.
-inline constexpr auto currency_def = base_dimension<"currency">;
-inline constexpr auto money_def    = kind<"money", currency_def>;
+inline constexpr auto currency_dim = base_dimension<"currency">;
+inline constexpr auto money_kind   = kind<"money", currency_dim>;
 
 // ADC counts: a dimension apart from SI's dimensionless one.
-inline constexpr auto count_def      = base_dimension<"count">;
-inline constexpr auto adc_counts_def = kind<"adc_counts", count_def>;
+inline constexpr auto count_dim       = base_dimension<"count">;
+inline constexpr auto adc_counts_kind = kind<"adc_counts", count_dim>;
 
 // Eight base dimensions of your own, four in each of two named units; one is
 // a class member.
-inline constexpr auto gold_dim   = base_dimension<"gold">;
-inline constexpr auto gold_def   = kind<"gold", gold_dim>;
-inline constexpr auto gold_u     = unit<"g$", gold_def>;
-inline constexpr auto health_dim = base_dimension<"health">;
-inline constexpr auto health_def = kind<"health", health_dim>;
-inline constexpr auto health_u   = unit<"HP", health_def>;
-inline constexpr auto mana_dim   = base_dimension<"mana">;
-inline constexpr auto mana_def   = kind<"mana", mana_dim>;
-inline constexpr auto mana_u     = unit<"MP", mana_def>;
+inline constexpr auto gold_dim    = base_dimension<"gold">;
+inline constexpr auto gold_kind   = kind<"gold", gold_dim>;
+inline constexpr auto gold_u      = unit<"g$", gold_kind>;
+inline constexpr auto health_dim  = base_dimension<"health">;
+inline constexpr auto health_kind = kind<"health", health_dim>;
+inline constexpr auto health_u    = unit<"HP", health_kind>;
+inline constexpr auto mana_dim    = base_dimension<"mana">;
+inline constexpr auto mana_kind   = kind<"mana", mana_dim>;
+inline constexpr auto mana_u      = unit<"MP", mana_kind>;
 struct stamina {
     static constexpr auto dim  = base_dimension<"stamina">;
     static constexpr auto spec = kind<"stamina", dim>;
     static constexpr auto st   = unit<"st", spec>;
 };
-inline constexpr auto xp_dim     = base_dimension<"xp">;
-inline constexpr auto xp_def     = kind<"xp", xp_dim>;
-inline constexpr auto xp_u       = unit<"XP", xp_def>;
-inline constexpr auto pixel_dim  = base_dimension<"pixel">;
-inline constexpr auto pixel_def  = kind<"pixel", pixel_dim>;
-inline constexpr auto pixel_u    = unit<"px", pixel_def>;
-inline constexpr auto packet_dim = base_dimension<"packet">;
-inline constexpr auto packet_def = kind<"packet", packet_dim>;
-inline constexpr auto packet_u   = unit<"pkt", packet_def>;
-inline constexpr auto token_dim  = base_dimension<"token">;
-inline constexpr auto token_def  = kind<"token", token_dim>;
-inline constexpr auto token_u    = unit<"tok", token_def>;
+inline constexpr auto xp_dim      = base_dimension<"xp">;
+inline constexpr auto xp_kind     = kind<"xp", xp_dim>;
+inline constexpr auto xp_u        = unit<"XP", xp_kind>;
+inline constexpr auto pixel_dim   = base_dimension<"pixel">;
+inline constexpr auto pixel_kind  = kind<"pixel", pixel_dim>;
+inline constexpr auto pixel_u     = unit<"px", pixel_kind>;
+inline constexpr auto packet_dim  = base_dimension<"packet">;
+inline constexpr auto packet_kind = kind<"packet", packet_dim>;
+inline constexpr auto packet_u    = unit<"pkt", packet_kind>;
+inline constexpr auto token_dim   = base_dimension<"token">;
+inline constexpr auto token_kind  = kind<"token", token_dim>;
+inline constexpr auto token_u     = unit<"tok", token_kind>;
 
 template <class A, class B>
 concept can_add = requires(const A& a, const B& b) { a + b; };
@@ -470,7 +470,7 @@ TEST(UnitsApiTest, tags_for_your_own_entries) {
     static_assert(!can_subtract<decltype(p), decltype(point<si::kelvin>(just<1>))>); // two absolute origins
 }
 
-TEST(UnitsApiTest, quantity_spec_is_a_value) {
+TEST(UnitsApiTest, kind_is_a_value) {
     const quantity<isq::altitude[km], inside<{100, 1000}>> altitude{185, isq::altitude[km]};
     const quantity<isq::radius[km], inside<{6300, 6400}>>  earth{6371, isq::radius[km]};
     const auto                                             r = altitude + earth;
@@ -527,13 +527,13 @@ TEST(UnitsApiTest, unit_options) {
     constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin, {.ascii = "R", .origin = si::absolute_zero}>;
     EXPECT_EQ(unit_symbol(rankine, text_encoding::ascii), "R");
     EXPECT_EQ(to_string(point<rankine>(just<9>).point_in(si::kelvin)), "5 K"); // counted from absolute zero
-    EXPECT_EQ(to_string(just<1> * turn_def), "1tr");
-    static_assert(kind_of(rpm_def.value).P->Name == "frequency");
-    static_assert(!addable_units<decltype(just<1> * rpm_def), decltype(just<1> * si::becquerel)>());
+    EXPECT_EQ(to_string(just<1> * turn_unit), "1tr");
+    static_assert(kind_of(rpm_unit.value).P->Name == "frequency");
+    static_assert(!addable_units<decltype(just<1> * rpm_unit), decltype(just<1> * si::becquerel)>());
 }
 
 TEST(UnitsApiTest, base_dimensions_of_your_own) {
-    constexpr auto euro = unit<"EUR", money_def>;
+    constexpr auto euro = unit<"EUR", money_kind>;
     constexpr auto cent = unit<"ct", just<1, 100> * euro>;
     const auto     sum  = just<2> * euro + just<5> * cent;
     EXPECT_EQ(to_string(sum), "205 ct");
@@ -567,7 +567,7 @@ TEST(UnitsApiTest, any_number_of_base_dimensions_of_your_own) {
 }
 
 TEST(UnitsApiTest, adc_counts) {
-    constexpr auto cts = unit<"cts", adc_counts_def>;
+    constexpr auto cts = unit<"cts", adc_counts_kind>;
     using reading      = quantity<cts, inside<{0, 4095}>>;
     using gain_t       = quantity<cts / si::volt, inside<{{1000, 1500}, per<1000>}, round_half_away>>;
     using volts_t      = quantity<si::volt, inside<{{0, 5}, per<1000>}>>;
@@ -600,10 +600,10 @@ using namespace beman::inside;
 using namespace beman::inside::units;
 
 namespace {
-inline constexpr auto health_dim = base_dimension<"health">;
-inline constexpr auto health_def = kind<"health", health_dim>;
-inline constexpr auto HP         = unit<"HP", health_def>;
-inline constexpr auto slot       = unit<"slot", just<1, 32768> * pi * si::radian>;
+inline constexpr auto health_dim  = base_dimension<"health">;
+inline constexpr auto health_kind = kind<"health", health_dim>;
+inline constexpr auto HP          = unit<"HP", health_kind>;
+inline constexpr auto slot        = unit<"slot", just<1, 32768> * pi * si::radian>;
 // π/2^70 rad: a factor past the 64-bit rational.
 inline constexpr auto fine_turn = unit<"ft", just<1, 1180591620717411303424_g> * pi * si::radian>;
 
@@ -822,7 +822,7 @@ TEST(UnitsMathTest, roots_take_the_units_root) {
     using area_t = quantity<isq::area[square(si::metre)], inside<{{0, 100}, per<1000>}, round_half_away>>;
     const auto s = math::sqrt(area_t{2, isq::area[square(si::metre)]});
     static_assert(std::remove_cvref_t<decltype(s)>::unit == si::metre.value);
-    static_assert(std::remove_cvref_t<decltype(s)>::reference.Spec->Name == "length");
+    static_assert(std::remove_cvref_t<decltype(s)>::reference.Kind->Name == "length");
     EXPECT_EQ(rational{s.numerical_value_in(si::metre)}, rational(1414, 1000));
     const auto c =
         math::cbrt(quantity<cubic(si::metre), inside<{{0, 1000}, per<100>}, round_half_away>>{27, cubic(si::metre)});

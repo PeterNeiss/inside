@@ -14,7 +14,7 @@
 // two units runs in their common unit (the gcd of the magnitudes), so it is
 // exact too. Products and quotients take inside's result grids.
 //
-// Compile time: dimensions, magnitudes, units, quantity specs and references
+// Compile time: dimensions, magnitudes, units, kinds and references
 // are structural values combined by consteval functions — no type lists, no
 // type-level sorting. The names a user writes (si::metre, isq::height) are
 // empty tag objects whose type carries the value.
@@ -26,8 +26,8 @@
 // Also here:
 //   quantity_point, point<U>(v), the origins     ℃ and ℉ points, exact shifts
 //   kind_cast, value_cast                    kinds and representations
-//   named_unit, quantity_spec, point_origin,     units, kinds, origins and
-//   base_dimension, unit_c / spec_c / origin_c   dimensions of your own
+//   unit_def, kind_def, origin_def,     units, kinds, origins and
+//   base_dimension, unit_tag / kind_tag / origin_tag   dimensions of your own
 //   basis_vector                                 a basis vector of a geometric
 //                                                algebra: you state its square
 //   q.on_wrap / on_clamp / on_error, ++q, Q::try_make(v, u)

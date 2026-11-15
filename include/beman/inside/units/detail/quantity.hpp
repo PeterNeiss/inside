@@ -79,7 +79,7 @@ inline constexpr bool exact_rescale_v = exact_factor_v<conversion_factor<From, T
 
 template <reference From, reference To>
 inline constexpr bool implicit_v =
-    exact_rescale_v<From.U, To.U> && dimension_of(From.U) == dimension_of(To.U) && spec_converts(From, To);
+    exact_rescale_v<From.U, To.U> && dimension_of(From.U) == dimension_of(To.U) && kind_converts(From, To);
 // A quantity of From on V that converts implicitly to To; one of R that
 // converts to unit U (q.in<U>()).
 template <reference From, reference To, class V>
@@ -87,12 +87,12 @@ concept implicit_rescalable = implicit_v<From, To> && rescalable<From.U, To.U, V
 template <reference R, unit_value U, class V>
 concept in_rescalable = in_error_of<R.U, U>() == in_error::none && rescalable<R.U, U, V>;
 
-// A dimensionless quantity that is a plain number: no is_kind spec (an
+// A dimensionless quantity that is a plain number: no distinct kind (an
 // angle), and an exact factor to unit one.
 template <reference R>
 inline constexpr bool number_like_v =
     dimension_of(R.U) == dim_one && exact_factor_v<conversion_factor<R.U, unit_value{}>> &&
-    (!R.Spec || !kind_root(R.Spec.P)->IsKind);
+    (!R.Kind || !kind_root(R.Kind.P)->Distinct);
 
 // Its number's type; void for any other quantity (never forming the
 // rescale, whose pi check would fire for an angle in degrees).
@@ -136,7 +136,7 @@ concept number_value = beman::inside::detail::numeric<std::remove_cvref_t<V>> ||
 template <class Q, class X>
 concept bare_number_for = quantity_like<Q> && !quantity_like<X> && number_value<X>;
 
-// Q{v, u}: v a number in the unit of the tag u (a unit, or spec[unit]) that
+// Q{v, u}: v a number in the unit of the tag u (a unit, or kind[unit]) that
 // names a value of Q. In Q's own unit any number Rep stores; in another unit
 // an inside, rescaled exactly first (a raw number has no grid to rescale).
 template <class Tag>
@@ -359,10 +359,10 @@ class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
     // The kind as a value: its tag for a named kind (isq::height), else the
     // expression of its recipe. Compare with ==: q.kind == isq::length.
     static constexpr auto kind = [] {
-        if constexpr (static_cast<bool>(R.Spec))
-            return spec_t<R.Spec.P>{};
+        if constexpr (static_cast<bool>(R.Kind))
+            return kind_t<R.Kind.P>{};
         else
-            return detail::spec_expr{R.Derived, dimension_of(R.U)};
+            return detail::kind_expr{R.Derived, dimension_of(R.U)};
     }();
 
     constexpr quantity() = default;
@@ -406,7 +406,7 @@ class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
         requires detail::foreign_unit_tag<quantity, Tag>
     quantity(V&&, Tag, Pol&&...) = delete ("units: Q{v, u} - u is a unit of another quantity than Q's");
 
-    // From another quantity: implicit when the spec converts implicitly and
+    // From another quantity: implicit when the kind converts implicitly and
     // the number, in R's unit, converts implicitly into Rep.
     template <units::reference R2, class V2>
         requires detail::implicit_rescalable<R2, R, V2> && std::constructible_from<Rep, detail::rescaled_t<R2, R, V2>>
@@ -419,7 +419,7 @@ class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
     template <units::unit_value U>
         requires detail::in_rescalable<R, U, Rep>
     [[nodiscard]] constexpr auto in() const {
-        constexpr units::reference to{R.Spec, R.KindOf, R.Derived, U};
+        constexpr units::reference to{R.Kind, R.KindOf, R.Derived, U};
         return detail::make_quantity<to>(detail::rescale<detail::conversion_factor<R.U, U>>(Value));
     }
     template <units::unit_value U>
@@ -451,7 +451,7 @@ class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
 
     // A dimensionless quantity is a number: its value in unit one (km/m is
     // ×1000, % is ×1/100), into any inside that takes it — implicitly when
-    // that number converts implicitly. An angle (an is_kind spec) stays a
+    // that number converts implicitly. An angle (an distinct kind) stays a
     // quantity; numerical_value_in(u) reads its number.
     template <insidable T>
         requires detail::number_like_v<R> && std::constructible_from<T, detail::number_t<R, Rep>>
@@ -656,7 +656,7 @@ struct stepping<units::quantity<R, Rep>> {
 namespace beman::inside::units {
 
 //---------------------------------------------------------------------------
-// Construction: number * unit, number * spec[unit]. A raw scalar has no grid.
+// Construction: number * unit, number * kind[unit]. A raw scalar has no grid.
 //---------------------------------------------------------------------------
 template <insidable V, class Tag>
     requires detail::is_reference_tag_v<Tag>
@@ -673,9 +673,9 @@ template <insidable V, unit_value U>
     return detail::make_quantity<reference_of(detail::unit_pow(U, -1))>(v);
 }
 
-// A magnitude scales a quantity's unit, not its number: mag_pi * q is q
-// in [π·unit], exact and free (π is never rounded; value_cast to a plain
-// unit rounds it once, units/math.hpp). mag<2> * q, q / mag_pi likewise.
+// A magnitude scales a quantity's unit, not its number: pi * q is q in
+// [π·unit], exact and free (π is never rounded; value_cast to a plain unit
+// rounds it once, units/math.hpp). q / pi likewise.
 namespace detail {
 consteval reference scaled_reference(reference r, const magnitude& m) {
     r.U = unit_scaled(r.U, m);
@@ -691,7 +691,7 @@ template <reference R, class V, magnitude M>
     return detail::quantity_access::make<quantity<detail::scaled_reference(R, M), V>>(units::detail::value_of(q));
 }
 // A magnitude times a number: the number in the scaled unit one ([π]), so
-// mag_pi * just<2> * si::second is 2 in [π s].
+// pi * just<2> * si::second is 2 in [π s].
 template <magnitude M, insidable V>
 [[nodiscard]] constexpr auto operator*(detail::mag_t<M>, const V& v) {
     return detail::quantity_access::make<quantity<reference_of(detail::unit_scaled(unit_value{}, M)), V>>(v);
@@ -714,7 +714,7 @@ template <reference A, reference B>
 consteval reference sum_reference() {
     static_assert(dimension_of(A.U) == dimension_of(B.U),
                   "units: adding or comparing quantities of different dimensions");
-    constexpr spec_result s = common_spec(A, B);
+    constexpr kind_result s = common_kind(A, B);
     static_assert(s.Ok, "units: adding or comparing quantities of different kinds");
     reference r = s.R;
     r.U         = common_unit(A.U, B.U);
@@ -732,7 +732,7 @@ template <reference A, reference B>
 consteval sum_error sum_error_of() {
     if (dimension_of(A.U) != dimension_of(B.U))
         return same_outside_blade(dimension_of(A.U), dimension_of(B.U)) ? sum_error::blades : sum_error::dimensions;
-    if (!common_spec(A, B).Ok)
+    if (!common_kind(A, B).Ok)
         return sum_error::kinds;
     const magnitude ma = magnitude_of(A.U), mb = magnitude_of(B.U);
     if (ma.Pi != mb.Pi)
@@ -767,7 +767,7 @@ concept summable =
 template <reference A, reference B, int Sign>
 consteval reference product_reference() {
     const unit_value u = unit_mul(A.U, B.U, Sign);
-    return spec_product(A, B, Sign, u);
+    return kind_product(A, B, Sign, u);
 }
 
 // q's number in the common unit of A and B: the unit of their sum.
@@ -956,41 +956,41 @@ template <int N, reference R, class V>
 //---------------------------------------------------------------------------
 // Casts
 //---------------------------------------------------------------------------
-// kind_cast<spec>(q) — the same number as another spec of the dimension:
-// down the tree (length → height) or across one kind; never across IsKind.
+// kind_cast<kind>(q) — the same number as another kind of the dimension:
+// down the tree (length → height) or across one kind; never across Distinct.
 namespace detail {
 // Why kind_cast<To> cannot take R, if it cannot.
-enum class cast_error : unsigned char { none, dimension, is_kind };
-template <reference R, const quantity_spec* To>
+enum class cast_error : unsigned char { none, dimension, distinct };
+template <reference R, const kind_def* To>
 consteval cast_error cast_error_of() {
     if (!(To->Dim == dimension_of(R.U)))
         return cast_error::dimension;
-    return spec_casts(R, To) ? cast_error::none : cast_error::is_kind;
+    return kind_casts(R, To) ? cast_error::none : cast_error::distinct;
 }
 } // namespace detail
 
-template <class SpecTag, reference R, class V>
-    requires(detail::cast_error_of<R, SpecTag::value>() == detail::cast_error::none)
+template <class KindTag, reference R, class V>
+    requires(detail::cast_error_of<R, KindTag::value>() == detail::cast_error::none)
 [[nodiscard]] constexpr auto kind_cast(const quantity<R, V>& q) {
-    return detail::quantity_access::make<quantity<reference{SpecTag::value, false, {}, R.U}, V>>(
+    return detail::quantity_access::make<quantity<reference{KindTag::value, false, {}, R.U}, V>>(
         units::detail::value_of(q));
 }
-template <auto Spec, reference R, class V>
-    requires(detail::cast_error_of<R, decltype(Spec)::value>() == detail::cast_error::none)
+template <auto Kind, reference R, class V>
+    requires(detail::cast_error_of<R, decltype(Kind)::value>() == detail::cast_error::none)
 [[nodiscard]] constexpr auto kind_cast(const quantity<R, V>& q) {
-    return kind_cast<decltype(Spec)>(q);
+    return kind_cast<decltype(Kind)>(q);
 }
-template <class SpecTag, reference R, class V>
-    requires(detail::cast_error_of<R, SpecTag::value>() == detail::cast_error::dimension)
+template <class KindTag, reference R, class V>
+    requires(detail::cast_error_of<R, KindTag::value>() == detail::cast_error::dimension)
 void kind_cast(const quantity<R, V>&) = delete ("units: kind_cast - another dimension");
-template <auto Spec, reference R, class V>
-    requires(detail::cast_error_of<R, decltype(Spec)::value>() == detail::cast_error::dimension)
+template <auto Kind, reference R, class V>
+    requires(detail::cast_error_of<R, decltype(Kind)::value>() == detail::cast_error::dimension)
 void kind_cast(const quantity<R, V>&) = delete ("units: kind_cast - another dimension");
-template <class SpecTag, reference R, class V>
-    requires(detail::cast_error_of<R, SpecTag::value>() == detail::cast_error::is_kind)
+template <class KindTag, reference R, class V>
+    requires(detail::cast_error_of<R, KindTag::value>() == detail::cast_error::distinct)
 void kind_cast(const quantity<R, V>&) = delete ("units: kind_cast - across a distinct kind's boundary");
-template <auto Spec, reference R, class V>
-    requires(detail::cast_error_of<R, decltype(Spec)::value>() == detail::cast_error::is_kind)
+template <auto Kind, reference R, class V>
+    requires(detail::cast_error_of<R, decltype(Kind)::value>() == detail::cast_error::distinct)
 void kind_cast(const quantity<R, V>&) = delete ("units: kind_cast - across a distinct kind's boundary");
 
 namespace detail {
@@ -1022,17 +1022,17 @@ template <auto U, insidable Rep2, reference R, class V>
 [[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q) {
     constexpr units::unit_value u = decltype(U)::value;
     static_assert(dimension_of(u) == dimension_of(R.U), "units: value_cast - the unit has another dimension");
-    constexpr reference to{R.Spec, R.KindOf, R.Derived, u};
+    constexpr reference to{R.Kind, R.KindOf, R.Derived, u};
     return detail::cast_number<quantity<to, Rep2>, Rep2>(units::detail::value_of(q.in(U)));
 }
 
 // value_cast<Q>(q) — into the quantity type Q = quantity<R2, Rep2>: q in
-// R2's unit, stored by Rep2's constructor. Q's spec must take q's, as for an
+// R2's unit, stored by Rep2's constructor. Q's kind must take q's, as for an
 // implicit conversion; only the representation may round.
 namespace detail {
 template <class Q, reference R>
 concept value_castable_to = quantity_like<Q> && dimension_of(Q::reference.U) == dimension_of(R.U) &&
-                            spec_converts(R, Q::reference) && exact_rescale_v<R.U, Q::reference.U>;
+                            kind_converts(R, Q::reference) && exact_rescale_v<R.U, Q::reference.U>;
 }
 template <class Q, reference R, class V>
     requires detail::value_castable_to<Q, R> && requires(const quantity<R, V>& q) {
