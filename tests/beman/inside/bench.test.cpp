@@ -882,6 +882,96 @@ static void bench_store_convert() {
 }
 
 //---------------------------------------------------------------------------
+// boundaries: where a number enters or leaves, with a check or a rounding.
+// Each native row does the same work by hand.
+//---------------------------------------------------------------------------
+static void bench_boundaries() {
+    static const scalar_inputs in{0, 200, 0, 59};
+    std::size_t                i = 0;
+
+    using u200 = inside<{0, 200}>;
+    auto tm    = group("try_make (int into [0,200])");
+    tm.run("native range check", [&] {
+        ++i;
+        const int n = in.a[i & kMask];
+        doNotOptimizeAway(n < 0 || n > 200 ? -1 : n);
+    });
+    tm.run("inside try_make", [&] {
+        ++i;
+        doNotOptimizeAway(u200::try_make(in.a[i & kMask]));
+    });
+    finish(tm);
+
+    // Seconds into whole minutes: an integer onto a notch of 60.
+    using minutes_in_s = inside<{{0, 36000}, 60}, round_floor>;
+    auto coarse        = group("store onto a notch of 60 (floor)");
+    coarse.run("native n / 60", [&] {
+        ++i;
+        const int n = in.a[i & kMask] * 60 + in.b[i & kMask];
+        doNotOptimizeAway(n < 0 || n > 36000 ? -1 : n / 60);
+    });
+    coarse.run("inside try_make", [&] {
+        ++i;
+        doNotOptimizeAway(minutes_in_s::try_make(in.a[i & kMask] * 60 + in.b[i & kMask]));
+    });
+    finish(coarse);
+
+    using q88 = inside<{{0, 255}, per<256>}>;
+    std::vector<q88>           qv(kMask + 1);
+    std::vector<std::uint16_t> nq(kMask + 1);
+    for (std::size_t j = 0; j <= kMask; ++j) {
+        nq[j] = static_cast<std::uint16_t>((j * 37) % 65000);
+        qv[j] = q88::from_raw(nq[j], unsafe);
+    }
+    auto out = group("convert out with rounding (Q8.8 -> int, half away)");
+    out.run("native (r + 128) >> 8", [&] {
+        ++i;
+        doNotOptimizeAway((nq[i & kMask] + 128) >> 8);
+    });
+    out.run("inside to<int, round_half_away>", [&] {
+        ++i;
+        doNotOptimizeAway(qv[i & kMask].to<int, round_half_away>());
+    });
+    finish(out);
+
+    using s100k = inside<{-100000, 100000}>;
+    std::vector<s100k> sv(kMask + 1);
+    std::vector<int>   ns(kMask + 1);
+    for (std::size_t j = 0; j <= kMask; ++j) {
+        ns[j] = static_cast<int>(j % 256);
+        sv[j] = s100k::from_raw(static_cast<raw_t<s100k>>(ns[j]), unsafe);
+    }
+    auto narrow = group("convert out with a check ([-100k,100k] -> uint8_t)");
+    narrow.run("native range check", [&] {
+        ++i;
+        const int n = ns[i & kMask];
+        doNotOptimizeAway(n < 0 || n > 255 ? -1 : n);
+    });
+    narrow.run("inside to<uint8_t> (expected)", [&] {
+        ++i;
+        doNotOptimizeAway(sv[i & kMask].to<std::uint8_t>());
+    });
+    finish(narrow);
+
+    // A phase accumulator: the sum of two values is at most one period past.
+    using deg = inside<{0, 359}, wrap>;
+    static const scalar_inputs din{0, 359, 0, 359};
+    auto                       wr = group("wrap += (degrees [0,359])");
+    wr.run("native conditional subtract", [&] {
+        ++i;
+        int s = din.a[i & kMask] + din.b[i & kMask];
+        doNotOptimizeAway(s > 359 ? s - 360 : s);
+    });
+    wr.run("inside +=", [&] {
+        ++i;
+        deg a{din.a[i & kMask], unsafe};
+        a += deg{din.b[i & kMask], unsafe};
+        doNotOptimizeAway(a.raw());
+    });
+    finish(wr);
+}
+
+//---------------------------------------------------------------------------
 // generic helpers — min/max (same + mixed grid), midpoint, lerp, cross,
 // add_all/mul_all.
 //---------------------------------------------------------------------------
@@ -1638,6 +1728,7 @@ int main(int argc, char** argv) {
     bench_signed();
     bench_fixed_point();
     bench_store_convert();
+    bench_boundaries();
     bench_helpers();
     bench_dyadic();
     bench_rational();

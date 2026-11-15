@@ -954,3 +954,144 @@ TEST(ConversionTest, int64_full_range) {
     EXPECT_EQ(to_string(lo), "-9223372036854775808");
 }
 } // namespace int64_tests
+
+// The integer fast paths of to<T>, of a store onto a notch that is not 1/K,
+// and of a wrap within one period, each against plain integer arithmetic
+// over every value.
+namespace integer_fast_path_tests {
+using namespace beman::inside;
+
+// n / d rounded by a mode, in long long: the reference.
+enum class ref_mode { trunc, floor, ceil, half_away, half_even };
+constexpr long long ref_div(long long n, long long d, ref_mode m) {
+    long long q = n / d, r = n % d; // toward zero, d > 0
+    if (r == 0)
+        return q;
+    const bool      neg = n < 0;
+    const long long ar  = r < 0 ? -r : r;
+    bool            away;
+    switch (m) {
+    case ref_mode::trunc:
+        away = false;
+        break;
+    case ref_mode::floor:
+        away = neg;
+        break;
+    case ref_mode::ceil:
+        away = !neg;
+        break;
+    case ref_mode::half_away:
+        away = 2 * ar >= d;
+        break;
+    default:
+        away = 2 * ar > d || (2 * ar == d && (q & 1) != 0);
+    }
+    return away ? q + (neg ? -1 : 1) : q;
+}
+
+template <policy_flag F>
+constexpr ref_mode ref_of = F == round_floor       ? ref_mode::floor
+                            : F == round_ceil      ? ref_mode::ceil
+                            : F == round_half_away ? ref_mode::half_away
+                            : F == round_half_even ? ref_mode::half_even
+                                                   : ref_mode::trunc;
+
+template <policy_flag F>
+void check_to_int() {
+    using q = inside<{{-8, 8}, per<16>}>; // values n/16, n in [-128, 128]
+    for (int n = -128; n <= 128; ++n) {
+        const q x = q::from_raw(static_cast<detail::raw_t<q>>(n + 128), unsafe);
+        EXPECT_EQ((to<int, F>(x)), ref_div(n, 16, ref_of<F>)) << n;
+        const auto u = to<std::uint8_t, F>(x); // negative results do not fit
+        const auto r = ref_div(n, 16, ref_of<F>);
+        if (r < 0)
+            EXPECT_EQ(u.error(), error::overflow) << n;
+        else
+            EXPECT_EQ(*u, r) << n;
+    }
+}
+
+TEST(IntegerFastPathTest, to_integer_rounds_as_the_reference) {
+    check_to_int<round_toward_zero>();
+    check_to_int<round_floor>();
+    check_to_int<round_ceil>();
+    check_to_int<round_half_away>();
+    check_to_int<round_half_even>();
+    // Without permission to round, a fraction is an error; an integer is not.
+    using q = inside<{{-8, 8}, per<16>}>;
+    EXPECT_EQ((q{just<3, 16>}.to<int>().error()), error::rounding_error);
+    EXPECT_EQ(*q{just<-3>}.to<int>(), -3);
+    // An integer grid past the target: only the range is checked.
+    using wide = inside<{-1000, 1000}>;
+    EXPECT_EQ(*wide{255}.to<std::uint8_t>(), 255);
+    EXPECT_EQ(wide{256}.to<std::uint8_t>().error(), error::overflow);
+    EXPECT_EQ(wide{-1}.to<std::uint8_t>().error(), error::overflow);
+    EXPECT_EQ(*wide{-128}.to<std::int8_t>(), -128);
+    EXPECT_EQ(wide{-129}.to<std::int8_t>().error(), error::overflow);
+}
+
+template <policy_flag F>
+void check_coarse_store() {
+    using sixty = inside<{{-600, 600}, 60}>;      // anchored, notch 60
+    using odd   = inside<{{-7, 14}, just<7, 2>}>; // anchored, notch 7/2
+    using off   = inside<{{1, 601}, 60}>;         // unanchored: 1, 61, …
+    for (int n = -600; n <= 600; ++n) {
+        const auto r = sixty::try_make<F>(n);
+        ASSERT_TRUE(r) << n;
+        EXPECT_EQ(*r, ref_div(n, 60, ref_of<F>) * 60) << n;
+    }
+    for (int n = -7; n <= 14; ++n) {
+        const auto r = odd::try_make<F>(n); // 2n / 7 notches
+        ASSERT_TRUE(r) << n;
+        EXPECT_EQ(static_cast<long long>(r->step()) - 2, ref_div(2 * n, 7, ref_of<F>)) << n;
+    }
+    for (int n = 1; n <= 601; ++n) {
+        const auto r = off::try_make<F>(n);
+        ASSERT_TRUE(r) << n;
+        // The same store through the 64-bit fraction: the general path.
+        EXPECT_EQ(*r, *off::try_make<F>(detail::rational{n})) << n;
+    }
+}
+
+TEST(IntegerFastPathTest, stores_onto_a_coarse_notch_round_as_the_reference) {
+    check_coarse_store<round_toward_zero>();
+    check_coarse_store<round_floor>();
+    check_coarse_store<round_ceil>();
+    check_coarse_store<round_half_away>();
+    check_coarse_store<round_half_even>();
+    using sixty = inside<{{-600, 600}, 60}>;
+    EXPECT_EQ(sixty::try_make(61).error(), error::rounding_error);
+    EXPECT_EQ(*sixty::try_make(-120), -120);
+    EXPECT_EQ(sixty::try_make(660).error(), error::overflow);
+}
+
+TEST(IntegerFastPathTest, a_wrap_within_one_period_is_the_modulo) {
+    using deg = inside<{0, 359}, wrap>;
+    using off = inside<{-5, 6}, wrap>; // period 12
+    for (int a = 0; a < 360; a += 7)
+        for (int b = 0; b < 360; ++b) {
+            deg x{a}, y{a};
+            x += deg{b};
+            y -= deg{b};
+            EXPECT_EQ(x, (a + b) % 360);
+            EXPECT_EQ(y, ((a - b) % 360 + 360) % 360);
+        }
+    for (int a = -5; a <= 6; ++a)
+        for (int b = -5; b <= 6; ++b) {
+            off x{a}, y{a};
+            x += off{b};
+            y -= off{b};
+            EXPECT_EQ(x, ((a + b + 5) % 12 + 12) % 12 - 5) << a << ' ' << b;
+            EXPECT_EQ(y, ((a - b + 5) % 12 + 12) % 12 - 5) << a << ' ' << b;
+        }
+    deg top{359}, bottom{0};
+    ++top;
+    --bottom;
+    EXPECT_EQ(top, 0);
+    EXPECT_EQ(bottom, 359);
+    // More than one period away: the general fold.
+    deg far{10};
+    far += inside<{0, 10000}>{725};
+    EXPECT_EQ(far, 15);
+}
+} // namespace integer_fast_path_tests

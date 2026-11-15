@@ -48,6 +48,7 @@
 #endif
 
 using namespace beman::inside;
+using beman::inside::detail::rational; // the library's own 64-bit fraction: a workload of its paths
 
 namespace {
 using I = inside<{-1000000, 1000000}>;      // integer fast path
