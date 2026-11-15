@@ -895,9 +895,9 @@ void operator~(const B&) = delete (BEMAN_INSIDE_BUILTIN_MSG);
     "an inside cannot be combined with a rational: write the constant as just<1, 2> or 0.5_ins " \
     "(a grid), or store the rational into an inside first"
 #define BEMAN_INSIDE_NO_RATIONAL(op)                                           \
-    template <insidable B, std::same_as<rational> Q>                           \
+    template <insidable B, std::same_as<detail::rational> Q>                   \
     void operator op(B const&, Q const&) = delete (BEMAN_INSIDE_RATIONAL_MSG); \
-    template <std::same_as<rational> Q, insidable B>                           \
+    template <std::same_as<detail::rational> Q, insidable B>                   \
     void operator op(Q const&, B const&) = delete (BEMAN_INSIDE_RATIONAL_MSG);
 
 BEMAN_INSIDE_NO_RATIONAL(+)

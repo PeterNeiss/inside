@@ -7,6 +7,8 @@
 #include <beman/inside/units/io.hpp>
 #include <beman/inside/units/math.hpp>
 
+#include "support.hpp"
+
 #include <gtest/gtest.h>
 
 #include <array>

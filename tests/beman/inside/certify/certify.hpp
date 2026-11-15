@@ -63,6 +63,13 @@
 #include <string>
 #include <string_view>
 #include <vector>
+
+// (The tests name the library's own exact fraction and its literal, as an
+// oracle: detail::rational is no part of the user API.)
+namespace beman::inside {
+using detail::rational;
+using detail::operator""_r;
+} // namespace beman::inside
 #if defined(_WIN32)
     #include <io.h>
 #else

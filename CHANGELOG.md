@@ -64,6 +64,18 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   | `a % b` followed the operands' rounding mode | `mod(a, b, round_floor)` |
   | `div(a, b)`, `mod(a, b)`, `divmod(a, b)` took the operands' mode | the mode is the call's: `divmod(a, b, round_floor)`; none means exact `/`, truncated `%` |
 
+- `rational` and the `_r` literal are no longer part of the API: an exact
+  value is an inside. (`detail::rational` remains the library's own 64-bit
+  fraction.)
+
+  | Before | Now |
+  |---|---|
+  | `a < 1.5_r`, `x == 0.1_r` | `a < 1.5_ins`, `x == 0.1_ins` |
+  | `inside<{{0, 1}, 1e-18_r}>` | `inside<{{0, 1}, 1e-18_ins}>` |
+  | `T{rational{1, 3}}` | `T{just<1, 3>}`; at run time `T{a / b}` with insides `a`, `b` |
+  | `rational r = x;` | `x.numerator()`, `x.denominator()` |
+  | `mag<rational{1, 100}> * EUR` | `mag<1_g / 100_g> * EUR` |
+
 - One function where there were two.
 
   | Before | Now |

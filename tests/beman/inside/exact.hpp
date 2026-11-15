@@ -10,6 +10,13 @@
 #include <concepts>
 #include <ostream>
 
+// (The tests name the library's own exact fraction and its literal, as an
+// oracle: detail::rational is no part of the user API.)
+namespace beman::inside {
+using detail::rational;
+using detail::operator""_r;
+} // namespace beman::inside
+
 namespace beman::inside::test {
 // An exact fraction for run-time oracles. A rational's arithmetic is compile
 // time only, so a test that computes an expected value at run time computes

@@ -51,7 +51,7 @@ p.on_wrap([&](auto&, auto) { ++wraps; }) += 65.5_ins;
 
 The overshoot is the source minus the limit it was clamped to, exactly, as an
 inside. Its grid holds every value of the source kind minus either limit: an
-integer type's range, an inside's grid, a `rational`'s 64-bit values, or a
+integer type's range, an inside's grid, or a
 `double`'s whole range down to its least subnormal (an inside of about 2100
 bits, built only when the hook runs). 150.7 into `{0, 100}` reports the
 double 150.7 minus 100, not 50 (a `double` reaches a clamp hook as a
@@ -69,8 +69,8 @@ acc.on_clamp([&](auto&, auto over) { /* over == 850 */ }) += big;   // acc == 10
 ### The right-hand side
 
 The right-hand side of a hook's `+=` is an inside or a quantity. A raw
-`int`, `double` or `rational` is rejected, as for plain compound assignment:
-give it a grid (`5_ins`, `just<5>`, or an inside over its range).
+`double` is rejected, as for plain compound assignment: give it a grid
+(`0.5_ins`, `just<1, 2>`, or an inside over its range).
 
 ### Hooks on quantities
 
@@ -116,9 +116,9 @@ Errors are reported as a `beman::inside::error`. The library does not use
 
 | Code | Means |
 |---|---|
-| `overflow` | the value does not fit its destination: an inside's range, a native type (`to<T>()`), a 64-bit rational (`rational{1e30}`) |
+| `overflow` | the value does not fit its destination: an inside's range, a native type (`to<T>()`) |
 | `rounding_error` | the value is between two notches, and the policy does not round |
-| `division_by_zero` | the divisor is 0, or a fraction's denominator is (`rational{1, 0}`, `parse("1/0")`) |
+| `division_by_zero` | the divisor is 0, or a fraction's denominator is (`parse("1/0")`) |
 | `domain_error` | the argument is outside the function's mathematical domain: `sqrt` of a negative, `pow` of a negative base |
 | `not_finite` | a NaN or an infinity came in from a `double` |
 | `invalid_format` | text that is not a number (`parse`, `operator>>`) |
@@ -181,9 +181,8 @@ A named math output over grids whose range the library does
 not bound (`exp` of `|x|` past 4096, `pow` of a base grid reaching 0) needs
 `clamp` or `wrap`.
 
-A `rational`'s own arithmetic (`p + q`, `p / q`) is compile time only, like
-a grid number's: an overflow or a zero divisor there is a compile error, so
-the result is a plain `rational`. At run time an exact value is an inside,
+A grid number's arithmetic is compile time only: an overflow or a zero
+divisor there is a compile error. At run time an exact value is an inside,
 whose grid bounds every result.
 
 An inside never stores a `std::expected`: `T x = a / b;`, `x = a / b;`,

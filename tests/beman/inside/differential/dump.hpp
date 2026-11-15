@@ -14,6 +14,13 @@
 #include <iostream>
 #include <random>
 
+// (The tests name the library's own exact fraction and its literal, as an
+// oracle: detail::rational is no part of the user API.)
+namespace beman::inside {
+using detail::rational;
+using detail::operator""_r;
+} // namespace beman::inside
+
 namespace diff {
 using namespace beman::inside;
 

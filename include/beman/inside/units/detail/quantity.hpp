@@ -805,22 +805,23 @@ template <reference A, class VA, reference B, class VB>
 // A sum, difference, remainder or comparison of two units that cannot meet:
 // a deleted overload per reason, so a requires-test is false and a call says
 // why.
-#define BEMAN_INSIDE_UNITS_SUM_DELETED(ret, op, blades)                           \
-    template <reference A, class VA, reference B, class VB>                       \
-        requires(detail::sum_error_of<A, B>() == detail::sum_error::dimensions)   \
-    ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                      \
-        delete ("units: adding or comparing quantities of different dimensions"); \
-    template <reference A, class VA, reference B, class VB>                       \
-        requires detail::blade_sum<A, B>                                          \
-    ret op(const quantity<A, VA>&, const quantity<B, VB>&) = delete (blades);     \
-    template <reference A, class VA, reference B, class VB>                       \
-        requires(detail::sum_error_of<A, B>() == detail::sum_error::kinds)        \
-    ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                      \
-        delete ("units: adding or comparing quantities of different kinds");      \
-    template <reference A, class VA, reference B, class VB>                       \
-        requires(detail::sum_error_of<A, B>() == detail::sum_error::pi)           \
-    ret op(const quantity<A, VA>&, const quantity<B, VB>&) = delete (             \
-        "units: no common unit of a pi multiple and a rational one - convert one side with value_cast first");
+#define BEMAN_INSIDE_UNITS_SUM_DELETED(ret, op, blades)                                    \
+    template <reference A, class VA, reference B, class VB>                                \
+        requires(detail::sum_error_of<A, B>() == detail::sum_error::dimensions)            \
+    ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                               \
+        delete ("units: adding or comparing quantities of different dimensions");          \
+    template <reference A, class VA, reference B, class VB>                                \
+        requires detail::blade_sum<A, B>                                                   \
+    ret op(const quantity<A, VA>&, const quantity<B, VB>&) = delete (blades);              \
+    template <reference A, class VA, reference B, class VB>                                \
+        requires(detail::sum_error_of<A, B>() == detail::sum_error::kinds)                 \
+    ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                               \
+        delete ("units: adding or comparing quantities of different kinds");               \
+    template <reference A, class VA, reference B, class VB>                                \
+        requires(detail::sum_error_of<A, B>() == detail::sum_error::pi)                    \
+    ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                               \
+        delete ("units: no common unit of a pi multiple and a rational one - convert one " \
+                "side with value_cast first");
 #define BEMAN_INSIDE_UNITS_WHY_GEOALG \
     "units: quantities of different blades add to a multivector - include <beman/inside/units/geoalg.hpp>"
 #define BEMAN_INSIDE_UNITS_WHY_ORDER "units: quantities of different blades have no order and no remainder"

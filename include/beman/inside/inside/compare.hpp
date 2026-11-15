@@ -150,13 +150,13 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
 } // namespace detail
 
 template <insidable B, class A>
-    requires(std::integral<A> || std::same_as<A, rational>)
+    requires(std::integral<A> || std::same_as<A, detail::rational>)
 [[nodiscard]] constexpr auto operator<=>(const B& lhs, A rhs) {
     return detail::compare_scalar(lhs, rhs, detail::three_way);
 }
 
 template <insidable B, class A>
-    requires(std::integral<A> || std::same_as<A, rational>)
+    requires(std::integral<A> || std::same_as<A, detail::rational>)
 [[nodiscard]] constexpr bool operator==(const B& lhs, A rhs) {
     return detail::compare_scalar(lhs, rhs, detail::equal_to);
 }

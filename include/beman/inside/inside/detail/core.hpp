@@ -475,7 +475,7 @@ struct inside {
             return detail::q_format_decode(*this);
         else {
             // Raw·Notch can pass 64 bits on the way to a value that fits.
-            const auto scaled = detail::try_mul(rational{Raw}, detail::notch64<inside>);
+            const auto scaled = detail::try_mul(detail::rational{Raw}, detail::notch64<inside>);
             const auto value  = scaled ? detail::try_add(*scaled, detail::lower64<inside>) : scaled;
             if (value) [[likely]]
                 return *value;

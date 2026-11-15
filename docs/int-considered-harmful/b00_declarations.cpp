@@ -19,7 +19,7 @@ inline constexpr base_dimension currency_def{"currency"};
 inline constexpr quantity_spec  amount_def{"amount_of_money", currency_def};
 inline constexpr named_unit     euro_def{"EUR", spec_c<amount_def>};
 inline constexpr auto           euro = unit_c<euro_def>;
-inline constexpr named_unit     cent_def{"ct", mag<rational{1, 100}> * euro};
+inline constexpr named_unit     cent_def{"ct", mag<1_g / 100_g> * euro};
 inline constexpr auto           cent = unit_c<cent_def>;
 inline constexpr named_unit     sps_def{"SPS", one / si::second, {.kind = isq::frequency}};
 inline constexpr auto           sps = unit_c<sps_def>;

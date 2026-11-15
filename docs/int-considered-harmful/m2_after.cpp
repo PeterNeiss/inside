@@ -29,7 +29,7 @@ int main()
 {
   const reading                          raw{2048, cts};
   const quantity<cts, inside<{-64, 64}>> offset{12, cts};
-  const gain_t                           gain{rational{1240909, 1000}, cts / si::volt};
+  const gain_t                           gain{just<1240909, 1000>, cts / si::volt};
   const millivolts                       limit{2000, si::milli(si::volt)};
 
   // The gain excludes 0, so the quotient is a plain, exact voltage.

@@ -8,6 +8,7 @@
 
 int main() {
     using namespace beman::inside;
+    using beman::inside::detail::operator""_r; // the library's own literal
     using out_t = inside<{{0.5_r, 10.5_r}, 1}, round_half_away | wrap>;
     auto e      = math::exp<out_t>(inside<{0, 3}>{1});
     (void)e;

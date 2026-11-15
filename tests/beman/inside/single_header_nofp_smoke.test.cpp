@@ -33,8 +33,8 @@ int main() {
     using Ang         = inside<{{-8, 8}, per<16384>}, round_half_away>;
     constexpr auto s0 = math::sin(Ang{0});
     constexpr auto c0 = math::cos(Ang{0});
-    static_assert(rational{s0} == 0);
-    static_assert(rational{c0} == 1);
+    static_assert(detail::rational{s0} == 0);
+    static_assert(detail::rational{c0} == 1);
 
     auto s1 = math::sin(Ang{1}); // runtime, integer engine
     (void)s1;
@@ -42,5 +42,5 @@ int main() {
     std::printf(
         "a=%d w=%d s0=%d c0=%d\n", (int)detail::to_value(a), (int)detail::to_value(w), s0.to<int>(), c0.to<int>());
 
-    return (rational{c0} == 1) ? 0 : 1;
+    return (detail::rational{c0} == 1) ? 0 : 1;
 }

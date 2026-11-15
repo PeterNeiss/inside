@@ -33,7 +33,7 @@ namespace
   }
 
   using angle = inside<{{-8, 8}, per<16384>}, round_half_away>;          // inputs
-  using pos   = inside<{{rational{1, 256}, 256}, per<256>}, round_half_away>;
+  using pos   = inside<{{just<1, 256>, 256}, per<256>}, round_half_away>;
   using unit4 = inside<{{0, 4}, per<65536>}, round_half_away>;
 
   // Outputs as fine as a double: every one has close to 2^53 slots.
@@ -48,16 +48,17 @@ int main()
   constexpr int m = 4096, mask = m - 1;
   std::vector<angle> a; std::vector<pos> p; std::vector<unit4> s;
   std::vector<double> da, dp, ds;
-  error ec{};   // run-time rationals into the input grids: reported, checked once
+  error ec{};   // run-time values into the input grids: reported, checked once
   for (int j = 0; j < m; ++j)
   {
-    const rational qa{(j * 16 & 0xFFFF) - 32768, 16384}, qp{(j * 16 & 0xFFFF) % 65535 + 1, 256},
-                   qs{j * 16 & 0xFFFF, 16384};
+    // (Dyadic fractions: exact as doubles.)
+    const double qa = ((j * 16 & 0xFFFF) - 32768) / 16384.0, qp = ((j * 16 & 0xFFFF) % 65535 + 1) / 256.0,
+                 qs = (j * 16 & 0xFFFF) / 16384.0;
     a.push_back(angle{qa, make_policy<checked>(ec)});
     p.push_back(pos{qp, make_policy<checked>(ec)});
     s.push_back(unit4{qs, make_policy<checked>(ec)});
-    da.push_back(static_cast<double>(qa)); dp.push_back(static_cast<double>(qp));
-    ds.push_back(static_cast<double>(qs));
+    da.push_back(qa); dp.push_back(qp);
+    ds.push_back(qs);
   }
 
   if (ec != error{})

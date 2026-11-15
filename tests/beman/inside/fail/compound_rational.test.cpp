@@ -6,6 +6,8 @@
 
 using namespace beman::inside;
 
+using beman::inside::detail::operator""_r; // the library's own literal
+
 int main() {
     inside<{{0, 10}, per<4>}> x{1};
     x += 0.5_r;

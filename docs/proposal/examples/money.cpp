@@ -17,7 +17,7 @@ int main() {
     cents share = total / 3_ins;            // 1/10 exactly
     cents third = cents{1} / 3_ins;         // 1/3 rounds to nearest: 0.33
     // [/listing]
-    if (total != just<rational{3, 10}> || share != just<rational{1, 10}> || third != just<rational{33, 100}>)
+    if (total != just<3, 10> || share != just<1, 10> || third != just<33, 100>)
         return 1;
     return 0;
 }

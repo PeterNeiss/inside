@@ -18,7 +18,7 @@ text: the **exact** value, never rounded. Its form follows the grid:
 | Grid | Prints | Examples |
 |---|---|---|
 | integer notch | the integer | `42`, `-7` |
-| decimal notch (a denominator 2ᵃ·5ᵇ with a 5, like `per<100>` or `0.05_r`) | that notch's decimals, for every value | `19.90`, `2.00` on a cents grid |
+| decimal notch (a denominator 2ᵃ·5ᵇ with a 5, like `per<100>` or `0.05_ins`) | that notch's decimals, for every value | `19.90`, `2.00` on a cents grid |
 | any other notch, or continuous | the shortest exact form: a decimal when there is one, else `N/D` | `0.5`, `0.0000152587890625` on `per<(1 << 16)>`; `7/3` |
 
 A column of prices lines up (`19.90`, not `19.9`), a binary fixed-point value
@@ -26,8 +26,7 @@ is not padded to 16 decimals, and a value with no finite decimal stays exact.
 Every form reads back through `parse`.
 
 - Wide and big values print every digit.
-- A `rational` prints its shortest exact form, an `interval` `[lo..hi]`, a
-  grid `{[lo..hi], notch}`.
+- An `interval` prints as `[lo..hi]`, a grid as `{[lo..hi], notch}`.
 - `to_string_debug(x)` adds the raw, its type and the grid:
   `0.5 {128[uint16_t Max:512] {[0..2], 0.00390625}}`.
 
@@ -39,11 +38,11 @@ A non-empty spec formats the value:
 |---|---|
 | an integer grid whose values fit `int64` | the integer specs: `{:>4}`, `{:#x}`, `{:b}` |
 | an integer grid past `int64` (`uint64`, a grid past 64 bits) | `d`, `b`, `B`, `o`, `x`, `X` with fill, align, sign, `#` (the base prefix), `0` and width, of any size; and `f`, `e`, `g` |
-| every other inside, and `rational` | `f`, `e`, `g` with fill, align, sign, `#`, `0`, width and precision |
+| every other inside | `f`, `e`, `g` with fill, align, sign, `#`, `0`, width and precision |
 
 The digits are **rounded once from the exact value by the type's own
 rounding mode**, the digits a store at that precision would give. A type
-without a rounding mode, and `rational`, round to nearest with ties to even,
+without a rounding mode rounds to nearest with ties to even,
 as `printf` does with a `double`. A width alone keeps the exact text.
 
 | 0.125 and −0.129 with `{:.2f}` | no mode | `round_half_away` | `round_floor` | `round_ceil` | `round_toward_zero` |

@@ -53,9 +53,9 @@ using unorm32 = inside<{{0, 1}, per<4294967295>}, round_half_away>; // uint32
 // Q-format fixed-point — unsigned integer.fraction, power-of-two notch,
 // full natural range. `round_half_away`.
 //-------------------------------------------------------------------------
-using uq4_4   = inside<{{0, rational{255, 16}}, per<16>}, round_half_away>;                // uint8: [0, 15.9375]
-using uq8_8   = inside<{{0, rational{65535, 256}}, per<256>}, round_half_away>;            // uint16
-using uq16_16 = inside<{{0, rational{4294967295u, 65536u}}, per<65536>}, round_half_away>; // uint32
+using uq4_4   = inside<{{0, just<255, 16>}, per<16>}, round_half_away>;              // uint8: [0, 15.9375]
+using uq8_8   = inside<{{0, just<65535, 256>}, per<256>}, round_half_away>;          // uint16
+using uq16_16 = inside<{{0, just<4294967295, 65536>}, per<65536>}, round_half_away>; // uint32
 
 //-------------------------------------------------------------------------
 // Counters — a counter is an inside over [0, Max] whose overflow policy says

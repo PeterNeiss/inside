@@ -7,7 +7,7 @@
 using namespace beman::inside;
 
 int main(int argc, char**) {
-    const rational a{argc, 3};
-    const auto     b = a + rational{1, 3};
+    const detail::rational a{argc, 3};
+    const auto             b = a + detail::rational{1, 3};
     (void)b;
 }

@@ -42,11 +42,11 @@ differently:
 
 - The widths are fixed: the 64-bit paths work in `std::int64_t` and `std::uint64_t`,
   and wide raws are arrays of 64-bit limbs.
-- A fraction is a `beman::inside::rational` (`inside/detail/rational.hpp`). Its
-  arithmetic is compile time only; the library's own 64-bit steps on rational
-  raws are overflow-detecting (`inside/detail/numbers.hpp`) and fall back to
+- A continuous inside stores a fraction of two 64-bit integers
+  (`inside/detail/rational.hpp`), the library's own type. Its 64-bit steps on
+  such raws are overflow-detecting (`inside/detail/numbers.hpp`) and fall back to
   exact wide integers, or a grid bound proves they fit, so no step wraps.
-- `rational(double)` takes the value straight from its IEEE-754 bits: a finite
+- A `double` is read straight from its IEEE-754 bits: a finite
   `double` is exactly significand · 2^exponent, with no `<cmath>` and no FPU
   rounding (`inside/detail/float_bits.hpp`).
 

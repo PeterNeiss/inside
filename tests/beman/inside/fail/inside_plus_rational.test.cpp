@@ -7,6 +7,8 @@
 
 using namespace beman::inside;
 
+using beman::inside::detail::operator""_r; // the library's own literal
+
 int main() {
     inside<{0, 10}> x{3};
     auto            y = x + 0.5_r;

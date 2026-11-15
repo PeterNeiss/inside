@@ -358,7 +358,7 @@ struct magnitude {
     constexpr bool is_one() const { return Ratio == grid_rational{1} && Pi == 0; }
 };
 
-// mag<r> — a magnitude tag: mag<1000> * si::metre, mag<just<1, 3>> * …
+// mag<r> — a magnitude tag: mag<1000> * si::metre, mag<1_g / 3_g> * …
 template <magnitude M>
 struct mag_t {
     static constexpr magnitude value = M;

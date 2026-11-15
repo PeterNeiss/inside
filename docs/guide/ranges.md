@@ -47,7 +47,7 @@ It steps through `T`'s range by `Step`, starting at `T`'s lower limit, and
 using time_t = inside<{{-4, 4}, per<(1 << 10)>}, round_half_away>;
 for (cursor<time_t, per<4>> t; t != end(t); ++t)          // −4, −3.75, …, 4
     std::cout << t << ' ';
-for (cursor<time_t, 0.25_r> t = -2_ins; t <= 2; ++t)  // any start, the classic test
+for (cursor<time_t, per<4>> t = -2_ins; t <= 2; ++t)    // any start, the classic test
     std::cout << t << ' ';
 ```
 

@@ -1924,7 +1924,7 @@ constexpr rational rational_of_wide_float(T v, bool& exact) {
     const T a = v < 0 ? -v : v;
     exact     = true;
     if (!(a < static_cast<T>(0x1p64)))
-        raise(error::overflow, "beman::inside::detail::rational: |long double| >= 2^64");
+        raise(error::overflow, "rational: |long double| >= 2^64");
     if (a < static_cast<T>(0x1p-62)) {
         exact = a == 0;
         return rational_from_parts(0, 1);
@@ -1937,7 +1937,7 @@ constexpr rational rational_of_wide_float(T v, bool& exact) {
         std::countr_zero(static_cast<std::uint64_t>(q)) < 62 ? std::countr_zero(static_cast<std::uint64_t>(q)) : 62;
     const auto num = q >> tz;
     if (bit_width_of(num) > 64)
-        raise(error::overflow, "beman::inside::detail::rational: long double past the 64-bit rational");
+        raise(error::overflow, "rational: long double past the 64-bit rational");
     const std::int64_t den = std::int64_t{1} << (62 - tz);
     return rational_from_parts(static_cast<std::uint64_t>(num), v < 0 ? -den : den);
 }
@@ -2409,13 +2409,9 @@ BEMAN_INSIDE_RATIONAL_OP(/)
 }
 } // namespace beman::inside::detail
 
-namespace beman::inside {
-// `rational` — an exact 64-bit fraction: the value of a literal (`0.1_r`), a
-// continuous inside's raw, and a value read out of an inside. Its arithmetic
-// is compile time only; at run time an exact value is an inside.
-using detail::rational;
-
-} // namespace beman::inside
+// (`detail::rational` is the library's own: the raw of a bounded continuous
+// inside and the fast path of exact arithmetic. It is no part of the user
+// API: an exact value is an inside (0.1_ins, just<1, 10>, a / b).)
 
 
 // ======================================================================
@@ -2737,12 +2733,10 @@ constexpr rational operator""_r() {
 } // namespace beman::inside::detail
 
 namespace beman::inside {
-//   _r literal   an exact decimal / hex value, e.g. 0.1_r is exactly 1/10.
-// The literals (_r, _ins, _g) live in the inline namespace literals:
+// The literals (_ins, _g) live in the inline namespace literals:
 // `using namespace beman::inside::literals;` brings only them.
-inline namespace literals {
-using detail::operator""_r;
-} // namespace literals
+// (detail::operator""_r, an exact decimal as a detail::rational, is the
+// library's own.)
 } // namespace beman::inside
 
 
@@ -9815,7 +9809,7 @@ struct inside {
             return detail::q_format_decode(*this);
         else {
             // Raw·Notch can pass 64 bits on the way to a value that fits.
-            const auto scaled = detail::try_mul(rational{Raw}, detail::notch64<inside>);
+            const auto scaled = detail::try_mul(detail::rational{Raw}, detail::notch64<inside>);
             const auto value  = scaled ? detail::try_add(*scaled, detail::lower64<inside>) : scaled;
             if (value) [[likely]]
                 return *value;
@@ -10801,13 +10795,13 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
 } // namespace detail
 
 template <insidable B, class A>
-    requires(std::integral<A> || std::same_as<A, rational>)
+    requires(std::integral<A> || std::same_as<A, detail::rational>)
 [[nodiscard]] constexpr auto operator<=>(const B& lhs, A rhs) {
     return detail::compare_scalar(lhs, rhs, detail::three_way);
 }
 
 template <insidable B, class A>
-    requires(std::integral<A> || std::same_as<A, rational>)
+    requires(std::integral<A> || std::same_as<A, detail::rational>)
 [[nodiscard]] constexpr bool operator==(const B& lhs, A rhs) {
     return detail::compare_scalar(lhs, rhs, detail::equal_to);
 }
@@ -11755,9 +11749,9 @@ void operator~(const B&) = delete (BEMAN_INSIDE_BUILTIN_MSG);
     "an inside cannot be combined with a rational: write the constant as just<1, 2> or 0.5_ins " \
     "(a grid), or store the rational into an inside first"
 #define BEMAN_INSIDE_NO_RATIONAL(op)                                           \
-    template <insidable B, std::same_as<rational> Q>                           \
+    template <insidable B, std::same_as<detail::rational> Q>                   \
     void operator op(B const&, Q const&) = delete (BEMAN_INSIDE_RATIONAL_MSG); \
-    template <std::same_as<rational> Q, insidable B>                           \
+    template <std::same_as<detail::rational> Q, insidable B>                   \
     void operator op(Q const&, B const&) = delete (BEMAN_INSIDE_RATIONAL_MSG);
 
 BEMAN_INSIDE_NO_RATIONAL(+)
@@ -12234,9 +12228,9 @@ using unorm32 = inside<{{0, 1}, per<4294967295>}, round_half_away>; // uint32
 // Q-format fixed-point — unsigned integer.fraction, power-of-two notch,
 // full natural range. `round_half_away`.
 //-------------------------------------------------------------------------
-using uq4_4   = inside<{{0, rational{255, 16}}, per<16>}, round_half_away>;                // uint8: [0, 15.9375]
-using uq8_8   = inside<{{0, rational{65535, 256}}, per<256>}, round_half_away>;            // uint16
-using uq16_16 = inside<{{0, rational{4294967295u, 65536u}}, per<65536>}, round_half_away>; // uint32
+using uq4_4   = inside<{{0, just<255, 16>}, per<16>}, round_half_away>;              // uint8: [0, 15.9375]
+using uq8_8   = inside<{{0, just<65535, 256>}, per<256>}, round_half_away>;          // uint16
+using uq16_16 = inside<{{0, just<4294967295, 65536>}, per<65536>}, round_half_away>; // uint32
 
 //-------------------------------------------------------------------------
 // Counters — a counter is an inside over [0, Max] whose overflow policy says
@@ -21192,7 +21186,7 @@ struct pown_fn {
 // same). All angles are radians, as in <cmath>.
 //---------------------------------------------------------------------------
 template <auto K> // a builtin or a grid number of any size
-using unit_amplitude = inside<{{rational{-1}, rational{1}}, per<K>}, round_half_away>;
+using unit_amplitude = inside<{{detail::rational{-1}, detail::rational{1}}, per<K>}, round_half_away>;
 
 //---------------------------------------------------------------------------
 // The functions (math/detail/functions.hpp states the call forms): the grid
@@ -21654,7 +21648,7 @@ struct magnitude {
     constexpr bool is_one() const { return Ratio == grid_rational{1} && Pi == 0; }
 };
 
-// mag<r> — a magnitude tag: mag<1000> * si::metre, mag<just<1, 3>> * …
+// mag<r> — a magnitude tag: mag<1000> * si::metre, mag<1_g / 3_g> * …
 template <magnitude M>
 struct mag_t {
     static constexpr magnitude value = M;
@@ -23455,22 +23449,23 @@ template <reference A, class VA, reference B, class VB>
 // A sum, difference, remainder or comparison of two units that cannot meet:
 // a deleted overload per reason, so a requires-test is false and a call says
 // why.
-#define BEMAN_INSIDE_UNITS_SUM_DELETED(ret, op, blades)                           \
-    template <reference A, class VA, reference B, class VB>                       \
-        requires(detail::sum_error_of<A, B>() == detail::sum_error::dimensions)   \
-    ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                      \
-        delete ("units: adding or comparing quantities of different dimensions"); \
-    template <reference A, class VA, reference B, class VB>                       \
-        requires detail::blade_sum<A, B>                                          \
-    ret op(const quantity<A, VA>&, const quantity<B, VB>&) = delete (blades);     \
-    template <reference A, class VA, reference B, class VB>                       \
-        requires(detail::sum_error_of<A, B>() == detail::sum_error::kinds)        \
-    ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                      \
-        delete ("units: adding or comparing quantities of different kinds");      \
-    template <reference A, class VA, reference B, class VB>                       \
-        requires(detail::sum_error_of<A, B>() == detail::sum_error::pi)           \
-    ret op(const quantity<A, VA>&, const quantity<B, VB>&) = delete (             \
-        "units: no common unit of a pi multiple and a rational one - convert one side with value_cast first");
+#define BEMAN_INSIDE_UNITS_SUM_DELETED(ret, op, blades)                                    \
+    template <reference A, class VA, reference B, class VB>                                \
+        requires(detail::sum_error_of<A, B>() == detail::sum_error::dimensions)            \
+    ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                               \
+        delete ("units: adding or comparing quantities of different dimensions");          \
+    template <reference A, class VA, reference B, class VB>                                \
+        requires detail::blade_sum<A, B>                                                   \
+    ret op(const quantity<A, VA>&, const quantity<B, VB>&) = delete (blades);              \
+    template <reference A, class VA, reference B, class VB>                                \
+        requires(detail::sum_error_of<A, B>() == detail::sum_error::kinds)                 \
+    ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                               \
+        delete ("units: adding or comparing quantities of different kinds");               \
+    template <reference A, class VA, reference B, class VB>                                \
+        requires(detail::sum_error_of<A, B>() == detail::sum_error::pi)                    \
+    ret op(const quantity<A, VA>&, const quantity<B, VB>&) =                               \
+        delete ("units: no common unit of a pi multiple and a rational one - convert one " \
+                "side with value_cast first");
 #define BEMAN_INSIDE_UNITS_WHY_GEOALG \
     "units: quantities of different blades add to a multivector - include <beman/inside/units/geoalg.hpp>"
 #define BEMAN_INSIDE_UNITS_WHY_ORDER "units: quantities of different blades have no order and no remainder"
@@ -24427,13 +24422,14 @@ inline constexpr prefix_t<30>  quetta{};
 // SI base units.
 BEMAN_INSIDE_UNIT(si, second, "s", isq::duration)
 BEMAN_INSIDE_UNIT(si, metre, "m", isq::length)
-BEMAN_INSIDE_UNIT(si, gram, "g", mag<rational{1, 1000}>, isq::mass)
+BEMAN_INSIDE_UNIT(si, gram, "g", mag<1_g / 1000_g>, isq::mass)
 namespace si {
 inline constexpr auto kilogram = kilo(gram);
 }
 BEMAN_INSIDE_UNIT(si, ampere, "A", isq::electric_current)
 BEMAN_INSIDE_ORIGIN(si, absolute_zero, dim_thermodynamic_temperature)
-BEMAN_INSIDE_ORIGIN(si, ice_point, dim_thermodynamic_temperature, &si_defs::absolute_zero, rational{27315, 100})
+BEMAN_INSIDE_ORIGIN(
+    si, ice_point, dim_thermodynamic_temperature, &si_defs::absolute_zero, beman::inside::detail::rational{27315, 100})
 BEMAN_INSIDE_UNIT(si, kelvin, "K", isq::thermodynamic_temperature, {.origin = si::absolute_zero})
 BEMAN_INSIDE_UNIT(si, mole, "mol", isq::amount_of_substance)
 BEMAN_INSIDE_UNIT(si, candela, "cd", isq::luminous_intensity)
@@ -24467,9 +24463,9 @@ BEMAN_INSIDE_UNIT(si, minute, "min", mag<60>* si::second)
 BEMAN_INSIDE_UNIT(si, hour, "h", mag<60>* si::minute)
 BEMAN_INSIDE_UNIT(si, day, "d", mag<24>* si::hour)
 BEMAN_INSIDE_UNIT(si, astronomical_unit, "au", mag<149'597'870'700>* si::metre)
-BEMAN_INSIDE_UNIT(si, degree, "°", mag_pi* mag<rational{1, 180}>* si::radian, {.ascii = "deg", .space_before = false})
-BEMAN_INSIDE_UNIT(si, arcminute, "′", mag<rational{1, 60}>* si::degree, {.ascii = "'", .space_before = false})
-BEMAN_INSIDE_UNIT(si, arcsecond, "″", mag<rational{1, 60}>* si::arcminute, {.ascii = "''", .space_before = false})
+BEMAN_INSIDE_UNIT(si, degree, "°", mag_pi* mag<1_g / 180_g>* si::radian, {.ascii = "deg", .space_before = false})
+BEMAN_INSIDE_UNIT(si, arcminute, "′", mag<1_g / 60_g>* si::degree, {.ascii = "'", .space_before = false})
+BEMAN_INSIDE_UNIT(si, arcsecond, "″", mag<1_g / 60_g>* si::arcminute, {.ascii = "''", .space_before = false})
 BEMAN_INSIDE_UNIT(si, are, "a", square(si::deca(si::metre)))
 BEMAN_INSIDE_UNIT(si, litre, "L", cubic(si::deci(si::metre)))
 BEMAN_INSIDE_UNIT(si, tonne, "t", mag<1000>* si::kilogram)
@@ -24487,40 +24483,40 @@ BEMAN_INSIDE_UNIT(
 BEMAN_INSIDE_UNIT(si2019, speed_of_light_in_vacuum, "c", mag<299'792'458>* si::metre / si::second)
 BEMAN_INSIDE_UNIT(si2019, luminous_efficacy, "K_cd", mag<683>* si::lumen / si::watt)
 BEMAN_INSIDE_UNIT(
-    si2019, standard_gravity, "g₀", mag<rational{980665, 100000}>* si::metre / square(si::second), {.ascii = "g_0"})
+    si2019, standard_gravity, "g₀", mag<980665_g / 100000_g>* si::metre / square(si::second), {.ascii = "g_0"})
 BEMAN_INSIDE_UNIT(si2019, planck_constant, "h", mag<6.62607015e-34_g>* si::joule* si::second)
 BEMAN_INSIDE_UNIT(si2019, elementary_charge, "e", mag<1.602176634e-19_g>* si::coulomb)
 BEMAN_INSIDE_UNIT(si2019, boltzmann_constant, "k", mag<1.380649e-23_g>* si::joule / si::kelvin)
 BEMAN_INSIDE_UNIT(si2019, avogadro_constant, "N_A", mag<6.02214076e23_g> / si::mole)
 
 // International (yard and pound agreement, 1959) and nautical units.
-BEMAN_INSIDE_UNIT(international, yard, "yd", mag<rational{9144, 10000}>* si::metre)
-BEMAN_INSIDE_UNIT(international, foot, "ft", mag<rational{1, 3}>* international::yard)
-BEMAN_INSIDE_UNIT(international, inch, "in", mag<rational{1, 12}>* international::foot)
+BEMAN_INSIDE_UNIT(international, yard, "yd", mag<9144_g / 10000_g>* si::metre)
+BEMAN_INSIDE_UNIT(international, foot, "ft", mag<1_g / 3_g>* international::yard)
+BEMAN_INSIDE_UNIT(international, inch, "in", mag<1_g / 12_g>* international::foot)
 BEMAN_INSIDE_UNIT(international, mile, "mi", mag<1760>* international::yard)
 BEMAN_INSIDE_UNIT(international, nautical_mile, "nmi", mag<1852>* si::metre)
-BEMAN_INSIDE_UNIT(international, pound, "lb", mag<rational{45359237, 100000000}>* si::kilogram)
-BEMAN_INSIDE_UNIT(international, ounce, "oz", mag<rational{1, 16}>* international::pound)
+BEMAN_INSIDE_UNIT(international, pound, "lb", mag<45359237_g / 100000000_g>* si::kilogram)
+BEMAN_INSIDE_UNIT(international, ounce, "oz", mag<1_g / 16_g>* international::pound)
 BEMAN_INSIDE_UNIT(international,
                   pound_force,
                   "lbf",
-                  mag<rational{980665, 100000}>* international::pound* si::metre / square(si::second))
+                  mag<980665_g / 100000_g>* international::pound* si::metre / square(si::second))
 BEMAN_INSIDE_UNIT(international, knot, "kn", international::nautical_mile / si::hour)
 BEMAN_INSIDE_ORIGIN(international,
                     zeroth_degree_Fahrenheit,
                     dim_thermodynamic_temperature,
                     &si_defs::absolute_zero,
-                    rational{45967, 180})
+                    beman::inside::detail::rational{45967, 180})
 BEMAN_INSIDE_UNIT(international,
                   degree_Fahrenheit,
                   "℉",
-                  mag<rational{5, 9}>* si::kelvin,
+                  mag<5_g / 9_g>* si::kelvin,
                   {.ascii = "`F", .origin = international::zeroth_degree_Fahrenheit})
 
 // Scaled dimensionless units, as in mp-units: 8 % is the number 2/25.
 namespace dimensionless_defs {
-inline constexpr named_unit percent{"%", mag<rational{1, 100}> * one};
-inline constexpr named_unit per_mille{"‰", mag<rational{1, 1000}> * one, {.ascii = "permille"}};
+inline constexpr named_unit percent{"%", mag<1_g / 100_g> * one};
+inline constexpr named_unit per_mille{"‰", mag<1_g / 1000_g> * one, {.ascii = "permille"}};
 } // namespace dimensionless_defs
 inline constexpr auto percent   = unit_c<dimensionless_defs::percent>;
 inline constexpr auto per_mille = unit_c<dimensionless_defs::per_mille>;

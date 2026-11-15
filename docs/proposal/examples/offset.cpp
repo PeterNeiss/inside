@@ -17,7 +17,7 @@ int main() {
     static_assert(std::is_same_v<decltype(s), inside<{1, 511}>>);
     static_assert(lower_of<decltype(p)> == per<4> && notch_of<decltype(p)> == per<2>);
     // [/listing]
-    if (s != 3 || p != just<rational{5, 4}>)
+    if (s != 3 || p != just<5, 4>)
         return 1;
     return 0;
 }

@@ -23,7 +23,7 @@ inline constexpr base_dimension dollar_dim{"dollar"};
 inline constexpr quantity_spec  dollars_def{"dollars", dollar_dim};
 inline constexpr named_unit     usd_def{"USD", spec_c<dollars_def>};
 inline constexpr auto           USD = unit_c<usd_def>;
-inline constexpr named_unit     cent_def{"¢", mag<rational{1, 100}> * USD, {.ascii = "c"}};
+inline constexpr named_unit     cent_def{"¢", mag<1_g / 100_g> * USD, {.ascii = "c"}};
 inline constexpr auto           cent = unit_c<cent_def>;
 } // namespace
 

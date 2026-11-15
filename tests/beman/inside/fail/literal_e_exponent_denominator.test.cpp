@@ -5,6 +5,7 @@
 
 int main() {
     using namespace beman::inside;
+    using beman::inside::detail::operator""_r; // the library's own literal
     constexpr auto x = 1e-20_r;
     (void)x;
 }

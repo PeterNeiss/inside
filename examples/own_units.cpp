@@ -24,13 +24,13 @@ namespace {
 // 1. A spec under length and a unit defined by the metre.
 inline constexpr quantity_spec depth_def{"depth", isq::length};
 inline constexpr auto          depth = spec_c<depth_def>;
-inline constexpr named_unit    fathom_def{"ftm", mag<rational{18288, 10000}> * si::metre};
+inline constexpr named_unit    fathom_def{"ftm", mag<18288_g / 10000_g> * si::metre};
 inline constexpr auto          fathom = unit_c<fathom_def>;
 
 // 2. A temperature unit whose points count from absolute zero: the options
 //    name its ASCII symbol and its origin.
 inline constexpr named_unit rankine_def{
-    "°R", mag<rational{5, 9}> * si::kelvin, {.ascii = "R", .origin = si::absolute_zero}};
+    "°R", mag<5_g / 9_g> * si::kelvin, {.ascii = "R", .origin = si::absolute_zero}};
 inline constexpr auto rankine = unit_c<rankine_def>;
 
 // 3. Currency: a base dimension, its base quantity and two units.
@@ -39,7 +39,7 @@ inline constexpr quantity_spec  money_def{"money", currency_def};
 inline constexpr auto           money = spec_c<money_def>;
 inline constexpr named_unit     euro_def{"EUR", money};
 inline constexpr auto           euro = unit_c<euro_def>;
-inline constexpr named_unit     cent_def{"ct", mag<rational{1, 100}> * euro};
+inline constexpr named_unit     cent_def{"ct", mag<1_g / 100_g> * euro};
 inline constexpr auto           cent = unit_c<cent_def>;
 
 // 4. Information: bit, byte (8 bit), KiB (1024 B).

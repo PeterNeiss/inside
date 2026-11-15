@@ -7,8 +7,8 @@
 using namespace beman::inside;
 
 int main() {
-    constexpr auto     mx = std::numeric_limits<std::int64_t>::max();
-    constexpr rational a{1u, mx}, b{1u, mx - 1};
-    constexpr rational c = a + b; // 1/M + 1/(M-1): the denominator passes 2^63
+    constexpr auto             mx = std::numeric_limits<std::int64_t>::max();
+    constexpr detail::rational a{1u, mx}, b{1u, mx - 1};
+    constexpr detail::rational c = a + b; // 1/M + 1/(M-1): the denominator passes 2^63
     (void)c;
 }

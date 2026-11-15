@@ -456,7 +456,7 @@ struct pown_fn {
 // same). All angles are radians, as in <cmath>.
 //---------------------------------------------------------------------------
 template <auto K> // a builtin or a grid number of any size
-using unit_amplitude = inside<{{rational{-1}, rational{1}}, per<K>}, round_half_away>;
+using unit_amplitude = inside<{{detail::rational{-1}, detail::rational{1}}, per<K>}, round_half_away>;
 
 //---------------------------------------------------------------------------
 // The functions (math/detail/functions.hpp states the call forms): the grid
