@@ -606,11 +606,11 @@ TEST(StorageTest, to_value_on_a_coarse_int64_grid) {
     using A               = inside<grid{{I64_MIN, I64_MAX - 1}, 2}>;
     static_assert([] {
         constexpr A x = I64_MAX - 1;
-        return x.as<I64>() == I64_MAX - 1 && x.to<I64>() == I64_MAX - 1;
+        return x.to<I64>() == I64_MAX - 1 && x.to<I64>() == I64_MAX - 1;
     }());
     A y = I64_MIN;
     y   = I64_MAX - 1;
-    EXPECT_EQ(y.as<I64>(), I64_MAX - 1);
+    EXPECT_EQ(y.to<I64>(), I64_MAX - 1);
 }
 
 //---------------------------------------------------------------------------
@@ -709,12 +709,12 @@ TEST(StorageTest, a_point_round_trips_its_value) {
     using point_pos = inside<{5, 5}>;
     point_pos a{5};
     ASSERT_EQ(a, 5);
-    ASSERT_EQ(a.as<std::int64_t>(), 5);
+    ASSERT_EQ(a.to<std::int64_t>(), 5);
 
     using point_neg = inside<{-3, -3}>;
     point_neg b{-3};
     ASSERT_EQ(b, -3);
-    ASSERT_EQ(b.as<std::int64_t>(), -3);
+    ASSERT_EQ(b.to<std::int64_t>(), -3);
 
     // Float assignment to single-value rational-storage grid (notch=0)
     using point_fp = inside<{2.5_r}>;

@@ -73,7 +73,7 @@ int main() {
 
     const eth  alice = *parse<eth>("1.5");
     const auto spent = *parse<eth>("1.4999") + fee; // 1.50053 ETH: more than she has
-    const auto after = try_value_cast<eth>(alice - spent);
+    const auto after = value_cast<eth>(alice - spent);
     std::cout << "send     " << (after ? to_string(*after) : error_message(after.error())) << "\n";
     if (after || after.error() != error::overflow)
         return 1;

@@ -250,10 +250,10 @@ TEST(ConstexprTest, constexpr_division_returns_exact_value) {
     static_assert(!is_expected_v<decltype(q)>);
     static_assert(q == (51_r / 8));
 
-    // round_toward_zero selects native integer division — result has integer raw
+    // round_toward_zero at the call selects native integer division — result has integer raw
     using vi = inside<{0, 100}, round_toward_zero>;
     constexpr vi   p{51}, r{8};
-    constexpr auto qi = p / r;
+    constexpr auto qi = div(p, r, round_toward_zero);
     static_assert(!(std::is_same_v<typename decltype(qi)::value_type::raw_type, rational>));
     static_assert(*qi == 6);
 }
@@ -393,7 +393,7 @@ TEST(ConstexprTest, constexpr_inside_range_iterates_the_full_grid) {
     constexpr std::int64_t sum = [] {
         std::int64_t s = 0;
         for (auto i : inside_range<{0, 9}>{})
-            s += i.as<std::int64_t>();
+            s += i.to<std::int64_t>();
         return s;
     }();
     static_assert(sum == 45);
@@ -402,7 +402,7 @@ TEST(ConstexprTest, constexpr_inside_range_iterates_the_full_grid) {
     constexpr std::int64_t sum_from_5 = [] {
         std::int64_t s = 0;
         for (auto i : inside_range<{0, 9}>{inside<{0, 9}>{5}})
-            s += i.as<std::int64_t>();
+            s += i.to<std::int64_t>();
         return s;
     }();
     static_assert(sum_from_5 == 45);

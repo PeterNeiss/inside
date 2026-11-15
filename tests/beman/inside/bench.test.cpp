@@ -846,7 +846,7 @@ static void bench_store_convert() {
     });
     conv.run("as<int64_t> (integer grid)", [&] {
         ++i;
-        doNotOptimizeAway(bi[i & kMask].as<std::int64_t>());
+        doNotOptimizeAway(bi[i & kMask].to<std::int64_t>());
     });
     conv.run("to<uint8_t> (expected)", [&] {
         ++i;

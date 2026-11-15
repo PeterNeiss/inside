@@ -51,7 +51,7 @@ int main() {
     std::cout << "tax (" << rate << "): " << tax << "\n";
 
     // subtotal + tax can pass money's 1,000,000 USD: stored with a check.
-    const auto checked_total = try_value_cast<money>(subtotal + tax);
+    const auto checked_total = value_cast<money>(subtotal + tax);
     if (!checked_total)
         return 1;
     const money total = *checked_total;

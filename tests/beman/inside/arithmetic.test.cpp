@@ -121,10 +121,11 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
     }
 
     {
-        SCOPED_TRACE("round_toward_zero selects the integer-storage division");
+        SCOPED_TRACE("a rounding mode at the call selects the integer-storage division");
         using ui = inside<{0, 100}, round_toward_zero>;
-        constexpr ui   a{51}, b{8};
-        constexpr auto e = a / b;
+        constexpr ui a{51}, b{8};
+        static_assert(*(a / b) == just<51, 8>); // the operator is exact, whatever the operands round
+        constexpr auto e = div(a, b, round_toward_zero);
         static_assert(!(std::is_same_v<typename decltype(e)::value_type::raw_type, rational>));
         static_assert(*e == 6);
     }
@@ -191,7 +192,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
         SCOPED_TRACE("signed integer division truncates toward zero");
         using si = inside<{-100, 100}, round_toward_zero>;
         constexpr si   a{-7}, b{2};
-        constexpr auto q = a / b;
+        constexpr auto q = div(a, b, round_toward_zero);
         static_assert(*q == -3);
     }
 

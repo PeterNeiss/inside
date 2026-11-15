@@ -232,7 +232,7 @@ TEST(InsideAssignTest, unsafe_relaxes_domain_and_round_checks) {
     // Native int division path engages
     using u100u = inside<{0, 100}, unsafe>;
     u100u a{51}, b{8};
-    auto  q = a / b;
+    auto  q = div(a, b, unsafe);
     static_assert(!(std::is_same_v<typename decltype(q)::value_type::raw_type, rational>));
     ASSERT_EQ(*q, 6);
 
@@ -841,9 +841,9 @@ TEST(RoundNegativeTiesTest, assignment_rounding_agrees_with_division_on_the_same
     // -5/2 == -2.5 ; assigning -2.5 and dividing to -2.5 must store the same point.
     using N  = inside<{-100, 100}, round_half_away>;
     using Nd = inside<{1, 10}, round_half_away>;
-    ASSERT_TRUE((static_cast<rational>(N{-5} / Nd{2}) == static_cast<rational>(N(rational{-5, 2}))));
-    ASSERT_TRUE((static_cast<rational>(N{-7} / Nd{2}) == static_cast<rational>(N(rational{-7, 2}))));
-    ASSERT_TRUE((static_cast<rational>(N{7} / Nd{2}) == static_cast<rational>(N(rational{7, 2}))));
+    ASSERT_TRUE((static_cast<rational>(test::rdiv(N{-5}, Nd{2})) == static_cast<rational>(N(rational{-5, 2}))));
+    ASSERT_TRUE((static_cast<rational>(test::rdiv(N{-7}, Nd{2})) == static_cast<rational>(N(rational{-7, 2}))));
+    ASSERT_TRUE((static_cast<rational>(test::rdiv(N{7}, Nd{2})) == static_cast<rational>(N(rational{7, 2}))));
 }
 
 // round_half_even assignment ties to even VALUE regardless of Lower parity
@@ -934,7 +934,7 @@ TEST(CompoundAssignTest, compound_assignment_insidable_rhs) {
     static_assert([] {
         u100 a{50}, d{20};
         a -= d;
-        return a.as<std::int64_t>();
+        return a.to<std::int64_t>();
     }() == 30);
 
     using ui     = inside<{0, 100}, clamp | round_toward_zero>;
@@ -942,19 +942,19 @@ TEST(CompoundAssignTest, compound_assignment_insidable_rhs) {
     static_assert([] {
         ui d{50}, two{2};
         d *= two;
-        return d.as<std::int64_t>();
+        return d.to<std::int64_t>();
     }() == 100);
     static_assert([] {
         ui     e{60};
         ui_pos three{3};
         e /= three;
-        return e.as<std::int64_t>();
+        return e.to<std::int64_t>();
     }() == 20);
     static_assert([] {
         ui     f{17};
         ui_pos five{5};
         f %= five;
-        return f.as<std::int64_t>();
+        return f.to<std::int64_t>();
     }() == 2);
 }
 
@@ -1021,34 +1021,34 @@ TEST(CompoundAssignTest, increment_decrement) {
     static_assert([] {
         u10 a{5};
         ++a;
-        return a.as<std::int64_t>();
+        return a.to<std::int64_t>();
     }() == 6);
     static_assert([] {
         u10 a{5};
         a++;
-        return a.as<std::int64_t>();
+        return a.to<std::int64_t>();
     }() == 6);
     static_assert([] {
         u10 a{5};
         --a;
-        return a.as<std::int64_t>();
+        return a.to<std::int64_t>();
     }() == 4);
     static_assert([] {
         u10 a{5};
         a--;
-        return a.as<std::int64_t>();
+        return a.to<std::int64_t>();
     }() == 4);
 
     // post-inc/dec returns the old value
     static_assert([] {
         u10  a{5};
         auto r = a++;
-        return r.as<std::int64_t>();
+        return r.to<std::int64_t>();
     }() == 5);
     static_assert([] {
         u10  a{5};
         auto r = a--;
-        return r.as<std::int64_t>();
+        return r.to<std::int64_t>();
     }() == 5);
 }
 
@@ -1561,24 +1561,24 @@ TEST(AssignmentTest, uint64_source_above_int64_max) {
         error                  ec{};
         inside<{{-10, 10}, 1}> x{3};
         x.policy(ec) = big;
-        return std::pair{x.as<int>(), ec};
+        return std::pair{x.to<int>(), ec};
     }();
     static_assert(checked_ok.first == 3 && checked_ok.second == error::overflow);
 
-    static_assert(inside<{{0, 10}, 1}>{1ull << 63, clamp}.as<int>() == 10);
-    static_assert(inside<{{-10, 10}, 1}>{big, clamp}.as<int>() == 10);
+    static_assert(inside<{{0, 10}, 1}>{1ull << 63, clamp}.to<int>() == 10);
+    static_assert(inside<{{-10, 10}, 1}>{big, clamp}.to<int>() == 10);
 
     // (2^64 − 1 − Lower) mod 21 + Lower
-    static_assert(inside<{{-10, 10}, 1}>{big, wrap}.as<long>() == static_cast<long>((big % 21 + 10) % 21) - 10);
-    static_assert(inside<{{5, 9}, 1}>{big, wrap}.as<long>() == static_cast<long>((big - 5) % 5) + 5);
-    static_assert(inside<{{5, 9}, 1}>{-7, wrap}.as<int>() == 8);
+    static_assert(inside<{{-10, 10}, 1}>{big, wrap}.to<long>() == static_cast<long>((big % 21 + 10) % 21) - 10);
+    static_assert(inside<{{5, 9}, 1}>{big, wrap}.to<long>() == static_cast<long>((big - 5) % 5) + 5);
+    static_assert(inside<{{5, 9}, 1}>{-7, wrap}.to<int>() == 8);
 
     // The on_clamp overshoot is an inside over the source type's limits minus
     // the target's, so it is exact (it saturated at int64 before).
     inside<{{-10, 10}, 1}> c{0};
     bool                   exact                                = false;
     c.on_clamp([&](auto&, auto o) { exact = (o == big - 10); }) = big;
-    EXPECT_EQ(c.as<int>(), 10);
+    EXPECT_EQ(c.to<int>(), 10);
     EXPECT_TRUE(exact);
     c.on_clamp([&](auto&, auto o) { exact = (o == std::numeric_limits<std::int64_t>::max() - 10); }) =
         std::numeric_limits<std::int64_t>::max();
@@ -1594,7 +1594,7 @@ TEST(AssignmentTest, huge_double_source) {
         error                                  ec{};
         inside<{{0, 100}, 1}, round_half_away> x{5};
         x.policy(ec) = v;
-        return std::pair{x.as<int>(), ec};
+        return std::pair{x.to<int>(), ec};
     };
     static_assert(rounded(0x1p64).first == 5 && rounded(0x1p64).second == error::overflow);
     static_assert(rounded(1e300).second == error::overflow);
@@ -1604,7 +1604,7 @@ TEST(AssignmentTest, huge_double_source) {
         error                     ec{};
         inside<{{0, 9}, 1}, wrap> x{5};
         x.policy(ec) = v;
-        return std::pair{x.as<long>(), ec};
+        return std::pair{x.to<long>(), ec};
     };
     // wrap folds such a value exactly: 2^64 mod 10 (it reported overflow
     // before the exact fold).

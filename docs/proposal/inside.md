@@ -153,9 +153,8 @@ auto r = num{7} / any{3};                  // std::expected<..., error>
 auto z = num{7} / any{0};                  // unexpected(error::division_by_zero)
 static_assert(!std::is_same_v<decltype(q), decltype(r)>);
 
-using whole = inside<{0, 100}, round_floor>;
-auto f = whole{7} / some{3};               // 2: rounding named in the type
-auto m = whole{7} % some{3};               // 1, consistent: 2·3 + 1 == 7
+auto f = div(num{7}, some{3}, round_floor);  // 2: rounding named at the call
+auto m = mod(num{7}, some{3}, round_floor);  // 1, consistent: 2·3 + 1 == 7
 ```
 
 **A conversion names what it does with a value that does not fit.**
@@ -177,7 +176,7 @@ quarter q = 2.75_ins;
 auto num  = q.numerator();                               // 11: the value is 11/4
 auto i    = q.to<int>();                                 // unexpected(error::rounding_error)
 auto down = q.to<int, round_floor>();                    // 2: rounding named in the call
-auto neg  = inside<{-5, 5}>{-1}.to<unsigned>();          // unexpected(error::domain_error)
+auto neg  = inside<{-5, 5}>{-1}.to<unsigned>();          // unexpected(error::overflow)
 ```
 
 **A call or a single store can take another policy, and an action sees what
@@ -296,11 +295,12 @@ by `1/|c|`; any other quotient lies on a continuous grid whose denominators are
 bounded — x = p/a over y = r/b is p·b/(a·r), so they are at most the dividend's
 largest denominator times the divisor's largest numerator. That bound travels
 with the type through `+`, `-` and `*`, so exact arithmetic on quotients stays
-plain and its precision is known at compile time. When either operand's policy
-names a rounding, an integer division rounds onto the integers, and a division
-of two values on the same notch `1/K` rounds onto that notch. `a % b` takes
-two lattices; its remainder belongs to the quotient truncated, or rounded by
-the policy's mode, and lies on the lattice of the gcd of the two steps. Either operator returns `std::expected<inside, error>` when the
+plain and its precision is known at compile time. The operators take no rounding
+from their operands' policies: a rounded division names its mode at the call
+(`div(a, b, round_floor)`), where an integer division rounds onto the integers
+and a division of two values on the same notch `1/K` rounds onto that notch.
+`a % b` takes two lattices; its remainder belongs to the quotient truncated
+(`mod(a, b, mode)`: rounded by the mode), and lies on the lattice of the gcd of the two steps. Either operator returns `std::expected<inside, error>` when the
 divisor's grid holds zero, and a plain `inside` when it does not.
 
 ## Policies
@@ -389,11 +389,8 @@ every floating-point `T`), else `std::expected<T, error>`. An integer `T`
 gets the value exactly; a fractional value needs permission to round, as a
 store does: it rounds by the call's mode (`to<int, round_floor>()`), else by
 the type's, and with neither it is `rounding_error`. `overflow` reports a value
-past `T`'s range
-(`domain_error` for a negative value into an unsigned `T`); a floating-point
-`T` gets the value rounded once. `as<T>()` is `to<T>()` where that is total,
-returning `T`, and is ill-formed elsewhere; it requires a rounding policy for
-a floating-point `T`. `numerator()` and `denominator()`
+past `T`'s range, a negative value into an unsigned `T` included; a floating-point
+`T` gets the value rounded once. `numerator()` and `denominator()`
 give the exact value in lowest terms, the sign on the numerator, as insides on
 the integers that hold those parts of every value of the grid. `index()` gives
 a value's step (its count of notches above the lower limit), a `step_t<B>` = `inside<{0, step_count}>` with `B`'s
@@ -524,7 +521,7 @@ namespace std {
     template<class I> static constexpr inside from_step(const I& i);  // Lower + i·Notch, a store by P
     template<class I, class Pol> static constexpr inside from_step(const I& i, Pol p);
     template<policy_flag F = checked, class I>
-      static constexpr expected<inside, error> try_from_step(const I& i);
+      static constexpr expected<inside, error> from_step(const I& i);
 
     // a policy or actions for one store (the proxy owns the value of an rvalue)
     template<policy_flag F = checked> constexpr @*store-proxy*@ policy();
@@ -593,14 +590,13 @@ namespace std {
 | `-a` | `inside<-G, P>` | mirrored interval, same notch |
 | `a + b`, `a - b` | interval sum or difference; notch `gcd(n_a, n_b)` | continuous if either operand is, with denominator bound `D_a·D_b` |
 | `a * b` | interval product; notch `n_a·n_b`, refined by the operands' offsets | a point `c` scales the other notch by `|c|`; continuous as for `+` |
-| `a / b` | a point `c`: `a`'s notch scaled by `1/|c|`; else continuous with denominator bound `D_a·max|b|·D_b` | rounded onto the integers or the shared notch when a policy names a rounding; `expected` iff `b`'s grid holds 0 |
+| `a / b` | a point `c`: `a`'s notch scaled by `1/|c|`; else continuous with denominator bound `D_a·max|b|·D_b` | always exact; `div(a, b, mode)` rounds onto the integers or the shared notch; `expected` iff `b`'s grid holds 0 |
 | `a % b` | on the lattice of `u`, the gcd of the two value units (1 on integers), the values `r` can take: truncation `r` has `a`'s sign, `|r| ≤ min(m, max|a|)`; floor `b`'s sign, ceil the opposite, `|r| ≤ m`; nearest `|r| ≤ min(⌊max|b|/2u⌋·u, max|a|)`; `m = max|b| − u` | notched grids required; `r = a − q·b` for the integer `q` truncated or rounded by the policy |
 | `e op b`, `a op e` (`e` an `expected`) | `expected` of `a op b`'s result | the first error passes through |
 | `++a`, `--a` | `a` moved by one notch | a store by `P` (wraps under `wrap`); ill-formed where the step may leave the grid without `clamp`/`wrap`; absent on a continuous grid |
 | `a += b` etc. | `a = a + b` | a store by `a`'s policy: ill-formed where the grids cannot prove it and `P` has no `clamp`/`wrap`; `b.policy(ec) += x` reports |
 | `a == b`, `a <=> b` | exact comparison of values | any two grids, or an inside and an integer or a rational; no floating-point operand (0.1 is not 1/10) |
-| `b.to<T>()` | `T` where total, else `expected<T, error>` | integer `T`: exact, or rounded by `Round`, else by `P`'s mode; `rounding_error` for a fractional value when neither names one; `overflow` out of `T`'s range, `domain_error` for a negative value into an unsigned `T`. Floating-point `T`: rounded once |
-| `b.as<T>()` | `T` | where `to<T>()` is total; else ill-formed. A floating-point `T` needs a rounding policy |
+| `b.to<T>()` | `T` where total, else `expected<T, error>` | integer `T`: exact, or rounded by `Round`, else by `P`'s mode; `rounding_error` for a fractional value when neither names one; `overflow` out of `T`'s range. Floating-point `T`: rounded once |
 | `b.numerator()`, `b.denominator()` | the value in lowest terms, as insides | with `D` the grid's largest denominator: numerator in `[⌈L⌉, ⌊U·D⌋]` (`⌈L·D⌉` for `L < 0`, `⌊U⌋` for `U ≤ 0`), denominator in `[1, D]` |
 | `b.step()`, `B::from_step(i)` | `(b − L)/n` as a `step_t<B>`; `L + i·n` | `from_step` is plain when `i`'s grid lies in `[0, step_count]`, else `expected<B, error>` (plain under a call's `clamp`/`wrap`) |
 | `B{v, clamp | M}` | `v` saturated into `B`, rounded by `M` | `M == checked`: off the notch as `B`'s policy |

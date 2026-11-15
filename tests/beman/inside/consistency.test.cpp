@@ -312,7 +312,8 @@ TEST(ConsistencyTest, flags_are_call_policies) {
 // intermediate step.
 TEST(ConsistencyTest, results_keep_the_shared_policy) {
     constexpr inside<{0, 10}, round_floor> a{7};
-    static_assert(a / 2_ins == 3 && (a + 0_ins) / 2_ins == 3 && (a * 1_ins) / 2_ins == 3);
+    // (`/` is exact whatever the operands round; the mode rounds a store.)
+    static_assert(a / 2_ins == 3.5_ins && decltype(a){a / 2_ins} == 3 && decltype(a){(a + 0_ins) / 2_ins} == 3);
     static_assert(policy_of<decltype(a + a)> == round_floor && policy_of<decltype(a - a)> == round_floor);
     static_assert(policy_of<decltype(a + inside<{0, 10}>{1})> == 0); // mixed: the default
     static_assert(policy_of<decltype(a + inside<{0, 10}, clamp>{1})> == 0);
@@ -513,7 +514,7 @@ TEST(ConsistencyTest, point_insides_store_nothing) {
     static_assert(!is_expected_v<decltype(r)>);
     static_assert(grid_of<decltype(r)> == grid{0, 4});
     EXPECT_EQ(rational{r}, q(2));
-    auto d = val{17} / 5_ins;
+    auto d = test::rdiv(val{17}, 5_ins);
     static_assert(!is_expected_v<decltype(d)>);
     EXPECT_EQ(rational{d}, q(3));
     EXPECT_EQ(rational{-5_ins}, q(-5));
@@ -662,12 +663,12 @@ TEST(ConsistencyTest, hash_covers_every_storage) {
 // like the exact quotient (signed Q15: -1..1 in steps of 2^-15).
 TEST(ConsistencyTest, signed_qformat_division_stays_on_the_notch) {
     using q15 = inside<{{-1, 1}, per<32768>}, round_half_away>;
-    auto r    = (q15{q(1, 2)} / q15{q(3, 4)}).value();
+    auto r    = div(q15{q(1, 2)}, q15{q(3, 4)}, round_half_away).value();
     static_assert(notch_of<decltype(r)> == rational{1, 32768});
     static_assert(!rational_storage<decltype(r)>);
     EXPECT_EQ(rational{r}, q(21845, 32768)); // 2/3 · 2^15 = 21845.33 → 21845
-    EXPECT_EQ(rational{(q15{q(-1, 2)} / q15{q(3, 4)}).value()}, q(-21845, 32768));
+    EXPECT_EQ(rational{(test::rdiv(q15{q(-1, 2)}, q15{q(3, 4)})).value()}, q(-21845, 32768));
     using fl = inside<{{-1, 1}, per<32768>}, round_floor>;
-    EXPECT_EQ(rational{(fl{q(-1, 2)} / fl{q(3, 4)}).value()}, q(-21846, 32768));
-    EXPECT_EQ((q15{q(1, 2)} / q15{0}).error(), error::division_by_zero);
+    EXPECT_EQ(rational{(test::rdiv(fl{q(-1, 2)}, fl{q(3, 4)})).value()}, q(-21846, 32768));
+    EXPECT_EQ((test::rdiv(q15{q(1, 2)}, q15{0})).error(), error::division_by_zero);
 }

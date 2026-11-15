@@ -40,7 +40,7 @@ int main() {
     (void)s1;
 
     std::printf(
-        "a=%d w=%d s0=%d c0=%d\n", (int)detail::to_value(a), (int)detail::to_value(w), s0.as<int>(), c0.as<int>());
+        "a=%d w=%d s0=%d c0=%d\n", (int)detail::to_value(a), (int)detail::to_value(w), s0.to<int>(), c0.to<int>());
 
     return (rational{c0} == 1) ? 0 : 1;
 }

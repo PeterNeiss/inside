@@ -2,7 +2,7 @@
 // Internal — include "beman/inside/inside.hpp" (the umbrella), not this directly.
 // The core type beman::inside::inside<G, P>: construction and try_make,
 // compound assignment, ++/--, the conversions (rational, double,
-// to<T>/as<T>), numerator()/denominator(), raw()/from_raw, the per-store
+// to<T>), numerator()/denominator(), raw()/from_raw, the per-store
 // overrides (policy<F>(), policy(ec)) and hooks (on_wrap, on_clamp,
 // on_error), parse(first, last), just<…> and the _ins literal.
 // The umbrella adds the casts, arithmetic, range and cursor layers, which
@@ -425,15 +425,12 @@ struct inside {
 
     // Conversion summary:
     //   operator rational — implicit; lossless and exact.
-    //   operator double   — explicit, and gated on a rounding flag (a double
-    //                       may round the value).
-    //                       A strict inside opts in via `to<double>().value()`.
-    //   to<T>()           — narrowing/widening: T where the grid proves it total,
-    //                       else `expected<T, error>` (overflow / domain_error).
-    //   as<T>()           — non-expected sibling, for known-in-range sites
-    //                       (an index needs none: `vec[b]`, below);
-    //                       no check is left where T holds the whole grid.
-    //   to<T>(b)/as<T>(b) — free-function forms, for generic code.
+    //   operator double   — explicit; the value rounded once to a double,
+    //                       as to<double>().
+    //   to<T>()           — T where the grid proves the conversion total (no
+    //                       check is left), else `expected<T, error>`
+    //                       (overflow, rounding_error).
+    //   to<T>(b)          — the free-function form, for generic code.
     // No implicit integer conversion: it would narrow silently into a smaller
     // built-in (`int i = b;`, `unsigned char c = b;`), the range escaping
     // the type. The exception is an index, an inside whose every value is a
@@ -460,11 +457,7 @@ struct inside {
     operator T() const = delete ("inside: an index converts to the builtin integers that hold its whole grid - "
                                  "not to a smaller one, bool, a character or a floating type (x.to<T>(), x != 0)");
 
-    constexpr explicit operator double() const
-        requires(has_flag(P, detail::snap))
-    {
-        return detail::as_double(*this);
-    }
+    constexpr explicit operator double() const { return detail::as_double(*this); }
 
     // Unavailable on a wide-index grid: its values outgrow the 64-bit rational
     // (compare it, or read it with to<T>()).
@@ -508,8 +501,8 @@ struct inside {
     // and floating point). Like `/`, the type says whether it can fail: a plain
     // T where the grid proves the conversion total (total_to, and every
     // floating T), else std::expected<T, error> with `error::overflow` (out of
-    // T's range; `error::domain_error` for a negative value into unsigned T)
-    // or `error::rounding_error`. Rounding needs permission, as for a store: a
+    // T's range, a negative value into an unsigned T too) or
+    // `error::rounding_error`. Rounding needs permission, as for a store: a
     // fractional value rounds by Round, else by this type's rounding mode.
     // Bounds the grid already satisfies are not checked.
     template <std::integral T, policy_flag Round = detail::none>
@@ -532,7 +525,7 @@ struct inside {
             const auto t = q.Quot;
             if constexpr (check_lo)
                 if (t < decltype(t){lim::min()})
-                    return std::unexpected{std::unsigned_integral<T> ? error::domain_error : error::overflow};
+                    return std::unexpected{error::overflow};
             if constexpr (check_hi)
                 if (t > decltype(t){lim::max()})
                     return std::unexpected{error::overflow};
@@ -545,7 +538,7 @@ struct inside {
                     return std::unexpected{error::rounding_error};
             if constexpr (check_lo)
                 if (t < detail::rational{lim::min()})
-                    return std::unexpected{std::unsigned_integral<T> ? error::domain_error : error::overflow};
+                    return std::unexpected{error::overflow};
             if constexpr (check_hi)
                 if (t > detail::rational{lim::max()})
                     return std::unexpected{error::overflow};
@@ -572,44 +565,13 @@ struct inside {
             return static_cast<T>(detail::as_double(*this));
     }
 
-  private:
-    // to<T>() as as<T>() reads it: with the call's rounding for an integer T.
-    template <typename T, policy_flag Round>
-    constexpr auto to_for_as() const {
-        if constexpr (std::integral<T>)
-            return to<T, Round>();
-        else
-            return to<T>();
-    }
-    template <typename T, policy_flag Round>
-    static constexpr bool as_total =
-        !detail::expected_like<decltype(std::declval<const inside&>().template to_for_as<T, Round>())>;
-
   public:
-    // as<T>() — to<T>() where the grid proves the conversion total: T itself,
-    // for known-in-range sites (array indexing, capacity arithmetic). Where a
-    // value may not convert, to<T>() returns a std::expected and as<T>() is
-    // deleted. FP targets share operator double's policy gate, so a strict
-    // inside rejects `b.as<double>()` too.
-    template <typename T, policy_flag Round = detail::none>
-        requires(std::integral<T> || (std::floating_point<T> && Round == detail::none)) &&
-                (!std::floating_point<T> || has_flag(P, detail::snap)) && as_total<T, Round>
-    [[nodiscard]] constexpr T as() const {
-        return to_for_as<T, Round>();
-    }
-    template <typename T, policy_flag Round = detail::none>
-        requires(std::integral<T> || (std::floating_point<T> && Round == detail::none)) &&
-                    (!std::floating_point<T> || has_flag(P, detail::snap)) && (!as_total<T, Round>)
-    T as() const = delete ("inside: as<T>() takes a conversion the grid proves total - here a value may not fit T "
-                           "(or would need rounding): use to<T>(), which returns a std::expected, or to<T, "
-                           "round_floor>() and the like");
-
     // numerator() / denominator() — the exact value in lowest terms (sign on
     // the numerator, denominator positive), each an inside on the integers
     // that holds every such part of this grid's values (numerator_grid,
     // denominator_grid): 3 and 16 for 0.1875 on {{0, 1}, per<16>}. On an
     // integer lattice the numerator is the value and the denominator the
-    // point 1. Read a builtin with .as<T>() or .to<T>().
+    // point 1. Read a builtin with .to<T>().
     [[nodiscard]] constexpr auto numerator() const {
         using N = inside<detail::numerator_grid(G)>;
         if constexpr (detail::point_storage<N>)
@@ -676,15 +638,13 @@ struct inside {
     // when every value of i is an index of T (0 … step_count_of<T>), a raw
     // copy; else a store checked by T's policy, or by a one-shot policy
     // (clamp saturates at the ends, wrap folds onto the indices).
-    // try_from_step reports the failure instead.
     template <insidable I>
         requires detail::integer_lattice<I> && (G.Notch != 0 || G.Interval.Lower == G.Interval.Upper)
-    // (An index that may fall outside 0 … step_count: a std::expected, as
-    // try_from_step.)
+    // (A step that may fall outside 0 … step_count: a std::expected.)
     [[nodiscard]] static constexpr auto from_step(const I& i) {
         constexpr bool within = lower_of<I> >= 0 && upper_of<I> <= G.step_count();
         if constexpr (!within)
-            return try_from_step(i);
+            return try_make(step_value(i));
         else if constexpr (detail::point_storage<inside>)
             return from_raw({}, unsafe);
         else if constexpr (detail::index_storage<inside> && detail::raw_holds_value<I>)
@@ -705,11 +665,6 @@ struct inside {
         else
             return detail::try_store<inside, O>([&](inside& r, auto&& ec_pol) { r = inside{step_value(i), ec_pol}; });
     }
-    template <policy_flag F = detail::none, insidable I>
-        requires detail::integer_lattice<I> && (G.Notch != 0 || G.Interval.Lower == G.Interval.Upper)
-    [[nodiscard]] static constexpr std::expected<inside, error> try_from_step(const I& i) {
-        return try_make<F>(step_value(i));
-    }
 #define BEMAN_INSIDE_WHY_from_index \
     "inside: from_step(i) takes a notch index - an inside on the integers (step_t<T>, 3_ins) or a builtin integer"
     template <insidable I>
@@ -729,11 +684,6 @@ struct inside {
                 (detail::flag_like<Pol> || detail::policy_like<Pol>)
     [[nodiscard]] static constexpr auto from_step(T i, Pol&& pol) {
         return from_step(as_step_inside(i), std::forward<Pol>(pol));
-    }
-    template <policy_flag F = detail::none, std::integral T>
-        requires(G.Notch != 0 || G.Interval.Lower == G.Interval.Upper)
-    [[nodiscard]] static constexpr std::expected<inside, error> try_from_step(T i) {
-        return try_from_step<F>(as_step_inside(i));
     }
 
   private:
@@ -1019,7 +969,11 @@ struct inside {
     constexpr inside& operator/=(const R& rhs) {
         if (rhs == 0)
             return *this;
-        return assign_op_result(*this / rhs);
+        // (A store into this type: its rounding mode divides, on the grid.)
+        if constexpr (has_flag(P, detail::snap))
+            return assign_op_result(div(*this, rhs, make_policy<P>()));
+        else
+            return assign_op_result(*this / rhs);
     }
 
     template <insidable R>
@@ -1184,8 +1138,8 @@ struct inside {
 };
 
 //---------------------------------------------------------------------------
-// to<T>(b) / as<T>(b) — free-function forms, for generic code that would
-// otherwise need the `.template` disambiguator. Same semantics as the members.
+// to<T>(b) — the free-function form, for generic code that would
+// otherwise need the `.template` disambiguator. Same semantics as the member.
 //---------------------------------------------------------------------------
 template <typename T, policy_flag Round = detail::none, insidable B>
 [[nodiscard]] constexpr auto to(const B& b)
@@ -1195,13 +1149,6 @@ template <typename T, policy_flag Round = detail::none, insidable B>
         return b.template to<T>();
     else
         return b.template to<T, Round>();
-}
-
-template <typename T, policy_flag Round = detail::none, insidable B>
-[[nodiscard]] constexpr T as(const B& b)
-    requires requires { b.template as<T, Round>(); }
-{
-    return b.template as<T, Round>();
 }
 
 //---------------------------------------------------------------------------

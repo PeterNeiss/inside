@@ -54,6 +54,26 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   in another unit does not compile. Each old form is a deleted overload whose
   message names the new one.
 
+- `a / b` and `a % b` no longer depend on the operands' policies: `/` is
+  always the exact quotient and `%` the remainder of the truncated quotient.
+  A rounded division names its mode where it happens.
+
+  | Before | Now |
+  |---|---|
+  | `down{7} / d` rounded, because `down` has `round_floor` | `div(down{7}, d, round_floor)`, or a store into a type that rounds: `x /= d`, `down{a / d}` |
+  | `a % b` followed the operands' rounding mode | `mod(a, b, round_floor)` |
+  | `div(a, b)`, `mod(a, b)`, `divmod(a, b)` took the operands' mode | the mode is the call's: `divmod(a, b, round_floor)`; none means exact `/`, truncated `%` |
+
+- One function where there were two.
+
+  | Before | Now |
+  |---|---|
+  | `x.as<T>()`, `as<T>(x)` | `x.to<T>()`: a plain `T` where the grid proves the conversion total, as `as<T>()` was |
+  | `double(x)` and `x.as<double>()` needed a rounding mode | `double(x)` and `x.to<double>()` on every inside, rounded once |
+  | `T::try_from_index(i)` | `T::from_step(i)`: a `std::expected` where `i` may miss |
+  | `try_value_cast<Q>(q)`, `try_value_cast<Q, F>(q)` | `value_cast<Q>(q)`: a `std::expected` where the store may fail; for flags, cast into a type that has them |
+  | `x.to<unsigned>()` of a negative value: `domain_error` | `error::overflow`: it does not fit |
+
 - Renamed, to give each idea one word. No old spelling is kept.
 
   | Before | Now | Why |
@@ -112,6 +132,8 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   index except the subscript and pointer arithmetic: the bit and shift
   operators and a compound assignment into a builtin number are deleted. A
   grid with a negative or fractional value, and a cursor, do not convert.
+- `q *= n` scales a quantity by a builtin integer, and a multivector compares
+  with one (`squared_norm(z) == 25`).
 - `x += n`, `x -= n`, `x *= n` take a builtin integer, a literal or a
   variable (`brightness += 10`), also through `x.policy(...)` and the hooks.
   The integer counts as an inside on the range of its type; the store back

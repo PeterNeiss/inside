@@ -46,8 +46,9 @@ of both grids, with the gcd notch, under the same rule.
 
 `a / b` returns a plain inside when the divisor's grid excludes 0, and a
 `std::expected<…, error>` when it holds 0. Which code runs is chosen at compile
-time from the operands' grids and the rounding mode of either operand or of
-the call (`div(a, b, round_floor)`):
+time from the operands' grids and the rounding mode of the call
+(`div(a, b, round_floor)`; `x /= b` on a type that rounds names that type's
+mode). The operator `a / b` names none, so it always takes path C:
 
 | Path | When | What it does | Result grid |
 |---|---|---|---|

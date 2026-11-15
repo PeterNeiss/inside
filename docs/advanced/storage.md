@@ -108,7 +108,7 @@ runs stays exact:
 |---|---|
 | `x + y`, `x * y`, `x % m`, `divmod(x, m)`, … | exact results on wide raws; the result types are sized at compile time |
 | `x.step()` | the step (x − Lower)/Notch as a `step_t<T>` = `inside<{0, step_count}>`, with T's raw type |
-| `T::from_step(i)` | the value Lower + i·Notch: plain when `i`'s grid lies within the indices, else checked by T's policy (or `from_step(i, clamp)`, `try_from_step(i)`) |
+| `T::from_step(i)` | the value Lower + i·Notch: plain when `i`'s grid lies within the indices, else checked by T's policy (or `from_step(i, clamp)`, `from_step(i)`) |
 | `step_count_of<T>` | (Upper − Lower)/Notch as a point inside: 0 bytes, printable |
 | `x.numerator()`, `x.denominator()` | the value in lowest terms, as insides on the integers |
 | `std::numeric_limits<T>::min()`, `max()`, `just<lower_of<T>>` | the limits as insides |

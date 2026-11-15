@@ -44,9 +44,11 @@ void mod(rng_t& g, int n, const char* mode) {
         const X a = pick<X>(g);
         const D b = pick<D>(g);
         std::cout << "M " << mode << ' ' << a << ' ' << b << ' ';
-        out(a % b);
+        // X's rounding mode, named at the call (the operators take none).
+        constexpr policy_flag F = policy_of<X> & (detail::mode_bits | detail::snap);
+        out(beman::inside::mod(a, b, make_policy<F>()));
         std::cout << ' ';
-        const auto dm = divmod(a, b);
+        const auto dm = divmod(a, b, make_policy<F>());
         if constexpr (requires { dm.has_value(); }) {
             if (dm) {
                 out(dm->Quotient);

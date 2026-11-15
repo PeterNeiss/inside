@@ -208,6 +208,10 @@ TEST(GeoalgTest, the_algebra_holds) {
     // In spacetime, γ₀ is timelike and γ₁ spacelike.
     EXPECT_TRUE(squared_norm(just<3> * g0 + just<2> * g1) == 5);
     EXPECT_TRUE((just<3> * g0 + just<2> * g1) * (just<3> * g0 + just<2> * g1) == just<5>);
+    // A builtin integer compares as a number does, on either side.
+    EXPECT_TRUE((just<3> * g0 + just<2> * g1) * (just<3> * g0 + just<2> * g1) == 5);
+    EXPECT_TRUE(5 == (just<3> * g0 + just<2> * g1) * (just<3> * g0 + just<2> * g1));
+    EXPECT_FALSE(u == 14);
 }
 
 TEST(GeoalgTest, results_collapse) {

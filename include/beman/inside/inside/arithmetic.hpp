@@ -359,22 +359,31 @@ template <insidable L, insidable R>
     requires(!detail::mul_defined<L, R>)
 auto operator*(L, R) = delete (BEMAN_INSIDE_WHY_mul);
 
+// `/` and `%` are one operation whatever the operands' types round: the exact
+// quotient, and the remainder of the quotient truncated toward zero. A
+// rounded division names its mode at the call (div(a, b, round_floor),
+// mod(a, b, round_floor)), or is a store into a type that rounds (x /= b).
+// Only `unsafe` is taken from the operands (it skips the zero-divisor check).
+namespace detail {
 template <insidable L, insidable R>
-    requires detail::div_defined<L, R, policy_of<L> | policy_of<R>>
-[[nodiscard]] constexpr auto operator/(L lhs, R rhs) {
-    return beman::inside::div(lhs, rhs, make_policy<policy_of<L> | policy_of<R>>());
+inline constexpr policy_flag operator_flags = (policy_of<L> | policy_of<R>)&unsafe_marker;
 }
 template <insidable L, insidable R>
-    requires(!detail::div_defined<L, R, policy_of<L> | policy_of<R>>)
+    requires detail::div_defined<L, R, detail::operator_flags<L, R>>
+[[nodiscard]] constexpr auto operator/(L lhs, R rhs) {
+    return beman::inside::div(lhs, rhs, make_policy<detail::operator_flags<L, R>>());
+}
+template <insidable L, insidable R>
+    requires(!detail::div_defined<L, R, detail::operator_flags<L, R>>)
 auto operator/(L, R) = delete (BEMAN_INSIDE_WHY_div);
 
 template <insidable L, insidable R>
-    requires detail::mod_defined<L, R, policy_of<L> | policy_of<R>>
+    requires detail::mod_defined<L, R, detail::operator_flags<L, R>>
 [[nodiscard]] constexpr auto operator%(L lhs, R rhs) {
-    return beman::inside::mod(lhs, rhs, make_policy<policy_of<L> | policy_of<R>>());
+    return beman::inside::mod(lhs, rhs, make_policy<detail::operator_flags<L, R>>());
 }
 template <insidable L, insidable R>
-    requires(!detail::mod_defined<L, R, policy_of<L> | policy_of<R>>)
+    requires(!detail::mod_defined<L, R, detail::operator_flags<L, R>>)
 auto operator%(L, R) = delete (BEMAN_INSIDE_WHY_mod);
 #undef BEMAN_INSIDE_WHY_arith_action
 #undef BEMAN_INSIDE_WHY_add

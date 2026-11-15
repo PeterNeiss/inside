@@ -36,11 +36,12 @@ struct divmod_result {
 } // namespace beman::inside
 
 namespace beman::inside::detail {
-// Both operands are plain integer grids and the caller accepted integer
-// truncation (snap) — the prerequisite for native integer div / mod.
+// Both operands are plain integer grids and the call names a rounding mode
+// (F: div(a, b, round_floor), a compound assignment's type) — the
+// prerequisite for native integer div / mod. The operands' own modes play no
+// part: a / b is the exact quotient whatever their types round.
 template <insidable L, insidable R, policy_flag F>
-inline constexpr bool integer_ops =
-    ((F | policy_of<L> | policy_of<R>)&snap) && integer_lattice<L> && integer_lattice<R>;
+inline constexpr bool integer_ops = (F & snap) && integer_lattice<L> && integer_lattice<R>;
 
 // ...and every value fits int64, so the builtin integer division applies.
 template <insidable L, insidable R, policy_flag F>
@@ -181,7 +182,7 @@ struct division {
                       !(grid_int{1} < grid_denominator(notch_of<L>)) || !(grid_of<L> / grid_of<R>).has_value())
             return false;
         else
-            return ((F | policy_of<L> | policy_of<R>)&snap) != 0;
+            return (F & snap) != 0;
     }();
 
     static constexpr bool wide_div_integer = integer_wide_ops<L, R, F>;
@@ -189,7 +190,7 @@ struct division {
     static constexpr bool native_div = native_div_integer || native_div_fixed || wide_div_integer;
 
     // The rounding mode for the native paths (shared by the grid and runtime).
-    static constexpr round_mode rmode = rounding_of(F | policy_of<L> | policy_of<R>);
+    static constexpr round_mode rmode = rounding_of(F);
 
     // A clear diagnostic when there is no result grid, instead of the
     // expected-deref below failing cryptically. The native integer path forms
@@ -444,7 +445,7 @@ struct modulo {
                                            signed_value_bits({units_lo<L, unit>, units_hi<L, unit>}) < 63 &&
                                            signed_value_bits({units_lo<R, unit>, units_hi<R, unit>}) < 63;
 
-    static constexpr round_mode rmode = rounding_of(F | policy_of<L> | policy_of<R>);
+    static constexpr round_mode rmode = rounding_of(F);
 
     // Remainder consistent with the rounded quotient: r = a − round(a/b)·b,
     // with the tightest bounds every mode allows (the values r can take):
@@ -577,7 +578,7 @@ struct quotient_remainder {
 
     static_assert(integer_ops<L, R, FS> || lattice_mod_ops<L, R>, "divmod requires notched grids");
 
-    static constexpr round_mode rmode = rounding_of(FS | policy_of<L> | policy_of<R>);
+    static constexpr round_mode rmode = rounding_of(FS);
 
     // On a lattice the quotient is the integer round(a/b): its grid holds the
     // quotient interval's limits rounded the same way (rounding is monotone).

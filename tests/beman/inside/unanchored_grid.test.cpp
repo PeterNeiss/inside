@@ -154,7 +154,7 @@ void check_decode() {
         EXPECT_EQ(b.raw(), static_cast<raw_t<B>>(k));
         EXPECT_EQ(b.numerator(), signed_numerator(want));
         EXPECT_EQ(b.denominator(), abs_den(want.Den));
-        EXPECT_EQ((b.template as<std::int64_t, round_toward_zero>()), trunc(want));
+        EXPECT_EQ((b.template to<std::int64_t, round_toward_zero>()), trunc(want));
         EXPECT_EQ(as_double(b), static_cast<double>(want));
         EXPECT_TRUE(b == want);
     }
@@ -471,14 +471,14 @@ TEST(UnanchoredGridTest, range_limits_random) {
     EXPECT_FALSE(std::numeric_limits<inside<half_off>>::is_integer);
     static_assert(!std::is_convertible_v<inside<half_off>, std::int64_t>); // no silent truncation
     static_assert(!std::is_convertible_v<inside<{-1, 10}>, std::int64_t>);
-    // as<std::int64_t>() rounds by the policy's mode
-    EXPECT_EQ((inside<half_off, round_half_away>{2.5}.as<std::int64_t>()), 3);
-    EXPECT_EQ((inside<half_off, round_floor>{2.5}.as<std::int64_t>()), 2);
-    EXPECT_EQ((inside<half_off, round_toward_zero>{2.5}.as<std::int64_t>()), 2);
-    EXPECT_EQ((inside<quarter_off, round_toward_zero>{-1.75}.as<std::int64_t>()), -1);
-    EXPECT_EQ((inside<half_off, round_half_even>{2.5}.as<std::int64_t>()), 2);
-    EXPECT_EQ((inside<half_off, round_half_even>{3.5}.as<std::int64_t>()), 4);
-    const std::int64_t i = inside<{{0, 4}, per<4>}, round_ceil>{1.25}.as<std::int64_t>();
+    // to<std::int64_t>() rounds by the policy's mode
+    EXPECT_EQ((inside<half_off, round_half_away>{2.5}.to<std::int64_t>()), 3);
+    EXPECT_EQ((inside<half_off, round_floor>{2.5}.to<std::int64_t>()), 2);
+    EXPECT_EQ((inside<half_off, round_toward_zero>{2.5}.to<std::int64_t>()), 2);
+    EXPECT_EQ((inside<quarter_off, round_toward_zero>{-1.75}.to<std::int64_t>()), -1);
+    EXPECT_EQ((inside<half_off, round_half_even>{2.5}.to<std::int64_t>()), 2);
+    EXPECT_EQ((inside<half_off, round_half_even>{3.5}.to<std::int64_t>()), 4);
+    const std::int64_t i = inside<{{0, 4}, per<4>}, round_ceil>{1.25}.to<std::int64_t>();
     EXPECT_EQ(i, 2);
 
     std::mt19937_64 rng{42};

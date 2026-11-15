@@ -177,7 +177,7 @@ TEST(RangeTest, inside_range_works_with_std_views_reverse) {
     small_grid                r; // 0,1,2,3,4
     std::vector<std::int64_t> seen;
     for (auto v : std::views::reverse(r))
-        seen.push_back(v.as<std::int64_t>());
+        seen.push_back(v.to<std::int64_t>());
     ASSERT_TRUE((seen == std::vector<std::int64_t>{4, 3, 2, 1, 0}));
 }
 
@@ -186,7 +186,7 @@ TEST(RangeTest, inside_range_with_std_views_enumerate) {
     small_grid                                         r;
     std::vector<std::pair<std::int64_t, std::int64_t>> seen;
     for (auto [i, v] : std::views::enumerate(r))
-        seen.emplace_back(i, v.as<std::int64_t>());
+        seen.emplace_back(i, v.to<std::int64_t>());
     ASSERT_TRUE((seen == std::vector<std::pair<std::int64_t, std::int64_t>>{{0, 0}, {1, 1}, {2, 2}, {3, 3}, {4, 4}}));
 }
 
@@ -196,7 +196,7 @@ TEST(RangeTest, inside_range_with_std_views_stride) {
     auto       collect = [&](std::int64_t step) {
         std::vector<std::int64_t> seen;
         for (auto v : r | std::views::stride(step))
-            seen.push_back(v.as<std::int64_t>());
+            seen.push_back(v.to<std::int64_t>());
         return seen;
     };
     ASSERT_TRUE((collect(1) == std::vector<std::int64_t>{0, 1, 2, 3, 4}));
@@ -753,8 +753,8 @@ TEST(IndexTest, from_index_out_of_range) {
     EXPECT_TRUE(halves::from_step(past, clamp) == 5);
     EXPECT_TRUE((halves::from_step(past + 1, wrap) == rational{1, 2})); // 12 folds to 1
     EXPECT_TRUE(halves::from_step(-at_run_time(1), clamp) == 0);
-    EXPECT_EQ(halves::try_from_step(past).error(), error::overflow);
-    EXPECT_TRUE(halves::try_from_step(at_run_time(4)).value() == 2);
+    EXPECT_EQ(halves::from_step(past).error(), error::overflow);
+    EXPECT_TRUE(halves::from_step(at_run_time(4)).value() == 2);
     EXPECT_EQ(five::from_step(at_run_time(1)).error(), error::overflow); // a point has index 0 only
 
     // Past 2^64 points: one past the last index.
@@ -762,7 +762,7 @@ TEST(IndexTest, from_index_out_of_range) {
     EXPECT_EQ(huge::from_step(beyond).error(), error::overflow);
     EXPECT_TRUE(huge::from_step(beyond, clamp) == just<g(pow2(100))>);
     EXPECT_TRUE(huge::from_step(beyond, wrap) == 0);
-    EXPECT_EQ(huge::try_from_step(beyond).error(), error::overflow);
+    EXPECT_EQ(huge::from_step(beyond).error(), error::overflow);
 }
 
 TEST(IndexTest, numerator_and_denominator_are_insides) {
@@ -770,7 +770,7 @@ TEST(IndexTest, numerator_and_denominator_are_insides) {
     static_assert(grid_of<decltype(q.numerator())> == grid{0, 65535});
     static_assert(grid_of<decltype(q.denominator())> == grid{1, 256});
     EXPECT_TRUE(q.numerator() == 3 && q.denominator() == 2);
-    EXPECT_EQ(q.numerator().as<int>(), 3);
+    EXPECT_EQ(q.numerator().to<int>(), 3);
 
     const temp t = test::store<temp>(-at_run_time(7));
     static_assert(std::is_same_v<decltype(t.numerator()), temp>); // the value itself
@@ -821,7 +821,7 @@ TEST(RangeTest, inside_range_sequential) {
     int          count = 0;
     std::int64_t sum   = 0;
     for (auto i : inside_range<{0, 9}>{}) {
-        sum += i.as<std::int64_t>();
+        sum += i.to<std::int64_t>();
         ++count;
     }
     ASSERT_EQ(count, 10);
@@ -834,8 +834,8 @@ TEST(RangeTest, inside_range_wrapping_start) {
     std::int64_t first = -1, last = -1;
     for (auto i : inside_range<{0, 9}>{7}) {
         if (count == 0)
-            first = i.as<std::int64_t>();
-        last = i.as<std::int64_t>();
+            first = i.to<std::int64_t>();
+        last = i.to<std::int64_t>();
         ++count;
     }
     ASSERT_EQ(count, 10);
@@ -849,8 +849,8 @@ TEST(RangeTest, inside_range_over_signed_inside) {
     std::int64_t first = 0, last = 0;
     for (auto i : inside_range<{-2, 2}>{}) {
         if (count == 0)
-            first = i.as<std::int64_t>();
-        last = i.as<std::int64_t>();
+            first = i.to<std::int64_t>();
+        last = i.to<std::int64_t>();
         ++count;
     }
     ASSERT_EQ(count, 5);

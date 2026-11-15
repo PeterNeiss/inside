@@ -148,7 +148,7 @@ TEST(PolicyActionsTest, on_wrap_action_receives_inside_and_carry) {
     sec          s{0};
     std::int64_t carry = 0;
     s.on_wrap([&](auto& self, auto c) {
-        carry = as<std::int64_t>(c);
+        carry = to<std::int64_t>(c);
         (void)self;
     })                 = 65;
     ASSERT_EQ(s, 5);
@@ -172,7 +172,7 @@ TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_an_inside_rhs) {
     w10            x{8};
     inside<{0, 5}> add{4}; // inside RHS
     std::int64_t   carry_val = -99;
-    x.on_wrap([&](auto&, auto carry) { carry_val = as<std::int64_t>(carry + just<0>); }) += add;
+    x.on_wrap([&](auto&, auto carry) { carry_val = to<std::int64_t>(carry + just<0>); }) += add;
     ASSERT_EQ(x, 2);         // 8 + 4 = 12 -> 12 mod 10
     ASSERT_EQ(carry_val, 1); // floor(12 / 10)
 
@@ -182,7 +182,7 @@ TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_an_inside_rhs) {
     pos                      p{2.5};
     inside<{{0, 2}, per<2>}> fadd{1.5};
     std::int64_t             fcarry = -99;
-    p.on_wrap([&](auto&, auto carry) { fcarry = as<std::int64_t>(carry + just<0>); }) += fadd;
+    p.on_wrap([&](auto&, auto carry) { fcarry = to<std::int64_t>(carry + just<0>); }) += fadd;
     ASSERT_TRUE((p == just<1, 2>)); // 2.5 + 1.5 = 4.0 -> 4.0 - 3.5 = 0.5
     ASSERT_EQ(fcarry, 1);           // floor(4.0 / 3.5)
 }
@@ -193,7 +193,7 @@ TEST(PolicyActionsTest, on_clamp_action_receives_overshoot) {
     u100         x{0};
     std::int64_t overshoot = 0;
     x.on_clamp([&](auto& self, auto over) {
-        overshoot = as<std::int64_t>(over); // an inside for every source
+        overshoot = to<std::int64_t>(over); // an inside for every source
         (void)self;
     })                     = 150;
     ASSERT_EQ(x, 100);
@@ -203,13 +203,13 @@ TEST(PolicyActionsTest, on_clamp_action_receives_overshoot) {
 // on_clamp overshoot is an inside for an inside RHS
 TEST(PolicyActionsTest, on_clamp_overshoot_is_an_inside_for_an_inside_rhs) {
     // A insidable RHS routes clamp through inside arithmetic, so the overshoot is a
-    // inside<grid_of<R> - grid_of<L>>, read with as<std::int64_t>() (it would not compile
+    // inside<grid_of<R> - grid_of<L>>, read with to<std::int64_t>() (it would not compile
     // against a raw expected<rational>).
     using c100 = inside<{0, 100}, clamp>;
     c100             x{0};
     inside<{0, 200}> v{150}; // overlaps [0,100], runtime out of range
     std::int64_t     ov                                                = 0;
-    x.on_clamp([&](auto&, auto over) { ov = as<std::int64_t>(over); }) = v;
+    x.on_clamp([&](auto&, auto over) { ov = to<std::int64_t>(over); }) = v;
     ASSERT_EQ(x, 100);
     ASSERT_EQ(ov, 50); // overshoot 150 - 100
 }
@@ -236,7 +236,7 @@ TEST(PolicyActionsTest, compound_op_fires_on_clamp_on_the_store_back) {
     std::int64_t over = 0;
     b.on_clamp([&](auto&, auto o) {
         cl   = true;
-        over = as<std::int64_t>(o);
+        over = to<std::int64_t>(o);
     }) += 200_ins; // 50+200=250 overshoots [0,100]
     ASSERT_TRUE(cl);
     ASSERT_EQ(over, 150);
@@ -385,7 +385,7 @@ TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_every_source) {
     }) = static_cast<signed char>(5);
 
     std::int64_t c                                             = 0;
-    s.on_wrap([&](auto&, auto k) { c = as<std::int64_t>(k); }) = 130;
+    s.on_wrap([&](auto&, auto k) { c = to<std::int64_t>(k); }) = 130;
     EXPECT_EQ(c, 2);
 }
 
@@ -1182,9 +1182,9 @@ TEST(PolicyTest, one_shot_policy_applies_to_dyadic_target) {
 // clamp / wrap take an integral source whose whole type range misses the grid.
 //---------------------------------------------------------------------------
 TEST(PolicyTest, clamp_wrap_from_disjoint_integral_type) {
-    static_assert(inside<{{1000, 2000}, 1}, clamp>{std::uint8_t{5}}.as<int>() == 1000);
-    static_assert(inside<{{1000, 1009}, 1}, wrap>{std::uint8_t{5}}.as<int>() == 1005);
-    static_assert(inside<{1000, 2000}>{std::uint8_t{5}, clamp}.as<int>() == 1000);
+    static_assert(inside<{{1000, 2000}, 1}, clamp>{std::uint8_t{5}}.to<int>() == 1000);
+    static_assert(inside<{{1000, 1009}, 1}, wrap>{std::uint8_t{5}}.to<int>() == 1005);
+    static_assert(inside<{1000, 2000}>{std::uint8_t{5}, clamp}.to<int>() == 1000);
 }
 
 // A policy_ref compound /= or %= with a zero divisor reports (or, under

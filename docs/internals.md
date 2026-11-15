@@ -297,8 +297,8 @@ which step takes a given set of hooks. A quantity's hooks wrap the inside's
 ## 5. Conversions
 
 The user-facing rules (an implicit lossless `operator rational`, an explicit
-`operator double` that needs a rounding mode, no conversion to a built-in
-integer: `as<T>()` and `to<T>()` read one) are in
+`operator double`, an implicit conversion to a built-in integer for an index
+only: `to<T>()` reads any other) are in
 [Conversions](guide/conversions.md). On `rational` itself every `operator T()` is
 explicit and truncates toward zero; `r.to<T>()` is the typed-error form, and
 `trunc`, `floor`, `ceil` and `round` name the integer reductions.
@@ -348,13 +348,12 @@ can fail: a result the grids prove total stays a plain inside.
 | `math::tan` | expected | `division_by_zero` (a pole), `overflow` (past `Out`) |
 | `math::pow` | expected | `domain_error` (a negative base), `division_by_zero` (0 to a negative power), `overflow` |
 | `math::sqrt` of a grid that crosses 0 | expected | `domain_error` |
-| `to<T>()` | expected | `overflow`, `domain_error` (negative into unsigned) |
-| `as<T>()` | `T` | only where `to<T>()` is total; else deleted (use `to<T>()`) |
+| `to<T>()` | `T` where the grid proves it total, else expected | `overflow`, `rounding_error` |
 | `try_make`, `parse` | expected | `overflow`, `rounding_error`, `invalid_format` (text) |
 | construction, assignment | the cascade | by the channel: `overflow`, `rounding_error`, `not_finite` |
 | `sum<Target>` | expected (`Target` under clamp, wrap or unsafe) | `overflow`, `rounding_error`, once for the total |
 | `mul<Out>`, `div<Out>`, `exact_cast<T>`, `f<Out>(x)`, `value_cast` | `Out`, or expected where it can miss | `overflow`, `rounding_error` |
-| a quantity's `/`, `div<C>`, `try_value_cast`, `parse<Q>`, `Q::try_make` | as the inside's | the inside's causes, with the quantity as the value |
+| a quantity's `/`, `div<C>`, `value_cast`, `parse<Q>`, `Q::try_make` | as the inside's | the inside's causes, with the quantity as the value |
 
 Chaining (`inside/detail/lift.hpp`, `arithmetic.hpp`): the expected-lift operators keep an
 `expected` chain intact, so `a / b * gain + offset` stays an

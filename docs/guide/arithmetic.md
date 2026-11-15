@@ -63,13 +63,16 @@ auto g = x / 5_ins;                 // a plain value, 1.4, on notch 1/5
 A `std::expected` result carries `error::division_by_zero` when the divisor
 was 0. Check it before you store it.
 
-**Integer division.** A rounding mode on either operand, or on the call,
-makes `/` divide on the grid and round:
+**Integer division.** `/` is always the exact quotient, whatever the
+operands' types round. To divide on the grid and round, name the mode at the
+call, or store into a type that rounds:
 
 ```cpp
 auto i = div(x, val{3}, round_toward_zero);      // std::expected: 2
 using down = inside<{0, 100}, round_floor>;
-auto j = down{7} / inside<{1, 10}>{2};           // 3
+down j{7};
+j /= inside<{1, 10}>{2};                         // 3: a store into a type that rounds
+down k{x / inside<{1, 10}>{2}};                  // 3: the exact 3.5, rounded by the store
 ```
 
 ## Round once: `mul<Out>` and `div<Out>`

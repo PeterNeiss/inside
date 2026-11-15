@@ -77,6 +77,24 @@ error store_error(const V& v) {
     static_cast<void>(r);
     return ec;
 }
+
+// Division by the rounding mode the operands' types share (the operators `/`
+// and `%` are exact and truncating whatever the types round): what a store
+// into such a type, or div(a, b, mode), computes.
+template <class A, class B>
+inline constexpr policy_flag modes_of = (policy_of<A> | policy_of<B>)&(detail::mode_bits | detail::snap);
+template <class A, class B>
+constexpr auto rdiv(const A& a, const B& b) {
+    return div(a, b, make_policy<modes_of<A, B>>());
+}
+template <class A, class B>
+constexpr auto rmod(const A& a, const B& b) {
+    return mod(a, b, make_policy<modes_of<A, B>>());
+}
+template <class A, class B>
+constexpr auto rdivmod(const A& a, const B& b) {
+    return divmod(a, b, make_policy<modes_of<A, B>>());
+}
 } // namespace beman::inside::test
 
 // An exhaustive sweep runs in optimized builds; an unoptimized one skips it

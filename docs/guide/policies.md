@@ -118,9 +118,10 @@ this way.
 
 ## Policies of results
 
-A result keeps the policy its operands share. With
-`inside<{0, 10}, round_floor> a{7}`, `a / 2_ins` is 3: the division rounds
-down, because `a` does. A constant such as `2_ins` counts as neutral.
+A result keeps the policy its operands share, and a constant such as `2_ins`
+counts as neutral. The policy acts when the result is stored: arithmetic
+itself is exact. With `inside<{0, 10}, round_floor> a{7}`, `a / 2_ins` is
+3.5, and storing it into `a`'s type gives 3.
 
 ## A store the grids cannot prove
 
