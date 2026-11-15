@@ -100,6 +100,8 @@ them in):
 | `wrap_counter<Max>` | `inside<{0, Max}, wrap>`: `++` wraps Max → 0 | the smallest that fits | `wrap` |
 
 ```cpp
+using namespace beman::inside::formats;
+
 uq8_8 gain{1.5};              // stored as 384
 wrap_counter<255> seq{255};
 ++seq;                       // 0

@@ -110,6 +110,10 @@ auto depth = just<3> * fathom;
 depth.in(si::metre);                                       // 5.4864 m
 ```
 
+(The definition is a template argument: a one-point inside such as
+`1.8288_ins` or `just<5>`, a quantity of one and a point of one are
+structural types, so your own templates can take them too.)
+
 For something that is not a physical quantity at all, such as money, hit
 points, pixels or ADC counts, declare a **base unit** with a dimension of its
 own. It then never mixes with anything else:

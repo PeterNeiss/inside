@@ -84,7 +84,7 @@ once:
 ```cpp
 using eth   = inside<{{0, 1'000'000'000}, 1e-18_ins}>;            // to the wei
 using price = inside<{{0, 100'000'000}, per<100>}>;             // dollars per ETH
-using usd   = inside<{{0, 1'000'000'000'000'000}, per<100>}, round_half_away>;
+using usd   = inside<{{0, 100'000'000'000'000'000}, per<100>}, round_half_away>;   // holds every product
 
 eth   balance{just<15, 10>};
 price rate{just<345678, 100>};

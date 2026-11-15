@@ -1037,3 +1037,49 @@ TEST(UnitsArmTest, point_plus_a_quantity_without_the_point_unit) {
     EXPECT_EQ(to_string(p + q), "4/3 m");
 }
 } // namespace reached_arms_tests
+
+// Q{v, u} with a plain number in another unit of the quantity: stored once,
+// onto Q's grid in u, by every rule of a store; then converted exactly.
+namespace number_in_another_unit_tests {
+using namespace beman::inside;
+using namespace beman::inside::units;
+
+using minutes    = quantity<si::minute, inside<{0, 600}>>;
+using hundredths = quantity<si::minute, inside<{{0, 600}, per<100>}, round_half_even>>;
+using metres     = quantity<si::metre, inside<{0, 5000}>>;
+using degrees    = quantity<si::degree, inside<{0, 360}>>;
+
+static_assert(minutes{120, si::second} == minutes{2, si::minute});
+static_assert(minutes{1, si::hour} == minutes{60, si::minute});
+static_assert(metres{2, si::kilo(si::metre)} == metres{2000, si::metre});
+static_assert(metres{1.5, si::kilo(si::metre)} == metres{1500, si::metre});
+// The call's flag rounds and bounds, in Q's notches: 90 s is 1.5 min.
+static_assert(minutes{90, si::second, round_floor} == minutes{1, si::minute});
+static_assert(minutes{90, si::second, round_ceil} == minutes{2, si::minute});
+static_assert(minutes{1000000, si::second, clamp} == minutes{600, si::minute});
+// Rep's own rounding mode: one rounding, of the number as written.
+static_assert(hundredths{91, si::second} == hundredths{1.52, si::minute});
+// A run-time number names its channel, as in Q's own unit; a constant off the
+// notch, a unit of another quantity and a pi factor do not compile.
+template <class Q, class V, class U>
+concept makes = requires(V v) { Q{v, U{}}; };
+static_assert(!makes<minutes, int, decltype(si::metre)>);
+static_assert(!makes<degrees, int, decltype(si::radian)>);
+static_assert(std::constructible_from<minutes, int, decltype(si::second), decltype(clamp | round_floor)>);
+
+TEST(NumberInAnotherUnitTest, run_time_numbers_take_a_channel) {
+    int n = 3;
+    EXPECT_EQ(to_string(minutes{n * 60, si::second, clamp | round_floor}), "3 min");
+    EXPECT_EQ(to_string(*minutes::try_make(n * 60, si::second)), "3 min");
+    EXPECT_EQ(minutes::try_make(n * 61, si::second).error(), error::rounding_error);
+    EXPECT_EQ(minutes::try_make(-60 * n, si::second).error(), error::overflow);
+    EXPECT_EQ(to_string(*minutes::try_make<round_floor>(n * 61, si::second)), "3 min");
+    // A double is rounded once, from its exact value: 45.3 is just below
+    // 0.755 min.
+    EXPECT_EQ(to_string(*hundredths::try_make(n * 15.1, si::second)), "0.75 min");
+    error         ec{};
+    const minutes m{n * 59, si::second, make_policy<checked>(ec)};
+    EXPECT_NE(ec, error{});
+    EXPECT_EQ(to_string(m), "0 min");
+}
+} // namespace number_in_another_unit_tests
