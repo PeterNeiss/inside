@@ -22,7 +22,7 @@ We propose `std::units::quantity<reference, inside>`: physical quantities whose
 number is always an `inside`, the bounded number with an exact rational step
 proposed in the companion paper [*`inside`: numbers whose range and step size
 are part of the
-type*](https://github.com/PeterNeiss/inside/blob/v0.8.0/docs/proposal/inside.md)
+type*](https://github.com/PeterNeiss/inside/blob/v0.9.0/docs/proposal/inside.md)
 (*the number paper* below). The model is that of mp-units [@P3045R9]:
 dimensions, units with exact magnitudes, the ISQ tree of quantity kinds, and
 quantity points with origins.
@@ -34,11 +34,11 @@ common unit, exactly, and cannot overflow. A conversion with a factor of π
 (degree to radian) has no exact rescale; it is ill-formed until it is rounded
 once onto a declared grid, which the third companion paper, [*Correctly
 rounded math for `inside` and
-quantities*](https://github.com/PeterNeiss/inside/blob/v0.8.0/docs/proposal/math.md),
+quantities*](https://github.com/PeterNeiss/inside/blob/v0.9.0/docs/proposal/math.md),
 provides.
 
 This paper depends on the number paper. The reference implementation is
-[beman.inside v0.8.0](https://github.com/PeterNeiss/inside/tree/v0.8.0).
+[beman.inside v0.9.0](https://github.com/PeterNeiss/inside/tree/v0.9.0).
 
 # Motivation
 
@@ -209,9 +209,10 @@ its unit, `quantity<si::metre, inside<{0, 100}>>{42, si::metre}`, or from an
 `q.numerical_value_in(si::metre)`. `quantity<R, Rep>{42}` and
 `q.numerical_value()` are ill-formed. That is [@P3045R9]'s rule, without its
 exception for a dimensionless quantity in unit one: `{42, one}` names the unit
-too. A number in another unit of the same quantity is an `inside`, converted
-exactly first (`Q{n, si::kilo(si::metre)}`); a raw number in another unit has
-no grid to rescale.
+too. A number in another unit of the same quantity is scaled
+(`minutes{120, si::second}` is 2 min): an `inside` converts exactly first, and
+a plain number is stored once onto `Q`'s grid in the unit named, by the rules
+of every store.
 
 ## Structural values
 

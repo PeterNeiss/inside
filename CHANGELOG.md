@@ -4,9 +4,16 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-## Unreleased
+## 0.9.0 — 2026-11-15
 
-### Upgrading
+The API review: one word and one function per idea, and no old spelling
+kept. Nothing throws: a store that can fail names where its failure goes
+before it runs. A number enters and leaves a quantity with its unit named, a
+unit of your own is one declaration, and `/` is always the exact quotient. An
+index goes into `std::mdspan` and the containers as it is, every math
+function has one call shape, and the units carry geometric algebra.
+
+### Upgrading from 0.8.0
 
 - Nothing throws. A store either clamps, wraps, takes an alternative value,
   reports, or does not compile: a store the grids cannot prove names its
@@ -22,9 +29,8 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   | `narrow = wide;`, `T x{wide}` | `T::try_make(wide)`, `T{wide, clamp}`, `x.policy(ec) = wide` |
   | `acc += x`, `x *= y`, `++i` where the result may leave the grid | `acc.policy(ec) += x` (one `error` for a loop), a `clamp`/`wrap` type, or `x.on_error(f) += y` |
   | `x /= d`, `x %= d` with `d`'s grid holding 0 | `x.policy(ec) /= d`, or a divisor grid without 0 |
-  | `x.as<T>()` where `T` may not hold every value | `x.to<T>()`, a `std::expected` |
-  | `exact_cast<B>(v)` returned `B` | `B` where proven, else `std::expected<B, error>` |
-  | `mul<Out>`, `div<Out>`, `sum<T>`, `value_cast`, `quantity`'s `sum`, `T::from_step(i)`, `math::fn<Out>(x)` returned `Out` | `Out` where proven (or under `clamp`/`wrap`), else `std::expected<Out, error>` |
+  | `checked_cast<B>(v)` returned `B` | `exact_cast<B>(v)`: `B` where proven, else `std::expected<B, error>` |
+  | `mul<Out>`, `div<Out>`, `sum<T>`, `value_cast`, `quantity`'s `sum`, `T::from_index(i)` (now `from_step`), `math::fn_into<Out>(x)` (now `math::fn<Out>(x)`) returned `Out` | `Out` where proven (or under `clamp`/`wrap`), else `std::expected<Out, error>` |
   | `matrix_product`, `matrix_vector_product`, `transform_into` returned `void` | `void` where proven, else `std::expected<void, error>` |
   | `catch (inside_error&)` | the channels above; `inside_error` is only the compile-time diagnostic |
   | the default handler threw `inside_error` | it prints `beman::inside: <message>` and aborts (traps freestanding); preconditions only reach it: a cursor past its end, a raw read off the grid |
@@ -45,13 +51,15 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   | `Q{v, clamp}` | `Q{v, si::metre, clamp}`; `Q{q, clamp}` of a quantity is unchanged |
   | `q.numerical_value()` | `q.numerical_value_in(si::metre)` |
   | `Q::try_make(v)` | `Q::try_make(v, si::metre)` |
-  | `exact_cast<Q>(v)` | `exact_cast<Q>(q)` of a quantity, or `Q::try_make(v, si::metre)` |
+  | `checked_cast<Q>(v)` | `exact_cast<Q>(q)` of a quantity, or `Q::try_make(v, si::metre)` |
   | `conversion_overflows<Q>(v)`, `conversion_rounds`, `conversion_loses` | `conversion_overflows<Q>(v, si::metre)` |
   | `multivector<I, quantity<i, I>>{3, 4}` | `{3, just<4> * i}`: a blade's part is a quantity |
 
-  Unit one is no exception (`{42, one}`). An inside in another unit of the
-  quantity converts exactly first (`Q{n, si::kilo(si::metre)}`); a raw number
-  in another unit does not compile. Each old form is a deleted overload whose
+  Unit one is no exception (`{42, one}`). A number in another unit of the quantity
+  is scaled: `minutes{120, si::second}` is 2 min. An inside converts exactly
+  first; a plain number is stored once onto Q's grid in the unit named, by
+  the rules of every store (`minutes{90, si::second, round_floor}` is 1 min,
+  `minutes::try_make(n, si::second)` for a run-time `n`). Each old form is a deleted overload whose
   message names the new one.
 
 - `a / b` and `a % b` no longer depend on the operands' policies: `/` is
@@ -90,13 +98,13 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   | `inside<{{0, 1}, 1e-18_r}>` | `inside<{{0, 1}, 1e-18_ins}>` |
   | `T{rational{1, 3}}` | `T{just<1, 3>}`; at run time `T{a / b}` with insides `a`, `b` |
   | `rational r = x;` | `x.numerator()`, `x.denominator()` |
-  | `mag<rational{1, 100}> * EUR` | `mag<1_g / 100_g> * EUR` |
+  | `mag<rational{1, 100}> * EUR` | `just<1, 100> * EUR` |
 
 - One function where there were two.
 
   | Before | Now |
   |---|---|
-  | `x.as<T>()`, `as<T>(x)` | `x.to<T>()`: a plain `T` where the grid proves the conversion total, as `as<T>()` was |
+  | `x.as<T>()`, `as<T>(x)` | `x.to<T>()`: a plain `T` where the grid proves the conversion total, else a `std::expected` |
   | `double(x)` and `x.as<double>()` needed a rounding mode | `double(x)` and `x.to<double>()` on every inside, rounded once |
   | `T::try_from_index(i)` | `T::from_step(i)`: a `std::expected` where `i` may miss |
   | `try_value_cast<Q>(q)`, `try_value_cast<Q, F>(q)` | `value_cast<Q>(q)`: a `std::expected` where the store may fail; for flags, cast into a type that has them |
@@ -126,7 +134,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   | `inside_mdspan<T, E, L, A>`, `inside_mdspan{m}` | `std::mdspan<T, E, L, A>`, `m` |
   | `m[r + dr, c + dc]`, held to the extent by the policy of `r + dr` | `m[row{r + dr}, col{c + dc}]`: stored into the index type, by its policy (`clamp` pads, `wrap` is periodic) |
   | an inside index past a dynamic extent reported `error::overflow` to the handler | `std::mdspan`'s precondition (libstdc++ checks it with `_GLIBCXX_ASSERTIONS`) |
-  | `v[x.as<std::size_t>()]` | `v[x]` (the old form still compiles) |
+  | `v[x.as<std::size_t>()]` | `v[x]` |
   | `b ? x : 0` for an inside `x` on non-negative integers | `b ? x : 0_ins`: the plain form is ambiguous now |
 
 - Every math function has one call shape, and no `_into` name is left. The
@@ -211,9 +219,9 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Changed
 
-- `unit_c<N>` takes a `named_unit` or a `basis_vector`. A sum, comparison or
-  remainder of quantities whose dimensions differ only in basis vectors has
-  its own reason, and a dimension holds a basis vector's exponent mod 2.
+- A sum, comparison or remainder of quantities whose dimensions differ only
+  in basis vectors has its own reason, and a dimension holds a basis vector's
+  exponent mod 2.
 
 - A dimension holds any number of base dimensions of your own (it held at
   most 4): a unit of gold·HP·MP·stamina·XP·px·packets·tokens is one
