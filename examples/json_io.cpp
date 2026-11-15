@@ -25,12 +25,8 @@ using namespace beman::inside;
 using namespace beman::inside::units;
 
 namespace {
-inline constexpr auto dollar_dim  = base_dimension<"dollar">;
-inline constexpr auto dollars_def = kind<"dollars", dollar_dim>;
-inline constexpr auto USD         = unit<"USD", dollars_def>;
-inline constexpr auto count_dim   = base_dimension<"count">;
-inline constexpr auto items_def   = kind<"items", count_dim>;
-inline constexpr auto item        = unit<"item", items_def>;
+inline constexpr auto USD  = base_unit<"USD", "dollar">;
+inline constexpr auto item = base_unit<"item", "count">;
 } // namespace
 
 using order_id   = inside<{0, 9'000'000'000'000'000'000}>;                                    // 64-bit IDs

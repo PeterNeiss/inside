@@ -460,7 +460,7 @@ class quantity : public detail::member_holder<Rep, Rep, quantity<R, Rep>> {
     }
     template <insidable T>
         requires(dimension_of(R.U) == dim_one && !detail::number_like_v<R>)
-    operator T() const = delete ("units: an angle (an is_kind quantity) or a pi-scaled ratio is no plain "
+    operator T() const = delete ("units: an angle (a distinct kind) or a pi-scaled ratio is no plain "
                                  "number - read numerical_value_in(si::radian), or value_cast it first");
 
     // A dimensionless quantity's number as a built-in, as inside's to<T>(): its value in unit one (5 % is 1/20), under
@@ -956,10 +956,10 @@ template <int N, reference R, class V>
 //---------------------------------------------------------------------------
 // Casts
 //---------------------------------------------------------------------------
-// quantity_cast<spec>(q) — the same number as another spec of the dimension:
+// kind_cast<spec>(q) — the same number as another spec of the dimension:
 // down the tree (length → height) or across one kind; never across IsKind.
 namespace detail {
-// Why quantity_cast<To> cannot take R, if it cannot.
+// Why kind_cast<To> cannot take R, if it cannot.
 enum class cast_error : unsigned char { none, dimension, is_kind };
 template <reference R, const quantity_spec* To>
 consteval cast_error cast_error_of() {
@@ -971,27 +971,27 @@ consteval cast_error cast_error_of() {
 
 template <class SpecTag, reference R, class V>
     requires(detail::cast_error_of<R, SpecTag::value>() == detail::cast_error::none)
-[[nodiscard]] constexpr auto quantity_cast(const quantity<R, V>& q) {
+[[nodiscard]] constexpr auto kind_cast(const quantity<R, V>& q) {
     return detail::quantity_access::make<quantity<reference{SpecTag::value, false, {}, R.U}, V>>(
         units::detail::value_of(q));
 }
 template <auto Spec, reference R, class V>
     requires(detail::cast_error_of<R, decltype(Spec)::value>() == detail::cast_error::none)
-[[nodiscard]] constexpr auto quantity_cast(const quantity<R, V>& q) {
-    return quantity_cast<decltype(Spec)>(q);
+[[nodiscard]] constexpr auto kind_cast(const quantity<R, V>& q) {
+    return kind_cast<decltype(Spec)>(q);
 }
 template <class SpecTag, reference R, class V>
     requires(detail::cast_error_of<R, SpecTag::value>() == detail::cast_error::dimension)
-void quantity_cast(const quantity<R, V>&) = delete ("units: quantity_cast - another dimension");
+void kind_cast(const quantity<R, V>&) = delete ("units: kind_cast - another dimension");
 template <auto Spec, reference R, class V>
     requires(detail::cast_error_of<R, decltype(Spec)::value>() == detail::cast_error::dimension)
-void quantity_cast(const quantity<R, V>&) = delete ("units: quantity_cast - another dimension");
+void kind_cast(const quantity<R, V>&) = delete ("units: kind_cast - another dimension");
 template <class SpecTag, reference R, class V>
     requires(detail::cast_error_of<R, SpecTag::value>() == detail::cast_error::is_kind)
-void quantity_cast(const quantity<R, V>&) = delete ("units: quantity_cast - across an is_kind boundary");
+void kind_cast(const quantity<R, V>&) = delete ("units: kind_cast - across a distinct kind's boundary");
 template <auto Spec, reference R, class V>
     requires(detail::cast_error_of<R, decltype(Spec)::value>() == detail::cast_error::is_kind)
-void quantity_cast(const quantity<R, V>&) = delete ("units: quantity_cast - across an is_kind boundary");
+void kind_cast(const quantity<R, V>&) = delete ("units: kind_cast - across a distinct kind's boundary");
 
 namespace detail {
 // v stored into Rep2: Rep2 where the grids prove the store, else

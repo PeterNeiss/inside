@@ -24,19 +24,13 @@ using namespace beman::inside;
 using namespace beman::inside::units;
 
 namespace {
-inline constexpr auto ether_dim = base_dimension<"ether">;
-inline constexpr auto ether_def = kind<"ether", ether_dim>;
-inline constexpr auto ETH       = unit<"ETH", ether_def>;
-inline constexpr auto gwei      = unit<"gwei", just<1, 1'000'000'000> * ETH>;
-inline constexpr auto wei       = unit<"wei", just<1, 1'000'000'000'000'000'000> * ETH>;
+inline constexpr auto ETH  = base_unit<"ETH", "ether">;
+inline constexpr auto gwei = unit<"gwei", 1e-9_ins * ETH>;
+inline constexpr auto wei  = unit<"wei", 1e-18_ins * ETH>;
 
-inline constexpr auto work_dim = base_dimension<"gas">;
-inline constexpr auto work_def = kind<"gas", work_dim>;
-inline constexpr auto gas      = unit<"gas", work_def>;
+inline constexpr auto gas = base_unit<"gas", "gas">;
 
-inline constexpr auto dollar_dim  = base_dimension<"dollar">;
-inline constexpr auto dollars_def = kind<"dollars", dollar_dim>;
-inline constexpr auto USD         = unit<"USD", dollars_def>;
+inline constexpr auto USD = base_unit<"USD", "dollar">;
 } // namespace
 
 inline constexpr auto to_the_wei = per<1'000'000'000'000'000'000>;
@@ -58,7 +52,7 @@ int main() {
     if (to_string(balance) != text + " ETH")
         return 1;
     // One wei is the notch of the grid: 10^-18 ETH.
-    static_assert(just<1> * wei == just<1, 1'000'000'000'000'000'000> * ETH);
+    static_assert(just<1> * wei == 1e-18_ins * ETH);
 
     // 2. 21000 gas at 30 gwei/gas is 630000 gwei, exactly 0.00063 ETH.
     const auto fee = gas_used{21'000, gas} * gas_price{30, gwei / gas};

@@ -24,9 +24,7 @@ using namespace beman::inside::formats;
 using namespace beman::inside::units;
 
 namespace {
-inline constexpr auto packet_dim  = base_dimension<"packets">;
-inline constexpr auto packets_def = kind<"packets", packet_dim>;
-inline constexpr auto pkt         = unit<"pkt", packets_def>;
+inline constexpr auto pkt = base_unit<"pkt", "packets">;
 } // namespace
 
 // 16-bit modular sequence space: the full uint16 range, wrapping under `wrap`.

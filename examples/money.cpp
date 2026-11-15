@@ -19,10 +19,8 @@ using namespace beman::inside;
 using namespace beman::inside::units;
 
 namespace {
-inline constexpr auto dollar_dim  = base_dimension<"dollar">;
-inline constexpr auto dollars_def = kind<"dollars", dollar_dim>;
-inline constexpr auto USD         = unit<"USD", dollars_def>;
-inline constexpr auto cent        = unit<"¢", just<1, 100> * USD, {.ascii = "c"}>;
+inline constexpr auto USD  = base_unit<"USD", "dollar">;
+inline constexpr auto cent = unit<"¢", 0.01_ins * USD, {.ascii = "c"}>;
 } // namespace
 
 int main() {

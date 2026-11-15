@@ -839,7 +839,8 @@ consteval void unit_add(unit_value& u, unit_atom a) {
             a.Exp,
             [](const unit_atom& x, const unit_atom& y) { return same(x.U, y.U) && x.Prefix == y.Prefix; },
             atom_before))
-        beman::inside::detail::constexpr_error<"units: a unit holds at most 6 factors - name it with named_unit">();
+        beman::inside::detail::constexpr_error<
+            "units: a unit holds at most 6 factors - name it with unit<\"sym\", …>">();
 }
 
 // An atom whose named unit holds basis vectors (e₁, i = e₁e₂).
@@ -1216,7 +1217,7 @@ consteval bool spec_converts(const reference& from, const reference& to) {
     return is_within_kind_ancestor(from.Spec.P, to.Spec.P);
 }
 
-// Explicit conversion (quantity_cast): any spec of the same dimension, but
+// Explicit conversion (kind_cast): any spec of the same dimension, but
 // not across IsKind kinds.
 consteval bool spec_casts(const reference& from, const quantity_spec* to) {
     const spec_ref       fk = from.Spec ? spec_ref{kind_root(from.Spec.P)} : spec_ref{};

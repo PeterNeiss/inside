@@ -78,7 +78,7 @@ Quantities of different dimensions never mix:
 Quantities of one dimension can still be different *kinds*: a height is a
 length, but a frequency (Hz) and an activity (Bq) are both 1/s and never add.
 A height converts to a length on its own; going the other way is explicit:
-`quantity_cast<isq::height>(length)`. Most programs only need the units; the
+`kind_cast<isq::height>(length)`. Most programs only need the units; the
 [units model](../advanced/units-model.md#quantity-kinds) has the rules.
 
 ## Temperatures and other points
@@ -100,32 +100,29 @@ not add.
 
 ## Units of your own
 
-A unit of your own is an `inline constexpr` object plus a tag made from it,
-and then it works like the catalog's:
+A unit of your own is one declaration: its symbol, and the quantity it
+equals. Then it works like the catalog's:
 
 ```cpp
-inline constexpr named_unit fathom_def{"ftm", mag<18288_g / 10000_g> * si::metre};
-inline constexpr auto       fathom = unit_c<fathom_def>;   // 1.8288 m
+inline constexpr auto fathom = unit<"ftm", 1.8288_ins * si::metre>;   // a fathom is 1.8288 m
 
 auto depth = just<3> * fathom;
 depth.in(si::metre);                                       // 5.4864 m
 ```
 
 For something that is not a physical quantity at all, such as money, hit
-points, pixels or ADC counts, add a **base dimension**. It then never mixes
-with anything else:
+points, pixels or ADC counts, declare a **base unit** with a dimension of its
+own. It then never mixes with anything else:
 
 ```cpp
-inline constexpr base_dimension currency_def{"currency"};
-inline constexpr quantity_spec  money_def{"money", currency_def};
-inline constexpr named_unit     euro_def{"EUR", spec_c<money_def>};
-inline constexpr auto           EUR = unit_c<euro_def>;
-inline constexpr named_unit     cent_def{"ct", mag<1_g / 100_g> * EUR};
-inline constexpr auto           ct = unit_c<cent_def>;
+inline constexpr auto EUR = base_unit<"EUR", "currency">;   // a new dimension, and its unit
+inline constexpr auto ct  = unit<"ct", 0.01_ins * EUR>;
 
 auto price = just<5> * EUR + just<20> * ct;                // 520 ct
 ```
 
+A kind of your own is `kind<"depth", isq::length>`, an origin
+`origin<"ice point", si::absolute_zero + 273.15_ins * si::kelvin>`.
 [`own_units.cpp`](../../examples/own_units.cpp) adds a depth kind, °R with an
 origin, and bytes; [`money.cpp`](../../examples/money.cpp) a currency with a
 tax.
@@ -138,11 +135,10 @@ sign. With `<beman/inside/units/geoalg.hpp>`, a sum of different blades is a
 multivector, and complex numbers, quaternions and vectors follow:
 
 ```cpp
-inline constexpr basis_vector e1_def{"e₁", +1}, e2_def{"e₂", +1};
-inline constexpr auto         e1 = unit_c<e1_def>;
-inline constexpr auto         e2 = unit_c<e2_def>;
-inline constexpr named_unit   i_def{"i", e1 * e2};               // i·i = -1 follows
-inline constexpr auto         i = unit_c<i_def>;
+inline constexpr auto         e1 = basis_vector<"e₁", +1>;
+inline constexpr auto         e2 = basis_vector<"e₂", +1>;
+// i·i = -1 follows
+inline constexpr auto         i = unit<"i", e1 * e2>;
 
 auto z = (just<3> + just<4> * i) * (just<1> - just<2> * i);      // 11 - 2 i
 auto v = (just<2> * si::metre * e1 + just<1> * si::metre * e2) * i;   // -1 m e₁ + 2 m e₂

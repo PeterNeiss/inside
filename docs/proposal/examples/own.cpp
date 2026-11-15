@@ -11,10 +11,8 @@ template <class A, class B>
 concept addable = requires(A a, B b) { a + b; };
 
 // [listing]
-inline constexpr auto currency_def = base_dimension<"currency">;
-inline constexpr auto money_def = kind<"money", currency_def>;
-inline constexpr auto           euro = unit<"EUR", money_def>;
-inline constexpr auto           cent = unit<"ct", just<1, 100> * euro>;
+inline constexpr auto euro = base_unit<"EUR", "currency">;
+inline constexpr auto           cent = unit<"ct", 0.01_ins * euro>;
 
 using price = quantity<euro / si::kilogram, inside<{{0, 100}, per<100>}>>;
 using mass  = quantity<si::kilogram, inside<{{0, 10}, per<1000>}>>;

@@ -15,10 +15,8 @@ using namespace beman::inside::units;
 
 // Units of our own: a currency, samples per second. The catalogue has
 // the per cent.
-inline constexpr auto currency_def = base_dimension<"currency">;
-inline constexpr auto amount_def = kind<"amount_of_money", currency_def>;
-inline constexpr auto           euro = unit<"EUR", amount_def>;
-inline constexpr auto           cent = unit<"ct", just<1, 100> * euro>;
+inline constexpr auto euro = base_unit<"EUR", "currency">;
+inline constexpr auto           cent = unit<"ct", 0.01_ins * euro>;
 inline constexpr auto           sps = unit<"SPS", one / si::second, {.kind = isq::frequency}>;
 
 using pct         = quantity<percent, inside<{0, 100}>>;

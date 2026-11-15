@@ -23,10 +23,8 @@ using namespace beman::inside;
 using namespace beman::inside::units;
 
 namespace {
-inline constexpr auto packet_dim  = base_dimension<"packets">;
-inline constexpr auto packets_def = kind<"packets", packet_dim>;
-inline constexpr auto pkt         = unit<"pkt", packets_def>;
-constexpr auto        ms          = si::milli(si::second);
+inline constexpr auto pkt = base_unit<"pkt", "packets">;
+constexpr auto        ms  = si::milli(si::second);
 } // namespace
 
 // Window of 16 slots indexed 0..15.

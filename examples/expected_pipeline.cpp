@@ -72,12 +72,12 @@ int main() {
     // The lift operators chain without and_then: an expected operand makes the
     // whole expression an expected, and the first error wins.
     const auto chained =
-        (reading{just<1, 100> * si::volt} - offset) / gain{0} * just<2> + reading{just<1, 1000> * si::volt};
+        (reading{0.01_ins * si::volt} - offset) / gain{0} * just<2> + reading{just<1, 1000> * si::volt};
     std::cout << "chained -> " << error_message(chained.error()) << "\n";
 
     // A gain that cannot be 0 makes the division total: a plain value.
     using live_gain   = inside<{{0.5, 10}, per<100>}>;
-    const auto always = (reading{just<1, 100> * si::volt} - offset) / live_gain{2};
+    const auto always = (reading{0.01_ins * si::volt} - offset) / live_gain{2};
     static_assert(quantity_like<decltype(always)>);
     std::cout << "zero-free gain -> " << always << "\n";
     return fallback && *fallback == volts{0, si::volt} && !chained && chained.error() == error::division_by_zero ? 0

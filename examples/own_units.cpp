@@ -23,24 +23,24 @@ using namespace beman::inside::units;
 namespace {
 // 1. A spec under length and a unit defined by the metre.
 inline constexpr auto depth  = kind<"depth", isq::length>;
-inline constexpr auto fathom = unit<"ftm", just<18288, 10000> * si::metre>;
+inline constexpr auto fathom = unit<"ftm", 1.8288_ins * si::metre>;
 
 // 2. A temperature unit whose points count from absolute zero: the options
 //    name its ASCII symbol and its origin.
 inline constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin, {.ascii = "R", .origin = si::absolute_zero}>;
 
 // 3. Currency: a base dimension, its base quantity and two units.
-inline constexpr auto currency_def = base_dimension<"currency">;
-inline constexpr auto money        = kind<"money", currency_def>;
-inline constexpr auto euro         = unit<"EUR", money>;
-inline constexpr auto cent         = unit<"ct", just<1, 100> * euro>;
+inline constexpr auto currency = base_dimension<"currency">;
+inline constexpr auto money    = kind<"money", currency>;
+inline constexpr auto euro     = unit<"EUR", money>;
+inline constexpr auto cent     = unit<"ct", 0.01_ins * euro>;
 
 // 4. Information: bit, byte (8 bit), KiB (1024 B).
-inline constexpr auto information_def = base_dimension<"information">;
-inline constexpr auto amount          = kind<"amount_of_information", information_def>;
-inline constexpr auto bit             = unit<"bit", amount>;
-inline constexpr auto byte            = unit<"B", just<8> * bit>;
-inline constexpr auto kibibyte        = unit<"KiB", just<1024> * byte>;
+inline constexpr auto information = base_dimension<"information">;
+inline constexpr auto amount      = kind<"amount_of_information", information>;
+inline constexpr auto bit         = unit<"bit", amount>;
+inline constexpr auto byte        = unit<"B", just<8> * bit>;
+inline constexpr auto kibibyte    = unit<"KiB", just<1024> * byte>;
 
 template <class A, class B>
 concept addable = requires(const A& a, const B& b) { a + b; };

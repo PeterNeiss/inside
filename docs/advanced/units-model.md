@@ -13,14 +13,14 @@ header costs to compile. [Units](../guide/units.md) has the everyday view.
 | Concept | What it is | Spelled |
 |---|---|---|
 | dimension | exponents of L M T I Θ N J, plus any number of your own | `dimension_of(si::newton.value)` |
-| magnitude | an exact rational × π^k, relative to the coherent SI unit | `mag<1000>`, `mag_pi` |
+| magnitude | an exact rational × π^k, relative to the coherent SI unit | `just<1000> * si::metre`, `pi` |
 | unit | named units to integer powers, with prefixes and a magnitude | `si::kilo(si::metre) / si::hour` |
-| quantity spec | a kind in the ISQ tree: `height` → `altitude` → `length` | `isq::height` |
-| reference | a unit and a spec | `isq::height[si::metre]`, or a bare unit |
+| kind | a kind of quantity in the ISQ tree: `height` → `altitude` → `length` | `isq::height` |
+| reference | a unit and a kind | `isq::height[si::metre]`, or a bare unit |
 | quantity | a number (an inside) of a reference | `quantity<si::metre, inside<{0, 10}>>` |
 | quantity point | a quantity counted from an origin | `point<si::degree_Celsius>(t)` |
 
-Units, specs and references are **values**, combined by `consteval`
+Units, kinds and references are **values**, combined by `consteval`
 functions, not type lists that the compiler has to sort and simplify. The
 names you write (`si::metre`, `isq::height`) are empty tags whose type carries
 the value. `si::metre * si::second / si::second` is `si::metre`, and m·s is
@@ -55,13 +55,12 @@ inch → mm is ×25.4. All exact. The rescaled number keeps its policy.
 | `q.numerical_value_in(u)` | the inside, in unit `u` (the stored one in q's own unit) |
 | `value_cast<Rep2>(q)`, `value_cast<Rep2, F>(q)` | another number type, through Rep2's constructor or `try_make<F>` |
 | `value_cast<u, Rep2>(q)`, `value_cast<u, Rep2, F>(q)` | in unit `u`, into Rep2 |
-| `value_cast<Q>(q)`, `value_cast<Q, F>(q)` | into the quantity type Q, whose spec must take q's |
-| `quantity_cast<isq::height>(q)` | another spec: down the tree, or across one kind |
-| `q.quantity_spec` | the spec as a value: `q.quantity_spec == isq::length` |
+| `value_cast<Q>(q)`, `value_cast<Q, F>(q)` | into the quantity type Q, whose kind must take q's |
+| `kind_cast<isq::height>(q)` | another kind: down the tree, or across to a sibling |
+| `q.kind` | the kind as a value: `q.kind == isq::length` |
 
-A magnitude scales a unit from either side: `mag<2> * si::metre`,
-`si::metre * mag<2>`, `si::metre / mag_pi`. A conversion is implicit when the
-spec converts implicitly and the rescaled number converts implicitly into the
+A conversion is implicit when the
+kind converts implicitly and the rescaled number converts implicitly into the
 target's number: `quantity<si::joule, R>` takes an N·m quantity.
 
 ### Factors of π round once
@@ -72,8 +71,8 @@ computes the exact x·π/180 with π to as many bits as `Out` needs, and rounds
 once onto `Out`, which needs a rounding mode. Only factors of π and 1/π are
 supported.
 
-π can scale a quantity too: `mag_pi * q` multiplies the **unit**, not the
-number. `mag_pi * just<2> * si::second` is the number 2 in the unit [π s], so
+π can scale a quantity too: `pi * q` multiplies the **unit**, not the
+number. `pi * just<2> * si::second` is the number 2 in the unit [π s], so
 π is never approximated, and a later `value_cast<si::hour, Out>(…)` rounds
 once, with the true π. That is how to write π·a·√(a/μ) or 1/(2πRC):
 `x * math::pi` approximates π to `x`'s resolution, and the grid numbers would
@@ -85,7 +84,7 @@ A quantity of dimension one converts to an inside: implicitly when its number
 does, explicitly when the target must round. The number is its value in unit
 one: (21 kg) / (6 kg) is 3.5, (3 km) / (2 m) is 1500, and 8 % is 2/25;
 `q.to<T>()` reads it as a built-in, as on an inside. An angle
-stays a quantity: radians and steradians are `is_kind` quantities, and so is
+stays a quantity: radians and steradians are distinct kinds, and so is
 a π-scaled ratio; read their number with `numerical_value_in(u)`. A dimensionless
 kind of your own works the same way: a level in dB is no plain number, but
 L / (20 dB) is one.
@@ -100,7 +99,7 @@ rescales, then inside's `+` runs, so the result is exact and its grid is the
 tight hull of the operands. (mp-units forms the sum from the unscaled
 numbers; here a valid mixed-unit sum cannot overflow.)
 
-`*` and `/` multiply the units and specs, and inside's `*` and `/` the
+`*` and `/` multiply the units and kinds, and inside's `*` and `/` the
 numbers. A divisor whose grid holds 0 gives `std::expected<quantity, error>`.
 `pow<N>(q)` is a repeated exact product.
 
@@ -115,15 +114,15 @@ height, energy → mechanical work → kinetic energy, and so on.
   dimension converts too (force·length → energy); a named child with another
   recipe does not (force·length ↛ torque).
 - **Explicit down or sideways** within one kind:
-  `quantity_cast<isq::height>(length)`.
-- **Never across an `is_kind` boundary.** Angular measure is dimensionless but
+  `kind_cast<isq::height>(length)`.
+- **Never across a distinct kind's boundary.** Angular measure is dimensionless but
   no plain ratio; phase angle and solid angle are kinds of their own. Separate
   roots of one dimension never mix: Hz (frequency) + Bq (activity), and Gy +
   Sv, do not compile.
 
 A unit names the kind it measures: `si::hertz` a frequency, `si::metre` any
-length. A quantity of a bare unit takes every spec of that kind, and
-`isq::activity[si::hertz]` is an error. Adding two specs gives their nearest
+length. A quantity of a bare unit takes every kind under that kind, and
+`isq::activity[si::hertz]` is an error. Adding two kinds gives their nearest
 common ancestor: width + height is a length.
 
 ## Points and origins
@@ -160,23 +159,26 @@ affine one: ref + Σ w·(p − ref) / Σ w
 
 ## Units of your own
 
-A `quantity_spec`, `named_unit` or `point_origin` is an `inline constexpr`
-object, and a tag made from it is used like the catalog's:
+Each is one declaration, used like the catalog's. The name is a template
+argument, so a declaration is its own identity: the same declaration in two
+places is the same unit.
 
 ```cpp
-inline constexpr quantity_spec depth_def{"depth", isq::length};
-inline constexpr auto          depth = spec_c<depth_def>;
-inline constexpr named_unit    fathom_def{"ftm", mag<18288_g / 10000_g> * si::metre};
-inline constexpr auto          fathom = unit_c<fathom_def>;
-inline constexpr point_origin  sea_level_def{"sea_level", dim_length};
-inline constexpr auto          sea_level = origin_c<sea_level_def>;
+inline constexpr auto fathom    = unit<"ftm", 1.8288_ins * si::metre>;
+inline constexpr auto depth     = kind<"depth", isq::length>;
+inline constexpr auto sea_level = origin<"sea_level", isq::length>;
 ```
 
-A `named_unit` is either the base unit of a kind (`{"EUR", money}`, or with a
-magnitude `{"g", mag<1_g / 1000_g>, isq::mass}`) or a unit defined by
-others (`{"ftm", mag<…> * si::metre}`, or with a kind
-`{"Hz", one / si::second, isq::frequency}`). A last `unit_options` argument
-sets the rest, each optional, as designated initializers in this order:
+| Declaration | Defined by |
+|---|---|
+| `unit<"sym", q, options>` | the quantity it equals (`1.8288_ins * si::metre`), another unit (`si::joule / si::second`), or a kind, whose base unit it then is (`unit<"EUR", money>`) |
+| `kind<"name", parent, options>` | a kind (a child of it), a product of kinds (`isq::length / isq::duration`), or a dimension (a base quantity) |
+| `base_dimension<"name">` | a dimension of your own |
+| `base_unit<"sym", "dimension", options>` | a new dimension, its kind and this unit in one |
+| `origin<"name", where>` | a kind or a dimension (an absolute origin), or a point of another origin (`si::absolute_zero + 273.15_ins * si::kelvin`) |
+| `basis_vector<"sym", square, options>` | a basis vector of a geometric algebra |
+
+A unit's options, each optional, as designated initializers in this order:
 
 | Option | Means | Default |
 |---|---|---|
@@ -185,18 +187,25 @@ sets the rest, each optional, as designated initializers in this order:
 | `.origin` | the default origin of its points | none |
 | `.space_before = false` | no space before the symbol (`90°`) | a space |
 
+A kind's options: `.distinct = true` for a kind that never mixes with its
+siblings (activity and frequency are both 1/s), and `.recipe` for a child with
+a recipe of its own (velocity: displacement / duration, under speed).
+
 ```cpp
-inline constexpr named_unit rankine_def{"°R", mag<5_g / 9_g> * si::kelvin,
-                                        {.ascii = "R", .origin = si::absolute_zero}};
-inline constexpr named_unit rpm_def{"rpm", one / si::minute, {.kind = isq::frequency}};
-inline constexpr named_unit turn_def{"tr", mag<2> * mag_pi * si::radian, {.space_before = false}};
-inline constexpr quantity_spec level_def{"level", isq::dimensionless, is_kind};   // dB: no plain number
-inline constexpr named_unit    decibel_def{"dB", one, spec_c<level_def>};
+inline constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin, {.ascii = "R", .origin = si::absolute_zero}>;
+inline constexpr auto rpm     = unit<"rpm", one / si::minute, {.kind = isq::frequency}>;
+inline constexpr auto turn    = unit<"tr", just<2> * pi * si::radian, {.space_before = false}>;
+inline constexpr auto level   = kind<"level", isq::dimensionless, {.distinct = true}>;   // dB: no plain number
+inline constexpr auto decibel = unit<"dB", one, {.kind = level}>;
 ```
+
+`pi` is the number π as a unit, exactly: a unit that is a multiple of π says
+so (`just<1, 180> * pi * si::radian` is the degree), and `pi * q` is the
+quantity `q` in a unit scaled by π.
 
 ### Base dimensions of your own
 
-Next to the seven SI base dimensions, a `base_dimension` adds one of yours,
+Next to the seven SI base dimensions, `base_dimension<"name">` adds one of yours,
 and a dimension holds any number of them. Its base quantity and units follow
 as usual.
 Money then never adds to a length or a plain number, EUR/kg is a dimension of
@@ -212,7 +221,7 @@ division can fail ([`adc_calibration.cpp`](../../examples/adc_calibration.cpp)).
 
 ### Basis vectors
 
-A `basis_vector` is a base dimension of your own together with its unit, and
+`basis_vector<"e₁", +1>` is a base dimension of your own together with its unit, and
 you state its square, +1, −1 or 0. Its exponent is 0 or 1, and two different
 basis vectors anticommute, so a unit's magnitude carries a sign
 (`e2 * e1` is −1 times e₁ e₂), and a product of quantities moves that sign to
@@ -221,17 +230,16 @@ the number. Sums of different blades are multivectors, in
 [geometric algebra](geometric-algebra.md) has the model and the operations.
 
 ```cpp
-inline constexpr basis_vector e1_def{"e₁", +1, {.ascii = "e1"}};
-inline constexpr auto         e1 = unit_c<e1_def>;
+inline constexpr auto         e1 = basis_vector<"e₁", +1, {.ascii = "e1"}>;
 ```
 
 ### Identity and limits
 
-An entry is identified by its content, not its address: a spec by its name,
+An entry is identified by its content: a kind by its name,
 dimension, recipe, kind boundary and parent chain; a unit by its symbols,
 dimension, magnitude, kind and origin; a basis vector also by its square. A
 unit holds at most 6 named units, a
-recipe at most 6 specs, and an exponent stays within ±127; past that is a
+recipe at most 6 kinds, and an exponent stays within ±127; past that is a
 compile error.
 
 ## inside's algorithms on quantities
@@ -274,7 +282,7 @@ through `+ - * / %` as an `expected` inside does; the first error wins.
 
 | Namespace | Holds |
 |---|---|
-| `isq` | about 85 specs: base quantities, space and time, mechanics, thermodynamics, electromagnetism, light and radiation; `time` and `work` are aliases |
+| `isq` | about 85 kinds: base quantities, space and time, mechanics, thermodynamics, electromagnetism, light and radiation; `time` and `work` are aliases |
 | `si` | the base units, the 22 named derived units, the prefixes quecto … quetta, the accepted non-SI units min, h, d, au, °, ′, ″, a, ha, L, t; the eV and the Da; the origins `absolute_zero` and `ice_point` |
 | `si2019` | the defining constants as units (Δν_Cs, c, K_cd, h, e, k, N_A) and g₀: `just<1> * si2019::speed_of_light_in_vacuum` is c exactly |
 | `international` | yd, ft, in, mi, nmi, lb, oz, lbf, kn, ℉ |
@@ -333,7 +341,7 @@ arithmetic on those grids; units add about 11 ms per expression.
 - A factor of π rounds once through `value_cast`, never implicitly; trig of a
   π-scaled angle reduces it exactly.
 - The kind rules are a simplified form of mp-units': a recipe matches factor
-  by factor, and other recipes need `quantity_cast`.
+  by factor, and other recipes need `kind_cast`.
 - inside's policies, hooks and algorithms (`on_wrap`, `sum`, `mul<C>`,
   `parse`) work on quantities.
 - A number names its unit going in and coming out, as in mp-units

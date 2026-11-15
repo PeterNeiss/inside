@@ -206,8 +206,7 @@ mode:
 #include <beman/inside/units/math.hpp>
 using namespace beman::inside::units;
 
-inline constexpr named_unit slot_def{"slot", mag<1_g / 32768_g> * mag_pi * si::radian};
-inline constexpr auto       slot = unit_c<slot_def>;           // 2π/65536 rad
+inline constexpr auto       slot = unit<"slot", just<1, 32768> * pi * si::radian>;           // 2π/65536 rad
 
 quantity<slot, inside<{0, 65535}, wrap>> phase{0, slot};       // wraps at exactly one turn
 phase += just<16384> * slot;                                   // a quarter turn

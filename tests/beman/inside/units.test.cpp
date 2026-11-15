@@ -210,7 +210,7 @@ TEST(UnitsTest, kinds_convert_up_implicitly_and_down_explicitly) {
     const height_m h{3, isq::height[si::metre]};
     const length_m l = h;
     EXPECT_EQ(l.numerical_value_in(si::metre), 3);
-    const auto back = quantity_cast<isq::height>(l);
+    const auto back = kind_cast<isq::height>(l);
     static_assert(std::is_same_v<std::remove_cvref_t<decltype(back)>, height_m>);
     // A plain unit's kind (si::metre: any length) takes every length.
     static_assert(std::is_convertible_v<quantity<si::metre, inside<{0, 100}>>, height_m>);
@@ -429,7 +429,7 @@ concept can_in_seconds = requires(const A& a) { a.in(si::second); };
 template <class A>
 concept can_in_radians = requires(const A& a) { a.in(si::radian); };
 template <class A>
-concept can_cast_to_duration = requires(const A& a) { quantity_cast<isq::duration>(a); };
+concept can_cast_to_duration = requires(const A& a) { kind_cast<isq::duration>(a); };
 template <class A, class B>
 concept can_atan2 = requires(const A& a, const B& b) { math::atan2(a, b); };
 template <class Q, class A>

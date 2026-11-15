@@ -20,7 +20,7 @@ int main() {
     quantity<isq::height[si::metre], inside<{1, 10}>> h{4, isq::height[si::metre]};
     quantity<isq::area[square(si::metre)], inside<{1, 100}>> area = w * h; // width · height
     auto around = w + h;                                      // 7 m, a length: the common kind
-    auto tall   = quantity_cast<isq::height>(w);              // a width read as a height, explicitly
+    auto tall   = kind_cast<isq::height>(w);              // a width read as a height, explicitly
     // [/listing]
     if (area.numerical_value_in(square(si::metre)) != 12 || around.numerical_value_in(si::metre) != 7 ||
         tall.numerical_value_in(si::metre) != 3)

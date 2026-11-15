@@ -39,9 +39,7 @@ using namespace beman::inside::formats;
 using namespace beman::inside::units;
 
 namespace {
-inline constexpr auto ammunition_dim = base_dimension<"ammunition">;
-inline constexpr auto ammunition_def = kind<"ammunition", ammunition_dim>;
-inline constexpr auto rd             = unit<"rd", ammunition_def>;
+inline constexpr auto rd = base_unit<"rd", "ammunition">;
 } // namespace
 
 class magazine {

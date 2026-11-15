@@ -14,12 +14,11 @@ Complex numbers and quaternions are two special cases, not two features.
 ## Basis vectors
 
 ```cpp
-inline constexpr basis_vector e1_def{"e₁", +1, {.ascii = "e1"}};   // e₁ e₁ = 1
-inline constexpr basis_vector e2_def{"e₂", +1, {.ascii = "e2"}};
-inline constexpr auto         e1 = unit_c<e1_def>;
-inline constexpr auto         e2 = unit_c<e2_def>;
-inline constexpr named_unit   i_def{"i", e1 * e2};                 // a blade, named
-inline constexpr auto         i = unit_c<i_def>;
+// e₁ e₁ = 1
+inline constexpr auto         e1 = basis_vector<"e₁", +1, {.ascii = "e1"}>;
+inline constexpr auto         e2 = basis_vector<"e₂", +1, {.ascii = "e2"}>;
+// a blade, named
+inline constexpr auto         i = unit<"i", e1 * e2>;
 ```
 
 A `basis_vector` is a base dimension of your own and its unit, in one static

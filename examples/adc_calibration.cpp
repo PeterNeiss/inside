@@ -20,9 +20,7 @@ using namespace beman::inside::units;
 
 namespace {
 // 1. The count dimension, its base quantity and its unit.
-inline constexpr auto count_def  = base_dimension<"count">;
-inline constexpr auto adc_counts = kind<"adc_counts", count_def>;
-inline constexpr auto cts        = unit<"cts", adc_counts>;
+inline constexpr auto cts = base_unit<"cts", "count">;
 
 using reading    = quantity<cts, inside<{0, 4095}>>; // a 12-bit ADC
 using gain_t     = quantity<cts / si::volt, inside<{{1000, 1500}, per<1000>}, round_half_away>>;

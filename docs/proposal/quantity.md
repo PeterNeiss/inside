@@ -99,7 +99,7 @@ quantity<isq::width[si::metre], inside<{1, 10}>>  w{3, isq::width[si::metre]};
 quantity<isq::height[si::metre], inside<{1, 10}>> h{4, isq::height[si::metre]};
 quantity<isq::area[square(si::metre)], inside<{1, 100}>> area = w * h; // width · height
 auto around = w + h;                                      // 7 m, a length: the common kind
-auto tall   = quantity_cast<isq::height>(w);              // a width read as a height, explicitly
+auto tall   = kind_cast<isq::height>(w);              // a width read as a height, explicitly
 ```
 
 **Points count from an origin, and change origin exactly.**
@@ -118,10 +118,8 @@ static_assert(!addable<decltype(room), decltype(room)>);           // points do 
 
 <!-- listing: own -->
 ```cpp
-inline constexpr auto currency_def = base_dimension<"currency">;
-inline constexpr auto money_def = kind<"money", currency_def>;
-inline constexpr auto           euro = unit<"EUR", money_def>;
-inline constexpr auto           cent = unit<"ct", just<1, 100> * euro>;
+inline constexpr auto euro = base_unit<"EUR", "currency">;
+inline constexpr auto           cent = unit<"ct", 0.01_ins * euro>;
 
 using price = quantity<euro / si::kilogram, inside<{{0, 100}, per<100>}>>;
 using mass  = quantity<si::kilogram, inside<{{0, 10}, per<1000>}>>;
@@ -142,9 +140,9 @@ mp-units [@P3045R9]:
 - a *dimension* is a product of powers of the seven ISQ base dimensions;
 - a *unit* is a product of named units to integer powers, with prefixes and an
   exact *magnitude*;
-- a *quantity spec* is a node in the tree of quantity kinds (height under
-  length, area as length²), and a spec marked `is_kind` starts a kind of its
-  own (frequency and activity are both s⁻¹);
+- a *kind* is a node in the tree of quantity kinds (height under length, area
+  as length²), and a kind marked distinct never mixes with its siblings
+  (frequency and activity are both s⁻¹);
 - a *quantity point* is a quantity counted from an *origin*.
 
 ## A conversion rescales the grid
@@ -179,8 +177,8 @@ an `inside`, implicitly when that conversion is implicit.
 Quantities of one dimension are not always interchangeable. A height is a
 length, so a height and a width add to a length, and width · height is an area.
 But hertz and becquerel are both s⁻¹ and do not add, because frequency and
-activity are kinds of their own. `quantity_cast<S>(q)` reads a quantity as
-another spec of its kind, explicitly; it never crosses an `is_kind` boundary.
+activity are kinds of their own. `kind_cast<S>(q)` reads a quantity as
+another kind of its dimension, explicitly; it never crosses a distinct kind's boundary.
 
 ## Points and origins
 
@@ -217,7 +215,7 @@ no grid to rescale.
 
 ## Structural values
 
-Dimensions, magnitudes, units, quantity specs and references are structural
+Dimensions, magnitudes, units, kinds and references are structural
 values, combined by `consteval` functions. They are not type lists that the
 compiler must sort, so m·s and s·m are one unit. The names a program writes
 (`si::metre`, `isq::height`) are empty tag objects whose type carries the
@@ -225,9 +223,12 @@ value. An entry is identified by its content, not by its address.
 
 ## Your own
 
-A program defines its own units, quantity specs, origins and base dimensions
-(currency, information, pixels) as `inline constexpr` objects. From then on they behave like the catalog's: prefixes apply to a
-named unit, a spec under length is a length, and money never adds to a mass.
+A program defines its own units, kinds, origins and base dimensions
+(currency, information, pixels), each in one declaration whose name is a
+template argument: `unit<"ftm", 1.8288_ins * si::metre>`. A unit is defined by
+the quantity it equals. From then on they behave like the catalog's: prefixes
+apply to a named unit, a kind under length is a length, and money never adds
+to a mass.
 
 ## Diagnostics
 
@@ -253,44 +254,36 @@ quantity form.
 
 # Proposed interface
 
-The names are the reference implementation's. `@*unit*@`, `@*spec*@` and
+The names are the reference implementation's. `@*unit*@`, `@*kind*@` and
 `@*origin*@` are exposition-only tag types: empty objects whose type carries a
-`unit`, a `quantity_spec` or a `point_origin` as a value. `grid_number` is
+unit, a kind or an origin as a value. `@*text*@` is a string held by value, a
+template argument. `grid_number` is
 the number paper's.
 
 ```cpp
 namespace std::units {
-  // dimensions and magnitudes
-  struct base_dimension { string_view Name; };                 // a dimension of your own
+  // dimensions
   struct dimension;                                           // exponents of L M T I Θ N J and of base dimensions
-  struct magnitude;                                           // an exact rational times a power of π
-  template<grid_number R> constexpr @*magnitude*@ mag;              // R
-  inline constexpr @*magnitude*@ mag_pi;                          // π
+  template<@*text*@ Name> constexpr dimension base_dimension;      // a dimension of your own
 
   // units
-  struct unit;                                                // named units to integer powers, prefixes, a magnitude
-  struct unit_options { string_view ascii; @*spec*@ kind; @*origin*@ origin; bool space_before = true; };
-  struct named_unit {                                         // m, N, °C: a static object
-    constexpr named_unit(string_view symbol, @*spec*@ kind, unit_options = {});
-    constexpr named_unit(string_view symbol, @*magnitude*@, @*spec*@ kind, unit_options = {});
-    constexpr named_unit(string_view symbol, @*unit*@ definition, unit_options = {});
-    constexpr named_unit(string_view symbol, @*unit*@ definition, @*spec*@ kind, unit_options = {});
-  };
-  template<const named_unit& U> constexpr @*unit*@ unit_c;
+  struct unit_options { @*text*@ ascii; @*kind*@ kind; @*origin*@ origin; bool space_before = true; };
+  template<@*text*@ Symbol, auto Definition, unit_options = {}>
+    constexpr @*unit*@ unit;                                      // m, N, °C: by the quantity it equals
+                                                              // (1.8288_ins * si::metre), a unit, or a kind
+  template<@*text*@ Symbol, @*text*@ Dimension, unit_options = {}>
+    constexpr @*unit*@ base_unit;                                 // a new dimension, its kind, and its unit
   inline constexpr @*unit*@ one;                                  // the unit 1
-  // @*unit*@ * @*unit*@, @*unit*@ / @*unit*@, @*magnitude*@ * @*unit*@, pow<N>(u), square(u), cubic(u), inverse(u)
+  inline constexpr @*unit*@ pi;                                   // the number π, exactly
+  // @*unit*@ * @*unit*@, @*unit*@ / @*unit*@, pow<N>(u), square(u), cubic(u), inverse(u)
   // prefixes: kilo(u), milli(u), ... on a named unit
 
   // quantity kinds
-  struct quantity_spec {                                      // isq::length, isq::height
-    constexpr quantity_spec(string_view name, dimension);             // a base quantity
-    constexpr quantity_spec(string_view name, const base_dimension&);
-    constexpr quantity_spec(string_view name, @*spec*@ parent [, is_kind]);  // a child
-    constexpr quantity_spec(string_view name, @*spec-expression*@ [, is_kind]); // a derived root
-    constexpr quantity_spec(string_view name, @*spec*@ parent, @*spec-expression*@ [, is_kind]);
-  };
-  template<const quantity_spec& S> constexpr @*spec*@ spec_c;
-  // @*spec*@ * @*spec*@, @*spec*@ / @*spec*@ (recipes); s[u] names a reference
+  struct kind_options { bool distinct = false; @*kind-expression*@ recipe; };
+  template<@*text*@ Name, auto Parent, kind_options = {}>
+    constexpr @*kind*@ kind;                                      // isq::length, isq::height: under a kind, a
+                                                              // product of kinds, or a dimension
+  // @*kind*@ * @*kind*@, @*kind*@ / @*kind*@ (recipes); k[u] names a reference
 
   // references and quantities
   struct reference;                                           // a unit, a kind or recipe; a unit converts to one
@@ -317,7 +310,7 @@ namespace std::units {
   // quantity + - % <=> == quantity, min, max, midpoint: in the common unit
   // quantity * / quantity, inside * @*unit*@, quantity * @*unit*@: units and kinds multiply
   // quantity * / inside: the number scales
-  template<class Spec, reference R, class V> constexpr auto quantity_cast(const quantity<R, V>&);
+  template<class Spec, reference R, class V> constexpr auto kind_cast(const quantity<R, V>&);
   template<class Rep2, reference R, class V> constexpr quantity<R, Rep2> value_cast(const quantity<R, V>&);
   template<auto U, class Rep2, reference R, class V> constexpr auto value_cast(const quantity<R, V>&);
   template<class Q, reference R, class V> constexpr Q value_cast(const quantity<R, V>&);
@@ -331,10 +324,9 @@ namespace std::units {
   // the number paper's free arithmetic, Args a flag, a policy or an error&
 
   // points
-  struct point_origin {                                       // absolute, or at an exact offset from one
-    string_view Name; dimension Dim; @*origin*@ Absolute; grid_number Offset;
-  };
-  template<const point_origin& O> constexpr @*origin*@ origin_c;
+  template<@*text*@ Name, auto Where>
+    constexpr @*origin*@ origin;                                  // absolute (a kind or a dimension), or at a point
+                                                              // of another: si::absolute_zero + 273.15_ins * si::kelvin
   template<reference R, @*origin*@ O, class Rep>
   class quantity_point {
   public:
@@ -368,7 +360,7 @@ namespace std {
 | `quantity<R2, Rep2>{q}` | `q` in `R2`'s unit, stored by `Rep2` | implicit when `R`'s kind converts to `R2`'s and the rescaled number converts implicitly |
 | `a + b`, `a - b`, `a % b`, `a <=> b` | in the common unit (the gcd of the magnitudes); kind: the nearest common ancestor | ill-formed for different dimensions or kinds |
 | `a * b`, `a / b` | units, kinds and numbers multiply or divide | `expected` iff `b`'s grid holds 0; a result of dimension one converts to its `inside` |
-| `quantity_cast<S>(q)` | the same number, kind `S` | down or sideways within one kind; never across an `is_kind` boundary |
+| `kind_cast<S>(q)` | the same number, kind `S` | down or sideways within one kind; never across a distinct kind's boundary |
 | `value_cast<Rep2>(q)`, `value_cast<u, Rep2>(q)` | the exact value, stored by `Rep2` | `value_cast` reports through `expected` |
 | `Q{q, clamp}`, `Q{v, u, wrap}` | `q` or `v` in `Q`'s unit, saturated or folded into `Q`'s number | `q` a quantity of `Q`'s dimension, `v` a number in unit `u` |
 | `q.numerical_value_in(u)` | `q`'s number in unit `u` | exact; `q.numerical_value()` is ill-formed |

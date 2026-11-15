@@ -97,7 +97,8 @@ struct origin_holder {
     static constexpr point_origin value = [] {
         if constexpr (requires { Def.quantity_from_origin(); }) {
             using P = decltype(Def);
-            static_assert(static_cast<bool>(P::origin), "units: origin<name, o + q> - the point counts from an origin");
+            static_assert(static_cast<bool>(P::origin),
+                          "units: origin<name, o + q> - the point counts from an origin");
             constexpr auto q = Def.quantity_from_origin();
             using Q          = decltype(q);
             static_assert(lower_of<typename Q::rep> == upper_of<typename Q::rep>,

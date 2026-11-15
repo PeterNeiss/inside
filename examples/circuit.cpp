@@ -76,7 +76,7 @@ int main() {
     //    to it. pi keeps π in the unit, so the result rounds once, with
     //    the true π, onto a 0.01 Hz grid.
     const auto f  = just<1> / (just<2> * (pi * tau));
-    const auto fc = value_cast<si::hertz, hertz_t>(quantity_cast<isq::frequency>(f));
+    const auto fc = value_cast<si::hertz, hertz_t>(kind_cast<isq::frequency>(f));
     std::cout << "f_c    = " << fc << '\n'; // 255.47 Hz
     if (to_string(fc) != "255.47 Hz")
         return 1;

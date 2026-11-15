@@ -95,7 +95,7 @@ int main() {
     //      quantity<isq::torque[si::newton * si::metre], …> τ = m_final * v * v;   // does not compile
     using gigajoules_t = inside<{{0, 10'000}, per<1000>}, round_half_away>;
     //    (A value_cast into a grid that may not hold the value is an expected.)
-    const auto v = value_cast<km_s, inside<{{0, 20}, per<1000>}, round_half_away>>(quantity_cast<isq::speed>(v_peri));
+    const auto v = value_cast<km_s, inside<{{0, 20}, per<1000>}, round_half_away>>(kind_cast<isq::speed>(v_peri));
     const auto checked_ke = value_cast<si::giga(si::joule), gigajoules_t>(m_final * v * v);
     if (!checked_ke)
         return 1;
