@@ -100,7 +100,7 @@ constexpr std::array member_only{
     std::string_view{"from_raw"},
     std::string_view{"numerator"},
     std::string_view{"denominator"},
-    std::string_view{"index"},
+    std::string_view{"step"},
     std::string_view{"from_step"},
     std::string_view{"try_from_step"},
 };
