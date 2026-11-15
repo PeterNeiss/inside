@@ -74,7 +74,7 @@ inline void append_exponent(std::string& s, int e, text_encoding enc) {
 
 // The atoms of one sign with |exponent| (sign ±1), or all of them with their
 // own exponent (sign 0). The blade atoms come last, in their order: 2 m e₁.
-inline void append_atoms(std::string& s, const unit& u, int sign, text_encoding enc) {
+inline void append_atoms(std::string& s, const unit_value& u, int sign, text_encoding enc) {
     bool first = true;
     for (const bool blades : {false, true})
         for (std::int8_t i = 0; i < u.Size; ++i) {
@@ -85,14 +85,14 @@ inline void append_atoms(std::string& s, const unit& u, int sign, text_encoding 
                 s += ' ';
             first = false;
             s += prefix_symbol(a.Prefix, enc);
-            s += enc == text_encoding::utf8 ? a.U->Utf8 : a.U->Ascii;
+            s += enc == text_encoding::utf8 ? a.U->Utf8 : a.U->ascii();
             append_exponent(s, sign == 0 ? a.Exp : a.Exp * sign, enc);
         }
 }
 } // namespace detail
 
 // The symbol of a unit: "km", "kg m²/s²", "s⁻¹", "[1/381 ft]" (a scaled unit).
-inline std::string unit_symbol(const unit& u, text_encoding enc = text_encoding::utf8) {
+inline std::string unit_symbol(const unit_value& u, text_encoding enc = text_encoding::utf8) {
     std::string s;
     const int   num =
         static_cast<int>(std::count_if(u.Atoms, u.Atoms + u.Size, [](const auto& a) { return a.Exp > 0; }));
@@ -121,7 +121,7 @@ inline std::string unit_symbol(const unit& u, text_encoding enc = text_encoding:
     }
     return s;
 }
-template <unit U>
+template <unit_value U>
 inline std::string unit_symbol(unit_t<U>, text_encoding enc = text_encoding::utf8) {
     return unit_symbol(U, enc);
 }

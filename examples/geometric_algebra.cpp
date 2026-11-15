@@ -22,15 +22,12 @@ using namespace beman::inside;
 using namespace beman::inside::units;
 
 namespace {
-inline constexpr basis_vector e1_def{"e₁", +1, {.ascii = "e1"}};
-inline constexpr basis_vector e2_def{"e₂", +1, {.ascii = "e2"}};
-inline constexpr basis_vector e3_def{"e₃", +1, {.ascii = "e3"}};
-inline constexpr basis_vector eps_def{"ε", 0, {.ascii = "eps"}}; // ε ε = 0
-inline constexpr auto         e1  = unit_c<e1_def>;
-inline constexpr auto         e2  = unit_c<e2_def>;
-inline constexpr auto         e3  = unit_c<e3_def>;
-inline constexpr auto         eps = unit_c<eps_def>;
-inline constexpr auto         m   = si::metre;
+// ε ε = 0
+inline constexpr auto e1  = basis_vector<"e₁", +1, {.ascii = "e1"}>;
+inline constexpr auto e2  = basis_vector<"e₂", +1, {.ascii = "e2"}>;
+inline constexpr auto e3  = basis_vector<"e₃", +1, {.ascii = "e3"}>;
+inline constexpr auto eps = basis_vector<"ε", 0, {.ascii = "eps"}>;
+inline constexpr auto m   = si::metre;
 
 template <class X>
 constexpr auto f(const X& x) {

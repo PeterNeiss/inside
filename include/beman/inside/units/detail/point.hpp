@@ -32,7 +32,7 @@ inline constexpr bool is_quantity_point_v<quantity_point<R, O, Rep>> = true;
 namespace detail {
 // The number, in unit U, that takes a quantity from origin From to origin To:
 // (offset(From) − offset(To)) / mag(U).
-template <origin_ref From, origin_ref To, unit U>
+template <origin_ref From, origin_ref To, unit_value U>
 consteval grid_rational origin_shift() {
     static_assert(same(absolute_of(From), absolute_of(To)), "units: points of different absolute origins");
     constexpr magnitude m = magnitude_of(U);
@@ -53,7 +53,9 @@ constexpr auto shift(const V& v) {
 }
 
 // The default origin of a unit's points: its named unit's (K, ℃, ℉).
-consteval origin_ref origin_of_unit(const unit& u) { return is_single_named(u) ? u.Atoms[0].U->Origin : origin_ref{}; }
+consteval origin_ref origin_of_unit(const unit_value& u) {
+    return is_single_named(u) ? u.Atoms[0].U->Origin : origin_ref{};
+}
 
 template <origin_ref O, class Q>
 constexpr auto make_point(Q&& q) {
@@ -63,8 +65,9 @@ constexpr auto make_point(Q&& q) {
 } // namespace detail
 
 template <reference R, detail::origin_ref O, insidable Rep>
-class quantity_point {
-    quantity<R, Rep> Q;
+class quantity_point : public detail::member_holder<Rep, quantity<R, Rep>, quantity_point<R, O, Rep>> {
+    using holder = detail::member_holder<Rep, quantity<R, Rep>, quantity_point<R, O, Rep>>;
+    using holder::Value; // the quantity from the origin
 
   public:
     using quantity_type                           = quantity<R, Rep>;
@@ -73,7 +76,7 @@ class quantity_point {
     static constexpr detail::origin_ref origin    = O;
 
     constexpr quantity_point() = default;
-    constexpr explicit quantity_point(const quantity<R, Rep>& q) : Q{q} {}
+    constexpr explicit quantity_point(const quantity<R, Rep>& q) : holder(q) {}
 
     // From a point of another origin (of the same absolute one) or unit:
     // shifted, then rescaled, exactly; implicit as the quantities are.
@@ -85,18 +88,18 @@ class quantity_point {
     constexpr explicit(
         !std::convertible_to<decltype(std::declval<const quantity_point<R2, O2, V2>&>().quantity_from(origin_t<O>{})),
                              quantity<R, Rep>>) quantity_point(const quantity_point<R2, O2, V2>& p)
-        : Q(p.quantity_from(origin_t<O>{})) {}
+        : holder(quantity<R, Rep>(p.quantity_from(origin_t<O>{}))) {}
 
     // The quantity from this point's origin, or from another one.
-    [[nodiscard]] constexpr const quantity<R, Rep>& quantity_from_origin() const noexcept { return Q; }
+    [[nodiscard]] constexpr const quantity<R, Rep>& quantity_from_origin() const noexcept { return Value; }
     template <detail::origin_ref O2>
         requires(detail::same(detail::absolute_of(O2), detail::absolute_of(O)) && magnitude_of(R.U).Pi == 0 &&
                  detail::shift_forms<detail::origin_shift<O, O2, R.U>(), Rep>)
     [[nodiscard]] constexpr auto quantity_from(origin_t<O2>) const {
         constexpr grid_rational c = detail::origin_shift<O, O2, R.U>();
         return detail::quantity_access::make<
-            quantity<R, std::remove_cvref_t<decltype(detail::shift<c>(units::detail::value_of(Q)))>>>(
-            detail::shift<c>(units::detail::value_of(Q)));
+            quantity<R, std::remove_cvref_t<decltype(detail::shift<c>(units::detail::value_of(Value)))>>>(
+            detail::shift<c>(units::detail::value_of(Value)));
     }
     template <detail::origin_ref O2>
         requires(!detail::same(detail::absolute_of(O2), detail::absolute_of(O)))
@@ -119,13 +122,13 @@ class quantity_point {
         return detail::make_point<O2>(quantity_from(o));
     }
     // The same point in another unit.
-    template <units::unit U>
+    template <units::unit_value U>
         requires requires(const quantity<R, Rep>& q, unit_t<U> u) { q.in(u); }
     [[nodiscard]] constexpr auto in(unit_t<U> u) const {
-        return detail::make_point<O>(Q.in(u));
+        return detail::make_point<O>(Value.in(u));
     }
     // The same point in unit U, counted from U's own origin: 350 ℉ → 530/3 ℃.
-    template <units::unit U>
+    template <units::unit_value U>
         requires requires(const quantity_point& p, unit_t<U> u) {
             p.point_for(origin_t<detail::origin_of_unit(U)>{}).in(u);
         }
@@ -136,13 +139,13 @@ class quantity_point {
     template <units::reference R2, class V2>
         requires requires(quantity<R, Rep>& a, const quantity<R2, V2>& b) { a += b; }
     constexpr quantity_point& operator+=(const quantity<R2, V2>& q) {
-        Q += q;
+        Value += q;
         return *this;
     }
     template <units::reference R2, class V2>
         requires requires(quantity<R, Rep>& a, const quantity<R2, V2>& b) { a -= b; }
     constexpr quantity_point& operator-=(const quantity<R2, V2>& q) {
-        Q -= q;
+        Value -= q;
         return *this;
     }
 };
@@ -197,7 +200,7 @@ template <reference R, class V, detail::origin_ref O>
 // common unit; point − point: a quantity (the second counted from the first's
 // origin).
 namespace detail {
-template <unit U, reference R2, class V2>
+template <unit_value U, reference R2, class V2>
 constexpr auto in_point_unit(const quantity<R2, V2>& q) {
     if constexpr (requires { q.template in<U>(); })
         return q.template in<U>();

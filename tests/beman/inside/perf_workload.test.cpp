@@ -222,13 +222,10 @@ std::int64_t run_math_decimal() {
 }
 
 // G(3,0): the bivectors e₁e₂, e₁e₃, e₂e₃ square to -1.
-inline constexpr units::basis_vector e1_def{"e1", +1};
-inline constexpr units::basis_vector e2_def{"e2", +1};
-inline constexpr units::basis_vector e3_def{"e3", +1};
-inline constexpr auto                e1 = units::unit_c<e1_def>;
-inline constexpr auto                e2 = units::unit_c<e2_def>;
-inline constexpr auto                e3 = units::unit_c<e3_def>;
-using bivector                          = units::
+inline constexpr auto e1 = units::basis_vector<"e1", +1>;
+inline constexpr auto e2 = units::basis_vector<"e2", +1>;
+inline constexpr auto e3 = units::basis_vector<"e3", +1>;
+using bivector           = units::
     multivector<units::quantity<e1 * e2, angle>, units::quantity<e1 * e3, angle>, units::quantity<e2 * e3, angle>>;
 using rotor = units::multivector<out20,
                                  units::quantity<e1 * e2, out20>,

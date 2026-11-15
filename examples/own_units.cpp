@@ -22,36 +22,25 @@ using namespace beman::inside::units;
 
 namespace {
 // 1. A spec under length and a unit defined by the metre.
-inline constexpr quantity_spec depth_def{"depth", isq::length};
-inline constexpr auto          depth = spec_c<depth_def>;
-inline constexpr named_unit    fathom_def{"ftm", mag<18288_g / 10000_g> * si::metre};
-inline constexpr auto          fathom = unit_c<fathom_def>;
+inline constexpr auto depth  = kind<"depth", isq::length>;
+inline constexpr auto fathom = unit<"ftm", 1.8288_ins * si::metre>;
 
 // 2. A temperature unit whose points count from absolute zero: the options
 //    name its ASCII symbol and its origin.
-inline constexpr named_unit rankine_def{
-    "°R", mag<5_g / 9_g> * si::kelvin, {.ascii = "R", .origin = si::absolute_zero}};
-inline constexpr auto rankine = unit_c<rankine_def>;
+inline constexpr auto rankine = unit<"°R", just<5, 9> * si::kelvin, {.ascii = "R", .origin = si::absolute_zero}>;
 
 // 3. Currency: a base dimension, its base quantity and two units.
-inline constexpr base_dimension currency_def{"currency"};
-inline constexpr quantity_spec  money_def{"money", currency_def};
-inline constexpr auto           money = spec_c<money_def>;
-inline constexpr named_unit     euro_def{"EUR", money};
-inline constexpr auto           euro = unit_c<euro_def>;
-inline constexpr named_unit     cent_def{"ct", mag<1_g / 100_g> * euro};
-inline constexpr auto           cent = unit_c<cent_def>;
+inline constexpr auto currency = base_dimension<"currency">;
+inline constexpr auto money    = kind<"money", currency>;
+inline constexpr auto euro     = unit<"EUR", money>;
+inline constexpr auto cent     = unit<"ct", 0.01_ins * euro>;
 
 // 4. Information: bit, byte (8 bit), KiB (1024 B).
-inline constexpr base_dimension information_def{"information"};
-inline constexpr quantity_spec  amount_def{"amount_of_information", information_def};
-inline constexpr auto           amount = spec_c<amount_def>;
-inline constexpr named_unit     bit_def{"bit", amount};
-inline constexpr auto           bit = unit_c<bit_def>;
-inline constexpr named_unit     byte_def{"B", mag<8> * bit};
-inline constexpr auto           byte = unit_c<byte_def>;
-inline constexpr named_unit     kibibyte_def{"KiB", mag<1024> * byte};
-inline constexpr auto           kibibyte = unit_c<kibibyte_def>;
+inline constexpr auto information = base_dimension<"information">;
+inline constexpr auto amount      = kind<"amount_of_information", information>;
+inline constexpr auto bit         = unit<"bit", amount>;
+inline constexpr auto byte        = unit<"B", just<8> * bit>;
+inline constexpr auto kibibyte    = unit<"KiB", just<1024> * byte>;
 
 template <class A, class B>
 concept addable = requires(const A& a, const B& b) { a + b; };
@@ -64,7 +53,7 @@ int main() {
     if (to_string(sounding.in(si::metre)) != "21.9456 m" ||
         to_string((just<1> * si::kilo(fathom)).in(si::metre)) != "1828.8 m")
         return 1;
-    static_assert(sounding.quantity_spec == depth);
+    static_assert(sounding.kind == depth);
 
     // 2. Water freezes at 491.67 °R: the same point as 0 ℃ and 32 ℉.
     const auto freezing = point<rankine>(inside<{{0, 1000}, per<100>}>{just<49167, 100>});

@@ -62,7 +62,7 @@ int main() {
     const quantity<isq::altitude[km], inside<{100, 1000}>> altitude{185, isq::altitude[km]};
     const quantity<isq::radius[km], inside<{6300, 6400}>>  earth{6371, isq::radius[km]};
     const auto                                             r = altitude + earth;
-    static_assert(r.quantity_spec == isq::length);
+    static_assert(r.kind == isq::length);
     constexpr auto mu     = just<3'986'004'418, 10'000> * (cubic(km) / square(si::second));
     const auto     v_park = math::sqrt<per<1'000'000>>(mu / r);
     std::cout << "v parking = " << v_park << '\n';
@@ -80,11 +80,11 @@ int main() {
     if (to_string(v_peri) != "10.934330 km/s" || to_string(dv_tli) != "3.136937 km/s" || !(dv_stage > dv_tli))
         return 1;
     //    Half the ellipse's period, π·a·√(a/μ): √(s²/km²) is s/km, so
-    //    a·√(a/μ) is a time; mag_pi puts π in the unit, and the cast to hours
+    //    a·√(a/μ) is a time; pi puts π in the unit, and the cast to hours
     //    rounds once with the true π.
     const auto rt   = math::sqrt<per<1'000'000'000>>(a / mu);
-    const auto t_h  = value_cast<si::hour, inside<{{0, 200}, per<10>}, round_half_away>>(mag_pi * (a * rt));
-    const auto days = value_cast<si::day, inside<{{0, 10}, per<100>}, round_half_away>>(mag_pi * (a * rt));
+    const auto t_h  = value_cast<si::hour, inside<{{0, 200}, per<10>}, round_half_away>>(pi * (a * rt));
+    const auto days = value_cast<si::day, inside<{{0, 10}, per<100>}, round_half_away>>(pi * (a * rt));
     std::cout << "transfer  = " << t_h << " (" << days << ")\n";
     if (to_string(t_h) != "119.5 h" || to_string(days) != "4.98 d")
         return 1;
@@ -95,7 +95,7 @@ int main() {
     //      quantity<isq::torque[si::newton * si::metre], …> τ = m_final * v * v;   // does not compile
     using gigajoules_t = inside<{{0, 10'000}, per<1000>}, round_half_away>;
     //    (A value_cast into a grid that may not hold the value is an expected.)
-    const auto v = value_cast<km_s, inside<{{0, 20}, per<1000>}, round_half_away>>(quantity_cast<isq::speed>(v_peri));
+    const auto v = value_cast<km_s, inside<{{0, 20}, per<1000>}, round_half_away>>(kind_cast<isq::speed>(v_peri));
     const auto checked_ke = value_cast<si::giga(si::joule), gigajoules_t>(m_final * v * v);
     if (!checked_ke)
         return 1;

@@ -25,10 +25,7 @@ using namespace beman::inside;
 using namespace beman::inside::units;
 
 namespace {
-inline constexpr base_dimension health_dim{"health"};
-inline constexpr quantity_spec  health_def{"health", health_dim};
-inline constexpr named_unit     hp_def{"HP", spec_c<health_def>};
-inline constexpr auto           HP = unit_c<hp_def>;
+inline constexpr auto HP = base_unit<"HP", "health">;
 } // namespace
 
 // Health in [0, 100] HP, clamp-saturating.

@@ -596,10 +596,10 @@ TEST(UnanchoredGridTest, math) {
         const in_t  a = test::store<in_t>(x);
         const ref_t r = test::store<ref_t>(x);
         // an unanchored input gives the same result as the same value anchored
-        using fixed = inside<{{0, 17}, rational{1, 64}}, round_half_away>;
-        using unit  = inside<{{-1, 1}, rational{1, 1024}}, round_half_away>;
+        using fixed      = inside<{{0, 17}, rational{1, 64}}, round_half_away>;
+        using unit_value = inside<{{-1, 1}, rational{1, 1024}}, round_half_away>;
         EXPECT_EQ((math::exp<fixed>(a)), (math::exp<fixed>(r)));
-        EXPECT_EQ(math::sin<unit>(a), math::sin<unit>(r));
+        EXPECT_EQ(math::sin<unit_value>(a), math::sin<unit_value>(r));
         EXPECT_EQ(math::floor(a), math::floor(r));
         EXPECT_EQ(math::round(a), math::round(r));
         EXPECT_EQ(static_cast<rational>(math::abs(a)), static_cast<rational>(math::abs(r)));

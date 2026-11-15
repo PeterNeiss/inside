@@ -20,8 +20,8 @@ namespace pc = units::constants;
 int main()
 {
   // Each constant is a quantity of its kind: h is an action, e a charge.
-  static_assert(pc::planck_constant.quantity_spec == isq::action);
-  static_assert(pc::elementary_charge.quantity_spec == isq::electric_charge);
+  static_assert(pc::planck_constant.kind == isq::action);
+  static_assert(pc::elementary_charge.kind == isq::electric_charge);
 
   std::cout << std::format("h    = {:.8e}\n", pc::planck_constant.in(si::joule * si::second));
   std::cout << std::format("e    = {:.9e}\n", pc::elementary_charge.in(si::coulomb));

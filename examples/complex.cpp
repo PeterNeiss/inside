@@ -25,12 +25,11 @@ using namespace beman::inside;
 using namespace beman::inside::units;
 
 namespace {
-inline constexpr basis_vector e1_def{"e₁", +1, {.ascii = "e1"}}; // e₁e₁ = 1
-inline constexpr basis_vector e2_def{"e₂", +1, {.ascii = "e2"}}; // e₂e₂ = 1
-inline constexpr auto         e1 = unit_c<e1_def>;
-inline constexpr auto         e2 = unit_c<e2_def>;
-inline constexpr named_unit   i_def{"i", e1 * e2};
-inline constexpr auto         i = unit_c<i_def>;
+// e₁e₁ = 1
+// e₂e₂ = 1
+inline constexpr auto e1 = basis_vector<"e₁", +1, {.ascii = "e1"}>;
+inline constexpr auto e2 = basis_vector<"e₂", +1, {.ascii = "e2"}>;
+inline constexpr auto i  = unit<"i", e1 * e2>;
 } // namespace
 
 int main() {

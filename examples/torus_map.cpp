@@ -24,10 +24,7 @@ using namespace beman::inside::formats;
 using namespace beman::inside::units;
 
 namespace {
-inline constexpr base_dimension screen_dim{"screen"};
-inline constexpr quantity_spec  screen_def{"screen_distance", screen_dim};
-inline constexpr named_unit     px_def{"px", spec_c<screen_def>};
-inline constexpr auto           px = unit_c<px_def>;
+inline constexpr auto px = base_unit<"px", "screen">;
 } // namespace
 
 // Position grid: [0, 64) px in 1/16-pixel steps, so wrap's period is 64 px.

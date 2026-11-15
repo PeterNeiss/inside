@@ -55,7 +55,7 @@ precision it needs.
 | `catalan` | Catalan's constant G |
 | `zeta3` | Apéry's constant ζ(3) |
 
-Two ways avoid approximating π at all: scale a unit with `mag_pi`
+Two ways avoid approximating π at all: scale a unit with `pi`
 ([the units model](units-model.md#factors-of-π-round-once)), and take the sine of an angle
 in degrees or turns, which `math::sin` reduces exactly
 ([the math engine](math-engine.md#angles-over-many-turns)).

@@ -21,17 +21,17 @@ namespace am = beman::inside::math;
 
 namespace {
 // Inputs.
-using sym4   = inside<{{-4, 4}, per<1 << 18>}, round_half_away>;         // 2^21 + 1 inputs
-using sym8   = inside<{{-8, 8}, per<1 << 16>}, round_half_away>;         // 2^20 + 1
-using symdec = inside<{{-4, 4}, rational{1, 100'000}}, round_half_away>; // 800 001
-using unit   = inside<{{-1, 1}, per<1 << 19>}, round_half_away>;         // 2^20 + 1
-using open1  = inside<{{rational{-1023, 1024}, rational{1023, 1024}}, per<1024>}, round_half_away>;
-using pos    = inside<{{rational{1, 1024}, 1024}, per<1024>}, round_half_away>; // 2^20
-using ge1    = inside<{{1, 1025}, per<1024>}, round_half_away>;                 // 2^20 + 1
-using small  = inside<{{-2, 2}, per<16>}, round_half_away>;                     // 65
-using side   = inside<{{-16, 16}, per<32>}, round_half_away>;                   // 1025
-using base   = inside<{{rational{1, 64}, 16}, per<64>}, round_half_away>;       // 1024
-using expo   = inside<{{-4, 4}, per<8>}, round_half_away>;                      // 65
+using sym4       = inside<{{-4, 4}, per<1 << 18>}, round_half_away>;         // 2^21 + 1 inputs
+using sym8       = inside<{{-8, 8}, per<1 << 16>}, round_half_away>;         // 2^20 + 1
+using symdec     = inside<{{-4, 4}, rational{1, 100'000}}, round_half_away>; // 800 001
+using unit_value = inside<{{-1, 1}, per<1 << 19>}, round_half_away>;         // 2^20 + 1
+using open1      = inside<{{rational{-1023, 1024}, rational{1023, 1024}}, per<1024>}, round_half_away>;
+using pos        = inside<{{rational{1, 1024}, 1024}, per<1024>}, round_half_away>; // 2^20
+using ge1        = inside<{{1, 1025}, per<1024>}, round_half_away>;                 // 2^20 + 1
+using small      = inside<{{-2, 2}, per<16>}, round_half_away>;                     // 65
+using side       = inside<{{-16, 16}, per<32>}, round_half_away>;                   // 1025
+using base       = inside<{{rational{1, 64}, 16}, per<64>}, round_half_away>;       // 1024
+using expo       = inside<{{-4, 4}, per<8>}, round_half_away>;                      // 65
 
 // Outputs: coarse (a 4-bit notch: start precision 16, cap 64 bits), fine,
 // decimal, and one past the double tier (the dd tier: a 2^-52 notch).
@@ -136,9 +136,9 @@ void pairs(certify::runner& r) {
     CERTIFY(cbrt, c4f, sym4);
     CERTIFY(cbrt, dd52, sym4);
 
-    CERTIFY(asin, c4f, unit);
-    CERTIFY(asin, f20n, unit);
-    CERTIFY(acos, c4c, unit);
+    CERTIFY(asin, c4f, unit_value);
+    CERTIFY(asin, f20n, unit_value);
+    CERTIFY(acos, c4c, unit_value);
     CERTIFY(asinh, c4n, sym4);
     CERTIFY(acosh, f20n, ge1);
     CERTIFY(atanh, c4f, open1);

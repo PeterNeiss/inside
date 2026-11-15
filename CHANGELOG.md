@@ -64,6 +64,22 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   | `a % b` followed the operands' rounding mode | `mod(a, b, round_floor)` |
   | `div(a, b)`, `mod(a, b)`, `divmod(a, b)` took the operands' mode | the mode is the call's: `divmod(a, b, round_floor)`; none means exact `/`, truncated `%` |
 
+- A unit, kind, origin or dimension of your own is one declaration. The
+  two-object forms and their types are gone.
+
+  | Before | Now |
+  |---|---|
+  | `inline constexpr named_unit ftm_def{"ftm", mag<…> * si::metre};` and `unit_c<ftm_def>` | `inline constexpr auto fathom = unit<"ftm", 1.8288_ins * si::metre>;` |
+  | `named_unit{"Hz", one / si::second, isq::frequency}` | `unit<"Hz", one / si::second, {.kind = isq::frequency}>` |
+  | `quantity_spec depth_def{"depth", isq::length};` and `spec_c<depth_def>` | `kind<"depth", isq::length>` |
+  | `quantity_spec{…, is_kind}` | `kind<…, {.distinct = true}>` |
+  | `base_dimension d{"currency"}; quantity_spec …; named_unit …;` | `base_unit<"EUR", "currency">`, or `base_dimension<"currency">` with `kind` and `unit` |
+  | `point_origin` and `origin_c<o>` | `origin<"ice point", si::absolute_zero + 273.15_ins * si::kelvin>` |
+  | `basis_vector e1_def{"e₁", +1};` and `unit_c<e1_def>` | `basis_vector<"e₁", +1>` |
+  | `mag<N> * u`, `mag_pi` | the quantity itself, `just<N> * u`; `pi` |
+  | `q.quantity_spec`, `quantity_cast<isq::height>(q)` | `q.kind`, `kind_cast<isq::height>(q)` |
+  | `isq_defs::…`, `si_defs::…` and the other `*_defs` namespaces | gone: the tags are the entries |
+
 - `rational` and the `_r` literal are no longer part of the API: an exact
   value is an inside. (`detail::rational` remains the library's own 64-bit
   fraction.)
@@ -135,6 +151,8 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Added
 
+- A point inside (`just<5>`, `1.8288_ins`), a quantity of one and a point of
+  one are structural types: they are template arguments.
 - An index converts implicitly: an inside whose every value is a
   non-negative integer converts to each builtin integer type that holds its
   whole grid, so `std::mdspan` (indexing, `submdspan` slices, extents),

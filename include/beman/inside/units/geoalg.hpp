@@ -88,7 +88,7 @@ consteval bool blade_less(const dimension& a, const dimension& b) {
     const blade x = blade_of(a), y = blade_of(b);
     if (x.size() != y.size())
         return x.size() < y.size();
-    const auto name = [](const base_dimension* v) { return v->Name; };
+    const auto name = [](const base_dimension_def* v) { return v->Name; };
     return std::ranges::lexicographical_compare(x, y, std::ranges::less{}, name, name);
 }
 consteval bool blade_equal(const dimension& a, const dimension& b) { return !blade_less(a, b) && !blade_less(b, a); }
@@ -379,9 +379,9 @@ concept invertible = multivector_like<X> && (adjoint_of<std::remove_cvref_t<X>>(
 
 // A unit spelled by the basis vectors of d's blade, in name order: its
 // canonical blade (magnitude 1).
-consteval unit canonical_blade_unit(const dimension& d) {
-    unit u{};
-    for (const base_dimension* v : blade_of(d))
+consteval unit_value canonical_blade_unit(const dimension& d) {
+    unit_value u{};
+    for (const base_dimension_def* v : blade_of(d))
         unit_add(u, unit_atom{v->Vector, 0, 1});
     return u;
 }
@@ -431,43 +431,43 @@ consteval bool part_from_implicitly() {
 }
 
 // The blade atoms of a unit, unscaled: e₁ e₂ of m e₁ e₂.
-consteval unit blade_atoms(const unit& u) {
-    unit b{};
+consteval unit_value blade_atoms(const unit_value& u) {
+    unit_value b{};
     for (std::int8_t i = 0; i < u.Size; ++i)
         if (is_blade_atom(u.Atoms[i]))
             unit_add(b, u.Atoms[i]);
     return b;
 }
 // Part p in unit U times p's blade: 2 km e₁ in m is 2000 m e₁.
-template <unit U, class P>
+template <unit_value U, class P>
 constexpr auto part_in(const P& p) {
     if constexpr (quantity_like<P>)
         return p.template in<unit_mul(U, blade_atoms(P::reference.U), 1)>();
     else
-        return quantity_access::make<quantity<reference_of(unit{}), P>>(p).template in<U>();
+        return quantity_access::make<quantity<reference_of(unit_value{}), P>>(p).template in<U>();
 }
-template <unit U, class P>
+template <unit_value U, class P>
 concept part_in_unit = requires(const P& p) { part_in<U>(p); };
 
 // u without its blade atoms (its scale kept), and the sign and size of the
 // blade's spelling: u = factor · physical_atoms(u) · canonical blade.
-consteval unit physical_atoms(const unit& u) {
-    unit r{};
+consteval unit_value physical_atoms(const unit_value& u) {
+    unit_value r{};
     r.Scale = u.Scale;
     for (std::int8_t i = 0; i < u.Size; ++i)
         if (!is_blade_atom(u.Atoms[i]))
             unit_add(r, u.Atoms[i]);
     return r;
 }
-consteval grid_rational blade_factor(const unit& u) {
+consteval grid_rational blade_factor(const unit_value& u) {
     return (magnitude_of(u) / magnitude_of(physical_atoms(u))).Ratio;
 }
 template <class P>
-consteval unit unit_of_part() {
+consteval unit_value unit_of_part() {
     if constexpr (quantity_like<P>)
         return P::reference.U;
     else
-        return unit{};
+        return unit_value{};
 }
 template <class P>
 constexpr const auto& number_of_part(const P& p) {
@@ -480,10 +480,10 @@ constexpr const auto& number_of_part(const P& p) {
 // blade: no division, so a blade with a null vector moves too.
 template <dimension B, grid_rational F, class P>
 constexpr auto move_to_blade(const P& p) {
-    static constexpr unit u = unit_of_part<P>();
-    constexpr unit        r = [] {
-        unit t = physical_atoms(u);
-        for (const base_dimension* v : blade_of(B))
+    static constexpr unit_value u = unit_of_part<P>();
+    constexpr unit_value        r = [] {
+        unit_value t = physical_atoms(u);
+        for (const base_dimension_def* v : blade_of(B))
             unit_add(t, unit_atom{v->Vector, 0, 1});
         return t;
     }();
@@ -492,7 +492,7 @@ constexpr auto move_to_blade(const P& p) {
 }
 
 // A pseudoscalar argument: a unit of a blade only.
-template <unit I>
+template <unit_value I>
 concept pseudoscalar = has_blade(dimension_of(I)) && same_outside_blade(dimension_of(I), dim_one);
 } // namespace detail
 
@@ -583,7 +583,7 @@ class multivector {
 
     // Each part in unit U (a unit without blades), its blade kept, exactly:
     // (V / Z).in(si::ampere).
-    template <units::unit U>
+    template <units::unit_value U>
         requires(!detail::has_blade(dimension_of(U))) && (detail::part_in_unit<U, Parts> && ...)
     [[nodiscard]] constexpr auto in(unit_t<U>) const {
         return std::apply([](const auto&... p) { return detail::collapse(detail::part_in<U>(p)...); }, P);
@@ -757,7 +757,7 @@ template <int K, multivector_like X>
 // The coefficient of blade u (a unit of a blade only, or `one`): the part of
 // that blade divided by u, so 2 m for 2 m e₁ and u = e1, the sign of u's
 // spelling included. The zero when x has no such part.
-template <multivector_like X, unit U>
+template <multivector_like X, unit_value U>
     requires(detail::same_outside_blade(dimension_of(U), dim_one))
 [[nodiscard]] constexpr auto part(const X& x, unit_t<U>) {
     return detail::each_part(x, [](const auto& p) {
@@ -814,7 +814,7 @@ template <class A, class B>
 //---------------------------------------------------------------------------
 // x · I⁻¹ for a pseudoscalar unit I that squares to ±1: the cross product is
 // dual(u ∧ v, e₁₂₃) up to its sign convention.
-template <multivector_like X, unit I>
+template <multivector_like X, unit_value I>
     requires detail::pseudoscalar<I>
 [[nodiscard]] constexpr auto dual(const X& x, unit_t<I> i) {
     static_assert(detail::blade_square(dimension_of(I)) != 0,
@@ -825,7 +825,7 @@ template <multivector_like X, unit I>
 // The right complement within the blade of I, without the metric: A ∧ c(A) = I
 // for each basis blade A of I. With null vectors (PGA) it stands in for the
 // dual.
-template <multivector_like X, unit I>
+template <multivector_like X, unit_value I>
     requires detail::pseudoscalar<I>
 [[nodiscard]] constexpr auto complement(const X& x, unit_t<I>) {
     return detail::each_part(x, [](const auto& p) {
@@ -836,7 +836,7 @@ template <multivector_like X, unit I>
     });
 }
 // The inverse of complement: uncomplement(complement(x, I), I) == x.
-template <multivector_like X, unit I>
+template <multivector_like X, unit_value I>
     requires detail::pseudoscalar<I>
 [[nodiscard]] constexpr auto uncomplement(const X& x, unit_t<I>) {
     return detail::each_part(x, [](const auto& p) {
@@ -848,7 +848,7 @@ template <multivector_like X, unit I>
     });
 }
 // The regressive product a ∨ b = c⁻¹(c(a) ∧ c(b)): the join of PGA.
-template <multivector_like A, multivector_like B, unit I>
+template <multivector_like A, multivector_like B, unit_value I>
     requires detail::pseudoscalar<I>
 [[nodiscard]] constexpr auto regressive(const A& a, const B& b, unit_t<I> i) {
     return uncomplement(wedge(complement(a, i), complement(b, i)), i);

@@ -3,12 +3,12 @@
 // e2 e1 is -(e1 e2): a quantity's unit has no sign, the number does.
 #include <beman/inside/units.hpp>
 
-inline constexpr beman::inside::units::basis_vector e1_def{"e1", 1};
-inline constexpr beman::inside::units::basis_vector e2_def{"e2", 1};
+inline constexpr auto e1_def = beman::inside::units::basis_vector<"e1", 1>;
+inline constexpr auto e2_def = beman::inside::units::basis_vector<"e2", 1>;
 
 int main() {
     using namespace beman::inside;
     using namespace beman::inside::units;
-    quantity<unit_c<e2_def> * unit_c<e1_def>, inside<{0, 10}>> q{};
+    quantity<e2_def * e1_def, inside<{0, 10}>> q{};
     (void)q;
 }

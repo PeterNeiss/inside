@@ -26,9 +26,8 @@ using namespace beman::inside::units;
 namespace {
 // A level: dimensionless, but a kind of its own, so it never turns into a
 // plain number by itself.
-inline constexpr quantity_spec level_def{"level", isq::dimensionless, is_kind};
-inline constexpr named_unit    decibel_def{"dB", one, spec_c<level_def>};
-inline constexpr auto          dB = unit_c<decibel_def>;
+inline constexpr auto level_def = kind<"level", isq::dimensionless, {.distinct = true}>;
+inline constexpr auto dB        = unit<"dB", one, {.kind = level_def}>;
 } // namespace
 
 // dB in [-24, 12] at 0.5 dB resolution — matches a typical mixer fader range.

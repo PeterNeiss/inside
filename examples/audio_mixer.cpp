@@ -28,11 +28,9 @@ using namespace beman::inside::formats;
 using namespace beman::inside::units;
 
 namespace {
-inline constexpr quantity_spec level_def{"level", isq::dimensionless, is_kind};
-inline constexpr named_unit    decibel_def{"dB", one, spec_c<level_def>};
-inline constexpr auto          dB = unit_c<decibel_def>;
-inline constexpr named_unit    turn_def{"tr", mag<2> * mag_pi * si::radian};
-inline constexpr auto          turn = unit_c<turn_def>;
+inline constexpr auto level_def = kind<"level", isq::dimensionless, {.distinct = true}>;
+inline constexpr auto dB        = unit<"dB", one, {.kind = level_def}>;
+inline constexpr auto turn      = unit<"tr", just<2> * pi * si::radian>;
 } // namespace
 
 // Q1.14 signed samples in [-1, 1].

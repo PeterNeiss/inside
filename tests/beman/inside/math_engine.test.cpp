@@ -213,17 +213,17 @@ int check_rounding(Fn fn, Ref ref, int stride = 1) {
     return bad;
 }
 
-using sym4   = inside<{{-4, 4}, rational{1, 512}}, round_half_away>;
-using pos64  = inside<{{rational{1, 64}, 64}, rational{1, 64}}, round_half_away>;
-using unit   = inside<{{-1, 1}, rational{1, 1024}}, round_half_away>;
-using open1  = inside<{{rational{-1023, 1024}, rational{1023, 1024}}, rational{1, 1024}}, round_half_away>;
-using ge1    = inside<{{1, 64}, rational{1, 64}}, round_half_away>;
-using tan_in = inside<{{rational{-3, 2}, rational{3, 2}}, rational{1, 512}}, round_half_away>;
-using out20  = inside<{{-64, 64}, rational{1, 1 << 20}}, round_half_away>;
-using out20f = inside<{{-64, 64}, rational{1, 1 << 20}}, round_floor>;
-using outdec = inside<{{-64, 64}, rational{1, 1000}}, round_half_away>;
-using out40  = inside<{{-64, 64}, rational{1, std::uint64_t{1} << 40}}, round_half_away>;
-using wide20 = inside<{{-1024, 1024}, rational{1, 1 << 20}}, round_half_away>;
+using sym4       = inside<{{-4, 4}, rational{1, 512}}, round_half_away>;
+using pos64      = inside<{{rational{1, 64}, 64}, rational{1, 64}}, round_half_away>;
+using unit_value = inside<{{-1, 1}, rational{1, 1024}}, round_half_away>;
+using open1      = inside<{{rational{-1023, 1024}, rational{1023, 1024}}, rational{1, 1024}}, round_half_away>;
+using ge1        = inside<{{1, 64}, rational{1, 64}}, round_half_away>;
+using tan_in     = inside<{{rational{-3, 2}, rational{3, 2}}, rational{1, 512}}, round_half_away>;
+using out20      = inside<{{-64, 64}, rational{1, 1 << 20}}, round_half_away>;
+using out20f     = inside<{{-64, 64}, rational{1, 1 << 20}}, round_floor>;
+using outdec     = inside<{{-64, 64}, rational{1, 1000}}, round_half_away>;
+using out40      = inside<{{-64, 64}, rational{1, std::uint64_t{1} << 40}}, round_half_away>;
+using wide20     = inside<{{-1024, 1024}, rational{1, 1 << 20}}, round_half_away>;
 } // namespace
 
 TEST(MathAdaptiveTest, exp_family_rounds_correctly) {
@@ -314,12 +314,12 @@ TEST(MathAdaptiveTest, trig_rounds_correctly) {
     EXPECT_EQ(
         (check_rounding<out20, sym4>([](sym4 x) { return am::atan<out20>(x); }, [](ld v) { return std::atan(v); })),
         0);
-    EXPECT_EQ(
-        (check_rounding<out20, unit>([](unit x) { return am::asin<out20>(x); }, [](ld v) { return std::asin(v); })),
-        0);
-    EXPECT_EQ(
-        (check_rounding<out20, unit>([](unit x) { return am::acos<out20>(x); }, [](ld v) { return std::acos(v); })),
-        0);
+    EXPECT_EQ((check_rounding<out20, unit_value>([](unit_value x) { return am::asin<out20>(x); },
+                                                 [](ld v) { return std::asin(v); })),
+              0);
+    EXPECT_EQ((check_rounding<out20, unit_value>([](unit_value x) { return am::acos<out20>(x); },
+                                                 [](ld v) { return std::acos(v); })),
+              0);
 }
 
 TEST(MathAdaptiveTest, two_argument_functions_round_correctly) {
@@ -448,7 +448,7 @@ TEST(MathAdaptiveTest, deduced_outputs) {
     static_assert(notch_of<E> == rational{1, 512});
     EXPECT_EQ(am::exp(sym4{1}), (am::exp<E>(sym4{1})));
     // acos over [-1, 1]: [0, ⌈π·1024⌉/1024], decreasing; acos(1) = 0 exactly.
-    using A = decltype(am::acos(unit{0}));
+    using A = decltype(am::acos(unit_value{0}));
     static_assert(lower_of<A> == 0 && upper_of<A> == rational{3217, 1024});
     // sqrt over [1/64, 64]: exact endpoints 1/8 and 8.
     using R = decltype(am::sqrt(pos64{1}));
@@ -664,8 +664,8 @@ TEST(MathAdaptiveTest, double_tier_agrees_with_the_integer_path) {
     TIER_CHECK(log10, outdec, pos64, engine::logb_core<engine::input_limbs<pos64>, 10>);
     TIER_CHECK(sqrt, out16c, pos64, engine::sqrt_core<engine::input_limbs<pos64>>);
     TIER_CHECK(sqrt, out8, pos64, engine::sqrt_core<engine::input_limbs<pos64>>);
-    TIER_CHECK(asin, out20, unit, engine::asin_core<engine::input_limbs<unit>>);
-    TIER_CHECK(acos, out16c, unit, engine::acos_core<engine::input_limbs<unit>>);
+    TIER_CHECK(asin, out20, unit_value, engine::asin_core<engine::input_limbs<unit_value>>);
+    TIER_CHECK(acos, out16c, unit_value, engine::acos_core<engine::input_limbs<unit_value>>);
     TIER_CHECK(
         sin, out8t, sym4, engine::trig_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::trig::sin, 1>);
     TIER_CHECK(
@@ -935,8 +935,8 @@ TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
     DD_CHECK(log10, outdec15, pos64, engine::logb_core<engine::input_limbs<pos64>, 10>);
     DD_CHECK(sqrt, out52, pos64, engine::sqrt_core<engine::input_limbs<pos64>>);
     DD_CHECK(sqrt, out48c, posm8, engine::sqrt_core<engine::input_limbs<posm8>>);
-    DD_CHECK(asin, out52, unit, engine::asin_core<engine::input_limbs<unit>>);
-    DD_CHECK(acos, out50t, unit, engine::acos_core<engine::input_limbs<unit>>);
+    DD_CHECK(asin, out52, unit_value, engine::asin_core<engine::input_limbs<unit_value>>);
+    DD_CHECK(acos, out50t, unit_value, engine::acos_core<engine::input_limbs<unit_value>>);
     DD_CHECK(atanh,
              out52,
              open1,
@@ -969,7 +969,7 @@ TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
     DD_CHECK(log, out40, pos64, engine::log_core<engine::input_limbs<pos64>>);
     DD_CHECK(log10, out40, posm8, engine::logb_core<engine::input_limbs<posm8>, 10>);
     DD_CHECK(sqrt, out40, posm8, engine::sqrt_core<engine::input_limbs<posm8>>);
-    DD_CHECK(asin, out40, unit, engine::asin_core<engine::input_limbs<unit>>);
+    DD_CHECK(asin, out40, unit_value, engine::asin_core<engine::input_limbs<unit_value>>);
     DD_CHECK(atanh,
              out40,
              open1,
@@ -1092,8 +1092,8 @@ TEST(MathAdaptiveTest, dd_kernels_stay_far_inside_their_bound) {
     DD_ACCURACY(log2, pos64, engine::logb_core<engine::input_limbs<pos64>, 2>);
     DD_ACCURACY(log10, pos64, engine::logb_core<engine::input_limbs<pos64>, 10>);
     DD_ACCURACY(sqrt, pos64, engine::sqrt_core<engine::input_limbs<pos64>>);
-    DD_ACCURACY(asin, unit, engine::asin_core<engine::input_limbs<unit>>);
-    DD_ACCURACY(acos, unit, engine::acos_core<engine::input_limbs<unit>>);
+    DD_ACCURACY(asin, unit_value, engine::asin_core<engine::input_limbs<unit_value>>);
+    DD_ACCURACY(acos, unit_value, engine::acos_core<engine::input_limbs<unit_value>>);
     DD_ACCURACY(
         atanh, open1, engine::ahyp_core<engine::input_limbs<open1>, engine::in_mag<open1>, engine::ahyp::atanh>);
     DD_ACCURACY(acosh, ge1, engine::ahyp_core<engine::input_limbs<ge1>, engine::in_mag<ge1>, engine::ahyp::acosh>);
@@ -1189,8 +1189,8 @@ TEST(MathAdaptiveTest, lean_dd_kernels_stay_within_their_proved_bounds) {
         atanh_lean, open1, engine::ahyp_core<engine::input_limbs<open1>, engine::in_mag<open1>, engine::ahyp::atanh>);
     LEAN_BOUND(atan_lean, sym4, engine::atan_core<engine::input_limbs<sym4>>);
     LEAN_BOUND(atan_lean, thirds, engine::atan_core<engine::input_limbs<thirds>>);
-    LEAN_BOUND(asin_lean, unit, engine::asin_core<engine::input_limbs<unit>>);
-    LEAN_BOUND(acos_lean, unit, engine::acos_core<engine::input_limbs<unit>>);
+    LEAN_BOUND(asin_lean, unit_value, engine::asin_core<engine::input_limbs<unit_value>>);
+    LEAN_BOUND(acos_lean, unit_value, engine::acos_core<engine::input_limbs<unit_value>>);
     // A sparse sweep of a wide grid: 4096 points spread over it.
     const auto x = [](long long i) {
         return huge::from_raw(detail::raw_from_offset<huge>(static_cast<std::uint64_t>(i)), unsafe);
@@ -1303,8 +1303,8 @@ TEST(MathAdaptiveTest, double_kernels_stay_within_their_proved_bounds) {
     FP_BOUND(
         exp_k, tanh, sym4, engine::hyp_core<engine::input_limbs<sym4>, engine::in_mag<sym4>, engine::hyp::tanh, 1>);
     FP_BOUND(atan_k, atan, sym4, engine::atan_core<engine::input_limbs<sym4>>);
-    FP_BOUND(asin_k, asin, unit, engine::asin_core<engine::input_limbs<unit>>);
-    FP_BOUND(asin_k, acos, unit, engine::acos_core<engine::input_limbs<unit>>);
+    FP_BOUND(asin_k, asin, unit_value, engine::asin_core<engine::input_limbs<unit_value>>);
+    FP_BOUND(asin_k, acos, unit_value, engine::acos_core<engine::input_limbs<unit_value>>);
     FP_BOUND(log_k, log, pos64, engine::log_core<engine::input_limbs<pos64>>);
     FP_BOUND(log_k, log2, pos64, engine::logb_core<engine::input_limbs<pos64>, 2>);
     FP_BOUND(log_k, log10, pos64, engine::logb_core<engine::input_limbs<pos64>, 10>);

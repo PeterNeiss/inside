@@ -4,13 +4,13 @@
 // voltage.
 #include <beman/inside/units.hpp>
 
-inline constexpr beman::inside::units::base_dimension count_def{"count"};
-inline constexpr beman::inside::units::quantity_spec  adc_counts_def{"adc_counts", count_def};
-inline constexpr beman::inside::units::named_unit     cts_def{"cts", beman::inside::units::spec_c<adc_counts_def>};
+inline constexpr auto count_def      = beman::inside::units::base_dimension<"count">;
+inline constexpr auto adc_counts_def = beman::inside::units::kind<"adc_counts", count_def>;
+inline constexpr auto cts_def        = beman::inside::units::unit<"cts", adc_counts_def>;
 
 int main() {
     using namespace beman::inside;
     using namespace beman::inside::units;
-    auto s = just<1> * unit_c<cts_def> + just<1> * si::volt;
+    auto s = just<1> * cts_def + just<1> * si::volt;
     (void)s;
 }

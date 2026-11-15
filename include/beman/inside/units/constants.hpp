@@ -23,73 +23,52 @@ namespace beman::inside::units {
 // The constants' units. Each is a named unit whose magnitude is the constant,
 // in the namespace of its source, next to si2019's defining constants.
 //---------------------------------------------------------------------------
-namespace si2019_defs {
-inline constexpr named_unit standard_atmosphere{"atm", mag<101'325> * si::pascal};
-inline constexpr named_unit reduced_planck_constant{
-    "ħ", si2019::planck_constant / (mag<2> * mag_pi), {.ascii = "hbar"}};
-inline constexpr named_unit molar_gas_constant{"R", si2019::avogadro_constant * si2019::boltzmann_constant};
-inline constexpr named_unit faraday_constant{"F", si2019::avogadro_constant * si2019::elementary_charge};
-inline constexpr named_unit josephson_constant{"K_J", mag<2> * si2019::elementary_charge / si2019::planck_constant};
-inline constexpr named_unit von_klitzing_constant{"R_K", si2019::planck_constant / square(si2019::elementary_charge)};
-inline constexpr named_unit conductance_quantum{
-    "G₀", mag<2> * square(si2019::elementary_charge) / si2019::planck_constant, {.ascii = "G_0"}};
-inline constexpr named_unit magnetic_flux_quantum{
-    "Φ₀", si2019::planck_constant / (mag<2> * si2019::elementary_charge), {.ascii = "Phi_0"}};
-inline constexpr named_unit stefan_boltzmann_constant{
-    "σ",
-    mag<2> * mag_pi * mag_pi * mag_pi * mag_pi * mag_pi * square(square(si2019::boltzmann_constant)) /
-        (mag<15> * cubic(si2019::planck_constant) * square(si2019::speed_of_light_in_vacuum)),
-    {.ascii = "sigma"}};
-inline constexpr named_unit first_radiation_constant{
-    "c₁", mag<2> * mag_pi * si2019::planck_constant * square(si2019::speed_of_light_in_vacuum), {.ascii = "c_1"}};
-inline constexpr named_unit second_radiation_constant{
-    "c₂", si2019::planck_constant * si2019::speed_of_light_in_vacuum / si2019::boltzmann_constant, {.ascii = "c_2"}};
-} // namespace si2019_defs
-
 namespace si2019 {
-inline constexpr auto standard_atmosphere       = unit_c<si2019_defs::standard_atmosphere>;
-inline constexpr auto reduced_planck_constant   = unit_c<si2019_defs::reduced_planck_constant>;
-inline constexpr auto molar_gas_constant        = unit_c<si2019_defs::molar_gas_constant>;
-inline constexpr auto faraday_constant          = unit_c<si2019_defs::faraday_constant>;
-inline constexpr auto josephson_constant        = unit_c<si2019_defs::josephson_constant>;
-inline constexpr auto von_klitzing_constant     = unit_c<si2019_defs::von_klitzing_constant>;
-inline constexpr auto conductance_quantum       = unit_c<si2019_defs::conductance_quantum>;
-inline constexpr auto magnetic_flux_quantum     = unit_c<si2019_defs::magnetic_flux_quantum>;
-inline constexpr auto stefan_boltzmann_constant = unit_c<si2019_defs::stefan_boltzmann_constant>;
-inline constexpr auto first_radiation_constant  = unit_c<si2019_defs::first_radiation_constant>;
-inline constexpr auto second_radiation_constant = unit_c<si2019_defs::second_radiation_constant>;
+inline constexpr auto standard_atmosphere = unit<"atm", detail::mag<101'325> * si::pascal>;
+inline constexpr auto reduced_planck_constant =
+    unit<"ħ", si2019::planck_constant / (detail::mag<2> * detail::mag_pi), {.ascii = "hbar"}>;
+inline constexpr auto molar_gas_constant = unit<"R", si2019::avogadro_constant * si2019::boltzmann_constant>;
+inline constexpr auto faraday_constant   = unit<"F", si2019::avogadro_constant * si2019::elementary_charge>;
+inline constexpr auto josephson_constant =
+    unit<"K_J", detail::mag<2> * si2019::elementary_charge / si2019::planck_constant>;
+inline constexpr auto von_klitzing_constant = unit<"R_K", si2019::planck_constant / square(si2019::elementary_charge)>;
+inline constexpr auto conductance_quantum =
+    unit<"G₀", detail::mag<2> * square(si2019::elementary_charge) / si2019::planck_constant, {.ascii = "G_0"}>;
+inline constexpr auto magnetic_flux_quantum =
+    unit<"Φ₀", si2019::planck_constant / (detail::mag<2> * si2019::elementary_charge), {.ascii = "Phi_0"}>;
+inline constexpr auto stefan_boltzmann_constant =
+    unit<"σ",
+         detail::mag<2> * detail::mag_pi * detail::mag_pi * detail::mag_pi * detail::mag_pi * detail::mag_pi *
+             square(square(si2019::boltzmann_constant)) /
+             (detail::mag<15> * cubic(si2019::planck_constant) * square(si2019::speed_of_light_in_vacuum)),
+         {.ascii = "sigma"}>;
+inline constexpr auto first_radiation_constant =
+    unit<"c₁",
+         detail::mag<2> * detail::mag_pi * si2019::planck_constant * square(si2019::speed_of_light_in_vacuum),
+         {.ascii = "c_1"}>;
+inline constexpr auto second_radiation_constant =
+    unit<"c₂",
+         si2019::planck_constant * si2019::speed_of_light_in_vacuum / si2019::boltzmann_constant,
+         {.ascii = "c_2"}>;
 } // namespace si2019
 
 // CODATA 2022 recommended values (Mohr et al., Rev. Mod. Phys. 97, 025002).
-namespace codata2022_defs {
-inline constexpr named_unit gravitational_constant{
-    "G", mag<6.67430e-11_g> * cubic(si::metre) / (si::kilogram * square(si::second))};
-inline constexpr named_unit fine_structure_constant{"α", mag<7.2973525643e-3_g> * one, {.ascii = "alpha"}};
-inline constexpr named_unit rydberg_constant{"R_∞", mag<10'973'731.568157_g> / si::metre, {.ascii = "R_inf"}};
-inline constexpr named_unit vacuum_magnetic_permeability{
-    "μ₀", mag<1.25663706127e-6_g> * si::newton / square(si::ampere), {.ascii = "mu_0"}};
-inline constexpr named_unit characteristic_impedance_of_vacuum{"Z₀", mag<376.730313412_g> * si::ohm, {.ascii = "Z_0"}};
-inline constexpr named_unit electron_mass{"m_e", mag<9.1093837139e-31_g> * si::kilogram};
-inline constexpr named_unit proton_mass{"m_p", mag<1.67262192595e-27_g> * si::kilogram};
-inline constexpr named_unit neutron_mass{"m_n", mag<1.67492750056e-27_g> * si::kilogram};
-inline constexpr named_unit atomic_mass_constant{"m_u", mag<1.66053906892e-27_g> * si::kilogram};
-inline constexpr named_unit bohr_radius{"a₀", mag<5.29177210544e-11_g> * si::metre, {.ascii = "a_0"}};
-inline constexpr named_unit vacuum_electric_permittivity{
-    "ε₀", mag<8.8541878188e-12_g> * si::farad / si::metre, {.ascii = "epsilon_0"}};
-} // namespace codata2022_defs
-
 namespace codata2022 {
-inline constexpr auto gravitational_constant             = unit_c<codata2022_defs::gravitational_constant>;
-inline constexpr auto fine_structure_constant            = unit_c<codata2022_defs::fine_structure_constant>;
-inline constexpr auto rydberg_constant                   = unit_c<codata2022_defs::rydberg_constant>;
-inline constexpr auto vacuum_magnetic_permeability       = unit_c<codata2022_defs::vacuum_magnetic_permeability>;
-inline constexpr auto characteristic_impedance_of_vacuum = unit_c<codata2022_defs::characteristic_impedance_of_vacuum>;
-inline constexpr auto electron_mass                      = unit_c<codata2022_defs::electron_mass>;
-inline constexpr auto proton_mass                        = unit_c<codata2022_defs::proton_mass>;
-inline constexpr auto neutron_mass                       = unit_c<codata2022_defs::neutron_mass>;
-inline constexpr auto atomic_mass_constant               = unit_c<codata2022_defs::atomic_mass_constant>;
-inline constexpr auto bohr_radius                        = unit_c<codata2022_defs::bohr_radius>;
-inline constexpr auto vacuum_electric_permittivity       = unit_c<codata2022_defs::vacuum_electric_permittivity>;
+inline constexpr auto gravitational_constant =
+    unit<"G", detail::mag<6.67430e-11_g> * cubic(si::metre) / (si::kilogram * square(si::second))>;
+inline constexpr auto fine_structure_constant = unit<"α", detail::mag<7.2973525643e-3_g> * one, {.ascii = "alpha"}>;
+inline constexpr auto rydberg_constant = unit<"R_∞", detail::mag<10'973'731.568157_g> / si::metre, {.ascii = "R_inf"}>;
+inline constexpr auto vacuum_magnetic_permeability =
+    unit<"μ₀", detail::mag<1.25663706127e-6_g> * si::newton / square(si::ampere), {.ascii = "mu_0"}>;
+inline constexpr auto characteristic_impedance_of_vacuum =
+    unit<"Z₀", detail::mag<376.730313412_g> * si::ohm, {.ascii = "Z_0"}>;
+inline constexpr auto electron_mass        = unit<"m_e", detail::mag<9.1093837139e-31_g> * si::kilogram>;
+inline constexpr auto proton_mass          = unit<"m_p", detail::mag<1.67262192595e-27_g> * si::kilogram>;
+inline constexpr auto neutron_mass         = unit<"m_n", detail::mag<1.67492750056e-27_g> * si::kilogram>;
+inline constexpr auto atomic_mass_constant = unit<"m_u", detail::mag<1.66053906892e-27_g> * si::kilogram>;
+inline constexpr auto bohr_radius = unit<"a₀", detail::mag<5.29177210544e-11_g> * si::metre, {.ascii = "a_0"}>;
+inline constexpr auto vacuum_electric_permittivity =
+    unit<"ε₀", detail::mag<8.8541878188e-12_g> * si::farad / si::metre, {.ascii = "epsilon_0"}>;
 } // namespace codata2022
 
 //---------------------------------------------------------------------------

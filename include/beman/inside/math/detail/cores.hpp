@@ -363,10 +363,10 @@ struct trig_core {
                 return approx<K>::beyond(sn.Value.negative() != cs.Value.negative(), KMax);
             if (!(2 * ec < ac))
                 return approx<K>::unresolved(S); // cos unresolved
-            const double unit = ::beman::inside::detail::ldexp(1.0, S);
-            const I      t    = div_q(sn.Value, cs.Value, S);
-            const double at   = (as + es) / (ac - ec);
-            double       err  = ((es + at * ec) / (ac - ec) * unit + 2) * (1 + 0x1p-40) + 1;
+            const double unit_value = ::beman::inside::detail::ldexp(1.0, S);
+            const I      t          = div_q(sn.Value, cs.Value, S);
+            const double at         = (as + es) / (ac - ec);
+            double       err        = ((es + at * ec) / (ac - ec) * unit_value + 2) * (1 + 0x1p-40) + 1;
             // The bound grows as tan²: past 2^62 units (|tan| past 2^31) the
             // result moves to a coarser scale until it fits one word (halving
             // a double is exact; the shift rounds within ½).

@@ -80,10 +80,10 @@ struct element_traits<Q> {
 namespace beman::inside::units {
 namespace detail {
 // An element of From read in unit U, written back exactly.
-template <class From, unit U>
+template <class From, unit_value U>
 using in_unit_t = decltype(std::declval<const std::remove_cv_t<From>&>().template in<U>());
 
-template <class From, unit U>
+template <class From, unit_value U>
 class in_unit_ref {
     From* P;
 
@@ -99,7 +99,7 @@ class in_unit_ref {
     constexpr const in_unit_ref& operator=(const in_unit_ref& o) const { return *this = o.get(); }
 };
 
-template <class From, unit U>
+template <class From, unit_value U>
 struct in_unit_accessor {
     using element_type     = in_unit_t<From, U>;
     using data_handle_type = From*;
@@ -118,7 +118,7 @@ struct in_unit_accessor {
 
 // m's quantities read in unit u, over the same storage: an element is
 // q.in(u) (exact, the raw unchanged), and a store converts back exactly.
-template <unit U, class T, class E, class L>
+template <unit_value U, class T, class E, class L>
     requires quantity_like<std::remove_cv_t<T>> && requires(const std::remove_cv_t<T>& q) { q.template in<U>(); }
 [[nodiscard]] constexpr auto view_in(const std::mdspan<T, E, L, std::default_accessor<T>>& m, unit_t<U>) {
     using A = detail::in_unit_accessor<T, U>;

@@ -24,24 +24,13 @@ using namespace beman::inside;
 using namespace beman::inside::units;
 
 namespace {
-inline constexpr base_dimension ether_dim{"ether"};
-inline constexpr quantity_spec  ether_def{"ether", ether_dim};
-inline constexpr named_unit     eth_def{"ETH", spec_c<ether_def>};
-inline constexpr auto           ETH = unit_c<eth_def>;
-inline constexpr named_unit     gwei_def{"gwei", mag<1_g / 1'000'000'000_g> * ETH};
-inline constexpr auto           gwei = unit_c<gwei_def>;
-inline constexpr named_unit     wei_def{"wei", mag<1_g / 1'000'000'000'000'000'000_g> * ETH};
-inline constexpr auto           wei = unit_c<wei_def>;
+inline constexpr auto ETH  = base_unit<"ETH", "ether">;
+inline constexpr auto gwei = unit<"gwei", 1e-9_ins * ETH>;
+inline constexpr auto wei  = unit<"wei", 1e-18_ins * ETH>;
 
-inline constexpr base_dimension work_dim{"gas"};
-inline constexpr quantity_spec  work_def{"gas", work_dim};
-inline constexpr named_unit     gas_def{"gas", spec_c<work_def>};
-inline constexpr auto           gas = unit_c<gas_def>;
+inline constexpr auto gas = base_unit<"gas", "gas">;
 
-inline constexpr base_dimension dollar_dim{"dollar"};
-inline constexpr quantity_spec  dollars_def{"dollars", dollar_dim};
-inline constexpr named_unit     usd_def{"USD", spec_c<dollars_def>};
-inline constexpr auto           USD = unit_c<usd_def>;
+inline constexpr auto USD = base_unit<"USD", "dollar">;
 } // namespace
 
 inline constexpr auto to_the_wei = per<1'000'000'000'000'000'000>;
@@ -63,7 +52,7 @@ int main() {
     if (to_string(balance) != text + " ETH")
         return 1;
     // One wei is the notch of the grid: 10^-18 ETH.
-    static_assert(just<1> * wei == just<1, 1'000'000'000'000'000'000> * ETH);
+    static_assert(just<1> * wei == 1e-18_ins * ETH);
 
     // 2. 21000 gas at 30 gwei/gas is 630000 gwei, exactly 0.00063 ETH.
     const auto fee = gas_used{21'000, gas} * gas_price{30, gwei / gas};
